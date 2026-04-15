@@ -1338,6 +1338,11 @@ const RECO_CATALOG_SUPPORT_EXTERNAL_SEED_QUERY_TIMEOUT_MS = (() => {
   const v = Number.isFinite(n) ? Math.trunc(n) : 4000;
   return Math.max(50, Math.min(6000, v));
 })();
+const RECO_CATALOG_SUPPORT_INTERNAL_QUERY_TIMEOUT_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_SUPPORT_INTERNAL_QUERY_TIMEOUT_MS || 950);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 950;
+  return Math.max(200, Math.min(3000, v));
+})();
 const {
   classifyBeautyMainlineHandoffFallback,
   buildBeautyMainlineHandoffFallbackEnvelope,
@@ -20317,26 +20322,39 @@ function buildBeautyMainlineLocalFailureStage(collected = null) {
   return 'no_recall_from_planned_sources';
 }
 
-function cloneBeautySupportExternalRoundLevel(externalLevel, queryIndex, roundIndex) {
-  const levelObj = externalLevel && typeof externalLevel === 'object' && !Array.isArray(externalLevel)
-    ? externalLevel
+function cloneBeautySupportRoundLevel(sourceLevel, queryIndex, roundIndex, { kind = 'external_seed' } = {}) {
+  const levelObj = sourceLevel && typeof sourceLevel === 'object' && !Array.isArray(sourceLevel)
+    ? sourceLevel
     : null;
   if (!levelObj) return null;
   const queries = Array.isArray(levelObj?.queries) ? levelObj.queries : [];
   const query = queries[queryIndex];
   if (!query || typeof query !== 'object' || Array.isArray(query)) return null;
+  const normalizedKind = String(kind || '').trim().toLowerCase() === 'internal' ? 'internal' : 'external_seed';
+  const roundKey = normalizedKind === 'internal' ? 'fair_support_internal_round' : 'fair_support_external_round';
+  const sourceKey = normalizedKind === 'internal'
+    ? 'fair_support_internal_source_level'
+    : 'fair_support_external_source_level';
   return {
     ...levelObj,
-    ladder_level: `framework_stage_c_support_external_seed_round_${roundIndex + 1}`,
-    fair_support_external_round: roundIndex + 1,
-    fair_support_external_source_level: String(levelObj?.ladder_level || levelObj?.stage_id || '').trim() || null,
+    ladder_level: `framework_stage_c_support_${normalizedKind}_round_${roundIndex + 1}`,
+    [roundKey]: roundIndex + 1,
+    [sourceKey]: String(levelObj?.ladder_level || levelObj?.stage_id || '').trim() || null,
     queries: [
       {
         ...query,
-        fair_support_external_round: roundIndex + 1,
+        [roundKey]: roundIndex + 1,
       },
     ],
   };
+}
+
+function cloneBeautySupportExternalRoundLevel(externalLevel, queryIndex, roundIndex) {
+  return cloneBeautySupportRoundLevel(externalLevel, queryIndex, roundIndex, { kind: 'external_seed' });
+}
+
+function cloneBeautySupportInternalRoundLevel(internalLevel, queryIndex, roundIndex) {
+  return cloneBeautySupportRoundLevel(internalLevel, queryIndex, roundIndex, { kind: 'internal' });
 }
 
 function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
@@ -20350,6 +20368,7 @@ function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
   const executedSupportExternalSeedLevels = [];
   const stagedLevels = [];
   const maxRoutineSupportRoles = 2;
+  let supportInternalFairRoundCount = 0;
   let supportExternalFairRoundCount = 0;
   for (const level of levels) {
     const queries = Array.isArray(level?.queries) ? level.queries : [];
@@ -20431,39 +20450,65 @@ function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
         );
       }
     }
-    for (const group of supportGroups) {
-      if (!group?.internalLevel) continue;
-      keptLevels.push(group.internalLevel);
-      executedSupportInternalLevels.push(group.internalLabel);
-    }
+    const supportInternalGroups = supportGroups.filter((group) => group?.internalLevel);
     const supportExternalGroups = supportGroups.filter((group) => group?.externalLevel);
+    const maxSupportInternalQueryCount = supportInternalGroups.reduce((max, group) => {
+      const queries = Array.isArray(group?.internalLevel?.queries) ? group.internalLevel.queries : [];
+      return Math.max(max, queries.length);
+    }, 0);
     const maxSupportExternalQueryCount = supportExternalGroups.reduce((max, group) => {
       const queries = Array.isArray(group?.externalLevel?.queries) ? group.externalLevel.queries : [];
       return Math.max(max, queries.length);
     }, 0);
+    supportInternalFairRoundCount = maxSupportInternalQueryCount;
     supportExternalFairRoundCount = maxSupportExternalQueryCount;
+    for (const group of supportInternalGroups) {
+      executedSupportInternalLevels.push(group.internalLabel);
+    }
     for (const group of supportExternalGroups) {
       executedSupportExternalSeedLevels.push(group.externalLabel);
     }
-    for (let queryIndex = 0; queryIndex < maxSupportExternalQueryCount; queryIndex += 1) {
-      const roundQueries = [];
-      const sourceLevels = [];
+    const maxSupportRoundCount = Math.max(maxSupportInternalQueryCount, maxSupportExternalQueryCount);
+    for (let queryIndex = 0; queryIndex < maxSupportRoundCount; queryIndex += 1) {
+      const internalRoundQueries = [];
+      const internalSourceLevels = [];
+      for (const group of supportInternalGroups) {
+        const roundLevel = cloneBeautySupportInternalRoundLevel(group.internalLevel, queryIndex, queryIndex);
+        const query = Array.isArray(roundLevel?.queries) ? roundLevel.queries[0] : null;
+        if (!query) continue;
+        internalRoundQueries.push(query);
+        if (roundLevel?.fair_support_internal_source_level) {
+          internalSourceLevels.push(roundLevel.fair_support_internal_source_level);
+        }
+      }
+      if (internalRoundQueries.length) {
+        keptLevels.push({
+          ladder_level: `framework_stage_c_support_internal_round_${queryIndex + 1}`,
+          fair_support_internal_round: queryIndex + 1,
+          fair_support_internal_source_levels: internalSourceLevels,
+          queries: internalRoundQueries,
+        });
+      }
+
+      const externalRoundQueries = [];
+      const externalSourceLevels = [];
       for (const group of supportExternalGroups) {
         const roundLevel = cloneBeautySupportExternalRoundLevel(group.externalLevel, queryIndex, queryIndex);
         const query = Array.isArray(roundLevel?.queries) ? roundLevel.queries[0] : null;
         if (!query) continue;
-        roundQueries.push(query);
+        externalRoundQueries.push(query);
         if (roundLevel?.fair_support_external_source_level) {
-          sourceLevels.push(roundLevel.fair_support_external_source_level);
+          externalSourceLevels.push(roundLevel.fair_support_external_source_level);
         }
       }
-      if (!roundQueries.length) continue;
-      keptLevels.push({
-        ladder_level: `framework_stage_c_support_external_seed_round_${queryIndex + 1}`,
-        fair_support_external_round: queryIndex + 1,
-        fair_support_external_source_levels: sourceLevels,
-        queries: roundQueries,
-      });
+      if (externalRoundQueries.length) {
+        keptLevels.push({
+          ladder_level: `framework_stage_c_support_external_seed_round_${queryIndex + 1}`,
+          fair_support_external_round: queryIndex + 1,
+          fair_support_external_source_levels: externalSourceLevels,
+          queries: externalRoundQueries,
+        });
+      }
     }
   } else {
     keptLevels.push(...stagedLevels);
@@ -20504,6 +20549,7 @@ function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
         ? {
             executed_support_internal_level_count: executedSupportInternalLevels.length,
             executed_support_internal_levels: executedSupportInternalLevels,
+            support_internal_fair_round_count: supportInternalFairRoundCount,
           }
         : {}),
       ...(executedSupportExternalSeedLevels.length
@@ -20539,6 +20585,9 @@ function buildBeautyMainlineLocalQueryAttempts(searchResults = []) {
     reason: pickFirstTrimmed(row?.reason) || null,
     ...(Number.isFinite(Number(row?.fair_support_external_round))
       ? { fair_support_external_round: Math.max(1, Math.trunc(Number(row.fair_support_external_round))) }
+      : {}),
+    ...(Number.isFinite(Number(row?.fair_support_internal_round))
+      ? { fair_support_internal_round: Math.max(1, Math.trunc(Number(row.fair_support_internal_round))) }
       : {}),
     ...(Array.isArray(row?.attempted_internal_paths)
       ? { attempted_internal_paths: row.attempted_internal_paths }
@@ -21813,10 +21862,20 @@ function shouldSkipFrameworkSupportExternalSeedQuery(queryEntry, candidateState 
   const allowExternalSeed = queryEntry.allow_external_seed === true
     || String(queryEntry.source_scope || '').trim().toLowerCase() === 'external_seed';
   if (!allowExternalSeed) return false;
+  return shouldSkipFrameworkSupportRoleQuery(queryEntry, candidateState);
+}
+
+function shouldSkipFrameworkSupportRoleQuery(queryEntry, candidateState = null) {
+  if (!isPlainObject(queryEntry) || !isPlainObject(candidateState)) return false;
+  if (candidateState.primary_role_matched !== true) return false;
   const levelId = String(queryEntry.ladder_level || queryEntry.stage_id || '').trim().toLowerCase();
   if (!levelId.startsWith('framework_stage_c_support_')) return false;
   const roleId = pickFirstTrimmed(queryEntry.role_id) || (
-    levelId.replace(/^framework_stage_c_support_/, '').replace(/_external_seed$/, '')
+    levelId
+      .replace(/^framework_stage_c_support_/, '')
+      .replace(/_external_seed$/, '')
+      .replace(/_internal_round_\d+$/, '')
+      .replace(/_external_seed_round_\d+$/, '')
   );
   if (!roleId) return false;
   const filledRoleIds = new Set(getRecoRecallFilledRoleIds(candidateState, { requireAlignedRetrieval: true }));
@@ -21829,10 +21888,14 @@ function resolveRecoQueryEntryTimeoutMs(queryEntry = null, effectiveTimeoutMs = 
     : 0;
   if (normalizedTimeoutMs <= 0) return normalizedTimeoutMs;
   const sourceScope = String(queryEntry?.source_scope || queryEntry?.sourceScope || '').trim().toLowerCase();
-  if (sourceScope !== 'external_seed') return normalizedTimeoutMs;
   const roleRank = Number.isFinite(Number(queryEntry?.role_rank || queryEntry?.roleRank))
     ? Number(queryEntry.role_rank || queryEntry.roleRank)
     : null;
+  if (sourceScope !== 'external_seed') {
+    return roleRank != null && roleRank > 1
+      ? Math.min(normalizedTimeoutMs, RECO_CATALOG_SUPPORT_INTERNAL_QUERY_TIMEOUT_MS)
+      : normalizedTimeoutMs;
+  }
   if (roleRank != null && roleRank > 1) {
     return Math.min(normalizedTimeoutMs, RECO_CATALOG_SUPPORT_EXTERNAL_SEED_QUERY_TIMEOUT_MS);
   }
@@ -22195,7 +22258,7 @@ async function collectRecoCandidatesFromQueryLevels({
     }
     const runnableQueries = [];
     for (const queryEntry of queries) {
-      if (shouldSkipFrameworkSupportExternalSeedQuery(queryEntry, candidateState)) {
+      if (shouldSkipFrameworkSupportRoleQuery(queryEntry, candidateState)) {
         const queryAllowExternalSeed =
           allowExternalSeed === true
           && queryEntry?.allow_external_seed === true;
