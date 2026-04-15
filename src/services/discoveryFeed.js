@@ -4376,6 +4376,13 @@ function buildCompoundBeautySeedStageDefinitions(recallTerms, safeLimit, options
       buildWhereSql: (stageBind) =>
         `${DISCOVERY_EXTERNAL_SEED_INDEXED_RECALL_CATEGORY_SQL} = ANY(${stageBind(primaryCategoryTerms)}::text[])`,
     });
+    definitions.push({
+      score: 91,
+      stage: 'recall_compound_coalesced_primary_category',
+      cap: stageCap,
+      buildWhereSql: (stageBind) =>
+        `${EXTERNAL_SEED_RECALL_SQL_FIELDS.category} = ANY(${stageBind(primaryCategoryTerms)}::text[])`,
+    });
   }
 
   if (exactPatterns.length > 0) {
@@ -4928,6 +4935,13 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
         buildWhereSql: (stageBind) =>
           `${DISCOVERY_EXTERNAL_SEED_INDEXED_RECALL_CATEGORY_SQL} = ANY(${stageBind(indexedCategoryHeadTerms)}::text[])`,
       });
+      stageDefinitions.push({
+        score: 55,
+        stage: 'recall_exact_category_head',
+        cap: explicitStageQueryCap,
+        buildWhereSql: (stageBind) =>
+          `${EXTERNAL_SEED_RECALL_SQL_FIELDS.category} = ANY(${stageBind(indexedCategoryHeadTerms)}::text[])`,
+      });
     }
 
     if (recallTerms.patterns.length > 0) {
@@ -5106,7 +5120,11 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
       externalSeedStageCounts.push(metrics);
       if (
         compoundIntent &&
-        (stage === 'recall_compound_exact_title' || stage === 'recall_compound_primary_category') &&
+        (
+          stage === 'recall_compound_exact_title' ||
+          stage === 'recall_compound_primary_category' ||
+          stage === 'recall_compound_coalesced_primary_category'
+        ) &&
         stagedRows.length >= currentPageCoverageTarget
       ) {
         compoundExactStageSatisfiedCurrentPage = true;
