@@ -85,6 +85,28 @@ function normalizeRecoTargetStep(value) {
 
 function buildConcernCandidateText(row) {
   const candidate = isPlainObject(row) ? row : {};
+  if (isConcernExternalSeedCandidate(candidate)) {
+    const sku = isPlainObject(candidate.sku) ? candidate.sku : {};
+    return [
+      buildExternalSeedSurfacingText(candidate, { anchorOnly: true }),
+      pickFirstTrimmed(
+        sku.product_type,
+        sku.productType,
+        sku.category,
+        sku.category_name,
+        sku.categoryName,
+        candidate.product_type,
+        candidate.productType,
+        candidate.category,
+        candidate.category_name,
+        candidate.categoryName,
+      ),
+      pickFirstTrimmed(candidate.retrieval_step, candidate.retrievalStep),
+    ]
+      .map((item) => normalizeConcernQueryToken(item).toLowerCase())
+      .filter(Boolean)
+      .join(' ');
+  }
   const sku = isPlainObject(candidate.sku) ? candidate.sku : {};
   const textParts = [
     buildConcernCandidateAnchorText(candidate),

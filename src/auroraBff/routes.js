@@ -4055,9 +4055,26 @@ function buildRecoCompareHighlightsFromInsightFields({
       ...(Array.isArray(insightObj?.best_for) ? insightObj.best_for.map((item) => `Best for ${item}`) : []),
       pickFirstTrimmed(shoppingObj?.subtitle),
       pickFirstTrimmed(shoppingObj?.intro),
-    ].filter(Boolean),
+    ].filter((value) => value && !looksLikeRecoPlaceholderSeedCopy(value)),
     3,
   );
+}
+
+const RECO_PLACEHOLDER_SEED_COPY_RE = /\b(?:replace\s+with\s+your\s+own\s+description\s+if\s+needed|test\s+fixture\s+for\s+pdp|lorem\s+ipsum|placeholder\s+copy|placeholder\s+description)\b/i;
+
+function looksLikeRecoPlaceholderSeedCopy(value) {
+  const text = String(value || '').trim();
+  if (!text) return false;
+  return RECO_PLACEHOLDER_SEED_COPY_RE.test(text);
+}
+
+function pickFirstNonPlaceholderRecoCopy(...values) {
+  for (const value of values) {
+    const trimmed = pickFirstTrimmed(value);
+    if (!trimmed || looksLikeRecoPlaceholderSeedCopy(trimmed)) continue;
+    return trimmed;
+  }
+  return '';
 }
 
 function normalizeRecoCatalogProduct(raw) {
@@ -4256,7 +4273,7 @@ function normalizeRecoCatalogProduct(raw) {
       base.seedDescription,
     ].map((item) => String(item || '').trim()).filter(Boolean).map((item) => item.slice(0, 160)),
     4,
-  );
+  ).filter((item) => !looksLikeRecoPlaceholderSeedCopy(item));
   const tagTokens = uniqCaseInsensitiveStrings(
     [
       ...(Array.isArray(base.tags) ? base.tags : []),
@@ -4268,7 +4285,7 @@ function normalizeRecoCatalogProduct(raw) {
   );
   const socialRef = extractCandidateSocialReference(base);
   const price = extractCatalogCandidatePrice(base);
-  const shortDescription = pickFirstTrimmed(
+  const shortDescription = pickFirstNonPlaceholderRecoCopy(
     base.short_description,
     base.shortDescription,
     base.subtitle,
@@ -4276,9 +4293,9 @@ function normalizeRecoCatalogProduct(raw) {
     base.seed_description,
     base.seedDescription,
   );
-  const description = pickFirstTrimmed(base.description);
-  const bestFor = pickFirstTrimmed(base.best_for, base.bestFor);
-  const whyThisOne = pickFirstTrimmed(base.why_this_one, base.whyThisOne, base.reason);
+  const description = pickFirstNonPlaceholderRecoCopy(base.description);
+  const bestFor = pickFirstNonPlaceholderRecoCopy(base.best_for, base.bestFor);
+  const whyThisOne = pickFirstNonPlaceholderRecoCopy(base.why_this_one, base.whyThisOne, base.reason);
   const keyFeatures = asStringArray(
     [
       ...(Array.isArray(base.key_features) ? base.key_features : []),
@@ -4288,7 +4305,7 @@ function normalizeRecoCatalogProduct(raw) {
       ...(Array.isArray(base.keyIngredients) ? base.keyIngredients : []),
     ],
     8,
-  );
+  ).filter((item) => !looksLikeRecoPlaceholderSeedCopy(item));
   const compareHighlights = uniqCaseInsensitiveStrings(
     [
       ...(Array.isArray(base.compare_highlights) ? base.compare_highlights : []),
@@ -4300,7 +4317,7 @@ function normalizeRecoCatalogProduct(raw) {
       .map((item) => (isPlainObject(item)
         ? pickFirstTrimmed(item.body, item.text, item.description, item.headline, item.title, item.label)
         : pickFirstTrimmed(item)))
-      .filter(Boolean),
+      .filter((item) => item && !looksLikeRecoPlaceholderSeedCopy(item)),
     6,
   );
   const productIntel = pickRecoProductIntelBundle(base);
@@ -19030,8 +19047,8 @@ function buildRecoDerivedShopperCopy({
   const roleLabel = pickFirstTrimmed(roleObj?.label, rawRow?.matched_role_label, rawRow?.matchedRoleLabel);
   const roleWhy = pickFirstTrimmed(roleObj?.why_this_role);
   const roleText = `${roleLabel} ${roleWhy}`.trim().toLowerCase();
-  const existingBestFor = pickFirstTrimmed(rawRow?.best_for, rawRow?.bestFor);
-  const existingWhy = pickFirstTrimmed(rawRow?.why_this_one, rawRow?.whyThisOne, rawRow?.reason);
+  const existingBestFor = pickFirstNonPlaceholderRecoCopy(rawRow?.best_for, rawRow?.bestFor);
+  const existingWhy = pickFirstNonPlaceholderRecoCopy(rawRow?.why_this_one, rawRow?.whyThisOne, rawRow?.reason);
   const productIntel = pickRecoProductIntelBundle(rawRow);
   const pivotaInsights = pickRecoPivotaInsights(rawRow);
   const shoppingCard = pickRecoShoppingCardPayload(rawRow);
@@ -19208,6 +19225,7 @@ function truncateRecoNarrativeSnippet(value, maxLen = 180) {
 function compactRecoNarrativeSnippet(value, { maxLen = 180, hintText = '' } = {}) {
   const raw = stripHtmlToText(value).replace(/\s+/g, ' ').trim();
   if (!raw) return '';
+  if (looksLikeRecoPlaceholderSeedCopy(raw)) return '';
   const cleaned = raw
     .replace(/\b(?:ingredients?|ingredient list|testing shows|clinical results?|how to use|directions?|warnings?|warning|caution|disclaimer|net wt|size)\b[\s\S]*$/i, '')
     .trim();
@@ -19329,7 +19347,7 @@ function buildRecoProductEvidencePoints({
       ...(Array.isArray(intelCore?.best_for) ? intelCore.best_for : []),
     ],
     { max: Math.max(2, max), maxLen: 72 },
-  );
+  ).filter((value) => !looksLikeRecoPlaceholderSeedCopy(value));
   return uniqCaseInsensitiveStrings(
     [
       ...narrativeCandidates,
@@ -19361,7 +19379,7 @@ function buildRecoVisibleProductFields(picked, { role = null, language = 'EN' } 
     row.subject?.image_url,
     row.subject?.imageUrl,
   );
-  const shortDescription = pickFirstTrimmed(
+  const shortDescription = pickFirstNonPlaceholderRecoCopy(
     row.short_description,
     row.shortDescription,
     row.subtitle,
@@ -19400,7 +19418,7 @@ function buildRecoVisibleProductFields(picked, { role = null, language = 'EN' } 
     stableAnchorProduct,
     language,
   });
-  const description = pickFirstTrimmed(
+  const description = pickFirstNonPlaceholderRecoCopy(
     row.description,
     row.sku?.description,
     row.product?.description,

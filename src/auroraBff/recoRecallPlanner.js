@@ -419,7 +419,7 @@ function buildBeautyMainlineRecallPlan({ mode, semanticContract = null, rawQuery
         });
         const supportExternalQueries = buildRoleStageQueries(role, {
           allowConcernFallback: false,
-          maxQueriesOverride: 1,
+          maxQueriesOverride: 2,
         });
         return [
           buildStage({
