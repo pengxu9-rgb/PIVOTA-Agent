@@ -5838,6 +5838,59 @@ describe('discovery feed service', () => {
     expect(_internals.shouldSkipExplicitVerticalSeedStage(broadRequest, broadRecallTerms)).toBe(false);
   });
 
+  test('exact beauty phrase hints cover fragrance and conditioner exact-phrase variants', () => {
+    const profile = buildDiscoveryProfile({
+      auth_state: 'anonymous',
+      locale: 'en-US',
+      recent_views: [],
+      recent_queries: [],
+    });
+
+    const perfumeRequest = _internals.normalizeDiscoveryRequest({
+      surface: 'browse_products',
+      query: {
+        text: 'perfume',
+      },
+      context: {
+        auth_state: 'anonymous',
+        locale: 'en-US',
+        recent_views: [],
+        recent_queries: [],
+      },
+    });
+    const perfumeRecallTerms = _internals.buildBeautyInterestRecallTerms(
+      perfumeRequest,
+      profile,
+      ['perfume'],
+    );
+    expect(_internals.resolveExplicitIndexedCategoryHeadTerms(perfumeRequest, perfumeRecallTerms)).toEqual(
+      expect.arrayContaining(['perfume', 'eau de parfum', 'fragrance']),
+    );
+
+    const leaveInRequest = _internals.normalizeDiscoveryRequest({
+      surface: 'browse_products',
+      query: {
+        text: 'leave in conditioner',
+      },
+      context: {
+        auth_state: 'anonymous',
+        locale: 'en-US',
+        recent_views: [],
+        recent_queries: [],
+      },
+    });
+    const leaveInRecallTerms = _internals.buildBeautyInterestRecallTerms(
+      leaveInRequest,
+      profile,
+      ['leave in conditioner'],
+    );
+    expect(_internals.resolveExplicitIndexedCategoryHeadTerms(leaveInRequest, leaveInRecallTerms)).toEqual(
+      expect.arrayContaining(['leave in conditioner', 'conditioner', 'deep conditioner']),
+    );
+    expect(_internals.shouldSkipExplicitCategorySeedStage(leaveInRequest, leaveInRecallTerms)).toBe(true);
+    expect(_internals.shouldSkipExplicitVerticalSeedStage(leaveInRequest, leaveInRecallTerms)).toBe(true);
+  });
+
   test('explicit non-compound browse keeps running seed stages until query-qualified rows fill target', async () => {
     jest.resetModules();
     const prevDatabaseUrl = process.env.DATABASE_URL;
