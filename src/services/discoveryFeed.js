@@ -30,6 +30,7 @@ const { classifyBeautyBucketFromText } = require('../findProductsMulti/beautyQue
 const {
   buildBrandQueryVariants,
   detectBrandEntities,
+  hasExplicitCategoryHint,
   normalizeBrandText,
 } = require('../findProductsMulti/brandLexicon');
 const {
@@ -2011,6 +2012,7 @@ function shouldUseStableBrowseCatalogTotal(request) {
   // Public /products?q= already has a bounded recall pool and cursor. The
   // stable total query scans broad JSON text and can dominate live latency.
   if (isExplicitQueryScopedBrowseRequest(request)) return false;
+  if (hasBrandScope(request)) return false;
   return true;
 }
 
@@ -2021,6 +2023,16 @@ function resolveBrandDirectCandidateLimit(request, limit) {
     24,
     getDiscoveryCandidateFetchCap(request),
   );
+  if (isBrandScopeOnlyQuery(request)) {
+    const requestedPage = clampInt(request?.page, 1, 1, 1000);
+    const requestedLimit = clampInt(request?.limit, safeLimit, 1, 120);
+    const pageNeed =
+      requestedPage <= 1
+        ? requestedLimit * 3
+        : (requestedPage * requestedLimit + requestedLimit) * 2;
+    const brandOnlyFloor = Math.max(72, requestedLimit * 3);
+    return clampInt(Math.max(pageNeed, safeLimit, brandOnlyFloor), brandOnlyFloor, 48, 360);
+  }
   const pageNeed = Math.max(
     request?.page * request?.limit + request?.limit * 3,
     safeLimit * 3,
@@ -3460,6 +3472,17 @@ function hasBrandScope(request) {
   return Array.isArray(request?.scope?.brand_names) && request.scope.brand_names.length > 0;
 }
 
+function isBrandScopeOnlyQuery(request) {
+  if (request?.surface !== 'browse_products' || !hasBrandScope(request)) return false;
+  const queryText = String(request?.query?.text || '').trim();
+  if (!queryText || hasDiscoveryCategoryScope(request)) return false;
+  if (hasExplicitCategoryHint(queryText, null)) return false;
+  const normalizedQuery = normalizeBrandText(queryText);
+  if (!normalizedQuery) return false;
+  const brandAliases = buildBrandScopeAliases(request?.scope?.brand_names || []);
+  return brandAliases.some((alias) => matchesNormalizedBrandAlias(alias, normalizedQuery));
+}
+
 function shouldSkipBrandScopedProviderExpansion(products = [], { request, profile, enoughThreshold, qualityThreshold } = {}) {
   if (request?.surface !== 'browse_products' || !hasBrandScope(request)) return false;
   return hasSufficientProviderCandidates(products, { request, profile, enoughThreshold, qualityThreshold });
@@ -3473,9 +3496,9 @@ function shouldUseBrandDirectPoolAsPrimary(request) {
   return (
     request?.surface === 'browse_products' &&
     hasBrandScope(request) &&
-    !hasDiscoveryQueryText(request) &&
+    (!hasDiscoveryQueryText(request) || isBrandScopeOnlyQuery(request)) &&
     !hasDiscoveryCategoryScope(request) &&
-    Boolean(String(request?.source_product_ref?.product_id || '').trim())
+    (isBrandScopeOnlyQuery(request) || Boolean(String(request?.source_product_ref?.product_id || '').trim()))
   );
 }
 
@@ -7431,61 +7454,97 @@ async function loadBrandScopedRecommendationFallback({
   }
 }
 
-async function fetchBrandScopedExternalSeedCandidates({ brandAliases = [], limit = 120 } = {}) {
+async function fetchBrandScopedExternalSeedCandidates({
+  brandAliases = [],
+  limit = 120,
+  orderByRecency = true,
+} = {}) {
   if (!process.env.DATABASE_URL) return [];
   const normalizedAliases = uniqStrings(
     brandAliases.map((alias) => normalizeBrandText(alias)).filter(Boolean),
     16,
   );
   if (!normalizedAliases.length) return [];
+  const brandPrefixAliases = uniqStrings(
+    normalizedAliases.filter((alias) => alias.length >= 4),
+    16,
+  );
+  const brandPrefixPatterns = uniqStrings(
+    brandPrefixAliases.map((alias) => `${alias}%`),
+    16,
+  );
 
   const safeLimit = clampInt(limit, Math.max(limit, 120), 24, 500);
   const market = String(process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET || 'US').trim().toUpperCase() || 'US';
   const tool = 'creator_agents';
 
   try {
-    const res = await query(
+    const selectColumns = `
+      id,
+      external_product_id,
+      destination_url,
+      canonical_url,
+      domain,
+      title,
+      image_url,
+      price_amount,
+      price_currency,
+      availability,
+      updated_at,
+      created_at,
+      coalesce(seed_data->'derived'->'recall', '{}'::jsonb) AS seed_recall,
+      ${EXTERNAL_SEED_RECALL_SQL_FIELDS.brand} AS seed_brand,
+      ${EXTERNAL_SEED_RECALL_SQL_FIELDS.category} AS seed_category
+    `;
+    const orderClause = orderByRecency
+      ? 'ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST'
+      : '';
+    const brandRes = await query(
       `
-        SELECT
-          id,
-          external_product_id,
-          destination_url,
-          canonical_url,
-          domain,
-          title,
-          image_url,
-          price_amount,
-          price_currency,
-          availability,
-          seed_data,
-          updated_at,
-          created_at
+        SELECT ${selectColumns}
         FROM external_product_seeds
         WHERE status = 'active'
           AND market = $1
           AND (tool = '*' OR tool = $2)
           AND (
-            lower(coalesce(seed_data->>'brand', '')) = ANY($3::text[])
-            OR lower(coalesce(seed_data->>'brand_name', '')) = ANY($3::text[])
-            OR lower(coalesce(seed_data->>'vendor', '')) = ANY($3::text[])
-            OR lower(coalesce(seed_data->>'vendor_name', '')) = ANY($3::text[])
-            OR lower(coalesce(seed_data->'snapshot'->>'brand', '')) = ANY($3::text[])
-            OR lower(coalesce(seed_data->'snapshot'->>'brand_name', '')) = ANY($3::text[])
-            OR lower(coalesce(seed_data->'snapshot'->>'vendor', '')) = ANY($3::text[])
-            OR lower(coalesce(seed_data->'snapshot'->>'vendor_name', '')) = ANY($3::text[])
-            OR EXISTS (
+            ${EXTERNAL_SEED_RECALL_SQL_FIELDS.brand} = ANY($3::text[])
+            OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.brand} LIKE ANY($4::text[])
+          )
+        ${orderClause}
+        LIMIT $5
+      `,
+      [market, tool, normalizedAliases, brandPrefixPatterns, safeLimit],
+    );
+    const rows = Array.isArray(brandRes?.rows) ? [...brandRes.rows] : [];
+    if (rows.length < safeLimit) {
+      const titleRes = await query(
+        `
+          SELECT ${selectColumns}
+          FROM external_product_seeds
+          WHERE status = 'active'
+            AND market = $1
+            AND (tool = '*' OR tool = $2)
+            AND EXISTS (
               SELECT 1
               FROM unnest($3::text[]) AS alias
               WHERE lower(coalesce(seed_data->'snapshot'->>'title', seed_data->>'title', title, '')) LIKE alias || ' %'
             )
-          )
-        ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
-        LIMIT $4
-      `,
-      [market, tool, normalizedAliases, safeLimit],
-    );
-    return (res.rows || [])
-      .map((row) => buildExternalSeedProduct(row))
+          ${orderClause}
+          LIMIT $4
+        `,
+        [market, tool, normalizedAliases, Math.max(0, safeLimit - rows.length)],
+      );
+      const seenIds = new Set(rows.map((row) => String(row?.id || '').trim()).filter(Boolean));
+      for (const row of Array.isArray(titleRes?.rows) ? titleRes.rows : []) {
+        const id = String(row?.id || '').trim();
+        if (id && seenIds.has(id)) continue;
+        if (id) seenIds.add(id);
+        rows.push(row);
+        if (rows.length >= safeLimit) break;
+      }
+    }
+    return rows
+      .map((row) => buildExternalSeedBrandSearchProduct(row))
       .filter(Boolean);
   } catch (err) {
     logger.warn(
@@ -7597,6 +7656,7 @@ async function loadBrandScopedDirectCandidates({
         : fetchBrandScopedExternalSeedCandidates({
             brandAliases: normalizedAliases,
             limit: safeLimit,
+            orderByRecency: !isBrandScopeOnlyQuery(request),
           }),
     ]);
 

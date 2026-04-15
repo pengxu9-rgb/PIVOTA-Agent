@@ -1920,6 +1920,73 @@ describe('discovery feed service', () => {
     );
   });
 
+  test('brand-scoped browse with a brand-only query uses direct brand pool as the primary path', async () => {
+    process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://discovery-catalog.test';
+    delete process.env.PIVOTA_BACKEND_BASE_URL;
+    delete process.env.PIVOTA_API_BASE;
+    delete process.env.PIVOTA_API_KEY;
+
+    const axiosGetSpy = jest.spyOn(axios, 'get').mockImplementation(async () => {
+      throw new Error('products_search should not be called for brand-only direct primary');
+    });
+
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'browse_products',
+        page: 1,
+        limit: 12,
+        sort: 'popular',
+        debug: true,
+        scope: {
+          brand_names: ['Tom Ford'],
+        },
+        query: {
+          text: 'tom ford',
+        },
+        context: {
+          locale: 'en-US',
+        },
+      },
+      {
+        brandFallbackFetchInternalCandidatesFn: async () => [],
+        brandFallbackFetchExternalCandidatesFn: async () => [
+          makeProduct({
+            merchant_id: 'external_seed',
+            product_id: 'tom_ford_lost_cherry',
+            title: 'Lost Cherry Eau de Parfum',
+            brand: 'Tom Ford Beauty',
+            category: 'Fragrance',
+            product_type: 'Perfume',
+          }),
+          makeProduct({
+            merchant_id: 'external_seed',
+            product_id: 'tom_ford_brow_pencil',
+            title: 'Architecture Brow Pencil',
+            brand: 'Tom Ford Beauty',
+            category: 'Brow',
+            product_type: 'Brow Pencil',
+          }),
+        ],
+      },
+    );
+
+    expect(axiosGetSpy).not.toHaveBeenCalled();
+    expect(response.products.map((product) => product.product_id)).toEqual(
+      expect.arrayContaining(['tom_ford_lost_cherry', 'tom_ford_brow_pencil']),
+    );
+    expect(response.metadata.candidate_source).toBe('brand_direct_primary');
+    expect(response.metadata.primary_path_used).toBe('brand_direct_pool');
+    expect(response.metadata.provider_breakdown).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          provider: 'products_search',
+          skipped: true,
+          skip_reason: 'brand_direct_pool_primary_used',
+        }),
+      ]),
+    );
+  });
+
   test('brand-scoped browse keeps total stable across page-size budgets', async () => {
     process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://discovery-catalog.test';
     delete process.env.PIVOTA_BACKEND_BASE_URL;

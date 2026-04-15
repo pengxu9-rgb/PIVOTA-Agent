@@ -405,10 +405,10 @@ describe('/agent/shop/v1/invoke find_products_multi legacy fallback isolation', 
   });
 
   test('public search with explicit beauty surface uses discovery bridge instead of v2 upstream', async () => {
-    const discoveryScope = nock('http://pivota.test')
-      .get('/agent/v1/products/search')
-      .query(true)
-      .reply(200, {
+    let discoveryPayload = null;
+    const getDiscoveryFeedMock = jest.fn(async (payload) => {
+      discoveryPayload = payload;
+      return {
         products: Array.from({ length: 12 }, (_, idx) => ({
           merchant_id: `hair_${idx + 1}`,
           product_id: `shampoo_${idx + 1}`,
@@ -419,7 +419,22 @@ describe('/agent/shop/v1/invoke find_products_multi legacy fallback isolation', 
           inventory_quantity: 10,
           status: 'active',
         })),
-      });
+        total: 12,
+        metadata: {
+          candidate_source: 'external_seed_query_mainline',
+          route_health: {
+            primary_quality_gate_passed: true,
+          },
+        },
+      };
+    });
+    jest.doMock('../../src/services/discoveryFeed', () => {
+      const actual = jest.requireActual('../../src/services/discoveryFeed');
+      return {
+        ...actual,
+        getDiscoveryFeed: getDiscoveryFeedMock,
+      };
+    });
     const v2Scope = nock('http://pivota.test')
       .post('/agent/v2/products/search')
       .query(true)
@@ -448,9 +463,18 @@ describe('/agent/shop/v1/invoke find_products_multi legacy fallback isolation', 
         },
       });
 
+    jest.dontMock('../../src/services/discoveryFeed');
+
     expect(resp.status).toBe(200);
-    expect(discoveryScope.isDone()).toBe(true);
     expect(v2Scope.isDone()).toBe(false);
+    expect(getDiscoveryFeedMock).toHaveBeenCalledTimes(1);
+    expect(discoveryPayload).toEqual(
+      expect.objectContaining({
+        surface: 'browse_products',
+        limit: 12,
+        query: { text: 'shampoo' },
+      }),
+    );
     expect(resp.body.products).toHaveLength(12);
     expect(resp.body.metadata).toEqual(
       expect.objectContaining({
@@ -466,6 +490,87 @@ describe('/agent/shop/v1/invoke find_products_multi legacy fallback isolation', 
         primary_path_used: 'beauty_discovery_mainline',
         fallback_triggered: false,
         primary_quality_gate_passed: true,
+      }),
+    );
+  });
+
+  test('public brand search bridges to discovery with brand scope instead of v2 upstream', async () => {
+    let discoveryPayload = null;
+    const getDiscoveryFeedMock = jest.fn(async (payload) => {
+      discoveryPayload = payload;
+      return {
+        products: [
+          {
+            merchant_id: 'external_seed',
+            product_id: 'tom_ford_lost_cherry',
+            source: 'external_seed',
+            title: 'Lost Cherry Eau de Parfum',
+            brand: 'Tom Ford Beauty',
+          },
+        ],
+        total: 1,
+        metadata: {
+          candidate_source: 'brand_direct_primary',
+          primary_path_used: 'brand_direct_pool',
+          route_health: {
+            primary_quality_gate_passed: true,
+          },
+        },
+      };
+    });
+    jest.doMock('../../src/services/discoveryFeed', () => {
+      const actual = jest.requireActual('../../src/services/discoveryFeed');
+      return {
+        ...actual,
+        getDiscoveryFeed: getDiscoveryFeedMock,
+      };
+    });
+
+    const v2Scope = nock('http://pivota.test')
+      .post('/agent/v2/products/search')
+      .query(true)
+      .reply(418, { error: 'should_not_call_v2' });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'tom ford',
+            limit: 24,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'search',
+        },
+      });
+
+    jest.dontMock('../../src/services/discoveryFeed');
+
+    expect(resp.status).toBe(200);
+    expect(v2Scope.isDone()).toBe(false);
+    expect(getDiscoveryFeedMock).toHaveBeenCalledTimes(1);
+    expect(discoveryPayload).toEqual(
+      expect.objectContaining({
+        surface: 'browse_products',
+        limit: 24,
+        query: { text: 'tom ford' },
+        scope: {
+          brand_names: ['tom ford'],
+        },
+      }),
+    );
+    expect(resp.body.products).toHaveLength(1);
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        query_source: 'beauty_discovery_mainline',
+        primary_lane: 'beauty_discovery_mainline',
+        public_search_brand_mainline: true,
+        public_search_brand_scope_applied: ['tom ford'],
+        public_search_discovery_bridge: true,
       }),
     );
   });
