@@ -7,8 +7,10 @@ const {
   buildPilotCaseFromExternalSeedProduct,
   buildPilotCaseFromPdpResponse,
   buildPilotCaseFromSearchCandidate,
+  enrichCaseWithSourcePageEvidence,
   enrichCaseWithSourceReviewSummary,
   extractReviewsPreviewSummary,
+  extractSourceProductFactsFromHtml,
   extractSourceReviewSummaryFromHtml,
   extractProductIdsFromFrontendHtml,
   fetchDiscoveryCandidates,
@@ -81,10 +83,14 @@ describe('build_product_intel_live_pilot_cases', () => {
     ]);
 
     expect(args.fetchSourceReviews).toBe(true);
+    expect(args.fetchSourceFacts).toBe(false);
     expect(args.sourceReviewTimeoutMs).toBe(9000);
 
     const disabled = parseArgs(['node', 'script', '--no-fetch-source-reviews']);
     expect(disabled.fetchSourceReviews).toBe(false);
+
+    const facts = parseArgs(['node', 'script', '--fetch-source-facts']);
+    expect(facts.fetchSourceFacts).toBe(true);
   });
 
   test('loads missing identity candidates from explicit brands', async () => {
@@ -561,6 +567,27 @@ describe('build_product_intel_live_pilot_cases', () => {
     });
   });
 
+  test('extracts source product facts from official Shopify-style HTML', () => {
+    const descriptionHtml = [
+      '<h3>About Good Molecules Niacinamide Serum</h3>',
+      '<p>Promote smooth, even skin and minimize the appearance of pores with Niacinamide Serum from Good Molecules.</p>',
+      '<h3>Ingredients</h3>',
+      '<p>Water - 80.2%<br>Niacinamide - 10%<br>Dipropylene Glycol - 4%<br>Glycerin - 2.02%</p>',
+      '<h3>Other Details</h3>',
+    ].join('');
+    const html = `
+      <script>
+        window.__remixContext = {"product":{"descriptionHtml":${JSON.stringify(descriptionHtml)}}};
+      </script>
+    `;
+
+    expect(extractSourceProductFactsFromHtml(html)).toEqual({
+      description:
+        'Promote smooth, even skin and minimize the appearance of pores with Niacinamide Serum from Good Molecules.',
+      ingredients_inci: ['Water', 'Niacinamide', 'Dipropylene Glycol', 'Glycerin'],
+    });
+  });
+
   test('fetches source review aggregate from official product HTML', async () => {
     axios.get.mockResolvedValueOnce({
       data: '<script>var okendoProduct = {"reviewCount":1404,"reviewAverageValue":"4.9"};</script>',
@@ -700,6 +727,49 @@ describe('build_product_intel_live_pilot_cases', () => {
     );
     expect(row.product.review_source_url).toBe(
       'https://beautyofjoseon.com/products/glow-replenishing-rice-milk',
+    );
+  });
+
+  test('enriches live pilot case with official source facts without overriding stronger PDP facts', async () => {
+    axios.get.mockResolvedValueOnce({
+      data: `
+        <script>
+          window.__remixContext = {"product":{"descriptionHtml":${JSON.stringify(
+            '<p>A 10% niacinamide serum for visible pores, uneven tone, and texture.</p><h3>Ingredients</h3><p>Water - 80.2%<br>Niacinamide - 10%<br>Glycerin - 2%</p>',
+          )}}};
+        </script>
+      `,
+    });
+
+    const row = await enrichCaseWithSourcePageEvidence(
+      {
+        case_id: 'live_ext_good_molecules',
+        canonical_product_ref: {
+          merchant_id: 'external_seed',
+          product_id: 'ext_good_molecules',
+        },
+        product: {
+          merchant_id: 'external_seed',
+          product_id: 'ext_good_molecules',
+          brand: 'Good Molecules',
+          title: 'Niacinamide Serum',
+          description: '',
+          ingredients_inci: ['Niacinamide'],
+          source_url: 'https://v1.goodmolecules.com/products/niacinamide-serum',
+        },
+      },
+      {
+        includeFacts: true,
+        timeoutMs: 5000,
+      },
+    );
+
+    expect(row.product.description).toBe(
+      'A 10% niacinamide serum for visible pores, uneven tone, and texture.',
+    );
+    expect(row.product.ingredients_inci).toEqual(['Water', 'Niacinamide', 'Glycerin']);
+    expect(row.product.source_page_facts_url).toBe(
+      'https://v1.goodmolecules.com/products/niacinamide-serum',
     );
   });
 

@@ -19613,12 +19613,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	            : null;
 	          const structuredIngredientModules = buildStructuredPdpIngredientModules(product);
 	          const activeIngredientsData =
-	            findPdpPayloadModuleData(pdpPayload, 'active_ingredients') ||
 	            structuredIngredientModules.activeIngredientsData ||
+	            findPdpPayloadModuleData(pdpPayload, 'active_ingredients') ||
 	            null;
 	          const ingredientsInciData =
-	            findPdpPayloadModuleData(pdpPayload, 'ingredients_inci') ||
 	            structuredIngredientModules.ingredientsInciData ||
+	            findPdpPayloadModuleData(pdpPayload, 'ingredients_inci') ||
 	            null;
 	          const fallbackOfferId = `of:mock:${product.merchant_id || DEFAULT_MERCHANT_ID}:${product.id || product.product_id}`;
 	          const offersData = {
@@ -20756,12 +20756,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         : null;
       const structuredIngredientModules = buildStructuredPdpIngredientModules(canonicalProductForPdp);
       const activeIngredientsData =
-        findPdpPayloadModuleData(pdpPayload, 'active_ingredients') ||
         structuredIngredientModules.activeIngredientsData ||
+        findPdpPayloadModuleData(pdpPayload, 'active_ingredients') ||
         null;
       const ingredientsInciData =
-        findPdpPayloadModuleData(pdpPayload, 'ingredients_inci') ||
         structuredIngredientModules.ingredientsInciData ||
+        findPdpPayloadModuleData(pdpPayload, 'ingredients_inci') ||
         null;
 
       const canonicalPayload = stripResponseOwnedPdpModulesFromCanonicalPayload(pdpPayload);

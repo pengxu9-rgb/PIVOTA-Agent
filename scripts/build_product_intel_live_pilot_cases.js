@@ -77,6 +77,7 @@ function parseArgs(argv) {
     maxPerBrand: 3,
     maxPerCategory: 4,
     fetchSourceReviews: String(process.env.PIVOTA_INSIGHTS_FETCH_SOURCE_REVIEWS || '').trim() === '1',
+    fetchSourceFacts: String(process.env.PIVOTA_INSIGHTS_FETCH_SOURCE_FACTS || '').trim() === '1',
     sourceReviewTimeoutMs: Math.max(1000, Number(process.env.PIVOTA_INSIGHTS_SOURCE_REVIEW_TIMEOUT_MS || 15000) || 15000),
   };
 
@@ -179,6 +180,10 @@ function parseArgs(argv) {
       out.fetchSourceReviews = true;
     } else if (token === '--no-fetch-source-reviews') {
       out.fetchSourceReviews = false;
+    } else if (token === '--fetch-source-facts') {
+      out.fetchSourceFacts = true;
+    } else if (token === '--no-fetch-source-facts') {
+      out.fetchSourceFacts = false;
     } else if (token === '--source-review-timeout-ms' && next) {
       out.sourceReviewTimeoutMs = Math.max(1000, Number(next) || out.sourceReviewTimeoutMs);
       i += 1;
@@ -493,6 +498,230 @@ function extractReviewSummaryFromTextBlock(block) {
   });
 }
 
+function decodeHtmlEntities(value) {
+  return asString(value)
+    .replace(/&quot;/g, '"')
+    .replace(/&#x27;|&#39;/g, "'")
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&#(\d+);/g, (_match, code) => String.fromCharCode(Number(code)))
+    .replace(/&#x([0-9a-f]+);/gi, (_match, code) => String.fromCharCode(parseInt(code, 16)));
+}
+
+function stripHtmlToText(value) {
+  return decodeHtmlEntities(value)
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<(?:br|\/p|\/div|\/li|\/tr)\b[^>]*>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/[ \t\r\f\v]+/g, ' ')
+    .replace(/\n\s+/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function parseJsonStringLiteral(value) {
+  const raw = asString(value);
+  if (!raw) return '';
+  try {
+    return JSON.parse(`"${raw.replace(/"/g, '\\"')}"`);
+  } catch {
+    try {
+      return JSON.parse(`"${raw}"`);
+    } catch {
+      return decodeHtmlEntities(raw);
+    }
+  }
+}
+
+function extractJsonStringProperty(source, propertyName) {
+  const pattern = new RegExp(`"${propertyName}"\\s*:\\s*"((?:\\\\.|[^"\\\\])*)"`, 'i');
+  const match = asString(source).match(pattern);
+  return match ? parseJsonStringLiteral(match[1]) : '';
+}
+
+function extractHtmlAttributeValue(source, attrName) {
+  const pattern = new RegExp(`${attrName}\\s*=\\s*["']([^"']*)["']`, 'i');
+  const match = asString(source).match(pattern);
+  return match ? decodeHtmlEntities(match[1]) : '';
+}
+
+function extractMetaDescription(source) {
+  for (const match of asString(source).matchAll(/<meta\b[^>]*>/gi)) {
+    const tag = match[0];
+    const name = extractHtmlAttributeValue(tag, 'name').toLowerCase();
+    const property = extractHtmlAttributeValue(tag, 'property').toLowerCase();
+    if (
+      name === 'description' ||
+      property === 'og:description' ||
+      property === 'twitter:description'
+    ) {
+      const content = cleanSourceDescription(extractHtmlAttributeValue(tag, 'content'));
+      if (content) return content;
+    }
+  }
+  return '';
+}
+
+function normalizeSourceFactText(value) {
+  return stripHtmlToText(value)
+    .replace(/\s+/g, ' ')
+    .replace(/^OFFICIAL:\s*/i, '')
+    .replace(/\bRead More\.?$/i, '')
+    .trim();
+}
+
+function isUsableSourceDescription(value) {
+  const text = normalizeSourceFactText(value);
+  if (text.length < 40) return false;
+  if (/…$|\.\.\.$/.test(text)) return false;
+  return !/\b(?:ingredients?|how to use|other details|shipping|returns)\b/i.test(text.slice(0, 24));
+}
+
+function cleanSourceDescription(value) {
+  const text = normalizeSourceFactText(value);
+  if (!isUsableSourceDescription(text)) return '';
+  const markerMatch = text.match(
+    /\s(?:Ingredients?|Key Ingredients?|How to Use|Directions|Other Details|FAQ|Frequently Asked Questions)\b/i,
+  );
+  const trimmed = markerMatch ? text.slice(0, markerMatch.index).trim() : text;
+  return isUsableSourceDescription(trimmed) ? trimmed : '';
+}
+
+function extractParagraphTextFromHtml(html) {
+  const paragraphs = [];
+  for (const match of asString(html).matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)) {
+    const text = cleanSourceDescription(match[1]);
+    if (text) paragraphs.push(text);
+  }
+  return paragraphs[0] || '';
+}
+
+function normalizeIngredientName(value) {
+  let text = stripHtmlToText(value)
+    .replace(/\s+/g, ' ')
+    .replace(/\s*[-–—:]\s*\d+(?:\.\d+)?\s*(?:%|ppm)?\s*.*$/i, '')
+    .replace(/\s+\d+(?:\.\d+)?\s*(?:%|ppm)\s*.*$/i, '')
+    .trim();
+  text = text.replace(/^[•*\-\s]+/, '').replace(/[.;,]+$/, '').trim();
+  if (!text) return '';
+  if (
+    /^(?:ingredients?|key ingredients?|version|other details|description|how to use|directions|disclaimer|size|pH|never tested|free shipping)$/i.test(
+      text,
+    )
+  ) {
+    return '';
+  }
+  if (text.length > 120) return '';
+  if (!/[a-z]/i.test(text)) return '';
+  return text;
+}
+
+function pushIngredientName(out, value) {
+  const name = normalizeIngredientName(value);
+  if (!name) return;
+  const key = name.toLowerCase();
+  if (out.some((item) => item.toLowerCase() === key)) return;
+  out.push(name);
+}
+
+function extractIngredientNamesFromText(text) {
+  const source = stripHtmlToText(text);
+  if (!source) return [];
+  const ingredientStart = source.search(/\bIngredients?\b/i);
+  const scoped = ingredientStart >= 0 ? source.slice(ingredientStart) : source;
+  const stopMatch = scoped.match(
+    /\n\s*(?:Version|Other Details|How to Use|Directions|Disclaimer|FAQ|Frequently Asked Questions)\b/i,
+  );
+  const ingredientBlock = stopMatch ? scoped.slice(0, stopMatch.index) : scoped;
+  const out = [];
+  for (const line of ingredientBlock.split(/\n+/)) {
+    const cleaned = line.replace(/^\s*(?:key\s+)?Ingredients?\s*/i, '').trim();
+    if (!cleaned) continue;
+    pushIngredientName(out, cleaned);
+  }
+  return out;
+}
+
+function extractSourceIngredientsFromHtml(html, descriptionHtml = '') {
+  const tableRows = [];
+  const source = asString(html);
+  for (const match of source.matchAll(/<tr\b[^>]*>\s*<td\b[^>]*>([\s\S]*?)<\/td>\s*<td\b[^>]*>[\s\S]*?<\/td>\s*<\/tr>/gi)) {
+    pushIngredientName(tableRows, match[1]);
+  }
+  if (tableRows.length >= 3) {
+    return tableRows;
+  }
+  const out = [...tableRows];
+  for (const item of extractIngredientNamesFromText(descriptionHtml)) {
+    pushIngredientName(out, item);
+  }
+  for (const item of extractIngredientNamesFromText(extractHtmlAttributeValue(source, 'data-description'))) {
+    pushIngredientName(out, item);
+  }
+  return out;
+}
+
+function extractSourceHowToUseFromHtml(html) {
+  const text = stripHtmlToText(html);
+  if (!text) return '';
+  const match = text.match(/\b(?:how to use|directions)\b\s+([\s\S]{20,600}?)(?:\n\s*(?:ingredients?|key ingredients?|other details|faq|frequently asked questions)\b|$)/i);
+  const candidate = normalizeSourceFactText(match?.[1] || '');
+  if (!candidate || !/\b(?:apply|use|massage|shake|layer|dispense|rinse|morning|night|daily)\b/i.test(candidate)) {
+    return '';
+  }
+  return candidate.slice(0, 500);
+}
+
+function extractJsonLdProductDescriptions(html) {
+  const out = [];
+  for (const match of asString(html).matchAll(/<script\b[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)) {
+    try {
+      const parsed = JSON.parse(decodeHtmlEntities(match[1]));
+      const stack = Array.isArray(parsed) ? [...parsed] : [parsed];
+      while (stack.length) {
+        const item = stack.shift();
+        if (!item || typeof item !== 'object') continue;
+        if (Array.isArray(item)) {
+          stack.push(...item);
+          continue;
+        }
+        if (Array.isArray(item['@graph'])) stack.push(...item['@graph']);
+        const type = item['@type'];
+        const types = Array.isArray(type) ? type : [type];
+        if (types.some((value) => asString(value).toLowerCase() === 'product')) {
+          const description = cleanSourceDescription(item.description);
+          if (description) out.push(description);
+        }
+      }
+    } catch {
+      // Ignore malformed inline JSON-LD blocks.
+    }
+  }
+  return out;
+}
+
+function extractSourceProductFactsFromHtml(html) {
+  const source = asString(html);
+  if (!source) return {};
+  const descriptionHtml = extractJsonStringProperty(source, 'descriptionHtml');
+  const descriptionCandidates = [
+    extractParagraphTextFromHtml(descriptionHtml),
+    cleanSourceDescription(extractHtmlAttributeValue(source, 'data-description')),
+    ...extractJsonLdProductDescriptions(source),
+    extractMetaDescription(source),
+  ].filter(Boolean);
+  const ingredients = extractSourceIngredientsFromHtml(source, descriptionHtml);
+  const howToUse = extractSourceHowToUseFromHtml(source);
+  return {
+    ...(descriptionCandidates[0] ? { description: descriptionCandidates[0] } : {}),
+    ...(ingredients.length ? { ingredients_inci: ingredients } : {}),
+    ...(howToUse ? { how_to_use: howToUse } : {}),
+  };
+}
+
 function extractSourceReviewSummaryFromHtml(html) {
   const source = asString(html).replace(/&quot;/g, '"');
   if (!source) return undefined;
@@ -541,9 +770,9 @@ function resolveCaseSourceUrl(row) {
   );
 }
 
-async function fetchSourceReviewSummary(sourceUrl, { timeoutMs = 15000, httpClient = axios } = {}) {
+async function fetchSourcePageEvidence(sourceUrl, { timeoutMs = 15000, httpClient = axios } = {}) {
   const url = asString(sourceUrl);
-  if (!/^https?:\/\//i.test(url)) return undefined;
+  if (!/^https?:\/\//i.test(url)) return {};
   const response = await httpClient.get(url, {
     timeout: Math.max(1000, Number(timeoutMs) || 15000),
     headers: {
@@ -551,19 +780,69 @@ async function fetchSourceReviewSummary(sourceUrl, { timeoutMs = 15000, httpClie
       'user-agent': 'Mozilla/5.0 PivotaInsightsReviewAudit/1.0',
     },
   });
-  return extractSourceReviewSummaryFromHtml(response.data);
+  return {
+    review_summary: extractSourceReviewSummaryFromHtml(response.data),
+    facts: extractSourceProductFactsFromHtml(response.data),
+  };
 }
 
-async function enrichCaseWithSourceReviewSummary(row, { timeoutMs = 15000 } = {}) {
+async function fetchSourceReviewSummary(sourceUrl, { timeoutMs = 15000, httpClient = axios } = {}) {
+  const evidence = await fetchSourcePageEvidence(sourceUrl, { timeoutMs, httpClient });
+  return evidence.review_summary;
+}
+
+async function fetchSourceProductFacts(sourceUrl, { timeoutMs = 15000, httpClient = axios } = {}) {
+  const evidence = await fetchSourcePageEvidence(sourceUrl, { timeoutMs, httpClient });
+  return evidence.facts;
+}
+
+function mergeSourceProductFactsIntoCase(row, facts, sourceUrl) {
+  if (!row || typeof row !== 'object' || row.error) return row;
+  const product = row.product && typeof row.product === 'object' ? row.product : {};
+  const sourceFacts = facts && typeof facts === 'object' ? facts : {};
+  const existingIngredients = asArray(product.ingredients_inci || product.ingredients)
+    .map((item) => asString(item?.inci || item))
+    .filter(Boolean);
+  const sourceIngredients = asArray(sourceFacts.ingredients_inci || sourceFacts.ingredients)
+    .map((item) => asString(item?.inci || item))
+    .filter(Boolean);
+  const nextProduct = { ...product };
+  let changed = false;
+
+  const sourceDescription = normalizeProductIntelDescription(sourceFacts.description);
+  if (!normalizeProductIntelDescription(nextProduct.description) && sourceDescription) {
+    nextProduct.description = sourceDescription;
+    changed = true;
+  }
+
+  if (sourceIngredients.length >= 3 && sourceIngredients.length > existingIngredients.length) {
+    nextProduct.ingredients_inci = sourceIngredients;
+    changed = true;
+  }
+
+  const sourceHowToUse = asString(sourceFacts.how_to_use || sourceFacts.howToUse);
+  if (!asString(nextProduct.how_to_use || nextProduct.howToUse) && sourceHowToUse) {
+    nextProduct.how_to_use = sourceHowToUse;
+    changed = true;
+  }
+
+  if (!changed) return row;
+  return {
+    ...row,
+    product: {
+      ...nextProduct,
+      source_page_facts_url: sourceUrl,
+    },
+  };
+}
+
+function mergeSourceReviewSummaryIntoCase(row, sourceSummary, sourceUrl) {
   if (!row || typeof row !== 'object' || row.error) return row;
   const product = row.product && typeof row.product === 'object' ? row.product : {};
   const existingSummary = normalizeReviewSummary(product.review_summary);
   if (Number(existingSummary?.rating || 0) > 0 && Number(existingSummary?.review_count || 0) > 0) {
     return row;
   }
-  const sourceUrl = resolveCaseSourceUrl(row);
-  if (!sourceUrl) return row;
-  const sourceSummary = await fetchSourceReviewSummary(sourceUrl, { timeoutMs });
   if (!sourceSummary) return row;
   const communitySignals = buildReviewBackedCommunitySignals(
     sourceSummary,
@@ -578,6 +857,34 @@ async function enrichCaseWithSourceReviewSummary(row, { timeoutMs = 15000 } = {}
       review_source_url: sourceUrl,
     },
   };
+}
+
+async function enrichCaseWithSourcePageEvidence(row, {
+  timeoutMs = 15000,
+  includeReviews = false,
+  includeFacts = false,
+} = {}) {
+  if (!row || typeof row !== 'object' || row.error) return row;
+  if (!includeReviews && !includeFacts) return row;
+  const sourceUrl = resolveCaseSourceUrl(row);
+  if (!sourceUrl) return row;
+  const evidence = await fetchSourcePageEvidence(sourceUrl, { timeoutMs });
+  let next = row;
+  if (includeFacts) {
+    next = mergeSourceProductFactsIntoCase(next, evidence.facts, sourceUrl);
+  }
+  if (includeReviews) {
+    next = mergeSourceReviewSummaryIntoCase(next, evidence.review_summary, sourceUrl);
+  }
+  return next;
+}
+
+async function enrichCaseWithSourceReviewSummary(row, { timeoutMs = 15000 } = {}) {
+  return enrichCaseWithSourcePageEvidence(row, {
+    timeoutMs,
+    includeReviews: true,
+    includeFacts: false,
+  });
 }
 
 function buildPilotCaseFromSearchCandidate(candidate) {
@@ -1247,10 +1554,12 @@ async function main() {
         row = buildPilotCaseFromExternalSeedProduct(externalSeedProduct, seedCase);
       }
       if (row) {
-        if (args.fetchSourceReviews) {
+        if (args.fetchSourceReviews || args.fetchSourceFacts) {
           // eslint-disable-next-line no-await-in-loop
-          row = await enrichCaseWithSourceReviewSummary(row, {
+          row = await enrichCaseWithSourcePageEvidence(row, {
             timeoutMs: args.sourceReviewTimeoutMs,
+            includeReviews: args.fetchSourceReviews,
+            includeFacts: args.fetchSourceFacts,
           });
         }
         cases.push(row);
@@ -1273,11 +1582,13 @@ async function main() {
         const externalSeedProduct = await fetchExternalSeedProduct(productId);
         const fallbackRow = buildPilotCaseFromExternalSeedProduct(externalSeedProduct, seedCase);
         if (fallbackRow) {
-          if (args.fetchSourceReviews) {
+          if (args.fetchSourceReviews || args.fetchSourceFacts) {
             // eslint-disable-next-line no-await-in-loop
             cases.push(
-              await enrichCaseWithSourceReviewSummary(fallbackRow, {
+              await enrichCaseWithSourcePageEvidence(fallbackRow, {
                 timeoutMs: args.sourceReviewTimeoutMs,
+                includeReviews: args.fetchSourceReviews,
+                includeFacts: args.fetchSourceFacts,
               }),
             );
           } else {
@@ -1326,6 +1637,7 @@ async function main() {
       excluded_covered: args.excludeCovered ? coveredProductIds.size : 0,
       covered_review_mode: args.excludeCovered ? args.coveredReviewMode : undefined,
       source_review_fetch: args.fetchSourceReviews,
+      source_fact_fetch: args.fetchSourceFacts,
       out: outputPath,
       product_ids: finalCases.map((row) => row?.canonical_product_ref?.product_id).filter(Boolean),
       query_errors: queryErrors,
@@ -1351,7 +1663,10 @@ module.exports = {
   buildPilotCaseFromPdpResponse,
   buildPilotCaseFromSearchCandidate,
   extractReviewsPreviewSummary,
+  extractSourceProductFactsFromHtml,
   extractSourceReviewSummaryFromHtml,
+  enrichCaseWithSourcePageEvidence,
+  fetchSourceProductFacts,
   fetchSourceReviewSummary,
   fetchDiscoveryCandidates,
   fetchFrontendProductIds,

@@ -822,7 +822,13 @@ function buildFactsPack(caseRow, baselineDraft) {
     title: asString(product.title || product.name),
     brand: asString(product.brand),
     category: asString(product.category || product.product_type),
-    source_url: asString(product.url || product.product_url || product.canonical_url || product.external_url),
+    source_url: asString(
+      product.source_url ||
+        product.product_url ||
+        product.canonical_url ||
+        product.external_url ||
+        product.url,
+    ),
     description: cleanProductDescriptionForIntel(product.description),
     tags: toList(product.tags),
     texture: asString(product.texture),
