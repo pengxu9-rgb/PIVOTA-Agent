@@ -1022,6 +1022,111 @@ test('reco assistant rewrite rejects candidate-pool product names that are not f
   }
 });
 
+test('reco assistant structured retry does not treat selected product-name substrings as unselected aliases', async () => {
+  const prevMock = process.env.AURORA_BFF_USE_MOCK;
+  const prevProvider = process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
+  const prevModel = process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
+  process.env.AURORA_BFF_USE_MOCK = 'false';
+  process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER = 'gemini';
+  process.env.AURORA_PRODUCT_INTEL_LLM_MODEL = 'gemini-3-flash-preview';
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const payload = __internal.applyRecoContentSpineToPayload(
+      {
+        recommendations: [
+          {
+            product_id: 'naturium_ha_jumbo',
+            display_name: 'Naturium Quadruple Hyaluronic Acid Serum 5% - Jumbo',
+            brand: 'Naturium',
+            category: 'Serum',
+            short_description: 'A hydrating hyaluronic acid serum for dehydration support.',
+            matched_role_id: 'hydrating_serum_or_essence',
+            matched_role_label: 'Hydrating serum or essence',
+          },
+        ],
+        recommendation_meta: {
+          resolved_target_step: 'serum',
+          mainline_status: 'grounded_success',
+        },
+      },
+      {
+        ingredient_query: 'Hydrating serum or essence',
+        resolved_target_step: 'serum',
+        primary_target_id: 'hydrating_serum_or_essence',
+        ranked_targets: [
+          {
+            target_id: 'hydrating_serum_or_essence',
+            ingredient_query: 'Hydrating serum or essence',
+            resolved_target_step: 'serum',
+          },
+        ],
+        selected_target_ids: ['hydrating_serum_or_essence'],
+      },
+    );
+    payload.recommendation_meta.ranked_targets[0].product_candidates = [
+      {
+        product_id: 'naturium_ha_jumbo',
+        brand: 'Naturium',
+        name: 'Quadruple Hyaluronic Acid Serum 5% - Jumbo',
+      },
+      {
+        product_id: 'kylie_ha_serum',
+        brand: 'Kylie Cosmetics',
+        name: 'Hyaluronic Acid Serum',
+      },
+    ];
+    let callCount = 0;
+    __internal.__setCallGeminiJsonObjectForTest(async () => {
+      callCount += 1;
+      if (callCount === 1) {
+        return {
+          ok: true,
+          json: {
+            assistant_text:
+              'Naturium Quadruple Hyaluronic Acid Serum 5% - Jumbo is your best first buy for hydration, while Kylie Cosmetics Hyaluronic Acid Serum is the backup option.',
+          },
+          parse_status: 'parsed',
+          provider: 'gemini',
+          effective_model: 'gemini-3-flash-preview',
+        };
+      }
+      return {
+        ok: true,
+        json: {
+          lead_reason: 'hydration support from the selected hyaluronic acid serum evidence',
+          support_reasons: [],
+        },
+        parse_status: 'parsed',
+        provider: 'gemini',
+        effective_model: 'gemini-3-flash-preview',
+      };
+    });
+
+    const rewrite = await __internal.maybeRewriteRecoAssistantTextWithLlm({
+      payload,
+      language: 'EN',
+      profile: { skinType: 'dry', goals: ['hydration'] },
+      userRequestText: 'My skin is dehydrated. What serum should I buy?',
+      allowLockedSelectionRewrite: true,
+    });
+
+    assert.equal(callCount, 2);
+    assert.equal(rewrite.llm_used, true);
+    assert.equal(rewrite.reason, null);
+    assert.match(rewrite.text, /Naturium Quadruple Hyaluronic Acid Serum 5% - Jumbo/);
+    assert.doesNotMatch(rewrite.text, /Kylie Cosmetics/);
+  } finally {
+    __internal.__resetCallGeminiJsonObjectForTest();
+    if (prevMock === undefined) delete process.env.AURORA_BFF_USE_MOCK;
+    else process.env.AURORA_BFF_USE_MOCK = prevMock;
+    if (prevProvider === undefined) delete process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
+    else process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER = prevProvider;
+    if (prevModel === undefined) delete process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
+    else process.env.AURORA_PRODUCT_INTEL_LLM_MODEL = prevModel;
+    delete require.cache[moduleId];
+  }
+});
+
 test('reco assistant rewrite rejects single-direction buy copy that adds future routine filler', async () => {
   const prevMock = process.env.AURORA_BFF_USE_MOCK;
   const prevProvider = process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
