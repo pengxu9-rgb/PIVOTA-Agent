@@ -504,8 +504,8 @@ test('handoffRecoToBeautyMainlineSearch executes primary external supplement and
         'salicylic acid serum oily skin',
         'oil control serum',
         'lightweight moisturizer oily skin',
-        'barrier lotion oily skin',
         'oil control sunscreen',
+        'barrier lotion oily skin',
         'lightweight sunscreen oily skin',
       ],
     );
@@ -528,16 +528,15 @@ test('handoffRecoToBeautyMainlineSearch executes primary external supplement and
       true,
     );
     assert.equal(
-      externalCaptured.slice(4, 6).every((row) =>
-        row.roleId === 'lightweight_moisturizer'
-        && row.preferredStep === 'moisturizer'
-        && row.transportPolicyMode === 'framework_first_turn'),
-      true,
+      externalCaptured.slice(4).map((row) => row.roleId).join(','),
+      'lightweight_moisturizer,daily_sunscreen,lightweight_moisturizer,daily_sunscreen',
     );
     assert.equal(
-      externalCaptured.slice(6).every((row) =>
-        row.roleId === 'daily_sunscreen'
-        && row.preferredStep === 'sunscreen'
+      externalCaptured.slice(4).every((row) =>
+        (
+          (row.roleId === 'lightweight_moisturizer' && row.preferredStep === 'moisturizer')
+          || (row.roleId === 'daily_sunscreen' && row.preferredStep === 'sunscreen')
+        )
         && row.transportPolicyMode === 'framework_first_turn'),
       true,
     );
@@ -865,8 +864,8 @@ test('handoffRecoToBeautyMainlineSearch skips primary external seed when interna
       externalCaptured,
       [
         'lightweight moisturizer oily skin',
-        'barrier lotion oily skin',
         'oil control sunscreen',
+        'barrier lotion oily skin',
         'lightweight sunscreen oily skin',
       ],
     );
@@ -966,8 +965,8 @@ test('handoffRecoToBeautyMainlineSearch skips primary external supplement for ro
       externalCaptured,
       [
         'lightweight moisturizer oily skin',
-        'barrier lotion oily skin',
         'oil control sunscreen',
+        'barrier lotion oily skin',
         'lightweight sunscreen oily skin',
       ],
     );
@@ -1126,6 +1125,152 @@ test('handoffRecoToBeautyMainlineSearch skips support external supplement once t
     assert.equal(hydratingExternalRows.length, 2);
     assert.equal(
       hydratingExternalRows.every((row) => row?.reason === 'skipped_support_role_already_satisfied'),
+      true,
+    );
+  } finally {
+    __internal.__resetRouteDependencyOverridesForTest();
+    delete require.cache[moduleId];
+  }
+});
+
+test('handoffRecoToBeautyMainlineSearch interleaves support external queries across unfilled roles', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const externalCaptured = [];
+    __internal.__setRouteDependencyOverridesForTest({
+      searchInternalProductsPrimitive: async (args) => {
+        const query = String(args?.query || '').trim().toLowerCase();
+        if (
+          query === 'niacinamide serum oily skin'
+          || query === 'oil control serum'
+          || query === 'shine control serum'
+        ) {
+          return {
+            ok: true,
+            products: [
+              {
+                product_id: 'primary_oil_control',
+                merchant_id: 'merchant_internal_primary',
+                title: 'Clarity Lab Oil Balance Serum',
+                display_name: 'Clarity Lab Oil Balance Serum',
+                category: 'serum',
+                product_type: 'serum',
+                candidate_step: 'treatment',
+                benefit_tags: ['oil control', 'shine control'],
+                short_description: 'A mattifying oil-control serum for oily skin.',
+                retrieval_source: 'catalog',
+              },
+            ],
+            attempted_internal_paths: ['/agent/internal/products/search'],
+            transport_hops: [],
+            transport_hop_count: 0,
+            nested_orchestrator_hops: 0,
+            primary_transport_owner: 'internal_products_search_primitive',
+            primary_endpoint_kind: 'internal_primitive',
+          };
+        }
+        return {
+          ok: true,
+          products: [],
+          attempted_internal_paths: ['/agent/internal/products/search'],
+          transport_hops: [],
+          transport_hop_count: 0,
+          nested_orchestrator_hops: 0,
+          primary_transport_owner: 'internal_products_search_primitive',
+          primary_endpoint_kind: 'internal_primitive',
+        };
+      },
+      searchLocalExternalSeedProducts: async (args) => {
+        const query = String(args?.query || '').trim().toLowerCase();
+        externalCaptured.push(query);
+        if (query === 'lightweight moisturizer oily skin') {
+          return {
+            ok: true,
+            products: [
+              {
+                product_id: 'support_moisturizer',
+                merchant_id: 'merchant_ext_moisturizer',
+                title: 'Oil-Free Gel Moisturizer',
+                display_name: 'Oil-Free Gel Moisturizer',
+                brand: 'TestSkin',
+                category: 'moisturizer',
+                product_type: 'moisturizer',
+                candidate_step: 'moisturizer',
+                benefit_tags: ['lightweight', 'oil-free', 'gel cream'],
+                short_description: 'A lightweight gel moisturizer for oily skin.',
+                retrieval_source: 'external_seed',
+              },
+            ],
+            actual_http_attempt_count: 0,
+            attempted_base_urls: [],
+            attempted_paths: [],
+            transport_policy_mode: String(args?.transportPolicyMode || ''),
+          };
+        }
+        if (query === 'oil control sunscreen') {
+          return {
+            ok: true,
+            products: [
+              {
+                product_id: 'support_sunscreen',
+                merchant_id: 'merchant_ext_sunscreen',
+                title: 'Oil Control Sunscreen SPF 50',
+                display_name: 'Oil Control Sunscreen SPF 50',
+                brand: 'TestSkin',
+                category: 'sunscreen',
+                product_type: 'sunscreen',
+                candidate_step: 'sunscreen',
+                benefit_tags: ['spf', 'oil control', 'lightweight'],
+                short_description: 'A lightweight SPF 50 sunscreen for oily skin.',
+                retrieval_source: 'external_seed',
+              },
+            ],
+            actual_http_attempt_count: 0,
+            attempted_base_urls: [],
+            attempted_paths: [],
+            transport_policy_mode: String(args?.transportPolicyMode || ''),
+          };
+        }
+        return {
+          ok: true,
+          products: [],
+          actual_http_attempt_count: 0,
+          attempted_base_urls: [],
+          attempted_paths: [],
+          transport_policy_mode: String(args?.transportPolicyMode || ''),
+        };
+      },
+    });
+
+    const out = await __internal.handoffRecoToBeautyMainlineSearch({
+      ctx: { lang: 'EN', request_id: 'req_fair_support_external_rounds' },
+      primaryQuery: 'what products should i use for oily skin?',
+      fallbackMessage: 'what products should i use for oily skin?',
+      targetContext: resolveRecommendationTargetContext({
+        text: 'what products should i use for oily skin?',
+        focus: '',
+        entryType: 'chat',
+      }),
+      timeoutMs: 5000,
+      minTimeoutMs: 5000,
+    });
+
+    assert.deepEqual(
+      externalCaptured,
+      [
+        'lightweight moisturizer oily skin',
+        'oil control sunscreen',
+      ],
+    );
+    assert.deepEqual(
+      out.recommendations.map((item) => item?.matched_role_id).sort(),
+      ['daily_sunscreen', 'lightweight_moisturizer', 'oil_control_treatment'],
+    );
+    const skippedSecondRoundRows = out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts
+      ?.filter((row) => row?.fair_support_external_round === 2) || [];
+    assert.equal(skippedSecondRoundRows.length, 2);
+    assert.equal(
+      skippedSecondRoundRows.every((row) => row?.reason === 'skipped_support_role_already_satisfied'),
       true,
     );
   } finally {

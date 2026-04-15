@@ -20168,6 +20168,28 @@ function buildBeautyMainlineLocalFailureStage(collected = null) {
   return 'no_recall_from_planned_sources';
 }
 
+function cloneBeautySupportExternalRoundLevel(externalLevel, queryIndex, roundIndex) {
+  const levelObj = externalLevel && typeof externalLevel === 'object' && !Array.isArray(externalLevel)
+    ? externalLevel
+    : null;
+  if (!levelObj) return null;
+  const queries = Array.isArray(levelObj?.queries) ? levelObj.queries : [];
+  const query = queries[queryIndex];
+  if (!query || typeof query !== 'object' || Array.isArray(query)) return null;
+  return {
+    ...levelObj,
+    ladder_level: `framework_stage_c_support_external_seed_round_${roundIndex + 1}`,
+    fair_support_external_round: roundIndex + 1,
+    fair_support_external_source_level: String(levelObj?.ladder_level || levelObj?.stage_id || '').trim() || null,
+    queries: [
+      {
+        ...query,
+        fair_support_external_round: roundIndex + 1,
+      },
+    ],
+  };
+}
+
 function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
   const levels = Array.isArray(queryLevels)
     ? queryLevels.filter((level) => level && typeof level === 'object' && !Array.isArray(level))
@@ -20179,6 +20201,7 @@ function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
   const executedSupportExternalSeedLevels = [];
   const stagedLevels = [];
   const maxRoutineSupportRoles = 2;
+  let supportExternalFairRoundCount = 0;
   for (const level of levels) {
     const queries = Array.isArray(level?.queries) ? level.queries : [];
     const levelId = String(level?.ladder_level || level?.stage_id || '').trim().toLowerCase();
@@ -20264,10 +20287,34 @@ function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
       keptLevels.push(group.internalLevel);
       executedSupportInternalLevels.push(group.internalLabel);
     }
-    for (const group of supportGroups) {
-      if (!group?.externalLevel) continue;
-      keptLevels.push(group.externalLevel);
+    const supportExternalGroups = supportGroups.filter((group) => group?.externalLevel);
+    const maxSupportExternalQueryCount = supportExternalGroups.reduce((max, group) => {
+      const queries = Array.isArray(group?.externalLevel?.queries) ? group.externalLevel.queries : [];
+      return Math.max(max, queries.length);
+    }, 0);
+    supportExternalFairRoundCount = maxSupportExternalQueryCount;
+    for (const group of supportExternalGroups) {
       executedSupportExternalSeedLevels.push(group.externalLabel);
+    }
+    for (let queryIndex = 0; queryIndex < maxSupportExternalQueryCount; queryIndex += 1) {
+      const roundQueries = [];
+      const sourceLevels = [];
+      for (const group of supportExternalGroups) {
+        const roundLevel = cloneBeautySupportExternalRoundLevel(group.externalLevel, queryIndex, queryIndex);
+        const query = Array.isArray(roundLevel?.queries) ? roundLevel.queries[0] : null;
+        if (!query) continue;
+        roundQueries.push(query);
+        if (roundLevel?.fair_support_external_source_level) {
+          sourceLevels.push(roundLevel.fair_support_external_source_level);
+        }
+      }
+      if (!roundQueries.length) continue;
+      keptLevels.push({
+        ladder_level: `framework_stage_c_support_external_seed_round_${queryIndex + 1}`,
+        fair_support_external_round: queryIndex + 1,
+        fair_support_external_source_levels: sourceLevels,
+        queries: roundQueries,
+      });
     }
   } else {
     keptLevels.push(...stagedLevels);
@@ -20314,6 +20361,7 @@ function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
         ? {
             executed_support_external_seed_level_count: executedSupportExternalSeedLevels.length,
             executed_support_external_seed_levels: executedSupportExternalSeedLevels,
+            support_external_fair_round_count: supportExternalFairRoundCount,
           }
         : {}),
       ...(skippedSupportLevels.length
@@ -20340,6 +20388,9 @@ function buildBeautyMainlineLocalQueryAttempts(searchResults = []) {
     source_scope: pickFirstTrimmed(row?.source_scope) || null,
     result_count: Array.isArray(row?.products) ? row.products.length : 0,
     reason: pickFirstTrimmed(row?.reason) || null,
+    ...(Number.isFinite(Number(row?.fair_support_external_round))
+      ? { fair_support_external_round: Math.max(1, Math.trunc(Number(row.fair_support_external_round))) }
+      : {}),
     ...(Array.isArray(row?.attempted_internal_paths)
       ? { attempted_internal_paths: row.attempted_internal_paths }
       : {}),
@@ -21592,6 +21643,22 @@ function shouldSkipFrameworkSupportExternalSeedLevel(level, candidateState = nul
   return filledRoleIds.has(String(stageRoleId).trim().toLowerCase());
 }
 
+function shouldSkipFrameworkSupportExternalSeedQuery(queryEntry, candidateState = null) {
+  if (!isPlainObject(queryEntry) || !isPlainObject(candidateState)) return false;
+  if (candidateState.primary_role_matched !== true) return false;
+  const allowExternalSeed = queryEntry.allow_external_seed === true
+    || String(queryEntry.source_scope || '').trim().toLowerCase() === 'external_seed';
+  if (!allowExternalSeed) return false;
+  const levelId = String(queryEntry.ladder_level || queryEntry.stage_id || '').trim().toLowerCase();
+  if (!levelId.startsWith('framework_stage_c_support_')) return false;
+  const roleId = pickFirstTrimmed(queryEntry.role_id) || (
+    levelId.replace(/^framework_stage_c_support_/, '').replace(/_external_seed$/, '')
+  );
+  if (!roleId) return false;
+  const filledRoleIds = new Set(getRecoRecallFilledRoleIds(candidateState, { requireAlignedRetrieval: true }));
+  return filledRoleIds.has(String(roleId).trim().toLowerCase());
+}
+
 function resolveRecoQueryEntryTimeoutMs(queryEntry = null, effectiveTimeoutMs = 0) {
   const normalizedTimeoutMs = Number.isFinite(Number(effectiveTimeoutMs))
     ? Math.max(0, Math.trunc(Number(effectiveTimeoutMs)))
@@ -21814,8 +21881,58 @@ async function collectRecoCandidatesFromQueryLevels({
       });
       continue;
     }
+    const runnableQueries = [];
+    for (const queryEntry of queries) {
+      if (shouldSkipFrameworkSupportExternalSeedQuery(queryEntry, candidateState)) {
+        const queryAllowExternalSeed =
+          allowExternalSeed === true
+          && queryEntry?.allow_external_seed === true;
+        searchResults.push({
+          ...queryEntry,
+          source_scope: queryAllowExternalSeed ? 'external_seed' : 'internal',
+          external_seed_strategy: queryAllowExternalSeed
+            ? String(
+                queryEntry?.external_seed_strategy
+                || externalSeedStrategy
+                || 'supplement_internal_first',
+              )
+                .trim()
+                .toLowerCase()
+            : 'on_empty_only',
+          ok: false,
+          products: [],
+          reason: 'skipped_support_role_already_satisfied',
+          actual_http_attempt_count: 0,
+          attempted_request_timeouts_ms: [],
+          skipped_runtime: true,
+        });
+      } else {
+        runnableQueries.push(queryEntry);
+      }
+    }
+    if (runnableQueries.length === 0) {
+      stageResults.push({
+        stage_id: stageId,
+        role_id: String(queries[0]?.role_id || '').trim() || null,
+        role_rank: Number.isFinite(Number(queries[0]?.role_rank)) ? Number(queries[0].role_rank) : null,
+        source_scope:
+          queries.length > 0 && queries.every((queryEntry) => queryEntry?.allow_external_seed === true)
+            ? 'external_seed'
+            : 'internal',
+        skipped: true,
+        skip_reason: 'skipped_support_role_already_satisfied',
+        executed_query_count: 0,
+        executed_upstream_attempt_count: 0,
+        actual_http_attempt_count: 0,
+        timeout_count: 0,
+        transient_only: false,
+        selected_count: getRecoRecallSelectedCount(candidateState),
+        primary_role_matched: Boolean(candidateState?.primary_role_matched),
+      });
+      continue;
+    }
     const levelResults = await mapWithConcurrency(
-      queries,
+      runnableQueries,
       RECO_CATALOG_SEARCH_CONCURRENCY,
       async (queryEntry) => {
         const queryAllowExternalSeed =
@@ -21915,7 +22032,7 @@ async function collectRecoCandidatesFromQueryLevels({
         });
       }
     }
-    executedQueryCount += queries.length;
+    executedQueryCount += runnableQueries.length;
     executedUpstreamAttemptCount += levelActualHttpAttemptCount;
     actualHttpAttemptCount += levelActualHttpAttemptCount;
     stageTimeoutCounts[stageId] = levelTimeoutCount;
@@ -21937,13 +22054,13 @@ async function collectRecoCandidatesFromQueryLevels({
           : 'internal',
       skipped: false,
       skip_reason: null,
-      executed_query_count: queries.length,
+      executed_query_count: runnableQueries.length,
       executed_upstream_attempt_count: levelActualHttpAttemptCount,
       actual_http_attempt_count: levelActualHttpAttemptCount,
       timeout_count: levelTimeoutCount,
       transient_only:
-        queries.length > 0 &&
-        levelTransientCount >= queries.length &&
+        runnableQueries.length > 0 &&
+        levelTransientCount >= runnableQueries.length &&
         Number(candidateState?.raw_candidate_count || 0) === 0,
       selected_count: getRecoRecallSelectedCount(candidateState),
       primary_role_matched: Boolean(candidateState?.primary_role_matched),
