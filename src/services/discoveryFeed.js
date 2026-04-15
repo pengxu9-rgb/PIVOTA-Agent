@@ -6738,11 +6738,30 @@ function matchesExplicitExactBeautyStructuredQueryText(candidate, queryText) {
   return hasAnyNormalizedClassToken(titleText, exactRule.positiveTitleTokens || []);
 }
 
+function shouldRejectExplicitExactBeautyStructuredQueryText(candidate, queryText) {
+  const normalizedQuery = normalizeText(queryText || '');
+  const exactRule = EXPLICIT_BEAUTY_EXACT_PHRASE_STRUCTURED_RULES[normalizedQuery] || null;
+  if (!exactRule) return false;
+
+  const structuredTerms = resolveExplicitExactBeautyStructuredQueryTerms(normalizedQuery);
+  if (structuredTerms.length <= 0) return false;
+  const structuredText = buildDiscoveryCandidateStructuredFilterText(candidate);
+  if (!structuredText || !hasAnyNormalizedClassToken(structuredText, structuredTerms)) return false;
+
+  const raw = candidate?.raw || {};
+  const titleText = normalizeText(
+    [raw.title, raw.name, raw.external_seed_recall?.retrieval_title].filter(Boolean).join(' '),
+  );
+  if (!titleText) return false;
+  return hasAnyNormalizedClassToken(titleText, exactRule.negativeTitleTokens || []);
+}
+
 function matchesQueryTextCandidate(candidate, queryText) {
   const normalizedQuery = normalizeText(queryText || '');
   if (!normalizedQuery) return true;
 
   if (shouldFilterExplicitBeautyBrowseNoiseCandidate(candidate, normalizedQuery)) return false;
+  if (shouldRejectExplicitExactBeautyStructuredQueryText(candidate, normalizedQuery)) return false;
 
   const candidateText = normalizeText(
     [
