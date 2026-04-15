@@ -350,13 +350,13 @@ const BEAUTY_INTEREST_CATEGORY_BY_PHRASE = Object.freeze({
     verticals: ['skincare'],
   },
   exfoliant: {
-    categories: ['exfoliant', 'treatment'],
+    categories: ['exfoliant'],
     textQueryTerms: ['exfoliant', 'exfoliating', 'exfoliator', 'resurfacing', 'peel'],
     textQueryFields: ['title', 'ingredient_tokens', 'alias_tokens'],
     verticals: ['skincare'],
   },
   exfoliator: {
-    categories: ['exfoliant', 'treatment'],
+    categories: ['exfoliant'],
     textQueryTerms: ['exfoliant', 'exfoliating', 'exfoliator', 'resurfacing', 'peel'],
     textQueryFields: ['title', 'ingredient_tokens', 'alias_tokens'],
     verticals: ['skincare'],
@@ -6157,9 +6157,13 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
       explicitQueryScopedRecall && !compoundIntent
         ? resolveExplicitQueryExternalSeedMainlineAcceptThreshold(request, safeLimit)
         : baseSummaryThreshold;
+    const explicitQueryStageStopThreshold =
+      explicitQueryScopedRecall && !compoundIntent
+        ? Math.max(baseSummaryThreshold, explicitQueryMainlineThreshold)
+        : explicitQueryMainlineThreshold;
     const summaryThreshold = Math.min(
       safeLimit,
-      Math.max(explicitQueryMainlineThreshold, cursorQualifiedTarget),
+      Math.max(explicitQueryStageStopThreshold, cursorQualifiedTarget),
     );
     const qualifiedTarget = compoundIntent
       ? Math.min(safeLimit, Math.max(requestedLimit * 2, 24, cursorQualifiedTarget))
