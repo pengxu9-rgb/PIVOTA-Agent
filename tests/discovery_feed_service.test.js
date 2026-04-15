@@ -9748,24 +9748,24 @@ describe('discovery feed service', () => {
       'idx_external_product_seeds_recall_alias_tokens_trgm',
     ].map((indexname) => ({ tablename: 'external_product_seeds', indexname }));
 
-    const makeSeedRow = (id) => ({
+    const makeSeedRow = (id, vertical = 'skincare', category = 'Skincare') => ({
       id,
       external_product_id: `seed_${id}`,
       destination_url: `https://example.com/products/${id}`,
       canonical_url: `https://example.com/products/${id}`,
       domain: 'beauty',
-      title: `Niacinamide Serum ${id}`,
+      title: `${category} Product ${id}`,
       image_url: `https://example.com/images/${id}.jpg`,
       price_amount: 24,
       price_currency: 'USD',
       availability: 'in_stock',
       seed_data: {
         snapshot: {
-          title: `Niacinamide Serum ${id}`,
+          title: `${category} Product ${id}`,
           brand: 'Alpha',
-          category: 'Skincare',
-          product_type: 'Serum',
-          description: `Serum ${id}`,
+          category,
+          product_type: category,
+          description: `${category} ${id}`,
           destination_url: `https://example.com/products/${id}`,
           canonical_url: `https://example.com/products/${id}`,
           image_url: `https://example.com/images/${id}.jpg`,
@@ -9775,15 +9775,17 @@ describe('discovery feed service', () => {
         },
         derived: {
           recall: {
-            retrieval_title: `Niacinamide Serum ${id}`,
-            retrieval_summary: `Serum ${id}`,
+            retrieval_title: `${category} Product ${id}`,
+            retrieval_summary: `${category} ${id}`,
             brand: 'Alpha',
-            category: 'Skincare',
-            vertical: 'skincare',
+            category,
+            vertical,
           },
         },
       },
     });
+    const makeSeedRows = (startId, count, vertical, category) =>
+      Array.from({ length: count }, (_, index) => makeSeedRow(startId + index, vertical, category));
 
     const dbQueryMock = jest
       .fn()
@@ -9794,7 +9796,22 @@ describe('discovery feed service', () => {
         rows: requiredIndexes,
       })
       .mockResolvedValueOnce({
-        rows: Array.from({ length: 120 }, (_, index) => makeSeedRow(index + 1)),
+        rows: makeSeedRows(1, 48, 'skincare', 'Skincare'),
+      })
+      .mockResolvedValueOnce({
+        rows: makeSeedRows(49, 30, 'makeup', 'Makeup'),
+      })
+      .mockResolvedValueOnce({
+        rows: makeSeedRows(79, 19, 'haircare', 'Haircare'),
+      })
+      .mockResolvedValueOnce({
+        rows: makeSeedRows(98, 12, 'fragrance', 'Fragrance'),
+      })
+      .mockResolvedValueOnce({
+        rows: makeSeedRows(110, 7, 'bodycare', 'Bodycare'),
+      })
+      .mockResolvedValueOnce({
+        rows: makeSeedRows(117, 4, 'beauty_tools', 'Beauty Tools'),
       });
 
     jest.doMock('../src/db', () => ({
@@ -9830,20 +9847,46 @@ describe('discovery feed service', () => {
       });
 
       expect(result.products).toHaveLength(120);
-      expect(dbQueryMock).toHaveBeenCalledTimes(3);
+      expect(dbQueryMock).toHaveBeenCalledTimes(8);
       const curatedSql = String(dbQueryMock.mock.calls[2]?.[0] || '');
       expect(curatedSql).toContain("'generic_browse_curated_head'::text AS match_stage");
-      expect(curatedSql).not.toContain('LIKE ANY');
-      expect(curatedSql).not.toContain("'recall_title'::text AS match_stage");
-      expect(curatedSql).not.toContain("'recall_tokens'::text AS match_stage");
-      expect(result.recallSummary[0].external_seed_stage_counts).toEqual([
-        expect.objectContaining({
-          stage: 'generic_browse_curated_head',
-          raw_rows: 120,
-          deduped_rows: 120,
-          final_eligible_rows: 120,
-        }),
-      ]);
+      for (const call of dbQueryMock.mock.calls.slice(2)) {
+        const sql = String(call?.[0] || '');
+        expect(sql).not.toContain('LIKE ANY');
+        expect(sql).not.toContain("'recall_title'::text AS match_stage");
+        expect(sql).not.toContain("'recall_tokens'::text AS match_stage");
+      }
+      expect(result.recallSummary[0].external_seed_stage_counts).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            stage: 'generic_browse_curated_head',
+            match_axis: 'vertical',
+            match_value: 'skincare',
+            stage_quota: 48,
+            raw_rows: 48,
+            deduped_rows: 48,
+            final_eligible_rows: 48,
+          }),
+          expect.objectContaining({
+            stage: 'generic_browse_curated_head',
+            match_axis: 'vertical',
+            match_value: 'makeup',
+            stage_quota: 30,
+            raw_rows: 30,
+            deduped_rows: 30,
+            final_eligible_rows: 78,
+          }),
+          expect.objectContaining({
+            stage: 'generic_browse_curated_head',
+            match_axis: 'vertical',
+            match_value: 'beauty_tools',
+            stage_quota: 4,
+            raw_rows: 4,
+            deduped_rows: 4,
+            final_eligible_rows: 120,
+          }),
+        ]),
+      );
     } finally {
       if (prevDatabaseUrl === undefined) delete process.env.DATABASE_URL;
       else process.env.DATABASE_URL = prevDatabaseUrl;

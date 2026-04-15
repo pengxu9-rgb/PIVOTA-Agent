@@ -140,6 +140,14 @@ const DISCOVERY_GENERIC_BROWSE_EXTERNAL_SEED_CATEGORIES = Object.freeze([
   'body oil',
   'deodorant',
 ]);
+const DISCOVERY_GENERIC_BROWSE_EXTERNAL_SEED_VERTICAL_MIX = Object.freeze([
+  { value: 'skincare', share: 0.4 },
+  { value: 'makeup', share: 0.25 },
+  { value: 'haircare', share: 0.16 },
+  { value: 'fragrance', share: 0.1 },
+  { value: 'bodycare', share: 0.06 },
+  { value: 'beauty_tools', share: 0.03 },
+]);
 const DISCOVERY_PROVIDER_ORDER = [
   'beauty_interest_mainline',
   'products_search',
@@ -5203,12 +5211,13 @@ async function fetchGenericBrowseExternalSeedServingCandidates({
   const seenSqlIds = new Set();
   const externalSeedStageCounts = [];
   let externalSeedRawCount = 0;
-  const appendRows = (rawRows = [], axis, value, toolScope) => {
+  const appendRows = (rawRows = [], axis, value, toolScope, stageQuota = null) => {
     const metrics = {
       stage,
       tool_scope: String(toolScope || '').trim() || '*',
       match_axis: axis,
       match_value: value,
+      ...(Number.isFinite(stageQuota) && stageQuota > 0 ? { stage_quota: stageQuota } : {}),
       raw_rows: Array.isArray(rawRows) ? rawRows.length : 0,
       compound_qualified_rows: 0,
       query_qualified_rows: 0,
@@ -5231,13 +5240,19 @@ async function fetchGenericBrowseExternalSeedServingCandidates({
     metrics.final_eligible_rows = rows.length;
     externalSeedStageCounts.push(metrics);
   };
-  const runIndexedStage = async ({ axis, value, sqlField, score }) => {
+  const runIndexedStage = async ({ axis, value, sqlField, score, maxRows = null }) => {
     const normalizedValue = String(value || '').trim().toLowerCase();
     if (!normalizedValue || rows.length >= safeLimit) return;
+    const numericMaxRows = Number(maxRows);
+    const stageQuota =
+      Number.isFinite(numericMaxRows) && numericMaxRows > 0
+        ? Math.max(1, Math.floor(numericMaxRows))
+        : safeLimit;
+    const stageTargetRows = Math.min(safeLimit, rows.length + stageQuota);
     for (const toolScope of toolScopeValues.length > 0 ? toolScopeValues : ['*', 'creator_agents']) {
-      if (rows.length >= safeLimit) break;
+      if (rows.length >= stageTargetRows) break;
       const stageParams = [market, toolScope, normalizedValue];
-      const resolvedCap = Math.max(1, safeLimit - rows.length);
+      const resolvedCap = Math.max(1, stageTargetRows - rows.length);
       let sql = `
         SELECT
           ${selectSql},
@@ -5264,18 +5279,31 @@ async function fetchGenericBrowseExternalSeedServingCandidates({
         LIMIT $${stageParams.length}
       `;
       const res = await query(sql, stageParams);
-      appendRows(Array.isArray(res?.rows) ? res.rows : [], axis, normalizedValue, toolScope);
+      appendRows(Array.isArray(res?.rows) ? res.rows : [], axis, normalizedValue, toolScope, stageQuota);
     }
   };
 
-  for (const vertical of DISCOVERY_GENERIC_BROWSE_EXTERNAL_SEED_VERTICALS) {
+  for (const rail of DISCOVERY_GENERIC_BROWSE_EXTERNAL_SEED_VERTICAL_MIX) {
+    const quota = Math.max(1, Math.round(safeLimit * Number(rail.share || 0)));
     await runIndexedStage({
       axis: 'vertical',
-      value: vertical,
+      value: rail.value,
       sqlField: EXTERNAL_SEED_RECALL_SQL_FIELDS.vertical,
       score: 64,
+      maxRows: quota,
     });
     if (rows.length >= safeLimit) break;
+  }
+  if (rows.length < safeLimit) {
+    for (const vertical of DISCOVERY_GENERIC_BROWSE_EXTERNAL_SEED_VERTICALS) {
+      await runIndexedStage({
+        axis: 'vertical',
+        value: vertical,
+        sqlField: EXTERNAL_SEED_RECALL_SQL_FIELDS.vertical,
+        score: 58,
+      });
+      if (rows.length >= safeLimit) break;
+    }
   }
   if (rows.length < safeLimit) {
     for (const category of DISCOVERY_GENERIC_BROWSE_EXTERNAL_SEED_CATEGORIES) {
