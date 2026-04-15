@@ -399,7 +399,7 @@ const BEAUTY_INTEREST_CATEGORY_BY_PHRASE = Object.freeze({
   },
   conditioner: {
     categories: ['conditioner', 'leave in conditioner', 'deep conditioner'],
-    textQueryFields: ['title'],
+    textQueryFields: ['title', 'summary'],
     skipIndexedCategoryHead: true,
     verticals: ['haircare'],
   },
@@ -7548,6 +7548,18 @@ function buildDiscoveryCandidateQueryFilterText(candidate) {
   );
 }
 
+function shouldAllowExplicitConditionerFormatCandidate(candidate, normalizedQuery) {
+  if (normalizedQuery !== 'conditioner') return false;
+  const candidateText = buildDiscoveryCandidateQueryFilterText(candidate);
+  if (!candidateText || !textHasNormalizedToken(candidateText, 'conditioner')) return false;
+  if (hasAnyNormalizedClassToken(candidateText, EXPLICIT_BEAUTY_BROWSE_TOOL_CLASSES)) return false;
+  return (
+    candidateText.includes('haircare') ||
+    candidateText.includes('hair care') ||
+    textHasNormalizedToken(candidateText, 'hair')
+  );
+}
+
 function shouldFilterExplicitBeautyBrowseNoiseCandidate(candidate, queryText) {
   const normalizedQuery = normalizeText(queryText || '');
   if (!normalizedQuery) return false;
@@ -7591,6 +7603,9 @@ function shouldFilterExplicitBeautyBrowseNoiseCandidate(candidate, queryText) {
     const isFormatNoise = hasAnyNormalizedClassToken(noiseClass, EXPLICIT_BEAUTY_BROWSE_FORMAT_NOISE_CLASSES);
     const noiseScanText = isFormatNoise ? candidateFormatNoiseText : candidateText;
     if (!hasAnyNormalizedClassToken(noiseScanText, [noiseClass])) return false;
+    if (isFormatNoise && shouldAllowExplicitConditionerFormatCandidate(candidate, normalizedQuery)) {
+      return false;
+    }
     if (
       structuredCategoryMatch &&
       isFormatNoise

@@ -6451,7 +6451,7 @@ describe('discovery feed service', () => {
         profile,
         [queryText],
       );
-      const expectedFields = queryText === 'shampoo' ? ['title', 'summary'] : ['title'];
+      const expectedFields = ['title', 'summary'];
       expect(_internals.resolveExplicitIndexedCategoryHeadTerms(request, recallTerms)).toEqual([]);
       expect(_internals.resolveExactPhraseTextUnionFieldLabels(request, recallTerms)).toEqual(expectedFields);
       expect(
@@ -7053,7 +7053,7 @@ describe('discovery feed service', () => {
     }
   });
 
-  test('explicit hair wash category browse uses exact title stages without category head', async () => {
+  test('explicit hair wash category browse uses exact field stages without category head', async () => {
     jest.resetModules();
     const prevDatabaseUrl = process.env.DATABASE_URL;
     process.env.DATABASE_URL = 'postgres://discovery-noncompound-title-stop-test';
@@ -7093,13 +7093,13 @@ describe('discovery feed service', () => {
 	        description: 'Smoothing conditioner for hair.',
 	      }),
 	    );
-	    const creatorRows = Array.from({ length: 4 }, (_, index) =>
+	    const summaryRows = Array.from({ length: 4 }, (_, index) =>
 	      makeExternalSeedRow({
-	        id: `conditioner_creator_${index + 1}`,
-	        title: `Creator Conditioner ${index + 1}`,
-	        category: 'Conditioner',
-	        product_type: 'Conditioner',
-	        description: 'Smoothing conditioner for hair.',
+	        id: `conditioner_summary_${index + 1}`,
+	        title: `Hair Routine Duo ${index + 1}`,
+	        category: 'Hair Set',
+	        product_type: 'Hair Set',
+	        description: 'Washday routine with smoothing conditioner and detangling care.',
 	      }),
 	    );
 	    const dbQueryMock = jest
@@ -7107,7 +7107,9 @@ describe('discovery feed service', () => {
 	      .mockResolvedValueOnce({ rows: requiredColumns })
 	      .mockResolvedValueOnce({ rows: requiredIndexes })
 	      .mockResolvedValueOnce({ rows: titleRows })
-	      .mockResolvedValueOnce({ rows: creatorRows });
+	      .mockResolvedValueOnce({ rows: [] })
+	      .mockResolvedValueOnce({ rows: summaryRows })
+	      .mockResolvedValueOnce({ rows: [] });
     jest.doMock('../src/db', () => ({
       query: dbQueryMock,
     }));
@@ -7159,22 +7161,29 @@ describe('discovery feed service', () => {
       });
 
 	      expect(result.products).toHaveLength(12);
-	      expect(dbQueryMock).toHaveBeenCalledTimes(4);
+	      expect(dbQueryMock).toHaveBeenCalledTimes(6);
 	      expect(dbQueryMock.mock.calls[2][0]).toContain('AND tool = $2');
 	      expect(dbQueryMock.mock.calls[2][0]).not.toContain("(tool = '*' OR tool = $2)");
 	      expect(dbQueryMock.mock.calls[2][1][1]).toBe('*');
 	      expect(dbQueryMock.mock.calls[3][1][1]).toBe('creator_agents');
 	      expect(dbQueryMock.mock.calls[2][0]).toContain("seed_data->'derived'->'recall'->>'retrieval_title'");
+	      expect(dbQueryMock.mock.calls[4][0]).toContain("seed_data->'derived'->'recall'->>'retrieval_summary'");
 	      expect(dbQueryMock.mock.calls[2][0]).not.toContain("lower(coalesce(seed_data->'derived'->'recall'->>'category', '')");
+	      expect(dbQueryMock.mock.calls[4][0]).not.toContain("lower(coalesce(seed_data->'derived'->'recall'->>'category', '')");
 	      expect(dbQueryMock.mock.calls[2][0]).not.toContain('UNION ALL');
+	      expect(dbQueryMock.mock.calls[4][0]).not.toContain('UNION ALL');
 	      expect(dbQueryMock.mock.calls[2][1].at(-1)).toBe(36);
 	      expect(result.recallSummary[0].external_seed_tool_scopes).toEqual(['*', 'creator_agents']);
 	      expect(result.recallSummary[0].external_seed_stage_counts.map((entry) => entry.stage)).toEqual([
 	        'recall_exact_text_title',
 	        'recall_exact_text_title',
+	        'recall_exact_text_summary',
+	        'recall_exact_text_summary',
 	      ]);
 	      expect(result.recallSummary[0].external_seed_stage_counts[0].tool_scope).toBe('*');
 	      expect(result.recallSummary[0].external_seed_stage_counts[1].tool_scope).toBe('creator_agents');
+	      expect(result.recallSummary[0].external_seed_stage_counts[2].tool_scope).toBe('*');
+	      expect(result.recallSummary[0].external_seed_stage_counts[3].tool_scope).toBe('creator_agents');
     } finally {
       if (prevDatabaseUrl === undefined) delete process.env.DATABASE_URL;
       else process.env.DATABASE_URL = prevDatabaseUrl;
