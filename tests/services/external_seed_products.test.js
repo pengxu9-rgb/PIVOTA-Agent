@@ -379,7 +379,7 @@ describe('externalSeedProducts helper', () => {
       { name: 'Size', value: '8.0 g' },
     ]);
     expect(variants[0].image_url).toBe(
-      'https://cdn.shopify.com/s/files/1/2139/2967/files/Rose_Topaz_1200_4ee4c5e8-a218-4e0a-8af8-2db3c98f0c79.png',
+      'https://cdn.shopify.com/s/files/1/2139/2967/files/Rose_Topaz_1200_4ee4c5e8-a218-4e0a-8af8-2db3c98f0c79.png?v=1750422282',
     );
   });
 
@@ -633,13 +633,13 @@ describe('externalSeedProducts helper', () => {
 
     const product = buildExternalSeedProduct(row);
     expect(product.image_url).toBe(
-      'https://cdn.shopify.com/s/files/1/2139/2967/files/Duo_Mousse_Nettoyante_Detox_-_Packshot.jpg',
+      'https://cdn.shopify.com/s/files/1/2139/2967/files/Duo_Mousse_Nettoyante_Detox_-_Packshot.jpg?v=1750422282',
     );
     expect(product.images.length).toBeGreaterThan(1);
     expect(product.variants[0]).toEqual(
       expect.objectContaining({
         image_url:
-          'https://cdn.shopify.com/s/files/1/2139/2967/files/Duo_Mousse_Nettoyante_Detox_-_Packshot.jpg',
+          'https://cdn.shopify.com/s/files/1/2139/2967/files/Duo_Mousse_Nettoyante_Detox_-_Packshot.jpg?v=1750422282',
       }),
     );
   });
@@ -1087,13 +1087,13 @@ describe('externalSeedProducts helper', () => {
 
     const product = buildExternalSeedProduct(row);
     expect(product.image_url).toBe(
-      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_TC4N11_2000x2000_0.png',
+      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_TC4N11_2000x2000_0.png?v=1774610411',
     );
     expect(product.images[0]).toBe(
-      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_TC4N11_2000x2000_0.png',
+      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_TC4N11_2000x2000_0.png?v=1774610411',
     );
     expect(product.images).toContain(
-      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_TC4N11_2000x2000_1G_72d7b843-7875-4c79-992d-2c4b900e2751.jpg',
+      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_TC4N11_2000x2000_1G_72d7b843-7875-4c79-992d-2c4b900e2751.jpg?v=1774610411',
     );
   });
 

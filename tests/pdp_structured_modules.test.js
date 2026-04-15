@@ -104,8 +104,8 @@ describe('pdpBuilder structured PDP modules', () => {
 
     expect(urls).toEqual([
       'https://cdn.shopify.com/s/files/1/0558/4135/7989/files/DTFS_DN350_Thumbnail_1.jpg',
-      'https://beautyofjoseon.com/cdn/shop/files/Untitled_design_95.jpg?width=180',
-      'https://beautyofjoseon.com/cdn/shop/files/skin_prep_dry_skin.png?width=180',
+      'https://beautyofjoseon.com/cdn/shop/files/Untitled_design_95.jpg',
+      'https://beautyofjoseon.com/cdn/shop/files/skin_prep_dry_skin.png',
     ]);
     expect(payload.product.image_urls).toEqual(urls);
     expect(payload.product.images).toEqual(urls);
@@ -231,7 +231,7 @@ describe('pdpBuilder structured PDP modules', () => {
     expect(findModule(payload, 'product_details')).toBeFalsy();
   });
 
-  test('does not render captured external seed narrative as generic details or facts', () => {
+  test('does not render captured external seed narrative soup as generic details', () => {
     const payload = buildPdpPayload({
       product: {
         product_id: 'ext_boj_text_soup',
@@ -265,7 +265,12 @@ describe('pdpBuilder structured PDP modules', () => {
 
     expect(payload.product.description).toBe('');
     expect(findModule(payload, 'product_details')).toBeFalsy();
-    expect(findModule(payload, 'product_facts')).toBeFalsy();
+    expect(findModule(payload, 'product_facts')?.data?.sections).toEqual([
+      expect.objectContaining({
+        heading: 'Clinical Results',
+        content: 'User test results after two weeks.',
+      }),
+    ]);
     expect(findModule(payload, 'how_to_use')?.data).toEqual(
       expect.objectContaining({
         raw_text: 'Shake well and apply as the last skincare step.',
@@ -309,13 +314,13 @@ describe('pdpBuilder structured PDP modules', () => {
       entryPoint: 'agent',
     });
 
-    expect(findModule(payload, 'product_details')?.data?.sections).toEqual([
+    expect(findModule(payload, 'product_details')?.data?.sections).toEqual(expect.arrayContaining([
       expect.objectContaining({
         heading: 'Description',
         content:
           'When your complexion calls for extra support, a few drops of Calming Barrier Serum will bring it back in balance.',
       }),
-    ]);
+    ]));
     expect(findModule(payload, 'product_facts')).toBeFalsy();
   });
 

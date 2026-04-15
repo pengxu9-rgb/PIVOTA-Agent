@@ -21016,6 +21016,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	      }
 
       let productIntel = null;
+      let productIntelStatus = wantsProductIntel ? 'missing_blocked' : 'not_requested';
+      let productIntelMissingReason = wantsProductIntel ? 'kb_or_identity_missing' : null;
       const requiresProductIntelModule =
         wantsProductIntel || Boolean(identityGraphLive?.synthetic_product);
       if (requiresProductIntelModule) {
@@ -21028,13 +21030,22 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             productGroupId,
           })) ||
           identityGraphPublishedIntel;
+        if (productIntel) {
+          productIntelStatus = 'ready';
+          productIntelMissingReason = null;
+        } else {
+          productIntelStatus = 'missing_blocked';
+          productIntelMissingReason = identityGraphLive?.synthetic_product
+            ? 'published_intel_missing'
+            : 'identity_or_published_intel_missing';
+          missing.push({ type: 'product_intel', reason: productIntelStatus });
+        }
         modules.push({
           type: 'product_intel',
           required: Boolean(identityGraphLive?.synthetic_product),
           data: productIntel,
-          ...(productIntel ? {} : { reason: 'unavailable' }),
+          ...(productIntel ? {} : { reason: productIntelStatus }),
         });
-        if (!productIntel) missing.push({ type: 'product_intel', reason: 'unavailable' });
       }
 
       if (wantsActiveIngredients) {
@@ -21132,6 +21143,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             normalized_pdp:
               productIntel?.normalized_pdp ||
               buildNormalizedPdpMetadata({ productIntel, offersData }),
+            product_intel_status: productIntelStatus,
+            ...(productIntelMissingReason ? { product_intel_missing_reason: productIntelMissingReason } : {}),
             identity_resolution: buildPdpV2IdentityResolution({
               requestedProductId: entryProductId || productId || null,
               requestedMerchantId: requestedMerchantId || null,

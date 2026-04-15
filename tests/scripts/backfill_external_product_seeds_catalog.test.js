@@ -1,3 +1,5 @@
+const axios = require('axios');
+
 const {
   pickSeedTargetUrl,
   buildExtractRequestBody,
@@ -9,10 +11,16 @@ const {
   normalizeTargetUrlForMarket,
   recoverTargetUrlFromDiagnostics,
   parseDelimitedIds,
+  sanitizeSeedImageUrls,
+  validateNextRowImageHealth,
   collectBackfilledExternalProductIds,
 } = require('../../scripts/backfill-external-product-seeds-catalog');
 
 describe('backfill-external-product-seeds-catalog', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
   test('parses external product id lists from comma or newline input', () => {
     expect(parseDelimitedIds('ext_a, ext_b\next_a\n\next_c')).toEqual(['ext_a', 'ext_b', 'ext_c']);
   });
@@ -34,6 +42,60 @@ describe('backfill-external-product-seeds-catalog', () => {
         },
       ]),
     ).toEqual(['ext_parent', 'ext_child_a', 'ext_child_b']);
+  });
+
+  test('filters broken image URLs before seed writes while preserving Shopify asset identity', async () => {
+    jest
+      .spyOn(axios, 'head')
+      .mockResolvedValueOnce({
+        status: 200,
+        headers: { 'content-type': 'image/png' },
+      })
+      .mockResolvedValueOnce({
+        status: 404,
+        headers: { 'content-type': 'text/html' },
+      });
+
+    const validUrl =
+      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T93Y01_2000x2000_0.png?v=1774596807';
+    const brokenUrl =
+      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T93Y01_2000x2000_0.png';
+
+    const result = await validateNextRowImageHealth({
+      image_url: validUrl,
+      seed_data: {
+        image_url: validUrl,
+        image_urls: [validUrl, brokenUrl],
+        snapshot: {
+          image_urls: [validUrl, brokenUrl],
+        },
+      },
+    });
+
+    expect(result.validation).toEqual(
+      expect.objectContaining({
+        status: 'filtered_broken_images',
+        scanned_count: 2,
+        valid_count: 1,
+        broken_count: 1,
+      }),
+    );
+    expect(result.nextRow.image_url).toBe(validUrl);
+    expect(result.nextRow.seed_data.image_urls).toEqual([validUrl]);
+    expect(result.nextRow.seed_data.snapshot.diagnostics.image_health_validation.status).toBe(
+      'filtered_broken_images',
+    );
+  });
+
+  test('sanitizes decorative image URLs without stripping versioned Shopify assets', () => {
+    expect(
+      sanitizeSeedImageUrls([
+        'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T93Y01_2000x2000_0.png?v=1774596807',
+        'https://www.tomfordbeauty.com/cdn/shop/files/Menu.svg?v=1771253635&width=24',
+      ]),
+    ).toEqual([
+      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T93Y01_2000x2000_0.png?v=1774596807',
+    ]);
   });
 
   test('prefers canonical URL when building extract target', () => {
@@ -604,10 +666,10 @@ describe('backfill-external-product-seeds-catalog', () => {
     );
 
     expect(payload.nextRow.image_url).toBe(
-      'https://cdn.shopify.com/s/files/1/2139/2967/files/Duo_Mousse_Nettoyante_Detox_-_Packshot.jpg',
+      'https://cdn.shopify.com/s/files/1/2139/2967/files/Duo_Mousse_Nettoyante_Detox_-_Packshot.jpg?v=1750422282',
     );
     expect(payload.nextRow.seed_data.image_urls).toContain(
-      'https://cdn.shopify.com/s/files/1/2139/2967/files/Mousse_Nettoyante_Detox_-_Texture.jpg',
+      'https://cdn.shopify.com/s/files/1/2139/2967/files/Mousse_Nettoyante_Detox_-_Texture.jpg?v=1763980849',
     );
     expect(payload.nextRow.seed_data.snapshot.diagnostics).toEqual(
       expect.objectContaining({
@@ -814,13 +876,13 @@ describe('backfill-external-product-seeds-catalog', () => {
     );
 
     expect(payload.nextRow.image_url).toBe(
-      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T93Y01_2000x2000_0.png',
+      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T93Y01_2000x2000_0.png?v=1774596807',
     );
     expect(payload.nextRow.seed_data.image_urls).toEqual([
-      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T93Y01_2000x2000_0.png',
+      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T93Y01_2000x2000_0.png?v=1774596807',
     ]);
     expect(payload.nextRow.seed_data.snapshot.image_urls).toEqual([
-      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T93Y01_2000x2000_0.png',
+      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T93Y01_2000x2000_0.png?v=1774596807',
     ]);
     expect(payload.nextRow.seed_data.active_ingredients).toBeUndefined();
     expect(payload.nextRow.seed_data.snapshot.active_ingredients).toBeUndefined();
@@ -1219,12 +1281,12 @@ describe('backfill-external-product-seeds-catalog', () => {
     );
 
     expect(payload.nextRow.image_url).toBe(
-      'https://cdn.shopify.com/s/files/1/0558/4135/7989/files/DTFS_DN350_Thumbnail_1.jpg',
+      'https://cdn.shopify.com/s/files/1/0558/4135/7989/files/DTFS_DN350_Thumbnail_1.jpg?v=1763453373',
     );
     expect(payload.nextRow.seed_data.image_urls).toEqual([
-      'https://cdn.shopify.com/s/files/1/0558/4135/7989/files/DTFS_DN350_Thumbnail_1.jpg',
-      'https://cdn.shopify.com/s/files/1/0558/4135/7989/files/Daily-Tinted-Fluid-Sunscreen-DN350_Beauty-of-Joseon_59516391-51502368031092.jpg',
-      'https://cdn.shopify.com/s/files/1/0558/4135/7989/files/241127JOSEON0307_1.webp',
+      'https://cdn.shopify.com/s/files/1/0558/4135/7989/files/DTFS_DN350_Thumbnail_1.jpg?v=1763453373',
+      'https://cdn.shopify.com/s/files/1/0558/4135/7989/files/Daily-Tinted-Fluid-Sunscreen-DN350_Beauty-of-Joseon_59516391-51502368031092.jpg?v=1763451773',
+      'https://cdn.shopify.com/s/files/1/0558/4135/7989/files/241127JOSEON0307_1.webp?v=1770142124',
     ]);
     expect(payload.nextRow.seed_data.snapshot.image_urls).toEqual(payload.nextRow.seed_data.image_urls);
   });
@@ -1291,9 +1353,9 @@ describe('backfill-external-product-seeds-catalog', () => {
     );
 
     expect(payload.nextRow.seed_data.image_urls).toEqual([
-      'https://cdn.shopify.com/s/files/1/0558/4135/7989/files/DTFS_DN350_Thumbnail_1.jpg',
-      'https://cdn.shopify.com/s/files/1/0558/4135/7989/files/Daily-Tinted-Fluid-Sunscreen-DN350_Beauty-of-Joseon_59516391-51502368031092.jpg',
-      'https://cdn.shopify.com/s/files/1/0558/4135/7989/files/Untitled_design_95.jpg',
+      'https://cdn.shopify.com/s/files/1/0558/4135/7989/files/DTFS_DN350_Thumbnail_1.jpg?v=1763453373',
+      'https://cdn.shopify.com/s/files/1/0558/4135/7989/files/Daily-Tinted-Fluid-Sunscreen-DN350_Beauty-of-Joseon_59516391-51502368031092.jpg?v=1763451773',
+      'https://cdn.shopify.com/s/files/1/0558/4135/7989/files/Untitled_design_95.jpg?v=1763500000',
     ]);
   });
 });

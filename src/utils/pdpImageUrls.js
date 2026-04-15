@@ -47,7 +47,9 @@ function rewriteTomFordAssetToOfficialShopify(parsed) {
   if (!filename) return next;
 
   if (/^tfb?_sku_/i.test(filename)) {
-    return new URL(`https://cdn.shopify.com${TOM_FORD_SHOPIFY_FILES_PREFIX}${filename}`);
+    const rewritten = new URL(`https://cdn.shopify.com${TOM_FORD_SHOPIFY_FILES_PREFIX}${filename}`);
+    rewritten.search = next.search;
+    return rewritten;
   }
 
   return next;
@@ -75,6 +77,14 @@ function normalizeShopifyLikeFilename(filename, options = {}) {
   return aliased;
 }
 
+function stripImageTransformQueryParams(parsed) {
+  Array.from(parsed.searchParams.keys()).forEach((key) => {
+    if (IMAGE_DEDUPE_IGNORED_QUERY_KEYS.has(String(key || '').toLowerCase())) {
+      parsed.searchParams.delete(key);
+    }
+  });
+}
+
 function normalizePdpImageUrl(value) {
   const raw = String(value || '').trim();
   if (!isAbsoluteHttpUrl(raw)) return '';
@@ -82,7 +92,7 @@ function normalizePdpImageUrl(value) {
   try {
     let parsed = new URL(raw);
     if (isShopifyLikeAsset(parsed)) {
-      parsed.searchParams.delete('v');
+      stripImageTransformQueryParams(parsed);
       const segments = parsed.pathname.split('/');
       const lastIndex = segments.length - 1;
       segments[lastIndex] = normalizeShopifyLikeFilename(segments[lastIndex] || '', {
@@ -122,10 +132,22 @@ function buildPdpImageDedupeKey(value) {
     const parsed = new URL(normalized);
     if (isShopifyLikeAsset(parsed)) {
       const filename = normalizeShopifyLikeFilename(parsed.pathname.split('/').pop() || '', {
-        stripHash: true,
+        stripHash: false,
       });
       if (filename) {
-        return `asset:${filename.toLowerCase()}`;
+        const normalizedSearch = new URLSearchParams();
+        Array.from(parsed.searchParams.entries())
+          .sort(([aKey, aValue], [bKey, bValue]) => {
+            if (aKey === bKey) return aValue.localeCompare(bValue);
+            return aKey.localeCompare(bKey);
+          })
+          .forEach(([key, candidateValue]) => {
+            if (IMAGE_DEDUPE_IGNORED_QUERY_KEYS.has(String(key || '').toLowerCase())) return;
+            normalizedSearch.append(key, candidateValue);
+          });
+        return `asset:${filename.toLowerCase()}${
+          normalizedSearch.toString() ? `?${normalizedSearch.toString()}` : ''
+        }`;
       }
     }
     const normalizedSearch = new URLSearchParams();

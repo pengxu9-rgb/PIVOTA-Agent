@@ -9,9 +9,12 @@ const { resolveExternalSeedRecallDoc } = require('../src/services/externalSeedRe
 const {
   buildSeedGate,
   buildExtractorGate,
+  buildIdentityGate,
+  buildProductIntelGate,
   buildLivePdpGate,
   buildSimilarGate,
   buildExternalSeedQualityResult,
+  collectLiveGalleryImages,
 } = require('../src/services/externalSeedPdpQuality');
 const {
   pickSeedTargetUrl,
@@ -36,6 +39,10 @@ function argValue(name) {
   const value = process.argv[idx + 1];
   if (!value || value.startsWith('--')) return null;
   return value;
+}
+
+function hasArg(name) {
+  return process.argv.includes(`--${name}`);
 }
 
 function normalizeNonEmptyString(value) {
@@ -211,6 +218,85 @@ async function invokeGateway(gatewayUrl, operation, payload) {
   return response.data || {};
 }
 
+async function probeImageUrl(url) {
+  const target = normalizeUrlLike(url);
+  if (!target) {
+    return { url, ok: false, status: null, content_type: null, error: 'invalid_url' };
+  }
+  const timeout = Number(process.env.EXTERNAL_PDP_QUALITY_IMAGE_TIMEOUT_MS || 5000);
+  const requestConfig = {
+    timeout,
+    headers: {
+      Accept: 'image/avif,image/webp,image/*,*/*;q=0.8',
+      'User-Agent': 'Pivota PDP quality audit/1.0',
+    },
+    validateStatus: () => true,
+  };
+
+  try {
+    let response = await axios.head(target, requestConfig);
+    if ([403, 405].includes(Number(response.status))) {
+      response = await axios.get(target, {
+        ...requestConfig,
+        responseType: 'arraybuffer',
+        headers: {
+          ...requestConfig.headers,
+          Range: 'bytes=0-0',
+        },
+        maxContentLength: 1024 * 64,
+      });
+    }
+    const status = Number(response.status || 0);
+    const contentType = normalizeNonEmptyString(response.headers?.['content-type']).toLowerCase();
+    const ok = status >= 200 && status < 400 && (!contentType || contentType.includes('image/'));
+    return {
+      url: target,
+      ok,
+      status: status || null,
+      content_type: contentType || null,
+      ...(ok ? {} : { error: contentType && !contentType.includes('image/') ? 'non_image_content_type' : 'bad_status' }),
+    };
+  } catch (error) {
+    return {
+      url: target,
+      ok: false,
+      status: null,
+      content_type: null,
+      error: normalizeNonEmptyString(error?.code || error?.message || 'request_failed'),
+    };
+  }
+}
+
+async function probeImageHealth(urls, options = {}) {
+  if (options.skip) {
+    return {
+      scanned_count: 0,
+      broken_count: 0,
+      broken_urls: [],
+      skipped: true,
+    };
+  }
+  const limit = Math.max(
+    1,
+    Math.min(100, Number(options.limit || process.env.EXTERNAL_PDP_QUALITY_IMAGE_HEALTH_LIMIT || 12) || 12),
+  );
+  const uniqueUrls = Array.from(new Set((Array.isArray(urls) ? urls : []).map(normalizeUrlLike).filter(Boolean)));
+  const selectedUrls = uniqueUrls.slice(0, limit);
+  const results = [];
+  for (const url of selectedUrls) {
+    results.push(await probeImageUrl(url));
+  }
+  const broken = results.filter((result) => !result.ok);
+  return {
+    scanned_count: results.length,
+    total_url_count: uniqueUrls.length,
+    broken_count: broken.length,
+    broken_urls: broken.slice(0, 20),
+    skipped: false,
+    truncated: uniqueUrls.length > selectedUrls.length,
+  };
+}
+
 function unwrapLivePdpPayload(response = {}) {
   const directPayload = ensureJsonObject(response?.pdp_payload || response?.payload);
   if (Array.isArray(directPayload?.modules)) return directPayload;
@@ -223,7 +309,7 @@ function unwrapLivePdpPayload(response = {}) {
   return ensureJsonObject(response);
 }
 
-async function auditRow(row, { catalogBaseUrl, gatewayUrl }) {
+async function auditRow(row, { catalogBaseUrl, gatewayUrl, imageHealthEnabled = true, imageHealthLimit = null }) {
   const seedData = ensureJsonObject(row.seed_data);
   const snapshot = ensureJsonObject(seedData.snapshot);
   const variantScopedSeed =
@@ -247,6 +333,11 @@ async function auditRow(row, { catalogBaseUrl, gatewayUrl }) {
         })
       : Promise.resolve({ error: 'missing_product_id' }),
   ]);
+  const livePayload = unwrapLivePdpPayload(livePdp);
+  const imageHealth = await probeImageHealth(collectLiveGalleryImages(livePayload), {
+    skip: !imageHealthEnabled,
+    limit: imageHealthLimit,
+  });
   const audit = auditExternalSeedRow(row);
   const seedGate = buildSeedGate(audit);
   const extractorGate = buildExtractorGate({
@@ -255,9 +346,18 @@ async function auditRow(row, { catalogBaseUrl, gatewayUrl }) {
   });
   const livePdpGate = buildLivePdpGate({
     extractorProduct: extractor.product || {},
-    livePayload: unwrapLivePdpPayload(livePdp),
+    livePayload,
     liveResponse: ensureJsonObject(livePdp),
     expectedPrice: variantScopedSeed ? row.price_amount : null,
+    imageHealth,
+  });
+  const identityGate = buildIdentityGate({
+    livePayload,
+    liveResponse: ensureJsonObject(livePdp),
+  });
+  const productIntelGate = buildProductIntelGate({
+    livePayload,
+    liveResponse: ensureJsonObject(livePdp),
   });
   const similarGate = buildSimilarGate({
     similarResponse: ensureJsonObject(similar),
@@ -266,9 +366,13 @@ async function auditRow(row, { catalogBaseUrl, gatewayUrl }) {
   return buildExternalSeedQualityResult({
     seedId: row.id,
     externalProductId: productId,
+    market: row.market,
+    domain: row.domain,
     canonicalUrl: normalizeUrlLike(row.canonical_url || snapshot.canonical_url || extractor.target_url),
     seedGate,
     extractorGate,
+    identityGate,
+    productIntelGate,
     livePdpGate,
     similarGate,
   });
@@ -280,6 +384,8 @@ async function main() {
   const limit = Math.max(1, Math.min(200, Number(argValue('limit') || 20) || 20));
   const offset = Math.max(0, Number(argValue('offset') || 0) || 0);
   const gatewayUrl = resolveGatewayUrl(argValue('gateway-url') || argValue('gateway') || argValue('gateway-base-url'));
+  const imageHealthEnabled = !hasArg('skip-image-health');
+  const imageHealthLimit = argValue('image-health-limit');
   const rows = await fetchRows({
     market,
     seedId: argValue('seed-id'),
@@ -296,6 +402,8 @@ async function main() {
       await auditRow(row, {
         catalogBaseUrl: DEFAULT_CATALOG_BASE_URL,
         gatewayUrl,
+        imageHealthEnabled,
+        imageHealthLimit,
       }),
     );
   }
@@ -335,5 +443,7 @@ module.exports = {
   buildAuthoritativePayload,
   isAuthoritativeInvokeUrl,
   unwrapLivePdpPayload,
+  probeImageUrl,
+  probeImageHealth,
   auditRow,
 };

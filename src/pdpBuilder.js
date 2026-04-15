@@ -852,6 +852,15 @@ function buildVariants(product) {
   });
 }
 
+function isDecorativePdpMediaUrl(url) {
+  const normalized = String(url || '').trim().toLowerCase();
+  if (!normalized) return false;
+  if (/\.(?:svg)(?:$|\?)/i.test(normalized)) return true;
+  return ['menu', 'icon', 'logo', 'plpbanner', 'banner', 'navigation', 'cart'].some((token) =>
+    normalized.includes(token),
+  );
+}
+
 function buildMediaItems(product, variants) {
   const items = [];
   const seenMediaKeys = new Set();
@@ -869,7 +878,7 @@ function buildMediaItems(product, variants) {
   const pushImageItem = (rawUrl, extra = {}) => {
     const url = normalizePdpImageUrl(rawUrl);
     const key = buildPdpImageDedupeKey(url);
-    if (!url || !key || seenMediaKeys.has(key)) return;
+    if (!url || !key || isDecorativePdpMediaUrl(url) || seenMediaKeys.has(key)) return;
     seenMediaKeys.add(key);
     items.push({
       type: 'image',
@@ -1019,7 +1028,9 @@ const STRUCTURED_DETAIL_SECTION_RE =
 const OVERVIEW_DETAIL_SECTION_RE = /^(overview|product details|details|about|description)$/i;
 const BRAND_STORY_SECTION_RE = /(?:brand story|our story|about the brand)/i;
 const FACT_DETAIL_SECTION_RE =
-  /^(benefits?|clinical results?|results?|proven results?|key ingredients?|why it works|texture|finish|best for|formulation|what else you should know|good to know)$/i;
+  /^(benefits?|clinical results?|results?|proven results?|key ingredients?|why it works|texture|finish|coverage|free of|set includes|best for|formulation|what else you should know|good to know)$/i;
+const SECTION_SOUP_LABEL_RE =
+  /\b(description|details?|overview|benefits?|clinical results?|results?|proven results?|key ingredients?|why it works|texture|finish|coverage|free of|set includes|best for|formulation|what else you should know|good to know|ingredients?|active ingredients?|how to use|how to apply|directions?|faq|frequently asked questions?|q\s*&\s*a|questions?)\b\s*:?\s*/gi;
 
 function hasCapturedExternalSeedPdpNarrative(product) {
   if (!isExternalSeedLikeProduct(product)) return false;
@@ -1059,6 +1070,11 @@ function normalizeDetailSectionHeading(value) {
   if (/^(?:clinical(?: results?| claims?)?|results?|proven results?)$/i.test(heading)) {
     return 'Clinical Results';
   }
+  if (/^coverage$/i.test(heading)) return 'Coverage';
+  if (/^finish$/i.test(heading)) return 'Finish';
+  if (/^texture$/i.test(heading)) return 'Texture';
+  if (/^free of$/i.test(heading)) return 'Free Of';
+  if (/^set includes$/i.test(heading)) return 'Set Includes';
   if (/^(?:how to use|how to apply|directions?|usage)$/i.test(heading)) return 'How to Use';
   if (/^(?:ingredients?|ingredients and safety|ingredient list|full ingredients?|full ingredient list|inci)$/i.test(heading)) {
     return 'Ingredients';
@@ -1067,6 +1083,85 @@ function normalizeDetailSectionHeading(value) {
     return 'FAQ';
   }
   return heading;
+}
+
+function extractSectionSoupSegments(value) {
+  const text = asNonEmptyString(value);
+  if (!text) return [];
+  const matches = [];
+  SECTION_SOUP_LABEL_RE.lastIndex = 0;
+  let match = SECTION_SOUP_LABEL_RE.exec(text);
+  while (match) {
+    const rawLabel = String(match[1] || '');
+    const previousChar = match.index > 0 ? text[match.index - 1] : '';
+    if (previousChar === '-') {
+      match = SECTION_SOUP_LABEL_RE.exec(text);
+      continue;
+    }
+    if (/^(coverage|finish|texture)$/i.test(rawLabel) && rawLabel[0] !== rawLabel[0].toUpperCase()) {
+      match = SECTION_SOUP_LABEL_RE.exec(text);
+      continue;
+    }
+    matches.push({
+      heading: normalizeDetailSectionHeading(rawLabel),
+      index: match.index,
+      contentStart: SECTION_SOUP_LABEL_RE.lastIndex,
+    });
+    match = SECTION_SOUP_LABEL_RE.exec(text);
+  }
+  if (matches.length < 2) return [];
+
+  return matches
+    .map((entry, index) => {
+      const next = matches[index + 1];
+      const content = cleanStructuredToken(text.slice(entry.contentStart, next ? next.index : undefined));
+      return {
+        heading: entry.heading,
+        content,
+      };
+    })
+    .filter((entry) => entry.heading && entry.content);
+}
+
+function looksLikeSectionSoupText(value) {
+  const text = asNonEmptyString(value);
+  if (!text) return false;
+  const segments = extractSectionSoupSegments(text);
+  if (segments.length >= 2) return true;
+  return (
+    text.length > 500 &&
+    /\b(benefits?|how to use|ingredients?|clinical results?|coverage|finish)\b/i.test(text) &&
+    /\b(description|details?|overview)\b/i.test(text)
+  );
+}
+
+function cleanOverviewDescriptionText(value) {
+  const text = asNonEmptyString(value);
+  if (!text) return '';
+  const segments = extractSectionSoupSegments(text);
+  if (!segments.length) return text;
+  const preferred =
+    segments.find((section) => OVERVIEW_DETAIL_SECTION_RE.test(section.heading)) ||
+    segments.find((section) => !STRUCTURED_DETAIL_SECTION_RE.test(section.heading) && !FACT_DETAIL_SECTION_RE.test(section.heading));
+  return preferred?.content || '';
+}
+
+function extractFactSectionsFromSection(section) {
+  if (!section?.content) return [];
+  const segments = extractSectionSoupSegments(section.content);
+  if (!segments.length) return [];
+  return segments
+    .filter((entry) => FACT_DETAIL_SECTION_RE.test(entry.heading) && !BRAND_STORY_SECTION_RE.test(entry.heading))
+    .map((entry) => ({
+      heading: entry.heading,
+      content_type: 'text',
+      content: entry.content,
+      collapsed_by_default: section.collapsed_by_default ?? true,
+    }));
+}
+
+function findDetailSectionContent(detailSections, pattern) {
+  return detailSections.find((section) => pattern.test(section.heading))?.content || '';
 }
 
 function collectStructuredDetailSections(product) {
@@ -1107,11 +1202,17 @@ function collectStructuredDetailSections(product) {
 
 function resolveProductDescriptionText(product, detailSections = collectStructuredDetailSections(product)) {
   const explicitPdpDescription = asNonEmptyString(product.pdp_description_raw);
+  const capturedNarrativeSoup = looksLikeCapturedExternalSeedNarrativeSoup(
+    product,
+    explicitPdpDescription,
+    detailSections,
+  );
   if (
     explicitPdpDescription &&
-    !looksLikeCapturedExternalSeedNarrativeSoup(product, explicitPdpDescription, detailSections)
+    !looksLikeSectionSoupText(explicitPdpDescription) &&
+    !capturedNarrativeSoup
   ) {
-    const overviewSection = detailSections.find(
+    const overviewContentSection = detailSections.find(
       (section) =>
         !STRUCTURED_DETAIL_SECTION_RE.test(section.heading) &&
         !FACT_DETAIL_SECTION_RE.test(section.heading) &&
@@ -1119,9 +1220,24 @@ function resolveProductDescriptionText(product, detailSections = collectStructur
         section.content &&
         normalizeTextKey(explicitPdpDescription).includes(normalizeTextKey(section.content)),
     );
-    if (overviewSection?.content) return overviewSection.content;
+    if (overviewContentSection?.content) return overviewContentSection.content;
     return explicitPdpDescription;
   }
+
+  const overviewSection =
+    detailSections.find((section) => OVERVIEW_DETAIL_SECTION_RE.test(section.heading)) ||
+    (!capturedNarrativeSoup
+      ? detailSections.find(
+          (section) =>
+            !STRUCTURED_DETAIL_SECTION_RE.test(section.heading) &&
+            !FACT_DETAIL_SECTION_RE.test(section.heading) &&
+            !BRAND_STORY_SECTION_RE.test(section.heading),
+        )
+      : undefined);
+  const cleanedOverview = cleanOverviewDescriptionText(overviewSection?.content || '');
+  if (cleanedOverview) return cleanedOverview;
+  const cleanedPdpDescription = capturedNarrativeSoup ? '' : cleanOverviewDescriptionText(explicitPdpDescription);
+  if (cleanedPdpDescription) return cleanedPdpDescription;
 
   const structuredDescription =
     typeof product.description === 'string'
@@ -1130,28 +1246,11 @@ function resolveProductDescriptionText(product, detailSections = collectStructur
         ? product.description.text || product.description.raw_text || ''
         : '';
   const normalizedDescription = stripHtml(structuredDescription || '');
-  if (
-    normalizedDescription &&
-    !looksLikeCapturedExternalSeedNarrativeSoup(product, normalizedDescription, detailSections)
-  ) {
-    return normalizedDescription;
-  }
-
-  if (hasCapturedExternalSeedPdpNarrative(product)) return '';
-
-  const overviewSection =
-    detailSections.find((section) => OVERVIEW_DETAIL_SECTION_RE.test(section.heading)) ||
-    detailSections.find(
-      (section) =>
-        !STRUCTURED_DETAIL_SECTION_RE.test(section.heading) &&
-        !FACT_DETAIL_SECTION_RE.test(section.heading) &&
-        !BRAND_STORY_SECTION_RE.test(section.heading),
-    );
-  return overviewSection?.content || '';
+  if (normalizedDescription && !looksLikeSectionSoupText(normalizedDescription)) return normalizedDescription;
+  return '';
 }
 
 function resolveBrandStoryText(product, detailSections = collectStructuredDetailSections(product)) {
-  if (hasCapturedExternalSeedPdpNarrative(product)) return '';
   const explicit = asNonEmptyString(product.brand_story || product.brandStory);
   if (explicit) return explicit;
   return detailSections.find((section) => BRAND_STORY_SECTION_RE.test(section.heading))?.content || '';
@@ -1160,7 +1259,11 @@ function resolveBrandStoryText(product, detailSections = collectStructuredDetail
 function buildDetailSections(product, detailSections = collectStructuredDetailSections(product)) {
   const sections = [];
   const desc = resolveProductDescriptionText(product, detailSections);
-  if (hasCapturedExternalSeedPdpNarrative(product) && !desc) return [];
+  const capturedNarrativeSoup = looksLikeCapturedExternalSeedNarrativeSoup(
+    product,
+    product.pdp_description_raw,
+    detailSections,
+  );
   if (desc) {
     sections.push({
       heading: 'Description',
@@ -1169,7 +1272,6 @@ function buildDetailSections(product, detailSections = collectStructuredDetailSe
       collapsed_by_default: false,
     });
   }
-  if (hasCapturedExternalSeedPdpNarrative(product)) return sections;
 
   detailSections
     .filter((section) => {
@@ -1177,6 +1279,7 @@ function buildDetailSections(product, detailSections = collectStructuredDetailSe
       if (FACT_DETAIL_SECTION_RE.test(section.heading)) return false;
       if (BRAND_STORY_SECTION_RE.test(section.heading)) return false;
       if (OVERVIEW_DETAIL_SECTION_RE.test(section.heading)) return false;
+      if (capturedNarrativeSoup) return false;
       if (desc && section.content === desc) return false;
       return true;
     })
@@ -1189,7 +1292,7 @@ function buildDetailSections(product, detailSections = collectStructuredDetailSe
       });
     });
 
-  if (product.category || product.product_type) {
+  if (sections.length && (product.category || product.product_type)) {
     sections.push({
       heading: 'Category',
       content_type: 'text',
@@ -1202,9 +1305,7 @@ function buildDetailSections(product, detailSections = collectStructuredDetailSe
 }
 
 function buildProductFactsSections(product, detailSections = collectStructuredDetailSections(product)) {
-  if (hasCapturedExternalSeedPdpNarrative(product)) return [];
-
-  return detailSections
+  const sections = detailSections
     .filter((section) => FACT_DETAIL_SECTION_RE.test(section.heading) && !BRAND_STORY_SECTION_RE.test(section.heading))
     .map((section) => ({
       heading: section.heading,
@@ -1212,12 +1313,45 @@ function buildProductFactsSections(product, detailSections = collectStructuredDe
       content: section.content,
       collapsed_by_default: section.collapsed_by_default ?? true,
     }));
+
+  detailSections
+    .filter((section) => OVERVIEW_DETAIL_SECTION_RE.test(section.heading))
+    .flatMap((section) => extractFactSectionsFromSection(section))
+    .forEach((section) => sections.push(section));
+
+  const seen = new Set();
+  return sections.filter((section) => {
+    const key = `${section.heading.toLowerCase()}::${section.content.toLowerCase()}`;
+    if (!section.content || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function buildIngredientsInci(product) {
+  const detailSections = collectStructuredDetailSections(product);
+  const detailSectionIngredients = findDetailSectionContent(
+    detailSections,
+    /^(ingredients|full ingredients|ingredient list|inci)$/i,
+  );
+  const rawText = asNonEmptyString(product.raw_ingredient_text_clean);
+  const rawIngredientCandidate = rawText
+    ? {
+        title: 'Ingredients',
+        raw_text: rawText,
+        items: uniqueNonEmptyStrings([
+          ...(Array.isArray(product.inci_list) ? product.inci_list : []),
+          ...splitIngredientsItemsFromText(rawText),
+        ]),
+        source_origin: 'retail_pdp',
+        source_quality_status: 'captured',
+      }
+    : null;
   const structured = buildIngredientsModuleData(
     [
       product.pdp_ingredients_raw,
+      rawIngredientCandidate,
+      detailSectionIngredients,
       product.ingredients_inci,
       product.ingredientsInci,
       product.inci_ingredients,
@@ -1228,7 +1362,6 @@ function buildIngredientsInci(product) {
   );
   if (structured) return structured;
 
-  const rawText = asNonEmptyString(product.raw_ingredient_text_clean);
   const items = uniqueNonEmptyStrings([
     ...(Array.isArray(product.inci_list) ? product.inci_list : []),
     ...splitIngredientsItemsFromText(rawText),

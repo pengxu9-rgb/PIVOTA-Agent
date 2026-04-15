@@ -15,7 +15,7 @@ const {
 } = require('../src/services/externalSeedProducts');
 const { buildExternalSeedRecallDoc } = require('../src/services/externalSeedRecall');
 const { enrichExternalSeedRowIngredients } = require('../src/services/externalSeedIngredientEnrichment');
-const { normalizePdpImageUrl } = require('../src/utils/pdpImageUrls');
+const { buildPdpImageDedupeKey, normalizePdpImageUrl } = require('../src/utils/pdpImageUrls');
 
 const DEFAULT_CATALOG_BASE_URL =
   process.env.CATALOG_INTELLIGENCE_BASE_URL ||
@@ -282,6 +282,8 @@ function isDecorativeSeedImageUrl(value) {
 function normalizeComparableImageKey(value) {
   const normalized = normalizePdpImageUrl(value) || normalizeUrlLike(value);
   if (!normalized) return '';
+  const dedupeKey = buildPdpImageDedupeKey(normalized);
+  if (dedupeKey) return dedupeKey;
   try {
     const parsed = new URL(normalized);
     const segments = parsed.pathname.split('/').filter(Boolean);
@@ -319,6 +321,127 @@ function shouldMergeProductGalleryForSelectedVariant(selectedVariantImageUrls, p
   if (selectedKeys.length === 0 || productKeys.length <= selectedKeys.length) return false;
   if (selectedKeys.length === 1) return selectedKeys[0] === productKeys[0];
   return selectedKeys.every((key) => productKeys.includes(key));
+}
+
+async function probeSeedImageUrl(url) {
+  const target = normalizeUrlLike(url);
+  if (!target) return { url, ok: false, status: null, content_type: null, error: 'invalid_url' };
+  const requestConfig = {
+    timeout: Number(process.env.EXTERNAL_SEED_BACKFILL_IMAGE_TIMEOUT_MS || 5000),
+    headers: {
+      Accept: 'image/avif,image/webp,image/*,*/*;q=0.8',
+      'User-Agent': 'Pivota external seed backfill/1.0',
+    },
+    validateStatus: () => true,
+  };
+  try {
+    let response = await axios.head(target, requestConfig);
+    if ([403, 405].includes(Number(response.status))) {
+      response = await axios.get(target, {
+        ...requestConfig,
+        responseType: 'arraybuffer',
+        headers: {
+          ...requestConfig.headers,
+          Range: 'bytes=0-0',
+        },
+        maxContentLength: 1024 * 64,
+      });
+    }
+    const status = Number(response.status || 0);
+    const contentType = normalizeNonEmptyString(response.headers?.['content-type']).toLowerCase();
+    return {
+      url: target,
+      ok: status >= 200 && status < 400 && (!contentType || contentType.includes('image/')),
+      status: status || null,
+      content_type: contentType || null,
+    };
+  } catch (error) {
+    return {
+      url: target,
+      ok: false,
+      status: null,
+      content_type: null,
+      error: normalizeNonEmptyString(error?.code || error?.message || 'request_failed'),
+    };
+  }
+}
+
+function applyValidatedImageUrls(nextRow, validImageUrls, validation) {
+  const seedData = ensureJsonObject(nextRow.seed_data);
+  const snapshot = ensureJsonObject(seedData.snapshot);
+  const imageUrl = validImageUrls[0] || '';
+  const nextSeedData = {
+    ...seedData,
+    ...(imageUrl ? { image_url: imageUrl, image_urls: validImageUrls, images: validImageUrls } : {}),
+    snapshot: {
+      ...snapshot,
+      ...(imageUrl ? { image_url: imageUrl, image_urls: validImageUrls, images: validImageUrls } : {}),
+      diagnostics: {
+        ...ensureJsonObject(snapshot.diagnostics),
+        image_health_validation: validation,
+      },
+    },
+  };
+  return {
+    ...nextRow,
+    ...(imageUrl ? { image_url: imageUrl } : {}),
+    seed_data: nextSeedData,
+  };
+}
+
+async function validateNextRowImageHealth(nextRow) {
+  const seedData = ensureJsonObject(nextRow.seed_data);
+  const snapshot = ensureJsonObject(seedData.snapshot);
+  const imageUrls = sanitizeSeedImageUrls([
+    nextRow.image_url,
+    seedData.image_url,
+    ...(Array.isArray(seedData.image_urls) ? seedData.image_urls : []),
+    snapshot.image_url,
+    ...(Array.isArray(snapshot.image_urls) ? snapshot.image_urls : []),
+  ]);
+  if (!imageUrls.length) {
+    return {
+      nextRow,
+      validation: {
+        skipped: true,
+        reason: 'no_candidate_images',
+        scanned_count: 0,
+        broken_count: 0,
+      },
+    };
+  }
+  const checks = [];
+  for (const url of imageUrls) {
+    checks.push(await probeSeedImageUrl(url));
+  }
+  const validImageUrls = checks.filter((item) => item.ok).map((item) => item.url);
+  const broken = checks.filter((item) => !item.ok);
+  const validation = {
+    skipped: false,
+    scanned_count: checks.length,
+    valid_count: validImageUrls.length,
+    broken_count: broken.length,
+    broken_urls: broken.slice(0, 20),
+  };
+  if (!validImageUrls.length) {
+    return {
+      nextRow,
+      validation: {
+        ...validation,
+        status: 'failed_no_valid_images',
+      },
+    };
+  }
+  return {
+    nextRow: applyValidatedImageUrls(nextRow, validImageUrls, {
+      ...validation,
+      status: broken.length ? 'filtered_broken_images' : 'passed',
+    }),
+    validation: {
+      ...validation,
+      status: broken.length ? 'filtered_broken_images' : 'passed',
+    },
+  };
 }
 
 function normalizeDetailSectionHeading(value) {
@@ -1364,13 +1487,34 @@ async function processRow(row, options) {
         normalizeNonEmptyString(row?.ingredient_name) ||
         normalizeNonEmptyString(ensureJsonObject(row?.seed_data).ingredient_name),
     });
-    const enrichedNextRow =
+    let enrichedNextRow =
       enrichment?.row && typeof enrichment.row === 'object'
         ? {
             ...payload.nextRow,
             seed_data: ensureJsonObject(enrichment.row.seed_data),
           }
         : payload.nextRow;
+    let imageHealthValidation = null;
+    if (options.validateImageHealth) {
+      const validationResult = await validateNextRowImageHealth(enrichedNextRow);
+      imageHealthValidation = validationResult.validation;
+      if (validationResult.validation?.status === 'failed_no_valid_images') {
+        return {
+          status: 'skipped',
+          reason: 'image_health_validation_failed',
+          row,
+          targetUrl,
+          payload: {
+            ...payload,
+            nextRow: enrichedNextRow,
+            ingredient_enrichment: enrichment || null,
+            image_health_validation: imageHealthValidation,
+            variant_seed_rows: [],
+          },
+        };
+      }
+      enrichedNextRow = validationResult.nextRow;
+    }
     const changed =
       payload.changed ||
       JSON.stringify(comparableSeedData(payload.nextRow.seed_data)) !==
@@ -1380,6 +1524,7 @@ async function processRow(row, options) {
       changed,
       nextRow: enrichedNextRow,
       ingredient_enrichment: enrichment || null,
+      image_health_validation: imageHealthValidation,
     };
     const variantSeedRows = options.expandVariants ? buildVariantSeedRows(row, enrichedPayload) : [];
     const hasVariantSeedRows = variantSeedRows.length > 0;
@@ -1633,6 +1778,10 @@ async function main() {
     skipInsights: hasFlag('skip-insights') || hasFlag('skipInsights'),
     insightsOutDir: argValue('insights-out-dir') || argValue('insightsOutDir') || '',
     insightsSkipGemini: hasFlag('insights-skip-gemini') || hasFlag('insightsSkipGemini'),
+    validateImageHealth:
+      !(hasFlag('dry-run') || hasFlag('dryRun')) &&
+      !hasFlag('skip-image-health-validation') &&
+      !hasFlag('skipImageHealthValidation'),
     baseUrl: DEFAULT_CATALOG_BASE_URL,
   };
 
@@ -1694,6 +1843,7 @@ module.exports = {
   normalizeTargetUrlForMarket,
   recoverTargetUrlFromDiagnostics,
   sanitizeSeedImageUrls,
+  validateNextRowImageHealth,
   collectBackfilledExternalProductIds,
   filterProductIdsMissingPivotaInsights,
   preparePivotaInsightsForBackfill,
