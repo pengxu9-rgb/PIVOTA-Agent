@@ -16782,12 +16782,14 @@ async function buildProductIntelTopLevelModuleData({
   relatedProducts = [],
   offersData = null,
   canonicalProductRef = null,
+  alternateCanonicalProductRefs = [],
   productGroupId = null,
   requireReviewedBundle = true,
 }) {
   const productWithIntel = await hydrateProductWithPublishedIntel({
     product,
     canonicalProductRef,
+    alternateCanonicalProductRefs,
     requireReviewedBundle,
     allowLegacyAnalysisFallback: !requireReviewedBundle,
   });
@@ -20794,6 +20796,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	        identityGraphPublishedIntel = await buildProductIntelTopLevelModuleData({
             product: identityGraphLive.synthetic_product,
             canonicalProductRef: identityGraphLive.canonical_product_ref || canonicalProductRef,
+            alternateCanonicalProductRefs: identityGraphLive.line_members,
             productGroupId: identityGraphLive.sellable_item_group_id || null,
           }).catch(() => null);
 	        markPdpV2Phase('identity_graph_product_intel_gate', identityGraphIntelGateStartedAt);
@@ -21214,6 +21217,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             relatedProducts,
             offersData,
             canonicalProductRef,
+            alternateCanonicalProductRefs: identityGraphLive?.line_members,
             productGroupId,
           })) ||
           identityGraphPublishedIntel;

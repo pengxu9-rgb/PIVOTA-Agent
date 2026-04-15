@@ -671,7 +671,7 @@ function readPublishedProductIntelBundle(product, context = {}) {
   return normalizePublishedProductIntelBundle(intelContainer, context);
 }
 
-function buildPublishedIntelKbKeys(product, canonicalProductRef = null) {
+function buildPublishedIntelKbKeys(product, canonicalProductRef = null, options = {}) {
   const keys = [];
   const push = (value) => {
     const text = asString(value);
@@ -691,6 +691,11 @@ function buildPublishedIntelKbKeys(product, canonicalProductRef = null) {
     const optionProductId = firstNonEmptyString(option?.product_id, option?.productId, option?.id);
     if (!optionProductId) continue;
     push(`product:${optionProductId}`);
+  }
+  for (const ref of asArray(options.alternateCanonicalProductRefs).slice(0, 24)) {
+    const refProductId = firstNonEmptyString(ref?.product_id, ref?.productId, ref?.id);
+    if (!refProductId) continue;
+    push(`product:${refProductId}`);
   }
 
   const urls = [
@@ -714,6 +719,7 @@ function buildPublishedIntelKbKeys(product, canonicalProductRef = null) {
 async function hydrateProductWithPublishedIntel({
   product,
   canonicalProductRef = null,
+  alternateCanonicalProductRefs = [],
   requireReviewedBundle = false,
   allowLegacyAnalysisFallback = true,
 } = {}) {
@@ -733,7 +739,9 @@ async function hydrateProductWithPublishedIntel({
     return sourceProduct;
   }
 
-  const kbKeys = buildPublishedIntelKbKeys(sourceProduct, canonicalProductRef);
+  const kbKeys = buildPublishedIntelKbKeys(sourceProduct, canonicalProductRef, {
+    alternateCanonicalProductRefs,
+  });
   for (const kbKey of kbKeys) {
     let kbEntry = null;
     try {

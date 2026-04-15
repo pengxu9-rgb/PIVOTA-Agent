@@ -350,6 +350,115 @@ describe('pdpProductIntel KB hydration', () => {
     });
   });
 
+  test('hydrates synthetic product-line products from identity graph alternate refs before PDP options are built', async () => {
+    const getProductIntelKbEntry = jest.fn(async (kbKey) => {
+      if (kbKey !== 'product:ext_line_reviewed') return null;
+      return {
+        kb_key: kbKey,
+        source: 'pivota_product_intel_pilot_selected',
+        last_success_at: '2026-04-14T14:18:04.353Z',
+        analysis: {
+          product_intel_v1: {
+            contract_version: 'pivota.product_intel.v1',
+            display_name: 'Pivota Insights',
+            canonical_product_ref: {
+              merchant_id: 'external_seed',
+              product_id: 'ext_line_reviewed',
+            },
+            product_intel_core: {
+              what_it_is: {
+                headline: 'Tinted mineral sunscreen',
+                body: 'A daily tinted mineral sunscreen centered on zinc oxide and flexible shade coverage.',
+              },
+              best_for: [{ tag: 'daily_spf', label: 'Daily SPF wear', confidence: 'moderate' }],
+              why_it_stands_out: [
+                {
+                  headline: 'Shared shade-line positioning',
+                  body: 'The reviewed insight applies across shade-specific PDPs in the same product line.',
+                  evidence_strength: 'seller_grounded',
+                },
+              ],
+              routine_fit: {
+                step: 'sunscreen',
+                am_pm: ['am'],
+                pairing_notes: ['Use as the final morning skincare step.'],
+              },
+              watchouts: [],
+              confidence: { overall: 'moderate' },
+              freshness: {
+                generated_at: '2026-04-14T14:18:04.353Z',
+                source_version: 'pilot_selected:line_level',
+              },
+              quality_state: 'limited',
+              evidence_profile: 'seller_only',
+            },
+            quality_state: 'limited',
+            evidence_profile: 'seller_only',
+            freshness: {
+              generated_at: '2026-04-14T14:18:04.353Z',
+              source_version: 'pilot_selected:line_level',
+            },
+            provenance: {
+              source: 'product_intel_pilot_compare',
+              generator: 'curated_override',
+            },
+          },
+        },
+      };
+    });
+    jest.doMock('../src/auroraBff/productIntelKbStore', () => ({
+      getProductIntelKbEntry,
+    }));
+
+    jest.doMock('../src/auroraBff/normalize', () => ({
+      normalizeProductAnalysis: jest.fn((raw) => ({
+        payload: raw,
+      })),
+    }));
+
+    const { hydrateProductWithPublishedIntel, buildProductIntelBundle } = require('../src/pdpProductIntel');
+
+    const product = {
+      merchant_id: 'external_seed',
+      product_id: 'ext_line_selected',
+      title: 'Daily Tinted Fluid Sunscreen DP320',
+      canonical_scope: 'synthetic',
+    };
+
+    const hydrated = await hydrateProductWithPublishedIntel({
+      product,
+      canonicalProductRef: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_line_selected',
+      },
+      alternateCanonicalProductRefs: [
+        {
+          merchant_id: 'external_seed',
+          product_id: 'ext_line_reviewed',
+        },
+      ],
+    });
+
+    expect(getProductIntelKbEntry).toHaveBeenCalledWith('product:ext_line_selected');
+    expect(getProductIntelKbEntry).toHaveBeenCalledWith('product:ext_line_reviewed');
+    expect(hydrated.product_intel.contract_version).toBe('pivota.product_intel.v1');
+    expect(hydrated.provenance.kb_key).toBe('product:ext_line_reviewed');
+
+    const bundle = buildProductIntelBundle({
+      product: hydrated,
+      canonicalProductRef: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_line_selected',
+      },
+    });
+
+    expect(bundle.product_intel_core.what_it_is.headline).toBe('Tinted mineral sunscreen');
+    expect(bundle.canonical_product_ref).toEqual({
+      merchant_id: 'external_seed',
+      product_id: 'ext_line_selected',
+    });
+  });
+
   test('prefers direct product_intel_v1 bundle from aurora_product_intel_kb over stale legacy assessment', async () => {
     jest.doMock('../src/auroraBff/productIntelKbStore', () => ({
       getProductIntelKbEntry: jest.fn(async (kbKey) => {

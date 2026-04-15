@@ -1679,6 +1679,7 @@ async function maybeBuildLiveSyntheticPdp({
           asString(item.merchant_id) === asString(composed.canonical_product_ref?.merchant_id) &&
           asString(item.product_id) === asString(composed.canonical_product_ref?.product_id),
       })),
+      line_members: lineListings.map((item) => buildGroupMember(item)),
     };
   } catch (err) {
     if (looksLikeRelationMissing(err)) return null;

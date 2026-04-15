@@ -312,6 +312,10 @@ describe('pdpIdentityGraph', () => {
         selected: false,
       }),
     ]);
+    expect(result?.line_members).toEqual([
+      expect.objectContaining({ product_id: 'ext_boj_dn310', merchant_id: 'external_seed' }),
+      expect.objectContaining({ product_id: 'ext_boj_dn350', merchant_id: 'external_seed' }),
+    ]);
   });
 
   test('buildIdentityListingFromProduct canonicalizes official URL host before conflict checks', () => {
