@@ -20906,6 +20906,34 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	      let canonicalProductForPdp = canonicalProduct;
 	      let identityGraphLive = null;
 	      let identityGraphPublishedIntel = null;
+	      const shouldPrewarmSimilarForCorePdp =
+	        !wantsSimilar &&
+	        !bypassCache &&
+	        wantsProductIntel &&
+	        !wantsOffers &&
+	        !wantsReviewsPreview;
+	      let similarPrewarmStarted = false;
+	      const startPdpSimilarPrewarm = (productForPdp) => {
+	        if (!shouldPrewarmSimilarForCorePdp || similarPrewarmStarted) return;
+	        similarPrewarmStarted = true;
+	        void prewarmPdpSimilarForProduct({
+	          payload,
+	          canonicalProductForPdp: productForPdp || canonicalProductForPdp,
+	          canonicalProductRef,
+	          canonicalProduct,
+	          checkoutToken,
+	          bypassCache: false,
+	        }).catch((err) => {
+	          logger.debug?.(
+	            {
+	              err: err?.message || String(err),
+	              product_id: canonicalProductRef?.product_id || null,
+	            },
+	            'PDP similar prewarm failed',
+	          );
+	        });
+	      };
+	      startPdpSimilarPrewarm(canonicalProductForPdp);
 	      const identityGraphLiveStartedAt = Date.now();
 	      identityGraphLive = await maybeBuildLiveSyntheticPdp({
           merchantId: requestedMerchantId || canonicalProductRef?.merchant_id,
@@ -21022,31 +21050,6 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 
       const pdpSchemaProfile = resolvePdpSchemaProfile(canonicalProductForPdp);
       const allowsBeautyFormulaModules = isBeautyFormulaPdpProfile(pdpSchemaProfile);
-
-      const shouldPrewarmSimilarForCorePdp =
-        !wantsSimilar &&
-        !bypassCache &&
-        wantsProductIntel &&
-        !wantsOffers &&
-        !wantsReviewsPreview;
-      if (shouldPrewarmSimilarForCorePdp) {
-        void prewarmPdpSimilarForProduct({
-          payload,
-          canonicalProductForPdp,
-          canonicalProductRef,
-          canonicalProduct,
-          checkoutToken,
-          bypassCache: false,
-        }).catch((err) => {
-          logger.debug?.(
-            {
-              err: err?.message || String(err),
-              product_id: canonicalProductRef?.product_id || null,
-            },
-            'PDP similar prewarm failed',
-          );
-        });
-      }
 
       if (allowsBeautyFormulaModules && (wantsActiveIngredients || wantsIngredientsInci || wantsProductIntel)) {
         const reviewedIngredientAuthorityStartedAt = Date.now();
