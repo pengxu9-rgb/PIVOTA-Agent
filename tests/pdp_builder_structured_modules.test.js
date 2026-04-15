@@ -272,4 +272,123 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     ]);
     expect(ingredientsInci?.data?.items).not.toEqual(expect.arrayContaining(['1', '2-Hexanediol']));
   });
+
+  test('classifies merch as generic and suppresses beauty ingredient modules', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_rare_tote',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'Puffy Traveler Tote',
+        brand: 'Rare Beauty',
+        category: 'Tote Bag',
+        image_url: 'https://example.com/tote.png',
+        price: { amount: 28, currency: 'USD' },
+        active_ingredients: ['Cotton'],
+        ingredients_inci: { items: ['Polyester'] },
+        details_sections: [
+          { heading: 'Materials', content: 'Quilted nylon exterior with recycled polyester lining.' },
+          { heading: 'Dimensions', content: 'Fits daily essentials and a small makeup pouch.' },
+          { heading: 'Care Instructions', content: 'Spot clean with a damp cloth.' },
+        ],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    expect(payload.pdp_schema_profile).toBe('generic_merch');
+    expect(payload.product.pdp_schema_profile).toBe('generic_merch');
+    expect(payload.modules.find((module) => module.type === 'active_ingredients')).toBeFalsy();
+    expect(payload.modules.find((module) => module.type === 'ingredients_inci')).toBeFalsy();
+    expect(payload.modules.find((module) => module.type === 'materials')?.data?.sections).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          heading: 'Materials',
+          content: 'Quilted nylon exterior with recycled polyester lining.',
+        }),
+      ]),
+    );
+    expect(payload.modules.find((module) => module.type === 'product_specs')?.data?.sections).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          heading: 'Dimensions',
+          content: 'Fits daily essentials and a small makeup pouch.',
+        }),
+      ]),
+    );
+    expect(payload.modules.find((module) => module.type === 'care_instructions')?.data?.sections).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          heading: 'Care Instructions',
+          content: 'Spot clean with a damp cloth.',
+        }),
+      ]),
+    );
+  });
+
+  test('keeps formula beauty ingredient modules under beauty formula profile', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_formula',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'Glow Replenishing Rice Milk Toner',
+        category: 'Toner',
+        image_url: 'https://example.com/rice-milk.png',
+        price: { amount: 18, currency: 'USD' },
+        ingredients_inci: { items: ['Water', 'Glycerin', 'Panthenol'] },
+        active_ingredients: ['Glycerin'],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    expect(payload.pdp_schema_profile).toBe('beauty_formula');
+    expect(payload.modules.find((module) => module.type === 'ingredients_inci')?.data?.items).toEqual([
+      'Water',
+      'Glycerin',
+      'Panthenol',
+    ]);
+    expect(payload.modules.find((module) => module.type === 'active_ingredients')?.data?.items).toEqual([
+      'Glycerin',
+    ]);
+    expect(payload.modules.find((module) => module.type === 'materials')).toBeFalsy();
+  });
+
+  test('classifies beauty tools separately and emits usage safety without INCI', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_tool',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'Reusable Makeup Sponge',
+        category: 'Beauty Tool',
+        image_url: 'https://example.com/sponge.png',
+        price: { amount: 12, currency: 'USD' },
+        ingredients_inci: { items: ['Polyurethane'] },
+        details_sections: [
+          { heading: 'Materials', content: 'Latex-free sponge material.' },
+          { heading: 'Usage', content: 'Dampen before applying liquid foundation.' },
+          { heading: 'Cleaning', content: 'Wash after each use and air dry.' },
+        ],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    expect(payload.pdp_schema_profile).toBe('beauty_tool');
+    expect(payload.modules.find((module) => module.type === 'ingredients_inci')).toBeFalsy();
+    expect(payload.modules.find((module) => module.type === 'usage_safety')?.data?.sections).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          heading: 'How to Use',
+          content: 'Dampen before applying liquid foundation.',
+        }),
+        expect.objectContaining({
+          heading: 'Cleaning',
+          content: 'Wash after each use and air dry.',
+        }),
+      ]),
+    );
+  });
 });

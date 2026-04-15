@@ -1,5 +1,10 @@
 const { buildPdpImageDedupeKey, normalizePdpImageUrl, normalizePdpImageUrls } = require('./utils/pdpImageUrls');
 const { isDisplayablePdpFaqItem } = require('./services/pdpFaqQuality');
+const {
+  resolvePdpSchemaProfile,
+  isBeautyFormulaPdpProfile,
+  isBeautyToolPdpProfile,
+} = require('./pdpSchemaProfile');
 
 const BEAUTY_KEYWORDS = [
   'beauty',
@@ -186,7 +191,17 @@ const MODULE_REQUIREMENTS = {
   variant_selector: {
     requiredPaths: ['data.selected_variant_id'],
   },
-  product_details: {
+  product_overview: {
+    requiredPaths: ['data.sections'],
+    validate: (module) => {
+      const sections = module?.data?.sections;
+      return (
+        Array.isArray(sections) &&
+        sections.some((section) => section?.heading && section?.content && section?.content_type)
+      );
+    },
+  },
+  supplemental_details: {
     requiredPaths: ['data.sections'],
     validate: (module) => {
       const sections = module?.data?.sections;
@@ -217,6 +232,26 @@ const MODULE_REQUIREMENTS = {
   how_to_use: {
     requiredPaths: ['data.title', 'data.steps'],
     validate: (module) => Array.isArray(module?.data?.steps) && module.data.steps.length > 0,
+  },
+  materials: {
+    requiredPaths: ['data.sections'],
+    validate: (module) => Array.isArray(module?.data?.sections) && module.data.sections.length > 0,
+  },
+  product_specs: {
+    requiredPaths: ['data.sections'],
+    validate: (module) => Array.isArray(module?.data?.sections) && module.data.sections.length > 0,
+  },
+  care_instructions: {
+    requiredPaths: ['data.sections'],
+    validate: (module) => Array.isArray(module?.data?.sections) && module.data.sections.length > 0,
+  },
+  size_fit: {
+    requiredPaths: ['data.sections'],
+    validate: (module) => Array.isArray(module?.data?.sections) && module.data.sections.length > 0,
+  },
+  usage_safety: {
+    requiredPaths: ['data.sections'],
+    validate: (module) => Array.isArray(module?.data?.sections) && module.data.sections.length > 0,
   },
   reviews_preview: {
     requiredPaths: ['data.rating', 'data.review_count'],
@@ -1025,7 +1060,7 @@ function buildMediaItems(product, variants) {
 }
 
 const STRUCTURED_DETAIL_SECTION_RE =
-  /^(ingredients|active ingredients?|how to use|how to apply|directions?|warnings?|warning|caution|faq|frequently asked questions?|q\s*&\s*a|questions?)$/i;
+  /^(ingredients|active ingredients?|how to use|how to apply|directions?|materials?|material composition|fabric|composition|care|care instructions?|cleaning|wash(?:ing)? instructions?|storage|specifications?|specs?|dimensions?|capacity|weight|size(?: & fit)?|fit|sizing|size guide|measurements?|usage|safety|warnings?|warning|caution|warranty|faq|frequently asked questions?|q\s*&\s*a|questions?)$/i;
 const OVERVIEW_DETAIL_SECTION_RE = /^(overview|product details|details|about|description)$/i;
 const BRAND_STORY_SECTION_RE = /(?:brand story|our story|about the brand)/i;
 const FACT_DETAIL_SECTION_RE =
@@ -1257,14 +1292,9 @@ function resolveBrandStoryText(product, detailSections = collectStructuredDetail
   return detailSections.find((section) => BRAND_STORY_SECTION_RE.test(section.heading))?.content || '';
 }
 
-function buildDetailSections(product, detailSections = collectStructuredDetailSections(product)) {
+function buildProductOverviewSections(product, detailSections = collectStructuredDetailSections(product)) {
   const sections = [];
   const desc = resolveProductDescriptionText(product, detailSections);
-  const capturedNarrativeSoup = looksLikeCapturedExternalSeedNarrativeSoup(
-    product,
-    product.pdp_description_raw,
-    detailSections,
-  );
   if (desc) {
     sections.push({
       heading: 'Description',
@@ -1273,7 +1303,17 @@ function buildDetailSections(product, detailSections = collectStructuredDetailSe
       collapsed_by_default: false,
     });
   }
+  return sections;
+}
 
+function buildSupplementalDetailSections(product, detailSections = collectStructuredDetailSections(product)) {
+  const sections = [];
+  const desc = resolveProductDescriptionText(product, detailSections);
+  const capturedNarrativeSoup = looksLikeCapturedExternalSeedNarrativeSoup(
+    product,
+    product.pdp_description_raw,
+    detailSections,
+  );
   detailSections
     .filter((section) => {
       if (STRUCTURED_DETAIL_SECTION_RE.test(section.heading)) return false;
@@ -1530,6 +1570,210 @@ function buildHowToUse(product) {
     ],
     'How to use',
   );
+}
+
+function formatGenericKeyLabel(value) {
+  return asNonEmptyString(value)
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/\b\w/g, (match) => match.toUpperCase());
+}
+
+function stringifyGenericAttributeValue(value) {
+  if (!value) return '';
+  if (typeof value === 'string' || typeof value === 'number') return asNonEmptyString(value);
+  if (Array.isArray(value)) {
+    return uniqueNonEmptyStrings(value.map((item) => stringifyGenericAttributeValue(item))).join(', ');
+  }
+  if (typeof value !== 'object') return '';
+  const direct =
+    asNonEmptyString(value.value) ||
+    asNonEmptyString(value.text) ||
+    asNonEmptyString(value.raw_text) ||
+    asNonEmptyString(value.rawText) ||
+    asNonEmptyString(value.description) ||
+    asNonEmptyString(value.content) ||
+    asNonEmptyString(value.body);
+  if (direct) return direct;
+  const rows = Object.entries(value)
+    .map(([key, entryValue]) => {
+      const label = formatGenericKeyLabel(key);
+      const entry = stringifyGenericAttributeValue(entryValue);
+      if (!label || !entry) return '';
+      return `${label}: ${entry}`;
+    })
+    .filter(Boolean);
+  return uniqueNonEmptyStrings(rows).join('\n');
+}
+
+function collectGenericFieldCandidates(product, keys) {
+  const containers = [
+    product,
+    product?.seed_data,
+    product?.seedData,
+    product?.seed_data?.snapshot,
+    product?.seedData?.snapshot,
+    product?.raw,
+    product?.raw_detail,
+    product?.raw_payload,
+  ].filter((item) => item && typeof item === 'object');
+  const values = [];
+  for (const container of containers) {
+    for (const key of keys) {
+      if (container[key] != null) values.push(container[key]);
+    }
+  }
+  return values;
+}
+
+function buildGenericDetailsModuleData({
+  product,
+  detailSections,
+  title,
+  headingPattern,
+  fieldKeys,
+  additionalSections = [],
+}) {
+  const sections = [];
+  const seen = new Set();
+  const pushSection = (heading, content, collapsedByDefault = true) => {
+    const normalizedHeading = asNonEmptyString(heading) || title;
+    const normalizedContent = stringifyGenericAttributeValue(content);
+    if (!normalizedHeading || !normalizedContent) return;
+    const key = `${normalizedHeading.toLowerCase()}::${normalizedContent.toLowerCase()}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    sections.push({
+      heading: normalizedHeading,
+      content_type: 'text',
+      content: normalizedContent,
+      collapsed_by_default: collapsedByDefault,
+    });
+  };
+
+  detailSections
+    .filter((section) => headingPattern.test(section.heading))
+    .forEach((section) => pushSection(section.heading, section.content, section.collapsed_by_default ?? false));
+
+  collectGenericFieldCandidates(product, fieldKeys).forEach((value) => pushSection(title, value, false));
+  additionalSections.forEach((section) =>
+    pushSection(section.heading || title, section.content, section.collapsed_by_default ?? true),
+  );
+
+  if (!sections.length) return null;
+  return {
+    title,
+    sections,
+    source_origin: 'retail_pdp',
+  };
+}
+
+function buildProductSpecsModuleData(product, detailSections) {
+  const derivedSections = [];
+  const specRows = [];
+  const pushSpec = (label, value) => {
+    const text = stringifyGenericAttributeValue(value);
+    if (text) specRows.push(`${label}: ${text}`);
+  };
+  pushSpec('Dimensions', product.dimensions || product.dimension);
+  pushSpec('Capacity', product.capacity);
+  pushSpec('Weight', product.weight);
+  pushSpec('Included items', product.included_items || product.includedItems || product.set_includes);
+  pushSpec('Compatibility', product.compatibility || product.compatible_with || product.compatibleWith);
+  if (specRows.length) {
+    derivedSections.push({
+      heading: 'Specifications',
+      content: uniqueNonEmptyStrings(specRows).join('\n'),
+      collapsed_by_default: false,
+    });
+  }
+
+  return buildGenericDetailsModuleData({
+    product,
+    detailSections,
+    title: 'Specifications',
+    headingPattern: /^(specifications?|specs?|dimensions?|capacity|weight|included items?|set includes|compatibility)$/i,
+    fieldKeys: [
+      'specifications',
+      'specs',
+      'product_specs',
+      'dimensions',
+      'capacity',
+      'weight',
+      'included_items',
+      'includedItems',
+      'compatibility',
+      'compatible_with',
+      'compatibleWith',
+    ],
+    additionalSections: derivedSections,
+  });
+}
+
+function buildGenericAttributeModules(product, profile, detailSections = collectStructuredDetailSections(product)) {
+  const materials = buildGenericDetailsModuleData({
+    product,
+    detailSections,
+    title: 'Materials',
+    headingPattern: /^(materials?|material composition|fabric|composition|made of)$/i,
+    fieldKeys: [
+      'materials',
+      'material',
+      'material_composition',
+      'materialComposition',
+      'fabric',
+      'composition',
+    ],
+  });
+  const productSpecs = buildProductSpecsModuleData(product, detailSections);
+  const careInstructions = buildGenericDetailsModuleData({
+    product,
+    detailSections,
+    title: 'Care',
+    headingPattern: /^(care|care instructions?|cleaning|wash(?:ing)? instructions?|storage)$/i,
+    fieldKeys: [
+      'care',
+      'care_instructions',
+      'careInstructions',
+      'cleaning',
+      'washing_instructions',
+      'washingInstructions',
+      'storage',
+    ],
+  });
+  const sizeFit = buildGenericDetailsModuleData({
+    product,
+    detailSections,
+    title: 'Size & Fit',
+    headingPattern: /^(size(?: & fit)?|fit|sizing|size guide|measurements?)$/i,
+    fieldKeys: ['size_fit', 'sizeFit', 'fit', 'sizing', 'measurements'],
+  });
+  const usageSafety = isBeautyToolPdpProfile(profile)
+    ? buildGenericDetailsModuleData({
+        product,
+        detailSections,
+        title: 'Usage & Safety',
+        headingPattern: /^(usage|how to use|directions?|instructions?|safety|warnings?|warranty|cleaning)$/i,
+        fieldKeys: [
+          'usage_safety',
+          'usageSafety',
+          'safety',
+          'warnings',
+          'warning',
+          'warranty',
+          'instructions',
+          'directions',
+        ],
+      })
+    : null;
+
+  return {
+    materials,
+    productSpecs,
+    careInstructions,
+    sizeFit,
+    usageSafety,
+  };
 }
 
 function normalizeQuestionKey(value) {
@@ -2125,6 +2369,8 @@ function normalizeProductLineOptions(product) {
 
 function buildPdpPayload(args) {
   const product = args.product || {};
+  const pdpSchemaProfile = resolvePdpSchemaProfile(product);
+  const isBeautyFormulaProfile = isBeautyFormulaPdpProfile(pdpSchemaProfile);
   const brandLabel = resolveProductBrandLabel(product);
   const currency = product.currency || 'USD';
   const variants = buildVariants(product);
@@ -2169,11 +2415,15 @@ function buildPdpPayload(args) {
         })
         .filter(Boolean)
     : [];
-  const details = buildDetailSections(product, detailSections);
+  const productOverview = buildProductOverviewSections(product, detailSections);
+  const supplementalDetails = buildSupplementalDetailSections(product, detailSections);
   const productFacts = buildProductFactsSections(product, detailSections);
-  const ingredientsInci = buildIngredientsInci(product);
-  const activeIngredients = buildActiveIngredients(product, ingredientsInci);
+  const ingredientsInci = isBeautyFormulaProfile ? buildIngredientsInci(product) : null;
+  const activeIngredients = isBeautyFormulaProfile ? buildActiveIngredients(product, ingredientsInci) : null;
   const howToUse = buildHowToUse(product);
+  const genericAttributeModules = isBeautyFormulaProfile
+    ? {}
+    : buildGenericAttributeModules(product, pdpSchemaProfile, detailSections);
   const reviews = buildReviewsPreview(product, { includeEmpty: args.includeEmptyReviews });
   const recommendations = args.relatedProducts?.length
     ? buildRecommendations(args.relatedProducts, currency)
@@ -2226,12 +2476,12 @@ function buildPdpPayload(args) {
       promotions: product.promotions || [],
     },
   });
-  if (details.length) {
+  if (productOverview.length) {
     modules.push({
-      module_id: 'm_details',
-      type: 'product_details',
+      module_id: 'm_product_overview',
+      type: 'product_overview',
       priority: 70,
-      data: { sections: details },
+      data: { sections: productOverview },
     });
   }
   if (productFacts.length) {
@@ -2240,6 +2490,54 @@ function buildPdpPayload(args) {
       type: 'product_facts',
       priority: 72,
       data: { sections: productFacts },
+    });
+  }
+  if (supplementalDetails.length) {
+    modules.push({
+      module_id: 'm_supplemental_details',
+      type: 'supplemental_details',
+      priority: 69,
+      data: { sections: supplementalDetails },
+    });
+  }
+  if (genericAttributeModules.materials) {
+    modules.push({
+      module_id: 'm_materials',
+      type: 'materials',
+      priority: 76,
+      data: genericAttributeModules.materials,
+    });
+  }
+  if (genericAttributeModules.productSpecs) {
+    modules.push({
+      module_id: 'm_product_specs',
+      type: 'product_specs',
+      priority: 75,
+      data: genericAttributeModules.productSpecs,
+    });
+  }
+  if (genericAttributeModules.sizeFit) {
+    modules.push({
+      module_id: 'm_size_fit',
+      type: 'size_fit',
+      priority: 74,
+      data: genericAttributeModules.sizeFit,
+    });
+  }
+  if (genericAttributeModules.careInstructions) {
+    modules.push({
+      module_id: 'm_care_instructions',
+      type: 'care_instructions',
+      priority: 73,
+      data: genericAttributeModules.careInstructions,
+    });
+  }
+  if (genericAttributeModules.usageSafety) {
+    modules.push({
+      module_id: 'm_usage_safety',
+      type: 'usage_safety',
+      priority: 73,
+      data: genericAttributeModules.usageSafety,
     });
   }
   if (activeIngredients) {
@@ -2301,7 +2599,8 @@ function buildPdpPayload(args) {
   const payload = {
     schema_version: '1.0.0',
     page_type: 'product_detail',
-    x_template_hint: args.templateHint || detectTemplateHint(product),
+    pdp_schema_profile: pdpSchemaProfile,
+    x_template_hint: args.templateHint || (isBeautyFormulaProfile ? 'beauty' : 'generic'),
     tracking: {
       page_request_id: createPageRequestId(),
       entry_point: args.entryPoint || 'agent',
@@ -2311,6 +2610,7 @@ function buildPdpPayload(args) {
       product_id: product.product_id || product.id,
       merchant_id: product.merchant_id || product.merchant?.id || product.merchant_uuid,
       title: product.title || product.name,
+      pdp_schema_profile: pdpSchemaProfile,
       subtitle: product.subtitle || '',
       brand: brandLabel ? { name: brandLabel } : undefined,
       category_path: inferCategoryPath(product),
@@ -2360,6 +2660,7 @@ function buildPdpPayload(args) {
 module.exports = {
   buildPdpPayload,
   detectTemplateHint,
+  resolvePdpSchemaProfile,
   isExternalSeedLikeProduct,
   normalizePdpHttpUrl,
   resolveProductExternalRedirectUrl,

@@ -12,7 +12,8 @@ const DEFAULT_INCLUDE = Object.freeze([
   'active_ingredients',
   'ingredients_inci',
   'how_to_use',
-  'product_details',
+  'product_overview',
+  'supplemental_details',
   'reviews_preview',
   'similar',
 ]);

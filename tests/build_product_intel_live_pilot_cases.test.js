@@ -444,7 +444,7 @@ describe('build_product_intel_live_pilot_cases', () => {
           },
         },
         {
-          type: 'product_details',
+          type: 'product_overview',
           data: {
             sections: [
               {

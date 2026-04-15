@@ -143,7 +143,7 @@ describe('pdpBuilder structured PDP modules', () => {
     const activeModule = findModule(payload, 'active_ingredients');
     const howToUseModule = findModule(payload, 'how_to_use');
     const factsModule = findModule(payload, 'product_facts');
-    const detailsModule = findModule(payload, 'product_details');
+    const overviewModule = findModule(payload, 'product_overview');
 
     expect(payload.product.description).toBe(
       'A barrier-supporting cream designed for dry, reactive skin.',
@@ -175,12 +175,13 @@ describe('pdpBuilder structured PDP modules', () => {
 
     const factHeadings = factsModule?.data?.sections?.map((section) => section.heading) || [];
     expect(factHeadings).toEqual(['Clinical Results']);
-    expect(detailsModule?.data?.sections).toEqual([
+    expect(overviewModule?.data?.sections).toEqual([
       expect.objectContaining({
         heading: 'Description',
         content: 'A barrier-supporting cream designed for dry, reactive skin.',
       }),
     ]);
+    expect(findModule(payload, 'product_details')).toBeFalsy();
     expect(factHeadings).not.toContain('Ingredients');
     expect(factHeadings).not.toContain('How to Use');
   });
@@ -314,13 +315,14 @@ describe('pdpBuilder structured PDP modules', () => {
       entryPoint: 'agent',
     });
 
-    expect(findModule(payload, 'product_details')?.data?.sections).toEqual(expect.arrayContaining([
+    expect(findModule(payload, 'product_overview')?.data?.sections).toEqual(expect.arrayContaining([
       expect.objectContaining({
         heading: 'Description',
         content:
           'When your complexion calls for extra support, a few drops of Calming Barrier Serum will bring it back in balance.',
       }),
     ]));
+    expect(findModule(payload, 'product_details')).toBeFalsy();
     expect(findModule(payload, 'product_facts')).toBeFalsy();
   });
 

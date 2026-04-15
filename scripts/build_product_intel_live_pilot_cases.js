@@ -1218,8 +1218,10 @@ function buildPilotCaseFromPdpResponse(response, seedCase) {
 
   const canonicalPayloadModules = asArray(extractCanonicalPayload(response)?.modules);
   const detailsModule =
-    findModule(response?.modules, 'product_details') ||
-    findModule(canonicalPayloadModules, 'product_details');
+    findModule(response?.modules, 'product_overview') ||
+    findModule(canonicalPayloadModules, 'product_overview') ||
+    findModule(response?.modules, 'supplemental_details') ||
+    findModule(canonicalPayloadModules, 'supplemental_details');
   const ingredientsModule =
     findModule(response?.modules, 'ingredients_inci') ||
     findModule(canonicalPayloadModules, 'ingredients_inci');
@@ -1651,7 +1653,7 @@ async function fetchPdpResponse(gatewayUrl, productId, productRef = null) {
     operation: 'get_pdp_v2',
     payload: {
       product_ref: normalizedRef,
-      include: ['canonical', 'product_details', 'ingredients_inci', 'product_intel', 'reviews_preview', 'offers'],
+      include: ['canonical', 'product_overview', 'supplemental_details', 'ingredients_inci', 'product_intel', 'reviews_preview', 'offers'],
       options: {
         debug: false,
       },

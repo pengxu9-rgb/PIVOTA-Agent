@@ -41,7 +41,9 @@ function collectProductDetailsText(livePayload = {}) {
 function collectProductDetailsSections(livePayload = {}) {
   const modules = Array.isArray(livePayload?.modules) ? livePayload.modules : [];
   return modules
-    .filter((module) => module?.type === 'product_details')
+    .filter((module) =>
+      ['product_overview', 'supplemental_details', 'product_details'].includes(module?.type),
+    )
     .flatMap((module) => (Array.isArray(module?.data?.sections) ? module.data.sections : []))
     .filter(Boolean);
 }

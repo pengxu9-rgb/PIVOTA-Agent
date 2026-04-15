@@ -38,6 +38,10 @@ const {
   isExternalSeedLikeProduct,
   resolveProductExternalRedirectUrl,
 } = require('./pdpBuilder');
+const {
+  resolvePdpSchemaProfile,
+  isBeautyFormulaPdpProfile,
+} = require('./pdpSchemaProfile');
 const { buildPdpCorePrewarmRequestBody } = require('./pdpConfig');
 const {
   PRODUCT_INTEL_CONTRACT_VERSION,
@@ -19678,6 +19682,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	            includeEmptyReviews: wantsReviews || pdpOptions.includeEmptyReviews,
 	            debug: pdpOptions.debug,
 	          });
+	          const pdpSchemaProfile = resolvePdpSchemaProfile(product);
+	          const allowsBeautyFormulaModules = isBeautyFormulaPdpProfile(pdpSchemaProfile);
 
 	          const reviewsModule = Array.isArray(pdpPayload.modules)
 	            ? pdpPayload.modules.find((m) => m?.type === 'reviews_preview')
@@ -19685,15 +19691,21 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	          const recModule = Array.isArray(pdpPayload.modules)
 	            ? pdpPayload.modules.find((m) => m?.type === 'recommendations')
 	            : null;
-	          const structuredIngredientModules = buildStructuredPdpIngredientModules(product);
+	          const structuredIngredientModules = allowsBeautyFormulaModules
+	            ? buildStructuredPdpIngredientModules(product)
+	            : {};
 	          const activeIngredientsData =
-	            structuredIngredientModules.activeIngredientsData ||
-	            findPdpPayloadModuleData(pdpPayload, 'active_ingredients') ||
-	            null;
+	            allowsBeautyFormulaModules
+	              ? structuredIngredientModules.activeIngredientsData ||
+	                findPdpPayloadModuleData(pdpPayload, 'active_ingredients') ||
+	                null
+	              : null;
 	          const ingredientsInciData =
-	            structuredIngredientModules.ingredientsInciData ||
-	            findPdpPayloadModuleData(pdpPayload, 'ingredients_inci') ||
-	            null;
+	            allowsBeautyFormulaModules
+	              ? structuredIngredientModules.ingredientsInciData ||
+	                findPdpPayloadModuleData(pdpPayload, 'ingredients_inci') ||
+	                null
+	              : null;
 	          const fallbackOfferId = `of:mock:${product.merchant_id || DEFAULT_MERCHANT_ID}:${product.id || product.product_id}`;
 	          const offersData = {
 	            offers_count: 1,
@@ -19726,7 +19738,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	            {
 	              type: 'canonical',
 	              required: true,
-	              data: { pdp_payload: stripResponseOwnedPdpModulesFromCanonicalPayload(pdpPayload) },
+	              data: {
+	                pdp_schema_profile: pdpSchemaProfile,
+	                pdp_payload: stripResponseOwnedPdpModulesFromCanonicalPayload(pdpPayload),
+	              },
 	            },
 	          ];
 
@@ -19739,7 +19754,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	            });
 	          }
 
-	          if (wantsActiveIngredients) {
+	          if (wantsActiveIngredients && allowsBeautyFormulaModules) {
 	            modules.push({
 	              type: 'active_ingredients',
 	              required: false,
@@ -19748,7 +19763,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	            });
 	          }
 
-	          if (wantsIngredientsInci) {
+	          if (wantsIngredientsInci && allowsBeautyFormulaModules) {
 	            modules.push({
 	              type: 'ingredients_inci',
 	              required: false,
@@ -19799,8 +19814,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 
 	          const missing = [];
 	          if (wantsProductIntel && !productIntel) missing.push({ type: 'product_intel', reason: 'unavailable' });
-	          if (wantsActiveIngredients && !activeIngredientsData) missing.push({ type: 'active_ingredients', reason: 'unavailable' });
-	          if (wantsIngredientsInci && !ingredientsInciData) missing.push({ type: 'ingredients_inci', reason: 'unavailable' });
+	          if (wantsActiveIngredients && allowsBeautyFormulaModules && !activeIngredientsData) missing.push({ type: 'active_ingredients', reason: 'unavailable' });
+	          if (wantsIngredientsInci && allowsBeautyFormulaModules && !ingredientsInciData) missing.push({ type: 'ingredients_inci', reason: 'unavailable' });
 	          if (wantsReviews && !reviewsModule?.data) missing.push({ type: 'reviews_preview', reason: 'unavailable' });
 		          if (
 		            wantsSimilar &&
@@ -19833,10 +19848,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	                          : 'empty')
 	                    : undefined,
 	                detail_source: 'mock',
-                normalized_pdp:
-                  productIntel?.normalized_pdp ||
-                  buildNormalizedPdpMetadata({ productIntel, offersData }),
-                module_degrade: {
+	                pdp_schema_profile: pdpSchemaProfile,
+	                normalized_pdp:
+	                  productIntel?.normalized_pdp ||
+	                  buildNormalizedPdpMetadata({ productIntel, offersData }),
+	                module_degrade: {
                   applied: missing.length > 0,
                   modules: missing.map((item) => ({
                     type: item?.type || 'unknown',
@@ -20784,7 +20800,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	        };
 	      }
 
-      if (wantsActiveIngredients || wantsIngredientsInci || wantsProductIntel) {
+      const pdpSchemaProfile = resolvePdpSchemaProfile(canonicalProductForPdp);
+      const allowsBeautyFormulaModules = isBeautyFormulaPdpProfile(pdpSchemaProfile);
+
+      if (allowsBeautyFormulaModules && (wantsActiveIngredients || wantsIngredientsInci || wantsProductIntel)) {
         const reviewedIngredientAuthorityStartedAt = Date.now();
         canonicalProductForPdp = await hydrateProductWithReviewedIngredientAuthority({
           product: canonicalProductForPdp,
@@ -20848,15 +20867,21 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       const recModule = Array.isArray(pdpPayload.modules)
         ? pdpPayload.modules.find((m) => m?.type === 'recommendations')
         : null;
-      const structuredIngredientModules = buildStructuredPdpIngredientModules(canonicalProductForPdp);
+      const structuredIngredientModules = allowsBeautyFormulaModules
+        ? buildStructuredPdpIngredientModules(canonicalProductForPdp)
+        : {};
       const activeIngredientsData =
-        structuredIngredientModules.activeIngredientsData ||
-        findPdpPayloadModuleData(pdpPayload, 'active_ingredients') ||
-        null;
+        allowsBeautyFormulaModules
+          ? structuredIngredientModules.activeIngredientsData ||
+            findPdpPayloadModuleData(pdpPayload, 'active_ingredients') ||
+            null
+          : null;
       const ingredientsInciData =
-        structuredIngredientModules.ingredientsInciData ||
-        findPdpPayloadModuleData(pdpPayload, 'ingredients_inci') ||
-        null;
+        allowsBeautyFormulaModules
+          ? structuredIngredientModules.ingredientsInciData ||
+            findPdpPayloadModuleData(pdpPayload, 'ingredients_inci') ||
+            null
+          : null;
 
       const canonicalPayload = stripResponseOwnedPdpModulesFromCanonicalPayload(pdpPayload);
 
@@ -20875,6 +20900,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 : null,
             match_basis: Array.isArray(identityGraphLive?.match_basis) ? identityGraphLive.match_basis : [],
             canonical_scope: identityGraphLive?.canonical_scope || null,
+            pdp_schema_profile: pdpSchemaProfile,
             canonical_product_ref: canonicalProductRef,
             entry_product_ref: entryProductRef,
             pdp_payload: canonicalPayload,
@@ -21050,7 +21076,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         });
       }
 
-      if (wantsActiveIngredients) {
+      if (wantsActiveIngredients && allowsBeautyFormulaModules) {
         modules.push({
           type: 'active_ingredients',
           required: false,
@@ -21060,7 +21086,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         if (!activeIngredientsData) missing.push({ type: 'active_ingredients', reason: 'unavailable' });
       }
 
-      if (wantsIngredientsInci) {
+      if (wantsIngredientsInci && allowsBeautyFormulaModules) {
         modules.push({
           type: 'ingredients_inci',
           required: false,
@@ -21142,6 +21168,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                       : 'empty')
                 : undefined,
 	            detail_source: getProductDetailSource(canonicalProductForPdp) || null,
+            pdp_schema_profile: pdpSchemaProfile,
             normalized_pdp:
               productIntel?.normalized_pdp ||
               buildNormalizedPdpMetadata({ productIntel, offersData }),
