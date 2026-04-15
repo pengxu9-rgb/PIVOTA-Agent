@@ -1279,6 +1279,7 @@ describe('discovery feed service', () => {
         page: 1,
         limit: 12,
         sort: 'popular',
+        debug: true,
         scope: {
           brand_names: ['Tom Ford Beauty'],
         },
@@ -1333,6 +1334,7 @@ describe('discovery feed service', () => {
         page: 1,
         limit: 12,
         sort: 'popular',
+        debug: true,
         scope: {
           brand_names: ['Tom Ford Beauty'],
         },
@@ -1928,15 +1930,15 @@ describe('discovery feed service', () => {
     expect(response.metadata.candidate_counts.identity_graph_deduped).toBe(1);
   });
 
-  test('brand-scoped discovery falls back to source-product recommendations when brand pool is empty', async () => {
+  test('brand-scoped discovery does not mix source-product recommendations into brand catalog when brand pool is empty', async () => {
     let recommendCalls = 0;
-    let capturedRecommendArgs = null;
     const response = await getDiscoveryFeed(
       {
         surface: 'browse_products',
         page: 1,
         limit: 12,
         sort: 'popular',
+        debug: true,
         scope: {
           brand_names: ['Tom Ford Beauty'],
         },
@@ -1961,9 +1963,8 @@ describe('discovery feed service', () => {
         ],
         brandFallbackFetchInternalCandidatesFn: async () => [],
         brandFallbackFetchExternalCandidatesFn: async () => [],
-        brandFallbackRecommendFn: async (args) => {
+        brandFallbackRecommendFn: async () => {
           recommendCalls += 1;
-          capturedRecommendArgs = args;
           return {
             items: [
               makeProduct({
@@ -1990,28 +1991,23 @@ describe('discovery feed service', () => {
       },
     );
 
-    expect(response.products.map((product) => product.product_id)).toEqual([
-      'rose_prick',
-      'electric_cherry',
-    ]);
-    expect(response.metadata.candidate_source).toBe('override+brand_recommendation_fallback');
-    expect(recommendCalls).toBe(1);
-    expect(capturedRecommendArgs).toEqual(
-      expect.objectContaining({
-        pdp_product: expect.objectContaining({
-          product_id: 'ext_seed_1',
-          merchant_id: 'external_seed',
-          brand: 'Tom Ford Beauty',
-          vendor: 'Tom Ford Beauty',
+    expect(response.products).toEqual([]);
+    expect(response.metadata.candidate_source).toBe('override');
+    expect(response.metadata.brand_empty_reason).toBe('no_matching_brand_candidates');
+    expect(response.metadata.route_health.brand_empty_reason).toBe('no_matching_brand_candidates');
+    expect(response.metadata.rank_debug.recall_summary).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          label: 'brand_catalog',
+          skipped: true,
+          skip_reason: 'brand_recommendation_fallback_disabled',
         }),
-        k: 12,
-        locale: 'en-US',
-      }),
+      ]),
     );
-    expect(capturedRecommendArgs.options).toBeUndefined();
+    expect(recommendCalls).toBe(0);
   });
 
-  test('brand-scoped discovery continues to recommendation fallback when brand pool times out', async () => {
+  test('brand-scoped discovery returns empty brand results instead of recommendation fallback when brand pool times out', async () => {
     process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://discovery-catalog.test';
     delete process.env.PIVOTA_BACKEND_BASE_URL;
     delete process.env.PIVOTA_API_BASE;
@@ -2062,9 +2058,11 @@ describe('discovery feed service', () => {
       },
     );
 
-    expect(response.products.map((product) => product.product_id)).toEqual(['krave_matcha']);
-    expect(response.metadata.candidate_source).toBe('multi_provider+brand_recommendation_fallback');
-    expect(recommendCalls).toBe(1);
+    expect(response.products).toEqual([]);
+    expect(response.metadata.candidate_source).toBe('multi_provider');
+    expect(response.metadata.brand_empty_reason).toBe('brand_catalog_providers_unavailable');
+    expect(response.metadata.route_health.brand_empty_reason).toBe('brand_catalog_providers_unavailable');
+    expect(recommendCalls).toBe(0);
     expect(axiosGetSpy).toHaveBeenCalled();
     expect(response.metadata.provider_breakdown).toEqual(
       expect.arrayContaining([

@@ -153,6 +153,19 @@ function hasProductSpecificIntelText(text) {
     /\bmineral\b/,
     /\bcoverage\b/,
     /\bfinish\b/,
+    /\bretinol\b/,
+    /\bvitamin\s*c\b/,
+    /\bascorb(?:ic|yl)\b/,
+    /\bhyaluronic\s+acid\b/,
+    /\bniacinamide\b/,
+    /\bceramide\b/,
+    /\bpeptide\b/,
+    /\bsalicylic\s+acid\b/,
+    /\bglycolic\s+acid\b/,
+    /\blactic\s+acid\b/,
+    /\baha\b/,
+    /\bbha\b/,
+    /\bpha\b/,
     /\balcohol denat\b/,
     /\bbutyloctyl salicylate\b/,
     /\b1,2-hexanediol\b/,
@@ -160,6 +173,34 @@ function hasProductSpecificIntelText(text) {
     /\bsebum\b/,
     /\brice[-\s]?infused\b/,
   ].some((pattern) => pattern.test(normalized));
+}
+
+function isHumanReviewedProductIntelBundle(bundle) {
+  const source = asPlainObject(bundle);
+  const provenance = asPlainObject(source?.provenance);
+  const qualityGate = asPlainObject(provenance?.gemini_quality_gate);
+  const fieldSources = asPlainObject(provenance?.field_sources);
+  const core = asPlainObject(source?.product_intel_core);
+  const freshness = asPlainObject(source?.freshness) || asPlainObject(core?.freshness);
+  const sourceVersion = asString(freshness?.source_version);
+  const reviewStatus = asString(provenance?.review_status).toLowerCase();
+  const reviewDecision = asString(provenance?.review_decision).toLowerCase();
+  const generator = asString(provenance?.generator).toLowerCase();
+  const reviewerKind = asString(provenance?.reviewer_kind).toLowerCase();
+  const selectedStrategy = asString(provenance?.selection_strategy).toLowerCase();
+  const hasHumanField = Object.values(fieldSources || {}).some(
+    (value) => asString(value).toLowerCase() === 'human_standard',
+  );
+
+  if (sourceVersion === 'pilot_selected:strict_human_reviewed') return true;
+  if (generator === 'strict_human_manual_rewrite') return true;
+  if (hasHumanField && qualityGate?.human_standard_rewrite === true) return true;
+  return (
+    reviewerKind === 'human' &&
+    reviewStatus === 'completed' &&
+    ['pass', 'rewrite'].includes(reviewDecision) &&
+    selectedStrategy.includes('strict_human')
+  );
 }
 
 function shouldRejectGenericProductIntelBundle(bundle) {
@@ -190,6 +231,7 @@ function shouldRejectGenericProductIntelBundle(bundle) {
     .join(' ');
   const combined = [primaryText, whyText].filter(Boolean).join(' ');
   if (!combined) return true;
+  if (isHumanReviewedProductIntelBundle(source)) return false;
   if (isGenericSellerHighlightText(primaryText) && !hasProductSpecificIntelText(combined)) return true;
   return false;
 }
@@ -393,11 +435,14 @@ function normalizePublishedProductIntelBundle(bundle, {
   canonicalProductRef = null,
   productGroupId = null,
   provenance = null,
+  requireReviewed = false,
 } = {}) {
   const source = asPlainObject(bundle);
   if (!source) return null;
   const core = asPlainObject(source.product_intel_core);
   if (!core) return null;
+  const reviewedForPublicDisplay = isHumanReviewedProductIntelBundle(source);
+  if (requireReviewed && !reviewedForPublicDisplay) return null;
   if (shouldRejectGenericProductIntelBundle(source)) return null;
 
   const recommendationIntents =
@@ -549,10 +594,15 @@ function normalizePublishedProductIntelBundle(bundle, {
         offersData?.best_price_offer_id || source.offer_pointers?.best_price_offer_id || null,
       commerce_modes: commerceModes,
     },
-    provenance:
-      asPlainObject(provenance) ||
-      asPlainObject(source.provenance) ||
-      null,
+    provenance: (() => {
+      const sourceProvenance = asPlainObject(source.provenance);
+      const overlayProvenance = asPlainObject(provenance);
+      if (!sourceProvenance && !overlayProvenance) return null;
+      return {
+        ...(sourceProvenance || {}),
+        ...(overlayProvenance || {}),
+      };
+    })(),
   };
 }
 
@@ -605,7 +655,12 @@ function buildPublishedIntelKbKeys(product, canonicalProductRef = null) {
   return keys;
 }
 
-async function hydrateProductWithPublishedIntel({ product, canonicalProductRef = null } = {}) {
+async function hydrateProductWithPublishedIntel({
+  product,
+  canonicalProductRef = null,
+  requireReviewedBundle = false,
+  allowLegacyAnalysisFallback = true,
+} = {}) {
   const sourceProduct = asPlainObject(product) || {};
   const embeddedBundle = readPublishedProductIntelBundle(sourceProduct, { canonicalProductRef });
 
@@ -633,13 +688,16 @@ async function hydrateProductWithPublishedIntel({ product, canonicalProductRef =
     }
     const kbAnalysis = asPlainObject(kbEntry?.analysis);
     if (!kbAnalysis) continue;
+    const directBundleSource =
+      asPlainObject(kbAnalysis.product_intel_v1) ||
+      asPlainObject(kbAnalysis.product_intel) ||
+      (asString(kbAnalysis.contract_version) === PRODUCT_INTEL_CONTRACT_VERSION ? kbAnalysis : null);
     const directBundle =
       normalizePublishedProductIntelBundle(
-        asPlainObject(kbAnalysis.product_intel_v1) ||
-          asPlainObject(kbAnalysis.product_intel) ||
-          (asString(kbAnalysis.contract_version) === PRODUCT_INTEL_CONTRACT_VERSION ? kbAnalysis : null),
+        directBundleSource,
         {
           canonicalProductRef,
+          requireReviewed: requireReviewedBundle,
           provenance: {
             ...(asPlainObject(sourceProduct.provenance) || {}),
             kb_key: kbKey,
@@ -662,8 +720,28 @@ async function hydrateProductWithPublishedIntel({ product, canonicalProductRef =
           sourceProduct.product_intel_generated_at ||
           sourceProduct.productIntelGeneratedAt ||
           null,
+        };
+    }
+    if (directBundleSource) {
+      return {
+        ...sourceProduct,
+        product_intel_unavailable: {
+          reason: requireReviewedBundle ? 'needs_review' : 'invalid_product_intel_bundle',
+          kb_key: kbKey,
+          source: asString(kbEntry?.source) || 'aurora_product_intel_kb',
+        },
+        provenance: {
+          ...(asPlainObject(sourceProduct.provenance) || {}),
+          kb_key: kbKey,
+          source: asString(kbEntry?.source) || 'aurora_product_intel_kb',
+          generated_at:
+            normalizeTimestamp(kbEntry?.last_success_at) ||
+            normalizeTimestamp(kbEntry?.updated_at) ||
+            new Date().toISOString(),
+        },
       };
     }
+    if (!allowLegacyAnalysisFallback) continue;
     const normalized = normalizeProductAnalysis(kbAnalysis);
     const payload = asPlainObject(normalized?.payload);
     const assessment = asPlainObject(payload?.assessment);
@@ -1485,9 +1563,22 @@ function buildProductIntelBundleInternal({
   canonicalProductRef = null,
   productGroupId = null,
   requirePublishedIntel = true,
+  requireReviewedBundle = false,
   applyRolloutGate = true,
 } = {}) {
   const sourceProduct = product || {};
+  if (requireReviewedBundle) {
+    if (applyRolloutGate && !isRolloutAllowed(sourceProduct, canonicalProductRef)) return null;
+    return readPublishedProductIntelBundle(sourceProduct, {
+      relatedProducts,
+      offersData,
+      canonicalProductRef,
+      productGroupId,
+      provenance: asPlainObject(sourceProduct.provenance) || null,
+      requireReviewed: true,
+    });
+  }
+
   const resolvedSource = resolveIntelProductSource(sourceProduct, { requirePublishedIntel });
   if (!resolvedSource) return null;
   if (applyRolloutGate && !isRolloutAllowed(sourceProduct, canonicalProductRef)) return null;
@@ -1563,6 +1654,7 @@ function buildProductIntelBundle(args = {}) {
   return buildProductIntelBundleInternal({
     ...args,
     requirePublishedIntel: true,
+    requireReviewedBundle: args.requireReviewedBundle === true,
     applyRolloutGate: true,
   });
 }
@@ -1658,6 +1750,7 @@ module.exports = {
   buildNormalizedPdpMetadata,
   buildProductFeedbackResponse,
   buildProductRecommendationIntentsResponse,
+  isHumanReviewedProductIntelBundle,
   normalizePublishedProductIntelBundle,
   readPublishedProductIntelBundle,
 };

@@ -115,7 +115,6 @@ const COLD_START_PRIMARY_RECALL_LIMIT = 24;
 const COLD_START_FILL_RECALL_LIMIT = 24;
 const BROWSE_PRIMARY_RECALL_LIMIT = 24;
 const BROWSE_FILL_RECALL_LIMIT = 24;
-const BRAND_RECOMMENDATION_FALLBACK_LIMIT = 12;
 const MIN_COLD_START_NON_DEFERRED_RESULTS = 2;
 const COLD_START_DEFERRED_DOMAINS = new Set(['pet', 'sleepwear', 'apparel']);
 const COLD_START_DEFERRED_BEAUTY_BUCKETS = new Set(['tools']);
@@ -6347,42 +6346,6 @@ function buildDiscoveryCategoryFacets(entries = []) {
     }));
 }
 
-async function loadBrandScopedRecommendationFallback({
-  request,
-  limit = 24,
-  recommendFn = recommend,
-} = {}) {
-  const sourceProductId = String(request?.source_product_ref?.product_id || '').trim();
-  const merchantId = String(request?.source_product_ref?.merchant_id || '').trim() || null;
-  const brandName = Array.isArray(request?.scope?.brand_names) ? String(request.scope.brand_names[0] || '').trim() : '';
-  const safeLimit = clampInt(limit, BRAND_RECOMMENDATION_FALLBACK_LIMIT, 1, BRAND_RECOMMENDATION_FALLBACK_LIMIT);
-  const baseProduct = {
-    ...(sourceProductId ? { product_id: sourceProductId } : {}),
-    ...(merchantId ? { merchant_id: merchantId } : {}),
-    ...(brandName ? { brand: brandName, vendor: brandName } : {}),
-  };
-
-  if (!sourceProductId || typeof recommendFn !== 'function') return [];
-  try {
-    const result = await recommendFn({
-      pdp_product: baseProduct,
-      k: safeLimit,
-      locale: request?.context?.locale || 'en-US',
-    });
-    return Array.isArray(result?.items) ? result.items : [];
-  } catch (err) {
-    logger.warn(
-      {
-        err: err?.message || String(err),
-        product_id: sourceProductId,
-        merchant_id: merchantId,
-      },
-      'brand scoped discovery fallback failed',
-    );
-    return [];
-  }
-}
-
 async function fetchBrandScopedExternalSeedCandidates({ brandAliases = [], limit = 120 } = {}) {
   if (!process.env.DATABASE_URL) return [];
   const normalizedAliases = uniqStrings(
@@ -8408,6 +8371,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       brandScopeAliases.length > 0
         ? normalizedCandidates.filter((candidate) => matchesBrandScopeCandidate(candidate, brandScopeAliases))
         : normalizedCandidates;
+    let brandEmptyReason = null;
     const skipBrandDirectPool = shouldSkipBrandDirectPool(scopedCandidates, {
       request,
       limit: candidateLimit,
@@ -8475,31 +8439,24 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
     }
 
     if (brandScopeAliases.length > 0 && scopedCandidates.length === 0) {
-      const fallbackProducts = await loadBrandScopedRecommendationFallback({
-        request,
-        limit: options.candidateLimit || resolveDiscoveryCandidateLimit(request),
-        recommendFn: options.brandFallbackRecommendFn,
-      });
-      if (fallbackProducts.length > 0) {
-        effectiveCandidateSource = `${effectiveCandidateSource}+brand_recommendation_fallback`;
-        effectiveRawCandidates = effectiveRawCandidates.concat(fallbackProducts);
-        normalizedCandidates = [];
-        seenKeys.clear();
-        for (let idx = 0; idx < effectiveRawCandidates.length; idx += 1) {
-          const normalized = normalizeCandidateProduct(effectiveRawCandidates[idx], idx);
-          if (!normalized) continue;
-          const dedupKey = buildNormalizedCandidateKey(normalized, { brandScoped });
-          if (!dedupKey || seenKeys.has(dedupKey)) continue;
-          seenKeys.add(dedupKey);
-          normalizedCandidates.push(normalized);
-        }
-        scopedCandidates = normalizedCandidates.filter((candidate) =>
-          matchesBrandScopeCandidate(candidate, brandScopeAliases),
-        );
-      }
-    }
-    if (brandScopeAliases.length > 0 && scopedCandidates.length === 0 && catalogUnavailableError) {
-      throw catalogUnavailableError;
+      brandEmptyReason = catalogUnavailableError
+        ? 'brand_catalog_providers_unavailable'
+        : 'no_matching_brand_candidates';
+      recallSummary = recallSummary.concat([
+        {
+          provider: null,
+          label: 'brand_catalog',
+          query: brandScopeAliases.join(' | '),
+          offset: 0,
+          limit: request.limit,
+          status: null,
+          returned: 0,
+          latency_ms: 0,
+          cache_hit: false,
+          skipped: true,
+          skip_reason: 'brand_recommendation_fallback_disabled',
+        },
+      ]);
     }
     const identityGraphDedupe = await applyIdentityGraphDiscoveryDedupe(scopedCandidates, {
       request,
@@ -8696,6 +8653,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       sort_applied: request.sort,
       brand_scope_applied: request.scope.brand_names,
       category_scope_applied: request.scope.categories,
+      ...(brandEmptyReason ? { brand_empty_reason: brandEmptyReason } : {}),
       query_text: request.query.text,
       has_more: hasMore,
       facets: {
@@ -8735,6 +8693,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
           selectedEntries.length > 0 && !exactIntentUnderfilled,
         ...(compoundIntent ? { compound_intent: compoundIntent } : {}),
         ...(underfilledReason ? { underfilled_reason: underfilledReason } : {}),
+        ...(brandEmptyReason ? { brand_empty_reason: brandEmptyReason } : {}),
       },
       search_decision: {
         primary_path_used: primaryPathUsed,
@@ -8906,7 +8865,6 @@ module.exports = {
     resolveDiscoveryExternalSeedMarketConfig,
     resolveDiscoveryProductsSearchApiKeyConfig,
     resolveDiscoveryProductsSearchBaseUrlConfig,
-    loadBrandScopedRecommendationFallback,
     loadCatalogCandidates,
     hydrateDiscoveryCandidateProductIntel,
     matchesQueryTextCandidate,

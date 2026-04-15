@@ -56,6 +56,68 @@ describeIfRuntimeDeps('/agent/shop/v1/invoke product intel contracts', () => {
         },
         expert_notes: [],
       },
+      product_intel: {
+        contract_version: 'pivota.product_intel.v1',
+        display_name: 'Pivota Insights',
+        evidence_profile: 'human_reviewed',
+        quality_state: 'eligible',
+        provenance: {
+          generator: 'strict_human_manual_rewrite',
+          selection_strategy: 'gemini_flash_first_then_strict_human_rewrite',
+          reviewer_kind: 'human',
+          review_status: 'completed',
+          review_decision: 'rewrite',
+          field_sources: {
+            what_it_is: 'human_standard',
+            why_it_stands_out: 'human_standard',
+          },
+          gemini_quality_gate: {
+            human_standard_rewrite: true,
+          },
+        },
+        product_intel_core: {
+          what_it_is: {
+            headline: 'Daily insulated bottle',
+            body: 'A double-wall stainless steel bottle reviewed as a straightforward hydration accessory for daily carry.',
+          },
+          best_for: [{ tag: 'daily_hydration', label: 'Daily hydration', confidence: 'high' }],
+          why_it_stands_out: [
+            {
+              headline: 'Insulated carry format',
+              body: 'The reviewed PDP copy keeps the value proposition specific to insulation, refillable use, and everyday portability.',
+            },
+          ],
+          routine_fit: { step: 'daily_carry', am_pm: ['am', 'pm'], pairing_notes: [] },
+          watchouts: [],
+          confidence: { overall: 'high' },
+          freshness: {
+            generated_at: '2026-04-15T10:00:00.000Z',
+            source_version: 'pilot_selected:strict_human_reviewed',
+          },
+          quality_state: 'eligible',
+          evidence_profile: 'human_reviewed',
+        },
+        shopping_card: {
+          contract_version: 'pivota.shopping_card.v1',
+          title: 'Everyday Insulated Bottle',
+          subtitle: 'Reviewed hydration accessory',
+          proof_badge: 'Human reviewed',
+          intro: 'A reviewed daily-carry bottle for refillable hydration.',
+        },
+        search_card: {
+          title_candidate: 'Everyday Insulated Bottle',
+          compact_candidate: 'Reviewed hydration accessory',
+          proof_badge_candidate: 'Human reviewed',
+          intro_candidate: 'A reviewed daily-carry bottle for refillable hydration.',
+        },
+        market_signal_badges: [{ badge_type: 'reviewed_signal', badge_label: 'Human reviewed' }],
+        community_signals: {
+          status: 'unavailable',
+          unavailable_reason: 'insufficient_feedback',
+          confidence: 'low',
+          evidence_profile: 'human_reviewed',
+        },
+      },
       pdp_ingredients_raw:
         'Tamanu Oil: Soothes visible redness and supports the skin barrier. Full Ingredients: Water, Glycerin, Caprylic/Capric Triglyceride, 1,2-Hexanediol, Niacinamide, Cetearyl Alcohol. Warning: For external use only.',
       pdp_active_ingredients_raw:
@@ -129,6 +191,20 @@ describeIfRuntimeDeps('/agent/shop/v1/invoke product intel contracts', () => {
             unavailable_reason: 'insufficient_feedback',
             confidence: 'low',
             evidence_profile: 'seller_only',
+          },
+          provenance: {
+            generator: 'strict_human_manual_rewrite',
+            selection_strategy: 'gemini_flash_first_then_strict_human_rewrite',
+            reviewer_kind: 'human',
+            review_status: 'completed',
+            review_decision: 'rewrite',
+            field_sources: {
+              what_it_is: 'human_standard',
+              why_it_stands_out: 'human_standard',
+            },
+            gemini_quality_gate: {
+              human_standard_rewrite: true,
+            },
           },
           quality_state: 'limited',
           evidence_profile: 'seller_only',
