@@ -20661,17 +20661,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                   canonicalProductForPdp.merchantId ||
                   canonicalRefMerchantId,
                 product_id:
+                  (canonicalRefMerchantId === EXTERNAL_SEED_MERCHANT_ID ? canonicalRefProductId : '') ||
                   canonicalProductForPdp.product_id ||
                   canonicalProductForPdp.productId ||
-                  (canonicalRefMerchantId === EXTERNAL_SEED_MERCHANT_ID ? canonicalRefProductId : '') ||
                   canonicalProductForPdp.id,
                 ...(canonicalRefMerchantId === EXTERNAL_SEED_MERCHANT_ID && canonicalRefProductId
                   ? {
                       source: canonicalProductForPdp.source || 'external_seed',
-                      external_product_id:
-                        canonicalProductForPdp.external_product_id ||
-                        canonicalProductForPdp.externalProductId ||
-                        canonicalRefProductId,
+                      external_product_id: canonicalRefProductId,
                     }
                   : {}),
               };
