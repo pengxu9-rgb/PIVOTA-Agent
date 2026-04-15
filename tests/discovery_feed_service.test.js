@@ -6167,6 +6167,9 @@ describe('discovery feed service', () => {
       ['hair spray', ['hair spray', 'hairspray']],
       ['hair gel', ['hair gel', 'edge control gel']],
       ['deodorant', ['deodorant', 'body deodorant']],
+      ['exfoliant', ['exfoliant']],
+      ['glycolic acid', ['exfoliant']],
+      ['bha', ['exfoliant']],
       ['hydrating mask', ['hydrating mask', 'hydration mask']],
       ['clay mask', ['clay mask', 'clay stick mask']],
     ];
