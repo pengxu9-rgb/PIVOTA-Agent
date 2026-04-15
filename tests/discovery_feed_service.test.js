@@ -5694,7 +5694,7 @@ describe('discovery feed service', () => {
     expect(_internals.matchesQueryTextCandidate(sweatpants, 'beauty')).toBe(false);
   });
 
-  test('exact beauty phrase hints skip broad vertical stage for narrow explicit queries', () => {
+  test('exact beauty phrase hints skip broad category and vertical stages for narrow explicit queries', () => {
     const request = _internals.normalizeDiscoveryRequest({
       surface: 'browse_products',
       query: {
@@ -5714,6 +5714,7 @@ describe('discovery feed service', () => {
       expect.arrayContaining(['setting spray', 'fixing mist', 'makeup fixing mist']),
     );
     expect(recallTerms.verticalTerms).toEqual(expect.arrayContaining(['makeup']));
+    expect(_internals.shouldSkipExplicitCategorySeedStage(request, recallTerms)).toBe(true);
     expect(_internals.shouldSkipExplicitVerticalSeedStage(request, recallTerms)).toBe(true);
 
     const broadRequest = _internals.normalizeDiscoveryRequest({
@@ -5734,6 +5735,7 @@ describe('discovery feed service', () => {
       ['hair care'],
     );
 
+    expect(_internals.shouldSkipExplicitCategorySeedStage(broadRequest, broadRecallTerms)).toBe(false);
     expect(_internals.shouldSkipExplicitVerticalSeedStage(broadRequest, broadRecallTerms)).toBe(false);
   });
 
