@@ -983,8 +983,8 @@ test('reco assistant rewrite rejects candidate-pool product names that are not f
       return {
         ok: true,
         json: {
-          lead_reason: 'Niacinamide',
-          support_reasons: ['Brightening'],
+          lead_reason: 'Vitamin C (Ascorbic acid)',
+          support_reasons: ['Oil-control support'],
         },
         parse_status: 'parsed',
         provider: 'gemini',
@@ -1006,7 +1006,7 @@ test('reco assistant rewrite rejects candidate-pool product names that are not f
     assert.match(rewrite.text, /First Aid Beauty Dark Spot Serum with Niacinamide is your best first buy/);
     assert.match(rewrite.text, /because a niacinamide serum/);
     assert.doesNotMatch(rewrite.text, /because (A|An|The)\b/);
-    assert.doesNotMatch(rewrite.text, /because (niacinamide|brightening)\b/i);
+    assert.doesNotMatch(rewrite.text, /because (niacinamide|brightening|vitamin c|oil-control support|oil control support)\b/i);
     assert.match(rewrite.text, /Jurlique Brightening Serum/);
     assert.doesNotMatch(rewrite.text, /Fenty Beauty|Watch Ya Tone/);
     assert.match(prompts[1], /Do not write the final assistant message\./);
