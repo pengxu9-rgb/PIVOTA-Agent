@@ -51894,18 +51894,21 @@ function isRecoAssistantWeakReasonFragment(value) {
   if (!text) return true;
   const normalized = normalizeSemanticAuditText(text);
   if (!normalized) return true;
-  if (/^(niacinamide|zinc|zinc pca|hyaluronic acid|ceramide|ceramides|glycerin|panthenol|vitamin c|uv filters?)$/i.test(normalized)) {
+  if (/^(niacinamide|zinc|zinc pca|hyaluronic acid|ceramide|ceramides|glycerin|panthenol|vitamin c|ascorbic acid|vitamin c ascorbic acid|uv filters?)$/i.test(normalized)) {
     return true;
   }
   const tokens = normalized
     .split(/\s+/)
     .map((token) => token.trim())
     .filter(Boolean);
-  if (tokens.length >= 3) return false;
+  if (/^(oil control|oil-control|hydration|hydrating|barrier|brightening|tone|sunscreen|moisture)\s+support$/i.test(normalized)) {
+    return true;
+  }
   if (/\b(spf\s*\d{1,3}\+?|pa\+{2,4}|uv|broad spectrum|white cast|non greasy|non-greasy|matte finish|watery texture)\b/i.test(normalized)) {
     return false;
   }
-  return true;
+  if (tokens.length <= 3) return true;
+  return false;
 }
 
 function rankRecoAssistantEvidenceForTarget(values = [], {
