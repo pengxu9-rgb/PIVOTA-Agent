@@ -15,6 +15,9 @@ const {
 const {
   resolveConcernMainlineFailure,
 } = require('../src/auroraBff/failureClassifier');
+const {
+  buildSupportRoleQueryVariants,
+} = require('../src/auroraBff/recoSupportRoleQueries');
 
 test('concern planner normalizer builds a structured JSON planner prompt with full role ontology', () => {
   const fallbackPlan = buildConcernSemanticPlanFallback({
@@ -80,6 +83,68 @@ test('concern planner normalizer trusts JSON output selecting ontology roles out
   );
   assert.equal(normalized.comparison_mode, 'routine_mix');
   assert.deepEqual(normalized.evidence_needed, ['finish', 'layering compatibility', 'price']);
+});
+
+test('concern planner normalizer repairs makeup layering sunscreen support to finish-fit role', () => {
+  const fallbackPlan = buildConcernSemanticPlanFallback({
+    text: 'My daytime products pill under makeup. What skincare product should I use instead?',
+    profileSummary: { skinType: 'combination', goals: ['smooth layering', 'lightweight hydration'] },
+  });
+  const normalized = normalizeConcernSemanticPlanFromText(
+    JSON.stringify({
+      primary_concern: 'product pilling under makeup',
+      primary_role_id: 'layering_compatible_moisturizer_or_spf',
+      support_role_ids: ['daily_sunscreen', 'hydrating_serum_or_essence'],
+      routine_mode: 'routine_mix',
+      comparison_mode: 'routine_mix',
+      query_intents: [
+        {
+          role_id: 'layering_compatible_moisturizer_or_spf',
+          intent: 'non pilling moisturizer under makeup',
+          query_terms: ['lightweight moisturizer under makeup'],
+        },
+      ],
+      must_satisfy_constraints: ['works under makeup'],
+      evidence_needed: ['layering compatibility', 'finish'],
+      ingredient_hypotheses: ['Glycerin'],
+      product_type_hypotheses: ['moisturizer', 'sunscreen'],
+    }),
+    {
+      fallbackPlan,
+      requestText: 'My daytime products pill under makeup. What skincare product should I use instead?',
+    },
+  );
+
+  assert.deepEqual(
+    normalized.core_roles.map((role) => role.role_id),
+    [
+      'layering_compatible_moisturizer_or_spf',
+      'daily_sunscreen_finish_fit',
+      'hydrating_serum_or_essence',
+    ],
+  );
+  assert.deepEqual(
+    normalized.selection_constraints.plan_invariants_applied,
+    ['routine_mix_replaced_generic_sunscreen_with_finish_fit'],
+  );
+});
+
+test('support role query variants prioritize dull-skin tone queries before post-acne aliases', () => {
+  const queries = buildSupportRoleQueryVariants({
+    roleId: 'tone_mark_treatment',
+    roleLabel: 'Tone and post-breakout mark treatment',
+    preferredStep: 'treatment',
+    queryTerms: ['post acne marks serum', 'dark spot serum', 'tone correcting serum', 'brightening serum'],
+    fitKeywords: ['brightening', 'uneven tone', 'dull skin'],
+    concernText: 'dullness and dehydration',
+    maxQueries: 4,
+  });
+
+  assert.deepEqual(
+    queries.slice(0, 3),
+    ['brightening serum', 'tone correcting serum', 'uneven tone treatment'],
+  );
+  assert.equal(queries.includes('post acne marks serum'), false);
 });
 
 test('concern planner normalizer repairs routine_mix sensitivity plans that omit barrier support', () => {
