@@ -60291,6 +60291,69 @@ function buildAuroraProductRecommendationsQuery({ profile, requestText, lang, gl
 }
 
 const CONCERN_SELECTOR_RACE_VERSION = 'concern_selector_race_v1';
+const CONCERN_SEMANTIC_PLAN_JSON_ROUTE = 'aurora_concern_semantic_plan_json';
+const CONCERN_SEMANTIC_PLAN_JSON_SCHEMA = Object.freeze({
+  type: 'object',
+  properties: {
+    primary_concern: { type: 'string' },
+    primary_role_id: { type: 'string' },
+    support_role_ids: {
+      type: 'array',
+      items: { type: 'string' },
+    },
+    routine_mode: {
+      type: 'string',
+      enum: ['routine_mix', 'same_role_comparison', 'single_product'],
+    },
+    query_intents: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          role_id: { type: 'string' },
+          intent: { type: 'string' },
+          query_terms: {
+            type: 'array',
+            items: { type: 'string' },
+          },
+        },
+        required: ['role_id', 'intent', 'query_terms'],
+      },
+    },
+    must_satisfy_constraints: {
+      type: 'array',
+      items: { type: 'string' },
+    },
+    comparison_mode: {
+      type: 'string',
+      enum: ['routine_mix', 'same_role_comparison', 'single_product'],
+    },
+    evidence_needed: {
+      type: 'array',
+      items: { type: 'string' },
+    },
+    ingredient_hypotheses: {
+      type: 'array',
+      items: { type: 'string' },
+    },
+    product_type_hypotheses: {
+      type: 'array',
+      items: { type: 'string' },
+    },
+  },
+  required: [
+    'primary_concern',
+    'primary_role_id',
+    'support_role_ids',
+    'routine_mode',
+    'query_intents',
+    'must_satisfy_constraints',
+    'comparison_mode',
+    'evidence_needed',
+    'ingredient_hypotheses',
+    'product_type_hypotheses',
+  ],
+});
 
 async function runConcernSemanticPlanner({
   ctx,
@@ -60326,8 +60389,8 @@ async function runConcernSemanticPlanner({
     planner_effective_provider: null,
     planner_effective_model: null,
     planner_selection_source: 'none',
-    planner_route: 'aurora_concern_semantic_plan_plain_text',
-    planner_route_group: classifyAuroraGeminiRouteGroup('aurora_concern_semantic_plan_plain_text'),
+    planner_route: CONCERN_SEMANTIC_PLAN_JSON_ROUTE,
+    planner_route_group: classifyAuroraGeminiRouteGroup(CONCERN_SEMANTIC_PLAN_JSON_ROUTE),
     planner_key_slot: null,
     planner_attempts: [],
     model_policy_trace: [],
@@ -60349,13 +60412,13 @@ async function runConcernSemanticPlanner({
       {
         provider: 'gemini',
         model: primaryModel.effective_model,
-        structured_contract: 'plain_text',
+        structured_contract: 'json_object',
         model_policy: primaryModel,
       },
       {
         provider: 'gemini',
         model: retryModel.effective_model,
-        structured_contract: 'plain_text',
+        structured_contract: 'json_object',
         model_policy: retryModel,
       },
     ];
@@ -60379,8 +60442,8 @@ async function runConcernSemanticPlanner({
           effective_provider: null,
           effective_model: null,
           selection_source: 'budget_guard',
-          route: 'aurora_concern_semantic_plan_plain_text',
-          route_group: classifyAuroraGeminiRouteGroup('aurora_concern_semantic_plan_plain_text'),
+          route: CONCERN_SEMANTIC_PLAN_JSON_ROUTE,
+          route_group: classifyAuroraGeminiRouteGroup(CONCERN_SEMANTIC_PLAN_JSON_ROUTE),
           key_slot: null,
           provider_reason: 'BUDGET_EXHAUSTED',
           provider_parse_status: null,
@@ -60400,16 +60463,17 @@ async function runConcernSemanticPlanner({
       let plannerResponse;
       try {
         plannerResponse = await withTimeout(
-          Promise.resolve().then(() => callGeminiTextResponseImpl({
+          Promise.resolve().then(() => callGeminiJsonObjectImpl({
             model: attempt.model,
             systemPrompt: promptBundle.systemPrompt,
             userPrompt: promptBundle.userPrompt,
             timeoutMs: effectiveAttemptTimeoutMs,
             temperature: 0.1,
-            maxOutputTokens: 1100,
-            route: 'aurora_concern_semantic_plan_plain_text',
+            maxOutputTokens: 700,
+            responseSchema: CONCERN_SEMANTIC_PLAN_JSON_SCHEMA,
+            route: CONCERN_SEMANTIC_PLAN_JSON_ROUTE,
             ignoreForceModel: true,
-            thinkingBudget: 384,
+            thinkingLevel: 'minimal',
           })),
           effectiveAttemptTimeoutMs,
           'GEMINI_UPSTREAM_TIMEOUT',
@@ -60429,11 +60493,11 @@ async function runConcernSemanticPlanner({
           meta: normalizeQaTimeoutMeta(
             err && err.meta && typeof err.meta === 'object' ? err.meta : {},
             {
-              route: 'aurora_concern_semantic_plan_plain_text',
+              route: CONCERN_SEMANTIC_PLAN_JSON_ROUTE,
               model: attempt.model,
               promptBytes: Buffer.byteLength(query, 'utf8'),
-              schemaBytes: 0,
-              maxOutputTokens: 1100,
+              schemaBytes: safeJsonByteLength(CONCERN_SEMANTIC_PLAN_JSON_SCHEMA),
+              maxOutputTokens: 700,
               resultReason: classified.reason,
               timeoutStage: classified.timeout_stage,
               detail: classified.detail,
@@ -60456,13 +60520,20 @@ async function runConcernSemanticPlanner({
         effectiveProvider: llmRouteMeta.effective_provider,
         effectiveModel: llmRouteMeta.effective_model,
         selectionSource: llmRouteMeta.selection_source,
-        route: 'aurora_concern_semantic_plan_plain_text',
+        route: CONCERN_SEMANTIC_PLAN_JSON_ROUTE,
       });
       trace.model_policy_trace.push({
         ...modelPolicyTrace,
         attempt_model: attempt.model,
       });
-      const answerText = pickFirstTrimmed(plannerResponse?.text, plannerResponse?.raw_text);
+      const structuredPlanText = isPlainObject(plannerResponse?.json)
+        ? JSON.stringify(plannerResponse.json)
+        : '';
+      const answerText = pickFirstTrimmed(
+        structuredPlanText,
+        plannerResponse?.text,
+        plannerResponse?.raw_text,
+      );
       const semanticPlan = modelPolicyTrace.ok
         ? normalizeConcernSemanticPlanFromText(answerText, {
             fallbackPlan,
@@ -60475,12 +60546,14 @@ async function runConcernSemanticPlanner({
             selection_owner_state: 'fallback',
           };
       const answerPreview = pickFirstTrimmed(
+        structuredPlanText,
         plannerResponse?.text,
         plannerResponse?.raw_text,
         '',
       )
         ? String(
             pickFirstTrimmed(
+              structuredPlanText,
               plannerResponse?.text,
               plannerResponse?.raw_text,
               '',
@@ -60499,12 +60572,12 @@ async function runConcernSemanticPlanner({
         effective_provider: llmRouteMeta.effective_provider,
         effective_model: llmRouteMeta.effective_model,
         selection_source: modelPolicyTrace.selection_source || llmRouteMeta.selection_source,
-        route: 'aurora_concern_semantic_plan_plain_text',
-        route_group: modelPolicyTrace.route_group || classifyAuroraGeminiRouteGroup('aurora_concern_semantic_plan_plain_text'),
+        route: CONCERN_SEMANTIC_PLAN_JSON_ROUTE,
+        route_group: modelPolicyTrace.route_group || classifyAuroraGeminiRouteGroup(CONCERN_SEMANTIC_PLAN_JSON_ROUTE),
         key_slot: pickFirstTrimmed(plannerResponse?.meta?.key_slot, plannerResponse?.meta?.keySlot) || null,
         provider_reason: providerReason,
         provider_parse_status: pickFirstTrimmed(plannerResponse?.parse_status) || null,
-        raw_top_keys: [],
+        raw_top_keys: isPlainObject(plannerResponse?.json) ? Object.keys(plannerResponse.json).slice(0, 12) : [],
         repaired_from_text: false,
         answer_preview: answerPreview,
         normalized_core_role_ids: Array.isArray(semanticPlan?.core_roles)
@@ -90302,6 +90375,7 @@ const __internal = {
   buildRecoRecallTransportPolicy,
   resolveRecoRecallTransportModeForPlannerMode,
   buildRecoCatalogQueryLevels,
+  runConcernSemanticPlanner,
   finalizeConcernFrameworkCandidatePools,
   collectRecoCandidatesFromRecallPlan,
   collectRecoCandidatesFromQueryLevels,
