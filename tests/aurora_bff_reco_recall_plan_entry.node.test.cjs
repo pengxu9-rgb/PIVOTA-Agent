@@ -110,3 +110,66 @@ test('framework external-seed recall entry uses strict ingredient-intent search 
     },
   ]);
 });
+
+test('framework recall planner honors targetContext primary role over lower numeric rank', () => {
+  const targetContext = {
+    primary_role_id: 'hydrating_barrier_moisturizer',
+    framework_summary: {
+      concern_text: 'my skin feels dry and tight, what should i use first?',
+    },
+    framework_roles: [
+      {
+        role_id: 'daily_sunscreen',
+        rank: 30,
+        preferred_step: 'sunscreen',
+        query_terms: ['oil control sunscreen', 'lightweight sunscreen', 'spf fluid'],
+      },
+      {
+        role_id: 'hydrating_barrier_moisturizer',
+        rank: 40,
+        preferred_step: 'moisturizer',
+        query_terms: ['barrier moisturizer', 'ceramide moisturizer', 'hydrating gel cream'],
+      },
+      {
+        role_id: 'hydrating_serum_or_essence',
+        rank: 42,
+        preferred_step: 'serum',
+        query_terms: ['hyaluronic acid serum', 'hydrating serum'],
+      },
+    ],
+  };
+
+  const plan = __internal.buildRecoRecallPlan({
+    mode: 'framework_generic',
+    targetContext,
+  });
+
+  assert.equal(plan.stages[0]?.stage_id, 'framework_stage_a_primary_internal');
+  assert.equal(plan.stages[0]?.role_id, 'hydrating_barrier_moisturizer');
+  assert.equal(plan.stages[1]?.stage_id, 'framework_stage_b_primary_external_seed');
+  assert.equal(plan.stages[1]?.role_id, 'hydrating_barrier_moisturizer');
+  assert.ok(plan.stages.slice(2).some((stage) => stage?.role_id === 'daily_sunscreen'));
+  assert.ok(
+    plan.stages
+      .slice(0, 2)
+      .flatMap((stage) => Array.isArray(stage?.entries) ? stage.entries : [])
+      .every((entry) => entry?.role_id === 'hydrating_barrier_moisturizer'),
+  );
+  assert.ok(
+    plan.stages
+      .slice(0, 2)
+      .flatMap((stage) => Array.isArray(stage?.entries) ? stage.entries : [])
+      .every((entry) => /moisturizer|cream|barrier|ceramide/i.test(String(entry?.query || ''))),
+  );
+
+  const queryLevels = __internal.buildRecoCatalogQueryLevels({ targetContext });
+  assert.equal(queryLevels[0]?.ladder_level, 'framework_stage_a_primary_internal');
+  assert.equal(queryLevels[1]?.ladder_level, 'framework_stage_b_primary_external_seed');
+  assert.ok(queryLevels[0]?.queries?.every((entry) => entry.role_id === 'hydrating_barrier_moisturizer'));
+  assert.ok(queryLevels[1]?.queries?.every((entry) => entry.role_id === 'hydrating_barrier_moisturizer'));
+  assert.ok(
+    queryLevels
+      .slice(2)
+      .some((level) => String(level?.ladder_level || '').includes('daily_sunscreen')),
+  );
+});
