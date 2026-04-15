@@ -19074,6 +19074,9 @@ function buildRecoDerivedShopperCopy({
       maxLen: 180,
     }),
   );
+  const roleAlignedSpecificNarrative = looksLikeRecoNarrativeOffTargetForRole(specificNarrative, roleText)
+    ? ''
+    : specificNarrative;
   const productType = pickFirstTrimmed(
     rawRow?.category,
     rawRow?.product_type,
@@ -19111,7 +19114,7 @@ function buildRecoDerivedShopperCopy({
       ? `适合放进当前的${humanizeRecoProductType(productType || 'other', 'CN')}`
       : `Best as your ${humanizeRecoProductType(productType || 'other', 'EN').toLowerCase()} step`;
   })();
-  const whyThisOne = existingWhy || specificNarrative || (() => {
+  const whyThisOne = existingWhy || roleAlignedSpecificNarrative || (() => {
     if (/\boil|shine|sebum\b/i.test(roleText)) {
       return isCn
         ? '这是一支更轻薄的控油精华，适合把出油问题先压下来。'
@@ -19180,6 +19183,28 @@ function looksLikeGenericRecoDerivedNarrative(value) {
   const text = String(value || '').trim();
   if (!text) return false;
   return RECO_GENERIC_DERIVED_NARRATIVE_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+function looksLikeRecoNarrativeOffTargetForRole(value, roleText = '') {
+  const text = String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const role = String(roleText || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  if (!text || !role) return false;
+  const toneClaim = /\b(dull(?:ness)?|uneven\s+tone|dark\s+spots?|hyperpigmentation|brighten(?:ing)?|radiance|radiant|glow)\b/.test(text);
+  if (
+    /\b(oil|shine|sebum|mattify|mattifying|anti-shine)\b/.test(role)
+    && toneClaim
+    && !/\b(oil|shine|sebum|mattify|mattifying|anti-shine|pore|blemish|acne)\b/.test(text)
+  ) {
+    return true;
+  }
+  if (
+    /\b(redness|soothing|calming|sensitive|barrier|irritation)\b/.test(role)
+    && /\b(oil control|oil-control|mattify|mattifying|sebum|anti-shine)\b/.test(text)
+    && !/\b(redness|sooth|soothing|calm|calming|barrier|sensitive|irritat)\b/.test(text)
+  ) {
+    return true;
+  }
+  return false;
 }
 
 function scoreRecoNarrativeSentence(sentence, hintText = '') {
@@ -19341,8 +19366,8 @@ function buildRecoProductEvidencePoints({
       ...(Array.isArray(base.keyIngredients) ? base.keyIngredients : []),
       ...(Array.isArray(base.best_for) ? base.best_for : []),
       ...(Array.isArray(base.bestFor) ? base.bestFor : []),
-      pickFirstTrimmed(base.best_for, base.bestFor),
       pickFirstTrimmed(base.why_this_one, base.whyThisOne, base.reason),
+      pickFirstTrimmed(base.best_for, base.bestFor),
       ...(Array.isArray(pivotaInsights?.best_for) ? pivotaInsights.best_for : []),
       ...(Array.isArray(intelCore?.best_for) ? intelCore.best_for : []),
     ],
@@ -19360,6 +19385,11 @@ function buildRecoProductEvidencePoints({
 function buildRecoVisibleProductFields(picked, { role = null, language = 'EN' } = {}) {
   const row = isPlainObject(picked) ? picked : null;
   if (!row) return {};
+  const roleObj = isPlainObject(role) ? role : null;
+  const visibleRoleText = [
+    pickFirstTrimmed(roleObj?.label, row?.matched_role_label, row?.matchedRoleLabel),
+    pickFirstTrimmed(roleObj?.why_this_role),
+  ].join(' ').trim();
   const stableAnchorProduct = resolveRecoStableAnchorProduct(row);
   const pivotaInsights = pickRecoPivotaInsights(row);
   const shoppingCard = pickRecoShoppingCardPayload(row);
@@ -19395,6 +19425,9 @@ function buildRecoVisibleProductFields(picked, { role = null, language = 'EN' } 
     row.product?.short_description,
     row.product?.shortDescription,
   );
+  const roleAlignedShortDescription = looksLikeRecoNarrativeOffTargetForRole(shortDescription, visibleRoleText)
+    ? ''
+    : shortDescription;
   const specificNarrative = pickRecoSpecificNarrativeSnippet({
     row,
     stableAnchorProduct,
@@ -19536,8 +19569,8 @@ function buildRecoVisibleProductFields(picked, { role = null, language = 'EN' } 
     } : {}),
     ...(imageUrl ? { image_url: imageUrl } : {}),
     ...(price ? { price } : {}),
-    ...((shortDescription || preferredNarrative || derivedShopperCopy.why_this_one)
-      ? { short_description: shortDescription || preferredNarrative || derivedShopperCopy.why_this_one }
+    ...((roleAlignedShortDescription || preferredNarrative || derivedShopperCopy.why_this_one)
+      ? { short_description: roleAlignedShortDescription || preferredNarrative || derivedShopperCopy.why_this_one }
       : {}),
     ...(description ? { description } : {}),
     ...(derivedShopperCopy.best_for ? { best_for: derivedShopperCopy.best_for } : {}),
@@ -21072,6 +21105,20 @@ function shouldUseConcernFrameworkRoleCoverageFirst(targetContext = null, ordere
   return routineMode === 'routine_mix' || routineMode === 'basic_routine';
 }
 
+function orderConcernFrameworkRolesForSelection(roles = [], { primaryRoleId = '' } = {}) {
+  const roleList = Array.isArray(roles)
+    ? roles.filter((role) => isPlainObject(role) && String(role?.role_id || '').trim())
+    : [];
+  const primaryId = String(primaryRoleId || '').trim();
+  if (!primaryId || roleList.length <= 1) return roleList;
+  const primaryRole = roleList.find((role) => String(role?.role_id || '').trim() === primaryId) || null;
+  if (!primaryRole) return roleList;
+  return [
+    primaryRole,
+    ...roleList.filter((role) => String(role?.role_id || '').trim() !== primaryId),
+  ];
+}
+
 function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext } = {}) {
   const roles = Array.isArray(targetContext?.framework_roles) ? targetContext.framework_roles : [];
   const deduped = [];
@@ -21236,8 +21283,8 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
     bucket.sort(compareConcernFrameworkCandidates);
   }
 
-  const orderedRoles = [...roles].sort((left, right) => Number(left?.rank || 99) - Number(right?.rank || 99));
   const primaryRoleId = String(targetContext?.primary_role_id || '').trim();
+  const orderedRoles = orderConcernFrameworkRolesForSelection(roles, { primaryRoleId });
   const primaryRole = orderedRoles.find((role) => String(role?.role_id || '').trim() === primaryRoleId) || null;
   const usedProductIds = new Set();
   const selected = [];
@@ -51966,8 +52013,8 @@ function buildRecoAssistantReasonPoints(detail, { max = 4 } = {}) {
         ...(Array.isArray(item.evidence_points) ? item.evidence_points : []),
         ...(Array.isArray(item.compare_highlights) ? item.compare_highlights : []),
         ...(Array.isArray(item.key_features) ? item.key_features : []),
-        pickFirstTrimmed(item.best_for),
         pickFirstTrimmed(item.why_this_one),
+        pickFirstTrimmed(item.best_for),
         pickFirstTrimmed(item.description_snippet),
         pickFirstTrimmed(item.short_description),
       ],
