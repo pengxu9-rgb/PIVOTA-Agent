@@ -132,6 +132,30 @@ describe('findProductsMulti brand lexicon', () => {
         brands: expect.arrayContaining(['paula s choice']),
       }),
     );
+    expect(detectBrandEntities('naturium', { candidateProducts: [] })).toEqual(
+      expect.objectContaining({
+        brand_like: true,
+        brands: expect.arrayContaining(['naturium']),
+      }),
+    );
+    expect(detectBrandEntities('dermalogica', { candidateProducts: [] })).toEqual(
+      expect.objectContaining({
+        brand_like: true,
+        brands: expect.arrayContaining(['dermalogica']),
+      }),
+    );
+    expect(detectBrandEntities('moroccanoil', { candidateProducts: [] })).toEqual(
+      expect.objectContaining({
+        brand_like: true,
+        brands: expect.arrayContaining(['moroccanoil']),
+      }),
+    );
+    expect(detectBrandEntities('gisou hair oil', { candidateProducts: [] })).toEqual(
+      expect.objectContaining({
+        brand_like: true,
+        brands: expect.arrayContaining(['gisou']),
+      }),
+    );
   });
 
   test('keeps short beauty brand aliases token-boundary safe', () => {

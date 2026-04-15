@@ -458,6 +458,8 @@ test('beauty query bucket treats oil-control treatment asks as skincare and lip/
   assert.equal(detectBeautyQueryBucket('best sunscreen for oily skin'), 'skincare');
   assert.equal(detectBeautyQueryBucket('lip treatment'), 'lip_care');
   assert.equal(detectBeautyQueryBucket('hair oil'), 'haircare');
+  assert.equal(detectBeautyQueryBucket('exfoliant'), 'skincare');
+  assert.equal(detectBeautyQueryBucket('glycolic acid exfoliating toner'), 'skincare');
   assert.equal(detectBeautyQueryBucket('cream blush'), 'cheek_makeup');
   assert.equal(detectBeautyQueryBucket('powder bronzer'), 'cheek_makeup');
   assert.equal(detectBeautyQueryBucket('liquid highlighter'), 'cheek_makeup');
