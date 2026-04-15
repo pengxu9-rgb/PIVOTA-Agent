@@ -7681,6 +7681,44 @@ describe('discovery feed service', () => {
       _internals.matchesBeautyCompoundQueryIntent(
         {
           raw: {
+            title: 'Intensive Repair Hair Mask',
+            description: 'A reparative mask with botanical oils for dry hair.',
+            external_seed_recall: {
+              retrieval_title: 'Intensive Repair Hair Mask',
+              retrieval_summary: 'A reparative mask with botanical oils for dry hair.',
+              category: 'Treatment',
+              vertical: 'haircare',
+            },
+          },
+          category: 'treatment',
+          parentCategory: 'haircare',
+        },
+        'hair_oil',
+      ),
+    ).toBe(false);
+    expect(
+      _internals.matchesBeautyCompoundQueryIntent(
+        {
+          raw: {
+            title: 'Detangling Leave-in Hair Milk',
+            description: 'Softens hair with nourishing plant oils.',
+            external_seed_recall: {
+              retrieval_title: 'Detangling Leave-in Hair Milk',
+              retrieval_summary: 'Softens hair with nourishing plant oils.',
+              category: 'Treatment',
+              vertical: 'haircare',
+            },
+          },
+          category: 'treatment',
+          parentCategory: 'haircare',
+        },
+        'hair_oil',
+      ),
+    ).toBe(false);
+    expect(
+      _internals.matchesBeautyCompoundQueryIntent(
+        {
+          raw: {
             title: 'Moisturizing Set',
             description: 'Includes an Ultra-Nourishing Lip Balm and dry oil.',
             external_seed_recall: {

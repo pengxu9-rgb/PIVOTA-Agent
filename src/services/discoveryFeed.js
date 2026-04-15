@@ -307,6 +307,21 @@ const EXPLICIT_BEAUTY_COMPOUND_INTENT_RULES = Object.freeze({
       'fragrance mist',
       'hair styling',
       'styling',
+      'mask',
+      'masks',
+      'hair mask',
+      'milk',
+      'hair milk',
+      'leave-in',
+      'leave in',
+      'detangling',
+      'set',
+      'sets',
+      'kit',
+      'kits',
+      'duo',
+      'bundle',
+      'bundles',
       'clip',
       'clips',
       'pin',
@@ -6242,10 +6257,11 @@ function matchesBeautyCompoundQueryIntent(candidate, intent) {
       textHasNormalizedToken(verticalText, 'hair');
     const titleOrSummaryMentionsHair =
       textHasNormalizedToken(titleText, 'hair') || textHasNormalizedToken(summaryText, 'hair');
-    const hasOilSignal = hasOilIntentToken(titleText) || hasOilIntentToken(summaryText);
+    const titleHasOilSignal =
+      hasOilIntentToken(titleText) || hasAnyNormalizedClassToken(titleText, rule?.positiveTitleTokens || []);
     return Boolean(
-      (structuredCategoryLooksHair && hasOilSignal) ||
-        (verticalLooksHair && titleOrSummaryMentionsHair && hasOilSignal),
+      titleHasOilSignal &&
+        (structuredCategoryLooksHair || (verticalLooksHair && titleOrSummaryMentionsHair)),
     );
   }
 
