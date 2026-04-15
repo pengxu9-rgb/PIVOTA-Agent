@@ -3285,8 +3285,7 @@ function isBehaviorlessGenericBrowseRequest(request) {
 function resolveGenericBrowsePrefetchFloor(request) {
   if (!isBehaviorlessGenericBrowseRequest(request)) return 0;
   const fetchCap = getDiscoveryCandidateFetchCap(request);
-  const pageLimit = clampInt(request?.limit, 24, 1, 120);
-  const defaultFloor = Math.max(pageLimit * 4, 120);
+  const defaultFloor = DISCOVERY_CURATED_HEAD_LIMIT;
   return clampInt(
     process.env.DISCOVERY_GENERIC_BROWSE_PREFETCH_FLOOR,
     defaultFloor,
