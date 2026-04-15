@@ -5199,55 +5199,97 @@ async function fetchGenericBrowseExternalSeedServingCandidates({
   const market = marketConfig?.market || DEFAULT_DISCOVERY_EXTERNAL_SEED_MARKET;
   const stage = 'generic_browse_curated_head';
   const toolScopeValues = uniqStrings(toolScopes, 4);
-  const limitBindIndex = 5;
-  const sql = `
-    SELECT
-      ${selectSql},
-      64::int AS match_score,
-      '${stage}'::text AS match_stage
-    FROM external_product_seeds
-    WHERE status = 'active'
-      AND attached_product_key IS NULL
-      AND market = $1
-      AND tool = ANY($2::text[])
-      AND coalesce(lower(seed_data#>>'{suppression_flags,exclude_from_recall}'), 'false') <> 'true'
-      AND coalesce(lower(seed_data#>>'{derived,recall,suppression_flags,exclude_from_recall}'), 'false') <> 'true'
-      AND (
-        ${EXTERNAL_SEED_RECALL_SQL_FIELDS.vertical} = ANY($3::text[])
-        OR ${DISCOVERY_EXTERNAL_SEED_INDEXED_RECALL_CATEGORY_SQL} = ANY($4::text[])
-      )
-    ORDER BY
-      CASE
-        WHEN ${EXTERNAL_SEED_RECALL_SQL_FIELDS.vertical} = 'skincare' THEN 0
-        WHEN ${EXTERNAL_SEED_RECALL_SQL_FIELDS.vertical} = 'makeup' THEN 1
-        WHEN ${EXTERNAL_SEED_RECALL_SQL_FIELDS.vertical} = 'haircare' THEN 2
-        WHEN ${EXTERNAL_SEED_RECALL_SQL_FIELDS.vertical} = 'fragrance' THEN 3
-        WHEN ${EXTERNAL_SEED_RECALL_SQL_FIELDS.vertical} = 'bodycare' THEN 4
-        WHEN ${EXTERNAL_SEED_RECALL_SQL_FIELDS.vertical} = 'beauty_tools' THEN 5
-        ELSE 8
-      END ASC,
-      updated_at DESC NULLS LAST,
-      created_at DESC NULLS LAST,
-      id DESC
-    LIMIT $${limitBindIndex}
-  `;
-  const res = await query(sql, [
-    market,
-    toolScopeValues.length > 0 ? toolScopeValues : ['*', 'creator_agents'],
-    DISCOVERY_GENERIC_BROWSE_EXTERNAL_SEED_VERTICALS,
-    DISCOVERY_GENERIC_BROWSE_EXTERNAL_SEED_CATEGORIES,
-    safeLimit,
-  ]);
-  const rawRows = Array.isArray(res?.rows) ? res.rows : [];
   const rows = [];
   const seenRowKeys = new Set();
-  for (const row of rawRows) {
-    const rowKey = buildDiscoverySeedStageRowKey(row);
-    if (!rowKey || seenRowKeys.has(rowKey)) continue;
-    seenRowKeys.add(rowKey);
-    rows.push(row);
+  const seenSqlIds = new Set();
+  const externalSeedStageCounts = [];
+  let externalSeedRawCount = 0;
+  const appendRows = (rawRows = [], axis, value, toolScope) => {
+    const metrics = {
+      stage,
+      tool_scope: String(toolScope || '').trim() || '*',
+      match_axis: axis,
+      match_value: value,
+      raw_rows: Array.isArray(rawRows) ? rawRows.length : 0,
+      compound_qualified_rows: 0,
+      query_qualified_rows: 0,
+      deduped_rows: 0,
+      final_eligible_rows: rows.length,
+    };
+    externalSeedRawCount += metrics.raw_rows;
+    for (const row of Array.isArray(rawRows) ? rawRows : []) {
+      metrics.compound_qualified_rows += 1;
+      metrics.query_qualified_rows += 1;
+      const rowKey = buildDiscoverySeedStageRowKey(row);
+      if (!rowKey || seenRowKeys.has(rowKey)) continue;
+      seenRowKeys.add(rowKey);
+      const sqlId = buildDiscoverySeedStageSqlId(row);
+      if (sqlId) seenSqlIds.add(sqlId);
+      rows.push(row);
+      metrics.deduped_rows += 1;
+      if (rows.length >= safeLimit) break;
+    }
+    metrics.final_eligible_rows = rows.length;
+    externalSeedStageCounts.push(metrics);
+  };
+  const runIndexedStage = async ({ axis, value, sqlField, score }) => {
+    const normalizedValue = String(value || '').trim().toLowerCase();
+    if (!normalizedValue || rows.length >= safeLimit) return;
+    for (const toolScope of toolScopeValues.length > 0 ? toolScopeValues : ['*', 'creator_agents']) {
+      if (rows.length >= safeLimit) break;
+      const stageParams = [market, toolScope, normalizedValue];
+      const resolvedCap = Math.max(1, safeLimit - rows.length);
+      let sql = `
+        SELECT
+          ${selectSql},
+          ${Number(score || 0)}::int AS match_score,
+          '${stage}'::text AS match_stage
+        FROM external_product_seeds
+        WHERE status = 'active'
+          AND attached_product_key IS NULL
+          AND market = $1
+          AND tool = $2
+          AND coalesce(lower(seed_data#>>'{suppression_flags,exclude_from_recall}'), 'false') <> 'true'
+          AND coalesce(lower(seed_data#>>'{derived,recall,suppression_flags,exclude_from_recall}'), 'false') <> 'true'
+          AND ${sqlField} = $3
+      `;
+      if (seenSqlIds.size > 0) {
+        stageParams.push(Array.from(seenSqlIds));
+        sql += `
+          AND id <> ALL($${stageParams.length}::bigint[])
+        `;
+      }
+      stageParams.push(resolvedCap);
+      sql += `
+        ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST, id DESC
+        LIMIT $${stageParams.length}
+      `;
+      const res = await query(sql, stageParams);
+      appendRows(Array.isArray(res?.rows) ? res.rows : [], axis, normalizedValue, toolScope);
+    }
+  };
+
+  for (const vertical of DISCOVERY_GENERIC_BROWSE_EXTERNAL_SEED_VERTICALS) {
+    await runIndexedStage({
+      axis: 'vertical',
+      value: vertical,
+      sqlField: EXTERNAL_SEED_RECALL_SQL_FIELDS.vertical,
+      score: 64,
+    });
     if (rows.length >= safeLimit) break;
   }
+  if (rows.length < safeLimit) {
+    for (const category of DISCOVERY_GENERIC_BROWSE_EXTERNAL_SEED_CATEGORIES) {
+      await runIndexedStage({
+        axis: 'category',
+        value: category,
+        sqlField: DISCOVERY_EXTERNAL_SEED_INDEXED_RECALL_CATEGORY_SQL,
+        score: 52,
+      });
+      if (rows.length >= safeLimit) break;
+    }
+  }
+
   const products = annotateProviderProducts(
     productProvider,
     rows.map((row) => buildExternalSeedBrandSearchProduct(row)).filter(Boolean),
@@ -5273,18 +5315,8 @@ async function fetchGenericBrowseExternalSeedServingCandidates({
         market,
         marketSource: marketConfig?.source,
         externalSeedToolScopes: toolScopeValues,
-        externalSeedStageCounts: [
-          {
-            stage,
-            tool_scope: 'all',
-            raw_rows: rawRows.length,
-            compound_qualified_rows: rawRows.length,
-            query_qualified_rows: rawRows.length,
-            deduped_rows: rows.length,
-            final_eligible_rows: rows.length,
-          },
-        ],
-        externalSeedRawCount: rawRows.length,
+        externalSeedStageCounts,
+        externalSeedRawCount,
         externalSeedQualifiedCount: rows.length,
         externalSeedFilteredCompoundCount: 0,
         externalSeedFilteredQueryTextCount: 0,
