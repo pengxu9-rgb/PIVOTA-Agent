@@ -327,6 +327,7 @@ describe('externalSeedRecall', () => {
       seedData: {
         brand: 'Rare Beauty',
         category: 'Makeup',
+        product_type: 'Serum',
         description: 'A serum-like foundation with breathable coverage and a natural finish.',
       },
       snapshot: {},
@@ -334,6 +335,24 @@ describe('externalSeedRecall', () => {
 
     expect(doc.category).toBe('Foundation');
     expect(doc.vertical).toBe('makeup');
+  });
+
+  test('prefers explicit body oil title over incorrect raw serum product_type', () => {
+    const doc = buildExternalSeedRecallDoc({
+      row: {
+        id: 'eps_body_oil_wrong_type',
+        title: 'Bronze Body Glow Oil',
+      },
+      seedData: {
+        brand: 'INNBEAUTY PROJECT',
+        category: 'Skincare',
+        product_type: 'Serum',
+        description: 'A luminous body oil that leaves skin with a bronze glow.',
+      },
+      snapshot: {},
+    });
+
+    expect(doc.category).toBe('Body Oil');
   });
 
   test('builds recall-first SQL with raw seed fallback only at the end', () => {
