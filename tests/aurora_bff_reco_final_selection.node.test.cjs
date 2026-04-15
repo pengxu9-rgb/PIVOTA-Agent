@@ -2620,7 +2620,7 @@ test('beauty mainline reco rows filter off-role active features for hydrating su
           matched_role_label: 'Hydrating serum or essence',
           matched_role_rank: 42,
           retrieval_source: 'external_seed',
-          key_ingredients: ['Hyaluronic acid', 'Niacinamide', 'Salicylic acid', 'Azelaic acid'],
+          key_ingredients: ['Hyaluronic acid', 'Niacinamide', 'Salicylic acid', 'Azelaic acid', 'Alpha Arbutin'],
           short_description: 'A hydrating serum with hyaluronic acid and glycerin for dehydrated skin.',
         },
       ],
@@ -2654,6 +2654,7 @@ test('beauty mainline reco rows filter off-role active features for hydrating su
     assert.ok(rows[0].key_features.includes('Lightweight serum'));
     assert.equal(rows[0].key_features.includes('Salicylic acid'), false);
     assert.equal(rows[0].key_features.includes('Azelaic acid'), false);
+    assert.equal(rows[0].key_features.includes('Alpha Arbutin'), false);
   } finally {
     delete require.cache[moduleId];
   }

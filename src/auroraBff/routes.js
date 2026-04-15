@@ -19120,7 +19120,7 @@ function shouldProjectRecoFeatureForRole(value, { roleText = '', productName = '
   const name = String(productName || '').trim().toLowerCase();
   const hydrationOrToleranceRole = /\b(?:hydrat\w*|dehydrat\w*|barrier|moist\w*|sooth\w*|calm\w*|sensitive|redness|irritat\w*)\b/.test(role);
   const activeTreatmentRole = /\b(oil|shine|sebum|acne|blemish|clogged|pore|tone|mark|dark spot|brighten|hyperpigmentation|uneven)\b/.test(role);
-  const treatmentActive = /\b(salicylic|azelaic|retinol|retinoid|glycolic|lactic|mandelic|benzoyl|peroxide|aha|bha|pha|exfoliat|vitamin c|ascorbic)\b/.test(feature);
+  const treatmentActive = /\b(salicylic|azelaic|retinol|retinoid|glycolic|lactic|mandelic|benzoyl|peroxide|aha|bha|pha|exfoliat|vitamin c|ascorbic|alpha arbutin|arbutin|tranexamic|kojic)\b/.test(feature);
   if (hydrationOrToleranceRole && !activeTreatmentRole && treatmentActive) {
     return name.includes(feature);
   }
