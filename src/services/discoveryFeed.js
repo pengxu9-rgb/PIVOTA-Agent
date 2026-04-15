@@ -286,6 +286,14 @@ const BEAUTY_INTEREST_CATEGORY_BY_PHRASE = Object.freeze({
     categories: ['conditioner', 'leave in conditioner', 'deep conditioner'],
     verticals: ['haircare'],
   },
+  'leave in conditioner': {
+    categories: ['leave in conditioner', 'conditioner', 'deep conditioner'],
+    verticals: ['haircare'],
+  },
+  'deep conditioner': {
+    categories: ['deep conditioner', 'conditioner', 'leave in conditioner'],
+    verticals: ['haircare'],
+  },
   'hair oil': {
     categories: ['hair oil', 'hair treatment', 'hair care', 'haircare'],
     verticals: ['haircare'],
@@ -351,7 +359,11 @@ const BEAUTY_INTEREST_CATEGORY_BY_PHRASE = Object.freeze({
     verticals: ['skincare'],
   },
   perfume: {
-    categories: ['perfume', 'eau de parfum'],
+    categories: ['perfume', 'eau de parfum', 'fragrance'],
+    verticals: ['fragrance'],
+  },
+  'eau de parfum': {
+    categories: ['eau de parfum', 'perfume', 'fragrance'],
     verticals: ['fragrance'],
   },
   'acne treatment': {
