@@ -21888,15 +21888,17 @@ function resolveRecoQueryEntryTimeoutMs(queryEntry = null, effectiveTimeoutMs = 
     : 0;
   if (normalizedTimeoutMs <= 0) return normalizedTimeoutMs;
   const sourceScope = String(queryEntry?.source_scope || queryEntry?.sourceScope || '').trim().toLowerCase();
-  const roleRank = Number.isFinite(Number(queryEntry?.role_rank || queryEntry?.roleRank))
-    ? Number(queryEntry.role_rank || queryEntry.roleRank)
-    : null;
+  const stageId = String(queryEntry?.ladder_level || queryEntry?.stage_id || queryEntry?.stageId || '').trim().toLowerCase();
+  const isFrameworkSupportStage =
+    stageId.startsWith('framework_stage_c_support_') ||
+    Number.isFinite(Number(queryEntry?.fair_support_internal_round)) ||
+    Number.isFinite(Number(queryEntry?.fair_support_external_round));
   if (sourceScope !== 'external_seed') {
-    return roleRank != null && roleRank > 1
+    return isFrameworkSupportStage
       ? Math.min(normalizedTimeoutMs, RECO_CATALOG_SUPPORT_INTERNAL_QUERY_TIMEOUT_MS)
       : normalizedTimeoutMs;
   }
-  if (roleRank != null && roleRank > 1) {
+  if (isFrameworkSupportStage) {
     return Math.min(normalizedTimeoutMs, RECO_CATALOG_SUPPORT_EXTERNAL_SEED_QUERY_TIMEOUT_MS);
   }
   return Math.min(normalizedTimeoutMs, RECO_CATALOG_PRIMARY_EXTERNAL_SEED_QUERY_TIMEOUT_MS);
