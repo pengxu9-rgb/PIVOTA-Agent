@@ -7155,9 +7155,16 @@ function matchesBeautyCompoundQueryIntent(candidate, intent) {
       hasAnyNormalizedClassToken(combinedCategoryText, rule?.primaryPositive || []) ||
       hasAnyNormalizedClassToken(combinedCategoryText, rule?.weakPositive || []) ||
       textHasNormalizedToken(combinedCategoryText, 'scalp');
+    const categoryLooksSerum = textHasNormalizedToken(combinedCategoryText, 'serum');
     const titleOrSummaryHasScalp =
       textHasNormalizedToken(titleText, 'scalp') || textHasNormalizedToken(summaryText, 'scalp');
-    return categoryLooksScalp && titleOrSummaryHasScalp && textHasNormalizedToken(titleText, 'serum');
+    const titleOrSummaryHasSerum =
+      textHasNormalizedToken(titleText, 'serum') || textHasNormalizedToken(summaryText, 'serum');
+    return (
+      titleOrSummaryHasScalp &&
+      titleOrSummaryHasSerum &&
+      (categoryLooksScalp || categoryLooksSerum)
+    );
   }
 
   if (intent === 'lip_balm') {
