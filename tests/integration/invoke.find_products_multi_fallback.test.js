@@ -395,6 +395,85 @@ describe('/agent/shop/v1/invoke find_products_multi legacy fallback isolation', 
     );
   });
 
+  test.each([
+    ['foundation', 'Liquid Touch Weightless Foundation'],
+    ['mascara', 'Extreme Mascara'],
+  ])('public search defaults makeup category %s to discovery bridge instead of v2 upstream', async (query, title) => {
+    let discoveryPayload = null;
+    const getDiscoveryFeedMock = jest.fn(async (payload) => {
+      discoveryPayload = payload;
+      return {
+        products: [
+          {
+            merchant_id: 'external_seed',
+            product_id: `ext_${query.replace(/\s+/g, '_')}_1`,
+            source: 'external_seed',
+            title,
+          },
+        ],
+        total: 1,
+        metadata: {
+          candidate_source: 'external_seed_exact_intent',
+          primary_path_used: 'external_seed_exact_intent',
+          route_health: {
+            primary_quality_gate_passed: true,
+          },
+        },
+      };
+    });
+    jest.doMock('../../src/services/discoveryFeed', () => {
+      const actual = jest.requireActual('../../src/services/discoveryFeed');
+      return {
+        ...actual,
+        getDiscoveryFeed: getDiscoveryFeedMock,
+      };
+    });
+
+    const v2Scope = nock('http://pivota.test')
+      .post('/agent/v2/products/search')
+      .query(true)
+      .reply(418, { error: 'should_not_call_v2' });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query,
+            limit: 1,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'search',
+        },
+      });
+
+    jest.dontMock('../../src/services/discoveryFeed');
+
+    expect(resp.status).toBe(200);
+    expect(v2Scope.isDone()).toBe(false);
+    expect(getDiscoveryFeedMock).toHaveBeenCalledTimes(1);
+    expect(discoveryPayload).toEqual(
+      expect.objectContaining({
+        surface: 'browse_products',
+        limit: 1,
+        query: { text: query },
+      }),
+    );
+    expect(resp.body.products).toHaveLength(1);
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        query_source: 'beauty_discovery_mainline',
+        primary_lane: 'beauty_discovery_mainline',
+        public_search_discovery_bridge: true,
+        bridged_operation: 'get_discovery_feed',
+      }),
+    );
+  });
+
   test('public search with explicit beauty surface uses discovery bridge instead of v2 upstream', async () => {
     let discoveryPayload = null;
     const getDiscoveryFeedMock = jest.fn(async (payload) => {
