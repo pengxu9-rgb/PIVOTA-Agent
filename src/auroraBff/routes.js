@@ -54345,6 +54345,25 @@ function applyBeautyCanonicalOwnershipToEnvelope({ envelope, route = '', assista
       if (String(card.type || '').trim().toLowerCase() !== 'recommendations') return card;
       const payload = isPlainObject(card.payload) ? { ...card.payload } : {};
       payload.recommendation_meta = recommendationMetaPatch(payload.recommendation_meta);
+      if (isBeautyMainlineLocalHandoffRecoPayload(payload)) {
+        const canonicalSelection = buildRecoFinalSelectionContract({
+          payload,
+          selectionOwner: pickFirstTrimmed(
+            payload.decision_owner,
+            payload.semantic_owner,
+            payload.recommendation_meta?.decision_owner,
+            payload.recommendation_meta?.semantic_owner,
+            payload.metadata?.decision_owner,
+            payload.metadata?.semantic_owner,
+            BEAUTY_DISCOVERY_MAINLINE_OWNER,
+          ) || BEAUTY_DISCOVERY_MAINLINE_OWNER,
+        });
+        const canonicalizedPayload = applyRecoFinalSelectionContractToPayload(payload, canonicalSelection);
+        return {
+          ...card,
+          payload: applyRecoAssistantSelectionSignature(canonicalizedPayload),
+        };
+      }
       const envelopeFallbackSelection = extractRecoFinalSelectionContract(payload);
       const canonicalSelection = buildRecoFinalSelectionContract({
         payload,

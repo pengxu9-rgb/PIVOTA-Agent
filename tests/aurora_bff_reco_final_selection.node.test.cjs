@@ -2849,6 +2849,108 @@ test('beauty canonical ownership preserves successful beauty mainline rewrite te
   }
 });
 
+test('beauty canonical ownership does not let stale mainline final selection suppress selected rewrite text', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const staleSelection = {
+      selection_owner: 'shopping_agent_beauty_mainline',
+      selected_product_ids: ['dark_spot_serum'],
+      selected_titles: ['First Aid Beauty Dark Spot Serum with Niacinamide'],
+      selection_signature: 'stale_dark_spot_only',
+      mainline_status: 'grounded_success',
+    };
+    const assistantText =
+      'First Aid Beauty Dark Spot Serum with Niacinamide is the most direct first buy for post-breakout marks. Jurlique Brightening Serum is the supporting brightening option if you want a second serum comparison.';
+    const payload = {
+      query_source: 'beauty_mainline_local_handoff',
+      decision_owner: 'shopping_agent_beauty_mainline',
+      semantic_owner: 'shopping_agent_beauty_mainline',
+      recommendations: [
+        {
+          product_id: 'dark_spot_serum',
+          brand: 'First Aid Beauty',
+          display_name: 'Dark Spot Serum with Niacinamide',
+          category: 'Serum',
+          matched_role_id: 'tone_mark_treatment',
+        },
+        {
+          product_id: 'jurlique_brightening',
+          brand: 'Jurlique',
+          display_name: 'Brightening Serum',
+          category: 'Serum',
+          matched_role_id: 'tone_mark_treatment',
+        },
+      ],
+      recommendation_meta: {
+        source_mode: 'framework_mainline',
+        resolved_contract: 'agent_v1_search_beauty_mainline',
+        mainline_status: 'grounded_success',
+        assistant_rewrite_llm_used: true,
+        assistant_rewrite_reason: 'ok',
+        final_selection: staleSelection,
+        ranked_targets: [
+          {
+            target_id: 'tone_mark_treatment',
+            product_candidates: [
+              {
+                product_id: 'jurlique_brightening',
+                brand: 'Jurlique',
+                display_name: 'Brightening Serum',
+              },
+            ],
+          },
+        ],
+      },
+      metadata: {
+        resolved_contract: 'agent_v1_search_beauty_mainline',
+        final_selection: staleSelection,
+      },
+    };
+
+    const out = __internal.applyBeautyCanonicalOwnershipToEnvelope({
+      envelope: {
+        assistant_message: {
+          role: 'assistant',
+          content: assistantText,
+          format: 'text',
+        },
+        cards: [
+          {
+            card_id: 'reco_test',
+            type: 'recommendations',
+            payload,
+          },
+        ],
+      },
+      route: 'chat',
+      assistantText,
+      profile: { skinType: 'oily', goals: ['post-breakout marks'] },
+    });
+
+    const recoPayload = out.cards[0].payload;
+    assert.equal(out.assistant_message?.content, assistantText);
+    assert.deepEqual(
+      recoPayload.recommendations.map((row) => row.product_id),
+      ['dark_spot_serum', 'jurlique_brightening'],
+    );
+    assert.deepEqual(
+      recoPayload.recommendation_meta.final_selection.selected_product_ids,
+      ['dark_spot_serum', 'jurlique_brightening'],
+    );
+    assert.deepEqual(
+      recoPayload.metadata.final_selection.selected_product_ids,
+      ['dark_spot_serum', 'jurlique_brightening'],
+    );
+    assert.equal(
+      recoPayload.recommendation_meta.assistant_text_selection_signature,
+      recoPayload.recommendation_meta.final_selection.selection_signature,
+    );
+    assert.equal(recoPayload.recommendation_meta.assistant_visible_suppressed_reason, undefined);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('canonical search result mirror keeps payload-bound assistant text when canonical target bundle is present', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
