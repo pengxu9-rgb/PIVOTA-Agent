@@ -62,8 +62,8 @@ function buildSupportRoleQueryScore(query = '', { step = '', oilySignal = false,
     if (/\boily skin\b/.test(normalized)) score += 2;
     if (/^lightweight moisturizer oily skin$/.test(normalized)) score += 3;
     if (/^oil free moisturizer$/.test(normalized)) score += 2.4;
-    if (/^gel cream moisturizer$/.test(normalized)) score += 6;
-    if (/^moisturizer$/.test(normalized)) score += 7;
+    if (/^gel cream moisturizer$/.test(normalized)) score += 8;
+    if (/^moisturizer$/.test(normalized)) score += barrierSignal ? 2 : 5;
     if (/^barrier repair moisturizer$/.test(normalized)) score += 4;
     if (/^ceramide cream sensitive skin$/.test(normalized)) score += 3.5;
     if (/^soothing moisturizer$/.test(normalized)) score += 2.6;
@@ -74,7 +74,7 @@ function buildSupportRoleQueryScore(query = '', { step = '', oilySignal = false,
     if (/^oil control sunscreen$/.test(normalized)) score += 3;
     if (/^lightweight sunscreen oily skin$/.test(normalized)) score += 2.4;
     if (/^spf fluid oily skin$/.test(normalized)) score += 4.5;
-    if (/^sunscreen$/.test(normalized)) score += 7;
+    if (/^sunscreen$/.test(normalized)) score += 10;
     if (/^daily sunscreen$/.test(normalized)) score += 0.8;
     if (/^broad spectrum sunscreen$/.test(normalized)) score += 0.6;
   } else if (step === 'serum') {
