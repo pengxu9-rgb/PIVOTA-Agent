@@ -21505,6 +21505,46 @@ function shouldAllowConcernFrameworkComparisonFill(targetContext = null, ordered
   return roles.length <= 1;
 }
 
+function resolveConcernFrameworkBudgetCeiling(targetContext = null) {
+  const directBudget = isPlainObject(targetContext?.budget_ceiling) ? targetContext.budget_ceiling : null;
+  const directAmount = Number(directBudget?.amount);
+  if (Number.isFinite(directAmount) && directAmount > 0) {
+    return {
+      amount: directAmount,
+      currency: normalizeCurrencyCode(directBudget.currency, 'USD') || 'USD',
+      exclusive: directBudget.exclusive_upper_bound === true,
+    };
+  }
+  const semanticPlan = isPlainObject(targetContext?.semantic_plan) ? targetContext.semantic_plan : null;
+  const text = [
+    targetContext?.request_text,
+    targetContext?.focus_text,
+    ...(Array.isArray(semanticPlan?.must_satisfy_constraints) ? semanticPlan.must_satisfy_constraints : []),
+  ].map((value) => String(value || '').trim()).filter(Boolean).join(' ');
+  const match =
+    text.match(/\b(?:under|below|less than|max(?:imum)?|no more than)\s*(?:usd\s*)?\$?\s*([0-9]+(?:\.[0-9]{1,2})?)\b/i) ||
+    text.match(/\$\s*([0-9]+(?:\.[0-9]{1,2})?)\s*(?:or less|and under|max|maximum)?\b/i);
+  const amount = match ? Number(match[1]) : null;
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+  return {
+    amount,
+    currency: 'USD',
+    exclusive: /\b(?:under|below|less than)\b/i.test(String(match[0] || '')),
+  };
+}
+
+function isConcernFrameworkCandidateOverBudget(candidate = null, targetContext = null) {
+  const budget = resolveConcernFrameworkBudgetCeiling(targetContext);
+  if (!budget) return false;
+  const price = extractCatalogCandidatePrice(candidate) || extractCatalogCandidatePrice(candidate?.sku) || null;
+  if (!price || price.unknown === true) return false;
+  const amount = Number(price.amount);
+  if (!Number.isFinite(amount) || amount <= 0) return false;
+  const currency = normalizeCurrencyCode(price.currency, 'USD') || 'USD';
+  if (currency && budget.currency && currency !== budget.currency) return false;
+  return budget.exclusive ? amount >= budget.amount : amount > budget.amount;
+}
+
 function classifyConcernFrameworkNegativeAuthority(product, role = null) {
   const roleObj = isPlainObject(role) ? role : null;
   const queryText = uniqCaseInsensitiveStrings([
@@ -21780,6 +21820,7 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
     if (selected.length >= 3) return false;
     const productId = pickFirstString(item?.product_id, item?.productId, item?.id);
     if (!productId || usedProductIds.has(productId)) return false;
+    if (isConcernFrameworkCandidateOverBudget(item, targetContext)) return false;
     usedProductIds.add(productId);
     selected.push(item);
     return true;
@@ -54637,9 +54678,10 @@ async function maybeRewriteRecoAssistantTextWithLlm({
       || firstAttemptReason === 'gemini_json_timeout'
       || firstAttemptReason === 'parse_truncated_json'
       || firstAttemptReason === 'empty_rewrite';
+    const retryTimeoutLimitMs = useStructuredReasonRetry ? 2400 : 1800;
     const retryTimeoutCapMs = Number.isFinite(remainingBudgetMs)
-      ? Math.max(900, Math.min(1800, remainingBudgetMs))
-      : 1800;
+      ? Math.max(900, Math.min(retryTimeoutLimitMs, remainingBudgetMs))
+      : retryTimeoutLimitMs;
     const retryAttempt = await executeRewriteAttempt({
       retryReason: firstAttempt.reason,
       compactContext: useCompactRetry,

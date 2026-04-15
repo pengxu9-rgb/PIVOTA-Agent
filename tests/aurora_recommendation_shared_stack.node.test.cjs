@@ -134,7 +134,12 @@ test('concern target context preserves explicit one-product budget constraints',
 
   assert.equal(targetContext.request_text, 'I have acne-prone oily skin and want one product under $20 to buy first. What should I get?');
   assert.equal(targetContext.explicit_single_product_request, true);
-  assert.deepEqual(targetContext.budget_ceiling, { amount: 20, currency: 'USD', source: 'request_text' });
+  assert.deepEqual(targetContext.budget_ceiling, {
+    amount: 20,
+    currency: 'USD',
+    source: 'request_text',
+    exclusive_upper_bound: true,
+  });
 });
 
 test('generic single-product concern helper canonicalizes singular broad asks to plural wording', () => {

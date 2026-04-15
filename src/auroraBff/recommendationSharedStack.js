@@ -800,6 +800,8 @@ function buildConcernTargetContextFromSemanticPlan(plan, { text = '', focus = ''
     constraintText.match(/\b(?:under|below|less than|max(?:imum)?|no more than)\s*(?:usd\s*)?\$?\s*([0-9]+(?:\.[0-9]{1,2})?)\b/i) ||
     constraintText.match(/\$\s*([0-9]+(?:\.[0-9]{1,2})?)\s*(?:or less|and under|max|maximum)?\b/i);
   const budgetCeilingAmount = budgetCeilingMatch ? Number(budgetCeilingMatch[1]) : null;
+  const budgetCeilingPhrase = budgetCeilingMatch ? String(budgetCeilingMatch[0] || '') : '';
+  const budgetCeilingExclusive = /\b(?:under|below|less than)\b/i.test(budgetCeilingPhrase);
   return {
     resolved_target_step: null,
     resolved_target_step_confidence: 'none',
@@ -815,7 +817,14 @@ function buildConcernTargetContextFromSemanticPlan(plan, { text = '', focus = ''
     focus_text: pickFirstTrimmed(focus) || null,
     explicit_single_product_request: explicitSingleProductRequest,
     ...(Number.isFinite(budgetCeilingAmount) && budgetCeilingAmount > 0
-      ? { budget_ceiling: { amount: budgetCeilingAmount, currency: 'USD', source: 'request_text' } }
+      ? {
+          budget_ceiling: {
+            amount: budgetCeilingAmount,
+            currency: 'USD',
+            source: 'request_text',
+            exclusive_upper_bound: budgetCeilingExclusive,
+          },
+        }
       : {}),
     concern_signals: isPlainObject(semanticPlan.concern_signals)
       ? semanticPlan.concern_signals
