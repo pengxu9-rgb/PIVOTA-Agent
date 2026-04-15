@@ -655,6 +655,86 @@ describe('/agent/shop/v1/invoke find_products_multi legacy fallback isolation', 
     );
   });
 
+  test('public short beauty brand search bridges to discovery without cache fallback', async () => {
+    let discoveryPayload = null;
+    const getDiscoveryFeedMock = jest.fn(async (payload) => {
+      discoveryPayload = payload;
+      return {
+        products: [
+          {
+            merchant_id: 'external_seed',
+            product_id: 'mac_lipstick',
+            source: 'external_seed',
+            title: 'MAC Lipstick',
+            brand: 'MAC Cosmetics',
+          },
+        ],
+        total: 1,
+        metadata: {
+          candidate_source: 'brand_direct_primary',
+          primary_path_used: 'brand_direct_pool',
+          route_health: {
+            primary_quality_gate_passed: true,
+          },
+        },
+      };
+    });
+    jest.doMock('../../src/services/discoveryFeed', () => {
+      const actual = jest.requireActual('../../src/services/discoveryFeed');
+      return {
+        ...actual,
+        getDiscoveryFeed: getDiscoveryFeedMock,
+      };
+    });
+
+    const v2Scope = nock('http://pivota.test')
+      .post('/agent/v2/products/search')
+      .query(true)
+      .reply(418, { error: 'should_not_call_v2' });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'mac',
+            limit: 24,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'search',
+        },
+      });
+
+    jest.dontMock('../../src/services/discoveryFeed');
+
+    expect(resp.status).toBe(200);
+    expect(v2Scope.isDone()).toBe(false);
+    expect(getDiscoveryFeedMock).toHaveBeenCalledTimes(1);
+    expect(discoveryPayload).toEqual(
+      expect.objectContaining({
+        surface: 'browse_products',
+        limit: 24,
+        query: { text: 'mac' },
+        scope: {
+          brand_names: ['mac cosmetics', 'mac'],
+        },
+      }),
+    );
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        query_source: 'beauty_discovery_mainline',
+        primary_lane: 'beauty_discovery_mainline',
+        public_search_brand_mainline: true,
+        public_search_brand_scope_applied: ['mac cosmetics', 'mac'],
+        public_search_discovery_bridge: true,
+      }),
+    );
+  });
+
   test('public search category uses a single-pass upstream timeout without timeout retry', async () => {
     process.env.UPSTREAM_RETRY_FIND_PRODUCTS_MULTI_ON_TIMEOUT = 'true';
     process.env.FIND_PRODUCTS_MULTI_UPSTREAM_LOOKUP_TIMEOUT_MS = '3500';

@@ -84,6 +84,75 @@ describe('findProductsMulti brand lexicon', () => {
         brands: expect.arrayContaining(["kiehl s"]),
       }),
     );
+    expect(detectBrandEntities('mac', { candidateProducts: [] })).toEqual(
+      expect.objectContaining({
+        brand_like: true,
+        brands: expect.arrayContaining(['mac cosmetics', 'mac']),
+      }),
+    );
+    expect(detectBrandEntities('estee lauder', { candidateProducts: [] })).toEqual(
+      expect.objectContaining({
+        brand_like: true,
+        brands: expect.arrayContaining(['estee lauder']),
+      }),
+    );
+    expect(detectBrandEntities('lancome', { candidateProducts: [] })).toEqual(
+      expect.objectContaining({
+        brand_like: true,
+        brands: expect.arrayContaining(['lancome']),
+      }),
+    );
+    expect(detectBrandEntities('milk makeup', { candidateProducts: [] })).toEqual(
+      expect.objectContaining({
+        brand_like: true,
+        brands: expect.arrayContaining(['milk makeup']),
+      }),
+    );
+    expect(detectBrandEntities('tower 28', { candidateProducts: [] })).toEqual(
+      expect.objectContaining({
+        brand_like: true,
+        brands: expect.arrayContaining(['tower 28 beauty', 'tower 28']),
+      }),
+    );
+    expect(detectBrandEntities('supergoop', { candidateProducts: [] })).toEqual(
+      expect.objectContaining({
+        brand_like: true,
+        brands: expect.arrayContaining(['supergoop']),
+      }),
+    );
+    expect(detectBrandEntities('summer fridays lip balm', { candidateProducts: [] })).toEqual(
+      expect.objectContaining({
+        brand_like: true,
+        brands: expect.arrayContaining(['summer fridays']),
+      }),
+    );
+    expect(detectBrandEntities("paula's choice", { candidateProducts: [] })).toEqual(
+      expect.objectContaining({
+        brand_like: true,
+        brands: expect.arrayContaining(['paula s choice']),
+      }),
+    );
+  });
+
+  test('keeps short beauty brand aliases token-boundary safe', () => {
+    expect(detectBrandEntities('macbook case', { candidateProducts: [] })).toEqual(
+      expect.objectContaining({
+        brand_like: false,
+        brands: [],
+      }),
+    );
+    expect(detectBrandEntities('ysl lipstick', { candidateProducts: [] })).toEqual(
+      expect.objectContaining({
+        brand_like: true,
+        brands: expect.arrayContaining(['yves saint laurent', 'ysl']),
+      }),
+    );
+    expect(detectBrandEntities('outfit', { candidateProducts: [] })).toEqual(
+      expect.objectContaining({
+        brand_like: false,
+        brands: [],
+      }),
+    );
   });
 
   test('treats fashion category terms as explicit category hints', () => {
