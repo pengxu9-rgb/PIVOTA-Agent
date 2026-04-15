@@ -141,7 +141,6 @@ function buildSupportRoleQueryVariants({
   const explicitMarkConcern = /\b(post[- ]?(?:acne|breakout)|breakout marks?|acne marks?|dark spots?|hyperpigmentation|melasma)\b/.test(
     uniqueCaseInsensitiveStrings([
       concernText,
-      ...(Array.isArray(fitKeywords) ? fitKeywords : []),
     ], 24)
       .map((value) => normalizeSupportRoleQueryToken(value))
       .filter(Boolean)
