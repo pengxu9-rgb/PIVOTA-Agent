@@ -722,7 +722,7 @@ test('reco assistant rewrite recovers truncated raw json when assistant_text is 
   }
 });
 
-test('reco assistant rewrite rejects buy copy that does not start with the lead product name', async () => {
+test('reco assistant rewrite accepts direct buy copy even when concern framing comes first', async () => {
   const prevMock = process.env.AURORA_BFF_USE_MOCK;
   const prevProvider = process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
   const prevModel = process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
@@ -764,7 +764,7 @@ test('reco assistant rewrite rejects buy copy that does not start with the lead 
       ok: true,
       json: {
         assistant_text:
-          'To address your oily skin and manage shine, you should start with a targeted oil-control treatment. I recommend buying GoalSkin Oil Control Serum.',
+          'For oily skin, I recommend buying GoalSkin Oil Control Serum because it helps manage visible shine without feeling heavy.',
       },
       parse_status: 'parsed',
       provider: 'gemini',
@@ -779,8 +779,103 @@ test('reco assistant rewrite rejects buy copy that does not start with the lead 
       allowLockedSelectionRewrite: true,
     });
 
+    assert.equal(rewrite.llm_used, true);
+    assert.equal(rewrite.reason, null);
+    assert.match(rewrite.text, /GoalSkin Oil Control Serum/);
+  } finally {
+    __internal.__resetCallGeminiJsonObjectForTest();
+    if (prevMock === undefined) delete process.env.AURORA_BFF_USE_MOCK;
+    else process.env.AURORA_BFF_USE_MOCK = prevMock;
+    if (prevProvider === undefined) delete process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
+    else process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER = prevProvider;
+    if (prevModel === undefined) delete process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
+    else process.env.AURORA_PRODUCT_INTEL_LLM_MODEL = prevModel;
+    delete require.cache[moduleId];
+  }
+});
+
+test('reco assistant rewrite rejects candidate-pool product names that are not final visible cards', async () => {
+  const prevMock = process.env.AURORA_BFF_USE_MOCK;
+  const prevProvider = process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
+  const prevModel = process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
+  process.env.AURORA_BFF_USE_MOCK = 'false';
+  process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER = 'gemini';
+  process.env.AURORA_PRODUCT_INTEL_LLM_MODEL = 'gemini-3-flash-preview';
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const payload = __internal.applyRecoContentSpineToPayload(
+      {
+        recommendations: [
+          {
+            product_id: 'dark_spot_1',
+            display_name: 'First Aid Beauty Dark Spot Serum with Niacinamide',
+            brand: 'First Aid Beauty',
+            category: 'Serum',
+          },
+          {
+            product_id: 'dark_spot_2',
+            display_name: 'Jurlique Brightening Serum',
+            brand: 'Jurlique',
+            category: 'Serum',
+          },
+        ],
+        recommendation_meta: {
+          resolved_target_step: 'treatment',
+          mainline_status: 'grounded_success',
+        },
+      },
+      {
+        ingredient_query: 'Tone and post-breakout mark treatment',
+        resolved_target_step: 'treatment',
+        primary_target_id: 'tone_mark_treatment',
+        ranked_targets: [
+          {
+            target_id: 'tone_mark_treatment',
+            ingredient_query: 'Tone and post-breakout mark treatment',
+            resolved_target_step: 'treatment',
+          },
+        ],
+        selected_target_ids: ['tone_mark_treatment'],
+      },
+    );
+    payload.recommendation_meta.ranked_targets[0].product_candidates = [
+      {
+        product_id: 'dark_spot_1',
+        brand: 'First Aid Beauty',
+        name: 'Dark Spot Serum with Niacinamide',
+      },
+      {
+        product_id: 'dark_spot_refill',
+        brand: 'Fenty Beauty',
+        name: 'Watch Ya Tone Niacinamide Dark Spot Serum Refill',
+      },
+      {
+        product_id: 'dark_spot_2',
+        brand: 'Jurlique',
+        name: 'Brightening Serum',
+      },
+    ];
+    __internal.__setCallGeminiJsonObjectForTest(async () => ({
+      ok: true,
+      json: {
+        assistant_text:
+          'First Aid Beauty Dark Spot Serum with Niacinamide is your best first buy because it targets post-breakout marks. You could instead pick the Fenty Beauty Watch Ya Tone Refill for a lower-priced targeted treatment.',
+      },
+      parse_status: 'parsed',
+      provider: 'gemini',
+      effective_model: 'gemini-3-flash-preview',
+    }));
+
+    const rewrite = await __internal.maybeRewriteRecoAssistantTextWithLlm({
+      payload,
+      language: 'EN',
+      profile: { goals: ['post-breakout marks'] },
+      userRequestText: 'What should I buy for post-breakout marks?',
+      allowLockedSelectionRewrite: true,
+    });
+
     assert.equal(rewrite.llm_used, false);
-    assert.equal(rewrite.reason, 'rewrite_buy_lead_not_product_first');
+    assert.equal(rewrite.reason, 'rewrite_mentions_unselected_product');
     assert.equal(rewrite.text, '');
   } finally {
     __internal.__resetCallGeminiJsonObjectForTest();
@@ -1018,7 +1113,7 @@ test('reco assistant rewrite accepts product-first buy copy with recommendation 
   }
 });
 
-test('reco assistant rewrite retries buy drafts that bury the lead product after a concern opener', async () => {
+test('reco assistant rewrite accepts buy drafts that directly name the product after a concern opener', async () => {
   const prevMock = process.env.AURORA_BFF_USE_MOCK;
   const prevProvider = process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
   const prevModel = process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
@@ -1094,14 +1189,12 @@ test('reco assistant rewrite retries buy drafts that bury the lead product after
       allowLockedSelectionRewrite: true,
     });
 
-    assert.equal(callCount, 2);
+    assert.equal(callCount, 1);
     assert.equal(rewrite.llm_used, true);
     assert.equal(rewrite.reason, null);
-    assert.match(prompts[1], /Fix required: Start the first sentence with the lead product name/);
-    assert.match(prompts[1], /best first buy because/);
     assert.equal(
       rewrite.text,
-      'GoalSkin Oil Control Serum is the product to buy first for oily skin. It helps reduce visible shine without feeling heavy.',
+      'To manage oily skin and shine, buy GoalSkin Oil Control Serum first. It helps reduce visible shine without feeling heavy.',
     );
   } finally {
     __internal.__resetCallGeminiJsonObjectForTest();
@@ -1115,7 +1208,7 @@ test('reco assistant rewrite retries buy drafts that bury the lead product after
   }
 });
 
-test('reco assistant rewrite uses compact retry when routine-mix buy copy buries the lead product', async () => {
+test('reco assistant rewrite accepts routine-mix buy copy when the first sentence directly names the lead product', async () => {
   const prevMock = process.env.AURORA_BFF_USE_MOCK;
   const prevProvider = process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
   const prevModel = process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
@@ -1218,13 +1311,11 @@ test('reco assistant rewrite uses compact retry when routine-mix buy copy buries
       allowLockedSelectionRewrite: true,
     });
 
-    assert.equal(callCount, 2);
+    assert.equal(callCount, 1);
     assert.equal(rewrite.llm_used, true);
     assert.equal(rewrite.reason, null);
     assert.match(prompts[0], /"prompt_profile":"compact_timeout_retry"/);
-    assert.match(prompts[1], /Fix required: Start the first sentence with the lead product name/);
-    assert.match(prompts[1], /best first buy because/);
-    assert.match(prompts[1], /"prompt_profile":"compact_timeout_retry"/);
+    assert.match(rewrite.text, /The Ordinary Niacinamide 10% \+ Zinc 1%/);
   } finally {
     __internal.__resetCallGeminiJsonObjectForTest();
     if (prevMock === undefined) delete process.env.AURORA_BFF_USE_MOCK;
@@ -1931,6 +2022,84 @@ test('reco assistant rewrite retries oily buy drafts that use off-target tone cl
     else process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER = prevProvider;
     if (prevModel === undefined) delete process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
     else process.env.AURORA_PRODUCT_INTEL_LLM_MODEL = prevModel;
+    delete require.cache[moduleId];
+  }
+});
+
+test('beauty mainline routine support fill keeps one card per support role', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const targetContext = {
+      primary_role_id: 'hydrating_barrier_moisturizer',
+      mainline_fallback_policy: 'strict_no_runtime_fallback',
+      semantic_planner_required: true,
+      framework_roles: [
+        {
+          role_id: 'hydrating_barrier_moisturizer',
+          label: 'Hydrating barrier moisturizer',
+          preferred_step: 'moisturizer',
+          rank: 1,
+          query_terms: ['hydrating', 'barrier', 'moisturizer'],
+          fit_keywords: ['barrier', 'ceramide', 'moisturizer'],
+        },
+        {
+          role_id: 'hydrating_serum_or_essence',
+          label: 'Hydrating serum or essence',
+          preferred_step: 'serum',
+          rank: 2,
+          query_terms: ['hydrating', 'serum', 'essence'],
+          fit_keywords: ['hyaluronic', 'serum'],
+        },
+        {
+          role_id: 'daily_sunscreen',
+          label: 'Daily sunscreen',
+          preferred_step: 'sunscreen',
+          rank: 3,
+          query_terms: ['sunscreen', 'spf'],
+          fit_keywords: ['spf', 'sunscreen'],
+        },
+      ],
+    };
+    const out = __internal.finalizeConcernFrameworkCandidatePools(
+      [
+        {
+          product_id: 'barrier_1',
+          merchant_id: 'external_seed',
+          display_name: 'Barrier Ceramide Moisturizer',
+          category: 'Moisturizer',
+          product_type: 'Moisturizer',
+          description: 'Hydrating barrier moisturizer with ceramides for dry skin.',
+        },
+        {
+          product_id: 'spf_1',
+          merchant_id: 'external_seed',
+          display_name: 'SPF 45 Sunscreen Serum',
+          category: 'Sunscreen',
+          product_type: 'Sunscreen',
+          description: 'Daily sunscreen SPF protection.',
+        },
+        {
+          product_id: 'spf_2',
+          merchant_id: 'external_seed',
+          display_name: 'Tinted SPF Moisturizer Sunscreen',
+          category: 'Sunscreen',
+          product_type: 'Sunscreen',
+          description: 'Tinted sunscreen SPF for daytime.',
+        },
+      ],
+      { targetContext },
+    );
+
+    assert.deepEqual(
+      out.selected_recommendations.map((row) => row.product_id),
+      ['barrier_1', 'spf_1'],
+    );
+    assert.deepEqual(
+      out.selected_recommendations.map((row) => row.matched_role_id),
+      ['hydrating_barrier_moisturizer', 'daily_sunscreen'],
+    );
+    assert.equal(out.role_pool_stats.daily_sunscreen.viable_count, 2);
+  } finally {
     delete require.cache[moduleId];
   }
 });

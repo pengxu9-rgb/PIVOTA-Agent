@@ -21181,6 +21181,7 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
       if (selected.length >= 3 || added >= maxAdds) break;
       const roleId = String(role?.role_id || '').trim();
       if (roleId && roleId === primaryRoleId) continue;
+      if (roleId && selected.some((item) => String(item?.matched_role_id || '').trim() === roleId)) continue;
       const bucket = roleBuckets.get(String(role?.role_id || '').trim()) || [];
       const picked = bucket.find((item) => {
         const productId = pickFirstString(item.product_id, item.productId, item.id);
@@ -30880,12 +30881,12 @@ function buildConfidenceNoticeCardPayload({
         : 'The semantic planner returned an invalid structure, so I am staying in conservative mode instead of treating fallback as success. Please retry shortly.',
     semantic_plan_untrusted:
       lang === 'CN'
-        ? '当前没有拿到可信的护理框架 owner，所以我先不硬推商品。请稍后重试。'
-        : 'I did not get a trusted care-framework owner for this turn, so I am not forcing product picks. Please retry shortly.',
+        ? '这轮没有稳定收敛出可信的护肤推荐方案，所以我先不硬推商品。请稍后重试，或补充你想找的步骤和限制条件。'
+        : 'I could not produce a reliable skincare shortlist for this request, so I am not showing product picks yet. Retry shortly, or add the step and constraints you want.',
     planner_untrusted:
       lang === 'CN'
-        ? '当前没有拿到可信的护理框架 owner，所以我先不硬推商品。请稍后重试。'
-        : 'I did not get a trusted care-framework owner for this turn, so I am not forcing product picks. Please retry shortly.',
+        ? '这轮没有稳定收敛出可信的护肤推荐方案，所以我先不硬推商品。请稍后重试，或补充你想找的步骤和限制条件。'
+        : 'I could not produce a reliable skincare shortlist for this request, so I am not showing product picks yet. Retry shortly, or add the step and constraints you want.',
     upstream_timeout_primary_role:
       lang === 'CN'
         ? '主推角色的检索链路超时了，我先不拿支持步骤强行替代。请稍后重试。'
@@ -52125,9 +52126,6 @@ function buildCompactRecoAssistantPromptLines({
 function describeRecoAssistantRewriteFailureReason(reason) {
   const normalized = String(reason || '').trim().toLowerCase();
   if (!normalized) return null;
-  if (normalized === 'rewrite_buy_lead_not_product_first') {
-    return 'Start the first sentence with the lead product name, then give the buy recommendation and reason.';
-  }
   if (normalized === 'rewrite_buy_lead_not_direct') {
     return 'Open with the exact lead product name and a direct buy line, ideally "<lead product name> is your best first buy because ...".';
   }
@@ -52151,6 +52149,9 @@ function describeRecoAssistantRewriteFailureReason(reason) {
   }
   if (normalized === 'rewrite_failed_alignment_guard') {
     return 'Tighten alignment to the selected products, the target concern, and the final payload.';
+  }
+  if (normalized === 'rewrite_mentions_unselected_product') {
+    return 'Remove any product name that is not in selected_products. Only mention the final visible card products.';
   }
   if (normalized === 'rewrite_off_target_concern_claim') {
     return 'Remove extra concern claims that are not in the user request or selected target roles; use only target-aligned evidence_points.';
@@ -52573,12 +52574,78 @@ function extractRecoAssistantLeadSentence(text) {
   return raw.slice(0, 240).trim();
 }
 
-function assistantTextStartsWithSelectedProductName(text, value) {
-  const lead = normalizeSemanticAuditText(String(text || ''));
-  const target = normalizeSemanticAuditText(String(value || ''));
-  if (!lead || !target) return false;
-  if (lead.startsWith(target)) return true;
-  return lead.startsWith(`buy ${target}`) || lead.startsWith(`recommend ${target}`);
+function collectRecoAssistantProductMentionAliases(row = null) {
+  if (!isPlainObject(row)) return [];
+  const brand = pickFirstTrimmed(row.brand, row.brand_name, row.brandName);
+  const name = pickFirstTrimmed(row.display_name, row.displayName, row.name, row.title);
+  const aliases = [];
+  const pushAlias = (value) => {
+    const normalized = normalizeSemanticAuditText(value);
+    if (!normalized || normalized.length < 12) return;
+    if (normalized.split(/\s+/).filter(Boolean).length < 2) return;
+    aliases.push(normalized);
+  };
+  pushAlias(name);
+  pushAlias([brand, name].filter(Boolean).join(' '));
+  if (brand && name) {
+    const nameTokens = normalizeSemanticAuditText(name)
+      .split(/\s+/)
+      .filter(Boolean)
+      .filter((token) => !/^(with|and|the|a|an|for|spf|pa|broad|spectrum)$/i.test(token));
+    if (nameTokens.length >= 3) {
+      pushAlias(`${brand} ${nameTokens.slice(0, 3).join(' ')}`);
+    }
+    if (nameTokens.length >= 4) {
+      pushAlias(`${brand} ${nameTokens.slice(0, 4).join(' ')}`);
+    }
+  }
+  return uniqCaseInsensitiveStrings(aliases, 8);
+}
+
+function collectRecoAssistantUnselectedCandidateAliases(payload = null) {
+  const basePayload = isPlainObject(payload) ? payload : {};
+  const recommendations = Array.isArray(basePayload.recommendations)
+    ? basePayload.recommendations.filter((item) => isPlainObject(item))
+    : [];
+  const selectedProductIds = new Set(
+    recommendations
+      .map((item) => pickFirstTrimmed(item.product_id, item.productId, item.sku?.product_id, item.sku?.productId))
+      .filter(Boolean)
+      .map((value) => String(value).trim().toLowerCase()),
+  );
+  const selectedAliases = new Set(
+    recommendations
+      .flatMap((item) => collectRecoAssistantProductMentionAliases(item))
+      .map((value) => String(value || '').trim().toLowerCase())
+      .filter(Boolean),
+  );
+  const rankedTargets = Array.isArray(basePayload?.recommendation_meta?.ranked_targets)
+    ? basePayload.recommendation_meta.ranked_targets.filter((target) => isPlainObject(target))
+    : [];
+  const aliases = [];
+  for (const target of rankedTargets) {
+    const productCandidates = Array.isArray(target.product_candidates)
+      ? target.product_candidates.filter((item) => isPlainObject(item))
+      : [];
+    for (const candidate of productCandidates) {
+      const productId = pickFirstTrimmed(candidate.product_id, candidate.productId, candidate.sku?.product_id, candidate.sku?.productId);
+      if (productId && selectedProductIds.has(String(productId).trim().toLowerCase())) continue;
+      for (const alias of collectRecoAssistantProductMentionAliases(candidate)) {
+        const normalizedAlias = String(alias || '').trim().toLowerCase();
+        if (!normalizedAlias || selectedAliases.has(normalizedAlias)) continue;
+        aliases.push(alias);
+      }
+    }
+  }
+  return uniqCaseInsensitiveStrings(aliases, 24);
+}
+
+function assistantTextMentionsUnselectedRecoCandidate(text, payload = null) {
+  const aliases = collectRecoAssistantUnselectedCandidateAliases(payload);
+  if (!aliases.length) return false;
+  const normalizedText = normalizeSemanticAuditText(text);
+  if (!normalizedText) return false;
+  return aliases.some((alias) => normalizedText.includes(alias));
 }
 
 function assistantTextUsesFutureRoutineUpsell(text) {
@@ -52772,10 +52839,7 @@ function validateRecoAssistantRewriteCandidate({
       ? false
       : secondaryTargets.length > 2;
   const buyLeadNotDirect = requestMode === 'buy' && !assistantTextHasDirectBuyLead(leadSentence, names);
-  const buyLeadNotProductFirst =
-    requestMode === 'buy'
-    && names.length > 0
-    && !assistantTextStartsWithSelectedProductName(leadSentence, names[0]);
+  const mentionsUnselectedCandidate = assistantTextMentionsUnselectedRecoCandidate(text, payload);
   const selectedRecommendationRoleIds = uniqCaseInsensitiveStrings(
     (Array.isArray(payload?.recommendations) ? payload.recommendations : [])
       .map((item) => pickFirstTrimmed(item?.matched_role_id, item?.matchedRoleId))
@@ -52816,7 +52880,7 @@ function validateRecoAssistantRewriteCandidate({
     || overconfident
     || secondaryTargetsMentionedAsTooMany
     || buyLeadNotDirect
-    || buyLeadNotProductFirst
+    || mentionsUnselectedCandidate
     || buyUsesRoutineUpsell
     || usesVagueBenefitLanguage
     || usesTemplatedRoutineBridge
@@ -52825,8 +52889,8 @@ function validateRecoAssistantRewriteCandidate({
     || usesGenericRoutineWrapup
     || usesOffTargetConcernClaim
   ) {
-    if (buyLeadNotProductFirst) return { ok: false, reason: 'rewrite_buy_lead_not_product_first' };
     if (buyLeadNotDirect) return { ok: false, reason: 'rewrite_buy_lead_not_direct' };
+    if (mentionsUnselectedCandidate) return { ok: false, reason: 'rewrite_mentions_unselected_product' };
     if (buyUsesRoutineUpsell) return { ok: false, reason: 'rewrite_buy_addon_filler' };
     if (usesVagueBenefitLanguage) return { ok: false, reason: 'rewrite_vague_benefit_language' };
     if (usesTemplatedRoutineBridge) return { ok: false, reason: 'rewrite_templated_routine_bridge' };
@@ -52844,13 +52908,13 @@ function shouldRetryRecoAssistantRewrite(reason) {
   return normalized === 'empty_rewrite'
     || normalized === 'gemini_json_timeout'
     || normalized === 'parse_truncated_json'
-    || normalized === 'rewrite_buy_lead_not_product_first'
     || normalized === 'rewrite_buy_lead_not_direct'
     || normalized === 'rewrite_vague_benefit_language'
     || normalized === 'rewrite_templated_routine_bridge'
     || normalized === 'rewrite_stiff_selection_framing'
     || normalized === 'rewrite_single_product_routine_framing'
     || normalized === 'rewrite_generic_routine_wrapup'
+    || normalized === 'rewrite_mentions_unselected_product'
     || normalized === 'rewrite_off_target_concern_claim'
     || normalized === 'rewrite_failed_alignment_guard';
 }
@@ -53147,7 +53211,6 @@ async function maybeRewriteRecoAssistantTextWithLlm({
     const useCompactRetry =
       preferCompactPrimaryAttempt
       || firstAttemptReason === 'rewrite_buy_lead_not_direct'
-      || firstAttemptReason === 'rewrite_buy_lead_not_product_first'
       || firstAttemptReason === 'rewrite_templated_routine_bridge'
       || firstAttemptReason === 'rewrite_stiff_selection_framing'
       || firstAttemptReason === 'rewrite_generic_routine_wrapup'
@@ -53573,7 +53636,9 @@ function buildBeautyCanonicalOwnershipAudit({ envelope, route = '', assistantTex
     hasRecommendations &&
     !assistantMissingAllowed &&
     (
-      isBeautyMainlineLocalHandoff
+      assistantTextMentionsUnselectedRecoCandidate(assistantText, recoPayload)
+      ||
+      (isBeautyMainlineLocalHandoff
         ? (
           selectedProducts.length > 0
             ? !assistantMentionsSelectedProducts
@@ -53583,6 +53648,7 @@ function buildBeautyCanonicalOwnershipAudit({ envelope, route = '', assistantTex
           (selectedProducts.length > 0 && !assistantMentionsSelectedProducts)
           || (primaryTargetLabel && !assistantMentionsPrimaryTarget)
         )
+      )
     )
   );
   const cardConflictSameTurn = Boolean(
@@ -53817,8 +53883,43 @@ function applyBeautyCanonicalOwnershipToEnvelope({ envelope, route = '', assista
       selectionContract &&
       !shouldPreserveBeautyMainlineAssistantSurface,
     );
+    const shouldSuppressUnselectedCandidateAssistant = Boolean(
+      recoPayload &&
+      shouldPreserveBeautyMainlineAssistantSurface &&
+      currentAssistantText &&
+      assistantTextMentionsUnselectedRecoCandidate(currentAssistantText, recoPayload),
+    );
+    if (shouldSuppressUnselectedCandidateAssistant) {
+      out.assistant_message = null;
+      out.cards = out.cards.map((card) => {
+        if (!isPlainObject(card) || String(card.type || '').trim().toLowerCase() !== 'recommendations') return card;
+        const payload = isPlainObject(card.payload) ? { ...card.payload } : {};
+        const meta = isPlainObject(payload.recommendation_meta) ? { ...payload.recommendation_meta } : {};
+        payload.recommendation_meta = {
+          ...meta,
+          assistant_rewrite_llm_used: false,
+          assistant_rewrite_reason: 'rewrite_mentions_unselected_product',
+          assistant_visible_suppressed_reason: 'rewrite_mentions_unselected_product',
+        };
+        return {
+          ...card,
+          payload,
+        };
+      });
+      if (isPlainObject(out.meta)) {
+        out.meta = {
+          ...out.meta,
+          canonical_ownership: buildBeautyCanonicalOwnershipAudit({
+            envelope: out,
+            route,
+            assistantText: '',
+          }),
+        };
+      }
+    }
     if (
       recoPayload &&
+      !shouldSuppressUnselectedCandidateAssistant &&
       !shouldPreserveBeautyMainlineAssistantSurface &&
       (
         shouldRebuildForSelectionContract
