@@ -4271,8 +4271,35 @@ function buildExternalSeedConjunctionSql(stageBind, recallTerms) {
     .join(' AND ');
 }
 
-function buildCompoundBeautySeedStageDefinitions(recallTerms, safeLimit) {
-  const stageCap = Math.max(safeLimit, Math.min(safeLimit * 2, 120));
+function resolveExplicitBrowseStageQueryCap(request, safeLimit, options = {}) {
+  const numericSafeLimit = Math.max(1, Number(safeLimit || 0) || 1);
+  const defaultCap = Math.max(numericSafeLimit, Math.min(numericSafeLimit * 2, 48));
+  if (!isExplicitQueryScopedBrowseRequest(request)) return defaultCap;
+
+  const compoundIntent = String(options?.compoundIntent || '').trim();
+  if (compoundIntent === 'hair_oil') {
+    return Math.max(numericSafeLimit, Math.min(numericSafeLimit * 2, 120));
+  }
+
+  const requestedLimit = clampInt(request?.limit, 12, 1, 120);
+  const cursorOffset = request?.cursor
+    ? getDiscoveryCursorAbsoluteOffset(request.cursor, requestedLimit)
+    : null;
+  const page = Math.max(1, Number(request?.page || 0) || 1);
+  const pageOffset =
+    cursorOffset != null && Number.isFinite(cursorOffset)
+      ? Math.max(0, cursorOffset)
+      : (page - 1) * requestedLimit;
+  const pageBufferedNeed = pageOffset + requestedLimit * 3;
+  const floor = Math.max(requestedLimit * 2, 24);
+  const maxCap = Math.max(numericSafeLimit, Math.min(getDiscoveryCandidateFetchCap(request), 120));
+  return Math.min(maxCap, Math.max(floor, pageBufferedNeed));
+}
+
+function buildCompoundBeautySeedStageDefinitions(recallTerms, safeLimit, options = {}) {
+  const stageCap = resolveExplicitBrowseStageQueryCap(options?.request, safeLimit, {
+    compoundIntent: recallTerms?.compoundIntent,
+  });
   const definitions = [];
   const exactPatterns = buildExternalSeedCompoundLikePatterns(
     recallTerms.compoundPhrases && recallTerms.compoundPhrases.length > 0
@@ -4859,8 +4886,11 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
   `;
   const explicitQueryScopedRecall = isExplicitQueryScopedBrowseRequest(request);
   const compoundIntent = explicitQueryScopedRecall ? recallTerms.compoundIntent : null;
+  const explicitStageQueryCap = resolveExplicitBrowseStageQueryCap(request, safeLimit, {
+    compoundIntent,
+  });
   const stageDefinitions = compoundIntent
-    ? buildCompoundBeautySeedStageDefinitions(recallTerms, safeLimit)
+    ? buildCompoundBeautySeedStageDefinitions(recallTerms, safeLimit, { request })
     : [];
   const skipBroadStructuredStages = shouldSkipBroadStructuredSeedStagesForExplicitQuery(
     request,
@@ -4871,7 +4901,7 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
       stageDefinitions.push({
         score: 48,
         stage: 'recall_title',
-        cap: Math.max(safeLimit, Math.min(safeLimit * 2, 48)),
+        cap: explicitStageQueryCap,
         buildWhereSql: (stageBind) =>
           `${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalTitle} LIKE ANY(${stageBind(recallTerms.patterns)}::text[])`,
       });
@@ -4879,7 +4909,7 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
         stageDefinitions.push({
           score: 42,
           stage: 'recall_summary',
-          cap: Math.max(safeLimit, Math.min(safeLimit * 2, 48)),
+          cap: explicitStageQueryCap,
           buildWhereSql: (stageBind) =>
             `${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalSummary} LIKE ANY(${stageBind(recallTerms.patterns)}::text[])`,
         });
@@ -4887,7 +4917,7 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
       stageDefinitions.push({
         score: 40,
         stage: 'recall_tokens',
-        cap: Math.max(safeLimit, Math.min(safeLimit * 2, 48)),
+        cap: explicitStageQueryCap,
         buildWhereSql: (stageBind) => {
           const patternBind = stageBind(recallTerms.patterns);
           return `(
@@ -4902,7 +4932,7 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
       stageDefinitions.push({
         score: 36,
         stage: 'recall_category',
-        cap: Math.max(safeLimit, Math.min(safeLimit * 2, 48)),
+        cap: explicitStageQueryCap,
         buildWhereSql: (stageBind) =>
           `${EXTERNAL_SEED_RECALL_SQL_FIELDS.category} = ANY(${stageBind(recallTerms.categoryTerms)}::text[])`,
       });
@@ -4912,7 +4942,7 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
       stageDefinitions.push({
         score: 18,
         stage: 'recall_vertical',
-        cap: Math.max(safeLimit, Math.min(safeLimit * 2, 36)),
+        cap: Math.min(explicitStageQueryCap, Math.max(safeLimit, 36)),
         buildWhereSql: (stageBind) =>
           `${EXTERNAL_SEED_RECALL_SQL_FIELDS.vertical} = ANY(${stageBind(recallTerms.verticalTerms)}::text[])`,
       });
@@ -5094,7 +5124,7 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
       await runStage({
         score: 30,
         stage: 'recall_summary',
-        cap: Math.max(safeLimit, Math.min(safeLimit * 2, 48)),
+        cap: explicitStageQueryCap,
         buildWhereSql: (stageBind) =>
           `${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalSummary} LIKE ANY(${stageBind(recallTerms.patterns)}::text[])`,
       });
@@ -8832,6 +8862,7 @@ module.exports = {
     matchesQueryTextCandidate,
     matchesBeautyCompoundQueryIntent,
     resolveExplicitBeautyCompoundIntent,
+    resolveExplicitBrowseStageQueryCap,
     resolveExplicitQueryExternalSeedMainlineAcceptThreshold,
     resolveExternalSeedProviderLimit,
     shouldFilterBrowseCandidateByQueryText,
