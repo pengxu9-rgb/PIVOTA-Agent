@@ -76,8 +76,8 @@ test('reco assistant rewrite prompt omits deterministic base text and carries re
     assert.match(prompt, /If request_mode is "buy" and there is one selected product, the first sentence must directly recommend that product by name\./);
     assert.match(prompt, /If selected_product_role_mix is "single_product", stay on one clear recommendation and do not frame the answer as a routine or a comparison set\./);
     assert.match(prompt, /If selected_product_role_mix is "single_product", sentence 2 must explain why that one product matches the concern using concrete evidence from Context\./);
-    assert.match(prompt, /If request_mode is "buy" and selected_product_role_mix is "same_role_comparison", the first sentence must name the best first buy and signal that the remaining picks are same-slot comparison options\./);
-    assert.match(prompt, /If request_mode is "buy" and selected_product_role_mix is "routine_mix", the first sentence must name the best first buy and frame the remaining picks as routine add-ons from other roles; only same-role products may be same-slot alternatives\./);
+    assert.match(prompt, /If request_mode is "buy" and selected_product_role_mix is "same_role_comparison", the first sentence must name the lead product and signal that the remaining picks are same-slot comparison options\./);
+    assert.match(prompt, /If request_mode is "buy" and selected_product_role_mix is "routine_mix", the first sentence must name the lead product and frame the remaining picks as routine add-ons from other roles; only same-role products may be same-slot alternatives\./);
     assert.match(prompt, /If selected_product_role_mix is "routine_mix", make it clear these are different routine steps, not interchangeable substitutes, and do not use the phrase "selected products"\./);
     assert.match(prompt, /If selected_product_role_mix is "same_role_comparison", present a concise horizontal comparison and name each selected product exactly once if space allows\./);
     assert.match(prompt, /If selected_product_role_mix is "routine_mix", present a basic routine by role or step, and do not imply products from different roles are interchangeable\./);
@@ -85,7 +85,7 @@ test('reco assistant rewrite prompt omits deterministic base text and carries re
     assert.match(prompt, /Price may support a recommendation, but price alone is not enough; pair it with at least one concrete fit, formula, texture, ingredient, or use-case reason from Context\./);
     assert.match(prompt, /Use selected_product_details\.compare_highlights and selected_product_details\.pivota_insights when available; do not invent highlights that are absent from Context\./);
     assert.match(prompt, /Use selected_product_details\.description_snippet and selected_product_details\.evidence_points as the primary concrete reason layer when available\./);
-    assert.match(prompt, /Do not call something the best first buy unless the same sentence or the next sentence gives a concrete reason/);
+    assert.match(prompt, /Do not call a product, routine, or bundle the top buy unless the same sentence or the next sentence gives a concrete reason/);
     assert.match(prompt, /Never write ungrammatical fragments like "because a serum\.\.\."/);
     assert.match(prompt, /If selected_product_details\.fit_assessment is "soft_match" or comparison_fill_reason is present, frame that product as a softer or broader alternative instead of an equally direct match\./);
     assert.match(prompt, /Prefer product-specific evidence over generic role language when both are available\./);
@@ -297,7 +297,7 @@ test('reco assistant compact prompt keeps same-role comparison payloads under a 
 
     assert.match(prompt, /"prompt_profile":"compact_timeout_retry"/);
     assert.match(prompt, /Treat the products as same-slot comparison options, not a routine\./);
-    assert.match(prompt, /Pick one best first buy, then compare the other options with one short tradeoff each\./);
+    assert.match(prompt, /Pick one lead product, then compare the other options with one short tradeoff each\./);
     assert.match(prompt, /The complete allowed product-name set is exactly Context\.selected_products\./);
     assert.match(prompt, /Do not mention any brand or product name that is not listed in Context\.selected_products\./);
     assert.match(prompt, /If user_relevant_concern_families does not include tone_brightening, do not mention glow, radiance, dark spots, uneven tone, brightening, or dullness\./);
@@ -1004,7 +1004,7 @@ test('reco assistant rewrite rejects candidate-pool product names that are not f
     assert.equal(callCount, 2);
     assert.equal(rewrite.llm_used, true);
     assert.equal(rewrite.reason, null);
-    assert.match(rewrite.text, /First Aid Beauty Dark Spot Serum with Niacinamide is your best first buy/);
+    assert.match(rewrite.text, /First Aid Beauty Dark Spot Serum with Niacinamide is the most direct fit/);
     assert.match(rewrite.text, /because it is a niacinamide serum/);
     assert.doesNotMatch(rewrite.text, /because (A|An|The)\b/);
     assert.doesNotMatch(rewrite.text, /because (niacinamide|brightening|vitamin c|oil-control support|oil control support)\b/i);
@@ -2421,7 +2421,7 @@ test('reco assistant rewrite retries routine-mix drafts that end in a generic cl
     assert.equal(rewrite.reason, null);
     assert.match(prompts[1], /Previous draft failed the quality gate\./);
     assert.match(prompts[1], /Fix required: Do not end with a generic routine wrap-up\./);
-    assert.match(String(rewrite.text || ''), /The Ordinary Niacinamide 10% \+ Zinc 1% is your best first buy/);
+    assert.match(String(rewrite.text || ''), /The Ordinary Niacinamide 10% \+ Zinc 1% is the most direct fit/);
     assert.match(prompts[1], /Do not write the final assistant message\./);
     assert.doesNotMatch(String(rewrite.text || ''), /These secondary steps support your oily skin/i);
   } finally {
@@ -2893,6 +2893,7 @@ test('beauty mainline reco hydrates selected card evidence from product intel KB
     });
 
     assert.equal(hydrated[0].metadata.product_intel_kb_used, true);
+    assert.equal(rows[0].product_intel.contract_version, 'pivota.product_intel.v1');
     assert.equal(rows[0].pivota_insights.what_it_is, 'A seller-grounded serum for visible shine and excess oil.');
     assert.deepEqual(rows[0].compare_highlights, [
       'Pairs niacinamide with zinc PCA for oily-skin shine and visible pore concerns.',

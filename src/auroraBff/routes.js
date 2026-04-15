@@ -19940,6 +19940,7 @@ function buildRecoVisibleProductFields(picked, { role = null, language = 'EN' } 
     pickFirstTrimmed(roleObj?.why_this_role),
   ].join(' ').trim();
   const stableAnchorProduct = resolveRecoStableAnchorProduct(row);
+  const productIntel = pickRecoProductIntelBundle(row);
   const pivotaInsights = pickRecoPivotaInsights(row);
   const shoppingCard = pickRecoShoppingCardPayload(row);
   const searchCard = pickRecoSearchCardPayload(row);
@@ -19980,6 +19981,7 @@ function buildRecoVisibleProductFields(picked, { role = null, language = 'EN' } 
   const specificNarrative = pickRecoSpecificNarrativeSnippet({
     row,
     stableAnchorProduct,
+    productIntel,
     pivotaInsights,
     shoppingCard,
     searchCard,
@@ -19988,6 +19990,7 @@ function buildRecoVisibleProductFields(picked, { role = null, language = 'EN' } 
   const evidencePoints = buildRecoProductEvidencePoints({
     row,
     stableAnchorProduct,
+    productIntel,
     pivotaInsights,
     shoppingCard,
     searchCard,
@@ -20124,6 +20127,7 @@ function buildRecoVisibleProductFields(picked, { role = null, language = 'EN' } 
       ? { key_features: derivedShopperCopy.key_features }
       : {}),
     ...(compareHighlights.length ? { compare_highlights: compareHighlights } : {}),
+    ...(productIntel ? { product_intel: productIntel } : {}),
     ...(pivotaInsights ? { pivota_insights: pivotaInsights } : {}),
     ...(shoppingCard ? { shopping_card: shoppingCard } : {}),
     ...(searchCard ? { search_card: searchCard } : {}),
@@ -21501,7 +21505,11 @@ async function handoffRecoToBeautyMainlineSearch({
     });
   }
   const canonicalSelection = extractRecoFinalSelectionContract(searchResult);
-  const recommendations = buildRecoRowsFromMainlineProducts(searchResult?.products, {
+  const hydratedSearchProducts = await hydrateRecoCandidatesProductIntelFromKb(searchResult?.products);
+  if (searchResult && typeof searchResult === 'object' && !Array.isArray(searchResult)) {
+    searchResult.products = hydratedSearchProducts;
+  }
+  const recommendations = buildRecoRowsFromMainlineProducts(hydratedSearchProducts, {
     targetContext: effectiveTargetContext,
     language: ctx?.lang || 'EN',
     debug,
