@@ -179,6 +179,67 @@ describe('pdp product intel bundle shaping', () => {
     expect(specific.product_intel_core.what_it_is.body).toMatch(/SPF 40 tinted fluid sunscreen/i);
   });
 
+  test('rejects published insights that are title-grounded and category-shopper fallback only', () => {
+    const generic = normalizePublishedProductIntelBundle({
+      contract_version: 'pivota.product_intel.v1',
+      evidence_profile: 'seller_only',
+      quality_state: 'limited',
+      product_intel_core: {
+        evidence_profile: 'seller_only',
+        quality_state: 'limited',
+        what_it_is: {
+          headline: 'Daily sunscreen',
+          body: 'Daily sunscreen product presented through merchant product data.',
+        },
+        best_for: [
+          { tag: 'daily', label: 'Daily Use', confidence: 'low' },
+          { tag: 'sunscreen', label: 'Sunscreen shoppers', confidence: 'low' },
+        ],
+        why_it_stands_out: [
+          {
+            headline: 'Listing-grounded use',
+            body: 'Defines the product around the title.',
+          },
+        ],
+        routine_fit: { step: 'sunscreen', am_pm: ['am'] },
+      },
+    });
+
+    expect(generic).toBeNull();
+  });
+
+  test('filters generic best-for fallback labels from otherwise specific published insights', () => {
+    const bundle = normalizePublishedProductIntelBundle({
+      contract_version: 'pivota.product_intel.v1',
+      evidence_profile: 'seller_plus_formula',
+      quality_state: 'eligible',
+      product_intel_core: {
+        evidence_profile: 'seller_plus_formula',
+        quality_state: 'eligible',
+        what_it_is: {
+          body: 'A mineral SPF 40 tinted fluid sunscreen with sheer coverage and a balanced finish.',
+        },
+        best_for: [
+          { tag: 'daily', label: 'Daily Use', confidence: 'low' },
+          { tag: 'mineral_spf', label: 'Mineral SPF with tint', confidence: 'moderate' },
+          { tag: 'sunscreen', label: 'Sunscreen shoppers', confidence: 'low' },
+        ],
+        why_it_stands_out: [
+          {
+            headline: 'Tint and SPF in one step',
+            body: 'Combines Zinc Oxide UV protection with sheer shade coverage.',
+          },
+        ],
+        routine_fit: { step: 'sunscreen', am_pm: ['am'] },
+      },
+    });
+
+    expect(bundle).toBeTruthy();
+    expect(bundle.product_intel_core.best_for).toEqual([
+      expect.objectContaining({ label: 'Mineral SPF with tint' }),
+    ]);
+  });
+
   test('draft bundles convert verified buyer review aggregates into community signals', () => {
     const bundle = buildProductIntelDraftBundle({
       product: {
