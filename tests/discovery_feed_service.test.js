@@ -6433,6 +6433,37 @@ describe('discovery feed service', () => {
       expect.arrayContaining(['perfume', 'eau de parfum', 'fragrance']),
     );
 
+    for (const queryText of ['shampoo', 'conditioner']) {
+      const request = _internals.normalizeDiscoveryRequest({
+        surface: 'browse_products',
+        query: {
+          text: queryText,
+        },
+        context: {
+          auth_state: 'anonymous',
+          locale: 'en-US',
+          recent_views: [],
+          recent_queries: [],
+        },
+      });
+      const recallTerms = _internals.buildBeautyInterestRecallTerms(
+        request,
+        profile,
+        [queryText],
+      );
+      expect(_internals.resolveExplicitIndexedCategoryHeadTerms(request, recallTerms)).toEqual([]);
+      expect(_internals.resolveExactPhraseTextUnionFieldLabels(request, recallTerms)).toEqual(['title']);
+      expect(
+        _internals
+          .buildExactPhraseTextFieldStageDefinitions({
+            patterns: _internals.resolveExactPhraseTextUnionPatterns(request, recallTerms),
+            fieldLabels: _internals.resolveExactPhraseTextUnionFieldLabels(request, recallTerms),
+            cap: 36,
+          })
+          .map((stage) => stage.stage),
+      ).toEqual(['recall_exact_text_title']);
+    }
+
     const leaveInRequest = _internals.normalizeDiscoveryRequest({
       surface: 'browse_products',
       query: {
@@ -7021,7 +7052,7 @@ describe('discovery feed service', () => {
     }
   });
 
-  test('explicit non-compound browse uses exact indexed category before title scan', async () => {
+  test('explicit hair wash category browse uses exact title stages without category head', async () => {
     jest.resetModules();
     const prevDatabaseUrl = process.env.DATABASE_URL;
     process.env.DATABASE_URL = 'postgres://discovery-noncompound-title-stop-test';
@@ -7113,7 +7144,7 @@ describe('discovery feed service', () => {
             ['conditioner'],
           ),
         ),
-      ).toEqual(expect.arrayContaining(['conditioner', 'leave in conditioner', 'deep conditioner']));
+      ).toEqual([]);
 
       const result = await freshInternals.fetchBeautyInterestExternalSeedFastpathCandidates({
         request,
@@ -7127,24 +7158,22 @@ describe('discovery feed service', () => {
       });
 
 	      expect(result.products).toHaveLength(12);
-	      expect(dbQueryMock).toHaveBeenCalledTimes(6);
+	      expect(dbQueryMock).toHaveBeenCalledTimes(4);
 	      expect(dbQueryMock.mock.calls[2][0]).toContain('AND tool = $2');
 	      expect(dbQueryMock.mock.calls[2][0]).not.toContain("(tool = '*' OR tool = $2)");
 	      expect(dbQueryMock.mock.calls[2][1][1]).toBe('*');
 	      expect(dbQueryMock.mock.calls[3][1][1]).toBe('creator_agents');
-	      expect(dbQueryMock.mock.calls[2][0]).toContain("seed_data->'derived'->'recall'->>'category'");
+	      expect(dbQueryMock.mock.calls[2][0]).toContain("seed_data->'derived'->'recall'->>'retrieval_title'");
+	      expect(dbQueryMock.mock.calls[2][0]).not.toContain("lower(coalesce(seed_data->'derived'->'recall'->>'category', '')");
+	      expect(dbQueryMock.mock.calls[2][0]).not.toContain('UNION ALL');
 	      expect(dbQueryMock.mock.calls[2][1].at(-1)).toBe(36);
 	      expect(result.recallSummary[0].external_seed_tool_scopes).toEqual(['*', 'creator_agents']);
 	      expect(result.recallSummary[0].external_seed_stage_counts.map((entry) => entry.stage)).toEqual([
-	        'recall_indexed_category_head',
-	        'recall_indexed_category_head',
-	        'recall_exact_text_union',
-	        'recall_exact_text_union',
+	        'recall_exact_text_title',
+	        'recall_exact_text_title',
 	      ]);
 	      expect(result.recallSummary[0].external_seed_stage_counts[0].tool_scope).toBe('*');
 	      expect(result.recallSummary[0].external_seed_stage_counts[1].tool_scope).toBe('creator_agents');
-	      expect(result.recallSummary[0].external_seed_stage_counts[2].tool_scope).toBe('*');
-	      expect(result.recallSummary[0].external_seed_stage_counts[3].tool_scope).toBe('creator_agents');
     } finally {
       if (prevDatabaseUrl === undefined) delete process.env.DATABASE_URL;
       else process.env.DATABASE_URL = prevDatabaseUrl;
