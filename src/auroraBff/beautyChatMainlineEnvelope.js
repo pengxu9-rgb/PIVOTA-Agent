@@ -91,6 +91,18 @@ function createBeautyChatMainlineEnvelopeRuntime(deps = {}) {
   }
 
   function classifyBeautyMainlineHandoffFallback({ handoff = null, err = null } = {}) {
+    const searchResult = isPlainObject(handoff?.searchResult) ? handoff.searchResult : {};
+    const metadata = isPlainObject(searchResult?.metadata) ? searchResult.metadata : {};
+    const searchStageLedger = isPlainObject(metadata?.search_stage_ledger)
+      ? metadata.search_stage_ledger
+      : isPlainObject(searchResult?.search_stage_ledger)
+        ? searchResult.search_stage_ledger
+        : {};
+    const candidatePoolSummary = isPlainObject(searchStageLedger?.candidate_pool_summary)
+      ? searchStageLedger.candidate_pool_summary
+      : isPlainObject(metadata?.candidate_pool_summary)
+        ? metadata.candidate_pool_summary
+        : {};
     const transientCode =
       typeof classifyRecoUpstreamFailureCode === 'function' && err
         ? classifyRecoUpstreamFailureCode(err)
@@ -104,6 +116,8 @@ function createBeautyChatMainlineEnvelopeRuntime(deps = {}) {
         notice_reason: 'upstream_timeout_primary_role',
         mainline_status: 'upstream_timeout',
         upstream_failure_code: transientCode || null,
+        ...(hasOwnKeys(searchStageLedger) ? { search_stage_ledger: searchStageLedger } : {}),
+        ...(hasOwnKeys(candidatePoolSummary) ? { candidate_pool_summary: candidatePoolSummary } : {}),
       };
     }
     if (handoff?.attempted === true) {
@@ -116,6 +130,10 @@ function createBeautyChatMainlineEnvelopeRuntime(deps = {}) {
         telemetry_failure_reason: inferredNoticeReason,
         mainline_status: 'needs_more_context',
         upstream_failure_code: transientCode || null,
+        query_source: pickFirstTrimmed(searchResult?.query_source, metadata?.query_source) || null,
+        source_mode: pickFirstTrimmed(metadata?.source_mode, searchResult?.source_mode) || null,
+        ...(hasOwnKeys(searchStageLedger) ? { search_stage_ledger: searchStageLedger } : {}),
+        ...(hasOwnKeys(candidatePoolSummary) ? { candidate_pool_summary: candidatePoolSummary } : {}),
       };
     }
     return {
@@ -137,6 +155,8 @@ function createBeautyChatMainlineEnvelopeRuntime(deps = {}) {
       ...(pickFirstTrimmed(fallbackMeta.products_empty_reason) ? { products_empty_reason: pickFirstTrimmed(fallbackMeta.products_empty_reason) } : {}),
       ...(pickFirstTrimmed(fallbackMeta.telemetry_failure_reason) ? { telemetry_failure_reason: pickFirstTrimmed(fallbackMeta.telemetry_failure_reason) } : {}),
       ...(pickFirstTrimmed(fallbackMeta.planner_failure_class) ? { planner_failure_class: pickFirstTrimmed(fallbackMeta.planner_failure_class) } : {}),
+      ...(isPlainObject(fallbackMeta.search_stage_ledger) ? { search_stage_ledger: fallbackMeta.search_stage_ledger } : {}),
+      ...(isPlainObject(fallbackMeta.candidate_pool_summary) ? { candidate_pool_summary: fallbackMeta.candidate_pool_summary } : {}),
       ...(fallbackMeta.fallback_or_gate_blocked === true ? { fallback_or_gate_blocked: true } : {}),
     };
     const details = [
@@ -166,6 +186,15 @@ function createBeautyChatMainlineEnvelopeRuntime(deps = {}) {
       actions: ['retry_recommendations', 'update_current_routine'],
       details,
     });
+    if (isPlainObject(fallbackMeta.search_stage_ledger)) {
+      noticePayload.search_stage_ledger = fallbackMeta.search_stage_ledger;
+    }
+    if (isPlainObject(fallbackMeta.candidate_pool_summary)) {
+      noticePayload.candidate_pool_summary = fallbackMeta.candidate_pool_summary;
+    }
+    if (hasOwnKeys(recommendationMeta)) {
+      noticePayload.recommendation_meta = recommendationMeta;
+    }
     return buildEnvelope(ctx, {
       assistant_message: makeAssistantMessage(
         String(noticePayload.message || '').trim() ||
