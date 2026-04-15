@@ -4561,6 +4561,18 @@ function shouldUseExplicitExactIntentExternalSeedMainline(request, recallTerms =
   return Boolean(resolveExplicitExactBeautyPhraseHint(request, recallTerms));
 }
 
+function resolveExplicitExactIntentHeadStopThreshold(request, recallTerms = {}) {
+  if (!shouldUseExplicitExactIntentExternalSeedMainline(request, recallTerms)) {
+    return Number.POSITIVE_INFINITY;
+  }
+  if (recallTerms?.compoundIntent) return Number.POSITIVE_INFINITY;
+  if (request?.cursor) return Number.POSITIVE_INFINITY;
+  const page = Math.max(1, Number(request?.page || 0) || 1);
+  if (page !== 1) return Number.POSITIVE_INFINITY;
+  const requestedLimit = clampInt(request?.limit, 12, 1, 120);
+  return Math.min(requestedLimit, Math.max(5, Math.floor(requestedLimit * 0.4)));
+}
+
 function buildExactPhraseTextUnionSeedStageSql({
   stageBind,
   selectSql,
@@ -5479,8 +5491,14 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
       ? Math.min(safeLimit, Math.max(requestedLimit * 2, 24, cursorQualifiedTarget))
       : summaryThreshold;
     let explicitNarrowTitleStageSatisfied = false;
+    let explicitExactIntentHeadStageSatisfied = false;
+    const explicitExactIntentHeadStopThreshold = resolveExplicitExactIntentHeadStopThreshold(
+      request,
+      recallTerms,
+    );
     const shouldStopStages = () =>
       explicitNarrowTitleStageSatisfied ||
+      explicitExactIntentHeadStageSatisfied ||
       stagedRows.length >= (compoundIntent ? qualifiedTarget : summaryThreshold);
     const appendRows = (rows = [], stage = 'unknown', toolScope = '*') => {
       const metrics = {
@@ -5537,6 +5555,14 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
       externalSeedStageCounts.push(metrics);
       if (!compoundIntent && skipBroadStructuredStages && stage === 'recall_title' && stagedRows.length > 0) {
         explicitNarrowTitleStageSatisfied = true;
+      }
+      if (
+        !compoundIntent &&
+        stage === 'recall_indexed_category_head' &&
+        Number.isFinite(explicitExactIntentHeadStopThreshold) &&
+        stagedRows.length >= explicitExactIntentHeadStopThreshold
+      ) {
+        explicitExactIntentHeadStageSatisfied = true;
       }
     };
     const runStage = async ({ buildWhereSql, buildSql, score, stage, cap }) => {
