@@ -173,3 +173,51 @@ test('framework recall planner honors targetContext primary role over lower nume
       .some((level) => String(level?.ladder_level || '').includes('daily_sunscreen')),
   );
 });
+
+test('framework recall planner keeps barrier support queries role-specific', () => {
+  const targetContext = {
+    primary_role_id: 'soothing_treatment',
+    framework_summary: {
+      concern_text: 'redness and stinging due to high sensitivity and impaired barrier',
+    },
+    framework_roles: [
+      {
+        role_id: 'soothing_treatment',
+        rank: 70,
+        preferred_step: 'treatment',
+        label: 'Soothing treatment',
+        query_terms: ['soothing serum sensitive skin', 'cica serum redness', 'panthenol treatment'],
+        fit_keywords: ['soothing', 'cica', 'panthenol', 'redness', 'calming'],
+      },
+      {
+        role_id: 'barrier_moisturizer',
+        rank: 41,
+        preferred_step: 'moisturizer',
+        label: 'Barrier-support moisturizer',
+        query_terms: ['barrier repair moisturizer', 'ceramide cream sensitive skin', 'soothing moisturizer'],
+        fit_keywords: ['barrier repair', 'ceramide', 'soothing', 'sensitive skin', 'fragrance free'],
+      },
+      {
+        role_id: 'daily_sunscreen',
+        rank: 30,
+        preferred_step: 'sunscreen',
+        label: 'Daily sunscreen',
+        query_terms: ['daily sunscreen skincare', 'broad spectrum sunscreen', 'lightweight sunscreen'],
+        fit_keywords: ['spf', 'uv filters', 'broad spectrum', 'lightweight'],
+      },
+    ],
+  };
+
+  const plan = __internal.buildRecoRecallPlan({
+    mode: 'framework_generic',
+    targetContext,
+  });
+  const barrierStage = plan.stages.find((stage) => stage?.stage_id === 'framework_stage_c_support_barrier_moisturizer');
+  const barrierQueries = (barrierStage?.entries || []).map((entry) => entry.query);
+
+  assert.deepEqual(
+    barrierQueries,
+    ['barrier repair moisturizer', 'ceramide cream sensitive skin'],
+  );
+  assert.equal(barrierQueries.includes('lightweight moisturizer'), false);
+});
