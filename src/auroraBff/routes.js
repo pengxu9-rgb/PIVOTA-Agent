@@ -53444,7 +53444,7 @@ function buildCompactRecoAssistantPromptLines({
   if (requestMode === 'buy') {
     lines.push('Use direct shopping advice tone.');
     lines.push('Start the first sentence with the lead product name.');
-    lines.push('The first sentence must use direct buy/pick language, ideally: "<lead product name> is your best first buy because ...".');
+    lines.push('The first sentence must use direct buy/pick language, for example: "<lead product name> is the strongest pick because ...".');
   } else if (requestMode === 'use_first') {
     lines.push('Use starting-point advice tone.');
     lines.push('Start with the lead product name and explain why it is the first step.');
@@ -53455,7 +53455,7 @@ function buildCompactRecoAssistantPromptLines({
     lines.push('Stay on one product only. Use exactly 2 sentences.');
   } else if (selectedProductRoleMix === 'same_role_comparison') {
     lines.push('Treat the products as same-slot comparison options, not a routine.');
-    lines.push('Pick one best first buy, then compare the other options with one short tradeoff each.');
+    lines.push('Pick one lead pick, then compare the other options with one short tradeoff each.');
     lines.push('Use at most 3 sentences.');
   } else {
     lines.push('Treat the products as different routine steps, not interchangeable substitutes.');
@@ -53518,7 +53518,7 @@ function describeRecoAssistantRewriteFailureReason(reason) {
   const normalized = String(reason || '').trim().toLowerCase();
   if (!normalized) return null;
   if (normalized === 'rewrite_buy_lead_not_direct') {
-    return 'Open with the exact lead product name and a direct buy line, ideally "<lead product name> is your best first buy because ...".';
+    return 'Open with the exact lead product name and a direct buy line, for example "<lead product name> is the strongest pick because ...".';
   }
   if (normalized === 'rewrite_buy_addon_filler') {
     return 'Do not pad the answer with future routine-building filler.';
@@ -53931,12 +53931,12 @@ function buildRecoAssistantRewritePrompt({
       'Address the user_request directly and respond to the user\'s real complaint first.',
       'If request_mode is "buy", use direct shopping advice tone.',
       'If request_mode is "buy", start the first sentence with the lead product name rather than a generic concern summary.',
-      'If request_mode is "buy", the first sentence must use direct buy/pick language, ideally: "<lead product name> is your best first buy because ...".',
+      'If request_mode is "buy", the first sentence must use direct buy/pick language, for example: "<lead product name> is the strongest pick because ...".',
       'Never write ungrammatical fragments like "because a serum..." or "because an SPF..."; use "because it is..." or an active verb.',
       'Use the phrase "best first buy" at most once in the whole message; never write "... is your best first buy because it is your best first buy ...".',
       'If request_mode is "buy" and there is one selected product, the first sentence must directly recommend that product by name.',
-      'If request_mode is "buy" and selected_product_role_mix is "same_role_comparison", the first sentence must name the best first buy and signal that the remaining picks are same-slot comparison options.',
-      'If request_mode is "buy" and selected_product_role_mix is "routine_mix", the first sentence must name the best first buy and frame the remaining picks as routine add-ons from other roles; only same-role products may be same-slot alternatives.',
+      'If request_mode is "buy" and selected_product_role_mix is "same_role_comparison", the first sentence must name the lead pick and signal that the remaining picks are same-slot comparison options.',
+      'If request_mode is "buy" and selected_product_role_mix is "routine_mix", the first sentence must name the lead pick and frame the remaining picks as routine add-ons from other roles; only same-role products may be same-slot alternatives.',
       'If selected_product_role_mix is "single_product", stay on one clear recommendation and do not frame the answer as a routine or a comparison set.',
       'If selected_product_role_mix is "single_product", sentence 2 must explain why that one product matches the concern using concrete evidence from Context.',
       'If selected_product_role_mix is "routine_mix", make it clear these are different routine steps, not interchangeable substitutes, and do not use the phrase "selected products".',
@@ -53946,7 +53946,7 @@ function buildRecoAssistantRewritePrompt({
       'If selected_product_role_mix is "same_role_comparison", compare lower-priced versus higher-priced options only inside the same role when price_order_summary supports it.',
       'If selected_product_role_mix is "routine_mix", present a basic routine by role or step, and do not imply products from different roles are interchangeable.',
       'If selected_product_role_mix is "routine_mix", use selected_product_details.role_scope, matched_role_label, and preferred_step to label what each product is doing in the routine.',
-      'For multiple selected products, choose one best first buy when the context supports it, then use compare_highlights or pivota_insights to explain tradeoffs.',
+      'For multiple selected products, choose one lead pick when the context supports it, then use compare_highlights or pivota_insights to explain tradeoffs.',
       'For routine_mix buy answers, explain the lead product with at least two available dimensions from Context: role match, formula/ingredient/texture evidence, and price/value.',
       'Use assistant_write_plan.lead_product.must_use_reason_points as the preferred reason list for the lead recommendation when available.',
       'If assistant_write_plan.lead_product.price_note exists, pair it with at least one non-price reason from assistant_write_plan.lead_product.must_use_reason_points.',
