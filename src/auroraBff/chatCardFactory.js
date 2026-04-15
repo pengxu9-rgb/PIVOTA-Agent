@@ -195,6 +195,22 @@ const RECOMMENDATION_CARD_CONCERN_FAMILY_PATTERNS = Object.freeze([
   ['sensitivity_redness', /\b(redness|sensitive|sensitized|sooth(?:e|ing)?|calm(?:ing)?|irritat(?:e|ion)|stinging?)\b/i],
   ['aging_texture', /\b(wrinkles?|fine[-\s]?lines?|aging|anti[-\s]?aging|texture|roughness|retinol|retinoid)\b/i],
 ]);
+const RECOMMENDATION_CARD_GENERIC_VISIBLE_INGREDIENT_RE =
+  /^(?:water|aqua|glycerin|butylene glycol|propylene glycol|caprylic(?:\/capric)?|dimethicone|silica|parfum|fragrance|phenoxyethanol|carbomer|citric acid|sodium hydroxide)$/i;
+const RECOMMENDATION_CARD_SHOPPER_EVIDENCE_LANGUAGE_RE =
+  /\b(?:best for|helps?|targets?|supports?|protects?|hydrates?|soothes?|calms?|mattif(?:y|ies|ying)|controls?|reduces?|lightweight|non-comedogenic|white cast|uv protection|daily protection|oil-control|shine|sebum|redness|barrier|dark spots?|post-breakout|hyperpigmentation|tone|spf\s*\d+|pa\+|without|for)\b/i;
+
+function looksLikeStandaloneRecommendationCardEvidenceFragment(value) {
+  const text = asString(value).replace(/[.!?。！？]+$/g, '').trim();
+  if (!text) return false;
+  if (RECOMMENDATION_CARD_GENERIC_VISIBLE_INGREDIENT_RE.test(text)) return true;
+  if (/^(?:lightweight|gentle|hydrating|soothing|calming|mattifying|oil-control|barrier|daily)?\s*(?:serum|cream|gel cream|moisturizer|moisturiser|sunscreen|spf|treatment|support)$/i.test(text)) {
+    return true;
+  }
+  if (RECOMMENDATION_CARD_SHOPPER_EVIDENCE_LANGUAGE_RE.test(text)) return false;
+  const wordCount = text.toLowerCase().split(/[^a-z0-9%+.-]+/i).filter(Boolean).length;
+  return wordCount <= 3 && text.length <= 36;
+}
 
 function collectRecommendationCardConcernFamilies(value) {
   const text = String(value || '').trim();
@@ -221,7 +237,8 @@ function scoreRecommendationCardCopyForTarget(value, { targetText = '', original
 }
 
 function pickTargetAlignedRecommendationCardCopy(values = [], { targetText = '' } = {}) {
-  const candidates = normalizeStringList(values, 10);
+  const candidates = normalizeStringList(values, 10)
+    .filter((value) => !looksLikeStandaloneRecommendationCardEvidenceFragment(value));
   if (!candidates.length) return '';
   return candidates
     .map((value, index) => ({

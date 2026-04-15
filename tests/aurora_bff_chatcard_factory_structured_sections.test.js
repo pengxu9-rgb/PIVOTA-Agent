@@ -476,6 +476,47 @@ describe('aurora chatCardFactory structured sections for adapter inputs', () => 
     expect(product.why_this_one).not.toMatch(/dullness|uneven tone/i);
   });
 
+  test('recommendations card does not promote standalone ingredients into why copy', () => {
+    const cards = mapLegacyCardToSpecCards(
+      {
+        type: 'recommendations',
+        card_id: 'legacy_recommendations_standalone_why',
+        payload: {
+          recommendation_meta: {
+            selected_target_ids: ['tone_mark_treatment'],
+            ranked_targets: [
+              {
+                target_id: 'tone_mark_treatment',
+                target_label: 'Tone and post-breakout mark treatment',
+              },
+            ],
+          },
+          recommendations: [
+            {
+              product_id: 'prod_dark_spot',
+              merchant_id: 'merchant_dark_spot',
+              brand: 'First Aid Beauty',
+              name: 'Dark Spot Serum with Niacinamide',
+              matched_role_id: 'tone_mark_treatment',
+              matched_role_label: 'Tone and post-breakout mark treatment',
+              why_this_one: 'Glycerin',
+              key_features: ['Niacinamide', 'Panthenol (B5)', 'Glycerin', 'Lightweight serum'],
+              short_description: 'Targets post-breakout marks and uneven tone with niacinamide support.',
+              price: { amount: 42, currency: 'USD', unknown: false },
+            },
+          ],
+        },
+      },
+      { requestId: 'req_card_factory_standalone_why', language: 'EN', index: 0 },
+    );
+
+    const product = cards[0].payload.sections[0].products[0];
+    expect(product.why_this_one).toMatch(/post-breakout marks|uneven tone|niacinamide/i);
+    expect(product.why_this_one).not.toBe('Glycerin');
+    expect(product.why_this_one).not.toBe('Lightweight serum');
+    expect(product.key_features).toContain('Glycerin');
+  });
+
   test('offers_resolved shares the rich product row contract and mirrors it into payload.sections', () => {
     const cards = mapLegacyCardToSpecCards(
       {

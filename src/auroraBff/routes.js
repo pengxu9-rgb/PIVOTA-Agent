@@ -4467,7 +4467,7 @@ function normalizeRecoCatalogProduct(raw) {
   );
   const description = pickFirstVisibleRecoCopy(base.description);
   const bestFor = pickFirstVisibleRecoCopy(base.best_for, base.bestFor);
-  const whyThisOne = pickFirstVisibleRecoCopy(base.why_this_one, base.whyThisOne, base.reason);
+  const whyThisOne = pickFirstNarrativeRecoCopy(base.why_this_one, base.whyThisOne, base.reason);
   const keyFeatures = asStringArray(
     [
       ...(Array.isArray(base.key_features) ? base.key_features : []),
