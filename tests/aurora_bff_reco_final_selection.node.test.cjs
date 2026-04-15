@@ -2604,6 +2604,61 @@ test('beauty mainline reco rows derive stable brand and shopper fields when sour
   }
 });
 
+test('beauty mainline reco rows filter off-role active features for hydrating support cards', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const rows = __internal.buildRecoRowsFromMainlineProducts(
+      [
+        {
+          product_id: 'naturium_hydra_ha_1',
+          merchant_id: 'external_seed',
+          brand: 'Naturium',
+          display_name: 'Quadruple Hyaluronic Acid Serum 5% - Jumbo',
+          category: 'Serum',
+          product_type: 'Serum',
+          matched_role_id: 'hydrating_serum_or_essence',
+          matched_role_label: 'Hydrating serum or essence',
+          matched_role_rank: 42,
+          retrieval_source: 'external_seed',
+          key_ingredients: ['Hyaluronic acid', 'Niacinamide', 'Salicylic acid', 'Azelaic acid'],
+          short_description: 'A hydrating serum with hyaluronic acid and glycerin for dehydrated skin.',
+        },
+      ],
+      {
+        targetContext: {
+          resolved_target_step: 'serum',
+          primary_role_id: 'hydrating_barrier_moisturizer',
+          framework_roles: [
+            {
+              role_id: 'hydrating_barrier_moisturizer',
+              label: 'Hydrating barrier moisturizer',
+              rank: 40,
+              preferred_step: 'moisturizer',
+            },
+            {
+              role_id: 'hydrating_serum_or_essence',
+              label: 'Hydrating serum or essence',
+              rank: 42,
+              preferred_step: 'serum',
+              why_this_role: 'Use a hydration layer when skin feels dehydrated, dull, tight, or water-deficient.',
+            },
+          ],
+        },
+        language: 'EN',
+      },
+    );
+
+    assert.equal(rows.length, 1);
+    assert.ok(rows[0].key_features.includes('Hyaluronic acid'));
+    assert.ok(rows[0].key_features.includes('Niacinamide'));
+    assert.ok(rows[0].key_features.includes('Lightweight serum'));
+    assert.equal(rows[0].key_features.includes('Salicylic acid'), false);
+    assert.equal(rows[0].key_features.includes('Azelaic acid'), false);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('beauty mainline reco rows prefer product-specific description snippets over generic role copy when raw row is sparse', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
