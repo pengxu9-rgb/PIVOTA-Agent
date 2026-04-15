@@ -1374,7 +1374,7 @@ const {
   RECO_CATALOG_GROUNDED_ENABLED,
   RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS,
   AURORA_BFF_CHAT_RECO_BUDGET_MS:
-    Number(process.env.AURORA_BFF_CHAT_RECO_BUDGET_MS || 13000),
+    Number(process.env.AURORA_BFF_CHAT_RECO_BUDGET_MS || 18000),
   AURORA_RECO_ASSISTANT_REWRITE_TIMEOUT_MS,
   BEAUTY_DISCOVERY_MAINLINE_OWNER,
   resolveRecommendationTargetContext,
@@ -4130,6 +4130,8 @@ function buildRecoCompareHighlightsFromInsightFields({
 const RECO_PLACEHOLDER_SEED_COPY_RE = /\b(?:replace\s+with\s+your\s+own\s+description\s+if\s+needed|test\s+fixture\s+for\s+pdp|lorem\s+ipsum|placeholder\s+copy|placeholder\s+description)\b/i;
 const RECO_LOW_INFORMATION_VISIBLE_COPY_RE = /\b(?:double\s+up\s+and\s+save|save\s+with\s+this\s+jumbo|add\s+to\s+cart|shop\s+now|free\s+shipping|limited\s+time\s+offer|subscribe\s+and\s+save)\b/i;
 const RECO_SCRAPED_VISIBLE_COPY_PREFIX_RE = /^(?:details?\s*)?(?:key\s+features?|features?|benefits?)\s*[-:|]\s*/i;
+const RECO_GENERIC_VISIBLE_INGREDIENT_RE = /^(?:water|aqua|glycerin|butylene glycol|propylene glycol|caprylic(?:\/capric)?|dimethicone|silica|parfum|fragrance|phenoxyethanol|carbomer|citric acid|sodium hydroxide)$/i;
+const RECO_SHOPPER_EVIDENCE_LANGUAGE_RE = /\b(?:best for|helps?|targets?|supports?|protects?|hydrates?|soothes?|calms?|mattif(?:y|ies|ying)|controls?|reduces?|lightweight|non-comedogenic|white cast|uv protection|daily protection|oil-control|shine|sebum|redness|barrier|dark spots?|post-breakout|hyperpigmentation|tone|spf\s*\d+|pa\+|without|for)\b/i;
 const RECO_CANONICAL_BEAUTY_BRANDS = Object.freeze([
   'The Ordinary',
   'KraveBeauty',
@@ -4196,6 +4198,20 @@ function looksLikeRecoLowInformationVisibleCopy(value) {
   return RECO_LOW_INFORMATION_VISIBLE_COPY_RE.test(text);
 }
 
+function looksLikeRecoStandaloneEvidenceFragment(value) {
+  const text = cleanRecoVisibleCopy(value).replace(/[.!?。！？]+$/g, '').trim();
+  if (!text) return false;
+  const normalized = text.toLowerCase();
+  if (RECO_GENERIC_VISIBLE_INGREDIENT_RE.test(normalized)) return true;
+  if (/^(?:lightweight|gentle|hydrating|soothing|calming|mattifying|oil-control|barrier|daily)?\s*(?:serum|cream|gel cream|moisturizer|moisturiser|sunscreen|spf|treatment|support)$/i.test(text)) {
+    return true;
+  }
+  if (RECO_SHOPPER_EVIDENCE_LANGUAGE_RE.test(text)) return false;
+  const wordCount = normalized.split(/[^a-z0-9%+.-]+/i).filter(Boolean).length;
+  if (wordCount <= 3 && text.length <= 36) return true;
+  return false;
+}
+
 function pickFirstNonPlaceholderRecoCopy(...values) {
   for (const value of values) {
     const trimmed = pickFirstTrimmed(value);
@@ -4209,6 +4225,22 @@ function pickFirstVisibleRecoCopy(...values) {
   for (const value of values) {
     const trimmed = cleanRecoVisibleCopy(value);
     if (!trimmed || looksLikeRecoPlaceholderSeedCopy(trimmed) || looksLikeRecoLowInformationVisibleCopy(trimmed)) continue;
+    return trimmed;
+  }
+  return '';
+}
+
+function pickFirstNarrativeRecoCopy(...values) {
+  for (const value of values) {
+    const trimmed = cleanRecoVisibleCopy(value);
+    if (
+      !trimmed ||
+      looksLikeRecoPlaceholderSeedCopy(trimmed) ||
+      looksLikeRecoLowInformationVisibleCopy(trimmed) ||
+      looksLikeRecoStandaloneEvidenceFragment(trimmed)
+    ) {
+      continue;
+    }
     return trimmed;
   }
   return '';
@@ -19264,6 +19296,93 @@ function shouldProjectRecoFeatureForRole(value, { roleText = '', productName = '
   return true;
 }
 
+function pickRecoFeaturesForWhy(features = [], { roleText = '', productName = '', max = 2 } = {}) {
+  const role = String(roleText || '').trim().toLowerCase();
+  const name = String(productName || '').trim().toLowerCase();
+  const allowForRole = (feature) => {
+    const text = String(feature || '').trim();
+    const lower = text.toLowerCase();
+    if (!text) return false;
+    if (/^lightweight\s+(?:serum|cream|moisturizer|sunscreen)$/i.test(text)) return false;
+    if (/^(?:oil-control support|控油护理)$/i.test(text)) return /\b(oil|shine|sebum)\b/.test(role);
+    if (/\bspf\s*\d+|uv filters?|pa\+\+|broad[-\s]?spectrum\b/i.test(text)) return true;
+    if (/\bniacinamide|zinc|azelaic|salicylic|mandelic|glycolic|lactic|retinol|retinoid|tranexamic|arbutin|vitamin c|ascorbic|centella|tamanu|ceramide|hyaluronic|panthenol|cica|madecassoside\b/i.test(text)) return true;
+    if (RECO_GENERIC_VISIBLE_INGREDIENT_RE.test(lower)) return false;
+    if (name && lower.length >= 4 && name.includes(lower)) return true;
+    return RECO_SHOPPER_EVIDENCE_LANGUAGE_RE.test(text) && !looksLikeRecoStandaloneEvidenceFragment(text);
+  };
+  return uniqCaseInsensitiveStrings(
+    (Array.isArray(features) ? features : [])
+      .map((value) => cleanRecoVisibleCopy(value))
+      .filter((value) => value && allowForRole(value)),
+    Math.max(1, max),
+  );
+}
+
+function formatRecoFeaturePhraseForWhy(features = []) {
+  const values = (Array.isArray(features) ? features : [])
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .slice(0, 2);
+  if (values.length === 0) return '';
+  if (values.length === 1) return values[0];
+  return `${values[0]} and ${values[1]}`;
+}
+
+function buildRecoRoleGroundedWhyThisOne({
+  roleText = '',
+  productName = '',
+  productType = '',
+  keyFeatures = [],
+  language = 'EN',
+} = {}) {
+  const isCn = String(language || '').trim().toUpperCase() === 'CN';
+  const role = String(roleText || '').trim().toLowerCase();
+  const name = String(productName || '').trim();
+  const typeLabel = humanizeRecoProductType(productType || 'other', language).toLowerCase();
+  const featuresForWhy = pickRecoFeaturesForWhy(keyFeatures, { roleText, productName: name, max: 2 });
+  const featurePhrase = formatRecoFeaturePhraseForWhy(featuresForWhy);
+  const withFeature = featurePhrase ? ` with ${featurePhrase}` : '';
+  const productText = name || `This ${typeLabel}`;
+  if (isCn) {
+    if (/\b(tone|mark|dark spot|hyperpigmentation|brighten|uneven)\b/i.test(role)) {
+      return featurePhrase
+        ? `${productText} 更贴合痘印/肤色不均这一步，核心信息来自 ${featurePhrase} 和商品定位。`
+        : `${productText} 更贴合痘印/肤色不均这一步，而不是单纯控油。`;
+    }
+    if (/\b(redness|soothing|calming|sensitive|irritation)\b/i.test(role)) {
+      return featurePhrase
+        ? `${productText} 更适合先做敏感泛红的舒缓支持，重点信息来自 ${featurePhrase}。`
+        : `${productText} 更适合先做敏感泛红的舒缓支持。`;
+    }
+    if (/\b(acne|clogged|blemish|pore)\b/i.test(role)) {
+      return featurePhrase
+        ? `${productText} 更适合作为堵塞毛孔/痘痘方向的集中护理，重点信息来自 ${featurePhrase}。`
+        : `${productText} 更适合作为堵塞毛孔/痘痘方向的集中护理。`;
+    }
+    return '';
+  }
+  if (/\b(tone|mark|dark spot|hyperpigmentation|brighten|uneven)\b/i.test(role)) {
+    return `${productText} fits the post-breakout mark and tone step${withFeature}, instead of being just a generic treatment pick.`;
+  }
+  if (/\b(redness|soothing|calming|sensitive|irritation)\b/i.test(role)) {
+    return `${productText} fits the redness and sensitivity support step${withFeature}, with a more targeted soothing angle than a generic moisturizer.`;
+  }
+  if (/\b(acne|clogged|blemish|pore)\b/i.test(role)) {
+    return `${productText} fits the clogged-pore and blemish support step${withFeature}, while keeping the routine focused.`;
+  }
+  if (/\boil|shine|sebum\b/i.test(role)) {
+    return `${productText} fits the oil-control step${withFeature}, so it is a clearer first buy for mid-day shine.`;
+  }
+  if (/\bmoist|hydrat|barrier|dehydrat\b/i.test(role)) {
+    return `${productText} fits the hydration and barrier-support step${withFeature}, without turning the routine into a heavy layer.`;
+  }
+  if (/\bspf|sun|uv\b/i.test(role)) {
+    return `${productText} fits the daily sunscreen step${withFeature}, so it keeps protection practical for regular wear.`;
+  }
+  return '';
+}
+
 function buildRecoDerivedShopperCopy({
   role = null,
   row = null,
@@ -19277,35 +19396,11 @@ function buildRecoDerivedShopperCopy({
   const roleWhy = pickFirstTrimmed(roleObj?.why_this_role);
   const roleText = `${roleLabel} ${roleWhy}`.trim().toLowerCase();
   const existingBestFor = pickFirstNonPlaceholderRecoCopy(rawRow?.best_for, rawRow?.bestFor);
-  const existingWhy = pickFirstNonPlaceholderRecoCopy(rawRow?.why_this_one, rawRow?.whyThisOne, rawRow?.reason);
+  const existingWhy = pickFirstNarrativeRecoCopy(rawRow?.why_this_one, rawRow?.whyThisOne, rawRow?.reason);
   const productIntel = pickRecoProductIntelBundle(rawRow);
   const pivotaInsights = pickRecoPivotaInsights(rawRow);
   const shoppingCard = pickRecoShoppingCardPayload(rawRow);
   const searchCard = pickRecoSearchCardPayload(rawRow);
-  const evidencePoints = buildRecoProductEvidencePoints({
-    row: rawRow,
-    stableAnchorProduct,
-    productIntel,
-    pivotaInsights,
-    shoppingCard,
-    searchCard,
-    max: 4,
-  });
-  const specificNarrative = pickFirstTrimmed(
-    evidencePoints[0],
-    pickRecoSpecificNarrativeSnippet({
-      row: rawRow,
-      stableAnchorProduct,
-      productIntel,
-      pivotaInsights,
-      shoppingCard,
-      searchCard,
-      maxLen: 180,
-    }),
-  );
-  const roleAlignedSpecificNarrative = looksLikeRecoNarrativeOffTargetForRole(specificNarrative, roleText)
-    ? ''
-    : specificNarrative;
   const productType = pickFirstTrimmed(
     rawRow?.category,
     rawRow?.product_type,
@@ -19326,6 +19421,46 @@ function buildRecoDerivedShopperCopy({
     rawRow?.sku?.title,
     rawRow?.sku?.display_name,
   );
+  const keyFeatures = buildRecoDerivedFeatureTokens({
+    roleText,
+    productName,
+    productType,
+    providedFeatures: [
+      ...(Array.isArray(rawRow?.key_features) ? rawRow.key_features : []),
+      ...(Array.isArray(rawRow?.keyFeatures) ? rawRow.keyFeatures : []),
+      ...(Array.isArray(rawRow?.actives) ? rawRow.actives : []),
+      ...(Array.isArray(rawRow?.key_ingredients) ? rawRow.key_ingredients : []),
+      ...(Array.isArray(rawRow?.keyIngredients) ? rawRow.keyIngredients : []),
+      ...(Array.isArray(rawRow?.benefit_tags) ? rawRow.benefit_tags : []),
+      ...(Array.isArray(rawRow?.benefitTags) ? rawRow.benefitTags : []),
+      ...(Array.isArray(rawRow?.tags) ? rawRow.tags : []),
+      ...(Array.isArray(rawRow?.sku?.key_features) ? rawRow.sku.key_features : []),
+      ...(Array.isArray(rawRow?.sku?.actives) ? rawRow.sku.actives : []),
+      ...(Array.isArray(rawRow?.sku?.key_ingredients) ? rawRow.sku.key_ingredients : []),
+      ...(Array.isArray(stableAnchorProduct?.active_ingredients) ? stableAnchorProduct.active_ingredients : []),
+      ...(Array.isArray(stableAnchorProduct?.key_ingredients) ? stableAnchorProduct.key_ingredients : []),
+    ],
+    language,
+  });
+  const specificNarrative = pickRecoSpecificNarrativeSnippet({
+    row: rawRow,
+    stableAnchorProduct,
+    productIntel,
+    pivotaInsights,
+    shoppingCard,
+    searchCard,
+    maxLen: 180,
+  });
+  const roleAlignedSpecificNarrative = looksLikeRecoNarrativeOffTargetForRole(specificNarrative, roleText)
+    ? ''
+    : specificNarrative;
+  const roleGroundedWhy = buildRecoRoleGroundedWhyThisOne({
+    roleText,
+    productName,
+    productType,
+    keyFeatures,
+    language,
+  });
   const bestFor = existingBestFor || (() => {
     if (/\boil|shine|sebum\b/i.test(roleText)) {
       return isCn ? '适合出油和午后泛油光' : 'Best for excess oil and mid-day shine';
@@ -19343,7 +19478,7 @@ function buildRecoDerivedShopperCopy({
       ? `适合放进当前的${humanizeRecoProductType(productType || 'other', 'CN')}`
       : `Best as your ${humanizeRecoProductType(productType || 'other', 'EN').toLowerCase()} step`;
   })();
-  const whyThisOne = existingWhy || roleAlignedSpecificNarrative || (() => {
+  const whyThisOne = existingWhy || roleAlignedSpecificNarrative || roleGroundedWhy || (() => {
     if (/\boil|shine|sebum\b/i.test(roleText)) {
       return isCn
         ? '这是一支更轻薄的控油精华，适合把出油问题先压下来。'
@@ -19368,27 +19503,6 @@ function buildRecoDerivedShopperCopy({
       ? '这是当前主推荐方向里最直接的一支。'
       : 'It is the clearest match for the main recommendation direction.';
   })();
-  const keyFeatures = buildRecoDerivedFeatureTokens({
-    roleText,
-    productName,
-    productType,
-    providedFeatures: [
-      ...(Array.isArray(rawRow?.key_features) ? rawRow.key_features : []),
-      ...(Array.isArray(rawRow?.keyFeatures) ? rawRow.keyFeatures : []),
-      ...(Array.isArray(rawRow?.actives) ? rawRow.actives : []),
-      ...(Array.isArray(rawRow?.key_ingredients) ? rawRow.key_ingredients : []),
-      ...(Array.isArray(rawRow?.keyIngredients) ? rawRow.keyIngredients : []),
-      ...(Array.isArray(rawRow?.benefit_tags) ? rawRow.benefit_tags : []),
-      ...(Array.isArray(rawRow?.benefitTags) ? rawRow.benefitTags : []),
-      ...(Array.isArray(rawRow?.tags) ? rawRow.tags : []),
-      ...(Array.isArray(rawRow?.sku?.key_features) ? rawRow.sku.key_features : []),
-      ...(Array.isArray(rawRow?.sku?.actives) ? rawRow.sku.actives : []),
-      ...(Array.isArray(rawRow?.sku?.key_ingredients) ? rawRow.sku.key_ingredients : []),
-      ...(Array.isArray(stableAnchorProduct?.active_ingredients) ? stableAnchorProduct.active_ingredients : []),
-      ...(Array.isArray(stableAnchorProduct?.key_ingredients) ? stableAnchorProduct.key_ingredients : []),
-    ],
-    language,
-  });
   return {
     best_for: bestFor,
     why_this_one: whyThisOne,
@@ -19568,6 +19682,7 @@ function buildRecoProductEvidencePoints({
     pickFirstTrimmed(intelCore?.what_it_is?.body, intelCore?.whatItIs?.body),
     pickFirstTrimmed(shoppingCard?.intro),
     pickFirstTrimmed(searchCard?.intro_candidate, searchCard?.introCandidate),
+    pickFirstTrimmed(base.why_this_one, base.whyThisOne, base.reason),
     pickFirstTrimmed(base.description, base.sku?.description, base.product?.description, stableAnchorProduct?.description),
     pickFirstTrimmed(base.short_description, base.shortDescription, base.summary, base.subtitle),
     pickFirstTrimmed(base.sku?.short_description, base.sku?.shortDescription, base.sku?.summary, base.sku?.subtitle),
@@ -19586,22 +19701,26 @@ function buildRecoProductEvidencePoints({
     .filter((value) => value && !looksLikeGenericRecoDerivedNarrative(value) && !looksLikeRecoLowInformationVisibleCopy(value));
   const featureCandidates = collectRecoPromptTextList(
     [
-      ...(Array.isArray(base.key_features) ? base.key_features : []),
-      ...(Array.isArray(base.keyFeatures) ? base.keyFeatures : []),
       ...(Array.isArray(base.compare_highlights) ? base.compare_highlights : []),
       ...(Array.isArray(base.compareHighlights) ? base.compareHighlights : []),
-      ...(Array.isArray(base.actives) ? base.actives : []),
-      ...(Array.isArray(base.key_ingredients) ? base.key_ingredients : []),
-      ...(Array.isArray(base.keyIngredients) ? base.keyIngredients : []),
-      ...(Array.isArray(base.best_for) ? base.best_for : []),
-      ...(Array.isArray(base.bestFor) ? base.bestFor : []),
-      pickFirstTrimmed(base.why_this_one, base.whyThisOne, base.reason),
       pickFirstTrimmed(base.best_for, base.bestFor),
       ...(Array.isArray(pivotaInsights?.best_for) ? pivotaInsights.best_for : []),
       ...(Array.isArray(intelCore?.best_for) ? intelCore.best_for : []),
+      ...(Array.isArray(base.key_features) ? base.key_features : []),
+      ...(Array.isArray(base.keyFeatures) ? base.keyFeatures : []),
+      ...(Array.isArray(base.actives) ? base.actives : []),
+      ...(Array.isArray(base.key_ingredients) ? base.key_ingredients : []),
+      ...(Array.isArray(base.keyIngredients) ? base.keyIngredients : []),
     ],
     { max: Math.max(2, max), maxLen: 72 },
-  ).map(cleanRecoVisibleCopy).filter((value) => value && !looksLikeRecoPlaceholderSeedCopy(value) && !looksLikeRecoLowInformationVisibleCopy(value));
+  )
+    .map(cleanRecoVisibleCopy)
+    .filter((value) => (
+      value
+      && !looksLikeRecoPlaceholderSeedCopy(value)
+      && !looksLikeRecoLowInformationVisibleCopy(value)
+      && !looksLikeRecoStandaloneEvidenceFragment(value)
+    ));
   return uniqCaseInsensitiveStrings(
     [
       ...narrativeCandidates,
