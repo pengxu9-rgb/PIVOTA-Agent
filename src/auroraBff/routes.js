@@ -18611,6 +18611,131 @@ async function collectRecoCandidatesFromRecallPlan({
   const attemptedBaseUrlsByStage = {};
   const attemptedPathsByStage = {};
   let plannerEntryCursor = 0;
+  const isSameRoleComparisonContext = () => {
+    const semanticPlan = isPlainObject(targetContext?.semantic_plan) ? targetContext.semantic_plan : null;
+    const comparisonMode = String(
+      pickFirstTrimmed(
+        targetContext?.comparison_mode,
+        semanticPlan?.comparison_mode,
+        semanticPlan?.selection_constraints?.comparison_mode,
+      ) || '',
+    ).trim().toLowerCase();
+    return comparisonMode === 'same_role_comparison' || comparisonMode === 'same_role';
+  };
+  const runRecallStageEntry = async (entry) => {
+    const plannerQueryIndex = plannerEntryCursor;
+    plannerEntryCursor += 1;
+    return executeRecoRecallPlanEntryWithWallClockGuard({
+      entry,
+      logger,
+      timeoutMs,
+      deadlineMs,
+      limit,
+      usePurchasableFallback,
+      transportPolicyMode,
+      targetContext,
+      semanticContract,
+      traceId,
+      queryIndex: plannerQueryIndex,
+      queryTotal: Array.isArray(recallPlan?.entries) ? recallPlan.entries.length : null,
+      authHeaders,
+      searchFn,
+    });
+  };
+  const buildStageAggregate = () => ({
+    timeoutCount: 0,
+    transientCount: 0,
+    actualHttpAttemptCount: 0,
+    effectiveRequestTimeoutMs: 0,
+    attemptedBaseUrls: new Set(),
+    attemptedPaths: new Set(),
+  });
+  const accumulateStageRow = (stage, row, aggregate) => {
+    const queryEntry = row?.queryEntry || null;
+    const out = row?.out || null;
+    if (!queryEntry) return;
+    const actualAttemptsForRow = Number.isFinite(Number(out?.actual_http_attempt_count))
+      ? Math.max(0, Math.trunc(Number(out.actual_http_attempt_count)))
+      : 0;
+    aggregate.actualHttpAttemptCount += actualAttemptsForRow;
+    const attemptTimeouts = Array.isArray(out?.attempted_request_timeouts_ms)
+      ? out.attempted_request_timeouts_ms
+      : [];
+    for (const timeoutValue of attemptTimeouts) {
+      const normalizedTimeout = Number.isFinite(Number(timeoutValue))
+        ? Math.max(0, Math.trunc(Number(timeoutValue)))
+        : 0;
+      aggregate.effectiveRequestTimeoutMs = Math.max(aggregate.effectiveRequestTimeoutMs, normalizedTimeout);
+    }
+    for (const baseUrl of Array.isArray(out?.attempted_base_urls) ? out.attempted_base_urls : []) {
+      const normalizedBaseUrl = String(baseUrl || '').trim();
+      if (normalizedBaseUrl) aggregate.attemptedBaseUrls.add(normalizedBaseUrl);
+    }
+    for (const pathToken of Array.isArray(out?.attempted_paths) ? out.attempted_paths : []) {
+      const normalizedPath = String(pathToken || '').trim();
+      if (normalizedPath) aggregate.attemptedPaths.add(normalizedPath);
+    }
+    const reason = String(out?.reason || '').trim().toLowerCase();
+    if (reason === 'upstream_timeout') aggregate.timeoutCount += 1;
+    if (reason === 'upstream_timeout' || reason === 'upstream_error' || reason === 'rate_limited') {
+      aggregate.transientCount += 1;
+    }
+    searchResults.push({
+      stage_id: String(stage?.stage_id || '').trim() || null,
+      planner_mode: pickFirstTrimmed(recallPlan?.mode) || null,
+      query: queryEntry.query,
+      step: pickFirstTrimmed(queryEntry.preferred_step) || null,
+      slot: pickFirstTrimmed(queryEntry.slot) || inferSlotForStep(queryEntry.preferred_step) || 'other',
+      ladder_level: String(stage?.stage_id || '').trim() || null,
+      role_id: String(queryEntry.role_id || '').trim() || null,
+      role_rank: Number.isFinite(Number(queryEntry.role_rank)) ? Number(queryEntry.role_rank) : null,
+      query_index: Number.isFinite(Number(queryEntry.query_index)) ? Number(queryEntry.query_index) : 0,
+      source_scope: String(queryEntry.source_scope || 'internal').trim().toLowerCase() || 'internal',
+      ...out,
+    });
+    const products = Array.isArray(out?.products) ? out.products : [];
+    for (const product of products) {
+      const normalized = normalizeRecoCatalogProduct(product);
+      if (!isPlainObject(normalized)) continue;
+      const boundaryReject = classifyBeautyMainlineBoundaryRejectCandidate(normalized);
+      if (boundaryReject.rejected) {
+        recordBeautyMainlineBoundaryReject({
+          rejects: boundaryRejects,
+          product: normalized,
+          reason: boundaryReject.reason,
+          queryEntry,
+          stageId: String(stage?.stage_id || '').trim() || null,
+        });
+        continue;
+      }
+      rawCandidates.push({
+        ...normalized,
+        retrieval_query: queryEntry.query,
+        retrieval_step: pickFirstTrimmed(queryEntry.preferred_step) || null,
+        retrieval_slot: pickFirstTrimmed(queryEntry.slot) || inferSlotForStep(queryEntry.preferred_step) || 'other',
+        retrieval_ladder_level: String(stage?.stage_id || '').trim() || null,
+        retrieval_role_id: queryEntry.role_id || null,
+        retrieval_role_rank: Number.isFinite(Number(queryEntry.role_rank)) ? Number(queryEntry.role_rank) : null,
+      });
+    }
+  };
+  const shouldStopRecallStageOnViableMatch = (stage) => {
+    if (stage?.stop_on_viable_match !== true) return false;
+    const stageRoleId = String(stage?.role_id || '').trim().toLowerCase();
+    if (stageRoleId) {
+      const filledRoleIds = new Set(getRecoRecallFilledRoleIds(candidateState, { requireAlignedRetrieval: true }));
+      if (!filledRoleIds.has(stageRoleId)) return false;
+      const stageId = String(stage?.stage_id || '').trim().toLowerCase();
+      if (stageId === 'framework_stage_b_primary_external_seed' && isSameRoleComparisonContext()) {
+        return getRecoRecallSelectedCount(candidateState) >= 2;
+      }
+      return true;
+    }
+    if (String(recallPlan?.mode || '').trim().toLowerCase() === 'framework_generic') {
+      return isRecoRecallFrameworkCoverageSatisfied(candidateState, { targetContext });
+    }
+    return getRecoRecallSelectedCount(candidateState) > 0;
+  };
 
   for (const stage of planStages) {
     const runDecision = shouldRunRecoRecallStage(stage, { stageResults, candidateState });
@@ -18639,114 +18764,41 @@ async function collectRecoCandidatesFromRecallPlan({
     );
     plannerQueryCountByStage[String(stage?.stage_id || '').trim() || `stage_${stageResults.length + 1}`] =
       entries.length;
-    const stageRows = await mapWithConcurrency(
-      entries,
-      Math.max(1, Number(stage?.concurrency || 1)),
-      async (entry) => {
-        const plannerQueryIndex = plannerEntryCursor;
-        plannerEntryCursor += 1;
-        return executeRecoRecallPlanEntryWithWallClockGuard({
-          entry,
-          logger,
-          timeoutMs,
-          deadlineMs,
-          limit,
-          usePurchasableFallback,
-          transportPolicyMode,
+    const stageRows = [];
+    const stageAggregate = buildStageAggregate();
+    if (stage?.stop_on_viable_match === true && entries.length > 1) {
+      for (const entry of entries) {
+        // eslint-disable-next-line no-await-in-loop
+        const row = await runRecallStageEntry(entry);
+        stageRows.push(row);
+        accumulateStageRow(stage, row, stageAggregate);
+        candidateState = buildRecoCandidateStateFromRawCandidates(rawCandidates, {
           targetContext,
-          semanticContract,
-          traceId,
-          queryIndex: plannerQueryIndex,
-          queryTotal: Array.isArray(recallPlan?.entries) ? recallPlan.entries.length : null,
-          authHeaders,
-          searchFn,
+          recommendationTaskContext,
         });
-      },
-    );
-
-    let timeoutCount = 0;
-    let transientCount = 0;
-    let stageActualHttpAttemptCount = 0;
-    let stageEffectiveRequestTimeoutMs = 0;
-    const stageAttemptedBaseUrls = new Set();
-    const stageAttemptedPaths = new Set();
-    for (const row of stageRows) {
-      const queryEntry = row?.queryEntry || null;
-      const out = row?.out || null;
-      if (!queryEntry) continue;
-      const actualAttemptsForRow = Number.isFinite(Number(out?.actual_http_attempt_count))
-        ? Math.max(0, Math.trunc(Number(out.actual_http_attempt_count)))
-        : 0;
-      stageActualHttpAttemptCount += actualAttemptsForRow;
-      const attemptTimeouts = Array.isArray(out?.attempted_request_timeouts_ms)
-        ? out.attempted_request_timeouts_ms
-        : [];
-      for (const timeoutValue of attemptTimeouts) {
-        const normalizedTimeout = Number.isFinite(Number(timeoutValue))
-          ? Math.max(0, Math.trunc(Number(timeoutValue)))
-          : 0;
-        stageEffectiveRequestTimeoutMs = Math.max(stageEffectiveRequestTimeoutMs, normalizedTimeout);
+        if (shouldStopRecallStageOnViableMatch(stage)) break;
       }
-      for (const baseUrl of Array.isArray(out?.attempted_base_urls) ? out.attempted_base_urls : []) {
-        const normalizedBaseUrl = String(baseUrl || '').trim();
-        if (normalizedBaseUrl) stageAttemptedBaseUrls.add(normalizedBaseUrl);
-      }
-      for (const pathToken of Array.isArray(out?.attempted_paths) ? out.attempted_paths : []) {
-        const normalizedPath = String(pathToken || '').trim();
-        if (normalizedPath) stageAttemptedPaths.add(normalizedPath);
-      }
-      const reason = String(out?.reason || '').trim().toLowerCase();
-      if (reason === 'upstream_timeout') timeoutCount += 1;
-      if (reason === 'upstream_timeout' || reason === 'upstream_error' || reason === 'rate_limited') transientCount += 1;
-      searchResults.push({
-        stage_id: String(stage?.stage_id || '').trim() || null,
-        planner_mode: pickFirstTrimmed(recallPlan?.mode) || null,
-        query: queryEntry.query,
-        step: pickFirstTrimmed(queryEntry.preferred_step) || null,
-        slot: pickFirstTrimmed(queryEntry.slot) || inferSlotForStep(queryEntry.preferred_step) || 'other',
-        ladder_level: String(stage?.stage_id || '').trim() || null,
-        role_id: String(queryEntry.role_id || '').trim() || null,
-        role_rank: Number.isFinite(Number(queryEntry.role_rank)) ? Number(queryEntry.role_rank) : null,
-        query_index: Number.isFinite(Number(queryEntry.query_index)) ? Number(queryEntry.query_index) : 0,
-        source_scope: String(queryEntry.source_scope || 'internal').trim().toLowerCase() || 'internal',
-        ...out,
-      });
-      const products = Array.isArray(out?.products) ? out.products : [];
-      for (const product of products) {
-        const normalized = normalizeRecoCatalogProduct(product);
-        if (!isPlainObject(normalized)) continue;
-        const boundaryReject = classifyBeautyMainlineBoundaryRejectCandidate(normalized);
-        if (boundaryReject.rejected) {
-          recordBeautyMainlineBoundaryReject({
-            rejects: boundaryRejects,
-            product: normalized,
-            reason: boundaryReject.reason,
-            queryEntry,
-            stageId: String(stage?.stage_id || '').trim() || null,
-          });
-          continue;
-        }
-        rawCandidates.push({
-          ...normalized,
-          retrieval_query: queryEntry.query,
-          retrieval_step: pickFirstTrimmed(queryEntry.preferred_step) || null,
-          retrieval_slot: pickFirstTrimmed(queryEntry.slot) || inferSlotForStep(queryEntry.preferred_step) || 'other',
-          retrieval_ladder_level: String(stage?.stage_id || '').trim() || null,
-          retrieval_role_id: queryEntry.role_id || null,
-          retrieval_role_rank: Number.isFinite(Number(queryEntry.role_rank)) ? Number(queryEntry.role_rank) : null,
-        });
+    } else {
+      const rows = await mapWithConcurrency(
+        entries,
+        Math.max(1, Number(stage?.concurrency || 1)),
+        runRecallStageEntry,
+      );
+      for (const row of rows) {
+        stageRows.push(row);
+        accumulateStageRow(stage, row, stageAggregate);
       }
     }
 
-    executedQueryCount += entries.length;
-    executedUpstreamAttemptCount += stageActualHttpAttemptCount;
-    actualHttpAttemptCount += stageActualHttpAttemptCount;
+    executedQueryCount += stageRows.length;
+    executedUpstreamAttemptCount += stageAggregate.actualHttpAttemptCount;
+    actualHttpAttemptCount += stageAggregate.actualHttpAttemptCount;
     const stageId = String(stage?.stage_id || '').trim() || `stage_${stageResults.length + 1}`;
-    stageTimeoutCounts[stageId] = timeoutCount;
-    actualHttpAttemptsByStage[stageId] = stageActualHttpAttemptCount;
-    effectiveRequestTimeoutMsByStage[stageId] = stageEffectiveRequestTimeoutMs;
-    attemptedBaseUrlsByStage[stageId] = Array.from(stageAttemptedBaseUrls);
-    attemptedPathsByStage[stageId] = Array.from(stageAttemptedPaths);
+    stageTimeoutCounts[stageId] = stageAggregate.timeoutCount;
+    actualHttpAttemptsByStage[stageId] = stageAggregate.actualHttpAttemptCount;
+    effectiveRequestTimeoutMsByStage[stageId] = stageAggregate.effectiveRequestTimeoutMs;
+    attemptedBaseUrlsByStage[stageId] = Array.from(stageAggregate.attemptedBaseUrls);
+    attemptedPathsByStage[stageId] = Array.from(stageAggregate.attemptedPaths);
     candidateState = buildRecoCandidateStateFromRawCandidates(rawCandidates, {
       targetContext,
       recommendationTaskContext,
@@ -18760,15 +18812,15 @@ async function collectRecoCandidatesFromRecallPlan({
       source_scope: String(stage?.source_scope || 'internal').trim().toLowerCase() || 'internal',
       skipped: false,
       skip_reason: null,
-      executed_query_count: entries.length,
-      executed_upstream_attempt_count: stageActualHttpAttemptCount,
-      actual_http_attempt_count: stageActualHttpAttemptCount,
-      timeout_count: timeoutCount,
-      transient_only: entries.length > 0 && transientCount >= entries.length && Number(candidateState?.raw_candidate_count || 0) === 0,
+      executed_query_count: stageRows.length,
+      executed_upstream_attempt_count: stageAggregate.actualHttpAttemptCount,
+      actual_http_attempt_count: stageAggregate.actualHttpAttemptCount,
+      timeout_count: stageAggregate.timeoutCount,
+      transient_only: stageRows.length > 0 && stageAggregate.transientCount >= stageRows.length && Number(candidateState?.raw_candidate_count || 0) === 0,
       selected_count: stageSelectedCount,
       primary_role_matched: Boolean(candidateState?.primary_role_matched),
-      attempted_base_urls: Array.from(stageAttemptedBaseUrls),
-      attempted_paths: Array.from(stageAttemptedPaths),
+      attempted_base_urls: Array.from(stageAggregate.attemptedBaseUrls),
+      attempted_paths: Array.from(stageAggregate.attemptedPaths),
     };
     stageResults.push(stageResult);
 
@@ -21938,6 +21990,154 @@ async function collectRecoCandidatesFromQueryLevels({
   const plannerQueryCountByStage = {};
   const attemptedBaseUrlsByStage = {};
   const attemptedPathsByStage = {};
+  const isSameRoleComparisonContext = () => {
+    const semanticPlan = isPlainObject(targetContext?.semantic_plan) ? targetContext.semantic_plan : null;
+    const comparisonMode = String(
+      pickFirstTrimmed(
+        targetContext?.comparison_mode,
+        semanticPlan?.comparison_mode,
+        semanticPlan?.selection_constraints?.comparison_mode,
+      ) || '',
+    ).trim().toLowerCase();
+    return comparisonMode === 'same_role_comparison' || comparisonMode === 'same_role';
+  };
+  const resolveQueryLevelRoleId = (level, queries = []) => {
+    const queryRoleIds = (Array.isArray(queries) ? queries : [])
+      .map((query) => String(query?.role_id || '').trim().toLowerCase())
+      .filter(Boolean);
+    const uniqueQueryRoleIds = Array.from(new Set(queryRoleIds));
+    if (uniqueQueryRoleIds.length === 1) return uniqueQueryRoleIds[0];
+    const levelId = String(level?.ladder_level || level?.stage_id || '').trim().toLowerCase();
+    if (levelId === 'framework_stage_b_primary_external_seed') {
+      return String(targetContext?.primary_role_id || '').trim().toLowerCase();
+    }
+    if (levelId.startsWith('framework_stage_c_support_') && levelId.endsWith('_external_seed')) {
+      return levelId.replace(/^framework_stage_c_support_/, '').replace(/_external_seed$/, '');
+    }
+    return '';
+  };
+  const shouldRunSequentialStopForQueryLevel = (level, runnableQueries = []) => {
+    if (!hasFrameworkTargetContext || !Array.isArray(runnableQueries) || runnableQueries.length <= 1) return false;
+    const levelId = String(level?.ladder_level || level?.stage_id || '').trim().toLowerCase();
+    if (levelId === 'framework_stage_b_primary_external_seed') return true;
+    if (Number.isFinite(Number(level?.fair_support_external_round))) return false;
+    if (levelId.startsWith('framework_stage_c_support_') && levelId.endsWith('_external_seed')) {
+      return Boolean(resolveQueryLevelRoleId(level, runnableQueries));
+    }
+    return false;
+  };
+  const shouldStopQueryLevelOnViableMatch = (level, runnableQueries = []) => {
+    const roleId = resolveQueryLevelRoleId(level, runnableQueries);
+    if (roleId) {
+      const filledRoleIds = new Set(getRecoRecallFilledRoleIds(candidateState, { requireAlignedRetrieval: true }));
+      if (!filledRoleIds.has(roleId)) return false;
+      const levelId = String(level?.ladder_level || level?.stage_id || '').trim().toLowerCase();
+      if (levelId === 'framework_stage_b_primary_external_seed' && isSameRoleComparisonContext()) {
+        return getRecoRecallSelectedCount(candidateState) >= 2;
+      }
+      return true;
+    }
+    return isRecoRecallFrameworkCoverageSatisfied(candidateState, { targetContext });
+  };
+  const buildLevelAggregate = () => ({
+    timeoutCount: 0,
+    transientCount: 0,
+    actualHttpAttemptCount: 0,
+    effectiveRequestTimeoutMs: 0,
+    attemptedBaseUrls: new Set(),
+    attemptedPaths: new Set(),
+  });
+  const runQueryLevelEntry = async (queryEntry) => {
+    const queryAllowExternalSeed =
+      allowExternalSeed === true
+      && queryEntry?.allow_external_seed === true;
+    const normalizedQueryEntry = {
+      ...queryEntry,
+      source_scope: queryAllowExternalSeed ? 'external_seed' : 'internal',
+      external_seed_strategy: queryAllowExternalSeed
+        ? String(
+            queryEntry?.external_seed_strategy
+            || externalSeedStrategy
+            || 'supplement_internal_first',
+          )
+            .trim()
+            .toLowerCase()
+        : 'on_empty_only',
+    };
+    return executeRecoRecallPlanEntryWithWallClockGuard({
+      entry: normalizedQueryEntry,
+      logger,
+      timeoutMs,
+      deadlineMs,
+      limit,
+      usePurchasableFallback,
+      transportPolicyMode,
+      targetContext,
+      queryIndex: flattenedQueryIndexes.get(queryEntry),
+      queryTotal: flattenedQueryEntries.length,
+      authHeaders,
+      searchFn,
+    });
+  };
+  const accumulateQueryLevelRow = (stageId, row, aggregate) => {
+    const queryEntry = row && row.queryEntry ? row.queryEntry : null;
+    const out = row && row.out ? row.out : null;
+    if (!queryEntry) return;
+    const actualAttemptsForRow = Number.isFinite(Number(out?.actual_http_attempt_count))
+      ? Math.max(0, Math.trunc(Number(out.actual_http_attempt_count)))
+      : 0;
+    aggregate.actualHttpAttemptCount += actualAttemptsForRow;
+    const attemptTimeouts = Array.isArray(out?.attempted_request_timeouts_ms)
+      ? out.attempted_request_timeouts_ms
+      : [];
+    for (const timeoutValue of attemptTimeouts) {
+      const normalizedTimeout = Number.isFinite(Number(timeoutValue))
+        ? Math.max(0, Math.trunc(Number(timeoutValue)))
+        : 0;
+      aggregate.effectiveRequestTimeoutMs = Math.max(aggregate.effectiveRequestTimeoutMs, normalizedTimeout);
+    }
+    for (const baseUrl of Array.isArray(out?.attempted_base_urls) ? out.attempted_base_urls : []) {
+      const normalizedBaseUrl = String(baseUrl || '').trim();
+      if (normalizedBaseUrl) aggregate.attemptedBaseUrls.add(normalizedBaseUrl);
+    }
+    for (const pathToken of Array.isArray(out?.attempted_paths) ? out.attempted_paths : []) {
+      const normalizedPath = String(pathToken || '').trim();
+      if (normalizedPath) aggregate.attemptedPaths.add(normalizedPath);
+    }
+    const reason = String(out?.reason || '').trim().toLowerCase();
+    if (reason === 'upstream_timeout') aggregate.timeoutCount += 1;
+    if (reason === 'upstream_timeout' || reason === 'upstream_error' || reason === 'rate_limited') {
+      aggregate.transientCount += 1;
+    }
+    searchResults.push({
+      ...queryEntry,
+      ...out,
+    });
+    const products = Array.isArray(out?.products) ? out.products : [];
+    for (const product of products) {
+      const normalized = normalizeRecoCatalogProduct(product);
+      if (!isPlainObject(normalized)) continue;
+      const boundaryReject = classifyBeautyMainlineBoundaryRejectCandidate(normalized);
+      if (boundaryReject.rejected) {
+        recordBeautyMainlineBoundaryReject({
+          rejects: boundaryRejects,
+          product: normalized,
+          reason: boundaryReject.reason,
+          queryEntry,
+          stageId,
+        });
+        continue;
+      }
+      rawCandidates.push({
+        ...normalized,
+        retrieval_query: queryEntry.query,
+        retrieval_step: queryEntry.step,
+        retrieval_slot: queryEntry.slot,
+        retrieval_ladder_level: queryEntry.ladder_level,
+        retrieval_role_id: queryEntry.role_id || null,
+      });
+    }
+  };
 
   for (const level of Array.isArray(queryLevels) ? queryLevels : []) {
     const queries = Array.isArray(level?.queries) ? level.queries : [];
@@ -22043,115 +22243,39 @@ async function collectRecoCandidatesFromQueryLevels({
       });
       continue;
     }
-    const levelResults = await mapWithConcurrency(
-      runnableQueries,
-      RECO_CATALOG_SEARCH_CONCURRENCY,
-      async (queryEntry) => {
-        const queryAllowExternalSeed =
-          allowExternalSeed === true
-          && queryEntry?.allow_external_seed === true;
-        const normalizedQueryEntry = {
-          ...queryEntry,
-          source_scope: queryAllowExternalSeed ? 'external_seed' : 'internal',
-          external_seed_strategy: queryAllowExternalSeed
-            ? String(
-                queryEntry?.external_seed_strategy
-                || externalSeedStrategy
-                || 'supplement_internal_first',
-              )
-                .trim()
-                .toLowerCase()
-            : 'on_empty_only',
-        };
-        return executeRecoRecallPlanEntryWithWallClockGuard({
-          entry: normalizedQueryEntry,
-          logger,
-          timeoutMs,
-          deadlineMs,
-          limit,
-          usePurchasableFallback,
-          transportPolicyMode,
+    const levelResults = [];
+    const levelAggregate = buildLevelAggregate();
+    if (shouldRunSequentialStopForQueryLevel(level, runnableQueries)) {
+      for (const queryEntry of runnableQueries) {
+        // eslint-disable-next-line no-await-in-loop
+        const row = await runQueryLevelEntry(queryEntry);
+        levelResults.push(row);
+        accumulateQueryLevelRow(stageId, row, levelAggregate);
+        candidateState = buildRecoCandidateStateFromRawCandidates(rawCandidates, {
           targetContext,
-          queryIndex: flattenedQueryIndexes.get(queryEntry),
-          queryTotal: flattenedQueryEntries.length,
-          authHeaders,
-          searchFn,
+          recommendationTaskContext,
         });
-      },
-    );
-    let levelTimeoutCount = 0;
-    let levelTransientCount = 0;
-    let levelActualHttpAttemptCount = 0;
-    let levelEffectiveRequestTimeoutMs = 0;
-    const levelAttemptedBaseUrls = new Set();
-    const levelAttemptedPaths = new Set();
-    for (const row of levelResults) {
-      const queryEntry = row && row.queryEntry ? row.queryEntry : null;
-      const out = row && row.out ? row.out : null;
-      if (!queryEntry) continue;
-      const actualAttemptsForRow = Number.isFinite(Number(out?.actual_http_attempt_count))
-        ? Math.max(0, Math.trunc(Number(out.actual_http_attempt_count)))
-        : 0;
-      levelActualHttpAttemptCount += actualAttemptsForRow;
-      const attemptTimeouts = Array.isArray(out?.attempted_request_timeouts_ms)
-        ? out.attempted_request_timeouts_ms
-        : [];
-      for (const timeoutValue of attemptTimeouts) {
-        const normalizedTimeout = Number.isFinite(Number(timeoutValue))
-          ? Math.max(0, Math.trunc(Number(timeoutValue)))
-          : 0;
-        levelEffectiveRequestTimeoutMs = Math.max(levelEffectiveRequestTimeoutMs, normalizedTimeout);
+        if (shouldStopQueryLevelOnViableMatch(level, runnableQueries)) break;
       }
-      for (const baseUrl of Array.isArray(out?.attempted_base_urls) ? out.attempted_base_urls : []) {
-        const normalizedBaseUrl = String(baseUrl || '').trim();
-        if (normalizedBaseUrl) levelAttemptedBaseUrls.add(normalizedBaseUrl);
-      }
-      for (const pathToken of Array.isArray(out?.attempted_paths) ? out.attempted_paths : []) {
-        const normalizedPath = String(pathToken || '').trim();
-        if (normalizedPath) levelAttemptedPaths.add(normalizedPath);
-      }
-      const reason = String(out?.reason || '').trim().toLowerCase();
-      if (reason === 'upstream_timeout') levelTimeoutCount += 1;
-      if (reason === 'upstream_timeout' || reason === 'upstream_error' || reason === 'rate_limited') {
-        levelTransientCount += 1;
-      }
-      searchResults.push({
-        ...queryEntry,
-        ...out,
-      });
-      const products = Array.isArray(out?.products) ? out.products : [];
-      for (const product of products) {
-        const normalized = normalizeRecoCatalogProduct(product);
-        if (!isPlainObject(normalized)) continue;
-        const boundaryReject = classifyBeautyMainlineBoundaryRejectCandidate(normalized);
-        if (boundaryReject.rejected) {
-          recordBeautyMainlineBoundaryReject({
-            rejects: boundaryRejects,
-            product: normalized,
-            reason: boundaryReject.reason,
-            queryEntry,
-            stageId,
-          });
-          continue;
-        }
-        rawCandidates.push({
-          ...normalized,
-          retrieval_query: queryEntry.query,
-          retrieval_step: queryEntry.step,
-          retrieval_slot: queryEntry.slot,
-          retrieval_ladder_level: queryEntry.ladder_level,
-          retrieval_role_id: queryEntry.role_id || null,
-        });
+    } else {
+      const rows = await mapWithConcurrency(
+        runnableQueries,
+        RECO_CATALOG_SEARCH_CONCURRENCY,
+        runQueryLevelEntry,
+      );
+      for (const row of rows) {
+        levelResults.push(row);
+        accumulateQueryLevelRow(stageId, row, levelAggregate);
       }
     }
-    executedQueryCount += runnableQueries.length;
-    executedUpstreamAttemptCount += levelActualHttpAttemptCount;
-    actualHttpAttemptCount += levelActualHttpAttemptCount;
-    stageTimeoutCounts[stageId] = levelTimeoutCount;
-    actualHttpAttemptsByStage[stageId] = levelActualHttpAttemptCount;
-    effectiveRequestTimeoutMsByStage[stageId] = levelEffectiveRequestTimeoutMs;
-    attemptedBaseUrlsByStage[stageId] = Array.from(levelAttemptedBaseUrls);
-    attemptedPathsByStage[stageId] = Array.from(levelAttemptedPaths);
+    executedQueryCount += levelResults.length;
+    executedUpstreamAttemptCount += levelAggregate.actualHttpAttemptCount;
+    actualHttpAttemptCount += levelAggregate.actualHttpAttemptCount;
+    stageTimeoutCounts[stageId] = levelAggregate.timeoutCount;
+    actualHttpAttemptsByStage[stageId] = levelAggregate.actualHttpAttemptCount;
+    effectiveRequestTimeoutMsByStage[stageId] = levelAggregate.effectiveRequestTimeoutMs;
+    attemptedBaseUrlsByStage[stageId] = Array.from(levelAggregate.attemptedBaseUrls);
+    attemptedPathsByStage[stageId] = Array.from(levelAggregate.attemptedPaths);
     candidateState = buildRecoCandidateStateFromRawCandidates(rawCandidates, {
       targetContext,
       recommendationTaskContext,
@@ -22166,18 +22290,18 @@ async function collectRecoCandidatesFromQueryLevels({
           : 'internal',
       skipped: false,
       skip_reason: null,
-      executed_query_count: runnableQueries.length,
-      executed_upstream_attempt_count: levelActualHttpAttemptCount,
-      actual_http_attempt_count: levelActualHttpAttemptCount,
-      timeout_count: levelTimeoutCount,
+      executed_query_count: levelResults.length,
+      executed_upstream_attempt_count: levelAggregate.actualHttpAttemptCount,
+      actual_http_attempt_count: levelAggregate.actualHttpAttemptCount,
+      timeout_count: levelAggregate.timeoutCount,
       transient_only:
-        runnableQueries.length > 0 &&
-        levelTransientCount >= runnableQueries.length &&
+        levelResults.length > 0 &&
+        levelAggregate.transientCount >= levelResults.length &&
         Number(candidateState?.raw_candidate_count || 0) === 0,
       selected_count: getRecoRecallSelectedCount(candidateState),
       primary_role_matched: Boolean(candidateState?.primary_role_matched),
-      attempted_base_urls: Array.from(levelAttemptedBaseUrls),
-      attempted_paths: Array.from(levelAttemptedPaths),
+      attempted_base_urls: Array.from(levelAggregate.attemptedBaseUrls),
+      attempted_paths: Array.from(levelAggregate.attemptedPaths),
     });
     if (shouldStopStepAwareBroadening(candidateState, { targetContext })) {
       stopLevel = String(level?.ladder_level || '').trim() || null;
