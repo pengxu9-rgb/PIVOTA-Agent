@@ -9888,7 +9888,7 @@ describe('discovery feed service', () => {
 
       expect(externalSpy).toHaveBeenCalledWith(
         expect.objectContaining({
-          limit: 240,
+          limit: 120,
         }),
       );
       expect(response.products).toHaveLength(60);
@@ -9896,7 +9896,7 @@ describe('discovery feed service', () => {
         expect.objectContaining({
           primary_path_used: 'external_seed_fastpath',
           eligible_pool_count: 120,
-          runtime_corpus_count: 240,
+          runtime_corpus_count: 120,
           has_more: true,
           serving_mode: 'curated_head',
         }),
