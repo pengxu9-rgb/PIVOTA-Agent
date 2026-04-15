@@ -256,7 +256,7 @@ describe('discovery feed service', () => {
 	    expect(recallTerms.verticalTerms).toEqual(expect.arrayContaining(['haircare']));
 	  });
 
-  test('public explicit browse external seed recall uses only the global seed scope', () => {
+  test('public explicit browse external seed recall includes global and creator seed scopes', () => {
     const explicitRequest = _internals.normalizeDiscoveryRequest({
       surface: 'browse_products',
       query: {
@@ -279,7 +279,10 @@ describe('discovery feed service', () => {
       },
     });
 
-    expect(_internals.resolveDiscoveryExternalSeedToolScopes(explicitRequest, 'creator_agents')).toEqual(['*']);
+    expect(_internals.resolveDiscoveryExternalSeedToolScopes(explicitRequest, 'creator_agents')).toEqual([
+      '*',
+      'creator_agents',
+    ]);
     expect(_internals.resolveDiscoveryExternalSeedToolScopes(genericRequest, 'creator_agents')).toEqual([
       '*',
       'creator_agents',
@@ -5780,6 +5783,16 @@ describe('discovery feed service', () => {
       }),
       0,
     );
+    const sunscreenBundle = _internals.normalizeCandidateProduct(
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'sunscreen_bundle_1',
+        title: 'Build Your Own SPF Moisturizer + Foundation Bundle',
+        category: 'Sunscreen',
+        product_type: 'Sunscreen',
+      }),
+      0,
+    );
 
     expect(_internals.matchesQueryTextCandidate(makeupBag, 'makeup')).toBe(false);
     expect(_internals.matchesQueryTextCandidate(makeupBag, 'makeup bag')).toBe(true);
@@ -5788,6 +5801,7 @@ describe('discovery feed service', () => {
     expect(_internals.matchesQueryTextCandidate(giftCard, 'beauty')).toBe(false);
     expect(_internals.matchesQueryTextCandidate(beautyMirror, 'beauty')).toBe(false);
     expect(_internals.matchesQueryTextCandidate(sweatpants, 'beauty')).toBe(false);
+    expect(_internals.matchesQueryTextCandidate(sunscreenBundle, 'sunscreen')).toBe(true);
   });
 
   test('exact beauty phrase hints skip broad category and vertical stages for narrow explicit queries', () => {
@@ -5931,11 +5945,12 @@ describe('discovery feed service', () => {
         description: 'Fine fragrance composition.',
       }),
     );
-    const dbQueryMock = jest
-      .fn()
-      .mockResolvedValueOnce({ rows: requiredColumns })
-      .mockResolvedValueOnce({ rows: requiredIndexes })
-      .mockResolvedValueOnce({ rows: headRows });
+	    const dbQueryMock = jest
+	      .fn()
+	      .mockResolvedValueOnce({ rows: requiredColumns })
+	      .mockResolvedValueOnce({ rows: requiredIndexes })
+	      .mockResolvedValueOnce({ rows: headRows })
+	      .mockResolvedValue({ rows: [] });
     jest.doMock('../src/db', () => ({
       query: dbQueryMock,
     }));
@@ -5972,16 +5987,34 @@ describe('discovery feed service', () => {
         label: 'external_seed_pool',
       });
 
-      expect(result.products).toHaveLength(6);
-      expect(dbQueryMock).toHaveBeenCalledTimes(3);
-      expect(result.recallSummary[0].external_seed_stage_counts).toEqual([
-        expect.objectContaining({
-          stage: 'recall_indexed_category_head',
-          raw_rows: 6,
-          query_qualified_rows: 6,
-          final_eligible_rows: 6,
-        }),
-      ]);
+	      expect(result.products).toHaveLength(6);
+	      expect(dbQueryMock).toHaveBeenCalledTimes(6);
+	      expect(result.recallSummary[0].external_seed_stage_counts).toEqual([
+	        expect.objectContaining({
+	          stage: 'recall_indexed_category_head',
+	          raw_rows: 6,
+	          query_qualified_rows: 6,
+	          final_eligible_rows: 6,
+	        }),
+	        expect.objectContaining({
+	          stage: 'recall_indexed_category_head',
+	          tool_scope: 'creator_agents',
+	          raw_rows: 0,
+	          final_eligible_rows: 6,
+	        }),
+	        expect.objectContaining({
+	          stage: 'recall_exact_text_union',
+	          tool_scope: '*',
+	          raw_rows: 0,
+	          final_eligible_rows: 6,
+	        }),
+	        expect.objectContaining({
+	          stage: 'recall_exact_text_union',
+	          tool_scope: 'creator_agents',
+	          raw_rows: 0,
+	          final_eligible_rows: 6,
+	        }),
+	      ]);
     } finally {
       if (prevDatabaseUrl === undefined) delete process.env.DATABASE_URL;
       else process.env.DATABASE_URL = prevDatabaseUrl;
@@ -6047,11 +6080,12 @@ describe('discovery feed service', () => {
       }),
     ];
     const headRows = perfumeRows.concat(noiseRows);
-    const dbQueryMock = jest
-      .fn()
-      .mockResolvedValueOnce({ rows: requiredColumns })
-      .mockResolvedValueOnce({ rows: requiredIndexes })
-      .mockResolvedValueOnce({ rows: headRows });
+	    const dbQueryMock = jest
+	      .fn()
+	      .mockResolvedValueOnce({ rows: requiredColumns })
+	      .mockResolvedValueOnce({ rows: requiredIndexes })
+	      .mockResolvedValueOnce({ rows: headRows })
+	      .mockResolvedValue({ rows: [] });
     jest.doMock('../src/db', () => ({
       query: dbQueryMock,
     }));
@@ -6085,14 +6119,32 @@ describe('discovery feed service', () => {
           returned: 6,
         }),
       );
-      expect(response.metadata.external_seed_stage_counts).toEqual([
-        expect.objectContaining({
-          stage: 'recall_indexed_category_head',
-          raw_rows: 8,
-          query_qualified_rows: 8,
-          final_eligible_rows: 8,
-        }),
-      ]);
+	      expect(response.metadata.external_seed_stage_counts).toEqual([
+	        expect.objectContaining({
+	          stage: 'recall_indexed_category_head',
+	          raw_rows: 8,
+	          query_qualified_rows: 8,
+	          final_eligible_rows: 8,
+	        }),
+	        expect.objectContaining({
+	          stage: 'recall_indexed_category_head',
+	          tool_scope: 'creator_agents',
+	          raw_rows: 0,
+	          final_eligible_rows: 8,
+	        }),
+	        expect.objectContaining({
+	          stage: 'recall_exact_text_union',
+	          tool_scope: '*',
+	          raw_rows: 0,
+	          final_eligible_rows: 8,
+	        }),
+	        expect.objectContaining({
+	          stage: 'recall_exact_text_union',
+	          tool_scope: 'creator_agents',
+	          raw_rows: 0,
+	          final_eligible_rows: 8,
+	        }),
+	      ]);
     } finally {
       if (prevDatabaseUrl === undefined) delete process.env.DATABASE_URL;
       else process.env.DATABASE_URL = prevDatabaseUrl;
@@ -6141,12 +6193,12 @@ describe('discovery feed service', () => {
         description: 'Hydrating conditioner for hair.',
       }),
     );
-    const dbQueryMock = jest
-      .fn()
-      .mockResolvedValueOnce({ rows: requiredColumns })
-      .mockResolvedValueOnce({ rows: requiredIndexes })
-      .mockResolvedValueOnce({ rows: headRows })
-      .mockResolvedValueOnce({ rows: [] });
+	    const dbQueryMock = jest
+	      .fn()
+	      .mockResolvedValueOnce({ rows: requiredColumns })
+	      .mockResolvedValueOnce({ rows: requiredIndexes })
+	      .mockResolvedValueOnce({ rows: headRows })
+	      .mockResolvedValue({ rows: [] });
     jest.doMock('../src/db', () => ({
       query: dbQueryMock,
     }));
@@ -6183,20 +6235,31 @@ describe('discovery feed service', () => {
         label: 'external_seed_pool',
       });
 
-      expect(result.products).toHaveLength(0);
-      expect(dbQueryMock).toHaveBeenCalledTimes(4);
-      expect(result.recallSummary[0].external_seed_stage_counts).toEqual([
-        expect.objectContaining({
-          stage: 'recall_indexed_category_head',
-          raw_rows: 6,
-          query_qualified_rows: 0,
-          final_eligible_rows: 0,
-        }),
-        expect.objectContaining({
-          stage: 'recall_exact_text_union',
-          final_eligible_rows: 0,
-        }),
-      ]);
+	      expect(result.products).toHaveLength(0);
+	      expect(dbQueryMock).toHaveBeenCalledTimes(6);
+	      expect(result.recallSummary[0].external_seed_stage_counts).toEqual([
+	        expect.objectContaining({
+	          stage: 'recall_indexed_category_head',
+	          raw_rows: 6,
+	          query_qualified_rows: 0,
+	          final_eligible_rows: 0,
+	        }),
+	        expect.objectContaining({
+	          stage: 'recall_indexed_category_head',
+	          tool_scope: 'creator_agents',
+	          final_eligible_rows: 0,
+	        }),
+	        expect.objectContaining({
+	          stage: 'recall_exact_text_union',
+	          tool_scope: '*',
+	          final_eligible_rows: 0,
+	        }),
+	        expect.objectContaining({
+	          stage: 'recall_exact_text_union',
+	          tool_scope: 'creator_agents',
+	          final_eligible_rows: 0,
+	        }),
+	      ]);
     } finally {
       if (prevDatabaseUrl === undefined) delete process.env.DATABASE_URL;
       else process.env.DATABASE_URL = prevDatabaseUrl;
@@ -6263,14 +6326,17 @@ describe('discovery feed service', () => {
         description: 'Vitamin C antioxidant treatment.',
       }),
     );
-    const dbQueryMock = jest
-      .fn()
-      .mockResolvedValueOnce({ rows: requiredColumns })
-      .mockResolvedValueOnce({ rows: requiredIndexes })
-      .mockResolvedValueOnce({ rows: titleRows })
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: broadTokenRows })
-      .mockResolvedValueOnce({ rows: categoryRows });
+	    const dbQueryMock = jest
+	      .fn()
+	      .mockResolvedValueOnce({ rows: requiredColumns })
+	      .mockResolvedValueOnce({ rows: requiredIndexes })
+	      .mockResolvedValueOnce({ rows: titleRows })
+	      .mockResolvedValueOnce({ rows: [] })
+	      .mockResolvedValueOnce({ rows: [] })
+	      .mockResolvedValueOnce({ rows: [] })
+	      .mockResolvedValueOnce({ rows: broadTokenRows })
+	      .mockResolvedValueOnce({ rows: [] })
+	      .mockResolvedValueOnce({ rows: categoryRows });
     jest.doMock('../src/db', () => ({
       query: dbQueryMock,
     }));
@@ -6317,9 +6383,9 @@ describe('discovery feed service', () => {
         label: 'external_seed_pool',
       });
 
-      expect(result.products).toHaveLength(18);
-      expect(result.products.every((product) => /Vitamin C/.test(product.title))).toBe(true);
-      expect(dbQueryMock).toHaveBeenCalledTimes(6);
+	      expect(result.products).toHaveLength(18);
+	      expect(result.products.every((product) => /Vitamin C/.test(product.title))).toBe(true);
+	      expect(dbQueryMock).toHaveBeenCalledTimes(9);
       expect(result.recallSummary[0]).toEqual(
         expect.objectContaining({
           external_seed_qualified_count: 18,
@@ -6379,20 +6445,30 @@ describe('discovery feed service', () => {
       'idx_external_product_seeds_recall_ingredient_tokens_trgm',
       'idx_external_product_seeds_recall_alias_tokens_trgm',
     ].map((indexname) => ({ tablename: 'external_product_seeds', indexname }));
-    const titleRows = Array.from({ length: 8 }, (_, index) =>
-      makeExternalSeedRow({
-        id: `conditioner_title_${index + 1}`,
-        title: `Seed Conditioner ${index + 1}`,
-        category: 'Conditioner',
-        product_type: 'Conditioner',
-        description: 'Smoothing conditioner for hair.',
-      }),
-    );
-    const dbQueryMock = jest
-      .fn()
-      .mockResolvedValueOnce({ rows: requiredColumns })
-      .mockResolvedValueOnce({ rows: requiredIndexes })
-      .mockResolvedValueOnce({ rows: titleRows });
+	    const titleRows = Array.from({ length: 8 }, (_, index) =>
+	      makeExternalSeedRow({
+	        id: `conditioner_title_${index + 1}`,
+	        title: `Seed Conditioner ${index + 1}`,
+	        category: 'Conditioner',
+	        product_type: 'Conditioner',
+	        description: 'Smoothing conditioner for hair.',
+	      }),
+	    );
+	    const creatorRows = Array.from({ length: 4 }, (_, index) =>
+	      makeExternalSeedRow({
+	        id: `conditioner_creator_${index + 1}`,
+	        title: `Creator Conditioner ${index + 1}`,
+	        category: 'Conditioner',
+	        product_type: 'Conditioner',
+	        description: 'Smoothing conditioner for hair.',
+	      }),
+	    );
+	    const dbQueryMock = jest
+	      .fn()
+	      .mockResolvedValueOnce({ rows: requiredColumns })
+	      .mockResolvedValueOnce({ rows: requiredIndexes })
+	      .mockResolvedValueOnce({ rows: titleRows })
+	      .mockResolvedValueOnce({ rows: creatorRows });
     jest.doMock('../src/db', () => ({
       query: dbQueryMock,
     }));
@@ -6418,9 +6494,9 @@ describe('discovery feed service', () => {
         },
       });
 
-      expect(
-        freshInternals.resolveExplicitQueryExternalSeedMainlineAcceptThreshold(request, 60),
-      ).toBe(8);
+	      expect(
+	        freshInternals.resolveExplicitQueryExternalSeedMainlineAcceptThreshold(request, 60),
+	      ).toBe(12);
       expect(
         freshInternals.resolveExplicitIndexedCategoryHeadTerms(
           request,
@@ -6443,18 +6519,21 @@ describe('discovery feed service', () => {
         label: 'external_seed_pool',
       });
 
-      expect(result.products).toHaveLength(8);
-      expect(dbQueryMock).toHaveBeenCalledTimes(3);
-      expect(dbQueryMock.mock.calls[2][0]).toContain('AND tool = $2');
-      expect(dbQueryMock.mock.calls[2][0]).not.toContain("(tool = '*' OR tool = $2)");
-      expect(dbQueryMock.mock.calls[2][1][1]).toBe('*');
-      expect(dbQueryMock.mock.calls[2][0]).toContain("seed_data->'derived'->'recall'->>'category'");
-      expect(dbQueryMock.mock.calls[2][1].at(-1)).toBe(36);
-      expect(result.recallSummary[0].external_seed_tool_scopes).toEqual(['*']);
-      expect(result.recallSummary[0].external_seed_stage_counts.map((entry) => entry.stage)).toEqual([
-        'recall_indexed_category_head',
-      ]);
-      expect(result.recallSummary[0].external_seed_stage_counts[0].tool_scope).toBe('*');
+	      expect(result.products).toHaveLength(12);
+	      expect(dbQueryMock).toHaveBeenCalledTimes(4);
+	      expect(dbQueryMock.mock.calls[2][0]).toContain('AND tool = $2');
+	      expect(dbQueryMock.mock.calls[2][0]).not.toContain("(tool = '*' OR tool = $2)");
+	      expect(dbQueryMock.mock.calls[2][1][1]).toBe('*');
+	      expect(dbQueryMock.mock.calls[3][1][1]).toBe('creator_agents');
+	      expect(dbQueryMock.mock.calls[2][0]).toContain("seed_data->'derived'->'recall'->>'category'");
+	      expect(dbQueryMock.mock.calls[2][1].at(-1)).toBe(36);
+	      expect(result.recallSummary[0].external_seed_tool_scopes).toEqual(['*', 'creator_agents']);
+	      expect(result.recallSummary[0].external_seed_stage_counts.map((entry) => entry.stage)).toEqual([
+	        'recall_indexed_category_head',
+	        'recall_indexed_category_head',
+	      ]);
+	      expect(result.recallSummary[0].external_seed_stage_counts[0].tool_scope).toBe('*');
+	      expect(result.recallSummary[0].external_seed_stage_counts[1].tool_scope).toBe('creator_agents');
     } finally {
       if (prevDatabaseUrl === undefined) delete process.env.DATABASE_URL;
       else process.env.DATABASE_URL = prevDatabaseUrl;
@@ -6463,7 +6542,7 @@ describe('discovery feed service', () => {
     }
   });
 
-  test('exact phrase browse page 1 stops after indexed head partial exact-intent pool', async () => {
+  test('exact phrase browse page 1 continues past indexed head partial exact-intent pool', async () => {
     jest.resetModules();
     const prevDatabaseUrl = process.env.DATABASE_URL;
     process.env.DATABASE_URL = 'postgres://discovery-exact-head-stop-test';
@@ -6503,11 +6582,12 @@ describe('discovery feed service', () => {
         description: 'Hydrating water essence for daily use.',
       }),
     );
-    const dbQueryMock = jest
-      .fn()
-      .mockResolvedValueOnce({ rows: requiredColumns })
-      .mockResolvedValueOnce({ rows: requiredIndexes })
-      .mockResolvedValueOnce({ rows: headRows });
+	    const dbQueryMock = jest
+	      .fn()
+	      .mockResolvedValueOnce({ rows: requiredColumns })
+	      .mockResolvedValueOnce({ rows: requiredIndexes })
+	      .mockResolvedValueOnce({ rows: headRows })
+	      .mockResolvedValue({ rows: [] });
     jest.doMock('../src/db', () => ({
       query: dbQueryMock,
     }));
@@ -6544,11 +6624,20 @@ describe('discovery feed service', () => {
         label: 'external_seed_pool',
       });
 
-      expect(result.products).toHaveLength(5);
-      expect(dbQueryMock).toHaveBeenCalledTimes(3);
-      expect(result.recallSummary[0].external_seed_stage_counts.map((entry) => entry.stage)).toEqual([
-        'recall_indexed_category_head',
-      ]);
+	      expect(result.products).toHaveLength(5);
+	      expect(dbQueryMock).toHaveBeenCalledTimes(6);
+	      expect(result.recallSummary[0].external_seed_stage_counts.map((entry) => entry.stage)).toEqual([
+	        'recall_indexed_category_head',
+	        'recall_indexed_category_head',
+	        'recall_exact_text_union',
+	        'recall_exact_text_union',
+	      ]);
+	      expect(result.recallSummary[0].external_seed_stage_counts.map((entry) => entry.tool_scope)).toEqual([
+	        '*',
+	        'creator_agents',
+	        '*',
+	        'creator_agents',
+	      ]);
     } finally {
       if (prevDatabaseUrl === undefined) delete process.env.DATABASE_URL;
       else process.env.DATABASE_URL = prevDatabaseUrl;
@@ -6606,12 +6695,14 @@ describe('discovery feed service', () => {
         description: 'Hydrating essence lotion.',
       }),
     ];
-    const dbQueryMock = jest
-      .fn()
-      .mockResolvedValueOnce({ rows: requiredColumns })
-      .mockResolvedValueOnce({ rows: requiredIndexes })
-      .mockResolvedValueOnce({ rows: headRows })
-      .mockResolvedValueOnce({ rows: unionRows });
+	    const dbQueryMock = jest
+	      .fn()
+	      .mockResolvedValueOnce({ rows: requiredColumns })
+	      .mockResolvedValueOnce({ rows: requiredIndexes })
+	      .mockResolvedValueOnce({ rows: headRows })
+	      .mockResolvedValueOnce({ rows: [] })
+	      .mockResolvedValueOnce({ rows: unionRows })
+	      .mockResolvedValue({ rows: [] });
     jest.doMock('../src/db', () => ({
       query: dbQueryMock,
     }));
@@ -6648,12 +6739,20 @@ describe('discovery feed service', () => {
         label: 'external_seed_pool',
       });
 
-      expect(result.products).toHaveLength(6);
-      expect(dbQueryMock).toHaveBeenCalledTimes(4);
-      expect(result.recallSummary[0].external_seed_stage_counts.map((entry) => entry.stage)).toEqual([
-        'recall_indexed_category_head',
-        'recall_exact_text_union',
-      ]);
+	      expect(result.products).toHaveLength(6);
+	      expect(dbQueryMock).toHaveBeenCalledTimes(6);
+	      expect(result.recallSummary[0].external_seed_stage_counts.map((entry) => entry.stage)).toEqual([
+	        'recall_indexed_category_head',
+	        'recall_indexed_category_head',
+	        'recall_exact_text_union',
+	        'recall_exact_text_union',
+	      ]);
+	      expect(result.recallSummary[0].external_seed_stage_counts.map((entry) => entry.tool_scope)).toEqual([
+	        '*',
+	        'creator_agents',
+	        '*',
+	        'creator_agents',
+	      ]);
     } finally {
       if (prevDatabaseUrl === undefined) delete process.env.DATABASE_URL;
       else process.env.DATABASE_URL = prevDatabaseUrl;
@@ -6815,12 +6914,14 @@ describe('discovery feed service', () => {
         description: 'Makeup fixing mist for long wear.',
       }),
     ];
-    const dbQueryMock = jest
-      .fn()
-      .mockResolvedValueOnce({ rows: requiredColumns })
-      .mockResolvedValueOnce({ rows: requiredIndexes })
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: unionRows });
+	    const dbQueryMock = jest
+	      .fn()
+	      .mockResolvedValueOnce({ rows: requiredColumns })
+	      .mockResolvedValueOnce({ rows: requiredIndexes })
+	      .mockResolvedValueOnce({ rows: [] })
+	      .mockResolvedValueOnce({ rows: [] })
+	      .mockResolvedValueOnce({ rows: unionRows })
+	      .mockResolvedValue({ rows: [] });
     jest.doMock('../src/db', () => ({
       query: dbQueryMock,
     }));
@@ -6866,18 +6967,20 @@ describe('discovery feed service', () => {
         label: 'external_seed_pool',
       });
 
-      expect(result.products).toHaveLength(1);
-      expect(result.products[0].title).toBe('You Mist Makeup-Extending Setting Spray');
-      expect(dbQueryMock).toHaveBeenCalledTimes(4);
-      expect(dbQueryMock.mock.calls[3][0]).toContain('UNION ALL');
-      expect(dbQueryMock.mock.calls[3][0]).toContain("seed_data->'derived'->'recall'->>'retrieval_title'");
-      expect(dbQueryMock.mock.calls[3][0]).toContain("seed_data->'derived'->'recall'->>'retrieval_summary'");
-      expect(dbQueryMock.mock.calls[3][0]).toContain("seed_data#>>'{derived,recall,ingredient_tokens}'");
-      expect(dbQueryMock.mock.calls[3][0]).toContain("seed_data#>>'{derived,recall,alias_tokens}'");
-      expect(result.recallSummary[0].external_seed_stage_counts.map((entry) => entry.stage)).toEqual([
-        'recall_indexed_category_head',
-        'recall_exact_text_union',
-      ]);
+	      expect(result.products).toHaveLength(1);
+	      expect(result.products[0].title).toBe('You Mist Makeup-Extending Setting Spray');
+	      expect(dbQueryMock).toHaveBeenCalledTimes(6);
+	      expect(dbQueryMock.mock.calls[4][0]).toContain('UNION ALL');
+	      expect(dbQueryMock.mock.calls[4][0]).toContain("seed_data->'derived'->'recall'->>'retrieval_title'");
+	      expect(dbQueryMock.mock.calls[4][0]).toContain("seed_data->'derived'->'recall'->>'retrieval_summary'");
+	      expect(dbQueryMock.mock.calls[4][0]).toContain("seed_data#>>'{derived,recall,ingredient_tokens}'");
+	      expect(dbQueryMock.mock.calls[4][0]).toContain("seed_data#>>'{derived,recall,alias_tokens}'");
+	      expect(result.recallSummary[0].external_seed_stage_counts.map((entry) => entry.stage)).toEqual([
+	        'recall_indexed_category_head',
+	        'recall_indexed_category_head',
+	        'recall_exact_text_union',
+	        'recall_exact_text_union',
+	      ]);
     } finally {
       if (prevDatabaseUrl === undefined) delete process.env.DATABASE_URL;
       else process.env.DATABASE_URL = prevDatabaseUrl;
@@ -8475,12 +8578,13 @@ describe('discovery feed service', () => {
         description: 'A glossy lip oil.',
       }),
     );
-    const dbQueryMock = jest
-      .fn()
-      .mockResolvedValueOnce({ rows: requiredColumns })
-      .mockResolvedValueOnce({ rows: requiredIndexes })
-      .mockResolvedValueOnce({ rows: primaryRows })
-      .mockResolvedValueOnce({ rows: exactRows });
+	    const dbQueryMock = jest
+	      .fn()
+	      .mockResolvedValueOnce({ rows: requiredColumns })
+	      .mockResolvedValueOnce({ rows: requiredIndexes })
+	      .mockResolvedValueOnce({ rows: primaryRows })
+	      .mockResolvedValueOnce({ rows: [] })
+	      .mockResolvedValueOnce({ rows: exactRows });
     jest.doMock('../src/db', () => ({
       query: dbQueryMock,
     }));
@@ -8514,19 +8618,25 @@ describe('discovery feed service', () => {
         label: 'external_seed_pool',
       });
 
-      expect(result.products).toHaveLength(24);
-      expect(dbQueryMock).toHaveBeenCalledTimes(4);
-      expect(dbQueryMock.mock.calls[2][1].at(-1)).toBe(36);
-      expect(result.recallSummary[0].external_seed_stage_counts).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            stage: 'recall_compound_primary_category',
-            raw_rows: 12,
-            compound_qualified_rows: 12,
-          }),
-          expect.objectContaining({
-            stage: 'recall_compound_exact_title',
-            raw_rows: 12,
+	      expect(result.products).toHaveLength(24);
+	      expect(dbQueryMock).toHaveBeenCalledTimes(5);
+	      expect(dbQueryMock.mock.calls[2][1].at(-1)).toBe(36);
+	      expect(result.recallSummary[0].external_seed_stage_counts).toEqual(
+	        expect.arrayContaining([
+	          expect.objectContaining({
+	            stage: 'recall_compound_primary_category',
+	            raw_rows: 12,
+	            compound_qualified_rows: 12,
+	          }),
+	          expect.objectContaining({
+	            stage: 'recall_compound_primary_category',
+	            tool_scope: 'creator_agents',
+	            raw_rows: 0,
+	            final_eligible_rows: 12,
+	          }),
+	          expect.objectContaining({
+	            stage: 'recall_compound_exact_title',
+	            raw_rows: 12,
             compound_qualified_rows: 12,
             final_eligible_rows: 24,
           }),
