@@ -2040,6 +2040,92 @@ test('handoffRecoToBeautyMainlineSearch builds reco rows from canonical final se
   }
 });
 
+test('handoffRecoToBeautyMainlineSearch hydrates reviewed product intel before building mainline reco rows', async () => {
+  const productIntelKbStore = require('../src/auroraBff/productIntelKbStore');
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    await productIntelKbStore.upsertProductIntelKbEntry({
+      kb_key: 'product:spf_insight_1',
+      source: 'pivota_product_intel_pilot_selected',
+      analysis: {
+        product_intel_v1: {
+          contract_version: 'pivota.product_intel.v1',
+          product_intel_core: {
+            what_it_is: {
+              body: 'A reviewed sunscreen profile for daily UV protection with a lightweight finish.',
+            },
+            why_it_stands_out: [
+              {
+                headline: 'Lightweight SPF fit',
+                body: 'The reviewed profile connects daily UV coverage with a lighter finish for under-makeup wear.',
+              },
+            ],
+            best_for: [
+              {
+                label: 'Daily sunscreen under makeup',
+              },
+            ],
+          },
+          shopping_card: {
+            title: 'Reviewed SPF',
+            subtitle: 'Lightweight sunscreen',
+            intro: 'Daily sunscreen profile with reviewed finish context.',
+          },
+          quality_state: 'limited',
+          evidence_profile: 'seller_only',
+        },
+      },
+      source_meta: {
+        review_tier: 'assistant_reviewed',
+      },
+      last_success_at: new Date().toISOString(),
+    });
+
+    const out = await __internal.handoffRecoToBeautyMainlineSearch({
+      ctx: { lang: 'EN' },
+      primaryQuery: 'best sunscreen for oily skin',
+      fallbackMessage: 'best sunscreen for oily skin',
+      targetContext: resolveRecommendationTargetContext({
+        text: 'best sunscreen for oily skin',
+        focus: '',
+        entryType: 'chat',
+      }),
+      timeoutMs: 5000,
+      minTimeoutMs: 5000,
+      searchFn: async () => ({
+        ok: true,
+        products: [
+          {
+            product_id: 'spf_insight_1',
+            merchant_id: 'merchant_spf',
+            title: 'Reviewed SPF',
+            category: 'Sunscreen',
+            product_type: 'sunscreen',
+            candidate_step: 'sunscreen',
+          },
+        ],
+        decision_owner: 'shopping_agent_beauty_mainline',
+        query_source: 'agent_products_search',
+      }),
+    });
+
+    assert.equal(out.searchResult?.products?.[0]?.metadata?.product_intel_kb_used, true);
+    assert.equal(out.recommendations[0]?.product_intel?.contract_version, 'pivota.product_intel.v1');
+    assert.equal(
+      out.recommendations[0]?.pivota_insights?.what_it_is,
+      'A reviewed sunscreen profile for daily UV protection with a lightweight finish.',
+    );
+    assert.deepEqual(out.recommendations[0]?.compare_highlights, [
+      'The reviewed profile connects daily UV coverage with a lighter finish for under-makeup wear.',
+      'Best for Daily sunscreen under makeup',
+      'Lightweight sunscreen',
+    ]);
+  } finally {
+    productIntelKbStore.__internal.clearMemoryCacheForTest();
+    delete require.cache[moduleId];
+  }
+});
+
 test('beauty chat mainline entry keeps framework source mode when real handoff derives generic concern context', async () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
