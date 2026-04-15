@@ -5240,6 +5240,84 @@ async function fetchGenericBrowseExternalSeedServingCandidates({
     metrics.final_eligible_rows = rows.length;
     externalSeedStageCounts.push(metrics);
   };
+  const minimumRowsForServing = Math.min(
+    safeLimit,
+    Math.max(Math.ceil(safeLimit * 0.75), Number(request?.limit) || 0),
+  );
+  const runBalancedVerticalMixStage = async () => {
+    if (rows.length >= safeLimit) return;
+    const mixRows = DISCOVERY_GENERIC_BROWSE_EXTERNAL_SEED_VERTICAL_MIX.map((rail, index) => ({
+      value: String(rail.value || '').trim().toLowerCase(),
+      quota: Math.max(1, Math.round(safeLimit * Number(rail.share || 0))),
+      score: 64,
+      rank: index + 1,
+    })).filter((rail) => rail.value);
+    if (mixRows.length <= 0) return;
+
+    const scopedTools = toolScopeValues.length > 0 ? toolScopeValues : ['*', 'creator_agents'];
+    const stageParams = [market, scopedTools];
+    const mixValuesSql = mixRows
+      .map((rail) => {
+        stageParams.push(rail.value);
+        const valueParam = `$${stageParams.length}`;
+        stageParams.push(rail.quota);
+        const quotaParam = `$${stageParams.length}`;
+        stageParams.push(rail.score);
+        const scoreParam = `$${stageParams.length}`;
+        stageParams.push(rail.rank);
+        const rankParam = `$${stageParams.length}`;
+        return `(${valueParam}::text, ${quotaParam}::int, ${scoreParam}::int, ${rankParam}::int)`;
+      })
+      .join(',\n          ');
+    stageParams.push(safeLimit);
+    const limitParam = `$${stageParams.length}`;
+    const sql = `
+      WITH requested_mix(match_value, stage_quota, stage_score, rail_rank) AS (
+        VALUES
+          ${mixValuesSql}
+      ),
+      ranked_mix AS (
+        SELECT
+          ${selectSql},
+          requested_mix.stage_score::int AS match_score,
+          '${stage}'::text AS match_stage,
+          'vertical'::text AS stage_match_axis,
+          requested_mix.match_value::text AS stage_match_value,
+          requested_mix.stage_quota::int AS stage_quota,
+          row_number() OVER (
+            PARTITION BY requested_mix.match_value
+            ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST, id DESC
+          ) AS stage_rank,
+          requested_mix.rail_rank::int AS rail_rank
+        FROM external_product_seeds
+        JOIN requested_mix
+          ON ${EXTERNAL_SEED_RECALL_SQL_FIELDS.vertical} = requested_mix.match_value
+        WHERE status = 'active'
+          AND attached_product_key IS NULL
+          AND market = $1
+          AND tool = ANY($2::text[])
+          AND coalesce(lower(seed_data#>>'{suppression_flags,exclude_from_recall}'), 'false') <> 'true'
+          AND coalesce(lower(seed_data#>>'{derived,recall,suppression_flags,exclude_from_recall}'), 'false') <> 'true'
+      )
+      SELECT *
+      FROM ranked_mix
+      WHERE stage_rank <= stage_quota
+      ORDER BY rail_rank ASC, stage_rank ASC
+      LIMIT ${limitParam}
+    `;
+    const res = await query(sql, stageParams);
+    const rawRows = Array.isArray(res?.rows) ? res.rows : [];
+    for (const rail of mixRows) {
+      appendRows(
+        rawRows.filter((row) => String(row?.stage_match_value || '').trim().toLowerCase() === rail.value),
+        'vertical',
+        rail.value,
+        'mixed',
+        rail.quota,
+      );
+      if (rows.length >= safeLimit) break;
+    }
+  };
   const runIndexedStage = async ({ axis, value, sqlField, score, maxRows = null }) => {
     const normalizedValue = String(value || '').trim().toLowerCase();
     if (!normalizedValue || rows.length >= safeLimit) return;
@@ -5283,18 +5361,8 @@ async function fetchGenericBrowseExternalSeedServingCandidates({
     }
   };
 
-  for (const rail of DISCOVERY_GENERIC_BROWSE_EXTERNAL_SEED_VERTICAL_MIX) {
-    const quota = Math.max(1, Math.round(safeLimit * Number(rail.share || 0)));
-    await runIndexedStage({
-      axis: 'vertical',
-      value: rail.value,
-      sqlField: EXTERNAL_SEED_RECALL_SQL_FIELDS.vertical,
-      score: 64,
-      maxRows: quota,
-    });
-    if (rows.length >= safeLimit) break;
-  }
-  if (rows.length < safeLimit) {
+  await runBalancedVerticalMixStage();
+  if (rows.length < minimumRowsForServing) {
     for (const vertical of DISCOVERY_GENERIC_BROWSE_EXTERNAL_SEED_VERTICALS) {
       await runIndexedStage({
         axis: 'vertical',
@@ -5305,7 +5373,7 @@ async function fetchGenericBrowseExternalSeedServingCandidates({
       if (rows.length >= safeLimit) break;
     }
   }
-  if (rows.length < safeLimit) {
+  if (rows.length < minimumRowsForServing) {
     for (const category of DISCOVERY_GENERIC_BROWSE_EXTERNAL_SEED_CATEGORIES) {
       await runIndexedStage({
         axis: 'category',
