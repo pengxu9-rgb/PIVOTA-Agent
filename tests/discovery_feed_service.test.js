@@ -5926,7 +5926,7 @@ describe('discovery feed service', () => {
     expect(_internals.resolveExplicitIndexedCategoryHeadTerms(handCreamRequest, handCreamRecallTerms)).toEqual(
       expect.arrayContaining(['hand cream', 'hand lotion']),
     );
-    expect(_internals.resolveExplicitQueryExternalSeedMainlineAcceptThreshold(handCreamRequest, 24)).toBe(12);
+    expect(_internals.resolveExplicitQueryExternalSeedMainlineAcceptThreshold(handCreamRequest, 24)).toBe(18);
   });
 
   test('exact phrase indexed head treats fragrance as a safe structured synonym for perfume', async () => {
@@ -6551,7 +6551,7 @@ describe('discovery feed service', () => {
 
 	      expect(
 	        freshInternals.resolveExplicitQueryExternalSeedMainlineAcceptThreshold(request, 60),
-	      ).toBe(12);
+	      ).toBe(18);
       expect(
         freshInternals.resolveExplicitIndexedCategoryHeadTerms(
           request,
@@ -6575,7 +6575,7 @@ describe('discovery feed service', () => {
       });
 
 	      expect(result.products).toHaveLength(12);
-	      expect(dbQueryMock).toHaveBeenCalledTimes(4);
+	      expect(dbQueryMock).toHaveBeenCalledTimes(6);
 	      expect(dbQueryMock.mock.calls[2][0]).toContain('AND tool = $2');
 	      expect(dbQueryMock.mock.calls[2][0]).not.toContain("(tool = '*' OR tool = $2)");
 	      expect(dbQueryMock.mock.calls[2][1][1]).toBe('*');
@@ -6586,9 +6586,13 @@ describe('discovery feed service', () => {
 	      expect(result.recallSummary[0].external_seed_stage_counts.map((entry) => entry.stage)).toEqual([
 	        'recall_indexed_category_head',
 	        'recall_indexed_category_head',
+	        'recall_exact_text_union',
+	        'recall_exact_text_union',
 	      ]);
 	      expect(result.recallSummary[0].external_seed_stage_counts[0].tool_scope).toBe('*');
 	      expect(result.recallSummary[0].external_seed_stage_counts[1].tool_scope).toBe('creator_agents');
+	      expect(result.recallSummary[0].external_seed_stage_counts[2].tool_scope).toBe('*');
+	      expect(result.recallSummary[0].external_seed_stage_counts[3].tool_scope).toBe('creator_agents');
     } finally {
       if (prevDatabaseUrl === undefined) delete process.env.DATABASE_URL;
       else process.env.DATABASE_URL = prevDatabaseUrl;
@@ -6968,6 +6972,20 @@ describe('discovery feed service', () => {
         product_type: 'Setting Spray',
         description: 'Makeup fixing mist for long wear.',
       }),
+      makeExternalSeedRow({
+        id: 'fixing_mist_1',
+        title: 'Makeup Fixing Mist',
+        category: null,
+        product_type: null,
+        description: 'Set your makeup and make your look last longer with rose water and green tea.',
+      }),
+      makeExternalSeedRow({
+        id: 'fixing_mist_bundle_noise',
+        title: "Glow N' Blur Bundle",
+        category: 'Moisturizer',
+        product_type: 'Moisturizer',
+        description: 'Fan-favorite set includes a free Mini Makeup Fixing Mist.',
+      }),
     ];
 	    const dbQueryMock = jest
 	      .fn()
@@ -7022,10 +7040,15 @@ describe('discovery feed service', () => {
         label: 'external_seed_pool',
       });
 
-	      expect(result.products).toHaveLength(1);
-	      expect(result.products[0].title).toBe('You Mist Makeup-Extending Setting Spray');
+	      expect(result.products.map((product) => product.title)).toEqual([
+	        'You Mist Makeup-Extending Setting Spray',
+	        'Makeup Fixing Mist',
+	      ]);
 	      expect(dbQueryMock).toHaveBeenCalledTimes(6);
 	      expect(dbQueryMock.mock.calls[4][0]).toContain('UNION ALL');
+	      expect(dbQueryMock.mock.calls[4][1].flat()).toEqual(
+	        expect.arrayContaining(['%fixing mist%', '%makeup fixing mist%']),
+	      );
 	      expect(dbQueryMock.mock.calls[4][0]).toContain("seed_data->'derived'->'recall'->>'retrieval_title'");
 	      expect(dbQueryMock.mock.calls[4][0]).toContain("seed_data->'derived'->'recall'->>'retrieval_summary'");
 	      expect(dbQueryMock.mock.calls[4][0]).toContain("seed_data#>>'{derived,recall,ingredient_tokens}'");

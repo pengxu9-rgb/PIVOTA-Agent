@@ -344,6 +344,13 @@ const BEAUTY_INTEREST_CATEGORY_BY_PHRASE = Object.freeze({
   },
   'setting spray': {
     categories: ['setting spray', 'makeup setting spray', 'fixing mist', 'makeup fixing mist'],
+    textQueryTerms: [
+      'setting spray',
+      'makeup setting spray',
+      'fixing mist',
+      'makeup fixing mist',
+      'makeup-extending setting spray',
+    ],
     verticals: ['makeup'],
   },
   'makeup bag': {
@@ -360,6 +367,7 @@ const BEAUTY_INTEREST_CATEGORY_BY_PHRASE = Object.freeze({
   },
   'hand cream': {
     categories: ['hand cream', 'hand lotion'],
+    textQueryTerms: ['hand cream', 'hand lotion'],
     verticals: ['skincare'],
   },
   perfume: {
@@ -4639,6 +4647,13 @@ function resolveExplicitExactBeautyPhraseHint(request, recallTerms = {}) {
         .filter(Boolean),
       8,
     ),
+    textQueryTerms: uniqStrings(
+      [normalizedQuery]
+        .concat(Array.isArray(exactHint.textQueryTerms) ? exactHint.textQueryTerms : [])
+        .map((term) => normalizeText(term || ''))
+        .filter(Boolean),
+      10,
+    ),
   };
 }
 
@@ -4679,11 +4694,29 @@ function shouldUseExactPhraseTextUnionSeedStage(request, recallTerms = {}) {
   return Boolean(resolveExplicitExactBeautyPhraseHint(request, recallTerms));
 }
 
+function resolveExactPhraseTextUnionPatterns(request, recallTerms = {}) {
+  const exactPhraseHint = resolveExplicitExactBeautyPhraseHint(request, recallTerms);
+  if (!exactPhraseHint || !Array.isArray(exactPhraseHint.textQueryTerms)) {
+    return recallTerms.patterns || [];
+  }
+  const exactPatterns = buildDiscoveryLikePatternsFromTerms(
+    exactPhraseHint.textQueryTerms,
+    [],
+    { phraseOnlyForMultiword: true },
+  );
+  return exactPatterns.length > 0 ? exactPatterns : recallTerms.patterns || [];
+}
+
 function shouldUseExplicitExactIntentExternalSeedMainline(request, recallTerms = {}) {
   if (!isExplicitQueryScopedBrowseRequest(request)) return false;
   if (recallTerms?.compoundIntent) return true;
   if (shouldSkipBroadStructuredSeedStagesForExplicitQuery(request, recallTerms)) return true;
   return Boolean(resolveExplicitExactBeautyPhraseHint(request, recallTerms));
+}
+
+function resolveExplicitExactIntentBufferedTarget(request) {
+  const requestedLimit = clampInt(request?.limit, 12, 1, 120);
+  return requestedLimit + Math.ceil(requestedLimit * 0.5);
 }
 
 function resolveExplicitExactIntentHeadStopThreshold(request, recallTerms = {}) {
@@ -4694,8 +4727,7 @@ function resolveExplicitExactIntentHeadStopThreshold(request, recallTerms = {}) 
   if (request?.cursor) return Number.POSITIVE_INFINITY;
   const page = Math.max(1, Number(request?.page || 0) || 1);
   if (page !== 1) return Number.POSITIVE_INFINITY;
-  const requestedLimit = clampInt(request?.limit, 12, 1, 120);
-  return requestedLimit;
+  return resolveExplicitExactIntentBufferedTarget(request);
 }
 
 function buildExactPhraseTextUnionSeedStageSql({
@@ -5477,6 +5509,9 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
   const skipExplicitCategoryStage = shouldSkipExplicitCategorySeedStage(request, recallTerms);
   const skipExplicitVerticalStage = shouldSkipExplicitVerticalSeedStage(request, recallTerms);
   const useExactPhraseTextUnionStage = shouldUseExactPhraseTextUnionSeedStage(request, recallTerms);
+  const exactPhraseTextUnionPatterns = useExactPhraseTextUnionStage
+    ? resolveExactPhraseTextUnionPatterns(request, recallTerms)
+    : [];
   const indexedCategoryHeadTerms = resolveExplicitIndexedCategoryHeadTerms(request, recallTerms);
   if (!compoundIntent) {
     if (indexedCategoryHeadTerms.length > 0) {
@@ -5501,7 +5536,7 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
               selectSql,
               baseWhereSql,
               stage: 'recall_exact_text_union',
-              patterns: recallTerms.patterns,
+              patterns: exactPhraseTextUnionPatterns,
               cap,
               excludedIds: Array.from(seenSqlIds || []),
             }),
@@ -5661,9 +5696,13 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
             !compoundIntent &&
             stage === 'recall_indexed_category_head' &&
             matchesExplicitExactPhraseStructuredCandidate(normalized, request, recallTerms);
+          const exactPhraseTextQueryMatch =
+            !compoundIntent &&
+            matchesExplicitExactPhraseTextQueryCandidate(normalized, request, recallTerms);
           if (
             !compoundIntent &&
             !exactPhraseStructuredMatch &&
+            !exactPhraseTextQueryMatch &&
             !matchesQueryTextCandidate(normalized, request?.query?.text)
           ) {
             externalSeedFilteredQueryTextCount += 1;
@@ -5991,7 +6030,7 @@ function resolveExplicitQueryExternalSeedMainlineAcceptThreshold(request, safeLi
     compoundIntent: resolveExplicitBeautyCompoundIntent(request?.query?.text),
   });
   const minAcceptCount = exactIntentMainline
-    ? requestedLimit
+    ? resolveExplicitExactIntentBufferedTarget(request)
     : requestedLimit >= 8
       ? 8
       : requestedLimit;
@@ -6953,6 +6992,23 @@ function shouldFilterExplicitBeautyBrowseNoiseCandidate(candidate, queryText) {
 
   const candidateText = buildDiscoveryCandidateQueryFilterText(candidate);
   if (!candidateText) return false;
+  const raw = candidate?.raw || {};
+  const candidateFormatNoiseText = normalizeText(
+    [
+      raw.title,
+      raw.name,
+      raw.category,
+      raw.product_type,
+      raw.productType,
+      raw.external_seed_recall?.retrieval_title,
+      raw.external_seed_recall?.category,
+      candidate?.brand,
+      candidate?.category,
+      candidate?.parentCategory,
+    ]
+      .filter(Boolean)
+      .join(' '),
+  );
 
   const queryAllowsTools = hasAnyNormalizedClassToken(normalizedQuery, EXPLICIT_BEAUTY_BROWSE_TOOL_CLASSES);
   if (
@@ -6969,10 +7025,12 @@ function shouldFilterExplicitBeautyBrowseNoiseCandidate(candidate, queryText) {
   );
 
   return EXPLICIT_BEAUTY_BROWSE_GENERIC_NOISE_CLASSES.some((noiseClass) => {
-    if (!hasAnyNormalizedClassToken(candidateText, [noiseClass])) return false;
+    const isFormatNoise = hasAnyNormalizedClassToken(noiseClass, EXPLICIT_BEAUTY_BROWSE_FORMAT_NOISE_CLASSES);
+    const noiseScanText = isFormatNoise ? candidateFormatNoiseText : candidateText;
+    if (!hasAnyNormalizedClassToken(noiseScanText, [noiseClass])) return false;
     if (
       structuredCategoryMatch &&
-      hasAnyNormalizedClassToken(noiseClass, EXPLICIT_BEAUTY_BROWSE_FORMAT_NOISE_CLASSES)
+      isFormatNoise
     ) {
       return false;
     }
@@ -7158,18 +7216,45 @@ function matchesExplicitExactPhraseStructuredCandidate(candidate, request, recal
   return hasAnyNormalizedClassToken(structuredText, exactPhraseHint.structuredQueryTerms);
 }
 
+function matchesExplicitExactPhraseTextQueryCandidate(candidate, request, recallTerms = {}) {
+  const exactPhraseHint = resolveExplicitExactBeautyPhraseHint(request, recallTerms);
+  if (!exactPhraseHint || !Array.isArray(exactPhraseHint.textQueryTerms)) return false;
+  if (exactPhraseHint.textQueryTerms.length <= 0) return false;
+
+  const normalizedQuery = normalizeText(request?.query?.text || exactPhraseHint.normalizedQuery || '');
+  if (shouldFilterExplicitBeautyBrowseNoiseCandidate(candidate, normalizedQuery)) return false;
+  if (shouldRejectExplicitExactBeautyStructuredQueryText(candidate, normalizedQuery)) return false;
+
+  const candidateText = normalizeText(
+    [
+      buildDiscoveryCandidateQueryFilterText(candidate),
+      candidate?.raw?.external_seed_recall?.ingredient_tokens,
+      candidate?.raw?.external_seed_recall?.alias_tokens,
+    ]
+      .filter(Boolean)
+      .join(' '),
+  );
+  if (!candidateText) return false;
+  return hasAnyNormalizedClassToken(candidateText, exactPhraseHint.textQueryTerms);
+}
+
 function shouldFilterBrowseCandidateByQueryText(candidate, queryText, options = {}) {
   if (!String(queryText || '').trim()) return false;
+  const exactPhraseTextQueryMatch = matchesExplicitExactPhraseTextQueryCandidate(
+    candidate,
+    { surface: 'browse_products', query: { text: queryText } },
+    {},
+  );
   if (options?.explicitQueryScoped === true) {
     const domain = String(candidate?.domain || 'unknown').trim();
     if (!COLD_START_DEFERRED_DOMAINS.has(domain) && candidate?.beautyBucket !== 'tools') {
       const compoundIntent = resolveExplicitBeautyCompoundIntent(queryText);
       return compoundIntent
         ? !matchesBeautyCompoundQueryIntent(candidate, compoundIntent)
-        : !matchesQueryTextCandidate(candidate, queryText);
+        : !(exactPhraseTextQueryMatch || matchesQueryTextCandidate(candidate, queryText));
     }
   }
-  return !matchesQueryTextCandidate(candidate, queryText);
+  return !(exactPhraseTextQueryMatch || matchesQueryTextCandidate(candidate, queryText));
 }
 
 function getDiscoveryCategoryFacetKey(candidate) {
