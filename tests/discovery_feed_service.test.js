@@ -1989,6 +1989,80 @@ describe('discovery feed service', () => {
     );
   });
 
+  test('brand-scoped external seed recall matches normalized hyphenated brand names', async () => {
+    jest.resetModules();
+    const prevDatabaseUrl = process.env.DATABASE_URL;
+    const prevMarket = process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET;
+    process.env.DATABASE_URL = 'postgres://brand-hyphen-test';
+    process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET = 'US';
+
+    const dbQueryMock = jest.fn(async (sql, params) => {
+      const text = String(sql || '');
+      if (text.includes('FROM external_product_seeds')) {
+        if (text.includes('EXISTS')) return { rows: [] };
+        expect(text).toContain('regexp_replace');
+        expect(params[2]).toEqual(expect.arrayContaining(['la roche posay']));
+        expect(params[5]).toEqual(expect.arrayContaining(['larocheposay']));
+        return {
+          rows: [
+            {
+              id: 'eps_lrp_anthelios',
+              external_product_id: 'ext_lrp_anthelios',
+              destination_url: 'https://www.laroche-posay.us/anthelios-aox',
+              canonical_url: 'https://www.laroche-posay.us/anthelios-aox',
+              domain: 'laroche-posay.us',
+              title: 'Anthelios AOX Daily Antioxidant Face Serum SPF 50',
+              image_url: 'https://cdn.example.com/lrp.jpg',
+              price_amount: 44.99,
+              price_currency: 'USD',
+              availability: 'in_stock',
+              updated_at: '2026-04-15T10:00:00Z',
+              created_at: '2026-04-15T09:00:00Z',
+              seed_recall: {
+                retrieval_title: 'Anthelios AOX Daily Antioxidant Face Serum SPF 50',
+                retrieval_summary: 'Daily antioxidant face serum sunscreen.',
+                brand: 'La Roche-Posay',
+                category: 'Sunscreen',
+                vertical: 'skincare',
+              },
+              seed_brand: 'la roche-posay',
+              seed_category: 'sunscreen',
+            },
+          ],
+        };
+      }
+      return { rows: [] };
+    });
+
+    jest.doMock('../src/db', () => ({
+      query: dbQueryMock,
+    }));
+
+    try {
+      const fresh = require('../src/services/discoveryFeed');
+      const products = await fresh._internals.fetchBrandScopedExternalSeedCandidates({
+        brandAliases: ['la roche posay'],
+        limit: 24,
+        orderByRecency: false,
+      });
+      expect(products).toHaveLength(1);
+      expect(products[0]).toEqual(
+        expect.objectContaining({
+          merchant_id: 'external_seed',
+          product_id: 'ext_lrp_anthelios',
+          title: 'Anthelios AOX Daily Antioxidant Face Serum SPF 50',
+          brand: 'La Roche-Posay',
+        }),
+      );
+    } finally {
+      jest.dontMock('../src/db');
+      if (prevDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+      else process.env.DATABASE_URL = prevDatabaseUrl;
+      if (prevMarket === undefined) delete process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET;
+      else process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET = prevMarket;
+    }
+  });
+
   test('brand-scoped browse keeps total stable across page-size budgets', async () => {
     process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://discovery-catalog.test';
     delete process.env.PIVOTA_BACKEND_BASE_URL;
