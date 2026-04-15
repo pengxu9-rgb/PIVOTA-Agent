@@ -2737,6 +2737,83 @@ function resolvePdpSimilarCandidateLimit(displayLimit) {
   return Math.max(limit + 4, Math.min(30, limit * 2));
 }
 
+function buildPdpSimilarBaseProduct({
+  canonicalProductForPdp = {},
+  canonicalProductRef = {},
+  canonicalProduct = {},
+} = {}) {
+  const canonicalRefMerchantId = String(canonicalProductRef?.merchant_id || '').trim();
+  const canonicalRefProductId = String(canonicalProductRef?.product_id || '').trim();
+  const sourceProduct =
+    canonicalProductForPdp && typeof canonicalProductForPdp === 'object'
+      ? canonicalProductForPdp
+      : {};
+  return {
+    ...sourceProduct,
+    merchant_id:
+      sourceProduct.merchant_id ||
+      sourceProduct.merchantId ||
+      canonicalRefMerchantId,
+    product_id:
+      (canonicalRefMerchantId === EXTERNAL_SEED_MERCHANT_ID ? canonicalRefProductId : '') ||
+      sourceProduct.product_id ||
+      sourceProduct.productId ||
+      sourceProduct.id ||
+      canonicalProduct?.product_id ||
+      canonicalProduct?.id,
+    ...(canonicalRefMerchantId === EXTERNAL_SEED_MERCHANT_ID && canonicalRefProductId
+      ? {
+          source: sourceProduct.source || 'external_seed',
+          external_product_id: canonicalRefProductId,
+        }
+      : {}),
+  };
+}
+
+function buildPdpSimilarFetchArgs({
+  payload = {},
+  canonicalProductForPdp = {},
+  canonicalProductRef = {},
+  canonicalProduct = {},
+  bypassCache = false,
+  debug = false,
+  candidateLimit = null,
+} = {}) {
+  const limit = resolvePdpSimilarDisplayLimit(payload);
+  const resolvedCandidateLimit =
+    candidateLimit == null ? resolvePdpSimilarCandidateLimit(limit) : Number(candidateLimit) || limit;
+  const similarBaseProduct = buildPdpSimilarBaseProduct({
+    canonicalProductForPdp,
+    canonicalProductRef,
+    canonicalProduct,
+  });
+  return {
+    displayLimit: limit,
+    candidateLimit: resolvedCandidateLimit,
+    similarBaseProduct,
+    fetchArgs: {
+      pdp_product: similarBaseProduct,
+      k: resolvedCandidateLimit,
+      locale:
+        payload?.context?.locale ||
+        payload?.context?.language ||
+        payload?.locale ||
+        'en-US',
+      currency:
+        similarBaseProduct.currency ||
+        canonicalProductForPdp?.currency ||
+        canonicalProduct?.currency ||
+        'USD',
+      options: {
+        debug,
+        no_cache: bypassCache,
+        cache_bypass: bypassCache,
+        bypass_cache: bypassCache,
+      },
+    },
+  };
+}
+
 function trimOldestInflightEntries(map, maxEntries) {
   while (map.size >= maxEntries) {
     const firstKey = map.keys().next().value;
@@ -11345,6 +11422,36 @@ async function enrichSimilarProductsForPdpCards({
     }),
   );
   return [...enriched, ...tail];
+}
+
+async function prewarmPdpSimilarForProduct({
+  payload = {},
+  canonicalProductForPdp = {},
+  canonicalProductRef = {},
+  canonicalProduct = {},
+  checkoutToken = null,
+  bypassCache = false,
+} = {}) {
+  if (bypassCache) return;
+  const { candidateLimit, fetchArgs } = buildPdpSimilarFetchArgs({
+    payload,
+    canonicalProductForPdp,
+    canonicalProductRef,
+    canonicalProduct,
+    bypassCache: false,
+    debug: false,
+  });
+  const relatedProductsEnvelope = await fetchSimilarProductsDeduped(fetchArgs);
+  const relatedProducts = Array.isArray(relatedProductsEnvelope?.items)
+    ? relatedProductsEnvelope.items
+    : [];
+  if (!relatedProducts.length) return;
+  await enrichSimilarProductsForPdpCards({
+    items: relatedProducts,
+    checkoutToken,
+    bypassCache: false,
+    maxItems: candidateLimit,
+  });
 }
 
 function extractUpstreamErrorCode(err) {
@@ -20878,47 +20985,20 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	      // Run in parallel with reviews fetch to avoid additive latency on first paint.
 	      const relatedProductsPromise = wantsSimilar
 	        ? (async () => {
-	            const moduleStartedAt = Date.now();
-	            try {
-		            const limit = resolvePdpSimilarDisplayLimit(payload);
-                const candidateLimit = resolvePdpSimilarCandidateLimit(limit);
-              const canonicalRefMerchantId = String(canonicalProductRef?.merchant_id || '').trim();
-              const canonicalRefProductId = String(canonicalProductRef?.product_id || '').trim();
-              const similarBaseProduct = {
-                ...canonicalProductForPdp,
-                merchant_id:
-                  canonicalProductForPdp.merchant_id ||
-                  canonicalProductForPdp.merchantId ||
-                  canonicalRefMerchantId,
-                product_id:
-                  (canonicalRefMerchantId === EXTERNAL_SEED_MERCHANT_ID ? canonicalRefProductId : '') ||
-                  canonicalProductForPdp.product_id ||
-                  canonicalProductForPdp.productId ||
-                  canonicalProductForPdp.id,
-                ...(canonicalRefMerchantId === EXTERNAL_SEED_MERCHANT_ID && canonicalRefProductId
-                  ? {
-                      source: canonicalProductForPdp.source || 'external_seed',
-                      external_product_id: canonicalRefProductId,
-                    }
-                  : {}),
-              };
-		            return await fetchSimilarProductsDeduped({
-	              pdp_product: similarBaseProduct,
-	              k: candidateLimit,
-              locale:
-                payload?.context?.locale || payload?.context?.language || payload?.locale || 'en-US',
-              currency: similarBaseProduct.currency || canonicalProductForPdp.currency || canonicalProduct.currency || 'USD',
-	              options: {
-	                debug,
-	                // Respect caller cache controls (same semantics as resolve op).
-	                no_cache: bypassCache,
-                cache_bypass: bypassCache,
-	                bypass_cache: bypassCache,
-	              },
-	            });
-	            } finally {
-	              markPdpV2Module('similar', moduleStartedAt);
-	            }
+		            const moduleStartedAt = Date.now();
+		            try {
+              const { fetchArgs } = buildPdpSimilarFetchArgs({
+                payload,
+                canonicalProductForPdp,
+                canonicalProductRef,
+                canonicalProduct,
+                bypassCache,
+                debug,
+              });
+			            return await fetchSimilarProductsDeduped(fetchArgs);
+		            } finally {
+		              markPdpV2Module('similar', moduleStartedAt);
+		            }
 	          })()
 	        : Promise.resolve([]);
 
@@ -20942,6 +21022,31 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 
       const pdpSchemaProfile = resolvePdpSchemaProfile(canonicalProductForPdp);
       const allowsBeautyFormulaModules = isBeautyFormulaPdpProfile(pdpSchemaProfile);
+
+      const shouldPrewarmSimilarForCorePdp =
+        !wantsSimilar &&
+        !bypassCache &&
+        wantsProductIntel &&
+        !wantsOffers &&
+        !wantsReviewsPreview;
+      if (shouldPrewarmSimilarForCorePdp) {
+        void prewarmPdpSimilarForProduct({
+          payload,
+          canonicalProductForPdp,
+          canonicalProductRef,
+          canonicalProduct,
+          checkoutToken,
+          bypassCache: false,
+        }).catch((err) => {
+          logger.debug?.(
+            {
+              err: err?.message || String(err),
+              product_id: canonicalProductRef?.product_id || null,
+            },
+            'PDP similar prewarm failed',
+          );
+        });
+      }
 
       if (allowsBeautyFormulaModules && (wantsActiveIngredients || wantsIngredientsInci || wantsProductIntel)) {
         const reviewedIngredientAuthorityStartedAt = Date.now();
@@ -20991,7 +21096,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	        );
 	      }
 
-	      if (wantsSimilar && relatedProducts.length > 0) {
+      if (wantsSimilar && relatedProducts.length > 0) {
 	        const similarCardEnrichmentStartedAt = Date.now();
 	        const similarLimit = resolvePdpSimilarDisplayLimit(payload);
           const similarCandidateLimit = resolvePdpSimilarCandidateLimit(similarLimit);
