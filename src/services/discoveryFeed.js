@@ -4175,6 +4175,28 @@ function shouldSkipBroadStructuredSeedStagesForExplicitQuery(request, recallTerm
   return queryTokens.length >= 3;
 }
 
+function resolveExplicitIndexedCategoryHeadTerms(request, recallTerms = {}) {
+  if (!isExplicitQueryScopedBrowseRequest(request)) return [];
+  if (recallTerms?.compoundIntent) return [];
+  if (shouldSkipBroadStructuredSeedStagesForExplicitQuery(request, recallTerms)) return [];
+
+  const normalizedQuery = normalizeText(request?.query?.text || '');
+  if (!normalizedQuery) return [];
+
+  const exactTerms = new Set(
+    [
+      ...(Array.isArray(recallTerms?.primaryCategoryTerms) ? recallTerms.primaryCategoryTerms : []),
+      ...(Array.isArray(recallTerms?.categoryTerms) ? recallTerms.categoryTerms : []),
+    ]
+      .map((term) => normalizeText(term || ''))
+      .filter(Boolean),
+  );
+
+  // Keep this stage exact-only. Broad expansions like "skincare" and "hair care"
+  // are useful later, but they should not preempt the title/summary mainline.
+  return exactTerms.has(normalizedQuery) ? [normalizedQuery] : [];
+}
+
 function buildBeautyInterestSeedSelect() {
   return `
     id,
@@ -4346,6 +4368,16 @@ function buildCompoundBeautySeedStageDefinitions(recallTerms, safeLimit, options
     return definitions;
   }
 
+  if (primaryCategoryTerms.length > 0) {
+    definitions.push({
+      score: 92,
+      stage: 'recall_compound_primary_category',
+      cap: stageCap,
+      buildWhereSql: (stageBind) =>
+        `${DISCOVERY_EXTERNAL_SEED_INDEXED_RECALL_CATEGORY_SQL} = ANY(${stageBind(primaryCategoryTerms)}::text[])`,
+    });
+  }
+
   if (exactPatterns.length > 0) {
     definitions.push({
       score: 90,
@@ -4357,16 +4389,6 @@ function buildCompoundBeautySeedStageDefinitions(recallTerms, safeLimit, options
           ${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalTitle} LIKE ANY(${patternBind}::text[])
         )`;
       },
-    });
-  }
-
-  if (primaryCategoryTerms.length > 0) {
-    definitions.push({
-      score: 80,
-      stage: 'recall_compound_primary_category',
-      cap: stageCap,
-      buildWhereSql: (stageBind) =>
-        `${DISCOVERY_EXTERNAL_SEED_INDEXED_RECALL_CATEGORY_SQL} = ANY(${stageBind(primaryCategoryTerms)}::text[])`,
     });
   }
 
@@ -4896,7 +4918,18 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
     request,
     recallTerms,
   );
+  const indexedCategoryHeadTerms = resolveExplicitIndexedCategoryHeadTerms(request, recallTerms);
   if (!compoundIntent) {
+    if (indexedCategoryHeadTerms.length > 0) {
+      stageDefinitions.push({
+        score: 56,
+        stage: 'recall_indexed_category_head',
+        cap: explicitStageQueryCap,
+        buildWhereSql: (stageBind) =>
+          `${DISCOVERY_EXTERNAL_SEED_INDEXED_RECALL_CATEGORY_SQL} = ANY(${stageBind(indexedCategoryHeadTerms)}::text[])`,
+      });
+    }
+
     if (recallTerms.patterns.length > 0) {
       stageDefinitions.push({
         score: 48,
@@ -5073,7 +5106,7 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
       externalSeedStageCounts.push(metrics);
       if (
         compoundIntent &&
-        stage === 'recall_compound_exact_title' &&
+        (stage === 'recall_compound_exact_title' || stage === 'recall_compound_primary_category') &&
         stagedRows.length >= currentPageCoverageTarget
       ) {
         compoundExactStageSatisfiedCurrentPage = true;
@@ -8843,6 +8876,7 @@ module.exports = {
     buildBeautyInterestRecallTerms,
     buildCompoundBeautySeedStageDefinitions,
     shouldSkipBroadStructuredSeedStagesForExplicitQuery,
+    resolveExplicitIndexedCategoryHeadTerms,
     buildDiscoveryInterestQuery,
     buildDiscoveryRecallPlan,
     buildDiscoveryProviderMergeKey,
