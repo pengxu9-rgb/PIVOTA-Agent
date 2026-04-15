@@ -53570,6 +53570,27 @@ async function maybeRewriteRecoAssistantTextWithLlm({
           requestMode,
           selectedProductRoleMix,
         });
+        if (
+          candidateText &&
+          (
+            assistantTextMentionsUnselectedRecoCandidate(candidateText, payload)
+            || assistantTextUsesOffTargetRecoConcern(candidateText, {
+              payload,
+              primaryTarget,
+              secondaryTargets,
+            })
+          )
+        ) {
+          candidateText = renderRecoAssistantStructuredReasonRewrite({
+            structuredReason: { lead_reason: '', support_reasons: [] },
+            payload,
+            language,
+            primaryTarget,
+            names,
+            requestMode,
+            selectedProductRoleMix,
+          });
+        }
       } else {
         candidateText = String(result && result.json && result.json.assistant_text || '').trim();
       }
@@ -53694,9 +53715,12 @@ async function maybeRewriteRecoAssistantTextWithLlm({
       return finishRewrite({ text: fallbackText, llm_used: false, reason: firstAttempt.reason });
     }
     const firstAttemptReason = String(firstAttempt.reason || '').trim().toLowerCase();
-    const useStrictSelectedOnlyRetry =
+    const useStructuredReasonRetry =
       firstAttemptReason === 'rewrite_mentions_unselected_product'
-      || firstAttemptReason === 'rewrite_off_target_concern_claim';
+      || firstAttemptReason === 'rewrite_off_target_concern_claim'
+      || firstAttemptReason === 'rewrite_buy_lead_not_direct'
+      || firstAttemptReason === 'rewrite_failed_alignment_guard';
+    const useStrictSelectedOnlyRetry = useStructuredReasonRetry;
     const useCompactRetry =
       preferCompactPrimaryAttempt
       || useStrictSelectedOnlyRetry
@@ -53714,7 +53738,7 @@ async function maybeRewriteRecoAssistantTextWithLlm({
       retryReason: firstAttempt.reason,
       compactContext: useCompactRetry,
       strictSelectedOnlyContext: useStrictSelectedOnlyRetry,
-      structuredReasonOnly: useStrictSelectedOnlyRetry,
+      structuredReasonOnly: useStructuredReasonRetry,
       timeoutCapMs: retryTimeoutCapMs,
       maxOutputTokensOverride: useCompactRetry
         ? Math.min(
