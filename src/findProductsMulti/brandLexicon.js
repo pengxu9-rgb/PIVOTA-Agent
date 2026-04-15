@@ -27,6 +27,38 @@ const STATIC_BRAND_ALIASES = Object.freeze({
   la_mer: ['la mer', 'lamer'],
   diptyque: ['diptyque'],
   le_labo: ['le labo', 'lelabo'],
+  mac_cosmetics: ['mac cosmetics', 'm a c cosmetics', 'm a c', 'mac'],
+  estee_lauder: ['estee lauder', 'esteelauder'],
+  lancome: ['lancome'],
+  glossier: ['glossier'],
+  milk_makeup: ['milk makeup', 'milkmakeup'],
+  tower_28: ['tower 28 beauty', 'tower 28', 'tower28'],
+  supergoop: ['supergoop'],
+  make_up_for_ever: ['make up for ever', 'makeup forever', 'make up forever'],
+  urban_decay: ['urban decay', 'urbandecay'],
+  too_faced: ['too faced', 'toofaced'],
+  bobbi_brown: ['bobbi brown', 'bobbibrown'],
+  laura_mercier: ['laura mercier', 'lauramercier'],
+  hourglass: ['hourglass'],
+  huda_beauty: ['huda beauty', 'hudabeauty'],
+  pat_mcgrath: ['pat mcgrath labs', 'pat mcgrath', 'patmcgrath'],
+  westman_atelier: ['westman atelier', 'westmanatelier'],
+  patrick_ta: ['patrick ta', 'patrickta'],
+  summer_fridays: ['summer fridays', 'summerfridays'],
+  sol_de_janeiro: ['sol de janeiro', 'soldejaneiro'],
+  rhode: ['rhode'],
+  merit: ['merit beauty', 'merit'],
+  saie: ['saie'],
+  haus_labs: ['haus labs', 'hauslabs'],
+  glow_recipe: ['glow recipe', 'glowrecipe'],
+  paulas_choice: ["paula's choice", 'paulas choice', 'paulaschoice'],
+  youth_to_the_people: ['youth to the people', 'youthtothepeople'],
+  sunday_riley: ['sunday riley', 'sundayriley'],
+  ole_henriksen: ['ole henriksen', 'olehenriksen'],
+  biossance: ['biossance'],
+  first_aid_beauty: ['first aid beauty', 'firstaidbeauty'],
+  ilia: ['ilia'],
+  kosas: ['kosas'],
   kylie_cosmetics: ['kylie cosmetics', 'kyliecosmetics', 'kylie'],
   sigma_beauty: ['sigma beauty', 'sigmabeauty', 'sigma'],
   zara: ['zara'],
@@ -95,7 +127,12 @@ function toCanonicalBrandLabel(raw) {
 
 function isSingleShortBrandAlias(normalizedAlias) {
   const tokens = tokenizeBrandText(normalizedAlias);
-  return tokens.length === 1 && tokens[0].length <= 2;
+  return tokens.length === 1 && tokens[0].length <= 3;
+}
+
+function isInitialismBrandAlias(normalizedAlias) {
+  const tokens = tokenizeBrandText(normalizedAlias);
+  return tokens.length > 1 && tokens.every((token) => token.length === 1);
 }
 
 function matchesBrandAliasInNormalizedText(normalizedText, normalizedAlias) {
@@ -105,6 +142,15 @@ function matchesBrandAliasInNormalizedText(normalizedText, normalizedAlias) {
 
   if (isSingleShortBrandAlias(alias)) {
     return tokenizeBrandText(text).includes(alias);
+  }
+
+  if (isInitialismBrandAlias(alias)) {
+    return (
+      text === alias ||
+      text.includes(` ${alias} `) ||
+      text.startsWith(`${alias} `) ||
+      text.endsWith(` ${alias}`)
+    );
   }
 
   const compactText = text.replace(/\s+/g, '');
