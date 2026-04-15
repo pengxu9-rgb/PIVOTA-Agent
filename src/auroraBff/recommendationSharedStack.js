@@ -1044,9 +1044,12 @@ function productKey(product) {
 
 function buildCandidateResolutionFragments(product) {
   const row = isPlainObject(product) ? product : {};
+  const sku = isPlainObject(row.sku) ? row.sku : {};
   const fragments = [
     ['title', pickFirstTrimmed(row.display_name, row.displayName, row.name, row.title)],
-    ['structured_category', pickFirstTrimmed(row.category, row.category_name, row.categoryName, row.product_type, row.productType, row.type)],
+    ['sku_title', pickFirstTrimmed(sku.display_name, sku.displayName, sku.name, sku.title)],
+    ['structured_category', pickFirstTrimmed(sku.product_type, sku.productType, sku.category, sku.category_name, sku.categoryName, sku.type)],
+    ['structured_category', pickFirstTrimmed(row.product_type, row.productType, row.category, row.category_name, row.categoryName, row.type)],
     ...[...(Array.isArray(row.search_aliases) ? row.search_aliases : []), ...(Array.isArray(row.searchAliases) ? row.searchAliases : []), ...(Array.isArray(row.aliases) ? row.aliases : [])].map((value) => ['alias', value]),
     ...[...(Array.isArray(row.benefit_tokens) ? row.benefit_tokens : []), ...(Array.isArray(row.benefit_tags) ? row.benefit_tags : []), ...(Array.isArray(row.benefitTags) ? row.benefitTags : []), ...(Array.isArray(row.benefit_tags_list) ? row.benefit_tags_list : []), ...(Array.isArray(row.benefitTagsList) ? row.benefitTagsList : []), ...(Array.isArray(row.skin_type_tags) ? row.skin_type_tags : [])].map((value) => ['benefit', value]),
     ...[...(Array.isArray(row.tags) ? row.tags : []), ...(Array.isArray(row.tag_tokens) ? row.tag_tokens : [])].map((value) => ['tag', value]),
@@ -1090,10 +1093,21 @@ function hasExplicitSunscreenSignal(text) {
 
 function normalizeCandidateStep(product, { targetContext } = {}) {
   const row = isPlainObject(product) ? product : {};
+  const sku = isPlainObject(row.sku) ? row.sku : {};
   const stepAwareIntent = Boolean(targetContext?.step_aware_intent && targetContext?.resolved_target_step);
   const resolutionText = buildCandidateResolutionText(row);
   const nonStructuredStepText = buildCandidateNonStructuredStepText(row);
+  const skuStructuredRaw = pickFirstTrimmed(
+    sku.product_type,
+    sku.productType,
+    sku.category,
+    sku.category_name,
+    sku.categoryName,
+    sku.step,
+    sku.type,
+  );
   const structuredRaw = pickFirstTrimmed(
+    skuStructuredRaw,
     row.product_type,
     row.productType,
     row.category,
