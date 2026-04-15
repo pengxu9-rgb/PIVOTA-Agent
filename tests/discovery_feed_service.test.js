@@ -463,7 +463,7 @@ describe('discovery feed service', () => {
     );
   });
 
-  test('explicit non-compound browse uses sufficient external seed mainline without products_search', async () => {
+  test('explicit exact phrase browse uses external seed exact-intent mainline without products_search', async () => {
     process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://discovery-catalog.test';
     process.env.DISCOVERY_PRODUCTS_SEARCH_API_KEY = 'bridge-key';
     delete process.env.PIVOTA_BACKEND_BASE_URL;
@@ -521,8 +521,8 @@ describe('discovery feed service', () => {
     expect(externalSpy).toHaveBeenCalledTimes(1);
     expect(internalSpy).not.toHaveBeenCalled();
     expect(response.products).toHaveLength(10);
-    expect(response.metadata.candidate_source).toBe('external_seed_query_mainline');
-    expect(response.metadata.underfilled_reason).toBe('public_search_underfilled_unified_relevance');
+    expect(response.metadata.candidate_source).toBe('external_seed_exact_intent');
+    expect(response.metadata.underfilled_reason).toBe('public_search_underfilled_exact_intent');
     expect(response.metadata.route_health.primary_quality_gate_passed).toBe(false);
     expect(response.metadata.provider_breakdown).toEqual(
       expect.arrayContaining([
@@ -530,18 +530,18 @@ describe('discovery feed service', () => {
         expect.objectContaining({
           provider: 'products_search',
           skipped: true,
-          skip_reason: 'sufficient_explicit_query_external_seed_mainline',
+          skip_reason: 'explicit_exact_intent_external_seed_mainline',
         }),
         expect.objectContaining({
           provider: 'internal_catalog',
           skipped: true,
-          skip_reason: 'sufficient_explicit_query_external_seed_mainline',
+          skip_reason: 'explicit_exact_intent_external_seed_mainline',
         }),
       ]),
     );
   });
 
-  test('explicit non-compound browse still uses products_search when external seed mainline underfills', async () => {
+  test('explicit non-compound browse still uses products_search when external seed mainline underfills for non exact-intent query', async () => {
     process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://discovery-catalog.test';
     process.env.DISCOVERY_PRODUCTS_SEARCH_API_KEY = 'bridge-key';
     delete process.env.PIVOTA_BACKEND_BASE_URL;
@@ -554,11 +554,11 @@ describe('discovery feed service', () => {
       Array.from({ length: 4 }, (_, idx) =>
         makeProduct({
           merchant_id: 'external_seed',
-          product_id: `seed_conditioner_underfill_${idx + 1}`,
-          title: `Seed Conditioner Underfill ${idx + 1}`,
+          product_id: `seed_vitamin_c_underfill_${idx + 1}`,
+          title: `Vitamin C Glow Serum ${idx + 1}`,
           brand: `Seed Beauty ${idx + 1}`,
-          category: 'Hair Care',
-          product_type: 'Conditioner',
+          category: 'Skincare',
+          product_type: 'Serum',
         }),
       ),
     );
@@ -566,11 +566,11 @@ describe('discovery feed service', () => {
     const productsSearchProducts = Array.from({ length: 8 }, (_, idx) =>
       makeProduct({
         merchant_id: 'products_search',
-        product_id: `products_conditioner_${idx + 1}`,
-        title: `Products Conditioner ${idx + 1}`,
+        product_id: `products_vitamin_c_${idx + 1}`,
+        title: `Products Vitamin C Serum ${idx + 1}`,
         brand: `Catalog Beauty ${idx + 1}`,
-        category: 'Hair Care',
-        product_type: 'Conditioner',
+        category: 'Skincare',
+        product_type: 'Serum',
       }),
     );
 
@@ -578,7 +578,7 @@ describe('discovery feed service', () => {
       .matchHeader('x-agent-api-key', 'bridge-key')
       .matchHeader('x-api-key', 'bridge-key')
       .get('/agent/v1/products/search')
-      .query((query) => String(query.query || '') === 'conditioner')
+      .query((query) => String(query.query || '') === 'vitamin c')
       .reply(200, { products: productsSearchProducts });
 
     const response = await getDiscoveryFeed(
@@ -588,7 +588,7 @@ describe('discovery feed service', () => {
         limit: 12,
         debug: true,
         query: {
-          text: 'conditioner',
+          text: 'vitamin c',
         },
         context: {
           auth_state: 'anonymous',
@@ -616,6 +616,102 @@ describe('discovery feed service', () => {
     );
     expect(response.metadata.route_health.primary_quality_gate_passed).toBe(true);
     expect(response.metadata.underfilled_reason).toBeUndefined();
+  });
+
+  test('explicit exact phrase browse keeps exact-intent mainline even when external seed underfills', async () => {
+    process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://discovery-catalog.test';
+    process.env.DISCOVERY_PRODUCTS_SEARCH_API_KEY = 'bridge-key';
+    delete process.env.PIVOTA_BACKEND_BASE_URL;
+    delete process.env.PIVOTA_API_BASE;
+    delete process.env.PIVOTA_BACKEND_AGENT_API_KEY;
+    delete process.env.PIVOTA_API_KEY;
+    delete process.env.DATABASE_URL;
+
+    const externalSpy = jest.fn(async () =>
+      Array.from({ length: 4 }, (_, idx) =>
+        makeProduct({
+          merchant_id: 'external_seed',
+          product_id: `seed_conditioner_underfill_${idx + 1}`,
+          title: `Seed Conditioner Underfill ${idx + 1}`,
+          brand: `Seed Beauty ${idx + 1}`,
+          category: 'Hair Care',
+          product_type: 'Conditioner',
+        }),
+      ),
+    );
+    const internalSpy = jest.fn(async () => [
+      makeProduct({
+        merchant_id: 'internal_catalog',
+        product_id: 'internal_noise_brush',
+        title: 'Large Powder Brush',
+        category: 'Makeup Brush',
+        product_type: 'Makeup Brush',
+      }),
+    ]);
+
+    const productsSearchScope = nock('http://discovery-catalog.test')
+      .matchHeader('x-agent-api-key', 'bridge-key')
+      .matchHeader('x-api-key', 'bridge-key')
+      .get('/agent/v1/products/search')
+      .query((query) => String(query.query || '') === 'conditioner')
+      .reply(200, {
+        products: [
+          makeProduct({
+            merchant_id: 'products_search',
+            product_id: 'products_conditioner_noise',
+            title: 'Products Conditioner Noise',
+            category: 'Hair Care',
+            product_type: 'Conditioner',
+          }),
+        ],
+      });
+
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'browse_products',
+        page: 1,
+        limit: 12,
+        debug: true,
+        query: {
+          text: 'conditioner',
+        },
+        context: {
+          auth_state: 'anonymous',
+          recent_views: [],
+          recent_queries: [],
+          locale: 'en-US',
+        },
+      },
+      {
+        providerOverrides: {
+          internal_catalog: internalSpy,
+          external_seeds: externalSpy,
+        },
+      },
+    );
+
+    expect(productsSearchScope.isDone()).toBe(false);
+    expect(externalSpy).toHaveBeenCalledTimes(1);
+    expect(internalSpy).not.toHaveBeenCalled();
+    expect(response.products).toHaveLength(4);
+    expect(response.metadata.candidate_source).toBe('external_seed_exact_intent');
+    expect(response.metadata.underfilled_reason).toBe('public_search_underfilled_exact_intent');
+    expect(response.metadata.route_health.primary_quality_gate_passed).toBe(false);
+    expect(response.metadata.provider_breakdown).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ provider: 'external_seeds', successful: true, returned: 4 }),
+        expect.objectContaining({
+          provider: 'products_search',
+          skipped: true,
+          skip_reason: 'explicit_exact_intent_external_seed_mainline',
+        }),
+        expect.objectContaining({
+          provider: 'internal_catalog',
+          skipped: true,
+          skip_reason: 'explicit_exact_intent_external_seed_mainline',
+        }),
+      ]),
+    );
   });
 
   test('explicit compound browse marks partial page as exact-intent underfilled', async () => {
