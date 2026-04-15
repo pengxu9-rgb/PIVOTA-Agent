@@ -21595,6 +21595,19 @@ function isConcernFrameworkStrongViableCandidate(candidate, role = null) {
     return true;
   }
   if (
+    preferredStep === 'serum' &&
+    candidateStep === preferredStep &&
+    retrievalRoleMatched &&
+    semanticFit &&
+    score >= 0.48 &&
+    (
+      String(product?.retrieval_source || '').trim().toLowerCase() === 'external_seed' ||
+      String(product?.merchant_id || product?.merchantId || '').trim().toLowerCase() === 'external_seed'
+    )
+  ) {
+    return true;
+  }
+  if (
     score >= 0.58 &&
     (
       roleSemanticFit ||

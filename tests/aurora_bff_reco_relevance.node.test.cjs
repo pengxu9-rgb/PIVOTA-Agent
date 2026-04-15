@@ -4867,6 +4867,7 @@ test('__internal: framework pool keeps tinted sunscreen authoritative instead of
         retrieval_role_id: 'daily_sunscreen_finish_fit',
         benefit_tags: ['broad spectrum', 'spf 50', 'lightweight'],
         short_description: 'A daily tinted fluid sunscreen designed to sit well under makeup.',
+        description: 'Use as the last step in your morning routine before makeup.',
       },
     ],
     {
@@ -4892,6 +4893,51 @@ test('__internal: framework pool keeps tinted sunscreen authoritative instead of
   assert.equal(state.hard_reject_count, 0);
   assert.equal(state.selected_recommendations[0]?.product_id, 'tinted_sunscreen_lp110');
   assert.equal(state.selected_recommendations[0]?.matched_role_id, 'daily_sunscreen_finish_fit');
+});
+
+test('__internal: framework pool keeps external-seed exact serum recall viable for hydrating serum primary', () => {
+  const { __internal } = loadRoutesFresh();
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [
+      {
+        product_id: 'external_hydrating_serum_sparse_1',
+        merchant_id: 'external_seed',
+        brand: 'Example Lab',
+        display_name: 'Cloud Water Serum',
+        category: 'serum',
+        product_type: 'serum',
+        retrieval_source: 'external_seed',
+        retrieval_query: 'hyaluronic acid serum',
+        retrieval_step: 'serum',
+        retrieval_role_id: 'hydrating_serum_or_essence',
+        search_aliases: ['hyaluronic acid serum'],
+      },
+    ],
+    {
+      targetContext: {
+        framework_id: 'recofw_test_hydrating_serum_external_sparse',
+        primary_role_id: 'hydrating_serum_or_essence',
+        framework_roles: [
+          {
+            role_id: 'hydrating_serum_or_essence',
+            rank: 1,
+            preferred_step: 'serum',
+            label: 'Hydrating serum or essence',
+            query_terms: ['hyaluronic acid serum', 'hydrating serum'],
+            fit_keywords: ['hydrating', 'hydration', 'plumping'],
+            ingredient_hypotheses: ['Hyaluronic Acid', 'Sodium Hyaluronate'],
+            product_type_hypotheses: ['serum', 'essence', 'ampoule'],
+          },
+        ],
+      },
+    },
+  );
+
+  assert.equal(state.primary_role_matched, true);
+  assert.equal(state.weak_viable_pool, false);
+  assert.equal(state.selected_recommendations[0]?.product_id, 'external_hydrating_serum_sparse_1');
+  assert.equal(state.selected_recommendations[0]?.matched_role_id, 'hydrating_serum_or_essence');
+  assert.ok(Number(state.selected_recommendations[0]?.framework_score || 0) >= 0.48);
 });
 
 test('__internal: framework pool rejects generic ingredient serum as an oil-control top pick without semantic role evidence', async () => {
