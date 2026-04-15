@@ -587,11 +587,11 @@ test('handoffRecoToBeautyMainlineSearch executes primary external supplement and
     );
     assert.deepEqual(
       out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts?.map((row) => row?.source_scope),
-      ['internal', 'internal', 'internal', 'external_seed', 'external_seed', 'external_seed', 'external_seed', 'internal', 'internal', 'external_seed', 'external_seed', 'internal', 'internal', 'internal', 'external_seed', 'external_seed'],
+      ['internal', 'internal', 'internal', 'external_seed', 'external_seed', 'external_seed', 'external_seed', 'internal', 'internal', 'internal', 'internal', 'internal', 'external_seed', 'external_seed', 'external_seed', 'external_seed'],
     );
     assert.deepEqual(
       out.searchResult?.metadata?.search_stage_ledger?.primary_search?.query_pack_attempts?.map((row) => row?.source_scope),
-      ['internal', 'internal', 'internal', 'external_seed', 'external_seed', 'external_seed', 'external_seed', 'internal', 'internal', 'external_seed', 'external_seed', 'internal', 'internal', 'internal', 'external_seed', 'external_seed'],
+      ['internal', 'internal', 'internal', 'external_seed', 'external_seed', 'external_seed', 'external_seed', 'internal', 'internal', 'internal', 'internal', 'internal', 'external_seed', 'external_seed', 'external_seed', 'external_seed'],
     );
     const firstSupportExternalAttempt =
       out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts
