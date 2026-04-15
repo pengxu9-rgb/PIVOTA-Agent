@@ -15,6 +15,7 @@ const {
 } = require('../src/services/externalSeedProducts');
 const { buildExternalSeedRecallDoc } = require('../src/services/externalSeedRecall');
 const { enrichExternalSeedRowIngredients } = require('../src/services/externalSeedIngredientEnrichment');
+const { isDisplayablePdpFaqItem } = require('../src/services/pdpFaqQuality');
 const { buildPdpImageDedupeKey, normalizePdpImageUrl } = require('../src/utils/pdpImageUrls');
 
 const DEFAULT_CATALOG_BASE_URL =
@@ -502,6 +503,16 @@ function normalizeFaqItems(value, maxItems = 24) {
     const sourceUrl = normalizeUrlLike(item?.source_url || item?.sourceUrl);
     const sourceTitle = normalizeNonEmptyString(item?.source_title || item?.sourceTitle);
     if (!question || !answer) continue;
+    if (
+      !isDisplayablePdpFaqItem({
+        question,
+        answer,
+        source_url: sourceUrl,
+        source_title: sourceTitle,
+      })
+    ) {
+      continue;
+    }
     const key = `${question.toLowerCase()}|${answer.toLowerCase()}|${sourceKind.toLowerCase()}`;
     if (seen.has(key)) continue;
     seen.add(key);

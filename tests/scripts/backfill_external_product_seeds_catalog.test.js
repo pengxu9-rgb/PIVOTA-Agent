@@ -439,6 +439,12 @@ describe('backfill-external-product-seeds-catalog', () => {
             how_to_use_raw: 'Apply before sun exposure.',
             faq_items: [
               {
+                question: 'NEED HELP? NEED HELP?',
+                answer: 'TRACK MY ORDER SERVICES SHIPPING & RETURNS FAQS STORE LOCATOR CONTACT US',
+                source_kind: 'merchant_faq',
+                source_url: 'https://rarebeauty.com/pages/faqs',
+              },
+              {
                 question: 'Can I wear this every day?',
                 answer: 'Yes, apply before sun exposure as part of your daytime routine.',
                 source_kind: 'merchant_faq',

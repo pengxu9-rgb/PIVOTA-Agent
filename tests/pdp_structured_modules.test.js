@@ -334,6 +334,12 @@ describe('pdpBuilder structured PDP modules', () => {
         price: { amount: 14.4, currency: 'USD' },
         pdp_faq_items: [
           {
+            question: 'NEED HELP? NEED HELP?',
+            answer: 'TRACK MY ORDER SERVICES SHIPPING & RETURNS FAQS STORE LOCATOR CONTACT US',
+            source_kind: 'merchant_faq',
+            source_url: 'https://example.com/pages/faqs',
+          },
+          {
             question: 'Can I use this every day?',
             answer: 'Yes, it is gentle enough for daily use.',
             source_kind: 'merchant_faq',

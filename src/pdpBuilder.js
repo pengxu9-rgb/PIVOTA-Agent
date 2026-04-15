@@ -1,4 +1,5 @@
 const { buildPdpImageDedupeKey, normalizePdpImageUrl, normalizePdpImageUrls } = require('./utils/pdpImageUrls');
+const { isDisplayablePdpFaqItem } = require('./services/pdpFaqQuality');
 
 const BEAUTY_KEYWORDS = [
   'beauty',
@@ -1569,6 +1570,16 @@ function normalizeFaqItemsForQuestions(product) {
     const answer = normalizeAnswerText(item?.answer);
     const key = normalizeQuestionKey(question);
     if (!question || !answer || !key || seen.has(`${key}::${answer.toLowerCase()}`)) continue;
+    if (
+      !isDisplayablePdpFaqItem({
+        question,
+        answer,
+        source_url: item?.source_url || item?.sourceUrl,
+        source_title: item?.source_title || item?.sourceTitle,
+      })
+    ) {
+      continue;
+    }
     seen.add(`${key}::${answer.toLowerCase()}`);
     out.push({
       question,

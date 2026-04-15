@@ -5,6 +5,7 @@ const {
   normalizeNonEmptyString,
   resolveExternalSeedProtectionContract,
 } = require('./externalSeedRecall');
+const { isDisplayablePdpFaqItem } = require('./pdpFaqQuality');
 const { normalizePdpImageUrl } = require('../utils/pdpImageUrls');
 
 const SHOPIFY_ASSET_HASH_SUFFIX_RE =
@@ -372,6 +373,16 @@ function normalizeFaqItems(value, maxItems = 24) {
     const sourceUrl = normalizeHttpUrl(item?.source_url || item?.sourceUrl);
     const sourceTitle = firstNonEmptyString(item?.source_title, item?.sourceTitle);
     if (!question || !answer) continue;
+    if (
+      !isDisplayablePdpFaqItem({
+        question,
+        answer,
+        source_url: sourceUrl,
+        source_title: sourceTitle,
+      })
+    ) {
+      continue;
+    }
     const key = `${question.toLowerCase()}|${answer.toLowerCase()}|${sourceKind.toLowerCase()}`;
     if (seen.has(key)) continue;
     seen.add(key);
