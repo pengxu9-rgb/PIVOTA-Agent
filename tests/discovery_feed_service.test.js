@@ -8965,6 +8965,24 @@ describe('discovery feed service', () => {
       _internals.matchesBeautyCompoundQueryIntent(
         {
           raw: {
+            title: 'Natural Moisturizing Factors + HA For Scalp',
+            external_seed_recall: {
+              retrieval_title: 'natural moisturizing factors + ha for scalp',
+              category: 'Serum',
+              vertical: 'Haircare',
+              retrieval_summary: 'A lightweight hydrating serum for the scalp.',
+            },
+          },
+          category: 'serum',
+          parentCategory: 'haircare',
+        },
+        'scalp_serum',
+      ),
+    ).toBe(true);
+    expect(
+      _internals.matchesBeautyCompoundQueryIntent(
+        {
+          raw: {
             title: 'Complete Pre-Wash Scalp Oil',
             external_seed_recall: {
               retrieval_title: 'complete pre-wash scalp oil',
