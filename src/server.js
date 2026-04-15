@@ -5127,7 +5127,6 @@ function shouldBridgePublicBeautySearchToDiscovery({
     search && typeof search === 'object' && !Array.isArray(search) ? search : {};
   const metadataObj =
     metadata && typeof metadata === 'object' && !Array.isArray(metadata) ? metadata : {};
-  if (!hasExplicitBeautyCatalogSurface(searchObj, metadataObj)) return false;
   if (strictDecision?.enabled === true) return false;
   const rawQuery = String(queryText || searchObj.query || searchObj.q || '').trim();
   if (!rawQuery) return false;
@@ -18919,7 +18918,6 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 
   if (operation === 'find_products_multi') {
     const publicBeautySearch = effectivePayload?.search || effectivePayload || {};
-    const originalPublicBeautySearch = payload?.search || payload || {};
     const publicBeautyQueryText = String(
       rawUserQuery || publicBeautySearch.query || publicBeautySearch.q || '',
     ).trim();
@@ -18936,17 +18934,16 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     });
     if (
       publicBrandScopeNames.length > 0 ||
-      (hasExplicitBeautyCatalogSurface(originalPublicBeautySearch, metadata) &&
-        shouldBridgePublicBeautySearchToDiscovery({
-          operation,
-          metadata,
-          search: publicBeautySearch,
-          queryText: publicBeautyQueryText,
-          queryClass: traceQueryClass,
-          intent: effectiveIntent,
-          invokeSearchRail,
-          strictDecision: publicBeautyStrictDecision,
-        }))
+      shouldBridgePublicBeautySearchToDiscovery({
+        operation,
+        metadata,
+        search: publicBeautySearch,
+        queryText: publicBeautyQueryText,
+        queryClass: traceQueryClass,
+        intent: effectiveIntent,
+        invokeSearchRail,
+        strictDecision: publicBeautyStrictDecision,
+      })
     ) {
       const bridgeStartedAtMs = Date.now();
       const { discoveryPayload, page, limit, offset } =

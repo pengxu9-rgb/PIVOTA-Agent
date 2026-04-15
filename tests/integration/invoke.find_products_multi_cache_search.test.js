@@ -64,6 +64,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
 
   afterEach(() => {
     jest.dontMock('../../src/db');
+    jest.dontMock('../../src/services/discoveryFeed');
     jest.dontMock('../../src/findProductsMulti/policy');
     jest.resetModules();
     nock.cleanAll();
@@ -1250,9 +1251,9 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(upstreamSearch.isDone()).toBe(false);
   });
 
-  test('public source=search serum cache contributors do not short-circuit unified external recall', async () => {
+  test('public source=search serum bridges cache contributors through unified discovery recall', async () => {
     process.env.SEARCH_EXTERNAL_HARD_RULE_PRUNE = 'true';
-    let upstreamRequestBody = null;
+    let discoveryPayload = null;
 
     jest.doMock('../../src/db', () => ({
       query: async (sql) => {
@@ -1301,16 +1302,30 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       },
     }));
 
-    const upstreamSearch = nock('http://pivota.test')
-      .post('/agent/v2/products/search', (body) => {
-        upstreamRequestBody = body;
-        return true;
-      })
-      .query(true)
-      .reply(200, {
-        status: 'success',
-        success: true,
+    const getDiscoveryFeedMock = jest.fn(async (payload) => {
+      discoveryPayload = payload;
+      return {
         products: [
+          {
+            id: 'prod_winona',
+            product_id: 'prod_winona',
+            merchant_id: 'merch_skin',
+            title: 'Winona Soothing Repair Serum',
+            description: 'repair serum for sensitive skin',
+            product_type: 'Serum',
+            status: 'published',
+            inventory_quantity: 6,
+          },
+          {
+            id: 'prod_ordinary',
+            product_id: 'prod_ordinary',
+            merchant_id: 'merch_skin',
+            title: 'The Ordinary Niacinamide 10% + Zinc 1%',
+            description: 'niacinamide serum for uneven tone',
+            product_type: 'Serum',
+            status: 'published',
+            inventory_quantity: 8,
+          },
           {
             id: 'ext_serum_1',
             product_id: 'ext_serum_1',
@@ -1342,11 +1357,72 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
             status: 'active',
           },
         ],
-        total: 3,
+        total: 5,
         metadata: {
-          query_source: 'agent_products_v2',
+          candidate_source: 'external_seed_query_mainline',
+          primary_path_used: 'external_seed_query_mainline',
+          external_seed_qualified_count: 3,
+          candidate_counts: {
+            internal_products: 2,
+            external_seed_products: 3,
+          },
+          service_version: {
+            service: 'test-discovery',
+            build_id: 'test-build',
+          },
+          source_breakdown: {
+            internal_count: 2,
+            external_seed_count: 3,
+          },
+          unified_recall_merge: {
+            applied: true,
+            cache_contributor_count: 2,
+            upstream_contributor_count: 3,
+            merged_count: 5,
+          },
+          cache_stage_attempted: true,
+          cache_stage_beauty_bucket: 'skincare',
+          cache_stage_query_terms: ['serum'],
+          search_request_contract: {
+            policy: {
+              allow_external_seed: true,
+            },
+            supplement_lanes: ['external_seed_supplement', 'coverage_supplement'],
+          },
+          route_debug: {
+            cross_merchant_cache: {
+              beauty_query_bucket: 'skincare',
+              beauty_category_fastpath: true,
+              cache_hit: false,
+              cache_missing_external_for_unified: true,
+              public_beauty_unified_search: true,
+              retrieval_sources: [
+                {
+                  source: 'beauty_category_browse_fastpath',
+                  category_id: 'serum',
+                  browse_query_ms: 1,
+                },
+              ],
+            },
+          },
+          route_health: {
+            primary_quality_gate_passed: true,
+          },
         },
-      });
+      };
+    });
+    jest.doMock('../../src/services/discoveryFeed', () => {
+      const actual = jest.requireActual('../../src/services/discoveryFeed');
+      return {
+        ...actual,
+        getDiscoveryFeed: getDiscoveryFeedMock,
+      };
+    });
+
+    const upstreamSearch = nock('http://pivota.test')
+      .post('/agent/v2/products/search')
+      .query(true)
+      .reply(418, { error: 'should_not_call_v2' });
 
     const app = require('../../src/server');
     const resp = await request(app)
@@ -1367,18 +1443,18 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       });
 
     expect(resp.status).toBe(200);
-    expect(upstreamSearch.isDone()).toBe(true);
-    expect(upstreamRequestBody).toEqual(
+    expect(upstreamSearch.isDone()).toBe(false);
+    expect(getDiscoveryFeedMock).toHaveBeenCalledTimes(1);
+    expect(discoveryPayload).toEqual(
       expect.objectContaining({
-        query: expect.stringContaining('serum'),
-        search_all_merchants: true,
-        allow_external_seed: true,
-        external_seed_strategy: 'unified_relevance',
+        surface: 'browse_products',
+        limit: 5,
+        query: { text: 'serum' },
       }),
     );
     expect(resp.body.metadata).toEqual(
       expect.objectContaining({
-        query_source: expect.stringMatching(/^agent_products_/),
+        query_source: 'beauty_discovery_mainline',
         source_breakdown: expect.objectContaining({
           internal_count: 2,
           external_seed_count: 3,
@@ -1445,7 +1521,8 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     );
   });
 
-  test('public source=search lip balm merges duplicate external offers into one unified card', async () => {
+  test('public source=search lip balm bridges duplicate external offers into one unified card', async () => {
+    let discoveryPayload = null;
     jest.doMock('../../src/db', () => ({
       query: async (sql) => {
         const text = String(sql || '');
@@ -1480,20 +1557,23 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       },
     }));
 
-    const upstreamSearch = nock('http://pivota.test')
-      .post('/agent/v2/products/search')
-      .query((query) => {
-        return (
-          String(query.search_all_merchants || '') === 'true' &&
-          String(query.query || '') === 'lip balm' &&
-          String(query.allow_external_seed || '') === 'true' &&
-          String(query.external_seed_strategy || '') === 'unified_relevance'
-        );
-      })
-      .reply(200, {
-        status: 'success',
-        success: true,
+    const getDiscoveryFeedMock = jest.fn(async (payload) => {
+      discoveryPayload = payload;
+      return {
         products: [
+          {
+            product_id: 'prod_lip_internal_1',
+            merchant_id: 'merch_lip',
+            title: 'Daily Barrier Lip Balm',
+            canonical_url: 'https://internal.test/products/daily-barrier-lip-balm',
+            offers: [
+              {
+                offer_id: 'offer::internal::daily_barrier_lip_balm',
+                merchant_id: 'merch_lip',
+                source_type: 'internal_catalog',
+              },
+            ],
+          },
           {
             product_id: 'ext_lip_1',
             merchant_id: 'external_seed',
@@ -1506,15 +1586,6 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
                 merchant_id: 'external_seed',
                 source_type: 'external_seed',
               },
-            ],
-          },
-          {
-            product_id: 'ext_lip_2',
-            merchant_id: 'external_seed',
-            source: 'external_seed',
-            title: 'Barrier Repair Lip Balm',
-            canonical_url: 'https://seed.test/products/barrier-repair-lip-balm',
-            offers: [
               {
                 offer_id: 'offer::external_seed::lip_balm::2',
                 merchant_id: 'external_seed',
@@ -1553,9 +1624,46 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
         ],
         total: 4,
         metadata: {
-          query_source: 'agent_products_v2',
+          candidate_source: 'external_seed_compound_intent',
+          primary_path_used: 'external_seed_compound_intent',
+          external_seed_qualified_count: 3,
+          candidate_counts: {
+            internal_products: 1,
+            external_seed_products: 3,
+          },
+          source_breakdown: {
+            internal_count: 1,
+            external_seed_count: 3,
+          },
+          unified_recall_merge: {
+            applied: true,
+            merged_count: 4,
+          },
+          route_debug: {
+            cross_merchant_cache: {
+              cache_hit: false,
+              cache_missing_external_for_unified: true,
+              public_beauty_unified_search: true,
+            },
+          },
+          route_health: {
+            primary_quality_gate_passed: true,
+          },
         },
-      });
+      };
+    });
+    jest.doMock('../../src/services/discoveryFeed', () => {
+      const actual = jest.requireActual('../../src/services/discoveryFeed');
+      return {
+        ...actual,
+        getDiscoveryFeed: getDiscoveryFeedMock,
+      };
+    });
+
+    const upstreamSearch = nock('http://pivota.test')
+      .post('/agent/v2/products/search')
+      .query(true)
+      .reply(418, { error: 'should_not_call_v2' });
 
     const app = require('../../src/server');
     const resp = await request(app)
@@ -1576,10 +1684,18 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       });
 
     expect(resp.status).toBe(200);
-    expect(upstreamSearch.isDone()).toBe(true);
+    expect(upstreamSearch.isDone()).toBe(false);
+    expect(getDiscoveryFeedMock).toHaveBeenCalledTimes(1);
+    expect(discoveryPayload).toEqual(
+      expect.objectContaining({
+        surface: 'browse_products',
+        limit: 4,
+        query: { text: 'lip balm' },
+      }),
+    );
     expect(resp.body.metadata).toEqual(
       expect.objectContaining({
-        query_source: expect.stringMatching(/^agent_products_/),
+        query_source: 'beauty_discovery_mainline',
         source_breakdown: expect.objectContaining({
           internal_count: 1,
           external_seed_count: 3,
