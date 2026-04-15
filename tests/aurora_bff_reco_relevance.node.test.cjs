@@ -4406,14 +4406,85 @@ test('__internal: local external seed support-role search uses lean title author
   assert.doesNotMatch(observedQueries[0].sql, /retrieval_summary/i);
   assert.doesNotMatch(observedQueries[0].sql, /alias_tokens/i);
   assert.doesNotMatch(observedQueries[0].sql, /ingredient_tokens/i);
-  assert.deepEqual(observedQueries[0].params[2].slice(0, 2), [
+  assert.deepEqual(observedQueries[0].params[2].slice(0, 1), [
     '%lightweight moisturizer oily skin%',
-    '%lightweight moisturizer%',
   ]);
   assert.equal(out.local_external_seed_stage_debug[0]?.stage, 'support_recall_title');
   assert.equal(out.products.length, 2);
   assert.equal(out.products[0].retrieval_match_stage, 'support_recall_title');
   assert.match(out.products[0].retrieval_reason, /support_recall_title/);
+});
+
+test('__internal: local external seed support-role search uses exact category head for broad sunscreen recall', async () => {
+  const { __internal } = loadRoutesFresh();
+  const observedQueries = [];
+  const out = await __internal.searchLocalExternalSeedProducts({
+    query: 'sunscreen',
+    limit: 2,
+    role: {
+      role_id: 'daily_sunscreen',
+      rank: 2,
+      preferred_step: 'sunscreen',
+      query_terms: ['sunscreen', 'spf fluid'],
+      fit_keywords: ['spf', 'uv protection'],
+      product_type_hypotheses: ['sunscreen'],
+    },
+    preferredStep: 'sunscreen',
+    queryFn: async (sql, params) => {
+      observedQueries.push({ sql: String(sql || ''), params });
+      return {
+        rows: [
+          {
+            id: '201',
+            external_product_id: 'ext_support_sunscreen_201',
+            destination_url: 'https://example.com/products/daily-spf-fluid',
+            canonical_url: 'https://example.com/products/daily-spf-fluid',
+            domain: 'example.com',
+            title: 'Daily SPF Fluid',
+            image_url: 'https://example.com/products/daily-spf-fluid.jpg',
+            price_amount: 24,
+            price_currency: 'USD',
+            availability: 'in_stock',
+            match_stage: 'support_category_exact',
+            match_score: 56,
+            seed_data: {
+              derived: {
+                recall: {
+                  retrieval_title: 'Daily SPF Fluid sunscreen',
+                  retrieval_summary: 'A lightweight daily sunscreen.',
+                  category: 'sunscreen',
+                  vertical: 'skincare',
+                },
+              },
+              snapshot: {
+                title: 'Daily SPF Fluid',
+                description: 'Lightweight SPF for daily use.',
+                category: 'Sunscreen',
+              },
+            },
+            updated_at: new Date().toISOString(),
+            created_at: new Date().toISOString(),
+          },
+        ],
+      };
+    },
+  });
+
+  assert.equal(out.ok, true);
+  assert.equal(out.local_external_seed_search_mode, 'staged_support_fastpath');
+  assert.equal(observedQueries.length, 1);
+  assert.match(observedQueries[0].sql, /support_category_exact/);
+  assert.match(observedQueries[0].sql, /category/);
+  assert.doesNotMatch(observedQueries[0].sql, /retrieval_title/i);
+  assert.deepEqual(observedQueries[0].params[2], [
+    'sunscreen',
+    'spf',
+    'sun care',
+    'sun protection',
+    'uv protection',
+  ]);
+  assert.equal(out.local_external_seed_stage_debug[0]?.stage, 'support_category_exact');
+  assert.equal(out.products[0].retrieval_match_stage, 'support_category_exact');
 });
 
 test('__internal: framework recall exhausts primary planned sources before support stages when mock recall never yields a candidate', async () => {
@@ -6469,7 +6540,7 @@ test('__internal: framework pool does not let moisturizer-signaled serum metadat
   assert.equal(state.candidate_drop_stage, 'weak_viable_pool');
 });
 
-test('__internal: framework pool keeps authoritative support recommendations when the primary role is unmatched', async () => {
+test('__internal: framework pool fail-closes support-only recommendations when the primary role is unmatched', async () => {
   const { __internal } = loadRoutesFresh();
   const state = __internal.finalizeConcernFrameworkCandidatePools(
     [
@@ -6517,14 +6588,14 @@ test('__internal: framework pool keeps authoritative support recommendations whe
   );
 
   assert.equal(state.primary_role_matched, false);
-  assert.equal(state.primary_missing_authoritative_support_selected, true);
-  assert.equal(state.selected_candidate_count, 1);
-  assert.equal(Array.isArray(state.selected_recommendations) ? state.selected_recommendations.length : 0, 1);
+  assert.equal(state.primary_missing_authoritative_support_selected, false);
+  assert.equal(state.selected_candidate_count, 0);
+  assert.equal(Array.isArray(state.selected_recommendations) ? state.selected_recommendations.length : 0, 0);
   assert.equal(state.pre_llm_selected_candidate_count, 1);
   assert.equal(state.best_available_role_id, 'daily_sunscreen');
-  assert.equal(state.weak_viable_pool, false);
-  assert.equal(state.viable_pool_strength, 'strong');
-  assert.equal(state.family_match_type, 'framework_support_authoritative');
+  assert.equal(state.weak_viable_pool, true);
+  assert.equal(state.viable_pool_strength, 'weak');
+  assert.equal(state.family_match_type, 'framework_partial');
   assert.equal(state.target_fidelity_level, 'partial');
 });
 
