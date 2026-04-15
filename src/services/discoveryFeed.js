@@ -352,11 +352,13 @@ const BEAUTY_INTEREST_CATEGORY_BY_PHRASE = Object.freeze({
   exfoliant: {
     categories: ['exfoliant', 'treatment'],
     textQueryTerms: ['exfoliant', 'exfoliating', 'exfoliator', 'resurfacing', 'peel'],
+    textQueryFields: ['title', 'ingredient_tokens', 'alias_tokens'],
     verticals: ['skincare'],
   },
   exfoliator: {
     categories: ['exfoliant', 'treatment'],
     textQueryTerms: ['exfoliant', 'exfoliating', 'exfoliator', 'resurfacing', 'peel'],
+    textQueryFields: ['title', 'ingredient_tokens', 'alias_tokens'],
     verticals: ['skincare'],
   },
   'glycolic acid': {
@@ -4954,6 +4956,30 @@ function resolveExactPhraseTextUnionFieldLabels(request, recallTerms = {}) {
   );
 }
 
+function buildExactPhraseTextFieldStageDefinitions({
+  patterns = [],
+  fieldLabels = [],
+  cap = 24,
+} = {}) {
+  const normalizedPatterns = uniqStrings(Array.isArray(patterns) ? patterns : [], 8);
+  const allowedFieldLabels = new Set(Array.isArray(fieldLabels) ? fieldLabels : []);
+  if (normalizedPatterns.length <= 0 || allowedFieldLabels.size <= 0) return [];
+
+  const fieldDefinitions = [
+    [48, EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalTitle, 'title'],
+    [40, EXTERNAL_SEED_RECALL_SQL_FIELDS.ingredientTokens, 'ingredient_tokens'],
+    [38, EXTERNAL_SEED_RECALL_SQL_FIELDS.aliasTokens, 'alias_tokens'],
+  ].filter(([, , label]) => allowedFieldLabels.has(label));
+
+  return fieldDefinitions.map(([score, fieldSql, label]) => ({
+    score,
+    stage: `recall_exact_text_${label}`,
+    cap,
+    buildWhereSql: (stageBind) =>
+      `${fieldSql} LIKE ANY(${stageBind(normalizedPatterns)}::text[])`,
+  }));
+}
+
 function shouldUseExplicitExactIntentExternalSeedMainline(request, recallTerms = {}) {
   if (!isExplicitQueryScopedBrowseRequest(request)) return false;
   if (recallTerms?.compoundIntent) return true;
@@ -6004,22 +6030,31 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
 
     if (recallTerms.patterns.length > 0) {
       if (useExactPhraseTextUnionStage) {
-        stageDefinitions.push({
-          score: 46,
-          stage: 'recall_exact_text_union',
+        const exactPhraseFieldStages = buildExactPhraseTextFieldStageDefinitions({
+          patterns: exactPhraseTextUnionPatterns,
+          fieldLabels: exactPhraseTextUnionFieldLabels,
           cap: explicitStageQueryCap,
-          buildSql: ({ stageBind, cap, seenSqlIds }) =>
-            buildExactPhraseTextUnionSeedStageSql({
-              stageBind,
-              selectSql,
-              baseWhereSql,
-              stage: 'recall_exact_text_union',
-              patterns: exactPhraseTextUnionPatterns,
-              cap,
-              excludedIds: Array.from(seenSqlIds || []),
-              fieldLabels: exactPhraseTextUnionFieldLabels,
-            }),
         });
+        if (exactPhraseFieldStages.length > 0) {
+          stageDefinitions.push(...exactPhraseFieldStages);
+        } else {
+          stageDefinitions.push({
+            score: 46,
+            stage: 'recall_exact_text_union',
+            cap: explicitStageQueryCap,
+            buildSql: ({ stageBind, cap, seenSqlIds }) =>
+              buildExactPhraseTextUnionSeedStageSql({
+                stageBind,
+                selectSql,
+                baseWhereSql,
+                stage: 'recall_exact_text_union',
+                patterns: exactPhraseTextUnionPatterns,
+                cap,
+                excludedIds: Array.from(seenSqlIds || []),
+                fieldLabels: exactPhraseTextUnionFieldLabels,
+              }),
+          });
+        }
       } else {
         stageDefinitions.push({
           score: 48,
@@ -10478,6 +10513,7 @@ module.exports = {
     resolveExplicitIndexedCategoryHeadTerms,
     resolveExactPhraseTextUnionPatterns,
     resolveExactPhraseTextUnionFieldLabels,
+    buildExactPhraseTextFieldStageDefinitions,
     resolveDiscoveryExternalSeedToolScopes,
     buildDiscoveryInterestQuery,
     buildDiscoveryRecallPlan,
