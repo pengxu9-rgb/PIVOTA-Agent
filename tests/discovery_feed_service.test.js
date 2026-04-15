@@ -5925,7 +5925,7 @@ describe('discovery feed service', () => {
     const headRows = Array.from({ length: 6 }, (_, index) =>
       makeExternalSeedRow({
         id: `perfume_head_${index + 1}`,
-        title: `Maison Fragrance ${index + 1}`,
+        title: `Maison Eau de Parfum ${index + 1}`,
         category: 'Fragrance',
         product_type: 'Fragrance',
         description: 'Fine fragrance composition.',
@@ -6021,15 +6021,32 @@ describe('discovery feed service', () => {
       'idx_external_product_seeds_recall_ingredient_tokens_trgm',
       'idx_external_product_seeds_recall_alias_tokens_trgm',
     ].map((indexname) => ({ tablename: 'external_product_seeds', indexname }));
-    const headRows = Array.from({ length: 6 }, (_, index) =>
+    const perfumeRows = Array.from({ length: 6 }, (_, index) =>
       makeExternalSeedRow({
         id: `perfume_final_${index + 1}`,
-        title: `Maison Fragrance ${index + 1}`,
+        title: `Maison Eau de Parfum ${index + 1}`,
         category: 'Fragrance',
         product_type: 'Fragrance',
         description: 'Fine fragrance composition.',
       }),
     );
+    const noiseRows = [
+      makeExternalSeedRow({
+        id: 'perfume_noise_mist',
+        title: 'Maison Fragrance Mist',
+        category: 'Fragrance',
+        product_type: 'Fragrance',
+        description: 'Body and hair fragrance mist.',
+      }),
+      makeExternalSeedRow({
+        id: 'perfume_noise_balm',
+        title: 'Maison Fragrance Layering Balm',
+        category: 'Fragrance',
+        product_type: 'Fragrance',
+        description: 'Layering balm for fragrance.',
+      }),
+    ];
+    const headRows = perfumeRows.concat(noiseRows);
     const dbQueryMock = jest
       .fn()
       .mockResolvedValueOnce({ rows: requiredColumns })
@@ -6059,10 +6076,11 @@ describe('discovery feed service', () => {
       });
 
       expect(response.products).toHaveLength(6);
+      expect(response.products.every((product) => /Parfum/i.test(product.title))).toBe(true);
       expect(response.metadata.candidate_source).toBe('external_seed_exact_intent');
       expect(response.metadata.candidate_counts).toEqual(
         expect.objectContaining({
-          raw: 6,
+          raw: 8,
           eligible_pool: 6,
           returned: 6,
         }),
@@ -6070,8 +6088,9 @@ describe('discovery feed service', () => {
       expect(response.metadata.external_seed_stage_counts).toEqual([
         expect.objectContaining({
           stage: 'recall_indexed_category_head',
-          query_qualified_rows: 6,
-          final_eligible_rows: 6,
+          raw_rows: 8,
+          query_qualified_rows: 8,
+          final_eligible_rows: 8,
         }),
       ]);
     } finally {
