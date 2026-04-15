@@ -5651,7 +5651,7 @@ test('__internal: framework pool prioritizes a complete core routine over same-r
   assert.equal(state.comparison_fill_count, 0);
 });
 
-test('__internal: framework pool backfills same-role soft matches for comparison once a strong primary winner exists', async () => {
+test('__internal: framework pool surfaces same-role comparison rows without fallback-fill labeling when explicitly requested', async () => {
   const { __internal } = loadRoutesFresh();
   const state = __internal.finalizeConcernFrameworkCandidatePools(
     [
@@ -5705,6 +5705,11 @@ test('__internal: framework pool backfills same-role soft matches for comparison
       targetContext: {
         framework_id: 'recofw_test_oily_soft_compare_fill',
         primary_role_id: 'oil_control_treatment',
+        comparison_mode: 'same_role_comparison',
+        semantic_plan: {
+          routine_mode: 'same_role_comparison',
+          comparison_mode: 'same_role_comparison',
+        },
         framework_roles: [
           {
             role_id: 'oil_control_treatment',
@@ -5734,14 +5739,90 @@ test('__internal: framework pool backfills same-role soft matches for comparison
     state.selected_recommendations.map((item) => item?.product_id),
     ['strong_anchor', 'soft_compare_external_2', 'soft_compare_external_1'],
   );
-  assert.equal(state.comparison_fill_applied, true);
-  assert.equal(state.comparison_fill_count, 2);
+  assert.equal(state.comparison_fill_applied, false);
+  assert.equal(state.comparison_fill_count, 0);
   assert.equal(state.selected_source_counts?.catalog, 1);
   assert.equal(state.selected_source_counts?.external_seed, 2);
   assert.equal(
     state.selected_recommendations.filter((item) => item?.comparison_fill === true).length,
-    2,
+    0,
   );
+});
+
+test('__internal: strict single-product budget plans do not backfill same-role soft comparison rows', async () => {
+  const { __internal } = loadRoutesFresh();
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [
+      {
+        product_id: 'budget_primary_under_20',
+        merchant_id: 'merchant_budget_primary_under_20',
+        brand: 'Budget',
+        name: 'Niacinamide Serum',
+        display_name: 'Budget Niacinamide Serum',
+        category: 'serum',
+        product_type: 'serum',
+        retrieval_source: 'catalog',
+        retrieval_query: 'salicylic acid serum clogged pores',
+        retrieval_step: 'treatment',
+        retrieval_role_id: 'acne_clogged_pore_treatment',
+        benefit_tags: ['niacinamide', 'oil control', 'pores'],
+        short_description: 'A budget niacinamide serum for visible oil and pore support.',
+        price: { amount: 12, currency: 'USD', unknown: false },
+      },
+      {
+        product_id: 'soft_compare_over_budget',
+        merchant_id: 'merchant_soft_compare_over_budget',
+        brand: 'Mid',
+        name: 'Barrier Treatment',
+        display_name: 'Mid Barrier Treatment',
+        category: 'treatment',
+        product_type: 'treatment',
+        retrieval_source: 'catalog',
+        retrieval_query: 'salicylic acid serum clogged pores',
+        retrieval_step: 'treatment',
+        retrieval_role_id: 'acne_clogged_pore_treatment',
+        short_description: 'A broader barrier serum that is not the requested budget first buy.',
+        price: { amount: 28, currency: 'USD', unknown: false },
+      },
+    ],
+    {
+      targetContext: {
+        framework_id: 'recofw_test_budget_single_product_no_soft_fill',
+        primary_role_id: 'acne_clogged_pore_treatment',
+        mainline_fallback_policy: 'strict_no_runtime_fallback',
+        semantic_planner_required: true,
+        request_text: 'I have acne-prone oily skin and want one product under $20 to buy first. What should I get?',
+        explicit_single_product_request: true,
+        budget_ceiling: { amount: 20, currency: 'USD', source: 'request_text' },
+        semantic_plan: {
+          routine_mode: 'single_product',
+          comparison_mode: 'single_product',
+          must_satisfy_constraints: ['one product under $20'],
+        },
+        framework_roles: [
+          {
+            role_id: 'acne_clogged_pore_treatment',
+            rank: 1,
+            preferred_step: 'treatment',
+            alternate_steps: ['serum'],
+            label: 'Acne and clogged-pore treatment',
+            query_terms: ['salicylic acid serum clogged pores', 'niacinamide serum acne prone oily skin'],
+            fit_keywords: ['acne', 'clogged', 'pores', 'niacinamide', 'oil control', 'blemish'],
+          },
+        ],
+      },
+    },
+  );
+
+  assert.equal(state.primary_role_matched, true);
+  assert.equal(state.selected_candidate_count, 1);
+  assert.deepEqual(
+    state.selected_recommendations.map((item) => item?.product_id),
+    ['budget_primary_under_20'],
+  );
+  assert.equal(state.comparison_fill_allowed, false);
+  assert.equal(state.comparison_fill_applied, false);
+  assert.equal(state.comparison_fill_count, 0);
 });
 
 test('__internal: beauty mainline handoff payload preserves viable support role candidates in ranked targets even when they are not selected', async () => {

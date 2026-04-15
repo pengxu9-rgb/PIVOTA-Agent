@@ -21475,6 +21475,32 @@ function shouldAllowConcernFrameworkComparisonFill(targetContext = null, ordered
     ) || '',
   ).trim().toLowerCase();
   if (comparisonMode === 'same_role_comparison' || comparisonMode === 'same_role') return true;
+  const routineMode = String(
+    pickFirstTrimmed(
+      targetContext?.routine_mode,
+      semanticPlan?.routine_mode,
+      semanticPlan?.selection_constraints?.routine_mode,
+    ) || '',
+  ).trim().toLowerCase();
+  const explicitSingleProduct = targetContext?.explicit_single_product_request === true
+    || /\b(single_product|one product|just one|only one|under\s*\$?\d+|below\s*\$?\d+|less than\s*\$?\d+)\b/i.test(
+      [
+        targetContext?.request_text,
+        targetContext?.focus_text,
+        semanticPlan?.primary_concern,
+        ...(Array.isArray(semanticPlan?.must_satisfy_constraints) ? semanticPlan.must_satisfy_constraints : []),
+      ].map((value) => String(value || '').trim()).filter(Boolean).join(' '),
+    );
+  if (
+    hasStrictBeautyMainlineNoRuntimeFallbackPolicy(targetContext)
+    && (
+      routineMode === 'single_product'
+      || comparisonMode === 'single_product'
+      || explicitSingleProduct
+    )
+  ) {
+    return false;
+  }
   if (!hasStrictBeautyMainlineNoRuntimeFallbackPolicy(targetContext)) return true;
   return roles.length <= 1;
 }
@@ -53702,7 +53728,8 @@ function assistantTextUsesGenericRoutineWrapup(text) {
 }
 
 function assistantTextHasUngrammaticalReasonFragment(text) {
-  return /\bbecause\s+(?:a|an)\s+[^.!?。！？]{3,120}\b(?:that|with|for)\b/i.test(String(text || ''));
+  return /\bbecause\s+(?:a|an)\s+[^.!?。！？]{3,120}\b(?:that|with|for)\b/i.test(String(text || ''))
+    || /\bbecause\s+(?:is|are|was|were|has|have|had|features?|provides?|uses?|contains?|combines?|offers?|supports?|helps?|hydrates?|targets?|addresses?|reduces?|delivers?|gives?|pairs?|layers?|locks?|soothes?|boosts?|protects?|keeps?|works?|formulated|designed|made|built)\b/i.test(String(text || ''));
 }
 
 function assistantTextUsesStiffSelectionFraming(text) {
@@ -54096,6 +54123,14 @@ function normalizeRecoAssistantBecauseReasonFragment(reason) {
   const text = String(reason || '').replace(/\s+/g, ' ').trim();
   if (!text) return '';
   if (/^(?:a|an)\s+[^.!?。！？]{3,120}\b(?:that|with|for)\b/i.test(text)) {
+    return `it is ${text}`;
+  }
+  if (
+    /^(?:is|are|was|were|has|have|had|features?|provides?|uses?|contains?|combines?|offers?|supports?|helps?|hydrates?|targets?|addresses?|reduces?|delivers?|gives?|pairs?|layers?|locks?|soothes?|boosts?|protects?|keeps?|works?)\b/i.test(text)
+  ) {
+    return `it ${text}`;
+  }
+  if (/^(?:formulated|designed|made|built)\b/i.test(text)) {
     return `it is ${text}`;
   }
   return text;

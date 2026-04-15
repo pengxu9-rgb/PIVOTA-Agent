@@ -1143,10 +1143,10 @@ test('reco assistant rewrite uses structured retry for generic routine wrap-up',
       return {
         ok: true,
         json: {
-          lead_reason: 'it has an ultra-sheer, non-comedogenic gel-cream texture for smoother layering',
+          lead_reason: 'features an ultra-sheer, non-comedogenic gel-cream texture for smoother layering',
           support_reasons: [
-            'it adds lightweight hyaluronic-acid hydration without changing the routine into a heavy layer',
-            'it gives matte SPF 50+ daytime protection for under-makeup wear',
+            'provides lightweight hyaluronic-acid hydration without changing the routine into a heavy layer',
+            'gives matte SPF 50+ daytime protection for under-makeup wear',
           ],
         },
         parse_status: 'parsed',
@@ -1168,7 +1168,11 @@ test('reco assistant rewrite uses structured retry for generic routine wrap-up',
     assert.equal(rewrite.reason, null);
     assert.equal(schemas[1]?.required?.includes('lead_reason'), true);
     assert.match(rewrite.text, /Hydrating Dewy Gel Cream Moisturizer/);
+    assert.match(rewrite.text, /because it (?:features|is) an ultra-sheer/);
+    assert.match(rewrite.text, /because it (?:provides|is a) lightweight/);
+    assert.match(rewrite.text, /because it (?:gives|is a) matte SPF 50\+/);
     assert.match(rewrite.text, /Matte Fit Serum Sunscreen SPF 50\+ PA\+\+\+\+/);
+    assert.doesNotMatch(rewrite.text, /because (features|provides|gives)\b/i);
     assert.doesNotMatch(rewrite.text, /Together, these products support/);
   } finally {
     __internal.__resetCallGeminiJsonObjectForTest();

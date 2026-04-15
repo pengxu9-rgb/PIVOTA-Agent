@@ -790,6 +790,16 @@ function buildConcernTargetContextFromSemanticPlan(plan, { text = '', focus = ''
   const semanticPlan = isPlainObject(plan) ? plan : buildConcernSemanticPlanFallback({ text, focus });
   const coreRoles = Array.isArray(semanticPlan.core_roles) ? semanticPlan.core_roles.filter((role) => isPlainObject(role)) : [];
   const supportRoles = Array.isArray(semanticPlan.support_roles) ? semanticPlan.support_roles.filter((role) => isPlainObject(role)) : [];
+  const requestText = pickFirstTrimmed(text, focus, semanticPlan.framework_summary?.concern_text);
+  const constraintText = [
+    requestText,
+    ...(Array.isArray(semanticPlan.must_satisfy_constraints) ? semanticPlan.must_satisfy_constraints : []),
+  ].join(' ');
+  const explicitSingleProductRequest = /\b(?:one product|single product|just one|only one)\b/i.test(constraintText);
+  const budgetCeilingMatch =
+    constraintText.match(/\b(?:under|below|less than|max(?:imum)?|no more than)\s*(?:usd\s*)?\$?\s*([0-9]+(?:\.[0-9]{1,2})?)\b/i) ||
+    constraintText.match(/\$\s*([0-9]+(?:\.[0-9]{1,2})?)\s*(?:or less|and under|max|maximum)?\b/i);
+  const budgetCeilingAmount = budgetCeilingMatch ? Number(budgetCeilingMatch[1]) : null;
   return {
     resolved_target_step: null,
     resolved_target_step_confidence: 'none',
@@ -801,6 +811,12 @@ function buildConcernTargetContextFromSemanticPlan(plan, { text = '', focus = ''
     support_roles: supportRoles,
     primary_role_id: coreRoles[0]?.role_id || null,
     framework_summary: isPlainObject(semanticPlan.framework_summary) ? semanticPlan.framework_summary : null,
+    request_text: requestText || null,
+    focus_text: pickFirstTrimmed(focus) || null,
+    explicit_single_product_request: explicitSingleProductRequest,
+    ...(Number.isFinite(budgetCeilingAmount) && budgetCeilingAmount > 0
+      ? { budget_ceiling: { amount: budgetCeilingAmount, currency: 'USD', source: 'request_text' } }
+      : {}),
     concern_signals: isPlainObject(semanticPlan.concern_signals)
       ? semanticPlan.concern_signals
       : collectConcernFrameworkSignals({ text, focus }),

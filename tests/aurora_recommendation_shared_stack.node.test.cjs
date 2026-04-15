@@ -11,6 +11,7 @@ const {
   resolveRecommendationTargetContext,
   canonicalizeGenericConcernQuery,
   buildConcernSemanticPlanFallback,
+  buildConcernTargetContextFromSemanticPlan,
   buildSameFamilyQueryLevels,
   finalizeRecommendationCandidatePools,
   shouldStopStepAwareBroadening,
@@ -115,6 +116,25 @@ test('concern semantic scaffold routes broad-suite drift samples into canonical 
     text: 'My makeup keeps pilling. What product should I use first?',
   });
   assert.equal(pillingPlan.core_roles[0]?.role_id, 'layering_compatible_moisturizer_or_spf');
+});
+
+test('concern target context preserves explicit one-product budget constraints', () => {
+  const plan = buildConcernSemanticPlanFallback({
+    text: 'I have acne-prone oily skin and want one product under $20 to buy first. What should I get?',
+    profileSummary: { skinType: 'oily', goals: ['breakout control', 'oil control'] },
+  });
+  plan.routine_mode = 'single_product';
+  plan.comparison_mode = 'single_product';
+  plan.must_satisfy_constraints = ['one product under $20'];
+
+  const targetContext = buildConcernTargetContextFromSemanticPlan(plan, {
+    text: 'I have acne-prone oily skin and want one product under $20 to buy first. What should I get?',
+    entryType: 'chat',
+  });
+
+  assert.equal(targetContext.request_text, 'I have acne-prone oily skin and want one product under $20 to buy first. What should I get?');
+  assert.equal(targetContext.explicit_single_product_request, true);
+  assert.deepEqual(targetContext.budget_ceiling, { amount: 20, currency: 'USD', source: 'request_text' });
 });
 
 test('generic single-product concern helper canonicalizes singular broad asks to plural wording', () => {
