@@ -97,6 +97,49 @@ const DISCOVERY_EXTERNAL_SEED_REQUIRED_INDEXES = [
 ];
 const DISCOVERY_EXTERNAL_SEED_INDEXED_RECALL_CATEGORY_SQL =
   "lower(coalesce(seed_data->'derived'->'recall'->>'category', ''))";
+const DISCOVERY_GENERIC_BROWSE_EXTERNAL_SEED_VERTICALS = Object.freeze([
+  'skincare',
+  'makeup',
+  'haircare',
+  'fragrance',
+  'beauty_tools',
+  'bodycare',
+]);
+const DISCOVERY_GENERIC_BROWSE_EXTERNAL_SEED_CATEGORIES = Object.freeze([
+  'skincare',
+  'serum',
+  'essence',
+  'ampoule',
+  'toner',
+  'cleanser',
+  'sunscreen',
+  'moisturizer',
+  'moisturiser',
+  'treatment',
+  'mask',
+  'makeup',
+  'foundation',
+  'concealer',
+  'powder',
+  'mascara',
+  'blush',
+  'bronzer',
+  'highlighter',
+  'eyeshadow',
+  'lipstick',
+  'lip gloss',
+  'lip oil',
+  'haircare',
+  'shampoo',
+  'conditioner',
+  'hair mask',
+  'hair oil',
+  'fragrance',
+  'perfume',
+  'body wash',
+  'body oil',
+  'deodorant',
+]);
 const DISCOVERY_PROVIDER_ORDER = [
   'beauty_interest_mainline',
   'products_search',
@@ -5133,6 +5176,123 @@ function buildDiscoverySeedStageSqlId(row) {
   return /^\d+$/.test(id) ? id : null;
 }
 
+function shouldUseGenericBrowseExternalSeedServingPath(request, profile) {
+  return request?.surface === 'browse_products' && isGenericNoSignalDiscoveryRequest(request, profile);
+}
+
+async function fetchGenericBrowseExternalSeedServingCandidates({
+  request,
+  profile,
+  provider,
+  productProvider,
+  stepName,
+  label,
+  recallTerms,
+  safeLimit,
+  marketConfig,
+  toolScopes,
+  selectSql,
+  stepStartedAt,
+} = {}) {
+  if (!shouldUseGenericBrowseExternalSeedServingPath(request, profile)) return null;
+
+  const market = marketConfig?.market || DEFAULT_DISCOVERY_EXTERNAL_SEED_MARKET;
+  const stage = 'generic_browse_curated_head';
+  const toolScopeValues = uniqStrings(toolScopes, 4);
+  const limitBindIndex = 5;
+  const sql = `
+    SELECT
+      ${selectSql},
+      64::int AS match_score,
+      '${stage}'::text AS match_stage
+    FROM external_product_seeds
+    WHERE status = 'active'
+      AND attached_product_key IS NULL
+      AND market = $1
+      AND tool = ANY($2::text[])
+      AND coalesce(lower(seed_data#>>'{suppression_flags,exclude_from_recall}'), 'false') <> 'true'
+      AND coalesce(lower(seed_data#>>'{derived,recall,suppression_flags,exclude_from_recall}'), 'false') <> 'true'
+      AND (
+        ${EXTERNAL_SEED_RECALL_SQL_FIELDS.vertical} = ANY($3::text[])
+        OR ${DISCOVERY_EXTERNAL_SEED_INDEXED_RECALL_CATEGORY_SQL} = ANY($4::text[])
+      )
+    ORDER BY
+      CASE
+        WHEN ${EXTERNAL_SEED_RECALL_SQL_FIELDS.vertical} = 'skincare' THEN 0
+        WHEN ${EXTERNAL_SEED_RECALL_SQL_FIELDS.vertical} = 'makeup' THEN 1
+        WHEN ${EXTERNAL_SEED_RECALL_SQL_FIELDS.vertical} = 'haircare' THEN 2
+        WHEN ${EXTERNAL_SEED_RECALL_SQL_FIELDS.vertical} = 'fragrance' THEN 3
+        WHEN ${EXTERNAL_SEED_RECALL_SQL_FIELDS.vertical} = 'bodycare' THEN 4
+        WHEN ${EXTERNAL_SEED_RECALL_SQL_FIELDS.vertical} = 'beauty_tools' THEN 5
+        ELSE 8
+      END ASC,
+      updated_at DESC NULLS LAST,
+      created_at DESC NULLS LAST,
+      id DESC
+    LIMIT $${limitBindIndex}
+  `;
+  const res = await query(sql, [
+    market,
+    toolScopeValues.length > 0 ? toolScopeValues : ['*', 'creator_agents'],
+    DISCOVERY_GENERIC_BROWSE_EXTERNAL_SEED_VERTICALS,
+    DISCOVERY_GENERIC_BROWSE_EXTERNAL_SEED_CATEGORIES,
+    safeLimit,
+  ]);
+  const rawRows = Array.isArray(res?.rows) ? res.rows : [];
+  const rows = [];
+  const seenRowKeys = new Set();
+  for (const row of rawRows) {
+    const rowKey = buildDiscoverySeedStageRowKey(row);
+    if (!rowKey || seenRowKeys.has(rowKey)) continue;
+    seenRowKeys.add(rowKey);
+    rows.push(row);
+    if (rows.length >= safeLimit) break;
+  }
+  const products = annotateProviderProducts(
+    productProvider,
+    rows.map((row) => buildExternalSeedBrandSearchProduct(row)).filter(Boolean),
+  );
+  recordDiscoveryRecallStep({
+    surface: request?.surface,
+    step: stepName,
+    status: 'success',
+    latencyMs: Date.now() - stepStartedAt,
+    cacheHit: false,
+  });
+  return {
+    products,
+    recallSummary: [
+      buildDiscoveryProviderStepSummary({
+        provider,
+        label,
+        query: recallTerms?.phrases?.join(' | ') || stage,
+        limit: safeLimit,
+        returned: products.length,
+        status: 200,
+        latencyMs: Date.now() - stepStartedAt,
+        market,
+        marketSource: marketConfig?.source,
+        externalSeedToolScopes: toolScopeValues,
+        externalSeedStageCounts: [
+          {
+            stage,
+            tool_scope: 'all',
+            raw_rows: rawRows.length,
+            compound_qualified_rows: rawRows.length,
+            query_qualified_rows: rawRows.length,
+            deduped_rows: rows.length,
+            final_eligible_rows: rows.length,
+          },
+        ],
+        externalSeedRawCount: rawRows.length,
+        externalSeedQualifiedCount: rows.length,
+        externalSeedFilteredCompoundCount: 0,
+        externalSeedFilteredQueryTextCount: 0,
+      }),
+    ],
+  };
+}
+
 function normalizeDiscoveryExactTitleSqlText(value) {
   return normalizeResolverLookupText(value);
 }
@@ -5569,6 +5729,22 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
   }
 
   const selectSql = buildBeautyInterestSeedSelect();
+  const genericBrowseServingResult = await fetchGenericBrowseExternalSeedServingCandidates({
+    request,
+    profile,
+    provider,
+    productProvider,
+    stepName,
+    label,
+    recallTerms,
+    safeLimit,
+    marketConfig,
+    toolScopes,
+    selectSql,
+    stepStartedAt,
+  });
+  if (genericBrowseServingResult) return genericBrowseServingResult;
+
   const baseWhereSql = `
     status = 'active'
       AND attached_product_key IS NULL

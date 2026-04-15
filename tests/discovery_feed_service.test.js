@@ -9716,7 +9716,7 @@ describe('discovery feed service', () => {
     expect(stages.map((stage) => stage.stage)).not.toContain('recall_compound_summary');
   });
 
-			  test('anonymous browse fastpath fills stable corpus beyond first-page coverage before stopping DB stages', async () => {
+			  test('anonymous generic browse fastpath uses indexed curated head instead of lexical DB stages', async () => {
     jest.resetModules();
     const prevDatabaseUrl = process.env.DATABASE_URL;
     process.env.DATABASE_URL = 'postgres://discovery-fastpath-test';
@@ -9779,6 +9779,7 @@ describe('discovery feed service', () => {
             retrieval_summary: `Serum ${id}`,
             brand: 'Alpha',
             category: 'Skincare',
+            vertical: 'skincare',
           },
         },
       },
@@ -9793,16 +9794,7 @@ describe('discovery feed service', () => {
         rows: requiredIndexes,
       })
       .mockResolvedValueOnce({
-        rows: Array.from({ length: 48 }, (_, index) => makeSeedRow(index + 1)),
-      })
-      .mockResolvedValueOnce({
-        rows: Array.from({ length: 12 }, (_, index) => makeSeedRow(index + 49)),
-      })
-      .mockResolvedValueOnce({
-        rows: Array.from({ length: 48 }, (_, index) => makeSeedRow(index + 61)),
-      })
-      .mockResolvedValueOnce({
-        rows: [],
+        rows: Array.from({ length: 120 }, (_, index) => makeSeedRow(index + 1)),
       });
 
     jest.doMock('../src/db', () => ({
@@ -9837,8 +9829,21 @@ describe('discovery feed service', () => {
         label: 'external_seed_pool_fastpath',
       });
 
-      expect(result.products).toHaveLength(108);
-      expect(dbQueryMock.mock.calls.length).toBeGreaterThan(4);
+      expect(result.products).toHaveLength(120);
+      expect(dbQueryMock).toHaveBeenCalledTimes(3);
+      const curatedSql = String(dbQueryMock.mock.calls[2]?.[0] || '');
+      expect(curatedSql).toContain("'generic_browse_curated_head'::text AS match_stage");
+      expect(curatedSql).not.toContain('LIKE ANY');
+      expect(curatedSql).not.toContain("'recall_title'::text AS match_stage");
+      expect(curatedSql).not.toContain("'recall_tokens'::text AS match_stage");
+      expect(result.recallSummary[0].external_seed_stage_counts).toEqual([
+        expect.objectContaining({
+          stage: 'generic_browse_curated_head',
+          raw_rows: 120,
+          deduped_rows: 120,
+          final_eligible_rows: 120,
+        }),
+      ]);
     } finally {
       if (prevDatabaseUrl === undefined) delete process.env.DATABASE_URL;
       else process.env.DATABASE_URL = prevDatabaseUrl;
