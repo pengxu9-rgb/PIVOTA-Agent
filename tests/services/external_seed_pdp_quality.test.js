@@ -180,7 +180,7 @@ describe('externalSeedPdpQuality', () => {
     const similarGate = buildSimilarGate({
       similarResponse: {
         products: [
-          { product_id: 'ext_1', merchant_id: 'external_seed', title: 'Thin card' },
+          { product_id: 'ext_1', merchant_id: 'external_seed', title: 'Thin card', category: 'Toner' },
           { product_id: 'ext_2', merchant_id: 'external_seed', title: 'Thin card 2' },
           { product_id: 'ext_3', merchant_id: 'external_seed', title: 'Thin card 3' },
           { product_id: 'ext_4', merchant_id: 'external_seed', title: 'Thin card 4' },
@@ -197,6 +197,28 @@ describe('externalSeedPdpQuality', () => {
       ]),
     );
     expect(similarGate.failure_reasons).toEqual(['similar_card_missing_highlight']);
+  });
+
+  test('does not count category-only similar cards as highlight-ready', () => {
+    const similarGate = buildSimilarGate({
+      similarResponse: {
+        products: [
+          { product_id: 'ext_1', merchant_id: 'external_seed', title: 'Category only', category: 'Toner' },
+          {
+            product_id: 'ext_2',
+            merchant_id: 'external_seed',
+            title: 'Explained card',
+            description: 'Milky toner with barrier-supporting ingredients.',
+          },
+          { product_id: 'ext_3', merchant_id: 'external_seed', title: 'Category only 2', product_type: 'Serum' },
+          { product_id: 'ext_4', merchant_id: 'external_seed', title: 'Category only 3', category: 'Moisturizer' },
+        ],
+      },
+      exclusionFlags: { gift_card: false, donation_bundle: false, non_merchandise: false },
+    });
+
+    expect(similarGate.failure_reasons).toEqual(['similar_card_missing_highlight']);
+    expect(similarGate.card_highlight_missing_count).toBe(3);
   });
 
   test('reports probe failures instead of misclassifying them as product-quality regressions', () => {

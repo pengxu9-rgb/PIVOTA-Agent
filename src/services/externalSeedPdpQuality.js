@@ -149,10 +149,7 @@ function hasDisplayableSimilarCardData(product = {}) {
         product.search_card?.highlight_candidate ||
         product.searchCard?.highlight_candidate ||
         product.searchCard?.highlightCandidate ||
-        product.description ||
-        product.category ||
-        product.product_type ||
-        product.productType,
+        product.description,
     ),
   );
 }

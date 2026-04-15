@@ -2977,6 +2977,7 @@ async function fetchProductDetailForOffers(args) {
   const checkoutToken = args?.checkoutToken;
   const surfaceUpstreamErrors = args?.surfaceUpstreamErrors === true;
   const bypassCache = args?.bypassCache === true;
+  const skipUpstreamFallback = args?.skipUpstreamFallback === true;
   if (!merchantId || !productId) return null;
   const isExternalSeedDetailRead = merchantId === EXTERNAL_SEED_MERCHANT_ID;
   const useMemoryCache = PRODUCT_DETAIL_CACHE_ENABLED && !bypassCache && !isExternalSeedDetailRead;
@@ -3084,6 +3085,10 @@ async function fetchProductDetailForOffers(args) {
         }
         return normalizedExternalSeed;
       }
+    }
+
+    if (skipUpstreamFallback) {
+      return null;
     }
 
     let upstreamProduct = null;
@@ -11230,9 +11235,6 @@ function hasSimilarCardPresentation(product = {}) {
       product.searchCard?.highlight_candidate,
       product.searchCard?.highlightCandidate,
       product.description,
-      product.category,
-      product.product_type,
-      product.productType,
     ),
   );
 }
@@ -11305,6 +11307,7 @@ async function enrichSimilarProductsForPdpCards({
         productId,
         checkoutToken,
         bypassCache,
+        skipUpstreamFallback: true,
       }).catch(() => null);
       if (!detail || typeof detail !== 'object') {
         return {
