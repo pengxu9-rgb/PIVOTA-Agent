@@ -676,6 +676,18 @@ describe('build_product_intel_live_pilot_cases', () => {
     ]);
   });
 
+  test('rejects corrupted official INCI blocks instead of sending OCR-like text to Gemini', () => {
+    const html = `
+      <script>
+        window.__remixContext = {"product":{"descriptionHtml":${JSON.stringify(
+          '<p><strong>FULL INGREDIENTS</strong></p><p>Water, DibuyiAdipate Propanedial, Butylocty Salicylate, Ethylhexy/Trazone, Terephthalyidene Dicamphor Sulfonic Acid, Glycerin, Niacinamide, Polyglycer y/ 3 Distearate, Ceteary Alcohol, Capryivi Methicone, Polvsilicone-15, Methyloropanedid, Ethyhexviglycerin, Polvether-1</p>',
+        )}}};
+      </script>
+    `;
+
+    expect(extractSourceProductFactsFromHtml(html).ingredients_inci).toBeUndefined();
+  });
+
   test('trims source description section soup before insights candidate generation', () => {
     const descriptionHtml = [
       '<p>Meet the Tint + SPF You’ll Actually Wear Naturally radiant, this tinted fluid sunscreen balances hydration and control.</p>',

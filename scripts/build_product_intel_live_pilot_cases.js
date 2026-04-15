@@ -745,6 +745,7 @@ function looksLikeDelimitedIngredientBlock(value) {
   if (text.length < 35 || text.length > 3000) return false;
   if ((text.match(/,/g) || []).length < 3) return false;
   if (!startsLikeIngredientList(text)) return false;
+  if (looksLikeCorruptedIngredientBlock(text)) return false;
   if (
     !/\b(?:water|aqua|eau|glycerin|zinc oxide|titanium dioxide|niacinamide|butylene glycol|propanediol|caprylic|sodium|dimethicone|alcohol denat)\b/i.test(
       text,
@@ -753,6 +754,29 @@ function looksLikeDelimitedIngredientBlock(value) {
     return false;
   }
   return !/\b(?:shipping|returns|shade finder|secure checkout|review|quiz)\b/i.test(text.slice(0, 120));
+}
+
+function looksLikeCorruptedIngredientBlock(value) {
+  const text = normalizeSourceFactText(value);
+  const corruptionSignals = [
+    /\bDibuyiAdipate\b/i,
+    /\bButylocty\b/i,
+    /\bEthylhexy\/Trazone\b/i,
+    /\bTerephthalyidene\b/i,
+    /\bHydroxybenzovi\b/i,
+    /\bCeteary Alcohol\b/i,
+    /\bCapryivi\b/i,
+    /\bPolvsilicone\b/i,
+    /\bVitis-idata\b/i,
+    /\bsisesquioxane\b/i,
+    /\bMethyloropanedid\b/i,
+    /\bAcryloyldimethyta\b/i,
+    /\bCrosspoly mer\b/i,
+    /\bEthyhexviglycerin\b/i,
+    /\bPolvether\b/i,
+    /\bPolyglycer\s+y\//i,
+  ];
+  return corruptionSignals.filter((pattern) => pattern.test(text)).length >= 2;
 }
 
 function extractDelimitedIngredientNames(value) {
