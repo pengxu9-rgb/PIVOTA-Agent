@@ -648,85 +648,91 @@ describe('/agent/shop/v1/invoke find_products_multi legacy fallback isolation', 
     );
   });
 
-  test('public skincare brand search bridges to discovery even without explicit beauty surface', async () => {
-    let discoveryPayload = null;
-    const getDiscoveryFeedMock = jest.fn(async (payload) => {
-      discoveryPayload = payload;
-      return {
-        products: [
-          {
-            merchant_id: 'external_seed',
-            product_id: 'the_ordinary_niacinamide',
-            source: 'external_seed',
-            title: 'Niacinamide 10% + Zinc 1%',
-            brand: 'The Ordinary',
+  test.each([
+    ['the ordinary', 'the_ordinary_niacinamide', 'Niacinamide 10% + Zinc 1%', 'The Ordinary'],
+    ['naturium', 'naturium_bha_exfoliant', 'BHA Liquid Exfoliant 2%', 'Naturium'],
+  ])(
+    'public skincare brand search %s bridges to discovery even without explicit beauty surface',
+    async (query, productId, title, brand) => {
+      let discoveryPayload = null;
+      const getDiscoveryFeedMock = jest.fn(async (payload) => {
+        discoveryPayload = payload;
+        return {
+          products: [
+            {
+              merchant_id: 'external_seed',
+              product_id: productId,
+              source: 'external_seed',
+              title,
+              brand,
+            },
+          ],
+          total: 1,
+          metadata: {
+            candidate_source: 'brand_direct_primary',
+            primary_path_used: 'brand_direct_pool',
+            route_health: {
+              primary_quality_gate_passed: true,
+            },
           },
-        ],
-        total: 1,
-        metadata: {
-          candidate_source: 'brand_direct_primary',
-          primary_path_used: 'brand_direct_pool',
-          route_health: {
-            primary_quality_gate_passed: true,
-          },
-        },
-      };
-    });
-    jest.doMock('../../src/services/discoveryFeed', () => {
-      const actual = jest.requireActual('../../src/services/discoveryFeed');
-      return {
-        ...actual,
-        getDiscoveryFeed: getDiscoveryFeedMock,
-      };
-    });
-
-    const v2Scope = nock('http://pivota.test')
-      .post('/agent/v2/products/search')
-      .query(true)
-      .reply(418, { error: 'should_not_call_v2' });
-
-    const app = require('../../src/server');
-    const resp = await request(app)
-      .post('/agent/shop/v1/invoke')
-      .send({
-        operation: 'find_products_multi',
-        payload: {
-          search: {
-            query: 'the ordinary',
-            limit: 24,
-            in_stock_only: true,
-          },
-        },
-        metadata: {
-          source: 'search',
-        },
+        };
+      });
+      jest.doMock('../../src/services/discoveryFeed', () => {
+        const actual = jest.requireActual('../../src/services/discoveryFeed');
+        return {
+          ...actual,
+          getDiscoveryFeed: getDiscoveryFeedMock,
+        };
       });
 
-    jest.dontMock('../../src/services/discoveryFeed');
+      const v2Scope = nock('http://pivota.test')
+        .post('/agent/v2/products/search')
+        .query(true)
+        .reply(418, { error: 'should_not_call_v2' });
 
-    expect(resp.status).toBe(200);
-    expect(v2Scope.isDone()).toBe(false);
-    expect(getDiscoveryFeedMock).toHaveBeenCalledTimes(1);
-    expect(discoveryPayload).toEqual(
-      expect.objectContaining({
-        surface: 'browse_products',
-        limit: 24,
-        query: { text: 'the ordinary' },
-        scope: {
-          brand_names: ['the ordinary'],
-        },
-      }),
-    );
-    expect(resp.body.metadata).toEqual(
-      expect.objectContaining({
-        query_source: 'beauty_discovery_mainline',
-        primary_lane: 'beauty_discovery_mainline',
-        public_search_brand_mainline: true,
-        public_search_brand_scope_applied: ['the ordinary'],
-        public_search_discovery_bridge: true,
-      }),
-    );
-  });
+      const app = require('../../src/server');
+      const resp = await request(app)
+        .post('/agent/shop/v1/invoke')
+        .send({
+          operation: 'find_products_multi',
+          payload: {
+            search: {
+              query,
+              limit: 24,
+              in_stock_only: true,
+            },
+          },
+          metadata: {
+            source: 'search',
+          },
+        });
+
+      jest.dontMock('../../src/services/discoveryFeed');
+
+      expect(resp.status).toBe(200);
+      expect(v2Scope.isDone()).toBe(false);
+      expect(getDiscoveryFeedMock).toHaveBeenCalledTimes(1);
+      expect(discoveryPayload).toEqual(
+        expect.objectContaining({
+          surface: 'browse_products',
+          limit: 24,
+          query: { text: query },
+          scope: {
+            brand_names: [query],
+          },
+        }),
+      );
+      expect(resp.body.metadata).toEqual(
+        expect.objectContaining({
+          query_source: 'beauty_discovery_mainline',
+          primary_lane: 'beauty_discovery_mainline',
+          public_search_brand_mainline: true,
+          public_search_brand_scope_applied: [query],
+          public_search_discovery_bridge: true,
+        }),
+      );
+    },
+  );
 
   test('public short beauty brand search bridges to discovery without cache fallback', async () => {
     let discoveryPayload = null;

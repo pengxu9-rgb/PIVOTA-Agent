@@ -95,7 +95,7 @@ function classifyBeautyBucketFromText(text) {
     /沐浴露|身体乳|身體乳|ボディウォッシュ|ボディローション/.test(q);
 
   const hasSkincareTreatmentSignal =
-    /\b(serum|toner|essence|ampoule|moisturi(?:z|s)er|cleanser|sunscreen|spf\b|sunblock|face wash|niacinamide|retinol|vitamin c|peptide|ceramide|cica|hyaluronic|salicylic|azelaic|aha|bha|oil control|shine control|congestion|blemish|acne treatment|spot treatment|clarifying|pore care)\b/i.test(
+    /\b(serum|toner|essence|ampoule|moisturi(?:z|s)er|cleanser|sunscreen|spf\b|sunblock|face wash|niacinamide|retinol|vitamin c|peptide|ceramide|cica|hyaluronic|salicylic|azelaic|glycolic|lactic acid|aha|bha|exfoliant|exfoliating|exfoliator|resurfacing|peel|oil control|shine control|congestion|blemish|acne treatment|spot treatment|clarifying|pore care)\b/i.test(
       q,
     ) ||
     /护肤|護膚|精华|精華|化妆水|化妝水|乳液|洁面|潔面|防晒|防曬|日焼け止め|美容液|洗顔料/.test(
@@ -160,7 +160,7 @@ function classifyBeautyBucketFromText(text) {
     return 'lip_makeup';
   }
   if (
-    /\b(skincare|skin care|serum|toner|essence|ampoule|moisturi(?:z|s)er|cream|cleanser|sunscreen|spf\b|sunblock|face wash|mask)\b/i.test(
+    /\b(skincare|skin care|serum|toner|essence|ampoule|moisturi(?:z|s)er|cream|cleanser|sunscreen|spf\b|sunblock|face wash|mask|exfoliant|exfoliating|exfoliator|resurfacing|peel)\b/i.test(
       q,
     ) ||
     /护肤|護膚|精华|精華|化妆水|化妝水|乳液|面霜|洁面|潔面|防晒|防曬|日焼け止め|美容液|洗顔料|クリーム/.test(
@@ -293,7 +293,20 @@ function getBeautyCacheExpansionTerms(profile) {
           'peptide',
           'dark spot',
         ]
-      : ['skincare', 'serum', 'toner', 'moisturizer', 'sunscreen', 'cleanser', 'cream'];
+      : [
+          'skincare',
+          'serum',
+          'toner',
+          'moisturizer',
+          'sunscreen',
+          'cleanser',
+          'cream',
+          'exfoliant',
+          'exfoliating',
+          'glycolic',
+          'bha',
+          'aha',
+        ];
   }
   if (bucket === 'tools') {
     return ['makeup', 'cosmetic', 'beauty', 'brush', 'sponge', 'puff', 'applicator'];
