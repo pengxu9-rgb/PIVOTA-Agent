@@ -4061,6 +4061,50 @@ function buildRecoCompareHighlightsFromInsightFields({
 }
 
 const RECO_PLACEHOLDER_SEED_COPY_RE = /\b(?:replace\s+with\s+your\s+own\s+description\s+if\s+needed|test\s+fixture\s+for\s+pdp|lorem\s+ipsum|placeholder\s+copy|placeholder\s+description)\b/i;
+const RECO_LOW_INFORMATION_VISIBLE_COPY_RE = /\b(?:double\s+up\s+and\s+save|save\s+with\s+this\s+jumbo|add\s+to\s+cart|shop\s+now|free\s+shipping|limited\s+time\s+offer|subscribe\s+and\s+save)\b/i;
+const RECO_SCRAPED_VISIBLE_COPY_PREFIX_RE = /^(?:details?\s*)?(?:key\s+features?|features?|benefits?)\s*[-:|]\s*/i;
+const RECO_CANONICAL_BEAUTY_BRANDS = Object.freeze([
+  'The Ordinary',
+  'KraveBeauty',
+  'Haruharu Wonder',
+  'First Aid Beauty',
+  'Naturium',
+  'Fenty Skin',
+  'Good Molecules',
+  "Paula's Choice",
+  'La Roche-Posay',
+  'Round Lab',
+  'Supergoop',
+  'Skin1004',
+  'Glossier',
+]);
+
+function normalizeRecoBrandCompareToken(value) {
+  return String(value || '')
+    .replace(/[’']/g, '')
+    .replace(/[^a-z0-9]+/gi, '')
+    .trim()
+    .toLowerCase();
+}
+
+function normalizeRecoBeautyBrandLabel(value, ...contextValues) {
+  const direct = String(value || '').replace(/\s+/g, ' ').trim();
+  const directToken = normalizeRecoBrandCompareToken(direct);
+  for (const label of RECO_CANONICAL_BEAUTY_BRANDS) {
+    const labelToken = normalizeRecoBrandCompareToken(label);
+    if (directToken && directToken === labelToken) return label;
+  }
+  if (direct) return direct;
+
+  const contextText = contextValues.map((item) => String(item || '').trim()).filter(Boolean).join(' ');
+  const contextToken = normalizeRecoBrandCompareToken(contextText);
+  if (!contextToken) return '';
+  for (const label of RECO_CANONICAL_BEAUTY_BRANDS) {
+    const labelToken = normalizeRecoBrandCompareToken(label);
+    if (labelToken && contextToken.startsWith(labelToken)) return label;
+  }
+  return '';
+}
 
 function looksLikeRecoPlaceholderSeedCopy(value) {
   const text = String(value || '').trim();
@@ -4068,10 +4112,36 @@ function looksLikeRecoPlaceholderSeedCopy(value) {
   return RECO_PLACEHOLDER_SEED_COPY_RE.test(text);
 }
 
+function cleanRecoVisibleCopy(value) {
+  let text = stripHtmlToText(value).replace(/\s+/g, ' ').trim();
+  if (!text) return '';
+  let previous = '';
+  while (text && previous !== text) {
+    previous = text;
+    text = text.replace(RECO_SCRAPED_VISIBLE_COPY_PREFIX_RE, '').trim();
+  }
+  return text;
+}
+
+function looksLikeRecoLowInformationVisibleCopy(value) {
+  const text = cleanRecoVisibleCopy(value);
+  if (!text) return false;
+  return RECO_LOW_INFORMATION_VISIBLE_COPY_RE.test(text);
+}
+
 function pickFirstNonPlaceholderRecoCopy(...values) {
   for (const value of values) {
     const trimmed = pickFirstTrimmed(value);
     if (!trimmed || looksLikeRecoPlaceholderSeedCopy(trimmed)) continue;
+    return trimmed;
+  }
+  return '';
+}
+
+function pickFirstVisibleRecoCopy(...values) {
+  for (const value of values) {
+    const trimmed = cleanRecoVisibleCopy(value);
+    if (!trimmed || looksLikeRecoPlaceholderSeedCopy(trimmed) || looksLikeRecoLowInformationVisibleCopy(trimmed)) continue;
     return trimmed;
   }
   return '';
@@ -4111,14 +4181,6 @@ function normalizeRecoCatalogProduct(raw) {
       : '') ||
     '';
 
-  const brand =
-    sanitizeRecoCatalogBrand(
-      (typeof base.brand === 'string' && base.brand) ||
-      (typeof base.brand_name === 'string' && base.brand_name) ||
-      (typeof base.brandName === 'string' && base.brandName) ||
-      '',
-    );
-
   const name =
     (typeof base.name === 'string' && base.name) ||
     (typeof base.title === 'string' && base.title) ||
@@ -4129,6 +4191,17 @@ function normalizeRecoCatalogProduct(raw) {
     (typeof base.displayName === 'string' && base.displayName) ||
     name ||
     '';
+
+  const brand = normalizeRecoBeautyBrandLabel(
+    sanitizeRecoCatalogBrand(
+      (typeof base.brand === 'string' && base.brand) ||
+      (typeof base.brand_name === 'string' && base.brand_name) ||
+      (typeof base.brandName === 'string' && base.brandName) ||
+      '',
+    ),
+    displayName,
+    name,
+  );
 
   const skuId =
     (typeof base.sku_id === 'string' && base.sku_id) ||
@@ -4285,7 +4358,7 @@ function normalizeRecoCatalogProduct(raw) {
   );
   const socialRef = extractCandidateSocialReference(base);
   const price = extractCatalogCandidatePrice(base);
-  const shortDescription = pickFirstNonPlaceholderRecoCopy(
+  const shortDescription = pickFirstVisibleRecoCopy(
     base.short_description,
     base.shortDescription,
     base.subtitle,
@@ -4293,9 +4366,9 @@ function normalizeRecoCatalogProduct(raw) {
     base.seed_description,
     base.seedDescription,
   );
-  const description = pickFirstNonPlaceholderRecoCopy(base.description);
-  const bestFor = pickFirstNonPlaceholderRecoCopy(base.best_for, base.bestFor);
-  const whyThisOne = pickFirstNonPlaceholderRecoCopy(base.why_this_one, base.whyThisOne, base.reason);
+  const description = pickFirstVisibleRecoCopy(base.description);
+  const bestFor = pickFirstVisibleRecoCopy(base.best_for, base.bestFor);
+  const whyThisOne = pickFirstVisibleRecoCopy(base.why_this_one, base.whyThisOne, base.reason);
   const keyFeatures = asStringArray(
     [
       ...(Array.isArray(base.key_features) ? base.key_features : []),
@@ -4305,7 +4378,7 @@ function normalizeRecoCatalogProduct(raw) {
       ...(Array.isArray(base.keyIngredients) ? base.keyIngredients : []),
     ],
     8,
-  ).filter((item) => !looksLikeRecoPlaceholderSeedCopy(item));
+  ).map(cleanRecoVisibleCopy).filter((item) => item && !looksLikeRecoPlaceholderSeedCopy(item) && !looksLikeRecoLowInformationVisibleCopy(item));
   const compareHighlights = uniqCaseInsensitiveStrings(
     [
       ...(Array.isArray(base.compare_highlights) ? base.compare_highlights : []),
@@ -4317,7 +4390,8 @@ function normalizeRecoCatalogProduct(raw) {
       .map((item) => (isPlainObject(item)
         ? pickFirstTrimmed(item.body, item.text, item.description, item.headline, item.title, item.label)
         : pickFirstTrimmed(item)))
-      .filter((item) => item && !looksLikeRecoPlaceholderSeedCopy(item)),
+      .map(cleanRecoVisibleCopy)
+      .filter((item) => item && !looksLikeRecoPlaceholderSeedCopy(item) && !looksLikeRecoLowInformationVisibleCopy(item)),
     6,
   );
   const productIntel = pickRecoProductIntelBundle(base);
@@ -19248,9 +19322,9 @@ function truncateRecoNarrativeSnippet(value, maxLen = 180) {
 }
 
 function compactRecoNarrativeSnippet(value, { maxLen = 180, hintText = '' } = {}) {
-  const raw = stripHtmlToText(value).replace(/\s+/g, ' ').trim();
+  const raw = cleanRecoVisibleCopy(value);
   if (!raw) return '';
-  if (looksLikeRecoPlaceholderSeedCopy(raw)) return '';
+  if (looksLikeRecoPlaceholderSeedCopy(raw) || looksLikeRecoLowInformationVisibleCopy(raw)) return '';
   const cleaned = raw
     .replace(/\b(?:ingredients?|ingredient list|testing shows|clinical results?|how to use|directions?|warnings?|warning|caution|disclaimer|net wt|size)\b[\s\S]*$/i, '')
     .trim();
@@ -19314,7 +19388,7 @@ function pickRecoSpecificNarrativeSnippet({
   ];
   for (const candidate of candidates) {
     const snippet = compactRecoNarrativeSnippet(candidate, { maxLen, hintText });
-    if (!snippet || looksLikeGenericRecoDerivedNarrative(snippet)) continue;
+    if (!snippet || looksLikeGenericRecoDerivedNarrative(snippet) || looksLikeRecoLowInformationVisibleCopy(snippet)) continue;
     return snippet;
   }
   return '';
@@ -19354,7 +19428,7 @@ function buildRecoProductEvidencePoints({
         ...(Array.isArray(base.key_ingredients) ? base.key_ingredients : []),
       ].filter(Boolean).join(' '),
     }))
-    .filter((value) => value && !looksLikeGenericRecoDerivedNarrative(value));
+    .filter((value) => value && !looksLikeGenericRecoDerivedNarrative(value) && !looksLikeRecoLowInformationVisibleCopy(value));
   const featureCandidates = collectRecoPromptTextList(
     [
       ...(Array.isArray(base.key_features) ? base.key_features : []),
@@ -19372,7 +19446,7 @@ function buildRecoProductEvidencePoints({
       ...(Array.isArray(intelCore?.best_for) ? intelCore.best_for : []),
     ],
     { max: Math.max(2, max), maxLen: 72 },
-  ).filter((value) => !looksLikeRecoPlaceholderSeedCopy(value));
+  ).map(cleanRecoVisibleCopy).filter((value) => value && !looksLikeRecoPlaceholderSeedCopy(value) && !looksLikeRecoLowInformationVisibleCopy(value));
   return uniqCaseInsensitiveStrings(
     [
       ...narrativeCandidates,
@@ -19409,7 +19483,7 @@ function buildRecoVisibleProductFields(picked, { role = null, language = 'EN' } 
     row.subject?.image_url,
     row.subject?.imageUrl,
   );
-  const shortDescription = pickFirstNonPlaceholderRecoCopy(
+  const shortDescription = pickFirstVisibleRecoCopy(
     row.short_description,
     row.shortDescription,
     row.subtitle,
@@ -19451,7 +19525,7 @@ function buildRecoVisibleProductFields(picked, { role = null, language = 'EN' } 
     stableAnchorProduct,
     language,
   });
-  const description = pickFirstNonPlaceholderRecoCopy(
+  const description = pickFirstVisibleRecoCopy(
     row.description,
     row.sku?.description,
     row.product?.description,
@@ -19475,8 +19549,8 @@ function buildRecoVisibleProductFields(picked, { role = null, language = 'EN' } 
     row.sku?.purchasePath,
   );
   const price = extractCatalogCandidatePrice(row);
-  return {
-    ...(pickFirstTrimmed(
+  const visibleBrand = normalizeRecoBeautyBrandLabel(
+    pickFirstTrimmed(
       row.brand,
       row.brand_name,
       row.brandName,
@@ -19487,20 +19561,16 @@ function buildRecoVisibleProductFields(picked, { role = null, language = 'EN' } 
       row.product?.brand_name,
       row.product?.brandName,
       stableAnchorProduct?.brand,
-    ) ? {
-      brand: pickFirstTrimmed(
-        row.brand,
-        row.brand_name,
-        row.brandName,
-        row.sku?.brand,
-        row.sku?.brand_name,
-        row.sku?.brandName,
-        row.product?.brand,
-        row.product?.brand_name,
-        row.product?.brandName,
-        stableAnchorProduct?.brand,
-      ),
-    } : {}),
+    ),
+    row.display_name,
+    row.displayName,
+    row.name,
+    row.title,
+    stableAnchorProduct?.display_name,
+    stableAnchorProduct?.name,
+  );
+  return {
+    ...(visibleBrand ? { brand: visibleBrand } : {}),
     ...(pickFirstTrimmed(
       row.name,
       row.title,
