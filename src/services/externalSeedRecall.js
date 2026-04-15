@@ -48,6 +48,7 @@ const AMBIGUOUS_RECALL_CATEGORY_KEYS = new Set([
 ]);
 const RECALL_LEAF_CATEGORY_PATTERNS = Object.freeze([
   ['Hair Oil', /\bhair(?:[\s-]+[a-z0-9+-]+){0,4}[\s-]+oils?\b/i],
+  ['Body Oil', /\bbody(?:[\s-]+[a-z0-9+-]+){0,4}[\s-]+oils?\b/i],
   ['Lip Balm', /\blip(?:[\s-]+[a-z0-9+-]+){0,4}[\s-]+balms?\b/i],
   ['Lip Oil', /\blip(?:[\s-]+[a-z0-9+-]+){0,3}[\s-]+oils?\b/i],
   ['Conditioner', /\bconditioners?\b/i],
@@ -194,6 +195,9 @@ function normalizeRecallLeafCategory(value, { allowBroad = false } = {}) {
 }
 
 function resolveRecallCategory({ seedData = {}, snapshot = {}, row = {}, title = '', textCandidates = [] } = {}) {
+  const titleLeaf = inferRecallLeafCategoryFromText(title);
+  if (titleLeaf) return titleLeaf;
+
   const productTypeLeaf = [
     seedData.product_type,
     seedData?.product?.product_type,
@@ -215,9 +219,6 @@ function resolveRecallCategory({ seedData = {}, snapshot = {}, row = {}, title =
     .map((value) => normalizeRecallLeafCategory(value))
     .find(Boolean);
   if (categoryLeaf) return categoryLeaf;
-
-  const titleLeaf = inferRecallLeafCategoryFromText(title);
-  if (titleLeaf) return titleLeaf;
 
   const inferredLeaf = inferRecallLeafCategoryFromText((Array.isArray(textCandidates) ? textCandidates : []).join(' '));
   if (inferredLeaf) return inferredLeaf;
