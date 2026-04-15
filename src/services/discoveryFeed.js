@@ -393,7 +393,7 @@ const BEAUTY_INTEREST_CATEGORY_BY_PHRASE = Object.freeze({
   },
   shampoo: {
     categories: ['shampoo'],
-    textQueryFields: ['title'],
+    textQueryFields: ['title', 'summary'],
     skipIndexedCategoryHead: true,
     verticals: ['haircare'],
   },
@@ -4973,6 +4973,7 @@ function buildExactPhraseTextFieldStageDefinitions({
 
   const fieldDefinitions = [
     [48, EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalTitle, 'title'],
+    [42, EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalSummary, 'summary'],
     [40, EXTERNAL_SEED_RECALL_SQL_FIELDS.ingredientTokens, 'ingredient_tokens'],
     [38, EXTERNAL_SEED_RECALL_SQL_FIELDS.aliasTokens, 'alias_tokens'],
   ].filter(([, , label]) => allowedFieldLabels.has(label));
