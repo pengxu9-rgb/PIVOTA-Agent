@@ -5957,6 +5957,54 @@ describe('discovery feed service', () => {
     expect(_internals.matchesQueryTextCandidate(candidate, 'vitamin c')).toBe(true);
   });
 
+  test('query text matcher treats short acid terms as bounded tokens', () => {
+    const ahaPeel = _internals.normalizeCandidateProduct(
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'aha_peel_1',
+        title: 'AHA 30% + BHA 2% Peeling Solution',
+        category: 'Exfoliant',
+        product_type: 'Peel',
+      }),
+      0,
+    );
+    const bhaExfoliant = _internals.normalizeCandidateProduct(
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'bha_exfoliant_1',
+        title: 'Skin Perfecting 2% BHA Liquid Exfoliant',
+        category: 'Exfoliant',
+        product_type: 'Exfoliant',
+      }),
+      0,
+    );
+    const mahamaneOil = _internals.normalizeCandidateProduct(
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'mahamane_1',
+        title: 'MahaMane Smooth & Shine Hair Oil',
+        category: 'Hair Oil',
+        product_type: 'Hair Oil',
+      }),
+      0,
+    );
+    const kalahariLipOil = _internals.normalizeCandidateProduct(
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: 'kalahari_1',
+        title: 'Kalahari Melon Lip Oil',
+        category: 'Lip Oil',
+        product_type: 'Lip Oil',
+      }),
+      0,
+    );
+
+    expect(_internals.matchesQueryTextCandidate(ahaPeel, 'aha')).toBe(true);
+    expect(_internals.matchesQueryTextCandidate(bhaExfoliant, 'bha')).toBe(true);
+    expect(_internals.matchesQueryTextCandidate(mahamaneOil, 'aha')).toBe(false);
+    expect(_internals.matchesQueryTextCandidate(kalahariLipOil, 'aha')).toBe(false);
+  });
+
   test('query text matcher removes broad beauty merch and tool noise unless explicitly requested', () => {
     const makeupBag = _internals.normalizeCandidateProduct(
       makeProduct({
@@ -6169,6 +6217,8 @@ describe('discovery feed service', () => {
       ['deodorant', ['deodorant', 'body deodorant']],
       ['exfoliant', ['exfoliant']],
       ['glycolic acid', ['exfoliant']],
+      ['lactic acid', ['exfoliant']],
+      ['aha', ['exfoliant']],
       ['bha', ['exfoliant']],
       ['hydrating mask', ['hydrating mask', 'hydration mask']],
       ['clay mask', ['clay mask', 'clay stick mask']],
@@ -6199,6 +6249,16 @@ describe('discovery feed service', () => {
       expect(_internals.shouldSkipExplicitCategorySeedStage(request, recallTerms)).toBe(true);
       expect(_internals.shouldSkipExplicitVerticalSeedStage(request, recallTerms)).toBe(true);
       expect(_internals.resolveExplicitQueryExternalSeedMainlineAcceptThreshold(request, 60)).toBe(18);
+      if (['glycolic acid', 'lactic acid', 'aha', 'bha'].includes(queryText)) {
+        const exactTextPatterns = _internals.resolveExactPhraseTextUnionPatterns(request, recallTerms);
+        expect(exactTextPatterns).not.toContain('%aha%');
+        expect(exactTextPatterns).not.toContain('%bha%');
+        expect(_internals.resolveExactPhraseTextUnionFieldLabels(request, recallTerms)).toEqual([
+          'title',
+          'ingredient_tokens',
+          'alias_tokens',
+        ]);
+      }
     }
   });
 

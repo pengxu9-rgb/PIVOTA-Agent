@@ -23,6 +23,7 @@ describe('find_similar_products mainline wrapper', () => {
           product_id: 'sim_1',
           merchant_id: 'external_seed',
           title: 'Similar Product 1',
+          card_highlight: 'Same routine fit with a stronger finish.',
         },
       ],
       metadata: {
