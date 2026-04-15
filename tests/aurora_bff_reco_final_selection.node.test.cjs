@@ -2562,6 +2562,83 @@ test('beauty mainline reco rows promote visible nested product fields to top lev
   }
 });
 
+test('beauty mainline reco hydrates selected card evidence from product intel KB', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  const productIntelKbStore = require('../src/auroraBff/productIntelKbStore');
+  try {
+    productIntelKbStore.__internal.clearMemoryCacheForTest();
+    await productIntelKbStore.upsertProductIntelKbEntry({
+      kb_key: 'product:hydrated_reco_pick',
+      analysis: {
+        product_intel_v1: {
+          contract_version: 'pivota.product_intel.v1',
+          product_intel_core: {
+            what_it_is: {
+              body: 'A seller-grounded serum for visible shine and excess oil.',
+            },
+            why_it_stands_out: [
+              {
+                headline: 'Niacinamide + zinc pairing',
+                body: 'Pairs niacinamide with zinc PCA for oily-skin shine and visible pore concerns.',
+              },
+            ],
+            best_for: [
+              {
+                label: 'Excess oil or midday shine',
+              },
+            ],
+          },
+          shopping_card: {
+            title: 'Hydrated Reco Pick',
+            subtitle: 'Oil-control serum',
+            intro: 'A focused serum for excess oil and visible pores.',
+          },
+        },
+      },
+      source_meta: {
+        review_tier: 'assistant_reviewed',
+      },
+      last_success_at: new Date().toISOString(),
+    });
+
+    const hydrated = await __internal.hydrateRecoCandidatesProductIntelFromKb([
+      {
+        product_id: 'hydrated_reco_pick',
+        merchant_id: 'merchant_demo',
+        display_name: 'Hydrated Reco Pick',
+        category: 'Serum',
+      },
+    ]);
+    const rows = __internal.buildRecoRowsFromMainlineProducts(hydrated, {
+      targetContext: {
+        resolved_target_step: 'treatment',
+        primary_role_id: 'oil_control_treatment',
+        framework_roles: [
+          {
+            role_id: 'oil_control_treatment',
+            label: 'Oil-control treatment',
+            rank: 1,
+            preferred_step: 'treatment',
+          },
+        ],
+      },
+      language: 'EN',
+    });
+
+    assert.equal(hydrated[0].metadata.product_intel_kb_used, true);
+    assert.equal(rows[0].pivota_insights.what_it_is, 'A seller-grounded serum for visible shine and excess oil.');
+    assert.deepEqual(rows[0].compare_highlights, [
+      'Pairs niacinamide with zinc PCA for oily-skin shine and visible pore concerns.',
+      'Best for Excess oil or midday shine',
+      'Oil-control serum',
+    ]);
+    assert.equal(rows[0].why_this_one, 'Pairs niacinamide with zinc PCA for oily-skin shine and visible pore concerns.');
+  } finally {
+    productIntelKbStore.__internal.clearMemoryCacheForTest();
+    delete require.cache[moduleId];
+  }
+});
+
 test('beauty mainline reco rows derive stable brand and shopper fields when source row is sparse', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {

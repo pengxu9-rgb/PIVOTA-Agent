@@ -15825,6 +15825,132 @@
     "external_highlight_review_status": "rewrite",
     "external_review_batch": "main_reco_quality_audit_2026_04_14"
   },
+  "product:10008793153864": {
+    "notes": "Assistant-reviewed seller/formula-grounded override for Aurora beauty mainline barrier-support recommendation quality.",
+    "review_status": "completed",
+    "review_decision": "rewrite",
+    "reviewer": "Codex",
+    "reviewer_kind": "assistant",
+    "reviewed_at": "2026-04-15T08:05:00.000Z",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Barrier-support serum",
+        "body": "A skin-soothing serum centered on tamanu oil, niacinamide, and barrier-supporting emollients for irritated, tight, or compromised-feeling skin."
+      },
+      "best_for": [
+        {
+          "tag": "barrier_support",
+          "label": "Compromised or tight skin barrier",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "sensitive_irritated_skin",
+          "label": "Sensitive or irritated-feeling skin",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "post_active_recovery",
+          "label": "Recovery after strong active use",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Tamanu + niacinamide pairing",
+          "body": "The product record centers tamanu oil and niacinamide, giving the serum a clearer barrier-repair angle than plain hydration alone.",
+          "evidence_strength": "seller_formula_grounded"
+        },
+        {
+          "headline": "Richer support blend",
+          "body": "Glycerin, squalane, oat kernel flour, sodium hyaluronate and ceramide NP add hydration and comfort cues for stressed skin.",
+          "evidence_strength": "seller_formula_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "serum",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use before moisturizer; follow with sunscreen in the morning.",
+          "Pair with a simple routine when skin feels irritated or over-treated."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "botanical_oil",
+          "label": "Patch test if you are sensitive to botanical oils or nut-derived oils.",
+          "severity": "medium"
+        },
+        {
+          "type": "usage_cadence",
+          "label": "Keep exfoliating acids and retinoids minimal while your barrier feels compromised.",
+          "severity": "medium"
+        }
+      ],
+      "confidence": {
+        "overall": "moderate",
+        "fields": {
+          "what_it_is": "moderate",
+          "best_for": "moderate",
+          "why_it_stands_out": "moderate",
+          "routine_fit": "moderate",
+          "watchouts": "moderate"
+        }
+      },
+      "freshness": {
+        "generated_at": "2026-04-15T08:05:00.000Z",
+        "source_version": "manual_quality_override_20260415"
+      },
+      "quality_state": "limited",
+      "evidence_profile": "seller_plus_formula",
+      "source_coverage": {
+        "seller": {
+          "available": true
+        },
+        "formula": {
+          "available": true
+        },
+        "reviews": {
+          "available": false,
+          "count": 0
+        },
+        "creator": {
+          "available": false,
+          "count": 0
+        },
+        "editorial": {
+          "available": false,
+          "count": 0
+        }
+      }
+    },
+    "texture_finish": {
+      "texture": "serum",
+      "finish": "nourishing",
+      "sensory_notes": [
+        "emollient barrier-support feel"
+      ],
+      "layering_notes": [
+        "Layer before moisturizer and daytime SPF."
+      ],
+      "confidence": "moderate",
+      "evidence_profile": "seller_plus_formula"
+    },
+    "shopping_card": {
+      "subtitle": "Barrier-support serum",
+      "highlight": "Tamanu + niacinamide",
+      "intro": "A skin-soothing serum for barrier support and stressed skin."
+    },
+    "search_card": {
+      "compact_candidate": "Barrier-support serum",
+      "highlight_candidate": "Tamanu + niacinamide",
+      "intro_candidate": "A skin-soothing serum for barrier support and stressed skin."
+    },
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "main_reco_quality_audit_2026_04_15"
+  },
   "product:ext_bbe1ff8884f06d874bbccbd8": {
     "notes": "Assistant-reviewed seller-grounded override for Aurora beauty mainline oily-skin recommendation quality.",
     "review_status": "completed",
