@@ -393,10 +393,14 @@ const BEAUTY_INTEREST_CATEGORY_BY_PHRASE = Object.freeze({
   },
   shampoo: {
     categories: ['shampoo'],
+    textQueryFields: ['title'],
+    skipIndexedCategoryHead: true,
     verticals: ['haircare'],
   },
   conditioner: {
     categories: ['conditioner', 'leave in conditioner', 'deep conditioner'],
+    textQueryFields: ['title'],
+    skipIndexedCategoryHead: true,
     verticals: ['haircare'],
   },
   'leave in conditioner': {
@@ -4885,6 +4889,7 @@ function resolveExplicitExactBeautyPhraseHint(request, recallTerms = {}) {
       10,
     ),
     textQueryFields: Array.isArray(exactHint.textQueryFields) ? exactHint.textQueryFields.slice() : [],
+    skipIndexedCategoryHead: exactHint.skipIndexedCategoryHead === true,
     negativeTextTerms: uniqStrings(
       (Array.isArray(exactHint.negativeTextTerms) ? exactHint.negativeTextTerms : [])
         .map((term) => normalizeText(term || ''))
@@ -4908,7 +4913,9 @@ function resolveExplicitIndexedCategoryHeadTerms(request, recallTerms = {}) {
   if (shouldSkipBroadStructuredSeedStagesForExplicitQuery(request, recallTerms)) return [];
 
   const exactPhraseHint = resolveExplicitExactBeautyPhraseHint(request, recallTerms);
-  if (exactPhraseHint) return exactPhraseHint.categories;
+  if (exactPhraseHint) {
+    return exactPhraseHint.skipIndexedCategoryHead ? [] : exactPhraseHint.categories;
+  }
 
   const normalizedQuery = normalizeText(request?.query?.text || '');
   if (!normalizedQuery) return [];
