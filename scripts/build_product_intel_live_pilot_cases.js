@@ -498,12 +498,14 @@ function extractReviewSummaryFromTextBlock(block) {
   const ratingMatch =
     text.match(/["']reviewAverageValue["']\s*:\s*["']?([\d.]+)/i) ||
     text.match(/["']ratingValue["']\s*:\s*["']?([\d.]+)/i) ||
+    text.match(/["']value["']\s*:\s*["']?([\d.]+)/i) ||
     text.match(/["']rating["']\s*:\s*["']?([\d.]+)/i) ||
     text.match(/["']average_rating["']\s*:\s*["']?([\d.]+)/i);
   const countMatch =
     text.match(/["']reviewCount["']\s*:\s*["']?([\d,]+)/i) ||
     text.match(/["']review_count["']\s*:\s*["']?([\d,]+)/i) ||
     text.match(/["']total_reviews["']\s*:\s*["']?([\d,]+)/i) ||
+    text.match(/["']rating_count["']\s*:\s*["']?([\d,]+)/i) ||
     text.match(/["']ratingCount["']\s*:\s*["']?([\d,]+)/i);
   return normalizeReviewSummary({
     rating: parseReviewNumber(ratingMatch?.[1]),
@@ -686,7 +688,7 @@ function normalizeIngredientName(value) {
   text = text.replace(/^[•*\-\s]+/, '').replace(/[.;,]+$/, '').trim();
   if (!text) return '';
   if (/^(?:key features|how it works|scent|size)\b/i.test(text)) return '';
-  if (/\b(?:your|our|skin|order|checkout|glow|routine|texture|benefits?|results?|instantly|clinically|moisturiz(?:e|es|ing)|hydrate(?:s|d|ing)?|supports?|helps?|contains?|formulated|wear|coverage|shades?|versatile|tint|lightweight|makeup|finder|spf|including|combine|fast-acting|growth factors?)\b/i.test(text)) {
+  if (/\b(?:your|our|skin|order|checkout|glow|routine|texture|benefits?|results?|instantly|clinically|moisturiz(?:e|es|ing)|hydrate(?:s|d|ing)?|supports?|helps?|helping|contains?|formulated|wear|coverage|shades?|versatile|tint|lightweight|makeup|finder|spf|including|combine|fast-acting|growth factors?|sunburn|premature|aging|reflect|scatter|rays|protection|broad-spectrum|uva|uvb|effectively)\b/i.test(text)) {
     return '';
   }
   if (
@@ -734,14 +736,23 @@ function findIngredientBlockStart(source) {
 }
 
 function startsLikeIngredientList(value) {
-  const first = normalizeSourceFactText(value).split(/,\s+/)[0] || '';
+  const first = trimToIngredientListStart(normalizeSourceFactText(value)).split(/,\s+/)[0] || '';
   return /^(?:water(?:\s|\(|$)|aqua(?:\s|\(|$)|eau(?:\s|\(|$)|zinc oxide\b|titanium dioxide\b|glycerin\b|butylene glycol\b|propanediol\b|niacinamide\b|alcohol denat\b|dimethicone\b|caprylic\/capric\b|coco-caprylate\b|isododecane\b|cyclopentasiloxane\b)/i.test(
     first.trim(),
   );
 }
 
-function looksLikeDelimitedIngredientBlock(value) {
+function trimToIngredientListStart(value) {
   const text = normalizeSourceFactText(value);
+  const match = text.match(
+    /\b(?:water(?:\s|\(|,)|aqua(?:\s|\(|,)|eau(?:\s|\(|,)|zinc oxide\b|titanium dioxide\b|glycerin\b|butylene glycol\b|propanediol\b|niacinamide\b|alcohol denat\b|dimethicone\b|caprylic\/capric\b|coco-caprylate\b|isododecane\b|cyclopentasiloxane\b)/i,
+  );
+  if (!match || match.index == null || match.index > 120) return text;
+  return text.slice(match.index).trim();
+}
+
+function looksLikeDelimitedIngredientBlock(value) {
+  const text = trimToIngredientListStart(value);
   if (text.length < 35 || text.length > 3000) return false;
   if ((text.match(/,/g) || []).length < 3) return false;
   if (!startsLikeIngredientList(text)) return false;
@@ -780,9 +791,11 @@ function looksLikeCorruptedIngredientBlock(value) {
 }
 
 function extractDelimitedIngredientNames(value) {
-  const text = normalizeSourceFactText(value)
-    .replace(/^(?:full\s+)?ingredients?\s*(?:list)?\s*[:\-]?\s*/i, '')
-    .trim();
+  const text = trimToIngredientListStart(
+    normalizeSourceFactText(value)
+      .replace(/^(?:full\s+)?ingredients?\s*(?:list)?\s*[:\-]?\s*/i, '')
+      .trim(),
+  );
   if (!looksLikeDelimitedIngredientBlock(text)) return [];
   return text
     .split(/,\s+/)
@@ -799,19 +812,20 @@ function extractIngredientNamesFromText(text) {
     /\n\s*(?:Version|Other Details|How to Use|Directions|Disclaimer|FAQ|Frequently Asked Questions|Results|Free From)\b/i,
   );
   const ingredientBlock = stopMatch ? scoped.slice(0, stopMatch.index) : scoped;
-  const out = [];
+  const delimitedOut = [];
+  const lineOut = [];
   for (const line of ingredientBlock.split(/\n+/)) {
     const cleaned = line.replace(/^\s*(?:key\s+)?Ingredients?\s*/i, '').trim();
     if (!cleaned) continue;
     const delimitedItems = extractDelimitedIngredientNames(cleaned);
     for (const item of delimitedItems) {
-      pushIngredientName(out, item);
+      pushIngredientName(delimitedOut, item);
     }
     if (delimitedItems.length) continue;
     if (cleaned.includes(',')) continue;
-    pushIngredientName(out, cleaned);
+    pushIngredientName(lineOut, cleaned);
   }
-  return out;
+  return delimitedOut.length >= 3 ? delimitedOut : lineOut;
 }
 
 function extractIngredientNamesFromHtmlParagraphs(html) {
@@ -833,17 +847,21 @@ function extractSourceIngredientsFromHtml(html, descriptionHtml = '') {
   if (tableRows.length >= 3) {
     return tableRows;
   }
+  const paragraphRows = [];
+  for (const item of extractIngredientNamesFromHtmlParagraphs(descriptionHtml)) {
+    pushIngredientName(paragraphRows, item);
+  }
+  for (const item of extractIngredientNamesFromHtmlParagraphs(source)) {
+    pushIngredientName(paragraphRows, item);
+  }
+  if (paragraphRows.length >= 3) {
+    return paragraphRows;
+  }
   const out = [...tableRows];
   for (const item of extractIngredientNamesFromText(descriptionHtml)) {
     pushIngredientName(out, item);
   }
   for (const item of extractIngredientNamesFromText(extractHtmlAttributeValue(source, 'data-description'))) {
-    pushIngredientName(out, item);
-  }
-  for (const item of extractIngredientNamesFromHtmlParagraphs(descriptionHtml)) {
-    pushIngredientName(out, item);
-  }
-  for (const item of extractIngredientNamesFromHtmlParagraphs(source)) {
     pushIngredientName(out, item);
   }
   return out;
@@ -928,6 +946,10 @@ function extractSourceReviewSummaryFromHtml(html) {
 
   const okendoBlock = source.match(/okendoProduct\s*=\s*\{[\s\S]{0,2000}?\}/i)?.[0];
   pushCandidate(extractReviewSummaryFromTextBlock(okendoBlock));
+
+  for (const match of source.matchAll(/MetafieldReviews\s*=\s*\{[\s\S]{0,1200}?\};/gi)) {
+    pushCandidate(extractReviewSummaryFromTextBlock(match[0]));
+  }
 
   for (const match of source.matchAll(/["']aggregateRating["']\s*:\s*\{[\s\S]{0,1600}?\}/gi)) {
     pushCandidate(extractReviewSummaryFromTextBlock(match[0]));

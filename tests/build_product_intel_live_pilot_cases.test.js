@@ -688,6 +688,46 @@ describe('build_product_intel_live_pilot_cases', () => {
     expect(extractSourceProductFactsFromHtml(html).ingredients_inci).toBeUndefined();
   });
 
+  test('extracts full INCI after non-INCI product-benefit prefixes', () => {
+    const html = `
+      <div class="tab-panel">
+        <h4>Full Ingredients</h4>
+        <p class="full_ingredients">Hydrating Soothing UV Protection WATER, ZINC OXIDE, CAPRYLYL METHICONE, METHYL TRIMETHICONE, BUTYLENE GLYCOL, GLYCERIN, TOCOPHEROL</p>
+      </div>
+    `;
+
+    expect(extractSourceProductFactsFromHtml(html).ingredients_inci).toEqual([
+      'WATER',
+      'ZINC OXIDE',
+      'CAPRYLYL METHICONE',
+      'METHYL TRIMETHICONE',
+      'BUTYLENE GLYCOL',
+      'GLYCERIN',
+      'TOCOPHEROL',
+    ]);
+  });
+
+  test('does not mix key-ingredient bullets into full comma-delimited INCI', () => {
+    const html = `
+      <section>
+        <h3>Key Ingredients</h3>
+        <p><strong>Zinc Oxide</strong>: Gentle mineral UV filter for broad-spectrum protection</p>
+        <h4>Full Ingredients</h4>
+        <p>Hydrating Soothing UV Protection WATER, ZINC OXIDE, CAPRYLYL METHICONE, METHYL TRIMETHICONE, BUTYLENE GLYCOL, GLYCERIN, TOCOPHEROL</p>
+      </section>
+    `;
+
+    expect(extractSourceProductFactsFromHtml(html).ingredients_inci).toEqual([
+      'WATER',
+      'ZINC OXIDE',
+      'CAPRYLYL METHICONE',
+      'METHYL TRIMETHICONE',
+      'BUTYLENE GLYCOL',
+      'GLYCERIN',
+      'TOCOPHEROL',
+    ]);
+  });
+
   test('trims source description section soup before insights candidate generation', () => {
     const descriptionHtml = [
       '<p>Meet the Tint + SPF You’ll Actually Wear Naturally radiant, this tinted fluid sunscreen balances hydration and control.</p>',
@@ -726,6 +766,19 @@ describe('build_product_intel_live_pilot_cases', () => {
         timeout: 5000,
       }),
     );
+  });
+
+  test('extracts Klaviyo metafield review aggregate from official product HTML', () => {
+    expect(
+      extractSourceReviewSummaryFromHtml(`
+        <script>
+          MetafieldReviews = {"rating":{"scale_min":"1.0","scale_max":"5.0","value":"4.67"},"rating_count":69};
+        </script>
+      `),
+    ).toEqual({
+      rating: 4.67,
+      review_count: 69,
+    });
   });
 
   test('uses reviews_preview review summary when live PDP exposes review aggregate', () => {
