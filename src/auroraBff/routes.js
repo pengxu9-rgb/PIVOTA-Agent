@@ -8290,11 +8290,87 @@ function buildLocalExternalSeedExactCategoryHeadTerms({ query = '', categoryTerm
   return [];
 }
 
+function buildLocalExternalSeedCategoryPositiveStage({
+  query = '',
+  role = null,
+  preferredStep = '',
+  categoryTerms = [],
+} = {}) {
+  const step = normalizeRecoTargetStep(preferredStep || role?.preferred_step);
+  const haystack = [
+    query,
+    role?.role_id,
+    role?.label,
+    role?.preferred_step,
+    ...(Array.isArray(role?.query_terms) ? role.query_terms : []),
+    ...(Array.isArray(role?.fit_keywords) ? role.fit_keywords : []),
+    ...(Array.isArray(role?.product_type_hypotheses) ? role.product_type_hypotheses : []),
+  ]
+    .map((value) => String(value || '').trim().toLowerCase())
+    .filter(Boolean)
+    .join(' ');
+  if (!haystack) return null;
+
+  const terms = uniqCaseInsensitiveStrings(categoryTerms, 10)
+    .map((value) => String(value || '').trim().toLowerCase())
+    .filter(Boolean);
+  const pickTerms = (allowed) => {
+    const allowedSet = new Set(allowed);
+    return terms.filter((term) => allowedSet.has(term));
+  };
+  const addPatterns = (...values) =>
+    uniqCaseInsensitiveStrings(
+      values
+        .flat()
+        .map((value) => String(value || '').trim().toLowerCase())
+        .filter((value) => value.length >= 3),
+      12,
+    ).map((value) => `%${value}%`);
+
+  if (
+    step === 'moisturizer'
+    && /\b(gel[-\s]?cream|water[-\s]?(gel|cream)|oil[-\s]?free|lightweight|moisturi[sz]er|cream|lotion|emulsion|barrier|hydrating|hydration)\b/.test(haystack)
+  ) {
+    const positivePatterns = addPatterns(
+      /\bgel[-\s]?cream\b/.test(haystack) ? ['gel cream', 'gel-cream', 'water gel', 'water cream'] : [],
+      /\boil[-\s]?free\b/.test(haystack) ? ['oil free', 'oil-free'] : [],
+      /\blightweight\b/.test(haystack) ? ['lightweight'] : [],
+      /\bbarrier\b/.test(haystack) ? ['barrier', 'repair'] : [],
+      /\bhydrat/.test(haystack) ? ['hydrating', 'hydration'] : [],
+      ['moisturizer', 'moisturiser', 'cream', 'lotion', 'emulsion'],
+    );
+    const categories = pickTerms(['moisturizer', 'moisturiser', 'cream', 'gel cream', 'gel-cream', 'lotion', 'emulsion']);
+    if (categories.length && positivePatterns.length) {
+      return { categoryTerms: categories, positivePatterns };
+    }
+  }
+
+  if (
+    (step === 'serum' || step === 'treatment')
+    && /\b(hyaluronic|sodium hyaluronate|hydrating|hydration|serum|essence|ampoule)\b/.test(haystack)
+  ) {
+    const preciseHydrationPatterns = addPatterns(
+      /\bhyaluronic\b/.test(haystack) ? ['hyaluronic acid', 'hyaluronic', 'sodium hyaluronate'] : [],
+      /\bhydrat/.test(haystack) ? ['hydrating', 'hydration'] : [],
+      /\bessence\b/.test(haystack) ? ['essence'] : [],
+      /\bampoule\b/.test(haystack) ? ['ampoule'] : [],
+    );
+    const categories = pickTerms(['serum', 'treatment', 'ampoule', 'essence']);
+    if (categories.length && preciseHydrationPatterns.length) {
+      return { categoryTerms: categories, positivePatterns: preciseHydrationPatterns };
+    }
+  }
+
+  return null;
+}
+
 function buildLocalExternalSeedSupportStageDefinitions({
   patterns = [],
   categoryTerms = [],
   safeLimit = 6,
   query = '',
+  role = null,
+  preferredStep = '',
 } = {}) {
   const stageDefinitions = [];
   const addStage = ({ stage, score, buildWhereSql, stopAfterAnyMatch = false }) => {
@@ -8317,6 +8393,34 @@ function buildLocalExternalSeedSupportStageDefinitions({
       stopAfterAnyMatch: true,
       buildWhereSql: (bind) =>
         `${EXTERNAL_SEED_RECALL_SQL_FIELDS.category} = ANY(${bind(exactCategoryTerms)}::text[])`,
+    });
+  }
+
+  const categoryPositiveStage = buildLocalExternalSeedCategoryPositiveStage({
+    query,
+    role,
+    preferredStep,
+    categoryTerms,
+  });
+  if (categoryPositiveStage) {
+    addStage({
+      stage: 'support_category_positive',
+      score: 54,
+      stopAfterAnyMatch: true,
+      buildWhereSql: (bind) => {
+        const categoryBind = bind(categoryPositiveStage.categoryTerms);
+        const patternBind = bind(categoryPositiveStage.positivePatterns);
+        return `(
+          ${EXTERNAL_SEED_RECALL_SQL_FIELDS.category} = ANY(${categoryBind}::text[])
+          AND (
+            lower(coalesce(title, '')) LIKE ANY(${patternBind}::text[])
+            OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalTitle} LIKE ANY(${patternBind}::text[])
+            OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.aliasTokens} LIKE ANY(${patternBind}::text[])
+            OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.ingredientTokens} LIKE ANY(${patternBind}::text[])
+            OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalSummary} LIKE ANY(${patternBind}::text[])
+          )
+        )`;
+      },
     });
   }
 
@@ -8366,6 +8470,8 @@ async function searchLocalExternalSeedProductsViaSupportStages({
     categoryTerms,
     safeLimit,
     query: q,
+    role,
+    preferredStep,
   });
   const stagedRows = [];
   const seenRowKeys = new Set();
@@ -21485,6 +21591,19 @@ function isConcernFrameworkStrongViableCandidate(candidate, role = null) {
     retrievalRoleMatched &&
     roleSemanticFit &&
     score >= 0.52
+  ) {
+    return true;
+  }
+  if (
+    preferredStep === 'serum' &&
+    candidateStep === preferredStep &&
+    retrievalRoleMatched &&
+    semanticFit &&
+    score >= 0.48 &&
+    (
+      String(product?.retrieval_source || '').trim().toLowerCase() === 'external_seed' ||
+      String(product?.merchant_id || product?.merchantId || '').trim().toLowerCase() === 'external_seed'
+    )
   ) {
     return true;
   }
