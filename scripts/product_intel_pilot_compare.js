@@ -202,6 +202,15 @@ function isGenericSellerHighlightText(text) {
   const normalized = asString(text).toLowerCase();
   if (!normalized) return false;
   return [
+    /\blisting-grounded\b/,
+    /\bdaytime uv step\b/,
+    /\bhydration and comfort\b/,
+    /\bdefines? the product\b/,
+    /\banchors? the product\b/,
+    /\banchors? (this )?(product|formula)\b/,
+    /\bworks? as a daily\b/,
+    /\bsupports? daily .*comfort-first\b/,
+    /\bavailable listing description\b/,
     /(^|\b)designed to\b/,
     /(^|\b)claims? to\b/,
     /(^|\b)features? a (lightweight|rich|gel|stick|buttery|non-greasy|smooth)\b/,
@@ -349,9 +358,11 @@ function inferProductKindFromContext(context) {
   const text = `${context?.title || ''} ${context?.category || ''} ${(context?.tags || []).join(' ')}`.toLowerCase();
   if (/\b(lip|lipstick|lip oil|lip balm|lip color|gloss|glaze)\b/.test(text)) return 'lip';
   if (/\b(fragrance|perfume|parfum|eau de parfum|edt|scent)\b/.test(text)) return 'fragrance';
+  if (/\b(sunscreen|spf|uv)\b/.test(text) && /\b(tint|tinted|skin tint)\b/.test(text)) return 'tinted_sunscreen';
   if (/\b(foundation|concealer|skin tint|tint|base|cc stick)\b/.test(text)) return 'complexion_makeup';
   if (/\b(cleanser|cleansing|face wash|wash)\b/.test(text)) return 'cleanser';
   if (/\b(sunscreen|spf|uv)\b/.test(text)) return 'sunscreen';
+  if (/\b(toner|toning water|skin prep)\b/.test(text)) return 'toner';
   if (/\b(moisturizer|moisturising|moisturizing|cream|gel-cream|lotion)\b/.test(text)) return 'moisturizer';
   if (/\b(serum|ampoule|treatment|essence)\b/.test(text)) return 'serum';
   return 'product';
@@ -790,6 +801,17 @@ function buildCompactHighlightHeadline(headlineValue, fallbackValue, maxLength =
 
 function buildProductContext(caseRow) {
   const product = caseRow?.product && typeof caseRow.product === 'object' ? caseRow.product : {};
+  const reviewSummary =
+    product.review_summary && typeof product.review_summary === 'object'
+      ? {
+          rating: product.review_summary.rating ?? product.review_summary.average_rating ?? null,
+          review_count:
+            product.review_summary.review_count ??
+            product.review_summary.reviewCount ??
+            product.review_summary.count ??
+            null,
+        }
+      : null;
   return {
     brand: asString(product.brand),
     title: asString(product.title || product.name),
@@ -797,6 +819,11 @@ function buildProductContext(caseRow) {
     description: cleanProductDescriptionForIntel(product.description),
     ingredients: toList(product.ingredients_inci || product.ingredients),
     tags: toList(product.tags),
+    texture: asString(product.texture),
+    finish: asString(product.finish),
+    how_to_use: asString(product.how_to_use || product.howToUse),
+    source_url: asString(product.source_url || product.product_url || product.canonical_url || product.external_url || product.url),
+    review_summary: reviewSummary,
   };
 }
 
@@ -1096,14 +1123,149 @@ function extractActiveTerms(context) {
   return terms.filter((term) => source.includes(term)).slice(0, 6);
 }
 
+function hasIngredientSignal(context, patterns) {
+  const source = toList(context?.ingredients).join(' ').toLowerCase();
+  return patterns.some((pattern) => pattern.test(source));
+}
+
+function buildFormulaSignals(context) {
+  const signals = [];
+  const add = (key, label, role) => {
+    if (signals.some((item) => item.key === key)) return;
+    signals.push({ key, label, role });
+  };
+
+  if (hasIngredientSignal(context, [/\bzinc oxide\b/, /\btitanium dioxide\b/])) {
+    add('mineral_uv_filters', 'zinc oxide mineral UV filters', 'UV protection');
+  }
+  if (
+    hasIngredientSignal(context, [
+      /\bdiethylamino hydroxybenzoyl hexyl benzoate\b/,
+      /\bbis-ethylhexyloxyphenol methoxyphenyl triazine\b/,
+      /\bethylhexyl triazone\b/,
+      /\bpolysilicone-15\b/,
+      /\bavobenzone\b/,
+      /\boctocrylene\b/,
+    ])
+  ) {
+    add('chemical_uv_filters', 'modern organic UV filters', 'UV protection');
+  }
+  if (hasIngredientSignal(context, [/\bpotassium pca\b/, /\bmagnesium pca\b/, /\bcalcium pca\b/, /\bsodium pca\b/])) {
+    add('electrolytes', 'PCA electrolyte humectants', 'water-binding hydration');
+  }
+  const hasRiceSignal = hasIngredientSignal(context, [/\boryza sativa\b/, /\brice extract\b/, /\brice amino acids\b/]);
+  const hasRiceAminoAcids = hasIngredientSignal(context, [/\brice amino acids\b/]);
+  const riceLabel = hasRiceAminoAcids ? 'rice extract and rice amino acids' : 'rice/rice-bran extract';
+  if (hasRiceSignal && /\brice\b/i.test(`${context?.title || ''} ${context?.description || ''}`)) {
+    add('rice_complex', riceLabel, 'hydrating prep');
+  }
+  if (hasIngredientSignal(context, [/\bniacinamide\b/])) {
+    add('niacinamide', 'niacinamide', 'tone and sebum support');
+  }
+  if (hasIngredientSignal(context, [/\bpanthenol\b/, /\bdipotassium glycyrrhizate\b/, /\bcentella asiatica\b/])) {
+    add('calming_support', 'panthenol and calming extracts', 'barrier comfort');
+  }
+  if (hasIngredientSignal(context, [/\bectoin\b/, /\bbisabolol\b/, /\bbambusa\b/, /\bbamboo\b/])) {
+    add('soothing_support', 'ectoin/bisabolol-style soothing support', 'comfort');
+  }
+  if (hasIngredientSignal(context, [/\bceramide\b/, /\bhydrogenated lecithin\b/])) {
+    add('barrier_lipids', 'ceramide/barrier-lipid support', 'barrier comfort');
+  }
+  if (hasIngredientSignal(context, [/\bglycerin\b/, /\bpropanediol\b/, /\bbutylene glycol\b/, /\bsodium hyaluronate\b/, /\bhyaluronic acid\b/])) {
+    add('humectants', 'humectants such as glycerin/propanediol', 'hydration');
+  }
+  if (hasRiceSignal) {
+    add('rice_complex', riceLabel, 'hydrating prep');
+  }
+  if (hasIngredientSignal(context, [/\bkaolin\b/, /\bsilica\b/, /\bpolymethyl methacrylate\b/])) {
+    add('soft_matte', 'soft-focus powders', 'oil/finish control');
+  }
+  if (hasIngredientSignal(context, [/\bpeptide\b/, /\bacetyl hexapeptide\b/])) {
+    add('peptides', 'peptides', 'firming-support routines');
+  }
+
+  return signals.slice(0, 4);
+}
+
+function formatReviewStat(reviewSummary) {
+  const rating = Number(reviewSummary?.rating || 0);
+  const reviewCount = Number(reviewSummary?.review_count || reviewSummary?.reviewCount || 0);
+  if (!rating || !reviewCount) return '';
+  const ratingText = Number.isInteger(rating) ? String(rating) : rating.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+  return `${ratingText}★ average across ${formatCompactCount(reviewCount)} buyer reviews`;
+}
+
+function hasStrongBuyerReviewSignal(reviewSummary) {
+  const rating = Number(reviewSummary?.rating || 0);
+  const reviewCount = Number(reviewSummary?.review_count || reviewSummary?.reviewCount || 0);
+  return rating >= 4.3 && reviewCount >= 100;
+}
+
+function isMarketingLeadText(text) {
+  const normalized = asString(text);
+  if (!normalized) return false;
+  return [
+    /^(meet|introducing|discover|say hello to|searching for|looking for)\b/i,
+    /\byou['’]ll actually wear\b/i,
+    /\bcelebrates? your\b/i,
+    /\btransform your\b/i,
+    /\?$/,
+  ].some((pattern) => pattern.test(normalized));
+}
+
+function buildFormulaPhrase(signals, maxItems = 3) {
+  const labels = signals.map((item) => item.label).filter(Boolean).slice(0, maxItems);
+  if (!labels.length) return '';
+  if (labels.length === 1) return labels[0];
+  if (labels.length === 2) return `${labels[0]} plus ${labels[1]}`;
+  return `${labels.slice(0, -1).join(', ')} plus ${labels[labels.length - 1]}`;
+}
+
+function buildHumanStandardBodyFromFacts(context, kind, formulaSignals) {
+  const formulaPhrase = buildFormulaPhrase(formulaSignals);
+  const withFormula = formulaPhrase ? ` built around ${formulaPhrase}` : '';
+  if (kind === 'tinted_sunscreen') {
+    return `A tinted daily sunscreen${withFormula} for AM UV protection, sheer tone-evening coverage, and makeup-friendly layering.`;
+  }
+  if (kind === 'sunscreen') {
+    return `A daily sunscreen${withFormula} for AM UV protection and comfortable daytime layering.`;
+  }
+  if (kind === 'toner') {
+    return `A hydrating toner${withFormula} for post-cleanse skin prep, soft feel, and dewy routine layering.`;
+  }
+  if (kind === 'moisturizer') {
+    return `A daily moisturizer${withFormula} for hydration, comfort, and barrier-supportive routine steps.`;
+  }
+  if (kind === 'serum') {
+    return `A treatment serum${withFormula} for targeted skin-care routines.`;
+  }
+  if (kind === 'cleanser') {
+    return `A daily cleanser${withFormula} for removing daily buildup while keeping the cleanse comfortable.`;
+  }
+  if (kind === 'complexion_makeup') {
+    return `A complexion product${withFormula} for coverage, finish control, and tone-evening wear.`;
+  }
+  return formulaPhrase
+    ? `A ${asString(context.category).toLowerCase() || 'product'} built around ${formulaPhrase}.`
+    : 'A product-level insight grounded in the available listing facts.';
+}
+
 function buildHumanStandardWhatItIs(context, baselineBundle) {
   const kind = inferProductKindFromContext(context);
-  const activeTerms = extractActiveTerms(context);
+  const formulaSignals = buildFormulaSignals(context);
   const usefulDescriptionRaw = firstUsefulSentence(context.description);
   const usefulDescription = hasProblematicGeneratedText(usefulDescriptionRaw)
     ? ''
     : normalizeSellerWhatItIs(usefulDescriptionRaw);
   const baseHeadline = asString(baselineBundle?.product_intel_core?.what_it_is?.headline);
+  const factsBody = buildHumanStandardBodyFromFacts(context, kind, formulaSignals);
+  const safeUsefulDescription =
+    usefulDescription &&
+    !isMarketingLeadText(usefulDescription) &&
+    !isWeakSellerWhatItIsText(usefulDescription)
+      ? usefulDescription
+      : '';
+  const preferredFactsBody = formulaSignals.length ? factsBody : safeUsefulDescription || factsBody;
 
   if (kind === 'lip') {
     return {
@@ -1114,55 +1276,63 @@ function buildHumanStandardWhatItIs(context, baselineBundle) {
   if (kind === 'fragrance') {
     return {
       headline: /fragrance|parfum|scent/i.test(baseHeadline) ? baseHeadline : 'Fragrance profile',
-      body: usefulDescription || `A fragrance product${activeTerms.length ? ` built around ${activeTerms.join(', ')} notes` : ''}.`,
+      body: preferredFactsBody,
+    };
+  }
+  if (kind === 'tinted_sunscreen') {
+    return {
+      headline: /tint|spf|sunscreen/i.test(baseHeadline) ? baseHeadline : 'Tinted daily sunscreen',
+      body: factsBody,
     };
   }
   if (kind === 'complexion_makeup') {
     return {
       headline: /foundation|tint|makeup|base/i.test(baseHeadline) ? baseHeadline : 'Complexion makeup',
-      body: usefulDescription || 'A complexion makeup product focused on coverage, finish, and tone-evening wear.',
+      body: preferredFactsBody,
     };
   }
   if (kind === 'moisturizer') {
     return {
       headline: /cream|moistur/i.test(baseHeadline) ? baseHeadline : 'Daily moisturizer',
-      body: usefulDescription || 'A daily moisturizer focused on hydration, comfort, and barrier-supportive skin care.',
+      body: preferredFactsBody,
     };
   }
   if (kind === 'sunscreen') {
     return {
       headline: /spf|sunscreen/i.test(baseHeadline) ? baseHeadline : 'Daily sunscreen',
-      body: usefulDescription || 'A daily sunscreen product focused on UV protection within a daytime skin-care routine.',
+      body: preferredFactsBody,
+    };
+  }
+  if (kind === 'toner') {
+    return {
+      headline: /toner/i.test(baseHeadline) ? baseHeadline : 'Hydrating toner',
+      body: preferredFactsBody,
     };
   }
   if (kind === 'serum') {
     return {
       headline: /serum|treatment/i.test(baseHeadline) ? baseHeadline : 'Treatment serum',
-      body:
-        usefulDescription ||
-        `A treatment serum${activeTerms.length ? ` built around ${activeTerms.join(', ')}` : ''} for targeted skin-care routines.`,
+      body: preferredFactsBody,
     };
   }
   if (kind === 'cleanser') {
     return {
       headline: /cleanser/i.test(baseHeadline) ? baseHeadline : 'Daily cleanser',
-      body:
-        usefulDescription ||
-        (activeTerms.length
-          ? `A daily cleanser built around ${activeTerms.join(', ')} cues for removing daily buildup while keeping the routine comfortable.`
-          : 'A cleanser focused on removing daily buildup while keeping the routine gentle and practical.'),
+      body: preferredFactsBody,
     };
   }
 
   return {
     headline: baseHeadline || 'Product insight',
-    body: usefulDescription || asString(baselineBundle?.product_intel_core?.what_it_is?.body) || 'A product-level insight grounded in the available listing facts.',
+    body: preferredFactsBody || asString(baselineBundle?.product_intel_core?.what_it_is?.body),
   };
 }
 
 function buildHumanStandardBestFor(context, baselineBundle) {
   const kind = inferProductKindFromContext(context);
   const text = `${context?.title || ''} ${context?.category || ''} ${context?.description || ''}`.toLowerCase();
+  const formulaSignals = buildFormulaSignals(context);
+  const hasSignal = (key) => formulaSignals.some((item) => item.key === key);
   const item = (tag, label) => ({ tag, label, confidence: 'moderate' });
 
   if (kind === 'lip') {
@@ -1177,11 +1347,27 @@ function buildHumanStandardBestFor(context, baselineBundle) {
       item('coverage_preferences', 'Coverage-focused makeup routines'),
     ];
   }
+  if (kind === 'tinted_sunscreen') {
+    return [
+      item('daily_spf_wear', 'Daily SPF wear'),
+      item(text.includes('matte') || hasSignal('soft_matte') ? 'soft_matte_tint' : 'sheer_tint_coverage', text.includes('matte') || hasSignal('soft_matte') ? 'Soft-matte tint finish' : 'Sheer tint coverage'),
+      item('makeup_layering', 'Makeup-layering routines'),
+    ];
+  }
   if (kind === 'sunscreen') {
-    return [item('daily_uv_protection', 'Daily UV protection'), item('daytime_routines', 'Daytime skin-care routines')];
+    return [
+      item('daily_spf_wear', 'Daily SPF wear'),
+      item(hasSignal('mineral_uv_filters') ? 'mineral_filter_preference' : 'am_layering', hasSignal('mineral_uv_filters') ? 'Mineral-filter preference' : 'AM layering routines'),
+    ];
   }
   if (kind === 'cleanser') {
     return [item('daily_cleansing', 'Daily cleansing'), item('comfortable_cleanse', 'Comfort-focused cleansing routines')];
+  }
+  if (kind === 'toner') {
+    return [
+      item('hydrating_toner_prep', 'Hydrating toner prep'),
+      item(hasSignal('barrier_lipids') || hasSignal('calming_support') ? 'barrier_comfort' : 'dehydrated_skin', hasSignal('barrier_lipids') || hasSignal('calming_support') ? 'Barrier-comfort routines' : 'Dry or dehydrated feel'),
+    ];
   }
   if (kind === 'serum') {
     if (text.includes('tone') || text.includes('vitamin c')) return [item('uneven_tone', 'Uneven tone concerns'), item('texture_refinement', 'Texture-smoothing routines')];
@@ -1208,6 +1394,7 @@ function buildHumanStandardBestFor(context, baselineBundle) {
 
 function buildHumanStandardHighlights(context) {
   const kind = inferProductKindFromContext(context);
+  const formulaSignals = buildFormulaSignals(context);
   const activeTerms = extractActiveTerms(context);
   const text = `${context?.title || ''} ${context?.description || ''}`.toLowerCase();
   const highlight = (headline, body, evidenceStrength = 'seller_grounded') => ({
@@ -1215,6 +1402,19 @@ function buildHumanStandardHighlights(context) {
     body,
     evidence_strength: evidenceStrength,
   });
+  const highlights = [];
+  const formulaPhrase = buildFormulaPhrase(formulaSignals, 3);
+  const reviewStat = formatReviewStat(context.review_summary);
+  const addReviewHighlight = () => {
+    if (!hasStrongBuyerReviewSignal(context.review_summary)) return;
+    highlights.push(
+      highlight(
+        'Verified buyer-review base',
+        `The source page lists ${reviewStat}, which is strong enough to show as a factual community signal without inventing sentiment themes.`,
+        'community_supported',
+      ),
+    );
+  };
 
   if (kind === 'lip') {
     return [
@@ -1231,6 +1431,18 @@ function buildHumanStandardHighlights(context) {
       ),
     ];
   }
+  if (kind === 'tinted_sunscreen') {
+    highlights.push(
+      highlight(
+        formulaSignals.some((item) => item.key === 'mineral_uv_filters') ? 'Tint plus mineral SPF' : 'Tint plus SPF wear',
+        formulaSignals.some((item) => item.key === 'mineral_uv_filters')
+          ? 'Combines zinc oxide UV-filter coverage with tint and finish cues, making it useful to compare as both daily SPF and sheer complexion coverage.'
+          : 'Combines SPF-positioned daytime wear with tint and finish cues for shoppers comparing sunscreen and complexion steps together.',
+      ),
+    );
+    addReviewHighlight();
+    return highlights.slice(0, 2);
+  }
   if (kind === 'complexion_makeup') {
     return [
       highlight(
@@ -1242,19 +1454,44 @@ function buildHumanStandardHighlights(context) {
     ];
   }
   if (kind === 'moisturizer') {
-    return [
+    highlights.push(
       highlight(
-        text.includes('birch') ? 'Birch hydration focus' : 'Hydration and comfort',
-        text.includes('barrier')
-          ? 'Pairs moisturizing care with barrier-comfort claims for daily cream routines.'
-          : 'Works as a daily moisture step with comfort-first skin-care use.',
+        formulaSignals.some((item) => item.key === 'barrier_lipids') ? 'Barrier-focused hydration' : 'Hydration architecture',
+        formulaPhrase
+          ? `Uses ${formulaPhrase} to connect water-binding hydration with daily moisturizer comfort.`
+          : 'Focuses on daily moisture support and comfort rather than treatment-level active claims.',
       ),
-    ];
+    );
+    addReviewHighlight();
+    return highlights.slice(0, 2);
   }
   if (kind === 'sunscreen') {
-    return [
-      highlight('Daytime UV step', 'Anchors the product in daily UV protection and daytime layering context.'),
-    ];
+    const hasMineralFilters = formulaSignals.some((item) => item.key === 'mineral_uv_filters');
+    const hasOrganicFilters = formulaSignals.some((item) => item.key === 'chemical_uv_filters');
+    highlights.push(
+      highlight(
+        hasMineralFilters ? 'Mineral UV-filter base' : hasOrganicFilters ? 'Organic-filter SPF base' : 'Reapplication-aware SPF',
+        hasMineralFilters
+          ? 'Uses mineral UV-filter cues for shoppers who need a daily sunscreen step with clear filter identity.'
+          : hasOrganicFilters
+            ? 'Uses modern organic UV-filter cues for a daily sunscreen step while keeping reapplication expectations explicit.'
+            : 'Keeps the sunscreen evaluation tied to AM UV protection and reapplication expectations, not just moisturizer-style claims.',
+      ),
+    );
+    addReviewHighlight();
+    return highlights.slice(0, 2);
+  }
+  if (kind === 'toner') {
+    highlights.push(
+      highlight(
+        formulaSignals.some((item) => item.key === 'rice_complex') ? 'Rice hydration system' : 'Hydrating prep step',
+        formulaPhrase
+          ? `Pairs ${formulaPhrase} for a toner step that targets post-cleanse hydration and soft, dewy layering.`
+          : 'Functions as a post-cleanse prep step for hydration and routine layering.',
+      ),
+    );
+    addReviewHighlight();
+    return highlights.slice(0, 2);
   }
   if (kind === 'serum') {
     return [
@@ -1268,17 +1505,29 @@ function buildHumanStandardHighlights(context) {
   }
   if (kind === 'cleanser') {
     return [
-      highlight('Cleansing comfort', 'Supports daily cleansing with a comfort-first profile.'),
+      highlight(
+        formulaPhrase ? 'Comfort-cleanse formula cues' : 'Daily buildup removal',
+        formulaPhrase
+          ? `Uses ${formulaPhrase} cues in a cleanser step, so the insight stays grounded in formula facts rather than generic gentle-cleanser copy.`
+          : 'Focuses on removing daily buildup before treatment and moisturizer without overstating treatment benefits.',
+      ),
     ];
   }
-  return [
-    highlight('Listing-grounded use', 'Defines the product around the title, category, and available listing description.'),
-  ].filter((item) => !isGenericSellerHighlightText(`${item.headline} ${item.body}`));
+  if (formulaPhrase) {
+    highlights.push(
+      highlight(
+        'Formula-backed routine fit',
+        `Uses ${formulaPhrase} as the clearest formula signal for understanding how this product fits into a routine.`,
+      ),
+    );
+  }
+  addReviewHighlight();
+  return highlights.filter((item) => !isGenericSellerHighlightText(`${item.headline} ${item.body}`)).slice(0, 2);
 }
 
 function buildHumanStandardWatchouts(context, baselineBundle) {
   const kind = inferProductKindFromContext(context);
-  if (kind === 'sunscreen') {
+  if (kind === 'sunscreen' || kind === 'tinted_sunscreen') {
     return [{ type: 'spf', label: 'Reapply as needed for extended daytime exposure.', severity: 'medium' }];
   }
   if (kind === 'serum' && /\b(retinol|salicylic acid|acid)\b/i.test(`${context?.description || ''} ${toList(context?.ingredients).join(' ')}`)) {
@@ -1300,7 +1549,9 @@ function buildHumanStandardPairingNotes(kind) {
   if (kind === 'lip') return ['Use as a lip finishing step or reapply when shine and comfort fade.'];
   if (kind === 'fragrance') return ['Apply to pulse points and adjust amount based on scent intensity preference.'];
   if (kind === 'complexion_makeup') return ['Apply in the complexion makeup step and choose shade/coverage separately.'];
+  if (kind === 'tinted_sunscreen') return ['Use as the last morning skin-care step; choose tint/shade separately when variants exist.'];
   if (kind === 'sunscreen') return ['Use as the last morning skin-care step before makeup.'];
+  if (kind === 'toner') return ['Apply after cleansing and before serum or moisturizer.'];
   if (kind === 'moisturizer') return ['Apply after treatment steps; use SPF afterward in the morning.'];
   if (kind === 'serum') return ['Apply before moisturizer; use SPF in the morning when using active treatments.'];
   if (kind === 'cleanser') return ['Use before treatment and moisturizer steps.'];
@@ -1335,7 +1586,7 @@ function buildHumanStandardRewriteOutput(caseRow, baselineBundle, geminiOutput) 
         step: routineStep,
         am_pm: toList(baselineRoutine.am_pm).length
           ? toList(baselineRoutine.am_pm)
-          : kind === 'sunscreen'
+          : kind === 'sunscreen' || kind === 'tinted_sunscreen'
             ? ['am']
             : kind === 'fragrance'
               ? ['pm']
@@ -1674,6 +1925,25 @@ function hasIncompleteHighlightCopy(highlights) {
   );
 }
 
+function isPublishableHighlight(item) {
+  const text = `${item?.headline || ''} ${item?.body || ''}`;
+  return Boolean(
+    asString(item?.headline) &&
+      asString(item?.body).length >= 20 &&
+      !hasProblematicGeneratedText(text) &&
+      !isLikelyIncompleteNarrativeText(item?.headline) &&
+      !isLikelyIncompleteNarrativeText(item?.body) &&
+      !isLowSignalSellerHighlightText(text) &&
+      !isGenericSellerHighlightText(text),
+  );
+}
+
+function hasWeakPublishHighlights(highlights) {
+  const items = toList(highlights);
+  if (!items.length) return true;
+  return !items.some((item) => isPublishableHighlight(item));
+}
+
 function evaluateGeminiCandidateQuality(baselineBundle, geminiCandidateBundle) {
   if (!baselineBundle || !geminiCandidateBundle) {
     return {
@@ -1706,9 +1976,14 @@ function evaluateGeminiCandidateQuality(baselineBundle, geminiCandidateBundle) {
     candidateCore.best_for,
   );
   const incompleteHighlights = hasIncompleteHighlightCopy(candidateCore.why_it_stands_out);
+  const weakPublishHighlights = hasWeakPublishHighlights(candidateCore.why_it_stands_out);
   const weakCandidateWhatItIsHeadline = isGenericWhatItIsHeadline(candidateCore.what_it_is?.headline);
   const weakBaselineBestFor = isWeakBestForForPublish(baselineCore.best_for);
   const weakCandidateBestFor = isWeakBestForForPublish(candidateCore.best_for);
+  const humanStandardCandidate =
+    normalizeGeminiModel(geminiCandidateBundle?.provenance?.model) ===
+      normalizeGeminiModel(HUMAN_STANDARD_REWRITE_MODEL) ||
+    asString(geminiCandidateBundle?.product_intel_core?.freshness?.source_version).includes(HUMAN_STANDARD_REWRITE_MODEL);
 
   const bestForOverlap = Number(
     jaccardOverlap(
@@ -1736,6 +2011,7 @@ function evaluateGeminiCandidateQuality(baselineBundle, geminiCandidateBundle) {
       !weakCandidateBestFor &&
       (
         !baselineCore.best_for?.length ||
+        humanStandardCandidate ||
         baselineBundle.evidence_profile !== 'community_supported' ||
         bestForOverlap >= 0.15 ||
         weakBaselineBestFor
@@ -1747,12 +2023,7 @@ function evaluateGeminiCandidateQuality(baselineBundle, geminiCandidateBundle) {
       Array.isArray(candidateCore.why_it_stands_out) &&
       candidateCore.why_it_stands_out.length > 0 &&
       !incompleteHighlights &&
-      candidateCore.why_it_stands_out.some(
-        (item) =>
-          asString(item?.body).length >= 20 &&
-          !isLowSignalSellerHighlightText(`${item?.headline || ''} ${item?.body || ''}`) &&
-          !(sellerOnlyMode && isGenericSellerHighlightText(`${item?.headline || ''} ${item?.body || ''}`)),
-      ) &&
+      !weakPublishHighlights &&
       !sellerOnlyViolation &&
       !problematicGeneratedText,
     routine_fit:
@@ -1783,6 +2054,7 @@ function evaluateGeminiCandidateQuality(baselineBundle, geminiCandidateBundle) {
   if (problematicGeneratedText) failReasons.push('problematic_generated_text');
   if (incompatibleBestFor) failReasons.push('incompatible_best_for');
   if (incompleteHighlights) failReasons.push('incomplete_highlight_copy');
+  if (weakPublishHighlights) failReasons.push('weak_publish_highlights');
   if (weakCandidateWhatItIsHeadline) failReasons.push('generic_what_it_is_headline');
   if (weakCandidateBestFor) failReasons.push('weak_best_for_taxonomy_fallback');
   if (!fieldDecisions.what_it_is) failReasons.push('weak_what_it_is');
@@ -1793,9 +2065,14 @@ function evaluateGeminiCandidateQuality(baselineBundle, geminiCandidateBundle) {
     failReasons.push('weak_community_signals');
   }
 
+  const coreFieldGate =
+    fieldDecisions.what_it_is &&
+    fieldDecisions.best_for &&
+    fieldDecisions.why_it_stands_out;
+
   return {
     candidate_available: true,
-    overall_pass: qualityScore >= 4 && !sellerOnlyViolation,
+    overall_pass: qualityScore >= 4 && coreFieldGate && !sellerOnlyViolation,
     quality_score: qualityScore,
     fail_reasons: failReasons,
     seller_only_violation: sellerOnlyViolation,
@@ -1917,15 +2194,13 @@ function buildSelectedBundle(caseRow, baselineBundle, geminiCandidateBundle, qua
       fieldSources.best_for = 'human_standard';
     }
   }
-  if (hasIncompleteHighlightCopy(selected.product_intel_core?.why_it_stands_out)) {
+  if (
+    hasIncompleteHighlightCopy(selected.product_intel_core?.why_it_stands_out) ||
+    hasWeakPublishHighlights(selected.product_intel_core?.why_it_stands_out)
+  ) {
     const patch = humanStandardPatch();
     const patchHighlights = toList(patch?.product_intel_core?.why_it_stands_out).filter(
-      (item) =>
-        asString(item?.headline) &&
-        asString(item?.body) &&
-        !hasProblematicGeneratedText(`${item.headline} ${item.body}`) &&
-        !isLikelyIncompleteNarrativeText(item.headline) &&
-        !isLikelyIncompleteNarrativeText(item.body),
+      (item) => isPublishableHighlight(item),
     );
     if (patchHighlights.length) {
       selected.product_intel_core.why_it_stands_out = deepClone(patchHighlights);

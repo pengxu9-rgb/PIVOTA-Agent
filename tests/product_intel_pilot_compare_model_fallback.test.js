@@ -319,8 +319,170 @@ describe('product_intel_pilot_compare gemini fallback', () => {
 
     expect(result.model_used).toBe('deterministic-human-standard-rewrite');
     expect(result.output.product_intel_core.what_it_is.body).toBe(
-      'A cleanser focused on removing daily buildup while keeping the routine gentle and practical.',
+      'A daily cleanser for removing daily buildup while keeping the cleanse comfortable.',
     );
     expect(result.output.product_intel_core.what_it_is.body).not.toMatch(/texture help|s lightly|\\bour\\b/i);
+  });
+
+  test('human-standard rewrite turns verified buyer review stats into a factual toner insight', async () => {
+    process.env.GEMINI_API_KEY = 'fake-key';
+    const weakGeminiResponse = {
+      data: {
+        candidates: [
+          {
+            content: {
+              parts: [
+                {
+                  text: '{"product_intel_core":{"what_it_is":{"headline":"bad","body":"too short"},"best_for":[{"tag":"daily","label":"Daily Use"}],"why_it_stands_out":[{"headline":"Listing-grounded use","body":"Defines the product around the title."}],"watchouts":[],"routine_fit":{"step":"toner","pairing_notes":["Use daily."],"am_pm":["am","pm"]}}}',
+                },
+              ],
+            },
+          },
+        ],
+      },
+    };
+
+    jest.spyOn(axios, 'post').mockResolvedValue(weakGeminiResponse);
+
+    const result = await runGeminiDraft(
+      {
+        case_id: 'boj-rice-milk-human-rewrite',
+        product: {
+          title: 'Glow Replenishing Rice Milk',
+          brand: 'Beauty of Joseon',
+          category: 'Toner',
+          description:
+            'Rice-Infused Hydration Inspired by the Joseon-era practice of beautifying skin with rice water, this toner is infused with nutrient-rich rice extract and rice amino acids for long-lasting hydration.',
+          ingredients_inci: [
+            'GLYCERIN',
+            'PANTHENOL',
+            'ORYZA SATIVA (RICE) EXTRACT',
+            'CERAMIDE NP',
+            'SODIUM HYALURONATE',
+            'RICE AMINO ACIDS',
+          ],
+          review_summary: {
+            rating: 4.9,
+            review_count: 1404,
+          },
+        },
+      },
+      {
+        evidence_profile: 'community_supported',
+        product_intel_core: {
+          what_it_is: {
+            headline: 'Hydrating toner',
+            body: 'A hydrating toner.',
+          },
+          best_for: [{ tag: 'toner', label: 'Toner shoppers', confidence: 'low' }],
+          why_it_stands_out: [
+            {
+              headline: 'Listing-grounded use',
+              body: 'Defines the product around the title, category, and available listing description.',
+              evidence_strength: 'limited',
+            },
+          ],
+          routine_fit: {
+            step: 'toner',
+            am_pm: ['am', 'pm'],
+            pairing_notes: ['Apply after cleansing.'],
+          },
+          watchouts: [],
+        },
+        community_signals: {
+          status: 'available',
+          top_loves: ['4.9★ average across 1.4k buyer reviews.'],
+        },
+      },
+      'gemini-3-flash-preview',
+    );
+
+    expect(result.model_used).toBe('deterministic-human-standard-rewrite');
+    expect(result.output.product_intel_core.what_it_is.body).toMatch(/rice extract and rice amino acids/i);
+    expect(result.output.product_intel_core.best_for.map((item) => item.label)).toContain('Hydrating toner prep');
+    expect(result.output.product_intel_core.why_it_stands_out.map((item) => item.headline)).toContain('Rice hydration system');
+    expect(result.output.product_intel_core.why_it_stands_out.map((item) => item.headline)).toContain('Verified buyer-review base');
+    expect(JSON.stringify(result.output.product_intel_core.why_it_stands_out)).toMatch(/4\.9★ average across 1\.4k buyer reviews/);
+    expect(JSON.stringify(result.output.product_intel_core.why_it_stands_out)).not.toMatch(/Listing-grounded|Defines the product/i);
+  });
+
+  test('human-standard rewrite removes marketing lead copy from tinted sunscreen with reviews', async () => {
+    process.env.GEMINI_API_KEY = 'fake-key';
+    const weakGeminiResponse = {
+      data: {
+        candidates: [
+          {
+            content: {
+              parts: [
+                {
+                  text: '{"product_intel_core":{"what_it_is":{"headline":"Daily sunscreen","body":"Meet the Tint + SPF You’ll Actually Wear."},"best_for":[{"tag":"daily","label":"Daily Use"}],"why_it_stands_out":[{"headline":"Daytime UV step","body":"Anchors the product in daily UV protection."}],"watchouts":[],"routine_fit":{"step":"sunscreen","pairing_notes":["Use daily."],"am_pm":["am"]}}}',
+                },
+              ],
+            },
+          },
+        ],
+      },
+    };
+
+    jest.spyOn(axios, 'post').mockResolvedValue(weakGeminiResponse);
+
+    const result = await runGeminiDraft(
+      {
+        case_id: 'boj-tinted-spf-human-rewrite',
+        product: {
+          title: 'Daily Tinted Fluid Sunscreen LP110',
+          brand: 'Beauty of Joseon',
+          category: 'Sunscreen',
+          description:
+            'Meet the Tint + SPF You’ll Actually Wear Naturally radiant, this tinted fluid sunscreen balances hydration and control; not too dewy, not too matte.',
+          ingredients_inci: [
+            'Zinc Oxide (CI 77947)',
+            'Silica',
+            'Polymethyl Methacrylate',
+            'Glycerin',
+          ],
+          review_summary: {
+            rating: 4.5,
+            review_count: 2077,
+          },
+        },
+      },
+      {
+        evidence_profile: 'community_supported',
+        product_intel_core: {
+          what_it_is: {
+            headline: 'Daily sunscreen',
+            body: 'Meet the Tint + SPF You’ll Actually Wear.',
+          },
+          best_for: [{ tag: 'daytime_use', label: 'Daytime wear', confidence: 'high' }],
+          why_it_stands_out: [
+            {
+              headline: 'Daytime UV step',
+              body: 'Anchors the product in daily UV protection and daytime layering context.',
+              evidence_strength: 'limited',
+            },
+          ],
+          routine_fit: {
+            step: 'sunscreen',
+            am_pm: ['am'],
+            pairing_notes: ['Use in the morning.'],
+          },
+          watchouts: [],
+        },
+        community_signals: {
+          status: 'available',
+          top_loves: ['4.5★ average across 2.1k buyer reviews.'],
+        },
+      },
+      'gemini-3-flash-preview',
+    );
+
+    expect(result.model_used).toBe('deterministic-human-standard-rewrite');
+    expect(result.output.product_intel_core.what_it_is.body).toMatch(/tinted daily sunscreen/i);
+    expect(result.output.product_intel_core.what_it_is.body).toMatch(/zinc oxide/i);
+    expect(result.output.product_intel_core.what_it_is.body).not.toMatch(/^Meet|you’ll actually wear|celebrates your/i);
+    expect(result.output.product_intel_core.why_it_stands_out.map((item) => item.headline)).toContain('Tint plus mineral SPF');
+    expect(JSON.stringify(result.output.product_intel_core.why_it_stands_out)).toMatch(/4\.5★ average across 2\.1k buyer reviews/);
+    expect(JSON.stringify(result.output.product_intel_core.why_it_stands_out)).not.toMatch(/Daytime UV step|Anchors the product/i);
   });
 });
