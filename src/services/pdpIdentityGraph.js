@@ -61,9 +61,10 @@ const PDP_IDENTITY_COVERAGE_DEFAULT_BEAUTY_VERTICALS = Object.freeze([
 ]);
 const PDP_IDENTITY_GRAPH_LIVE_CACHE_TTL_MS = Math.max(
   0,
-  Math.min(10 * 60 * 1000, Number(process.env.PDP_IDENTITY_GRAPH_LIVE_CACHE_TTL_MS || 90 * 1000) || 0),
+  Math.min(10 * 60 * 1000, Number(process.env.PDP_IDENTITY_GRAPH_LIVE_CACHE_TTL_MS || 10 * 60 * 1000) || 0),
 );
 const liveSyntheticPdpCache = new Map();
+const liveSyntheticPdpInflight = new Map();
 
 function asString(value) {
   if (typeof value === 'string') return value.trim();
@@ -1652,7 +1653,7 @@ async function maybeBuildLiveSyntheticPdp({
   const cached = readLiveSyntheticPdpCache(cacheKey);
   if (cached !== undefined) return cached;
 
-  try {
+  const loadLiveSyntheticPdp = async () => {
     const sourceRowRes = await queryFn(
       `
         SELECT *
@@ -1669,36 +1670,38 @@ async function maybeBuildLiveSyntheticPdp({
     if (!sourceRow) return writeLiveSyntheticPdpCache(cacheKey, null);
     if (!isBrandAllowedForLive(canonicalProduct, sourceRow)) return writeLiveSyntheticPdpCache(cacheKey, null);
 
-    const exactRowsRes = await queryFn(
-      `
-        SELECT *
-        FROM pdp_identity_listing
-        WHERE sellable_item_group_id = $1
-          AND identity_status = 'approved'
-          AND live_read_enabled = true
-        ORDER BY
-          CASE WHEN source_tier = 'brand' THEN 0 ELSE 1 END,
-          identity_confidence DESC NULLS LAST,
-          updated_at DESC NULLS LAST,
-          created_at DESC NULLS LAST
-      `,
-      [sourceRow.sellable_item_group_id],
-    );
-    const lineRowsRes = await queryFn(
-      `
-        SELECT *
-        FROM pdp_identity_listing
-        WHERE product_line_id = $1
-          AND identity_status = 'approved'
-          AND live_read_enabled = true
-        ORDER BY
-          CASE WHEN source_tier = 'brand' THEN 0 ELSE 1 END,
-          identity_confidence DESC NULLS LAST,
-          updated_at DESC NULLS LAST,
-          created_at DESC NULLS LAST
-      `,
-      [sourceRow.product_line_id],
-    );
+    const [exactRowsRes, lineRowsRes] = await Promise.all([
+      queryFn(
+        `
+          SELECT *
+          FROM pdp_identity_listing
+          WHERE sellable_item_group_id = $1
+            AND identity_status = 'approved'
+            AND live_read_enabled = true
+          ORDER BY
+            CASE WHEN source_tier = 'brand' THEN 0 ELSE 1 END,
+            identity_confidence DESC NULLS LAST,
+            updated_at DESC NULLS LAST,
+            created_at DESC NULLS LAST
+        `,
+        [sourceRow.sellable_item_group_id],
+      ),
+      queryFn(
+        `
+          SELECT *
+          FROM pdp_identity_listing
+          WHERE product_line_id = $1
+            AND identity_status = 'approved'
+            AND live_read_enabled = true
+          ORDER BY
+            CASE WHEN source_tier = 'brand' THEN 0 ELSE 1 END,
+            identity_confidence DESC NULLS LAST,
+            updated_at DESC NULLS LAST,
+            created_at DESC NULLS LAST
+        `,
+        [sourceRow.product_line_id],
+      ),
+    ]);
     const exactListings = normalizeIdentityRows(exactRowsRes?.rows);
     const lineListings = normalizeIdentityRows(lineRowsRes?.rows);
     const composed = composeSyntheticCanonicalProduct({
@@ -1723,9 +1726,38 @@ async function maybeBuildLiveSyntheticPdp({
           idx === 0 &&
           asString(item.merchant_id) === asString(composed.canonical_product_ref?.merchant_id) &&
           asString(item.product_id) === asString(composed.canonical_product_ref?.product_id),
-      })),
+        })),
       line_members: lineListings.map((item) => buildGroupMember(item)),
     });
+  };
+
+  if (cacheKey) {
+    const inflight = liveSyntheticPdpInflight.get(cacheKey);
+    if (inflight) return cloneJsonSafe(await inflight);
+    const promise = loadLiveSyntheticPdp().catch((err) => {
+      if (looksLikeRelationMissing(err)) return null;
+      logger.warn(
+        {
+          err: err?.message || String(err),
+          merchant_id: merchantId,
+          product_id: productId,
+        },
+        'PDP identity graph live read failed',
+      );
+      return null;
+    });
+    liveSyntheticPdpInflight.set(cacheKey, promise);
+    try {
+      return await promise;
+    } finally {
+      if (liveSyntheticPdpInflight.get(cacheKey) === promise) {
+        liveSyntheticPdpInflight.delete(cacheKey);
+      }
+    }
+  }
+
+  try {
+    return await loadLiveSyntheticPdp();
   } catch (err) {
     if (looksLikeRelationMissing(err)) return null;
     logger.warn(
