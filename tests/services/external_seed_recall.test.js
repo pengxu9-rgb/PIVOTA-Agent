@@ -355,6 +355,34 @@ describe('externalSeedRecall', () => {
     expect(doc.category).toBe('Body Oil');
   });
 
+  test('uses explicit title leaf before incorrect conditioner product_type', () => {
+    const examples = [
+      ['Balancing Face Mist', 'Face Mist'],
+      ['Hydrating Recovery Oil', 'Face Oil'],
+      ['Intensive Repair Hair Mask', 'Hair Mask'],
+      ['Detangling Leave-in Hair Milk', 'Hair Milk'],
+      ['Hair Care Duo with detangling brush', 'Hair Set'],
+    ];
+
+    for (const [title, expectedCategory] of examples) {
+      const doc = buildExternalSeedRecallDoc({
+        row: {
+          id: `eps_${expectedCategory.toLowerCase().replace(/\s+/g, '_')}`,
+          title,
+        },
+        seedData: {
+          brand: 'Example Beauty',
+          category: 'Hair Care',
+          product_type: 'Conditioner',
+          description: `${title} for a complete beauty routine.`,
+        },
+        snapshot: {},
+      });
+
+      expect(doc.category).toBe(expectedCategory);
+    }
+  });
+
   test('builds recall-first SQL with raw seed fallback only at the end', () => {
     const predicate = buildExternalSeedRecallLikePredicate('$3', { includeLegacyFallback: true });
     expect(predicate).toMatch(/retrieval_title/);
