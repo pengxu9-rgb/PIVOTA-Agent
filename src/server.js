@@ -20652,12 +20652,35 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	            const moduleStartedAt = Date.now();
 	            try {
 	            const limit = payload?.similar?.limit || payload?.recommendations?.limit || 6;
+              const canonicalRefMerchantId = String(canonicalProductRef?.merchant_id || '').trim();
+              const canonicalRefProductId = String(canonicalProductRef?.product_id || '').trim();
+              const similarBaseProduct = {
+                ...canonicalProductForPdp,
+                merchant_id:
+                  canonicalProductForPdp.merchant_id ||
+                  canonicalProductForPdp.merchantId ||
+                  canonicalRefMerchantId,
+                product_id:
+                  canonicalProductForPdp.product_id ||
+                  canonicalProductForPdp.productId ||
+                  (canonicalRefMerchantId === EXTERNAL_SEED_MERCHANT_ID ? canonicalRefProductId : '') ||
+                  canonicalProductForPdp.id,
+                ...(canonicalRefMerchantId === EXTERNAL_SEED_MERCHANT_ID && canonicalRefProductId
+                  ? {
+                      source: canonicalProductForPdp.source || 'external_seed',
+                      external_product_id:
+                        canonicalProductForPdp.external_product_id ||
+                        canonicalProductForPdp.externalProductId ||
+                        canonicalRefProductId,
+                    }
+                  : {}),
+              };
 	            return await fetchSimilarProductsDeduped({
-              pdp_product: canonicalProductForPdp,
+              pdp_product: similarBaseProduct,
               k: limit,
               locale:
                 payload?.context?.locale || payload?.context?.language || payload?.locale || 'en-US',
-              currency: canonicalProductForPdp.currency || canonicalProduct.currency || 'USD',
+              currency: similarBaseProduct.currency || canonicalProductForPdp.currency || canonicalProduct.currency || 'USD',
 	              options: {
 	                debug,
 	                // Respect caller cache controls (same semantics as resolve op).
