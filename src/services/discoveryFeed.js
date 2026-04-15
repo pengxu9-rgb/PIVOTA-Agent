@@ -270,6 +270,22 @@ const BEAUTY_INTEREST_CATEGORY_BY_PHRASE = Object.freeze({
     categories: ['face wash', 'cleanser'],
     verticals: ['skincare'],
   },
+  essence: {
+    categories: ['essence', 'water essence'],
+    verticals: ['skincare'],
+  },
+  sunscreen: {
+    categories: ['sunscreen'],
+    verticals: ['skincare'],
+  },
+  shampoo: {
+    categories: ['shampoo'],
+    verticals: ['haircare'],
+  },
+  conditioner: {
+    categories: ['conditioner', 'leave in conditioner', 'deep conditioner'],
+    verticals: ['haircare'],
+  },
   'hair oil': {
     categories: ['hair oil', 'hair treatment', 'hair care', 'haircare'],
     verticals: ['haircare'],
@@ -295,24 +311,52 @@ const BEAUTY_INTEREST_CATEGORY_BY_PHRASE = Object.freeze({
     verticals: ['haircare'],
   },
   'lip balm': {
-    categories: ['lip balm', 'lip treatment', 'lip care', 'lip oil', 'makeup'],
+    categories: ['lip balm', 'lip treatment', 'lip care', 'lip oil'],
     verticals: ['makeup'],
   },
   'lip oil': {
-    categories: ['lip oil', 'lip balm', 'lip treatment', 'makeup'],
+    categories: ['lip oil', 'lip balm', 'lip treatment'],
     verticals: ['makeup'],
   },
   'body wash': {
-    categories: ['body wash', 'body cleanser', 'body care'],
+    categories: ['body wash', 'body cleanser'],
     verticals: ['skincare'],
   },
   'body oil': {
-    categories: ['body oil', 'body care'],
+    categories: ['body oil'],
     verticals: ['skincare'],
   },
   'brow gel': {
-    categories: ['brow gel', 'makeup'],
+    categories: ['brow gel'],
     verticals: ['makeup'],
+  },
+  highlighter: {
+    categories: ['highlighter'],
+    verticals: ['makeup'],
+  },
+  'setting spray': {
+    categories: ['setting spray', 'makeup setting spray', 'fixing mist', 'makeup fixing mist'],
+    verticals: ['makeup'],
+  },
+  'makeup bag': {
+    categories: ['makeup bag', 'cosmetic bag'],
+    verticals: ['makeup'],
+  },
+  'face oil': {
+    categories: ['face oil', 'facial oil'],
+    verticals: ['skincare'],
+  },
+  'body lotion': {
+    categories: ['body lotion'],
+    verticals: ['skincare'],
+  },
+  perfume: {
+    categories: ['perfume', 'eau de parfum'],
+    verticals: ['fragrance'],
+  },
+  'acne treatment': {
+    categories: ['acne treatment', 'spot treatment', 'blemish treatment'],
+    verticals: ['skincare'],
   },
 });
 const EXPLICIT_BEAUTY_COMPOUND_INTENT_RULES = Object.freeze({
@@ -607,6 +651,18 @@ const EXPLICIT_BEAUTY_BROWSE_GENERIC_NOISE_CLASSES = Object.freeze([
   'keychain',
   'merch',
   'merchandise',
+  'mirror',
+  'mirrors',
+  'tray',
+  'trays',
+  'apparel',
+  'clothing',
+  'sweatpant',
+  'sweatpants',
+  'hoodie',
+  'hoodies',
+  'shirt',
+  'shirts',
 ]);
 const EXPLICIT_BEAUTY_BROWSE_TOOL_CLASSES = Object.freeze([
   'tool',
@@ -621,6 +677,14 @@ const EXPLICIT_BEAUTY_BROWSE_TOOL_CLASSES = Object.freeze([
   'combs',
   'puff',
   'puffs',
+]);
+const EXPLICIT_BEAUTY_VERTICAL_STAGE_BROAD_QUERY_ALLOWLIST = new Set([
+  'beauty',
+  'skincare',
+  'makeup',
+  'hair care',
+  'haircare',
+  'fragrance',
 ]);
 const GENERIC_DISCOVERY_QUERY_TOKENS = new Set([
   'beauty',
@@ -4436,6 +4500,15 @@ function shouldSkipBroadStructuredSeedStagesForExplicitQuery(request, recallTerm
   return queryTokens.length >= 3;
 }
 
+function shouldSkipExplicitVerticalSeedStage(request, recallTerms = {}) {
+  if (!isExplicitQueryScopedBrowseRequest(request)) return false;
+  if (recallTerms?.compoundIntent) return false;
+  const normalizedQuery = normalizeText(request?.query?.text || '');
+  if (!normalizedQuery) return false;
+  if (EXPLICIT_BEAUTY_VERTICAL_STAGE_BROAD_QUERY_ALLOWLIST.has(normalizedQuery)) return false;
+  return Boolean(BEAUTY_INTEREST_CATEGORY_BY_PHRASE[normalizedQuery]);
+}
+
 function resolveExplicitIndexedCategoryHeadTerms(request, recallTerms = {}) {
   if (!isExplicitQueryScopedBrowseRequest(request)) return [];
   if (recallTerms?.compoundIntent) return [];
@@ -5180,6 +5253,7 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
     request,
     recallTerms,
   );
+  const skipExplicitVerticalStage = shouldSkipExplicitVerticalSeedStage(request, recallTerms);
   const indexedCategoryHeadTerms = resolveExplicitIndexedCategoryHeadTerms(request, recallTerms);
   if (!compoundIntent) {
     if (indexedCategoryHeadTerms.length > 0) {
@@ -5233,7 +5307,7 @@ async function fetchBeautyInterestExternalSeedFastpathCandidates({
       });
     }
 
-    if (recallTerms.verticalTerms.length > 0 && !skipBroadStructuredStages) {
+    if (recallTerms.verticalTerms.length > 0 && !skipBroadStructuredStages && !skipExplicitVerticalStage) {
       stageDefinitions.push({
         score: 18,
         stage: 'recall_vertical',
@@ -9226,6 +9300,7 @@ module.exports = {
     buildBeautyInterestRecallTerms,
     buildCompoundBeautySeedStageDefinitions,
     shouldSkipBroadStructuredSeedStagesForExplicitQuery,
+    shouldSkipExplicitVerticalSeedStage,
     resolveExplicitIndexedCategoryHeadTerms,
     resolveDiscoveryExternalSeedToolScopes,
     buildDiscoveryInterestQuery,
