@@ -1026,6 +1026,25 @@ test('reco assistant rewrite rejects candidate-pool product names that are not f
   }
 });
 
+test('reco assistant reason fragment strips duplicated renderer scaffolding', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const leadReason = __internal.normalizeRecoAssistantReasonFragment(
+      'is your best first buy because it provides essential daily UV protection in a lightweight serum formula',
+      { selectedNames: ['The Ordinary UV Filters SPF 45 Serum'] },
+    );
+    const supportReason = __internal.normalizeRecoAssistantReasonFragment(
+      'follow with this multi-benefit serum designed to soothe, hydrate, and renew your skin barrier',
+      { selectedNames: ['Haruharu Wonder Soothing Serum'] },
+    );
+
+    assert.equal(leadReason, 'it provides essential daily UV protection in a lightweight serum formula');
+    assert.equal(supportReason, 'multi-benefit serum designed to soothe, hydrate, and renew your skin barrier');
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('reco assistant structured retry does not treat selected product-name substrings as unselected aliases', async () => {
   const prevMock = process.env.AURORA_BFF_USE_MOCK;
   const prevProvider = process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;

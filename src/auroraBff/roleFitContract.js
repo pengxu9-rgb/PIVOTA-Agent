@@ -148,6 +148,14 @@ function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '
   score += Math.min(0.16, ingredientMatches * 0.08);
   score += Math.min(0.12, productTypeMatches * 0.06);
   if (retrievalRoleMatched) score += semanticFitMatched ? 0.08 : 0.02;
+  if (
+    retrievalRoleMatched
+    && preferredStep === 'treatment'
+    && alternateStep
+    && strongSemanticFitMatched
+  ) {
+    score += 0.14;
+  }
   if (treatmentSerumIngredientRescueApplied) score += 0.32;
   if (treatmentSerumActiveSemanticRescueApplied && !treatmentSerumIngredientRescueApplied) score += 0.08;
   // For routine-ready support slots, keep exact-step moisturizer/sunscreen matches viable

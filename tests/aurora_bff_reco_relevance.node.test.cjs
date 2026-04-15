@@ -6417,6 +6417,34 @@ test('__internal: step-aware reco does not let retrieval trace turn a serum into
   assert.equal(out.candidate_step_source, 'structured_category');
 });
 
+test('__internal: framework step inference trusts nested authority product type over role-shaped top-level labels', () => {
+  const recoShared = require('../src/auroraBff/recommendationSharedStack');
+  const out = recoShared.normalizeCandidateStep(
+    {
+      product_id: 'ext_soothing_serum_1',
+      name: 'Soothing Serum',
+      category: 'moisturizer',
+      product_type: 'moisturizer',
+      retrieval_role_id: 'soothing_treatment',
+      retrieval_query: 'soothing treatment',
+      sku: {
+        category: 'Serum',
+        product_type: 'Serum',
+        name: 'Soothing Serum',
+      },
+      short_description: 'A gentle serum to soothe redness and support a reactive barrier.',
+    },
+    {
+      targetContext: {
+        mainline_mode: 'framework',
+      },
+    },
+  );
+
+  assert.equal(out.candidate_step, 'serum');
+  assert.equal(out.candidate_step_source, 'structured_category');
+});
+
 test('__internal: step-aware broadening stops once any viable pool exists instead of waiting for late quality flags', () => {
   const recoShared = require('../src/auroraBff/recommendationSharedStack');
   const out = recoShared.shouldStopStepAwareBroadening(
@@ -6552,6 +6580,107 @@ test('__internal: framework pool infers step from external seed alias and descri
   assert.equal(state.selected_recommendations[0]?.candidate_step_source, 'title_or_tag_alias');
   assert.equal(state.selected_source_counts?.external_seed, 1);
   assert.equal(state.external_seed_used_count, 1);
+});
+
+test('__internal: framework pool keeps soothing serum as treatment role instead of collapsing it into moisturizer support', () => {
+  const { __internal } = loadRoutesFresh();
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [
+      {
+        product_id: 'ext_soothing_serum_1',
+        merchant_id: 'external_seed',
+        brand: 'Haruharu Wonder',
+        name: 'Soothing Serum',
+        display_name: 'Soothing Serum',
+        category: 'moisturizer',
+        product_type: 'moisturizer',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'soothing_treatment',
+        retrieval_query: 'soothing treatment',
+        sku: {
+          category: 'Serum',
+          product_type: 'Serum',
+          name: 'Soothing Serum',
+          ingredient_tokens: ['panthenol', 'azelaic acid', 'squalane'],
+        },
+        search_aliases: ['Soothing Serum'],
+        short_description: 'A gentle serum to soothe redness, calm irritation, hydrate, and renew the skin barrier.',
+        description: 'A sensitive-skin friendly serum with Panthenol and Azelaic Acid for redness and calming support.',
+      },
+      {
+        product_id: 'barrier_moisturizer_1',
+        merchant_id: 'merchant_internal',
+        brand: 'KraveBeauty',
+        name: 'Great Barrier Relief',
+        display_name: 'KraveBeauty Great Barrier Relief',
+        category: 'Moisturizer',
+        product_type: 'Moisturizer',
+        retrieval_source: 'internal',
+        retrieval_role_id: 'barrier_moisturizer',
+        retrieval_query: 'barrier repair moisturizer',
+        short_description: 'A barrier repair moisturizer with ceramides, tamanu oil, and niacinamide for sensitized skin.',
+      },
+      {
+        product_id: 'daily_sunscreen_1',
+        merchant_id: 'external_seed',
+        brand: 'The Ordinary',
+        name: 'UV Filters SPF 45 Serum',
+        display_name: 'UV Filters SPF 45 Serum',
+        category: 'Sunscreen',
+        product_type: 'Sunscreen',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'daily_sunscreen',
+        retrieval_query: 'daily sunscreen',
+        short_description: 'A lightweight SPF 45 sunscreen serum for daily UV protection.',
+      },
+    ],
+    {
+      targetContext: {
+        framework_id: 'recofw_test_soothing_primary',
+        primary_role_id: 'soothing_treatment',
+        routine_mode: 'routine_mix',
+        semantic_plan: { routine_mode: 'routine_mix', comparison_mode: 'routine_mix' },
+        framework_roles: [
+          {
+            role_id: 'soothing_treatment',
+            rank: 1,
+            preferred_step: 'treatment',
+            alternate_steps: ['serum'],
+            label: 'Soothing treatment',
+            query_terms: ['soothing serum sensitive skin', 'cica serum redness', 'panthenol treatment'],
+            fit_keywords: ['soothing', 'redness', 'calming', 'irritation'],
+            ingredient_hypotheses: ['Panthenol', 'Madecassoside'],
+          },
+          {
+            role_id: 'barrier_moisturizer',
+            rank: 2,
+            preferred_step: 'moisturizer',
+            label: 'Barrier-support moisturizer',
+            query_terms: ['barrier repair moisturizer', 'ceramide cream sensitive skin', 'soothing moisturizer'],
+            fit_keywords: ['barrier repair', 'ceramide', 'soothing', 'sensitive skin'],
+            ingredient_hypotheses: ['Ceramide NP', 'Panthenol', 'Glycerin'],
+          },
+          {
+            role_id: 'daily_sunscreen',
+            rank: 3,
+            preferred_step: 'sunscreen',
+            label: 'Daily sunscreen',
+            query_terms: ['daily sunscreen skincare', 'broad spectrum sunscreen'],
+            fit_keywords: ['spf', 'uv filters', 'broad spectrum', 'lightweight'],
+            ingredient_hypotheses: ['UV filters'],
+          },
+        ],
+      },
+    },
+  );
+
+  assert.equal(state.primary_role_matched, true);
+  assert.equal(state.selected_candidate_count, 3);
+  assert.deepEqual(
+    state.selected_recommendations.map((row) => row.matched_role_id),
+    ['soothing_treatment', 'barrier_moisturizer', 'daily_sunscreen'],
+  );
+  assert.equal(state.selected_recommendations[0]?.candidate_step, 'serum');
 });
 
 test('__internal: framework pool keeps external seed skincare candidates when skincare evidence lives only in alias and description', async () => {

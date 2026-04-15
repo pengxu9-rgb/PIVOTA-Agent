@@ -53284,6 +53284,8 @@ function normalizeRecoAssistantReasonFragment(value, {
     .replace(/\b(this|that)\s+product\b/ig, 'it')
     .replace(/\b(the|this|that)\s+(lead|selected)\s+(pick|product|option)\b/ig, 'it')
     .replace(/\b(product|option)\s+(is|as)\b/ig, 'it $2')
+    .replace(/^(?:is\s+)?(?:your\s+)?(?:best\s+first\s+buy|top\s+pick|lead\s+pick|first\s+choice|best\s+choice)(?:\s+for\s+[^,.]{1,90})?\s+because\s+/i, '')
+    .replace(/^(?:because\s+)?(?:follow|pair|complete|start)\s+(?:with\s+)?(?:it|this|the\s+product)?\s*/i, '')
     .replace(/\s+/g, ' ')
     .replace(/^[\s,;:.\-–—]+/, '')
     .replace(/[\s,;:.\-–—]+$/, '')
@@ -90072,6 +90074,7 @@ const __internal = {
   buildPayloadBoundRecoAssistantText,
   buildRecoAssistantRewritePrompt,
   maybeRewriteRecoAssistantTextWithLlm,
+  normalizeRecoAssistantReasonFragment,
   isSkincareCategory,
   isBlacklistedCategoryOrTitle,
   isSearchLikeUrl,
