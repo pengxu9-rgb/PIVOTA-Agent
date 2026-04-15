@@ -5990,6 +5990,98 @@ describe('discovery feed service', () => {
     }
   });
 
+  test('exact phrase browse keeps structured perfume head candidates through final selection', async () => {
+    jest.resetModules();
+    const prevDatabaseUrl = process.env.DATABASE_URL;
+    process.env.DATABASE_URL = 'postgres://discovery-perfume-final-selection-structured-test';
+    const requiredColumns = [
+      { table_name: 'products_cache', column_name: 'id' },
+      { table_name: 'products_cache', column_name: 'merchant_id' },
+      { table_name: 'products_cache', column_name: 'product_data' },
+      { table_name: 'products_cache', column_name: 'expires_at' },
+      { table_name: 'products_cache', column_name: 'cached_at' },
+      { table_name: 'external_product_seeds', column_name: 'id' },
+      { table_name: 'external_product_seeds', column_name: 'external_product_id' },
+      { table_name: 'external_product_seeds', column_name: 'destination_url' },
+      { table_name: 'external_product_seeds', column_name: 'canonical_url' },
+      { table_name: 'external_product_seeds', column_name: 'title' },
+      { table_name: 'external_product_seeds', column_name: 'seed_data' },
+      { table_name: 'external_product_seeds', column_name: 'market' },
+      { table_name: 'external_product_seeds', column_name: 'tool' },
+      { table_name: 'external_product_seeds', column_name: 'status' },
+      { table_name: 'external_product_seeds', column_name: 'attached_product_key' },
+      { table_name: 'external_product_seeds', column_name: 'updated_at' },
+      { table_name: 'external_product_seeds', column_name: 'created_at' },
+    ];
+    const requiredIndexes = [
+      'idx_external_product_seeds_recall_title_trgm',
+      'idx_external_product_seeds_recall_summary_trgm',
+      'idx_external_product_seeds_recall_category_vertical_recency',
+      'idx_external_product_seeds_recall_vertical_recency',
+      'idx_external_product_seeds_recall_ingredient_tokens_trgm',
+      'idx_external_product_seeds_recall_alias_tokens_trgm',
+    ].map((indexname) => ({ tablename: 'external_product_seeds', indexname }));
+    const headRows = Array.from({ length: 6 }, (_, index) =>
+      makeExternalSeedRow({
+        id: `perfume_final_${index + 1}`,
+        title: `Maison Fragrance ${index + 1}`,
+        category: 'Fragrance',
+        product_type: 'Fragrance',
+        description: 'Fine fragrance composition.',
+      }),
+    );
+    const dbQueryMock = jest
+      .fn()
+      .mockResolvedValueOnce({ rows: requiredColumns })
+      .mockResolvedValueOnce({ rows: requiredIndexes })
+      .mockResolvedValueOnce({ rows: headRows });
+    jest.doMock('../src/db', () => ({
+      query: dbQueryMock,
+    }));
+
+    try {
+      const fresh = require('../src/services/discoveryFeed');
+      fresh._internals.resetDiscoveryDependencyProbeCache();
+      const response = await fresh.getDiscoveryFeed({
+        surface: 'browse_products',
+        page: 1,
+        limit: 12,
+        debug: true,
+        query: {
+          text: 'perfume',
+        },
+        context: {
+          auth_state: 'anonymous',
+          locale: 'en-US',
+          recent_views: [],
+          recent_queries: [],
+        },
+      });
+
+      expect(response.products).toHaveLength(6);
+      expect(response.metadata.candidate_source).toBe('external_seed_exact_intent');
+      expect(response.metadata.candidate_counts).toEqual(
+        expect.objectContaining({
+          raw: 6,
+          eligible_pool: 6,
+          returned: 6,
+        }),
+      );
+      expect(response.metadata.external_seed_stage_counts).toEqual([
+        expect.objectContaining({
+          stage: 'recall_indexed_category_head',
+          query_qualified_rows: 6,
+          final_eligible_rows: 6,
+        }),
+      ]);
+    } finally {
+      if (prevDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+      else process.env.DATABASE_URL = prevDatabaseUrl;
+      jest.dontMock('../src/db');
+      jest.resetModules();
+    }
+  });
+
   test('exact phrase structured head does not broaden leave in conditioner to generic conditioner rows', async () => {
     jest.resetModules();
     const prevDatabaseUrl = process.env.DATABASE_URL;

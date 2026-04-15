@@ -6677,6 +6677,45 @@ function scoreRecentQueryOverlap(candidate, queryTokens) {
   return overlap / queryTokens.size;
 }
 
+function resolveExplicitExactBeautyStructuredQueryTerms(queryText) {
+  const normalizedQuery = normalizeText(queryText || '');
+  if (!normalizedQuery) return [];
+  const exactHint = BEAUTY_INTEREST_CATEGORY_BY_PHRASE[normalizedQuery];
+  if (!exactHint) return [];
+  return uniqStrings(
+    [normalizedQuery]
+      .concat(Array.isArray(exactHint.structuredQueryTerms) ? exactHint.structuredQueryTerms : [])
+      .map((term) => normalizeText(term || ''))
+      .filter(Boolean),
+    8,
+  );
+}
+
+function buildDiscoveryCandidateStructuredFilterText(candidate) {
+  const raw = candidate?.raw || {};
+  return normalizeText(
+    [
+      candidate?.category,
+      candidate?.parentCategory,
+      raw.category,
+      raw.product_type,
+      raw.productType,
+      raw.external_seed_recall?.category,
+      raw.external_seed_recall?.vertical,
+    ]
+      .filter(Boolean)
+      .join(' '),
+  );
+}
+
+function matchesExplicitExactBeautyStructuredQueryText(candidate, queryText) {
+  const structuredTerms = resolveExplicitExactBeautyStructuredQueryTerms(queryText);
+  if (structuredTerms.length <= 0) return false;
+  const structuredText = buildDiscoveryCandidateStructuredFilterText(candidate);
+  if (!structuredText) return false;
+  return hasAnyNormalizedClassToken(structuredText, structuredTerms);
+}
+
 function matchesQueryTextCandidate(candidate, queryText) {
   const normalizedQuery = normalizeText(queryText || '');
   if (!normalizedQuery) return true;
@@ -6694,6 +6733,7 @@ function matchesQueryTextCandidate(candidate, queryText) {
   );
   if (!candidateText) return false;
   if (candidateText.includes(normalizedQuery)) return true;
+  if (matchesExplicitExactBeautyStructuredQueryText(candidate, normalizedQuery)) return true;
 
   const queryTokens = tokenize(normalizedQuery).filter((token) => token.length >= 2);
   if (!queryTokens.length) return candidateText.includes(normalizedQuery);
@@ -6901,20 +6941,7 @@ function matchesExplicitExactPhraseStructuredCandidate(candidate, request, recal
   if (!exactPhraseHint || !Array.isArray(exactPhraseHint.structuredQueryTerms)) return false;
   if (exactPhraseHint.structuredQueryTerms.length <= 0) return false;
 
-  const raw = candidate?.raw || {};
-  const structuredText = normalizeText(
-    [
-      candidate?.category,
-      candidate?.parentCategory,
-      raw.category,
-      raw.product_type,
-      raw.productType,
-      raw.external_seed_recall?.category,
-      raw.external_seed_recall?.vertical,
-    ]
-      .filter(Boolean)
-      .join(' '),
-  );
+  const structuredText = buildDiscoveryCandidateStructuredFilterText(candidate);
   if (!structuredText) return false;
 
   return hasAnyNormalizedClassToken(structuredText, exactPhraseHint.structuredQueryTerms);
