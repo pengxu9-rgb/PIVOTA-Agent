@@ -466,7 +466,7 @@ describe('discovery feed service', () => {
     );
   });
 
-  test('explicit exact phrase browse uses external seed exact-intent mainline without products_search', async () => {
+  test('ingredient-like exact phrase browse uses external seed exact-intent mainline without products_search', async () => {
     process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://discovery-catalog.test';
     process.env.DISCOVERY_PRODUCTS_SEARCH_API_KEY = 'bridge-key';
     delete process.env.PIVOTA_BACKEND_BASE_URL;
@@ -479,11 +479,11 @@ describe('discovery feed service', () => {
       return Array.from({ length: 10 }, (_, idx) =>
         makeProduct({
           merchant_id: 'external_seed',
-          product_id: `seed_conditioner_${idx + 1}`,
-          title: `Seed Conditioner ${idx + 1}`,
+          product_id: `seed_glycolic_acid_${idx + 1}`,
+          title: `Seed Glycolic Acid Peel ${idx + 1}`,
           brand: `Seed Beauty ${idx + 1}`,
-          category: 'Hair Care',
-          product_type: 'Conditioner',
+          category: 'Exfoliant',
+          product_type: 'Exfoliant',
         }),
       );
     });
@@ -493,7 +493,7 @@ describe('discovery feed service', () => {
       .matchHeader('x-agent-api-key', 'bridge-key')
       .matchHeader('x-api-key', 'bridge-key')
       .get('/agent/v1/products/search')
-      .query((query) => String(query.query || '') === 'conditioner')
+      .query((query) => String(query.query || '') === 'glycolic acid')
       .reply(200, { products: [] });
 
     const response = await getDiscoveryFeed(
@@ -503,7 +503,7 @@ describe('discovery feed service', () => {
         limit: 12,
         debug: true,
         query: {
-          text: 'conditioner',
+          text: 'glycolic acid',
         },
         context: {
           auth_state: 'anonymous',
@@ -539,6 +539,102 @@ describe('discovery feed service', () => {
           provider: 'internal_catalog',
           skipped: true,
           skip_reason: 'explicit_exact_intent_external_seed_mainline',
+        }),
+      ]),
+    );
+  });
+
+  test('category exact phrase browse supplements underfilled external seeds with products_search mainline', async () => {
+    process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://discovery-catalog.test';
+    process.env.DISCOVERY_PRODUCTS_SEARCH_API_KEY = 'bridge-key';
+    delete process.env.PIVOTA_BACKEND_BASE_URL;
+    delete process.env.PIVOTA_API_BASE;
+    delete process.env.PIVOTA_BACKEND_AGENT_API_KEY;
+    delete process.env.PIVOTA_API_KEY;
+    delete process.env.DATABASE_URL;
+
+    const externalSpy = jest.fn(async () =>
+      Array.from({ length: 10 }, (_, idx) =>
+        makeProduct({
+          merchant_id: 'external_seed',
+          product_id: `seed_shampoo_${idx + 1}`,
+          title: `Seed Shampoo ${idx + 1}`,
+          brand: `Seed Beauty ${idx + 1}`,
+          category: 'Hair Care',
+          product_type: 'Shampoo',
+        }),
+      ),
+    );
+    const internalSpy = jest.fn(async () => []);
+    const productsSearchProducts = Array.from({ length: 18 }, (_, idx) =>
+      makeProduct({
+        merchant_id: 'products_search',
+        product_id: `search_shampoo_${idx + 1}`,
+        title: `Search Shampoo ${idx + 1}`,
+        brand: `Search Beauty ${idx + 1}`,
+        category: 'Hair Care',
+        product_type: 'Shampoo',
+      }),
+    ).concat(
+      Array.from({ length: 4 }, (_, idx) =>
+        makeProduct({
+          merchant_id: 'products_search',
+          product_id: `search_conditioner_noise_${idx + 1}`,
+          title: `Search Conditioner ${idx + 1}`,
+          brand: `Search Beauty Noise ${idx + 1}`,
+          category: 'Hair Care',
+          product_type: 'Conditioner',
+        }),
+      ),
+    );
+
+    const productsSearchScope = nock('http://discovery-catalog.test')
+      .matchHeader('x-agent-api-key', 'bridge-key')
+      .matchHeader('x-api-key', 'bridge-key')
+      .get('/agent/v1/products/search')
+      .query((query) => String(query.query || '') === 'shampoo')
+      .reply(200, { products: productsSearchProducts });
+
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'browse_products',
+        page: 1,
+        limit: 12,
+        debug: true,
+        query: {
+          text: 'shampoo',
+        },
+        context: {
+          auth_state: 'anonymous',
+          recent_views: [],
+          recent_queries: [],
+          locale: 'en-US',
+        },
+      },
+      {
+        providerOverrides: {
+          internal_catalog: internalSpy,
+          external_seeds: externalSpy,
+        },
+      },
+    );
+
+    expect(productsSearchScope.isDone()).toBe(true);
+    expect(externalSpy).toHaveBeenCalledTimes(1);
+    expect(internalSpy).not.toHaveBeenCalled();
+    expect(response.products).toHaveLength(12);
+    expect(response.products.every((product) => /shampoo/i.test(product.title))).toBe(true);
+    expect(response.metadata.candidate_source).toBe('external_seed_exact_intent+products_search');
+    expect(response.metadata.underfilled_reason).toBeUndefined();
+    expect(response.metadata.route_health.primary_quality_gate_passed).toBe(true);
+    expect(response.metadata.provider_breakdown).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ provider: 'external_seeds', successful: true, returned: 10 }),
+        expect.objectContaining({ provider: 'products_search', successful: true, returned: 18 }),
+        expect.objectContaining({
+          provider: 'internal_catalog',
+          skipped: true,
+          skip_reason: 'explicit_exact_intent_products_search_supplement',
         }),
       ]),
     );
@@ -621,7 +717,7 @@ describe('discovery feed service', () => {
     expect(response.metadata.underfilled_reason).toBeUndefined();
   });
 
-  test('explicit exact phrase browse keeps exact-intent mainline even when external seed underfills', async () => {
+  test('ingredient-like exact phrase browse keeps exact-intent mainline even when external seed underfills', async () => {
     process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://discovery-catalog.test';
     process.env.DISCOVERY_PRODUCTS_SEARCH_API_KEY = 'bridge-key';
     delete process.env.PIVOTA_BACKEND_BASE_URL;
@@ -634,11 +730,11 @@ describe('discovery feed service', () => {
       Array.from({ length: 4 }, (_, idx) =>
         makeProduct({
           merchant_id: 'external_seed',
-          product_id: `seed_conditioner_underfill_${idx + 1}`,
-          title: `Seed Conditioner Underfill ${idx + 1}`,
+          product_id: `seed_glycolic_underfill_${idx + 1}`,
+          title: `Seed Glycolic Acid Underfill ${idx + 1}`,
           brand: `Seed Beauty ${idx + 1}`,
-          category: 'Hair Care',
-          product_type: 'Conditioner',
+          category: 'Exfoliant',
+          product_type: 'Exfoliant',
         }),
       ),
     );
@@ -656,15 +752,15 @@ describe('discovery feed service', () => {
       .matchHeader('x-agent-api-key', 'bridge-key')
       .matchHeader('x-api-key', 'bridge-key')
       .get('/agent/v1/products/search')
-      .query((query) => String(query.query || '') === 'conditioner')
+      .query((query) => String(query.query || '') === 'glycolic acid')
       .reply(200, {
         products: [
           makeProduct({
             merchant_id: 'products_search',
-            product_id: 'products_conditioner_noise',
-            title: 'Products Conditioner Noise',
-            category: 'Hair Care',
-            product_type: 'Conditioner',
+            product_id: 'products_glycolic_noise',
+            title: 'Products Glycolic Acid Noise',
+            category: 'Exfoliant',
+            product_type: 'Exfoliant',
           }),
         ],
       });
@@ -676,7 +772,7 @@ describe('discovery feed service', () => {
         limit: 12,
         debug: true,
         query: {
-          text: 'conditioner',
+          text: 'glycolic acid',
         },
         context: {
           auth_state: 'anonymous',
