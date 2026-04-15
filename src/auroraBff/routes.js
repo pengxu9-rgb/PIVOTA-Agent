@@ -1324,19 +1324,19 @@ const RECO_CATALOG_EXTERNAL_SEED_HANDOFF_TIMEOUT_MS = (() => {
   return Math.max(12000, Math.min(45000, v));
 })();
 const RECO_CATALOG_FRAMEWORK_LOCAL_HANDOFF_TIMEOUT_MS = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_FRAMEWORK_LOCAL_HANDOFF_TIMEOUT_MS || 10500);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 10500;
-  return Math.max(2400, Math.min(13000, v));
+  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_FRAMEWORK_LOCAL_HANDOFF_TIMEOUT_MS || 16500);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 16500;
+  return Math.max(2400, Math.min(24000, v));
 })();
 const RECO_CATALOG_PRIMARY_EXTERNAL_SEED_QUERY_TIMEOUT_MS = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_PRIMARY_EXTERNAL_SEED_QUERY_TIMEOUT_MS || 2600);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 2600;
-  return Math.max(800, Math.min(4800, v));
+  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_PRIMARY_EXTERNAL_SEED_QUERY_TIMEOUT_MS || 4200);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 4200;
+  return Math.max(800, Math.min(7000, v));
 })();
 const RECO_CATALOG_SUPPORT_EXTERNAL_SEED_QUERY_TIMEOUT_MS = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_SUPPORT_EXTERNAL_SEED_QUERY_TIMEOUT_MS || 4000);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 4000;
-  return Math.max(50, Math.min(6000, v));
+  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_SUPPORT_EXTERNAL_SEED_QUERY_TIMEOUT_MS || 5200);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 5200;
+  return Math.max(50, Math.min(8000, v));
 })();
 const RECO_CATALOG_SUPPORT_INTERNAL_QUERY_TIMEOUT_MS = (() => {
   const n = Number(process.env.AURORA_BFF_RECO_CATALOG_SUPPORT_INTERNAL_QUERY_TIMEOUT_MS || 1400);
@@ -8186,7 +8186,7 @@ function shouldUseLeanLocalExternalSeedPatternPack({ role = null } = {}) {
 }
 
 function shouldUseLeanLocalExternalSeedSql({ role = null } = {}) {
-  return Number.isFinite(Number(role?.rank)) && Number(role.rank) > 1;
+  return Boolean(role && typeof role === 'object' && !Array.isArray(role));
 }
 
 function buildLocalExternalSeedSearchPredicate(bind, { lean = false } = {}) {

@@ -62,7 +62,8 @@ function buildSupportRoleQueryScore(query = '', { step = '', oilySignal = false,
     if (/\boily skin\b/.test(normalized)) score += 2;
     if (/^lightweight moisturizer oily skin$/.test(normalized)) score += 3;
     if (/^oil free moisturizer$/.test(normalized)) score += 2.4;
-    if (/^gel cream moisturizer$/.test(normalized)) score += 1.5;
+    if (/^gel cream moisturizer$/.test(normalized)) score += 6;
+    if (/^moisturizer$/.test(normalized)) score += 7;
     if (/^barrier repair moisturizer$/.test(normalized)) score += 4;
     if (/^ceramide cream sensitive skin$/.test(normalized)) score += 3.5;
     if (/^soothing moisturizer$/.test(normalized)) score += 2.6;
@@ -72,7 +73,8 @@ function buildSupportRoleQueryScore(query = '', { step = '', oilySignal = false,
     if (/\b(oil control|lightweight|oily skin|matte|non-greasy|non greasy|fluid|invisible|water[- ]?fit)\b/.test(normalized)) score += 2;
     if (/^oil control sunscreen$/.test(normalized)) score += 3;
     if (/^lightweight sunscreen oily skin$/.test(normalized)) score += 2.4;
-    if (/^spf fluid oily skin$/.test(normalized)) score += 1.8;
+    if (/^spf fluid oily skin$/.test(normalized)) score += 4.5;
+    if (/^sunscreen$/.test(normalized)) score += 7;
     if (/^daily sunscreen$/.test(normalized)) score += 0.8;
     if (/^broad spectrum sunscreen$/.test(normalized)) score += 0.6;
   } else if (step === 'serum') {
@@ -162,15 +164,17 @@ function buildSupportRoleQueryVariants({
       : []),
   ];
   if (step === 'moisturizer') {
-    if (oilySignal) candidates.push('lightweight moisturizer oily skin');
+    candidates.push('moisturizer');
+    if (gelSignal || oilySignal) candidates.push('gel cream moisturizer');
     if (oilFreeSignal || oilySignal) candidates.push('oil free moisturizer');
-    if (gelSignal) candidates.push('gel cream moisturizer');
+    if (oilySignal) candidates.push('lightweight moisturizer oily skin');
     if (barrierSignal) candidates.push(oilySignal ? 'barrier lotion oily skin' : 'barrier lotion');
     candidates.push('lightweight moisturizer');
   } else if (step === 'sunscreen') {
-    if (oilySignal) candidates.push('oil control sunscreen');
+    candidates.push('sunscreen');
+    if (fluidSignal || oilySignal) candidates.push(oilySignal ? 'spf fluid oily skin' : 'spf fluid');
     candidates.push(oilySignal ? 'lightweight sunscreen oily skin' : 'lightweight sunscreen');
-    if (fluidSignal) candidates.push(oilySignal ? 'spf fluid oily skin' : 'spf fluid');
+    if (oilySignal) candidates.push('oil control sunscreen');
     candidates.push('daily sunscreen');
     candidates.push('broad spectrum sunscreen');
   } else if (step === 'serum') {

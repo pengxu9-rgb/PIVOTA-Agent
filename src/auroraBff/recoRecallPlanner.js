@@ -595,6 +595,24 @@ function buildPrimaryTreatmentSemanticQueries(role) {
       'balancing serum oily skin',
     );
   }
+  const explicitMarkSignal =
+    /\b(post[- ]?(?:acne|breakout)|breakout marks?|acne marks?|dark spots?|hyperpigmentation|melasma|post-inflammatory)\b/.test(signalText);
+  const dullToneSignal =
+    /\b(dull|radiance|glow|brighten|brightening|uneven tone|tone correcting|discoloration)\b/.test(signalText);
+  if (explicitMarkSignal) {
+    semanticQueries.push(
+      'post acne marks serum',
+      'dark spot serum',
+      'tone correcting serum',
+      'brightening serum',
+    );
+  } else if (dullToneSignal) {
+    semanticQueries.push(
+      'brightening serum',
+      'radiance serum',
+      'tone correcting serum',
+    );
+  }
   return uniqueCaseInsensitiveStrings(semanticQueries, 3);
 }
 
@@ -694,13 +712,16 @@ function buildFrameworkRoleQueries(
       out.push(...roleQueries.slice(1));
       if (anchorQuery) out.push(anchorQuery);
     } else {
-      if (anchorQuery) out.push(anchorQuery);
+      const preferToneSemanticQueries = semanticQueries.some((query) =>
+        /\b(post acne|dark spot|brightening|tone correcting|radiance)\b/i.test(query),
+      );
+      if (preferToneSemanticQueries) out.push(...semanticQueries);
       if (includeIngredientAlternates) out.push(...ingredientLedQueries);
       else if (ingredientLedQuery) out.push(ingredientLedQuery);
+      if (!preferToneSemanticQueries) out.push(...semanticQueries);
       if (roleQueries.length > 0) out.push(roleQueries[0]);
-      out.push(...semanticQueries);
       out.push(...roleQueries.slice(1));
-      if (roleQueries.length <= 1 && anchorQuery) out.push(anchorQuery);
+      if (anchorQuery) out.push(anchorQuery);
     }
   } else {
     out.push(...buildSupportRoleQueryVariants({

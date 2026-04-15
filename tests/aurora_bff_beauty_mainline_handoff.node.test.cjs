@@ -488,25 +488,25 @@ test('handoffRecoToBeautyMainlineSearch executes primary external supplement and
       [
         'niacinamide serum oily skin',
         'lightweight moisturizer oily skin',
+        'spf fluid oily skin',
+        'gel cream moisturizer',
+        'sunscreen',
         'oil control sunscreen',
-        'barrier lotion oily skin',
-        'lightweight sunscreen oily skin',
-        'lightweight sunscreen',
       ],
     );
     assert.deepEqual(
       externalCaptured.map((row) => row.query),
       [
-        'oil control treatment',
-        'lightweight moisturizer oily skin',
-        'oil control sunscreen',
         'niacinamide serum oily skin',
-        'barrier lotion oily skin',
-        'lightweight sunscreen oily skin',
+        'lightweight moisturizer oily skin',
+        'spf fluid oily skin',
+        'salicylic acid serum oily skin',
+        'gel cream moisturizer',
+        'sunscreen',
       ],
     );
     assert.equal(captured.every((row) => row.callerLane === 'beauty_chat_handoff'), true);
-    assert.equal(captured.slice(0, 1).every((row) => row.timeoutMs === 10500), true);
+    assert.equal(captured.slice(0, 1).every((row) => row.timeoutMs === 16500), true);
     assert.equal(captured.slice(1).every((row) => row.timeoutMs === 1400), true);
     assert.equal(captured.every((row) => row.allowExternalSeed === false), true);
     assert.equal(
@@ -663,7 +663,7 @@ test('handoffRecoToBeautyMainlineSearch preserves horizontal comparison across i
       },
       searchLocalExternalSeedProducts: async (args) => {
         const query = String(args?.query || '').trim().toLowerCase();
-        if (query === 'oil control treatment') {
+        if (['oil control treatment', 'niacinamide serum oily skin', 'salicylic acid serum oily skin'].includes(query)) {
           return {
             ok: true,
             products: [
@@ -1036,19 +1036,19 @@ test('handoffRecoToBeautyMainlineSearch skips primary external seed when interna
       [
         'niacinamide serum oily skin',
         'lightweight moisturizer oily skin',
+        'spf fluid oily skin',
+        'gel cream moisturizer',
+        'sunscreen',
         'oil control sunscreen',
-        'barrier lotion oily skin',
-        'lightweight sunscreen oily skin',
-        'lightweight sunscreen',
       ],
     );
     assert.deepEqual(
       externalCaptured,
       [
         'lightweight moisturizer oily skin',
-        'oil control sunscreen',
-        'barrier lotion oily skin',
-        'lightweight sunscreen oily skin',
+        'spf fluid oily skin',
+        'gel cream moisturizer',
+        'sunscreen',
       ],
     );
     const primaryExternalRows = out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts
@@ -1147,9 +1147,9 @@ test('handoffRecoToBeautyMainlineSearch skips primary external supplement for ro
       externalCaptured,
       [
         'lightweight moisturizer oily skin',
-        'oil control sunscreen',
-        'barrier lotion oily skin',
-        'lightweight sunscreen oily skin',
+        'spf fluid oily skin',
+        'gel cream moisturizer',
+        'sunscreen',
       ],
     );
     const primaryExternalRows = out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts
@@ -1386,7 +1386,7 @@ test('handoffRecoToBeautyMainlineSearch interleaves support external queries acr
             transport_policy_mode: String(args?.transportPolicyMode || ''),
           };
         }
-        if (query === 'oil control sunscreen') {
+        if (query === 'spf fluid oily skin' || query === 'sunscreen' || query === 'oil control sunscreen') {
           return {
             ok: true,
             products: [
@@ -1438,7 +1438,7 @@ test('handoffRecoToBeautyMainlineSearch interleaves support external queries acr
       externalCaptured,
       [
         'lightweight moisturizer oily skin',
-        'oil control sunscreen',
+        'spf fluid oily skin',
       ],
     );
     assert.deepEqual(
@@ -1706,7 +1706,7 @@ test('handoffRecoToBeautyMainlineSearch exposes raw candidate pool sources when 
       },
       searchLocalExternalSeedProducts: async (args) => {
         const query = String(args?.query || '').trim().toLowerCase();
-        if (query === 'oil control treatment') {
+        if (['oil control treatment', 'niacinamide serum oily skin', 'salicylic acid serum oily skin'].includes(query)) {
           return {
             ok: true,
             products: [
