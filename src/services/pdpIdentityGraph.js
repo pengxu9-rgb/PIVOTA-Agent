@@ -1473,10 +1473,20 @@ function normalizeIdentityRows(rows) {
   return out;
 }
 
-function isBrandAllowedForLive(product) {
+function isBrandAllowedForLive(product, identityRow = null) {
   if (!PDP_IDENTITY_GRAPH_BRAND_ALLOWLIST.size) return true;
   const brand = normalizeBrandToken(
-    firstNonEmptyString(product?.brand?.name, product?.brand, product?.vendor, product?.brand_name),
+    firstNonEmptyString(
+      product?.brand?.name,
+      product?.brand,
+      product?.vendor,
+      product?.brand_name,
+      identityRow?.brand_norm,
+      identityRow?.source_payload?.brand?.name,
+      identityRow?.source_payload?.brand,
+      identityRow?.source_payload?.vendor,
+      identityRow?.source_payload?.brand_name,
+    ),
   );
   return brand ? PDP_IDENTITY_GRAPH_BRAND_ALLOWLIST.has(brand) : false;
 }
@@ -1490,7 +1500,6 @@ async function maybeBuildLiveSyntheticPdp({
   if (!PDP_IDENTITY_GRAPH_ENABLED || !process.env.DATABASE_URL || typeof queryFn !== 'function') {
     return null;
   }
-  if (!isBrandAllowedForLive(canonicalProduct)) return null;
 
   try {
     const sourceRowRes = await queryFn(
@@ -1507,6 +1516,7 @@ async function maybeBuildLiveSyntheticPdp({
     );
     const sourceRow = parseIdentityRow(sourceRowRes?.rows?.[0]);
     if (!sourceRow) return null;
+    if (!isBrandAllowedForLive(canonicalProduct, sourceRow)) return null;
 
     const exactRowsRes = await queryFn(
       `

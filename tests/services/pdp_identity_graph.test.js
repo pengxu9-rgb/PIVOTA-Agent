@@ -237,6 +237,73 @@ describe('pdpIdentityGraph', () => {
     expect(listing.source_meta.variant_family).toBeUndefined();
   });
 
+  test('maybeBuildLiveSyntheticPdp allows live rows by identity brand when fallback product lacks brand', async () => {
+    jest.resetModules();
+    process.env = {
+      ...ORIGINAL_ENV,
+      NODE_ENV: 'test',
+      DATABASE_URL: 'postgres://test',
+      PDP_IDENTITY_GRAPH_ENABLED: 'true',
+      PDP_IDENTITY_GRAPH_BRAND_ALLOWLIST: 'Beauty of Joseon',
+    };
+    const { maybeBuildLiveSyntheticPdp } = require('../../src/services/pdpIdentityGraph');
+    const sourceRow = {
+      source_listing_ref: 'external_seed:ext_boj_dn310',
+      merchant_id: 'external_seed',
+      product_id: 'ext_boj_dn310',
+      source_kind: 'external_seed',
+      source_tier: 'brand',
+      live_read_enabled: true,
+      sellable_item_group_id: 'sig_boj_dn310',
+      product_line_id: 'pl_boj_tinted_fluid',
+      review_family_id: 'rf_boj_tinted_fluid',
+      identity_status: 'approved',
+      identity_confidence: 0.94,
+      brand_norm: 'beauty of joseon',
+      match_basis: ['variant_family:beauty of joseon:daily tinted fluid sunscreen'],
+      variant_axes: { shade: 'dn310', size: '50ml', multi_variant: true },
+      source_payload: {
+        title: 'Daily Tinted Fluid Sunscreen DN310',
+        images: [{ url: 'https://cdn.example.com/dn310.jpg' }],
+      },
+    };
+    const siblingRow = {
+      ...sourceRow,
+      source_listing_ref: 'external_seed:ext_boj_dn350',
+      product_id: 'ext_boj_dn350',
+      sellable_item_group_id: 'sig_boj_dn350',
+      variant_axes: { shade: 'dn350', size: '50ml', multi_variant: true },
+      source_payload: {
+        title: 'Daily Tinted Fluid Sunscreen DN350',
+        images: [{ url: 'https://cdn.example.com/dn350.jpg' }],
+      },
+    };
+    const queryFn = jest.fn(async (sql) => {
+      const normalizedSql = String(sql || '').replace(/\s+/g, ' ').trim();
+      if (normalizedSql.includes('merchant_id = $1')) return { rows: [sourceRow] };
+      if (normalizedSql.includes('sellable_item_group_id = $1')) return { rows: [sourceRow] };
+      if (normalizedSql.includes('product_line_id = $1')) return { rows: [sourceRow, siblingRow] };
+      return { rows: [] };
+    });
+
+    const result = await maybeBuildLiveSyntheticPdp({
+      merchantId: 'external_seed',
+      productId: 'ext_boj_dn310',
+      canonicalProduct: {
+        product_id: 'ext_boj_dn310',
+        merchant_id: 'external_seed',
+        title: 'Daily Tinted Fluid Sunscreen DN310',
+      },
+      queryFn,
+    });
+
+    expect(result?.canonical_scope).toBe('synthetic');
+    expect(result?.synthetic_product.product_line_options).toEqual([
+      expect.objectContaining({ label: 'DN310', selected: true }),
+      expect.objectContaining({ label: 'DN350', selected: false }),
+    ]);
+  });
+
   test('buildIdentityListingFromProduct canonicalizes official URL host before conflict checks', () => {
     const { buildIdentityListingFromProduct, _internals } = require('../../src/services/pdpIdentityGraph');
 
