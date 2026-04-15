@@ -20259,14 +20259,14 @@ function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
       }
     }
     for (const group of supportGroups) {
-      if (group?.internalLevel) {
-        keptLevels.push(group.internalLevel);
-        executedSupportInternalLevels.push(group.internalLabel);
-      }
-      if (group?.externalLevel) {
-        keptLevels.push(group.externalLevel);
-        executedSupportExternalSeedLevels.push(group.externalLabel);
-      }
+      if (!group?.internalLevel) continue;
+      keptLevels.push(group.internalLevel);
+      executedSupportInternalLevels.push(group.internalLabel);
+    }
+    for (const group of supportGroups) {
+      if (!group?.externalLevel) continue;
+      keptLevels.push(group.externalLevel);
+      executedSupportExternalSeedLevels.push(group.externalLabel);
     }
   } else {
     keptLevels.push(...stagedLevels);
