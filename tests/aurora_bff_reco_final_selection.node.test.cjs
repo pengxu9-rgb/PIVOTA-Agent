@@ -959,16 +959,36 @@ test('reco assistant rewrite rejects candidate-pool product names that are not f
         name: 'Brightening Serum',
       },
     ];
-    __internal.__setCallGeminiJsonObjectForTest(async () => ({
-      ok: true,
-      json: {
-        assistant_text:
-          'First Aid Beauty Dark Spot Serum with Niacinamide is your best first buy because it targets post-breakout marks. You could instead pick the Fenty Beauty Watch Ya Tone Refill for a lower-priced targeted treatment.',
-      },
-      parse_status: 'parsed',
-      provider: 'gemini',
-      effective_model: 'gemini-3-flash-preview',
-    }));
+    const prompts = [];
+    const schemas = [];
+    let callCount = 0;
+    __internal.__setCallGeminiJsonObjectForTest(async (args = {}) => {
+      callCount += 1;
+      prompts.push(String(args.userPrompt || ''));
+      schemas.push(args.responseSchema || null);
+      if (callCount === 1) {
+        return {
+          ok: true,
+          json: {
+            assistant_text:
+              'First Aid Beauty Dark Spot Serum with Niacinamide is your best first buy because it targets post-breakout marks. You could instead pick the Fenty Beauty Watch Ya Tone Refill for a lower-priced targeted treatment.',
+          },
+          parse_status: 'parsed',
+          provider: 'gemini',
+          effective_model: 'gemini-3-flash-preview',
+        };
+      }
+      return {
+        ok: true,
+        json: {
+          lead_reason: 'targets post-breakout marks with niacinamide evidence from the product record',
+          support_reasons: ['offers another tone-focused serum option without treating it as the lead pick'],
+        },
+        parse_status: 'parsed',
+        provider: 'gemini',
+        effective_model: 'gemini-3-flash-preview',
+      };
+    });
 
     const rewrite = await __internal.maybeRewriteRecoAssistantTextWithLlm({
       payload,
@@ -978,9 +998,17 @@ test('reco assistant rewrite rejects candidate-pool product names that are not f
       allowLockedSelectionRewrite: true,
     });
 
-    assert.equal(rewrite.llm_used, false);
-    assert.equal(rewrite.reason, 'rewrite_mentions_unselected_product');
-    assert.equal(rewrite.text, '');
+    assert.equal(callCount, 2);
+    assert.equal(rewrite.llm_used, true);
+    assert.equal(rewrite.reason, null);
+    assert.match(rewrite.text, /First Aid Beauty Dark Spot Serum with Niacinamide is your best first buy/);
+    assert.match(rewrite.text, /Jurlique Brightening Serum/);
+    assert.doesNotMatch(rewrite.text, /Fenty Beauty|Watch Ya Tone/);
+    assert.match(prompts[1], /Do not write the final assistant message\./);
+    assert.match(prompts[1], /Return evidence-grounded reason fragments only; the service will insert the final product names in card order\./);
+    assert.match(prompts[1], /Schema: \{ "lead_reason": string, "support_reasons": string\[\] \}/);
+    assert.equal(schemas[1]?.required?.includes('lead_reason'), true);
+    assert.equal(schemas[1]?.required?.includes('support_reasons'), true);
   } finally {
     __internal.__resetCallGeminiJsonObjectForTest();
     if (prevMock === undefined) delete process.env.AURORA_BFF_USE_MOCK;
