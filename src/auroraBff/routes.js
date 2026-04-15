@@ -51649,6 +51649,28 @@ const RECO_ASSISTANT_REWRITE_JSON_SCHEMA = {
   },
 };
 
+const RECO_ASSISTANT_STRUCTURED_REASON_JSON_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['lead_reason', 'support_reasons'],
+  properties: {
+    lead_reason: {
+      type: 'string',
+      minLength: 1,
+      maxLength: 260,
+    },
+    support_reasons: {
+      type: 'array',
+      maxItems: 3,
+      items: {
+        type: 'string',
+        minLength: 1,
+        maxLength: 220,
+      },
+    },
+  },
+};
+
 function inferRecoAssistantRequestMode(userRequestText) {
   const raw = String(userRequestText || '').trim().toLowerCase();
   if (!raw) return 'generic';
@@ -51735,7 +51757,7 @@ function buildRecoAssistantPromptPriceDiagnostics(items = []) {
 
 const RECO_ASSISTANT_CONCERN_FAMILY_PATTERNS = Object.freeze([
   ['oil_control', /\b(oil|oily|oiliness|shine|sebum|greasy|mattif|zinc\s*pca|zinc)\b/i],
-  ['tone_brightening', /\b(dull(?:ness)?|uneven\s+tone|dark\s+spots?|hyperpigmentation|brighten(?:ing)?|radiance|radiant|glow(?:ing)?|improv(?:e|es|ing)\s+(?:the\s+look\s+of\s+)?skin\s+tone|even(?:s|ing)?\s+skin\s+tone)\b/i],
+  ['tone_brightening', /\b(tone_mark_treatment|post[-\s]?breakout\s+marks?|dull(?:ness)?|uneven\s+tone|dark\s+spots?|hyperpigmentation|brighten(?:ing)?|radiance|radiant|glow(?:ing)?|improv(?:e|es|ing)\s+(?:the\s+look\s+of\s+)?skin\s+tone|even(?:s|ing)?\s+skin\s+tone)\b/i],
   ['acne_pore', /\b(acne|breakouts?|blemish(?:es)?|clog(?:ged)?|pores?)\b/i],
   ['hydration_barrier', /\b(hydrat(?:e|ing|ion)?|moistur(?:e|ize|izer|izing)?|barrier|dry(?:ness)?|dehydrat(?:ed|ion)?|ceramides?|glycerin|hyaluronic)\b/i],
   ['sunscreen_uv', /\b(spf|sunscreen|sun\s*screen|uv|sun\s+protection|white\s+cast|broad\s+spectrum)\b/i],
@@ -52190,6 +52212,47 @@ function buildCompactRecoAssistantPromptLines({
   return lines;
 }
 
+function buildStructuredRecoAssistantReasonPromptLines({
+  requestMode = 'generic',
+  selectedProductRoleMix = 'single_product',
+  retryInstruction = null,
+} = {}) {
+  const lines = [
+    'Return strict JSON only.',
+    'Do not write the final assistant message.',
+    'Return evidence-grounded reason fragments only; the service will insert the final product names in card order.',
+    'The output must contain exactly lead_reason and support_reasons.',
+    'Write the reason fragments in Context.language.',
+    'Do not include any brand name or product name inside lead_reason or support_reasons.',
+    'Use only evidence already present in Context.selected_product_details or Context.assistant_write_plan.',
+    'If Context.forbidden_product_names is present, never use those names, partial product names, or their brand names.',
+    'If user_relevant_concern_families does not include tone_brightening, do not mention glow, radiance, dark spots, uneven tone, brightening, or dullness.',
+    'If user_relevant_concern_families does not include aging_texture, do not mention wrinkles, fine lines, aging, anti-aging, or texture repair.',
+    'lead_reason must explain why the first selected product fits the user request using concrete product evidence.',
+    'support_reasons must align to the remaining selected products in order; use an empty array when there are no support products.',
+    'Each reason must be a short shopper-facing fragment, not a full recommendation sentence.',
+    'Price may be included only when Context provides price_label or price_order_summary, and it must be paired with a non-price fit reason.',
+  ];
+  if (requestMode === 'buy') {
+    lines.push('Use buy/pick rationale, but do not include buy wording that depends on product names.');
+  } else if (requestMode === 'use_first') {
+    lines.push('Use first-step rationale, but do not include product names.');
+  }
+  if (selectedProductRoleMix === 'routine_mix') {
+    lines.push('For routine_mix, support_reasons should explain each remaining product as a separate routine step, not an interchangeable substitute.');
+  } else if (selectedProductRoleMix === 'same_role_comparison') {
+    lines.push('For same_role_comparison, support_reasons should explain same-slot tradeoffs using only available evidence.');
+  } else {
+    lines.push('For single_product, support_reasons should be an empty array.');
+  }
+  if (retryInstruction) {
+    lines.push('Previous draft failed the quality gate.');
+    lines.push(`Fix required: ${retryInstruction}`);
+  }
+  lines.push('Schema: { "lead_reason": string, "support_reasons": string[] }');
+  return lines;
+}
+
 function describeRecoAssistantRewriteFailureReason(reason) {
   const normalized = String(reason || '').trim().toLowerCase();
   if (!normalized) return null;
@@ -52237,6 +52300,7 @@ function buildRecoAssistantRewritePrompt({
   retryReason = null,
   compactContext = false,
   strictSelectedOnlyContext = false,
+  structuredReasonOnly = false,
 } = {}) {
   const lang = language === 'CN' ? 'CN' : 'EN';
   const names = pickRecoNames(payload, 3);
@@ -52560,13 +52624,21 @@ function buildRecoAssistantRewritePrompt({
       : [],
     assistant_write_plan: assistantWritePlan,
   };
-  const context = strictSelectedOnlyContext
+  const context = structuredReasonOnly
+    ? buildStrictSelectedOnlyRecoAssistantPromptContext(fullContext)
+    : strictSelectedOnlyContext
     ? buildStrictSelectedOnlyRecoAssistantPromptContext(fullContext)
     : compactContext
       ? buildCompactRecoAssistantPromptContext(fullContext)
       : fullContext;
   const retryInstruction = describeRecoAssistantRewriteFailureReason(retryReason);
-  const lines = compactContext
+  const lines = structuredReasonOnly
+    ? buildStructuredRecoAssistantReasonPromptLines({
+      requestMode,
+      selectedProductRoleMix,
+      retryInstruction,
+    })
+    : compactContext
     ? buildCompactRecoAssistantPromptLines({
       requestMode,
       selectedProductRoleMix,
@@ -53058,6 +53130,228 @@ function splitRecoAssistantRewriteAttemptTimeout(totalMs) {
   };
 }
 
+function normalizeRecoAssistantReasonFragment(value, {
+  selectedNames = [],
+  forbiddenNames = [],
+  fallback = '',
+} = {}) {
+  const forbiddenBrandFragments = [];
+  for (const name of Array.isArray(forbiddenNames) ? forbiddenNames : []) {
+    const tokens = String(name || '')
+      .trim()
+      .split(/\s+/)
+      .map((token) => token.replace(/[^a-z0-9&'-]/ig, '').trim())
+      .filter(Boolean);
+    if (!tokens.length) continue;
+    const firstToken = tokens[0];
+    if (firstToken && !/^(the|a|an|with|and|for)$/i.test(firstToken) && firstToken.length >= 4) {
+      forbiddenBrandFragments.push(firstToken);
+    }
+    if (tokens.length >= 2 && !/^(the|a|an)$/i.test(tokens[0])) {
+      forbiddenBrandFragments.push(tokens.slice(0, 2).join(' '));
+    }
+    if (tokens.length >= 3 && !/^(the|a|an)$/i.test(tokens[0])) {
+      forbiddenBrandFragments.push(tokens.slice(0, 3).join(' '));
+    }
+  }
+  const removeNames = uniqCaseInsensitiveStrings([
+    ...(Array.isArray(selectedNames) ? selectedNames : []),
+    ...(Array.isArray(forbiddenNames) ? forbiddenNames : []),
+    ...forbiddenBrandFragments,
+  ].filter(Boolean), 16);
+  let text = String(value || '').trim();
+  text = text
+    .replace(/[“”"]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  for (const name of removeNames) {
+    const rawName = String(name || '').trim();
+    if (!rawName) continue;
+    text = text.replace(new RegExp(escapeRegExp(rawName), 'ig'), ' ');
+  }
+  text = text
+    .replace(/\b(this|that)\s+product\b/ig, 'it')
+    .replace(/\b(the|this|that)\s+(lead|selected)\s+(pick|product|option)\b/ig, 'it')
+    .replace(/\b(product|option)\s+(is|as)\b/ig, 'it $2')
+    .replace(/\s+/g, ' ')
+    .replace(/^[\s,;:.\-–—]+/, '')
+    .replace(/[\s,;:.\-–—]+$/, '')
+    .trim();
+  if (!text || text.length < 8) {
+    text = String(fallback || '').trim();
+  }
+  text = text
+    .replace(/[“”"]/g, '')
+    .replace(/\s+/g, ' ')
+    .replace(/^[\s,;:.\-–—]+/, '')
+    .replace(/[\s,;:.\-–—]+$/, '')
+    .trim();
+  if (!text) return '';
+  if (/^[A-Z][a-z]/.test(text) && !/^(SPF|UV|PA\b)/.test(text)) {
+    text = text.charAt(0).toLowerCase() + text.slice(1);
+  }
+  return text.slice(0, 220).trim();
+}
+
+function buildRecoAssistantStructuredReasonFallback(detail = {}, {
+  targetLabel = '',
+  selectedNames = [],
+  forbiddenNames = [],
+} = {}) {
+  const points = buildRecoAssistantReasonPoints(detail, { max: 2 });
+  const primary = normalizeRecoAssistantReasonFragment(points[0], {
+    selectedNames,
+    forbiddenNames,
+  });
+  if (primary) return primary;
+  const target = String(targetLabel || '').trim();
+  if (target) return `it directly fits the ${target.toLowerCase()} request`;
+  return 'it is the most direct fit from the selected card evidence';
+}
+
+function pickRecoAssistantRenderDetail(row = {}) {
+  const item = isPlainObject(row) ? row : {};
+  return {
+    name: pickFirstTrimmed(item.display_name, item.displayName, item.name, item.title, item.sku?.display_name, item.sku?.name),
+    matched_role_label: pickFirstTrimmed(item.matched_role_label, item.matchedRoleLabel),
+    preferred_step: pickFirstTrimmed(item.preferred_step, item.preferredStep, item.step, item.category, item.sku?.category, item.sku?.product_type),
+    reason_points: buildRecoAssistantReasonPoints(item, { max: 2 }),
+    short_description: pickFirstTrimmed(item.short_description, item.shortDescription, item.description, item.sku?.short_description, item.sku?.description),
+    why_this_one: pickFirstTrimmed(item.why_this_one, item.whyThisOne, item.reason),
+    best_for: pickFirstTrimmed(item.best_for, item.bestFor),
+    key_features: asStringArray([
+      ...(Array.isArray(item.key_features) ? item.key_features : []),
+      ...(Array.isArray(item.keyFeatures) ? item.keyFeatures : []),
+      ...(Array.isArray(item.actives) ? item.actives : []),
+      ...(Array.isArray(item.key_ingredients) ? item.key_ingredients : []),
+    ], 4),
+  };
+}
+
+function formatRecoAssistantStructuredSentence(sentence) {
+  const text = String(sentence || '').replace(/\s+/g, ' ').trim();
+  if (!text) return '';
+  if (/[.!?。！？]$/.test(text)) return text;
+  return `${text}.`;
+}
+
+function formatRecoAssistantTargetPhrase(targetLabel, language) {
+  const raw = String(targetLabel || '').replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!raw) return '';
+  if (language === 'CN') return `针对${raw}`;
+  return ` for ${raw.toLowerCase()}`;
+}
+
+function renderRecoAssistantStructuredReasonRewrite({
+  structuredReason,
+  payload,
+  language,
+  primaryTarget,
+  names,
+  requestMode,
+  selectedProductRoleMix,
+} = {}) {
+  const selectedNames = asStringArray(names, 3);
+  if (!selectedNames.length) return '';
+  const recommendations = Array.isArray(payload?.recommendations)
+    ? payload.recommendations.filter((item) => isPlainObject(item)).slice(0, selectedNames.length)
+    : [];
+  const details = selectedNames.map((name, index) => ({
+    ...pickRecoAssistantRenderDetail(recommendations[index] || {}),
+    name,
+  }));
+  const targetLabel = pickFirstTrimmed(
+    primaryTarget && primaryTarget.ingredient_query,
+    primaryTarget && primaryTarget.ingredient_id,
+    humanizeRecoProductType(
+      pickFirstTrimmed(primaryTarget && primaryTarget.resolved_target_step, payload?.recommendation_meta?.resolved_target_step, 'other'),
+      language === 'CN' ? 'CN' : 'EN',
+    ),
+  );
+  const targetPhrase = formatRecoAssistantTargetPhrase(targetLabel, language);
+  const forbiddenNames = collectRecoAssistantUnselectedCandidateDisplayNames(payload, 8);
+  const leadReason = normalizeRecoAssistantReasonFragment(structuredReason?.lead_reason, {
+    selectedNames,
+    forbiddenNames,
+    fallback: buildRecoAssistantStructuredReasonFallback(details[0], {
+      targetLabel,
+      selectedNames,
+      forbiddenNames,
+    }),
+  });
+  if (!leadReason) return '';
+  const supportReasonValues = Array.isArray(structuredReason?.support_reasons)
+    ? structuredReason.support_reasons
+    : [];
+  const supportReasons = selectedNames.slice(1).map((name, index) => normalizeRecoAssistantReasonFragment(
+    supportReasonValues[index],
+    {
+      selectedNames,
+      forbiddenNames,
+      fallback: buildRecoAssistantStructuredReasonFallback(details[index + 1], {
+        targetLabel,
+        selectedNames,
+        forbiddenNames,
+      }),
+    },
+  ));
+  if (language === 'CN') {
+    const leadSentence =
+      requestMode === 'use_first'
+        ? `${selectedNames[0]}适合作为起步选择，因为${leadReason}`
+        : `${selectedNames[0]}是更适合先买的选择${targetPhrase}，因为${leadReason}`;
+    if (selectedNames.length === 1) {
+      return [
+        formatRecoAssistantStructuredSentence(leadSentence),
+        formatRecoAssistantStructuredSentence(`它让建议保持在${targetLabel || '用户当前诉求'}上，而不是扩展到无关功效`),
+      ].filter(Boolean).join(' ');
+    }
+    const supportSentences = selectedNames.slice(1).map((name, index) => {
+      const detail = details[index + 1] || {};
+      const step = pickFirstTrimmed(detail.preferred_step, detail.matched_role_label, 'support step');
+      const reason = supportReasons[index] || buildRecoAssistantStructuredReasonFallback(detail, {
+        targetLabel,
+        selectedNames,
+        forbiddenNames,
+      });
+      return formatRecoAssistantStructuredSentence(`${name}负责${step}，因为${reason}`);
+    });
+    return [
+      formatRecoAssistantStructuredSentence(leadSentence),
+      ...supportSentences,
+    ].filter(Boolean).slice(0, 3).join(' ');
+  }
+  const leadSentence =
+    requestMode === 'use_first'
+      ? `Start with ${selectedNames[0]}${targetPhrase} because ${leadReason}`
+      : requestMode === 'use'
+        ? `${selectedNames[0]} is the most practical pick${targetPhrase} because ${leadReason}`
+        : `${selectedNames[0]} is your best first buy${targetPhrase} because ${leadReason}`;
+  if (selectedNames.length === 1) {
+    return [
+      formatRecoAssistantStructuredSentence(leadSentence),
+      formatRecoAssistantStructuredSentence(`That keeps the recommendation focused on ${String(targetLabel || 'the stated concern').toLowerCase()} instead of unrelated benefits`),
+    ].filter(Boolean).join(' ');
+  }
+  const supportSentences = selectedNames.slice(1).map((name, index) => {
+    const detail = details[index + 1] || {};
+    const reason = supportReasons[index] || buildRecoAssistantStructuredReasonFallback(detail, {
+      targetLabel,
+      selectedNames,
+      forbiddenNames,
+    });
+    if (selectedProductRoleMix === 'same_role_comparison') {
+      return formatRecoAssistantStructuredSentence(`${name} is the same-slot comparison option because ${reason}`);
+    }
+    const step = pickFirstTrimmed(detail.preferred_step, detail.matched_role_label, 'support step');
+    return formatRecoAssistantStructuredSentence(`${name} covers the ${String(step).toLowerCase()} step because ${reason}`);
+  });
+  return [
+    formatRecoAssistantStructuredSentence(leadSentence),
+    ...supportSentences,
+  ].filter(Boolean).slice(0, 3).join(' ');
+}
+
 async function maybeRewriteRecoAssistantTextWithLlm({
   payload,
   language,
@@ -53111,6 +53405,7 @@ async function maybeRewriteRecoAssistantTextWithLlm({
       timeoutCapMs = null,
       compactContext = false,
       strictSelectedOnlyContext = false,
+      structuredReasonOnly = false,
       maxOutputTokensOverride = null,
     } = {}) => {
       const remainingBudgetMs = getRemainingBudgetMs();
@@ -53124,6 +53419,7 @@ async function maybeRewriteRecoAssistantTextWithLlm({
           retry_reason: pickFirstTrimmed(retryReason) || null,
           compact_context: compactContext === true,
           strict_selected_only_context: strictSelectedOnlyContext === true,
+          structured_reason_only: structuredReasonOnly === true,
         });
         return { ok: false, reason: 'rewrite_budget_exhausted' };
       }
@@ -53153,12 +53449,14 @@ async function maybeRewriteRecoAssistantTextWithLlm({
         retryReason,
         compactContext,
         strictSelectedOnlyContext,
+        structuredReasonOnly,
       });
       const attemptTrace = {
         attempt_index: attemptIndex,
         retry_reason: pickFirstTrimmed(retryReason) || null,
         compact_context: compactContext === true,
         strict_selected_only_context: strictSelectedOnlyContext === true,
+        structured_reason_only: structuredReasonOnly === true,
         timeout_cap_ms: Number.isFinite(Number(timeoutCapMs)) && Number(timeoutCapMs) > 0
           ? Math.trunc(Number(timeoutCapMs))
           : null,
@@ -53201,7 +53499,9 @@ async function maybeRewriteRecoAssistantTextWithLlm({
         llmModel: AURORA_PRODUCT_INTEL_LLM_MODEL,
         systemPrompt: 'You rewrite skincare recommendation explanations. Output strict JSON only.',
         userPrompt: userPromptText,
-        responseSchema: RECO_ASSISTANT_REWRITE_JSON_SCHEMA,
+        responseSchema: structuredReasonOnly
+          ? RECO_ASSISTANT_STRUCTURED_REASON_JSON_SCHEMA
+          : RECO_ASSISTANT_REWRITE_JSON_SCHEMA,
         timeoutMs: effectiveRewriteTimeoutMs,
         queueTimeoutMs: rewriteTimeoutBudget.queue_timeout_ms,
         upstreamTimeoutMs: rewriteTimeoutBudget.upstream_timeout_ms,
@@ -53209,9 +53509,22 @@ async function maybeRewriteRecoAssistantTextWithLlm({
         route: 'aurora_reco_assistant_rewrite',
         thinkingLevel: routeStableRewriteThinkingLevel,
       });
-      let candidateText = String(result && result.json && result.json.assistant_text || '').trim();
       let parseStatus = result && result.parse_status ? String(result.parse_status).trim() : null;
-      if (!candidateText && typeof result?.raw_text === 'string') {
+      let candidateText = '';
+      if (structuredReasonOnly) {
+        candidateText = renderRecoAssistantStructuredReasonRewrite({
+          structuredReason: result && result.json && typeof result.json === 'object' ? result.json : null,
+          payload,
+          language,
+          primaryTarget,
+          names,
+          requestMode,
+          selectedProductRoleMix,
+        });
+      } else {
+        candidateText = String(result && result.json && result.json.assistant_text || '').trim();
+      }
+      if (!candidateText && !structuredReasonOnly && typeof result?.raw_text === 'string') {
         const recoveredText = recoverRecoAssistantRewriteTextFromRaw(result.raw_text);
         if (recoveredText) {
           candidateText = recoveredText;
@@ -53352,10 +53665,11 @@ async function maybeRewriteRecoAssistantTextWithLlm({
       retryReason: firstAttempt.reason,
       compactContext: useCompactRetry,
       strictSelectedOnlyContext: useStrictSelectedOnlyRetry,
+      structuredReasonOnly: useStrictSelectedOnlyRetry,
       timeoutCapMs: retryTimeoutCapMs,
       maxOutputTokensOverride: useCompactRetry
         ? Math.min(
-          useStrictSelectedOnlyRetry ? 180 : compactOutputTokenCap,
+          useStrictSelectedOnlyRetry ? 140 : compactOutputTokenCap,
           AURORA_RECO_ASSISTANT_REWRITE_MAX_OUTPUT_TOKENS,
         )
         : null,
