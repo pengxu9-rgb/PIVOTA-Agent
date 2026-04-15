@@ -750,6 +750,182 @@ test('handoffRecoToBeautyMainlineSearch preserves horizontal comparison across i
   }
 });
 
+test('handoffRecoToBeautyMainlineSearch stops primary external alternates after a viable primary and preserves support role budget', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const externalCaptured = [];
+    __internal.__setRouteDependencyOverridesForTest({
+      searchInternalProductsPrimitive: async () => ({
+        ok: true,
+        products: [],
+        attempted_internal_paths: ['/agent/internal/products/search'],
+        transport_hops: [],
+        transport_hop_count: 0,
+        nested_orchestrator_hops: 0,
+        primary_transport_owner: 'internal_products_search_primitive',
+        primary_endpoint_kind: 'internal_primitive',
+      }),
+      searchLocalExternalSeedProducts: async (args) => {
+        const roleId = String(args?.role?.role_id || '').trim();
+        const query = String(args?.query || '').trim().toLowerCase();
+        externalCaptured.push({ query, roleId });
+        const base = {
+          reason: null,
+          actual_http_attempt_count: 0,
+          attempted_base_urls: [],
+          attempted_paths: [],
+          transport_policy_mode: String(args?.transportPolicyMode || ''),
+        };
+        if (roleId === 'tone_mark_treatment') {
+          return {
+            ...base,
+            ok: true,
+            products: [
+              {
+                product_id: 'tone_primary_external',
+                merchant_id: 'merchant_ext_tone',
+                title: 'Post-Breakout Mark Serum',
+                display_name: 'Post-Breakout Mark Serum',
+                brand: 'TestSkin',
+                category: 'serum',
+                product_type: 'serum',
+                candidate_step: 'treatment',
+                benefit_tags: ['post-breakout marks', 'uneven tone', 'brightening'],
+                short_description: 'A targeted serum for post-breakout marks, uneven tone, and lingering dark spots.',
+                retrieval_source: 'external_seed',
+              },
+            ],
+          };
+        }
+        if (roleId === 'lightweight_moisturizer') {
+          return {
+            ...base,
+            ok: true,
+            products: [
+              {
+                product_id: 'support_moisturizer_external',
+                merchant_id: 'merchant_ext_moist',
+                title: 'Lightweight Barrier Gel Cream',
+                display_name: 'Lightweight Barrier Gel Cream',
+                brand: 'TestSkin',
+                category: 'moisturizer',
+                product_type: 'moisturizer',
+                candidate_step: 'moisturizer',
+                benefit_tags: ['lightweight hydration', 'barrier support', 'non-greasy'],
+                short_description: 'A lightweight gel moisturizer that supports the barrier without a heavy finish.',
+                retrieval_source: 'external_seed',
+              },
+            ],
+          };
+        }
+        if (roleId === 'daily_sunscreen') {
+          return {
+            ...base,
+            ok: true,
+            products: [
+              {
+                product_id: 'support_sunscreen_external',
+                merchant_id: 'merchant_ext_spf',
+                title: 'Clear Daily Sunscreen SPF 50',
+                display_name: 'Clear Daily Sunscreen SPF 50',
+                brand: 'TestSkin',
+                category: 'sunscreen',
+                product_type: 'sunscreen',
+                candidate_step: 'sunscreen',
+                benefit_tags: ['spf 50', 'daily sunscreen', 'lightweight'],
+                short_description: 'A lightweight daily sunscreen to protect post-breakout marks from darkening.',
+                retrieval_source: 'external_seed',
+              },
+            ],
+          };
+        }
+        return {
+          ...base,
+          ok: true,
+          products: [],
+          reason: 'empty',
+        };
+      },
+    });
+
+    const targetContext = {
+      primary_role_id: 'tone_mark_treatment',
+      comparison_mode: 'routine_mix',
+      semantic_plan: {
+        routine_mode: 'routine_mix',
+        comparison_mode: 'routine_mix',
+        selection_constraints: { comparison_mode: 'routine_mix' },
+      },
+      framework_summary: {
+        concern_text: 'post-breakout marks, what should i buy?',
+      },
+      framework_roles: [
+        {
+          role_id: 'tone_mark_treatment',
+          rank: 10,
+          preferred_step: 'treatment',
+          label: 'Tone and post-breakout mark treatment',
+          query_terms: ['tone and post breakout mark treatment', 'post breakout dark spot serum', 'dark spot serum'],
+          fit_keywords: ['post-breakout', 'marks', 'dark spots', 'uneven tone', 'brightening'],
+        },
+        {
+          role_id: 'lightweight_moisturizer',
+          rank: 20,
+          preferred_step: 'moisturizer',
+          label: 'Lightweight moisturizer',
+          query_terms: ['lightweight moisturizer post breakout skin', 'barrier gel cream'],
+          fit_keywords: ['lightweight', 'barrier', 'non-greasy', 'hydration'],
+        },
+        {
+          role_id: 'daily_sunscreen',
+          rank: 30,
+          preferred_step: 'sunscreen',
+          label: 'Daily sunscreen',
+          query_terms: ['daily sunscreen post acne marks', 'lightweight sunscreen'],
+          fit_keywords: ['spf', 'daily sunscreen', 'uv protection', 'lightweight'],
+        },
+      ],
+      support_roles: [],
+    };
+
+    const out = await __internal.handoffRecoToBeautyMainlineSearch({
+      ctx: { lang: 'EN', request_id: 'req_primary_external_stop_preserve_support' },
+      primaryQuery: 'post-breakout marks, what should i buy?',
+      fallbackMessage: 'post-breakout marks, what should i buy?',
+      targetContext,
+      timeoutMs: 5000,
+      minTimeoutMs: 5000,
+    });
+
+    assert.equal(
+      externalCaptured.filter((row) => row.roleId === 'tone_mark_treatment').length,
+      1,
+    );
+    assert.equal(
+      externalCaptured.some((row) => row.roleId === 'lightweight_moisturizer'),
+      true,
+    );
+    assert.equal(
+      externalCaptured.some((row) => row.roleId === 'daily_sunscreen'),
+      true,
+    );
+    assert.deepEqual(
+      out.recommendations.map((item) => item?.matched_role_id).sort(),
+      ['daily_sunscreen', 'lightweight_moisturizer', 'tone_mark_treatment'],
+    );
+    const primaryExternalRows = out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts
+      ?.filter((row) => row?.ladder_level === 'framework_stage_b_primary_external_seed') || [];
+    assert.equal(primaryExternalRows.length, 1);
+    assert.equal(primaryExternalRows[0]?.result_count, 1);
+    assert.ok(
+      Number(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_query_count || 0) < 16,
+    );
+  } finally {
+    __internal.__resetRouteDependencyOverridesForTest();
+    delete require.cache[moduleId];
+  }
+});
+
 test('handoffRecoToBeautyMainlineSearch skips primary external seed when internal comparison coverage is already satisfied', async () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
