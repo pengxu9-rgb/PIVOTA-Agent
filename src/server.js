@@ -2725,6 +2725,18 @@ function buildPdpSimilarInflightKey(args = {}) {
   return `${merchantId}::${productId}::${limit}::${locale}::${currency}::${bypass ? '1' : '0'}`;
 }
 
+function resolvePdpSimilarDisplayLimit(payload = {}) {
+  const rawLimit = payload?.similar?.limit || payload?.recommendations?.limit || 6;
+  const numericLimit = Number(rawLimit);
+  const limit = Number.isFinite(numericLimit) ? Math.trunc(numericLimit) : 6;
+  return Math.max(6, Math.min(24, limit || 6));
+}
+
+function resolvePdpSimilarCandidateLimit(displayLimit) {
+  const limit = Math.max(6, Math.min(24, Number(displayLimit) || 6));
+  return Math.max(limit + 4, Math.min(30, limit * 2));
+}
+
 function trimOldestInflightEntries(map, maxEntries) {
   while (map.size >= maxEntries) {
     const firstKey = map.keys().next().value;
@@ -17151,10 +17163,12 @@ async function resolveProductIntelInvokeContext({
     }
   }
 
+  const relatedProductsDisplayLimit = resolvePdpSimilarDisplayLimit(payload);
+  const relatedProductsCandidateLimit = resolvePdpSimilarCandidateLimit(relatedProductsDisplayLimit);
   const relatedProducts = includeRecommendations
     ? await fetchSimilarProductsDeduped({
         pdp_product: product,
-        k: payload?.similar?.limit || payload?.recommendations?.limit || 6,
+        k: relatedProductsCandidateLimit,
         locale: payload?.context?.locale || payload?.context?.language || payload?.locale || 'en-US',
         currency: product.currency || 'USD',
         options: {
@@ -17170,7 +17184,9 @@ async function resolveProductIntelInvokeContext({
     productGroupId,
     groupMembers,
     product,
-    relatedProducts: Array.isArray(relatedProducts?.items) ? relatedProducts.items : [],
+    relatedProducts: Array.isArray(relatedProducts?.items)
+      ? relatedProducts.items.slice(0, relatedProductsDisplayLimit)
+      : [],
   };
 }
 function buildOffersResolveResponse({
@@ -20865,7 +20881,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	        ? (async () => {
 	            const moduleStartedAt = Date.now();
 	            try {
-	            const limit = payload?.similar?.limit || payload?.recommendations?.limit || 6;
+		            const limit = resolvePdpSimilarDisplayLimit(payload);
+                const candidateLimit = resolvePdpSimilarCandidateLimit(limit);
               const canonicalRefMerchantId = String(canonicalProductRef?.merchant_id || '').trim();
               const canonicalRefProductId = String(canonicalProductRef?.product_id || '').trim();
               const similarBaseProduct = {
@@ -20886,9 +20903,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                     }
                   : {}),
               };
-	            return await fetchSimilarProductsDeduped({
-              pdp_product: similarBaseProduct,
-              k: limit,
+		            return await fetchSimilarProductsDeduped({
+	              pdp_product: similarBaseProduct,
+	              k: candidateLimit,
               locale:
                 payload?.context?.locale || payload?.context?.language || payload?.locale || 'en-US',
               currency: similarBaseProduct.currency || canonicalProductForPdp.currency || canonicalProduct.currency || 'USD',
@@ -20975,15 +20992,16 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	        );
 	      }
 
-      if (wantsSimilar && relatedProducts.length > 0) {
-        const similarCardEnrichmentStartedAt = Date.now();
-        const similarLimit = payload?.similar?.limit || payload?.recommendations?.limit || 6;
-        const enrichedRelatedProducts = await enrichSimilarProductsForPdpCards({
-          items: relatedProducts,
-          checkoutToken,
-          bypassCache,
-          maxItems: similarLimit,
-        });
+	      if (wantsSimilar && relatedProducts.length > 0) {
+	        const similarCardEnrichmentStartedAt = Date.now();
+	        const similarLimit = resolvePdpSimilarDisplayLimit(payload);
+          const similarCandidateLimit = resolvePdpSimilarCandidateLimit(similarLimit);
+	        const enrichedRelatedProducts = await enrichSimilarProductsForPdpCards({
+	          items: relatedProducts,
+	          checkoutToken,
+	          bypassCache,
+	          maxItems: similarCandidateLimit,
+	        });
         const missingHighlightCount = enrichedRelatedProducts.filter(
           (item) => String(item?.card_highlight_status || '').trim() === 'highlight_missing',
         ).length;
