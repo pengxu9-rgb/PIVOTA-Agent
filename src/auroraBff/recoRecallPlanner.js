@@ -90,6 +90,37 @@ function normalizeFrameworkSemanticRole(role = null) {
   };
 }
 
+function getTargetContextPrimaryRoleId(targetContext = null) {
+  const candidates = [
+    targetContext?.primary_role_id,
+    targetContext?.primaryRoleId,
+    targetContext?.semantic_plan?.primary_role_id,
+    targetContext?.semanticPlan?.primary_role_id,
+    targetContext?.framework_summary?.primary_role_id,
+  ];
+  for (const raw of candidates) {
+    const normalized = normalizeConcernQueryToken(raw).toLowerCase();
+    if (normalized) return normalized;
+  }
+  return '';
+}
+
+function orderFrameworkRolesForPrimary(roles = [], targetContext = null) {
+  const roleList = Array.isArray(roles) ? roles.filter(Boolean) : [];
+  const primaryRoleId = getTargetContextPrimaryRoleId(targetContext);
+  if (!primaryRoleId || roleList.length <= 1) return roleList;
+  const primaryIndex = roleList.findIndex((role) =>
+    normalizeConcernQueryToken(role?.role_id).toLowerCase() === primaryRoleId
+  );
+  if (primaryIndex <= 0) return roleList;
+  const primaryRole = roleList[primaryIndex];
+  return [
+    primaryRole,
+    ...roleList.slice(0, primaryIndex),
+    ...roleList.slice(primaryIndex + 1),
+  ];
+}
+
 function deriveSemanticFamilyFromRole(role = null) {
   const roleObj = role && typeof role === 'object' && !Array.isArray(role) ? role : null;
   if (!roleObj) return null;
@@ -168,13 +199,14 @@ function buildStepAwareIngredientHypotheses(targetContext = null, targetStepFami
 }
 
 function buildFrameworkSemanticContract({ targetContext } = {}) {
-  const roles = Array.isArray(targetContext?.framework_roles)
+  const rankedRoles = Array.isArray(targetContext?.framework_roles)
     ? [...targetContext.framework_roles]
         .filter((role) => role && typeof role === 'object' && !Array.isArray(role))
         .sort((left, right) => Number(left?.rank || 99) - Number(right?.rank || 99))
         .map((role) => normalizeFrameworkSemanticRole(role))
         .filter(Boolean)
     : [];
+  const roles = orderFrameworkRolesForPrimary(rankedRoles, targetContext);
   const primaryRole = roles[0] || null;
   if (!primaryRole) return null;
   const supportRoles = roles.slice(1, 3);
