@@ -6451,8 +6451,9 @@ describe('discovery feed service', () => {
         profile,
         [queryText],
       );
+      const expectedFields = queryText === 'shampoo' ? ['title', 'summary'] : ['title'];
       expect(_internals.resolveExplicitIndexedCategoryHeadTerms(request, recallTerms)).toEqual([]);
-      expect(_internals.resolveExactPhraseTextUnionFieldLabels(request, recallTerms)).toEqual(['title']);
+      expect(_internals.resolveExactPhraseTextUnionFieldLabels(request, recallTerms)).toEqual(expectedFields);
       expect(
         _internals
           .buildExactPhraseTextFieldStageDefinitions({
@@ -6461,7 +6462,7 @@ describe('discovery feed service', () => {
             cap: 36,
           })
           .map((stage) => stage.stage),
-      ).toEqual(['recall_exact_text_title']);
+      ).toEqual(expectedFields.map((field) => `recall_exact_text_${field}`));
     }
 
     const leaveInRequest = _internals.normalizeDiscoveryRequest({
