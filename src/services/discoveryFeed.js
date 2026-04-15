@@ -8233,6 +8233,9 @@ function buildRankDebug({
         ? { warning_codes: uniqStrings(step.warning_codes, 12) }
         : {}),
       ...(step?.compound_intent ? { compound_intent: String(step.compound_intent) } : {}),
+      ...(Array.isArray(step?.external_seed_tool_scopes) && step.external_seed_tool_scopes.length > 0
+        ? { external_seed_tool_scopes: uniqStrings(step.external_seed_tool_scopes, 6) }
+        : {}),
       ...(Array.isArray(step?.external_seed_stage_counts) && step.external_seed_stage_counts.length > 0
         ? { external_seed_stage_counts: step.external_seed_stage_counts }
         : {}),
@@ -8258,6 +8261,7 @@ function buildRankDebug({
 function summarizeExternalSeedRecallTelemetry(recallSummary = []) {
   const summary = {
     compound_intent: null,
+    external_seed_tool_scopes: [],
     external_seed_stage_counts: [],
     external_seed_raw_count: 0,
     external_seed_qualified_count: 0,
@@ -8268,6 +8272,12 @@ function summarizeExternalSeedRecallTelemetry(recallSummary = []) {
     if (!step || typeof step !== 'object') continue;
     if (!summary.compound_intent && step.compound_intent) {
       summary.compound_intent = String(step.compound_intent);
+    }
+    if (Array.isArray(step.external_seed_tool_scopes)) {
+      summary.external_seed_tool_scopes = uniqStrings(
+        summary.external_seed_tool_scopes.concat(step.external_seed_tool_scopes),
+        6,
+      );
     }
     if (Array.isArray(step.external_seed_stage_counts)) {
       summary.external_seed_stage_counts.push(...step.external_seed_stage_counts);
@@ -8721,6 +8731,9 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
       filter_counts: filterCounts,
       ...(compoundIntent || externalSeedRecallTelemetry.compound_intent
         ? { compound_intent: compoundIntent || externalSeedRecallTelemetry.compound_intent }
+        : {}),
+      ...(externalSeedRecallTelemetry.external_seed_tool_scopes.length > 0
+        ? { external_seed_tool_scopes: externalSeedRecallTelemetry.external_seed_tool_scopes }
         : {}),
       ...(externalSeedRecallTelemetry.external_seed_stage_counts.length > 0
         ? { external_seed_stage_counts: externalSeedRecallTelemetry.external_seed_stage_counts }
