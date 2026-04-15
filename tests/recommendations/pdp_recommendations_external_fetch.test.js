@@ -219,6 +219,7 @@ describe('RecommendationEngine external candidate fetch', () => {
       brand: 'Beauty of Joseon',
       category: 'Skincare',
       product_type: 'Products',
+      category_path: ['external'],
       source: 'external_seed',
     });
 
@@ -226,8 +227,10 @@ describe('RecommendationEngine external candidate fetch', () => {
       expect.objectContaining({
         category: 'Sunscreen',
         product_type: 'Sunscreen',
+        category_path: ['Sunscreen'],
       }),
     );
+    expect(_internals.getLeafCategory(out.product)).toBe('sunscreen');
     expect(out.semantic?.rescue_fields).toEqual(expect.arrayContaining(['category']));
   });
 

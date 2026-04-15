@@ -1147,7 +1147,10 @@ function isWeakExternalSeedCategory(value) {
     normalized === 'skincare' ||
     normalized === 'skin care' ||
     normalized === 'makeup' ||
-    normalized === 'cosmetics'
+    normalized === 'cosmetics' ||
+    normalized === 'external' ||
+    normalized === 'external seed' ||
+    normalized === 'catalog'
   );
 }
 
@@ -2050,6 +2053,10 @@ async function enrichExternalBaseProduct(baseProduct) {
     '',
   ).trim();
   if (seedCategory && isWeakExternalSeedCategory(getLeafCategory(enriched))) {
+    const rawCategoryPath = enriched.category_path || enriched.categoryPath;
+    if (Array.isArray(rawCategoryPath) && rawCategoryPath.length > 0) {
+      enriched.category_path = [seedCategory];
+    }
     if (!String(enriched.category || '').trim()) enriched.category = seedCategory;
     if (!String(enriched.product_type || '').trim()) enriched.product_type = seedCategory;
     if (isWeakExternalSeedCategory(enriched.category)) enriched.category = seedCategory;
