@@ -5190,7 +5190,6 @@ function resolvePublicBrandScopeForDiscovery({
   if (!rawQuery) return [];
   const brandDetection = detectBrandEntities(rawQuery, { candidateProducts: [] });
   if (!brandDetection?.brand_like) return [];
-  if (isKnownLookupAliasQuery(rawQuery)) return [];
   const brands = uniqueStrings(Array.isArray(brandDetection.brands) ? brandDetection.brands : []).slice(
     0,
     4,
