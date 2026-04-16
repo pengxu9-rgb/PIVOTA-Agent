@@ -598,11 +598,11 @@ test('handoffRecoToBeautyMainlineSearch runs primary external alongside routine 
     );
     assert.deepEqual(
       out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts?.map((row) => row?.source_scope),
-      ['internal', 'internal', 'external_seed', 'internal', 'internal', 'external_seed', 'external_seed', 'external_seed', 'internal', 'internal', 'external_seed', 'external_seed', 'internal'],
+      ['internal', 'internal', 'external_seed', 'external_seed', 'external_seed', 'internal', 'internal', 'external_seed', 'external_seed', 'external_seed', 'internal', 'internal', 'internal'],
     );
     assert.deepEqual(
       out.searchResult?.metadata?.search_stage_ledger?.primary_search?.query_pack_attempts?.map((row) => row?.source_scope),
-      ['internal', 'internal', 'external_seed', 'internal', 'internal', 'external_seed', 'external_seed', 'external_seed', 'internal', 'internal', 'external_seed', 'external_seed', 'internal'],
+      ['internal', 'internal', 'external_seed', 'external_seed', 'external_seed', 'internal', 'internal', 'external_seed', 'external_seed', 'external_seed', 'internal', 'internal', 'internal'],
     );
     const supportAttempts = out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts
       ?.filter((row) => String(row?.ladder_level || '').startsWith('framework_stage_c_support_')) || [];
@@ -762,7 +762,7 @@ test('handoffRecoToBeautyMainlineSearch recovers acne primary from second planne
   }
 });
 
-test('handoffRecoToBeautyMainlineSearch runs support internal before timeout-prone support external', async () => {
+test('handoffRecoToBeautyMainlineSearch prioritizes support external while primary external is pending', async () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
     const internalCaptured = [];
@@ -921,13 +921,20 @@ test('handoffRecoToBeautyMainlineSearch runs support internal before timeout-pro
     });
 
     assert.deepEqual(externalCaptured[0], { query: 'sunscreen', roleId: 'daily_sunscreen_finish_fit' });
+    assert.deepEqual(
+      externalCaptured.slice(1, 3),
+      [
+        { query: 'niacinamide serum oily skin', roleId: 'oil_control_treatment' },
+        { query: 'gel cream moisturizer', roleId: 'lightweight_moisturizer' },
+      ],
+    );
     assert.equal(internalCaptured.includes('niacinamide serum oily skin'), true);
     assert.equal(internalCaptured.includes('gel cream moisturizer'), true);
     const attempts = out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts || [];
     const firstSupportAttempt = attempts.find((row) =>
       String(row?.ladder_level || '').startsWith('framework_stage_c_support_')
       && !String(row?.reason || '').startsWith('skipped_'));
-    assert.equal(firstSupportAttempt?.source_scope, 'internal');
+    assert.equal(firstSupportAttempt?.source_scope, 'external_seed');
     assert.equal(
       attempts.some((row) =>
         row?.source_scope === 'internal'
