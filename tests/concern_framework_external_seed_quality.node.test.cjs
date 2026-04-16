@@ -59,6 +59,24 @@ test('external-seed concern candidate text ignores polluted description-only sig
   assert.doesNotMatch(frameworkText, /\bniacinamide\b/);
 });
 
+test('external-seed concern candidate text uses curated key features but ignores raw ingredient tokens', () => {
+  const externalSeed = {
+    merchant_id: 'external_seed',
+    source: 'external_seed',
+    brand: 'Naturium',
+    display_name: 'Dew-Glow Moisturizer SPF 50',
+    category: 'sunscreen',
+    ingredient_tokens: ['raw polluted ingredient token'],
+    key_features: ['UV filters', 'Salicylic acid', 'Azelaic acid'],
+  };
+
+  const candidateText = buildConcernCandidateText(externalSeed);
+
+  assert.match(candidateText, /\bsalicylic acid\b/);
+  assert.match(candidateText, /\bazelaic acid\b/);
+  assert.doesNotMatch(candidateText, /\braw polluted ingredient token\b/);
+});
+
 test('framework pool does not let polluted external bundle outrank a role-aligned singleton treatment', () => {
   const { __internal } = loadRoutesFresh();
   const state = __internal.finalizeConcernFrameworkCandidatePools(

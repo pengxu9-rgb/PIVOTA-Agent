@@ -7648,9 +7648,7 @@ test('__internal: framework pool avoids active glow SPF as sunscreen support for
         retrieval_source: 'external_seed',
         retrieval_role_id: 'daily_sunscreen',
         retrieval_query: 'daily sunscreen',
-        sku: {
-          ingredient_tokens: ['UV filters', 'Niacinamide', 'Salicylic acid', 'Azelaic acid'],
-        },
+        key_features: ['UV filters', 'Niacinamide', 'Salicylic acid', 'Azelaic acid'],
         short_description: 'A glow moisturizer SPF 50 with UV filters, niacinamide, salicylic acid, and azelaic acid.',
       },
       {
@@ -7664,9 +7662,7 @@ test('__internal: framework pool avoids active glow SPF as sunscreen support for
         retrieval_source: 'external_seed',
         retrieval_role_id: 'daily_sunscreen',
         retrieval_query: 'daily sunscreen',
-        sku: {
-          ingredient_tokens: ['UV filters'],
-        },
+        key_features: ['UV filters'],
         short_description: 'A lightweight SPF 45 sunscreen serum for daily UV protection.',
       },
     ],
