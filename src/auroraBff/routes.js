@@ -20868,6 +20868,7 @@ function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
     }
     const maxSupportRoundCount = Math.max(maxSupportInternalQueryCount, maxSupportExternalQueryCount);
     for (let queryIndex = 0; queryIndex < maxSupportRoundCount; queryIndex += 1) {
+      const roundQueries = [];
       const internalRoundQueries = [];
       const internalSourceLevels = [];
       for (const group of supportInternalGroups) {
@@ -20878,14 +20879,6 @@ function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
         if (roundLevel?.fair_support_internal_source_level) {
           internalSourceLevels.push(roundLevel.fair_support_internal_source_level);
         }
-      }
-      if (internalRoundQueries.length) {
-        keptLevels.push({
-          ladder_level: `framework_stage_c_support_internal_round_${queryIndex + 1}`,
-          fair_support_internal_round: queryIndex + 1,
-          fair_support_internal_source_levels: internalSourceLevels,
-          queries: internalRoundQueries,
-        });
       }
 
       const externalRoundQueries = [];
@@ -20903,12 +20896,25 @@ function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
           externalSourceLevels.push(roundLevel.fair_support_external_source_level);
         }
       }
-      if (externalRoundQueries.length) {
+
+      roundQueries.push(...internalRoundQueries, ...externalRoundQueries);
+      if (roundQueries.length) {
         keptLevels.push({
-          ladder_level: `framework_stage_external_seed_round_${queryIndex + 1}`,
-          fair_support_external_round: queryIndex + 1,
-          fair_support_external_source_levels: externalSourceLevels,
-          queries: externalRoundQueries,
+          ladder_level: `framework_stage_c_support_authority_round_${queryIndex + 1}`,
+          fair_support_authority_round: queryIndex + 1,
+          ...(internalSourceLevels.length
+            ? {
+                fair_support_internal_round: queryIndex + 1,
+                fair_support_internal_source_levels: internalSourceLevels,
+              }
+            : {}),
+          ...(externalSourceLevels.length
+            ? {
+                fair_support_external_round: queryIndex + 1,
+                fair_support_external_source_levels: externalSourceLevels,
+              }
+            : {}),
+          queries: roundQueries,
         });
       }
     }
@@ -20935,7 +20941,7 @@ function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
         ? {
             routine_support_strategy:
               executedSupportInternalLevels.length && executedSupportExternalSeedLevels.length
-                ? 'primary_plus_internal_then_external_support'
+                ? 'primary_plus_dual_source_support_rounds'
                 : executedSupportInternalLevels.length
                   ? 'primary_plus_internal_support'
                   : 'primary_plus_external_support',
