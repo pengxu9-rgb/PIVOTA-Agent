@@ -885,6 +885,47 @@ test('buildChatIntentContract keeps buy-wording beauty reco asks on the beauty m
   assert.equal(contract.should_search, true);
 });
 
+test('buildChatIntentContract keeps analysis-context next-product followups on the beauty mainline', async () => {
+  resetAuroraModules();
+  const { __internal } = require('../src/auroraBff/routes');
+
+  const contract = await __internal.buildChatIntentContract({
+    message: "Given the skin analysis and what I'm already using, what should I add next? I don't want another active.",
+    language: 'EN',
+    session: {
+      state: {
+        latest_reco_context: {
+          intent: 'reco_products',
+          source_detail: 'analysis_handoff',
+          trigger_source: 'analysis_handoff',
+          context_origin: 'routine_audit_v1',
+          primary_target_id: 'adj_pm_cleanser_replace',
+          ranked_targets: [
+            {
+              target_id: 'adj_pm_cleanser_replace',
+              target_role: 'primary',
+              ingredient_query: 'cleanser',
+              resolved_target_step: 'cleanser',
+            },
+          ],
+        },
+      },
+      profile: {
+        skinType: 'dry',
+        sensitivity: 'high',
+        barrierStatus: 'impaired',
+        goals: ['barrier support'],
+      },
+    },
+  });
+
+  assert.equal(contract.contract_version, 'chat_intent_v1');
+  assert.equal(contract.ownership_domain, 'beauty_mainline');
+  assert.equal(contract.request_class, 'beauty_discovery');
+  assert.equal(contract.delegate_target, 'beauty_mainline');
+  assert.equal(contract.should_search, true);
+});
+
 test('shouldEarlyLockBeautyOwnedChatReco locks current frontend beauty reco freeform payloads onto the bounded mainline path', async () => {
   resetAuroraModules();
   const { __internal } = require('../src/auroraBff/routes');

@@ -1709,6 +1709,24 @@ async function shouldKeepV1ChatOnLegacyIngredientPath(payload) {
   return looksLikeIngredientSignalPhrase(trimmedMessage);
 }
 
+function looksLikeContextualRecoContinuationRequest(message = '', latestRecoContext = null) {
+  const context = isPlainObject(latestRecoContext) ? latestRecoContext : null;
+  if (!context) return false;
+  if (String(context.intent || '').trim().toLowerCase() !== 'reco_products') return false;
+  const text = String(message || '').trim().toLowerCase();
+  if (!text) return false;
+  if (
+    looksLikeProductEvaluationIntentV2(text, '') ||
+    looksLikeCompatibilityOrConflictQuestion(text) ||
+    looksLikeWeatherOrEnvironmentQuestion(text)
+  ) {
+    return false;
+  }
+  return /\bwhat(?:'s| is)?\s+(?:next|should\s+i\s+(?:add|use|buy|get|try)|can\s+i\s+(?:add|use|buy|get|try))\b/i.test(text) ||
+    /\b(?:add|use|buy|get|try)\s+(?:next|first|instead)\b/i.test(text) ||
+    /\b(?:recommend|suggest)\b.{0,40}\b(?:product|step|option|routine)\b/i.test(text);
+}
+
 async function buildChatIntentContract(body) {
   const payload = isPlainObject(body) ? body : {};
   const action = normalizeIncomingChatAction(payload.action);
@@ -1734,6 +1752,7 @@ async function buildChatIntentContract(body) {
   const session = isPlainObject(payload.session) ? payload.session : {};
   const sessionMeta = isPlainObject(session.meta) ? session.meta : {};
   const sessionProfile = isPlainObject(session.profile) ? session.profile : {};
+  const latestRecoContextFromSessionForContract = extractLatestRecoContextFromSession(session);
   const extractedSessionProfilePatch = extractProfilePatchFromSession(session);
   const sessionProfilePatch = isPlainObject(extractedSessionProfilePatch)
     ? extractedSessionProfilePatch
@@ -1792,6 +1811,8 @@ async function buildChatIntentContract(body) {
   const hasMessage = Boolean(message);
   const typedRecoOwnershipKeepsV1Mainline =
     hasMessage ? shouldKeepTypedRecoRequestOnV1MainlinePolicy({ ...payload, message }) : false;
+  const contextualRecoContinuationKeepsV1Mainline =
+    hasMessage && looksLikeContextualRecoContinuationRequest(message, latestRecoContextFromSessionForContract);
   const beautyRecoTargetContext = hasMessage
     ? resolveRecommendationTargetContext({
         explicitStep: pickFirstTrimmed(
@@ -1910,11 +1931,14 @@ async function buildChatIntentContract(body) {
   }
   if (
     hasMessage &&
-    isBeautyOwnedChatRecoRequest({
-      typedRecoOwnershipKeepsV1Mainline,
-      targetContext: beautyRecoTargetContext,
-      message,
-    })
+    (
+      contextualRecoContinuationKeepsV1Mainline ||
+      isBeautyOwnedChatRecoRequest({
+        typedRecoOwnershipKeepsV1Mainline,
+        targetContext: beautyRecoTargetContext,
+        message,
+      })
+    )
   ) {
     return {
       contract_version: 'chat_intent_v1',

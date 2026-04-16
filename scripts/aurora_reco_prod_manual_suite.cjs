@@ -66,6 +66,205 @@ function pickCard(cards, type) {
   return asArray(cards).find((c) => asString(c && c.type).trim().toLowerCase() === String(type).trim().toLowerCase()) || null;
 }
 
+function compactRankedTarget(target) {
+  const obj = asObject(target) || {};
+  const candidates = asArray(obj.product_candidates);
+  return {
+    target_id: asString(obj.target_id) || null,
+    target_role: asString(obj.target_role) || null,
+    ingredient_query: asString(obj.ingredient_query || obj.product_query || obj.query) || null,
+    resolved_target_step: asString(obj.resolved_target_step) || null,
+    target_confidence: asString(obj.target_confidence) || null,
+    source: asString(obj.source) || null,
+    verified_product_count: Number.isFinite(Number(obj.verified_product_count))
+      ? Number(obj.verified_product_count)
+      : candidates.length,
+    product_candidate_count: candidates.length,
+  };
+}
+
+function summarizeLatestRecoContext(root) {
+  const sessionPatch = asObject(root && root.session_patch) || {};
+  const state = asObject(sessionPatch.state) || {};
+  const ctx = asObject(state.latest_reco_context) || null;
+  if (!ctx) {
+    return {
+      present: false,
+      source_detail: null,
+      trigger_source: null,
+      context_origin: null,
+      artifact_id: null,
+      resolved_target_step: null,
+      resolved_target_step_confidence: null,
+      resolved_target_step_source: null,
+      ranked_target_ids: [],
+      ranked_targets: [],
+      product_candidate_count: 0,
+    };
+  }
+  const rankedTargets = asArray(ctx.ranked_targets).map(compactRankedTarget);
+  const directCandidates = asArray(ctx.product_candidates);
+  return {
+    present: true,
+    source_detail: asString(ctx.source_detail) || null,
+    trigger_source: asString(ctx.trigger_source) || null,
+    context_origin: asString(ctx.context_origin) || null,
+    artifact_id: asString(ctx.artifact_id) || null,
+    resolved_target_step: asString(ctx.resolved_target_step) || null,
+    resolved_target_step_confidence: asString(ctx.resolved_target_step_confidence) || null,
+    resolved_target_step_source: asString(ctx.resolved_target_step_source) || null,
+    ranked_target_ids: rankedTargets.map((target) => target.target_id).filter(Boolean),
+    ranked_targets: rankedTargets,
+    product_candidate_count: rankedTargets.reduce((sum, target) => sum + Number(target.product_candidate_count || 0), directCandidates.length),
+  };
+}
+
+function summarizeSearchStageLedger(ledgerInput) {
+  const ledger = asObject(ledgerInput) || {};
+  const primarySearch = asObject(ledger.primary_search) || {};
+  const finalSelection = asObject(ledger.final_selection) || {};
+  const attempts = asArray(primarySearch.query_pack_attempts).map((attempt) => {
+    const obj = asObject(attempt) || {};
+    return {
+      query: asString(obj.query) || null,
+      ladder_level: asString(obj.ladder_level) || null,
+      role_id: asString(obj.role_id) || null,
+      source_scope: asString(obj.source_scope) || null,
+      result_count: Number.isFinite(Number(obj.result_count)) ? Number(obj.result_count) : null,
+      reason: asString(obj.reason) || null,
+      transport_owner: asString(obj.primary_transport_owner) || null,
+    };
+  });
+  return {
+    keys: Object.keys(ledger),
+    final_selection: {
+      selection_owner: asString(finalSelection.selection_owner) || null,
+      mainline_status: asString(finalSelection.mainline_status) || null,
+      selected_product_ids: asArray(finalSelection.selected_product_ids).filter(Boolean),
+      selected_titles: asArray(finalSelection.selected_titles).filter(Boolean),
+      source_tier_counts: asObject(finalSelection.source_tier_counts) || null,
+    },
+    primary_search: {
+      routine_support_strategy: asString(primarySearch.routine_support_strategy) || null,
+      planned_level_count: Number.isFinite(Number(primarySearch.planned_level_count)) ? Number(primarySearch.planned_level_count) : null,
+      executed_level_count: Number.isFinite(Number(primarySearch.executed_level_count)) ? Number(primarySearch.executed_level_count) : null,
+      executed_query_count: Number.isFinite(Number(primarySearch.executed_query_count)) ? Number(primarySearch.executed_query_count) : null,
+      support_executed_query_count: Number.isFinite(Number(primarySearch.support_executed_query_count)) ? Number(primarySearch.support_executed_query_count) : null,
+      executed_support_levels: asArray(primarySearch.executed_support_levels).filter(Boolean),
+      query_attempts: attempts.slice(0, 18),
+    },
+    candidate_pool_summary: asObject(ledger.candidate_pool_summary) || null,
+    candidate_drop_stage: asObject(ledger.candidate_drop_stage) || null,
+  };
+}
+
+function summarizeAnalysisEnvelope(resp) {
+  const root = asObject(resp) || {};
+  const cards = asArray(root.cards);
+  return {
+    request_id: asString(root.request_id) || null,
+    trace_id: asString(root.trace_id) || null,
+    card_types: cards.map((c) => asString(c && c.type)).filter(Boolean),
+    latest_reco_context: summarizeLatestRecoContext(root),
+  };
+}
+
+function hasAnyOverlap(left = [], right = []) {
+  const rightSet = new Set(asArray(right).map((value) => String(value || '').trim()).filter(Boolean));
+  return asArray(left).some((value) => rightSet.has(String(value || '').trim()));
+}
+
+function buildContextBridgeSummary(spec, analysisSummary, chatSummary) {
+  const profilePatch = asObject(spec && spec.profilePatch) || null;
+  const chatProfile = asObject(spec && spec.chatBody && spec.chatBody.context && spec.chatBody.context.profile) || {};
+  const analysisContext = asObject(analysisSummary && analysisSummary.latest_reco_context) || {};
+  const chatContext = asObject(chatSummary && chatSummary.latest_reco_context) || {};
+  const analysisTargetIds = asArray(analysisContext.ranked_target_ids);
+  const chatTargetIds = asArray(chatSummary && chatSummary.selected_target_ids).length
+    ? asArray(chatSummary && chatSummary.selected_target_ids)
+    : asArray(chatContext.ranked_target_ids);
+  const expectation = asObject(spec && spec.contextExpectations) || {};
+  const expectedAny = asArray(expectation.expected_role_ids_any).filter(Boolean);
+  const avoidAny = asArray(expectation.avoid_role_ids).filter(Boolean);
+  const evidenceFlags = [];
+  if (analysisContext.present) evidenceFlags.push('analysis_handoff_context_created');
+  if (asString(chatSummary && chatSummary.recos_requested_source_detail) === 'analysis_handoff') {
+    evidenceFlags.push('chat_triggered_from_analysis_handoff');
+  }
+  const analysisUsage = asObject(chatSummary && chatSummary.analysis_context_usage) || {};
+  if (analysisUsage.analysis_context_available || asString(analysisUsage.context_source_mode) && asString(analysisUsage.context_source_mode) !== 'none') {
+    evidenceFlags.push('recommendation_meta_analysis_context_usage');
+  }
+  if (analysisTargetIds.length && hasAnyOverlap(analysisTargetIds, chatTargetIds)) {
+    evidenceFlags.push('analysis_target_overlap_selected_targets');
+  }
+  if (!Object.keys(chatProfile).length && profilePatch) {
+    evidenceFlags.push('chat_body_profile_empty_after_profile_update');
+  }
+  if (spec && spec.carrySessionPatchToChat) {
+    evidenceFlags.push('prior_session_patch_carried_to_chat');
+  }
+  return {
+    profile_patch_keys: profilePatch ? Object.keys(profilePatch).sort() : [],
+    chat_profile_keys: Object.keys(chatProfile).sort(),
+    analysis_handoff_present: Boolean(analysisContext.present),
+    analysis_handoff_source_detail: asString(analysisContext.source_detail) || null,
+    analysis_handoff_target_ids: analysisTargetIds,
+    chat_latest_context_source_detail: asString(chatContext.source_detail) || null,
+    chat_latest_context_target_ids: asArray(chatContext.ranked_target_ids),
+    chat_selected_target_ids: chatTargetIds,
+    context_evidence_flags: evidenceFlags,
+    expected_role_ids_any: expectedAny,
+    expected_role_hit: expectedAny.length ? hasAnyOverlap(expectedAny, chatTargetIds) : null,
+    avoid_role_ids: avoidAny,
+    avoided_role_violation: avoidAny.length ? hasAnyOverlap(avoidAny, chatTargetIds) : null,
+  };
+}
+
+function mergeSessionPatchIntoChatSession(baseSession, sessionPatch) {
+  const patch = asObject(sessionPatch) || null;
+  if (!patch) return asObject(baseSession) ? { ...baseSession } : {};
+  const next = asObject(baseSession) ? { ...baseSession } : {};
+  const patchState = asObject(patch.state) || {};
+  const baseState = asObject(next.state) || {};
+  const nextState = { ...baseState, ...patchState };
+  if (Object.keys(nextState).length) {
+    next.state = nextState;
+  }
+  if (asObject(patch.profile)) {
+    next.profile = { ...(asObject(next.profile) || {}), ...patch.profile };
+  }
+  if (asObject(patch.meta)) {
+    next.meta = { ...(asObject(next.meta) || {}), ...patch.meta };
+  }
+  if (Array.isArray(patch.recent_logs)) {
+    next.recent_logs = patch.recent_logs;
+  }
+  if (typeof patch.next_state === 'string' && patch.next_state.trim()) {
+    next.next_state = patch.next_state.trim();
+  }
+  return next;
+}
+
+function buildCarriedSessionFromStepResponses(baseSession, responses = []) {
+  let session = asObject(baseSession) ? { ...baseSession } : {};
+  const applied = [];
+  for (const row of asArray(responses)) {
+    const body = asObject(row && row.body) || {};
+    const patch = asObject(body.session_patch) || null;
+    if (!patch) continue;
+    session = mergeSessionPatchIntoChatSession(session, patch);
+    applied.push({
+      card_types: asArray(body.cards).map((card) => asString(card && card.type)).filter(Boolean),
+      patch_keys: Object.keys(patch).sort(),
+      state_keys: Object.keys(asObject(patch.state) || {}).sort(),
+      has_profile: Boolean(asObject(patch.profile)),
+      has_meta: Boolean(asObject(patch.meta)),
+    });
+  }
+  return { session, applied };
+}
+
 const QUALITY_COPY_PATTERNS = [
   { flag: 'templated_full_routine', re: /\bto build out a full routine\b/i },
   { flag: 'templated_different_steps', re: /\bthese different steps\b/i },
@@ -120,6 +319,7 @@ function summarizeEnvelope(resp) {
   const debugCard = pickCard(cards, 'aurora_debug');
   const recoPayload = asObject(recoCard && recoCard.payload) || {};
   const recoMeta = asObject(recoPayload.recommendation_meta) || {};
+  const recoMetadata = asObject(recoPayload.metadata) || {};
   const recos = asArray(recoPayload.recommendations);
   const assistantMessage = asObject(root.assistant_message) || null;
   const assistantText = asString(assistantMessage && assistantMessage.content);
@@ -185,6 +385,7 @@ function summarizeEnvelope(resp) {
   const recoRequestedData = eventDataFrom(recoRequestedEvent);
   const confidencePayload = asObject(confidenceCard && confidenceCard.payload) || {};
   const debugPayload = asObject(debugCard && debugCard.payload) || {};
+  const latestRecoContext = summarizeLatestRecoContext(root);
   return {
     request_id: asString(root.request_id) || null,
     trace_id: asString(root.trace_id) || null,
@@ -195,6 +396,19 @@ function summarizeEnvelope(resp) {
     source: asString(recoPayload.source) || null,
     trigger_source: asString(recoMeta.trigger_source) || null,
     recompute_from_profile_update: Boolean(recoMeta.recompute_from_profile_update),
+    mainline_status: asString(recoMeta.mainline_status || root.mainline_status) || null,
+    query_source: asString(recoMeta.query_source) || null,
+    decision_owner: asString(recoMeta.decision_owner) || null,
+    semantic_owner: asString(recoMeta.semantic_owner) || null,
+    owner_source: asString(recoMeta.owner_source) || null,
+    selector_winner_source: asString(recoMeta.selector_winner_source) || null,
+    primary_target_id: asString(recoMeta.primary_target_id) || null,
+    displayed_target_ids: asArray(recoMeta.displayed_target_ids).filter(Boolean),
+    selected_target_ids: asArray(recoMeta.selected_target_ids).filter(Boolean),
+    source_tier_counts: asObject(recoMeta.source_tier_counts) || null,
+    analysis_context_usage: asObject(recoMeta.analysis_context_usage) || null,
+    latest_reco_context: latestRecoContext,
+    search_stage_ledger_summary: summarizeSearchStageLedger(recoMetadata.search_stage_ledger),
     confidence_notice_reason: asString(confidencePayload.reason) || null,
     recos_requested_source: asString(recoRequestedData.source) || null,
     recos_requested_source_detail: asString(recoRequestedData.source_detail) || null,
@@ -203,6 +417,7 @@ function summarizeEnvelope(resp) {
     debug_prompt_trace: asObject(debugPayload.llm_prompt_trace) || null,
     assistant_present: Boolean(assistantText),
     assistant_length: assistantText.length,
+    assistant_preview: assistantText ? assistantText.slice(0, 360) : null,
     matched_role_ids: matchedRoleIds,
     matched_role_count: matchedRoleIds.length,
     products_with_why_this_one: productsWithWhy,
@@ -241,6 +456,8 @@ function buildBeautyRecoCase({
   profile = null,
   profilePatch = null,
   analysisSkinBody = null,
+  contextExpectations = null,
+  carrySessionPatchToChat = false,
   axes = {},
   tags = [],
 } = {}) {
@@ -257,6 +474,8 @@ function buildBeautyRecoCase({
     tags: Array.isArray(tags) ? tags : [],
     profilePatch: profilePatch || null,
     analysisSkinBody: analysisSkinBody || null,
+    contextExpectations: contextExpectations || null,
+    carrySessionPatchToChat: Boolean(carrySessionPatchToChat),
     chatBody: buildBeautyRecoChatBody(message, profile),
   };
 }
@@ -347,6 +566,7 @@ async function runCase(spec) {
     headers: ids,
     profile_update: null,
     analysis_skin: null,
+    carried_chat_session: null,
     chat: null,
   };
 
@@ -358,9 +578,25 @@ async function runCase(spec) {
   }
 
   const chatBody = { ...(spec.chatBody || {}), ...(DEBUG ? { debug: true } : {}) };
+  if (spec.carrySessionPatchToChat) {
+    const carried = buildCarriedSessionFromStepResponses(chatBody.session, [
+      output.profile_update,
+      output.analysis_skin,
+    ]);
+    chatBody.session = carried.session;
+    output.carried_chat_session = {
+      applied: carried.applied,
+      session_keys: Object.keys(asObject(carried.session) || {}).sort(),
+      state_keys: Object.keys(asObject(carried.session && carried.session.state) || {}).sort(),
+      meta_keys: Object.keys(asObject(carried.session && carried.session.meta) || {}).sort(),
+      has_profile: Boolean(asObject(carried.session && carried.session.profile)),
+    };
+  }
   output.chat = await postJson('/v1/chat', chatBody, headers);
 
+  const analysisSummary = output.analysis_skin ? summarizeAnalysisEnvelope(output.analysis_skin.body) : null;
   const chatSummary = summarizeEnvelope(output.chat.body);
+  const contextBridge = buildContextBridgeSummary(spec, analysisSummary, chatSummary);
   return {
     ...output,
     summary: {
@@ -368,6 +604,9 @@ async function runCase(spec) {
       latency_ms: output.chat.latencyMs,
       x_service_commit: output.chat.headers.xServiceCommit,
       ...chatSummary,
+      analysis_summary: analysisSummary,
+      context_bridge: contextBridge,
+      carried_chat_session: output.carried_chat_session,
     },
   };
 }
@@ -650,6 +889,174 @@ const CASES = [
       constraint: 'none',
     },
   }),
+  buildBeautyRecoCase({
+    id: 'context_routine_makeup_pilling_daytime',
+    title: 'Profile + analysis routine context -> daytime pilling buy',
+    profilePatch: {
+      skinType: 'combination',
+      sensitivity: 'high',
+      barrierStatus: 'impaired',
+      goals: ['smooth layering', 'barrier support', 'daily sunscreen'],
+      budgetTier: '$50',
+      region: 'US',
+      currentRoutine: {
+        am: {
+          cleanser: 'Gentle cleanser',
+          moisturizer: 'rich barrier cream that pills under makeup',
+        },
+        pm: {
+          cleanser: 'Gentle cleanser',
+          treatment: 'retinoid serum three nights per week',
+          moisturizer: 'barrier cream',
+        },
+      },
+    },
+    analysisSkinBody: {
+      use_photo: false,
+      currentRoutine: {
+        am: {
+          cleanser: 'Gentle cleanser',
+          moisturizer: 'rich barrier cream that pills under makeup',
+        },
+        pm: {
+          cleanser: 'Gentle cleanser',
+          treatment: 'retinoid serum three nights per week',
+          moisturizer: 'barrier cream',
+        },
+      },
+      concerns: ['makeup pilling', 'tightness after retinoid', 'needs daytime SPF'],
+    },
+    carrySessionPatchToChat: true,
+    profile: null,
+    message: 'Based on my routine and the skin analysis, what should I buy for daytime so my makeup stops pilling?',
+    contextExpectations: {
+      expected_role_ids_any: [
+        'daily_sunscreen_finish_fit',
+        'daily_sunscreen',
+        'layering_compatible_moisturizer_or_spf',
+        'lightweight_moisturizer',
+      ],
+      avoid_role_ids: ['acne_clogged_pore_treatment'],
+    },
+    axes: {
+      skin_profile: 'combination_sensitive',
+      primary_concern: 'layering_compatibility',
+      user_intent: 'buy',
+      scenario: 'profile_analysis_routine_context',
+      constraint: 'daytime_makeup_layering',
+    },
+    tags: ['context', 'analysis_seeded', 'routine'],
+  }),
+  buildBeautyRecoCase({
+    id: 'context_retinoid_barrier_next_buy',
+    title: 'Profile + analysis routine context -> retinoid barrier next buy',
+    profilePatch: {
+      skinType: 'dry',
+      sensitivity: 'high',
+      barrierStatus: 'impaired',
+      goals: ['barrier support', 'reduce flaking', 'keep routine gentle'],
+      budgetTier: '$50',
+      region: 'US',
+      currentRoutine: {
+        am: {
+          cleanser: 'Gentle cleanser',
+          sunscreen: 'SPF 50 sunscreen',
+        },
+        pm: {
+          cleanser: 'Gentle cleanser',
+          treatment: 'retinoid serum three nights per week',
+        },
+      },
+    },
+    analysisSkinBody: {
+      use_photo: false,
+      currentRoutine: {
+        am: {
+          cleanser: 'Gentle cleanser',
+          sunscreen: 'SPF 50 sunscreen',
+        },
+        pm: {
+          cleanser: 'Gentle cleanser',
+          treatment: 'retinoid serum three nights per week',
+        },
+      },
+      concerns: ['tight skin after retinoid', 'flaking around mouth', 'wants no extra active'],
+    },
+    carrySessionPatchToChat: true,
+    profile: null,
+    message: "Given the skin analysis and what I'm already using, what should I add next? I don't want another active.",
+    contextExpectations: {
+      expected_role_ids_any: [
+        'hydrating_barrier_moisturizer',
+        'barrier_moisturizer',
+        'lightweight_moisturizer',
+      ],
+      avoid_role_ids: ['oil_control_treatment', 'acne_clogged_pore_treatment', 'tone_mark_treatment'],
+    },
+    axes: {
+      skin_profile: 'dry_sensitive',
+      primary_concern: 'barrier_support',
+      user_intent: 'buy',
+      scenario: 'profile_analysis_routine_context',
+      constraint: 'no_extra_active',
+    },
+    tags: ['context', 'analysis_seeded', 'routine'],
+  }),
+  buildBeautyRecoCase({
+    id: 'context_retinoid_barrier_product_buy',
+    title: 'Profile + analysis routine context -> explicit retinoid barrier product buy',
+    profilePatch: {
+      skinType: 'dry',
+      sensitivity: 'high',
+      barrierStatus: 'impaired',
+      goals: ['barrier support', 'reduce flaking', 'keep routine gentle'],
+      budgetTier: '$50',
+      region: 'US',
+      currentRoutine: {
+        am: {
+          cleanser: 'Gentle cleanser',
+          sunscreen: 'SPF 50 sunscreen',
+        },
+        pm: {
+          cleanser: 'Gentle cleanser',
+          treatment: 'retinoid serum three nights per week',
+        },
+      },
+    },
+    analysisSkinBody: {
+      use_photo: false,
+      currentRoutine: {
+        am: {
+          cleanser: 'Gentle cleanser',
+          sunscreen: 'SPF 50 sunscreen',
+        },
+        pm: {
+          cleanser: 'Gentle cleanser',
+          treatment: 'retinoid serum three nights per week',
+        },
+      },
+      concerns: ['tight skin after retinoid', 'flaking around mouth', 'wants no extra active'],
+    },
+    carrySessionPatchToChat: true,
+    profile: null,
+    message: "Given the skin analysis and what I'm already using, what moisturizer product should I buy next? I don't want another active.",
+    contextExpectations: {
+      expected_role_ids_any: [
+        'hydrating_barrier_moisturizer',
+        'barrier_moisturizer',
+        'lightweight_moisturizer',
+      ],
+      avoid_role_ids: ['oil_control_treatment', 'acne_clogged_pore_treatment', 'tone_mark_treatment'],
+    },
+    axes: {
+      skin_profile: 'dry_sensitive',
+      primary_concern: 'barrier_support',
+      user_intent: 'buy',
+      scenario: 'profile_analysis_routine_context',
+      constraint: 'explicit_moisturizer_product',
+    },
+    tags: ['context', 'analysis_seeded', 'routine'],
+  }),
 ];
 
 async function main() {
@@ -723,8 +1130,13 @@ module.exports = {
   CASES,
   buildBeautyRecoCase,
   buildBeautyRecoChatBody,
+  buildCarriedSessionFromStepResponses,
   parseArgs,
+  summarizeAnalysisEnvelope,
   summarizeCoverage,
+  summarizeEnvelope,
   summarizeQuality,
+  summarizeLatestRecoContext,
+  summarizeSearchStageLedger,
   selectCases,
 };
