@@ -4332,9 +4332,9 @@ test('__internal: local external seed support-role patterns avoid bare fit keywo
   assert.equal(patterns.includes('%breathable hydration%'), false);
   assert.equal(patterns.includes('%moisturizer oily%'), false);
   assert.equal(patterns.includes('%lightweight moisturizer oily skin%'), true);
-  assert.equal(patterns.includes('%lightweight moisturizer%'), true);
-  assert.equal(patterns.includes('%gel cream%'), true);
-  assert.equal(patterns.includes('%oil free moisturizer%'), true);
+  assert.equal(patterns.includes('%lightweight moisturizer%'), false);
+  assert.equal(patterns.includes('%gel cream%'), false);
+  assert.equal(patterns.includes('%oil free moisturizer%'), false);
 });
 
 test('__internal: local external seed support-role search uses precise category-positive recall before broad text recall', async () => {
@@ -4490,6 +4490,74 @@ test('__internal: local external seed primary hydration-serum search uses catego
   assert.ok(observedQueries[0].params[3].includes('%sodium hyaluronate%'));
   assert.equal(out.local_external_seed_stage_debug[0]?.stage, 'support_category_positive');
   assert.equal(out.local_external_seed_stage_debug[0]?.stop_after_any_match, true);
+  assert.equal(out.products[0].retrieval_match_stage, 'support_category_positive');
+});
+
+test('__internal: local external seed oil-control support search uses lean positive recall only', async () => {
+  const { __internal } = loadRoutesFresh();
+  const observedQueries = [];
+  const out = await __internal.searchLocalExternalSeedProducts({
+    query: 'niacinamide serum oily skin',
+    limit: 2,
+    role: {
+      role_id: 'oil_control_treatment',
+      rank: 2,
+      preferred_step: 'treatment',
+      query_terms: ['niacinamide serum oily skin', 'salicylic acid serum clogged pores'],
+      fit_keywords: ['oil control', 'shine control', 'niacinamide', 'zinc pca'],
+      product_type_hypotheses: ['serum', 'treatment'],
+    },
+    preferredStep: 'treatment',
+    queryFn: async (sql, params) => {
+      observedQueries.push({ sql: String(sql || ''), params });
+      return {
+        rows: [
+          {
+            id: '401',
+            external_product_id: 'ext_oil_serum_401',
+            destination_url: 'https://example.com/products/niacinamide-serum',
+            canonical_url: 'https://example.com/products/niacinamide-serum',
+            domain: 'example.com',
+            title: 'Niacinamide Oil Control Serum',
+            image_url: 'https://example.com/products/niacinamide-serum.jpg',
+            price_amount: 12,
+            price_currency: 'USD',
+            availability: 'in_stock',
+            match_stage: 'support_category_positive',
+            match_score: 54,
+            seed_data: {
+              derived: {
+                recall: {
+                  retrieval_title: 'Niacinamide Oil Control Serum',
+                  retrieval_summary: 'A niacinamide and zinc PCA serum for excess oil and visible pores.',
+                  ingredient_tokens: ['niacinamide', 'zinc pca'],
+                  category: 'serum',
+                  vertical: 'skincare',
+                },
+              },
+              snapshot: {
+                title: 'Niacinamide Oil Control Serum',
+                description: 'Oil-control serum for oily skin.',
+                category: 'Serum',
+              },
+            },
+            updated_at: new Date().toISOString(),
+            created_at: new Date().toISOString(),
+          },
+        ],
+      };
+    },
+  });
+
+  assert.equal(out.ok, true);
+  assert.equal(out.local_external_seed_search_mode, 'staged_support_fastpath');
+  assert.equal(observedQueries.length, 1);
+  assert.match(observedQueries[0].sql, /support_category_positive/);
+  assert.doesNotMatch(observedQueries[0].sql, /support_recall_title/);
+  assert.deepEqual(observedQueries[0].params[2], ['serum', 'treatment', 'ampoule', 'essence']);
+  assert.ok(observedQueries[0].params[3].includes('%niacinamide%'));
+  assert.ok(observedQueries[0].params[3].includes('%zinc pca%'));
+  assert.equal(out.local_external_seed_stage_debug[0]?.stage, 'support_category_positive');
   assert.equal(out.products[0].retrieval_match_stage, 'support_category_positive');
 });
 
