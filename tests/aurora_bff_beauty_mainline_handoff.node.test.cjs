@@ -507,7 +507,7 @@ test('handoffRecoToBeautyMainlineSearch runs primary external alongside routine 
     );
     assert.equal(captured.every((row) => row.callerLane === 'beauty_chat_handoff'), true);
     assert.equal(captured.slice(0, 2).every((row) => row.timeoutMs === 16500), true);
-    assert.equal(captured.slice(2).every((row) => row.timeoutMs === 1400), true);
+    assert.equal(captured.slice(2).every((row) => row.timeoutMs === 2400), true);
     assert.equal(captured.every((row) => row.allowExternalSeed === false), true);
     assert.equal(
       captured.slice(0, 2).every((row) =>
@@ -762,7 +762,7 @@ test('handoffRecoToBeautyMainlineSearch recovers acne primary from second planne
   }
 });
 
-test('handoffRecoToBeautyMainlineSearch prioritizes support external while primary external is pending', async () => {
+test('handoffRecoToBeautyMainlineSearch uses source-aware support authority while primary external is pending', async () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
     const internalCaptured = [];
@@ -921,12 +921,11 @@ test('handoffRecoToBeautyMainlineSearch prioritizes support external while prima
     });
 
     assert.deepEqual(externalCaptured[0], { query: 'sunscreen', roleId: 'daily_sunscreen_finish_fit' });
-    assert.deepEqual(
-      externalCaptured.slice(1, 3),
-      [
-        { query: 'niacinamide serum oily skin', roleId: 'oil_control_treatment' },
-        { query: 'gel cream moisturizer', roleId: 'lightweight_moisturizer' },
-      ],
+    assert.deepEqual(externalCaptured[1], { query: 'gel cream moisturizer', roleId: 'lightweight_moisturizer' });
+    assert.equal(
+      externalCaptured.some((row) =>
+        row?.query === 'niacinamide serum oily skin' && row?.roleId === 'oil_control_treatment'),
+      true,
     );
     assert.equal(internalCaptured.includes('niacinamide serum oily skin'), true);
     assert.equal(internalCaptured.includes('gel cream moisturizer'), true);
@@ -934,7 +933,8 @@ test('handoffRecoToBeautyMainlineSearch prioritizes support external while prima
     const firstSupportAttempt = attempts.find((row) =>
       String(row?.ladder_level || '').startsWith('framework_stage_c_support_')
       && !String(row?.reason || '').startsWith('skipped_'));
-    assert.equal(firstSupportAttempt?.source_scope, 'external_seed');
+    assert.equal(firstSupportAttempt?.source_scope, 'internal');
+    assert.equal(firstSupportAttempt?.role_id, 'oil_control_treatment');
     assert.equal(
       attempts.some((row) =>
         row?.source_scope === 'internal'

@@ -4557,6 +4557,8 @@ test('__internal: local external seed oil-control support search uses lean posit
   assert.deepEqual(observedQueries[0].params[2], ['serum', 'treatment', 'ampoule', 'essence']);
   assert.ok(observedQueries[0].params[3].includes('%niacinamide%'));
   assert.ok(observedQueries[0].params[3].includes('%zinc pca%'));
+  assert.equal(observedQueries[0].params[3].includes('%serum%'), false);
+  assert.equal(observedQueries[0].params[3].includes('%treatment%'), false);
   assert.equal(out.local_external_seed_stage_debug[0]?.stage, 'support_category_positive');
   assert.equal(out.products[0].retrieval_match_stage, 'support_category_positive');
 });
@@ -8245,6 +8247,7 @@ test('__internal: collectRecoCandidatesFromQueryLevels caps support external see
             role_rank: 2,
             preferred_step: 'moisturizer',
             allow_external_seed: true,
+            allow_pending_primary_external: true,
             external_seed_strategy: 'stage_planned',
           },
         ],
