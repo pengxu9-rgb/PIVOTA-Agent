@@ -22930,7 +22930,7 @@ async function collectRecoCandidatesFromQueryLevels({
       });
       continue;
     }
-    const runnableQueries = [];
+    let runnableQueries = [];
     const querySkipReasons = [];
     for (const queryEntry of queries) {
       const queryPrimaryExternalSkip = shouldSkipFrameworkPrimaryExternalSeedQuery(queryEntry, candidateState, {
@@ -22990,6 +22990,38 @@ async function collectRecoCandidatesFromQueryLevels({
         primary_role_matched: Boolean(candidateState?.primary_role_matched),
       });
       continue;
+    }
+    if (
+      Number.isFinite(Number(level?.fair_primary_external_round)) &&
+      candidateState.primary_role_matched !== true
+    ) {
+      const primaryExternalQueries = [];
+      const supportExternalQueries = [];
+      const supportInternalQueries = [];
+      const otherQueries = [];
+      for (const queryEntry of runnableQueries) {
+        const queryStageId = String(queryEntry?.ladder_level || queryEntry?.stage_id || '').trim().toLowerCase();
+        const isPrimaryExternalQuery =
+          queryStageId === 'framework_stage_b_primary_external_seed' ||
+          Number.isFinite(Number(queryEntry?.fair_primary_external_round));
+        const isSupportExternalQuery =
+          queryStageId.startsWith('framework_stage_c_support_') &&
+          (
+            queryEntry?.allow_external_seed === true ||
+            String(queryEntry?.source_scope || '').trim().toLowerCase() === 'external_seed'
+          );
+        const isSupportInternalQuery = queryStageId.startsWith('framework_stage_c_support_');
+        if (isPrimaryExternalQuery) primaryExternalQueries.push(queryEntry);
+        else if (isSupportExternalQuery) supportExternalQueries.push(queryEntry);
+        else if (isSupportInternalQuery) supportInternalQueries.push(queryEntry);
+        else otherQueries.push(queryEntry);
+      }
+      runnableQueries = [
+        ...primaryExternalQueries,
+        ...supportExternalQueries,
+        ...supportInternalQueries,
+        ...otherQueries,
+      ];
     }
     const levelResults = [];
     const levelAggregate = buildLevelAggregate();
