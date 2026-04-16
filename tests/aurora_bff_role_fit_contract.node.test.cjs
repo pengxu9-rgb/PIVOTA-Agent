@@ -40,6 +40,19 @@ function buildHydratingSerumRole() {
   };
 }
 
+function buildBarrierMoisturizerRole() {
+  return {
+    role_id: 'barrier_moisturizer',
+    rank: 2,
+    preferred_step: 'moisturizer',
+    label: 'Barrier-support moisturizer',
+    fit_keywords: ['barrier repair', 'ceramide', 'soothing', 'sensitive skin'],
+    query_terms: ['barrier repair moisturizer', 'ceramide cream sensitive skin', 'soothing moisturizer'],
+    ingredient_hypotheses: ['Ceramide NP', 'Panthenol', 'Glycerin'],
+    product_type_hypotheses: ['moisturizer', 'cream'],
+  };
+}
+
 test('treatment role rescues serum candidate with paired oil-control actives', () => {
   const score = scoreConcernRoleCandidate(
     {
@@ -177,4 +190,23 @@ test('hydrating serum role remains viable when true hydration evidence is presen
   assert.equal(score?.role_semantic_fit_matched, true);
   assert.equal(score?.fit_keyword_matches > 0 || score?.ingredient_matches > 0, true);
   assert.ok(Number(score?.score || 0) >= 0.52);
+});
+
+test('barrier moisturizer role demotes retinoid active moisturizers despite exact product shape', () => {
+  const score = scoreConcernRoleCandidate(
+    {
+      title: 'Beauty of Joseon Revive Firming Moisturizer : Ginseng + Retinol',
+      retrieval_role_id: 'barrier_moisturizer',
+    },
+    buildBarrierMoisturizerRole(),
+    {
+      candidateStep: 'moisturizer',
+      candidateText: 'Beauty of Joseon Revive Firming Moisturizer : Ginseng + Retinol moisturizer',
+    },
+  );
+
+  assert.ok(score);
+  assert.equal(score?.support_step_rescue_applied, true);
+  assert.equal(score?.low_irritation_active_mismatch_applied, true);
+  assert.ok(Number(score?.score || 0) < 0.42);
 });

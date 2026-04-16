@@ -7451,6 +7451,118 @@ test('__internal: framework pool keeps soothing serum as treatment role instead 
   assert.equal(state.selected_recommendations[0]?.candidate_step, 'serum');
 });
 
+test('__internal: framework pool does not surface retinol moisturizer as barrier support for sensitive routine mix', () => {
+  const { __internal } = loadRoutesFresh();
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [
+      {
+        product_id: 'dynasty_cream_1',
+        merchant_id: 'external_seed',
+        brand: 'Beauty of Joseon',
+        name: 'Dynasty Cream 10ml',
+        display_name: 'Beauty of Joseon Dynasty Cream 10ml',
+        category: 'Moisturizer',
+        product_type: 'Moisturizer',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'layering_compatible_moisturizer_or_spf',
+        retrieval_query: 'gel cream moisturizer',
+        short_description: 'A lightweight moisturizer cream for comfortable layering.',
+      },
+      {
+        product_id: 'soothing_serum_1',
+        merchant_id: 'merchant_internal',
+        brand: 'Winona',
+        name: 'Winona Soothing Repair Serum',
+        display_name: 'Winona Soothing Repair Serum',
+        category: 'Serum',
+        product_type: 'Serum',
+        retrieval_source: 'internal',
+        retrieval_role_id: 'soothing_treatment',
+        retrieval_query: 'soothing serum sensitive skin',
+        short_description: 'A soothing serum for redness and sensitive skin.',
+      },
+      {
+        product_id: 'retinol_moisturizer_1',
+        merchant_id: 'external_seed',
+        brand: 'Beauty of Joseon',
+        name: 'Revive Firming Moisturizer : Ginseng + Retinol',
+        display_name: 'Beauty of Joseon Revive Firming Moisturizer : Ginseng + Retinol',
+        category: 'Moisturizer',
+        product_type: 'Moisturizer',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'barrier_moisturizer',
+        retrieval_query: 'barrier repair moisturizer',
+        short_description: 'A firming moisturizer with ginseng and retinol.',
+      },
+      {
+        product_id: 'great_barrier_relief_1',
+        merchant_id: 'merchant_internal',
+        brand: 'KraveBeauty',
+        name: 'KraveBeauty Great Barrier Relief',
+        display_name: 'KraveBeauty Great Barrier Relief',
+        category: 'Moisturizer',
+        product_type: 'Moisturizer',
+        retrieval_source: 'internal',
+        retrieval_role_id: 'barrier_moisturizer',
+        retrieval_query: 'barrier repair moisturizer',
+        short_description: 'A barrier repair moisturizer with ceramides, tamanu oil, and niacinamide for sensitized skin.',
+      },
+    ],
+    {
+      targetContext: {
+        framework_id: 'recofw_test_sensitive_layering_retinoid_demote',
+        primary_role_id: 'layering_compatible_moisturizer_or_spf',
+        routine_mode: 'routine_mix',
+        semantic_plan: { routine_mode: 'routine_mix', comparison_mode: 'routine_mix' },
+        framework_roles: [
+          {
+            role_id: 'layering_compatible_moisturizer_or_spf',
+            rank: 60,
+            preferred_step: 'moisturizer',
+            label: 'Layering-compatible moisturizer or SPF',
+            query_terms: ['gel cream moisturizer', 'lightweight moisturizer', 'makeup layering'],
+            fit_keywords: ['lightweight', 'layering', 'non-greasy', 'makeup'],
+          },
+          {
+            role_id: 'soothing_treatment',
+            rank: 70,
+            preferred_step: 'treatment',
+            alternate_steps: ['serum'],
+            label: 'Soothing treatment',
+            query_terms: ['soothing serum sensitive skin', 'cica serum redness'],
+            fit_keywords: ['soothing', 'redness', 'calming', 'sensitive skin'],
+            ingredient_hypotheses: ['Panthenol', 'Madecassoside'],
+          },
+          {
+            role_id: 'barrier_moisturizer',
+            rank: 41,
+            preferred_step: 'moisturizer',
+            label: 'Barrier-support moisturizer',
+            query_terms: ['barrier repair moisturizer', 'ceramide cream sensitive skin', 'soothing moisturizer'],
+            fit_keywords: ['barrier repair', 'ceramide', 'soothing', 'sensitive skin'],
+            ingredient_hypotheses: ['Ceramide NP', 'Panthenol', 'Glycerin'],
+          },
+        ],
+      },
+    },
+  );
+
+  assert.equal(state.selected_candidate_count, 3);
+  assert.deepEqual(
+    state.selected_recommendations.map((row) => row.product_id),
+    ['dynasty_cream_1', 'soothing_serum_1', 'great_barrier_relief_1'],
+  );
+  assert.equal(
+    state.selected_recommendations.some((row) => row.product_id === 'retinol_moisturizer_1'),
+    false,
+  );
+  assert.equal(
+    state.soft_mismatch.some((entry) => entry?.product?.product_id === 'retinol_moisturizer_1')
+      || state.hard_reject.some((entry) => entry?.product?.product_id === 'retinol_moisturizer_1'),
+    true,
+  );
+});
+
 test('__internal: framework pool preserves same product across planned retrieval roles before role-fit', () => {
   const { __internal } = loadRoutesFresh();
   const targetContext = {
