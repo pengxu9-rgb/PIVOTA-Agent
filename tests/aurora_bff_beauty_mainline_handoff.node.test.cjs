@@ -401,7 +401,7 @@ test('handoffRecoToBeautyMainlineSearch clamps local internal primitive timeout 
   }
 });
 
-test('handoffRecoToBeautyMainlineSearch executes primary external supplement and planned routine support with runtime contract ledger', async () => {
+test('handoffRecoToBeautyMainlineSearch exhausts primary planned sources before routine support with runtime contract ledger', async () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
     const captured = [];
@@ -487,30 +487,22 @@ test('handoffRecoToBeautyMainlineSearch executes primary external supplement and
       captured.map((row) => row.query),
       [
         'niacinamide serum oily skin',
-        'gel cream moisturizer',
-        'sunscreen',
-        'lightweight moisturizer oily skin',
-        'spf fluid oily skin',
-        'oil control sunscreen',
+        'oil control serum',
       ],
     );
     assert.deepEqual(
       externalCaptured.map((row) => row.query),
       [
         'niacinamide serum oily skin',
-        'gel cream moisturizer',
-        'sunscreen',
         'salicylic acid serum oily skin',
-        'lightweight moisturizer oily skin',
-        'spf fluid oily skin',
       ],
     );
     assert.equal(captured.every((row) => row.callerLane === 'beauty_chat_handoff'), true);
-    assert.equal(captured.slice(0, 1).every((row) => row.timeoutMs === 16500), true);
-    assert.equal(captured.slice(1).every((row) => row.timeoutMs === 1400), true);
+    assert.equal(captured.slice(0, 2).every((row) => row.timeoutMs === 16500), true);
+    assert.equal(captured.slice(2).every((row) => row.timeoutMs === 1400), true);
     assert.equal(captured.every((row) => row.allowExternalSeed === false), true);
     assert.equal(
-      captured.slice(0, 1).every((row) =>
+      captured.slice(0, 2).every((row) =>
         row.targetStepFamily === 'serum'
         && row.semanticFamily === 'oil_control_treatment'
         && row.queryStepStrength === 'strong_goal_family'
@@ -530,7 +522,7 @@ test('handoffRecoToBeautyMainlineSearch executes primary external supplement and
     );
     assert.equal(
       externalCaptured.filter((row) => row.roleId !== 'oil_control_treatment').map((row) => row.roleId).join(','),
-      'lightweight_moisturizer,daily_sunscreen,lightweight_moisturizer,daily_sunscreen',
+      '',
     );
     assert.equal(
       externalCaptured.filter((row) => row.roleId !== 'oil_control_treatment').every((row) =>
@@ -543,11 +535,11 @@ test('handoffRecoToBeautyMainlineSearch executes primary external supplement and
     );
     assert.equal(out.searchResult?.query_source, 'beauty_mainline_local_handoff');
     assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.planned_level_count, 6);
-    assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_level_count, 6);
-    assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_query_count, 12);
+    assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_level_count, 7);
+    assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_query_count, 13);
     assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.primary_internal_query_cap_applied, true);
     assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.primary_internal_original_query_count, 3);
-    assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.primary_internal_executed_query_count, 1);
+    assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.primary_internal_executed_query_count, 2);
     assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.routine_support_budget_timeout_cap_ms, undefined);
     assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.primary_external_timeout_cap_applied, undefined);
     assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.support_external_timeout_cap_applied, undefined);
@@ -594,11 +586,17 @@ test('handoffRecoToBeautyMainlineSearch executes primary external supplement and
     );
     assert.deepEqual(
       out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts?.map((row) => row?.source_scope),
-      ['internal', 'external_seed', 'external_seed', 'external_seed', 'internal', 'internal', 'external_seed', 'external_seed', 'external_seed', 'internal', 'internal', 'internal'],
+      ['internal', 'internal', 'external_seed', 'external_seed', 'external_seed', 'external_seed', 'internal', 'internal', 'external_seed', 'external_seed', 'internal', 'internal', 'internal'],
     );
     assert.deepEqual(
       out.searchResult?.metadata?.search_stage_ledger?.primary_search?.query_pack_attempts?.map((row) => row?.source_scope),
-      ['internal', 'external_seed', 'external_seed', 'external_seed', 'internal', 'internal', 'external_seed', 'external_seed', 'external_seed', 'internal', 'internal', 'internal'],
+      ['internal', 'internal', 'external_seed', 'external_seed', 'external_seed', 'external_seed', 'internal', 'internal', 'external_seed', 'external_seed', 'internal', 'internal', 'internal'],
+    );
+    assert.equal(
+      out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts
+        ?.filter((row) => String(row?.ladder_level || '').startsWith('framework_stage_c_support_'))
+        .every((row) => row?.reason === 'primary_role_unmatched'),
+      true,
     );
     const firstSupportExternalAttempt =
       out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts
@@ -609,11 +607,145 @@ test('handoffRecoToBeautyMainlineSearch executes primary external supplement and
         ?.find((row) =>
           row?.ladder_level === 'framework_stage_c_support_lightweight_moisturizer_external_seed'
           && row?.local_external_seed_search_mode);
-    assert.equal(firstSupportExternalAttempt?.local_external_seed_search_mode, 'staged_support_fastpath');
-    assert.deepEqual(firstSupportExternalAttempt?.local_external_seed_category_terms, ['moisturizer', 'sunscreen']);
-    assert.equal(firstSupportExternalAttempt?.local_external_seed_stage_debug?.[0]?.stage, 'support_category_exact');
+    assert.equal(firstSupportExternalAttempt, undefined);
     assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.skipped_external_seed_levels, undefined);
     assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.skipped_support_levels, undefined);
+  } finally {
+    __internal.__resetRouteDependencyOverridesForTest();
+    delete require.cache[moduleId];
+  }
+});
+
+test('handoffRecoToBeautyMainlineSearch recovers acne primary from second planned primary query before support', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const internalCaptured = [];
+    const externalCaptured = [];
+    __internal.__setRouteDependencyOverridesForTest({
+      searchInternalProductsPrimitive: async (args) => {
+        const query = String(args?.query || '').trim().toLowerCase();
+        internalCaptured.push(query);
+        const base = {
+          ok: true,
+          attempted_internal_paths: ['/agent/internal/products/search'],
+          transport_hops: [],
+          transport_hop_count: 0,
+          nested_orchestrator_hops: 0,
+          primary_transport_owner: 'internal_products_search_primitive',
+          primary_endpoint_kind: 'internal_primitive',
+        };
+        if (query === 'salicylic acid serum clogged pores') {
+          return {
+            ...base,
+            products: [
+              {
+                product_id: 'acne_primary_1',
+                merchant_id: 'merchant_internal',
+                brand: 'ClearLab',
+                name: 'Pore Clearing BHA Serum',
+                display_name: 'ClearLab Pore Clearing BHA Serum',
+                title: 'ClearLab Pore Clearing BHA Serum',
+                category: 'Serum',
+                product_type: 'serum',
+                candidate_step: 'treatment',
+                benefit_tags: ['clogged pores', 'blemish support'],
+                short_description: 'A salicylic acid serum for clogged pores and breakout-prone skin.',
+                retrieval_source: 'catalog',
+              },
+            ],
+          };
+        }
+        return {
+          ...base,
+          products: [],
+        };
+      },
+      searchLocalExternalSeedProducts: async (args) => {
+        const query = String(args?.query || '').trim().toLowerCase();
+        externalCaptured.push(query);
+        const base = {
+          ok: true,
+          reason: null,
+          actual_http_attempt_count: 0,
+          attempted_base_urls: [],
+          attempted_paths: [],
+          transport_policy_mode: String(args?.transportPolicyMode || ''),
+          local_external_seed_search_mode: 'staged_support_fastpath',
+          local_external_seed_stage_debug: [{ stage: 'support_category_exact', row_count: 1, cumulative_row_count: 1, duration_ms: 5, cap: 6 }],
+        };
+        if (query === 'gel cream moisturizer') {
+          return {
+            ...base,
+            products: [
+              {
+                product_id: 'support_moist_1',
+                merchant_id: 'external_seed',
+                brand: 'LightLab',
+                name: 'Oil-Free Gel Cream',
+                display_name: 'LightLab Oil-Free Gel Cream',
+                title: 'LightLab Oil-Free Gel Cream',
+                category: 'Moisturizer',
+                product_type: 'moisturizer',
+                candidate_step: 'moisturizer',
+                retrieval_source: 'external_seed',
+                short_description: 'Lightweight moisturizer for oily skin.',
+              },
+            ],
+          };
+        }
+        if (query === 'sunscreen') {
+          return {
+            ...base,
+            products: [
+              {
+                product_id: 'support_spf_1',
+                merchant_id: 'external_seed',
+                brand: 'SunLab',
+                name: 'Daily SPF Fluid',
+                display_name: 'SunLab Daily SPF Fluid',
+                title: 'SunLab Daily SPF Fluid',
+                category: 'Sunscreen',
+                product_type: 'sunscreen',
+                candidate_step: 'sunscreen',
+                retrieval_source: 'external_seed',
+                short_description: 'Lightweight daily sunscreen fluid.',
+              },
+            ],
+          };
+        }
+        return {
+          ...base,
+          ok: false,
+          products: [],
+          reason: 'empty',
+        };
+      },
+    });
+
+    const out = await __internal.handoffRecoToBeautyMainlineSearch({
+      ctx: { lang: 'EN', request_id: 'req_acne_second_primary_query' },
+      primaryQuery: 'acne-prone clogged pores, what product should i use first?',
+      fallbackMessage: 'acne-prone clogged pores, what product should i use first?',
+      targetContext: resolveRecommendationTargetContext({
+        text: 'acne-prone clogged pores, what product should i use first?',
+        focus: '',
+        entryType: 'chat',
+      }),
+      timeoutMs: 5000,
+      minTimeoutMs: 5000,
+    });
+
+    assert.deepEqual(internalCaptured.slice(0, 2), [
+      'Salicylic acid treatment'.toLowerCase(),
+      'salicylic acid serum clogged pores',
+    ]);
+    assert.equal(externalCaptured.includes('niacinamide serum oily skin'), false);
+    assert.equal(out.searchResult?.metadata?.candidate_pool_summary?.primary_role_matched, true);
+    assert.equal(out.searchResult?.metadata?.search_stage_ledger?.candidate_drop_stage, 'none');
+    assert.deepEqual(
+      out.recommendations.map((item) => item.product_id).sort(),
+      ['acne_primary_1', 'support_moist_1', 'support_spf_1'].sort(),
+    );
   } finally {
     __internal.__resetRouteDependencyOverridesForTest();
     delete require.cache[moduleId];
@@ -1858,7 +1990,7 @@ test('handoffRecoToBeautyMainlineSearch preserves local empty result without pro
   }
 });
 
-test('handoffRecoToBeautyMainlineSearch fail-closes support-only rows when primary recall is missing', async () => {
+test('handoffRecoToBeautyMainlineSearch fail-closes before support rows when primary recall is missing', async () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
     __internal.__setRouteDependencyOverridesForTest({
@@ -1932,11 +2064,11 @@ test('handoffRecoToBeautyMainlineSearch fail-closes support-only rows when prima
     );
     assert.equal(
       out.searchResult?.metadata?.candidate_pool_summary?.weak_viable_pool,
-      true,
+      false,
     );
     assert.equal(
       out.searchResult?.metadata?.candidate_pool_summary?.viable_pool_strength,
-      'weak',
+      'empty',
     );
     assert.equal(
       out.searchResult?.metadata?.candidate_pool_summary?.primary_missing_authoritative_support_selected,
@@ -1944,11 +2076,17 @@ test('handoffRecoToBeautyMainlineSearch fail-closes support-only rows when prima
     );
     assert.equal(
       out.searchResult?.metadata?.search_stage_ledger?.candidate_drop_stage,
-      'weak_viable_pool',
+      'no_recall_from_planned_sources',
     );
     assert.equal(
       out.searchResult?.metadata?.search_stage_ledger?.primary_failure_stage ?? null,
-      'weak_viable_pool',
+      'no_recall_from_planned_sources',
+    );
+    assert.equal(
+      out.searchResult?.metadata?.search_stage_ledger?.primary_search?.query_pack_attempts
+        ?.filter((row) => String(row?.ladder_level || '').startsWith('framework_stage_c_support_'))
+        .every((row) => row?.reason === 'primary_role_unmatched'),
+      true,
     );
   } finally {
     __internal.__resetRouteDependencyOverridesForTest();
