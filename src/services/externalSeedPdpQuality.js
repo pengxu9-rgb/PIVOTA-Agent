@@ -1,5 +1,9 @@
 const { ensureJsonObject, normalizeNonEmptyString } = require('./externalSeedRecall');
 const { isDisplayablePdpFaqItem } = require('./pdpFaqQuality');
+const {
+  evaluateProductIntelDisplayability,
+  hasDisplayableSimilarHighlight,
+} = require('./pdpProductIntelQuality');
 
 const POLLUTED_FACTS_RE =
   /\b(contact us|customer service|privacy policy|terms(?: and conditions)?|shipping policy|return policy|about us|blog|blogs|impact|foundation transparency|transparency|give 20%|donation|donate|store locator|support|OFFICIAL|SOCIAL HIGHLIGHTS|THE UNDERCOVER|STRAIGHT UP|THE LOWDOWN|fill weight|avoid contact with eyes|keep out of reach|customerservice@)\b/i;
@@ -42,9 +46,7 @@ function collectProductDetailsText(livePayload = {}) {
 function collectProductDetailsSections(livePayload = {}) {
   const modules = Array.isArray(livePayload?.modules) ? livePayload.modules : [];
   return modules
-    .filter((module) =>
-      ['product_overview', 'supplemental_details', 'product_details'].includes(module?.type),
-    )
+    .filter((module) => ['product_overview', 'supplemental_details', 'product_details'].includes(module?.type))
     .flatMap((module) => (Array.isArray(module?.data?.sections) ? module.data.sections : []))
     .filter(Boolean);
 }
@@ -138,21 +140,6 @@ function seedExpectsActiveIngredients(seedData = {}) {
   );
   return /\b(?:zinc oxide|titanium dioxide|avobenzone|octocrylene|octisalate|homosalate|octinoxate)\b/i.test(
     ingredients,
-  );
-}
-
-function hasDisplayableSimilarCardData(product = {}) {
-  return Boolean(
-    normalizeNonEmptyString(
-      product.card_highlight ||
-        product.cardHighlight ||
-        product.shopping_card?.highlight ||
-        product.shoppingCard?.highlight ||
-        product.search_card?.highlight_candidate ||
-        product.searchCard?.highlight_candidate ||
-        product.searchCard?.highlightCandidate ||
-        product.description,
-    ),
   );
 }
 
@@ -262,25 +249,24 @@ function buildProductIntelGate({ livePayload = {}, liveResponse = {} } = {}) {
   const modules = collectModules(liveResponse, livePayload);
   const productIntelModule = modules.find((module) => module?.type === 'product_intel') || null;
   const topLevelIntel = ensureJsonObject(liveResponse?.product_intel || livePayload?.product_intel);
-  const moduleData = ensureJsonObject(productIntelModule?.data);
-  const metadata = ensureJsonObject(liveResponse?.metadata || livePayload?.metadata);
-  const productIntelStatus = normalizeNonEmptyString(
-    metadata.product_intel_status || productIntelModule?.status || productIntelModule?.reason,
-  ).toLowerCase();
-  const hasProductIntelData =
-    Object.keys(moduleData).length > 0 ||
-    Object.keys(topLevelIntel).length > 0;
-  const blocked =
-    !hasProductIntelData ||
-    productIntelStatus === 'missing_blocked' ||
-    productIntelStatus === 'queued' ||
-    productIntelStatus === 'generating' ||
-    normalizeNonEmptyString(productIntelModule?.reason).toLowerCase() === 'missing_blocked';
-  const failureReasons = blocked ? ['product_intel_module_empty_or_blocked'] : [];
+  const moduleIntel = ensureJsonObject(productIntelModule?.data);
+  const productIntel = Object.keys(topLevelIntel).length ? topLevelIntel : moduleIntel;
+  const hasTopLevelIntel = Object.keys(topLevelIntel).length > 0;
+  const hasProductIntelModule = Boolean(productIntelModule);
+  const hasProductIntel = hasProductIntelModule || hasTopLevelIntel;
+  const quality = evaluateProductIntelDisplayability(productIntel);
+  const failureReasons = [];
+  if (!hasProductIntel) {
+    failureReasons.push('missing_product_intel');
+  } else if (!quality.displayable) {
+    failureReasons.push('product_intel_not_displayable');
+    failureReasons.push(...quality.failure_reasons);
+  }
   return {
     status: failureReasons.length ? 'failed' : 'passed',
-    has_product_intel: hasProductIntelData,
-    product_intel_status: productIntelStatus || null,
+    has_product_intel: failureReasons.length === 0,
+    contract_status: quality.contract_status,
+    source_quality_status: quality.source_quality_status,
     failure_reasons: failureReasons,
   };
 }
@@ -501,16 +487,19 @@ function buildSimilarGate({ similarResponse = {}, livePayload = {}, liveResponse
   if (!exempt && products.length < 4) {
     failureReasons.push('similar_underfill');
   }
-  const missingHighlight = products
-    .slice(0, Math.min(products.length, 4))
-    .filter((item) => !hasDisplayableSimilarCardData(item));
-  if (!exempt && products.length > 0 && missingHighlight.length > 0) {
+  const productsMissingHighlight = products.filter((product) => !hasDisplayableSimilarHighlight(product));
+  if (!exempt && products.length > 0 && productsMissingHighlight.length > 0) {
     failureReasons.push('similar_card_missing_highlight');
   }
   return {
     status: failureReasons.length ? 'failed' : exempt ? 'exempt' : 'passed',
     similar_count: products.length,
-    card_highlight_missing_count: missingHighlight.length,
+    displayable_highlight_count: products.length - productsMissingHighlight.length,
+    highlight_missing_count: productsMissingHighlight.length,
+    highlight_missing_examples: productsMissingHighlight
+      .map((product) => normalizeNonEmptyString(product?.product_id || product?.id || product?.title || product?.name))
+      .filter(Boolean)
+      .slice(0, 5),
     exempt,
     failure_reasons: failureReasons,
   };
@@ -560,7 +549,7 @@ function buildExternalSeedQualityResult({
   }
   if (
     failureReasons.includes('missing_product_intel') ||
-    failureReasons.includes('product_intel_module_empty_or_blocked')
+    failureReasons.includes('product_intel_not_displayable')
   ) {
     rootCauseClassification.push('product_intel_gap');
   }
