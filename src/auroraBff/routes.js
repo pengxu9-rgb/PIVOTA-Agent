@@ -22067,6 +22067,40 @@ function isConcernFrameworkRefillOnlyCandidate(row = null) {
   return /\b(?:refill(?:\s+(?:pouch|pack|pod|cartridge|bottle))?|(?:pouch|pack|pod|cartridge|bottle)\s+refill|replacement\s+(?:pouch|pack|pod|cartridge|bottle))\b/i.test(text);
 }
 
+function isConcernFrameworkUnavailableCandidate(row = null) {
+  const item = isPlainObject(row) ? row : {};
+  const sku = isPlainObject(item.sku) ? item.sku : {};
+  const product = isPlainObject(item.product) ? item.product : {};
+  const text = [
+    item.display_name,
+    item.displayName,
+    item.name,
+    item.title,
+    item.availability,
+    item.stock_status,
+    item.stockStatus,
+    item.status,
+    item.badge,
+    sku.display_name,
+    sku.displayName,
+    sku.name,
+    sku.title,
+    sku.availability,
+    sku.stock_status,
+    sku.stockStatus,
+    sku.status,
+    product.availability,
+    product.stock_status,
+    product.stockStatus,
+    product.status,
+  ]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(' ');
+  if (!text) return false;
+  return /\b(?:coming soon|sold out|out of stock|currently unavailable|unavailable|notify me)\b/i.test(text);
+}
+
 function shouldUseConcernFrameworkRoleCoverageFirst(targetContext = null, orderedRoles = []) {
   const roles = Array.isArray(orderedRoles)
     ? orderedRoles.filter((role) => String(role?.role_id || '').trim())
@@ -22229,6 +22263,13 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
       hardReject.push({
         product: annotatedBase,
         reason: 'framework_refill_only_variant',
+      });
+      continue;
+    }
+    if (isConcernFrameworkUnavailableCandidate(row)) {
+      hardReject.push({
+        product: annotatedBase,
+        reason: 'framework_unavailable_variant',
       });
       continue;
     }

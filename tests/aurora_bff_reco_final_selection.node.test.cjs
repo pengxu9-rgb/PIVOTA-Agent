@@ -3007,6 +3007,104 @@ test('beauty mainline routine selection covers support roles before same-role re
   }
 });
 
+test('beauty mainline routine selection rejects coming-soon support products', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const targetContext = {
+      primary_role_id: 'hydrating_barrier_moisturizer',
+      semantic_plan: {
+        routine_mode: 'routine_mix',
+        comparison_mode: 'routine_mix',
+      },
+      framework_roles: [
+        {
+          role_id: 'hydrating_barrier_moisturizer',
+          label: 'Hydrating barrier moisturizer',
+          preferred_step: 'moisturizer',
+          rank: 40,
+          query_terms: ['barrier repair moisturizer'],
+          fit_keywords: ['hydrating', 'barrier repair', 'ceramide'],
+          product_type_hypotheses: ['moisturizer'],
+        },
+        {
+          role_id: 'hydrating_serum_or_essence',
+          label: 'Hydrating serum or essence',
+          preferred_step: 'serum',
+          rank: 42,
+          query_terms: ['hyaluronic acid serum', 'hydrating serum dehydrated skin'],
+          fit_keywords: ['hydrating', 'hyaluronic acid', 'plumping'],
+          ingredient_hypotheses: ['Hyaluronic acid', 'Glycerin'],
+          product_type_hypotheses: ['serum', 'essence'],
+        },
+        {
+          role_id: 'daily_sunscreen',
+          label: 'Daily sunscreen',
+          preferred_step: 'sunscreen',
+          rank: 30,
+          query_terms: ['daily sunscreen skincare'],
+          fit_keywords: ['spf', 'uv filters', 'broad spectrum'],
+          product_type_hypotheses: ['sunscreen'],
+        },
+      ],
+    };
+    const out = __internal.finalizeConcernFrameworkCandidatePools(
+      [
+        {
+          product_id: 'barrier_primary',
+          merchant_id: 'shopify',
+          display_name: 'Barrier Repair Cream',
+          category: 'Moisturizer',
+          product_type: 'Moisturizer',
+          short_description: 'A hydrating barrier repair moisturizer with ceramides.',
+          retrieval_role_id: 'hydrating_barrier_moisturizer',
+          retrieval_source: 'catalog',
+        },
+        {
+          product_id: 'coming_soon_ampoule',
+          merchant_id: 'external_seed',
+          display_name: 'Hyalu-Teca Plumping Ampoule - Coming Soon',
+          category: 'Serum',
+          product_type: 'Serum',
+          key_features: ['Hyaluronic acid', 'Centella asiatica'],
+          retrieval_role_id: 'hydrating_serum_or_essence',
+          retrieval_source: 'external_seed',
+        },
+        {
+          product_id: 'available_hydrating_serum',
+          merchant_id: 'external_seed',
+          display_name: 'Hydra B5 Hyaluronic Acid Serum',
+          category: 'Serum',
+          product_type: 'Serum',
+          key_features: ['Hyaluronic acid', 'Glycerin'],
+          short_description: 'A hydrating serum with hyaluronic acid for plumping support.',
+          retrieval_role_id: 'hydrating_serum_or_essence',
+          retrieval_source: 'external_seed',
+        },
+        {
+          product_id: 'daily_spf',
+          merchant_id: 'external_seed',
+          display_name: 'Daily UV Filters SPF 45',
+          category: 'Sunscreen',
+          product_type: 'Sunscreen',
+          key_features: ['UV filters'],
+          retrieval_role_id: 'daily_sunscreen',
+          retrieval_source: 'external_seed',
+        },
+      ],
+      { targetContext },
+    );
+
+    assert.deepEqual(
+      out.selected_recommendations.map((row) => row.product_id),
+      ['barrier_primary', 'available_hydrating_serum', 'daily_spf'],
+    );
+    assert.equal(out.selected_recommendations.some((row) => row.product_id === 'coming_soon_ampoule'), false);
+    assert.equal(out.hard_reject.some((entry) => entry.reason === 'framework_unavailable_variant'), true);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('beauty mainline reco rows promote visible nested product fields to top level', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
