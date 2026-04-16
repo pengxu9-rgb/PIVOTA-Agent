@@ -401,7 +401,7 @@ test('handoffRecoToBeautyMainlineSearch clamps local internal primitive timeout 
   }
 });
 
-test('handoffRecoToBeautyMainlineSearch exhausts primary planned sources before routine support with runtime contract ledger', async () => {
+test('handoffRecoToBeautyMainlineSearch runs primary external alongside routine support with runtime contract ledger', async () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
     const captured = [];
@@ -488,13 +488,21 @@ test('handoffRecoToBeautyMainlineSearch exhausts primary planned sources before 
       [
         'niacinamide serum oily skin',
         'oil control serum',
+        'gel cream moisturizer',
+        'sunscreen',
+        'lightweight moisturizer oily skin',
+        'spf fluid oily skin',
       ],
     );
     assert.deepEqual(
       externalCaptured.map((row) => row.query),
       [
         'niacinamide serum oily skin',
+        'gel cream moisturizer',
+        'sunscreen',
         'salicylic acid serum oily skin',
+        'lightweight moisturizer oily skin',
+        'spf fluid oily skin',
       ],
     );
     assert.equal(captured.every((row) => row.callerLane === 'beauty_chat_handoff'), true);
@@ -522,7 +530,7 @@ test('handoffRecoToBeautyMainlineSearch exhausts primary planned sources before 
     );
     assert.equal(
       externalCaptured.filter((row) => row.roleId !== 'oil_control_treatment').map((row) => row.roleId).join(','),
-      '',
+      'lightweight_moisturizer,daily_sunscreen,lightweight_moisturizer,daily_sunscreen',
     );
     assert.equal(
       externalCaptured.filter((row) => row.roleId !== 'oil_control_treatment').every((row) =>
@@ -535,7 +543,7 @@ test('handoffRecoToBeautyMainlineSearch exhausts primary planned sources before 
     );
     assert.equal(out.searchResult?.query_source, 'beauty_mainline_local_handoff');
     assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.planned_level_count, 6);
-    assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_level_count, 5);
+    assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_level_count, 4);
     assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_query_count, 13);
     assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.primary_internal_query_cap_applied, true);
     assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.primary_internal_original_query_count, 3);
@@ -567,7 +575,11 @@ test('handoffRecoToBeautyMainlineSearch exhausts primary planned sources before 
     );
     assert.equal(
       out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.routine_support_strategy,
-      'primary_plus_dual_source_support_rounds',
+      'primary_external_parallel_support_authority_rounds',
+    );
+    assert.equal(
+      out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.primary_external_parallel_round_count,
+      2,
     );
     assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_support_level_count, 4);
     assert.deepEqual(
@@ -586,18 +598,16 @@ test('handoffRecoToBeautyMainlineSearch exhausts primary planned sources before 
     );
     assert.deepEqual(
       out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts?.map((row) => row?.source_scope),
-      ['internal', 'internal', 'external_seed', 'external_seed', 'internal', 'internal', 'external_seed', 'external_seed', 'internal', 'internal', 'external_seed', 'external_seed', 'internal'],
+      ['internal', 'internal', 'external_seed', 'internal', 'internal', 'external_seed', 'external_seed', 'external_seed', 'internal', 'internal', 'external_seed', 'external_seed', 'internal'],
     );
     assert.deepEqual(
       out.searchResult?.metadata?.search_stage_ledger?.primary_search?.query_pack_attempts?.map((row) => row?.source_scope),
-      ['internal', 'internal', 'external_seed', 'external_seed', 'internal', 'internal', 'external_seed', 'external_seed', 'internal', 'internal', 'external_seed', 'external_seed', 'internal'],
+      ['internal', 'internal', 'external_seed', 'internal', 'internal', 'external_seed', 'external_seed', 'external_seed', 'internal', 'internal', 'external_seed', 'external_seed', 'internal'],
     );
-    assert.equal(
-      out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts
-        ?.filter((row) => String(row?.ladder_level || '').startsWith('framework_stage_c_support_'))
-        .every((row) => row?.reason === 'primary_role_unmatched'),
-      true,
-    );
+    const supportAttempts = out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts
+      ?.filter((row) => String(row?.ladder_level || '').startsWith('framework_stage_c_support_')) || [];
+    assert.equal(supportAttempts.some((row) => row?.reason === 'primary_role_unmatched'), true);
+    assert.equal(supportAttempts.some((row) => row?.reason !== 'primary_role_unmatched'), true);
     const firstSupportExternalAttempt =
       out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts
         ?.find((row) =>
@@ -607,7 +617,7 @@ test('handoffRecoToBeautyMainlineSearch exhausts primary planned sources before 
         ?.find((row) =>
           row?.ladder_level === 'framework_stage_c_support_lightweight_moisturizer_external_seed'
           && row?.local_external_seed_search_mode);
-    assert.equal(firstSupportExternalAttempt, undefined);
+    assert.ok(firstSupportExternalAttempt);
     assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.skipped_external_seed_levels, undefined);
     assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.skipped_support_levels, undefined);
   } finally {
@@ -2176,7 +2186,7 @@ test('handoffRecoToBeautyMainlineSearch preserves local empty result without pro
   }
 });
 
-test('handoffRecoToBeautyMainlineSearch fail-closes before support rows when primary recall is missing', async () => {
+test('handoffRecoToBeautyMainlineSearch fail-closes before selecting support rows when primary recall is missing', async () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
     __internal.__setRouteDependencyOverridesForTest({
@@ -2268,12 +2278,10 @@ test('handoffRecoToBeautyMainlineSearch fail-closes before support rows when pri
       out.searchResult?.metadata?.search_stage_ledger?.primary_failure_stage ?? null,
       'no_recall_from_planned_sources',
     );
-    assert.equal(
-      out.searchResult?.metadata?.search_stage_ledger?.primary_search?.query_pack_attempts
-        ?.filter((row) => String(row?.ladder_level || '').startsWith('framework_stage_c_support_'))
-        .every((row) => row?.reason === 'primary_role_unmatched'),
-      true,
-    );
+    const supportAttempts = out.searchResult?.metadata?.search_stage_ledger?.primary_search?.query_pack_attempts
+      ?.filter((row) => String(row?.ladder_level || '').startsWith('framework_stage_c_support_')) || [];
+    assert.equal(supportAttempts.some((row) => row?.reason === 'primary_role_unmatched'), true);
+    assert.equal(supportAttempts.some((row) => row?.reason !== 'primary_role_unmatched'), true);
   } finally {
     __internal.__resetRouteDependencyOverridesForTest();
     delete require.cache[moduleId];
