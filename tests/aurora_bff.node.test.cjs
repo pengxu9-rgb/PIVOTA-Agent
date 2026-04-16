@@ -16804,6 +16804,153 @@ test('__internal: buildLatestRecoContextFromAnalysisArtifacts emits canonical ro
   }
 });
 
+test('__internal: buildLatestRecoContextFromAnalysisArtifacts prefers product-add needs over cleanser replacement drift', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const routineAnalysisResult = {
+      cards: [
+        {
+          type: 'routine_adjustment_plan_v1',
+          payload: {
+            replace: [
+              {
+                adjustment_id: 'adj_pm_cleanser_replace',
+                title: 'Consider a different cleanser for PM',
+                change_type: 'replace',
+                priority: 1,
+                why: 'The same cleanser is used twice daily.',
+              },
+            ],
+            add: [
+              {
+                adjustment_id: 'adj_add_spf_gap',
+                title: 'Add a clear AM sunscreen step',
+                change_type: 'add',
+                priority: 3,
+                why: 'AM protection is missing.',
+              },
+            ],
+            recommendation_needs: [
+              {
+                adjustment_id: 'adj_pm_cleanser_replace',
+                need_state: 'replace_current',
+                target_step: 'cleanser',
+                why: 'A gentler PM cleanse may help.',
+                priority: 'medium',
+              },
+              {
+                adjustment_id: 'adj_add_spf_gap',
+                need_state: 'fill_gap',
+                target_step: 'sunscreen',
+                why: 'Fill the missing daytime protection step.',
+                priority: 'low',
+              },
+            ],
+          },
+        },
+      ],
+    };
+
+    const recoContext = __internal.buildLatestRecoContextFromAnalysisArtifacts({
+      routineAnalysisResult,
+      profileSummary: { goals: ['smooth layering', 'daily sunscreen'] },
+      artifactId: 'art_routine_need_rank',
+      usePhoto: false,
+      usedPhotos: false,
+    });
+
+    assert.ok(recoContext);
+    assert.equal(recoContext.context_origin, 'routine_audit_v1');
+    assert.equal(recoContext.resolved_target_step, 'sunscreen');
+    assert.equal(recoContext.ingredient_query, 'sunscreen');
+    assert.equal(recoContext.analysis_reco_source, 'routine_audit_v1');
+    assert.equal(String(recoContext.primary_target_id || '').includes('adj_add_spf_gap'), true);
+    assert.equal(recoContext.ranked_targets[0].need_state, 'fill_gap');
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('__internal: buildLatestRecoContextFromAnalysisArtifacts converts missing PM barrier moisturizer minimal routine into reco target', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const routineAnalysisResult = {
+      cards: [
+        {
+          type: 'routine_adjustment_plan_v1',
+          payload: {
+            replace: [
+              {
+                adjustment_id: 'adj_pm_cleanser_replace',
+                title: 'Consider a different cleanser for PM',
+                change_type: 'replace',
+                priority: 1,
+                why: 'The same cleanser is used twice daily.',
+              },
+            ],
+            recommendation_needs: [
+              {
+                adjustment_id: 'adj_pm_cleanser_replace',
+                need_state: 'replace_current',
+                target_step: 'cleanser',
+                why: 'A gentler PM cleanse may help.',
+                priority: 'high',
+              },
+            ],
+            minimal_viable_routine: {
+              am_minimal: ['Gentle cleanser', 'SPF 50 sunscreen'],
+              pm_minimal: ['Gentle cleanser', 'repair moisturizer'],
+            },
+            frequency_changes: [
+              {
+                adjustment_id: 'adj_retinoid_pause',
+                change_type: 'frequency_change',
+                title: 'Pause retinoid while the barrier is impaired',
+                why: 'Retinoid use can worsen irritation when the barrier is impaired.',
+              },
+            ],
+          },
+        },
+      ],
+    };
+
+    const recoContext = __internal.buildLatestRecoContextFromAnalysisArtifacts({
+      routineAnalysisResult,
+      profileSummary: {
+        skinType: 'dry',
+        sensitivity: 'high',
+        barrierStatus: 'impaired',
+        goals: ['barrier support'],
+        currentRoutine: JSON.stringify({
+          am: [
+            { step: 'cleanser', product: 'Gentle cleanser' },
+            { step: 'sunscreen', product: 'SPF 50 sunscreen' },
+          ],
+          pm: [
+            { step: 'cleanser', product: 'Gentle cleanser' },
+            { step: 'treatment', product: 'retinoid serum three nights per week' },
+          ],
+        }),
+      },
+      artifactId: 'art_routine_barrier_missing_pm_moisturizer',
+      usePhoto: false,
+      usedPhotos: false,
+    });
+
+    assert.ok(recoContext);
+    assert.equal(recoContext.context_origin, 'routine_audit_v1');
+    assert.equal(recoContext.resolved_target_step, 'moisturizer');
+    assert.equal(recoContext.ingredient_query, 'moisturizer');
+    assert.equal(recoContext.analysis_reco_source, 'routine_audit_v1_minimal_routine');
+    assert.equal(
+      String(recoContext.primary_target_id || '').includes('routine_minimal_pm_moisturizer_support'),
+      true,
+    );
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('__internal: buildLatestRecoContextFromAnalysisArtifacts preserves routine canonical spine when photo derivation is suppressed', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {

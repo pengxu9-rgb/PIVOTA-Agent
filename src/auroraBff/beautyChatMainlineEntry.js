@@ -54,6 +54,62 @@ function buildBeautyChatPlannerMeta(trace = null) {
   };
 }
 
+function buildBeautyChatAnalysisContextUsageMeta(latestRecoContextFromSession = null) {
+  const context =
+    latestRecoContextFromSession &&
+    typeof latestRecoContextFromSession === 'object' &&
+    !Array.isArray(latestRecoContextFromSession)
+      ? latestRecoContextFromSession
+      : null;
+  if (!context) return null;
+  const sourceDetail = pickFirstTrimmed(
+    context.source_detail,
+    context.trigger_source,
+    context.context_origin,
+  );
+  const contextOrigin = pickFirstTrimmed(context.context_origin);
+  const artifactId = pickFirstTrimmed(context.artifact_id, context.artifactId);
+  const isAnalysisContext = Boolean(
+    sourceDetail === 'analysis_handoff' ||
+      contextOrigin === 'routine_audit_v1' ||
+      artifactId,
+  );
+  if (!isAnalysisContext) return null;
+  const rankedTargets = Array.isArray(context.ranked_targets)
+    ? context.ranked_targets.filter((target) => target && typeof target === 'object' && !Array.isArray(target))
+    : [];
+  const hardContextFieldsUsed = [];
+  if (artifactId) hardContextFieldsUsed.push('latest_artifact_id');
+  if (pickFirstTrimmed(context.goal)) hardContextFieldsUsed.push('active_goals');
+  if (pickFirstTrimmed(context.resolved_target_step, context.target_step, context.step)) {
+    hardContextFieldsUsed.push('target_step');
+  }
+  if (pickFirstTrimmed(context.ingredient_query, context.query)) hardContextFieldsUsed.push('ingredient_query');
+  if (rankedTargets.length > 0) hardContextFieldsUsed.push('ranked_targets');
+  return {
+    snapshot_present: Boolean(artifactId),
+    context_source_mode: sourceDetail || 'analysis_handoff',
+    analysis_context_available: true,
+    snapshot_fields_used: [],
+    hard_context_fields_used: hardContextFieldsUsed,
+    soft_context_fields_used: [],
+    explicit_override_applied: false,
+    context_mode: 'latest_reco_context',
+    adapter_version: 'beauty_chat_mainline_analysis_context_v1',
+    request_context_signature_version: 'request_context_signature_v1',
+    candidate_pool_signature_version: 'candidate_pool_signature_v1',
+    strictness_source: 'beauty_chat_mainline',
+    minimum_recommendation_context_satisfied: Boolean(
+      rankedTargets.length > 0 ||
+        pickFirstTrimmed(context.resolved_target_step, context.ingredient_query, context.query),
+    ),
+    context_origin: contextOrigin || null,
+    artifact_id_present: Boolean(artifactId),
+    ranked_target_count: rankedTargets.length,
+    primary_target_id: pickFirstTrimmed(context.primary_target_id) || null,
+  };
+}
+
 function createBeautyChatMainlineBudget({ budgetMs = 0 } = {}) {
   const normalizedBudgetMs =
     Number.isFinite(Number(budgetMs)) && Number(budgetMs) > 0
@@ -427,6 +483,11 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
     let hardPathPlannerTrace = null;
     let hardPathPlannerSemanticPlan = null;
     let effectivePlannerTargetContext = hardPathRecoTargetContext;
+    const analysisContextUsageMeta = buildBeautyChatAnalysisContextUsageMeta(latestRecoContextFromSession);
+    const effectiveRecoEntrySourceDetail =
+      analysisContextUsageMeta?.context_source_mode === 'analysis_handoff'
+        ? 'analysis_handoff'
+        : recoEntrySourceDetail;
     if (
       shouldUseBeautyChatMainlinePlanner(hardPathRecoTargetContext) &&
       typeof runConcernSemanticPlanner === 'function' &&
@@ -691,7 +752,7 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
         targetContext: effectiveHandoffTargetContext,
         recoContext: hardPathRecoContext,
         taskMode: 'goal_based_products',
-        triggerSource: recoEntrySourceDetail,
+        triggerSource: effectiveRecoEntrySourceDetail,
         sourceMode:
           String(effectiveHandoffTargetContext?.intent_mode || '').trim().toLowerCase() ===
           'generic_concern'
@@ -702,6 +763,7 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
           recommendation_confidence_level: 'medium',
           recommendation_meta: {
             ...buildBeautyChatPlannerMeta(hardPathPlannerTrace),
+            ...(analysisContextUsageMeta ? { analysis_context_usage: analysisContextUsageMeta } : {}),
             recompute_from_profile_update:
               shouldAutoRerunRecommendationsFromProfilePatch === true,
             used_recent_logs: Array.isArray(recentLogs) && recentLogs.length > 0,
@@ -740,6 +802,10 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
             hardPathPayloadBundle.payload.recommendation_meta.selector_support_roles_surfaced =
               hardPathSelectorApplied.support_roles_surfaced;
           }
+          if (analysisContextUsageMeta) {
+            hardPathPayloadBundle.payload.recommendation_meta.analysis_context_usage =
+              analysisContextUsageMeta;
+          }
           if (isPlainObject(hardPathPayloadBundle.payload?.metadata)) {
             hardPathPayloadBundle.payload.metadata.selector_race_trace = hardPathSelectorTrace;
           }
@@ -753,7 +819,7 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
           sessionPatch,
           mergeIngredientRecoContextValue(effectiveHardPathRecoContext, {
             intent: 'reco_products',
-            source_detail: recoEntrySourceDetail,
+            source_detail: effectiveRecoEntrySourceDetail,
             trigger_source: ctx?.trigger_source,
             action_id: actionId || '',
             message: recoRequestMessage || message,
@@ -847,8 +913,8 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
                 ),
                 sourceDetail:
                   typeof normalizeRecoSourceDetail === 'function'
-                    ? normalizeRecoSourceDetail(recoEntrySourceDetail)
-                    : recoEntrySourceDetail,
+                    ? normalizeRecoSourceDetail(effectiveRecoEntrySourceDetail)
+                    : effectiveRecoEntrySourceDetail,
                 recomputeFromProfileUpdate:
                   shouldAutoRerunRecommendationsFromProfilePatch === true,
                 lowConfidence: false,

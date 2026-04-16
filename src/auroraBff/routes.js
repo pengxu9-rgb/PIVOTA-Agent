@@ -35872,81 +35872,306 @@ function buildPrimaryIngredientRecoSearchContext(recoContext) {
   });
 }
 
+function collectRoutineAuditAdjustmentsById(adjustmentPayload) {
+  const payload = isPlainObject(adjustmentPayload) ? adjustmentPayload : {};
+  const rows = [
+    ...((Array.isArray(payload.add) ? payload.add : [])),
+    ...((Array.isArray(payload.replace) ? payload.replace : [])),
+    ...((Array.isArray(payload.pause_or_remove) ? payload.pause_or_remove : [])),
+    ...((Array.isArray(payload.frequency_changes) ? payload.frequency_changes : [])),
+    ...((Array.isArray(payload.top_3_adjustments) ? payload.top_3_adjustments : [])),
+  ].filter((row) => isPlainObject(row));
+  const byId = new Map();
+  for (const row of rows) {
+    const id = pickFirstTrimmed(row.adjustment_id);
+    if (!id || byId.has(id)) continue;
+    byId.set(id, row);
+  }
+  return byId;
+}
+
+function scoreRoutineAuditPriority(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'critical') return 16;
+  if (normalized === 'high') return 12;
+  if (normalized === 'medium') return 6;
+  if (normalized === 'low') return 2;
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return 0;
+  return Math.max(0, 12 - Math.trunc(numeric - 1) * 3);
+}
+
+function scoreRoutineAnalysisRecommendationNeed(need, { adjustment = null, hasNonCleanserNeed = false, index = 0 } = {}) {
+  const normalizedNeed = isPlainObject(need) ? need : {};
+  const normalizedAdjustment = isPlainObject(adjustment) ? adjustment : {};
+  const step = normalizeRecoTargetStep(pickFirstTrimmed(normalizedNeed.target_step));
+  let score = 0;
+  if (step === 'sunscreen') score += 90;
+  else if (step === 'moisturizer') score += 82;
+  else if (step === 'serum' || step === 'treatment') score += 70;
+  else if (step === 'cleanser') score += 30;
+  else score += 42;
+  if (hasNonCleanserNeed && step === 'cleanser') score -= 28;
+
+  const needState = String(normalizedNeed.need_state || '').trim().toLowerCase();
+  if (needState === 'fill_gap') score += 35;
+  else if (/\b(add|missing|gap)\b/.test(needState)) score += 22;
+  else if (/\b(replace|swap)\b/.test(needState)) score += 5;
+
+  const changeType = String(normalizedAdjustment.change_type || '').trim().toLowerCase();
+  if (changeType === 'add') score += 25;
+  else if (changeType === 'replace') score += 3;
+  else if (changeType === 'frequency_change') score -= 8;
+
+  score += scoreRoutineAuditPriority(normalizedNeed.priority);
+  score += scoreRoutineAuditPriority(normalizedAdjustment.priority);
+  return score - Math.max(0, Number(index) || 0) * 0.01;
+}
+
+function parseRoutineProfileCurrentRoutine(profileSummary) {
+  const profile = isPlainObject(profileSummary) ? profileSummary : {};
+  const raw = profile.currentRoutine || profile.current_routine || profile.routine || null;
+  if (!raw) return null;
+  if (isPlainObject(raw)) return raw;
+  if (typeof raw === 'string') {
+    const text = raw.trim();
+    if (!text) return null;
+    try {
+      const parsed = JSON.parse(text);
+      return isPlainObject(parsed) ? parsed : null;
+    } catch (_err) {
+      return null;
+    }
+  }
+  return null;
+}
+
+function routineProfileHasStep(profileSummary, slot, step) {
+  const routine = parseRoutineProfileCurrentRoutine(profileSummary);
+  if (!routine) return false;
+  const normalizedSlot = String(slot || '').trim().toLowerCase();
+  const normalizedStep = String(step || '').trim().toLowerCase();
+  if (!normalizedSlot || !normalizedStep) return false;
+  const slotValue = routine[normalizedSlot];
+  if (Array.isArray(slotValue)) {
+    return slotValue.some((row) => {
+      if (!isPlainObject(row)) return false;
+      return String(row.step || '').trim().toLowerCase() === normalizedStep
+        && Boolean(pickFirstTrimmed(row.product, row.product_name, row.name, row.value));
+    });
+  }
+  if (isPlainObject(slotValue)) {
+    return Boolean(pickFirstTrimmed(slotValue[normalizedStep]));
+  }
+  return false;
+}
+
+function routineProfileHasRoutineData(profileSummary) {
+  return Boolean(parseRoutineProfileCurrentRoutine(profileSummary));
+}
+
+function getRoutineAnalysisAuditedProducts(routineAnalysisResult) {
+  const result = isPlainObject(routineAnalysisResult) ? routineAnalysisResult : {};
+  const cards = Array.isArray(result.cards) ? result.cards : [];
+  const auditCard = cards.find((card) => {
+    return isPlainObject(card) && String(card.type || '').trim().toLowerCase() === 'routine_product_audit_v1';
+  });
+  const payload = isPlainObject(auditCard && auditCard.payload) ? auditCard.payload : null;
+  return Array.isArray(payload && payload.products) ? payload.products.filter((row) => isPlainObject(row)) : [];
+}
+
+function routineAnalysisResultHasAuditedProducts(routineAnalysisResult) {
+  return getRoutineAnalysisAuditedProducts(routineAnalysisResult).length > 0;
+}
+
+function routineAnalysisResultHasAuditedStep(routineAnalysisResult, slot, step) {
+  const normalizedSlot = String(slot || '').trim().toLowerCase();
+  const normalizedStep = String(step || '').trim().toLowerCase();
+  if (!normalizedSlot || !normalizedStep) return false;
+  const products = getRoutineAnalysisAuditedProducts(routineAnalysisResult);
+  return products.some((row) => {
+    const rowSlot = String(row.slot || row.routine_slot || '').trim().toLowerCase();
+    const rowStep = String(row.step || row.original_step_label || row.inferred_product_type || '').trim().toLowerCase();
+    return rowSlot === normalizedSlot && rowStep === normalizedStep;
+  });
+}
+
+function buildRoutineAnalysisMinimalRoutineNeed(adjustmentPayload, profileSummary, routineAnalysisResult = null) {
+  const payload = isPlainObject(adjustmentPayload) ? adjustmentPayload : {};
+  const minimalRoutine = isPlainObject(payload.minimal_viable_routine)
+    ? payload.minimal_viable_routine
+    : {};
+  const pmMinimalText = (Array.isArray(minimalRoutine.pm_minimal) ? minimalRoutine.pm_minimal : [])
+    .map((item) => String(item || '').trim().toLowerCase())
+    .filter(Boolean)
+    .join(' ');
+  if (!pmMinimalText) return null;
+  const profileText = JSON.stringify(profileSummary || {}).toLowerCase();
+  const payloadText = JSON.stringify({
+    minimal_viable_routine: minimalRoutine,
+    top_3_adjustments: payload.top_3_adjustments,
+    frequency_changes: payload.frequency_changes,
+  }).toLowerCase();
+  const barrierSignal = /\b(barrier|retinoid|retinol|sensitive|sensitivity|dry|flak|irritat|tight)\b/.test(
+    `${profileText} ${payloadText}`,
+  );
+  const pmMoisturizerNeeded = /\b(repair|barrier|simple|gentle|soothing)?\s*moisturizer\b/.test(pmMinimalText);
+  if (!barrierSignal || !pmMoisturizerNeeded) return null;
+  const hasProfileRoutineData = routineProfileHasRoutineData(profileSummary);
+  const hasAuditRoutineData = routineAnalysisResultHasAuditedProducts(routineAnalysisResult);
+  if (!hasProfileRoutineData && !hasAuditRoutineData) return null;
+  if (
+    (hasProfileRoutineData && routineProfileHasStep(profileSummary, 'pm', 'moisturizer')) ||
+    (hasAuditRoutineData && routineAnalysisResultHasAuditedStep(routineAnalysisResult, 'pm', 'moisturizer'))
+  ) {
+    return null;
+  }
+  return {
+    adjustment_id: 'routine_minimal_pm_moisturizer_support',
+    need_state: 'fill_gap',
+    target_step: 'moisturizer',
+    why: 'The routine audit minimal PM routine calls for a repair moisturizer to support the barrier before adding actives back.',
+    required_attributes: ['barrier-supporting', 'low-irritation'],
+    avoid_attributes: ['extra exfoliating acids', 'high fragrance'],
+    timing: 'pm',
+    priority: 'high',
+    source: 'routine_audit_v1_minimal_routine',
+  };
+}
+
+function buildRoutineAnalysisRecoContextFromNeed({
+  need,
+  adjustment = null,
+  profileSummary = null,
+  artifactId = '',
+  source = 'routine_audit_v1',
+} = {}) {
+  const normalizedNeed = isPlainObject(need) ? need : {};
+  const row = isPlainObject(adjustment) ? adjustment : {};
+  const targetContext = resolveRecommendationTargetContext({
+    explicitStep: pickFirstTrimmed(normalizedNeed.target_step),
+    focus: pickFirstTrimmed(row.title, normalizedNeed.target_step),
+    text: [
+      pickFirstTrimmed(row.title),
+      pickFirstTrimmed(row.why),
+      pickFirstTrimmed(normalizedNeed.target_step),
+      pickFirstTrimmed(normalizedNeed.why),
+      ...(Array.isArray(normalizedNeed.required_attributes) ? normalizedNeed.required_attributes : []),
+    ].filter(Boolean).join(' '),
+    entryType: 'analysis',
+  });
+  if (!targetContext.resolved_target_step) return null;
+  const goal = pickPrimaryRecoGoal(profileSummary);
+  const targetLabel = pickFirstTrimmed(
+    normalizedNeed.target_step,
+    humanizeRecoProductType(targetContext.resolved_target_step, 'EN'),
+    row.title,
+  );
+  const targetId = buildRecoContextTargetId({
+    ingredientQuery: targetLabel,
+    step: targetContext.resolved_target_step,
+    issueType: goal,
+    targetId: pickFirstTrimmed(normalizedNeed.adjustment_id, row.adjustment_id),
+  });
+  const rankedTargets = targetId
+    ? [
+        {
+          target_id: targetId,
+          target_role: 'primary',
+          ...(targetLabel ? { ingredient_query: targetLabel } : {}),
+          ...(goal ? { goal } : {}),
+          resolved_target_step: targetContext.resolved_target_step,
+          target_confidence: 'high',
+          source,
+          ...(pickFirstTrimmed(normalizedNeed.need_state) ? { need_state: pickFirstTrimmed(normalizedNeed.need_state) } : {}),
+        },
+      ]
+    : [];
+  return {
+    intent: 'reco_products',
+    source_detail: 'analysis_handoff',
+    trigger_source: 'analysis_handoff',
+    context_origin: 'routine_audit_v1',
+    message: pickFirstTrimmed(normalizedNeed.why, row.title, row.why),
+    goal,
+    ingredient_query: targetLabel,
+    resolved_target_step: targetContext.resolved_target_step,
+    resolved_target_step_confidence: pickFirstTrimmed(
+      targetContext.resolved_target_step_confidence,
+      'high',
+    ),
+    resolved_target_step_source: pickFirstTrimmed(
+      targetContext.resolved_target_step_source,
+      normalizedNeed.target_step ? 'analysis_recommendation_need' : 'analysis_adjustment',
+    ),
+    analysis_reco_source: source,
+    artifact_id: pickFirstTrimmed(artifactId),
+    ...(targetId ? { primary_target_id: targetId } : {}),
+    ...(rankedTargets.length ? { ranked_targets: rankedTargets } : {}),
+  };
+}
+
 function deriveRoutineAnalysisRecoContext(routineAnalysisResult, { profileSummary = null, artifactId = '' } = {}) {
   if (!isPlainObject(routineAnalysisResult)) return null;
   const cards = Array.isArray(routineAnalysisResult.cards) ? routineAnalysisResult.cards : [];
   const adjustmentCard = cards.find((card) => isPlainObject(card) && String(card.type || '').trim().toLowerCase() === 'routine_adjustment_plan_v1');
   const adjustmentPayload = isPlainObject(adjustmentCard && adjustmentCard.payload) ? adjustmentCard.payload : null;
   if (!adjustmentPayload) return null;
-  const recommendationNeeds = Array.isArray(adjustmentPayload.recommendation_needs) ? adjustmentPayload.recommendation_needs : [];
-  const orderedAdjustments = [
-    ...((Array.isArray(adjustmentPayload.replace) ? adjustmentPayload.replace : [])),
-    ...((Array.isArray(adjustmentPayload.pause_or_remove) ? adjustmentPayload.pause_or_remove : [])),
-    ...((Array.isArray(adjustmentPayload.top_3_adjustments) ? adjustmentPayload.top_3_adjustments : [])),
-  ].filter((row) => isPlainObject(row));
-  for (const row of orderedAdjustments) {
-    const linkedNeed =
-      recommendationNeeds.find((need) => String(need && need.adjustment_id || '').trim() === String(row.adjustment_id || '').trim())
-      || recommendationNeeds[0]
-      || null;
-    const targetContext = resolveRecommendationTargetContext({
-      explicitStep: pickFirstTrimmed(linkedNeed && linkedNeed.target_step),
-      focus: pickFirstTrimmed(row.title, linkedNeed && linkedNeed.target_step),
-      text: [
-        pickFirstTrimmed(row.title),
-        pickFirstTrimmed(row.why),
-        pickFirstTrimmed(linkedNeed && linkedNeed.target_step),
-        pickFirstTrimmed(linkedNeed && linkedNeed.why),
-      ].filter(Boolean).join(' '),
-      entryType: 'analysis',
+  const adjustmentsById = collectRoutineAuditAdjustmentsById(adjustmentPayload);
+  const recommendationNeeds = (Array.isArray(adjustmentPayload.recommendation_needs)
+    ? adjustmentPayload.recommendation_needs
+    : [])
+    .filter((need) => isPlainObject(need));
+  const hasNonCleanserNeed = recommendationNeeds.some((need) => {
+    const step = normalizeRecoTargetStep(pickFirstTrimmed(need.target_step));
+    return step && step !== 'cleanser';
+  });
+  const minimalRoutineNeed = buildRoutineAnalysisMinimalRoutineNeed(
+    adjustmentPayload,
+    profileSummary,
+    routineAnalysisResult,
+  );
+  if (minimalRoutineNeed && !hasNonCleanserNeed) {
+    const context = buildRoutineAnalysisRecoContextFromNeed({
+      need: minimalRoutineNeed,
+      adjustment: null,
+      profileSummary,
+      artifactId,
+      source: 'routine_audit_v1_minimal_routine',
     });
-    if (!targetContext.resolved_target_step) continue;
-    const goal = pickPrimaryRecoGoal(profileSummary);
-    const targetLabel = pickFirstTrimmed(
-      linkedNeed && linkedNeed.target_step,
-      humanizeRecoProductType(targetContext.resolved_target_step, 'EN'),
-      row.title,
-    );
-    const targetId = buildRecoContextTargetId({
-      ingredientQuery: targetLabel,
-      step: targetContext.resolved_target_step,
-      issueType: goal,
-      targetId: pickFirstTrimmed(row.adjustment_id),
+    if (context) return context;
+  }
+  const scoredNeeds = recommendationNeeds
+    .map((need, index) => {
+      const adjustmentId = pickFirstTrimmed(need.adjustment_id);
+      const adjustment = adjustmentId ? adjustmentsById.get(adjustmentId) || null : null;
+      return {
+        need,
+        adjustment,
+        score: scoreRoutineAnalysisRecommendationNeed(need, { adjustment, hasNonCleanserNeed, index }),
+      };
+    })
+    .sort((left, right) => right.score - left.score);
+  for (const row of scoredNeeds) {
+    const context = buildRoutineAnalysisRecoContextFromNeed({
+      need: row.need,
+      adjustment: row.adjustment,
+      profileSummary,
+      artifactId,
+      source: 'routine_audit_v1',
     });
-    const rankedTargets = targetId
-      ? [
-          {
-            target_id: targetId,
-            target_role: 'primary',
-            ...(targetLabel ? { ingredient_query: targetLabel } : {}),
-            ...(goal ? { goal } : {}),
-            resolved_target_step: targetContext.resolved_target_step,
-            target_confidence: 'high',
-            source: 'routine_audit_v1',
-          },
-        ]
-      : [];
-    return {
-      intent: 'reco_products',
-      source_detail: 'analysis_handoff',
-      trigger_source: 'analysis_handoff',
-      context_origin: 'routine_audit_v1',
-      message: pickFirstTrimmed(row.title, row.why),
-      goal,
-      ingredient_query: targetLabel,
-      resolved_target_step: targetContext.resolved_target_step,
-      resolved_target_step_confidence: pickFirstTrimmed(
-        targetContext.resolved_target_step_confidence,
-        'high',
-      ),
-      resolved_target_step_source: pickFirstTrimmed(
-        targetContext.resolved_target_step_source,
-        linkedNeed && linkedNeed.target_step ? 'analysis_recommendation_need' : 'analysis_adjustment',
-      ),
-      artifact_id: pickFirstTrimmed(artifactId),
-      ...(targetId ? { primary_target_id: targetId } : {}),
-      ...(rankedTargets.length ? { ranked_targets: rankedTargets } : {}),
-    };
+    if (context) return context;
+  }
+
+  if (minimalRoutineNeed) {
+    const context = buildRoutineAnalysisRecoContextFromNeed({
+      need: minimalRoutineNeed,
+      adjustment: null,
+      profileSummary,
+      artifactId,
+      source: 'routine_audit_v1_minimal_routine',
+    });
+    if (context) return context;
   }
   return null;
 }
