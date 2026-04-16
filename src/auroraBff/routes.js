@@ -53489,7 +53489,12 @@ function buildRecoAssistantWritePlan({
     writing_requirements: {
       require_non_price_reason_for_lead: true,
       require_support_step_reasoning: selectedProductRoleMix === 'routine_mix' && supportSteps.length > 0,
+      require_product_specific_reason_per_selected_product: products.length > 1,
+      require_lead_multi_dimension_reason: inferRecoAssistantEvidenceDimensions(lead).length >= 2,
       avoid_generic_closing: true,
+      evidence_source_mode: products.some((item) => item?.reviewed_insight_available === true)
+        ? 'reviewed_insight_or_product_record'
+        : 'product_record_only',
     },
   };
 }
@@ -53512,10 +53517,31 @@ function compactRecoAssistantPromptField(value, { maxLen = 96 } = {}) {
   return trimmed || null;
 }
 
+function pruneCompactRecoAssistantPromptContext(value) {
+  if (Array.isArray(value)) {
+    const rows = value
+      .map((item) => pruneCompactRecoAssistantPromptContext(item))
+      .filter((item) => item !== null && item !== undefined);
+    return rows.length ? rows : undefined;
+  }
+  if (isPlainObject(value)) {
+    const out = {};
+    for (const [key, raw] of Object.entries(value)) {
+      const pruned = pruneCompactRecoAssistantPromptContext(raw);
+      if (pruned === null || pruned === undefined) continue;
+      out[key] = pruned;
+    }
+    return Object.keys(out).length ? out : undefined;
+  }
+  if (value === null || value === undefined) return undefined;
+  if (typeof value === 'string' && !value.trim()) return undefined;
+  return value;
+}
+
 function buildCompactRecoAssistantWritePlan(writePlan = null) {
   const plan = isPlainObject(writePlan) ? writePlan : null;
   if (!plan) return null;
-  return {
+  return pruneCompactRecoAssistantPromptContext({
     request_mode: compactRecoAssistantPromptField(plan.request_mode, { maxLen: 24 }),
     selected_product_role_mix: compactRecoAssistantPromptField(plan.selected_product_role_mix, { maxLen: 32 }),
     target_label: compactRecoAssistantPromptField(plan.target_label, { maxLen: 60 }),
@@ -53527,8 +53553,8 @@ function buildCompactRecoAssistantWritePlan(writePlan = null) {
           role_scope: compactRecoAssistantPromptField(plan.lead_product.role_scope, { maxLen: 24 }),
           fit_assessment: compactRecoAssistantPromptField(plan.lead_product.fit_assessment, { maxLen: 24 }),
           price_note: compactRecoAssistantPromptField(plan.lead_product.price_note, { maxLen: 40 }),
-          evidence_dimensions: collectRecoPromptTextList(plan.lead_product.evidence_dimensions, { max: 3, maxLen: 28 }),
-          must_use_reason_points: collectRecoPromptTextList(plan.lead_product.must_use_reason_points, { max: 2, maxLen: 96 }),
+          evidence_dimensions: collectRecoPromptTextList(plan.lead_product.evidence_dimensions, { max: 5, maxLen: 28 }),
+          must_use_reason_points: collectRecoPromptTextList(plan.lead_product.must_use_reason_points, { max: 3, maxLen: 104 }),
           watchout_points: collectRecoPromptTextList(plan.lead_product.watchout_points, { max: 1, maxLen: 96 }),
           routine_pairing_notes: collectRecoPromptTextList(plan.lead_product.routine_pairing_notes, { max: 1, maxLen: 96 }),
         }
@@ -53541,7 +53567,8 @@ function buildCompactRecoAssistantWritePlan(writePlan = null) {
           role_scope: compactRecoAssistantPromptField(item?.role_scope, { maxLen: 24 }),
           fit_assessment: compactRecoAssistantPromptField(item?.fit_assessment, { maxLen: 24 }),
           price_note: compactRecoAssistantPromptField(item?.price_note, { maxLen: 40 }),
-          reason_points: collectRecoPromptTextList(item?.reason_points, { max: 1, maxLen: 96 }),
+          evidence_dimensions: collectRecoPromptTextList(item?.evidence_dimensions, { max: 4, maxLen: 28 }),
+          reason_points: collectRecoPromptTextList(item?.reason_points, { max: 2, maxLen: 104 }),
           watchout_points: collectRecoPromptTextList(item?.watchout_points, { max: 1, maxLen: 96 }),
           routine_pairing_notes: collectRecoPromptTextList(item?.routine_pairing_notes, { max: 1, maxLen: 96 }),
         })).slice(0, 2)
@@ -53551,7 +53578,7 @@ function buildCompactRecoAssistantWritePlan(writePlan = null) {
           name: compactRecoAssistantPromptField(item?.name, { maxLen: 90 }),
           price_note: compactRecoAssistantPromptField(item?.price_note, { maxLen: 40 }),
           tradeoff_note: compactRecoAssistantPromptField(item?.tradeoff_note, { maxLen: 96 }),
-          reason_points: collectRecoPromptTextList(item?.reason_points, { max: 1, maxLen: 96 }),
+          reason_points: collectRecoPromptTextList(item?.reason_points, { max: 1, maxLen: 104 }),
           watchout_points: collectRecoPromptTextList(item?.watchout_points, { max: 1, maxLen: 96 }),
           fit_assessment: compactRecoAssistantPromptField(item?.fit_assessment, { maxLen: 24 }),
         })).slice(0, 2)
@@ -53560,15 +53587,19 @@ function buildCompactRecoAssistantWritePlan(writePlan = null) {
       ? {
           require_non_price_reason_for_lead: plan.writing_requirements.require_non_price_reason_for_lead === true,
           require_support_step_reasoning: plan.writing_requirements.require_support_step_reasoning === true,
+          require_product_specific_reason_per_selected_product:
+            plan.writing_requirements.require_product_specific_reason_per_selected_product === true,
+          require_lead_multi_dimension_reason: plan.writing_requirements.require_lead_multi_dimension_reason === true,
           avoid_generic_closing: plan.writing_requirements.avoid_generic_closing === true,
+          evidence_source_mode: compactRecoAssistantPromptField(plan.writing_requirements.evidence_source_mode, { maxLen: 40 }),
         }
       : null,
-  };
+  });
 }
 
 function buildCompactRecoAssistantPromptContext(context = {}) {
   const row = isPlainObject(context) ? context : {};
-  return {
+  return pruneCompactRecoAssistantPromptContext({
     language: pickFirstTrimmed(row.language),
     prompt_profile: 'compact_timeout_retry',
     profile_summary: isPlainObject(row.profile_summary) ? row.profile_summary : null,
@@ -53604,7 +53635,7 @@ function buildCompactRecoAssistantPromptContext(context = {}) {
     selected_target_ids: asStringArray(row.selected_target_ids, 4),
     ranked_target_ids: asStringArray(row.ranked_target_ids, 4),
     assistant_write_plan: buildCompactRecoAssistantWritePlan(row.assistant_write_plan),
-  };
+  });
 }
 
 function buildStrictSelectedOnlyRecoAssistantPromptContext(context = {}) {
@@ -53612,30 +53643,40 @@ function buildStrictSelectedOnlyRecoAssistantPromptContext(context = {}) {
   const selectedProducts = asStringArray(row.selected_products, 3);
   const forbiddenProductNames = asStringArray(row.forbidden_product_names, 8);
   const compactWritePlan = buildCompactRecoAssistantWritePlan(row.assistant_write_plan);
+  const trimStrictWritePlanProduct = (item = {}) => {
+    if (!isPlainObject(item)) return item;
+    const {
+      evidence_dimensions,
+      watchout_points,
+      routine_pairing_notes,
+      ...rest
+    } = item;
+    return rest;
+  };
   const strictWritePlan = isPlainObject(compactWritePlan)
     ? {
         ...compactWritePlan,
         lead_product: isPlainObject(compactWritePlan.lead_product)
           ? {
-              ...compactWritePlan.lead_product,
+              ...trimStrictWritePlanProduct(compactWritePlan.lead_product),
               name: selectedProducts[0] || compactWritePlan.lead_product.name || null,
             }
           : compactWritePlan.lead_product,
         support_steps: Array.isArray(compactWritePlan.support_steps)
           ? compactWritePlan.support_steps.map((item, index) => ({
-              ...item,
+              ...trimStrictWritePlanProduct(item),
               name: selectedProducts[index + 1] || item?.name || null,
             }))
           : [],
         same_role_options: Array.isArray(compactWritePlan.same_role_options)
           ? compactWritePlan.same_role_options.map((item, index) => ({
-              ...item,
+              ...trimStrictWritePlanProduct(item),
               name: selectedProducts[index + 1] || item?.name || null,
             }))
           : [],
       }
     : null;
-  return {
+  return pruneCompactRecoAssistantPromptContext({
     language: pickFirstTrimmed(row.language),
     prompt_profile: 'strict_selected_only_retry',
     user_request: pickFirstTrimmed(row.user_request),
@@ -53656,11 +53697,10 @@ function buildStrictSelectedOnlyRecoAssistantPromptContext(context = {}) {
         fit_assessment: compactRecoAssistantPromptField(item?.fit_assessment, { maxLen: 24 }),
         price_label: compactRecoAssistantPromptField(item?.price_label, { maxLen: 40 }),
         price_position: compactRecoAssistantPromptField(item?.price_position, { maxLen: 24 }),
-        reason_points: buildRecoAssistantReasonPoints(item, { max: 2 }),
       }))
       .slice(0, 3),
     assistant_write_plan: strictWritePlan,
-  };
+  });
 }
 
 function buildCompactRecoAssistantPromptLines({
@@ -53680,6 +53720,8 @@ function buildCompactRecoAssistantPromptLines({
     'If user_relevant_concern_families does not include aging_texture, do not mention wrinkles, fine lines, aging, anti-aging, or texture repair.',
     'Avoid internal phrasing like "selected products" and avoid generic filler.',
     'Price may support the recommendation, but pair it with a concrete product-fit reason from Context.',
+    'Follow Context.assistant_write_plan first: use its reason_points before falling back to generic role labels.',
+    'Every named product must receive its own concrete product-specific reason from Context.',
     'Never write ungrammatical fragments like "because a serum..." or "because an SPF..."; use "because it is..." or an active verb.',
     'Use one direct-buy framing phrase only once, in the first sentence; never repeat buy/pick framing inside the reason clause or final wrap-up.',
     'When reviewed_insight_available is false, do not repeat clinical, dermatologist, review, community, or social-proof claims; treat the evidence as seller/product-record copy only.',
@@ -53706,10 +53748,13 @@ function buildCompactRecoAssistantPromptLines({
   } else if (selectedProductRoleMix === 'same_role_comparison') {
     lines.push('Treat the products as same-slot comparison options, not a routine.');
     lines.push('Pick one lead product, then compare the other options with one short tradeoff each.');
+    lines.push('Use same-role price/value differences only when Context.price_order_summary or assistant_write_plan provides them.');
     lines.push('Use at most 3 sentences.');
   } else {
     lines.push('Treat the products as different routine steps, not interchangeable substitutes.');
     lines.push('Name the lead product first, then explain each support step briefly.');
+    lines.push('For routine_mix, the lead sentence must include at least one non-price evidence point; use price only as a second dimension.');
+    lines.push('For routine_mix, each support product needs its own reason_points-based explanation; do not spend the final sentence on a generic routine promise.');
     lines.push('Use at most 3 sentences.');
   }
   if (retryInstruction) {
@@ -54201,6 +54246,8 @@ function buildRecoAssistantRewritePrompt({
       'Use assistant_write_plan.lead_product.must_use_reason_points as the preferred reason list for the lead recommendation when available.',
       'If assistant_write_plan.lead_product.price_note exists, pair it with at least one non-price reason from assistant_write_plan.lead_product.must_use_reason_points.',
       'If assistant_write_plan.support_steps is non-empty, justify each support step with its own reason_points instead of using a generic closing summary.',
+      'For routine_mix answers, every selected product must receive one concrete product-specific reason from assistant_write_plan or selected_product_details; do not use the last sentence for a generic routine promise.',
+      'For routine_mix answers, support products must be explained as moisturizer, sunscreen, treatment, or other step roles using their own evidence, not as interchangeable alternatives to the lead.',
       'If assistant_write_plan.same_role_options is non-empty, use their tradeoff_note or reason_points to explain how they differ from the lead pick.',
       'If selected_product_details.reviewed_insight_available is false for a product, treat why_this_one, key_features, best_for, and description_snippet as product-record evidence only; do not imply independent review, clinical, or community proof.',
       'If every selected_product_details.reviewed_insight_available value is false, do not use "clinically proven", "clinically shown", "dermatologist recommended", review/social-proof, viral, or community-favorite language even if raw product copy contains it.',
@@ -54413,8 +54460,8 @@ function assistantTextUsesGenericRoutineWrapup(text) {
   if (/\b(niacinamide|zinc|spf|sunscreen|serum|moisturizer|gel cream|uv filters|hyaluronic|ceramide|glycerin|\$[0-9]+)\b/i.test(lastSentence)) {
     return false;
   }
-  return /\b(these|together|both|all three|the other two|secondary steps|support steps|selected products|products)\b/i.test(lastSentence)
-    && /\b(support|help|keep|protect|balance|hydrate)\b/i.test(lastSentence)
+  return /\b(this routine|the routine|these|together|both|all three|the other two|secondary steps|support steps|selected products|products)\b/i.test(lastSentence)
+    && /\b(support(?:s|ed|ing)?|help(?:s|ed|ing)?|keep(?:s|ing)?|protect(?:s|ed|ing)?|balance(?:s|d|ing)?|hydrate(?:s|d|ing)?|ensur(?:e|es|ed|ing)|manag(?:e|es|ed|ing))\b/i.test(lastSentence)
     && /\b(routine|skin|oily skin|hydration|uv damage|breathable)\b/i.test(lastSentence);
 }
 

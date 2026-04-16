@@ -6473,6 +6473,124 @@ test('__internal: reco assistant rewrite prompt exposes routine roles and price 
   );
 });
 
+test('__internal: compact reco assistant rewrite prompt keeps per-product evidence for routine bundles', async () => {
+  const { __internal } = loadRoutesFresh();
+  const prompt = __internal.buildRecoAssistantRewritePrompt({
+    language: 'EN',
+    userRequestText: 'im oily skin. what product should i buy?',
+    profile: { skinType: 'oily', goals: ['oil control'] },
+    compactContext: true,
+    payload: {
+      roles: [
+        {
+          role_id: 'oil_control_treatment',
+          label: 'Oil-control treatment',
+          why_this_role: 'Start with a targeted oil-control step to manage shine.',
+          preferred_step: 'treatment',
+          rank: 1,
+        },
+        {
+          role_id: 'lightweight_moisturizer',
+          label: 'Lightweight moisturizer',
+          why_this_role: 'Keep hydration breathable and light.',
+          preferred_step: 'moisturizer',
+          rank: 2,
+        },
+        {
+          role_id: 'daily_sunscreen',
+          label: 'Daily sunscreen',
+          why_this_role: 'Protect skin during the day without a greasy finish.',
+          preferred_step: 'sunscreen',
+          rank: 3,
+        },
+      ],
+      recommendation_meta: {
+        primary_target_id: 'oil_control_treatment',
+        selected_target_ids: ['oil_control_treatment', 'lightweight_moisturizer', 'daily_sunscreen'],
+        ranked_targets: [
+          {
+            target_id: 'oil_control_treatment',
+            ingredient_query: 'Oil-control treatment',
+            resolved_target_step: 'treatment',
+          },
+          {
+            target_id: 'lightweight_moisturizer',
+            ingredient_query: 'Lightweight moisturizer',
+            resolved_target_step: 'moisturizer',
+          },
+          {
+            target_id: 'daily_sunscreen',
+            ingredient_query: 'Daily sunscreen',
+            resolved_target_step: 'sunscreen',
+          },
+        ],
+      },
+      recommendations: [
+        {
+          display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+          brand: 'The Ordinary',
+          category: 'Serum',
+          matched_role_id: 'oil_control_treatment',
+          matched_role_label: 'Oil-control treatment',
+          why_this_one: 'Targets excess oil and visible shine with niacinamide and zinc PCA.',
+          description: 'A water-based serum for oily skin that pairs niacinamide with zinc PCA.',
+          key_features: ['Niacinamide 10%', 'Zinc PCA'],
+          price: { amount: 12, currency: 'USD' },
+        },
+        {
+          display_name: 'Hydrating Dewy Gel Cream',
+          brand: 'First Aid Beauty',
+          category: 'Moisturizer',
+          matched_role_id: 'lightweight_moisturizer',
+          matched_role_label: 'Lightweight moisturizer',
+          why_this_one: 'Adds breathable gel-cream hydration without a greasy feel.',
+          description: 'A lightweight gel cream that supports hydration under sunscreen.',
+          key_features: ['Gel cream texture', 'Breathable hydration'],
+          price: { amount: 38, currency: 'USD' },
+        },
+        {
+          display_name: 'UV Filters SPF 45 Serum',
+          brand: 'The Ordinary',
+          category: 'Sunscreen',
+          matched_role_id: 'daily_sunscreen',
+          matched_role_label: 'Daily sunscreen',
+          why_this_one: 'Provides lightweight daytime SPF protection as the final morning step.',
+          description: 'A serum-texture sunscreen for daily UV protection.',
+          key_features: ['SPF 45', 'Lightweight serum texture'],
+          price: { amount: 19, currency: 'USD' },
+        },
+      ],
+    },
+  });
+
+  assert.match(prompt, /Every named product must receive its own concrete product-specific reason from Context/i);
+  assert.match(prompt, /do not spend the final sentence on a generic routine promise/i);
+
+  const context = extractRecoRewritePromptContext(prompt);
+  assert.equal(context.prompt_profile, 'compact_timeout_retry');
+  assert.equal(context.selected_product_role_mix, 'routine_mix');
+  assert.equal(context.assistant_write_plan?.writing_requirements?.require_product_specific_reason_per_selected_product, true);
+  assert.equal(context.assistant_write_plan?.writing_requirements?.require_lead_multi_dimension_reason, true);
+  assert.ok(
+    context.assistant_write_plan?.lead_product?.must_use_reason_points?.some((item) =>
+      /niacinamide|zinc|visible shine/i.test(String(item || '')),
+    ),
+  );
+  assert.ok(
+    context.assistant_write_plan?.support_steps?.[0]?.reason_points?.some((item) =>
+      /gel-cream|hydration|greasy/i.test(String(item || '')),
+    ),
+  );
+  assert.ok(
+    context.assistant_write_plan?.support_steps?.[1]?.reason_points?.some((item) =>
+      /spf|uv|sunscreen/i.test(String(item || '')),
+    ),
+  );
+  assert.ok(
+    context.assistant_write_plan?.lead_product?.evidence_dimensions?.includes('formula_or_ingredient'),
+  );
+});
+
 test('__internal: reco assistant rewrite prompt prioritizes target-aligned evidence over off-target product claims', async () => {
   const { __internal } = loadRoutesFresh();
   const prompt = __internal.buildRecoAssistantRewritePrompt({
@@ -6651,6 +6769,47 @@ test('__internal: reco assistant rewrite guard rejects duplicate buy framing and
     __internal.normalizeRecoAssistantReasonFragment('is the most direct fit because it uses hyaluronic acid and panthenol.'),
     'it uses hyaluronic acid and panthenol',
   );
+});
+
+test('__internal: reco assistant rewrite guard rejects generic routine wrap-up without product evidence', async () => {
+  const { __internal } = loadRoutesFresh();
+  const validation = __internal.validateRecoAssistantRewriteCandidate({
+    candidateText: [
+      'The Ordinary Niacinamide 10% + Zinc 1% is the most direct fit because it targets excess oil with niacinamide and zinc.',
+      'Hydrating Dewy Gel Cream adds breathable gel-cream hydration before sunscreen.',
+      'This routine ensures your barrier is supported while managing oil and UV exposure.',
+    ].join(' '),
+    payload: {
+      recommendations: [
+        {
+          display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+          matched_role_id: 'oil_control_treatment',
+        },
+        {
+          display_name: 'Hydrating Dewy Gel Cream',
+          matched_role_id: 'lightweight_moisturizer',
+        },
+        {
+          display_name: 'UV Filters SPF 45 Serum',
+          matched_role_id: 'daily_sunscreen',
+        },
+      ],
+    },
+    language: 'EN',
+    primaryTarget: { ingredient_query: 'oil control treatment', resolved_target_step: 'treatment' },
+    secondaryTargets: [
+      { ingredient_query: 'lightweight moisturizer', resolved_target_step: 'moisturizer' },
+      { ingredient_query: 'daily sunscreen', resolved_target_step: 'sunscreen' },
+    ],
+    names: [
+      'The Ordinary Niacinamide 10% + Zinc 1%',
+      'Hydrating Dewy Gel Cream',
+      'UV Filters SPF 45 Serum',
+    ],
+    requestMode: 'buy',
+  });
+
+  assert.equal(validation.reason, 'rewrite_generic_routine_wrapup');
 });
 
 test('__internal: reco assistant rewrite prompt exposes same-role price comparison context', async () => {
