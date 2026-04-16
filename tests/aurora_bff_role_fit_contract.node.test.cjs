@@ -35,6 +35,18 @@ function buildGentleDailySunscreenRole() {
   };
 }
 
+function buildLayeringMoisturizerRole() {
+  return {
+    role_id: 'layering_compatible_moisturizer_or_spf',
+    rank: 60,
+    preferred_step: 'moisturizer',
+    label: 'Layering-compatible moisturizer or SPF',
+    fit_keywords: ['lightweight', 'layering', 'non-greasy', 'makeup'],
+    query_terms: ['gel cream moisturizer', 'lightweight moisturizer', 'makeup layering'],
+    product_type_hypotheses: ['moisturizer'],
+  };
+}
+
 function buildSensitiveBarrierTargetContext() {
   return {
     request_text: 'My barrier feels sensitive while using a retinoid. What should I buy next?',
@@ -292,4 +304,42 @@ test('daily sunscreen role does not demote active SPF when the role explicitly a
   assert.ok(score);
   assert.equal(score?.low_irritation_active_mismatch_applied, false);
   assert.ok(Number(score?.score || 0) >= 0.52);
+});
+
+test('daily sunscreen support demotes eye-area SPF products for full-face sunscreen roles', () => {
+  const score = scoreConcernRoleCandidate(
+    {
+      title: 'Supergoop Bright-Eyed Mineral Eye Cream SPF 40',
+      retrieval_role_id: 'daily_sunscreen',
+    },
+    buildGentleDailySunscreenRole(),
+    {
+      candidateStep: 'sunscreen',
+      candidateText:
+        'Supergoop Bright-Eyed Mineral Eye Cream SPF 40 sunscreen for the delicate eye area with UV filters.',
+    },
+  );
+
+  assert.ok(score);
+  assert.equal(score?.eye_area_role_mismatch_applied, true);
+  assert.ok(Number(score?.score || 0) < 0.42);
+});
+
+test('layering moisturizer role demotes rich heavy creams despite exact moisturizer shape', () => {
+  const score = scoreConcernRoleCandidate(
+    {
+      title: 'Jurlique Nutri-Define Supreme Restorative Rich Cream',
+      retrieval_role_id: 'layering_compatible_moisturizer_or_spf',
+    },
+    buildLayeringMoisturizerRole(),
+    {
+      candidateStep: 'moisturizer',
+      candidateText:
+        'Jurlique Nutri-Define Supreme Restorative Rich Cream moisturizer with glycerin and squalane.',
+    },
+  );
+
+  assert.ok(score);
+  assert.equal(score?.lightweight_texture_mismatch_applied, true);
+  assert.ok(Number(score?.score || 0) < 0.42);
 });
