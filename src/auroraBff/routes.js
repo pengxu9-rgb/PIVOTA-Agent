@@ -8429,6 +8429,28 @@ function buildLocalExternalSeedCategoryPositiveStage({
     }
   }
 
+  if (
+    (step === 'serum' || step === 'treatment')
+    && /\b(niacinamide|zinc|zinc pca|salicylic|bha|oil[-\s]?control|shine|sebum|pore|clogged|acne)\b/.test(haystack)
+  ) {
+    const oilControlPatterns = addPatterns(
+      /\bniacinamide\b/.test(haystack) ? ['niacinamide'] : [],
+      /\bzinc\b/.test(haystack) ? ['zinc', 'zinc pca'] : [],
+      /\bsalicylic\b|\bbha\b/.test(haystack) ? ['salicylic', 'salicylic acid', 'bha'] : [],
+      /\boil[-\s]?control\b|\bshine\b|\bsebum\b/.test(haystack)
+        ? ['oil control', 'oil-control', 'shine control', 'sebum']
+        : [],
+      /\bpore\b|\bclogged\b|\bacne\b/.test(haystack)
+        ? ['pore', 'pores', 'clogged', 'acne']
+        : [],
+      ['serum', 'treatment'],
+    );
+    const categories = pickTerms(['serum', 'treatment', 'ampoule', 'essence']);
+    if (categories.length && oilControlPatterns.length) {
+      return { categoryTerms: categories, positivePatterns: oilControlPatterns };
+    }
+  }
+
   return null;
 }
 
@@ -8454,7 +8476,9 @@ function buildLocalExternalSeedSupportStageDefinitions({
   };
 
   const exactCategoryTerms = buildLocalExternalSeedExactCategoryHeadTerms({ query, categoryTerms });
+  let hasLeanAuthorityStage = false;
   if (exactCategoryTerms.length > 0) {
+    hasLeanAuthorityStage = true;
     addStage({
       stage: 'support_category_exact',
       score: 56,
@@ -8471,6 +8495,7 @@ function buildLocalExternalSeedSupportStageDefinitions({
     categoryTerms,
   });
   if (categoryPositiveStage) {
+    hasLeanAuthorityStage = true;
     addStage({
       stage: 'support_category_positive',
       score: 54,
@@ -8492,7 +8517,7 @@ function buildLocalExternalSeedSupportStageDefinitions({
     });
   }
 
-  if (Array.isArray(patterns) && patterns.length > 0) {
+  if (!hasLeanAuthorityStage && Array.isArray(patterns) && patterns.length > 0) {
     addStage({
       stage: 'support_recall_title',
       score: 48,
