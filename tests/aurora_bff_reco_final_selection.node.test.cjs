@@ -2269,10 +2269,10 @@ test('reco assistant rewrite uses structured reason retry for repeated buy frami
       return {
         ok: true,
         json: {
-          lead_reason: 'it is a lightweight moisturizer for comfortable makeup layering',
+          lead_reason: 'it is the top pick because it is a lightweight moisturizer for comfortable makeup layering',
           support_reasons: [
-            'it is a lightweight serum for redness and sensitive skin',
-            'it supports barrier repair with tamanu oil and niacinamide',
+            'it is the strongest choice for redness and sensitive skin',
+            'it is the top option because it supports barrier repair with tamanu oil and niacinamide',
           ],
         },
         parse_status: 'parsed',

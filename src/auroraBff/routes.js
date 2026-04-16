@@ -55059,6 +55059,8 @@ function normalizeRecoAssistantReasonFragment(value, {
   ].filter(Boolean), 16)
     .sort((left, right) => String(right || '').length - String(left || '').length);
   let text = String(value || '').trim();
+  const directBuyFramingPattern =
+    '(?:best\\s+first\\s+buy|top\\s+pick|lead\\s+pick|first\\s+choice|best\\s+choice|strongest\\s+pick|strongest\\s+choice|strongest\\s+option|top\\s+choice|top\\s+option|most\\s+direct\\s+fit)';
   text = text
     .replace(/[“”"]/g, '')
     .replace(/\s+/g, ' ')
@@ -55072,7 +55074,9 @@ function normalizeRecoAssistantReasonFragment(value, {
     .replace(/\b(this|that)\s+product\b/ig, 'it')
     .replace(/\b(the|this|that)\s+(lead|selected)\s+(pick|product|option)\b/ig, 'it')
     .replace(/\b(product|option)\s+(is|as)\b/ig, 'it $2')
-    .replace(/^(?:is\s+)?(?:(?:your|the)\s+)?(?:best\s+first\s+buy|top\s+pick|lead\s+pick|first\s+choice|best\s+choice|strongest\s+pick|strongest\s+choice|strongest\s+option|top\s+choice|top\s+option|most\s+direct\s+fit)(?:\s+for\s+[^,.]{1,90})?\s+because\s+/i, '')
+    .replace(new RegExp(`^(?:it\\s+is\\s+|is\\s+)?(?:(?:your|the)\\s+)?${directBuyFramingPattern}(?:\\s+for\\s+[^,.]{1,90})?\\s+because\\s+`, 'i'), '')
+    .replace(new RegExp(`^(?:it\\s+is\\s+|is\\s+)?(?:(?:your|the)\\s+)?${directBuyFramingPattern}\\s+(?:for|to)\\s+`, 'i'), 'it fits ')
+    .replace(new RegExp(`^(?:it\\s+is\\s+|is\\s+)?(?:(?:your|the)\\s+)?${directBuyFramingPattern}\\b[\\s,;:.\\-–—]*$`, 'i'), '')
     .replace(/^(?:because\s+)?(?:follow|pair|complete|start)\s+(?:with\s+)?(?:it|this|the\s+product)?\s*/i, '')
     .replace(/\s+/g, ' ')
     .replace(/^[\s,;:.\-–—]+/, '')
