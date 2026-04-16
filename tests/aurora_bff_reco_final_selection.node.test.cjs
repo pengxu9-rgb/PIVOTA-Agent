@@ -500,6 +500,19 @@ test('reco assistant rewrite uses minimal thinking for gemini 3 structured outpu
       };
     });
 
+    assert.equal(
+      __internal.normalizeRecoAssistantReasonFragment('it is the strongest choice for redness and sensitive skin', {
+        fallback: 'it is a lightweight serum for redness and sensitive skin',
+      }),
+      'it is a lightweight serum for redness and sensitive skin',
+    );
+    assert.equal(
+      __internal.normalizeRecoAssistantReasonFragment('it is the top pick because it supports barrier repair', {
+        fallback: 'it supports barrier repair with tamanu oil and niacinamide',
+      }),
+      'it supports barrier repair',
+    );
+
     const rewrite = await __internal.maybeRewriteRecoAssistantTextWithLlm({
       payload,
       language: 'EN',

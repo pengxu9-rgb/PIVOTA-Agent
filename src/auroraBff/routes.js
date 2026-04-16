@@ -54687,7 +54687,7 @@ function collectRecoAssistantUnselectedCandidateDisplayNames(payload = null, max
 function assistantTextMentionsUnselectedRecoCandidate(text, payload = null) {
   const aliases = collectRecoAssistantUnselectedCandidateAliases(payload);
   if (!aliases.length) return false;
-  const normalizedText = normalizeSemanticAuditText(text);
+  let normalizedText = normalizeSemanticAuditText(text);
   if (!normalizedText) return false;
   return aliases.some((alias) => normalizedText.includes(alias));
 }
@@ -55099,6 +55099,19 @@ function normalizeRecoAssistantReasonFragment(value, {
       .filter(Boolean),
     24,
   );
+  const directBuyFramingRegex = new RegExp(`\\b${directBuyFramingPattern}\\b`, 'i');
+  if (directBuyFramingRegex.test(text)) {
+    const fallbackText = String(fallback || '').trim();
+    if (fallbackText && fallbackText !== value) {
+      return normalizeRecoAssistantReasonFragment(fallbackText, {
+        selectedNames,
+        forbiddenNames,
+        forbiddenAliases,
+      });
+    }
+    text = text.replace(new RegExp(`\\b${directBuyFramingPattern}\\b`, 'ig'), 'fit');
+    normalizedText = normalizeSemanticAuditText(text);
+  }
   if (normalizedText && aliases.some((alias) => alias && normalizedText.includes(alias))) {
     const fallbackText = String(fallback || '').trim();
     if (fallbackText && fallbackText !== value) {
@@ -55143,7 +55156,7 @@ function buildRecoAssistantStructuredReasonFallback(detail = {}, {
   if (primary) return primary;
   const target = String(targetLabel || '').trim();
   if (target) return `it directly fits the ${target.toLowerCase()} request`;
-  return 'it is the most direct fit from the selected card evidence';
+  return 'it matches the selected card evidence';
 }
 
 function normalizeRecoAssistantBecauseReasonFragment(reason) {
