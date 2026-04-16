@@ -1,6 +1,7 @@
 const {
   buildSeedGate,
   buildExtractorGate,
+  buildProductIntelGate,
   buildLivePdpGate,
   buildSimilarGate,
   buildExternalSeedQualityResult,
@@ -132,6 +133,113 @@ describe('externalSeedPdpQuality', () => {
 
     expect(similarGate.status).toBe('exempt');
     expect(similarGate.failure_reasons).toEqual([]);
+  });
+
+  test('fails product intel gate when the module exists but user-visible copy is not displayable', () => {
+    const gate = buildProductIntelGate({
+      liveResponse: {
+        modules: [
+          {
+            type: 'product_intel',
+            data: {
+              product_intel_core: {
+                what_it_is: {
+                  headline: 'Overview',
+                  body: 'Presented through merchant product data for a general skincare routine...',
+                },
+              },
+              quality_state: 'eligible',
+              provenance: {
+                reviewer_kind: 'assistant',
+                review_status: 'completed',
+                review_decision: 'rewrite',
+                selection_strategy: 'curated_override',
+              },
+            },
+          },
+        ],
+      },
+    });
+
+    expect(gate.status).toBe('failed');
+    expect(gate.failure_reasons).toEqual(
+      expect.arrayContaining(['product_intel_not_displayable', 'product_intel_truncated_copy']),
+    );
+  });
+
+  test('passes product intel gate only for reviewed product-specific copy', () => {
+    const gate = buildProductIntelGate({
+      liveResponse: {
+        modules: [
+          {
+            type: 'product_intel',
+            data: {
+              product_intel_core: {
+                evidence_profile: 'seller_plus_formula',
+                quality_state: 'eligible',
+                what_it_is: {
+                  headline: 'Tinted mineral sunscreen',
+                  body: 'Zinc oxide mineral SPF with a flexible tint for lightweight coverage.',
+                },
+                why_it_stands_out: [
+                  {
+                    headline: 'Shade-aware SPF',
+                    body: 'Tinted coverage helps even visible tone while keeping the sunscreen step lightweight.',
+                  },
+                ],
+              },
+              evidence_profile: 'seller_plus_formula',
+              quality_state: 'eligible',
+              provenance: {
+                reviewer_kind: 'assistant',
+                review_status: 'completed',
+                review_decision: 'rewrite',
+                selection_strategy: 'curated_override',
+              },
+            },
+          },
+        ],
+      },
+    });
+
+    expect(gate.status).toBe('passed');
+    expect(gate.failure_reasons).toEqual([]);
+  });
+
+  test('flags similar cards that lack backend-provided displayable highlights', () => {
+    const similarGate = buildSimilarGate({
+      similarResponse: {
+        products: [
+          { product_id: 'ext_1', title: 'Tinted SPF' },
+          {
+            product_id: 'ext_2',
+            title: 'Mineral SPF',
+            shopping_card: {
+              highlight: 'Flexible tint helps soften visible tone.',
+            },
+          },
+          {
+            product_id: 'ext_3',
+            title: 'Daily SPF',
+            shopping_card: {
+              highlight: 'Mineral filters for daily UV.',
+            },
+          },
+          {
+            product_id: 'ext_4',
+            title: 'Soft Focus SPF',
+            shopping_card: {
+              highlight: 'Soft-focus finish for daily wear.',
+            },
+          },
+        ],
+      },
+      exclusionFlags: { gift_card: false, donation_bundle: false, non_merchandise: false },
+    });
+
+    expect(similarGate.status).toBe('failed');
+    expect(similarGate.failure_reasons).toContain('similar_card_missing_highlight');
+    expect(similarGate.highlight_missing_count).toBe(1);
   });
 
   test('reports probe failures instead of misclassifying them as product-quality regressions', () => {

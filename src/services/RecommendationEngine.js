@@ -11,6 +11,19 @@ const {
   EXTERNAL_SEED_MERCHANT_ID,
   ensureJsonObject,
 } = require('./externalSeedProducts');
+const { getProductIntelKbEntries } = require('../auroraBff/productIntelKbStore');
+const {
+  PRODUCT_INTEL_CONTRACT_VERSION,
+  normalizePublishedProductIntelBundle,
+} = require('../pdpProductIntel');
+const {
+  buildSearchCardPayload,
+  buildShoppingCardPayload,
+} = require('./pivotaShoppingCard');
+const {
+  evaluateProductIntelDisplayability,
+  pickCardHighlight,
+} = require('./pdpProductIntelQuality');
 
 function parseTimeoutMs(raw, fallbackMs) {
   const s = String(raw ?? '').trim();
@@ -44,6 +57,10 @@ const PDP_RECS_EXTERNAL_BASE_FETCH_TIMEOUT_MS = Math.max(
 const PDP_RECS_IDENTITY_DEDUPE_TIMEOUT_MS = Math.max(
   100,
   parseTimeoutMs(process.env.PDP_RECS_IDENTITY_DEDUPE_TIMEOUT_MS, 450),
+);
+const PDP_RECS_CARD_ENRICH_TIMEOUT_MS = Math.max(
+  100,
+  parseTimeoutMs(process.env.PDP_RECS_CARD_ENRICH_TIMEOUT_MS, 900),
 );
 const PDP_RECS_EXTERNAL_SKIP_INTERNAL_MIN_MULTIPLIER = Math.max(
   1,
@@ -860,6 +877,227 @@ function buildExternalSeedRecommendationCandidate(row, options = {}) {
     ...(parentExternalProductId ? { parent_external_product_id: parentExternalProductId } : {}),
     ...(sourceListingScope ? { source_listing_scope: sourceListingScope } : {}),
     ...(variantTitle ? { variant_title: variantTitle } : {}),
+  };
+}
+
+function canonicalizeProductUrlForCardIntel(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  try {
+    const url = new URL(raw);
+    url.hash = '';
+    url.search = '';
+    url.hostname = url.hostname.toLowerCase().replace(/^www\./, '');
+    url.pathname = url.pathname.replace(/\/+$/g, '');
+    return url.toString();
+  } catch {
+    return '';
+  }
+}
+
+function buildProductIntelCardKbKeys(product) {
+  const keys = [];
+  const push = (value) => {
+    const text = String(value || '').trim();
+    if (!text || keys.includes(text)) return;
+    keys.push(text);
+  };
+  const pushProductKey = (value) => {
+    const id = String(value || '').trim();
+    if (id) push(`product:${id}`);
+  };
+  pushProductKey(getProductId(product));
+  pushProductKey(product?.external_product_id);
+  pushProductKey(product?.platform_product_id || product?.platformProductId || product?.shopify_id);
+  [
+    product?.canonical_url,
+    product?.canonicalUrl,
+    product?.source_url,
+    product?.sourceUrl,
+    product?.destination_url,
+    product?.destinationUrl,
+    product?.url,
+    product?.product_url,
+    product?.productUrl,
+  ]
+    .map(canonicalizeProductUrlForCardIntel)
+    .filter(Boolean)
+    .forEach((url) => push(`url:${url}`));
+  return keys;
+}
+
+function extractPublishedIntelBundleFromKbEntry(kbEntry, product) {
+  const analysis = ensureJsonObject(kbEntry?.analysis);
+  if (!Object.keys(analysis).length) return null;
+  const productIntelV1 = ensureJsonObject(analysis.product_intel_v1);
+  const productIntel = ensureJsonObject(analysis.product_intel);
+  const source = Object.keys(productIntelV1).length
+    ? productIntelV1
+    : Object.keys(productIntel).length
+      ? productIntel
+      : String(analysis.contract_version || '').trim() === PRODUCT_INTEL_CONTRACT_VERSION
+        ? analysis
+        : null;
+  if (!source || !Object.keys(source).length) return null;
+  return normalizePublishedProductIntelBundle(source, {
+    canonicalProductRef: {
+      product_id: getProductId(product),
+      merchant_id: getMerchantId(product),
+    },
+    provenance: {
+      ...(source.provenance && typeof source.provenance === 'object' ? source.provenance : {}),
+      kb_key: kbEntry?.kb_key || null,
+      source: kbEntry?.source || 'aurora_product_intel_kb',
+      generated_at: kbEntry?.last_success_at || kbEntry?.updated_at || null,
+    },
+  });
+}
+
+function buildEmbeddedProductIntelBundle(product) {
+  const snake = ensureJsonObject(product?.product_intel);
+  const camel = ensureJsonObject(product?.productIntel);
+  const direct = Object.keys(snake).length ? snake : Object.keys(camel).length ? camel : null;
+  if (!direct || !Object.keys(direct).length) return null;
+  if (String(direct.contract_version || '').trim() !== PRODUCT_INTEL_CONTRACT_VERSION) return null;
+  return normalizePublishedProductIntelBundle(direct, {
+    canonicalProductRef: {
+      product_id: getProductId(product),
+      merchant_id: getMerchantId(product),
+    },
+  });
+}
+
+async function loadProductIntelBundlesForRecommendations(items) {
+  const itemList = Array.isArray(items) ? items : [];
+  const keysByItemKey = new Map();
+  const allKeys = [];
+  for (const item of itemList) {
+    const itemKey = buildCandidateKey(item);
+    const keys = buildProductIntelCardKbKeys(item);
+    keysByItemKey.set(itemKey, keys);
+    for (const key of keys) {
+      if (!allKeys.includes(key)) allKeys.push(key);
+    }
+  }
+  if (!allKeys.length || typeof getProductIntelKbEntries !== 'function') return new Map();
+  const entries = await getProductIntelKbEntries(allKeys);
+  const bundlesByItemKey = new Map();
+  for (const item of itemList) {
+    const itemKey = buildCandidateKey(item);
+    const embedded = buildEmbeddedProductIntelBundle(item);
+    if (embedded) {
+      bundlesByItemKey.set(itemKey, embedded);
+      continue;
+    }
+    const keys = keysByItemKey.get(itemKey) || [];
+    for (const key of keys) {
+      const entry = entries.get(key);
+      if (!entry) continue;
+      const bundle = extractPublishedIntelBundleFromKbEntry(entry, item);
+      if (!bundle) continue;
+      bundlesByItemKey.set(itemKey, bundle);
+      break;
+    }
+  }
+  return bundlesByItemKey;
+}
+
+async function enrichRecommendationItemsWithCardIntel(items) {
+  const itemList = Array.isArray(items) ? items : [];
+  if (!itemList.length) {
+    return {
+      items: [],
+      stats: {
+        attempted: 0,
+        ready_count: 0,
+        missing_count: 0,
+        filtered_for_quality_count: 0,
+      },
+    };
+  }
+  const bundles = await withSoftTimeout(
+    loadProductIntelBundlesForRecommendations(itemList),
+    PDP_RECS_CARD_ENRICH_TIMEOUT_MS,
+    new Map(),
+    () => {
+      logger.warn(
+        {
+          timeout_ms: PDP_RECS_CARD_ENRICH_TIMEOUT_MS,
+          item_count: itemList.length,
+        },
+        'PDP recommendations card intel enrichment timed out',
+      );
+    },
+  );
+  let readyCount = 0;
+  let missingCount = 0;
+  const enriched = itemList.map((item) => {
+    const itemKey = buildCandidateKey(item);
+    const bundle = bundles.get(itemKey);
+    if (!bundle) {
+      const existingHighlight = pickCardHighlight(item);
+      if (existingHighlight) {
+        readyCount += 1;
+        return {
+          ...item,
+          card_highlight: existingHighlight,
+          card_highlight_status: item.card_highlight_status || 'ready',
+        };
+      }
+      missingCount += 1;
+      return {
+        ...item,
+        card_highlight_status: 'missing',
+        card_highlight_reason: 'product_intel_missing',
+      };
+    }
+    const quality = evaluateProductIntelDisplayability(bundle);
+    if (!quality.displayable) {
+      missingCount += 1;
+      return {
+        ...item,
+        product_intel: bundle,
+        card_highlight_status: 'missing',
+        card_highlight_reason: quality.failure_reasons[0] || 'product_intel_not_displayable',
+      };
+    }
+    const shoppingCard = buildShoppingCardPayload({ product: item, bundle });
+    const searchCard = buildSearchCardPayload({ product: item, bundle });
+    const highlight = pickCardHighlight({
+      ...item,
+      product_intel: bundle,
+      shopping_card: shoppingCard,
+      search_card: searchCard,
+    });
+    if (!highlight) {
+      missingCount += 1;
+      return {
+        ...item,
+        product_intel: bundle,
+        shopping_card: shoppingCard,
+        search_card: searchCard,
+        card_highlight_status: 'missing',
+        card_highlight_reason: 'card_highlight_empty',
+      };
+    }
+    readyCount += 1;
+    return {
+      ...item,
+      product_intel: bundle,
+      shopping_card: shoppingCard,
+      search_card: searchCard,
+      card_highlight: highlight,
+      card_highlight_status: 'ready',
+    };
+  });
+  return {
+    items: enriched,
+    stats: {
+      attempted: itemList.length,
+      ready_count: readyCount,
+      missing_count: missingCount,
+      filtered_for_quality_count: Math.max(0, itemList.length - readyCount),
+    },
   };
 }
 
@@ -1787,6 +2025,12 @@ async function recommend({
 
   const providedInternal = Array.isArray(options?.internal_candidates) ? options.internal_candidates : null;
   const providedExternal = Array.isArray(options?.external_candidates) ? options.external_candidates : null;
+  const requireCardHighlights =
+    options?.require_card_highlights === true ||
+    (options?.require_card_highlights !== false &&
+      baseProductIsExternal &&
+      !providedInternal &&
+      !providedExternal);
   const shouldFetchInternalCandidates = Boolean(providedInternal) || !baseProductIsExternal;
 
   let internalTimedOut = false;
@@ -1871,16 +2115,26 @@ async function recommend({
   });
   filteredInternalCandidates = identityDedupe.internalCandidates;
   filteredExternalCandidates = identityDedupe.externalCandidates;
+  const selectionK = requireCardHighlights ? Math.min(30, Math.max(safeK, safeK + 8)) : safeK;
 
   const picked = pickLayeredRecommendations({
     baseProduct,
     internalCandidates: filteredInternalCandidates,
     externalCandidates: filteredExternalCandidates,
-    k: safeK,
+    k: selectionK,
     baseSemantic,
   });
 
-  let finalItems = Array.isArray(picked.items) ? picked.items.slice(0, safeK) : [];
+  let finalItems = Array.isArray(picked.items)
+    ? picked.items.slice(0, requireCardHighlights ? selectionK : safeK)
+    : [];
+  let cardHighlightStats = {
+    required: requireCardHighlights,
+    attempted: 0,
+    ready_count: 0,
+    missing_count: 0,
+    filtered_for_quality_count: 0,
+  };
   const historyFallbackDebug = {
     used: false,
     anchors_considered: normalizedRecentViews.length,
@@ -1948,14 +2202,31 @@ async function recommend({
     }
   }
 
+  if (requireCardHighlights && finalItems.length > 0) {
+    const enriched = await enrichRecommendationItemsWithCardIntel(finalItems);
+    cardHighlightStats = {
+      required: true,
+      ...enriched.stats,
+    };
+    finalItems = enriched.items
+      .filter((item) => item.card_highlight_status === 'ready' && pickCardHighlight(item))
+      .slice(0, safeK);
+  } else {
+    finalItems = finalItems.slice(0, safeK);
+  }
+
   const elapsedMs = Date.now() - start;
   const finalSourceCounts = countRecommendationSources(finalItems);
   const finalMetadata = {
     ...(picked.metadata || {}),
     retrieval_mix: finalSourceCounts,
     underfill: Math.max(0, safeK - finalItems.length),
-    low_confidence: Boolean(picked?.metadata?.low_confidence),
+    low_confidence: Boolean(picked?.metadata?.low_confidence || (requireCardHighlights && finalItems.length < safeK)),
     similar_status: finalItems.length > 0 ? 'ready' : internalTimedOut || externalTimedOut ? 'unavailable' : 'empty',
+    card_highlight_required: requireCardHighlights,
+    card_highlight_ready_count: cardHighlightStats.ready_count,
+    card_highlight_missing_count: cardHighlightStats.missing_count,
+    filtered_for_quality_count: cardHighlightStats.filtered_for_quality_count,
     ...(identityDedupe?.stats?.applied
       ? { identity_dedupe: identityDedupe.stats }
       : {}),
@@ -1988,6 +2259,7 @@ async function recommend({
       },
       sources: finalSourceCounts,
       history_fallback: historyFallbackDebug,
+      card_highlight_enrichment: cardHighlightStats,
       base_semantic: baseSemantic || null,
       cache_key_hash: debugEnabled ? stableHashShort(cacheKey) : undefined,
     },

@@ -51,6 +51,9 @@ const {
 const { inferMerchantIdFromProductId } = require('./productIntelResolve');
 const { buildStructuredPdpIngredientModules } = require('./services/pdpIngredientAuthority');
 const {
+  evaluateProductIntelDisplayability,
+} = require('./services/pdpProductIntelQuality');
+const {
   maybeBuildLiveSyntheticPdp,
   backfillPdpIdentityGraph,
   promotePdpIdentityLiveRead,
@@ -20407,6 +20410,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       let productIntel = null;
       let productIntelStatus = wantsProductIntel ? 'missing_blocked' : 'not_requested';
       let productIntelMissingReason = wantsProductIntel ? 'kb_or_identity_missing' : null;
+      let productIntelContract = null;
       const requiresProductIntelModule =
         wantsProductIntel || Boolean(identityGraphLive?.synthetic_product);
       if (requiresProductIntelModule) {
@@ -20419,21 +20423,27 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             productGroupId,
           })) ||
           identityGraphPublishedIntel;
-        if (productIntel) {
+        productIntelContract = evaluateProductIntelDisplayability(productIntel);
+        if (productIntel && productIntelContract.displayable) {
           productIntelStatus = 'ready';
           productIntelMissingReason = null;
         } else {
           productIntelStatus = 'missing_blocked';
-          productIntelMissingReason = identityGraphLive?.synthetic_product
-            ? 'published_intel_missing'
-            : 'identity_or_published_intel_missing';
-          missing.push({ type: 'product_intel', reason: productIntelStatus });
+          productIntelMissingReason = productIntel
+            ? productIntelContract.failure_reasons[0] || 'product_intel_not_displayable'
+            : identityGraphLive?.synthetic_product
+              ? 'published_intel_missing'
+              : 'identity_or_published_intel_missing';
+          productIntel = null;
+          missing.push({ type: 'product_intel', reason: productIntelMissingReason || productIntelStatus });
         }
         modules.push({
           type: 'product_intel',
           required: Boolean(identityGraphLive?.synthetic_product),
           data: productIntel,
-          ...(productIntel ? {} : { reason: productIntelStatus }),
+          contract_status: productIntelContract?.contract_status || productIntelStatus,
+          source_quality_status: productIntelContract?.source_quality_status || 'missing',
+          ...(productIntel ? {} : { reason: productIntelMissingReason || productIntelStatus }),
         });
       }
 
@@ -20534,6 +20544,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               buildNormalizedPdpMetadata({ productIntel, offersData }),
             product_intel_status: productIntelStatus,
             ...(productIntelMissingReason ? { product_intel_missing_reason: productIntelMissingReason } : {}),
+            ...(productIntelContract
+              ? {
+                  product_intel_contract_status: productIntelContract.contract_status,
+                  product_intel_quality_reasons: productIntelContract.failure_reasons,
+                }
+              : {}),
             identity_resolution: buildPdpV2IdentityResolution({
               requestedProductId: entryProductId || productId || null,
               requestedMerchantId: requestedMerchantId || null,

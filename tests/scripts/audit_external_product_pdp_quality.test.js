@@ -50,6 +50,12 @@ describe('audit-external-product-pdp-quality helpers', () => {
           merchant_id: 'external_seed',
           product_id: 'ext_123',
         },
+        include: expect.arrayContaining([
+          'product_intel',
+          'product_overview',
+          'supplemental_details',
+          'reviews_preview',
+        ]),
         options: {
           debug: true,
           no_cache: true,

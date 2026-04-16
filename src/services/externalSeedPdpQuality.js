@@ -1,4 +1,8 @@
 const { ensureJsonObject, normalizeNonEmptyString } = require('./externalSeedRecall');
+const {
+  evaluateProductIntelDisplayability,
+  hasDisplayableSimilarHighlight,
+} = require('./pdpProductIntelQuality');
 
 const POLLUTED_FACTS_RE =
   /\b(contact us|customer service|privacy policy|terms(?: and conditions)?|shipping policy|return policy|about us|blog|blogs|impact|foundation transparency|transparency|give 20%|donation|donate|store locator|support|OFFICIAL|SOCIAL HIGHLIGHTS|THE UNDERCOVER|STRAIGHT UP|THE LOWDOWN|fill weight|avoid contact with eyes|keep out of reach|customerservice@)\b/i;
@@ -41,7 +45,9 @@ function collectProductDetailsText(livePayload = {}) {
 function collectProductDetailsSections(livePayload = {}) {
   const modules = Array.isArray(livePayload?.modules) ? livePayload.modules : [];
   return modules
-    .filter((module) => module?.type === 'product_details')
+    .filter((module) =>
+      ['product_details', 'product_overview', 'supplemental_details'].includes(module?.type),
+    )
     .flatMap((module) => (Array.isArray(module?.data?.sections) ? module.data.sections : []))
     .filter(Boolean);
 }
@@ -182,13 +188,26 @@ function buildIdentityGate({ livePayload = {}, liveResponse = {} } = {}) {
 
 function buildProductIntelGate({ livePayload = {}, liveResponse = {} } = {}) {
   const modules = collectModules(liveResponse, livePayload);
-  const hasProductIntelModule = modules.some((module) => module?.type === 'product_intel');
+  const productIntelModule = modules.find((module) => module?.type === 'product_intel') || null;
   const topLevelIntel = ensureJsonObject(liveResponse?.product_intel || livePayload?.product_intel);
+  const moduleIntel = ensureJsonObject(productIntelModule?.data);
+  const productIntel = Object.keys(topLevelIntel).length ? topLevelIntel : moduleIntel;
   const hasTopLevelIntel = Object.keys(topLevelIntel).length > 0;
-  const failureReasons = hasProductIntelModule || hasTopLevelIntel ? [] : ['missing_product_intel'];
+  const hasProductIntelModule = Boolean(productIntelModule);
+  const hasProductIntel = hasProductIntelModule || hasTopLevelIntel;
+  const quality = evaluateProductIntelDisplayability(productIntel);
+  const failureReasons = [];
+  if (!hasProductIntel) {
+    failureReasons.push('missing_product_intel');
+  } else if (!quality.displayable) {
+    failureReasons.push('product_intel_not_displayable');
+    failureReasons.push(...quality.failure_reasons);
+  }
   return {
     status: failureReasons.length ? 'failed' : 'passed',
     has_product_intel: failureReasons.length === 0,
+    contract_status: quality.contract_status,
+    source_quality_status: quality.source_quality_status,
     failure_reasons: failureReasons,
   };
 }
@@ -371,9 +390,19 @@ function buildSimilarGate({ similarResponse = {}, exclusionFlags = {} } = {}) {
   if (!exempt && products.length < 4) {
     failureReasons.push('similar_underfill');
   }
+  const productsMissingHighlight = products.filter((product) => !hasDisplayableSimilarHighlight(product));
+  if (!exempt && products.length > 0 && productsMissingHighlight.length > 0) {
+    failureReasons.push('similar_card_missing_highlight');
+  }
   return {
     status: failureReasons.length ? 'failed' : exempt ? 'exempt' : 'passed',
     similar_count: products.length,
+    displayable_highlight_count: products.length - productsMissingHighlight.length,
+    highlight_missing_count: productsMissingHighlight.length,
+    highlight_missing_examples: productsMissingHighlight
+      .map((product) => normalizeNonEmptyString(product?.product_id || product?.id || product?.title || product?.name))
+      .filter(Boolean)
+      .slice(0, 5),
     exempt,
     failure_reasons: failureReasons,
   };
@@ -418,10 +447,16 @@ function buildExternalSeedQualityResult({
   if (failureReasons.includes('missing_pdp_identity')) {
     rootCauseClassification.push('identity_graph_gap');
   }
-  if (failureReasons.includes('missing_product_intel')) {
+  if (
+    failureReasons.includes('missing_product_intel') ||
+    failureReasons.includes('product_intel_not_displayable')
+  ) {
     rootCauseClassification.push('product_intel_gap');
   }
-  if (failureReasons.includes('similar_underfill')) {
+  if (
+    failureReasons.includes('similar_underfill') ||
+    failureReasons.includes('similar_card_missing_highlight')
+  ) {
     rootCauseClassification.push('similar_issue');
   }
   return {

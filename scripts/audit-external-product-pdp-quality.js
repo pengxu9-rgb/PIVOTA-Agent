@@ -32,6 +32,20 @@ const DEFAULT_GATEWAY_URL =
   process.env.EXTERNAL_PDP_QUALITY_GATEWAY_URL ||
   process.env.PDP_SMOKE_GATEWAY ||
   `${DEFAULT_PUBLIC_GATEWAY_ORIGIN}${PUBLIC_GATEWAY_PATH}`;
+const DEFAULT_PDP_QUALITY_INCLUDE = [
+  'media_gallery',
+  'price_promo',
+  'variant_selector',
+  'product_overview',
+  'supplemental_details',
+  'product_facts',
+  'active_ingredients',
+  'ingredients_inci',
+  'how_to_use',
+  'reviews_preview',
+  'product_intel',
+  'offers',
+];
 
 function argValue(name) {
   const idx = process.argv.indexOf(`--${name}`);
@@ -95,6 +109,9 @@ function buildAuthoritativePayload(operation, payload = {}) {
           merchant_id: 'external_seed',
           product_id: normalizeNonEmptyString(payload.product_id),
         },
+        include: Array.isArray(payload.include) && payload.include.length
+          ? payload.include
+          : DEFAULT_PDP_QUALITY_INCLUDE,
         options: {
           ...ensureJsonObject(payload.options),
           debug: true,
@@ -323,7 +340,11 @@ async function auditRow(row, { catalogBaseUrl, gatewayUrl, imageHealthEnabled = 
     normalizeNonEmptyString(seedData.product_id);
   const [livePdp, similar] = await Promise.all([
     productId
-      ? invokeGateway(gatewayUrl, 'get_pdp_v2', { product_id: productId })
+      ? invokeGateway(gatewayUrl, 'get_pdp_v2', {
+          product_id: productId,
+          include: DEFAULT_PDP_QUALITY_INCLUDE,
+          options: { debug: true, no_cache: true },
+        })
       : Promise.resolve({ error: 'missing_product_id' }),
     productId
       ? invokeGateway(gatewayUrl, 'find_similar_products', {

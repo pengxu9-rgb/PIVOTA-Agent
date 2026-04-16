@@ -183,6 +183,26 @@ const MODULE_REQUIREMENTS = {
       );
     },
   },
+  product_overview: {
+    requiredPaths: ['data.sections'],
+    validate: (module) => {
+      const sections = module?.data?.sections;
+      return (
+        Array.isArray(sections) &&
+        sections.some((section) => section?.heading && section?.content && section?.content_type)
+      );
+    },
+  },
+  supplemental_details: {
+    requiredPaths: ['data.sections'],
+    validate: (module) => {
+      const sections = module?.data?.sections;
+      return (
+        Array.isArray(sections) &&
+        sections.some((section) => section?.heading && section?.content && section?.content_type)
+      );
+    },
+  },
   product_facts: {
     requiredPaths: ['data.sections'],
     validate: (module) => {
@@ -1115,16 +1135,20 @@ function buildDetailSections(product, detailSections = collectStructuredDetailSe
       });
     });
 
-  if (product.category || product.product_type) {
-    sections.push({
-      heading: 'Category',
-      content_type: 'text',
-      content: String(product.category || product.product_type),
-      collapsed_by_default: true,
-    });
-  }
-
   return sections;
+}
+
+function isOverviewDetailSection(section) {
+  const heading = asNonEmptyString(section?.heading);
+  return /^(description|overview|product overview|what it is)$/i.test(heading);
+}
+
+function buildProductOverviewSections(details = []) {
+  return (Array.isArray(details) ? details : []).filter((section) => isOverviewDetailSection(section));
+}
+
+function buildSupplementalDetailSections(details = []) {
+  return (Array.isArray(details) ? details : []).filter((section) => !isOverviewDetailSection(section));
 }
 
 function buildProductFactsSections(product, detailSections = collectStructuredDetailSections(product)) {
@@ -1766,6 +1790,15 @@ function buildRecommendations(items, currencyFallback) {
       source: p.source || p.recommendation_source || undefined,
       reason: p.reason || p.recommendation_reason || undefined,
       x_score: typeof p.x_score === 'number' ? p.x_score : undefined,
+      category: p.category || p.product_type || p.productType || undefined,
+      product_type: p.product_type || p.productType || p.category || undefined,
+      description: p.description || undefined,
+      card_highlight: p.card_highlight || p.shopping_card?.highlight || p.search_card?.highlight_candidate || undefined,
+      card_highlight_status: p.card_highlight_status || undefined,
+      card_highlight_reason: p.card_highlight_reason || undefined,
+      shopping_card: p.shopping_card || undefined,
+      search_card: p.search_card || undefined,
+      market_signal_badges: Array.isArray(p.market_signal_badges) ? p.market_signal_badges : undefined,
       rating: p.rating || p.review_rating || undefined,
       review_count: p.review_count || p.reviews_count || undefined,
     })),
@@ -1808,6 +1841,8 @@ function buildPdpPayload(args) {
         .filter(Boolean)
     : [];
   const details = buildDetailSections(product, detailSections);
+  const productOverviewSections = buildProductOverviewSections(details);
+  const supplementalDetailSections = buildSupplementalDetailSections(details);
   const productFacts = buildProductFactsSections(product, detailSections);
   const ingredientsInci = buildIngredientsInci(product);
   const activeIngredients = buildActiveIngredients(product, ingredientsInci);
@@ -1858,12 +1893,28 @@ function buildPdpPayload(args) {
       promotions: product.promotions || [],
     },
   });
-  if (details.length) {
+  if (productOverviewSections.length) {
     modules.push({
-      module_id: 'm_details',
-      type: 'product_details',
+      module_id: 'm_product_overview',
+      type: 'product_overview',
       priority: 70,
-      data: { sections: details },
+      data: {
+        sections: productOverviewSections,
+        contract_status: 'ready',
+        source_quality_status: 'captured',
+      },
+    });
+  }
+  if (supplementalDetailSections.length) {
+    modules.push({
+      module_id: 'm_supplemental_details',
+      type: 'supplemental_details',
+      priority: 69,
+      data: {
+        sections: supplementalDetailSections,
+        contract_status: 'ready',
+        source_quality_status: 'captured',
+      },
     });
   }
   if (productFacts.length) {
