@@ -28,6 +28,37 @@ function buildDailySunscreenRole() {
   };
 }
 
+function buildGentleDailySunscreenRole() {
+  return {
+    ...buildDailySunscreenRole(),
+    query_terms: ['daily sunscreen skincare', 'broad spectrum sunscreen'],
+  };
+}
+
+function buildSensitiveBarrierTargetContext() {
+  return {
+    request_text: 'My barrier feels sensitive while using a retinoid. What should I buy next?',
+    primary_concern: 'barrier_support',
+    semantic_plan: {
+      primary_concern: 'retinoid barrier support',
+      routine_mode: 'routine_mix',
+      must_satisfy_constraints: ['sensitive barrier', 'avoid extra active treatments'],
+    },
+    framework_roles: [
+      buildBarrierMoisturizerRole(),
+      {
+        role_id: 'soothing_treatment',
+        rank: 2,
+        preferred_step: 'treatment',
+        alternate_steps: ['serum'],
+        label: 'Soothing treatment',
+        fit_keywords: ['soothing', 'calming', 'redness', 'sensitive skin'],
+      },
+      buildGentleDailySunscreenRole(),
+    ],
+  };
+}
+
 function buildHydratingSerumRole() {
   return {
     role_id: 'hydrating_serum_or_essence',
@@ -136,7 +167,7 @@ test('support sunscreen role rescues exact-step role-matched candidate with weak
       title: 'Daily Protect',
       retrieval_role_id: 'daily_sunscreen',
     },
-    buildDailySunscreenRole(),
+    buildGentleDailySunscreenRole(),
     {
       candidateStep: 'sunscreen',
       candidateText: 'Daily Protect sunscreen',
@@ -209,4 +240,56 @@ test('barrier moisturizer role demotes retinoid active moisturizers despite exac
   assert.equal(score?.support_step_rescue_applied, true);
   assert.equal(score?.low_irritation_active_mismatch_applied, true);
   assert.ok(Number(score?.score || 0) < 0.42);
+});
+
+test('daily sunscreen support demotes acne/tone active SPF in sensitive barrier routine context', () => {
+  const score = scoreConcernRoleCandidate(
+    {
+      title: 'Naturium Dew-Glow Moisturizer SPF 50 - Jumbo',
+      retrieval_role_id: 'daily_sunscreen',
+    },
+    buildGentleDailySunscreenRole(),
+    {
+      candidateStep: 'sunscreen',
+      targetContext: buildSensitiveBarrierTargetContext(),
+      candidateText:
+        'Naturium Dew-Glow Moisturizer SPF 50 sunscreen with UV filters, niacinamide, salicylic acid, azelaic acid, and glow finish.',
+    },
+  );
+
+  assert.ok(score);
+  assert.equal(score?.low_irritation_active_mismatch_applied, true);
+  assert.equal(score?.low_irritation_offtarget_active_mismatch_applied, true);
+  assert.ok(Number(score?.score || 0) < 0.42);
+});
+
+test('daily sunscreen role does not demote active SPF when the role explicitly asks acne or oil-control fit', () => {
+  const role = {
+    ...buildDailySunscreenRole(),
+    fit_keywords: ['spf', 'lightweight', 'uv filters', 'oil control', 'acne'],
+    query_terms: ['oil control sunscreen acne-prone skin'],
+  };
+  const score = scoreConcernRoleCandidate(
+    {
+      title: 'Naturium Dew-Glow Moisturizer SPF 50 - Jumbo',
+      retrieval_role_id: 'daily_sunscreen',
+    },
+    role,
+    {
+      candidateStep: 'sunscreen',
+      targetContext: {
+        request_text: 'I have oily acne-prone skin. What sunscreen should I buy?',
+        semantic_plan: {
+          primary_concern: 'oil control and clogged pores',
+          must_satisfy_constraints: ['acne-prone', 'oil control'],
+        },
+      },
+      candidateText:
+        'Naturium Dew-Glow Moisturizer SPF 50 sunscreen with UV filters, niacinamide, salicylic acid, azelaic acid, and acne-prone oil control support.',
+    },
+  );
+
+  assert.ok(score);
+  assert.equal(score?.low_irritation_active_mismatch_applied, false);
+  assert.ok(Number(score?.score || 0) >= 0.52);
 });
