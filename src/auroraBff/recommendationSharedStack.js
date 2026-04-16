@@ -271,7 +271,7 @@ function looksLikeGenericSingleProductAsk(text) {
     return false;
   }
   if (
-    /\b(products|routine|regimen|steps|kit|set|compare|alternatives?)\b/.test(normalized)
+    /\b(routine|regimen|steps|kit|set|compare|alternatives?)\b/.test(normalized)
     || /(套装|流程|步骤|routine|平替|替代)/.test(normalized)
   ) {
     return false;

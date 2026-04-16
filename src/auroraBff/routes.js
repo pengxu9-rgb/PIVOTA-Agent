@@ -20685,14 +20685,17 @@ function capBeautyPrimaryInternalLevelForRoutineSupportBudget(level) {
   const levelObj = isPlainObject(level) ? level : null;
   const queries = Array.isArray(levelObj?.queries) ? levelObj.queries : [];
   if (!levelObj || queries.length <= 1) return level;
+  const cappedQueryCount = Math.min(2, queries.length);
   return {
     ...levelObj,
     primary_internal_query_cap_applied: true,
     primary_internal_original_query_count: queries.length,
-    queries: queries.slice(0, 1).map((query) => ({
+    primary_internal_query_cap_count: cappedQueryCount,
+    queries: queries.slice(0, cappedQueryCount).map((query) => ({
       ...query,
       primary_internal_query_cap_applied: true,
       primary_internal_original_query_count: queries.length,
+      primary_internal_query_cap_count: cappedQueryCount,
     })),
   };
 }
@@ -20829,18 +20832,19 @@ function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
       keptLevels[primaryInternalInsertIndex] =
         capBeautyPrimaryInternalLevelForRoutineSupportBudget(primaryInternalLevel);
     }
-    const primaryExternalRoundQueries = [];
     if (primaryExternalLevel && shouldRoundRoutineExternalQueries) {
       const cappedPrimaryExternalLevel = capBeautyPrimaryExternalLevelForRoutineSupportBudget(primaryExternalLevel);
       const cappedQueries = Array.isArray(cappedPrimaryExternalLevel?.queries)
         ? cappedPrimaryExternalLevel.queries
         : [];
-      primaryExternalRoundQueries.push(...cappedQueries);
       primaryExternalOriginalQueryCount = Array.isArray(primaryExternalLevel?.queries)
         ? primaryExternalLevel.queries.length
         : 0;
       primaryExternalExecutedQueryCount = cappedQueries.length;
       primaryExternalQueryCapApplied = primaryExternalOriginalQueryCount > cappedQueries.length;
+      if (cappedQueries.length > 0) {
+        keptLevels.push(cappedPrimaryExternalLevel);
+      }
     } else if (primaryExternalLevel) {
       keptLevels.push(
         primaryExternalLevel,
@@ -20862,19 +20866,10 @@ function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
     for (const group of supportExternalGroups) {
       executedSupportExternalSeedLevels.push(group.externalLabel);
     }
-    const maxExternalRoundCount = Math.max(maxSupportExternalQueryCount, primaryExternalRoundQueries.length);
-    const maxSupportRoundCount = Math.max(maxSupportInternalQueryCount, maxExternalRoundCount);
+    const maxSupportRoundCount = Math.max(maxSupportInternalQueryCount, maxSupportExternalQueryCount);
     for (let queryIndex = 0; queryIndex < maxSupportRoundCount; queryIndex += 1) {
       const externalRoundQueries = [];
       const externalSourceLevels = [];
-      const primaryExternalQuery = primaryExternalRoundQueries[queryIndex] || null;
-      if (primaryExternalQuery) {
-        externalRoundQueries.push({
-          ...primaryExternalQuery,
-          fair_primary_external_round: queryIndex + 1,
-        });
-        externalSourceLevels.push('framework_stage_b_primary_external_seed');
-      }
       for (const group of supportExternalGroups) {
         const roundLevel = cloneBeautySupportExternalRoundLevel(
           group.externalLevel,
@@ -20891,7 +20886,6 @@ function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
       if (externalRoundQueries.length) {
         keptLevels.push({
           ladder_level: `framework_stage_external_seed_round_${queryIndex + 1}`,
-          fair_primary_external_round: primaryExternalQuery ? queryIndex + 1 : null,
           fair_support_external_round: queryIndex + 1,
           fair_support_external_source_levels: externalSourceLevels,
           queries: externalRoundQueries,
@@ -20955,7 +20949,7 @@ function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
               ? {
                   primary_internal_query_cap_applied: true,
                   primary_internal_original_query_count: primaryInternalOriginalQueryCount,
-                  primary_internal_executed_query_count: 1,
+                  primary_internal_executed_query_count: Math.min(2, primaryInternalOriginalQueryCount),
                 }
               : {}),
             ...(primaryExternalLevelSeen
@@ -21063,6 +21057,44 @@ function buildBeautyMainlineLocalQueryAttempts(searchResults = []) {
   }));
 }
 
+function reconcileBeautyMainlineLocalHandoffStageSummary(summary = null, searchResults = []) {
+  const base = summary && typeof summary === 'object' && !Array.isArray(summary) ? { ...summary } : {};
+  const rows = Array.isArray(searchResults) ? searchResults : [];
+  if (!rows.length) return base;
+  const countExecutedRowsForStage = (stageId) => rows.filter((row) => {
+    const rowStageId = String(row?.ladder_level || row?.stage_id || '').trim().toLowerCase();
+    if (rowStageId !== stageId) return false;
+    if (row?.skipped_runtime === true) return false;
+    const reason = String(row?.reason || '').trim().toLowerCase();
+    return !reason.startsWith('skipped_') && reason !== 'primary_role_unmatched';
+  }).length;
+  const supportRows = rows.filter((row) => (
+    String(row?.ladder_level || row?.stage_id || '').trim().toLowerCase().startsWith('framework_stage_c_support_')
+  ));
+  const supportSkippedRows = supportRows.filter((row) => {
+    const reason = String(row?.reason || '').trim().toLowerCase();
+    return row?.skipped_runtime === true || reason.startsWith('skipped_') || reason === 'primary_role_unmatched';
+  });
+  if (base.primary_internal_query_cap_applied === true || Number.isFinite(Number(base.primary_internal_executed_query_count))) {
+    base.primary_internal_executed_query_count = countExecutedRowsForStage('framework_stage_a_primary_internal');
+  }
+  if (base.primary_external_query_cap_applied !== undefined || Number.isFinite(Number(base.primary_external_executed_query_count))) {
+    base.primary_external_executed_query_count = countExecutedRowsForStage('framework_stage_b_primary_external_seed');
+  }
+  if (supportRows.length > 0) {
+    base.support_query_count = supportRows.length;
+    base.support_executed_query_count = supportRows.length - supportSkippedRows.length;
+    base.support_skipped_query_count = supportSkippedRows.length;
+    const primaryUnmatchedSkipCount = supportSkippedRows.filter((row) =>
+      String(row?.reason || '').trim().toLowerCase() === 'primary_role_unmatched',
+    ).length;
+    if (primaryUnmatchedSkipCount > 0) {
+      base.support_primary_unmatched_skip_count = primaryUnmatchedSkipCount;
+    }
+  }
+  return base;
+}
+
 function buildBeautyMainlineLocalSearchResult({
   collected = null,
   selectedProducts = [],
@@ -21106,8 +21138,12 @@ function buildBeautyMainlineLocalSearchResult({
       ? collected.localHandoffStageSummary
       : null;
   const semanticOwnerQueryAttempts = buildBeautyMainlineLocalQueryAttempts(collected?.searchResults);
+  const observedLocalHandoffStageSummary = reconcileBeautyMainlineLocalHandoffStageSummary(
+    localHandoffStageSummary,
+    collected?.searchResults,
+  );
   const localHandoffLedger = {
-    ...(localHandoffStageSummary ? localHandoffStageSummary : {}),
+    ...(observedLocalHandoffStageSummary ? observedLocalHandoffStageSummary : {}),
     ...(semanticOwnerQueryAttempts.length
       ? {
           executed_query_count: semanticOwnerQueryAttempts.length,
@@ -22406,9 +22442,8 @@ function shouldSkipFrameworkSupportExternalSeedQuery(queryEntry, candidateState 
   return shouldSkipFrameworkSupportRoleQuery(queryEntry, candidateState);
 }
 
-function shouldSkipFrameworkSupportRoleQuery(queryEntry, candidateState = null) {
+function resolveFrameworkSupportRoleQuerySkipReason(queryEntry, candidateState = null) {
   if (!isPlainObject(queryEntry) || !isPlainObject(candidateState)) return false;
-  if (candidateState.primary_role_matched !== true) return false;
   const levelId = String(queryEntry.ladder_level || queryEntry.stage_id || '').trim().toLowerCase();
   if (!levelId.startsWith('framework_stage_c_support_')) return false;
   const roleId = pickFirstTrimmed(queryEntry.role_id) || (
@@ -22419,8 +22454,15 @@ function shouldSkipFrameworkSupportRoleQuery(queryEntry, candidateState = null) 
       .replace(/_external_seed_round_\d+$/, '')
   );
   if (!roleId) return false;
+  if (candidateState.primary_role_matched !== true) return 'primary_role_unmatched';
   const filledRoleIds = new Set(getRecoRecallFilledRoleIds(candidateState, { requireAlignedRetrieval: true }));
-  return filledRoleIds.has(String(roleId).trim().toLowerCase());
+  return filledRoleIds.has(String(roleId).trim().toLowerCase())
+    ? 'skipped_support_role_already_satisfied'
+    : '';
+}
+
+function shouldSkipFrameworkSupportRoleQuery(queryEntry, candidateState = null) {
+  return Boolean(resolveFrameworkSupportRoleQuerySkipReason(queryEntry, candidateState));
 }
 
 function resolveRecoQueryEntryTimeoutMs(queryEntry = null, effectiveTimeoutMs = 0) {
@@ -22625,6 +22667,7 @@ async function collectRecoCandidatesFromQueryLevels({
   const shouldRunSequentialStopForQueryLevel = (level, runnableQueries = []) => {
     if (!hasFrameworkTargetContext || !Array.isArray(runnableQueries) || runnableQueries.length <= 1) return false;
     const levelId = String(level?.ladder_level || level?.stage_id || '').trim().toLowerCase();
+    if (levelId === 'framework_stage_a_primary_internal') return true;
     if (levelId === 'framework_stage_b_primary_external_seed') return true;
     if (Number.isFinite(Number(level?.fair_support_external_round))) return false;
     if (levelId.startsWith('framework_stage_c_support_') && levelId.endsWith('_external_seed')) {
@@ -22800,14 +22843,20 @@ async function collectRecoCandidatesFromQueryLevels({
       continue;
     }
     const runnableQueries = [];
+    const querySkipReasons = [];
     for (const queryEntry of queries) {
       const queryPrimaryExternalSkip = shouldSkipFrameworkPrimaryExternalSeedQuery(queryEntry, candidateState, {
         targetContext,
       });
-      if (queryPrimaryExternalSkip || shouldSkipFrameworkSupportRoleQuery(queryEntry, candidateState)) {
+      const supportSkipReason = resolveFrameworkSupportRoleQuerySkipReason(queryEntry, candidateState);
+      if (queryPrimaryExternalSkip || supportSkipReason) {
         const queryAllowExternalSeed =
           allowExternalSeed === true
           && queryEntry?.allow_external_seed === true;
+        const runtimeSkipReason = queryPrimaryExternalSkip
+          ? 'skipped_primary_already_satisfied'
+          : supportSkipReason;
+        querySkipReasons.push(runtimeSkipReason);
         searchResults.push({
           ...queryEntry,
           source_scope: queryAllowExternalSeed ? 'external_seed' : 'internal',
@@ -22822,7 +22871,7 @@ async function collectRecoCandidatesFromQueryLevels({
             : 'on_empty_only',
           ok: false,
           products: [],
-          reason: queryPrimaryExternalSkip ? 'skipped_primary_already_satisfied' : 'skipped_support_role_already_satisfied',
+          reason: runtimeSkipReason,
           actual_http_attempt_count: 0,
           attempted_request_timeouts_ms: [],
           skipped_runtime: true,
@@ -22841,7 +22890,9 @@ async function collectRecoCandidatesFromQueryLevels({
             ? 'external_seed'
             : 'internal',
         skipped: true,
-        skip_reason: 'skipped_support_role_already_satisfied',
+        skip_reason: querySkipReasons.includes('primary_role_unmatched')
+          ? 'primary_role_unmatched'
+          : 'skipped_support_role_already_satisfied',
         executed_query_count: 0,
         executed_upstream_attempt_count: 0,
         actual_http_attempt_count: 0,
