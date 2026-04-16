@@ -602,6 +602,11 @@ test('reco assistant rewrite keeps minimal thinking for same-role use comparison
       };
     });
 
+    assert.equal(
+      __internal.normalizeRecoAssistantReasonFragment('it gives the strongest choice signal for redness support'),
+      'it gives the fit signal for redness support',
+    );
+
     const rewrite = await __internal.maybeRewriteRecoAssistantTextWithLlm({
       payload,
       language: 'EN',

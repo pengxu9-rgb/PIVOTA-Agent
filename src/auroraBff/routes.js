@@ -55092,7 +55092,7 @@ function normalizeRecoAssistantReasonFragment(value, {
     .replace(/[\s,;:.\-–—]+$/, '')
     .trim();
   if (!text) return '';
-  const normalizedText = normalizeSemanticAuditText(text);
+  let normalizedText = normalizeSemanticAuditText(text);
   const aliases = uniqCaseInsensitiveStrings(
     (Array.isArray(forbiddenAliases) ? forbiddenAliases : [])
       .map((alias) => normalizeSemanticAuditText(alias))
