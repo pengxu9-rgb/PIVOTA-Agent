@@ -413,7 +413,12 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
         ),
       ),
     );
-    const handoffDeadlineAtMs = hardPathBudget.deadlineAtMs - rewriteReserveMs;
+    const handoffRewriteReserveMs = clampBeautyMainlineStageBudgetMs(rewriteReserveMs, {
+      minMs: 1200,
+      maxMs: 2500,
+      fallbackMs: 2000,
+    });
+    const handoffDeadlineAtMs = hardPathBudget.deadlineAtMs - handoffRewriteReserveMs;
     const retrievalReserveMs = clampBeautyMainlineStageBudgetMs(RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS, {
       minMs: 2500,
       maxMs: 8000,
@@ -757,7 +762,7 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
             updated_at_ms: Date.now(),
           }),
         );
-        const rewriteDeadlineAtMs = Date.now() + rewriteReserveMs;
+        const rewriteDeadlineAtMs = Math.max(Date.now() + rewriteReserveMs, handoffDeadlineAtMs + 1);
         const assistantRewrite =
           typeof maybeRewriteRecoAssistantTextWithLlm === 'function'
             ? await (async () => {
