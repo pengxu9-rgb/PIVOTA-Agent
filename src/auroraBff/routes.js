@@ -19393,8 +19393,8 @@ function classifyConcernScopeCandidate(row) {
   return classifyConcernScopeCandidatePolicy(row);
 }
 
-function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '' } = {}) {
-  return scoreConcernRoleCandidatePolicy(row, role, { candidateStep, candidateText });
+function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '', targetContext = null } = {}) {
+  return scoreConcernRoleCandidatePolicy(row, role, { candidateStep, candidateText, targetContext });
 }
 
 function resolveRecoStableAnchorProduct(picked) {
@@ -22193,7 +22193,7 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
     const candidateStep = normalizeRecoTargetStep(stepResolution?.candidate_step);
     let bestRoleScore = null;
     for (const role of roles) {
-      const nextScore = scoreConcernRoleCandidate(row, role, { candidateStep, candidateText });
+      const nextScore = scoreConcernRoleCandidate(row, role, { candidateStep, candidateText, targetContext });
       if (!nextScore) continue;
       const adjustedScore = Math.max(0, nextScore.score - Number(scopeClassification.penalty || 0));
       const normalizedNext = {

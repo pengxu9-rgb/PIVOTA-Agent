@@ -7563,6 +7563,132 @@ test('__internal: framework pool does not surface retinol moisturizer as barrier
   );
 });
 
+test('__internal: framework pool avoids active glow SPF as sunscreen support for retinoid barrier routine', () => {
+  const { __internal } = loadRoutesFresh();
+  const targetContext = {
+    framework_id: 'recofw_test_retinoid_barrier_active_spf_demote',
+    primary_role_id: 'hydrating_barrier_moisturizer',
+    routine_mode: 'routine_mix',
+    semantic_plan: {
+      primary_concern: 'retinoid barrier support',
+      routine_mode: 'routine_mix',
+      comparison_mode: 'routine_mix',
+      must_satisfy_constraints: ['sensitive barrier', 'avoid extra active treatments'],
+    },
+    framework_roles: [
+      {
+        role_id: 'hydrating_barrier_moisturizer',
+        rank: 40,
+        preferred_step: 'moisturizer',
+        label: 'Hydrating barrier moisturizer',
+        query_terms: ['barrier repair moisturizer', 'ceramide cream sensitive skin'],
+        fit_keywords: ['hydrating', 'barrier repair', 'ceramide', 'sensitive skin'],
+        ingredient_hypotheses: ['Ceramide NP', 'Panthenol', 'Glycerin'],
+        product_type_hypotheses: ['moisturizer'],
+      },
+      {
+        role_id: 'soothing_treatment',
+        rank: 70,
+        preferred_step: 'treatment',
+        alternate_steps: ['serum'],
+        label: 'Soothing treatment',
+        query_terms: ['soothing serum sensitive skin', 'cica serum redness'],
+        fit_keywords: ['soothing', 'redness', 'calming', 'sensitive skin'],
+        ingredient_hypotheses: ['Panthenol', 'Madecassoside'],
+        product_type_hypotheses: ['serum', 'treatment'],
+      },
+      {
+        role_id: 'daily_sunscreen',
+        rank: 30,
+        preferred_step: 'sunscreen',
+        label: 'Daily sunscreen',
+        query_terms: ['daily sunscreen skincare', 'broad spectrum sunscreen'],
+        fit_keywords: ['spf', 'uv filters', 'broad spectrum', 'lightweight'],
+        ingredient_hypotheses: ['UV filters'],
+        product_type_hypotheses: ['sunscreen'],
+      },
+    ],
+  };
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [
+      {
+        product_id: 'great_barrier_relief_retinoid_1',
+        merchant_id: 'merchant_internal',
+        brand: 'KraveBeauty',
+        name: 'KraveBeauty Great Barrier Relief',
+        display_name: 'KraveBeauty Great Barrier Relief',
+        category: 'Moisturizer',
+        product_type: 'Moisturizer',
+        retrieval_source: 'catalog',
+        retrieval_role_id: 'hydrating_barrier_moisturizer',
+        retrieval_query: 'barrier repair moisturizer',
+        short_description: 'A hydrating barrier repair moisturizer with ceramides and panthenol for sensitized skin.',
+      },
+      {
+        product_id: 'soothing_serum_retinoid_1',
+        merchant_id: 'merchant_internal',
+        brand: 'Winona',
+        name: 'Winona Soothing Repair Serum',
+        display_name: 'Winona Soothing Repair Serum',
+        category: 'Serum',
+        product_type: 'Serum',
+        retrieval_source: 'catalog',
+        retrieval_role_id: 'soothing_treatment',
+        retrieval_query: 'soothing serum sensitive skin',
+        short_description: 'A soothing serum for redness, calming, and sensitive skin.',
+      },
+      {
+        product_id: 'dew_glow_active_spf_retinoid_1',
+        merchant_id: 'external_seed',
+        brand: 'Naturium',
+        name: 'Dew-Glow Moisturizer SPF 50 - Jumbo',
+        display_name: 'Naturium Dew-Glow Moisturizer SPF 50 - Jumbo',
+        category: 'Sunscreen',
+        product_type: 'Sunscreen',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'daily_sunscreen',
+        retrieval_query: 'daily sunscreen',
+        sku: {
+          ingredient_tokens: ['UV filters', 'Niacinamide', 'Salicylic acid', 'Azelaic acid'],
+        },
+        short_description: 'A glow moisturizer SPF 50 with UV filters, niacinamide, salicylic acid, and azelaic acid.',
+      },
+      {
+        product_id: 'simple_daily_spf_retinoid_1',
+        merchant_id: 'external_seed',
+        brand: 'The Ordinary',
+        name: 'UV Filters SPF 45 Serum',
+        display_name: 'The Ordinary UV Filters SPF 45 Serum',
+        category: 'Sunscreen',
+        product_type: 'Sunscreen',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'daily_sunscreen',
+        retrieval_query: 'daily sunscreen',
+        sku: {
+          ingredient_tokens: ['UV filters'],
+        },
+        short_description: 'A lightweight SPF 45 sunscreen serum for daily UV protection.',
+      },
+    ],
+    { targetContext },
+  );
+
+  assert.equal(state.primary_role_matched, true);
+  assert.deepEqual(
+    state.selected_recommendations.map((row) => row.product_id),
+    ['great_barrier_relief_retinoid_1', 'soothing_serum_retinoid_1', 'simple_daily_spf_retinoid_1'],
+  );
+  assert.equal(
+    state.selected_recommendations.some((row) => row.product_id === 'dew_glow_active_spf_retinoid_1'),
+    false,
+  );
+  assert.equal(
+    state.hard_reject.some((entry) => entry?.product?.product_id === 'dew_glow_active_spf_retinoid_1')
+      || state.soft_mismatch.some((entry) => entry?.product?.product_id === 'dew_glow_active_spf_retinoid_1'),
+    true,
+  );
+});
+
 test('__internal: framework pool preserves same product across planned retrieval roles before role-fit', () => {
   const { __internal } = loadRoutesFresh();
   const targetContext = {

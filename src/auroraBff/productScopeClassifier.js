@@ -89,6 +89,9 @@ function buildConcernCandidateText(row) {
     const sku = isPlainObject(candidate.sku) ? candidate.sku : {};
     return [
       buildExternalSeedSurfacingText(candidate, { anchorOnly: true }),
+      ...(Array.isArray(sku.ingredient_tokens) ? sku.ingredient_tokens : []),
+      ...(Array.isArray(candidate.ingredient_tokens) ? candidate.ingredient_tokens : []),
+      ...(Array.isArray(candidate.key_features) ? candidate.key_features : []),
       pickFirstTrimmed(
         sku.product_type,
         sku.productType,
