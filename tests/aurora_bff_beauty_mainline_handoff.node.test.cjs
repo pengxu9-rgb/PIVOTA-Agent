@@ -586,11 +586,11 @@ test('handoffRecoToBeautyMainlineSearch exhausts primary planned sources before 
     );
     assert.deepEqual(
       out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts?.map((row) => row?.source_scope),
-      ['internal', 'internal', 'external_seed', 'external_seed', 'external_seed', 'external_seed', 'internal', 'internal', 'external_seed', 'external_seed', 'internal', 'internal', 'internal'],
+      ['internal', 'internal', 'external_seed', 'external_seed', 'internal', 'internal', 'external_seed', 'external_seed', 'internal', 'internal', 'external_seed', 'external_seed', 'internal'],
     );
     assert.deepEqual(
       out.searchResult?.metadata?.search_stage_ledger?.primary_search?.query_pack_attempts?.map((row) => row?.source_scope),
-      ['internal', 'internal', 'external_seed', 'external_seed', 'external_seed', 'external_seed', 'internal', 'internal', 'external_seed', 'external_seed', 'internal', 'internal', 'internal'],
+      ['internal', 'internal', 'external_seed', 'external_seed', 'internal', 'internal', 'external_seed', 'external_seed', 'internal', 'internal', 'external_seed', 'external_seed', 'internal'],
     );
     assert.equal(
       out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts
@@ -745,6 +745,192 @@ test('handoffRecoToBeautyMainlineSearch recovers acne primary from second planne
     assert.deepEqual(
       out.recommendations.map((item) => item.product_id).sort(),
       ['acne_primary_1', 'support_moist_1', 'support_spf_1'].sort(),
+    );
+  } finally {
+    __internal.__resetRouteDependencyOverridesForTest();
+    delete require.cache[moduleId];
+  }
+});
+
+test('handoffRecoToBeautyMainlineSearch runs support internal before timeout-prone support external', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const internalCaptured = [];
+    const externalCaptured = [];
+    __internal.__setRouteDependencyOverridesForTest({
+      searchInternalProductsPrimitive: async (args) => {
+        const query = String(args?.query || '').trim().toLowerCase();
+        internalCaptured.push(query);
+        const base = {
+          ok: true,
+          attempted_internal_paths: ['/agent/internal/products/search'],
+          transport_hops: [],
+          transport_hop_count: 0,
+          nested_orchestrator_hops: 0,
+          primary_transport_owner: 'internal_products_search_primitive',
+          primary_endpoint_kind: 'internal_primitive',
+        };
+        if (query === 'niacinamide serum oily skin') {
+          return {
+            ...base,
+            products: [
+              {
+                product_id: 'support_oil_1',
+                merchant_id: 'merchant_internal',
+                brand: 'OilLab',
+                name: 'Oil Control Niacinamide Serum',
+                display_name: 'OilLab Oil Control Niacinamide Serum',
+                title: 'OilLab Oil Control Niacinamide Serum',
+                category: 'Serum',
+                product_type: 'serum',
+                candidate_step: 'treatment',
+                benefit_tags: ['oil control', 'shine control'],
+                short_description: 'A niacinamide serum for oily skin and makeup-day shine control.',
+                retrieval_source: 'catalog',
+              },
+            ],
+          };
+        }
+        if (query === 'gel cream moisturizer') {
+          return {
+            ...base,
+            products: [
+              {
+                product_id: 'support_moist_1',
+                merchant_id: 'merchant_internal',
+                brand: 'LayerLab',
+                name: 'Oil-Free Gel Cream',
+                display_name: 'LayerLab Oil-Free Gel Cream',
+                title: 'LayerLab Oil-Free Gel Cream',
+                category: 'Moisturizer',
+                product_type: 'moisturizer',
+                candidate_step: 'moisturizer',
+                benefit_tags: ['lightweight hydration', 'layers under makeup'],
+                short_description: 'A lightweight gel cream that layers before sunscreen and makeup.',
+                retrieval_source: 'catalog',
+              },
+            ],
+          };
+        }
+        return {
+          ...base,
+          products: [],
+        };
+      },
+      searchLocalExternalSeedProducts: async (args) => {
+        const query = String(args?.query || '').trim().toLowerCase();
+        const roleId = String(args?.role?.role_id || '');
+        externalCaptured.push({ query, roleId });
+        const base = {
+          ok: true,
+          reason: null,
+          actual_http_attempt_count: 0,
+          attempted_base_urls: [],
+          attempted_paths: [],
+          transport_policy_mode: String(args?.transportPolicyMode || ''),
+          local_external_seed_search_mode: 'staged_support_fastpath',
+          local_external_seed_stage_debug: [{ stage: 'support_category_exact', row_count: 1, cumulative_row_count: 1, duration_ms: 5, cap: 6 }],
+        };
+        if (roleId === 'daily_sunscreen_finish_fit' && query === 'sunscreen') {
+          return {
+            ...base,
+            products: [
+              {
+                product_id: 'primary_spf_1',
+                merchant_id: 'external_seed',
+                brand: 'SunLab',
+                name: 'Invisible Makeup SPF Fluid',
+                display_name: 'SunLab Invisible Makeup SPF Fluid',
+                title: 'SunLab Invisible Makeup SPF Fluid',
+                category: 'Sunscreen',
+                product_type: 'sunscreen',
+                candidate_step: 'sunscreen',
+                benefit_tags: ['sunscreen', 'makeup friendly', 'lightweight finish'],
+                short_description: 'A lightweight sunscreen fluid designed to sit under makeup.',
+                retrieval_source: 'external_seed',
+              },
+            ],
+          };
+        }
+        return {
+          ...base,
+          ok: false,
+          products: [],
+          reason: 'empty',
+        };
+      },
+    });
+
+    const targetContext = {
+      primary_role_id: 'daily_sunscreen_finish_fit',
+      comparison_mode: 'routine_mix',
+      semantic_plan: {
+        routine_mode: 'routine_mix',
+        comparison_mode: 'routine_mix',
+        selection_constraints: { comparison_mode: 'routine_mix' },
+      },
+      framework_summary: {
+        concern_text: 'oily skin sunscreen under makeup',
+      },
+      framework_roles: [
+        {
+          role_id: 'daily_sunscreen_finish_fit',
+          rank: 31,
+          preferred_step: 'sunscreen',
+          label: 'Daily sunscreen finish fit',
+          query_terms: ['sunscreen', 'spf fluid oily skin'],
+          fit_keywords: ['spf', 'lightweight finish', 'makeup friendly'],
+        },
+        {
+          role_id: 'oil_control_treatment',
+          rank: 10,
+          preferred_step: 'treatment',
+          label: 'Oil-control treatment',
+          query_terms: ['niacinamide serum oily skin', 'salicylic acid serum clogged pores'],
+          fit_keywords: ['oil control', 'shine control', 'niacinamide'],
+        },
+        {
+          role_id: 'lightweight_moisturizer',
+          rank: 20,
+          preferred_step: 'moisturizer',
+          label: 'Lightweight moisturizer',
+          query_terms: ['gel cream moisturizer', 'lightweight moisturizer oily skin'],
+          fit_keywords: ['gel cream', 'oil-free', 'lightweight'],
+        },
+      ],
+      support_roles: [],
+    };
+
+    const out = await __internal.handoffRecoToBeautyMainlineSearch({
+      ctx: { lang: 'EN', request_id: 'req_sunscreen_support_internal_first' },
+      primaryQuery: 'I have oily skin and wear makeup every day. What sunscreen product should I buy?',
+      fallbackMessage: 'I have oily skin and wear makeup every day. What sunscreen product should I buy?',
+      targetContext,
+      timeoutMs: 5000,
+      minTimeoutMs: 5000,
+    });
+
+    assert.deepEqual(externalCaptured[0], { query: 'sunscreen', roleId: 'daily_sunscreen_finish_fit' });
+    assert.equal(internalCaptured.includes('niacinamide serum oily skin'), true);
+    assert.equal(internalCaptured.includes('gel cream moisturizer'), true);
+    const attempts = out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts || [];
+    const firstSupportAttempt = attempts.find((row) =>
+      String(row?.ladder_level || '').startsWith('framework_stage_c_support_')
+      && !String(row?.reason || '').startsWith('skipped_'));
+    assert.equal(firstSupportAttempt?.source_scope, 'internal');
+    assert.equal(
+      attempts.some((row) =>
+        row?.source_scope === 'internal'
+        && row?.role_id === 'oil_control_treatment'
+        && Number(row?.result_count || 0) > 0),
+      true,
+    );
+    assert.equal(
+      attempts.some((row) =>
+        row?.source_scope === 'internal'
+        && row?.role_id === 'lightweight_moisturizer'
+        && Number(row?.result_count || 0) > 0),
+      true,
     );
   } finally {
     __internal.__resetRouteDependencyOverridesForTest();
@@ -1428,14 +1614,14 @@ test('handoffRecoToBeautyMainlineSearch skips support external supplement once t
       minTimeoutMs: 5000,
     });
 
-    assert.equal(externalCaptured.includes('hyaluronic acid serum'), true);
+    assert.equal(externalCaptured.includes('hyaluronic acid serum'), false);
     assert.equal(externalCaptured.includes('hydrating serum dehydrated skin'), false);
     assert.equal(externalCaptured.includes('lightweight sunscreen'), true);
     const hydratingExternalRows = out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts
       ?.filter((row) => row?.ladder_level === 'framework_stage_c_support_hydrating_serum_or_essence_external_seed') || [];
     assert.equal(hydratingExternalRows.length, 2);
     assert.equal(
-      hydratingExternalRows.some((row) => row?.reason === 'skipped_support_role_already_satisfied'),
+      hydratingExternalRows.every((row) => row?.reason === 'skipped_support_role_already_satisfied'),
       true,
     );
   } finally {
@@ -1714,7 +1900,7 @@ test('handoffRecoToBeautyMainlineSearch releases support budget to external auth
       out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts
         ?.filter((row) => row?.fair_support_internal_round === 1) || [];
     assert.equal(
-      supportInternalAttempts.every((row) => row?.reason === 'skipped_support_role_already_satisfied'),
+      supportInternalAttempts.every((row) => row?.reason === 'upstream_timeout'),
       true,
     );
   } finally {
