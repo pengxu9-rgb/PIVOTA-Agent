@@ -2163,6 +2163,153 @@ test('reco assistant rewrite retries routine drafts that use stiff selected-prod
   }
 });
 
+test('reco assistant rewrite uses structured reason retry for repeated buy framing in routine mix', async () => {
+  const prevMock = process.env.AURORA_BFF_USE_MOCK;
+  const prevProvider = process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
+  const prevModel = process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
+  process.env.AURORA_BFF_USE_MOCK = 'false';
+  process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER = 'gemini';
+  process.env.AURORA_PRODUCT_INTEL_LLM_MODEL = 'gemini-3-flash-preview';
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const payload = __internal.applyRecoContentSpineToPayload(
+      {
+        recommendations: [
+          {
+            product_id: 'layering_pick_1',
+            display_name: 'Beauty of Joseon Dynasty Cream 10ml',
+            brand: 'Beauty of Joseon',
+            category: 'Moisturizer',
+            short_description: 'A lightweight moisturizer cream for comfortable layering under makeup.',
+            price: { amount: 3.75, currency: 'USD', unknown: false },
+            matched_role_id: 'layering_compatible_moisturizer_or_spf',
+            matched_role_label: 'Layering-compatible moisturizer or SPF',
+          },
+          {
+            product_id: 'soothing_pick_1',
+            display_name: 'Winona Soothing Repair Serum',
+            brand: 'Winona',
+            category: 'Serum',
+            short_description: 'A lightweight soothing serum for redness and sensitive skin.',
+            price: { amount: 1.69, currency: 'USD', unknown: false },
+            matched_role_id: 'soothing_treatment',
+            matched_role_label: 'Soothing treatment',
+          },
+          {
+            product_id: 'barrier_pick_1',
+            display_name: 'KraveBeauty Great Barrier Relief',
+            brand: 'KraveBeauty',
+            category: 'Moisturizer',
+            short_description: 'A barrier-support moisturizer with tamanu oil and niacinamide.',
+            price: { amount: 28, currency: 'USD', unknown: false },
+            matched_role_id: 'barrier_moisturizer',
+            matched_role_label: 'Barrier-support moisturizer',
+          },
+        ],
+        roles: [
+          {
+            role_id: 'layering_compatible_moisturizer_or_spf',
+            label: 'Layering-compatible moisturizer or SPF',
+            preferred_step: 'moisturizer',
+            why_this_role: 'Reduce makeup pilling with a lighter daytime layer.',
+          },
+          {
+            role_id: 'soothing_treatment',
+            label: 'Soothing treatment',
+            preferred_step: 'serum',
+            why_this_role: 'Calm redness and sensitivity.',
+          },
+          {
+            role_id: 'barrier_moisturizer',
+            label: 'Barrier-support moisturizer',
+            preferred_step: 'moisturizer',
+            why_this_role: 'Support an impaired barrier without retinoid-active moisturizer drift.',
+          },
+        ],
+        recommendation_meta: {
+          resolved_target_step: 'moisturizer',
+          mainline_status: 'grounded_success',
+        },
+      },
+      {
+        ingredient_query: 'Layering-compatible moisturizer',
+        resolved_target_step: 'moisturizer',
+        primary_target_id: 'layering_compatible_moisturizer_or_spf',
+        ranked_targets: [
+          {
+            target_id: 'layering_compatible_moisturizer_or_spf',
+            ingredient_query: 'Layering-compatible moisturizer',
+            resolved_target_step: 'moisturizer',
+          },
+        ],
+        selected_target_ids: [
+          'layering_compatible_moisturizer_or_spf',
+          'soothing_treatment',
+          'barrier_moisturizer',
+        ],
+      },
+    );
+    const prompts = [];
+    let callCount = 0;
+    __internal.__setCallGeminiJsonObjectForTest(async (args = {}) => {
+      callCount += 1;
+      prompts.push(String(args.userPrompt || ''));
+      if (callCount === 1) {
+        return {
+          ok: true,
+          json: {
+            assistant_text:
+              'Beauty of Joseon Dynasty Cream 10ml is the most direct fit because it is lightweight under makeup. Winona Soothing Repair Serum is the top pick for calming redness, while KraveBeauty Great Barrier Relief is the strongest choice for barrier support.',
+          },
+          parse_status: 'parsed',
+          provider: 'gemini',
+          effective_model: 'gemini-3-flash-preview',
+        };
+      }
+      return {
+        ok: true,
+        json: {
+          lead_reason: 'it is a lightweight moisturizer for comfortable makeup layering',
+          support_reasons: [
+            'it is a lightweight serum for redness and sensitive skin',
+            'it supports barrier repair with tamanu oil and niacinamide',
+          ],
+        },
+        parse_status: 'parsed',
+        provider: 'gemini',
+        effective_model: 'gemini-3-flash-preview',
+      };
+    });
+
+    const rewrite = await __internal.maybeRewriteRecoAssistantTextWithLlm({
+      payload,
+      language: 'EN',
+      profile: { skinType: 'combination', sensitivity: 'high', goals: ['smooth layering', 'barrier support'] },
+      userRequestText: 'My daytime routine pills under makeup. What product should I buy?',
+      allowLockedSelectionRewrite: true,
+    });
+
+    assert.equal(callCount, 2);
+    assert.equal(rewrite.llm_used, true);
+    assert.equal(rewrite.reason, null);
+    assert.match(prompts[1], /Return evidence-grounded reason fragments only/i);
+    assert.match(prompts[1], /Fix required: Use one direct-buy framing phrase only once/i);
+    assert.match(String(rewrite.text || ''), /Beauty of Joseon Dynasty Cream 10ml is the most direct fit/i);
+    assert.match(String(rewrite.text || ''), /Winona Soothing Repair Serum covers the serum step/i);
+    assert.match(String(rewrite.text || ''), /KraveBeauty Great Barrier Relief covers the moisturizer step/i);
+    assert.doesNotMatch(String(rewrite.text || ''), /top pick|strongest choice/i);
+  } finally {
+    __internal.__resetCallGeminiJsonObjectForTest();
+    if (prevMock === undefined) delete process.env.AURORA_BFF_USE_MOCK;
+    else process.env.AURORA_BFF_USE_MOCK = prevMock;
+    if (prevProvider === undefined) delete process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
+    else process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER = prevProvider;
+    if (prevModel === undefined) delete process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
+    else process.env.AURORA_PRODUCT_INTEL_LLM_MODEL = prevModel;
+    delete require.cache[moduleId];
+  }
+});
+
 test('reco assistant rewrite retries gemini timeout with structured reason prompt context', async () => {
   const prevMock = process.env.AURORA_BFF_USE_MOCK;
   const prevProvider = process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;

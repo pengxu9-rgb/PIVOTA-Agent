@@ -55692,6 +55692,7 @@ async function maybeRewriteRecoAssistantTextWithLlm({
       || firstAttemptReason === 'rewrite_buy_lead_not_direct'
       || firstAttemptReason === 'rewrite_generic_routine_wrapup'
       || firstAttemptReason === 'rewrite_ungrammatical_reason_fragment'
+      || firstAttemptReason === 'rewrite_duplicate_best_first_buy'
       || firstAttemptReason === 'gemini_json_timeout'
       || firstAttemptReason === 'parse_truncated_json'
       || firstAttemptReason === 'empty_rewrite'
