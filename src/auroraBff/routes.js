@@ -1339,8 +1339,8 @@ const RECO_CATALOG_SUPPORT_EXTERNAL_SEED_QUERY_TIMEOUT_MS = (() => {
   return Math.max(50, Math.min(8000, v));
 })();
 const RECO_CATALOG_SUPPORT_INTERNAL_QUERY_TIMEOUT_MS = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_SUPPORT_INTERNAL_QUERY_TIMEOUT_MS || 1400);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 1400;
+  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_SUPPORT_INTERNAL_QUERY_TIMEOUT_MS || 2400);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 2400;
   return Math.max(200, Math.min(3000, v));
 })();
 const {
@@ -8443,7 +8443,6 @@ function buildLocalExternalSeedCategoryPositiveStage({
       /\bpore\b|\bclogged\b|\bacne\b/.test(haystack)
         ? ['pore', 'pores', 'clogged', 'acne']
         : [],
-      ['serum', 'treatment'],
     );
     const categories = pickTerms(['serum', 'treatment', 'ampoule', 'essence']);
     if (categories.length && oilControlPatterns.length) {
@@ -22568,6 +22567,34 @@ function shouldSkipFrameworkSupportRoleQuery(queryEntry, candidateState = null) 
   return Boolean(resolveFrameworkSupportRoleQuerySkipReason(queryEntry, candidateState));
 }
 
+function shouldPrioritizeFrameworkSupportInternalDuringPrimaryExternal(queryEntry = null) {
+  if (!isPlainObject(queryEntry)) return false;
+  const stageId = String(queryEntry?.ladder_level || queryEntry?.stage_id || queryEntry?.stageId || '').trim().toLowerCase();
+  if (!stageId.startsWith('framework_stage_c_support_')) return false;
+  if (
+    queryEntry?.allow_external_seed === true ||
+    String(queryEntry?.source_scope || '').trim().toLowerCase() === 'external_seed'
+  ) {
+    return false;
+  }
+  const roleId = String(queryEntry?.role_id || queryEntry?.roleId || '').trim().toLowerCase();
+  const preferredStep = normalizeRecoTargetStep(queryEntry?.preferred_step || queryEntry?.preferredStep || queryEntry?.step);
+  const text = [
+    roleId,
+    preferredStep,
+    queryEntry?.role_label,
+    queryEntry?.query,
+  ]
+    .map((value) => String(value || '').trim().toLowerCase())
+    .filter(Boolean)
+    .join(' ');
+  return (
+    preferredStep === 'treatment' ||
+    preferredStep === 'serum' ||
+    /\b(oil[_\s-]?control|acne|clogged|pore|mark|tone|niacinamide|salicylic|bha|zinc)\b/.test(text)
+  );
+}
+
 function resolveRecoQueryEntryTimeoutMs(queryEntry = null, effectiveTimeoutMs = 0) {
   const normalizedTimeoutMs = Number.isFinite(Number(effectiveTimeoutMs))
     ? Math.max(0, Math.trunc(Number(effectiveTimeoutMs)))
@@ -23021,7 +23048,9 @@ async function collectRecoCandidatesFromQueryLevels({
       candidateState.primary_role_matched !== true
     ) {
       const primaryExternalQueries = [];
-      const supportExternalQueries = [];
+      const prioritySupportInternalQueries = [];
+      const prioritySupportExternalQueries = [];
+      const standardSupportExternalQueries = [];
       const supportInternalQueries = [];
       const otherQueries = [];
       for (const queryEntry of runnableQueries) {
@@ -23037,13 +23066,22 @@ async function collectRecoCandidatesFromQueryLevels({
           );
         const isSupportInternalQuery = queryStageId.startsWith('framework_stage_c_support_');
         if (isPrimaryExternalQuery) primaryExternalQueries.push(queryEntry);
-        else if (isSupportExternalQuery) supportExternalQueries.push(queryEntry);
-        else if (isSupportInternalQuery) supportInternalQueries.push(queryEntry);
+        else if (isSupportExternalQuery && shouldPrioritizeFrameworkSupportInternalDuringPrimaryExternal({
+          ...queryEntry,
+          allow_external_seed: false,
+          source_scope: 'internal',
+        })) prioritySupportExternalQueries.push(queryEntry);
+        else if (isSupportExternalQuery) standardSupportExternalQueries.push(queryEntry);
+        else if (isSupportInternalQuery && shouldPrioritizeFrameworkSupportInternalDuringPrimaryExternal(queryEntry)) {
+          prioritySupportInternalQueries.push(queryEntry);
+        } else if (isSupportInternalQuery) supportInternalQueries.push(queryEntry);
         else otherQueries.push(queryEntry);
       }
       runnableQueries = [
         ...primaryExternalQueries,
-        ...supportExternalQueries,
+        ...prioritySupportInternalQueries,
+        ...standardSupportExternalQueries,
+        ...prioritySupportExternalQueries,
         ...supportInternalQueries,
         ...otherQueries,
       ];
