@@ -54467,7 +54467,7 @@ function assistantTextUsesGenericRoutineWrapup(text) {
 
 function assistantTextHasUngrammaticalReasonFragment(text) {
   return /\bbecause\s+(?:a|an)\s+[^.!?。！？]{3,120}\b(?:that|with|for)\b/i.test(String(text || ''))
-    || /\bbecause\s+(?:is|are|was|were|has|have|had|features?|provides?|uses?|contains?|combines?|offers?|supports?|helps?|hydrates?|targets?|addresses?|reduces?|delivers?|gives?|pairs?|layers?|locks?|soothes?|boosts?|protects?|keeps?|works?|formulated|designed|made|built)\b/i.test(String(text || ''));
+    || /\bbecause\s+(?:is|are|was|were|has|have|had|features?|provides?|uses?|contains?|combines?|offers?|supports?|helps?|hydrates?|targets?|addresses?|reduces?|delivers?|gives?|pairs?|layers?|locks?|soothes?|boosts?|protects?|keeps?|works?|functions?|serves?|formulated|designed|made|built)\b/i.test(String(text || ''));
 }
 
 function assistantTextUsesStiffSelectionFraming(text) {
@@ -54900,7 +54900,7 @@ function normalizeRecoAssistantBecauseReasonFragment(reason) {
     return `it is ${text}`;
   }
   if (
-    /^(?:is|are|was|were|has|have|had|features?|provides?|uses?|contains?|combines?|offers?|supports?|helps?|hydrates?|targets?|addresses?|reduces?|delivers?|gives?|pairs?|layers?|locks?|soothes?|boosts?|protects?|keeps?|works?)\b/i.test(text)
+    /^(?:is|are|was|were|has|have|had|features?|provides?|uses?|contains?|combines?|offers?|supports?|helps?|hydrates?|targets?|addresses?|reduces?|delivers?|gives?|pairs?|layers?|locks?|soothes?|boosts?|protects?|keeps?|works?|functions?|serves?)\b/i.test(text)
   ) {
     return `it ${text}`;
   }
@@ -54908,6 +54908,16 @@ function normalizeRecoAssistantBecauseReasonFragment(reason) {
     return `it is ${text}`;
   }
   return text;
+}
+
+function dedupeRecoAssistantStructuredSentenceText(value) {
+  return String(value || '')
+    .replace(/\b(before sunscreen application)(?:\s+\1\b)+/ig, '$1')
+    .replace(/\b(before sunscreen)(?:\s+\1\b)+/ig, '$1')
+    .replace(/\b(after your serum)(?:\s+\1\b)+/ig, '$1')
+    .replace(/\b(as the final daytime step)(?:\s+\1\b)+/ig, '$1')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function isValidRecoAssistantStructuredReasonJson(value) {
@@ -54936,10 +54946,35 @@ function pickRecoAssistantRenderDetail(row = {}) {
 }
 
 function formatRecoAssistantStructuredSentence(sentence) {
-  const text = String(sentence || '').replace(/\s+/g, ' ').trim();
+  const text = dedupeRecoAssistantStructuredSentenceText(sentence);
   if (!text) return '';
   if (/[.!?。！？]$/.test(text)) return text;
   return `${text}.`;
+}
+
+function pickRecoAssistantStructuredFollowupReason(detail = {}, {
+  leadReason = '',
+  selectedNames = [],
+  forbiddenNames = [],
+  forbiddenAliases = [],
+} = {}) {
+  const normalizedLead = normalizeSemanticAuditText(leadReason);
+  const points = Array.isArray(detail?.reason_points) ? detail.reason_points : [];
+  for (const point of points.slice(1)) {
+    const reason = normalizeRecoAssistantReasonFragment(point, {
+      selectedNames,
+      forbiddenNames,
+      forbiddenAliases,
+    });
+    const grammatical = normalizeRecoAssistantBecauseReasonFragment(reason);
+    if (!grammatical) continue;
+    const normalizedReason = normalizeSemanticAuditText(grammatical);
+    if (normalizedLead && normalizedReason && (normalizedLead.includes(normalizedReason) || normalizedReason.includes(normalizedLead))) {
+      continue;
+    }
+    return grammatical;
+  }
+  return '';
 }
 
 function formatRecoAssistantTargetPhrase(targetLabel, language) {
@@ -55016,9 +55051,15 @@ function renderRecoAssistantStructuredReasonRewrite({
         ? `${selectedNames[0]}适合作为起步选择，因为${grammaticalLeadReason}`
         : `${selectedNames[0]}是更适合先买的选择${targetPhrase}，因为${grammaticalLeadReason}`;
     if (selectedNames.length === 1) {
+      const followupReason = pickRecoAssistantStructuredFollowupReason(details[0], {
+        leadReason: grammaticalLeadReason,
+        selectedNames,
+        forbiddenNames,
+        forbiddenAliases,
+      });
       return [
         formatRecoAssistantStructuredSentence(leadSentence),
-        formatRecoAssistantStructuredSentence(`它让建议保持在${targetLabel || '用户当前诉求'}上，而不是扩展到无关功效`),
+        followupReason ? formatRecoAssistantStructuredSentence(`它还适合，因为${followupReason}`) : '',
       ].filter(Boolean).join(' ');
     }
     const supportSentences = selectedNames.slice(1).map((name, index) => {
@@ -55046,9 +55087,15 @@ function renderRecoAssistantStructuredReasonRewrite({
         ? `${selectedNames[0]} is the most practical pick${targetPhrase} because ${grammaticalLeadReason}`
         : `${selectedNames[0]} is the most direct fit${targetPhrase} because ${grammaticalLeadReason}`;
   if (selectedNames.length === 1) {
+    const followupReason = pickRecoAssistantStructuredFollowupReason(details[0], {
+      leadReason: grammaticalLeadReason,
+      selectedNames,
+      forbiddenNames,
+      forbiddenAliases,
+    });
     return [
       formatRecoAssistantStructuredSentence(leadSentence),
-      formatRecoAssistantStructuredSentence(`That keeps the recommendation focused on ${String(targetLabel || 'the stated concern').toLowerCase()} instead of unrelated benefits`),
+      followupReason ? formatRecoAssistantStructuredSentence(`It also fits because ${followupReason}`) : '',
     ].filter(Boolean).join(' ');
   }
   const supportSentences = selectedNames.slice(1).map((name, index) => {
