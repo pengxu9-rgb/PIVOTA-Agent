@@ -1186,6 +1186,117 @@ test('reco assistant rewrite uses structured retry for generic routine wrap-up',
   }
 });
 
+test('reco assistant structured retry normalizes function-as support grammar', async () => {
+  const prevMock = process.env.AURORA_BFF_USE_MOCK;
+  const prevProvider = process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
+  const prevModel = process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
+  process.env.AURORA_BFF_USE_MOCK = 'false';
+  process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER = 'gemini';
+  process.env.AURORA_PRODUCT_INTEL_LLM_MODEL = 'gemini-3-flash-preview';
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const payload = __internal.applyRecoContentSpineToPayload(
+      {
+        recommendations: [
+          {
+            product_id: 'spf_pick',
+            display_name: 'Daily Tinted Fluid Sunscreen DY300',
+            brand: 'Beauty of Joseon',
+            category: 'Sunscreen',
+            matched_role_id: 'daily_sunscreen_finish_fit',
+            matched_role_label: 'Daily sunscreen with finish fit',
+            short_description: 'SPF 40 protection in a tinted fluid for the final daytime step.',
+          },
+          {
+            product_id: 'cream_pick',
+            display_name: 'Dynasty Cream 10ml',
+            brand: 'Beauty of Joseon',
+            category: 'Moisturizer',
+            matched_role_id: 'lightweight_moisturizer',
+            matched_role_label: 'Lightweight moisturizer',
+            short_description: 'A cream that sinks in for long-lasting hydration before sunscreen.',
+          },
+        ],
+        recommendation_meta: {
+          resolved_target_step: 'sunscreen',
+          mainline_status: 'grounded_success',
+        },
+      },
+      {
+        ingredient_query: 'Daily sunscreen with finish fit',
+        resolved_target_step: 'sunscreen',
+        primary_target_id: 'daily_sunscreen_finish_fit',
+        ranked_targets: [
+          {
+            target_id: 'daily_sunscreen_finish_fit',
+            ingredient_query: 'Daily sunscreen with finish fit',
+            resolved_target_step: 'sunscreen',
+          },
+          {
+            target_id: 'lightweight_moisturizer',
+            ingredient_query: 'Lightweight moisturizer',
+            resolved_target_step: 'moisturizer',
+          },
+        ],
+        selected_target_ids: ['daily_sunscreen_finish_fit', 'lightweight_moisturizer'],
+      },
+    );
+    let callCount = 0;
+    __internal.__setCallGeminiJsonObjectForTest(async () => {
+      callCount += 1;
+      if (callCount === 1) {
+        return {
+          ok: true,
+          json: {
+            assistant_text: [
+              'Daily Tinted Fluid Sunscreen DY300 is the most direct fit because it provides SPF 40 protection in a tinted fluid.',
+              'Together, these products support the routine and keep skin breathable.',
+            ].join(' '),
+          },
+          parse_status: 'parsed',
+          provider: 'gemini',
+          effective_model: 'gemini-3-flash-preview',
+        };
+      }
+      return {
+        ok: true,
+        json: {
+          lead_reason: 'provides SPF 40 protection in a tinted fluid for the final daytime step',
+          support_reasons: [
+            'functions as a hydrating moisturizer step before sunscreen application before sunscreen application',
+          ],
+        },
+        parse_status: 'parsed',
+        provider: 'gemini',
+        effective_model: 'gemini-3-flash-preview',
+      };
+    });
+
+    const rewrite = await __internal.maybeRewriteRecoAssistantTextWithLlm({
+      payload,
+      language: 'EN',
+      profile: { skinType: 'oily', goals: ['daily sunscreen'] },
+      userRequestText: 'I need sunscreen under makeup in humid weather. What should I buy?',
+      allowLockedSelectionRewrite: true,
+    });
+
+    assert.equal(callCount, 2);
+    assert.equal(rewrite.llm_used, true);
+    assert.match(rewrite.text, /Dynasty Cream 10ml covers the moisturizer step because it functions as a hydrating moisturizer step before sunscreen application\./);
+    assert.doesNotMatch(rewrite.text, /because functions\b/i);
+    assert.doesNotMatch(rewrite.text, /before sunscreen application before sunscreen application/i);
+  } finally {
+    __internal.__resetCallGeminiJsonObjectForTest();
+    if (prevMock === undefined) delete process.env.AURORA_BFF_USE_MOCK;
+    else process.env.AURORA_BFF_USE_MOCK = prevMock;
+    if (prevProvider === undefined) delete process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
+    else process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER = prevProvider;
+    if (prevModel === undefined) delete process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
+    else process.env.AURORA_PRODUCT_INTEL_LLM_MODEL = prevModel;
+    delete require.cache[moduleId];
+  }
+});
+
 test('reco assistant structured retry does not render without valid JSON', async () => {
   const prevMock = process.env.AURORA_BFF_USE_MOCK;
   const prevProvider = process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
@@ -2159,6 +2270,7 @@ test('reco assistant rewrite retries gemini timeout with structured reason promp
     assert.equal(rewrite.attempts?.[1]?.ok, true);
     assert.equal(rewrite.attempts?.[1]?.reason, null);
     assert.equal(rewrite.attempts?.[1]?.upstream_ms, 640);
+    assert.doesNotMatch(rewrite.text, /That keeps the recommendation focused/i);
   } finally {
     __internal.__resetCallGeminiJsonObjectForTest();
     if (prevMock === undefined) delete process.env.AURORA_BFF_USE_MOCK;
