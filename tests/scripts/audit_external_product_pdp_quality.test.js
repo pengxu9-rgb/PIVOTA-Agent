@@ -50,12 +50,19 @@ describe('audit-external-product-pdp-quality helpers', () => {
           merchant_id: 'external_seed',
           product_id: 'ext_123',
         },
-        include: expect.arrayContaining([
+        include: [
+          'canonical',
           'product_intel',
-          'product_overview',
-          'supplemental_details',
+          'product_details',
+          'product_facts',
+          'active_ingredients',
+          'ingredients_inci',
+          'how_to_use',
           'reviews_preview',
-        ]),
+          'similar',
+          'variant_selector',
+          'offers',
+        ],
         options: {
           debug: true,
           no_cache: true,
@@ -153,7 +160,7 @@ describe('audit-external-product-pdp-quality helpers', () => {
     expect(result.failure_reasons).toEqual(
       expect.arrayContaining([
         'missing_pdp_identity',
-        'missing_product_intel',
+        'product_intel_module_empty_or_blocked',
         'product_details_section_soup',
         'legacy_overview_render_risk',
         'image_url_identity_stripped',

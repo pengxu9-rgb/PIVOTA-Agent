@@ -69,9 +69,6 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     });
 
     const variantSelector = payload.modules.find((module) => module.type === 'variant_selector');
-    const productOverview = payload.modules.find((module) => module.type === 'product_overview');
-    const supplementalDetails = payload.modules.find((module) => module.type === 'supplemental_details');
-    const productDetails = payload.modules.find((module) => module.type === 'product_details');
     const productFacts = payload.modules.find((module) => module.type === 'product_facts');
     const activeIngredients = payload.modules.find((module) => module.type === 'active_ingredients');
     const ingredientsInci = payload.modules.find((module) => module.type === 'ingredients_inci');
@@ -107,20 +104,6 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
         }),
       ]),
     );
-    expect(productOverview?.data?.sections).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          heading: 'Description',
-          content: 'A restorative cream for dry skin.',
-        }),
-      ]),
-    );
-    expect(supplementalDetails).toBeFalsy();
-    expect(productDetails).toBeFalsy();
-    expect(payload.modules.some((module) =>
-      module.type === 'product_overview' &&
-      module.data?.sections?.some((section) => section.heading === 'Category'),
-    )).toBe(false);
     expect(activeIngredients?.data?.items).toEqual(
       expect.arrayContaining(['Helps support the skin barrier.']),
     );

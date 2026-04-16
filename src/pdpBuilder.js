@@ -211,26 +211,6 @@ const MODULE_REQUIREMENTS = {
       );
     },
   },
-  product_overview: {
-    requiredPaths: ['data.sections'],
-    validate: (module) => {
-      const sections = module?.data?.sections;
-      return (
-        Array.isArray(sections) &&
-        sections.some((section) => section?.heading && section?.content && section?.content_type)
-      );
-    },
-  },
-  supplemental_details: {
-    requiredPaths: ['data.sections'],
-    validate: (module) => {
-      const sections = module?.data?.sections;
-      return (
-        Array.isArray(sections) &&
-        sections.some((section) => section?.heading && section?.content && section?.content_type)
-      );
-    },
-  },
   product_facts: {
     requiredPaths: ['data.sections'],
     validate: (module) => {
@@ -1355,6 +1335,15 @@ function buildSupplementalDetailSections(product, detailSections = collectStruct
       });
     });
 
+  if (sections.length && (product.category || product.product_type)) {
+    sections.push({
+      heading: 'Category',
+      content_type: 'text',
+      content: String(product.category || product.product_type),
+      collapsed_by_default: true,
+    });
+  }
+
   return sections;
 }
 
@@ -2338,15 +2327,6 @@ function buildRecommendations(items, currencyFallback) {
       source: p.source || p.recommendation_source || undefined,
       reason: p.reason || p.recommendation_reason || undefined,
       x_score: typeof p.x_score === 'number' ? p.x_score : undefined,
-      category: p.category || p.product_type || p.productType || undefined,
-      product_type: p.product_type || p.productType || p.category || undefined,
-      description: p.description || undefined,
-      card_highlight: p.card_highlight || p.shopping_card?.highlight || p.search_card?.highlight_candidate || undefined,
-      card_highlight_status: p.card_highlight_status || undefined,
-      card_highlight_reason: p.card_highlight_reason || undefined,
-      shopping_card: p.shopping_card || undefined,
-      search_card: p.search_card || undefined,
-      market_signal_badges: Array.isArray(p.market_signal_badges) ? p.market_signal_badges : undefined,
       rating: p.rating || p.review_rating || undefined,
       review_count: p.review_count || p.reviews_count || undefined,
     })),
@@ -2525,23 +2505,7 @@ function buildPdpPayload(args) {
       module_id: 'm_product_overview',
       type: 'product_overview',
       priority: 70,
-      data: {
-        sections: productOverview,
-        contract_status: 'ready',
-        source_quality_status: 'captured',
-      },
-    });
-  }
-  if (supplementalDetails.length) {
-    modules.push({
-      module_id: 'm_supplemental_details',
-      type: 'supplemental_details',
-      priority: 69,
-      data: {
-        sections: supplementalDetails,
-        contract_status: 'ready',
-        source_quality_status: 'captured',
-      },
+      data: { sections: productOverview },
     });
   }
   if (productFacts.length) {
@@ -2550,6 +2514,14 @@ function buildPdpPayload(args) {
       type: 'product_facts',
       priority: 72,
       data: { sections: productFacts },
+    });
+  }
+  if (supplementalDetails.length) {
+    modules.push({
+      module_id: 'm_supplemental_details',
+      type: 'supplemental_details',
+      priority: 69,
+      data: { sections: supplementalDetails },
     });
   }
   if (genericAttributeModules.materials) {
