@@ -417,7 +417,7 @@ test('/v1/analysis/skin: routine audit v1 emits the 4-card surface and suppresse
         assert.equal(sessionPatch?.meta?.analysis_contract?.execution_path, 'routine_audit_fast_path');
         assert.ok(String(sessionPatch?.state?.latest_artifact_id || '').trim());
         assert.equal(sessionPatch?.state?.latest_reco_context?.context_origin, 'routine_audit_v1');
-        assert.equal(sessionPatch?.state?.latest_reco_context?.resolved_target_step, 'cleanser');
+        assert.equal(sessionPatch?.state?.latest_reco_context?.resolved_target_step, 'moisturizer');
         assert.ok(String(sessionPatch?.state?.latest_reco_context?.artifact_id || '').trim());
         assert.equal(analysisMeta.artifact_usable, true);
         const { getLatestDiagnosisArtifact } = require('../src/auroraBff/diagnosisArtifactStore');

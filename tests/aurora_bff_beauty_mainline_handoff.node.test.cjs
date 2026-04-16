@@ -2844,6 +2844,138 @@ test('beauty chat mainline entry invokes llm concern planner before deterministi
   ]);
 });
 
+test('beauty chat mainline entry records analysis handoff context usage without changing runtime path', async () => {
+  const observed = {
+    payloadBaseMeta: null,
+    requestedEventData: null,
+  };
+  const runtime = createBeautyChatMainlineEntryRuntime({
+    RECO_CATALOG_GROUNDED_ENABLED: true,
+    RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS: 1000,
+    resolveRecommendationTargetContext: () => ({
+      entry_type: 'chat',
+      intent_mode: 'explicit_role',
+      step_aware_intent: true,
+      resolved_target_step: 'moisturizer',
+      resolved_target_step_confidence: 'high',
+      resolved_target_step_source: 'explicit_target_step',
+    }),
+    summarizeProfileForContext: (profile) => profile,
+    mergeIngredientRecoContextValue: (left, right) => ({ ...(left || {}), ...(right || {}) }),
+    appendLatestRecoContextToSessionPatch: (sessionPatch, recoContext) => {
+      sessionPatch.latest_reco_context = recoContext;
+    },
+    extractRecoFinalSelectionContract: () => ({
+      selection_owner: 'shopping_agent_beauty_mainline',
+    }),
+    makeAssistantMessage: (content) => ({ role: 'assistant', format: 'text', content }),
+    buildEnvelope: (_ctx, envelope) => envelope,
+    makeEvent: (_ctx, kind, data) => ({ kind, data }),
+    applyRecoContractToRecoRequestedEvents: (events) => ({ events }),
+    buildRecoRequestedEventData: (eventData) => {
+      observed.requestedEventData = eventData;
+      return eventData;
+    },
+    normalizeRecoSourceDetail: (value) => value,
+    stateChangeAllowed: () => false,
+    handoffRecoToBeautyMainlineSearch: async (args) => ({
+      targetContext: args.targetContext,
+      recommendations: [
+        {
+          product_id: 'barrier_moisturizer_1',
+          display_name: 'Barrier Repair Moisturizer',
+        },
+      ],
+      searchResult: {
+        decision_owner: 'shopping_agent_beauty_mainline',
+        semantic_owner: 'shopping_agent_beauty_mainline',
+        metadata: {
+          search_stage_ledger: {
+            final_selection: {
+              selection_owner: 'shopping_agent_beauty_mainline',
+              selected_product_ids: ['barrier_moisturizer_1'],
+              mainline_status: 'grounded_success',
+            },
+          },
+        },
+      },
+    }),
+    buildRecoPayloadFromBeautyMainlineHandoff: ({ sourceMode, basePayload }) => {
+      observed.payloadBaseMeta = basePayload?.recommendation_meta || null;
+      return {
+        payload: {
+          source: 'catalog_grounded_v1',
+          mainline_status: 'grounded_success',
+          recommendation_meta: {
+            ...(basePayload?.recommendation_meta || {}),
+            source_mode: sourceMode,
+          },
+        },
+        contract: {
+          version: 'test_contract',
+        },
+      };
+    },
+    classifyBeautyMainlineHandoffFallback: () => ({
+      reason: 'unreachable',
+    }),
+    buildBeautyMainlineHandoffFallbackEnvelope: () => ({
+      cards: [],
+    }),
+    looksLikeRecommendationRequest: () => true,
+    sendChatEnvelope: async () => null,
+  });
+
+  const result = await runtime.maybeHandleBeautyOwnedChatReco({
+    ctx: {
+      request_id: 'req_analysis_handoff_usage',
+      trace_id: 'trace_analysis_handoff_usage',
+      lang: 'EN',
+      trigger_source: 'chat',
+    },
+    logger: null,
+    message: 'what should I buy next?',
+    recoEntrySourceDetail: 'typed_reco',
+    latestRecoContextFromSession: {
+      source_detail: 'analysis_handoff',
+      trigger_source: 'analysis_handoff',
+      context_origin: 'routine_audit_v1',
+      artifact_id: 'art_routine_context',
+      resolved_target_step: 'moisturizer',
+      ingredient_query: 'moisturizer',
+      goal: 'barrier support',
+      primary_target_id: 'routine_minimal_pm_moisturizer_support',
+      ranked_targets: [
+        {
+          target_id: 'routine_minimal_pm_moisturizer_support',
+          ingredient_query: 'moisturizer',
+          resolved_target_step: 'moisturizer',
+          target_role: 'primary',
+        },
+      ],
+    },
+    profile: {
+      skinType: 'dry',
+      sensitivity: 'high',
+      barrierStatus: 'impaired',
+      goals: ['barrier support'],
+    },
+  });
+
+  assert.equal(result?.handled, true);
+  const payload = result?.envelope?.cards?.[0]?.payload;
+  const usage = payload?.recommendation_meta?.analysis_context_usage;
+  assert.equal(observed.payloadBaseMeta?.analysis_context_usage?.context_source_mode, 'analysis_handoff');
+  assert.equal(usage?.analysis_context_available, true);
+  assert.equal(usage?.context_source_mode, 'analysis_handoff');
+  assert.equal(usage?.context_origin, 'routine_audit_v1');
+  assert.equal(usage?.minimum_recommendation_context_satisfied, true);
+  assert.equal(usage?.ranked_target_count, 1);
+  assert.equal(observed.requestedEventData?.sourceDetail, 'analysis_handoff');
+  assert.equal(result?.envelope?.latest_reco_context, undefined);
+  assert.equal(result?.envelope?.session_patch?.latest_reco_context?.source_detail, 'analysis_handoff');
+});
+
 test('beauty chat mainline entry gives rewrite a fresh bounded deadline after slow upstream work', async () => {
   const observed = {};
   const realDateNow = Date.now;
