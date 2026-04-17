@@ -79,7 +79,7 @@ test('concern planner normalizer trusts JSON output selecting ontology roles out
   assert.equal(normalized.selection_owner_state, 'trusted');
   assert.deepEqual(
     normalized.core_roles.map((role) => role.role_id),
-    ['daily_sunscreen_finish_fit', 'lightweight_moisturizer'],
+    ['daily_sunscreen_finish_fit', 'layering_compatible_moisturizer_or_spf', 'lightweight_moisturizer'],
   );
   assert.equal(normalized.comparison_mode, 'routine_mix');
   assert.deepEqual(normalized.evidence_needed, ['finish', 'layering compatibility', 'price']);
@@ -146,6 +146,66 @@ test('concern planner normalizer repairs makeup layering sunscreen support to fi
       'routine_mix_replaced_generic_sunscreen_with_finish_fit',
       'routine_mix_promoted_finish_fit_sunscreen_primary',
     ],
+  );
+});
+
+test('concern planner normalizer keeps analysis-context makeup layering asks sunscreen-led under barrier stress', () => {
+  const requestText = 'Based on my routine and the skin analysis, what should I buy for daytime so my makeup stops pilling?';
+  const fallbackPlan = buildConcernSemanticPlanFallback({
+    text: requestText,
+    focus: 'sunscreen',
+    profileSummary: {
+      skinType: 'combination',
+      sensitivity: 'high',
+      barrierStatus: 'impaired',
+      goals: ['smooth layering', 'barrier support', 'daily sunscreen'],
+    },
+  });
+  const normalized = normalizeConcernSemanticPlanFromText(
+    JSON.stringify({
+      primary_concern: 'daytime layering with sensitivity',
+      primary_role_id: 'soothing_treatment',
+      support_role_ids: ['layering_compatible_moisturizer_or_spf', 'barrier_moisturizer'],
+      routine_mode: 'routine_mix',
+      comparison_mode: 'routine_mix',
+      query_intents: [
+        {
+          role_id: 'soothing_treatment',
+          intent: 'soothing serum sensitive skin',
+          query_terms: ['soothing serum sensitive skin'],
+        },
+      ],
+      must_satisfy_constraints: ['under makeup', 'daytime wear'],
+      evidence_needed: ['layering compatibility', 'barrier support'],
+      ingredient_hypotheses: ['Panthenol'],
+      product_type_hypotheses: ['serum', 'moisturizer'],
+    }),
+    {
+      fallbackPlan,
+      requestText,
+      focus: 'sunscreen',
+    },
+  );
+
+  assert.deepEqual(
+    normalized.core_roles.map((role) => role.role_id),
+    [
+      'daily_sunscreen_finish_fit',
+      'layering_compatible_moisturizer_or_spf',
+      'barrier_moisturizer',
+    ],
+  );
+  assert.equal(
+    normalized.selection_constraints.plan_invariants_applied.includes('routine_mix_removed_lowest_priority_role_for_finish_fit_coverage'),
+    true,
+  );
+  assert.equal(
+    normalized.selection_constraints.plan_invariants_applied.includes('routine_mix_added_finish_fit_sunscreen'),
+    true,
+  );
+  assert.equal(
+    normalized.selection_constraints.plan_invariants_applied.includes('routine_mix_added_hydrating_barrier_support_for_layering'),
+    true,
   );
 });
 
