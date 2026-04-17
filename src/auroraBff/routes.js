@@ -53722,7 +53722,7 @@ const RECO_ASSISTANT_CONCERN_FAMILY_PATTERNS = Object.freeze([
   ['hydration_barrier', /\b(hydrat(?:e|ing|ion)?|moistur(?:e|ize|izer|izing)?|barrier|dry(?:ness)?|dehydrat(?:ed|ion)?|ceramides?|glycerin|hyaluronic)\b/i],
   ['sunscreen_uv', /\b(spf|sunscreen|sun\s*screen|uv|sun\s+protection|white\s+cast|broad\s+spectrum)\b/i],
   ['sensitivity_redness', /\b(redness|sensitive|sensitized|sooth(?:e|ing)?|calm(?:ing)?|irritat(?:e|ion)|stinging?)\b/i],
-  ['aging_texture', /\b(wrinkles?|fine[-\s]?lines?|aging|anti[-\s]?aging|texture|roughness|retinol|retinoid)\b/i],
+  ['aging_texture', /\b(wrinkles?|fine[-\s]?lines?|aging|anti[-\s]?aging|skin\s+texture|uneven\s+texture|textural|roughness|retinol|retinoid)\b/i],
 ]);
 
 function collectRecoAssistantConcernFamilies(value) {
@@ -55014,7 +55014,7 @@ function assistantTextUsesGenericRoutineWrapup(text) {
 function assistantTextHasUngrammaticalReasonFragment(text) {
   return /\bbecause\s+(?:a|an)\s+[^.!?。！？]{3,120}\b(?:that|with|for)\b/i.test(String(text || ''))
     || /\bbecause\s+best\s+for\b/i.test(String(text || ''))
-    || /\bbecause\s+(?:is|are|was|were|has|have|had|features?|provides?|uses?|contains?|combines?|offers?|supports?|helps?|hydrates?|targets?|addresses?|reduces?|delivers?|gives?|pairs?|layers?|locks?|soothes?|boosts?|protects?|keeps?|works?|functions?|serves?|formulated|designed|made|built)\b/i.test(String(text || ''));
+    || /\bbecause\s+(?:is|are|was|were|has|have|had|features?|frames?|provides?|uses?|contains?|combines?|offers?|supports?|helps?|hydrates?|targets?|addresses?|reduces?|delivers?|gives?|pairs?|layers?|locks?|soothes?|boosts?|protects?|keeps?|works?|functions?|serves?|formulated|designed|made|built)\b/i.test(String(text || ''));
 }
 
 function assistantTextUsesStiffSelectionFraming(text) {
@@ -55593,7 +55593,7 @@ function normalizeRecoAssistantBecauseReasonFragment(reason) {
     return `it is ${text}`;
   }
   if (
-    /^(?:is|are|was|were|has|have|had|features?|provides?|uses?|contains?|combines?|offers?|supports?|helps?|hydrates?|targets?|addresses?|reduces?|delivers?|gives?|pairs?|layers?|locks?|soothes?|boosts?|protects?|keeps?|works?|functions?|serves?)\b/i.test(text)
+    /^(?:is|are|was|were|has|have|had|features?|frames?|provides?|uses?|contains?|combines?|offers?|supports?|helps?|hydrates?|targets?|addresses?|reduces?|delivers?|gives?|pairs?|layers?|locks?|soothes?|boosts?|protects?|keeps?|works?|functions?|serves?)\b/i.test(text)
   ) {
     return `it ${text}`;
   }
@@ -56109,6 +56109,10 @@ async function maybeRewriteRecoAssistantTextWithLlm({
     };
 
     const preferCompactPrimaryAttempt = recommendations.length <= 3;
+    const useStructuredReasonPrimaryAttempt =
+      preferCompactPrimaryAttempt
+      && recommendations.length <= 2
+      && selectedProductRoleMix !== 'same_role_comparison';
     const minimumCompactRetryWindowMs = 1400;
     const compactOutputTokenCap = selectedProductRoleMix === 'same_role_comparison' ? 260 : 220;
     const preferredPrimaryTimeoutCapMs =
@@ -56129,9 +56133,13 @@ async function maybeRewriteRecoAssistantTextWithLlm({
     const firstAttempt = await executeRewriteAttempt({
       timeoutCapMs: firstAttemptTimeoutCapMs,
       compactContext: preferCompactPrimaryAttempt,
-      maxOutputTokensOverride: preferCompactPrimaryAttempt
-        ? Math.min(compactOutputTokenCap, AURORA_RECO_ASSISTANT_REWRITE_MAX_OUTPUT_TOKENS)
-        : null,
+      strictSelectedOnlyContext: useStructuredReasonPrimaryAttempt,
+      structuredReasonOnly: useStructuredReasonPrimaryAttempt,
+      maxOutputTokensOverride: useStructuredReasonPrimaryAttempt
+        ? Math.min(140, AURORA_RECO_ASSISTANT_REWRITE_MAX_OUTPUT_TOKENS)
+        : preferCompactPrimaryAttempt
+          ? Math.min(compactOutputTokenCap, AURORA_RECO_ASSISTANT_REWRITE_MAX_OUTPUT_TOKENS)
+          : null,
     });
     if (firstAttempt.ok) {
       return finishRewrite({
@@ -92493,6 +92501,7 @@ const __internal = {
   buildPayloadBoundRecoAssistantText,
   buildRecoAssistantRewritePrompt,
   validateRecoAssistantRewriteCandidate,
+  renderRecoAssistantStructuredReasonRewrite,
   enforceRecoAssistantRewriteAttemptDeadline,
   maybeRewriteRecoAssistantTextWithLlm,
   normalizeRecoAssistantReasonFragment,
