@@ -1986,8 +1986,23 @@ test('handoffRecoToBeautyMainlineSearch prioritizes lightweight layering queries
             rank: 60,
             preferred_step: 'moisturizer',
             label: 'Layering-compatible moisturizer or SPF',
-            query_terms: ['gel cream moisturizer', 'lightweight moisturizer', 'makeup layering'],
-            fit_keywords: ['lightweight', 'layering', 'non-greasy', 'makeup'],
+            query_terms: [
+              'lightweight moisturizer under makeup',
+              'non pilling moisturizer',
+              'sunscreen under makeup',
+              'gel cream under makeup',
+              'makeup compatible spf',
+            ],
+            fit_keywords: [
+              'under makeup',
+              'non-pilling',
+              'pilling',
+              'layering',
+              'lightweight',
+              'gel cream',
+              'makeup compatible',
+              'smooth finish',
+            ],
           },
           {
             role_id: 'hydrating_serum_or_essence',
@@ -2023,6 +2038,8 @@ test('handoffRecoToBeautyMainlineSearch prioritizes lightweight layering queries
     assert.deepEqual(primaryExternalQueries.slice(0, 2), ['gel cream moisturizer', 'lightweight moisturizer']);
     assert.equal(primaryInternalQueries.includes('moisturizer'), false);
     assert.equal(primaryExternalQueries.includes('moisturizer'), false);
+    assert.equal(primaryInternalQueries.includes('makeup layering moisturizer'), false);
+    assert.equal(primaryExternalQueries.includes('makeup layering moisturizer'), false);
     assert.equal(internalCaptured.includes('lightweight moisturizer'), true);
     assert.equal(
       externalCaptured.some((row) => row?.query === 'lightweight moisturizer' && row?.roleId === 'layering_compatible_moisturizer_or_spf'),
