@@ -2329,6 +2329,124 @@ test('reco assistant rewrite uses structured reason retry for repeated buy frami
   }
 });
 
+test('reco assistant structured retry keeps support reasons on support roles', async () => {
+  const prevMock = process.env.AURORA_BFF_USE_MOCK;
+  const prevProvider = process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
+  const prevModel = process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
+  process.env.AURORA_BFF_USE_MOCK = 'false';
+  process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER = 'gemini';
+  process.env.AURORA_PRODUCT_INTEL_LLM_MODEL = 'gemini-3-flash-preview';
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const payload = __internal.applyRecoContentSpineToPayload(
+      {
+        recommendations: [
+          {
+            product_id: 'spf_pick_1',
+            display_name: 'Daily Layering SPF 50',
+            brand: 'Murad',
+            category: 'Sunscreen',
+            short_description: 'A daily SPF 50 moisturizer format that can reduce heavy layering.',
+            matched_role_id: 'daily_sunscreen_finish_fit',
+            matched_role_label: 'Daily sunscreen with finish fit',
+          },
+          {
+            product_id: 'serum_pick_1',
+            display_name: 'Truth Serum',
+            brand: 'Olehenriksen',
+            category: 'Serum',
+            short_description: 'A lightweight hydrating serum to use before SPF.',
+            matched_role_id: 'hydrating_serum_or_essence',
+            matched_role_label: 'Hydrating serum or essence',
+          },
+        ],
+        roles: [
+          {
+            role_id: 'daily_sunscreen_finish_fit',
+            label: 'Daily sunscreen with finish fit',
+            preferred_step: 'sunscreen',
+          },
+          {
+            role_id: 'hydrating_serum_or_essence',
+            label: 'Hydrating serum or essence',
+            preferred_step: 'serum',
+          },
+        ],
+        recommendation_meta: {
+          resolved_target_step: 'sunscreen',
+          mainline_status: 'grounded_success',
+        },
+      },
+      {
+        ingredient_query: 'Daily sunscreen with finish fit',
+        resolved_target_step: 'sunscreen',
+        primary_target_id: 'daily_sunscreen_finish_fit',
+        ranked_targets: [
+          {
+            target_id: 'daily_sunscreen_finish_fit',
+            ingredient_query: 'Daily sunscreen with finish fit',
+            resolved_target_step: 'sunscreen',
+          },
+          {
+            target_id: 'hydrating_serum_or_essence',
+            ingredient_query: 'Hydrating serum or essence',
+            resolved_target_step: 'serum',
+          },
+        ],
+        selected_target_ids: ['daily_sunscreen_finish_fit', 'hydrating_serum_or_essence'],
+      },
+    );
+    let callCount = 0;
+    __internal.__setCallGeminiJsonObjectForTest(async () => {
+      callCount += 1;
+      if (callCount === 1) {
+        return {
+          ok: true,
+          json: {
+            assistant_text:
+              'Daily Layering SPF 50 is the most direct fit because it simplifies the morning SPF step. Together these different steps support your routine.',
+          },
+          parse_status: 'parsed',
+          provider: 'gemini',
+          effective_model: 'gemini-3-flash-preview',
+        };
+      }
+      return {
+        ok: true,
+        json: {
+          lead_reason: 'it provides SPF 50 protection in a moisturizer format that reduces heavy layering',
+          support_reasons: ['it directly fits the daily sunscreen with finish fit request'],
+        },
+        parse_status: 'parsed',
+        provider: 'gemini',
+        effective_model: 'gemini-3-flash-preview',
+      };
+    });
+
+    const rewrite = await __internal.maybeRewriteRecoAssistantTextWithLlm({
+      payload,
+      language: 'EN',
+      profile: { skinType: 'combination', goals: ['makeup layering'] },
+      userRequestText: 'My daytime routine pills under makeup. What product should I use?',
+      allowLockedSelectionRewrite: true,
+    });
+
+    assert.equal(callCount, 2);
+    assert.equal(rewrite.llm_used, true);
+    assert.doesNotMatch(String(rewrite.text || ''), /Truth Serum[^.]+directly fits the daily sunscreen/i);
+    assert.match(String(rewrite.text || ''), /Truth Serum covers the serum step because it is a lightweight hydrating serum to use before SPF/i);
+  } finally {
+    __internal.__resetCallGeminiJsonObjectForTest();
+    if (prevMock === undefined) delete process.env.AURORA_BFF_USE_MOCK;
+    else process.env.AURORA_BFF_USE_MOCK = prevMock;
+    if (prevProvider === undefined) delete process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
+    else process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER = prevProvider;
+    if (prevModel === undefined) delete process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
+    else process.env.AURORA_PRODUCT_INTEL_LLM_MODEL = prevModel;
+    delete require.cache[moduleId];
+  }
+});
+
 test('reco assistant rewrite retries gemini timeout with structured reason prompt context', async () => {
   const prevMock = process.env.AURORA_BFF_USE_MOCK;
   const prevProvider = process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;

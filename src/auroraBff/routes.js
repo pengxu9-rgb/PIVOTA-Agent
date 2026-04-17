@@ -55494,13 +55494,40 @@ function buildRecoAssistantStructuredReasonFallback(detail = {}, {
   return 'it matches the selected card evidence';
 }
 
+function buildRecoAssistantSupportTargetLabel(detail = {}, fallbackTargetLabel = '') {
+  return pickFirstTrimmed(
+    detail?.matched_role_label,
+    detail?.preferred_step,
+    fallbackTargetLabel,
+  );
+}
+
+function recoAssistantStructuredSupportReasonMisusesPrimaryTarget(reason = '', {
+  detail = null,
+  primaryTargetLabel = '',
+} = {}) {
+  const text = normalizeSemanticAuditText(reason);
+  if (!text) return false;
+  if (!/\b(?:directly fits|fits the|matches the|aligns to|is for)\b/i.test(String(reason || ''))) return false;
+  const supportLabel = normalizeSemanticAuditText(buildRecoAssistantSupportTargetLabel(detail, ''));
+  const primaryLabel = normalizeSemanticAuditText(primaryTargetLabel);
+  if (!primaryLabel || !supportLabel || primaryLabel === supportLabel) return false;
+  const primaryTokens = tokenizeSurfacingSearchText(primaryLabel, { max: 8, dropStopwords: true })
+    .filter((token) => String(token || '').length >= 4);
+  const supportTokens = tokenizeSurfacingSearchText(supportLabel, { max: 8, dropStopwords: true })
+    .filter((token) => String(token || '').length >= 4);
+  const mentionsPrimary = primaryTokens.some((token) => text.includes(String(token || '').toLowerCase()));
+  const mentionsSupport = supportTokens.some((token) => text.includes(String(token || '').toLowerCase()));
+  return mentionsPrimary && !mentionsSupport;
+}
+
 function normalizeRecoAssistantBecauseReasonFragment(reason) {
   const text = String(reason || '').replace(/\s+/g, ' ').trim();
   if (!text) return '';
   if (/^best\s+for\s+/i.test(text)) {
     return text.replace(/^best\s+for\s+/i, 'it is positioned for ');
   }
-  if (/^(?:a|an)\s+[^.!?。！？]{3,120}\b(?:that|with|for)\b/i.test(text)) {
+  if (/^(?:a|an)\s+[^.!?。！？]{3,120}\b(?:that|with|for|to)\b/i.test(text)) {
     return `it is ${text}`;
   }
   if (
@@ -55633,22 +55660,34 @@ function renderRecoAssistantStructuredReasonRewrite({
   const supportReasonValues = Array.isArray(structuredReason?.support_reasons)
     ? structuredReason.support_reasons
     : [];
-  const supportReasons = selectedNames.slice(1).map((name, index) => normalizeRecoAssistantBecauseReasonFragment(
-    normalizeRecoAssistantReasonFragment(
-      supportReasonValues[index],
-      {
-        selectedNames,
-        forbiddenNames,
-        forbiddenAliases,
-        fallback: buildRecoAssistantStructuredReasonFallback(details[index + 1], {
-          targetLabel,
+  const supportReasons = selectedNames.slice(1).map((name, index) => {
+    const detail = details[index + 1] || {};
+    const supportTargetLabel = buildRecoAssistantSupportTargetLabel(detail, targetLabel);
+    const fallbackReason = buildRecoAssistantStructuredReasonFallback(detail, {
+      targetLabel: supportTargetLabel,
+      selectedNames,
+      forbiddenNames,
+      forbiddenAliases,
+    });
+    const candidateReason = normalizeRecoAssistantBecauseReasonFragment(
+      normalizeRecoAssistantReasonFragment(
+        supportReasonValues[index],
+        {
           selectedNames,
           forbiddenNames,
           forbiddenAliases,
-        }),
-      },
-    ),
-  ));
+          fallback: fallbackReason,
+        },
+      ),
+    );
+    if (recoAssistantStructuredSupportReasonMisusesPrimaryTarget(candidateReason, {
+      detail,
+      primaryTargetLabel: targetLabel,
+    })) {
+      return normalizeRecoAssistantBecauseReasonFragment(fallbackReason);
+    }
+    return candidateReason;
+  });
   if (language === 'CN') {
     const leadSentence =
       requestMode === 'use_first'
