@@ -222,6 +222,56 @@ test('framework recall planner keeps barrier support queries role-specific', () 
   assert.equal(barrierQueries.includes('lightweight moisturizer'), false);
 });
 
+test('framework recall planner does not let global makeup-layering context override barrier support queries', () => {
+  const targetContext = {
+    primary_role_id: 'daily_sunscreen_finish_fit',
+    framework_summary: {
+      concern_text: 'daytime products pill under makeup with impaired barrier',
+    },
+    framework_roles: [
+      {
+        role_id: 'daily_sunscreen_finish_fit',
+        rank: 30,
+        preferred_step: 'sunscreen',
+        label: 'Daily sunscreen finish fit',
+        query_terms: ['sunscreen', 'spf fluid oily skin'],
+        fit_keywords: ['spf', 'lightweight finish', 'makeup friendly'],
+      },
+      {
+        role_id: 'layering_compatible_moisturizer_or_spf',
+        rank: 60,
+        preferred_step: 'moisturizer',
+        label: 'Layering-compatible moisturizer or SPF',
+        query_terms: ['gel cream moisturizer', 'lightweight moisturizer', 'makeup layering'],
+        fit_keywords: ['lightweight', 'layering', 'non-greasy', 'makeup'],
+      },
+      {
+        role_id: 'barrier_moisturizer',
+        rank: 41,
+        preferred_step: 'moisturizer',
+        label: 'Barrier-support moisturizer',
+        query_terms: ['barrier repair moisturizer', 'ceramide cream sensitive skin', 'soothing moisturizer'],
+        fit_keywords: ['barrier repair', 'ceramide', 'soothing', 'sensitive skin'],
+      },
+    ],
+  };
+
+  const plan = __internal.buildRecoRecallPlan({
+    mode: 'framework_generic',
+    targetContext,
+  });
+  const layeringStage = plan.stages.find((stage) =>
+    stage?.stage_id === 'framework_stage_c_support_layering_compatible_moisturizer_or_spf'
+  );
+  const barrierStage = plan.stages.find((stage) => stage?.stage_id === 'framework_stage_c_support_barrier_moisturizer');
+  const layeringQueries = (layeringStage?.entries || []).map((entry) => entry.query);
+  const barrierQueries = (barrierStage?.entries || []).map((entry) => entry.query);
+
+  assert.deepEqual(layeringQueries.slice(0, 2), ['gel cream moisturizer', 'lightweight moisturizer']);
+  assert.deepEqual(barrierQueries.slice(0, 2), ['barrier repair moisturizer', 'ceramide cream sensitive skin']);
+  assert.equal(barrierQueries.includes('gel cream moisturizer'), false);
+});
+
 test('framework recall planner preserves semantic support role order after primary promotion', () => {
   const targetContext = {
     primary_role_id: 'soothing_treatment',
