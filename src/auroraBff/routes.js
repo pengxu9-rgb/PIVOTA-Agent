@@ -21826,6 +21826,38 @@ function compareConcernFrameworkCandidates(left, right) {
   return leftName.localeCompare(rightName);
 }
 
+function shouldPreserveConcernFrameworkRetrievalRoleScore(roleScore = null) {
+  const scoreObj = isPlainObject(roleScore) ? roleScore : null;
+  if (!scoreObj || scoreObj.retrieval_role_matched !== true) return false;
+  if (
+    scoreObj.low_irritation_active_mismatch_applied === true
+    || scoreObj.eye_area_role_mismatch_applied === true
+    || scoreObj.lightweight_texture_mismatch_applied === true
+    || scoreObj.sunscreen_coverage_tint_mismatch_applied === true
+  ) {
+    return false;
+  }
+  const score = Number(scoreObj.score || 0);
+  const preferredStep = normalizeRecoTargetStep(scoreObj.role?.preferred_step);
+  const semanticFit = scoreObj.semantic_fit_matched === true || scoreObj.role_semantic_fit_matched === true;
+  if (score >= 0.58 && semanticFit) return true;
+  if (
+    preferredStep
+    && preferredStep !== 'treatment'
+    && preferredStep !== 'serum'
+    && scoreObj.exact_step === true
+    && score >= 0.52
+    && (
+      semanticFit
+      || scoreObj.support_step_rescue_applied === true
+      || Number(scoreObj.product_type_matches || 0) > 0
+    )
+  ) {
+    return true;
+  }
+  return false;
+}
+
 function isConcernRoleStepCompatible(candidateStep, role = null) {
   const normalizedCandidateStep = normalizeRecoTargetStep(candidateStep);
   if (!normalizedCandidateStep) return false;
@@ -22275,6 +22307,13 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
     const stepResolution = normalizeCandidateStep(row, { targetContext });
     const candidateStep = normalizeRecoTargetStep(stepResolution?.candidate_step);
     let bestRoleScore = null;
+    let retrievalRoleScore = null;
+    const retrievalRoleId = pickFirstTrimmed(
+      row.retrieval_role_id,
+      row.retrievalRoleId,
+      row.role_id,
+      row.roleId,
+    );
     for (const role of roles) {
       const nextScore = scoreConcernRoleCandidate(row, role, { candidateStep, candidateText, targetContext });
       if (!nextScore) continue;
@@ -22283,8 +22322,18 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
         ...nextScore,
         score: Number(adjustedScore.toFixed(4)),
       };
+      const roleId = String(role?.role_id || '').trim();
+      if (retrievalRoleId && roleId && retrievalRoleId === roleId) {
+        retrievalRoleScore = normalizedNext;
+      }
       if (!bestRoleScore || normalizedNext.score > bestRoleScore.score) bestRoleScore = normalizedNext;
     }
+    const retrievalRoleOwnerPreserved = Boolean(
+      retrievalRoleScore
+      && retrievalRoleScore !== bestRoleScore
+      && shouldPreserveConcernFrameworkRetrievalRoleScore(retrievalRoleScore),
+    );
+    if (retrievalRoleOwnerPreserved) bestRoleScore = retrievalRoleScore;
 
     if (!bestRoleScore || !bestRoleScore.role) {
       hardReject.push({ product: row, reason: 'framework_role_unmatched' });
@@ -22307,6 +22356,7 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
       coarse_offer_type: String(coarseAuthority?.offer_type || '').trim() || null,
       coarse_target_relevance_class: String(coarseAuthority?.target_relevance_class || '').trim() || null,
       coarse_noise_reason: String(coarseAuthority?.noise_reason || '').trim() || null,
+      framework_retrieval_role_owner_preserved: retrievalRoleOwnerPreserved,
     };
     if (isConcernFrameworkRefillOnlyCandidate(row)) {
       hardReject.push({
@@ -22367,6 +22417,7 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
       candidate_step_confidence: stepResolution?.candidate_step_confidence || 'none',
       concern_scope_classification: scopeClassification.classification,
       concern_scope_penalty: Number(scopeClassification.penalty || 0),
+      framework_retrieval_role_owner_preserved: retrievalRoleOwnerPreserved,
     };
     rolePoolStats[annotated.matched_role_id] = {
       viable_count: Number(rolePoolStats[annotated.matched_role_id]?.viable_count || 0),

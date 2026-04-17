@@ -8022,6 +8022,103 @@ test('__internal: framework pool prefers lightweight layering moisturizer eviden
   );
 });
 
+test('__internal: framework pool preserves a viable retrieved layering role when barrier context is also present', () => {
+  const { __internal } = loadRoutesFresh();
+  const targetContext = {
+    framework_id: 'recofw_test_makeup_layering_with_barrier_context',
+    primary_role_id: 'daily_sunscreen_finish_fit',
+    routine_mode: 'routine_mix',
+    semantic_plan: {
+      primary_concern: 'daytime routine under makeup with impaired barrier',
+      routine_mode: 'routine_mix',
+      comparison_mode: 'routine_mix',
+      must_satisfy_constraints: ['under makeup', 'avoid pilling', 'barrier support'],
+    },
+    framework_roles: [
+      {
+        role_id: 'daily_sunscreen_finish_fit',
+        rank: 30,
+        preferred_step: 'sunscreen',
+        label: 'Daily sunscreen finish fit',
+        query_terms: ['sunscreen under makeup', 'lightweight sunscreen'],
+        fit_keywords: ['spf', 'uv filters', 'lightweight', 'under makeup'],
+        ingredient_hypotheses: ['UV filters'],
+        product_type_hypotheses: ['sunscreen'],
+      },
+      {
+        role_id: 'layering_compatible_moisturizer_or_spf',
+        rank: 60,
+        preferred_step: 'moisturizer',
+        label: 'Layering-compatible moisturizer or SPF',
+        query_terms: ['gel cream moisturizer', 'lightweight moisturizer', 'makeup layering'],
+        fit_keywords: ['lightweight', 'layering', 'non-greasy', 'makeup'],
+        ingredient_hypotheses: ['Glycerin', 'Panthenol'],
+        product_type_hypotheses: ['moisturizer'],
+      },
+      {
+        role_id: 'barrier_moisturizer',
+        rank: 41,
+        preferred_step: 'moisturizer',
+        label: 'Barrier-support moisturizer',
+        query_terms: ['barrier repair moisturizer', 'ceramide cream sensitive skin', 'soothing moisturizer'],
+        fit_keywords: ['barrier repair', 'ceramide', 'soothing', 'sensitive skin', 'fragrance free'],
+        ingredient_hypotheses: ['Ceramide NP', 'Panthenol', 'Glycerin'],
+        product_type_hypotheses: ['moisturizer'],
+      },
+    ],
+  };
+  const teaTricaBase = {
+    product_id: 'skin1004_teatrica_b5_cream',
+    merchant_id: 'external_seed',
+    brand: 'Skin1004',
+    name: 'Tea-Trica B5 Cream',
+    display_name: 'Skin1004 Tea-Trica B5 Cream',
+    category: 'Face Moisturizer',
+    product_type: 'Moisturizer',
+    retrieval_source: 'external_seed',
+    short_description: 'A lightweight gel cream with panthenol, cica, and ceramide that layers cleanly without a greasy residue.',
+    benefit_tags: ['lightweight hydration', 'non-greasy finish', 'barrier support'],
+    key_features: ['Panthenol', 'Ceramide NP', 'Centella asiatica'],
+  };
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [
+      {
+        product_id: 'murad_finish_fit_spf',
+        merchant_id: 'external_seed',
+        brand: 'Murad',
+        name: 'Superactive Moisturizer SPF 50: Hydrating',
+        display_name: 'Murad Superactive Moisturizer SPF 50: Hydrating',
+        category: 'Sunscreen',
+        product_type: 'Sunscreen',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'daily_sunscreen_finish_fit',
+        retrieval_query: 'sunscreen under makeup',
+        short_description: 'A hydrating SPF 50 moisturizer for daily sunscreen wear.',
+      },
+      {
+        ...teaTricaBase,
+        retrieval_role_id: 'layering_compatible_moisturizer_or_spf',
+        retrieval_query: 'gel cream moisturizer',
+      },
+      {
+        ...teaTricaBase,
+        retrieval_role_id: 'barrier_moisturizer',
+        retrieval_query: 'barrier repair moisturizer',
+      },
+    ],
+    { targetContext },
+  );
+
+  assert.equal(state.primary_role_matched, true);
+  assert.equal(state.role_pool_stats.layering_compatible_moisturizer_or_spf.viable_count, 1);
+  assert.deepEqual(
+    state.selected_recommendations.map((row) => row.matched_role_id),
+    ['daily_sunscreen_finish_fit', 'layering_compatible_moisturizer_or_spf'],
+  );
+  const layeringPick = state.selected_recommendations.find((row) => row.product_id === 'skin1004_teatrica_b5_cream');
+  assert.equal(layeringPick?.framework_retrieval_role_owner_preserved, true);
+});
+
 test('__internal: framework pool preserves same product across planned retrieval roles before role-fit', () => {
   const { __internal } = loadRoutesFresh();
   const targetContext = {
