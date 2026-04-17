@@ -8550,6 +8550,12 @@ function buildLocalExternalSeedSupportStageDefinitions({
       stage: stageName,
       score: Number(score || 0),
       cap: Math.max(1, Number(safeLimit) || 1),
+      queryCap: stageName === 'support_category_positive'
+        ? Math.max(
+          Math.max(1, Number(safeLimit) || 1),
+          Math.min(32, Math.max(1, Number(safeLimit) || 1) * 4),
+        )
+        : Math.max(1, Number(safeLimit) || 1),
       buildWhereSql,
       stopAfterAnyMatch: stopAfterAnyMatch === true,
     });
@@ -8627,6 +8633,94 @@ function buildLocalExternalSeedSupportStageDefinitions({
   return stageDefinitions;
 }
 
+function scoreLocalExternalSeedSupportRoleFit(candidate, {
+  query = '',
+  role = null,
+  preferredStep = '',
+} = {}) {
+  const product = isPlainObject(candidate) ? candidate : null;
+  const roleObj = isPlainObject(role) ? role : null;
+  if (!product || !roleObj) return 0;
+  const roleId = String(roleObj?.role_id || '').trim();
+  const targetContext = {
+    framework_id: 'local_external_seed_support_role_rank',
+    primary_role_id: roleId || null,
+    framework_roles: [roleObj],
+  };
+  try {
+    const candidateText = uniqCaseInsensitiveStrings([
+      buildConcernFrameworkCandidateText(product),
+      buildConcernCandidateText(product),
+      buildPurchasableRecoveryCandidateText(product),
+    ], 3).join(' ').trim();
+    const stepResolution = normalizeCandidateStep(product, { targetContext });
+    const candidateStep = normalizeRecoTargetStep(stepResolution?.candidate_step);
+    const roleScore = scoreConcernRoleCandidate(product, roleObj, {
+      candidateStep,
+      candidateText,
+      targetContext,
+    });
+    const preferred = normalizeRecoTargetStep(preferredStep || roleObj?.preferred_step);
+    const coarseAuthority = classifyConcernFrameworkNegativeAuthority(product, roleObj);
+    const roleKeywordHits = countConcernRoleSignalMatches(candidateText, roleObj?.fit_keywords, 4);
+    const roleQueryHits = countConcernRoleSignalMatches(candidateText, roleObj?.query_terms, 3);
+    let score = Number(roleScore?.score || 0);
+    if (roleScore?.role_semantic_fit_matched === true) score += 0.08;
+    if (roleScore?.semantic_fit_matched === true) score += 0.05;
+    score += Math.min(0.16, roleKeywordHits * 0.04);
+    score += Math.min(0.06, roleQueryHits * 0.02);
+    if (preferred && candidateStep === preferred) score += 0.04;
+    if (String(product?.retrieval_match_stage || '').trim() === 'support_category_positive') score += 0.02;
+    score += Math.min(0.06, computePurchasableRecoveryQueryOverlap(
+      product,
+      tokenizePurchasableRecoveryQuery(query),
+    ) * 0.015);
+    if (isConcernFrameworkRefillOnlyCandidate(product)) score -= 0.5;
+    if (isConcernFrameworkUnavailableCandidate(product)) score -= 0.35;
+    if (isConcernFrameworkNegativeAuthority(coarseAuthority)) score -= 0.35;
+    return Number(Math.max(-1, score).toFixed(4));
+  } catch (_) {
+    return 0;
+  }
+}
+
+function rankLocalExternalSeedSupportCandidatesForRole(candidates = [], query = '', {
+  role = null,
+  preferredStep = '',
+} = {}) {
+  const rows = Array.isArray(candidates) ? candidates.filter((item) => isPlainObject(item)) : [];
+  if (rows.length <= 1 || !isPlainObject(role)) return rows.slice();
+  return rows
+    .map((row, index) => {
+      const candidateText = uniqCaseInsensitiveStrings([
+        buildConcernFrameworkCandidateText(row),
+        buildConcernCandidateText(row),
+        buildPurchasableRecoveryCandidateText(row),
+      ], 3).join(' ').trim();
+      return {
+        row,
+        index,
+        roleFitSignalHits: countConcernRoleSignalMatches(candidateText, role?.fit_keywords, 5),
+        roleFitScore: scoreLocalExternalSeedSupportRoleFit(row, { query, role, preferredStep }),
+        queryOverlap: computePurchasableRecoveryQueryOverlap(row, tokenizePurchasableRecoveryQuery(query)),
+        surfacingScore: Number(computeExternalSeedSurfacingMatch({ query, candidate: row })?.score || 0),
+      };
+    })
+    .sort((left, right) => {
+      if (left.roleFitSignalHits !== right.roleFitSignalHits) {
+        return right.roleFitSignalHits - left.roleFitSignalHits;
+      }
+      if (left.roleFitScore !== right.roleFitScore) return right.roleFitScore - left.roleFitScore;
+      if (left.surfacingScore !== right.surfacingScore) return right.surfacingScore - left.surfacingScore;
+      if (left.queryOverlap !== right.queryOverlap) return right.queryOverlap - left.queryOverlap;
+      return left.index - right.index;
+    })
+    .map((entry) => ({
+      ...entry.row,
+      local_external_seed_role_fit_score: entry.roleFitScore,
+    }));
+}
+
 async function searchLocalExternalSeedProductsViaSupportStages({
   runQuery,
   q,
@@ -8649,6 +8743,10 @@ async function searchLocalExternalSeedProductsViaSupportStages({
   const stagedRows = [];
   const seenRowKeys = new Set();
   const seenSqlIds = new Set();
+  const workingLimit = Math.max(
+    Math.max(1, Number(safeLimit) || 1),
+    ...stageDefinitions.map((definition) => Math.max(1, Number(definition?.queryCap || definition?.cap || safeLimit) || safeLimit)),
+  );
   const appendRows = (rows = []) => {
     for (const row of Array.isArray(rows) ? rows : []) {
       const rowKey = buildLocalExternalSeedStageRowKey(row);
@@ -8657,7 +8755,7 @@ async function searchLocalExternalSeedProductsViaSupportStages({
       const sqlId = String(row?.id ?? '').trim();
       if (/^\d+$/.test(sqlId)) seenSqlIds.add(sqlId);
       stagedRows.push(row);
-      if (stagedRows.length >= safeLimit) break;
+      if (stagedRows.length >= workingLimit) break;
     }
   };
 
@@ -8670,7 +8768,7 @@ async function searchLocalExternalSeedProductsViaSupportStages({
   }
   const stageDebug = [];
   for (const definition of stageDefinitions) {
-    if (stagedRows.length >= safeLimit) break;
+    if (stagedRows.length >= workingLimit) break;
     const params = [market, tool];
     const bind = (value) => {
       params.push(value);
@@ -8695,7 +8793,8 @@ async function searchLocalExternalSeedProductsViaSupportStages({
         AND id <> ALL(${bind(Array.from(seenSqlIds))}::bigint[])
       `;
     }
-    const limitBind = bind(Math.max(1, Number(definition.cap || safeLimit) || safeLimit));
+    const queryCap = Math.max(1, Number(definition.queryCap || definition.cap || safeLimit) || safeLimit);
+    const limitBind = bind(queryCap);
     sql += `
       ORDER BY match_score DESC, updated_at DESC NULLS LAST, created_at DESC NULLS LAST, id DESC
       LIMIT ${limitBind}
@@ -8711,6 +8810,8 @@ async function searchLocalExternalSeedProductsViaSupportStages({
       cumulative_row_count: stagedRows.length,
       duration_ms: Math.max(0, Date.now() - startedAt),
       cap: definition.cap,
+      ...(queryCap !== Number(definition.cap || safeLimit) ? { query_cap: queryCap } : {}),
+      ...(stagedRows.length > safeLimit ? { pre_rank_row_count: stagedRows.length } : {}),
       sequential_query: true,
       ...(definition.stopAfterAnyMatch ? { stop_after_any_match: true } : {}),
     });
@@ -8718,7 +8819,7 @@ async function searchLocalExternalSeedProductsViaSupportStages({
   }
 
   return {
-    rows: stagedRows.slice(0, safeLimit),
+    rows: stagedRows,
     stageDebug,
     categoryTerms,
   };
@@ -8917,11 +9018,20 @@ async function searchLocalExternalSeedProducts({
         tool,
       });
       const rows = Array.isArray(staged?.rows) ? staged.rows : [];
-      const ranked = rankPurchasableRecoveryCandidates(
-        rows
-          .map((row) => buildLocalExternalSeedSurfacingCandidate(row))
-          .filter(Boolean),
+      const surfacingCandidates = rows
+        .map((row) => buildLocalExternalSeedSurfacingCandidate(row))
+        .filter(Boolean)
+        .map((candidate) => ({
+          ...candidate,
+          ...(pickFirstTrimmed(role?.role_id)
+            ? { retrieval_role_id: pickFirstTrimmed(role.role_id) }
+            : {}),
+          ...(preferredStep ? { retrieval_step: preferredStep } : {}),
+        }));
+      const ranked = rankLocalExternalSeedSupportCandidatesForRole(
+        rankPurchasableRecoveryCandidates(surfacingCandidates, q),
         q,
+        { role, preferredStep },
       ).slice(0, safeLimit);
       return {
         ok: ranked.length > 0,
@@ -53804,7 +53914,8 @@ function buildRecoAssistantPriceNote(detail = {}, {
   const pricePosition = pickFirstTrimmed(item.price_position);
   if (!priceLabel) return null;
   if (selectedProductRoleMix === 'routine_mix' && item.role_scope === 'primary') {
-    if (pricePosition === 'lowest' || pricePosition === 'lower') return `${priceLabel} and the lowest-priced lead step`;
+    // Routine rows are different steps, not same-slot alternatives; avoid
+    // turning a lead-step price into a misleading horizontal value claim.
     return `${priceLabel} for the lead step`;
   }
   if (selectedProductRoleMix === 'same_role_comparison') {
@@ -54152,6 +54263,7 @@ function buildCompactRecoAssistantPromptLines({
     lines.push('Treat the products as different routine steps, not interchangeable substitutes.');
     lines.push('Name the lead product first, then explain each support step briefly.');
     lines.push('For routine_mix, the lead sentence must include at least one non-price evidence point; use price only as a second dimension.');
+    lines.push('For routine_mix, do not use cheapest, lower-priced, best-value, affordable, or ROI comparison language across different steps; only state listed prices as per-step cost when useful.');
     lines.push('For routine_mix, each support product needs its own reason_points-based explanation; do not spend the final sentence on a generic routine promise.');
     lines.push('Use at most 3 sentences.');
   }
@@ -54194,6 +54306,7 @@ function buildStructuredRecoAssistantReasonPromptLines({
   }
   if (selectedProductRoleMix === 'routine_mix') {
     lines.push('For routine_mix, support_reasons should explain each remaining product as a separate routine step, not an interchangeable substitute.');
+    lines.push('For routine_mix, do not write cheaper/lower-priced/affordable/best-value/ROI comparisons across different routine steps.');
   } else if (selectedProductRoleMix === 'same_role_comparison') {
     lines.push('For same_role_comparison, support_reasons should explain same-slot tradeoffs using only available evidence.');
   } else {
@@ -54221,6 +54334,9 @@ function describeRecoAssistantRewriteFailureReason(reason) {
   }
   if (normalized === 'rewrite_generic_routine_wrapup') {
     return 'Do not end with a generic routine wrap-up. Use the last sentence for a concrete step reason, tradeoff, or buy-now guidance.';
+  }
+  if (normalized === 'rewrite_routine_cross_role_price_comparison') {
+    return 'Do not compare affordability, best value, or ROI across different routine steps. State prices only as per-step costs unless the products are same-role alternatives.';
   }
   if (normalized === 'rewrite_ungrammatical_reason_fragment') {
     return 'Fix ungrammatical reason fragments such as "because a serum..." by writing "because it is..." or using an active verb.';
@@ -54639,6 +54755,7 @@ function buildRecoAssistantRewritePrompt({
       'If selected_product_role_mix is "same_role_comparison", compare lower-priced versus higher-priced options only inside the same role when price_order_summary supports it.',
       'If selected_product_role_mix is "routine_mix", present a basic routine by role or step, and do not imply products from different roles are interchangeable.',
       'If selected_product_role_mix is "routine_mix", use selected_product_details.role_scope, matched_role_label, and preferred_step to label what each product is doing in the routine.',
+      'If selected_product_role_mix is "routine_mix", do not call one product the cheapest, most affordable, lower-priced, best value, or better ROI versus another selected product; they are different steps.',
       'For multiple selected products, choose one lead product when the context supports it, then use compare_highlights or pivota_insights to explain tradeoffs.',
       'For routine_mix buy answers, explain the lead product with at least two available dimensions from Context: role match, formula/ingredient/texture evidence, and price/value.',
       'Use assistant_write_plan.lead_product.must_use_reason_points as the preferred reason list for the lead recommendation when available.',
@@ -54650,9 +54767,10 @@ function buildRecoAssistantRewritePrompt({
       'If selected_product_details.reviewed_insight_available is false for a product, treat why_this_one, key_features, best_for, and description_snippet as product-record evidence only; do not imply independent review, clinical, or community proof.',
       'If every selected_product_details.reviewed_insight_available value is false, do not use "clinically proven", "clinically shown", "dermatologist recommended", review/social-proof, viral, or community-favorite language even if raw product copy contains it.',
       'Do not discuss alternatives/dupes pros and cons unless alternatives_count is greater than 0 or compare_highlights/pivota_insights provide explicit tradeoff evidence.',
-      'If known_price_count is 2 or more, compare price/value or ROI in plain shopper terms using only listed prices; do not compute per-use ROI, percentages, or size-normalized value unless Context provides size and usage data.',
+      'If known_price_count is 2 or more and selected_product_role_mix is "same_role_comparison", compare price/value or ROI in plain shopper terms using only listed prices; do not compute per-use ROI, percentages, or size-normalized value unless Context provides size and usage data.',
+      'If known_price_count is 2 or more and selected_product_role_mix is "routine_mix", prices may be stated as per-step costs only; do not compare affordability across different routine roles.',
       'Price may support a recommendation, but price alone is not enough; pair it with at least one concrete fit, formula, texture, ingredient, or use-case reason from Context.',
-      'Use price_order_summary and selected_product_details.price_position to explain lower-cost first buys versus higher-cost support steps or upgrades when Context supports that framing.',
+      'Use price_order_summary and selected_product_details.price_position only for same-role comparisons; routine_mix should not use cross-role lower-cost or higher-cost framing.',
       'Do not open with "start with" unless request_mode is "use_first".',
       'If request_mode is "use_first", use starting-point advice tone.',
       'If request_mode is "use_first" and there is one selected product with no secondary targets, use exactly 2 sentences.',
@@ -54907,6 +55025,12 @@ function assistantTextUsesSingleProductRoutineFraming(text) {
   );
 }
 
+function assistantTextUsesRoutineCrossRolePriceComparison(text) {
+  return /\b(?:most\s+affordable|more\s+affordable|least\s+expensive|cheapest|lowest[-\s]?priced|lower[-\s]?priced|lower[-\s]?cost|best[-\s]?value|better[-\s]?value|value\s+pick|budget[-\s]?(?:friendly\s+)?(?:pick|option)|roi|return\s+on\s+investment)\b/i.test(
+    String(text || ''),
+  );
+}
+
 function assistantTextUsesTemplatedRoutineBridge(text) {
   return /\bto build out a full routine\b/i.test(String(text || ''));
 }
@@ -55080,6 +55204,9 @@ function validateRecoAssistantRewriteCandidate({
   const usesGenericRoutineWrapup =
     selectedProductRoutineMix
     && assistantTextUsesGenericRoutineWrapup(text);
+  const usesRoutineCrossRolePriceComparison =
+    selectedProductRoutineMix
+    && assistantTextUsesRoutineCrossRolePriceComparison(text);
   const usesUngrammaticalReasonFragment = assistantTextHasUngrammaticalReasonFragment(text);
   const usesTemplatedRoutineBridge =
     selectedProductRoutineMix
@@ -55118,6 +55245,7 @@ function validateRecoAssistantRewriteCandidate({
     || usesUnreviewedProofClaim
     || usesSingleProductRoutineFraming
     || usesGenericRoutineWrapup
+    || usesRoutineCrossRolePriceComparison
     || usesUngrammaticalReasonFragment
     || usesOffTargetConcernClaim
   ) {
@@ -55131,6 +55259,7 @@ function validateRecoAssistantRewriteCandidate({
     if (usesUnreviewedProofClaim) return { ok: false, reason: 'rewrite_unreviewed_proof_claim' };
     if (usesSingleProductRoutineFraming) return { ok: false, reason: 'rewrite_single_product_routine_framing' };
     if (usesGenericRoutineWrapup) return { ok: false, reason: 'rewrite_generic_routine_wrapup' };
+    if (usesRoutineCrossRolePriceComparison) return { ok: false, reason: 'rewrite_routine_cross_role_price_comparison' };
     if (usesUngrammaticalReasonFragment) return { ok: false, reason: 'rewrite_ungrammatical_reason_fragment' };
     if (usesOffTargetConcernClaim) return { ok: false, reason: 'rewrite_off_target_concern_claim' };
     return { ok: false, reason: 'rewrite_failed_alignment_guard' };
@@ -55151,6 +55280,7 @@ function shouldRetryRecoAssistantRewrite(reason) {
     || normalized === 'rewrite_unreviewed_proof_claim'
     || normalized === 'rewrite_single_product_routine_framing'
     || normalized === 'rewrite_generic_routine_wrapup'
+    || normalized === 'rewrite_routine_cross_role_price_comparison'
     || normalized === 'rewrite_ungrammatical_reason_fragment'
     || normalized === 'rewrite_mentions_unselected_product'
     || normalized === 'rewrite_off_target_concern_claim'
@@ -55210,6 +55340,18 @@ function normalizeRecoAssistantReasonFragment(value, {
   let text = String(value || '').trim();
   const directBuyFramingPattern =
     '(?:best\\s+first\\s+buy|top\\s+pick|lead\\s+pick|first\\s+choice|best\\s+choice|strongest\\s+pick|strongest\\s+choice|strongest\\s+option|top\\s+choice|top\\s+option|most\\s+direct\\s+fit)';
+  const initialDirectBuyFramingRegex = new RegExp(`\\b${directBuyFramingPattern}\\b`, 'i');
+  const initialDirectBuyBecauseRegex = new RegExp(`\\b${directBuyFramingPattern}\\b[^.?!]{0,100}\\bbecause\\b`, 'i');
+  if (initialDirectBuyFramingRegex.test(text) && !initialDirectBuyBecauseRegex.test(text)) {
+    const fallbackText = String(fallback || '').trim();
+    if (fallbackText && fallbackText !== value) {
+      return normalizeRecoAssistantReasonFragment(fallbackText, {
+        selectedNames,
+        forbiddenNames,
+        forbiddenAliases,
+      });
+    }
+  }
   text = text
     .replace(/[“”"]/g, '')
     .replace(/\s+/g, ' ')
@@ -55857,6 +55999,7 @@ async function maybeRewriteRecoAssistantTextWithLlm({
       || firstAttemptReason === 'rewrite_off_target_concern_claim'
       || firstAttemptReason === 'rewrite_buy_lead_not_direct'
       || firstAttemptReason === 'rewrite_generic_routine_wrapup'
+      || firstAttemptReason === 'rewrite_routine_cross_role_price_comparison'
       || firstAttemptReason === 'rewrite_ungrammatical_reason_fragment'
       || firstAttemptReason === 'rewrite_duplicate_best_first_buy'
       || firstAttemptReason === 'gemini_json_timeout'
@@ -55871,6 +56014,7 @@ async function maybeRewriteRecoAssistantTextWithLlm({
       || firstAttemptReason === 'rewrite_templated_routine_bridge'
       || firstAttemptReason === 'rewrite_stiff_selection_framing'
       || firstAttemptReason === 'rewrite_generic_routine_wrapup'
+      || firstAttemptReason === 'rewrite_routine_cross_role_price_comparison'
       || firstAttemptReason === 'gemini_json_timeout'
       || firstAttemptReason === 'parse_truncated_json'
       || firstAttemptReason === 'empty_rewrite';
