@@ -6980,6 +6980,97 @@ test('__internal: reco assistant rewrite guard rejects generic routine wrap-up w
   assert.equal(validation.reason, 'rewrite_generic_routine_wrapup');
 });
 
+test('__internal: reco assistant rewrite guard ignores selected product-name concern words but keeps real off-target claims strict', async () => {
+  const { __internal } = loadRoutesFresh();
+  const payload = {
+    roles: [
+      {
+        role_id: 'daily_sunscreen_finish_fit',
+        label: 'Daily sunscreen with finish fit',
+        why_this_role: 'Make sunscreen the lead role for daytime makeup layering.',
+        preferred_step: 'sunscreen',
+      },
+    ],
+    framework_summary: {
+      concern_text: 'daytime products pill under makeup',
+      primary_role_label: 'Daily sunscreen with finish fit',
+    },
+    recommendations: [
+      {
+        display_name: 'Superactive Moisturizer SPF 50: Brightening',
+        brand: 'Murad',
+        matched_role_id: 'daily_sunscreen_finish_fit',
+      },
+    ],
+  };
+  const baseArgs = {
+    payload,
+    language: 'EN',
+    primaryTarget: {
+      target_id: 'daily_sunscreen_finish_fit',
+      ingredient_query: 'Daily sunscreen with finish fit',
+      resolved_target_step: 'sunscreen',
+    },
+    secondaryTargets: [],
+    names: ['Superactive Moisturizer SPF 50: Brightening'],
+    requestMode: 'use',
+  };
+
+  const valid = __internal.validateRecoAssistantRewriteCandidate({
+    ...baseArgs,
+    candidateText: 'Superactive Moisturizer SPF 50: Brightening is the most practical pick for daily sunscreen with finish fit because it provides SPF 50 protection in a hydrating moisturizer step.',
+  });
+  assert.equal(valid.reason, null);
+
+  const offTarget = __internal.validateRecoAssistantRewriteCandidate({
+    ...baseArgs,
+    candidateText: 'Superactive Moisturizer SPF 50: Brightening is the most practical pick for daily sunscreen with finish fit because it provides SPF 50 protection and brightens dark spots.',
+  });
+  assert.equal(offTarget.reason, 'rewrite_off_target_concern_claim');
+});
+
+test('__internal: reco assistant rewrite normalizes best-for fragments instead of surfacing because-best-for copy', async () => {
+  const { __internal } = loadRoutesFresh();
+
+  assert.equal(
+    __internal.normalizeRecoAssistantReasonFragment('Best for daily UV protection you will actually wear'),
+    'it is positioned for daily UV protection you will actually wear',
+  );
+  assert.equal(
+    __internal.normalizeRecoAssistantReasonFragment('best for lightweight hydration without a greasy finish'),
+    'it is positioned for lightweight hydration without a greasy finish',
+  );
+
+  const validation = __internal.validateRecoAssistantRewriteCandidate({
+    candidateText: 'Superactive Moisturizer SPF 50: Hydrating is the most direct fit for daily sunscreen with finish fit because best for daily UV protection you will actually wear.',
+    payload: {
+      recommendations: [
+        {
+          display_name: 'Superactive Moisturizer SPF 50: Hydrating',
+          matched_role_id: 'daily_sunscreen_finish_fit',
+        },
+      ],
+      roles: [
+        {
+          role_id: 'daily_sunscreen_finish_fit',
+          label: 'Daily sunscreen with finish fit',
+          preferred_step: 'sunscreen',
+        },
+      ],
+    },
+    language: 'EN',
+    primaryTarget: {
+      target_id: 'daily_sunscreen_finish_fit',
+      ingredient_query: 'Daily sunscreen with finish fit',
+      resolved_target_step: 'sunscreen',
+    },
+    secondaryTargets: [],
+    names: ['Superactive Moisturizer SPF 50: Hydrating'],
+    requestMode: 'buy',
+  });
+  assert.equal(validation.reason, 'rewrite_ungrammatical_reason_fragment');
+});
+
 test('__internal: reco assistant rewrite prompt exposes same-role price comparison context', async () => {
   const { __internal } = loadRoutesFresh();
   const prompt = __internal.buildRecoAssistantRewritePrompt({
