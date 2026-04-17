@@ -2447,6 +2447,168 @@ test('reco assistant structured retry keeps support reasons on support roles', a
   }
 });
 
+test('reco assistant structured renderer treats product texture as product evidence', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const payload = __internal.applyRecoContentSpineToPayload(
+      {
+        recommendations: [
+          {
+            product_id: 'spf_pick_1',
+            display_name: 'Superactive Moisturizer SPF 50: Hydrating',
+            brand: 'Murad',
+            category: 'Sunscreen',
+            short_description: 'Daily moisturizer with SPF 50 and a hydration-first angle.',
+            why_this_one: 'Frames this as a moisturizer-and-SPF step rather than a standalone sunscreen texture.',
+            best_for: 'Best for Daily SPF routines',
+            matched_role_id: 'daily_sunscreen_finish_fit',
+            matched_role_label: 'Daily sunscreen with finish fit',
+            preferred_step: 'sunscreen',
+          },
+        ],
+        roles: [
+          {
+            role_id: 'daily_sunscreen_finish_fit',
+            label: 'Daily sunscreen with finish fit',
+            preferred_step: 'sunscreen',
+          },
+        ],
+        recommendation_meta: {
+          resolved_target_step: 'sunscreen',
+          mainline_status: 'grounded_success',
+        },
+      },
+      {
+        ingredient_query: 'Daily sunscreen with finish fit',
+        resolved_target_step: 'sunscreen',
+        primary_target_id: 'daily_sunscreen_finish_fit',
+        ranked_targets: [
+          {
+            target_id: 'daily_sunscreen_finish_fit',
+            ingredient_query: 'Daily sunscreen with finish fit',
+            resolved_target_step: 'sunscreen',
+          },
+        ],
+        selected_target_ids: ['daily_sunscreen_finish_fit'],
+      },
+    );
+    const names = ['Superactive Moisturizer SPF 50: Hydrating'];
+    const primaryTarget = payload.recommendation_meta.ranked_targets[0];
+    const text = __internal.renderRecoAssistantStructuredReasonRewrite({
+      structuredReason: { lead_reason: '', support_reasons: [] },
+      payload,
+      language: 'EN',
+      primaryTarget,
+      names,
+      requestMode: 'buy',
+      selectedProductRoleMix: 'single_product',
+    });
+    const validation = __internal.validateRecoAssistantRewriteCandidate({
+      candidateText: text,
+      payload,
+      language: 'EN',
+      primaryTarget,
+      secondaryTargets: [],
+      names,
+      requestMode: 'buy',
+    });
+
+    assert.match(text, /because it frames this as a moisturizer-and-SPF step rather than a standalone sunscreen texture/i);
+    assert.doesNotMatch(text, /because frames/i);
+    assert.equal(validation.ok, true);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('reco assistant rewrite uses structured primary attempt for compact single-product cases', async () => {
+  const prevMock = process.env.AURORA_BFF_USE_MOCK;
+  const prevProvider = process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
+  const prevModel = process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
+  process.env.AURORA_BFF_USE_MOCK = 'false';
+  process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER = 'gemini';
+  process.env.AURORA_PRODUCT_INTEL_LLM_MODEL = 'gemini-3-flash-preview';
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const payload = __internal.applyRecoContentSpineToPayload(
+      {
+        recommendations: [
+          {
+            product_id: 'spf_pick_1',
+            display_name: 'Daily Layering SPF 50',
+            brand: 'Murad',
+            category: 'Sunscreen',
+            short_description: 'A daily SPF 50 moisturizer format that reduces heavy layering.',
+            matched_role_id: 'daily_sunscreen_finish_fit',
+            matched_role_label: 'Daily sunscreen with finish fit',
+          },
+        ],
+        recommendation_meta: {
+          resolved_target_step: 'sunscreen',
+          mainline_status: 'grounded_success',
+        },
+      },
+      {
+        ingredient_query: 'Daily sunscreen with finish fit',
+        resolved_target_step: 'sunscreen',
+        primary_target_id: 'daily_sunscreen_finish_fit',
+        ranked_targets: [
+          {
+            target_id: 'daily_sunscreen_finish_fit',
+            ingredient_query: 'Daily sunscreen with finish fit',
+            resolved_target_step: 'sunscreen',
+          },
+        ],
+        selected_target_ids: ['daily_sunscreen_finish_fit'],
+      },
+    );
+    const prompts = [];
+    let callCount = 0;
+    __internal.__setCallGeminiJsonObjectForTest(async (args = {}) => {
+      callCount += 1;
+      prompts.push(String(args.userPrompt || ''));
+      return {
+        ok: true,
+        json: {
+          lead_reason: 'it gives SPF 50 coverage in a moisturizer format that reduces heavy morning layering',
+          support_reasons: [],
+        },
+        parse_status: 'parsed',
+        meta: { gate_wait_ms: 0, upstream_ms: 120, total_ms: 120 },
+        provider: 'gemini',
+        effective_model: 'gemini-3-flash-preview',
+      };
+    });
+
+    const rewrite = await __internal.maybeRewriteRecoAssistantTextWithLlm({
+      payload,
+      language: 'EN',
+      profile: { skinType: 'combination', goals: ['makeup layering'] },
+      userRequestText: 'My daytime routine pills under makeup. What sunscreen should I buy?',
+      allowLockedSelectionRewrite: true,
+      deadlineAtMs: Date.now() + 5000,
+    });
+
+    assert.equal(callCount, 1);
+    assert.match(prompts[0], /Do not write the final assistant message/);
+    assert.match(prompts[0], /Schema: \{ "lead_reason": string, "support_reasons": string\[\] \}/);
+    assert.equal(rewrite.llm_used, true);
+    assert.equal(rewrite.attempts?.[0]?.structured_reason_only, true);
+    assert.equal(rewrite.attempts?.[0]?.strict_selected_only_context, true);
+    assert.equal(rewrite.attempts?.[0]?.max_output_tokens, 140);
+    assert.match(rewrite.text, /Daily Layering SPF 50 is the most direct fit/i);
+  } finally {
+    __internal.__resetCallGeminiJsonObjectForTest();
+    if (prevMock === undefined) delete process.env.AURORA_BFF_USE_MOCK;
+    else process.env.AURORA_BFF_USE_MOCK = prevMock;
+    if (prevProvider === undefined) delete process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
+    else process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER = prevProvider;
+    if (prevModel === undefined) delete process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
+    else process.env.AURORA_PRODUCT_INTEL_LLM_MODEL = prevModel;
+    delete require.cache[moduleId];
+  }
+});
+
 test('reco assistant rewrite retries gemini timeout with structured reason prompt context', async () => {
   const prevMock = process.env.AURORA_BFF_USE_MOCK;
   const prevProvider = process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
@@ -2532,13 +2694,14 @@ test('reco assistant rewrite retries gemini timeout with structured reason promp
     assert.equal(callCount, 2);
     assert.equal(rewrite.llm_used, true);
     assert.equal(rewrite.reason, null);
-    assert.ok(maxTokens[0] > 0);
+    assert.equal(maxTokens[0], 140);
     assert.equal(maxTokens[1], 140);
     assert.ok(timeouts[0] > 0 && timeouts[0] < 4500);
     assert.ok(timeouts[1] >= 1400);
     assert.ok(timeouts[1] <= 2400);
     assert.ok(timeouts[1] >= timeouts[0]);
-    assert.match(prompts[0], /"prompt_profile":"compact_timeout_retry"/);
+    assert.match(prompts[0], /"prompt_profile":"strict_selected_only_retry"/);
+    assert.match(prompts[0], /Do not write the final assistant message\./);
     assert.match(prompts[1], /"prompt_profile":"strict_selected_only_retry"/);
     assert.match(prompts[1], /Do not write the final assistant message\./);
     assert.equal(rewrite.attempt_count, 2);
@@ -2547,6 +2710,8 @@ test('reco assistant rewrite retries gemini timeout with structured reason promp
     assert.equal(rewrite.attempts?.[0]?.reason, 'GEMINI_JSON_TIMEOUT');
     assert.equal(rewrite.attempts?.[0]?.timeout_stage, 'upstream');
     assert.equal(rewrite.attempts?.[0]?.compact_context, true);
+    assert.equal(rewrite.attempts?.[0]?.strict_selected_only_context, true);
+    assert.equal(rewrite.attempts?.[0]?.structured_reason_only, true);
     assert.equal(rewrite.attempts?.[0]?.effective_timeout_ms, timeouts[0]);
     assert.equal(rewrite.attempts?.[0]?.max_output_tokens, maxTokens[0]);
     assert.equal(rewrite.attempts?.[0]?.upstream_ms, 1800);
