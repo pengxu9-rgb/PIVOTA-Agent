@@ -51,19 +51,31 @@ function normalizeSupportRoleStep(value = '') {
   return '';
 }
 
-function buildSupportRoleQueryScore(query = '', { step = '', oilySignal = false, barrierSignal = false } = {}) {
+function buildSupportRoleQueryScore(
+  query = '',
+  {
+    step = '',
+    oilySignal = false,
+    barrierSignal = false,
+    layeringSignal = false,
+  } = {},
+) {
   const normalized = normalizeSupportRoleQueryToken(query).toLowerCase();
   if (!normalized) return 0;
   let score = 0;
   if (step === 'moisturizer') {
     if (/\b(moisturi[sz]er|cream|gel cream|lotion|emulsion|water cream|water gel)\b/.test(normalized)) score += 3;
     if (/\b(lightweight|oil free|oil-free|gel cream|water cream|water gel|breathable|non-greasy|non greasy)\b/.test(normalized)) score += 2;
+    if (layeringSignal && /\b(layering|makeup|under makeup|pilling)\b/.test(normalized)) score += 2.6;
     if (barrierSignal && /\b(barrier|repair|ceramide|ceramides|sensitive|soothing|fragrance free)\b/.test(normalized)) score += 3;
     if (/\boily skin\b/.test(normalized)) score += 2;
     if (/^lightweight moisturizer oily skin$/.test(normalized)) score += 3;
     if (/^oil free moisturizer$/.test(normalized)) score += 2.4;
     if (/^gel cream moisturizer$/.test(normalized)) score += 8;
-    if (/^moisturizer$/.test(normalized)) score += barrierSignal ? 2 : 5;
+    if (/^lightweight moisturizer$/.test(normalized)) score += layeringSignal ? 4.2 : 1.8;
+    if (/^non-greasy moisturizer$/.test(normalized)) score += layeringSignal ? 4.4 : 1.6;
+    if (/^makeup layering moisturizer$/.test(normalized)) score += layeringSignal ? 4 : 0.8;
+    if (/^moisturizer$/.test(normalized)) score += barrierSignal ? 2 : layeringSignal ? 0.8 : 5;
     if (/^barrier repair moisturizer$/.test(normalized)) score += 4;
     if (/^ceramide cream sensitive skin$/.test(normalized)) score += 3.5;
     if (/^soothing moisturizer$/.test(normalized)) score += 2.6;
@@ -126,12 +138,14 @@ function buildSupportRoleQueryVariants({
     .filter(Boolean)
     .join(' ')
     .toLowerCase();
+  const normalizedOilySignalText = signalText.replace(/\bnon[- ]greasy\b/g, ' ');
   const oilySignal =
     String(semanticFamily || '').trim().toLowerCase() === 'oil_control' ||
-    /\b(oily skin|oil control|shine control|mattify|mattifying|sebum|non-greasy|non greasy|mid-day shine|greasy)\b/.test(signalText);
+    /\b(oily skin|oil control|shine control|mattify|mattifying|sebum|mid-day shine|greasy)\b/.test(normalizedOilySignalText);
   const gelSignal = /\b(gel cream|water gel|water cream|gel lotion|emulsion)\b/.test(signalText);
   const oilFreeSignal = /\b(oil free|oil-free)\b/.test(signalText);
   const barrierSignal = /\b(barrier|ceramide|ceramides|lotion)\b/.test(signalText);
+  const layeringSignal = /\b(layering|makeup|under makeup|pilling)\b/.test(signalText);
   const fluidSignal = /\b(fluid|invisible|water[- ]?fit|serum sunscreen|spf fluid)\b/.test(signalText);
   const hydrationSerumSignal = /\b(hydrat|dehydrat|hyaluronic|essence|plumping|water[- ]?fit|dull skin)\b/.test(signalText);
   const soothingTreatmentSignal = /\b(soothing|redness|calming|irritation|cica|panthenol|madecassoside)\b/.test(signalText);
@@ -164,12 +178,17 @@ function buildSupportRoleQueryVariants({
       : []),
   ];
   if (step === 'moisturizer') {
-    candidates.push('moisturizer');
-    if (gelSignal || oilySignal) candidates.push('gel cream moisturizer');
+    if (gelSignal || oilySignal || layeringSignal) candidates.push('gel cream moisturizer');
     if (oilFreeSignal || oilySignal) candidates.push('oil free moisturizer');
+    if (layeringSignal) {
+      candidates.push('lightweight moisturizer');
+      candidates.push('non-greasy moisturizer');
+      candidates.push('makeup layering moisturizer');
+    }
     if (oilySignal) candidates.push('lightweight moisturizer oily skin');
     if (barrierSignal) candidates.push(oilySignal ? 'barrier lotion oily skin' : 'barrier lotion');
-    candidates.push('lightweight moisturizer');
+    if (!layeringSignal) candidates.push('lightweight moisturizer');
+    candidates.push('moisturizer');
   } else if (step === 'sunscreen') {
     candidates.push('sunscreen');
     if (fluidSignal || oilySignal) candidates.push(oilySignal ? 'spf fluid oily skin' : 'spf fluid');
@@ -210,7 +229,7 @@ function buildSupportRoleQueryVariants({
   return uniqueCaseInsensitiveStrings(candidates, 16)
     .map((query, index) => ({
       query,
-      score: buildSupportRoleQueryScore(query, { step, oilySignal, barrierSignal }),
+      score: buildSupportRoleQueryScore(query, { step, oilySignal, barrierSignal, layeringSignal }),
       index,
     }))
     .sort((left, right) => {
