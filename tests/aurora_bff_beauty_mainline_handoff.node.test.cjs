@@ -63,6 +63,43 @@ test('deriveBeautyMainlineHandoff preserves explicit treatment semantics for oil
   }
 });
 
+test('deriveBeautyMainlineHandoff routes bare makeup pilling asks to sunscreen-led routine semantics', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const query = 'My daytime products pill under makeup. What skincare product should I use instead?';
+    const out = __internal.deriveBeautyMainlineHandoff({
+      primaryQuery: query,
+      fallbackMessage: query,
+      targetContext: resolveRecommendationTargetContext({
+        text: query,
+        focus: '',
+        entryType: 'chat',
+      }),
+    });
+
+    assert.equal(out.targetContext?.resolved_target_step, null);
+    assert.equal(out.targetContext?.primary_role_id, 'daily_sunscreen_finish_fit');
+    assert.deepEqual(
+      out.targetContext?.framework_roles?.map((role) => role?.role_id),
+      [
+        'daily_sunscreen_finish_fit',
+        'layering_compatible_moisturizer_or_spf',
+        'hydrating_serum_or_essence',
+      ],
+    );
+    assert.equal(out.semanticContract?.planner_mode, 'framework_generic');
+    assert.equal(out.semanticContract?.target_step_family, 'sunscreen');
+    assert.equal(out.semanticContract?.primary_role_id, 'daily_sunscreen_finish_fit');
+    assert.equal(out.semanticContract?.semantic_family, 'sunscreen');
+    assert.deepEqual(
+      out.semanticContract?.ingredient_hypotheses,
+      ['UV filters', 'Glycerin', 'Panthenol', 'Hyaluronic acid'],
+    );
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('classifyBeautyMainlineHandoffFallback preserves weak viable pool reason from local handoff metadata', () => {
   const runtime = createBeautyChatMainlineEnvelopeRuntime({
     classifyRecoUpstreamFailureCode: () => '',
