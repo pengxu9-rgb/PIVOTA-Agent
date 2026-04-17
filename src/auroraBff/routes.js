@@ -8348,7 +8348,23 @@ function buildLocalExternalSeedSupportCategoryTerms({ role = null, preferredStep
   };
 
   if (step === 'moisturizer' || /\b(moisturi[sz]er|gel[-\s]?cream|cream|lotion|emulsion|hydration|barrier)\b/.test(haystack)) {
-    add('moisturizer', 'moisturiser', 'cream', 'gel cream', 'gel-cream', 'lotion', 'emulsion');
+    add(
+      'moisturizer',
+      'moisturiser',
+      'face moisturizer',
+      'face moisturiser',
+      'cream',
+      'gel cream',
+      'gel-cream',
+      'water cream',
+      'water gel',
+      'lotion',
+      'face lotion',
+      'gel lotion',
+      'moisturizing lotion',
+      'moisturising lotion',
+      'emulsion',
+    );
   }
   if (step === 'sunscreen' || /\b(sunscreen|spf|sun care|sun protection|uv)\b/.test(haystack)) {
     add('sunscreen', 'spf', 'sun care', 'sun protection', 'uv protection');
@@ -8360,13 +8376,13 @@ function buildLocalExternalSeedSupportCategoryTerms({ role = null, preferredStep
     add('serum', 'treatment', 'ampoule', 'essence');
   }
 
-  return uniqCaseInsensitiveStrings(terms, 10);
+  return uniqCaseInsensitiveStrings(terms, 16);
 }
 
 function buildLocalExternalSeedExactCategoryHeadTerms({ query = '', categoryTerms = [] } = {}) {
   const normalizedQuery = String(query || '').trim().toLowerCase().replace(/\s+/g, ' ');
   if (!normalizedQuery) return [];
-  const terms = uniqCaseInsensitiveStrings(categoryTerms, 10)
+  const terms = uniqCaseInsensitiveStrings(categoryTerms, 16)
     .map((value) => String(value || '').trim().toLowerCase())
     .filter(Boolean);
   const pickTerms = (allowed) => {
@@ -8377,7 +8393,21 @@ function buildLocalExternalSeedExactCategoryHeadTerms({ query = '', categoryTerm
     return pickTerms(['sunscreen', 'spf', 'sun care', 'sun protection', 'uv protection']);
   }
   if (['moisturizer', 'moisturiser'].includes(normalizedQuery)) {
-    return pickTerms(['moisturizer', 'moisturiser', 'cream', 'lotion', 'emulsion']);
+    return pickTerms([
+      'moisturizer',
+      'moisturiser',
+      'face moisturizer',
+      'face moisturiser',
+      'cream',
+      'water cream',
+      'water gel',
+      'lotion',
+      'face lotion',
+      'gel lotion',
+      'moisturizing lotion',
+      'moisturising lotion',
+      'emulsion',
+    ]);
   }
   return [];
 }
@@ -8403,7 +8433,7 @@ function buildLocalExternalSeedCategoryPositiveStage({
     .join(' ');
   if (!haystack) return null;
 
-  const terms = uniqCaseInsensitiveStrings(categoryTerms, 10)
+  const terms = uniqCaseInsensitiveStrings(categoryTerms, 16)
     .map((value) => String(value || '').trim().toLowerCase())
     .filter(Boolean);
   const pickTerms = (allowed) => {
@@ -8431,7 +8461,23 @@ function buildLocalExternalSeedCategoryPositiveStage({
       /\bhydrat/.test(haystack) ? ['hydrating', 'hydration'] : [],
       ['moisturizer', 'moisturiser', 'cream', 'lotion', 'emulsion'],
     );
-    const categories = pickTerms(['moisturizer', 'moisturiser', 'cream', 'gel cream', 'gel-cream', 'lotion', 'emulsion']);
+    const categories = pickTerms([
+      'moisturizer',
+      'moisturiser',
+      'face moisturizer',
+      'face moisturiser',
+      'cream',
+      'gel cream',
+      'gel-cream',
+      'water cream',
+      'water gel',
+      'lotion',
+      'face lotion',
+      'gel lotion',
+      'moisturizing lotion',
+      'moisturising lotion',
+      'emulsion',
+    ]);
     if (categories.length && positivePatterns.length) {
       return { categoryTerms: categories, positivePatterns };
     }
@@ -92023,6 +92069,7 @@ const __internal = {
   computeAnchorNameSimilarity,
   pickBestCatalogSearchCandidateForProductInput,
   loadExternalSeedEvidenceProduct,
+  buildLocalExternalSeedSupportCategoryTerms,
   buildLocalExternalSeedSearchPatterns,
   searchLocalExternalSeedProducts,
   mapCatalogProductToAnchorProduct,

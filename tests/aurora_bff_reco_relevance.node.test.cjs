@@ -4407,15 +4407,10 @@ test('__internal: local external seed support-role search uses precise category-
   assert.match(observedQueries[0].sql, /alias_tokens/i);
   assert.match(observedQueries[0].sql, /ingredient_tokens/i);
   assert.doesNotMatch(observedQueries[0].sql, /seed_data::text/i);
-  assert.deepEqual(observedQueries[0].params[2], [
-    'moisturizer',
-    'moisturiser',
-    'cream',
-    'gel cream',
-    'gel-cream',
-    'lotion',
-    'emulsion',
-  ]);
+  assert.ok(observedQueries[0].params[2].includes('moisturizer'));
+  assert.ok(observedQueries[0].params[2].includes('face moisturizer'));
+  assert.ok(observedQueries[0].params[2].includes('face lotion'));
+  assert.ok(observedQueries[0].params[2].includes('moisturizing lotion'));
   assert.ok(observedQueries[0].params[3].includes('%gel cream%'));
   assert.ok(observedQueries[0].params[3].includes('%oil-free%'));
   assert.equal(out.local_external_seed_stage_debug[0]?.stage, 'support_category_positive');
@@ -4423,6 +4418,95 @@ test('__internal: local external seed support-role search uses precise category-
   assert.equal(out.products.length, 2);
   assert.equal(out.products[0].retrieval_match_stage, 'support_category_positive');
   assert.match(out.products[0].retrieval_reason, /support_category_positive/);
+});
+
+test('__internal: local external seed support category terms keep face-lotion moisturizer variants authoritative', () => {
+  const { __internal } = loadRoutesFresh();
+  const terms = __internal.buildLocalExternalSeedSupportCategoryTerms({
+    query: 'lightweight moisturizer',
+    role: {
+      role_id: 'layering_compatible_moisturizer_or_spf',
+      rank: 2,
+      preferred_step: 'moisturizer',
+      query_terms: ['gel cream moisturizer', 'lightweight moisturizer'],
+      fit_keywords: ['lightweight', 'layering', 'non-greasy', 'makeup'],
+      product_type_hypotheses: ['moisturizer'],
+    },
+    preferredStep: 'moisturizer',
+  });
+
+  assert.ok(terms.includes('face moisturizer'));
+  assert.ok(terms.includes('face lotion'));
+  assert.ok(terms.includes('moisturizing lotion'));
+  assert.ok(terms.includes('water cream'));
+  assert.ok(terms.includes('gel lotion'));
+});
+
+test('__internal: local external seed support-role search admits face moisturizer categories into the authority fastpath', async () => {
+  const { __internal } = loadRoutesFresh();
+  const observedQueries = [];
+  const out = await __internal.searchLocalExternalSeedProducts({
+    query: 'lightweight moisturizer',
+    limit: 1,
+    role: {
+      role_id: 'layering_compatible_moisturizer_or_spf',
+      rank: 2,
+      preferred_step: 'moisturizer',
+      query_terms: ['gel cream moisturizer', 'lightweight moisturizer'],
+      fit_keywords: ['lightweight', 'layering', 'non-greasy', 'makeup'],
+      product_type_hypotheses: ['moisturizer'],
+    },
+    preferredStep: 'moisturizer',
+    queryFn: async (sql, params) => {
+      observedQueries.push({ sql: String(sql || ''), params });
+      if (!Array.isArray(params?.[2]) || !params[2].includes('face moisturizer')) {
+        return { rows: [] };
+      }
+      return {
+        rows: [
+          {
+            id: '151',
+            external_product_id: 'ext_face_moisturizer_151',
+            destination_url: 'https://example.com/products/face-lotion-151',
+            canonical_url: 'https://example.com/products/face-lotion-151',
+            domain: 'example.com',
+            title: 'Daily Balance Face Lotion',
+            image_url: 'https://example.com/products/face-lotion-151.jpg',
+            price_amount: 28,
+            price_currency: 'USD',
+            availability: 'in_stock',
+            match_stage: 'support_category_positive',
+            match_score: 54,
+            seed_data: {
+              derived: {
+                recall: {
+                  retrieval_title: 'Daily Balance Face Lotion',
+                  retrieval_summary: 'A lightweight face lotion for daily layering comfort.',
+                  category: 'face moisturizer',
+                  vertical: 'skincare',
+                  alias_tokens: ['face lotion', 'lightweight moisturizer'],
+                },
+              },
+              snapshot: {
+                title: 'Daily Balance Face Lotion',
+                description: 'Fast-absorbing face lotion with non-greasy hydration.',
+                category: 'Face Moisturizer',
+              },
+              benefit_tags: ['lightweight', 'non-greasy hydration'],
+            },
+            updated_at: new Date().toISOString(),
+            created_at: new Date().toISOString(),
+          },
+        ],
+      };
+    },
+  });
+
+  assert.equal(out.ok, true);
+  assert.equal(observedQueries.length, 1);
+  assert.equal(out.local_external_seed_stage_debug[0]?.stage, 'support_category_positive');
+  assert.equal(out.products[0]?.title, 'Daily Balance Face Lotion');
+  assert.equal(out.products[0]?.retrieval_match_stage, 'support_category_positive');
 });
 
 test('__internal: local external seed primary hydration-serum search uses category-positive recall before title scan', async () => {
