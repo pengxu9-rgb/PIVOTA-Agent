@@ -55338,6 +55338,68 @@ function splitRecoAssistantRewriteAttemptTimeout(totalMs) {
   };
 }
 
+function buildRecoAssistantRewriteAttemptTimeoutResult({
+  timeoutMs,
+  timeoutBudget,
+  startedAtMs,
+  provider,
+  model,
+} = {}) {
+  const timeout = Number.isFinite(Number(timeoutMs)) ? Math.max(1, Math.trunc(Number(timeoutMs))) : 1;
+  const started = Number.isFinite(Number(startedAtMs)) && Number(startedAtMs) > 0 ? Number(startedAtMs) : Date.now();
+  const elapsed = Math.max(0, Date.now() - started);
+  const queueTimeoutMs = Number.isFinite(Number(timeoutBudget?.queue_timeout_ms))
+    ? Math.max(0, Math.trunc(Number(timeoutBudget.queue_timeout_ms)))
+    : 0;
+  const detail = `reco assistant rewrite attempt timed out after ${timeout}ms`;
+  return {
+    ok: false,
+    provider: provider || null,
+    model: model || null,
+    json: null,
+    raw_text: null,
+    failure_reason: 'GEMINI_JSON_TIMEOUT',
+    failure_detail: detail,
+    parse_status: null,
+    timeout_stage: 'upstream',
+    meta: {
+      route: 'aurora_reco_assistant_rewrite',
+      model: model || null,
+      gate_wait_ms: Math.min(queueTimeoutMs, elapsed),
+      upstream_ms: Math.max(0, elapsed - Math.min(queueTimeoutMs, elapsed)),
+      total_ms: elapsed,
+      timeout_stage: 'upstream',
+      result_reason: 'GEMINI_JSON_TIMEOUT',
+      detail,
+    },
+    selection_source: 'reco_assistant_attempt_deadline',
+  };
+}
+
+async function enforceRecoAssistantRewriteAttemptDeadline(providerPromise, {
+  timeoutMs,
+  timeoutBudget,
+  startedAtMs,
+  provider,
+  model,
+} = {}) {
+  const timeout = Number.isFinite(Number(timeoutMs)) ? Math.max(1, Math.trunc(Number(timeoutMs))) : 0;
+  if (!timeout) return providerPromise;
+  return withTimeout(providerPromise, timeout, 'RECO_ASSISTANT_REWRITE_ATTEMPT_TIMEOUT')
+    .catch((err) => {
+      if (String(err?.code || '').trim() === 'RECO_ASSISTANT_REWRITE_ATTEMPT_TIMEOUT') {
+        return buildRecoAssistantRewriteAttemptTimeoutResult({
+          timeoutMs: timeout,
+          timeoutBudget,
+          startedAtMs,
+          provider,
+          model,
+        });
+      }
+      throw err;
+    });
+}
+
 function normalizeRecoAssistantReasonFragment(value, {
   selectedNames = [],
   forbiddenNames = [],
@@ -55905,21 +55967,30 @@ async function maybeRewriteRecoAssistantTextWithLlm({
           duration_ms: Math.max(0, Date.now() - attemptStartedAtMs),
         });
       };
-      const result = await callStructuredSummaryJson({
-        llmProvider: AURORA_PRODUCT_INTEL_LLM_PROVIDER,
-        llmModel: AURORA_PRODUCT_INTEL_LLM_MODEL,
-        systemPrompt: 'You rewrite skincare recommendation explanations. Output strict JSON only.',
-        userPrompt: userPromptText,
-        responseSchema: structuredReasonOnly
-          ? RECO_ASSISTANT_STRUCTURED_REASON_JSON_SCHEMA
-          : RECO_ASSISTANT_REWRITE_JSON_SCHEMA,
-        timeoutMs: effectiveRewriteTimeoutMs,
-        queueTimeoutMs: rewriteTimeoutBudget.queue_timeout_ms,
-        upstreamTimeoutMs: rewriteTimeoutBudget.upstream_timeout_ms,
-        maxOutputTokens: effectiveMaxOutputTokens,
-        route: 'aurora_reco_assistant_rewrite',
-        thinkingLevel: routeStableRewriteThinkingLevel,
-      });
+      const result = await enforceRecoAssistantRewriteAttemptDeadline(
+        callStructuredSummaryJson({
+          llmProvider: AURORA_PRODUCT_INTEL_LLM_PROVIDER,
+          llmModel: AURORA_PRODUCT_INTEL_LLM_MODEL,
+          systemPrompt: 'You rewrite skincare recommendation explanations. Output strict JSON only.',
+          userPrompt: userPromptText,
+          responseSchema: structuredReasonOnly
+            ? RECO_ASSISTANT_STRUCTURED_REASON_JSON_SCHEMA
+            : RECO_ASSISTANT_REWRITE_JSON_SCHEMA,
+          timeoutMs: effectiveRewriteTimeoutMs,
+          queueTimeoutMs: rewriteTimeoutBudget.queue_timeout_ms,
+          upstreamTimeoutMs: rewriteTimeoutBudget.upstream_timeout_ms,
+          maxOutputTokens: effectiveMaxOutputTokens,
+          route: 'aurora_reco_assistant_rewrite',
+          thinkingLevel: routeStableRewriteThinkingLevel,
+        }),
+        {
+          timeoutMs: effectiveRewriteTimeoutMs,
+          timeoutBudget: rewriteTimeoutBudget,
+          startedAtMs: attemptStartedAtMs,
+          provider: resolveStructuredSummaryProvider(AURORA_PRODUCT_INTEL_LLM_PROVIDER),
+          model: String(AURORA_PRODUCT_INTEL_LLM_MODEL || '').trim() || null,
+        },
+      );
       let parseStatus = result && result.parse_status ? String(result.parse_status).trim() : null;
       let candidateText = '';
       if (structuredReasonOnly) {
@@ -92422,6 +92493,7 @@ const __internal = {
   buildPayloadBoundRecoAssistantText,
   buildRecoAssistantRewritePrompt,
   validateRecoAssistantRewriteCandidate,
+  enforceRecoAssistantRewriteAttemptDeadline,
   maybeRewriteRecoAssistantTextWithLlm,
   normalizeRecoAssistantReasonFragment,
   isSkincareCategory,
