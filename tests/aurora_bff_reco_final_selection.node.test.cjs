@@ -2567,6 +2567,37 @@ test('reco assistant rewrite retries gemini timeout with structured reason promp
   }
 });
 
+test('reco assistant rewrite attempt deadline returns timeout before slow provider resolves', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const slowProvider = new Promise((resolve) => {
+      const timer = setTimeout(() => resolve({ ok: true, json: { assistant_text: 'too late' } }), 500);
+      if (typeof timer.unref === 'function') timer.unref();
+    });
+    const startedAt = Date.now();
+    const result = await __internal.enforceRecoAssistantRewriteAttemptDeadline(slowProvider, {
+      timeoutMs: 50,
+      timeoutBudget: { queue_timeout_ms: 10, upstream_timeout_ms: 40 },
+      startedAtMs: startedAt,
+      provider: 'gemini',
+      model: 'gemini-3-flash-preview',
+    });
+    const durationMs = Date.now() - startedAt;
+
+    assert.ok(durationMs < 250, `deadline helper waited for slow provider (${durationMs}ms)`);
+    assert.equal(result.ok, false);
+    assert.equal(result.failure_reason, 'GEMINI_JSON_TIMEOUT');
+    assert.equal(result.timeout_stage, 'upstream');
+    assert.equal(result.selection_source, 'reco_assistant_attempt_deadline');
+    assert.equal(result.provider, 'gemini');
+    assert.equal(result.model, 'gemini-3-flash-preview');
+    assert.ok(result.meta.total_ms >= 45);
+    assert.ok(result.meta.total_ms < 250);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('reco assistant rewrite retries routine-mix drafts that use a templated full-routine bridge', async () => {
   const prevMock = process.env.AURORA_BFF_USE_MOCK;
   const prevProvider = process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
