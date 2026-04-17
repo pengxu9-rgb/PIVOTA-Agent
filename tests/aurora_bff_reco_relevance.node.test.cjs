@@ -4495,6 +4495,87 @@ test('__internal: local external seed support-role positive patterns stay query-
   assert.equal(out.products[0]?.title, 'Cloud Water Gel Cream');
 });
 
+test('__internal: local external seed support-role fastpath overfetches and role-ranks before truncating', async () => {
+  const { __internal } = loadRoutesFresh();
+  const observedQueries = [];
+  const makeRow = (id, title, description, benefitTags = []) => ({
+    id,
+    external_product_id: `ext_layering_rank_${id}`,
+    destination_url: `https://example.com/products/layering-rank-${id}`,
+    canonical_url: `https://example.com/products/layering-rank-${id}`,
+    domain: 'example.com',
+    title,
+    image_url: `https://example.com/products/layering-rank-${id}.jpg`,
+    price_amount: 22,
+    price_currency: 'USD',
+    availability: 'in_stock',
+    match_stage: 'support_category_positive',
+    match_score: 54,
+    seed_data: {
+      derived: {
+        recall: {
+          retrieval_title: title,
+          retrieval_summary: description,
+          category: 'face moisturizer',
+          vertical: 'skincare',
+          alias_tokens: ['gel cream moisturizer', ...benefitTags],
+        },
+      },
+      snapshot: {
+        title,
+        description,
+        category: 'Face Moisturizer',
+      },
+      benefit_tags: benefitTags,
+      skin_type_tags: ['oily'],
+    },
+    updated_at: new Date(2026, 0, Number(id)).toISOString(),
+    created_at: new Date(2026, 0, Number(id)).toISOString(),
+  });
+
+  const out = await __internal.searchLocalExternalSeedProducts({
+    query: 'gel cream moisturizer',
+    limit: 2,
+    role: {
+      role_id: 'layering_compatible_moisturizer_or_spf',
+      rank: 2,
+      preferred_step: 'moisturizer',
+      query_terms: ['gel cream moisturizer', 'lightweight moisturizer'],
+      fit_keywords: ['lightweight', 'layering', 'non-greasy', 'makeup', 'soothing'],
+      product_type_hypotheses: ['moisturizer'],
+    },
+    preferredStep: 'moisturizer',
+    queryFn: async (sql, params) => {
+      observedQueries.push({ sql: String(sql || ''), params });
+      return {
+        rows: [
+          makeRow('101', 'Recharge Gel Cream', 'A gel cream focused on general radiance.'),
+          makeRow('102', 'Niacinamide Gel Cream 5%', 'A gel cream focused on radiance and tone.'),
+          makeRow('103', 'Pine Calming Cica Cream', 'A rich cream for dry skin comfort.'),
+          makeRow('104', 'Poremizing Light Gel Cream', 'A peel-adjacent pore gel cream.'),
+          makeRow('105', 'Radiance Gel Cream Unscented', 'A gel cream focused on glow.'),
+          makeRow('106', 'Daily Water Gel Cream', 'A basic water gel cream.'),
+          makeRow(
+            '107',
+            'Tea-Trica B5 Cream',
+            'A lightweight non-greasy cream with panthenol and cica that layers smoothly under makeup.',
+            ['lightweight', 'non-greasy', 'makeup layering', 'panthenol', 'cica'],
+          ),
+        ],
+      };
+    },
+  });
+
+  assert.equal(out.ok, true);
+  assert.equal(observedQueries.length, 1);
+  assert.equal(observedQueries[0].params.at(-1), 8);
+  assert.equal(out.local_external_seed_stage_debug[0]?.query_cap, 8);
+  assert.equal(out.local_external_seed_stage_debug[0]?.pre_rank_row_count, 7);
+  assert.equal(out.products.length, 2);
+  assert.equal(out.products[0]?.title, 'Tea-Trica B5 Cream');
+  assert.ok(Number(out.products[0]?.local_external_seed_role_fit_score || 0) > Number(out.products[1]?.local_external_seed_role_fit_score || 0));
+});
+
 test('__internal: local external seed support category terms keep face-lotion moisturizer variants authoritative', () => {
   const { __internal } = loadRoutesFresh();
   const terms = __internal.buildLocalExternalSeedSupportCategoryTerms({
@@ -6620,6 +6701,7 @@ test('__internal: reco assistant rewrite prompt exposes routine roles and price 
 
   assert.match(prompt, /different steps in a basic routine and not the same type of product/i);
   assert.match(prompt, /Use price_order_summary and selected_product_details\.price_position/i);
+  assert.match(prompt, /do not compare affordability across different routine roles/i);
 
   const context = extractRecoRewritePromptContext(prompt);
   assert.equal(context.selected_product_role_mix, 'routine_mix');
@@ -6639,6 +6721,82 @@ test('__internal: reco assistant rewrite prompt exposes routine roles and price 
     context.price_order_summary.map((item) => item.price_position),
     ['lowest', 'middle', 'highest'],
   );
+  assert.equal(
+    context.assistant_write_plan?.lead_product?.price_note,
+    '$12 for the lead step',
+  );
+  assert.doesNotMatch(
+    String(context.assistant_write_plan?.lead_product?.price_note || ''),
+    /lowest|lower|affordable|value/i,
+  );
+});
+
+test('__internal: reco assistant rewrite guard rejects cross-role price comparisons for routine bundles', async () => {
+  const { __internal } = loadRoutesFresh();
+  const payload = {
+    recommendation_meta: {
+      primary_target_id: 'daily_sunscreen_finish_fit',
+      selected_target_ids: ['daily_sunscreen_finish_fit', 'hydrating_serum_or_essence'],
+      ranked_targets: [
+        {
+          target_id: 'daily_sunscreen_finish_fit',
+          ingredient_query: 'Daily sunscreen with finish fit',
+          resolved_target_step: 'sunscreen',
+        },
+        {
+          target_id: 'hydrating_serum_or_essence',
+          ingredient_query: 'Hydrating serum or essence',
+          resolved_target_step: 'serum',
+        },
+      ],
+    },
+    recommendations: [
+      {
+        display_name: 'Daily Layering SPF 50',
+        brand: 'Murad',
+        matched_role_id: 'daily_sunscreen_finish_fit',
+        matched_role_label: 'Daily sunscreen with finish fit',
+        price: { amount: 55, currency: 'USD' },
+      },
+      {
+        display_name: 'Truth Serum',
+        brand: 'Olehenriksen',
+        matched_role_id: 'hydrating_serum_or_essence',
+        matched_role_label: 'Hydrating serum or essence',
+        price: { amount: 58, currency: 'USD' },
+      },
+    ],
+  };
+  const baseArgs = {
+    payload,
+    language: 'EN',
+    primaryTarget: {
+      target_id: 'daily_sunscreen_finish_fit',
+      ingredient_query: 'Daily sunscreen with finish fit',
+      resolved_target_step: 'sunscreen',
+    },
+    secondaryTargets: [
+      {
+        target_id: 'hydrating_serum_or_essence',
+        ingredient_query: 'Hydrating serum or essence',
+        resolved_target_step: 'serum',
+      },
+    ],
+    names: ['Daily Layering SPF 50', 'Truth Serum'],
+    requestMode: 'buy',
+  };
+
+  const valid = __internal.validateRecoAssistantRewriteCandidate({
+    ...baseArgs,
+    candidateText: 'Daily Layering SPF 50 is the most direct fit for daily sunscreen with finish fit because it combines SPF 50 protection with a non-greasy moisturizer step for fewer layers. Truth Serum covers the serum step because it provides lightweight hydration before SPF.',
+  });
+  assert.equal(valid.reason, null);
+
+  const invalid = __internal.validateRecoAssistantRewriteCandidate({
+    ...baseArgs,
+    candidateText: 'Daily Layering SPF 50 is the most direct fit for daily sunscreen with finish fit because it combines SPF 50 protection with hydration while being the most affordable primary option at $55. Truth Serum covers the serum step because it provides lightweight hydration before SPF.',
+  });
+  assert.equal(invalid.reason, 'rewrite_routine_cross_role_price_comparison');
 });
 
 test('__internal: compact reco assistant rewrite prompt keeps per-product evidence for routine bundles', async () => {
