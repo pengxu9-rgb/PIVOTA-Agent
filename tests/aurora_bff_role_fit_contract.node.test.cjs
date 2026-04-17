@@ -325,6 +325,62 @@ test('daily sunscreen support demotes eye-area SPF products for full-face sunscr
   assert.ok(Number(score?.score || 0) < 0.42);
 });
 
+test('daily sunscreen role demotes tinted coverage SPF when the request did not ask for tint or coverage', () => {
+  const score = scoreConcernRoleCandidate(
+    {
+      title: 'Supergoop Protec(tint) Daily Skin Tint SPF 50',
+      retrieval_role_id: 'daily_sunscreen',
+    },
+    buildGentleDailySunscreenRole(),
+    {
+      candidateStep: 'sunscreen',
+      targetContext: {
+        request_text: 'What daily sunscreen should I buy for sensitive skin?',
+        semantic_plan: {
+          primary_concern: 'daily sunscreen',
+          must_satisfy_constraints: ['sensitive skin', 'daily protection'],
+        },
+      },
+      candidateText:
+        'Supergoop Protec(tint) Daily Skin Tint SPF 50 sunscreen with lightweight UV filters and skin-tint coverage.',
+    },
+  );
+
+  assert.ok(score);
+  assert.equal(score?.sunscreen_coverage_tint_mismatch_applied, true);
+  assert.ok(Number(score?.score || 0) < 0.42);
+});
+
+test('daily sunscreen role keeps tinted coverage SPF viable when the request explicitly asked for tint', () => {
+  const score = scoreConcernRoleCandidate(
+    {
+      title: 'Supergoop Protec(tint) Daily Skin Tint SPF 50',
+      retrieval_role_id: 'daily_sunscreen',
+    },
+    {
+      ...buildGentleDailySunscreenRole(),
+      fit_keywords: ['spf', 'uv filters', 'tinted', 'coverage'],
+      query_terms: ['tinted sunscreen', 'skin tint spf'],
+    },
+    {
+      candidateStep: 'sunscreen',
+      targetContext: {
+        request_text: 'I want a tinted sunscreen with light coverage.',
+        semantic_plan: {
+          primary_concern: 'tinted daily sunscreen',
+          must_satisfy_constraints: ['tinted finish', 'light coverage'],
+        },
+      },
+      candidateText:
+        'Supergoop Protec(tint) Daily Skin Tint SPF 50 sunscreen with lightweight UV filters and skin-tint coverage.',
+    },
+  );
+
+  assert.ok(score);
+  assert.equal(score?.sunscreen_coverage_tint_mismatch_applied, false);
+  assert.ok(Number(score?.score || 0) >= 0.58);
+});
+
 test('layering moisturizer role demotes rich heavy creams despite exact moisturizer shape', () => {
   const score = scoreConcernRoleCandidate(
     {
@@ -342,4 +398,43 @@ test('layering moisturizer role demotes rich heavy creams despite exact moisturi
   assert.ok(score);
   assert.equal(score?.lightweight_texture_mismatch_applied, true);
   assert.ok(Number(score?.score || 0) < 0.42);
+});
+
+test('layering moisturizer role keeps generic cream below viability when it lacks lightweight texture evidence', () => {
+  const score = scoreConcernRoleCandidate(
+    {
+      title: 'Jurlique Rare Rose Cream',
+      retrieval_role_id: 'layering_compatible_moisturizer_or_spf',
+    },
+    buildLayeringMoisturizerRole(),
+    {
+      candidateStep: 'moisturizer',
+      candidateText:
+        'Jurlique Rare Rose Cream moisturizer with rose extract and botanical hydration.',
+    },
+  );
+
+  assert.ok(score);
+  assert.equal(score?.support_step_rescue_applied, false);
+  assert.equal(score?.lightweight_texture_evidence_missing_applied, true);
+  assert.ok(Number(score?.score || 0) < 0.52);
+});
+
+test('layering moisturizer role stays viable when lightweight lotion evidence is present', () => {
+  const score = scoreConcernRoleCandidate(
+    {
+      title: 'Round Lab Birch Juice Moisturizing Lotion',
+      retrieval_role_id: 'layering_compatible_moisturizer_or_spf',
+    },
+    buildLayeringMoisturizerRole(),
+    {
+      candidateStep: 'moisturizer',
+      candidateText:
+        'Round Lab Birch Juice Moisturizing Lotion lightweight moisturizer lotion with non-greasy layering hydration.',
+    },
+  );
+
+  assert.ok(score);
+  assert.equal(score?.lightweight_texture_evidence_missing_applied, false);
+  assert.ok(Number(score?.score || 0) >= 0.58);
 });

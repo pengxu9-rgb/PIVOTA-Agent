@@ -7685,6 +7685,246 @@ test('__internal: framework pool avoids active glow SPF as sunscreen support for
   );
 });
 
+test('__internal: framework pool prefers untinted sunscreen over skin-tint SPF for generic daily sunscreen support', () => {
+  const { __internal } = loadRoutesFresh();
+  const targetContext = {
+    framework_id: 'recofw_test_retinoid_barrier_tint_spf_demote',
+    primary_role_id: 'hydrating_barrier_moisturizer',
+    routine_mode: 'routine_mix',
+    semantic_plan: {
+      primary_concern: 'retinoid barrier support',
+      routine_mode: 'routine_mix',
+      comparison_mode: 'routine_mix',
+      must_satisfy_constraints: ['sensitive barrier', 'daily protection'],
+    },
+    framework_roles: [
+      {
+        role_id: 'hydrating_barrier_moisturizer',
+        rank: 40,
+        preferred_step: 'moisturizer',
+        label: 'Hydrating barrier moisturizer',
+        query_terms: ['barrier repair moisturizer', 'ceramide cream sensitive skin'],
+        fit_keywords: ['hydrating', 'barrier repair', 'ceramide', 'sensitive skin'],
+        ingredient_hypotheses: ['Ceramide NP', 'Panthenol', 'Glycerin'],
+        product_type_hypotheses: ['moisturizer'],
+      },
+      {
+        role_id: 'soothing_treatment',
+        rank: 70,
+        preferred_step: 'treatment',
+        alternate_steps: ['serum'],
+        label: 'Soothing treatment',
+        query_terms: ['soothing serum sensitive skin', 'cica serum redness'],
+        fit_keywords: ['soothing', 'redness', 'calming', 'sensitive skin'],
+        ingredient_hypotheses: ['Panthenol', 'Madecassoside'],
+        product_type_hypotheses: ['serum', 'treatment'],
+      },
+      {
+        role_id: 'daily_sunscreen',
+        rank: 30,
+        preferred_step: 'sunscreen',
+        label: 'Daily sunscreen',
+        query_terms: ['daily sunscreen skincare', 'broad spectrum sunscreen'],
+        fit_keywords: ['spf', 'uv filters', 'broad spectrum', 'lightweight'],
+        ingredient_hypotheses: ['UV filters'],
+        product_type_hypotheses: ['sunscreen'],
+      },
+    ],
+  };
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [
+      {
+        product_id: 'great_barrier_relief_tint_1',
+        merchant_id: 'merchant_internal',
+        brand: 'KraveBeauty',
+        name: 'KraveBeauty Great Barrier Relief',
+        display_name: 'KraveBeauty Great Barrier Relief',
+        category: 'Moisturizer',
+        product_type: 'Moisturizer',
+        retrieval_source: 'catalog',
+        retrieval_role_id: 'hydrating_barrier_moisturizer',
+        retrieval_query: 'barrier repair moisturizer',
+        short_description: 'A hydrating barrier repair moisturizer with ceramides and panthenol for sensitized skin.',
+      },
+      {
+        product_id: 'soothing_serum_tint_1',
+        merchant_id: 'merchant_internal',
+        brand: 'Winona',
+        name: 'Winona Soothing Repair Serum',
+        display_name: 'Winona Soothing Repair Serum',
+        category: 'Serum',
+        product_type: 'Serum',
+        retrieval_source: 'catalog',
+        retrieval_role_id: 'soothing_treatment',
+        retrieval_query: 'soothing serum sensitive skin',
+        short_description: 'A soothing serum for redness, calming, and sensitive skin.',
+      },
+      {
+        product_id: 'tinted_spf_retinoid_1',
+        merchant_id: 'external_seed',
+        brand: 'Supergoop',
+        name: 'Protec(tint) Daily Skin Tint SPF 50',
+        display_name: 'Supergoop Protec(tint) Daily Skin Tint SPF 50',
+        category: 'Sunscreen',
+        product_type: 'Sunscreen',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'daily_sunscreen',
+        retrieval_query: 'daily sunscreen',
+        key_features: ['UV filters', 'Skin tint coverage'],
+        short_description: 'A daily skin tint SPF 50 with lightweight coverage.',
+      },
+      {
+        product_id: 'simple_daily_spf_tint_1',
+        merchant_id: 'external_seed',
+        brand: 'Round Lab',
+        name: 'Birch Juice Mild-Up Sunscreen SPF 50+',
+        display_name: 'Round Lab Birch Juice Mild-Up Sunscreen SPF 50+',
+        category: 'Sunscreen',
+        product_type: 'Sunscreen',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'daily_sunscreen',
+        retrieval_query: 'daily sunscreen',
+        key_features: ['UV filters'],
+        short_description: 'A lightweight sunscreen fluid for daily UV protection.',
+      },
+    ],
+    { targetContext },
+  );
+
+  assert.equal(state.primary_role_matched, true);
+  assert.deepEqual(
+    state.selected_recommendations.map((row) => row.product_id),
+    ['great_barrier_relief_tint_1', 'soothing_serum_tint_1', 'simple_daily_spf_tint_1'],
+  );
+  assert.equal(
+    state.selected_recommendations.some((row) => row.product_id === 'tinted_spf_retinoid_1'),
+    false,
+  );
+  assert.equal(
+    state.hard_reject.some((entry) => entry?.product?.product_id === 'tinted_spf_retinoid_1')
+      || state.soft_mismatch.some((entry) => entry?.product?.product_id === 'tinted_spf_retinoid_1'),
+    true,
+  );
+});
+
+test('__internal: framework pool prefers lightweight layering moisturizer evidence over generic cream support', () => {
+  const { __internal } = loadRoutesFresh();
+  const targetContext = {
+    framework_id: 'recofw_test_makeup_layering_texture_fit',
+    primary_role_id: 'daily_sunscreen_finish_fit',
+    routine_mode: 'routine_mix',
+    semantic_plan: {
+      primary_concern: 'daytime routine under makeup',
+      routine_mode: 'routine_mix',
+      comparison_mode: 'routine_mix',
+      must_satisfy_constraints: ['under makeup', 'avoid pilling'],
+    },
+    framework_roles: [
+      {
+        role_id: 'daily_sunscreen_finish_fit',
+        rank: 30,
+        preferred_step: 'sunscreen',
+        label: 'Daily sunscreen finish fit',
+        query_terms: ['sunscreen under makeup', 'lightweight sunscreen'],
+        fit_keywords: ['spf', 'uv filters', 'lightweight', 'under makeup'],
+        ingredient_hypotheses: ['UV filters'],
+        product_type_hypotheses: ['sunscreen'],
+      },
+      {
+        role_id: 'layering_compatible_moisturizer_or_spf',
+        rank: 60,
+        preferred_step: 'moisturizer',
+        label: 'Layering-compatible moisturizer or SPF',
+        query_terms: ['gel cream moisturizer', 'lightweight moisturizer', 'makeup layering'],
+        fit_keywords: ['lightweight', 'layering', 'non-greasy', 'makeup'],
+        product_type_hypotheses: ['moisturizer'],
+      },
+      {
+        role_id: 'hydrating_serum_or_essence',
+        rank: 70,
+        preferred_step: 'serum',
+        label: 'Hydrating serum or essence',
+        query_terms: ['hydrating essence', 'lightweight hydrating serum'],
+        fit_keywords: ['hydrating', 'lightweight', 'essence'],
+        ingredient_hypotheses: ['Glycerin', 'Panthenol'],
+        product_type_hypotheses: ['serum', 'essence'],
+      },
+    ],
+  };
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [
+      {
+        product_id: 'round_lab_sunscreen_makeup_1',
+        merchant_id: 'external_seed',
+        brand: 'Round Lab',
+        name: 'Birch Juice Mild-Up Sunscreen SPF 50+',
+        display_name: 'Round Lab Birch Juice Mild-Up Sunscreen SPF 50+',
+        category: 'Sunscreen',
+        product_type: 'Sunscreen',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'daily_sunscreen_finish_fit',
+        retrieval_query: 'sunscreen under makeup',
+        short_description: 'A lightweight sunscreen fluid that layers cleanly under makeup.',
+      },
+      {
+        product_id: 'jurlique_rare_rose_cream_makeup_1',
+        merchant_id: 'external_seed',
+        brand: 'Jurlique',
+        name: 'Rare Rose Cream',
+        display_name: 'Jurlique Rare Rose Cream',
+        category: 'Moisturizer',
+        product_type: 'Moisturizer',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'layering_compatible_moisturizer_or_spf',
+        retrieval_query: 'lightweight moisturizer',
+        short_description: 'A moisturizer cream with rose extract and botanical hydration.',
+      },
+      {
+        product_id: 'round_lab_lotion_makeup_1',
+        merchant_id: 'external_seed',
+        brand: 'Round Lab',
+        name: 'Birch Juice Face Lotion',
+        display_name: 'Round Lab Birch Juice Face Lotion',
+        category: 'Face Moisturizer',
+        product_type: 'Moisturizer',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'layering_compatible_moisturizer_or_spf',
+        retrieval_query: 'lightweight moisturizer',
+        short_description: 'A lightweight face lotion with non-greasy hydration and fast-absorbing layering comfort.',
+      },
+      {
+        product_id: 'hydrating_essence_makeup_1',
+        merchant_id: 'external_seed',
+        brand: 'Round Lab',
+        name: '1025 Dokdo Hydrating Serum',
+        display_name: 'Round Lab 1025 Dokdo Hydrating Serum',
+        category: 'Serum',
+        product_type: 'Serum',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'hydrating_serum_or_essence',
+        retrieval_query: 'hydrating essence',
+        short_description: 'A lightweight hydrating serum with glycerin and panthenol for layered hydration.',
+      },
+    ],
+    { targetContext },
+  );
+
+  assert.equal(state.primary_role_matched, true);
+  assert.deepEqual(
+    state.selected_recommendations.map((row) => row.product_id),
+    ['round_lab_sunscreen_makeup_1', 'round_lab_lotion_makeup_1', 'hydrating_essence_makeup_1'],
+  );
+  assert.equal(
+    state.selected_recommendations.some((row) => row.product_id === 'jurlique_rare_rose_cream_makeup_1'),
+    false,
+  );
+  assert.equal(
+    state.hard_reject.some((entry) => entry?.product?.product_id === 'jurlique_rare_rose_cream_makeup_1')
+      || state.soft_mismatch.some((entry) => entry?.product?.product_id === 'jurlique_rare_rose_cream_makeup_1'),
+    true,
+  );
+});
+
 test('__internal: framework pool preserves same product across planned retrieval roles before role-fit', () => {
   const { __internal } = loadRoutesFresh();
   const targetContext = {
