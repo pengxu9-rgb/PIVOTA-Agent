@@ -99,6 +99,57 @@ function buildConcernRoleFitText(role = null) {
     .join(' ');
 }
 
+function buildConcernRowEvidenceText(row = null, candidateText = '') {
+  const sku = row && typeof row.sku === 'object' && !Array.isArray(row.sku) ? row.sku : {};
+  const product = row && typeof row.product === 'object' && !Array.isArray(row.product) ? row.product : {};
+  return [
+    candidateText,
+    row?.title,
+    row?.display_name,
+    row?.displayName,
+    row?.name,
+    row?.category,
+    row?.product_type,
+    row?.productType,
+    row?.short_description,
+    row?.shortDescription,
+    row?.description,
+    row?.summary,
+    row?.subtitle,
+    ...(Array.isArray(row?.key_features) ? row.key_features : []),
+    ...(Array.isArray(row?.keyFeatures) ? row.keyFeatures : []),
+    ...(Array.isArray(row?.benefit_tags) ? row.benefit_tags : []),
+    ...(Array.isArray(row?.benefitTags) ? row.benefitTags : []),
+    ...(Array.isArray(row?.search_aliases) ? row.search_aliases : []),
+    ...(Array.isArray(row?.searchAliases) ? row.searchAliases : []),
+    ...(Array.isArray(row?.tags) ? row.tags : []),
+    ...(Array.isArray(row?.tag_tokens) ? row.tag_tokens : []),
+    sku?.title,
+    sku?.display_name,
+    sku?.displayName,
+    sku?.name,
+    sku?.category,
+    sku?.product_type,
+    sku?.productType,
+    sku?.short_description,
+    sku?.shortDescription,
+    sku?.description,
+    product?.title,
+    product?.display_name,
+    product?.displayName,
+    product?.name,
+    product?.category,
+    product?.product_type,
+    product?.productType,
+    product?.short_description,
+    product?.shortDescription,
+    product?.description,
+  ]
+    .map((value) => String(value || '').trim().toLowerCase())
+    .filter(Boolean)
+    .join(' ');
+}
+
 function hasRetinoidActiveSignal(text = '') {
   return /\b(retinol|retinal|retinaldehyde|retinoid|tretinoin|adapalene)\b/i.test(String(text || ''));
 }
@@ -145,8 +196,26 @@ function roleExpectsLightweightLayeringTexture(roleText = '') {
   return /\b(lightweight|layering|non[- ]?greasy|makeup|under makeup|pilling|gel cream|water cream)\b/i.test(String(roleText || ''));
 }
 
+function hasPositiveLightweightTextureSignal(text = '') {
+  return /\b(lightweight|layering|non[- ]?greasy|oil[- ]?free|breathable|fast[- ]?absorbing|quick[- ]?absorbing|gel(?:[- ]?cream)?|water(?:[- ]?(?:gel|cream))|fluid|lotion|emulsion|milk)\b/i.test(
+    String(text || ''),
+  );
+}
+
 function hasHeavyTextureMismatchSignal(text = '') {
   return /\b(rich cream|supreme restorative rich|heavy cream|ultra[- ]?rich|balm|butter|ointment|sleeping mask)\b/i.test(String(text || ''));
+}
+
+function hasCoverageTintSignal(text = '') {
+  return /\b(tint(?:ed)?|coverage|skin tint|bb cream|cc cream|tone[- ]?up|complexion)\b/i.test(String(text || ''));
+}
+
+function roleExplicitlyAllowsCoverageTint(role = null, targetContext = null) {
+  const roleText = buildConcernRoleFitText(role);
+  const contextText = buildConcernTargetContextFitText(targetContext);
+  return /\b(tint(?:ed)?|coverage|skin tint|bb cream|cc cream|tone[- ]?up|complexion|finish fit|under makeup|makeup|primer|base)\b/i.test(
+    `${roleText} ${contextText}`.trim(),
+  );
 }
 
 function roleExpectsLowIrritationSupportProduct(role = null, preferredStep = '', targetContext = null) {
@@ -166,6 +235,8 @@ function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '
   const roleId = String(role?.role_id || '').trim();
   if (!roleId) return null;
   const preferredStep = normalizeRecoTargetStep(role?.preferred_step);
+  const roleText = buildConcernRoleFitText(role);
+  const candidateEvidenceText = buildConcernRowEvidenceText(row, candidateText);
   // Treatment roles often land on serum-shaped catalog items even when the planner
   // does not explicitly emit alternate_steps=["serum"].
   const alternateStepSet = new Set(
@@ -190,6 +261,12 @@ function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '
   const alternateStep = Boolean(candidateStep && alternateSteps.includes(candidateStep));
   const roleSemanticFitMatched = fitKeywordMatches > 0 || queryTermMatches > 0 || ingredientMatches > 0;
   const semanticFitMatched = roleSemanticFitMatched || productTypeMatches > 0;
+  const lightweightTextureExpected =
+    preferredStep === 'moisturizer' && roleExpectsLightweightLayeringTexture(roleText);
+  const lightweightTextureEvidenceMissingApplied =
+    lightweightTextureExpected
+    && !hasPositiveLightweightTextureSignal(candidateEvidenceText)
+    && !hasHeavyTextureMismatchSignal(candidateEvidenceText);
   const supportStepRescueApplied =
     Number(role?.rank || 99) > 1
     && preferredStep !== 'treatment'
@@ -199,7 +276,8 @@ function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '
     && productTypeMatches > 0
     && fitKeywordMatches === 0
     && queryTermMatches === 0
-    && ingredientMatches === 0;
+    && ingredientMatches === 0
+    && !lightweightTextureEvidenceMissingApplied;
   const treatmentSerumIngredientRescueApplied =
     preferredStep === 'treatment'
     && candidateStep === 'serum'
@@ -216,21 +294,25 @@ function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '
     && strongSemanticFitMatched;
   const lowIrritationSupportExpected = roleExpectsLowIrritationSupportProduct(role, preferredStep, targetContext);
   const lowIrritationRetinoidMismatchApplied =
-    hasRetinoidActiveSignal(candidateText)
+    hasRetinoidActiveSignal(candidateEvidenceText)
     && lowIrritationSupportExpected;
   const lowIrritationOfftargetActiveMismatchApplied =
-    hasOffTargetIrritationActiveSignal(candidateText)
+    hasOffTargetIrritationActiveSignal(candidateEvidenceText)
     && lowIrritationSupportExpected;
   const lowIrritationActiveMismatchApplied =
     lowIrritationRetinoidMismatchApplied || lowIrritationOfftargetActiveMismatchApplied;
   const eyeAreaRoleMismatchApplied =
     preferredStep === 'sunscreen'
-    && hasEyeAreaProductSignal(candidateText)
+    && hasEyeAreaProductSignal(candidateEvidenceText)
     && !roleAllowsEyeAreaProduct(buildConcernRoleFitText(role));
   const lightweightTextureMismatchApplied =
     preferredStep === 'moisturizer'
-    && roleExpectsLightweightLayeringTexture(buildConcernRoleFitText(role))
-    && hasHeavyTextureMismatchSignal(candidateText);
+    && lightweightTextureExpected
+    && hasHeavyTextureMismatchSignal(candidateEvidenceText);
+  const sunscreenCoverageTintMismatchApplied =
+    preferredStep === 'sunscreen'
+    && hasCoverageTintSignal(candidateEvidenceText)
+    && !roleExplicitlyAllowsCoverageTint(role, targetContext);
 
   let score = 0;
   if (exactStep) score += preferredStep === 'treatment' ? 0.22 : 0.34;
@@ -266,7 +348,15 @@ function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '
   if (!semanticFitMatched && !exactStep && !alternateStep) {
     score = Math.min(score, 0.28);
   }
-  if (lowIrritationActiveMismatchApplied || eyeAreaRoleMismatchApplied || lightweightTextureMismatchApplied) {
+  if (lightweightTextureEvidenceMissingApplied) {
+    score = Math.min(score, 0.46);
+  }
+  if (
+    lowIrritationActiveMismatchApplied
+    || eyeAreaRoleMismatchApplied
+    || lightweightTextureMismatchApplied
+    || sunscreenCoverageTintMismatchApplied
+  ) {
     score = Math.min(score - 0.34, 0.38);
   }
   score = Math.max(0, score);
@@ -284,6 +374,8 @@ function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '
     low_irritation_offtarget_active_mismatch_applied: lowIrritationOfftargetActiveMismatchApplied,
     eye_area_role_mismatch_applied: eyeAreaRoleMismatchApplied,
     lightweight_texture_mismatch_applied: lightweightTextureMismatchApplied,
+    lightweight_texture_evidence_missing_applied: lightweightTextureEvidenceMissingApplied,
+    sunscreen_coverage_tint_mismatch_applied: sunscreenCoverageTintMismatchApplied,
     treatment_serum_ingredient_rescue_applied: treatmentSerumIngredientRescueApplied,
     treatment_serum_active_semantic_rescue_applied: treatmentSerumActiveSemanticRescueApplied,
     fit_keyword_matches: fitKeywordMatches,
