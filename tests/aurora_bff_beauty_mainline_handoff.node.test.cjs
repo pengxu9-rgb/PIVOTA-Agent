@@ -2156,6 +2156,65 @@ test('runConcernSemanticPlanner uses structured Gemini JSON with minimal thinkin
   }
 });
 
+test('runConcernSemanticPlanner repairs analysis-context makeup layering drift back to sunscreen-led routine semantics', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    __internal.__setCallGeminiJsonObjectForTest(async (args = {}) => ({
+      ok: true,
+      json: {
+        primary_concern: 'daytime layering with sensitivity',
+        primary_role_id: 'soothing_treatment',
+        support_role_ids: ['layering_compatible_moisturizer_or_spf', 'barrier_moisturizer'],
+        routine_mode: 'routine_mix',
+        query_intents: [
+          {
+            role_id: 'soothing_treatment',
+            intent: 'soothing serum sensitive skin',
+            query_terms: ['soothing serum sensitive skin'],
+          },
+        ],
+        must_satisfy_constraints: ['under makeup', 'daytime wear'],
+        comparison_mode: 'routine_mix',
+        evidence_needed: ['layering compatibility', 'barrier support'],
+        ingredient_hypotheses: ['Panthenol'],
+        product_type_hypotheses: ['serum', 'moisturizer'],
+      },
+      parse_status: 'parsed',
+      provider: 'gemini',
+      requested_model: args.model,
+      effective_model: args.model,
+      selection_source: 'local_gemini_rest_direct',
+    }));
+
+    const out = await __internal.runConcernSemanticPlanner({
+      ctx: { lang: 'EN', request_id: 'req_makeup_layering_analysis_context_repair' },
+      requestText: 'Based on my routine and the skin analysis, what should I buy for daytime so my makeup stops pilling?',
+      focus: 'sunscreen',
+      profileSummary: {
+        skinType: 'combination',
+        sensitivity: 'high',
+        barrierStatus: 'impaired',
+        goals: ['smooth layering', 'barrier support', 'daily sunscreen'],
+      },
+      deadlineAtMs: Date.now() + 5000,
+    });
+
+    assert.equal(out.trace?.planner_failure_class, null);
+    assert.equal(out.semanticPlan?.selection_owner_state, 'trusted');
+    assert.deepEqual(
+      out.semanticPlan?.core_roles?.map((role) => role?.role_id).slice(0, 3),
+      ['daily_sunscreen_finish_fit', 'layering_compatible_moisturizer_or_spf', 'barrier_moisturizer'],
+    );
+    assert.equal(
+      out.semanticPlan?.selection_constraints?.plan_invariants_applied?.includes('routine_mix_removed_lowest_priority_role_for_finish_fit_coverage'),
+      true,
+    );
+  } finally {
+    __internal.__resetCallGeminiJsonObjectForTest();
+    delete require.cache[moduleId];
+  }
+});
+
 test('handoffRecoToBeautyMainlineSearch exposes raw candidate pool sources when only the strong internal winner is selected', async () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {

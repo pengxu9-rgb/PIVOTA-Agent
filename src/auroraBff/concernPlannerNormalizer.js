@@ -154,6 +154,7 @@ function buildConcernSemanticPlanTextPromptBundle({
         '- 只能使用 context.canonical_role_ontology / context.allowed_role_ids 里的 role_id。',
         '- 不要被 fallback 的初始顺序束缚；请基于用户真实主诉选择最贴合的 primary role。',
         '- 如果用户明确问防晒、妆前叠加、闷热通勤或 SPF，防晒/肤感适配角色可以成为 primary role。',
+        '- 如果用户在问白天妆前叠加、搓泥或 daytime layering，敏感/屏障信息只能改变 support role，不应把 primary 改成舒缓功效，除非用户明确主诉泛红、刺激或不耐受。',
         '- 如果用户问痘印、色沉、肤色不均，不要把它简化成 acne/oil-control，除非用户真的在问长痘或堵塞。',
         '- routine_mix 时 support_role_ids 是需要被检索和展示的 routine support role，不是可忽略注释。',
         '- routine_mix 时保持角色覆盖完整：功效 + 保湿/屏障支持 + 日常防晒，除非用户明确只要单品或同角色横向比较。',
@@ -171,6 +172,7 @@ function buildConcernSemanticPlanTextPromptBundle({
         '- Only use role_ids from context.canonical_role_ontology / context.allowed_role_ids.',
         '- Do not anchor on the fallback order; choose the primary role from the user’s real complaint.',
         '- If the user explicitly asks about sunscreen, SPF, commute, humidity, white cast, or under-makeup wear, a sunscreen finish-fit role may be primary.',
+        '- If the ask is daytime layering, pilling, or under-makeup wear, sensitivity or barrier context may change the support role, but should not replace the primary role with a soothing treatment unless the user explicitly asks about redness, irritation, or intolerance.',
         '- If the user asks about post-breakout marks, dark spots, or uneven tone, do not collapse it into acne/oil-control unless active breakouts or clogged pores are actually requested.',
         '- In routine_mix, support_role_ids are routine support roles that should be retrieved and shown, not optional commentary.',
         '- In routine_mix, keep role coverage complete: treatment + moisturizer/barrier support + daily sunscreen unless the user explicitly asks for a single product or same-role comparison.',
@@ -353,6 +355,38 @@ function repairRoutineMixRoleCoverage({
     if (code) repairCodes.push(code);
     return true;
   };
+  const removeRoleForMakeupLayeringCoverage = ({ keepIds = [] } = {}) => {
+    if (repaired.length < 3) return false;
+    const keepIdSet = new Set((Array.isArray(keepIds) ? keepIds : []).map((value) => String(value || '').trim()).filter(Boolean));
+    const removableRoleIds = [
+      'soothing_treatment',
+      'targeted_treatment',
+      'oil_control_treatment',
+      'acne_clogged_pore_treatment',
+      'supporting_moisturizer',
+      'lightweight_moisturizer',
+      'hydrating_serum_or_essence',
+      'hydrating_barrier_moisturizer',
+      'barrier_moisturizer',
+    ];
+    let removableIndex = repaired.findIndex((role) => {
+      const roleId = String(role?.role_id || '').trim();
+      return roleId && !keepIdSet.has(roleId) && removableRoleIds.includes(roleId);
+    });
+    if (removableIndex < 0) {
+      removableIndex = repaired.findIndex((role) => {
+        const roleId = String(role?.role_id || '').trim();
+        return roleId && !keepIdSet.has(roleId);
+      });
+    }
+    if (removableIndex < 0) removableIndex = repaired.length - 1;
+    const [removedRole] = repaired.splice(removableIndex, 1);
+    if (removedRole?.role_id) {
+      repairCodes.push('routine_mix_removed_lowest_priority_role_for_finish_fit_coverage');
+      return true;
+    }
+    return false;
+  };
 
   const contextText = normalizeConcernRoleHint([requestText, focus, primaryConcern].filter(Boolean).join(' '));
   const existingIds = roleIds();
@@ -372,20 +406,61 @@ function repairRoutineMixRoleCoverage({
     || existingIds.has('layering_compatible_moisturizer_or_spf');
 
   if (makeupLayeringIntent) {
+    const preferredTertiaryRoleId = sensitivityIntent
+      ? (roleListHasId(repaired, 'barrier_moisturizer') ? 'barrier_moisturizer' : 'hydrating_barrier_moisturizer')
+      : 'hydrating_serum_or_essence';
     const genericSunscreenIndex = repaired.findIndex((role) => String(role?.role_id || '').trim() === 'daily_sunscreen');
     const finishFitSunscreen = cloneSemanticPlannerRole(pickOntologyRoleById(ontologyRoles, 'daily_sunscreen_finish_fit'));
     if (genericSunscreenIndex >= 0 && finishFitSunscreen && !hasRole('daily_sunscreen_finish_fit')) {
       repaired.splice(genericSunscreenIndex, 1, finishFitSunscreen);
       repairCodes.push('routine_mix_replaced_generic_sunscreen_with_finish_fit');
-    } else if (!hasSunscreen && repaired.length < 3) {
+    } else if (!hasSunscreen && repaired.length >= 3 && !hasRole('daily_sunscreen_finish_fit')) {
+      removeRoleForMakeupLayeringCoverage({
+        keepIds: ['layering_compatible_moisturizer_or_spf', preferredTertiaryRoleId],
+      });
+    }
+    if (!hasRole('daily_sunscreen_finish_fit')) {
       insertRole('daily_sunscreen_finish_fit', {
         beforeRoleId: repaired[0]?.role_id || '',
         code: 'routine_mix_added_finish_fit_sunscreen',
       });
     }
     moveRoleToIndex('daily_sunscreen_finish_fit', 0, 'routine_mix_promoted_finish_fit_sunscreen_primary');
+    if (!roleListHasId(repaired, 'layering_compatible_moisturizer_or_spf') && repaired.length >= 3) {
+      removeRoleForMakeupLayeringCoverage({
+        keepIds: ['daily_sunscreen_finish_fit', preferredTertiaryRoleId],
+      });
+    }
+    if (!roleListHasId(repaired, 'layering_compatible_moisturizer_or_spf')) {
+      insertRole('layering_compatible_moisturizer_or_spf', {
+        afterIndex: 0,
+        code: 'routine_mix_added_layering_support_for_makeup',
+      });
+    }
     moveRoleToIndex('layering_compatible_moisturizer_or_spf', 1, 'routine_mix_promoted_layering_support_secondary');
-    if (
+    if (sensitivityIntent) {
+      if (
+        !roleListHasId(repaired, 'barrier_moisturizer')
+        && !roleListHasId(repaired, 'hydrating_barrier_moisturizer')
+        && repaired.length >= 3
+      ) {
+        removeRoleForMakeupLayeringCoverage({
+          keepIds: ['daily_sunscreen_finish_fit', 'layering_compatible_moisturizer_or_spf'],
+        });
+      }
+      const insertedBarrier = insertRole('barrier_moisturizer', {
+        afterIndex: 1,
+        code: 'routine_mix_added_barrier_support_for_layering',
+      }) || insertRole('hydrating_barrier_moisturizer', {
+        afterIndex: 1,
+        code: 'routine_mix_added_hydrating_barrier_support_for_layering',
+      });
+      moveRoleToIndex('barrier_moisturizer', 2, 'routine_mix_promoted_barrier_support_tertiary')
+        || moveRoleToIndex('hydrating_barrier_moisturizer', 2, 'routine_mix_promoted_barrier_support_tertiary');
+      if (insertedBarrier) {
+        moveRoleToIndex('soothing_treatment', 3);
+      }
+    } else if (
       roleListHasId(repaired, 'layering_compatible_moisturizer_or_spf')
       && !roleListHasId(repaired, 'hydrating_serum_or_essence')
       && !roleListHasStep(repaired, 'serum')
