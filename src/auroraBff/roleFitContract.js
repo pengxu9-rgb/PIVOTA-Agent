@@ -349,7 +349,7 @@ function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '
     score = Math.min(score, 0.28);
   }
   if (lightweightTextureEvidenceMissingApplied) {
-    score = Math.min(score, 0.46);
+    score = Math.min(score, 0.54);
   }
   if (
     lowIrritationActiveMismatchApplied

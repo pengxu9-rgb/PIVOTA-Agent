@@ -7914,14 +7914,15 @@ test('__internal: framework pool prefers lightweight layering moisturizer eviden
     state.selected_recommendations.map((row) => row.product_id),
     ['round_lab_sunscreen_makeup_1', 'round_lab_lotion_makeup_1', 'hydrating_essence_makeup_1'],
   );
+  const fallbackMoisturizer = state.viable_candidate_pool.find((row) => row?.product_id === 'jurlique_rare_rose_cream_makeup_1') || null;
+  const preferredMoisturizer = state.selected_recommendations.find((row) => row?.product_id === 'round_lab_lotion_makeup_1') || null;
+  assert.ok(fallbackMoisturizer);
+  assert.ok(preferredMoisturizer);
+  assert.ok(Number(fallbackMoisturizer?.framework_score || 0) >= 0.52);
+  assert.ok(Number(preferredMoisturizer?.framework_score || 0) > Number(fallbackMoisturizer?.framework_score || 0));
   assert.equal(
     state.selected_recommendations.some((row) => row.product_id === 'jurlique_rare_rose_cream_makeup_1'),
     false,
-  );
-  assert.equal(
-    state.hard_reject.some((entry) => entry?.product?.product_id === 'jurlique_rare_rose_cream_makeup_1')
-      || state.soft_mismatch.some((entry) => entry?.product?.product_id === 'jurlique_rare_rose_cream_makeup_1'),
-    true,
   );
 });
 

@@ -400,7 +400,7 @@ test('layering moisturizer role demotes rich heavy creams despite exact moisturi
   assert.ok(Number(score?.score || 0) < 0.42);
 });
 
-test('layering moisturizer role keeps generic cream below viability when it lacks lightweight texture evidence', () => {
+test('layering moisturizer role keeps generic cream as a low-confidence viable fallback when texture evidence is sparse', () => {
   const score = scoreConcernRoleCandidate(
     {
       title: 'Jurlique Rare Rose Cream',
@@ -417,7 +417,8 @@ test('layering moisturizer role keeps generic cream below viability when it lack
   assert.ok(score);
   assert.equal(score?.support_step_rescue_applied, false);
   assert.equal(score?.lightweight_texture_evidence_missing_applied, true);
-  assert.ok(Number(score?.score || 0) < 0.52);
+  assert.ok(Number(score?.score || 0) >= 0.52);
+  assert.ok(Number(score?.score || 0) < 0.58);
 });
 
 test('layering moisturizer role stays viable when lightweight lotion evidence is present', () => {
