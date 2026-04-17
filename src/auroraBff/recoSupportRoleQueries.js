@@ -138,6 +138,17 @@ function buildSupportRoleQueryVariants({
     .filter(Boolean)
     .join(' ')
     .toLowerCase();
+  const roleSpecificSignalText = uniqueCaseInsensitiveStrings([
+    roleId,
+    roleLabel,
+    semanticFamily,
+    ...(Array.isArray(queryTerms) ? queryTerms : []),
+    ...(Array.isArray(fitKeywords) ? fitKeywords : []),
+  ], 24)
+    .map((value) => normalizeSupportRoleQueryToken(value))
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
   const normalizedOilySignalText = signalText.replace(/\bnon[- ]greasy\b/g, ' ');
   const oilySignal =
     String(semanticFamily || '').trim().toLowerCase() === 'oil_control' ||
@@ -145,7 +156,7 @@ function buildSupportRoleQueryVariants({
   const gelSignal = /\b(gel cream|water gel|water cream|gel lotion|emulsion)\b/.test(signalText);
   const oilFreeSignal = /\b(oil free|oil-free)\b/.test(signalText);
   const barrierSignal = /\b(barrier|ceramide|ceramides|lotion)\b/.test(signalText);
-  const layeringSignal = /\b(layering|makeup|under makeup|pilling)\b/.test(signalText);
+  const layeringSignal = /\b(layering|makeup|under makeup|pilling)\b/.test(roleSpecificSignalText);
   const fluidSignal = /\b(fluid|invisible|water[- ]?fit|serum sunscreen|spf fluid)\b/.test(signalText);
   const hydrationSerumSignal = /\b(hydrat|dehydrat|hyaluronic|essence|plumping|water[- ]?fit|dull skin)\b/.test(signalText);
   const soothingTreatmentSignal = /\b(soothing|redness|calming|irritation|cica|panthenol|madecassoside)\b/.test(signalText);
