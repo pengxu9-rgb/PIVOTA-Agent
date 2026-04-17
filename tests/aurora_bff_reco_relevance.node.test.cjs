@@ -4411,8 +4411,9 @@ test('__internal: local external seed support-role search uses precise category-
   assert.ok(observedQueries[0].params[2].includes('face moisturizer'));
   assert.ok(observedQueries[0].params[2].includes('face lotion'));
   assert.ok(observedQueries[0].params[2].includes('moisturizing lotion'));
-  assert.ok(observedQueries[0].params[3].includes('%gel cream%'));
-  assert.ok(observedQueries[0].params[3].includes('%oil-free%'));
+  assert.ok(observedQueries[0].params[3].includes('%lightweight%'));
+  assert.equal(observedQueries[0].params[3].includes('%gel cream%'), false);
+  assert.equal(observedQueries[0].params[3].includes('%oil-free%'), false);
   assert.equal(observedQueries[0].params[3].includes('%moisturizer%'), false);
   assert.equal(observedQueries[0].params[3].includes('%cream%'), false);
   assert.equal(observedQueries[0].params[3].includes('%lotion%'), false);
@@ -4421,6 +4422,77 @@ test('__internal: local external seed support-role search uses precise category-
   assert.equal(out.products.length, 2);
   assert.equal(out.products[0].retrieval_match_stage, 'support_category_positive');
   assert.match(out.products[0].retrieval_reason, /support_category_positive/);
+});
+
+test('__internal: local external seed support-role positive patterns stay query-specific within the same role', async () => {
+  const { __internal } = loadRoutesFresh();
+  const observedQueries = [];
+  const out = await __internal.searchLocalExternalSeedProducts({
+    query: 'gel cream moisturizer',
+    limit: 1,
+    role: {
+      role_id: 'layering_compatible_moisturizer_or_spf',
+      rank: 2,
+      preferred_step: 'moisturizer',
+      query_terms: ['gel cream moisturizer', 'lightweight moisturizer'],
+      fit_keywords: ['lightweight', 'layering', 'non-greasy', 'makeup'],
+      product_type_hypotheses: ['moisturizer'],
+    },
+    preferredStep: 'moisturizer',
+    queryFn: async (sql, params) => {
+      observedQueries.push({ sql: String(sql || ''), params });
+      if (
+        !Array.isArray(params?.[3])
+        || !params[3].includes('%gel cream%')
+        || params[3].includes('%face lotion%')
+        || params[3].includes('%lightweight%')
+      ) {
+        return { rows: [] };
+      }
+      return {
+        rows: [
+          {
+            id: '152',
+            external_product_id: 'ext_gel_cream_152',
+            destination_url: 'https://example.com/products/gel-cream-152',
+            canonical_url: 'https://example.com/products/gel-cream-152',
+            domain: 'example.com',
+            title: 'Cloud Water Gel Cream',
+            image_url: 'https://example.com/products/gel-cream-152.jpg',
+            price_amount: 24,
+            price_currency: 'USD',
+            availability: 'in_stock',
+            match_stage: 'support_category_positive',
+            match_score: 54,
+            seed_data: {
+              derived: {
+                recall: {
+                  retrieval_title: 'Cloud Water Gel Cream',
+                  retrieval_summary: 'A water gel cream for lightweight hydration.',
+                  category: 'face moisturizer',
+                  vertical: 'skincare',
+                  alias_tokens: ['gel cream moisturizer'],
+                },
+              },
+              snapshot: {
+                title: 'Cloud Water Gel Cream',
+                description: 'Water gel cream moisturizer.',
+                category: 'Face Moisturizer',
+              },
+            },
+            updated_at: new Date().toISOString(),
+            created_at: new Date().toISOString(),
+          },
+        ],
+      };
+    },
+  });
+
+  assert.equal(out.ok, true);
+  assert.ok(observedQueries[0].params[3].includes('%gel cream%'));
+  assert.equal(observedQueries[0].params[3].includes('%face lotion%'), false);
+  assert.equal(observedQueries[0].params[3].includes('%lightweight%'), false);
+  assert.equal(out.products[0]?.title, 'Cloud Water Gel Cream');
 });
 
 test('__internal: local external seed support category terms keep face-lotion moisturizer variants authoritative', () => {

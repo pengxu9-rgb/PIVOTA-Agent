@@ -8432,6 +8432,13 @@ function buildLocalExternalSeedCategoryPositiveStage({
     .filter(Boolean)
     .join(' ');
   if (!haystack) return null;
+  const querySignalText = [
+    query,
+    preferredStep,
+  ]
+    .map((value) => String(value || '').trim().toLowerCase())
+    .filter(Boolean)
+    .join(' ');
 
   const terms = uniqCaseInsensitiveStrings(categoryTerms, 16)
     .map((value) => String(value || '').trim().toLowerCase())
@@ -8453,16 +8460,17 @@ function buildLocalExternalSeedCategoryPositiveStage({
     step === 'moisturizer'
     && /\b(gel[-\s]?cream|water[-\s]?(gel|cream)|oil[-\s]?free|lightweight|moisturi[sz]er|cream|lotion|emulsion|barrier|hydrating|hydration)\b/.test(haystack)
   ) {
-    const layeringTextureSignal = /\b(layering|makeup|under makeup|pilling|non[-\s]?greasy|fast[-\s]?absorbing|quick[-\s]?absorbing|lightweight)\b/.test(haystack);
+    const positiveSignalText = querySignalText || haystack;
+    const layeringTextureSignal = /\b(layering|makeup|under makeup|pilling|non[-\s]?greasy|fast[-\s]?absorbing|quick[-\s]?absorbing|lightweight)\b/.test(positiveSignalText);
     const positivePatterns = addPatterns(
-      /\bgel[-\s]?cream\b/.test(haystack) ? ['gel cream', 'gel-cream', 'water gel', 'water cream'] : [],
-      /\boil[-\s]?free\b/.test(haystack) ? ['oil free', 'oil-free'] : [],
+      /\bgel[-\s]?cream\b/.test(positiveSignalText) ? ['gel cream', 'gel-cream', 'water gel', 'water cream'] : [],
+      /\boil[-\s]?free\b/.test(positiveSignalText) ? ['oil free', 'oil-free'] : [],
       layeringTextureSignal ? ['lightweight', 'non-greasy', 'non greasy', 'fast absorbing', 'quick absorbing'] : [],
       layeringTextureSignal ? ['face lotion', 'gel lotion', 'water gel', 'water cream', 'emulsion'] : [],
-      /\blotion\b/.test(haystack) ? ['face lotion', 'gel lotion'] : [],
-      /\bemulsion\b/.test(haystack) ? ['emulsion'] : [],
-      /\bbarrier\b/.test(haystack) ? ['barrier', 'repair'] : [],
-      /\bhydrat/.test(haystack) ? ['hydrating', 'hydration'] : [],
+      /\blotion\b/.test(positiveSignalText) ? ['face lotion', 'gel lotion'] : [],
+      /\bemulsion\b/.test(positiveSignalText) ? ['emulsion'] : [],
+      /\bbarrier\b/.test(positiveSignalText) ? ['barrier', 'repair'] : [],
+      /\bhydrat/.test(positiveSignalText) ? ['hydrating', 'hydration'] : [],
     );
     const categories = pickTerms([
       'moisturizer',
