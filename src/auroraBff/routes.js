@@ -8453,13 +8453,16 @@ function buildLocalExternalSeedCategoryPositiveStage({
     step === 'moisturizer'
     && /\b(gel[-\s]?cream|water[-\s]?(gel|cream)|oil[-\s]?free|lightweight|moisturi[sz]er|cream|lotion|emulsion|barrier|hydrating|hydration)\b/.test(haystack)
   ) {
+    const layeringTextureSignal = /\b(layering|makeup|under makeup|pilling|non[-\s]?greasy|fast[-\s]?absorbing|quick[-\s]?absorbing|lightweight)\b/.test(haystack);
     const positivePatterns = addPatterns(
       /\bgel[-\s]?cream\b/.test(haystack) ? ['gel cream', 'gel-cream', 'water gel', 'water cream'] : [],
       /\boil[-\s]?free\b/.test(haystack) ? ['oil free', 'oil-free'] : [],
-      /\blightweight\b/.test(haystack) ? ['lightweight'] : [],
+      layeringTextureSignal ? ['lightweight', 'non-greasy', 'non greasy', 'fast absorbing', 'quick absorbing'] : [],
+      layeringTextureSignal ? ['face lotion', 'gel lotion', 'water gel', 'water cream', 'emulsion'] : [],
+      /\blotion\b/.test(haystack) ? ['face lotion', 'gel lotion'] : [],
+      /\bemulsion\b/.test(haystack) ? ['emulsion'] : [],
       /\bbarrier\b/.test(haystack) ? ['barrier', 'repair'] : [],
       /\bhydrat/.test(haystack) ? ['hydrating', 'hydration'] : [],
-      ['moisturizer', 'moisturiser', 'cream', 'lotion', 'emulsion'],
     );
     const categories = pickTerms([
       'moisturizer',
