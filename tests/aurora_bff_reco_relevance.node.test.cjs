@@ -4413,6 +4413,9 @@ test('__internal: local external seed support-role search uses precise category-
   assert.ok(observedQueries[0].params[2].includes('moisturizing lotion'));
   assert.ok(observedQueries[0].params[3].includes('%gel cream%'));
   assert.ok(observedQueries[0].params[3].includes('%oil-free%'));
+  assert.equal(observedQueries[0].params[3].includes('%moisturizer%'), false);
+  assert.equal(observedQueries[0].params[3].includes('%cream%'), false);
+  assert.equal(observedQueries[0].params[3].includes('%lotion%'), false);
   assert.equal(out.local_external_seed_stage_debug[0]?.stage, 'support_category_positive');
   assert.equal(out.local_external_seed_stage_debug[0]?.stop_after_any_match, true);
   assert.equal(out.products.length, 2);
@@ -4459,7 +4462,13 @@ test('__internal: local external seed support-role search admits face moisturize
     preferredStep: 'moisturizer',
     queryFn: async (sql, params) => {
       observedQueries.push({ sql: String(sql || ''), params });
-      if (!Array.isArray(params?.[2]) || !params[2].includes('face moisturizer')) {
+      if (
+        !Array.isArray(params?.[2])
+        || !params[2].includes('face moisturizer')
+        || !Array.isArray(params?.[3])
+        || !params[3].includes('%face lotion%')
+        || params[3].includes('%cream%')
+      ) {
         return { rows: [] };
       }
       return {
@@ -4504,6 +4513,9 @@ test('__internal: local external seed support-role search admits face moisturize
 
   assert.equal(out.ok, true);
   assert.equal(observedQueries.length, 1);
+  assert.ok(observedQueries[0].params[3].includes('%face lotion%'));
+  assert.equal(observedQueries[0].params[3].includes('%cream%'), false);
+  assert.equal(observedQueries[0].params[3].includes('%moisturizer%'), false);
   assert.equal(out.local_external_seed_stage_debug[0]?.stage, 'support_category_positive');
   assert.equal(out.products[0]?.title, 'Daily Balance Face Lotion');
   assert.equal(out.products[0]?.retrieval_match_stage, 'support_category_positive');
