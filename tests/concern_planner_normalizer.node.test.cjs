@@ -85,6 +85,23 @@ test('concern planner normalizer trusts JSON output selecting ontology roles out
   assert.deepEqual(normalized.evidence_needed, ['finish', 'layering compatibility', 'price']);
 });
 
+test('concern semantic fallback makes finish-fit sunscreen primary for makeup layering asks', () => {
+  const fallbackPlan = buildConcernSemanticPlanFallback({
+    text: 'My daytime products pill under makeup. What skincare product should I use instead?',
+    profileSummary: { skinType: 'combination', goals: ['smooth layering', 'lightweight hydration'] },
+  });
+
+  assert.deepEqual(
+    fallbackPlan.core_roles.map((role) => role.role_id),
+    [
+      'daily_sunscreen_finish_fit',
+      'layering_compatible_moisturizer_or_spf',
+      'hydrating_serum_or_essence',
+    ],
+  );
+  assert.match(String(fallbackPlan.primary_concern || ''), /sunscreen finish and layering compatibility/i);
+});
+
 test('concern planner normalizer repairs makeup layering sunscreen support to finish-fit role', () => {
   const fallbackPlan = buildConcernSemanticPlanFallback({
     text: 'My daytime products pill under makeup. What skincare product should I use instead?',
@@ -118,14 +135,17 @@ test('concern planner normalizer repairs makeup layering sunscreen support to fi
   assert.deepEqual(
     normalized.core_roles.map((role) => role.role_id),
     [
-      'layering_compatible_moisturizer_or_spf',
       'daily_sunscreen_finish_fit',
+      'layering_compatible_moisturizer_or_spf',
       'hydrating_serum_or_essence',
     ],
   );
   assert.deepEqual(
     normalized.selection_constraints.plan_invariants_applied,
-    ['routine_mix_replaced_generic_sunscreen_with_finish_fit'],
+    [
+      'routine_mix_replaced_generic_sunscreen_with_finish_fit',
+      'routine_mix_promoted_finish_fit_sunscreen_primary',
+    ],
   );
 });
 

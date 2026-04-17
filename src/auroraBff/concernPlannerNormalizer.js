@@ -342,6 +342,17 @@ function repairRoutineMixRoleCoverage({
     if (code) repairCodes.push(code);
     return true;
   };
+  const findRoleIndex = (roleId) => repaired.findIndex((item) => String(item?.role_id || '').trim() === String(roleId || '').trim());
+  const moveRoleToIndex = (roleId, targetIndex, code = '') => {
+    const currentIndex = findRoleIndex(roleId);
+    if (currentIndex < 0) return false;
+    const boundedTargetIndex = Math.max(0, Math.min(repaired.length - 1, Number(targetIndex) || 0));
+    if (currentIndex === boundedTargetIndex) return false;
+    const [role] = repaired.splice(currentIndex, 1);
+    repaired.splice(boundedTargetIndex, 0, role);
+    if (code) repairCodes.push(code);
+    return true;
+  };
 
   const contextText = normalizeConcernRoleHint([requestText, focus, primaryConcern].filter(Boolean).join(' '));
   const existingIds = roleIds();
@@ -368,7 +379,21 @@ function repairRoutineMixRoleCoverage({
       repairCodes.push('routine_mix_replaced_generic_sunscreen_with_finish_fit');
     } else if (!hasSunscreen && repaired.length < 3) {
       insertRole('daily_sunscreen_finish_fit', {
+        beforeRoleId: repaired[0]?.role_id || '',
         code: 'routine_mix_added_finish_fit_sunscreen',
+      });
+    }
+    moveRoleToIndex('daily_sunscreen_finish_fit', 0, 'routine_mix_promoted_finish_fit_sunscreen_primary');
+    moveRoleToIndex('layering_compatible_moisturizer_or_spf', 1, 'routine_mix_promoted_layering_support_secondary');
+    if (
+      roleListHasId(repaired, 'layering_compatible_moisturizer_or_spf')
+      && !roleListHasId(repaired, 'hydrating_serum_or_essence')
+      && !roleListHasStep(repaired, 'serum')
+      && repaired.length < 3
+    ) {
+      insertRole('hydrating_serum_or_essence', {
+        afterIndex: Math.max(findRoleIndex('layering_compatible_moisturizer_or_spf'), 0),
+        code: 'routine_mix_added_hydrating_serum_for_layering_support',
       });
     }
   }

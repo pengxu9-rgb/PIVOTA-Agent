@@ -663,9 +663,14 @@ function buildConcernSemanticPlanFallback({ text = '', focus = '', profileSummar
     addCoreRole(signals.makeup_layering ? 'layering_compatible_moisturizer_or_spf' : signals.oily || signals.humid ? 'lightweight_moisturizer' : 'hydrating_barrier_moisturizer', 2);
     if (signals.oily || signals.acne) addCoreRole('oil_control_treatment', 3);
   } else if (signals.makeup_layering) {
-    addCoreRole('layering_compatible_moisturizer_or_spf', 1);
-    addCoreRole(signals.oily ? 'lightweight_moisturizer' : 'hydrating_barrier_moisturizer', 2);
-    addCoreRole('daily_sunscreen_finish_fit', 3);
+    addCoreRole('daily_sunscreen_finish_fit', 1);
+    addCoreRole('layering_compatible_moisturizer_or_spf', 2);
+    addCoreRole(
+      signals.dry || signals.dehydrated || signals.barrier || signals.sensitive
+        ? 'hydrating_barrier_moisturizer'
+        : 'hydrating_serum_or_essence',
+      3,
+    );
   } else if (signals.tone_marks) {
     addCoreRole('tone_mark_treatment', 1);
     addCoreRole('daily_sunscreen', 2);
@@ -693,7 +698,7 @@ function buildConcernSemanticPlanFallback({ text = '', focus = '', profileSummar
   }
 
   const primaryConcern = signals.makeup_layering
-    ? (isCn ? '叠加与妆前兼容' : 'layering and makeup compatibility')
+    ? (isCn ? '防晒肤感与妆前叠加适配' : 'sunscreen finish and layering compatibility')
     : signals.sunscreen
       ? (isCn ? '防晒肤感与日间适配' : 'sunscreen finish and daytime fit')
       : signals.tone_marks
