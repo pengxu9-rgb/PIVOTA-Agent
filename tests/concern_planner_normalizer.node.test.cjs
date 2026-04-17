@@ -147,6 +147,23 @@ test('support role query variants prioritize dull-skin tone queries before post-
   assert.equal(queries.includes('post acne marks serum'), false);
 });
 
+test('support role query variants keep plain moisturizer out of capped makeup layering queries', () => {
+  const queries = buildSupportRoleQueryVariants({
+    roleId: 'layering_compatible_moisturizer_or_spf',
+    roleLabel: 'Layering-compatible moisturizer or SPF',
+    preferredStep: 'moisturizer',
+    queryTerms: ['gel cream moisturizer', 'lightweight moisturizer', 'makeup layering'],
+    fitKeywords: ['lightweight', 'layering', 'non-greasy', 'makeup'],
+    concernText: 'products pill under makeup',
+    maxQueries: 4,
+  });
+
+  assert.equal(queries[0], 'gel cream moisturizer');
+  assert.equal(queries.includes('lightweight moisturizer'), true);
+  assert.equal(queries.includes('makeup layering moisturizer'), true);
+  assert.equal(queries.includes('moisturizer'), false);
+});
+
 test('concern planner normalizer repairs routine_mix sensitivity plans that omit barrier support', () => {
   const fallbackPlan = buildConcernSemanticPlanFallback({
     text: 'My skin is sensitive and red. What product should I buy?',

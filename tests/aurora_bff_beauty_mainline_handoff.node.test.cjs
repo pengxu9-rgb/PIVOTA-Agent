@@ -1928,6 +1928,112 @@ test('handoffRecoToBeautyMainlineSearch releases support budget to external auth
   }
 });
 
+test('handoffRecoToBeautyMainlineSearch prioritizes lightweight layering queries over plain moisturizer under primary query caps', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const internalCaptured = [];
+    const externalCaptured = [];
+    __internal.__setRouteDependencyOverridesForTest({
+      searchInternalProductsPrimitive: async (args) => {
+        const query = String(args?.query || '').trim().toLowerCase();
+        internalCaptured.push(query);
+        return {
+          ok: true,
+          products: [],
+          attempted_internal_paths: ['/agent/internal/products/search'],
+          transport_hops: [],
+          transport_hop_count: 0,
+          nested_orchestrator_hops: 0,
+          primary_transport_owner: 'internal_products_search_primitive',
+          primary_endpoint_kind: 'internal_primitive',
+        };
+      },
+      searchLocalExternalSeedProducts: async (args) => {
+        const query = String(args?.query || '').trim().toLowerCase();
+        const roleId = String(args?.role?.role_id || '').trim();
+        externalCaptured.push({ query, roleId });
+        return {
+          ok: true,
+          products: [],
+          actual_http_attempt_count: 0,
+          attempted_base_urls: [],
+          attempted_paths: [],
+          transport_policy_mode: String(args?.transportPolicyMode || ''),
+          local_external_seed_search_mode: 'staged_support_fastpath',
+          local_external_seed_stage_debug: [],
+        };
+      },
+    });
+
+    const out = await __internal.handoffRecoToBeautyMainlineSearch({
+      ctx: { lang: 'EN', request_id: 'req_makeup_layering_query_priority' },
+      primaryQuery: 'My daytime products pill under makeup. What skincare product should I use instead?',
+      fallbackMessage: 'My daytime products pill under makeup. What skincare product should I use instead?',
+      targetContext: {
+        primary_role_id: 'layering_compatible_moisturizer_or_spf',
+        comparison_mode: 'routine_mix',
+        semantic_plan: {
+          routine_mode: 'routine_mix',
+          comparison_mode: 'routine_mix',
+          selection_constraints: { comparison_mode: 'routine_mix' },
+        },
+        framework_summary: {
+          concern_text: 'products pill under makeup',
+        },
+        framework_roles: [
+          {
+            role_id: 'layering_compatible_moisturizer_or_spf',
+            rank: 60,
+            preferred_step: 'moisturizer',
+            label: 'Layering-compatible moisturizer or SPF',
+            query_terms: ['gel cream moisturizer', 'lightweight moisturizer', 'makeup layering'],
+            fit_keywords: ['lightweight', 'layering', 'non-greasy', 'makeup'],
+          },
+          {
+            role_id: 'hydrating_serum_or_essence',
+            rank: 42,
+            preferred_step: 'serum',
+            label: 'Hydrating serum or essence',
+            query_terms: ['hyaluronic acid serum', 'hydrating serum dehydrated skin'],
+            fit_keywords: ['hydrating', 'dehydrated', 'hyaluronic acid'],
+          },
+          {
+            role_id: 'daily_sunscreen_finish_fit',
+            rank: 31,
+            preferred_step: 'sunscreen',
+            label: 'Daily sunscreen finish fit',
+            query_terms: ['sunscreen', 'spf fluid'],
+            fit_keywords: ['spf', 'lightweight finish', 'makeup friendly'],
+          },
+        ],
+      },
+      timeoutMs: 5000,
+      minTimeoutMs: 5000,
+    });
+
+    const attempts = out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts || [];
+    const primaryInternalQueries = attempts
+      .filter((row) => row?.ladder_level === 'framework_stage_a_primary_internal')
+      .map((row) => row?.query);
+    const primaryExternalQueries = attempts
+      .filter((row) => row?.ladder_level === 'framework_stage_b_primary_external_seed')
+      .map((row) => row?.query);
+
+    assert.deepEqual(primaryInternalQueries.slice(0, 2), ['gel cream moisturizer', 'lightweight moisturizer']);
+    assert.deepEqual(primaryExternalQueries.slice(0, 2), ['gel cream moisturizer', 'lightweight moisturizer']);
+    assert.equal(primaryInternalQueries.includes('moisturizer'), false);
+    assert.equal(primaryExternalQueries.includes('moisturizer'), false);
+    assert.equal(internalCaptured.includes('lightweight moisturizer'), true);
+    assert.equal(
+      externalCaptured.some((row) => row?.query === 'lightweight moisturizer' && row?.roleId === 'layering_compatible_moisturizer_or_spf'),
+      true,
+    );
+  } finally {
+    __internal.__resetRouteDependencyOverridesForTest();
+    delete require.cache[moduleId];
+  }
+});
+
 test('runConcernSemanticPlanner uses structured Gemini JSON with minimal thinking', async () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
