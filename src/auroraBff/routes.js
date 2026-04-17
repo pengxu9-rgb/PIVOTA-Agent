@@ -53682,6 +53682,9 @@ function isRecoAssistantWeakReasonFragment(value) {
   if (!text) return true;
   const normalized = normalizeSemanticAuditText(text);
   if (!normalized) return true;
+  if (/^best\s+for\b/i.test(normalized)) {
+    return true;
+  }
   if (/^(niacinamide|zinc|zinc pca|hyaluronic acid|ceramide|ceramides|glycerin|panthenol|vitamin c|ascorbic acid|vitamin c ascorbic acid|uv filters?)$/i.test(normalized)) {
     return true;
   }
@@ -54120,7 +54123,7 @@ function buildCompactRecoAssistantPromptLines({
     'Price may support the recommendation, but pair it with a concrete product-fit reason from Context.',
     'Follow Context.assistant_write_plan first: use its reason_points before falling back to generic role labels.',
     'Every named product must receive its own concrete product-specific reason from Context.',
-    'Never write ungrammatical fragments like "because a serum..." or "because an SPF..."; use "because it is..." or an active verb.',
+    'Never write ungrammatical fragments like "because a serum...", "because an SPF...", or "because best for..."; use "because it is..." or an active verb.',
     'Use one direct-buy framing phrase only once, in the first sentence; never repeat buy/pick framing inside the reason clause or final wrap-up.',
     'When reviewed_insight_available is false, do not repeat clinical, dermatologist, review, community, or social-proof claims; treat the evidence as seller/product-record copy only.',
     'Compact retry mode: keep the answer tight, prioritize the selected product evidence, and skip optional background detail.',
@@ -54183,6 +54186,7 @@ function buildStructuredRecoAssistantReasonPromptLines({
     'support_reasons must align to the remaining selected products in order; use an empty array when there are no support products.',
     'Each reason must be a short shopper-facing fragment, not a full recommendation sentence.',
     'Do not start a reason fragment with "a" or "an" unless it remains grammatical after "because"; prefer active verbs or "it is ...".',
+    'Do not start a reason fragment with "best for"; rewrite that as "it is positioned for ..." plus one concrete evidence point.',
     'Do not include direct buy/pick framing inside any reason fragment.',
     'When reviewed_insight_available is false, do not use clinical, dermatologist, review, community, or social-proof claim language.',
     'Price may be included only when Context provides price_label or price_order_summary, and it must be paired with a non-price fit reason.',
@@ -54625,7 +54629,7 @@ function buildRecoAssistantRewritePrompt({
       'If request_mode is "buy", use direct shopping advice tone.',
       'If request_mode is "buy", start the first sentence with the lead product name rather than a generic concern summary.',
       'If request_mode is "buy", the first sentence must use direct buy/pick language, for example: "<lead product name> is the most direct fit because ...".',
-      'Never write ungrammatical fragments like "because a serum..." or "because an SPF..."; use "because it is..." or an active verb.',
+      'Never write ungrammatical fragments like "because a serum...", "because an SPF...", or "because best for..."; use "because it is..." or an active verb.',
       'Use one direct-buy framing phrase only once, in the first sentence; never repeat buy/pick framing inside the reason clause or final wrap-up.',
       'If request_mode is "buy" and there is one selected product, the first sentence must directly recommend that product by name.',
       'If request_mode is "buy" and selected_product_role_mix is "same_role_comparison", the first sentence must name the lead product and signal that the remaining picks are same-slot comparison options.',
@@ -54841,6 +54845,32 @@ function assistantTextMentionsUnselectedRecoCandidate(text, payload = null) {
   return aliases.some((alias) => normalizedText.includes(alias));
 }
 
+function removeRecoAssistantSelectedProductNamesFromConcernText(text, payload = null) {
+  let out = String(text || '');
+  if (!out.trim()) return out;
+  const basePayload = isPlainObject(payload) ? payload : {};
+  const recommendations = Array.isArray(basePayload.recommendations)
+    ? basePayload.recommendations.filter((item) => isPlainObject(item))
+    : [];
+  const selectedNames = uniqCaseInsensitiveStrings(
+    recommendations.flatMap((item) => {
+      const brand = pickFirstTrimmed(item.brand, item.brand_name, item.brandName, item.sku?.brand);
+      const name = pickFirstTrimmed(item.display_name, item.displayName, item.name, item.title, item.sku?.display_name, item.sku?.name);
+      return [
+        name,
+        brand && name ? joinBrandAndName(brand, name) : '',
+      ];
+    }),
+    12,
+  )
+    .filter((name) => String(name || '').trim().length >= 8)
+    .sort((left, right) => String(right || '').length - String(left || '').length);
+  for (const name of selectedNames) {
+    out = out.replace(new RegExp(escapeRegExp(name), 'ig'), ' ');
+  }
+  return out.replace(/\s+/g, ' ').trim();
+}
+
 function assistantTextUsesFutureRoutineUpsell(text) {
   return /\b(eventually|later on|down the line|you may want to look for|you might want to look for|you may also want to look for|you may eventually want to look for|consider adding later)\b/i.test(
     String(text || ''),
@@ -54865,6 +54895,7 @@ function assistantTextUsesGenericRoutineWrapup(text) {
 
 function assistantTextHasUngrammaticalReasonFragment(text) {
   return /\bbecause\s+(?:a|an)\s+[^.!?。！？]{3,120}\b(?:that|with|for)\b/i.test(String(text || ''))
+    || /\bbecause\s+best\s+for\b/i.test(String(text || ''))
     || /\bbecause\s+(?:is|are|was|were|has|have|had|features?|provides?|uses?|contains?|combines?|offers?|supports?|helps?|hydrates?|targets?|addresses?|reduces?|delivers?|gives?|pairs?|layers?|locks?|soothes?|boosts?|protects?|keeps?|works?|functions?|serves?|formulated|designed|made|built)\b/i.test(String(text || ''));
 }
 
@@ -54968,7 +54999,8 @@ function assistantTextUsesOffTargetRecoConcern(text, {
   ].filter(Boolean).join(' ');
   const allowedFamilies = collectRecoAssistantConcernFamilies(targetText);
   if (!allowedFamilies.size) return false;
-  const textFamilies = collectRecoAssistantConcernFamilies(raw);
+  const claimText = removeRecoAssistantSelectedProductNamesFromConcernText(raw, payload);
+  const textFamilies = collectRecoAssistantConcernFamilies(claimText);
   if (!textFamilies.size) return false;
   for (const family of textFamilies) {
     if (allowedFamilies.has(family)) continue;
@@ -55214,6 +55246,17 @@ function normalizeRecoAssistantReasonFragment(value, {
     .replace(/[“”"]/g, '')
     .replace(/\s+/g, ' ')
     .trim();
+  const directBuyForOnlyRegex = new RegExp(`^(?:it\\s+is\\s+|is\\s+)?(?:(?:your|the)\\s+)?${directBuyFramingPattern}\\s+(?:for|to)\\s+`, 'i');
+  if (directBuyForOnlyRegex.test(text)) {
+    const fallbackText = String(fallback || '').trim();
+    if (fallbackText && fallbackText !== value) {
+      return normalizeRecoAssistantReasonFragment(fallbackText, {
+        selectedNames,
+        forbiddenNames,
+        forbiddenAliases,
+      });
+    }
+  }
   for (const name of removeNames) {
     const rawName = String(name || '').trim();
     if (!rawName) continue;
@@ -55272,6 +55315,7 @@ function normalizeRecoAssistantReasonFragment(value, {
     }
     return '';
   }
+  text = text.replace(/^best\s+for\s+/i, 'it is positioned for ');
   text = text.replace(/^(a|an|the)\b/i, (match) => match.toLowerCase());
   if (isRecoAssistantWeakReasonFragment(text)) {
     const fallbackText = String(fallback || '').trim();
@@ -55311,6 +55355,9 @@ function buildRecoAssistantStructuredReasonFallback(detail = {}, {
 function normalizeRecoAssistantBecauseReasonFragment(reason) {
   const text = String(reason || '').replace(/\s+/g, ' ').trim();
   if (!text) return '';
+  if (/^best\s+for\s+/i.test(text)) {
+    return text.replace(/^best\s+for\s+/i, 'it is positioned for ');
+  }
   if (/^(?:a|an)\s+[^.!?。！？]{3,120}\b(?:that|with|for)\b/i.test(text)) {
     return `it is ${text}`;
   }
