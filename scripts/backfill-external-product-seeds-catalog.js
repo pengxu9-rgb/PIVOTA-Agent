@@ -83,6 +83,7 @@ function normalizeComparableUrlKey(value) {
     const parsed = new URL(normalized);
     const segments = parsed.pathname.split('/').filter(Boolean);
     if (segments[0] && LOCALE_PATH_SEGMENT_RE.test(segments[0])) segments.shift();
+    if (segments[0] === 'product') segments[0] = 'products';
     parsed.pathname = `/${segments.join('/')}`;
     parsed.search = '';
     parsed.hash = '';
@@ -1484,6 +1485,23 @@ async function processRow(row, options) {
 
   try {
     const response = await extractSeed(targetUrl, row, options.baseUrl);
+    const products = Array.isArray(response?.products) ? response.products : [];
+    const representativeProduct = chooseRepresentativeProduct(response, targetUrl, row);
+    if (looksLikeDirectProductTargetUrl(targetUrl) && products.length > 0 && !representativeProduct) {
+      return {
+        status: 'skipped',
+        reason: 'representative_product_not_found',
+        row,
+        targetUrl,
+        payload: {
+          diagnostics: response?.diagnostics || null,
+          candidate_product_urls: products
+            .map((product) => normalizeUrlLike(product?.url))
+            .filter(Boolean)
+            .slice(0, 10),
+        },
+      };
+    }
     const payload = buildSeedUpdatePayload(row, response, targetUrl);
     const enrichment = await enrichExternalSeedRowIngredients({
       row: {

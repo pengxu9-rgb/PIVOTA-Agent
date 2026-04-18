@@ -4,6 +4,7 @@ const {
   pickSeedTargetUrl,
   buildExtractRequestBody,
   chooseRepresentativeProduct,
+  processRow,
   buildSeedUpdatePayload,
   buildVariantSeedRows,
   comparableSeedData,
@@ -177,6 +178,36 @@ describe('backfill-external-product-seeds-catalog', () => {
     );
   });
 
+  test('matches singular and plural product PDP paths when choosing the representative product', () => {
+    const row = {
+      canonical_url: 'https://www.tomfordbeauty.com/product/gel-eyeliner?shade=02_Cocoa',
+      destination_url: 'https://www.tomfordbeauty.com/product/gel-eyeliner?shade=02_Cocoa',
+      seed_data: {
+        snapshot: {
+          canonical_url: 'https://www.tomfordbeauty.com/product/gel-eyeliner?shade=02_Cocoa',
+        },
+      },
+    };
+
+    const product = chooseRepresentativeProduct(
+      {
+        products: [
+          {
+            title: 'Gel Eyeliner',
+            url: 'https://www.tomfordbeauty.com/products/gel-eyeliner',
+          },
+        ],
+      },
+      'https://www.tomfordbeauty.com/product/gel-eyeliner?shade=02_Cocoa',
+      row,
+    );
+
+    expect(product.url).toBe('https://www.tomfordbeauty.com/products/gel-eyeliner');
+    expect(normalizeComparableUrlKey(product.url)).toBe(
+      normalizeComparableUrlKey('https://www.tomfordbeauty.com/product/gel-eyeliner?shade=02_Cocoa'),
+    );
+  });
+
   test('normalizes locale-prefixed seed targets to the requested market locale', () => {
     expect(
       normalizeTargetUrlForMarket(
@@ -211,6 +242,65 @@ describe('backfill-external-product-seeds-catalog', () => {
     );
 
     expect(product).toBeNull();
+  });
+
+  test('skips direct PDP backfill when extractor only returns unrelated collection products', async () => {
+    const row = {
+      id: 'eps_tomford_missing_handle',
+      title: 'Shade and Illuminate Soft Radiance Foundation SPF 50',
+      market: 'US',
+      canonical_url:
+        'https://www.tomfordbeauty.com/product/shade-and-illuminate-soft-radiance-foundation-spf-50?shade=9.7_Cool_Dusk',
+      destination_url:
+        'https://www.tomfordbeauty.com/product/shade-and-illuminate-soft-radiance-foundation-spf-50?shade=9.7_Cool_Dusk',
+      seed_data: {
+        snapshot: {
+          canonical_url:
+            'https://www.tomfordbeauty.com/product/shade-and-illuminate-soft-radiance-foundation-spf-50?shade=9.7_Cool_Dusk',
+        },
+      },
+    };
+
+    jest
+      .spyOn(axios, 'post')
+      .mockResolvedValueOnce({
+        data: {
+          products: [
+            {
+              title: 'Architecture Radiance Hydrating Foundation Broad Spectrum SPF 50+',
+              url: 'https://www.tomfordbeauty.com/products/architecture-radiance-hydrating-foundation-broad-spectrum-spf-50',
+              description_raw: 'A different product.',
+              variants: [],
+            },
+          ],
+          variants: [],
+          diagnostics: {
+            http_trace: [
+              {
+                url: 'https://www.tomfordbeauty.com/products/shade-and-illuminate-soft-radiance-foundation-spf-50.js',
+                status: 404,
+              },
+              {
+                url: 'https://www.tomfordbeauty.com/collections/makeup',
+                status: 200,
+              },
+            ],
+          },
+        },
+      });
+
+    const result = await processRow(row, {
+      dryRun: true,
+      baseUrl: 'https://catalog.test',
+      validateImageHealth: false,
+      expandVariants: false,
+    });
+
+    expect(result.status).toBe('skipped');
+    expect(result.reason).toBe('representative_product_not_found');
+    expect(result.payload.candidate_product_urls).toEqual([
+      'https://www.tomfordbeauty.com/products/architecture-radiance-hydrating-foundation-broad-spectrum-spf-50',
+    ]);
   });
 
   test('recovers the original PDP target from diagnostics when the stored URL drifted to contact-us', () => {
