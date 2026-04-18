@@ -1,4 +1,5 @@
 const {
+  classifyBeautyCoarseCandidate,
   scoreBeautyCandidateForTarget,
   buildBeautySkincareHitQualityDecision,
 } = require('../src/shared/beautyRecoCoarseClassifier');
@@ -292,6 +293,46 @@ describe('beauty treatment scoring', () => {
     );
 
     expect(sunscreen.score).toBeGreaterThan(serum.score);
+  });
+
+  test('sunscreen query does not trust mislabelled structured category without SPF identity evidence', () => {
+    const mislabeledTreatment = classifyBeautyCoarseCandidate(
+      {
+        title: 'Targeted Wrinkle Corrector',
+        category: 'Sunscreen',
+        product_type: 'Sunscreen',
+        merchant_id: 'external_seed',
+        url: 'https://www.murad.com/products/targeted-wrinkle-corrector',
+        description: 'Targeted treatment for the look of fine lines.',
+      },
+      {
+        queryTargetStepFamily: 'sunscreen',
+        queryText: 'daily sunscreen with finish fit',
+        mode: 'shopping_agent_beauty_mainline',
+      },
+    );
+    const realSunscreen = classifyBeautyCoarseCandidate(
+      {
+        title: 'Superactive Moisturizer SPF 50: Wrinkle-Fighting',
+        category: 'Sunscreen',
+        product_type: 'Sunscreen',
+        merchant_id: 'external_seed',
+        url: 'https://www.murad.com/products/superactive-moisturizer-spf-50-wrinkle-fighting',
+        description: 'Broad spectrum SPF 50 moisturizer.',
+      },
+      {
+        queryTargetStepFamily: 'sunscreen',
+        queryText: 'daily sunscreen with finish fit',
+        mode: 'shopping_agent_beauty_mainline',
+      },
+    );
+
+    expect(mislabeledTreatment.candidate_step).toBe('treatment');
+    expect(mislabeledTreatment.candidate_step_source).toBe('structured_category_identity_conflict');
+    expect(mislabeledTreatment.target_relevance_class).toBe('hard_invalid');
+    expect(mislabeledTreatment.noise_reason).toBe('spf_missing');
+    expect(realSunscreen.candidate_step).toBe('sunscreen');
+    expect(realSunscreen.target_relevance_class).toBe('strong_goal_family');
   });
 
   test('explicit sunscreen serum query can still keep sunscreen serum competitive', () => {

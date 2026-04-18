@@ -19805,8 +19805,14 @@ function buildRecoRoleGroundedWhyThisOne({
   if (/\boil|shine|sebum\b/i.test(role)) {
     return `${productText} fits the oil-control step${withFeature}, so it is a clearer first buy for mid-day shine.`;
   }
-  if (/\bmoist|hydrat|barrier|dehydrat\b/i.test(role)) {
-    return `${productText} fits the hydration and barrier-support step${withFeature}, without turning the routine into a heavy layer.`;
+  if (/\b(layer|layering|pilling|pill|makeup|under makeup)\b/i.test(role)) {
+    return `${productText} fits the smooth-layering step${withFeature}, so it is a better fit when heavier products pill under sunscreen or makeup.`;
+  }
+  if (/\bbarrier|ceramide|repair|compromised|impaired\b/i.test(role)) {
+    return `${productText} fits the barrier-support step${withFeature}, with a clearer repair-and-comfort role than a generic light moisturizer.`;
+  }
+  if (/\bhydrat|dehydrat|essence|water|moist\b/i.test(role)) {
+    return `${productText} fits the hydration step${withFeature}, adding water-weight support before cream or SPF.`;
   }
   if (/\bspf|sun|uv\b/i.test(role)) {
     return `${productText} fits the daily sunscreen step${withFeature}, so it keeps protection practical for regular wear.`;
@@ -19826,10 +19832,11 @@ function buildRecoDerivedShopperCopy({
   const roleLabel = pickFirstTrimmed(roleObj?.label, rawRow?.matched_role_label, rawRow?.matchedRoleLabel);
   const roleWhy = pickFirstTrimmed(roleObj?.why_this_role);
   const roleText = `${roleLabel} ${roleWhy}`.trim().toLowerCase();
-  const existingBestFor = pickFirstNonPlaceholderRecoCopy(rawRow?.best_for, rawRow?.bestFor);
-  const existingWhy = pickFirstNarrativeRecoCopy(rawRow?.why_this_one, rawRow?.whyThisOne, rawRow?.reason);
+  const rawExistingBestFor = pickFirstNonPlaceholderRecoCopy(rawRow?.best_for, rawRow?.bestFor);
+  const rawExistingWhy = pickFirstNarrativeRecoCopy(rawRow?.why_this_one, rawRow?.whyThisOne, rawRow?.reason);
   const productIntel = pickRecoProductIntelBundle(rawRow);
   const pivotaInsights = pickRecoPivotaInsights(rawRow);
+  const intelCore = isPlainObject(productIntel?.product_intel_core) ? productIntel.product_intel_core : null;
   const shoppingCard = pickRecoShoppingCardPayload(rawRow);
   const searchCard = pickRecoSearchCardPayload(rawRow);
   const productType = pickFirstTrimmed(
@@ -19892,15 +19899,42 @@ function buildRecoDerivedShopperCopy({
     keyFeatures,
     language,
   });
-  const bestFor = existingBestFor || (() => {
+  const reviewedBestFor = collectRecoPromptTextList(
+    [
+      ...(Array.isArray(pivotaInsights?.best_for) ? pivotaInsights.best_for : []),
+      ...(Array.isArray(intelCore?.best_for) ? intelCore.best_for : []),
+    ],
+    { max: 4, maxLen: 82 },
+  ).find((value) => (
+    value
+    && !looksLikeGenericRecoDerivedNarrative(value)
+    && !looksLikeRecoNarrativeOffTargetForRole(value, roleText)
+  )) || '';
+  const existingBestFor = rawExistingBestFor
+    && !looksLikeGenericRecoDerivedNarrative(rawExistingBestFor)
+    && !looksLikeRecoNarrativeOffTargetForRole(rawExistingBestFor, roleText)
+    ? rawExistingBestFor
+    : '';
+  const existingWhy = rawExistingWhy
+    && !looksLikeGenericRecoDerivedNarrative(rawExistingWhy)
+    && !looksLikeRecoNarrativeOffTargetForRole(rawExistingWhy, roleText)
+    ? rawExistingWhy
+    : '';
+  const bestFor = existingBestFor || reviewedBestFor || (() => {
     if (/\boil|shine|sebum\b/i.test(roleText)) {
       return isCn ? '适合出油和午后泛油光' : 'Best for excess oil and mid-day shine';
     }
-    if (/\bmoist|hydrat|barrier\b/i.test(roleText)) {
-      return isCn ? '适合需要轻薄保湿又不想闷肤的时候' : 'Best for lightweight hydration without a greasy finish';
+    if (/\b(layer|layering|pilling|pill|makeup|under makeup)\b/i.test(roleText)) {
+      return isCn ? '适合需要减少搓泥、让后续防晒或妆前更顺的步骤' : 'Best for smoother layering under sunscreen or makeup';
+    }
+    if (/\bbarrier|ceramide|repair|compromised|impaired\b/i.test(roleText)) {
+      return isCn ? '适合屏障支持和更安心的修护保湿' : 'Best for barrier support and richer comfort';
+    }
+    if (/\bhydrat|dehydrat|essence|water|moist\b/i.test(roleText)) {
+      return isCn ? '适合在面霜或防晒前补轻薄水感保湿' : 'Best for lightweight hydration before cream or SPF';
     }
     if (/\bspf|sun|uv\b/i.test(roleText)) {
-      return isCn ? '适合每天早上做日常防晒' : 'Best for daily UV protection you will actually wear';
+      return isCn ? '适合每天早上做日常防晒并兼顾肤感' : 'Best for daily UV protection with a wearable finish';
     }
     if (/\bcleanser|wash|cleanse\b/i.test(roleText)) {
       return isCn ? '适合需要温和清洁的时候' : 'Best for a gentle cleanse without a stripped feel';
@@ -19915,10 +19949,20 @@ function buildRecoDerivedShopperCopy({
         ? '这是一支更轻薄的控油精华，适合把出油问题先压下来。'
         : 'A lightweight treatment pick that helps take down excess shine without making the routine feel heavier.';
     }
-    if (/\bmoist|hydrat|barrier\b/i.test(roleText)) {
+    if (/\b(layer|layering|pilling|pill|makeup|under makeup)\b/i.test(roleText)) {
       return isCn
-        ? '补水感更轻，不容易把偏油皮肤推向闷重。'
-        : 'It adds breathable hydration without pushing oily skin into a heavy finish.';
+        ? '这一步更关注后续叠加顺不顺，减少厚重保湿层带来的搓泥风险。'
+        : 'It focuses on smoother layering, reducing the risk that a heavy moisturizer makes sunscreen or makeup pill.';
+    }
+    if (/\bbarrier|ceramide|repair|compromised|impaired\b/i.test(roleText)) {
+      return isCn
+        ? '这一步更偏屏障支持和舒适修护，而不是单纯追求清爽肤感。'
+        : 'It anchors the routine with barrier support and comfort rather than acting like a simple lightweight hydrator.';
+    }
+    if (/\bhydrat|dehydrat|essence|water|moist\b/i.test(roleText)) {
+      return isCn
+        ? '它更适合先补轻薄水感，再叠加面霜或防晒。'
+        : 'It adds a lighter hydration layer before cream or SPF without making the routine feel heavy.';
     }
     if (/\bspf|sun|uv\b/i.test(roleText)) {
       return isCn

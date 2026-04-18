@@ -517,6 +517,47 @@ describe('aurora chatCardFactory structured sections for adapter inputs', () => 
     expect(product.key_features).toContain('Glycerin');
   });
 
+  test('recommendations card keeps role-aligned narrative why over short best-for labels', () => {
+    const cards = mapLegacyCardToSpecCards(
+      {
+        type: 'recommendations',
+        card_id: 'legacy_recommendations_barrier_copy',
+        payload: {
+          recommendation_meta: {
+            selected_target_ids: ['barrier_moisturizer'],
+            ranked_targets: [
+              {
+                target_id: 'barrier_moisturizer',
+                target_label: 'Barrier-support moisturizer',
+              },
+            ],
+          },
+          recommendations: [
+            {
+              product_id: 'prod_barrier_cream',
+              merchant_id: 'external_seed',
+              brand: 'Haruharu Wonder',
+              name: '5 Ceramide Barrier Moisturizing Cream / Unscented',
+              matched_role_id: 'barrier_moisturizer',
+              matched_role_label: 'Barrier-support moisturizer',
+              best_for: 'Best for barrier support and richer comfort',
+              why_this_one: 'The visible ceramide-capsule concept makes this more of a barrier-focused cream than a simple lightweight daily moisturizer.',
+              key_features: ['Ceramide NP'],
+              short_description: 'Ceramide capsule cream for barrier support and richer daily moisture.',
+              price: { amount: 24, currency: 'USD', unknown: false },
+            },
+          ],
+        },
+      },
+      { requestId: 'req_card_factory_barrier_copy', language: 'EN', index: 0 },
+    );
+
+    const product = cards[0].payload.sections[0].products[0];
+    expect(product.best_for).toEqual(['Best for barrier support and richer comfort']);
+    expect(product.why_this_one).toMatch(/ceramide-capsule|barrier-focused cream/i);
+    expect(product.why_this_one).not.toBe('Best for barrier support and richer comfort');
+  });
+
   test('offers_resolved shares the rich product row contract and mirrors it into payload.sections', () => {
     const cards = mapLegacyCardToSpecCards(
       {
