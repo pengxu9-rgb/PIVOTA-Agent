@@ -21790,6 +21790,9 @@ function buildBeautyMainlineLocalQueryAttempts(searchResults = []) {
     ...(Number.isFinite(Number(row?.fair_primary_external_round))
       ? { fair_primary_external_round: Math.max(1, Math.trunc(Number(row.fair_primary_external_round))) }
       : {}),
+    ...(row?.allow_pending_primary_external === true
+      ? { allow_pending_primary_external: true }
+      : {}),
     ...(pickFirstTrimmed(row?.fair_primary_external_source_level)
       ? { fair_primary_external_source_level: pickFirstTrimmed(row.fair_primary_external_source_level) }
       : {}),
@@ -21876,6 +21879,19 @@ function reconcileBeautyMainlineLocalHandoffStageSummary(summary = null, searchR
     base.support_query_count = supportRows.length;
     base.support_executed_query_count = supportRows.length - supportSkippedRows.length;
     base.support_skipped_query_count = supportSkippedRows.length;
+    if (supportRows.some((row) => {
+      if (row?.allow_pending_primary_external !== true) return false;
+      const reason = String(row?.reason || '').trim().toLowerCase();
+      return row?.skipped_runtime !== true && !reason.startsWith('skipped_') && reason !== 'primary_role_unmatched';
+    })) {
+      base.pending_primary_support_parallelized = true;
+    }
+    const supportBudgetExhaustedCount = supportRows.filter((row) =>
+      String(row?.reason || '').trim().toLowerCase() === 'budget_exhausted',
+    ).length;
+    if (supportBudgetExhaustedCount > 0) {
+      base.support_budget_exhausted_count = supportBudgetExhaustedCount;
+    }
     const primaryUnmatchedSkipCount = supportSkippedRows.filter((row) =>
       String(row?.reason || '').trim().toLowerCase() === 'primary_role_unmatched',
     ).length;
@@ -24014,23 +24030,55 @@ async function collectRecoCandidatesFromQueryLevels({
     }
     const levelResults = [];
     const levelAggregate = buildLevelAggregate();
+    let pendingPrimarySupportParallelized = false;
     if (primaryExternalLeadQueries.length > 0) {
       const primaryExternalLeadSet = new Set(primaryExternalLeadQueries);
-      for (const queryEntry of primaryExternalLeadQueries) {
-        // Keep primary-role authority ahead of support recall so support queries
-        // cannot starve the lead role on small DB pools or tight budgets.
-        // eslint-disable-next-line no-await-in-loop
-        const row = await runQueryLevelEntry(queryEntry);
-        levelResults.push(row);
-        accumulateQueryLevelRow(stageId, row, levelAggregate);
+      const hasFiniteLevelDeadline = Number.isFinite(Number(deadlineMs)) && Number(deadlineMs) > Date.now();
+      const remainingQueries = runnableQueries.filter((queryEntry) => !primaryExternalLeadSet.has(queryEntry));
+      const shouldRunPendingSupportAlongsidePrimary =
+        hasFiniteLevelDeadline &&
+        remainingQueries.length > 0 &&
+        remainingQueries.some((queryEntry) =>
+          String(queryEntry?.ladder_level || queryEntry?.stage_id || '')
+            .trim()
+            .toLowerCase()
+            .startsWith('framework_stage_c_support_')
+        );
+      if (shouldRunPendingSupportAlongsidePrimary) {
+        pendingPrimarySupportParallelized = true;
+        const rows = await mapWithConcurrency(
+          runnableQueries,
+          RECO_CATALOG_SEARCH_CONCURRENCY,
+          runQueryLevelEntry,
+        );
+        for (const row of rows) {
+          levelResults.push(row);
+          accumulateQueryLevelRow(stageId, row, levelAggregate);
+        }
         candidateState = buildRecoCandidateStateFromRawCandidates(rawCandidates, {
           targetContext,
           recommendationTaskContext,
         });
-        if (candidateState.primary_role_matched === true) break;
+      } else {
+        for (const queryEntry of primaryExternalLeadQueries) {
+          // Keep primary-role authority ahead of support recall so support queries
+          // cannot starve the lead role on small DB pools or unconstrained budgets.
+          // Under a real deadline, support starts alongside primary below so primary
+          // external latency cannot erase routine coverage.
+          // eslint-disable-next-line no-await-in-loop
+          const row = await runQueryLevelEntry(queryEntry);
+          levelResults.push(row);
+          accumulateQueryLevelRow(stageId, row, levelAggregate);
+          candidateState = buildRecoCandidateStateFromRawCandidates(rawCandidates, {
+            targetContext,
+            recommendationTaskContext,
+          });
+          if (candidateState.primary_role_matched === true) break;
+        }
       }
-      const remainingQueries = runnableQueries.filter((queryEntry) => !primaryExternalLeadSet.has(queryEntry));
-      if (candidateState.primary_role_matched === true && remainingQueries.length > 0) {
+      if (shouldRunPendingSupportAlongsidePrimary) {
+        // Already executed the full fair round above.
+      } else if (candidateState.primary_role_matched === true && remainingQueries.length > 0) {
         const rows = await mapWithConcurrency(
           remainingQueries,
           RECO_CATALOG_SEARCH_CONCURRENCY,
@@ -24130,6 +24178,9 @@ async function collectRecoCandidatesFromQueryLevels({
           : {}),
         ...(pickFirstTrimmed(level?.fair_primary_external_source_level)
           ? { fair_primary_external_source_level: pickFirstTrimmed(level.fair_primary_external_source_level) }
+          : {}),
+        ...(pendingPrimarySupportParallelized
+          ? { pending_primary_support_parallelized: true }
           : {}),
       });
     if (shouldStopStepAwareBroadening(candidateState, { targetContext })) {
