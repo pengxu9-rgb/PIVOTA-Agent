@@ -8566,6 +8566,131 @@ test('__internal: framework pool prefers lightweight layering moisturizer eviden
   );
 });
 
+test('__internal: framework pool uses external seed role-fit ranking for finish-fit sunscreen primary', () => {
+  const { __internal } = loadRoutesFresh();
+  const targetContext = {
+    framework_id: 'recofw_test_makeup_spf_role_fit_rank',
+    primary_role_id: 'daily_sunscreen_finish_fit',
+    routine_mode: 'routine_mix',
+    semantic_plan: {
+      primary_concern: 'daytime routine under makeup',
+      routine_mode: 'routine_mix',
+      comparison_mode: 'routine_mix',
+      must_satisfy_constraints: ['under makeup', 'avoid pilling', 'lightweight finish'],
+    },
+    framework_roles: [
+      {
+        role_id: 'daily_sunscreen_finish_fit',
+        rank: 30,
+        preferred_step: 'sunscreen',
+        label: 'Daily sunscreen finish fit',
+        query_terms: ['spf fluid oily skin', 'lightweight sunscreen oily skin'],
+        fit_keywords: ['spf', 'uv filters', 'lightweight', 'under makeup', 'fluid'],
+        ingredient_hypotheses: ['UV filters'],
+        product_type_hypotheses: ['sunscreen'],
+      },
+      {
+        role_id: 'layering_compatible_moisturizer_or_spf',
+        rank: 60,
+        preferred_step: 'moisturizer',
+        label: 'Layering-compatible moisturizer or SPF',
+        query_terms: ['gel cream moisturizer', 'lightweight moisturizer', 'makeup layering'],
+        fit_keywords: ['lightweight', 'layering', 'non-greasy', 'makeup'],
+        product_type_hypotheses: ['moisturizer'],
+      },
+      {
+        role_id: 'hydrating_serum_or_essence',
+        rank: 70,
+        preferred_step: 'serum',
+        label: 'Hydrating serum or essence',
+        query_terms: ['lightweight hydrating serum'],
+        fit_keywords: ['hydrating', 'lightweight', 'serum'],
+        ingredient_hypotheses: ['Glycerin'],
+        product_type_hypotheses: ['serum'],
+      },
+    ],
+  };
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [
+      {
+        product_id: 'murad_spf_moisturizer_fit_1',
+        merchant_id: 'external_seed',
+        brand: 'Murad',
+        name: 'Superactive Moisturizer SPF 50: Hydrating',
+        display_name: 'Murad Superactive Moisturizer SPF 50: Hydrating',
+        category: 'Sunscreen',
+        product_type: 'Sunscreen',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'daily_sunscreen_finish_fit',
+        retrieval_query: 'spf fluid oily skin',
+        local_external_seed_role_fit_score: 0.92,
+        benefit_tags: ['spf 50', 'hydrating', 'lightweight'],
+        short_description: 'A hydrating moisturizer with SPF 50 for daily sunscreen wear.',
+      },
+      {
+        product_id: 'pixi_on_the_glow_shield_fit_1',
+        merchant_id: 'external_seed',
+        brand: 'PIXI BEAUTY',
+        name: 'On-the-Glow SHIELD SPF 50',
+        display_name: 'PIXI BEAUTY On-the-Glow SHIELD SPF 50',
+        category: 'Sunscreen',
+        product_type: 'Sunscreen',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'daily_sunscreen_finish_fit',
+        retrieval_query: 'spf fluid oily skin',
+        local_external_seed_role_fit_score: 1.16,
+        benefit_tags: ['spf 50', 'lightweight', 'under makeup'],
+        short_description: 'A lightweight SPF 50 sunscreen fluid made for daily wear under makeup.',
+      },
+      {
+        product_id: 'krave_water_cream_fit_1',
+        merchant_id: 'external_seed',
+        brand: 'KraveBeauty',
+        name: 'Oat So Simple Water Cream',
+        display_name: 'KraveBeauty Oat So Simple Water Cream',
+        category: 'Face Moisturizer',
+        product_type: 'Moisturizer',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'layering_compatible_moisturizer_or_spf',
+        retrieval_query: 'gel cream moisturizer',
+        local_external_seed_role_fit_score: 1.04,
+        short_description: 'A lightweight water cream that layers without a greasy finish.',
+      },
+      {
+        product_id: 'pixi_hydrating_milky_serum_fit_1',
+        merchant_id: 'external_seed',
+        brand: 'PIXI BEAUTY',
+        name: 'Hydrating Milky Serum',
+        display_name: 'PIXI BEAUTY Hydrating Milky Serum',
+        category: 'Serum',
+        product_type: 'Serum',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'hydrating_serum_or_essence',
+        retrieval_query: 'lightweight hydrating serum',
+        local_external_seed_role_fit_score: 1.01,
+        short_description: 'A lightweight hydrating serum with glycerin for layered hydration.',
+      },
+    ],
+    { targetContext },
+  );
+
+  assert.equal(state.primary_role_matched, true);
+  assert.deepEqual(
+    state.selected_recommendations.map((row) => row.product_id),
+    ['pixi_on_the_glow_shield_fit_1', 'krave_water_cream_fit_1', 'pixi_hydrating_milky_serum_fit_1'],
+  );
+  const pixi = state.viable_candidate_pool.find((row) => row?.product_id === 'pixi_on_the_glow_shield_fit_1') || null;
+  const murad = state.viable_candidate_pool.find((row) => row?.product_id === 'murad_spf_moisturizer_fit_1') || null;
+  assert.ok(pixi);
+  assert.ok(murad);
+  assert.ok(Number(pixi.framework_role_fit_rank_adjustment || 0) > Number(murad.framework_role_fit_rank_adjustment || 0));
+  assert.ok(Number(pixi.framework_rank_score || 0) > Number(murad.framework_rank_score || 0));
+  assert.equal(
+    state.selected_recommendations.some((row) => row.product_id === 'murad_spf_moisturizer_fit_1'),
+    false,
+  );
+});
+
 test('__internal: framework pool preserves a viable retrieved layering role when barrier context is also present', () => {
   const { __internal } = loadRoutesFresh();
   const targetContext = {

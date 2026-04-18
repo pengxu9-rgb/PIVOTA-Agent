@@ -22194,6 +22194,39 @@ function scoreConcernFrameworkCandidateTiebreak(row) {
   return Number(score.toFixed(4));
 }
 
+function getConcernFrameworkLocalExternalSeedRoleFitScore(row = null) {
+  const candidate = isPlainObject(row) ? row : {};
+  const rawScore = candidate.local_external_seed_role_fit_score ?? candidate.localExternalSeedRoleFitScore;
+  const score = Number(rawScore);
+  return Number.isFinite(score) ? score : null;
+}
+
+function scoreConcernFrameworkRoleFitRankAdjustment(row, { matchedRoleId = '' } = {}) {
+  const candidate = isPlainObject(row) ? row : {};
+  const retrievalSource = String(candidate.retrieval_source || candidate.retrievalSource || '').trim().toLowerCase();
+  if (retrievalSource !== 'external_seed') return 0;
+  const retrievalRoleId = String(
+    pickFirstTrimmed(
+      candidate.retrieval_role_id,
+      candidate.retrievalRoleId,
+      candidate.role_id,
+      candidate.roleId,
+    ) || '',
+  ).trim();
+  const targetRoleId = String(matchedRoleId || '').trim();
+  if (!retrievalRoleId || !targetRoleId || retrievalRoleId !== targetRoleId) return 0;
+  const roleFitScore = getConcernFrameworkLocalExternalSeedRoleFitScore(candidate);
+  if (!Number.isFinite(Number(roleFitScore))) return 0;
+  const normalizedScore = Math.max(-1, Math.min(1.35, Number(roleFitScore)));
+  if (normalizedScore >= 0.75) {
+    return Number(Math.min(0.12, (normalizedScore - 0.75) * 0.3).toFixed(4));
+  }
+  if (normalizedScore < 0.55) {
+    return Number((-Math.min(0.08, (0.55 - normalizedScore) * 0.3)).toFixed(4));
+  }
+  return 0;
+}
+
 function buildConcernFrameworkCandidateText(row) {
   return buildConcernFrameworkCandidateTextPolicy(row);
 }
@@ -22237,7 +22270,13 @@ function compareConcernFrameworkCandidates(left, right) {
   const leftRoleAligned = String(left?.retrieval_role_id || '').trim() === String(left?.matched_role_id || '').trim();
   const rightRoleAligned = String(right?.retrieval_role_id || '').trim() === String(right?.matched_role_id || '').trim();
   if (leftRoleAligned !== rightRoleAligned) return rightRoleAligned ? 1 : -1;
-  const scoreDiff = Number(right?.framework_score || 0) - Number(left?.framework_score || 0);
+  const leftRankScore = Number.isFinite(Number(left?.framework_rank_score))
+    ? Number(left.framework_rank_score)
+    : Number(left?.framework_score || 0);
+  const rightRankScore = Number.isFinite(Number(right?.framework_rank_score))
+    ? Number(right.framework_rank_score)
+    : Number(right?.framework_score || 0);
+  const scoreDiff = rightRankScore - leftRankScore;
   if (scoreDiff !== 0) return scoreDiff;
   const tieBreakDiff = Number(right?.framework_tiebreak_score || 0) - Number(left?.framework_tiebreak_score || 0);
   if (tieBreakDiff !== 0) return tieBreakDiff;
@@ -22762,12 +22801,21 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
     const bestRole = bestRoleScore.role;
     const bestPreferredStep = normalizeRecoTargetStep(bestRole?.preferred_step);
     const coarseAuthority = classifyConcernFrameworkNegativeAuthority(row, bestRole);
+    const frameworkRoleFitScore = getConcernFrameworkLocalExternalSeedRoleFitScore(row);
+    const frameworkRoleFitRankAdjustment = scoreConcernFrameworkRoleFitRankAdjustment(row, {
+      matchedRoleId: String(bestRole.role_id || '').trim(),
+    });
+    const frameworkScore = Number(bestRoleScore.score.toFixed(4));
+    const frameworkRankScore = Number(Math.max(0, frameworkScore + frameworkRoleFitRankAdjustment).toFixed(4));
     const annotatedBase = {
       ...row,
       matched_role_id: String(bestRole.role_id || '').trim() || null,
       matched_role_label: String(bestRole.label || '').trim() || null,
       matched_role_rank: Number.isFinite(Number(bestRole.rank)) ? Number(bestRole.rank) : null,
-      framework_score: Number(bestRoleScore.score.toFixed(4)),
+      framework_score: frameworkScore,
+      framework_rank_score: frameworkRankScore,
+      framework_role_fit_score: Number.isFinite(Number(frameworkRoleFitScore)) ? Number(frameworkRoleFitScore) : null,
+      framework_role_fit_rank_adjustment: frameworkRoleFitRankAdjustment,
       framework_semantic_fit: Boolean(bestRoleScore.semantic_fit_matched),
       framework_role_semantic_fit: Boolean(bestRoleScore.role_semantic_fit_matched),
       candidate_step: candidateStep || null,
@@ -22839,7 +22887,10 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
       matched_role_id: String(bestRole.role_id || '').trim() || null,
       matched_role_label: String(bestRole.label || '').trim() || null,
       matched_role_rank: Number.isFinite(Number(bestRole.rank)) ? Number(bestRole.rank) : null,
-      framework_score: Number(bestRoleScore.score.toFixed(4)),
+      framework_score: frameworkScore,
+      framework_rank_score: frameworkRankScore,
+      framework_role_fit_score: Number.isFinite(Number(frameworkRoleFitScore)) ? Number(frameworkRoleFitScore) : null,
+      framework_role_fit_rank_adjustment: frameworkRoleFitRankAdjustment,
       framework_tiebreak_score: scoreConcernFrameworkCandidateTiebreak(row),
       framework_semantic_fit: Boolean(bestRoleScore.semantic_fit_matched),
       framework_role_semantic_fit: Boolean(bestRoleScore.role_semantic_fit_matched),
