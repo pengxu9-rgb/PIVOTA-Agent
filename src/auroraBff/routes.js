@@ -55015,6 +55015,9 @@ function describeRecoAssistantRewriteFailureReason(reason) {
   if (normalized === 'rewrite_reasks_known_profile_field') {
     return 'Do not ask for profile fields already present in Context.profile_summary; if a follow-up is needed, use Context.refinement_question exactly once.';
   }
+  if (normalized === 'rewrite_unexpected_refinement_question') {
+    return 'If a follow-up question is needed, ask only Context.refinement_question exactly once as the final sentence; do not invent other follow-up questions.';
+  }
   if (normalized === 'rewrite_buy_addon_filler') {
     return 'Do not pad the answer with future routine-building filler.';
   }
@@ -55894,6 +55897,27 @@ function assistantTextReasksKnownRecoProfileField({ profile = null, text = '', u
   return false;
 }
 
+function assistantTextUsesUnexpectedRecoFollowupQuestion({
+  profile = null,
+  text = '',
+  userRequestText = '',
+  refinementQuestionPlan,
+  language = 'EN',
+} = {}) {
+  const questions = splitRecoAssistantSentences(text, 8)
+    .filter((sentence) => /[?？]\s*$/.test(String(sentence || '').trim()));
+  if (!questions.length) return false;
+  const expectedPlan = refinementQuestionPlan === undefined
+    ? buildRecoAssistantRefinementQuestionPlan({ profile, userRequestText, language })
+    : refinementQuestionPlan;
+  const expectedQuestion = pickFirstTrimmed(expectedPlan?.question);
+  if (!expectedQuestion) return true;
+  const normalizedExpected = normalizeSemanticAuditText(expectedQuestion);
+  if (!normalizedExpected) return true;
+  const matchingQuestions = questions.filter((question) => normalizeSemanticAuditText(question) === normalizedExpected);
+  return matchingQuestions.length !== 1 || questions.length !== 1;
+}
+
 function assistantTextHasDirectBuyLead(text, names) {
   const lead = String(text || '').trim();
   if (!lead) return false;
@@ -55921,6 +55945,7 @@ function validateRecoAssistantRewriteCandidate({
   language,
   profile,
   userRequestText,
+  refinementQuestionPlan,
   primaryTarget,
   secondaryTargets,
   names,
@@ -56001,6 +56026,13 @@ function validateRecoAssistantRewriteCandidate({
     secondaryTargets,
   });
   const reasksKnownProfileField = assistantTextReasksKnownRecoProfileField({ profile, text, userRequestText });
+  const usesUnexpectedFollowupQuestion = assistantTextUsesUnexpectedRecoFollowupQuestion({
+    profile,
+    text,
+    userRequestText,
+    refinementQuestionPlan,
+    language,
+  });
   if (
     !mentionsSelectedProduct
     || !mentionsPrimaryTarget
@@ -56023,9 +56055,11 @@ function validateRecoAssistantRewriteCandidate({
     || usesUngrammaticalReasonFragment
     || usesOffTargetConcernClaim
     || reasksKnownProfileField
+    || usesUnexpectedFollowupQuestion
   ) {
     if (usesAbsoluteRecommendationWording) return { ok: false, reason: 'rewrite_absolute_recommendation_wording' };
     if (reasksKnownProfileField) return { ok: false, reason: 'rewrite_reasks_known_profile_field' };
+    if (usesUnexpectedFollowupQuestion) return { ok: false, reason: 'rewrite_unexpected_refinement_question' };
     if (buyLeadNotDirect) return { ok: false, reason: 'rewrite_buy_lead_not_direct' };
     if (mentionsUnselectedCandidate) return { ok: false, reason: 'rewrite_mentions_unselected_product' };
     if (buyUsesRoutineUpsell) return { ok: false, reason: 'rewrite_buy_addon_filler' };
@@ -56063,6 +56097,7 @@ function shouldRetryRecoAssistantRewrite(reason) {
     || normalized === 'rewrite_mentions_unselected_product'
     || normalized === 'rewrite_off_target_concern_claim'
     || normalized === 'rewrite_reasks_known_profile_field'
+    || normalized === 'rewrite_unexpected_refinement_question'
     || normalized === 'rewrite_failed_alignment_guard';
 }
 
@@ -56827,6 +56862,7 @@ async function maybeRewriteRecoAssistantTextWithLlm({
 	        language,
 	        profile,
 	        userRequestText,
+	        refinementQuestionPlan,
 	        primaryTarget,
 	        secondaryTargets,
         names,
@@ -56932,6 +56968,7 @@ async function maybeRewriteRecoAssistantTextWithLlm({
 	      || firstAttemptReason === 'rewrite_duplicate_best_first_buy'
 	      || firstAttemptReason === 'rewrite_absolute_recommendation_wording'
 	      || firstAttemptReason === 'rewrite_reasks_known_profile_field'
+	      || firstAttemptReason === 'rewrite_unexpected_refinement_question'
 	      || firstAttemptReason === 'gemini_json_timeout'
       || firstAttemptReason === 'parse_truncated_json'
       || firstAttemptReason === 'empty_rewrite'

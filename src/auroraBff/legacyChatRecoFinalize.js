@@ -126,8 +126,16 @@ function createLegacyChatRecoFinalizeRuntime(deps = {}) {
         language: ctx.lang,
         profile,
         baseText: assistantTextRaw,
+        userRequestText: pickFirstTrimmed(recoRequestMessage, message),
       })
       : { text: assistantTextRaw, llm_used: false, reason: 'no_recommendations' };
+    if (
+      finalHasRecs &&
+      isPlainObject(payload?.recommendation_meta) &&
+      isPlainObject(recoAssistantRewrite?.refinement_question)
+    ) {
+      payload.recommendation_meta.assistant_refinement_question = recoAssistantRewrite.refinement_question;
+    }
     const recoSelectionContract = extractRecoFinalSelectionContract(payload);
     const assistantText = finalHasRecs
       ? String(
