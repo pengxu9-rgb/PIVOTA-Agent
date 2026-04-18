@@ -23486,9 +23486,9 @@ async function collectRecoCandidatesFromQueryLevels({
       }
       runnableQueries = [
         ...primaryExternalQueries,
-        ...prioritySupportInternalQueries,
-        ...standardSupportExternalQueries,
         ...prioritySupportExternalQueries,
+        ...standardSupportExternalQueries,
+        ...prioritySupportInternalQueries,
         ...supportInternalQueries,
         ...otherQueries,
       ];

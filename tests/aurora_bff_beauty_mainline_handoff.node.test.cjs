@@ -1090,10 +1090,10 @@ test('handoffRecoToBeautyMainlineSearch uses source-aware support authority whil
     });
 
     assert.deepEqual(externalCaptured[0], { query: 'sunscreen', roleId: 'daily_sunscreen_finish_fit' });
-    assert.deepEqual(externalCaptured[1], { query: 'gel cream moisturizer', roleId: 'lightweight_moisturizer' });
+    assert.deepEqual(externalCaptured[1], { query: 'niacinamide serum oily skin', roleId: 'oil_control_treatment' });
     assert.equal(
       externalCaptured.some((row) =>
-        row?.query === 'niacinamide serum oily skin' && row?.roleId === 'oil_control_treatment'),
+        row?.query === 'gel cream moisturizer' && row?.roleId === 'lightweight_moisturizer'),
       true,
     );
     assert.equal(internalCaptured.includes('niacinamide serum oily skin'), true);
@@ -1102,7 +1102,7 @@ test('handoffRecoToBeautyMainlineSearch uses source-aware support authority whil
     const firstSupportAttempt = attempts.find((row) =>
       String(row?.ladder_level || '').startsWith('framework_stage_c_support_')
       && !String(row?.reason || '').startsWith('skipped_'));
-    assert.equal(firstSupportAttempt?.source_scope, 'internal');
+    assert.equal(firstSupportAttempt?.source_scope, 'external_seed');
     assert.equal(firstSupportAttempt?.role_id, 'oil_control_treatment');
     assert.equal(
       attempts.some((row) =>
@@ -1954,6 +1954,149 @@ test('handoffRecoToBeautyMainlineSearch interleaves support external queries acr
     assert.equal(skippedSecondRoundRows.length, 2);
     assert.equal(
       skippedSecondRoundRows.every((row) => row?.reason === 'skipped_support_role_already_satisfied'),
+      true,
+    );
+  } finally {
+    __internal.__resetRouteDependencyOverridesForTest();
+    delete require.cache[moduleId];
+  }
+});
+
+test('collectRecoCandidatesFromQueryLevels starts support external authority before support internal noise during primary external round', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const startedQueries = [];
+    const targetContext = {
+      framework_id: 'framework_makeup_pilling_v1',
+      primary_role_id: 'daily_sunscreen_finish_fit',
+      framework_owner_source: 'llm_concern_planner',
+      framework_owner_state: 'trusted',
+      comparison_mode: 'routine_mix',
+      semantic_plan: {
+        routine_mode: 'routine_mix',
+        comparison_mode: 'routine_mix',
+        selection_constraints: { comparison_mode: 'routine_mix' },
+      },
+      framework_roles: [
+        {
+          role_id: 'daily_sunscreen_finish_fit',
+          rank: 1,
+          preferred_step: 'sunscreen',
+          label: 'Daily sunscreen with finish fit',
+        },
+        {
+          role_id: 'layering_compatible_moisturizer_or_spf',
+          rank: 2,
+          preferred_step: 'moisturizer',
+          label: 'Layering-compatible moisturizer',
+        },
+        {
+          role_id: 'hydrating_serum_or_essence',
+          rank: 3,
+          preferred_step: 'serum',
+          label: 'Hydrating serum or essence',
+        },
+      ],
+    };
+    const queryLevels = [
+      {
+        ladder_level: 'framework_stage_c_support_authority_round_1',
+        fair_support_authority_round: 1,
+        fair_primary_external_round: 1,
+        queries: [
+          {
+            query: 'sunscreen',
+            step: 'sunscreen',
+            slot: 'sunscreen',
+            ladder_level: 'framework_stage_b_primary_external_seed',
+            role_id: 'daily_sunscreen_finish_fit',
+            role_rank: 1,
+            preferred_step: 'sunscreen',
+            allow_external_seed: true,
+            fair_primary_external_round: 1,
+          },
+          {
+            query: 'gel cream moisturizer',
+            step: 'moisturizer',
+            slot: 'moisturizer',
+            ladder_level: 'framework_stage_c_support_layering_compatible_moisturizer_or_spf',
+            role_id: 'layering_compatible_moisturizer_or_spf',
+            role_rank: 2,
+            preferred_step: 'moisturizer',
+            allow_pending_primary_external: true,
+          },
+          {
+            query: 'hyaluronic acid serum',
+            step: 'serum',
+            slot: 'serum',
+            ladder_level: 'framework_stage_c_support_hydrating_serum_or_essence',
+            role_id: 'hydrating_serum_or_essence',
+            role_rank: 3,
+            preferred_step: 'serum',
+            allow_pending_primary_external: true,
+          },
+          {
+            query: 'gel cream moisturizer',
+            step: 'moisturizer',
+            slot: 'moisturizer',
+            ladder_level: 'framework_stage_c_support_layering_compatible_moisturizer_or_spf_external_seed',
+            role_id: 'layering_compatible_moisturizer_or_spf',
+            role_rank: 2,
+            preferred_step: 'moisturizer',
+            allow_external_seed: true,
+            allow_pending_primary_external: true,
+            fair_support_external_round: 1,
+          },
+          {
+            query: 'hyaluronic acid serum',
+            step: 'serum',
+            slot: 'serum',
+            ladder_level: 'framework_stage_c_support_hydrating_serum_or_essence_external_seed',
+            role_id: 'hydrating_serum_or_essence',
+            role_rank: 3,
+            preferred_step: 'serum',
+            allow_external_seed: true,
+            allow_pending_primary_external: true,
+            fair_support_external_round: 1,
+          },
+        ],
+      },
+    ];
+
+    await __internal.collectRecoCandidatesFromQueryLevels({
+      queryLevels,
+      targetContext,
+      recommendationTaskContext: null,
+      logger: null,
+      timeoutMs: 5000,
+      deadlineMs: Date.now() + 5000,
+      limit: 6,
+      usePurchasableFallback: false,
+      allowExternalSeed: true,
+      searchFn: async (args = {}) => {
+        startedQueries.push(`${args.sourceScope}:${args.role?.role_id}:${args.query}`);
+        return {
+          ok: true,
+          products: [],
+          actual_http_attempt_count: 0,
+          attempted_base_urls: [],
+          attempted_paths: [],
+          attempted_request_timeouts_ms: [Number(args.timeoutMs || 0)],
+        };
+      },
+    });
+
+    assert.deepEqual(
+      startedQueries.slice(0, 3),
+      [
+        'external_seed:daily_sunscreen_finish_fit:sunscreen',
+        'external_seed:hydrating_serum_or_essence:hyaluronic acid serum',
+        'external_seed:layering_compatible_moisturizer_or_spf:gel cream moisturizer',
+      ],
+    );
+    assert.equal(
+      startedQueries.indexOf('external_seed:hydrating_serum_or_essence:hyaluronic acid serum')
+        < startedQueries.indexOf('internal:hydrating_serum_or_essence:hyaluronic acid serum'),
       true,
     );
   } finally {
@@ -2938,6 +3081,7 @@ test('beauty chat mainline entry keeps framework source mode when real handoff d
 });
 
 test('beauty chat mainline entry invokes llm concern planner before deterministic handoff for generic concern asks', async () => {
+  const startedAtMs = Date.now();
   const observed = {
     plannerCalls: 0,
     handoffTargetContext: null,
@@ -2951,7 +3095,7 @@ test('beauty chat mainline entry invokes llm concern planner before deterministi
   const runtime = createBeautyChatMainlineEntryRuntime({
     RECO_CATALOG_GROUNDED_ENABLED: true,
     RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS: 1000,
-    AURORA_BFF_CHAT_RECO_BUDGET_MS: 9000,
+    AURORA_BFF_CHAT_RECO_BUDGET_MS: 18000,
     resolveRecommendationTargetContext: () => ({
       entry_type: 'chat',
       intent_mode: 'generic_concern',
@@ -3157,7 +3301,7 @@ test('beauty chat mainline entry invokes llm concern planner before deterministi
   const payload = result?.envelope?.cards?.[0]?.payload;
   const timingLedger = payload?.metadata?.search_stage_ledger?.chat_mainline_timing;
   assert.equal(timingLedger?.owner, 'beauty_chat_mainline_entry');
-  assert.equal(timingLedger?.budget_ms, 9000);
+  assert.equal(timingLedger?.budget_ms, 18000);
   assert.equal(timingLedger?.planner_used, true);
   assert.equal(timingLedger?.planner_fallback_used, false);
   assert.equal(timingLedger?.selector_attempted, false);
@@ -3175,6 +3319,7 @@ test('beauty chat mainline entry invokes llm concern planner before deterministi
   assert.equal(Number.isFinite(observed.plannerDeadlineAtMs), true);
   assert.equal(Number.isFinite(observed.handoffDeadlineAtMs), true);
   assert.equal(Number.isFinite(observed.rewriteDeadlineAtMs), true);
+  assert.ok(observed.plannerDeadlineAtMs - startedAtMs >= 8500);
   assert.ok(observed.handoffDeadlineAtMs >= observed.plannerDeadlineAtMs);
   assert.ok(observed.handoffDeadlineAtMs - observed.plannerDeadlineAtMs >= 2500);
   assert.ok(observed.rewriteDeadlineAtMs > observed.handoffDeadlineAtMs);
