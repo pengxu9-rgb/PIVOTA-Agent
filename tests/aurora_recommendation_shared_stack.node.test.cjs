@@ -1386,6 +1386,28 @@ test('soft-target mainline only succeeds with same-family viable candidates', ()
   assert.equal(deriveStepAwareEmptyReason(successTargetContext, weakState), 'weak_viable_pool');
 });
 
+test('step-aware broadening stop does not truncate framework routine support roles', () => {
+  const out = shouldStopStepAwareBroadening(
+    {
+      same_family_viable_count: 1,
+      same_family_strong_viable_exists: true,
+    },
+    {
+      targetContext: {
+        step_aware_intent: true,
+        resolved_target_step: 'serum',
+        framework_roles: [
+          { role_id: 'hydrating_serum_or_essence', rank: 1, preferred_step: 'serum' },
+          { role_id: 'hydrating_barrier_moisturizer', rank: 2, preferred_step: 'moisturizer' },
+          { role_id: 'daily_sunscreen', rank: 3, preferred_step: 'sunscreen' },
+        ],
+      },
+    },
+  );
+
+  assert.equal(out, false);
+});
+
 test('runRecommendationSharedStack clarifies generic chat reco when minimum context is unsatisfied', async () => {
   let coreRunnerCalled = false;
   const out = await runRecommendationSharedStack({
