@@ -597,6 +597,50 @@ describe('aurora chatCardFactory structured sections for adapter inputs', () => 
     expect(product.why_this_one).not.toBe('Useful for smoother layering under sunscreen or makeup');
   });
 
+  test('recommendations card neutralizes absolute marketing copy in visible product fields', () => {
+    const cards = mapLegacyCardToSpecCards(
+      {
+        type: 'recommendations',
+        card_id: 'legacy_recommendations_neutral_copy',
+        payload: {
+          recommendation_meta: {
+            selected_target_ids: ['daily_sunscreen'],
+            ranked_targets: [
+              {
+                target_id: 'daily_sunscreen',
+                target_label: 'Daily sunscreen',
+              },
+            ],
+          },
+          recommendations: [
+            {
+              product_id: 'round_lab_mild_up',
+              merchant_id: 'external_seed',
+              brand: 'Round Lab',
+              name: 'Birch Mild-Up Sunscreen UVLock SPF 50+ Broad Spectrum',
+              matched_role_id: 'daily_sunscreen',
+              matched_role_label: 'Daily sunscreen',
+              why_this_one: 'Gentle, Effective Physical UV Protection. Experience superior sun protection with a lightweight mineral sunscreen.',
+              short_description: 'Effectively protects with superior UV coverage.',
+              key_features: ['Highly effective UV protection', 'Superior mineral filter feel'],
+              price: { amount: 25, currency: 'USD', unknown: false },
+            },
+          ],
+        },
+      },
+      { requestId: 'req_card_factory_neutral_copy', language: 'EN', index: 0 },
+    );
+
+    const product = cards[0].payload.sections[0].products[0];
+    const visibleText = [
+      product.why_this_one,
+      product.short_description,
+      ...(Array.isArray(product.key_features) ? product.key_features : []),
+    ].join(' ');
+    expect(visibleText).not.toMatch(/\b(?:best|most|effective|effectively|superior|highly effective|ideal|strongest)\b/i);
+    expect(product.why_this_one).toMatch(/physical uv protection|sun protection|lightweight mineral sunscreen/i);
+  });
+
   test('recommendations card filters sunscreen peer rails by product identity, not seed category labels', () => {
     const cards = mapLegacyCardToSpecCards(
       {

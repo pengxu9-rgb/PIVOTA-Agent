@@ -119,6 +119,74 @@ test('reco assistant rewrite prompt omits deterministic base text and carries re
   }
 });
 
+test('reco assistant rewrite prompt neutralizes absolute marketing copy in selected product evidence', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const payload = __internal.applyRecoContentSpineToPayload(
+      {
+        recommendations: [
+          {
+            product_id: 'round_lab_mild_up',
+            display_name: 'Round Lab Birch Mild-Up Sunscreen UVLock SPF 50+ Broad Spectrum',
+            brand: 'Round Lab',
+            category: 'Sunscreen',
+            short_description: 'Effectively protects with superior UV coverage.',
+            description: 'Gentle, Effective Physical UV Protection. Experience superior sun protection with a lightweight mineral sunscreen.',
+            why_this_one: 'Experience superior sun protection with highly effective mineral filters.',
+            best_for: 'Best for daily UV protection.',
+            key_features: ['Highly effective UV protection', 'Superior mineral filter feel'],
+            compare_highlights: ['Most effective option for daily SPF in this set.'],
+            price: { amount: 25, currency: 'USD', unknown: false },
+            matched_role_id: 'daily_sunscreen',
+            matched_role_label: 'Daily sunscreen',
+          },
+        ],
+        roles: [
+          {
+            role_id: 'daily_sunscreen',
+            label: 'Daily sunscreen',
+            preferred_step: 'sunscreen',
+            why_this_role: 'Daily UV protection.',
+          },
+        ],
+        recommendation_meta: {
+          resolved_target_step: 'sunscreen',
+          mainline_status: 'grounded_success',
+        },
+      },
+      {
+        primary_target_id: 'daily_sunscreen',
+        ranked_targets: [{ target_id: 'daily_sunscreen', resolved_target_step: 'sunscreen' }],
+        selected_target_ids: ['daily_sunscreen'],
+        resolved_target_step: 'sunscreen',
+      },
+    );
+    const prompt = __internal.buildRecoAssistantRewritePrompt({
+      payload,
+      language: 'EN',
+      profile: { skinType: 'oily', goals: ['daily sunscreen'] },
+      userRequestText: 'I have oily skin. What sunscreen should I buy?',
+    });
+    const context = JSON.parse(prompt.match(/Context: (\{[\s\S]*\})$/)[1]);
+    const [detail] = context.selected_product_details;
+    const evidenceText = JSON.stringify({
+      short_description: detail.short_description,
+      description_snippet: detail.description_snippet,
+      best_for: detail.best_for,
+      why_this_one: detail.why_this_one,
+      key_features: detail.key_features,
+      compare_highlights: detail.compare_highlights,
+      evidence_points: detail.evidence_points,
+    });
+
+    assert.doesNotMatch(evidenceText, /\b(?:best|most|effective|effectively|superior|highly effective|ideal|strongest)\b/i);
+    assert.match(evidenceText, /physical uv protection|sun protection|mineral filters/i);
+    assert.match(evidenceText, /Suited for daily UV protection/i);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('reco assistant refinement question prioritizes missing skin type before climate and lifestyle', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
