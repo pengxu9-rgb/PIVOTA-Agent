@@ -247,16 +247,28 @@ function pickTargetAlignedRecommendationCardCopy(values = [], { targetText = '' 
   const candidates = normalizeStringList(values, 10)
     .filter((value) => !looksLikeStandaloneRecommendationCardEvidenceFragment(value));
   if (!candidates.length) return '';
-  return candidates
+  const ranked = candidates
     .map((value, index) => ({
       value,
       score: scoreRecommendationCardCopyForTarget(value, { targetText, originalIndex: index }),
+      originalIndex: index,
     }))
     .sort((left, right) => {
       const scoreDiff = Number(right.score || 0) - Number(left.score || 0);
       if (scoreDiff !== 0) return scoreDiff;
       return candidates.indexOf(left.value) - candidates.indexOf(right.value);
-    })[0]?.value || candidates[0] || '';
+    });
+  const firstNarrative = ranked.find((item) => Number(item.originalIndex) === 0);
+  const best = ranked[0];
+  if (
+    firstNarrative &&
+    best &&
+    String(firstNarrative.value || '').trim() &&
+    Number(best.score || 0) - Number(firstNarrative.score || 0) <= 16
+  ) {
+    return firstNarrative.value;
+  }
+  return best?.value || candidates[0] || '';
 }
 
 function flattenRecommendationProductSource(raw) {

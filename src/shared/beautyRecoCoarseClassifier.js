@@ -248,6 +248,49 @@ function buildBeautyCandidateEvidence(product) {
   };
 }
 
+const STRUCTURED_SUNSCREEN_TREATMENT_IDENTITY_RE =
+  /\b(wrinkle\s+corrector|corrector|anti[-\s]?aging|wrinkles?|fine[-\s]?lines?|retinol|retinoid|dark\s+spots?|spot\s+corrector|treatment|booster|concentrate)\b/i;
+
+function buildBeautyPrimaryIdentityText(product) {
+  return flattenEvidenceTextParts([
+    product?.title,
+    product?.name,
+    product?.display_name,
+    product?.displayName,
+    product?.subtitle,
+    product?.url,
+    product?.pdp_url,
+    product?.pdpUrl,
+    product?.product_url,
+    product?.productUrl,
+    product?.canonical_url,
+    product?.canonicalUrl,
+    product?.handle,
+  ]);
+}
+
+function resolveStructuredCategoryIdentityConflictStep(structuredStep, product) {
+  const step = normalizeRecoTargetStep(structuredStep);
+  if (!step) return null;
+  const identityText = buildBeautyPrimaryIdentityText(product);
+  if (!identityText) return null;
+
+  if (step === 'sunscreen') {
+    const hasSunscreenIdentity =
+      SPF_RE.test(identityText) ||
+      SUNSCREEN_PRIMARY_FORM_RE.test(identityText) ||
+      /\b(broad\s+spectrum|uva|uvb|pa\+{1,4})\b/i.test(identityText);
+    if (!hasSunscreenIdentity && STRUCTURED_SUNSCREEN_TREATMENT_IDENTITY_RE.test(identityText)) {
+      return {
+        candidate_step: SERUM_GUIDANCE_FAMILY_RE.test(identityText) ? 'serum' : 'treatment',
+        candidate_step_source: 'structured_category_identity_conflict',
+        candidate_step_confidence: 'medium',
+      };
+    }
+  }
+  return null;
+}
+
 function resolveEvidenceConfidence(pattern, evidence) {
   if (!pattern || !evidence) return null;
   if (pattern.test(evidence.primary_identity_text)) return 'high';
@@ -894,18 +937,27 @@ function classifySharedSunscreenTargetRelevance({
   const lower = asString(text).toLowerCase();
   const normalizedQuery = asString(queryText).toLowerCase();
   const offerType = detectBeautyOfferType(lower);
+  const evidence = buildBeautyCandidateEvidence(product);
+  const sunscreenEvidence = {
+    ...evidence,
+    primary_identity_text: buildBeautyPrimaryIdentityText(product),
+  };
+  const sunscreenCueText = flattenEvidenceTextParts([
+    sunscreenEvidence.primary_identity_text,
+    sunscreenEvidence.supporting_claims_text,
+    sunscreenEvidence.ingredient_evidence_text,
+  ]);
   const candidateHasSunscreenCue =
     coarse.candidate_step === 'sunscreen' ||
-    SUNSCREEN_GUIDANCE_FAMILY_RE.test(lower);
-  const candidateHasSupportiveCue = SUNSCREEN_SUPPORTIVE_RE.test(lower);
+    SUNSCREEN_GUIDANCE_FAMILY_RE.test(sunscreenCueText);
+  const candidateHasSupportiveCue = SUNSCREEN_SUPPORTIVE_RE.test(sunscreenCueText);
   const tintedMakeupLike = TINT_RE.test(lower);
-  const evidence = buildBeautyCandidateEvidence(product);
   const sunscreenPrimaryConfidence = maxConfidence(
-    resolveEvidenceConfidence(SUNSCREEN_PRIMARY_FORM_RE, evidence),
-    resolveEvidenceConfidence(/\bspf\s*\d+\+?\b/i, evidence),
+    resolveEvidenceConfidence(SUNSCREEN_PRIMARY_FORM_RE, sunscreenEvidence),
+    resolveEvidenceConfidence(/\bspf\s*\d+\+?\b/i, sunscreenEvidence),
   );
-  const sunscreenSupportiveConfidence = resolveEvidenceConfidence(SUNSCREEN_SUPPORTIVE_RE, evidence);
-  const sunscreenSerumConfidence = resolveEvidenceConfidence(SUNSCREEN_SERUM_FORM_RE, evidence);
+  const sunscreenSupportiveConfidence = resolveEvidenceConfidence(SUNSCREEN_SUPPORTIVE_RE, sunscreenEvidence);
+  const sunscreenSerumConfidence = resolveEvidenceConfidence(SUNSCREEN_SERUM_FORM_RE, sunscreenEvidence);
   const queryHasExplicitSerumCue = /\b(serum|spf serum|sunscreen serum|uv filters?\s+serum)\b/.test(
     normalizedQuery,
   );
@@ -965,7 +1017,7 @@ function classifySharedSunscreenTargetRelevance({
       noise_reason: null,
       relevance_channel: 'goal-strong',
       overlay_score:
-        confidenceWeight(resolveEvidenceConfidence(SUNSCREEN_MINERAL_RE, evidence)) >= 2 ? 2 : 1,
+        confidenceWeight(resolveEvidenceConfidence(SUNSCREEN_MINERAL_RE, sunscreenEvidence)) >= 2 ? 2 : 1,
     };
   }
   if (serumShapedSunscreen) {
@@ -1249,6 +1301,8 @@ function resolveBeautyCoarseStepFamily(product) {
       .find(Boolean) || '',
   );
   if (structuredStep) {
+    const identityConflictStep = resolveStructuredCategoryIdentityConflictStep(structuredStep, product);
+    if (identityConflictStep) return identityConflictStep;
     return {
       candidate_step: structuredStep,
       candidate_step_source: 'structured_category',

@@ -3639,6 +3639,65 @@ test('beauty mainline reco rows derive stable brand and shopper fields when sour
   }
 });
 
+test('beauty mainline reco rows use reviewed barrier best-for copy instead of generic hydration copy', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const rows = __internal.buildRecoRowsFromMainlineProducts(
+      [
+        {
+          product_id: 'haruharu_barrier_cream',
+          merchant_id: 'external_seed',
+          brand: 'Haruharu Wonder',
+          display_name: '5 Ceramide Barrier Moisturizing Cream / Unscented',
+          category: 'Moisturizer',
+          product_type: 'Moisturizer',
+          key_ingredients: ['Ceramide NP'],
+          product_intel: {
+            product_intel_core: {
+              best_for: [
+                { tag: 'barrier_support', label: 'Barrier-supportive moisturizer routines' },
+                { tag: 'rich_moisture', label: 'Richer cream preferences' },
+              ],
+              why_it_stands_out: [
+                {
+                  headline: 'Ceramide-capsule cream format',
+                  body: 'The visible ceramide-capsule concept makes this more of a barrier-focused cream than a simple lightweight daily moisturizer.',
+                },
+              ],
+              what_it_is: {
+                body: 'A richer moisturizing cream built around ceramide capsules and barrier-focused hydration.',
+              },
+            },
+          },
+        },
+      ],
+      {
+        targetContext: {
+          resolved_target_step: 'moisturizer',
+          primary_role_id: 'barrier_moisturizer',
+          framework_roles: [
+            {
+              role_id: 'barrier_moisturizer',
+              label: 'Barrier-support moisturizer',
+              rank: 1,
+              preferred_step: 'moisturizer',
+              why_this_role: 'Support impaired barrier comfort with a repair moisturizer.',
+            },
+          ],
+        },
+        language: 'EN',
+      },
+    );
+
+    assert.equal(rows.length, 1);
+    assert.match(String(rows[0].best_for || ''), /barrier-supportive|richer cream/i);
+    assert.doesNotMatch(String(rows[0].best_for || ''), /lightweight hydration without a greasy finish/i);
+    assert.match(String(rows[0].why_this_one || ''), /ceramide|barrier-focused|barrier/i);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('beauty mainline reco rows do not promote standalone ingredients into why copy', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
