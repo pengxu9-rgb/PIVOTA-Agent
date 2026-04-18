@@ -4880,6 +4880,7 @@ test('__internal: local external seed sunscreen finish query uses category-posit
   ]);
   assert.ok(observedQueries[0].params[3].includes('%spf fluid%'));
   assert.ok(observedQueries[0].params[3].includes('%oil-free%'));
+  assert.equal(observedQueries[0].params[3].includes('%spf%'), false);
   assert.equal(out.local_external_seed_stage_debug[0]?.stage, 'support_category_positive');
   assert.equal(out.local_external_seed_stage_debug[0]?.query_cap, 8);
   assert.equal(out.products[0].product_id, 'ext_support_sunscreen_221');
