@@ -1334,8 +1334,8 @@ const RECO_CATALOG_PRIMARY_EXTERNAL_SEED_QUERY_TIMEOUT_MS = (() => {
   return Math.max(800, Math.min(7000, v));
 })();
 const RECO_CATALOG_SUPPORT_EXTERNAL_SEED_QUERY_TIMEOUT_MS = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_SUPPORT_EXTERNAL_SEED_QUERY_TIMEOUT_MS || 5200);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 5200;
+  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_SUPPORT_EXTERNAL_SEED_QUERY_TIMEOUT_MS || 8000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 8000;
   return Math.max(50, Math.min(8000, v));
 })();
 const RECO_CATALOG_SUPPORT_INTERNAL_QUERY_TIMEOUT_MS = (() => {
@@ -1374,7 +1374,7 @@ const {
   RECO_CATALOG_GROUNDED_ENABLED,
   RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS,
   AURORA_BFF_CHAT_RECO_BUDGET_MS:
-    Number(process.env.AURORA_BFF_CHAT_RECO_BUDGET_MS || 18000),
+    Math.max(18000, Number(process.env.AURORA_BFF_CHAT_RECO_BUDGET_MS || 18000)),
   AURORA_RECO_ASSISTANT_REWRITE_TIMEOUT_MS,
   BEAUTY_DISCOVERY_MAINLINE_OWNER,
   resolveRecommendationTargetContext,
