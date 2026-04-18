@@ -1344,6 +1344,13 @@ test('handoffRecoToBeautyMainlineSearch does not let delayed primary external st
     assert.equal(supportStartedBeforePrimaryResolved, true);
     assert.equal(externalCaptured[0]?.roleId, 'daily_sunscreen_finish_fit');
     assert.deepEqual(
+      externalCaptured.find((row) => row?.roleId === 'layering_compatible_moisturizer_or_spf'),
+      {
+        query: 'lightweight moisturizer oily skin',
+        roleId: 'layering_compatible_moisturizer_or_spf',
+      },
+    );
+    assert.deepEqual(
       out.recommendations.map((item) => item?.product_id).sort(),
       ['primary_delayed_spf', 'support_layering_parallel', 'support_oil_parallel'].sort(),
     );
