@@ -22448,11 +22448,15 @@ function isConcernFrameworkStrongViableCandidate(candidate, role = null) {
   const preferredStep = normalizeRecoTargetStep(roleObj?.preferred_step);
   const candidateStep = normalizeRecoTargetStep(product?.candidate_step);
   const score = Number(product?.framework_score || 0);
+  const externalRoleFitScore = Number(product?.framework_role_fit_score);
   const semanticFit = product?.framework_semantic_fit === true;
   const roleSemanticFit = product?.framework_role_semantic_fit === true;
   const retrievalRoleMatched =
     String(product?.retrieval_role_id || '').trim() !== ''
     && String(product?.retrieval_role_id || '').trim() === String(product?.matched_role_id || '').trim();
+  const externalSeedAuthority =
+    String(product?.retrieval_source || '').trim().toLowerCase() === 'external_seed'
+    || String(product?.merchant_id || product?.merchantId || '').trim().toLowerCase() === 'external_seed';
   if (
     preferredStep === 'serum' &&
     candidateStep === preferredStep &&
@@ -22508,6 +22512,21 @@ function isConcernFrameworkStrongViableCandidate(candidate, role = null) {
     semanticFit &&
     isConcernRoleStepCompatible(candidateStep, roleObj) &&
     score >= 0.56
+  ) {
+    return true;
+  }
+  if (
+    externalSeedAuthority
+    && retrievalRoleMatched
+    && Number.isFinite(externalRoleFitScore)
+    && externalRoleFitScore >= 0.85
+    && isConcernRoleStepCompatible(candidateStep, roleObj)
+    && score >= 0.22
+    && (
+      semanticFit
+      || preferredStep === 'treatment'
+      || preferredStep === 'serum'
+    )
   ) {
     return true;
   }
