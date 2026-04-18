@@ -5487,6 +5487,14 @@ test('__internal: tri-state skincare classifier only hard rejects explicit non-s
   );
   assert.equal(
     recoShared.classifySkincareCandidateDomain({
+      title: 'Pro C Serum',
+      category_name: 'Serum',
+      productType: 'Serum',
+    }),
+    'explicit_face_skincare',
+  );
+  assert.equal(
+    recoShared.classifySkincareCandidateDomain({
       name: 'Balance Control',
       benefit_tags: ['shine control', 'balancing'],
       short_description: 'Helps control excess sebum for oily skin.',
@@ -8996,6 +9004,101 @@ test('__internal: framework pool treats high role-fit external seed serums as vi
   assert.equal(primary.matched_role_id, 'tone_mark_treatment');
   assert.equal(primary.framework_role_fit_score, 1.18);
   assert.equal(state.scope_classification_stats.explicit_non_skincare, 0);
+});
+
+test('__internal: framework pool does not boundary-reject raw external seed candidates whose authority title carries the product type', () => {
+  const { __internal } = loadRoutesFresh();
+  const targetContext = {
+    framework_id: 'recofw_test_tone_marks_raw_external_title',
+    primary_role_id: 'tone_mark_treatment',
+    routine_mode: 'routine_mix',
+    semantic_plan: {
+      primary_concern: 'post-breakout marks',
+      routine_mode: 'routine_mix',
+      comparison_mode: 'routine_mix',
+      must_satisfy_constraints: ['post-breakout marks', 'uneven tone'],
+    },
+    framework_roles: [
+      {
+        role_id: 'tone_mark_treatment',
+        rank: 1,
+        preferred_step: 'treatment',
+        label: 'Tone and post-breakout mark treatment',
+        query_terms: ['post acne marks serum', 'dark spot serum'],
+        fit_keywords: ['post-breakout marks', 'dark spots', 'uneven tone', 'brightening'],
+        ingredient_hypotheses: ['Vitamin C', 'Niacinamide'],
+        product_type_hypotheses: ['serum', 'treatment'],
+      },
+      {
+        role_id: 'lightweight_moisturizer',
+        rank: 2,
+        preferred_step: 'moisturizer',
+        label: 'Lightweight moisturizer',
+        query_terms: ['gel cream moisturizer'],
+        fit_keywords: ['lightweight', 'gel cream'],
+        product_type_hypotheses: ['moisturizer'],
+      },
+      {
+        role_id: 'daily_sunscreen',
+        rank: 3,
+        preferred_step: 'sunscreen',
+        label: 'Daily sunscreen',
+        query_terms: ['daily sunscreen'],
+        fit_keywords: ['spf', 'uv protection'],
+        product_type_hypotheses: ['sunscreen'],
+      },
+    ],
+  };
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [
+      {
+        product_id: 'ext_pro_c_serum_raw_title',
+        merchant_id: 'external_seed',
+        brand: 'Example',
+        title: 'Pro C Serum',
+        category_name: 'Serum',
+        productType: 'Serum',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'tone_mark_treatment',
+        local_external_seed_role_fit_score: 1.2,
+        description: 'Multi-stage brightening serum that visibly reduces post-acne marks and supports overall skin tone.',
+      },
+      {
+        product_id: 'water_gel_moisturizer_raw_title',
+        merchant_id: 'external_seed',
+        brand: 'Example',
+        title: 'Water Gel Moisturizer',
+        category_name: 'Moisturizer',
+        productType: 'Moisturizer',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'lightweight_moisturizer',
+        description: 'Lightweight gel cream moisturizer for daily hydration.',
+      },
+      {
+        product_id: 'daily_spf_raw_title',
+        merchant_id: 'external_seed',
+        brand: 'Example',
+        title: 'Daily Sunscreen SPF 50',
+        category_name: 'Sunscreen',
+        productType: 'Sunscreen',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'daily_sunscreen',
+        description: 'Daily broad spectrum SPF 50 sunscreen.',
+      },
+    ],
+    { targetContext },
+  );
+
+  const primary = state.viable_candidate_pool.find((row) => row?.product_id === 'ext_pro_c_serum_raw_title') || null;
+  assert.equal(state.primary_role_matched, true);
+  assert.ok(primary);
+  assert.equal(primary.concern_scope_classification, 'explicit_face_skincare');
+  assert.equal(primary.matched_role_id, 'tone_mark_treatment');
+  assert.equal((state.boundary_reject_preview || []).some((row) => row.product_id === 'ext_pro_c_serum_raw_title'), false);
+  assert.deepEqual(
+    state.selected_recommendations.map((row) => row.product_id),
+    ['ext_pro_c_serum_raw_title', 'water_gel_moisturizer_raw_title', 'daily_spf_raw_title'],
+  );
 });
 
 test('__internal: framework pool preserves a viable retrieved layering role when barrier context is also present', () => {

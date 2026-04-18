@@ -89,6 +89,56 @@ test('concern planner normalizer trusts JSON output selecting ontology roles out
   );
 });
 
+test('concern planner normalizer keeps oily under-makeup routines oil-aware when sensitivity is medium but barrier is stable', () => {
+  const fallbackPlan = buildConcernSemanticPlanFallback({
+    text: 'I have oily sensitive skin and wear makeup every day. What sunscreen should I buy?',
+    profileSummary: {
+      skinType: 'oily',
+      sensitivity: 'medium',
+      barrierStatus: 'stable',
+      goals: ['oil control', 'smooth layering'],
+    },
+  });
+  const normalized = normalizeConcernSemanticPlanFromText(
+    JSON.stringify({
+      primary_concern: 'oily sensitive sunscreen under makeup',
+      primary_role_id: 'daily_sunscreen_finish_fit',
+      support_role_ids: ['layering_compatible_moisturizer_or_spf', 'hydrating_barrier_moisturizer'],
+      routine_mode: 'routine_mix',
+      query_intents: [
+        {
+          role_id: 'daily_sunscreen_finish_fit',
+          intent: 'sunscreen under makeup for oily sensitive skin',
+          query_terms: ['sunscreen under makeup oily skin'],
+        },
+      ],
+      must_satisfy_constraints: ['non-greasy finish', 'works under makeup'],
+      comparison_mode: 'routine_mix',
+      evidence_needed: ['finish', 'layering compatibility', 'price'],
+      ingredient_hypotheses: ['UV filters'],
+      product_type_hypotheses: ['sunscreen'],
+    }),
+    {
+      fallbackPlan,
+      requestText: 'I have oily sensitive skin and wear makeup every day. What sunscreen should I buy?',
+    },
+  );
+
+  assert.deepEqual(
+    normalized.core_roles.map((role) => role.role_id),
+    ['daily_sunscreen_finish_fit', 'layering_compatible_moisturizer_or_spf', 'oil_control_treatment'],
+  );
+  assert.equal(
+    normalized.selection_constraints.plan_invariants_applied.includes('routine_mix_added_oil_control_support_for_oily_layering')
+      || normalized.selection_constraints.plan_invariants_applied.includes('routine_mix_promoted_oil_control_support_tertiary'),
+    true,
+  );
+  assert.equal(
+    normalized.core_roles.some((role) => role.role_id === 'hydrating_barrier_moisturizer'),
+    false,
+  );
+});
+
 test('concern semantic fallback makes finish-fit sunscreen primary for makeup layering asks', () => {
   const fallbackPlan = buildConcernSemanticPlanFallback({
     text: 'My daytime products pill under makeup. What skincare product should I use instead?',
