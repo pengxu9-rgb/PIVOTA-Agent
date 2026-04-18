@@ -5490,6 +5490,15 @@ test('__internal: tri-state skincare classifier only hard rejects explicit non-s
       title: 'Pro C Serum',
       category_name: 'Serum',
       productType: 'Serum',
+      description: 'Fragrance-free vitamin C serum for post-acne marks and overall skin tone.',
+    }),
+    'explicit_face_skincare',
+  );
+  assert.equal(
+    recoShared.classifySkincareCandidateDomain({
+      title: 'Daily Sunscreen SPF 50',
+      category_name: 'Sunscreen',
+      short_description: 'A fragrance-free broad spectrum sunscreen that layers under makeup.',
     }),
     'explicit_face_skincare',
   );
@@ -9061,7 +9070,7 @@ test('__internal: framework pool does not boundary-reject raw external seed cand
         retrieval_source: 'external_seed',
         retrieval_role_id: 'tone_mark_treatment',
         local_external_seed_role_fit_score: 1.2,
-        description: 'Multi-stage brightening serum that visibly reduces post-acne marks and supports overall skin tone.',
+        description: 'Fragrance-free multi-stage brightening serum that visibly reduces post-acne marks and supports overall skin tone.',
       },
       {
         product_id: 'water_gel_moisturizer_raw_title',
