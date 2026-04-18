@@ -54717,9 +54717,11 @@ function buildRecoAssistantRefinementQuestionPlan({
     recoAssistantTextMentionsLifestyleOrSleep(requestText)
     || /\b(dull|tired|puffy|dark circles|greasy by noon|under makeup|pilling|commute|sweat|gym|outdoor|sunscreen|spf)\b/i.test(requestText)
     || /(暗沉|疲惫|黑眼圈|浮肿|中午出油|搓泥|通勤|运动|出汗|户外|防晒)/i.test(requestText);
+  const inferredRequestMode = inferRecoAssistantRequestMode(requestText);
   const isGeneralRecoAsk =
     /\b(what product|what should i (?:buy|use)|recommend|suggest|routine|skin type)\b/i.test(requestText)
     || /(推荐|买什么|用什么|肤质|护肤|产品)/i.test(requestText)
+    || ['buy', 'use', 'use_first'].includes(inferredRequestMode)
     || !requestLower;
 
   if (!skinTypeKnown) {
