@@ -787,6 +787,73 @@ test('handoffRecoToBeautyMainlineSearch records primary-first strict-empty ledge
   }
 });
 
+test('handoffRecoToBeautyMainlineSearch runs finish-fit sunscreen external queries before broad category heads', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const externalCaptured = [];
+    __internal.__setRouteDependencyOverridesForTest({
+      searchInternalProductsPrimitive: async () => ({
+        ok: true,
+        products: [],
+        attempted_internal_paths: ['/agent/internal/products/search'],
+        transport_hops: [],
+        transport_hop_count: 0,
+        nested_orchestrator_hops: 0,
+        primary_transport_owner: 'internal_products_search_primitive',
+        primary_endpoint_kind: 'internal_primitive',
+      }),
+      searchLocalExternalSeedProducts: async (args) => {
+        externalCaptured.push({
+          query: String(args?.query || ''),
+          roleId: String(args?.role?.role_id || ''),
+        });
+        return {
+          ok: false,
+          products: [],
+          reason: 'empty',
+          actual_http_attempt_count: 0,
+          attempted_base_urls: [],
+          attempted_paths: [],
+          transport_policy_mode: String(args?.transportPolicyMode || ''),
+          local_external_seed_search_mode: 'staged_support_fastpath',
+          local_external_seed_stage_debug: [],
+        };
+      },
+    });
+
+    const query = 'My daytime products pill under makeup. What skincare product should I use instead?';
+    await __internal.handoffRecoToBeautyMainlineSearch({
+      ctx: { lang: 'EN', request_id: 'req_makeup_pilling_query_order' },
+      primaryQuery: query,
+      fallbackMessage: query,
+      targetContext: resolveRecommendationTargetContext({
+        text: query,
+        focus: '',
+        entryType: 'chat',
+      }),
+      timeoutMs: 5000,
+      minTimeoutMs: 5000,
+    });
+
+    assert.deepEqual(
+      externalCaptured
+        .filter((row) => row.roleId === 'daily_sunscreen_finish_fit')
+        .map((row) => row.query),
+      [
+        'spf fluid oily skin',
+        'lightweight sunscreen oily skin',
+      ],
+    );
+    assert.equal(
+      externalCaptured.some((row) => row.query === 'sunscreen'),
+      false,
+    );
+  } finally {
+    __internal.__resetRouteDependencyOverridesForTest();
+    delete require.cache[moduleId];
+  }
+});
+
 test('handoffRecoToBeautyMainlineSearch recovers acne primary from second planned primary query before support', async () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
@@ -1002,7 +1069,7 @@ test('handoffRecoToBeautyMainlineSearch uses source-aware support authority whil
           local_external_seed_search_mode: 'staged_support_fastpath',
           local_external_seed_stage_debug: [{ stage: 'support_category_exact', row_count: 1, cumulative_row_count: 1, duration_ms: 5, cap: 6 }],
         };
-        if (roleId === 'daily_sunscreen_finish_fit' && query === 'sunscreen') {
+        if (roleId === 'daily_sunscreen_finish_fit' && query === 'spf fluid oily skin') {
           return {
             ...base,
             products: [
@@ -1081,7 +1148,7 @@ test('handoffRecoToBeautyMainlineSearch uses source-aware support authority whil
       minTimeoutMs: 5000,
     });
 
-    assert.deepEqual(externalCaptured[0], { query: 'sunscreen', roleId: 'daily_sunscreen_finish_fit' });
+    assert.deepEqual(externalCaptured[0], { query: 'spf fluid oily skin', roleId: 'daily_sunscreen_finish_fit' });
     assert.deepEqual(externalCaptured[1], { query: 'niacinamide serum oily skin', roleId: 'oil_control_treatment' });
     assert.equal(
       externalCaptured.some((row) =>

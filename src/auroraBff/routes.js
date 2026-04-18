@@ -8464,8 +8464,16 @@ function buildLocalExternalSeedCategoryPositiveStage({
     const sunscreenCoreSignal = /\b(sunscreen|sun\s*screen|spf|uv|broad\s+spectrum)\b/.test(positiveSignalText);
     const fluidSignal = /\b(fluid|serum|milk|gel|lotion)\b/.test(positiveSignalText);
     const finishSignal = /\b(lightweight|oily|oil[-\s]?free|non[-\s]?greasy|matte|invisible|makeup|pilling|layering|under makeup)\b/.test(positiveSignalText);
+    const specificFinishOrFormSignal = fluidSignal || finishSignal;
     const positivePatterns = addPatterns(
-      sunscreenCoreSignal ? ['sunscreen', 'spf', 'uv', 'broad spectrum'] : [],
+      sunscreenCoreSignal
+        ? [
+            /\bsunscreen|sun\s*screen\b/.test(positiveSignalText) ? 'sunscreen' : '',
+            !specificFinishOrFormSignal && /\bspf\b/.test(positiveSignalText) ? 'spf' : '',
+            /\buv\b/.test(positiveSignalText) ? 'uv' : '',
+            /\bbroad\s+spectrum\b/.test(positiveSignalText) ? 'broad spectrum' : '',
+          ]
+        : [],
       fluidSignal ? ['spf fluid', 'sun fluid', 'uv fluid', 'fluid', 'sun serum', 'sunscreen serum', 'sun milk', 'sun gel', 'sun lotion'] : [],
       finishSignal ? ['lightweight', 'oil free', 'oil-free', 'non-greasy', 'non greasy', 'matte', 'invisible', 'under makeup', 'makeup friendly'] : [],
     );
@@ -21075,15 +21083,55 @@ function capBeautyPrimaryInternalLevelForRoutineSupportBudget(level) {
   };
 }
 
+function scoreBeautyPrimaryExternalQueryPriority(queryEntry) {
+  const query = String(queryEntry?.query || '').trim().toLowerCase();
+  if (!query) return 0;
+  const preferredStep = normalizeRecoTargetStep(
+    queryEntry?.preferred_step || queryEntry?.step || queryEntry?.target_step_family,
+  );
+  if (preferredStep !== 'sunscreen' && !/\b(sunscreen|spf|uv)\b/.test(query)) return 0;
+  const tokenCount = query.split(/\s+/).filter(Boolean).length;
+  let score = Math.min(12, Math.max(0, tokenCount - 1) * 3);
+  if (/\b(fluid|serum|milk|gel|lotion)\b/.test(query)) score += 18;
+  if (/\b(oily|oil[-\s]?free|non[-\s]?greasy|matte|invisible|makeup|pilling|layering|under makeup)\b/.test(query)) {
+    score += 18;
+  }
+  if (/^(?:sunscreen|spf|daily sunscreen|face sunscreen|broad spectrum sunscreen)$/.test(query)) score -= 18;
+  return score;
+}
+
+function orderBeautyPrimaryExternalQueriesForLocalHandoff(queries = []) {
+  const rows = Array.isArray(queries) ? queries.filter((query) => isPlainObject(query)) : [];
+  if (rows.length <= 1) return rows.slice();
+  return rows
+    .map((query, index) => ({
+      query,
+      index,
+      priority: scoreBeautyPrimaryExternalQueryPriority(query),
+    }))
+    .sort((left, right) => {
+      if (left.priority !== right.priority) return right.priority - left.priority;
+      return left.index - right.index;
+    })
+    .map((entry) => entry.query);
+}
+
 function capBeautyPrimaryExternalLevelForRoutineSupportBudget(level) {
   const levelObj = isPlainObject(level) ? level : null;
   const queries = Array.isArray(levelObj?.queries) ? levelObj.queries : [];
-  if (!levelObj || queries.length <= 2) return levelObj;
+  if (!levelObj || queries.length <= 1) return levelObj;
+  const orderedQueries = orderBeautyPrimaryExternalQueriesForLocalHandoff(queries);
+  if (queries.length <= 2) {
+    return {
+      ...levelObj,
+      queries: orderedQueries,
+    };
+  }
   return {
     ...levelObj,
     primary_external_query_cap_applied: true,
     primary_external_original_query_count: queries.length,
-    queries: queries.slice(0, 2).map((query) => ({
+    queries: orderedQueries.slice(0, 2).map((query) => ({
       ...query,
       primary_external_query_cap_applied: true,
       primary_external_original_query_count: queries.length,
