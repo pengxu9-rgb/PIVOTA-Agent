@@ -8783,7 +8783,6 @@ async function searchLocalExternalSeedProductsViaSupportStages({
         '${definition.stage}'::text AS match_stage
       FROM external_product_seeds
       WHERE status = 'active'
-        AND attached_product_key IS NULL
         AND market = $1
         AND (tool = '*' OR tool = $2)
         AND (${whereSql})
@@ -9056,7 +9055,6 @@ async function searchLocalExternalSeedProducts({
           ${LOCAL_EXTERNAL_SEED_SELECT_FIELDS}
         FROM external_product_seeds
         WHERE status = 'active'
-          AND attached_product_key IS NULL
           AND market = $1
           AND (tool = '*' OR tool = $2)
           AND ${buildLocalExternalSeedSearchPredicate('$3', { lean: leanSql })}

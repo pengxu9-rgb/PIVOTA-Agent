@@ -4842,6 +4842,7 @@ test('__internal: local external seed support-role search uses exact category he
             price_amount: 24,
             price_currency: 'USD',
             availability: 'in_stock',
+            attached_product_key: 'shopify:daily-spf-fluid',
             match_stage: 'support_category_exact',
             match_score: 56,
             seed_data: {
@@ -4873,6 +4874,7 @@ test('__internal: local external seed support-role search uses exact category he
   assert.match(observedQueries[0].sql, /support_category_exact/);
   assert.match(observedQueries[0].sql, /category/);
   assert.doesNotMatch(observedQueries[0].sql, /retrieval_title/i);
+  assert.doesNotMatch(observedQueries[0].sql, /attached_product_key\s+IS\s+NULL/i);
   assert.deepEqual(observedQueries[0].params[2], [
     'sunscreen',
     'spf',
@@ -4882,6 +4884,58 @@ test('__internal: local external seed support-role search uses exact category he
   ]);
   assert.equal(out.local_external_seed_stage_debug[0]?.stage, 'support_category_exact');
   assert.equal(out.products[0].retrieval_match_stage, 'support_category_exact');
+});
+
+test('__internal: local external seed single-query recall includes attached authority rows', async () => {
+  const { __internal } = loadRoutesFresh();
+  const observedQueries = [];
+  const out = await __internal.searchLocalExternalSeedProducts({
+    query: 'daily spf fluid',
+    limit: 1,
+    queryFn: async (sql, params) => {
+      observedQueries.push({ sql: String(sql || ''), params });
+      return {
+        rows: [
+          {
+            id: '211',
+            external_product_id: 'ext_attached_sunscreen_211',
+            destination_url: 'https://example.com/products/attached-daily-spf-fluid',
+            canonical_url: 'https://example.com/products/attached-daily-spf-fluid',
+            domain: 'example.com',
+            title: 'Attached Daily SPF Fluid',
+            image_url: 'https://example.com/products/attached-daily-spf-fluid.jpg',
+            price_amount: 28,
+            price_currency: 'USD',
+            availability: 'in_stock',
+            attached_product_key: 'shopify:attached-daily-spf-fluid',
+            seed_data: {
+              derived: {
+                recall: {
+                  retrieval_title: 'Attached Daily SPF Fluid',
+                  retrieval_summary: 'A lightweight SPF fluid already linked to a backend product.',
+                  category: 'sunscreen',
+                  vertical: 'skincare',
+                },
+              },
+              snapshot: {
+                title: 'Attached Daily SPF Fluid',
+                description: 'Lightweight SPF fluid.',
+                category: 'Sunscreen',
+              },
+            },
+            updated_at: new Date().toISOString(),
+            created_at: new Date().toISOString(),
+          },
+        ],
+      };
+    },
+  });
+
+  assert.equal(out.ok, true);
+  assert.equal(out.local_external_seed_search_mode, 'single_query');
+  assert.equal(observedQueries.length, 1);
+  assert.doesNotMatch(observedQueries[0].sql, /attached_product_key\s+IS\s+NULL/i);
+  assert.equal(out.products[0]?.title, 'Attached Daily SPF Fluid');
 });
 
 test('__internal: framework recall exhausts primary planned sources before support stages when mock recall never yields a candidate', async () => {
