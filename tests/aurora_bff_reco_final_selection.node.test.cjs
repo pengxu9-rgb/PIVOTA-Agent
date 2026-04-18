@@ -180,8 +180,66 @@ test('reco assistant rewrite prompt neutralizes absolute marketing copy in selec
     });
 
     assert.doesNotMatch(evidenceText, /\b(?:best|most|effective|effectively|superior|highly effective|ideal|strongest)\b/i);
-    assert.match(evidenceText, /physical uv protection|sun protection|mineral filters/i);
+    assert.match(evidenceText, /uv protection|daily SPF|mineral filter/i);
     assert.match(evidenceText, /Suited for daily UV protection/i);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('beauty mainline reco rows prefer role-grounded sunscreen copy over marketing-heavy seed narrative', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const rows = __internal.buildRecoRowsFromMainlineProducts(
+      [
+        {
+          product_id: 'round_lab_mild_up',
+          merchant_id: 'external_seed',
+          brand: 'Round Lab',
+          display_name: 'Round Lab Birch Mild-Up Sunscreen UVLock SPF 50+ Broad Spectrum',
+          category: 'Sunscreen',
+          product_type: 'Sunscreen',
+          short_description: 'Round Lab Mineral Sunscreen - Gentle, Effective Physical UV Protection sun protection for daily use.',
+          description: 'Round Lab Mineral Sunscreen - Gentle, Effective Physical UV Protection. Experience superior sun protection with Round Lab’s lightweight mineral sunscreen. Why Choose Round Lab Birch Mild-Up Sunscreen? Perfect for Daily Use.',
+          why_this_one: 'Experience superior sun protection with highly effective physical UV filters.',
+          key_features: ['UV filters', 'Zinc PCA'],
+          matched_role_id: 'daily_sunscreen',
+          matched_role_label: 'Daily sunscreen',
+          price: { amount: 25, currency: 'USD', unknown: false },
+        },
+      ],
+      {
+        targetContext: {
+          resolved_target_step: 'sunscreen',
+          primary_role_id: 'daily_sunscreen',
+          framework_roles: [
+            {
+              role_id: 'daily_sunscreen',
+              label: 'Daily sunscreen',
+              rank: 3,
+              preferred_step: 'sunscreen',
+              why_this_role: 'Provide daily UV protection with a wearable finish.',
+            },
+          ],
+        },
+        language: 'EN',
+      },
+    );
+
+    assert.equal(rows.length, 1);
+    assert.doesNotMatch(
+      String(rows[0].why_this_one || ''),
+      /physical uv protection sun protection|experience superior|why choose|perfect for daily use|effective|superior/i,
+    );
+    assert.doesNotMatch(
+      String(rows[0].short_description || ''),
+      /physical uv protection sun protection|experience superior|why choose|perfect for daily use|effective|superior/i,
+    );
+    assert.match(
+      String(rows[0].why_this_one || ''),
+      /daily sunscreen step|UV filters|Zinc PCA|regular wear/i,
+    );
+    assert.equal(rows[0].short_description, rows[0].why_this_one);
   } finally {
     delete require.cache[moduleId];
   }
