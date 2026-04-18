@@ -570,7 +570,7 @@ test('handoffRecoToBeautyMainlineSearch keeps framework local budget when sunscr
   }
 });
 
-test('handoffRecoToBeautyMainlineSearch runs primary external alongside routine support with runtime contract ledger', async () => {
+test('handoffRecoToBeautyMainlineSearch records primary-first strict-empty ledger without spending support runtime', async () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
     const captured = [];
@@ -657,21 +657,13 @@ test('handoffRecoToBeautyMainlineSearch runs primary external alongside routine 
       [
         'niacinamide serum oily skin',
         'oil control serum',
-        'gel cream moisturizer',
-        'sunscreen',
-        'lightweight moisturizer oily skin',
-        'spf fluid oily skin',
       ],
     );
     assert.deepEqual(
       externalCaptured.map((row) => row.query),
       [
         'niacinamide serum oily skin',
-        'gel cream moisturizer',
-        'sunscreen',
         'salicylic acid serum oily skin',
-        'lightweight moisturizer oily skin',
-        'spf fluid oily skin',
       ],
     );
     assert.equal(captured.every((row) => row.callerLane === 'beauty_chat_handoff'), true);
@@ -699,7 +691,7 @@ test('handoffRecoToBeautyMainlineSearch runs primary external alongside routine 
     );
     assert.equal(
       externalCaptured.filter((row) => row.roleId !== 'oil_control_treatment').map((row) => row.roleId).join(','),
-      'lightweight_moisturizer,daily_sunscreen,lightweight_moisturizer,daily_sunscreen',
+      '',
     );
     assert.equal(
       externalCaptured.filter((row) => row.roleId !== 'oil_control_treatment').every((row) =>
@@ -776,17 +768,17 @@ test('handoffRecoToBeautyMainlineSearch runs primary external alongside routine 
     const supportAttempts = out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts
       ?.filter((row) => String(row?.ladder_level || '').startsWith('framework_stage_c_support_')) || [];
     assert.equal(supportAttempts.some((row) => row?.reason === 'primary_role_unmatched'), true);
-    assert.equal(supportAttempts.some((row) => row?.reason !== 'primary_role_unmatched'), true);
-    const firstSupportExternalAttempt =
+    assert.equal(supportAttempts.some((row) => row?.reason !== 'primary_role_unmatched'), false);
+    const skippedSupportExternalAttempt =
       out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts
         ?.find((row) =>
           row?.ladder_level === 'framework_stage_c_support_lightweight_moisturizer_external_seed'
-          && row?.local_external_seed_search_mode)
+          && row?.reason === 'primary_role_unmatched')
       || out.searchResult?.metadata?.search_stage_ledger?.primary_search?.query_pack_attempts
         ?.find((row) =>
           row?.ladder_level === 'framework_stage_c_support_lightweight_moisturizer_external_seed'
-          && row?.local_external_seed_search_mode);
-    assert.ok(firstSupportExternalAttempt);
+          && row?.reason === 'primary_role_unmatched');
+    assert.ok(skippedSupportExternalAttempt);
     assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.skipped_external_seed_levels, undefined);
     assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.skipped_support_levels, undefined);
   } finally {
@@ -1962,7 +1954,7 @@ test('handoffRecoToBeautyMainlineSearch interleaves support external queries acr
   }
 });
 
-test('collectRecoCandidatesFromQueryLevels starts support external authority before support internal noise during primary external round', async () => {
+test('collectRecoCandidatesFromQueryLevels runs primary external authority before support external during primary round', async () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
     const startedQueries = [];
@@ -2075,6 +2067,34 @@ test('collectRecoCandidatesFromQueryLevels starts support external authority bef
       allowExternalSeed: true,
       searchFn: async (args = {}) => {
         startedQueries.push(`${args.sourceScope}:${args.role?.role_id}:${args.query}`);
+        if (
+          String(args?.sourceScope || '') === 'external_seed'
+          && String(args?.role?.role_id || '') === 'daily_sunscreen_finish_fit'
+        ) {
+          return {
+            ok: true,
+            products: [
+              {
+                product_id: 'primary_spf_1',
+                merchant_id: 'external_seed',
+                brand: 'SunLab',
+                name: 'Invisible Makeup SPF Fluid',
+                display_name: 'SunLab Invisible Makeup SPF Fluid',
+                title: 'SunLab Invisible Makeup SPF Fluid',
+                category: 'Sunscreen',
+                product_type: 'sunscreen',
+                candidate_step: 'sunscreen',
+                benefit_tags: ['sunscreen', 'makeup friendly', 'lightweight finish'],
+                short_description: 'A lightweight sunscreen fluid designed to sit under makeup.',
+                retrieval_source: 'external_seed',
+              },
+            ],
+            actual_http_attempt_count: 0,
+            attempted_base_urls: [],
+            attempted_paths: [],
+            attempted_request_timeouts_ms: [Number(args.timeoutMs || 0)],
+          };
+        }
         return {
           ok: true,
           products: [],
@@ -2097,6 +2117,108 @@ test('collectRecoCandidatesFromQueryLevels starts support external authority bef
     assert.equal(
       startedQueries.indexOf('external_seed:hydrating_serum_or_essence:hyaluronic acid serum')
         < startedQueries.indexOf('internal:hydrating_serum_or_essence:hyaluronic acid serum'),
+      true,
+    );
+  } finally {
+    __internal.__resetRouteDependencyOverridesForTest();
+    delete require.cache[moduleId];
+  }
+});
+
+test('collectRecoCandidatesFromQueryLevels does not spend support budget when primary external remains unmatched', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const startedQueries = [];
+    const targetContext = {
+      framework_id: 'framework_makeup_pilling_v1',
+      primary_role_id: 'daily_sunscreen_finish_fit',
+      framework_owner_source: 'llm_concern_planner',
+      framework_owner_state: 'trusted',
+      comparison_mode: 'routine_mix',
+      semantic_plan: {
+        routine_mode: 'routine_mix',
+        comparison_mode: 'routine_mix',
+        selection_constraints: { comparison_mode: 'routine_mix' },
+      },
+      framework_roles: [
+        {
+          role_id: 'daily_sunscreen_finish_fit',
+          rank: 1,
+          preferred_step: 'sunscreen',
+          label: 'Daily sunscreen with finish fit',
+        },
+        {
+          role_id: 'layering_compatible_moisturizer_or_spf',
+          rank: 2,
+          preferred_step: 'moisturizer',
+          label: 'Layering-compatible moisturizer',
+        },
+      ],
+    };
+    const queryLevels = [
+      {
+        ladder_level: 'framework_stage_c_support_authority_round_1',
+        fair_support_authority_round: 1,
+        fair_primary_external_round: 1,
+        queries: [
+          {
+            query: 'sunscreen',
+            step: 'sunscreen',
+            slot: 'sunscreen',
+            ladder_level: 'framework_stage_b_primary_external_seed',
+            role_id: 'daily_sunscreen_finish_fit',
+            role_rank: 1,
+            preferred_step: 'sunscreen',
+            allow_external_seed: true,
+            fair_primary_external_round: 1,
+          },
+          {
+            query: 'gel cream moisturizer',
+            step: 'moisturizer',
+            slot: 'moisturizer',
+            ladder_level: 'framework_stage_c_support_layering_compatible_moisturizer_or_spf_external_seed',
+            role_id: 'layering_compatible_moisturizer_or_spf',
+            role_rank: 2,
+            preferred_step: 'moisturizer',
+            allow_external_seed: true,
+            allow_pending_primary_external: true,
+            fair_support_external_round: 1,
+          },
+        ],
+      },
+    ];
+
+    const out = await __internal.collectRecoCandidatesFromQueryLevels({
+      queryLevels,
+      targetContext,
+      recommendationTaskContext: null,
+      logger: null,
+      timeoutMs: 5000,
+      deadlineMs: Date.now() + 5000,
+      limit: 6,
+      usePurchasableFallback: false,
+      allowExternalSeed: true,
+      searchFn: async (args = {}) => {
+        startedQueries.push(`${args.sourceScope}:${args.role?.role_id}:${args.query}`);
+        return {
+          ok: false,
+          products: [],
+          reason: 'empty',
+          actual_http_attempt_count: 0,
+          attempted_base_urls: [],
+          attempted_paths: [],
+          attempted_request_timeouts_ms: [Number(args.timeoutMs || 0)],
+        };
+      },
+    });
+
+    assert.deepEqual(startedQueries, ['external_seed:daily_sunscreen_finish_fit:sunscreen']);
+    const attempts = out.searchResults || [];
+    assert.equal(
+      attempts.some((row) =>
+        row?.role_id === 'layering_compatible_moisturizer_or_spf'
+        && row?.reason === 'primary_role_unmatched'
+        && row?.skipped_runtime === true),
       true,
     );
   } finally {
@@ -2779,10 +2901,10 @@ test('handoffRecoToBeautyMainlineSearch fail-closes before selecting support row
       out.searchResult?.metadata?.search_stage_ledger?.primary_failure_stage ?? null,
       'no_recall_from_planned_sources',
     );
-    const supportAttempts = out.searchResult?.metadata?.search_stage_ledger?.primary_search?.query_pack_attempts
-      ?.filter((row) => String(row?.ladder_level || '').startsWith('framework_stage_c_support_')) || [];
-    assert.equal(supportAttempts.some((row) => row?.reason === 'primary_role_unmatched'), true);
-    assert.equal(supportAttempts.some((row) => row?.reason !== 'primary_role_unmatched'), true);
+      const supportAttempts = out.searchResult?.metadata?.search_stage_ledger?.primary_search?.query_pack_attempts
+        ?.filter((row) => String(row?.ladder_level || '').startsWith('framework_stage_c_support_')) || [];
+      assert.equal(supportAttempts.some((row) => row?.reason === 'primary_role_unmatched'), true);
+      assert.equal(supportAttempts.some((row) => row?.reason !== 'primary_role_unmatched'), false);
   } finally {
     __internal.__resetRouteDependencyOverridesForTest();
     delete require.cache[moduleId];
