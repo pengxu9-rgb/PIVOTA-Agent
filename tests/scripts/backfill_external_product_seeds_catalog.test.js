@@ -148,6 +148,65 @@ describe('backfill-external-product-seeds-catalog', () => {
     });
   });
 
+  test('keeps explicit seed brand when building catalog extract requests', () => {
+    const row = {
+      id: 'eps_rarebeauty_1',
+      market: 'US',
+      domain: 'rarebeauty.com',
+      title: 'Stay Vulnerable Glossy Lip Balm',
+      seed_data: {
+        brand: 'Rare Beauty',
+      },
+    };
+
+    expect(buildExtractRequestBody('https://rarebeauty.com/products/stay-vulnerable-glossy-lip-balm', row)).toEqual({
+      brand: 'Rare Beauty',
+      domain: 'https://rarebeauty.com/products/stay-vulnerable-glossy-lip-balm',
+      limit: 50,
+      market: 'US',
+    });
+  });
+
+  test('uses source domain brand instead of product title for known catalog backfill domains', () => {
+    const row = {
+      id: 'eps_kylie_1',
+      market: 'US',
+      domain: 'kyliecosmetics.com',
+      title: 'Plumping Powder Matte Lip',
+      seed_data: {
+        snapshot: {
+          canonical_url: 'https://kyliecosmetics.com/products/plumping-powder-matte-lip',
+        },
+      },
+    };
+
+    expect(buildExtractRequestBody('https://kyliecosmetics.com/products/plumping-powder-matte-lip', row)).toEqual({
+      brand: 'Kylie Cosmetics',
+      domain: 'https://kyliecosmetics.com/products/plumping-powder-matte-lip',
+      limit: 50,
+      market: 'US',
+    });
+  });
+
+  test('canonicalizes noisy stored brand casing for known direct-brand domains', () => {
+    const row = {
+      id: 'eps_kylie_2',
+      market: 'US',
+      domain: 'kyliecosmetics.com',
+      title: 'Plumping Powder Matte Lip',
+      seed_data: {
+        brand: 'kylie cosmetics',
+      },
+    };
+
+    expect(buildExtractRequestBody('https://kyliecosmetics.com/products/plumping-powder-matte-lip', row)).toEqual({
+      brand: 'Kylie Cosmetics',
+      domain: 'https://kyliecosmetics.com/products/plumping-powder-matte-lip',
+      limit: 50,
+      market: 'US',
+    });
+  });
+
   test('matches locale-normalized product URLs when choosing the representative product', () => {
     const row = {
       canonical_url: 'https://theordinary.com/de-de/uv-filters-spf-45-serum-100720.html',

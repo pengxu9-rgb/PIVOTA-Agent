@@ -580,12 +580,61 @@ function looksLikeSyntheticSummaryText(value) {
   return /\bOFFICIAL:\b[\s\S]*\/\/\/\s*SOCIAL HIGHLIGHTS:/i.test(normalizeNonEmptyString(value));
 }
 
+const CATALOG_EXTRACT_BRAND_BY_HOST = {
+  'beautyofjoseon.com': 'Beauty of Joseon',
+  'byoma.com': 'BYOMA',
+  'fentybeauty.com': 'Fenty Beauty',
+  'firstaidbeauty.com': 'First Aid Beauty',
+  'guerlain.com': 'Guerlain',
+  'jurlique.com': 'Jurlique',
+  'kyliecosmetics.com': 'Kylie Cosmetics',
+  'kravebeauty.com': 'KraveBeauty',
+  'naturium.com': 'Naturium',
+  'olehenriksen.com': 'Olehenriksen',
+  'pixibeauty.com': 'Pixi',
+  'rarebeauty.com': 'Rare Beauty',
+  'roundlab.com': 'Round Lab',
+  'sigmabeauty.com': 'Sigma Beauty',
+  'skin1004.com': 'SKIN1004',
+  'theordinary.com': 'The Ordinary',
+  'tomfordbeauty.com': 'Tom Ford Beauty',
+  'us.nuxe.com': 'Nuxe',
+};
+
+function getHostname(value) {
+  try {
+    return new URL(normalizeUrlLike(value)).hostname.toLowerCase().replace(/^www\./, '');
+  } catch {
+    return '';
+  }
+}
+
+function deriveCatalogExtractBrand(targetUrl, row) {
+  const seedData = ensureJsonObject(row?.seed_data);
+  const snapshot = ensureJsonObject(seedData.snapshot);
+  const hostCandidates = uniqueStrings([
+    getHostname(targetUrl),
+    getHostname(row?.canonical_url),
+    getHostname(row?.destination_url),
+    getHostname(seedData.canonical_url),
+    getHostname(snapshot.canonical_url),
+    normalizeNonEmptyString(row?.domain).toLowerCase(),
+  ]);
+  for (const host of hostCandidates) {
+    if (CATALOG_EXTRACT_BRAND_BY_HOST[host]) return CATALOG_EXTRACT_BRAND_BY_HOST[host];
+    const hostWithoutWww = host.replace(/^www\./, '');
+    if (CATALOG_EXTRACT_BRAND_BY_HOST[hostWithoutWww]) return CATALOG_EXTRACT_BRAND_BY_HOST[hostWithoutWww];
+  }
+
+  const explicitBrand = normalizeNonEmptyString(seedData.brand || snapshot.brand || row?.brand);
+  if (explicitBrand) return explicitBrand;
+
+  return normalizeNonEmptyString(row?.domain || row?.title || row?.external_product_id || row?.id);
+}
+
 function buildExtractRequestBody(targetUrl, row) {
   const requestBody = {
-    brand:
-      normalizeNonEmptyString(
-        ensureJsonObject(row?.seed_data).brand || row?.title || row?.domain || row?.external_product_id || row?.id,
-      ) || row?.id,
+    brand: deriveCatalogExtractBrand(targetUrl, row) || row?.id,
     domain: targetUrl,
     limit: 50,
   };
