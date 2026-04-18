@@ -480,6 +480,18 @@ test('handoffRecoToBeautyMainlineSearch keeps framework local budget when sunscr
             ...base,
             products: [
               {
+                product_id: 'mislabelled_wrinkle_corrector',
+                merchant_id: 'external_seed',
+                title: 'Targeted Wrinkle Corrector',
+                display_name: 'Targeted Wrinkle Corrector',
+                category: 'Sunscreen',
+                product_type: 'Sunscreen',
+                candidate_step: 'sunscreen',
+                benefit_tags: ['wrinkle', 'fine lines'],
+                short_description: 'A wrinkle corrector treatment that is mislabelled as sunscreen.',
+                retrieval_source: 'external_seed',
+              },
+              {
                 product_id: 'support_spf_finish_fit',
                 merchant_id: 'external_seed',
                 title: 'Finish Fit SPF 50 Fluid',
@@ -540,6 +552,18 @@ test('handoffRecoToBeautyMainlineSearch keeps framework local budget when sunscr
       true,
     );
     assert.equal(externalCaptured.some((row) => row.roleId === 'daily_sunscreen_finish_fit'), true);
+    assert.equal(
+      out.searchResult?.metadata?.search_stage_ledger?.candidate_pool_summary?.hard_reject_preview
+        ?.some((row) => (
+          row?.title === 'Targeted Wrinkle Corrector'
+          && row?.reason === 'framework_sunscreen_identity_conflict'
+        )),
+      true,
+    );
+    assert.equal(
+      out.recommendations.some((row) => row?.display_name === 'Targeted Wrinkle Corrector'),
+      false,
+    );
   } finally {
     __internal.__resetRouteDependencyOverridesForTest();
     delete require.cache[moduleId];
