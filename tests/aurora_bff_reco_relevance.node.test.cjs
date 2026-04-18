@@ -7164,9 +7164,16 @@ test('__internal: reco assistant rewrite guard rejects re-asking known skin type
   const validLocationQuestion = __internal.validateRecoAssistantRewriteCandidate({
     ...baseArgs,
     candidateText:
-      'The Ordinary Niacinamide 10% + Zinc 1% fits this request for oil-control treatment because it pairs niacinamide with zinc for visible shine. It also fits because it is a lightweight serum format. What city or climate are you usually in?',
+      'The Ordinary Niacinamide 10% + Zinc 1% fits this request for oil-control treatment because it pairs niacinamide with zinc for visible shine. It also fits because it is a lightweight serum format. What city or climate are you usually in (humid, dry, cold, or high-UV)?',
   });
   assert.equal(validLocationQuestion.reason, null);
+
+  const invalidUnplannedFollowup = __internal.validateRecoAssistantRewriteCandidate({
+    ...baseArgs,
+    candidateText:
+      'The Ordinary Niacinamide 10% + Zinc 1% fits this request for oil-control treatment because it pairs niacinamide with zinc for visible shine. It also fits because it is a lightweight serum format. Would you like to see more options for oily skin?',
+  });
+  assert.equal(invalidUnplannedFollowup.reason, 'rewrite_unexpected_refinement_question');
 
   const invalidSkinTypeReask = __internal.validateRecoAssistantRewriteCandidate({
     ...baseArgs,
