@@ -1612,6 +1612,7 @@ function finalizeRecommendationCandidatePools(rawCandidates, { targetContext, re
 
 function shouldStopStepAwareBroadening(poolState, { targetContext } = {}) {
   if (!targetContext?.step_aware_intent) return false;
+  if (Array.isArray(targetContext?.framework_roles) && targetContext.framework_roles.length > 0) return false;
   const viableCount = Number(poolState?.same_family_viable_count || 0);
   return viableCount > 0;
 }
