@@ -145,6 +145,19 @@ test('reco assistant refinement question prioritizes missing skin type before cl
     });
     assert.equal(lifestyleNext.field, 'lifestyle_sleep');
     assert.match(lifestyleNext.question, /late nights|outdoor commuting|gym/i);
+
+    const contextTuning = __internal.buildRecoAssistantRefinementQuestionPlan({
+      language: 'EN',
+      profile: {
+        skinType: 'oily',
+        region: 'San Francisco',
+        currentRoutine: 'cleanser, moisturizer, sunscreen',
+        lifestyle: { sleep: 'regular', commute: 'indoors' },
+      },
+      userRequestText: 'What product should I buy?',
+    });
+    assert.equal(contextTuning.field, 'context_tuning');
+    assert.match(contextTuning.question, /city\/climate, current AM\/PM routine, or lifestyle/i);
   } finally {
     delete require.cache[moduleId];
   }
