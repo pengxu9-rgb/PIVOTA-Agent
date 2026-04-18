@@ -8543,7 +8543,17 @@ function buildLocalExternalSeedCategoryPositiveStage({
       'emulsion',
     ]);
     if (categories.length && positivePatterns.length) {
-      return { categoryTerms: categories, positivePatterns };
+      const barrierRepairSignal = /\b(barrier|repair|ceramide|panthenol|sensitive)\b/.test(positiveSignalText);
+      return {
+        categoryTerms: categories,
+        positivePatterns,
+        ...(barrierRepairSignal
+          ? {
+              queryCapMultiplier: 2,
+              searchFields: ['raw_title', 'retrieval_title', 'alias_tokens', 'retrieval_summary'],
+            }
+          : {}),
+      };
     }
   }
 
@@ -8742,13 +8752,45 @@ function scoreLocalExternalSeedSunscreenIdentityFit(product) {
   const spfSignal = /\bspf\s*\d{2,3}\+?\b|\bspf\b/.test(anchorText);
   const finishFitSignal = /\b(lightweight|oil[-\s]?free|non[-\s]?greasy|matte|invisible|under makeup|makeup friendly|fluid)\b/.test(fullText);
   const makeupSpfShape = /\b(foundation|skin tint|tinted moisturizer|bb cream|cc cream|concealer|powder|primer)\b/.test(anchorText);
+  const selfTanShape = /\b(self[-\s]?tan|self[-\s]?tanning|tanning|bronzing|bronzer)\b/.test(anchorText);
   if (primarySunscreenForm) score += 0.2;
   if (spfSignal) score += 0.08;
   if (finishFitSignal) score += 0.08;
   if (makeupSpfShape && !primarySunscreenForm) score -= 0.42;
   else if (makeupSpfShape) score -= 0.18;
+  if (selfTanShape && !primarySunscreenForm && !spfSignal) score -= 0.42;
+  else if (selfTanShape) score -= 0.2;
   if (/\bmakeup\b/.test(String(row?.external_seed_recall?.vertical || '').trim().toLowerCase())) score -= 0.18;
   return Number(Math.max(-0.6, Math.min(0.4, score)).toFixed(4));
+}
+
+function scoreLocalExternalSeedPreferredFormFactorFit(product, {
+  role = null,
+  preferredStep = '',
+} = {}) {
+  const row = isPlainObject(product) ? product : null;
+  if (!row) return 0;
+  const preferred = normalizeRecoTargetStep(preferredStep || role?.preferred_step);
+  const roleId = String(role?.role_id || '').trim().toLowerCase();
+  const anchorText = buildExternalSeedSurfacingText(row, { anchorOnly: true }).toLowerCase();
+  const fullText = uniqCaseInsensitiveStrings([
+    anchorText,
+    buildConcernCandidateText(row),
+    buildPurchasableRecoveryCandidateText(row),
+    row?.external_seed_recall?.vertical,
+  ], 4).join(' ').toLowerCase();
+  let score = 0;
+  if (preferred === 'serum' || roleId.includes('serum') || roleId.includes('essence')) {
+    if (/\b(serum|essence|ampoule)\b/.test(anchorText)) score += 0.18;
+    else if (/\b(mist|toner)\b/.test(anchorText)) score += 0.06;
+    if (/\b(mask|sheet\s+mask|patch(?:es)?|pads?|peel|scrub|lip|eye)\b/.test(anchorText)) score -= 0.36;
+    if (/\b(body|hand|foot|kp\s+bump)\b/.test(fullText)) score -= 0.48;
+  }
+  if (preferred === 'moisturizer') {
+    if (/\b(water\s+cream|gel[-\s]?cream|gel\s+lotion|face\s+lotion|emulsion)\b/.test(anchorText)) score += 0.08;
+    if (roleId.includes('layering') && /\b(heavy|rich|balm|sleeping\s+mask)\b/.test(anchorText)) score -= 0.12;
+  }
+  return Number(Math.max(-0.6, Math.min(0.24, score)).toFixed(4));
 }
 
 function scoreLocalExternalSeedSupportRoleFit(candidate, {
@@ -8789,6 +8831,7 @@ function scoreLocalExternalSeedSupportRoleFit(candidate, {
     score += Math.min(0.06, roleQueryHits * 0.02);
     if (preferred && candidateStep === preferred) score += 0.04;
     if (String(product?.retrieval_match_stage || '').trim() === 'support_category_positive') score += 0.02;
+    score += scoreLocalExternalSeedPreferredFormFactorFit(product, { role: roleObj, preferredStep: preferred });
     score += Math.min(0.06, computePurchasableRecoveryQueryOverlap(
       product,
       tokenizePurchasableRecoveryQuery(query),
@@ -8831,10 +8874,10 @@ function rankLocalExternalSeedSupportCandidatesForRole(candidates = [], query = 
       };
     })
     .sort((left, right) => {
+      if (left.roleFitScore !== right.roleFitScore) return right.roleFitScore - left.roleFitScore;
       if (left.roleFitSignalHits !== right.roleFitSignalHits) {
         return right.roleFitSignalHits - left.roleFitSignalHits;
       }
-      if (left.roleFitScore !== right.roleFitScore) return right.roleFitScore - left.roleFitScore;
       if (left.surfacingScore !== right.surfacingScore) return right.surfacingScore - left.surfacingScore;
       if (left.queryOverlap !== right.queryOverlap) return right.queryOverlap - left.queryOverlap;
       return left.index - right.index;
