@@ -397,8 +397,10 @@ function repairRoutineMixRoleCoverage({
     && !/\b(routine|start|first|use first|what should i buy|what product should i buy|what should i use)\b/.test(contextText);
   if (hasExplicitSingleProductAsk) return { coreRoles: repaired, supportRoles, repairCodes };
 
-  const sensitivityIntent = /\b(sensitive|redness|red|reactive|irritat|stinging|barrier|sensitized)\b/.test(contextText)
+  const barrierStressIntent = /\b(redness|red|reactive|irritat|stinging|barrier|sensitized|impaired|compromised|burning|rosacea)\b/.test(contextText)
     || existingIds.has('soothing_treatment');
+  const sensitivityIntent = barrierStressIntent
+    || /\b(sensitive)\b/.test(contextText);
   const oilyIntent = /\b(oily|oil|shine|sebum|acne|breakout|clogged|pore)\b/.test(contextText)
     || existingIds.has('oil_control_treatment')
     || existingIds.has('acne_clogged_pore_treatment');
@@ -406,7 +408,8 @@ function repairRoutineMixRoleCoverage({
     || existingIds.has('layering_compatible_moisturizer_or_spf');
 
   if (makeupLayeringIntent) {
-    const preferredTertiaryRoleId = sensitivityIntent
+    const preferBarrierForLayering = barrierStressIntent || (sensitivityIntent && !oilyIntent);
+    const preferredTertiaryRoleId = preferBarrierForLayering
       ? (roleListHasId(repaired, 'barrier_moisturizer') ? 'barrier_moisturizer' : 'hydrating_barrier_moisturizer')
       : oilyIntent
         ? 'oil_control_treatment'
@@ -440,7 +443,7 @@ function repairRoutineMixRoleCoverage({
       });
     }
     moveRoleToIndex('layering_compatible_moisturizer_or_spf', 1, 'routine_mix_promoted_layering_support_secondary');
-    if (sensitivityIntent) {
+    if (preferBarrierForLayering) {
       if (
         !roleListHasId(repaired, 'barrier_moisturizer')
         && !roleListHasId(repaired, 'hydrating_barrier_moisturizer')
