@@ -104,6 +104,28 @@ function normalizeStringList(value, max = 6) {
   return out;
 }
 
+function neutralizeVisibleRecommendationCardCopy(value) {
+  let text = asString(value).replace(/\s+/g, ' ').trim();
+  if (!text) return '';
+  text = text
+    .replace(/^Best\s+for\b\s*[:：-]?\s*/i, 'Suited for ')
+    .replace(/^Best\s+as\s+your\s+(.+?)\s+step\b\.?$/i, 'Works as your $1 step')
+    .replace(/^Best\s+as\s+(.+)$/i, 'Works as $1')
+    .replace(/\bbest\s+first\s+buy\b/gi, 'starting option')
+    .replace(/\bbest\s+available\b/gi, 'available match')
+    .replace(/\bbest\s+match\b/gi, 'close match')
+    .replace(/\btop\s+pick\b/gi, 'selected option')
+    .replace(/\btop\s+choice\b/gi, 'selected option')
+    .replace(/\blead\s+pick\b/gi, 'current pick')
+    .replace(/\bstrongest\s+(?:choice|option|pick)\b/gi, 'strong option')
+    .replace(/\bmost\s+direct\s+fit\b/gi, 'direct fit')
+    .replace(/\bmost\s+practical\s+pick\b/gi, 'practical option')
+    .replace(/\bclearest\s+match\b/gi, 'clear match')
+    .replace(/\bperfect\b/gi, 'good')
+    .trim();
+  return text;
+}
+
 function normalizePrice(value, fallbackCurrency = '') {
   if (isPlainObject(value)) {
     const amount = asNumber(value.amount);
@@ -243,6 +265,10 @@ function scoreRecommendationCardCopyForTarget(value, { targetText = '', original
   return score;
 }
 
+function looksLikeRecommendationCardFitOnlyCopy(value) {
+  return /^(?:best\s+for|suited\s+for|useful\s+for|good\s+for|works\s+as\s+your)\b/i.test(String(value || '').trim());
+}
+
 function pickTargetAlignedRecommendationCardCopy(values = [], { targetText = '' } = {}) {
   const candidates = normalizeStringList(values, 10)
     .filter((value) => !looksLikeStandaloneRecommendationCardEvidenceFragment(value));
@@ -271,8 +297,8 @@ function pickTargetAlignedRecommendationCardCopy(values = [], { targetText = '' 
     firstNarrative &&
     best &&
     firstSharesTargetFamily &&
-    !/^best\s+for\b/i.test(String(firstCandidate || '').trim()) &&
-    /^best\s+for\b/i.test(String(best.value || '').trim())
+    !looksLikeRecommendationCardFitOnlyCopy(firstCandidate) &&
+    looksLikeRecommendationCardFitOnlyCopy(best.value)
   ) {
     return firstNarrative.value;
   }
@@ -503,7 +529,7 @@ function normalizeRecommendationProductCard(raw, options = {}) {
   const bestFor = normalizeStringList(
     row.best_for || row.bestFor || row.best_for_tags || row.bestForTags || row.use_cases || row.useCases,
     4,
-  );
+  ).map(neutralizeVisibleRecommendationCardCopy).filter(Boolean);
   const keyFeatures = normalizeStringList(
     row.key_features || row.keyFeatures || row.actives || row.key_ingredients || row.keyIngredients,
     6,

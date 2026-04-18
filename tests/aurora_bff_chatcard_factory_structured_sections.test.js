@@ -553,7 +553,7 @@ describe('aurora chatCardFactory structured sections for adapter inputs', () => 
     );
 
     const product = cards[0].payload.sections[0].products[0];
-    expect(product.best_for).toEqual(['Best for barrier support and richer comfort']);
+    expect(product.best_for).toEqual(['Suited for barrier support and richer comfort']);
     expect(product.why_this_one).toMatch(/ceramide-capsule|barrier-focused cream/i);
     expect(product.why_this_one).not.toBe('Best for barrier support and richer comfort');
   });
@@ -594,7 +594,7 @@ describe('aurora chatCardFactory structured sections for adapter inputs', () => 
 
     const product = cards[0].payload.sections[0].products[0];
     expect(product.why_this_one).toMatch(/dehydrated|watery|hyaluronic|glycerin/i);
-    expect(product.why_this_one).not.toBe('Best for smoother layering under sunscreen or makeup');
+    expect(product.why_this_one).not.toBe('Useful for smoother layering under sunscreen or makeup');
   });
 
   test('recommendations card filters sunscreen peer rails by product identity, not seed category labels', () => {

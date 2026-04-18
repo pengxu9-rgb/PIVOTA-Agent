@@ -3139,7 +3139,7 @@ test('handoffRecoToBeautyMainlineSearch hydrates reviewed product intel before b
     );
     assert.deepEqual(out.recommendations[0]?.compare_highlights, [
       'The reviewed profile connects daily UV coverage with a lighter finish for under-makeup wear.',
-      'Best for Daily sunscreen under makeup',
+      'Suited for Daily sunscreen under makeup',
       'Lightweight sunscreen',
     ]);
   } finally {
