@@ -558,6 +558,108 @@ describe('aurora chatCardFactory structured sections for adapter inputs', () => 
     expect(product.why_this_one).not.toBe('Best for barrier support and richer comfort');
   });
 
+  test('recommendations card does not let off-role best-for text override hydration why copy', () => {
+    const cards = mapLegacyCardToSpecCards(
+      {
+        type: 'recommendations',
+        card_id: 'legacy_recommendations_hydration_copy',
+        payload: {
+          recommendation_meta: {
+            selected_target_ids: ['hydrating_serum_or_essence'],
+            ranked_targets: [
+              {
+                target_id: 'hydrating_serum_or_essence',
+                target_label: 'Hydrating serum or essence',
+              },
+            ],
+          },
+          recommendations: [
+            {
+              product_id: 'prod_water_essence',
+              merchant_id: 'external_seed',
+              brand: 'Jurlique',
+              name: 'Activating Water Essence+',
+              matched_role_id: 'hydrating_serum_or_essence',
+              matched_role_label: 'Hydrating serum or essence',
+              best_for: 'Best for smoother layering under sunscreen or makeup',
+              why_this_one: 'Skin Type: All Skin Types. Helps with dull, dehydrated skin. Texture: lightweight, watery.',
+              key_features: ['Glycerin', 'Hyaluronic acid', 'Lightweight serum'],
+              price: { amount: 49, currency: 'USD', unknown: false },
+            },
+          ],
+        },
+      },
+      { requestId: 'req_card_factory_hydration_copy', language: 'EN', index: 0 },
+    );
+
+    const product = cards[0].payload.sections[0].products[0];
+    expect(product.why_this_one).toMatch(/dehydrated|watery|hyaluronic|glycerin/i);
+    expect(product.why_this_one).not.toBe('Best for smoother layering under sunscreen or makeup');
+  });
+
+  test('recommendations card filters sunscreen peer rails by product identity, not seed category labels', () => {
+    const cards = mapLegacyCardToSpecCards(
+      {
+        type: 'recommendations',
+        card_id: 'legacy_recommendations_sunscreen_peer_filter',
+        payload: {
+          recommendation_meta: {
+            selected_target_ids: ['daily_sunscreen_finish_fit'],
+            ranked_targets: [
+              {
+                target_id: 'daily_sunscreen_finish_fit',
+                target_label: 'Daily sunscreen with finish fit',
+                product_candidates: [
+                  {
+                    product_id: 'prod_wrinkle_corrector',
+                    merchant_id: 'external_seed',
+                    brand: 'Murad',
+                    name: 'Targeted Wrinkle Corrector',
+                    category: 'Sunscreen',
+                    product_type: 'Sunscreen',
+                    retrieval_source: 'external_seed',
+                  },
+                  {
+                    product_id: 'prod_spf_moisturizer',
+                    merchant_id: 'external_seed',
+                    brand: 'Murad',
+                    name: 'Superactive Moisturizer SPF 50: Hydrating',
+                    category: 'Sunscreen',
+                    product_type: 'Sunscreen',
+                    retrieval_source: 'external_seed',
+                  },
+                ],
+              },
+            ],
+          },
+          recommendations: [
+            {
+              product_id: 'prod_lead_spf',
+              merchant_id: 'external_seed',
+              brand: 'Murad',
+              name: 'Superactive Moisturizer SPF 50: Brightening',
+              matched_role_id: 'daily_sunscreen_finish_fit',
+              matched_role_label: 'Daily sunscreen with finish fit',
+              why_this_one: 'SPF 50 daily protection with a wearable finish.',
+              best_for: 'Daily SPF',
+              key_features: ['SPF 50'],
+              price: { amount: 55, currency: 'USD', unknown: false },
+            },
+          ],
+        },
+      },
+      { requestId: 'req_card_factory_sunscreen_peer_filter', language: 'EN', index: 0 },
+    );
+
+    const product = cards[0].payload.sections[0].products[0];
+    expect(product.product_candidates.map((row) => row.name)).toEqual([
+      'Superactive Moisturizer SPF 50: Hydrating',
+    ]);
+    expect(product.alternative_candidates.map((row) => row.name)).toEqual([
+      'Superactive Moisturizer SPF 50: Hydrating',
+    ]);
+  });
+
   test('offers_resolved shares the rich product row contract and mirrors it into payload.sections', () => {
     const cards = mapLegacyCardToSpecCards(
       {

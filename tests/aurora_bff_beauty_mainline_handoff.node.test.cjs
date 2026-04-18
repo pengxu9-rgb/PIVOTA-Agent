@@ -438,6 +438,114 @@ test('handoffRecoToBeautyMainlineSearch clamps local internal primitive timeout 
   }
 });
 
+test('handoffRecoToBeautyMainlineSearch keeps framework local budget when sunscreen is the primary routine role', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const internalCaptured = [];
+    const externalCaptured = [];
+    __internal.__setRouteDependencyOverridesForTest({
+      searchInternalProductsPrimitive: async (args) => {
+        internalCaptured.push({
+          query: String(args?.query || ''),
+          timeoutMs: Number(args?.timeoutMs || 0),
+          callerLane: String(args?.callerLane || ''),
+        });
+        return {
+          ok: true,
+          products: [],
+          attempted_internal_paths: ['/agent/internal/products/search'],
+          transport_hops: [],
+          transport_hop_count: 0,
+          nested_orchestrator_hops: 0,
+          primary_transport_owner: 'internal_products_search_primitive',
+          primary_endpoint_kind: 'internal_primitive',
+        };
+      },
+      searchLocalExternalSeedProducts: async (args) => {
+        const roleId = String(args?.role?.role_id || '').trim();
+        externalCaptured.push({
+          query: String(args?.query || ''),
+          roleId,
+          preferredStep: String(args?.preferredStep || ''),
+        });
+        const base = {
+          ok: true,
+          actual_http_attempt_count: 0,
+          attempted_base_urls: [],
+          attempted_paths: [],
+          transport_policy_mode: String(args?.transportPolicyMode || ''),
+        };
+        if (roleId === 'daily_sunscreen_finish_fit') {
+          return {
+            ...base,
+            products: [
+              {
+                product_id: 'support_spf_finish_fit',
+                merchant_id: 'external_seed',
+                title: 'Finish Fit SPF 50 Fluid',
+                display_name: 'Finish Fit SPF 50 Fluid',
+                category: 'sunscreen',
+                product_type: 'sunscreen',
+                candidate_step: 'sunscreen',
+                benefit_tags: ['spf', 'under makeup', 'lightweight'],
+                short_description: 'A lightweight SPF 50 fluid for daytime layering.',
+                retrieval_source: 'external_seed',
+              },
+            ],
+          };
+        }
+        if (roleId === 'layering_compatible_moisturizer_or_spf') {
+          return {
+            ...base,
+            products: [
+              {
+                product_id: 'support_layering_water_cream',
+                merchant_id: 'external_seed',
+                title: 'Oat Water Cream',
+                display_name: 'Oat Water Cream',
+                category: 'moisturizer',
+                product_type: 'moisturizer',
+                candidate_step: 'moisturizer',
+                benefit_tags: ['lightweight', 'under makeup', 'gel cream'],
+                short_description: 'A light water cream for makeup layering.',
+                retrieval_source: 'external_seed',
+              },
+            ],
+          };
+        }
+        return { ...base, products: [], reason: 'empty' };
+      },
+    });
+
+    const query = 'My daytime products pill under makeup. What skincare product should I use instead?';
+    const out = await __internal.handoffRecoToBeautyMainlineSearch({
+      ctx: { lang: 'EN', request_id: 'req_framework_sunscreen_budget' },
+      primaryQuery: query,
+      fallbackMessage: query,
+      targetContext: resolveRecommendationTargetContext({
+        text: query,
+        focus: '',
+        entryType: 'chat',
+      }),
+      timeoutMs: 5000,
+      minTimeoutMs: 5000,
+    });
+
+    assert.equal(out.semanticContract?.planner_mode, 'framework_generic');
+    assert.equal(out.semanticContract?.primary_role_id, 'daily_sunscreen_finish_fit');
+    assert.equal(internalCaptured.length > 0, true);
+    assert.equal(internalCaptured.every((row) => row.callerLane === 'beauty_chat_handoff'), true);
+    assert.equal(
+      internalCaptured.some((row) => row.timeoutMs === 16500),
+      true,
+    );
+    assert.equal(externalCaptured.some((row) => row.roleId === 'daily_sunscreen_finish_fit'), true);
+  } finally {
+    __internal.__resetRouteDependencyOverridesForTest();
+    delete require.cache[moduleId];
+  }
+});
+
 test('handoffRecoToBeautyMainlineSearch runs primary external alongside routine support with runtime contract ledger', async () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
