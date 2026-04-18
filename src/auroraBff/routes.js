@@ -4216,7 +4216,11 @@ function buildRecoCompareHighlightsFromInsightFields({
         : []),
       pickFirstTrimmed(shoppingObj?.subtitle),
       pickFirstTrimmed(shoppingObj?.intro),
-    ].filter((value) => value && !looksLikeRecoPlaceholderSeedCopy(value)),
+    ].filter((value) => (
+      value
+      && !looksLikeRecoPlaceholderSeedCopy(value)
+      && !looksLikeRecoMarketingHeavyNarrative(value)
+    )),
     3,
   );
 }
@@ -20004,13 +20008,13 @@ function buildRecoRoleGroundedWhyThisOne({
     return `${productText} fits the clogged-pore and blemish support step${withFeature}, while keeping the routine focused.`;
   }
   if (/\boil|shine|sebum\b/i.test(role)) {
-    return `${productText} fits the oil-control step${withFeature}, so it is a clearer first buy for mid-day shine.`;
+    return `${productText} fits the oil-control step${withFeature}, giving the routine a focused starting point for mid-day shine.`;
   }
   if (/\b(layer|layering|pilling|pill|makeup|under makeup)\b/i.test(role)) {
-    return `${productText} fits the smooth-layering step${withFeature}, so it is a better fit when heavier products pill under sunscreen or makeup.`;
+    return `${productText} fits the smooth-layering step${withFeature}, with a relevant angle when heavier products pill under sunscreen or makeup.`;
   }
   if (/\bbarrier|ceramide|repair|compromised|impaired\b/i.test(role)) {
-    return `${productText} fits the barrier-support step${withFeature}, with a clearer repair-and-comfort role than a generic light moisturizer.`;
+    return `${productText} fits the barrier-support step${withFeature}, with a repair-and-comfort role rather than generic light hydration.`;
   }
   if (/\bhydrat|dehydrat|essence|water|moist\b/i.test(role)) {
     return `${productText} fits the hydration step${withFeature}, adding water-weight support before cream or SPF.`;
@@ -20090,9 +20094,10 @@ function buildRecoDerivedShopperCopy({
     searchCard,
     maxLen: 180,
   });
-  const roleAlignedSpecificNarrative = looksLikeRecoNarrativeOffTargetForRole(specificNarrative, roleText)
-    ? ''
-    : neutralizeRecoVisibleProductCardCopy(specificNarrative, { language });
+  const roleAlignedSpecificNarrative = cleanRecoNarrativeForRoleVisibleUse(specificNarrative, {
+    roleText,
+    language,
+  });
   const roleGroundedWhy = buildRecoRoleGroundedWhyThisOne({
     roleText,
     productName,
@@ -20110,19 +20115,20 @@ function buildRecoDerivedShopperCopy({
     value
     && !looksLikeGenericRecoDerivedNarrative(value)
     && !looksLikeRecoNarrativeOffTargetForRole(value, roleText)
+    && !looksLikeRecoMarketingHeavyNarrative(value)
   )) || '';
   const reviewedBestFor = neutralizeRecoVisibleProductCardCopy(reviewedBestForRaw, { language });
   const existingBestForRaw = rawExistingBestFor
     && !looksLikeGenericRecoDerivedNarrative(rawExistingBestFor)
     && !looksLikeRecoNarrativeOffTargetForRole(rawExistingBestFor, roleText)
+    && !looksLikeRecoMarketingHeavyNarrative(rawExistingBestFor)
     ? rawExistingBestFor
     : '';
   const existingBestFor = neutralizeRecoVisibleProductCardCopy(existingBestForRaw, { language });
-  const existingWhy = rawExistingWhy
-    && !looksLikeGenericRecoDerivedNarrative(rawExistingWhy)
-    && !looksLikeRecoNarrativeOffTargetForRole(rawExistingWhy, roleText)
-    ? neutralizeRecoVisibleProductCardCopy(rawExistingWhy, { language })
-    : '';
+  const existingWhy = cleanRecoNarrativeForRoleVisibleUse(rawExistingWhy, {
+    roleText,
+    language,
+  });
   const bestFor = existingBestFor || reviewedBestFor || (() => {
     if (/\boil|shine|sebum\b/i.test(roleText)) {
       return isCn ? '适合出油和午后泛油光' : 'Suited for excess oil and mid-day shine';
@@ -20179,7 +20185,7 @@ function buildRecoDerivedShopperCopy({
     }
     return isCn
       ? '这是当前主推荐方向里比较直接的一支。'
-      : 'It is a clear match for the main recommendation direction.';
+      : 'It is a relevant match for the main recommendation direction.';
   })();
   return {
     best_for: bestFor,
@@ -20307,6 +20313,60 @@ function looksLikeRecoNarrativeOffTargetForRole(value, roleText = '') {
   return false;
 }
 
+const RECO_MARKETING_HEAVY_NARRATIVE_PATTERNS = Object.freeze([
+  /\bexperience\s+(?:superior|exceptional|advanced|premium)\b/i,
+  /\b(?:superior|highly\s+effective|effective)\s+(?:sun|uv|uva|uvb|spf|physical|mineral|broad[-\s]?spectrum|protection|coverage|filters?)\b/i,
+  /\b(?:physical\s+uv\s+protection|uv\s+protection|sun\s+protection)\s+(?:sun\s+protection|uv\s+protection|protection|coverage)\b/i,
+  /\bwhy\s+choose\b/i,
+  /\bperfect\s+for\s+daily\s+use\b/i,
+  /\b(?:most|ultimate|best)\s+(?:innovative|advanced|powerful|effective|recommended)\b/i,
+  /\b(?:revolutionary|game[-\s]?changing|holy[-\s]?grail|must[-\s]?have)\b/i,
+]);
+
+function looksLikeRecoMarketingHeavyNarrative(value) {
+  const raw = cleanRecoVisibleCopy(value).replace(/\s+/g, ' ').trim();
+  if (!raw) return false;
+  const neutral = neutralizeRecoVisibleProductCardCopy(raw, { language: 'EN' }).replace(/\s+/g, ' ').trim();
+  const combined = `${raw} ${neutral}`.replace(/\s+/g, ' ').trim();
+  if (RECO_MARKETING_HEAVY_NARRATIVE_PATTERNS.some((pattern) => pattern.test(combined))) {
+    return true;
+  }
+  const lower = combined.toLowerCase();
+  const sunscreenClaimCount = [
+    /\bsunscreen\b/.test(lower),
+    /\bsun protection\b/.test(lower),
+    /\buv protection\b/.test(lower),
+    /\bspf\b/.test(lower),
+  ].filter(Boolean).length;
+  return sunscreenClaimCount >= 3 && /\bprotection\b.*\bprotection\b/i.test(lower);
+}
+
+function cleanRecoNarrativeForRoleVisibleUse(value, {
+  roleText = '',
+  language = 'EN',
+} = {}) {
+  const raw = cleanRecoVisibleCopy(value);
+  if (
+    !raw ||
+    looksLikeGenericRecoDerivedNarrative(raw) ||
+    looksLikeRecoLowInformationVisibleCopy(raw) ||
+    looksLikeRecoStandaloneEvidenceFragment(raw) ||
+    looksLikeRecoNarrativeOffTargetForRole(raw, roleText) ||
+    looksLikeRecoMarketingHeavyNarrative(raw)
+  ) {
+    return '';
+  }
+  const neutral = neutralizeRecoVisibleProductCardCopy(raw, { language });
+  if (
+    !neutral ||
+    looksLikeRecoLowInformationVisibleCopy(neutral) ||
+    looksLikeRecoMarketingHeavyNarrative(neutral)
+  ) {
+    return '';
+  }
+  return neutral;
+}
+
 function scoreRecoNarrativeSentence(sentence, hintText = '') {
   const text = String(sentence || '').trim().toLowerCase();
   if (!text) return 0;
@@ -20362,6 +20422,7 @@ function compactRecoNarrativeSnippet(value, { maxLen = 180, hintText = '' } = {}
   const viable = parts.filter((part) => (
     part.length >= 20
     && !/^(?:ingredients?|ingredient list|testing shows|clinical results?|how to use|directions?|warnings?|warning|caution|disclaimer|net wt|size)\b/i.test(part)
+    && !looksLikeRecoMarketingHeavyNarrative(part)
   ));
   if (viable.length > 0) {
     const ranked = viable
@@ -20372,6 +20433,7 @@ function compactRecoNarrativeSnippet(value, { maxLen = 180, hintText = '' } = {}
       .sort((left, right) => Number(right.score || 0) - Number(left.score || 0));
     return truncateRecoNarrativeSnippet(String(ranked[0]?.part || viable[0]).trim(), maxLen);
   }
+  if (looksLikeRecoMarketingHeavyNarrative(source)) return '';
   return truncateRecoNarrativeSnippet(source, maxLen);
 }
 
@@ -20414,7 +20476,14 @@ function pickRecoSpecificNarrativeSnippet({
   ];
   for (const candidate of candidates) {
     const snippet = compactRecoNarrativeSnippet(candidate, { maxLen, hintText });
-    if (!snippet || looksLikeGenericRecoDerivedNarrative(snippet) || looksLikeRecoLowInformationVisibleCopy(snippet)) continue;
+    if (
+      !snippet ||
+      looksLikeGenericRecoDerivedNarrative(snippet) ||
+      looksLikeRecoLowInformationVisibleCopy(snippet) ||
+      looksLikeRecoMarketingHeavyNarrative(snippet)
+    ) {
+      continue;
+    }
     return snippet;
   }
   return '';
@@ -20455,7 +20524,12 @@ function buildRecoProductEvidencePoints({
         ...(Array.isArray(base.key_ingredients) ? base.key_ingredients : []),
       ].filter(Boolean).join(' '),
     }))
-    .filter((value) => value && !looksLikeGenericRecoDerivedNarrative(value) && !looksLikeRecoLowInformationVisibleCopy(value));
+    .filter((value) => (
+      value
+      && !looksLikeGenericRecoDerivedNarrative(value)
+      && !looksLikeRecoLowInformationVisibleCopy(value)
+      && !looksLikeRecoMarketingHeavyNarrative(value)
+    ));
   const featureCandidates = collectRecoPromptTextList(
     [
       ...(Array.isArray(base.compare_highlights) ? base.compare_highlights : []),
@@ -20477,6 +20551,7 @@ function buildRecoProductEvidencePoints({
       && !looksLikeRecoPlaceholderSeedCopy(value)
       && !looksLikeRecoLowInformationVisibleCopy(value)
       && !looksLikeRecoStandaloneEvidenceFragment(value)
+      && !looksLikeRecoMarketingHeavyNarrative(value)
     ));
   return uniqCaseInsensitiveStrings(
     [
@@ -20531,9 +20606,10 @@ function buildRecoVisibleProductFields(picked, { role = null, language = 'EN' } 
     row.product?.short_description,
     row.product?.shortDescription,
   );
-  const roleAlignedShortDescription = looksLikeRecoNarrativeOffTargetForRole(shortDescription, visibleRoleText)
-    ? ''
-    : shortDescription;
+  const roleAlignedShortDescription = cleanRecoNarrativeForRoleVisibleUse(shortDescription, {
+    roleText: visibleRoleText,
+    language,
+  });
   const specificNarrative = pickRecoSpecificNarrativeSnippet({
     row,
     stableAnchorProduct,
@@ -20552,7 +20628,13 @@ function buildRecoVisibleProductFields(picked, { role = null, language = 'EN' } 
     searchCard,
     max: 4,
   });
-  const preferredNarrative = pickFirstTrimmed(evidencePoints[0], specificNarrative);
+  const preferredNarrative = cleanRecoNarrativeForRoleVisibleUse(
+    pickFirstTrimmed(evidencePoints[0], specificNarrative),
+    {
+      roleText: visibleRoleText,
+      language,
+    },
+  );
   const derivedShopperCopy = buildRecoDerivedShopperCopy({
     role,
     row,
@@ -55266,8 +55348,22 @@ function buildRecoAssistantRewritePrompt({
       max: 5,
     })
       .map((value) => neutralizeRecoVisibleProductCardCopy(value, { language: lang }))
-      .filter(Boolean);
+      .filter((value) => value && !looksLikeRecoMarketingHeavyNarrative(value));
     const descriptionSnippet = pickFirstTrimmed(rankedEvidencePoints[0], baseDescriptionSnippet);
+    const promptShortDescription = cleanRecoNarrativeForRoleVisibleUse(
+      pickFirstTrimmed(
+        item.short_description,
+        item.shortDescription,
+        item.description,
+        item.sku?.short_description,
+        item.sku?.shortDescription,
+        item.sku?.description,
+      ),
+      {
+        roleText: evidenceTargetText,
+        language: lang,
+      },
+    );
     const alternativesCount = Math.max(
       0,
       Number.isFinite(Number(item.alternatives_count))
@@ -55301,17 +55397,19 @@ function buildRecoAssistantRewritePrompt({
       category: pickFirstTrimmed(item.category, item.step, item.sku?.category, item.sku?.product_type),
       price,
       price_label: formatRecoAssistantPromptPriceLabel(price),
-      short_description: neutralizeRecoVisibleProductCardCopy(pickFirstTrimmed(
-        item.short_description,
-        item.shortDescription,
-        item.description,
-        item.sku?.short_description,
-        item.sku?.shortDescription,
-        item.sku?.description,
-      ), { language: lang }),
-      description_snippet: neutralizeRecoVisibleProductCardCopy(descriptionSnippet, { language: lang }) || null,
+      short_description: promptShortDescription || null,
+      description_snippet: cleanRecoNarrativeForRoleVisibleUse(descriptionSnippet, {
+        roleText: evidenceTargetText,
+        language: lang,
+      }) || null,
       best_for: neutralizeRecoVisibleProductCardCopy(pickFirstTrimmed(item.best_for, item.bestFor), { language: lang }),
-      why_this_one: neutralizeRecoVisibleProductCardCopy(pickFirstTrimmed(item.why_this_one, item.whyThisOne, item.reason), { language: lang }),
+      why_this_one: cleanRecoNarrativeForRoleVisibleUse(
+        pickFirstTrimmed(item.why_this_one, item.whyThisOne, item.reason),
+        {
+          roleText: evidenceTargetText,
+          language: lang,
+        },
+      ),
       key_features: asStringArray(
         [
           ...(Array.isArray(item.key_features) ? item.key_features : []),
