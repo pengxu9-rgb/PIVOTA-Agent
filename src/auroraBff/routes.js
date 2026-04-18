@@ -55018,6 +55018,9 @@ function describeRecoAssistantRewriteFailureReason(reason) {
   if (normalized === 'rewrite_unexpected_refinement_question') {
     return 'If a follow-up question is needed, ask only Context.refinement_question exactly once as the final sentence; do not invent other follow-up questions.';
   }
+  if (normalized === 'rewrite_missing_refinement_question') {
+    return 'Append Context.refinement_question exactly once as the final sentence.';
+  }
   if (normalized === 'rewrite_buy_addon_filler') {
     return 'Do not pad the answer with future routine-building filler.';
   }
@@ -55444,7 +55447,7 @@ function buildRecoAssistantRewritePrompt({
       'Write one recommendation assistant message that is natural, specific, concise, and aligned to the final payload.',
       'Address the user_request directly and respond to the user\'s real complaint first.',
       'Use calibrated wording; avoid best, most, top, strongest, perfect, ideal, winner, must-have, and "best for".',
-      'If Context.refinement_question exists, include exactly one optional follow-up question as the final sentence after the recommendation; do not ask more than one question and do not delay the recommendation.',
+      'If Context.refinement_question exists, include exactly one follow-up question as the final sentence after the recommendation; do not ask more than one question and do not delay the recommendation.',
       'Do not ask for fields already present in Context.profile_summary; use only Context.refinement_question for follow-up.',
       'If request_mode is "buy", use direct shopping advice tone.',
       'If request_mode is "buy", start the first sentence with the lead product name rather than a generic concern summary.',
@@ -55711,7 +55714,8 @@ function assistantTextUsesVagueRecoBenefitLanguage(text) {
 }
 
 function assistantTextUsesGenericRoutineWrapup(text) {
-  const sentences = splitRecoAssistantSentences(text, 6);
+  const sentences = splitRecoAssistantSentences(text, 8)
+    .filter((sentence) => !/[?？]\s*$/.test(String(sentence || '').trim()));
   const lastSentence = String(sentences[sentences.length - 1] || '').trim();
   if (!lastSentence) return false;
   if (/\b(niacinamide|zinc|spf|sunscreen|serum|moisturizer|gel cream|uv filters|hyaluronic|ceramide|glycerin|\$[0-9]+)\b/i.test(lastSentence)) {
@@ -55918,6 +55922,27 @@ function assistantTextUsesUnexpectedRecoFollowupQuestion({
   return matchingQuestions.length !== 1 || questions.length !== 1;
 }
 
+function assistantTextMissesExpectedRecoFollowupQuestion({
+  profile = null,
+  text = '',
+  userRequestText = '',
+  refinementQuestionPlan,
+  language = 'EN',
+} = {}) {
+  if (refinementQuestionPlan === undefined && !pickFirstTrimmed(userRequestText)) return false;
+  const expectedPlan = refinementQuestionPlan === undefined
+    ? buildRecoAssistantRefinementQuestionPlan({ profile, userRequestText, language })
+    : refinementQuestionPlan;
+  const expectedQuestion = pickFirstTrimmed(expectedPlan?.question);
+  if (!expectedQuestion) return false;
+  const questions = splitRecoAssistantSentences(text, 8)
+    .filter((sentence) => /[?？]\s*$/.test(String(sentence || '').trim()));
+  if (!questions.length) return true;
+  const normalizedExpected = normalizeSemanticAuditText(expectedQuestion);
+  if (!normalizedExpected) return true;
+  return !questions.some((question) => normalizeSemanticAuditText(question) === normalizedExpected);
+}
+
 function assistantTextHasDirectBuyLead(text, names) {
   const lead = String(text || '').trim();
   if (!lead) return false;
@@ -56033,6 +56058,13 @@ function validateRecoAssistantRewriteCandidate({
     refinementQuestionPlan,
     language,
   });
+  const missesExpectedFollowupQuestion = assistantTextMissesExpectedRecoFollowupQuestion({
+    profile,
+    text,
+    userRequestText,
+    refinementQuestionPlan,
+    language,
+  });
   if (
     !mentionsSelectedProduct
     || !mentionsPrimaryTarget
@@ -56056,6 +56088,7 @@ function validateRecoAssistantRewriteCandidate({
     || usesOffTargetConcernClaim
     || reasksKnownProfileField
     || usesUnexpectedFollowupQuestion
+    || missesExpectedFollowupQuestion
   ) {
     if (usesAbsoluteRecommendationWording) return { ok: false, reason: 'rewrite_absolute_recommendation_wording' };
     if (reasksKnownProfileField) return { ok: false, reason: 'rewrite_reasks_known_profile_field' };
@@ -56073,6 +56106,7 @@ function validateRecoAssistantRewriteCandidate({
     if (usesRoutineCrossRolePriceComparison) return { ok: false, reason: 'rewrite_routine_cross_role_price_comparison' };
     if (usesUngrammaticalReasonFragment) return { ok: false, reason: 'rewrite_ungrammatical_reason_fragment' };
     if (usesOffTargetConcernClaim) return { ok: false, reason: 'rewrite_off_target_concern_claim' };
+    if (missesExpectedFollowupQuestion) return { ok: false, reason: 'rewrite_missing_refinement_question' };
     return { ok: false, reason: 'rewrite_failed_alignment_guard' };
   }
   return { ok: true, reason: null };
@@ -56098,6 +56132,7 @@ function shouldRetryRecoAssistantRewrite(reason) {
     || normalized === 'rewrite_off_target_concern_claim'
     || normalized === 'rewrite_reasks_known_profile_field'
     || normalized === 'rewrite_unexpected_refinement_question'
+    || normalized === 'rewrite_missing_refinement_question'
     || normalized === 'rewrite_failed_alignment_guard';
 }
 
@@ -56433,7 +56468,10 @@ function appendRecoAssistantOptionalRefinementQuestion(text, questionPlan = null
   const question = pickFirstTrimmed(questionPlan?.question);
   if (!question) return base;
   if (base.includes(question)) return base;
-  return `${base} ${formatRecoAssistantStructuredSentence(question)}`.trim();
+  const baseWithTerminalPunctuation = /[.!?。！？]$/.test(base)
+    ? base
+    : `${base}.`;
+  return `${baseWithTerminalPunctuation} ${formatRecoAssistantStructuredSentence(question)}`.trim();
 }
 
 function pickRecoAssistantStructuredFollowupReason(detail = {}, {
@@ -56837,6 +56875,7 @@ async function maybeRewriteRecoAssistantTextWithLlm({
         names,
         secondaryTargets,
       });
+      candidateText = appendRecoAssistantOptionalRefinementQuestion(candidateText, refinementQuestionPlan);
       if (!candidateText) {
         finalizeAttempt({
           ok: false,
@@ -56969,6 +57008,7 @@ async function maybeRewriteRecoAssistantTextWithLlm({
 	      || firstAttemptReason === 'rewrite_absolute_recommendation_wording'
 	      || firstAttemptReason === 'rewrite_reasks_known_profile_field'
 	      || firstAttemptReason === 'rewrite_unexpected_refinement_question'
+	      || firstAttemptReason === 'rewrite_missing_refinement_question'
 	      || firstAttemptReason === 'gemini_json_timeout'
       || firstAttemptReason === 'parse_truncated_json'
       || firstAttemptReason === 'empty_rewrite'

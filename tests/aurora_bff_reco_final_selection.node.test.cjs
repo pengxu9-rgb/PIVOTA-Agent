@@ -90,7 +90,7 @@ test('reco assistant rewrite prompt omits deterministic base text and carries re
     assert.match(prompt, /Never write ungrammatical fragments like "because a serum\.\.\."/);
     assert.match(prompt, /If selected_product_details\.fit_assessment is "soft_match" or comparison_fill_reason is present, frame that product as a softer or broader alternative instead of an equally direct match\./);
     assert.match(prompt, /Prefer product-specific evidence over generic role language when both are available\./);
-    assert.match(prompt, /If Context\.refinement_question exists, include exactly one optional follow-up question as the final sentence after the recommendation/);
+    assert.match(prompt, /If Context\.refinement_question exists, include exactly one follow-up question as the final sentence after the recommendation/);
     assert.match(prompt, /Do not ask for fields already present in Context\.profile_summary; use only Context\.refinement_question for follow-up\./);
     assert.match(prompt, /If request_mode is "buy" and there is one selected product with no secondary targets, use exactly 2 recommendation sentences; if Context\.refinement_question exists, add one short final question\./);
     assert.match(prompt, /If selected_target_ids has length 1, secondary_targets is empty, and selected_product_role_mix is not "routine_mix", do not add future routine-building suggestions or extra steps\./);
@@ -1705,7 +1705,7 @@ test('reco assistant rewrite accepts direct buy copy with shopper-facing oil-con
     assert.equal(rewrite.reason, null);
     assert.equal(
       rewrite.text,
-      'Buy GoalSkin Oil Control Serum for oily skin. It targets excess shine without adding heaviness.',
+      'Buy GoalSkin Oil Control Serum for oily skin. It targets excess shine without adding heaviness. What city or climate are you usually in (humid, dry, cold, or high-UV)?',
     );
   } finally {
     __internal.__resetCallGeminiJsonObjectForTest();
@@ -1781,7 +1781,7 @@ test('reco assistant rewrite accepts product-first buy copy with recommendation 
     assert.equal(rewrite.reason, null);
     assert.equal(
       rewrite.text,
-      'GoalSkin Oil Control Serum fits this request for oily skin. It targets excess shine without adding heaviness.',
+      'GoalSkin Oil Control Serum fits this request for oily skin. It targets excess shine without adding heaviness. What city or climate are you usually in (humid, dry, cold, or high-UV)?',
     );
   } finally {
     __internal.__resetCallGeminiJsonObjectForTest();
@@ -1876,7 +1876,7 @@ test('reco assistant rewrite accepts buy drafts that directly name the product a
     assert.equal(rewrite.reason, null);
     assert.equal(
       rewrite.text,
-      'To manage oily skin and shine, buy GoalSkin Oil Control Serum first. It helps reduce visible shine without feeling heavy.',
+      'To manage oily skin and shine, buy GoalSkin Oil Control Serum first. It helps reduce visible shine without feeling heavy. What city or climate are you usually in (humid, dry, cold, or high-UV)?',
     );
   } finally {
     __internal.__resetCallGeminiJsonObjectForTest();
