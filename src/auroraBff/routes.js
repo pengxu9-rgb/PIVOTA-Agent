@@ -1329,9 +1329,9 @@ const RECO_CATALOG_FRAMEWORK_LOCAL_HANDOFF_TIMEOUT_MS = (() => {
   return Math.max(2400, Math.min(24000, v));
 })();
 const RECO_CATALOG_PRIMARY_EXTERNAL_SEED_QUERY_TIMEOUT_MS = (() => {
-  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_PRIMARY_EXTERNAL_SEED_QUERY_TIMEOUT_MS || 4200);
-  const v = Number.isFinite(n) ? Math.trunc(n) : 4200;
-  return Math.max(800, Math.min(7000, v));
+  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_PRIMARY_EXTERNAL_SEED_QUERY_TIMEOUT_MS || 8000);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 8000;
+  return Math.max(800, Math.min(10000, v));
 })();
 const RECO_CATALOG_SUPPORT_EXTERNAL_SEED_QUERY_TIMEOUT_MS = (() => {
   const n = Number(process.env.AURORA_BFF_RECO_CATALOG_SUPPORT_EXTERNAL_SEED_QUERY_TIMEOUT_MS || 8000);
@@ -23450,6 +23450,7 @@ async function collectRecoCandidatesFromQueryLevels({
       });
       continue;
     }
+    let primaryExternalLeadQueries = [];
     if (
       Number.isFinite(Number(level?.fair_primary_external_round)) &&
       candidateState.primary_role_matched !== true
@@ -23492,10 +23493,63 @@ async function collectRecoCandidatesFromQueryLevels({
         ...supportInternalQueries,
         ...otherQueries,
       ];
+      primaryExternalLeadQueries = primaryExternalQueries;
     }
     const levelResults = [];
     const levelAggregate = buildLevelAggregate();
-    if (shouldRunSequentialStopForQueryLevel(level, runnableQueries)) {
+    if (primaryExternalLeadQueries.length > 0) {
+      const primaryExternalLeadSet = new Set(primaryExternalLeadQueries);
+      for (const queryEntry of primaryExternalLeadQueries) {
+        // Keep primary-role authority ahead of support recall so support queries
+        // cannot starve the lead role on small DB pools or tight budgets.
+        // eslint-disable-next-line no-await-in-loop
+        const row = await runQueryLevelEntry(queryEntry);
+        levelResults.push(row);
+        accumulateQueryLevelRow(stageId, row, levelAggregate);
+        candidateState = buildRecoCandidateStateFromRawCandidates(rawCandidates, {
+          targetContext,
+          recommendationTaskContext,
+        });
+        if (candidateState.primary_role_matched === true) break;
+      }
+      const remainingQueries = runnableQueries.filter((queryEntry) => !primaryExternalLeadSet.has(queryEntry));
+      if (candidateState.primary_role_matched === true && remainingQueries.length > 0) {
+        const rows = await mapWithConcurrency(
+          remainingQueries,
+          RECO_CATALOG_SEARCH_CONCURRENCY,
+          runQueryLevelEntry,
+        );
+        for (const row of rows) {
+          levelResults.push(row);
+          accumulateQueryLevelRow(stageId, row, levelAggregate);
+        }
+      } else if (remainingQueries.length > 0) {
+        for (const queryEntry of remainingQueries) {
+          const queryAllowExternalSeed =
+            allowExternalSeed === true
+            && queryEntry?.allow_external_seed === true;
+          searchResults.push({
+            ...queryEntry,
+            source_scope: queryAllowExternalSeed ? 'external_seed' : 'internal',
+            external_seed_strategy: queryAllowExternalSeed
+              ? String(
+                  queryEntry?.external_seed_strategy
+                  || externalSeedStrategy
+                  || 'supplement_internal_first',
+                )
+                .trim()
+                .toLowerCase()
+              : 'on_empty_only',
+            ok: false,
+            products: [],
+            reason: 'primary_role_unmatched',
+            actual_http_attempt_count: 0,
+            attempted_request_timeouts_ms: [],
+            skipped_runtime: true,
+          });
+        }
+      }
+    } else if (shouldRunSequentialStopForQueryLevel(level, runnableQueries)) {
       for (const queryEntry of runnableQueries) {
         // eslint-disable-next-line no-await-in-loop
         const row = await runQueryLevelEntry(queryEntry);
