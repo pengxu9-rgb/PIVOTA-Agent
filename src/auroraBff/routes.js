@@ -21928,6 +21928,50 @@ function hasConcernSunscreenSignal(row, candidateText = '') {
   return hasConcernSunscreenSignalPolicy(row, candidateText);
 }
 
+function buildConcernCandidatePrimaryIdentityText(row = null) {
+  const item = isPlainObject(row) ? row : {};
+  const sku = isPlainObject(item.sku) ? item.sku : {};
+  const product = isPlainObject(item.product) ? item.product : {};
+  return [
+    item.display_name,
+    item.displayName,
+    item.name,
+    item.title,
+    item.product_name,
+    item.productName,
+    sku.display_name,
+    sku.displayName,
+    sku.name,
+    sku.title,
+    product.display_name,
+    product.displayName,
+    product.name,
+    product.title,
+    item.handle,
+    item.slug,
+    item.url,
+    item.product_url,
+    item.productUrl,
+    item.canonical_pdp_url,
+    item.canonicalPdpUrl,
+  ]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(' ');
+}
+
+function hasConcernSunscreenPrimaryIdentitySignal(row = null) {
+  return /\b(?:spf\s*\d{1,3}\+?|sunscreen|sun\s*screen|broad\s+spectrum|uv[ab]?|pa\+{1,4})\b/i.test(
+    buildConcernCandidatePrimaryIdentityText(row),
+  );
+}
+
+function hasConcernTreatmentCorrectorPrimaryIdentity(row = null) {
+  return /\b(?:targeted\s+wrinkle\s+corrector|wrinkle\s+corrector|corrector|dark\s+spot|retinol|retinoid|booster|peel|mask|anti[-\s]?aging|fine[-\s]?line)\b/i.test(
+    buildConcernCandidatePrimaryIdentityText(row),
+  );
+}
+
 function isConcernPrimaryRoleWinnerSafe(row, { semanticPlan = null } = {}) {
   return isConcernPrimaryRoleWinnerSafePolicy(row, { semanticPlan });
 }
@@ -22577,6 +22621,17 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
       hardReject.push({
         product: annotatedBase,
         reason: 'framework_primary_sunscreen_conflict',
+      });
+      continue;
+    }
+    if (
+      bestPreferredStep === 'sunscreen'
+      && !hasConcernSunscreenPrimaryIdentitySignal(row)
+      && hasConcernTreatmentCorrectorPrimaryIdentity(row)
+    ) {
+      hardReject.push({
+        product: annotatedBase,
+        reason: 'framework_sunscreen_identity_conflict',
       });
       continue;
     }
