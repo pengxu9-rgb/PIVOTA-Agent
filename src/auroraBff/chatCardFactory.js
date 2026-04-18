@@ -247,6 +247,13 @@ function pickTargetAlignedRecommendationCardCopy(values = [], { targetText = '' 
   const candidates = normalizeStringList(values, 10)
     .filter((value) => !looksLikeStandaloneRecommendationCardEvidenceFragment(value));
   if (!candidates.length) return '';
+  const firstCandidate = candidates[0] || '';
+  const targetFamilies = collectRecommendationCardConcernFamilies(targetText);
+  const firstFamilies = collectRecommendationCardConcernFamilies(firstCandidate);
+  const firstSharesTargetFamily =
+    !targetFamilies.size
+      ? true
+      : firstFamilies.size > 0 && Array.from(firstFamilies).some((family) => targetFamilies.has(family));
   const ranked = candidates
     .map((value, index) => ({
       value,
@@ -260,6 +267,15 @@ function pickTargetAlignedRecommendationCardCopy(values = [], { targetText = '' 
     });
   const firstNarrative = ranked.find((item) => Number(item.originalIndex) === 0);
   const best = ranked[0];
+  if (
+    firstNarrative &&
+    best &&
+    firstSharesTargetFamily &&
+    !/^best\s+for\b/i.test(String(firstCandidate || '').trim()) &&
+    /^best\s+for\b/i.test(String(best.value || '').trim())
+  ) {
+    return firstNarrative.value;
+  }
   if (
     firstNarrative &&
     best &&
@@ -373,6 +389,61 @@ function recommendationProductsShareIdentity(left, right) {
   return recommendationProductIdentityKeys(right).some((key) => leftKeys.has(key));
 }
 
+function buildRecommendationPeerCandidateIdentityText(raw) {
+  const { row, sku, product } = flattenRecommendationProductSource(raw);
+  return [
+    row.display_name,
+    row.displayName,
+    row.name,
+    row.title,
+    row.product_name,
+    row.productName,
+    product.display_name,
+    product.displayName,
+    product.name,
+    product.title,
+    sku.display_name,
+    sku.displayName,
+    sku.name,
+    sku.title,
+    row.handle,
+    row.slug,
+    row.url,
+    row.product_url,
+    row.productUrl,
+    row.canonical_pdp_url,
+    row.canonicalPdpUrl,
+  ]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(' ');
+}
+
+function isRecommendationSunscreenPeerCandidate(raw) {
+  const identityText = buildRecommendationPeerCandidateIdentityText(raw);
+  if (!identityText) return false;
+  const hasSunscreenIdentity =
+    /\b(?:spf\s*\d{1,3}\+?|sunscreen|sun\s*screen|broad\s+spectrum|uv[ab]?|pa\+{1,4})\b/i.test(identityText);
+  if (!hasSunscreenIdentity) return false;
+  return !/\b(?:targeted wrinkle corrector|wrinkle corrector|dark spot corrector|retinol|retinoid|booster|peel|mask)\b/i.test(identityText);
+}
+
+function isRecommendationVisiblePeerCandidateForRole(raw, { roleId = '', roleLabel = '' } = {}) {
+  if (!isPlainObject(raw)) return false;
+  const role = `${String(roleId || '')} ${String(roleLabel || '')}`.trim().toLowerCase();
+  const explicitRole = asString(raw.matched_role_id || raw.matchedRoleId || raw.selected_target_id || raw.selectedTargetId || raw.role_scope);
+  if (explicitRole && roleId && explicitRole !== roleId) return false;
+  if (raw.framework_semantic_fit === false || raw.framework_role_semantic_fit === false) return false;
+  const rejectReason = asString(raw.reason || raw.reject_reason || raw.rejectReason || raw.framework_reject_reason || raw.frameworkRejectReason).toLowerCase();
+  if (/\b(?:hard_mismatch|hard_invalid|role_unmatched|primary_semantic_missing|wrong_scope|non_skincare|refill_only|unavailable|bundle)\b/.test(rejectReason)) {
+    return false;
+  }
+  if (/\b(?:sunscreen|spf|sun|uv)\b/.test(role)) {
+    return isRecommendationSunscreenPeerCandidate(raw);
+  }
+  return true;
+}
+
 function normalizeRecommendationProductCard(raw, options = {}) {
   const {
     defaultComparisonMode = '',
@@ -461,7 +532,6 @@ function normalizeRecommendationProductCard(raw, options = {}) {
       targetText: [
         matchedRoleId,
         matchedRoleLabel,
-        ...bestFor,
         ...keyFeatures,
         asString(row.category) || asString(row.step) || asString(row.routine_slot),
       ].join(' '),
@@ -560,12 +630,13 @@ function buildRecommendationCardContext(payload, recommendations) {
     if (!isPlainObject(rawRole)) continue;
     const roleId = asString(rawRole.role_id || rawRole.roleId || rawRole.target_id || rawRole.targetId || rawRole.id);
     if (!roleId || peerCandidatesByRoleId.has(roleId)) continue;
+    const roleLabel = asString(rawRole.label || rawRole.target_label || rawRole.targetLabel);
     const candidates = asRecordArray(
       rawRole.product_candidates ||
         rawRole.productCandidates ||
         rawRole.candidates,
       16,
-    );
+    ).filter((candidate) => isRecommendationVisiblePeerCandidateForRole(candidate, { roleId, roleLabel }));
     if (candidates.length) peerCandidatesByRoleId.set(roleId, candidates);
   }
   for (const raw of recommendations) {

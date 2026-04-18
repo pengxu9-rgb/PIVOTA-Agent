@@ -20022,6 +20022,27 @@ function looksLikeRecoNarrativeOffTargetForRole(value, roleText = '') {
   ) {
     return true;
   }
+  if (
+    /\b(hydrat|dehydrat|essence|water|plump)\b/.test(role)
+    && /\b(layering|under makeup|under sunscreen|pilling|non-pilling|pill)\b/.test(text)
+    && !/\b(hydrat|dehydrat|hyaluronic|glycerin|essence|water|plump)\b/.test(text)
+  ) {
+    return true;
+  }
+  if (
+    /\b(barrier|ceramide|repair|compromised|impaired)\b/.test(role)
+    && /\b(lightweight hydration|lightweight daily moisture|oil-free|gel cream under makeup|smoother layering)\b/.test(text)
+    && !/\b(barrier|ceramide|repair|comfort|sensitive|sooth|calm)\b/.test(text)
+  ) {
+    return true;
+  }
+  if (
+    /\b(spf|sun|uv|sunscreen)\b/.test(role)
+    && /\b(moisturizer|hydration|brightening|glow|wrinkle|anti-aging)\b/.test(text)
+    && !/\b(spf|sun|uv|sunscreen|broad spectrum|pa\+)\b/.test(text)
+  ) {
+    return true;
+  }
   return false;
 }
 
@@ -21790,10 +21811,14 @@ async function handoffRecoToBeautyMainlineSearch({
       ? Math.max(effectiveTimeoutMs, RECO_CATALOG_EXTERNAL_SEED_HANDOFF_TIMEOUT_MS)
     : effectiveTimeoutMs;
   const handoffSearchMinTimeoutMs = shouldUseSunscreenRecallBudget
-    ? Math.max(effectiveMinTimeoutMs, 5000)
+    ? (
+        shouldUseFrameworkLocalRecallBudget
+          ? Math.max(effectiveMinTimeoutMs, RECO_CATALOG_FRAMEWORK_LOCAL_HANDOFF_TIMEOUT_MS)
+          : Math.max(effectiveMinTimeoutMs, 5000)
+      )
     : shouldUseFrameworkLocalRecallBudget
       ? Math.max(effectiveMinTimeoutMs, RECO_CATALOG_FRAMEWORK_LOCAL_HANDOFF_TIMEOUT_MS)
-    : effectiveMinTimeoutMs;
+      : effectiveMinTimeoutMs;
   let searchResult = null;
   if (typeof searchFn === 'function') {
     searchResult = await searchFn({
