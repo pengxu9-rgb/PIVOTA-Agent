@@ -312,6 +312,20 @@ test('support role query variants keep catalog-grounded lightweight moisturizer 
   assert.equal(queries.includes('moisturizer'), false);
 });
 
+test('support role query variants prioritize oily-skin layering query over generic gel cream', () => {
+  const queries = buildSupportRoleQueryVariants({
+    roleId: 'layering_compatible_moisturizer_or_spf',
+    roleLabel: 'Layering-compatible moisturizer or SPF',
+    preferredStep: 'moisturizer',
+    queryTerms: ['gel cream moisturizer', 'lightweight moisturizer oily skin'],
+    fitKeywords: ['gel cream', 'under makeup', 'lightweight'],
+    concernText: 'oily skin sunscreen under makeup',
+    maxQueries: 4,
+  });
+
+  assert.deepEqual(queries.slice(0, 2), ['lightweight moisturizer oily skin', 'gel cream moisturizer']);
+});
+
 test('concern planner normalizer repairs routine_mix sensitivity plans that omit barrier support', () => {
   const fallbackPlan = buildConcernSemanticPlanFallback({
     text: 'My skin is sensitive and red. What product should I buy?',

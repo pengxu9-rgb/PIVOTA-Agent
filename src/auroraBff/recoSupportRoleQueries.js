@@ -69,7 +69,9 @@ function buildSupportRoleQueryScore(
     if (layeringSignal && /\b(layering|makeup|under makeup|pilling)\b/.test(normalized)) score += 2.6;
     if (barrierSignal && /\b(barrier|repair|ceramide|ceramides|sensitive|soothing|fragrance free)\b/.test(normalized)) score += 3;
     if (/\boily skin\b/.test(normalized)) score += 2;
-    if (/^lightweight moisturizer oily skin$/.test(normalized)) score += 3;
+    if (/^lightweight moisturizer oily skin$/.test(normalized)) {
+      score += oilySignal && layeringSignal ? 7 : 3;
+    }
     if (/^oil free moisturizer$/.test(normalized)) score += 2.4;
     if (/^gel cream moisturizer$/.test(normalized)) score += 8;
     if (/^lightweight moisturizer$/.test(normalized)) score += layeringSignal ? 4.8 : 1.8;
