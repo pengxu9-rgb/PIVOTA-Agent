@@ -118,9 +118,22 @@ function neutralizeVisibleRecommendationCardCopy(value) {
     .replace(/\btop\s+choice\b/gi, 'selected option')
     .replace(/\blead\s+pick\b/gi, 'current pick')
     .replace(/\bstrongest\s+(?:choice|option|pick)\b/gi, 'strong option')
+    .replace(/\bmost\s+effective\b/gi, 'supportive')
     .replace(/\bmost\s+direct\s+fit\b/gi, 'direct fit')
     .replace(/\bmost\s+practical\s+pick\b/gi, 'practical option')
+    .replace(/\bmost\s+(?:useful|relevant|important)\b/gi, (match) => match.replace(/\bmost\s+/i, ''))
     .replace(/\bclearest\s+match\b/gi, 'clear match')
+    .replace(/\bcost-effective\b/gi, 'good-value')
+    .replace(/\bexperience\s+superior\s+/gi, '')
+    .replace(/\bsuperior\s+/gi, '')
+    .replace(/\bhighly\s+effective\b/gi, 'supportive')
+    .replace(/\beffectively\s+/gi, '')
+    .replace(/\beffective\s+/gi, '')
+    .replace(/\bstrongest\b/gi, 'strong')
+    .replace(/\bideal\b/gi, 'useful')
+    .replace(/\bmost\s+/gi, '')
+    .replace(/\bbest\s+/gi, '')
+    .replace(/\bbest\b/gi, 'suitable')
     .replace(/\bperfect\b/gi, 'good')
     .trim();
   return text;
@@ -533,7 +546,7 @@ function normalizeRecommendationProductCard(raw, options = {}) {
   const keyFeatures = normalizeStringList(
     row.key_features || row.keyFeatures || row.actives || row.key_ingredients || row.keyIngredients,
     6,
-  );
+  ).map(neutralizeVisibleRecommendationCardCopy).filter(Boolean);
   const comparisonMode = buildRecommendationComparisonMode({
     row,
     defaultComparisonMode,
@@ -544,7 +557,7 @@ function normalizeRecommendationProductCard(raw, options = {}) {
     asString(row.matchedRoleLabel) ||
     asString(roleLabelById.get(matchedRoleId)) ||
     humanizeRoleId(matchedRoleId);
-  const whyThisOne = pickTargetAlignedRecommendationCardCopy(
+  const whyThisOne = neutralizeVisibleRecommendationCardCopy(pickTargetAlignedRecommendationCardCopy(
     [
       row.why_this_one,
       row.whyThisOne,
@@ -562,7 +575,7 @@ function normalizeRecommendationProductCard(raw, options = {}) {
         asString(row.category) || asString(row.step) || asString(row.routine_slot),
       ].join(' '),
     },
-  );
+  ));
   const selfKey = recommendationProductIdentityKey(row);
   const sameRoleCandidates = matchedRoleId
     ? asRecordArray(peerCandidatesByRoleId.get(matchedRoleId), 12).filter((candidate) => {
@@ -593,7 +606,7 @@ function normalizeRecommendationProductCard(raw, options = {}) {
     key_features: keyFeatures,
     price_tier: priceTier,
     why_this_one: whyThisOne,
-    short_description: asString(row.short_description) || asString(row.shortDescription) || whyThisOne,
+    short_description: neutralizeVisibleRecommendationCardCopy(asString(row.short_description) || asString(row.shortDescription) || whyThisOne),
     see_more: row.see_more !== false,
     ...(asString(row.image_url) || asString(product.image_url) || asString(sku.image_url)
       ? { image_url: asString(row.image_url) || asString(product.image_url) || asString(sku.image_url) }

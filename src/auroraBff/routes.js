@@ -20092,7 +20092,7 @@ function buildRecoDerivedShopperCopy({
   });
   const roleAlignedSpecificNarrative = looksLikeRecoNarrativeOffTargetForRole(specificNarrative, roleText)
     ? ''
-    : specificNarrative;
+    : neutralizeRecoVisibleProductCardCopy(specificNarrative, { language });
   const roleGroundedWhy = buildRecoRoleGroundedWhyThisOne({
     roleText,
     productName,
@@ -20121,7 +20121,7 @@ function buildRecoDerivedShopperCopy({
   const existingWhy = rawExistingWhy
     && !looksLikeGenericRecoDerivedNarrative(rawExistingWhy)
     && !looksLikeRecoNarrativeOffTargetForRole(rawExistingWhy, roleText)
-    ? rawExistingWhy
+    ? neutralizeRecoVisibleProductCardCopy(rawExistingWhy, { language })
     : '';
   const bestFor = existingBestFor || reviewedBestFor || (() => {
     if (/\boil|shine|sebum\b/i.test(roleText)) {
@@ -20212,9 +20212,22 @@ function neutralizeRecoVisibleProductCardCopy(value, { language = 'EN' } = {}) {
     .replace(/\btop\s+choice\b/gi, 'selected option')
     .replace(/\blead\s+pick\b/gi, 'current pick')
     .replace(/\bstrongest\s+(?:choice|option|pick)\b/gi, 'strong option')
+    .replace(/\bmost\s+effective\b/gi, 'supportive')
     .replace(/\bmost\s+direct\s+fit\b/gi, 'direct fit')
     .replace(/\bmost\s+practical\s+pick\b/gi, 'practical option')
+    .replace(/\bmost\s+(?:useful|relevant|important)\b/gi, (match) => match.replace(/\bmost\s+/i, ''))
     .replace(/\bclearest\s+match\b/gi, 'clear match')
+    .replace(/\bcost-effective\b/gi, 'good-value')
+    .replace(/\bexperience\s+superior\s+/gi, '')
+    .replace(/\bsuperior\s+/gi, '')
+    .replace(/\bhighly\s+effective\b/gi, 'supportive')
+    .replace(/\beffectively\s+/gi, '')
+    .replace(/\beffective\s+/gi, '')
+    .replace(/\bstrongest\b/gi, 'strong')
+    .replace(/\bideal\b/gi, 'useful')
+    .replace(/\bmost\s+/gi, '')
+    .replace(/\bbest\s+/gi, '')
+    .replace(/\bbest\b/gi, 'suitable')
     .replace(/\bperfect\b/gi, 'good')
     .trim();
   return normalized;
@@ -55251,7 +55264,9 @@ function buildRecoAssistantRewritePrompt({
     const rankedEvidencePoints = rankRecoAssistantEvidenceForTarget(evidencePoints, {
       targetText: evidenceTargetText,
       max: 5,
-    });
+    })
+      .map((value) => neutralizeRecoVisibleProductCardCopy(value, { language: lang }))
+      .filter(Boolean);
     const descriptionSnippet = pickFirstTrimmed(rankedEvidencePoints[0], baseDescriptionSnippet);
     const alternativesCount = Math.max(
       0,
@@ -55286,17 +55301,17 @@ function buildRecoAssistantRewritePrompt({
       category: pickFirstTrimmed(item.category, item.step, item.sku?.category, item.sku?.product_type),
       price,
       price_label: formatRecoAssistantPromptPriceLabel(price),
-      short_description: pickFirstTrimmed(
+      short_description: neutralizeRecoVisibleProductCardCopy(pickFirstTrimmed(
         item.short_description,
         item.shortDescription,
         item.description,
         item.sku?.short_description,
         item.sku?.shortDescription,
         item.sku?.description,
-      ),
-      description_snippet: descriptionSnippet || null,
-      best_for: pickFirstTrimmed(item.best_for, item.bestFor),
-      why_this_one: pickFirstTrimmed(item.why_this_one, item.whyThisOne, item.reason),
+      ), { language: lang }),
+      description_snippet: neutralizeRecoVisibleProductCardCopy(descriptionSnippet, { language: lang }) || null,
+      best_for: neutralizeRecoVisibleProductCardCopy(pickFirstTrimmed(item.best_for, item.bestFor), { language: lang }),
+      why_this_one: neutralizeRecoVisibleProductCardCopy(pickFirstTrimmed(item.why_this_one, item.whyThisOne, item.reason), { language: lang }),
       key_features: asStringArray(
         [
           ...(Array.isArray(item.key_features) ? item.key_features : []),
@@ -55305,36 +55320,50 @@ function buildRecoAssistantRewritePrompt({
           ...(Array.isArray(item.key_ingredients) ? item.key_ingredients : []),
         ],
         4,
-      ),
+      ).map((value) => neutralizeRecoVisibleProductCardCopy(value, { language: lang })).filter(Boolean),
       compare_highlights: asStringArray(
         [
           ...(Array.isArray(item.compare_highlights) ? item.compare_highlights : []),
           ...(Array.isArray(item.compareHighlights) ? item.compareHighlights : []),
         ],
         3,
-      ),
+      ).map((value) => neutralizeRecoVisibleProductCardCopy(value, { language: lang })).filter(Boolean),
       alternatives_count: alternativesCount,
       evidence_points: rankedEvidencePoints,
       evidence_target_text: evidenceTargetText || null,
       reviewed_insight_available: Boolean(productIntel || pivotaInsights),
       insight_watchouts: Array.isArray(pivotaInsights?.watchouts)
         ? pivotaInsights.watchouts.map((watchout) => ({
-            label: pickFirstTrimmed(watchout?.label, watchout?.body, watchout?.text),
+            label: neutralizeRecoVisibleProductCardCopy(
+              pickFirstTrimmed(watchout?.label, watchout?.body, watchout?.text),
+              { language: lang },
+            ),
             ...(pickFirstTrimmed(watchout?.type) ? { type: pickFirstTrimmed(watchout.type) } : {}),
             ...(pickFirstTrimmed(watchout?.severity) ? { severity: pickFirstTrimmed(watchout.severity) } : {}),
           })).filter((watchout) => watchout.label).slice(0, 2)
         : [],
       routine_pairing_notes: Array.isArray(pivotaInsights?.routine_fit?.pairing_notes)
         ? collectRecoPromptTextList(pivotaInsights.routine_fit.pairing_notes, { max: 2, maxLen: 100 })
+          .map((value) => neutralizeRecoVisibleProductCardCopy(value, { language: lang }))
+          .filter(Boolean)
         : [],
       pivota_insights: (() => {
         if (!pivotaInsights) return null;
         return {
-          what_it_is: pickFirstTrimmed(pivotaInsights.what_it_is),
+          what_it_is: neutralizeRecoVisibleProductCardCopy(
+            pickFirstTrimmed(pivotaInsights.what_it_is),
+            { language: lang },
+          ),
           why_it_stands_out: Array.isArray(pivotaInsights.why_it_stands_out)
             ? pivotaInsights.why_it_stands_out.map((row) => ({
-                headline: pickFirstTrimmed(row?.headline),
-                body: pickFirstTrimmed(row?.body),
+                headline: neutralizeRecoVisibleProductCardCopy(
+                  pickFirstTrimmed(row?.headline),
+                  { language: lang },
+                ),
+                body: neutralizeRecoVisibleProductCardCopy(
+                  pickFirstTrimmed(row?.body),
+                  { language: lang },
+                ),
               })).filter((row) => row.headline || row.body).slice(0, 3)
             : [],
         };
