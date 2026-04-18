@@ -173,10 +173,10 @@ function resolveBeautyChatPlannerDeadlineAtMs({
     maxMs: 3500,
     fallbackMs: 3000,
   });
-  const budgetCapMs = clampBeautyMainlineStageBudgetMs(Math.trunc(Number(budgetMs || 0) * 0.4), {
+  const budgetCapMs = clampBeautyMainlineStageBudgetMs(Math.trunc(Number(budgetMs || 0) * 0.55), {
     minMs: 3500,
-    maxMs: 6500,
-    fallbackMs: 5000,
+    maxMs: 9500,
+    fallbackMs: 6500,
   });
   const latestDeadlineBeforeRetrieval = normalizedHandoffDeadlineAtMs - normalizedRetrievalReserveMs;
   return Math.min(
