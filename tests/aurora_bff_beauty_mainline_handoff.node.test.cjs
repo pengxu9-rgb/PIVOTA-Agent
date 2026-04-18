@@ -1183,6 +1183,179 @@ test('handoffRecoToBeautyMainlineSearch uses source-aware support authority whil
   }
 });
 
+test('handoffRecoToBeautyMainlineSearch does not let delayed primary external starve planned support roles', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    let primaryExternalResolved = false;
+    let supportStartedBeforePrimaryResolved = false;
+    const externalCaptured = [];
+    __internal.__setRouteDependencyOverridesForTest({
+      searchInternalProductsPrimitive: async () => ({
+        ok: true,
+        products: [],
+        attempted_internal_paths: ['/agent/internal/products/search'],
+        transport_hops: [],
+        transport_hop_count: 0,
+        nested_orchestrator_hops: 0,
+        primary_transport_owner: 'internal_products_search_primitive',
+        primary_endpoint_kind: 'internal_primitive',
+      }),
+      searchLocalExternalSeedProducts: async (args) => {
+        const query = String(args?.query || '').trim().toLowerCase();
+        const roleId = String(args?.role?.role_id || '').trim();
+        externalCaptured.push({ query, roleId });
+        const base = {
+          ok: true,
+          reason: null,
+          actual_http_attempt_count: 0,
+          attempted_base_urls: [],
+          attempted_paths: [],
+          transport_policy_mode: String(args?.transportPolicyMode || ''),
+          local_external_seed_search_mode: 'staged_support_fastpath',
+          local_external_seed_stage_debug: [{ stage: 'support_category_exact', row_count: 1, cumulative_row_count: 1, duration_ms: 4, cap: 6 }],
+        };
+        if (roleId === 'daily_sunscreen_finish_fit') {
+          await sleep(240);
+          primaryExternalResolved = true;
+          return {
+            ...base,
+            products: [
+              {
+                product_id: 'primary_delayed_spf',
+                merchant_id: 'external_seed',
+                brand: 'SunLab',
+                name: 'Smooth Makeup SPF Fluid',
+                display_name: 'SunLab Smooth Makeup SPF Fluid',
+                title: 'SunLab Smooth Makeup SPF Fluid',
+                category: 'sunscreen',
+                product_type: 'sunscreen',
+                candidate_step: 'sunscreen',
+                benefit_tags: ['sunscreen', 'spf', 'under makeup', 'lightweight'],
+                short_description: 'A lightweight SPF fluid for daytime makeup layering.',
+                retrieval_source: 'external_seed',
+              },
+            ],
+          };
+        }
+        if (roleId === 'oil_control_treatment') {
+          if (!primaryExternalResolved) supportStartedBeforePrimaryResolved = true;
+          return {
+            ...base,
+            products: [
+              {
+                product_id: 'support_oil_parallel',
+                merchant_id: 'external_seed',
+                brand: 'OilLab',
+                name: 'Oil Control Niacinamide Serum',
+                display_name: 'OilLab Oil Control Niacinamide Serum',
+                title: 'OilLab Oil Control Niacinamide Serum',
+                category: 'serum',
+                product_type: 'serum',
+                candidate_step: 'treatment',
+                benefit_tags: ['oil control', 'shine control', 'niacinamide'],
+                short_description: 'A niacinamide serum for visible oil and midday shine.',
+                retrieval_source: 'external_seed',
+              },
+            ],
+          };
+        }
+        if (roleId === 'layering_compatible_moisturizer_or_spf') {
+          if (!primaryExternalResolved) supportStartedBeforePrimaryResolved = true;
+          return {
+            ...base,
+            products: [
+              {
+                product_id: 'support_layering_parallel',
+                merchant_id: 'external_seed',
+                brand: 'LayerLab',
+                name: 'Smooth Layering SPF',
+                display_name: 'LayerLab Smooth Layering SPF',
+                title: 'LayerLab Smooth Layering SPF',
+                category: 'sunscreen',
+                product_type: 'sunscreen',
+                candidate_step: 'sunscreen',
+                benefit_tags: ['sunscreen', 'spf', 'under makeup', 'lightweight'],
+                short_description: 'A lightweight SPF that layers before makeup.',
+                retrieval_source: 'external_seed',
+              },
+            ],
+          };
+        }
+        return {
+          ...base,
+          ok: false,
+          products: [],
+          reason: 'empty',
+        };
+      },
+    });
+
+    const targetContext = {
+      primary_role_id: 'daily_sunscreen_finish_fit',
+      comparison_mode: 'routine_mix',
+      semantic_plan: {
+        routine_mode: 'routine_mix',
+        comparison_mode: 'routine_mix',
+        selection_constraints: { comparison_mode: 'routine_mix' },
+      },
+      framework_summary: {
+        concern_text: 'oily skin sunscreen under makeup',
+      },
+      framework_roles: [
+        {
+          role_id: 'daily_sunscreen_finish_fit',
+          rank: 31,
+          preferred_step: 'sunscreen',
+          label: 'Daily sunscreen finish fit',
+          query_terms: ['sunscreen', 'spf fluid oily skin'],
+          fit_keywords: ['spf', 'lightweight finish', 'makeup friendly'],
+        },
+        {
+          role_id: 'layering_compatible_moisturizer_or_spf',
+          rank: 60,
+          preferred_step: 'moisturizer',
+          label: 'Layering-compatible moisturizer or SPF',
+          query_terms: ['gel cream moisturizer', 'lightweight moisturizer oily skin'],
+          fit_keywords: ['gel cream', 'under makeup', 'lightweight'],
+        },
+        {
+          role_id: 'oil_control_treatment',
+          rank: 10,
+          preferred_step: 'treatment',
+          label: 'Oil-control treatment',
+          query_terms: ['niacinamide serum oily skin', 'salicylic acid serum clogged pores'],
+          fit_keywords: ['oil control', 'shine control', 'niacinamide'],
+        },
+      ],
+      support_roles: [],
+    };
+
+    const out = await __internal.handoffRecoToBeautyMainlineSearch({
+      ctx: { lang: 'EN', request_id: 'req_parallel_support_budget' },
+      primaryQuery: 'I have oily skin and need sunscreen under makeup. What should I buy?',
+      fallbackMessage: 'I have oily skin and need sunscreen under makeup. What should I buy?',
+      targetContext,
+      timeoutMs: 5000,
+      minTimeoutMs: 5000,
+      deadlineAtMs: Date.now() + 340,
+    });
+
+    assert.equal(supportStartedBeforePrimaryResolved, true);
+    assert.equal(externalCaptured[0]?.roleId, 'daily_sunscreen_finish_fit');
+    assert.deepEqual(
+      out.recommendations.map((item) => item?.product_id).sort(),
+      ['primary_delayed_spf', 'support_layering_parallel', 'support_oil_parallel'].sort(),
+    );
+    const ledger = out.searchResult?.metadata?.search_stage_ledger?.local_handoff || {};
+    assert.equal(ledger.pending_primary_support_parallelized, true);
+    assert.ok(Number(ledger.support_budget_exhausted_count || 0) < Number(ledger.support_query_count || 0));
+  } finally {
+    __internal.__resetRouteDependencyOverridesForTest();
+    delete require.cache[moduleId];
+  }
+});
+
 test('handoffRecoToBeautyMainlineSearch preserves horizontal comparison across internal and external primary-role candidates', async () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
@@ -2192,7 +2365,7 @@ test('collectRecoCandidatesFromQueryLevels runs primary external authority befor
   }
 });
 
-test('collectRecoCandidatesFromQueryLevels does not spend support budget when primary external remains unmatched', async () => {
+test('collectRecoCandidatesFromQueryLevels can spend pending support budget without surfacing support when primary remains unmatched', async () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
     const startedQueries = [];
@@ -2279,15 +2452,19 @@ test('collectRecoCandidatesFromQueryLevels does not spend support budget when pr
       },
     });
 
-    assert.deepEqual(startedQueries, ['external_seed:daily_sunscreen_finish_fit:sunscreen']);
+    assert.deepEqual(startedQueries, [
+      'external_seed:daily_sunscreen_finish_fit:sunscreen',
+      'external_seed:layering_compatible_moisturizer_or_spf:gel cream moisturizer',
+    ]);
     const attempts = out.searchResults || [];
     assert.equal(
       attempts.some((row) =>
         row?.role_id === 'layering_compatible_moisturizer_or_spf'
-        && row?.reason === 'primary_role_unmatched'
-        && row?.skipped_runtime === true),
+        && row?.allow_pending_primary_external === true
+        && row?.reason === 'empty'),
       true,
     );
+    assert.deepEqual(out.candidateState?.selected_recommendations || [], []);
   } finally {
     __internal.__resetRouteDependencyOverridesForTest();
     delete require.cache[moduleId];
@@ -2968,10 +3145,16 @@ test('handoffRecoToBeautyMainlineSearch fail-closes before selecting support row
       out.searchResult?.metadata?.search_stage_ledger?.primary_failure_stage ?? null,
       'no_recall_from_planned_sources',
     );
-      const supportAttempts = out.searchResult?.metadata?.search_stage_ledger?.primary_search?.query_pack_attempts
-        ?.filter((row) => String(row?.ladder_level || '').startsWith('framework_stage_c_support_')) || [];
-      assert.equal(supportAttempts.some((row) => row?.reason === 'primary_role_unmatched'), true);
-      assert.equal(supportAttempts.some((row) => row?.reason !== 'primary_role_unmatched'), false);
+    const supportAttempts = out.searchResult?.metadata?.search_stage_ledger?.primary_search?.query_pack_attempts
+      ?.filter((row) => String(row?.ladder_level || '').startsWith('framework_stage_c_support_')) || [];
+    assert.equal(
+      supportAttempts.some((row) => row?.allow_pending_primary_external === true),
+      true,
+    );
+    assert.equal(
+      out.searchResult?.metadata?.candidate_pool_summary?.primary_missing_authoritative_support_selected,
+      false,
+    );
   } finally {
     __internal.__resetRouteDependencyOverridesForTest();
     delete require.cache[moduleId];
