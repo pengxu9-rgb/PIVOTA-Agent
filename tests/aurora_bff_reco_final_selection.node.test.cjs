@@ -3568,9 +3568,17 @@ test('beauty mainline reco rows promote visible nested product fields to top lev
     ]);
     assert.deepEqual(rows[0].compare_highlights, [
       'Pairs niacinamide with zinc for a focused oil-control serum step.',
-      'Best for Oily or combination skin',
+      'Suited for Oily or combination skin',
       'Oil-control serum',
     ]);
+    assert.doesNotMatch(
+      [
+        rows[0].best_for,
+        rows[0].why_this_one,
+        ...(Array.isArray(rows[0].compare_highlights) ? rows[0].compare_highlights : []),
+      ].join(' '),
+      /\b(?:best|top|most|strongest|perfect|ideal)\b/i,
+    );
     assert.equal(rows[0].shopping_card.title, 'The Ordinary Niacinamide 10% + Zinc 1%');
   } finally {
     delete require.cache[moduleId];
@@ -3645,7 +3653,7 @@ test('beauty mainline reco hydrates selected card evidence from product intel KB
     assert.equal(rows[0].pivota_insights.what_it_is, 'A seller-grounded serum for visible shine and excess oil.');
     assert.deepEqual(rows[0].compare_highlights, [
       'Pairs niacinamide with zinc PCA for oily-skin shine and visible pore concerns.',
-      'Best for Excess oil or midday shine',
+      'Suited for Excess oil or midday shine',
       'Oil-control serum',
     ]);
     assert.equal(rows[0].why_this_one, 'Pairs niacinamide with zinc PCA for oily-skin shine and visible pore concerns.');

@@ -4211,7 +4211,9 @@ function buildRecoCompareHighlightsFromInsightFields({
         ? pickFirstTrimmed(item.body, item.text, item.description, item.headline, item.title, item.label)
         : pickFirstTrimmed(item))),
       ...insightHighlights.map((item) => pickFirstTrimmed(item?.body, item?.headline)),
-      ...(Array.isArray(insightObj?.best_for) ? insightObj.best_for.map((item) => `Best for ${item}`) : []),
+      ...(Array.isArray(insightObj?.best_for)
+        ? insightObj.best_for.map((item) => formatRecoVisibleFitHighlight(item))
+        : []),
       pickFirstTrimmed(shoppingObj?.subtitle),
       pickFirstTrimmed(shoppingObj?.intro),
     ].filter((value) => value && !looksLikeRecoPlaceholderSeedCopy(value)),
@@ -19721,10 +19723,10 @@ function buildFrameworkRecommendationNotes({
     notes.push(
       isCn
         ? (isPrimary
-          ? `这是当前护理框架里的主推角色：${roleLabel}。`
+          ? `这是当前护理框架里的建议关注角色：${roleLabel}。`
           : `这是当前护理框架里的支持角色：${roleLabel}。`)
         : (isPrimary
-          ? `This is the mainline top pick inside the ${roleLabel} role.`
+          ? `This is the selected mainline option inside the ${roleLabel} role.`
           : `This stays inside the ${roleLabel} support role.`),
     );
   }
@@ -20098,7 +20100,7 @@ function buildRecoDerivedShopperCopy({
     keyFeatures,
     language,
   });
-  const reviewedBestFor = collectRecoPromptTextList(
+  const reviewedBestForRaw = collectRecoPromptTextList(
     [
       ...(Array.isArray(pivotaInsights?.best_for) ? pivotaInsights.best_for : []),
       ...(Array.isArray(intelCore?.best_for) ? intelCore.best_for : []),
@@ -20109,11 +20111,13 @@ function buildRecoDerivedShopperCopy({
     && !looksLikeGenericRecoDerivedNarrative(value)
     && !looksLikeRecoNarrativeOffTargetForRole(value, roleText)
   )) || '';
-  const existingBestFor = rawExistingBestFor
+  const reviewedBestFor = neutralizeRecoVisibleProductCardCopy(reviewedBestForRaw, { language });
+  const existingBestForRaw = rawExistingBestFor
     && !looksLikeGenericRecoDerivedNarrative(rawExistingBestFor)
     && !looksLikeRecoNarrativeOffTargetForRole(rawExistingBestFor, roleText)
     ? rawExistingBestFor
     : '';
+  const existingBestFor = neutralizeRecoVisibleProductCardCopy(existingBestForRaw, { language });
   const existingWhy = rawExistingWhy
     && !looksLikeGenericRecoDerivedNarrative(rawExistingWhy)
     && !looksLikeRecoNarrativeOffTargetForRole(rawExistingWhy, roleText)
@@ -20121,26 +20125,26 @@ function buildRecoDerivedShopperCopy({
     : '';
   const bestFor = existingBestFor || reviewedBestFor || (() => {
     if (/\boil|shine|sebum\b/i.test(roleText)) {
-      return isCn ? '适合出油和午后泛油光' : 'Best for excess oil and mid-day shine';
+      return isCn ? '适合出油和午后泛油光' : 'Suited for excess oil and mid-day shine';
     }
     if (/\b(layer|layering|pilling|pill|makeup|under makeup)\b/i.test(roleText)) {
-      return isCn ? '适合需要减少搓泥、让后续防晒或妆前更顺的步骤' : 'Best for smoother layering under sunscreen or makeup';
+      return isCn ? '适合需要减少搓泥、让后续防晒或妆前更顺的步骤' : 'Useful for smoother layering under sunscreen or makeup';
     }
     if (/\bbarrier|ceramide|repair|compromised|impaired\b/i.test(roleText)) {
-      return isCn ? '适合屏障支持和更安心的修护保湿' : 'Best for barrier support and richer comfort';
+      return isCn ? '适合屏障支持和更安心的修护保湿' : 'Suited for barrier support and richer comfort';
     }
     if (/\bhydrat|dehydrat|essence|water|moist\b/i.test(roleText)) {
-      return isCn ? '适合在面霜或防晒前补轻薄水感保湿' : 'Best for lightweight hydration before cream or SPF';
+      return isCn ? '适合在面霜或防晒前补轻薄水感保湿' : 'Suited for lightweight hydration before cream or SPF';
     }
     if (/\bspf|sun|uv\b/i.test(roleText)) {
-      return isCn ? '适合每天早上做日常防晒并兼顾肤感' : 'Best for daily UV protection with a wearable finish';
+      return isCn ? '适合每天早上做日常防晒并兼顾肤感' : 'Suited for daily UV protection with a wearable finish';
     }
     if (/\bcleanser|wash|cleanse\b/i.test(roleText)) {
-      return isCn ? '适合需要温和清洁的时候' : 'Best for a gentle cleanse without a stripped feel';
+      return isCn ? '适合需要温和清洁的时候' : 'Suited for a gentle cleanse without a stripped feel';
     }
     return isCn
       ? `适合放进当前的${humanizeRecoProductType(productType || 'other', 'CN')}`
-      : `Best as your ${humanizeRecoProductType(productType || 'other', 'EN').toLowerCase()} step`;
+      : `Works as your ${humanizeRecoProductType(productType || 'other', 'EN').toLowerCase()} step`;
   })();
   const whyThisOne = existingWhy || roleAlignedSpecificNarrative || roleGroundedWhy || (() => {
     if (/\boil|shine|sebum\b/i.test(roleText)) {
@@ -20174,14 +20178,55 @@ function buildRecoDerivedShopperCopy({
         : 'It works as a simple daily cleanse without feeling overly aggressive.';
     }
     return isCn
-      ? '这是当前主推荐方向里最直接的一支。'
-      : 'It is the clearest match for the main recommendation direction.';
+      ? '这是当前主推荐方向里比较直接的一支。'
+      : 'It is a clear match for the main recommendation direction.';
   })();
   return {
     best_for: bestFor,
     why_this_one: whyThisOne,
     key_features: keyFeatures,
   };
+}
+
+function neutralizeRecoVisibleProductCardCopy(value, { language = 'EN' } = {}) {
+  const text = pickFirstTrimmed(value);
+  if (!text) return '';
+  const isCn = String(language || '').trim().toUpperCase() === 'CN';
+  let normalized = text.replace(/\s+/g, ' ').trim();
+  if (isCn) {
+    return normalized
+      .replace(/最直接的一支/g, '比较直接的一支')
+      .replace(/最佳匹配/g, '较匹配')
+      .replace(/最佳/g, '适合')
+      .replace(/主推/g, '建议关注')
+      .trim();
+  }
+  normalized = normalized
+    .replace(/^Best\s+for\b\s*[:：-]?\s*/i, 'Suited for ')
+    .replace(/^Best\s+as\s+your\s+(.+?)\s+step\b\.?$/i, 'Works as your $1 step')
+    .replace(/^Best\s+as\s+(.+)$/i, 'Works as $1')
+    .replace(/\bbest\s+first\s+buy\b/gi, 'starting option')
+    .replace(/\bbest\s+available\b/gi, 'available match')
+    .replace(/\bbest\s+match\b/gi, 'close match')
+    .replace(/\btop\s+pick\b/gi, 'selected option')
+    .replace(/\btop\s+choice\b/gi, 'selected option')
+    .replace(/\blead\s+pick\b/gi, 'current pick')
+    .replace(/\bstrongest\s+(?:choice|option|pick)\b/gi, 'strong option')
+    .replace(/\bmost\s+direct\s+fit\b/gi, 'direct fit')
+    .replace(/\bmost\s+practical\s+pick\b/gi, 'practical option')
+    .replace(/\bclearest\s+match\b/gi, 'clear match')
+    .replace(/\bperfect\b/gi, 'good')
+    .trim();
+  return normalized;
+}
+
+function formatRecoVisibleFitHighlight(value, { language = 'EN' } = {}) {
+  const neutral = neutralizeRecoVisibleProductCardCopy(value, { language });
+  if (!neutral) return '';
+  if (/^(?:suited|useful|good|works|positioned)\s+(?:for|as)\b/i.test(neutral)) {
+    return neutral;
+  }
+  return neutralizeRecoVisibleProductCardCopy(`Suited for ${neutral}`, { language });
 }
 
 const RECO_GENERIC_DERIVED_NARRATIVE_PATTERNS = Object.freeze([
@@ -20191,9 +20236,13 @@ const RECO_GENERIC_DERIVED_NARRATIVE_PATTERNS = Object.freeze([
   /simple daily cleanse without feeling overly aggressive/i,
   /clearest match for the main recommendation direction/i,
   /best for excess oil and mid-day shine/i,
+  /suited for excess oil and mid-day shine/i,
   /best for lightweight hydration without a greasy finish/i,
+  /suited for lightweight hydration before cream or spf/i,
   /best for daily uv protection you will actually wear/i,
+  /suited for daily uv protection with a wearable finish/i,
   /best for a gentle cleanse without a stripped feel/i,
+  /suited for a gentle cleanse without a stripped feel/i,
 ]);
 
 function looksLikeGenericRecoDerivedNarrative(value) {
@@ -58364,11 +58413,11 @@ function buildRouteAwareAssistantText({ route, payload, language, profile }) {
         orderedRoleLabels.length ? `Priority order: ${orderedRoleLabels.join(' -> ')}.` : '',
         primaryRole && primaryWhy ? `Start with ${primaryRole.label}: ${primaryWhy}` : '',
         primaryRecommendationName && primaryRoleMatched
-          ? `Top pick for that first role: ${primaryRecommendationName}.`
+          ? `Selected option for that first role: ${primaryRecommendationName}.`
           : primaryRecommendationName && topPickRoleLabel
-            ? `I do not have a strong mainline match for the first role yet. Best available inside the same framework right now: ${primaryRecommendationName} for ${topPickRoleLabel}.`
+            ? `I do not have a strong mainline match for the first role yet. Available match inside the same framework right now: ${primaryRecommendationName} for ${topPickRoleLabel}.`
             : primaryRecommendationName
-              ? `I do not have a strong mainline match for the first role yet. Best available inside the same framework right now: ${primaryRecommendationName}.`
+              ? `I do not have a strong mainline match for the first role yet. Available match inside the same framework right now: ${primaryRecommendationName}.`
           : 'I do not have a strong mainline match for the first role yet, so I will not force an off-framework product.',
         supportingRoleLabels.length ? `Other options stay inside the same framework: ${supportingRoleLabels.join(', ')}.` : '',
       ]
@@ -71127,7 +71176,7 @@ function normalizePoolAlternativeRow(row, {
       ],
       2,
     ),
-    best_use: targetRole && targetRole !== 'unknown' ? `Best for ${targetRole} compare.` : null,
+    best_use: targetRole && targetRole !== 'unknown' ? `Comparable ${targetRole} option.` : null,
     pdp_open: pdpOpen,
     metadata: {
       compare_stage: 'pool_only',
