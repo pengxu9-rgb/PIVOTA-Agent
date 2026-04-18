@@ -4228,6 +4228,7 @@ function buildRecoCompareHighlightsFromInsightFields({
 const RECO_PLACEHOLDER_SEED_COPY_RE = /\b(?:replace\s+with\s+your\s+own\s+description\s+if\s+needed|test\s+fixture\s+for\s+pdp|lorem\s+ipsum|placeholder\s+copy|placeholder\s+description)\b/i;
 const RECO_LOW_INFORMATION_VISIBLE_COPY_RE = /\b(?:double\s+up\s+and\s+save|save\s+with\s+this\s+jumbo|add\s+to\s+cart|shop\s+now|free\s+shipping|limited\s+time\s+offer|subscribe\s+and\s+save)\b/i;
 const RECO_SCRAPED_VISIBLE_COPY_PREFIX_RE = /^(?:details?\s*)?(?:key\s+features?|features?|benefits?)\s*[-:|]\s*/i;
+const RECO_SPF_HEADING_VISIBLE_COPY_PREFIX_RE = /^(?:broad[-\s]?spectrum\s+physical\s+protection|gentle\s+(?:physical\s+)?uv\s+protection|physical\s+uv\s+protection|mineral\s+sunscreen)\s*[-:|]\s*/i;
 const RECO_GENERIC_VISIBLE_INGREDIENT_RE = /^(?:water|aqua|glycerin|butylene glycol|propylene glycol|caprylic(?:\/capric)?|dimethicone|silica|parfum|fragrance|phenoxyethanol|carbomer|citric acid|sodium hydroxide)$/i;
 const RECO_SHOPPER_EVIDENCE_LANGUAGE_RE = /\b(?:best for|helps?|targets?|supports?|protects?|hydrates?|soothes?|calms?|mattif(?:y|ies|ying)|controls?|reduces?|lightweight|non-comedogenic|white cast|uv protection|daily protection|oil-control|shine|sebum|redness|barrier|dark spots?|post-breakout|hyperpigmentation|tone|spf\s*\d+|pa\+|without|for)\b/i;
 const RECO_CANONICAL_BEAUTY_BRANDS = Object.freeze([
@@ -4285,7 +4286,10 @@ function cleanRecoVisibleCopy(value) {
   let previous = '';
   while (text && previous !== text) {
     previous = text;
-    text = text.replace(RECO_SCRAPED_VISIBLE_COPY_PREFIX_RE, '').trim();
+    text = text
+      .replace(RECO_SCRAPED_VISIBLE_COPY_PREFIX_RE, '')
+      .replace(RECO_SPF_HEADING_VISIBLE_COPY_PREFIX_RE, '')
+      .trim();
   }
   return text;
 }
@@ -20094,10 +20098,16 @@ function buildRecoDerivedShopperCopy({
     searchCard,
     maxLen: 180,
   });
-  const roleAlignedSpecificNarrative = cleanRecoNarrativeForRoleVisibleUse(specificNarrative, {
-    roleText,
-    language,
-  });
+  const roleAlignedSpecificNarrative = formatRecoRoleAnchoredVisibleNarrative(
+    cleanRecoNarrativeForRoleVisibleUse(specificNarrative, {
+      roleText,
+      language,
+    }),
+    {
+      roleText,
+      language,
+    },
+  );
   const roleGroundedWhy = buildRecoRoleGroundedWhyThisOne({
     roleText,
     productName,
@@ -20125,10 +20135,16 @@ function buildRecoDerivedShopperCopy({
     ? rawExistingBestFor
     : '';
   const existingBestFor = neutralizeRecoVisibleProductCardCopy(existingBestForRaw, { language });
-  const existingWhy = cleanRecoNarrativeForRoleVisibleUse(rawExistingWhy, {
-    roleText,
-    language,
-  });
+  const existingWhy = formatRecoRoleAnchoredVisibleNarrative(
+    cleanRecoNarrativeForRoleVisibleUse(rawExistingWhy, {
+      roleText,
+      language,
+    }),
+    {
+      roleText,
+      language,
+    },
+  );
   const bestFor = existingBestFor || reviewedBestFor || (() => {
     if (/\boil|shine|sebum\b/i.test(roleText)) {
       return isCn ? '适合出油和午后泛油光' : 'Suited for excess oil and mid-day shine';
@@ -20365,6 +20381,31 @@ function cleanRecoNarrativeForRoleVisibleUse(value, {
     return '';
   }
   return neutral;
+}
+
+function formatRecoRoleAnchoredVisibleNarrative(value, {
+  roleText = '',
+  language = 'EN',
+} = {}) {
+  const text = pickFirstTrimmed(value);
+  if (!text) return '';
+  const isCn = String(language || '').trim().toUpperCase() === 'CN';
+  if (isCn) return text;
+  const role = String(roleText || '').trim().toLowerCase();
+  if (!/\b(?:spf|sun|uv|sunscreen)\b/i.test(role)) return text;
+  if (/\b(?:daily sunscreen|sunscreen step|spf step|uv protection step)\b/i.test(text)) return text;
+  const sentence = text.replace(/\s+/g, ' ').trim();
+  const lowerLead = sentence.replace(/^([A-Z])/, (match) => match.toLowerCase());
+  const stepLabel = /\b(?:finish\s+fit|makeup|layer|pilling)\b/i.test(role)
+    ? 'daily sunscreen finish step'
+    : 'daily sunscreen step';
+  if (
+    /^(?:formulated|made|built|uses|contains|provides|offers|protects|hydrates)\b/i.test(sentence) ||
+    /\b(?:zinc oxide|titanium dioxide|uva|uvb|broad[-\s]?spectrum)\b/i.test(sentence)
+  ) {
+    return `Fits the ${stepLabel}; ${lowerLead}`;
+  }
+  return text;
 }
 
 function scoreRecoNarrativeSentence(sentence, hintText = '') {
@@ -20606,10 +20647,16 @@ function buildRecoVisibleProductFields(picked, { role = null, language = 'EN' } 
     row.product?.short_description,
     row.product?.shortDescription,
   );
-  const roleAlignedShortDescription = cleanRecoNarrativeForRoleVisibleUse(shortDescription, {
-    roleText: visibleRoleText,
-    language,
-  });
+  const roleAlignedShortDescription = formatRecoRoleAnchoredVisibleNarrative(
+    cleanRecoNarrativeForRoleVisibleUse(shortDescription, {
+      roleText: visibleRoleText,
+      language,
+    }),
+    {
+      roleText: visibleRoleText,
+      language,
+    },
+  );
   const specificNarrative = pickRecoSpecificNarrativeSnippet({
     row,
     stableAnchorProduct,
@@ -20628,8 +20675,14 @@ function buildRecoVisibleProductFields(picked, { role = null, language = 'EN' } 
     searchCard,
     max: 4,
   });
-  const preferredNarrative = cleanRecoNarrativeForRoleVisibleUse(
-    pickFirstTrimmed(evidencePoints[0], specificNarrative),
+  const preferredNarrative = formatRecoRoleAnchoredVisibleNarrative(
+    cleanRecoNarrativeForRoleVisibleUse(
+      pickFirstTrimmed(evidencePoints[0], specificNarrative),
+      {
+        roleText: visibleRoleText,
+        language,
+      },
+    ),
     {
       roleText: visibleRoleText,
       language,
@@ -55350,14 +55403,20 @@ function buildRecoAssistantRewritePrompt({
       .map((value) => neutralizeRecoVisibleProductCardCopy(value, { language: lang }))
       .filter((value) => value && !looksLikeRecoMarketingHeavyNarrative(value));
     const descriptionSnippet = pickFirstTrimmed(rankedEvidencePoints[0], baseDescriptionSnippet);
-    const promptShortDescription = cleanRecoNarrativeForRoleVisibleUse(
-      pickFirstTrimmed(
-        item.short_description,
-        item.shortDescription,
-        item.description,
-        item.sku?.short_description,
-        item.sku?.shortDescription,
-        item.sku?.description,
+    const promptShortDescription = formatRecoRoleAnchoredVisibleNarrative(
+      cleanRecoNarrativeForRoleVisibleUse(
+        pickFirstTrimmed(
+          item.short_description,
+          item.shortDescription,
+          item.description,
+          item.sku?.short_description,
+          item.sku?.shortDescription,
+          item.sku?.description,
+        ),
+        {
+          roleText: evidenceTargetText,
+          language: lang,
+        },
       ),
       {
         roleText: evidenceTargetText,
@@ -55398,13 +55457,25 @@ function buildRecoAssistantRewritePrompt({
       price,
       price_label: formatRecoAssistantPromptPriceLabel(price),
       short_description: promptShortDescription || null,
-      description_snippet: cleanRecoNarrativeForRoleVisibleUse(descriptionSnippet, {
-        roleText: evidenceTargetText,
-        language: lang,
-      }) || null,
+      description_snippet: formatRecoRoleAnchoredVisibleNarrative(
+        cleanRecoNarrativeForRoleVisibleUse(descriptionSnippet, {
+          roleText: evidenceTargetText,
+          language: lang,
+        }),
+        {
+          roleText: evidenceTargetText,
+          language: lang,
+        },
+      ) || null,
       best_for: neutralizeRecoVisibleProductCardCopy(pickFirstTrimmed(item.best_for, item.bestFor), { language: lang }),
-      why_this_one: cleanRecoNarrativeForRoleVisibleUse(
-        pickFirstTrimmed(item.why_this_one, item.whyThisOne, item.reason),
+      why_this_one: formatRecoRoleAnchoredVisibleNarrative(
+        cleanRecoNarrativeForRoleVisibleUse(
+          pickFirstTrimmed(item.why_this_one, item.whyThisOne, item.reason),
+          {
+            roleText: evidenceTargetText,
+            language: lang,
+          },
+        ),
         {
           roleText: evidenceTargetText,
           language: lang,

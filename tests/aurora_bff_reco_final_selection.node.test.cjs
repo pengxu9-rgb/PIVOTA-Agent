@@ -199,8 +199,8 @@ test('beauty mainline reco rows prefer role-grounded sunscreen copy over marketi
           display_name: 'Round Lab Birch Mild-Up Sunscreen UVLock SPF 50+ Broad Spectrum',
           category: 'Sunscreen',
           product_type: 'Sunscreen',
-          short_description: 'Round Lab Mineral Sunscreen - Gentle, Effective Physical UV Protection sun protection for daily use.',
-          description: 'Round Lab Mineral Sunscreen - Gentle, Effective Physical UV Protection. Experience superior sun protection with Round Lab’s lightweight mineral sunscreen. Why Choose Round Lab Birch Mild-Up Sunscreen? Perfect for Daily Use.',
+          short_description: 'Broad-Spectrum Physical Protection: Formulated with Zinc Oxide and Titanium Dioxide to reflect and scatter UVA and UVB rays.',
+          description: 'Broad-Spectrum Physical Protection: Formulated with Zinc Oxide and Titanium Dioxide to reflect and scatter UVA and UVB rays. Experience superior sun protection with Round Lab’s lightweight mineral sunscreen. Why Choose Round Lab Birch Mild-Up Sunscreen? Perfect for Daily Use.',
           why_this_one: 'Experience superior sun protection with highly effective physical UV filters.',
           key_features: ['UV filters', 'Zinc PCA'],
           matched_role_id: 'daily_sunscreen',
@@ -237,7 +237,11 @@ test('beauty mainline reco rows prefer role-grounded sunscreen copy over marketi
     );
     assert.match(
       String(rows[0].why_this_one || ''),
-      /daily sunscreen step|UV filters|Zinc PCA|regular wear/i,
+      /fits the daily sunscreen step; formulated with Zinc Oxide and Titanium Dioxide/i,
+    );
+    assert.match(
+      String(rows[0].short_description || ''),
+      /fits the daily sunscreen step; formulated with Zinc Oxide and Titanium Dioxide/i,
     );
     assert.equal(rows[0].short_description, rows[0].why_this_one);
   } finally {
