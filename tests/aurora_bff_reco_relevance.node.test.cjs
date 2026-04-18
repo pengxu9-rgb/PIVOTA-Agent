@@ -4812,6 +4812,79 @@ test('__internal: local external seed oil-control support search uses lean posit
   assert.equal(out.products[0].retrieval_match_stage, 'support_category_positive');
 });
 
+test('__internal: local external seed sunscreen finish query uses category-positive authority recall', async () => {
+  const { __internal } = loadRoutesFresh();
+  const observedQueries = [];
+  const out = await __internal.searchLocalExternalSeedProducts({
+    query: 'spf fluid oily skin',
+    limit: 2,
+    role: {
+      role_id: 'daily_sunscreen_finish_fit',
+      rank: 1,
+      preferred_step: 'sunscreen',
+      query_terms: ['spf fluid oily skin'],
+      fit_keywords: ['spf', 'uv protection', 'oil free', 'under makeup'],
+      product_type_hypotheses: ['sunscreen'],
+    },
+    preferredStep: 'sunscreen',
+    queryFn: async (sql, params) => {
+      observedQueries.push({ sql: String(sql || ''), params });
+      return {
+        rows: [
+          {
+            id: '221',
+            external_product_id: 'ext_support_sunscreen_221',
+            destination_url: 'https://example.com/products/oil-free-sun-fluid',
+            canonical_url: 'https://example.com/products/oil-free-sun-fluid',
+            domain: 'example.com',
+            title: 'Oil-Free Sun Fluid SPF 50',
+            image_url: 'https://example.com/products/oil-free-sun-fluid.jpg',
+            price_amount: 24,
+            price_currency: 'USD',
+            availability: 'in_stock',
+            match_stage: 'support_category_positive',
+            match_score: 54,
+            seed_data: {
+              derived: {
+                recall: {
+                  retrieval_title: 'Oil-Free Sun Fluid SPF 50',
+                  retrieval_summary: 'A lightweight non-greasy UV fluid for oily skin.',
+                  category: 'Sunscreen',
+                  vertical: 'skincare',
+                },
+              },
+              snapshot: {
+                title: 'Oil-Free Sun Fluid SPF 50',
+                description: 'Lightweight non-greasy UV fluid.',
+                category: 'Sunscreen',
+              },
+            },
+            updated_at: new Date().toISOString(),
+            created_at: new Date().toISOString(),
+          },
+        ],
+      };
+    },
+  });
+
+  assert.equal(out.ok, true);
+  assert.equal(out.local_external_seed_search_mode, 'staged_support_fastpath');
+  assert.equal(observedQueries.length, 1);
+  assert.match(observedQueries[0].sql, /support_category_positive/);
+  assert.deepEqual(observedQueries[0].params[2], [
+    'sunscreen',
+    'spf',
+    'sun care',
+    'sun protection',
+    'uv protection',
+  ]);
+  assert.ok(observedQueries[0].params[3].includes('%spf fluid%'));
+  assert.ok(observedQueries[0].params[3].includes('%oil-free%'));
+  assert.equal(out.local_external_seed_stage_debug[0]?.stage, 'support_category_positive');
+  assert.equal(out.local_external_seed_stage_debug[0]?.query_cap, 8);
+  assert.equal(out.products[0].product_id, 'ext_support_sunscreen_221');
+});
+
 test('__internal: local external seed support-role search uses exact category head for broad sunscreen recall', async () => {
   const { __internal } = loadRoutesFresh();
   const observedQueries = [];
@@ -4883,7 +4956,101 @@ test('__internal: local external seed support-role search uses exact category he
     'uv protection',
   ]);
   assert.equal(out.local_external_seed_stage_debug[0]?.stage, 'support_category_exact');
+  assert.equal(out.local_external_seed_stage_debug[0]?.query_cap, 8);
   assert.equal(out.products[0].retrieval_match_stage, 'support_category_exact');
+});
+
+test('__internal: local external seed sunscreen broad recall does not let makeup SPF starve real sunscreen rows', async () => {
+  const { __internal } = loadRoutesFresh();
+  const observedQueries = [];
+  const makeRow = ({
+    id,
+    title,
+    summary,
+    category = 'Sunscreen',
+    vertical = 'skincare',
+  }) => ({
+    id,
+    external_product_id: id,
+    destination_url: `https://example.com/products/${id}`,
+    canonical_url: `https://example.com/products/${id}`,
+    domain: 'example.com',
+    title,
+    image_url: `https://example.com/products/${id}.jpg`,
+    price_amount: 24,
+    price_currency: 'USD',
+    availability: 'in_stock',
+    match_stage: 'support_category_exact',
+    match_score: 56,
+    seed_data: {
+      derived: {
+        recall: {
+          retrieval_title: title,
+          retrieval_summary: summary,
+          category,
+          vertical,
+        },
+      },
+      snapshot: {
+        title,
+        description: summary,
+        category,
+      },
+    },
+    updated_at: new Date().toISOString(),
+    created_at: new Date().toISOString(),
+  });
+  const out = await __internal.searchLocalExternalSeedProducts({
+    query: 'sunscreen',
+    limit: 2,
+    role: {
+      role_id: 'daily_sunscreen_finish_fit',
+      rank: 1,
+      preferred_step: 'sunscreen',
+      query_terms: ['sunscreen', 'spf fluid'],
+      fit_keywords: ['spf', 'uv protection', 'under makeup'],
+      product_type_hypotheses: ['sunscreen'],
+    },
+    preferredStep: 'sunscreen',
+    queryFn: async (sql, params) => {
+      observedQueries.push({ sql: String(sql || ''), params });
+      return {
+        rows: [
+          makeRow({
+            id: 'foundation_spf',
+            title: 'Architecture Radiance Hydrating Foundation Broad Spectrum SPF 50+',
+            summary: 'A hydrating foundation makeup product with broad spectrum SPF.',
+            category: 'SPF',
+            vertical: 'makeup',
+          }),
+          makeRow({
+            id: 'daily_invisible_spf',
+            title: 'Daily Invisible Sunscreen SPF 50',
+            summary: 'A lightweight face sunscreen for daily use under makeup.',
+          }),
+          makeRow({
+            id: 'oil_free_sun_fluid',
+            title: 'Oil-Free Sun Fluid SPF 50',
+            summary: 'A non-greasy UV protection fluid for oily skin.',
+          }),
+        ],
+      };
+    },
+  });
+
+  assert.equal(out.ok, true);
+  assert.equal(observedQueries.length, 1);
+  assert.equal(observedQueries[0].params[3], 8);
+  assert.deepEqual(out.products.map((item) => item.product_id), [
+    'daily_invisible_spf',
+    'oil_free_sun_fluid',
+  ]);
+  assert.equal(out.local_external_seed_candidate_debug.stage_row_count, 3);
+  assert.equal(out.local_external_seed_candidate_debug.ranked_candidate_count, 2);
+  assert.equal(
+    out.local_external_seed_candidate_debug.ranked_preview.some((item) => item.product_id === 'foundation_spf'),
+    false,
+  );
 });
 
 test('__internal: local external seed single-query recall includes attached authority rows', async () => {

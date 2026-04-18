@@ -8453,8 +8453,27 @@ function buildLocalExternalSeedCategoryPositiveStage({
         .flat()
         .map((value) => String(value || '').trim().toLowerCase())
         .filter((value) => value.length >= 3),
-      12,
+      18,
     ).map((value) => `%${value}%`);
+
+  if (
+    step === 'sunscreen'
+    && /\b(sunscreen|sun\s*screen|spf|uv|broad\s+spectrum|fluid|lightweight|oily|oil[-\s]?free|non[-\s]?greasy|matte|invisible|makeup|pilling|layering)\b/.test(haystack)
+  ) {
+    const positiveSignalText = querySignalText || haystack;
+    const sunscreenCoreSignal = /\b(sunscreen|sun\s*screen|spf|uv|broad\s+spectrum)\b/.test(positiveSignalText);
+    const fluidSignal = /\b(fluid|serum|milk|gel|lotion)\b/.test(positiveSignalText);
+    const finishSignal = /\b(lightweight|oily|oil[-\s]?free|non[-\s]?greasy|matte|invisible|makeup|pilling|layering|under makeup)\b/.test(positiveSignalText);
+    const positivePatterns = addPatterns(
+      sunscreenCoreSignal ? ['sunscreen', 'spf', 'uv', 'broad spectrum'] : [],
+      fluidSignal ? ['spf fluid', 'sun fluid', 'uv fluid', 'fluid', 'sun serum', 'sunscreen serum', 'sun milk', 'sun gel', 'sun lotion'] : [],
+      finishSignal ? ['lightweight', 'oil free', 'oil-free', 'non-greasy', 'non greasy', 'matte', 'invisible', 'under makeup', 'makeup friendly'] : [],
+    );
+    const categories = pickTerms(['sunscreen', 'spf', 'sun care', 'sun protection', 'uv protection']);
+    if (categories.length && positivePatterns.length) {
+      return { categoryTerms: categories, positivePatterns };
+    }
+  }
 
   if (
     step === 'moisturizer'
@@ -8550,7 +8569,7 @@ function buildLocalExternalSeedSupportStageDefinitions({
       stage: stageName,
       score: Number(score || 0),
       cap: Math.max(1, Number(safeLimit) || 1),
-      queryCap: stageName === 'support_category_positive'
+      queryCap: stageName === 'support_category_positive' || stageName === 'support_category_exact'
         ? Math.max(
           Math.max(1, Number(safeLimit) || 1),
           Math.min(32, Math.max(1, Number(safeLimit) || 1) * 4),
@@ -8633,6 +8652,32 @@ function buildLocalExternalSeedSupportStageDefinitions({
   return stageDefinitions;
 }
 
+function scoreLocalExternalSeedSunscreenIdentityFit(product) {
+  const row = isPlainObject(product) ? product : null;
+  if (!row) return 0;
+  const anchorText = buildExternalSeedSurfacingText(row, { anchorOnly: true }).toLowerCase();
+  const fullText = uniqCaseInsensitiveStrings([
+    anchorText,
+    buildConcernCandidateText(row),
+    buildPurchasableRecoveryCandidateText(row),
+    row?.external_seed_recall?.vertical,
+  ], 4).join(' ').toLowerCase();
+  if (!fullText) return 0;
+  let score = 0;
+  const primarySunscreenForm =
+    /\b(face\s+)?sunscreen\b|\bsun\s*(?:fluid|cream|gel|milk|lotion|serum)\b|\buv\s*(?:fluid|filters?|protection|shield|defen[cs]e)\b|\bbroad\s+spectrum\b/.test(anchorText);
+  const spfSignal = /\bspf\s*\d{2,3}\+?\b|\bspf\b/.test(anchorText);
+  const finishFitSignal = /\b(lightweight|oil[-\s]?free|non[-\s]?greasy|matte|invisible|under makeup|makeup friendly|fluid)\b/.test(fullText);
+  const makeupSpfShape = /\b(foundation|skin tint|tinted moisturizer|bb cream|cc cream|concealer|powder|primer)\b/.test(anchorText);
+  if (primarySunscreenForm) score += 0.2;
+  if (spfSignal) score += 0.08;
+  if (finishFitSignal) score += 0.08;
+  if (makeupSpfShape && !primarySunscreenForm) score -= 0.42;
+  else if (makeupSpfShape) score -= 0.18;
+  if (/\bmakeup\b/.test(String(row?.external_seed_recall?.vertical || '').trim().toLowerCase())) score -= 0.18;
+  return Number(Math.max(-0.6, Math.min(0.4, score)).toFixed(4));
+}
+
 function scoreLocalExternalSeedSupportRoleFit(candidate, {
   query = '',
   role = null,
@@ -8675,6 +8720,12 @@ function scoreLocalExternalSeedSupportRoleFit(candidate, {
       product,
       tokenizePurchasableRecoveryQuery(query),
     ) * 0.015);
+    const isSunscreenRole =
+      preferred === 'sunscreen' ||
+      /\bsunscreen|spf\b/i.test([roleId, roleObj?.label, roleObj?.preferred_step].join(' '));
+    if (isSunscreenRole) {
+      score += scoreLocalExternalSeedSunscreenIdentityFit(product);
+    }
     if (isConcernFrameworkRefillOnlyCandidate(product)) score -= 0.5;
     if (isConcernFrameworkUnavailableCandidate(product)) score -= 0.35;
     if (isConcernFrameworkNegativeAuthority(coarseAuthority)) score -= 0.35;
@@ -8947,6 +8998,31 @@ function buildLocalExternalSeedSurfacingCandidate(row) {
   };
 }
 
+function buildLocalExternalSeedCandidateDebug({ rows = [], surfacingCandidates = [], ranked = [] } = {}) {
+  const sample = (items, max = 8) => (Array.isArray(items) ? items : [])
+    .slice(0, max)
+    .map((item) => ({
+      title: pickFirstTrimmed(item?.title, item?.name, item?.display_name) || null,
+      product_id: pickFirstTrimmed(item?.product_id, item?.id, item?.external_product_id) || null,
+      category: pickFirstTrimmed(item?.category, item?.product_type, item?.seed_category) || null,
+      match_stage: pickFirstTrimmed(item?.retrieval_match_stage, item?.match_stage) || null,
+      ...(Number.isFinite(Number(item?.local_external_seed_role_fit_score))
+        ? { role_fit_score: Number(item.local_external_seed_role_fit_score) }
+        : {}),
+    }));
+  return {
+    stage_row_count: Array.isArray(rows) ? rows.length : 0,
+    surfacing_candidate_count: Array.isArray(surfacingCandidates) ? surfacingCandidates.length : 0,
+    ranked_candidate_count: Array.isArray(ranked) ? ranked.length : 0,
+    dropped_before_surfacing_count: Math.max(
+      0,
+      (Array.isArray(rows) ? rows.length : 0) - (Array.isArray(surfacingCandidates) ? surfacingCandidates.length : 0),
+    ),
+    stage_preview: sample(rows),
+    ranked_preview: sample(ranked),
+  };
+}
+
 async function searchLocalExternalSeedProducts({
   query,
   limit = 6,
@@ -9032,6 +9108,11 @@ async function searchLocalExternalSeedProducts({
         q,
         { role, preferredStep },
       ).slice(0, safeLimit);
+      const candidateDebug = buildLocalExternalSeedCandidateDebug({
+        rows,
+        surfacingCandidates,
+        ranked,
+      });
       return {
         ok: ranked.length > 0,
         products: ranked,
@@ -9043,6 +9124,7 @@ async function searchLocalExternalSeedProducts({
         transport_policy_mode: transportPolicyMode,
         local_external_seed_search_mode: 'staged_support_fastpath',
         local_external_seed_stage_debug: Array.isArray(staged?.stageDebug) ? staged.stageDebug : [],
+        local_external_seed_candidate_debug: candidateDebug,
         ...(Array.isArray(staged?.categoryTerms) && staged.categoryTerms.length
           ? { local_external_seed_category_terms: staged.categoryTerms }
           : {}),
@@ -21393,6 +21475,9 @@ function buildBeautyMainlineLocalQueryAttempts(searchResults = []) {
       : {}),
     ...(Array.isArray(row?.local_external_seed_stage_debug)
       ? { local_external_seed_stage_debug: row.local_external_seed_stage_debug }
+      : {}),
+    ...(isPlainObject(row?.local_external_seed_candidate_debug)
+      ? { local_external_seed_candidate_debug: row.local_external_seed_candidate_debug }
       : {}),
     ...(Array.isArray(row?.local_external_seed_category_terms)
       ? { local_external_seed_category_terms: row.local_external_seed_category_terms }
