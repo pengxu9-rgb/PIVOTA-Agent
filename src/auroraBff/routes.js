@@ -8479,7 +8479,26 @@ function buildLocalExternalSeedCategoryPositiveStage({
     );
     const categories = pickTerms(['sunscreen', 'spf', 'sun care', 'sun protection', 'uv protection']);
     if (categories.length && positivePatterns.length) {
-      return { categoryTerms: categories, positivePatterns };
+      return {
+        categoryTerms: categories,
+        positivePatterns,
+        ...(specificFinishOrFormSignal
+          ? {
+              queryCapMultiplier: 2,
+              searchFields: ['raw_title', 'retrieval_title', 'alias_tokens', 'retrieval_summary'],
+              excludeTitlePatterns: [
+                '%bundle%',
+                '%duo%',
+                '%trio%',
+                '%set of%',
+                '%foundation%',
+                '%concealer%',
+                '%powder%',
+                '%primer%',
+              ],
+            }
+          : {}),
+      };
     }
   }
 
@@ -8570,19 +8589,25 @@ function buildLocalExternalSeedSupportStageDefinitions({
   preferredStep = '',
 } = {}) {
   const stageDefinitions = [];
-  const addStage = ({ stage, score, buildWhereSql, stopAfterAnyMatch = false }) => {
+  const addStage = ({ stage, score, buildWhereSql, stopAfterAnyMatch = false, queryCap = null }) => {
     const stageName = String(stage || '').trim();
     if (!stageName || typeof buildWhereSql !== 'function') return;
+    const baseCap = Math.max(1, Number(safeLimit) || 1);
+    const defaultQueryCap = stageName === 'support_category_positive' || stageName === 'support_category_exact'
+      ? Math.max(
+        baseCap,
+        Math.min(32, baseCap * 4),
+      )
+      : baseCap;
+    const hasExplicitQueryCap = queryCap !== null && queryCap !== undefined && Number.isFinite(Number(queryCap));
+    const normalizedQueryCap = hasExplicitQueryCap
+      ? Math.max(baseCap, Math.min(32, Math.trunc(Number(queryCap))))
+      : defaultQueryCap;
     stageDefinitions.push({
       stage: stageName,
       score: Number(score || 0),
-      cap: Math.max(1, Number(safeLimit) || 1),
-      queryCap: stageName === 'support_category_positive' || stageName === 'support_category_exact'
-        ? Math.max(
-          Math.max(1, Number(safeLimit) || 1),
-          Math.min(32, Math.max(1, Number(safeLimit) || 1) * 4),
-        )
-        : Math.max(1, Number(safeLimit) || 1),
+      cap: baseCap,
+      queryCap: normalizedQueryCap,
       buildWhereSql,
       stopAfterAnyMatch: stopAfterAnyMatch === true,
     });
@@ -8616,17 +8641,50 @@ function buildLocalExternalSeedSupportStageDefinitions({
       buildWhereSql: (bind) => {
         const categoryBind = bind(categoryPositiveStage.categoryTerms);
         const patternBind = bind(categoryPositiveStage.positivePatterns);
+        const searchFields = new Set(
+          Array.isArray(categoryPositiveStage.searchFields)
+            ? categoryPositiveStage.searchFields.map((value) => String(value || '').trim()).filter(Boolean)
+            : [],
+        );
+        const shouldUseField = (field) => searchFields.size === 0 || searchFields.has(field);
+        const fieldClauses = [
+          shouldUseField('raw_title') ? `lower(coalesce(title, '')) LIKE ANY(${patternBind}::text[])` : '',
+          shouldUseField('retrieval_title') ? `${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalTitle} LIKE ANY(${patternBind}::text[])` : '',
+          shouldUseField('alias_tokens') ? `${EXTERNAL_SEED_RECALL_SQL_FIELDS.aliasTokens} LIKE ANY(${patternBind}::text[])` : '',
+          shouldUseField('ingredient_tokens') ? `${EXTERNAL_SEED_RECALL_SQL_FIELDS.ingredientTokens} LIKE ANY(${patternBind}::text[])` : '',
+          shouldUseField('retrieval_summary') ? `${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalSummary} LIKE ANY(${patternBind}::text[])` : '',
+        ].filter(Boolean);
+        if (!fieldClauses.length) return '';
+        const excludePatterns = Array.isArray(categoryPositiveStage.excludeTitlePatterns)
+          ? uniqCaseInsensitiveStrings(
+            categoryPositiveStage.excludeTitlePatterns
+              .map((value) => String(value || '').trim().toLowerCase())
+              .filter(Boolean),
+            12,
+          )
+          : [];
+        const excludeSql = excludePatterns.length
+          ? `AND NOT (
+            lower(coalesce(title, '')) LIKE ANY(${bind(excludePatterns)}::text[])
+            OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalTitle} LIKE ANY(${bind(excludePatterns)}::text[])
+          )`
+          : '';
         return `(
           ${EXTERNAL_SEED_RECALL_SQL_FIELDS.category} = ANY(${categoryBind}::text[])
           AND (
-            lower(coalesce(title, '')) LIKE ANY(${patternBind}::text[])
-            OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalTitle} LIKE ANY(${patternBind}::text[])
-            OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.aliasTokens} LIKE ANY(${patternBind}::text[])
-            OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.ingredientTokens} LIKE ANY(${patternBind}::text[])
-            OR ${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalSummary} LIKE ANY(${patternBind}::text[])
+            ${fieldClauses.join('\n            OR ')}
           )
+          ${excludeSql}
         )`;
       },
+      queryCap: Math.max(
+        Math.max(1, Number(safeLimit) || 1),
+        Math.min(
+          32,
+          Math.max(1, Number(safeLimit) || 1)
+            * Math.max(1, Math.trunc(Number(categoryPositiveStage.queryCapMultiplier || 4))),
+        ),
+      ),
     });
   }
 
