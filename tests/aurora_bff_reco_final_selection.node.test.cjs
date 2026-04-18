@@ -237,11 +237,11 @@ test('beauty mainline reco rows prefer role-grounded sunscreen copy over marketi
     );
     assert.match(
       String(rows[0].why_this_one || ''),
-      /fits the daily sunscreen step; formulated with Zinc Oxide and Titanium Dioxide/i,
+      /it is formulated with Zinc Oxide and Titanium Dioxide.+daily sunscreen step/i,
     );
     assert.match(
       String(rows[0].short_description || ''),
-      /fits the daily sunscreen step; formulated with Zinc Oxide and Titanium Dioxide/i,
+      /it is formulated with Zinc Oxide and Titanium Dioxide.+daily sunscreen step/i,
     );
     assert.equal(rows[0].short_description, rows[0].why_this_one);
   } finally {
