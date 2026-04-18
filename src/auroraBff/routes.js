@@ -20403,7 +20403,12 @@ function formatRecoRoleAnchoredVisibleNarrative(value, {
     /^(?:formulated|made|built|uses|contains|provides|offers|protects|hydrates)\b/i.test(sentence) ||
     /\b(?:zinc oxide|titanium dioxide|uva|uvb|broad[-\s]?spectrum)\b/i.test(sentence)
   ) {
-    const clause = lowerLead.replace(/[.!?]+$/g, '').trim();
+    const clause = lowerLead
+      .replace(/[.!?]+$/g, '')
+      .replace(/\b(?:and|or|to|with|for)\s*$/i, '')
+      .replace(/\bto\s+(?:reflect|scatter|protect|hydrate|soothe|calm|moisturize|moisturise)\s*$/i, '')
+      .trim();
+    if (!clause) return text;
     if (/^(?:formulated|made|built)\b/i.test(clause)) {
       return `It is ${clause} for the ${stepLabel}.`;
     }

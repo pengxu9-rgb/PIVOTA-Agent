@@ -199,7 +199,7 @@ test('beauty mainline reco rows prefer role-grounded sunscreen copy over marketi
           display_name: 'Round Lab Birch Mild-Up Sunscreen UVLock SPF 50+ Broad Spectrum',
           category: 'Sunscreen',
           product_type: 'Sunscreen',
-          short_description: 'Broad-Spectrum Physical Protection: Formulated with Zinc Oxide and Titanium Dioxide to reflect and scatter UVA and UVB rays.',
+          short_description: 'Broad-Spectrum Physical Protection: Formulated with Zinc Oxide and Titanium Dioxide to reflect and',
           description: 'Broad-Spectrum Physical Protection: Formulated with Zinc Oxide and Titanium Dioxide to reflect and scatter UVA and UVB rays. Experience superior sun protection with Round Lab’s lightweight mineral sunscreen. Why Choose Round Lab Birch Mild-Up Sunscreen? Perfect for Daily Use.',
           why_this_one: 'Experience superior sun protection with highly effective physical UV filters.',
           key_features: ['UV filters', 'Zinc PCA'],
@@ -235,6 +235,10 @@ test('beauty mainline reco rows prefer role-grounded sunscreen copy over marketi
       String(rows[0].short_description || ''),
       /physical uv protection sun protection|experience superior|why choose|perfect for daily use|effective|superior/i,
     );
+    assert.doesNotMatch(
+      String(rows[0].short_description || ''),
+      /\b(?:and|or|to|with|for)\s+for the daily sunscreen step\b|to reflect for the daily sunscreen step/i,
+    );
     assert.match(
       String(rows[0].why_this_one || ''),
       /it is formulated with Zinc Oxide and Titanium Dioxide.+daily sunscreen step/i,
@@ -243,7 +247,7 @@ test('beauty mainline reco rows prefer role-grounded sunscreen copy over marketi
       String(rows[0].short_description || ''),
       /it is formulated with Zinc Oxide and Titanium Dioxide.+daily sunscreen step/i,
     );
-    assert.equal(rows[0].short_description, rows[0].why_this_one);
+    assert.match(String(rows[0].short_description || ''), /daily sunscreen step/i);
   } finally {
     delete require.cache[moduleId];
   }
