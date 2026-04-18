@@ -33076,16 +33076,16 @@ function buildConfidenceNoticeCardPayload({
         : 'Potential medical risk signals detected, so product recommendations are blocked.',
     timeout_degraded:
       lang === 'CN'
-        ? '系统响应超时，已降级为保守方案。请稍后重试，或先补充照片/当前护肤流程。'
-        : 'The system hit a timeout and switched to a conservative fallback. Please retry shortly, or add photos/current routine details first.',
+        ? '系统响应超时，所以我先不展示商品推荐。请稍后重试，或先补充照片/当前护肤流程。'
+        : 'The system hit a timeout, so I am not showing product picks yet. Retry shortly, or add photos/current routine details first.',
     semantic_planner_timeout:
       lang === 'CN'
-        ? '语义规划器没有在时限内产出可信护理框架，所以我先停在保守模式，不拿 fallback 当成功。请稍后重试。'
-        : 'The semantic planner did not produce a trusted care framework in time, so I am staying in conservative mode instead of treating fallback as success. Please retry shortly.',
+        ? '语义规划器没有在时限内产出可信护理框架，所以我先不展示商品推荐，也不把不可信规划当成功。请稍后重试。'
+        : 'The semantic planner did not produce a trusted care framework in time, so I am not showing product picks or treating an untrusted plan as success. Please retry shortly.',
     semantic_planner_schema_invalid:
       lang === 'CN'
-        ? '语义规划器返回的结构不完整，所以我先停在保守模式，不拿 fallback 当成功。请稍后重试。'
-        : 'The semantic planner returned an invalid structure, so I am staying in conservative mode instead of treating fallback as success. Please retry shortly.',
+        ? '语义规划器返回的结构不完整，所以我先不展示商品推荐，也不把不可信规划当成功。请稍后重试。'
+        : 'The semantic planner returned an invalid structure, so I am not showing product picks or treating an untrusted plan as success. Please retry shortly.',
     semantic_plan_untrusted:
       lang === 'CN'
         ? '这轮没有稳定收敛出可信的护肤推荐方案，所以我先不硬推商品。请稍后重试，或补充你想找的步骤和限制条件。'
@@ -33100,8 +33100,8 @@ function buildConfidenceNoticeCardPayload({
         : 'The primary-role retrieval chain timed out, so I am not replacing it with non-primary fallbacks. Please retry shortly.',
     upstream_empty_recommendations:
       lang === 'CN'
-        ? '上游没有返回可落地的产品清单，已改为保守提示。可补充当前 routine 或稍后重试。'
-        : 'Upstream did not return a grounded product shortlist, so this was downgraded to a conservative notice. Add your current routine or retry shortly.',
+        ? '主链路没有返回可落地的产品清单，所以我先不展示商品推荐。可补充当前 routine 或稍后重试。'
+        : 'The mainline did not return authority-grounded products, so I am not showing product picks yet. Add your current routine or retry shortly.',
     no_viable_candidates_for_target:
       lang === 'CN'
         ? '我还不能稳定地锁定这个品类的合适候选。补充你想要的肤感、修护目标或想避开的成分后，我会继续缩窄。'
@@ -33120,12 +33120,12 @@ function buildConfidenceNoticeCardPayload({
         : 'The current candidate pool did not produce a safe consensus winner, so I’m staying at the framework layer instead of forcing a product pick.',
     no_recall_from_planned_sources:
       lang === 'CN'
-        ? '按当前护理框架搜索后，没有召回到可用候选。请稍后重试或补充更多上下文。'
-        : 'The current care framework did not recall usable candidates. Retry shortly or add more context.',
+        ? '按当前护理框架搜索后，没有拿到权威可用候选，所以我先不展示商品推荐。请稍后重试或补充更多上下文。'
+        : 'The current care framework did not return authority-grounded candidates, so I am not showing product picks yet. Retry shortly or add more context.',
     upstream_schema_invalid:
       lang === 'CN'
-        ? '上游推荐结果结构不完整，已改为保守提示。可稍后重试，或先补充更多上下文。'
-        : 'Upstream recommendation output was structurally incomplete, so this was downgraded to a conservative notice. Retry shortly or add more context first.',
+        ? '主链路推荐结果结构不完整，所以我先不展示商品推荐。可稍后重试，或先补充更多上下文。'
+        : 'The mainline recommendation output was structurally incomplete, so I am not showing product picks yet. Retry shortly or add more context first.',
     ingredient_constraint_no_match:
       lang === 'CN'
         ? '当前成分约束下没有确认匹配的产品。可扩展到目标推荐，或改查具体产品 INCI。'
@@ -33143,7 +33143,7 @@ function buildConfidenceNoticeCardPayload({
         ? '我已经拿到了足够上下文，但这轮主链推荐仍然没有收敛出稳定商品候选。你可以细化想找的步骤或限制条件，我再继续缩窄。'
         : 'I had enough context, but the main recommendation path still did not converge on a stable product shortlist. Refine the step or add constraints and I’ll narrow it down.',
     default:
-      lang === 'CN' ? '当前建议已按保守模式输出。' : 'Current guidance is running in conservative mode.',
+      lang === 'CN' ? '当前主链路没有稳定收敛，所以我先不展示商品推荐。' : 'The mainline did not converge reliably, so I am not showing product picks yet.',
   };
 
   return {
@@ -54525,9 +54525,11 @@ function pruneCompactRecoAssistantPromptContext(value) {
 function buildCompactRecoAssistantWritePlan(writePlan = null) {
   const plan = isPlainObject(writePlan) ? writePlan : null;
   if (!plan) return null;
+  const roleMix = compactRecoAssistantPromptField(plan.selected_product_role_mix, { maxLen: 32 });
+  const includeSupportSteps = roleMix !== 'same_role_comparison';
   return pruneCompactRecoAssistantPromptContext({
     request_mode: compactRecoAssistantPromptField(plan.request_mode, { maxLen: 24 }),
-    selected_product_role_mix: compactRecoAssistantPromptField(plan.selected_product_role_mix, { maxLen: 32 }),
+    selected_product_role_mix: roleMix,
     target_label: compactRecoAssistantPromptField(plan.target_label, { maxLen: 60 }),
     lead_product: isPlainObject(plan.lead_product)
       ? {
@@ -54543,7 +54545,7 @@ function buildCompactRecoAssistantWritePlan(writePlan = null) {
           routine_pairing_notes: collectRecoPromptTextList(plan.lead_product.routine_pairing_notes, { max: 1, maxLen: 96 }),
         }
       : null,
-    support_steps: Array.isArray(plan.support_steps)
+    support_steps: includeSupportSteps && Array.isArray(plan.support_steps)
       ? plan.support_steps.map((item) => ({
           name: compactRecoAssistantPromptField(item?.name, { maxLen: 90 }),
           matched_role_label: compactRecoAssistantPromptField(item?.matched_role_label, { maxLen: 48 }),
@@ -54579,6 +54581,203 @@ function buildCompactRecoAssistantWritePlan(writePlan = null) {
         }
       : null,
   });
+}
+
+const RECO_ASSISTANT_GENERIC_REGION_TOKENS = new Set([
+  'us',
+  'usa',
+  'u.s.',
+  'u.s.a.',
+  'united states',
+  'cn',
+  'china',
+  'uk',
+  'u.k.',
+  'united kingdom',
+  'ca',
+  'canada',
+  'au',
+  'australia',
+  'eu',
+  'europe',
+  'global',
+  'unknown',
+]);
+
+function normalizeRecoAssistantProfileValue(value) {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed && !isUnsureToken(trimmed) ? trimmed : '';
+  }
+  if (Number.isFinite(Number(value))) return String(value).trim();
+  return '';
+}
+
+function pickRecoAssistantProfileValue(profile = null, keys = []) {
+  const p = isPlainObject(profile) ? profile : {};
+  for (const key of Array.isArray(keys) ? keys : []) {
+    if (!key) continue;
+    const parts = String(key).split('.');
+    let cursor = p;
+    for (const part of parts) {
+      if (!cursor || typeof cursor !== 'object' || Array.isArray(cursor)) {
+        cursor = null;
+        break;
+      }
+      cursor = cursor[part];
+    }
+    const normalized = normalizeRecoAssistantProfileValue(cursor);
+    if (normalized) return normalized;
+  }
+  return '';
+}
+
+function recoAssistantTextMentionsSkinType(text = '') {
+  return /\b(oily|dry|combination|combo(?:-|\s)?oily|combo(?:-|\s)?dry|normal|sensitive)\s+skin\b/i.test(String(text || ''))
+    || /(油皮|油性|混油|混干|干皮|干性|中性皮|敏感肌|敏感皮)/i.test(String(text || ''));
+}
+
+function recoAssistantTextMentionsLocationOrClimate(text = '') {
+  return /\b(city|live in|living in|located in|humidity|humid|dry climate|cold climate|hot climate|high[-\s]?uv|low[-\s]?humidity|desert|tropical|coastal|winter|summer|commute|outdoor|indoors?)\b/i.test(String(text || ''))
+    || /(城市|所在|居住|生活在|湿度|潮湿|干燥|气候|紫外线|通勤|户外|室内|高温|寒冷)/i.test(String(text || ''));
+}
+
+function recoAssistantTextMentionsLifestyleOrSleep(text = '') {
+  return /\b(late night|late nights|sleep|sleeping|shift work|night shift|jet lag|travel|commute|gym|sweat|workout|outdoor|screen time|stress)\b/i.test(String(text || ''))
+    || /(熬夜|睡眠|作息|夜班|倒班|时差|通勤|运动|出汗|户外|压力)/i.test(String(text || ''));
+}
+
+function recoAssistantHasSpecificClimateLocation(profile = null) {
+  const raw = pickRecoAssistantProfileValue(profile, [
+    'city',
+    'location',
+    'home_city',
+    'homeCity',
+    'home_region',
+    'homeRegion',
+    'region',
+    'country',
+    'travel_plan.destination',
+    'travelPlan.destination',
+  ]);
+  if (!raw) return false;
+  const normalized = raw.toLowerCase().replace(/\s+/g, ' ').trim();
+  if (RECO_ASSISTANT_GENERIC_REGION_TOKENS.has(normalized)) return false;
+  if (/^[a-z]{2}$/i.test(raw.trim())) return false;
+  return true;
+}
+
+function recoAssistantHasCurrentRoutine(profile = null) {
+  const p = isPlainObject(profile) ? profile : {};
+  const routine = p.currentRoutine ?? p.current_routine ?? p.routine;
+  if (typeof routine === 'string') return Boolean(routine.trim());
+  if (Array.isArray(routine)) return routine.length > 0;
+  if (isPlainObject(routine)) return Object.keys(routine).length > 0;
+  return false;
+}
+
+function recoAssistantHasLifestyleContext(profile = null) {
+  const p = isPlainObject(profile) ? profile : {};
+  if (pickRecoAssistantProfileValue(p, [
+    'sleep',
+    'sleep_schedule',
+    'sleepSchedule',
+    'lifestyle',
+    'work_schedule',
+    'workSchedule',
+    'outdoor_exposure',
+    'outdoorExposure',
+    'commute',
+    'exercise',
+    'activity_level',
+    'activityLevel',
+  ])) return true;
+  const lifestyle = p.lifestyle && typeof p.lifestyle === 'object' && !Array.isArray(p.lifestyle) ? p.lifestyle : null;
+  return Boolean(lifestyle && Object.keys(lifestyle).length > 0);
+}
+
+function buildRecoAssistantRefinementQuestionPlan({
+  profile = null,
+  userRequestText = '',
+  language = 'EN',
+} = {}) {
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const profileObj = isPlainObject(profile) ? profile : {};
+  const requestText = String(userRequestText || '').trim();
+  const skinTypeKnown = Boolean(
+    pickRecoAssistantProfileValue(profileObj, ['skinType', 'skin_type', 'skin_type_tendency'])
+    || recoAssistantTextMentionsSkinType(requestText),
+  );
+  const climateKnown = recoAssistantHasSpecificClimateLocation(profileObj) || recoAssistantTextMentionsLocationOrClimate(requestText);
+  const routineKnown = recoAssistantHasCurrentRoutine(profileObj);
+  const lifestyleKnown = recoAssistantHasLifestyleContext(profileObj) || recoAssistantTextMentionsLifestyleOrSleep(requestText);
+  const requestLower = requestText.toLowerCase();
+  const lifestyleSensitiveAsk =
+    recoAssistantTextMentionsLifestyleOrSleep(requestText)
+    || /\b(dull|tired|puffy|dark circles|greasy by noon|under makeup|pilling|commute|sweat|gym|outdoor|sunscreen|spf)\b/i.test(requestText)
+    || /(暗沉|疲惫|黑眼圈|浮肿|中午出油|搓泥|通勤|运动|出汗|户外|防晒)/i.test(requestText);
+  const isGeneralRecoAsk =
+    /\b(what product|what should i (?:buy|use)|recommend|suggest|routine|skin type)\b/i.test(requestText)
+    || /(推荐|买什么|用什么|肤质|护肤|产品)/i.test(requestText)
+    || !requestLower;
+
+  if (!skinTypeKnown) {
+    return {
+      field: 'skin_type',
+      question:
+        lang === 'CN'
+          ? '为了把推荐收得更准，你现在更接近油皮、混油、混干还是干皮？'
+          : 'To tune this more precisely, are you closer to oily, combo-oily, combo-dry, or dry skin right now?',
+      rationale: 'skin_type_missing',
+      optional: true,
+    };
+  }
+  if (!climateKnown && isGeneralRecoAsk) {
+    return {
+      field: 'location_climate',
+      question:
+        lang === 'CN'
+          ? '你平时生活在哪个城市或气候里（潮湿、干燥、寒冷、高紫外线）？'
+          : 'What city or climate are you usually in (humid, dry, cold, or high-UV)?',
+      rationale: 'location_climate_missing',
+      optional: true,
+    };
+  }
+  if (!lifestyleKnown && lifestyleSensitiveAsk) {
+    return {
+      field: 'lifestyle_sleep',
+      question:
+        lang === 'CN'
+          ? '你的日常更偏熬夜、久坐室内、户外通勤，还是运动出汗多？'
+          : 'Does your usual week lean more late nights, mostly indoor work, outdoor commuting, or gym/sweat?',
+      rationale: 'lifestyle_sleep_missing',
+      optional: true,
+    };
+  }
+  if (!routineKnown && isGeneralRecoAsk) {
+    return {
+      field: 'current_routine',
+      question:
+        lang === 'CN'
+          ? '你现在 AM/PM 已经在用哪些步骤或产品？'
+          : 'What AM/PM steps or products are you already using?',
+      rationale: 'current_routine_missing',
+      optional: true,
+    };
+  }
+  if (!lifestyleKnown && isGeneralRecoAsk) {
+    return {
+      field: 'lifestyle_sleep',
+      question:
+        lang === 'CN'
+          ? '你的作息和场景更接近熬夜、户外通勤、运动出汗，还是长期室内？'
+          : 'Which context fits your routine more: late nights, outdoor commuting, gym/sweat, or mostly indoors?',
+      rationale: 'lifestyle_sleep_missing',
+      optional: true,
+    };
+  }
+  return null;
 }
 
 function buildCompactRecoAssistantPromptContext(context = {}) {
@@ -54618,6 +54817,7 @@ function buildCompactRecoAssistantPromptContext(context = {}) {
     target_label: pickFirstTrimmed(row.target_label),
     selected_target_ids: asStringArray(row.selected_target_ids, 4),
     ranked_target_ids: asStringArray(row.ranked_target_ids, 4),
+    refinement_question: pickFirstTrimmed(row.refinement_question?.question, row.refinement_question) || null,
     assistant_write_plan: buildCompactRecoAssistantWritePlan(row.assistant_write_plan),
   });
 }
@@ -54697,50 +54897,57 @@ function buildCompactRecoAssistantPromptLines({
     'Return strict JSON only.',
     'Write one short shopper-facing skincare recommendation explanation aligned to Context.',
     'Use only products, steps, prices, and claims already present in Context.',
-    'The complete allowed product-name set is exactly Context.selected_products.',
-    'Do not mention any brand or product name that is not listed in Context.selected_products.',
+    'Allowed product names are exactly Context.selected_products.',
+    'Do not name brands/products outside Context.selected_products.',
     'If product evidence contains extra concern claims outside user_relevant_concern_families, omit those extra claims.',
     'If user_relevant_concern_families does not include tone_brightening, do not mention glow, radiance, dark spots, uneven tone, brightening, or dullness.',
     'If user_relevant_concern_families does not include aging_texture, do not mention wrinkles, fine lines, aging, anti-aging, or texture repair.',
     'Avoid internal phrasing like "selected products" and avoid generic filler.',
+    'Use calibrated wording; avoid best, most, top, strongest, perfect, ideal, winner, must-have, and "best for".',
     'Price may support the recommendation, but pair it with a concrete product-fit reason from Context.',
     'Follow Context.assistant_write_plan first: use its reason_points before falling back to generic role labels.',
     'Every named product must receive its own concrete product-specific reason from Context.',
-    'Never write ungrammatical fragments like "because a serum...", "because an SPF...", or "because best for..."; use "because it is..." or an active verb.',
-    'Use one direct-buy framing phrase only once, in the first sentence; never repeat buy/pick framing inside the reason clause or final wrap-up.',
-    'When reviewed_insight_available is false, do not repeat clinical, dermatologist, review, community, or social-proof claims; treat the evidence as seller/product-record copy only.',
+    'Avoid fragments like "because a serum/SPF/best for"; use "because it is" or active verbs.',
+    'Use one shopping-guidance phrase once in sentence 1; do not repeat buy/pick framing later.',
+    'When reviewed_insight_available is false, avoid clinical/review/social-proof language; treat evidence as seller/product-record copy.',
     'Compact retry mode: keep the answer tight, prioritize the selected product evidence, and skip optional background detail.',
   ];
+  if (!strictSelectedOnlyContext) {
+    lines.push('Append Context.refinement_question once as the final question when present.');
+  }
   if (strictSelectedOnlyContext) {
-    lines.push('Strict selected-only retry: Context.selected_products is the only allowed product-name list.');
-    lines.push('Use no outside brand or product memory; every named product must be copied exactly from Context.selected_products.');
-    lines.push('If Context.forbidden_product_names is present, never output those names or partial product names from that list.');
+    lines.push('Strict selected-only retry: only Context.selected_products may be named.');
+    lines.push('Use no outside product memory; copy every named product exactly from Context.selected_products.');
+    lines.push('Never output Context.forbidden_product_names or their partial names/brands.');
     lines.push('If a detail is not present in Context.selected_product_details or assistant_write_plan, omit it.');
   }
   if (requestMode === 'buy') {
     lines.push('Use direct shopping advice tone.');
     lines.push('Start the first sentence with the lead product name.');
-    lines.push('The first sentence must use direct buy/pick language, for example: "<lead product name> is the most direct fit because ...".');
+    lines.push('The first sentence must give clear shopping guidance without absolute wording, for example: "<lead product name> fits this request because ...".');
   } else if (requestMode === 'use_first') {
     lines.push('Use starting-point advice tone.');
     lines.push('Start with the lead product name and explain why it is the first step.');
   } else if (requestMode === 'use') {
     lines.push('Use practical usage guidance tone.');
   }
+  const questionSuffix = strictSelectedOnlyContext
+    ? '.'
+    : '; if Context.refinement_question exists, add one short final question.';
   if (selectedProductRoleMix === 'single_product') {
-    lines.push('Stay on one product only. Use exactly 2 sentences.');
+    lines.push(`Stay on one product only. Use exactly 2 recommendation sentences${questionSuffix}`);
   } else if (selectedProductRoleMix === 'same_role_comparison') {
     lines.push('Treat the products as same-slot comparison options, not a routine.');
     lines.push('Pick one lead product, then compare the other options with one short tradeoff each.');
     lines.push('Use same-role price/value differences only when Context.price_order_summary or assistant_write_plan provides them.');
-    lines.push('Use at most 3 sentences.');
+    lines.push(`Use at most 3 recommendation sentences${questionSuffix}`);
   } else {
     lines.push('Treat the products as different routine steps, not interchangeable substitutes.');
     lines.push('Name the lead product first, then explain each support step briefly.');
     lines.push('For routine_mix, the lead sentence must include at least one non-price evidence point; use price only as a second dimension.');
     lines.push('For routine_mix, do not use cheapest, lower-priced, best-value, affordable, or ROI comparison language across different steps; only state listed prices as per-step cost when useful.');
     lines.push('For routine_mix, each support product needs its own reason_points-based explanation; do not spend the final sentence on a generic routine promise.');
-    lines.push('Use at most 3 sentences.');
+    lines.push(`Use at most 3 recommendation sentences${questionSuffix}`);
   }
   if (retryInstruction) {
     lines.push('Previous draft failed the quality gate.');
@@ -54771,7 +54978,7 @@ function buildStructuredRecoAssistantReasonPromptLines({
     'Each reason must be a short shopper-facing fragment, not a full recommendation sentence.',
     'Do not start a reason fragment with "a" or "an" unless it remains grammatical after "because"; prefer active verbs or "it is ...".',
     'Do not start a reason fragment with "best for"; rewrite that as "it is positioned for ..." plus one concrete evidence point.',
-    'Do not include direct buy/pick framing inside any reason fragment.',
+    'Do not include direct buy/pick framing or absolute terms such as best, most, top, strongest, perfect, ideal, winner, or must-have inside any reason fragment.',
     'When reviewed_insight_available is false, do not use clinical, dermatologist, review, community, or social-proof claim language.',
     'Price may be included only when Context provides price_label or price_order_summary, and it must be paired with a non-price fit reason.',
   ];
@@ -54800,7 +55007,13 @@ function describeRecoAssistantRewriteFailureReason(reason) {
   const normalized = String(reason || '').trim().toLowerCase();
   if (!normalized) return null;
   if (normalized === 'rewrite_buy_lead_not_direct') {
-    return 'Open with the exact lead product name and a direct buy line, for example "<lead product name> is the most direct fit because ...".';
+    return 'Open with the exact lead product name and clear shopping guidance, for example "<lead product name> fits this request because ...".';
+  }
+  if (normalized === 'rewrite_absolute_recommendation_wording') {
+    return 'Use calibrated wording such as "fits this request", "is a practical option", or "is worth considering"; avoid best, most, top, strongest, perfect, ideal, winner, and must-have.';
+  }
+  if (normalized === 'rewrite_reasks_known_profile_field') {
+    return 'Do not ask for profile fields already present in Context.profile_summary; if a follow-up is needed, use Context.refinement_question exactly once.';
   }
   if (normalized === 'rewrite_buy_addon_filler') {
     return 'Do not pad the answer with future routine-building filler.';
@@ -55105,6 +55318,15 @@ function buildRecoAssistantRewritePrompt({
     requestMode,
     targetLabel: primaryTargetLabel || null,
   });
+  const refinementQuestionPlan = buildRecoAssistantRefinementQuestionPlan({
+    profile,
+    userRequestText: pickFirstTrimmed(
+      userRequestText,
+      payload?.recommendation_meta?.request_text,
+      payload?.request_text,
+    ),
+    language: lang,
+  });
   const userRelevantConcernText = [
     pickFirstTrimmed(userRequestText, payload?.recommendation_meta?.request_text, payload?.request_text),
     primaryTargetLabel,
@@ -55187,10 +55409,14 @@ function buildRecoAssistantRewritePrompt({
           .filter(Boolean)
           .slice(0, 4)
       : [],
+    refinement_question: refinementQuestionPlan,
     assistant_write_plan: assistantWritePlan,
   };
   const context = structuredReasonOnly
-    ? buildStrictSelectedOnlyRecoAssistantPromptContext(fullContext)
+    ? buildStrictSelectedOnlyRecoAssistantPromptContext({
+      ...fullContext,
+      refinement_question: null,
+    })
     : strictSelectedOnlyContext
     ? buildStrictSelectedOnlyRecoAssistantPromptContext(fullContext)
     : compactContext
@@ -55214,11 +55440,14 @@ function buildRecoAssistantRewritePrompt({
       'Return strict JSON only.',
       'Write one recommendation assistant message that is natural, specific, concise, and aligned to the final payload.',
       'Address the user_request directly and respond to the user\'s real complaint first.',
+      'Use calibrated wording; avoid best, most, top, strongest, perfect, ideal, winner, must-have, and "best for".',
+      'If Context.refinement_question exists, include exactly one optional follow-up question as the final sentence after the recommendation; do not ask more than one question and do not delay the recommendation.',
+      'Do not ask for fields already present in Context.profile_summary; use only Context.refinement_question for follow-up.',
       'If request_mode is "buy", use direct shopping advice tone.',
       'If request_mode is "buy", start the first sentence with the lead product name rather than a generic concern summary.',
-      'If request_mode is "buy", the first sentence must use direct buy/pick language, for example: "<lead product name> is the most direct fit because ...".',
+      'If request_mode is "buy", the first sentence must give clear shopping guidance without absolute wording, for example: "<lead product name> fits this request because ...".',
       'Never write ungrammatical fragments like "because a serum...", "because an SPF...", or "because best for..."; use "because it is..." or an active verb.',
-      'Use one direct-buy framing phrase only once, in the first sentence; never repeat buy/pick framing inside the reason clause or final wrap-up.',
+      'Use one shopping-guidance phrase only once, in the first sentence; never repeat buy/pick framing inside the reason clause or final wrap-up.',
       'If request_mode is "buy" and there is one selected product, the first sentence must directly recommend that product by name.',
       'If request_mode is "buy" and selected_product_role_mix is "same_role_comparison", the first sentence must name the lead product and signal that the remaining picks are same-slot comparison options.',
       'If request_mode is "buy" and selected_product_role_mix is "routine_mix", the first sentence must name the lead product and frame the remaining picks as routine add-ons from other roles; only same-role products may be same-slot alternatives.',
@@ -55226,7 +55455,7 @@ function buildRecoAssistantRewritePrompt({
       'If selected_product_role_mix is "single_product", sentence 2 must explain why that one product matches the concern using concrete evidence from Context.',
       'If selected_product_role_mix is "routine_mix", make it clear these are different routine steps, not interchangeable substitutes, and do not use the phrase "selected products".',
       'If selected_product_role_mix is "routine_mix", explicitly treat them as different steps in a basic routine and not the same type of product.',
-      'If request_mode is "buy" and there is one selected product with no secondary targets, use exactly 2 sentences.',
+      'If request_mode is "buy" and there is one selected product with no secondary targets, use exactly 2 recommendation sentences; if Context.refinement_question exists, add one short final question.',
       'If selected_product_role_mix is "same_role_comparison", present a concise horizontal comparison and name each selected product exactly once if space allows.',
       'If selected_product_role_mix is "same_role_comparison", compare lower-priced versus higher-priced options only inside the same role when price_order_summary supports it.',
       'If selected_product_role_mix is "routine_mix", present a basic routine by role or step, and do not imply products from different roles are interchangeable.',
@@ -55249,9 +55478,9 @@ function buildRecoAssistantRewritePrompt({
       'Use price_order_summary and selected_product_details.price_position only for same-role comparisons; routine_mix should not use cross-role lower-cost or higher-cost framing.',
       'Do not open with "start with" unless request_mode is "use_first".',
       'If request_mode is "use_first", use starting-point advice tone.',
-      'If request_mode is "use_first" and there is one selected product with no secondary targets, use exactly 2 sentences.',
+      'If request_mode is "use_first" and there is one selected product with no secondary targets, use exactly 2 recommendation sentences; if Context.refinement_question exists, add one short final question.',
       'If request_mode is "use", use practical product guidance tone.',
-      'If request_mode is "use" and there is one selected product with no secondary targets, use exactly 2 sentences.',
+      'If request_mode is "use" and there is one selected product with no secondary targets, use exactly 2 recommendation sentences; if Context.refinement_question exists, add one short final question.',
       'Use selected_product_details.description_snippet and selected_product_details.evidence_points as the primary concrete reason layer when available.',
       'Use selected_product_details.why_this_one, selected_product_details.best_for, and selected_product_details.key_features as supporting context when available.',
       'Use selected_product_details.compare_highlights and selected_product_details.pivota_insights when available; do not invent highlights that are absent from Context.',
@@ -55260,15 +55489,15 @@ function buildRecoAssistantRewritePrompt({
       'If a watchout says tinted, shade match, sample size, refill, active sensitivity, or layering limitation, mention it only when it materially changes the shopping choice.',
       'If a product record includes extra concern claims that are not in user_relevant_concern_families, omit those extra claims and use the target-aligned evidence_points instead.',
       'For oily-skin/oil-control asks, do not mention dullness, uneven tone, dark spots, glow, or brightening unless tone/brightening is an explicit target in Context.',
-      'Do not call a product, routine, or bundle the top buy unless the same sentence or the next sentence gives a concrete reason from description_snippet, evidence_points, compare_highlights, or pivota_insights.',
+      'Do not call a product, routine, or bundle the top, best, strongest, perfect, or ideal choice. Give concrete evidence instead.',
       'If selected_product_details.fit_assessment is "soft_match" or comparison_fill_reason is present, frame that product as a softer or broader alternative instead of an equally direct match.',
       'If selected_product_details.tradeoff_hint exists, honor it.',
       'Prefer product-specific evidence over generic role language when both are available.',
       'For single-direction answers, sentence 2 should explain the fit in shopper-facing language instead of repeating the question.',
       'Do not end with a generic closing sentence like "these steps support your skin" or "together they help balance the routine".',
       'Only mention targets, ingredients, steps, and product names that already exist in Context.',
-      'The complete allowed product-name set is exactly Context.selected_products.',
-      'Do not mention any brand or product name that is not listed in Context.selected_products.',
+      'Allowed product names are exactly Context.selected_products.',
+      'Do not name brands/products outside Context.selected_products.',
       'Do not invent products, targets, routines, claims, or benefits beyond Context.',
       'If user_relevant_concern_families does not include tone_brightening, do not mention glow, radiance, dark spots, uneven tone, brightening, or dullness.',
       'If user_relevant_concern_families does not include aging_texture, do not mention wrinkles, fine lines, aging, anti-aging, or texture repair.',
@@ -55461,6 +55690,13 @@ function removeRecoAssistantSelectedProductNamesFromConcernText(text, payload = 
   return out.replace(/\s+/g, ' ').trim();
 }
 
+const RECO_ASSISTANT_ABSOLUTE_RECOMMENDATION_WORDING_RE =
+  /\b(?:best|most|top|strongest|perfect|ideal|winner|ultimate|unbeatable|must[-\s]?have|number\s+one|no\.\s*1|#\s*1)\b/i;
+
+function assistantTextUsesAbsoluteRecommendationWording(text) {
+  return RECO_ASSISTANT_ABSOLUTE_RECOMMENDATION_WORDING_RE.test(String(text || ''));
+}
+
 function assistantTextUsesFutureRoutineUpsell(text) {
   return /\b(eventually|later on|down the line|you may want to look for|you might want to look for|you may also want to look for|you may eventually want to look for|consider adding later)\b/i.test(
     String(text || ''),
@@ -55496,12 +55732,13 @@ function assistantTextUsesStiffSelectionFraming(text) {
 
 function assistantTextRepeatsBestFirstBuy(text) {
   const raw = String(text || '');
+  const directShoppingFramingPattern = '(?:best first buy|strongest pick|top pick|lead pick|strongest choice|strongest option|top choice|top option|most direct fit|most practical pick|fits this request|practical option|clear option|sensible option|good fit|worth considering)';
   const directBuyFramingCount = (
-    raw.match(/\b(?:best first buy|strongest pick|top pick|lead pick|strongest choice|strongest option|top choice|top option|most direct fit)\b/gi) || []
+    raw.match(new RegExp(`\\b${directShoppingFramingPattern}\\b`, 'gi')) || []
   ).length;
   return directBuyFramingCount > 1
-    || /\b(?:best first buy|strongest pick|top pick|lead pick|strongest choice|strongest option|top choice|top option|most direct fit)\s+because\s+(?:it\s+is|it's|this\s+is|that\s+is)\s+(?:your\s+)?(?:best first buy|strongest pick|top pick|lead pick|strongest choice|strongest option|top choice|top option|most direct fit)\b/i.test(raw)
-    || /\b(?:routine|two-step routine|routine combination|bundle|combination)\s+is\s+(?:your\s+)?(?:best first buy|strongest pick|top pick|lead pick|strongest choice|strongest option|top choice|top option)\b/i.test(raw);
+    || new RegExp(`\\b${directShoppingFramingPattern}\\s+because\\s+(?:it\\s+is|it's|this\\s+is|that\\s+is)\\s+(?:your\\s+)?${directShoppingFramingPattern}\\b`, 'i').test(raw)
+    || /\b(?:routine|two-step routine|routine combination|bundle|combination)\s+is\s+(?:your\s+)?(?:best first buy|strongest pick|top pick|lead pick|strongest choice|strongest option|top choice|top option|practical option|clear option|sensible option)\b/i.test(raw);
 }
 
 function recoPayloadHasReviewedProductInsights(payload = null) {
@@ -55625,7 +55862,36 @@ function compactSingleDirectionRecoAssistantText(text, {
   if (Array.isArray(secondaryTargets) && secondaryTargets.length > 0) return raw;
   const sentences = splitRecoAssistantSentences(raw, 6);
   if (sentences.length <= 2) return raw;
+  const thirdSentence = String(sentences[2] || '').trim();
+  if (thirdSentence && /[?？]\s*$/.test(thirdSentence)) {
+    return sentences.slice(0, 3).join(' ').trim();
+  }
   return sentences.slice(0, 2).join(' ').trim();
+}
+
+function assistantTextReasksKnownRecoProfileField({ profile = null, text = '', userRequestText = '' } = {}) {
+  const questionText = splitRecoAssistantSentences(text, 8)
+    .filter((sentence) => /[?？]\s*$/.test(String(sentence || '').trim()))
+    .join('\n');
+  if (!questionText) return false;
+  const profileObj = isPlainObject(profile) ? { ...profile } : {};
+  if (!pickRecoAssistantProfileValue(profileObj, ['skinType', 'skin_type', 'skin_type_tendency']) && recoAssistantTextMentionsSkinType(userRequestText)) {
+    profileObj.skinType = 'mentioned_in_request';
+  }
+  if (hasKnownFieldReaskInText({ profile: profileObj, text: questionText, cards: [] })) return true;
+  if (
+    recoAssistantHasSpecificClimateLocation(profileObj)
+    && /\b(city|climate|where\s+do\s+you\s+live|where\s+are\s+you|humidity|humid|dry|cold|high[-\s]?uv)\b/i.test(questionText)
+  ) return true;
+  if (
+    recoAssistantHasCurrentRoutine(profileObj)
+    && /\b(am\/pm|a\.m\.\/p\.m\.|steps?|products?\s+are\s+you\s+(?:already\s+)?using|current routine|routine)\b/i.test(questionText)
+  ) return true;
+  if (
+    recoAssistantHasLifestyleContext(profileObj)
+    && /\b(late nights?|sleep|usual week|outdoor commuting|gym|sweat|mostly indoors?|work schedule|lifestyle)\b/i.test(questionText)
+  ) return true;
+  return false;
 }
 
 function assistantTextHasDirectBuyLead(text, names) {
@@ -55633,8 +55899,7 @@ function assistantTextHasDirectBuyLead(text, names) {
   if (!lead) return false;
   const mentionsSelectedProduct = assistantTextMentionsAny(lead, names);
   const usesBuyLanguage = /\b(buy|buying|pick|picks|choose|get|go with|recommend|recommended|recommendation)\b/i.test(lead)
-    || /\b(top|lead|first|best)\s+(pick|choice|option|buy)\b/i.test(lead)
-    || /\b(best|strongest|most direct)\s+(fit|match|option|choice)\b/i.test(lead)
+    || /\b(?:fits?|matches?|works\s+for|is\s+(?:a\s+)?(?:practical|clear|good|sensible|useful)\s+(?:option|fit)|is\s+worth\s+considering)\b/i.test(lead)
     || /(买|购买|入手|下单|推荐)/i.test(lead);
   const opensWithUseFirstLanguage = /\b(start with|start\b)\b/i.test(lead) || /(先用|先从)/i.test(lead);
   return mentionsSelectedProduct && usesBuyLanguage && !opensWithUseFirstLanguage;
@@ -55654,6 +55919,8 @@ function validateRecoAssistantRewriteCandidate({
   candidateText,
   payload,
   language,
+  profile,
+  userRequestText,
   primaryTarget,
   secondaryTargets,
   names,
@@ -55687,6 +55954,7 @@ function validateRecoAssistantRewriteCandidate({
   const usesInternalTemplatePhrases =
     looksLikePayloadBoundRecoAssistantText(text, language)
     || /(primary recommendation focus|products actually selected this time|当前主推荐方向|本次实际选中的商品)/i.test(text);
+  const usesAbsoluteRecommendationWording = assistantTextUsesAbsoluteRecommendationWording(text);
   const overconfident = confidenceLevel === 'low' && assistantTextUsesOverconfidentRecoLanguage(text);
   const secondaryTargetsMentionedAsTooMany =
     secondaryTargets.length <= 1
@@ -55732,11 +56000,13 @@ function validateRecoAssistantRewriteCandidate({
     primaryTarget,
     secondaryTargets,
   });
+  const reasksKnownProfileField = assistantTextReasksKnownRecoProfileField({ profile, text, userRequestText });
   if (
     !mentionsSelectedProduct
     || !mentionsPrimaryTarget
     || mentionsUnknownDirections
     || usesInternalTemplatePhrases
+    || usesAbsoluteRecommendationWording
     || overconfident
     || secondaryTargetsMentionedAsTooMany
     || buyLeadNotDirect
@@ -55752,7 +56022,10 @@ function validateRecoAssistantRewriteCandidate({
     || usesRoutineCrossRolePriceComparison
     || usesUngrammaticalReasonFragment
     || usesOffTargetConcernClaim
+    || reasksKnownProfileField
   ) {
+    if (usesAbsoluteRecommendationWording) return { ok: false, reason: 'rewrite_absolute_recommendation_wording' };
+    if (reasksKnownProfileField) return { ok: false, reason: 'rewrite_reasks_known_profile_field' };
     if (buyLeadNotDirect) return { ok: false, reason: 'rewrite_buy_lead_not_direct' };
     if (mentionsUnselectedCandidate) return { ok: false, reason: 'rewrite_mentions_unselected_product' };
     if (buyUsesRoutineUpsell) return { ok: false, reason: 'rewrite_buy_addon_filler' };
@@ -55777,6 +56050,7 @@ function shouldRetryRecoAssistantRewrite(reason) {
     || normalized === 'gemini_json_timeout'
     || normalized === 'parse_truncated_json'
     || normalized === 'rewrite_buy_lead_not_direct'
+    || normalized === 'rewrite_absolute_recommendation_wording'
     || normalized === 'rewrite_vague_benefit_language'
     || normalized === 'rewrite_templated_routine_bridge'
     || normalized === 'rewrite_stiff_selection_framing'
@@ -55788,6 +56062,7 @@ function shouldRetryRecoAssistantRewrite(reason) {
     || normalized === 'rewrite_ungrammatical_reason_fragment'
     || normalized === 'rewrite_mentions_unselected_product'
     || normalized === 'rewrite_off_target_concern_claim'
+    || normalized === 'rewrite_reasks_known_profile_field'
     || normalized === 'rewrite_failed_alignment_guard';
 }
 
@@ -55905,7 +56180,7 @@ function normalizeRecoAssistantReasonFragment(value, {
     .sort((left, right) => String(right || '').length - String(left || '').length);
   let text = String(value || '').trim();
   const directBuyFramingPattern =
-    '(?:best\\s+first\\s+buy|top\\s+pick|lead\\s+pick|first\\s+choice|best\\s+choice|strongest\\s+pick|strongest\\s+choice|strongest\\s+option|top\\s+choice|top\\s+option|most\\s+direct\\s+fit)';
+    '(?:best\\s+first\\s+buy|top\\s+pick|lead\\s+pick|first\\s+choice|best\\s+choice|strongest\\s+pick|strongest\\s+choice|strongest\\s+option|top\\s+choice|top\\s+option|most\\s+direct\\s+fit|most\\s+practical\\s+pick|practical\\s+option|clear\\s+option|sensible\\s+option|good\\s+fit|fits\\s+this\\s+request|worth\\s+considering|ideal\\s+pick|perfect\\s+pick|must[-\\s]?have)';
   const initialDirectBuyFramingRegex = new RegExp(`\\b${directBuyFramingPattern}\\b`, 'i');
   const initialDirectBuyBecauseRegex = new RegExp(`\\b${directBuyFramingPattern}\\b[^.?!]{0,100}\\bbecause\\b`, 'i');
   if (initialDirectBuyFramingRegex.test(text) && !initialDirectBuyBecauseRegex.test(text)) {
@@ -56117,6 +56392,15 @@ function formatRecoAssistantStructuredSentence(sentence) {
   return `${text}.`;
 }
 
+function appendRecoAssistantOptionalRefinementQuestion(text, questionPlan = null) {
+  const base = String(text || '').trim();
+  if (!base) return '';
+  const question = pickFirstTrimmed(questionPlan?.question);
+  if (!question) return base;
+  if (base.includes(question)) return base;
+  return `${base} ${formatRecoAssistantStructuredSentence(question)}`.trim();
+}
+
 function pickRecoAssistantStructuredFollowupReason(detail = {}, {
   leadReason = '',
   selectedNames = [],
@@ -56153,6 +56437,8 @@ function renderRecoAssistantStructuredReasonRewrite({
   structuredReason,
   payload,
   language,
+  profile,
+  userRequestText,
   primaryTarget,
   names,
   requestMode,
@@ -56176,6 +56462,15 @@ function renderRecoAssistantStructuredReasonRewrite({
     ),
   );
   const targetPhrase = formatRecoAssistantTargetPhrase(targetLabel, language);
+  const refinementQuestionPlan = buildRecoAssistantRefinementQuestionPlan({
+    profile,
+    userRequestText: pickFirstTrimmed(
+      userRequestText,
+      payload?.recommendation_meta?.request_text,
+      payload?.request_text,
+    ),
+    language,
+  });
   const forbiddenNames = collectRecoAssistantUnselectedCandidateDisplayNames(payload, 8);
   const forbiddenAliases = collectRecoAssistantUnselectedCandidateAliases(payload);
   const leadReason = normalizeRecoAssistantReasonFragment(structuredReason?.lead_reason, {
@@ -56226,7 +56521,7 @@ function renderRecoAssistantStructuredReasonRewrite({
     const leadSentence =
       requestMode === 'use_first'
         ? `${selectedNames[0]}适合作为起步选择，因为${grammaticalLeadReason}`
-        : `${selectedNames[0]}是更适合先买的选择${targetPhrase}，因为${grammaticalLeadReason}`;
+        : `${selectedNames[0]}可以作为先买选择${targetPhrase}，因为${grammaticalLeadReason}`;
     if (selectedNames.length === 1) {
       const followupReason = pickRecoAssistantStructuredFollowupReason(details[0], {
         leadReason: grammaticalLeadReason,
@@ -56234,10 +56529,10 @@ function renderRecoAssistantStructuredReasonRewrite({
         forbiddenNames,
         forbiddenAliases,
       });
-      return [
+      return appendRecoAssistantOptionalRefinementQuestion([
         formatRecoAssistantStructuredSentence(leadSentence),
         followupReason ? formatRecoAssistantStructuredSentence(`它还适合，因为${followupReason}`) : '',
-      ].filter(Boolean).join(' ');
+      ].filter(Boolean).join(' '), refinementQuestionPlan);
     }
     const supportSentences = selectedNames.slice(1).map((name, index) => {
       const detail = details[index + 1] || {};
@@ -56252,17 +56547,17 @@ function renderRecoAssistantStructuredReasonRewrite({
       );
       return formatRecoAssistantStructuredSentence(`${name}负责${step}，因为${reason}`);
     });
-    return [
+    return appendRecoAssistantOptionalRefinementQuestion([
       formatRecoAssistantStructuredSentence(leadSentence),
       ...supportSentences,
-    ].filter(Boolean).slice(0, 3).join(' ');
+    ].filter(Boolean).slice(0, 3).join(' '), refinementQuestionPlan);
   }
   const leadSentence =
     requestMode === 'use_first'
       ? `Start with ${selectedNames[0]}${targetPhrase} because ${grammaticalLeadReason}`
       : requestMode === 'use'
-        ? `${selectedNames[0]} is the most practical pick${targetPhrase} because ${grammaticalLeadReason}`
-        : `${selectedNames[0]} is the most direct fit${targetPhrase} because ${grammaticalLeadReason}`;
+        ? `${selectedNames[0]} is a practical option${targetPhrase} because ${grammaticalLeadReason}`
+        : `${selectedNames[0]} fits this request${targetPhrase} because ${grammaticalLeadReason}`;
   if (selectedNames.length === 1) {
     const followupReason = pickRecoAssistantStructuredFollowupReason(details[0], {
       leadReason: grammaticalLeadReason,
@@ -56270,10 +56565,10 @@ function renderRecoAssistantStructuredReasonRewrite({
       forbiddenNames,
       forbiddenAliases,
     });
-    return [
+    return appendRecoAssistantOptionalRefinementQuestion([
       formatRecoAssistantStructuredSentence(leadSentence),
       followupReason ? formatRecoAssistantStructuredSentence(`It also fits because ${followupReason}`) : '',
-    ].filter(Boolean).join(' ');
+    ].filter(Boolean).join(' '), refinementQuestionPlan);
   }
   const supportSentences = selectedNames.slice(1).map((name, index) => {
     const detail = details[index + 1] || {};
@@ -56291,10 +56586,10 @@ function renderRecoAssistantStructuredReasonRewrite({
     const step = pickFirstTrimmed(detail.preferred_step, detail.matched_role_label, 'support step');
     return formatRecoAssistantStructuredSentence(`${name} covers the ${String(step).toLowerCase()} step because ${reason}`);
   });
-  return [
+  return appendRecoAssistantOptionalRefinementQuestion([
     formatRecoAssistantStructuredSentence(leadSentence),
     ...supportSentences,
-  ].filter(Boolean).slice(0, 3).join(' ');
+  ].filter(Boolean).slice(0, 3).join(' '), refinementQuestionPlan);
 }
 
 async function maybeRewriteRecoAssistantTextWithLlm({
@@ -56325,10 +56620,20 @@ async function maybeRewriteRecoAssistantTextWithLlm({
       payload?.request_text,
     ),
   );
+  const refinementQuestionPlan = buildRecoAssistantRefinementQuestionPlan({
+    profile,
+    userRequestText: pickFirstTrimmed(
+      userRequestText,
+      payload?.recommendation_meta?.request_text,
+      payload?.request_text,
+    ),
+    language,
+  });
   if (!names.length || !primaryTarget) return { text: fallbackText, llm_used: false, reason: 'missing_primary_payload' };
   const rewriteAttempts = [];
   const finishRewrite = (out = {}) => ({
     ...out,
+    refinement_question: refinementQuestionPlan,
     attempt_count: rewriteAttempts.length,
     attempts: rewriteAttempts.slice(0, 3),
   });
@@ -56468,41 +56773,25 @@ async function maybeRewriteRecoAssistantTextWithLlm({
       if (structuredReasonOnly) {
         const structuredReasonJson = result && isValidRecoAssistantStructuredReasonJson(result.json) ? result.json : null;
         candidateText = structuredReasonJson
-          ? renderRecoAssistantStructuredReasonRewrite({
-              structuredReason: structuredReasonJson,
-              payload,
-              language,
-              primaryTarget,
-              names,
-              requestMode,
+	            ? renderRecoAssistantStructuredReasonRewrite({
+	                structuredReason: structuredReasonJson,
+	                payload,
+	                language,
+	                profile,
+	                userRequestText,
+	                primaryTarget,
+	                names,
+	                requestMode,
               selectedProductRoleMix,
             })
           : '';
-        if (
-          candidateText &&
-          (
-            assistantTextMentionsUnselectedRecoCandidate(candidateText, payload)
-            || assistantTextUsesOffTargetRecoConcern(candidateText, {
-              payload,
-              primaryTarget,
-              secondaryTargets,
-            })
-          )
-        ) {
-          candidateText = renderRecoAssistantStructuredReasonRewrite({
-            structuredReason: { lead_reason: '', support_reasons: [] },
-            payload,
-            language,
-            primaryTarget,
-            names,
-            requestMode,
-            selectedProductRoleMix,
-          });
+        if (!candidateText && typeof result?.json?.assistant_text === 'string') {
+          candidateText = String(result.json.assistant_text || '').trim();
         }
       } else {
         candidateText = String(result && result.json && result.json.assistant_text || '').trim();
       }
-      if (!candidateText && !structuredReasonOnly && typeof result?.raw_text === 'string') {
+      if (!candidateText && typeof result?.raw_text === 'string') {
         const recoveredText = recoverRecoAssistantRewriteTextFromRaw(result.raw_text);
         if (recoveredText) {
           candidateText = recoveredText;
@@ -56532,12 +56821,14 @@ async function maybeRewriteRecoAssistantTextWithLlm({
           parse_status: parseStatus,
         };
       }
-      const validation = validateRecoAssistantRewriteCandidate({
-        candidateText,
-        payload,
-        language,
-        primaryTarget,
-        secondaryTargets,
+	      const validation = validateRecoAssistantRewriteCandidate({
+	        candidateText,
+	        payload,
+	        language,
+	        profile,
+	        userRequestText,
+	        primaryTarget,
+	        secondaryTargets,
         names,
         requestMode,
       });
@@ -56638,8 +56929,10 @@ async function maybeRewriteRecoAssistantTextWithLlm({
       || firstAttemptReason === 'rewrite_generic_routine_wrapup'
       || firstAttemptReason === 'rewrite_routine_cross_role_price_comparison'
       || firstAttemptReason === 'rewrite_ungrammatical_reason_fragment'
-      || firstAttemptReason === 'rewrite_duplicate_best_first_buy'
-      || firstAttemptReason === 'gemini_json_timeout'
+	      || firstAttemptReason === 'rewrite_duplicate_best_first_buy'
+	      || firstAttemptReason === 'rewrite_absolute_recommendation_wording'
+	      || firstAttemptReason === 'rewrite_reasks_known_profile_field'
+	      || firstAttemptReason === 'gemini_json_timeout'
       || firstAttemptReason === 'parse_truncated_json'
       || firstAttemptReason === 'empty_rewrite'
       || firstAttemptReason === 'rewrite_failed_alignment_guard';
@@ -92971,6 +93264,7 @@ const __internal = {
   applyRecoContentSpineToPayload,
   buildRouteAwareAssistantText,
   buildPayloadBoundRecoAssistantText,
+  buildRecoAssistantRefinementQuestionPlan,
   buildRecoAssistantRewritePrompt,
   validateRecoAssistantRewriteCandidate,
   renderRecoAssistantStructuredReasonRewrite,

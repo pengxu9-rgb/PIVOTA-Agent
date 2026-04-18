@@ -856,6 +856,10 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
             assistantRewrite?.llm_used === true;
           hardPathPayloadBundle.payload.recommendation_meta.assistant_rewrite_reason =
             pickFirstTrimmed(assistantRewrite?.reason) || null;
+          if (assistantRewrite?.refinement_question && typeof assistantRewrite.refinement_question === 'object') {
+            hardPathPayloadBundle.payload.recommendation_meta.assistant_refinement_question =
+              assistantRewrite.refinement_question;
+          }
           if (Array.isArray(assistantRewrite?.attempts) && assistantRewrite.attempts.length > 0) {
             hardPathPayloadBundle.payload.recommendation_meta.assistant_rewrite_attempts =
               assistantRewrite.attempts.slice(0, 3);

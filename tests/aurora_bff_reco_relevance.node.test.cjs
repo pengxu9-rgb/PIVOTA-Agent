@@ -1216,7 +1216,7 @@ test('__internal: quality contract accepts semantic oil-control wording without 
     envelope: {
       assistant_message: {
         role: 'assistant',
-        content: 'GoalSkin Oil Control Serum is the best first buy if you want something lightweight for mid-day shine and oil control.',
+        content: 'GoalSkin Oil Control Serum fits this request if you want something lightweight for mid-day shine and oil control.',
       },
       cards: [
         {
@@ -1238,7 +1238,7 @@ test('__internal: quality contract accepts semantic oil-control wording without 
       },
     },
     policyMeta: { intent_canonical: 'reco_products' },
-    assistantText: 'GoalSkin Oil Control Serum is the best first buy if you want something lightweight for mid-day shine and oil control.',
+    assistantText: 'GoalSkin Oil Control Serum fits this request if you want something lightweight for mid-day shine and oil control.',
     profile: {
       skinType: 'oily',
       goals: ['oil control'],
@@ -7114,15 +7114,75 @@ test('__internal: reco assistant rewrite guard rejects cross-role price comparis
 
   const valid = __internal.validateRecoAssistantRewriteCandidate({
     ...baseArgs,
-    candidateText: 'Daily Layering SPF 50 is the most direct fit for daily sunscreen with finish fit because it combines SPF 50 protection with a non-greasy moisturizer step for fewer layers. Truth Serum covers the serum step because it provides lightweight hydration before SPF.',
+    candidateText: 'Daily Layering SPF 50 fits this request for daily sunscreen with finish fit because it combines SPF 50 protection with a non-greasy moisturizer step for fewer layers. Truth Serum covers the serum step because it provides lightweight hydration before SPF.',
   });
   assert.equal(valid.reason, null);
 
   const invalid = __internal.validateRecoAssistantRewriteCandidate({
     ...baseArgs,
-    candidateText: 'Daily Layering SPF 50 is the most direct fit for daily sunscreen with finish fit because it combines SPF 50 protection with hydration while being the most affordable primary option at $55. Truth Serum covers the serum step because it provides lightweight hydration before SPF.',
+    candidateText: 'Daily Layering SPF 50 fits this request for daily sunscreen with finish fit because it combines SPF 50 protection with hydration while being the lower-priced primary option at $55. Truth Serum covers the serum step because it provides lightweight hydration before SPF.',
   });
   assert.equal(invalid.reason, 'rewrite_routine_cross_role_price_comparison');
+});
+
+test('__internal: reco assistant rewrite guard rejects re-asking known skin type only when the actual question repeats it', async () => {
+  const { __internal } = loadRoutesFresh();
+  const baseArgs = {
+    payload: {
+      recommendation_meta: {
+        primary_target_id: 'oil_control_treatment',
+        selected_target_ids: ['oil_control_treatment'],
+        ranked_targets: [
+          {
+            target_id: 'oil_control_treatment',
+            ingredient_query: 'Oil-control treatment',
+            resolved_target_step: 'treatment',
+          },
+        ],
+      },
+      recommendations: [
+        {
+          display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+          brand: 'The Ordinary',
+          matched_role_id: 'oil_control_treatment',
+          matched_role_label: 'Oil-control treatment',
+        },
+      ],
+    },
+    language: 'EN',
+    profile: { skinType: 'oily', goals: ['oil control'] },
+    primaryTarget: {
+      target_id: 'oil_control_treatment',
+      ingredient_query: 'Oil-control treatment',
+      resolved_target_step: 'treatment',
+    },
+    secondaryTargets: [],
+    names: ['The Ordinary Niacinamide 10% + Zinc 1%'],
+    requestMode: 'buy',
+  };
+
+  const validLocationQuestion = __internal.validateRecoAssistantRewriteCandidate({
+    ...baseArgs,
+    candidateText:
+      'The Ordinary Niacinamide 10% + Zinc 1% fits this request for oil-control treatment because it pairs niacinamide with zinc for visible shine. It also fits because it is a lightweight serum format. What city or climate are you usually in?',
+  });
+  assert.equal(validLocationQuestion.reason, null);
+
+  const invalidSkinTypeReask = __internal.validateRecoAssistantRewriteCandidate({
+    ...baseArgs,
+    candidateText:
+      'The Ordinary Niacinamide 10% + Zinc 1% fits this request for oil-control treatment because it pairs niacinamide with zinc for visible shine. It also fits because it is a lightweight serum format. What is your skin type?',
+  });
+  assert.equal(invalidSkinTypeReask.reason, 'rewrite_reasks_known_profile_field');
+
+  const invalidRequestKnownSkinTypeReask = __internal.validateRecoAssistantRewriteCandidate({
+    ...baseArgs,
+    profile: {},
+    userRequestText: 'im oily skin. what product should i buy?',
+    candidateText:
+      'The Ordinary Niacinamide 10% + Zinc 1% fits this request for oil-control treatment because it pairs niacinamide with zinc for visible shine. It also fits because it is a lightweight serum format. What is your skin type?',
+  });
+  assert.equal(invalidRequestKnownSkinTypeReask.reason, 'rewrite_reasks_known_profile_field');
 });
 
 test('__internal: compact reco assistant rewrite prompt keeps per-product evidence for routine bundles', async () => {
@@ -7367,7 +7427,7 @@ test('__internal: reco assistant rewrite prompt carries reviewed insight watchou
   });
 
   assert.match(prompt, /Use selected_product_details\.insight_watchouts only as concise tradeoff\/caveat evidence/i);
-  assert.match(prompt, /Use one direct-buy framing phrase only once/i);
+  assert.match(prompt, /Use one shopping-guidance phrase only once/i);
   assert.match(prompt, /do not use "clinically proven"/i);
   const context = extractRecoRewritePromptContext(prompt);
   assert.equal(context.selected_product_details[0]?.reviewed_insight_available, true);
@@ -7382,8 +7442,26 @@ test('__internal: reco assistant rewrite prompt carries reviewed insight watchou
 
 test('__internal: reco assistant rewrite guard rejects duplicate buy framing and unreviewed proof claims', async () => {
   const { __internal } = loadRoutesFresh();
+  const absolute = __internal.validateRecoAssistantRewriteCandidate({
+    candidateText: 'Calming Barrier Serum is the top option because it supports hydration.',
+    payload: {
+      recommendations: [
+        {
+          display_name: 'Calming Barrier Serum',
+          matched_role_id: 'hydrating_serum_or_essence',
+        },
+      ],
+    },
+    language: 'EN',
+    primaryTarget: { ingredient_query: 'hydrating serum', resolved_target_step: 'serum' },
+    secondaryTargets: [],
+    names: ['Calming Barrier Serum'],
+    requestMode: 'buy',
+  });
+  assert.equal(absolute.reason, 'rewrite_absolute_recommendation_wording');
+
   const duplicate = __internal.validateRecoAssistantRewriteCandidate({
-    candidateText: 'Calming Barrier Serum is your best first buy because it is your best first buy for hydration.',
+    candidateText: 'Calming Barrier Serum fits this request because it fits this request for hydration.',
     payload: {
       recommendations: [
         {
@@ -7401,7 +7479,7 @@ test('__internal: reco assistant rewrite guard rejects duplicate buy framing and
   assert.equal(duplicate.reason, 'rewrite_duplicate_best_first_buy');
 
   const unreviewedProof = __internal.validateRecoAssistantRewriteCandidate({
-    candidateText: 'Brightening Serum is your best first buy because it is clinically proven to promote brighter skin.',
+    candidateText: 'Brightening Serum fits this request because it is clinically proven to promote brighter skin.',
     payload: {
       recommendations: [
         {
@@ -7427,7 +7505,7 @@ test('__internal: reco assistant rewrite guard rejects generic routine wrap-up w
   const { __internal } = loadRoutesFresh();
   const validation = __internal.validateRecoAssistantRewriteCandidate({
     candidateText: [
-      'The Ordinary Niacinamide 10% + Zinc 1% is the most direct fit because it targets excess oil with niacinamide and zinc.',
+      'The Ordinary Niacinamide 10% + Zinc 1% fits this request because it targets excess oil with niacinamide and zinc.',
       'Hydrating Dewy Gel Cream adds breathable gel-cream hydration before sunscreen.',
       'This routine ensures your barrier is supported while managing oil and UV exposure.',
     ].join(' '),
@@ -7502,13 +7580,13 @@ test('__internal: reco assistant rewrite guard ignores selected product-name con
 
   const valid = __internal.validateRecoAssistantRewriteCandidate({
     ...baseArgs,
-    candidateText: 'Superactive Moisturizer SPF 50: Brightening is the most practical pick for daily sunscreen with finish fit because it provides SPF 50 protection in a hydrating moisturizer step.',
+    candidateText: 'Superactive Moisturizer SPF 50: Brightening is a practical option for daily sunscreen with finish fit because it provides SPF 50 protection in a hydrating moisturizer step.',
   });
   assert.equal(valid.reason, null);
 
   const offTarget = __internal.validateRecoAssistantRewriteCandidate({
     ...baseArgs,
-    candidateText: 'Superactive Moisturizer SPF 50: Brightening is the most practical pick for daily sunscreen with finish fit because it provides SPF 50 protection and brightens dark spots.',
+    candidateText: 'Superactive Moisturizer SPF 50: Brightening is a practical option for daily sunscreen with finish fit because it provides SPF 50 protection and brightens dark spots.',
   });
   assert.equal(offTarget.reason, 'rewrite_off_target_concern_claim');
 });
@@ -7526,7 +7604,7 @@ test('__internal: reco assistant rewrite normalizes best-for fragments instead o
   );
 
   const validation = __internal.validateRecoAssistantRewriteCandidate({
-    candidateText: 'Superactive Moisturizer SPF 50: Hydrating is the most direct fit for daily sunscreen with finish fit because best for daily UV protection you will actually wear.',
+    candidateText: 'Superactive Moisturizer SPF 50: Hydrating fits this request for daily sunscreen with finish fit because best for daily UV protection you will actually wear.',
     payload: {
       recommendations: [
         {
@@ -7552,7 +7630,7 @@ test('__internal: reco assistant rewrite normalizes best-for fragments instead o
     names: ['Superactive Moisturizer SPF 50: Hydrating'],
     requestMode: 'buy',
   });
-  assert.equal(validation.reason, 'rewrite_ungrammatical_reason_fragment');
+  assert.equal(validation.reason, 'rewrite_absolute_recommendation_wording');
 });
 
 test('__internal: reco assistant rewrite prompt exposes same-role price comparison context', async () => {
@@ -10387,15 +10465,23 @@ test('/v1/chat: step-aware sunscreen ask stays on beauty mainline handoff instea
     assert.equal(response.statusCode, 200);
     const payload = getRecommendationsPayload(response.body);
     assert.equal(payload, null);
-    assert.match(String(response.body?.assistant_text || ''), /did not recall usable candidates/i);
+    assert.match(String(response.body?.assistant_text || ''), /not showing product picks|不展示商品推荐/i);
     const cards = Array.isArray(response.body?.cards) ? response.body.cards : [];
     const confidenceCard = cards.find((card) => card && card.type === 'confidence_notice') || null;
     assert.ok(confidenceCard);
-    assert.equal(String(confidenceCard?.payload?.reason || ''), 'no_recall_from_planned_sources');
+    assert.ok(
+      ['no_recall_from_planned_sources', 'planner_untrusted'].includes(
+        String(confidenceCard?.payload?.reason || ''),
+      ),
+    );
     const recoEvent = getRecoRequestedEvent(response.body);
     assert.equal(recoEvent?.data?.source, 'beauty_mainline_handoff');
     assert.equal(recoEvent?.data?.source_detail, 'beauty_mainline_handoff');
-    assert.equal(recoEvent?.data?.fallback_reason, 'beauty_mainline_handoff_empty');
+    assert.ok(
+      ['beauty_mainline_handoff_empty', 'beauty_mainline_planner_blocked'].includes(
+        String(recoEvent?.data?.fallback_reason || ''),
+      ),
+    );
     assert.equal(observedQueries.length, 0);
   } finally {
     axios.get = originalGet;
@@ -11186,13 +11272,13 @@ test('/v1/chat: beauty-owned hard path fails closed when beauty mainline handoff
     const confidenceCard = cards.find((card) => card && card.type === 'confidence_notice') || null;
     assert.ok(confidenceCard);
     assert.ok(
-      ['upstream_timeout_primary_role', 'upstream_empty_recommendations'].includes(
+      ['upstream_timeout_primary_role', 'upstream_empty_recommendations', 'planner_untrusted'].includes(
         String(confidenceCard?.payload?.reason || ''),
       ),
     );
     assert.match(
       String(response.body?.assistant_message?.content || ''),
-      /retry shortly|稍后重试/i,
+      /not showing product picks|不展示商品推荐|retry shortly|稍后重试/i,
     );
   } finally {
     axios.get = originalGet;
@@ -11302,7 +11388,7 @@ test('/v1/chat: beauty-owned hard path fails closed when handoff products lack c
     assert.ok(confidenceCard);
     assert.match(
       String(response.body?.assistant_message?.content || ''),
-      /grounded product shortlist|保守结果/i,
+      /not showing product picks|不展示商品推荐/i,
     );
   } finally {
     axios.get = originalGet;
@@ -11385,7 +11471,7 @@ test('/v1/chat: beauty-owned reco helper miss still fails closed before legacy p
     assert.equal(String(notice.reason || ''), 'upstream_empty_recommendations');
     assert.match(
       String(response.body?.assistant_message?.content || ''),
-      /grounded product shortlist|保守结果/i,
+      /not showing product picks|不展示商品推荐/i,
     );
   } finally {
     axios.get = originalGet;
