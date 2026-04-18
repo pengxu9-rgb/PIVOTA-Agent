@@ -79,10 +79,14 @@ test('concern planner normalizer trusts JSON output selecting ontology roles out
   assert.equal(normalized.selection_owner_state, 'trusted');
   assert.deepEqual(
     normalized.core_roles.map((role) => role.role_id),
-    ['daily_sunscreen_finish_fit', 'layering_compatible_moisturizer_or_spf', 'lightweight_moisturizer'],
+    ['daily_sunscreen_finish_fit', 'layering_compatible_moisturizer_or_spf', 'oil_control_treatment'],
   );
   assert.equal(normalized.comparison_mode, 'routine_mix');
   assert.deepEqual(normalized.evidence_needed, ['finish', 'layering compatibility', 'price']);
+  assert.equal(
+    normalized.selection_constraints.plan_invariants_applied.includes('routine_mix_added_oil_control_support_for_oily_layering'),
+    true,
+  );
 });
 
 test('concern semantic fallback makes finish-fit sunscreen primary for makeup layering asks', () => {

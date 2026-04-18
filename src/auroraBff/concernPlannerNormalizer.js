@@ -408,6 +408,8 @@ function repairRoutineMixRoleCoverage({
   if (makeupLayeringIntent) {
     const preferredTertiaryRoleId = sensitivityIntent
       ? (roleListHasId(repaired, 'barrier_moisturizer') ? 'barrier_moisturizer' : 'hydrating_barrier_moisturizer')
+      : oilyIntent
+        ? 'oil_control_treatment'
       : 'hydrating_serum_or_essence';
     const genericSunscreenIndex = repaired.findIndex((role) => String(role?.role_id || '').trim() === 'daily_sunscreen');
     const finishFitSunscreen = cloneSemanticPlannerRole(pickOntologyRoleById(ontologyRoles, 'daily_sunscreen_finish_fit'));
@@ -460,16 +462,28 @@ function repairRoutineMixRoleCoverage({
       if (insertedBarrier) {
         moveRoleToIndex('soothing_treatment', 3);
       }
-    } else if (
-      roleListHasId(repaired, 'layering_compatible_moisturizer_or_spf')
-      && !roleListHasId(repaired, 'hydrating_serum_or_essence')
-      && !roleListHasStep(repaired, 'serum')
-      && repaired.length < 3
-    ) {
-      insertRole('hydrating_serum_or_essence', {
-        afterIndex: Math.max(findRoleIndex('layering_compatible_moisturizer_or_spf'), 0),
-        code: 'routine_mix_added_hydrating_serum_for_layering_support',
-      });
+    } else {
+      const tertiaryRolePresent = roleListHasId(repaired, preferredTertiaryRoleId);
+      if (!tertiaryRolePresent && repaired.length >= 3) {
+        removeRoleForMakeupLayeringCoverage({
+          keepIds: ['daily_sunscreen_finish_fit', 'layering_compatible_moisturizer_or_spf'],
+        });
+      }
+      if (!roleListHasId(repaired, preferredTertiaryRoleId)) {
+        insertRole(preferredTertiaryRoleId, {
+          afterIndex: Math.max(findRoleIndex('layering_compatible_moisturizer_or_spf'), 0),
+          code: preferredTertiaryRoleId === 'oil_control_treatment'
+            ? 'routine_mix_added_oil_control_support_for_oily_layering'
+            : 'routine_mix_added_hydrating_serum_for_layering_support',
+        });
+      }
+      moveRoleToIndex(
+        preferredTertiaryRoleId,
+        2,
+        preferredTertiaryRoleId === 'oil_control_treatment'
+          ? 'routine_mix_promoted_oil_control_support_tertiary'
+          : 'routine_mix_promoted_hydrating_serum_support_tertiary',
+      );
     }
   }
 
