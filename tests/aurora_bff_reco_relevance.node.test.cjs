@@ -7168,6 +7168,14 @@ test('__internal: reco assistant rewrite guard rejects re-asking known skin type
   });
   assert.equal(validLocationQuestion.reason, null);
 
+  const invalidMissingPlannedFollowup = __internal.validateRecoAssistantRewriteCandidate({
+    ...baseArgs,
+    userRequestText: 'im oily skin. what product should i buy?',
+    candidateText:
+      'The Ordinary Niacinamide 10% + Zinc 1% fits this request for oil-control treatment because it pairs niacinamide with zinc for visible shine. It also fits because it is a lightweight serum format.',
+  });
+  assert.equal(invalidMissingPlannedFollowup.reason, 'rewrite_missing_refinement_question');
+
   const invalidUnplannedFollowup = __internal.validateRecoAssistantRewriteCandidate({
     ...baseArgs,
     candidateText:
