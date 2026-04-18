@@ -54777,6 +54777,17 @@ function buildRecoAssistantRefinementQuestionPlan({
       optional: true,
     };
   }
+  if (isGeneralRecoAsk) {
+    return {
+      field: 'context_tuning',
+      question:
+        lang === 'CN'
+          ? '如果你想继续收窄，我应该优先按城市/气候、现有 AM/PM routine，还是作息通勤场景来调？'
+          : 'If you want this tuned further, should I prioritize your city/climate, current AM/PM routine, or lifestyle like late nights and commuting?',
+      rationale: 'context_tuning_optional',
+      optional: true,
+    };
+  }
   return null;
 }
 
