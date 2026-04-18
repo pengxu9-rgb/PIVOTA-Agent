@@ -199,8 +199,8 @@ function createBeautyChatMainlineEnvelopeRuntime(deps = {}) {
       assistant_message: makeAssistantMessage(
         String(noticePayload.message || '').trim() ||
           (ctx?.lang === 'CN'
-            ? '这轮 beauty 主链没有稳定拿到可落地商品，我先保留保守结果。'
-            : 'The beauty mainline did not return a stable grounded product set for this turn, so I am keeping this in a conservative fallback.'),
+            ? '这轮 beauty 主链没有稳定拿到可落地商品，所以我先不展示商品推荐。'
+            : 'The beauty mainline did not return a stable grounded product set for this turn, so I am not showing product picks yet.'),
       ),
       suggested_chips: Array.isArray(suggestedChips) ? suggestedChips : [],
       cards: [

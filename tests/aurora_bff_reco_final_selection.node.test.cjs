@@ -86,11 +86,13 @@ test('reco assistant rewrite prompt omits deterministic base text and carries re
     assert.match(prompt, /Price may support a recommendation, but price alone is not enough; pair it with at least one concrete fit, formula, texture, ingredient, or use-case reason from Context\./);
     assert.match(prompt, /Use selected_product_details\.compare_highlights and selected_product_details\.pivota_insights when available; do not invent highlights that are absent from Context\./);
     assert.match(prompt, /Use selected_product_details\.description_snippet and selected_product_details\.evidence_points as the primary concrete reason layer when available\./);
-    assert.match(prompt, /Do not call a product, routine, or bundle the top buy unless the same sentence or the next sentence gives a concrete reason/);
+    assert.match(prompt, /Do not call a product, routine, or bundle the top, best, strongest, perfect, or ideal choice\. Give concrete evidence instead\./);
     assert.match(prompt, /Never write ungrammatical fragments like "because a serum\.\.\."/);
     assert.match(prompt, /If selected_product_details\.fit_assessment is "soft_match" or comparison_fill_reason is present, frame that product as a softer or broader alternative instead of an equally direct match\./);
     assert.match(prompt, /Prefer product-specific evidence over generic role language when both are available\./);
-    assert.match(prompt, /If request_mode is "buy" and there is one selected product with no secondary targets, use exactly 2 sentences\./);
+    assert.match(prompt, /If Context\.refinement_question exists, include exactly one optional follow-up question as the final sentence after the recommendation/);
+    assert.match(prompt, /Do not ask for fields already present in Context\.profile_summary; use only Context\.refinement_question for follow-up\./);
+    assert.match(prompt, /If request_mode is "buy" and there is one selected product with no secondary targets, use exactly 2 recommendation sentences; if Context\.refinement_question exists, add one short final question\./);
     assert.match(prompt, /If selected_target_ids has length 1, secondary_targets is empty, and selected_product_role_mix is not "routine_mix", do not add future routine-building suggestions or extra steps\./);
     assert.match(prompt, /Use plain shopper-facing skincare language\. Avoid vague phrases like "surface activity"\./);
     assert.match(prompt, /Avoid generic filler like "great choice", "balanced complexion", or "solution for oiliness"\./);
@@ -102,6 +104,8 @@ test('reco assistant rewrite prompt omits deterministic base text and carries re
     assert.match(prompt, /"key_features":\[\]/);
     assert.match(prompt, /"price":\{"amount":12,"currency":"USD","unknown":false\}/);
     assert.match(prompt, /"selected_product_role_mix":"single_product"/);
+    assert.match(prompt, /"refinement_question":\{"field":"location_climate"/);
+    assert.match(prompt, /What city or climate are you usually in/);
     assert.match(prompt, /"known_price_count":1/);
     assert.match(prompt, /"role_id":"oil_control_treatment"/);
     assert.doesNotMatch(prompt, /"role_id":"lightweight_moisturizer"/);
@@ -110,6 +114,37 @@ test('reco assistant rewrite prompt omits deterministic base text and carries re
       prompt,
       /Primary recommendation focus: keep this pass centered on Niacinamide\./,
     );
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('reco assistant refinement question prioritizes missing skin type before climate and lifestyle', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const missingSkinType = __internal.buildRecoAssistantRefinementQuestionPlan({
+      language: 'EN',
+      profile: { goals: ['oil control'] },
+      userRequestText: 'What product should I use?',
+    });
+    assert.equal(missingSkinType.field, 'skin_type');
+    assert.match(missingSkinType.question, /oily, combo-oily, combo-dry, or dry/i);
+
+    const climateNext = __internal.buildRecoAssistantRefinementQuestionPlan({
+      language: 'EN',
+      profile: { skinType: 'oily', goals: ['oil control'] },
+      userRequestText: 'im oily skin. what product should i buy?',
+    });
+    assert.equal(climateNext.field, 'location_climate');
+    assert.match(climateNext.question, /city or climate/i);
+
+    const lifestyleNext = __internal.buildRecoAssistantRefinementQuestionPlan({
+      language: 'EN',
+      profile: { skinType: 'combination', region: 'San Francisco', goals: ['makeup layering'] },
+      userRequestText: 'My sunscreen pills under makeup. What product should I buy?',
+    });
+    assert.equal(lifestyleNext.field, 'lifestyle_sleep');
+    assert.match(lifestyleNext.question, /late nights|outdoor commuting|gym/i);
   } finally {
     delete require.cache[moduleId];
   }
@@ -202,8 +237,8 @@ test('reco assistant rewrite prompt frames multi-role selections as routine mix 
     assert.match(prompt, /Use assistant_write_plan\.lead_product\.must_use_reason_points as the preferred reason list for the lead recommendation when available\./);
     assert.match(prompt, /If assistant_write_plan\.support_steps is non-empty, justify each support step with its own reason_points instead of using a generic closing summary\./);
     assert.match(prompt, /Do not end with a generic closing sentence like "these steps support your skin" or "together they help balance the routine"\./);
-    assert.match(prompt, /The complete allowed product-name set is exactly Context\.selected_products\./);
-    assert.match(prompt, /Do not mention any brand or product name that is not listed in Context\.selected_products\./);
+    assert.match(prompt, /Allowed product names are exactly Context\.selected_products\./);
+    assert.match(prompt, /Do not name brands\/products outside Context\.selected_products\./);
     assert.match(prompt, /If user_relevant_concern_families does not include tone_brightening, do not mention glow, radiance, dark spots, uneven tone, brightening, or dullness\./);
     assert.match(prompt, /If user_relevant_concern_families does not include aging_texture, do not mention wrinkles, fine lines, aging, anti-aging, or texture repair\./);
     assert.match(prompt, /compare price\/value or ROI in plain shopper terms using only listed prices/);
@@ -299,8 +334,8 @@ test('reco assistant compact prompt keeps same-role comparison payloads under a 
     assert.match(prompt, /"prompt_profile":"compact_timeout_retry"/);
     assert.match(prompt, /Treat the products as same-slot comparison options, not a routine\./);
     assert.match(prompt, /Pick one lead product, then compare the other options with one short tradeoff each\./);
-    assert.match(prompt, /The complete allowed product-name set is exactly Context\.selected_products\./);
-    assert.match(prompt, /Do not mention any brand or product name that is not listed in Context\.selected_products\./);
+    assert.match(prompt, /Allowed product names are exactly Context\.selected_products\./);
+    assert.match(prompt, /Do not name brands\/products outside Context\.selected_products\./);
     assert.match(prompt, /If user_relevant_concern_families does not include tone_brightening, do not mention glow, radiance, dark spots, uneven tone, brightening, or dullness\./);
     assert.match(prompt, /If user_relevant_concern_families does not include aging_texture, do not mention wrinkles, fine lines, aging, anti-aging, or texture repair\./);
     assert.ok(prompt.length < 7000);
@@ -388,9 +423,9 @@ test('reco assistant strict selected-only retry prompt drops expanded framework 
     });
 
     assert.match(prompt, /"prompt_profile":"strict_selected_only_retry"/);
-    assert.match(prompt, /Strict selected-only retry: Context\.selected_products is the only allowed product-name list\./);
-    assert.match(prompt, /Use no outside brand or product memory; every named product must be copied exactly from Context\.selected_products\./);
-    assert.match(prompt, /If Context\.forbidden_product_names is present, never output those names or partial product names from that list\./);
+    assert.match(prompt, /Strict selected-only retry: only Context\.selected_products may be named\./);
+    assert.match(prompt, /Use no outside product memory; copy every named product exactly from Context\.selected_products\./);
+    assert.match(prompt, /Never output Context\.forbidden_product_names or their partial names\/brands\./);
     assert.match(prompt, /"selected_products":\["KraveBeauty Great Barrier Relief","The Ordinary UV Filters SPF 45 Serum"\]/);
     assert.match(prompt, /"forbidden_product_names":\["Kylie Cosmetics Hyaluronic Acid Serum"\]/);
     assert.doesNotMatch(prompt, /framework_roles/);
@@ -595,7 +630,7 @@ test('reco assistant rewrite keeps minimal thinking for same-role use comparison
         ok: true,
         json: {
           assistant_text:
-            'KraveBeauty Great Barrier Relief is the best starting point because it gives barrier support without a heavy finish, while Soothing Serum is a lighter alternative.',
+            'Start with KraveBeauty Great Barrier Relief because it gives barrier support without a heavy finish, while Soothing Serum is a lighter alternative.',
         },
         parse_status: 'parsed',
         provider: 'gemini',
@@ -639,6 +674,8 @@ test('reco assistant rewrite uses REST executor for same-role use comparisons wi
   const prevProvider = process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
   const prevModel = process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
   const prevGeminiKey = process.env.AURORA_VISION_GEMINI_API_KEY;
+  const prevAuroraSkinGeminiKey = process.env.AURORA_SKIN_GEMINI_API_KEY;
+  const prevGlobalGeminiKey = process.env.GEMINI_API_KEY;
   const originalLoad = Module._load;
   let capturedUrl = '';
   let capturedBody = null;
@@ -648,6 +685,8 @@ test('reco assistant rewrite uses REST executor for same-role use comparisons wi
   process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER = 'gemini';
   process.env.AURORA_PRODUCT_INTEL_LLM_MODEL = 'gemini-3-flash-preview';
   process.env.AURORA_VISION_GEMINI_API_KEY = 'test-gemini-key';
+  process.env.AURORA_SKIN_GEMINI_API_KEY = 'test-gemini-key';
+  process.env.GEMINI_API_KEY = 'test-gemini-key';
 
   Module._load = function patchedLoad(request, parent, isMain) {
     if (request === '@google/genai') {
@@ -678,7 +717,7 @@ test('reco assistant rewrite uses REST executor for same-role use comparisons wi
                         {
                           text: JSON.stringify({
                             assistant_text:
-                              'KraveBeauty Great Barrier Relief is the best starting point because it supports your barrier without a heavy finish, while Soothing Serum is a lighter same-step option.',
+                              'Start with KraveBeauty Great Barrier Relief because it supports your barrier without a heavy finish, while Soothing Serum is a lighter same-step option.',
                           }),
                         },
                       ],
@@ -770,6 +809,10 @@ test('reco assistant rewrite uses REST executor for same-role use comparisons wi
     else process.env.AURORA_PRODUCT_INTEL_LLM_MODEL = prevModel;
     if (prevGeminiKey === undefined) delete process.env.AURORA_VISION_GEMINI_API_KEY;
     else process.env.AURORA_VISION_GEMINI_API_KEY = prevGeminiKey;
+    if (prevAuroraSkinGeminiKey === undefined) delete process.env.AURORA_SKIN_GEMINI_API_KEY;
+    else process.env.AURORA_SKIN_GEMINI_API_KEY = prevAuroraSkinGeminiKey;
+    if (prevGlobalGeminiKey === undefined) delete process.env.GEMINI_API_KEY;
+    else process.env.GEMINI_API_KEY = prevGlobalGeminiKey;
     delete require.cache[moduleId];
   }
 });
@@ -993,7 +1036,7 @@ test('reco assistant rewrite rejects candidate-pool product names that are not f
           ok: true,
           json: {
             assistant_text:
-              'First Aid Beauty Dark Spot Serum with Niacinamide is your best first buy because it targets post-breakout marks. You could instead pick the Fenty Beauty Watch Ya Tone Refill for a lower-priced targeted treatment.',
+              'First Aid Beauty Dark Spot Serum with Niacinamide fits this request because it targets post-breakout marks. You could instead pick the Fenty Beauty Watch Ya Tone Refill for a lower-priced targeted treatment.',
           },
           parse_status: 'parsed',
           provider: 'gemini',
@@ -1023,7 +1066,7 @@ test('reco assistant rewrite rejects candidate-pool product names that are not f
     assert.equal(callCount, 2);
     assert.equal(rewrite.llm_used, true);
     assert.equal(rewrite.reason, null);
-    assert.match(rewrite.text, /First Aid Beauty Dark Spot Serum with Niacinamide is the most direct fit/);
+    assert.match(rewrite.text, /First Aid Beauty Dark Spot Serum with Niacinamide fits this request/);
     assert.match(rewrite.text, /because it is a niacinamide serum/);
     assert.doesNotMatch(rewrite.text, /because (A|An|The)\b/);
     assert.doesNotMatch(rewrite.text, /because (niacinamide|brightening|vitamin c|oil-control support|oil control support)\b/i);
@@ -1148,7 +1191,7 @@ test('reco assistant rewrite uses structured retry for generic routine wrap-up',
           ok: true,
           json: {
             assistant_text: [
-              'Hydrating Dewy Gel Cream Moisturizer with Hyaluronic Acid + Ceramides is the most practical pick for layering compatibility because it has an ultra-sheer, non-comedogenic gel-cream texture.',
+              'Hydrating Dewy Gel Cream Moisturizer with Hyaluronic Acid + Ceramides is a practical option for layering compatibility because it has an ultra-sheer, non-comedogenic gel-cream texture.',
               'Quadruple Hyaluronic Acid Serum 5% - Jumbo covers the hydrating serum step because it adds lightweight hydration.',
               'Matte Fit Serum Sunscreen SPF 50+ PA++++ covers daytime sunscreen because it protects with SPF 50.',
               'Together, these products support the routine and keep skin breathable.',
@@ -1268,7 +1311,7 @@ test('reco assistant structured retry normalizes function-as support grammar', a
           ok: true,
           json: {
             assistant_text: [
-              'Daily Tinted Fluid Sunscreen DY300 is the most direct fit because it provides SPF 40 protection in a tinted fluid.',
+              'Daily Tinted Fluid Sunscreen DY300 fits this request because it provides SPF 40 protection in a tinted fluid.',
               'Together, these products support the routine and keep skin breathable.',
             ].join(' '),
           },
@@ -1379,7 +1422,7 @@ test('reco assistant structured retry does not render without valid JSON', async
           ok: true,
           json: {
             assistant_text: [
-              'Hydrating Dewy Gel Cream Moisturizer with Hyaluronic Acid + Ceramides is the most practical pick for layering compatibility because it has an ultra-sheer gel-cream texture.',
+              'Hydrating Dewy Gel Cream Moisturizer with Hyaluronic Acid + Ceramides is a practical option for layering compatibility because it has an ultra-sheer gel-cream texture.',
               'Together, these products support the routine and keep skin breathable.',
             ].join(' '),
           },
@@ -1484,7 +1527,7 @@ test('reco assistant structured retry does not treat selected product-name subst
           ok: true,
           json: {
             assistant_text:
-              'Naturium Quadruple Hyaluronic Acid Serum 5% - Jumbo is your best first buy for hydration, while Kylie Cosmetics Hyaluronic Acid Serum is the backup option.',
+              'Naturium Quadruple Hyaluronic Acid Serum 5% - Jumbo fits this request for hydration, while Kylie Cosmetics Hyaluronic Acid Serum is the backup option.',
           },
           parse_status: 'parsed',
           provider: 'gemini',
@@ -1719,7 +1762,7 @@ test('reco assistant rewrite accepts product-first buy copy with recommendation 
       ok: true,
       json: {
         assistant_text:
-          'GoalSkin Oil Control Serum is the strongest option for oily skin. It targets excess shine without adding heaviness.',
+          'GoalSkin Oil Control Serum fits this request for oily skin. It targets excess shine without adding heaviness.',
       },
       parse_status: 'parsed',
       provider: 'gemini',
@@ -1738,7 +1781,7 @@ test('reco assistant rewrite accepts product-first buy copy with recommendation 
     assert.equal(rewrite.reason, null);
     assert.equal(
       rewrite.text,
-      'GoalSkin Oil Control Serum is the strongest option for oily skin. It targets excess shine without adding heaviness.',
+      'GoalSkin Oil Control Serum fits this request for oily skin. It targets excess shine without adding heaviness.',
     );
   } finally {
     __internal.__resetCallGeminiJsonObjectForTest();
@@ -1934,7 +1977,7 @@ test('reco assistant rewrite accepts routine-mix buy copy when the first sentenc
         ok: true,
         json: {
           assistant_text:
-            'The Ordinary Niacinamide 10% + Zinc 1% is your best first buy for oily, acne-prone skin because it directly targets excess oil and visible shine at a $12 price point. LightLab Oil-Free Gel Cream is the lightweight moisturizer step that adds breathable hydration without heaviness.',
+            'The Ordinary Niacinamide 10% + Zinc 1% fits this request for oily, acne-prone skin because it directly targets excess oil and visible shine at a $12 price point. LightLab Oil-Free Gel Cream is the lightweight moisturizer step that adds breathable hydration without heaviness.',
         },
         parse_status: 'parsed',
         provider: 'gemini',
@@ -1953,7 +1996,7 @@ test('reco assistant rewrite accepts routine-mix buy copy when the first sentenc
     assert.equal(callCount, 1);
     assert.equal(rewrite.llm_used, true);
     assert.equal(rewrite.reason, null);
-    assert.match(prompts[0], /"prompt_profile":"compact_timeout_retry"/);
+    assert.match(prompts[0], /"prompt_profile":"strict_selected_only_retry"/);
     assert.match(rewrite.text, /The Ordinary Niacinamide 10% \+ Zinc 1%/);
   } finally {
     __internal.__resetCallGeminiJsonObjectForTest();
@@ -2015,8 +2058,8 @@ test('reco assistant rewrite retries single-product drafts that drift into routi
         return {
           ok: true,
           json: {
-            assistant_text:
-              'KraveBeauty Great Barrier Relief is your best first buy for barrier repair. To build out a full routine later, add a soothing serum and a daily sunscreen.',
+          assistant_text:
+              'KraveBeauty Great Barrier Relief fits this request for barrier repair. To build out a full routine later, add a soothing serum and a daily sunscreen.',
           },
           parse_status: 'parsed',
           provider: 'gemini',
@@ -2136,8 +2179,8 @@ test('reco assistant rewrite retries routine drafts that use stiff selected-prod
         return {
           ok: true,
           json: {
-            assistant_text:
-              'The Ordinary Niacinamide 10% + Zinc 1% is your best first buy because it pairs niacinamide with zinc and costs $12. These selected products are different steps in a basic routine and not the same type of product. LightLab Oil-Free Gel Cream is your lightweight moisturizer step for breathable hydration.',
+          assistant_text:
+            'The Ordinary Niacinamide 10% + Zinc 1% fits this request because it pairs niacinamide with zinc and costs $12. These selected products are different steps in a basic routine and not the same type of product. LightLab Oil-Free Gel Cream is your lightweight moisturizer step for breathable hydration.',
           },
           parse_status: 'parsed',
           provider: 'gemini',
@@ -2148,7 +2191,7 @@ test('reco assistant rewrite retries routine drafts that use stiff selected-prod
         ok: true,
         json: {
           assistant_text:
-            'The Ordinary Niacinamide 10% + Zinc 1% is your best first buy because it pairs niacinamide with zinc and costs $12. These are different routine steps, not substitutes: LightLab Oil-Free Gel Cream is the lightweight moisturizer step for breathable hydration.',
+            'The Ordinary Niacinamide 10% + Zinc 1% fits this request because it pairs niacinamide with zinc and costs $12. These are different routine steps, not substitutes: LightLab Oil-Free Gel Cream is the lightweight moisturizer step for breathable hydration.',
         },
         parse_status: 'parsed',
         provider: 'gemini',
@@ -2312,11 +2355,13 @@ test('reco assistant rewrite uses structured reason retry for repeated buy frami
     assert.equal(rewrite.llm_used, true);
     assert.equal(rewrite.reason, null);
     assert.match(prompts[1], /Return evidence-grounded reason fragments only/i);
-    assert.match(prompts[1], /Fix required: Use one direct-buy framing phrase only once/i);
-    assert.match(String(rewrite.text || ''), /Beauty of Joseon Dynasty Cream 10ml is the most direct fit/i);
+    assert.match(prompts[1], /Fix required: Use calibrated wording/i);
+    assert.match(String(rewrite.text || ''), /Beauty of Joseon Dynasty Cream 10ml fits this request/i);
     assert.match(String(rewrite.text || ''), /Winona Soothing Repair Serum covers the serum step/i);
     assert.match(String(rewrite.text || ''), /KraveBeauty Great Barrier Relief covers the moisturizer step/i);
-    assert.doesNotMatch(String(rewrite.text || ''), /top pick|strongest choice/i);
+    assert.match(String(rewrite.text || ''), /What city or climate are you usually in \(humid, dry, cold, or high-UV\)\?/i);
+    assert.equal(rewrite.refinement_question?.field, 'location_climate');
+    assert.doesNotMatch(String(rewrite.text || ''), /top pick|strongest choice|most direct fit/i);
   } finally {
     __internal.__resetCallGeminiJsonObjectForTest();
     if (prevMock === undefined) delete process.env.AURORA_BFF_USE_MOCK;
@@ -2404,7 +2449,7 @@ test('reco assistant structured retry keeps support reasons on support roles', a
           ok: true,
           json: {
             assistant_text:
-              'Daily Layering SPF 50 is the most direct fit because it simplifies the morning SPF step. Together these different steps support your routine.',
+              'Daily Layering SPF 50 fits this request because it simplifies the morning SPF step. Together these different steps support your routine.',
           },
           parse_status: 'parsed',
           provider: 'gemini',
@@ -2596,7 +2641,7 @@ test('reco assistant rewrite uses structured primary attempt for compact single-
     assert.equal(rewrite.attempts?.[0]?.structured_reason_only, true);
     assert.equal(rewrite.attempts?.[0]?.strict_selected_only_context, true);
     assert.equal(rewrite.attempts?.[0]?.max_output_tokens, 140);
-    assert.match(rewrite.text, /Daily Layering SPF 50 is the most direct fit/i);
+    assert.match(rewrite.text, /Daily Layering SPF 50 fits this request/i);
   } finally {
     __internal.__resetCallGeminiJsonObjectForTest();
     if (prevMock === undefined) delete process.env.AURORA_BFF_USE_MOCK;
@@ -2840,7 +2885,7 @@ test('reco assistant rewrite retries routine-mix drafts that use a templated ful
           ok: true,
           json: {
             assistant_text:
-              'The Ordinary Niacinamide 10% + Zinc 1% is your best first buy for oily skin because it pairs niacinamide with zinc and costs $12. To build out a full routine, add LightLab Oil-Free Gel Cream as your moisturizer step and SunLab Daily SPF 50 Fluid as your sunscreen step.',
+              'The Ordinary Niacinamide 10% + Zinc 1% fits this request for oily skin because it pairs niacinamide with zinc and costs $12. To build out a full routine, add LightLab Oil-Free Gel Cream as your moisturizer step and SunLab Daily SPF 50 Fluid as your sunscreen step.',
           },
           parse_status: 'parsed',
           provider: 'gemini',
@@ -2851,7 +2896,7 @@ test('reco assistant rewrite retries routine-mix drafts that use a templated ful
         ok: true,
         json: {
           assistant_text:
-            'The Ordinary Niacinamide 10% + Zinc 1% is your best first buy for oily skin because it pairs niacinamide with zinc and costs $12. LightLab Oil-Free Gel Cream is the lightweight moisturizer step for breathable hydration, and SunLab Daily SPF 50 Fluid is the sunscreen step for daily UV protection without a heavy finish.',
+            'The Ordinary Niacinamide 10% + Zinc 1% fits this request for oily skin because it pairs niacinamide with zinc and costs $12. LightLab Oil-Free Gel Cream is the lightweight moisturizer step for breathable hydration, and SunLab Daily SPF 50 Fluid is the sunscreen step for daily UV protection without a heavy finish.',
         },
         parse_status: 'parsed',
         provider: 'gemini',
@@ -2977,7 +3022,7 @@ test('reco assistant rewrite retries routine-mix drafts that end in a generic cl
           ok: true,
           json: {
             assistant_text:
-              'The Ordinary Niacinamide 10% + Zinc 1% is your best first buy for oily skin because it pairs niacinamide with zinc and costs $12. LightLab Oil-Free Gel Cream is your moisturizer step, and SunLab Daily SPF 50 Fluid is your sunscreen step. These secondary steps support your oily skin by keeping hydration breathable and protecting against UV damage.',
+              'The Ordinary Niacinamide 10% + Zinc 1% fits this request for oily skin because it pairs niacinamide with zinc and costs $12. LightLab Oil-Free Gel Cream is your moisturizer step, and SunLab Daily SPF 50 Fluid is your sunscreen step. These secondary steps support your oily skin by keeping hydration breathable and protecting against UV damage.',
           },
           parse_status: 'parsed',
           provider: 'gemini',
@@ -3013,7 +3058,7 @@ test('reco assistant rewrite retries routine-mix drafts that end in a generic cl
     assert.equal(rewrite.reason, null);
     assert.match(prompts[1], /Previous draft failed the quality gate\./);
     assert.match(prompts[1], /Fix required: Do not end with a generic routine wrap-up\./);
-    assert.match(String(rewrite.text || ''), /The Ordinary Niacinamide 10% \+ Zinc 1% is the most direct fit/);
+    assert.match(String(rewrite.text || ''), /The Ordinary Niacinamide 10% \+ Zinc 1% fits this request/);
     assert.match(prompts[1], /Do not write the final assistant message\./);
     assert.doesNotMatch(String(rewrite.text || ''), /These secondary steps support your oily skin/i);
   } finally {
@@ -3089,7 +3134,7 @@ test('reco assistant rewrite retries oily buy drafts that use off-target tone cl
           ok: true,
           json: {
             assistant_text:
-              'GoalSkin Oil Control Serum is your best first buy because it targets dullness and uneven tone while helping oily skin.',
+              'GoalSkin Oil Control Serum fits this request because it targets brightening and dark spots while helping oily skin.',
           },
           parse_status: 'parsed',
           provider: 'gemini',
@@ -3207,7 +3252,7 @@ test('beauty mainline routine support fill keeps one card per support role', () 
       out.selected_recommendations.map((row) => row.matched_role_id),
       ['hydrating_barrier_moisturizer', 'daily_sunscreen'],
     );
-    assert.equal(out.role_pool_stats.daily_sunscreen.viable_count, 2);
+    assert.equal(out.role_pool_stats.daily_sunscreen.viable_count, 1);
   } finally {
     delete require.cache[moduleId];
   }
@@ -4225,7 +4270,7 @@ test('beauty canonical ownership does not let stale mainline final selection sup
       mainline_status: 'grounded_success',
     };
     const assistantText =
-      'First Aid Beauty Dark Spot Serum with Niacinamide is the most direct first buy for post-breakout marks. Jurlique Brightening Serum is the supporting brightening option if you want a second serum comparison.';
+      'First Aid Beauty Dark Spot Serum with Niacinamide fits this request for post-breakout marks. Jurlique Brightening Serum is the supporting brightening option if you want a second serum comparison.';
     const payload = {
       query_source: 'beauty_mainline_local_handoff',
       decision_owner: 'shopping_agent_beauty_mainline',
