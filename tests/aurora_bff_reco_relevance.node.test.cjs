@@ -8610,8 +8610,7 @@ test('__internal: framework pool uses external seed role-fit ranking for finish-
       },
     ],
   };
-  const state = __internal.finalizeConcernFrameworkCandidatePools(
-    [
+  const rawCandidates = [
       {
         product_id: 'murad_spf_moisturizer_fit_1',
         merchant_id: 'external_seed',
@@ -8670,7 +8669,11 @@ test('__internal: framework pool uses external seed role-fit ranking for finish-
         local_external_seed_role_fit_score: 1.01,
         short_description: 'A lightweight hydrating serum with glycerin for layered hydration.',
       },
-    ],
+    ];
+  const normalizedCandidates = rawCandidates.map((row) => __internal.normalizeRecoCatalogProduct(row));
+  assert.equal(normalizedCandidates[1]?.local_external_seed_role_fit_score, 1.16);
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    normalizedCandidates,
     { targetContext },
   );
 

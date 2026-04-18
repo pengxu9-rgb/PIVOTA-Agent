@@ -4470,6 +4470,12 @@ function normalizeRecoCatalogProduct(raw) {
     : Number.isFinite(Number(base.retrievalRoleRank))
       ? Number(base.retrievalRoleRank)
       : null;
+  const localExternalSeedRoleFitScoreRaw = (() => {
+    const rawScore = base.local_external_seed_role_fit_score ?? base.localExternalSeedRoleFitScore;
+    if (rawScore === null || rawScore === undefined || String(rawScore).trim() === '') return null;
+    const score = Number(rawScore);
+    return Number.isFinite(score) ? score : null;
+  })();
   const normalizedRetrievalSource = (() => {
     const token = String(retrievalSourceRaw || '').trim().toLowerCase();
     if (token === 'catalog' || token === 'external_seed' || token === 'llm_fallback') return token;
@@ -4609,6 +4615,7 @@ function normalizeRecoCatalogProduct(raw) {
     ...(String(retrievalStepRaw || '').trim() ? { retrieval_step: String(retrievalStepRaw).trim() } : {}),
     ...(String(retrievalRoleIdRaw || '').trim() ? { retrieval_role_id: String(retrievalRoleIdRaw).trim() } : {}),
     ...(retrievalRoleRankRaw != null ? { retrieval_role_rank: retrievalRoleRankRaw } : {}),
+    ...(localExternalSeedRoleFitScoreRaw != null ? { local_external_seed_role_fit_score: localExternalSeedRoleFitScoreRaw } : {}),
     ...(directUrl ? { url: directUrl, pdp_url: directUrl } : {}),
     ...(purchasePath ? { purchase_path: purchasePath } : {}),
     ...(openContract ? { open_contract: openContract } : {}),
@@ -9212,12 +9219,15 @@ async function searchLocalExternalSeedProducts({
       [market, tool, patterns, rowCap],
     );
     const rows = Array.isArray(res?.rows) ? res.rows : [];
-    const ranked = rankPurchasableRecoveryCandidates(
+    const surfacingCandidates = rankPurchasableRecoveryCandidates(
       rows
         .map((row) => buildLocalExternalSeedSurfacingCandidate(row))
         .filter(Boolean),
       q,
-    ).slice(0, safeLimit);
+    );
+    const ranked = (isPlainObject(role)
+      ? rankLocalExternalSeedSupportCandidatesForRole(surfacingCandidates, q, { role, preferredStep })
+      : surfacingCandidates).slice(0, safeLimit);
 
     return {
       ok: ranked.length > 0,
@@ -22197,6 +22207,7 @@ function scoreConcernFrameworkCandidateTiebreak(row) {
 function getConcernFrameworkLocalExternalSeedRoleFitScore(row = null) {
   const candidate = isPlainObject(row) ? row : {};
   const rawScore = candidate.local_external_seed_role_fit_score ?? candidate.localExternalSeedRoleFitScore;
+  if (rawScore === null || rawScore === undefined || String(rawScore).trim() === '') return null;
   const score = Number(rawScore);
   return Number.isFinite(score) ? score : null;
 }
@@ -22216,7 +22227,7 @@ function scoreConcernFrameworkRoleFitRankAdjustment(row, { matchedRoleId = '' } 
   const targetRoleId = String(matchedRoleId || '').trim();
   if (!retrievalRoleId || !targetRoleId || retrievalRoleId !== targetRoleId) return 0;
   const roleFitScore = getConcernFrameworkLocalExternalSeedRoleFitScore(candidate);
-  if (!Number.isFinite(Number(roleFitScore))) return 0;
+  if (roleFitScore === null || roleFitScore === undefined) return 0;
   const normalizedScore = Math.max(-1, Math.min(1.35, Number(roleFitScore)));
   if (normalizedScore >= 0.75) {
     return Number(Math.min(0.12, (normalizedScore - 0.75) * 0.3).toFixed(4));
@@ -22814,7 +22825,7 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
       matched_role_rank: Number.isFinite(Number(bestRole.rank)) ? Number(bestRole.rank) : null,
       framework_score: frameworkScore,
       framework_rank_score: frameworkRankScore,
-      framework_role_fit_score: Number.isFinite(Number(frameworkRoleFitScore)) ? Number(frameworkRoleFitScore) : null,
+      framework_role_fit_score: frameworkRoleFitScore != null ? Number(frameworkRoleFitScore) : null,
       framework_role_fit_rank_adjustment: frameworkRoleFitRankAdjustment,
       framework_semantic_fit: Boolean(bestRoleScore.semantic_fit_matched),
       framework_role_semantic_fit: Boolean(bestRoleScore.role_semantic_fit_matched),
@@ -22889,7 +22900,7 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
       matched_role_rank: Number.isFinite(Number(bestRole.rank)) ? Number(bestRole.rank) : null,
       framework_score: frameworkScore,
       framework_rank_score: frameworkRankScore,
-      framework_role_fit_score: Number.isFinite(Number(frameworkRoleFitScore)) ? Number(frameworkRoleFitScore) : null,
+      framework_role_fit_score: frameworkRoleFitScore != null ? Number(frameworkRoleFitScore) : null,
       framework_role_fit_rank_adjustment: frameworkRoleFitRankAdjustment,
       framework_tiebreak_score: scoreConcernFrameworkCandidateTiebreak(row),
       framework_semantic_fit: Boolean(bestRoleScore.semantic_fit_matched),
