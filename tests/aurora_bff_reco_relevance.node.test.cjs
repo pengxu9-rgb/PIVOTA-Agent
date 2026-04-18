@@ -4887,6 +4887,109 @@ test('__internal: local external seed sunscreen finish query uses category-posit
   assert.equal(out.products[0].product_id, 'ext_support_sunscreen_221');
 });
 
+test('__internal: local external seed hydrating serum ranking prefers leave-on serum forms over masks and pads', async () => {
+  const { __internal } = loadRoutesFresh();
+  const makeRow = ({ id, title, summary, category = 'Serum' }) => ({
+    id,
+    external_product_id: `ext_${id}`,
+    destination_url: `https://example.com/products/${id}`,
+    canonical_url: `https://example.com/products/${id}`,
+    domain: 'example.com',
+    title,
+    image_url: `https://example.com/products/${id}.jpg`,
+    price_amount: 24,
+    price_currency: 'USD',
+    availability: 'in_stock',
+    match_stage: 'support_category_positive',
+    match_score: 54,
+    seed_data: {
+      derived: {
+        recall: {
+          retrieval_title: title,
+          retrieval_summary: summary,
+          category,
+          vertical: 'skincare',
+        },
+      },
+      snapshot: {
+        title,
+        description: summary,
+        category,
+      },
+    },
+    updated_at: new Date().toISOString(),
+    created_at: new Date().toISOString(),
+  });
+  const out = await __internal.searchLocalExternalSeedProducts({
+    query: 'hyaluronic acid serum',
+    limit: 3,
+    role: {
+      role_id: 'hydrating_serum_or_essence',
+      rank: 42,
+      preferred_step: 'serum',
+      query_terms: ['hyaluronic acid serum', 'hydrating serum'],
+      fit_keywords: ['hydrating', 'lightweight', 'serum', 'essence'],
+      product_type_hypotheses: ['serum', 'essence', 'ampoule'],
+    },
+    preferredStep: 'serum',
+    queryFn: async () => ({
+      rows: [
+        makeRow({
+          id: 'pillow_pads',
+          title: 'Ultra Repair Hydrating Pillow Pads with Colloidal Oatmeal + Ceramides',
+          summary: 'Hydrating pads with colloidal oatmeal and ceramides.',
+          category: 'Treatment',
+        }),
+        makeRow({
+          id: 'dokdo_ampoule',
+          title: '1025 Dokdo Ampoule',
+          summary: 'A watery hydrating ampoule with glycerin and lightweight moisture.',
+          category: 'Serum',
+        }),
+        makeRow({
+          id: 'milky_remedy_mask',
+          title: 'Milky Remedy Mask',
+          summary: 'A hydrating mask with glycerin and oatmeal.',
+          category: 'Treatment',
+        }),
+      ],
+    }),
+  });
+
+  assert.equal(out.ok, true);
+  assert.equal(out.products[0]?.product_id, 'ext_dokdo_ampoule');
+  assert.equal(out.products.some((item) => item.product_id === 'ext_pillow_pads'), false);
+  assert.equal(out.products.some((item) => item.product_id === 'ext_milky_remedy_mask'), false);
+});
+
+test('__internal: local external seed barrier moisturizer query uses bounded category-positive cost', async () => {
+  const { __internal } = loadRoutesFresh();
+  const observedQueries = [];
+  const out = await __internal.searchLocalExternalSeedProducts({
+    query: 'barrier repair moisturizer',
+    limit: 6,
+    role: {
+      role_id: 'barrier_moisturizer',
+      rank: 41,
+      preferred_step: 'moisturizer',
+      query_terms: ['barrier repair moisturizer', 'ceramide cream sensitive skin'],
+      fit_keywords: ['barrier repair', 'ceramide', 'panthenol', 'sensitive skin'],
+      product_type_hypotheses: ['moisturizer'],
+    },
+    preferredStep: 'moisturizer',
+    queryFn: async (sql, params) => {
+      observedQueries.push({ sql: String(sql || ''), params });
+      return { rows: [] };
+    },
+  });
+
+  assert.equal(out.ok, false);
+  assert.equal(observedQueries.length, 1);
+  assert.match(observedQueries[0].sql, /support_category_positive/);
+  assert.equal(observedQueries[0].params.at(-1), 12);
+  assert.equal(out.local_external_seed_stage_debug[0]?.query_cap, 12);
+});
+
 test('__internal: local external seed support-role search uses exact category head for broad sunscreen recall', async () => {
   const { __internal } = loadRoutesFresh();
   const observedQueries = [];
