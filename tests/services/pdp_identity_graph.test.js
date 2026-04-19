@@ -568,7 +568,7 @@ describe('pdpIdentityGraph', () => {
         expect(String(sql)).not.toContain('updated_at');
         expect(String(sql)).toContain("product_data->>'vendor'");
         expect(String(sql)).toContain("regexp_replace(lower(coalesce(product_data->>'title'");
-        expect(params).toEqual(['external_seed', 'kravebeauty', '%kravebeauty%', 10]);
+        expect(params).toEqual(['external_seed', ['kravebeauty'], ['%kravebeauty%'], 10]);
         return {
           rows: [
             {
@@ -587,7 +587,7 @@ describe('pdpIdentityGraph', () => {
       if (String(sql).includes('FROM external_product_seeds')) {
         expect(String(sql)).toContain("seed_data->>'vendor'");
         expect(String(sql)).toContain("regexp_replace(lower(coalesce(title, seed_data->>'title'");
-        expect(params).toEqual(['kravebeauty', '%kravebeauty%', 10]);
+        expect(params).toEqual([['kravebeauty'], ['%kravebeauty%'], 10]);
         return { rows: [] };
       }
       throw new Error(`unexpected query: ${sql}`);
@@ -618,13 +618,13 @@ describe('pdpIdentityGraph', () => {
       if (String(sql).includes('FROM products_cache')) {
         expect(String(sql)).toContain('regexp_replace(lower(trim(coalesce(');
         expect(String(sql)).toContain("regexp_replace(lower(coalesce(product_data->>'title'");
-        expect(params).toEqual(['external_seed', 'paulaschoice', '%paulaschoice%', 10]);
+        expect(params).toEqual(['external_seed', ['paulaschoice'], ['%paulaschoice%'], 10]);
         return { rows: [] };
       }
       if (String(sql).includes('FROM external_product_seeds')) {
         expect(String(sql)).toContain('regexp_replace(lower(trim(coalesce(');
         expect(String(sql)).toContain("regexp_replace(lower(coalesce(title, seed_data->>'title'");
-        expect(params).toEqual(['paulaschoice', '%paulaschoice%', 10]);
+        expect(params).toEqual([['paulaschoice'], ['%paulaschoice%'], 10]);
         return {
           rows: [
             {
@@ -657,6 +657,96 @@ describe('pdpIdentityGraph', () => {
       }),
     );
     expect(queries).toHaveLength(2);
+  });
+
+  test('backfill product fetch matches ampersand and plus brand aliases', async () => {
+    const { _internals } = require('../../src/services/pdpIdentityGraph');
+    expect(_internals.buildBrandFilterTokens('Fable & Mane')).toEqual({
+      normalized: 'fable and mane',
+      normalizedVariants: ['fable and mane', 'fable mane'],
+      compactVariants: ['fableandmane', 'fablemane'],
+      titlePatterns: ['%fableandmane%', '%fablemane%'],
+    });
+    expect(_internals.buildBrandFilterTokens('R+Co')).toEqual({
+      normalized: 'r plus co',
+      normalizedVariants: ['r plus co', 'r co'],
+      compactVariants: ['rplusco', 'rco'],
+      titlePatterns: ['%rplusco%'],
+    });
+  });
+
+  test('backfill product fetch keeps plus-brand rows after post filtering', async () => {
+    const { _internals } = require('../../src/services/pdpIdentityGraph');
+    const queryFn = jest.fn(async (sql) => {
+      if (String(sql).includes('FROM products_cache')) return { rows: [] };
+      if (String(sql).includes('FROM external_product_seeds')) {
+        return {
+          rows: [
+            {
+              id: 'eps_rco',
+              external_product_id: 'ext_rco_oil',
+              title: 'ON A CLOUD Bond Building + Repair Styling Oil',
+              seed_data: {
+                brand: 'R+Co',
+                title: 'ON A CLOUD Bond Building + Repair Styling Oil',
+              },
+            },
+          ],
+        };
+      }
+      throw new Error(`unexpected query: ${sql}`);
+    });
+
+    const rows = await _internals.fetchBackfillProducts({
+      limit: 10,
+      brandFilter: 'R+Co',
+      queryFn,
+    });
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toEqual(
+      expect.objectContaining({
+        merchant_id: 'external_seed',
+        product_id: 'ext_rco_oil',
+      }),
+    );
+  });
+
+  test('backfill product fetch can use official domain when seed brand is missing', async () => {
+    const { _internals } = require('../../src/services/pdpIdentityGraph');
+    const queryFn = jest.fn(async (sql) => {
+      if (String(sql).includes('FROM products_cache')) return { rows: [] };
+      if (String(sql).includes('FROM external_product_seeds')) {
+        return {
+          rows: [
+            {
+              id: 'eps_tomford_fragrance',
+              external_product_id: 'ext_tomford_fragrance',
+              domain: 'www.tomfordbeauty.com',
+              title: 'Figue Erotique Eau de Parfum',
+              seed_data: {
+                title: 'Figue Erotique Eau de Parfum',
+              },
+            },
+          ],
+        };
+      }
+      throw new Error(`unexpected query: ${sql}`);
+    });
+
+    const rows = await _internals.fetchBackfillProducts({
+      limit: 10,
+      brandFilter: 'Tom Ford Beauty',
+      queryFn,
+    });
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toEqual(
+      expect.objectContaining({
+        merchant_id: 'external_seed',
+        product_id: 'ext_tomford_fragrance',
+      }),
+    );
   });
 
   test('listLivePdpIdentityRowsForRefs does not depend on PDP live-read feature flag', async () => {
