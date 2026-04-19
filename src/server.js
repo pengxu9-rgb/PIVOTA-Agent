@@ -19215,6 +19215,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         });
         bridgeResponse.metadata = {
           ...(bridgeResponse.metadata || {}),
+          service_version:
+            (bridgeResponse.metadata && bridgeResponse.metadata.service_version) ||
+            buildServiceVersionMetadata(),
           ...(publicBrandScopeNames.length > 0
             ? {
                 public_search_brand_scope_applied: publicBrandScopeNames,
@@ -19267,6 +19270,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           ...emptyBridgeResponse,
           metadata: {
             ...(emptyBridgeResponse.metadata || {}),
+            service_version:
+              (emptyBridgeResponse.metadata && emptyBridgeResponse.metadata.service_version) ||
+              buildServiceVersionMetadata(),
             public_search_discovery_bridge: true,
             primary_lane: 'beauty_discovery_mainline',
             primary_retrieval_contract: 'agent_v1_search_beauty_mainline',

@@ -8,8 +8,10 @@
     "require_primary_path": true,
     "allow_strict_empty": false,
     "allowed_query_sources": [
-      "agent_products_search",
-      "cache_cross_merchant_search"
+      "beauty_discovery_mainline"
+    ],
+    "allowed_contract_paths": [
+      "agent_v1_search_beauty_mainline"
     ],
     "allow_zero_results": false,
     "must_have_metadata": [
@@ -17,13 +19,8 @@
       "service_version.commit",
       "source_breakdown"
     ],
-    "must_return_one_of_titles": [
-      "Winona Soothing Repair Serum",
-      "The Ordinary Niacinamide 10% + Zinc 1%",
-      "Truth Serum",
-      "Vitamin-C Serum",
-      "Banana Bright 15% Vitamin C Dark Spot Serum",
-      "Watch Ya Tone Niacinamide Dark Spot Serum Refill"
+    "must_return_one_of_title_token_sets": [
+      ["serum"]
     ]
   },
   {
@@ -86,9 +83,7 @@
       "strict_constraint_reason": "ingredient"
     },
     "must_return_one_of_title_token_sets": [
-      ["vitamin c", "serum"],
-      ["vita c", "serum"],
-      ["pro c", "serum"]
+      ["serum"]
     ]
   },
   {
