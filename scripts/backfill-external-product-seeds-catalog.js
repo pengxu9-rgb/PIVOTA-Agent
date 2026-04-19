@@ -93,6 +93,49 @@ function normalizeComparableUrlKey(value) {
   }
 }
 
+const SHOPIFY_MARKET_HANDLE_SUFFIX_RE = /-(?:eu|europe|ca|canada|us|usa|uk|gb|au|australia)$/i;
+
+function normalizeProductHandleToken(value) {
+  return normalizeVariantHintToken(value)
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+function extractShopifyHandleFromUrl(value) {
+  const normalized = normalizeUrlLike(value);
+  if (!normalized) return '';
+  try {
+    const parsed = new URL(normalized);
+    const matched = parsed.pathname.match(/^\/(?:[a-z]{2}(?:-[a-z]{2})?\/)?products?\/([^/?#]+)/i);
+    return normalizeProductHandleToken(matched?.[1] || '');
+  } catch {
+    return '';
+  }
+}
+
+function stripShopifyMarketHandleSuffix(handle) {
+  let normalized = normalizeProductHandleToken(handle);
+  for (let idx = 0; idx < 3; idx += 1) {
+    const stripped = normalized.replace(SHOPIFY_MARKET_HANDLE_SUFFIX_RE, '');
+    if (stripped === normalized) break;
+    normalized = stripped;
+  }
+  return normalized;
+}
+
+function isVerifiedShopifyMarketReplacement(targetUrl, productUrl) {
+  const targetHandle = extractShopifyHandleFromUrl(targetUrl);
+  const productHandle = extractShopifyHandleFromUrl(productUrl);
+  if (!targetHandle || !productHandle || targetHandle === productHandle) return false;
+
+  const targetBase = stripShopifyMarketHandleSuffix(targetHandle);
+  const productBase = stripShopifyMarketHandleSuffix(productHandle);
+  if (!targetBase || !productBase) return false;
+
+  return productHandle.startsWith(`${targetBase}-`) || productBase === targetBase;
+}
+
 function looksLikeDirectProductTargetUrl(value) {
   const normalized = normalizeUrlLike(value);
   if (!normalized) return false;
@@ -738,6 +781,11 @@ function chooseRepresentativeProduct(response, targetUrl, row) {
     const productKey = normalizeUrlKey(product?.url);
     const comparableProductKey = normalizeComparableUrlKey(product?.url);
     if (candidateKeys.has(productKey) || comparableKeys.has(comparableProductKey)) return product;
+  }
+
+  if (looksLikeDirectProductTargetUrl(targetUrl) && products.length === 1) {
+    const product = products[0];
+    if (isVerifiedShopifyMarketReplacement(targetUrl, product?.url)) return product;
   }
 
   if (looksLikeDirectProductTargetUrl(targetUrl)) return null;
