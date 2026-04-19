@@ -619,6 +619,82 @@ function deriveFieldCaptureStatus(reportedStatus, fields) {
   return Object.keys(next).length > 0 ? next : null;
 }
 
+function findPdpDetailsSection(sections, headingPattern) {
+  const normalizedSections = normalizeDetailsSections(sections);
+  return normalizedSections.find((section) => headingPattern.test(section.heading)) || null;
+}
+
+function cleanPdpIngredientsRaw(value) {
+  let next = normalizeNonEmptyString(value).replace(/\r/g, '');
+  if (!next) return '';
+
+  const ingredientHeadings = Array.from(next.matchAll(/\bIngredients\b\s*[:\n]*/gi));
+  if (ingredientHeadings.length > 0) {
+    const lastHeading = ingredientHeadings[ingredientHeadings.length - 1];
+    next = next.slice(lastHeading.index + lastHeading[0].length).trim();
+  }
+
+  const stopPatterns = [/\bHow to Use\b/i, /\bDirections?\b/i, /\bDetails\b/i, /\bBenefits\b/i, /\bWhat it is\b/i];
+  for (const pattern of stopPatterns) {
+    const match = next.match(pattern);
+    if (match && match.index > 20) next = next.slice(0, match.index).trim();
+  }
+
+  next = next
+    .replace(/\bFull Ingredients\b\s*$/i, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+
+  if (!next) return '';
+  if (/^such as\b/i.test(next)) return '';
+  if (/\b(?:meaning it is not greasy|instead it absorbs|exfoliates dead skin cells|Details The)\b/i.test(next)) {
+    return '';
+  }
+  if (/\b(?:Dibuyi|Ethylhexy\/|benzovi|Polvsilicone|Vitis-idata|Salicylâte|Propylheptyi|Polyglycery1|Dimethyisiloxyethy|Houttuvnia|Onza Sativo|Giycerin)\b/i.test(next)) {
+    return '';
+  }
+
+  const commaCount = (next.match(/,/g) || []).length;
+  if (next.length < 20 || commaCount < 1) return '';
+  return next;
+}
+
+function cleanPdpActiveIngredientsRaw(value) {
+  return normalizeNonEmptyString(value)
+    .replace(/\bFull Ingredients\b[\s\S]*$/i, '')
+    .replace(/\bFree\s+From\s*:?\s*[\s\S]*$/i, '')
+    .trim();
+}
+
+function pickPdpHowToUseRaw(rawValue, detailsSections, fallbackValue = '') {
+  const raw = normalizeNonEmptyString(rawValue);
+  const sectionBody = normalizeNonEmptyString(
+    findPdpDetailsSection(detailsSections, /^How to Use$/i)?.body,
+  );
+  const fallback = normalizeNonEmptyString(fallbackValue);
+  if (
+    sectionBody &&
+    (!raw ||
+      sectionBody.length > raw.length + 30 ||
+      (raw.length < 120 && sectionBody.toLowerCase().startsWith(raw.toLowerCase())) ||
+      (raw && !/[.!?)]$/.test(raw)))
+  ) {
+    return sectionBody;
+  }
+  return raw || sectionBody || fallback;
+}
+
+function pickPdpIngredientsRaw(rawValue, detailsSections, fallbackValue = '') {
+  const cleanedRaw = cleanPdpIngredientsRaw(rawValue);
+  if (cleanedRaw) return cleanedRaw;
+
+  const sectionBody = findPdpDetailsSection(detailsSections, /^Ingredients$/i)?.body;
+  const cleanedSection = cleanPdpIngredientsRaw(sectionBody);
+  if (cleanedSection) return cleanedSection;
+
+  return cleanPdpIngredientsRaw(fallbackValue);
+}
+
 function looksLikeSyntheticSummaryText(value) {
   return /\bOFFICIAL:\b[\s\S]*\/\/\/\s*SOCIAL HIGHLIGHTS:/i.test(normalizeNonEmptyString(value));
 }
@@ -1047,15 +1123,20 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
             ? seedData.pdp_details_sections
             : snapshot.pdp_details_sections,
         );
-  const nextPdpIngredientsRaw =
-    pdpIngredientsRaw ||
-    normalizeNonEmptyString(seedData.pdp_ingredients_raw || snapshot.pdp_ingredients_raw);
-  const nextPdpActiveIngredientsRaw =
+  const nextPdpIngredientsRaw = pickPdpIngredientsRaw(
+    pdpIngredientsRaw,
+    nextPdpDetailsSections,
+    normalizeNonEmptyString(seedData.pdp_ingredients_raw || snapshot.pdp_ingredients_raw),
+  );
+  const nextPdpActiveIngredientsRaw = cleanPdpActiveIngredientsRaw(
     pdpActiveIngredientsRaw ||
-    normalizeNonEmptyString(seedData.pdp_active_ingredients_raw || snapshot.pdp_active_ingredients_raw);
-  const nextPdpHowToUseRaw =
-    pdpHowToUseRaw ||
-    normalizeNonEmptyString(seedData.pdp_how_to_use_raw || snapshot.pdp_how_to_use_raw);
+      normalizeNonEmptyString(seedData.pdp_active_ingredients_raw || snapshot.pdp_active_ingredients_raw),
+  );
+  const nextPdpHowToUseRaw = pickPdpHowToUseRaw(
+    pdpHowToUseRaw,
+    nextPdpDetailsSections,
+    normalizeNonEmptyString(seedData.pdp_how_to_use_raw || snapshot.pdp_how_to_use_raw),
+  );
   const nextPdpFaqItems =
     pdpFaqItems.length > 0
       ? pdpFaqItems

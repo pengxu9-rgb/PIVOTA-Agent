@@ -715,6 +715,93 @@ describe('backfill-external-product-seeds-catalog', () => {
     });
   });
 
+  test('uses full How to Use section when extractor raw usage is truncated', () => {
+    const row = {
+      id: 'eps_sun_stick',
+      title: 'Daily Soothing Sun Shield SPF50+ PA++++',
+      canonical_url: 'https://haruharuwonder.com/products/haruharuwonder-black-bamboo-daily-soothing-sun-shield-spf50-pa-20g',
+      destination_url: 'https://haruharuwonder.com/products/haruharuwonder-black-bamboo-daily-soothing-sun-shield-spf50-pa-20g',
+      image_url: '',
+      price_amount: 22,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      seed_data: { snapshot: {} },
+    };
+
+    const payload = buildSeedUpdatePayload(
+      row,
+      {
+        products: [
+          {
+            title: row.title,
+            url: row.canonical_url,
+            description_raw: 'A portable SPF stick.',
+            how_to_use_raw: '1. At the last step of your skincare routine, twist the base to expose',
+            details_sections: [
+              {
+                heading: 'How to Use',
+                body: '1. At the last step of your skincare routine, twist the base to expose about 0.5cm of the stick and swipe it thoroughly across any exposed skin. 2. Reapply every 2 hours for optimal protection.',
+                source_kind: 'description_delimited_section',
+              },
+            ],
+            variants: [],
+          },
+        ],
+        variants: [],
+        diagnostics: { failure_category: null },
+      },
+      row.canonical_url,
+    );
+
+    expect(payload.nextRow.seed_data.pdp_how_to_use_raw).toContain('about 0.5cm');
+    expect(payload.nextRow.seed_data.pdp_how_to_use_raw).toContain('Reapply every 2 hours');
+  });
+
+  test('cleans polluted PDP ingredients and active ingredient tails before seed writes', () => {
+    const row = {
+      id: 'eps_body_oil',
+      title: 'Daily Smoothing Body Oil',
+      canonical_url: 'https://haruharuwonder.com/products/haruharuwonder-black-bamboo-daily-smoothing-body-oil-200ml',
+      destination_url: 'https://haruharuwonder.com/products/haruharuwonder-black-bamboo-daily-smoothing-body-oil-200ml',
+      image_url: '',
+      price_amount: 24,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      seed_data: { snapshot: {} },
+    };
+
+    const payload = buildSeedUpdatePayload(
+      row,
+      {
+        products: [
+          {
+            title: row.title,
+            url: row.canonical_url,
+            description_raw: 'A smoothing body oil.',
+            ingredients_raw:
+              'Key Ingredients - Urea - Moisturizes\n\nIngredients\n\nWater, Glycerin, Urea, Mandelic Acid, Squalane, Linalool Details The Smoothing Body Oil is a milk-type oil.',
+            active_ingredients_raw:
+              'Urea - Moisturizes\n\nMandelic Acid (AHA) - Exfoliates\nFree From:\n- Sulfates\nFull Ingredients',
+            details_sections: [],
+            variants: [],
+          },
+        ],
+        variants: [],
+        diagnostics: { failure_category: null },
+      },
+      row.canonical_url,
+    );
+
+    expect(payload.nextRow.seed_data.pdp_ingredients_raw).toBe(
+      'Water, Glycerin, Urea, Mandelic Acid, Squalane, Linalool',
+    );
+    expect(payload.nextRow.seed_data.pdp_ingredients_raw).not.toMatch(/Details|milk-type/i);
+    expect(payload.nextRow.seed_data.pdp_active_ingredients_raw).toBe(
+      'Urea - Moisturizes\n\nMandelic Acid (AHA) - Exfoliates',
+    );
+    expect(payload.nextRow.seed_data.pdp_active_ingredients_raw).not.toMatch(/Free From|Full Ingredients/i);
+  });
+
   test('clears stale top-level seed description when a blocked seed still has no product URLs', () => {
     const row = {
       id: 'eps_blocked_collection',
