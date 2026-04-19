@@ -8768,14 +8768,14 @@ test('__internal: framework pool prefers lightweight layering moisturizer eviden
         brand: 'PIXI BEAUTY',
         name: 'Clarity Mist',
         display_name: 'PIXI BEAUTY Clarity Mist',
-        category: 'Face Mist',
-        product_type: 'Face Mist',
+        category: 'Moisturizer',
+        product_type: 'Moisturizer',
         retrieval_source: 'external_seed',
         retrieval_role_id: 'layering_compatible_moisturizer_or_spf',
         retrieval_query: 'lightweight moisturizer',
         benefit_tags: ['lightweight', 'oil-free', 'makeup layering'],
         short_description:
-          'A lightweight, oil-free face mist with cica and hyaluronic complex for anytime hydration.',
+          'A lightweight, oil-free facial spray with cica and Hyaluronic Complex to lock in moisture anytime.',
       },
       {
         product_id: 'round_lab_lotion_makeup_1',
@@ -9056,6 +9056,22 @@ test('__internal: framework pool rejects cosmetic finish products from under-mak
         short_description: 'A lightweight water cream moisturizer that layers without a greasy finish.',
       },
       {
+        product_id: 'pixi_clarity_mist_mislabeled_moisturizer',
+        merchant_id: 'external_seed',
+        brand: 'PIXI BEAUTY',
+        name: 'Clarity Mist',
+        display_name: 'PIXI BEAUTY Clarity Mist',
+        category: 'Moisturizer',
+        product_type: 'Moisturizer',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'layering_compatible_moisturizer_or_spf',
+        retrieval_query: 'lightweight moisturizer under makeup',
+        local_external_seed_role_fit_score: 1.18,
+        benefit_tags: ['lightweight', 'oil-free', 'makeup layering'],
+        short_description:
+          'A lightweight facial spray with cica and Hyaluronic Complex to lock in moisture before SPF application.',
+      },
+      {
         product_id: 'fab_bronze_glow_drops',
         merchant_id: 'external_seed',
         brand: 'First Aid Beauty',
@@ -9095,7 +9111,7 @@ test('__internal: framework pool rejects cosmetic finish products from under-mak
     state.selected_recommendations.map((row) => row.product_id),
     ['boj_daily_tinted_fluid_spf', 'krave_oat_water_cream_makeup', 'ordinary_niacinamide_oil_control'],
   );
-  for (const rejectedId of ['pixi_rose_radiance_perfector', 'fab_bronze_glow_drops']) {
+  for (const rejectedId of ['pixi_rose_radiance_perfector', 'pixi_clarity_mist_mislabeled_moisturizer', 'fab_bronze_glow_drops']) {
     assert.equal(
       state.selected_recommendations.some((row) => row.product_id === rejectedId),
       false,

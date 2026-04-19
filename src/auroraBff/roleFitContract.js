@@ -150,6 +150,28 @@ function buildConcernRowEvidenceText(row = null, candidateText = '') {
     .join(' ');
 }
 
+function buildConcernRowIdentityText(row = null) {
+  const sku = row && typeof row.sku === 'object' && !Array.isArray(row.sku) ? row.sku : {};
+  const product = row && typeof row.product === 'object' && !Array.isArray(row.product) ? row.product : {};
+  return [
+    row?.title,
+    row?.display_name,
+    row?.displayName,
+    row?.name,
+    sku?.title,
+    sku?.display_name,
+    sku?.displayName,
+    sku?.name,
+    product?.title,
+    product?.display_name,
+    product?.displayName,
+    product?.name,
+  ]
+    .map((value) => String(value || '').trim().toLowerCase())
+    .filter(Boolean)
+    .join(' ');
+}
+
 function hasRetinoidActiveSignal(text = '') {
   return /\b(retinol|retinal|retinaldehyde|retinoid|tretinoin|adapalene)\b/i.test(String(text || ''));
 }
@@ -271,6 +293,7 @@ function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '
   const preferredStep = normalizeRecoTargetStep(role?.preferred_step);
   const roleText = buildConcernRoleFitText(role);
   const candidateEvidenceText = buildConcernRowEvidenceText(row, candidateText);
+  const candidateIdentityText = buildConcernRowIdentityText(row);
   // Treatment roles often land on serum-shaped catalog items even when the planner
   // does not explicitly emit alternate_steps=["serum"].
   const alternateStepSet = new Set(
@@ -346,8 +369,16 @@ function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '
   const lightweightMoisturizerFormFactorMismatchApplied =
     preferredStep === 'moisturizer'
     && lightweightTextureExpected
-    && hasMistTonerSprayFormFactorSignal(candidateEvidenceText)
-    && !hasLayeringMoisturizerFormFactorSignal(candidateEvidenceText)
+    && (
+      (
+        hasMistTonerSprayFormFactorSignal(candidateEvidenceText)
+        && !hasLayeringMoisturizerFormFactorSignal(candidateEvidenceText)
+      )
+      || (
+        hasMistTonerSprayFormFactorSignal(candidateIdentityText)
+        && !hasLayeringMoisturizerFormFactorSignal(candidateIdentityText)
+      )
+    )
     && !roleExplicitlyAllowsMistTonerSpray(role, targetContext);
   const cosmeticFinishProductShapeMismatchApplied =
     (preferredStep === 'moisturizer' || preferredStep === 'treatment' || preferredStep === 'serum')
