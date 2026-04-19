@@ -1,5 +1,10 @@
 const crypto = require('node:crypto')
 const { extractJsonObject, parseJsonOnlyObject } = require('./jsonExtract')
+const {
+  hasAuroraGeminiApiKey,
+  callAuroraGeminiGenerateContentWithMeta,
+} = require('./auroraGeminiGlobalClient')
+const { resolveNonImageGeminiModel } = require('../lib/geminiModelFloor')
 
 const ALLOWED_BUYING_CHANNELS = new Set([
   'beauty_retail',
@@ -12,9 +17,17 @@ const ALLOWED_BUYING_CHANNELS = new Set([
 const DEFAULT_TRAVEL_LLM_MODEL = String(
   process.env.AURORA_TRAVEL_LLM_MODEL ||
     process.env.TRAVEL_LLM_MODEL ||
-    process.env.AURORA_SKIN_VISION_MODEL_OPENAI ||
-    'gpt-4o-mini',
-).trim() || 'gpt-4o-mini'
+    'gemini-3-flash-preview',
+).trim() || 'gemini-3-flash-preview'
+
+function normalizeTravelGeminiModel(model) {
+  return resolveNonImageGeminiModel({
+    model: String(model || '').trim(),
+    fallbackModel: 'gemini-3-flash-preview',
+    envSource: 'AURORA_TRAVEL_LLM_MODEL',
+    callPath: 'aurora_travel_llm_calibration',
+  }).effectiveModel
+}
 
 function isPlainObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
@@ -413,6 +426,56 @@ function extractCompletionText(response) {
   return ''
 }
 
+async function maybeCallText(target) {
+  if (!target || typeof target.text !== 'function') return ''
+  try {
+    const out = await target.text()
+    return String(out || '').trim()
+  } catch {
+    return ''
+  }
+}
+
+async function extractGeminiText(response) {
+  if (!response) return ''
+  if (typeof response.text === 'string' && response.text.trim()) return response.text.trim()
+  const direct = await maybeCallText(response)
+  if (direct) return direct
+  const nested = await maybeCallText(response.response)
+  if (nested) return nested
+  if (typeof response?.response?.text === 'string' && response.response.text.trim()) return response.response.text.trim()
+  const candidates = Array.isArray(response.candidates) ? response.candidates : []
+  const parts = []
+  for (const candidate of candidates) {
+    const contentParts = Array.isArray(candidate?.content?.parts) ? candidate.content.parts : []
+    for (const part of contentParts) {
+      if (part && typeof part.text === 'string' && part.text.trim()) parts.push(part.text.trim())
+    }
+  }
+  return parts.join('\n').trim()
+}
+
+function buildGeminiRequest({ model, systemPrompt, userPrompt } = {}) {
+  return {
+    model: normalizeTravelGeminiModel(model || DEFAULT_TRAVEL_LLM_MODEL),
+    contents: [
+      {
+        role: 'user',
+        parts: [
+          {
+            text: `${systemPrompt}\n\n${userPrompt}`,
+          },
+        ],
+      },
+    ],
+    config: {
+      temperature: 0.3,
+      maxOutputTokens: 2000,
+      responseMimeType: 'application/json',
+    },
+  }
+}
+
 function withTimeout(promise, timeoutMs, timeoutCode = 'TRAVEL_LLM_TIMEOUT') {
   const ms = Number.isFinite(Number(timeoutMs)) ? Math.max(1, Math.trunc(Number(timeoutMs))) : 0
   if (!ms) return promise
@@ -552,6 +615,7 @@ function parseCalibrationPayload(text) {
 
 async function calibrateTravelReadinessWithLlm({
   openaiClient = null,
+  geminiGenerateContent = null,
   language = 'EN',
   travelLlmInput = null,
   baseTravelReadiness = null,
@@ -573,8 +637,13 @@ async function calibrateTravelReadinessWithLlm({
     travelLlmInput,
     baseTravelReadiness: baseline,
   })
+  const effectiveModel = normalizeTravelGeminiModel(model || DEFAULT_TRAVEL_LLM_MODEL)
+  const geminiRequest = buildGeminiRequest({ model: effectiveModel, systemPrompt, userPrompt })
+  const hasGeminiClient =
+    typeof geminiGenerateContent === 'function' ||
+    hasAuroraGeminiApiKey('AURORA_TRAVEL_GEMINI_API_KEY')
 
-  if (!openaiClient || !openaiClient.chat || !openaiClient.chat.completions) {
+  if (!hasGeminiClient) {
     return {
       stage,
       used: false,
@@ -582,10 +651,11 @@ async function calibrateTravelReadinessWithLlm({
       travel_readiness: baseline,
       quality_flags: {},
       source_meta: {
-        reason: 'no_client',
-        model,
+        reason: 'no_gemini_client',
+        provider: 'gemini',
+        model: effectiveModel,
         ...promptTelemetry,
-        error_code: 'no_client',
+        error_code: 'no_gemini_client',
       },
     }
   }
@@ -595,22 +665,26 @@ async function calibrateTravelReadinessWithLlm({
   let lastErr = null
   for (let i = 0; i < attempts; i += 1) {
     try {
-      const response = await withTimeout(
-        openaiClient.chat.completions.create({
-          model: String(model || DEFAULT_TRAVEL_LLM_MODEL),
-          temperature: 0.3,
-          max_tokens: 2000,
-          response_format: { type: 'json_object' },
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userPrompt },
-          ],
-        }),
-        timeoutMs,
-        'TRAVEL_LLM_TIMEOUT',
-      )
+      const queueTimeoutMs = Math.max(300, Math.floor(Number(timeoutMs || 3500) * 0.25))
+      const upstreamTimeoutMs = Math.max(800, Math.floor(Number(timeoutMs || 3500) - queueTimeoutMs))
+      const callResult = typeof geminiGenerateContent === 'function'
+        ? {
+            response: await withTimeout(
+              geminiGenerateContent(geminiRequest),
+              timeoutMs,
+              'TRAVEL_LLM_TIMEOUT',
+            ),
+            meta: {},
+          }
+        : await callAuroraGeminiGenerateContentWithMeta({
+            featureEnvVar: 'AURORA_TRAVEL_GEMINI_API_KEY',
+            route: 'aurora_travel_llm_calibration',
+            request: geminiRequest,
+            queueTimeoutMs,
+            upstreamTimeoutMs,
+          })
 
-      const text = extractCompletionText(response)
+      const text = await extractGeminiText(callResult && callResult.response)
       const parsed = parseCalibrationPayload(text)
       if (!parsed) {
         const parseErr = new Error('travel_llm_invalid_json')
@@ -627,9 +701,11 @@ async function calibrateTravelReadinessWithLlm({
         travel_readiness: merged,
         quality_flags: parsed.quality_flags || {},
         source_meta: {
-          model: String(model || DEFAULT_TRAVEL_LLM_MODEL),
+          provider: 'gemini',
+          model: effectiveModel,
           attempt: i + 1,
           reasoning_mode: normalizeText(parsed.source_notes && parsed.source_notes.reasoning_mode, 80) || 'llm_calibration_v1',
+          ...(isPlainObject(callResult && callResult.meta) ? callResult.meta : {}),
           ...promptTelemetry,
         },
       }
@@ -642,12 +718,12 @@ async function calibrateTravelReadinessWithLlm({
           attempt: i + 1,
           timeout_ms: timeoutMs,
         },
-        'aurora bff: travel llm calibration failed, trying fallback',
+        'aurora bff: travel gemini calibration failed, retrying',
       )
     }
   }
 
-  const timeoutErr = lastErr && String(lastErr.code || '').trim() === 'TRAVEL_LLM_TIMEOUT'
+  const timeoutErr = lastErr && /TIMEOUT/i.test(String(lastErr.code || lastErr.message || ''))
   const errorCode = normalizeErrorCode(lastErr, timeoutErr ? 'TRAVEL_LLM_TIMEOUT' : 'TRAVEL_LLM_ERROR')
   return {
     stage,
@@ -657,7 +733,8 @@ async function calibrateTravelReadinessWithLlm({
     quality_flags: {},
     source_meta: {
       reason: timeoutErr ? 'timeout' : 'error',
-      model: String(model || DEFAULT_TRAVEL_LLM_MODEL),
+      provider: 'gemini',
+      model: effectiveModel,
       ...promptTelemetry,
       error_code: errorCode,
       error: lastErr && (lastErr.code || lastErr.message) ? String(lastErr.code || lastErr.message).slice(0, 140) : 'unknown',

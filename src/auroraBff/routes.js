@@ -41493,6 +41493,27 @@ function extractProfilePatchFromRequestContextPayload(payload) {
     mergeMissingProfilePatchFields(patch, extractQuickProfileLightweightPatch(node));
   }
 
+  const readPlainObject = (...aliases) => {
+    for (const node of candidates) {
+      for (const alias of aliases) {
+        const value = node && typeof node === 'object' ? node[alias] : null;
+        if (value && typeof value === 'object' && !Array.isArray(value)) return value;
+      }
+    }
+    return null;
+  };
+
+  const travelPlan = readPlainObject('travel_plan', 'travelPlan');
+  if (travelPlan) patch.travel_plan = travelPlan;
+
+  const currentRoutine = readPlainObject('currentRoutine', 'current_routine', 'routine', 'routine_state');
+  if (currentRoutine) {
+    patch.currentRoutine = normalizeRoutineInputWithPmShortcut(currentRoutine);
+  } else {
+    const currentRoutineText = readString('currentRoutine', 'current_routine', 'routine_text', 'routineText');
+    if (currentRoutineText) patch.currentRoutine = normalizeRoutineInputWithPmShortcut(currentRoutineText);
+  }
+
   const parsed = UserProfilePatchSchema.safeParse(patch);
   if (!parsed.success) return null;
   const clean = parsed.data;
@@ -41757,6 +41778,9 @@ function extractProfilePatchFromFreeText({ message, canonicalIntent } = {}) {
   const looksTravel = canonicalIntent && (canonicalIntent.intent === INTENT_ENUM.TRAVEL_PLANNING || canonicalIntent.intent === INTENT_ENUM.WEATHER_ENV);
   if (looksTravel || /出差|旅行|飞行|flight|trip|itinerary|weather|climate|天气|气候/i.test(text)) {
     const baseTravel = {};
+    if (typeof travelEntities.departure_region === 'string' && travelEntities.departure_region.trim()) {
+      baseTravel.departure_region = travelEntities.departure_region.trim().slice(0, 140);
+    }
     if (typeof travelEntities.destination === 'string' && travelEntities.destination.trim()) {
       baseTravel.destination = travelEntities.destination.trim().slice(0, 100);
     }
@@ -88057,6 +88081,9 @@ function mountAuroraBffRoutes(app, { logger }) {
             : {};
         const nextTravel = {
           ...baseTravel,
+          ...(canonicalIntent.entities.departure_region
+            ? { departure_region: String(canonicalIntent.entities.departure_region).trim().slice(0, 140) }
+            : {}),
           ...(canonicalIntent.entities.destination ? { destination: String(canonicalIntent.entities.destination).trim().slice(0, 100) } : {}),
           ...(canonicalIntent.entities.date_range && typeof canonicalIntent.entities.date_range === 'object'
             ? {
@@ -93865,6 +93892,7 @@ const __internal = {
   parseIntQueryValue,
   extractPrimaryChatRequestMessage,
   extractLastUserMessageFromChatRequestMessages,
+  extractProfilePatchFromRequestContextPayload,
   getRequiredRouteContractsHealth,
   mapSuggestionForResponse,
   generatePrelabelsForAnchor,

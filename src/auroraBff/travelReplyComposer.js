@@ -42,6 +42,16 @@ function uniqueStrings(values, maxItems = 8) {
   return out;
 }
 
+function clipAtWord(value, maxLen = 120) {
+  const limit = Math.max(20, Math.trunc(Number(maxLen) || 120));
+  const text = normalizeText(value, limit + 80);
+  if (!text || text.length <= limit) return text;
+  const head = text.slice(0, limit);
+  const boundary = head.lastIndexOf(' ');
+  const clipped = head.slice(0, boundary > Math.floor(limit * 0.6) ? boundary : limit).replace(/[,.!?;:]+$/g, '');
+  return `${clipped}...`;
+}
+
 function actionSemanticKey(raw) {
   const text = normalizeText(raw, 320).toLowerCase();
   if (!text) return '';
@@ -329,7 +339,7 @@ function detectTravelFoci(message) {
   for (const focus of FOCUS_PRIORITY) {
     if (!hit.has(focus)) continue;
     ordered.push(focus);
-    if (ordered.length >= 2) break;
+    if (ordered.length >= 5) break;
   }
   return ordered.length ? ordered : [FOCUS_ENUM.GENERAL];
 }
@@ -505,6 +515,29 @@ function buildActionLines({ language, foci, travelReadiness, displayedDeltaKeys 
   return uniqueStrings(lines, 3);
 }
 
+function buildJetlagLines({ language, travelReadiness }) {
+  const sleep = isPlainObject(travelReadiness && travelReadiness.jetlag_sleep)
+    ? travelReadiness.jetlag_sleep
+    : {};
+  const hoursDiff = toNumber(sleep.hours_diff);
+  const risk = normalizeText(sleep.risk_level, 40);
+  const tzOrigin = normalizeText(sleep.tz_origin || sleep.tz_home, 80);
+  const tzDestination = normalizeText(sleep.tz_destination, 80);
+  const tips = Array.isArray(sleep.sleep_tips) ? sleep.sleep_tips.map((line) => normalizeText(line, 180)).filter(Boolean) : [];
+  const lines = [];
+  if (hoursDiff != null) {
+    const riskText = risk ? ` · ${risk} risk` : '';
+    const tzText = tzOrigin && tzDestination ? ` (${tzOrigin} -> ${tzDestination})` : '';
+    lines.push(t(
+      language,
+      `时差约 ${formatNumber(hoursDiff, 1)} 小时${tzText}${risk ? ` · ${risk} 风险` : ''}。`,
+      `Timezone gap is about ${formatNumber(hoursDiff, 1)}h${tzText}${riskText}.`,
+    ));
+  }
+  for (const tip of tips.slice(0, 2)) lines.push(tip);
+  return uniqueStrings(lines, 3);
+}
+
 function buildPhasedPlanLines({ language, travelReadiness, foci }) {
   const context = isPlainObject(travelReadiness && travelReadiness.destination_context)
     ? travelReadiness.destination_context
@@ -565,24 +598,30 @@ function buildTravelKitLines({ language, foci, travelReadiness, profile }) {
 
   for (const row of recoBundle.slice(0, 10)) {
     const trigger = normalizeText(row && row.trigger, 120);
-    const action = normalizeText(row && row.action, 280);
-    const ingredientLogic = normalizeText(row && row.ingredient_logic, 260);
-    const reapplyRule = normalizeText(row && row.reapply_rule, 200);
+    const action = clipAtWord(row && row.action, 82);
+    const ingredientLogic = clipAtWord(row && row.ingredient_logic, 84);
+    const reapplyRule = clipAtWord(row && row.reapply_rule, 90);
     const productTypes = Array.isArray(row && row.product_types)
       ? row.product_types.map((pt) => normalizeText(pt, 120)).filter(Boolean)
       : [];
     if (!trigger && !action) continue;
 
-    const productStr = productTypes.length ? productTypes.join(', ') : '';
+    const productStr = productTypes.length ? productTypes.slice(0, 2).join(', ') : '';
     const parts = [];
     if (trigger) parts.push(`【${trigger}】`);
     if (productStr) parts.push(productStr);
-    if (action) parts.push(action);
-    if (ingredientLogic) parts.push(`[${t(language, '成分', 'Ingredients')}: ${ingredientLogic}]`);
-    if (reapplyRule) parts.push(`(${reapplyRule})`);
+    if (reapplyRule) parts.push(`${t(language, '用法', 'Use')}: ${reapplyRule}`);
+    else if (action) parts.push(action);
     const semantic = travelKitSemanticKey([trigger, action, productStr].filter(Boolean).join(' '));
     if (semantic) seenCategories.add(semantic);
     lines.push(parts.join(' '));
+    if (ingredientLogic && lines.length < 8) {
+      lines.push(t(
+        language,
+        `为什么需要 ${trigger || productStr}：${ingredientLogic}`,
+        `Why ${trigger || productStr}: ${ingredientLogic}`,
+      ));
+    }
   }
 
   for (const cat of categoryRecs.slice(0, 10)) {
@@ -909,13 +948,26 @@ function composeTravelReply({
       (normalizedPrevSig === replySig || (normalizedPrevQuestionHash && normalizedPrevQuestionHash === normalizedQuestionHash)),
   );
 
-  const directAnswer = buildPrimaryAnswer({
-    language: lang,
-    primaryFocus: foci[0],
-    travelReadiness: readiness,
-    destinationLabel,
-    repeated,
-  });
+  const tripPlanRequested = /\b(plan|planner|business trip|work trip|prepare|pre-departure|arrival|first 48|48 hours)\b/i.test(
+    String(message || ''),
+  ) || /(方案|出差|行前|落地|到达|48\s*小时)/.test(String(message || ''));
+  const directAnswer = tripPlanRequested
+    ? t(
+      lang,
+      repeated
+        ? '我按“行前准备、飞行日、落地后 48 小时、在地购买”重新整理重点。'
+        : '我会按行前准备、飞行日、落地后 48 小时和在地购买来组织这次旅行护肤方案。',
+      repeated
+        ? 'I will restate this around pre-trip prep, flight day, first 48 hours after arrival, and local buying.'
+        : 'I will structure this travel skincare plan around pre-trip prep, flight day, first 48 hours after arrival, and local buying.',
+    )
+    : buildPrimaryAnswer({
+      language: lang,
+      primaryFocus: foci[0],
+      travelReadiness: readiness,
+      destinationLabel,
+      repeated,
+    });
 
   const contextLine = originRegionText
     ? t(
@@ -941,6 +993,10 @@ function composeTravelReply({
     foci,
     travelReadiness: readiness,
     displayedDeltaKeys,
+  });
+  const jetlagLines = buildJetlagLines({
+    language: lang,
+    travelReadiness: readiness,
   });
   const phasedPlanLines = buildPhasedPlanLines({
     language: lang,
@@ -993,6 +1049,7 @@ function composeTravelReply({
   const qualitySections = [];
   if (comparisonLines.length) qualitySections.push('answer_delta');
   if (actionLines.length) qualitySections.push('actions');
+  if (jetlagLines.length) qualitySections.push('jetlag');
   if (phasedPlanLines.length) qualitySections.push('phased_plan');
   if (productLines.length) qualitySections.push('travel_kit');
   if (flightDayPlanLines.length) qualitySections.push('flight_day');
@@ -1026,6 +1083,12 @@ function composeTravelReply({
       ? [
         t(lang, '护肤调整建议：', 'Adjusted routine guidance:'),
         ...actionLines.map((line) => `- ${line}`),
+      ].join('\n')
+      : '',
+    jetlagLines.length
+      ? [
+        t(lang, '时差与作息：', 'Jet lag / sleep timing:'),
+        ...jetlagLines.map((line) => `- ${line}`),
       ].join('\n')
       : '',
     flightDayPlanLines.length
@@ -1075,6 +1138,7 @@ function composeTravelReply({
     seasonal_context: uniqueStrings(seasonalContextLines, 6),
     key_deltas: uniqueStrings([...comparisonLines, ...(baselineGapLine ? [baselineGapLine] : [])], 6),
     routine_adjustments: uniqueStrings(actionLines, 6),
+    jetlag_sleep: uniqueStrings(jetlagLines, 4),
     flight_day_plan: uniqueStrings(flightDayPlanLines, 6),
     active_handling: uniqueStrings(activeHandlingLines, 6),
     phased_plan: uniqueStrings(phasedPlanLines, 6),
