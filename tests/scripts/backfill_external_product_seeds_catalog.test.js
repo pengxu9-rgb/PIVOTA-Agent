@@ -802,6 +802,67 @@ describe('backfill-external-product-seeds-catalog', () => {
     expect(payload.nextRow.seed_data.pdp_active_ingredients_raw).not.toMatch(/Free From|Full Ingredients/i);
   });
 
+  test('cleans PDP detail section tails before seed writes', () => {
+    const row = {
+      id: 'eps_sun_stick',
+      title: 'Daily Soothing Sun Shield SPF50+ PA++++',
+      canonical_url: 'https://haruharuwonder.com/products/haruharuwonder-black-bamboo-daily-soothing-sun-shield-spf50-pa-20g',
+      destination_url: 'https://haruharuwonder.com/products/haruharuwonder-black-bamboo-daily-soothing-sun-shield-spf50-pa-20g',
+      image_url: '',
+      price_amount: 22,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      seed_data: { snapshot: {} },
+    };
+
+    const payload = buildSeedUpdatePayload(
+      row,
+      {
+        products: [
+          {
+            title: row.title,
+            url: row.canonical_url,
+            description_raw: 'A portable SPF stick.',
+            details_sections: [
+              {
+                heading: 'Key Ingredients',
+                body:
+                  'Niacinamide - Brightens / Provides pigmentation care\n\nAdenosine - Reduces fine lines\nFree from:\nToxic additives\nFull Ingredients',
+                source_kind: 'description_delimited_section',
+              },
+              {
+                heading: 'Details',
+                body:
+                  'Benefits: A white-cast free vegan chemical sun stick with broad spectrum SPF50+ PA++++. Free of potentially harmful additives',
+                source_kind: 'description_delimited_section',
+              },
+              {
+                heading: 'Benefits',
+                body:
+                  'A white-cast free vegan chemical sun stick with broad spectrum SPF50+ PA++++. Free of potentially harmful additives',
+                source_kind: 'description_delimited_section',
+              },
+            ],
+            variants: [],
+          },
+        ],
+        variants: [],
+        diagnostics: { failure_category: null },
+      },
+      row.canonical_url,
+    );
+
+    const sections = payload.nextRow.seed_data.pdp_details_sections;
+    expect(sections).toContainEqual(
+      expect.objectContaining({
+        heading: 'Key Ingredients',
+        body: 'Niacinamide - Brightens / Provides pigmentation care\n\nAdenosine - Reduces fine lines',
+      }),
+    );
+    expect(sections.map((section) => section.body).join('\n')).not.toMatch(/Free from|Full Ingredients|potentially harmful/i);
+    expect(sections.filter((section) => section.heading === 'Benefits')).toHaveLength(1);
+  });
+
   test('clears stale top-level seed description when a blocked seed still has no product URLs', () => {
     const row = {
       id: 'eps_blocked_collection',

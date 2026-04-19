@@ -510,18 +510,93 @@ function normalizeDetailSectionHeading(value) {
   return heading;
 }
 
+function stripTrailingPdpSectionNoise(value, { removeFreeFrom = false } = {}) {
+  let next = normalizeNonEmptyString(value);
+  if (!next) return '';
+  const stopPatterns = [
+    /\bFull Ingredients\b/i,
+    /\bIngredients\b\s*[:\n]/i,
+    /\bHow to Use\b\s*[:\n]/i,
+    /\bDirections?\b\s*[:\n]/i,
+    /\bFAQ\b\s*[:\n]/i,
+    /\bFrequently Asked Questions?\b\s*[:\n]/i,
+  ];
+  if (removeFreeFrom) {
+    stopPatterns.push(/\bFree\s+From\b\s*:?\s*/i);
+    stopPatterns.push(/\bFree\s+of\s+potentially\s+harmful\b/i);
+  }
+  for (const pattern of stopPatterns) {
+    const match = next.match(pattern);
+    if (match && match.index > 20) next = next.slice(0, match.index).trim();
+  }
+  return next;
+}
+
+function cleanPdpDetailsSectionBody(heading, value) {
+  let next = normalizeNonEmptyString(value);
+  if (!next) return '';
+  if (heading === 'Ingredients') return cleanPdpIngredientsRaw(next);
+  if (heading === 'How to Use' || heading === 'FAQ') return next;
+  return stripTrailingPdpSectionNoise(next, { removeFreeFrom: true });
+}
+
+function sectionBodySignature(body) {
+  return normalizeNonEmptyString(body)
+    .replace(/^Benefits?\s*:\s*/i, '')
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '');
+}
+
+function sectionContentSignature(heading, body) {
+  const normalizedBody = sectionBodySignature(body);
+  return `${heading.toLowerCase()}|${normalizedBody}`;
+}
+
+function findNearDuplicateSectionIndex(sections, heading, body) {
+  const bodySignature = sectionBodySignature(body);
+  if (bodySignature.length < 80) return -1;
+  return sections.findIndex((section) => {
+    if (section.heading !== heading) return false;
+    const existingSignature = sectionBodySignature(section.body);
+    if (existingSignature.length < 80) return false;
+    return (
+      bodySignature === existingSignature ||
+      bodySignature.includes(existingSignature) ||
+      existingSignature.includes(bodySignature)
+    );
+  });
+}
+
 function normalizeDetailsSections(value, maxItems = 24) {
   const items = Array.isArray(value) ? value : [];
   const out = [];
   const seen = new Set();
   for (const item of items) {
-    const heading = normalizeDetailSectionHeading(item?.heading);
-    const body = normalizeNonEmptyString(item?.body);
+    let heading = normalizeDetailSectionHeading(item?.heading);
+    let body = normalizeNonEmptyString(item?.body);
     const sourceKind = normalizeNonEmptyString(item?.source_kind || item?.sourceKind) || 'unknown';
     if (!heading || !body) continue;
-    const key = `${heading.toLowerCase()}|${body.toLowerCase()}|${sourceKind.toLowerCase()}`;
+    if (heading === 'Details' && /^Benefits?\s*:/i.test(body)) {
+      heading = 'Benefits';
+      body = body.replace(/^Benefits?\s*:\s*/i, '').trim();
+    }
+    body = cleanPdpDetailsSectionBody(heading, body);
+    if (!body) continue;
+    const key = `${sectionContentSignature(heading, body)}|${sourceKind.toLowerCase()}`;
     if (seen.has(key)) continue;
     seen.add(key);
+    const duplicateIndex = findNearDuplicateSectionIndex(out, heading, body);
+    if (duplicateIndex !== -1) {
+      if (body.length > out[duplicateIndex].body.length) {
+        out[duplicateIndex] = {
+          heading,
+          body,
+          source_kind: sourceKind,
+        };
+      }
+      continue;
+    }
     out.push({
       heading,
       body,
