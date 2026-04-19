@@ -1809,6 +1809,65 @@ async function buildChatIntentContract(body) {
     ) || '',
   );
   const hasMessage = Boolean(message);
+  const requestLang = pickFirstTrimmed(
+    payload.language,
+    payload.lang,
+    payload.locale,
+    isPlainObject(payload.context) ? payload.context.locale : null,
+  );
+  const language = /^(zh|cn)/i.test(String(requestLang || '').trim()) ? 'CN' : 'EN';
+  const actionLabel =
+    typeof payload.action_label === 'string' && payload.action_label.trim()
+      ? payload.action_label.trim()
+      : actionData && typeof actionData.label === 'string' && actionData.label.trim()
+        ? actionData.label.trim()
+        : null;
+  const canonicalIntentForContract = hasMessage
+    ? inferCanonicalIntent({
+        message,
+        actionId,
+        actionLabel,
+        language,
+      })
+    : null;
+
+  if (canDelegateActionToV2) {
+    return {
+      contract_version: 'chat_intent_v1',
+      surface: 'chat',
+      ownership_domain: 'legacy_quarantine',
+      request_class: 'action_delegate',
+      delegate_target: 'v2',
+      should_search: false,
+      reply_mode: 'action',
+    };
+  }
+
+  if (
+    canonicalIntentForContract &&
+    (
+      canonicalIntentForContract.intent === INTENT_ENUM.TRAVEL_PLANNING ||
+      canonicalIntentForContract.intent === INTENT_ENUM.WEATHER_ENV
+    )
+  ) {
+    return {
+      contract_version: 'chat_intent_v1',
+      surface: 'chat',
+      ownership_domain: 'travel_weather',
+      request_class: canonicalIntentForContract.intent,
+      delegate_target: 'v1',
+      should_search: false,
+      reply_mode: 'travel_weather',
+      canonical_intent: {
+        intent: canonicalIntentForContract.intent,
+        source: canonicalIntentForContract.source || 'unknown',
+        confidence: Number.isFinite(Number(canonicalIntentForContract.confidence))
+          ? Number(canonicalIntentForContract.confidence)
+          : null,
+      },
+    };
+  }
+
   const typedRecoOwnershipKeepsV1Mainline =
     hasMessage ? shouldKeepTypedRecoRequestOnV1MainlinePolicy({ ...payload, message }) : false;
   const contextualRecoContinuationKeepsV1Mainline =
@@ -1862,18 +1921,6 @@ async function buildChatIntentContract(body) {
         reply_mode: 'action',
       };
     }
-  }
-
-  if (canDelegateActionToV2) {
-    return {
-      contract_version: 'chat_intent_v1',
-      surface: 'chat',
-      ownership_domain: 'legacy_quarantine',
-      request_class: 'action_delegate',
-      delegate_target: 'v2',
-      should_search: false,
-      reply_mode: 'action',
-    };
   }
 
   const anchorProductId = pickFirstTrimmed(
@@ -1957,12 +2004,6 @@ async function buildChatIntentContract(body) {
     };
   }
   if (hasMessage && AURORA_CHAT_CATALOG_AVAIL_FAST_PATH_ENABLED) {
-    const requestLang = pickFirstTrimmed(
-      payload.language,
-      payload.lang,
-      payload.locale,
-      isPlainObject(payload.context) ? payload.context.locale : null,
-    );
     const availabilityIntent = detectCatalogAvailabilityIntent(message, requestLang || 'EN');
     const allowCatalogShortCircuit = AURORA_CATALOG_DOMAIN_GUARD_V1_ENABLED
       ? shouldAllowCatalogAvailabilityShortCircuit(message)
@@ -2083,12 +2124,15 @@ function shouldEarlyLockBeautyOwnedChatReco({
   actionId = '',
   actionLabel = '',
   message = '',
+  canonicalIntent = null,
 } = {}) {
   const contract =
     ingressChatIntentContract && typeof ingressChatIntentContract === 'object' && !Array.isArray(ingressChatIntentContract)
       ? ingressChatIntentContract
       : null;
   if (!contract) return false;
+  const canonicalIntentId = String(canonicalIntent && canonicalIntent.intent ? canonicalIntent.intent : '').trim();
+  if (canonicalIntentId === INTENT_ENUM.TRAVEL_PLANNING || canonicalIntentId === INTENT_ENUM.WEATHER_ENV) return false;
   if (String(contract.delegate_target || '').trim().toLowerCase() !== 'beauty_mainline') return false;
   if (String(contract.request_class || '').trim().toLowerCase() !== 'beauty_discovery') return false;
   return Boolean(String(message || '').trim());
@@ -87617,6 +87661,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         actionId: earlyExplicitActionId,
         actionLabel: earlyActionLabelFromPayload,
         message: earlyMessage,
+        canonicalIntent: earlyCanonicalIntent,
       });
       ingressEarlyBeautyLockForDebug = shouldEarlyBeautyRecoHardLockAtIngress === true;
       if (shouldEarlyBeautyRecoHardLockAtIngress) {
@@ -89208,6 +89253,7 @@ function mountAuroraBffRoutes(app, { logger }) {
         actionId,
         actionLabel,
         message,
+        canonicalIntent,
       });
       if (shouldEarlyBeautyRecoHardLock) {
         const earlyBeautyOwnedRecoResponse =

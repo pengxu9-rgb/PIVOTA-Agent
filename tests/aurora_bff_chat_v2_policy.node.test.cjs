@@ -103,6 +103,14 @@ test('intent canonical trims trailing clause from English travel destination ext
   assert.equal(out.entities.destination, 'Paris');
 });
 
+test('intent canonical extracts destination before season in English travel skincare phrasing', () => {
+  const out = inferCanonicalIntent({
+    message: 'Travel skincare for Seoul in winter, please tailor AM and PM.',
+  });
+  assert.equal(out.intent, INTENT_ENUM.TRAVEL_PLANNING);
+  assert.equal(out.entities.destination, 'Seoul');
+});
+
 test('qa planner produces soft gate for recommendation with missing core profile', () => {
   const plan = resolveQaPlan({
     intent: INTENT_ENUM.RECO_PRODUCTS,

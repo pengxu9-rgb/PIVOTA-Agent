@@ -820,6 +820,49 @@ test('buildChatIntentContract locks beauty reco free-text before v2 delegation',
   assert.equal(contract.should_search, true);
 });
 
+test('buildChatIntentContract keeps explicit travel skincare on the travel/weather owner', async () => {
+  resetAuroraModules();
+  const { __internal } = require('../src/auroraBff/routes');
+  const { inferCanonicalIntent } = require('../src/auroraBff/intentCanonical');
+
+  const message = 'I will travel to Paris and need AM/PM weather-aware skincare.';
+  const contract = await __internal.buildChatIntentContract({
+    message,
+    language: 'EN',
+    session: {
+      state: 'idle',
+      profile: {
+        skinType: 'dry',
+        travel_plan: {
+          destination: 'Paris',
+          start_date: '2026-02-25',
+          end_date: '2026-03-01',
+        },
+      },
+    },
+  });
+
+  assert.equal(contract.contract_version, 'chat_intent_v1');
+  assert.equal(contract.ownership_domain, 'travel_weather');
+  assert.equal(contract.request_class, 'travel_planning');
+  assert.equal(contract.delegate_target, 'v1');
+  assert.equal(contract.reply_mode, 'travel_weather');
+  assert.equal(contract.should_search, false);
+  assert.equal(
+    __internal.shouldEarlyLockBeautyOwnedChatReco({
+      ingressChatIntentContract: {
+        contract_version: 'chat_intent_v1',
+        ownership_domain: 'beauty_mainline',
+        request_class: 'beauty_discovery',
+        delegate_target: 'beauty_mainline',
+      },
+      message,
+      canonicalIntent: inferCanonicalIntent({ message, language: 'EN' }),
+    }),
+    false,
+  );
+});
+
 test('buildChatIntentContract resolves beauty reco free-text before legacy ingredient runtime checks can hang', async () => {
   resetAuroraModules();
   const { __internal } = require('../src/auroraBff/routes');

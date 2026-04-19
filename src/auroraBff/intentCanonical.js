@@ -204,6 +204,7 @@ function isExplicitStepAwareRecoAsk(text) {
 function normalizeTravelDestinationCandidate(value) {
   const raw = String(value || '').trim().replace(/\s+/g, ' ');
   if (!raw) return '';
+  if (/^(spring|summer|fall|autumn|winter|monsoon|rainy season|dry season)$/i.test(raw)) return '';
   return raw
     .replace(/\s+(?:and|for|with|please|need|want|how|what|weather|skincare|routine|am\/pm|am|pm)\b.*$/i, '')
     .replace(/[,.!?;:]+$/g, '')
@@ -223,11 +224,14 @@ function extractTravelEntities(message) {
     };
   }
 
+  const destinationForEn = text.match(
+    /\b(?:travel(?:ing)?|trip|skincare|routine)\b.{0,40}?\bfor\s+([A-Za-z][A-Za-z\s\-]{1,40}?)(?=\s+(?:in|during|and|with|please|need|want|how|what|weather|skincare|routine|am\/pm|am|pm)\b|[,.!?]|$)/i,
+  );
   const destinationEn = text.match(
     /\b(?:to|in|at|destination)\s+([A-Za-z][A-Za-z\s\-]{1,40}?)(?=\s+(?:and|for|with|please|need|want|how|what|next|this|during|weather|skincare|routine|am\/pm|am|pm)\b|[,.!?]|$)/i,
   );
   const destinationCn = text.match(/(?:去|到|目的地|在)\s*([\u4e00-\u9fffA-Za-z\-]{2,30})/);
-  const destination = normalizeTravelDestinationCandidate(destinationCn?.[1] || destinationEn?.[1]);
+  const destination = normalizeTravelDestinationCandidate(destinationCn?.[1] || destinationForEn?.[1] || destinationEn?.[1]);
   if (destination) {
     entities.destination = destination;
   }
