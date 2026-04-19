@@ -425,15 +425,15 @@ test('layering moisturizer role demotes mist and toner form factors even when li
   const score = scoreConcernRoleCandidate(
     {
       title: 'PIXI BEAUTY Clarity Mist',
-      category: 'Face Mist',
-      product_type: 'Face Mist',
+      category: 'Moisturizer',
+      product_type: 'Moisturizer',
       retrieval_role_id: 'layering_compatible_moisturizer_or_spf',
     },
     buildLayeringMoisturizerRole(),
     {
       candidateStep: 'toner',
       candidateText:
-        'PIXI BEAUTY Clarity Mist face mist with cica, hyaluronic complex, lightweight oil-free hydration, and makeup layering use.',
+        'PIXI BEAUTY Clarity Mist facial spray with cica, Hyaluronic Complex to lock in moisture, lightweight oil-free hydration, and makeup layering use.',
     },
   );
 

@@ -8786,6 +8786,29 @@ function hasLocalExternalSeedMistTonerSprayFormFactorSignal(text = '') {
   );
 }
 
+function buildLocalExternalSeedIdentityText(row = null) {
+  const item = isPlainObject(row) ? row : {};
+  const sku = isPlainObject(item.sku) ? item.sku : {};
+  const product = isPlainObject(item.product) ? item.product : {};
+  return [
+    item.title,
+    item.display_name,
+    item.displayName,
+    item.name,
+    sku.title,
+    sku.display_name,
+    sku.displayName,
+    sku.name,
+    product.title,
+    product.display_name,
+    product.displayName,
+    product.name,
+  ]
+    .map((value) => String(value || '').trim().toLowerCase())
+    .filter(Boolean)
+    .join(' ');
+}
+
 function hasLocalExternalSeedCosmeticFinishProductShapeSignal(text = '') {
   return /\b(radiance\s+perfector|perfector|glow\s+drops?|bronze\s*\+\s*glow|bronz(?:e|ing|er)(?:\s+drops?)?|highlighter|illuminat(?:or|ing)|luminizer|shimmer|pearlescent|skin\s+tint|tinted\s+moisturi[sz]er|foundation|concealer|bb\s+cream|cc\s+cream|blush|makeup\s+primer|primer)\b/i.test(
     String(text || ''),
@@ -8822,6 +8845,7 @@ function scoreLocalExternalSeedPreferredFormFactorFit(product, {
     buildPurchasableRecoveryCandidateText(row),
     row?.external_seed_recall?.vertical,
   ], 4).join(' ').toLowerCase();
+  const identityText = buildLocalExternalSeedIdentityText(row);
   const cosmeticFinishProductShape =
     hasLocalExternalSeedCosmeticFinishProductShapeSignal(anchorText)
     || hasLocalExternalSeedCosmeticFinishProductShapeSignal(fullText);
@@ -8841,8 +8865,19 @@ function scoreLocalExternalSeedPreferredFormFactorFit(product, {
     const mistTonerSprayFormFactor =
       hasLocalExternalSeedMistTonerSprayFormFactorSignal(anchorText)
       || hasLocalExternalSeedMistTonerSprayFormFactorSignal(fullText);
+    const identityMistTonerSprayFormFactor =
+      hasLocalExternalSeedMistTonerSprayFormFactorSignal(identityText)
+      && !hasLocalExternalSeedLayeringMoisturizerFormFactorSignal(identityText);
     if (moisturizerFormFactorFit) score += 0.1;
-    if (roleId.includes('layering') && mistTonerSprayFormFactor && !moisturizerFormFactorFit) score -= 0.36;
+    if (
+      roleId.includes('layering')
+      && (
+        (mistTonerSprayFormFactor && !moisturizerFormFactorFit)
+        || identityMistTonerSprayFormFactor
+      )
+    ) {
+      score -= 0.36;
+    }
     if (roleId.includes('layering') && cosmeticFinishProductShape && !cosmeticFinishExplicitlyAllowed) score -= 0.36;
     if (roleId.includes('layering') && /\b(heavy|rich|balm|sleeping\s+mask)\b/.test(anchorText)) score -= 0.12;
   }
