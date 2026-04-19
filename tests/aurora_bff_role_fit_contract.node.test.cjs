@@ -136,6 +136,27 @@ test('treatment role rescues role-aligned salicylic serum when semantic acne sig
   assert.ok(Number(score?.score || 0) >= 0.58);
 });
 
+test('oil-control treatment role demotes cosmetic glow drops despite niacinamide evidence', () => {
+  const score = scoreConcernRoleCandidate(
+    {
+      title: 'First Aid Beauty Bronze + Glow Drops with Niacinamide',
+      category: 'Serum',
+      product_type: 'Serum',
+      retrieval_role_id: 'oil_control_treatment',
+    },
+    buildOilControlTreatmentRole(),
+    {
+      candidateStep: 'serum',
+      candidateText:
+        'First Aid Beauty Bronze + Glow Drops with Niacinamide lightweight non-comedogenic serum drops with 5% niacinamide and glycerin.',
+    },
+  );
+
+  assert.ok(score);
+  assert.equal(score?.cosmetic_finish_product_shape_mismatch_applied, true);
+  assert.ok(Number(score?.score || 0) < 0.42);
+});
+
 test('treatment role keeps niacinamide dark-spot serum below viability without oil-control semantics', () => {
   const score = scoreConcernRoleCandidate(
     {
@@ -419,6 +440,27 @@ test('layering moisturizer role demotes mist and toner form factors even when li
   assert.ok(score);
   assert.equal(score?.lightweight_moisturizer_form_factor_mismatch_applied, true);
   assert.equal(score?.lightweight_texture_mismatch_applied, false);
+  assert.ok(Number(score?.score || 0) < 0.42);
+});
+
+test('layering moisturizer role demotes cosmetic perfector products despite smooth-layering copy', () => {
+  const score = scoreConcernRoleCandidate(
+    {
+      title: 'PIXI BEAUTY +Rose Radiance Perfector',
+      category: 'Primer',
+      product_type: 'Perfector',
+      retrieval_role_id: 'layering_compatible_moisturizer_or_spf',
+    },
+    buildLayeringMoisturizerRole(),
+    {
+      candidateStep: 'moisturizer',
+      candidateText:
+        'PIXI BEAUTY +Rose Radiance Perfector smooth-layering primer perfector with Ceramide NP and Hyaluronic acid for under makeup.',
+    },
+  );
+
+  assert.ok(score);
+  assert.equal(score?.cosmetic_finish_product_shape_mismatch_applied, true);
   assert.ok(Number(score?.score || 0) < 0.42);
 });
 
