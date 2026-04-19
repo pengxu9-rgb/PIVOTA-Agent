@@ -78,6 +78,27 @@ describe('audit-external-seed-pdp-coverage-gaps helpers', () => {
     expect(result.field_status.identity).toBe('identity_backfill_candidate');
   });
 
+  test('separates identity review queue rows from automatic identity candidates', () => {
+    const result = classifyRow(
+      row({
+        has_identity: false,
+        has_any_identity: true,
+        identity_review_or_live_blocked: true,
+        seed_data: {
+          pdp_description_raw: 'A detailed serum description with enough content to generate product intel.',
+          pdp_details_sections: [{ heading: 'Benefits', body: 'Supports visible texture and clarity.' }],
+          snapshot: {},
+        },
+      }),
+    );
+
+    expect(result.field_status.identity).toBe('identity_review_queue_or_live_blocked');
+    expect(result.field_status.product_key_kb).toBe('blocked_identity_review_queue_or_live_disabled');
+    expect(result.actionable_fields).not.toContain('identity');
+    expect(result.actionable_fields).not.toContain('product_key_kb');
+  });
+
+
   test('summarizes raw and actionable gaps separately', () => {
     const rows = [
       classifyRow(row({ external_product_id: 'ext_a', has_product_key_kb: true })),

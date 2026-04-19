@@ -228,12 +228,16 @@ function classifyMissingField({ field, row, context, coverage, hasProductKeyKb, 
   }
 
   if (field === 'product_key_kb') {
+    if (!hasIdentity && row.has_any_identity) return 'blocked_identity_review_queue_or_live_disabled';
     if (!hasIdentity) return 'blocked_missing_identity';
     if (!hasEnoughSeedContentForKb(coverage)) return 'blocked_seed_underfilled';
     return 'kb_generation_candidate';
   }
 
-  if (field === 'identity') return 'identity_backfill_candidate';
+  if (field === 'identity') {
+    if (row.has_any_identity) return 'identity_review_queue_or_live_blocked';
+    return 'identity_backfill_candidate';
+  }
 
   if (['details_sections', 'how_to', 'inci', 'active_ingredients'].includes(field)) {
     if (coverage.description_chars >= 260 && coverage.details_sections_count === 0) {
@@ -277,15 +281,17 @@ function classifyRow(row = {}) {
     coverage,
     field_status,
     missing_fields: FIELD_NAMES.filter((field) => field_status[field] !== 'present'),
-    actionable_fields: FIELD_NAMES.filter((field) =>
-      [
-        'kb_generation_candidate',
-        'identity_backfill_candidate',
-        'seed_structuring_candidate',
-        'catalog_truth_or_backfill_candidate',
-      ].includes(field_status[field]),
-    ),
+    actionable_fields: FIELD_NAMES.filter((field) => isActionableStatus(field_status[field])),
   };
+}
+
+function isActionableStatus(status) {
+  return [
+    'kb_generation_candidate',
+    'identity_backfill_candidate',
+    'seed_structuring_candidate',
+    'catalog_truth_or_backfill_candidate',
+  ].includes(status);
 }
 
 function increment(map, key, amount = 1) {
@@ -325,14 +331,7 @@ function summarizeRows(rows, { sampleLimit = 25 } = {}) {
       if (status !== 'present') increment(summary.raw_missing_by_field, field);
       if (!summary.by_field_status[field]) summary.by_field_status[field] = {};
       increment(summary.by_field_status[field], status);
-      if (
-        [
-          'kb_generation_candidate',
-          'identity_backfill_candidate',
-          'seed_structuring_candidate',
-          'catalog_truth_or_backfill_candidate',
-        ].includes(status)
-      ) {
+      if (isActionableStatus(status)) {
         increment(summary.actionable_missing_by_field, field);
         rowActionable.add(field);
         if (status === 'kb_generation_candidate') {
@@ -423,6 +422,19 @@ async function fetchRows(options = {}) {
             AND pil.product_id = eps.external_product_id
             AND coalesce(pil.live_read_enabled, true) = true
         ) AS has_identity
+        ,
+        EXISTS (
+          SELECT 1
+          FROM pdp_identity_listing pil
+          WHERE pil.merchant_id = 'external_seed'
+            AND pil.product_id = eps.external_product_id
+        ) AS has_any_identity,
+        coalesce((
+          SELECT bool_or(pil.review_required = true OR coalesce(pil.live_read_enabled, false) = false)
+          FROM pdp_identity_listing pil
+          WHERE pil.merchant_id = 'external_seed'
+            AND pil.product_id = eps.external_product_id
+        ), false) AS identity_review_or_live_blocked
       FROM external_product_seeds eps
       WHERE ${where.join('\n        AND ')}
       ORDER BY eps.updated_at DESC NULLS LAST, eps.created_at DESC NULLS LAST
@@ -492,5 +504,6 @@ module.exports = {
   getSeedCoverage,
   classifyMissingField,
   classifyRow,
+  isActionableStatus,
   summarizeRows,
 };
