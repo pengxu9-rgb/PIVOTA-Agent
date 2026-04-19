@@ -54543,6 +54543,12 @@ function isRecoAssistantWeakReasonFragment(value) {
   if (!text) return true;
   const normalized = normalizeSemanticAuditText(text);
   if (!normalized) return true;
+  if (/\bit\s+matches\s+the\s+selected\s+card\s+evidence\b/i.test(normalized)) {
+    return true;
+  }
+  if (/\b(?:directly\s+)?(?:fits|matches|aligns?\s+to)\s+(?:the\s+)?[^.!?。！？]{0,90}\brequest\b/i.test(normalized)) {
+    return true;
+  }
   if (/^best\s+for\b/i.test(normalized)) {
     return true;
   }
@@ -55271,6 +55277,7 @@ function buildStructuredRecoAssistantReasonPromptLines({
     'Do not start a reason fragment with "a" or "an" unless it remains grammatical after "because"; prefer active verbs or "it is ...".',
     'Do not start a reason fragment with "best for"; rewrite that as "it is positioned for ..." plus one concrete evidence point.',
     'Do not include direct buy/pick framing or absolute terms such as best, most, top, strongest, perfect, ideal, winner, or must-have inside any reason fragment.',
+    'Never use tautologies like "directly fits the request"; cite concrete evidence.',
     'When reviewed_insight_available is false, do not use clinical, dermatologist, review, community, or social-proof claim language.',
     'Price may be included only when Context provides price_label or price_order_summary, and it must be paired with a non-price fit reason.',
   ];
@@ -55318,6 +55325,9 @@ function describeRecoAssistantRewriteFailureReason(reason) {
   }
   if (normalized === 'rewrite_vague_benefit_language') {
     return 'Replace vague benefit language with concrete product-specific evidence from Context.';
+  }
+  if (normalized === 'rewrite_tautological_reason') {
+    return 'Do not use tautological reason clauses like "directly fits the request"; cite concrete formula, ingredient, texture, finish, price, or use-case evidence from Context.';
   }
   if (normalized === 'rewrite_generic_routine_wrapup') {
     return 'Do not end with a generic routine wrap-up. Use the last sentence for a concrete step reason, tradeoff, or buy-now guidance.';
@@ -56055,6 +56065,12 @@ function assistantTextUsesVagueRecoBenefitLanguage(text) {
   return /\bsurface activity\b/i.test(String(text || ''));
 }
 
+function assistantTextUsesTautologicalRecoReason(text) {
+  const raw = String(text || '');
+  return /\bbecause\s+(?:it\s+)?(?:directly\s+)?(?:fits|matches|aligns?\s+to)\s+(?:the\s+)?[^.!?。！？]{0,90}\brequest\b/i.test(raw)
+    || /\bbecause\s+(?:it\s+)?matches\s+the\s+selected\s+card\s+evidence\b/i.test(raw);
+}
+
 function assistantTextUsesGenericRoutineWrapup(text) {
   const sentences = splitRecoAssistantSentences(text, 8)
     .filter((sentence) => !/[?？]\s*$/.test(String(sentence || '').trim()));
@@ -56387,6 +56403,7 @@ function validateRecoAssistantRewriteCandidate({
     && !selectedProductRoutineMix
     && assistantTextUsesFutureRoutineUpsell(text);
   const usesVagueBenefitLanguage = assistantTextUsesVagueRecoBenefitLanguage(text);
+  const usesTautologicalReason = assistantTextUsesTautologicalRecoReason(text);
   const usesOffTargetConcernClaim = assistantTextUsesOffTargetRecoConcern(text, {
     payload,
     primaryTarget,
@@ -56419,6 +56436,7 @@ function validateRecoAssistantRewriteCandidate({
     || mentionsUnselectedCandidate
     || buyUsesRoutineUpsell
     || usesVagueBenefitLanguage
+    || usesTautologicalReason
     || usesTemplatedRoutineBridge
     || usesStiffSelectionFraming
     || repeatsBestFirstBuy
@@ -56439,6 +56457,7 @@ function validateRecoAssistantRewriteCandidate({
     if (mentionsUnselectedCandidate) return { ok: false, reason: 'rewrite_mentions_unselected_product' };
     if (buyUsesRoutineUpsell) return { ok: false, reason: 'rewrite_buy_addon_filler' };
     if (usesVagueBenefitLanguage) return { ok: false, reason: 'rewrite_vague_benefit_language' };
+    if (usesTautologicalReason) return { ok: false, reason: 'rewrite_tautological_reason' };
     if (usesTemplatedRoutineBridge) return { ok: false, reason: 'rewrite_templated_routine_bridge' };
     if (usesStiffSelectionFraming) return { ok: false, reason: 'rewrite_stiff_selection_framing' };
     if (repeatsBestFirstBuy) return { ok: false, reason: 'rewrite_duplicate_best_first_buy' };
@@ -56462,6 +56481,7 @@ function shouldRetryRecoAssistantRewrite(reason) {
     || normalized === 'rewrite_buy_lead_not_direct'
     || normalized === 'rewrite_absolute_recommendation_wording'
     || normalized === 'rewrite_vague_benefit_language'
+    || normalized === 'rewrite_tautological_reason'
     || normalized === 'rewrite_templated_routine_bridge'
     || normalized === 'rewrite_stiff_selection_framing'
     || normalized === 'rewrite_duplicate_best_first_buy'
@@ -56697,6 +56717,130 @@ function normalizeRecoAssistantReasonFragment(value, {
   return text.slice(0, 220).trim();
 }
 
+function recoAssistantReasonHasUnsupportedConcern(reason = '', targetText = '') {
+  const reasonFamilies = collectRecoAssistantConcernFamilies(reason);
+  if (!reasonFamilies.size) return false;
+  const targetFamilies = collectRecoAssistantConcernFamilies(targetText);
+  if (targetFamilies.has('tone_brightening')) reasonFamilies.delete('tone_brightening');
+  if (targetFamilies.has('aging_texture')) reasonFamilies.delete('aging_texture');
+  if (targetFamilies.has('acne_pore')) reasonFamilies.delete('acne_pore');
+  return reasonFamilies.has('tone_brightening') || reasonFamilies.has('aging_texture');
+}
+
+function formatRecoAssistantEvidencePhraseList(values = [], max = 3) {
+  const items = uniqCaseInsensitiveStrings(
+    (Array.isArray(values) ? values : [])
+      .map((value) => String(value || '').replace(/\s+/g, ' ').trim())
+      .filter(Boolean),
+    Math.max(1, max),
+  ).slice(0, Math.max(1, max));
+  if (!items.length) return '';
+  if (items.length === 1) return items[0];
+  if (items.length === 2) return `${items[0]} and ${items[1]}`;
+  return `${items.slice(0, -1).join(', ')}, and ${items[items.length - 1]}`;
+}
+
+function normalizeRecoAssistantEvidenceLabel(value) {
+  const raw = String(value || '').replace(/\s+/g, ' ').trim();
+  if (!raw) return '';
+  const compact = raw
+    .replace(/\b(hydrating|ultra[-\s]?hydrating)\s+hyaluronic\s+acid\b/i, 'hyaluronic acid')
+    .replace(/\bvisible\s+dark\s+spot[-\s]?fighting\s+niacinamide\b/i, 'niacinamide')
+    .replace(/\bspf\s*(\d{1,3}\+?)\b/i, 'SPF $1')
+    .replace(/\bpa\s*(\+{2,4})\b/i, 'PA$1')
+    .trim();
+  if (/^(best\s+for|daily spf routines?|daily sunscreen with finish fit|sunscreen|moisturizer|serum)$/i.test(compact)) {
+    return '';
+  }
+  if (/^(niacinamide|zinc|zinc pca|hyaluronic acid|glycerin|ceramides?|panthenol|squalane|centella|tamanu oil|salicylic acid|vitamin c|ascorbic acid|spf\s*\d{1,3}\+?)$/i.test(compact)) {
+    return compact.replace(/\bspf\b/i, 'SPF');
+  }
+  if (compact.length > 36) return '';
+  return compact;
+}
+
+function buildRecoAssistantEvidenceSynthesisReason(detail = {}, { targetLabel = '' } = {}) {
+  const item = isPlainObject(detail) ? detail : {};
+  const textParts = [
+    pickFirstTrimmed(item.why_this_one),
+    pickFirstTrimmed(item.short_description),
+    pickFirstTrimmed(item.best_for),
+    pickFirstTrimmed(item.matched_role_label),
+    pickFirstTrimmed(item.preferred_step),
+    ...(Array.isArray(item.key_features) ? item.key_features : []),
+  ].filter(Boolean);
+  const allText = textParts.join(' ');
+  const lower = allText.toLowerCase();
+  if (!allText.trim()) return '';
+
+  const spfMatch = allText.match(/\bspf\s*\d{1,3}\+?/i);
+  const spf = spfMatch ? spfMatch[0].replace(/\s+/g, ' ').replace(/\bspf\b/i, 'SPF') : '';
+  const ingredients = [];
+  const addIngredient = (label, pattern) => {
+    if (pattern.test(allText)) ingredients.push(label);
+  };
+  addIngredient('niacinamide', /\bniacinamide\b/i);
+  addIngredient('zinc PCA', /\bzinc\s*pca\b/i);
+  if (!/\bzinc\s*pca\b/i.test(allText)) addIngredient('zinc', /\bzinc\b/i);
+  addIngredient('hyaluronic acid', /\bhyaluronic\s+acid\b/i);
+  addIngredient('glycerin', /\bglycerin\b/i);
+  addIngredient('ceramides', /\bceramides?\b/i);
+  addIngredient('panthenol', /\bpanthenol\b/i);
+  addIngredient('squalane', /\bsqualane\b/i);
+  addIngredient('centella', /\bcentella\b/i);
+  addIngredient('tamanu oil', /\btamanu\s+oil\b/i);
+  addIngredient('salicylic acid', /\bsalicylic\s+acid\b/i);
+  addIngredient('vitamin C', /\b(vitamin\s+c|ascorbic\s+acid)\b/i);
+  for (const feature of Array.isArray(item.key_features) ? item.key_features : []) {
+    const label = normalizeRecoAssistantEvidenceLabel(feature);
+    if (label && !/^spf\s*\d/i.test(label)) ingredients.push(label);
+  }
+  const ingredientPhrase = formatRecoAssistantEvidencePhraseList(ingredients, 3);
+
+  const finishClaims = [];
+  if (/\binvisible\b/i.test(allText)) finishClaims.push('an invisible finish');
+  if (/\b(no\s+white\s+cast|white\s+cast[-\s]?free)\b/i.test(allText)) finishClaims.push('low white-cast wear');
+  if (/\b(makeup|layer(?:ing)?|under\s+makeup|heavy\s+layering|pilling)\b/i.test(allText)) finishClaims.push('makeup-friendly layering');
+  if (/\b(lightweight|light[-\s]?weight|non[-\s]?greasy|non\s+greasy|breathable)\b/i.test(allText)) finishClaims.push('a lightweight, non-greasy feel');
+  if (/\bmatte|mattif/i.test(allText)) finishClaims.push('a matte-leaning finish');
+  if (/\bgel[-\s]?cream|gel cream\b/i.test(allText)) finishClaims.push('gel-cream hydration');
+  if (/\bfluid|watery|water[-\s]?fit|serum[-\s]?like\b/i.test(allText)) finishClaims.push('a fluid texture');
+  if (/\bmoisturizer\s+format|moisturizer[-\s]?and[-\s]?spf|moisturizer\s+with\s+spf\b/i.test(allText)) finishClaims.push('a moisturizer-format SPF step');
+  if (!finishClaims.length && /\bhydrat|moistur/i.test(allText)) finishClaims.push('hydrating support');
+  if (!finishClaims.length && /\b(oil|oily|shine|sebum|pore)\b/i.test(allText)) finishClaims.push('excess-oil support');
+  const finishPhrase = formatRecoAssistantEvidencePhraseList(finishClaims, 2);
+
+  const target = String(targetLabel || '').trim();
+  const hasUnsupportedConcern =
+    recoAssistantReasonHasUnsupportedConcern(allText, target || buildRecoAssistantEvidenceTargetText(item));
+  if (hasUnsupportedConcern && !spf && !ingredientPhrase && !finishPhrase) return '';
+  if (spf && ingredientPhrase && finishPhrase) {
+    return `it pairs ${spf} protection with ${ingredientPhrase} and ${finishPhrase}`;
+  }
+  if (spf && finishPhrase) {
+    return `it combines ${spf} protection with ${finishPhrase}`;
+  }
+  if (spf && ingredientPhrase) {
+    return `it pairs ${spf} protection with ${ingredientPhrase}`;
+  }
+  if (ingredientPhrase && finishPhrase) {
+    return `it pairs ${ingredientPhrase} with ${finishPhrase}`;
+  }
+  if (ingredientPhrase) {
+    return `it uses ${ingredientPhrase} in the formula`;
+  }
+  if (finishPhrase) {
+    const verb = /\blayering\b/i.test(finishPhrase)
+      ? 'supports'
+      : /^(?:a|an)\s+/i.test(finishPhrase)
+        ? 'has'
+        : 'provides';
+    return `it ${verb} ${finishPhrase}`;
+  }
+  if (lower.includes('spf')) return 'it has SPF evidence for the daytime step';
+  return '';
+}
+
 function buildRecoAssistantStructuredReasonFallback(detail = {}, {
   targetLabel = '',
   selectedNames = [],
@@ -56704,15 +56848,29 @@ function buildRecoAssistantStructuredReasonFallback(detail = {}, {
   forbiddenAliases = [],
 } = {}) {
   const points = buildRecoAssistantReasonPoints(detail, { max: 2 });
-  const primary = normalizeRecoAssistantReasonFragment(points[0], {
-    selectedNames,
-    forbiddenNames,
-    forbiddenAliases,
-  });
-  if (primary) return primary;
-  const target = String(targetLabel || '').trim();
-  if (target) return `it directly fits the ${target.toLowerCase()} request`;
-  return 'it matches the selected card evidence';
+  const targetText = buildRecoAssistantEvidenceTargetText(detail, targetLabel);
+  for (const point of points) {
+    const primary = normalizeRecoAssistantReasonFragment(point, {
+      selectedNames,
+      forbiddenNames,
+      forbiddenAliases,
+    });
+    if (!primary) continue;
+    if (recoAssistantReasonHasUnsupportedConcern(primary, targetText)) continue;
+    return primary;
+  }
+  const synthesized = normalizeRecoAssistantReasonFragment(
+    buildRecoAssistantEvidenceSynthesisReason(detail, { targetLabel }),
+    {
+      selectedNames,
+      forbiddenNames,
+      forbiddenAliases,
+    },
+  );
+  if (synthesized && !recoAssistantReasonHasUnsupportedConcern(synthesized, targetText)) {
+    return synthesized;
+  }
+  return '';
 }
 
 function buildRecoAssistantSupportTargetLabel(detail = {}, fallbackTargetLabel = '') {
@@ -56960,6 +57118,7 @@ function renderRecoAssistantStructuredReasonRewrite({
           forbiddenAliases,
         }),
       );
+      if (!reason) return '';
       return formatRecoAssistantStructuredSentence(`${name}负责${step}，因为${reason}`);
     });
     return appendRecoAssistantOptionalRefinementQuestion([
@@ -56995,6 +57154,7 @@ function renderRecoAssistantStructuredReasonRewrite({
         forbiddenAliases,
       }),
     );
+    if (!reason) return '';
     if (selectedProductRoleMix === 'same_role_comparison') {
       return formatRecoAssistantStructuredSentence(`${name} is the same-slot comparison option because ${reason}`);
     }
