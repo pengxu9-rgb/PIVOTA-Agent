@@ -5587,6 +5587,89 @@ test('__internal: framework pool keeps tinted sunscreen authoritative instead of
   assert.equal(state.selected_recommendations[0]?.matched_role_id, 'daily_sunscreen_finish_fit');
 });
 
+test('__internal: framework pool does not let low-fit external seeds satisfy routine support coverage', () => {
+  const { __internal } = loadRoutesFresh();
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [
+      {
+        product_id: 'daily_tinted_sunscreen_fit_1',
+        merchant_id: 'external_seed',
+        brand: 'Beauty of Joseon',
+        display_name: 'Daily Tinted Fluid Sunscreen DN310',
+        category: 'Sunscreen',
+        product_type: 'sunscreen',
+        retrieval_source: 'external_seed',
+        retrieval_query: 'sunscreen under makeup',
+        retrieval_step: 'sunscreen',
+        retrieval_role_id: 'daily_sunscreen_finish_fit',
+        local_external_seed_role_fit_score: 0.91,
+        benefit_tags: ['spf', 'tinted', 'lightweight'],
+        short_description: 'A lightweight tinted SPF fluid designed as the final daytime sunscreen step.',
+      },
+      {
+        product_id: 'daily_layering_moisturizer_low_fit',
+        merchant_id: 'external_seed',
+        brand: 'LayerLab',
+        display_name: 'Daily Layering Moisturizer',
+        name: 'Daily Layering Moisturizer',
+        category: 'Moisturizer',
+        product_type: 'Moisturizer',
+        retrieval_source: 'external_seed',
+        retrieval_query: 'moisturizer under makeup',
+        retrieval_step: 'moisturizer',
+        retrieval_role_id: 'layering_compatible_moisturizer_or_spf',
+        local_external_seed_role_fit_score: 0.14,
+        short_description: 'A lightweight moisturizer with Ceramide NP to prepare skin for makeup layering.',
+        description: 'A daily face moisturizer for breathable layering under makeup.',
+      },
+    ],
+    {
+      targetContext: {
+        framework_id: 'recofw_test_low_external_fit_support_coverage',
+        primary_role_id: 'daily_sunscreen_finish_fit',
+        framework_roles: [
+          {
+            role_id: 'daily_sunscreen_finish_fit',
+            rank: 1,
+            preferred_step: 'sunscreen',
+            label: 'Daily sunscreen finish fit',
+            query_terms: ['sunscreen under makeup', 'lightweight sunscreen'],
+            fit_keywords: ['sunscreen', 'spf', 'under makeup', 'lightweight', 'tinted'],
+            product_type_hypotheses: ['sunscreen'],
+          },
+          {
+            role_id: 'layering_compatible_moisturizer_or_spf',
+            rank: 2,
+            preferred_step: 'moisturizer',
+            alternate_steps: ['sunscreen'],
+            label: 'Layering-compatible moisturizer or SPF',
+            query_terms: ['moisturizer under makeup', 'layering moisturizer'],
+            fit_keywords: ['under makeup', 'layering', 'non-greasy', 'lightweight', 'sunscreen'],
+            ingredient_hypotheses: ['Ceramide NP'],
+            product_type_hypotheses: ['moisturizer', 'sunscreen'],
+          },
+        ],
+      },
+    },
+  );
+
+  assert.equal(state.primary_role_matched, true);
+  assert.equal(
+    state.selected_recommendations.some((item) => item?.product_id === 'daily_layering_moisturizer_low_fit'),
+    false,
+  );
+  assert.equal(
+    state.viable_candidate_pool.some((item) => item?.product_id === 'daily_layering_moisturizer_low_fit'),
+    false,
+  );
+  assert.equal(state.role_pool_stats?.layering_compatible_moisturizer_or_spf?.viable_count, 0);
+  const lowFitMismatch = (Array.isArray(state.soft_mismatch) ? state.soft_mismatch : [])
+    .find((entry) => entry?.product?.product_id === 'daily_layering_moisturizer_low_fit') || null;
+  assert.ok(lowFitMismatch);
+  assert.equal(lowFitMismatch?.reason, 'framework_soft_mismatch');
+  assert.equal(lowFitMismatch?.product?.framework_role_fit_score, 0.14);
+});
+
 test('__internal: framework pool keeps external-seed exact serum recall viable for hydrating serum primary', () => {
   const { __internal } = loadRoutesFresh();
   const state = __internal.finalizeConcernFrameworkCandidatePools(
