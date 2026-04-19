@@ -1398,8 +1398,8 @@ async function runTravelPipeline(input = {}) {
         language,
         travelLlmInput,
         baseTravelReadiness: travelReadiness,
-        timeoutMs: 3500,
-        maxRetries: 1,
+        timeoutMs: 6500,
+        maxRetries: 0,
         logger,
       });
 
