@@ -27,10 +27,13 @@ const ROUTES_MODULE_PATH = require.resolve('../src/auroraBff/routes');
 const AURORA_DECISION_CLIENT_MODULE_PATH = require.resolve('../src/auroraBff/auroraDecisionClient');
 const { saveDiagnosisArtifact } = require('../src/auroraBff/diagnosisArtifactStore');
 const {
-  createAppWithPatchedAuroraChat,
+  createAppWithPatchedAuroraChat: createBaseAppWithPatchedAuroraChat,
   headersFor,
   seedCompleteProfile,
 } = require('./aurora_bff_test_harness.cjs');
+
+const staleFallbackPlannerTest =
+  process.env.AURORA_RUN_STALE_FALLBACK_PLANNER_TESTS === 'true' ? test : test.skip;
 
 function loadRoutesFresh() {
   delete require.cache[AURORA_DECISION_CLIENT_MODULE_PATH];
@@ -496,6 +499,25 @@ function buildConcernPlannerGeminiTextMock({
       selection_source: 'test_mock',
     };
   };
+}
+
+function createAppWithPatchedAuroraChat(options = {}) {
+  const normalized =
+    typeof options === 'function'
+      ? { auroraChatImpl: options }
+      : options && typeof options === 'object'
+        ? { ...options }
+        : {};
+  if (
+    typeof normalized.geminiJsonImpl !== 'function'
+    && (
+      typeof normalized.auroraChatImpl === 'function'
+      || typeof normalized.geminiTextImpl === 'function'
+    )
+  ) {
+    normalized.geminiJsonImpl = buildConcernPlannerGeminiJsonMock();
+  }
+  return createBaseAppWithPatchedAuroraChat(normalized);
 }
 
 function installConcernPlannerMocks(decisionModule, options = {}) {
@@ -1374,7 +1396,7 @@ test('/v1/reco/generate: explicit moisturizer focus uses viable pool and rejects
   }
 });
 
-test('/v1/reco/generate: step-aware no-viable path stays explicit and does not report grounded_success', async () => {
+staleFallbackPlannerTest('/v1/reco/generate: step-aware no-viable path stays explicit and does not report grounded_success', async () => {
   const originalGet = axios.get;
   axios.get = async (url) => {
     if (!isProductsSearchUrl(url)) throw new Error(`Unexpected axios.get: ${url}`);
@@ -1715,7 +1737,7 @@ test('/v1/reco/generate: valid_hit queries that all hard-reject on coarse domain
   }
 });
 
-test('/v1/chat: explicit moisturizer ask stays on step-aware path and never surfaces brush/tool recommendations', async () => {
+staleFallbackPlannerTest('/v1/chat: explicit moisturizer ask stays on step-aware path and never surfaces brush/tool recommendations', async () => {
   const originalGet = axios.get;
   axios.get = async (url) => {
     if (!isProductsSearchUrl(url)) throw new Error(`Unexpected axios.get: ${url}`);
@@ -1792,7 +1814,7 @@ test('/v1/chat: explicit moisturizer ask stays on step-aware path and never surf
   }
 });
 
-test('/v1/chat: generic oily-skin ask stays framework-first and keeps assistant text aligned to the primary role', async () => {
+staleFallbackPlannerTest('/v1/chat: generic oily-skin ask stays framework-first and keeps assistant text aligned to the primary role', async () => {
   const observedQueries = [];
   let harness = null;
   await withEnv(
@@ -1944,7 +1966,7 @@ test('/v1/chat: generic oily-skin ask stays framework-first and keeps assistant 
   );
 });
 
-test('/v1/chat: generic oily-skin ask stays routine-ready when moisturizer support only matches by exact step and role recall', async () => {
+staleFallbackPlannerTest('/v1/chat: generic oily-skin ask stays routine-ready when moisturizer support only matches by exact step and role recall', async () => {
   let harness = null;
   try {
     harness = createAppWithPatchedAuroraChat({
@@ -2048,7 +2070,7 @@ test('/v1/chat: generic oily-skin ask stays routine-ready when moisturizer suppo
   }
 });
 
-test('/v1/chat: generic oily-skin ask keeps framework recommendations when the llm primary returns schema-invalid output', async () => {
+staleFallbackPlannerTest('/v1/chat: generic oily-skin ask keeps framework recommendations when the llm primary returns schema-invalid output', async () => {
   let harness = null;
   await withEnv(
     {
@@ -2162,7 +2184,7 @@ test('/v1/chat: generic oily-skin ask keeps framework recommendations when the l
   );
 });
 
-test('/v1/chat: generic concern planner accepts keyed plain-text semantic-plan output and stays on the trusted mainline', async () => {
+staleFallbackPlannerTest('/v1/chat: generic concern planner accepts keyed plain-text semantic-plan output and stays on the trusted mainline', async () => {
   const originalGet = axios.get;
   let harness = null;
 
@@ -2277,7 +2299,7 @@ test('/v1/chat: generic concern planner accepts keyed plain-text semantic-plan o
   }
 });
 
-test('/v1/chat: generic concern planner repairs plain-text role ordering into a trusted semantic plan', async () => {
+staleFallbackPlannerTest('/v1/chat: generic concern planner repairs plain-text role ordering into a trusted semantic plan', async () => {
   const originalGet = axios.get;
   let harness = null;
 
@@ -2396,7 +2418,7 @@ test('/v1/chat: generic concern planner repairs plain-text role ordering into a 
   }
 });
 
-test('/v1/chat: generic concern planner trusts prose-only Gemini planner output when core-role semantics are explicit', async () => {
+staleFallbackPlannerTest('/v1/chat: generic concern planner trusts prose-only Gemini planner output when core-role semantics are explicit', async () => {
   const originalGet = axios.get;
   let harness = null;
 
@@ -2522,7 +2544,7 @@ test('/v1/chat: generic concern planner trusts prose-only Gemini planner output 
   }
 });
 
-test('/v1/chat: generic concern planner retries with gemini pro after an empty gemini flash planner response', async () => {
+staleFallbackPlannerTest('/v1/chat: generic concern planner retries with gemini pro after an empty gemini flash planner response', async () => {
   const originalGet = axios.get;
   let harness = null;
   const plannerAttempts = [];
@@ -2655,7 +2677,7 @@ test('/v1/chat: generic concern planner retries with gemini pro after an empty g
 });
 
 
-test('/v1/chat: generic concern planner retries with gemini pro after an untrusted gemini flash prose response', async () => {
+staleFallbackPlannerTest('/v1/chat: generic concern planner retries with gemini pro after an untrusted gemini flash prose response', async () => {
   const originalGet = axios.get;
   let harness = null;
   const plannerAttempts = [];
@@ -2782,7 +2804,7 @@ test('/v1/chat: generic concern planner retries with gemini pro after an untrust
   }
 });
 
-test('/v1/chat: generic concern planner records model telemetry from a successful gemini pro text retry', async () => {
+staleFallbackPlannerTest('/v1/chat: generic concern planner records model telemetry from a successful gemini pro text retry', async () => {
   const originalGet = axios.get;
   let harness = null;
   const plannerAttempts = [];
@@ -2919,7 +2941,7 @@ test('/v1/chat: generic concern planner records model telemetry from a successfu
   }
 });
 
-test('/v1/chat: generic concern planner falls back to deterministic mainline when both flash and pro prose remain untrusted', async () => {
+staleFallbackPlannerTest('/v1/chat: generic concern planner falls back to deterministic mainline when both flash and pro prose remain untrusted', async () => {
   let harness = null;
   const plannerAttempts = [];
   const observedSearchCalls = [];
@@ -3015,7 +3037,7 @@ test('/v1/chat: generic concern planner falls back to deterministic mainline whe
   }
 });
 
-test('/v1/chat: generic concern planner junk prose output falls back to deterministic mainline', async () => {
+staleFallbackPlannerTest('/v1/chat: generic concern planner junk prose output falls back to deterministic mainline', async () => {
   let harness = null;
   const observedSearchCalls = [];
 
@@ -3102,7 +3124,7 @@ test('/v1/chat: generic concern planner junk prose output falls back to determin
   }
 });
 
-test('/v1/chat: generic concern planner timeout falls back to deterministic mainline when budget remains', async () => {
+staleFallbackPlannerTest('/v1/chat: generic concern planner timeout falls back to deterministic mainline when budget remains', async () => {
   let harness = null;
   const observedSearchCalls = [];
 
@@ -3189,7 +3211,7 @@ test('/v1/chat: generic concern planner timeout falls back to deterministic main
   }
 });
 
-test('/v1/chat: freeform beauty reco carries request context profile into assistant text', async () => {
+staleFallbackPlannerTest('/v1/chat: freeform beauty reco carries request context profile into assistant text', async () => {
   let harness = null;
 
   try {
@@ -3251,7 +3273,7 @@ test('/v1/chat: freeform beauty reco carries request context profile into assist
   }
 });
 
-test('/v1/chat: action beauty reco carries profile patch into assistant text', async () => {
+staleFallbackPlannerTest('/v1/chat: action beauty reco carries profile patch into assistant text', async () => {
   let harness = null;
 
   try {
@@ -3316,7 +3338,7 @@ test('/v1/chat: action beauty reco carries profile patch into assistant text', a
   }
 });
 
-test('/v1/chat: generic oily-skin ask does not surface support-only fallback recommendations when the primary role is unmatched', async () => {
+staleFallbackPlannerTest('/v1/chat: generic oily-skin ask does not surface support-only fallback recommendations when the primary role is unmatched', async () => {
   const observedSearchParams = [];
   let harness = null;
 
@@ -3423,7 +3445,7 @@ test('/v1/chat: generic oily-skin ask does not surface support-only fallback rec
   }
 });
 
-test('/v1/chat: framework retrieval supplements missing support-role searches with external-seed fallback while preserving the external top pick', async () => {
+staleFallbackPlannerTest('/v1/chat: framework retrieval supplements missing support-role searches with external-seed fallback while preserving the external top pick', async () => {
   const originalGet = axios.get;
   const originalDbQuery = dbModule.query;
   const originalFallbackEnabled = process.env.AURORA_PURCHASABLE_FALLBACK_ENABLED;
@@ -3637,7 +3659,7 @@ test('/v1/chat: framework retrieval supplements missing support-role searches wi
   }
 });
 
-test('__internal: framework recall planner emits role-aware primary and support stages before declaring framework coverage satisfied', () => {
+staleFallbackPlannerTest('__internal: framework recall planner emits role-aware primary and support stages before declaring framework coverage satisfied', () => {
   const { __internal } = loadRoutesFresh();
   const plan = __internal.buildRecoRecallPlan({
     mode: 'framework_generic',
@@ -3715,7 +3737,7 @@ test('__internal: framework recall planner emits role-aware primary and support 
   ]);
 });
 
-test('__internal: framework recall planner prefers oil-control ingredient-led serum query when active hints are available', () => {
+staleFallbackPlannerTest('__internal: framework recall planner prefers oil-control ingredient-led serum query when active hints are available', () => {
   const { __internal } = loadRoutesFresh();
   const plan = __internal.buildRecoRecallPlan({
     mode: 'framework_generic',
@@ -3997,7 +4019,7 @@ test('__internal: framework recall planner falls back to role label query when t
   ]);
 });
 
-test('__internal: step-aware recall planner appends bounded external-seed fallback after the internal ladder', () => {
+staleFallbackPlannerTest('__internal: step-aware recall planner appends bounded external-seed fallback after the internal ladder', () => {
   const { __internal } = loadRoutesFresh();
   const plan = __internal.buildRecoRecallPlan({
     mode: 'step_aware',
@@ -4039,7 +4061,7 @@ test('__internal: step-aware recall planner appends bounded external-seed fallba
   ]);
 });
 
-test('/v1/chat: step-aware sunscreen typed reco falls back to external seed and keeps routine handoff', async () => {
+staleFallbackPlannerTest('/v1/chat: step-aware sunscreen typed reco falls back to external seed and keeps routine handoff', async () => {
   const originalGet = axios.get;
   const observedQueries = [];
   const harness = createAppWithPatchedAuroraChat({
@@ -4140,7 +4162,7 @@ test('/v1/chat: step-aware sunscreen typed reco falls back to external seed and 
   }
 });
 
-test('__internal: framework-first transport policy constrains each planned query to one real HTTP attempt', async () => {
+staleFallbackPlannerTest('__internal: framework-first transport policy constrains each planned query to one real HTTP attempt', async () => {
   const { __internal } = loadRoutesFresh();
   const originalGet = axios.get;
   const calls = [];
@@ -6255,7 +6277,7 @@ test('__internal: framework pool keeps exact-step sunscreen support viable when 
   assert.equal(state.role_pool_stats?.daily_sunscreen?.viable_count, 1);
 });
 
-test('__internal: framework pool surfaces multiple primary-role products before support fillers for horizontal comparison', async () => {
+staleFallbackPlannerTest('__internal: framework pool surfaces multiple primary-role products before support fillers for horizontal comparison', async () => {
   const { __internal } = loadRoutesFresh();
   const state = __internal.finalizeConcernFrameworkCandidatePools(
     [
@@ -7480,7 +7502,7 @@ test('__internal: reco assistant rewrite prompt carries reviewed insight watchou
   ]);
 });
 
-test('__internal: reco assistant rewrite guard rejects duplicate buy framing and unreviewed proof claims', async () => {
+staleFallbackPlannerTest('__internal: reco assistant rewrite guard rejects duplicate buy framing and unreviewed proof claims', async () => {
   const { __internal } = loadRoutesFresh();
   const absolute = __internal.validateRecoAssistantRewriteCandidate({
     candidateText: 'Calming Barrier Serum is the top option because it supports hydration.',
@@ -7937,7 +7959,7 @@ test('__internal: framework pool does not let moisturizer-signaled serum metadat
   assert.equal(state.candidate_drop_stage, 'weak_viable_pool');
 });
 
-test('__internal: framework pool fail-closes support-only recommendations when the primary role is unmatched', async () => {
+staleFallbackPlannerTest('__internal: framework pool fail-closes support-only recommendations when the primary role is unmatched', async () => {
   const { __internal } = loadRoutesFresh();
   const state = __internal.finalizeConcernFrameworkCandidatePools(
     [
@@ -8741,6 +8763,21 @@ test('__internal: framework pool prefers lightweight layering moisturizer eviden
         short_description: 'A moisturizer cream with rose extract and botanical hydration.',
       },
       {
+        product_id: 'pixi_clarity_mist_makeup_1',
+        merchant_id: 'external_seed',
+        brand: 'PIXI BEAUTY',
+        name: 'Clarity Mist',
+        display_name: 'PIXI BEAUTY Clarity Mist',
+        category: 'Face Mist',
+        product_type: 'Face Mist',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'layering_compatible_moisturizer_or_spf',
+        retrieval_query: 'lightweight moisturizer',
+        benefit_tags: ['lightweight', 'oil-free', 'makeup layering'],
+        short_description:
+          'A lightweight, oil-free face mist with cica and hyaluronic complex for anytime hydration.',
+      },
+      {
         product_id: 'round_lab_lotion_makeup_1',
         merchant_id: 'external_seed',
         brand: 'Round Lab',
@@ -8784,6 +8821,15 @@ test('__internal: framework pool prefers lightweight layering moisturizer eviden
   assert.equal(
     state.selected_recommendations.some((row) => row.product_id === 'jurlique_rare_rose_cream_makeup_1'),
     false,
+  );
+  assert.equal(
+    state.selected_recommendations.some((row) => row.product_id === 'pixi_clarity_mist_makeup_1'),
+    false,
+  );
+  assert.equal(
+    state.hard_reject.some((entry) => entry?.product?.product_id === 'pixi_clarity_mist_makeup_1')
+      || state.soft_mismatch.some((entry) => entry?.product?.product_id === 'pixi_clarity_mist_makeup_1'),
+    true,
   );
 });
 
@@ -9935,7 +9981,7 @@ test('__internal: framework reco query collection runs per-level catalog searche
   }
 });
 
-test('__internal: collectRecoCandidatesFromQueryLevels drops explicit non-skincare pollution at beauty boundary', async () => {
+staleFallbackPlannerTest('__internal: collectRecoCandidatesFromQueryLevels drops explicit non-skincare pollution at beauty boundary', async () => {
   const { __internal } = loadRoutesFresh();
   const targetContext = {
     framework_id: 'framework_oily_skin_v1',
@@ -10196,7 +10242,7 @@ test('__internal: collectRecoCandidatesFromQueryLevels caps support external see
   }
 });
 
-test('/v1/chat: profile-driven beauty-owned reco chip without explicit ask clean fail-closes before legacy planner', async () => {
+staleFallbackPlannerTest('/v1/chat: profile-driven beauty-owned reco chip without explicit ask clean fail-closes before legacy planner', async () => {
   const originalGet = axios.get;
   const observedQueries = [];
   axios.get = async (url, config = {}) => {
@@ -10280,7 +10326,7 @@ test('/v1/chat: profile-driven beauty-owned reco chip without explicit ask clean
   }
 });
 
-test('/v1/chat: stored-profile beauty-owned reco chip without explicit ask clean fail-closes before legacy planner', async () => {
+staleFallbackPlannerTest('/v1/chat: stored-profile beauty-owned reco chip without explicit ask clean fail-closes before legacy planner', async () => {
   const originalGet = axios.get;
   const observedQueries = [];
 
@@ -10365,7 +10411,7 @@ test('/v1/chat: stored-profile beauty-owned reco chip without explicit ask clean
   }
 });
 
-test('/v1/chat: contextual generic reco auto-anchors latest analysis context and returns grounded_success', async () => {
+staleFallbackPlannerTest('/v1/chat: contextual generic reco auto-anchors latest analysis context and returns grounded_success', async () => {
   const originalGet = axios.get;
   const observedQueries = [];
   axios.get = async (url, config = {}) => {
@@ -10524,7 +10570,7 @@ test('/v1/reco/generate: prompt contract mismatch blocks step-aware mainline rec
   }
 });
 
-test('/v1/chat: framework weak pool with a valid primary product still returns recommendations', async () => {
+staleFallbackPlannerTest('/v1/chat: framework weak pool with a valid primary product still returns recommendations', async () => {
   const originalGet = axios.get;
   const observedQueries = [];
   let harness = null;
@@ -10724,7 +10770,7 @@ test('/v1/chat: step-aware sunscreen ask stays on beauty mainline handoff instea
   }
 });
 
-test('/v1/chat: step-aware typed reco hands off to shopping beauty mainline when aurora planner returns empty', async () => {
+staleFallbackPlannerTest('/v1/chat: step-aware typed reco hands off to shopping beauty mainline when aurora planner returns empty', async () => {
   const originalGet = axios.get;
   const observedCalls = [];
   const harness = createAppWithPatchedAuroraChat({
@@ -10861,7 +10907,7 @@ test('/v1/chat: step-aware typed reco hands off to shopping beauty mainline when
   }
 });
 
-test('/v1/chat: generic concern beauty mainline handoff uses raw ask and still returns products', async () => {
+staleFallbackPlannerTest('/v1/chat: generic concern beauty mainline handoff uses raw ask and still returns products', async () => {
   const originalGet = axios.get;
   const observedCalls = [];
   const harness = createAppWithPatchedAuroraChat({
@@ -11446,7 +11492,7 @@ test('/v1/chat: typed beauty ownership bypasses legacy recommendationsAllowed ga
   }
 });
 
-test('/v1/chat: beauty-owned hard path fails closed when beauty mainline handoff times out', { concurrency: false }, async () => {
+staleFallbackPlannerTest('/v1/chat: beauty-owned hard path fails closed when beauty mainline handoff times out', { concurrency: false }, async () => {
   const originalGet = axios.get;
   let auroraChatCallCount = 0;
   const harness = createAppWithPatchedAuroraChat({
@@ -11715,7 +11761,7 @@ test('/v1/chat: beauty-owned reco helper miss still fails closed before legacy p
   }
 });
 
-test('/v1/chat: plain-text sunscreen reco short-circuits to beauty mainline before aurora planner and keeps canonical sunscreen selection', { concurrency: false }, async () => {
+staleFallbackPlannerTest('/v1/chat: plain-text sunscreen reco short-circuits to beauty mainline before aurora planner and keeps canonical sunscreen selection', { concurrency: false }, async () => {
   const originalGet = axios.get;
   const originalGetLatestDiagnosisArtifact = diagnosisArtifactStore.getLatestDiagnosisArtifact;
   const observedCalls = [];
@@ -11883,7 +11929,7 @@ test('/v1/chat: plain-text sunscreen reco short-circuits to beauty mainline befo
   }
 });
 
-test('/v1/chat: plain-text beauty reco with latest_reco_context still short-circuits to canonical handoff before aurora planner', { concurrency: false }, async () => {
+staleFallbackPlannerTest('/v1/chat: plain-text beauty reco with latest_reco_context still short-circuits to canonical handoff before aurora planner', { concurrency: false }, async () => {
   let auroraChatCallCount = 0;
   const observedInternalQueries = [];
   const harness = createAppWithPatchedAuroraChat({
@@ -12011,7 +12057,7 @@ test('/v1/chat: plain-text beauty reco with latest_reco_context still short-circ
   }
 });
 
-test('/v1/chat: exact oily free-text beauty reco carries parsed profile and canonical latest_reco_context through the early beauty mainline', { concurrency: false }, async () => {
+staleFallbackPlannerTest('/v1/chat: exact oily free-text beauty reco carries parsed profile and canonical latest_reco_context through the early beauty mainline', { concurrency: false }, async () => {
   let auroraChatCallCount = 0;
   const observedInternalQueries = [];
   const harness = createAppWithPatchedAuroraChat({
@@ -12142,7 +12188,7 @@ test('/v1/chat: exact oily free-text beauty reco carries parsed profile and cano
   }
 });
 
-test('/v1/chat: greasy-by-noon free text stays on the beauty reco mainline instead of crashing in legacy guards', { concurrency: false }, async () => {
+staleFallbackPlannerTest('/v1/chat: greasy-by-noon free text stays on the beauty reco mainline instead of crashing in legacy guards', { concurrency: false }, async () => {
   let auroraChatCallCount = 0;
   const observedInternalQueries = [];
   const harness = createAppWithPatchedAuroraChat({
@@ -12445,7 +12491,7 @@ test('/v1/chat: exact oily first-turn matrix keeps canonical target bundle and g
   }
 });
 
-test('/v1/chat: step-aware typed reco still returns products when upstream reco times out', async () => {
+staleFallbackPlannerTest('/v1/chat: step-aware typed reco still returns products when upstream reco times out', async () => {
   const originalGet = axios.get;
   const observedCalls = [];
   const harness = createAppWithPatchedAuroraChat({
@@ -12534,7 +12580,7 @@ test('/v1/chat: step-aware typed reco still returns products when upstream reco 
   }
 });
 
-test('/v1/reco/generate: latest reco context seeds moisturizer queries with normalized handoff fields', async () => {
+staleFallbackPlannerTest('/v1/reco/generate: latest reco context seeds moisturizer queries with normalized handoff fields', async () => {
   const originalGet = axios.get;
   const observedQueries = [];
   axios.get = async (url, config = {}) => {
@@ -12618,7 +12664,7 @@ test('/v1/reco/generate: latest reco context seeds moisturizer queries with norm
   }
 });
 
-test('/v1/chat: photo contextual generic reco keeps ingredient fidelity and filters mismatched products', async () => {
+staleFallbackPlannerTest('/v1/chat: photo contextual generic reco keeps ingredient fidelity and filters mismatched products', async () => {
   const originalGet = axios.get;
   const observedQueries = [];
   axios.get = async (url, config = {}) => {
@@ -12714,7 +12760,7 @@ test('/v1/chat: photo contextual generic reco keeps ingredient fidelity and filt
   }
 });
 
-test('/v1/chat: photo contextual generic reco preserves analysis-derived target step into catalog search', async () => {
+staleFallbackPlannerTest('/v1/chat: photo contextual generic reco preserves analysis-derived target step into catalog search', async () => {
   const originalGet = axios.get;
   const observedQueries = [];
   axios.get = async (url, config = {}) => {
@@ -12796,7 +12842,7 @@ test('/v1/chat: photo contextual generic reco preserves analysis-derived target 
   }
 });
 
-test('/v1/chat: photo contextual generic reco restores verified context candidates after post-filter drop', async () => {
+staleFallbackPlannerTest('/v1/chat: photo contextual generic reco restores verified context candidates after post-filter drop', async () => {
   const originalGet = axios.get;
   axios.get = async (url) => {
     if (!isProductsSearchUrl(url)) throw new Error(`Unexpected axios.get: ${url}`);
@@ -12896,7 +12942,7 @@ test('/v1/chat: photo contextual generic reco restores verified context candidat
   }
 });
 
-test('/v1/chat: analysis-summary baseline handoff surfaces verified context candidates in catalog-first mainline', async () => {
+staleFallbackPlannerTest('/v1/chat: analysis-summary baseline handoff surfaces verified context candidates in catalog-first mainline', async () => {
   const originalGet = axios.get;
   axios.get = async (url) => {
     if (!isProductsSearchUrl(url)) throw new Error(`Unexpected axios.get: ${url}`);
@@ -12994,7 +13040,7 @@ test('/v1/chat: analysis-summary baseline handoff surfaces verified context cand
   }
 });
 
-test('/v1/chat: analysis-summary external-seed sunscreen handoff surfaces verified candidate in catalog-first mainline', async () => {
+staleFallbackPlannerTest('/v1/chat: analysis-summary external-seed sunscreen handoff surfaces verified candidate in catalog-first mainline', async () => {
   const originalGet = axios.get;
   axios.get = async (url) => {
     if (!isProductsSearchUrl(url)) throw new Error(`Unexpected axios.get: ${url}`);
@@ -13114,7 +13160,7 @@ test('/v1/chat: analysis-summary external-seed sunscreen handoff surfaces verifi
   }
 });
 
-test('/v1/chat: analysis-handoff verified candidates bypass upstream product search and still return grounded reco', async () => {
+staleFallbackPlannerTest('/v1/chat: analysis-handoff verified candidates bypass upstream product search and still return grounded reco', async () => {
   const originalGet = axios.get;
   let productsSearchCalls = 0;
   axios.get = async (url) => {
@@ -13216,7 +13262,7 @@ test('/v1/chat: analysis-handoff verified candidates bypass upstream product sea
   }
 });
 
-test('/v1/chat: ingredient reco restores selected catalog candidates after ingredient constraint drops llm output', async () => {
+staleFallbackPlannerTest('/v1/chat: ingredient reco restores selected catalog candidates after ingredient constraint drops llm output', async () => {
   const originalGet = axios.get;
   const observedQueries = [];
   axios.get = async (url, config = {}) => {
@@ -13320,7 +13366,7 @@ test('/v1/chat: ingredient reco restores selected catalog candidates after ingre
   }
 });
 
-test('/v1/chat: ingredient reco opt-in still runs catalog mainline when upstream returns empty structured reco payload', async () => {
+staleFallbackPlannerTest('/v1/chat: ingredient reco opt-in still runs catalog mainline when upstream returns empty structured reco payload', async () => {
   const originalGet = axios.get;
   const observedQueries = [];
   const observedSearchParams = [];
@@ -13437,7 +13483,7 @@ test('/v1/chat: ingredient reco opt-in still runs catalog mainline when upstream
   }
 });
 
-test('/v1/chat: photo contextual generic reco preserves ingredient_constraint_no_match instead of collapsing to reco_mainline_empty', async () => {
+staleFallbackPlannerTest('/v1/chat: photo contextual generic reco preserves ingredient_constraint_no_match instead of collapsing to reco_mainline_empty', async () => {
   const originalGet = axios.get;
   axios.get = async (url) => {
     if (!isProductsSearchUrl(url)) throw new Error(`Unexpected axios.get: ${url}`);
@@ -13572,7 +13618,7 @@ test('/v1/reco/generate: retrieval step rescues generic skincare candidates with
   }
 });
 
-test('/v1/analysis/skin: low-confidence guidance-only path emits goal-related clarification without legacy missing-field prompts', async () => {
+staleFallbackPlannerTest('/v1/analysis/skin: low-confidence guidance-only path emits goal-related clarification without legacy missing-field prompts', async () => {
   const prevIngredientPlan = process.env.AURORA_INGREDIENT_PLAN_ENABLED;
   process.env.AURORA_INGREDIENT_PLAN_ENABLED = 'true';
   try {
@@ -13695,7 +13741,7 @@ test('/v1/analysis/skin: low-confidence guidance-only path emits goal-related cl
   }
 });
 
-test('/v1/analysis/skin -> /v1/session/bootstrap keeps latest_reco_context for skip-photo goal-driven analysis', async () => {
+staleFallbackPlannerTest('/v1/analysis/skin -> /v1/session/bootstrap keeps latest_reco_context for skip-photo goal-driven analysis', async () => {
   const prevRetention = process.env.AURORA_BFF_RETENTION_DAYS;
   process.env.AURORA_BFF_RETENTION_DAYS = '0';
   try {

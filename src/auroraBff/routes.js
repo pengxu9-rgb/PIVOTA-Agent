@@ -8774,6 +8774,18 @@ function scoreLocalExternalSeedSunscreenIdentityFit(product) {
   return Number(Math.max(-0.6, Math.min(0.4, score)).toFixed(4));
 }
 
+function hasLocalExternalSeedLayeringMoisturizerFormFactorSignal(text = '') {
+  return /\b(moisturi[sz]er|gel[-\s]?cream|water[-\s]?(?:gel|cream)|face\s+lotion|gel\s+lotion|moisturizing\s+lotion|lotion|emulsion|cream)\b/i.test(
+    String(text || ''),
+  );
+}
+
+function hasLocalExternalSeedMistTonerSprayFormFactorSignal(text = '') {
+  return /\b(face\s+mist|facial\s+mist|mist|skin\s+toner|toner|toning\s+mist|spray|spritz)\b/i.test(
+    String(text || ''),
+  );
+}
+
 function scoreLocalExternalSeedPreferredFormFactorFit(product, {
   role = null,
   preferredStep = '',
@@ -8797,7 +8809,14 @@ function scoreLocalExternalSeedPreferredFormFactorFit(product, {
     if (/\b(body|hand|foot|kp\s+bump)\b/.test(fullText)) score -= 0.48;
   }
   if (preferred === 'moisturizer') {
-    if (/\b(water\s+cream|gel[-\s]?cream|gel\s+lotion|face\s+lotion|emulsion)\b/.test(anchorText)) score += 0.08;
+    const moisturizerFormFactorFit =
+      hasLocalExternalSeedLayeringMoisturizerFormFactorSignal(anchorText)
+      || /\b(lightweight|non[-\s]?greasy|fast[-\s]?absorbing|quick[-\s]?absorbing)\s+(?:moisturi[sz]er|cream|lotion|emulsion)\b/.test(fullText);
+    const mistTonerSprayFormFactor =
+      hasLocalExternalSeedMistTonerSprayFormFactorSignal(anchorText)
+      || hasLocalExternalSeedMistTonerSprayFormFactorSignal(fullText);
+    if (moisturizerFormFactorFit) score += 0.1;
+    if (roleId.includes('layering') && mistTonerSprayFormFactor && !moisturizerFormFactorFit) score -= 0.36;
     if (roleId.includes('layering') && /\b(heavy|rich|balm|sleeping\s+mask)\b/.test(anchorText)) score -= 0.12;
   }
   return Number(Math.max(-0.6, Math.min(0.24, score)).toFixed(4));
@@ -22571,6 +22590,7 @@ function shouldPreserveConcernFrameworkRetrievalRoleScore(roleScore = null) {
     scoreObj.low_irritation_active_mismatch_applied === true
     || scoreObj.eye_area_role_mismatch_applied === true
     || scoreObj.lightweight_texture_mismatch_applied === true
+    || scoreObj.lightweight_moisturizer_form_factor_mismatch_applied === true
     || scoreObj.sunscreen_coverage_tint_mismatch_applied === true
   ) {
     return false;

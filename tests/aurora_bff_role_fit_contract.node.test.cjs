@@ -400,6 +400,28 @@ test('layering moisturizer role demotes rich heavy creams despite exact moisturi
   assert.ok(Number(score?.score || 0) < 0.42);
 });
 
+test('layering moisturizer role demotes mist and toner form factors even when lightweight copy matches', () => {
+  const score = scoreConcernRoleCandidate(
+    {
+      title: 'PIXI BEAUTY Clarity Mist',
+      category: 'Face Mist',
+      product_type: 'Face Mist',
+      retrieval_role_id: 'layering_compatible_moisturizer_or_spf',
+    },
+    buildLayeringMoisturizerRole(),
+    {
+      candidateStep: 'toner',
+      candidateText:
+        'PIXI BEAUTY Clarity Mist face mist with cica, hyaluronic complex, lightweight oil-free hydration, and makeup layering use.',
+    },
+  );
+
+  assert.ok(score);
+  assert.equal(score?.lightweight_moisturizer_form_factor_mismatch_applied, true);
+  assert.equal(score?.lightweight_texture_mismatch_applied, false);
+  assert.ok(Number(score?.score || 0) < 0.42);
+});
+
 test('layering moisturizer role keeps generic cream as a low-confidence viable fallback when texture evidence is sparse', () => {
   const score = scoreConcernRoleCandidate(
     {
