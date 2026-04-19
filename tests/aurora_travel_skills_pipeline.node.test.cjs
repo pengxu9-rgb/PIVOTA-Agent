@@ -753,6 +753,51 @@ test('travel skills pipeline: plan flow uses trip departure baseline instead of 
   );
 });
 
+test('travel skills pipeline: inactive pregnancy status does not create pregnancy focus and dates survive', async () => {
+  await withEnv(
+    {
+      TRAVEL_KB_ASYNC_BACKFILL_ENABLED: 'false',
+      AURORA_TRAVEL_LLM_CALIBRATION_ENABLED: 'false',
+    },
+    async () => {
+      const { runTravelPipeline } = loadFreshPipeline();
+      const out = await runTravelPipeline(
+        buildInput('Build my Seattle to Shanghai business trip skincare plan.', {
+          profile: {
+            skinType: 'combination',
+            sensitivity: 'medium',
+            barrierStatus: 'stable',
+            goals: ['hydration', 'oil control'],
+            pregnancy_status: 'not_pregnant',
+            lactation_status: 'not_lactating',
+            travel_plan: {
+              destination: 'Shanghai',
+              departure_region: 'Seattle',
+              start_date: '2026-04-20',
+              end_date: '2026-04-24',
+            },
+          },
+          canonicalIntent: {
+            intent: 'travel_planning',
+            entities: {
+              destination: 'Shanghai',
+              departure_region: 'Seattle',
+            },
+          },
+        }),
+      );
+
+      assert.equal(out.ok, true);
+      assert.equal(out.travel_readiness?.destination_context?.start_date, '2026-04-20');
+      assert.equal(out.travel_readiness?.destination_context?.end_date, '2026-04-24');
+      const personalFocus = Array.isArray(out.travel_readiness?.personal_focus)
+        ? out.travel_readiness.personal_focus
+        : [];
+      assert.equal(personalFocus.some((row) => /pregnan|lactat/i.test(String(row?.focus || ''))), false);
+    },
+  );
+});
+
 test('travel skills pipeline: legacy trip flow without departure blocks with departure_missing clarification', async () => {
   await withEnv(
     {

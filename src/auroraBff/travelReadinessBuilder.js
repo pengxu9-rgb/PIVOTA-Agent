@@ -9,6 +9,12 @@ function normalizeText(value, maxLen = 220) {
   return text.slice(0, maxLen);
 }
 
+function isPregnancyOrLactationActive(profile) {
+  const pregnancy = normalizeText(profile && profile.pregnancy_status, 20).toLowerCase();
+  const lactation = normalizeText(profile && profile.lactation_status, 20).toLowerCase();
+  return pregnancy === 'pregnant' || pregnancy === 'trying' || lactation === 'lactating';
+}
+
 function toNumber(value, fallback = null) {
   if (value == null) return fallback;
   if (typeof value === 'string' && !value.trim()) return fallback;
@@ -99,10 +105,7 @@ function buildRecoBundle({ language, deltaVsHome, profile, startDate, endDate, j
   const goals = Array.isArray(profile && profile.goals) ? profile.goals.map((g) => normalizeText(g, 60).toLowerCase()).filter(Boolean) : [];
   const currentRoutine = normalizeText(profile && profile.currentRoutine, 600);
   const hasMakeupInRoutine = routineContainsMakeup(currentRoutine);
-  const isPregnantOrLactating = Boolean(
-    normalizeText(profile && profile.pregnancy_status, 20) ||
-    normalizeText(profile && profile.lactation_status, 20),
-  );
+  const isPregnantOrLactating = isPregnancyOrLactationActive(profile);
 
   const uvDestination = toNumber(delta?.uv?.destination);
   const uvDelta = toNumber(delta?.uv?.delta);
@@ -664,10 +667,7 @@ function buildPersonalFocus({ language, profile, destinationSummary, summaryTags
   const barrier = normalizeText(profile && profile.barrierStatus, 40).toLowerCase();
   const sensitivity = normalizeText(profile && profile.sensitivity, 40).toLowerCase();
   const goals = Array.isArray(profile && profile.goals) ? profile.goals.map((g) => normalizeText(g, 60).toLowerCase()).filter(Boolean) : [];
-  const isPregnantOrLactating = Boolean(
-    normalizeText(profile && profile.pregnancy_status, 20) ||
-    normalizeText(profile && profile.lactation_status, 20),
-  );
+  const isPregnantOrLactating = isPregnancyOrLactationActive(profile);
 
   if (isPregnantOrLactating) {
     push(

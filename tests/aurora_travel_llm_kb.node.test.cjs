@@ -6,7 +6,7 @@ const {
   evaluateTravelKbBackfill,
   buildTravelKbUpsertEntry,
 } = require('../src/auroraBff/travelKbPolicy');
-const { calibrateTravelReadinessWithLlm } = require('../src/auroraBff/travelLlmCalibrator');
+const { calibrateTravelReadinessWithLlm, __internal: travelLlmInternal } = require('../src/auroraBff/travelLlmCalibrator');
 
 async function withEnv(patch, fn) {
   const previous = {};
@@ -274,4 +274,46 @@ test('travel LLM calibrator: immutable weather facts cannot be overwritten by pa
   assert.deepEqual(result.travel_readiness.alerts, baseline.alerts);
   assert.equal(result.travel_readiness.adaptive_actions[0].what_to_do, 'Use richer cream at night');
   assert.equal(result.travel_readiness.confidence.level, 'high');
+});
+
+test('travel LLM calibrator: prompt compaction drops UI payload and keeps inactive pregnancy neutral', () => {
+  const baseline = {
+    ...buildCompleteTravelReadiness(),
+    categorized_kit: Array.from({ length: 25 }, (_, index) => ({
+      id: `category_${index}`,
+      title: `Very long UI-only category ${index}`,
+      rationale: 'x'.repeat(500),
+      items: Array.from({ length: 10 }, (__, itemIndex) => ({
+        title: `UI row ${index}-${itemIndex}`,
+        description: 'y'.repeat(300),
+      })),
+    })),
+  };
+
+  const prompts = travelLlmInternal.buildTravelCalibrationPrompts({
+    language: 'EN',
+    travelLlmInput: {
+      destination: 'Shanghai',
+      start_date: '2026-04-20',
+      end_date: '2026-04-24',
+      question: 'Build my business-trip skincare plan from Seattle to Shanghai next Monday.',
+      profile: {
+        skinType: 'combination',
+        sensitivity: 'medium',
+        barrierStatus: 'stable',
+        currentRoutine: 'AM gentle cleanser, light gel moisturizer, SPF 50. PM gentle cleanser, niacinamide serum, barrier moisturizer.',
+        goals: ['hydration', 'oil control'],
+        pregnancy_status: 'not_pregnant',
+        lactation_status: 'not_lactating',
+      },
+    },
+    baseTravelReadiness: baseline,
+  });
+  const combined = `${prompts.systemPrompt}\n${prompts.userPrompt}`;
+
+  assert.equal(combined.includes('Very long UI-only category'), false);
+  assert.equal(combined.includes('Pregnancy/lactation: active'), false);
+  assert.equal(combined.includes('User is pregnant/lactating'), false);
+  assert.equal(combined.includes('"start_date": "2026-04-20"'), true);
+  assert.equal(combined.length < 16000, true);
 });

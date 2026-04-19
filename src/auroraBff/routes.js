@@ -87851,11 +87851,13 @@ function mountAuroraBffRoutes(app, { logger }) {
         ];
       }
       if (pregnancyPolicy && pregnancyPolicy.patch) {
+        const profileBeforePregnancyPolicy =
+          profile && typeof profile === 'object' && !Array.isArray(profile) ? profile : {};
         appliedProfilePatch = {
           ...(appliedProfilePatch && typeof appliedProfilePatch === 'object' ? appliedProfilePatch : {}),
           ...pregnancyPolicy.patch,
         };
-        profile = { ...(profile || {}), ...pregnancyPolicy.patch };
+        profile = { ...profileBeforePregnancyPolicy, ...pregnancyPolicy.patch };
         try {
           const persistedProfile = await runAuroraTimedOperation(
             () => upsertProfileForIdentityForRoute(identityRef, pregnancyPolicy.patch),
@@ -87864,7 +87866,8 @@ function mountAuroraBffRoutes(app, { logger }) {
           profile = {
             ...((persistedProfile && typeof persistedProfile === 'object' && !Array.isArray(persistedProfile))
               ? persistedProfile
-              : (profile && typeof profile === 'object' && !Array.isArray(profile) ? profile : {})),
+              : {}),
+            ...profileBeforePregnancyPolicy,
             ...pregnancyPolicy.patch,
           };
         } catch (err) {
@@ -90738,7 +90741,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               hasSafetyConflict: Boolean(
                 safetyDecision &&
                   safetyDecision.block_level &&
-                  safetyDecision.block_level !== BLOCK_LEVEL.INFO,
+                  safetyDecision.block_level === BLOCK_LEVEL.BLOCK,
               ),
             });
           } catch (err) {

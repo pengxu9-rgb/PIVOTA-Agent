@@ -59,6 +59,12 @@ function normalizeStringArray(value, maxItems = 8, maxLen = 120) {
   return out
 }
 
+function isPregnancyOrLactationActive(profile) {
+  const pregnancy = normalizeText(profile && profile.pregnancy_status, 20).toLowerCase()
+  const lactation = normalizeText(profile && profile.lactation_status, 20).toLowerCase()
+  return pregnancy === 'pregnant' || pregnancy === 'trying' || lactation === 'lactating'
+}
+
 function hashPromptPayload(value, tokenLen = 24) {
   const text = typeof value === 'string' ? value : String(value || '')
   const hash = crypto.createHash('sha256').update(text).digest('hex')
@@ -262,6 +268,88 @@ function normalizeShoppingPreview(value) {
   }
 
   return Object.keys(out).length ? out : undefined
+}
+
+function compactProfileForPrompt(value) {
+  const profile = isPlainObject(value) ? value : {}
+  return {
+    ...(normalizeText(profile.skinType || profile.skin_type, 40)
+      ? { skinType: normalizeText(profile.skinType || profile.skin_type, 40) }
+      : {}),
+    ...(normalizeText(profile.sensitivity, 40) ? { sensitivity: normalizeText(profile.sensitivity, 40) } : {}),
+    ...(normalizeText(profile.barrierStatus || profile.barrier_status, 40)
+      ? { barrierStatus: normalizeText(profile.barrierStatus || profile.barrier_status, 40) }
+      : {}),
+    ...(normalizeText(profile.region, 120) ? { region: normalizeText(profile.region, 120) } : {}),
+    ...(Array.isArray(profile.goals) ? { goals: normalizeStringArray(profile.goals, 8, 60) } : {}),
+    ...(normalizeText(profile.budgetTier || profile.budget_tier, 40)
+      ? { budgetTier: normalizeText(profile.budgetTier || profile.budget_tier, 40) }
+      : {}),
+    ...(normalizeText(profile.currentRoutine, 500) ? { currentRoutine: normalizeText(profile.currentRoutine, 500) } : {}),
+    ...(Array.isArray(profile.contraindications)
+      ? { contraindications: normalizeStringArray(profile.contraindications, 12, 80) }
+      : {}),
+    ...(normalizeText(profile.age_band, 24) ? { age_band: normalizeText(profile.age_band, 24) } : {}),
+    ...(normalizeText(profile.pregnancy_status, 24) ? { pregnancy_status: normalizeText(profile.pregnancy_status, 24) } : {}),
+    ...(normalizeText(profile.lactation_status, 24) ? { lactation_status: normalizeText(profile.lactation_status, 24) } : {}),
+  }
+}
+
+function compactTravelLlmInputForPrompt(value) {
+  const input = isPlainObject(value) ? value : {}
+  return {
+    ...(normalizeText(input.destination, 140) ? { destination: normalizeText(input.destination, 140) } : {}),
+    ...(normalizeText(input.start_date, 24) ? { start_date: normalizeText(input.start_date, 24) } : {}),
+    ...(normalizeText(input.end_date, 24) ? { end_date: normalizeText(input.end_date, 24) } : {}),
+    ...(normalizeNumber(input.month_bucket) != null ? { month_bucket: normalizeNumber(input.month_bucket) } : {}),
+    profile: compactProfileForPrompt(input.profile),
+    ...(normalizeText(input.weather_source, 40) ? { weather_source: normalizeText(input.weather_source, 40) } : {}),
+    ...(normalizeText(input.weather_reason, 80) ? { weather_reason: normalizeText(input.weather_reason, 80) } : {}),
+    ...(normalizeText(input.alerts_source, 40) ? { alerts_source: normalizeText(input.alerts_source, 40) } : {}),
+    ...(typeof input.kb_hit === 'boolean' ? { kb_hit: input.kb_hit } : {}),
+    ...(normalizeText(input.question, 700) ? { question: normalizeText(input.question, 700) } : {}),
+    ...(isPlainObject(input.analysis_context_hard) ? { analysis_context_hard: input.analysis_context_hard } : {}),
+    ...(isPlainObject(input.analysis_context_soft) ? { analysis_context_soft: input.analysis_context_soft } : {}),
+    ...(Array.isArray(input.analysis_context_evidence)
+      ? {
+          analysis_context_evidence: input.analysis_context_evidence
+            .slice(0, 6)
+            .map((item) => (isPlainObject(item) ? item : normalizeText(item, 180)))
+            .filter(Boolean),
+        }
+      : {}),
+    ...(Array.isArray(input.analysis_context_conflicts)
+      ? {
+          analysis_context_conflicts: input.analysis_context_conflicts
+            .slice(0, 4)
+            .map((item) => (isPlainObject(item) ? item : normalizeText(item, 180)))
+            .filter(Boolean),
+        }
+      : {}),
+  }
+}
+
+function compactTravelReadinessForPrompt(value) {
+  const readiness = isPlainObject(value) ? value : {}
+  return {
+    ...(isPlainObject(readiness.destination_context) ? { destination_context: readiness.destination_context } : {}),
+    ...(isPlainObject(readiness.origin_context) ? { origin_context: readiness.origin_context } : {}),
+    ...(isPlainObject(readiness.delta_vs_home) ? { delta_vs_home: readiness.delta_vs_home } : {}),
+    ...(isPlainObject(readiness.delta_vs_origin) ? { delta_vs_origin: readiness.delta_vs_origin } : {}),
+    ...(Array.isArray(readiness.forecast_window)
+      ? { forecast_window: normalizeForecastWindow(readiness.forecast_window).slice(0, 5) }
+      : {}),
+    ...(Array.isArray(readiness.alerts) ? { alerts: normalizeAlerts(readiness.alerts).slice(0, 3) } : {}),
+    ...(Array.isArray(readiness.adaptive_actions) ? { adaptive_actions: readiness.adaptive_actions.slice(0, 5) } : {}),
+    ...(Array.isArray(readiness.personal_focus) ? { personal_focus: readiness.personal_focus.slice(0, 4) } : {}),
+    ...(isPlainObject(readiness.jetlag_sleep) ? { jetlag_sleep: readiness.jetlag_sleep } : {}),
+    ...(Array.isArray(readiness.reco_bundle) ? { reco_bundle: normalizeRecoBundle(readiness.reco_bundle) } : {}),
+    ...(isPlainObject(readiness.shopping_preview) ? { shopping_preview: normalizeShoppingPreview(readiness.shopping_preview) } : {}),
+    ...(Array.isArray(readiness.category_recommendations)
+      ? { category_recommendations: readiness.category_recommendations.slice(0, 8) }
+      : {}),
+    ...(isPlainObject(readiness.confidence) ? { confidence: readiness.confidence } : {}),
+  }
 }
 
 function normalizeTravelReadinessPatch(value) {
@@ -495,16 +583,16 @@ function withTimeout(promise, timeoutMs, timeoutCode = 'TRAVEL_LLM_TIMEOUT') {
 
 function buildTravelCalibrationPrompts({ language = 'EN', travelLlmInput, baseTravelReadiness } = {}) {
   const lang = String(language || '').toUpperCase() === 'CN' ? 'CN' : 'EN'
+  const promptTravelLlmInput = compactTravelLlmInputForPrompt(travelLlmInput)
+  const promptBaseTravelReadiness = compactTravelReadinessForPrompt(baseTravelReadiness)
 
-  const profileInput = isPlainObject(travelLlmInput) && isPlainObject(travelLlmInput.profile)
-    ? travelLlmInput.profile
+  const profileInput = isPlainObject(promptTravelLlmInput) && isPlainObject(promptTravelLlmInput.profile)
+    ? promptTravelLlmInput.profile
     : {}
   const goals = Array.isArray(profileInput.goals) ? profileInput.goals : []
   const contraindications = Array.isArray(profileInput.contraindications) ? profileInput.contraindications : []
   const hasRoutine = Boolean(normalizeText(profileInput.currentRoutine, 10))
-  const isPregnantOrLactating = Boolean(
-    normalizeText(profileInput.pregnancy_status, 20) || normalizeText(profileInput.lactation_status, 20),
-  )
+  const isPregnantOrLactating = isPregnancyOrLactationActive(profileInput)
 
   const systemPrompt =
     'You are a board-certified dermatologist-level travel skincare advisor. ' +
@@ -584,9 +672,9 @@ function buildTravelCalibrationPrompts({ language = 'EN', travelLlmInput, baseTr
     '  "source_notes": {"reasoning_mode":"llm_calibration_v2"}\n' +
     '}\n\n' +
     'Fact input JSON:\n' +
-    `${JSON.stringify(travelLlmInput || {}, null, 2)}\n` +
+    `${JSON.stringify(promptTravelLlmInput || {}, null, 2)}\n` +
     'Current travel_readiness JSON:\n' +
-    `${JSON.stringify(baseTravelReadiness || {}, null, 2)}`
+    `${JSON.stringify(promptBaseTravelReadiness || {}, null, 2)}`
 
   return { systemPrompt, userPrompt }
 }
@@ -757,6 +845,8 @@ module.exports = {
     deepMerge,
     parseCalibrationPayload,
     buildTravelCalibrationPrompts,
+    compactTravelLlmInputForPrompt,
+    compactTravelReadinessForPrompt,
     buildPromptInputSummary,
     buildPromptTelemetry,
   },
