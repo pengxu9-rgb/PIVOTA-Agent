@@ -1081,6 +1081,7 @@ async function main() {
           status: row.status,
           latency_ms: row.latency_ms,
           query_source: row.metrics.querySource,
+          titles: normalizeTitles(Array.isArray(row?.data?.products) ? row.data.products : []).slice(0, 10),
           product_count: row.metrics.productCount,
           timeout: row.metrics.timeout,
           fallback: row.metrics.fallback,

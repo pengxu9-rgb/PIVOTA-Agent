@@ -94023,6 +94023,8 @@ const __internal = {
   loadLatestDiagnosisArtifactForRoute,
   buildAnalysisFollowupContent,
   fetchRecoAlternativesForProduct,
+  extractQuickProfileLightweightPatch,
+  extractProfilePatchFromRequestContextPayload,
   extractProfilePatchFromRoutinePayload,
   reconcileIngredientPlanWithProductCards,
   buildRoutineFitSummaryPrompt,
