@@ -531,6 +531,45 @@ test('travel skills pipeline: reco/store skip reasons are explicit when triggere
   );
 });
 
+test('travel skills pipeline: local product wording triggers both reco preview and store channel', async () => {
+  await withEnv(
+    {
+      TRAVEL_KB_ASYNC_BACKFILL_ENABLED: 'false',
+      AURORA_TRAVEL_LLM_CALIBRATION_ENABLED: 'false',
+    },
+    async () => {
+      const { runTravelPipeline } = loadFreshPipeline();
+      const out = await runTravelPipeline(
+        buildInput('Business trip skincare planner: Seattle to Shanghai from 2026-04-20 to 2026-04-24. Include skincare products or categories I can buy locally in Shanghai.', {
+          canonicalIntent: {
+            intent: 'travel_planning',
+            entities: {
+              destination: 'Shanghai',
+              departure_region: 'Seattle',
+              date_range: { start: '2026-04-20', end: '2026-04-24' },
+            },
+          },
+          profile: {
+            skinType: 'combination',
+            sensitivity: 'medium',
+            barrierStatus: 'stable',
+            goals: ['hydration'],
+          },
+        }),
+      );
+
+      const intentTrace = out.travel_skills_trace.find((row) => row.skill === 'travel_intent_profile_skill');
+      const recoTrace = out.travel_skills_trace.find((row) => row.skill === 'travel_reco_preview_skill');
+      const storeTrace = out.travel_skills_trace.find((row) => row.skill === 'travel_store_channel_skill');
+      assert.equal(intentTrace?.meta?.departure_region, 'Seattle');
+      assert.notEqual(recoTrace?.meta?.reason, 'trigger_not_matched');
+      assert.notEqual(storeTrace?.meta?.reason, 'trigger_not_matched');
+      assert.equal(out.travel_skill_invocation_matrix?.reco_called, true);
+      assert.equal(out.travel_skill_invocation_matrix?.store_called, true);
+    },
+  );
+});
+
 test('travel skills pipeline: ambiguous destination returns clarification chips instead of fake weather', async () => {
   await withEnv(
     {

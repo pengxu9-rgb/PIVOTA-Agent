@@ -8,6 +8,23 @@ const {
 } = require('../src/auroraBff/travelKbPolicy');
 const { calibrateTravelReadinessWithLlm } = require('../src/auroraBff/travelLlmCalibrator');
 
+async function withEnv(patch, fn) {
+  const previous = {};
+  for (const [key, value] of Object.entries(patch || {})) {
+    previous[key] = Object.prototype.hasOwnProperty.call(process.env, key) ? process.env[key] : undefined;
+    if (value == null) delete process.env[key];
+    else process.env[key] = String(value);
+  }
+  try {
+    return await fn();
+  } finally {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value == null) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+}
+
 function buildCompleteTravelReadiness() {
   return {
     destination_context: {
@@ -122,70 +139,80 @@ test('travel KB upsert entry builder: maps fields and normalizes brand status', 
 });
 
 test('travel LLM calibrator: skip_no_client fallback keeps baseline', async () => {
-  const baseline = buildCompleteTravelReadiness();
-  const result = await calibrateTravelReadinessWithLlm({
-    openaiClient: null,
-    language: 'EN',
-    travelLlmInput: { destination: 'Paris' },
-    baseTravelReadiness: baseline,
-    timeoutMs: 200,
-    maxRetries: 1,
-  });
+  await withEnv(
+    {
+      AURORA_TRAVEL_GEMINI_API_KEY: undefined,
+      AURORA_SKIN_GEMINI_API_KEY: undefined,
+      GEMINI_API_KEY: undefined,
+      GOOGLE_API_KEY: undefined,
+      GEMINI_API_KEY_1: undefined,
+      GEMINI_API_KEY_2: undefined,
+      GEMINI_API_KEY_3: undefined,
+      GEMINI_API_KEY_4: undefined,
+      GEMINI_API_KEY_5: undefined,
+      GEMINI_API_KEY_6: undefined,
+      GEMINI_API_KEY_7: undefined,
+      GEMINI_API_KEY_8: undefined,
+      GEMINI_API_KEY_9: undefined,
+      GEMINI_API_KEY_10: undefined,
+    },
+    async () => {
+      const baseline = buildCompleteTravelReadiness();
+      const result = await calibrateTravelReadinessWithLlm({
+        geminiGenerateContent: null,
+        language: 'EN',
+        travelLlmInput: { destination: 'Paris' },
+        baseTravelReadiness: baseline,
+        timeoutMs: 200,
+        maxRetries: 1,
+      });
 
-  assert.equal(result.stage, 'travel_readiness_calibration_v1');
-  assert.equal(result.used, false);
-  assert.equal(result.outcome, 'skip_no_client');
-  assert.deepEqual(result.travel_readiness, baseline);
-  assert.equal(typeof result.source_meta?.prompt_hash, 'string');
-  assert.equal(result.source_meta.prompt_hash.length >= 16, true);
-  assert.equal(Number.isFinite(Number(result.source_meta?.prompt_chars)), true);
-  assert.equal(Number(result.source_meta.prompt_chars) > 0, true);
-  assert.equal(result.source_meta?.input_summary?.destination, 'Paris');
-  assert.equal(typeof result.source_meta?.input_summary?.profile_fields_present, 'object');
-  assert.equal(typeof result.source_meta?.error_code, 'string');
+      assert.equal(result.stage, 'travel_readiness_calibration_v1');
+      assert.equal(result.used, false);
+      assert.equal(result.outcome, 'skip_no_client');
+      assert.deepEqual(result.travel_readiness, baseline);
+      assert.equal(result.source_meta?.provider, 'gemini');
+      assert.equal(result.source_meta?.model, 'gemini-3-flash-preview');
+      assert.equal(typeof result.source_meta?.prompt_hash, 'string');
+      assert.equal(result.source_meta.prompt_hash.length >= 16, true);
+      assert.equal(Number.isFinite(Number(result.source_meta?.prompt_chars)), true);
+      assert.equal(Number(result.source_meta.prompt_chars) > 0, true);
+      assert.equal(result.source_meta?.input_summary?.destination, 'Paris');
+      assert.equal(typeof result.source_meta?.input_summary?.profile_fields_present, 'object');
+      assert.equal(result.source_meta?.error_code, 'no_gemini_client');
+    },
+  );
 });
 
 test('travel LLM calibrator: parses patch and deep-merges shopping brand candidates', async () => {
   const baseline = buildCompleteTravelReadiness();
-  const mockClient = {
-    chat: {
-      completions: {
-        create: async () => ({
-          choices: [
-            {
-              message: {
-                content: JSON.stringify({
-                  travel_readiness_patch: {
-                    adaptive_actions: [{ why: 'Windier', what_to_do: 'Use richer cream at night' }],
-                    shopping_preview: {
-                      brand_candidates: [
-                        { brand: 'La Roche-Posay', match_status: 'catalog_verified', reason: 'Catalog hit' },
-                        { brand: 'BrandY', match_status: 'bad_value', reason: 'Should become llm_only' },
-                      ],
-                      buying_channels: ['pharmacy', 'ecommerce', 'invalid_channel'],
-                    },
-                    confidence: {
-                      level: 'high',
-                      score: 0.92,
-                    },
-                  },
-                  quality_flags: {
-                    structured_complete: true,
-                  },
-                  source_notes: {
-                    reasoning_mode: 'llm_calibration_v1',
-                  },
-                }),
-              },
-            },
+  const mockGemini = async () => ({
+    text: JSON.stringify({
+      travel_readiness_patch: {
+        adaptive_actions: [{ why: 'Windier', what_to_do: 'Use richer cream at night' }],
+        shopping_preview: {
+          brand_candidates: [
+            { brand: 'La Roche-Posay', match_status: 'catalog_verified', reason: 'Catalog hit' },
+            { brand: 'BrandY', match_status: 'bad_value', reason: 'Should become llm_only' },
           ],
-        }),
+          buying_channels: ['pharmacy', 'ecommerce', 'invalid_channel'],
+        },
+        confidence: {
+          level: 'high',
+          score: 0.92,
+        },
       },
-    },
-  };
+      quality_flags: {
+        structured_complete: true,
+      },
+      source_notes: {
+        reasoning_mode: 'llm_calibration_v1',
+      },
+    }),
+  });
 
   const result = await calibrateTravelReadinessWithLlm({
-    openaiClient: mockClient,
+    geminiGenerateContent: mockGemini,
     language: 'EN',
     travelLlmInput: { destination: 'Paris', month_bucket: 3 },
     baseTravelReadiness: baseline,
@@ -200,6 +227,8 @@ test('travel LLM calibrator: parses patch and deep-merges shopping brand candida
   assert.equal(result.travel_readiness.shopping_preview.brand_candidates[1].match_status, 'llm_only');
   assert.equal(result.travel_readiness.confidence.level, 'high');
   assert.equal(result.source_meta.reasoning_mode, 'llm_calibration_v1');
+  assert.equal(result.source_meta.provider, 'gemini');
+  assert.equal(result.source_meta.model, 'gemini-3-flash-preview');
   assert.equal(typeof result.source_meta?.prompt_hash, 'string');
   assert.equal(result.source_meta.prompt_hash.length >= 16, true);
   assert.equal(Number.isFinite(Number(result.source_meta?.prompt_chars)), true);
@@ -209,40 +238,28 @@ test('travel LLM calibrator: parses patch and deep-merges shopping brand candida
 
 test('travel LLM calibrator: immutable weather facts cannot be overwritten by patch', async () => {
   const baseline = buildCompleteTravelReadiness();
-  const mockClient = {
-    chat: {
-      completions: {
-        create: async () => ({
-          choices: [
-            {
-              message: {
-                content: JSON.stringify({
-                  travel_readiness_patch: {
-                    destination_context: {
-                      destination: 'Fake Paris',
-                      env_source: 'climate_fallback',
-                      weather_reason: 'llm_override',
-                    },
-                    delta_vs_home: {
-                      temperature: { home: 99, destination: -99, delta: -198, unit: 'C' },
-                      summary_tags: ['made_up'],
-                    },
-                    forecast_window: [{ date: '2026-03-10', temp_low_c: -20, temp_high_c: -10 }],
-                    alerts: [{ severity: 'red', title: 'Model fabricated alert' }],
-                    adaptive_actions: [{ why: 'Windier', what_to_do: 'Use richer cream at night' }],
-                    confidence: { level: 'high', score: 0.93 },
-                  },
-                }),
-              },
-            },
-          ],
-        }),
+  const mockGemini = async () => ({
+    text: JSON.stringify({
+      travel_readiness_patch: {
+        destination_context: {
+          destination: 'Fake Paris',
+          env_source: 'climate_fallback',
+          weather_reason: 'llm_override',
+        },
+        delta_vs_home: {
+          temperature: { home: 99, destination: -99, delta: -198, unit: 'C' },
+          summary_tags: ['made_up'],
+        },
+        forecast_window: [{ date: '2026-03-10', temp_low_c: -20, temp_high_c: -10 }],
+        alerts: [{ severity: 'red', title: 'Model fabricated alert' }],
+        adaptive_actions: [{ why: 'Windier', what_to_do: 'Use richer cream at night' }],
+        confidence: { level: 'high', score: 0.93 },
       },
-    },
-  };
+    }),
+  });
 
   const result = await calibrateTravelReadinessWithLlm({
-    openaiClient: mockClient,
+    geminiGenerateContent: mockGemini,
     language: 'EN',
     travelLlmInput: { destination: 'Paris', month_bucket: 3 },
     baseTravelReadiness: baseline,

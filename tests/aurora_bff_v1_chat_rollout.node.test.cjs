@@ -119,6 +119,55 @@ test('extractPrimaryChatRequestMessage falls back to the last user message in me
   assert.equal(message, 'what sunscreen for oily skin?');
 });
 
+test('travel canonical intent preserves Seattle -> Shanghai route and returning date', () => {
+  resetAuroraModules();
+  const { inferCanonicalIntent } = require('../src/auroraBff/intentCanonical');
+
+  const intent = inferCanonicalIntent({
+    message: 'I am taking a 5-day business trip from Seattle to Shanghai next Monday, 2026-04-20, returning 2026-04-24.',
+    language: 'EN',
+  });
+
+  assert.equal(intent.intent, 'travel_planning');
+  assert.equal(intent.entities.departure_region, 'Seattle');
+  assert.equal(intent.entities.destination, 'Shanghai');
+  assert.deepEqual(intent.entities.date_range, {
+    start: '2026-04-20',
+    end: '2026-04-24',
+  });
+});
+
+test('request context profile patch carries travel plan and current routine into main chat profile', () => {
+  resetAuroraModules();
+  const { __internal } = require('../src/auroraBff/routes');
+
+  const patch = __internal.extractProfilePatchFromRequestContextPayload({
+    context: {
+      profile: {
+        skinType: 'combination',
+        sensitivity: 'medium',
+        barrierStatus: 'stable',
+      },
+      travel_plan: {
+        destination: 'Shanghai',
+        departure_region: 'Seattle',
+        start_date: '2026-04-20',
+        end_date: '2026-04-24',
+      },
+      current_routine: {
+        am: ['cleanser', 'moisturizer', 'sunscreen'],
+        pm: ['cleanser', 'barrier cream'],
+      },
+    },
+  });
+
+  assert.equal(patch.skinType, 'combination');
+  assert.equal(patch.travel_plan.destination, 'Shanghai');
+  assert.equal(patch.travel_plan.departure_region, 'Seattle');
+  assert.equal(patch.travel_plan.end_date, '2026-04-24');
+  assert.ok(patch.currentRoutine);
+});
+
 test('stripInternalRefsDeep sanitizes shared subtrees and breaks cycles without throwing', () => {
   resetAuroraModules();
   const { __internal } = require('../src/auroraBff/routes');

@@ -216,12 +216,38 @@ function extractTravelEntities(message) {
   if (!text) return {};
   const entities = {};
 
-  const dateMatch = text.match(/\b(20\d{2}-\d{2}-\d{2})\b(?:\s*(?:to|-|~|—)\s*\b(20\d{2}-\d{2}-\d{2})\b)?/);
-  if (dateMatch && dateMatch[1]) {
+  const isoDatePattern = /\b(20\d{2}-\d{2}-\d{2})\b/g;
+  const isoDateMatches = [...text.matchAll(isoDatePattern)];
+  if (isoDateMatches.length >= 2) {
     entities.date_range = {
-      start: dateMatch[1],
-      end: dateMatch[2] || dateMatch[1],
+      start: isoDateMatches[0][1],
+      end: isoDateMatches[1][1],
     };
+  } else if (isoDateMatches.length === 1) {
+    const match = isoDateMatches[0];
+    const prefix = text.slice(Math.max(0, Number(match.index || 0) - 40), Number(match.index || 0)).toLowerCase();
+    const isReturnDate = /\b(returning|return|until|through|ending|end(?:ing)?\s+on)\b/.test(prefix);
+    entities.date_range = isReturnDate
+      ? { end: match[1] }
+      : { start: match[1], end: match[1] };
+  }
+
+  const explicitDateRange = text.match(/\b(20\d{2}-\d{2}-\d{2})\b\s*(?:to|-|~|—)\s*\b(20\d{2}-\d{2}-\d{2})\b/);
+  if (explicitDateRange && explicitDateRange[1]) {
+    entities.date_range = {
+      start: explicitDateRange[1],
+      end: explicitDateRange[2] || explicitDateRange[1],
+    };
+  }
+
+  const routeEn = text.match(
+    /\bfrom\s+([A-Za-z][A-Za-z\s\-,]{1,50}?)\s+(?:to|->)\s+([A-Za-z][A-Za-z\s\-,]{1,50}?)(?=\s+(?:from|on|next|this|for|return|returning|with|please|and|weather|skincare|routine|business|work|trip)\b|[,.!?]|$)/i,
+  );
+  if (routeEn && routeEn[1]) {
+    const departure = normalizeTravelDestinationCandidate(routeEn[1]);
+    if (departure) entities.departure_region = departure;
+    const routeDestination = normalizeTravelDestinationCandidate(routeEn[2]);
+    if (routeDestination) entities.destination = routeDestination;
   }
 
   const destinationForEn = text.match(
@@ -232,7 +258,7 @@ function extractTravelEntities(message) {
   );
   const destinationCn = text.match(/(?:去|到|目的地|在)\s*([\u4e00-\u9fffA-Za-z\-]{2,30})/);
   const destination = normalizeTravelDestinationCandidate(destinationCn?.[1] || destinationForEn?.[1] || destinationEn?.[1]);
-  if (destination) {
+  if (destination && !entities.destination) {
     entities.destination = destination;
   }
 

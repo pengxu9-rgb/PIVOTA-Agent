@@ -111,6 +111,7 @@ function pickTravelContextFromIntent(canonicalIntent) {
   const dateRange = isPlainObject(entities.date_range) ? entities.date_range : {};
   return {
     destination: normalizeText(entities.destination, 120),
+    departureRegion: normalizeText(entities.departure_region || entities.departureRegion, 140),
     startDate: normalizeDateToken(dateRange.start),
     endDate: normalizeDateToken(dateRange.end),
   };
@@ -235,11 +236,14 @@ function shouldTriggerRecoPreview(message) {
   const lower = text.toLowerCase();
   const asksStore =
     /\b(where to buy|where can i buy|which store|availability|in stock|offer|channel|pharmacy|sephora|drugstore)\b/i.test(lower) ||
+    /\b(buy locally|local(?:ly)? available|local products?|local skincare|products? (?:or categories )?i can buy locally|skincare (?:i|we) can buy locally)\b/i.test(lower) ||
     /(哪里买|在哪里买|门店|渠道|有货|库存|优惠|折扣|药妆店|专柜)/.test(text);
-  if (asksStore) return false;
+  const asksProducts =
+    /\b(what should i buy|what to buy|what should i bring|what to pack|packing list|product types|recommend products|products? (?:or categories )?i can buy locally|skincare (?:i|we) can buy locally|local skincare products?)\b/i.test(lower) ||
+    /(买什么|带什么|带哪些|囤什么|准备哪些|推荐产品|产品推荐|护肤包|本地.*护肤|当地.*护肤)/.test(text);
+  if (asksStore && !asksProducts) return false;
   return (
-    /\b(what should i buy|what to buy|what should i bring|what to pack|packing list|product types|recommend products)\b/i.test(lower) ||
-    /(买什么|带什么|带哪些|囤什么|准备哪些|推荐产品|产品推荐|护肤包)/.test(text)
+    asksProducts
   );
 }
 
@@ -249,6 +253,7 @@ function shouldTriggerStoreChannel(message) {
   const lower = text.toLowerCase();
   return (
     /\b(where to buy|where can i buy|which store|store nearby|availability|in stock|offer|discount|channel|pharmacy|drugstore|duty free)\b/i.test(lower) ||
+    /\b(buy locally|local(?:ly)? available|local stores?|local pharmacies?|local retailers?|local products?|local skincare|products? (?:or categories )?i can buy locally|skincare (?:i|we) can buy locally)\b/i.test(lower) ||
     /(哪里买|在哪里买|附近门店|渠道|有货|库存|买得到|优惠|折扣|药妆店|免税店|专柜)/.test(text)
   );
 }
@@ -667,13 +672,13 @@ async function runTravelPipeline(input = {}) {
   const travelPlanTripId = normalizeText(profileCtx.travelPlan && profileCtx.travelPlan.trip_id, 80);
   const isTripPlanFlow = Boolean(travelPlanTripId);
   let originRegion = isTripPlanFlow
-    ? profileCtx.departureRegion
-    : profileCtx.departureRegion || profileCtx.homeRegion;
+    ? profileCtx.departureRegion || intentCtx.departureRegion
+    : profileCtx.departureRegion || intentCtx.departureRegion || profileCtx.homeRegion;
   let originPlace = profileCtx.departurePlace || null;
   if (!originRegion && originPlace && originPlace.label) originRegion = originPlace.label;
   let originSource = isTripPlanFlow
     ? 'trip_departure'
-    : profileCtx.departureRegion
+    : profileCtx.departureRegion || intentCtx.departureRegion
       ? 'trip_departure'
       : profileCtx.homeRegion
         ? 'profile_region'
@@ -1626,7 +1631,7 @@ async function runTravelPipeline(input = {}) {
     };
   }
 
-  let assistantText = normalizeText(followupReply && (followupReply.text_brief || followupReply.text), 12000);
+  let assistantText = normalizeText(followupReply && (followupReply.text || followupReply.text_brief), 12000);
   if (!assistantText) {
     assistantText =
       language === 'CN'
