@@ -2713,6 +2713,85 @@ test('reco assistant structured renderer treats product texture as product evide
   }
 });
 
+test('reco assistant structured renderer replaces tautological lead reasons with product evidence', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const payload = __internal.applyRecoContentSpineToPayload(
+      {
+        recommendations: [
+          {
+            product_id: 'fenty_spf_pick',
+            display_name: 'Hydra Vizor Invisible Moisturizer SPF 30',
+            brand: 'Fenty Beauty',
+            category: 'Sunscreen',
+            short_description: 'A daily invisible moisturizer with SPF 30 that layers under makeup.',
+            why_this_one: 'Uses SPF 30, niacinamide, hyaluronic acid, and an invisible finish designed for all skin tones.',
+            key_features: ['SPF 30', 'Niacinamide', 'Hyaluronic acid'],
+            matched_role_id: 'daily_sunscreen_finish_fit',
+            matched_role_label: 'Daily sunscreen with finish fit',
+            preferred_step: 'sunscreen',
+          },
+        ],
+        roles: [
+          {
+            role_id: 'daily_sunscreen_finish_fit',
+            label: 'Daily sunscreen with finish fit',
+            preferred_step: 'sunscreen',
+          },
+        ],
+        recommendation_meta: {
+          resolved_target_step: 'sunscreen',
+          mainline_status: 'grounded_success',
+        },
+      },
+      {
+        ingredient_query: 'Daily sunscreen with finish fit',
+        resolved_target_step: 'sunscreen',
+        primary_target_id: 'daily_sunscreen_finish_fit',
+        ranked_targets: [
+          {
+            target_id: 'daily_sunscreen_finish_fit',
+            ingredient_query: 'Daily sunscreen with finish fit',
+            resolved_target_step: 'sunscreen',
+          },
+        ],
+        selected_target_ids: ['daily_sunscreen_finish_fit'],
+      },
+    );
+    const names = ['Hydra Vizor Invisible Moisturizer SPF 30'];
+    const primaryTarget = payload.recommendation_meta.ranked_targets[0];
+    const text = __internal.renderRecoAssistantStructuredReasonRewrite({
+      structuredReason: {
+        lead_reason: 'it directly fits the daily sunscreen with finish fit request',
+        support_reasons: [],
+      },
+      payload,
+      language: 'EN',
+      primaryTarget,
+      names,
+      requestMode: 'buy',
+      selectedProductRoleMix: 'single_product',
+    });
+    const validation = __internal.validateRecoAssistantRewriteCandidate({
+      candidateText: text,
+      payload,
+      language: 'EN',
+      primaryTarget,
+      secondaryTargets: [],
+      names,
+      requestMode: 'buy',
+    });
+
+    assert.doesNotMatch(text, /directly fits[^.]+request/i);
+    assert.doesNotMatch(text, /matches the selected card evidence/i);
+    assert.match(text, /SPF 30/i);
+    assert.match(text, /niacinamide|hyaluronic acid|invisible|makeup/i);
+    assert.equal(validation.ok, true);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('reco assistant rewrite uses structured primary attempt for compact single-product cases', async () => {
   const prevMock = process.env.AURORA_BFF_USE_MOCK;
   const prevProvider = process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
