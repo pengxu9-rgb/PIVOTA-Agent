@@ -8961,6 +8961,153 @@ test('__internal: framework pool uses external seed role-fit ranking for finish-
   );
 });
 
+test('__internal: framework pool rejects cosmetic finish products from under-makeup routine support roles', () => {
+  const { __internal } = loadRoutesFresh();
+  const targetContext = {
+    framework_id: 'recofw_test_under_makeup_cosmetic_finish_shape',
+    primary_role_id: 'daily_sunscreen_finish_fit',
+    routine_mode: 'routine_mix',
+    semantic_plan: {
+      primary_concern: 'oily skin sunscreen under makeup',
+      routine_mode: 'routine_mix',
+      comparison_mode: 'routine_mix',
+      must_satisfy_constraints: ['under makeup', 'avoid pilling', 'oil control'],
+    },
+    framework_roles: [
+      {
+        role_id: 'daily_sunscreen_finish_fit',
+        rank: 30,
+        preferred_step: 'sunscreen',
+        label: 'Daily sunscreen finish fit',
+        query_terms: ['sunscreen under makeup', 'lightweight sunscreen oily skin'],
+        fit_keywords: ['spf', 'uv filters', 'lightweight', 'under makeup', 'fluid'],
+        ingredient_hypotheses: ['UV filters'],
+        product_type_hypotheses: ['sunscreen'],
+      },
+      {
+        role_id: 'layering_compatible_moisturizer_or_spf',
+        rank: 60,
+        preferred_step: 'moisturizer',
+        label: 'Layering-compatible moisturizer or SPF',
+        query_terms: ['gel cream moisturizer', 'lightweight moisturizer', 'makeup layering'],
+        fit_keywords: ['lightweight', 'layering', 'non-greasy', 'makeup'],
+        ingredient_hypotheses: ['Ceramide NP', 'Hyaluronic acid'],
+        product_type_hypotheses: ['moisturizer'],
+      },
+      {
+        role_id: 'oil_control_treatment',
+        rank: 1,
+        preferred_step: 'treatment',
+        alternate_steps: ['serum'],
+        label: 'Oil-control treatment',
+        query_terms: ['oil control serum', 'shine control serum'],
+        fit_keywords: ['oil control', 'shine control', 'mattifying', 'acne', 'congestion', 'clogged pores'],
+        ingredient_hypotheses: ['Niacinamide', 'Zinc PCA'],
+        product_type_hypotheses: ['treatment', 'serum'],
+      },
+    ],
+  };
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [
+      {
+        product_id: 'boj_daily_tinted_fluid_spf',
+        merchant_id: 'external_seed',
+        brand: 'Beauty of Joseon',
+        name: 'Daily Tinted Fluid Sunscreen DN310',
+        display_name: 'Beauty of Joseon Daily Tinted Fluid Sunscreen DN310',
+        category: 'Sunscreen',
+        product_type: 'Sunscreen',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'daily_sunscreen_finish_fit',
+        retrieval_query: 'sunscreen under makeup',
+        local_external_seed_role_fit_score: 1.04,
+        benefit_tags: ['spf', 'lightweight', 'under makeup'],
+        short_description: 'A fluid SPF sunscreen for daily wear under makeup.',
+      },
+      {
+        product_id: 'pixi_rose_radiance_perfector',
+        merchant_id: 'external_seed',
+        brand: 'PIXI BEAUTY',
+        name: '+Rose Radiance Perfector',
+        display_name: 'PIXI BEAUTY +Rose Radiance Perfector',
+        category: 'Primer',
+        product_type: 'Perfector',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'layering_compatible_moisturizer_or_spf',
+        retrieval_query: 'lightweight moisturizer under makeup',
+        local_external_seed_role_fit_score: 1.24,
+        benefit_tags: ['smooth layering', 'under makeup', 'radiance'],
+        short_description:
+          'A radiance perfector primer with Ceramide NP and Hyaluronic acid for a smooth makeup base.',
+      },
+      {
+        product_id: 'krave_oat_water_cream_makeup',
+        merchant_id: 'external_seed',
+        brand: 'KraveBeauty',
+        name: 'Oat So Simple Water Cream',
+        display_name: 'KraveBeauty Oat So Simple Water Cream',
+        category: 'Face Moisturizer',
+        product_type: 'Moisturizer',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'layering_compatible_moisturizer_or_spf',
+        retrieval_query: 'gel cream moisturizer',
+        local_external_seed_role_fit_score: 1.02,
+        benefit_tags: ['lightweight', 'non-greasy', 'makeup layering'],
+        short_description: 'A lightweight water cream moisturizer that layers without a greasy finish.',
+      },
+      {
+        product_id: 'fab_bronze_glow_drops',
+        merchant_id: 'external_seed',
+        brand: 'First Aid Beauty',
+        name: 'Bronze + Glow Drops with Niacinamide',
+        display_name: 'First Aid Beauty Bronze + Glow Drops with Niacinamide',
+        category: 'Serum',
+        product_type: 'Serum',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'oil_control_treatment',
+        retrieval_query: 'oil control serum',
+        local_external_seed_role_fit_score: 1.26,
+        benefit_tags: ['niacinamide', 'lightweight serum', 'glow drops'],
+        short_description:
+          'Bronze + Glow Drops with 5% Niacinamide, glycerin, and a lightweight non-comedogenic feel.',
+      },
+      {
+        product_id: 'ordinary_niacinamide_oil_control',
+        merchant_id: 'external_seed',
+        brand: 'The Ordinary',
+        name: 'Niacinamide 10% + Zinc 1%',
+        display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+        category: 'Serum',
+        product_type: 'Serum',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'oil_control_treatment',
+        retrieval_query: 'oil control serum',
+        local_external_seed_role_fit_score: 1.04,
+        benefit_tags: ['niacinamide', 'zinc pca', 'oil control'],
+        short_description: 'A focused niacinamide and zinc PCA serum for excess oil and visible shine.',
+      },
+    ].map((row) => __internal.normalizeRecoCatalogProduct(row)),
+    { targetContext },
+  );
+
+  assert.equal(state.primary_role_matched, true);
+  assert.deepEqual(
+    state.selected_recommendations.map((row) => row.product_id),
+    ['boj_daily_tinted_fluid_spf', 'krave_oat_water_cream_makeup', 'ordinary_niacinamide_oil_control'],
+  );
+  for (const rejectedId of ['pixi_rose_radiance_perfector', 'fab_bronze_glow_drops']) {
+    assert.equal(
+      state.selected_recommendations.some((row) => row.product_id === rejectedId),
+      false,
+    );
+    assert.equal(
+      state.hard_reject.some((entry) => entry?.product?.product_id === rejectedId)
+        || state.soft_mismatch.some((entry) => entry?.product?.product_id === rejectedId),
+      true,
+    );
+  }
+});
+
 test('__internal: framework pool treats high role-fit external seed serums as viable tone-mark candidates', () => {
   const { __internal } = loadRoutesFresh();
   const targetContext = {

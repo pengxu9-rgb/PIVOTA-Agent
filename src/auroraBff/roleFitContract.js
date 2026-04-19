@@ -222,6 +222,20 @@ function roleExplicitlyAllowsMistTonerSpray(role = null, targetContext = null) {
   );
 }
 
+function hasCosmeticFinishProductShapeSignal(text = '') {
+  return /\b(radiance\s+perfector|perfector|glow\s+drops?|bronze\s*\+\s*glow|bronz(?:e|ing|er)(?:\s+drops?)?|highlighter|illuminat(?:or|ing)|luminizer|shimmer|pearlescent|skin\s+tint|tinted\s+moisturi[sz]er|foundation|concealer|bb\s+cream|cc\s+cream|blush|makeup\s+primer|primer)\b/i.test(
+    String(text || ''),
+  );
+}
+
+function roleExplicitlyAllowsCosmeticFinishProduct(role = null, targetContext = null) {
+  const roleText = buildConcernRoleFitText(role);
+  const contextText = buildConcernTargetContextFitText(targetContext);
+  return /\b(glow\s+drops?|bronze\s*\+\s*glow|bronz(?:e|ing|er)(?:\s+drops?)?|radiance\s+perfector|perfector|highlighter|illuminat(?:or|ing)|luminizer|shimmer|pearlescent|skin\s+tint|tinted\s+moisturi[sz]er|foundation|concealer|bb\s+cream|cc\s+cream|blush|makeup\s+primer|primer)\b/i.test(
+    `${roleText} ${contextText}`.trim(),
+  );
+}
+
 function hasHeavyTextureMismatchSignal(text = '') {
   return /\b(rich cream|supreme restorative rich|heavy cream|ultra[- ]?rich|balm|butter|ointment|sleeping mask)\b/i.test(String(text || ''));
 }
@@ -335,6 +349,10 @@ function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '
     && hasMistTonerSprayFormFactorSignal(candidateEvidenceText)
     && !hasLayeringMoisturizerFormFactorSignal(candidateEvidenceText)
     && !roleExplicitlyAllowsMistTonerSpray(role, targetContext);
+  const cosmeticFinishProductShapeMismatchApplied =
+    (preferredStep === 'moisturizer' || preferredStep === 'treatment' || preferredStep === 'serum')
+    && hasCosmeticFinishProductShapeSignal(candidateEvidenceText)
+    && !roleExplicitlyAllowsCosmeticFinishProduct(role, targetContext);
   const sunscreenCoverageTintMismatchApplied =
     preferredStep === 'sunscreen'
     && hasCoverageTintSignal(candidateEvidenceText)
@@ -382,6 +400,7 @@ function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '
     || eyeAreaRoleMismatchApplied
     || lightweightTextureMismatchApplied
     || lightweightMoisturizerFormFactorMismatchApplied
+    || cosmeticFinishProductShapeMismatchApplied
     || sunscreenCoverageTintMismatchApplied
   ) {
     score = Math.min(score - 0.34, 0.38);
@@ -402,6 +421,7 @@ function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '
     eye_area_role_mismatch_applied: eyeAreaRoleMismatchApplied,
     lightweight_texture_mismatch_applied: lightweightTextureMismatchApplied,
     lightweight_moisturizer_form_factor_mismatch_applied: lightweightMoisturizerFormFactorMismatchApplied,
+    cosmetic_finish_product_shape_mismatch_applied: cosmeticFinishProductShapeMismatchApplied,
     lightweight_texture_evidence_missing_applied: lightweightTextureEvidenceMissingApplied,
     sunscreen_coverage_tint_mismatch_applied: sunscreenCoverageTintMismatchApplied,
     treatment_serum_ingredient_rescue_applied: treatmentSerumIngredientRescueApplied,

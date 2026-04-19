@@ -8786,6 +8786,27 @@ function hasLocalExternalSeedMistTonerSprayFormFactorSignal(text = '') {
   );
 }
 
+function hasLocalExternalSeedCosmeticFinishProductShapeSignal(text = '') {
+  return /\b(radiance\s+perfector|perfector|glow\s+drops?|bronze\s*\+\s*glow|bronz(?:e|ing|er)(?:\s+drops?)?|highlighter|illuminat(?:or|ing)|luminizer|shimmer|pearlescent|skin\s+tint|tinted\s+moisturi[sz]er|foundation|concealer|bb\s+cream|cc\s+cream|blush|makeup\s+primer|primer)\b/i.test(
+    String(text || ''),
+  );
+}
+
+function roleExplicitlyAllowsLocalExternalSeedCosmeticFinishProduct(role = null) {
+  const roleText = [
+    role?.role_id,
+    role?.label,
+    role?.why_this_role,
+    ...(Array.isArray(role?.fit_keywords) ? role.fit_keywords : []),
+    ...(Array.isArray(role?.query_terms) ? role.query_terms : []),
+    ...(Array.isArray(role?.product_type_hypotheses) ? role.product_type_hypotheses : []),
+  ]
+    .map((value) => String(value || '').trim().toLowerCase())
+    .filter(Boolean)
+    .join(' ');
+  return /\b(glow\s+drops?|bronze\s*\+\s*glow|bronz(?:e|ing|er)(?:\s+drops?)?|radiance\s+perfector|perfector|highlighter|illuminat(?:or|ing)|luminizer|shimmer|pearlescent|skin\s+tint|tinted\s+moisturi[sz]er|foundation|concealer|bb\s+cream|cc\s+cream|blush|makeup\s+primer|primer)\b/i.test(roleText);
+}
+
 function scoreLocalExternalSeedPreferredFormFactorFit(product, {
   role = null,
   preferredStep = '',
@@ -8801,12 +8822,17 @@ function scoreLocalExternalSeedPreferredFormFactorFit(product, {
     buildPurchasableRecoveryCandidateText(row),
     row?.external_seed_recall?.vertical,
   ], 4).join(' ').toLowerCase();
+  const cosmeticFinishProductShape =
+    hasLocalExternalSeedCosmeticFinishProductShapeSignal(anchorText)
+    || hasLocalExternalSeedCosmeticFinishProductShapeSignal(fullText);
+  const cosmeticFinishExplicitlyAllowed = roleExplicitlyAllowsLocalExternalSeedCosmeticFinishProduct(role);
   let score = 0;
-  if (preferred === 'serum' || roleId.includes('serum') || roleId.includes('essence')) {
+  if (preferred === 'serum' || preferred === 'treatment' || roleId.includes('serum') || roleId.includes('essence')) {
     if (/\b(serum|essence|ampoule)\b/.test(anchorText)) score += 0.18;
     else if (/\b(mist|toner)\b/.test(anchorText)) score += 0.06;
     if (/\b(mask|sheet\s+mask|patch(?:es)?|pads?|peel|scrub|lip|eye)\b/.test(anchorText)) score -= 0.36;
     if (/\b(body|hand|foot|kp\s+bump)\b/.test(fullText)) score -= 0.48;
+    if (cosmeticFinishProductShape && !cosmeticFinishExplicitlyAllowed) score -= 0.36;
   }
   if (preferred === 'moisturizer') {
     const moisturizerFormFactorFit =
@@ -8817,6 +8843,7 @@ function scoreLocalExternalSeedPreferredFormFactorFit(product, {
       || hasLocalExternalSeedMistTonerSprayFormFactorSignal(fullText);
     if (moisturizerFormFactorFit) score += 0.1;
     if (roleId.includes('layering') && mistTonerSprayFormFactor && !moisturizerFormFactorFit) score -= 0.36;
+    if (roleId.includes('layering') && cosmeticFinishProductShape && !cosmeticFinishExplicitlyAllowed) score -= 0.36;
     if (roleId.includes('layering') && /\b(heavy|rich|balm|sleeping\s+mask)\b/.test(anchorText)) score -= 0.12;
   }
   return Number(Math.max(-0.6, Math.min(0.24, score)).toFixed(4));
@@ -22591,6 +22618,7 @@ function shouldPreserveConcernFrameworkRetrievalRoleScore(roleScore = null) {
     || scoreObj.eye_area_role_mismatch_applied === true
     || scoreObj.lightweight_texture_mismatch_applied === true
     || scoreObj.lightweight_moisturizer_form_factor_mismatch_applied === true
+    || scoreObj.cosmetic_finish_product_shape_mismatch_applied === true
     || scoreObj.sunscreen_coverage_tint_mismatch_applied === true
   ) {
     return false;
