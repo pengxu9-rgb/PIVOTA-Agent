@@ -1,4 +1,8 @@
-const { buildReviewPacket, parseArgs } = require('../scripts/pivota_insights_coverage_batch');
+const {
+  buildReviewPacket,
+  detectShoppingCardSubtypeMismatch,
+  parseArgs,
+} = require('../scripts/pivota_insights_coverage_batch');
 
 describe('pivota_insights_coverage_batch', () => {
   test('parses batch args with coverage defaults', () => {
@@ -246,6 +250,65 @@ describe('pivota_insights_coverage_batch', () => {
       review_decision: 'reject',
       decision: 'reject',
       rejection_reason: 'Strict review policy requires non-baseline selected mode',
+    });
+  });
+
+  test('detects compact subtitle mismatches for specialty beauty formats', () => {
+    expect(
+      detectShoppingCardSubtypeMismatch({
+        title: 'First Aid Beauty KP Bump Eraser Body Scrub 10% AHA',
+        subtitle: 'Daily Sunscreen',
+      }),
+    ).toBe('compact_subtitle_mismatch_scrub');
+    expect(
+      detectShoppingCardSubtypeMismatch({
+        title: 'First Aid Beauty Body Acne Clearing Mist with 2% Salicylic Acid',
+        subtitle: 'Treatment Serum',
+      }),
+    ).toBe('compact_subtitle_mismatch_mist');
+    expect(
+      detectShoppingCardSubtypeMismatch({
+        title: 'Round Lab Camellia Deep Collagen Jelly Mask Cleanser',
+        subtitle: 'Daily Cleanser',
+      }),
+    ).toBe('');
+  });
+
+  test('rejects strict-review rows with compact subtitle type mismatch', () => {
+    const packet = buildReviewPacket({
+      rows: [
+        {
+          case_id: 'subtitle_mismatch_case',
+          selected: {
+            selected_mode: 'human_standard_rewrite',
+            bundle: {
+              canonical_product_ref: {
+                merchant_id: 'external_seed',
+                product_id: 'ext_scrub',
+              },
+              evidence_profile: 'seller_plus_formula',
+              quality_state: 'eligible',
+              shopping_card: {
+                title: 'First Aid Beauty KP Bump Eraser Body Scrub 10% AHA',
+                subtitle: 'Daily Sunscreen',
+              },
+              product_intel_core: {
+                what_it_is: {
+                  body: 'A body exfoliant.',
+                },
+              },
+            },
+          },
+        },
+      ],
+    });
+
+    expect(packet.meta.pending).toBe(0);
+    expect(packet.rows[0]).toMatchObject({
+      review_status: 'rejected',
+      review_decision: 'reject',
+      decision: 'reject',
+      rejection_reason: 'compact_subtitle_mismatch_scrub',
     });
   });
 });

@@ -202,6 +202,78 @@ function toList(value) {
   return Array.isArray(value) ? value : [];
 }
 
+function detectShoppingCardSubtypeMismatch({ title = '', subtitle = '' } = {}) {
+  const normalizedTitle = asString(title).toLowerCase();
+  const normalizedSubtitle = asString(subtitle).toLowerCase();
+  if (!normalizedTitle || !normalizedSubtitle) return '';
+
+  const checks = [
+    {
+      titlePattern: /\b(?:body\s+)?scrub\b/,
+      subtitlePattern: /\b(?:scrub|exfoliat)/,
+      reason: 'compact_subtitle_mismatch_scrub',
+    },
+    {
+      titlePattern: /\bshav(?:e|ing)\b/,
+      subtitlePattern: /\bshav/,
+      reason: 'compact_subtitle_mismatch_shave',
+    },
+    {
+      titlePattern: /\bdeodorant\b/,
+      subtitlePattern: /\bdeodorant\b/,
+      reason: 'compact_subtitle_mismatch_deodorant',
+    },
+    {
+      titlePattern: /\beye\s+(?:cream|balm)\b/,
+      subtitlePattern: /\beye\b/,
+      reason: 'compact_subtitle_mismatch_eye',
+    },
+    {
+      titlePattern: /\blip\s+balm\b/,
+      subtitlePattern: /\b(?:lip|balm)\b/,
+      reason: 'compact_subtitle_mismatch_lip_balm',
+    },
+    {
+      titlePattern: /\bsleeping\s+pack\b/,
+      subtitlePattern: /\b(?:sleep|overnight|mask)\b/,
+      reason: 'compact_subtitle_mismatch_sleeping_pack',
+    },
+    {
+      titlePattern: /\bbody\s+oil\b/,
+      subtitlePattern: /\b(?:body|oil)\b/,
+      reason: 'compact_subtitle_mismatch_body_oil',
+    },
+    {
+      titlePattern: /\b(?:sunscreen|spf)\b/,
+      subtitlePattern: /\b(?:sunscreen|spf|sun)\b/,
+      reason: 'compact_subtitle_mismatch_sunscreen',
+    },
+    {
+      titlePattern: /\b(?:cleanser|cleansing\s+(?:balm|oil))\b/,
+      subtitlePattern: /\b(?:cleanser|cleansing)\b/,
+      reason: 'compact_subtitle_mismatch_cleanser',
+    },
+  ];
+
+  if (/\bmist\b/.test(normalizedTitle) && /\bserum\b/.test(normalizedSubtitle)) {
+    return 'compact_subtitle_mismatch_mist';
+  }
+  if (
+    /\bmask\b/.test(normalizedTitle) &&
+    !/\bcleanser\b/.test(normalizedTitle) &&
+    !/\bmask\b/.test(normalizedSubtitle)
+  ) {
+    return 'compact_subtitle_mismatch_mask';
+  }
+
+  const mismatch = checks.find(
+    (check) =>
+      check.titlePattern.test(normalizedTitle) &&
+      !check.subtitlePattern.test(normalizedSubtitle),
+  );
+  return mismatch ? mismatch.reason : '';
+}
+
 function runNodeScript(scriptPath, args, options = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [scriptPath, ...args], {
@@ -258,7 +330,12 @@ function buildReviewPacket(compareReport, options = {}) {
     const selectedMode = asString(row?.selected?.selected_mode);
     const reviewContract = deriveReviewContractFromReportRow(row);
     const approvedReview = reviewContract.approved === true;
-    const strictRejection = strictReview && selectedMode === 'baseline_only';
+    const subtypeMismatchReason = detectShoppingCardSubtypeMismatch({
+      title: shoppingCard.title,
+      subtitle: shoppingCard.subtitle || bundle?.search_card?.compact_candidate,
+    });
+    const strictRejection =
+      strictReview && (selectedMode === 'baseline_only' || subtypeMismatchReason);
     const reviewStatus = strictRejection
       ? 'rejected'
       : approvedReview
@@ -270,7 +347,7 @@ function buildReviewPacket(compareReport, options = {}) {
         ? asString(reviewContract.review_decision || reviewContract.legacy_review_status) || 'pass'
         : 'pending';
     const rejectionReason = strictRejection
-      ? 'Strict review policy requires non-baseline selected mode'
+      ? subtypeMismatchReason || 'Strict review policy requires non-baseline selected mode'
       : '';
 
     return {
@@ -487,6 +564,7 @@ if (require.main === module) {
 
 module.exports = {
   buildReviewPacket,
+  detectShoppingCardSubtypeMismatch,
   parseArgs,
   runCoverageBatch,
 };
