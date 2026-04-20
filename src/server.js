@@ -9307,44 +9307,48 @@ function hasSearchProductIdentityMatch(product, queryText) {
   const normalizedQuery = normalizeSearchTextForMatch(queryText);
   if (!normalizedQuery) return false;
   const compactQuery = normalizedQuery.replace(/\s+/g, '');
-  const title = normalizeSearchTextForMatch(
-    [
-      product?.title,
-      product?.name,
-      product?.product_title,
-      product?.display_name,
-    ]
-      .filter(Boolean)
-      .join(' '),
-  );
-  const brand = normalizeSearchTextForMatch(
-    [
-      product?.brand?.name,
-      product?.brand,
-      product?.brand_name,
-      product?.vendor,
-      product?.merchant_name,
-    ]
-      .filter(Boolean)
-      .join(' '),
-  );
-  if (title && (title === normalizedQuery || normalizedQuery.includes(title))) return true;
-  if (brand && title) {
+  const titleCandidates = normalizeSearchProductMatchTexts([
+    product?.title,
+    product?.name,
+    product?.product_title,
+    product?.display_name,
+  ]);
+  const brandCandidates = normalizeSearchProductMatchTexts([
+    product?.brand?.name,
+    product?.brand,
+    product?.brand_name,
+    product?.vendor,
+    product?.merchant_name,
+  ]);
+  if (titleCandidates.some((title) => title === normalizedQuery || normalizedQuery.includes(title))) {
+    return true;
+  }
+  for (const brand of brandCandidates) {
     const compactBrand = brand.replace(/\s+/g, '');
-    const titleWithoutBrand = title.startsWith(`${brand} `)
-      ? title.slice(brand.length).trim()
-      : title;
-    if (
-      titleWithoutBrand &&
-      normalizedQuery.includes(titleWithoutBrand) &&
-      compactBrand.length >= 4 &&
-      compactQuery.includes(compactBrand)
-    ) {
-      return true;
+    for (const title of titleCandidates) {
+      const titleWithoutBrand = title.startsWith(`${brand} `)
+        ? title.slice(brand.length).trim()
+        : title;
+      if (
+        titleWithoutBrand &&
+        normalizedQuery.includes(titleWithoutBrand) &&
+        compactBrand.length >= 4 &&
+        compactQuery.includes(compactBrand)
+      ) {
+        return true;
+      }
     }
   }
   const matchBasis = Array.isArray(product?.match_basis) ? product.match_basis.join(' ') : '';
   return Boolean(matchBasis && normalizeSearchTextForMatch(matchBasis).includes(normalizedQuery));
+}
+
+function normalizeSearchProductMatchTexts(values) {
+  return uniqueStrings(
+    (Array.isArray(values) ? values : [])
+      .map((value) => normalizeSearchTextForMatch(value))
+      .filter(Boolean),
+  );
 }
 
 function overlayIdentityRecallOnSearchProduct(product, identityProduct) {
@@ -9517,10 +9521,12 @@ function scoreIdentityFinalOverlayCandidate(product, queryText, identityProduct)
   if (!hasSearchProductIdentityMatch(product, queryText)) return -Infinity;
   const queryNorm = normalizeSearchTextForMatch(queryText);
   const queryCompact = queryNorm.replace(/\s+/g, '');
-  const titleNorm = normalizeSearchTextForMatch(
-    [product.title, product.name, product.product_title, product.display_name].filter(Boolean).join(' '),
-  );
-  const titleCompact = titleNorm.replace(/\s+/g, '');
+  const titleCandidates = normalizeSearchProductMatchTexts([
+    product.title,
+    product.name,
+    product.product_title,
+    product.display_name,
+  ]);
   const merchantId = String(
     product.merchant_id || product.merchantId || product.product_ref?.merchant_id || '',
   ).trim();
@@ -9534,9 +9540,15 @@ function scoreIdentityFinalOverlayCandidate(product, queryText, identityProduct)
     identityProduct?.selected_commerce_ref?.product_id || identityProduct?.product_id || identityProduct?.id || '',
   ).trim();
   let score = 0;
-  if (titleNorm && titleNorm === queryNorm) score += 60;
-  else if (titleCompact && titleCompact === queryCompact) score += 48;
-  else if (titleNorm && queryNorm.includes(titleNorm)) score += 24;
+  let titleScore = 0;
+  for (const titleNorm of titleCandidates) {
+    const titleCompact = titleNorm.replace(/\s+/g, '');
+    if (titleNorm === queryNorm) titleScore = Math.max(titleScore, 60);
+    else if (titleCompact && titleCompact === queryCompact) titleScore = Math.max(titleScore, 48);
+    else if (queryNorm.includes(titleNorm)) titleScore = Math.max(titleScore, 24);
+    else if (titleNorm.includes(queryNorm)) titleScore = Math.max(titleScore, 18);
+  }
+  score += titleScore;
   if (!product.sellable_item_group_id && !product.product_group_id) score += 20;
   if (merchantId && identitySelectedMerchant && merchantId === identitySelectedMerchant) score += 12;
   if (merchantId && merchantId !== EXTERNAL_SEED_MERCHANT_ID) score += 8;
@@ -28825,6 +28837,8 @@ module.exports._debug = {
   catalogSyncState,
   maybeBuildLiveSyntheticPdp,
   searchPdpIdentityGroupsForQuery,
+  hasSearchProductIdentityMatch,
+  scoreIdentityFinalOverlayCandidate,
   maybeOverlayFinalIdentityRecallSearchProducts,
   backfillPdpIdentityGraph,
   listPdpIdentityShadowRows,

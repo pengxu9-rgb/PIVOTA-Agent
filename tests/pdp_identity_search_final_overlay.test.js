@@ -70,6 +70,7 @@ describe('PDP identity search final overlay', () => {
             product_id: '10064558096681',
             id: '10064558096681',
             title: 'KraveBeauty Great Barrier Relief',
+            name: 'KraveBeauty Great Barrier Relief',
             vendor: 'KraveBeauty',
             price: { amount: 28, currency: 'USD' },
           },
