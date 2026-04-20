@@ -274,15 +274,22 @@ function inferSunscreenActiveItems(product, items, rawText) {
   return SUNSCREEN_ACTIVE_ITEMS.filter((item) => normalized.includes(ingredientKey(item)));
 }
 
-function reconcileActiveItemsWithIngredients(product, activeItems, items, rawText) {
+function reconcileActiveItemsWithIngredients(product, activeItems, items, rawText, options = {}) {
   const normalizedItemsText = ingredientKey([rawText, ...(Array.isArray(items) ? items : [])].join(' '));
   const normalizedActiveItems = normalizeIngredientItems(activeItems, { max: 32 });
   const inferredSunscreenActives = inferSunscreenActiveItems(product, items, rawText);
-  if (!inferredSunscreenActives.length) return normalizedActiveItems;
-  const retained = normalizedActiveItems.filter((item) => {
-    const key = ingredientKey(item);
-    return !normalizedItemsText || normalizedItemsText.includes(key);
-  });
+  const shouldValidateAgainstIngredients =
+    options.validateAgainstIngredients === true &&
+    normalizedItemsText &&
+    Array.isArray(items) &&
+    items.length >= 3;
+  if (!inferredSunscreenActives.length && !shouldValidateAgainstIngredients) return normalizedActiveItems;
+  const retained = shouldValidateAgainstIngredients || inferredSunscreenActives.length
+    ? normalizedActiveItems.filter((item) => {
+        const key = ingredientKey(item);
+        return !normalizedItemsText || normalizedItemsText.includes(key);
+      })
+    : normalizedActiveItems;
   return uniqueStrings([
     ...retained,
     ...inferredSunscreenActives,
@@ -404,18 +411,30 @@ function buildAuthorityFromLegacyRaw(product, inputs) {
   return parsed.sort((left, right) => (right.items?.length || 0) - (left.items?.length || 0)).shift() || null;
 }
 
+function activeCandidate(items, sourceOrigin, options = {}) {
+  const normalized = normalizeIngredientItems(Array.isArray(items) ? items : [], { max: 16 });
+  if (!normalized.length) return null;
+  return {
+    items: normalized,
+    source_origin: sourceOrigin,
+    validateAgainstIngredients: options.validateAgainstIngredients === true,
+  };
+}
+
 function readActiveCandidates(product, inputs) {
   const arrays = [
-    product?.active_ingredients,
-    product?.activeIngredients,
-    inputs.ingredientIntel?.authoritative?.active_items,
-    inputs.ingredientIntel?.active_ingredients,
-    inputs.seedData?.active_ingredients,
-    inputs.snapshot?.active_ingredients,
+    { value: product?.active_ingredients, source: 'product_active_array', validateAgainstIngredients: true },
+    { value: product?.activeIngredients, source: 'product_active_array', validateAgainstIngredients: true },
+    { value: inputs.ingredientIntel?.authoritative?.active_items, source: 'existing_authority' },
+    { value: inputs.ingredientIntel?.active_ingredients, source: 'ingredient_intel_array', validateAgainstIngredients: true },
+    { value: inputs.seedData?.active_ingredients, source: 'seed_active_array', validateAgainstIngredients: true },
+    { value: inputs.snapshot?.active_ingredients, source: 'snapshot_active_array', validateAgainstIngredients: true },
   ];
   for (const candidate of arrays) {
-    const items = normalizeIngredientItems(Array.isArray(candidate) ? candidate : [], { max: 16 });
-    if (items.length) return items;
+    const result = activeCandidate(candidate.value, candidate.source, {
+      validateAgainstIngredients: candidate.validateAgainstIngredients,
+    });
+    if (result) return result;
   }
 
   const blocks = [
@@ -427,7 +446,7 @@ function readActiveCandidates(product, inputs) {
   for (const block of blocks) {
     const sanitized = sanitizeIngredientRawText(block, { activeOnly: true });
     const items = normalizeIngredientItems(splitIngredientText(sanitized), { max: 16 });
-    if (items.length) return items;
+    if (items.length) return activeCandidate(items, 'active_block');
   }
 
   const activeSections = inputs.sections
@@ -436,10 +455,10 @@ function readActiveCandidates(product, inputs) {
   for (const content of activeSections) {
     const sanitized = sanitizeIngredientRawText(content, { activeOnly: true });
     const items = normalizeIngredientItems(splitIngredientText(sanitized), { max: 16 });
-    if (items.length) return items;
+    if (items.length) return activeCandidate(items, 'active_section');
   }
 
-  return [];
+  return activeCandidate([], 'none') || { items: [], source_origin: 'none', validateAgainstIngredients: false };
 }
 
 function buildAuthoritativeIngredientView(product, options = {}) {
@@ -483,7 +502,8 @@ function buildAuthoritativeIngredientView(product, options = {}) {
         return (right.items?.length || 0) - (left.items?.length || 0);
       })[0] || null;
 
-  const activeItems = readActiveCandidates(product, inputs);
+  const activeCandidateResult = readActiveCandidates(product, inputs);
+  const activeItems = activeCandidateResult.items;
   if (picked) {
     return buildAuthorityRecord({
       rawText: picked.raw_text,
@@ -493,6 +513,7 @@ function buildAuthoritativeIngredientView(product, options = {}) {
         activeItems.length ? activeItems : picked.active_items,
         picked.items,
         picked.raw_text,
+        { validateAgainstIngredients: activeItems.length ? activeCandidateResult.validateAgainstIngredients : false },
       ),
       sourceOrigin: picked.source_origin,
       purityStatus: 'authoritative',

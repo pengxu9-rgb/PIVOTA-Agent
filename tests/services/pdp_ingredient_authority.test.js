@@ -92,6 +92,32 @@ describe('pdpIngredientAuthority', () => {
     expect(authority.active_items).not.toContain('Zinc PCA');
   });
 
+  test('filters stale active arrays against authoritative full INCI', () => {
+    const authority = buildAuthoritativeIngredientView({
+      pdp_ingredients_raw:
+        'Full Ingredients: Water (Aqua/Eau), Propanediol, Calophyllum Inophyllum (Tamanu) Seed Oil, Dipropylene Glycol, Niacinamide, Glycerin, Squalane, Lactic Acid.',
+      active_ingredients: [
+        'Ceramide NP',
+        'Niacinamide',
+        'Vitamin C (Ascorbic acid)',
+        'Glycerin',
+        'Hyaluronic acid',
+        'Squalane',
+        'Lactic Acid',
+      ],
+    });
+
+    expect(authority.purity_status).toBe('authoritative');
+    expect(authority.active_items).toEqual(['Niacinamide', 'Glycerin', 'Squalane', 'Lactic Acid']);
+    expect(authority.active_items).not.toEqual(
+      expect.arrayContaining([
+        'Ceramide NP',
+        'Vitamin C (Ascorbic acid)',
+        'Hyaluronic acid',
+      ]),
+    );
+  });
+
   test('parses inline full ingredient list from generic details sections', () => {
     const authority = buildAuthoritativeIngredientView({
       pdp_details_sections: [
