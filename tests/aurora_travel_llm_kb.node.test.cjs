@@ -415,6 +415,24 @@ test('travel LLM calibrator: parser accepts common camelCase patch keys', () => 
   assert.deepEqual(parsed.travel_readiness_patch.confidence.missing_inputs, ['recent_logs']);
 });
 
+test('travel LLM calibrator: quarantines legacy rule_fallback shopping rows', () => {
+  const parsed = travelLlmInternal.parseCalibrationPayload(JSON.stringify({
+    travel_readiness_patch: {
+      shopping_preview: {
+        products: [
+          { name: 'Legacy SPF row', product_source: 'rule_fallback' },
+          { name: 'Current category row', product_source: 'category_guidance' },
+        ],
+      },
+    },
+  }));
+
+  const products = parsed.travel_readiness_patch.shopping_preview.products;
+  assert.equal(products.length, 1);
+  assert.equal(products[0].name, 'Current category row');
+  assert.equal(products[0].product_source, 'category_guidance');
+});
+
 test('travel LLM calibrator: parser accepts observed scenario timing action aliases', () => {
   const parsed = travelLlmInternal.parseCalibrationPayload(JSON.stringify({
     travel_readiness_patch: {

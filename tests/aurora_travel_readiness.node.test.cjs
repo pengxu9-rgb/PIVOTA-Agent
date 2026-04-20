@@ -78,6 +78,10 @@ test('buildTravelReadiness returns actionable structure with deltas and shopping
   const moisturization = payload.categorized_kit.find((item) => item && item.id === 'moisturization');
   assert.ok(sunProtection);
   assert.match(String(sunProtection.climate_link || ''), /UV/i);
+  assert.equal(payload.shopping_preview.mode, 'grounded_products');
+  assert.equal(payload.shopping_preview.coverage_status, 'grounded');
+  assert.equal(payload.shopping_preview.products[0].product_source, 'catalog');
+  assert.equal(payload.shopping_preview.products[0].authority_status, 'grounded');
   assert.ok(Array.isArray(sunProtection.brand_suggestions));
   assert.ok(sunProtection.brand_suggestions.some((item) => item && item.product === 'UV Shield SPF50'));
   assert.ok(moisturization);
@@ -198,7 +202,7 @@ test('buildJetlagSleep resolves timezone names from location labels when IANA tz
   assert.equal(jetlag.risk_level, 'high');
 });
 
-test('buildTravelReadiness backfills shopping preview products from reco_bundle when catalog products are missing', () => {
+test('buildTravelReadiness exposes category-only shopping guidance when catalog products are missing', () => {
   const payload = buildTravelReadiness({
     language: 'EN',
     profile: {
@@ -244,7 +248,13 @@ test('buildTravelReadiness backfills shopping preview products from reco_bundle 
 
   assert.ok(Array.isArray(payload.shopping_preview.products));
   assert.ok(payload.shopping_preview.products.length >= 1);
+  assert.equal(payload.shopping_preview.mode, 'category_guidance');
+  assert.equal(payload.shopping_preview.coverage_status, 'category_only');
   assert.equal(payload.shopping_preview.products[0].product_id, null);
+  assert.equal(payload.shopping_preview.products[0].product_source, 'category_guidance');
+  assert.equal(payload.shopping_preview.products[0].authority_status, 'category_only');
+  assert.equal(payload.shopping_preview.products[0].display_mode, 'category_only');
+  assert.equal(payload.shopping_preview.products[0].is_grounded, false);
   assert.equal(typeof payload.shopping_preview.products[0].name, 'string');
   assert.ok(payload.shopping_preview.products[0].name.length > 0);
   assert.ok(Array.isArray(payload.shopping_preview.products[0].reasons));
@@ -254,8 +264,10 @@ test('buildTravelReadiness backfills shopping preview products from reco_bundle 
   assert.ok(
     payload.categorized_kit.some(
       (entry) =>
-        Array.isArray(entry && entry.brand_suggestions) &&
-        entry.brand_suggestions.some((item) => item && item.product === bridgedPreviewName),
+        (!Array.isArray(entry && entry.brand_suggestions) || entry.brand_suggestions.length === 0) &&
+        Array.isArray(entry && entry.category_suggestions) &&
+        entry.category_suggestions.some((item) => item && item.product === bridgedPreviewName),
     ),
   );
+  assert.match(String(payload.shopping_preview.note || ''), /category guidance only/i);
 });

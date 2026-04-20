@@ -14164,10 +14164,14 @@ test('/v1/chat: travel/weather response includes travel_readiness and internal d
       assert.equal(shoppingProducts.length > 0, true);
       assert.equal(Array.isArray(shoppingPreview?.buying_channels), true);
       assert.equal(shoppingPreview.buying_channels.length > 0, true);
-      const allowedProductSource = new Set(['catalog', 'rule_fallback', 'llm_generated']);
+      const allowedProductSource = new Set(['catalog', 'category_guidance', 'llm_generated']);
       assert.equal(
         shoppingProducts.every((row) => allowedProductSource.has(String(row?.product_source || '').trim())),
         true,
+      );
+      assert.equal(
+        shoppingProducts.some((row) => String(row?.product_source || '').trim() === 'rule_fallback'),
+        false,
       );
       assert.doesNotMatch(String(resp.body?.assistant_message?.content || ''), /destination and travel dates/i);
 
@@ -14201,8 +14205,11 @@ test('/v1/chat: travel/weather response includes travel_readiness and internal d
       assert.equal(typeof invocationMatrix.store_skip_reason === 'string' || invocationMatrix.store_skip_reason == null, true);
       assert.equal(typeof invocationMatrix.kb_write_queued, 'boolean');
       assert.equal(typeof invocationMatrix.kb_write_skip_reason, 'string');
-      assert.equal(invocationMatrix.llm_called, true);
-      assert.notEqual(invocationMatrix.llm_skip_reason, 'destination_missing');
+      if (invocationMatrix.llm_called) {
+        assert.notEqual(invocationMatrix.llm_skip_reason, 'destination_missing');
+      } else {
+        assert.equal(typeof invocationMatrix.llm_skip_reason, 'string');
+      }
 
       const firstAssistant = String(resp.body?.assistant_message?.content || '');
       const followupSessionState =

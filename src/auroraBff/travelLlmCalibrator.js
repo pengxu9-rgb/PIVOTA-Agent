@@ -243,9 +243,13 @@ function normalizeMatchStatus(value) {
   return 'llm_only'
 }
 
+function isLegacyProductSource(value) {
+  return String(value || '').trim().toLowerCase() === 'rule_fallback'
+}
+
 function normalizeProductSource(value) {
   const token = String(value || '').trim().toLowerCase()
-  if (token === 'catalog' || token === 'rule_fallback' || token === 'llm_generated') return token
+  if (token === 'catalog' || token === 'category_guidance' || token === 'llm_generated') return token
   if (token === 'llm_only') return 'llm_generated'
   return 'llm_generated'
 }
@@ -361,6 +365,7 @@ function normalizeShoppingPreview(value) {
   const products = []
   for (const raw of productsRaw) {
     const row = isPlainObject(raw) ? raw : {}
+    if (isLegacyProductSource(row.product_source || row.productSource)) continue
     const name = normalizeText(row.name, 140)
     if (!name) continue
     products.push({

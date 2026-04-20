@@ -59258,7 +59258,12 @@ function buildDefaultShoppingPreview({ language, destination, uvComponent, humid
       reasons: [
         lang === 'CN' ? '按旅行环境压力优先保障日间光防护。' : 'Prioritize UV protection for travel exposure.',
       ],
-      product_source: 'rule_fallback',
+      product_source: 'category_guidance',
+      authority_status: 'category_only',
+      match_status: 'category_guidance',
+      display_mode: 'category_only',
+      pdp_open: null,
+      is_grounded: false,
       price: null,
       currency: null,
     },
@@ -59277,7 +59282,12 @@ function buildDefaultShoppingPreview({ language, destination, uvComponent, humid
             ? 'Use lighter hydration in humid conditions to reduce congestion load.'
             : 'Support barrier hydration during dry or high-swing weather.',
       ],
-      product_source: 'rule_fallback',
+      product_source: 'category_guidance',
+      authority_status: 'category_only',
+      match_status: 'category_guidance',
+      display_mode: 'category_only',
+      pdp_open: null,
+      is_grounded: false,
       price: null,
       currency: null,
     },
@@ -59292,20 +59302,27 @@ function buildDefaultShoppingPreview({ language, destination, uvComponent, humid
           ? '旅行期优先降低刺激，保持可持续执行。'
           : 'Keep cleansing low-irritation to maintain tolerance during travel.',
       ],
-      product_source: 'rule_fallback',
+      product_source: 'category_guidance',
+      authority_status: 'category_only',
+      match_status: 'category_guidance',
+      display_mode: 'category_only',
+      pdp_open: null,
+      is_grounded: false,
       price: null,
       currency: null,
     },
   ];
 
   return {
+    mode: 'category_guidance',
+    coverage_status: 'category_only',
     products,
     buying_channels: ['beauty_retail', 'pharmacy', 'department_store', 'duty_free', 'ecommerce'],
     city_hint: cityHint,
     note:
       lang === 'CN'
-        ? '当前为规则化旅行预览，后续可按具体预算/品牌偏好细化。'
-        : 'Rule-based travel preview; refine by budget and brand preferences in the next step.',
+        ? '当前仅提供需准备的商品品类；未命中商品库时不会伪装成具体商品推荐。'
+        : 'This is category guidance only; when catalog authority is missing, it is not presented as a specific product recommendation.',
   };
 }
 
@@ -91217,6 +91234,25 @@ function mountAuroraBffRoutes(app, { logger }) {
             nextStateOverride && stateChangeAllowed(ctx.trigger_source) ? { next_state: nextStateOverride } : {},
           events: [makeEvent(ctx, 'value_moment', { kind: 'weather_advice', scenario })],
         });
+        envelope.meta = {
+          ...(envelope.meta && typeof envelope.meta === 'object' && !Array.isArray(envelope.meta)
+            ? envelope.meta
+            : {}),
+          travel_skills_version: 'travel_skills_dag_v1',
+          travel_skills_trace: [],
+          travel_kb_hit: false,
+          travel_kb_write_queued: false,
+          travel_skill_invocation_matrix: {
+            llm_called: false,
+            llm_skip_reason: hasTravelContextForSkills ? 'pipeline_unavailable' : 'travel_context_missing',
+            reco_called: false,
+            reco_skip_reason: 'not_requested',
+            store_called: false,
+            store_skip_reason: 'not_requested',
+            kb_write_queued: false,
+            kb_write_skip_reason: 'not_queued',
+          },
+        };
         return sendChatEnvelope(envelope);
       }
 
