@@ -114,11 +114,11 @@ function resolveTravelLocalMarket({ destination, destinationPlace } = {}) {
 function inferRoleIdFromText(value) {
   const text = normalizeText(value, 240).toLowerCase();
   if (!text) return '';
+  if (/\b(lip|hand|body|身体|身體|润唇|潤唇|护手|護手)\b/i.test(text)) return 'body_lip_hand';
   if (/\b(spf|sunscreen|sun\s*(?:screen|fluid|cream|stick)|uv|防晒)\b/i.test(text)) return 'sun_protection';
   if (/\b(gel[-\s]?cream|moisturi[sz]er|barrier cream|cream|lotion|面霜|乳液)\b/i.test(text)) return 'lightweight_moisturizer';
   if (/\b(mask|sheet mask|after[-\s]?sun|post[-\s]?sun|soothing|面膜|晒后|曬後)\b/i.test(text)) return 'recovery_mask';
   if (/\b(serum|essence|ampoule|hyaluronic|hydrating|补水|精华|精華|安瓶)\b/i.test(text)) return 'hydration_serum';
-  if (/\b(body|lip|hand|身体|身體|润唇|潤唇|护手|護手)\b/i.test(text)) return 'body_lip_hand';
   if (/\b(cleanser|cleansing|face wash|卸妆|卸妝|洁面|潔面)\b/i.test(text)) return 'cleanser';
   if (/\b(eye|caffeine|depuff|眼霜|眼贴|眼貼)\b/i.test(text)) return 'eye_care';
   return '';
@@ -165,7 +165,7 @@ function buildTravelLocalProductQueryPlan({ travelReadiness, message, limit = DE
     .map((roleId) => ({ role_id: roleId, score: roleScores.get(roleId) || 0 }))
     .filter((row) => row.score > 0)
     .sort((a, b) => b.score - a.score || ROLE_ORDER.indexOf(a.role_id) - ROLE_ORDER.indexOf(b.role_id))
-    .slice(0, Math.max(2, Math.min(5, Number(limit) || DEFAULT_LIMIT)))
+    .slice(0, Math.max(2, Math.min(6, Number(limit) || DEFAULT_LIMIT)))
     .map((row) => {
       const config = ROLE_CONFIGS[row.role_id];
       const textHints = rawHints.filter((hint) => inferRoleIdFromText(hint) === row.role_id).slice(0, 4);
@@ -256,10 +256,10 @@ function normalizeAuthorityCandidate(product, role) {
           canonical_url: normalizeText(product.canonical_url || product.url || product.destination_url, 500) || null,
         }
       : null,
-    reasons: [
+    reasons: uniqStrings([
       `Local catalog authority match for ${role.label.toLowerCase()}.`,
       category ? `Category: ${category}.` : null,
-    ].filter(Boolean),
+    ].filter(Boolean), 3),
     source: 'external_seed',
     product_source: 'catalog',
     authority_status: 'grounded',

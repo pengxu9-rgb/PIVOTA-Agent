@@ -36673,9 +36673,36 @@ function isTravelRecoHandoffRequest({ actionId, actionData, profile, session } =
   const normalizedActionId = String(actionId || '').trim().toLowerCase();
   if (normalizedActionId !== 'chip.start.reco_products' && normalizedActionId !== 'chip_start_reco_products') return false;
 
-  const sourceCardType = String(actionData?.source_card_type || actionData?.sourceCardType || '').trim().toLowerCase();
-  const triggerSource = String(actionData?.trigger_source || actionData?.triggerSource || '').trim().toLowerCase();
+  const actionDataObj = isPlainObject(actionData?.data)
+    ? actionData.data
+    : isPlainObject(actionData)
+      ? actionData
+      : null;
+  const sourceCardType = String(
+    actionDataObj?.source_card_type ||
+      actionDataObj?.sourceCardType ||
+      actionData?.source_card_type ||
+      actionData?.sourceCardType ||
+      '',
+  ).trim().toLowerCase();
+  const triggerSource = String(
+    actionDataObj?.trigger_source ||
+      actionDataObj?.triggerSource ||
+      actionDataObj?.entry_source ||
+      actionDataObj?.entrySource ||
+      actionData?.trigger_source ||
+      actionData?.triggerSource ||
+      '',
+  ).trim().toLowerCase();
+  const handoffSource = String(
+    actionDataObj?.handoff_source ||
+      actionDataObj?.handoffSource ||
+      actionData?.handoff_source ||
+      actionData?.handoffSource ||
+      '',
+  ).trim().toLowerCase();
   if (triggerSource === 'travel_handoff') return true;
+  if (handoffSource === 'travel_readiness') return true;
   if (sourceCardType === 'travel' || sourceCardType === 'env_stress' || sourceCardType === 'environment_stress') return true;
 
   const context = buildTravelRecoHandoffContext({ session, profile });
@@ -87696,7 +87723,13 @@ function mountAuroraBffRoutes(app, { logger }) {
       const earlyDebugFromBody = typeof parsed.data.debug === 'boolean' ? parsed.data.debug : undefined;
       const earlyDebugUpstream = earlyDebugFromHeader ?? earlyDebugFromBody;
       const earlyTypedRecoOwnershipKeepsV1Mainline = shouldKeepTypedRecoRequestOnV1MainlinePolicy(parsed.data);
-      const shouldEarlyBeautyRecoHardLockAtIngress = shouldEarlyLockBeautyOwnedChatReco({
+      const shouldSkipEarlyBeautyLockForTravelHandoffAtIngress = isTravelRecoHandoffRequest({
+        actionId: earlyExplicitActionId,
+        actionData: earlyNormalizedActionPayload,
+        profile: earlyProfileForBeautyMainline,
+        session: parsed.data.session,
+      });
+      const shouldEarlyBeautyRecoHardLockAtIngress = !shouldSkipEarlyBeautyLockForTravelHandoffAtIngress && shouldEarlyLockBeautyOwnedChatReco({
         ingressChatIntentContract,
         normalizedActionPayload: earlyNormalizedActionPayload,
         actionId: earlyExplicitActionId,
@@ -89338,7 +89371,13 @@ function mountAuroraBffRoutes(app, { logger }) {
         recordPendingClarificationCompleted();
       }
 
-      const shouldEarlyBeautyRecoHardLock = shouldEarlyLockBeautyOwnedChatReco({
+      const shouldSkipEarlyBeautyLockForTravelHandoff = isTravelRecoHandoffRequest({
+        actionId,
+        actionData: normalizedActionPayload,
+        profile,
+        session: parsed.data.session,
+      });
+      const shouldEarlyBeautyRecoHardLock = !shouldSkipEarlyBeautyLockForTravelHandoff && shouldEarlyLockBeautyOwnedChatReco({
         ingressChatIntentContract,
         normalizedActionPayload,
         actionId,
@@ -92386,27 +92425,29 @@ function mountAuroraBffRoutes(app, { logger }) {
       // Beauty-owned reco must be resolved on the mainline hard path before
       // we even consider the legacy compatibility entry.
       const beautyOwnedRecoResponse =
-        await maybeHandleBeautyOwnedChatRecoForRoute({
-          ctx,
-          logger,
-          message: recoRequestMessage || message,
-          typedRecoOwnershipKeepsV1Mainline,
-          forceUpstreamAfterPendingAbandon,
-          ingredientDrivenRecommendationRequested,
-          recoEntrySourceDetail,
-          latestRecoContextFromSession,
-          profile,
-          recentLogs,
-          includeAlternatives,
-          actionId,
-          shouldAutoRerunRecommendationsFromProfilePatch,
-          debugUpstream,
-        });
+        recoEntrySourceDetail === 'travel_handoff'
+          ? null
+          : await maybeHandleBeautyOwnedChatRecoForRoute({
+            ctx,
+            logger,
+            message: recoRequestMessage || message,
+            typedRecoOwnershipKeepsV1Mainline,
+            forceUpstreamAfterPendingAbandon,
+            ingredientDrivenRecommendationRequested,
+            recoEntrySourceDetail,
+            latestRecoContextFromSession,
+            profile,
+            recentLogs,
+            includeAlternatives,
+            actionId,
+            shouldAutoRerunRecommendationsFromProfilePatch,
+            debugUpstream,
+          });
       if (beautyOwnedRecoResponse?.handled) {
         return sendChatEnvelope(beautyOwnedRecoResponse.envelope);
       }
 
-      const beautyOwnedRecoHardStop = isBeautyOwnedChatRecoRequest({
+      const beautyOwnedRecoHardStop = recoEntrySourceDetail !== 'travel_handoff' && isBeautyOwnedChatRecoRequest({
         typedRecoOwnershipKeepsV1Mainline,
         forceUpstreamAfterPendingAbandon,
         ingredientDrivenRecommendationRequested,

@@ -582,6 +582,8 @@ function normalizePreviewProducts(recommendationCandidates, language) {
     out.push({
       rank: out.length + 1,
       product_id: normalizeText(sku.product_id || sku.productId, 120) || null,
+      merchant_id: normalizeText(sku.merchant_id || sku.merchantId || row.merchant_id || row.merchantId, 80) || null,
+      product_group_id: normalizeText(sku.product_group_id || sku.productGroupId || row.product_group_id || row.productGroupId, 160) || null,
       name,
       brand: normalizeText(sku.brand, 80) || null,
       category: normalizeText(row.step, 80) || normalizeText(sku.category || sku.product_type, 80) || null,
@@ -590,6 +592,7 @@ function normalizePreviewProducts(recommendationCandidates, language) {
       authority_status: 'grounded',
       match_status: 'catalog_verified',
       display_mode: 'product_card',
+      role_id: normalizeText(row.role_id || row.roleId || sku.role_id || sku.roleId, 80) || null,
       pdp_open: isPlainObject(row.pdp_open)
         ? row.pdp_open
         : {
@@ -603,7 +606,7 @@ function normalizePreviewProducts(recommendationCandidates, language) {
       image_url: normalizeText(sku.image_url || row.image_url, 500) || null,
       canonical_url: normalizeText(sku.canonical_url || sku.url || row.canonical_url || row.url, 500) || null,
     });
-    if (out.length >= 3) break;
+    if (out.length >= 6) break;
   }
   return out;
 }
@@ -950,6 +953,251 @@ function resolvePreviewProductCategoryId(item) {
   ]);
 }
 
+function isGroundedPreviewProduct(item) {
+  if (!isPlainObject(item)) return false;
+  const source = normalizeText(item.product_source || item.productSource || item.source, 80).toLowerCase();
+  const authority = normalizeText(item.authority_status || item.authorityStatus || item.match_status || item.matchStatus, 80).toLowerCase();
+  const displayMode = normalizeText(item.display_mode || item.displayMode, 80).toLowerCase();
+  if (/^(rule_fallback|llm_generated|llm_only|category_guidance)$/.test(source)) return false;
+  if (displayMode === 'category_only') return false;
+  return Boolean(
+    item.is_grounded === true ||
+      normalizeText(item.product_id || item.productId, 120) ||
+      source === 'catalog' ||
+      source === 'internal' ||
+      source === 'external_seed' ||
+      /^(grounded|catalog_verified|authority|resolved|internal_hit|external_seed_hit)$/.test(authority),
+  );
+}
+
+function resolvePreviewProductRoleId(item) {
+  if (!isPlainObject(item)) return '';
+  const direct = normalizeText(item.role_id || item.roleId || item.selected_role_id || item.selectedRoleId, 80).toLowerCase();
+  if (direct) return direct;
+
+  const categoryId = resolvePreviewProductCategoryId(item);
+  if (categoryId === 'sun_protection') return 'sun_protection';
+  if (categoryId === 'masks' || categoryId === 'post_sun') return 'recovery_mask';
+  if (categoryId === 'body_care' || categoryId === 'emergency') return 'body_lip_hand';
+  if (categoryId === 'eye_care') return 'eye_care';
+  if (categoryId === 'cleansing') return 'cleanser';
+  if (categoryId === 'moisturization') {
+    const signal = [
+      item.name,
+      item.category,
+      Array.isArray(item.reasons) ? item.reasons.join(' ') : '',
+    ].map((value) => normalizeText(value, 220).toLowerCase()).join(' ');
+    if (/\b(serum|essence|ampoule|hyaluronic|hydration|hydrating)\b|精华|精華|安瓶|补水/.test(signal)) {
+      return 'hydration_serum';
+    }
+    return 'lightweight_moisturizer';
+  }
+  if (categoryId === 'antioxidant' || categoryId === 'brightening') return 'hydration_serum';
+  return categoryId || '';
+}
+
+function resolveRecoBundleRoleIds(row) {
+  if (!isPlainObject(row)) return [];
+  const categoryId = triggerToCategoryId(normalizeText(row.trigger, 120));
+  const roles = [];
+  const add = (roleId) => {
+    if (!roleId || roles.includes(roleId)) return;
+    roles.push(roleId);
+  };
+  if (categoryId === 'sun_protection') add('sun_protection');
+  if (categoryId === 'moisturization') {
+    add('lightweight_moisturizer');
+    add('hydration_serum');
+  }
+  if (categoryId === 'masks' || categoryId === 'post_sun') add('recovery_mask');
+  if (categoryId === 'body_care' || categoryId === 'emergency') add('body_lip_hand');
+  if (categoryId === 'eye_care') add('eye_care');
+  if (categoryId === 'cleansing') add('cleanser');
+  if (categoryId === 'antioxidant' || categoryId === 'brightening') add('hydration_serum');
+  return roles;
+}
+
+function uniqTravelRoles(values, max = 8) {
+  const out = [];
+  const seen = new Set();
+  for (const value of Array.isArray(values) ? values : []) {
+    const role = normalizeText(value, 80).toLowerCase();
+    if (!role || seen.has(role)) continue;
+    seen.add(role);
+    out.push(role);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+function productIdsForTravelRoles(products, roleIds, max = 6) {
+  const wanted = new Set(uniqTravelRoles(roleIds, 12));
+  const out = [];
+  const seen = new Set();
+  for (const product of Array.isArray(products) ? products : []) {
+    if (!isPlainObject(product) || !isGroundedPreviewProduct(product)) continue;
+    const roleId = resolvePreviewProductRoleId(product);
+    if (!wanted.has(roleId)) continue;
+    const productId = normalizeText(product.product_id || product.productId, 120);
+    if (!productId || seen.has(productId)) continue;
+    seen.add(productId);
+    out.push(productId);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+function buildPhaseActionsFromRecoBundle(recoBundle, roleIds, max = 2) {
+  const wanted = new Set(uniqTravelRoles(roleIds, 12));
+  const out = [];
+  const seen = new Set();
+  for (const row of Array.isArray(recoBundle) ? recoBundle : []) {
+    const rowRoles = resolveRecoBundleRoleIds(row);
+    if (!rowRoles.some((role) => wanted.has(role))) continue;
+    const action = normalizeText(row.action, 260);
+    if (!action) continue;
+    const key = action.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(action);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+function buildTravelPhasePlan({
+  language,
+  recoBundle,
+  previewProducts,
+  deltaVsHome,
+  jetlagSleep,
+} = {}) {
+  const lang = String(language || '').toUpperCase() === 'CN' ? 'CN' : 'EN';
+  const products = Array.isArray(previewProducts) ? previewProducts : [];
+  const groundedProducts = products.filter(isGroundedPreviewProduct);
+  const productRoles = uniqTravelRoles(groundedProducts.map(resolvePreviewProductRoleId).filter(Boolean), 12);
+  const summaryTags = Array.isArray(deltaVsHome && deltaVsHome.summary_tags) ? deltaVsHome.summary_tags : [];
+  const jetlagHours = toNumber(jetlagSleep && jetlagSleep.hours_diff);
+  const hasJetlag = jetlagHours != null && jetlagHours >= 5;
+  const hasUv = summaryTags.some((tag) => /uv/i.test(String(tag || '')));
+  const hasDryness = summaryTags.some((tag) => /dry|colder|wind/i.test(String(tag || '')));
+  const hasHumidity = summaryTags.some((tag) => /humid|wetter|warmer/i.test(String(tag || '')));
+
+  const phaseSpecs = [
+    {
+      id: 'pre_trip_prepare',
+      title: t(lang, '出发前准备', 'Before you leave'),
+      timing: t(lang, '出发前 2-3 天', 'T-3 to T-1 before departure'),
+      roleIds: ['sun_protection', 'body_lip_hand', 'eye_care', 'cleanser'],
+      why: t(
+        lang,
+        '先把已耐受的核心用品准备好，避免临行前新增刺激性产品。',
+        'Pack tolerated core products first so the routine stays stable before a climate and schedule shift.',
+      ),
+      defaults: [
+        t(lang, '准备已耐受的洁面、保湿、防晒和应急小件；临行前不新增强酸/强维A。', 'Pack tolerated cleanser, moisturizer, sunscreen, and small emergency items; avoid starting strong acids or retinoids right before departure.'),
+        hasUv
+          ? t(lang, '如果目的地 UV 更高，把面部 SPF、身体暴露部位、唇部和手部防护拆开准备。', 'If destination UV is higher, prepare separate face SPF, exposed-body coverage, lip SPF, and hand care.')
+          : t(lang, '防晒按日常通勤准备；如果有长时间户外，再准备补涂格式。', 'Prepare daily sunscreen; add a reapply format if outdoor time is long.'),
+      ],
+    },
+    {
+      id: 'flight_cabin',
+      title: t(lang, '飞行途中', 'On the flight'),
+      timing: t(lang, '登机前到抵达前', 'Boarding through arrival'),
+      roleIds: ['lightweight_moisturizer', 'hydration_serum', 'recovery_mask', 'body_lip_hand', 'eye_care'],
+      why: t(
+        lang,
+        hasJetlag
+          ? '机舱干燥叠加时差，会让屏障紧绷和眼周浮肿更明显。'
+          : '机舱干燥会放大紧绷感，护理应保持简单和低刺激。',
+        hasJetlag
+          ? 'Cabin dryness plus jet lag can make tightness and eye-area puffiness more noticeable.'
+          : 'Cabin dryness can amplify tightness, so keep care simple and low-irritation.',
+      ),
+      defaults: [
+        t(lang, '登机前用舒适保湿层；机上不要叠加强活性，重点是补水和屏障舒适度。', 'Before boarding, use a comfortable moisturizing layer; avoid stacking strong actives in-cabin and focus on hydration comfort.'),
+        t(lang, '补水/舒缓面膜只作为已耐受的可选恢复项，不作为必需步骤。', 'Use a hydrating or soothing mask only as an already-tolerated optional recovery step, not as a required step.'),
+      ],
+    },
+    {
+      id: 'arrival_first_48h',
+      title: t(lang, '落地后 48 小时', 'First 48 hours after landing'),
+      timing: t(lang, '抵达当天到第 2 晚', 'Arrival day through night 2'),
+      roleIds: ['lightweight_moisturizer', 'hydration_serum', 'recovery_mask', 'eye_care'],
+      why: t(
+        lang,
+        '刚落地时皮肤同时适应气候、睡眠和清洁节奏，先稳住屏障比加新活性更重要。',
+        'Right after landing, skin is adapting to climate, sleep, and cleansing rhythm, so barrier stability comes before new actives.',
+      ),
+      defaults: [
+        t(lang, '前 48 小时以温和清洁、保湿、防晒为主；强刺激活性先降频。', 'For the first 48 hours, center on gentle cleansing, moisturizer, and sunscreen; keep stronger actives lower-frequency.'),
+        hasDryness
+          ? t(lang, '如果紧绷或起皮，晚上增加修护霜或已耐受的补水舒缓面膜。', 'If tightness or flaking shows up, add barrier cream or an already-tolerated hydrating-soothing mask at night.')
+          : t(lang, '如果湿热出油明显，保湿换轻薄质地，晚上把防晒清洁干净。', 'If heat and humidity increase oiliness, use lighter hydration and cleanse sunscreen thoroughly at night.'),
+      ],
+    },
+    {
+      id: 'during_trip_daily',
+      title: t(lang, '当地日常', 'Daily while there'),
+      timing: t(lang, '行程每天 AM / PM', 'Every trip day, AM / PM'),
+      roleIds: ['sun_protection', 'lightweight_moisturizer', 'hydration_serum', 'recovery_mask', 'body_lip_hand', 'cleanser'],
+      why: t(
+        lang,
+        hasHumidity
+          ? '当地湿热或降水会改变肤感和出油，日常步骤要轻薄但不能跳过防晒。'
+          : '当地日常护理需要同时处理防晒暴露和屏障恢复。',
+        hasHumidity
+          ? 'Warmer or more humid conditions can change finish and oiliness, so keep layers lighter without skipping SPF.'
+          : 'Daily care should balance UV exposure with barrier recovery.',
+      ),
+      defaults: [
+        t(lang, 'AM：保湿层 + 防晒；户外时间长时按暴露时长补涂。', 'AM: moisturizer plus sunscreen; reapply based on outdoor exposure time.'),
+        t(lang, 'PM：把防晒/彩妆清洁干净，再根据紧绷、闷痘或日晒感选择修护。', 'PM: cleanse sunscreen or makeup thoroughly, then choose recovery care based on tightness, congestion, or sun exposure.'),
+      ],
+    },
+    {
+      id: 'local_shopping',
+      title: t(lang, '当地可买商品', 'Shop locally'),
+      timing: t(lang, '落地后按缺口补充', 'After landing, fill only real gaps'),
+      roleIds: productRoles.length
+        ? productRoles
+        : ['sun_protection', 'lightweight_moisturizer', 'hydration_serum', 'recovery_mask', 'body_lip_hand', 'eye_care'],
+      why: groundedProducts.length
+        ? t(lang, '以下只展示已接入商品库或 external seeds 的本地商品，不用通用 fallback 伪装具体单品。', 'Only catalog or external-seed grounded local products are shown here; generic fallback items are not presented as product picks.')
+        : t(lang, '当前没有命中具体本地商品，只保留品类准备方向，后续通过 catalog backfill 补库。', 'No specific local product is grounded yet; keep this as category direction until catalog backfill adds authority rows.'),
+      defaults: groundedProducts.length
+        ? [
+            t(lang, '优先看与本次气候和行程相关的角色：防晒、轻保湿、补水修护、身体/唇/手支持。', 'Review roles tied to this climate and trip: sunscreen, lightweight hydration, recovery support, and body/lip/hand support.'),
+          ]
+        : [
+            t(lang, '只按品类购物，不把未验证品牌或商品当成推荐结果。', 'Shop by category only; do not treat unverified brands or products as recommendations.'),
+          ],
+    },
+  ];
+
+  return phaseSpecs.map((phase) => {
+    const roleIds = uniqTravelRoles(phase.roleIds, 10);
+    const productIds = phase.id === 'local_shopping'
+      ? groundedProducts.map((product) => normalizeText(product.product_id || product.productId, 120)).filter(Boolean).slice(0, 6)
+      : productIdsForTravelRoles(products, roleIds, 4);
+    const phaseActions = uniqStrings([
+      ...phase.defaults,
+      ...buildPhaseActionsFromRecoBundle(recoBundle, roleIds, 2),
+    ], 4);
+    return {
+      id: phase.id,
+      title: phase.title,
+      timing: phase.timing,
+      why: phase.why,
+      actions: phaseActions,
+      product_role_ids: roleIds,
+      product_ids: productIds,
+      coverage_status: productIds.length ? 'grounded' : 'category_only',
+    };
+  });
+}
+
 function isAuthoritativeTravelSuggestion(suggestion) {
   if (!isPlainObject(suggestion)) return false;
   const source = normalizeText(suggestion.product_source || suggestion.source, 80).toLowerCase();
@@ -1236,6 +1484,13 @@ function buildTravelReadiness({
     categoryRecommendations: [],
     previewProducts,
   });
+  const phasePlan = buildTravelPhasePlan({
+    language: lang,
+    recoBundle,
+    previewProducts,
+    deltaVsHome: { temperature, humidity, uv, wind, precip, summary_tags: summaryTags },
+    jetlagSleep,
+  });
 
   return {
     destination_context: {
@@ -1278,6 +1533,7 @@ function buildTravelReadiness({
     personal_focus: personalFocus,
     jetlag_sleep: jetlagSleep,
     reco_bundle: recoBundle,
+    phase_plan: phasePlan,
     categorized_kit: categorizedKit,
     store_examples: storeExamples,
     shopping_preview: {
@@ -1311,6 +1567,7 @@ module.exports = {
     normalizePreviewProducts,
     normalizeCategoryGuidancePreviewProductsFromRecoBundle,
     buildCategorizedKit,
+    buildTravelPhasePlan,
     getTimezoneOffsetHours,
     resolveTimezoneFromHints,
   },

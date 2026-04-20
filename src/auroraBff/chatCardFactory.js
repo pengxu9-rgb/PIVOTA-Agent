@@ -104,6 +104,8 @@ function normalizeTravelShoppingProduct(row) {
   return {
     rank: asNumber(row.rank),
     product_id: productId,
+    merchant_id: asString(row.merchant_id || row.merchantId) || null,
+    product_group_id: asString(row.product_group_id || row.productGroupId) || null,
     name,
     brand: asString(row.brand) || null,
     category: asString(row.category) || null,
@@ -112,11 +114,35 @@ function normalizeTravelShoppingProduct(row) {
     authority_status: asString(row.authority_status) || (isGrounded ? 'grounded' : 'category_only'),
     match_status: asString(row.match_status) || (isGrounded ? 'catalog_verified' : 'category_guidance'),
     display_mode: asString(row.display_mode) || (isGrounded ? 'product_card' : 'category_only'),
+    role_id: asString(row.role_id || row.roleId) || null,
     pdp_open: isPlainObject(row.pdp_open) ? row.pdp_open : row.pdp_open || null,
     price: row.price ?? null,
     currency: asString(row.currency) || null,
+    image_url: asString(row.image_url || row.imageUrl) || null,
+    canonical_url: asString(row.canonical_url || row.canonicalUrl || row.url) || null,
     is_grounded: isGrounded,
   };
+}
+
+function normalizeTravelPhasePlan(value) {
+  const rows = asRecordArray(value, 8);
+  const out = [];
+  for (const row of rows) {
+    const id = asString(row.id);
+    const title = asString(row.title);
+    if (!id || !title) continue;
+    out.push({
+      id,
+      title,
+      timing: asString(row.timing) || null,
+      why: asString(row.why) || null,
+      actions: asStringArray(row.actions, 5),
+      product_role_ids: asStringArray(row.product_role_ids || row.productRoleIds, 10),
+      product_ids: asStringArray(row.product_ids || row.productIds, 8),
+      coverage_status: asString(row.coverage_status || row.coverageStatus) || null,
+    });
+  }
+  return out;
 }
 
 function labelTravelBuyingChannel(channel, language = 'EN') {
@@ -201,6 +227,7 @@ function buildTravelPlannerCardViewModel(envPayload, language = 'EN') {
       summary_tags: asStringArray(delta.summary_tags, 6),
     },
     jetlag_sleep: isPlainObject(readiness.jetlag_sleep) ? readiness.jetlag_sleep : null,
+    phase_plan: normalizeTravelPhasePlan(readiness.phase_plan),
     timeline: {
       pre_trip: asStringArray(structured.phased_plan, 6).filter((line) => /pre-trip|t-2|出发前/i.test(line)),
       flight_day: asStringArray(structured.flight_day_plan, 6),
