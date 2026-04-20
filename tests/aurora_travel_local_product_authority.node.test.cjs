@@ -153,3 +153,136 @@ test('travel local product authority: returns only external-seed authority rows 
   assert.equal(result.candidates.some((row) => row.currency === 'CNY'), true);
   assert.equal(sqlCalls.every((call) => call.params[0] === 'CN'), true);
 });
+
+test('travel local product authority: rejects color cosmetics misclassified as travel skincare roles', async () => {
+  const result = await loadTravelLocalProductAuthorityCandidates({
+    destination: 'Seattle, United States',
+    travelReadiness: buildReadiness(),
+    message: 'What should I pack before my flight?',
+    limit: 4,
+    queryFn: async (sql, params) => {
+      const categories = Array.isArray(params?.[3]) ? params[3] : [];
+      if (categories.includes('sunscreen')) {
+        return {
+          rows: [
+            seedRow({
+              id: 201,
+              market: 'US',
+              external_product_id: 'ext_bad_correcting_stick',
+              title: 'Match Stix Correcting Skinstick — Banana',
+              brand: 'Fenty Beauty',
+              category: 'sunscreen',
+              summary: 'color correcting makeup stick for under-eye and discoloration',
+              price_amount: 32,
+              price_currency: 'USD',
+              match_score: 50,
+            }),
+            seedRow({
+              id: 202,
+              market: 'US',
+              external_product_id: 'ext_good_spf',
+              title: 'Mineral SPF50 Sunscreen Fluid',
+              brand: 'US Sun Lab',
+              category: 'sunscreen',
+              summary: 'lightweight face sunscreen fluid with broad spectrum SPF50',
+              price_amount: 24,
+              price_currency: 'USD',
+              match_score: 48,
+            }),
+          ],
+        };
+      }
+      if (categories.includes('moisturizer')) {
+        return {
+          rows: [
+            seedRow({
+              id: 203,
+              market: 'US',
+              external_product_id: 'ext_bad_bronzer',
+              title: 'Cheeks Out Freestyle Cream Bronzer — Teddy',
+              brand: 'Fenty Beauty',
+              category: 'moisturizer',
+              summary: 'cream bronzer makeup for cheeks',
+              price_amount: 29,
+              price_currency: 'USD',
+              match_score: 50,
+            }),
+            seedRow({
+              id: 204,
+              market: 'US',
+              external_product_id: 'ext_good_lotion',
+              title: 'Lightweight Barrier Lotion',
+              brand: 'US Barrier Lab',
+              category: 'moisturizer',
+              summary: 'lightweight facial moisturizer lotion for barrier support',
+              price_amount: 22,
+              price_currency: 'USD',
+              match_score: 48,
+            }),
+          ],
+        };
+      }
+      return { rows: [] };
+    },
+  });
+
+  assert.equal(result.ok, true);
+  const ids = result.candidates.map((row) => row.product_id);
+  assert.equal(ids.includes('ext_bad_correcting_stick'), false);
+  assert.equal(ids.includes('ext_bad_bronzer'), false);
+  assert.equal(ids.includes('ext_good_spf'), true);
+  assert.equal(ids.includes('ext_good_lotion'), true);
+  assert.equal(result.meta.stage_counts.some((row) => Number(row.raw_rows) > Number(row.viable_rows)), true);
+});
+
+test('travel local product authority: returns coverage miss when only incompatible products match', async () => {
+  const result = await loadTravelLocalProductAuthorityCandidates({
+    destination: 'Seattle, United States',
+    travelReadiness: buildReadiness(),
+    message: 'What should I pack before my flight?',
+    limit: 3,
+    queryFn: async (sql, params) => {
+      const categories = Array.isArray(params?.[3]) ? params[3] : [];
+      if (categories.includes('sunscreen')) {
+        return {
+          rows: [
+            seedRow({
+              id: 301,
+              market: 'US',
+              external_product_id: 'ext_bad_correcting_stick_only',
+              title: 'Match Stix Correcting Skinstick — Banana',
+              brand: 'Fenty Beauty',
+              category: 'sunscreen',
+              summary: 'color correcting makeup stick',
+              price_amount: 32,
+              price_currency: 'USD',
+            }),
+          ],
+        };
+      }
+      if (categories.includes('moisturizer')) {
+        return {
+          rows: [
+            seedRow({
+              id: 302,
+              market: 'US',
+              external_product_id: 'ext_bad_bronzer_only',
+              title: 'Cheeks Out Freestyle Cream Bronzer — Teddy',
+              brand: 'Fenty Beauty',
+              category: 'moisturizer',
+              summary: 'cream bronzer makeup',
+              price_amount: 29,
+              price_currency: 'USD',
+            }),
+          ],
+        };
+      }
+      return { rows: [] };
+    },
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, 'coverage_miss');
+  assert.equal(result.candidates.length, 0);
+  assert.equal(result.meta.coverage_status, 'coverage_miss');
+});

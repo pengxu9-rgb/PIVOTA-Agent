@@ -51,6 +51,20 @@ const ROLE_CONFIGS = {
   },
 };
 
+const COLOR_COSMETIC_NOISE_RE =
+  /\b(match\s*stix|correcting\s*skinstick|corrector|concealer|foundation|skin\s*tint|bronzer|contour|blush|highlighter|illuminator|mascara|eyeshadow|eye\s*shadow|brow\s*(?:pencil|gel|definer|styler)|lipstick|lip\s*gloss|lip\s*color|lip\s*colour|cheeks\s*out|killawatt)\b/i;
+const BEAUTY_TOOL_NOISE_RE =
+  /\b(reusable|silicone|applicator|beauty\s*sponge|makeup\s*sponge|brush|tool)\b/i;
+const STRONG_ROLE_MATCHERS = {
+  sun_protection: /\b(sunscreen|sun\s*screen|spf\s*\d{0,3}\+?|pa\s*\+{2,4}|broad\s*spectrum|sun\s*(?:fluid|cream|gel|milk|stick|serum)|uv\s*(?:protection|shield|defen[cs]e|aqua|essence)|日焼け止め|防晒|防曬|선크림|썬크림)\b/i,
+  lightweight_moisturizer: /\b(moisturi[sz]er|gel[-\s]?cream|barrier\s*cream|face\s*cream|facial\s*cream|lotion|emulsion|milk|乳液|面霜|保湿|保濕|크림|로션)\b/i,
+  hydration_serum: /\b(serum|essence|ampoule|hyaluronic|hydrating|hydration|精华|精華|安瓶|エッセンス|美容液|세럼|앰플|에센스)\b/i,
+  recovery_mask: /\b((?:hydrating|soothing|repair|recovery|post[-\s]?sun|cica|sheet|sleeping|hydrogel).{0,40}mask|mask.{0,40}(?:hydrating|soothing|repair|recovery|post[-\s]?sun|cica|sheet|sleeping|hydrogel)|面膜|マスク|팩)\b/i,
+  body_lip_hand: /\b(body\s*(?:sunscreen|lotion|cream|gel|milk)|hand\s*cream|lip\s*(?:balm|treatment|spf)|润唇|潤唇|护手|護手|ハンドクリーム|リップ(?:クリーム|バーム)|핸드\s*크림|립\s*(?:밤|케어))\b/i,
+  cleanser: /\b(cleanser|cleansing|face\s*wash|facial\s*wash|cleansing\s*(?:oil|balm|gel|foam|milk)|卸妆|卸妝|洁面|潔面|洗顔|クレンジング|클렌저|클렌징)\b/i,
+  eye_care: /\b(eye\s*(?:cream|serum|gel|patch|patches|mask|masks)|caffeine|depuff|眼霜|眼贴|眼貼|アイクリーム|アイパッチ|아이\s*(?:크림|패치))\b/i,
+};
+
 function isPlainObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
@@ -232,6 +246,53 @@ function scoreProductForRole(product, roleId) {
   return score;
 }
 
+function productAuthorityText(product) {
+  const recall = isPlainObject(product?.external_seed_recall) ? product.external_seed_recall : {};
+  const aliases = Array.isArray(recall.alias_tokens)
+    ? recall.alias_tokens
+    : Array.isArray(recall.aliases)
+      ? recall.aliases
+      : [];
+  return [
+    product?.title,
+    product?.name,
+    product?.brand,
+    product?.category,
+    product?.product_type,
+    product?.description,
+    recall.retrieval_title,
+    recall.retrieval_summary,
+    recall.category,
+    recall.vertical,
+    ...aliases,
+  ].map((value) => normalizeText(value, 260).toLowerCase()).filter(Boolean).join(' ');
+}
+
+function hasStrongRoleMatch(product, roleId) {
+  const matcher = STRONG_ROLE_MATCHERS[roleId];
+  if (!matcher) return true;
+  return matcher.test(productAuthorityText(product));
+}
+
+function isRoleCompatibleProduct(product, roleId) {
+  const text = productAuthorityText(product);
+  if (!text) return false;
+  if (!hasStrongRoleMatch(product, roleId)) return false;
+
+  if (roleId === 'body_lip_hand') {
+    if (/\b(lipstick|lip\s*gloss|lip\s*color|lip\s*colour)\b/i.test(text)) return false;
+    return true;
+  }
+
+  if (COLOR_COSMETIC_NOISE_RE.test(text)) return false;
+  if ((roleId === 'recovery_mask' || roleId === 'eye_care') && BEAUTY_TOOL_NOISE_RE.test(text)) {
+    if (!/\b(hydrating|soothing|repair|serum|essence|cream|gel|hydrogel|cica|caffeine|hyaluronic)\b/i.test(text)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function normalizeAuthorityCandidate(product, role) {
   if (!product || !role) return null;
   const name = normalizeText(product.title || product.name, 140);
@@ -306,17 +367,23 @@ async function queryRoleCandidates({
   `;
   const res = await queryFn(sql, params);
   const rows = Array.isArray(res?.rows) ? res.rows : [];
-  return rows
+  const candidates = rows
     .map((row) => ({
       row,
       product: buildExternalSeedBrandSearchProduct(row),
     }))
     .filter((entry) => entry.product)
+    .filter((entry) => isRoleCompatibleProduct(entry.product, role.role_id))
     .map(({ row, product }) => ({
       product,
       role,
       score: Number(row.match_score || 0) + scoreProductForRole(product, role),
     }));
+  return {
+    candidates,
+    rawRows: rows.length,
+    viableRows: candidates.length,
+  };
 }
 
 function selectRoleBalancedCandidates(candidates, limit = DEFAULT_LIMIT) {
@@ -404,12 +471,14 @@ async function loadTravelLocalProductAuthorityCandidates({
   const collected = [];
   try {
     for (const role of queryPlan) {
-      const rows = await queryRoleCandidates({ queryFn, market, role, perRoleLimit, toolScopes });
+      const roleResult = await queryRoleCandidates({ queryFn, market, role, perRoleLimit, toolScopes });
+      const rows = Array.isArray(roleResult?.candidates) ? roleResult.candidates : [];
       stageCounts.push({
         role_id: role.role_id,
         query_terms: role.terms,
         categories: role.categories,
-        raw_rows: rows.length,
+        raw_rows: Number(roleResult?.rawRows || 0),
+        viable_rows: Number(roleResult?.viableRows || rows.length || 0),
       });
       collected.push(...rows);
     }
@@ -451,5 +520,6 @@ module.exports = {
     inferRoleIdFromText,
     likePatterns,
     selectRoleBalancedCandidates,
+    isRoleCompatibleProduct,
   },
 };
