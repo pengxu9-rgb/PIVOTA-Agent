@@ -3952,9 +3952,18 @@ async function buildOffersFromGroupMembers(args) {
       .map((m) => [String(m.merchant_id || '').trim(), m.merchant_name])
       .filter(([mid, name]) => Boolean(mid) && Boolean(name)),
   );
-  const merchantProfileNameById = await fetchMerchantDisplayNamesByIds(
-    members.map((m) => m.merchant_id),
-  );
+  const merchantProfileNameLookupEnabled =
+    String(process.env.PDP_OFFER_MERCHANT_NAME_LOOKUP_ENABLED || 'false').toLowerCase() === 'true';
+  const merchantProfileNameById = merchantProfileNameLookupEnabled
+    ? await fetchMerchantDisplayNamesByIds(
+        members
+          .filter((m) => {
+            const mid = String(m?.merchant_id || '').trim();
+            return mid && mid !== EXTERNAL_SEED_MERCHANT_ID && !merchantNameById.has(mid);
+          })
+          .map((m) => m.merchant_id),
+      )
+    : new Map();
 
   const fetched = [];
   const chunkSize = 4;

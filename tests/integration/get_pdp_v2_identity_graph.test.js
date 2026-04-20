@@ -166,6 +166,7 @@ describe('get_pdp_v2 identity graph live read', () => {
               source_payload: {
                 product_id: '10008793153864',
                 merchant_id: 'merch_krave',
+                merchant_name: 'Pivota Market',
                 title: 'Great Barrier Relief',
                 vendor: 'KraveBeauty',
                 images: [{ url: 'https://cdn.example.com/gbr-45-internal.jpg' }],
