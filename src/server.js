@@ -22485,27 +22485,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           : null;
       let offersData = null;
 
-	      if (wantsOffers || wantsProductIntel) {
-	        const offersModuleStartedAt = Date.now();
-	        try {
-	          const fallbackProductGroupId =
-	            productGroupId ||
-            (canonicalProductForPdp.platform && canonicalProductForPdp.platform_product_id
-              ? buildProductGroupId({
-                  platform: String(canonicalProductForPdp.platform || '').trim(),
-                  platform_product_id: String(canonicalProductForPdp.platform_product_id || '').trim(),
-                })
-              : null) ||
-            `pg:pid:${String(canonicalProductRef.product_id || productId).trim()}`;
-
-	          const fallbackOfferVariants = buildOfferVariantsForPayload(
-	            canonicalProductForPdp,
-	            canonicalProductForPdp.currency || 'USD',
-	          );
-	          offersData =
-	            groupMembers.length > 0
-	              ? await buildOffersFromGroupMembers({
-	                  productGroupId,
+      if (wantsOffers || wantsProductIntel) {
+        const offersModuleStartedAt = Date.now();
+        try {
+          offersData =
+            groupMembers.length > 0
+              ? await buildOffersFromGroupMembers({
+                  productGroupId,
                   members: groupMembers,
                   checkoutToken,
                   bypassCache,
@@ -22518,10 +22504,26 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                     precheckedMerchantProduct,
                   ].filter(Boolean),
                 })
-              : {
+              : (() => {
+                  const fallbackProductGroupId =
+                    productGroupId ||
+                    (canonicalProductForPdp.platform && canonicalProductForPdp.platform_product_id
+                      ? buildProductGroupId({
+                          platform: String(canonicalProductForPdp.platform || '').trim(),
+                          platform_product_id: String(
+                            canonicalProductForPdp.platform_product_id || '',
+                          ).trim(),
+                        })
+                      : null) ||
+                    `pg:pid:${String(canonicalProductRef.product_id || productId).trim()}`;
+                  const fallbackOfferVariants = buildOfferVariantsForPayload(
+                    canonicalProductForPdp,
+                    canonicalProductForPdp.currency || 'USD',
+                  );
+                  return {
                   status: 'success',
                   product_group_id: fallbackProductGroupId,
-	                  canonical_product_ref: canonicalProductRef,
+                  canonical_product_ref: canonicalProductRef,
 	                  offers_count: 1,
 	                  offers: [
 	                    {
@@ -22567,10 +22569,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	                      ...buildOfferPurchaseMetadataFromProduct(canonicalProductForPdp),
 		                      risk_tier: 'standard',
 	                    },
-	                  ],
-	                  default_offer_id: null,
-	                  best_price_offer_id: null,
-	                };
+                  ],
+                  default_offer_id: null,
+                  best_price_offer_id: null,
+                };
+                })();
         } catch {
           offersData = null;
         }
