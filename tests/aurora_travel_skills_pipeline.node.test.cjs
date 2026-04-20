@@ -702,6 +702,111 @@ test('travel skills pipeline: look-for-locally wording triggers local authority'
     ),
     true,
   );
+  assert.equal(
+    contracts.__internal.shouldTriggerRecoPreview(
+      'What can I shop locally in Seoul for skincare?',
+    ),
+    true,
+  );
+  assert.equal(
+    contracts.__internal.shouldTriggerStoreChannel(
+      'What can I shop locally in Seoul for skincare?',
+    ),
+    true,
+  );
+  assert.equal(
+    contracts.__internal.shouldTriggerRecoPreview(
+      'Give me local skincare shopping ideas for Seoul.',
+    ),
+    true,
+  );
+  assert.equal(
+    contracts.__internal.shouldTriggerStoreChannel(
+      'Give me local skincare shopping ideas for Seoul.',
+    ),
+    true,
+  );
+});
+
+test('travel skills pipeline: Seoul local shopping wording reaches KR authority products', async () => {
+  await withEnv(
+    {
+      TRAVEL_KB_ASYNC_BACKFILL_ENABLED: 'false',
+      AURORA_TRAVEL_LLM_CALIBRATION_ENABLED: 'false',
+    },
+    async () => {
+      const { runTravelPipeline } = loadFreshPipeline();
+      const out = await runTravelPipeline(
+        buildInput(
+          'I am flying from Seattle to Seoul next Monday for a work trip. Please cover climate changes, flight skincare, after-arrival routine, and what I can shop locally.',
+          {
+            canonicalIntent: {
+              intent: 'travel_planning',
+              entities: {
+                destination: 'Seoul, South Korea',
+                departure_region: 'Seattle',
+                date_range: { start: '2026-04-27', end: '2026-05-02' },
+              },
+            },
+            profile: {
+              skinType: 'combination',
+              sensitivity: 'medium',
+              barrierStatus: 'stable',
+              goals: ['hydration'],
+            },
+            travelLocalProductAuthorityLoader: async () => ({
+              ok: true,
+              reason: 'ok',
+              candidates: [
+                {
+                  product_id: 'ext_kr_spf_1',
+                  display_name: 'Round Lab Birch Juice Moisturizing Sunscreen',
+                  name: 'Round Lab Birch Juice Moisturizing Sunscreen',
+                  brand: 'Round Lab',
+                  category: 'Sunscreen',
+                  step: 'Sun protection',
+                  role_id: 'sun_protection',
+                  price: 28000,
+                  currency: 'KRW',
+                  image_url: 'https://example.com/round-lab-spf.jpg',
+                  canonical_url: 'https://example.com/round-lab-spf',
+                  product_source: 'external_seed',
+                  authority_status: 'grounded',
+                  match_status: 'catalog_verified',
+                  reasons: ['Grounded KR sunscreen option for higher-UV daytime wear.'],
+                },
+              ],
+              meta: {
+                market: 'KR',
+                market_source: 'destination_text',
+                coverage_status: 'grounded',
+                query_count: 4,
+                candidate_count: 3,
+                selected_count: 1,
+              },
+            }),
+          },
+        ),
+      );
+
+      const authorityTrace = out.travel_skills_trace.find((row) => row.skill === 'travel_local_product_authority_skill');
+      const recoTrace = out.travel_skills_trace.find((row) => row.skill === 'travel_reco_preview_skill');
+      const storeTrace = out.travel_skills_trace.find((row) => row.skill === 'travel_store_channel_skill');
+      assert.equal(authorityTrace?.status, 'ok');
+      assert.equal(authorityTrace?.meta?.market, 'KR');
+      assert.notEqual(authorityTrace?.meta?.reason, 'trigger_not_matched');
+      assert.notEqual(recoTrace?.meta?.reason, 'trigger_not_matched');
+      assert.notEqual(storeTrace?.meta?.reason, 'trigger_not_matched');
+      assert.equal(out.travel_skill_invocation_matrix?.local_product_authority_called, true);
+      assert.equal(out.travel_skill_invocation_matrix?.local_product_authority_coverage_status, 'grounded');
+      assert.equal(out.travel_readiness?.shopping_preview?.coverage_status, 'grounded');
+      assert.equal(out.travel_readiness?.shopping_preview?.products?.[0]?.currency, 'KRW');
+      assert.equal(out.travel_readiness?.shopping_preview?.products?.[0]?.name, 'Round Lab Birch Juice Moisturizing Sunscreen');
+      const phasePlan = Array.isArray(out.travel_readiness?.phase_plan) ? out.travel_readiness.phase_plan : [];
+      assert.equal(phasePlan.find((phase) => phase.id === 'local_shopping')?.coverage_status, 'grounded');
+      assert.ok(phasePlan.find((phase) => phase.id === 'local_shopping')?.product_ids?.includes('ext_kr_spf_1'));
+    },
+  );
 });
 
 test('travel skills pipeline: category-only rows do not become fake reco products', async () => {

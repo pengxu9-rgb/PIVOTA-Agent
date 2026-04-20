@@ -246,11 +246,16 @@ function shouldTriggerRecoPreview(message) {
   const text = String(message || '').trim();
   if (!text) return false;
   const lower = text.toLowerCase();
+  const asksLocalShopping =
+    /\b(shop(?:ping)? locally|local shopping|shop local(?:ly)?|shopping ideas?|what (?:i|we) can shop locally|what can (?:i|we) shop locally|local skincare shopping|skincare shopping ideas?|products? (?:or categories )?(?:i|we) can shop locally|brands? (?:i|we) can shop locally)\b/i.test(lower) ||
+    /(当地|本地).*(购物|逛|买|购买)|可以买什么|当地.*产品|本地.*产品|当地.*品牌|本地.*品牌/.test(text);
   const asksStore =
     /\b(where to buy|where can i buy|which store|availability|in stock|offer|channel|pharmacy|sephora|drugstore)\b/i.test(lower) ||
+    asksLocalShopping ||
     /\b(buy locally|look for locally|look for local(?:ly)?|local(?:ly)? available|local (?:products?|brands?|skincare)|specific (?:products?|brands?)|products? (?:or categories )?i can buy locally|skincare (?:products?|categories)?\s*(?:(?:i|we) can|can i) buy locally|brands? (?:(?:i|we) can|can i) buy locally|(?:products?|brands?|sunscreens?|skincare) (?:should i|can i|to) look for locally)\b/i.test(lower) ||
     /(哪里买|在哪里买|门店|渠道|有货|库存|优惠|折扣|药妆店|专柜|本地品牌|当地品牌|具体产品|具体品牌)/.test(text);
   const asksProducts =
+    asksLocalShopping ||
     /\b(what should i buy|what to buy|what should i bring|what to pack|packing list|product types|recommend products|specific (?:products?|brands?)|local (?:products?|brands?|skincare)|look for locally|look for local(?:ly)?|products? (?:or categories )?i can buy locally|skincare (?:products?|categories)?\s*(?:(?:i|we) can|can i) buy locally|brands? (?:(?:i|we) can|can i) buy locally|what (?:skincare )?(?:brands?|products?|categories) (?:should i|can i) (?:buy|look for)|(?:products?|brands?|sunscreens?|skincare) (?:should i|can i|to) look for locally)\b/i.test(lower) ||
     /(买什么|带什么|带哪些|囤什么|准备哪些|推荐产品|产品推荐|护肤包|本地.*护肤|当地.*护肤|本地品牌|当地品牌|具体产品|具体品牌|可以买什么)/.test(text);
   if (asksStore && !asksProducts) return false;
@@ -263,8 +268,12 @@ function shouldTriggerStoreChannel(message) {
   const text = String(message || '').trim();
   if (!text) return false;
   const lower = text.toLowerCase();
+  const asksLocalShopping =
+    /\b(shop(?:ping)? locally|local shopping|shop local(?:ly)?|shopping ideas?|what (?:i|we) can shop locally|what can (?:i|we) shop locally|local skincare shopping|skincare shopping ideas?|products? (?:or categories )?(?:i|we) can shop locally|brands? (?:i|we) can shop locally)\b/i.test(lower) ||
+    /(当地|本地).*(购物|逛|买|购买)|可以买什么|当地.*产品|本地.*产品|当地.*品牌|本地.*品牌/.test(text);
   return (
     /\b(where to buy|where can i buy|which store|store nearby|availability|in stock|offer|discount|channel|pharmacy|drugstore|duty free)\b/i.test(lower) ||
+    asksLocalShopping ||
     /\b(buy locally|look for locally|look for local(?:ly)?|local(?:ly)? available|local stores?|local pharmacies?|local retailers?|local products?|local brands?|local skincare|specific (?:products?|brands?)|products? (?:or categories )?i can buy locally|skincare (?:products?|categories)?\s*(?:(?:i|we) can|can i) buy locally|brands? (?:(?:i|we) can|can i) buy locally|(?:products?|brands?|sunscreens?|skincare) (?:should i|can i|to) look for locally)\b/i.test(lower) ||
     /(哪里买|在哪里买|附近门店|渠道|有货|库存|买得到|优惠|折扣|药妆店|免税店|专柜|本地品牌|当地品牌|具体产品|具体品牌)/.test(text)
   );

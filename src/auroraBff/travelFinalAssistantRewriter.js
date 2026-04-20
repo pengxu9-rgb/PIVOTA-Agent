@@ -125,11 +125,66 @@ function compactArrayRows(rows, mapper, maxItems = 6) {
   return out;
 }
 
+function isGroundedShoppingProduct(product) {
+  const row = isPlainObject(product) ? product : {};
+  const source = normalizeText(row.product_source || row.productSource, 80).toLowerCase();
+  const matchStatus = normalizeText(row.match_status || row.matchStatus, 80).toLowerCase();
+  const authorityStatus = normalizeText(row.authority_status || row.authorityStatus, 80).toLowerCase();
+  return (
+    row.is_grounded === true ||
+    source === 'catalog' ||
+    source === 'internal' ||
+    source === 'external_seed' ||
+    matchStatus === 'catalog_verified' ||
+    authorityStatus === 'grounded'
+  );
+}
+
+function compactGroundedShoppingProduct(product) {
+  const row = isPlainObject(product) ? product : {};
+  const name = normalizeText(row.name, 120);
+  if (!name) return null;
+  const reasons = Array.isArray(row.reasons)
+    ? row.reasons.map((line) => normalizeText(line, 150)).filter(Boolean).slice(0, 3)
+    : [];
+  return {
+    product_id: normalizeText(row.product_id || row.productId, 120) || null,
+    name,
+    brand: normalizeText(row.brand, 80) || null,
+    category: normalizeText(row.category, 80) || null,
+    role_id: normalizeText(row.role_id || row.roleId, 80) || null,
+    price: normalizeNumber(row.price),
+    currency: normalizeText(row.currency, 12) || null,
+    reasons,
+  };
+}
+
+function buildGroundedProductMapForFinalRewrite(readiness) {
+  const shopping = isPlainObject(readiness && readiness.shopping_preview) ? readiness.shopping_preview : {};
+  const products = Array.isArray(shopping.products) ? shopping.products : [];
+  const byId = new Map();
+  for (const raw of products) {
+    if (!isGroundedShoppingProduct(raw)) continue;
+    const compact = compactGroundedShoppingProduct(raw);
+    if (!compact || !compact.product_id) continue;
+    byId.set(compact.product_id, compact);
+  }
+  return byId;
+}
+
 function compactTravelActionContextForFinalRewrite(travelReadiness) {
   const readiness = isPlainObject(travelReadiness) ? travelReadiness : {};
+  const groundedProductsById = buildGroundedProductMapForFinalRewrite(readiness);
   return {
     phase_plan: compactArrayRows(readiness.phase_plan, (raw) => {
       const row = isPlainObject(raw) ? raw : {};
+      const productIds = Array.isArray(row.product_ids || row.productIds)
+        ? (row.product_ids || row.productIds).map((line) => normalizeText(line, 120)).filter(Boolean).slice(0, 8)
+        : [];
+      const phaseProducts = productIds
+        .map((productId) => groundedProductsById.get(productId))
+        .filter(Boolean)
+        .slice(0, normalizeText(row.id, 80) === 'local_shopping' ? 6 : 4);
       return {
         id: normalizeText(row.id, 80) || null,
         title: normalizeText(row.title, 120) || null,
@@ -141,9 +196,8 @@ function compactTravelActionContextForFinalRewrite(travelReadiness) {
         product_role_ids: Array.isArray(row.product_role_ids || row.productRoleIds)
           ? (row.product_role_ids || row.productRoleIds).map((line) => normalizeText(line, 80)).filter(Boolean).slice(0, 8)
           : [],
-        product_ids: Array.isArray(row.product_ids || row.productIds)
-          ? (row.product_ids || row.productIds).map((line) => normalizeText(line, 120)).filter(Boolean).slice(0, 8)
-          : [],
+        product_ids: productIds,
+        ...(phaseProducts.length ? { grounded_products: phaseProducts } : {}),
         coverage_status: normalizeText(row.coverage_status || row.coverageStatus, 80) || null,
       };
     }, 5),
@@ -336,6 +390,7 @@ function buildTravelFinalRewritePrompts(input) {
     'Flight guidance may mention hydrating/soothing masks only as optional recovery if tolerated; do not make masks sound mandatory or clinical.',
     'If category-only shopping is provided, call it product categories or buying categories; explicitly do not present them as grounded product picks and do not call any category essential.',
     'If grounded products are provided, name the provided brand/product options and explain why each category is relevant; do not invent missing local brands.',
+    'When a phase has grounded_products in travel_action_context.phase_plan, mention at least one relevant product in that phase and explain why it fits that phase; do not list product names without use rationale.',
     'Integrate safety context naturally into UV/actives guidance; do not prepend a separate safety block.',
     'End with one useful follow-up question only if it would materially improve product narrowing.',
     'Return strict JSON only: {"assistant_text":"..."}',
@@ -345,6 +400,7 @@ function buildTravelFinalRewritePrompts(input) {
     `language=${lang}`,
     categoryOnly ? 'Shopping status: category_only. Be honest that these are categories, not specific grounded products.' : '',
     !categoryOnly && groundedCount > 0 ? `Shopping status: grounded_products with ${groundedCount} catalog-grounded option(s).` : '',
+    !categoryOnly && groundedCount > 0 ? 'Grounded product copy rule: tie products to phase usage, climate/flight/routine rationale, and local shopping; avoid bare product lists.' : '',
     hasSafety ? 'Safety status: integrate safety advice naturally; no Risk note heading.' : '',
     'Task: rewrite the final travel skincare answer from the facts below. Preserve all numeric facts if mentioned, and use travel_action_context as the skincare mechanism backbone.',
     requiredChecklistText ? `Required output checklist:\n${requiredChecklistText}` : '',
@@ -463,6 +519,36 @@ function matchesAny(text, patterns) {
   return patterns.some((pattern) => pattern.test(haystack));
 }
 
+function collectGroundedPhaseProductGroups(actionContext) {
+  const ctx = isPlainObject(actionContext) ? actionContext : {};
+  const phases = Array.isArray(ctx.phase_plan) ? ctx.phase_plan : [];
+  const groups = [];
+  for (const rawPhase of phases) {
+    const phase = isPlainObject(rawPhase) ? rawPhase : {};
+    const products = Array.isArray(phase.grounded_products) ? phase.grounded_products : [];
+    const aliases = [];
+    const seen = new Set();
+    for (const rawProduct of products) {
+      const product = isPlainObject(rawProduct) ? rawProduct : {};
+      for (const value of [product.name, product.brand]) {
+        const alias = normalizeText(value, 140);
+        if (!alias || alias.length < 3) continue;
+        const key = alias.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        aliases.push(alias);
+      }
+      if (aliases.length >= 8) break;
+    }
+    if (!aliases.length) continue;
+    groups.push({
+      phase_id: normalizeText(phase.id, 80) || null,
+      aliases,
+    });
+  }
+  return groups;
+}
+
 function buildTravelRewriteQualityContext(promptInput) {
   const input = isPlainObject(promptInput) ? promptInput : {};
   const shopping = isPlainObject(input.shopping) ? input.shopping : {};
@@ -507,6 +593,7 @@ function buildTravelRewriteQualityContext(promptInput) {
       (Array.isArray(shopping.buying_channels) && shopping.buying_channels.length)
     ),
     categoryOnly: coverageStatus === 'category_only' || shoppingMode === 'category_guidance' || (!groundedCount && hasCategoryRows),
+    groundedPhaseProductGroups: collectGroundedPhaseProductGroups(actionContext),
   };
 }
 
@@ -602,7 +689,7 @@ function validateTravelFinalRewriteText(text, { promptInput } = {}) {
     return { ok: false, reason: 'rewrite_overstates_mask_guidance' };
   }
   if (quality.hasShoppingContext && !matchesAny(assistantText, [
-    /\b(buy|buying|shopping|local|category|categories|store|pharmacy|retail|grounded product|product categories)\b/i,
+    /\b(buy|buying|shopping|local|locally|category|categories|store|pharmacy|retail|grounded product|product categories)\b/i,
     /(购买|当地|本地|品类|类别|门店|药房|药妆|专柜|有权威商品)/i,
   ])) {
     return { ok: false, reason: 'rewrite_missing_local_buying_boundary' };
@@ -612,6 +699,17 @@ function validateTravelFinalRewriteText(text, { promptInput } = {}) {
     /(因为|所以|帮助|支持|减少|避免|对应|原因)/i,
   ])) {
     return { ok: false, reason: 'rewrite_missing_reasoning_links' };
+  }
+  for (const group of quality.groundedPhaseProductGroups || []) {
+    const hasPhaseProduct = (group.aliases || []).some((alias) =>
+      assistantText.toLowerCase().includes(String(alias || '').toLowerCase()),
+    );
+    if (!hasPhaseProduct) {
+      return {
+        ok: false,
+        reason: group.phase_id ? `rewrite_missing_grounded_product_${group.phase_id}` : 'rewrite_missing_grounded_product',
+      };
+    }
   }
 
   const shopping = isPlainObject(promptInput && promptInput.shopping) ? promptInput.shopping : {};

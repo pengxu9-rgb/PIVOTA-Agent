@@ -557,6 +557,133 @@ test('travel final assistant rewriter: category-only prompt stays honest and moc
   assert.equal(Number.isFinite(Number(result.source_meta.prompt_chars)), true);
 });
 
+test('travel final assistant rewriter: grounded products are phase-aware and require use rationale', () => {
+  const readiness = {
+    destination_context: {
+      destination: 'Seoul',
+      start_date: '2026-04-27',
+      end_date: '2026-05-02',
+    },
+    delta_vs_home: {
+      temperature: { home: 12, destination: 21, delta: 9, unit: 'C' },
+      humidity: { home: 58, destination: 70, delta: 12, unit: '%' },
+      uv: { home: 4, destination: 7, delta: 3, unit: '' },
+    },
+    jetlag_sleep: {
+      tz_home: 'America/Los_Angeles',
+      tz_destination: 'Asia/Seoul',
+      hours_diff: 16,
+      risk_level: 'high',
+    },
+    phase_plan: [
+      {
+        id: 'pre_trip_prepare',
+        title: 'Before you leave',
+        timing: 'T-3 to T-1',
+        why: 'Pack tolerated core products before a warmer, higher-UV route.',
+        actions: ['Pack sunscreen and body/lip/hand care for outdoor transit.'],
+        product_role_ids: ['sun_protection', 'body_lip_hand'],
+        product_ids: ['kr_spf_1'],
+        coverage_status: 'grounded',
+      },
+      {
+        id: 'flight_cabin',
+        title: 'On the flight',
+        timing: 'Boarding through arrival',
+        why: 'Cabin dryness plus jet lag can make tightness more noticeable.',
+        actions: ['Use a light moisturizing layer before boarding; keep masks optional if already tolerated.'],
+        product_role_ids: ['lightweight_moisturizer'],
+        product_ids: ['kr_milk_1'],
+        coverage_status: 'grounded',
+      },
+      {
+        id: 'local_shopping',
+        title: 'Shop locally',
+        timing: 'After landing',
+        why: 'Only catalog-grounded local products are shown.',
+        actions: ['Review grounded sunscreen and moisturizer options.'],
+        product_role_ids: ['sun_protection', 'lightweight_moisturizer'],
+        product_ids: ['kr_spf_1', 'kr_milk_1'],
+        coverage_status: 'grounded',
+      },
+    ],
+    shopping_preview: {
+      mode: 'grounded_products',
+      coverage_status: 'grounded',
+      grounded_count: 2,
+      products: [
+        {
+          product_id: 'kr_spf_1',
+          name: 'Round Lab Birch Juice Moisturizing Sunscreen',
+          brand: 'Round Lab',
+          role_id: 'sun_protection',
+          category: 'Sunscreen',
+          product_source: 'external_seed',
+          authority_status: 'grounded',
+          match_status: 'catalog_verified',
+          is_grounded: true,
+          price: 28000,
+          currency: 'KRW',
+          reasons: ['Light sunscreen texture for warmer Seoul daytime wear.'],
+        },
+        {
+          product_id: 'kr_milk_1',
+          name: 'Aestura Atobarrier 365 Lotion',
+          brand: 'Aestura',
+          role_id: 'lightweight_moisturizer',
+          category: 'Moisturizer',
+          product_source: 'external_seed',
+          authority_status: 'grounded',
+          match_status: 'catalog_verified',
+          is_grounded: true,
+          price: 32000,
+          currency: 'KRW',
+          reasons: ['Light barrier support after cabin dryness.'],
+        },
+      ],
+    },
+  };
+  const prompts = travelFinalRewriteInternal.buildTravelFinalRewritePrompts({
+    language: 'EN',
+    message: 'Seattle to Seoul work trip. What should I prepare and shop locally?',
+    travelReadiness: readiness,
+    deterministicBrief: 'Compact deterministic brief.',
+  });
+
+  const actionContext = prompts.promptInput.travel_action_context;
+  const beforeDeparture = actionContext.phase_plan.find((phase) => phase.id === 'pre_trip_prepare');
+  const flightCabin = actionContext.phase_plan.find((phase) => phase.id === 'flight_cabin');
+  assert.equal(beforeDeparture.grounded_products[0].name, 'Round Lab Birch Juice Moisturizing Sunscreen');
+  assert.equal(flightCabin.grounded_products[0].name, 'Aestura Atobarrier 365 Lotion');
+  assert.match(prompts.systemPrompt, /explain why it fits that phase/);
+  assert.match(prompts.userPrompt, /avoid bare product lists/);
+  assert.match(prompts.userPrompt, /Round Lab Birch Juice Moisturizing Sunscreen/);
+  assert.match(prompts.userPrompt, /Light barrier support after cabin dryness/);
+
+  const missingProduct = travelFinalRewriteInternal.validateTravelFinalRewriteText(
+    [
+      'Seoul looks warmer, more humid, and higher UV than Seattle, so use lighter layers while keeping UV coverage steady because outdoor transit can break down sunscreen faster.',
+      'Before departure, pack sunscreen, body coverage, lip balm, and hand cream; on the flight, use a moisturizer before boarding and keep a hydrating mask optional only if already tolerated.',
+      'First 48 hours after landing, keep cleansing and moisturizer simple, then shop local sunscreen and moisturizer categories if you need refills.',
+    ].join('\n'),
+    { promptInput: prompts.promptInput },
+  );
+  assert.equal(missingProduct.ok, false);
+  assert.equal(missingProduct.reason, 'rewrite_missing_grounded_product_pre_trip_prepare');
+
+  const acceptable = travelFinalRewriteInternal.validateTravelFinalRewriteText(
+    [
+      'Seoul looks warmer, more humid, and higher UV than Seattle, so use lighter layers while keeping UV coverage steady because outdoor transit can break down sunscreen faster.',
+      'Before departure, pack Round Lab Birch Juice Moisturizing Sunscreen as the face SPF option to review because its role is daytime sun protection; still bring body sunscreen, lip balm, and hand cream for exposed areas.',
+      'On the flight, use Aestura Atobarrier 365 Lotion before boarding because the light moisturizer role supports barrier comfort in dry cabin air; keep any hydrating mask optional only if already tolerated.',
+      'After landing, keep the first 48 hours calm, then shop locally for those grounded KRW options only if they fill a real sunscreen or moisturizer gap.',
+    ].join('\n'),
+    { promptInput: prompts.promptInput },
+  );
+  assert.equal(acceptable.ok, true);
+  assert.equal(acceptable.reason, 'ok');
+});
+
 test('travel LLM calibrator: parses patch and deep-merges shopping brand candidates', async () => {
   const baseline = buildCompleteTravelReadiness();
   const mockGemini = async () => ({
