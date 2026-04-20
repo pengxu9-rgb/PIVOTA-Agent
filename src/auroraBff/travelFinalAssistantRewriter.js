@@ -567,6 +567,13 @@ function collectGroundedPhaseProductGroups(actionContext) {
   return groups;
 }
 
+function stripAggregateExposureLabels(text) {
+  return String(text || '')
+    .replace(/\bbody_lip_hand\b/gi, '')
+    .replace(/\bbody,\s*lip,?\s*or\s*hand\s+care\b\s*:?/gi, '')
+    .replace(/身体\/唇\/手护理\s*[:：]?/g, '');
+}
+
 function buildTravelRewriteQualityContext(promptInput) {
   const input = isPlainObject(promptInput) ? promptInput : {};
   const shopping = isPlainObject(input.shopping) ? input.shopping : {};
@@ -588,6 +595,22 @@ function buildTravelRewriteQualityContext(promptInput) {
     ...(Array.isArray(actionContext.personal_focus) ? { personal_focus: actionContext.personal_focus } : {}),
     ...(Array.isArray(actionContext.travel_kit_plan) ? { travel_kit_plan: actionContext.travel_kit_plan } : {}),
   };
+  const exposureActionContext = {
+    ...(Array.isArray(actionContext.phase_plan)
+      ? {
+          phase_plan: actionContext.phase_plan.map((phase) => {
+            const row = isPlainObject(phase) ? phase : {};
+            return {
+              id: row.id || null,
+              actions: Array.isArray(row.actions) ? row.actions : [],
+            };
+          }),
+        }
+      : {}),
+    ...(Array.isArray(actionContext.adaptive_actions) ? { adaptive_actions: actionContext.adaptive_actions } : {}),
+    ...(Array.isArray(actionContext.personal_focus) ? { personal_focus: actionContext.personal_focus } : {}),
+    ...(Array.isArray(actionContext.travel_kit_plan) ? { travel_kit_plan: actionContext.travel_kit_plan } : {}),
+  };
   const factsText = stringifyForRewriteQuality({
     profile: input.profile,
     travel_readiness: input.travel_readiness,
@@ -600,6 +623,10 @@ function buildTravelRewriteQualityContext(promptInput) {
     travel_action_context: actionContextWithoutPrinciples,
     structured_sections: input.structured_sections,
   });
+  const exposureText = stripAggregateExposureLabels(stringifyForRewriteQuality({
+    travel_action_context: exposureActionContext,
+    structured_sections: input.structured_sections,
+  }));
   const coverageStatus = normalizeText(shopping.coverage_status, 80).toLowerCase();
   const shoppingMode = normalizeText(shopping.mode, 80).toLowerCase();
   const groundedCount = normalizeNumber(shopping.grounded_count) || 0;
@@ -612,9 +639,9 @@ function buildTravelRewriteQualityContext(promptInput) {
     needsUvCare: /uv|sunscreen|spf|sun protection|outdoor|reapply|防晒|紫外|补涂/i.test(factsText),
     needsBarrierHydration: /humidity|humid|dry|cabin|flight|moisturizer|barrier|hydrating|hydration|serum|cream|mask|保湿|补水|屏障|面霜|精华|面膜/i.test(factsText),
     needsMaskNuance: /mask|面膜/i.test(actionText),
-    needsBodyCare: /\b(body|exposed areas|exposed skin|arms?)\b|身体|暴露部位|外露皮肤|手臂/i.test(actionText),
-    needsLipCare: /\b(lip|lips|lip balm)\b|嘴唇|唇部|润唇/i.test(actionText),
-    needsHandCare: /\b(hand|hands|hand cream)\b|手部|双手|护手/i.test(actionText),
+    needsBodyCare: /\b(body|exposed areas|exposed skin|arms?)\b|身体|暴露部位|外露皮肤|手臂/i.test(exposureText),
+    needsLipCare: /\b(lip|lips|lip balm)\b|嘴唇|唇部|润唇/i.test(exposureText),
+    needsHandCare: /\b(hand|hands|hand cream)\b|手部|双手|护手/i.test(exposureText),
     hasShoppingContext: Boolean(
       coverageStatus ||
       shoppingMode ||
@@ -694,7 +721,7 @@ function validateTravelFinalRewriteText(text, { promptInput } = {}) {
   ])) {
     return { ok: false, reason: 'rewrite_missing_barrier_hydration' };
   }
-  if (quality.needsUvCare && !matchesAny(assistantText, [
+  if ((quality.needsBodyCare || quality.needsLipCare || quality.needsHandCare) && !matchesAny(assistantText, [
     /\b(body|lip|lips|hand|hands|exposed areas|exposed skin)\b/i,
     /(身体|嘴唇|唇部|手部|双手|暴露部位|外露皮肤)/i,
   ])) {

@@ -375,6 +375,111 @@ test('travel final assistant rewriter: guard rejects unsupported product claims 
   assert.equal(parallelLipAndHandProducts.reason, 'ok');
 });
 
+test('travel final assistant rewriter: body-lip-hand aggregate label does not force absent hand care', () => {
+  const promptInput = travelFinalRewriteInternal.buildFinalRewritePromptInput({
+    language: 'EN',
+    message: 'Seattle to Seoul work trip. Build a skincare plan.',
+    travelReadiness: {
+      delta_vs_home: {
+        temperature: { home: 16, destination: 18, delta: 2, unit: 'C' },
+        humidity: { home: 77, destination: 64, delta: -13, unit: '%' },
+        uv: { home: 6.3, destination: 7.1, delta: 0.8, unit: '' },
+      },
+      jetlag_sleep: { hours_diff: 16, risk_level: 'high' },
+      phase_plan: [
+        {
+          id: 'pre_trip_prepare',
+          title: 'Before you leave',
+          timing: 'T-3 to T-1',
+          why: 'Pack tolerated products before the climate and schedule shift.',
+          actions: ['Pack your tolerated cleanser, moisturizer, sunscreen, and small emergency items.'],
+          product_role_ids: ['sun_protection', 'body_lip_hand'],
+          product_ids: ['kr_spf'],
+          coverage_status: 'grounded',
+        },
+        {
+          id: 'flight_cabin',
+          title: 'On the flight',
+          timing: 'Boarding through arrival',
+          why: 'Cabin dryness plus jet lag can make tightness more noticeable.',
+          actions: ['Use a comfortable moisturizing layer before boarding.'],
+          product_role_ids: ['lightweight_moisturizer'],
+          product_ids: ['kr_cream'],
+          coverage_status: 'grounded',
+        },
+        {
+          id: 'arrival_first_48h',
+          title: 'First 48 hours after landing',
+          timing: 'Arrival through night 2',
+          why: 'Skin is adapting to climate, sleep, and cleansing rhythm.',
+          actions: ['Keep cleansing and moisturizer simple while sleep catches up.'],
+          product_role_ids: ['lightweight_moisturizer'],
+          product_ids: ['kr_cream'],
+          coverage_status: 'grounded',
+        },
+        {
+          id: 'local_shopping',
+          title: 'Shop locally',
+          timing: 'After landing',
+          why: 'Only catalog-grounded local products are shown.',
+          actions: [
+            'Sun protection: Round Lab 1025 Dokdo Sunscreen: Use this as the AM/outdoor SPF step.',
+            'Body, lip, or hand care: Round Lab Birch Juice Moisturizing Lip Balm: Use on lips to manage tightness from cabin dryness and outdoor commuting.',
+          ],
+          product_role_ids: ['sun_protection', 'body_lip_hand'],
+          product_ids: ['kr_spf', 'kr_lip'],
+          coverage_status: 'grounded',
+        },
+      ],
+      shopping_preview: {
+        mode: 'grounded_products',
+        coverage_status: 'grounded',
+        grounded_count: 2,
+        products: [
+          {
+            product_id: 'kr_spf',
+            name: 'Round Lab 1025 Dokdo Sunscreen',
+            brand: 'Round Lab',
+            role_id: 'sun_protection',
+            category: 'Sun protection',
+            product_source: 'external_seed',
+            authority_status: 'grounded',
+            match_status: 'catalog_verified',
+            is_grounded: true,
+            reasons: ['Use this as the AM/outdoor SPF step.'],
+          },
+          {
+            product_id: 'kr_lip',
+            name: 'Round Lab Birch Juice Moisturizing Lip Balm',
+            brand: 'Round Lab',
+            role_id: 'body_lip_hand',
+            category: 'Body, lip, or hand support',
+            product_source: 'external_seed',
+            authority_status: 'grounded',
+            match_status: 'catalog_verified',
+            is_grounded: true,
+            reasons: ['Use on lips to manage tightness from cabin dryness.'],
+          },
+        ],
+      },
+    },
+  });
+
+  const result = travelFinalRewriteInternal.validateTravelFinalRewriteText(
+    [
+      'Seoul is slightly warmer, drier, and higher UV than Seattle, so the main skin implication is balancing SPF with lighter hydration because cabin air can still leave lips and the barrier feeling tight.',
+      'Before departure, pack your familiar cleanser, moisturizer, and sunscreen so you are not testing new actives right before a 16-hour time-zone shift.',
+      'On the flight, use a comfortable moisturizing layer before boarding and keep a familiar lip product nearby because cabin dryness can show up around the mouth first.',
+      'First 48 hours after landing, keep cleansing and moisturizer simple while sleep catches up, then reapply sunscreen when outdoors.',
+      'Local shopping can focus on Round Lab 1025 Dokdo Sunscreen for the AM SPF step and Round Lab Birch Juice Moisturizing Lip Balm for lips; there is no separate hand product in this grounded set.',
+    ].join('\n'),
+    { promptInput },
+  );
+
+  assert.equal(result.ok, true);
+  assert.equal(result.reason, 'ok');
+});
+
 test('travel final assistant rewriter: parser recovers loose assistant_text JSON', () => {
   const loose = [
     '{',
