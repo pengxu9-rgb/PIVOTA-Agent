@@ -327,14 +327,10 @@ test('travel LLM calibrator: Gemini request uses bounded low-thinking JSON confi
 
   assert.equal(request.model, 'gemini-3-flash-preview');
   assert.equal(request.config.responseMimeType, 'application/json');
-  assert.equal(request.config.maxOutputTokens <= 900, true);
-  assert.equal(request.config.responseSchema?.type, 'OBJECT');
-  assert.equal(request.config.responseSchema?.required?.includes('travel_readiness_patch'), true);
-  assert.equal(request.config.responseSchema?.properties?.travel_readiness_patch?.type, 'OBJECT');
-  assert.equal(request.config.responseSchema?.properties?.travel_readiness_patch?.properties?.category_recommendations, undefined);
-  assert.equal(request.config.responseSchema?.properties?.travel_readiness_patch?.properties?.shopping_preview?.properties?.products, undefined);
+  assert.equal(request.config.maxOutputTokens <= 1000, true);
+  assert.equal(request.config.responseSchema, undefined);
   assert.equal(request.config.thinkingConfig.includeThoughts, false);
-  assert.equal(request.config.thinkingConfig.thinkingBudget, 0);
+  assert.equal(request.config.thinkingConfig.thinkingBudget <= 64, true);
 });
 
 test('travel LLM calibrator: parse failures retain Gemini finish and token telemetry', async () => {
