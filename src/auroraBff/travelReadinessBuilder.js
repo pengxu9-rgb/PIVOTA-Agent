@@ -44,6 +44,21 @@ function uniqStrings(values, max = 10) {
   return out;
 }
 
+function uniqReasonStrings(values, max = 3, maxLen = 260) {
+  const out = [];
+  const seen = new Set();
+  for (const raw of Array.isArray(values) ? values : []) {
+    const text = normalizeText(raw, maxLen);
+    if (!text) continue;
+    const key = text.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(text);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
 function normalizeForecastWindowRows(rows) {
   const out = [];
   const list = Array.isArray(rows) ? rows : [];
@@ -572,6 +587,10 @@ function normalizePreviewProducts(recommendationCandidates, language) {
       category: normalizeText(row.step, 80) || null,
       reasons,
       product_source: 'catalog',
+      authority_status: 'grounded',
+      match_status: 'catalog_verified',
+      display_mode: 'product_card',
+      is_grounded: true,
       price: null,
       currency: null,
     });
@@ -580,7 +599,7 @@ function normalizePreviewProducts(recommendationCandidates, language) {
   return out;
 }
 
-function normalizeFallbackPreviewProductsFromRecoBundle(recoBundle, language) {
+function normalizeCategoryGuidancePreviewProductsFromRecoBundle(recoBundle, language) {
   const out = [];
   const seen = new Set();
   for (const row of Array.isArray(recoBundle) ? recoBundle : []) {
@@ -594,13 +613,14 @@ function normalizeFallbackPreviewProductsFromRecoBundle(recoBundle, language) {
       const key = name.toLowerCase();
       if (seen.has(key)) continue;
       seen.add(key);
-      const reasons = uniqStrings(
+      const reasons = uniqReasonStrings(
         [
           t(language, `类目：${category}`, `Category: ${category}`),
           reapplyRule || null,
-          normalizeText(row.ingredient_logic, 180) || null,
+          normalizeText(row.ingredient_logic, 260) || null,
         ].filter(Boolean),
         3,
+        260,
       );
       out.push({
         rank: out.length + 1,
@@ -609,7 +629,12 @@ function normalizeFallbackPreviewProductsFromRecoBundle(recoBundle, language) {
         brand: null,
         category,
         reasons,
-        product_source: 'rule_fallback',
+        product_source: 'category_guidance',
+        authority_status: 'category_only',
+        match_status: 'category_guidance',
+        display_mode: 'category_only',
+        pdp_open: null,
+        is_grounded: false,
         price: null,
         currency: null,
       });
@@ -916,11 +941,23 @@ function resolvePreviewProductCategoryId(item) {
   ]);
 }
 
+function isAuthoritativeTravelSuggestion(suggestion) {
+  if (!isPlainObject(suggestion)) return false;
+  const source = normalizeText(suggestion.product_source || suggestion.source, 80).toLowerCase();
+  const matchStatus = normalizeText(suggestion.match_status || suggestion.authority_status, 80).toLowerCase();
+  if (source === 'catalog' || source === 'internal' || source === 'external_seed') return true;
+  if (/^(catalog_verified|internal_hit|external_seed_hit|authority|grounded|resolved)$/.test(matchStatus)) return true;
+  return Boolean(
+    normalizeText(suggestion.product_id || suggestion.productId, 120) ||
+      normalizeText(suggestion.pdp_open || suggestion.pdpOpen, 240),
+  );
+}
+
 function pushCategorizedKitSuggestion(out, seenKeys, suggestion) {
   if (!Array.isArray(out) || !seenKeys || out.length >= 4 || !isPlainObject(suggestion)) return;
   const product = normalizeText(suggestion.product, 140) || null;
   const brand = normalizeText(suggestion.brand, 80) || null;
-  const reason = normalizeText(suggestion.reason, 200) || null;
+  const reason = normalizeText(suggestion.reason, 320) || null;
   const matchStatus = normalizeText(suggestion.match_status, 40) || null;
   const dedupeKey = product ? product.toLowerCase() : brand ? brand.toLowerCase() : '';
   if (!dedupeKey || seenKeys.has(dedupeKey)) return;
@@ -1013,6 +1050,8 @@ function buildCategorizedKit({ language, recoBundle, deltaVsHome, brandCandidate
 
     const suggestions = [];
     const suggestionKeys = new Set();
+    const categorySuggestions = [];
+    const categorySuggestionKeys = new Set();
 
     const matchedCatRec = catRecs.find((cr) => {
       if (!isPlainObject(cr)) return false;
@@ -1021,38 +1060,51 @@ function buildCategorizedKit({ language, recoBundle, deltaVsHome, brandCandidate
     });
     if (matchedCatRec && Array.isArray(matchedCatRec.products)) {
       for (const prod of matchedCatRec.products.slice(0, 3)) {
-        pushCategorizedKitSuggestion(suggestions, suggestionKeys, {
+        pushCategorizedKitSuggestion(categorySuggestions, categorySuggestionKeys, {
           reason: normalizeText(prod.usage, 200) || normalizeText(prod.ingredient_logic, 200) || null,
           product: normalizeText(prod.name, 140) || null,
           match_status: 'llm_generated',
         });
-        if (suggestions.length >= 4) break;
+        if (categorySuggestions.length >= 4) break;
       }
     }
 
     const matchedPreviewProducts = Array.isArray(previewProductsByCategoryId[id]) ? previewProductsByCategoryId[id] : [];
     for (const preview of matchedPreviewProducts) {
-      const reasons = uniqStrings(Array.isArray(preview && preview.reasons) ? preview.reasons : [], 3);
-      pushCategorizedKitSuggestion(suggestions, suggestionKeys, {
+      const reasons = uniqReasonStrings(Array.isArray(preview && preview.reasons) ? preview.reasons : [], 3, 260);
+      const suggestion = {
         brand: normalizeText(preview && preview.brand, 80) || null,
         product: normalizeText(preview && preview.name, 140) || null,
         reason: reasons.length ? reasons.join(' · ') : null,
         match_status: normalizeText(preview && preview.match_status, 40) || null,
-      });
-      if (suggestions.length >= 4) break;
+        product_source: normalizeText(preview && preview.product_source, 80) || null,
+        product_id: normalizeText(preview && (preview.product_id || preview.productId), 120) || null,
+        pdp_open: normalizeText(preview && (preview.pdp_open || preview.pdpOpen), 240) || null,
+      };
+      if (isAuthoritativeTravelSuggestion(preview)) {
+        pushCategorizedKitSuggestion(suggestions, suggestionKeys, suggestion);
+      } else {
+        pushCategorizedKitSuggestion(categorySuggestions, categorySuggestionKeys, suggestion);
+      }
+      if (suggestions.length >= 4 && categorySuggestions.length >= 4) break;
     }
 
     for (const b of brands) {
       if (!isPlainObject(b)) continue;
       const matchedCategoryId = findCategoryIdByKeywords([b.reason, b.brand]);
       if (matchedCategoryId !== id) continue;
-      pushCategorizedKitSuggestion(suggestions, suggestionKeys, {
+      const suggestion = {
         brand: normalizeText(b.brand, 80) || null,
         product: null,
         reason: normalizeText(b.reason, 200) || null,
         match_status: normalizeText(b.match_status, 40) || null,
-      });
-      if (suggestions.length >= 4) break;
+      };
+      if (isAuthoritativeTravelSuggestion(b)) {
+        pushCategorizedKitSuggestion(suggestions, suggestionKeys, suggestion);
+      } else {
+        pushCategorizedKitSuggestion(categorySuggestions, categorySuggestionKeys, suggestion);
+      }
+      if (suggestions.length >= 4 && categorySuggestions.length >= 4) break;
     }
 
     kit.push({
@@ -1064,6 +1116,7 @@ function buildCategorizedKit({ language, recoBundle, deltaVsHome, brandCandidate
       preparations,
       reapply_rule: normalizeText(row.reapply_rule, 200) || null,
       brand_suggestions: suggestions.length ? suggestions : null,
+      category_suggestions: categorySuggestions.length ? categorySuggestions : null,
     });
   }
 
@@ -1164,7 +1217,8 @@ function buildTravelReadiness({
   const previewProductsFromCatalog = normalizePreviewProducts(recommendationCandidates, lang);
   const previewProducts = previewProductsFromCatalog.length
     ? previewProductsFromCatalog
-    : normalizeFallbackPreviewProductsFromRecoBundle(recoBundle, lang);
+    : normalizeCategoryGuidancePreviewProductsFromRecoBundle(recoBundle, lang);
+  const shoppingPreviewMode = previewProductsFromCatalog.length ? 'grounded_products' : 'category_guidance';
   const categorizedKit = buildCategorizedKit({
     language: lang,
     recoBundle,
@@ -1218,13 +1272,19 @@ function buildTravelReadiness({
     categorized_kit: categorizedKit,
     store_examples: storeExamples,
     shopping_preview: {
+      mode: shoppingPreviewMode,
+      coverage_status: previewProductsFromCatalog.length ? 'grounded' : 'category_only',
       products: previewProducts,
       buying_channels: ['beauty_retail', 'pharmacy', 'department_store', 'duty_free', 'ecommerce'],
       city_hint: destinationText || null,
       note: t(
         lang,
-        '当前提供渠道级建议；附近门店地图检索将在后续版本支持。',
-        'Channels are provided in v1; nearby store map lookup will be added later.',
+        previewProductsFromCatalog.length
+          ? '当前商品来自已接入商品库；附近门店地图检索将在后续版本支持。'
+          : '当前仅提供需准备的商品品类；未命中商品库时不会伪装成具体商品推荐。',
+        previewProductsFromCatalog.length
+          ? 'Products come from connected catalog authority; nearby store map lookup will be added later.'
+          : 'This is category guidance only; when catalog authority is missing, it is not presented as a specific product recommendation.',
       ),
     },
     confidence,
@@ -1239,7 +1299,7 @@ module.exports = {
     buildJetlagSleep,
     buildConfidence,
     normalizePreviewProducts,
-    normalizeFallbackPreviewProductsFromRecoBundle,
+    normalizeCategoryGuidancePreviewProductsFromRecoBundle,
     buildCategorizedKit,
     getTimezoneOffsetHours,
     resolveTimezoneFromHints,

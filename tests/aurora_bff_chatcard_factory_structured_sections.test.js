@@ -90,6 +90,101 @@ describe('aurora chatCardFactory structured sections for adapter inputs', () => 
     expect(Array.isArray(structured.priority_findings)).toBe(true);
   });
 
+  test('travel card exposes productized planner view model and keeps category-only shopping honest', () => {
+    const cards = mapLegacyCardToSpecCards(
+      {
+        type: 'env_stress',
+        card_id: 'env_travel_planner',
+        payload: {
+          schema_version: 'aurora.ui.env_stress.v1',
+          notes: ['Missing: recent_logs', 'barrier_status=stable', 'Scenario: uv (inferred)'],
+          travel_readiness: {
+            destination_context: {
+              destination: 'Shanghai, China',
+              start_date: '2026-04-20',
+              end_date: '2026-04-24',
+              env_source: 'weather_api',
+            },
+            origin_context: { label: 'Seattle, Washington, United States' },
+            delta_vs_origin: {
+              uv: { home: 5.7, destination: 8.1, delta: 2.4, unit: '' },
+              humidity: { home: 77, destination: 79, delta: 2, unit: '%' },
+              summary_tags: ['higher_uv', 'wetter'],
+            },
+            forecast_window: [{ date: '2026-04-20', temp_low_c: 13, temp_high_c: 22 }],
+            confidence: { missing_inputs: ['recent_logs'] },
+            categorized_kit: [
+              {
+                id: 'sun_protection',
+                title: 'Elevated UV',
+                preparations: [{ name: 'Face SPF50+ PA++++ sunscreen' }],
+                brand_suggestions: null,
+                category_suggestions: [{ product: 'Face SPF50+ PA++++ sunscreen', match_status: 'category_guidance' }],
+              },
+            ],
+            shopping_preview: {
+              mode: 'category_guidance',
+              coverage_status: 'category_only',
+              products: [
+                {
+                  rank: 0,
+                  product_id: null,
+                  name: 'Legacy sunscreen row',
+                  brand: null,
+                  category: 'Elevated UV',
+                  product_source: 'rule_fallback',
+                  reasons: ['Legacy row should be quarantined.'],
+                },
+                {
+                  rank: 1,
+                  product_id: null,
+                  name: 'Face SPF50+ PA++++ sunscreen',
+                  brand: null,
+                  category: 'Elevated UV',
+                  product_source: 'category_guidance',
+                  authority_status: 'category_only',
+                  match_status: 'category_guidance',
+                  display_mode: 'category_only',
+                  is_grounded: false,
+                  reasons: ['Category: Elevated UV'],
+                },
+              ],
+              buying_channels: ['beauty_retail', 'pharmacy'],
+              city_hint: 'Shanghai, China',
+            },
+            structured_sections: {
+              flight_day_plan: ['Before boarding: apply moisturizer.', 'First 48 hours after landing: go barrier mode.'],
+              phased_plan: ['Pre-trip (T-2 to T-1): keep routine unchanged.', 'On-site days: reapply SPF.'],
+              active_handling: ['Skip acids/retinoids on flight day.'],
+            },
+          },
+        },
+      },
+      { requestId: 'req_card_factory', language: 'EN', index: 0 },
+    );
+
+    expect(cards.length).toBe(1);
+    expect(cards[0].type).toBe('travel');
+    const reminder = cards[0].sections.find((section) => section.kind === 'checklist');
+    expect(reminder.items).toEqual(
+      expect.arrayContaining([
+        'Seattle, Washington, United States -> Shanghai, China · 2026-04-20 -> 2026-04-24',
+        'No recent skin logs, so the plan stays conservative.',
+        'Shopping guidance is category-only until catalog products are grounded.',
+      ]),
+    );
+    expect(JSON.stringify(reminder.items)).not.toMatch(/Missing: recent_logs|barrier_status=/);
+
+    const structured = cards[0].sections.find((section) => section.kind === 'travel_structured');
+    expect(structured.travel_planner.schema_version).toBe('aurora.ui.travel_planner.v1');
+    expect(structured.travel_planner.shopping.mode).toBe('category_guidance');
+    expect(structured.travel_planner.shopping.grounded_products).toEqual([]);
+    expect(structured.travel_planner.shopping.legacy_rows_dropped_count).toBe(1);
+    expect(structured.travel_planner.shopping.category_guidance.some((row) => row.name === 'Legacy sunscreen row')).toBe(false);
+    expect(structured.travel_planner.shopping.category_guidance[0].product_source).toBe('category_guidance');
+    expect(structured.travel_planner.shopping.buying_channel_labels).toEqual(['beauty retailers', 'pharmacies']);
+  });
+
   test('triage card includes triage_structured section', () => {
     const cards = mapLegacyCardToSpecCards(
       {

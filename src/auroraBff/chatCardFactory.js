@@ -46,6 +46,245 @@ function normalizeCardId(value, fallbackPrefix, requestId, idx) {
   return `${fallbackPrefix}_${requestId}_${idx}`;
 }
 
+function pickPlainObject(value) {
+  return isPlainObject(value) ? value : {};
+}
+
+function buildTravelRouteLabel(readiness, language) {
+  const destination = pickPlainObject(readiness.destination_context);
+  const origin = pickPlainObject(readiness.origin_context);
+  const destinationLabel = asString(destination.destination);
+  const originLabel = asString(origin.label);
+  const startDate = asString(destination.start_date);
+  const endDate = asString(destination.end_date);
+  const route = [originLabel, destinationLabel].filter(Boolean).join(' -> ');
+  const dates = startDate || endDate ? `${startDate || '?'}${endDate ? ` -> ${endDate}` : ''}` : '';
+  if (route && dates) return `${route} · ${dates}`;
+  if (route) return route;
+  if (destinationLabel && dates) return `${destinationLabel} · ${dates}`;
+  return destinationLabel || (language === 'CN' ? '旅行护肤方案' : 'Travel skincare plan');
+}
+
+function formatTravelDeltaMetric(metric) {
+  if (!isPlainObject(metric)) return null;
+  const destination = asNumber(metric.destination);
+  const home = asNumber(metric.home);
+  const delta = asNumber(metric.delta);
+  const unit = asString(metric.unit);
+  if (destination == null) return null;
+  const rounded = (value) => Math.round(Number(value) * 10) / 10;
+  const deltaLabel = delta == null ? null : `${delta > 0 ? '+' : ''}${rounded(delta)}${unit}`;
+  return {
+    home,
+    destination,
+    delta,
+    unit,
+    label: home != null && deltaLabel
+      ? `${rounded(home)}${unit} -> ${rounded(destination)}${unit} (${deltaLabel})`
+      : `${rounded(destination)}${unit}`,
+  };
+}
+
+function isLegacyTravelProductSource(value) {
+  return asString(value).toLowerCase() === 'rule_fallback';
+}
+
+function normalizeTravelShoppingProduct(row) {
+  if (!isPlainObject(row)) return null;
+  const name = asString(row.name);
+  if (!name) return null;
+  if (isLegacyTravelProductSource(row.product_source || row.productSource)) return null;
+  const normalizedProductSource = asString(row.product_source || row.productSource);
+  const productId = asString(row.product_id || row.productId) || null;
+  const isGrounded =
+    row.is_grounded === true ||
+    Boolean(productId) ||
+    /^(catalog|internal|external_seed)$/i.test(normalizedProductSource) ||
+    /^(grounded|catalog_verified|authority|resolved)$/i.test(asString(row.authority_status || row.match_status));
+  return {
+    rank: asNumber(row.rank),
+    product_id: productId,
+    name,
+    brand: asString(row.brand) || null,
+    category: asString(row.category) || null,
+    reasons: asStringArray(row.reasons, 3),
+    product_source: normalizedProductSource || null,
+    authority_status: asString(row.authority_status) || (isGrounded ? 'grounded' : 'category_only'),
+    match_status: asString(row.match_status) || (isGrounded ? 'catalog_verified' : 'category_guidance'),
+    display_mode: asString(row.display_mode) || (isGrounded ? 'product_card' : 'category_only'),
+    pdp_open: isPlainObject(row.pdp_open) ? row.pdp_open : row.pdp_open || null,
+    price: row.price ?? null,
+    currency: asString(row.currency) || null,
+    is_grounded: isGrounded,
+  };
+}
+
+function labelTravelBuyingChannel(channel, language = 'EN') {
+  const token = asString(channel).toLowerCase();
+  const cn = language === 'CN';
+  const map = {
+    beauty_retail: cn ? '美妆集合店' : 'beauty retailers',
+    pharmacy: cn ? '药妆/药房' : 'pharmacies',
+    department_store: cn ? '百货美妆专柜' : 'department-store beauty counters',
+    duty_free: cn ? '机场/免税店' : 'airport or duty-free shops',
+    ecommerce: cn ? '本地电商' : 'local e-commerce',
+  };
+  return map[token] || asString(channel);
+}
+
+function isGroundedTravelProduct(row) {
+  const product = normalizeTravelShoppingProduct(row);
+  if (!product) return false;
+  const source = String(product.product_source || '').toLowerCase();
+  const status = String(product.authority_status || product.match_status || '').toLowerCase();
+  return product.is_grounded || source === 'catalog' || /grounded|catalog|authority|resolved/.test(status);
+}
+
+function isAuthoritativeTravelKitSuggestion(row) {
+  if (!isPlainObject(row)) return false;
+  const status = asString(row.match_status || row.authority_status).toLowerCase();
+  return Boolean(asString(row.brand)) || /catalog|grounded|authority|resolved|internal|external_seed/.test(status);
+}
+
+function normalizeTravelKitEntry(row) {
+  if (!isPlainObject(row)) return row;
+  const brandSuggestions = Array.isArray(row.brand_suggestions) ? row.brand_suggestions.filter(isPlainObject) : [];
+  const existingCategorySuggestions = Array.isArray(row.category_suggestions) ? row.category_suggestions.filter(isPlainObject) : [];
+  const authoritative = brandSuggestions.filter(isAuthoritativeTravelKitSuggestion);
+  return {
+    ...row,
+    brand_suggestions: authoritative.length ? authoritative : null,
+    category_suggestions: existingCategorySuggestions.length
+      ? existingCategorySuggestions.slice(0, 4)
+      : null,
+  };
+}
+
+function buildTravelPlannerCardViewModel(envPayload, language = 'EN') {
+  const readiness = pickPlainObject(pickPlainObject(envPayload).travel_readiness);
+  if (!Object.keys(readiness).length) return null;
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  const destination = pickPlainObject(readiness.destination_context);
+  const origin = pickPlainObject(readiness.origin_context);
+  const delta = pickPlainObject(readiness.delta_vs_origin || readiness.delta_vs_home);
+  const shopping = pickPlainObject(readiness.shopping_preview);
+  const rawProducts = Array.isArray(shopping.products) ? shopping.products : [];
+  const legacyDroppedCount = rawProducts.filter((row) => isPlainObject(row) && isLegacyTravelProductSource(row.product_source || row.productSource)).length;
+  const products = Array.isArray(shopping.products)
+    ? shopping.products.map(normalizeTravelShoppingProduct).filter(Boolean)
+    : [];
+  const groundedProducts = products.filter((row) => isGroundedTravelProduct(row));
+  const categoryGuidance = products.filter((row) => !isGroundedTravelProduct(row));
+  const structured = pickPlainObject(readiness.structured_sections);
+  return {
+    schema_version: 'aurora.ui.travel_planner.v1',
+    source_schema_version: asString(envPayload && envPayload.schema_version) || null,
+    summary_strip: {
+      title: lang === 'CN' ? '旅行护肤方案' : 'Travel skincare plan',
+      route_label: buildTravelRouteLabel(readiness, lang),
+      source: asString(destination.env_source || envPayload.env_source) || null,
+      product_coverage_status: asString(shopping.coverage_status) || (groundedProducts.length ? 'grounded' : 'category_only'),
+    },
+    route: {
+      origin: asString(origin.label) || null,
+      destination: asString(destination.destination) || null,
+      start_date: asString(destination.start_date) || null,
+      end_date: asString(destination.end_date) || null,
+    },
+    forecast_window: Array.isArray(readiness.forecast_window) ? readiness.forecast_window.slice(0, 7) : [],
+    environment_deltas: {
+      temperature: formatTravelDeltaMetric(delta.temperature),
+      humidity: formatTravelDeltaMetric(delta.humidity),
+      uv: formatTravelDeltaMetric(delta.uv),
+      precip: formatTravelDeltaMetric(delta.precip),
+      wind: formatTravelDeltaMetric(delta.wind),
+      summary_tags: asStringArray(delta.summary_tags, 6),
+    },
+    jetlag_sleep: isPlainObject(readiness.jetlag_sleep) ? readiness.jetlag_sleep : null,
+    timeline: {
+      pre_trip: asStringArray(structured.phased_plan, 6).filter((line) => /pre-trip|t-2|出发前/i.test(line)),
+      flight_day: asStringArray(structured.flight_day_plan, 6),
+      first_48h: asStringArray(structured.flight_day_plan, 6).filter((line) => /48|arrival|落地|抵达/i.test(line)),
+      on_site: asStringArray(structured.phased_plan, 6).filter((line) => /on-site|在地|arrival|落地/i.test(line)),
+      active_handling: asStringArray(structured.active_handling, 6),
+    },
+    travel_kit: Array.isArray(readiness.categorized_kit)
+      ? readiness.categorized_kit.slice(0, 8).map(normalizeTravelKitEntry)
+      : [],
+    shopping: {
+      mode: asString(shopping.mode) || (groundedProducts.length ? 'grounded_products' : 'category_guidance'),
+      coverage_status: asString(shopping.coverage_status) || (groundedProducts.length ? 'grounded' : 'category_only'),
+      grounded_products: groundedProducts.slice(0, 6),
+      category_guidance: categoryGuidance.slice(0, 8),
+      buying_channels: asStringArray(shopping.buying_channels, 8),
+      buying_channel_labels: asStringArray(shopping.buying_channels, 8).map((channel) => labelTravelBuyingChannel(channel, lang)),
+      city_hint: asString(shopping.city_hint) || null,
+      note: asString(shopping.note) || null,
+      legacy_rows_dropped_count: legacyDroppedCount,
+    },
+  };
+}
+
+function formatTravelReminderNote(raw, language = 'EN') {
+  const text = asString(raw);
+  if (!text) return '';
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  if (/^missing:\s*recent_logs$/i.test(text)) {
+    return lang === 'CN'
+      ? '暂无近期皮肤记录，因此节奏保持保守。'
+      : 'No recent skin logs, so the plan stays conservative.';
+  }
+  const barrier = text.match(/^barrier_status\s*=\s*(.+)$/i);
+  if (barrier) {
+    return lang === 'CN' ? `屏障状态：${barrier[1]}。` : `Barrier status: ${barrier[1]}.`;
+  }
+  const scenario = text.match(/^scenario:\s*(.+?)(?:\s*\(inferred\))?$/i);
+  if (scenario) {
+    return lang === 'CN' ? `主要环境关注：${scenario[1]}。` : `Main environment focus: ${scenario[1]}.`;
+  }
+  return text;
+}
+
+function buildTravelCardReminderItems({ payload, envPayload, language = 'EN' }) {
+  const readiness = pickPlainObject(pickPlainObject(envPayload).travel_readiness);
+  const lang = language === 'CN' ? 'CN' : 'EN';
+  if (Object.keys(readiness).length) {
+    const items = [];
+    const route = buildTravelRouteLabel(readiness, lang);
+    if (route) items.push(route);
+    const delta = pickPlainObject(readiness.delta_vs_origin || readiness.delta_vs_home);
+    const tags = asStringArray(delta.summary_tags, 3);
+    if (tags.length) {
+      items.push(lang === 'CN' ? `环境变化：${tags.join(' / ')}。` : `Environment shifts: ${tags.join(' / ')}.`);
+    }
+    const confidence = pickPlainObject(readiness.confidence);
+    const missingInputs = asStringArray(confidence.missing_inputs, 3);
+    if (missingInputs.includes('recent_logs')) {
+      items.push(
+        lang === 'CN'
+          ? '暂无近期皮肤记录，因此节奏保持保守。'
+          : 'No recent skin logs, so the plan stays conservative.',
+      );
+    }
+    const shopping = pickPlainObject(readiness.shopping_preview);
+    const coverage = asString(shopping.coverage_status);
+    if (coverage === 'category_only') {
+      items.push(
+        lang === 'CN'
+          ? '商品区当前是品类准备清单，不伪装成具体商品推荐。'
+          : 'Shopping guidance is category-only until catalog products are grounded.',
+      );
+    }
+    return items.slice(0, 5);
+  }
+  const notes = asStringArray(payload.notes || payload.summary_tags || payload.actions, 5)
+    .map((line) => formatTravelReminderNote(line, lang))
+    .filter(Boolean);
+  return notes.length
+    ? notes
+    : [lang === 'CN' ? '优先保湿和防晒。' : 'Prioritize hydration and SPF.'];
+}
+
 function inferRoutineCategory(raw) {
   const token = asString(raw).toLowerCase();
   if (!token) return 'treatment';
@@ -1031,9 +1270,10 @@ function buildEffectReviewCard({ card, requestId, index, language = 'EN' }) {
 
 function buildTravelCard({ card, requestId, index, language = 'EN' }) {
   const payload = isPlainObject(card && card.payload) ? card.payload : {};
-  const notes = asStringArray(payload.notes || payload.summary_tags || payload.actions, 5);
   const envPayload =
     isPlainObject(payload.env_payload) ? payload.env_payload : payload;
+  const notes = buildTravelCardReminderItems({ payload, envPayload, language });
+  const travelPlanner = buildTravelPlannerCardViewModel(envPayload, language);
   return {
     id: normalizeCardId(card && card.card_id, 'travel', requestId, index),
     type: 'travel',
@@ -1045,6 +1285,7 @@ function buildTravelCard({ card, requestId, index, language = 'EN' }) {
       {
         kind: 'travel_structured',
         env_payload: envPayload,
+        ...(travelPlanner ? { travel_planner: travelPlanner } : {}),
       },
     ],
     actions: [{ type: 'generate_packing_list', label: language === 'CN' ? '查看完整装备清单' : 'View full travel kit' }],
