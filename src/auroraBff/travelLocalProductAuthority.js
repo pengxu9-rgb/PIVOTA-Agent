@@ -288,30 +288,60 @@ function hasStrongRoleMatch(product, roleId) {
   return matcher.test(productAuthorityText(product));
 }
 
-function isRoleCompatibleProduct(product, roleId) {
+function getRoleIncompatibilityReason(product, roleId) {
   const text = productAuthorityText(product);
-  if (!text) return false;
-  if (!hasStrongRoleMatch(product, roleId)) return false;
-  if (REFILL_ONLY_NOISE_RE.test(text)) return false;
-  if (BUNDLE_SET_NOISE_RE.test(text)) return false;
-  if (BEAUTY_TOOL_NOISE_RE.test(text)) return false;
+  if (!text) return 'empty_authority_text';
+  if (!hasStrongRoleMatch(product, roleId)) return 'weak_role_match';
+  if (REFILL_ONLY_NOISE_RE.test(text)) return 'refill_only';
+  if (BUNDLE_SET_NOISE_RE.test(text)) return 'bundle_or_set';
+  if (BEAUTY_TOOL_NOISE_RE.test(text)) return 'beauty_tool_or_applicator';
 
   if (roleId === 'body_lip_hand') {
-    if (LIP_CARE_NOISE_RE.test(text)) return false;
-    if (/\b(lipstick|lip\s*gloss|lip\s*color|lip\s*colour)\b/i.test(text)) return false;
-    return true;
+    if (LIP_CARE_NOISE_RE.test(text)) return 'lip_scrub_or_exfoliator';
+    if (/\b(lipstick|lip\s*gloss|lip\s*color|lip\s*colour)\b/i.test(text)) return 'lip_color_cosmetic';
+    return null;
   }
 
-  if (COLOR_COSMETIC_NOISE_RE.test(text)) return false;
-  return true;
+  if (COLOR_COSMETIC_NOISE_RE.test(text)) return 'color_cosmetic';
+  return null;
+}
+
+function isRoleCompatibleProduct(product, roleId) {
+  return !getRoleIncompatibilityReason(product, roleId);
+}
+
+function getMarketCurrencyMismatchReason(product, market) {
+  const expected = MARKET_EXPECTED_CURRENCY[normalizeMarket(market)];
+  if (!expected) return null;
+  const currency = normalizeText(product?.currency, 12).toUpperCase();
+  if (!currency) return null;
+  if (currency === expected) return null;
+  return `currency_${currency}_expected_${expected}`;
 }
 
 function isMarketCurrencyCompatibleProduct(product, market) {
-  const expected = MARKET_EXPECTED_CURRENCY[normalizeMarket(market)];
-  if (!expected) return true;
-  const currency = normalizeText(product?.currency, 12).toUpperCase();
-  if (!currency) return true;
-  return currency === expected;
+  return !getMarketCurrencyMismatchReason(product, market);
+}
+
+function normalizeDropSample({ row, product, reason } = {}) {
+  const seedData = isPlainObject(row?.seed_data) ? row.seed_data : {};
+  const snapshot = isPlainObject(seedData.snapshot) ? seedData.snapshot : {};
+  const recall = isPlainObject(seedData.derived?.recall) ? seedData.derived.recall : {};
+  const price = Number(product?.price ?? row?.price_amount ?? snapshot.price_amount);
+  return {
+    reason: normalizeText(reason, 80) || 'unknown',
+    seed_id: normalizeText(row?.id, 40) || null,
+    external_product_id: normalizeText(product?.product_id || row?.external_product_id, 120) || null,
+    market: normalizeText(row?.market || product?.market, 12) || null,
+    domain: normalizeText(row?.domain, 120) || null,
+    brand: normalizeText(product?.brand || product?.vendor || seedData.brand || snapshot.brand || recall.brand, 80) || null,
+    title: normalizeText(product?.title || product?.name || row?.title || snapshot.title || recall.retrieval_title, 160) || null,
+    category: normalizeText(product?.category || product?.product_type || recall.category || snapshot.category, 80) || null,
+    currency: normalizeText(product?.currency || row?.price_currency || snapshot.price_currency, 12) || null,
+    price: Number.isFinite(price) && price > 0 ? price : null,
+    canonical_url: normalizeText(product?.canonical_url || product?.url || row?.canonical_url || snapshot.canonical_url, 300) || null,
+    match_score: Number.isFinite(Number(row?.match_score)) ? Number(row.match_score) : null,
+  };
 }
 
 function normalizeAuthorityCandidate(product, role) {
@@ -388,23 +418,46 @@ async function queryRoleCandidates({
   `;
   const res = await queryFn(sql, params);
   const rows = Array.isArray(res?.rows) ? res.rows : [];
-  const candidates = rows
-    .map((row) => ({
-      row,
-      product: buildExternalSeedBrandSearchProduct(row),
-    }))
-    .filter((entry) => entry.product)
-    .filter((entry) => isRoleCompatibleProduct(entry.product, role.role_id))
-    .filter((entry) => isMarketCurrencyCompatibleProduct(entry.product, market))
-    .map(({ row, product }) => ({
+  const candidates = [];
+  const dropSamples = [];
+  const dropReasonCounts = {};
+  const recordDrop = ({ row, product, reason }) => {
+    const cleanReason = normalizeText(reason, 80) || 'unknown';
+    dropReasonCounts[cleanReason] = (dropReasonCounts[cleanReason] || 0) + 1;
+    if (dropSamples.length < 8) {
+      dropSamples.push(normalizeDropSample({ row, product, reason: cleanReason }));
+    }
+  };
+
+  for (const row of rows) {
+    const product = buildExternalSeedBrandSearchProduct(row);
+    if (!product) {
+      recordDrop({ row, product: null, reason: 'unbuildable_product' });
+      continue;
+    }
+    const roleReason = getRoleIncompatibilityReason(product, role.role_id);
+    if (roleReason) {
+      recordDrop({ row, product, reason: roleReason });
+      continue;
+    }
+    const currencyReason = getMarketCurrencyMismatchReason(product, market);
+    if (currencyReason) {
+      recordDrop({ row, product, reason: currencyReason });
+      continue;
+    }
+    candidates.push({
       product,
       role,
       score: Number(row.match_score || 0) + scoreProductForRole(product, role),
-    }));
+    });
+  }
   return {
     candidates,
     rawRows: rows.length,
     viableRows: candidates.length,
+    filteredRows: rows.length - candidates.length,
+    dropReasonCounts,
+    dropSamples,
   };
 }
 
@@ -501,6 +554,9 @@ async function loadTravelLocalProductAuthorityCandidates({
         categories: role.categories,
         raw_rows: Number(roleResult?.rawRows || 0),
         viable_rows: Number(roleResult?.viableRows || rows.length || 0),
+        filtered_rows: Number(roleResult?.filteredRows || 0),
+        drop_reason_counts: isPlainObject(roleResult?.dropReasonCounts) ? roleResult.dropReasonCounts : {},
+        drop_samples: Array.isArray(roleResult?.dropSamples) ? roleResult.dropSamples : [],
       });
       collected.push(...rows);
     }
@@ -544,5 +600,8 @@ module.exports = {
     selectRoleBalancedCandidates,
     isRoleCompatibleProduct,
     isMarketCurrencyCompatibleProduct,
+    getRoleIncompatibilityReason,
+    getMarketCurrencyMismatchReason,
+    normalizeDropSample,
   },
 };

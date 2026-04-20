@@ -349,6 +349,22 @@ test('travel local product authority: rejects color cosmetics misclassified as t
   assert.equal(ids.includes('ext_good_lip_balm'), true);
   assert.equal(ids.includes('ext_good_recovery_mask'), true);
   assert.equal(result.meta.stage_counts.some((row) => Number(row.raw_rows) > Number(row.viable_rows)), true);
+
+  const allDropSamples = result.meta.stage_counts.flatMap((row) => row.drop_samples || []);
+  const allDropReasons = new Set(allDropSamples.map((row) => row.reason));
+  assert.equal(allDropReasons.has('color_cosmetic'), true);
+  assert.equal(allDropReasons.has('refill_only'), true);
+  assert.equal(allDropReasons.has('currency_EUR_expected_USD'), true);
+  assert.equal(allDropReasons.has('beauty_tool_or_applicator'), true);
+  assert.equal(allDropReasons.has('lip_scrub_or_exfoliator'), true);
+  assert.equal(allDropReasons.has('bundle_or_set'), true);
+  assert.equal(allDropSamples.some((row) => row.external_product_id === 'ext_bad_correcting_stick' && /Match Stix/i.test(row.title)), true);
+  assert.equal(allDropSamples.some((row) => row.external_product_id === 'ext_bad_eur_spf' && row.currency === 'EUR'), true);
+  assert.equal(allDropSamples.every((row) => row.title && row.reason), true);
+  const sunscreenStage = result.meta.stage_counts.find((row) => row.role_id === 'sun_protection');
+  assert.equal(sunscreenStage.drop_reason_counts.color_cosmetic, 1);
+  assert.equal(sunscreenStage.drop_reason_counts.refill_only, 1);
+  assert.equal(sunscreenStage.drop_reason_counts.currency_EUR_expected_USD, 1);
 });
 
 test('travel local product authority: returns coverage miss when only incompatible products match', async () => {
@@ -401,4 +417,7 @@ test('travel local product authority: returns coverage miss when only incompatib
   assert.equal(result.reason, 'coverage_miss');
   assert.equal(result.candidates.length, 0);
   assert.equal(result.meta.coverage_status, 'coverage_miss');
+  const dropped = result.meta.stage_counts.flatMap((row) => row.drop_samples || []);
+  assert.equal(dropped.some((row) => row.external_product_id === 'ext_bad_correcting_stick_only'), true);
+  assert.equal(dropped.some((row) => row.reason === 'color_cosmetic'), true);
 });
