@@ -1880,7 +1880,7 @@ async function runTravelPipeline(input = {}) {
       finalRewriteSourceMeta =
         finalRewrite && isPlainObject(finalRewrite.source_meta) ? finalRewrite.source_meta : null;
       if (finalRewriteUsed) {
-        assistantText = normalizeText(finalRewrite.assistant_text, 2600) || assistantText;
+        assistantText = normalizeText(finalRewrite.assistant_text, 3000) || assistantText;
       }
       pushTrace(trace, {
         skill: 'travel_final_reply_rewrite_skill',
