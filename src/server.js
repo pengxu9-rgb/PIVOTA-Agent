@@ -9673,6 +9673,94 @@ function maybeOverlayFinalIdentityRecallSearchProducts({
   };
 }
 
+async function findLiveIdentitySearchProductForRecall({
+  queryText,
+  identityProducts = [],
+  queryFn = query,
+} = {}) {
+  const normalizedQueryText = normalizeSearchTextForMatch(queryText);
+  const compactQueryText = normalizedQueryText.replace(/\s+/g, '');
+  if (!compactQueryText || compactQueryText.length < 5 || !process.env.DATABASE_URL) return null;
+  const groupProducts = Array.isArray(identityProducts)
+    ? identityProducts.filter((product) =>
+        String(product?.sellable_item_group_id || product?.product_group_id || '').trim(),
+      )
+    : [];
+  if (!groupProducts.length || typeof queryFn !== 'function') return null;
+  const groupById = new Map();
+  for (const product of groupProducts) {
+    const groupId = String(product.sellable_item_group_id || product.product_group_id || '').trim();
+    if (groupId && !groupById.has(groupId)) groupById.set(groupId, product);
+  }
+  if (!groupById.size) return null;
+
+  try {
+    const titleCompactExpr =
+      "regexp_replace(lower(coalesce(product_data->>'title', product_data->>'name', '')), '[^[:alnum:]]+', '', 'g')";
+    const result = await queryFn(
+      `
+        SELECT merchant_id, platform_product_id, product_data, cached_at
+        FROM products_cache
+        WHERE merchant_id <> $1
+          AND length(${titleCompactExpr}) >= 5
+          AND (
+            ${titleCompactExpr} = $2
+            OR ${titleCompactExpr} LIKE ('%' || $2 || '%')
+            OR $2 LIKE ('%' || ${titleCompactExpr} || '%')
+          )
+        ORDER BY
+          CASE WHEN ${titleCompactExpr} = $2 THEN 0 ELSE 1 END,
+          cached_at DESC NULLS LAST
+        LIMIT 25
+      `,
+      [EXTERNAL_SEED_MERCHANT_ID, compactQueryText],
+    );
+    for (const row of result?.rows || []) {
+      const merchantId = String(row?.merchant_id || '').trim();
+      const productId = String(row?.platform_product_id || '').trim();
+      const productData =
+        row?.product_data && typeof row.product_data === 'object' && !Array.isArray(row.product_data)
+          ? row.product_data
+          : {};
+      if (!merchantId || !productId) continue;
+      const liveIdentity = await maybeBuildLiveSyntheticPdp({
+        merchantId,
+        productId,
+        canonicalProduct: {
+          ...productData,
+          merchant_id: merchantId,
+          product_id: productId,
+          id: productId,
+          platform_product_id: productId,
+        },
+        queryFn,
+      }).catch(() => null);
+      const liveGroupId = String(liveIdentity?.sellable_item_group_id || '').trim();
+      const identityProduct = liveGroupId ? groupById.get(liveGroupId) : null;
+      if (!identityProduct) continue;
+      return overlayIdentityRecallOnSearchProduct(
+        {
+          ...productData,
+          merchant_id: merchantId,
+          product_id: productId,
+          id: productId,
+          platform_product_id: productId,
+        },
+        identityProduct,
+      );
+    }
+  } catch (err) {
+    logger.warn(
+      {
+        err: err?.message || String(err),
+        query_text: queryText,
+      },
+      'live product identity search recall failed',
+    );
+  }
+  return null;
+}
+
 async function maybeRescueSearchFromPdpIdentityGraph({
   operation,
   upstreamData,
@@ -9748,6 +9836,11 @@ async function maybeRescueSearchFromPdpIdentityGraph({
     recalledProducts.find((product) => product?.pdp_content_source === 'canonical_inherited') ||
     recalledProducts[0] ||
     null;
+  const liveIdentityProduct = await findLiveIdentitySearchProductForRecall({
+    queryText: normalizedQueryText,
+    identityProducts: recalledProducts,
+  });
+  add(liveIdentityProduct);
   existingProducts
     .filter((product) => hasSearchProductIdentityMatch(product, normalizedQueryText))
     .map((product) => overlayIdentityRecallOnSearchProduct(product, primaryIdentityProduct))
@@ -28839,6 +28932,7 @@ module.exports._debug = {
   searchPdpIdentityGroupsForQuery,
   hasSearchProductIdentityMatch,
   scoreIdentityFinalOverlayCandidate,
+  findLiveIdentitySearchProductForRecall,
   maybeOverlayFinalIdentityRecallSearchProducts,
   backfillPdpIdentityGraph,
   listPdpIdentityShadowRows,
