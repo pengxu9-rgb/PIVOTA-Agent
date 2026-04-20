@@ -850,12 +850,11 @@ function buildGeminiRequest({ model, systemPrompt, userPrompt } = {}) {
     ],
     config: {
       temperature: 0.15,
-      maxOutputTokens: 900,
+      maxOutputTokens: 1000,
       responseMimeType: 'application/json',
-      responseSchema: TRAVEL_LLM_RESPONSE_SCHEMA,
       thinkingConfig: {
         includeThoughts: false,
-        thinkingBudget: 0,
+        thinkingBudget: 64,
       },
     },
   }
@@ -896,7 +895,7 @@ function buildTravelCalibrationPrompts({ language = 'EN', travelLlmInput, baseTr
     'Never diagnose, prescribe, invent weather/date/location facts, or rewrite immutable baseline numbers.',
     'Use profile, current routine, goals, sensitivity, barrier status, destination deltas, forecast, UV, humidity, and jet lag.',
     'Advice must be specific to this trip: pre-trip, flight, first 48h, and local buying.',
-    'Return only valid JSON matching the response schema. No markdown, no prose outside JSON, no trailing commas.',
+    'Return only valid minified JSON matching the requested shape. No markdown, no prose outside JSON, no trailing commas.',
     'Keep strings short and complete. Do not use ellipses or cut-off fragments.',
     'This is a micro-patch: return only adaptive_actions, personal_focus, jetlag_sleep tips if needed, shopping_preview.brand_candidates/channels, and confidence.',
     'Do not return category_recommendations or shopping_preview.products; the deterministic travel kit already carries product categories.',
