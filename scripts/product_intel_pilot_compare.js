@@ -366,6 +366,11 @@ function inferProductKindFromContext(context) {
     return 'treatment_pads';
   }
   if (/\banti[-\s]?chafe\b/.test(text)) return 'anti_chafe_stick';
+  if (/\b(?:brush cup|brush holder|brush storage|makeup brush cup)\b/.test(titleCategory)) return 'brush_storage';
+  if (/\b(?:brush bundle|brush trio|brush duo|brush set)\b/.test(text)) return 'brush_set';
+  if (/\b(?:blending|packing|shader|crease|definer|smudge|foundation|skin tint|concealer|face|eyeliner|kyliner|tapered)?\s*brush\s*\d*\b/.test(title)) {
+    return 'makeup_brush';
+  }
   if (/\b(?:lip\s+balm|lip benefits|lip moisture)\b/.test(text)) return 'lip_balm';
   if (/\b(?:duo|trio|set|kit|bundle)\b/.test(titleCategory) && /\b(?:eye|lash|mascara|liner|brow|lip|blush|makeup|essential)\b/.test(text)) {
     return 'makeup_set';
@@ -411,6 +416,7 @@ function inferSpecificBeautySubtypeLabel(context) {
   const text = `${title} ${category} ${description}`.trim();
   if (!text) return '';
 
+  if (/\b(?:brush cup|brush holder|brush storage|makeup brush cup)\b/.test(text)) return 'Brush storage';
   if (/\b(?:brush bundle|brush trio|brush duo|brush set)\b/.test(text)) return 'Brush set';
   if (/\b(?:blending|packing|shader|foundation|skin tint|concealer|face|eyeliner|kyliner)?\s*brush\s*\d*\b/.test(title)) return 'Makeup brush';
   if (/\b(?:fragrance layering balm|fragrance balm|scent balm)\b/.test(text)) return 'Fragrance balm';
@@ -1330,6 +1336,15 @@ function buildHumanStandardBodyFromFacts(context, kind, formulaSignals) {
   if (kind === 'routine_bundle') {
     return `A multi-product routine set${withFormula} that groups cleanser, treatment, moisturizer, or SPF steps for a complete routine.`;
   }
+  if (kind === 'brush_set') {
+    return 'A makeup brush set for coordinated application, blending, and placement across multiple makeup steps.';
+  }
+  if (kind === 'makeup_brush') {
+    return 'A makeup brush for targeted product placement, blending, and finish control.';
+  }
+  if (kind === 'brush_storage') {
+    return 'A brush storage accessory for organizing makeup brushes at home or during travel.';
+  }
   if (kind === 'makeup_set') {
     return 'A makeup set that groups coordinated makeup steps so shoppers compare the kit by product role, shade range, and use occasion.';
   }
@@ -1492,6 +1507,24 @@ function buildHumanStandardWhatItIs(context, baselineBundle) {
   if (kind === 'routine_bundle') {
     return {
       headline: /bundle|set|routine/i.test(baseHeadline) ? baseHeadline : 'Routine set',
+      body: factsBody,
+    };
+  }
+  if (kind === 'brush_set') {
+    return {
+      headline: /brush set|set/i.test(baseHeadline) ? baseHeadline : 'Brush set',
+      body: factsBody,
+    };
+  }
+  if (kind === 'makeup_brush') {
+    return {
+      headline: /brush/i.test(baseHeadline) && !isGenericWhatItIsHeadline(baseHeadline) ? baseHeadline : subtypeLabel || 'Makeup brush',
+      body: factsBody,
+    };
+  }
+  if (kind === 'brush_storage') {
+    return {
+      headline: /cup|holder|storage/i.test(baseHeadline) ? baseHeadline : 'Brush storage',
       body: factsBody,
     };
   }
@@ -1703,6 +1736,15 @@ function buildHumanStandardBestFor(context, baselineBundle) {
   }
   if (kind === 'routine_bundle') {
     return [item('routine_set', 'Complete routine sets'), item('multi_step_routine', 'Multi-step routine shoppers')];
+  }
+  if (kind === 'brush_set') {
+    return [item('brush_set', 'Brush set shoppers'), item('multi_step_application', 'Multi-step application')];
+  }
+  if (kind === 'makeup_brush') {
+    return [item('targeted_application', 'Targeted application'), item('blend_control', 'Blend control')];
+  }
+  if (kind === 'brush_storage') {
+    return [item('brush_organization', 'Brush organization'), item('travel_storage', 'Travel storage')];
   }
   if (kind === 'makeup_set') {
     return [item('coordinated_makeup_steps', 'Coordinated makeup steps'), item('set_value', 'Set shoppers')];
@@ -1931,6 +1973,21 @@ function buildHumanStandardHighlights(context) {
   if (kind === 'routine_bundle') {
     return [
       highlight('Multi-step routine set', 'The bundle groups multiple routine steps so shoppers compare the set as a regimen, not a single formula.'),
+    ];
+  }
+  if (kind === 'brush_set') {
+    return [
+      highlight('Coordinated brush set', 'Groups multiple brushes for blending, placement, and finish control across makeup steps.'),
+    ];
+  }
+  if (kind === 'makeup_brush') {
+    return [
+      highlight('Targeted brush shape', 'Brush shape and fiber cues support controlled placement, blending, or definition.'),
+    ];
+  }
+  if (kind === 'brush_storage') {
+    return [
+      highlight('Brush organization', 'Keeps brushes organized, protected, or easier to access between makeup applications.'),
     ];
   }
   if (kind === 'makeup_set') {
@@ -2208,6 +2265,9 @@ function buildHumanStandardPairingNotes(kind) {
   if (kind === 'hair_treatment') return ['Use as the hair treatment step according to seller directions.'];
   if (kind === 'heat_protectant') return ['Apply before heat styling or frizz-smoothing styling steps.'];
   if (kind === 'routine_bundle') return ['Use the included products in routine order according to each product direction.'];
+  if (kind === 'brush_set') return ['Use each brush for the application area or technique it is shaped for.'];
+  if (kind === 'makeup_brush') return ['Use with the matching makeup texture and application area for placement, blending, or definition.'];
+  if (kind === 'brush_storage') return ['Store clean, dry brushes in the cup or holder between uses or during travel.'];
   if (kind === 'makeup_set') return ['Use the included makeup products in the seller-recommended order or by the look you are building.'];
   if (kind === 'primer') return ['Apply before complexion makeup to prep texture and finish.'];
   if (kind === 'treatment_pads') return ['Swipe pad over targeted areas as directed; avoid stacking with too many exfoliating actives.'];
@@ -2258,6 +2318,9 @@ function buildHumanStandardRoutineStep(kind, fallbackStep = '') {
   if (kind === 'hair_treatment') return 'hair treatment';
   if (kind === 'heat_protectant') return 'heat protectant';
   if (kind === 'routine_bundle') return 'routine set';
+  if (kind === 'brush_set') return 'brush set';
+  if (kind === 'makeup_brush') return 'makeup brush';
+  if (kind === 'brush_storage') return 'brush storage';
   if (kind === 'makeup_set') return 'makeup set';
   if (kind === 'primer') return 'primer';
   if (kind === 'treatment_pads') return 'exfoliating treatment';
@@ -2297,6 +2360,9 @@ function buildHumanStandardAmPm(kind, fallbackAmPm = []) {
       'hair_treatment',
       'heat_protectant',
       'routine_bundle',
+      'brush_set',
+      'makeup_brush',
+      'brush_storage',
       'makeup_set',
       'primer',
       'treatment_pads',
@@ -2331,6 +2397,9 @@ function inferTextureForHumanStandardKind(kind, context) {
   if (kind === 'hair_treatment') return 'treatment';
   if (kind === 'heat_protectant') return 'cream';
   if (kind === 'routine_bundle') return 'set';
+  if (kind === 'brush_set') return 'brush set';
+  if (kind === 'makeup_brush') return 'brush';
+  if (kind === 'brush_storage') return /\btravel/i.test(text) ? 'travel cup' : 'brush cup';
   if (kind === 'makeup_set') return 'set';
   if (kind === 'primer') return /\billuminat/i.test(text) ? 'illuminating primer' : 'primer';
   if (kind === 'treatment_pads') return 'pre-soaked pad';
@@ -2829,6 +2898,9 @@ function shouldPreferHumanStandardRewriteForPublish(caseRow) {
     'cleansing_oil',
     'eye_balm',
     'eye_cream',
+    'brush_set',
+    'makeup_brush',
+    'brush_storage',
     'makeup_set',
     'primer',
     'treatment_mask',
