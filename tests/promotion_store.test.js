@@ -126,4 +126,48 @@ describe('promotionStore remote cache', () => {
     );
     expect(normalized.scope.merchantIds).toBeUndefined();
   });
+
+  test('normalizes DB promotion rows with open-ended active windows', () => {
+    const { normalizeDbPromotionRow } = require('../src/promotionStore');
+
+    const normalized = normalizeDbPromotionRow({
+      id: 'promo_open_ended',
+      merchant_id: 'merch_shopify',
+      name: 'Open-ended Shopify discount',
+      type: 'MULTI_BUY_DISCOUNT',
+      description: '',
+      start_at: new Date('2025-01-01T00:00:00Z'),
+      end_at: null,
+      channels: ['creator_agents'],
+      scope: {
+        shopifyItems: {
+          __typename: 'AllDiscountItems',
+        },
+      },
+      config: {
+        source: 'shopify_discount_node',
+        discountType: 'basic',
+      },
+      expose_to_creators: true,
+      allowed_creator_ids: null,
+      human_readable_rule: 'Store offer',
+      created_at: new Date('2025-01-01T00:00:00Z'),
+      updated_at: new Date('2025-01-01T00:00:00Z'),
+      deleted_at: null,
+    });
+
+    expect(normalized).toEqual(
+      expect.objectContaining({
+        id: 'promo_open_ended',
+        merchantId: 'merch_shopify',
+        status: 'ACTIVE',
+        endAt: null,
+        scope: expect.objectContaining({
+          shopifyItems: {
+            __typename: 'AllDiscountItems',
+          },
+        }),
+      }),
+    );
+  });
 });

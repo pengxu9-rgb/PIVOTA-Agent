@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
 const { randomUUID } = require('crypto');
+const { query } = require('./db');
 
 const STORE_PATH = path.join(__dirname, '..', 'data', 'promotions.json');
 
@@ -15,6 +16,8 @@ const PROMO_ADMIN_KEY =
   process.env.PROMOTIONS_ADMIN_KEY || process.env.ADMIN_API_KEY || '';
 const PROMO_MODE = process.env.PROMOTIONS_MODE || 'local'; // 'local' | 'remote'
 const USE_REMOTE_PROMO = !!PROMO_BACKEND_BASE && PROMO_MODE !== 'local';
+const PROMO_DB_DIRECT_READ_ENABLED =
+  String(process.env.PROMOTIONS_DB_DIRECT_READ_ENABLED || 'true').toLowerCase() !== 'false';
 
 // Production safety: never allow local/demo promotions.
 // We want promotions to be sourced from pivota-backend (/agent/internal/promotions),
@@ -83,6 +86,80 @@ function isMerchantPromotionsCacheFresh(merchantId) {
   const snapshot = getLastKnownMerchantPromotionsSnapshot(merchantId);
   if (!snapshot) return false;
   return Date.now() - snapshot.fetchedAtMs < PROMO_REMOTE_CACHE_TTL_MS;
+}
+
+function isoOrNull(value) {
+  if (!value) return null;
+  if (value instanceof Date) return value.toISOString();
+  return value;
+}
+
+function computePromotionStatusFromRecord(promo, now = new Date()) {
+  if (promo?.deletedAt || promo?.deleted_at) return 'ENDED';
+  const startAt = promo?.startAt || promo?.start_at;
+  const endAt = promo?.endAt || promo?.end_at;
+  const startMs = startAt ? Date.parse(startAt instanceof Date ? startAt.toISOString() : startAt) : null;
+  const endMs = endAt ? Date.parse(endAt instanceof Date ? endAt.toISOString() : endAt) : null;
+  const nowMs = now.getTime();
+  if (Number.isFinite(startMs) && nowMs < startMs) return 'UPCOMING';
+  if (Number.isFinite(endMs) && nowMs >= endMs) return 'ENDED';
+  return 'ACTIVE';
+}
+
+function normalizeDbPromotionRow(row) {
+  if (!row || typeof row !== 'object') return null;
+  return normalizePromotionRecord({
+    id: row.id,
+    merchantId: row.merchant_id,
+    name: row.name,
+    type: row.type,
+    description: row.description || '',
+    startAt: isoOrNull(row.start_at),
+    endAt: isoOrNull(row.end_at),
+    channels: row.channels || [],
+    scope: row.scope || {},
+    config: row.config || {},
+    exposeToCreators: row.expose_to_creators,
+    allowedCreatorIds: row.allowed_creator_ids,
+    humanReadableRule: row.human_readable_rule || '',
+    status: row.status || computePromotionStatusFromRecord(row),
+    createdAt: isoOrNull(row.created_at),
+    updatedAt: isoOrNull(row.updated_at),
+    deletedAt: isoOrNull(row.deleted_at),
+  });
+}
+
+async function fetchMerchantPromotionsFromDb(merchantId) {
+  const mid = String(merchantId || '').trim();
+  if (!mid || !PROMO_DB_DIRECT_READ_ENABLED || !process.env.DATABASE_URL) return null;
+  const result = await query(
+    `
+      SELECT
+        id,
+        merchant_id,
+        name,
+        type,
+        description,
+        start_at,
+        end_at,
+        channels,
+        scope,
+        config,
+        expose_to_creators,
+        allowed_creator_ids,
+        human_readable_rule,
+        created_at,
+        updated_at,
+        deleted_at
+      FROM promotions
+      WHERE merchant_id = $1
+        AND deleted_at IS NULL
+      ORDER BY start_at DESC NULLS LAST, created_at DESC NULLS LAST
+      LIMIT 200
+    `,
+    [mid]
+  );
+  return (result.rows || []).map(normalizeDbPromotionRow).filter(Boolean);
 }
 
 // Note: Each promotion belongs to exactly one merchant (merchantId at root).
@@ -280,6 +357,22 @@ async function getPromotionsForMerchant(merchantId) {
     return snapshot.promotions;
   }
 
+  if (PROMO_DB_DIRECT_READ_ENABLED && process.env.DATABASE_URL) {
+    try {
+      const dbPromos = await fetchMerchantPromotionsFromDb(mid);
+      if (Array.isArray(dbPromos)) {
+        setLastKnownMerchantPromotions(mid, dbPromos);
+        return dbPromos;
+      }
+    } catch (err) {
+      console.warn(
+        '[promotionStore] Failed to fetch merchant promotions from DB, falling back to remote:',
+        mid,
+        err.message
+      );
+    }
+  }
+
   if (!remotePromotionsRefreshByMerchant.has(mid)) {
     const refresh = (async () => {
       try {
@@ -444,4 +537,6 @@ module.exports = {
   STORE_PATH,
   DEFAULT_MERCHANT_ID,
   normalizePromotionRecord,
+  normalizeDbPromotionRow,
+  fetchMerchantPromotionsFromDb,
 };
