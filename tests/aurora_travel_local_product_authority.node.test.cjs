@@ -74,6 +74,7 @@ function seedRow(overrides = {}) {
           category: overrides.category || 'sunscreen',
           vertical: 'skincare',
           brand: overrides.brand || 'CN Sun Lab',
+          alias_tokens: Array.isArray(overrides.aliases) ? overrides.aliases : [],
         },
       },
     },
@@ -166,6 +167,103 @@ test('travel local product authority: packable recall depth can see past pollute
   assert.equal(sunscreenStage.raw_rows, 9);
   assert.equal(sunscreenStage.viable_rows, 1);
   assert.equal(sunscreenStage.drop_reason_counts.color_cosmetic, 8);
+});
+
+test('travel local product authority: lightweight moisturizer ranking uses role intent aliases over broad category recency', async () => {
+  const result = await loadTravelLocalProductAuthorityCandidates({
+    destination: 'Seattle, United States',
+    travelReadiness: buildReadiness(),
+    message: 'What should I pack before my flight?',
+    limit: 3,
+    authoritySurface: 'packable',
+    queryFn: async (sql, params) => {
+      const categories = Array.isArray(params?.[3]) ? params[3] : [];
+      if (categories.includes('sunscreen')) {
+        return {
+          rows: [
+            seedRow({
+              id: 501,
+              market: 'US',
+              external_product_id: 'ext_good_spf_role_intent',
+              title: 'Daily SPF50 Sunscreen Fluid',
+              brand: 'US Sun Lab',
+              category: 'sunscreen',
+              summary: 'lightweight face sunscreen fluid with broad spectrum SPF50',
+              price_amount: 24,
+              price_currency: 'USD',
+              match_score: 50,
+            }),
+          ],
+        };
+      }
+      if (categories.includes('moisturizer')) {
+        return {
+          rows: [
+            seedRow({
+              id: 502,
+              market: 'US',
+              external_product_id: 'ext_broad_newer_night_cream',
+              title: 'The Global Anti-Aging Night Cream',
+              brand: 'NUXE',
+              category: 'moisturizer',
+              summary: 'rich night cream for anti-aging care',
+              price_amount: 86,
+              price_currency: 'USD',
+              match_score: 50,
+            }),
+            seedRow({
+              id: 503,
+              market: 'US',
+              external_product_id: 'ext_targeted_travel_gel_cream',
+              title: 'Cloud Surf',
+              brand: 'Bubble',
+              category: 'moisturizer',
+              summary: 'face moisturizer for daily hydration',
+              aliases: ['lightweight moisturizer', 'gel cream', 'oil-free gel moisturizer'],
+              price_amount: 16,
+              price_currency: 'USD',
+              match_score: 50,
+            }),
+          ],
+        };
+      }
+      return { rows: [] };
+    },
+  });
+
+  assert.equal(result.ok, true);
+  const moisturizer = result.candidates.find((row) => row.role_id === 'lightweight_moisturizer');
+  assert.equal(moisturizer?.product_id, 'ext_targeted_travel_gel_cream');
+});
+
+test('travel local product authority: lip balm applicator copy does not trip beauty tool gate', () => {
+  assert.equal(
+    __internal.getRoleIncompatibilityReason({
+      title: "Pro Kiss'r Luscious Lip Balm — Latte Lips",
+      category: 'Lip Balm',
+      description: 'Hydrating lip balm with a doe-foot applicator.',
+      external_seed_recall: {
+        retrieval_title: "Pro Kiss'r Luscious Lip Balm — Latte Lips",
+        retrieval_summary: 'Hydrating lip balm with a doe-foot applicator.',
+        category: 'Lip Balm',
+        alias_tokens: ['lip balm', 'travel lip balm'],
+      },
+    }, 'body_lip_hand'),
+    null,
+  );
+  assert.notEqual(
+    __internal.getRoleIncompatibilityReason({
+      title: "Showstopp'r Football Sponge",
+      category: 'Makeup Sponge',
+      description: 'Makeup sponge applicator.',
+      external_seed_recall: {
+        retrieval_title: "Showstopp'r Football Sponge",
+        retrieval_summary: 'Makeup sponge applicator.',
+        category: 'Makeup Sponge',
+      },
+    }, 'body_lip_hand'),
+    null,
+  );
 });
 
 test('travel local product authority: returns only external-seed authority rows from injected query', async () => {

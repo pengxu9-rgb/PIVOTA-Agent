@@ -24,6 +24,20 @@ const ROLE_CONFIGS = {
     label: 'Lightweight moisturizer',
     categories: ['moisturizer'],
     terms: ['gel cream', 'gel-cream', 'lightweight moisturizer', 'barrier cream', 'moisturizer', 'lotion'],
+    intentTerms: [
+      'gel cream',
+      'gel-cream',
+      'gel moisturizer',
+      'water cream',
+      'water gel',
+      'lightweight',
+      'light-weight',
+      'oil-free',
+      'non-comedogenic',
+      'barrier lotion',
+      'lotion',
+      'emulsion',
+    ],
   },
   hydration_serum: {
     label: 'Hydrating serum or essence',
@@ -79,6 +93,11 @@ const STRONG_ROLE_MATCHERS = {
   body_lip_hand: /\b(body\s*(?:sunscreen|lotion|cream|gel|milk)|hand\s*cream|lip\s*(?:balm|treatment|spf)|润唇|潤唇|护手|護手|ハンドクリーム|リップ(?:クリーム|バーム)|핸드\s*크림|립\s*(?:밤|케어))\b/i,
   cleanser: /\b(cleanser|cleansing|face\s*wash|facial\s*wash|cleansing\s*(?:oil|balm|gel|foam|milk)|卸妆|卸妝|洁面|潔面|洗顔|クレンジング|클렌저|클렌징)\b/i,
   eye_care: /\b(eye\s*(?:cream|serum|gel|patch|patches|mask|masks)|caffeine|depuff|眼霜|眼贴|眼貼|アイクリーム|アイパッチ|아이\s*(?:크림|패치))\b/i,
+};
+const ROLE_RANKING_PENALTY_MATCHERS = {
+  lightweight_moisturizer: [
+    /\b(?:night|rich|anti[-\s]?aging|firming|velvet|nutri[-\s]?fortifying|nourishing|oil[-\s]?cream)\b/i,
+  ],
 };
 
 function isPlainObject(value) {
@@ -218,6 +237,7 @@ function buildTravelLocalProductQueryPlan({ travelReadiness, message, limit = DE
         label: config.label,
         categories: uniqStrings(config.categories, 6),
         terms: uniqStrings([...textHints, ...config.terms], 12),
+        intent_terms: uniqStrings(config.intentTerms || [], 14),
       };
     });
 
@@ -255,14 +275,8 @@ function buildSeedSelectSql() {
 
 function scoreProductForRole(product, roleId) {
   const config = ROLE_CONFIGS[roleId] || {};
-  const haystack = [
-    product?.title,
-    product?.name,
-    product?.brand,
-    product?.category,
-    product?.product_type,
-    product?.description,
-  ].map((value) => normalizeText(value, 220).toLowerCase()).join(' ');
+  const haystack = productAuthorityText(product);
+  const titleText = productTitleText(product);
   let score = 0;
   for (const category of config.categories || []) {
     if (haystack.includes(String(category).toLowerCase())) score += 8;
@@ -270,6 +284,15 @@ function scoreProductForRole(product, roleId) {
   for (const term of config.terms || []) {
     const token = String(term || '').toLowerCase();
     if (token && haystack.includes(token)) score += 3;
+  }
+  for (const term of config.intentTerms || []) {
+    const token = String(term || '').toLowerCase();
+    if (!token) continue;
+    if (titleText.includes(token)) score += 14;
+    else if (haystack.includes(token)) score += 10;
+  }
+  for (const pattern of ROLE_RANKING_PENALTY_MATCHERS[roleId] || []) {
+    if (pattern.test(titleText)) score -= 8;
   }
   if (product?.image_url) score += 1;
   if (Number(product?.price || 0) > 0) score += 1;
@@ -328,7 +351,7 @@ function getRoleIncompatibilityReason(product, roleId) {
   if (REFILL_ONLY_NOISE_RE.test(text)) return 'refill_only';
   if (BUNDLE_SET_NOISE_RE.test(text)) return 'bundle_or_set';
   if (ROUTINE_IDENTITY_NOISE_RE.test(identityText)) return 'bundle_or_set';
-  if (BEAUTY_TOOL_NOISE_RE.test(text)) return 'beauty_tool_or_applicator';
+  if (BEAUTY_TOOL_NOISE_RE.test(identityText)) return 'beauty_tool_or_applicator';
 
   if (roleId === 'lightweight_moisturizer' && /\b(?:hand|hands|lip|lips|body)\b/i.test(identityText)) {
     return 'body_lip_hand_role_mismatch';
@@ -438,16 +461,20 @@ async function queryRoleCandidates({
   toolScopes,
 } = {}) {
   const patterns = likePatterns(role.terms, 18);
+  const intentPatterns = likePatterns(role.intent_terms, 18);
   const categories = uniqStrings(role.categories, 8).map((value) => value.toLowerCase());
-  const params = [market, toolScopes, patterns, categories, perRoleLimit];
+  const params = [market, toolScopes, patterns, categories, perRoleLimit, intentPatterns];
   const sql = `
     SELECT
       ${buildSeedSelectSql()},
       CASE
-        WHEN ${EXTERNAL_SEED_RECALL_SQL_FIELDS.category} = ANY($4::text[]) THEN 50
-        WHEN ${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalTitle} LIKE ANY($3::text[]) THEN 42
-        WHEN ${EXTERNAL_SEED_RECALL_SQL_FIELDS.aliasTokens} LIKE ANY($3::text[]) THEN 36
-        WHEN ${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalSummary} LIKE ANY($3::text[]) THEN 24
+        WHEN ${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalTitle} LIKE ANY($6::text[]) THEN 82
+        WHEN ${EXTERNAL_SEED_RECALL_SQL_FIELDS.aliasTokens} LIKE ANY($6::text[]) THEN 78
+        WHEN ${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalSummary} LIKE ANY($6::text[]) THEN 70
+        WHEN ${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalTitle} LIKE ANY($3::text[]) THEN 58
+        WHEN ${EXTERNAL_SEED_RECALL_SQL_FIELDS.aliasTokens} LIKE ANY($3::text[]) THEN 54
+        WHEN ${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalSummary} LIKE ANY($3::text[]) THEN 48
+        WHEN ${EXTERNAL_SEED_RECALL_SQL_FIELDS.category} = ANY($4::text[]) THEN 36
         ELSE 8
       END AS match_score
     FROM external_product_seeds
@@ -498,7 +525,7 @@ async function queryRoleCandidates({
     candidates.push({
       product,
       role,
-      score: Number(row.match_score || 0) + scoreProductForRole(product, role),
+      score: Number(row.match_score || 0) + scoreProductForRole(product, role.role_id),
     });
   }
   return {
@@ -602,6 +629,7 @@ async function loadTravelLocalProductAuthorityCandidates({
       stageCounts.push({
         role_id: role.role_id,
         query_terms: role.terms,
+        intent_terms: role.intent_terms,
         categories: role.categories,
         raw_rows: Number(roleResult?.rawRows || 0),
         viable_rows: Number(roleResult?.viableRows || rows.length || 0),
@@ -657,5 +685,6 @@ module.exports = {
     getRoleIncompatibilityReason,
     getMarketCurrencyMismatchReason,
     normalizeDropSample,
+    scoreProductForRole,
   },
 };
