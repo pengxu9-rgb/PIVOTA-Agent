@@ -339,12 +339,16 @@ function normalizePromotionRecord(promo) {
     (promo.scope?.merchantIds && promo.scope.merchantIds[0]) ||
     null;
 
+  const rawScope = promo.scope && typeof promo.scope === 'object' ? promo.scope : {};
   const normalizedScope = {
-    productIds: promo.scope?.productIds || promo.scope?.product_ids || [],
-    categoryIds: promo.scope?.categoryIds || promo.scope?.category_ids || [],
-    brandIds: promo.scope?.brandIds || promo.scope?.brand_ids || [],
-    global: promo.scope?.global === true,
+    ...rawScope,
+    productIds: rawScope.productIds || rawScope.product_ids || [],
+    categoryIds: rawScope.categoryIds || rawScope.category_ids || [],
+    brandIds: rawScope.brandIds || rawScope.brand_ids || [],
+    global: rawScope.global === true,
   };
+  delete normalizedScope.merchantIds;
+  delete normalizedScope.merchant_ids;
 
   if (!scopedMerchant) {
     console.warn(

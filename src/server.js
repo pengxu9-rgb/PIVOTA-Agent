@@ -3159,6 +3159,596 @@ function hasSavingsPresentationFields(source) {
   });
 }
 
+const STORE_DISCOUNT_METADATA_SOURCES = Object.freeze({
+  shopify_discount_node: 'shopify',
+});
+
+const STORE_DISCOUNT_DISPLAY_ONLY_POLICY = Object.freeze({
+  final_authority: 'store_platform_quote',
+  affects_checkout_total_before_quote: false,
+  requires_storefront_allocation_for_applied_amount: true,
+});
+
+const PDP_STORE_DISCOUNT_EVIDENCE_ENABLED =
+  String(process.env.PDP_STORE_DISCOUNT_EVIDENCE_ENABLED || 'true').toLowerCase() !== 'false';
+const PDP_STORE_DISCOUNT_EVIDENCE_BUDGET_MS = Math.max(
+  0,
+  Math.min(1000, Number(process.env.PDP_STORE_DISCOUNT_EVIDENCE_BUDGET_MS ?? 180) || 180),
+);
+
+function asStoreDiscountArray(value) {
+  if (value == null) return [];
+  if (Array.isArray(value)) return value;
+  if (value instanceof Set) return Array.from(value);
+  return [value];
+}
+
+function textValue(value) {
+  if (value == null) return '';
+  if (typeof value === 'string') return value.trim();
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value).trim();
+  if (typeof value === 'object') {
+    return firstNonEmptyString(
+      value.id,
+      value.gid,
+      value.admin_graphql_api_id,
+      value.productId,
+      value.product_id,
+      value.productGid,
+      value.product_gid,
+      value.variantId,
+      value.variant_id,
+      value.variantGid,
+      value.variant_gid,
+      value.code,
+      value.title,
+      value.name,
+    ) || '';
+  }
+  return String(value).trim();
+}
+
+function listTextValues(value) {
+  return asStoreDiscountArray(value)
+    .map((item) => textValue(item))
+    .filter(Boolean);
+}
+
+function idCandidateSet(...values) {
+  const out = new Set();
+  for (const value of values) {
+    const text = textValue(value);
+    if (!text) continue;
+    out.add(text);
+    const trimmed = text.replace(/^gid:\/\/shopify\/[^/]+\//i, '').trim();
+    if (trimmed && trimmed !== text) out.add(trimmed);
+    const numericTail = text.match(/(\d+)(?:\D*)$/);
+    if (numericTail && numericTail[1]) out.add(numericTail[1]);
+  }
+  return out;
+}
+
+function candidateSetMatchesList(candidateSet, values) {
+  const expanded = idCandidateSet(...listTextValues(values));
+  for (const value of expanded) {
+    if (candidateSet.has(value)) return true;
+  }
+  return false;
+}
+
+function getNestedValue(obj, ...path) {
+  let current = obj;
+  for (const key of path) {
+    if (!current || typeof current !== 'object') return undefined;
+    current = current[key];
+  }
+  return current;
+}
+
+function numberFromMoneyLike(value) {
+  if (value == null || value === '') return null;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  if (typeof value === 'object') {
+    return numberFromMoneyLike(
+      value.amount ??
+        value.current?.amount ??
+        value.price ??
+        value.value ??
+        value.subtotal ??
+        value.minimumSubtotal,
+    );
+  }
+  return null;
+}
+
+function moneyString(value) {
+  const amount = numberFromMoneyLike(value);
+  return amount == null ? null : amount.toFixed(2);
+}
+
+function parseDateMs(value) {
+  const text = textValue(value);
+  if (!text) return null;
+  const parsed = Date.parse(text);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function emptyStoreDiscountEvidence(reason = 'no_store_discounts') {
+  return {
+    pricing_confidence: 'not_applicable',
+    offers: [],
+    resolver_scope: 'store_discount_metadata',
+    supported_platforms: Array.from(new Set(Object.values(STORE_DISCOUNT_METADATA_SOURCES))).sort(),
+    decisions: [{ type: 'store_discount_resolution', reason }],
+    presentation_contract_version: 'savings.v1',
+  };
+}
+
+function storeDiscountScopeStatus(promo, target) {
+  const scope = promo?.scope && typeof promo.scope === 'object' ? promo.scope : {};
+  const cfg = promo?.config && typeof promo.config === 'object' ? promo.config : {};
+  const productIds = target?.product_ids || idCandidateSet(target?.product_id);
+  const variantIds = target?.variant_ids || idCandidateSet(target?.variant_id);
+
+  if (scope.global === true) return { matches: true, status: 'available', reason: 'global_scope' };
+
+  const shopifyItems =
+    scope.shopifyItems && typeof scope.shopifyItems === 'object'
+      ? scope.shopifyItems
+      : scope.shopify_items && typeof scope.shopify_items === 'object'
+        ? scope.shopify_items
+        : null;
+
+  if (shopifyItems) {
+    const typename = textValue(shopifyItems.__typename);
+    if (typename === 'AllDiscountItems') {
+      return { matches: true, status: 'available', reason: 'all_discount_items' };
+    }
+    const explicitProductIds =
+      shopifyItems.productIds ||
+      shopifyItems.product_ids ||
+      shopifyItems.products ||
+      shopifyItems.productGids ||
+      shopifyItems.product_gids;
+    const explicitVariantIds =
+      shopifyItems.variantIds ||
+      shopifyItems.variant_ids ||
+      shopifyItems.variants ||
+      shopifyItems.variantGids ||
+      shopifyItems.variant_gids;
+    if (listTextValues(explicitProductIds).length || listTextValues(explicitVariantIds).length) {
+      if (candidateSetMatchesList(productIds, explicitProductIds)) {
+        return { matches: true, status: 'available', reason: 'product_scope_match' };
+      }
+      if (candidateSetMatchesList(variantIds, explicitVariantIds)) {
+        return { matches: true, status: 'available', reason: 'variant_scope_match' };
+      }
+      return { matches: false, status: 'not_applicable', reason: 'target_out_of_scope' };
+    }
+    if (typename) return { matches: true, status: 'unverified', reason: `shopify_scope_${typename}` };
+  }
+
+  const scopeProductIds = scope.productIds || scope.product_ids || scope.products || scope.productGids;
+  const scopeVariantIds = scope.variantIds || scope.variant_ids || scope.variants || scope.variantGids;
+  if (listTextValues(scopeProductIds).length || listTextValues(scopeVariantIds).length) {
+    if (candidateSetMatchesList(productIds, scopeProductIds)) {
+      return { matches: true, status: 'available', reason: 'product_scope_match' };
+    }
+    if (candidateSetMatchesList(variantIds, scopeVariantIds)) {
+      return { matches: true, status: 'available', reason: 'variant_scope_match' };
+    }
+    return { matches: false, status: 'not_applicable', reason: 'target_out_of_scope' };
+  }
+
+  const cfgItems = cfg.customerGets && typeof cfg.customerGets === 'object' ? cfg.customerGets.items : null;
+  if (cfgItems && typeof cfgItems === 'object') {
+    const typename = textValue(cfgItems.__typename);
+    if (typename === 'AllDiscountItems') {
+      return { matches: true, status: 'available', reason: 'all_discount_items' };
+    }
+    if (typename) return { matches: true, status: 'unverified', reason: `shopify_scope_${typename}` };
+  }
+
+  return { matches: true, status: 'unverified', reason: 'scope_missing' };
+}
+
+function storeDiscountMinimumStatus(promo, target) {
+  const cfg = promo?.config && typeof promo.config === 'object' ? promo.config : {};
+  const minimum = cfg.minimumRequirement && typeof cfg.minimumRequirement === 'object'
+    ? cfg.minimumRequirement
+    : null;
+  if (!minimum) return { status: 'available', minimum: {} };
+
+  const typename = textValue(minimum.__typename) || 'minimum_requirement';
+  const subtotalAmount =
+    getNestedValue(minimum, 'greaterThanOrEqualToSubtotal', 'amount') ||
+    getNestedValue(minimum, 'amount', 'amount') ||
+    minimum.subtotal ||
+    minimum.minimumSubtotal;
+  const quantityValue =
+    minimum.greaterThanOrEqualToQuantity ||
+    minimum.quantity ||
+    minimum.minimumQuantity;
+  const minimumDetails = { type: typename };
+
+  const subtotalRequired = numberFromMoneyLike(subtotalAmount);
+  if (subtotalRequired != null) {
+    const current = numberFromMoneyLike(target?.subtotal) || 0;
+    const remaining = Math.max(0, subtotalRequired - current);
+    return {
+      status: remaining <= 0 ? 'available' : 'unlockable',
+      minimum: {
+        ...minimumDetails,
+        subtotal_required: moneyString(subtotalRequired),
+        current_subtotal: moneyString(current),
+        remaining_subtotal: moneyString(remaining),
+        currency: target?.currency || null,
+      },
+    };
+  }
+
+  const quantityRequired =
+    quantityValue == null || quantityValue === '' ? null : Math.max(0, Math.floor(Number(quantityValue)));
+  if (quantityRequired != null && Number.isFinite(quantityRequired)) {
+    const currentQty = Math.max(0, Math.floor(Number(target?.quantity || 0)));
+    const remainingQty = Math.max(0, quantityRequired - currentQty);
+    return {
+      status: remainingQty <= 0 ? 'available' : 'unlockable',
+      minimum: {
+        ...minimumDetails,
+        quantity_required: quantityRequired,
+        current_quantity: currentQty,
+        remaining_quantity: remainingQty,
+      },
+    };
+  }
+
+  return { status: 'unlockable', minimum: minimumDetails };
+}
+
+function discountBadgeForPromotion(promo) {
+  const cfg = promo?.config && typeof promo.config === 'object' ? promo.config : {};
+  const discountType = textValue(cfg.discountType).toLowerCase();
+  const method = textValue(cfg.discountMethod).toLowerCase();
+  const codes = listTextValues(cfg.codes);
+  const summary = firstNonEmptyString(cfg.summary, promo?.humanReadableRule, promo?.description);
+  const name = firstNonEmptyString(promo?.name);
+
+  if (discountType === 'free_shipping' || promo?.type === 'FREE_SHIPPING') {
+    return codes.length ? 'Free shipping code' : 'Free shipping';
+  }
+  if (discountType === 'bxgy') return summary || name || 'Buy more, save';
+  if (method === 'code' && codes.length) return `Code ${codes[0]}`;
+  return summary || name || 'Store offer';
+}
+
+function displayForStoreDiscountPromotion(promo, status, minimum) {
+  const cfg = promo?.config && typeof promo.config === 'object' ? promo.config : {};
+  const summary = firstNonEmptyString(cfg.summary, promo?.humanReadableRule, promo?.description);
+  const badge = discountBadgeForPromotion(promo);
+  let shortCopy;
+  if (status === 'unlockable') {
+    shortCopy = summary || 'Add more to unlock this store offer.';
+  } else if (status === 'unverified') {
+    shortCopy = summary || 'Store offer may be available at checkout.';
+  } else {
+    shortCopy = summary || 'Store offer available at checkout.';
+  }
+  let detailCopy = summary || promo?.name || shortCopy;
+  if (minimum?.remaining_quantity) {
+    detailCopy = `Add ${minimum.remaining_quantity} more to unlock this offer.`;
+  } else if (minimum?.remaining_subtotal) {
+    detailCopy = `Add ${minimum.remaining_subtotal} more to unlock this offer.`;
+  }
+  return {
+    badge,
+    short_copy: shortCopy,
+    detail_copy: detailCopy,
+    disclaimer: 'Final eligibility and amounts are verified by the store platform quote and checkout.',
+  };
+}
+
+function normalizeStoreDiscountOffer(promo, target, decisions) {
+  const cfg = promo?.config && typeof promo.config === 'object' ? promo.config : {};
+  const metadataSource = textValue(cfg.source);
+  const platform = STORE_DISCOUNT_METADATA_SOURCES[metadataSource];
+  if (!platform) {
+    decisions.push({
+      type: 'store_discount_skipped',
+      store_discount_id: promo?.id,
+      reason: 'unsupported_store_discount_source',
+      source: metadataSource || null,
+    });
+    return null;
+  }
+
+  const now = Date.now();
+  const statusText = textValue(promo?.status).toUpperCase();
+  const startsAtMs = parseDateMs(promo?.startAt || promo?.start_at);
+  const endsAtMs = parseDateMs(promo?.endAt || promo?.end_at);
+  if (statusText === 'UPCOMING' || (startsAtMs != null && now < startsAtMs)) {
+    decisions.push({ type: 'store_discount_skipped', store_discount_id: promo?.id, reason: 'not_started' });
+    return null;
+  }
+  if (statusText === 'ENDED' || (endsAtMs != null && now >= endsAtMs)) {
+    decisions.push({ type: 'store_discount_skipped', store_discount_id: promo?.id, reason: 'expired' });
+    return null;
+  }
+  const shopifyStatus = textValue(cfg.status).toLowerCase();
+  if (shopifyStatus && !['active', 'scheduled'].includes(shopifyStatus)) {
+    decisions.push({
+      type: 'store_discount_skipped',
+      store_discount_id: promo?.id,
+      reason: 'inactive_shopify_status',
+      status: cfg.status,
+    });
+    return null;
+  }
+
+  const scope = storeDiscountScopeStatus(promo, target);
+  if (!scope.matches) {
+    decisions.push({ type: 'store_discount_skipped', store_discount_id: promo?.id, reason: scope.reason });
+    return null;
+  }
+
+  const requirement = storeDiscountMinimumStatus(promo, target);
+  const statePriority = { available: 0, unlockable: 1, unverified: 2 };
+  const status = [scope.status, requirement.status].sort(
+    (a, b) => (statePriority[b] ?? 2) - (statePriority[a] ?? 2),
+  )[0] || 'unverified';
+  const discountType = textValue(cfg.discountType || 'unknown') || 'unknown';
+  const isFreeShipping = discountType === 'free_shipping' || promo?.type === 'FREE_SHIPPING';
+
+  return {
+    store_discount_id: promo?.id,
+    label: firstNonEmptyString(promo?.name, cfg.summary, 'Store offer'),
+    source: 'store_discount_metadata',
+    source_system: metadataSource,
+    platform,
+    shopify_discount_node_id: cfg.shopifyDiscountNodeId,
+    discount_method: cfg.discountMethod,
+    discount_type: discountType,
+    discount_classes: cfg.discountClasses || [],
+    status,
+    scope_status: scope.status,
+    scope_reason: scope.reason,
+    codes: listTextValues(cfg.codes),
+    combines_with: cfg.combinesWith || {},
+    context: cfg.context && typeof cfg.context === 'object' ? cfg.context : {},
+    customer_gets: cfg.customerGets || {},
+    customer_buys: cfg.customerBuys || {},
+    minimum_requirement: Object.keys(requirement.minimum || {}).length
+      ? requirement.minimum
+      : cfg.minimumRequirement || {},
+    usage_limit: cfg.usageLimit,
+    applies_once_per_customer: cfg.appliesOncePerCustomer,
+    async_usage_count: cfg.asyncUsageCount,
+    starts_at: promo?.startAt || promo?.start_at || null,
+    ends_at: promo?.endAt || promo?.end_at || null,
+    display: displayForStoreDiscountPromotion(promo, status, requirement.minimum),
+    ...(isFreeShipping
+      ? {
+          shipping_coverage: {
+            status: 'address_dependent',
+            display_copy: 'Coverage depends on the delivery address and Shopify shipping zone.',
+          },
+        }
+      : {}),
+    application_policy: { ...STORE_DISCOUNT_DISPLAY_ONLY_POLICY },
+  };
+}
+
+function storeDiscountPricingConfidence(offers) {
+  if (!Array.isArray(offers) || !offers.length) return 'not_applicable';
+  const statuses = new Set(offers.map((offer) => textValue(offer?.status)).filter(Boolean));
+  if (statuses.has('available')) return 'metadata_available';
+  if (statuses.has('unlockable')) return 'metadata_unlockable';
+  return 'unverified';
+}
+
+function summarizeStoreDiscountEvidence(evidence) {
+  const offers = Array.isArray(evidence?.offers)
+    ? evidence.offers.filter((offer) => offer && typeof offer === 'object')
+    : [];
+  const badges = [];
+  const typeCounts = {};
+  offers.forEach((offer) => {
+    const badge = textValue(offer.display?.badge);
+    if (badge && !badges.includes(badge)) badges.push(badge);
+    const discountType = textValue(offer.discount_type || 'unknown') || 'unknown';
+    typeCounts[discountType] = (typeCounts[discountType] || 0) + 1;
+  });
+  return {
+    has_store_discounts: offers.length > 0,
+    pricing_confidence: evidence?.pricing_confidence || 'not_applicable',
+    offers_count: offers.length,
+    discount_type_counts: typeCounts,
+    badges,
+  };
+}
+
+function storeDiscountBadges(evidence) {
+  return summarizeStoreDiscountEvidence(evidence).badges;
+}
+
+function storeDiscountEvidenceHasOffers(evidence) {
+  return Array.isArray(evidence?.offers) && evidence.offers.length > 0;
+}
+
+function resolveStoreDiscountEvidenceFromPromotionMetadata({ promotions, targets }) {
+  const normalizedTargets = Array.isArray(targets) ? targets.filter((target) => target?.target_id) : [];
+  if (!normalizedTargets.length) return {};
+  const promoList = Array.isArray(promotions) ? promotions : [];
+  const out = {};
+  normalizedTargets.forEach((target) => {
+    const decisions = [];
+    const offers = [];
+    promoList.forEach((promo) => {
+      if (!promo || typeof promo !== 'object') return;
+      const merchantId = firstNonEmptyString(promo.merchantId, promo.merchant_id);
+      if (merchantId && merchantId !== target.merchant_id) return;
+      if (promo.deletedAt || promo.deleted_at) return;
+      const offer = normalizeStoreDiscountOffer(promo, target, decisions);
+      if (offer) offers.push(offer);
+    });
+    out[target.target_id] = {
+      pricing_confidence: storeDiscountPricingConfidence(offers),
+      offers,
+      resolver_scope: 'store_discount_metadata',
+      supported_platforms: Array.from(new Set(Object.values(STORE_DISCOUNT_METADATA_SOURCES))).sort(),
+      decisions,
+      presentation_contract_version: 'savings.v1',
+    };
+  });
+  return out;
+}
+
+function buildStoreDiscountTargetKey(member, product) {
+  const merchantId = firstNonEmptyString(member?.merchant_id, product?.merchant_id);
+  const productId = firstNonEmptyString(member?.product_id, product?.product_id, product?.id);
+  return merchantId && productId ? `${merchantId}:${productId}` : null;
+}
+
+function buildStoreDiscountTargetForOfferEntry(entry) {
+  const member = entry?.member || {};
+  const product = entry?.product || {};
+  const merchantId = firstNonEmptyString(member.merchant_id, product.merchant_id);
+  if (!merchantId || merchantId === EXTERNAL_SEED_MERCHANT_ID) return null;
+  const selectedVariant = findOfferVariantForAxes(product, member?.variant_axes);
+  const currency =
+    firstNonEmptyString(
+      selectedVariant?.currency,
+      selectedVariant?.price?.currency,
+      selectedVariant?.price?.current?.currency,
+      product.currency,
+      product.price?.currency,
+      product.price?.current?.currency,
+      'USD',
+    ) || 'USD';
+  const targetProductId = firstNonEmptyString(
+    product.platform_product_id,
+    product.platformProductId,
+    product.product_id,
+    product.productId,
+    product.id,
+    member.product_id,
+  );
+  const targetVariantId = firstNonEmptyString(
+    selectedVariant?.variant_id,
+    selectedVariant?.variantId,
+    selectedVariant?.id,
+    product.variant_id,
+    product.variantId,
+    product.sku_id,
+    product.skuId,
+  );
+  const priceAmount = numberFromMoneyLike(
+    selectedVariant?.price ??
+      selectedVariant?.price_amount ??
+      selectedVariant?.priceAmount ??
+      product.price ??
+      product.price_amount ??
+      product.priceAmount,
+  );
+  const targetId = buildStoreDiscountTargetKey(member, product);
+  if (!targetId || (!targetProductId && !targetVariantId)) return null;
+  return {
+    target_id: targetId,
+    merchant_id: merchantId,
+    product_id: targetProductId || '',
+    product_ids: idCandidateSet(targetProductId, product.product_id, product.productId, product.id, member.product_id),
+    variant_id: targetVariantId || '',
+    variant_ids: idCandidateSet(targetVariantId, selectedVariant?.sku_id, selectedVariant?.skuId),
+    quantity: 1,
+    subtotal: priceAmount == null ? null : priceAmount,
+    currency,
+  };
+}
+
+async function resolveStoreDiscountEvidenceForOfferEntries(entries) {
+  const startedAt = Date.now();
+  const diagnostics = {
+    enabled: PDP_STORE_DISCOUNT_EVIDENCE_ENABLED,
+    result: 'skipped',
+    target_count: 0,
+    promotion_count: 0,
+    duration_ms: 0,
+  };
+  if (!PDP_STORE_DISCOUNT_EVIDENCE_ENABLED) {
+    diagnostics.reason = 'disabled';
+    return { evidenceByEntryKey: new Map(), diagnostics };
+  }
+  const targets = (Array.isArray(entries) ? entries : [])
+    .map((entry) => buildStoreDiscountTargetForOfferEntry(entry))
+    .filter(Boolean);
+  diagnostics.target_count = targets.length;
+  if (!targets.length) {
+    diagnostics.reason = 'no_internal_targets';
+    diagnostics.duration_ms = Date.now() - startedAt;
+    return { evidenceByEntryKey: new Map(), diagnostics };
+  }
+
+  try {
+    const promotionsPromise = getAllPromotions();
+    promotionsPromise.catch(() => {});
+    const timeoutPromise = new Promise((resolve) => {
+      if (PDP_STORE_DISCOUNT_EVIDENCE_BUDGET_MS <= 0) return;
+      setTimeout(() => resolve({ __timed_out: true }), PDP_STORE_DISCOUNT_EVIDENCE_BUDGET_MS);
+    });
+    const promotions =
+      PDP_STORE_DISCOUNT_EVIDENCE_BUDGET_MS > 0
+        ? await Promise.race([promotionsPromise, timeoutPromise])
+        : await promotionsPromise;
+    if (promotions && promotions.__timed_out) {
+      diagnostics.result = 'timeout';
+      diagnostics.reason = 'promotion_metadata_budget_exceeded';
+      diagnostics.budget_ms = PDP_STORE_DISCOUNT_EVIDENCE_BUDGET_MS;
+      diagnostics.duration_ms = Date.now() - startedAt;
+      return { evidenceByEntryKey: new Map(), diagnostics };
+    }
+    const promoList = Array.isArray(promotions) ? promotions : [];
+    diagnostics.promotion_count = promoList.length;
+    const evidenceByTarget = resolveStoreDiscountEvidenceFromPromotionMetadata({
+      promotions: promoList,
+      targets,
+    });
+    const evidenceByEntryKey = new Map();
+    Object.entries(evidenceByTarget).forEach(([key, evidence]) => {
+      if (storeDiscountEvidenceHasOffers(evidence)) evidenceByEntryKey.set(key, evidence);
+    });
+    diagnostics.result = 'success';
+    diagnostics.attached_count = evidenceByEntryKey.size;
+    diagnostics.duration_ms = Date.now() - startedAt;
+    return { evidenceByEntryKey, diagnostics };
+  } catch (err) {
+    diagnostics.result = 'error';
+    diagnostics.reason = 'promotion_metadata_error';
+    diagnostics.message = String(err?.message || err).slice(0, 240);
+    diagnostics.duration_ms = Date.now() - startedAt;
+    return { evidenceByEntryKey: new Map(), diagnostics };
+  }
+}
+
+function mergeGeneratedStoreDiscountEvidence(savingsFields, generatedEvidence) {
+  const out = savingsFields && typeof savingsFields === 'object' ? { ...savingsFields } : {};
+  const existing = out.store_discount_evidence;
+  if (storeDiscountEvidenceHasOffers(existing)) {
+    if (!out.store_discount_summary) out.store_discount_summary = summarizeStoreDiscountEvidence(existing);
+    if (!out.store_discount_badges) out.store_discount_badges = storeDiscountBadges(existing);
+    return out;
+  }
+  if (storeDiscountEvidenceHasOffers(generatedEvidence)) {
+    out.store_discount_evidence = generatedEvidence;
+    out.store_discount_summary = summarizeStoreDiscountEvidence(generatedEvidence);
+    out.store_discount_badges = storeDiscountBadges(generatedEvidence);
+  }
+  return out;
+}
+
 function stripSavingsPresentationFields(source) {
   if (!source || typeof source !== 'object') return source;
   const out = { ...source };
@@ -4245,6 +4835,13 @@ async function buildOffersFromGroupMembers(args) {
   const products = fetched.map((entry) => entry.product).filter(Boolean);
   if (!products.length) return null;
 
+  const storeDiscountStartedAt = Date.now();
+  const {
+    evidenceByEntryKey: storeDiscountEvidenceByEntryKey,
+    diagnostics: storeDiscountDiagnostics,
+  } = await resolveStoreDiscountEvidenceForOfferEntries(fetched);
+  timings.store_discount_evidence = Date.now() - storeDiscountStartedAt;
+
   const resolvedProductGroupId =
     productGroupId ||
     (canonicalProductRef?.platform
@@ -4298,6 +4895,16 @@ async function buildOffersFromGroupMembers(args) {
         ? [Number(etaRaw[0]) || 0, Number(etaRaw[1]) || 0]
         : undefined;
     const offerVariants = buildOfferVariantsForPayload(p, currency);
+    const generatedStoreDiscountEvidence = storeDiscountEvidenceByEntryKey.get(
+      buildStoreDiscountTargetKey(member, p),
+    );
+    const savingsPresentationFields = mergeGeneratedStoreDiscountEvidence(
+      {
+        ...pickSavingsPresentationFields(p),
+        ...pickSavingsPresentationFields(selectedVariant),
+      },
+      generatedStoreDiscountEvidence,
+    );
 
     return {
       offer_id:
@@ -4351,8 +4958,7 @@ async function buildOffersFromGroupMembers(args) {
       ...(Object.keys(selectedOptions).length ? { selected_options: selectedOptions } : {}),
       ...(selectedVariant?.title ? { variant_title: String(selectedVariant.title).trim() } : {}),
       ...(offerVariants.length ? { variants: offerVariants } : {}),
-      ...pickSavingsPresentationFields(p),
-      ...pickSavingsPresentationFields(selectedVariant),
+      ...savingsPresentationFields,
       ...(member?.source_kind ? { source_kind: member.source_kind } : {}),
       ...(member?.source_tier ? { source_tier: member.source_tier } : {}),
       ...buildOfferPurchaseMetadataFromProduct(p),
@@ -4387,6 +4993,7 @@ async function buildOffersFromGroupMembers(args) {
             unresolved_members: unresolvedMembers,
             member_fetches: memberFetchDiagnostics,
             merchant_name_lookup_enabled: merchantProfileNameLookupEnabled,
+            store_discount_evidence: storeDiscountDiagnostics,
           },
         }
       : {}),
@@ -29765,6 +30372,9 @@ module.exports._debug = {
   buildCacheStageDiagnosticBundle,
   buildCacheStageSnapshot,
   buildOffersFromGroupMembers,
+  resolveStoreDiscountEvidenceFromPromotionMetadata,
+  summarizeStoreDiscountEvidence,
+  storeDiscountBadges,
   resolvePdpSimilarWithBudget,
   mergeRecommendationModuleWithEnvelope,
   mergeInvokeGatewayAuditMetadata,

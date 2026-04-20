@@ -58,4 +58,38 @@ describe('promotionStore remote cache', () => {
     await Promise.resolve();
     jest.useRealTimers();
   });
+
+  test('preserves Shopify discount scope metadata while stripping legacy merchant scope', () => {
+    const { normalizePromotionRecord } = require('../src/promotionStore');
+
+    const normalized = normalizePromotionRecord({
+      id: 'promo_shopify_scope',
+      merchantId: 'merch_shopify',
+      scope: {
+        merchantIds: ['legacy_should_not_remain'],
+        global: false,
+        shopifyItems: {
+          __typename: 'DiscountProducts',
+          productIds: ['gid://shopify/Product/10064558096681'],
+        },
+      },
+      config: {
+        source: 'shopify_discount_node',
+      },
+    });
+
+    expect(normalized.scope).toEqual(
+      expect.objectContaining({
+        global: false,
+        shopifyItems: {
+          __typename: 'DiscountProducts',
+          productIds: ['gid://shopify/Product/10064558096681'],
+        },
+        productIds: [],
+        categoryIds: [],
+        brandIds: [],
+      }),
+    );
+    expect(normalized.scope.merchantIds).toBeUndefined();
+  });
 });
