@@ -141,6 +141,72 @@ describe('pdpIdentityGraph', () => {
     );
   });
 
+  test('composeSyntheticCanonicalProduct keeps reviewed external content while selecting internal commerce', () => {
+    const { buildIdentityListingFromProduct, composeSyntheticCanonicalProduct } = require('../../src/services/pdpIdentityGraph');
+
+    const externalReviewed = buildIdentityListingFromProduct({
+      merchantId: 'external_seed',
+      productId: 'ext_krave_gbr_45',
+      sourceKind: 'external_seed',
+      sourceTier: 'brand',
+      product: {
+        title: 'Great Barrier Relief',
+        brand: 'KraveBeauty',
+        description: 'Reviewed canonical overview.',
+        pdp_how_to_use_raw: 'Apply one to two pumps after toner.',
+        source_url: 'https://kravebeauty.com/products/great-barrier-relief',
+        variants: [
+          {
+            variant_id: 'seed-standard',
+            title: 'Standard - 45 mL',
+            option1: '45 mL',
+          },
+        ],
+      },
+    });
+    const internalShopify = buildIdentityListingFromProduct({
+      merchantId: 'merch_krave',
+      productId: '10064558096681',
+      sourceKind: 'internal',
+      sourceTier: 'merchant',
+      product: {
+        title: 'Great Barrier Relief',
+        vendor: 'KraveBeauty',
+        description: 'Merchant upload should not replace reviewed copy.',
+        price: { amount: 28, currency: 'USD' },
+        store_discount_badges: ['10% off'],
+        variants: [
+          {
+            id: 'shopify-standard',
+            title: 'Standard - 45 mL',
+            price: { amount: 28, currency: 'USD' },
+            option1: '45 mL',
+          },
+        ],
+      },
+    });
+
+    const composed = composeSyntheticCanonicalProduct({
+      requestedListing: internalShopify,
+      exactListings: [internalShopify, externalReviewed],
+      lineListings: [internalShopify, externalReviewed],
+    });
+
+    expect(composed.canonical_product_ref).toEqual({
+      merchant_id: 'external_seed',
+      product_id: 'ext_krave_gbr_45',
+    });
+    expect(composed.selected_commerce_ref).toEqual({
+      merchant_id: 'merch_krave',
+      product_id: '10064558096681',
+    });
+    expect(composed.product.description).toBe('Reviewed canonical overview.');
+    expect(composed.product.pdp_how_to_use_raw).toBe('Apply one to two pumps after toner.');
+    expect(composed.product.price).toEqual({ amount: 28, currency: 'USD' });
+    expect(composed.product.store_discount_badges).toEqual(['10% off']);
+    expect(composed.product.pdp_content_source).toBe('canonical_inherited');
+  });
+
   test('buildIdentityListingFromProduct groups multi-page shade siblings into one product line', () => {
     const {
       buildIdentityListingFromProduct,

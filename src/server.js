@@ -1875,6 +1875,10 @@ const PDP_OFFER_GROUP_MEMBER_FETCH_TIMEOUT_MS = Math.max(
   100,
   parseTimeoutMs(process.env.PDP_OFFER_GROUP_MEMBER_FETCH_TIMEOUT_MS, 750),
 );
+const PDP_SIMILAR_SYNC_BUDGET_MS = Math.max(
+  250,
+  parseTimeoutMs(process.env.PDP_SIMILAR_SYNC_BUDGET_MS, 1800),
+);
 const PDP_CORE_PREWARM_TIMEOUT_MS = Math.max(
   1000,
   parseTimeoutMs(process.env.PDP_CORE_PREWARM_TIMEOUT_MS, 6500),
@@ -3326,6 +3330,10 @@ function buildOfferProductProjection(product) {
       product.id ||
       '',
   ).trim();
+  const savingsFields =
+    merchantId && merchantId !== EXTERNAL_SEED_MERCHANT_ID && !isExternalSeedLikeProduct(product)
+      ? pickSavingsPresentationFields(product)
+      : {};
   return attachProductDetailSource(
     normalizeProductDetailPrice({
       merchant_id: merchantId || product.merchant_id || product.merchantId,
@@ -3360,10 +3368,12 @@ function buildOfferProductProjection(product) {
             available_quantity: variant?.available_quantity,
             inventory_quantity: variant?.inventory_quantity,
             image_url: variant?.image_url || variant?.imageUrl,
-            ...pickSavingsPresentationFields(variant),
+            ...(merchantId && merchantId !== EXTERNAL_SEED_MERCHANT_ID && !isExternalSeedLikeProduct(product)
+              ? pickSavingsPresentationFields(variant)
+              : {}),
           }))
         : undefined,
-      ...pickSavingsPresentationFields(product),
+      ...savingsFields,
       ...buildOfferPurchaseMetadataFromProduct(product),
     }),
     getProductDetailSource(product) || 'pdp_prefetched',
@@ -3502,6 +3512,7 @@ async function fetchProductDetailForOffers(args) {
   const surfaceUpstreamErrors = args?.surfaceUpstreamErrors === true;
   const bypassCache = args?.bypassCache === true;
   const skipUpstreamFallback = args?.skipUpstreamFallback === true;
+  const totalTimeoutMs = Math.max(0, Number(args?.totalTimeoutMs || args?.stageTimeoutMs || 0) || 0);
   if (!merchantId || !productId) return null;
   const useMemoryCache = PRODUCT_DETAIL_CACHE_ENABLED && !bypassCache;
 
@@ -3695,13 +3706,17 @@ async function fetchProductDetailForOffers(args) {
     return null;
   })();
 
+  const guardedLoadPromise = totalTimeoutMs > 0
+    ? withStageBudget(loadPromise, totalTimeoutMs, `offer_detail:${merchantId}:${productId}`)
+    : loadPromise;
+
   if (!useMemoryCache) {
-    return loadPromise;
+    return guardedLoadPromise;
   }
 
   PRODUCT_DETAIL_INFLIGHT.set(cacheKey, loadPromise);
   try {
-    return await loadPromise;
+    return await guardedLoadPromise;
   } finally {
     PRODUCT_DETAIL_INFLIGHT.delete(cacheKey);
   }
@@ -4131,6 +4146,8 @@ async function buildOffersFromGroupMembers(args) {
     hydrated: 0,
     unresolved: 0,
   };
+  const unresolvedMembers = [];
+  const memberFetchDiagnostics = [];
   const fetchProductsStartedAt = Date.now();
   const chunkSize = 4;
   for (let i = 0; i < members.length; i += chunkSize) {
@@ -4138,32 +4155,57 @@ async function buildOffersFromGroupMembers(args) {
     // eslint-disable-next-line no-await-in-loop
     const results = await Promise.all(
       chunk.map(async (m) => {
+        const memberStartedAt = Date.now();
+        let source = 'unresolved';
+        let fetchError = null;
         const memberPayloadProduct = buildExternalSeedOfferProductFromMember(m);
         const prefetchedProduct =
           prefetchedProductByKey.get(`${m.merchant_id}:${m.product_id}`) || null;
         const usedPrefetchedProduct = Boolean(prefetchedProduct);
-        if (memberPayloadProduct) buildSourceStats.identity_payload += 1;
-        else if (usedPrefetchedProduct) buildSourceStats.prefetched += 1;
+        if (memberPayloadProduct) {
+          buildSourceStats.identity_payload += 1;
+          source = 'identity_payload';
+        } else if (usedPrefetchedProduct) {
+          buildSourceStats.prefetched += 1;
+          source = 'prefetched';
+        }
         const product =
           memberPayloadProduct ||
           prefetchedProduct ||
-	          (await fetchProductDetailForOffers({
-	            merchantId: m.merchant_id,
-	            productId: m.product_id,
-	            checkoutToken,
-	            bypassCache,
-	            skipUpstreamFallback: m.merchant_id === EXTERNAL_SEED_MERCHANT_ID,
-              timeoutMs: PDP_OFFER_GROUP_MEMBER_FETCH_TIMEOUT_MS,
-              noRetry: true,
-	          }).catch(() => null));
+          (await fetchProductDetailForOffers({
+            merchantId: m.merchant_id,
+            productId: m.product_id,
+            checkoutToken,
+            bypassCache,
+            skipUpstreamFallback: m.merchant_id === EXTERNAL_SEED_MERCHANT_ID,
+            timeoutMs: PDP_OFFER_GROUP_MEMBER_FETCH_TIMEOUT_MS,
+            totalTimeoutMs: PDP_OFFER_GROUP_MEMBER_FETCH_TIMEOUT_MS,
+            noRetry: true,
+          }).catch((err) => {
+            fetchError = err;
+            return null;
+          }));
         if (!memberPayloadProduct && !usedPrefetchedProduct && product) {
           buildSourceStats.fetched += 1;
+          source = getProductDetailSource(product) || 'fetched';
         }
         if (!product) {
           buildSourceStats.unresolved += 1;
+          unresolvedMembers.push({
+            merchant_id: m.merchant_id,
+            product_id: m.product_id,
+            source_kind: m.source_kind || null,
+            reason:
+              fetchError?.code === 'STAGE_TIMEOUT'
+                ? 'member_fetch_budget_exceeded'
+                : fetchError
+                  ? 'member_fetch_failed'
+                  : 'member_unavailable',
+            ...(fetchError?.stage ? { stage: fetchError.stage } : {}),
+          });
         }
         const hydratedProduct =
-          m.merchant_id === EXTERNAL_SEED_MERCHANT_ID || usedPrefetchedProduct
+          !product || m.merchant_id === EXTERNAL_SEED_MERCHANT_ID || usedPrefetchedProduct
             ? product
             : await hydrateSavingsPresentationFromUpstream({
                 product,
@@ -4176,7 +4218,16 @@ async function buildOffersFromGroupMembers(args) {
           !usedPrefetchedProduct
         ) {
           buildSourceStats.hydrated += 1;
+          source = source === 'fetched' ? 'hydrated' : source;
         }
+        memberFetchDiagnostics.push({
+          merchant_id: m.merchant_id,
+          product_id: m.product_id,
+          source,
+          duration_ms: Math.max(0, Date.now() - memberStartedAt),
+          ...(fetchError?.code ? { error_code: fetchError.code } : {}),
+          ...(fetchError?.stage ? { stage: fetchError.stage } : {}),
+        });
         return hydratedProduct ? { member: m, product: hydratedProduct } : null;
       }),
     );
@@ -4326,6 +4377,8 @@ async function buildOffersFromGroupMembers(args) {
           diagnostics: {
             build_sources: buildSourceStats,
             timings_ms: timings,
+            unresolved_members: unresolvedMembers,
+            member_fetches: memberFetchDiagnostics,
             merchant_name_lookup_enabled: merchantProfileNameLookupEnabled,
           },
         }
@@ -7643,6 +7696,27 @@ async function withStageBudget(promise, timeoutMs, timeoutLabel) {
   } finally {
     if (timer) clearTimeout(timer);
   }
+}
+
+async function resolvePdpSimilarWithBudget(
+  promise,
+  budgetMs = PDP_SIMILAR_SYNC_BUDGET_MS,
+) {
+  return await withStageBudget(promise, budgetMs, 'pdp_similar').catch((err) => {
+    if (err?.code === 'STAGE_TIMEOUT') {
+      return {
+        status: 'deferred',
+        strategy: 'related_products',
+        items: [],
+        metadata: {
+          similar_status: 'deferred',
+          reason_code: 'SIMILAR_STAGE_BUDGET_EXCEEDED',
+          sync_budget_ms: Math.max(1, Number(budgetMs || 0) || 0),
+        },
+      };
+    }
+    throw err;
+  });
 }
 
 function extractSearchProductId(product) {
@@ -22414,10 +22488,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 
 	      // Similar products (non-blocking; can be requested by include=similar).
 	      // Run in parallel with reviews fetch to avoid additive latency on first paint.
-	      const relatedProductsPromise = wantsSimilar
-	        ? (async () => {
-		            const moduleStartedAt = Date.now();
-		            try {
+      const relatedProductsPromise = wantsSimilar
+        ? (async () => {
+            const moduleStartedAt = Date.now();
+            try {
               const { fetchArgs } = buildPdpSimilarFetchArgs({
                 payload,
                 canonicalProductForPdp,
@@ -22426,12 +22500,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 bypassCache,
                 debug,
               });
-			            return await fetchSimilarProductsDeduped(fetchArgs);
-		            } finally {
-		              markPdpV2Module('similar', moduleStartedAt);
-		            }
-	          })()
-	        : Promise.resolve([]);
+              return await resolvePdpSimilarWithBudget(fetchSimilarProductsDeduped(fetchArgs));
+            } finally {
+              markPdpV2Module('similar', moduleStartedAt);
+            }
+          })()
+        : Promise.resolve([]);
 
 	      const fetchOptionalModulesStartedAt = Date.now();
 	      const [reviewSummaryResult, relatedProductsResult] = await Promise.allSettled([
@@ -22595,6 +22669,26 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           : null;
 
       const canonicalPayload = stripResponseOwnedPdpModulesFromCanonicalPayload(pdpPayload);
+      const canonicalPayloadProductRef = {
+        merchant_id:
+          String(canonicalPayload?.product?.merchant_id || canonicalProductForPdp?.merchant_id || '').trim() ||
+          null,
+        product_id:
+          String(canonicalPayload?.product?.product_id || canonicalPayload?.product?.id || canonicalProductForPdp?.product_id || '').trim() ||
+          null,
+        platform:
+          String(canonicalPayload?.product?.platform || canonicalProductForPdp?.platform || '').trim() ||
+          null,
+      };
+      const selectedCommerceRef =
+        identityGraphLive?.synthetic_product?.selected_commerce_ref ||
+        (requestedMerchantId
+          ? { merchant_id: requestedMerchantId, product_id: entryProductId || productId }
+          : canonicalProductRef);
+      const contentBaseRef =
+        identityGraphLive?.synthetic_product?.canonical_content_ref ||
+        identityGraphLive?.canonical_product_ref ||
+        canonicalProductRef;
       const pdpContentSource =
         identityGraphLive?.synthetic_product?.pdp_content_source ||
         (identityGraphLive?.synthetic_product ? 'canonical_inherited' : 'self');
@@ -22626,11 +22720,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             content_review_state: contentReviewState,
             canonical_product_ref: canonicalProductRef,
             entry_product_ref: entryProductRef,
-            selected_commerce_ref:
-              identityGraphLive?.synthetic_product?.selected_commerce_ref ||
-              (requestedMerchantId
-                ? { merchant_id: requestedMerchantId, product_id: entryProductId || productId }
-                : canonicalProductRef),
+            selected_commerce_ref: selectedCommerceRef,
+            content_base_ref: contentBaseRef,
+            canonical_payload_product_ref: canonicalPayloadProductRef,
             pdp_payload: canonicalPayload,
             ...(precheckEntryProductMissing ? { entry_precheck_missing: true } : {}),
           },
@@ -22640,12 +22732,17 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       const missing = [];
       const reviewsMissingReason =
         wantsReviewsPreview && !reviewsModule?.data ? 'no_results' : null;
+      const similarDeferred =
+        relatedProductsEnvelope?.metadata?.similar_status === 'deferred' ||
+        relatedProductsEnvelope?.status === 'deferred';
       const similarUnavailable =
         relatedProductsEnvelope?.metadata?.similar_status === 'unavailable' ||
         relatedProductsEnvelope?.status === 'unavailable';
       const similarMissingReason =
         wantsSimilar && !recModule?.data
-          ? similarUnavailable
+          ? similarDeferred
+            ? 'deferred'
+            : similarUnavailable
             ? 'unavailable'
             : relatedProductsResult.status === 'rejected'
             ? (extractUpstreamErrorCode(relatedProductsResult.reason).code || 'unavailable').toLowerCase()
@@ -22853,23 +22950,25 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       }
 
       if (wantsSimilar) {
-	        const data =
-            recModule?.data ||
-            (relatedProductsEnvelope?.metadata?.similar_status === 'empty' ||
-            relatedProductsEnvelope?.status === 'empty'
-              ? {
-                  status: 'empty',
-                  strategy: relatedProductsEnvelope?.strategy || 'related_products',
-                  items: [],
-                  metadata:
-                    relatedProductsEnvelope?.metadata && typeof relatedProductsEnvelope.metadata === 'object'
-                      ? relatedProductsEnvelope.metadata
-                      : { similar_status: 'empty' },
-                }
-              : null);
-	        modules.push({
-	          type: 'similar',
-	          required: false,
+        const data =
+          recModule?.data ||
+          (relatedProductsEnvelope?.metadata?.similar_status === 'empty' ||
+          relatedProductsEnvelope?.metadata?.similar_status === 'deferred' ||
+          relatedProductsEnvelope?.status === 'empty' ||
+          relatedProductsEnvelope?.status === 'deferred'
+            ? {
+                status: relatedProductsEnvelope?.status === 'deferred' ? 'deferred' : 'empty',
+                strategy: relatedProductsEnvelope?.strategy || 'related_products',
+                items: [],
+                metadata:
+                  relatedProductsEnvelope?.metadata && typeof relatedProductsEnvelope.metadata === 'object'
+                    ? relatedProductsEnvelope.metadata
+                    : { similar_status: 'empty' },
+              }
+            : null);
+        modules.push({
+          type: 'similar',
+          required: false,
           data,
           ...(data ? {} : { reason: similarMissingReason || 'unavailable' }),
         });
@@ -22954,6 +23053,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               offer_source: offerSource,
               commerce_source: commerceSource,
               content_review_state: contentReviewState,
+              content_base_ref: contentBaseRef,
+              selected_commerce_ref: selectedCommerceRef,
+              canonical_payload_product_ref: canonicalPayloadProductRef,
               identity_confidence:
                 Number.isFinite(Number(identityGraphLive?.identity_confidence))
                   ? Number(identityGraphLive.identity_confidence)
@@ -29538,6 +29640,8 @@ module.exports._debug = {
   buildServiceVersionMetadata,
   buildCacheStageDiagnosticBundle,
   buildCacheStageSnapshot,
+  buildOffersFromGroupMembers,
+  resolvePdpSimilarWithBudget,
   mergeInvokeGatewayAuditMetadata,
   normalizeGovernanceShadowBlockContract,
   uiChatBuildLoopBreakRetryArgs,

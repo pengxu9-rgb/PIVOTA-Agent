@@ -1626,6 +1626,11 @@ function overlaySelectedCommerceFields(product, selectedListing, fallbackProduct
   if (!Object.keys(selectedPayload).length) return product;
 
   const next = { ...(product || {}) };
+  const selectedMerchantId = asString(selectedListing?.merchant_id || selectedPayload.merchant_id);
+  const savingsFields =
+    selectedMerchantId && selectedMerchantId !== EXTERNAL_SEED_MERCHANT_ID
+      ? SAVINGS_PRESENTATION_FIELDS
+      : [];
   const directFields = [
     'price',
     'currency',
@@ -1656,7 +1661,7 @@ function overlaySelectedCommerceFields(product, selectedListing, fallbackProduct
     'canonical_url',
     'url',
     'product_url',
-    ...SAVINGS_PRESENTATION_FIELDS,
+    ...savingsFields,
   ];
   for (const key of directFields) {
     if (selectedPayload[key] !== undefined) next[key] = selectedPayload[key];
@@ -1677,7 +1682,17 @@ function composeSyntheticCanonicalProduct({
 } = {}) {
   const sortedExact = sortListingsForAuthority(exactListings);
   const sortedLine = sortListingsForAuthority(lineListings);
-  const contentListing = sortedExact[0] || sortedLine[0] || requestedListing || null;
+  const isInternalListing = (listing) =>
+    asString(listing?.source_kind).toLowerCase() === 'internal';
+  const contentExact = sortListingsForAuthority(sortedExact.filter((listing) => !isInternalListing(listing)));
+  const contentLine = sortListingsForAuthority(sortedLine.filter((listing) => !isInternalListing(listing)));
+  const contentListing =
+    contentExact[0] ||
+    contentLine[0] ||
+    sortedExact[0] ||
+    sortedLine[0] ||
+    requestedListing ||
+    null;
   const commerceListing = requestedListing || contentListing;
   const basePayload =
     asPlainObject(contentListing?.source_payload) ||
@@ -1882,6 +1897,10 @@ function buildIdentitySearchOffer(listing, groupId) {
     payload.brand,
     merchantId === EXTERNAL_SEED_MERCHANT_ID ? 'External reference' : '',
   );
+  const savingsFields =
+    merchantId && merchantId !== EXTERNAL_SEED_MERCHANT_ID
+      ? pickSavingsPresentationFields(payload)
+      : {};
   return {
     offer_id: stableHash('of_identity', [groupId, merchantId, productId]),
     product_group_id: groupId,
@@ -1892,7 +1911,7 @@ function buildIdentitySearchOffer(listing, groupId) {
     ...(price ? { price } : {}),
     ...(payload.inventory ? { inventory: payload.inventory } : {}),
     ...(payload.shipping ? { shipping: payload.shipping } : {}),
-    ...pickSavingsPresentationFields(payload),
+    ...savingsFields,
     offer_source: 'group_fused',
     commerce_source: 'selected_seller_store',
   };
