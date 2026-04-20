@@ -836,12 +836,18 @@ async function maybeCallText(target) {
 
 async function extractGeminiText(response) {
   if (!response) return ''
-  if (typeof response.text === 'string' && response.text.trim()) return response.text.trim()
+  const texts = []
+  const pushText = (value) => {
+    const text = typeof value === 'string' ? value.trim() : ''
+    if (!text) return
+    if (!texts.includes(text)) texts.push(text)
+  }
+  pushText(response.text)
   const direct = await maybeCallText(response)
-  if (direct) return direct
+  pushText(direct)
   const nested = await maybeCallText(response.response)
-  if (nested) return nested
-  if (typeof response?.response?.text === 'string' && response.response.text.trim()) return response.response.text.trim()
+  pushText(nested)
+  pushText(response?.response?.text)
   const candidates = Array.isArray(response.candidates) ? response.candidates : []
   const parts = []
   for (const candidate of candidates) {
@@ -850,7 +856,11 @@ async function extractGeminiText(response) {
       if (part && typeof part.text === 'string' && part.text.trim()) parts.push(part.text.trim())
     }
   }
-  return parts.join('\n').trim()
+  pushText(parts.join('\n'))
+  for (const text of texts) {
+    if (parseJsonOnlyObject(text) || extractJsonObject(text)) return text
+  }
+  return texts.sort((a, b) => b.length - a.length)[0] || ''
 }
 
 function extractGeminiResponseDebugMeta(response) {
@@ -1168,6 +1178,7 @@ module.exports = {
     buildTravelCalibrationPrompts,
     buildGeminiRequest,
     TRAVEL_LLM_RESPONSE_SCHEMA,
+    extractGeminiText,
     extractGeminiResponseDebugMeta,
     compactTravelLlmInputForPrompt,
     compactTravelReadinessForPrompt,

@@ -363,6 +363,29 @@ test('travel LLM calibrator: parse failures retain Gemini finish and token telem
   assert.equal(result.source_meta.raw_text_chars > 0, true);
 });
 
+test('travel LLM calibrator: extractor prefers parseable candidate text over partial response text', async () => {
+  const full = JSON.stringify({
+    travel_readiness_patch: {
+      adaptive_actions: [{ why: 'UV is higher', what_to_do: 'Use SPF50 and reapply outdoors.' }],
+    },
+  });
+  const response = {
+    text: '{"travel_readiness_patch":{"adaptive_actions":[{"why":"UV is higher"',
+    candidates: [
+      {
+        content: {
+          parts: [{ text: full }],
+        },
+      },
+    ],
+  };
+
+  const extracted = await travelLlmInternal.extractGeminiText(response);
+  assert.equal(extracted, full);
+  const parsed = travelLlmInternal.parseCalibrationPayload(extracted);
+  assert.equal(parsed.travel_readiness_patch.adaptive_actions[0].what_to_do, 'Use SPF50 and reapply outdoors.');
+});
+
 test('travel LLM calibrator: parser accepts common camelCase patch keys', () => {
   const parsed = travelLlmInternal.parseCalibrationPayload(JSON.stringify({
     travelReadinessPatch: {
