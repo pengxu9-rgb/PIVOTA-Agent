@@ -323,6 +323,10 @@ function getRoleIncompatibilityReason(product, roleId) {
   if (ROUTINE_IDENTITY_NOISE_RE.test(identityText)) return 'bundle_or_set';
   if (BEAUTY_TOOL_NOISE_RE.test(text)) return 'beauty_tool_or_applicator';
 
+  if (roleId === 'lightweight_moisturizer' && /\b(?:hand|hands|lip|lips|body)\b/i.test(identityText)) {
+    return 'body_lip_hand_role_mismatch';
+  }
+
   if (roleId === 'recovery_mask') {
     if (/\blip\b/i.test(identityText) && /\bmask\b/i.test(identityText)) return 'lip_mask_role_mismatch';
     if (/\b(?:body|kp)\b/i.test(identityText) && /\b(?:mask|scrub)\b/i.test(identityText)) return 'body_mask_role_mismatch';

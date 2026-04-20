@@ -740,6 +740,99 @@ function buildCompactDeterministicTravelAssistantText({ language = 'EN', followu
   );
 }
 
+function formatTravelDeltaBrief(travelReadiness) {
+  const readiness = isPlainObject(travelReadiness) ? travelReadiness : {};
+  const delta = isPlainObject(readiness.delta_vs_home)
+    ? readiness.delta_vs_home
+    : isPlainObject(readiness.delta_vs_origin)
+      ? readiness.delta_vs_origin
+      : {};
+  const parts = [];
+  for (const [label, key] of [
+    ['Temperature', 'temperature'],
+    ['Humidity', 'humidity'],
+    ['UV', 'uv'],
+  ]) {
+    const row = isPlainObject(delta[key]) ? delta[key] : {};
+    const home = toNumber(row.home);
+    const destination = toNumber(row.destination);
+    if (home == null || destination == null) continue;
+    const unit = normalizeText(row.unit, 12);
+    parts.push(`${label}: ${home}${unit} -> ${destination}${unit}`);
+  }
+  return parts.length ? `Climate shift: ${parts.join(' · ')}.` : '';
+}
+
+function buildCompactTravelPhaseAssistantText({ language = 'EN', travelReadiness = null } = {}) {
+  const lang = normalizeLang(language);
+  const readiness = isPlainObject(travelReadiness) ? travelReadiness : {};
+  const phases = Array.isArray(readiness.phase_plan) ? readiness.phase_plan : [];
+  if (!phases.length) return '';
+
+  const products = Array.isArray(readiness.shopping_preview?.products)
+    ? readiness.shopping_preview.products
+    : [];
+  const productById = new Map();
+  for (const rawProduct of products) {
+    const product = isPlainObject(rawProduct) ? rawProduct : {};
+    const id = normalizeText(product.product_id, 120);
+    if (!id) continue;
+    productById.set(id, product);
+  }
+
+  const lines = [];
+  const climateBrief = formatTravelDeltaBrief(readiness);
+  if (climateBrief) lines.push(climateBrief);
+  lines.push(lang === 'CN' ? '按阶段执行：' : 'Use this as a phased travel skincare plan:');
+
+  const fallbackTitle = {
+    pre_trip_prepare: 'Before departure',
+    flight_cabin: 'On the flight',
+    arrival_first_48h: 'First 48 hours after landing',
+    during_trip_daily: 'Daily while there',
+    local_shopping: 'Local shopping',
+  };
+
+  for (const rawPhase of phases.slice(0, 5)) {
+    const phase = isPlainObject(rawPhase) ? rawPhase : {};
+    const title = normalizeText(phase.title, 80) || fallbackTitle[phase.id] || normalizeText(phase.id, 80);
+    const why = normalizeText(phase.why, 220);
+    const actions = Array.isArray(phase.actions)
+      ? phase.actions.map((value) => normalizeText(value, 220)).filter(Boolean)
+      : [];
+    const phaseProducts = Array.isArray(phase.product_ids)
+      ? phase.product_ids
+          .map((id) => productById.get(normalizeText(id, 120)))
+          .filter(isPlainObject)
+          .slice(0, 2)
+      : [];
+    const productText = phaseProducts
+      .map((product) => {
+        const name = normalizeText(product.name || product.display_name, 120);
+        const brand = normalizeText(product.brand, 80);
+        if (!name) return '';
+        return brand ? `${brand} ${name}` : name;
+      })
+      .filter(Boolean)
+      .join('; ');
+
+    const bullets = [];
+    if (why) bullets.push(why);
+    if (actions[0]) bullets.push(actions[0]);
+    if (productText) {
+      bullets.push(
+        phase.id === 'local_shopping'
+          ? `Grounded local options: ${productText}.`
+          : `Relevant packable option(s): ${productText}.`,
+      );
+    }
+    if (!bullets.length) continue;
+    lines.push(`${title}:\n${bullets.slice(0, 3).map((line) => `- ${line}`).join('\n')}`);
+  }
+
+  return normalizeText(lines.join('\n\n'), 2600);
+}
+
 /**
  * @typedef {Object} TravelPipelineInput
  * @property {string} message
@@ -2048,6 +2141,10 @@ async function runTravelPipeline(input = {}) {
         finalRewrite && isPlainObject(finalRewrite.source_meta) ? finalRewrite.source_meta : null;
       if (finalRewriteUsed) {
         assistantText = normalizeText(finalRewrite.assistant_text, 3000) || assistantText;
+      } else if (/^rewrite_/i.test(finalRewriteReason || '')) {
+        assistantText =
+          buildCompactTravelPhaseAssistantText({ language, travelReadiness }) ||
+          assistantText;
       }
       pushTrace(trace, {
         skill: 'travel_final_reply_rewrite_skill',
@@ -2314,6 +2411,7 @@ module.exports = {
     mergeKbPrefillIntoReadiness,
     buildRecoPreview,
     buildStoreChannel,
+    buildCompactTravelPhaseAssistantText,
     normalizeRecoSkipReason,
     normalizeStoreSkipReason,
     normalizeKbWriteSkipReason,
