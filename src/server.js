@@ -9373,6 +9373,25 @@ function overlayIdentityRecallOnSearchProduct(product, identityProduct) {
     merchantId && productId
       ? { merchant_id: merchantId, product_id: productId }
       : identityProduct.selected_commerce_ref || identityProduct.product_ref || null;
+  const liveOffer = buildSearchProductIdentityOverlayOffer(product, {
+    groupId:
+      identityProduct.sellable_item_group_id ||
+      identityProduct.product_group_id ||
+      product.sellable_item_group_id ||
+      product.product_group_id ||
+      null,
+    selected: true,
+  });
+  const mergedOffers = mergeIdentityOverlayOffers({
+    identityOffers: Array.isArray(identityProduct.offers) ? identityProduct.offers : [],
+    liveOffer,
+  });
+  const offerCount = mergedOffers.length
+    ? mergedOffers.length
+    : Math.max(
+        Number(identityProduct.offers_count || 0) || 0,
+        Number(product.offers_count || product.offer_count || 0) || 0,
+      );
   return {
     ...identityProduct,
     ...product,
@@ -9383,29 +9402,262 @@ function overlayIdentityRecallOnSearchProduct(product, identityProduct) {
     sellable_item_group_id:
       identityProduct.sellable_item_group_id || product.sellable_item_group_id || null,
     product_group_id: identityProduct.product_group_id || product.product_group_id || null,
-    offers: Array.isArray(identityProduct.offers) ? identityProduct.offers : product.offers,
-    offers_count: Math.max(
-      Number(identityProduct.offers_count || 0) || 0,
-      Number(product.offers_count || product.offer_count || 0) || 0,
-    ),
-    offer_count: Math.max(
-      Number(identityProduct.offer_count || identityProduct.offers_count || 0) || 0,
-      Number(product.offer_count || product.offers_count || 0) || 0,
-    ),
+    offers: mergedOffers.length
+      ? mergedOffers
+      : Array.isArray(identityProduct.offers)
+        ? identityProduct.offers
+        : product.offers,
+    offers_count: offerCount,
+    offer_count: offerCount,
     has_multiple_offers:
       identityProduct.has_multiple_offers === true ||
       product.has_multiple_offers === true ||
-      Number(identityProduct.offers_count || 0) > 1,
+      offerCount > 1,
     grouped:
       identityProduct.grouped === true ||
       product.grouped === true ||
-      Number(identityProduct.offers_count || 0) > 1,
+      offerCount > 1,
     pdp_content_source: identityProduct.pdp_content_source || product.pdp_content_source || 'canonical_inherited',
     offer_source: identityProduct.offer_source || product.offer_source || 'group_fused',
     commerce_source: 'selected_seller_store',
     content_review_state:
       identityProduct.content_review_state || product.content_review_state || 'pending',
     search_recall_source: 'pdp_identity_graph',
+  };
+}
+
+function buildSearchProductIdentityOverlayOffer(product, { groupId = null, selected = false } = {}) {
+  if (!product || typeof product !== 'object' || Array.isArray(product)) return null;
+  const merchantId = String(
+    product.merchant_id ||
+      product.merchantId ||
+      product.product_ref?.merchant_id ||
+      product.seller?.merchant_id ||
+      '',
+  ).trim();
+  const productId = String(
+    product.product_id ||
+      product.productId ||
+      product.id ||
+      product.platform_product_id ||
+      product.product_ref?.product_id ||
+      '',
+  ).trim();
+  if (!merchantId || !productId) return null;
+  const rawPrice =
+    product.price ??
+    product.current_price ??
+    product.unit_price ??
+    product.pricing?.price ??
+    product.amount ??
+    null;
+  let price = null;
+  if (rawPrice && typeof rawPrice === 'object' && !Array.isArray(rawPrice)) {
+    const amount = Number(rawPrice.amount ?? rawPrice.value ?? rawPrice.price);
+    const currency =
+      String(rawPrice.currency || rawPrice.currencyCode || product.currency || 'USD').trim() || 'USD';
+    if (Number.isFinite(amount)) price = { amount, currency };
+  } else {
+    const amount = Number(rawPrice);
+    const currency =
+      String(product.currency || product.price_currency || product.currency_code || 'USD').trim() || 'USD';
+    if (Number.isFinite(amount)) price = { amount, currency };
+  }
+  const merchantName = firstNonEmptyString(
+    product.merchant_name,
+    product.store_name,
+    product.seller?.name,
+    product.vendor,
+    product.brand?.name,
+    product.brand,
+  );
+  return {
+    offer_id: `of_identity_live_${merchantId}_${productId}`,
+    ...(groupId ? { product_group_id: groupId } : {}),
+    merchant_id: merchantId,
+    product_id: productId,
+    product_ref: { merchant_id: merchantId, product_id: productId },
+    ...(merchantName ? { merchant_name: merchantName } : {}),
+    ...(price ? { price } : {}),
+    ...(product.inventory ? { inventory: product.inventory } : {}),
+    ...(product.shipping ? { shipping: product.shipping } : {}),
+    ...(product.discount_evidence ? { discount_evidence: product.discount_evidence } : {}),
+    ...(product.store_discount_evidence ? { store_discount_evidence: product.store_discount_evidence } : {}),
+    ...(product.payment_offer_evidence ? { payment_offer_evidence: product.payment_offer_evidence } : {}),
+    offer_source: 'group_fused',
+    commerce_source: 'selected_seller_store',
+    ...(selected ? { selected: true } : {}),
+  };
+}
+
+function mergeIdentityOverlayOffers({ identityOffers = [], liveOffer = null } = {}) {
+  const normalizedIdentityOffers = Array.isArray(identityOffers)
+    ? identityOffers.filter((offer) => offer && typeof offer === 'object' && !Array.isArray(offer))
+    : [];
+  if (!liveOffer) return normalizedIdentityOffers;
+  const liveMerchant = String(liveOffer.merchant_id || liveOffer.product_ref?.merchant_id || '').trim();
+  const liveProduct = String(liveOffer.product_id || liveOffer.product_ref?.product_id || '').trim();
+  const merged = [liveOffer];
+  const seen = new Set([`${liveMerchant}::${liveProduct}`]);
+  for (const offer of normalizedIdentityOffers) {
+    const merchantId = String(offer.merchant_id || offer.product_ref?.merchant_id || '').trim();
+    const productId = String(offer.product_id || offer.product_ref?.product_id || '').trim();
+    if (!merchantId || !productId) continue;
+    if (merchantId === liveMerchant) continue;
+    const key = `${merchantId}::${productId}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(offer);
+  }
+  return merged;
+}
+
+function scoreIdentityFinalOverlayCandidate(product, queryText, identityProduct) {
+  if (!product || typeof product !== 'object') return -Infinity;
+  if (!hasSearchProductIdentityMatch(product, queryText)) return -Infinity;
+  const queryNorm = normalizeSearchTextForMatch(queryText);
+  const queryCompact = queryNorm.replace(/\s+/g, '');
+  const titleNorm = normalizeSearchTextForMatch(
+    [product.title, product.name, product.product_title, product.display_name].filter(Boolean).join(' '),
+  );
+  const titleCompact = titleNorm.replace(/\s+/g, '');
+  const merchantId = String(
+    product.merchant_id || product.merchantId || product.product_ref?.merchant_id || '',
+  ).trim();
+  const productId = String(
+    product.product_id || product.productId || product.id || product.platform_product_id || '',
+  ).trim();
+  const identitySelectedMerchant = String(
+    identityProduct?.selected_commerce_ref?.merchant_id || identityProduct?.merchant_id || '',
+  ).trim();
+  const identitySelectedProduct = String(
+    identityProduct?.selected_commerce_ref?.product_id || identityProduct?.product_id || identityProduct?.id || '',
+  ).trim();
+  let score = 0;
+  if (titleNorm && titleNorm === queryNorm) score += 60;
+  else if (titleCompact && titleCompact === queryCompact) score += 48;
+  else if (titleNorm && queryNorm.includes(titleNorm)) score += 24;
+  if (!product.sellable_item_group_id && !product.product_group_id) score += 20;
+  if (merchantId && identitySelectedMerchant && merchantId === identitySelectedMerchant) score += 12;
+  if (merchantId && merchantId !== EXTERNAL_SEED_MERCHANT_ID) score += 8;
+  if (productId && identitySelectedProduct && productId !== identitySelectedProduct) score += 6;
+  if (Number(product.price?.amount ?? product.price ?? 0) > 0) score += 3;
+  return score;
+}
+
+function maybeOverlayFinalIdentityRecallSearchProducts({
+  operation,
+  responseBody,
+  queryText,
+  queryParams,
+} = {}) {
+  if (
+    operation !== 'find_products_multi' ||
+    !responseBody ||
+    typeof responseBody !== 'object' ||
+    Array.isArray(responseBody)
+  ) {
+    return responseBody;
+  }
+  const normalizedQueryText = String(queryText || '').trim();
+  if (!normalizedQueryText || !Array.isArray(responseBody.products) || responseBody.products.length < 2) {
+    return responseBody;
+  }
+  const products = responseBody.products;
+  const identityProducts = products.filter((product) => {
+    const groupId = String(product?.sellable_item_group_id || product?.product_group_id || '').trim();
+    if (!groupId) return false;
+    return (
+      product?.search_recall_source === 'pdp_identity_graph' ||
+      product?.offer_source === 'group_fused' ||
+      product?.pdp_content_source === 'canonical_inherited'
+    );
+  });
+  if (!identityProducts.length) return responseBody;
+
+  let bestPair = null;
+  for (const identityProduct of identityProducts) {
+    for (const product of products) {
+      if (!product || product === identityProduct) continue;
+      const productGroupId = String(product.sellable_item_group_id || product.product_group_id || '').trim();
+      if (productGroupId) continue;
+      const score = scoreIdentityFinalOverlayCandidate(product, normalizedQueryText, identityProduct);
+      if (!Number.isFinite(score)) continue;
+      if (!bestPair || score > bestPair.score) {
+        bestPair = { identityProduct, product, score };
+      }
+    }
+  }
+  if (!bestPair || bestPair.score <= 0) return responseBody;
+
+  const upgradedProduct = overlayIdentityRecallOnSearchProduct(bestPair.product, bestPair.identityProduct);
+  const upgradedKey = buildSearchProductKey(upgradedProduct);
+  const originalCandidateKey = buildSearchProductKey(bestPair.product);
+  const upgradedGroupId = String(
+    upgradedProduct.sellable_item_group_id || upgradedProduct.product_group_id || '',
+  ).trim();
+  const seenKeys = new Set();
+  const nextProducts = [];
+  const pushProduct = (product) => {
+    if (!product || typeof product !== 'object' || Array.isArray(product)) return;
+    const key = buildSearchProductKey(product);
+    if (key && seenKeys.has(key)) return;
+    if (key) seenKeys.add(key);
+    nextProducts.push(product);
+  };
+  pushProduct(upgradedProduct);
+  for (const product of products) {
+    const productKey = buildSearchProductKey(product);
+    if (productKey && (productKey === upgradedKey || productKey === originalCandidateKey)) continue;
+    const productGroupId = String(product?.sellable_item_group_id || product?.product_group_id || '').trim();
+    if (
+      upgradedGroupId &&
+      productGroupId === upgradedGroupId &&
+      product?.search_recall_source === 'pdp_identity_graph'
+    ) {
+      continue;
+    }
+    pushProduct(product);
+  }
+  const limit = Math.min(
+    Math.max(
+      1,
+      Number(queryParams?.limit || queryParams?.page_size || responseBody.page_size || products.length) ||
+        products.length,
+    ),
+    Math.max(products.length, 1),
+  );
+  const limitedProducts = nextProducts.slice(0, limit);
+  const existingMeta =
+    responseBody.metadata && typeof responseBody.metadata === 'object' && !Array.isArray(responseBody.metadata)
+      ? responseBody.metadata
+      : {};
+  return {
+    ...responseBody,
+    products: limitedProducts,
+    results: Array.isArray(responseBody.results) ? limitedProducts : responseBody.results,
+    data:
+      responseBody.data && typeof responseBody.data === 'object' && !Array.isArray(responseBody.data)
+        ? {
+            ...responseBody.data,
+            ...(Array.isArray(responseBody.data.products) ? { products: limitedProducts } : {}),
+          }
+        : responseBody.data,
+    total: Math.max(Number(responseBody.total || 0) || 0, limitedProducts.length),
+    count: Math.max(Number(responseBody.count || 0) || 0, limitedProducts.length),
+    metadata: {
+      ...existingMeta,
+      identity_graph_search_recall: {
+        ...(existingMeta.identity_graph_search_recall &&
+        typeof existingMeta.identity_graph_search_recall === 'object' &&
+        !Array.isArray(existingMeta.identity_graph_search_recall)
+          ? existingMeta.identity_graph_search_recall
+          : {}),
+        final_live_overlay_applied: true,
+        final_live_overlay_reason: 'exact_live_product_after_identity_recall',
+        final_live_overlay_selected_ref: upgradedProduct.selected_commerce_ref || null,
+      },
+    },
   };
 }
 
@@ -9426,7 +9678,14 @@ async function maybeRescueSearchFromPdpIdentityGraph({
   const normalizedQueryText = String(queryText || '').trim();
   if (!normalizedQueryText) return upstreamData;
   const existingProducts = Array.isArray(upstreamData.products) ? upstreamData.products : [];
-  if (existingProducts.some((product) => hasSearchProductIdentityMatch(product, normalizedQueryText))) {
+  const existingGroupedIdentityMatch = existingProducts.some(
+    (product) =>
+      hasSearchProductIdentityMatch(product, normalizedQueryText) &&
+      (String(product?.sellable_item_group_id || product?.product_group_id || '').trim() ||
+        product?.offer_source === 'group_fused' ||
+        product?.pdp_content_source === 'canonical_inherited'),
+  );
+  if (existingGroupedIdentityMatch) {
     return upstreamData;
   }
   const requestedLimit = Math.min(
@@ -28111,6 +28370,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       ) {
         enriched = postProcessTravelLookupProductsResponse(enriched);
       }
+
+      enriched = maybeOverlayFinalIdentityRecallSearchProducts({
+        operation,
+        responseBody: enriched,
+        queryText,
+        queryParams,
+      });
     }
 
     return res.status(response.status).json(enriched);
@@ -28523,6 +28789,7 @@ module.exports._debug = {
   catalogSyncState,
   maybeBuildLiveSyntheticPdp,
   searchPdpIdentityGroupsForQuery,
+  maybeOverlayFinalIdentityRecallSearchProducts,
   backfillPdpIdentityGraph,
   listPdpIdentityShadowRows,
   listPdpIdentityReviewQueue,
