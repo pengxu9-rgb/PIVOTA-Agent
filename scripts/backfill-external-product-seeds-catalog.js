@@ -1255,6 +1255,7 @@ function chooseRepresentativeProduct(response, targetUrl, row) {
 
 function mapSnapshotVariants(product, response, existingSeedData) {
   const responseVariants = Array.isArray(response?.variants) ? response.variants : [];
+  const productDetailSections = normalizeDetailsSections(product?.details_sections || product?.pdp_details_sections);
   const findResponseVariantMatch = (variant) => {
     const strongTokens = [
       variant?.id,
@@ -1334,7 +1335,10 @@ function mapSnapshotVariants(product, response, existingSeedData) {
         stock: normalizeNonEmptyString(variant.stock || responseVariant.stock),
         image_url: imageUrls[0] || '',
         image_urls: imageUrls,
-        description: normalizeNonEmptyString(variant.description || responseVariant.description),
+        description: cleanPdpDescriptionCandidate(
+          variant.description || responseVariant.description,
+          productDetailSections,
+        ),
       };
     })
     .filter(Boolean);

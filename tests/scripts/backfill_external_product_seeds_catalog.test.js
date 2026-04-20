@@ -703,7 +703,16 @@ describe('backfill-external-product-seeds-catalog', () => {
                 source_kind: 'shopify_encoded_accordion_attr',
               },
             ],
-            variants: [],
+            variants: [
+              {
+                id: 'mirror-default',
+                sku: 'MIRROR-DEFAULT',
+                title: 'Default Title',
+                description: fentyAccordion,
+                price: '40.00',
+                currency: 'USD',
+              },
+            ],
           },
         ],
         variants: [],
@@ -734,6 +743,8 @@ describe('backfill-external-product-seeds-catalog', () => {
     ]);
     expect(payload.nextRow.seed_data.pdp_details_sections[1].body).not.toMatch(/GIVE IT TO ME QUICK/i);
     expect(JSON.stringify(payload.nextRow.seed_data.pdp_details_sections)).not.toMatch(/HEAVY ON THE HYDRATION|must-haves/i);
+    expect(payload.nextRow.seed_data.variants[0].description).toContain("This ain't your average mirror");
+    expect(payload.nextRow.seed_data.variants[0].description).not.toMatch(/GIVE IT TO ME QUICK|TELL ME MORE/i);
 
     const identityPayload = buildIdentityListingSourcePayload(row, payload.nextRow);
     expect(identityPayload.source_listing_ref).toBe('external_seed:ext_fenty_mirror');
@@ -743,7 +754,7 @@ describe('backfill-external-product-seeds-catalog', () => {
       'Details',
       'Dimensions',
     ]);
-    expect(JSON.stringify(identityPayload.product)).not.toMatch(/TELL ME MORE|HEAVY ON THE HYDRATION|must-haves/i);
+    expect(JSON.stringify(identityPayload.product)).not.toMatch(/GIVE IT TO ME QUICK|TELL ME MORE|HEAVY ON THE HYDRATION|must-haves/i);
   });
 
   test('suppresses storefront boilerplate descriptions instead of writing them to PDP fields', () => {
