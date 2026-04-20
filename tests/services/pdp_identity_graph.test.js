@@ -239,6 +239,108 @@ describe('pdpIdentityGraph', () => {
     expect(listing.source_meta.variant_family).toBeUndefined();
   });
 
+  test('buildIdentityListingFromProduct groups numeric shade PDPs into one product line', () => {
+    const { buildIdentityListingFromProduct } = require('../../src/services/pdpIdentityGraph');
+
+    const buildFoundation = (shade) =>
+      buildIdentityListingFromProduct({
+        merchantId: 'external_seed',
+        productId: `ext_fenty_foundation_${shade}`,
+        sourceKind: 'external_seed',
+        product: {
+          title: `Pro Filt'r Soft Matte Longwear Foundation — #${shade}`,
+          brand: 'Fenty Beauty',
+          source_url: `https://fentybeauty.com/products/pro-filtr-soft-matte-longwear-foundation-${shade}`,
+          variants: [{ variant_id: `v_${shade}`, title: 'Default Title' }],
+        },
+      });
+
+    const shade190 = buildFoundation('190');
+    const shade235 = buildFoundation('235');
+
+    expect(shade190.variant_axes.shade).toBe('190');
+    expect(shade235.variant_axes.shade).toBe('235');
+    expect(shade190.title_core_norm).toBe('pro filtr soft matte longwear foundation');
+    expect(shade235.title_core_norm).toBe('pro filtr soft matte longwear foundation');
+    expect(shade190.product_line_id).toBe(shade235.product_line_id);
+    expect(shade190.sellable_item_group_id).not.toBe(shade235.sellable_item_group_id);
+  });
+
+  test('buildIdentityListingFromProduct groups named shade PDPs into one product line', () => {
+    const { buildIdentityListingFromProduct } = require('../../src/services/pdpIdentityGraph');
+
+    const buildLipLiner = (shade) =>
+      buildIdentityListingFromProduct({
+        merchantId: 'external_seed',
+        productId: `ext_fenty_liner_${shade.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`,
+        sourceKind: 'external_seed',
+        product: {
+          title: `Trace'd Out Longwear Waterproof Pencil Lip Liner — ${shade}`,
+          brand: 'Fenty Beauty',
+          source_url: `https://fentybeauty.com/products/traced-out-longwear-waterproof-pencil-lip-liner-${shade
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-')}`,
+          variants: [{ variant_id: `v_${shade}`, title: 'Default Title' }],
+        },
+      });
+
+    const bored = buildLipLiner('Bored Heaux');
+    const whiskey = buildLipLiner('Whiskey');
+
+    expect(bored.variant_axes.shade).toBe('bored heaux');
+    expect(whiskey.variant_axes.shade).toBe('whiskey');
+    expect(bored.title_core_norm).toBe('traced out longwear waterproof pencil lip liner');
+    expect(whiskey.title_core_norm).toBe('traced out longwear waterproof pencil lip liner');
+    expect(bored.product_line_id).toBe(whiskey.product_line_id);
+    expect(bored.sellable_item_group_id).not.toBe(whiskey.sellable_item_group_id);
+  });
+
+  test('buildIdentityListingFromProduct groups named shade PDPs for eye and brow color families', () => {
+    const { buildIdentityListingFromProduct } = require('../../src/services/pdpIdentityGraph');
+
+    const buildProduct = (title, shade) =>
+      buildIdentityListingFromProduct({
+        merchantId: 'external_seed',
+        productId: `ext_fenty_${title}_${shade}`.toLowerCase().replace(/[^a-z0-9]+/g, '_'),
+        sourceKind: 'external_seed',
+        product: {
+          title: `${title} — ${shade}`,
+          brand: 'Fenty Beauty',
+          source_url: `https://fentybeauty.com/products/${title
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-')}-${shade.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+          variants: [{ variant_id: `v_${shade}`, title: 'Default Title' }],
+        },
+      });
+
+    const bankTank = buildProduct('Flypencil Longwear Pencil Eyeliner', 'Bank Tank');
+    const seaAboutIt = buildProduct('Flypencil Longwear Pencil Eyeliner', 'Sea About It');
+    const lightBlonde = buildProduct('Brow MVP Ultra Fine Brow Pencil & Styler', 'Light Blonde');
+    const mediumBrown = buildProduct('Brow MVP Ultra Fine Brow Pencil & Styler', 'Medium Brown');
+    const blackMascara = buildProduct('Hella Thicc Volumizing Mascara', "Cuz I'm Black");
+    const blueMascara = buildProduct('Hella Thicc Volumizing Mascara', "Elec'Trip Blue");
+    const trophyWife = buildProduct('Diamond Bomb All-Over Diamond Veil', 'Trophy Wife');
+    const pinkIce = buildProduct('Diamond Bomb All-Over Diamond Veil', 'Pink Ice');
+
+    expect(bankTank.variant_axes.shade).toBe('bank tank');
+    expect(seaAboutIt.variant_axes.shade).toBe('sea about it');
+    expect(bankTank.product_line_id).toBe(seaAboutIt.product_line_id);
+    expect(bankTank.sellable_item_group_id).not.toBe(seaAboutIt.sellable_item_group_id);
+
+    expect(lightBlonde.variant_axes.shade).toBe('light blonde');
+    expect(mediumBrown.variant_axes.shade).toBe('medium brown');
+    expect(lightBlonde.product_line_id).toBe(mediumBrown.product_line_id);
+    expect(lightBlonde.sellable_item_group_id).not.toBe(mediumBrown.sellable_item_group_id);
+
+    expect(blackMascara.variant_axes.shade).toBe('cuz im black');
+    expect(blueMascara.variant_axes.shade).toBe('electrip blue');
+    expect(blackMascara.product_line_id).toBe(blueMascara.product_line_id);
+
+    expect(trophyWife.variant_axes.shade).toBe('trophy wife');
+    expect(pinkIce.variant_axes.shade).toBe('pink ice');
+    expect(trophyWife.product_line_id).toBe(pinkIce.product_line_id);
+  });
+
   test('maybeBuildLiveSyntheticPdp allows live rows by identity brand when fallback product lacks brand', async () => {
     jest.resetModules();
     process.env = {

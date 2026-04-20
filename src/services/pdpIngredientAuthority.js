@@ -54,6 +54,8 @@ const STOP_MARKERS = [
 const MARKETING_SIGNAL_RE =
   /\b(soothes?|supports?|fades?|helps?|comforts?|improves?|hydrates?|nourishes?|good for|best for|works? well|pair with|apply|massage|barrier|redness|discoloration|irritation)\b/i;
 const SECTION_HEADING_RE = /^(full ingredients?|ingredients(?:\s*\(inci\))?|inci(?: list)?|active ingredients?)$/i;
+const INGREDIENT_FUNCTION_LABEL_RE =
+  /^(?:carrier|antioxidant|chelating agent|emollient|emulsifier|emulsion stabilizer|film former|humectant|thickener|skin conditioner|preservative|surfactant|solvent|stabilizer|ph adjuster|buffering agent|colorant|opacifier|viscosity controlling|viscosity controller|absorbent|abrasive|binder|cleansing agent)$/i;
 const SOURCE_PRIORITY = {
   kb_reviewed: 5,
   existing_authority: 4,
@@ -196,6 +198,7 @@ function isLikelyIngredientItem(value) {
   const text = asString(value);
   if (!text) return false;
   if (SECTION_HEADING_RE.test(text)) return false;
+  if (INGREDIENT_FUNCTION_LABEL_RE.test(text)) return false;
   if (looksLikeQuestion(text)) return false;
   if (text.length > 140) return false;
   if (/[:]/.test(text)) return false;

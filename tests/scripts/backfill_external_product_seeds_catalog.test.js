@@ -651,6 +651,187 @@ describe('backfill-external-product-seeds-catalog', () => {
     ]);
   });
 
+  test('persists canonical pdp_* fields from catalog extraction into seed snapshot', () => {
+    const row = {
+      id: 'eps_boj_sunscreen',
+      external_product_id: 'ext_boj_sunscreen',
+      title: 'Relief Sun : Rice + Probiotics (SPF50+ PA++++)',
+      canonical_url: 'https://beautyofjoseon.com/products/relief-sun-rice-probiotics-spf50-pa-uk',
+      destination_url: 'https://beautyofjoseon.com/products/relief-sun-rice-probiotics-spf50-pa-uk',
+      image_url: '',
+      price_amount: 18,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      seed_data: {
+        snapshot: {
+          canonical_url: 'https://beautyofjoseon.com/products/relief-sun-rice-probiotics-spf50-pa-uk',
+        },
+      },
+    };
+
+    const payload = buildSeedUpdatePayload(
+      row,
+      {
+        products: [
+          {
+            title: 'Relief Sun : Rice + Probiotics (SPF50+ PA++++)',
+            url: 'https://beautyofjoseon.com/products/relief-sun-rice-probiotics-spf50-pa-uk',
+            pdp_description_raw: 'A daily sunscreen with rice extract and probiotics.',
+            pdp_details_sections: [
+              {
+                heading: 'How to Use',
+                body: 'Apply as the last morning skincare step.',
+              },
+              {
+                heading: 'Ingredients',
+                body: 'Water, Dibutyl Adipate, Propanediol, Niacinamide',
+              },
+            ],
+            pdp_ingredients_raw: 'Water, Dibutyl Adipate, Propanediol, Niacinamide',
+            pdp_how_to_use_raw: 'Apply as the last morning skincare step.',
+            pdp_faq_items: [
+              {
+                question: 'Can I use it daily?',
+                answer: 'Yes, use as the last morning skincare step.',
+                source_kind: 'merchant_faq',
+              },
+            ],
+            pdp_field_capture_status: {
+              details_sections: 'present',
+              ingredients_raw: 'present',
+              how_to_use_raw: 'present',
+              faq_items: 'present',
+            },
+            variants: [],
+          },
+        ],
+        variants: [],
+        diagnostics: { failure_category: null },
+      },
+      'https://beautyofjoseon.com/products/relief-sun-rice-probiotics-spf50-pa-uk',
+    );
+
+    expect(payload.changed).toBe(true);
+    expect(payload.nextRow.seed_data.pdp_description_raw).toBe(
+      'A daily sunscreen with rice extract and probiotics.',
+    );
+    expect(payload.nextRow.seed_data.pdp_details_sections).toHaveLength(2);
+    expect(payload.nextRow.seed_data.pdp_ingredients_raw).toBe(
+      'Water, Dibutyl Adipate, Propanediol, Niacinamide',
+    );
+    expect(payload.nextRow.seed_data.pdp_how_to_use_raw).toBe(
+      'Apply as the last morning skincare step.',
+    );
+    expect(payload.nextRow.seed_data.pdp_faq_items).toEqual([
+      {
+        question: 'Can I use it daily?',
+        answer: 'Yes, use as the last morning skincare step.',
+        source_kind: 'merchant_faq',
+      },
+    ]);
+    expect(payload.nextRow.seed_data.pdp_field_capture_status).toEqual({
+      description_raw: 'present',
+      details_sections: 'present',
+      ingredients_raw: 'present',
+      how_to_use_raw: 'present',
+      faq_items: 'present',
+    });
+  });
+
+  test('matches direct PDP extraction by exact title when localized canonical URL changes', () => {
+    const row = {
+      id: 'eps_boj_rice_probiotics',
+      external_product_id: 'ext_boj_rice_probiotics',
+      title: 'Relief Sun : Rice + Probiotics (SPF50+ PA++++)',
+      canonical_url: 'https://beautyofjoseon.com/products/relief-sun-rice-probiotics-spf50-pa-uk',
+      destination_url: 'https://beautyofjoseon.com/products/relief-sun-rice-probiotics-spf50-pa-uk',
+      image_url: '',
+      price_amount: 18,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      seed_data: {
+        snapshot: {
+          canonical_url: 'https://beautyofjoseon.com/products/relief-sun-rice-probiotics-spf50-pa-uk',
+          title: 'Relief Sun : Rice + Probiotics (SPF50+ PA++++)',
+        },
+      },
+    };
+
+    const payload = buildSeedUpdatePayload(
+      row,
+      {
+        products: [
+          {
+            title: 'Relief Sun Aqua-Fresh : Rice + B5 (SPF50+ PA++++)',
+            url: 'https://nl.beautyofjoseon.com/products/relief-sun-aqua-fresh',
+            details_sections: [{ heading: 'How to Use', body: 'Apply the aqua-fresh sunscreen.' }],
+            variants: [],
+          },
+          {
+            title: 'Relief Sun : Rice + Probiotics (SPF50+ PA++++)',
+            url: 'https://nl.beautyofjoseon.com/products/relief-sun-rice-probiotics',
+            description_raw: 'A daily sunscreen with rice extract and probiotics.',
+            details_sections: [
+              {
+                heading: 'How to Use',
+                body: 'After cleansing, apply a few drops of toner with your hands or a cotton pad.',
+              },
+              {
+                heading: 'How to Use',
+                body: 'Apply evenly as the last step in your morning skincare routine.',
+              },
+              {
+                heading: 'Ingredients',
+                body: 'Water, Dibutyl Adipate, Propanediol, Niacinamide',
+              },
+            ],
+            ingredients_raw: 'Water, Dibutyl Adipate, Propanediol, Niacinamide',
+            how_to_use_raw: 'After cleansing, apply a few drops of toner with your hands or a cotton pad.',
+            faq_items: [
+              {
+                question: 'Can I use it every day?',
+                answer: 'Yes, use it as the last step in your morning skincare routine.',
+                source_kind: 'merchant_faq',
+              },
+            ],
+            variants: [],
+          },
+        ],
+        variants: [],
+        diagnostics: { failure_category: null },
+      },
+      'https://beautyofjoseon.com/products/relief-sun-rice-probiotics-spf50-pa-uk',
+    );
+
+    expect(payload.changed).toBe(true);
+    expect(payload.nextRow.canonical_url).toBe('https://nl.beautyofjoseon.com/products/relief-sun-rice-probiotics');
+    expect(payload.nextRow.seed_data.pdp_details_sections).toEqual([
+      {
+        heading: 'How to Use',
+        body: 'Apply evenly as the last step in your morning skincare routine.',
+        source_kind: 'unknown',
+      },
+      {
+        heading: 'Ingredients',
+        body: 'Water, Dibutyl Adipate, Propanediol, Niacinamide',
+        source_kind: 'unknown',
+      },
+    ]);
+    expect(payload.nextRow.seed_data.pdp_ingredients_raw).toBe(
+      'Water, Dibutyl Adipate, Propanediol, Niacinamide',
+    );
+    expect(payload.nextRow.seed_data.pdp_how_to_use_raw).toBe(
+      'Apply evenly as the last step in your morning skincare routine.',
+    );
+    expect(payload.nextRow.seed_data.pdp_faq_items).toEqual([
+      {
+        question: 'Can I use it every day?',
+        answer: 'Yes, use it as the last step in your morning skincare routine.',
+        source_kind: 'merchant_faq',
+      },
+    ]);
+  });
+
   test('marks PDP field capture status as present when raw fields exist even if extractor status is stale', () => {
     const row = {
       id: 'eps_fenty_fat_water',
@@ -800,6 +981,105 @@ describe('backfill-external-product-seeds-catalog', () => {
       'Urea - Moisturizes\n\nMandelic Acid (AHA) - Exfoliates',
     );
     expect(payload.nextRow.seed_data.pdp_active_ingredients_raw).not.toMatch(/Free From|Full Ingredients/i);
+  });
+
+  test('removes stale narrative ingredient fallback when catalog has no INCI', () => {
+    const row = {
+      id: 'eps_roundlab_mask',
+      title: 'Camellia Deep Collagen V Lifting Gel Mask',
+      canonical_url: 'https://roundlab.com/products/camellia-deep-collagen-v-lifting-gel-mask',
+      destination_url: 'https://roundlab.com/products/camellia-deep-collagen-v-lifting-gel-mask',
+      image_url: '',
+      price_amount: 6,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      seed_data: {
+        pdp_ingredients_raw:
+          'Round Lab is inspired by and encapsulates natural ingredients from the Korean Peninsula – where clean water, mountain peaks and gusty winds meet. Known as the beauty capital of the world, it is a land gifted with natural resources and ingredients with powerful vitality that breathes vibrancy and purity into skin.',
+        snapshot: {
+          pdp_ingredients_raw:
+            'Round Lab is inspired by and encapsulates natural ingredients from the Korean Peninsula – where clean water, mountain peaks and gusty winds meet. Known as the beauty capital of the world, it is a land gifted with natural resources and ingredients with powerful vitality that breathes vibrancy and purity into skin.',
+        },
+      },
+    };
+
+    const payload = buildSeedUpdatePayload(
+      row,
+      {
+        products: [
+          {
+            title: row.title,
+            url: row.canonical_url,
+            description_raw: 'A hydrogel chin strap mask.',
+            active_ingredients_raw:
+              'Jeju Camellia Flower Extract • Multi-Weight Collagen • 8-Peptide Complex • Caffeine • Niacinamide',
+            how_to_use_raw: 'Apply after cleansing and toning. Relax for 20-30 minutes.',
+            details_sections: [],
+            variants: [],
+          },
+        ],
+        variants: [],
+        diagnostics: { failure_category: null },
+      },
+      row.canonical_url,
+    );
+
+    expect(payload.nextRow.seed_data.pdp_ingredients_raw).toBeUndefined();
+    expect(payload.nextRow.seed_data.snapshot.pdp_ingredients_raw).toBeUndefined();
+    expect(payload.nextRow.seed_data.pdp_active_ingredients_raw).toMatch(/Jeju Camellia Flower Extract/i);
+  });
+
+  test('removes punctuation-only active ingredient fallback when catalog has no active block', () => {
+    const row = {
+      id: 'eps_roundlab_sampler',
+      title: 'Round Lab Sheet Mask Sampler - 9pc',
+      canonical_url: 'https://roundlab.com/products/roundlab-mask-sampler',
+      destination_url: 'https://roundlab.com/products/roundlab-mask-sampler',
+      image_url: '',
+      price_amount: 30,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      seed_data: {
+        pdp_active_ingredients_raw: '–',
+        pdp_field_capture_status: {
+          active_ingredients_raw: 'present',
+        },
+        snapshot: {
+          pdp_active_ingredients_raw: '–',
+          pdp_field_capture_status: {
+            active_ingredients_raw: 'present',
+          },
+        },
+      },
+    };
+
+    const payload = buildSeedUpdatePayload(
+      row,
+      {
+        products: [
+          {
+            title: row.title,
+            url: row.canonical_url,
+            description_raw: 'A set of sheet masks.',
+            details_sections: [
+              {
+                heading: 'Clean & gentle formula',
+                body: 'Free from harsh ingredients, making it safe for all skin types.',
+                source_kind: 'shopify_body_html_section',
+              },
+            ],
+            variants: [],
+          },
+        ],
+        variants: [],
+        diagnostics: { failure_category: null },
+      },
+      row.canonical_url,
+    );
+
+    expect(payload.nextRow.seed_data.pdp_active_ingredients_raw).toBeUndefined();
+    expect(payload.nextRow.seed_data.snapshot.pdp_active_ingredients_raw).toBeUndefined();
+    expect(payload.nextRow.seed_data.pdp_field_capture_status.active_ingredients_raw).toBe('missing');
   });
 
   test('cleans PDP detail section tails before seed writes', () => {

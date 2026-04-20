@@ -71,6 +71,16 @@ function normalizeUrlKey(value) {
   return normalizeUrlLike(value).replace(/\/+$/, '').toLowerCase();
 }
 
+function normalizeTitleKey(value) {
+  return normalizeNonEmptyString(value)
+    .toLowerCase()
+    .replace(/&/g, ' and ')
+    .replace(/\+/g, ' plus ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .replace(/\s+/g, ' ');
+}
+
 const LOCALE_PATH_SEGMENT_RE = /^[a-z]{2}(?:-|_)[a-z]{2}$/i;
 const NON_PRODUCT_PATH_RE =
   /(?:^|\/)(?:collections?|collection|category|catalogsearch|search|cart|account|customer|blog|blogs|pages?|faq|privacy|terms|wishlist|gift(?:ing)?|store-locator|customer-service|all-products|appointments?|booking|online-booking|locations?|contact-us)(?:\/|$)/i;
@@ -685,11 +695,17 @@ function deriveFieldCaptureStatus(reportedStatus, fields) {
   };
 
   if (truthyFields.description_raw) next.description_raw = 'present';
+  else if (Object.prototype.hasOwnProperty.call(next, 'description_raw')) next.description_raw = 'missing';
   if (truthyFields.details_sections.length > 0) next.details_sections = 'present';
+  else if (Object.prototype.hasOwnProperty.call(next, 'details_sections')) next.details_sections = 'missing';
   if (truthyFields.ingredients_raw) next.ingredients_raw = 'present';
+  else if (Object.prototype.hasOwnProperty.call(next, 'ingredients_raw')) next.ingredients_raw = 'missing';
   if (truthyFields.active_ingredients_raw) next.active_ingredients_raw = 'present';
+  else if (Object.prototype.hasOwnProperty.call(next, 'active_ingredients_raw')) next.active_ingredients_raw = 'missing';
   if (truthyFields.how_to_use_raw) next.how_to_use_raw = 'present';
+  else if (Object.prototype.hasOwnProperty.call(next, 'how_to_use_raw')) next.how_to_use_raw = 'missing';
   if (truthyFields.faq_items.length > 0) next.faq_items = 'present';
+  else if (Object.prototype.hasOwnProperty.call(next, 'faq_items')) next.faq_items = 'missing';
 
   return Object.keys(next).length > 0 ? next : null;
 }
@@ -697,6 +713,11 @@ function deriveFieldCaptureStatus(reportedStatus, fields) {
 function findPdpDetailsSection(sections, headingPattern) {
   const normalizedSections = normalizeDetailsSections(sections);
   return normalizedSections.find((section) => headingPattern.test(section.heading)) || null;
+}
+
+function findPdpDetailsSections(sections, headingPattern) {
+  const normalizedSections = normalizeDetailsSections(sections);
+  return normalizedSections.filter((section) => headingPattern.test(section.heading));
 }
 
 function cleanPdpIngredientsRaw(value) {
@@ -722,6 +743,13 @@ function cleanPdpIngredientsRaw(value) {
 
   if (!next) return '';
   if (/^such as\b/i.test(next)) return '';
+  if (
+    /\b(?:is inspired by|beauty capital of the world|natural resources|powerful vitality|breathes vibrancy|ideal choice for|free from harsh chemicals)\b/i.test(
+      next,
+    )
+  ) {
+    return '';
+  }
   if (/\b(?:meaning it is not greasy|instead it absorbs|exfoliates dead skin cells|Details The)\b/i.test(next)) {
     return '';
   }
@@ -730,23 +758,94 @@ function cleanPdpIngredientsRaw(value) {
   }
 
   const commaCount = (next.match(/,/g) || []).length;
+  const sentenceLikeText = next.replace(/\b\d+\.\d+\b/g, '');
+  const sentenceCount = (sentenceLikeText.match(/[.!?]/g) || []).length;
+  if (sentenceCount > 0 && commaCount < 4) return '';
   if (next.length < 20 || commaCount < 1) return '';
   return next;
 }
 
 function cleanPdpActiveIngredientsRaw(value) {
-  return normalizeNonEmptyString(value)
+  const next = normalizeNonEmptyString(value)
     .replace(/\bFull Ingredients\b[\s\S]*$/i, '')
     .replace(/\bFree\s+From\s*:?\s*[\s\S]*$/i, '')
     .trim();
+  if (!next || !/[A-Za-z0-9]/.test(next)) return '';
+  if (next.length < 3) return '';
+  return next;
 }
 
-function pickPdpHowToUseRaw(rawValue, detailsSections, fallbackValue = '') {
-  const raw = normalizeNonEmptyString(rawValue);
-  const sectionBody = normalizeNonEmptyString(
-    findPdpDetailsSection(detailsSections, /^How to Use$/i)?.body,
+function looksLikeSunscreenContext(value) {
+  return /\b(?:spf|sunscreen|sun\s*(?:screen|stick|protection|defense|cream)?|uv\s*(?:filter|protection)|pa\+)\b/i.test(
+    normalizeNonEmptyString(value),
   );
+}
+
+function scoreHowToUseCandidate(body, contextText) {
+  const normalized = normalizeNonEmptyString(body).toLowerCase();
+  if (!normalized) return Number.NEGATIVE_INFINITY;
+  let score = 0;
+  if (/[.!?)]$/.test(normalized)) score += 1;
+  if (normalized.length >= 60 && normalized.length <= 360) score += 1;
+
+  if (looksLikeSunscreenContext(contextText)) {
+    if (/\b(?:sun|spf|uv|protection|protective)\b/.test(normalized)) score += 4;
+    if (/\b(?:reapply|every\s+2|every\s+3|2[–-]3\s+hours?)\b/.test(normalized)) score += 4;
+    if (/\b(?:final|last)\s+step\b/.test(normalized)) score += 2;
+    if (/\b(?:generously|exposed)\b/.test(normalized)) score += 1;
+    if (/\b(?:toner|cotton\s+pad|few\s+drops?|after\s+cleansing|morning\s+and\s+night)\b/.test(normalized)) {
+      score -= 8;
+    }
+  }
+
+  return score;
+}
+
+function pickBestHowToUseSection(detailsSections, rawValue, fallbackValue, contextText) {
+  const raw = normalizeNonEmptyString(rawValue);
   const fallback = normalizeNonEmptyString(fallbackValue);
+  const candidates = [
+    ...findPdpDetailsSections(detailsSections, /^How to Use$/i).map((section) => section.body),
+    raw,
+    fallback,
+  ]
+    .map(normalizeNonEmptyString)
+    .filter(Boolean);
+
+  if (!candidates.length) return '';
+  if (!looksLikeSunscreenContext(contextText)) {
+    return candidates[0];
+  }
+
+  return candidates
+    .map((body, index) => ({
+      body,
+      index,
+      score: scoreHowToUseCandidate(body, contextText),
+    }))
+    .sort((left, right) => right.score - left.score || left.index - right.index)[0].body;
+}
+
+function filterDuplicateHowToSections(detailsSections, selectedHowTo) {
+  const sections = normalizeDetailsSections(detailsSections);
+  const howToSections = sections.filter((section) => /^How to Use$/i.test(section.heading));
+  if (howToSections.length <= 1) return sections;
+  const selectedSignature = sectionBodySignature(selectedHowTo);
+  return sections.filter((section) => {
+    if (!/^How to Use$/i.test(section.heading)) return true;
+    if (!selectedSignature) return false;
+    const sectionSignature = sectionBodySignature(section.body);
+    return sectionSignature === selectedSignature || selectedSignature.includes(sectionSignature) || sectionSignature.includes(selectedSignature);
+  });
+}
+
+function pickPdpHowToUseRaw(rawValue, detailsSections, fallbackValue = '', contextText = '') {
+  const raw = normalizeNonEmptyString(rawValue);
+  const sectionBody = normalizeNonEmptyString(pickBestHowToUseSection(detailsSections, raw, fallbackValue, contextText));
+  const fallback = normalizeNonEmptyString(fallbackValue);
+  if (looksLikeSunscreenContext(contextText) && sectionBody && sectionBody !== raw) {
+    return sectionBody;
+  }
   if (
     sectionBody &&
     (!raw ||
@@ -907,12 +1006,14 @@ function chooseRepresentativeProduct(response, targetUrl, row) {
   const products = Array.isArray(response?.products) ? response.products : [];
   if (!products.length) return null;
 
+  const seedData = ensureJsonObject(row?.seed_data);
+  const snapshot = ensureJsonObject(seedData.snapshot);
   const rawCandidates = [
     targetUrl,
     row?.canonical_url,
     row?.destination_url,
-    ensureJsonObject(row?.seed_data).canonical_url,
-    ensureJsonObject(row?.seed_data).snapshot?.canonical_url,
+    seedData.canonical_url,
+    snapshot.canonical_url,
   ].filter(Boolean);
 
   const candidateKeys = new Set(
@@ -932,6 +1033,27 @@ function chooseRepresentativeProduct(response, targetUrl, row) {
     const productKey = normalizeUrlKey(product?.url);
     const comparableProductKey = normalizeComparableUrlKey(product?.url);
     if (candidateKeys.has(productKey) || comparableKeys.has(comparableProductKey)) return product;
+  }
+
+  if (looksLikeDirectProductTargetUrl(targetUrl)) {
+    const titleKeys = new Set(
+      [
+        row?.title,
+        row?.name,
+        seedData.title,
+        seedData.name,
+        seedData.product_title,
+        snapshot.title,
+        snapshot.name,
+        snapshot.product_title,
+      ]
+        .map(normalizeTitleKey)
+        .filter(Boolean),
+    );
+    if (titleKeys.size > 0) {
+      const exactTitleMatches = products.filter((product) => titleKeys.has(normalizeTitleKey(product?.title)));
+      if (exactTitleMatches.length === 1) return exactTitleMatches[0];
+    }
   }
 
   if (looksLikeDirectProductTargetUrl(targetUrl) && products.length === 1) {
@@ -1181,16 +1303,34 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     representativeProduct?.variants?.find((variant) => variant.description)?.description ||
       effectiveSnapshotVariants.find((variant) => variant.description)?.description,
   );
-  const productDescriptionRaw = normalizeNonEmptyString(representativeProduct?.description_raw);
-  const pdpDetailsSections = normalizeDetailsSections(representativeProduct?.details_sections);
-  const pdpIngredientsRaw = normalizeNonEmptyString(representativeProduct?.ingredients_raw);
-  const pdpActiveIngredientsRaw = normalizeNonEmptyString(representativeProduct?.active_ingredients_raw);
-  const pdpHowToUseRaw = normalizeNonEmptyString(representativeProduct?.how_to_use_raw);
-  const pdpFaqItems = normalizeFaqItems(representativeProduct?.faq_items);
+  const productDescriptionRaw = normalizeNonEmptyString(
+    representativeProduct?.description_raw ||
+      representativeProduct?.pdp_description_raw,
+  );
+  const pdpDetailsSections = normalizeDetailsSections(
+    representativeProduct?.details_sections ||
+      representativeProduct?.pdp_details_sections,
+  );
+  const pdpIngredientsRaw = normalizeNonEmptyString(
+    representativeProduct?.ingredients_raw ||
+      representativeProduct?.pdp_ingredients_raw,
+  );
+  const pdpActiveIngredientsRaw = normalizeNonEmptyString(
+    representativeProduct?.active_ingredients_raw ||
+      representativeProduct?.pdp_active_ingredients_raw,
+  );
+  const pdpHowToUseRaw = normalizeNonEmptyString(
+    representativeProduct?.how_to_use_raw ||
+      representativeProduct?.pdp_how_to_use_raw,
+  );
+  const pdpFaqItems = normalizeFaqItems(
+    representativeProduct?.faq_items ||
+      representativeProduct?.pdp_faq_items,
+  );
   const nextPdpDescriptionRaw =
     productDescriptionRaw ||
     normalizeNonEmptyString(seedData.pdp_description_raw || snapshot.pdp_description_raw);
-  const nextPdpDetailsSections =
+  let nextPdpDetailsSections =
     pdpDetailsSections.length > 0
       ? pdpDetailsSections
       : normalizeDetailsSections(
@@ -1207,11 +1347,24 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     pdpActiveIngredientsRaw ||
       normalizeNonEmptyString(seedData.pdp_active_ingredients_raw || snapshot.pdp_active_ingredients_raw),
   );
+  const pdpHowToUseContext = [
+    representativeProduct?.title,
+    seedData.title,
+    snapshot.title,
+    row?.title,
+    representativeProduct?.category,
+    seedData.category,
+    snapshot.category,
+    productDescriptionRaw,
+    nextPdpActiveIngredientsRaw,
+  ].join(' ');
   const nextPdpHowToUseRaw = pickPdpHowToUseRaw(
     pdpHowToUseRaw,
     nextPdpDetailsSections,
     normalizeNonEmptyString(seedData.pdp_how_to_use_raw || snapshot.pdp_how_to_use_raw),
+    pdpHowToUseContext,
   );
+  nextPdpDetailsSections = filterDuplicateHowToSections(nextPdpDetailsSections, nextPdpHowToUseRaw);
   const nextPdpFaqItems =
     pdpFaqItems.length > 0
       ? pdpFaqItems
@@ -1222,6 +1375,7 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
         );
   const pdpFieldCaptureStatus = deriveFieldCaptureStatus(
     normalizeFieldCaptureStatus(representativeProduct?.field_capture_status) ||
+      normalizeFieldCaptureStatus(representativeProduct?.pdp_field_capture_status) ||
       normalizeFieldCaptureStatus(seedData.pdp_field_capture_status) ||
       normalizeFieldCaptureStatus(snapshot.pdp_field_capture_status),
     {
@@ -1321,6 +1475,8 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
         : response?.diagnostics || snapshot.diagnostics || null,
     variant_skus: variantSkus.length > 0 ? variantSkus : uniqueStrings(snapshot.variant_skus || []),
   };
+  if (!nextPdpIngredientsRaw) delete nextSnapshot.pdp_ingredients_raw;
+  if (!nextPdpActiveIngredientsRaw) delete nextSnapshot.pdp_active_ingredients_raw;
 
   const nextSeedData = {
     ...seedData,
@@ -1340,6 +1496,14 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     ...(effectiveSnapshotVariants.length > 0 ? { variants: effectiveSnapshotVariants } : {}),
     snapshot: nextSnapshot,
   };
+  if (!nextPdpIngredientsRaw) {
+    delete nextSeedData.pdp_ingredients_raw;
+    if (nextSeedData.snapshot && typeof nextSeedData.snapshot === 'object') delete nextSeedData.snapshot.pdp_ingredients_raw;
+  }
+  if (!nextPdpActiveIngredientsRaw) {
+    delete nextSeedData.pdp_active_ingredients_raw;
+    if (nextSeedData.snapshot && typeof nextSeedData.snapshot === 'object') delete nextSeedData.snapshot.pdp_active_ingredients_raw;
+  }
   const nextDerived = ensureJsonObject(nextSeedData.derived);
   nextSeedData.derived = {
     ...nextDerived,

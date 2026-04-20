@@ -488,6 +488,20 @@ function extractDetailsText(detailsModule, pattern) {
   return '';
 }
 
+function extractDetailsSectionText(sections, pattern) {
+  for (const section of asArray(sections)) {
+    const heading = asString(section?.heading || section?.title || section?.name);
+    if (!pattern.test(heading)) continue;
+    const body = asString(section?.body || section?.text || section?.content || section?.description);
+    if (body) return body;
+    const items = asArray(section?.items || section?.bullets)
+      .map((item) => asString(item?.body || item?.text || item?.content || item))
+      .filter(Boolean);
+    if (items.length) return items.join(' ');
+  }
+  return '';
+}
+
 function extractStructuredModuleText(module) {
   const data = module?.data && typeof module.data === 'object' ? module.data : {};
   const direct = asString(data.raw_text || data.rawText || data.text || data.body || data.content);
@@ -751,6 +765,13 @@ function normalizeIngredientName(value) {
     .trim();
   text = text.replace(/^[•*\-\s]+/, '').replace(/[.;,]+$/, '').trim();
   if (!text) return '';
+  if (/^\d+$/.test(text)) return '';
+  if (
+    /^(?:carrier|antioxidant|chelating agent|emollient|emulsifier|emulsion stabilizer|film former|humectant|thickener|skin conditioner|preservative|surfactant|solvent|stabilizer|ph adjuster|buffering agent|colorant|opacifier|viscosity controlling|viscosity controller|absorbent|abrasive|binder|cleansing agent)$/i.test(text)
+  ) {
+    return '';
+  }
+  if (/\b(?:see full ingredients|full ingredients|ingredients tab|tab on each product|we got you covered)\b/i.test(text)) return '';
   if (/^(?:key features|how it works|scent|size)\b/i.test(text)) return '';
   if (/\b(?:your|our|skin|order|checkout|glow|routine|texture|benefits?|results?|instantly|clinically|moisturiz(?:e|es|ing)|hydrate(?:s|d|ing)?|supports?|helps?|helping|contains?|formulated|wear|coverage|shades?|versatile|tint|lightweight|makeup|finder|spf|including|combine|fast-acting|growth factors?|sunburn|premature|aging|reflect|scatter|rays|protection|broad-spectrum|uva|uvb|effectively)\b/i.test(text)) {
     return '';
@@ -771,14 +792,75 @@ function pushIngredientName(out, value) {
   const name = normalizeIngredientName(value);
   if (!name) return;
   const key = name.toLowerCase();
+  if (/^2-hexanediol$/i.test(name) && out.some((item) => /^1,2-hexanediol$/i.test(item))) return;
+  if (/^1,2-hexanediol$/i.test(name)) {
+    const staleIndex = out.findIndex((item) => /^2-hexanediol$/i.test(item));
+    if (staleIndex >= 0) out.splice(staleIndex, 1);
+  }
   if (out.some((item) => item.toLowerCase() === key)) return;
   out.push(name);
 }
 
 function normalizeIngredientListForPilot(value) {
   const out = [];
-  for (const item of asArray(value)) {
-    pushIngredientName(out, item?.inci || item);
+  const source = asArray(value);
+  for (let index = 0; index < source.length; index += 1) {
+    const raw = source[index]?.inci || source[index];
+    const text = asString(raw);
+    const nextRaw = source[index + 1]?.inci || source[index + 1];
+    const nextText = asString(nextRaw);
+    if (/^\d+$/.test(text) && /^\d+-?hexanediol$/i.test(nextText)) {
+      pushIngredientName(out, `${text},${nextText}`);
+      index += 1;
+      continue;
+    }
+    pushIngredientName(out, raw);
+  }
+  return out;
+}
+
+function pushIngredientList(out, value) {
+  for (const item of normalizeIngredientListForPilot(value)) {
+    pushIngredientName(out, item);
+  }
+}
+
+function pushIngredientsFromRawText(out, value) {
+  const text = asString(value);
+  if (!text) return;
+  const delimitedItems = extractDelimitedIngredientNames(text);
+  for (const item of delimitedItems) {
+    pushIngredientName(out, item);
+  }
+  if (delimitedItems.length >= 3) return;
+  for (const item of extractIngredientNamesFromText(text)) {
+    pushIngredientName(out, item);
+  }
+}
+
+function collectPilotIngredientsFromProduct(...products) {
+  const out = [];
+  for (const product of products) {
+    if (!product || typeof product !== 'object') continue;
+    pushIngredientList(out, product.ingredients_inci || product.ingredients);
+    pushIngredientList(out, product.inci_list);
+    const ingredientIntel = product.ingredient_intel && typeof product.ingredient_intel === 'object'
+      ? product.ingredient_intel
+      : {};
+    pushIngredientList(out, ingredientIntel.inci_list || ingredientIntel.inci_normalized);
+    pushIngredientsFromRawText(out, product.pdp_ingredients_raw);
+    pushIngredientsFromRawText(out, product.raw_ingredient_text_clean);
+    pushIngredientsFromRawText(out, ingredientIntel.raw_ingredient_text_clean);
+    pushIngredientsFromRawText(
+      out,
+      extractDetailsSectionText(
+        product.pdp_details_sections || product.details_sections,
+        /\b(?:full\s+)?ingredients?\b|\bINCI\b/i,
+      ),
+    );
+    if (out.length >= 3) continue;
+    pushIngredientList(out, product.active_ingredients || product.key_ingredients);
+    pushIngredientsFromRawText(out, product.pdp_active_ingredients_raw);
   }
   return out;
 }
@@ -1238,14 +1320,20 @@ function buildPilotCaseFromPdpResponse(response, seedCase) {
   const category = categoryPath.length ? categoryPath.join('/') : asString(product.category || product.product_type);
   const howToUse =
     extractStructuredModuleText(howToUseModule) ||
-    extractDetailsText(detailsModule, /how to use|directions/i);
+    extractDetailsText(detailsModule, /how to use|directions/i) ||
+    asString(seedProduct.pdp_how_to_use_raw || seedProduct.how_to_use) ||
+    extractDetailsSectionText(seedProduct.pdp_details_sections || seedProduct.details_sections, /how to use|directions/i);
   const overview = extractDetailsText(detailsModule, /overview|details|description/i);
-  const ingredients = asArray(
+  const moduleIngredients = asArray(
     ingredientsModule?.data?.items ||
       ingredientsModule?.data?.ingredients_inci ||
       ingredientsModule?.data?.ingredients ||
       product.ingredients_inci ||
       product.ingredients,
+  );
+  const ingredients = collectPilotIngredientsFromProduct(
+    { ...product, ingredients_inci: moduleIngredients },
+    seedProduct,
   );
   const normalizedReviewSummary =
     normalizeReviewSummary(productIntel.review_summary) ||
@@ -1313,9 +1401,7 @@ function buildPilotCaseFromExternalSeedProduct(product, seedCase) {
   const brand = normalizeBrandName(product.brand) || asString(seedProduct.brand);
   const categoryPath = asArray(product.category_path).map((item) => asString(item)).filter(Boolean);
   const category = categoryPath.length ? categoryPath.join('/') : asString(product.category || product.product_type || seedProduct.category);
-  const ingredients = asArray(product.ingredients_inci || product.ingredients)
-    .map((item) => asString(item?.inci || item))
-    .filter(Boolean);
+  const ingredients = collectPilotIngredientsFromProduct(product, seedProduct);
   const normalizedReviewSummary =
     normalizeReviewSummary(product.review_summary) ||
     normalizeReviewSummary({
@@ -1366,7 +1452,13 @@ function buildPilotCaseFromExternalSeedProduct(product, seedCase) {
       texture: asString(product.texture || seedProduct.texture),
       finish: asString(product.finish || seedProduct.finish),
       ingredients_inci: normalizeIngredientListForPilot(ingredients),
-      how_to_use: asString(product.how_to_use || product.pdp_how_to_use_raw || product.usage || seedProduct.how_to_use),
+      how_to_use: asString(
+        product.how_to_use ||
+          product.pdp_how_to_use_raw ||
+          product.usage ||
+          extractDetailsSectionText(product.pdp_details_sections || product.details_sections, /how to use|directions/i) ||
+          seedProduct.how_to_use,
+      ),
       ...(sourceUrl ? { source_url: sourceUrl } : {}),
       review_summary: normalizedReviewSummary,
       ...(normalizedCommunitySignals ? { community_signals: normalizedCommunitySignals } : {}),
@@ -1415,6 +1507,21 @@ async function fetchExternalSeedProduct(productId) {
   const row = res?.rows && res.rows[0] ? res.rows[0] : null;
   if (!row) return null;
   return buildExternalSeedProduct(row);
+}
+
+function isMissingDatabaseError(err) {
+  const code = asString(err?.code);
+  const message = asString(err?.message || err);
+  return code === 'NO_DATABASE' || code === '42P01' || /DATABASE_URL not configured/i.test(message);
+}
+
+async function safeFetchExternalSeedProduct(productId) {
+  try {
+    return await fetchExternalSeedProduct(productId);
+  } catch (err) {
+    if (isMissingDatabaseError(err)) return null;
+    throw err;
+  }
 }
 
 function hasBadgeEvidence(caseRow) {
@@ -1838,16 +1945,35 @@ async function main() {
 
   const cases = [];
   for (const productId of selectedIds) {
-    const seedCase = seedCases.find((row) => row?.canonical_product_ref?.product_id === productId) || null;
+    let seedCase = seedCases.find((row) => row?.canonical_product_ref?.product_id === productId) || null;
     const requestedProductRef = explicitProductRefById.get(productId) || null;
+    let externalSeedProduct = null;
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      externalSeedProduct = await safeFetchExternalSeedProduct(productId);
+      if (externalSeedProduct) {
+        const externalSeedCase = buildPilotCaseFromExternalSeedProduct(externalSeedProduct, seedCase);
+        if (externalSeedCase) {
+          seedCase = externalSeedCase;
+        }
+      }
+    } catch (err) {
+      queryErrors.push({
+        product_id: productId,
+        source: 'external_seed_product',
+        error: asString(err?.message || err),
+      });
+    }
     try {
       // eslint-disable-next-line no-await-in-loop
       const response = await fetchPdpResponse(args.gatewayUrl, productId, requestedProductRef);
       let row = buildPilotCaseFromPdpResponse(response, seedCase);
       if (!row) {
         // Fall back to external seed truth when invoke resolution is unavailable.
-        // eslint-disable-next-line no-await-in-loop
-        const externalSeedProduct = await fetchExternalSeedProduct(productId);
+        if (!externalSeedProduct) {
+          // eslint-disable-next-line no-await-in-loop
+          externalSeedProduct = await fetchExternalSeedProduct(productId);
+        }
         row = buildPilotCaseFromExternalSeedProduct(externalSeedProduct, seedCase);
       }
       if (row) {
@@ -1875,8 +2001,10 @@ async function main() {
       }
     } catch (err) {
       try {
-        // eslint-disable-next-line no-await-in-loop
-        const externalSeedProduct = await fetchExternalSeedProduct(productId);
+        if (!externalSeedProduct) {
+          // eslint-disable-next-line no-await-in-loop
+          externalSeedProduct = await fetchExternalSeedProduct(productId);
+        }
         const fallbackRow = buildPilotCaseFromExternalSeedProduct(externalSeedProduct, seedCase);
         if (fallbackRow) {
           if (args.fetchSourceReviews || args.fetchSourceFacts) {
