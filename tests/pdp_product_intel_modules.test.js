@@ -87,6 +87,24 @@ describe('pdp product intel bundle shaping', () => {
         category: 'Eye Treatment',
       }),
     ).toBe('Eye Balm');
+    expect(
+      inferTitleSpecialtyCompactSubtitle({
+        title: 'Ingrown Hair Pads with BHA + AHA',
+        category: 'Body Care',
+      }),
+    ).toBe('Exfoliating Pads');
+    expect(
+      inferTitleSpecialtyCompactSubtitle({
+        title: 'Anti-Chafe Stick with Shea Butter + Colloidal Oatmeal',
+        category: 'Body Care',
+      }),
+    ).toBe('Anti-Chafe Stick');
+    expect(
+      inferTitleSpecialtyCompactSubtitle({
+        title: 'Birch Moisturizing Sun Stick SPF 50+',
+        category: 'Sunscreen',
+      }),
+    ).toBe('Sun Stick SPF');
   });
 
   test('shopping card subtitle preserves specialty format over generic routine step', () => {

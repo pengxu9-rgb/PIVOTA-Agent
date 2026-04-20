@@ -222,9 +222,20 @@ function inferTitleSpecialtyCompactSubtitle(product) {
   const safeProduct = product && typeof product === 'object' ? product : {};
   const title = asString(safeProduct.title || safeProduct.name).toLowerCase();
   const category = asString(safeProduct.category || safeProduct.product_type).toLowerCase();
-  const text = `${title} ${category}`.trim();
+  const description = asString(safeProduct.description || safeProduct.short_description).toLowerCase();
+  const text = `${title} ${category} ${description}`.trim();
   if (!text) return '';
 
+  if (/\b(?:facial radiance|ingrown hair|aha|bha|glycolic|lactic)\s+pads?\b/.test(text) || /\bpads?\s+with\s+(?:bha|aha|glycolic|lactic)/.test(text)) {
+    if (/\b(?:aha|bha|glycolic|lactic|salicylic)\b/.test(text)) return 'Exfoliating Pads';
+    return 'Treatment Pads';
+  }
+  if (/\banti[-\s]?chafe\b/.test(text)) return 'Anti-Chafe Stick';
+  if (/\bcleansing\s+oil\b/.test(text)) return 'Cleansing Oil';
+  if (/\bsun\s+stick\b/.test(text) || (/\bstick\b/.test(text) && /\b(?:sunscreen|spf)\b/.test(text))) return 'Sun Stick SPF';
+  if (/\bhand\s*(?:&|and)?\s*nail\s+cream\b/.test(text) || /\bhand\s+cream\b/.test(text)) return 'Hand Cream';
+  if (/\bskin\s+milk\b/.test(text)) return 'Skin Milk';
+  if (/\b(?:lip\s+balm|lip benefits|lip moisture)\b/.test(text)) return 'Lip Balm';
   if (/\b(?:cleanser|cleansing)\b/.test(text)) {
     if (/\bcleansing\s+balm\b/.test(text)) return 'Cleansing Balm';
     if (/\bcleansing\s+oil\b/.test(text)) return 'Cleansing Oil';

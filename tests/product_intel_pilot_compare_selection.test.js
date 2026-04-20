@@ -149,6 +149,92 @@ describe('product_intel pilot compare selection', () => {
     expect(rewrite.product_intel_core.routine_fit.pairing_notes.join(' ')).toMatch(/lip balm/i);
   });
 
+  test('human-standard rewrite preserves pads and anti-chafe formats over stale categories', () => {
+    const padsRow = {
+      case_id: 'live_ext_pads',
+      product: {
+        title: 'Ingrown Hair Pads with BHA + AHA 60 count',
+        category: 'Serum',
+        description: 'Swipe-on pads for ingrown hair and rough body texture.',
+        ingredients_inci: ['Salicylic Acid', 'Glycolic Acid', 'Glycerin'],
+      },
+    };
+    expect(inferProductKindFromContext(padsRow.product)).toBe('treatment_pads');
+    const padsRewrite = buildHumanStandardRewriteOutput(
+      padsRow,
+      {
+        product_intel_core: {
+          what_it_is: { headline: 'Treatment serum', body: 'A treatment serum for targeted skin-care routines.' },
+          routine_fit: { step: 'serum', pairing_notes: ['Apply before moisturizer.'] },
+        },
+      },
+      null,
+    );
+    expect(padsRewrite.product_intel_core.what_it_is.headline).toBe('Treatment pads');
+    expect(padsRewrite.product_intel_core.what_it_is.body).toMatch(/pads/i);
+    expect(padsRewrite.product_intel_core.what_it_is.body).not.toMatch(/serum|cleanser/i);
+    expect(padsRewrite.product_intel_core.routine_fit.step).toBe('exfoliating treatment');
+
+    const stickRow = {
+      case_id: 'live_ext_anti_chafe',
+      product: {
+        title: 'Anti-Chafe Stick with Shea Butter + Colloidal Oatmeal',
+        category: 'Fragrance',
+        description: 'A fragrance-free stick for body areas where rubbing can happen.',
+        ingredients_inci: ['Butyrospermum Parkii Butter', 'Avena Sativa Kernel Flour'],
+      },
+    };
+    expect(inferProductKindFromContext(stickRow.product)).toBe('anti_chafe_stick');
+    const stickRewrite = buildHumanStandardRewriteOutput(
+      stickRow,
+      {
+        product_intel_core: {
+          what_it_is: { headline: 'Fragrance product', body: 'A fragrance product.' },
+          routine_fit: { step: 'fragrance', pairing_notes: ['Apply to pulse points.'] },
+        },
+      },
+      null,
+    );
+    expect(stickRewrite.product_intel_core.what_it_is.headline).toBe('Anti-chafe stick');
+    expect(stickRewrite.product_intel_core.what_it_is.body).toMatch(/anti-chafe stick/i);
+    expect(stickRewrite.product_intel_core.what_it_is.body).not.toMatch(/fragrance/i);
+    expect(stickRewrite.product_intel_core.routine_fit.step).toBe('body comfort');
+
+    const stickBaseline = buildProductIntelDraftBundle({
+      product: {
+        ...stickRow.product,
+        product_id: 'ext_anti_chafe',
+        merchant_id: 'external_seed',
+      },
+      canonicalProductRef: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_anti_chafe',
+      },
+    });
+    stickBaseline.product_intel_core.watchouts = [
+      {
+        type: 'fragrance',
+        label: 'Contains fragrance or fragrance-like positioning.',
+        severity: 'medium',
+      },
+    ];
+    const stickCandidate = mergeGeminiDraftIntoBaseline(
+      stickRow,
+      stickBaseline,
+      stickRewrite,
+      'deterministic-human-standard-rewrite',
+    );
+    const stickQuality = evaluateGeminiCandidateQuality(stickBaseline, stickCandidate);
+    const stickSelected = buildSelectedBundle(
+      stickRow,
+      stickBaseline,
+      stickCandidate,
+      stickQuality,
+      'deterministic-human-standard-rewrite',
+    );
+    expect(stickSelected.bundle.product_intel_core.watchouts).toEqual([]);
+  });
+
   test('drops truncated PDP narrative descriptions from Gemini facts packs', () => {
     const facts = buildFactsPack({
       case_id: 'live_ext_daily_tinted',
