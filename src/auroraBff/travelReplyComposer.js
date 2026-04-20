@@ -64,6 +64,20 @@ function formatBuyingChannelList(values, language) {
   );
 }
 
+function isGroundedShoppingProduct(row) {
+  if (!isPlainObject(row)) return false;
+  const source = normalizeText(row.product_source || row.productSource, 80).toLowerCase();
+  const status = normalizeText(row.authority_status || row.authorityStatus || row.match_status || row.matchStatus, 80).toLowerCase();
+  return Boolean(
+    row.is_grounded === true ||
+      normalizeText(row.product_id || row.productId, 120) ||
+      source === 'catalog' ||
+      source === 'internal' ||
+      source === 'external_seed' ||
+      /grounded|catalog_verified|authority|resolved/.test(status),
+  );
+}
+
 function clipAtWord(value, maxLen = 120) {
   const limit = Math.max(20, Math.trunc(Number(maxLen) || 120));
   const text = normalizeText(value, limit + 80);
@@ -676,15 +690,26 @@ function buildTravelKitLines({ language, foci, travelReadiness, profile }) {
     }
   }
 
-  const names = Array.isArray(shopping.products)
-    ? shopping.products
-        .map((row) => normalizeText(row && row.name, 80))
-        .filter(Boolean)
-        .slice(0, 6)
-    : [];
+  const shoppingProducts = Array.isArray(shopping.products) ? shopping.products.filter(isPlainObject) : [];
+  const groundedNames = shoppingProducts
+    .filter(isGroundedShoppingProduct)
+    .map((row) => normalizeText(row && row.name, 80))
+    .filter(Boolean)
+    .slice(0, 6);
+  const categoryNames = shoppingProducts
+    .filter((row) => !isGroundedShoppingProduct(row))
+    .map((row) => normalizeText(row && row.name, 80))
+    .filter(Boolean)
+    .slice(0, 6);
+  const shoppingMode = normalizeText(shopping.mode, 80).toLowerCase();
+  const coverageStatus = normalizeText(shopping.coverage_status || shopping.coverageStatus, 80).toLowerCase();
+  const categoryOnly = coverageStatus === 'category_only' || shoppingMode === 'category_guidance' || (!groundedNames.length && categoryNames.length);
+  const names = categoryOnly ? categoryNames : groundedNames;
   if (names.length) {
     lines.push(
-      t(language, `主推单品：${names.join(' / ')}。`, `Suggested products: ${names.join(' / ')}.`),
+      categoryOnly
+        ? t(language, `建议准备品类：${names.join(' / ')}。`, `Suggested product categories: ${names.join(' / ')}.`)
+        : t(language, `可查看商品：${names.join(' / ')}。`, `Product options to review: ${names.join(' / ')}.`),
     );
   }
 
