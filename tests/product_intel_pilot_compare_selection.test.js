@@ -136,6 +136,28 @@ describe('product_intel pilot compare selection', () => {
         rejected: /daily sunscreen/i,
       },
       {
+        title: '+C Vit Priming Oil',
+        category: 'Oil',
+        description:
+          'Tri-phase priming oil with Vitamin C that absorbs quickly for a smooth, hydrated makeup base.',
+        tags: ['Vitamin C', 'Turmeric', 'Carrot Oil'],
+        expectedKind: 'primer',
+        expectedHeadline: /Primer/i,
+        expectedSubtitle: 'Primer',
+        rejected: /^Product$/i,
+      },
+      {
+        title: '+Rose Lip Nourisher',
+        category: 'Blush',
+        description:
+          'A silky balm enriched with Rosehip Oil, Vitamin E and Jojoba Seed Oil for a rosy glow on lips.',
+        tags: ['Blush', 'Rosehip Oil', 'Vitamin E'],
+        expectedKind: 'lip_balm',
+        expectedHeadline: /lip balm|tinted lip balm/i,
+        expectedSubtitle: 'Tinted Lip Balm',
+        rejected: /^Blush$/i,
+      },
+      {
         title: 'Mini Glow Trio',
         category: 'Toner',
         description:

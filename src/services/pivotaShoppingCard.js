@@ -242,6 +242,7 @@ function inferTitleSpecialtyCompactSubtitle(product) {
   if (!text) return '';
 
   if (/\b(?:makeup fixing mist|fixing mist|setting spray|makeup setting spray|setting mist)\b/.test(text)) return 'Setting Spray';
+  if (/\b(?:priming oil|primer oil)\b/.test(text)) return 'Primer';
   if (/\b(?:self[-\s]?tan|self tanner|sunless tan|gradualglow)\b/.test(text)) return 'Self-Tanner';
   if (/\b(?:glow mist|hydrating milky mist|dream-y mist|face mist|makeup mist|facial mist)\b/.test(text)) return 'Face Mist';
   if (/\b(?:eye patch|eye patches|eyepatch|anywhere patches|hydrogel patches|eye mask goggles|eye mask)\b/.test(text) || /\b(?:detoxifeye|beautifeye|nutrifeye|fortifeye)\b/.test(title)) return 'Eye Patches';
@@ -263,6 +264,7 @@ function inferTitleSpecialtyCompactSubtitle(product) {
   if (/\bsetting powder\b/.test(text)) return 'Setting Powder';
   if (/\b(?:powder blush stick|blush stick)\b/.test(text)) return 'Blush Stick';
   if (/\b(?:lip\s*&\s*cheek|lip and cheek).*blush tint\b/.test(text)) return 'Blush Tint';
+  if (/\b(?:lip nourisher|tinted butter balm|butter balm)\b/.test(text)) return 'Tinted Lip Balm';
   if (/\b(?:pressed blush|hybrid blush|powder blush|blush)\b/.test(text)) return 'Blush';
   if (/\b(?:eyeshadow|eye shadow).*palette\b/.test(text) || /\bpalette\b/.test(title)) return 'Eyeshadow Palette';
   if (/\bmascara|kylash\b/.test(text)) return 'Mascara';
@@ -272,7 +274,6 @@ function inferTitleSpecialtyCompactSubtitle(product) {
   if (/\b(?:lip oil)\b/.test(text)) return 'Lip Oil';
   if (/\b(?:lip glaze|lip gloss|gloss drip|plumping gloss)\b/.test(text)) return 'Lip Gloss';
   if (/\b(?:lipstick|lip stick)\b/.test(text)) return 'Lipstick';
-  if (/\b(?:tinted butter balm|butter balm)\b/.test(text)) return 'Tinted Lip Balm';
   if (/\btoner\b/.test(text)) return 'Hydrating Toner';
   if (/\b(?:facial radiance|ingrown hair|aha|bha|glycolic|lactic)\s+pads?\b/.test(text) || /\bpads?\s+with\s+(?:bha|aha|glycolic|lactic)/.test(text)) {
     if (/\b(?:aha|bha|glycolic|lactic|salicylic)\b/.test(text)) return 'Exfoliating Pads';
@@ -283,7 +284,7 @@ function inferTitleSpecialtyCompactSubtitle(product) {
   if (/\bsun\s+stick\b/.test(text) || (/\bstick\b/.test(text) && /\b(?:sunscreen|spf)\b/.test(text))) return 'Sun Stick SPF';
   if (/\bhand\s*(?:&|and)?\s*nail\s+cream\b/.test(text) || /\bhand\s+cream\b/.test(text)) return 'Hand Cream';
   if (/\bskin\s+milk\b/.test(text)) return 'Skin Milk';
-  if (/\b(?:lip\s+balm|lip benefits|lip moisture)\b/.test(text)) return 'Lip Balm';
+  if (/\b(?:lip\s+balm|lip nourisher|lip treatment|lip serum|lip benefits|lip moisture)\b/.test(text)) return 'Lip Balm';
   if (/\b(?:cleanser|cleansing)\b/.test(text)) {
     if (/\bcleansing\s+balm\b/.test(text)) return 'Cleansing Balm';
     if (/\bcleansing\s+oil\b/.test(text)) return 'Cleansing Oil';
@@ -424,6 +425,9 @@ function buildCompactSubtitle({ product, bundle }) {
       'Self-Tanner',
       'Eye Patches',
       'Face Oil',
+      'Primer',
+      'Lip Balm',
+      'Tinted Lip Balm',
     ].includes(compactHeadline)
   ) {
     return compactHeadline;

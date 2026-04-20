@@ -370,6 +370,9 @@ function inferProductKindFromContext(context) {
   if (/\b(?:makeup fixing mist|fixing mist|setting spray|makeup setting spray|setting mist)\b/.test(titleCategoryDescription)) {
     return 'setting_spray';
   }
+  if (/\b(?:priming oil|primer oil)\b/.test(titleCategoryDescription)) {
+    return 'primer';
+  }
   if (/\b(?:self[-\s]?tan|self tanner|sunless tan|gradualglow)\b/.test(titleCategoryDescription)) {
     return 'self_tanner';
   }
@@ -393,7 +396,7 @@ function inferProductKindFromContext(context) {
   if (/\b(?:blending|packing|shader|crease|definer|smudge|foundation|skin tint|concealer|face|eyeliner|kyliner|tapered)?\s*brush\s*\d*\b/.test(title)) {
     return 'makeup_brush';
   }
-  if (/\b(?:lip\s+balm|lip benefits|lip moisture)\b/.test(text)) return 'lip_balm';
+  if (/\b(?:lip\s+balm|lip nourisher|lip treatment|lip serum|lip benefits|lip moisture)\b/.test(text)) return 'lip_balm';
   if (/\b(?:blush|bronzer|highlighter|eyeshadow|eye shadow|eyeliner|mascara|brow|powder|palette|diamond veil|demi'?glow)\b/.test(titleCategory)) {
     return 'color_makeup';
   }
@@ -444,6 +447,7 @@ function inferSpecificBeautySubtypeLabel(context) {
   if (!text) return '';
 
   if (/\b(?:makeup fixing mist|fixing mist|setting spray|makeup setting spray|setting mist)\b/.test(text)) return 'Setting spray';
+  if (/\b(?:priming oil|primer oil)\b/.test(text)) return 'Primer';
   if (/\b(?:self[-\s]?tan|self tanner|sunless tan|gradualglow)\b/.test(text)) return 'Self-tanner';
   if (/\b(?:glow mist|hydrating milky mist|dream-y mist|face mist|makeup mist|facial mist)\b/.test(text)) return 'Face mist';
   if (/\b(?:eye patch|eye patches|eyepatch|anywhere patches|hydrogel patches|eye mask goggles|eye mask)\b/.test(text) || /\b(?:detoxifeye|beautifeye|nutrifeye|fortifeye)\b/.test(title)) return 'Eye patches';
@@ -465,6 +469,7 @@ function inferSpecificBeautySubtypeLabel(context) {
   if (/\bsetting powder\b/.test(text)) return 'Setting powder';
   if (/\b(?:powder blush stick|blush stick)\b/.test(text)) return 'Blush stick';
   if (/\b(?:lip\s*&\s*cheek|lip and cheek).*blush tint\b/.test(text)) return 'Blush tint';
+  if (/\b(?:lip nourisher|tinted butter balm|butter balm)\b/.test(text)) return 'Tinted lip balm';
   if (/\b(?:pressed blush|hybrid blush|powder blush|blush)\b/.test(text)) return 'Blush';
   if (/\b(?:eyeshadow|eye shadow).*palette\b/.test(text) || /\bpalette\b/.test(title)) return 'Eyeshadow palette';
   if (/\bmascara|kylash\b/.test(text)) return 'Mascara';
@@ -474,7 +479,6 @@ function inferSpecificBeautySubtypeLabel(context) {
   if (/\b(?:lip oil)\b/.test(text)) return 'Lip oil';
   if (/\b(?:lip glaze|lip gloss|gloss drip|plumping gloss)\b/.test(text)) return 'Lip gloss';
   if (/\b(?:lipstick|lip stick)\b/.test(text)) return 'Lipstick';
-  if (/\b(?:tinted butter balm|butter balm)\b/.test(text)) return 'Tinted lip balm';
   if (/\btoner\b/.test(text)) return 'Hydrating toner';
   return '';
 }
@@ -1656,7 +1660,7 @@ function buildHumanStandardWhatItIs(context, baselineBundle) {
   }
   if (kind === 'lip_balm') {
     return {
-      headline: /lip balm|balm/i.test(baseHeadline) ? baseHeadline : 'Lip balm',
+      headline: subtypeLabel || (/lip balm|balm/i.test(baseHeadline) ? baseHeadline : 'Lip balm'),
       body: factsBody,
     };
   }
