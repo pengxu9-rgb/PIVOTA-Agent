@@ -3975,6 +3975,7 @@ async function buildOffersFromGroupMembers(args) {
         const memberPayloadProduct = buildExternalSeedOfferProductFromMember(m);
         const prefetchedProduct =
           prefetchedProductByKey.get(`${m.merchant_id}:${m.product_id}`) || null;
+        const usedPrefetchedProduct = Boolean(prefetchedProduct);
         const product =
           memberPayloadProduct ||
           prefetchedProduct ||
@@ -3986,7 +3987,7 @@ async function buildOffersFromGroupMembers(args) {
             skipUpstreamFallback: m.merchant_id === EXTERNAL_SEED_MERCHANT_ID,
           }).catch(() => null));
         const hydratedProduct =
-          m.merchant_id === EXTERNAL_SEED_MERCHANT_ID
+          m.merchant_id === EXTERNAL_SEED_MERCHANT_ID || usedPrefetchedProduct
             ? product
             : await hydrateSavingsPresentationFromUpstream({
                 product,
