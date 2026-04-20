@@ -748,8 +748,18 @@ describe('get_pdp_v2 identity graph live read', () => {
       platform: 'external',
       platform_product_id: 'ext_krave_gbr_45',
     };
-    mockProductDetailInvoke('merch_new', '10064558096681', newMerchantProduct, 6);
-    mockProductDetailInvoke('external_seed', 'ext_krave_gbr_45', externalKraveProduct, 2);
+    const newMerchantDetailScope = mockProductDetailInvoke(
+      'merch_new',
+      '10064558096681',
+      newMerchantProduct,
+      1,
+    );
+    const externalDetailScope = mockProductDetailInvoke(
+      'external_seed',
+      'ext_krave_gbr_45',
+      externalKraveProduct,
+      1,
+    );
 
     nock(process.env.PIVOTA_API_BASE)
       .get('/agent/v1/products/merch_new/10064558096681')
@@ -786,6 +796,8 @@ describe('get_pdp_v2 identity graph live read', () => {
     const canonicalModule = res.body.modules.find((module) => module.type === 'canonical');
     const offersModule = res.body.modules.find((module) => module.type === 'offers');
 
+    expect(newMerchantDetailScope.isDone()).toBe(true);
+    expect(externalDetailScope.isDone()).toBe(true);
     expect(res.body.metadata.identity_resolution).toEqual(
       expect.objectContaining({
         resolution_source: 'identity_graph_live',

@@ -2556,6 +2556,43 @@ function snapshotProductDetailCacheStats() {
   };
 }
 
+function buildProductDetailCacheKey({ merchantId, productId, checkoutToken } = {}) {
+  return JSON.stringify({
+    merchantId,
+    productId,
+    hasCheckoutToken: Boolean(checkoutToken),
+  });
+}
+
+function cacheProductDetailForOffers({
+  merchantId,
+  productId,
+  checkoutToken,
+  product,
+  source = 'upstream',
+  metadata = {},
+  ttlMs = PRODUCT_DETAIL_CACHE_TTL_MS,
+} = {}) {
+  const mid = String(merchantId || '').trim();
+  const pid = String(productId || '').trim();
+  if (!PRODUCT_DETAIL_CACHE_ENABLED || !mid || !pid || !product || typeof product !== 'object') {
+    return;
+  }
+  setProductDetailCache(
+    buildProductDetailCacheKey({ merchantId: mid, productId: pid, checkoutToken }),
+    {
+      status: 'success',
+      success: true,
+      product,
+      metadata: {
+        query_source: source,
+        ...metadata,
+      },
+    },
+    ttlMs,
+  );
+}
+
 // Resolve-product-group cache (avoid repeated slow upstream group lookups).
 const RESOLVE_PRODUCT_GROUP_CACHE_ENABLED =
   process.env.RESOLVE_PRODUCT_GROUP_CACHE_ENABLED !== 'false';
@@ -3191,8 +3228,25 @@ async function hydrateSavingsPresentationFromUpstream({
       noRetry: true,
     });
     if (!upstreamProduct || typeof upstreamProduct !== 'object') return product;
-    if (!hasSavingsPresentationFields(upstreamProduct)) return product;
-    return mergeSavingsPresentationFields(product, upstreamProduct);
+    const normalizedUpstream = attachProductDetailSource(
+      normalizeProductDetailPrice({
+        ...upstreamProduct,
+        merchant_id: merchantId,
+        product_id:
+          String(upstreamProduct.product_id || upstreamProduct.id || productId).trim() ||
+          productId,
+      }),
+      'upstream',
+    );
+    cacheProductDetailForOffers({
+      merchantId,
+      productId,
+      checkoutToken,
+      product: normalizedUpstream,
+      source: 'upstream',
+    });
+    if (!hasSavingsPresentationFields(normalizedUpstream)) return product;
+    return mergeSavingsPresentationFields(product, normalizedUpstream);
   } catch (err) {
     logger.warn(
       {
@@ -3216,11 +3270,7 @@ async function fetchProductDetailForOffers(args) {
   if (!merchantId || !productId) return null;
   const useMemoryCache = PRODUCT_DETAIL_CACHE_ENABLED && !bypassCache;
 
-  const cacheKey = JSON.stringify({
-    merchantId,
-    productId,
-    hasCheckoutToken: Boolean(checkoutToken),
-  });
+  const cacheKey = buildProductDetailCacheKey({ merchantId, productId, checkoutToken });
 
   if (PRODUCT_DETAIL_CACHE_ENABLED && !useMemoryCache) {
     PRODUCT_DETAIL_CACHE_METRICS.bypasses += 1;
@@ -3832,7 +3882,6 @@ async function buildOffersFromGroupMembers(args) {
         const hydratedProduct = await hydrateSavingsPresentationFromUpstream({
           product,
           checkoutToken,
-          force: true,
         }).catch(() => product);
         return hydratedProduct ? { member: m, product: hydratedProduct } : null;
       }),
