@@ -32,6 +32,20 @@ const DEFAULT_GATEWAY_URL =
   process.env.EXTERNAL_PDP_QUALITY_GATEWAY_URL ||
   process.env.PDP_SMOKE_GATEWAY ||
   `${DEFAULT_PUBLIC_GATEWAY_ORIGIN}${PUBLIC_GATEWAY_PATH}`;
+const PUBLIC_PDP_AUDIT_INCLUDE = ['product_intel', 'reviews_preview'];
+const AUTHORITATIVE_PDP_AUDIT_INCLUDE = [
+  'canonical',
+  'product_intel',
+  'product_details',
+  'product_facts',
+  'active_ingredients',
+  'ingredients_inci',
+  'how_to_use',
+  'reviews_preview',
+  'similar',
+  'variant_selector',
+  'offers',
+];
 
 function argValue(name) {
   const idx = process.argv.indexOf(`--${name}`);
@@ -95,19 +109,7 @@ function buildAuthoritativePayload(operation, payload = {}) {
           merchant_id: 'external_seed',
           product_id: normalizeNonEmptyString(payload.product_id),
         },
-        include: [
-          'canonical',
-          'product_intel',
-          'product_details',
-          'product_facts',
-          'active_ingredients',
-          'ingredients_inci',
-          'how_to_use',
-          'reviews_preview',
-          'similar',
-          'variant_selector',
-          'offers',
-        ],
+        include: AUTHORITATIVE_PDP_AUDIT_INCLUDE,
         options: {
           ...ensureJsonObject(payload.options),
           debug: true,
@@ -133,6 +135,34 @@ function buildAuthoritativePayload(operation, payload = {}) {
           debug: true,
           no_cache: true,
         },
+      },
+    };
+  }
+  return { operation, payload };
+}
+
+function buildPublicGatewayPayload(operation, payload = {}) {
+  if (operation === 'get_pdp_v2') {
+    return {
+      operation,
+      payload: {
+        product_ref: {
+          merchant_id: 'external_seed',
+          product_id: normalizeNonEmptyString(payload.product_id),
+        },
+        include: Array.isArray(payload.include) && payload.include.length > 0
+          ? payload.include
+          : PUBLIC_PDP_AUDIT_INCLUDE,
+        options: {
+          ...ensureJsonObject(payload.options),
+          debug: true,
+          no_cache: true,
+          cache_bypass: true,
+        },
+      },
+      metadata: {
+        scope: { catalog: 'global', region: 'US', language: 'en-US' },
+        entry: 'pdp_quality_audit',
       },
     };
   }
@@ -218,7 +248,7 @@ async function invokeGateway(gatewayUrl, operation, payload) {
   const resolvedGatewayUrl = resolveGatewayUrl(gatewayUrl);
   const requestBody = isAuthoritativeInvokeUrl(resolvedGatewayUrl)
     ? buildAuthoritativePayload(operation, ensureJsonObject(payload))
-    : { operation, payload };
+    : buildPublicGatewayPayload(operation, ensureJsonObject(payload));
   const response = await axios.post(
     resolvedGatewayUrl,
     requestBody,
@@ -457,6 +487,7 @@ module.exports = {
   resolveGatewayUrl,
   getHeaders,
   buildAuthoritativePayload,
+  buildPublicGatewayPayload,
   isAuthoritativeInvokeUrl,
   unwrapLivePdpPayload,
   probeImageUrl,

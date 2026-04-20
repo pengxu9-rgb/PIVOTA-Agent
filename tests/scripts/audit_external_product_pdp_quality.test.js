@@ -1,6 +1,7 @@
 const {
   resolveGatewayUrl,
   buildAuthoritativePayload,
+  buildPublicGatewayPayload,
   unwrapLivePdpPayload,
 } = require('../../scripts/audit-external-product-pdp-quality');
 const {
@@ -67,6 +68,28 @@ describe('audit-external-product-pdp-quality helpers', () => {
           debug: true,
           no_cache: true,
         },
+      },
+    });
+  });
+
+  test('builds public get_pdp_v2 payloads with audit-owned includes', () => {
+    expect(buildPublicGatewayPayload('get_pdp_v2', { product_id: 'ext_123' })).toEqual({
+      operation: 'get_pdp_v2',
+      payload: {
+        product_ref: {
+          merchant_id: 'external_seed',
+          product_id: 'ext_123',
+        },
+        include: ['product_intel', 'reviews_preview'],
+        options: {
+          debug: true,
+          no_cache: true,
+          cache_bypass: true,
+        },
+      },
+      metadata: {
+        scope: { catalog: 'global', region: 'US', language: 'en-US' },
+        entry: 'pdp_quality_audit',
       },
     });
   });

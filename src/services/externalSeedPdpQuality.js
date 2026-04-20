@@ -121,6 +121,27 @@ function collectLiveActiveIngredients(livePayload = {}, liveResponse = {}) {
   return Array.isArray(data?.items) ? data.items : [];
 }
 
+function collectSeedContextText(seedData = {}) {
+  const snapshot = ensureJsonObject(seedData?.snapshot);
+  const sections = collectSeedDetailsSections(seedData);
+  return [
+    seedData?.title,
+    snapshot?.title,
+    seedData?.product_title,
+    snapshot?.product_title,
+    seedData?.category,
+    snapshot?.category,
+    seedData?.product_type,
+    snapshot?.product_type,
+    seedData?.pdp_description_raw,
+    snapshot?.description_raw,
+    ...sections.map((section) => [section?.heading, section?.body, section?.content].filter(Boolean).join(' ')),
+  ]
+    .map(normalizeNonEmptyString)
+    .filter(Boolean)
+    .join(' ');
+}
+
 function seedExpectsActiveIngredients(seedData = {}) {
   const snapshot = ensureJsonObject(seedData?.snapshot);
   const rawActive = normalizeNonEmptyString(
@@ -136,7 +157,14 @@ function seedExpectsActiveIngredients(seedData = {}) {
       seedData?.raw_ingredient_text_clean ||
       snapshot?.raw_ingredient_text_clean,
   );
-  return /\b(?:zinc oxide|titanium dioxide|avobenzone|octocrylene|octisalate|homosalate|octinoxate)\b/i.test(
+  if (/\bactive ingredients?\b/i.test(ingredients)) return true;
+  const context = collectSeedContextText(seedData);
+  const hasSunscreenContext =
+    /\b(?:spf|sunscreen|sun screen|sun protection|broad spectrum|uv|uva|uvb|pa\+{2,}|protective fluid)\b/i.test(
+      context,
+    );
+  if (!hasSunscreenContext) return false;
+  return /\b(?:zinc oxide|titanium dioxide|avobenzone|octocrylene|octisalate|homosalate|octinoxate|ensulizole|oxybenzone)\b/i.test(
     ingredients,
   );
 }
@@ -414,7 +442,20 @@ function buildLivePdpGate({
     seedDetailSections.length >= 3 &&
     detailSections.length <= 2 &&
     detailSections.every((section) =>
-      /^(description|category)$/i.test(normalizeNonEmptyString(section?.heading)),
+      /^(description|overview|category)$/i.test(normalizeNonEmptyString(section?.heading)),
+    ) &&
+    factsText.length === 0 &&
+    !(
+      seedDetailSections.some((section) => /how to use|directions?|how to apply/i.test(normalizeNonEmptyString(section?.heading))) &&
+      liveModuleList.includes('how_to_use')
+    ) &&
+    !(
+      seedDetailSections.some((section) => /ingredients?|inci/i.test(normalizeNonEmptyString(section?.heading))) &&
+      liveModuleList.includes('ingredients_inci')
+    ) &&
+    !(
+      seedExpectsActiveIngredients(seedData) &&
+      liveModuleList.includes('active_ingredients')
     );
   if (compressedStructuredDetails) {
     failureReasons.push('structured_sections_compressed_to_description_category');

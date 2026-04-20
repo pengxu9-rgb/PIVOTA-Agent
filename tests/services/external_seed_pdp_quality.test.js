@@ -199,6 +199,82 @@ describe('externalSeedPdpQuality', () => {
     expect(similarGate.failure_reasons).toEqual(['similar_card_missing_highlight']);
   });
 
+  test('does not infer active sunscreen ingredients from cosmetic pigment INCI alone', () => {
+    const livePdpGate = buildLivePdpGate({
+      seedData: {
+        title: 'Longwear Pencil Eyeliner',
+        pdp_ingredients_raw:
+          'TRISILOXANE, POLYETHYLENE, MICA, TITANIUM DIOXIDE (CI 77891), IRON OXIDES (CI 77499).',
+      },
+      livePayload: {
+        modules: [
+          {
+            type: 'product_details',
+            data: {
+              sections: [{ heading: 'Overview', content: 'A creamy pencil eyeliner.' }],
+            },
+          },
+        ],
+      },
+    });
+
+    expect(livePdpGate.active_ingredients_status.expected).toBe(false);
+    expect(livePdpGate.failure_reasons).not.toContain('active_ingredients_expected_but_hidden');
+  });
+
+  test('expects active sunscreen ingredients when UV filter INCI has SPF context', () => {
+    const livePdpGate = buildLivePdpGate({
+      seedData: {
+        title: 'Daily Tinted Fluid Sunscreen SPF 40',
+        pdp_ingredients_raw: 'WATER, ZINC OXIDE, TITANIUM DIOXIDE, GLYCERIN.',
+      },
+      livePayload: {
+        modules: [
+          {
+            type: 'product_details',
+            data: {
+              sections: [{ heading: 'Overview', content: 'A daily tinted sunscreen.' }],
+            },
+          },
+        ],
+      },
+    });
+
+    expect(livePdpGate.active_ingredients_status.expected).toBe(true);
+    expect(livePdpGate.failure_reasons).toContain('active_ingredients_expected_but_hidden');
+  });
+
+  test('does not mark structured sections as compressed when dedicated modules carry them', () => {
+    const livePdpGate = buildLivePdpGate({
+      seedData: {
+        pdp_details_sections: [
+          { heading: 'Overview', content: 'A short overview.' },
+          { heading: 'Details', content: 'Detailed seller copy.' },
+          { heading: 'How to Use', content: 'Apply daily.' },
+        ],
+      },
+      livePayload: {
+        modules: [
+          {
+            type: 'product_overview',
+            data: {
+              sections: [{ heading: 'Description', content: 'A short overview.' }],
+            },
+          },
+          {
+            type: 'how_to_use',
+            data: {
+              steps: [{ text: 'Apply daily.' }],
+            },
+          },
+        ],
+      },
+    });
+
+    expect(livePdpGate.details_status.compressed_structured_sections).toBe(false);
+    expect(livePdpGate.failure_reasons).not.toContain('structured_sections_compressed_to_description_category');
+  });
+
   test('does not count category-only similar cards as highlight-ready', () => {
     const similarGate = buildSimilarGate({
       similarResponse: {
