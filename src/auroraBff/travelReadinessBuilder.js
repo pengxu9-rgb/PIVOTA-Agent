@@ -1162,6 +1162,71 @@ function productIdsForTravelRoles(products, roleIds, max = 6) {
   return out;
 }
 
+function roleLabelForTravelShopping(roleId, language) {
+  const role = normalizeText(roleId, 80).toLowerCase();
+  if (role === 'sun_protection') return t(language, '防晒', 'Sun protection');
+  if (role === 'lightweight_moisturizer') return t(language, '轻保湿', 'Lightweight moisturizer');
+  if (role === 'hydration_serum') return t(language, '补水精华', 'Hydrating serum');
+  if (role === 'recovery_mask') return t(language, '可选修护面膜', 'Optional recovery mask');
+  if (role === 'body_lip_hand') return t(language, '身体/唇/手护理', 'Body, lip, or hand care');
+  if (role === 'eye_care') return t(language, '眼周护理', 'Eye care');
+  if (role === 'cleanser') return t(language, '清洁', 'Cleanser');
+  return normalizeText(roleId, 80) || t(language, '本地商品', 'Local product');
+}
+
+function formatTravelProductName(product) {
+  const row = isPlainObject(product) ? product : {};
+  const name = normalizeText(row.name, 140);
+  const brand = normalizeText(row.brand, 80);
+  if (!name) return '';
+  if (brand && !name.toLowerCase().includes(brand.toLowerCase())) return `${brand} ${name}`;
+  return name;
+}
+
+function firstTravelProductReason(product) {
+  const row = isPlainObject(product) ? product : {};
+  const reasons = Array.isArray(row.reasons) ? row.reasons : [];
+  for (const raw of reasons) {
+    const reason = normalizeTravelPhaseAction(raw, 150);
+    if (reason) return reason;
+  }
+  return '';
+}
+
+function buildLocalShoppingProductActions(products, language, max = 4) {
+  const grouped = new Map();
+  for (const product of Array.isArray(products) ? products : []) {
+    if (!isPlainObject(product) || !isGroundedPreviewProduct(product)) continue;
+    const roleId = resolvePreviewProductRoleId(product);
+    if (!roleId) continue;
+    if (!grouped.has(roleId)) grouped.set(roleId, []);
+    grouped.get(roleId).push(product);
+  }
+  const roleOrder = [
+    'sun_protection',
+    'lightweight_moisturizer',
+    'hydration_serum',
+    'recovery_mask',
+    'body_lip_hand',
+    'eye_care',
+    'cleanser',
+  ];
+  const actions = [];
+  for (const roleId of roleOrder) {
+    const rows = grouped.get(roleId) || [];
+    if (!rows.length) continue;
+    const productPhrases = rows.slice(0, roleId === 'sun_protection' ? 2 : 1).map((product) => {
+      const name = formatTravelProductName(product);
+      const reason = firstTravelProductReason(product);
+      return reason ? `${name}: ${reason}` : name;
+    }).filter(Boolean);
+    if (!productPhrases.length) continue;
+    actions.push(`${roleLabelForTravelShopping(roleId, language)}: ${productPhrases.join('; ')}`);
+    if (actions.length >= max) break;
+  }
+  return uniqTravelPhaseActions(actions, max, 260);
+}
+
 function buildPhaseActionsFromRecoBundle(recoBundle, roleIds, max = 2) {
   const wanted = new Set(uniqTravelRoles(roleIds, 12));
   const out = [];
@@ -1283,7 +1348,8 @@ function buildTravelPhasePlan({
         : t(lang, '当前没有命中具体本地商品，只保留品类准备方向，后续通过 catalog backfill 补库。', 'No specific local product is grounded yet; keep this as category direction until catalog backfill adds authority rows.'),
       defaults: groundedProducts.length
         ? [
-            t(lang, '优先看与本次气候和行程相关的角色：防晒、轻保湿、补水修护、身体/唇/手支持。', 'Review roles tied to this climate and trip: sunscreen, lightweight hydration, recovery support, and body/lip/hand support.'),
+            ...buildLocalShoppingProductActions(groundedProducts, lang, 4),
+            t(lang, '只按真实缺口购买；不要把已经带好的产品重复补货。', 'Buy only against real gaps; do not duplicate products you already packed.'),
           ]
         : [
             t(lang, '只按品类购物，不把未验证品牌或商品当成推荐结果。', 'Shop by category only; do not treat unverified brands or products as recommendations.'),
@@ -1298,7 +1364,9 @@ function buildTravelPhasePlan({
       : productIdsForTravelRoles(products, roleIds, 4);
     const phaseActions = uniqTravelPhaseActions([
       ...phase.defaults,
-      ...buildPhaseActionsFromRecoBundle(recoBundle, roleIds, 2),
+      ...(phase.id === 'local_shopping' && groundedProducts.length
+        ? []
+        : buildPhaseActionsFromRecoBundle(recoBundle, roleIds, 2)),
     ], 4, 240);
     return {
       id: phase.id,
