@@ -285,7 +285,7 @@ function compactProfileForPrompt(value) {
     ...(normalizeText(profile.budgetTier || profile.budget_tier, 40)
       ? { budgetTier: normalizeText(profile.budgetTier || profile.budget_tier, 40) }
       : {}),
-    ...(normalizeText(profile.currentRoutine, 500) ? { currentRoutine: normalizeText(profile.currentRoutine, 500) } : {}),
+    ...(normalizeText(profile.currentRoutine, 320) ? { currentRoutine: normalizeText(profile.currentRoutine, 320) } : {}),
     ...(Array.isArray(profile.contraindications)
       ? { contraindications: normalizeStringArray(profile.contraindications, 12, 80) }
       : {}),
@@ -307,7 +307,7 @@ function compactTravelLlmInputForPrompt(value) {
     ...(normalizeText(input.weather_reason, 80) ? { weather_reason: normalizeText(input.weather_reason, 80) } : {}),
     ...(normalizeText(input.alerts_source, 40) ? { alerts_source: normalizeText(input.alerts_source, 40) } : {}),
     ...(typeof input.kb_hit === 'boolean' ? { kb_hit: input.kb_hit } : {}),
-    ...(normalizeText(input.question, 420) ? { question: normalizeText(input.question, 420) } : {}),
+    ...(normalizeText(input.question, 320) ? { question: normalizeText(input.question, 320) } : {}),
     ...(isPlainObject(input.analysis_context_hard)
       ? { analysis_context_hard: compactLooseObjectForPrompt(input.analysis_context_hard, { maxEntries: 8, maxDepth: 2, maxText: 120 }) }
       : {}),
@@ -436,6 +436,7 @@ function compactShoppingPreviewForPrompt(value) {
 
 function compactTravelReadinessForPrompt(value) {
   const readiness = isPlainObject(value) ? value : {}
+  const jetlag = isPlainObject(readiness.jetlag_sleep) ? readiness.jetlag_sleep : {}
   return {
     ...(isPlainObject(readiness.destination_context)
       ? { destination_context: compactLooseObjectForPrompt(readiness.destination_context, { maxEntries: 8, maxDepth: 1, maxText: 100 }) }
@@ -453,19 +454,15 @@ function compactTravelReadinessForPrompt(value) {
       ? { forecast_window: normalizeForecastWindow(readiness.forecast_window).slice(0, 5) }
       : {}),
     ...(Array.isArray(readiness.alerts) ? { alerts: normalizeAlerts(readiness.alerts).slice(0, 3) } : {}),
-    ...(Array.isArray(readiness.adaptive_actions)
-      ? { adaptive_actions: readiness.adaptive_actions.slice(0, 4).map((row) => compactLooseObjectForPrompt(row, { maxEntries: 3, maxDepth: 1, maxText: 140 })) }
-      : {}),
-    ...(Array.isArray(readiness.personal_focus)
-      ? { personal_focus: readiness.personal_focus.slice(0, 3).map((row) => compactLooseObjectForPrompt(row, { maxEntries: 3, maxDepth: 1, maxText: 140 })) }
-      : {}),
     ...(isPlainObject(readiness.jetlag_sleep)
-      ? { jetlag_sleep: compactLooseObjectForPrompt(readiness.jetlag_sleep, { maxEntries: 8, maxDepth: 1, maxText: 120 }) }
-      : {}),
-    ...(Array.isArray(readiness.reco_bundle) ? { reco_bundle: compactRecoBundleForPrompt(readiness.reco_bundle) } : {}),
-    ...(isPlainObject(readiness.shopping_preview) ? { shopping_preview: compactShoppingPreviewForPrompt(readiness.shopping_preview) } : {}),
-    ...(Array.isArray(readiness.category_recommendations)
-      ? { category_recommendations: compactCategoryRecommendationsForPrompt(readiness.category_recommendations) }
+      ? {
+          jetlag_sleep: {
+            ...(normalizeText(jetlag.tz_origin || jetlag.tz_home, 64) ? { tz_origin: normalizeText(jetlag.tz_origin || jetlag.tz_home, 64) } : {}),
+            ...(normalizeText(jetlag.tz_destination, 64) ? { tz_destination: normalizeText(jetlag.tz_destination, 64) } : {}),
+            ...(normalizeNumber(jetlag.hours_diff) != null ? { hours_diff: normalizeNumber(jetlag.hours_diff) } : {}),
+            ...(normalizeText(jetlag.risk_level, 24) ? { risk_level: normalizeText(jetlag.risk_level, 24) } : {}),
+          },
+        }
       : {}),
     ...(isPlainObject(readiness.confidence)
       ? { confidence: compactLooseObjectForPrompt(readiness.confidence, { maxEntries: 5, maxDepth: 1, maxText: 100 }) }
