@@ -315,6 +315,7 @@ test('travel LLM calibrator: prompt compaction drops UI payload and keeps inacti
   assert.equal(combined.includes('Pregnancy/lactation: active'), false);
   assert.equal(combined.includes('User is pregnant/lactating'), false);
   assert.equal(combined.includes('"start_date":"2026-04-20"'), true);
+  assert.equal(combined.includes('do not use scenario/timing/action keys'), true);
   assert.equal(combined.length < 6500, true);
 });
 
@@ -412,4 +413,36 @@ test('travel LLM calibrator: parser accepts common camelCase patch keys', () => 
   assert.equal(parsed.travel_readiness_patch.shopping_preview.products[0].product_source, 'llm_generated');
   assert.equal(parsed.travel_readiness_patch.shopping_preview.brand_candidates[0].match_status, 'llm_only');
   assert.deepEqual(parsed.travel_readiness_patch.confidence.missing_inputs, ['recent_logs']);
+});
+
+test('travel LLM calibrator: parser accepts observed scenario timing action aliases', () => {
+  const parsed = travelLlmInternal.parseCalibrationPayload(JSON.stringify({
+    travel_readiness_patch: {
+      adaptive_actions: [
+        {
+          scenario: 'High UV and humidity in Shanghai can stress combination skin.',
+          timing: 'AM/Reapplication',
+          action: 'Use SPF50+ and reapply every 2 hours during outdoor business transit.',
+        },
+      ],
+      personal_focus: [
+        {
+          priority: 'Meeting-readiness',
+          reason: 'Jet lag can show around the eye area.',
+          advice: 'Use a simple hydrating eye step on arrival night.',
+        },
+      ],
+    },
+  }));
+
+  assert.equal(
+    parsed.travel_readiness_patch.adaptive_actions[0].why,
+    'High UV and humidity in Shanghai can stress combination skin.',
+  );
+  assert.equal(
+    parsed.travel_readiness_patch.adaptive_actions[0].what_to_do,
+    'AM/Reapplication: Use SPF50+ and reapply every 2 hours during outdoor business transit.',
+  );
+  assert.equal(parsed.travel_readiness_patch.personal_focus[0].focus, 'Meeting-readiness');
+  assert.equal(parsed.travel_readiness_patch.personal_focus[0].what_to_do, 'Use a simple hydrating eye step on arrival night.');
 });
