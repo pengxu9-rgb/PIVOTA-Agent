@@ -60,6 +60,7 @@ const REFILL_ONLY_NOISE_RE = /\brefills?\b/i;
 const LIP_CARE_NOISE_RE = /\b(lip[-\s]?loving\s*scrub|scrubstick|lip\s*scrub|exfoliat(?:e|ing|or)|plumper)\b/i;
 const BUNDLE_SET_NOISE_RE =
   /\b(gift\s*sets?|giftsets?|samplers?|duos?|bundles?|kits?|sets?|[0-9]+\s*(?:pc|pcs|piece|pieces))\b/i;
+const ROUTINE_IDENTITY_NOISE_RE = /\b(?:am\/pm\s+routine|routine\s+cosmekit|skin(?:care)?\s+routine)\b/i;
 const MARKET_EXPECTED_CURRENCY = {
   CN: 'CNY',
   FR: 'EUR',
@@ -297,6 +298,15 @@ function productAuthorityText(product) {
   ].map((value) => normalizeText(value, 260).toLowerCase()).filter(Boolean).join(' ');
 }
 
+function productIdentityText(product) {
+  return [
+    product?.title,
+    product?.name,
+    product?.category,
+    product?.product_type,
+  ].map((value) => normalizeText(value, 220).toLowerCase()).filter(Boolean).join(' ');
+}
+
 function hasStrongRoleMatch(product, roleId) {
   const matcher = STRONG_ROLE_MATCHERS[roleId];
   if (!matcher) return true;
@@ -305,11 +315,18 @@ function hasStrongRoleMatch(product, roleId) {
 
 function getRoleIncompatibilityReason(product, roleId) {
   const text = productAuthorityText(product);
+  const identityText = productIdentityText(product);
   if (!text) return 'empty_authority_text';
   if (!hasStrongRoleMatch(product, roleId)) return 'weak_role_match';
   if (REFILL_ONLY_NOISE_RE.test(text)) return 'refill_only';
   if (BUNDLE_SET_NOISE_RE.test(text)) return 'bundle_or_set';
+  if (ROUTINE_IDENTITY_NOISE_RE.test(identityText)) return 'bundle_or_set';
   if (BEAUTY_TOOL_NOISE_RE.test(text)) return 'beauty_tool_or_applicator';
+
+  if (roleId === 'recovery_mask') {
+    if (/\blip\b/i.test(identityText) && /\bmask\b/i.test(identityText)) return 'lip_mask_role_mismatch';
+    if (/\b(?:body|kp)\b/i.test(identityText) && /\b(?:mask|scrub)\b/i.test(identityText)) return 'body_mask_role_mismatch';
+  }
 
   if (roleId === 'body_lip_hand') {
     if (LIP_CARE_NOISE_RE.test(text)) return 'lip_scrub_or_exfoliator';

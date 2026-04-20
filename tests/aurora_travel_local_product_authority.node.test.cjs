@@ -311,6 +311,18 @@ test('travel local product authority: rejects color cosmetics misclassified as t
               price_currency: 'USD',
               match_score: 48,
             }),
+            seedRow({
+              id: 213,
+              market: 'US',
+              external_product_id: 'ext_bad_routine_moisturizer',
+              title: 'AM/PM routine',
+              brand: 'Embryolisse',
+              category: 'moisturizer',
+              summary: 'lightweight skincare routine set',
+              price_amount: 53.6,
+              price_currency: 'USD',
+              match_score: 47,
+            }),
           ],
         };
       }
@@ -383,6 +395,18 @@ test('travel local product authority: rejects color cosmetics misclassified as t
               price_currency: 'USD',
               match_score: 47,
             }),
+            seedRow({
+              id: 214,
+              market: 'US',
+              external_product_id: 'ext_bad_lip_mask',
+              title: 'Phyto-Glow Lip Mask',
+              brand: 'Naturium',
+              category: 'hydrating mask',
+              summary: 'hydrating lip mask',
+              price_amount: 13,
+              price_currency: 'USD',
+              match_score: 46,
+            }),
           ],
         };
       }
@@ -400,6 +424,8 @@ test('travel local product authority: rejects color cosmetics misclassified as t
   assert.equal(ids.includes('ext_bad_lip_scrub'), false);
   assert.equal(ids.includes('ext_bad_mask_sampler'), false);
   assert.equal(ids.includes('ext_bad_recovery_duo'), false);
+  assert.equal(ids.includes('ext_bad_routine_moisturizer'), false);
+  assert.equal(ids.includes('ext_bad_lip_mask'), false);
   assert.equal(ids.includes('ext_good_spf'), true);
   assert.equal(ids.includes('ext_good_lotion'), true);
   assert.equal(ids.includes('ext_good_lip_balm'), true);
@@ -414,8 +440,11 @@ test('travel local product authority: rejects color cosmetics misclassified as t
   assert.equal(allDropReasons.has('beauty_tool_or_applicator'), true);
   assert.equal(allDropReasons.has('lip_scrub_or_exfoliator'), true);
   assert.equal(allDropReasons.has('bundle_or_set'), true);
+  assert.equal(allDropReasons.has('lip_mask_role_mismatch'), true);
   assert.equal(allDropSamples.some((row) => row.external_product_id === 'ext_bad_correcting_stick' && /Match Stix/i.test(row.title)), true);
   assert.equal(allDropSamples.some((row) => row.external_product_id === 'ext_bad_eur_spf' && row.currency === 'EUR'), true);
+  assert.equal(allDropSamples.some((row) => row.external_product_id === 'ext_bad_routine_moisturizer' && row.reason === 'bundle_or_set'), true);
+  assert.equal(allDropSamples.some((row) => row.external_product_id === 'ext_bad_lip_mask' && row.reason === 'lip_mask_role_mismatch'), true);
   assert.equal(allDropSamples.every((row) => row.title && row.reason), true);
   const sunscreenStage = result.meta.stage_counts.find((row) => row.role_id === 'sun_protection');
   assert.equal(sunscreenStage.drop_reason_counts.color_cosmetic, 1);
