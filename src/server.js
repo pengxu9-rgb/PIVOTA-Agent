@@ -21896,6 +21896,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	    const pdpV2PhaseTimings = {};
 	    const pdpV2ModuleTimings = {};
 	    let pdpV2SavingsPresentationHydrationMode = 'not_started';
+	    let pdpV2ProductGroupResolveMode = 'not_started';
 	    const markPdpV2Phase = (name, startedAt) => {
 	      pdpV2PhaseTimings[name] = Date.now() - startedAt;
 	    };
@@ -21934,6 +21935,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         phases: pdpV2PhaseTimings,
         modules: pdpV2ModuleTimings,
         savings_presentation_hydration_mode: pdpV2SavingsPresentationHydrationMode,
+        product_group_resolve_mode: pdpV2ProductGroupResolveMode,
         requested_product_id: requestedProductId || null,
         requested_merchant_id: requestedMerchantId || null,
         resolved_product_id: resolvedProductId || null,
@@ -22322,8 +22324,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	      let resolveGroupCachedPromise = null;
 	      const startResolveGroupCached = (attemptUnscopedExternalSeedResolve) => {
 	        resolveGroupCachedStartedAt = Date.now();
+	        pdpV2ProductGroupResolveMode = attemptUnscopedExternalSeedResolve
+	          ? 'started_unscoped'
+	          : 'started_scoped';
 	        return resolveProductGroupCached({
-		          productId,
+	          productId,
 	          merchantId: attemptUnscopedExternalSeedResolve ? null : requestedMerchantId || null,
 	          platform,
 	          checkoutToken,
@@ -22333,7 +22338,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	      };
 	      if (
 	        !canonicalProductRef &&
-	        (canResolveExternalSeedUnscopedWithoutPrecheck || !externalSeedRouteProductId)
+	        (
+	          canResolveExternalSeedUnscopedWithoutPrecheck ||
+	          (!externalSeedRouteProductId && !shouldPrecheckMerchantScoped)
+	        )
 	      ) {
 	        resolveGroupCachedPromise = startResolveGroupCached(
 	          canResolveExternalSeedUnscopedWithoutPrecheck,
@@ -22355,29 +22363,34 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	        }
 	      }
 	      markPdpV2Phase('precheck_entry_product', precheckEntryProductStartedAt);
-        entryPrecheckMissingCtx = precheckEntryProductMissing;
+	      entryPrecheckMissingCtx = precheckEntryProductMissing;
 
-	        const shouldAttemptUnscopedExternalSeedResolve =
-	          externalSeedRouteProductId &&
-	          (
-	            !requestedMerchantId ||
-	            precheckEntryProductMissing ||
-	            requestedMerchantId === EXTERNAL_SEED_MERCHANT_ID
-	          );
+	      const shouldAttemptUnscopedExternalSeedResolve =
+	        externalSeedRouteProductId &&
+	        (
+	          !requestedMerchantId ||
+	          precheckEntryProductMissing ||
+	          requestedMerchantId === EXTERNAL_SEED_MERCHANT_ID
+	        );
 
 	      if (!canonicalProductRef) {
-	        if (!resolveGroupCachedPromise) {
-	          resolveGroupCachedPromise = startResolveGroupCached(shouldAttemptUnscopedExternalSeedResolve);
-	        }
-	        const resolvedGroup = await resolveGroupCachedPromise;
-	        const pgid = resolvedGroup?.product_group_id || null;
-	        productGroupId = typeof pgid === 'string' && pgid.trim() ? pgid.trim() : productGroupId;
-        groupMembers = Array.isArray(resolvedGroup?.members) ? resolvedGroup.members : groupMembers;
-	        if (resolvedGroup?.canonical_product_ref) {
-	          canonicalProductRef = resolvedGroup.canonical_product_ref;
-            identityResolutionSource = shouldAttemptUnscopedExternalSeedResolve
-              ? 'product_group_unscoped'
-              : 'product_group_scoped';
+	        const shouldResolveGroupBeforeCanonical =
+	          !precheckedMerchantProduct ||
+	          shouldAttemptUnscopedExternalSeedResolve ||
+	          !shouldPrecheckMerchantScoped;
+	        if (shouldResolveGroupBeforeCanonical) {
+	          if (!resolveGroupCachedPromise) {
+	            resolveGroupCachedPromise = startResolveGroupCached(shouldAttemptUnscopedExternalSeedResolve);
+	          }
+	          const resolvedGroup = await resolveGroupCachedPromise;
+	          const pgid = resolvedGroup?.product_group_id || null;
+	          productGroupId = typeof pgid === 'string' && pgid.trim() ? pgid.trim() : productGroupId;
+	          groupMembers = Array.isArray(resolvedGroup?.members) ? resolvedGroup.members : groupMembers;
+		          if (resolvedGroup?.canonical_product_ref) {
+		            canonicalProductRef = resolvedGroup.canonical_product_ref;
+		            identityResolutionSource = shouldAttemptUnscopedExternalSeedResolve
+		              ? 'product_group_unscoped'
+		              : 'product_group_scoped';
 	            if (
 	              shouldAttemptUnscopedExternalSeedResolve &&
 	              requestedMerchantId &&
@@ -22387,7 +22400,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	              canonicalizationApplied = true;
 	              canonicalizationReasonCode = 'PRODUCT_ROUTE_MERCHANT_MISMATCH';
 	            }
-		        }
+	          }
+	        } else {
+	          pdpV2ProductGroupResolveMode = 'skipped_prechecked_entry';
+	        }
+	      }
+	      if (pdpV2ProductGroupResolveMode === 'not_started') {
+	        pdpV2ProductGroupResolveMode = canonicalProductRef ? 'not_needed' : 'skipped';
 	      }
 	      markPdpV2Phase('resolve_group_cached', resolveGroupCachedStartedAt);
 

@@ -175,11 +175,6 @@ describe('get_pdp_v2 stability semantics', () => {
       product,
     });
 
-    const groupScope = nock(process.env.PIVOTA_API_BASE)
-      .get('/agent/v1/product-groups/resolve')
-      .query((query) => query && query.merchant_id === 'merch_solo' && query.product_id === 'solo_1')
-      .reply(404, { error: 'PRODUCT_GROUP_NOT_FOUND', message: 'No product group' });
-
     const res = await request(app)
       .post('/agent/shop/v1/invoke')
       .send({
@@ -195,7 +190,11 @@ describe('get_pdp_v2 stability semantics', () => {
       .expect(200);
 
     expect(productDetailScope.isDone()).toBe(true);
-    expect(groupScope.isDone()).toBe(true);
+    expect(res.body.metadata.route_health).toEqual(
+      expect.objectContaining({
+        product_group_resolve_mode: 'skipped_prechecked_entry',
+      }),
+    );
     const offersModule = res.body.modules.find((module) => module.type === 'offers');
     expect(offersModule).toEqual(
       expect.objectContaining({
@@ -232,11 +231,6 @@ describe('get_pdp_v2 stability semantics', () => {
       product,
     });
 
-    const groupScope = nock(process.env.PIVOTA_API_BASE)
-      .get('/agent/v1/product-groups/resolve')
-      .query((query) => query && query.merchant_id === 'merch_fast' && query.product_id === 'prod_fast_1')
-      .reply(404, { error: 'PRODUCT_GROUP_NOT_FOUND', message: 'No product group' });
-
     const res = await request(app)
       .post('/agent/shop/v1/invoke')
       .send({
@@ -252,10 +246,10 @@ describe('get_pdp_v2 stability semantics', () => {
       .expect(200);
 
     expect(productDetailScope.isDone()).toBe(true);
-    expect(groupScope.isDone()).toBe(true);
     expect(res.body.metadata.route_health).toEqual(
       expect.objectContaining({
         savings_presentation_hydration_mode: 'prefetched_only',
+        product_group_resolve_mode: 'skipped_prechecked_entry',
       }),
     );
     const canonicalModule = res.body.modules.find((module) => module.type === 'canonical');
