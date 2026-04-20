@@ -211,7 +211,7 @@ test('travel final assistant rewriter: guard rejects stale fallback labels and a
 
   const absoluteWord = travelFinalRewriteInternal.validateTravelFinalRewriteText(
     [
-      'This is the best plan for a humid, high-UV route from Seattle to Shanghai.',
+      'This is an excellent plan for a humid, high-UV route from Seattle to Shanghai.',
       'Before departure, keep your routine familiar and pack SPF plus a lightweight moisturizer.',
       'During the flight, avoid new actives and keep barrier care simple.',
       'After arrival, reapply SPF during outdoor transit and buy only category-level backups if needed.',
@@ -279,6 +279,78 @@ test('travel final assistant rewriter: reasoning guard accepts natural causal wo
 
   assert.equal(accepted.ok, true);
   assert.equal(accepted.reason, 'ok');
+});
+
+test('travel final assistant rewriter: guard rejects unsupported product claims and body-area mismatch', () => {
+  const promptInput = travelFinalRewriteInternal.buildFinalRewritePromptInput({
+    language: 'EN',
+    message: 'Seattle to Seoul work trip. Build a skincare plan.',
+    travelReadiness: {
+      delta_vs_home: {
+        temperature: { home: 16, destination: 19, delta: 3, unit: 'C' },
+        humidity: { home: 77, destination: 61, delta: -16, unit: '%' },
+        uv: { home: 6.3, destination: 7.2, delta: 0.9, unit: '' },
+      },
+      jetlag_sleep: { hours_diff: 16, risk_level: 'high' },
+      shopping_preview: {
+        mode: 'grounded_products',
+        coverage_status: 'grounded',
+        grounded_count: 2,
+        products: [
+          {
+            product_id: 'kr_moisturizer',
+            name: 'Round Lab 1025 Dokdo Cream',
+            brand: 'Round Lab',
+            role_id: 'lightweight_moisturizer',
+            category: 'Lightweight moisturizer',
+            product_source: 'external_seed',
+            authority_status: 'grounded',
+            match_status: 'catalog_verified',
+            is_grounded: true,
+            reasons: ['Use before boarding or after cleansing for light moisture against cabin dryness.'],
+          },
+          {
+            product_id: 'kr_lip',
+            name: 'Round Lab Birch Juice Moisturizing Lip Balm',
+            brand: 'Round Lab',
+            role_id: 'body_lip_hand',
+            category: 'Body, lip, or hand support',
+            product_source: 'external_seed',
+            authority_status: 'grounded',
+            match_status: 'catalog_verified',
+            is_grounded: true,
+            reasons: ['Use on lips to manage tightness from cabin dryness.'],
+          },
+        ],
+      },
+    },
+  });
+
+  const oilClaim = travelFinalRewriteInternal.validateTravelFinalRewriteText(
+    [
+      'Seoul is warmer, drier, and higher UV than Seattle, so skin can feel tight while producing more surface oil.',
+      'Before departure, pack sunscreen, body sunscreen, lip balm, and hand cream to cover outdoor exposure.',
+      'On the flight, use Round Lab 1025 Dokdo Cream because cabin dryness can cause tightness.',
+      'First 48 hours after arrival, keep cleansing and moisturizer simple, and use the cream for oil control.',
+      'Local shopping can focus on sunscreen and moisturizer options while keeping masks optional if already tolerated.',
+    ].join('\n'),
+    { promptInput },
+  );
+  assert.equal(oilClaim.ok, false);
+  assert.equal(oilClaim.reason, 'rewrite_unsupported_product_claim');
+
+  const areaMismatch = travelFinalRewriteInternal.validateTravelFinalRewriteText(
+    [
+      'Seoul is warmer, drier, and higher UV than Seattle, so skin can feel tight while producing more surface oil.',
+      'Before departure, pack sunscreen, body sunscreen, lip balm, and hand cream to cover outdoor exposure.',
+      'On the flight, use Round Lab Birch Juice Moisturizing Lip Balm on lips and hands because cabin air is dry.',
+      'First 48 hours after arrival, keep cleansing and moisturizer simple, and reapply SPF during outdoor commutes.',
+      'Local shopping can focus on sunscreen and moisturizer options while keeping masks optional if already tolerated.',
+    ].join('\n'),
+    { promptInput },
+  );
+  assert.equal(areaMismatch.ok, false);
+  assert.equal(areaMismatch.reason, 'rewrite_product_body_area_mismatch');
 });
 
 test('travel final assistant rewriter: parser recovers loose assistant_text JSON', () => {

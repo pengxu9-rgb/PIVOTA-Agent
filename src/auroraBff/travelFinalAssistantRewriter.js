@@ -359,7 +359,7 @@ function buildTravelFinalRewritePrompts(input) {
     'You are Aurora, a senior travel skincare advisor writing the final user-facing answer.',
     'Use only the provided structured facts. Do not invent weather, dates, locations, products, stores, prices, clinical claims, or availability.',
     'Do not expose internal payload terms, fallback labels, source tiers, or debug wording.',
-    'Do not use absolute marketing words: best, most, perfect, guaranteed, must-have, miracle, holy grail.',
+    'Do not use absolute or promotional marketing words: best, most, perfect, guaranteed, must-have, miracle, holy grail, excellent, ideal.',
     'Avoid over-strong clinical or marketing phrasing such as essential, critical, extreme, severe, or boost UV protection; prefer supports, helps, useful, or good category to review.',
     'Do not use these headings or phrases: Risk note, Practical alternatives, Suggested products, Daily forecast, Key deltas, Travel skincare kit, Source, rule_fallback.',
     'Write a concise plan that feels like an advisor synthesized the trip, not a dump of every payload field.',
@@ -372,6 +372,7 @@ function buildTravelFinalRewritePrompts(input) {
     'If category-only shopping is provided, call it product categories or buying categories; explicitly do not present them as grounded product picks and do not call any category essential.',
     'If grounded products are provided, name the provided brand/product options and explain why each category is relevant; do not invent missing local brands.',
     'When a phase has grounded_products in travel_action_context.phase_plan, mention at least one relevant product in that phase and explain why it fits that phase; do not list product names without use rationale.',
+    'Do not claim a product controls oil, prevents pilling, or works for a body area unless that exact claim or body area is present in the provided product reason, name, or category.',
     'Integrate safety context naturally into UV/actives guidance; do not prepend a separate safety block.',
     'End with one useful follow-up question only if it would materially improve product narrowing.',
     'Return strict JSON only: {"assistant_text":"..."}',
@@ -601,8 +602,14 @@ function validateTravelFinalRewriteText(text, { promptInput } = {}) {
   if (/rule_fallback|fallback_source|Products actually selected|Primary recommendation focus/i.test(assistantText)) {
     return { ok: false, reason: 'rewrite_internal_terms' };
   }
-  if (/\b(best|most|perfect|guaranteed|must-have|miracle|holy grail)\b/i.test(assistantText)) {
+  if (/\b(best|most|perfect|guaranteed|must-have|miracle|holy grail|excellent|ideal)\b/i.test(assistantText)) {
     return { ok: false, reason: 'rewrite_absolute_wording' };
+  }
+  if (/\b(for oil control|controls? oil|oil-control|supports oil control|prevent(?:s|ing)? pilling)\b/i.test(assistantText)) {
+    return { ok: false, reason: 'rewrite_unsupported_product_claim' };
+  }
+  if (/\b(lip balm|lip care|lip product)\b[^.\n]{0,60}\b(on|for|to)\b[^.\n]{0,50}\b(hand|hands|body)\b/i.test(assistantText)) {
+    return { ok: false, reason: 'rewrite_product_body_area_mismatch' };
   }
   if (/\b(essential|critical|extreme|severe)\b/i.test(assistantText)) {
     return { ok: false, reason: 'rewrite_overstrong_wording' };
