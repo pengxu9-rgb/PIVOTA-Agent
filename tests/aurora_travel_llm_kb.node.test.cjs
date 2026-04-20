@@ -787,6 +787,7 @@ test('travel final assistant rewriter: grounded products are phase-aware and req
   assert.match(prompts.userPrompt, /avoid bare product lists/);
   assert.match(prompts.userPrompt, /Round Lab Birch Juice Moisturizing Sunscreen/);
   assert.match(prompts.userPrompt, /Light barrier support after cabin dryness/);
+  assert.equal(/\\b(or|and|rig|suppor|com)"?[,\\]}]/.test(prompts.userPrompt), false);
 
   const missingProduct = travelFinalRewriteInternal.validateTravelFinalRewriteText(
     [

@@ -44,6 +44,46 @@ function uniqStrings(values, max = 10) {
   return out;
 }
 
+function normalizeTravelPhaseAction(value, maxLen = 240) {
+  const text = normalizeText(value, 1000).replace(/\s+/g, ' ').trim();
+  if (!text) return '';
+  const limit = Number.isFinite(Number(maxLen)) ? Math.max(80, Math.trunc(Number(maxLen))) : 240;
+  if (text.length <= limit) return text;
+
+  const clipped = text.slice(0, limit).trim();
+  const boundaryChars = ['.', '。', '!', '！', '?', '？', ';', '；'];
+  let boundary = -1;
+  for (const ch of boundaryChars) {
+    boundary = Math.max(boundary, clipped.lastIndexOf(ch));
+  }
+  if (boundary >= 72) return clipped.slice(0, boundary + 1).trim();
+
+  const softBoundary = Math.max(
+    clipped.lastIndexOf(','),
+    clipped.lastIndexOf('，'),
+    clipped.lastIndexOf('、'),
+    clipped.lastIndexOf(':'),
+    clipped.lastIndexOf('：'),
+  );
+  if (softBoundary >= 72) return clipped.slice(0, softBoundary).trim();
+  return clipped.replace(/\s+\S*$/, '').trim();
+}
+
+function uniqTravelPhaseActions(values, max = 4, maxLen = 240) {
+  const out = [];
+  const seen = new Set();
+  for (const raw of Array.isArray(values) ? values : []) {
+    const text = normalizeTravelPhaseAction(raw, maxLen);
+    if (!text) continue;
+    const key = text.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(text);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
 function uniqReasonStrings(values, max = 3, maxLen = 260) {
   const out = [];
   const seen = new Set();
@@ -1129,7 +1169,7 @@ function buildPhaseActionsFromRecoBundle(recoBundle, roleIds, max = 2) {
   for (const row of Array.isArray(recoBundle) ? recoBundle : []) {
     const rowRoles = resolveRecoBundleRoleIds(row);
     if (!rowRoles.some((role) => wanted.has(role))) continue;
-    const action = normalizeText(row.action, 260);
+    const action = normalizeTravelPhaseAction(row.action, 240);
     if (!action) continue;
     const key = action.toLowerCase();
     if (seen.has(key)) continue;
@@ -1256,10 +1296,10 @@ function buildTravelPhasePlan({
     const productIds = phase.id === 'local_shopping'
       ? groundedProducts.map((product) => normalizeText(product.product_id || product.productId, 120)).filter(Boolean).slice(0, 6)
       : productIdsForTravelRoles(products, roleIds, 4);
-    const phaseActions = uniqStrings([
+    const phaseActions = uniqTravelPhaseActions([
       ...phase.defaults,
       ...buildPhaseActionsFromRecoBundle(recoBundle, roleIds, 2),
-    ], 4);
+    ], 4, 240);
     return {
       id: phase.id,
       title: phase.title,

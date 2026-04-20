@@ -31,6 +31,26 @@ function normalizeText(value, maxLen = 220) {
   return text.slice(0, maxLen);
 }
 
+function normalizePromptSentence(value, maxLen = 170) {
+  const text = normalizeText(value, 1000).replace(/\s+/g, ' ').trim();
+  if (!text) return '';
+  const limit = Number.isFinite(Number(maxLen)) ? Math.max(80, Math.trunc(Number(maxLen))) : 170;
+  if (text.length <= limit) return text;
+  const clipped = text.slice(0, limit).trim();
+  const hardBoundary = Math.max(
+    clipped.lastIndexOf('.'),
+    clipped.lastIndexOf('。'),
+    clipped.lastIndexOf('!'),
+    clipped.lastIndexOf('！'),
+    clipped.lastIndexOf('?'),
+    clipped.lastIndexOf('？'),
+    clipped.lastIndexOf(';'),
+    clipped.lastIndexOf('；'),
+  );
+  if (hardBoundary >= 72) return clipped.slice(0, hardBoundary + 1).trim();
+  return clipped.replace(/\s+\S*$/, '').trim();
+}
+
 function normalizeNumber(value) {
   if (value == null) return null;
   if (typeof value === 'string' && !value.trim()) return null;
@@ -195,7 +215,7 @@ function compactTravelActionContextForFinalRewrite(travelReadiness) {
         timing: normalizeText(row.timing, 120) || null,
         why: normalizeText(row.why, 180) || null,
         actions: Array.isArray(row.actions)
-          ? row.actions.map((line) => normalizeText(line, 170)).filter(Boolean).slice(0, 2)
+          ? row.actions.map((line) => normalizePromptSentence(line, 170)).filter(Boolean).slice(0, 2)
           : [],
         product_role_ids: Array.isArray(row.product_role_ids || row.productRoleIds)
           ? (row.product_role_ids || row.productRoleIds).map((line) => normalizeText(line, 80)).filter(Boolean).slice(0, 5)
