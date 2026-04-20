@@ -239,6 +239,29 @@ describe('pdpIdentityGraph', () => {
     expect(listing.source_meta.variant_family).toBeUndefined();
   });
 
+  test('buildIdentityListingFromProduct ignores Default Title as a variant axis', () => {
+    const { buildIdentityListingFromProduct } = require('../../src/services/pdpIdentityGraph');
+
+    const listing = buildIdentityListingFromProduct({
+      merchantId: 'external_seed',
+      productId: 'ext_fenty_watch_ya_tone',
+      sourceKind: 'external_seed',
+      product: {
+        title: 'Watch Ya Tone Niacinamide Dark Spot Serum',
+        brand: 'Fenty Beauty',
+        source_url: 'https://fentybeauty.com/products/watch-ya-tone-niacinamide-dark-spot-serum',
+        variants: [{ variant_id: 'v1', title: 'Default Title' }],
+      },
+    });
+
+    expect(listing.identity_status).toBe('approved');
+    expect(listing.matched_by_rule).toBe('official_url_route');
+    expect(listing.variant_axes).toEqual({ multi_variant: false });
+    expect(listing.match_basis).toEqual([
+      'official_url:https://fentybeauty.com/products/watch-ya-tone-niacinamide-dark-spot-serum',
+    ]);
+  });
+
   test('buildIdentityListingFromProduct groups numeric shade PDPs into one product line', () => {
     const { buildIdentityListingFromProduct } = require('../../src/services/pdpIdentityGraph');
 

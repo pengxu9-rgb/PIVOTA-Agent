@@ -633,6 +633,7 @@ function parseGenericSizeToken(text) {
 function inferAxisFromGenericOptionValue(value) {
   const normalized = normalizeAxisValue(value);
   if (!normalized) return null;
+  if (/^(?:default|default title|title|option|standard default)$/i.test(normalized)) return null;
   const volume = parseQuantityToken(normalized, ['ml', 'm l', 'g', 'kg', 'oz', 'fl oz']);
   if (volume) return { volume };
   const pack = parsePackToken(normalized);
