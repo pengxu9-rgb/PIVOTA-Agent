@@ -128,6 +128,25 @@ function compactArrayRows(rows, mapper, maxItems = 6) {
 function compactTravelActionContextForFinalRewrite(travelReadiness) {
   const readiness = isPlainObject(travelReadiness) ? travelReadiness : {};
   return {
+    phase_plan: compactArrayRows(readiness.phase_plan, (raw) => {
+      const row = isPlainObject(raw) ? raw : {};
+      return {
+        id: normalizeText(row.id, 80) || null,
+        title: normalizeText(row.title, 120) || null,
+        timing: normalizeText(row.timing, 120) || null,
+        why: normalizeText(row.why, 220) || null,
+        actions: Array.isArray(row.actions)
+          ? row.actions.map((line) => normalizeText(line, 220)).filter(Boolean).slice(0, 4)
+          : [],
+        product_role_ids: Array.isArray(row.product_role_ids || row.productRoleIds)
+          ? (row.product_role_ids || row.productRoleIds).map((line) => normalizeText(line, 80)).filter(Boolean).slice(0, 8)
+          : [],
+        product_ids: Array.isArray(row.product_ids || row.productIds)
+          ? (row.product_ids || row.productIds).map((line) => normalizeText(line, 120)).filter(Boolean).slice(0, 8)
+          : [],
+        coverage_status: normalizeText(row.coverage_status || row.coverageStatus, 80) || null,
+      };
+    }, 5),
     adaptive_actions: compactArrayRows(readiness.adaptive_actions, (raw) => {
       const row = isPlainObject(raw) ? raw : {};
       return {
@@ -246,7 +265,7 @@ function buildTravelFinalRewriteRequiredChecklist(promptInput) {
     push('climate_delta', 'Start with the actual temperature, humidity, and UV delta when available, then explain the skin implication.');
   }
   if (quality.hasFlightOrJetlagFacts) {
-    push('travel_phases', 'Cover before departure, flight/cabin, and first 48 hours after arrival; tie jet lag or sleep disruption to practical skincare steps.');
+    push('travel_phases', 'Use the phased order when available: before departure, flight/cabin, first 48 hours after landing, daily while there, and local shopping.');
   }
   if (quality.needsUvCare) {
     push('uv_care', 'Mention sunscreen/SPF and reapplication logic for outdoor exposure.');
@@ -309,9 +328,10 @@ function buildTravelFinalRewritePrompts(input) {
     'Avoid over-strong clinical or marketing phrasing such as essential, critical, extreme, severe, or boost UV protection; prefer supports, helps, useful, or good category to review.',
     'Do not use these headings or phrases: Risk note, Practical alternatives, Suggested products, Daily forecast, Key deltas, Travel skincare kit, Source, rule_fallback.',
     'Write a concise plan that feels like an advisor synthesized the trip, not a dump of every payload field.',
-    'Keep it under 2400 characters, with at most 5 short sections and at most 12 bullets total.',
+    'Keep it under 2600 characters, with at most 5 short sections and at most 14 bullets total.',
     'Must explain the actual climate delta first: temperature, humidity, UV, precipitation/wind when provided, then state the skin implication rather than just reporting weather.',
-    'Must cover skincare substance: before departure, flight/cabin, first 48 hours after arrival, face care, exposed body, lip, and hand care when those are present in the facts, and local buying guidance.',
+    'Must follow this user-facing sequence when phase_plan is provided: before departure, flight/cabin, first 48 hours after landing, daily while there, local shopping.',
+    'Must cover skincare substance: face care, exposed body, lip, and hand care when those are present in the facts, and local buying guidance.',
     'For every product category or grounded product you mention, include a concrete reason tied to climate, flight, skin profile, routine, or UV exposure.',
     'Flight guidance may mention hydrating/soothing masks only as optional recovery if tolerated; do not make masks sound mandatory or clinical.',
     'If category-only shopping is provided, call it product categories or buying categories; explicitly do not present them as grounded product picks and do not call any category essential.',

@@ -49,8 +49,30 @@ test('buildTravelReadiness returns actionable structure with deltas and shopping
       },
       {
         step: 'Sunscreen',
-        sku: { product_id: 'sku_2', brand: 'BrandB', name: 'UV Shield SPF50' },
+        role_id: 'sun_protection',
+        sku: {
+          product_id: 'sku_2',
+          merchant_id: 'm_paris',
+          product_group_id: 'pg_spf_2',
+          brand: 'BrandB',
+          name: 'UV Shield SPF50',
+          image_url: 'https://example.test/spf.jpg',
+          price: 19,
+          currency: 'EUR',
+        },
         reasons: ['High UV destination support.'],
+      },
+      {
+        step: 'Eye care',
+        role_id: 'eye_care',
+        sku: { product_id: 'sku_3', brand: 'BrandC', name: 'Caffeine Eye Gel' },
+        reasons: ['Jet-lag eye-area support.'],
+      },
+      {
+        step: 'Lip and hand support',
+        role_id: 'body_lip_hand',
+        sku: { product_id: 'sku_4', brand: 'BrandD', name: 'SPF Lip Balm' },
+        reasons: ['Lip support for outdoor exposure.'],
       },
     ],
     nowMs: Date.parse('2026-03-01T12:00:00.000Z'),
@@ -82,6 +104,23 @@ test('buildTravelReadiness returns actionable structure with deltas and shopping
   assert.equal(payload.shopping_preview.coverage_status, 'grounded');
   assert.equal(payload.shopping_preview.products[0].product_source, 'catalog');
   assert.equal(payload.shopping_preview.products[0].authority_status, 'grounded');
+  assert.equal(payload.shopping_preview.products.length, 4);
+  assert.equal(payload.shopping_preview.products.some((item) => item && item.image_url === 'https://example.test/spf.jpg'), true);
+  const spfPreview = payload.shopping_preview.products.find((item) => item && item.product_id === 'sku_2');
+  assert.equal(spfPreview.merchant_id, 'm_paris');
+  assert.equal(spfPreview.product_group_id, 'pg_spf_2');
+  assert.equal(spfPreview.pdp_open.merchant_id, 'm_paris');
+  assert.ok(Array.isArray(payload.phase_plan));
+  assert.deepEqual(payload.phase_plan.map((phase) => phase.id), [
+    'pre_trip_prepare',
+    'flight_cabin',
+    'arrival_first_48h',
+    'during_trip_daily',
+    'local_shopping',
+  ]);
+  assert.ok(payload.phase_plan.find((phase) => phase.id === 'pre_trip_prepare').product_ids.includes('sku_2'));
+  assert.ok(payload.phase_plan.find((phase) => phase.id === 'flight_cabin').product_ids.includes('sku_3'));
+  assert.ok(payload.phase_plan.find((phase) => phase.id === 'local_shopping').product_ids.includes('sku_4'));
   assert.ok(Array.isArray(sunProtection.brand_suggestions));
   assert.ok(sunProtection.brand_suggestions.some((item) => item && item.product === 'UV Shield SPF50'));
   assert.ok(moisturization);
@@ -255,6 +294,9 @@ test('buildTravelReadiness exposes category-only shopping guidance when catalog 
   assert.equal(payload.shopping_preview.products[0].authority_status, 'category_only');
   assert.equal(payload.shopping_preview.products[0].display_mode, 'category_only');
   assert.equal(payload.shopping_preview.products[0].is_grounded, false);
+  assert.ok(Array.isArray(payload.phase_plan));
+  assert.equal(payload.phase_plan.length, 5);
+  assert.equal(payload.phase_plan.find((phase) => phase.id === 'local_shopping').coverage_status, 'category_only');
   assert.equal(typeof payload.shopping_preview.products[0].name, 'string');
   assert.ok(payload.shopping_preview.products[0].name.length > 0);
   assert.ok(Array.isArray(payload.shopping_preview.products[0].reasons));

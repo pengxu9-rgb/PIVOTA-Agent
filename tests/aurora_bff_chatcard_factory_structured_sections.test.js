@@ -113,6 +113,18 @@ describe('aurora chatCardFactory structured sections for adapter inputs', () => 
             },
             forecast_window: [{ date: '2026-04-20', temp_low_c: 13, temp_high_c: 22 }],
             confidence: { missing_inputs: ['recent_logs'] },
+            phase_plan: [
+              {
+                id: 'pre_trip_prepare',
+                title: 'Before you leave',
+                timing: 'T-3 to T-1',
+                why: 'Prepare tolerated products.',
+                actions: ['Pack tolerated SPF and moisturizer.'],
+                product_role_ids: ['sun_protection'],
+                product_ids: [],
+                coverage_status: 'category_only',
+              },
+            ],
             categorized_kit: [
               {
                 id: 'sun_protection',
@@ -177,6 +189,8 @@ describe('aurora chatCardFactory structured sections for adapter inputs', () => 
 
     const structured = cards[0].sections.find((section) => section.kind === 'travel_structured');
     expect(structured.travel_planner.schema_version).toBe('aurora.ui.travel_planner.v1');
+    expect(structured.travel_planner.phase_plan[0].id).toBe('pre_trip_prepare');
+    expect(structured.travel_planner.phase_plan[0].actions).toEqual(['Pack tolerated SPF and moisturizer.']);
     expect(structured.travel_planner.shopping.mode).toBe('category_guidance');
     expect(structured.travel_planner.shopping.grounded_products).toEqual([]);
     expect(structured.travel_planner.shopping.legacy_rows_dropped_count).toBe(1);

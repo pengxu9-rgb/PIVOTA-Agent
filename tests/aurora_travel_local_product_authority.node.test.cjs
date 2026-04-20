@@ -25,6 +25,16 @@ function buildReadiness() {
         action: 'Flight day: 1x hydrating-soothing mask.',
         product_types: ['Hydrating-soothing mask (flight recovery)'],
       },
+      {
+        trigger: 'Eye care',
+        action: 'For larger jet-lag gaps, pack eye cream and cooling eye patches.',
+        product_types: ['Eye cream (caffeine / hyaluronic acid)', 'Cooling eye patches'],
+      },
+      {
+        trigger: 'Emergency kit',
+        action: 'Pack SPF lip balm and hand cream.',
+        product_types: ['SPF lip balm', 'Hand cream'],
+      },
     ],
   };
 }
@@ -96,6 +106,9 @@ test('travel local product authority: builds skincare query plan from travel kit
   assert.equal(roleIds.includes('sun_protection'), true);
   assert.equal(roleIds.includes('lightweight_moisturizer'), true);
   assert.equal(roleIds.includes('recovery_mask'), true);
+  assert.equal(roleIds.includes('eye_care'), true);
+  assert.equal(roleIds.includes('body_lip_hand'), true);
+  assert.ok(roleIds.length <= 6);
   assert.ok(plan.find((row) => row.role_id === 'sun_protection').terms.some((term) => /spf/i.test(term)));
 });
 
@@ -136,6 +149,7 @@ test('travel local product authority: returns only external-seed authority rows 
   assert.equal(result.candidates.length >= 2, true);
   assert.equal(result.candidates[0].product_source, 'catalog');
   assert.equal(result.candidates[0].match_status, 'catalog_verified');
+  assert.deepEqual(result.candidates[0].reasons, Array.from(new Set(result.candidates[0].reasons)));
   assert.equal(result.candidates.some((row) => row.currency === 'CNY'), true);
   assert.equal(sqlCalls.every((call) => call.params[0] === 'CN'), true);
 });
