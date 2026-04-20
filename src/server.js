@@ -3090,7 +3090,12 @@ function pickSavingsPresentationFields(source) {
 }
 
 function hasSavingsPresentationFields(source) {
-  return Object.keys(pickSavingsPresentationFields(source)).length > 0;
+  return Object.values(pickSavingsPresentationFields(source)).some((value) => {
+    if (value == null) return false;
+    if (Array.isArray(value)) return value.length > 0;
+    if (typeof value === 'object') return Object.keys(value).length > 0;
+    return true;
+  });
 }
 
 function getVariantEvidenceKeys(variant) {
@@ -3148,15 +3153,34 @@ async function hydrateSavingsPresentationFromUpstream({
   product,
   canonicalProductRef,
   checkoutToken,
+  force = false,
 } = {}) {
   if (!product || typeof product !== 'object') return product;
-  if (hasSavingsPresentationFields(product)) return product;
-  const merchantId = String(
-    canonicalProductRef?.merchant_id || product.merchant_id || product.merchantId || '',
-  ).trim();
-  const productId = String(
-    canonicalProductRef?.product_id || product.product_id || product.productId || product.id || '',
-  ).trim();
+  if (!force && hasSavingsPresentationFields(product)) return product;
+  const selectedCommerceRef =
+    product.selected_commerce_ref ||
+    product.selectedCommerceRef ||
+    product.commerce_ref ||
+    product.commerceRef ||
+    null;
+  const productRef = product.product_ref || product.productRef || null;
+  const candidateRefs = [
+    selectedCommerceRef,
+    productRef,
+    canonicalProductRef,
+    {
+      merchant_id: product.merchant_id || product.merchantId,
+      product_id: product.product_id || product.productId || product.id,
+    },
+  ];
+  const hydrationRef = candidateRefs
+    .map((ref) => ({
+      merchant_id: String(ref?.merchant_id || ref?.merchantId || '').trim(),
+      product_id: String(ref?.product_id || ref?.productId || ref?.id || '').trim(),
+    }))
+    .find((ref) => ref.merchant_id && ref.product_id && ref.merchant_id !== EXTERNAL_SEED_MERCHANT_ID);
+  const merchantId = hydrationRef?.merchant_id || '';
+  const productId = hydrationRef?.product_id || '';
   if (!merchantId || !productId || merchantId === EXTERNAL_SEED_MERCHANT_ID) return product;
 
   try {
@@ -3743,6 +3767,7 @@ function buildOfferVariantsForPayload(product, fallbackCurrency) {
           ...(availableQuantity != null ? { available_quantity: availableQuantity } : {}),
         },
         ...(imageUrl ? { image_url: imageUrl } : {}),
+        ...pickSavingsPresentationFields(variant),
       };
     })
     .filter(Boolean);
@@ -3804,7 +3829,12 @@ async function buildOffersFromGroupMembers(args) {
           checkoutToken,
           bypassCache,
         }).catch(() => null);
-        return product ? { member: m, product } : null;
+        const hydratedProduct = await hydrateSavingsPresentationFromUpstream({
+          product,
+          checkoutToken,
+          force: true,
+        }).catch(() => product);
+        return hydratedProduct ? { member: m, product: hydratedProduct } : null;
       }),
     );
     fetched.push(...results.filter(Boolean));
@@ -3918,6 +3948,8 @@ async function buildOffersFromGroupMembers(args) {
       ...(Object.keys(selectedOptions).length ? { selected_options: selectedOptions } : {}),
       ...(selectedVariant?.title ? { variant_title: String(selectedVariant.title).trim() } : {}),
       ...(offerVariants.length ? { variants: offerVariants } : {}),
+      ...pickSavingsPresentationFields(p),
+      ...pickSavingsPresentationFields(selectedVariant),
       ...(member?.source_kind ? { source_kind: member.source_kind } : {}),
       ...(member?.source_tier ? { source_tier: member.source_tier } : {}),
       ...buildOfferPurchaseMetadataFromProduct(p),
@@ -9485,9 +9517,7 @@ function buildSearchProductIdentityOverlayOffer(product, { groupId = null, selec
     ...(price ? { price } : {}),
     ...(product.inventory ? { inventory: product.inventory } : {}),
     ...(product.shipping ? { shipping: product.shipping } : {}),
-    ...(product.discount_evidence ? { discount_evidence: product.discount_evidence } : {}),
-    ...(product.store_discount_evidence ? { store_discount_evidence: product.store_discount_evidence } : {}),
-    ...(product.payment_offer_evidence ? { payment_offer_evidence: product.payment_offer_evidence } : {}),
+    ...pickSavingsPresentationFields(product),
     offer_source: 'group_fused',
     commerce_source: 'selected_seller_store',
     ...(selected ? { selected: true } : {}),
@@ -22116,6 +22146,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	                            variants: fallbackOfferVariants,
 	                          }
 	                        : {}),
+	                      ...pickSavingsPresentationFields(canonicalProductForPdp),
 	                      ...buildOfferPurchaseMetadataFromProduct(canonicalProductForPdp),
 		                      risk_tier: 'standard',
 	                    },
