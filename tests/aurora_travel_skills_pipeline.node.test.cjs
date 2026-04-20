@@ -688,6 +688,22 @@ test('travel skills pipeline: local product wording triggers both reco preview a
   );
 });
 
+test('travel skills pipeline: look-for-locally wording triggers local authority', async () => {
+  const contracts = loadFreshPipeline();
+  assert.equal(
+    contracts.__internal.shouldTriggerRecoPreview(
+      'What Japanese sunscreen or skincare should I look for locally?',
+    ),
+    true,
+  );
+  assert.equal(
+    contracts.__internal.shouldTriggerStoreChannel(
+      'What Japanese sunscreen or skincare should I look for locally?',
+    ),
+    true,
+  );
+});
+
 test('travel skills pipeline: category-only rows do not become fake reco products', async () => {
   await withEnv(
     {
