@@ -390,7 +390,7 @@ function inferProductKindFromContext(context) {
   if (/\b(?:glow mist|hydrating milky mist|dream-y mist|face mist|makeup mist|facial mist)\b/.test(titleCategoryDescription)) {
     return 'face_mist';
   }
-  if (/\b(?:hair\s*\+\s*body fragrance mist|hair and body fragrance mist|body fragrance mist|fragrance mist)\b/.test(titleCategoryDescription)) {
+  if (/\b(?:hair\s*\+\s*body fragrance mist|hair and body fragrance mist|hair\s*\+\s*body mist|hair and body mist|body fragrance mist|fragrance mist|fenty parfum hair\s*\+\s*body mist)\b/.test(titleCategoryDescription)) {
     return 'fragrance';
   }
   if (/\b(?:overnight face mask|face mask|sleeping mask|slushie overnight)\b/.test(titleCategoryDescription)) {
@@ -425,6 +425,7 @@ function inferProductKindFromContext(context) {
   if (/\bhand\s*(?:&|and)?\s*nail\s+cream\b/.test(text) || /\bhand\s+cream\b/.test(text)) return 'hand_cream';
   if (/\bskin\s+milk\b/.test(text)) return 'skin_milk';
   if (/\bdry\s+shampoo\b/.test(text)) return 'dry_shampoo';
+  if (/\b(?:strong hold gel|hair gel|styling gel|curl gel|hold gel)\b/.test(titleCategoryDescription)) return 'hair_styling_gel';
   if (/\b(?:shampoo|hair shampoo)\b/.test(text)) return 'shampoo';
   if (/\b(?:conditioner|hair conditioner)\b/.test(text)) return 'conditioner';
   if (/\b(?:heat protectant|styling cream)\b/.test(text) && /\bhair\b/.test(text)) return 'heat_protectant';
@@ -474,7 +475,7 @@ function inferSpecificBeautySubtypeLabel(context) {
   if (/\b(?:brush bundle|brush trio|brush duo|brush set)\b/.test(text)) return 'Brush set';
   if (/\b(?:blending|packing|shader|foundation|skin tint|concealer|face|eyeliner|kyliner)?\s*brush\s*\d*\b/.test(title)) return 'Makeup brush';
   if (/\b(?:fragrance layering balm|fragrance balm|scent balm)\b/.test(text)) return 'Fragrance balm';
-  if (/\b(?:hair\s*\+\s*body fragrance mist|hair and body fragrance mist|body fragrance mist|fragrance mist)\b/.test(text)) return 'Fragrance mist';
+  if (/\b(?:hair\s*\+\s*body fragrance mist|hair and body fragrance mist|hair\s*\+\s*body mist|hair and body mist|body fragrance mist|fragrance mist|fenty parfum hair\s*\+\s*body mist)\b/.test(text)) return 'Fragrance mist';
   if (/\b(?:eye duo|eye trio|eye set|eye kit|eye colour routine|eye color routine|essential eye duo|mascara.*(?:duo|set)|(?:duo|set).*mascara)\b/.test(text)) return 'Eye makeup set';
   if (/\b(?:lip duo|lip set|lip kit)\b/.test(text)) return 'Lip set';
   if (/\b(?:makeup set|makeup kit|makeup essentials|makeup trio|beauty set|beauty kit)\b/.test(text)) return 'Makeup set';
@@ -502,6 +503,7 @@ function inferSpecificBeautySubtypeLabel(context) {
   if (/\b(?:lip glaze|lip gloss|gloss drip|plumping gloss|gloss bomb heat|gloss bomb universal|lip luminizer|plumper)\b/.test(text)) return 'Lip gloss';
   if (/\b(?:lipstick|lip stick)\b/.test(text)) return 'Lipstick';
   if (/\bdry\s+shampoo\b/.test(text)) return 'Dry shampoo';
+  if (/\b(?:strong hold gel|hair gel|styling gel|curl gel|hold gel)\b/.test(text)) return 'Hair styling gel';
   if (/\btoner\b/.test(text)) return 'Hydrating toner';
   return '';
 }
@@ -1405,6 +1407,9 @@ function buildHumanStandardBodyFromFacts(context, kind, formulaSignals) {
   if (kind === 'dry_shampoo') {
     return `A dry shampoo powder${withFormula} for refreshing roots, absorbing oil, and adding wash-day volume between shampoos.`;
   }
+  if (kind === 'hair_styling_gel') {
+    return `A hair styling gel${withFormula} for hold, shape control, and styling definition in hair styling routines.`;
+  }
   if (kind === 'hair_treatment') {
     return `A hair treatment${withFormula} for damage-care, smoother-feeling strands, and targeted wash-day repair routines.`;
   }
@@ -1765,7 +1770,7 @@ function buildHumanStandardWhatItIs(context, baselineBundle) {
       'Blush stick': 'A blush stick for buildable cheek color, blendability, and finish control.',
       'Blush tint': 'A blush tint for lightweight cheek color and a fresh color finish.',
       Blush: 'A blush product for cheek color, blendability, and finish control.',
-      Bronzer: 'A bronzer product for warmth, soft sculpting, and blendable complexion color.',
+      Bronzer: 'A bronzer for warmth, soft sculpting, and blendable complexion color.',
       'Setting powder': 'A setting powder for setting complexion makeup, soft-focus blur, and finish control.',
       Highlighter: 'A highlighter for targeted glow, reflect, and finish placement on high points of the face.',
       Eyeliner: 'An eyeliner for lash-line definition, shape, and color intensity.',
@@ -1819,6 +1824,12 @@ function buildHumanStandardWhatItIs(context, baselineBundle) {
       body: factsBody,
     };
   }
+  if (kind === 'hair_styling_gel') {
+    return {
+      headline: /(?:hair styling gel|styling gel|hold gel)/i.test(baseHeadline) ? baseHeadline : 'Hair styling gel',
+      body: factsBody,
+    };
+  }
 
   return {
     headline: baseHeadline || 'Product insight',
@@ -1854,6 +1865,9 @@ function buildHumanStandardBestFor(context, baselineBundle) {
   }
   if (kind === 'dry_shampoo') {
     return [item('root_refresh', 'Root refresh'), item('wash_day_extension', 'Between-wash volume')];
+  }
+  if (kind === 'hair_styling_gel') {
+    return [item('style_hold', 'Style hold'), item('curl_or_shape_definition', 'Curl or shape definition')];
   }
   if (kind === 'body_scrub') {
     return [item('body_exfoliation', 'Body exfoliation'), item('rough_texture', 'Rough-feeling body texture')];
@@ -2169,6 +2183,11 @@ function buildHumanStandardHighlights(context) {
       highlight('Between-wash refresh', 'Dry shampoo use keeps the comparison on oil absorption, root refresh, and volume between wash days.'),
     ];
   }
+  if (kind === 'hair_styling_gel') {
+    return [
+      highlight('Styling hold step', 'Hair gel use keeps the comparison on hold level, shape control, and styling definition rather than cleansing.'),
+    ];
+  }
   if (kind === 'hair_treatment') {
     return [
       highlight('Damage-care hair step', 'Treatment use keeps the evaluation on strand repair, smoothing, and wash-day use.'),
@@ -2341,6 +2360,7 @@ function buildHumanStandardHighlights(context) {
       'Blush stick': highlight('Buildable cheek color', 'Keeps the evaluation on cheek color, blendability, and finish control.'),
       'Blush tint': highlight('Lightweight cheek tint', 'Focuses on fresh cheek color, blendability, and lightweight finish.'),
       Blush: highlight('Cheek color finish', 'Keeps the evaluation on cheek color, blendability, and finish control.'),
+      Bronzer: highlight('Warmth and sculpting', 'Keeps the evaluation on warmth, soft sculpting, tone fit, and blendable complexion color.'),
       'Setting powder': highlight('Makeup setting step', 'Frames the product around setting, blur, and finish control after complexion makeup.'),
     };
     if (highlightBySubtype[subtypeLabel]) {
@@ -2489,6 +2509,7 @@ function buildHumanStandardPairingNotes(kind) {
   if (kind === 'conditioner') return ['Use after shampoo, then rinse according to seller directions.'];
   if (kind === 'shampoo') return ['Use as the hair cleansing step, then rinse according to seller directions.'];
   if (kind === 'dry_shampoo') return ['Apply to roots between wash days, then massage or brush through according to seller directions.'];
+  if (kind === 'hair_styling_gel') return ['Apply through damp or dry hair to define shape and hold according to seller directions.'];
   if (kind === 'hair_treatment') return ['Use as the hair treatment step according to seller directions.'];
   if (kind === 'heat_protectant') return ['Apply before heat styling or frizz-smoothing styling steps.'];
   if (kind === 'routine_bundle') return ['Use the included products in routine order according to each product direction.'];
@@ -2553,6 +2574,7 @@ function buildHumanStandardRoutineStep(kind, fallbackStep = '') {
   if (kind === 'conditioner') return 'conditioner';
   if (kind === 'shampoo') return 'shampoo';
   if (kind === 'dry_shampoo') return 'dry shampoo';
+  if (kind === 'hair_styling_gel') return 'styling gel';
   if (kind === 'hair_treatment') return 'hair treatment';
   if (kind === 'heat_protectant') return 'heat protectant';
   if (kind === 'routine_bundle') return 'routine set';
@@ -2601,6 +2623,7 @@ function buildHumanStandardAmPm(kind, fallbackAmPm = []) {
       'eye_patch',
       'shampoo',
       'dry_shampoo',
+      'hair_styling_gel',
       'conditioner',
       'hair_treatment',
       'heat_protectant',
@@ -2646,6 +2669,7 @@ function inferTextureForHumanStandardKind(kind, context) {
   if (kind === 'conditioner') return 'conditioner';
   if (kind === 'shampoo') return 'shampoo';
   if (kind === 'dry_shampoo') return 'powder';
+  if (kind === 'hair_styling_gel') return 'gel';
   if (kind === 'hair_treatment') return 'treatment';
   if (kind === 'heat_protectant') return 'cream';
   if (kind === 'routine_bundle') return 'set';
@@ -3171,6 +3195,7 @@ function shouldPreferHumanStandardRewriteForPublish(caseRow) {
     'body_scrub',
     'shampoo',
     'dry_shampoo',
+    'hair_styling_gel',
     'conditioner',
     'hair_treatment',
     'heat_protectant',

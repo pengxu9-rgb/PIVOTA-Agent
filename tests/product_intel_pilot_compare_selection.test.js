@@ -312,6 +312,28 @@ describe('product_intel pilot compare selection', () => {
         rejected: /^Color Makeup$|Formula angle/i,
       },
       {
+        title: 'The Gelly Type Strong Hold Gel',
+        category: 'Haircare',
+        description:
+          'A strong hold styling gel for shaping curls, slick looks, and style control. This is not a shampoo cleansing step.',
+        tags: ['Haircare', 'Styling'],
+        expectedKind: 'hair_styling_gel',
+        expectedHeadline: /Hair styling gel/i,
+        expectedSubtitle: 'Hair Styling Gel',
+        rejected: /Shampoo|Fragrance|Wash-day cleanse/i,
+      },
+      {
+        title: 'Fenty Parfum Hair + Body Mist',
+        category: 'Fragrance',
+        description:
+          'A lighter version of Fenty Eau de Parfum made to mist in hair and over body for fragrance wear.',
+        tags: ['Fragrance'],
+        expectedKind: 'fragrance',
+        expectedHeadline: /Fragrance mist/i,
+        expectedSubtitle: 'Fragrance Mist',
+        rejected: /Body treatment mist|Eau De Parfum|serum/i,
+      },
+      {
         title: "Pro Filt'r Soft Matte Powder Foundation - 498",
         category: 'Powder',
         description:

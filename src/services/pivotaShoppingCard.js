@@ -254,7 +254,7 @@ function inferTitleSpecialtyCompactSubtitle(product) {
   if (/\b(?:brush bundle|brush trio|brush duo|brush set)\b/.test(text)) return 'Brush Set';
   if (/\b(?:blending|packing|shader|crease|definer|smudge|foundation|skin tint|concealer|face|eyeliner|kyliner|tapered)?\s*brush\s*\d*\b/.test(title)) return 'Makeup Brush';
   if (/\b(?:fragrance layering balm|fragrance balm|scent balm)\b/.test(text)) return 'Fragrance Balm';
-  if (/\b(?:hair\s*\+\s*body fragrance mist|hair and body fragrance mist|body fragrance mist|fragrance mist)\b/.test(text)) return 'Fragrance Mist';
+  if (/\b(?:hair\s*\+\s*body fragrance mist|hair and body fragrance mist|hair\s*\+\s*body mist|hair and body mist|body fragrance mist|fragrance mist|fenty parfum hair\s*\+\s*body mist)\b/.test(text)) return 'Fragrance Mist';
   if (/\b(?:eye duo|eye trio|eye set|eye kit|eye colour routine|eye color routine|essential eye duo|mascara.*(?:duo|set)|(?:duo|set).*mascara)\b/.test(text)) return 'Eye Makeup Set';
   if (/\b(?:lip duo|lip set|lip kit)\b/.test(text)) return 'Lip Set';
   if (/\b(?:makeup set|makeup kit|makeup essentials|makeup trio|beauty set|beauty kit)\b/.test(text)) return 'Makeup Set';
@@ -293,6 +293,7 @@ function inferTitleSpecialtyCompactSubtitle(product) {
   if (/\bskin\s+milk\b/.test(text)) return 'Skin Milk';
   if (/\b(?:lip\s+balm|lip nourisher|lip treatment|lip serum|lip benefits|lip moisture)\b/.test(text)) return 'Lip Balm';
   if (/\bdry\s+shampoo\b/.test(text)) return 'Dry Shampoo';
+  if (/\b(?:strong hold gel|hair gel|styling gel|curl gel|hold gel)\b/.test(text)) return 'Hair Styling Gel';
   if (/\b(?:shampoo|hair shampoo)\b/.test(text)) return 'Hair Shampoo';
   if (/\b(?:cleanser|cleansing)\b/.test(text)) {
     if (/\bcleansing\s+balm\b/.test(text)) return 'Cleansing Balm';
@@ -427,6 +428,7 @@ function buildCompactSubtitle({ product, bundle }) {
       'Routine Set',
       'Hair Shampoo',
       'Dry Shampoo',
+      'Hair Styling Gel',
       'Hair Conditioner',
       'Hair Repair Treatment',
       'Heat Protectant Cream',
