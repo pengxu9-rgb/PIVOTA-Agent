@@ -603,30 +603,54 @@ function isWeakTravelProductReason(value) {
   return !text || /^local catalog authority match\b/i.test(text) || /^category\s*:/i.test(text);
 }
 
-function buildTravelProductUseReasons({ language, roleId, category, name } = {}) {
+function normalizeTravelProductUsageScope(value) {
+  const scope = normalizeText(value, 80).toLowerCase();
+  if (/^(local_shopping|destination_local_shopping|local_authority|destination_authority)$/.test(scope)) {
+    return 'local_shopping';
+  }
+  return 'phase_products';
+}
+
+function buildTravelProductUseReasons({ language, roleId, category, name, usageScope } = {}) {
   const role = normalizeText(roleId, 80).toLowerCase();
   const cat = normalizeText(category, 120).toLowerCase();
   const productName = normalizeText(name, 160).toLowerCase();
   const haystack = `${role} ${cat} ${productName}`;
+  const localShoppingOnly = normalizeTravelProductUsageScope(usageScope) === 'local_shopping';
   if (/recovery_mask/.test(role) || (/mask|recovery|soothing|修护|舒缓|面膜/.test(haystack) && !/serum|essence|ampoule|精华|安瓶/.test(role))) {
-    return [
-      t(language, '仅作为飞行后或高 UV 户外日后的可选夜间恢复；已耐受再用。', 'Use only as optional night recovery after the flight or high-UV outdoor days if already tolerated.'),
-      t(language, '不作为每日必需步骤，避免旅行中突然增加刺激。', 'Do not treat it as a daily required step; avoid adding surprise irritation while traveling.'),
-    ];
+    return localShoppingOnly
+      ? [
+          t(language, '如果落地后需要补买，可作为飞行后或高 UV 户外日后的可选夜间恢复；已耐受再用。', 'If you need to buy it after arrival, use it only as optional night recovery after the flight or high-UV outdoor days if already tolerated.'),
+          t(language, '不作为每日必需步骤，也不要在旅行中突然新增刺激。', 'Do not treat it as a daily required step or a new experiment while traveling.'),
+        ]
+      : [
+          t(language, '仅作为飞行后或高 UV 户外日后的可选夜间恢复；已耐受再用。', 'Use only as optional night recovery after the flight or high-UV outdoor days if already tolerated.'),
+          t(language, '不作为每日必需步骤，避免旅行中突然增加刺激。', 'Do not treat it as a daily required step; avoid adding surprise irritation while traveling.'),
+        ];
   }
   if (/body_lip_hand|body|lip|hand|身体|唇|手/.test(role) || (/body|lip|hand|身体|唇|手/.test(haystack) && !/sun_protection/.test(role))) {
     const genericAreaCategory = /\bbody\b.*\blip\b.*\bhand\b|\blip\b.*\bhand\b|body, lip, or hand/i.test(cat);
     if (/lip|唇|립밤|リップ/.test(productName) || (!genericAreaCategory && /lip|唇/.test(cat))) {
-      return [
-        t(language, '用于唇部，帮助应对机舱干燥和户外通勤时的唇部紧绷。', 'Use on lips to manage tightness from cabin dryness and outdoor commuting.'),
-        t(language, '适合随身携带，不要把润唇产品当作手部或身体护理。', 'Fits carry-on use; do not treat a lip product as hand or body care.'),
-      ];
+      return localShoppingOnly
+        ? [
+            t(language, '如果落地后需要补买，用于唇部，帮助应对当地户外通勤时的唇部紧绷。', 'If you need to buy it after arrival, use it on lips for tightness during local outdoor commuting.'),
+            t(language, '不要把润唇产品当作手部或身体护理；飞行途中优先用自己已带且耐受的唇部产品。', 'Do not treat a lip product as hand or body care; for the flight, rely on a lip product you already packed and tolerate.'),
+          ]
+        : [
+            t(language, '用于唇部，帮助应对机舱干燥和户外通勤时的唇部紧绷。', 'Use on lips to manage tightness from cabin dryness and outdoor commuting.'),
+            t(language, '适合随身携带，不要把润唇产品当作手部或身体护理。', 'Fits carry-on use; do not treat a lip product as hand or body care.'),
+          ];
     }
     if (/hand|手|ハンド/.test(productName) || (!genericAreaCategory && /hand|手/.test(cat))) {
-      return [
-        t(language, '用于手部，帮助应对频繁清洁、机舱干燥和当地通勤带来的手部干燥。', 'Use on hands to manage dryness from cleansing, cabin air, and local commuting.'),
-        t(language, '适合随身携带，在飞行和当地通勤时补充。', 'Fits carry-on use for the flight and local commuting.'),
-      ];
+      return localShoppingOnly
+        ? [
+            t(language, '如果落地后需要补买，用于手部，帮助应对当地频繁清洁和通勤带来的手部干燥。', 'If you need to buy it after arrival, use it on hands for dryness from local cleansing and commuting.'),
+            t(language, '飞行途中优先用自己已带且耐受的手部产品。', 'For the flight, rely on a hand product you already packed and tolerate.'),
+          ]
+        : [
+            t(language, '用于手部，帮助应对频繁清洁、机舱干燥和当地通勤带来的手部干燥。', 'Use on hands to manage dryness from cleansing, cabin air, and local commuting.'),
+            t(language, '适合随身携带，在飞行和当地通勤时补充。', 'Fits carry-on use for the flight and local commuting.'),
+          ];
     }
     if (/body|身体|ボディ/.test(productName) || (!genericAreaCategory && /body|身体/.test(cat))) {
       return [
@@ -634,28 +658,48 @@ function buildTravelProductUseReasons({ language, roleId, category, name } = {})
         t(language, '适合当地户外通勤或长时间步行时补充。', 'Fits local commuting or longer outdoor walks.'),
       ];
     }
-    return [
-      t(language, '用于唇部、手部或暴露皮肤，因为机舱干燥和 UV 不只影响脸部。', 'Use for lips, hands, or exposed skin because cabin dryness and UV do not only affect the face.'),
-      t(language, '适合随身携带，在飞行和当地通勤时补充。', 'Fits carry-on use for the flight and local commuting.'),
-    ];
+    return localShoppingOnly
+      ? [
+          t(language, '如果落地后需要补买，用于唇部、手部或暴露皮肤，因为当地通勤和 UV 不只影响脸部。', 'If you need to buy it after arrival, use it for lips, hands, or exposed skin because local commuting and UV do not only affect the face.'),
+          t(language, '飞行途中优先使用自己已带且耐受的小件护理。', 'For the flight, rely on small-care products you already packed and tolerate.'),
+        ]
+      : [
+          t(language, '用于唇部、手部或暴露皮肤，因为机舱干燥和 UV 不只影响脸部。', 'Use for lips, hands, or exposed skin because cabin dryness and UV do not only affect the face.'),
+          t(language, '适合随身携带，在飞行和当地通勤时补充。', 'Fits carry-on use for the flight and local commuting.'),
+        ];
   }
   if (/sun|spf|uv|sunscreen|防晒/.test(haystack)) {
-    return [
-      t(language, '用于 AM 和户外通勤防晒；户外时间长时按暴露时长补涂。', 'Use this as the AM/outdoor SPF step; reapply based on outdoor exposure time.'),
-      t(language, '适合放在当地日常和当地补买阶段，而不是机舱内新增步骤。', 'Fits the daily-there and local-shopping phases rather than adding a new in-cabin step.'),
-    ];
+    return localShoppingOnly
+      ? [
+          t(language, '如果落地后需要补买，可作为当地 AM/户外防晒；户外时间长时按暴露时长补涂。', 'If you need to buy it after arrival, use it as the local AM/outdoor SPF step and reapply based on outdoor exposure time.'),
+          t(language, '这是当地购物选择，不是出发前或机舱内要依赖的商品。', 'This is a local shopping option, not a product to rely on before departure or in the cabin.'),
+        ]
+      : [
+          t(language, '用于 AM 和户外通勤防晒；户外时间长时按暴露时长补涂。', 'Use this as the AM/outdoor SPF step; reapply based on outdoor exposure time.'),
+          t(language, '适合放在当地日常和当地补买阶段，而不是机舱内新增步骤。', 'Fits the daily-there and local-shopping phases rather than adding a new in-cabin step.'),
+        ];
   }
   if (/moistur|barrier|cream|lotion|lightweight|保湿|乳液|面霜/.test(haystack)) {
-    return [
-      t(language, '用于登机前或洁面后补轻保湿，帮助缓冲机舱干燥和落地初期紧绷。', 'Use before boarding or after cleansing for light moisture against cabin dryness and first-48h tightness.'),
-      t(language, '适合需要保湿但不想叠太厚面霜的旅行场景。', 'Fits travel days when you need moisture without a heavy cream layer.'),
-    ];
+    return localShoppingOnly
+      ? [
+          t(language, '如果落地后需要补买，可在洁面后使用，帮助应对当地初期紧绷且不把层次变厚。', 'If you need to buy it after arrival, use it after cleansing for early-trip tightness without making layers heavy.'),
+          t(language, '出发前和机舱内优先使用自己已带且耐受的保湿产品。', 'Before departure and in the cabin, rely on a moisturizer you already packed and tolerate.'),
+        ]
+      : [
+          t(language, '用于登机前或洁面后补轻保湿，帮助缓冲机舱干燥和落地初期紧绷。', 'Use before boarding or after cleansing for light moisture against cabin dryness and first-48h tightness.'),
+          t(language, '适合需要保湿但不想叠太厚面霜的旅行场景。', 'Fits travel days when you need moisture without a heavy cream layer.'),
+        ];
   }
   if (/serum|essence|ampoule|hydrat|补水|精华|安瓶/.test(haystack)) {
-    return [
-      t(language, '用于保湿层下面，帮助补水但不把白天步骤变厚重。', 'Use under moisturizer to add hydration without making daytime layers heavy.'),
-      t(language, '适合机舱后和落地前 48 小时的轻量补水。', 'Fits post-flight and first-48h lightweight hydration.'),
-    ];
+    return localShoppingOnly
+      ? [
+          t(language, '如果落地后需要补买，可叠在保湿层下面，帮助补水但不把白天步骤变厚重。', 'If you need to buy it after arrival, layer it under moisturizer for hydration without making daytime steps heavy.'),
+          t(language, '更适合落地后前 48 小时的轻量补水，不是出发前必须新增的步骤。', 'It fits lightweight hydration after arrival, not a required new step before departure.'),
+        ]
+      : [
+          t(language, '用于保湿层下面，帮助补水但不把白天步骤变厚重。', 'Use under moisturizer to add hydration without making daytime layers heavy.'),
+          t(language, '适合机舱后和落地前 48 小时的轻量补水。', 'Fits post-flight and first-48h lightweight hydration.'),
+        ];
   }
   if (/cleanser|clean|洁面|卸妆/.test(haystack)) {
     return [
@@ -665,7 +709,7 @@ function buildTravelProductUseReasons({ language, roleId, category, name } = {})
   return [];
 }
 
-function normalizePreviewProducts(recommendationCandidates, language) {
+function normalizePreviewProducts(recommendationCandidates, language, { usageScope } = {}) {
   const out = [];
   for (const row of Array.isArray(recommendationCandidates) ? recommendationCandidates : []) {
     if (!isPlainObject(row)) continue;
@@ -679,6 +723,13 @@ function normalizePreviewProducts(recommendationCandidates, language) {
 
     const roleId = normalizeText(row.role_id || row.roleId || sku.role_id || sku.roleId, 80) || null;
     const category = normalizeText(row.step, 80) || normalizeText(sku.category || sku.product_type, 80) || null;
+    const travelUsageScope = normalizeTravelProductUsageScope(
+      row.travel_usage_scope ||
+        row.travelUsageScope ||
+        sku.travel_usage_scope ||
+        sku.travelUsageScope ||
+        usageScope,
+    );
     const rawReasons = Array.isArray(row.reasons)
       ? row.reasons
       : Array.isArray(row.warnings)
@@ -686,7 +737,7 @@ function normalizePreviewProducts(recommendationCandidates, language) {
         : [];
     const reasons = uniqStrings(
       [
-        ...buildTravelProductUseReasons({ language, roleId, category, name }),
+        ...buildTravelProductUseReasons({ language, roleId, category, name, usageScope: travelUsageScope }),
         ...rawReasons.filter((reason) => !isWeakTravelProductReason(reason)),
       ],
       3,
@@ -708,6 +759,7 @@ function normalizePreviewProducts(recommendationCandidates, language) {
       match_status: 'catalog_verified',
       display_mode: 'product_card',
       role_id: roleId,
+      travel_usage_scope: travelUsageScope,
       pdp_open: isPlainObject(row.pdp_open)
         ? row.pdp_open
         : {
@@ -1085,6 +1137,11 @@ function isGroundedPreviewProduct(item) {
   );
 }
 
+function isLocalShoppingOnlyPreviewProduct(item) {
+  if (!isPlainObject(item)) return false;
+  return normalizeTravelProductUsageScope(item.travel_usage_scope || item.travelUsageScope) === 'local_shopping';
+}
+
 function resolvePreviewProductRoleId(item) {
   if (!isPlainObject(item)) return '';
   const direct = normalizeText(item.role_id || item.roleId || item.selected_role_id || item.selectedRoleId, 80).toLowerCase();
@@ -1151,6 +1208,7 @@ function productIdsForTravelRoles(products, roleIds, max = 6) {
   const seen = new Set();
   for (const product of Array.isArray(products) ? products : []) {
     if (!isPlainObject(product) || !isGroundedPreviewProduct(product)) continue;
+    if (isLocalShoppingOnlyPreviewProduct(product)) continue;
     const roleId = resolvePreviewProductRoleId(product);
     if (!wanted.has(roleId)) continue;
     const productId = normalizeText(product.product_id || product.productId, 120);
@@ -1463,6 +1521,7 @@ function buildCategorizedKit({ language, recoBundle, deltaVsHome, brandCandidate
   const lang = String(language || '').toUpperCase() === 'CN' ? 'CN' : 'EN';
   const previewProductsByCategoryId = {};
   for (const preview of previews) {
+    if (isLocalShoppingOnlyPreviewProduct(preview)) continue;
     const categoryId = resolvePreviewProductCategoryId(preview);
     if (!categoryId) continue;
     if (!Array.isArray(previewProductsByCategoryId[categoryId])) previewProductsByCategoryId[categoryId] = [];
@@ -1577,6 +1636,7 @@ function buildTravelReadiness({
   travelAlerts = [],
   epiPayload,
   recommendationCandidates = [],
+  recommendationCandidateScope = 'phase_products',
   nowMs = Date.now(),
 } = {}) {
   const lang = String(language || '').toUpperCase() === 'CN' ? 'CN' : 'EN';
@@ -1654,7 +1714,9 @@ function buildTravelReadiness({
     jetlagSleep,
   });
   const storeExamples = buildStoreExamples({ language: lang, destination: destinationText });
-  const previewProductsFromCatalog = normalizePreviewProducts(recommendationCandidates, lang);
+  const previewProductsFromCatalog = normalizePreviewProducts(recommendationCandidates, lang, {
+    usageScope: recommendationCandidateScope,
+  });
   const previewProducts = previewProductsFromCatalog.length
     ? previewProductsFromCatalog
     : normalizeCategoryGuidancePreviewProductsFromRecoBundle(recoBundle, lang);

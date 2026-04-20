@@ -154,6 +154,65 @@ test('buildTravelReadiness returns actionable structure with deltas and shopping
   assert.ok(payload.confidence.missing_inputs.includes('current_routine'));
 });
 
+test('buildTravelReadiness keeps destination-local products in local shopping only', () => {
+  const payload = buildTravelReadiness({
+    language: 'EN',
+    profile: { skinType: 'oily', region: 'Seattle, WA' },
+    recentLogs: [],
+    destination: 'Seoul',
+    destinationWeather: {
+      source: 'weather_api',
+      location: { timezone: 'Asia/Seoul' },
+      summary: { temperature_max_c: 18, humidity_mean: 64, uv_index_max: 7.2 },
+    },
+    homeWeather: {
+      source: 'weather_api',
+      location: { timezone: 'America/Los_Angeles' },
+      summary: { temperature_max_c: 16, humidity_mean: 77, uv_index_max: 6.3 },
+    },
+    recommendationCandidateScope: 'local_shopping',
+    recommendationCandidates: [
+      {
+        step: 'Sunscreen',
+        role_id: 'sun_protection',
+        sku: { product_id: 'kr_spf_1', brand: 'Round Lab', name: '1025 Dokdo Sunscreen' },
+      },
+      {
+        step: 'Moisturizer',
+        role_id: 'lightweight_moisturizer',
+        sku: { product_id: 'kr_cream_1', brand: 'Round Lab', name: '1025 Dokdo Cream' },
+      },
+      {
+        step: 'Lip support',
+        role_id: 'body_lip_hand',
+        sku: { product_id: 'kr_lip_1', brand: 'Round Lab', name: 'Birch Juice Moisturizing Lip Balm' },
+      },
+    ],
+    nowMs: Date.parse('2026-04-20T12:00:00.000Z'),
+  });
+
+  for (const phase of payload.phase_plan.filter((row) => row.id !== 'local_shopping')) {
+    assert.equal((phase.product_ids || []).includes('kr_spf_1'), false);
+    assert.equal((phase.product_ids || []).includes('kr_cream_1'), false);
+    assert.equal((phase.product_ids || []).includes('kr_lip_1'), false);
+  }
+
+  const localShopping = payload.phase_plan.find((phase) => phase.id === 'local_shopping');
+  assert.ok(localShopping.product_ids.includes('kr_spf_1'));
+  assert.ok(localShopping.product_ids.includes('kr_cream_1'));
+  assert.ok(localShopping.product_ids.includes('kr_lip_1'));
+  assert.match(localShopping.actions.join(' '), /after arrival/i);
+  assert.equal(/before boarding/i.test(localShopping.actions.join(' ')), false);
+
+  const cream = payload.shopping_preview.products.find((item) => item.product_id === 'kr_cream_1');
+  assert.equal(cream.travel_usage_scope, 'local_shopping');
+  assert.match(cream.reasons.join(' '), /after arrival/i);
+  assert.equal(/before boarding/i.test(cream.reasons.join(' ')), false);
+
+  const sunProtection = payload.categorized_kit.find((item) => item && item.id === 'sun_protection');
+  assert.equal(Boolean(sunProtection && sunProtection.brand_suggestions), false);
+});
+
 test('buildTravelReadiness uses product name before generic body-lip-hand category', () => {
   const payload = buildTravelReadiness({
     language: 'EN',
