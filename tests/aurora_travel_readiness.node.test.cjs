@@ -134,12 +134,9 @@ test('buildTravelReadiness returns actionable structure with deltas and shopping
   assert.ok(payload.phase_plan.find((phase) => phase.id === 'pre_trip_prepare').product_ids.includes('sku_2'));
   assert.ok(payload.phase_plan.find((phase) => phase.id === 'flight_cabin').product_ids.includes('sku_3'));
   const localShopping = payload.phase_plan.find((phase) => phase.id === 'local_shopping');
-  assert.ok(localShopping.product_ids.includes('sku_4'));
-  assert.match(localShopping.actions.join(' '), /Sun protection: BrandB UV Shield SPF50/);
-  assert.match(localShopping.actions.join(' '), /AM\/outdoor SPF step/);
-  assert.match(localShopping.actions.join(' '), /Body, lip, or hand care: BrandD SPF Lip Balm/);
-  assert.match(localShopping.actions.join(' '), /Use on lips/);
-  assert.equal(localShopping.actions.length >= 4, true);
+  assert.deepEqual(localShopping.product_ids, []);
+  assert.equal(localShopping.coverage_status, 'category_only');
+  assert.match(localShopping.actions.join(' '), /Shop by category only/);
   assert.ok(Array.isArray(sunProtection.brand_suggestions));
   assert.ok(sunProtection.brand_suggestions.some((item) => item && item.product === 'UV Shield SPF50'));
   assert.ok(moisturization);
@@ -220,6 +217,51 @@ test('buildTravelReadiness keeps destination-local products in local shopping on
   assert.equal(Boolean(sunProtection && sunProtection.brand_suggestions), false);
 });
 
+test('buildTravelReadiness keeps packable and destination-local product scopes separate', () => {
+  const payload = buildTravelReadiness({
+    language: 'EN',
+    profile: { skinType: 'oily', region: 'Seattle, WA' },
+    recentLogs: [],
+    destination: 'Seoul',
+    destinationWeather: {
+      source: 'weather_api',
+      location: { timezone: 'Asia/Seoul' },
+      summary: { temperature_max_c: 18, humidity_mean: 64, uv_index_max: 7.2 },
+    },
+    homeWeather: {
+      source: 'weather_api',
+      location: { timezone: 'America/Los_Angeles' },
+      summary: { temperature_max_c: 16, humidity_mean: 77, uv_index_max: 6.3 },
+    },
+    recommendationCandidates: [
+      {
+        step: 'Sunscreen',
+        role_id: 'sun_protection',
+        travel_usage_scope: 'phase_products',
+        sku: { product_id: 'us_spf_1', brand: 'US Brand', name: 'Packable SPF50 Fluid' },
+      },
+      {
+        step: 'Sunscreen',
+        role_id: 'sun_protection',
+        travel_usage_scope: 'local_shopping',
+        sku: { product_id: 'kr_spf_1', brand: 'Round Lab', name: '1025 Dokdo Sunscreen' },
+      },
+    ],
+    nowMs: Date.parse('2026-04-20T12:00:00.000Z'),
+  });
+
+  const preTrip = payload.phase_plan.find((phase) => phase.id === 'pre_trip_prepare');
+  const daily = payload.phase_plan.find((phase) => phase.id === 'during_trip_daily');
+  const localShopping = payload.phase_plan.find((phase) => phase.id === 'local_shopping');
+
+  assert.ok(preTrip.product_ids.includes('us_spf_1'));
+  assert.ok(daily.product_ids.includes('us_spf_1'));
+  assert.equal(preTrip.product_ids.includes('kr_spf_1'), false);
+  assert.equal(daily.product_ids.includes('kr_spf_1'), false);
+  assert.ok(localShopping.product_ids.includes('kr_spf_1'));
+  assert.equal(localShopping.product_ids.includes('us_spf_1'), false);
+});
+
 test('buildTravelReadiness uses product name before generic body-lip-hand category', () => {
   const payload = buildTravelReadiness({
     language: 'EN',
@@ -273,21 +315,25 @@ test('buildTravelReadiness keeps both hand and lip local shopping actions when b
       {
         step: 'Sunscreen',
         role_id: 'sun_protection',
+        travel_usage_scope: 'local_shopping',
         sku: { product_id: 'jp_spf_1', brand: 'Biore UV', name: 'Aqua Rich Watery Essence' },
       },
       {
         step: 'Moisturizer',
         role_id: 'lightweight_moisturizer',
+        travel_usage_scope: 'local_shopping',
         sku: { product_id: 'jp_milk_1', brand: 'Kao Curel', name: 'Moisture Milk' },
       },
       {
         step: 'Hand support',
         role_id: 'body_lip_hand',
+        travel_usage_scope: 'local_shopping',
         sku: { product_id: 'jp_hand_1', brand: 'Kao Curel', name: 'Curel Hand Cream' },
       },
       {
         step: 'Lip support',
         role_id: 'body_lip_hand',
+        travel_usage_scope: 'local_shopping',
         sku: { product_id: 'jp_lip_1', brand: 'Kao Curel', name: 'Curel Lip Care Cream' },
       },
     ],
@@ -298,9 +344,9 @@ test('buildTravelReadiness keeps both hand and lip local shopping actions when b
   assert.ok(localShopping);
   const actionText = localShopping.actions.join(' ');
   assert.match(actionText, /Curel Hand Cream/);
-  assert.match(actionText, /Use on hands/);
+  assert.match(actionText, /use it on hands/i);
   assert.match(actionText, /Curel Lip Care Cream/);
-  assert.match(actionText, /Use on lips/);
+  assert.match(actionText, /use it on lips/i);
 });
 
 test('buildTravelReadiness keeps recovery mask use rationale ahead of hydrating category wording', () => {

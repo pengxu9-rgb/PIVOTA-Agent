@@ -279,6 +279,17 @@ function shouldTriggerStoreChannel(message) {
   );
 }
 
+function shouldTriggerPackableProductAuthority(message) {
+  const text = String(message || '').trim();
+  if (!text) return false;
+  const lower = text.toLowerCase();
+  return (
+    shouldTriggerRecoPreview(message) ||
+    /\b(what should i bring|what to bring|what should i pack|what to pack|packing list|pack for|bring for|prepare before|pre[- ]?trip|before leaving|flight skincare|on the flight|cabin skincare|travel kit|what should i use on the flight)\b/i.test(lower) ||
+    /(带什么|带哪些|准备什么|准备哪些|出发前|行前|机舱|飞机上|旅行护肤包|旅行护肤用品)/.test(text)
+  );
+}
+
 function decideLlmCalibrationTrigger({ destination } = {}) {
   if (!TRAVEL_LLM_CALIBRATION_ENABLED) {
     return {
@@ -354,6 +365,11 @@ function normalizeKbWriteSkipReason(reason) {
   return 'incomplete_structure';
 }
 
+function isLocalShoppingScopedProduct(product) {
+  if (!isPlainObject(product)) return false;
+  return normalizeText(product.travel_usage_scope || product.travelUsageScope, 80).toLowerCase() === 'local_shopping';
+}
+
 function inferPseudoIngredientTargets(readiness) {
   const out = [];
   const seen = new Set();
@@ -395,6 +411,7 @@ function buildRecoPreview({ travelReadiness, profile, language }) {
   const seedProducts = (Array.isArray(shoppingPreview.products) ? shoppingPreview.products : [])
     .filter((product) => {
       if (!isPlainObject(product)) return false;
+      if (isLocalShoppingScopedProduct(product)) return false;
       const source = normalizeText(product.product_source || product.productSource, 80).toLowerCase();
       const authority = normalizeText(product.authority_status || product.authorityStatus, 80).toLowerCase();
       const match = normalizeText(product.match_status || product.matchStatus, 80).toLowerCase();
@@ -806,7 +823,9 @@ async function runTravelPipeline(input = {}) {
   let finalRewriteUsed = false;
   let finalRewriteReason = null;
   let finalRewriteSourceMeta = null;
+  let travelPackableAuthorityResult = null;
   let travelLocalAuthorityResult = null;
+  let packableAuthorityCandidates = [];
 
   const intentStartedAt = Date.now();
   const profileCtx = pickTravelContextFromProfile(profile);
@@ -834,6 +853,7 @@ async function runTravelPipeline(input = {}) {
   const questionHash = sha1(String(message || '').trim().toLowerCase());
   const recoTriggeredByMessage = shouldTriggerRecoPreview(message);
   const storeTriggeredByMessage = shouldTriggerStoreChannel(message);
+  const packableProductAuthorityTriggered = shouldTriggerPackableProductAuthority(message);
   const localProductAuthorityTriggered = recoTriggeredByMessage || storeTriggeredByMessage;
   const requiredFields = Array.isArray(plannerDecision.required_fields) ? plannerDecision.required_fields.slice(0, 8) : [];
 
@@ -1481,6 +1501,94 @@ async function runTravelPipeline(input = {}) {
     });
   }
 
+  const packableAuthorityStartedAt = Date.now();
+  const packableAuthorityOrigin = originRegion || (originPlace && originPlace.label) || profileCtx.homeRegion || null;
+  if (!packableAuthorityOrigin && !originPlace) {
+    pushTrace(trace, {
+      skill: 'travel_packable_product_authority_skill',
+      status: 'skip',
+      startedAtMs: packableAuthorityStartedAt,
+      meta: { reason: 'departure_missing' },
+    });
+  } else if (!packableProductAuthorityTriggered) {
+    pushTrace(trace, {
+      skill: 'travel_packable_product_authority_skill',
+      status: 'skip',
+      startedAtMs: packableAuthorityStartedAt,
+      meta: { reason: 'trigger_not_matched' },
+    });
+  } else {
+    try {
+      travelPackableAuthorityResult = await travelLocalProductAuthorityLoader({
+        destination: packableAuthorityOrigin,
+        destinationPlace: originPlace,
+        travelReadiness,
+        message,
+        profile,
+        limit: 4,
+        authoritySurface: 'packable',
+      });
+      const packableCandidates = Array.isArray(travelPackableAuthorityResult?.candidates)
+        ? travelPackableAuthorityResult.candidates
+        : [];
+      const authorityMeta = isPlainObject(travelPackableAuthorityResult?.meta)
+        ? travelPackableAuthorityResult.meta
+        : {};
+      packableAuthorityCandidates = packableCandidates.map((candidate) => (
+        isPlainObject(candidate)
+          ? { ...candidate, travel_usage_scope: 'phase_products' }
+          : candidate
+      )).filter(isPlainObject);
+      if (packableAuthorityCandidates.length) {
+        travelReadiness = buildTravelReadiness({
+          language,
+          profile,
+          recentLogs: Array.isArray(input.recentLogs) ? input.recentLogs : [],
+          destination,
+          startDate,
+          endDate,
+          destinationWeather,
+          originWeather,
+          originContext: {
+            label: originRegion || (originPlace && originPlace.label) || null,
+            source: originSource,
+          },
+          travelAlerts: Array.isArray(alertsPayload && alertsPayload.alerts) ? alertsPayload.alerts : [],
+          epiPayload,
+          recommendationCandidates: packableAuthorityCandidates,
+          recommendationCandidateScope: 'phase_products',
+          nowMs,
+        });
+        travelReadiness = mergeKbPrefillIntoReadiness(travelReadiness, kbEntry);
+      }
+      pushTrace(trace, {
+        skill: 'travel_packable_product_authority_skill',
+        status: packableAuthorityCandidates.length ? 'ok' : 'skip',
+        startedAtMs: packableAuthorityStartedAt,
+        meta: {
+          reason: normalizeText(travelPackableAuthorityResult?.reason, 120) || (packableAuthorityCandidates.length ? 'ok' : 'coverage_miss'),
+          market: normalizeText(authorityMeta.market, 12) || null,
+          market_source: normalizeText(authorityMeta.market_source, 60) || null,
+          coverage_status: normalizeText(authorityMeta.coverage_status, 60) || null,
+          query_count: toNumber(authorityMeta.query_count),
+          candidate_count: toNumber(authorityMeta.candidate_count),
+          selected_count: toNumber(authorityMeta.selected_count),
+          stage_counts: Array.isArray(authorityMeta.stage_counts) ? authorityMeta.stage_counts.slice(0, 6) : [],
+        },
+      });
+    } catch (err) {
+      travelPackableAuthorityResult = { reason: normalizeText(err && (err.code || err.message), 120) || 'error', meta: {} };
+      pushTrace(trace, {
+        skill: 'travel_packable_product_authority_skill',
+        status: 'error',
+        startedAtMs: packableAuthorityStartedAt,
+        meta: {
+          reason: normalizeText(err && (err.code || err.message), 120) || 'error',
+        },
+      });
+    }
+  }
+
   const localAuthorityStartedAt = Date.now();
   if (!destination) {
     pushTrace(trace, {
@@ -1513,6 +1621,11 @@ async function runTravelPipeline(input = {}) {
         ? travelLocalAuthorityResult.meta
         : {};
       if (authorityCandidates.length) {
+        const localShoppingCandidates = authorityCandidates.map((candidate) => (
+          isPlainObject(candidate)
+            ? { ...candidate, travel_usage_scope: 'local_shopping' }
+            : candidate
+        )).filter(isPlainObject);
         travelReadiness = buildTravelReadiness({
           language,
           profile,
@@ -1528,8 +1641,11 @@ async function runTravelPipeline(input = {}) {
           },
           travelAlerts: Array.isArray(alertsPayload && alertsPayload.alerts) ? alertsPayload.alerts : [],
           epiPayload,
-          recommendationCandidates: authorityCandidates,
-          recommendationCandidateScope: 'local_shopping',
+          recommendationCandidates: [
+            ...packableAuthorityCandidates,
+            ...localShoppingCandidates,
+          ],
+          recommendationCandidateScope: 'phase_products',
           nowMs,
         });
         travelReadiness = mergeKbPrefillIntoReadiness(travelReadiness, kbEntry);
@@ -2118,6 +2234,12 @@ async function runTravelPipeline(input = {}) {
   const invocationMatrix = {
     llm_called: llmCalled,
     llm_skip_reason: llmCalled ? null : llmSkipReason,
+    packable_product_authority_called: Boolean(packableProductAuthorityTriggered && (packableAuthorityOrigin || originPlace)),
+    packable_product_authority_reason: normalizeText(travelPackableAuthorityResult?.reason, 120) ||
+      (packableProductAuthorityTriggered ? null : 'trigger_not_matched'),
+    packable_product_authority_market: normalizeText(travelPackableAuthorityResult?.meta?.market, 12) || null,
+    packable_product_authority_coverage_status: normalizeText(travelPackableAuthorityResult?.meta?.coverage_status, 60) || null,
+    packable_product_authority_selected_count: toNumber(travelPackableAuthorityResult?.meta?.selected_count),
     local_product_authority_called: Boolean(localProductAuthorityTriggered && destination),
     local_product_authority_reason: normalizeText(travelLocalAuthorityResult?.reason, 120) ||
       (localProductAuthorityTriggered ? null : 'trigger_not_matched'),
@@ -2184,6 +2306,7 @@ module.exports = {
     buildDepartureMissingAssistantText,
     shouldTriggerRecoPreview,
     shouldTriggerStoreChannel,
+    shouldTriggerPackableProductAuthority,
     shouldTriggerLlmCalibration,
     decideLlmCalibrationTrigger,
     mergeKbPrefillIntoReadiness,

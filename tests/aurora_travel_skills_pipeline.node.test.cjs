@@ -168,6 +168,7 @@ test('travel skills pipeline: DAG order + trace includes started/ended/duration'
           'travel_kb_read_skill',
           'travel_env_context_skill',
           'travel_readiness_skill',
+          'travel_packable_product_authority_skill',
           'travel_local_product_authority_skill',
           'travel_llm_calibration_skill',
           'travel_reco_preview_skill',
@@ -191,6 +192,8 @@ test('travel skills pipeline: DAG order + trace includes started/ended/duration'
       assert.equal('llm_skip_reason' in matrix, true);
       assert.equal(typeof matrix.reco_called, 'boolean');
       assert.equal('reco_skip_reason' in matrix, true);
+      assert.equal(typeof matrix.packable_product_authority_called, 'boolean');
+      assert.equal('packable_product_authority_reason' in matrix, true);
       assert.equal(typeof matrix.store_called, 'boolean');
       assert.equal('store_skip_reason' in matrix, true);
       assert.equal(typeof matrix.final_rewrite_used, 'boolean');
@@ -637,53 +640,93 @@ test('travel skills pipeline: local product wording triggers both reco preview a
             barrierStatus: 'stable',
             goals: ['hydration'],
           },
-          travelLocalProductAuthorityLoader: async () => ({
-            ok: true,
-            reason: 'ok',
-            candidates: [
-              {
-                product_id: 'ext_cn_spf_1',
-                display_name: 'Shanghai Local SPF50 Fluid',
-                name: 'Shanghai Local SPF50 Fluid',
-                brand: 'CN Sun Lab',
-                category: 'Sunscreen',
-                step: 'Sun protection',
-                price: 128,
-                currency: 'CNY',
-                image_url: 'https://example.com/spf.jpg',
-                canonical_url: 'https://example.com/spf',
-                product_source: 'catalog',
-                authority_status: 'grounded',
-                match_status: 'catalog_verified',
-                reasons: ['Local catalog authority match for sun protection.'],
+          travelLocalProductAuthorityLoader: async ({ authoritySurface }) => {
+            if (authoritySurface === 'packable') {
+              return {
+                ok: true,
+                reason: 'ok',
+                candidates: [
+                  {
+                    product_id: 'ext_us_spf_1',
+                    display_name: 'US Packable SPF50 Fluid',
+                    name: 'US Packable SPF50 Fluid',
+                    brand: 'US Sun Lab',
+                    category: 'Sunscreen',
+                    step: 'Sun protection',
+                    role_id: 'sun_protection',
+                    price: 24,
+                    currency: 'USD',
+                    image_url: 'https://example.com/us-spf.jpg',
+                    canonical_url: 'https://example.com/us-spf',
+                    product_source: 'catalog',
+                    authority_status: 'grounded',
+                    match_status: 'catalog_verified',
+                    reasons: ['Packable authority match for pre-trip SPF.'],
+                  },
+                ],
+                meta: {
+                  market: 'US',
+                  market_source: 'destination_text',
+                  coverage_status: 'grounded',
+                  query_count: 3,
+                  candidate_count: 2,
+                  selected_count: 1,
+                },
+              };
+            }
+            return {
+              ok: true,
+              reason: 'ok',
+              candidates: [
+                {
+                  product_id: 'ext_cn_spf_1',
+                  display_name: 'Shanghai Local SPF50 Fluid',
+                  name: 'Shanghai Local SPF50 Fluid',
+                  brand: 'CN Sun Lab',
+                  category: 'Sunscreen',
+                  step: 'Sun protection',
+                  price: 128,
+                  currency: 'CNY',
+                  image_url: 'https://example.com/spf.jpg',
+                  canonical_url: 'https://example.com/spf',
+                  product_source: 'catalog',
+                  authority_status: 'grounded',
+                  match_status: 'catalog_verified',
+                  reasons: ['Local catalog authority match for sun protection.'],
+                },
+              ],
+              meta: {
+                market: 'CN',
+                market_source: 'destination_text',
+                coverage_status: 'grounded',
+                query_count: 3,
+                candidate_count: 2,
+                selected_count: 1,
               },
-            ],
-            meta: {
-              market: 'CN',
-              market_source: 'destination_text',
-              coverage_status: 'grounded',
-              query_count: 3,
-              candidate_count: 2,
-              selected_count: 1,
-            },
-          }),
+            };
+          },
         }),
       );
 
       const intentTrace = out.travel_skills_trace.find((row) => row.skill === 'travel_intent_profile_skill');
+      const packableTrace = out.travel_skills_trace.find((row) => row.skill === 'travel_packable_product_authority_skill');
       const authorityTrace = out.travel_skills_trace.find((row) => row.skill === 'travel_local_product_authority_skill');
       const recoTrace = out.travel_skills_trace.find((row) => row.skill === 'travel_reco_preview_skill');
       const storeTrace = out.travel_skills_trace.find((row) => row.skill === 'travel_store_channel_skill');
       assert.equal(intentTrace?.meta?.departure_region, 'Seattle');
+      assert.equal(packableTrace?.status, 'ok');
+      assert.equal(packableTrace?.meta?.market, 'US');
       assert.equal(authorityTrace?.status, 'ok');
       assert.equal(authorityTrace?.meta?.market, 'CN');
+      assert.equal(out.travel_skill_invocation_matrix?.packable_product_authority_coverage_status, 'grounded');
       assert.equal(out.travel_skill_invocation_matrix?.local_product_authority_coverage_status, 'grounded');
       assert.notEqual(recoTrace?.meta?.reason, 'trigger_not_matched');
       assert.notEqual(storeTrace?.meta?.reason, 'trigger_not_matched');
       assert.equal(out.travel_skill_invocation_matrix?.reco_called, true);
       assert.equal(out.travel_skill_invocation_matrix?.store_called, true);
       assert.equal(out.travel_readiness?.shopping_preview?.coverage_status, 'grounded');
-      assert.equal(out.travel_readiness?.shopping_preview?.products?.[0]?.name, 'Shanghai Local SPF50 Fluid');
+      assert.equal(out.travel_readiness?.shopping_preview?.products?.some((item) => item?.name === 'US Packable SPF50 Fluid'), true);
+      assert.equal(out.travel_readiness?.shopping_preview?.products?.some((item) => item?.name === 'Shanghai Local SPF50 Fluid'), true);
     },
   );
 });
@@ -754,58 +797,103 @@ test('travel skills pipeline: Seoul local shopping wording reaches KR authority 
               barrierStatus: 'stable',
               goals: ['hydration'],
             },
-            travelLocalProductAuthorityLoader: async () => ({
-              ok: true,
-              reason: 'ok',
-              candidates: [
-                {
-                  product_id: 'ext_kr_spf_1',
-                  display_name: 'Round Lab Birch Juice Moisturizing Sunscreen',
-                  name: 'Round Lab Birch Juice Moisturizing Sunscreen',
-                  brand: 'Round Lab',
-                  category: 'Sunscreen',
-                  step: 'Sun protection',
-                  role_id: 'sun_protection',
-                  price: 28000,
-                  currency: 'KRW',
-                  image_url: 'https://example.com/round-lab-spf.jpg',
-                  canonical_url: 'https://example.com/round-lab-spf',
-                  product_source: 'external_seed',
-                  authority_status: 'grounded',
-                  match_status: 'catalog_verified',
-                  reasons: ['Grounded KR sunscreen option for higher-UV daytime wear.'],
+            travelLocalProductAuthorityLoader: async ({ authoritySurface }) => {
+              if (authoritySurface === 'packable') {
+                return {
+                  ok: true,
+                  reason: 'ok',
+                  candidates: [
+                    {
+                      product_id: 'ext_us_moisturizer_1',
+                      display_name: 'US Packable Barrier Moisturizer',
+                      name: 'US Packable Barrier Moisturizer',
+                      brand: 'US Barrier Lab',
+                      category: 'Moisturizer',
+                      step: 'Lightweight moisturizer',
+                      role_id: 'lightweight_moisturizer',
+                      price: 22,
+                      currency: 'USD',
+                      image_url: 'https://example.com/us-moisturizer.jpg',
+                      canonical_url: 'https://example.com/us-moisturizer',
+                      product_source: 'external_seed',
+                      authority_status: 'grounded',
+                      match_status: 'catalog_verified',
+                      reasons: ['Packable moisturizer for cabin dryness.'],
+                    },
+                  ],
+                  meta: {
+                    market: 'US',
+                    market_source: 'destination_text',
+                    coverage_status: 'grounded',
+                    query_count: 4,
+                    candidate_count: 2,
+                    selected_count: 1,
+                  },
+                };
+              }
+              return {
+                ok: true,
+                reason: 'ok',
+                candidates: [
+                  {
+                    product_id: 'ext_kr_spf_1',
+                    display_name: 'Round Lab Birch Juice Moisturizing Sunscreen',
+                    name: 'Round Lab Birch Juice Moisturizing Sunscreen',
+                    brand: 'Round Lab',
+                    category: 'Sunscreen',
+                    step: 'Sun protection',
+                    role_id: 'sun_protection',
+                    price: 28000,
+                    currency: 'KRW',
+                    image_url: 'https://example.com/round-lab-spf.jpg',
+                    canonical_url: 'https://example.com/round-lab-spf',
+                    product_source: 'external_seed',
+                    authority_status: 'grounded',
+                    match_status: 'catalog_verified',
+                    reasons: ['Grounded KR sunscreen option for higher-UV daytime wear.'],
+                  },
+                ],
+                meta: {
+                  market: 'KR',
+                  market_source: 'destination_text',
+                  coverage_status: 'grounded',
+                  query_count: 4,
+                  candidate_count: 3,
+                  selected_count: 1,
                 },
-              ],
-              meta: {
-                market: 'KR',
-                market_source: 'destination_text',
-                coverage_status: 'grounded',
-                query_count: 4,
-                candidate_count: 3,
-                selected_count: 1,
-              },
-            }),
+              };
+            },
           },
         ),
       );
 
+      const packableTrace = out.travel_skills_trace.find((row) => row.skill === 'travel_packable_product_authority_skill');
       const authorityTrace = out.travel_skills_trace.find((row) => row.skill === 'travel_local_product_authority_skill');
       const recoTrace = out.travel_skills_trace.find((row) => row.skill === 'travel_reco_preview_skill');
       const storeTrace = out.travel_skills_trace.find((row) => row.skill === 'travel_store_channel_skill');
+      assert.equal(packableTrace?.status, 'ok');
+      assert.equal(packableTrace?.meta?.market, 'US');
       assert.equal(authorityTrace?.status, 'ok');
       assert.equal(authorityTrace?.meta?.market, 'KR');
       assert.notEqual(authorityTrace?.meta?.reason, 'trigger_not_matched');
       assert.notEqual(recoTrace?.meta?.reason, 'trigger_not_matched');
       assert.notEqual(storeTrace?.meta?.reason, 'trigger_not_matched');
       assert.equal(out.travel_skill_invocation_matrix?.local_product_authority_called, true);
+      assert.equal(out.travel_skill_invocation_matrix?.packable_product_authority_called, true);
+      assert.equal(out.travel_skill_invocation_matrix?.packable_product_authority_coverage_status, 'grounded');
       assert.equal(out.travel_skill_invocation_matrix?.local_product_authority_coverage_status, 'grounded');
       assert.equal(out.travel_readiness?.shopping_preview?.coverage_status, 'grounded');
-      assert.equal(out.travel_readiness?.shopping_preview?.products?.[0]?.currency, 'KRW');
-      assert.equal(out.travel_readiness?.shopping_preview?.products?.[0]?.name, 'Round Lab Birch Juice Moisturizing Sunscreen');
-      assert.equal(out.travel_readiness?.shopping_preview?.products?.[0]?.travel_usage_scope, 'local_shopping');
+      const localProduct = out.travel_readiness?.shopping_preview?.products?.find((item) => item?.product_id === 'ext_kr_spf_1');
+      const packableProduct = out.travel_readiness?.shopping_preview?.products?.find((item) => item?.product_id === 'ext_us_moisturizer_1');
+      assert.equal(localProduct?.currency, 'KRW');
+      assert.equal(localProduct?.name, 'Round Lab Birch Juice Moisturizing Sunscreen');
+      assert.equal(localProduct?.travel_usage_scope, 'local_shopping');
+      assert.equal(packableProduct?.currency, 'USD');
+      assert.equal(packableProduct?.travel_usage_scope, 'phase_products');
       const phasePlan = Array.isArray(out.travel_readiness?.phase_plan) ? out.travel_readiness.phase_plan : [];
       assert.equal(phasePlan.find((phase) => phase.id === 'local_shopping')?.coverage_status, 'grounded');
       assert.ok(phasePlan.find((phase) => phase.id === 'local_shopping')?.product_ids?.includes('ext_kr_spf_1'));
+      assert.ok(phasePlan.find((phase) => phase.id === 'flight_cabin')?.product_ids?.includes('ext_us_moisturizer_1'));
       assert.equal(
         phasePlan
           .filter((phase) => phase.id !== 'local_shopping')
