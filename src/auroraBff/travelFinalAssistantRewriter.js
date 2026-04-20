@@ -314,11 +314,58 @@ function withTimeout(promise, timeoutMs, timeoutCode = 'TRAVEL_FINAL_REWRITE_TIM
 }
 
 function parseTravelFinalRewritePayload(text) {
-  const parsed = parseJsonOnlyObject(text) || extractJsonObject(text);
+  const parsed = parseJsonOnlyObject(text) || extractJsonObject(text) || extractLooseAssistantTextJsonObject(text);
   if (!isPlainObject(parsed)) return null;
   const assistantText = normalizeText(parsed.assistant_text || parsed.assistantText || parsed.text, 3000);
   if (!assistantText) return null;
   return { assistant_text: assistantText };
+}
+
+function decodeLooseJsonStringValue(value) {
+  const text = String(value || '');
+  if (!text) return '';
+  return text
+    .replace(/\\n/g, '\n')
+    .replace(/\\r/g, '\r')
+    .replace(/\\t/g, '\t')
+    .replace(/\\"/g, '"')
+    .replace(/\\\\/g, '\\');
+}
+
+function extractLooseAssistantTextJsonObject(text) {
+  const src = typeof text === 'string' ? text : '';
+  if (!src) return null;
+  const keyMatch = /["']assistant_text["']\s*:/i.exec(src);
+  if (!keyMatch) return null;
+  let i = keyMatch.index + keyMatch[0].length;
+  while (i < src.length && /\s/.test(src[i])) i += 1;
+  const quote = src[i];
+  if (quote !== '"' && quote !== "'") return null;
+  i += 1;
+  let out = '';
+  let escape = false;
+  for (; i < src.length; i += 1) {
+    const ch = src[i];
+    if (escape) {
+      out += `\\${ch}`;
+      escape = false;
+      continue;
+    }
+    if (ch === '\\') {
+      escape = true;
+      continue;
+    }
+    if (ch === quote) {
+      const tail = src.slice(i + 1, i + 12);
+      if (/^\s*[,}]/.test(tail) || /^\s*$/.test(tail)) {
+        const assistantText = normalizeText(decodeLooseJsonStringValue(out), 3000);
+        return assistantText ? { assistant_text: assistantText } : null;
+      }
+    }
+    out += ch;
+  }
+  const assistantText = normalizeText(decodeLooseJsonStringValue(out), 3000);
+  return assistantText ? { assistant_text: assistantText } : null;
 }
 
 function stringifyForRewriteQuality(value) {
