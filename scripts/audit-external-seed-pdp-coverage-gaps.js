@@ -376,6 +376,7 @@ function summarizeRows(rows, { sampleLimit = 25 } = {}) {
     const lineKey = normalizeNonEmptyString(row.identity?.potential_product_line_key);
     const domain = normalizeNonEmptyString(row.domain);
     const productLineId = normalizeNonEmptyString(row.identity?.product_line_id);
+    if (row.product_context?.non_merchandise) continue;
     if (!lineKey || !domain || !productLineId || !row.product_context?.product_url_like) continue;
     const key = `${domain}::${lineKey}`;
     if (!identityGroups.has(key)) identityGroups.set(key, []);

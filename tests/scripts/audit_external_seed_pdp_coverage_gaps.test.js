@@ -169,6 +169,45 @@ describe('audit-external-seed-pdp-coverage-gaps helpers', () => {
     ]);
   });
 
+  test('does not count non-merchandise gift cards as product-line fragmentation', () => {
+    const rows = [
+      classifyRow(
+        row({
+          external_product_id: 'ext_gift_25',
+          title: 'Pixi E-Gift Card 25',
+          has_product_key_kb: true,
+          identity_product_line_id: 'pl_gift_25',
+          identity_sellable_item_group_id: 'sig_gift_25',
+        }),
+      ),
+      classifyRow(
+        row({
+          external_product_id: 'ext_gift_50',
+          title: 'Pixi E-Gift Card 50',
+          has_product_key_kb: true,
+          identity_product_line_id: 'pl_gift_50',
+          identity_sellable_item_group_id: 'sig_gift_50',
+        }),
+      ),
+      classifyRow(
+        row({
+          external_product_id: 'ext_gift_75',
+          title: 'Pixi E-Gift Card 75',
+          has_product_key_kb: true,
+          identity_product_line_id: 'pl_gift_75',
+          identity_sellable_item_group_id: 'sig_gift_75',
+        }),
+      ),
+    ];
+
+    const summary = summarizeRows(rows);
+
+    expect(summary.by_product_family.non_merchandise).toBe(3);
+    expect(summary.identity_fragmentation.affected_rows).toBe(0);
+    expect(summary.identity_fragmentation.fragmented_groups).toBe(0);
+    expect(summary.candidate_external_product_ids.product_line_fragmentation_candidate).toEqual([]);
+  });
+
   test('context classifier keeps formula products distinct from accessories', () => {
     expect(
       classifyProductContext(
