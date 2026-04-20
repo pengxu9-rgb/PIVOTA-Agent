@@ -845,6 +845,86 @@ describe('externalSeedProducts helper', () => {
     expect(product.product_type).toBe('Treatment');
   });
 
+  test('preserves KRW whole-unit beauty prices instead of treating them as cents', () => {
+    const row = {
+      id: 'eps_round_lab_dokdo_cream',
+      external_product_id: 'ext_round_lab_dokdo_cream',
+      canonical_url: 'https://roundlab.co.kr/product/1025-dokdo-cream-80ml/24/',
+      destination_url: 'https://roundlab.co.kr/product/1025-dokdo-cream-80ml/24/',
+      domain: 'roundlab.co.kr',
+      title: '1025 Dokdo Cream 80ml',
+      price_amount: 25600,
+      price_currency: 'KRW',
+      availability: 'in_stock',
+      seed_brand: 'Round Lab',
+      seed_data: {
+        brand: 'Round Lab',
+        category: 'Moisturizer',
+        product_type: 'Moisturizer',
+        snapshot: {
+          canonical_url: 'https://roundlab.co.kr/product/1025-dokdo-cream-80ml/24/',
+          variants: [
+            {
+              sku: 'RL-DOKDO-CREAM-80',
+              variant_id: 'RL-DOKDO-CREAM-80',
+              price: '25600.00',
+              currency: 'KRW',
+            },
+          ],
+        },
+      },
+    };
+
+    const product = buildExternalSeedProduct(row);
+    expect(product.price).toBe(25600);
+    expect(product.currency).toBe('KRW');
+    expect(product.variants[0].price).toBe(25600);
+    expect(product.variants[0].pricing.current).toEqual({
+      amount: 25600,
+      currency: 'KRW',
+    });
+  });
+
+  test('preserves JPY whole-unit beauty prices instead of treating them as cents', () => {
+    const row = {
+      id: 'eps_biore_uv_essence',
+      external_product_id: 'ext_biore_uv_essence',
+      canonical_url: 'https://www.kao-kirei.com/ja/item/khg/bioresarasarauv/4901301413246/',
+      destination_url: 'https://www.kao-kirei.com/ja/item/khg/bioresarasarauv/4901301413246/',
+      domain: 'kao-kirei.com',
+      title: 'Biore UV Aqua Rich Watery Essence SPF 50+',
+      price_amount: 1980,
+      price_currency: 'JPY',
+      availability: 'in_stock',
+      seed_brand: 'Biore UV',
+      seed_data: {
+        brand: 'Biore UV',
+        category: 'Moisturizer',
+        product_type: 'Moisturizer',
+        snapshot: {
+          canonical_url: 'https://www.kao-kirei.com/ja/item/khg/bioresarasarauv/4901301413246/',
+          variants: [
+            {
+              sku: 'BIORE-UV-ESSENCE',
+              variant_id: 'BIORE-UV-ESSENCE',
+              price: '1980.00',
+              currency: 'JPY',
+            },
+          ],
+        },
+      },
+    };
+
+    const product = buildExternalSeedProduct(row);
+    expect(product.price).toBe(1980);
+    expect(product.currency).toBe('JPY');
+    expect(product.variants[0].price).toBe(1980);
+    expect(product.variants[0].pricing.current).toEqual({
+      amount: 1980,
+      currency: 'JPY',
+    });
+  });
+
   test('prefers cleanser intent over generic concentrate terms for lean recommendation candidates', () => {
     const row = {
       id: 'eps_lean_tom_ford_cleanser',
