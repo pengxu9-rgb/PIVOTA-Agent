@@ -3158,6 +3158,73 @@ function stripSavingsPresentationFields(source) {
   return out;
 }
 
+function projectExternalSeedOfferVariant(variant) {
+  if (!variant || typeof variant !== 'object') return null;
+  return stripSavingsPresentationFields({
+    id: variant.id,
+    variant_id: variant.variant_id || variant.variantId || variant.id,
+    sku: variant.sku,
+    sku_id: variant.sku_id || variant.skuId || variant.sku,
+    title: variant.title || variant.name,
+    options: variant.options || variant.selected_options || variant.selectedOptions,
+    option1: variant.option1,
+    option2: variant.option2,
+    option3: variant.option3,
+    price: variant.price,
+    price_amount: variant.price_amount || variant.priceAmount,
+    currency: variant.currency,
+    in_stock: variant.in_stock,
+    available: variant.available,
+    available_quantity: variant.available_quantity,
+    inventory_quantity: variant.inventory_quantity,
+    image_url: variant.image_url || variant.imageUrl,
+  });
+}
+
+function projectExternalSeedOfferPayload(payload, merchantId, productId) {
+  const normalizedProductId = String(payload?.product_id || payload?.id || productId).trim() || productId;
+  const variantsSource = Array.isArray(payload?.variants)
+    ? payload.variants
+    : Array.isArray(payload?.snapshot?.variants)
+      ? payload.snapshot.variants
+      : [];
+  const variants = variantsSource.map(projectExternalSeedOfferVariant).filter(Boolean);
+  return stripSavingsPresentationFields({
+    merchant_id: merchantId,
+    product_id: normalizedProductId,
+    id: String(payload?.id || payload?.product_id || productId).trim() || productId,
+    source: payload?.source || 'external_seed',
+    source_kind: payload?.source_kind || payload?.sourceKind || 'external_seed',
+    external_product_id:
+      String(payload?.external_product_id || payload?.externalProductId || productId).trim() || productId,
+    title: payload?.title || payload?.name,
+    brand: payload?.brand || payload?.vendor,
+    vendor: payload?.vendor,
+    merchant_name: payload?.merchant_name || payload?.merchantName,
+    store_name: payload?.store_name || payload?.storeName,
+    seller_name: payload?.seller_name || payload?.sellerName,
+    price: payload?.price,
+    currency: payload?.currency,
+    shipping: payload?.shipping,
+    shipping_cost: payload?.shipping_cost || payload?.shippingCost,
+    returns: payload?.returns,
+    in_stock: payload?.in_stock,
+    fulfillment_type: payload?.fulfillment_type || payload?.fulfillmentType,
+    destination_url:
+      payload?.destination_url ||
+      payload?.destinationUrl ||
+      payload?.external_redirect_url ||
+      payload?.externalRedirectUrl ||
+      payload?.source_url ||
+      payload?.sourceUrl,
+    canonical_url: payload?.canonical_url || payload?.canonicalUrl,
+    url: payload?.url,
+    image_url: payload?.image_url || payload?.imageUrl,
+    images: Array.isArray(payload?.images) ? payload.images.slice(0, 8) : undefined,
+    ...(variants.length ? { variants } : {}),
+  });
+}
+
 function buildExternalSeedOfferProductFromMember(member) {
   if (!member || typeof member !== 'object') return null;
   const merchantId = String(member.merchant_id || member.merchantId || '').trim();
@@ -3171,18 +3238,7 @@ function buildExternalSeedOfferProductFromMember(member) {
         : null;
   if (!productId || !payload) return null;
   return attachProductDetailSource(
-    normalizeProductDetailPrice(
-      stripSavingsPresentationFields({
-        ...payload,
-        merchant_id: merchantId,
-        product_id: String(payload.product_id || payload.id || productId).trim() || productId,
-        id: String(payload.id || payload.product_id || productId).trim() || productId,
-        source: payload.source || 'external_seed',
-        external_product_id:
-          String(payload.external_product_id || payload.externalProductId || productId).trim() ||
-          productId,
-      }),
-    ),
+    normalizeProductDetailPrice(projectExternalSeedOfferPayload(payload, merchantId, productId)),
     'identity_graph',
   );
 }
