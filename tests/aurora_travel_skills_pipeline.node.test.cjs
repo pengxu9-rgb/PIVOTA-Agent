@@ -6,17 +6,22 @@ const ROOT_KB_STORE = '../src/auroraBff/travelKbStore';
 const ROOT_METRICS = '../src/auroraBff/visionMetrics';
 const ROOT_READINESS = '../src/auroraBff/travelReadinessBuilder';
 const ROOT_CALIBRATOR = '../src/auroraBff/travelLlmCalibrator';
+const ROOT_FINAL_REWRITER = '../src/auroraBff/travelFinalAssistantRewriter';
 const ROOT_REPLY_COMPOSER = '../src/auroraBff/travelReplyComposer';
 const ROOT_WEATHER = '../src/auroraBff/weatherAdapter';
 const ROOT_ALERTS = '../src/auroraBff/travelAlertsProvider';
 const ROOT_KB_POLICY = '../src/auroraBff/travelKbPolicy';
 
 function withEnv(patch, fn) {
-  const keys = Object.keys(patch || {});
+  const effectivePatch = {
+    AURORA_TRAVEL_FINAL_REWRITE_ENABLED: 'false',
+    ...(patch || {}),
+  };
+  const keys = Object.keys(effectivePatch);
   const previous = {};
   for (const key of keys) {
     previous[key] = Object.prototype.hasOwnProperty.call(process.env, key) ? process.env[key] : undefined;
-    const next = patch[key];
+    const next = effectivePatch[key];
     if (next === undefined || next === null) delete process.env[key];
     else process.env[key] = String(next);
   }
@@ -74,8 +79,10 @@ function withMockFetch(fetchImpl, fn) {
 function loadFreshPipeline() {
   const contractsId = require.resolve(ROOT_CONTRACTS);
   const kbStoreId = require.resolve(ROOT_KB_STORE);
+  const finalRewriterId = require.resolve(ROOT_FINAL_REWRITER);
   delete require.cache[contractsId];
   delete require.cache[kbStoreId];
+  delete require.cache[finalRewriterId];
   // eslint-disable-next-line global-require
   return require(ROOT_CONTRACTS);
 }
@@ -165,6 +172,7 @@ test('travel skills pipeline: DAG order + trace includes started/ended/duration'
           'travel_reco_preview_skill',
           'travel_store_channel_skill',
           'travel_followup_reply_skill',
+          'travel_final_reply_rewrite_skill',
           'travel_kb_write_skill',
         ],
       );
@@ -184,8 +192,80 @@ test('travel skills pipeline: DAG order + trace includes started/ended/duration'
       assert.equal('reco_skip_reason' in matrix, true);
       assert.equal(typeof matrix.store_called, 'boolean');
       assert.equal('store_skip_reason' in matrix, true);
+      assert.equal(typeof matrix.final_rewrite_used, 'boolean');
+      assert.equal('final_rewrite_reason' in matrix, true);
       assert.equal(typeof matrix.kb_write_queued, 'boolean');
       assert.equal(typeof matrix.kb_write_skip_reason, 'string');
+    },
+  );
+});
+
+test('travel skills pipeline: final rewrite becomes visible prose authority and integrates travel safety', async () => {
+  await withEnv(
+    {
+      TRAVEL_KB_ASYNC_BACKFILL_ENABLED: 'false',
+      AURORA_TRAVEL_LLM_CALIBRATION_ENABLED: 'false',
+      AURORA_TRAVEL_FINAL_REWRITE_ENABLED: 'true',
+    },
+    async () => {
+      const rewrittenText = [
+        'Seattle to Shanghai means a warmer, more humid routine window with stronger UV exposure, so keep the plan simple and reapplication-focused.',
+        '',
+        '- Before departure: pack a gentle cleanser, lightweight moisturizer, and SPF50 so the routine does not change too much mid-trip.',
+        '- Flight day: avoid experimenting with new actives; use moisturizer before boarding and keep lips or dry patches comfortable.',
+        '- First 48 hours: use SPF every morning and reapply during outdoor transit, then keep evening care calm while jet lag settles.',
+        '- Buying categories in Shanghai: look for sunscreen, a light barrier moisturizer, and a simple hydrating serum if luggage space is tight.',
+        '',
+        'If you share whether you will be mostly indoors or outdoors between meetings, I can narrow the category priority.',
+      ].join('\n');
+      const mockGemini = async () => ({
+        text: JSON.stringify({ assistant_text: rewrittenText }),
+      });
+
+      const { runTravelPipeline } = loadFreshPipeline();
+      const out = await runTravelPipeline(
+        buildInput('Business trip skincare planner: Seattle to Shanghai next week.', {
+          travelFinalRewriteGeminiGenerateContent: mockGemini,
+          profile: {
+            skinType: 'combination',
+            sensitivity: 'medium',
+            barrierStatus: 'stable',
+            goals: ['hydration', 'oil control'],
+            travel_plan: {
+              destination: 'Shanghai',
+              departure_region: 'Seattle',
+              start_date: '2026-04-20',
+              end_date: '2026-04-24',
+            },
+          },
+          canonicalIntent: {
+            intent: 'travel_planning',
+            entities: {
+              destination: 'Shanghai',
+              departure_region: 'Seattle',
+              date_range: { start: '2026-04-20', end: '2026-04-24' },
+            },
+          },
+          safetyDecision: {
+            block_level: 'WARN',
+            reasons: ['Retinoids and acids can increase UV sensitivity during a high-UV trip.'],
+            safe_alternatives: ['SPF50 sunscreen', 'barrier moisturizer'],
+          },
+        }),
+      );
+
+      assert.equal(out.ok, true);
+      assert.equal(out.assistant_final_rewrite_used, true);
+      assert.equal(out.assistant_final_rewrite_reason, 'ok');
+      assert.equal(out.safety_notice_integrated, true);
+      assert.equal(out.assistant_text, rewrittenText);
+      assert.equal(/Travel skincare kit:|Adjusted routine guidance:|Risk note:/i.test(out.assistant_text), false);
+      assert.equal(out.travel_skill_invocation_matrix?.final_rewrite_used, true);
+      const rewriteTrace = out.travel_skills_trace.find((row) => row.skill === 'travel_final_reply_rewrite_skill');
+      assert.equal(Boolean(rewriteTrace), true);
+      assert.equal(rewriteTrace.status, 'ok');
+      assert.equal(rewriteTrace.meta?.used, true);
+      assert.equal(rewriteTrace.meta?.reason, 'ok');
     },
   );
 });
