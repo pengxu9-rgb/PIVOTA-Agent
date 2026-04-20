@@ -1674,13 +1674,20 @@ async function runTravelPipeline(input = {}) {
         ? '我先按当前可得信息给你旅行护肤建议。'
         : 'Here is a practical travel skincare plan based on currently available data.';
   }
+  const appendAssistantBlockIfFits = (block) => {
+    const normalizedBlock = normalizeText(block, 2400);
+    if (!normalizedBlock) return;
+    const next = [assistantText, normalizedBlock].filter(Boolean).join('\n\n');
+    // Keep rich travel replies under the formatter budget so we do not leave dangling headings.
+    if (next.length <= 4550) assistantText = next;
+  };
   if (recoPreview) {
     const block = formatRecoPreviewText({ language, recoPreview });
-    if (block) assistantText = [assistantText, block].filter(Boolean).join('\n\n');
+    appendAssistantBlockIfFits(block);
   }
   if (storeChannel) {
     const block = formatStoreChannelText({ language, storeChannel });
-    if (block) assistantText = [assistantText, block].filter(Boolean).join('\n\n');
+    appendAssistantBlockIfFits(block);
   }
 
   const qualitySections = Array.isArray(followupReply && followupReply.quality_sections)
