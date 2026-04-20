@@ -1911,6 +1911,7 @@ async function runTravelPipeline(input = {}) {
         structuredSections: followupReply && followupReply.structured_sections,
         deterministicBrief: assistantText,
         safetyDecision,
+        timeoutMs: 8000,
         logger,
       });
       finalRewriteUsed = Boolean(finalRewrite && finalRewrite.used && finalRewrite.assistant_text);
