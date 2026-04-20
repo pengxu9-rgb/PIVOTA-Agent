@@ -490,35 +490,65 @@ function mergeKbPrefillIntoReadiness(baseReadiness, kbEntry) {
 function formatRecoPreviewText({ language, recoPreview }) {
   const lang = normalizeLang(language);
   const recs = Array.isArray(recoPreview && recoPreview.recommendations) ? recoPreview.recommendations : [];
-  if (!recs.length) return '';
+  const lines = recs.slice(0, 3).map((row) => {
+    const item = isPlainObject(row) ? row : {};
+    const head = [item.name, item.brand].map((value) => normalizeText(value, 120)).filter(Boolean).join(' · ');
+    const reason = Array.isArray(item.reasons) && item.reasons.length ? normalizeText(item.reasons[0], 160) : '';
+    if (!head && !reason) return '';
+    if (lang === 'CN') return `- ${head || '候选产品'}${reason ? `（${reason}）` : ''}`;
+    return `- ${head || 'Candidate product'}${reason ? ` (${reason})` : ''}`;
+  }).filter(Boolean);
+  if (!lines.length) return '';
   if (lang === 'CN') {
     return [
       '旅行产品预览：',
-      ...recs.slice(0, 3).map((row) => {
-        const head = [row.name, row.brand].filter(Boolean).join(' · ');
-        const reason = Array.isArray(row.reasons) && row.reasons.length ? `（${row.reasons[0]}）` : '';
-        return `- ${head || '候选产品'}${reason}`;
-      }),
+      ...lines,
     ].join('\n');
   }
   return [
     'Travel product preview:',
-    ...recs.slice(0, 3).map((row) => {
-      const head = [row.name, row.brand].filter(Boolean).join(' · ');
-      const reason = Array.isArray(row.reasons) && row.reasons.length ? ` (${row.reasons[0]})` : '';
-      return `- ${head || 'Candidate product'}${reason}`;
-    }),
+    ...lines,
   ].join('\n');
+}
+
+function formatBuyingChannelLabel(value, language) {
+  const lang = normalizeLang(language);
+  const token = normalizeText(value, 60).toLowerCase();
+  const labels = {
+    beauty_retail: { EN: 'beauty retailers', CN: '美妆集合店' },
+    pharmacy: { EN: 'pharmacies', CN: '药房/药妆渠道' },
+    department_store: { EN: 'department-store beauty counters', CN: '百货专柜' },
+    duty_free: { EN: 'airport or duty-free shops', CN: '机场/免税渠道' },
+    ecommerce: { EN: 'local e-commerce', CN: '本地电商' },
+  };
+  return labels[token] ? labels[token][lang] : normalizeText(value, 60).replace(/_/g, ' ');
+}
+
+function formatBuyingChannelList(values, language) {
+  const out = [];
+  const seen = new Set();
+  for (const raw of Array.isArray(values) ? values : []) {
+    const label = formatBuyingChannelLabel(raw, language);
+    if (!label) continue;
+    const key = label.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(label);
+    if (out.length >= 4) break;
+  }
+  return out;
 }
 
 function formatStoreChannelText({ language, storeChannel }) {
   const lang = normalizeLang(language);
   const channels = Array.isArray(storeChannel && storeChannel.buying_channels) ? storeChannel.buying_channels : [];
   const stores = Array.isArray(storeChannel && storeChannel.store_examples) ? storeChannel.store_examples : [];
-  const channelLine = channels.length ? channels.slice(0, 4).join(', ') : (lang === 'CN' ? '无' : 'none');
+  const channelLabels = formatBuyingChannelList(channels, language);
+  const channelLine = channelLabels.length ? channelLabels.join(', ') : (lang === 'CN' ? '暂无可用渠道' : 'no verified channel yet');
+  const cityHint = normalizeText(storeChannel && (storeChannel.city_hint || storeChannel.destination), 100);
 
   if (lang === 'CN') {
-    const lines = [`购买渠道建议：${channelLine}`];
+    const lines = [`${cityHint ? `${cityHint} 本地购买建议` : '本地购买建议'}：${channelLine}`];
     if (stores.length) {
       lines.push('示例门店：');
       for (const row of stores.slice(0, 2)) {
@@ -532,7 +562,7 @@ function formatStoreChannelText({ language, storeChannel }) {
     return lines.join('\n');
   }
 
-  const lines = [`Buying channels: ${channelLine}`];
+  const lines = [`${cityHint ? `Local buying in ${cityHint}` : 'Local buying'}: ${channelLine}`];
   if (stores.length) {
     lines.push('Store examples:');
     for (const row of stores.slice(0, 2)) {

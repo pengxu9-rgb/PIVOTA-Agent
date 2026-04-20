@@ -42,14 +42,45 @@ function uniqueStrings(values, maxItems = 8) {
   return out;
 }
 
+function formatBuyingChannelLabel(value, language) {
+  const lang = String(language || '').toUpperCase() === 'CN' ? 'CN' : 'EN';
+  const token = normalizeText(value, 60).toLowerCase();
+  const labels = {
+    beauty_retail: { EN: 'beauty retailers', CN: '美妆集合店' },
+    pharmacy: { EN: 'pharmacies', CN: '药房/药妆渠道' },
+    department_store: { EN: 'department-store beauty counters', CN: '百货专柜' },
+    duty_free: { EN: 'airport or duty-free shops', CN: '机场/免税渠道' },
+    ecommerce: { EN: 'local e-commerce', CN: '本地电商' },
+  };
+  return labels[token] ? labels[token][lang] : normalizeText(value, 60).replace(/_/g, ' ');
+}
+
+function formatBuyingChannelList(values, language) {
+  return uniqueStrings(
+    (Array.isArray(values) ? values : [])
+      .map((value) => formatBuyingChannelLabel(value, language))
+      .filter(Boolean),
+    5,
+  );
+}
+
 function clipAtWord(value, maxLen = 120) {
   const limit = Math.max(20, Math.trunc(Number(maxLen) || 120));
   const text = normalizeText(value, limit + 80);
   if (!text || text.length <= limit) return text;
   const head = text.slice(0, limit);
+  const sentenceBoundary = Math.max(
+    head.lastIndexOf('. '),
+    head.lastIndexOf('; '),
+    head.lastIndexOf('。'),
+    head.lastIndexOf('；'),
+  );
+  if (sentenceBoundary > Math.floor(limit * 0.55)) {
+    return head.slice(0, sentenceBoundary + 1).trim();
+  }
   const boundary = head.lastIndexOf(' ');
   const clipped = head.slice(0, boundary > Math.floor(limit * 0.6) ? boundary : limit).replace(/[,.!?;:]+$/g, '');
-  return `${clipped}...`;
+  return clipped;
 }
 
 function actionSemanticKey(raw) {
@@ -598,9 +629,9 @@ function buildTravelKitLines({ language, foci, travelReadiness, profile }) {
 
   for (const row of recoBundle.slice(0, 10)) {
     const trigger = normalizeText(row && row.trigger, 120);
-    const action = clipAtWord(row && row.action, 82);
-    const ingredientLogic = clipAtWord(row && row.ingredient_logic, 84);
-    const reapplyRule = clipAtWord(row && row.reapply_rule, 90);
+    const action = clipAtWord(row && row.action, 140);
+    const ingredientLogic = clipAtWord(row && row.ingredient_logic, 180);
+    const reapplyRule = clipAtWord(row && row.reapply_rule, 140);
     const productTypes = Array.isArray(row && row.product_types)
       ? row.product_types.map((pt) => normalizeText(pt, 120)).filter(Boolean)
       : [];
@@ -678,11 +709,20 @@ function buildTravelKitLines({ language, foci, travelReadiness, profile }) {
   }
 
   const channels = Array.isArray(shopping.buying_channels)
-    ? shopping.buying_channels.map((v) => normalizeText(v, 48)).filter(Boolean).slice(0, 5)
+    ? formatBuyingChannelList(shopping.buying_channels, language)
     : [];
   if (channels.length) {
+    const city = normalizeText(
+      shopping.city_hint ||
+        (travelReadiness && travelReadiness.destination_context && travelReadiness.destination_context.destination),
+      100,
+    );
     lines.push(
-      t(language, `购买渠道：${channels.join(' / ')}。`, `Buying channels: ${channels.join(' / ')}.`),
+      t(
+        language,
+        `${city ? `${city} 本地购买：` : '本地购买：'}${channels.join(' / ')}。`,
+        `${city ? `Local buying in ${city}: ` : 'Local buying: '}${channels.join(' / ')}.`,
+      ),
     );
   }
 
@@ -752,13 +792,7 @@ function buildFlightDayPlanLines({ language, travelReadiness }) {
     ));
   }
 
-  const sleepTips = Array.isArray(jetlag.sleep_tips) ? jetlag.sleep_tips : [];
-  for (const tip of sleepTips.slice(0, 1)) {
-    const tipText = normalizeText(tip, 220);
-    if (tipText) lines.push(tipText);
-  }
-
-  return uniqueStrings(lines, 4);
+  return uniqueStrings(lines, 3);
 }
 
 function buildActiveHandlingLines({ language, travelReadiness }) {

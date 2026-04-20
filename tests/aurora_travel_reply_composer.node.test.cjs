@@ -90,7 +90,7 @@ test('travelReplyComposer answers humidity question with explicit home-vs-destin
 
   assert.equal(result.reply_mode, 'focused');
   assert.equal(result.focus, 'humidity');
-  assert.match(result.text, /常驻地：San Francisco, CA -> 目的地：Paris/);
+  assert.match(result.text, /出发地：San Francisco, CA -> 目的地：Paris/);
   assert.match(result.text, /湿度: 56% -> 76% \(变化 \+20%\)/);
 });
 
@@ -105,8 +105,8 @@ test('travelReplyComposer surfaces baseline gap when home weather baseline is un
   });
 
   assert.equal(result.reply_mode, 'focused');
-  assert.match(result.text, /Home region: San Francisco, CA -> Destination: Paris/);
-  assert.match(result.text, /Home baseline is unavailable/i);
+  assert.match(result.text, /Departure: San Francisco, CA -> Destination: Paris/);
+  assert.match(result.text, /Departure baseline is unavailable/i);
   assert.match(result.text, /Humidity: 76%/i);
   assert.doesNotMatch(result.text, /0%\s*->\s*76%/i);
   assert.doesNotMatch(result.text, /0C\s*->\s*11C/i);
@@ -211,7 +211,7 @@ test('travelReplyComposer avoids unsupported temperature-swing claim in humidity
   });
 
   assert.doesNotMatch(result.text, /temperature swings/i);
-  assert.match(result.text, /humidity is close to home/i);
+  assert.match(result.text, /humidity is close to your departure baseline/i);
 });
 
 test('travelReplyComposer keeps humidity-only answer grounded even when temperature delta is large', () => {
@@ -350,4 +350,33 @@ test('travelReplyComposer adds phased plan for multi-day trip window', () => {
   assert.match(result.text, /Pre-trip \(T-2 to T-1\)/);
   assert.match(result.text, /Flight day:/);
   assert.match(result.text, /On-site days:/);
+});
+
+test('travelReplyComposer keeps travel kit copy complete and user-readable', () => {
+  const readiness = buildReadiness({ baselineStatus: 'ok' });
+  readiness.destination_context.destination = 'Shanghai, China';
+  readiness.reco_bundle = [
+    {
+      trigger: 'Elevated UV',
+      action: 'Use a face SPF50+ PA++++ sunscreen before outdoor business transit.',
+      ingredient_logic: 'Prioritize photostable UVA filters plus antioxidant film-formers; use a body SPF in fluid texture for easy large-area application.',
+      product_types: ['Face SPF50+ PA++++ sunscreen', 'Portable reapply format'],
+      reapply_rule: 'Outdoors over 90 minutes: reapply every 2 hours and after sweat or wipe-off.',
+    },
+  ];
+  readiness.shopping_preview.buying_channels = ['beauty_retail', 'pharmacy', 'department_store', 'ecommerce'];
+
+  const result = composeTravelReply({
+    message: 'Build me a skincare trip plan for Shanghai.',
+    language: 'EN',
+    travelReadiness: readiness,
+    destination: 'Shanghai, China',
+    homeRegion: 'Seattle, WA',
+    envSource: 'weather_api',
+  });
+
+  assert.doesNotMatch(result.text, /\.\.\./);
+  assert.match(result.text, /easy large-area application/i);
+  assert.match(result.text, /Local buying in Shanghai, China: beauty retailers \/ pharmacies \/ department-store beauty counters \/ local e-commerce/i);
+  assert.doesNotMatch(result.text, /beauty_retail|department_store/i);
 });
