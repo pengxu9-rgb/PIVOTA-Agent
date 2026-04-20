@@ -394,6 +394,50 @@ function normalizeShoppingPreview(value) {
   return Object.keys(out).length ? out : undefined
 }
 
+function normalizePatchWhy(row, maxLen = 260) {
+  const src = isPlainObject(row) ? row : {}
+  return normalizeText(
+    src.why ||
+      src.reason ||
+      src.reasoning ||
+      src.scenario ||
+      src.context ||
+      src.rationale,
+    maxLen,
+  )
+}
+
+function normalizePatchAction(row, maxLen = 320) {
+  const src = isPlainObject(row) ? row : {}
+  const action = normalizeText(
+    src.what_to_do ||
+      src.whatToDo ||
+      src.action ||
+      src.recommendation ||
+      src.advice ||
+      src.instruction,
+    maxLen,
+  )
+  const timing = normalizeText(src.timing || src.phase || src.when, 80)
+  if (!action) return ''
+  if (!timing) return action
+  const lowerAction = action.toLowerCase()
+  const lowerTiming = timing.toLowerCase()
+  return lowerAction.includes(lowerTiming) ? action : normalizeText(`${timing}: ${action}`, maxLen)
+}
+
+function normalizePatchFocus(row, maxLen = 120) {
+  const src = isPlainObject(row) ? row : {}
+  return normalizeText(
+    src.focus ||
+      src.priority ||
+      src.need ||
+      src.concern ||
+      src.goal,
+    maxLen,
+  )
+}
+
 function compactProfileForPrompt(value) {
   const profile = isPlainObject(value) ? value : {}
   return {
@@ -605,8 +649,8 @@ function normalizeTravelReadinessPatch(value) {
     const adaptiveActions = []
     for (const raw of adaptiveActionsRaw) {
       const row = isPlainObject(raw) ? raw : {}
-      const why = normalizeText(row.why, 260)
-      const whatToDo = normalizeText(row.what_to_do || row.whatToDo, 320)
+      const why = normalizePatchWhy(row, 260)
+      const whatToDo = normalizePatchAction(row, 320)
       if (!why && !whatToDo) continue
       adaptiveActions.push({
         ...(why ? { why } : {}),
@@ -630,9 +674,9 @@ function normalizeTravelReadinessPatch(value) {
     const personalFocus = []
     for (const raw of personalFocusRaw) {
       const row = isPlainObject(raw) ? raw : {}
-      const focus = normalizeText(row.focus, 120)
-      const why = normalizeText(row.why, 260)
-      const whatToDo = normalizeText(row.what_to_do || row.whatToDo, 320)
+      const focus = normalizePatchFocus(row, 120)
+      const why = normalizePatchWhy(row, 260)
+      const whatToDo = normalizePatchAction(row, 320)
       if (!focus && !why && !whatToDo) continue
       personalFocus.push({
         ...(focus ? { focus } : {}),
@@ -904,7 +948,8 @@ function buildTravelCalibrationPrompts({ language = 'EN', travelLlmInput, baseTr
     'Keep strings short and complete. Do not use ellipses or cut-off fragments.',
     'This is a micro-patch: return only adaptive_actions, personal_focus, jetlag_sleep tips if needed, shopping_preview.brand_candidates/channels, and confidence.',
     'Do not return category_recommendations or shopping_preview.products; the deterministic travel kit already carries product categories.',
-    'For included actions, give scenario why and timing. Avoid generic copy and absolute claims like best/most.',
+    'Use exact action keys only: why and what_to_do. If timing matters, include timing inside what_to_do; do not use scenario/timing/action keys.',
+    'Avoid generic copy and absolute claims like best/most.',
     'High humidity favors lighter AM texture; travel/flight favors PM barrier repair; UV>=6 requires SPF50+ reapply cadence and post-sun repair.',
     'Jet lag >=5h should add depuffing/hydration eye-care and sleep timing.',
     'Deduplicate: adaptive_actions=environment shifts without product names; personal_focus=profile priorities; shopping_preview=concrete product types/brand candidates.',
@@ -953,6 +998,20 @@ function parseCalibrationPayload(text) {
     travel_readiness_patch: travelReadinessPatch,
     quality_flags: qualityFlags,
     source_notes: sourceNotes,
+  }
+}
+
+function classifyCalibrationParseFailure(text) {
+  const parsed = parseJsonOnlyObject(text) || extractJsonObject(text)
+  if (isPlainObject(parsed)) {
+    return {
+      code: 'TRAVEL_LLM_EMPTY_PATCH',
+      status: 'json_ok_empty_patch',
+    }
+  }
+  return {
+    code: 'TRAVEL_LLM_INVALID_JSON',
+    status: 'invalid_json',
   }
 }
 
@@ -1036,13 +1095,15 @@ async function calibrateTravelReadinessWithLlm({
       const text = await extractGeminiText(callResult && callResult.response)
       const parsed = parseCalibrationPayload(text)
       if (!parsed) {
+        const failure = classifyCalibrationParseFailure(text)
         const parseErr = new Error('travel_llm_invalid_json')
-        parseErr.code = 'TRAVEL_LLM_INVALID_JSON'
+        parseErr.code = failure.code
         parseErr.raw_text_chars = String(text || '').length
         parseErr.raw_text_excerpt = normalizeText(text, 800)
         parseErr.meta = {
           ...(isPlainObject(callResult && callResult.meta) ? callResult.meta : {}),
           ...responseMeta,
+          parse_status: failure.status,
         }
         lastErr = parseErr
         continue
@@ -1101,6 +1162,7 @@ async function calibrateTravelReadinessWithLlm({
       ...(normalizeNumber(errorMeta.total_ms) != null ? { total_ms: normalizeNumber(errorMeta.total_ms) } : {}),
       ...(normalizeText(errorMeta.finish_reason, 80) ? { finish_reason: normalizeText(errorMeta.finish_reason, 80) } : {}),
       ...(normalizeText(errorMeta.finish_message, 140) ? { finish_message: normalizeText(errorMeta.finish_message, 140) } : {}),
+      ...(normalizeText(errorMeta.parse_status, 80) ? { parse_status: normalizeText(errorMeta.parse_status, 80) } : {}),
       ...(normalizeNumber(errorMeta.prompt_token_count) != null ? { prompt_token_count: normalizeNumber(errorMeta.prompt_token_count) } : {}),
       ...(normalizeNumber(errorMeta.candidates_token_count) != null ? { candidates_token_count: normalizeNumber(errorMeta.candidates_token_count) } : {}),
       ...(normalizeNumber(errorMeta.total_token_count) != null ? { total_token_count: normalizeNumber(errorMeta.total_token_count) } : {}),
@@ -1131,6 +1193,7 @@ module.exports = {
     buildTravelCalibrationPrompts,
     buildGeminiRequest,
     TRAVEL_LLM_RESPONSE_SCHEMA,
+    classifyCalibrationParseFailure,
     extractGeminiText,
     extractGeminiResponseDebugMeta,
     compactTravelLlmInputForPrompt,
