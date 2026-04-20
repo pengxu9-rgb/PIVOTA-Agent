@@ -1866,6 +1866,10 @@ const PDP_SELF_OFFER_FALLBACK_ENABLED = parseBooleanEnv(
   process.env.PDP_SELF_OFFER_FALLBACK_ENABLED,
   false,
 );
+const PDP_OFFER_GROUP_MEMBER_FETCH_TIMEOUT_MS = Math.max(
+  100,
+  parseTimeoutMs(process.env.PDP_OFFER_GROUP_MEMBER_FETCH_TIMEOUT_MS, 750),
+);
 const PDP_CORE_PREWARM_TIMEOUT_MS = Math.max(
   1000,
   parseTimeoutMs(process.env.PDP_CORE_PREWARM_TIMEOUT_MS, 6500),
@@ -3608,6 +3612,8 @@ async function fetchProductDetailForOffers(args) {
         merchantId,
         productId,
         checkoutToken,
+        timeoutMs: args?.timeoutMs,
+        noRetry: args?.noRetry === true,
       });
     } catch (err) {
       upstreamError = err;
@@ -4118,6 +4124,7 @@ async function buildOffersFromGroupMembers(args) {
     prefetched: 0,
     fetched: 0,
     hydrated: 0,
+    unresolved: 0,
   };
   const fetchProductsStartedAt = Date.now();
   const chunkSize = 4;
@@ -4135,15 +4142,20 @@ async function buildOffersFromGroupMembers(args) {
         const product =
           memberPayloadProduct ||
           prefetchedProduct ||
-          (await fetchProductDetailForOffers({
-            merchantId: m.merchant_id,
-            productId: m.product_id,
-            checkoutToken,
-            bypassCache,
-            skipUpstreamFallback: m.merchant_id === EXTERNAL_SEED_MERCHANT_ID,
-          }).catch(() => null));
+	          (await fetchProductDetailForOffers({
+	            merchantId: m.merchant_id,
+	            productId: m.product_id,
+	            checkoutToken,
+	            bypassCache,
+	            skipUpstreamFallback: m.merchant_id === EXTERNAL_SEED_MERCHANT_ID,
+              timeoutMs: PDP_OFFER_GROUP_MEMBER_FETCH_TIMEOUT_MS,
+              noRetry: true,
+	          }).catch(() => null));
         if (!memberPayloadProduct && !usedPrefetchedProduct && product) {
           buildSourceStats.fetched += 1;
+        }
+        if (!product) {
+          buildSourceStats.unresolved += 1;
         }
         const hydratedProduct =
           m.merchant_id === EXTERNAL_SEED_MERCHANT_ID || usedPrefetchedProduct
