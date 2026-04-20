@@ -149,6 +149,177 @@ describe('product_intel pilot compare selection', () => {
     expect(rewrite.product_intel_core.routine_fit.pairing_notes.join(' ')).toMatch(/lip balm/i);
   });
 
+  test('human-standard rewrite preserves hair and color makeup product families', () => {
+    expect(
+      inferProductKindFromContext({
+        title: 'The Comeback Kid Instant Damage Repair Treatment Bond Builder',
+        category: 'Treatment',
+        description: 'A professional-grade bond repair treatment that supports damaged keratin structures and strengthens strands.',
+        tags: [],
+      }),
+    ).toBe('hair_treatment');
+    expect(
+      inferProductKindFromContext({
+        title: 'The Rich One Moisture Repair Conditioner',
+        category: 'Conditioner',
+        description: 'A conditioner that melts on contact and helps de-frizz hair.',
+        tags: [],
+      }),
+    ).toBe('conditioner');
+    expect(
+      inferProductKindFromContext({
+        title: "Demi'glow Light-Diffusing Highlighter — Yum Rum",
+        category: 'Highlighter',
+        description: 'A highlighter with a smooth glide and reflective finish.',
+        tags: [],
+      }),
+    ).toBe('color_makeup');
+
+    const hairRewrite = buildHumanStandardRewriteOutput(
+      {
+        product: {
+          title: 'The Comeback Kid Instant Damage Repair Treatment Bond Builder',
+          category: 'Treatment',
+          description: 'A bond repair treatment for damaged strands.',
+          ingredients_inci: ['Water', 'Glycerin', 'Panthenol'],
+        },
+      },
+      {
+        product_intel_core: {
+          what_it_is: {
+            headline: 'Treatment serum',
+            body: 'A skin-care serum.',
+          },
+          routine_fit: {
+            step: 'serum',
+          },
+        },
+      },
+      null,
+    );
+    expect(hairRewrite.product_intel_core.what_it_is.headline).toBe('Hair repair treatment');
+    expect(hairRewrite.product_intel_core.routine_fit.step).toBe('hair treatment');
+    expect(hairRewrite.product_intel_core.what_it_is.body).toMatch(/hair treatment|strand/i);
+    expect(hairRewrite.product_intel_core.what_it_is.body).not.toMatch(/skin-care|serum/i);
+
+    const makeupRewrite = buildHumanStandardRewriteOutput(
+      {
+        product: {
+          title: "Demi'glow Light-Diffusing Highlighter — Yum Rum",
+          category: 'Highlighter',
+          description: 'A light-diffusing highlighter for targeted glow.',
+          ingredients_inci: [],
+        },
+      },
+      {
+        product_intel_core: {
+          what_it_is: {
+            headline: 'Makeup product',
+            body: 'A generic makeup product.',
+          },
+          routine_fit: {
+            step: 'makeup',
+          },
+        },
+      },
+      null,
+    );
+    expect(makeupRewrite.product_intel_core.what_it_is.headline).toBe('Color makeup');
+    expect(makeupRewrite.product_intel_core.what_it_is.body).toMatch(/color makeup|shade|finish/i);
+    expect(makeupRewrite.product_intel_core.what_it_is.body).not.toMatch(/skin-care|hydration/i);
+  });
+
+  test('human-standard cleanser rewrite ignores incidental acid and oil texture cues', () => {
+    const caseRow = {
+      case_id: 'live_ext_milky_cleanser',
+      product: {
+        title: 'Milky Moisture Cleanser',
+        category: 'Cleanser',
+        description:
+          'A milky daily cleanser for dry, sensitive skin that dissolves daily buildup including SPF, oil and makeup.',
+        ingredients_inci: ['Water', 'Glycerin', 'Panthenol', 'Ceramide NP', 'Lactic Acid'],
+      },
+    };
+
+    const rewrite = buildHumanStandardRewriteOutput(
+      caseRow,
+      {
+        evidence_profile: 'seller_plus_formula',
+        product_intel_core: {
+          what_it_is: {
+            headline: 'Daily cleanser',
+            body: 'A daily cleanser.',
+          },
+          routine_fit: {
+            step: 'cleanser',
+          },
+          watchouts: [
+            {
+              type: 'acid',
+              label: 'May be too active for very sensitive or over-exfoliated skin.',
+              severity: 'high',
+            },
+          ],
+        },
+        texture_finish: {
+          texture: 'oil',
+          finish: 'dewy',
+          sensory_notes: ['Richer feel', 'Fragrance-free positioning'],
+        },
+      },
+      null,
+    );
+
+    expect(rewrite.product_intel_core.watchouts.map((item) => item.type)).not.toContain('acid');
+    expect(rewrite.texture_finish.texture).toBe('milky cleanser');
+    expect(rewrite.texture_finish.finish).toBe('');
+    expect(rewrite.texture_finish.sensory_notes).toEqual([]);
+  });
+
+  test('human-standard sunscreen rewrite does not inherit stale oil or richer texture cues', () => {
+    const caseRow = {
+      case_id: 'live_ext_aqua_fresh_spf',
+      product: {
+        title: 'Relief Sun Aqua-Fresh : Rice + B5 (SPF50+ PA++++)',
+        category: 'Sunscreen',
+        description:
+          'An ultra-lightweight fluid sunscreen made with rice seed water for refreshing hydration and comfortable daytime layering.',
+        ingredients_inci: ['Aqua', 'Rice Seed Water', 'Panthenol'],
+      },
+    };
+
+    const rewrite = buildHumanStandardRewriteOutput(
+      caseRow,
+      {
+        evidence_profile: 'seller_plus_formula',
+        product_intel_core: {
+          what_it_is: {
+            headline: 'Daily sunscreen',
+            body: 'A daily sunscreen for AM UV protection.',
+          },
+          routine_fit: {
+            step: 'sunscreen',
+          },
+        },
+        texture_finish: {
+          texture: 'oil',
+          finish: '',
+          sensory_notes: ['Lightweight feel', 'Richer feel'],
+          layering_notes: ['Best used as the last skincare step before makeup.'],
+          confidence: 'moderate',
+          evidence_profile: 'seller_plus_formula',
+        },
+      },
+      null,
+    );
+
+    expect(rewrite.texture_finish.texture).toBe('fluid');
+    expect(rewrite.texture_finish.sensory_notes).toEqual(['Lightweight feel']);
+    expect(rewrite.texture_finish.sensory_notes.join(' ')).not.toMatch(/oil|richer/i);
+    expect(rewrite.product_intel_core.routine_fit.step).toBe('sunscreen');
+    expect(rewrite.product_intel_core.watchouts.map((item) => item.type)).toContain('spf');
+  });
+
   test('human-standard rewrite preserves pads and anti-chafe formats over stale categories', () => {
     const padsRow = {
       case_id: 'live_ext_pads',

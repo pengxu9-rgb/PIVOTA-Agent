@@ -370,21 +370,32 @@ const SHADE_FAMILY_CONTEXT_TOKENS = Object.freeze([
   'bb cream',
   'blush',
   'bronzer',
+  'brightener',
+  'brow',
+  'brow pencil',
   'complexion',
   'concealer',
   'contour',
   'corrector',
+  'diamond veil',
+  'eyeliner',
+  'eye brightener',
   'coverage',
   'eye shadow',
   'eyeshadow',
   'foundation',
   'glow tint',
   'highlighter',
+  'lash line',
   'lip',
   'lipstick',
+  'luminizer',
+  'mascara',
   'makeup',
   'powder',
   'shade',
+  'skin stick',
+  'skinstick',
   'skin tint',
   'tint',
   'tinted',
@@ -404,10 +415,37 @@ function extractTrailingShadeCodeToken(value) {
   if (!normalized) return '';
   const tokens = normalized.split(/\s+/g).filter(Boolean);
   for (let idx = tokens.length - 1; idx >= Math.max(0, tokens.length - 4); idx -= 1) {
+    const token = asString(tokens[idx]);
+    const previousToken = asString(tokens[idx - 1]).toLowerCase();
+    if (/^\d{1,4}[a-z]{0,2}$/i.test(token) && !/^(?:spf|pa|uv|upf)$/.test(previousToken)) {
+      return token.toLowerCase();
+    }
     const code = normalizeShadeCodeToken(tokens[idx]);
     if (code) return code;
   }
   return '';
+}
+
+function extractTrailingShadeDescriptor(value) {
+  const raw = asString(value);
+  const match = raw.match(/\s+[—–-]\s+(.{1,80})$/);
+  if (!match) return '';
+  const candidate = normalizeAxisValue(match[1]);
+  if (!candidate) return '';
+  const tokens = candidate.split(/\s+/g).filter(Boolean);
+  if (tokens.length > 6) return '';
+  if (/^(?:refill|mini|jumbo|travel size|full size|standard|regular|set|bundle)$/i.test(candidate)) return '';
+  return candidate;
+}
+
+function stripTrailingShadeDescriptorFromTitle(title, descriptor) {
+  const raw = asString(title);
+  const normalizedDescriptor = normalizeAxisValue(descriptor);
+  if (!raw || !normalizedDescriptor) return title;
+  const match = raw.match(/\s+[—–-]\s+(.{1,80})$/);
+  if (!match) return title;
+  if (normalizeAxisValue(match[1]) !== normalizedDescriptor) return title;
+  return raw.slice(0, match.index).trim();
 }
 
 function hasShadeFamilyContext(product) {
@@ -437,20 +475,22 @@ function extractMultiPageShadeFamilyCandidate(product) {
   if (!hasShadeFamilyContext(product)) return null;
   const title = firstNonEmptyString(product?.title, product?.name, product?.display_name);
   const titleCode = extractTrailingShadeCodeToken(title);
-  if (!titleCode) return null;
+  const titleDescriptor = titleCode || extractTrailingShadeDescriptor(title);
+  if (!titleDescriptor) return null;
 
   const officialUrl = extractOfficialUrl(product);
   const officialHandle = extractOfficialHandle(product, officialUrl);
   const handleCode = extractTrailingShadeCodeToken(officialHandle);
-  if (handleCode && handleCode !== titleCode) return null;
+  if (titleCode && handleCode && handleCode !== titleCode) return null;
 
-  const strippedTitleCore = stripAxisTokensFromTitle(title, { shade: titleCode });
+  const titleWithoutDescriptor = stripTrailingShadeDescriptorFromTitle(title, titleDescriptor);
+  const strippedTitleCore = stripAxisTokensFromTitle(titleWithoutDescriptor, { shade: titleDescriptor });
   const titleCore = normalizeTitleToken(strippedTitleCore);
   if (!titleCore || titleCore === normalizeTitleToken(title)) return null;
 
   return {
     axis: 'shade',
-    value: titleCode,
+    value: titleDescriptor,
     title_core_norm: titleCore,
     ...(officialHandle ? { official_handle: officialHandle } : {}),
   };

@@ -897,6 +897,93 @@ describe('build_product_intel_live_pilot_cases', () => {
     });
   });
 
+  test('hydrates external seed pilot cases from structured PDP formula fields', () => {
+    const row = buildPilotCaseFromExternalSeedProduct({
+      merchant_id: 'external_seed',
+      id: 'ext_byoma_cleanser',
+      brand: 'BYOMA',
+      title: 'Milky Moisture Cleanser',
+      category_path: ['Skincare', 'Cleanser'],
+      description: 'A milky cleanser for dry, sensitive skin.',
+      pdp_ingredients_raw:
+        'Water, Glycerin, Avena Sativa Kernel Flour, Ceramide NP, Cholesterol, Panthenol',
+      pdp_active_ingredients_raw: 'Tri-Ceramide Complex, Oat Extract, Panthenol',
+      pdp_how_to_use_raw: 'Massage onto damp skin, then rinse well.',
+    });
+
+    expect(row.product.ingredients_inci).toEqual([
+      'Water',
+      'Glycerin',
+      'Avena Sativa Kernel Flour',
+      'Ceramide NP',
+      'Cholesterol',
+      'Panthenol',
+    ]);
+    expect(row.product.how_to_use).toBe('Massage onto damp skin, then rinse well.');
+  });
+
+  test('normalizes split numeric INCI tokens from seed ingredient arrays', () => {
+    const row = buildPilotCaseFromExternalSeedProduct({
+      merchant_id: 'external_seed',
+      id: 'ext_split_inci',
+      brand: 'BYOMA',
+      title: 'Bio-Collagen Radiance Facial Mask',
+      category_path: ['Skincare', 'Mask'],
+      description: 'A gel-to-film facial mask.',
+      inci_list: ['Water', '1', '2-Hexanediol', 'Glycerin'],
+    });
+
+    expect(row.product.ingredients_inci).toEqual([
+      'Water',
+      '1,2-Hexanediol',
+      'Glycerin',
+    ]);
+  });
+
+  test('uses external seed structure to complete live PDP cases missing formula modules', () => {
+    const response = {
+      subject: {
+        canonical_product_ref: {
+          merchant_id: 'external_seed',
+          product_id: 'ext_byoma_mask',
+        },
+      },
+      modules: [
+        {
+          type: 'canonical',
+          data: {
+            pdp_payload: {
+              product: {
+                title: 'Bio-Collagen Radiance Facial Mask',
+                brand: { name: 'BYOMA' },
+                category_path: ['Skincare', 'Mask'],
+                description: 'A gel-to-film facial mask for hydrated-looking skin.',
+              },
+            },
+          },
+        },
+      ],
+    };
+
+    const row = buildPilotCaseFromPdpResponse(response, {
+      product: {
+        pdp_ingredients_raw:
+          'Water, Glycerin, Hydrolyzed Collagen, Centella Asiatica Extract, Ceramide NP, Astaxanthin',
+        pdp_how_to_use_raw: 'Apply an even layer, let it dry, then peel off.',
+      },
+    });
+
+    expect(row.product.ingredients_inci).toEqual([
+      'Water',
+      'Glycerin',
+      'Hydrolyzed Collagen',
+      'Centella Asiatica Extract',
+      'Ceramide NP',
+      'Astaxanthin',
+    ]);
+    expect(row.product.how_to_use).toBe('Apply an even layer, let it dry, then peel off.');
+  });
+
   test('drops pseudo-ingredient phrases from external seed pilot cases', () => {
     const row = buildPilotCaseFromExternalSeedProduct({
       merchant_id: 'external_seed',
@@ -909,6 +996,9 @@ describe('build_product_intel_live_pilot_cases', () => {
         'including "lifting" peptides',
         'biomimetic growth factors',
         'and ceramides combine - Fast-acting',
+        'See full ingredients',
+        'Ingredients tab on each product',
+        'We got you covered',
         'Water',
         'Glycerin',
         'Ceramide NP',

@@ -131,6 +131,31 @@ describe('pdp product intel bundle shaping', () => {
     expect(shoppingCard.subtitle).toBe('AHA Body Scrub');
   });
 
+  test('shopping card subtitle lets reviewed Product Intel family override noisy title cues', () => {
+    const shoppingCard = buildShoppingCardPayload({
+      product: {
+        brand: 'Fenty Beauty',
+        title: 'Fenty Skin Start’rs Full-Size Bundle with Mineral SPF',
+        category: 'Sunscreen',
+        description: 'A routine with cleanser, treatment, moisturizer, and SPF steps.',
+      },
+      bundle: {
+        evidence_profile: 'seller_plus_formula',
+        product_intel_core: {
+          what_it_is: {
+            headline: 'Routine set',
+            body: 'A multi-product routine set that groups cleanser, treatment, moisturizer, or SPF steps.',
+          },
+          routine_fit: {
+            step: 'routine set',
+          },
+        },
+      },
+    });
+
+    expect(shoppingCard.subtitle).toBe('Routine Set');
+  });
+
   test('buildProductIntelBundle returns structured insights with texture and community signals', () => {
     const bundle = buildProductIntelBundle({
       product: {

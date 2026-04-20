@@ -366,6 +366,10 @@ function inferProductKindFromContext(context) {
   if (/\bsun\s+stick\b/.test(text) || (/\bstick\b/.test(text) && /\b(?:sunscreen|spf)\b/.test(text))) return 'sun_stick';
   if (/\bhand\s*(?:&|and)?\s*nail\s+cream\b/.test(text) || /\bhand\s+cream\b/.test(text)) return 'hand_cream';
   if (/\bskin\s+milk\b/.test(text)) return 'skin_milk';
+  if (/\b(?:conditioner|hair conditioner)\b/.test(text)) return 'conditioner';
+  if (/\b(?:heat protectant|styling cream)\b/.test(text) && /\bhair\b/.test(text)) return 'heat_protectant';
+  if (/\b(?:bond builder|damage repair treatment|hair treatment|strand|strands|frizz|de-frizz|leave-in)\b/.test(text)) return 'hair_treatment';
+  if (/\b(?:skin start.?rs|routine bundle|full-size bundle|starter bundle|set with mineral spf)\b/.test(text)) return 'routine_bundle';
   if (/\bbody\s+scrub\b/.test(text) || /\bbump\s+eraser\b/.test(text)) return 'body_scrub';
   if (/\bshav(?:e|ing)\s+cream\b/.test(text)) return 'shave_cream';
   if (/\bdeodorant\b/.test(text)) return 'deodorant';
@@ -379,6 +383,7 @@ function inferProductKindFromContext(context) {
   if (/\bmask\b/.test(text) && !/\b(cleanser|cleansing)\b/.test(text)) return 'treatment_mask';
   if (/\b(sunscreen|spf|uv)\b/.test(text) && /\b(tint|tinted|skin tint)\b/.test(text)) return 'tinted_sunscreen';
   if (/\b(foundation|concealer|skin tint|tint|base|cc stick)\b/.test(text)) return 'complexion_makeup';
+  if (/\b(highlighter|bronzer|blush|eyeshadow|eye shadow|eyeliner|mascara|brow|powder|diamond veil|demi'?glow)\b/.test(text)) return 'color_makeup';
   if (/\b(cleanser|cleansing|face wash|wash)\b/.test(text)) return 'cleanser';
   if (/\b(sunscreen|spf|uv)\b/.test(text)) return 'sunscreen';
   if (/\b(toner|toning water|skin prep)\b/.test(text)) return 'toner';
@@ -1266,6 +1271,18 @@ function buildHumanStandardBodyFromFacts(context, kind, formulaSignals) {
       ? `A body treatment mist${withFormula} for breakout-prone body-care areas and hard-to-reach application.`
       : `A body mist${withFormula} for lightweight body-care application.`;
   }
+  if (kind === 'conditioner') {
+    return `A hair conditioner${withFormula} for post-shampoo moisture, slip, and smoother-feeling lengths.`;
+  }
+  if (kind === 'hair_treatment') {
+    return `A hair treatment${withFormula} for damage-care, smoother-feeling strands, and targeted wash-day repair routines.`;
+  }
+  if (kind === 'heat_protectant') {
+    return `A hair styling cream${withFormula} for heat-styling prep, frizz smoothing, and softer-feeling lengths.`;
+  }
+  if (kind === 'routine_bundle') {
+    return `A multi-product routine set${withFormula} that groups cleanser, treatment, moisturizer, or SPF steps for a complete routine.`;
+  }
   if (kind === 'treatment_pads') {
     const padLabel = /\b(?:bha|salicylic)\b/.test(titleText) && /\b(?:aha|glycolic|lactic)\b/.test(titleText)
       ? 'AHA/BHA treatment pads'
@@ -1334,6 +1351,9 @@ function buildHumanStandardBodyFromFacts(context, kind, formulaSignals) {
   if (kind === 'complexion_makeup') {
     return `A complexion product${withFormula} for coverage, finish control, shade matching, and tone-evening wear.`;
   }
+  if (kind === 'color_makeup') {
+    return `A color makeup product${withFormula} for shade, finish, and targeted makeup placement.`;
+  }
   return formulaPhrase
     ? `A ${asString(context.category).toLowerCase() && asString(context.category).toLowerCase() !== 'external' ? asString(context.category).toLowerCase() : 'beauty product'} built around ${formulaPhrase}.`
     : 'A product-level insight grounded in the available listing facts.';
@@ -1377,6 +1397,30 @@ function buildHumanStandardWhatItIs(context, baselineBundle) {
   if (kind === 'body_mist') {
     return {
       headline: /mist|body treatment/i.test(baseHeadline) ? baseHeadline : 'Body treatment mist',
+      body: factsBody,
+    };
+  }
+  if (kind === 'conditioner') {
+    return {
+      headline: /conditioner/i.test(baseHeadline) ? baseHeadline : 'Hair conditioner',
+      body: factsBody,
+    };
+  }
+  if (kind === 'hair_treatment') {
+    return {
+      headline: /hair|bond|repair/i.test(baseHeadline) ? baseHeadline : 'Hair repair treatment',
+      body: factsBody,
+    };
+  }
+  if (kind === 'heat_protectant') {
+    return {
+      headline: /heat|styling|protect/i.test(baseHeadline) ? baseHeadline : 'Heat protectant cream',
+      body: factsBody,
+    };
+  }
+  if (kind === 'routine_bundle') {
+    return {
+      headline: /bundle|set|routine/i.test(baseHeadline) ? baseHeadline : 'Routine set',
       body: factsBody,
     };
   }
@@ -1470,6 +1514,14 @@ function buildHumanStandardWhatItIs(context, baselineBundle) {
       body: preferredFactsBody,
     };
   }
+  if (kind === 'color_makeup') {
+    return {
+      headline: /highlight|blush|bronzer|mascara|liner|brow/i.test(baseHeadline)
+        ? baseHeadline
+        : 'Color makeup',
+      body: factsBody,
+    };
+  }
   if (kind === 'moisturizer') {
     return {
       headline: /cream|moistur/i.test(baseHeadline) ? baseHeadline : 'Daily moisturizer',
@@ -1526,6 +1578,18 @@ function buildHumanStandardBestFor(context, baselineBundle) {
   if (kind === 'body_mist') {
     return [item('body_treatment', 'Body treatment routines'), item('hard_to_reach_application', 'Hard-to-reach body areas')];
   }
+  if (kind === 'conditioner') {
+    return [item('post_shampoo_moisture', 'Post-shampoo moisture'), item('smoother_lengths', 'Smoother-feeling lengths')];
+  }
+  if (kind === 'hair_treatment') {
+    return [item('hair_damage_care', 'Hair damage-care routines'), item('strand_repair', 'Smoother-feeling strands')];
+  }
+  if (kind === 'heat_protectant') {
+    return [item('heat_styling_prep', 'Heat-styling prep'), item('frizz_smoothing', 'Frizz-smoothing routines')];
+  }
+  if (kind === 'routine_bundle') {
+    return [item('routine_set', 'Complete routine sets'), item('multi_step_routine', 'Multi-step routine shoppers')];
+  }
   if (kind === 'treatment_pads') {
     return [item('swipe_on_exfoliation', 'Swipe-on exfoliation'), item('texture_or_ingrown_care', 'Texture or ingrown-hair care')];
   }
@@ -1570,6 +1634,9 @@ function buildHumanStandardBestFor(context, baselineBundle) {
       item(text.includes('matte') ? 'soft_matte_finish' : 'complexion_finish', text.includes('matte') ? 'Soft-matte finish' : 'Complexion finish'),
       item('coverage_preferences', 'Coverage-focused makeup routines'),
     ];
+  }
+  if (kind === 'color_makeup') {
+    return [item('shade_finish', 'Shade and finish preference'), item('targeted_makeup', 'Targeted makeup placement')];
   }
   if (kind === 'tinted_sunscreen') {
     return [
@@ -1675,6 +1742,26 @@ function buildHumanStandardHighlights(context) {
       ),
     ];
   }
+  if (kind === 'conditioner') {
+    return [
+      highlight('Post-shampoo conditioning', 'Conditioner use supports slip, moisture, and smoother-feeling lengths after cleansing.'),
+    ];
+  }
+  if (kind === 'hair_treatment') {
+    return [
+      highlight('Damage-care hair step', 'Treatment use keeps the evaluation on strand repair, smoothing, and wash-day use.'),
+    ];
+  }
+  if (kind === 'heat_protectant') {
+    return [
+      highlight('Heat-styling prep', 'Cream use supports styling prep, frizz control, and heat-tool routines.'),
+    ];
+  }
+  if (kind === 'routine_bundle') {
+    return [
+      highlight('Multi-step routine set', 'The bundle groups multiple routine steps so shoppers compare the set as a regimen, not a single formula.'),
+    ];
+  }
   if (kind === 'treatment_pads') {
     return [
       highlight('Swipe-on exfoliation', 'Pre-soaked pads create a controlled application step for texture, bumps, or ingrown-hair care.'),
@@ -1759,6 +1846,18 @@ function buildHumanStandardHighlights(context) {
         text.includes('spf')
           ? 'Combines complexion coverage with SPF-positioned daytime wear for routines that need both coverage and sun-care cues.'
           : 'Keeps the evaluation on coverage level, finish, and shade match, which are the decision points for complexion makeup.',
+      ),
+    );
+    addReviewHighlight();
+    return highlights.slice(0, 2);
+  }
+  if (kind === 'color_makeup') {
+    highlights.push(
+      highlight(
+        text.includes('highlighter') ? 'Targeted glow finish' : 'Shade and finish choice',
+        text.includes('highlighter')
+          ? 'Keeps the comparison focused on placement, reflect, and tone fit instead of skin-care claims.'
+          : 'Keeps the comparison focused on shade, finish, and makeup placement.',
       ),
     );
     addReviewHighlight();
@@ -1860,6 +1959,13 @@ function buildHumanStandardWatchouts(context, baselineBundle) {
     }))
     .filter((item) => item.label && item.type !== 'spf' && !/\bspf|sunscreen|uv protection|reappl(?:y|ication)\b/i.test(item.label))
     .filter((item) => !(item.type === 'fragrance' && (kind === 'anti_chafe_stick' || /\b(fragrance[-\s]?free|unscented|no fragrance)\b/i.test(contextText))))
+    .filter((item) => {
+      const acidLike = item.type === 'acid' || /\b(?:acid|exfoliat|over-exfoliat|retinoid)\b/i.test(item.label);
+      if (!acidLike) return true;
+      if (kind === 'body_scrub' || kind === 'treatment_pads') return true;
+      if (kind === 'serum' && /\b(?:retinol|salicylic acid|glycolic acid|lactic acid|aha|bha)\b/i.test(contextText)) return true;
+      return false;
+    })
     .slice(0, 3);
   if (kind === 'body_scrub' && /\b(aha|bha|lactic acid|glycolic acid|salicylic acid|acid)\b/i.test(contextText)) {
     const hasAcidWatchout = baselineWatchouts.some((item) => item.type === 'acid' || /acid|exfoliat/i.test(item.label));
@@ -1880,6 +1986,10 @@ function buildHumanStandardPairingNotes(kind) {
   if (kind === 'fragrance') return ['Apply to pulse points and adjust amount based on scent intensity preference.'];
   if (kind === 'body_scrub') return ['Use on body areas according to seller directions; follow with moisturizer if needed.'];
   if (kind === 'body_mist') return ['Spray onto targeted body areas according to seller directions.'];
+  if (kind === 'conditioner') return ['Use after shampoo, then rinse according to seller directions.'];
+  if (kind === 'hair_treatment') return ['Use as the hair treatment step according to seller directions.'];
+  if (kind === 'heat_protectant') return ['Apply before heat styling or frizz-smoothing styling steps.'];
+  if (kind === 'routine_bundle') return ['Use the included products in routine order according to each product direction.'];
   if (kind === 'treatment_pads') return ['Swipe pad over targeted areas as directed; avoid stacking with too many exfoliating actives.'];
   if (kind === 'anti_chafe_stick') return ['Apply to clean, dry body areas where rubbing or chafing tends to happen.'];
   if (kind === 'shave_cream') return ['Use during shaving to support glide, then rinse as directed.'];
@@ -1893,6 +2003,7 @@ function buildHumanStandardPairingNotes(kind) {
   if (kind === 'hand_cream') return ['Apply to hands and nails whenever skin feels dry or after washing.'];
   if (kind === 'skin_milk') return ['Apply after watery treatments and before heavier cream or sunscreen.'];
   if (kind === 'complexion_makeup') return ['Apply in the complexion makeup step and choose shade/coverage separately.'];
+  if (kind === 'color_makeup') return ['Apply in the targeted makeup step and choose shade or finish separately.'];
   if (kind === 'tinted_sunscreen') return ['Use as the last morning skin-care step; choose tint/shade separately when variants exist.'];
   if (kind === 'sunscreen') return ['Use as the last morning skin-care step before makeup.'];
   if (kind === 'toner') return ['Apply after cleansing and before serum or moisturizer.'];
@@ -1905,6 +2016,10 @@ function buildHumanStandardPairingNotes(kind) {
 function buildHumanStandardRoutineStep(kind, fallbackStep = '') {
   if (kind === 'body_scrub') return 'body exfoliation';
   if (kind === 'body_mist') return 'body treatment';
+  if (kind === 'conditioner') return 'conditioner';
+  if (kind === 'hair_treatment') return 'hair treatment';
+  if (kind === 'heat_protectant') return 'heat protectant';
+  if (kind === 'routine_bundle') return 'routine set';
   if (kind === 'treatment_pads') return 'exfoliating treatment';
   if (kind === 'anti_chafe_stick') return 'body comfort';
   if (kind === 'shave_cream') return 'shave';
@@ -1919,6 +2034,7 @@ function buildHumanStandardRoutineStep(kind, fallbackStep = '') {
   if (kind === 'hand_cream') return 'hand cream';
   if (kind === 'skin_milk') return 'moisturizer';
   if (kind === 'complexion_makeup') return 'makeup';
+  if (kind === 'color_makeup') return 'makeup';
   if (kind === 'tinted_sunscreen' || kind === 'sunscreen') return 'sunscreen';
   if (kind === 'toner') return 'toner';
   if (kind === 'moisturizer') return 'moisturizer';
@@ -1936,6 +2052,10 @@ function buildHumanStandardAmPm(kind, fallbackAmPm = []) {
     [
       'body_scrub',
       'body_mist',
+      'conditioner',
+      'hair_treatment',
+      'heat_protectant',
+      'routine_bundle',
       'treatment_pads',
       'anti_chafe_stick',
       'shave_cream',
@@ -1949,6 +2069,7 @@ function buildHumanStandardAmPm(kind, fallbackAmPm = []) {
       'sun_stick',
       'hand_cream',
       'skin_milk',
+      'color_makeup',
     ].includes(kind)
   ) {
     return [];
@@ -1961,6 +2082,10 @@ function inferTextureForHumanStandardKind(kind, context) {
   const text = `${context?.title || ''} ${context?.description || ''}`.toLowerCase();
   if (kind === 'body_scrub') return 'scrub';
   if (kind === 'body_mist') return 'mist';
+  if (kind === 'conditioner') return 'conditioner';
+  if (kind === 'hair_treatment') return 'treatment';
+  if (kind === 'heat_protectant') return 'cream';
+  if (kind === 'routine_bundle') return 'set';
   if (kind === 'treatment_pads') return 'pre-soaked pad';
   if (kind === 'anti_chafe_stick') return 'stick';
   if (kind === 'shave_cream') return 'cream';
@@ -1973,6 +2098,12 @@ function inferTextureForHumanStandardKind(kind, context) {
   if (kind === 'sun_stick') return 'stick';
   if (kind === 'hand_cream') return 'cream';
   if (kind === 'skin_milk') return 'milk';
+  if (kind === 'color_makeup') {
+    if (/\bpowder\b/.test(text)) return 'powder';
+    if (/\bcream\b/.test(text)) return 'cream';
+    if (/\bstick\b/.test(text)) return 'stick';
+    return 'makeup';
+  }
   if (kind === 'sleeping_pack') {
     if (/\bgel\b/.test(text)) return 'gel';
     if (/\bcream\b/.test(text)) return 'cream';
@@ -1982,6 +2113,21 @@ function inferTextureForHumanStandardKind(kind, context) {
     if (/\bgel\b/.test(text)) return 'gel mask';
     if (/\bcream\b/.test(text)) return 'cream mask';
     return 'mask';
+  }
+  if (kind === 'cleanser') {
+    if (/\bmilky|milk\b/.test(text)) return 'milky cleanser';
+    if (/\bgel\b/.test(text)) return 'gel cleanser';
+    if (/\bfoam|foaming\b/.test(text)) return 'foaming cleanser';
+    if (/\bcream\b/.test(text)) return 'cream cleanser';
+    return 'cleanser';
+  }
+  if (kind === 'tinted_sunscreen' || kind === 'sunscreen') {
+    if (/\bfluid\b/.test(text)) return 'fluid';
+    if (/\bgel[-\s]?cream\b/.test(text)) return 'gel-cream';
+    if (/\bgel\b/.test(text)) return 'gel';
+    if (/\bmilk|milky\b/.test(text)) return 'milk';
+    if (/\bcream|creamy|moisturizer\b/.test(text)) return 'cream';
+    return 'sunscreen';
   }
   return '';
 }
@@ -1996,12 +2142,21 @@ function buildHumanStandardTextureFinish(context, baselineBundle, kind) {
       ? asString(baseline.finish) || 'glowy'
       : kind === 'body_scrub'
         ? 'smooth-feeling'
-        : asString(baseline.finish);
+        : ['conditioner', 'hair_treatment', 'heat_protectant'].includes(kind)
+          ? asString(baseline.finish) || 'smoother-feeling'
+        : kind === 'cleanser'
+          ? ''
+          : asString(baseline.finish);
   const layeringNotes = buildHumanStandardPairingNotes(kind);
+  const sensoryNotes = toList(baseline.sensory_notes)
+    .filter((item) => !/\bpositioning\b/i.test(asString(item)))
+    .filter((item) => !(kind === 'cleanser' && /\b(?:oil|richer|dewy|glow)\b/i.test(asString(item))))
+    .filter((item) => !((kind === 'sunscreen' || kind === 'tinted_sunscreen') && /\b(?:oil|richer)\b/i.test(asString(item))))
+    .slice(0, 3);
   return {
     texture,
     finish,
-    sensory_notes: toList(baseline.sensory_notes).slice(0, 3),
+    sensory_notes: sensoryNotes,
     layering_notes: layeringNotes,
     confidence: asString(baseline.confidence) || 'moderate',
     evidence_profile: asString(baseline.evidence_profile || baselineBundle?.evidence_profile || 'seller_plus_formula'),

@@ -134,6 +134,33 @@ describe('pdpIngredientAuthority', () => {
     expect(authority.items).not.toEqual(expect.arrayContaining(['1', '2-Hexanediol']));
   });
 
+  test('filters ingredient function labels from role-annotated ingredient lists', () => {
+    const authority = buildAuthoritativeIngredientView({
+      pdp_ingredients_raw:
+        'Carrier, Water, Emollient, Simmondsia Chinensis (Jojoba) Seed Oil, Humectant, Methylpropanediol, 1,2-Hexanediol, Thickener, Polyvinyl Alcohol, Skin Conditioner, Ceramide NP',
+    });
+
+    expect(authority.items).toEqual(
+      expect.arrayContaining([
+        'Water',
+        'Simmondsia Chinensis (Jojoba) Seed Oil',
+        'Methylpropanediol',
+        '1,2-Hexanediol',
+        'Polyvinyl Alcohol',
+        'Ceramide NP',
+      ]),
+    );
+    expect(authority.items).not.toEqual(
+      expect.arrayContaining([
+        'Carrier',
+        'Emollient',
+        'Humectant',
+        'Thickener',
+        'Skin Conditioner',
+      ]),
+    );
+  });
+
   test('reads body-based seed details sections when collecting authority', () => {
     const authority = buildAuthoritativeIngredientView({
       seed_data: {

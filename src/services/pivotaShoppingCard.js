@@ -203,6 +203,11 @@ function inferRoutineLabel(step, fallbackCategory) {
   if (stepText === 'cleanser') return 'cleanser';
   if (stepText === 'eye treatment') return 'eye treatment';
   if (stepText === 'eye stick') return 'eye stick';
+  if (stepText === 'routine set') return 'routine set';
+  if (stepText === 'conditioner') return 'conditioner';
+  if (stepText === 'hair treatment') return 'hair treatment';
+  if (stepText === 'heat protectant') return 'heat protectant';
+  if (stepText === 'makeup') return 'makeup';
   const category = asString(fallbackCategory).toLowerCase();
   if (category.includes('serum')) return 'serum';
   if (category.includes('moisturizer') || category.includes('cream')) return 'cream';
@@ -360,12 +365,24 @@ function normalizeHighlightCandidates(value) {
 
 function buildCompactSubtitle({ product, bundle }) {
   const safeProduct = product && typeof product === 'object' ? product : {};
-  const specialtySubtitle = inferTitleSpecialtyCompactSubtitle(safeProduct);
-  if (specialtySubtitle) return specialtySubtitle;
-
   const core = bundle?.product_intel_core || {};
   const stepLabel = inferRoutineLabel(core?.routine_fit?.step, safeProduct.category || safeProduct.product_type);
   const whatBody = asString(core?.what_it_is?.body).toLowerCase();
+  const compactHeadline = compactWhatItIsHeadline(core?.what_it_is?.headline);
+  if (
+    [
+      'Routine Set',
+      'Hair Conditioner',
+      'Hair Repair Treatment',
+      'Heat Protectant Cream',
+      'Color Makeup',
+    ].includes(compactHeadline)
+  ) {
+    return compactHeadline;
+  }
+
+  const specialtySubtitle = inferTitleSpecialtyCompactSubtitle(safeProduct);
+  if (specialtySubtitle) return specialtySubtitle;
 
   if (stepLabel === 'serum' && whatBody.includes('vitamin c') && whatBody.includes('retinol')) {
     return 'Vitamin C + retinol serum';
@@ -389,7 +406,6 @@ function buildCompactSubtitle({ product, bundle }) {
     return toHeadlineCase(`color-correcting ${stepLabel}`);
   }
 
-  const compactHeadline = compactWhatItIsHeadline(core?.what_it_is?.headline);
   if (compactHeadline) return compactHeadline;
 
   return toHeadlineCase(safeProduct.product_type || safeProduct.category).slice(0, 42);

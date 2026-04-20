@@ -69,6 +69,19 @@ function pickFirstString(...values) {
   return '';
 }
 
+function normalizePotentialProductLineKey(value) {
+  return normalizeNonEmptyString(value)
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[’']/g, '')
+    .replace(/\s+[—–-]\s+#?[a-z0-9][\w\s./+&]*$/i, '')
+    .replace(/\s+#[0-9a-z]+$/i, '')
+    .replace(/\s+\d{1,4}(?:\.\d+)?[cnw]?$/i, '')
+    .replace(/\s+\b(?:cool|warm|neutral)\b.*$/i, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
 function collectSeedText(row = {}) {
   const seedData = ensureJsonObject(row.seed_data);
   const snapshot = ensureJsonObject(seedData.snapshot);
@@ -277,6 +290,11 @@ function classifyRow(row = {}) {
     title: normalizeNonEmptyString(row.title),
     canonical_url: normalizeNonEmptyString(row.canonical_url),
     destination_url: normalizeNonEmptyString(row.destination_url),
+    identity: {
+      product_line_id: normalizeNonEmptyString(row.identity_product_line_id),
+      sellable_item_group_id: normalizeNonEmptyString(row.identity_sellable_item_group_id),
+      potential_product_line_key: normalizePotentialProductLineKey(row.title),
+    },
     product_context: context,
     coverage,
     field_status,
@@ -319,6 +337,13 @@ function summarizeRows(rows, { sampleLimit = 25 } = {}) {
       kb_generation_candidate: [],
       identity_backfill_candidate: [],
       seed_backfill_or_structuring_candidate: [],
+      product_line_fragmentation_candidate: [],
+    },
+    identity_fragmentation: {
+      affected_rows: 0,
+      fragmented_groups: 0,
+      top_groups: [],
+      by_domain: {},
     },
     samples: [],
   };
@@ -345,6 +370,48 @@ function summarizeRows(rows, { sampleLimit = 25 } = {}) {
     }
     if (rowActionable.size > 0) increment(summary.actionable_by_domain, row.domain);
   }
+
+  const identityGroups = new Map();
+  for (const row of rows) {
+    const lineKey = normalizeNonEmptyString(row.identity?.potential_product_line_key);
+    const domain = normalizeNonEmptyString(row.domain);
+    const productLineId = normalizeNonEmptyString(row.identity?.product_line_id);
+    if (!lineKey || !domain || !productLineId || !row.product_context?.product_url_like) continue;
+    const key = `${domain}::${lineKey}`;
+    if (!identityGroups.has(key)) identityGroups.set(key, []);
+    identityGroups.get(key).push(row);
+  }
+  const fragmentedGroups = [];
+  for (const [key, groupRows] of identityGroups.entries()) {
+    const distinctProductLines = Array.from(new Set(groupRows.map((row) => normalizeNonEmptyString(row.identity?.product_line_id)).filter(Boolean)));
+    if (groupRows.length < 3 || distinctProductLines.length <= 1) continue;
+    const distinctSellableGroups = Array.from(
+      new Set(groupRows.map((row) => normalizeNonEmptyString(row.identity?.sellable_item_group_id)).filter(Boolean)),
+    );
+    const [domain, lineKey] = key.split('::');
+    fragmentedGroups.push({
+      domain,
+      product_line_key: lineKey,
+      affected_rows: groupRows.length,
+      distinct_product_line_ids: distinctProductLines.length,
+      distinct_sellable_item_group_ids: distinctSellableGroups.length,
+      sample_external_product_ids: groupRows.map((row) => row.external_product_id).filter(Boolean).slice(0, 8),
+      sample_titles: groupRows.map((row) => row.title).filter(Boolean).slice(0, 5),
+    });
+    increment(summary.identity_fragmentation.by_domain, domain, groupRows.length);
+    summary.candidate_external_product_ids.product_line_fragmentation_candidate.push(
+      ...groupRows.map((row) => row.external_product_id).filter(Boolean),
+    );
+  }
+  fragmentedGroups.sort(
+    (left, right) =>
+      right.affected_rows - left.affected_rows ||
+      right.distinct_product_line_ids - left.distinct_product_line_ids ||
+      left.product_line_key.localeCompare(right.product_line_key),
+  );
+  summary.identity_fragmentation.affected_rows = fragmentedGroups.reduce((sum, group) => sum + group.affected_rows, 0);
+  summary.identity_fragmentation.fragmented_groups = fragmentedGroups.length;
+  summary.identity_fragmentation.top_groups = fragmentedGroups.slice(0, 25);
 
   summary.top_actionable_domains = topEntries(summary.actionable_by_domain, 25);
   for (const key of Object.keys(summary.candidate_external_product_ids)) {
@@ -434,7 +501,25 @@ async function fetchRows(options = {}) {
           FROM pdp_identity_listing pil
           WHERE pil.merchant_id = 'external_seed'
             AND pil.product_id = eps.external_product_id
-        ), false) AS identity_review_or_live_blocked
+        ), false) AS identity_review_or_live_blocked,
+        (
+          SELECT pil.product_line_id
+          FROM pdp_identity_listing pil
+          WHERE pil.merchant_id = 'external_seed'
+            AND pil.product_id = eps.external_product_id
+            AND coalesce(pil.live_read_enabled, true) = true
+          ORDER BY pil.updated_at DESC NULLS LAST
+          LIMIT 1
+        ) AS identity_product_line_id,
+        (
+          SELECT pil.sellable_item_group_id
+          FROM pdp_identity_listing pil
+          WHERE pil.merchant_id = 'external_seed'
+            AND pil.product_id = eps.external_product_id
+            AND coalesce(pil.live_read_enabled, true) = true
+          ORDER BY pil.updated_at DESC NULLS LAST
+          LIMIT 1
+        ) AS identity_sellable_item_group_id
       FROM external_product_seeds eps
       WHERE ${where.join('\n        AND ')}
       ORDER BY eps.updated_at DESC NULLS LAST, eps.created_at DESC NULLS LAST
@@ -448,9 +533,17 @@ async function fetchRows(options = {}) {
 
 function renderSummary(payload) {
   const lines = [];
+  const identityFragmentation = payload.summary.identity_fragmentation || {};
   lines.push(`scanned=${payload.summary.scanned}`);
   lines.push(`raw_missing_by_field=${JSON.stringify(payload.summary.raw_missing_by_field)}`);
   lines.push(`actionable_missing_by_field=${JSON.stringify(payload.summary.actionable_missing_by_field)}`);
+  lines.push(
+    `identity_fragmentation=${JSON.stringify({
+      affected_rows: identityFragmentation.affected_rows || 0,
+      fragmented_groups: identityFragmentation.fragmented_groups || 0,
+      top_groups: asArray(identityFragmentation.top_groups).slice(0, 5),
+    })}`,
+  );
   lines.push(`by_product_family=${JSON.stringify(payload.summary.by_product_family)}`);
   lines.push(`top_actionable_domains=${JSON.stringify(payload.summary.top_actionable_domains.slice(0, 10))}`);
   return `${lines.join('\n')}\n`;

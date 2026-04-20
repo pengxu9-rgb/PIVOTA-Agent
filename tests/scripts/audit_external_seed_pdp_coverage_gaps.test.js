@@ -120,6 +120,55 @@ describe('audit-external-seed-pdp-coverage-gaps helpers', () => {
     expect(summary.by_field_status.faq.source_optional_or_needs_truth_check).toBe(2);
   });
 
+  test('summarizes fragmented product-line identity groups separately from missing identity', () => {
+    const rows = [
+      classifyRow(
+        row({
+          external_product_id: 'ext_foundation_190',
+          title: "Pro Filt'r Soft Matte Longwear Foundation — #190",
+          has_product_key_kb: true,
+          identity_product_line_id: 'pl_190',
+          identity_sellable_item_group_id: 'sig_190',
+        }),
+      ),
+      classifyRow(
+        row({
+          external_product_id: 'ext_foundation_235',
+          title: "Pro Filt'r Soft Matte Longwear Foundation — #235",
+          has_product_key_kb: true,
+          identity_product_line_id: 'pl_235',
+          identity_sellable_item_group_id: 'sig_235',
+        }),
+      ),
+      classifyRow(
+        row({
+          external_product_id: 'ext_foundation_300',
+          title: "Pro Filt'r Soft Matte Longwear Foundation — #300",
+          has_product_key_kb: true,
+          identity_product_line_id: 'pl_300',
+          identity_sellable_item_group_id: 'sig_300',
+        }),
+      ),
+    ];
+
+    const summary = summarizeRows(rows);
+
+    expect(summary.by_field_status.identity.present).toBe(3);
+    expect(summary.identity_fragmentation.affected_rows).toBe(3);
+    expect(summary.identity_fragmentation.fragmented_groups).toBe(1);
+    expect(summary.identity_fragmentation.top_groups[0]).toEqual(
+      expect.objectContaining({
+        product_line_key: 'pro filtr soft matte longwear foundation',
+        distinct_product_line_ids: 3,
+      }),
+    );
+    expect(summary.candidate_external_product_ids.product_line_fragmentation_candidate).toEqual([
+      'ext_foundation_190',
+      'ext_foundation_235',
+      'ext_foundation_300',
+    ]);
+  });
+
   test('context classifier keeps formula products distinct from accessories', () => {
     expect(
       classifyProductContext(
