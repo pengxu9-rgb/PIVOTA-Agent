@@ -234,6 +234,21 @@ test('travel final assistant rewriter: guard rejects stale fallback labels and a
   assert.equal(dumpHeading.reason, 'rewrite_forbidden_heading');
 });
 
+test('travel final assistant rewriter: parser recovers loose assistant_text JSON', () => {
+  const loose = [
+    '{',
+    '  "assistant_text": "Shanghai is warmer, more humid, and higher UV than Seattle.',
+    '',
+    'Use "barrier mode" for the first 48 hours and keep local shopping to categories."',
+    '}',
+  ].join('\n');
+  assert.throws(() => JSON.parse(loose));
+  const parsed = travelFinalRewriteInternal.parseTravelFinalRewritePayload(loose);
+  assert.equal(Boolean(parsed), true);
+  assert.match(parsed.assistant_text, /Shanghai is warmer/);
+  assert.match(parsed.assistant_text, /"barrier mode"/);
+});
+
 test('travel final assistant rewriter: quality guard rejects generic travel skincare prose', () => {
   const promptInput = travelFinalRewriteInternal.buildFinalRewritePromptInput({
     language: 'EN',
