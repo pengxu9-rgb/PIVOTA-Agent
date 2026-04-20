@@ -14,6 +14,181 @@ const ALLOWED_BUYING_CHANNELS = new Set([
   'ecommerce',
 ])
 
+const STRING_SCHEMA = (description, maxLength = 180) => ({
+  type: 'STRING',
+  ...(description ? { description } : {}),
+  maxLength: String(maxLength),
+})
+
+const STRING_ARRAY_SCHEMA = (description, maxItems = 4, maxLength = 140) => ({
+  type: 'ARRAY',
+  ...(description ? { description } : {}),
+  maxItems: String(maxItems),
+  items: STRING_SCHEMA('', maxLength),
+})
+
+const TRAVEL_LLM_RESPONSE_SCHEMA = {
+  type: 'OBJECT',
+  required: ['travel_readiness_patch'],
+  propertyOrdering: ['travel_readiness_patch', 'quality_flags', 'source_notes'],
+  properties: {
+    travel_readiness_patch: {
+      type: 'OBJECT',
+      propertyOrdering: [
+        'adaptive_actions',
+        'personal_focus',
+        'jetlag_sleep',
+        'category_recommendations',
+        'shopping_preview',
+        'confidence',
+      ],
+      properties: {
+        adaptive_actions: {
+          type: 'ARRAY',
+          maxItems: '3',
+          items: {
+            type: 'OBJECT',
+            properties: {
+              why: STRING_SCHEMA('Trip-specific environmental or schedule reason.', 180),
+              what_to_do: STRING_SCHEMA('Concrete action for pre-trip, flight, or first 48h.', 220),
+            },
+          },
+        },
+        personal_focus: {
+          type: 'ARRAY',
+          maxItems: '2',
+          items: {
+            type: 'OBJECT',
+            properties: {
+              focus: STRING_SCHEMA('Profile or meeting-readiness focus.', 80),
+              why: STRING_SCHEMA('Why this matters for this user.', 180),
+              what_to_do: STRING_SCHEMA('Concrete action.', 220),
+            },
+          },
+        },
+        jetlag_sleep: {
+          type: 'OBJECT',
+          properties: {
+            tz_home: STRING_SCHEMA('Origin timezone.', 64),
+            tz_destination: STRING_SCHEMA('Destination timezone.', 64),
+            hours_diff: { type: 'NUMBER' },
+            risk_level: {
+              type: 'STRING',
+              enum: ['low', 'medium', 'high'],
+            },
+            sleep_tips: STRING_ARRAY_SCHEMA('Sleep timing tips.', 3, 160),
+            mask_tips: STRING_ARRAY_SCHEMA('Skin recovery or eye-care tips.', 3, 160),
+          },
+        },
+        category_recommendations: {
+          type: 'ARRAY',
+          maxItems: '5',
+          items: {
+            type: 'OBJECT',
+            properties: {
+              category: {
+                type: 'STRING',
+                enum: [
+                  'cleansing',
+                  'antioxidant',
+                  'sun_protection',
+                  'moisturization',
+                  'masks',
+                  'post_sun',
+                  'brightening',
+                  'eye_care',
+                  'body_care',
+                  'emergency',
+                ],
+              },
+              why: STRING_SCHEMA('Trip-specific category rationale.', 180),
+              products: {
+                type: 'ARRAY',
+                maxItems: '2',
+                items: {
+                  type: 'OBJECT',
+                  properties: {
+                    name: STRING_SCHEMA('Concrete product type, not invented SKU.', 100),
+                    ingredient_logic: STRING_SCHEMA('Ingredient or texture logic grounded in the trip facts.', 180),
+                    usage: STRING_SCHEMA('Timing and frequency.', 160),
+                  },
+                },
+              },
+              skip_reason: STRING_SCHEMA('Only include if category should be skipped.', 120),
+            },
+          },
+        },
+        shopping_preview: {
+          type: 'OBJECT',
+          properties: {
+            products: {
+              type: 'ARRAY',
+              maxItems: '4',
+              items: {
+                type: 'OBJECT',
+                properties: {
+                  name: STRING_SCHEMA('Product type or catalog-grounded product name.', 100),
+                  brand: STRING_SCHEMA('Brand only when grounded or clearly a local channel example.', 80),
+                  category: STRING_SCHEMA('Category label.', 80),
+                  reasons: STRING_ARRAY_SCHEMA('Short evidence points.', 3, 120),
+                  product_source: {
+                    type: 'STRING',
+                    enum: ['catalog', 'llm_generated', 'llm_only'],
+                  },
+                },
+              },
+            },
+            brand_candidates: {
+              type: 'ARRAY',
+              maxItems: '4',
+              items: {
+                type: 'OBJECT',
+                properties: {
+                  brand: STRING_SCHEMA('Brand candidate.', 80),
+                  match_status: {
+                    type: 'STRING',
+                    enum: ['kb_verified', 'catalog_verified', 'llm_only'],
+                  },
+                  reason: STRING_SCHEMA('Why the brand is relevant.', 140),
+                },
+              },
+            },
+            buying_channels: STRING_ARRAY_SCHEMA('Where to buy locally.', 5, 60),
+            city_hint: STRING_SCHEMA('Destination city.', 120),
+            note: STRING_SCHEMA('Short caveat.', 160),
+          },
+        },
+        confidence: {
+          type: 'OBJECT',
+          properties: {
+            level: {
+              type: 'STRING',
+              enum: ['low', 'medium', 'high'],
+            },
+            missing_inputs: STRING_ARRAY_SCHEMA('Missing information.', 5, 80),
+            improve_by: STRING_ARRAY_SCHEMA('How user can improve personalization.', 4, 160),
+            score: { type: 'NUMBER' },
+          },
+        },
+      },
+    },
+    quality_flags: {
+      type: 'OBJECT',
+      properties: {
+        structured_complete: { type: 'BOOLEAN' },
+        safety_conflict: { type: 'BOOLEAN' },
+        categories_covered: STRING_ARRAY_SCHEMA('Covered category ids.', 8, 60),
+      },
+    },
+    source_notes: {
+      type: 'OBJECT',
+      properties: {
+        reasoning_mode: STRING_SCHEMA('Short source mode.', 80),
+      },
+    },
+  },
+}
+
 const DEFAULT_TRAVEL_LLM_MODEL = String(
   process.env.AURORA_TRAVEL_LLM_MODEL ||
     process.env.TRAVEL_LLM_MODEL ||
@@ -678,6 +853,34 @@ async function extractGeminiText(response) {
   return parts.join('\n').trim()
 }
 
+function extractGeminiResponseDebugMeta(response) {
+  if (!response || typeof response !== 'object') return {}
+  const candidates = Array.isArray(response.candidates) ? response.candidates : []
+  const first = candidates.length ? candidates[0] : null
+  const usage = response.usageMetadata && typeof response.usageMetadata === 'object'
+    ? response.usageMetadata
+    : response.usage_metadata && typeof response.usage_metadata === 'object'
+      ? response.usage_metadata
+      : null
+  return {
+    ...(normalizeText(first && (first.finishReason || first.finish_reason), 80)
+      ? { finish_reason: normalizeText(first.finishReason || first.finish_reason, 80) }
+      : {}),
+    ...(normalizeText(first && (first.finishMessage || first.finish_message), 140)
+      ? { finish_message: normalizeText(first.finishMessage || first.finish_message, 140) }
+      : {}),
+    ...(normalizeNumber(usage && (usage.promptTokenCount || usage.prompt_token_count)) != null
+      ? { prompt_token_count: normalizeNumber(usage.promptTokenCount || usage.prompt_token_count) }
+      : {}),
+    ...(normalizeNumber(usage && (usage.candidatesTokenCount || usage.candidates_token_count)) != null
+      ? { candidates_token_count: normalizeNumber(usage.candidatesTokenCount || usage.candidates_token_count) }
+      : {}),
+    ...(normalizeNumber(usage && (usage.totalTokenCount || usage.total_token_count)) != null
+      ? { total_token_count: normalizeNumber(usage.totalTokenCount || usage.total_token_count) }
+      : {}),
+  }
+}
+
 function buildGeminiRequest({ model, systemPrompt, userPrompt } = {}) {
   return {
     model: normalizeTravelGeminiModel(model || DEFAULT_TRAVEL_LLM_MODEL),
@@ -693,11 +896,12 @@ function buildGeminiRequest({ model, systemPrompt, userPrompt } = {}) {
     ],
     config: {
       temperature: 0.3,
-      maxOutputTokens: 1500,
+      maxOutputTokens: 1800,
       responseMimeType: 'application/json',
+      responseSchema: TRAVEL_LLM_RESPONSE_SCHEMA,
       thinkingConfig: {
         includeThoughts: false,
-        thinkingBudget: 192,
+        thinkingBudget: 96,
       },
     },
   }
@@ -738,8 +942,10 @@ function buildTravelCalibrationPrompts({ language = 'EN', travelLlmInput, baseTr
     'Never diagnose, prescribe, invent weather/date/location facts, or rewrite immutable baseline numbers.',
     'Use profile, current routine, goals, sensitivity, barrier status, destination deltas, forecast, UV, humidity, and jet lag.',
     'Advice must be specific to this trip: pre-trip, flight, first 48h, and local buying.',
-    'Cover relevant categories: cleansing, antioxidant, sun_protection, moisturization, masks, post_sun, eye_care, body_care, emergency. Add brightening only if goals support it.',
-    'For included categories, give scenario why, ingredient logic, and timing/frequency. Avoid generic copy.',
+    'Return only valid JSON matching the response schema. No markdown, no prose outside JSON, no trailing commas.',
+    'Keep strings short and complete. Do not use ellipses or cut-off fragments.',
+    'Cover only the most relevant categories: sun_protection, moisturization, masks/post_sun, eye_care, body_care, or emergency. Add cleansing/antioxidant/brightening only if truly useful.',
+    'For included categories, give scenario why, ingredient logic, and timing/frequency. Avoid generic copy and absolute claims like best/most.',
     'High humidity favors lighter AM texture; travel/flight favors PM barrier repair; UV>=6 requires SPF50+ reapply cadence and post-sun repair.',
     'Jet lag >=5h should add depuffing/hydration eye-care and sleep timing.',
     'Deduplicate: adaptive_actions=environment shifts without product names; personal_focus=profile priorities; shopping_preview=concrete product types/brand candidates.',
@@ -752,12 +958,13 @@ function buildTravelCalibrationPrompts({ language = 'EN', travelLlmInput, baseTr
 
   const userPrompt =
     `language=${lang}\n` +
-    'Task: output a compact travel_readiness_patch with category-specific, personalized, non-redundant skincare guidance.\n' +
+    'Task: output one compact travel_readiness_patch with category-specific, personalized, non-redundant skincare guidance.\n' +
     (goals.length ? `User goals: ${goals.join(', ')}\n` : '') +
     (hasRoutine ? `Current routine available: yes (see profile.currentRoutine in input)\n` : 'Current routine: not provided\n') +
     (isPregnantOrLactating ? 'Pregnancy/lactation: active — apply ingredient restrictions.\n' : '') +
-    'Return JSON shape: {"travel_readiness_patch":{"adaptive_actions":[{"why":"","what_to_do":""}],"personal_focus":[{"focus":"","why":"","what_to_do":""}],"jetlag_sleep":{},"category_recommendations":[{"category":"cleansing|antioxidant|sun_protection|moisturization|masks|post_sun|brightening|eye_care|body_care|emergency","why":"","products":[{"name":"","ingredient_logic":"","usage":""}],"skip_reason":""}],"shopping_preview":{"products":[{"name":"","brand":"","category":"","reasons":[],"product_source":"llm_generated"}],"brand_candidates":[{"brand":"","match_status":"kb_verified|catalog_verified|llm_only","reason":""}],"buying_channels":[],"city_hint":"","note":""},"confidence":{"level":"","missing_inputs":[],"improve_by":[]}},"quality_flags":{"structured_complete":true,"safety_conflict":false,"categories_covered":[]},"source_notes":{"reasoning_mode":"llm_calibration_v2"}}\n' +
-    'Limits: adaptive_actions<=4, personal_focus<=3, category_recommendations<=8, shopping_preview.products<=6, brand_candidates<=5.\n' +
+    'Return JSON shape only: {"travel_readiness_patch":{...},"quality_flags":{"structured_complete":true},"source_notes":{"reasoning_mode":"llm_calibration_v2"}}\n' +
+    'Limits: adaptive_actions<=3, personal_focus<=2, category_recommendations<=5, each category products<=2, shopping_preview.products<=4, brand_candidates<=4.\n' +
+    'Local buying can name product types and grounded brand/channel candidates, but do not invent SKU-level facts.\n' +
     `Fact input JSON:${JSON.stringify(promptTravelLlmInput || {})}\n` +
     `Current travel_readiness JSON:${JSON.stringify(promptBaseTravelReadiness || {})}`
 
@@ -862,6 +1069,7 @@ async function calibrateTravelReadinessWithLlm({
             upstreamTimeoutMs,
           })
 
+      const responseMeta = extractGeminiResponseDebugMeta(callResult && callResult.response)
       const text = await extractGeminiText(callResult && callResult.response)
       const parsed = parseCalibrationPayload(text)
       if (!parsed) {
@@ -869,6 +1077,10 @@ async function calibrateTravelReadinessWithLlm({
         parseErr.code = 'TRAVEL_LLM_INVALID_JSON'
         parseErr.raw_text_chars = String(text || '').length
         parseErr.raw_text_excerpt = normalizeText(text, 800)
+        parseErr.meta = {
+          ...(isPlainObject(callResult && callResult.meta) ? callResult.meta : {}),
+          ...responseMeta,
+        }
         lastErr = parseErr
         continue
       }
@@ -886,6 +1098,7 @@ async function calibrateTravelReadinessWithLlm({
           attempt: i + 1,
           reasoning_mode: normalizeText(parsed.source_notes && parsed.source_notes.reasoning_mode, 80) || 'llm_calibration_v1',
           ...(isPlainObject(callResult && callResult.meta) ? callResult.meta : {}),
+          ...responseMeta,
           ...promptTelemetry,
         },
       }
@@ -923,6 +1136,11 @@ async function calibrateTravelReadinessWithLlm({
       ...(normalizeNumber(errorMeta.gate_wait_ms) != null ? { gate_wait_ms: normalizeNumber(errorMeta.gate_wait_ms) } : {}),
       ...(normalizeNumber(errorMeta.upstream_ms) != null ? { upstream_ms: normalizeNumber(errorMeta.upstream_ms) } : {}),
       ...(normalizeNumber(errorMeta.total_ms) != null ? { total_ms: normalizeNumber(errorMeta.total_ms) } : {}),
+      ...(normalizeText(errorMeta.finish_reason, 80) ? { finish_reason: normalizeText(errorMeta.finish_reason, 80) } : {}),
+      ...(normalizeText(errorMeta.finish_message, 140) ? { finish_message: normalizeText(errorMeta.finish_message, 140) } : {}),
+      ...(normalizeNumber(errorMeta.prompt_token_count) != null ? { prompt_token_count: normalizeNumber(errorMeta.prompt_token_count) } : {}),
+      ...(normalizeNumber(errorMeta.candidates_token_count) != null ? { candidates_token_count: normalizeNumber(errorMeta.candidates_token_count) } : {}),
+      ...(normalizeNumber(errorMeta.total_token_count) != null ? { total_token_count: normalizeNumber(errorMeta.total_token_count) } : {}),
       ...(normalizeNumber(lastErr && lastErr.raw_text_chars) != null ? { raw_text_chars: normalizeNumber(lastErr.raw_text_chars) } : {}),
       ...(normalizeText(lastErr && lastErr.raw_text_excerpt, 800) ? { raw_text_excerpt: normalizeText(lastErr.raw_text_excerpt, 800) } : {}),
     },
@@ -949,6 +1167,8 @@ module.exports = {
     parseCalibrationPayload,
     buildTravelCalibrationPrompts,
     buildGeminiRequest,
+    TRAVEL_LLM_RESPONSE_SCHEMA,
+    extractGeminiResponseDebugMeta,
     compactTravelLlmInputForPrompt,
     compactTravelReadinessForPrompt,
     buildPromptInputSummary,
