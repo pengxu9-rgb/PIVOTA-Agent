@@ -169,6 +169,7 @@ function compactGroundedShoppingProduct(product) {
     brand: normalizeText(row.brand, 80) || null,
     category: normalizeText(row.category, 80) || null,
     role_id: normalizeText(row.role_id || row.roleId, 80) || null,
+    travel_usage_scope: normalizeText(row.travel_usage_scope || row.travelUsageScope, 80) || null,
     price: normalizeNumber(row.price),
     currency: normalizeText(row.currency, 12) || null,
     reasons,
@@ -279,6 +280,7 @@ function compactShoppingForFinalRewrite(travelReadiness) {
         price: normalizeNumber(product.price),
         currency: normalizeText(product.currency, 12) || null,
         product_source: normalizeText(product.product_source || product.productSource, 80) || null,
+        travel_usage_scope: normalizeText(product.travel_usage_scope || product.travelUsageScope, 80) || null,
         display_mode: normalizeText(product.display_mode || product.displayMode, 80) || null,
       };
     }).filter((row) => row.name),

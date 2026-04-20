@@ -1314,7 +1314,8 @@ function buildTravelPhasePlan({
   const lang = String(language || '').toUpperCase() === 'CN' ? 'CN' : 'EN';
   const products = Array.isArray(previewProducts) ? previewProducts : [];
   const groundedProducts = products.filter(isGroundedPreviewProduct);
-  const productRoles = uniqTravelRoles(groundedProducts.map(resolvePreviewProductRoleId).filter(Boolean), 12);
+  const localShoppingProducts = groundedProducts.filter(isLocalShoppingOnlyPreviewProduct);
+  const productRoles = uniqTravelRoles(localShoppingProducts.map(resolvePreviewProductRoleId).filter(Boolean), 12);
   const summaryTags = Array.isArray(deltaVsHome && deltaVsHome.summary_tags) ? deltaVsHome.summary_tags : [];
   const jetlagHours = toNumber(jetlagSleep && jetlagSleep.hours_diff);
   const hasJetlag = jetlagHours != null && jetlagHours >= 5;
@@ -1402,12 +1403,12 @@ function buildTravelPhasePlan({
       roleIds: productRoles.length
         ? productRoles
         : ['sun_protection', 'lightweight_moisturizer', 'hydration_serum', 'recovery_mask', 'body_lip_hand', 'eye_care'],
-      why: groundedProducts.length
+      why: localShoppingProducts.length
         ? t(lang, '以下只展示已接入商品库或 external seeds 的本地商品，不用通用 fallback 伪装具体单品。', 'Only catalog or external-seed grounded local products are shown here; generic fallback items are not presented as product picks.')
         : t(lang, '当前没有命中具体本地商品，只保留品类准备方向，后续通过 catalog backfill 补库。', 'No specific local product is grounded yet; keep this as category direction until catalog backfill adds authority rows.'),
-      defaults: groundedProducts.length
+      defaults: localShoppingProducts.length
         ? [
-            ...buildLocalShoppingProductActions(groundedProducts, lang, 5),
+            ...buildLocalShoppingProductActions(localShoppingProducts, lang, 5),
             t(lang, '只按真实缺口购买；不要把已经带好的产品重复补货。', 'Buy only against real gaps; do not duplicate products you already packed.'),
           ]
         : [
@@ -1419,11 +1420,11 @@ function buildTravelPhasePlan({
   return phaseSpecs.map((phase) => {
     const roleIds = uniqTravelRoles(phase.roleIds, 10);
     const productIds = phase.id === 'local_shopping'
-      ? groundedProducts.map((product) => normalizeText(product.product_id || product.productId, 120)).filter(Boolean).slice(0, 6)
+      ? localShoppingProducts.map((product) => normalizeText(product.product_id || product.productId, 120)).filter(Boolean).slice(0, 6)
       : productIdsForTravelRoles(products, roleIds, 4);
     const phaseActions = uniqTravelPhaseActions([
       ...phase.defaults,
-      ...(phase.id === 'local_shopping' && groundedProducts.length
+      ...(phase.id === 'local_shopping' && localShoppingProducts.length
         ? []
         : buildPhaseActionsFromRecoBundle(recoBundle, roleIds, 2)),
     ], phase.id === 'local_shopping' ? 6 : 4, 240);
