@@ -360,8 +360,22 @@ function hasProblematicGeneratedText(text) {
 function inferProductKindFromContext(context) {
   const title = asString(context?.title).toLowerCase();
   const category = asString(context?.category).toLowerCase();
+  const description = asString(context?.description).toLowerCase();
   const titleCategory = `${title} ${category}`.trim();
-  const text = `${title} ${category} ${context?.description || ''} ${(context?.tags || []).join(' ')}`.toLowerCase();
+  const titleCategoryDescription = `${titleCategory} ${description}`.trim();
+  const text = `${titleCategoryDescription} ${(context?.tags || []).join(' ')}`.toLowerCase();
+  const sunscreenPositioningText = titleCategoryDescription
+    .replace(/\buse sunscreen daily\b[^.]*\.?/g, ' ')
+    .replace(/\bsunscreen can increase sun sensitivity\b[^.]*\.?/g, ' ');
+  if (/\b(?:makeup fixing mist|fixing mist|setting spray|makeup setting spray|setting mist)\b/.test(titleCategoryDescription)) {
+    return 'setting_spray';
+  }
+  if (/\b(?:glow mist|hydrating milky mist|dream-y mist|face mist|makeup mist|facial mist)\b/.test(titleCategoryDescription)) {
+    return 'face_mist';
+  }
+  if (/\b(?:eye patch|eye patches|eyepatch|lippatch|lip patch|anywhere patches)\b/.test(titleCategoryDescription)) {
+    return 'eye_patch';
+  }
   if (/\b(?:facial radiance|ingrown hair|aha|bha|glycolic|lactic)\s+pads?\b/.test(text) || /\bpads?\s+with\s+(?:bha|aha|glycolic|lactic)/.test(text)) {
     return 'treatment_pads';
   }
@@ -372,12 +386,16 @@ function inferProductKindFromContext(context) {
     return 'makeup_brush';
   }
   if (/\b(?:lip\s+balm|lip benefits|lip moisture)\b/.test(text)) return 'lip_balm';
+  if (/\b(?:blush|bronzer|highlighter|eyeshadow|eye shadow|eyeliner|mascara|brow|powder|palette|diamond veil|demi'?glow)\b/.test(titleCategory)) {
+    return 'color_makeup';
+  }
   if (/\b(?:duo|trio|set|kit|bundle)\b/.test(titleCategory) && /\b(?:eye|lash|mascara|liner|brow|lip|blush|makeup|essential)\b/.test(text)) {
     return 'makeup_set';
   }
   if (/\b(?:primer|makeup base|pore diffusing|illuminating primer)\b/.test(text)) return 'primer';
   if (/\b(lip|lipstick|lip oil|lip balm|lip color|gloss|glaze)\b/.test(text)) return 'lip';
   if (/\bcleansing\s+oil\b/.test(text)) return 'cleansing_oil';
+  if (/\b(?:retinol oil|overnight .* oil|face oil|facial oil|essence oil)\b/.test(titleCategoryDescription)) return 'face_oil';
   if (/\bsun\s+stick\b/.test(text) || (/\bstick\b/.test(text) && /\b(?:sunscreen|spf)\b/.test(text))) return 'sun_stick';
   if (/\bhand\s*(?:&|and)?\s*nail\s+cream\b/.test(text) || /\bhand\s+cream\b/.test(text)) return 'hand_cream';
   if (/\bskin\s+milk\b/.test(text)) return 'skin_milk';
@@ -397,12 +415,12 @@ function inferProductKindFromContext(context) {
   if (/\beye\s+cream\b/.test(text)) return 'eye_cream';
   if (/\bsleeping\s+pack\b/.test(text)) return 'sleeping_pack';
   if (/\bmask\b/.test(text) && !/\b(cleanser|cleansing)\b/.test(text)) return 'treatment_mask';
-  if (/\b(sunscreen|spf|uv)\b/.test(text) && /\b(tint|tinted|skin tint)\b/.test(text)) return 'tinted_sunscreen';
+  if (/\b(sunscreen|spf|uv protection|uv-filter|uv filter)\b/.test(sunscreenPositioningText) && /\b(tint|tinted|skin tint)\b/.test(sunscreenPositioningText)) return 'tinted_sunscreen';
   if (/\b(fragrance|perfume|parfum|eau de|edt|edp|body mist|scent)\b/.test(titleCategory)) return 'fragrance';
   if (/\b(foundation|concealer|skin tint|tint|cc stick)\b/.test(text) || /\b(?:base makeup|makeup base)\b/.test(text)) return 'complexion_makeup';
   if (/\b(highlighter|bronzer|blush|eyeshadow|eye shadow|eyeliner|mascara|brow|powder|palette|diamond veil|demi'?glow)\b/.test(text)) return 'color_makeup';
   if (/\b(cleanser|cleansing|face wash|wash)\b/.test(text)) return 'cleanser';
-  if (/\b(sunscreen|spf|uv)\b/.test(text)) return 'sunscreen';
+  if (/\b(sunscreen|spf|uv protection|uv-filter|uv filter)\b/.test(sunscreenPositioningText)) return 'sunscreen';
   if (/\b(toner|toning water|skin prep)\b/.test(text)) return 'toner';
   if (/\b(moisturizer|moisturising|moisturizing|cream|gel-cream|lotion|body cream|barrier butter|body butter|butta drop)\b/.test(text)) return 'moisturizer';
   if (/\b(serum|ampoule|treatment|essence)\b/.test(text)) return 'serum';
@@ -414,8 +432,14 @@ function inferSpecificBeautySubtypeLabel(context) {
   const category = asString(context?.category).toLowerCase();
   const description = asString(context?.description).toLowerCase();
   const text = `${title} ${category} ${description}`.trim();
+  const fragranceText = text.replace(/\bfragrance[-\s]?free\b/g, ' ');
   if (!text) return '';
 
+  if (/\b(?:makeup fixing mist|fixing mist|setting spray|makeup setting spray|setting mist)\b/.test(text)) return 'Setting spray';
+  if (/\b(?:glow mist|hydrating milky mist|dream-y mist|face mist|makeup mist|facial mist)\b/.test(text)) return 'Face mist';
+  if (/\b(?:eye patch|eye patches|eyepatch|anywhere patches)\b/.test(text)) return 'Eye patches';
+  if (/\b(?:lippatch|lip patch)\b/.test(text)) return 'Lip patches';
+  if (/\b(?:retinol oil|overnight .* oil|face oil|facial oil|essence oil)\b/.test(text)) return 'Face oil';
   if (/\b(?:brush cup|brush holder|brush storage|makeup brush cup)\b/.test(text)) return 'Brush storage';
   if (/\b(?:brush bundle|brush trio|brush duo|brush set)\b/.test(text)) return 'Brush set';
   if (/\b(?:blending|packing|shader|foundation|skin tint|concealer|face|eyeliner|kyliner)?\s*brush\s*\d*\b/.test(title)) return 'Makeup brush';
@@ -426,7 +450,7 @@ function inferSpecificBeautySubtypeLabel(context) {
   if (/\b(?:pore diffusing primer|illuminating primer|face primer|makeup primer|primer)\b/.test(text)) return 'Primer';
   if (/\bbody\s+lotion\b/.test(text)) return 'Body lotion';
   if (/\b(?:eau de parfum|edp)\b/.test(text)) return 'Eau de parfum';
-  if (/\b(?:fragrance|perfume|parfum|body mist)\b/.test(text)) return 'Fragrance';
+  if (/\b(?:fragrance|perfume|parfum|body mist)\b/.test(fragranceText)) return 'Fragrance';
   if (/\bskin tint\b/.test(text)) return 'Skin tint';
   if (/\bfoundation\b/.test(text) && !/\bbrush\b/.test(title)) return 'Foundation';
   if (/\bsetting powder\b/.test(text)) return 'Setting powder';
@@ -1324,6 +1348,15 @@ function buildHumanStandardBodyFromFacts(context, kind, formulaSignals) {
       ? `A body treatment mist${withFormula} for breakout-prone body-care areas and hard-to-reach application.`
       : `A body mist${withFormula} for lightweight body-care application.`;
   }
+  if (kind === 'face_mist') {
+    return `A face mist${withFormula} for refreshing skin, adding a dewy finish, or layering around makeup routines.`;
+  }
+  if (kind === 'setting_spray') {
+    return `A makeup setting spray${withFormula} for setting, refreshing, and extending makeup wear.`;
+  }
+  if (kind === 'eye_patch') {
+    return `An under-eye patch treatment${withFormula} for targeted eye-area masking and temporary refreshed-looking skin.`;
+  }
   if (kind === 'conditioner') {
     return `A hair conditioner${withFormula} for post-shampoo moisture, slip, and smoother-feeling lengths.`;
   }
@@ -1373,6 +1406,9 @@ function buildHumanStandardBodyFromFacts(context, kind, formulaSignals) {
   }
   if (kind === 'body_oil') {
     return `A body oil${withFormula} for post-shower moisture sealing, soft feel, and body glow.`;
+  }
+  if (kind === 'face_oil') {
+    return `A face oil${withFormula} for PM treatment layering, soft feel, and moisture-sealing support.`;
   }
   if (kind === 'lip_balm') {
     return `A lip balm${withFormula} for soft-feeling lips, moisture comfort, and reapplication through the day.`;
@@ -1486,6 +1522,24 @@ function buildHumanStandardWhatItIs(context, baselineBundle) {
       body: factsBody,
     };
   }
+  if (kind === 'face_mist') {
+    return {
+      headline: subtypeLabel || (/mist/i.test(baseHeadline) ? baseHeadline : 'Face mist'),
+      body: factsBody,
+    };
+  }
+  if (kind === 'setting_spray') {
+    return {
+      headline: subtypeLabel || (/setting|fixing|spray|mist/i.test(baseHeadline) ? baseHeadline : 'Setting spray'),
+      body: factsBody,
+    };
+  }
+  if (kind === 'eye_patch') {
+    return {
+      headline: subtypeLabel || (/eye|patch/i.test(baseHeadline) ? baseHeadline : 'Eye patches'),
+      body: factsBody,
+    };
+  }
   if (kind === 'conditioner') {
     return {
       headline: /conditioner/i.test(baseHeadline) ? baseHeadline : 'Hair conditioner',
@@ -1573,6 +1627,12 @@ function buildHumanStandardWhatItIs(context, baselineBundle) {
   if (kind === 'body_oil') {
     return {
       headline: /body oil|oil/i.test(baseHeadline) ? baseHeadline : 'Body oil',
+      body: factsBody,
+    };
+  }
+  if (kind === 'face_oil') {
+    return {
+      headline: subtypeLabel || (/oil|treatment/i.test(baseHeadline) ? baseHeadline : 'Face oil'),
       body: factsBody,
     };
   }
@@ -1725,6 +1785,15 @@ function buildHumanStandardBestFor(context, baselineBundle) {
   if (kind === 'body_mist') {
     return [item('body_treatment', 'Body treatment routines'), item('hard_to_reach_application', 'Hard-to-reach body areas')];
   }
+  if (kind === 'face_mist') {
+    return [item('face_mist_refresh', 'Skin refresh steps'), item('dewy_makeup_layering', 'Dewy makeup layering')];
+  }
+  if (kind === 'setting_spray') {
+    return [item('makeup_setting', 'Makeup setting'), item('makeup_refresh', 'Makeup refresh steps')];
+  }
+  if (kind === 'eye_patch') {
+    return [item('under_eye_treatment', 'Under-eye treatment'), item('targeted_masking', 'Targeted masking routines')];
+  }
   if (kind === 'conditioner') {
     return [item('post_shampoo_moisture', 'Post-shampoo moisture'), item('smoother_lengths', 'Smoother-feeling lengths')];
   }
@@ -1769,6 +1838,9 @@ function buildHumanStandardBestFor(context, baselineBundle) {
   }
   if (kind === 'body_oil') {
     return [item('body_moisture', 'Post-shower body moisture'), item('body_glow', 'Soft body glow')];
+  }
+  if (kind === 'face_oil') {
+    return [item('pm_oil_treatment', 'PM oil treatment'), item('moisture_seal', 'Moisture-sealing routines')];
   }
   if (kind === 'lip_balm') {
     return [item('lip_moisture', 'Lip moisture comfort'), item('lip_reapplication', 'On-the-go lip reapplication')];
@@ -1955,6 +2027,31 @@ function buildHumanStandardHighlights(context) {
       ),
     ];
   }
+  if (kind === 'face_mist') {
+    return [
+      highlight(
+        'Refreshable mist step',
+        formulaPhrase
+          ? `Mist application plus ${formulaPhrase} cues support skin refresh, dewy finish, and makeup-adjacent layering.`
+          : 'Mist application supports skin refresh, dewy finish, and makeup-adjacent layering.',
+      ),
+    ];
+  }
+  if (kind === 'setting_spray') {
+    return [
+      highlight('Makeup setting step', 'Spray format supports setting, refreshing, or extending makeup wear after complexion steps.'),
+    ];
+  }
+  if (kind === 'eye_patch') {
+    return [
+      highlight(
+        'Targeted under-eye masking',
+        formulaPhrase
+          ? `Patch format plus ${formulaPhrase} cues support focused under-eye masking.`
+          : 'Patch format supports focused under-eye masking with clear treatment timing.',
+      ),
+    ];
+  }
   if (kind === 'conditioner') {
     return [
       highlight('Post-shampoo conditioning', 'Conditioner use supports slip, moisture, and smoother-feeling lengths after cleansing.'),
@@ -2033,6 +2130,16 @@ function buildHumanStandardHighlights(context) {
   if (kind === 'body_oil') {
     return [
       highlight('Post-shower oil layer', 'Oil texture helps seal body moisture after showering and leaves a soft body finish.'),
+    ];
+  }
+  if (kind === 'face_oil') {
+    return [
+      highlight(
+        'PM oil treatment layer',
+        formulaPhrase
+          ? `Oil texture plus ${formulaPhrase} cues support a PM treatment layer that helps seal moisture after lighter steps.`
+          : 'Oil texture supports a PM treatment layer that helps seal moisture after lighter steps.',
+      ),
     ];
   }
   if (kind === 'lip_balm') {
@@ -2261,6 +2368,9 @@ function buildHumanStandardPairingNotes(kind) {
   if (kind === 'fragrance') return ['Apply to pulse points and adjust amount based on scent intensity preference.'];
   if (kind === 'body_scrub') return ['Use on body areas according to seller directions; follow with moisturizer if needed.'];
   if (kind === 'body_mist') return ['Spray onto targeted body areas according to seller directions.'];
+  if (kind === 'face_mist') return ['Mist over skin before or after makeup according to seller directions.'];
+  if (kind === 'setting_spray') return ['Mist over finished makeup or refresh makeup according to seller directions.'];
+  if (kind === 'eye_patch') return ['Place under the eyes for the seller-directed treatment time, then remove.'];
   if (kind === 'conditioner') return ['Use after shampoo, then rinse according to seller directions.'];
   if (kind === 'hair_treatment') return ['Use as the hair treatment step according to seller directions.'];
   if (kind === 'heat_protectant') return ['Apply before heat styling or frizz-smoothing styling steps.'];
@@ -2276,6 +2386,7 @@ function buildHumanStandardPairingNotes(kind) {
   if (kind === 'deodorant') return ['Apply as a deodorant step according to seller directions.'];
   if (kind === 'body_lotion') return ['Apply to body skin after showering or whenever body moisture support is needed.'];
   if (kind === 'body_oil') return ['Apply to body skin after showering or when body moisture support is needed.'];
+  if (kind === 'face_oil') return ['Apply as an oil step after lighter treatments or as directed in a PM routine.'];
   if (kind === 'cleansing_oil') return ['Massage onto dry skin to dissolve sunscreen or makeup, then rinse and follow with cleanser if desired.'];
   if (kind === 'eye_balm' || kind === 'eye_cream') return ['Use around the eye area according to seller directions.'];
   if (kind === 'sleeping_pack') return ['Use in the evening as an overnight mask step.'];
@@ -2314,6 +2425,9 @@ function buildSubtypeAwarePairingNotes(kind, subtypeLabel) {
 function buildHumanStandardRoutineStep(kind, fallbackStep = '') {
   if (kind === 'body_scrub') return 'body exfoliation';
   if (kind === 'body_mist') return 'body treatment';
+  if (kind === 'face_mist') return 'face mist';
+  if (kind === 'setting_spray') return 'setting spray';
+  if (kind === 'eye_patch') return 'eye treatment';
   if (kind === 'conditioner') return 'conditioner';
   if (kind === 'hair_treatment') return 'hair treatment';
   if (kind === 'heat_protectant') return 'heat protectant';
@@ -2329,6 +2443,7 @@ function buildHumanStandardRoutineStep(kind, fallbackStep = '') {
   if (kind === 'deodorant') return 'deodorant';
   if (kind === 'body_lotion') return 'body lotion';
   if (kind === 'body_oil') return 'body oil';
+  if (kind === 'face_oil') return 'face oil';
   if (kind === 'lip_balm') return 'lip balm';
   if (kind === 'cleansing_oil') return 'cleanser';
   if (kind === 'eye_balm' || kind === 'eye_cream') return 'eye treatment';
@@ -2356,6 +2471,9 @@ function buildHumanStandardAmPm(kind, fallbackAmPm = []) {
     [
       'body_scrub',
       'body_mist',
+      'face_mist',
+      'setting_spray',
+      'eye_patch',
       'conditioner',
       'hair_treatment',
       'heat_protectant',
@@ -2371,6 +2489,7 @@ function buildHumanStandardAmPm(kind, fallbackAmPm = []) {
       'deodorant',
       'body_lotion',
       'body_oil',
+      'face_oil',
       'lip_balm',
       'cleansing_oil',
       'eye_balm',
@@ -2393,6 +2512,9 @@ function inferTextureForHumanStandardKind(kind, context) {
   const subtypeLabel = inferSpecificBeautySubtypeLabel(context);
   if (kind === 'body_scrub') return 'scrub';
   if (kind === 'body_mist') return 'mist';
+  if (kind === 'face_mist') return 'mist';
+  if (kind === 'setting_spray') return 'spray';
+  if (kind === 'eye_patch') return 'patch';
   if (kind === 'conditioner') return 'conditioner';
   if (kind === 'hair_treatment') return 'treatment';
   if (kind === 'heat_protectant') return 'cream';
@@ -2408,6 +2530,7 @@ function inferTextureForHumanStandardKind(kind, context) {
   if (kind === 'deodorant') return 'cream';
   if (kind === 'body_lotion') return 'lotion';
   if (kind === 'body_oil') return 'oil';
+  if (kind === 'face_oil') return 'oil';
   if (kind === 'lip_balm') return 'balm';
   if (kind === 'cleansing_oil') return 'oil';
   if (kind === 'eye_balm') return 'balm';
@@ -2907,6 +3030,10 @@ function shouldPreferHumanStandardRewriteForPublish(caseRow) {
     'body_lotion',
     'body_oil',
     'body_mist',
+    'face_oil',
+    'face_mist',
+    'setting_spray',
+    'eye_patch',
     'body_scrub',
     'conditioner',
     'hair_treatment',

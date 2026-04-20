@@ -12,6 +12,126 @@ const {
 } = require('../scripts/product_intel_pilot_compare');
 
 describe('product_intel pilot compare selection', () => {
+  test('human-standard rewrite keeps Pixi mist patch oil and blush products out of stale fallback subtypes', () => {
+    const cases = [
+      {
+        title: 'Eye Patch Trio',
+        category: 'Cleanser',
+        description:
+          'Our Eye Patch Trio Bundle delivers a complete under-eye treatment with DetoxifEYE, BeautifEYE and FortifEYE patches.',
+        tags: ['Cleanser', 'Peptides'],
+        expectedKind: 'eye_patch',
+        expectedHeadline: /Eye patches/i,
+        expectedSubtitle: 'Eye Patches',
+        rejected: /daily cleanser/i,
+      },
+      {
+        title: 'Double Cleanse',
+        category: 'Cleanser',
+        description:
+          'Side one features a solid balm that melts away makeup, sunscreen and impurities. Side two is a creamy cleanser that is fragrance-free.',
+        tags: ['Cleanser', 'Vitamin C'],
+        expectedKind: 'cleanser',
+        expectedHeadline: /Daily cleanser/i,
+        expectedSubtitle: 'Daily Cleanser',
+        rejected: /fragrance/i,
+      },
+      {
+        title: 'Overnight Retinol Oil',
+        category: 'Cleanser',
+        description:
+          'Wake up to smoother, more radiant skin with Overnight Retinol Oil and time-release Retinol.',
+        tags: ['Retinol', 'UV filters', 'Use sunscreen daily as retinol can increase sun sensitivity.', 'Cleanser'],
+        expectedKind: 'face_oil',
+        expectedHeadline: /Face oil/i,
+        expectedSubtitle: 'Face Oil',
+        rejected: /daily cleanser|daily sunscreen/i,
+      },
+      {
+        title: 'Retinol Jasmine Lotion',
+        category: 'Moisturizer',
+        description:
+          'Lightweight yet deeply moisturizing, this milky-lotion is formulated with Vitamin A, Jasmine Oil and Peptides.',
+        tags: ['Retinol', 'UV filters', 'Use sunscreen daily as retinol can increase sun sensitivity.', 'Moisturizer'],
+        expectedKind: 'moisturizer',
+        expectedHeadline: /Daily moisturizer/i,
+        expectedSubtitle: 'Daily Moisturizer',
+        rejected: /daily sunscreen/i,
+      },
+      {
+        title: 'Makeup Fixing Mist',
+        category: 'Setting Spray',
+        description:
+          '• Extends and refreshes makeup, hydrates and balances. Prolongs makeup wear and keeps it from moving.',
+        tags: ['Setting Spray'],
+        expectedKind: 'setting_spray',
+        expectedHeadline: /Setting spray/i,
+        expectedSubtitle: 'Setting Spray',
+        rejected: /prep or toner/i,
+      },
+      {
+        title: 'LiquidGlow Blush',
+        category: 'Blush',
+        description:
+          'A weightless serum blush and lip tint that melts in for a fresh, dewy flush.',
+        tags: ['Blush', 'Squalane'],
+        expectedKind: 'color_makeup',
+        expectedHeadline: /Blush/i,
+        expectedSubtitle: 'Blush',
+        rejected: /lip product/i,
+      },
+    ];
+
+    for (const [index, item] of cases.entries()) {
+      const product = {
+        product_id: `ext_pixi_subtype_${index}`,
+        merchant_id: 'external_seed',
+        brand: 'PIXI BEAUTY',
+        title: item.title,
+        category: item.category,
+        description: item.description,
+        tags: item.tags,
+      };
+      const caseRow = {
+        case_id: `live_ext_pixi_subtype_${index}`,
+        canonical_product_ref: {
+          merchant_id: 'external_seed',
+          product_id: product.product_id,
+        },
+        product,
+      };
+      const context = {
+        title: product.title,
+        category: product.category,
+        description: product.description,
+        tags: product.tags,
+      };
+      expect(inferProductKindFromContext(context)).toBe(item.expectedKind);
+
+      const baseline = buildProductIntelDraftBundle({
+        product,
+        canonicalProductRef: caseRow.canonical_product_ref,
+      });
+      const rewrite = buildHumanStandardRewriteOutput(caseRow, baseline, null);
+      const selected = buildSelectedBundle(
+        caseRow,
+        baseline,
+        null,
+        evaluateGeminiCandidateQuality(baseline, null),
+        'test',
+      );
+      const core = rewrite.product_intel_core;
+      const selectedCore = selected.bundle.product_intel_core;
+      const card = buildShoppingCardPayload(caseRow, selected.bundle);
+
+      expect(core.what_it_is.headline).toMatch(item.expectedHeadline);
+      expect(selectedCore.what_it_is.headline).toMatch(item.expectedHeadline);
+      expect(`${selectedCore.what_it_is.headline} ${selectedCore.what_it_is.body} ${card.subtitle}`).not.toMatch(item.rejected);
+      expect(card.subtitle).toBe(item.expectedSubtitle);
+      expect(card.intro || '').not.toMatch(/^[•*\-]\s*/);
+    }
+  });
+
   test('human-standard rewrite preserves specialty body scrub product type over stale category', () => {
     const caseRow = {
       case_id: 'live_ext_body_scrub',

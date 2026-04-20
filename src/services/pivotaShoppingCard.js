@@ -60,6 +60,7 @@ function compactText(value, maxChars) {
 function cleanSentenceText(value) {
   const clean = asString(value)
     .replace(/\s+/g, ' ')
+    .replace(/^[•*\-]\s*/, '')
     .replace(/\s+([,.;:!?])/g, '$1')
     .replace(/([,;:])+\s*([.!?])$/g, '$2')
     .replace(/[,\s;:]+$/g, '')
@@ -229,8 +230,14 @@ function inferTitleSpecialtyCompactSubtitle(product) {
   const category = asString(safeProduct.category || safeProduct.product_type).toLowerCase();
   const description = asString(safeProduct.description || safeProduct.short_description).toLowerCase();
   const text = `${title} ${category} ${description}`.trim();
+  const fragranceText = text.replace(/\bfragrance[-\s]?free\b/g, ' ');
   if (!text) return '';
 
+  if (/\b(?:makeup fixing mist|fixing mist|setting spray|makeup setting spray|setting mist)\b/.test(text)) return 'Setting Spray';
+  if (/\b(?:glow mist|hydrating milky mist|dream-y mist|face mist|makeup mist|facial mist)\b/.test(text)) return 'Face Mist';
+  if (/\b(?:eye patch|eye patches|eyepatch|anywhere patches)\b/.test(text)) return 'Eye Patches';
+  if (/\b(?:lippatch|lip patch)\b/.test(text)) return 'Lip Patches';
+  if (/\b(?:retinol oil|overnight .* oil|face oil|facial oil|essence oil)\b/.test(text)) return 'Face Oil';
   if (/\b(?:brush cup|brush holder|brush storage|makeup brush cup)\b/.test(text)) return 'Brush Storage';
   if (/\b(?:brush bundle|brush trio|brush duo|brush set)\b/.test(text)) return 'Brush Set';
   if (/\b(?:blending|packing|shader|crease|definer|smudge|foundation|skin tint|concealer|face|eyeliner|kyliner|tapered)?\s*brush\s*\d*\b/.test(title)) return 'Makeup Brush';
@@ -241,7 +248,7 @@ function inferTitleSpecialtyCompactSubtitle(product) {
   if (/\b(?:pore diffusing primer|illuminating primer|face primer|makeup primer|primer)\b/.test(text)) return 'Primer';
   if (/\bbody\s+lotion\b/.test(text)) return 'Body Lotion';
   if (/\b(?:eau de parfum|edp)\b/.test(text)) return 'Eau De Parfum';
-  if (/\b(?:fragrance|perfume|parfum|body mist)\b/.test(text)) return 'Fragrance';
+  if (/\b(?:fragrance|perfume|parfum|body mist)\b/.test(fragranceText)) return 'Fragrance';
   if (/\bskin tint\b/.test(text)) return 'Skin Tint';
   if (/\bfoundation\b/.test(text) && !/\bbrush\b/.test(title)) return 'Foundation';
   if (/\bsetting powder\b/.test(text)) return 'Setting Powder';
@@ -403,6 +410,10 @@ function buildCompactSubtitle({ product, bundle }) {
       'Hair Repair Treatment',
       'Heat Protectant Cream',
       'Color Makeup',
+      'Face Mist',
+      'Setting Spray',
+      'Eye Patches',
+      'Face Oil',
     ].includes(compactHeadline)
   ) {
     return compactHeadline;
