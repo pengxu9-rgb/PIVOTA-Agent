@@ -112,6 +112,62 @@ test('travel local product authority: builds skincare query plan from travel kit
   assert.ok(plan.find((row) => row.role_id === 'sun_protection').terms.some((term) => /spf/i.test(term)));
 });
 
+test('travel local product authority: packable recall depth can see past polluted top rows', async () => {
+  const observedLimits = [];
+  const result = await loadTravelLocalProductAuthorityCandidates({
+    destination: 'Seattle, United States',
+    travelReadiness: buildReadiness(),
+    message: 'What should I pack before my flight?',
+    limit: 4,
+    authoritySurface: 'packable',
+    queryFn: async (sql, params) => {
+      observedLimits.push(params?.[4]);
+      const categories = Array.isArray(params?.[3]) ? params[3] : [];
+      if (!categories.includes('sunscreen')) return { rows: [] };
+      const polluted = Array.from({ length: 8 }, (_, index) => seedRow({
+        id: 400 + index,
+        market: 'US',
+        external_product_id: `ext_bad_spf_cosmetic_${index}`,
+        title: `Match Stix Correcting Skinstick — Shade ${index}`,
+        brand: 'Fenty Beauty',
+        category: 'sunscreen',
+        summary: 'color correcting makeup stick',
+        price_amount: 32,
+        price_currency: 'USD',
+        match_score: 50,
+      }));
+      return {
+        rows: [
+          ...polluted,
+          seedRow({
+            id: 499,
+            market: 'US',
+            external_product_id: 'ext_good_packable_spf',
+            title: 'Packable Mineral SPF50 Sunscreen Fluid',
+            brand: 'US Sun Lab',
+            category: 'sunscreen',
+            summary: 'lightweight face sunscreen fluid with broad spectrum SPF50',
+            price_amount: 24,
+            price_currency: 'USD',
+            match_score: 46,
+          }),
+        ].slice(0, params?.[4] || 6),
+      };
+    },
+  });
+
+  assert.equal(__internal.resolvePerRoleRecallLimit({ limit: 4, authoritySurface: 'packable' }), 24);
+  assert.equal(__internal.resolvePerRoleRecallLimit({ limit: 4 }), 6);
+  assert.equal(Math.max(...observedLimits), 24);
+  assert.equal(result.ok, true);
+  assert.equal(result.meta.per_role_limit, 24);
+  assert.equal(result.candidates.some((row) => row.product_id === 'ext_good_packable_spf'), true);
+  const sunscreenStage = result.meta.stage_counts.find((row) => row.role_id === 'sun_protection');
+  assert.equal(sunscreenStage.raw_rows, 9);
+  assert.equal(sunscreenStage.viable_rows, 1);
+  assert.equal(sunscreenStage.drop_reason_counts.color_cosmetic, 8);
+});
+
 test('travel local product authority: returns only external-seed authority rows from injected query', async () => {
   const sqlCalls = [];
   const result = await loadTravelLocalProductAuthorityCandidates({
