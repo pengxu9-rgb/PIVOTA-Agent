@@ -250,7 +250,7 @@ function buildTravelFinalRewritePrompts(input) {
     'Do not use absolute marketing words: best, most, perfect, guaranteed, must-have, miracle, holy grail.',
     'Do not use these headings or phrases: Risk note, Practical alternatives, Suggested products, Daily forecast, Key deltas, Travel skincare kit, Source, rule_fallback.',
     'Write a concise plan that feels like an advisor synthesized the trip, not a dump of every payload field.',
-    'Keep it under 2100 characters, with at most 5 short sections and at most 12 bullets total.',
+    'Keep it under 2400 characters, with at most 5 short sections and at most 12 bullets total.',
     'Must explain the actual climate delta first: temperature, humidity, UV, precipitation/wind when provided, then state the skin implication rather than just reporting weather.',
     'Must cover skincare substance: before departure, flight/cabin, first 48 hours after arrival, face care, exposed body/lip/hand care when relevant, and local buying guidance.',
     'For every product category or grounded product you mention, include a concrete reason tied to climate, flight, skin profile, routine, or UV exposure.',
@@ -315,7 +315,7 @@ function withTimeout(promise, timeoutMs, timeoutCode = 'TRAVEL_FINAL_REWRITE_TIM
 function parseTravelFinalRewritePayload(text) {
   const parsed = parseJsonOnlyObject(text) || extractJsonObject(text);
   if (!isPlainObject(parsed)) return null;
-  const assistantText = normalizeText(parsed.assistant_text || parsed.assistantText || parsed.text, 2600);
+  const assistantText = normalizeText(parsed.assistant_text || parsed.assistantText || parsed.text, 3000);
   if (!assistantText) return null;
   return { assistant_text: assistantText };
 }
@@ -378,10 +378,10 @@ function buildTravelRewriteQualityContext(promptInput) {
 }
 
 function validateTravelFinalRewriteText(text, { promptInput } = {}) {
-  const assistantText = normalizeText(text, 2600);
+  const assistantText = normalizeText(text, 3000);
   if (!assistantText) return { ok: false, reason: 'empty_rewrite' };
   if (assistantText.length < 180) return { ok: false, reason: 'rewrite_too_short' };
-  if (assistantText.length > 2200) return { ok: false, reason: 'rewrite_too_long' };
+  if (assistantText.length > 2800) return { ok: false, reason: 'rewrite_too_long' };
   if (/(^|\n)\s*(Risk note|Practical alternatives|Suggested products|Daily forecast|Key deltas|Travel skincare kit|Adjusted routine guidance|How to handle actives|Source)\s*:/i.test(assistantText)) {
     return { ok: false, reason: 'rewrite_forbidden_heading' };
   }

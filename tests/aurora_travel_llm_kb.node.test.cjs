@@ -311,6 +311,67 @@ test('travel final assistant rewriter: quality guard rejects generic travel skin
   assert.equal(acceptable.reason, 'ok');
 });
 
+test('travel final assistant rewriter: accepts detailed advisor prose below production length ceiling', () => {
+  const promptInput = travelFinalRewriteInternal.buildFinalRewritePromptInput({
+    language: 'EN',
+    message: 'I am flying from Seattle to Shanghai next Monday. What should I prepare?',
+    travelReadiness: {
+      delta_vs_home: {
+        temperature: { home: 12, destination: 24, delta: 12, unit: 'C' },
+        humidity: { home: 57, destination: 73, delta: 16, unit: '%' },
+        uv: { home: 6.4, destination: 8, delta: 1.6, unit: '' },
+      },
+      jetlag_sleep: {
+        tz_home: 'America/Los_Angeles',
+        tz_destination: 'Asia/Shanghai',
+        hours_diff: 15,
+        risk_level: 'high',
+      },
+      reco_bundle: [
+        {
+          trigger: 'Elevated UV and humid commute',
+          action: 'Use face SPF50+ before outdoor transit; use body SPF, lip balm, and hand cream on exposed areas.',
+          product_types: ['Face SPF50+ sunscreen', 'Body SPF', 'Lip balm', 'Hand cream'],
+        },
+        {
+          trigger: 'Long-haul cabin dryness',
+          action: 'Use a hydrating mask only if already tolerated.',
+          product_types: ['Hydrating mask'],
+        },
+      ],
+      shopping_preview: {
+        mode: 'category_guidance',
+        coverage_status: 'category_only',
+        grounded_count: 0,
+        products: [{ name: 'Face SPF50+ sunscreen', category: 'sun protection', product_source: 'category_guidance' }],
+      },
+    },
+  });
+  const detailed = [
+    '### Climate Delta and Skin Impact',
+    'Shanghai in late April is warmer, more humid, and higher UV than Seattle, so your combination skin may feel oilier outside while the long flight can still leave the barrier dehydrated because cabin air is dry.',
+    '',
+    '### Before Departure',
+    '- Keep your familiar cleanser, moisturizer, and SPF routine because changing actives right before a 15-hour time-zone shift increases the chance of irritation.',
+    '- Pack SPF50, a light barrier moisturizer, lip balm, hand cream, and body sunscreen so exposed areas are covered during humid commutes.',
+    '',
+    '### Flight and First 48 Hours',
+    '- Before boarding, apply moisturizer and keep lips and hands comfortable; use a hydrating mask only if already tolerated, not as a new experiment.',
+    '- After arrival, keep nights calm, skip acids or retinoids if skin feels tight, and reapply sunscreen outdoors because higher UV and sweat can reduce coverage faster.',
+    '',
+    '### Local Buying Boundary',
+    '- Treat sunscreen, light moisturizer, and hydration serum as buying categories, not confirmed grounded products yet; choose local options by texture, SPF rating, and whether they fit humid daytime wear.',
+    '',
+    'For meetings, tell me if you will mostly commute by taxi/subway or walk outdoors, because that changes how much reapplication support you need.',
+  ].join('\n');
+  const padded = `${detailed}\n${'Use the same calm, hydration-first logic for the rest of the trip because sleep disruption can make skin look dull without meaning you need stronger actives. '.repeat(7)}`;
+  assert.equal(padded.length > 2200, true);
+  assert.equal(padded.length < 2800, true);
+  const result = travelFinalRewriteInternal.validateTravelFinalRewriteText(padded, { promptInput });
+  assert.equal(result.ok, true);
+  assert.equal(result.reason, 'ok');
+});
+
 test('travel final assistant rewriter: category-only prompt stays honest and mock Gemini can supply final prose', async () => {
   const readiness = {
     destination_context: {
