@@ -159,7 +159,8 @@ function compactTravelActionContextForFinalRewrite(travelReadiness) {
     best_practice_principles: [
       'Keep travel skincare close to the at-home routine; avoid introducing unfamiliar actives right before or during travel.',
       'Use moisturizer when skin feels dry and after cleansing; cabin air and climate shifts can increase barrier stress.',
-      'Use broad-spectrum sunscreen and reapply during outdoor exposure; include exposed body areas, lips, and hands when relevant.',
+      'Use broad-spectrum sunscreen and reapply during outdoor exposure.',
+      'If UV or outdoor exposure is present, cover the exposure checklist separately: face SPF, exposed body areas/body SPF, lips/SPF lip balm, and hands/hand cream or hand SPF.',
       'Use hydrating or soothing masks as optional recovery support only when already tolerated; avoid making them sound medically necessary.',
     ],
   };
@@ -217,7 +218,7 @@ function buildFinalRewritePromptInput({
   safetyDecision,
 } = {}) {
   const readiness = isPlainObject(travelReadiness) ? travelReadiness : {};
-  return {
+  const promptInput = {
     language: normalizeLang(language),
     user_question: normalizeText(message, 800),
     profile: compactProfileForFinalRewrite(profile),
@@ -228,6 +229,62 @@ function buildFinalRewritePromptInput({
     safety: compactSafetyDecisionForFinalRewrite(safetyDecision),
     deterministic_brief: normalizeText(deterministicBrief, 1000),
   };
+  promptInput.required_coverage_checklist = buildTravelFinalRewriteRequiredChecklist(promptInput);
+  return promptInput;
+}
+
+function buildTravelFinalRewriteRequiredChecklist(promptInput) {
+  const quality = buildTravelRewriteQualityContext(promptInput);
+  const checklist = [];
+  const push = (id, instruction) => {
+    const key = normalizeText(id, 80);
+    const text = normalizeText(instruction, 260);
+    if (key && text) checklist.push({ id: key, instruction: text });
+  };
+
+  if (quality.hasClimateFacts) {
+    push('climate_delta', 'Start with the actual temperature, humidity, and UV delta when available, then explain the skin implication.');
+  }
+  if (quality.hasFlightOrJetlagFacts) {
+    push('travel_phases', 'Cover before departure, flight/cabin, and first 48 hours after arrival; tie jet lag or sleep disruption to practical skincare steps.');
+  }
+  if (quality.needsUvCare) {
+    push('uv_care', 'Mention sunscreen/SPF and reapplication logic for outdoor exposure.');
+  }
+  if (quality.needsBarrierHydration) {
+    push('barrier_hydration', 'Mention hydration or barrier support and why the trip can change dryness, oiliness, or irritation risk.');
+  }
+  const exposureItems = [];
+  if (quality.needsBodyCare) exposureItems.push('exposed body areas/body SPF');
+  if (quality.needsLipCare) exposureItems.push('lips/SPF lip balm');
+  if (quality.needsHandCare) exposureItems.push('hands/hand cream or hand SPF');
+  if (exposureItems.length) {
+    push(
+      'exposure_checklist',
+      `Mention each exposure item separately; do not collapse them into a generic phrase: ${exposureItems.join('; ')}.`,
+    );
+  }
+  if (quality.needsMaskNuance) {
+    push('mask_nuance', 'Masks may be mentioned only as optional recovery if already tolerated, not as a required or clinical step.');
+  }
+  if (quality.hasShoppingContext) {
+    push('local_buying_boundary', 'Include local buying guidance; if products are category-only, say they are categories rather than confirmed product picks.');
+  }
+
+  return checklist;
+}
+
+function formatTravelFinalRewriteChecklist(checklist) {
+  return (Array.isArray(checklist) ? checklist : [])
+    .map((row) => {
+      const item = isPlainObject(row) ? row : {};
+      const id = normalizeText(item.id, 80);
+      const instruction = normalizeText(item.instruction, 260);
+      if (!id || !instruction) return '';
+      return `- ${id}: ${instruction}`;
+    })
+    .filter(Boolean)
+    .join('\n');
 }
 
 function buildTravelFinalRewritePrompts(input) {
@@ -237,6 +294,7 @@ function buildTravelFinalRewritePrompts(input) {
   const coverageStatus = normalizeText(shopping.coverage_status, 80).toLowerCase();
   const shoppingMode = normalizeText(shopping.mode, 80).toLowerCase();
   const groundedCount = normalizeNumber(shopping.grounded_count) || 0;
+  const requiredChecklistText = formatTravelFinalRewriteChecklist(promptInput.required_coverage_checklist);
   const categoryOnly =
     coverageStatus === 'category_only' ||
     shoppingMode === 'category_guidance' ||
@@ -269,6 +327,10 @@ function buildTravelFinalRewritePrompts(input) {
     !categoryOnly && groundedCount > 0 ? `Shopping status: grounded_products with ${groundedCount} catalog-grounded option(s).` : '',
     hasSafety ? 'Safety status: integrate safety advice naturally; no Risk note heading.' : '',
     'Task: rewrite the final travel skincare answer from the facts below. Preserve all numeric facts if mentioned, and use travel_action_context as the skincare mechanism backbone.',
+    requiredChecklistText ? `Required output checklist:\n${requiredChecklistText}` : '',
+    requiredChecklistText
+      ? 'Critical self-check before returning JSON: every required checklist item must be visibly present in assistant_text. If exposure_checklist is present, mention body, lips, and hands as separate care targets when listed; "exposed areas" alone is not enough.'
+      : '',
     `Fact JSON:${JSON.stringify(promptInput)}`,
   ].filter(Boolean).join('\n');
 

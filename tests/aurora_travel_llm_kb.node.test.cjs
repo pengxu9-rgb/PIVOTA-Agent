@@ -326,6 +326,45 @@ test('travel final assistant rewriter: quality guard rejects generic travel skin
   assert.equal(acceptable.reason, 'ok');
 });
 
+test('travel final assistant rewriter: required checklist makes exposure care explicit', () => {
+  const prompts = travelFinalRewriteInternal.buildTravelFinalRewritePrompts({
+    language: 'EN',
+    message: 'Seattle to Shanghai business trip. Build a skincare plan.',
+    travelReadiness: {
+      delta_vs_home: {
+        temperature: { home: 17, destination: 24, delta: 7, unit: 'C' },
+        humidity: { home: 66, destination: 71, delta: 5, unit: '%' },
+        uv: { home: 6.4, destination: 8, delta: 1.6, unit: '' },
+      },
+      jetlag_sleep: { hours_diff: 15, risk_level: 'high' },
+      reco_bundle: [
+        {
+          trigger: 'Elevated UV and humid commute',
+          action: 'Use face SPF50+ before outdoor transit; use body SPF, lip balm, and hand cream on exposed areas.',
+          product_types: ['Face SPF50+ sunscreen', 'Body SPF', 'Lip balm', 'Hand cream'],
+        },
+      ],
+      shopping_preview: {
+        mode: 'category_guidance',
+        coverage_status: 'category_only',
+        grounded_count: 0,
+        products: [{ name: 'Face SPF50+ sunscreen', product_source: 'category_guidance' }],
+      },
+    },
+    deterministicBrief: 'Compact deterministic brief.',
+  });
+
+  const checklistText = JSON.stringify(prompts.promptInput.required_coverage_checklist);
+  assert.match(checklistText, /climate_delta/);
+  assert.match(checklistText, /travel_phases/);
+  assert.match(checklistText, /exposure_checklist/);
+  assert.match(checklistText, /exposed body areas\/body SPF/);
+  assert.match(checklistText, /lips\/SPF lip balm/);
+  assert.match(checklistText, /hands\/hand cream or hand SPF/);
+  assert.match(prompts.userPrompt, /Required output checklist:/);
+  assert.match(prompts.userPrompt, /"exposed areas" alone is not enough/);
+});
+
 test('travel final assistant rewriter: guard rejects over-strong copy and missing hand care', () => {
   const promptInput = travelFinalRewriteInternal.buildFinalRewritePromptInput({
     language: 'EN',
