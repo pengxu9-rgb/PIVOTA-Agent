@@ -2,6 +2,7 @@ const crypto = require('node:crypto')
 const { extractJsonObject, parseJsonOnlyObject } = require('./jsonExtract')
 const {
   hasAuroraGeminiApiKey,
+  callAuroraGeminiGenerateContentRestWithMeta,
   callAuroraGeminiGenerateContentWithMeta,
 } = require('./auroraGeminiGlobalClient')
 const { resolveNonImageGeminiModel } = require('../lib/geminiModelFloor')
@@ -138,6 +139,10 @@ const DEFAULT_TRAVEL_LLM_MODEL = String(
     process.env.TRAVEL_LLM_MODEL ||
     'gemini-3-flash-preview',
 ).trim() || 'gemini-3-flash-preview'
+
+const DEFAULT_TRAVEL_GEMINI_TRANSPORT = String(
+  process.env.AURORA_TRAVEL_GEMINI_TRANSPORT || 'rest',
+).trim().toLowerCase()
 
 function normalizeTravelGeminiModel(model) {
   return resolveNonImageGeminiModel({
@@ -1006,6 +1011,10 @@ async function calibrateTravelReadinessWithLlm({
       const totalTimeoutMs = Math.max(1000, Math.trunc(Number(timeoutMs || 3500) || 3500))
       const queueTimeoutMs = Math.min(800, Math.max(200, Math.floor(totalTimeoutMs * 0.12)))
       const upstreamTimeoutMs = Math.max(1200, totalTimeoutMs - queueTimeoutMs)
+      const realGeminiCaller =
+        DEFAULT_TRAVEL_GEMINI_TRANSPORT === 'sdk'
+          ? callAuroraGeminiGenerateContentWithMeta
+          : callAuroraGeminiGenerateContentRestWithMeta
       const callResult = typeof geminiGenerateContent === 'function'
         ? {
             response: await withTimeout(
@@ -1015,7 +1024,7 @@ async function calibrateTravelReadinessWithLlm({
             ),
             meta: {},
           }
-        : await callAuroraGeminiGenerateContentWithMeta({
+        : await realGeminiCaller({
             featureEnvVar: 'AURORA_TRAVEL_GEMINI_API_KEY',
             route: 'aurora_travel_llm_calibration',
             request: geminiRequest,

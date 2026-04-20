@@ -249,3 +249,106 @@ test('auroraGeminiGlobalClient passes upstream timeout to Gemini SDK http option
     else delete require.cache[clientModuleId];
   }
 });
+
+test('auroraGeminiGlobalClient direct REST transport preserves JSON config and strips SDK httpOptions', async () => {
+  const clientModuleId = require.resolve('../src/auroraBff/auroraGeminiGlobalClient');
+  const keyModuleId = require.resolve('../src/auroraBff/auroraGeminiKeys');
+  const gateModuleId = require.resolve('../src/lib/geminiGlobalGate');
+  const originalKeyModule = require.cache[keyModuleId];
+  const originalGateModule = require.cache[gateModuleId];
+  const originalClientModule = require.cache[clientModuleId];
+  const originalFetch = global.fetch;
+  let capturedUrl = '';
+  let capturedOptions = null;
+
+  require.cache[keyModuleId] = {
+    id: keyModuleId,
+    filename: keyModuleId,
+    loaded: true,
+    exports: {
+      resolveAuroraGeminiKey() {
+        return 'test-gemini-key';
+      },
+    },
+  };
+  require.cache[gateModuleId] = {
+    id: gateModuleId,
+    filename: gateModuleId,
+    loaded: true,
+    exports: {
+      getGeminiGlobalGate() {
+        return {
+          withGate: async (_route, fn) => fn(),
+          getApiKey: () => 'test-gemini-key',
+          snapshot: () => ({ gate: { keyCount: 1 } }),
+        };
+      },
+    },
+  };
+  global.fetch = async (url, options) => {
+    capturedUrl = String(url || '');
+    capturedOptions = options || {};
+    return {
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      text: async () => JSON.stringify({
+        candidates: [
+          {
+            finishReason: 'STOP',
+            content: {
+              parts: [{ text: '{"travel_readiness_patch":{"confidence":{"level":"high"}}}' }],
+            },
+          },
+        ],
+        usageMetadata: {
+          promptTokenCount: 10,
+          candidatesTokenCount: 12,
+          totalTokenCount: 22,
+        },
+      }),
+    };
+  };
+
+  delete require.cache[clientModuleId];
+
+  try {
+    const geminiClient = require(clientModuleId);
+
+    const result = await geminiClient.callAuroraGeminiGenerateContentRestWithMeta({
+      featureEnvVar: 'AURORA_TRAVEL_GEMINI_API_KEY',
+      route: 'aurora_test_rest_transport',
+      request: {
+        model: 'models/gemini-3-flash-preview',
+        contents: [{ role: 'user', parts: [{ text: 'hello' }] }],
+        config: {
+          responseMimeType: 'application/json',
+          maxOutputTokens: 1000,
+          thinkingConfig: { includeThoughts: false, thinkingBudget: 64 },
+          httpOptions: { timeout: 1 },
+        },
+      },
+      upstreamTimeoutMs: 1000,
+    });
+
+    const body = JSON.parse(capturedOptions.body);
+    assert.match(capturedUrl, /generativelanguage\.googleapis\.com\/v1beta\/models\/gemini-3-flash-preview:generateContent$/);
+    assert.equal(capturedOptions.headers['x-goog-api-key'], 'test-gemini-key');
+    assert.equal(capturedUrl.includes('test-gemini-key'), false);
+    assert.deepEqual(body.contents, [{ role: 'user', parts: [{ text: 'hello' }] }]);
+    assert.equal(body.generationConfig.responseMimeType, 'application/json');
+    assert.equal(body.generationConfig.maxOutputTokens, 1000);
+    assert.equal(body.generationConfig.thinkingConfig.thinkingBudget, 64);
+    assert.equal(body.generationConfig.httpOptions, undefined);
+    assert.equal(result.response.candidates[0].finishReason, 'STOP');
+    assert.equal(result.meta.transport, 'rest');
+  } finally {
+    global.fetch = originalFetch;
+    if (originalKeyModule) require.cache[keyModuleId] = originalKeyModule;
+    else delete require.cache[keyModuleId];
+    if (originalGateModule) require.cache[gateModuleId] = originalGateModule;
+    else delete require.cache[gateModuleId];
+    if (originalClientModule) require.cache[clientModuleId] = originalClientModule;
+    else delete require.cache[clientModuleId];
+  }
+});
