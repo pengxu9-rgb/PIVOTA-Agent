@@ -234,6 +234,15 @@ test('travel final assistant rewriter: guard rejects stale fallback labels and a
   assert.equal(dumpHeading.reason, 'rewrite_forbidden_heading');
 });
 
+test('travel final assistant rewriter: neutralizer downgrades simple absolute wording before runtime guard', () => {
+  const text = travelFinalRewriteInternal.neutralizeTravelFinalRewriteText(
+    'Tokyo has excellent sunscreen options and this is the ideal texture to review, not the best guaranteed result.',
+  );
+  assert.equal(/\b(excellent|ideal|best|guaranteed)\b/i.test(text), false);
+  assert.match(text, /solid sunscreen options/);
+  assert.match(text, /suitable texture/);
+});
+
 test('travel final assistant rewriter: reasoning guard accepts natural causal wording', () => {
   const promptInput = travelFinalRewriteInternal.buildFinalRewritePromptInput({
     language: 'EN',

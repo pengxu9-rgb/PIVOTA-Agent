@@ -575,19 +575,20 @@ function buildTravelProductUseReasons({ language, roleId, category, name } = {})
     ];
   }
   if (/body_lip_hand|body|lip|hand|身体|唇|手/.test(role) || (/body|lip|hand|身体|唇|手/.test(haystack) && !/sun_protection/.test(role))) {
-    if (/lip|唇|립밤|リップ/.test(productName) || /lip|唇/.test(cat)) {
+    const genericAreaCategory = /\bbody\b.*\blip\b.*\bhand\b|\blip\b.*\bhand\b|body, lip, or hand/i.test(cat);
+    if (/lip|唇|립밤|リップ/.test(productName) || (!genericAreaCategory && /lip|唇/.test(cat))) {
       return [
         t(language, '用于唇部，帮助应对机舱干燥和户外通勤时的唇部紧绷。', 'Use on lips to manage tightness from cabin dryness and outdoor commuting.'),
         t(language, '适合随身携带，不要把润唇产品当作手部或身体护理。', 'Fits carry-on use; do not treat a lip product as hand or body care.'),
       ];
     }
-    if (/hand|手|ハンド/.test(productName) || /hand|手/.test(cat)) {
+    if (/hand|手|ハンド/.test(productName) || (!genericAreaCategory && /hand|手/.test(cat))) {
       return [
         t(language, '用于手部，帮助应对频繁清洁、机舱干燥和当地通勤带来的手部干燥。', 'Use on hands to manage dryness from cleansing, cabin air, and local commuting.'),
         t(language, '适合随身携带，在飞行和当地通勤时补充。', 'Fits carry-on use for the flight and local commuting.'),
       ];
     }
-    if (/body|身体|ボディ/.test(productName) || /body|身体/.test(cat)) {
+    if (/body|身体|ボディ/.test(productName) || (!genericAreaCategory && /body|身体/.test(cat))) {
       return [
         t(language, '用于暴露身体皮肤，因为 UV 和风干不只影响脸部。', 'Use on exposed body skin because UV and dry air do not only affect the face.'),
         t(language, '适合当地户外通勤或长时间步行时补充。', 'Fits local commuting or longer outdoor walks.'),
