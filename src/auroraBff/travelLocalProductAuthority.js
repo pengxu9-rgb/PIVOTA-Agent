@@ -56,6 +56,17 @@ const COLOR_COSMETIC_NOISE_RE =
 const BEAUTY_TOOL_NOISE_RE =
   /\b(reusable|silicone|applicator|beauty\s*sponge|makeup\s*sponge|sponge|puff|brush|tool)\b/i;
 const REFILL_ONLY_NOISE_RE = /\brefills?\b/i;
+const LIP_CARE_NOISE_RE = /\b(lip[-\s]?loving\s*scrub|scrubstick|lip\s*scrub|exfoliat(?:e|ing|or)|plumper)\b/i;
+const MARKET_EXPECTED_CURRENCY = {
+  CN: 'CNY',
+  FR: 'EUR',
+  GB: 'GBP',
+  JP: 'JPY',
+  KR: 'KRW',
+  SG: 'SGD',
+  TH: 'THB',
+  US: 'USD',
+};
 const STRONG_ROLE_MATCHERS = {
   sun_protection: /\b(sunscreen|sun\s*screen|spf\s*\d{0,3}\+?|pa\s*\+{2,4}|broad\s*spectrum|sun\s*(?:fluid|cream|gel|milk|stick|serum)|uv\s*(?:protection|shield|defen[cs]e|aqua|essence)|日焼け止め|防晒|防曬|선크림|썬크림)\b/i,
   lightweight_moisturizer: /\b(moisturi[sz]er|gel[-\s]?cream|barrier\s*cream|face\s*cream|facial\s*cream|lotion|emulsion|milk|乳液|面霜|保湿|保濕|크림|로션)\b/i,
@@ -283,12 +294,21 @@ function isRoleCompatibleProduct(product, roleId) {
   if (BEAUTY_TOOL_NOISE_RE.test(text)) return false;
 
   if (roleId === 'body_lip_hand') {
+    if (LIP_CARE_NOISE_RE.test(text)) return false;
     if (/\b(lipstick|lip\s*gloss|lip\s*color|lip\s*colour)\b/i.test(text)) return false;
     return true;
   }
 
   if (COLOR_COSMETIC_NOISE_RE.test(text)) return false;
   return true;
+}
+
+function isMarketCurrencyCompatibleProduct(product, market) {
+  const expected = MARKET_EXPECTED_CURRENCY[normalizeMarket(market)];
+  if (!expected) return true;
+  const currency = normalizeText(product?.currency, 12).toUpperCase();
+  if (!currency) return true;
+  return currency === expected;
 }
 
 function normalizeAuthorityCandidate(product, role) {
@@ -372,6 +392,7 @@ async function queryRoleCandidates({
     }))
     .filter((entry) => entry.product)
     .filter((entry) => isRoleCompatibleProduct(entry.product, role.role_id))
+    .filter((entry) => isMarketCurrencyCompatibleProduct(entry.product, market))
     .map(({ row, product }) => ({
       product,
       role,
@@ -519,5 +540,6 @@ module.exports = {
     likePatterns,
     selectRoleBalancedCandidates,
     isRoleCompatibleProduct,
+    isMarketCurrencyCompatibleProduct,
   },
 };

@@ -192,6 +192,18 @@ test('travel local product authority: rejects color cosmetics misclassified as t
             seedRow({
               id: 203,
               market: 'US',
+              external_product_id: 'ext_bad_eur_spf',
+              title: 'Relief Sun : Rice + Probiotics SPF50+ PA++++',
+              brand: 'Beauty of Joseon',
+              category: 'sunscreen',
+              summary: 'daily sunscreen',
+              price_amount: 23,
+              price_currency: 'EUR',
+              match_score: 48,
+            }),
+            seedRow({
+              id: 204,
+              market: 'US',
               external_product_id: 'ext_good_spf',
               title: 'Mineral SPF50 Sunscreen Fluid',
               brand: 'US Sun Lab',
@@ -199,7 +211,7 @@ test('travel local product authority: rejects color cosmetics misclassified as t
               summary: 'lightweight face sunscreen fluid with broad spectrum SPF50',
               price_amount: 24,
               price_currency: 'USD',
-              match_score: 47,
+              match_score: 46,
             }),
           ],
         };
@@ -208,7 +220,7 @@ test('travel local product authority: rejects color cosmetics misclassified as t
         return {
           rows: [
             seedRow({
-              id: 204,
+              id: 205,
               market: 'US',
               external_product_id: 'ext_bad_bronzer',
               title: 'Cheeks Out Freestyle Cream Bronzer — Teddy',
@@ -220,7 +232,7 @@ test('travel local product authority: rejects color cosmetics misclassified as t
               match_score: 50,
             }),
             seedRow({
-              id: 205,
+              id: 206,
               market: 'US',
               external_product_id: 'ext_bad_sponge',
               title: "Showstopp'r Football Sponge",
@@ -232,7 +244,7 @@ test('travel local product authority: rejects color cosmetics misclassified as t
               match_score: 49,
             }),
             seedRow({
-              id: 206,
+              id: 207,
               market: 'US',
               external_product_id: 'ext_good_lotion',
               title: 'Lightweight Barrier Lotion',
@@ -240,6 +252,36 @@ test('travel local product authority: rejects color cosmetics misclassified as t
               category: 'moisturizer',
               summary: 'lightweight facial moisturizer lotion for barrier support',
               price_amount: 22,
+              price_currency: 'USD',
+              match_score: 48,
+            }),
+          ],
+        };
+      }
+      if (categories.includes('lip balm')) {
+        return {
+          rows: [
+            seedRow({
+              id: 208,
+              market: 'US',
+              external_product_id: 'ext_bad_lip_scrub',
+              title: "Pro Kiss'r Lip-Loving Scrubstick",
+              brand: 'Fenty Beauty',
+              category: 'lip balm',
+              summary: 'lip scrub exfoliator',
+              price_amount: 16,
+              price_currency: 'USD',
+              match_score: 50,
+            }),
+            seedRow({
+              id: 209,
+              market: 'US',
+              external_product_id: 'ext_good_lip_balm',
+              title: 'SPF Lip Balm',
+              brand: 'US Lip Lab',
+              category: 'lip balm',
+              summary: 'spf lip balm for travel dryness',
+              price_amount: 10,
               price_currency: 'USD',
               match_score: 48,
             }),
@@ -254,10 +296,13 @@ test('travel local product authority: rejects color cosmetics misclassified as t
   const ids = result.candidates.map((row) => row.product_id);
   assert.equal(ids.includes('ext_bad_correcting_stick'), false);
   assert.equal(ids.includes('ext_bad_refill_spf'), false);
+  assert.equal(ids.includes('ext_bad_eur_spf'), false);
   assert.equal(ids.includes('ext_bad_bronzer'), false);
   assert.equal(ids.includes('ext_bad_sponge'), false);
+  assert.equal(ids.includes('ext_bad_lip_scrub'), false);
   assert.equal(ids.includes('ext_good_spf'), true);
   assert.equal(ids.includes('ext_good_lotion'), true);
+  assert.equal(ids.includes('ext_good_lip_balm'), true);
   assert.equal(result.meta.stage_counts.some((row) => Number(row.raw_rows) > Number(row.viable_rows)), true);
 });
 
