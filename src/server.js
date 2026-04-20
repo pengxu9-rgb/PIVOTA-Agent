@@ -1874,6 +1874,10 @@ const PDP_SELF_OFFER_FALLBACK_ENABLED = parseBooleanEnv(
   process.env.PDP_SELF_OFFER_FALLBACK_ENABLED,
   false,
 );
+const PDP_SYNC_SAVINGS_PRESENTATION_HYDRATION_ENABLED = parseBooleanEnv(
+  process.env.PDP_SYNC_SAVINGS_PRESENTATION_HYDRATION_ENABLED,
+  false,
+);
 const PDP_OFFER_GROUP_MEMBER_FETCH_TIMEOUT_MS = Math.max(
   100,
   parseTimeoutMs(process.env.PDP_OFFER_GROUP_MEMBER_FETCH_TIMEOUT_MS, 750),
@@ -21891,6 +21895,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	    const pdpV2StartedAt = Date.now();
 	    const pdpV2PhaseTimings = {};
 	    const pdpV2ModuleTimings = {};
+	    let pdpV2SavingsPresentationHydrationMode = 'not_started';
 	    const markPdpV2Phase = (name, startedAt) => {
 	      pdpV2PhaseTimings[name] = Date.now() - startedAt;
 	    };
@@ -21928,6 +21933,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         total_latency_ms: Math.max(0, Date.now() - pdpV2StartedAt),
         phases: pdpV2PhaseTimings,
         modules: pdpV2ModuleTimings,
+        savings_presentation_hydration_mode: pdpV2SavingsPresentationHydrationMode,
         requested_product_id: requestedProductId || null,
         requested_merchant_id: requestedMerchantId || null,
         resolved_product_id: resolvedProductId || null,
@@ -22604,11 +22610,21 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	          prefetchedSavingsProduct,
 	        );
 	      }
-	      canonicalProductForPdp = await hydrateSavingsPresentationFromUpstream({
-	        product: canonicalProductForPdp,
-	        canonicalProductRef,
-	        checkoutToken,
-	      });
+	      const hasPrefetchedSavingsEvidence = hasSavingsPresentationFields(canonicalProductForPdp);
+	      if (hasPrefetchedSavingsEvidence) {
+	        pdpV2SavingsPresentationHydrationMode = prefetchedSavingsProduct
+	          ? 'prefetched_merge'
+	          : 'already_present';
+	      } else if (PDP_SYNC_SAVINGS_PRESENTATION_HYDRATION_ENABLED) {
+	        canonicalProductForPdp = await hydrateSavingsPresentationFromUpstream({
+	          product: canonicalProductForPdp,
+	          canonicalProductRef,
+	          checkoutToken,
+	        });
+	        pdpV2SavingsPresentationHydrationMode = 'upstream_sync';
+	      } else {
+	        pdpV2SavingsPresentationHydrationMode = 'prefetched_only';
+	      }
 	      markPdpV2Phase(
 	        'savings_presentation_hydration',
 	        savingsPresentationHydrationStartedAt,

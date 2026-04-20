@@ -213,6 +213,56 @@ describe('get_pdp_v2 stability semantics', () => {
     );
   });
 
+  it('does not synchronously refetch product detail only to hydrate savings presentation', async () => {
+    const product = {
+      merchant_id: 'merch_fast',
+      product_id: 'prod_fast_1',
+      title: 'Fast PDP Product',
+      brand: 'Fast Brand',
+      description: 'Fast canonical content should not wait on optional savings hydration.',
+      currency: 'USD',
+      price: {
+        amount: 24,
+        currency: 'USD',
+      },
+      in_stock: true,
+    };
+
+    const productDetailScope = mockProductDetailInvoke('merch_fast', 'prod_fast_1', 200, {
+      product,
+    });
+
+    const groupScope = nock(process.env.PIVOTA_API_BASE)
+      .get('/agent/v1/product-groups/resolve')
+      .query((query) => query && query.merchant_id === 'merch_fast' && query.product_id === 'prod_fast_1')
+      .reply(404, { error: 'PRODUCT_GROUP_NOT_FOUND', message: 'No product group' });
+
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'get_pdp_v2',
+        payload: {
+          include: ['product_overview'],
+          product_ref: {
+            merchant_id: 'merch_fast',
+            product_id: 'prod_fast_1',
+          },
+        },
+      })
+      .expect(200);
+
+    expect(productDetailScope.isDone()).toBe(true);
+    expect(groupScope.isDone()).toBe(true);
+    expect(res.body.metadata.route_health).toEqual(
+      expect.objectContaining({
+        savings_presentation_hydration_mode: 'prefetched_only',
+      }),
+    );
+    const canonicalModule = res.body.modules.find((module) => module.type === 'canonical');
+    expect(canonicalModule?.data?.pdp_payload?.product?.store_discount_evidence).toBeUndefined();
+    expect(canonicalModule?.data?.pdp_payload?.product?.payment_offer_evidence).toBeUndefined();
+  });
+
   it('keeps canonical not-found responses on 404 after mismatch correction fails', async () => {
     mockProductDetailInvoke('merch_wrong', 'ext_missing_1', 404, {
       error: 'PRODUCT_NOT_FOUND',
