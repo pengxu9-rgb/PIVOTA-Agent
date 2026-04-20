@@ -168,6 +168,7 @@ test('travel skills pipeline: DAG order + trace includes started/ended/duration'
           'travel_kb_read_skill',
           'travel_env_context_skill',
           'travel_readiness_skill',
+          'travel_local_product_authority_skill',
           'travel_llm_calibration_skill',
           'travel_reco_preview_skill',
           'travel_store_channel_skill',
@@ -212,8 +213,9 @@ test('travel skills pipeline: final rewrite becomes visible prose authority and 
         'Seattle to Shanghai means a warmer, more humid routine window with stronger UV exposure, so keep the plan simple and reapplication-focused.',
         '',
         '- Before departure: pack a gentle cleanser, lightweight moisturizer, and SPF50 so the routine does not change too much mid-trip.',
-        '- Flight day: avoid experimenting with new actives; use moisturizer before boarding and keep lips or dry patches comfortable.',
+        '- Flight day: avoid experimenting with new actives; use moisturizer before boarding, and use a hydrating mask only if already tolerated.',
         '- First 48 hours: use SPF every morning and reapply during outdoor transit, then keep evening care calm while jet lag settles.',
+        '- Exposed areas: bring body sunscreen for arms, plus lip balm and hand cream because higher UV and cabin dryness do not only affect the face.',
         '- Buying categories in Shanghai: look for sunscreen, a light barrier moisturizer, and a simple hydrating serum if luggage space is tight.',
         '',
         'If you share whether you will be mostly indoors or outdoors between meetings, I can narrow the category priority.',
@@ -620,7 +622,7 @@ test('travel skills pipeline: local product wording triggers both reco preview a
     async () => {
       const { runTravelPipeline } = loadFreshPipeline();
       const out = await runTravelPipeline(
-        buildInput('Business trip skincare planner: Seattle to Shanghai from 2026-04-20 to 2026-04-24. Include skincare products or categories I can buy locally in Shanghai.', {
+        buildInput('I am flying from Seattle to Shanghai for a business trip from April 27 to May 1, 2026. Build me a travel skincare plan. Please cover weather changes, time difference and jet lag, temperature and humidity shift, what to prepare before leaving, what to do after arrival, and skincare categories I can buy locally in Shanghai.', {
           canonicalIntent: {
             intent: 'travel_planning',
             entities: {
@@ -635,17 +637,106 @@ test('travel skills pipeline: local product wording triggers both reco preview a
             barrierStatus: 'stable',
             goals: ['hydration'],
           },
+          travelLocalProductAuthorityLoader: async () => ({
+            ok: true,
+            reason: 'ok',
+            candidates: [
+              {
+                product_id: 'ext_cn_spf_1',
+                display_name: 'Shanghai Local SPF50 Fluid',
+                name: 'Shanghai Local SPF50 Fluid',
+                brand: 'CN Sun Lab',
+                category: 'Sunscreen',
+                step: 'Sun protection',
+                price: 128,
+                currency: 'CNY',
+                image_url: 'https://example.com/spf.jpg',
+                canonical_url: 'https://example.com/spf',
+                product_source: 'catalog',
+                authority_status: 'grounded',
+                match_status: 'catalog_verified',
+                reasons: ['Local catalog authority match for sun protection.'],
+              },
+            ],
+            meta: {
+              market: 'CN',
+              market_source: 'destination_text',
+              coverage_status: 'grounded',
+              query_count: 3,
+              candidate_count: 2,
+              selected_count: 1,
+            },
+          }),
         }),
       );
 
       const intentTrace = out.travel_skills_trace.find((row) => row.skill === 'travel_intent_profile_skill');
+      const authorityTrace = out.travel_skills_trace.find((row) => row.skill === 'travel_local_product_authority_skill');
       const recoTrace = out.travel_skills_trace.find((row) => row.skill === 'travel_reco_preview_skill');
       const storeTrace = out.travel_skills_trace.find((row) => row.skill === 'travel_store_channel_skill');
       assert.equal(intentTrace?.meta?.departure_region, 'Seattle');
+      assert.equal(authorityTrace?.status, 'ok');
+      assert.equal(authorityTrace?.meta?.market, 'CN');
+      assert.equal(out.travel_skill_invocation_matrix?.local_product_authority_coverage_status, 'grounded');
       assert.notEqual(recoTrace?.meta?.reason, 'trigger_not_matched');
       assert.notEqual(storeTrace?.meta?.reason, 'trigger_not_matched');
       assert.equal(out.travel_skill_invocation_matrix?.reco_called, true);
       assert.equal(out.travel_skill_invocation_matrix?.store_called, true);
+      assert.equal(out.travel_readiness?.shopping_preview?.coverage_status, 'grounded');
+      assert.equal(out.travel_readiness?.shopping_preview?.products?.[0]?.name, 'Shanghai Local SPF50 Fluid');
+    },
+  );
+});
+
+test('travel skills pipeline: category-only rows do not become fake reco products', async () => {
+  await withEnv(
+    {
+      TRAVEL_KB_ASYNC_BACKFILL_ENABLED: 'false',
+      AURORA_TRAVEL_LLM_CALIBRATION_ENABLED: 'false',
+    },
+    async () => {
+      const { runTravelPipeline } = loadFreshPipeline();
+      const out = await runTravelPipeline(
+        buildInput('What skincare categories can I buy locally in Shanghai?', {
+          canonicalIntent: {
+            intent: 'travel_planning',
+            entities: {
+              destination: 'Shanghai',
+              departure_region: 'Seattle',
+              date_range: { start: '2026-04-20', end: '2026-04-24' },
+            },
+          },
+          profile: {
+            skinType: 'combination',
+            sensitivity: 'medium',
+            barrierStatus: 'stable',
+            goals: ['hydration'],
+          },
+          travelLocalProductAuthorityLoader: async () => ({
+            ok: false,
+            reason: 'coverage_miss',
+            candidates: [],
+            meta: {
+              market: 'CN',
+              market_source: 'destination_text',
+              coverage_status: 'coverage_miss',
+              query_count: 3,
+              candidate_count: 0,
+              selected_count: 0,
+            },
+          }),
+        }),
+      );
+
+      const authorityTrace = out.travel_skills_trace.find((row) => row.skill === 'travel_local_product_authority_skill');
+      const recoTrace = out.travel_skills_trace.find((row) => row.skill === 'travel_reco_preview_skill');
+      assert.equal(authorityTrace?.status, 'skip');
+      assert.equal(authorityTrace?.meta?.coverage_status, 'coverage_miss');
+      assert.equal(out.travel_readiness?.shopping_preview?.coverage_status, 'category_only');
+      assert.equal(recoTrace?.status, 'skip');
+      assert.equal(recoTrace?.meta?.reason, 'no_products');
+      assert.equal(out.travel_skill_invocation_matrix?.reco_called, true);
+      assert.equal(out.travel_skill_invocation_matrix?.reco_skip_reason, 'no_products');
     },
   );
 });

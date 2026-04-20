@@ -195,7 +195,7 @@ function buildSeedRow(item, extractDoc) {
     ingredient_name: item?.ingredient_name || null,
     seed_id: seedId,
     brand: item?.target_brand || null,
-    market: 'US',
+    market: normalizeNonEmptyString(item?.market).toUpperCase() || 'US',
     tool: 'creator_agents',
     status: 'active',
     domain: domain || null,

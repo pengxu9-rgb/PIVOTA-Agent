@@ -584,15 +584,24 @@ function normalizePreviewProducts(recommendationCandidates, language) {
       product_id: normalizeText(sku.product_id || sku.productId, 120) || null,
       name,
       brand: normalizeText(sku.brand, 80) || null,
-      category: normalizeText(row.step, 80) || null,
+      category: normalizeText(row.step, 80) || normalizeText(sku.category || sku.product_type, 80) || null,
       reasons,
       product_source: 'catalog',
       authority_status: 'grounded',
       match_status: 'catalog_verified',
       display_mode: 'product_card',
+      pdp_open: isPlainObject(row.pdp_open)
+        ? row.pdp_open
+        : {
+            merchant_id: normalizeText(sku.merchant_id || row.merchant_id, 80) || 'external_seed',
+            product_id: normalizeText(sku.product_id || sku.productId || row.product_id || row.productId, 120) || null,
+            canonical_url: normalizeText(sku.canonical_url || sku.url || row.canonical_url || row.url, 500) || null,
+          },
       is_grounded: true,
-      price: null,
-      currency: null,
+      price: toNumber(sku.price || row.price),
+      currency: normalizeText(sku.currency || row.currency, 12) || null,
+      image_url: normalizeText(sku.image_url || row.image_url, 500) || null,
+      canonical_url: normalizeText(sku.canonical_url || sku.url || row.canonical_url || row.url, 500) || null,
     });
     if (out.length >= 3) break;
   }
@@ -1274,6 +1283,7 @@ function buildTravelReadiness({
     shopping_preview: {
       mode: shoppingPreviewMode,
       coverage_status: previewProductsFromCatalog.length ? 'grounded' : 'category_only',
+      grounded_count: previewProductsFromCatalog.length,
       products: previewProducts,
       buying_channels: ['beauty_retail', 'pharmacy', 'department_store', 'duty_free', 'ecommerce'],
       city_hint: destinationText || null,

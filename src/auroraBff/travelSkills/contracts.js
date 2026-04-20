@@ -7,6 +7,7 @@ const { getTravelAlerts } = require('../travelAlertsProvider');
 const { buildTravelReadiness, __internal: { buildCategorizedKit: _buildCategorizedKit } } = require('../travelReadinessBuilder');
 const { calibrateTravelReadinessWithLlm } = require('../travelLlmCalibrator');
 const { rewriteTravelAssistantTextWithLlm } = require('../travelFinalAssistantRewriter');
+const { loadTravelLocalProductAuthorityCandidates } = require('../travelLocalProductAuthority');
 const { composeTravelReply } = require('../travelReplyComposer');
 const { getTravelContextKbEntry, upsertTravelContextKbEntry } = require('../travelKbStore');
 const { evaluateTravelKbBackfill, buildTravelKbUpsertEntry } = require('../travelKbPolicy');
@@ -241,11 +242,11 @@ function shouldTriggerRecoPreview(message) {
   const lower = text.toLowerCase();
   const asksStore =
     /\b(where to buy|where can i buy|which store|availability|in stock|offer|channel|pharmacy|sephora|drugstore)\b/i.test(lower) ||
-    /\b(buy locally|local(?:ly)? available|local products?|local skincare|products? (?:or categories )?i can buy locally|skincare (?:i|we) can buy locally)\b/i.test(lower) ||
-    /(哪里买|在哪里买|门店|渠道|有货|库存|优惠|折扣|药妆店|专柜)/.test(text);
+    /\b(buy locally|local(?:ly)? available|local (?:products?|brands?|skincare)|specific (?:products?|brands?)|products? (?:or categories )?i can buy locally|skincare (?:products?|categories)?\s*(?:(?:i|we) can|can i) buy locally|brands? (?:(?:i|we) can|can i) buy locally)\b/i.test(lower) ||
+    /(哪里买|在哪里买|门店|渠道|有货|库存|优惠|折扣|药妆店|专柜|本地品牌|当地品牌|具体产品|具体品牌)/.test(text);
   const asksProducts =
-    /\b(what should i buy|what to buy|what should i bring|what to pack|packing list|product types|recommend products|products? (?:or categories )?i can buy locally|skincare (?:i|we) can buy locally|local skincare products?)\b/i.test(lower) ||
-    /(买什么|带什么|带哪些|囤什么|准备哪些|推荐产品|产品推荐|护肤包|本地.*护肤|当地.*护肤)/.test(text);
+    /\b(what should i buy|what to buy|what should i bring|what to pack|packing list|product types|recommend products|specific (?:products?|brands?)|local (?:products?|brands?|skincare)|products? (?:or categories )?i can buy locally|skincare (?:products?|categories)?\s*(?:(?:i|we) can|can i) buy locally|brands? (?:(?:i|we) can|can i) buy locally|what (?:skincare )?(?:brands?|products?|categories) (?:should i|can i) buy)\b/i.test(lower) ||
+    /(买什么|带什么|带哪些|囤什么|准备哪些|推荐产品|产品推荐|护肤包|本地.*护肤|当地.*护肤|本地品牌|当地品牌|具体产品|具体品牌|可以买什么)/.test(text);
   if (asksStore && !asksProducts) return false;
   return (
     asksProducts
@@ -258,8 +259,8 @@ function shouldTriggerStoreChannel(message) {
   const lower = text.toLowerCase();
   return (
     /\b(where to buy|where can i buy|which store|store nearby|availability|in stock|offer|discount|channel|pharmacy|drugstore|duty free)\b/i.test(lower) ||
-    /\b(buy locally|local(?:ly)? available|local stores?|local pharmacies?|local retailers?|local products?|local skincare|products? (?:or categories )?i can buy locally|skincare (?:i|we) can buy locally)\b/i.test(lower) ||
-    /(哪里买|在哪里买|附近门店|渠道|有货|库存|买得到|优惠|折扣|药妆店|免税店|专柜)/.test(text)
+    /\b(buy locally|local(?:ly)? available|local stores?|local pharmacies?|local retailers?|local products?|local brands?|local skincare|specific (?:products?|brands?)|products? (?:or categories )?i can buy locally|skincare (?:products?|categories)?\s*(?:(?:i|we) can|can i) buy locally|brands? (?:(?:i|we) can|can i) buy locally)\b/i.test(lower) ||
+    /(哪里买|在哪里买|附近门店|渠道|有货|库存|买得到|优惠|折扣|药妆店|免税店|专柜|本地品牌|当地品牌|具体产品|具体品牌)/.test(text)
   );
 }
 
@@ -376,13 +377,25 @@ function inferPseudoIngredientTargets(readiness) {
 function buildRecoPreview({ travelReadiness, profile, language }) {
   const readiness = isPlainObject(travelReadiness) ? travelReadiness : {};
   const shoppingPreview = isPlainObject(readiness.shopping_preview) ? readiness.shopping_preview : {};
-  const seedProducts = Array.isArray(shoppingPreview.products) ? shoppingPreview.products : [];
+  const seedProducts = (Array.isArray(shoppingPreview.products) ? shoppingPreview.products : [])
+    .filter((product) => {
+      if (!isPlainObject(product)) return false;
+      const source = normalizeText(product.product_source || product.productSource, 80).toLowerCase();
+      const authority = normalizeText(product.authority_status || product.authorityStatus, 80).toLowerCase();
+      const match = normalizeText(product.match_status || product.matchStatus, 80).toLowerCase();
+      return (
+        product.is_grounded === true ||
+        source === 'catalog' ||
+        authority === 'grounded' ||
+        match === 'catalog_verified'
+      );
+    });
 
   if (!seedProducts.length) {
     return {
       source: 'travel_readiness_only',
       recommendations: [],
-      confidence: { score: 0.45, level: 'low', rationale: ['no_seed_products'] },
+      confidence: { score: 0.45, level: 'low', rationale: ['no_grounded_seed_products'] },
     };
   }
 
@@ -721,6 +734,10 @@ async function runTravelPipeline(input = {}) {
     typeof input.travelFinalRewriteGeminiGenerateContent === 'function'
       ? input.travelFinalRewriteGeminiGenerateContent
       : null;
+  const travelLocalProductAuthorityLoader =
+    typeof input.travelLocalProductAuthorityLoader === 'function'
+      ? input.travelLocalProductAuthorityLoader
+      : loadTravelLocalProductAuthorityCandidates;
 
   let kbHit = false;
   let kbWriteQueued = false;
@@ -743,6 +760,7 @@ async function runTravelPipeline(input = {}) {
   let finalRewriteUsed = false;
   let finalRewriteReason = null;
   let finalRewriteSourceMeta = null;
+  let travelLocalAuthorityResult = null;
 
   const intentStartedAt = Date.now();
   const profileCtx = pickTravelContextFromProfile(profile);
@@ -768,6 +786,9 @@ async function runTravelPipeline(input = {}) {
         : null;
   const monthBucket = monthBucketFromDate(startDate || endDate, nowMs);
   const questionHash = sha1(String(message || '').trim().toLowerCase());
+  const recoTriggeredByMessage = shouldTriggerRecoPreview(message);
+  const storeTriggeredByMessage = shouldTriggerStoreChannel(message);
+  const localProductAuthorityTriggered = recoTriggeredByMessage || storeTriggeredByMessage;
   const requiredFields = Array.isArray(plannerDecision.required_fields) ? plannerDecision.required_fields.slice(0, 8) : [];
 
   pushTrace(trace, {
@@ -1414,6 +1435,85 @@ async function runTravelPipeline(input = {}) {
     });
   }
 
+  const localAuthorityStartedAt = Date.now();
+  if (!destination) {
+    pushTrace(trace, {
+      skill: 'travel_local_product_authority_skill',
+      status: 'skip',
+      startedAtMs: localAuthorityStartedAt,
+      meta: { reason: 'destination_missing' },
+    });
+  } else if (!localProductAuthorityTriggered) {
+    pushTrace(trace, {
+      skill: 'travel_local_product_authority_skill',
+      status: 'skip',
+      startedAtMs: localAuthorityStartedAt,
+      meta: { reason: 'trigger_not_matched' },
+    });
+  } else {
+    try {
+      travelLocalAuthorityResult = await travelLocalProductAuthorityLoader({
+        destination,
+        destinationPlace,
+        travelReadiness,
+        message,
+        profile,
+        limit: 6,
+      });
+      const authorityCandidates = Array.isArray(travelLocalAuthorityResult?.candidates)
+        ? travelLocalAuthorityResult.candidates
+        : [];
+      const authorityMeta = isPlainObject(travelLocalAuthorityResult?.meta)
+        ? travelLocalAuthorityResult.meta
+        : {};
+      if (authorityCandidates.length) {
+        travelReadiness = buildTravelReadiness({
+          language,
+          profile,
+          recentLogs: Array.isArray(input.recentLogs) ? input.recentLogs : [],
+          destination,
+          startDate,
+          endDate,
+          destinationWeather,
+          originWeather,
+          originContext: {
+            label: originRegion || (originPlace && originPlace.label) || null,
+            source: originSource,
+          },
+          travelAlerts: Array.isArray(alertsPayload && alertsPayload.alerts) ? alertsPayload.alerts : [],
+          epiPayload,
+          recommendationCandidates: authorityCandidates,
+          nowMs,
+        });
+        travelReadiness = mergeKbPrefillIntoReadiness(travelReadiness, kbEntry);
+      }
+      pushTrace(trace, {
+        skill: 'travel_local_product_authority_skill',
+        status: authorityCandidates.length ? 'ok' : 'skip',
+        startedAtMs: localAuthorityStartedAt,
+        meta: {
+          reason: normalizeText(travelLocalAuthorityResult?.reason, 120) || (authorityCandidates.length ? 'ok' : 'coverage_miss'),
+          market: normalizeText(authorityMeta.market, 12) || null,
+          market_source: normalizeText(authorityMeta.market_source, 60) || null,
+          coverage_status: normalizeText(authorityMeta.coverage_status, 60) || null,
+          query_count: toNumber(authorityMeta.query_count),
+          candidate_count: toNumber(authorityMeta.candidate_count),
+          selected_count: toNumber(authorityMeta.selected_count),
+          stage_counts: Array.isArray(authorityMeta.stage_counts) ? authorityMeta.stage_counts.slice(0, 6) : [],
+        },
+      });
+    } catch (err) {
+      pushTrace(trace, {
+        skill: 'travel_local_product_authority_skill',
+        status: 'error',
+        startedAtMs: localAuthorityStartedAt,
+        meta: {
+          reason: normalizeText(err && (err.code || err.message), 120) || 'error',
+        },
+      });
+    }
+  }
+
   const llmStartedAt = Date.now();
   const llmDecision = decideLlmCalibrationTrigger({ destination });
   const travelAnalysisSnapshot = buildAnalysisContextSnapshotV1({
@@ -1565,7 +1665,6 @@ async function runTravelPipeline(input = {}) {
   }
 
   const recoStartedAt = Date.now();
-  const recoTriggeredByMessage = shouldTriggerRecoPreview(message);
   if (!destination) {
     recoSkipReason = normalizeRecoSkipReason('destination_missing');
     recordAuroraTravelSkillSkip({ skill: 'travel_reco_preview_skill', reason: recoSkipReason });
@@ -1630,7 +1729,6 @@ async function runTravelPipeline(input = {}) {
   }
 
   const storeStartedAt = Date.now();
-  const storeTriggeredByMessage = shouldTriggerStoreChannel(message);
   if (!destination) {
     storeSkipReason = normalizeStoreSkipReason('destination_missing');
     recordAuroraTravelSkillSkip({ skill: 'travel_store_channel_skill', reason: storeSkipReason });
@@ -1971,6 +2069,12 @@ async function runTravelPipeline(input = {}) {
   const invocationMatrix = {
     llm_called: llmCalled,
     llm_skip_reason: llmCalled ? null : llmSkipReason,
+    local_product_authority_called: Boolean(localProductAuthorityTriggered && destination),
+    local_product_authority_reason: normalizeText(travelLocalAuthorityResult?.reason, 120) ||
+      (localProductAuthorityTriggered ? null : 'trigger_not_matched'),
+    local_product_authority_market: normalizeText(travelLocalAuthorityResult?.meta?.market, 12) || null,
+    local_product_authority_coverage_status: normalizeText(travelLocalAuthorityResult?.meta?.coverage_status, 60) || null,
+    local_product_authority_selected_count: toNumber(travelLocalAuthorityResult?.meta?.selected_count),
     reco_called: recoCalled,
     reco_skip_reason: recoCalled ? recoSkipReason : recoSkipReason || null,
     store_called: storeCalled,
