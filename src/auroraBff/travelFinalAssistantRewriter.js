@@ -688,7 +688,7 @@ function validateTravelFinalRewriteText(text, { promptInput } = {}) {
     return { ok: false, reason: 'rewrite_missing_local_buying_boundary' };
   }
   if (!matchesAny(assistantText, [
-    /\b(because|so|which|helps|support|reduce|avoid|due to|ties to|for that reason)\b/i,
+    /\b(because|so|which|helps|support|reduce|avoid|due to|ties to|for that reason|means?|can lead to|may lead to|as a result|therefore|compensate|compensates|trigger|triggers|to prevent|so that)\b/i,
     /(因为|所以|帮助|支持|减少|避免|对应|原因)/i,
   ])) {
     return { ok: false, reason: 'rewrite_missing_reasoning_links' };

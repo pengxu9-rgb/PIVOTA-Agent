@@ -567,6 +567,18 @@ function buildTravelProductUseReasons({ language, roleId, category } = {}) {
   const role = normalizeText(roleId, 80).toLowerCase();
   const cat = normalizeText(category, 120).toLowerCase();
   const haystack = `${role} ${cat}`;
+  if (/recovery_mask/.test(role) || (/mask|recovery|soothing|修护|舒缓|面膜/.test(haystack) && !/serum|essence|ampoule|精华|安瓶/.test(role))) {
+    return [
+      t(language, '仅作为飞行后或高 UV 户外日后的可选夜间恢复；已耐受再用。', 'Use only as optional night recovery after the flight or high-UV outdoor days if already tolerated.'),
+      t(language, '不作为每日必需步骤，避免旅行中突然增加刺激。', 'Do not treat it as a daily required step; avoid adding surprise irritation while traveling.'),
+    ];
+  }
+  if (/body_lip_hand|body|lip|hand|身体|唇|手/.test(role) || (/body|lip|hand|身体|唇|手/.test(haystack) && !/sun_protection/.test(role))) {
+    return [
+      t(language, '用于唇部、手部或暴露皮肤，因为机舱干燥和 UV 不只影响脸部。', 'Use for lips, hands, or exposed skin because cabin dryness and UV do not only affect the face.'),
+      t(language, '适合随身携带，在飞行和当地通勤时补充。', 'Fits carry-on use for the flight and local commuting.'),
+    ];
+  }
   if (/sun|spf|uv|sunscreen|防晒/.test(haystack)) {
     return [
       t(language, '用于 AM 和户外通勤防晒；户外时间长时按暴露时长补涂。', 'Use this as the AM/outdoor SPF step; reapply based on outdoor exposure time.'),
@@ -583,18 +595,6 @@ function buildTravelProductUseReasons({ language, roleId, category } = {}) {
     return [
       t(language, '用于保湿层下面，帮助补水但不把白天步骤变厚重。', 'Use under moisturizer to add hydration without making daytime layers heavy.'),
       t(language, '适合机舱后和落地前 48 小时的轻量补水。', 'Fits post-flight and first-48h lightweight hydration.'),
-    ];
-  }
-  if (/mask|recovery|soothing|修护|舒缓|面膜/.test(haystack)) {
-    return [
-      t(language, '仅作为飞行后或高 UV 户外日后的可选夜间恢复；已耐受再用。', 'Use only as optional night recovery after the flight or high-UV outdoor days if already tolerated.'),
-      t(language, '不作为每日必需步骤，避免旅行中突然增加刺激。', 'Do not treat it as a daily required step; avoid adding surprise irritation while traveling.'),
-    ];
-  }
-  if (/body|lip|hand|身体|唇|手/.test(haystack)) {
-    return [
-      t(language, '用于唇部、手部或暴露皮肤，因为机舱干燥和 UV 不只影响脸部。', 'Use for lips, hands, or exposed skin because cabin dryness and UV do not only affect the face.'),
-      t(language, '适合随身携带，在飞行和当地通勤时补充。', 'Fits carry-on use for the flight and local commuting.'),
     ];
   }
   if (/cleanser|clean|洁面|卸妆/.test(haystack)) {
