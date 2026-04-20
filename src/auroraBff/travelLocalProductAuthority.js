@@ -307,6 +307,13 @@ function productIdentityText(product) {
   ].map((value) => normalizeText(value, 220).toLowerCase()).filter(Boolean).join(' ');
 }
 
+function productTitleText(product) {
+  return [
+    product?.title,
+    product?.name,
+  ].map((value) => normalizeText(value, 220).toLowerCase()).filter(Boolean).join(' ');
+}
+
 function hasStrongRoleMatch(product, roleId) {
   const matcher = STRONG_ROLE_MATCHERS[roleId];
   if (!matcher) return true;
@@ -325,6 +332,13 @@ function getRoleIncompatibilityReason(product, roleId) {
 
   if (roleId === 'lightweight_moisturizer' && /\b(?:hand|hands|lip|lips|body)\b/i.test(identityText)) {
     return 'body_lip_hand_role_mismatch';
+  }
+  if (
+    roleId === 'lightweight_moisturizer' &&
+    /\b(?:huile|dry\s+oil|face\s+oil|body\s+oil|facial\s+oil|oil)\b/i.test(productTitleText(product)) &&
+    !/\boil[-\s]?free\b/i.test(productTitleText(product))
+  ) {
+    return 'oil_role_mismatch';
   }
 
   if (roleId === 'recovery_mask') {
