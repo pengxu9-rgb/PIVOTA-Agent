@@ -3135,6 +3135,54 @@ function hasSavingsPresentationFields(source) {
   });
 }
 
+function stripSavingsPresentationFields(source) {
+  if (!source || typeof source !== 'object') return source;
+  const out = { ...source };
+  SAVINGS_PRESENTATION_FIELDS.forEach((field) => {
+    delete out[field];
+  });
+  if (Array.isArray(out.variants)) {
+    out.variants = out.variants.map((variant) => {
+      if (!variant || typeof variant !== 'object') return variant;
+      const cleanVariant = { ...variant };
+      SAVINGS_PRESENTATION_FIELDS.forEach((field) => {
+        delete cleanVariant[field];
+      });
+      return cleanVariant;
+    });
+  }
+  return out;
+}
+
+function buildExternalSeedOfferProductFromMember(member) {
+  if (!member || typeof member !== 'object') return null;
+  const merchantId = String(member.merchant_id || member.merchantId || '').trim();
+  if (merchantId !== EXTERNAL_SEED_MERCHANT_ID) return null;
+  const productId = String(member.product_id || member.productId || '').trim();
+  const payload =
+    member.source_payload && typeof member.source_payload === 'object'
+      ? member.source_payload
+      : member.sourcePayload && typeof member.sourcePayload === 'object'
+        ? member.sourcePayload
+        : null;
+  if (!productId || !payload) return null;
+  return attachProductDetailSource(
+    normalizeProductDetailPrice(
+      stripSavingsPresentationFields({
+        ...payload,
+        merchant_id: merchantId,
+        product_id: String(payload.product_id || payload.id || productId).trim() || productId,
+        id: String(payload.id || payload.product_id || productId).trim() || productId,
+        source: payload.source || 'external_seed',
+        external_product_id:
+          String(payload.external_product_id || payload.externalProductId || productId).trim() ||
+          productId,
+      }),
+    ),
+    'identity_graph',
+  );
+}
+
 function getVariantEvidenceKeys(variant) {
   if (!variant || typeof variant !== 'object') return [];
   return [
@@ -3842,6 +3890,12 @@ async function buildOffersFromGroupMembers(args) {
       source_listing_ref: m?.source_listing_ref || m?.sourceListingRef || undefined,
       source_kind: m?.source_kind || m?.sourceKind || undefined,
       source_tier: m?.source_tier || m?.sourceTier || undefined,
+      source_payload:
+        m?.source_payload && typeof m.source_payload === 'object'
+          ? m.source_payload
+          : m?.sourcePayload && typeof m.sourcePayload === 'object'
+            ? m.sourcePayload
+            : undefined,
       variant_axes: m?.variant_axes && typeof m.variant_axes === 'object' ? m.variant_axes : undefined,
       is_primary: Boolean(m?.is_primary || m?.isPrimary),
     }))
@@ -3873,16 +3927,23 @@ async function buildOffersFromGroupMembers(args) {
     // eslint-disable-next-line no-await-in-loop
     const results = await Promise.all(
       chunk.map(async (m) => {
-        const product = await fetchProductDetailForOffers({
-          merchantId: m.merchant_id,
-          productId: m.product_id,
-          checkoutToken,
-          bypassCache,
-        }).catch(() => null);
-        const hydratedProduct = await hydrateSavingsPresentationFromUpstream({
-          product,
-          checkoutToken,
-        }).catch(() => product);
+        const memberPayloadProduct = buildExternalSeedOfferProductFromMember(m);
+        const product =
+          memberPayloadProduct ||
+          (await fetchProductDetailForOffers({
+            merchantId: m.merchant_id,
+            productId: m.product_id,
+            checkoutToken,
+            bypassCache,
+            skipUpstreamFallback: m.merchant_id === EXTERNAL_SEED_MERCHANT_ID,
+          }).catch(() => null));
+        const hydratedProduct =
+          m.merchant_id === EXTERNAL_SEED_MERCHANT_ID
+            ? product
+            : await hydrateSavingsPresentationFromUpstream({
+                product,
+                checkoutToken,
+              }).catch(() => product);
         return hydratedProduct ? { member: m, product: hydratedProduct } : null;
       }),
     );

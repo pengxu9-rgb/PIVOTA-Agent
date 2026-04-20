@@ -302,6 +302,7 @@ function buildGroupMember(row) {
     product_id: asString(row?.product_id),
     source_kind: asString(row?.source_kind),
     source_tier: asString(row?.source_tier),
+    ...(Object.keys(payload).length ? { source_payload: payload } : {}),
     ...(merchantName ? { merchant_name: merchantName } : {}),
     ...(Object.keys(variantAxes).length ? { variant_axes: variantAxes } : {}),
     is_primary: row?.is_primary === true,
