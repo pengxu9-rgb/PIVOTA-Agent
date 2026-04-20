@@ -8,10 +8,12 @@ const axios = require('axios');
 const { query, withClient } = require('../src/db');
 const { lookupExternalSeedImageOverride } = require('../src/services/externalSeedImageOverrides');
 const {
+  EXTERNAL_SEED_MERCHANT_ID,
   ensureJsonObject,
   collectSeedImageUrls,
   normalizeSeedVariants,
   normalizeSeedAvailability,
+  buildExternalSeedProduct,
 } = require('../src/services/externalSeedProducts');
 const { buildExternalSeedRecallDoc } = require('../src/services/externalSeedRecall');
 const { enrichExternalSeedRowIngredients } = require('../src/services/externalSeedIngredientEnrichment');
@@ -60,6 +62,40 @@ function readDelimitedIdsFile(filePath) {
 function normalizeNonEmptyString(value) {
   const next = String(value || '').trim();
   return next || '';
+}
+
+function decodeBasicHtmlEntities(value) {
+  const raw = normalizeNonEmptyString(value);
+  if (!raw) return '';
+  return raw
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;|&rsquo;|&lsquo;/gi, "'")
+    .replace(/&rdquo;|&ldquo;/gi, '"')
+    .replace(/&ndash;|&mdash;/gi, ' - ')
+    .replace(/&hellip;/gi, '...')
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex) => {
+      const codePoint = Number.parseInt(hex, 16);
+      return Number.isFinite(codePoint) ? String.fromCodePoint(codePoint) : '';
+    })
+    .replace(/&#(\d+);/g, (_, dec) => {
+      const codePoint = Number.parseInt(dec, 10);
+      return Number.isFinite(codePoint) ? String.fromCodePoint(codePoint) : '';
+    });
+}
+
+function normalizePdpCopy(value) {
+  return decodeBasicHtmlEntities(value)
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[\u201c\u201d]/g, '"')
+    .replace(/[\u2013\u2014]/g, ' - ')
+    .replace(/\r/g, '\n')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n[ \t]+/g, '\n')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 function normalizeUrlLike(value) {
@@ -502,7 +538,10 @@ async function validateNextRowImageHealth(nextRow) {
 function normalizeDetailSectionHeading(value) {
   const heading = normalizeNonEmptyString(value);
   if (!heading) return '';
+  if (/^(?:overview|what it is|give it to me quick)$/i.test(heading)) return 'Overview';
   if (/^(?:product details?|details?|about(?: the product)?|description)$/i.test(heading)) return 'Details';
+  if (/^(?:features?|tell me more)$/i.test(heading)) return 'Details';
+  if (/^(?:dimensions?|specifications?)$/i.test(heading)) return 'Dimensions';
   if (/^(?:benefits?|why it works|what it does|why we love it)$/i.test(heading)) return 'Benefits';
   if (/^(?:key ingredients?|highlight(?:ed)? ingredients?|ingredients story)$/i.test(heading)) {
     return 'Key Ingredients';
@@ -521,7 +560,7 @@ function normalizeDetailSectionHeading(value) {
 }
 
 function stripTrailingPdpSectionNoise(value, { removeFreeFrom = false } = {}) {
-  let next = normalizeNonEmptyString(value);
+  let next = normalizePdpCopy(value);
   if (!next) return '';
   const stopPatterns = [
     /\bFull Ingredients\b/i,
@@ -542,9 +581,154 @@ function stripTrailingPdpSectionNoise(value, { removeFreeFrom = false } = {}) {
   return next;
 }
 
+function isStorefrontBoilerplateDescription(value) {
+  const normalized = normalizePdpCopy(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+  if (!normalized) return false;
+  return (
+    normalized.includes('fenty beauty by rihanna was created') &&
+    normalized.includes('unmatched offering of shades and colors') &&
+    normalized.includes('browse our foundation line') &&
+    normalized.includes('lip colors')
+  );
+}
+
+function isPromotionalPdpDetailsSection(heading, body) {
+  const normalizedHeading = normalizePdpCopy(heading)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+  const normalizedBody = normalizePdpCopy(body)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+  if (!normalizedHeading || !normalizedBody) return false;
+  return (
+    normalizedHeading === 'heavy on the hydration' &&
+    /make a splash in juicy makeup skincare haircare must haves/.test(normalizedBody)
+  );
+}
+
+function isReviewFormPdpDetailsSection(heading, body) {
+  const normalizedHeading = normalizePdpCopy(heading)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+  const normalizedBody = normalizePdpCopy(body)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+  if (!normalizedHeading || !normalizedBody) return false;
+  return (
+    normalizedHeading === 'tell us about yourself' &&
+    normalizedBody.includes('we ll never show your full name or email') &&
+    normalizedBody.includes('enter a valid email') &&
+    normalizedBody.includes('please fill all of the required fields')
+  );
+}
+
+function findMarkerRange(value, pattern) {
+  const text = normalizePdpCopy(value);
+  const match = text.match(pattern);
+  return match ? { start: match.index, end: match.index + match[0].length } : null;
+}
+
+function minPositiveIndex(...indexes) {
+  return indexes.filter((value) => Number.isInteger(value) && value >= 0).sort((a, b) => a - b)[0] ?? -1;
+}
+
+function cleanEncodedAccordionSegment(value) {
+  return normalizePdpCopy(value)
+    .replace(/^\s*[-*]\s*/gm, '- ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function expandEncodedAccordionSection(item) {
+  const body = normalizePdpCopy(item?.body);
+  if (!body) return [item];
+  const quickMarker = findMarkerRange(body, /\bGIVE IT TO ME QUICK\s*:\s*/i);
+  const tellMarker = findMarkerRange(body, /\bTELL ME MORE\s*:\s*/i);
+  if (!quickMarker && !tellMarker) return [item];
+
+  const dimensionsMarker = findMarkerRange(body, /\bDimensions(?:\s+(?:with base|mirror only)|\s*-\s*mirror only)?\s*:\s*/i);
+  const sourceKind = normalizeNonEmptyString(item?.source_kind || item?.sourceKind) || 'unknown';
+  const out = [];
+
+  if (quickMarker) {
+    const quickEnd = minPositiveIndex(
+      tellMarker && tellMarker.start > quickMarker.end ? tellMarker.start : -1,
+      dimensionsMarker && dimensionsMarker.start > quickMarker.end ? dimensionsMarker.start : -1,
+    );
+    const overviewBody = cleanEncodedAccordionSegment(body.slice(quickMarker.end, quickEnd === -1 ? body.length : quickEnd));
+    if (overviewBody) {
+      out.push({
+        heading: 'Overview',
+        body: overviewBody,
+        source_kind: sourceKind,
+      });
+    }
+  }
+
+  if (tellMarker) {
+    const detailsEnd =
+      dimensionsMarker && dimensionsMarker.start > tellMarker.end ? dimensionsMarker.start : body.length;
+    const detailsBody = cleanEncodedAccordionSegment(body.slice(tellMarker.end, detailsEnd));
+    if (detailsBody) {
+      out.push({
+        heading: 'Details',
+        body: detailsBody,
+        source_kind: sourceKind,
+      });
+    }
+  }
+
+  if (dimensionsMarker) {
+    const dimensionsBody = cleanEncodedAccordionSegment(body.slice(dimensionsMarker.start));
+    if (dimensionsBody) {
+      out.push({
+        heading: 'Dimensions',
+        body: dimensionsBody,
+        source_kind: sourceKind,
+      });
+    }
+  }
+
+  return out.length > 0 ? out : [item];
+}
+
+function cleanPdpDescriptionCandidate(value, detailsSections = []) {
+  let next = normalizePdpCopy(value);
+  if (!next || isStorefrontBoilerplateDescription(next)) return '';
+
+  const quickMarker = findMarkerRange(next, /\bGIVE IT TO ME QUICK\s*:\s*/i);
+  if (quickMarker) {
+    const tellMarker = findMarkerRange(next, /\bTELL ME MORE\s*:\s*/i);
+    const dimensionsMarker = findMarkerRange(next, /\bDimensions(?:\s+(?:with base|mirror only)|\s*-\s*mirror only)?\s*:\s*/i);
+    const quickEnd = minPositiveIndex(
+      tellMarker && tellMarker.start > quickMarker.end ? tellMarker.start : -1,
+      dimensionsMarker && dimensionsMarker.start > quickMarker.end ? dimensionsMarker.start : -1,
+    );
+    next = cleanEncodedAccordionSegment(next.slice(quickMarker.end, quickEnd === -1 ? next.length : quickEnd));
+  }
+
+  if (/\bTELL ME MORE\s*:/i.test(next) || /\bDimensions(?:\s+(?:with base|mirror only)|\s*-\s*mirror only)?\s*:/i.test(next)) {
+    const overview = detailsSections.find((section) => section.heading === 'Overview');
+    if (overview?.body) return overview.body;
+    return '';
+  }
+
+  return next;
+}
+
 function cleanPdpDetailsSectionBody(heading, value) {
-  let next = normalizeNonEmptyString(value);
+  let next = normalizePdpCopy(value);
   if (!next) return '';
+  if (isStorefrontBoilerplateDescription(next)) return '';
+  if (isPromotionalPdpDetailsSection(heading, next)) return '';
+  if (isReviewFormPdpDetailsSection(heading, next)) return '';
   if (heading === 'Ingredients') return cleanPdpIngredientsRaw(next);
   if (heading === 'How to Use' || heading === 'FAQ') return next;
   return stripTrailingPdpSectionNoise(next, { removeFreeFrom: true });
@@ -582,36 +766,40 @@ function normalizeDetailsSections(value, maxItems = 24) {
   const items = Array.isArray(value) ? value : [];
   const out = [];
   const seen = new Set();
-  for (const item of items) {
-    let heading = normalizeDetailSectionHeading(item?.heading);
-    let body = normalizeNonEmptyString(item?.body);
-    const sourceKind = normalizeNonEmptyString(item?.source_kind || item?.sourceKind) || 'unknown';
-    if (!heading || !body) continue;
-    if (heading === 'Details' && /^Benefits?\s*:/i.test(body)) {
-      heading = 'Benefits';
-      body = body.replace(/^Benefits?\s*:\s*/i, '').trim();
-    }
-    body = cleanPdpDetailsSectionBody(heading, body);
-    if (!body) continue;
-    const key = `${sectionContentSignature(heading, body)}|${sourceKind.toLowerCase()}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    const duplicateIndex = findNearDuplicateSectionIndex(out, heading, body);
-    if (duplicateIndex !== -1) {
-      if (body.length > out[duplicateIndex].body.length) {
-        out[duplicateIndex] = {
-          heading,
-          body,
-          source_kind: sourceKind,
-        };
+  for (const originalItem of items) {
+    const expandedItems = expandEncodedAccordionSection(originalItem);
+    for (const item of expandedItems) {
+      let heading = normalizeDetailSectionHeading(item?.heading);
+      let body = normalizePdpCopy(item?.body);
+      const sourceKind = normalizeNonEmptyString(item?.source_kind || item?.sourceKind) || 'unknown';
+      if (!heading || !body) continue;
+      if (heading === 'Details' && /^Benefits?\s*:/i.test(body)) {
+        heading = 'Benefits';
+        body = body.replace(/^Benefits?\s*:\s*/i, '').trim();
       }
-      continue;
+      body = cleanPdpDetailsSectionBody(heading, body);
+      if (!body) continue;
+      const key = `${sectionContentSignature(heading, body)}|${sourceKind.toLowerCase()}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const duplicateIndex = findNearDuplicateSectionIndex(out, heading, body);
+      if (duplicateIndex !== -1) {
+        if (body.length > out[duplicateIndex].body.length) {
+          out[duplicateIndex] = {
+            heading,
+            body,
+            source_kind: sourceKind,
+          };
+        }
+        continue;
+      }
+      out.push({
+        heading,
+        body,
+        source_kind: sourceKind,
+      });
+      if (out.length >= Math.max(1, Number(maxItems) || 24)) break;
     }
-    out.push({
-      heading,
-      body,
-      source_kind: sourceKind,
-    });
     if (out.length >= Math.max(1, Number(maxItems) || 24)) break;
   }
   return out;
@@ -1299,18 +1487,20 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
         : 'out_of_stock'
       : normalizeSeedAvailability(row?.availability || seedData.availability || snapshot.availability) || '';
   const failureCategory = normalizeNonEmptyString(response?.diagnostics?.failure_category || snapshot?.diagnostics?.failure_category);
-  const liveExtractedDescription = normalizeNonEmptyString(
+  const rawLiveExtractedDescription = normalizePdpCopy(
     representativeProduct?.variants?.find((variant) => variant.description)?.description ||
       effectiveSnapshotVariants.find((variant) => variant.description)?.description,
-  );
-  const productDescriptionRaw = normalizeNonEmptyString(
-    representativeProduct?.description_raw ||
-      representativeProduct?.pdp_description_raw,
   );
   const pdpDetailsSections = normalizeDetailsSections(
     representativeProduct?.details_sections ||
       representativeProduct?.pdp_details_sections,
   );
+  const productDescriptionRaw = cleanPdpDescriptionCandidate(
+    representativeProduct?.description_raw ||
+      representativeProduct?.pdp_description_raw,
+    pdpDetailsSections,
+  );
+  const liveExtractedDescription = cleanPdpDescriptionCandidate(rawLiveExtractedDescription, pdpDetailsSections);
   const pdpIngredientsRaw = normalizeNonEmptyString(
     representativeProduct?.ingredients_raw ||
       representativeProduct?.pdp_ingredients_raw,
@@ -1327,9 +1517,13 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     representativeProduct?.faq_items ||
       representativeProduct?.pdp_faq_items,
   );
+  const existingPdpDescriptionRaw = cleanPdpDescriptionCandidate(
+    seedData.pdp_description_raw || snapshot.pdp_description_raw,
+    pdpDetailsSections,
+  );
   const nextPdpDescriptionRaw =
     productDescriptionRaw ||
-    normalizeNonEmptyString(seedData.pdp_description_raw || snapshot.pdp_description_raw);
+    existingPdpDescriptionRaw;
   let nextPdpDetailsSections =
     pdpDetailsSections.length > 0
       ? pdpDetailsSections
@@ -1398,19 +1592,23 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     if (productDescriptionRaw) return 'pdp_product_description';
     if (existingDescriptionOrigin) return existingDescriptionOrigin;
     const legacyDescription =
-      normalizeNonEmptyString(snapshot.description) ||
-      normalizeNonEmptyString(seedData.description) ||
-      normalizeNonEmptyString(row?.description);
+      cleanPdpDescriptionCandidate(snapshot.description, nextPdpDetailsSections) ||
+      cleanPdpDescriptionCandidate(seedData.description, nextPdpDetailsSections) ||
+      cleanPdpDescriptionCandidate(row?.description, nextPdpDetailsSections);
     if (looksLikeSyntheticSummaryText(legacyDescription)) return 'synthetic_summary';
     if (legacyDescription) return 'legacy_unknown';
     return '';
   })();
+  const fallbackSeedDescription = cleanPdpDescriptionCandidate(
+    (fallbackPollutedRow ? seedData.description : snapshot.description) || seedData.description,
+    nextPdpDetailsSections,
+  );
   const description = manualDescription ||
     normalizeNonEmptyString(
       liveExtractedDescription ||
         productDescriptionRaw ||
         (!suppressStaleDescriptionFallback
-          ? (fallbackPollutedRow ? seedData.description : snapshot.description) || seedData.description
+          ? fallbackSeedDescription
           : ''),
     ) ||
     '';
@@ -1444,10 +1642,12 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     title,
     description:
       manualDescription || liveExtractedDescription || productDescriptionRaw
-        ? liveExtractedDescription || productDescriptionRaw || normalizeNonEmptyString(snapshot.description)
+        ? liveExtractedDescription ||
+          productDescriptionRaw ||
+          cleanPdpDescriptionCandidate(snapshot.description, nextPdpDetailsSections)
         : suppressStaleDescriptionFallback
           ? ''
-          : description || normalizeNonEmptyString(snapshot.description),
+          : description || cleanPdpDescriptionCandidate(snapshot.description, nextPdpDetailsSections),
     ...(nextPdpDescriptionRaw ? { pdp_description_raw: nextPdpDescriptionRaw } : {}),
     ...(nextPdpDetailsSections.length > 0 ? { pdp_details_sections: nextPdpDetailsSections } : {}),
     ...(nextPdpIngredientsRaw ? { pdp_ingredients_raw: nextPdpIngredientsRaw } : {}),
@@ -1503,6 +1703,30 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
   if (!nextPdpActiveIngredientsRaw) {
     delete nextSeedData.pdp_active_ingredients_raw;
     if (nextSeedData.snapshot && typeof nextSeedData.snapshot === 'object') delete nextSeedData.snapshot.pdp_active_ingredients_raw;
+  }
+  if (!nextPdpDescriptionRaw) {
+    delete nextSeedData.pdp_description_raw;
+    if (nextSeedData.snapshot && typeof nextSeedData.snapshot === 'object') delete nextSeedData.snapshot.pdp_description_raw;
+  }
+  if (nextPdpDetailsSections.length === 0) {
+    delete nextSeedData.pdp_details_sections;
+    if (nextSeedData.snapshot && typeof nextSeedData.snapshot === 'object') delete nextSeedData.snapshot.pdp_details_sections;
+  }
+  if (!description || isStorefrontBoilerplateDescription(nextSeedData.description)) {
+    delete nextSeedData.description;
+  }
+  if (!description && !nextPdpDescriptionRaw) {
+    delete nextSeedData.seed_description_origin;
+    if (nextSeedData.snapshot && typeof nextSeedData.snapshot === 'object') {
+      delete nextSeedData.snapshot.seed_description_origin;
+    }
+  }
+  if (
+    nextSeedData.snapshot &&
+    typeof nextSeedData.snapshot === 'object' &&
+    isStorefrontBoilerplateDescription(nextSeedData.snapshot.description)
+  ) {
+    delete nextSeedData.snapshot.description;
   }
   const nextDerived = ensureJsonObject(nextSeedData.derived);
   nextSeedData.derived = {
@@ -1667,6 +1891,62 @@ function buildVariantSeedRows(row, payload) {
   }
 
   return rows;
+}
+
+function buildIdentityListingSourcePayload(row, nextRow) {
+  const refreshedRow = {
+    ...(row || {}),
+    ...(nextRow || {}),
+    seed_data: ensureJsonObject(nextRow?.seed_data || row?.seed_data),
+    external_product_id:
+      normalizeNonEmptyString(row?.external_product_id) ||
+      normalizeNonEmptyString(nextRow?.external_product_id) ||
+      normalizeNonEmptyString(nextRow?.seed_data?.external_product_id) ||
+      normalizeNonEmptyString(nextRow?.seed_data?.product_id),
+    status: normalizeNonEmptyString(row?.status) || 'active',
+  };
+  const product = buildExternalSeedProduct(refreshedRow);
+  const merchantId =
+    normalizeNonEmptyString(product?.merchant_id) ||
+    EXTERNAL_SEED_MERCHANT_ID;
+  const productId =
+    normalizeNonEmptyString(product?.product_id || product?.id) ||
+    normalizeNonEmptyString(refreshedRow.external_product_id);
+  if (!merchantId || !productId || !product) return null;
+  return {
+    source_listing_ref: `${merchantId}:${productId}`,
+    product,
+  };
+}
+
+async function refreshPdpIdentityListingSourcePayload(client, row, nextRow) {
+  const payload = buildIdentityListingSourcePayload(row, nextRow);
+  if (!payload?.source_listing_ref || !payload?.product) {
+    return { matched_rows: 0, refreshed: false, reason: 'missing_identity_payload' };
+  }
+  const result = await client.query(
+    `
+      UPDATE pdp_identity_listing
+      SET
+        source_payload = $2::jsonb,
+        review_summary = $3::jsonb,
+        official_url = COALESCE(NULLIF($4, ''), official_url),
+        updated_at = now()
+      WHERE source_listing_ref = $1
+        AND source_payload IS DISTINCT FROM $2::jsonb
+    `,
+    [
+      payload.source_listing_ref,
+      JSON.stringify(payload.product),
+      JSON.stringify(ensureJsonObject(payload.product.review_summary)),
+      normalizeUrlLike(payload.product.canonical_url || payload.product.url || payload.product.destination_url),
+    ],
+  );
+  return {
+    matched_rows: Number(result?.rowCount || 0),
+    refreshed: Number(result?.rowCount || 0) > 0,
+    source_listing_ref: payload.source_listing_ref,
+  };
 }
 
 async function upsertVariantSeedRows(client, rows) {
@@ -1975,15 +2255,39 @@ async function processRow(row, options) {
     const variantSeedRows = options.expandVariants ? buildVariantSeedRows(row, enrichedPayload) : [];
     const hasVariantSeedRows = variantSeedRows.length > 0;
     if (options.dryRun || (!enrichedPayload.changed && !hasVariantSeedRows)) {
+      let identityListingRefresh = null;
+      if (!options.dryRun) {
+        await withClient(async (client) => {
+          identityListingRefresh = await refreshPdpIdentityListingSourcePayload(client, row, enrichedPayload.nextRow);
+        });
+        if (identityListingRefresh?.refreshed) {
+          return {
+            status: 'updated',
+            reason: 'identity_listing_refreshed',
+            row,
+            targetUrl,
+            payload: {
+              ...enrichedPayload,
+              variant_seed_rows: variantSeedRows,
+              identity_listing_refresh: identityListingRefresh,
+            },
+          };
+        }
+      }
       return {
         status: enrichedPayload.changed || hasVariantSeedRows ? 'dry_run' : 'skipped',
         reason: enrichedPayload.changed || hasVariantSeedRows ? null : 'unchanged',
         row,
         targetUrl,
-        payload: { ...enrichedPayload, variant_seed_rows: variantSeedRows },
+        payload: {
+          ...enrichedPayload,
+          variant_seed_rows: variantSeedRows,
+          identity_listing_refresh: identityListingRefresh,
+        },
       };
     }
 
+    let identityListingRefresh = null;
     await withClient(async (client) => {
       if (enrichedPayload.changed) {
         await client.query(
@@ -2013,13 +2317,23 @@ async function processRow(row, options) {
             JSON.stringify(enrichedPayload.nextRow.seed_data),
           ],
         );
+        identityListingRefresh = await refreshPdpIdentityListingSourcePayload(client, row, enrichedPayload.nextRow);
       }
       if (hasVariantSeedRows) {
         await upsertVariantSeedRows(client, variantSeedRows);
       }
     });
 
-    return { status: 'updated', row, targetUrl, payload: { ...enrichedPayload, variant_seed_rows: variantSeedRows } };
+    return {
+      status: 'updated',
+      row,
+      targetUrl,
+      payload: {
+        ...enrichedPayload,
+        variant_seed_rows: variantSeedRows,
+        identity_listing_refresh: identityListingRefresh,
+      },
+    };
   } catch (error) {
     const nextSeedData = buildFailureSeedData(row, targetUrl, error);
     const failureEnrichment = await enrichExternalSeedRowIngredients({
@@ -2290,6 +2604,7 @@ module.exports = {
   recoverTargetUrlFromDiagnostics,
   sanitizeSeedImageUrls,
   validateNextRowImageHealth,
+  buildIdentityListingSourcePayload,
   collectBackfilledExternalProductIds,
   filterProductIdsMissingPivotaInsights,
   preparePivotaInsightsForBackfill,

@@ -14,6 +14,7 @@ const {
   parseDelimitedIds,
   sanitizeSeedImageUrls,
   validateNextRowImageHealth,
+  buildIdentityListingSourcePayload,
   collectBackfilledExternalProductIds,
 } = require('../../scripts/backfill-external-product-seeds-catalog');
 
@@ -649,6 +650,159 @@ describe('backfill-external-product-seeds-catalog', () => {
         source_kind: 'merchant_faq',
       },
     ]);
+  });
+
+  test('splits encoded Fenty accordion copy into structured PDP sections', () => {
+    const fentyAccordion =
+      'RECHARGEABLE MIRROR WITH 5X MAGNIFICATION\n\n' +
+      'GIVE IT TO ME QUICK:\n' +
+      'This ain&rsquo;t your average mirror&mdash;it&rsquo;s really the trick of all trades. Keep it at your vanity, pack it in your suitcase, even charge your phone with it.\n\n' +
+      'TELL ME MORE:\n' +
+      '- Adjustable brightness\n' +
+      '- 5X magnification for close-up detail\n' +
+      '- Wireless charging for your phone\n\n' +
+      'Dimensions with base:\n' +
+      '- Height: 14.4"\n' +
+      '- Width: 6.9"\n\n' +
+      'Dimensions - mirror only:\n' +
+      '- Height: 8.2"\n' +
+      '- Width: 6.9"';
+    const row = {
+      id: 'eps_fenty_mirror',
+      external_product_id: 'ext_fenty_mirror',
+      title: 'Fenty Beauty - LED Vanity Mirror',
+      canonical_url: 'https://fentybeauty.com/products/led-vanity-mirror',
+      destination_url: 'https://fentybeauty.com/products/led-vanity-mirror',
+      price_amount: 40,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      seed_data: {
+        snapshot: {
+          canonical_url: 'https://fentybeauty.com/products/led-vanity-mirror',
+        },
+      },
+    };
+
+    const payload = buildSeedUpdatePayload(
+      row,
+      {
+        products: [
+          {
+            title: 'LED Vanity Mirror',
+            url: 'https://fentybeauty.com/products/led-vanity-mirror',
+            description_raw: fentyAccordion,
+            details_sections: [
+              {
+                heading: 'Details',
+                body: fentyAccordion,
+                source_kind: 'shopify_encoded_accordion_attr',
+              },
+              {
+                heading: 'HEAVY ON THE HYDRATION',
+                body: 'Make a splash in juicy makeup, skincare + haircare must-haves.',
+                source_kind: 'shopify_encoded_accordion_attr',
+              },
+            ],
+            variants: [],
+          },
+        ],
+        variants: [],
+        diagnostics: {},
+      },
+      'https://fentybeauty.com/products/led-vanity-mirror',
+    );
+
+    expect(payload.nextRow.seed_data.pdp_description_raw).toContain("This ain't your average mirror");
+    expect(payload.nextRow.seed_data.pdp_description_raw).not.toMatch(/TELL ME MORE|Dimensions with base/i);
+    expect(payload.nextRow.seed_data.description).toContain("This ain't your average mirror");
+    expect(payload.nextRow.seed_data.pdp_details_sections).toEqual([
+      {
+        heading: 'Overview',
+        body: expect.stringContaining("This ain't your average mirror"),
+        source_kind: 'shopify_encoded_accordion_attr',
+      },
+      {
+        heading: 'Details',
+        body: expect.stringContaining('Adjustable brightness'),
+        source_kind: 'shopify_encoded_accordion_attr',
+      },
+      {
+        heading: 'Dimensions',
+        body: expect.stringContaining('Dimensions with base:'),
+        source_kind: 'shopify_encoded_accordion_attr',
+      },
+    ]);
+    expect(payload.nextRow.seed_data.pdp_details_sections[1].body).not.toMatch(/GIVE IT TO ME QUICK/i);
+    expect(JSON.stringify(payload.nextRow.seed_data.pdp_details_sections)).not.toMatch(/HEAVY ON THE HYDRATION|must-haves/i);
+
+    const identityPayload = buildIdentityListingSourcePayload(row, payload.nextRow);
+    expect(identityPayload.source_listing_ref).toBe('external_seed:ext_fenty_mirror');
+    expect(identityPayload.product.pdp_description_raw).toContain("This ain't your average mirror");
+    expect(identityPayload.product.pdp_details_sections.map((section) => section.heading)).toEqual([
+      'Overview',
+      'Details',
+      'Dimensions',
+    ]);
+    expect(JSON.stringify(identityPayload.product)).not.toMatch(/TELL ME MORE|HEAVY ON THE HYDRATION|must-haves/i);
+  });
+
+  test('suppresses storefront boilerplate descriptions instead of writing them to PDP fields', () => {
+    const boilerplate =
+      "Fenty Beauty by Rihanna was created with promise of inclusion for all women. With an unmatched offering of shades and colors for ALL skin tones, you'll never look elsewhere for your beauty staples. Browse our foundation line, lip colors, and so much more.";
+    const row = {
+      id: 'eps_fenty_bag',
+      external_product_id: 'ext_fenty_bag',
+      title: 'Fenty Skin Jelly Cherry Bag',
+      canonical_url: 'https://fentybeauty.com/products/fenty-skin-jelly-cherry-bag',
+      destination_url: 'https://fentybeauty.com/products/fenty-skin-jelly-cherry-bag',
+      price_amount: 18,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      seed_data: {
+        description: boilerplate,
+        pdp_description_raw: boilerplate,
+        snapshot: {
+          canonical_url: 'https://fentybeauty.com/products/fenty-skin-jelly-cherry-bag',
+          description: boilerplate,
+          pdp_description_raw: boilerplate,
+        },
+      },
+    };
+
+    const payload = buildSeedUpdatePayload(
+      row,
+      {
+        products: [
+          {
+            title: 'Fenty Skin Jelly Cherry Bag',
+            url: 'https://fentybeauty.com/products/fenty-skin-jelly-cherry-bag',
+            description_raw: boilerplate,
+            details_sections: [
+              {
+                heading: 'Tell us about yourself',
+                body: "We'll never show your full name or email Enter your name Enter your name Enter a valid email e.g. example@example.com Enter a valid email e.g. example@example.com Please fill all of the required fields Submit",
+                source_kind: 'heading_sibling',
+              },
+            ],
+            variants: [],
+          },
+        ],
+        variants: [],
+        diagnostics: {},
+      },
+      'https://fentybeauty.com/products/fenty-skin-jelly-cherry-bag',
+    );
+
+    expect(payload.nextRow.seed_data.description).toBeUndefined();
+    expect(payload.nextRow.seed_data.pdp_description_raw).toBeUndefined();
+    expect(payload.nextRow.seed_data.pdp_details_sections).toBeUndefined();
+    expect(payload.nextRow.seed_data.seed_description_origin).toBeUndefined();
+    expect(payload.nextRow.seed_data.snapshot.description).toBe('');
+    expect(payload.nextRow.seed_data.snapshot.pdp_description_raw).toBeUndefined();
+    expect(payload.nextRow.seed_data.snapshot.pdp_details_sections).toBeUndefined();
+    expect(payload.nextRow.seed_data.derived.recall.retrieval_body).not.toMatch(
+      /foundation line|lip colors|all skin tones|tell us about yourself|valid email|required fields/i,
+    );
   });
 
   test('persists canonical pdp_* fields from catalog extraction into seed snapshot', () => {
