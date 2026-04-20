@@ -246,6 +246,72 @@ describe('product_intel pilot compare selection', () => {
         rejected: /^Mascara$/i,
       },
       {
+        title: 'RiRi on Repeat Makeup Essentials',
+        category: 'Brush',
+        description:
+          'A makeup trio with cheek color, lip color, and eye essentials for a coordinated makeup routine.',
+        tags: ['Brush', 'Makeup'],
+        expectedKind: 'makeup_set',
+        expectedHeadline: /Makeup set/i,
+        expectedSubtitle: 'Makeup Set',
+        rejected: /Brush shoppers|Makeup Product|Formula angle/i,
+      },
+      {
+        title: "We're Even Hydrating Longwear Concealer - 420W",
+        category: 'Foundation',
+        description:
+          'A hydrating longwear concealer for targeted coverage, shade matching, and flexible complexion wear.',
+        tags: ['Foundation', 'Concealer'],
+        expectedKind: 'complexion_makeup',
+        expectedHeadline: /Concealer/i,
+        expectedSubtitle: 'Concealer',
+        rejected: /^Complexion Makeup$/i,
+      },
+      {
+        title: 'Invisimatte Instant Setting + Blotting Powder',
+        category: 'Powder',
+        description:
+          'A universally sheer blotting powder to set, blur, mattify, absorb shine, and extend makeup wear.',
+        tags: ['Powder', 'Setting Powder'],
+        expectedKind: 'color_makeup',
+        expectedHeadline: /Setting powder/i,
+        expectedSubtitle: 'Setting Powder',
+        rejected: /^Color Makeup$|Formula angle/i,
+      },
+      {
+        title: 'Brow MVP Ultra Fine Brow Pencil & Styler - Light Blonde',
+        category: 'Brow',
+        description:
+          'An ultra-fine brow pencil and styler for filling, shaping, and defining brows with controlled strokes.',
+        tags: ['Brow'],
+        expectedKind: 'color_makeup',
+        expectedHeadline: /Brow pencil/i,
+        expectedSubtitle: 'Brow Pencil',
+        rejected: /^Brow Gel$/i,
+      },
+      {
+        title: 'The Mista Hair + Body Fragrance Mist',
+        category: 'Haircare',
+        description:
+          'A lightweight fragrance mist for hair and body scent application.',
+        tags: ['Haircare', 'Fragrance'],
+        expectedKind: 'fragrance',
+        expectedHeadline: /Fragrance mist/i,
+        expectedSubtitle: 'Fragrance Mist',
+        rejected: /Body treatment mist|breakout-prone/i,
+      },
+      {
+        title: 'The Imposter Invisi-Boost Volumizing Dry Shampoo Powder',
+        category: 'Powder',
+        description:
+          'A non-aerosol dry shampoo powder that refreshes roots, absorbs oil, and adds volume between wash days.',
+        tags: ['Powder', 'Haircare'],
+        expectedKind: 'dry_shampoo',
+        expectedHeadline: /Dry shampoo/i,
+        expectedSubtitle: 'Dry Shampoo',
+        rejected: /^Color Makeup$|Formula angle/i,
+      },
+      {
         title: "Pro Filt'r Soft Matte Powder Foundation - 498",
         category: 'Powder',
         description:

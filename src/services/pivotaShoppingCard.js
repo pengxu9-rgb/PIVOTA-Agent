@@ -254,15 +254,17 @@ function inferTitleSpecialtyCompactSubtitle(product) {
   if (/\b(?:brush bundle|brush trio|brush duo|brush set)\b/.test(text)) return 'Brush Set';
   if (/\b(?:blending|packing|shader|crease|definer|smudge|foundation|skin tint|concealer|face|eyeliner|kyliner|tapered)?\s*brush\s*\d*\b/.test(title)) return 'Makeup Brush';
   if (/\b(?:fragrance layering balm|fragrance balm|scent balm)\b/.test(text)) return 'Fragrance Balm';
+  if (/\b(?:hair\s*\+\s*body fragrance mist|hair and body fragrance mist|body fragrance mist|fragrance mist)\b/.test(text)) return 'Fragrance Mist';
   if (/\b(?:eye duo|eye trio|eye set|eye kit|eye colour routine|eye color routine|essential eye duo|mascara.*(?:duo|set)|(?:duo|set).*mascara)\b/.test(text)) return 'Eye Makeup Set';
   if (/\b(?:lip duo|lip set|lip kit)\b/.test(text)) return 'Lip Set';
-  if (/\b(?:makeup set|makeup kit|beauty set|beauty kit)\b/.test(text)) return 'Makeup Set';
+  if (/\b(?:makeup set|makeup kit|makeup essentials|makeup trio|beauty set|beauty kit)\b/.test(text)) return 'Makeup Set';
   if (/\b(?:pore diffusing primer|illuminating primer|face primer|makeup primer|primer)\b/.test(text)) return 'Primer';
   if (/\bbody\s+lotion\b/.test(text)) return 'Body Lotion';
   if (/\b(?:eau de parfum|edp)\b/.test(text)) return 'Eau De Parfum';
   if (/\b(?:fragrance|perfume|parfum|body mist)\b/.test(fragranceText)) return 'Fragrance';
   if (/\bskin tint\b/.test(text)) return 'Skin Tint';
-  if (/\b(?:brightening\s+\+?\s*blurring powder|brightening blurring powder|blurring powder|setting powder)\b/.test(text)) return 'Setting Powder';
+  if (/\b(?:brightening\s+\+?\s*blurring powder|brightening blurring powder|blurring powder|setting powder|blotting powder|mattifying powder|invisimatte)\b/.test(text)) return 'Setting Powder';
+  if (/\bconcealer\b/.test(text) && !/\bbrush\b/.test(title)) return 'Concealer';
   if (/\bfoundation\b/.test(text) && !/\bbrush\b/.test(title)) return 'Foundation';
   if (/\b(?:highlighter|killawatt|demi'?glow|diamond veil)\b/.test(text)) return 'Highlighter';
   if (/\b(?:powder blush stick|blush stick)\b/.test(text)) return 'Blush Stick';
@@ -273,6 +275,7 @@ function inferTitleSpecialtyCompactSubtitle(product) {
   if (/\b(?:eyeshadow|eye shadow).*palette\b/.test(text) || /\bpalette\b/.test(title)) return 'Eyeshadow Palette';
   if (/\b(?:eyeliner|kyliner)\b/.test(text)) return 'Eyeliner';
   if (/\bmascara|kylash\b/.test(text)) return 'Mascara';
+  if (/\b(?:brow pencil|brow mvp|ultra fine brow pencil|eyebrow pencil)\b/.test(text)) return 'Brow Pencil';
   if (/\b(?:brow|kybrow)\b/.test(text)) return 'Brow Gel';
   if (/\b(?:lip liner|pout liner)\b/.test(text)) return 'Lip Liner';
   if (/\b(?:lip oil)\b/.test(text)) return 'Lip Oil';
@@ -289,6 +292,7 @@ function inferTitleSpecialtyCompactSubtitle(product) {
   if (/\bhand\s*(?:&|and)?\s*nail\s+cream\b/.test(text) || /\bhand\s+cream\b/.test(text)) return 'Hand Cream';
   if (/\bskin\s+milk\b/.test(text)) return 'Skin Milk';
   if (/\b(?:lip\s+balm|lip nourisher|lip treatment|lip serum|lip benefits|lip moisture)\b/.test(text)) return 'Lip Balm';
+  if (/\bdry\s+shampoo\b/.test(text)) return 'Dry Shampoo';
   if (/\b(?:shampoo|hair shampoo)\b/.test(text)) return 'Hair Shampoo';
   if (/\b(?:cleanser|cleansing)\b/.test(text)) {
     if (/\bcleansing\s+balm\b/.test(text)) return 'Cleansing Balm';
@@ -422,6 +426,7 @@ function buildCompactSubtitle({ product, bundle }) {
     [
       'Routine Set',
       'Hair Shampoo',
+      'Dry Shampoo',
       'Hair Conditioner',
       'Hair Repair Treatment',
       'Heat Protectant Cream',
@@ -440,6 +445,10 @@ function buildCompactSubtitle({ product, bundle }) {
       'Bronzer',
       'Highlighter',
       'Eyeliner',
+      'Brow Pencil',
+      'Concealer',
+      'Fragrance Mist',
+      'Makeup Set',
       'Setting Powder',
       'Treatment Mask',
     ].includes(compactHeadline)
