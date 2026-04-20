@@ -54,7 +54,8 @@ const ROLE_CONFIGS = {
 const COLOR_COSMETIC_NOISE_RE =
   /\b(match\s*stix|correcting\s*skinstick|corrector|concealer|foundation|skin\s*tint|bronzer|contour|blush|highlighter|illuminator|mascara|eyeshadow|eye\s*shadow|brow\s*(?:pencil|gel|definer|styler)|lipstick|lip\s*gloss|lip\s*color|lip\s*colour|cheeks\s*out|killawatt)\b/i;
 const BEAUTY_TOOL_NOISE_RE =
-  /\b(reusable|silicone|applicator|beauty\s*sponge|makeup\s*sponge|brush|tool)\b/i;
+  /\b(reusable|silicone|applicator|beauty\s*sponge|makeup\s*sponge|sponge|puff|brush|tool)\b/i;
+const REFILL_ONLY_NOISE_RE = /\brefills?\b/i;
 const STRONG_ROLE_MATCHERS = {
   sun_protection: /\b(sunscreen|sun\s*screen|spf\s*\d{0,3}\+?|pa\s*\+{2,4}|broad\s*spectrum|sun\s*(?:fluid|cream|gel|milk|stick|serum)|uv\s*(?:protection|shield|defen[cs]e|aqua|essence)|日焼け止め|防晒|防曬|선크림|썬크림)\b/i,
   lightweight_moisturizer: /\b(moisturi[sz]er|gel[-\s]?cream|barrier\s*cream|face\s*cream|facial\s*cream|lotion|emulsion|milk|乳液|面霜|保湿|保濕|크림|로션)\b/i,
@@ -278,6 +279,8 @@ function isRoleCompatibleProduct(product, roleId) {
   const text = productAuthorityText(product);
   if (!text) return false;
   if (!hasStrongRoleMatch(product, roleId)) return false;
+  if (REFILL_ONLY_NOISE_RE.test(text)) return false;
+  if (BEAUTY_TOOL_NOISE_RE.test(text)) return false;
 
   if (roleId === 'body_lip_hand') {
     if (/\b(lipstick|lip\s*gloss|lip\s*color|lip\s*colour)\b/i.test(text)) return false;
@@ -285,11 +288,6 @@ function isRoleCompatibleProduct(product, roleId) {
   }
 
   if (COLOR_COSMETIC_NOISE_RE.test(text)) return false;
-  if ((roleId === 'recovery_mask' || roleId === 'eye_care') && BEAUTY_TOOL_NOISE_RE.test(text)) {
-    if (!/\b(hydrating|soothing|repair|serum|essence|cream|gel|hydrogel|cica|caffeine|hyaluronic)\b/i.test(text)) {
-      return false;
-    }
-  }
   return true;
 }
 
