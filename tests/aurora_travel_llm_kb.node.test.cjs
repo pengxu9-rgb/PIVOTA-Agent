@@ -360,6 +360,19 @@ test('travel final assistant rewriter: guard rejects unsupported product claims 
   );
   assert.equal(areaMismatch.ok, false);
   assert.equal(areaMismatch.reason, 'rewrite_product_body_area_mismatch');
+
+  const parallelLipAndHandProducts = travelFinalRewriteInternal.validateTravelFinalRewriteText(
+    [
+      'Seoul is warmer, drier, and higher UV than Seattle, so skin can feel tight while producing more surface oil.',
+      'Before departure, pack sunscreen, body sunscreen, lip balm, and hand cream to cover outdoor exposure.',
+      'On the flight, use Round Lab Birch Juice Moisturizing Lip Balm for lips and a separate hand cream to manage dryness because cabin air is dry.',
+      'First 48 hours after arrival, keep cleansing and moisturizer simple, and reapply SPF during outdoor commutes.',
+      'Local shopping can focus on sunscreen and moisturizer options while keeping masks optional if already tolerated.',
+    ].join('\n'),
+    { promptInput },
+  );
+  assert.equal(parallelLipAndHandProducts.ok, true);
+  assert.equal(parallelLipAndHandProducts.reason, 'ok');
 });
 
 test('travel final assistant rewriter: parser recovers loose assistant_text JSON', () => {

@@ -643,7 +643,13 @@ function validateTravelFinalRewriteText(text, { promptInput } = {}) {
   if (/\b(for oil control|controls? oil|oil-control|supports oil control|prevent(?:s|ing)? pilling)\b/i.test(assistantText)) {
     return { ok: false, reason: 'rewrite_unsupported_product_claim' };
   }
-  if (/\b(lip balm|lip care|lip product)\b[^.\n]{0,60}\b(on|for|to)\b[^.\n]{0,50}\b(hand|hands|body)\b/i.test(assistantText)) {
+  const lipProductToWrongArea = [
+    /\b(?:use|apply)\s+[^.\n]{0,80}\b(?:lip balm|lip care(?: cream)?|lip product)\s+(?:on|to|for)\s+(?:(?:your|the)\s+)?(?:hands?|body)\b/i,
+    /\b(?:use|apply)\s+[^.\n]{0,80}\b(?:lip balm|lip care(?: cream)?|lip product)\s+on\s+lips?\s+and\s+(?:hands?|body)\b/i,
+    /\b(?:lip balm|lip care(?: cream)?|lip product)\s+(?:on|to|for)\s+(?:(?:your|the)\s+)?(?:hands?|body)\b/i,
+    /\b(?:lip balm|lip care(?: cream)?|lip product)\s+on\s+lips?\s+and\s+(?:hands?|body)\b/i,
+  ].some((pattern) => pattern.test(assistantText));
+  if (lipProductToWrongArea) {
     return { ok: false, reason: 'rewrite_product_body_area_mismatch' };
   }
   if (/\b(essential|critical|extreme|severe)\b/i.test(assistantText)) {
