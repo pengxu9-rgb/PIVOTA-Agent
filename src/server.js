@@ -3984,6 +3984,7 @@ async function buildOffersFromGroupMembers(args) {
   const bypassCache = args?.bypassCache === true;
   const limit = Math.min(Math.max(1, Number(args?.limit || groupMembers.length || 10) || 10), 50);
   const preferredMerchantId = args?.preferredMerchantId ? String(args.preferredMerchantId).trim() : null;
+  const debug = args?.debug === true;
   const prefetchedProductByKey = buildPrefetchedOfferProductMap(args?.prefetchedProducts);
 
   if (!groupMembers.length) return null;
@@ -4221,10 +4222,14 @@ async function buildOffersFromGroupMembers(args) {
     offers,
     default_offer_id: defaultOfferId,
     best_price_offer_id: bestPriceOfferId,
-    diagnostics: {
-      build_sources: buildSourceStats,
-      merchant_name_lookup_enabled: merchantProfileNameLookupEnabled,
-    },
+    ...(debug
+      ? {
+          diagnostics: {
+            build_sources: buildSourceStats,
+            merchant_name_lookup_enabled: merchantProfileNameLookupEnabled,
+          },
+        }
+      : {}),
   };
 }
 
@@ -22506,6 +22511,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                   bypassCache,
                   limit: payload?.offers?.limit || 10,
                   preferredMerchantId: requestedMerchantId || null,
+                  debug,
                   prefetchedProducts: [
                     canonicalProductForPdp,
                     canonicalProduct,
