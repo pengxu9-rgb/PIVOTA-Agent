@@ -38,14 +38,13 @@ const TRAVEL_LLM_RESPONSE_SCHEMA = {
         'adaptive_actions',
         'personal_focus',
         'jetlag_sleep',
-        'category_recommendations',
         'shopping_preview',
         'confidence',
       ],
       properties: {
         adaptive_actions: {
           type: 'ARRAY',
-          maxItems: '3',
+          maxItems: '2',
           items: {
             type: 'OBJECT',
             properties: {
@@ -56,7 +55,7 @@ const TRAVEL_LLM_RESPONSE_SCHEMA = {
         },
         personal_focus: {
           type: 'ARRAY',
-          maxItems: '2',
+          maxItems: '1',
           items: {
             type: 'OBJECT',
             properties: {
@@ -80,64 +79,9 @@ const TRAVEL_LLM_RESPONSE_SCHEMA = {
             mask_tips: STRING_ARRAY_SCHEMA('Skin recovery or eye-care tips.', 3, 160),
           },
         },
-        category_recommendations: {
-          type: 'ARRAY',
-          maxItems: '5',
-          items: {
-            type: 'OBJECT',
-            properties: {
-              category: {
-                type: 'STRING',
-                enum: [
-                  'cleansing',
-                  'antioxidant',
-                  'sun_protection',
-                  'moisturization',
-                  'masks',
-                  'post_sun',
-                  'brightening',
-                  'eye_care',
-                  'body_care',
-                  'emergency',
-                ],
-              },
-              why: STRING_SCHEMA('Trip-specific category rationale.', 180),
-              products: {
-                type: 'ARRAY',
-                maxItems: '2',
-                items: {
-                  type: 'OBJECT',
-                  properties: {
-                    name: STRING_SCHEMA('Concrete product type, not invented SKU.', 100),
-                    ingredient_logic: STRING_SCHEMA('Ingredient or texture logic grounded in the trip facts.', 180),
-                    usage: STRING_SCHEMA('Timing and frequency.', 160),
-                  },
-                },
-              },
-              skip_reason: STRING_SCHEMA('Only include if category should be skipped.', 120),
-            },
-          },
-        },
         shopping_preview: {
           type: 'OBJECT',
           properties: {
-            products: {
-              type: 'ARRAY',
-              maxItems: '4',
-              items: {
-                type: 'OBJECT',
-                properties: {
-                  name: STRING_SCHEMA('Product type or catalog-grounded product name.', 100),
-                  brand: STRING_SCHEMA('Brand only when grounded or clearly a local channel example.', 80),
-                  category: STRING_SCHEMA('Category label.', 80),
-                  reasons: STRING_ARRAY_SCHEMA('Short evidence points.', 3, 120),
-                  product_source: {
-                    type: 'STRING',
-                    enum: ['catalog', 'llm_generated', 'llm_only'],
-                  },
-                },
-              },
-            },
             brand_candidates: {
               type: 'ARRAY',
               maxItems: '4',
@@ -905,13 +849,13 @@ function buildGeminiRequest({ model, systemPrompt, userPrompt } = {}) {
       },
     ],
     config: {
-      temperature: 0.3,
-      maxOutputTokens: 1800,
+      temperature: 0.15,
+      maxOutputTokens: 900,
       responseMimeType: 'application/json',
       responseSchema: TRAVEL_LLM_RESPONSE_SCHEMA,
       thinkingConfig: {
         includeThoughts: false,
-        thinkingBudget: 96,
+        thinkingBudget: 0,
       },
     },
   }
@@ -954,8 +898,9 @@ function buildTravelCalibrationPrompts({ language = 'EN', travelLlmInput, baseTr
     'Advice must be specific to this trip: pre-trip, flight, first 48h, and local buying.',
     'Return only valid JSON matching the response schema. No markdown, no prose outside JSON, no trailing commas.',
     'Keep strings short and complete. Do not use ellipses or cut-off fragments.',
-    'Cover only the most relevant categories: sun_protection, moisturization, masks/post_sun, eye_care, body_care, or emergency. Add cleansing/antioxidant/brightening only if truly useful.',
-    'For included categories, give scenario why, ingredient logic, and timing/frequency. Avoid generic copy and absolute claims like best/most.',
+    'This is a micro-patch: return only adaptive_actions, personal_focus, jetlag_sleep tips if needed, shopping_preview.brand_candidates/channels, and confidence.',
+    'Do not return category_recommendations or shopping_preview.products; the deterministic travel kit already carries product categories.',
+    'For included actions, give scenario why and timing. Avoid generic copy and absolute claims like best/most.',
     'High humidity favors lighter AM texture; travel/flight favors PM barrier repair; UV>=6 requires SPF50+ reapply cadence and post-sun repair.',
     'Jet lag >=5h should add depuffing/hydration eye-care and sleep timing.',
     'Deduplicate: adaptive_actions=environment shifts without product names; personal_focus=profile priorities; shopping_preview=concrete product types/brand candidates.',
@@ -973,8 +918,8 @@ function buildTravelCalibrationPrompts({ language = 'EN', travelLlmInput, baseTr
     (hasRoutine ? `Current routine available: yes (see profile.currentRoutine in input)\n` : 'Current routine: not provided\n') +
     (isPregnantOrLactating ? 'Pregnancy/lactation: active — apply ingredient restrictions.\n' : '') +
     'Return JSON shape only: {"travel_readiness_patch":{...},"quality_flags":{"structured_complete":true},"source_notes":{"reasoning_mode":"llm_calibration_v2"}}\n' +
-    'Limits: adaptive_actions<=3, personal_focus<=2, category_recommendations<=5, each category products<=2, shopping_preview.products<=4, brand_candidates<=4.\n' +
-    'Local buying can name product types and grounded brand/channel candidates, but do not invent SKU-level facts.\n' +
+    'Limits: adaptive_actions<=2, personal_focus<=1, sleep_tips<=2, mask_tips<=2, brand_candidates<=3. No category_recommendations. No shopping_preview.products.\n' +
+    'Local buying can name grounded brand/channel candidates, but do not invent SKU-level facts.\n' +
     `Fact input JSON:${JSON.stringify(promptTravelLlmInput || {})}\n` +
     `Current travel_readiness JSON:${JSON.stringify(promptBaseTravelReadiness || {})}`
 
