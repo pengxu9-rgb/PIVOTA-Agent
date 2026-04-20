@@ -335,6 +335,18 @@ test('travel local product authority: rejects color cosmetics misclassified as t
               price_currency: 'USD',
               match_score: 46,
             }),
+            seedRow({
+              id: 216,
+              market: 'US',
+              external_product_id: 'ext_bad_oil_as_moisturizer',
+              title: 'Huile Prodigieuse Florale',
+              brand: 'NUXE',
+              category: 'moisturizer',
+              summary: 'multi-purpose dry oil for face body and hair',
+              price_amount: 29.5,
+              price_currency: 'USD',
+              match_score: 45,
+            }),
           ],
         };
       }
@@ -439,6 +451,7 @@ test('travel local product authority: rejects color cosmetics misclassified as t
   assert.equal(ids.includes('ext_bad_routine_moisturizer'), false);
   assert.equal(ids.includes('ext_bad_lip_mask'), false);
   assert.equal(ids.includes('ext_bad_hand_as_moisturizer'), false);
+  assert.equal(ids.includes('ext_bad_oil_as_moisturizer'), false);
   assert.equal(ids.includes('ext_good_spf'), true);
   assert.equal(ids.includes('ext_good_lotion'), true);
   assert.equal(ids.includes('ext_good_lip_balm'), true);
@@ -455,11 +468,13 @@ test('travel local product authority: rejects color cosmetics misclassified as t
   assert.equal(allDropReasons.has('bundle_or_set'), true);
   assert.equal(allDropReasons.has('lip_mask_role_mismatch'), true);
   assert.equal(allDropReasons.has('body_lip_hand_role_mismatch'), true);
+  assert.equal(allDropReasons.has('oil_role_mismatch'), true);
   assert.equal(allDropSamples.some((row) => row.external_product_id === 'ext_bad_correcting_stick' && /Match Stix/i.test(row.title)), true);
   assert.equal(allDropSamples.some((row) => row.external_product_id === 'ext_bad_eur_spf' && row.currency === 'EUR'), true);
   assert.equal(allDropSamples.some((row) => row.external_product_id === 'ext_bad_routine_moisturizer' && row.reason === 'bundle_or_set'), true);
   assert.equal(allDropSamples.some((row) => row.external_product_id === 'ext_bad_lip_mask' && row.reason === 'lip_mask_role_mismatch'), true);
   assert.equal(allDropSamples.some((row) => row.external_product_id === 'ext_bad_hand_as_moisturizer' && row.reason === 'body_lip_hand_role_mismatch'), true);
+  assert.equal(allDropSamples.some((row) => row.external_product_id === 'ext_bad_oil_as_moisturizer' && row.reason === 'oil_role_mismatch'), true);
   assert.equal(allDropSamples.every((row) => row.title && row.reason), true);
   const sunscreenStage = result.meta.stage_counts.find((row) => row.role_id === 'sun_protection');
   assert.equal(sunscreenStage.drop_reason_counts.color_cosmetic, 1);
