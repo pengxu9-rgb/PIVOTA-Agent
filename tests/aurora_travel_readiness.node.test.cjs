@@ -187,6 +187,11 @@ test('buildTravelReadiness keeps destination-local products in local shopping on
         role_id: 'body_lip_hand',
         sku: { product_id: 'kr_lip_1', brand: 'Round Lab', name: 'Birch Juice Moisturizing Lip Balm' },
       },
+      {
+        step: 'Hydrating or soothing mask',
+        role_id: 'recovery_mask',
+        sku: { product_id: 'kr_mask_1', brand: 'Round Lab', name: 'Birch Juice Moisturizing Double Gel Mask' },
+      },
     ],
     nowMs: Date.parse('2026-04-20T12:00:00.000Z'),
   });
@@ -201,8 +206,10 @@ test('buildTravelReadiness keeps destination-local products in local shopping on
   assert.ok(localShopping.product_ids.includes('kr_spf_1'));
   assert.ok(localShopping.product_ids.includes('kr_cream_1'));
   assert.ok(localShopping.product_ids.includes('kr_lip_1'));
+  assert.ok(localShopping.product_ids.includes('kr_mask_1'));
   assert.match(localShopping.actions.join(' '), /after arrival/i);
   assert.equal(/before boarding/i.test(localShopping.actions.join(' ')), false);
+  assert.equal(localShopping.actions.some((line) => /\b(if|and|or|for|with)\s*$/i.test(String(line || '').trim())), false);
 
   const cream = payload.shopping_preview.products.find((item) => item.product_id === 'kr_cream_1');
   assert.equal(cream.travel_usage_scope, 'local_shopping');
