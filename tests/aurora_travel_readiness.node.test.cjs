@@ -124,6 +124,13 @@ test('buildTravelReadiness returns actionable structure with deltas and shopping
     'during_trip_daily',
     'local_shopping',
   ]);
+  const allPhaseActions = payload.phase_plan.flatMap((phase) => Array.isArray(phase.actions) ? phase.actions : []);
+  assert.equal(allPhaseActions.some((line) => /\\b(or|and|rig|suppor|com)$/.test(String(line || '').trim())), false);
+  assert.ok(
+    allPhaseActions.some((line) =>
+      /avoid starting strong acids or retinoids right before departure\.$/.test(String(line || '')),
+    ),
+  );
   assert.ok(payload.phase_plan.find((phase) => phase.id === 'pre_trip_prepare').product_ids.includes('sku_2'));
   assert.ok(payload.phase_plan.find((phase) => phase.id === 'flight_cabin').product_ids.includes('sku_3'));
   assert.ok(payload.phase_plan.find((phase) => phase.id === 'local_shopping').product_ids.includes('sku_4'));
