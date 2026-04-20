@@ -90799,6 +90799,7 @@ function mountAuroraBffRoutes(app, { logger }) {
               logger,
               nowMs: Date.now(),
               userLocale: templateCtx.accept_language || ctx.lang,
+              safetyDecision,
               hasSafetyConflict: Boolean(
                 safetyDecision &&
                   safetyDecision.block_level &&
@@ -90830,7 +90831,12 @@ function mountAuroraBffRoutes(app, { logger }) {
                 ? travelPipelineOut.pending_clarification
                 : null;
 
-            if (safetyDecision && safetyDecision.block_level && safetyDecision.block_level !== BLOCK_LEVEL.INFO) {
+            if (
+              safetyDecision &&
+              safetyDecision.block_level &&
+              safetyDecision.block_level !== BLOCK_LEVEL.INFO &&
+              !travelPipelineOut.safety_notice_integrated
+            ) {
               const safetyText = buildTravelSafetyNoticeText(safetyDecision);
               if (safetyText) advice = insertTravelSafetyNotice(advice, safetyText);
             }
@@ -90950,6 +90956,16 @@ function mountAuroraBffRoutes(app, { logger }) {
               : [];
             sessionMeta.travel_kb_hit = Boolean(travelPipelineOut.travel_kb_hit);
             sessionMeta.travel_kb_write_queued = Boolean(travelPipelineOut.travel_kb_write_queued);
+            sessionMeta.assistant_final_rewrite_used = Boolean(travelPipelineOut.assistant_final_rewrite_used);
+            sessionMeta.assistant_final_rewrite_reason =
+              typeof travelPipelineOut.assistant_final_rewrite_reason === 'string'
+                ? travelPipelineOut.assistant_final_rewrite_reason
+                : null;
+            sessionMeta.assistant_final_rewrite_model =
+              typeof travelPipelineOut.assistant_final_rewrite_model === 'string'
+                ? travelPipelineOut.assistant_final_rewrite_model
+                : null;
+            sessionMeta.safety_notice_integrated = Boolean(travelPipelineOut.safety_notice_integrated);
             sessionMeta.travel_skill_invocation_matrix =
               travelPipelineOut.travel_skill_invocation_matrix &&
               typeof travelPipelineOut.travel_skill_invocation_matrix === 'object' &&
@@ -90962,6 +90978,11 @@ function mountAuroraBffRoutes(app, { logger }) {
                   reco_skip_reason: 'unknown',
                   store_called: false,
                   store_skip_reason: 'unknown',
+                  final_rewrite_used: Boolean(travelPipelineOut.assistant_final_rewrite_used),
+                  final_rewrite_reason:
+                    typeof travelPipelineOut.assistant_final_rewrite_reason === 'string'
+                      ? travelPipelineOut.assistant_final_rewrite_reason
+                      : 'unknown',
                   kb_write_queued: Boolean(travelPipelineOut.travel_kb_write_queued),
                   kb_write_skip_reason: Boolean(travelPipelineOut.travel_kb_write_queued) ? 'queued' : 'unknown',
                 };
@@ -91014,6 +91035,16 @@ function mountAuroraBffRoutes(app, { logger }) {
                 : [],
               travel_kb_hit: Boolean(travelPipelineOut.travel_kb_hit),
               travel_kb_write_queued: Boolean(travelPipelineOut.travel_kb_write_queued),
+              assistant_final_rewrite_used: Boolean(travelPipelineOut.assistant_final_rewrite_used),
+              assistant_final_rewrite_reason:
+                typeof travelPipelineOut.assistant_final_rewrite_reason === 'string'
+                  ? travelPipelineOut.assistant_final_rewrite_reason
+                  : null,
+              assistant_final_rewrite_model:
+                typeof travelPipelineOut.assistant_final_rewrite_model === 'string'
+                  ? travelPipelineOut.assistant_final_rewrite_model
+                  : null,
+              safety_notice_integrated: Boolean(travelPipelineOut.safety_notice_integrated),
               travel_skill_invocation_matrix:
                 travelPipelineOut.travel_skill_invocation_matrix &&
                 typeof travelPipelineOut.travel_skill_invocation_matrix === 'object' &&
@@ -91026,6 +91057,11 @@ function mountAuroraBffRoutes(app, { logger }) {
                     reco_skip_reason: 'unknown',
                     store_called: false,
                     store_skip_reason: 'unknown',
+                    final_rewrite_used: Boolean(travelPipelineOut.assistant_final_rewrite_used),
+                    final_rewrite_reason:
+                      typeof travelPipelineOut.assistant_final_rewrite_reason === 'string'
+                        ? travelPipelineOut.assistant_final_rewrite_reason
+                        : 'unknown',
                     kb_write_queued: Boolean(travelPipelineOut.travel_kb_write_queued),
                     kb_write_skip_reason: Boolean(travelPipelineOut.travel_kb_write_queued) ? 'queued' : 'unknown',
                   },

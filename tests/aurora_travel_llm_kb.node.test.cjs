@@ -7,6 +7,10 @@ const {
   buildTravelKbUpsertEntry,
 } = require('../src/auroraBff/travelKbPolicy');
 const { calibrateTravelReadinessWithLlm, __internal: travelLlmInternal } = require('../src/auroraBff/travelLlmCalibrator');
+const {
+  rewriteTravelAssistantTextWithLlm,
+  __internal: travelFinalRewriteInternal,
+} = require('../src/auroraBff/travelFinalAssistantRewriter');
 
 async function withEnv(patch, fn) {
   const previous = {};
@@ -182,6 +186,108 @@ test('travel LLM calibrator: skip_no_client fallback keeps baseline', async () =
       assert.equal(result.source_meta?.error_code, 'no_gemini_client');
     },
   );
+});
+
+test('travel final assistant rewriter: guard rejects stale fallback labels and absolute wording', () => {
+  const promptInput = travelFinalRewriteInternal.buildFinalRewritePromptInput({
+    language: 'EN',
+    message: 'Seattle to Shanghai business trip.',
+    travelReadiness: {
+      shopping_preview: { mode: 'category_guidance', coverage_status: 'category_only', grounded_count: 0 },
+    },
+  });
+
+  const forbiddenHeading = travelFinalRewriteInternal.validateTravelFinalRewriteText(
+    [
+      'Risk note:',
+      'UV will be higher, so use SPF and avoid introducing new acids before departure.',
+      'Keep the first 48 hours calm and reapply sunscreen during outdoor transit.',
+      'Use buying categories rather than confirmed item names for this trip.',
+    ].join('\n'),
+    { promptInput },
+  );
+  assert.equal(forbiddenHeading.ok, false);
+  assert.equal(forbiddenHeading.reason, 'rewrite_forbidden_heading');
+
+  const absoluteWord = travelFinalRewriteInternal.validateTravelFinalRewriteText(
+    [
+      'This is the best plan for a humid, high-UV route from Seattle to Shanghai.',
+      'Before departure, keep your routine familiar and pack SPF plus a lightweight moisturizer.',
+      'During the flight, avoid new actives and keep barrier care simple.',
+      'After arrival, reapply SPF during outdoor transit and buy only category-level backups if needed.',
+    ].join('\n'),
+    { promptInput },
+  );
+  assert.equal(absoluteWord.ok, false);
+  assert.equal(absoluteWord.reason, 'rewrite_absolute_wording');
+});
+
+test('travel final assistant rewriter: category-only prompt stays honest and mock Gemini can supply final prose', async () => {
+  const readiness = {
+    destination_context: {
+      destination: 'Shanghai',
+      start_date: '2026-04-20',
+      end_date: '2026-04-24',
+    },
+    delta_vs_home: {
+      temperature: { home: 12, destination: 23, delta: 11, unit: 'C' },
+      humidity: { home: 57, destination: 72, delta: 15, unit: '%' },
+      uv: { home: 4, destination: 7, delta: 3, unit: '' },
+    },
+    jetlag_sleep: {
+      tz_home: 'America/Los_Angeles',
+      tz_destination: 'Asia/Shanghai',
+      hours_diff: 15,
+      risk_level: 'high',
+    },
+    shopping_preview: {
+      mode: 'category_guidance',
+      coverage_status: 'category_only',
+      grounded_count: 0,
+      products: [
+        { name: 'SPF50 fluid sunscreen', category: 'sun protection', product_source: 'category_guidance' },
+        { name: 'Light barrier moisturizer', category: 'moisturizer', product_source: 'category_guidance' },
+      ],
+    },
+  };
+  const prompts = travelFinalRewriteInternal.buildTravelFinalRewritePrompts({
+    language: 'EN',
+    message: 'I am flying from Seattle to Shanghai next Monday. What should I prepare?',
+    travelReadiness: readiness,
+    deterministicBrief: 'Compact deterministic brief.',
+  });
+  assert.equal(prompts.userPrompt.includes('Shopping status: category_only'), true);
+
+  const assistantText = [
+    'Shanghai is likely to feel warmer, more humid, and higher UV than Seattle, so prepare a simple routine that protects your barrier without adding many new products.',
+    '',
+    '- Before departure: keep your usual cleanser and moisturizer, then pack SPF50 because UV and outdoor transit matter more than adding new actives.',
+    '- Flight day: use moisturizer before boarding, skip new acids or retinoids, and keep lips or dry patches comfortable.',
+    '- First 48 hours: reapply SPF when outside, keep night care calm, and let your sleep schedule catch up before changing treatments.',
+    '- Buying categories: sunscreen, a light barrier moisturizer, and a basic hydrating serum are category backups, not confirmed product picks.',
+    '',
+    'Will the trip be mainly meetings indoors or outdoor commuting?',
+  ].join('\n');
+  const result = await rewriteTravelAssistantTextWithLlm({
+    geminiGenerateContent: async () => ({ text: JSON.stringify({ assistant_text: assistantText }) }),
+    language: 'EN',
+    message: 'I am flying from Seattle to Shanghai next Monday. What should I prepare?',
+    travelReadiness: readiness,
+    structuredSections: {
+      key_deltas: ['Warmer and more humid than Seattle.'],
+      product_guidance: ['Use category backups rather than grounded product picks.'],
+    },
+    deterministicBrief: 'Compact deterministic brief.',
+    timeoutMs: 500,
+  });
+
+  assert.equal(result.used, true);
+  assert.equal(result.reason, 'ok');
+  assert.equal(result.assistant_text, assistantText);
+  assert.equal(result.source_meta.provider, 'gemini');
+  assert.equal(result.source_meta.model, 'gemini-3-flash-preview');
+  assert.equal(typeof result.source_meta.prompt_hash, 'string');
+  assert.equal(Number.isFinite(Number(result.source_meta.prompt_chars)), true);
 });
 
 test('travel LLM calibrator: parses patch and deep-merges shopping brand candidates', async () => {

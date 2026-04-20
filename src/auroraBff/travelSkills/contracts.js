@@ -6,6 +6,7 @@ const { buildEpiPayload } = require('../epiCalculator');
 const { getTravelAlerts } = require('../travelAlertsProvider');
 const { buildTravelReadiness, __internal: { buildCategorizedKit: _buildCategorizedKit } } = require('../travelReadinessBuilder');
 const { calibrateTravelReadinessWithLlm } = require('../travelLlmCalibrator');
+const { rewriteTravelAssistantTextWithLlm } = require('../travelFinalAssistantRewriter');
 const { composeTravelReply } = require('../travelReplyComposer');
 const { getTravelContextKbEntry, upsertTravelContextKbEntry } = require('../travelKbStore');
 const { evaluateTravelKbBackfill, buildTravelKbUpsertEntry } = require('../travelKbPolicy');
@@ -46,6 +47,10 @@ const TRAVEL_KB_WRITE_MAX_IN_FLIGHT = (() => {
 })();
 const TRAVEL_LLM_CALIBRATION_ENABLED = (() => {
   const raw = String(process.env.AURORA_TRAVEL_LLM_CALIBRATION_ENABLED || 'true').trim().toLowerCase();
+  return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
+})();
+const TRAVEL_FINAL_ASSISTANT_REWRITE_ENABLED = (() => {
+  const raw = String(process.env.AURORA_TRAVEL_FINAL_REWRITE_ENABLED || 'true').trim().toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
 let travelKbWriteInFlight = 0;
@@ -622,6 +627,43 @@ function evaluatePipelineQuality({
   return { ok: true, reason: 'ok' };
 }
 
+function buildCompactDeterministicTravelAssistantText({ language = 'EN', followupReply = null } = {}) {
+  const lang = normalizeLang(language);
+  const reply = isPlainObject(followupReply) ? followupReply : {};
+  const structured = isPlainObject(reply.structured_sections) ? reply.structured_sections : {};
+  const lines = [];
+  const brief = normalizeText(reply.text_brief, 900);
+  if (brief) lines.push(brief);
+
+  const pushSection = (titleEn, titleCn, rows, maxRows = 2) => {
+    const values = Array.isArray(rows)
+      ? rows.map((line) => normalizeText(line, 240)).filter(Boolean).slice(0, maxRows)
+      : [];
+    if (!values.length) return;
+    lines.push([
+      lang === 'CN' ? `${titleCn}：` : `${titleEn}:`,
+      ...values.map((line) => `- ${line}`),
+    ].join('\n'));
+  };
+
+  pushSection('Trip priorities', '旅行重点', structured.key_deltas, 2);
+  pushSection('Plan', '执行方案', structured.routine_adjustments, 3);
+  pushSection('Flight and arrival', '飞行与落地', [
+    ...(Array.isArray(structured.flight_day_plan) ? structured.flight_day_plan.slice(0, 1) : []),
+    ...(Array.isArray(structured.phased_plan) ? structured.phased_plan.slice(0, 2) : []),
+  ], 3);
+  pushSection('Buying categories', '购买品类', structured.product_guidance, 2);
+
+  const text = lines.filter(Boolean).join('\n\n');
+  return normalizeText(
+    text ||
+      (lang === 'CN'
+        ? '我先按当前可得信息给你旅行护肤建议。'
+        : 'Here is a practical travel skincare plan based on currently available data.'),
+    2600,
+  );
+}
+
 /**
  * @typedef {Object} TravelPipelineInput
  * @property {string} message
@@ -637,6 +679,8 @@ function evaluatePipelineQuality({
  * @property {number=} nowMs
  * @property {string=} userLocale
  * @property {boolean=} hasSafetyConflict
+ * @property {Object|null=} safetyDecision
+ * @property {Function|null=} travelFinalRewriteGeminiGenerateContent
  */
 
 /**
@@ -655,6 +699,7 @@ function evaluatePipelineQuality({
  * @property {string|null} env_source
  * @property {boolean} degraded
  * @property {Object} travel_skill_invocation_matrix
+ * @property {boolean=} safety_notice_integrated
  */
 
 async function runTravelPipeline(input = {}) {
@@ -671,6 +716,11 @@ async function runTravelPipeline(input = {}) {
   const travelWeatherLiveEnabled = Boolean(input.travelWeatherLiveEnabled);
   const userLocale = normalizeText(input.userLocale, 40) || null;
   const hasSafetyConflict = Boolean(input.hasSafetyConflict);
+  const safetyDecision = isPlainObject(input.safetyDecision) ? input.safetyDecision : null;
+  const travelFinalRewriteGeminiGenerateContent =
+    typeof input.travelFinalRewriteGeminiGenerateContent === 'function'
+      ? input.travelFinalRewriteGeminiGenerateContent
+      : null;
 
   let kbHit = false;
   let kbWriteQueued = false;
@@ -690,6 +740,9 @@ async function runTravelPipeline(input = {}) {
   let storeCalled = false;
   let storeSkipReason = null;
   let kbWriteSkipReason = null;
+  let finalRewriteUsed = false;
+  let finalRewriteReason = null;
+  let finalRewriteSourceMeta = null;
 
   const intentStartedAt = Date.now();
   const profileCtx = pickTravelContextFromProfile(profile);
@@ -1667,19 +1720,18 @@ async function runTravelPipeline(input = {}) {
     };
   }
 
-  let assistantText = normalizeText(followupReply && (followupReply.text || followupReply.text_brief), 12000);
-  if (!assistantText) {
-    assistantText =
-      language === 'CN'
-        ? '我先按当前可得信息给你旅行护肤建议。'
-        : 'Here is a practical travel skincare plan based on currently available data.';
-  }
-  const appendAssistantBlockIfFits = (block) => {
+  const defaultAssistantText =
+    language === 'CN'
+      ? '我先按当前可得信息给你旅行护肤建议。'
+      : 'Here is a practical travel skincare plan based on currently available data.';
+  let assistantText =
+    buildCompactDeterministicTravelAssistantText({ language, followupReply }) ||
+    defaultAssistantText;
+  const appendAssistantBlockIfFits = (block, { visibleBudget = 2600 } = {}) => {
     const normalizedBlock = normalizeText(block, 2400);
     if (!normalizedBlock) return;
-    const next = [assistantText, normalizedBlock].filter(Boolean).join('\n\n');
-    // Keep rich travel replies under the formatter budget so we do not leave dangling headings.
-    if (next.length <= 4550) assistantText = next;
+    const nextVisible = [assistantText, normalizedBlock].filter(Boolean).join('\n\n');
+    if (nextVisible.length <= visibleBudget) assistantText = nextVisible;
   };
   if (recoPreview) {
     const block = formatRecoPreviewText({ language, recoPreview });
@@ -1697,9 +1749,6 @@ async function runTravelPipeline(input = {}) {
     recordAuroraTravelResponseQuality({ section });
   }
   recordAuroraTravelReplyMode({ mode: normalizeText(followupReply && followupReply.reply_mode, 40) || 'fallback' });
-  recordAuroraTravelResponseSource({
-    source: llmResult && llmResult.used ? 'llm_enriched' : 'rules_only',
-  });
 
   pushTrace(trace, {
     skill: 'travel_followup_reply_skill',
@@ -1710,6 +1759,80 @@ async function runTravelPipeline(input = {}) {
       focus: normalizeText(followupReply && followupReply.focus, 80) || null,
       has_official_alerts: Boolean(followupReply && followupReply.has_official_alerts),
     },
+  });
+
+  const finalRewriteStartedAt = Date.now();
+  if (TRAVEL_FINAL_ASSISTANT_REWRITE_ENABLED) {
+    try {
+      const finalRewrite = await rewriteTravelAssistantTextWithLlm({
+        geminiGenerateContent: travelFinalRewriteGeminiGenerateContent,
+        language,
+        message,
+        profile,
+        travelReadiness,
+        structuredSections: followupReply && followupReply.structured_sections,
+        deterministicBrief: assistantText,
+        safetyDecision,
+        logger,
+      });
+      finalRewriteUsed = Boolean(finalRewrite && finalRewrite.used && finalRewrite.assistant_text);
+      finalRewriteReason =
+        normalizeText(finalRewrite && (finalRewrite.reason || finalRewrite.outcome), 120) ||
+        (finalRewriteUsed ? 'ok' : 'unknown');
+      finalRewriteSourceMeta =
+        finalRewrite && isPlainObject(finalRewrite.source_meta) ? finalRewrite.source_meta : null;
+      if (finalRewriteUsed) {
+        assistantText = normalizeText(finalRewrite.assistant_text, 2600) || assistantText;
+      }
+      pushTrace(trace, {
+        skill: 'travel_final_reply_rewrite_skill',
+        status: finalRewriteUsed ? 'ok' : normalizeText(finalRewrite && finalRewrite.outcome, 40) || 'skip',
+        startedAtMs: finalRewriteStartedAt,
+        meta: {
+          used: finalRewriteUsed,
+          reason: finalRewriteReason,
+          model: normalizeText(finalRewriteSourceMeta && finalRewriteSourceMeta.model, 120) || null,
+          prompt_hash: normalizeText(finalRewriteSourceMeta && finalRewriteSourceMeta.prompt_hash, 48) || null,
+          prompt_chars: toNumber(finalRewriteSourceMeta && finalRewriteSourceMeta.prompt_chars),
+          error_code: normalizeText(finalRewriteSourceMeta && finalRewriteSourceMeta.error_code, 120) || null,
+          timeout_stage: normalizeText(finalRewriteSourceMeta && finalRewriteSourceMeta.timeout_stage, 40) || null,
+          gate_wait_ms: toNumber(finalRewriteSourceMeta && finalRewriteSourceMeta.gate_wait_ms),
+          upstream_ms: toNumber(finalRewriteSourceMeta && finalRewriteSourceMeta.upstream_ms),
+          total_ms: toNumber(finalRewriteSourceMeta && finalRewriteSourceMeta.total_ms),
+          raw_text_chars: toNumber(finalRewriteSourceMeta && finalRewriteSourceMeta.raw_text_chars),
+          raw_text_excerpt: normalizeText(finalRewriteSourceMeta && finalRewriteSourceMeta.raw_text_excerpt, 360) || null,
+        },
+      });
+    } catch (err) {
+      finalRewriteUsed = false;
+      finalRewriteReason = normalizeText(err && (err.code || err.message), 120) || 'final_rewrite_error';
+      pushTrace(trace, {
+        skill: 'travel_final_reply_rewrite_skill',
+        status: 'error',
+        startedAtMs: finalRewriteStartedAt,
+        meta: {
+          used: false,
+          reason: finalRewriteReason,
+          error_code: finalRewriteReason,
+        },
+      });
+    }
+  } else {
+    finalRewriteUsed = false;
+    finalRewriteReason = 'disabled';
+    pushTrace(trace, {
+      skill: 'travel_final_reply_rewrite_skill',
+      status: 'skip',
+      startedAtMs: finalRewriteStartedAt,
+      meta: {
+        used: false,
+        reason: finalRewriteReason,
+      },
+    });
+  }
+
+  recordAuroraTravelResponseSource({
+    source: finalRewriteUsed || (llmResult && llmResult.used) ? 'llm_enriched' : 'rules_only',
   });
 
   const kbWriteStartedAt = Date.now();
@@ -1852,6 +1975,8 @@ async function runTravelPipeline(input = {}) {
     reco_skip_reason: recoCalled ? recoSkipReason : recoSkipReason || null,
     store_called: storeCalled,
     store_skip_reason: storeCalled ? storeSkipReason : storeSkipReason || null,
+    final_rewrite_used: finalRewriteUsed,
+    final_rewrite_reason: finalRewriteReason || (TRAVEL_FINAL_ASSISTANT_REWRITE_ENABLED ? 'unknown' : 'disabled'),
     kb_write_queued: kbWriteQueued,
     kb_write_skip_reason: kbWriteQueued ? 'queued' : kbWriteSkipReason || 'incomplete_structure',
   };
@@ -1866,6 +1991,15 @@ async function runTravelPipeline(input = {}) {
     travel_kb_hit: kbHit,
     travel_kb_write_queued: kbWriteQueued,
     travel_skill_invocation_matrix: invocationMatrix,
+    assistant_final_rewrite_used: finalRewriteUsed,
+    assistant_final_rewrite_reason: finalRewriteReason || null,
+    assistant_final_rewrite_model: normalizeText(finalRewriteSourceMeta && finalRewriteSourceMeta.model, 120) || null,
+    safety_notice_integrated: Boolean(
+      finalRewriteUsed &&
+        safetyDecision &&
+        safetyDecision.block_level &&
+        String(safetyDecision.block_level || '').trim().toUpperCase() !== 'INFO',
+    ),
     travel_followup_state: {
       focus: normalizeText(followupReply && followupReply.focus, 80) || null,
       reply_sig: normalizeText(followupReply && followupReply.reply_sig, 320) || null,
