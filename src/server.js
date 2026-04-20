@@ -3223,6 +3223,18 @@ function buildPrefetchedOfferProductMap(products) {
   return out;
 }
 
+function findPrefetchedSavingsPresentationProduct(product, prefetchedProducts) {
+  if (!product || typeof product !== 'object') return null;
+  const productKeys = new Set(collectOfferProductRefKeys(product));
+  if (!productKeys.size) return null;
+  for (const candidate of Array.isArray(prefetchedProducts) ? prefetchedProducts : []) {
+    if (!candidate || typeof candidate !== 'object' || !hasSavingsPresentationFields(candidate)) continue;
+    const matches = collectOfferProductRefKeys(candidate).some((key) => productKeys.has(key));
+    if (matches) return candidate;
+  }
+  return null;
+}
+
 function buildOfferProductProjection(product) {
   if (!product || typeof product !== 'object') return product;
   const selectedRef =
@@ -3982,6 +3994,8 @@ function buildOfferVariantsForPayload(product, fallbackCurrency) {
 }
 
 async function buildOffersFromGroupMembers(args) {
+  const totalStartedAt = Date.now();
+  const timings = {};
   const productGroupId = args?.productGroupId ? String(args.productGroupId).trim() : null;
   const groupMembers = Array.isArray(args?.members) ? args.members : [];
   const checkoutToken = args?.checkoutToken;
@@ -3992,6 +4006,7 @@ async function buildOffersFromGroupMembers(args) {
   const prefetchedProductByKey = buildPrefetchedOfferProductMap(args?.prefetchedProducts);
 
   if (!groupMembers.length) return null;
+  timings.setup = Date.now() - totalStartedAt;
 
   const members = groupMembers
     .map((m) => ({
@@ -4048,6 +4063,7 @@ async function buildOffersFromGroupMembers(args) {
     fetched: 0,
     hydrated: 0,
   };
+  const fetchProductsStartedAt = Date.now();
   const chunkSize = 4;
   for (let i = 0; i < members.length; i += chunkSize) {
     const chunk = members.slice(i, i + chunkSize);
@@ -4093,6 +4109,7 @@ async function buildOffersFromGroupMembers(args) {
     );
     fetched.push(...results.filter(Boolean));
   }
+  timings.fetch_products = Date.now() - fetchProductsStartedAt;
 
   const products = fetched.map((entry) => entry.product).filter(Boolean);
   if (!products.length) return null;
@@ -4115,6 +4132,7 @@ async function buildOffersFromGroupMembers(args) {
       : null) ||
     `pg:pid:${String(canonicalProductRef?.product_id || products[0]?.product_id || products[0]?.id || '').trim()}`;
 
+  const buildOfferRowsStartedAt = Date.now();
   const offers = fetched.map(({ member, product: p }) => {
     const mid = String(p.merchant_id || '').trim();
     const offerProductId = String(p.product_id || '').trim() || undefined;
@@ -4210,13 +4228,17 @@ async function buildOffersFromGroupMembers(args) {
       risk_tier: 'standard',
     };
   });
+  timings.build_offer_rows = Date.now() - buildOfferRowsStartedAt;
 
+  const sortStartedAt = Date.now();
   const sortedByTotal = [...offers].sort((a, b) => computeOfferTotal(a) - computeOfferTotal(b));
   const bestPriceOfferId = sortedByTotal[0]?.offer_id || null;
   const preferredOfferId = preferredMerchantId
     ? offers.find((o) => o.merchant_id === preferredMerchantId)?.offer_id || null
     : null;
   const defaultOfferId = preferredOfferId || bestPriceOfferId;
+  timings.sort = Date.now() - sortStartedAt;
+  timings.total = Date.now() - totalStartedAt;
 
   return {
     status: 'success',
@@ -4230,6 +4252,7 @@ async function buildOffersFromGroupMembers(args) {
       ? {
           diagnostics: {
             build_sources: buildSourceStats,
+            timings_ms: timings,
             merchant_name_lookup_enabled: merchantProfileNameLookupEnabled,
           },
         }
@@ -22312,6 +22335,16 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	      }
 
 	      const savingsPresentationHydrationStartedAt = Date.now();
+	      const prefetchedSavingsProduct = findPrefetchedSavingsPresentationProduct(
+	        canonicalProductForPdp,
+	        [precheckedMerchantProduct, canonicalProduct].filter(Boolean),
+	      );
+	      if (prefetchedSavingsProduct) {
+	        canonicalProductForPdp = mergeSavingsPresentationFields(
+	          canonicalProductForPdp,
+	          prefetchedSavingsProduct,
+	        );
+	      }
 	      canonicalProductForPdp = await hydrateSavingsPresentationFromUpstream({
 	        product: canonicalProductForPdp,
 	        canonicalProductRef,
