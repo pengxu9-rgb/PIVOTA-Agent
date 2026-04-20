@@ -218,6 +218,41 @@ function compactWhatItIsHeadline(headline) {
   return text.length <= 42 ? text : '';
 }
 
+function inferTitleSpecialtyCompactSubtitle(product) {
+  const safeProduct = product && typeof product === 'object' ? product : {};
+  const title = asString(safeProduct.title || safeProduct.name).toLowerCase();
+  const category = asString(safeProduct.category || safeProduct.product_type).toLowerCase();
+  const text = `${title} ${category}`.trim();
+  if (!text) return '';
+
+  if (/\b(?:cleanser|cleansing)\b/.test(text)) {
+    if (/\bcleansing\s+balm\b/.test(text)) return 'Cleansing Balm';
+    if (/\bcleansing\s+oil\b/.test(text)) return 'Cleansing Oil';
+    if (/\bcream-to-foam\b/.test(text)) return 'Cream-To-Foam Cleanser';
+    return 'Daily Cleanser';
+  }
+  if (/\bbody\s+scrub\b/.test(text) || /\bbump\s+eraser\b/.test(text)) {
+    if (/\b(?:aha|bha|kp)\b/.test(text)) return 'AHA Body Scrub';
+    return 'Body Scrub';
+  }
+  if (/\bshav(?:e|ing)\s+cream\b/.test(text)) return 'Shave Cream';
+  if (/\bdeodorant\b/.test(text)) return /\bcream\b/.test(text) ? 'Deodorant Cream' : 'Deodorant';
+  if (/\bbody\s+oil\b/.test(text)) return 'Body Oil';
+  if (/\bbody\s+mist\b/.test(text) || (/\bmist\b/.test(text) && /\b(?:body|acne|salicylic|bha|aha)\b/.test(text))) {
+    if (/\b(?:acne|salicylic|bha|aha)\b/.test(text)) return 'Body Treatment Mist';
+    return 'Body Mist';
+  }
+  if (/\beye\s+balm\b/.test(text)) return 'Eye Balm';
+  if (/\beye\s+cream\b/.test(text)) return 'Eye Cream';
+  if (/\blip\s+balm\b/.test(text)) return 'Lip Balm';
+  if (/\bsleeping\s+pack\b/.test(text)) return 'Sleeping Pack';
+  if (/\bsheet\s+mask\b/.test(text)) return 'Sheet Mask';
+  if (/\b(?:gel|jelly|facial|collagen|firming)\s+mask\b/.test(text) || /\bmask\b/.test(title)) {
+    return 'Treatment Mask';
+  }
+  return '';
+}
+
 function normalizeCompactComparisonText(value) {
   return asString(value)
     .toLowerCase()
@@ -314,6 +349,9 @@ function normalizeHighlightCandidates(value) {
 
 function buildCompactSubtitle({ product, bundle }) {
   const safeProduct = product && typeof product === 'object' ? product : {};
+  const specialtySubtitle = inferTitleSpecialtyCompactSubtitle(safeProduct);
+  if (specialtySubtitle) return specialtySubtitle;
+
   const core = bundle?.product_intel_core || {};
   const stepLabel = inferRoutineLabel(core?.routine_fit?.step, safeProduct.category || safeProduct.product_type);
   const whatBody = asString(core?.what_it_is?.body).toLowerCase();
@@ -481,6 +519,7 @@ module.exports = {
   buildCardHighlight,
   buildCardIntro,
   buildProofBadge,
+  inferTitleSpecialtyCompactSubtitle,
   buildSearchCardPayload,
   buildShoppingCardPayload,
   buildTitleCandidate,

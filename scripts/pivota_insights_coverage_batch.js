@@ -235,7 +235,7 @@ function detectShoppingCardSubtypeMismatch({ title = '', subtitle = '' } = {}) {
     },
     {
       titlePattern: /\bsleeping\s+pack\b/,
-      subtitlePattern: /\b(?:sleep|overnight|mask)\b/,
+      subtitlePattern: /\b(?:sleeping?|overnight|mask|pack)\b/,
       reason: 'compact_subtitle_mismatch_sleeping_pack',
     },
     {

@@ -356,8 +356,20 @@ function hasProblematicGeneratedText(text) {
 
 function inferProductKindFromContext(context) {
   const text = `${context?.title || ''} ${context?.category || ''} ${(context?.tags || []).join(' ')}`.toLowerCase();
+  if (/\blip\s+balm\b/.test(text)) return 'lip_balm';
   if (/\b(lip|lipstick|lip oil|lip balm|lip color|gloss|glaze)\b/.test(text)) return 'lip';
   if (/\b(fragrance|perfume|parfum|eau de parfum|edt|scent)\b/.test(text)) return 'fragrance';
+  if (/\bbody\s+scrub\b/.test(text) || /\bbump\s+eraser\b/.test(text)) return 'body_scrub';
+  if (/\bshav(?:e|ing)\s+cream\b/.test(text)) return 'shave_cream';
+  if (/\bdeodorant\b/.test(text)) return 'deodorant';
+  if (/\bbody\s+oil\b/.test(text)) return 'body_oil';
+  if (/\bbody\s+mist\b/.test(text) || (/\bmist\b/.test(text) && /\b(?:body|acne|salicylic|bha|aha)\b/.test(text))) {
+    return 'body_mist';
+  }
+  if (/\beye\s+balm\b/.test(text)) return 'eye_balm';
+  if (/\beye\s+cream\b/.test(text)) return 'eye_cream';
+  if (/\bsleeping\s+pack\b/.test(text)) return 'sleeping_pack';
+  if (/\bmask\b/.test(text) && !/\b(cleanser|cleansing)\b/.test(text)) return 'treatment_mask';
   if (/\b(sunscreen|spf|uv)\b/.test(text) && /\b(tint|tinted|skin tint)\b/.test(text)) return 'tinted_sunscreen';
   if (/\b(foundation|concealer|skin tint|tint|base|cc stick)\b/.test(text)) return 'complexion_makeup';
   if (/\b(cleanser|cleansing|face wash|wash)\b/.test(text)) return 'cleanser';
@@ -1229,6 +1241,44 @@ function buildFormulaPhrase(signals, maxItems = 3) {
 function buildHumanStandardBodyFromFacts(context, kind, formulaSignals) {
   const formulaPhrase = buildFormulaPhrase(formulaSignals);
   const withFormula = formulaPhrase ? ` built around ${formulaPhrase}` : '';
+  const titleText = `${context?.title || ''} ${context?.description || ''}`.toLowerCase();
+  if (kind === 'body_scrub') {
+    const acidLabel = /\b(?:aha|lactic|glycolic)\b/.test(titleText)
+      ? 'AHA body scrub'
+      : /\b(?:bha|salicylic)\b/.test(titleText)
+        ? 'BHA body scrub'
+        : 'body exfoliating scrub';
+    return `An ${acidLabel}${withFormula} for smoothing rough-feeling body texture and exfoliating body-care routines.`;
+  }
+  if (kind === 'body_mist') {
+    return /\b(?:acne|salicylic|bha|aha)\b/.test(titleText)
+      ? `A body treatment mist${withFormula} for breakout-prone body-care areas and hard-to-reach application.`
+      : `A body mist${withFormula} for lightweight body-care application.`;
+  }
+  if (kind === 'shave_cream') {
+    return `A shave cream${withFormula} for cushioning body shaving and comfortable glide.`;
+  }
+  if (kind === 'deodorant') {
+    return `A deodorant cream${withFormula} for body odor-control routines.`;
+  }
+  if (kind === 'body_oil') {
+    return `A body oil${withFormula} for post-shower moisture sealing, soft feel, and body glow.`;
+  }
+  if (kind === 'lip_balm') {
+    return `A lip balm${withFormula} for soft-feeling lips, moisture comfort, and reapplication through the day.`;
+  }
+  if (kind === 'eye_balm') {
+    return `An eye balm${withFormula} for under-eye moisture, comfort, and targeted eye-area care.`;
+  }
+  if (kind === 'eye_cream') {
+    return `An eye cream${withFormula} for under-eye hydration, comfort, and targeted eye-area care.`;
+  }
+  if (kind === 'sleeping_pack') {
+    return `An overnight sleeping pack${withFormula} for PM hydration and barrier-comfort routines.`;
+  }
+  if (kind === 'treatment_mask') {
+    return `A treatment mask${withFormula} for focused masking routines and temporary skin-care support.`;
+  }
   if (kind === 'tinted_sunscreen') {
     return `A tinted daily sunscreen${withFormula} for AM UV protection, sheer tone-evening coverage, and makeup-friendly layering.`;
   }
@@ -1282,6 +1332,60 @@ function buildHumanStandardWhatItIs(context, baselineBundle) {
     return {
       headline: /fragrance|parfum|scent/i.test(baseHeadline) ? baseHeadline : 'Fragrance profile',
       body: preferredFactsBody,
+    };
+  }
+  if (kind === 'body_scrub') {
+    return {
+      headline: /scrub|exfoliat/i.test(baseHeadline) ? baseHeadline : 'Body exfoliating scrub',
+      body: factsBody,
+    };
+  }
+  if (kind === 'body_mist') {
+    return {
+      headline: /mist|body treatment/i.test(baseHeadline) ? baseHeadline : 'Body treatment mist',
+      body: factsBody,
+    };
+  }
+  if (kind === 'shave_cream') {
+    return {
+      headline: /shav/i.test(baseHeadline) ? baseHeadline : 'Shave cream',
+      body: factsBody,
+    };
+  }
+  if (kind === 'deodorant') {
+    return {
+      headline: /deodorant/i.test(baseHeadline) ? baseHeadline : 'Deodorant cream',
+      body: factsBody,
+    };
+  }
+  if (kind === 'body_oil') {
+    return {
+      headline: /body oil|oil/i.test(baseHeadline) ? baseHeadline : 'Body oil',
+      body: factsBody,
+    };
+  }
+  if (kind === 'lip_balm') {
+    return {
+      headline: /lip balm|balm/i.test(baseHeadline) ? baseHeadline : 'Lip balm',
+      body: factsBody,
+    };
+  }
+  if (kind === 'eye_balm' || kind === 'eye_cream') {
+    return {
+      headline: /eye/i.test(baseHeadline) ? baseHeadline : kind === 'eye_balm' ? 'Eye balm' : 'Eye cream',
+      body: factsBody,
+    };
+  }
+  if (kind === 'sleeping_pack') {
+    return {
+      headline: /sleep|overnight|pack/i.test(baseHeadline) ? baseHeadline : 'Overnight sleeping pack',
+      body: factsBody,
+    };
+  }
+  if (kind === 'treatment_mask') {
+    return {
+      headline: /mask/i.test(baseHeadline) ? baseHeadline : 'Treatment mask',
+      body: factsBody,
     };
   }
   if (kind === 'tinted_sunscreen') {
@@ -1345,6 +1449,33 @@ function buildHumanStandardBestFor(context, baselineBundle) {
   }
   if (kind === 'fragrance') {
     return [item('fragrance_wear', 'Fragrance wear'), item('scent_preference', 'Scent-profile shoppers')];
+  }
+  if (kind === 'body_scrub') {
+    return [item('body_exfoliation', 'Body exfoliation'), item('rough_texture', 'Rough-feeling body texture')];
+  }
+  if (kind === 'body_mist') {
+    return [item('body_treatment', 'Body treatment routines'), item('hard_to_reach_application', 'Hard-to-reach body areas')];
+  }
+  if (kind === 'shave_cream') {
+    return [item('body_shaving', 'Body shaving routines'), item('comfortable_glide', 'Comfortable glide')];
+  }
+  if (kind === 'deodorant') {
+    return [item('deodorant_routine', 'Body odor-control routines')];
+  }
+  if (kind === 'body_oil') {
+    return [item('body_moisture', 'Post-shower body moisture'), item('body_glow', 'Soft body glow')];
+  }
+  if (kind === 'lip_balm') {
+    return [item('lip_moisture', 'Lip moisture comfort'), item('lip_reapplication', 'On-the-go lip reapplication')];
+  }
+  if (kind === 'eye_balm' || kind === 'eye_cream') {
+    return [item('eye_area_care', 'Eye-area care'), item('under_eye_hydration', 'Under-eye hydration')];
+  }
+  if (kind === 'sleeping_pack') {
+    return [item('overnight_hydration', 'Overnight hydration'), item('pm_barrier_comfort', 'PM barrier-comfort routines')];
+  }
+  if (kind === 'treatment_mask') {
+    return [item('masking_routine', 'Masking routines'), item('temporary_skin_support', 'Temporary skin support')];
   }
   if (kind === 'complexion_makeup') {
     return [
@@ -1434,6 +1565,61 @@ function buildHumanStandardHighlights(context) {
           ? `Defines the scent around ${activeTerms.join(', ')} notes for shoppers comparing fragrance profiles.`
           : 'Anchors the fragrance in scent profile and wear context for shoppers comparing fragrance styles.',
       ),
+    ];
+  }
+  if (kind === 'body_scrub') {
+    return [
+      highlight(
+        'Body exfoliation step',
+        formulaPhrase
+          ? `Body scrub use is supported by ${formulaPhrase} and rough-texture smoothing cues.`
+          : 'Body exfoliation, rough-texture smoothing, and rinse-off body-care use are the clearest cues.',
+      ),
+    ];
+  }
+  if (kind === 'body_mist') {
+    return [
+      highlight(
+        'Body treatment spray',
+        formulaPhrase
+          ? `Mist application plus ${formulaPhrase} cues fit breakout-prone body areas and hard-to-reach use.`
+          : 'Mist application fits breakout-prone body areas and hard-to-reach use.',
+      ),
+    ];
+  }
+  if (kind === 'shave_cream') {
+    return [
+      highlight('Razor glide cushion', 'Cream texture supports shaving glide, cushion, and rinse-off comfort.'),
+    ];
+  }
+  if (kind === 'deodorant') {
+    return [
+      highlight('Odor-control cream', 'Cream application supports deodorant use and body odor-control routines.'),
+    ];
+  }
+  if (kind === 'body_oil') {
+    return [
+      highlight('Post-shower oil layer', 'Oil texture helps seal body moisture after showering and leaves a soft body finish.'),
+    ];
+  }
+  if (kind === 'lip_balm') {
+    return [
+      highlight('Lip moisture reset', 'Balm texture supports lip moisture comfort, softness, and easy reapplication.'),
+    ];
+  }
+  if (kind === 'eye_balm' || kind === 'eye_cream') {
+    return [
+      highlight('Targeted eye-area moisture', 'Eye-area application keeps moisture support focused around the under-eye zone.'),
+    ];
+  }
+  if (kind === 'sleeping_pack') {
+    return [
+      highlight('Overnight mask timing', 'Sleeping-pack use fits PM moisture support and overnight barrier-comfort routines.'),
+    ];
+  }
+  if (kind === 'treatment_mask') {
+    return [
+      highlight('Focused mask timing', 'Mask use gives a focused treatment step with temporary support and clear use timing.'),
     ];
   }
   if (kind === 'tinted_sunscreen') {
@@ -1539,10 +1725,11 @@ function buildHumanStandardWatchouts(context, baselineBundle) {
   if (kind === 'sunscreen' || kind === 'tinted_sunscreen') {
     return [{ type: 'spf', label: 'Reapply as needed for extended daytime exposure.', severity: 'medium' }];
   }
+  const contextText = `${context?.title || ''} ${context?.description || ''} ${toList(context?.ingredients).join(' ')}`;
   if (kind === 'serum' && /\b(retinol|salicylic acid|acid)\b/i.test(`${context?.description || ''} ${toList(context?.ingredients).join(' ')}`)) {
     return [{ type: 'active_blend', label: 'Introduce gradually if your routine already includes retinoids or exfoliating acids.', severity: 'medium' }];
   }
-  return toList(baselineBundle?.product_intel_core?.watchouts)
+  const baselineWatchouts = toList(baselineBundle?.product_intel_core?.watchouts)
     .map((item) => ({
       type: asString(item?.type).slice(0, 80) || 'watchout',
       label: asString(item?.label).slice(0, 160),
@@ -1550,13 +1737,33 @@ function buildHumanStandardWatchouts(context, baselineBundle) {
         ? asString(item?.severity).toLowerCase()
         : 'low',
     }))
-    .filter((item) => item.label)
+    .filter((item) => item.label && item.type !== 'spf' && !/\bspf|sunscreen|uv protection|reapply\b/i.test(item.label))
     .slice(0, 3);
+  if (kind === 'body_scrub' && /\b(aha|bha|lactic acid|glycolic acid|salicylic acid|acid)\b/i.test(contextText)) {
+    const hasAcidWatchout = baselineWatchouts.some((item) => item.type === 'acid' || /acid|exfoliat/i.test(item.label));
+    if (!hasAcidWatchout) {
+      baselineWatchouts.push({
+        type: 'acid',
+        label: 'May be too active for very sensitive or over-exfoliated skin.',
+        severity: 'high',
+      });
+    }
+  }
+  return baselineWatchouts.slice(0, 3);
 }
 
 function buildHumanStandardPairingNotes(kind) {
+  if (kind === 'lip_balm') return ['Use as a lip balm step and reapply when lips feel dry.'];
   if (kind === 'lip') return ['Use as a lip finishing step or reapply when shine and comfort fade.'];
   if (kind === 'fragrance') return ['Apply to pulse points and adjust amount based on scent intensity preference.'];
+  if (kind === 'body_scrub') return ['Use on body areas according to seller directions; follow with moisturizer if needed.'];
+  if (kind === 'body_mist') return ['Spray onto targeted body areas according to seller directions.'];
+  if (kind === 'shave_cream') return ['Use during shaving to support glide, then rinse as directed.'];
+  if (kind === 'deodorant') return ['Apply as a deodorant step according to seller directions.'];
+  if (kind === 'body_oil') return ['Apply to body skin after showering or when body moisture support is needed.'];
+  if (kind === 'eye_balm' || kind === 'eye_cream') return ['Use around the eye area according to seller directions.'];
+  if (kind === 'sleeping_pack') return ['Use in the evening as an overnight mask step.'];
+  if (kind === 'treatment_mask') return ['Use as a mask step according to seller directions.'];
   if (kind === 'complexion_makeup') return ['Apply in the complexion makeup step and choose shade/coverage separately.'];
   if (kind === 'tinted_sunscreen') return ['Use as the last morning skin-care step; choose tint/shade separately when variants exist.'];
   if (kind === 'sunscreen') return ['Use as the last morning skin-care step before makeup.'];
@@ -1565,6 +1772,86 @@ function buildHumanStandardPairingNotes(kind) {
   if (kind === 'serum') return ['Apply before moisturizer; use SPF in the morning when using active treatments.'];
   if (kind === 'cleanser') return ['Use before treatment and moisturizer steps.'];
   return ['Use according to the product category and seller directions.'];
+}
+
+function buildHumanStandardRoutineStep(kind, fallbackStep = '') {
+  if (kind === 'body_scrub') return 'body exfoliation';
+  if (kind === 'body_mist') return 'body treatment';
+  if (kind === 'shave_cream') return 'shave';
+  if (kind === 'deodorant') return 'deodorant';
+  if (kind === 'body_oil') return 'body oil';
+  if (kind === 'lip_balm') return 'lip balm';
+  if (kind === 'eye_balm' || kind === 'eye_cream') return 'eye treatment';
+  if (kind === 'sleeping_pack') return 'sleeping mask';
+  if (kind === 'treatment_mask') return 'mask';
+  return asString(fallbackStep);
+}
+
+function buildHumanStandardAmPm(kind, fallbackAmPm = []) {
+  if (kind === 'sunscreen' || kind === 'tinted_sunscreen') return ['am'];
+  if (kind === 'sleeping_pack') return ['pm'];
+  if (
+    [
+      'body_scrub',
+      'body_mist',
+      'shave_cream',
+      'deodorant',
+      'body_oil',
+      'lip_balm',
+      'eye_balm',
+      'eye_cream',
+      'treatment_mask',
+    ].includes(kind)
+  ) {
+    return [];
+  }
+  const normalized = toList(fallbackAmPm).map((item) => asString(item)).filter(Boolean);
+  return normalized.length ? normalized : ['am', 'pm'];
+}
+
+function inferTextureForHumanStandardKind(kind, context) {
+  const text = `${context?.title || ''} ${context?.description || ''}`.toLowerCase();
+  if (kind === 'body_scrub') return 'scrub';
+  if (kind === 'body_mist') return 'mist';
+  if (kind === 'shave_cream') return 'cream';
+  if (kind === 'deodorant') return 'cream';
+  if (kind === 'body_oil') return 'oil';
+  if (kind === 'lip_balm') return 'balm';
+  if (kind === 'eye_balm') return 'balm';
+  if (kind === 'eye_cream') return 'cream';
+  if (kind === 'sleeping_pack') {
+    if (/\bgel\b/.test(text)) return 'gel';
+    if (/\bcream\b/.test(text)) return 'cream';
+    return 'sleeping pack';
+  }
+  if (kind === 'treatment_mask') {
+    if (/\bgel\b/.test(text)) return 'gel mask';
+    if (/\bcream\b/.test(text)) return 'cream mask';
+    return 'mask';
+  }
+  return '';
+}
+
+function buildHumanStandardTextureFinish(context, baselineBundle, kind) {
+  const baseline = baselineBundle?.texture_finish && typeof baselineBundle.texture_finish === 'object'
+    ? baselineBundle.texture_finish
+    : {};
+  const texture = inferTextureForHumanStandardKind(kind, context) || asString(baseline.texture);
+  const finish =
+    kind === 'body_oil'
+      ? asString(baseline.finish) || 'glowy'
+      : kind === 'body_scrub'
+        ? 'smooth-feeling'
+        : asString(baseline.finish);
+  const layeringNotes = buildHumanStandardPairingNotes(kind);
+  return {
+    texture,
+    finish,
+    sensory_notes: toList(baseline.sensory_notes).slice(0, 3),
+    layering_notes: layeringNotes,
+    confidence: asString(baseline.confidence) || 'moderate',
+    evidence_profile: asString(baseline.evidence_profile || baselineBundle?.evidence_profile || 'seller_plus_formula'),
+  };
 }
 
 function buildHumanStandardRewriteOutput(caseRow, baselineBundle, geminiOutput) {
@@ -1583,8 +1870,9 @@ function buildHumanStandardRewriteOutput(caseRow, baselineBundle, geminiOutput) 
       !isLowSignalSellerHighlightText(`${item.headline} ${item.body}`) &&
       !isGenericSellerHighlightText(`${item.headline} ${item.body}`),
   );
-  const routineStep = asString(baselineRoutine.step);
   const kind = inferProductKindFromContext(context);
+  const routineStep = buildHumanStandardRoutineStep(kind, baselineRoutine.step);
+  const pairingNotes = buildHumanStandardPairingNotes(kind);
 
   return {
     product_intel_core: {
@@ -1593,23 +1881,12 @@ function buildHumanStandardRewriteOutput(caseRow, baselineBundle, geminiOutput) 
       why_it_stands_out: highlights.length ? highlights : toList(baselineCore.why_it_stands_out).slice(0, 1),
       routine_fit: {
         step: routineStep,
-        am_pm: toList(baselineRoutine.am_pm).length
-          ? toList(baselineRoutine.am_pm)
-          : kind === 'sunscreen' || kind === 'tinted_sunscreen'
-            ? ['am']
-            : kind === 'fragrance'
-              ? ['pm']
-              : ['am', 'pm'],
-        pairing_notes: toList(baselineRoutine.pairing_notes).length
-          ? toList(baselineRoutine.pairing_notes)
-          : buildHumanStandardPairingNotes(kind),
+        am_pm: buildHumanStandardAmPm(kind, baselineRoutine.am_pm),
+        pairing_notes: pairingNotes,
       },
       watchouts: buildHumanStandardWatchouts(context, baselineBundle),
     },
-    texture_finish:
-      geminiOutput?.texture_finish && typeof geminiOutput.texture_finish === 'object'
-        ? geminiOutput.texture_finish
-        : baselineBundle.texture_finish || null,
+    texture_finish: buildHumanStandardTextureFinish(context, baselineBundle, kind),
     community_signals:
       baselineBundle.community_signals?.status === 'available'
         ? deepClone(baselineBundle.community_signals)
@@ -1797,9 +2074,9 @@ function mergeGeminiDraftIntoBaseline(caseRow, baselineBundle, geminiOutput, mod
         : baselineCore.why_it_stands_out || [],
     routine_fit: {
       ...(baselineCore.routine_fit || {}),
-      step: asString(baselineCore.routine_fit?.step),
+      step: asString(geminiRoutine.step) || asString(baselineCore.routine_fit?.step),
       am_pm:
-        Array.isArray(geminiRoutine.am_pm) && geminiRoutine.am_pm.length
+        Array.isArray(geminiRoutine.am_pm)
           ? geminiRoutine.am_pm
           : baselineCore.routine_fit?.am_pm || [],
       pairing_notes:
@@ -2036,7 +2313,9 @@ function evaluateGeminiCandidateQuality(baselineBundle, geminiCandidateBundle) {
       !sellerOnlyViolation &&
       !problematicGeneratedText,
     routine_fit:
-      asString(candidateCore.routine_fit?.step) === asString(baselineCore.routine_fit?.step) &&
+      (humanStandardCandidate ||
+        asString(candidateCore.routine_fit?.step) === asString(baselineCore.routine_fit?.step)) &&
+      asString(candidateCore.routine_fit?.step).length > 0 &&
       (toList(candidateCore.routine_fit?.pairing_notes).length > 0 ||
         toList(candidateCore.routine_fit?.am_pm).length > 0) &&
       !sellerOnlyViolation &&
@@ -2563,9 +2842,12 @@ if (require.main === module) {
 
 module.exports = {
   buildFactsPack,
+  buildHumanStandardWhatItIs,
+  buildHumanStandardRewriteOutput,
   normalizeGeminiDraftOutput,
   mergeGeminiDraftIntoBaseline,
   evaluateGeminiCandidateQuality,
+  inferProductKindFromContext,
   buildSelectedBundle,
   buildComparisonSummary,
   buildMarkdownReport,

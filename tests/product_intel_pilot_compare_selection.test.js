@@ -4,12 +4,151 @@ const {
   evaluateGeminiCandidateQuality,
   buildSelectedBundle,
   buildFactsPack,
+  buildHumanStandardRewriteOutput,
+  inferProductKindFromContext,
   applyManualOverrideToSelected,
   buildShoppingCardPayload,
   normalizeGeminiDraftOutput,
 } = require('../scripts/product_intel_pilot_compare');
 
 describe('product_intel pilot compare selection', () => {
+  test('human-standard rewrite preserves specialty body scrub product type over stale category', () => {
+    const caseRow = {
+      case_id: 'live_ext_body_scrub',
+      product: {
+        title: 'KP Bump Eraser Body Scrub 10% AHA Fresh Peach',
+        category: 'Sunscreen',
+        description: 'A body scrub for rough bumps and body texture.',
+        ingredients_inci: ['Glycerin', 'Lactic Acid'],
+      },
+    };
+
+    expect(inferProductKindFromContext({
+      title: caseRow.product.title,
+      category: caseRow.product.category,
+      tags: [],
+    })).toBe('body_scrub');
+
+    const rewrite = buildHumanStandardRewriteOutput(
+      caseRow,
+      {
+        product_intel_core: {
+          what_it_is: {
+            headline: 'Daily sunscreen',
+            body: 'A daily sunscreen for AM UV protection.',
+          },
+          routine_fit: {
+            step: 'sunscreen',
+          },
+        },
+      },
+      null,
+    );
+
+    expect(rewrite.product_intel_core.what_it_is.headline).toBe('Body exfoliating scrub');
+    expect(rewrite.product_intel_core.what_it_is.body).toMatch(/body scrub|body exfoliating scrub/i);
+    expect(rewrite.product_intel_core.what_it_is.body).not.toMatch(/sunscreen|moisturizer/i);
+    expect(rewrite.product_intel_core.routine_fit.step).toBe('body exfoliation');
+    expect(rewrite.product_intel_core.routine_fit.pairing_notes.join(' ')).toMatch(/body areas/i);
+    expect(rewrite.product_intel_core.routine_fit.pairing_notes.join(' ')).not.toMatch(/makeup|sunscreen/i);
+    expect(rewrite.product_intel_core.watchouts.map((item) => item.type)).not.toContain('spf');
+    expect(rewrite.texture_finish.layering_notes.join(' ')).not.toMatch(/makeup|sunscreen/i);
+
+    const baseline = buildProductIntelDraftBundle({
+      product: {
+        ...caseRow.product,
+        product_id: 'ext_body_scrub',
+        merchant_id: 'external_seed',
+      },
+      canonicalProductRef: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_body_scrub',
+      },
+    });
+    baseline.product_intel_core.routine_fit = {
+      step: 'sunscreen',
+      am_pm: ['am'],
+      pairing_notes: ['Use as the last skincare step before makeup in the daytime.'],
+    };
+    baseline.product_intel_core.watchouts = [
+      {
+        type: 'spf',
+        label: 'Reapplication still matters for daytime UV protection.',
+        severity: 'medium',
+      },
+    ];
+    baseline.texture_finish = {
+      texture: '',
+      finish: '',
+      sensory_notes: [],
+      layering_notes: ['Best used as the last skincare step before makeup.'],
+    };
+
+    const candidate = mergeGeminiDraftIntoBaseline(
+      caseRow,
+      baseline,
+      rewrite,
+      'deterministic-human-standard-rewrite',
+    );
+    const quality = evaluateGeminiCandidateQuality(baseline, candidate);
+    const selected = buildSelectedBundle(
+      caseRow,
+      baseline,
+      candidate,
+      quality,
+      'deterministic-human-standard-rewrite',
+    );
+
+    expect(quality.field_decisions.routine_fit).toBe(true);
+    expect(selected.bundle.product_intel_core.routine_fit.step).toBe('body exfoliation');
+    expect(selected.bundle.product_intel_core.routine_fit.pairing_notes.join(' ')).not.toMatch(/makeup|sunscreen/i);
+    expect(selected.bundle.product_intel_core.watchouts.map((item) => item.type)).not.toContain('spf');
+    expect(selected.bundle.texture_finish.layering_notes.join(' ')).not.toMatch(/makeup|sunscreen/i);
+  });
+
+  test('human-standard rewrite preserves lip balm subtype instead of generic lip oil copy', () => {
+    const caseRow = {
+      case_id: 'live_ext_lip_balm',
+      product: {
+        title: 'Birch Moisturizing Lip Balm',
+        category: 'Lip Balm',
+        description: 'A moisturizing lip balm for soft-feeling lips.',
+        ingredients_inci: ['Glycerin', 'Propanediol'],
+      },
+    };
+
+    expect(
+      inferProductKindFromContext({
+        title: caseRow.product.title,
+        category: caseRow.product.category,
+        tags: [],
+      }),
+    ).toBe('lip_balm');
+
+    const rewrite = buildHumanStandardRewriteOutput(
+      caseRow,
+      {
+        product_intel_core: {
+          what_it_is: {
+            headline: 'Glossy lip oil',
+            body: 'A lip product focused on glossy shine and fuller-looking lips.',
+          },
+          routine_fit: {
+            step: 'makeup',
+            pairing_notes: ['Use as a lip finishing step when shine fades.'],
+          },
+        },
+      },
+      null,
+    );
+
+    expect(rewrite.product_intel_core.what_it_is.headline).toBe('Lip balm');
+    expect(rewrite.product_intel_core.what_it_is.body).toMatch(/lip balm/i);
+    expect(rewrite.product_intel_core.what_it_is.body).not.toMatch(/lip oil|glossy/i);
+    expect(rewrite.product_intel_core.routine_fit.step).toBe('lip balm');
+    expect(rewrite.product_intel_core.routine_fit.pairing_notes.join(' ')).toMatch(/lip balm/i);
+  });
+
   test('drops truncated PDP narrative descriptions from Gemini facts packs', () => {
     const facts = buildFactsPack({
       case_id: 'live_ext_daily_tinted',

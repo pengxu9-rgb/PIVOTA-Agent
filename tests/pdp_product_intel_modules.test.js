@@ -5,6 +5,8 @@ const {
 } = require('../src/pdpProductIntel');
 const {
   buildCardHighlight,
+  buildShoppingCardPayload,
+  inferTitleSpecialtyCompactSubtitle,
   normalizeCardIntroCandidate,
 } = require('../src/services/pivotaShoppingCard');
 
@@ -58,6 +60,57 @@ describe('pdp product intel bundle shaping', () => {
         },
       }),
     ).toBe('Layers cleanly under makeup');
+  });
+
+  test('infers compact subtitles for specialty beauty formats from title before routine fallback', () => {
+    expect(
+      inferTitleSpecialtyCompactSubtitle({
+        title: 'KP Bump Eraser Body Scrub 10% AHA Fresh Peach',
+        category: 'Skincare',
+      }),
+    ).toBe('AHA Body Scrub');
+    expect(
+      inferTitleSpecialtyCompactSubtitle({
+        title: 'Body Acne Clearing Mist with 2% Salicylic Acid',
+        category: 'Body Care',
+      }),
+    ).toBe('Body Treatment Mist');
+    expect(
+      inferTitleSpecialtyCompactSubtitle({
+        title: 'Camellia Deep Collagen Jelly Mask Cleanser',
+        category: 'Cleanser',
+      }),
+    ).toBe('Daily Cleanser');
+    expect(
+      inferTitleSpecialtyCompactSubtitle({
+        title: 'Birch Moisturizing Eye Balm',
+        category: 'Eye Treatment',
+      }),
+    ).toBe('Eye Balm');
+  });
+
+  test('shopping card subtitle preserves specialty format over generic routine step', () => {
+    const shoppingCard = buildShoppingCardPayload({
+      product: {
+        brand: 'First Aid Beauty',
+        title: 'KP Bump Eraser Body Scrub 10% AHA Fresh Peach',
+        category: 'Skincare',
+      },
+      bundle: {
+        evidence_profile: 'seller_plus_formula',
+        product_intel_core: {
+          what_it_is: {
+            headline: 'Daily sunscreen',
+            body: 'A daily sunscreen built around humectants.',
+          },
+          routine_fit: {
+            step: 'sunscreen',
+          },
+        },
+      },
+    });
+
+    expect(shoppingCard.subtitle).toBe('AHA Body Scrub');
   });
 
   test('buildProductIntelBundle returns structured insights with texture and community signals', () => {
