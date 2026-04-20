@@ -40,6 +40,7 @@ const PDP_IDENTITY_GRAPH_CONFIGURED_BRAND_ALLOWLIST = String(
   .filter(Boolean);
 const PDP_IDENTITY_GRAPH_CURATED_BRAND_ALLOWLIST_ADDITIONS = Object.freeze([
   'beauty of joseon',
+  'fenty beauty',
 ]);
 const PDP_IDENTITY_GRAPH_BRAND_ALLOWLIST = new Set([
   ...PDP_IDENTITY_GRAPH_CONFIGURED_BRAND_ALLOWLIST,
@@ -668,6 +669,24 @@ function inferAxisFromExplicitVariant(product) {
   return {};
 }
 
+function parseCompoundNamedAxisValue(optionName, optionValue, names) {
+  const rawName = asString(optionName);
+  const rawValue = asString(optionValue);
+  if (!rawName || !rawValue || !Array.isArray(names) || !names.length) return '';
+  if (!/[\/|]/.test(rawName) || !/[\/|]/.test(rawValue)) return '';
+  const nameParts = rawName
+    .split(/[\/|]/g)
+    .map((part) => normalizeResolverText(part))
+    .filter(Boolean);
+  const valueParts = rawValue
+    .split(/[\/|]/g)
+    .map((part) => normalizeAxisValue(part))
+    .filter(Boolean);
+  if (nameParts.length < 2 || nameParts.length !== valueParts.length) return '';
+  const targetIdx = nameParts.findIndex((part) => names.some((candidate) => part.includes(candidate)));
+  return targetIdx >= 0 ? valueParts[targetIdx] || '' : '';
+}
+
 function parseNamedAxisFromOptions(product, names) {
   const variant = pickIdentityVariant(product);
   const optionEntries = [
@@ -679,7 +698,9 @@ function parseNamedAxisFromOptions(product, names) {
     const name = normalizeResolverText(option?.name);
     if (!name) continue;
     if (!names.some((candidate) => name.includes(candidate))) continue;
-    const value = normalizeAxisValue(option?.value);
+    const value =
+      parseCompoundNamedAxisValue(option?.name, option?.value, names) ||
+      normalizeAxisValue(option?.value);
     if (value) return value;
   }
   const flatCandidates = [
@@ -701,6 +722,14 @@ function parseNamedAxisFromOptions(product, names) {
   return '';
 }
 
+function isValidSizeAxisValue(value) {
+  const normalized = normalizeAxisValue(value);
+  if (!normalized) return false;
+  if (parseGenericSizeToken(normalized)) return true;
+  if (parseQuantityToken(normalized, ['ml', 'm l', 'g', 'kg', 'oz', 'fl oz'])) return true;
+  return false;
+}
+
 function extractVariantAxes(product) {
   const variants = asArray(product?.variants);
   const identityVariant = pickIdentityVariant(product);
@@ -718,8 +747,9 @@ function extractVariantAxes(product) {
     32,
   );
   const joined = texts.join(' ');
+  const namedSize = parseNamedAxisFromOptions(product, ['size']);
   const size =
-    parseNamedAxisFromOptions(product, ['size']) ||
+    (isValidSizeAxisValue(namedSize) ? namedSize : '') ||
     inferredGenericAxis.size ||
     (/\btravel size\b/i.test(joined)
       ? 'travel size'

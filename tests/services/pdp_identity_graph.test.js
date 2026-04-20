@@ -298,7 +298,7 @@ describe('pdpIdentityGraph', () => {
   test('buildIdentityListingFromProduct groups scented body cream PDP siblings into one product line', () => {
     const { buildIdentityListingFromProduct } = require('../../src/services/pdpIdentityGraph');
 
-    const buildBodyCream = (scent, productIdSuffix) =>
+    const buildBodyCream = (scent, productIdSuffix, optionName = 'Size / Color') =>
       buildIdentityListingFromProduct({
         merchantId: 'external_seed',
         productId: `ext_fenty_butta_${productIdSuffix}`,
@@ -314,16 +314,20 @@ describe('pdpIdentityGraph', () => {
               variant_id: `v_${productIdSuffix}`,
               title: `Regular / ${scent}`,
               options: [
-                { name: 'Size', value: 'Regular' },
-                { name: 'Color', value: scent },
+                { name: 'Variant', value: `Regular / ${scent}` },
               ],
+              option_name: optionName,
+              option_value:
+                optionName === 'Color / Size'
+                  ? `${scent} / ${scent}`
+                  : `Regular / ${scent}`,
             },
           ],
         },
       });
 
     const saltedCaramel = buildBodyCream('Salted Caramel', 'salted_caramel');
-    const vanillaDream = buildBodyCream('Vanilla Dream', 'vanilla_dream');
+    const vanillaDream = buildBodyCream('Vanilla Dream', 'vanilla_dream', 'Color / Size');
     const fentyFreshShimmering = buildBodyCream('Fenty Fresh Shimmering', 'fenty_fresh_shimmering');
 
     expect(saltedCaramel.variant_axes).toEqual({
@@ -331,7 +335,10 @@ describe('pdpIdentityGraph', () => {
       color: 'salted caramel',
       multi_variant: false,
     });
-    expect(vanillaDream.variant_axes.color).toBe('vanilla dream');
+    expect(vanillaDream.variant_axes).toEqual({
+      color: 'vanilla dream',
+      multi_variant: false,
+    });
     expect(fentyFreshShimmering.variant_axes.color).toBe('fenty fresh shimmering');
     expect(saltedCaramel.title_core_norm).toBe(
       'butta drop whipped oil body cream tropical oils shea butter',
