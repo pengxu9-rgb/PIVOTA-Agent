@@ -180,6 +180,18 @@ test('travel local product authority: rejects color cosmetics misclassified as t
             seedRow({
               id: 202,
               market: 'US',
+              external_product_id: 'ext_bad_refill_spf',
+              title: 'Hydra Vizor Huez Tinted Moisturizer Broad Spectrum Mineral SPF 30 Sunscreen Refill',
+              brand: 'Fenty Beauty',
+              category: 'sunscreen',
+              summary: 'sunscreen refill cartridge',
+              price_amount: 44,
+              price_currency: 'USD',
+              match_score: 49,
+            }),
+            seedRow({
+              id: 203,
+              market: 'US',
               external_product_id: 'ext_good_spf',
               title: 'Mineral SPF50 Sunscreen Fluid',
               brand: 'US Sun Lab',
@@ -187,7 +199,7 @@ test('travel local product authority: rejects color cosmetics misclassified as t
               summary: 'lightweight face sunscreen fluid with broad spectrum SPF50',
               price_amount: 24,
               price_currency: 'USD',
-              match_score: 48,
+              match_score: 47,
             }),
           ],
         };
@@ -196,7 +208,7 @@ test('travel local product authority: rejects color cosmetics misclassified as t
         return {
           rows: [
             seedRow({
-              id: 203,
+              id: 204,
               market: 'US',
               external_product_id: 'ext_bad_bronzer',
               title: 'Cheeks Out Freestyle Cream Bronzer — Teddy',
@@ -208,7 +220,19 @@ test('travel local product authority: rejects color cosmetics misclassified as t
               match_score: 50,
             }),
             seedRow({
-              id: 204,
+              id: 205,
+              market: 'US',
+              external_product_id: 'ext_bad_sponge',
+              title: "Showstopp'r Football Sponge",
+              brand: 'Fenty Beauty',
+              category: 'moisturizer',
+              summary: 'makeup sponge applicator',
+              price_amount: 16,
+              price_currency: 'USD',
+              match_score: 49,
+            }),
+            seedRow({
+              id: 206,
               market: 'US',
               external_product_id: 'ext_good_lotion',
               title: 'Lightweight Barrier Lotion',
@@ -229,7 +253,9 @@ test('travel local product authority: rejects color cosmetics misclassified as t
   assert.equal(result.ok, true);
   const ids = result.candidates.map((row) => row.product_id);
   assert.equal(ids.includes('ext_bad_correcting_stick'), false);
+  assert.equal(ids.includes('ext_bad_refill_spf'), false);
   assert.equal(ids.includes('ext_bad_bronzer'), false);
+  assert.equal(ids.includes('ext_bad_sponge'), false);
   assert.equal(ids.includes('ext_good_spf'), true);
   assert.equal(ids.includes('ext_good_lotion'), true);
   assert.equal(result.meta.stage_counts.some((row) => Number(row.raw_rows) > Number(row.viable_rows)), true);
