@@ -591,9 +591,18 @@ function cleanStructuredToken(value) {
 }
 
 function splitIngredientsItemsFromText(text) {
-  const normalized = asNonEmptyString(text)
-    .replace(/^full ingredients[:\s-]*/i, '')
+  let normalized = asNonEmptyString(text);
+  const fullIngredientsMatch = normalized.match(/\bfull ingredients?(?: list)?\s*:?\s*([\s\S]+)$/i);
+  if (fullIngredientsMatch) {
+    normalized = fullIngredientsMatch[1];
+  }
+  normalized = normalized
+    .replace(/^full ingredients?(?: list)?[:\s-]*/i, '')
     .replace(/^ingredients(?:\s*\(inci\))?[:\s-]*/i, '')
+    .split(/\bpeta-certified\b/i)[0]
+    .split(/\bwarning[s]?\s*:/i)[0]
+    .split(/\bnote\s*:/i)[0]
+    .split(/\bcaution\s*:/i)[0]
     .trim();
   if (!normalized) return [];
   const items = [];
@@ -661,6 +670,31 @@ function splitHowToUseStepsFromText(text) {
   );
 }
 
+function looksLikeCrossSellPairingText(value) {
+  const text = asNonEmptyString(value);
+  if (!text) return false;
+  const hasPairingFrame = /\b(how to pair|pair with|pairs? well with)\b/i.test(text);
+  const hasCommerceCta = /\b(shop now|add to cart|buy now)\b/i.test(text);
+  return (hasPairingFrame && hasCommerceCta) || /^how to pair\b/i.test(text);
+}
+
+function looksLikeActiveCompatibilityFaqText(value) {
+  const text = asNonEmptyString(value);
+  if (!text) return false;
+  return (
+    /\bcan i use this with an active ingredient\b/i.test(text) ||
+    /\bworks? well with active ingredients? or treatments?\b/i.test(text) ||
+    (/\bAHA?s?\b/i.test(text) && /\bBHA?s?\b/i.test(text) && /\bretinols?\/?retinoids?\b/i.test(text))
+  );
+}
+
+function isFaqOrCrossSellDetailSection(section) {
+  const heading = asNonEmptyString(section?.heading);
+  const content = asNonEmptyString(section?.content);
+  if (!heading && !content) return false;
+  return /[?？]$/.test(heading) || looksLikeCrossSellPairingText(`${heading} ${content}`);
+}
+
 function buildIngredientsModuleData(candidates, fallbackTitle) {
   const collectAtomicItems = (candidate) => {
     const directLists = [];
@@ -701,10 +735,12 @@ function buildHowToUseModuleData(candidates, fallbackTitle) {
     const structuredSteps = normalizeStructuredItems(candidate, { mode: 'steps' }).flatMap((item) =>
       splitHowToUseStepsFromText(item),
     );
+    const candidateText = uniqueNonEmptyStrings([rawText, ...structuredSteps]).join(' ');
+    if (looksLikeCrossSellPairingText(candidateText)) continue;
     const steps = uniqueNonEmptyStrings([
       ...structuredSteps,
       ...(structuredSteps.length > 1 ? [] : splitHowToUseStepsFromText(rawText)),
-    ]);
+    ]).filter((step) => !looksLikeCrossSellPairingText(step));
     if (!steps.length && !rawText) continue;
     return {
       title: pickStructuredTitle(candidate, fallbackTitle),
@@ -1270,13 +1306,15 @@ function resolveProductDescriptionText(product, detailSections = collectStructur
   if (
     explicitPdpDescription &&
     !looksLikeSectionSoupText(explicitPdpDescription) &&
-    !capturedNarrativeSoup
+    !capturedNarrativeSoup &&
+    !looksLikeCrossSellPairingText(explicitPdpDescription)
   ) {
     const overviewContentSection = detailSections.find(
       (section) =>
         !STRUCTURED_DETAIL_SECTION_RE.test(section.heading) &&
         !FACT_DETAIL_SECTION_RE.test(section.heading) &&
         !BRAND_STORY_SECTION_RE.test(section.heading) &&
+        !isFaqOrCrossSellDetailSection(section) &&
         section.content &&
         normalizeTextKey(explicitPdpDescription).includes(normalizeTextKey(section.content)),
     );
@@ -1291,7 +1329,8 @@ function resolveProductDescriptionText(product, detailSections = collectStructur
           (section) =>
             !STRUCTURED_DETAIL_SECTION_RE.test(section.heading) &&
             !FACT_DETAIL_SECTION_RE.test(section.heading) &&
-            !BRAND_STORY_SECTION_RE.test(section.heading),
+            !BRAND_STORY_SECTION_RE.test(section.heading) &&
+            !isFaqOrCrossSellDetailSection(section),
         )
       : undefined);
   const cleanedOverview = cleanOverviewDescriptionText(overviewSection?.content || '');
@@ -1345,6 +1384,7 @@ function buildSupplementalDetailSections(product, detailSections = collectStruct
       if (FACT_DETAIL_SECTION_RE.test(section.heading)) return false;
       if (BRAND_STORY_SECTION_RE.test(section.heading)) return false;
       if (OVERVIEW_DETAIL_SECTION_RE.test(section.heading)) return false;
+      if (isFaqOrCrossSellDetailSection(section)) return false;
       if (desc && section.content === desc) return false;
       if (descKey && normalizeTextKey(section.content) === descKey) return false;
       if (capturedNarrativeSoup && looksLikeSectionSoupText(section.content)) return false;
@@ -1557,6 +1597,10 @@ function buildActiveIngredients(product, ingredientsInci) {
     const rawText = pickStructuredText(candidate);
     const items = uniqueNonEmptyStrings(normalizeStructuredItems(candidate));
     if (!items.length && !rawText) continue;
+    const candidateText = uniqueNonEmptyStrings([rawText, ...items]).join(' ');
+    if (looksLikeActiveCompatibilityFaqText(candidateText) && !isRegulatoryActiveIngredientSource(candidate)) {
+      continue;
+    }
     const data = reconcileActiveIngredientsWithInci(product, candidate, {
       title: pickStructuredTitle(candidate, 'Active ingredients'),
       ...(rawText ? { raw_text: rawText } : {}),
@@ -1844,20 +1888,20 @@ function normalizeFaqItemsForQuestions(product) {
           : [];
   const out = [];
   const seen = new Set();
-  for (const item of rawItems) {
-    const question = normalizeQuestionText(item?.question);
-    const answer = normalizeAnswerText(item?.answer);
+  const pushQuestion = (rawQuestion, rawAnswer, sourceMeta = {}) => {
+    const question = normalizeQuestionText(rawQuestion);
+    const answer = normalizeAnswerText(rawAnswer);
     const key = normalizeQuestionKey(question);
-    if (!question || !answer || !key || seen.has(`${key}::${answer.toLowerCase()}`)) continue;
+    if (!question || !answer || !key || seen.has(`${key}::${answer.toLowerCase()}`)) return;
     if (
       !isDisplayablePdpFaqItem({
         question,
         answer,
-        source_url: item?.source_url || item?.sourceUrl,
-        source_title: item?.source_title || item?.sourceTitle,
+        source_url: sourceMeta?.source_url || sourceMeta?.sourceUrl,
+        source_title: sourceMeta?.source_title || sourceMeta?.sourceTitle,
       })
     ) {
-      continue;
+      return;
     }
     seen.add(`${key}::${answer.toLowerCase()}`);
     out.push({
@@ -1866,6 +1910,19 @@ function normalizeFaqItemsForQuestions(product) {
       source: 'merchant_faq',
       source_label: 'Official FAQ',
     });
+  };
+
+  for (const item of rawItems) {
+    pushQuestion(item?.question, item?.answer, item);
+  }
+
+  for (const section of collectStructuredDetailSections(product)) {
+    const heading = asNonEmptyString(section?.heading);
+    const content = asNonEmptyString(section?.content);
+    if (!heading || !content) continue;
+    if (/[?？]$/.test(heading) || /^(?:faq|frequently asked questions?|questions?)$/i.test(heading)) {
+      pushQuestion(heading, content);
+    }
   }
   return out;
 }

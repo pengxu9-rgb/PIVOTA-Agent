@@ -107,4 +107,35 @@ describe('PDP grouped offers', () => {
       }),
     );
   });
+
+  test('preserves recommendation metadata when similar items are returned through canonical payload', () => {
+    const app = require('../src/server');
+
+    const merged = app._debug.mergeRecommendationModuleWithEnvelope(
+      {
+        strategy: 'related_products',
+        items: [{ product_id: 'similar_1', title: 'Similar' }],
+      },
+      {
+        status: 'success',
+        metadata: {
+          similar_status: 'ready',
+          similar_confidence: 'medium',
+          low_confidence: false,
+          retrieval_mix: { external: 1, internal: 0 },
+        },
+      },
+    );
+
+    expect(merged).toEqual(
+      expect.objectContaining({
+        status: 'success',
+        metadata: expect.objectContaining({
+          similar_status: 'ready',
+          similar_confidence: 'medium',
+          retrieval_mix: { external: 1, internal: 0 },
+        }),
+      }),
+    );
+  });
 });

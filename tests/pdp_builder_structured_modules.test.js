@@ -206,6 +206,68 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     expect(payload.modules.find((module) => module.type === 'how_to_use')).toBeFalsy();
   });
 
+  test('keeps active-compatibility FAQ out of actives/how-to and exposes it as a question', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_krave_gbr',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'Great Barrier Relief',
+        category: 'Serum',
+        description: 'A barrier-support serum for irritated skin.',
+        image_url: 'https://example.com/gbr.png',
+        price: { amount: 28, currency: 'USD' },
+        pdp_active_ingredients_raw:
+          'Yes, Great Barrier Relief works well with active ingredients or treatments such as AHAs, BHAs, retinols/retinoids, Vitamin C, etc.',
+        active_ingredients: ['Niacinamide'],
+        pdp_how_to_use_raw:
+          'Oat So Simple Water Cream Pair with a water-based moisturizer. Shop Now Great Body Relief Pair with this barrier restoring body lotion. Shop Now',
+        pdp_ingredients_raw:
+          'Tamanu Oil: Soothes irritation. Full Ingredients: Water, Propanediol, Niacinamide, Ceramide NP. PETA-certified vegan and cruelty-free. NOTE: Patch test first.',
+        details_sections: [
+          {
+            heading: 'How to Pair',
+            content:
+              'Oat So Simple Water Cream Pair with a water-based moisturizer. Shop Now Great Body Relief Pair with this barrier restoring body lotion. Shop Now',
+          },
+          {
+            heading: 'Can I use this with an active ingredient?',
+            content:
+              'Yes, Great Barrier Relief works well with active ingredients or treatments such as AHAs, BHAs, retinols/retinoids, Vitamin C, etc.',
+          },
+        ],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+      includeEmptyReviews: true,
+    });
+
+    const activeIngredients = payload.modules.find((module) => module.type === 'active_ingredients');
+    const ingredientsInci = payload.modules.find((module) => module.type === 'ingredients_inci');
+    const howToUse = payload.modules.find((module) => module.type === 'how_to_use');
+    const overview = payload.modules.find((module) => module.type === 'product_overview');
+    const supplemental = payload.modules.find((module) => module.type === 'supplemental_details');
+    const reviews = payload.modules.find((module) => module.type === 'reviews_preview');
+
+    expect(activeIngredients?.data?.items).toEqual(['Niacinamide']);
+    expect(activeIngredients?.data?.items).not.toEqual(expect.arrayContaining(['AHAs', 'BHAs']));
+    expect(ingredientsInci?.data?.items).toEqual(['Water', 'Propanediol', 'Niacinamide', 'Ceramide NP.']);
+    expect(howToUse).toBeFalsy();
+    expect(overview?.data?.sections?.[0]?.content).toBe('A barrier-support serum for irritated skin.');
+    expect(supplemental?.data?.sections || []).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ heading: 'How to Pair' }),
+        expect.objectContaining({ heading: 'Can I use this with an active ingredient?' }),
+      ]),
+    );
+    expect(reviews?.data?.questions).toEqual([
+      expect.objectContaining({
+        question: 'Can I use this with an active ingredient?',
+        source: 'merchant_faq',
+      }),
+    ]);
+  });
+
   test('emits cross-url product line options in variant selector data', () => {
     const payload = buildPdpPayload({
       product: {

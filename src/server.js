@@ -734,6 +734,9 @@ const RESPONSE_OWNED_PDP_CANONICAL_MODULE_TYPES = new Set([
   'recommendations',
   'reviews_preview',
   'similar',
+  'active_ingredients',
+  'ingredients_inci',
+  'how_to_use',
 ]);
 
 function stripResponseOwnedPdpModulesFromCanonicalPayload(pdpPayload) {
@@ -18411,6 +18414,20 @@ function findPdpPayloadModuleData(pdpPayload, type) {
   return match?.data || null;
 }
 
+function mergeRecommendationModuleWithEnvelope(moduleData, envelope) {
+  if (!moduleData || typeof moduleData !== 'object') return null;
+  const envelopeMetadata = envelope?.metadata && typeof envelope.metadata === 'object' ? envelope.metadata : {};
+  const moduleMetadata = moduleData.metadata && typeof moduleData.metadata === 'object' ? moduleData.metadata : {};
+  return {
+    ...moduleData,
+    ...(envelope?.status ? { status: envelope.status } : {}),
+    metadata: {
+      ...envelopeMetadata,
+      ...moduleMetadata,
+    },
+  };
+}
+
 async function resolveProductIntelInvokeContext({
   payload,
   checkoutToken,
@@ -21293,9 +21310,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	          const wantsSimilar = includeAll || includeList.includes('similar') || includeList.includes('recommendations');
 	          const wantsOffers = includeAll || includeList.includes('offers');
 	          const wantsReviews = includeAll || includeList.includes('reviews_preview');
-	          const wantsProductIntel = includeAll || includeList.includes('product_intel');
-	          const wantsActiveIngredients = includeAll || includeList.includes('active_ingredients');
-	          const wantsIngredientsInci = includeAll || includeList.includes('ingredients_inci');
+		          const wantsProductIntel = includeAll || includeList.includes('product_intel');
+		          const wantsActiveIngredients = includeAll || includeList.includes('active_ingredients');
+		          const wantsIngredientsInci = includeAll || includeList.includes('ingredients_inci');
+		          const wantsHowToUse = includeAll || includeList.includes('how_to_use');
+		          const wantsProductOverview = includeAll || includeList.includes('product_overview');
+		          const wantsSupplementalDetails = includeAll || includeList.includes('supplemental_details');
 
 		          const pdpOptions = getPdpOptions(payload);
 		          let relatedProducts = [];
@@ -21363,12 +21383,15 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	                findPdpPayloadModuleData(pdpPayload, 'active_ingredients') ||
 	                null
 	              : null;
-	          const ingredientsInciData =
-	            allowsBeautyFormulaModules
-	              ? structuredIngredientModules.ingredientsInciData ||
-	                findPdpPayloadModuleData(pdpPayload, 'ingredients_inci') ||
-	                null
-	              : null;
+		          const ingredientsInciData =
+		            allowsBeautyFormulaModules
+		              ? structuredIngredientModules.ingredientsInciData ||
+		                findPdpPayloadModuleData(pdpPayload, 'ingredients_inci') ||
+		                null
+		              : null;
+		          const howToUseData = findPdpPayloadModuleData(pdpPayload, 'how_to_use') || null;
+		          const productOverviewData = findPdpPayloadModuleData(pdpPayload, 'product_overview') || null;
+		          const supplementalDetailsData = findPdpPayloadModuleData(pdpPayload, 'supplemental_details') || null;
 	          const fallbackOfferId = `of:mock:${product.merchant_id || DEFAULT_MERCHANT_ID}:${product.id || product.product_id}`;
 	          const offersData = {
 	            offers_count: 1,
@@ -21426,14 +21449,41 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	            });
 	          }
 
-	          if (wantsIngredientsInci && allowsBeautyFormulaModules) {
-	            modules.push({
-	              type: 'ingredients_inci',
-	              required: false,
-	              data: ingredientsInciData,
-	              ...(ingredientsInciData ? {} : { reason: 'unavailable' }),
-	            });
-	          }
+		          if (wantsIngredientsInci && allowsBeautyFormulaModules) {
+		            modules.push({
+		              type: 'ingredients_inci',
+		              required: false,
+		              data: ingredientsInciData,
+		              ...(ingredientsInciData ? {} : { reason: 'unavailable' }),
+		            });
+		          }
+
+		          if (wantsHowToUse) {
+		            modules.push({
+		              type: 'how_to_use',
+		              required: false,
+		              data: howToUseData,
+		              ...(howToUseData ? {} : { reason: 'unavailable' }),
+		            });
+		          }
+
+		          if (wantsProductOverview) {
+		            modules.push({
+		              type: 'product_overview',
+		              required: false,
+		              data: productOverviewData,
+		              ...(productOverviewData ? {} : { reason: 'unavailable' }),
+		            });
+		          }
+
+		          if (wantsSupplementalDetails) {
+		            modules.push({
+		              type: 'supplemental_details',
+		              required: false,
+		              data: supplementalDetailsData,
+		              ...(supplementalDetailsData ? {} : { reason: 'unavailable' }),
+		            });
+		          }
 
 	          if (wantsOffers) {
 	            modules.push({
@@ -21452,11 +21502,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	            });
 	          }
 
-		          if (wantsSimilar) {
-		            const similarData =
-		              recModule?.data ||
-		              (relatedProductsEnvelope?.metadata?.similar_status === 'empty' ||
-		              relatedProductsEnvelope?.status === 'empty'
+			          if (wantsSimilar) {
+			            const similarData =
+			              mergeRecommendationModuleWithEnvelope(recModule?.data, relatedProductsEnvelope) ||
+			              (relatedProductsEnvelope?.metadata?.similar_status === 'empty' ||
+			              relatedProductsEnvelope?.status === 'empty'
 		                ? {
 		                    status: 'empty',
 		                    strategy: relatedProductsEnvelope?.strategy || 'related_products',
@@ -21476,10 +21526,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 		          }
 
 	          const missing = [];
-	          if (wantsProductIntel && !productIntel) missing.push({ type: 'product_intel', reason: 'unavailable' });
-	          if (wantsActiveIngredients && allowsBeautyFormulaModules && !activeIngredientsData) missing.push({ type: 'active_ingredients', reason: 'unavailable' });
-	          if (wantsIngredientsInci && allowsBeautyFormulaModules && !ingredientsInciData) missing.push({ type: 'ingredients_inci', reason: 'unavailable' });
-	          if (wantsReviews && !reviewsModule?.data) missing.push({ type: 'reviews_preview', reason: 'unavailable' });
+		          if (wantsProductIntel && !productIntel) missing.push({ type: 'product_intel', reason: 'unavailable' });
+		          if (wantsActiveIngredients && allowsBeautyFormulaModules && !activeIngredientsData) missing.push({ type: 'active_ingredients', reason: 'unavailable' });
+		          if (wantsIngredientsInci && allowsBeautyFormulaModules && !ingredientsInciData) missing.push({ type: 'ingredients_inci', reason: 'unavailable' });
+		          if (wantsHowToUse && !howToUseData) missing.push({ type: 'how_to_use', reason: 'unavailable' });
+		          if (wantsProductOverview && !productOverviewData) missing.push({ type: 'product_overview', reason: 'unavailable' });
+		          if (wantsSupplementalDetails && !supplementalDetailsData) missing.push({ type: 'supplemental_details', reason: 'unavailable' });
+		          if (wantsReviews && !reviewsModule?.data) missing.push({ type: 'reviews_preview', reason: 'unavailable' });
 		          if (
 		            wantsSimilar &&
 		            !recModule?.data &&
@@ -21996,10 +22049,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	        includeAll ||
 	        includeList.includes('similar') ||
 	        includeList.includes('recommendations');
-	      const wantsProductIntel = includeAll || includeList.includes('product_intel');
-	      const wantsActiveIngredients = includeAll || includeList.includes('active_ingredients');
-	      const wantsIngredientsInci = includeAll || includeList.includes('ingredients_inci');
-	      markPdpV2Phase('parse_request', parseRequestStartedAt);
+		      const wantsProductIntel = includeAll || includeList.includes('product_intel');
+		      const wantsActiveIngredients = includeAll || includeList.includes('active_ingredients');
+		      const wantsIngredientsInci = includeAll || includeList.includes('ingredients_inci');
+		      const wantsHowToUse = includeAll || includeList.includes('how_to_use');
+		      const wantsProductOverview = includeAll || includeList.includes('product_overview');
+		      const wantsSupplementalDetails = includeAll || includeList.includes('supplemental_details');
+		      markPdpV2Phase('parse_request', parseRequestStartedAt);
 
 	      // Resolve the canonical product group first so every client sees the same details.
 		      let productGroupId = null;
@@ -22667,6 +22723,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             findPdpPayloadModuleData(pdpPayload, 'ingredients_inci') ||
             null
           : null;
+      const howToUseData = findPdpPayloadModuleData(pdpPayload, 'how_to_use') || null;
+      const productOverviewData = findPdpPayloadModuleData(pdpPayload, 'product_overview') || null;
+      const supplementalDetailsData = findPdpPayloadModuleData(pdpPayload, 'supplemental_details') || null;
 
       const canonicalPayload = stripResponseOwnedPdpModulesFromCanonicalPayload(pdpPayload);
       const canonicalPayloadProductRef = {
@@ -22938,6 +22997,36 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         if (!ingredientsInciData) missing.push({ type: 'ingredients_inci', reason: 'unavailable' });
       }
 
+      if (wantsHowToUse) {
+        modules.push({
+          type: 'how_to_use',
+          required: false,
+          data: howToUseData,
+          ...(howToUseData ? {} : { reason: 'unavailable' }),
+        });
+        if (!howToUseData) missing.push({ type: 'how_to_use', reason: 'unavailable' });
+      }
+
+      if (wantsProductOverview) {
+        modules.push({
+          type: 'product_overview',
+          required: false,
+          data: productOverviewData,
+          ...(productOverviewData ? {} : { reason: 'unavailable' }),
+        });
+        if (!productOverviewData) missing.push({ type: 'product_overview', reason: 'unavailable' });
+      }
+
+      if (wantsSupplementalDetails) {
+        modules.push({
+          type: 'supplemental_details',
+          required: false,
+          data: supplementalDetailsData,
+          ...(supplementalDetailsData ? {} : { reason: 'unavailable' }),
+        });
+        if (!supplementalDetailsData) missing.push({ type: 'supplemental_details', reason: 'unavailable' });
+      }
+
       if (wantsReviewsPreview) {
         const data = reviewsModule?.data || null;
         modules.push({
@@ -22951,7 +23040,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 
       if (wantsSimilar) {
         const data =
-          recModule?.data ||
+          mergeRecommendationModuleWithEnvelope(recModule?.data, relatedProductsEnvelope) ||
           (relatedProductsEnvelope?.metadata?.similar_status === 'empty' ||
           relatedProductsEnvelope?.metadata?.similar_status === 'deferred' ||
           relatedProductsEnvelope?.status === 'empty' ||
@@ -29642,6 +29731,7 @@ module.exports._debug = {
   buildCacheStageSnapshot,
   buildOffersFromGroupMembers,
   resolvePdpSimilarWithBudget,
+  mergeRecommendationModuleWithEnvelope,
   mergeInvokeGatewayAuditMetadata,
   normalizeGovernanceShadowBlockContract,
   uiChatBuildLoopBreakRetryArgs,
