@@ -135,6 +135,25 @@ function looksLikeBundleLikeProduct(product = {}) {
   return BUNDLE_LIKE_TITLE_PATTERNS.some((pattern) => pattern.test(title));
 }
 
+function looksLikeNonProductCatalogPage(product = {}) {
+  const targetUrl = normalizeNonEmptyString(product?.url || product?.canonical_url || product?.product_url);
+  const title = normalizeNonEmptyString(product?.title || product?.name);
+  if (!targetUrl) return true;
+  let urlPath = targetUrl;
+  try {
+    const parsed = new URL(targetUrl);
+    urlPath = `${parsed.pathname || ''}?${parsed.searchParams.toString()}`;
+  } catch {
+    urlPath = targetUrl;
+  }
+  if (/\/(?:category|collections?|collection|board|search|pages?)\//i.test(urlPath)) return true;
+  if (/(?:^|[?&])cate_no=\d+/i.test(urlPath) && !/\/product\/(?:detail|[^/]+\/)/i.test(urlPath)) return true;
+  if (/\/product\/list\.html/i.test(urlPath)) return true;
+  if (/veritas-hub\.cafe24\.com\/challenge/i.test(targetUrl)) return true;
+  if (/^(?:all|md'?pick|라인별)\s*[-:]/i.test(title)) return true;
+  return false;
+}
+
 function scorePreferredTitleMatch(product = {}, preferredTitles = []) {
   const normalizedTitle = normalizeSearchText(product?.title || product?.name);
   if (!normalizedTitle) return 0;
@@ -259,6 +278,7 @@ function buildManifestFromExtract({
     .sort((left, right) => right.priority - left.priority || left.index - right.index);
   const items = [];
   let excludedBundleLikeCount = 0;
+  let excludedNonProductPageCount = 0;
   let matchedPreferredTitleCount = 0;
   const matchedPreferredTitles = [];
   for (const { product, priority } of prioritizedProducts) {
@@ -268,6 +288,10 @@ function buildManifestFromExtract({
     }
     const targetUrl = normalizeNonEmptyString(product?.url || product?.canonical_url || product?.product_url);
     if (!targetUrl) continue;
+    if (looksLikeNonProductCatalogPage(product)) {
+      excludedNonProductPageCount += 1;
+      continue;
+    }
     const seedRow = buildSeedRow(
       {
         ingredient_id: null,
@@ -275,6 +299,7 @@ function buildManifestFromExtract({
         target_brand: brand,
         target_url: targetUrl,
         extract_status: 'brand_catalog_extract',
+        market,
       },
       {
         products: [product],
@@ -316,6 +341,7 @@ function buildManifestFromExtract({
     matched_preferred_titles: dedupeStrings(matchedPreferredTitles, 24),
     extracted_product_count: products.length,
     excluded_bundle_like_count: excludedBundleLikeCount,
+    excluded_non_product_page_count: excludedNonProductPageCount,
     matched_preferred_title_count: matchedPreferredTitleCount,
     diagnostics_summary: summarizeDiagnostics(extractDoc),
     item_count: items.length,
@@ -469,6 +495,7 @@ if (require.main === module) {
 module.exports = {
   parseArgs,
   looksLikeBundleLikeProduct,
+  looksLikeNonProductCatalogPage,
   scorePreferredTitleMatch,
   collectPreferredTitleHits,
   computeExtractLimit,

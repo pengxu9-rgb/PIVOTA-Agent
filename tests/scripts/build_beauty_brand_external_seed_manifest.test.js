@@ -3,6 +3,7 @@ const {
   buildManifestFromSourceAttempts,
   computeExtractLimit,
   looksLikeBundleLikeProduct,
+  looksLikeNonProductCatalogPage,
   scorePreferredTitleMatch,
 } = require('../../scripts/build_beauty_brand_external_seed_manifest.cjs');
 
@@ -89,6 +90,38 @@ describe('build_beauty_brand_external_seed_manifest', () => {
     expect(manifest.excluded_bundle_like_count).toBe(1);
     expect(manifest.item_count).toBe(1);
     expect(manifest.items[0].target_url).toBe('https://www.theinkeylist.com/products/niacinamide-serum');
+  });
+
+  test('filters category/list pages from catalog extractor output', () => {
+    const manifest = buildManifestFromExtract({
+      brand: 'Round Lab',
+      domain: 'https://roundlab.co.kr',
+      market: 'KR',
+      limit: 2,
+      extractDoc: {
+        diagnostics: { source: 'catalog_extract' },
+        products: [
+          {
+            title: 'ALL - 소나무 진정 시카',
+            url: 'https://roundlab.co.kr/category/%EC%86%8C%EB%82%98%EB%AC%B4-%EC%A7%84%EC%A0%95-%EC%8B%9C%EC%B9%B4/119/',
+          },
+          {
+            title: 'Birch Juice Moisturizing Sunscreen SPF50+',
+            url: 'https://roundlab.co.kr/product/birch-juice-moisturizing-sunscreen/1234/',
+            image_url: 'https://cdn.example.com/birch.jpg',
+            price: '25,000원',
+            currency: 'KRW',
+            availability: 'in stock',
+          },
+        ],
+      },
+    });
+
+    expect(looksLikeNonProductCatalogPage({ title: 'ALL - 포 맨', url: 'https://roundlab.co.kr/category/foo/108/' })).toBe(true);
+    expect(looksLikeNonProductCatalogPage({ title: 'Birch Juice Sunscreen', url: 'https://roundlab.co.kr/product/birch-juice-sunscreen/1234/' })).toBe(false);
+    expect(manifest.excluded_non_product_page_count).toBe(1);
+    expect(manifest.item_count).toBe(1);
+    expect(manifest.items[0].seed_row.market).toBe('KR');
   });
 
   test('prioritizes preferred titles within the brand extract', () => {

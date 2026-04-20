@@ -113,17 +113,77 @@ function compactStructuredSectionsForFinalRewrite(sections) {
   };
 }
 
+function compactArrayRows(rows, mapper, maxItems = 6) {
+  const out = [];
+  for (const raw of Array.isArray(rows) ? rows : []) {
+    const mapped = typeof mapper === 'function' ? mapper(raw) : null;
+    if (!mapped) continue;
+    if (isPlainObject(mapped) && !Object.keys(mapped).length) continue;
+    out.push(mapped);
+    if (out.length >= maxItems) break;
+  }
+  return out;
+}
+
+function compactTravelActionContextForFinalRewrite(travelReadiness) {
+  const readiness = isPlainObject(travelReadiness) ? travelReadiness : {};
+  return {
+    adaptive_actions: compactArrayRows(readiness.adaptive_actions, (raw) => {
+      const row = isPlainObject(raw) ? raw : {};
+      return {
+        why: normalizeText(row.why, 220) || null,
+        what_to_do: normalizeText(row.what_to_do || row.whatToDo, 260) || null,
+      };
+    }, 5),
+    personal_focus: compactArrayRows(readiness.personal_focus, (raw) => {
+      const row = isPlainObject(raw) ? raw : {};
+      return {
+        focus: normalizeText(row.focus, 100) || null,
+        why: normalizeText(row.why, 220) || null,
+        what_to_do: normalizeText(row.what_to_do || row.whatToDo, 260) || null,
+      };
+    }, 4),
+    travel_kit_plan: compactArrayRows(readiness.reco_bundle, (raw) => {
+      const row = isPlainObject(raw) ? raw : {};
+      const productTypes = Array.isArray(row.product_types)
+        ? row.product_types.map((value) => normalizeText(value, 90)).filter(Boolean).slice(0, 4)
+        : [];
+      return {
+        trigger: normalizeText(row.trigger, 90) || null,
+        action: normalizeText(row.action, 260) || null,
+        ingredient_logic: normalizeText(row.ingredient_logic, 260) || null,
+        product_types: productTypes,
+        reapply_rule: normalizeText(row.reapply_rule, 180) || null,
+      };
+    }, 8),
+    best_practice_principles: [
+      'Keep travel skincare close to the at-home routine; avoid introducing unfamiliar actives right before or during travel.',
+      'Use moisturizer when skin feels dry and after cleansing; cabin air and climate shifts can increase barrier stress.',
+      'Use broad-spectrum sunscreen and reapply during outdoor exposure; include exposed body areas, lips, and hands when relevant.',
+      'Use hydrating or soothing masks as optional recovery support only when already tolerated; avoid making them sound medically necessary.',
+    ],
+  };
+}
+
 function compactShoppingForFinalRewrite(travelReadiness) {
   const readiness = isPlainObject(travelReadiness) ? travelReadiness : {};
   const shopping = isPlainObject(readiness.shopping_preview) ? readiness.shopping_preview : {};
   const products = Array.isArray(shopping.products) ? shopping.products : [];
+  const inferredGroundedCount = products.filter((row) => {
+    const product = isPlainObject(row) ? row : {};
+    return (
+      product.is_grounded === true ||
+      normalizeText(product.product_source || product.productSource, 80).toLowerCase() === 'catalog' ||
+      normalizeText(product.match_status || product.matchStatus, 80).toLowerCase() === 'catalog_verified'
+    );
+  }).length;
   return {
     ...(normalizeText(shopping.mode, 80) ? { mode: normalizeText(shopping.mode, 80) } : {}),
     ...(normalizeText(shopping.coverage_status || shopping.coverageStatus, 80)
       ? { coverage_status: normalizeText(shopping.coverage_status || shopping.coverageStatus, 80) }
       : {}),
-    ...(normalizeNumber(shopping.grounded_count || shopping.groundedCount) != null
-      ? { grounded_count: normalizeNumber(shopping.grounded_count || shopping.groundedCount) }
+    ...(normalizeNumber(shopping.grounded_count || shopping.groundedCount) != null || inferredGroundedCount > 0
+      ? { grounded_count: normalizeNumber(shopping.grounded_count || shopping.groundedCount) ?? inferredGroundedCount }
       : {}),
     products: products.slice(0, 8).map((row) => {
       const product = isPlainObject(row) ? row : {};
@@ -131,6 +191,11 @@ function compactShoppingForFinalRewrite(travelReadiness) {
         name: normalizeText(product.name, 120) || null,
         brand: normalizeText(product.brand, 80) || null,
         category: normalizeText(product.category, 80) || null,
+        reasons: Array.isArray(product.reasons)
+          ? product.reasons.map((line) => normalizeText(line, 140)).filter(Boolean).slice(0, 3)
+          : [],
+        price: normalizeNumber(product.price),
+        currency: normalizeText(product.currency, 12) || null,
         product_source: normalizeText(product.product_source || product.productSource, 80) || null,
         display_mode: normalizeText(product.display_mode || product.displayMode, 80) || null,
         product_id: normalizeText(product.product_id || product.productId, 120) || null,
@@ -157,6 +222,7 @@ function buildFinalRewritePromptInput({
     user_question: normalizeText(message, 800),
     profile: compactProfileForFinalRewrite(profile),
     travel_readiness: travelLlmInternal.compactTravelReadinessForPrompt(readiness),
+    travel_action_context: compactTravelActionContextForFinalRewrite(readiness),
     structured_sections: compactStructuredSectionsForFinalRewrite(structuredSections),
     shopping: compactShoppingForFinalRewrite(readiness),
     safety: compactSafetyDecisionForFinalRewrite(safetyDecision),
@@ -182,12 +248,15 @@ function buildTravelFinalRewritePrompts(input) {
     'Use only the provided structured facts. Do not invent weather, dates, locations, products, stores, prices, clinical claims, or availability.',
     'Do not expose internal payload terms, fallback labels, source tiers, or debug wording.',
     'Do not use absolute marketing words: best, most, perfect, guaranteed, must-have, miracle, holy grail.',
-    'Do not use these headings or phrases: Risk note, Practical alternatives, Suggested products, rule_fallback.',
+    'Do not use these headings or phrases: Risk note, Practical alternatives, Suggested products, Daily forecast, Key deltas, Travel skincare kit, Source, rule_fallback.',
     'Write a concise plan that feels like an advisor synthesized the trip, not a dump of every payload field.',
-    'Keep it under 1700 characters, with at most 4 short sections and at most 9 bullets total.',
-    'Must cover: weather/UV/humidity change, timezone or jet lag if present, before departure, flight, first 48 hours, and local buying guidance.',
+    'Keep it under 2100 characters, with at most 5 short sections and at most 12 bullets total.',
+    'Must explain the actual climate delta first: temperature, humidity, UV, precipitation/wind when provided, then state the skin implication rather than just reporting weather.',
+    'Must cover skincare substance: before departure, flight/cabin, first 48 hours after arrival, face care, exposed body/lip/hand care when relevant, and local buying guidance.',
+    'For every product category or grounded product you mention, include a concrete reason tied to climate, flight, skin profile, routine, or UV exposure.',
+    'Flight guidance may mention hydrating/soothing masks only as optional recovery if tolerated; do not make masks sound mandatory or clinical.',
     'If category-only shopping is provided, call it product categories or buying categories; explicitly do not present them as grounded product picks.',
-    'If grounded products are provided, say product options to review, not top/best products.',
+    'If grounded products are provided, name the provided brand/product options and explain why each category is relevant; do not invent missing local brands.',
     'Integrate safety context naturally into UV/actives guidance; do not prepend a separate safety block.',
     'End with one useful follow-up question only if it would materially improve product narrowing.',
     'Return strict JSON only: {"assistant_text":"..."}',
@@ -196,8 +265,9 @@ function buildTravelFinalRewritePrompts(input) {
   const userPrompt = [
     `language=${lang}`,
     categoryOnly ? 'Shopping status: category_only. Be honest that these are categories, not specific grounded products.' : '',
+    !categoryOnly && groundedCount > 0 ? `Shopping status: grounded_products with ${groundedCount} catalog-grounded option(s).` : '',
     hasSafety ? 'Safety status: integrate safety advice naturally; no Risk note heading.' : '',
-    'Task: rewrite the final travel skincare answer from the facts below. Preserve all numeric facts if mentioned.',
+    'Task: rewrite the final travel skincare answer from the facts below. Preserve all numeric facts if mentioned, and use travel_action_context as the skincare mechanism backbone.',
     `Fact JSON:${JSON.stringify(promptInput)}`,
   ].filter(Boolean).join('\n');
 
@@ -250,12 +320,69 @@ function parseTravelFinalRewritePayload(text) {
   return { assistant_text: assistantText };
 }
 
+function stringifyForRewriteQuality(value) {
+  try {
+    return JSON.stringify(value || {});
+  } catch (_) {
+    return '';
+  }
+}
+
+function matchesAny(text, patterns) {
+  const haystack = String(text || '');
+  return patterns.some((pattern) => pattern.test(haystack));
+}
+
+function buildTravelRewriteQualityContext(promptInput) {
+  const input = isPlainObject(promptInput) ? promptInput : {};
+  const shopping = isPlainObject(input.shopping) ? input.shopping : {};
+  const actionContext = isPlainObject(input.travel_action_context) ? input.travel_action_context : {};
+  const actionContextWithoutPrinciples = {
+    ...(Array.isArray(actionContext.adaptive_actions) ? { adaptive_actions: actionContext.adaptive_actions } : {}),
+    ...(Array.isArray(actionContext.personal_focus) ? { personal_focus: actionContext.personal_focus } : {}),
+    ...(Array.isArray(actionContext.travel_kit_plan) ? { travel_kit_plan: actionContext.travel_kit_plan } : {}),
+  };
+  const factsText = stringifyForRewriteQuality({
+    profile: input.profile,
+    travel_readiness: input.travel_readiness,
+    travel_action_context: actionContext,
+    structured_sections: input.structured_sections,
+    shopping,
+    safety: input.safety,
+  });
+  const actionText = stringifyForRewriteQuality({
+    travel_action_context: actionContextWithoutPrinciples,
+    structured_sections: input.structured_sections,
+  });
+  const coverageStatus = normalizeText(shopping.coverage_status, 80).toLowerCase();
+  const shoppingMode = normalizeText(shopping.mode, 80).toLowerCase();
+  const groundedCount = normalizeNumber(shopping.grounded_count) || 0;
+  const hasCategoryRows = Array.isArray(shopping.products) && shopping.products.length > 0;
+  return {
+    factsText,
+    actionText,
+    hasClimateFacts: /delta_vs_|delta_vs_home|delta_vs_origin|forecast_window|temperature|humidity|uv|precip|wind/i.test(factsText),
+    hasFlightOrJetlagFacts: /flight|cabin|boarding|jetlag|time.?zone|tz_|hours_diff|飞行|机舱|飞机|时差/i.test(factsText),
+    needsUvCare: /uv|sunscreen|spf|sun protection|outdoor|reapply|防晒|紫外|补涂/i.test(factsText),
+    needsBarrierHydration: /humidity|humid|dry|cabin|flight|moisturizer|barrier|hydrating|hydration|serum|cream|mask|保湿|补水|屏障|面霜|精华|面膜/i.test(factsText),
+    needsMaskNuance: /mask|面膜/i.test(actionText),
+    hasShoppingContext: Boolean(
+      coverageStatus ||
+      shoppingMode ||
+      groundedCount > 0 ||
+      hasCategoryRows ||
+      (Array.isArray(shopping.buying_channels) && shopping.buying_channels.length)
+    ),
+    categoryOnly: coverageStatus === 'category_only' || shoppingMode === 'category_guidance' || (!groundedCount && hasCategoryRows),
+  };
+}
+
 function validateTravelFinalRewriteText(text, { promptInput } = {}) {
   const assistantText = normalizeText(text, 2600);
   if (!assistantText) return { ok: false, reason: 'empty_rewrite' };
   if (assistantText.length < 180) return { ok: false, reason: 'rewrite_too_short' };
   if (assistantText.length > 2200) return { ok: false, reason: 'rewrite_too_long' };
-  if (/(^|\n)\s*(Risk note|Practical alternatives|Suggested products)\s*:/i.test(assistantText)) {
+  if (/(^|\n)\s*(Risk note|Practical alternatives|Suggested products|Daily forecast|Key deltas|Travel skincare kit|Adjusted routine guidance|How to handle actives|Source)\s*:/i.test(assistantText)) {
     return { ok: false, reason: 'rewrite_forbidden_heading' };
   }
   if (/rule_fallback|fallback_source|Products actually selected|Primary recommendation focus/i.test(assistantText)) {
@@ -264,6 +391,71 @@ function validateTravelFinalRewriteText(text, { promptInput } = {}) {
   if (/\b(best|most|perfect|guaranteed|must-have|miracle|holy grail)\b/i.test(assistantText)) {
     return { ok: false, reason: 'rewrite_absolute_wording' };
   }
+  if (/\.\.\.|…|\[truncated\]/i.test(assistantText)) {
+    return { ok: false, reason: 'rewrite_truncated_or_ellipsis' };
+  }
+
+  const quality = buildTravelRewriteQualityContext(promptInput);
+  if (quality.hasClimateFacts && !matchesAny(assistantText, [
+    /\b(temperature|warmer|cooler|hotter|colder|humid|humidity|uv|precipitation|rain|wind|climate)\b/i,
+    /(温度|更热|更冷|湿度|潮湿|紫外|降雨|下雨|风|气候)/i,
+  ])) {
+    return { ok: false, reason: 'rewrite_missing_climate_delta' };
+  }
+  if (quality.hasFlightOrJetlagFacts && !matchesAny(assistantText, [
+    /\b(flight|cabin|boarding|plane|airplane|jet lag|time zone|sleep)\b/i,
+    /(飞行|机舱|飞机|登机|时差|睡眠)/i,
+  ])) {
+    return { ok: false, reason: 'rewrite_missing_flight_or_jetlag_plan' };
+  }
+  if (quality.hasFlightOrJetlagFacts && !matchesAny(assistantText, [
+    /\b(before departure|pre[- ]?trip|pack|boarding|first 48|arrival|after landing|on[- ]?site)\b/i,
+    /(出发前|行前|提前|打包|登机|到达|抵达|落地|前48小时|前 48 小时)/i,
+  ])) {
+    return { ok: false, reason: 'rewrite_missing_trip_phase_plan' };
+  }
+  if (quality.needsUvCare && !matchesAny(assistantText, [
+    /\b(sunscreen|spf|uv|sun protection|reapply)\b/i,
+    /(防晒|紫外|补涂)/i,
+  ])) {
+    return { ok: false, reason: 'rewrite_missing_uv_care' };
+  }
+  if (quality.needsBarrierHydration && !matchesAny(assistantText, [
+    /\b(moisturizer|moisturise|moisturize|barrier|hydrating|hydration|serum|cream)\b/i,
+    /(保湿|补水|屏障|精华|面霜|乳液)/i,
+  ])) {
+    return { ok: false, reason: 'rewrite_missing_barrier_hydration' };
+  }
+  if (quality.needsUvCare && !matchesAny(assistantText, [
+    /\b(body|lip|lips|hand|hands|exposed areas|exposed skin)\b/i,
+    /(身体|嘴唇|唇部|手部|双手|暴露部位|外露皮肤)/i,
+  ])) {
+    return { ok: false, reason: 'rewrite_missing_body_lip_hand_care' };
+  }
+  if (quality.needsMaskNuance && !matchesAny(assistantText, [
+    /\b(mask|masks)\b/i,
+    /(面膜)/i,
+  ])) {
+    return { ok: false, reason: 'rewrite_missing_mask_guidance' };
+  }
+  if (quality.needsMaskNuance && !matchesAny(assistantText, [
+    /\b(optional|if tolerated|already tolerated|already tolerate|familiar|not new|avoid new)\b/i,
+    /(可选|耐受|用过|熟悉|不要新开|别新开)/i,
+  ])) {
+    return { ok: false, reason: 'rewrite_overstates_mask_guidance' };
+  }
+  if (quality.hasShoppingContext && !matchesAny(assistantText, [
+    /\b(buy|buying|shopping|local|category|categories|store|pharmacy|retail|grounded product|product categories)\b/i,
+    /(购买|当地|本地|品类|类别|门店|药房|药妆|专柜|有权威商品)/i,
+  ])) {
+    return { ok: false, reason: 'rewrite_missing_local_buying_boundary' };
+  }
+  if (!matchesAny(assistantText, [
+    /\b(because|so|which|helps|support|reduce|avoid|due to|ties to|for that reason)\b/i,
+    /(因为|所以|帮助|支持|减少|避免|对应|原因)/i,
+  ])) {
+    return { ok: false, reason: 'rewrite_missing_reasoning_links' };
+  }
 
   const shopping = isPlainObject(promptInput && promptInput.shopping) ? promptInput.shopping : {};
   const coverageStatus = normalizeText(shopping.coverage_status, 80).toLowerCase();
@@ -271,7 +463,12 @@ function validateTravelFinalRewriteText(text, { promptInput } = {}) {
   const groundedCount = normalizeNumber(shopping.grounded_count) || 0;
   const hasCategoryRows = Array.isArray(shopping.products) && shopping.products.length > 0;
   const categoryOnly = coverageStatus === 'category_only' || shoppingMode === 'category_guidance' || (!groundedCount && hasCategoryRows);
-  if (categoryOnly && /\b(specific product picks|grounded products|product recommendations|recommended products)\b/i.test(assistantText)) {
+  if (
+    categoryOnly &&
+    /\b(specific product picks|grounded products|product recommendations|recommended products)\b/i.test(assistantText) &&
+    !/\b(not|not confirmed|not grounded|not specific|rather than|instead of|category|categories)\b/i.test(assistantText) &&
+    !/(不是|并非|不要当作|非确认|类别|品类)/i.test(assistantText)
+  ) {
     return { ok: false, reason: 'rewrite_overstates_category_guidance' };
   }
 
