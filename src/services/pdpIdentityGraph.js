@@ -1790,6 +1790,281 @@ function normalizeIdentityRows(rows) {
   return out;
 }
 
+function normalizeListingMoney(value, fallbackCurrency = 'USD') {
+  const currency = firstNonEmptyString(
+    value?.currency,
+    value?.currencyCode,
+    value?.current?.currency,
+    value?.current?.currencyCode,
+    fallbackCurrency,
+    'USD',
+  ).toUpperCase();
+  const rawAmount =
+    value && typeof value === 'object'
+      ? value.amount ?? value.value ?? value.current?.amount ?? value.price_amount
+      : value;
+  const numeric =
+    typeof rawAmount === 'number'
+      ? rawAmount
+      : Number(String(rawAmount ?? '').replace(/[^0-9.-]+/g, ''));
+  if (!Number.isFinite(numeric)) return null;
+  return { amount: numeric, currency };
+}
+
+function readListingPrice(listing) {
+  const payload = asPlainObject(listing?.source_payload) || {};
+  return normalizeListingMoney(
+    payload.price ?? payload.pricing?.price ?? payload.current_price ?? payload.amount,
+    payload.currency || payload.price_currency || payload.pricing?.currency || 'USD',
+  );
+}
+
+function listingInStock(listing) {
+  const payload = asPlainObject(listing?.source_payload) || {};
+  const availability = firstNonEmptyString(payload.availability, payload.inventory?.availability);
+  if (/out[_\s-]?of[_\s-]?stock|sold[_\s-]?out|unavailable/i.test(availability)) return false;
+  if (payload.in_stock === false || payload.inventory?.in_stock === false) return false;
+  return true;
+}
+
+function pickDefaultCommerceListing(listings) {
+  const candidates = normalizeIdentityRows(listings);
+  if (!candidates.length) return null;
+  return [...candidates].sort((a, b) => {
+    const aInternal = asString(a.source_kind).toLowerCase() === 'internal' ? 1 : 0;
+    const bInternal = asString(b.source_kind).toLowerCase() === 'internal' ? 1 : 0;
+    if (aInternal !== bInternal) return bInternal - aInternal;
+    const aStock = listingInStock(a) ? 1 : 0;
+    const bStock = listingInStock(b) ? 1 : 0;
+    if (aStock !== bStock) return bStock - aStock;
+    const aPrice = readListingPrice(a);
+    const bPrice = readListingPrice(b);
+    if (aPrice && bPrice && aPrice.currency === bPrice.currency && aPrice.amount !== bPrice.amount) {
+      return aPrice.amount - bPrice.amount;
+    }
+    if (aPrice && !bPrice) return -1;
+    if (!aPrice && bPrice) return 1;
+    return scoreListingCompleteness(b) - scoreListingCompleteness(a);
+  })[0];
+}
+
+function buildIdentitySearchOffer(listing, groupId) {
+  const merchantId = asString(listing?.merchant_id);
+  const productId = asString(listing?.product_id);
+  if (!merchantId || !productId) return null;
+  const payload = asPlainObject(listing?.source_payload) || {};
+  const price = readListingPrice(listing);
+  const merchantName = firstNonEmptyString(
+    payload.merchant_name,
+    payload.store_name,
+    payload.vendor,
+    payload.brand?.name,
+    payload.brand,
+    merchantId === EXTERNAL_SEED_MERCHANT_ID ? 'External reference' : '',
+  );
+  return {
+    offer_id: stableHash('of_identity', [groupId, merchantId, productId]),
+    product_group_id: groupId,
+    merchant_id: merchantId,
+    product_id: productId,
+    product_ref: { merchant_id: merchantId, product_id: productId },
+    ...(merchantName ? { merchant_name: merchantName } : {}),
+    ...(price ? { price } : {}),
+    ...(payload.inventory ? { inventory: payload.inventory } : {}),
+    ...(payload.shipping ? { shipping: payload.shipping } : {}),
+    ...(payload.discount_evidence ? { discount_evidence: payload.discount_evidence } : {}),
+    offer_source: 'group_fused',
+    commerce_source: 'selected_seller_store',
+  };
+}
+
+function buildIdentitySearchProduct(groupId, rows) {
+  const groupRows = normalizeIdentityRows(rows);
+  if (!groupId || !groupRows.length) return null;
+  const commerceListing = pickDefaultCommerceListing(groupRows) || groupRows[0];
+  const contentListings = groupRows.filter(
+    (row) => asString(row?.source_kind).toLowerCase() !== 'internal',
+  );
+  const composed = composeSyntheticCanonicalProduct({
+    requestedListing: commerceListing,
+    exactListings: contentListings.length ? contentListings : groupRows,
+    lineListings: groupRows,
+  });
+  if (!composed?.product) return null;
+  const offers = groupRows
+    .map((row) => buildIdentitySearchOffer(row, groupId))
+    .filter(Boolean);
+  const selectedRef = composed.selected_commerce_ref || buildListingProductRef(commerceListing);
+  const canonicalRef = composed.canonical_product_ref || buildListingProductRef(groupRows[0]);
+  const prices = offers
+    .map((offer) => normalizeListingMoney(offer.price))
+    .filter(Boolean);
+  const firstCurrency = prices[0]?.currency || null;
+  const sameCurrencyPrices = firstCurrency
+    ? prices.filter((price) => price.currency === firstCurrency)
+    : [];
+  const fromPrice = sameCurrencyPrices.length
+    ? sameCurrencyPrices.reduce((best, price) => (price.amount < best.amount ? price : best), sameCurrencyPrices[0])
+    : null;
+  const confidence = Math.max(
+    ...groupRows.map((row) => Number(row.identity_confidence || 0)).filter(Number.isFinite),
+    0,
+  );
+  const product = {
+    ...composed.product,
+    merchant_id: selectedRef?.merchant_id || composed.product.merchant_id,
+    product_id: selectedRef?.product_id || composed.product.product_id,
+    id: selectedRef?.product_id || composed.product.product_id,
+    product_ref: selectedRef || composed.product.product_ref,
+    canonical_product_ref: canonicalRef || null,
+    selected_commerce_ref: selectedRef || null,
+    product_group_id: groupId,
+    sellable_item_group_id: groupId,
+    offer_source: 'group_fused',
+    commerce_source: 'selected_seller_store',
+    content_review_state:
+      canonicalRef && selectedRef && !sameListingRef(canonicalRef, selectedRef) ? 'pending' : 'not_needed',
+    offers,
+    offers_count: offers.length,
+    offer_count: offers.length,
+    has_multiple_offers: offers.length > 1,
+    grouped: offers.length > 1,
+    ...(fromPrice ? { from_price: fromPrice, price_range: { min: fromPrice } } : {}),
+    identity_confidence: confidence || null,
+    match_basis: uniqueStrings(groupRows.flatMap((row) => asArray(row.match_basis)), 20),
+    search_recall_source: 'pdp_identity_graph',
+  };
+  return product;
+}
+
+async function searchPdpIdentityGroupsForQuery({
+  queryText,
+  limit = 5,
+  queryFn = query,
+} = {}) {
+  const normalizedQuery = normalizeTitleToken(queryText);
+  const compactQuery = normalizedQuery.replace(/\s+/g, '');
+  const normalizedLimit = Math.max(1, Math.min(20, Number(limit) || 5));
+  if (!normalizedQuery || normalizedQuery.length < 4 || !process.env.DATABASE_URL) {
+    return {
+      products: [],
+      metadata: {
+        attempted: Boolean(normalizedQuery),
+        applied: false,
+        reason: !normalizedQuery ? 'empty_query' : !process.env.DATABASE_URL ? 'db_not_configured' : 'query_too_short',
+      },
+    };
+  }
+  try {
+    const candidateRes = await queryFn(
+      `
+        SELECT *
+        FROM pdp_identity_listing
+        WHERE identity_status = 'approved'
+          AND review_required = false
+          AND sellable_item_group_id IS NOT NULL
+          AND (
+            title_norm = $1
+            OR title_core_norm = $1
+            OR (
+              length(coalesce(title_core_norm, '')) >= 5
+              AND $1 LIKE ('%' || title_core_norm || '%')
+              AND length(replace(coalesce(brand_norm, ''), ' ', '')) >= 4
+              AND $2 LIKE ('%' || replace(brand_norm, ' ', '') || '%')
+            )
+          )
+        ORDER BY
+          CASE WHEN source_tier = 'brand' THEN 0 ELSE 1 END,
+          identity_confidence DESC NULLS LAST,
+          updated_at DESC NULLS LAST,
+          created_at DESC NULLS LAST
+        LIMIT $3
+      `,
+      [normalizedQuery, compactQuery, normalizedLimit * 10],
+    );
+    const candidateRows = normalizeIdentityRows(candidateRes?.rows).filter((row) =>
+      asString(row.sellable_item_group_id),
+    );
+    const groupIds = uniqueStrings(
+      candidateRows.map((row) => asString(row.sellable_item_group_id)),
+      normalizedLimit,
+    );
+    if (!groupIds.length) {
+      return {
+        products: [],
+        metadata: {
+          attempted: true,
+          applied: false,
+          reason: 'no_identity_group_match',
+          normalized_query: normalizedQuery,
+        },
+      };
+    }
+    const groupRowsRes = await queryFn(
+      `
+        SELECT *
+        FROM pdp_identity_listing
+        WHERE sellable_item_group_id = ANY($1::text[])
+          AND identity_status = 'approved'
+          AND review_required = false
+        ORDER BY
+          CASE WHEN source_kind = 'internal' THEN 0 ELSE 1 END,
+          CASE WHEN source_tier = 'brand' THEN 0 ELSE 1 END,
+          identity_confidence DESC NULLS LAST,
+          updated_at DESC NULLS LAST,
+          created_at DESC NULLS LAST
+      `,
+      [groupIds],
+    );
+    const rowsByGroup = new Map();
+    for (const row of normalizeIdentityRows(groupRowsRes?.rows)) {
+      const groupId = asString(row.sellable_item_group_id);
+      if (!groupId) continue;
+      const rows = rowsByGroup.get(groupId) || [];
+      rows.push(row);
+      rowsByGroup.set(groupId, rows);
+    }
+    const products = groupIds
+      .map((groupId) => buildIdentitySearchProduct(groupId, rowsByGroup.get(groupId) || []))
+      .filter(Boolean)
+      .slice(0, normalizedLimit);
+    return {
+      products,
+      metadata: {
+        attempted: true,
+        applied: products.length > 0,
+        reason: products.length > 0 ? 'identity_group_match' : 'identity_group_build_empty',
+        normalized_query: normalizedQuery,
+        matched_group_count: groupIds.length,
+        returned_count: products.length,
+      },
+    };
+  } catch (err) {
+    if (looksLikeRelationMissing(err)) {
+      return {
+        products: [],
+        metadata: {
+          attempted: true,
+          applied: false,
+          reason: 'identity_tables_not_ready',
+        },
+      };
+    }
+    logger.warn(
+      { err: err?.message || String(err), query: normalizedQuery },
+      'PDP identity graph search recall failed',
+    );
+    return {
+      products: [],
+      metadata: {
+        attempted: true,
+        applied: false,
+        reason: 'identity_search_error',
+      },
+    };
+  }
+}
+
 function dedupeIdentityRows(rows) {
   const seen = new Set();
   const out = [];
@@ -3343,6 +3618,7 @@ module.exports = {
   buildIdentityListingFromProduct,
   composeSyntheticCanonicalProduct,
   maybeBuildLiveSyntheticPdp,
+  searchPdpIdentityGroupsForQuery,
   listLivePdpIdentityRowsForRefs,
   promotePdpIdentityLiveRead,
   summarizePdpIdentityCoverageByBrand,

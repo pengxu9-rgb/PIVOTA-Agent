@@ -59,6 +59,7 @@ const {
 } = require('./services/pdpReviewedIngredientAuthority');
 const {
   maybeBuildLiveSyntheticPdp,
+  searchPdpIdentityGroupsForQuery,
   backfillPdpIdentityGraph,
   promotePdpIdentityLiveRead,
   listPdpIdentityShadowRows,
@@ -9292,6 +9293,158 @@ async function maybeRescueBrandLikeSearchFromLocalExternalSeed({
             retrieval_include_attached: rescueMeta.retrieval_include_attached === true,
             brand_entities: Array.isArray(brandDetection.brands) ? brandDetection.brands : [],
           },
+        },
+      },
+    },
+    {
+      limit: queryParams?.limit,
+      offset: queryParams?.offset,
+    },
+  );
+}
+
+function hasSearchProductIdentityMatch(product, queryText) {
+  const normalizedQuery = normalizeSearchTextForMatch(queryText);
+  if (!normalizedQuery) return false;
+  const compactQuery = normalizedQuery.replace(/\s+/g, '');
+  const title = normalizeSearchTextForMatch(
+    [
+      product?.title,
+      product?.name,
+      product?.product_title,
+      product?.display_name,
+    ]
+      .filter(Boolean)
+      .join(' '),
+  );
+  const brand = normalizeSearchTextForMatch(
+    [
+      product?.brand?.name,
+      product?.brand,
+      product?.brand_name,
+      product?.vendor,
+      product?.merchant_name,
+    ]
+      .filter(Boolean)
+      .join(' '),
+  );
+  if (title && (title === normalizedQuery || normalizedQuery.includes(title))) return true;
+  if (brand && title) {
+    const compactBrand = brand.replace(/\s+/g, '');
+    const titleWithoutBrand = title.startsWith(`${brand} `)
+      ? title.slice(brand.length).trim()
+      : title;
+    if (
+      titleWithoutBrand &&
+      normalizedQuery.includes(titleWithoutBrand) &&
+      compactBrand.length >= 4 &&
+      compactQuery.includes(compactBrand)
+    ) {
+      return true;
+    }
+  }
+  const matchBasis = Array.isArray(product?.match_basis) ? product.match_basis.join(' ') : '';
+  return Boolean(matchBasis && normalizeSearchTextForMatch(matchBasis).includes(normalizedQuery));
+}
+
+async function maybeRescueSearchFromPdpIdentityGraph({
+  operation,
+  upstreamData,
+  queryText,
+  queryParams,
+} = {}) {
+  if (
+    operation !== 'find_products_multi' ||
+    !upstreamData ||
+    typeof upstreamData !== 'object' ||
+    Array.isArray(upstreamData)
+  ) {
+    return upstreamData;
+  }
+  const normalizedQueryText = String(queryText || '').trim();
+  if (!normalizedQueryText) return upstreamData;
+  const existingProducts = Array.isArray(upstreamData.products) ? upstreamData.products : [];
+  if (existingProducts.some((product) => hasSearchProductIdentityMatch(product, normalizedQueryText))) {
+    return upstreamData;
+  }
+  const requestedLimit = Math.min(
+    Math.max(1, Number(queryParams?.limit || queryParams?.page_size || 20) || 20),
+    SEARCH_LIMIT_MAX,
+  );
+  const identityRecall = await searchPdpIdentityGroupsForQuery({
+    queryText: normalizedQueryText,
+    limit: Math.min(requestedLimit, 5),
+  });
+  const recalledProducts = Array.isArray(identityRecall?.products) ? identityRecall.products : [];
+  const recallMeta =
+    identityRecall?.metadata &&
+    typeof identityRecall.metadata === 'object' &&
+    !Array.isArray(identityRecall.metadata)
+      ? identityRecall.metadata
+      : {};
+  const upstreamMeta =
+    upstreamData.metadata && typeof upstreamData.metadata === 'object' && !Array.isArray(upstreamData.metadata)
+      ? upstreamData.metadata
+      : {};
+  if (!recalledProducts.length) {
+    return {
+      ...upstreamData,
+      metadata: {
+        ...upstreamMeta,
+        identity_graph_search_recall: {
+          attempted: Boolean(recallMeta.attempted),
+          applied: false,
+          reason: recallMeta.reason || 'no_identity_group_match',
+        },
+      },
+    };
+  }
+
+  const seen = new Set();
+  const mergedProducts = [];
+  const add = (product) => {
+    if (!product || typeof product !== 'object') return;
+    const key =
+      String(product.sellable_item_group_id || product.product_group_id || '').trim() ||
+      buildSearchProductKey(product);
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    mergedProducts.push(product);
+  };
+  recalledProducts.forEach(add);
+  existingProducts.forEach(add);
+  const limitedProducts = mergedProducts.slice(0, requestedLimit);
+  return normalizeAgentProductsListResponse(
+    {
+      ...upstreamData,
+      products: limitedProducts,
+      results: limitedProducts,
+      data: {
+        ...(upstreamData.data && typeof upstreamData.data === 'object' && !Array.isArray(upstreamData.data)
+          ? upstreamData.data
+          : {}),
+        products: limitedProducts,
+      },
+      total: Math.max(Number(upstreamData.total || 0) || 0, limitedProducts.length),
+      count: Math.max(Number(upstreamData.count || 0) || 0, limitedProducts.length),
+      metadata: {
+        ...upstreamMeta,
+        query_source: 'agent_products_identity_graph_recall',
+        identity_graph_search_recall: {
+          attempted: true,
+          applied: true,
+          reason: recallMeta.reason || 'identity_group_match',
+          matched_group_count: Number(recallMeta.matched_group_count || recalledProducts.length) || recalledProducts.length,
+          returned_count: recalledProducts.length,
+        },
+        source_breakdown: {
+          ...(upstreamMeta.source_breakdown &&
+          typeof upstreamMeta.source_breakdown === 'object' &&
+          !Array.isArray(upstreamMeta.source_breakdown)
+            ? upstreamMeta.source_breakdown
+            : {}),
+          identity_graph_count: recalledProducts.length,
+          strategy_applied: 'pdp_identity_graph_search_recall',
         },
       },
     },
@@ -27614,6 +27767,15 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       }
     }
 
+    if (operation === 'find_products_multi') {
+      maybePolicy = await maybeRescueSearchFromPdpIdentityGraph({
+        operation,
+        upstreamData: maybePolicy,
+        queryText: String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim(),
+        queryParams,
+      });
+    }
+
     let enriched = applyDealsToResponse(maybePolicy, promotions, now, creatorId);
 
     if (operation === 'find_products' || operation === 'find_products_multi') {
@@ -28290,6 +28452,7 @@ module.exports._debug = {
   isCatalogSyncRetryableError,
   catalogSyncState,
   maybeBuildLiveSyntheticPdp,
+  searchPdpIdentityGroupsForQuery,
   backfillPdpIdentityGraph,
   listPdpIdentityShadowRows,
   listPdpIdentityReviewQueue,

@@ -743,6 +743,88 @@ describe('pdpIdentityGraph', () => {
     );
   });
 
+  test('searchPdpIdentityGroupsForQuery recalls grouped product offers for compact brand exact queries', async () => {
+    process.env.DATABASE_URL = 'postgres://identity-test';
+    const {
+      buildIdentityListingFromProduct,
+      searchPdpIdentityGroupsForQuery,
+    } = require('../../src/services/pdpIdentityGraph');
+
+    const externalListing = buildIdentityListingFromProduct({
+      merchantId: 'external_seed',
+      productId: 'ext_krave_gbr_45',
+      product: {
+        title: 'KraveBeauty Great Barrier Relief',
+        brand: 'KraveBeauty',
+        source_url: 'https://kravebeauty.com/products/great-barrier-relief',
+        price: { amount: 28, currency: 'EUR' },
+        variants: [{ variant_id: 'v_45', option1: '45 mL' }],
+      },
+      sourceKind: 'external_seed',
+    });
+    const shopifyListing = buildIdentityListingFromProduct({
+      merchantId: 'merch_krave',
+      productId: '10064558096681',
+      product: {
+        title: 'KraveBeauty Great Barrier Relief',
+        vendor: 'KraveBeauty',
+        source_url: 'https://kravebeauty.com/products/great-barrier-relief',
+        price: { amount: 28, currency: 'USD' },
+        in_stock: true,
+        variants: [{ variant_id: 'gid://shopify/ProductVariant/1', option1: '45 mL' }],
+      },
+      sourceKind: 'internal',
+    });
+    expect(shopifyListing.sellable_item_group_id).toBe(externalListing.sellable_item_group_id);
+
+    const queryFn = jest.fn(async (sql, params) => {
+      const normalizedSql = String(sql).replace(/\s+/g, ' ');
+      if (normalizedSql.includes('sellable_item_group_id = ANY')) {
+        expect(params).toEqual([[externalListing.sellable_item_group_id]]);
+        return { rows: [shopifyListing, externalListing] };
+      }
+      expect(params[0]).toBe('kravebeauty great barrier relief');
+      expect(params[1]).toBe('kravebeautygreatbarrierrelief');
+      return { rows: [externalListing] };
+    });
+
+    const result = await searchPdpIdentityGroupsForQuery({
+      queryText: 'KraveBeauty Great Barrier Relief',
+      limit: 5,
+      queryFn,
+    });
+
+    expect(result.metadata).toEqual(
+      expect.objectContaining({
+        attempted: true,
+        applied: true,
+        reason: 'identity_group_match',
+      }),
+    );
+    expect(result.products).toHaveLength(1);
+    expect(result.products[0]).toEqual(
+      expect.objectContaining({
+        merchant_id: 'merch_krave',
+        product_id: '10064558096681',
+        sellable_item_group_id: externalListing.sellable_item_group_id,
+        offer_source: 'group_fused',
+        commerce_source: 'selected_seller_store',
+        pdp_content_source: 'canonical_inherited',
+        content_review_state: 'pending',
+        offers_count: 2,
+        has_multiple_offers: true,
+      }),
+    );
+    expect(result.products[0].canonical_product_ref).toEqual({
+      merchant_id: 'external_seed',
+      product_id: 'ext_krave_gbr_45',
+    });
+    expect(result.products[0].selected_commerce_ref).toEqual({
+      merchant_id: 'merch_krave',
+      product_id: '10064558096681',
+    });
+  });
+
   test('backfill product fetch does not depend on products_cache created_at column', async () => {
     const { _internals } = require('../../src/services/pdpIdentityGraph');
     const queries = [];
