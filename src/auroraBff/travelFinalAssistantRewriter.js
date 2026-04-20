@@ -95,21 +95,17 @@ function compactSafetyDecisionForFinalRewrite(safetyDecision) {
 
 function compactStructuredSectionsForFinalRewrite(sections) {
   const src = isPlainObject(sections) ? sections : {};
-  const pickLines = (key, maxItems, maxLen = 220) => (
+  const pickLines = (key, maxItems, maxLen = 180) => (
     Array.isArray(src[key])
       ? src[key].map((line) => normalizeText(line, maxLen)).filter(Boolean).slice(0, maxItems)
       : []
   );
   return {
-    key_deltas: pickLines('key_deltas', 4),
-    routine_adjustments: pickLines('routine_adjustments', 4),
-    jetlag_sleep: pickLines('jetlag_sleep', 3),
-    flight_day_plan: pickLines('flight_day_plan', 3),
-    active_handling: pickLines('active_handling', 3),
-    phased_plan: pickLines('phased_plan', 3),
-    travel_kit: pickLines('travel_kit', 8),
-    product_guidance: pickLines('product_guidance', 6),
-    troubleshooting: pickLines('troubleshooting', 3),
+    key_deltas: pickLines('key_deltas', 2),
+    jetlag_sleep: pickLines('jetlag_sleep', 1),
+    flight_day_plan: pickLines('flight_day_plan', 1),
+    phased_plan: pickLines('phased_plan', 2),
+    product_guidance: pickLines('product_guidance', 2),
   };
 }
 
@@ -142,10 +138,10 @@ function isGroundedShoppingProduct(product) {
 
 function compactGroundedShoppingProduct(product) {
   const row = isPlainObject(product) ? product : {};
-  const name = normalizeText(row.name, 120);
+  const name = normalizeText(row.name, 100);
   if (!name) return null;
   const reasons = Array.isArray(row.reasons)
-    ? row.reasons.map((line) => normalizeText(line, 150)).filter(Boolean).slice(0, 3)
+    ? row.reasons.map((line) => normalizeText(line, 110)).filter(Boolean).slice(0, 2)
     : [];
   return {
     product_id: normalizeText(row.product_id || row.productId, 120) || null,
@@ -172,9 +168,16 @@ function buildGroundedProductMapForFinalRewrite(readiness) {
   return byId;
 }
 
+function stripPromptOnlyProductIdentity(product) {
+  const row = isPlainObject(product) ? { ...product } : {};
+  delete row.product_id;
+  return row;
+}
+
 function compactTravelActionContextForFinalRewrite(travelReadiness) {
   const readiness = isPlainObject(travelReadiness) ? travelReadiness : {};
   const groundedProductsById = buildGroundedProductMapForFinalRewrite(readiness);
+  const hasPhasePlan = Array.isArray(readiness.phase_plan) && readiness.phase_plan.length > 0;
   return {
     phase_plan: compactArrayRows(readiness.phase_plan, (raw) => {
       const row = isPlainObject(raw) ? raw : {};
@@ -184,58 +187,39 @@ function compactTravelActionContextForFinalRewrite(travelReadiness) {
       const phaseProducts = productIds
         .map((productId) => groundedProductsById.get(productId))
         .filter(Boolean)
-        .slice(0, normalizeText(row.id, 80) === 'local_shopping' ? 6 : 4);
+        .map(stripPromptOnlyProductIdentity)
+        .slice(0, normalizeText(row.id, 80) === 'local_shopping' ? 3 : 1);
       return {
         id: normalizeText(row.id, 80) || null,
         title: normalizeText(row.title, 120) || null,
         timing: normalizeText(row.timing, 120) || null,
-        why: normalizeText(row.why, 220) || null,
+        why: normalizeText(row.why, 180) || null,
         actions: Array.isArray(row.actions)
-          ? row.actions.map((line) => normalizeText(line, 220)).filter(Boolean).slice(0, 4)
+          ? row.actions.map((line) => normalizeText(line, 170)).filter(Boolean).slice(0, 2)
           : [],
         product_role_ids: Array.isArray(row.product_role_ids || row.productRoleIds)
-          ? (row.product_role_ids || row.productRoleIds).map((line) => normalizeText(line, 80)).filter(Boolean).slice(0, 8)
+          ? (row.product_role_ids || row.productRoleIds).map((line) => normalizeText(line, 80)).filter(Boolean).slice(0, 5)
           : [],
-        product_ids: productIds,
         ...(phaseProducts.length ? { grounded_products: phaseProducts } : {}),
         coverage_status: normalizeText(row.coverage_status || row.coverageStatus, 80) || null,
       };
     }, 5),
-    adaptive_actions: compactArrayRows(readiness.adaptive_actions, (raw) => {
-      const row = isPlainObject(raw) ? raw : {};
-      return {
-        why: normalizeText(row.why, 220) || null,
-        what_to_do: normalizeText(row.what_to_do || row.whatToDo, 260) || null,
-      };
-    }, 5),
-    personal_focus: compactArrayRows(readiness.personal_focus, (raw) => {
-      const row = isPlainObject(raw) ? raw : {};
-      return {
-        focus: normalizeText(row.focus, 100) || null,
-        why: normalizeText(row.why, 220) || null,
-        what_to_do: normalizeText(row.what_to_do || row.whatToDo, 260) || null,
-      };
-    }, 4),
-    travel_kit_plan: compactArrayRows(readiness.reco_bundle, (raw) => {
-      const row = isPlainObject(raw) ? raw : {};
-      const productTypes = Array.isArray(row.product_types)
-        ? row.product_types.map((value) => normalizeText(value, 90)).filter(Boolean).slice(0, 4)
-        : [];
-      return {
-        trigger: normalizeText(row.trigger, 90) || null,
-        action: normalizeText(row.action, 260) || null,
-        ingredient_logic: normalizeText(row.ingredient_logic, 260) || null,
-        product_types: productTypes,
-        reapply_rule: normalizeText(row.reapply_rule, 180) || null,
-      };
-    }, 8),
-    best_practice_principles: [
-      'Keep travel skincare close to the at-home routine; avoid introducing unfamiliar actives right before or during travel.',
-      'Use moisturizer when skin feels dry and after cleansing; cabin air and climate shifts can increase barrier stress.',
-      'Use broad-spectrum sunscreen and reapply during outdoor exposure.',
-      'If UV or outdoor exposure is present, cover the exposure checklist separately: face SPF, exposed body areas/body SPF, lips/SPF lip balm, and hands/hand cream or hand SPF.',
-      'Use hydrating or soothing masks as optional recovery support only when already tolerated; avoid making them sound medically necessary.',
-    ],
+    ...(!hasPhasePlan
+      ? {
+          travel_kit_plan: compactArrayRows(readiness.reco_bundle, (raw) => {
+            const row = isPlainObject(raw) ? raw : {};
+            const productTypes = Array.isArray(row.product_types)
+              ? row.product_types.map((value) => normalizeText(value, 80)).filter(Boolean).slice(0, 3)
+              : [];
+            return {
+              trigger: normalizeText(row.trigger, 90) || null,
+              action: normalizeText(row.action, 180) || null,
+              product_types: productTypes,
+              reapply_rule: normalizeText(row.reapply_rule, 120) || null,
+            };
+          }, 4),
+        }
+      : {}),
   };
 }
 
@@ -259,20 +243,19 @@ function compactShoppingForFinalRewrite(travelReadiness) {
     ...(normalizeNumber(shopping.grounded_count || shopping.groundedCount) != null || inferredGroundedCount > 0
       ? { grounded_count: normalizeNumber(shopping.grounded_count || shopping.groundedCount) ?? inferredGroundedCount }
       : {}),
-    products: products.slice(0, 8).map((row) => {
+    products: products.slice(0, 6).map((row) => {
       const product = isPlainObject(row) ? row : {};
       return {
-        name: normalizeText(product.name, 120) || null,
+        name: normalizeText(product.name, 100) || null,
         brand: normalizeText(product.brand, 80) || null,
         category: normalizeText(product.category, 80) || null,
         reasons: Array.isArray(product.reasons)
-          ? product.reasons.map((line) => normalizeText(line, 140)).filter(Boolean).slice(0, 3)
+          ? product.reasons.map((line) => normalizeText(line, 110)).filter(Boolean).slice(0, 2)
           : [],
         price: normalizeNumber(product.price),
         currency: normalizeText(product.currency, 12) || null,
         product_source: normalizeText(product.product_source || product.productSource, 80) || null,
         display_mode: normalizeText(product.display_mode || product.displayMode, 80) || null,
-        product_id: normalizeText(product.product_id || product.productId, 120) || null,
       };
     }).filter((row) => row.name),
     ...(Array.isArray(shopping.buying_channels) && shopping.buying_channels.length
@@ -287,20 +270,18 @@ function buildFinalRewritePromptInput({
   profile,
   travelReadiness,
   structuredSections,
-  deterministicBrief,
   safetyDecision,
 } = {}) {
   const readiness = isPlainObject(travelReadiness) ? travelReadiness : {};
   const promptInput = {
     language: normalizeLang(language),
-    user_question: normalizeText(message, 800),
+    user_question: normalizeText(message, 500),
     profile: compactProfileForFinalRewrite(profile),
     travel_readiness: travelLlmInternal.compactTravelReadinessForPrompt(readiness),
     travel_action_context: compactTravelActionContextForFinalRewrite(readiness),
     structured_sections: compactStructuredSectionsForFinalRewrite(structuredSections),
     shopping: compactShoppingForFinalRewrite(readiness),
     safety: compactSafetyDecisionForFinalRewrite(safetyDecision),
-    deterministic_brief: normalizeText(deterministicBrief, 1000),
   };
   promptInput.required_coverage_checklist = buildTravelFinalRewriteRequiredChecklist(promptInput);
   return promptInput;
@@ -554,6 +535,18 @@ function buildTravelRewriteQualityContext(promptInput) {
   const shopping = isPlainObject(input.shopping) ? input.shopping : {};
   const actionContext = isPlainObject(input.travel_action_context) ? input.travel_action_context : {};
   const actionContextWithoutPrinciples = {
+    ...(Array.isArray(actionContext.phase_plan)
+      ? {
+          phase_plan: actionContext.phase_plan.map((phase) => {
+            const row = isPlainObject(phase) ? phase : {};
+            return {
+              id: row.id || null,
+              actions: Array.isArray(row.actions) ? row.actions : [],
+              product_role_ids: Array.isArray(row.product_role_ids) ? row.product_role_ids : [],
+            };
+          }),
+        }
+      : {}),
     ...(Array.isArray(actionContext.adaptive_actions) ? { adaptive_actions: actionContext.adaptive_actions } : {}),
     ...(Array.isArray(actionContext.personal_focus) ? { personal_focus: actionContext.personal_focus } : {}),
     ...(Array.isArray(actionContext.travel_kit_plan) ? { travel_kit_plan: actionContext.travel_kit_plan } : {}),
