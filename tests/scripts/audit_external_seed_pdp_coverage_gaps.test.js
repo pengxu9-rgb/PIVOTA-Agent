@@ -45,6 +45,35 @@ describe('audit-external-seed-pdp-coverage-gaps helpers', () => {
     expect(result.field_status.active_ingredients).toBe('not_applicable_without_regulatory_active_signal');
   });
 
+  test('classifies non-formula brand accessories as tool/accessory gaps', () => {
+    const titles = [
+      'The Oversized Scrunchie',
+      'Fenty Skin Baseball Hat',
+      'Fenty Hair Satin Scarf',
+      'Teddy Travel Bag',
+      'LED Vanity Mirror',
+      "Trace'd Out Dual Pencil Sharpener",
+    ];
+
+    for (const title of titles) {
+      const result = classifyRow(
+        row({
+          title,
+          canonical_url: `https://example.com/products/${title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+          destination_url: `https://example.com/products/${title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+          seed_data: {
+            pdp_description_raw: `${title} accessory listing.`,
+            snapshot: {},
+          },
+        }),
+      );
+
+      expect(result.product_context.product_family).toBe('tool_accessory');
+      expect(result.field_status.inci).toBe('not_applicable');
+      expect(result.field_status.active_ingredients).toBe('not_applicable_without_regulatory_active_signal');
+    }
+  });
+
   test('treats missing SPF active ingredients as actionable while FAQ stays source optional', () => {
     const result = classifyRow(
       row({

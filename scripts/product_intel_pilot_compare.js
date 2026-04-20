@@ -383,6 +383,11 @@ function inferProductKindFromContext(context) {
   ) {
     return 'makeup_set';
   }
+  if (/\b(?:scrunchie|hair scrunchie|satin scarf|hair scarf)\b/.test(titleCategoryDescription)) return 'hair_accessory';
+  if (/\b(?:baseball hat|bucket hat|hat|cap)\b/.test(titleCategory)) return 'apparel_accessory';
+  if (/\b(?:pencil sharpener|dual sharpener|makeup sharpener|sharpener)\b/.test(titleCategory)) return 'makeup_tool';
+  if (/\b(?:vanity mirror|led mirror|compact mirror|mirror)\b/.test(titleCategoryDescription)) return 'beauty_mirror';
+  if (/\bbag\b/.test(titleCategory) || /\b(?:beauty bag|makeup bag|travel bag|jelly(?:\s+\w+)?\s+bag|embossed bag|teddy travel bag|pouch|cosmetic case|makeup case|travel case|tote)\b/.test(titleCategoryDescription)) return 'beauty_bag';
   if (/\b(?:glow trio|glow kit|routine bundle|full-size bundle|starter bundle)\b/.test(titleCategoryDescription)) {
     return 'routine_bundle';
   }
@@ -481,10 +486,17 @@ function inferSpecificBeautySubtypeLabel(context) {
   const title = asString(context?.title).toLowerCase();
   const category = asString(context?.category).toLowerCase();
   const description = asString(context?.description).toLowerCase();
+  const titleCategory = `${title} ${category}`.trim();
   const text = `${title} ${category} ${description}`.trim();
   const fragranceText = text.replace(/\bfragrance[-\s]?free\b/g, ' ');
   if (!text) return '';
 
+  if (/\b(?:scrunchie|hair scrunchie)\b/.test(text)) return 'Hair accessory';
+  if (/\b(?:satin scarf|hair scarf)\b/.test(text)) return 'Hair scarf';
+  if (/\b(?:baseball hat|bucket hat|hat|cap)\b/.test(text)) return 'Apparel accessory';
+  if (/\b(?:pencil sharpener|dual sharpener|makeup sharpener|sharpener)\b/.test(titleCategory)) return 'Makeup sharpener';
+  if (/\b(?:vanity mirror|led mirror|compact mirror|mirror)\b/.test(text)) return 'Vanity mirror';
+  if (/\bbag\b/.test(title) || /\b(?:beauty bag|makeup bag|travel bag|jelly(?:\s+\w+)?\s+bag|embossed bag|teddy travel bag|pouch|cosmetic case|makeup case|travel case|tote)\b/.test(text)) return 'Beauty bag';
   if (/\b(?:makeup fixing mist|fixing mist|setting spray|makeup setting spray|setting mist)\b/.test(text)) return 'Setting spray';
   if (/\b(?:priming oil|primer oil)\b/.test(text)) return 'Primer';
   if (/\b(?:self[-\s]?tan|self tanner|sunless tan|gradualglow)\b/.test(text)) return 'Self-tanner';
@@ -1458,6 +1470,23 @@ function buildHumanStandardBodyFromFacts(context, kind, formulaSignals) {
   if (kind === 'brush_storage') {
     return 'A brush storage accessory for organizing makeup brushes at home or during travel.';
   }
+  if (kind === 'hair_accessory') {
+    return /\bscarf\b/.test(titleText)
+      ? 'A hair scarf accessory for protecting or styling hair between wash and styling steps.'
+      : 'A hair accessory for holding, protecting, or styling hair without treating it as a formula product.';
+  }
+  if (kind === 'apparel_accessory') {
+    return 'A brand accessory for outfit or sun-adjacent styling, not a skin-care or makeup formula.';
+  }
+  if (kind === 'makeup_tool') {
+    return 'A makeup tool for keeping pencils or application items ready for precise use.';
+  }
+  if (kind === 'beauty_mirror') {
+    return 'A beauty mirror for makeup application, grooming checks, and vanity setup use.';
+  }
+  if (kind === 'beauty_bag') {
+    return 'A beauty bag for organizing makeup, skin-care, or hair-care items at home or during travel.';
+  }
   if (kind === 'makeup_set') {
     return 'A makeup set that groups coordinated makeup steps so shoppers compare the kit by product role, shade range, and use occasion.';
   }
@@ -1678,6 +1707,24 @@ function buildHumanStandardWhatItIs(context, baselineBundle) {
   if (kind === 'brush_storage') {
     return {
       headline: /cup|holder|storage/i.test(baseHeadline) ? baseHeadline : 'Brush storage',
+      body: factsBody,
+    };
+  }
+  if (
+    kind === 'hair_accessory' ||
+    kind === 'apparel_accessory' ||
+    kind === 'makeup_tool' ||
+    kind === 'beauty_mirror' ||
+    kind === 'beauty_bag'
+  ) {
+    return {
+      headline: subtypeLabel || {
+        hair_accessory: 'Hair accessory',
+        apparel_accessory: 'Apparel accessory',
+        makeup_tool: 'Makeup tool',
+        beauty_mirror: 'Beauty mirror',
+        beauty_bag: 'Beauty bag',
+      }[kind],
       body: factsBody,
     };
   }
@@ -1964,6 +2011,21 @@ function buildHumanStandardBestFor(context, baselineBundle) {
   }
   if (kind === 'brush_storage') {
     return [item('brush_organization', 'Brush organization'), item('travel_storage', 'Travel storage')];
+  }
+  if (kind === 'hair_accessory') {
+    return [item('hair_styling_accessory', 'Hair styling accessory'), item('non_formula_hair_item', 'Non-formula hair item')];
+  }
+  if (kind === 'apparel_accessory') {
+    return [item('brand_accessory', 'Brand accessory'), item('non_formula_item', 'Non-formula item')];
+  }
+  if (kind === 'makeup_tool') {
+    return [item('makeup_tool', 'Makeup tool'), item('precision_pencil_prep', 'Pencil prep')];
+  }
+  if (kind === 'beauty_mirror') {
+    return [item('makeup_application_setup', 'Makeup application setup'), item('vanity_tool', 'Vanity tool')];
+  }
+  if (kind === 'beauty_bag') {
+    return [item('beauty_storage', 'Beauty storage'), item('travel_organization', 'Travel organization')];
   }
   if (kind === 'makeup_set') {
     return [item('coordinated_makeup_steps', 'Coordinated makeup steps'), item('set_value', 'Set shoppers')];
@@ -2291,6 +2353,31 @@ function buildHumanStandardHighlights(context) {
       highlight('Brush organization', 'Keeps brushes organized, protected, or easier to access between makeup applications.'),
     ];
   }
+  if (kind === 'hair_accessory') {
+    return [
+      highlight('Non-formula hair accessory', 'Frames the item as a hair accessory for styling or protection instead of inventing ingredient or treatment claims.'),
+    ];
+  }
+  if (kind === 'apparel_accessory') {
+    return [
+      highlight('Brand accessory', 'Keeps the comparison on accessory use and styling context instead of skin-care or makeup formula claims.'),
+    ];
+  }
+  if (kind === 'makeup_tool') {
+    return [
+      highlight('Precision prep tool', 'Supports pencil or makeup-tool readiness for controlled application without adding formula claims.'),
+    ];
+  }
+  if (kind === 'beauty_mirror') {
+    return [
+      highlight('Application setup tool', 'Supports makeup, grooming, or vanity checks where visibility and placement control matter.'),
+    ];
+  }
+  if (kind === 'beauty_bag') {
+    return [
+      highlight('Beauty storage', 'Organizes beauty items for home storage or travel without treating the bag as a formula product.'),
+    ];
+  }
   if (kind === 'makeup_set') {
     return [
       highlight('Coordinated makeup set', 'Groups related makeup steps so shoppers compare the set by product roles, shades, and use occasion.'),
@@ -2612,6 +2699,11 @@ function buildHumanStandardPairingNotes(kind) {
   if (kind === 'brush_set') return ['Use each brush for the application area or technique it is shaped for.'];
   if (kind === 'makeup_brush') return ['Use with the matching makeup texture and application area for placement, blending, or definition.'];
   if (kind === 'brush_storage') return ['Store clean, dry brushes in the cup or holder between uses or during travel.'];
+  if (kind === 'hair_accessory') return ['Use as a hair accessory for styling, holding, or protecting hair as needed.'];
+  if (kind === 'apparel_accessory') return ['Wear as a brand accessory according to fit and styling preference.'];
+  if (kind === 'makeup_tool') return ['Use with compatible makeup pencils or tools according to seller directions.'];
+  if (kind === 'beauty_mirror') return ['Use during makeup application, grooming, or vanity setup as needed.'];
+  if (kind === 'beauty_bag') return ['Use to store or carry beauty items at home or during travel.'];
   if (kind === 'makeup_set') return ['Use the included makeup products in the seller-recommended order or by the look you are building.'];
   if (kind === 'primer') return ['Apply before complexion makeup to prep texture and finish.'];
   if (kind === 'treatment_pads') return ['Swipe pad over targeted areas as directed; avoid stacking with too many exfoliating actives.'];
@@ -2686,6 +2778,11 @@ function buildHumanStandardRoutineStep(kind, fallbackStep = '') {
   if (kind === 'brush_set') return 'brush set';
   if (kind === 'makeup_brush') return 'makeup brush';
   if (kind === 'brush_storage') return 'brush storage';
+  if (kind === 'hair_accessory') return 'hair accessory';
+  if (kind === 'apparel_accessory') return 'accessory';
+  if (kind === 'makeup_tool') return 'makeup tool';
+  if (kind === 'beauty_mirror') return 'mirror';
+  if (kind === 'beauty_bag') return 'beauty storage';
   if (kind === 'makeup_set') return 'makeup set';
   if (kind === 'primer') return 'primer';
   if (kind === 'treatment_pads') return 'exfoliating treatment';
@@ -2736,6 +2833,11 @@ function buildHumanStandardAmPm(kind, fallbackAmPm = []) {
       'brush_set',
       'makeup_brush',
       'brush_storage',
+      'hair_accessory',
+      'apparel_accessory',
+      'makeup_tool',
+      'beauty_mirror',
+      'beauty_bag',
       'makeup_set',
       'primer',
       'treatment_pads',
@@ -2781,6 +2883,11 @@ function inferTextureForHumanStandardKind(kind, context) {
   if (kind === 'brush_set') return 'brush set';
   if (kind === 'makeup_brush') return 'brush';
   if (kind === 'brush_storage') return /\btravel/i.test(text) ? 'travel cup' : 'brush cup';
+  if (kind === 'hair_accessory') return /\bscarf\b/.test(text) ? 'scarf' : 'scrunchie';
+  if (kind === 'apparel_accessory') return 'apparel accessory';
+  if (kind === 'makeup_tool') return /\bsharpener\b/.test(text) ? 'sharpener' : 'tool';
+  if (kind === 'beauty_mirror') return 'mirror';
+  if (kind === 'beauty_bag') return /\btravel\b/.test(text) ? 'travel bag' : 'bag';
   if (kind === 'makeup_set') return 'set';
   if (kind === 'primer') return /\billuminat/i.test(text) ? 'illuminating primer' : 'primer';
   if (kind === 'treatment_pads') return 'pre-soaked pad';
@@ -3286,6 +3393,11 @@ function shouldPreferHumanStandardRewriteForPublish(caseRow) {
     'brush_set',
     'makeup_brush',
     'brush_storage',
+    'hair_accessory',
+    'apparel_accessory',
+    'makeup_tool',
+    'beauty_mirror',
+    'beauty_bag',
     'makeup_set',
     'primer',
     'treatment_mask',

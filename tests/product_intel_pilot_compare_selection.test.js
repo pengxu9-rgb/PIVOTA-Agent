@@ -996,6 +996,121 @@ describe('product_intel pilot compare selection', () => {
     }
   });
 
+  test('human-standard rewrite keeps Fenty accessory and tool products out of generic Product fallback', () => {
+    const cases = [
+      {
+        title: 'The Oversized Scrunchie',
+        category: 'Accessory',
+        description: 'An oversized satin scrunchie for holding hair without formula claims.',
+        expectedKind: 'hair_accessory',
+        expectedSubtitle: 'Hair Accessory',
+        expectedHeadline: 'Hair accessory',
+        expectedBestFor: /Hair styling accessory/,
+        expectedBody: /hair accessory|styling|protecting hair/i,
+        expectedHighlight: /Non-formula hair accessory/,
+      },
+      {
+        title: 'Fenty Hair Satin Scarf',
+        category: 'Hair Accessory',
+        description: 'A satin scarf for wrapping or styling hair.',
+        expectedKind: 'hair_accessory',
+        expectedSubtitle: 'Hair Scarf',
+        expectedHeadline: 'Hair scarf',
+        expectedBestFor: /Hair styling accessory/,
+        expectedBody: /hair scarf accessory/i,
+        expectedHighlight: /Non-formula hair accessory/,
+      },
+      {
+        title: 'Fenty Skin Baseball Hat',
+        category: 'Accessory',
+        description: 'A baseball hat with Fenty Skin branding.',
+        expectedKind: 'apparel_accessory',
+        expectedSubtitle: 'Apparel Accessory',
+        expectedHeadline: 'Apparel accessory',
+        expectedBestFor: /Brand accessory/,
+        expectedBody: /brand accessory/i,
+        expectedHighlight: /Brand accessory/,
+      },
+      {
+        title: "Trace'd Out Dual Pencil Sharpener",
+        category: 'Makeup Tool',
+        description: 'A dual pencil sharpener for compatible lip and eye pencils.',
+        expectedKind: 'makeup_tool',
+        expectedSubtitle: 'Makeup Sharpener',
+        expectedHeadline: 'Makeup sharpener',
+        expectedBestFor: /Makeup tool/,
+        expectedBody: /makeup tool|pencils/i,
+        expectedHighlight: /Precision prep tool/,
+      },
+      {
+        title: 'LED Vanity Mirror',
+        category: 'Beauty Tool',
+        description: 'A vanity mirror for makeup application and grooming checks.',
+        expectedKind: 'beauty_mirror',
+        expectedSubtitle: 'Vanity Mirror',
+        expectedHeadline: 'Vanity mirror',
+        expectedBestFor: /Makeup application setup/,
+        expectedBody: /beauty mirror|makeup application/i,
+        expectedHighlight: /Application setup tool/,
+      },
+      {
+        title: 'Teddy Travel Bag',
+        category: 'Accessory',
+        description: 'A travel bag for carrying beauty items.',
+        expectedKind: 'beauty_bag',
+        expectedSubtitle: 'Beauty Bag',
+        expectedHeadline: 'Beauty bag',
+        expectedBestFor: /Beauty storage/,
+        expectedBody: /beauty bag|organizing makeup/i,
+        expectedHighlight: /Beauty storage/,
+      },
+    ];
+
+    for (const [index, item] of cases.entries()) {
+      const productId = `ext_fenty_accessory_${index}`;
+      const caseRow = {
+        case_id: `live_${productId}`,
+        canonical_product_ref: {
+          merchant_id: 'external_seed',
+          product_id: productId,
+        },
+        product: {
+          merchant_id: 'external_seed',
+          product_id: productId,
+          brand: 'Fenty Beauty',
+          title: item.title,
+          category: item.category,
+          description: item.description,
+        },
+      };
+
+      expect(inferProductKindFromContext(caseRow.product)).toBe(item.expectedKind);
+
+      const baseline = buildProductIntelDraftBundle({
+        product: caseRow.product,
+        canonicalProductRef: caseRow.canonical_product_ref,
+      });
+      const selected = buildSelectedBundle(caseRow, baseline, null, null, 'gemini-test');
+
+      expect(selected.selected_mode).toBe('human_standard_rewrite');
+      expect(selected.bundle.product_intel_core.what_it_is.headline).toBe(item.expectedHeadline);
+      expect(selected.bundle.product_intel_core.what_it_is.body).toMatch(item.expectedBody);
+      expect(selected.bundle.product_intel_core.best_for.map((entry) => entry.label).join(' ')).toMatch(
+        item.expectedBestFor,
+      );
+      expect(
+        selected.bundle.product_intel_core.why_it_stands_out
+          .map((entry) => `${entry.headline} ${entry.body}`)
+          .join(' '),
+      ).toMatch(item.expectedHighlight);
+      expect(selected.bundle.shopping_card.subtitle).toBe(item.expectedSubtitle);
+      expect(selected.bundle.search_card.compact_candidate).toBe(item.expectedSubtitle);
+      expect(selected.bundle.product_intel_core.what_it_is.headline).not.toBe('Product');
+      expect(selected.bundle.product_intel_core.what_it_is.body).not.toMatch(/Product presented through merchant product data/i);
+      expect(selected.bundle.shopping_card.subtitle).not.toMatch(/^Product$/);
+    }
+  });
+
   test('human-standard cleanser rewrite ignores incidental acid and oil texture cues', () => {
     const caseRow = {
       case_id: 'live_ext_milky_cleanser',

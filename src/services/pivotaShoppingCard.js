@@ -237,6 +237,7 @@ function inferTitleSpecialtyCompactSubtitle(product) {
   const title = asString(safeProduct.title || safeProduct.name).toLowerCase();
   const category = asString(safeProduct.category || safeProduct.product_type).toLowerCase();
   const description = asString(safeProduct.description || safeProduct.short_description).toLowerCase();
+  const titleCategory = `${title} ${category}`.trim();
   const text = `${title} ${category} ${description}`.trim();
   const fragranceText = text.replace(/\bfragrance[-\s]?free\b/g, ' ');
   if (!text) return '';
@@ -257,6 +258,12 @@ function inferTitleSpecialtyCompactSubtitle(product) {
   if (/\b(?:lip\s+mask|lip sleeping mask|plush puddin)\b/.test(text)) return 'Lip Mask';
   if (/\b(?:overnight face mask|face mask|sleeping mask|slushie overnight)\b/.test(text)) return 'Treatment Mask';
   if (/\b(?:retinol oil|overnight .* oil|face oil|facial oil|essence oil)\b/.test(text)) return 'Face Oil';
+  if (/\b(?:scrunchie|hair scrunchie)\b/.test(text)) return 'Hair Accessory';
+  if (/\b(?:satin scarf|hair scarf)\b/.test(text)) return 'Hair Scarf';
+  if (/\b(?:baseball hat|bucket hat|hat|cap)\b/.test(text)) return 'Apparel Accessory';
+  if (/\b(?:pencil sharpener|dual sharpener|makeup sharpener|sharpener)\b/.test(titleCategory)) return 'Makeup Sharpener';
+  if (/\b(?:vanity mirror|led mirror|compact mirror|mirror)\b/.test(text)) return 'Vanity Mirror';
+  if (/\bbag\b/.test(title) || /\b(?:beauty bag|makeup bag|travel bag|jelly(?:\s+\w+)?\s+bag|embossed bag|teddy travel bag|pouch|cosmetic case|makeup case|travel case|tote)\b/.test(text)) return 'Beauty Bag';
   if (/\b(?:bha toner|salicylic acid.*toner|toner.*salicylic acid)\b/.test(text)) return 'BHA Toner';
   if (/\b(?:toner|toning water)\b/.test(title) || category === 'toner') return 'Hydrating Toner';
   if (/\b(?:eye brightener|undereye brightener|under-eye brightener)\b/.test(text)) return 'Eye Brightener';
@@ -469,6 +476,12 @@ function buildCompactSubtitle({ product, bundle }) {
       'Makeup Set',
       'Setting Powder',
       'Body Cream',
+      'Hair Accessory',
+      'Hair Scarf',
+      'Apparel Accessory',
+      'Makeup Sharpener',
+      'Vanity Mirror',
+      'Beauty Bag',
       'BHA Toner',
       'Treatment Mask',
     ].includes(compactHeadline)
