@@ -369,6 +369,10 @@ const SHADE_FAMILY_CONTEXT_TOKENS = Object.freeze([
   'base',
   'bb cream',
   'blush',
+  'body butter',
+  'body cream',
+  'body lotion',
+  'bodycare',
   'bronzer',
   'brightener',
   'brow',
@@ -393,6 +397,8 @@ const SHADE_FAMILY_CONTEXT_TOKENS = Object.freeze([
   'mascara',
   'makeup',
   'powder',
+  'scent',
+  'scented',
   'shade',
   'skin stick',
   'skinstick',
@@ -726,11 +732,11 @@ function extractVariantAxes(product) {
     inferredGenericAxis.volume || parseQuantityToken(joined, ['ml', 'm l', 'g', 'kg', 'oz', 'fl oz']);
   const pack = inferredGenericAxis.pack || parsePackToken(joined);
   const shadeFamily = extractMultiPageShadeFamilyCandidate(product);
+  const color = parseNamedAxisFromOptions(product, ['color', 'colour']) || inferredGenericAxis.color;
   const shade =
     parseNamedAxisFromOptions(product, ['shade', 'tone', 'hue']) ||
     inferredGenericAxis.shade ||
-    shadeFamily?.value;
-  const color = parseNamedAxisFromOptions(product, ['color', 'colour']) || inferredGenericAxis.color;
+    (!color ? shadeFamily?.value : '');
   const normalized = {
     ...(size ? { size } : {}),
     ...(volume ? { volume } : {}),

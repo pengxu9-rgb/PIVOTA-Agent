@@ -295,6 +295,59 @@ describe('pdpIdentityGraph', () => {
     expect(bored.sellable_item_group_id).not.toBe(whiskey.sellable_item_group_id);
   });
 
+  test('buildIdentityListingFromProduct groups scented body cream PDP siblings into one product line', () => {
+    const { buildIdentityListingFromProduct } = require('../../src/services/pdpIdentityGraph');
+
+    const buildBodyCream = (scent, productIdSuffix) =>
+      buildIdentityListingFromProduct({
+        merchantId: 'external_seed',
+        productId: `ext_fenty_butta_${productIdSuffix}`,
+        sourceKind: 'external_seed',
+        product: {
+          title: `Butta Drop Whipped Oil Body Cream with Tropical Oils + Shea Butter — ${scent}`,
+          brand: 'Fenty Beauty',
+          source_url: `https://fentybeauty.com/products/butta-drop-whipped-oil-body-cream-with-tropical-oils-shea-butter-${scent
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-')}`,
+          variants: [
+            {
+              variant_id: `v_${productIdSuffix}`,
+              title: `Regular / ${scent}`,
+              options: [
+                { name: 'Size', value: 'Regular' },
+                { name: 'Color', value: scent },
+              ],
+            },
+          ],
+        },
+      });
+
+    const saltedCaramel = buildBodyCream('Salted Caramel', 'salted_caramel');
+    const vanillaDream = buildBodyCream('Vanilla Dream', 'vanilla_dream');
+    const fentyFreshShimmering = buildBodyCream('Fenty Fresh Shimmering', 'fenty_fresh_shimmering');
+
+    expect(saltedCaramel.variant_axes).toEqual({
+      size: 'regular',
+      color: 'salted caramel',
+      multi_variant: false,
+    });
+    expect(vanillaDream.variant_axes.color).toBe('vanilla dream');
+    expect(fentyFreshShimmering.variant_axes.color).toBe('fenty fresh shimmering');
+    expect(saltedCaramel.title_core_norm).toBe(
+      'butta drop whipped oil body cream tropical oils shea butter',
+    );
+    expect(vanillaDream.title_core_norm).toBe(
+      'butta drop whipped oil body cream tropical oils shea butter',
+    );
+    expect(fentyFreshShimmering.title_core_norm).toBe(
+      'butta drop whipped oil body cream tropical oils shea butter',
+    );
+    expect(saltedCaramel.product_line_id).toBe(vanillaDream.product_line_id);
+    expect(saltedCaramel.product_line_id).toBe(fentyFreshShimmering.product_line_id);
+    expect(saltedCaramel.sellable_item_group_id).not.toBe(vanillaDream.sellable_item_group_id);
+    expect(saltedCaramel.sellable_item_group_id).not.toBe(fentyFreshShimmering.sellable_item_group_id);
+  });
+
   test('buildIdentityListingFromProduct groups named shade PDPs for eye and brow color families', () => {
     const { buildIdentityListingFromProduct } = require('../../src/services/pdpIdentityGraph');
 
