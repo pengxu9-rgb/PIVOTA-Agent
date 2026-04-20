@@ -558,6 +558,53 @@ function resolveTimezoneFromHints(hints, fallback = 'UTC') {
   return isValidIanaTimezone(fallback) ? fallback : 'UTC';
 }
 
+function isWeakTravelProductReason(value) {
+  const text = normalizeText(value, 220).toLowerCase();
+  return !text || /^local catalog authority match\b/i.test(text) || /^category\s*:/i.test(text);
+}
+
+function buildTravelProductUseReasons({ language, roleId, category } = {}) {
+  const role = normalizeText(roleId, 80).toLowerCase();
+  const cat = normalizeText(category, 120).toLowerCase();
+  const haystack = `${role} ${cat}`;
+  if (/sun|spf|uv|sunscreen|防晒/.test(haystack)) {
+    return [
+      t(language, '用于 AM 和户外通勤防晒；户外时间长时按暴露时长补涂。', 'Use this as the AM/outdoor SPF step; reapply based on outdoor exposure time.'),
+      t(language, '适合放在当地日常和当地补买阶段，而不是机舱内新增步骤。', 'Fits the daily-there and local-shopping phases rather than adding a new in-cabin step.'),
+    ];
+  }
+  if (/moistur|barrier|cream|lotion|lightweight|保湿|乳液|面霜/.test(haystack)) {
+    return [
+      t(language, '用于登机前或洁面后补轻保湿，帮助缓冲机舱干燥和落地初期紧绷。', 'Use before boarding or after cleansing for light moisture against cabin dryness and first-48h tightness.'),
+      t(language, '适合需要保湿但不想叠太厚面霜的旅行场景。', 'Fits travel days when you need moisture without a heavy cream layer.'),
+    ];
+  }
+  if (/serum|essence|ampoule|hydrat|补水|精华|安瓶/.test(haystack)) {
+    return [
+      t(language, '用于保湿层下面，帮助补水但不把白天步骤变厚重。', 'Use under moisturizer to add hydration without making daytime layers heavy.'),
+      t(language, '适合机舱后和落地前 48 小时的轻量补水。', 'Fits post-flight and first-48h lightweight hydration.'),
+    ];
+  }
+  if (/mask|recovery|soothing|修护|舒缓|面膜/.test(haystack)) {
+    return [
+      t(language, '仅作为飞行后或高 UV 户外日后的可选夜间恢复；已耐受再用。', 'Use only as optional night recovery after the flight or high-UV outdoor days if already tolerated.'),
+      t(language, '不作为每日必需步骤，避免旅行中突然增加刺激。', 'Do not treat it as a daily required step; avoid adding surprise irritation while traveling.'),
+    ];
+  }
+  if (/body|lip|hand|身体|唇|手/.test(haystack)) {
+    return [
+      t(language, '用于唇部、手部或暴露皮肤，因为机舱干燥和 UV 不只影响脸部。', 'Use for lips, hands, or exposed skin because cabin dryness and UV do not only affect the face.'),
+      t(language, '适合随身携带，在飞行和当地通勤时补充。', 'Fits carry-on use for the flight and local commuting.'),
+    ];
+  }
+  if (/cleanser|clean|洁面|卸妆/.test(haystack)) {
+    return [
+      t(language, '用于晚间清洁防晒、汗和城市污染，避免残留影响第二天肤感。', 'Use at night to remove sunscreen, sweat, and city pollution so residue does not affect the next day.'),
+    ];
+  }
+  return [];
+}
+
 function normalizePreviewProducts(recommendationCandidates, language) {
   const out = [];
   for (const row of Array.isArray(recommendationCandidates) ? recommendationCandidates : []) {
@@ -570,12 +617,18 @@ function normalizePreviewProducts(recommendationCandidates, language) {
       normalizeText(row.title, 140);
     if (!name) continue;
 
+    const roleId = normalizeText(row.role_id || row.roleId || sku.role_id || sku.roleId, 80) || null;
+    const category = normalizeText(row.step, 80) || normalizeText(sku.category || sku.product_type, 80) || null;
+    const rawReasons = Array.isArray(row.reasons)
+      ? row.reasons
+      : Array.isArray(row.warnings)
+        ? row.warnings
+        : [];
     const reasons = uniqStrings(
-      Array.isArray(row.reasons)
-        ? row.reasons
-        : Array.isArray(row.warnings)
-          ? row.warnings
-          : [t(language, '适合当前旅行环境与肤况优先级。', 'Selected for your travel conditions and skin priorities.')],
+      [
+        ...buildTravelProductUseReasons({ language, roleId, category }),
+        ...rawReasons.filter((reason) => !isWeakTravelProductReason(reason)),
+      ],
       3,
     );
 
@@ -586,13 +639,15 @@ function normalizePreviewProducts(recommendationCandidates, language) {
       product_group_id: normalizeText(sku.product_group_id || sku.productGroupId || row.product_group_id || row.productGroupId, 160) || null,
       name,
       brand: normalizeText(sku.brand, 80) || null,
-      category: normalizeText(row.step, 80) || normalizeText(sku.category || sku.product_type, 80) || null,
-      reasons,
+      category,
+      reasons: reasons.length
+        ? reasons
+        : [t(language, '用于补齐本次旅行护肤步骤，按实际缺口使用。', 'Use this to fill a real travel-routine gap rather than adding an extra step.')],
       product_source: 'catalog',
       authority_status: 'grounded',
       match_status: 'catalog_verified',
       display_mode: 'product_card',
-      role_id: normalizeText(row.role_id || row.roleId || sku.role_id || sku.roleId, 80) || null,
+      role_id: roleId,
       pdp_open: isPlainObject(row.pdp_open)
         ? row.pdp_open
         : {

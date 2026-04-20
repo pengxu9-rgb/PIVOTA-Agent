@@ -110,6 +110,8 @@ test('buildTravelReadiness returns actionable structure with deltas and shopping
   assert.equal(spfPreview.merchant_id, 'm_paris');
   assert.equal(spfPreview.product_group_id, 'pg_spf_2');
   assert.equal(spfPreview.pdp_open.merchant_id, 'm_paris');
+  assert.match(spfPreview.reasons.join(' '), /AM\/outdoor SPF step/);
+  assert.match(spfPreview.reasons.join(' '), /reapply based on outdoor exposure time/);
   assert.ok(Array.isArray(payload.phase_plan));
   assert.deepEqual(payload.phase_plan.map((phase) => phase.id), [
     'pre_trip_prepare',
