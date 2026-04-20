@@ -288,6 +288,48 @@ test('travel local product authority: rejects color cosmetics misclassified as t
           ],
         };
       }
+      if (categories.includes('hydrating mask') || categories.includes('mask') || categories.includes('treatment')) {
+        return {
+          rows: [
+            seedRow({
+              id: 210,
+              market: 'US',
+              external_product_id: 'ext_bad_mask_sampler',
+              title: 'Round Lab Sheet Mask Sampler - 9pc',
+              brand: 'Round Lab',
+              category: 'hydrating mask',
+              summary: 'sheet mask sampler pack',
+              price_amount: 29.99,
+              price_currency: 'USD',
+              match_score: 50,
+            }),
+            seedRow({
+              id: 211,
+              market: 'US',
+              external_product_id: 'ext_bad_recovery_duo',
+              title: 'Nutri-Revitalizing Duo',
+              brand: 'Embryolisse',
+              category: 'hydrating mask',
+              summary: 'two-piece recovery bundle',
+              price_amount: 76.8,
+              price_currency: 'USD',
+              match_score: 49,
+            }),
+            seedRow({
+              id: 212,
+              market: 'US',
+              external_product_id: 'ext_good_recovery_mask',
+              title: 'Hydrating Recovery Sheet Mask',
+              brand: 'US Mask Lab',
+              category: 'hydrating mask',
+              summary: 'single hydrating sheet mask for post-flight recovery',
+              price_amount: 6,
+              price_currency: 'USD',
+              match_score: 47,
+            }),
+          ],
+        };
+      }
       return { rows: [] };
     },
   });
@@ -300,9 +342,12 @@ test('travel local product authority: rejects color cosmetics misclassified as t
   assert.equal(ids.includes('ext_bad_bronzer'), false);
   assert.equal(ids.includes('ext_bad_sponge'), false);
   assert.equal(ids.includes('ext_bad_lip_scrub'), false);
+  assert.equal(ids.includes('ext_bad_mask_sampler'), false);
+  assert.equal(ids.includes('ext_bad_recovery_duo'), false);
   assert.equal(ids.includes('ext_good_spf'), true);
   assert.equal(ids.includes('ext_good_lotion'), true);
   assert.equal(ids.includes('ext_good_lip_balm'), true);
+  assert.equal(ids.includes('ext_good_recovery_mask'), true);
   assert.equal(result.meta.stage_counts.some((row) => Number(row.raw_rows) > Number(row.viable_rows)), true);
 });
 

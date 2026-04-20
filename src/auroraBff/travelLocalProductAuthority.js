@@ -57,6 +57,8 @@ const BEAUTY_TOOL_NOISE_RE =
   /\b(reusable|silicone|applicator|beauty\s*sponge|makeup\s*sponge|sponge|puff|brush|tool)\b/i;
 const REFILL_ONLY_NOISE_RE = /\brefills?\b/i;
 const LIP_CARE_NOISE_RE = /\b(lip[-\s]?loving\s*scrub|scrubstick|lip\s*scrub|exfoliat(?:e|ing|or)|plumper)\b/i;
+const BUNDLE_SET_NOISE_RE =
+  /\b(gift\s*sets?|giftsets?|samplers?|duos?|bundles?|kits?|sets?|[0-9]+\s*(?:pc|pcs|piece|pieces))\b/i;
 const MARKET_EXPECTED_CURRENCY = {
   CN: 'CNY',
   FR: 'EUR',
@@ -291,6 +293,7 @@ function isRoleCompatibleProduct(product, roleId) {
   if (!text) return false;
   if (!hasStrongRoleMatch(product, roleId)) return false;
   if (REFILL_ONLY_NOISE_RE.test(text)) return false;
+  if (BUNDLE_SET_NOISE_RE.test(text)) return false;
   if (BEAUTY_TOOL_NOISE_RE.test(text)) return false;
 
   if (roleId === 'body_lip_hand') {
