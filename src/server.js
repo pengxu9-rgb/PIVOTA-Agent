@@ -3183,6 +3183,41 @@ function buildExternalSeedOfferProductFromMember(member) {
   );
 }
 
+function collectOfferProductRefKeys(product) {
+  if (!product || typeof product !== 'object') return [];
+  const refs = [
+    product.selected_commerce_ref,
+    product.selectedCommerceRef,
+    product.commerce_ref,
+    product.commerceRef,
+    product.product_ref,
+    product.productRef,
+    {
+      merchant_id: product.merchant_id || product.merchantId,
+      product_id: product.product_id || product.productId || product.id,
+    },
+  ];
+  const keys = refs
+    .map((ref) => ({
+      merchant_id: String(ref?.merchant_id || ref?.merchantId || '').trim(),
+      product_id: String(ref?.product_id || ref?.productId || ref?.id || '').trim(),
+    }))
+    .filter((ref) => ref.merchant_id && ref.product_id)
+    .map((ref) => `${ref.merchant_id}:${ref.product_id}`);
+  return Array.from(new Set(keys));
+}
+
+function buildPrefetchedOfferProductMap(products) {
+  const out = new Map();
+  (Array.isArray(products) ? products : []).forEach((product) => {
+    if (!product || typeof product !== 'object') return;
+    collectOfferProductRefKeys(product).forEach((key) => {
+      if (!out.has(key)) out.set(key, product);
+    });
+  });
+  return out;
+}
+
 function getVariantEvidenceKeys(variant) {
   if (!variant || typeof variant !== 'object') return [];
   return [
@@ -3878,6 +3913,7 @@ async function buildOffersFromGroupMembers(args) {
   const bypassCache = args?.bypassCache === true;
   const limit = Math.min(Math.max(1, Number(args?.limit || groupMembers.length || 10) || 10), 50);
   const preferredMerchantId = args?.preferredMerchantId ? String(args.preferredMerchantId).trim() : null;
+  const prefetchedProductByKey = buildPrefetchedOfferProductMap(args?.prefetchedProducts);
 
   if (!groupMembers.length) return null;
 
@@ -3928,8 +3964,11 @@ async function buildOffersFromGroupMembers(args) {
     const results = await Promise.all(
       chunk.map(async (m) => {
         const memberPayloadProduct = buildExternalSeedOfferProductFromMember(m);
+        const prefetchedProduct =
+          prefetchedProductByKey.get(`${m.merchant_id}:${m.product_id}`) || null;
         const product =
           memberPayloadProduct ||
+          prefetchedProduct ||
           (await fetchProductDetailForOffers({
             merchantId: m.merchant_id,
             productId: m.product_id,
@@ -22363,6 +22402,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                   bypassCache,
                   limit: payload?.offers?.limit || 10,
                   preferredMerchantId: requestedMerchantId || null,
+                  prefetchedProducts: [
+                    canonicalProductForPdp,
+                    canonicalProduct,
+                    precheckedMerchantProduct,
+                  ].filter(Boolean),
                 })
               : {
                   status: 'success',
