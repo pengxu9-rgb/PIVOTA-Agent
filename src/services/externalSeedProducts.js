@@ -61,6 +61,24 @@ const STRONG_ACTIVE_SOLUTION_INGREDIENT_IDS = new Set([
 ]);
 const PRICE_MINOR_UNIT_HINT_RE =
   /\b(fragrance|perfume|parfum|cologne|sunscreen|sun\s*screen|spf|broad\s+spectrum|sun\s+(?:serum|fluid|cream|gel|milk|stick)|uv\s*(?:protection|shield|defen[cs]e|lock)|shampoo|conditioner|cleanser|toner|moisturizer|cream|serum|concealer|foundation|powder|mascara|lip|brow|hair|beauty|bundle|treatment|spot[-\s]?target(?:ing|ed)?|blemish|acne|salicylic|bha|aha|clarifying)\b/i;
+const ZERO_DECIMAL_PRICE_CURRENCIES = new Set([
+  'BIF',
+  'CLP',
+  'DJF',
+  'GNF',
+  'JPY',
+  'KMF',
+  'KRW',
+  'MGA',
+  'PYG',
+  'RWF',
+  'UGX',
+  'VND',
+  'VUV',
+  'XAF',
+  'XOF',
+  'XPF',
+]);
 
 function stableExternalProductId(url) {
   const u = String(url || '').trim();
@@ -101,6 +119,10 @@ function availabilityToInStock(availability) {
 
 function normalizeCurrency(value, fallback = 'USD') {
   return String(value || fallback).trim().toUpperCase() || fallback;
+}
+
+function isZeroDecimalPriceCurrency(value) {
+  return ZERO_DECIMAL_PRICE_CURRENCIES.has(normalizeCurrency(value, ''));
 }
 
 function normalizeAmount(value) {
@@ -146,6 +168,8 @@ function normalizeSeedReviewSummary(...values) {
 
 function shouldTreatAsMinorUnitPrice(rawValue, amount, context = {}) {
   if (!Number.isFinite(amount) || amount < 1000) return false;
+  const currency = context.currency || context.price_currency || context.priceCurrency;
+  if (isZeroDecimalPriceCurrency(currency)) return false;
 
   const rawText = String(rawValue ?? '').trim();
   const rawLooksMinorUnit =
@@ -1515,8 +1539,13 @@ function buildExternalSeedProduct(row, options = {}) {
     destinationUrl,
   };
   variants = variants.map((variant) => {
+    const variantCurrency = normalizeCurrency(
+      variant.currency || row.price_currency || seedData.price_currency || snapshot.price_currency,
+      'USD',
+    );
     const normalizedPrice = normalizeExternalSeedPrice(variant.price, {
       ...priceContext,
+      currency: variantCurrency,
       title: [title, variant.title].filter(Boolean).join(' '),
       description: variant.description || description || categoryDescription,
     });
@@ -1526,7 +1555,7 @@ function buildExternalSeedProduct(row, options = {}) {
       pricing: {
         current: {
           amount: normalizedPrice,
-          currency: variant.currency || normalizeCurrency(row.price_currency || seedData.price_currency, 'USD'),
+          currency: variantCurrency,
         },
       },
     };
@@ -1563,17 +1592,19 @@ function buildExternalSeedProduct(row, options = {}) {
   }
   const imageUrl = imageUrls[0] || undefined;
 
-  const rawAmount = row.price_amount ?? seedData.price_amount ?? snapshot.price_amount;
-  let price = normalizeExternalSeedPrice(rawAmount, priceContext);
-  if (!(price > 0) && variants.length > 0) {
-    const variantPrices = variants.map((variant) => normalizeAmount(variant.price)).filter((value) => value > 0);
-    price = variantPrices.length ? Math.min(...variantPrices) : 0;
-  }
-
   const currency = normalizeCurrency(
     row.price_currency || seedData.price_currency || snapshot.price_currency || variants[0]?.currency,
     'USD',
   );
+  const rawAmount = row.price_amount ?? seedData.price_amount ?? snapshot.price_amount;
+  let price = normalizeExternalSeedPrice(rawAmount, {
+    ...priceContext,
+    currency,
+  });
+  if (!(price > 0) && variants.length > 0) {
+    const variantPrices = variants.map((variant) => normalizeAmount(variant.price)).filter((value) => value > 0);
+    price = variantPrices.length ? Math.min(...variantPrices) : 0;
+  }
 
   const availability = normalizeSeedAvailability(row.availability || seedData.availability || snapshot.availability);
   const variantStates = variants.map((variant) => (typeof variant?.in_stock === 'boolean' ? variant.in_stock : null));
