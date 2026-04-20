@@ -649,8 +649,8 @@ function cleanEncodedAccordionSegment(value) {
 function expandEncodedAccordionSection(item) {
   const body = normalizePdpCopy(item?.body);
   if (!body) return [item];
-  const quickMarker = findMarkerRange(body, /\bGIVE IT TO ME QUICK\s*:\s*/i);
-  const tellMarker = findMarkerRange(body, /\bTELL ME MORE\s*:\s*/i);
+  const quickMarker = findMarkerRange(body, /\bGIVE IT TO ME QUICK\s*:?\s*/i);
+  const tellMarker = findMarkerRange(body, /\bTELL ME MORE\s*:?\s*/i);
   if (!quickMarker && !tellMarker) return [item];
 
   const dimensionsMarker = findMarkerRange(body, /\bDimensions(?:\s+(?:with base|mirror only)|\s*-\s*mirror only)?\s*:\s*/i);
@@ -703,9 +703,9 @@ function cleanPdpDescriptionCandidate(value, detailsSections = []) {
   let next = normalizePdpCopy(value);
   if (!next || isStorefrontBoilerplateDescription(next)) return '';
 
-  const quickMarker = findMarkerRange(next, /\bGIVE IT TO ME QUICK\s*:\s*/i);
+  const quickMarker = findMarkerRange(next, /\bGIVE IT TO ME QUICK\s*:?\s*/i);
   if (quickMarker) {
-    const tellMarker = findMarkerRange(next, /\bTELL ME MORE\s*:\s*/i);
+    const tellMarker = findMarkerRange(next, /\bTELL ME MORE\s*:?\s*/i);
     const dimensionsMarker = findMarkerRange(next, /\bDimensions(?:\s+(?:with base|mirror only)|\s*-\s*mirror only)?\s*:\s*/i);
     const quickEnd = minPositiveIndex(
       tellMarker && tellMarker.start > quickMarker.end ? tellMarker.start : -1,
@@ -714,7 +714,7 @@ function cleanPdpDescriptionCandidate(value, detailsSections = []) {
     next = cleanEncodedAccordionSegment(next.slice(quickMarker.end, quickEnd === -1 ? next.length : quickEnd));
   }
 
-  if (/\bTELL ME MORE\s*:/i.test(next) || /\bDimensions(?:\s+(?:with base|mirror only)|\s*-\s*mirror only)?\s*:/i.test(next)) {
+  if (/\bTELL ME MORE\s*:?/i.test(next) || /\bDimensions(?:\s+(?:with base|mirror only)|\s*-\s*mirror only)?\s*:/i.test(next)) {
     const overview = detailsSections.find((section) => section.heading === 'Overview');
     if (overview?.body) return overview.body;
     return '';

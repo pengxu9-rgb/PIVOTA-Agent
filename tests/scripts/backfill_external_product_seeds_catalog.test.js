@@ -655,9 +655,9 @@ describe('backfill-external-product-seeds-catalog', () => {
   test('splits encoded Fenty accordion copy into structured PDP sections', () => {
     const fentyAccordion =
       'RECHARGEABLE MIRROR WITH 5X MAGNIFICATION\n\n' +
-      'GIVE IT TO ME QUICK:\n' +
+      'GIVE IT TO ME QUICK\n' +
       'This ain&rsquo;t your average mirror&mdash;it&rsquo;s really the trick of all trades. Keep it at your vanity, pack it in your suitcase, even charge your phone with it.\n\n' +
-      'TELL ME MORE:\n' +
+      'TELL ME MORE\n' +
       '- Adjustable brightness\n' +
       '- 5X magnification for close-up detail\n' +
       '- Wireless charging for your phone\n\n' +
