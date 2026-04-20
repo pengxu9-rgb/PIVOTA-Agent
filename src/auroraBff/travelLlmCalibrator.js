@@ -307,9 +307,13 @@ function compactTravelLlmInputForPrompt(value) {
     ...(normalizeText(input.weather_reason, 80) ? { weather_reason: normalizeText(input.weather_reason, 80) } : {}),
     ...(normalizeText(input.alerts_source, 40) ? { alerts_source: normalizeText(input.alerts_source, 40) } : {}),
     ...(typeof input.kb_hit === 'boolean' ? { kb_hit: input.kb_hit } : {}),
-    ...(normalizeText(input.question, 700) ? { question: normalizeText(input.question, 700) } : {}),
-    ...(isPlainObject(input.analysis_context_hard) ? { analysis_context_hard: input.analysis_context_hard } : {}),
-    ...(isPlainObject(input.analysis_context_soft) ? { analysis_context_soft: input.analysis_context_soft } : {}),
+    ...(normalizeText(input.question, 420) ? { question: normalizeText(input.question, 420) } : {}),
+    ...(isPlainObject(input.analysis_context_hard)
+      ? { analysis_context_hard: compactLooseObjectForPrompt(input.analysis_context_hard, { maxEntries: 8, maxDepth: 2, maxText: 120 }) }
+      : {}),
+    ...(isPlainObject(input.analysis_context_soft)
+      ? { analysis_context_soft: compactLooseObjectForPrompt(input.analysis_context_soft, { maxEntries: 8, maxDepth: 2, maxText: 120 }) }
+      : {}),
     ...(Array.isArray(input.analysis_context_evidence)
       ? {
           analysis_context_evidence: input.analysis_context_evidence
@@ -329,26 +333,143 @@ function compactTravelLlmInputForPrompt(value) {
   }
 }
 
+function compactLooseValueForPrompt(value, { maxEntries = 8, maxDepth = 2, maxText = 140 } = {}, depth = 0) {
+  if (value == null) return null
+  if (typeof value === 'string') return normalizeText(value, maxText) || null
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null
+  if (typeof value === 'boolean') return value
+  if (Array.isArray(value)) {
+    const out = []
+    for (const item of value.slice(0, Math.max(1, maxEntries))) {
+      const next = compactLooseValueForPrompt(item, { maxEntries: Math.min(5, maxEntries), maxDepth, maxText }, depth + 1)
+      if (next == null) continue
+      if (isPlainObject(next) && !Object.keys(next).length) continue
+      if (Array.isArray(next) && !next.length) continue
+      out.push(next)
+    }
+    return out.length ? out : null
+  }
+  if (isPlainObject(value)) {
+    if (depth >= maxDepth) {
+      const text = normalizeText(JSON.stringify(value), maxText)
+      return text || null
+    }
+    return compactLooseObjectForPrompt(value, { maxEntries, maxDepth, maxText }, depth + 1)
+  }
+  return null
+}
+
+function compactLooseObjectForPrompt(value, { maxEntries = 8, maxDepth = 2, maxText = 140 } = {}, depth = 0) {
+  if (!isPlainObject(value)) return {}
+  const out = {}
+  for (const [rawKey, rawValue] of Object.entries(value).slice(0, Math.max(1, maxEntries))) {
+    const key = normalizeText(rawKey, 64)
+    if (!key) continue
+    const next = compactLooseValueForPrompt(rawValue, { maxEntries, maxDepth, maxText }, depth)
+    if (next == null) continue
+    if (isPlainObject(next) && !Object.keys(next).length) continue
+    if (Array.isArray(next) && !next.length) continue
+    out[key] = next
+  }
+  return out
+}
+
+function compactRecoBundleForPrompt(rows) {
+  return normalizeRecoBundle(rows).slice(0, 6).map((row) => ({
+    trigger: normalizeText(row.trigger, 80) || null,
+    action: normalizeText(row.action, 150) || null,
+    product_types: normalizeStringArray(row.product_types, 4, 80),
+    ingredient_logic: normalizeText(row.ingredient_logic, 150) || null,
+    reapply_rule: normalizeText(row.reapply_rule, 120) || null,
+  })).filter((row) => row.trigger || row.action || row.product_types.length)
+}
+
+function compactCategoryRecommendationsForPrompt(rows) {
+  if (!Array.isArray(rows)) return []
+  const out = []
+  for (const raw of rows.slice(0, 6)) {
+    const row = isPlainObject(raw) ? raw : {}
+    const category = normalizeText(row.category, 60)
+    if (!category) continue
+    const products = Array.isArray(row.products)
+      ? row.products.slice(0, 3).map((prod) => {
+          const item = isPlainObject(prod) ? prod : {}
+          return {
+            name: normalizeText(item.name, 90) || null,
+            usage: normalizeText(item.usage, 120) || null,
+          }
+        }).filter((item) => item.name)
+      : []
+    out.push({
+      category,
+      why: normalizeText(row.why, 150) || null,
+      products,
+      skip_reason: normalizeText(row.skip_reason, 100) || null,
+    })
+  }
+  return out
+}
+
+function compactShoppingPreviewForPrompt(value) {
+  const preview = normalizeShoppingPreview(value)
+  if (!preview) return undefined
+  return {
+    ...(Array.isArray(preview.products) && preview.products.length
+      ? {
+          products: preview.products.slice(0, 4).map((product) => ({
+            name: normalizeText(product.name, 90) || null,
+            brand: normalizeText(product.brand, 60) || null,
+            category: normalizeText(product.category, 60) || null,
+            product_source: normalizeProductSource(product.product_source),
+          })).filter((product) => product.name),
+        }
+      : {}),
+    ...(Array.isArray(preview.brand_candidates) && preview.brand_candidates.length
+      ? { brand_candidates: preview.brand_candidates.slice(0, 4) }
+      : {}),
+    ...(Array.isArray(preview.buying_channels) && preview.buying_channels.length
+      ? { buying_channels: preview.buying_channels.slice(0, 6) }
+      : {}),
+    ...(normalizeText(preview.city_hint, 80) ? { city_hint: normalizeText(preview.city_hint, 80) } : {}),
+  }
+}
+
 function compactTravelReadinessForPrompt(value) {
   const readiness = isPlainObject(value) ? value : {}
   return {
-    ...(isPlainObject(readiness.destination_context) ? { destination_context: readiness.destination_context } : {}),
-    ...(isPlainObject(readiness.origin_context) ? { origin_context: readiness.origin_context } : {}),
-    ...(isPlainObject(readiness.delta_vs_home) ? { delta_vs_home: readiness.delta_vs_home } : {}),
-    ...(isPlainObject(readiness.delta_vs_origin) ? { delta_vs_origin: readiness.delta_vs_origin } : {}),
+    ...(isPlainObject(readiness.destination_context)
+      ? { destination_context: compactLooseObjectForPrompt(readiness.destination_context, { maxEntries: 8, maxDepth: 1, maxText: 100 }) }
+      : {}),
+    ...(isPlainObject(readiness.origin_context)
+      ? { origin_context: compactLooseObjectForPrompt(readiness.origin_context, { maxEntries: 6, maxDepth: 1, maxText: 100 }) }
+      : {}),
+    ...(isPlainObject(readiness.delta_vs_home)
+      ? { delta_vs_home: compactLooseObjectForPrompt(readiness.delta_vs_home, { maxEntries: 8, maxDepth: 2, maxText: 80 }) }
+      : {}),
+    ...(isPlainObject(readiness.delta_vs_origin)
+      ? { delta_vs_origin: compactLooseObjectForPrompt(readiness.delta_vs_origin, { maxEntries: 8, maxDepth: 2, maxText: 80 }) }
+      : {}),
     ...(Array.isArray(readiness.forecast_window)
       ? { forecast_window: normalizeForecastWindow(readiness.forecast_window).slice(0, 5) }
       : {}),
     ...(Array.isArray(readiness.alerts) ? { alerts: normalizeAlerts(readiness.alerts).slice(0, 3) } : {}),
-    ...(Array.isArray(readiness.adaptive_actions) ? { adaptive_actions: readiness.adaptive_actions.slice(0, 5) } : {}),
-    ...(Array.isArray(readiness.personal_focus) ? { personal_focus: readiness.personal_focus.slice(0, 4) } : {}),
-    ...(isPlainObject(readiness.jetlag_sleep) ? { jetlag_sleep: readiness.jetlag_sleep } : {}),
-    ...(Array.isArray(readiness.reco_bundle) ? { reco_bundle: normalizeRecoBundle(readiness.reco_bundle) } : {}),
-    ...(isPlainObject(readiness.shopping_preview) ? { shopping_preview: normalizeShoppingPreview(readiness.shopping_preview) } : {}),
-    ...(Array.isArray(readiness.category_recommendations)
-      ? { category_recommendations: readiness.category_recommendations.slice(0, 8) }
+    ...(Array.isArray(readiness.adaptive_actions)
+      ? { adaptive_actions: readiness.adaptive_actions.slice(0, 4).map((row) => compactLooseObjectForPrompt(row, { maxEntries: 3, maxDepth: 1, maxText: 140 })) }
       : {}),
-    ...(isPlainObject(readiness.confidence) ? { confidence: readiness.confidence } : {}),
+    ...(Array.isArray(readiness.personal_focus)
+      ? { personal_focus: readiness.personal_focus.slice(0, 3).map((row) => compactLooseObjectForPrompt(row, { maxEntries: 3, maxDepth: 1, maxText: 140 })) }
+      : {}),
+    ...(isPlainObject(readiness.jetlag_sleep)
+      ? { jetlag_sleep: compactLooseObjectForPrompt(readiness.jetlag_sleep, { maxEntries: 8, maxDepth: 1, maxText: 120 }) }
+      : {}),
+    ...(Array.isArray(readiness.reco_bundle) ? { reco_bundle: compactRecoBundleForPrompt(readiness.reco_bundle) } : {}),
+    ...(isPlainObject(readiness.shopping_preview) ? { shopping_preview: compactShoppingPreviewForPrompt(readiness.shopping_preview) } : {}),
+    ...(Array.isArray(readiness.category_recommendations)
+      ? { category_recommendations: compactCategoryRecommendationsForPrompt(readiness.category_recommendations) }
+      : {}),
+    ...(isPlainObject(readiness.confidence)
+      ? { confidence: compactLooseObjectForPrompt(readiness.confidence, { maxEntries: 5, maxDepth: 1, maxText: 100 }) }
+      : {}),
   }
 }
 
@@ -558,8 +679,12 @@ function buildGeminiRequest({ model, systemPrompt, userPrompt } = {}) {
     ],
     config: {
       temperature: 0.3,
-      maxOutputTokens: 2000,
+      maxOutputTokens: 1500,
       responseMimeType: 'application/json',
+      thinkingConfig: {
+        includeThoughts: false,
+        thinkingBudget: 192,
+      },
     },
   }
 }
@@ -594,87 +719,33 @@ function buildTravelCalibrationPrompts({ language = 'EN', travelLlmInput, baseTr
   const hasRoutine = Boolean(normalizeText(profileInput.currentRoutine, 10))
   const isPregnantOrLactating = isPregnancyOrLactationActive(profileInput)
 
-  const systemPrompt =
-    'You are a board-certified dermatologist-level travel skincare advisor. ' +
-    'Return valid JSON only. Never output markdown, never diagnose, never prescribe.\n\n' +
-    'IMMUTABLE FACTS:\n' +
-    '- destination_context, delta_vs_home, forecast_window, alerts, epi, env_source, weather_reason, and all date/location/weather numbers are immutable baseline facts.\n' +
-    '- Never add, edit, replace, or "correct" weather/date/source values. If facts seem sparse, work within them and lower confidence instead.\n\n' +
-    'CATEGORY COVERAGE — evaluate ALL relevant categories for this trip:\n' +
-    '1. Cleansing (+ double-cleanse / makeup removal when user wears makeup)\n' +
-    '2. Antioxidant protection (vitamin C / niacinamide serum, especially UV>=5)\n' +
-    '3. Sun protection — face SPF with tier + reapply cadence + body SPF if outdoor-heavy\n' +
-    '4. Moisturization & barrier repair — differentiate AM (lighter) vs PM (repair); texture by humidity\n' +
-    '5. Masks — pick by scenario: flight-recovery (hydrating+soothing), post-sun (cooling+anti-inflammatory), deep-hydration (dry climate)\n' +
-    '6. Post-sun repair — aloe gel, panthenol serum, calming mist (trigger: UV>=6 or outdoor-heavy)\n' +
-    '7. Brightening / dark-spot care — ONLY if user goals include dark_spots or brightening; advise travel-safe lower concentration\n' +
-    '8. Eye care — eye cream + cooling patches (trigger: jet-lag >=5h or long-haul flight)\n' +
-    '9. Body care — body SPF, body lotion, after-sun body (trigger: outdoor >2 days)\n' +
-    '10. Emergency kit — pimple patches, lip balm, hand cream, hydrocortisone note\n\n' +
-    'DEPTH RULES:\n' +
-    '- For each category you include, provide: WHY needed in this specific scenario + ingredient logic + usage timing/frequency.\n' +
-    '- BAD: "Apply sunscreen regularly." GOOD: "UV index 8: SPF50+ PA++++ with photostable UVA filters; reapply 2h outdoors, stick format for midday touch-ups."\n' +
-    '- Tailor moisturizer texture to humidity delta: high-humidity → gel-cream AM; low-humidity → richer ceramide cream PM + occlusive seal.\n' +
-    '- For masks, specify exact scenario trigger and ingredient rationale, not generic "hydrating mask."\n\n' +
-    'PERSONALIZATION:\n' +
-    '- Use skin_type, sensitivity, barrier_status, goals, contraindications, current_routine to differentiate.\n' +
-    '- analysis_context_hard contains strong user-relevant context. analysis_context_soft contains supportive but uncertainty-bearing context.\n' +
-    '- If explicit profile input conflicts with analysis_context_* signals, explicit profile wins.\n' +
-    '- Treat stale, low-quality, or conflicting analysis-context signals conservatively. Do not restate them as if the user explicitly said them.\n' +
-    '- If goals include dark_spots/brightening → add travel brightening protocol (lower vitamin C concentration during travel, resume post-trip).\n' +
-    '- If goals include acne → prioritize non-comedogenic, add salicylic acid spot treatment.\n' +
-    '- If goals include wrinkles/anti-aging → add antioxidant emphasis, retinoid travel pause note.\n' +
-    '- If routine mentions makeup → emphasize double cleansing and thorough SPF removal.\n' +
+  const systemPrompt = [
+    'You are a dermatologist-level travel skincare calibration layer. Return strict JSON only.',
+    'Never diagnose, prescribe, invent weather/date/location facts, or rewrite immutable baseline numbers.',
+    'Use profile, current routine, goals, sensitivity, barrier status, destination deltas, forecast, UV, humidity, and jet lag.',
+    'Advice must be specific to this trip: pre-trip, flight, first 48h, and local buying.',
+    'Cover relevant categories: cleansing, antioxidant, sun_protection, moisturization, masks, post_sun, eye_care, body_care, emergency. Add brightening only if goals support it.',
+    'For included categories, give scenario why, ingredient logic, and timing/frequency. Avoid generic copy.',
+    'High humidity favors lighter AM texture; travel/flight favors PM barrier repair; UV>=6 requires SPF50+ reapply cadence and post-sun repair.',
+    'Jet lag >=5h should add depuffing/hydration eye-care and sleep timing.',
+    'Deduplicate: adaptive_actions=environment shifts without product names; personal_focus=profile priorities; shopping_preview=concrete product types/brand candidates.',
+    'analysis_context_hard is strong context; analysis_context_soft is uncertain. Explicit profile wins conflicts.',
     (isPregnantOrLactating
-      ? '- CRITICAL: User is pregnant/lactating — exclude retinoids, high-dose salicylic acid (>2%), hydroquinone. Flag safe alternatives.\n'
+      ? 'Active pregnancy/lactation: exclude retinoids, high-dose salicylic acid (>2%), hydroquinone; suggest safer alternatives.'
       : '') +
-    (contraindications.length
-      ? `- CONTRAINDICATIONS to avoid: ${contraindications.join(', ')}.\n`
-      : '') +
-    '\nDEDUPLICATION:\n' +
-    '- Each piece of advice must appear in EXACTLY ONE output field. Never repeat the same product/action across adaptive_actions, personal_focus, and shopping_preview.\n' +
-    '- adaptive_actions = environment-triggered routine shifts (max 4, no product names).\n' +
-    '- personal_focus = user-profile-driven priorities (max 3, reference goals/sensitivity).\n' +
-    '- shopping_preview.products = concrete product types with ingredient logic (max 6).\n' +
-    '- Do NOT duplicate SPF advice across all three.\n\n' +
-    'SAFETY: Never diagnose conditions. Never prescribe medications. ' +
-    'Flag any suggestion that approaches medical-grade as "consult your dermatologist." ' +
-    'Do not block when routine data is missing; provide actionable guidance and lower confidence instead.'
+      (contraindications.length ? ` Avoid contraindications: ${contraindications.join(', ')}.` : ''),
+  ].filter(Boolean).join('\n')
 
   const userPrompt =
     `language=${lang}\n` +
-    'Task: calibrate the travel_readiness payload with deep, category-specific, personalized, non-redundant skincare guidance.\n\n' +
+    'Task: output a compact travel_readiness_patch with category-specific, personalized, non-redundant skincare guidance.\n' +
     (goals.length ? `User goals: ${goals.join(', ')}\n` : '') +
     (hasRoutine ? `Current routine available: yes (see profile.currentRoutine in input)\n` : 'Current routine: not provided\n') +
     (isPregnantOrLactating ? 'Pregnancy/lactation: active — apply ingredient restrictions.\n' : '') +
-    '\nOutput schema:\n' +
-    '{\n' +
-    '  "travel_readiness_patch": {\n' +
-    '    "adaptive_actions": [{"why":"environment reason","what_to_do":"routine shift, no product names"}],\n' +
-    '    "personal_focus": [{"focus":"label","why":"profile-based reason","what_to_do":"specific action"}],\n' +
-    '    "jetlag_sleep": {...optional},\n' +
-    '    "category_recommendations": [\n' +
-    '      {"category":"cleansing|antioxidant|sun_protection|moisturization|masks|post_sun|brightening|eye_care|body_care|emergency",\n' +
-    '       "why":"scenario-specific reason",\n' +
-    '       "products":[{"name":"","ingredient_logic":"","usage":"timing+frequency"}],\n' +
-    '       "skip_reason":"only if category skipped"}\n' +
-    '    ],\n' +
-    '    "shopping_preview": {\n' +
-    '      "products": [{"name":"","brand":"","category":"","reasons":[],"product_source":"llm_generated"}],\n' +
-    '      "brand_candidates": [{"brand":"","match_status":"kb_verified|catalog_verified|llm_only","reason":""}],\n' +
-    '      "buying_channels": ["beauty_retail|pharmacy|department_store|duty_free|ecommerce"],\n' +
-    '      "city_hint": "",\n' +
-    '      "note": ""\n' +
-    '    },\n' +
-    '    "confidence": {"level":"low|medium|high","missing_inputs":[],"improve_by":[]}\n' +
-    '  },\n' +
-    '  "quality_flags": {"structured_complete":true|false,"safety_conflict":true|false,"categories_covered":["list of covered category ids"]},\n' +
-    '  "source_notes": {"reasoning_mode":"llm_calibration_v2"}\n' +
-    '}\n\n' +
-    'Fact input JSON:\n' +
-    `${JSON.stringify(promptTravelLlmInput || {}, null, 2)}\n` +
-    'Current travel_readiness JSON:\n' +
-    `${JSON.stringify(promptBaseTravelReadiness || {}, null, 2)}`
+    'Return JSON shape: {"travel_readiness_patch":{"adaptive_actions":[{"why":"","what_to_do":""}],"personal_focus":[{"focus":"","why":"","what_to_do":""}],"jetlag_sleep":{},"category_recommendations":[{"category":"cleansing|antioxidant|sun_protection|moisturization|masks|post_sun|brightening|eye_care|body_care|emergency","why":"","products":[{"name":"","ingredient_logic":"","usage":""}],"skip_reason":""}],"shopping_preview":{"products":[{"name":"","brand":"","category":"","reasons":[],"product_source":"llm_generated"}],"brand_candidates":[{"brand":"","match_status":"kb_verified|catalog_verified|llm_only","reason":""}],"buying_channels":[],"city_hint":"","note":""},"confidence":{"level":"","missing_inputs":[],"improve_by":[]}},"quality_flags":{"structured_complete":true,"safety_conflict":false,"categories_covered":[]},"source_notes":{"reasoning_mode":"llm_calibration_v2"}}\n' +
+    'Limits: adaptive_actions<=4, personal_focus<=3, category_recommendations<=8, shopping_preview.products<=6, brand_candidates<=5.\n' +
+    `Fact input JSON:${JSON.stringify(promptTravelLlmInput || {})}\n` +
+    `Current travel_readiness JSON:${JSON.stringify(promptBaseTravelReadiness || {})}`
 
   return { systemPrompt, userPrompt }
 }
@@ -753,8 +824,9 @@ async function calibrateTravelReadinessWithLlm({
   let lastErr = null
   for (let i = 0; i < attempts; i += 1) {
     try {
-      const queueTimeoutMs = Math.max(300, Math.floor(Number(timeoutMs || 3500) * 0.25))
-      const upstreamTimeoutMs = Math.max(800, Math.floor(Number(timeoutMs || 3500) - queueTimeoutMs))
+      const totalTimeoutMs = Math.max(1000, Math.trunc(Number(timeoutMs || 3500) || 3500))
+      const queueTimeoutMs = Math.min(800, Math.max(200, Math.floor(totalTimeoutMs * 0.12)))
+      const upstreamTimeoutMs = Math.max(1200, totalTimeoutMs - queueTimeoutMs)
       const callResult = typeof geminiGenerateContent === 'function'
         ? {
             response: await withTimeout(
@@ -813,6 +885,7 @@ async function calibrateTravelReadinessWithLlm({
 
   const timeoutErr = lastErr && /TIMEOUT/i.test(String(lastErr.code || lastErr.message || ''))
   const errorCode = normalizeErrorCode(lastErr, timeoutErr ? 'TRAVEL_LLM_TIMEOUT' : 'TRAVEL_LLM_ERROR')
+  const errorMeta = isPlainObject(lastErr && lastErr.meta) ? lastErr.meta : {}
   return {
     stage,
     used: false,
@@ -826,6 +899,10 @@ async function calibrateTravelReadinessWithLlm({
       ...promptTelemetry,
       error_code: errorCode,
       error: lastErr && (lastErr.code || lastErr.message) ? String(lastErr.code || lastErr.message).slice(0, 140) : 'unknown',
+      ...(normalizeText(lastErr && lastErr.timeout_stage, 40) ? { timeout_stage: normalizeText(lastErr.timeout_stage, 40) } : {}),
+      ...(normalizeNumber(errorMeta.gate_wait_ms) != null ? { gate_wait_ms: normalizeNumber(errorMeta.gate_wait_ms) } : {}),
+      ...(normalizeNumber(errorMeta.upstream_ms) != null ? { upstream_ms: normalizeNumber(errorMeta.upstream_ms) } : {}),
+      ...(normalizeNumber(errorMeta.total_ms) != null ? { total_ms: normalizeNumber(errorMeta.total_ms) } : {}),
     },
   }
 }
@@ -841,10 +918,15 @@ module.exports = {
     normalizeAlerts,
     normalizeRecoBundle,
     normalizeStoreExamples,
+    compactLooseObjectForPrompt,
+    compactRecoBundleForPrompt,
+    compactCategoryRecommendationsForPrompt,
+    compactShoppingPreviewForPrompt,
     sanitizeBaselineIntegrity,
     deepMerge,
     parseCalibrationPayload,
     buildTravelCalibrationPrompts,
+    buildGeminiRequest,
     compactTravelLlmInputForPrompt,
     compactTravelReadinessForPrompt,
     buildPromptInputSummary,

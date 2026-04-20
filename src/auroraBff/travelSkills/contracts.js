@@ -1398,7 +1398,7 @@ async function runTravelPipeline(input = {}) {
         language,
         travelLlmInput,
         baseTravelReadiness: travelReadiness,
-        timeoutMs: 6500,
+        timeoutMs: 9000,
         maxRetries: 0,
         logger,
       });
@@ -1436,6 +1436,10 @@ async function runTravelPipeline(input = {}) {
           prompt_hash: normalizeText(llmSourceMeta.prompt_hash, 48) || null,
           prompt_chars: toNumber(llmSourceMeta.prompt_chars),
           error_code: llmErrorCode,
+          timeout_stage: normalizeText(llmSourceMeta.timeout_stage, 40) || null,
+          gate_wait_ms: toNumber(llmSourceMeta.gate_wait_ms),
+          upstream_ms: toNumber(llmSourceMeta.upstream_ms),
+          total_ms: toNumber(llmSourceMeta.total_ms),
         },
       });
     } catch (err) {

@@ -314,6 +314,20 @@ test('travel LLM calibrator: prompt compaction drops UI payload and keeps inacti
   assert.equal(combined.includes('Very long UI-only category'), false);
   assert.equal(combined.includes('Pregnancy/lactation: active'), false);
   assert.equal(combined.includes('User is pregnant/lactating'), false);
-  assert.equal(combined.includes('"start_date": "2026-04-20"'), true);
-  assert.equal(combined.length < 16000, true);
+  assert.equal(combined.includes('"start_date":"2026-04-20"'), true);
+  assert.equal(combined.length < 10000, true);
+});
+
+test('travel LLM calibrator: Gemini request uses bounded low-thinking JSON config', () => {
+  const request = travelLlmInternal.buildGeminiRequest({
+    model: 'gemini-3-flash-preview',
+    systemPrompt: 'system',
+    userPrompt: 'user',
+  });
+
+  assert.equal(request.model, 'gemini-3-flash-preview');
+  assert.equal(request.config.responseMimeType, 'application/json');
+  assert.equal(request.config.maxOutputTokens <= 1500, true);
+  assert.equal(request.config.thinkingConfig.includeThoughts, false);
+  assert.equal(request.config.thinkingConfig.thinkingBudget <= 192, true);
 });
