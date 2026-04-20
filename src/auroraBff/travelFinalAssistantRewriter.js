@@ -248,14 +248,15 @@ function buildTravelFinalRewritePrompts(input) {
     'Use only the provided structured facts. Do not invent weather, dates, locations, products, stores, prices, clinical claims, or availability.',
     'Do not expose internal payload terms, fallback labels, source tiers, or debug wording.',
     'Do not use absolute marketing words: best, most, perfect, guaranteed, must-have, miracle, holy grail.',
+    'Avoid over-strong clinical or marketing phrasing such as essential, critical, extreme, severe, or boost UV protection; prefer supports, helps, useful, or good category to review.',
     'Do not use these headings or phrases: Risk note, Practical alternatives, Suggested products, Daily forecast, Key deltas, Travel skincare kit, Source, rule_fallback.',
     'Write a concise plan that feels like an advisor synthesized the trip, not a dump of every payload field.',
     'Keep it under 2400 characters, with at most 5 short sections and at most 12 bullets total.',
     'Must explain the actual climate delta first: temperature, humidity, UV, precipitation/wind when provided, then state the skin implication rather than just reporting weather.',
-    'Must cover skincare substance: before departure, flight/cabin, first 48 hours after arrival, face care, exposed body/lip/hand care when relevant, and local buying guidance.',
+    'Must cover skincare substance: before departure, flight/cabin, first 48 hours after arrival, face care, exposed body, lip, and hand care when those are present in the facts, and local buying guidance.',
     'For every product category or grounded product you mention, include a concrete reason tied to climate, flight, skin profile, routine, or UV exposure.',
     'Flight guidance may mention hydrating/soothing masks only as optional recovery if tolerated; do not make masks sound mandatory or clinical.',
-    'If category-only shopping is provided, call it product categories or buying categories; explicitly do not present them as grounded product picks.',
+    'If category-only shopping is provided, call it product categories or buying categories; explicitly do not present them as grounded product picks and do not call any category essential.',
     'If grounded products are provided, name the provided brand/product options and explain why each category is relevant; do not invent missing local brands.',
     'Integrate safety context naturally into UV/actives guidance; do not prepend a separate safety block.',
     'End with one useful follow-up question only if it would materially improve product narrowing.',
@@ -366,6 +367,9 @@ function buildTravelRewriteQualityContext(promptInput) {
     needsUvCare: /uv|sunscreen|spf|sun protection|outdoor|reapply|防晒|紫外|补涂/i.test(factsText),
     needsBarrierHydration: /humidity|humid|dry|cabin|flight|moisturizer|barrier|hydrating|hydration|serum|cream|mask|保湿|补水|屏障|面霜|精华|面膜/i.test(factsText),
     needsMaskNuance: /mask|面膜/i.test(actionText),
+    needsBodyCare: /\b(body|exposed areas|exposed skin|arms?)\b|身体|暴露部位|外露皮肤|手臂/i.test(actionText),
+    needsLipCare: /\b(lip|lips|lip balm)\b|嘴唇|唇部|润唇/i.test(actionText),
+    needsHandCare: /\b(hand|hands|hand cream)\b|手部|双手|护手/i.test(actionText),
     hasShoppingContext: Boolean(
       coverageStatus ||
       shoppingMode ||
@@ -390,6 +394,12 @@ function validateTravelFinalRewriteText(text, { promptInput } = {}) {
   }
   if (/\b(best|most|perfect|guaranteed|must-have|miracle|holy grail)\b/i.test(assistantText)) {
     return { ok: false, reason: 'rewrite_absolute_wording' };
+  }
+  if (/\b(essential|critical|extreme|severe)\b/i.test(assistantText)) {
+    return { ok: false, reason: 'rewrite_overstrong_wording' };
+  }
+  if (/\bboost(?:s|ing)?\s+(?:uv\s+)?protection\b/i.test(assistantText)) {
+    return { ok: false, reason: 'rewrite_overstrong_uv_claim' };
   }
   if (/\.\.\.|…|\[truncated\]/i.test(assistantText)) {
     return { ok: false, reason: 'rewrite_truncated_or_ellipsis' };
@@ -431,6 +441,24 @@ function validateTravelFinalRewriteText(text, { promptInput } = {}) {
     /(身体|嘴唇|唇部|手部|双手|暴露部位|外露皮肤)/i,
   ])) {
     return { ok: false, reason: 'rewrite_missing_body_lip_hand_care' };
+  }
+  if (quality.needsBodyCare && !matchesAny(assistantText, [
+    /\b(body|exposed areas|exposed skin|exposed arms|arms)\b/i,
+    /(身体|暴露部位|外露皮肤|手臂)/i,
+  ])) {
+    return { ok: false, reason: 'rewrite_missing_body_care' };
+  }
+  if (quality.needsLipCare && !matchesAny(assistantText, [
+    /\b(lip|lips|lip balm)\b/i,
+    /(嘴唇|唇部|润唇)/i,
+  ])) {
+    return { ok: false, reason: 'rewrite_missing_lip_care' };
+  }
+  if (quality.needsHandCare && !matchesAny(assistantText, [
+    /\b(hand|hands|hand cream)\b/i,
+    /(手部|双手|护手)/i,
+  ])) {
+    return { ok: false, reason: 'rewrite_missing_hand_care' };
   }
   if (quality.needsMaskNuance && !matchesAny(assistantText, [
     /\b(mask|masks)\b/i,

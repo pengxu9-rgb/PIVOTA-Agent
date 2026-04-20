@@ -311,6 +311,66 @@ test('travel final assistant rewriter: quality guard rejects generic travel skin
   assert.equal(acceptable.reason, 'ok');
 });
 
+test('travel final assistant rewriter: guard rejects over-strong copy and missing hand care', () => {
+  const promptInput = travelFinalRewriteInternal.buildFinalRewritePromptInput({
+    language: 'EN',
+    message: 'Seattle to Shanghai travel skincare.',
+    travelReadiness: {
+      delta_vs_home: {
+        temperature: { home: 12, destination: 24, delta: 12, unit: 'C' },
+        humidity: { home: 57, destination: 73, delta: 16, unit: '%' },
+        uv: { home: 6.4, destination: 8, delta: 1.6, unit: '' },
+      },
+      jetlag_sleep: { hours_diff: 15, risk_level: 'high' },
+      reco_bundle: [
+        {
+          trigger: 'Elevated UV and humid commute',
+          action: 'Use face SPF50+ before outdoor transit; use body SPF, lip balm, and hand cream on exposed areas.',
+          ingredient_logic: 'Photostable filters plus barrier support.',
+          product_types: ['Face SPF50+ sunscreen', 'Body SPF', 'Lip balm', 'Hand cream'],
+        },
+        {
+          trigger: 'Long-haul cabin dryness',
+          action: 'Use a hydrating mask only if already tolerated.',
+          product_types: ['Hydrating mask'],
+        },
+      ],
+      shopping_preview: {
+        mode: 'category_guidance',
+        coverage_status: 'category_only',
+        grounded_count: 0,
+        products: [{ name: 'Face SPF50+ sunscreen', category: 'sun protection', product_source: 'category_guidance' }],
+      },
+    },
+  });
+
+  const overstrong = travelFinalRewriteInternal.validateTravelFinalRewriteText(
+    [
+      'Shanghai is warmer, more humid, and higher UV than Seattle, so your routine should be lighter because sweat can reduce coverage faster.',
+      'Before departure, keep your familiar moisturizer and sunscreen routine.',
+      'During the flight, use moisturizer and a hydrating mask only if already tolerated.',
+      'After arrival, use SPF on your face and body, plus lip balm and hand cream during outdoor commutes.',
+      'Buying categories: Face SPF50+ sunscreen is essential and an antioxidant serum can boost UV protection.',
+    ].join('\n'),
+    { promptInput },
+  );
+  assert.equal(overstrong.ok, false);
+  assert.equal(overstrong.reason, 'rewrite_overstrong_wording');
+
+  const missingHand = travelFinalRewriteInternal.validateTravelFinalRewriteText(
+    [
+      'Shanghai is warmer, more humid, and higher UV than Seattle, so your routine should be lighter because sweat can reduce coverage faster.',
+      'Before departure, keep your familiar moisturizer and sunscreen routine.',
+      'During the flight, use moisturizer and a hydrating mask only if already tolerated.',
+      'After arrival, use SPF on your face and exposed body areas, and keep lip balm available during outdoor commutes.',
+      'Buying categories: review face SPF50+ sunscreen, lightweight moisturizer, and hydrating serum categories locally rather than treating them as confirmed product picks.',
+    ].join('\n'),
+    { promptInput },
+  );
+  assert.equal(missingHand.ok, false);
+  assert.equal(missingHand.reason, 'rewrite_missing_hand_care');
+});
+
 test('travel final assistant rewriter: accepts detailed advisor prose below production length ceiling', () => {
   const promptInput = travelFinalRewriteInternal.buildFinalRewritePromptInput({
     language: 'EN',
@@ -408,7 +468,7 @@ test('travel final assistant rewriter: category-only prompt stays honest and moc
   });
   assert.equal(prompts.userPrompt.includes('Shopping status: category_only'), true);
   assert.equal(prompts.userPrompt.includes('travel_action_context'), true);
-  assert.equal(prompts.systemPrompt.includes('exposed body/lip/hand care'), true);
+  assert.equal(prompts.systemPrompt.includes('exposed body, lip, and hand care'), true);
   assert.equal(prompts.systemPrompt.includes('concrete reason tied to climate'), true);
 
   const assistantText = [
