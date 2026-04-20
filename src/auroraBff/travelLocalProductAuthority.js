@@ -3,6 +3,7 @@ const { buildExternalSeedBrandSearchProduct } = require('../services/externalSee
 const { EXTERNAL_SEED_RECALL_SQL_FIELDS } = require('../services/externalSeedRecall');
 
 const DEFAULT_LIMIT = 6;
+const PACKABLE_PER_ROLE_RECALL_MIN = 24;
 const ROLE_ORDER = [
   'sun_protection',
   'lightweight_moisturizer',
@@ -93,6 +94,20 @@ function normalizeText(value, maxLen = 220) {
 function normalizeMarket(value) {
   const text = normalizeText(value, 8).toUpperCase();
   return /^[A-Z]{2}$/.test(text) ? text : '';
+}
+
+function normalizeAuthoritySurface(value) {
+  const text = normalizeText(value, 40).toLowerCase();
+  return text === 'packable' ? 'packable' : 'local';
+}
+
+function resolvePerRoleRecallLimit({ limit = DEFAULT_LIMIT, authoritySurface } = {}) {
+  const requested = Math.max(1, Math.min(Number(limit) || DEFAULT_LIMIT, 8));
+  const base = Math.max(3, Math.ceil(requested * 1.5));
+  if (normalizeAuthoritySurface(authoritySurface) === 'packable') {
+    return Math.max(base, PACKABLE_PER_ROLE_RECALL_MIN);
+  }
+  return base;
 }
 
 function uniqStrings(values, max = 24) {
@@ -491,6 +506,7 @@ async function loadTravelLocalProductAuthorityCandidates({
   travelReadiness,
   message,
   limit = DEFAULT_LIMIT,
+  authoritySurface,
   queryFn = defaultQuery,
 } = {}) {
   const startedAt = Date.now();
@@ -540,7 +556,7 @@ async function loadTravelLocalProductAuthorityCandidates({
     };
   }
 
-  const perRoleLimit = Math.max(3, Math.ceil((Number(limit) || DEFAULT_LIMIT) * 1.5));
+  const perRoleLimit = resolvePerRoleRecallLimit({ limit, authoritySurface });
   const toolScopes = ['creator_agents', '*'];
   const stageCounts = [];
   const collected = [];
@@ -569,6 +585,7 @@ async function loadTravelLocalProductAuthorityCandidates({
       meta: {
         ...baseMeta,
         stage_counts: stageCounts,
+        per_role_limit: perRoleLimit,
         candidate_count: collected.length,
         selected_count: candidates.length,
         coverage_status: candidates.length > 0 ? 'grounded' : 'coverage_miss',
@@ -597,6 +614,8 @@ module.exports = {
     buildTravelLocalProductQueryPlan,
     inferRoleIdFromText,
     likePatterns,
+    normalizeAuthoritySurface,
+    resolvePerRoleRecallLimit,
     selectRoleBalancedCandidates,
     isRoleCompatibleProduct,
     isMarketCurrencyCompatibleProduct,
