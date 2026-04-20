@@ -1,3 +1,5 @@
+const nock = require('nock');
+
 describe('PDP identity search final overlay', () => {
   const ORIGINAL_ENV = process.env;
 
@@ -6,7 +8,13 @@ describe('PDP identity search final overlay', () => {
     process.env = {
       ...ORIGINAL_ENV,
       NODE_ENV: 'test',
+      PIVOTA_API_BASE: 'http://localhost:8080',
+      PIVOTA_API_KEY: 'test-token',
     };
+  });
+
+  afterEach(() => {
+    nock.cleanAll();
   });
 
   afterAll(() => {
@@ -111,5 +119,85 @@ describe('PDP identity search final overlay', () => {
         final_live_overlay_reason: 'exact_live_product_after_identity_recall',
       }),
     );
+  });
+
+  test('hydrates savings evidence for grouped search products and selected offers', async () => {
+    const app = require('../src/server');
+    const { hydrateSearchSavingsPresentationFromUpstream } = app._debug;
+
+    nock(process.env.PIVOTA_API_BASE)
+      .post('/agent/shop/v1/invoke', (payload) => {
+        const ref = payload?.payload?.product || {};
+        return (
+          payload?.operation === 'get_product_detail' &&
+          ref.merchant_id === 'merch_efbc46b4619cfbdf' &&
+          ref.product_id === '10064558096681'
+        );
+      })
+      .reply(200, {
+        product: {
+          merchant_id: 'merch_efbc46b4619cfbdf',
+          product_id: '10064558096681',
+          store_discount_evidence: {
+            pricing_confidence: 'metadata_available',
+            offers: [{ label: 'PIVOTA_TEST_AMOUNT10', status: 'available' }],
+          },
+          payment_offer_evidence: {
+            pricing_confidence: 'display_estimate',
+            offers: [{ payment_offer_id: 'pay_1', label: 'Card offer available' }],
+          },
+          store_discount_badges: ['Code PIVOTA_TEST_AMOUNT10'],
+          payment_offer_badges: ['Card offer available'],
+        },
+      });
+
+    const response = await hydrateSearchSavingsPresentationFromUpstream({
+      operation: 'find_products_multi',
+      responseBody: {
+        products: [
+          {
+            merchant_id: 'merch_efbc46b4619cfbdf',
+            product_id: '10064558096681',
+            title: 'KraveBeauty Great Barrier Relief',
+            offer_source: 'group_fused',
+            offers_count: 2,
+            offers: [
+              {
+                merchant_id: 'merch_efbc46b4619cfbdf',
+                product_id: '10064558096681',
+                product_ref: {
+                  merchant_id: 'merch_efbc46b4619cfbdf',
+                  product_id: '10064558096681',
+                },
+              },
+              {
+                merchant_id: 'external_seed',
+                product_id: 'ext_krave_gbr_45',
+              },
+            ],
+          },
+        ],
+        metadata: {},
+      },
+    });
+
+    expect(response.metadata).toEqual(
+      expect.objectContaining({
+        savings_presentation_hydrated: true,
+      }),
+    );
+    expect(response.products[0].store_discount_evidence).toBeUndefined();
+    expect(response.products[0].payment_offer_evidence).toBeUndefined();
+    expect(response.products[0].offers[0]).toEqual(
+      expect.objectContaining({
+        store_discount_evidence: expect.objectContaining({
+          pricing_confidence: 'metadata_available',
+        }),
+        payment_offer_evidence: expect.objectContaining({
+          pricing_confidence: 'display_estimate',
+        }),
+      }),
+    );
+    expect(response.products[0].offers[1].store_discount_evidence).toBeUndefined();
   });
 });

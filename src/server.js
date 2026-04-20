@@ -9703,6 +9703,159 @@ function maybeOverlayFinalIdentityRecallSearchProducts({
   };
 }
 
+function getProductRefCandidatesForSavings(source) {
+  if (!source || typeof source !== 'object' || Array.isArray(source)) return [];
+  const candidates = [
+    source.selected_commerce_ref,
+    source.selectedCommerceRef,
+    source.product_ref,
+    source.productRef,
+    {
+      merchant_id: source.merchant_id || source.merchantId,
+      product_id:
+        source.product_id ||
+        source.productId ||
+        source.id ||
+        source.platform_product_id ||
+        source.platformProductId,
+    },
+  ];
+  const seen = new Set();
+  return candidates
+    .map((ref) => ({
+      merchant_id: String(ref?.merchant_id || ref?.merchantId || '').trim(),
+      product_id: String(ref?.product_id || ref?.productId || ref?.id || '').trim(),
+    }))
+    .filter((ref) => {
+      if (!ref.merchant_id || !ref.product_id || ref.merchant_id === EXTERNAL_SEED_MERCHANT_ID) {
+        return false;
+      }
+      const key = `${ref.merchant_id}::${ref.product_id}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+async function hydrateSearchSavingsPresentationFromUpstream({
+  operation,
+  responseBody,
+  checkoutToken,
+  maxProducts = 10,
+  maxOffers = 30,
+} = {}) {
+  if (
+    operation !== 'find_products_multi' ||
+    !responseBody ||
+    typeof responseBody !== 'object' ||
+    Array.isArray(responseBody) ||
+    !Array.isArray(responseBody.products) ||
+    responseBody.products.length === 0
+  ) {
+    return responseBody;
+  }
+
+  const evidenceByRef = new Map();
+  const fetchEvidenceForRef = async (ref) => {
+    const key = `${ref.merchant_id}::${ref.product_id}`;
+    if (evidenceByRef.has(key)) return evidenceByRef.get(key);
+    const hydrated = await hydrateSavingsPresentationFromUpstream({
+      product: {
+        merchant_id: ref.merchant_id,
+        product_id: ref.product_id,
+      },
+      checkoutToken,
+      force: true,
+    }).catch(() => null);
+    const evidence = hasSavingsPresentationFields(hydrated)
+      ? pickSavingsPresentationFields(hydrated)
+      : {};
+    evidenceByRef.set(key, evidence);
+    return evidence;
+  };
+
+  let offerBudget = Math.max(0, Number(maxOffers) || 0);
+  let applied = false;
+  const products = [];
+  for (const product of responseBody.products.slice(0, Math.max(1, Number(maxProducts) || 1))) {
+    if (!product || typeof product !== 'object' || Array.isArray(product)) {
+      products.push(product);
+      continue;
+    }
+
+    let nextProduct = product;
+    const productHasMultipleOffers =
+      (Array.isArray(product.offers) && product.offers.length > 1) ||
+      Number(product.offers_count || product.offer_count || 0) > 1;
+    if (!productHasMultipleOffers) {
+      const productRefs = getProductRefCandidatesForSavings(product);
+      for (const ref of productRefs) {
+        // eslint-disable-next-line no-await-in-loop
+        const evidence = await fetchEvidenceForRef(ref);
+        if (hasSavingsPresentationFields(evidence)) {
+          nextProduct = mergeSavingsPresentationFields(nextProduct, evidence);
+          applied = true;
+          break;
+        }
+      }
+    }
+
+    if (Array.isArray(product.offers) && product.offers.length && offerBudget > 0) {
+      const nextOffers = [];
+      for (const offer of product.offers) {
+        if (!offer || typeof offer !== 'object' || Array.isArray(offer)) {
+          nextOffers.push(offer);
+          continue;
+        }
+        let nextOffer = offer;
+        const offerRefs = getProductRefCandidatesForSavings(offer);
+        for (const ref of offerRefs) {
+          if (offerBudget <= 0) break;
+          offerBudget -= 1;
+          // eslint-disable-next-line no-await-in-loop
+          const evidence = await fetchEvidenceForRef(ref);
+          if (hasSavingsPresentationFields(evidence)) {
+            nextOffer = mergeSavingsPresentationFields(nextOffer, evidence);
+            applied = true;
+            break;
+          }
+        }
+        nextOffers.push(nextOffer);
+      }
+      nextProduct = {
+        ...nextProduct,
+        offers: nextOffers,
+      };
+    }
+
+    products.push(nextProduct);
+  }
+  if (responseBody.products.length > products.length) {
+    products.push(...responseBody.products.slice(products.length));
+  }
+  if (!applied) return responseBody;
+  const existingMeta =
+    responseBody.metadata && typeof responseBody.metadata === 'object' && !Array.isArray(responseBody.metadata)
+      ? responseBody.metadata
+      : {};
+  return {
+    ...responseBody,
+    products,
+    results: Array.isArray(responseBody.results) ? products : responseBody.results,
+    data:
+      responseBody.data && typeof responseBody.data === 'object' && !Array.isArray(responseBody.data)
+        ? {
+            ...responseBody.data,
+            ...(Array.isArray(responseBody.data.products) ? { products } : {}),
+          }
+        : responseBody.data,
+    metadata: {
+      ...existingMeta,
+      savings_presentation_hydrated: true,
+    },
+  };
+}
+
 async function findLiveIdentitySearchProductForRecall({
   queryText,
   identityProducts = [],
@@ -28549,6 +28702,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         queryText,
         queryParams,
       });
+      enriched = await hydrateSearchSavingsPresentationFromUpstream({
+        operation,
+        responseBody: enriched,
+        checkoutToken,
+      });
     }
 
     return res.status(response.status).json(enriched);
@@ -28965,6 +29123,7 @@ module.exports._debug = {
   scoreIdentityFinalOverlayCandidate,
   findLiveIdentitySearchProductForRecall,
   maybeOverlayFinalIdentityRecallSearchProducts,
+  hydrateSearchSavingsPresentationFromUpstream,
   backfillPdpIdentityGraph,
   listPdpIdentityShadowRows,
   listPdpIdentityReviewQueue,
