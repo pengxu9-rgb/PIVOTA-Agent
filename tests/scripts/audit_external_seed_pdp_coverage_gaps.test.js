@@ -208,6 +208,25 @@ describe('audit-external-seed-pdp-coverage-gaps helpers', () => {
     expect(summary.candidate_external_product_ids.product_line_fragmentation_candidate).toEqual([]);
   });
 
+  test('treats plural e-gift card PDPs as non-merchandise coverage gaps', () => {
+    const result = classifyRow(
+      row({
+        external_product_id: 'ext_fenty_gift_cards',
+        title: 'Fenty Beauty E-Gift Cards',
+        canonical_url: 'https://fentybeauty.com/products/egift-cards',
+        destination_url: 'https://fentybeauty.com/products/egift-cards',
+        has_product_key_kb: false,
+        has_identity: false,
+        has_any_identity: true,
+      }),
+    );
+
+    expect(result.product_context.product_family).toBe('non_merchandise');
+    expect(result.field_status.identity).toBe('not_applicable');
+    expect(result.field_status.product_key_kb).toBe('not_applicable');
+    expect(result.actionable_fields).toEqual([]);
+  });
+
   test('context classifier keeps formula products distinct from accessories', () => {
     expect(
       classifyProductContext(

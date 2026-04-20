@@ -10,7 +10,7 @@ const FORMULA_RE =
   /\b(skincare|skin care|makeup|cosmetic|haircare|hair care|fragrance|perfume|parfum|cologne|cleanser|toner|essence|serum|ampoule|moisturi[sz]er|cream|lotion|balm|mask|peel|exfoliant|treatment|oil|sunscreen|spf|foundation|concealer|mascara|lip(?:stick| gloss| balm| oil)?|blush|bronzer|powder|highlighter|eyeshadow|eyeliner|brow|primer|setting spray|shampoo|conditioner|body wash|body lotion|deodorant)\b/i;
 const ACCESSORY_RE =
   /\b(brush|sponge|puff|applicator|sharpener|tweezer|curler|scissors|comb|mirror|case|bag|pouch|holder|spatula|tool|tools|gua sha|roller|headband|clip|clips|lash curler|refill case)\b/i;
-const NON_MERCH_RE = /\b(e-?gift card|gift card|donat(?:e|ion)|sample service|appointment|booking)\b/i;
+const NON_MERCH_RE = /\b(?:e[-\s]?gift[-\s]?cards?|gift[-\s]?cards?|donat(?:e|ion)|sample service|appointment|booking)\b/i;
 const BUNDLE_RE = /\b(bundle|set|kit|duo|trio|routine|collection|mini set|travel set|starter set|value set)\b/i;
 const FRAGRANCE_RE = /\b(fragrance|perfume|parfum|eau de|edt|edp|cologne|body mist|mist|candle)\b/i;
 const HAIR_RE = /\b(hair|shampoo|conditioner|scalp|leave-in|styling|curl|detangler)\b/i;

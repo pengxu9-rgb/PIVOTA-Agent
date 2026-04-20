@@ -367,6 +367,28 @@ function inferProductKindFromContext(context) {
   const sunscreenPositioningText = titleCategoryDescription
     .replace(/\buse sunscreen daily\b[^.]*\.?/g, ' ')
     .replace(/\bsunscreen can increase sun sensitivity\b[^.]*\.?/g, ' ');
+  if (/\b(?:set|kit|duo|bundle|collection(?:\s+tin)?)\b/.test(titleCategory) && /\b(?:fragrance|parfum|eau de parfum|travel spray|body cr[eè]me)\b/.test(titleCategoryDescription)) {
+    return 'fragrance';
+  }
+  if (/\b(?:set|kit|duo|bundle)\b/.test(titleCategory) && /\b(?:hair|conditioner|heat protectant|leave-in|styling)\b/.test(titleCategoryDescription)) {
+    return 'routine_bundle';
+  }
+  if (/\b(?:brush bundle|brush trio|brush duo|brush set)\b/.test(titleCategoryDescription)) {
+    return 'brush_set';
+  }
+  if (
+    /\b(?:collection(?:\s+tin)?|set|kit|duo|trio|bundle)\b/.test(titleCategory) &&
+    /\b(?:match stix|contour|highlighter|eye|lash|mascara|liner|brow|lip|blush|makeup|shade|tin)\b/.test(titleCategoryDescription) &&
+    !/\b(?:eye patch|eye patches|eyepatch|eye mask|eye mask goggles|patch trio|hydrogel patches)\b/.test(titleCategoryDescription)
+  ) {
+    return 'makeup_set';
+  }
+  if (/\b(?:glow trio|glow kit|routine bundle|full-size bundle|starter bundle)\b/.test(titleCategoryDescription)) {
+    return 'routine_bundle';
+  }
+  if (/\b(?:bha toner|toner|toning water)\b/.test(titleCategory)) return 'toner';
+  if (/\b(?:eye brightener|undereye brightener|under-eye brightener)\b/.test(titleCategoryDescription)) return 'complexion_makeup';
+  if (/\b(?:body cr[eè]me|body cream|body butter|whipped oil body cream|butta drop)\b/.test(titleCategoryDescription)) return 'body_lotion';
   if (/\b(?:makeup fixing mist|fixing mist|setting spray|makeup setting spray|setting mist)\b/.test(titleCategoryDescription)) {
     return 'setting_spray';
   }
@@ -471,14 +493,22 @@ function inferSpecificBeautySubtypeLabel(context) {
   if (/\b(?:lippatch|lip patch)\b/.test(text)) return 'Lip patches';
   if (/\b(?:lip\s+mask|lip sleeping mask|plush puddin)\b/.test(text)) return 'Lip mask';
   if (/\b(?:retinol oil|overnight .* oil|face oil|facial oil|essence oil)\b/.test(text)) return 'Face oil';
+  if (/\b(?:set|kit|duo|bundle|collection(?:\s+tin)?)\b/.test(title) && /\b(?:fragrance|parfum|eau de parfum|travel spray|body cr[eè]me)\b/.test(text)) return 'Fragrance set';
+  if (/\b(?:set|kit|duo|bundle)\b/.test(title) && /\b(?:hair|conditioner|heat protectant|leave-in|styling)\b/.test(text)) return 'Hair care set';
+  if (/\b(?:eye duo|eye trio|eye set|eye kit|eye colour routine|eye color routine|essential eye duo|mascara.*(?:duo|set)|(?:duo|set).*mascara)\b/.test(text)) return 'Eye makeup set';
+  if (/\b(?:lip duo|lip set|lip kit)\b/.test(text)) return 'Lip set';
+  if (/\b(?:collection(?:\s+tin)?|match stix|contour\s*\+\s*highlighter|set|kit|duo|trio|bundle)\b/.test(title) && /\b(?:highlighter|contour|eye|lash|mascara|liner|brow|lip|blush|makeup|shade|tin)\b/.test(text)) return 'Makeup set';
+  if (/\b(?:bha toner|salicylic acid.*toner|toner.*salicylic acid)\b/.test(text)) return 'BHA toner';
+  if (/\b(?:toner|toning water)\b/.test(title) || category === 'toner') return 'Hydrating toner';
+  if (/\b(?:eye brightener|undereye brightener|under-eye brightener)\b/.test(text)) return 'Eye brightener';
+  if (/\bpowder foundation\b/.test(text)) return 'Powder foundation';
+  if (/\b(?:body cr[eè]me|body cream|body butter|whipped oil body cream|butta drop)\b/.test(text)) return 'Body cream';
   if (/\b(?:brush cup|brush holder|brush storage|makeup brush cup)\b/.test(text)) return 'Brush storage';
   if (/\b(?:brush bundle|brush trio|brush duo|brush set)\b/.test(text)) return 'Brush set';
   if (/\b(?:blending|packing|shader|foundation|skin tint|concealer|face|eyeliner|kyliner)?\s*brush\s*\d*\b/.test(title)) return 'Makeup brush';
   if (/\b(?:fragrance layering balm|fragrance balm|scent balm)\b/.test(text)) return 'Fragrance balm';
   if (/\b(?:hair\s*\+\s*body fragrance mist|hair and body fragrance mist|hair\s*\+\s*body mist|hair and body mist|body fragrance mist|fragrance mist|fenty parfum hair\s*\+\s*body mist)\b/.test(text)) return 'Fragrance mist';
   if (/\b(?:strong hold gel|hair gel|styling gel|curl gel|hold gel)\b/.test(text)) return 'Hair styling gel';
-  if (/\b(?:eye duo|eye trio|eye set|eye kit|eye colour routine|eye color routine|essential eye duo|mascara.*(?:duo|set)|(?:duo|set).*mascara)\b/.test(text)) return 'Eye makeup set';
-  if (/\b(?:lip duo|lip set|lip kit)\b/.test(text)) return 'Lip set';
   if (/\b(?:makeup set|makeup kit|makeup essentials|makeup trio|beauty set|beauty kit)\b/.test(text)) return 'Makeup set';
   if (/\b(?:pore diffusing primer|illuminating primer|face primer|makeup primer|primer)\b/.test(text)) return 'Primer';
   if (/\bbody\s+lotion\b/.test(text)) return 'Body lotion';
@@ -1452,7 +1482,9 @@ function buildHumanStandardBodyFromFacts(context, kind, formulaSignals) {
     return `A deodorant cream${withFormula} for body odor-control routines.`;
   }
   if (kind === 'body_lotion') {
-    return `A body lotion${withFormula} for body-skin hydration, comfort, and daily post-shower moisture support.`;
+    return /\b(?:body cr[eè]me|body cream|body butter|whipped oil body cream|butta drop)\b/.test(titleText)
+      ? `A body cream${withFormula} for body-skin hydration, comfort, and daily post-shower moisture support.`
+      : `A body lotion${withFormula} for body-skin hydration, comfort, and daily post-shower moisture support.`;
   }
   if (kind === 'body_oil') {
     return `A body oil${withFormula} for post-shower moisture sealing, soft feel, and body glow.`;
@@ -1554,7 +1586,9 @@ function buildHumanStandardWhatItIs(context, baselineBundle) {
     return {
       headline: subtypeLabel || (/fragrance|parfum|scent/i.test(baseHeadline) ? baseHeadline : 'Fragrance profile'),
       body:
-        subtypeLabel === 'Fragrance balm'
+        subtypeLabel === 'Fragrance set'
+          ? 'A fragrance set that pairs a travel spray with a matching body cream so shoppers compare it as a scent-layering kit, not a single formula.'
+          : subtypeLabel === 'Fragrance balm'
           ? 'A fragrance balm for targeted, close-to-skin scent layering.'
           : subtypeLabel === 'Fragrance mist'
             ? 'A fragrance mist for lightweight hair-and-body scent application.'
@@ -1618,6 +1652,12 @@ function buildHumanStandardWhatItIs(context, baselineBundle) {
     };
   }
   if (kind === 'routine_bundle') {
+    if (subtypeLabel === 'Hair care set') {
+      return {
+        headline: 'Hair care set',
+        body: 'A hair care set that groups leave-in conditioning and heat-protectant styling steps for wash-day moisture, breakage care, and heat-prep routines.',
+      };
+    }
     return {
       headline: /bundle|set|routine/i.test(baseHeadline) ? baseHeadline : 'Routine set',
       body: factsBody,
@@ -1679,7 +1719,7 @@ function buildHumanStandardWhatItIs(context, baselineBundle) {
   }
   if (kind === 'body_lotion') {
     return {
-      headline: /body lotion|lotion/i.test(baseHeadline) ? baseHeadline : 'Body lotion',
+      headline: subtypeLabel === 'Body cream' ? 'Body cream' : /body lotion|lotion/i.test(baseHeadline) ? baseHeadline : 'Body lotion',
       body: factsBody,
     };
   }
@@ -1753,7 +1793,9 @@ function buildHumanStandardWhatItIs(context, baselineBundle) {
     const headline = subtypeLabel || 'Complexion makeup';
     const bodyBySubtype = {
       Foundation: 'A foundation for complexion coverage, shade matching, finish control, and longer-wear makeup routines.',
+      'Powder foundation': 'A powder foundation for complexion coverage, soft-matte finish control, and shade matching in a pressed-powder format.',
       Concealer: 'A concealer for targeted complexion coverage, shade matching, and flexible makeup wear.',
+      'Eye brightener': 'An under-eye brightener for sheer-to-buildable coverage, brightening, and no-makeup makeup complexion correction.',
       'Skin tint': 'A skin tint for lightweight complexion coverage, shade matching, and a natural-looking finish.',
       Primer: 'A makeup primer for pre-foundation prep, smoother-looking texture, and finish control.',
     };
@@ -1795,8 +1837,14 @@ function buildHumanStandardWhatItIs(context, baselineBundle) {
     };
   }
   if (kind === 'toner') {
+    if (subtypeLabel === 'BHA toner') {
+      return {
+        headline: 'BHA toner',
+        body: 'A BHA toner for post-cleanse exfoliating tone, salicylic-acid routine placement, and oilier or breakout-prone skin-care routines.',
+      };
+    }
     return {
-      headline: /toner/i.test(baseHeadline) && !/prep or toner step/i.test(baseHeadline) ? baseHeadline : 'Hydrating toner',
+      headline: subtypeLabel || (/toner/i.test(baseHeadline) && !/prep or toner step/i.test(baseHeadline) ? baseHeadline : 'Hydrating toner'),
       body: preferredFactsBody,
     };
   }
@@ -1861,6 +1909,9 @@ function buildHumanStandardBestFor(context, baselineBundle) {
     return [item('lip_shine', 'Glossy lip shine'), item('lip_comfort', 'Soft-feeling lip comfort')];
   }
   if (kind === 'fragrance') {
+    if (subtypeLabel === 'Fragrance set') {
+      return [item('fragrance_layering', 'Fragrance layering'), item('travel_scent_set', 'Travel scent sets')];
+    }
     return [item('fragrance_wear', 'Fragrance wear'), item('scent_preference', 'Scent-profile shoppers')];
   }
   if (kind === 'dry_shampoo') {
@@ -1900,6 +1951,9 @@ function buildHumanStandardBestFor(context, baselineBundle) {
     return [item('heat_styling_prep', 'Heat-styling prep'), item('frizz_smoothing', 'Frizz-smoothing routines')];
   }
   if (kind === 'routine_bundle') {
+    if (subtypeLabel === 'Hair care set') {
+      return [item('hair_care_set', 'Hair-care sets'), item('heat_styling_prep', 'Heat-styling prep')];
+    }
     return [item('routine_set', 'Complete routine sets'), item('multi_step_routine', 'Multi-step routine shoppers')];
   }
   if (kind === 'brush_set') {
@@ -1967,10 +2021,14 @@ function buildHumanStandardBestFor(context, baselineBundle) {
       item(
         subtypeLabel === 'Foundation'
           ? 'foundation_coverage'
+          : subtypeLabel === 'Powder foundation'
+            ? 'powder_foundation_coverage'
           : subtypeLabel === 'Skin tint'
             ? 'skin_tint_coverage'
             : subtypeLabel === 'Primer'
               ? 'makeup_prep'
+            : subtypeLabel === 'Eye brightener'
+              ? 'under_eye_brightening'
             : subtypeLabel === 'Concealer'
               ? 'targeted_coverage'
             : text.includes('matte')
@@ -1978,10 +2036,14 @@ function buildHumanStandardBestFor(context, baselineBundle) {
               : 'complexion_finish',
         subtypeLabel === 'Foundation'
           ? 'Foundation coverage'
+          : subtypeLabel === 'Powder foundation'
+            ? 'Powder foundation coverage'
           : subtypeLabel === 'Skin tint'
             ? 'Skin-tint coverage'
             : subtypeLabel === 'Primer'
               ? 'Makeup prep'
+            : subtypeLabel === 'Eye brightener'
+              ? 'Under-eye brightening'
             : subtypeLabel === 'Concealer'
               ? 'Targeted coverage'
             : text.includes('matte')
@@ -2096,6 +2158,11 @@ function buildHumanStandardHighlights(context) {
   }
   if (kind === 'fragrance') {
     const subtypeLabel = inferSpecificBeautySubtypeLabel(context);
+    if (subtypeLabel === 'Fragrance set') {
+      return [
+        highlight('Travel scent set', 'Pairs travel fragrance with matching body cream so shoppers compare the kit by scent layering and set use.'),
+      ];
+    }
     if (subtypeLabel === 'Fragrance balm') {
       return [
         highlight(
@@ -2199,6 +2266,12 @@ function buildHumanStandardHighlights(context) {
     ];
   }
   if (kind === 'routine_bundle') {
+    const subtypeLabel = inferSpecificBeautySubtypeLabel(context);
+    if (subtypeLabel === 'Hair care set') {
+      return [
+        highlight('Coordinated hair-care duo', 'Groups leave-in conditioner and heat protectant so shoppers compare the set by hair moisture and styling prep.'),
+      ];
+    }
     return [
       highlight('Multi-step routine set', 'The bundle groups multiple routine steps so shoppers compare the set as a regimen, not a single formula.'),
     ];
@@ -2249,9 +2322,10 @@ function buildHumanStandardHighlights(context) {
     ];
   }
   if (kind === 'body_lotion') {
+    const subtypeLabel = inferSpecificBeautySubtypeLabel(context);
     return [
       highlight(
-        'Post-shower body lotion',
+        subtypeLabel === 'Body cream' ? 'Whipped body cream' : 'Post-shower body lotion',
         formulaPhrase
           ? `Uses ${formulaPhrase} cues to replenish body skin after showering and between moisturizing steps.`
           : 'Replenishes body skin after showering and between moisturizing steps.',
@@ -2327,6 +2401,20 @@ function buildHumanStandardHighlights(context) {
   }
   if (kind === 'complexion_makeup') {
     const subtypeLabel = inferSpecificBeautySubtypeLabel(context);
+    if (subtypeLabel === 'Eye brightener') {
+      highlights.push(
+        highlight('Under-eye brightening', 'Keeps the evaluation on sheer coverage, brightening, and under-eye complexion correction.'),
+      );
+      addReviewHighlight();
+      return highlights.slice(0, 2);
+    }
+    if (subtypeLabel === 'Powder foundation') {
+      highlights.push(
+        highlight('Powder foundation coverage', 'Keeps the evaluation on pressed-powder coverage, soft-matte finish, and shade match.'),
+      );
+      addReviewHighlight();
+      return highlights.slice(0, 2);
+    }
     if (subtypeLabel === 'Primer') {
       highlights.push(
         highlight(
@@ -2408,6 +2496,14 @@ function buildHumanStandardHighlights(context) {
     return highlights.slice(0, 2);
   }
   if (kind === 'toner') {
+    const subtypeLabel = inferSpecificBeautySubtypeLabel(context);
+    if (subtypeLabel === 'BHA toner') {
+      highlights.push(
+        highlight('BHA toner step', 'Frames the product around salicylic-acid toner use instead of storefront makeup category copy.'),
+      );
+      addReviewHighlight();
+      return highlights.slice(0, 2);
+    }
     highlights.push(
       highlight(
         formulaSignals.some((item) => item.key === 'rice_complex') ? 'Rice hydration system' : 'Hydrating prep step',
@@ -2547,6 +2643,12 @@ function buildSubtypeAwarePairingNotes(kind, subtypeLabel) {
   if (kind === 'hair_styling_gel' || subtypeLabel === 'Hair styling gel') {
     return ['Apply through damp or dry hair to define shape and hold according to seller directions.'];
   }
+  if (subtypeLabel === 'Fragrance set') return ['Layer the body cream with the travel spray according to scent intensity preference.'];
+  if (subtypeLabel === 'Hair care set') return ['Use the included hair-care steps in routine order according to each product direction.'];
+  if (subtypeLabel === 'BHA toner') return ['Apply after cleansing; introduce gradually if using other exfoliating acids.'];
+  if (subtypeLabel === 'Body cream') return ['Apply to body skin after showering or whenever body moisture support is needed.'];
+  if (subtypeLabel === 'Eye brightener') return ['Tap under the eyes or on targeted brightening areas and blend as a complexion step.'];
+  if (subtypeLabel === 'Powder foundation') return ['Apply as powder foundation for coverage, setting, or touch-ups, then choose shade separately.'];
   if (subtypeLabel === 'Lip liner') return ['Line or define lips before lipstick, gloss, or balm.'];
   if (subtypeLabel === 'Lipstick') return ['Apply as the lip color step; pair with liner when more definition is needed.'];
   if (subtypeLabel === 'Lip gloss') return ['Apply as the lip shine step alone or over lip color.'];
@@ -2685,7 +2787,7 @@ function inferTextureForHumanStandardKind(kind, context) {
   if (kind === 'anti_chafe_stick') return 'stick';
   if (kind === 'shave_cream') return 'cream';
   if (kind === 'deodorant') return 'cream';
-  if (kind === 'body_lotion') return 'lotion';
+  if (kind === 'body_lotion') return subtypeLabel === 'Body cream' ? 'cream' : 'lotion';
   if (kind === 'body_oil') return 'oil';
   if (kind === 'face_oil') return 'oil';
   if (kind === 'lip_balm') return 'balm';
@@ -2768,7 +2870,7 @@ function buildHumanStandardTextureFinish(context, baselineBundle, kind) {
         : kind === 'cleanser'
           ? ''
           : asString(baseline.finish);
-  const layeringNotes = buildHumanStandardPairingNotes(kind);
+  const layeringNotes = buildSubtypeAwarePairingNotes(kind, inferSpecificBeautySubtypeLabel(context));
   const sensoryNotes = toList(baseline.sensory_notes)
     .filter((item) => !/\bpositioning\b/i.test(asString(item)))
     .filter((item) => !(kind === 'cleanser' && /\b(?:oil|richer|dewy|glow)\b/i.test(asString(item))))
