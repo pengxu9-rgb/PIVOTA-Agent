@@ -21132,11 +21132,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           }).catch(() => null);
 	        markPdpV2Phase('identity_graph_product_intel_gate', identityGraphIntelGateStartedAt);
 	      }
-		      if (identityGraphLive?.synthetic_product) {
-		        canonicalProductForPdp = identityGraphLive.synthetic_product;
-		        if (identityGraphLive.canonical_product_ref) {
-		          canonicalProductRef = {
-	              ...canonicalProductRef,
+	      if (identityGraphLive?.synthetic_product) {
+	        canonicalProductForPdp = identityGraphLive.synthetic_product;
+	        if (identityGraphLive.canonical_product_ref) {
+	          canonicalProductRef = {
+              ...canonicalProductRef,
               ...identityGraphLive.canonical_product_ref,
             };
 	        }
@@ -21363,6 +21363,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           : null;
 
       const canonicalPayload = stripResponseOwnedPdpModulesFromCanonicalPayload(pdpPayload);
+      const pdpContentSource =
+        identityGraphLive?.synthetic_product?.pdp_content_source ||
+        (identityGraphLive?.synthetic_product ? 'canonical_inherited' : 'self');
+      const contentReviewState =
+        identityGraphLive?.content_review_state ||
+        (pdpContentSource === 'canonical_inherited' ? 'pending' : 'not_needed');
+      const offerSource = groupMembers.length > 0 ? 'group_fused' : 'self';
+      const commerceSource = requestedMerchantId ? 'selected_seller_store' : 'canonical_seller_store';
 
       const modules = [
         {
@@ -21380,8 +21388,17 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             match_basis: Array.isArray(identityGraphLive?.match_basis) ? identityGraphLive.match_basis : [],
             canonical_scope: identityGraphLive?.canonical_scope || null,
             pdp_schema_profile: pdpSchemaProfile,
+            pdp_content_source: pdpContentSource,
+            offer_source: offerSource,
+            commerce_source: commerceSource,
+            content_review_state: contentReviewState,
             canonical_product_ref: canonicalProductRef,
             entry_product_ref: entryProductRef,
+            selected_commerce_ref:
+              identityGraphLive?.synthetic_product?.selected_commerce_ref ||
+              (requestedMerchantId
+                ? { merchant_id: requestedMerchantId, product_id: entryProductId || productId }
+                : canonicalProductRef),
             pdp_payload: canonicalPayload,
             ...(precheckEntryProductMissing ? { entry_precheck_missing: true } : {}),
           },
@@ -21490,9 +21507,17 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         if (offersData) {
           offersData = {
             ...offersData,
+            offer_source: Array.isArray(groupMembers) && groupMembers.length > 0 ? 'group_fused' : 'self',
+            commerce_source: 'selected_seller_store',
+            content_review_state: contentReviewState,
             offers: annotateOffersWithCommerceMetadata(
               Array.isArray(offersData.offers) ? offersData.offers : [],
-            ),
+            ).map((offer) => ({
+              ...offer,
+              offer_source:
+                Array.isArray(groupMembers) && groupMembers.length > 0 ? 'group_fused' : 'self',
+              commerce_source: 'selected_seller_store',
+            })),
           };
           const offers = Array.isArray(offersData.offers) ? offersData.offers : [];
           const fallbackOfferId = offers[0]?.offer_id || null;
@@ -21677,8 +21702,25 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                       ? identityGraphLive.match_basis
                       : [],
                     canonical_scope: identityGraphLive.canonical_scope || null,
+                    pdp_content_source: pdpContentSource,
+                    offer_source: offerSource,
+                    commerce_source: commerceSource,
+                    content_review_state: contentReviewState,
                   }
                 : null,
+            pdp_provenance: {
+              pdp_content_source: pdpContentSource,
+              offer_source: offerSource,
+              commerce_source: commerceSource,
+              content_review_state: contentReviewState,
+              identity_confidence:
+                Number.isFinite(Number(identityGraphLive?.identity_confidence))
+                  ? Number(identityGraphLive.identity_confidence)
+                  : null,
+              match_basis: Array.isArray(identityGraphLive?.match_basis)
+                ? identityGraphLive.match_basis
+                : [],
+            },
             route_health: buildPdpV2RouteHealth({
               requestedProductId: entryProductId || productId || null,
               requestedMerchantId: requestedMerchantId || null,

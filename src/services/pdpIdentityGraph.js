@@ -1582,6 +1582,73 @@ function fillMissingString(target, source, keys) {
   return next;
 }
 
+function buildListingProductRef(listing) {
+  if (!listing) return null;
+  const merchantId = asString(listing?.merchant_id);
+  const productId = asString(listing?.product_id);
+  if (!merchantId || !productId) return null;
+  return { merchant_id: merchantId, product_id: productId };
+}
+
+function sameListingRef(left, right) {
+  return (
+    asString(left?.merchant_id) === asString(right?.merchant_id) &&
+    asString(left?.product_id) === asString(right?.product_id)
+  );
+}
+
+function overlaySelectedCommerceFields(product, selectedListing, fallbackProduct = null) {
+  const selectedPayload =
+    asPlainObject(selectedListing?.source_payload) || asPlainObject(fallbackProduct) || {};
+  if (!Object.keys(selectedPayload).length) return product;
+
+  const next = { ...(product || {}) };
+  const directFields = [
+    'price',
+    'currency',
+    'variants',
+    'variant',
+    'default_variant_id',
+    'defaultVariantId',
+    'sku',
+    'sku_id',
+    'platform',
+    'platform_product_id',
+    'platformProductId',
+    'shopify_id',
+    'shipping',
+    'shipping_cost',
+    'returns',
+    'inventory',
+    'availability',
+    'in_stock',
+    'fulfillment_type',
+    'purchase_route',
+    'commerce_mode',
+    'checkout_handoff',
+    'checkout_url',
+    'merchant_checkout_url',
+    'external_redirect_url',
+    'destination_url',
+    'canonical_url',
+    'url',
+    'product_url',
+    'discount_evidence',
+    'promotion_lines',
+    'store_discount_evidence',
+    'payment_offer_evidence',
+  ];
+  for (const key of directFields) {
+    if (selectedPayload[key] !== undefined) next[key] = selectedPayload[key];
+  }
+
+  next.merchant_id = asString(selectedListing?.merchant_id || selectedPayload.merchant_id) || next.merchant_id;
+  next.product_id =
+    asString(selectedListing?.product_id || selectedPayload.product_id || selectedPayload.id) ||
+    next.product_id;
+  return next;
+}
+
 function composeSyntheticCanonicalProduct({
   requestedListing,
   exactListings,
@@ -1590,14 +1657,19 @@ function composeSyntheticCanonicalProduct({
 } = {}) {
   const sortedExact = sortListingsForAuthority(exactListings);
   const sortedLine = sortListingsForAuthority(lineListings);
-  const baseListing = requestedListing || sortedExact[0] || sortedLine[0] || null;
-  const basePayload = asPlainObject(baseListing?.source_payload) || asPlainObject(fallbackProduct) || {};
-  if (!baseListing && !Object.keys(basePayload).length) return null;
+  const contentListing = sortedExact[0] || sortedLine[0] || requestedListing || null;
+  const commerceListing = requestedListing || contentListing;
+  const basePayload =
+    asPlainObject(contentListing?.source_payload) ||
+    asPlainObject(commerceListing?.source_payload) ||
+    asPlainObject(fallbackProduct) ||
+    {};
+  if (!contentListing && !commerceListing && !Object.keys(basePayload).length) return null;
 
   let product = {
     ...basePayload,
-    merchant_id: asString(baseListing?.merchant_id || basePayload.merchant_id) || undefined,
-    product_id: asString(baseListing?.product_id || basePayload.product_id || basePayload.id) || undefined,
+    merchant_id: asString(contentListing?.merchant_id || basePayload.merchant_id) || undefined,
+    product_id: asString(contentListing?.product_id || basePayload.product_id || basePayload.id) || undefined,
     source: 'synthetic_canonical',
     canonical_scope: 'synthetic',
   };
@@ -1642,7 +1714,7 @@ function composeSyntheticCanonicalProduct({
   const previewImages = [];
   const exactSeen = new Set();
   const previewSeen = new Set();
-  const productLineOptions = buildProductLineOptions({ lineListings: sortedLine, baseListing });
+  const productLineOptions = buildProductLineOptions({ lineListings: sortedLine, baseListing: commerceListing });
   const productLineOptionName = firstNonEmptyString(
     productLineOptions.find((item) => item?.selected)?.option_name,
     productLineOptions[0]?.option_name,
@@ -1658,7 +1730,7 @@ function composeSyntheticCanonicalProduct({
   for (const listing of sortedLine) {
     if (
       asString(listing?.sellable_item_group_id) &&
-      asString(listing?.sellable_item_group_id) === asString(baseListing?.sellable_item_group_id)
+      asString(listing?.sellable_item_group_id) === asString(contentListing?.sellable_item_group_id)
     ) {
       continue;
     }
@@ -1679,7 +1751,7 @@ function composeSyntheticCanonicalProduct({
   const scopedReviewSummary = buildReviewScopeMetadata(exactSummary, lineSummary);
 
   product = {
-    ...product,
+    ...overlaySelectedCommerceFields(product, commerceListing, fallbackProduct),
     ...(exactImages[0] ? { image_url: exactImages[0].url } : {}),
     ...(exactImages.length ? { images: exactImages, image_urls: exactImages } : {}),
     ...(previewImages.length ? { line_preview_images: previewImages } : {}),
@@ -1690,18 +1762,21 @@ function composeSyntheticCanonicalProduct({
         }
       : {}),
     ...(scopedReviewSummary ? { review_summary: scopedReviewSummary } : {}),
+    pdp_content_source:
+      contentListing && commerceListing && !sameListingRef(contentListing, commerceListing)
+        ? 'canonical_inherited'
+        : 'self',
+    commerce_source: 'selected_seller_store',
+    canonical_content_ref: buildListingProductRef(contentListing),
+    selected_commerce_ref: buildListingProductRef(commerceListing),
     gallery_scope: 'exact_item',
     preview_scope: 'product_line',
   };
 
   return {
     product,
-    canonical_product_ref: baseListing
-      ? {
-          merchant_id: asString(baseListing.merchant_id),
-          product_id: asString(baseListing.product_id),
-        }
-      : null,
+    canonical_product_ref: buildListingProductRef(contentListing),
+    selected_commerce_ref: buildListingProductRef(commerceListing),
   };
 }
 
@@ -1713,6 +1788,166 @@ function normalizeIdentityRows(rows) {
     out.push(parsed);
   }
   return out;
+}
+
+function dedupeIdentityRows(rows) {
+  const seen = new Set();
+  const out = [];
+  for (const row of rows || []) {
+    const parsed = parseIdentityRow(row);
+    if (!parsed) continue;
+    const key =
+      asString(parsed.source_listing_ref) ||
+      `${asString(parsed.merchant_id)}:${asString(parsed.product_id)}`;
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(parsed);
+  }
+  return out;
+}
+
+function hasSameStrongIdentity(left, right) {
+  const leftStrong = asPlainObject(left?.strong_identity) || {};
+  const rightStrong = asPlainObject(right?.strong_identity) || {};
+  const leftUrl = asString(leftStrong.official_url);
+  const rightUrl = asString(rightStrong.official_url);
+  if (leftUrl && rightUrl && normalizeComparableUrl(leftUrl) === normalizeComparableUrl(rightUrl)) {
+    return true;
+  }
+  const leftGtins = new Set(asArray(leftStrong.gtins).map((item) => asString(item)).filter(Boolean));
+  if (leftGtins.size) {
+    for (const gtin of asArray(rightStrong.gtins)) {
+      if (leftGtins.has(asString(gtin))) return true;
+    }
+  }
+  return false;
+}
+
+function scoreLiveIdentityCandidate(sourceListing, candidate) {
+  if (!sourceListing || !candidate) return 0;
+  const sourceBrand = asString(sourceListing.brand_norm || sourceListing.soft_identity?.brand_norm);
+  const candidateBrand = asString(candidate.brand_norm || candidate.soft_identity?.brand_norm);
+  const sourceTitleCore = asString(
+    sourceListing.title_core_norm || sourceListing.soft_identity?.title_core_norm,
+  );
+  const candidateTitleCore = asString(
+    candidate.title_core_norm || candidate.soft_identity?.title_core_norm,
+  );
+  if (!sourceBrand || !candidateBrand || sourceBrand !== candidateBrand) return 0;
+  if (!sourceTitleCore || !candidateTitleCore || sourceTitleCore !== candidateTitleCore) return 0;
+
+  let score = 0.82;
+  if (hasSameStrongIdentity(sourceListing, candidate)) score += 0.12;
+
+  const sourceAxes = serializeVariantAxes(sourceListing.variant_axes);
+  const candidateAxes = serializeVariantAxes(candidate.variant_axes);
+  if (sourceAxes && candidateAxes && sourceAxes === candidateAxes) score += 0.08;
+  else if (sourceAxes && candidateAxes && sourceAxes !== candidateAxes) score -= 0.18;
+  else if (sourceListing.variant_axes?.multi_variant === true || candidate.variant_axes?.multi_variant === true) {
+    score -= 0.08;
+  }
+
+  if (asString(candidate.source_tier).toLowerCase() === 'brand') score += 0.04;
+  return roundRatio(Math.max(0, Math.min(0.99, score)));
+}
+
+async function findApprovedIdentityMatchForLiveProduct({
+  merchantId,
+  productId,
+  product,
+  queryFn = query,
+} = {}) {
+  const draft = buildIdentityListingFromProduct({
+    merchantId,
+    productId,
+    product,
+    sourceKind: 'internal',
+    sourceMeta: {
+      source: 'live_product_identity_match',
+    },
+  });
+  if (!draft?.brand_norm || !draft?.title_core_norm) return null;
+
+  try {
+    const result = await queryFn(
+      `
+        SELECT *
+        FROM pdp_identity_listing
+        WHERE brand_norm = $1
+          AND title_core_norm = $2
+          AND identity_status = 'approved'
+          AND review_required = false
+        ORDER BY
+          CASE WHEN source_tier = 'brand' THEN 0 ELSE 1 END,
+          identity_confidence DESC NULLS LAST,
+          updated_at DESC NULLS LAST,
+          created_at DESC NULLS LAST
+        LIMIT 50
+      `,
+      [draft.brand_norm, draft.title_core_norm],
+    );
+    const candidates = normalizeIdentityRows(result?.rows).filter(
+      (row) => !sameListingRef(row, draft) && asString(row.sellable_item_group_id),
+    );
+    if (!candidates.length) return null;
+
+    const groups = new Map();
+    for (const row of candidates) {
+      const groupId = asString(row.sellable_item_group_id);
+      const current = groups.get(groupId) || { group_id: groupId, rows: [], score: 0 };
+      const candidateScore = scoreLiveIdentityCandidate(draft, row);
+      current.score = Math.max(current.score, candidateScore);
+      current.rows.push(row);
+      groups.set(groupId, current);
+    }
+    const ranked = Array.from(groups.values())
+      .filter((group) => group.score >= 0.86)
+      .sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        return b.rows.length - a.rows.length;
+      });
+    if (!ranked.length) return null;
+
+    const best = ranked[0];
+    const second = ranked[1];
+    if (second && best.score - second.score < 0.04) return null;
+    const authority = sortListingsForAuthority(best.rows)[0] || best.rows[0];
+    return {
+      ...draft,
+      sellable_item_group_id: asString(authority.sellable_item_group_id) || best.group_id,
+      product_line_id: asString(authority.product_line_id) || draft.product_line_id,
+      review_family_id: asString(authority.review_family_id) || draft.review_family_id,
+      identity_status: 'approved',
+      live_read_enabled: true,
+      review_required: false,
+      review_reason_codes: [],
+      identity_confidence: Math.max(Number(draft.identity_confidence || 0), best.score),
+      matched_by_rule: 'live_brand_title_identity_match',
+      match_basis: uniqueStrings([
+        ...asArray(draft.match_basis),
+        ...asArray(authority.match_basis),
+        `live_identity_match:${best.group_id}`,
+      ]),
+      source_meta: {
+        ...(asPlainObject(draft.source_meta) || {}),
+        live_identity_match: true,
+        matched_sellable_item_group_id: best.group_id,
+        matched_rows: best.rows.length,
+        score: best.score,
+      },
+    };
+  } catch (err) {
+    if (looksLikeRelationMissing(err)) return null;
+    logger.warn(
+      {
+        err: err?.message || String(err),
+        merchant_id: merchantId,
+        product_id: productId,
+      },
+      'PDP identity graph live product identity match failed',
+    );
+    return null;
+  }
 }
 
 function isBrandAllowedForLive(product, identityRow = null) {
@@ -1760,9 +1995,18 @@ async function maybeBuildLiveSyntheticPdp({
       `,
       [merchantId, productId],
     );
-    const sourceRow = parseIdentityRow(sourceRowRes?.rows?.[0]);
+    const sourceRow =
+      parseIdentityRow(sourceRowRes?.rows?.[0]) ||
+      (await findApprovedIdentityMatchForLiveProduct({
+        merchantId,
+        productId,
+        product: canonicalProduct,
+        queryFn,
+      }));
     if (!sourceRow) return writeLiveSyntheticPdpCache(cacheKey, null);
     if (!isBrandAllowedForLive(canonicalProduct, sourceRow)) return writeLiveSyntheticPdpCache(cacheKey, null);
+    const allowApprovedWithoutLiveRead =
+      asPlainObject(sourceRow.source_meta)?.live_identity_match === true;
 
     const [exactRowsRes, lineRowsRes] = await Promise.all([
       queryFn(
@@ -1771,14 +2015,15 @@ async function maybeBuildLiveSyntheticPdp({
           FROM pdp_identity_listing
           WHERE sellable_item_group_id = $1
             AND identity_status = 'approved'
-            AND live_read_enabled = true
+            AND ($2::boolean = true OR live_read_enabled = true)
+            AND review_required = false
           ORDER BY
             CASE WHEN source_tier = 'brand' THEN 0 ELSE 1 END,
             identity_confidence DESC NULLS LAST,
             updated_at DESC NULLS LAST,
             created_at DESC NULLS LAST
         `,
-        [sourceRow.sellable_item_group_id],
+        [sourceRow.sellable_item_group_id, allowApprovedWithoutLiveRead],
       ),
       queryFn(
         `
@@ -1786,17 +2031,18 @@ async function maybeBuildLiveSyntheticPdp({
           FROM pdp_identity_listing
           WHERE product_line_id = $1
             AND identity_status = 'approved'
-            AND live_read_enabled = true
+            AND ($2::boolean = true OR live_read_enabled = true)
+            AND review_required = false
           ORDER BY
             CASE WHEN source_tier = 'brand' THEN 0 ELSE 1 END,
             identity_confidence DESC NULLS LAST,
             updated_at DESC NULLS LAST,
             created_at DESC NULLS LAST
         `,
-        [sourceRow.product_line_id],
+        [sourceRow.product_line_id, allowApprovedWithoutLiveRead],
       ),
     ]);
-    const exactListings = normalizeIdentityRows(exactRowsRes?.rows);
+    const exactListings = dedupeIdentityRows([sourceRow, ...(exactRowsRes?.rows || [])]);
     const lineListings = normalizeIdentityRows(lineRowsRes?.rows);
     const composed = composeSyntheticCanonicalProduct({
       requestedListing: sourceRow,
@@ -1814,13 +2060,17 @@ async function maybeBuildLiveSyntheticPdp({
       identity_confidence: Number(sourceRow.identity_confidence || 0) || 0,
       match_basis: Array.isArray(sourceRow.match_basis) ? sourceRow.match_basis : [],
       canonical_scope: 'synthetic',
-      group_members: exactListings.map((item, idx) => ({
+      content_review_state:
+        composed.selected_commerce_ref &&
+        composed.canonical_product_ref &&
+        (composed.selected_commerce_ref.merchant_id !== composed.canonical_product_ref.merchant_id ||
+          composed.selected_commerce_ref.product_id !== composed.canonical_product_ref.product_id)
+          ? 'pending'
+          : 'not_needed',
+      group_members: exactListings.map((item) => ({
         ...buildGroupMember(item),
-        is_primary:
-          idx === 0 &&
-          asString(item.merchant_id) === asString(composed.canonical_product_ref?.merchant_id) &&
-          asString(item.product_id) === asString(composed.canonical_product_ref?.product_id),
-        })),
+        is_primary: sameListingRef(item, composed.canonical_product_ref),
+      })),
       line_members: lineListings.map((item) => buildGroupMember(item)),
     });
   };

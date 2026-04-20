@@ -30,6 +30,20 @@ function loadServerWithDb(envOverrides = {}) {
   return { app, db };
 }
 
+function mockProductDetailInvoke(merchantId, productId, product, times = 1) {
+  return nock(process.env.PIVOTA_API_BASE)
+    .post('/agent/shop/v1/invoke', (payload) => {
+      const ref = payload?.payload?.product || {};
+      return (
+        payload?.operation === 'get_product_detail' &&
+        ref.merchant_id === merchantId &&
+        ref.product_id === productId
+      );
+    })
+    .times(times)
+    .reply(200, { product });
+}
+
 describe('get_pdp_v2 identity graph live read', () => {
   afterEach(() => {
     nock.cleanAll();
@@ -262,67 +276,73 @@ describe('get_pdp_v2 identity graph live read', () => {
       return { rows: [] };
     });
 
+    const externalKraveProduct = {
+      merchant_id: 'external_seed',
+      product_id: 'ext_krave_gbr_45',
+      source: 'external_seed',
+      title: 'Great Barrier Relief',
+      brand: 'KraveBeauty',
+      currency: 'EUR',
+      price: { amount: 28, currency: 'EUR' },
+      image_url: 'https://cdn.example.com/gbr-upstream.jpg',
+      platform: 'external',
+      platform_product_id: 'ext_krave_gbr_45',
+      variants: [
+        {
+          variant_id: '13760798457931',
+          title: 'Standard - 45 mL',
+          options: [{ name: 'Size', value: 'Standard - 45 mL' }],
+          price: { amount: 28, currency: 'EUR' },
+        },
+        {
+          variant_id: '40160623329355',
+          title: 'Jumbo - 100 mL',
+          options: [{ name: 'Size', value: 'Jumbo - 100 mL' }],
+          price: { amount: 50, currency: 'EUR' },
+        },
+      ],
+    };
+    const merchantKraveProduct = {
+      merchant_id: 'merch_krave',
+      product_id: '10008793153864',
+      title: 'Great Barrier Relief',
+      vendor: 'KraveBeauty',
+      currency: 'EUR',
+      price: { amount: 30, currency: 'EUR' },
+      platform: 'shopify',
+      platform_product_id: '10008793153864',
+      variants: [
+        {
+          id: '52876964495688',
+          title: 'Standard - 45 mL',
+          options: { Size: 'Standard - 45 mL' },
+          price: { amount: 28, currency: 'EUR' },
+          sku: 'GBR-45',
+        },
+        {
+          id: '52876964528456',
+          title: 'Jumbo - 100 mL',
+          options: { Size: 'Jumbo - 100 mL' },
+          price: { amount: 50, currency: 'EUR' },
+          sku: 'GBR-100',
+        },
+      ],
+    };
+
+    mockProductDetailInvoke('external_seed', 'ext_krave_gbr_45', externalKraveProduct, 3);
+    mockProductDetailInvoke('merch_krave', '10008793153864', merchantKraveProduct, 2);
+
     nock(process.env.PIVOTA_API_BASE)
       .get('/agent/v1/products/external_seed/ext_krave_gbr_45')
       .twice()
       .reply(200, {
-        product: {
-          merchant_id: 'external_seed',
-          product_id: 'ext_krave_gbr_45',
-          source: 'external_seed',
-          title: 'Great Barrier Relief',
-          brand: 'KraveBeauty',
-          currency: 'EUR',
-          price: { amount: 28, currency: 'EUR' },
-          image_url: 'https://cdn.example.com/gbr-upstream.jpg',
-          platform: 'external',
-          platform_product_id: 'ext_krave_gbr_45',
-          variants: [
-            {
-              variant_id: '13760798457931',
-              title: 'Standard - 45 mL',
-              options: [{ name: 'Size', value: 'Standard - 45 mL' }],
-              price: { amount: 28, currency: 'EUR' },
-            },
-            {
-              variant_id: '40160623329355',
-              title: 'Jumbo - 100 mL',
-              options: [{ name: 'Size', value: 'Jumbo - 100 mL' }],
-              price: { amount: 50, currency: 'EUR' },
-            },
-          ],
-        },
+        product: externalKraveProduct,
       });
 
     nock(process.env.PIVOTA_API_BASE)
       .get('/agent/v1/products/merch_krave/10008793153864')
       .reply(200, {
-        product: {
-          merchant_id: 'merch_krave',
-          product_id: '10008793153864',
-          title: 'Great Barrier Relief',
-          vendor: 'KraveBeauty',
-          currency: 'EUR',
-          price: { amount: 30, currency: 'EUR' },
-          platform: 'shopify',
-          platform_product_id: '10008793153864',
-          variants: [
-            {
-              id: '52876964495688',
-              title: 'Standard - 45 mL',
-              options: { Size: 'Standard - 45 mL' },
-              price: { amount: 28, currency: 'EUR' },
-              sku: 'GBR-45',
-            },
-            {
-              id: '52876964528456',
-              title: 'Jumbo - 100 mL',
-              options: { Size: 'Jumbo - 100 mL' },
-              price: { amount: 50, currency: 'EUR' },
-              sku: 'GBR-100',
-            },
-          ],
-        },
+        product: merchantKraveProduct,
       });
 
     nock(process.env.PIVOTA_API_BASE)
@@ -537,20 +557,23 @@ describe('get_pdp_v2 identity graph live read', () => {
       return { rows: [] };
     });
 
+    const bojDn310Product = {
+      merchant_id: 'external_seed',
+      product_id: 'ext_boj_dn310',
+      source: 'external_seed',
+      title: 'Daily Tinted Fluid Sunscreen DN310',
+      brand: 'Beauty of Joseon',
+      image_url: 'https://cdn.example.com/boj-dn310-upstream.jpg',
+      platform: 'external',
+      platform_product_id: 'ext_boj_dn310',
+    };
+    mockProductDetailInvoke('external_seed', 'ext_boj_dn310', bojDn310Product, 4);
+
     nock(process.env.PIVOTA_API_BASE)
       .get('/agent/v1/products/external_seed/ext_boj_dn310')
       .times(3)
       .reply(200, {
-        product: {
-          merchant_id: 'external_seed',
-          product_id: 'ext_boj_dn310',
-          source: 'external_seed',
-          title: 'Daily Tinted Fluid Sunscreen DN310',
-          brand: 'Beauty of Joseon',
-          image_url: 'https://cdn.example.com/boj-dn310-upstream.jpg',
-          platform: 'external',
-          platform_product_id: 'ext_boj_dn310',
-        },
+        product: bojDn310Product,
       });
 
     nock(process.env.PIVOTA_API_BASE)
@@ -593,5 +616,197 @@ describe('get_pdp_v2 identity graph live read', () => {
       expect.objectContaining({ label: 'DN350', product_id: 'ext_boj_dn350', selected: false }),
     ]);
     expect(variantSelectorModule?.data?.product_line_options).toHaveLength(2);
+  });
+
+  test('rescues a merchant-scoped rebound product into the canonical group while keeping selected seller commerce', async () => {
+    const { app, db } = loadServerWithDb();
+
+    const externalIdentityRow = {
+      source_listing_ref: 'external_seed:ext_krave_gbr_45',
+      merchant_id: 'external_seed',
+      product_id: 'ext_krave_gbr_45',
+      source_kind: 'external_seed',
+      source_tier: 'brand',
+      live_read_enabled: true,
+      sellable_item_group_id: 'sig_krave_45',
+      product_line_id: 'pl_krave_gbr',
+      review_family_id: 'rf_krave_gbr',
+      identity_status: 'approved',
+      identity_confidence: 0.94,
+      match_basis: ['brand:kravebeauty', 'title_core:great barrier relief', 'variant_axes:volume:45ml'],
+      strong_identity: {},
+      soft_identity: { brand_norm: 'kravebeauty', title_core_norm: 'great barrier relief' },
+      variant_axes: { size: 'standard 45 ml', volume: '45ml' },
+      brand_norm: 'kravebeauty',
+      title_core_norm: 'great barrier relief',
+      review_required: false,
+      source_payload: {
+        product_id: 'ext_krave_gbr_45',
+        merchant_id: 'external_seed',
+        title: 'Great Barrier Relief',
+        brand: 'KraveBeauty',
+        description: 'Pivota-reviewed canonical barrier serum copy.',
+        images: [{ url: 'https://cdn.example.com/gbr-canonical.jpg' }],
+      },
+      review_summary: {
+        rating: 4.5,
+        review_count: 12,
+      },
+    };
+
+    db.query.mockImplementation(async (sql) => {
+      const normalizedSql = String(sql || '').replace(/\s+/g, ' ').trim();
+      if (normalizedSql.includes('FROM pdp_identity_listing') && normalizedSql.includes('merchant_id = $1')) {
+        return { rows: [] };
+      }
+      if (normalizedSql.includes('FROM pdp_identity_listing') && normalizedSql.includes('brand_norm = $1')) {
+        return { rows: [externalIdentityRow] };
+      }
+      if (normalizedSql.includes('FROM pdp_identity_listing') && normalizedSql.includes('sellable_item_group_id = $1')) {
+        return { rows: [externalIdentityRow] };
+      }
+      if (normalizedSql.includes('FROM pdp_identity_listing') && normalizedSql.includes('product_line_id = $1')) {
+        return { rows: [externalIdentityRow] };
+      }
+      if (normalizedSql.includes('FROM merchant_stores') && normalizedSql.includes('merchant_onboarding')) {
+        return {
+          rows: [
+            {
+              merchant_id: 'merch_new',
+              merchant_name: 'New Shopify Store',
+            },
+          ],
+        };
+      }
+      return { rows: [] };
+    });
+
+    const newMerchantProduct = {
+      merchant_id: 'merch_new',
+      product_id: '10064558096681',
+      title: 'KraveBeauty Great Barrier Relief',
+      vendor: 'KraveBeauty',
+      currency: 'USD',
+      price: { amount: 28, currency: 'USD' },
+      platform: 'shopify',
+      platform_product_id: '10064558096681',
+      variants: [
+        {
+          id: 'gid://shopify/ProductVariant/111',
+          title: 'Standard - 45 mL',
+          options: { Size: 'Standard - 45 mL' },
+          price: { amount: 28, currency: 'USD' },
+          sku: 'GBR-45-NEW',
+        },
+      ],
+    };
+    const externalKraveProduct = {
+      merchant_id: 'external_seed',
+      product_id: 'ext_krave_gbr_45',
+      source: 'external_seed',
+      title: 'Great Barrier Relief',
+      brand: 'KraveBeauty',
+      currency: 'USD',
+      price: { amount: 31, currency: 'USD' },
+      destination_url: 'https://kravebeauty.com/products/great-barrier-relief',
+      platform: 'external',
+      platform_product_id: 'ext_krave_gbr_45',
+    };
+    mockProductDetailInvoke('merch_new', '10064558096681', newMerchantProduct, 3);
+    mockProductDetailInvoke('external_seed', 'ext_krave_gbr_45', externalKraveProduct, 2);
+
+    nock(process.env.PIVOTA_API_BASE)
+      .get('/agent/v1/products/merch_new/10064558096681')
+      .twice()
+      .reply(200, {
+        product: newMerchantProduct,
+      });
+
+    nock(process.env.PIVOTA_API_BASE)
+      .get('/agent/v1/product-groups/resolve')
+      .query((query) => query && query.merchant_id === 'merch_new' && query.product_id === '10064558096681')
+      .reply(404, { error: 'PRODUCT_GROUP_NOT_FOUND' });
+
+    nock(process.env.PIVOTA_API_BASE)
+      .get('/agent/v1/products/external_seed/ext_krave_gbr_45')
+      .reply(200, {
+        product: externalKraveProduct,
+      });
+
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'get_pdp_v2',
+        payload: {
+          include: ['offers'],
+          product_ref: {
+            merchant_id: 'merch_new',
+            product_id: '10064558096681',
+          },
+        },
+      })
+      .expect(200);
+
+    const canonicalModule = res.body.modules.find((module) => module.type === 'canonical');
+    const offersModule = res.body.modules.find((module) => module.type === 'offers');
+
+    expect(res.body.metadata.identity_resolution).toEqual(
+      expect.objectContaining({
+        resolution_source: 'identity_graph_live',
+      }),
+    );
+    expect(res.body.metadata.identity_graph).toEqual(
+      expect.objectContaining({
+        sellable_item_group_id: 'sig_krave_45',
+        pdp_content_source: 'canonical_inherited',
+        offer_source: 'group_fused',
+        commerce_source: 'selected_seller_store',
+        content_review_state: 'pending',
+      }),
+    );
+    expect(canonicalModule?.data).toEqual(
+      expect.objectContaining({
+        product_group_id: 'sig_krave_45',
+        sellable_item_group_id: 'sig_krave_45',
+        pdp_content_source: 'canonical_inherited',
+        offer_source: 'group_fused',
+        commerce_source: 'selected_seller_store',
+        content_review_state: 'pending',
+        selected_commerce_ref: {
+          merchant_id: 'merch_new',
+          product_id: '10064558096681',
+        },
+      }),
+    );
+    expect(canonicalModule?.data?.pdp_payload?.product).toEqual(
+      expect.objectContaining({
+        merchant_id: 'merch_new',
+        product_id: '10064558096681',
+        description: 'Pivota-reviewed canonical barrier serum copy.',
+        price: { current: { amount: 28, currency: 'USD' } },
+      }),
+    );
+    expect(offersModule?.data).toEqual(
+      expect.objectContaining({
+        product_group_id: 'sig_krave_45',
+        offer_source: 'group_fused',
+        offers_count: 2,
+      }),
+    );
+    expect(offersModule?.data?.offers).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          merchant_id: 'merch_new',
+          product_id: '10064558096681',
+          offer_source: 'group_fused',
+          price: { amount: 28, currency: 'USD' },
+        }),
+        expect.objectContaining({
+          merchant_id: 'external_seed',
+          product_id: 'ext_krave_gbr_45',
+          offer_source: 'group_fused',
+        }),
+      ]),
+    );
   });
 });

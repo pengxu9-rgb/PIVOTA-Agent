@@ -6,6 +6,20 @@ const request = require('supertest');
 const nock = require('nock');
 const app = require('../../src/server');
 
+function mockProductDetailInvoke(merchantId, productId, status, body, times = 1) {
+  return nock(process.env.PIVOTA_API_BASE)
+    .post('/agent/shop/v1/invoke', (payload) => {
+      const product = payload?.payload?.product || {};
+      return (
+        payload?.operation === 'get_product_detail' &&
+        product.merchant_id === merchantId &&
+        product.product_id === productId
+      );
+    })
+    .times(times)
+    .reply(status, body);
+}
+
 describe('get_pdp_v2 stability semantics', () => {
   afterEach(() => {
     nock.cleanAll();
@@ -13,6 +27,33 @@ describe('get_pdp_v2 stability semantics', () => {
 
   it('auto-corrects ext_* merchant mismatches to the external_seed canonical product', async () => {
     const merchantUrl = 'https://merchant.example/products/ext-seed-1';
+    const externalSeedProduct = {
+      merchant_id: 'external_seed',
+      product_id: 'ext_seed_1',
+      source: 'external_seed',
+      title: 'Tom Ford Noir',
+      description: 'External seed PDP',
+      brand: 'Tom Ford',
+      category: 'Fragrance',
+      currency: 'USD',
+      price: {
+        amount: 180,
+        currency: 'USD',
+      },
+      image_url: 'https://example.com/ext_seed_1.jpg',
+      destination_url: merchantUrl,
+      canonical_url: merchantUrl,
+      platform: 'external',
+      platform_product_id: 'ext_seed_1',
+    };
+
+    mockProductDetailInvoke('merch_wrong', 'ext_seed_1', 404, {
+      error: 'PRODUCT_NOT_FOUND',
+      message: 'Product not found',
+    });
+    mockProductDetailInvoke('external_seed', 'ext_seed_1', 200, {
+      product: externalSeedProduct,
+    }, 3);
 
     nock(process.env.PIVOTA_API_BASE)
       .get('/agent/v1/products/merch_wrong/ext_seed_1')
@@ -38,25 +79,7 @@ describe('get_pdp_v2 stability semantics', () => {
       .get('/agent/v1/products/external_seed/ext_seed_1')
       .twice()
       .reply(200, {
-        product: {
-          merchant_id: 'external_seed',
-          product_id: 'ext_seed_1',
-          source: 'external_seed',
-          title: 'Tom Ford Noir',
-          description: 'External seed PDP',
-          brand: 'Tom Ford',
-          category: 'Fragrance',
-          currency: 'USD',
-          price: {
-            amount: 180,
-            currency: 'USD',
-          },
-          image_url: 'https://example.com/ext_seed_1.jpg',
-          destination_url: merchantUrl,
-          canonical_url: merchantUrl,
-          platform: 'external',
-          platform_product_id: 'ext_seed_1',
-        },
+        product: externalSeedProduct,
       });
 
     const res = await request(app)
@@ -123,6 +146,15 @@ describe('get_pdp_v2 stability semantics', () => {
   });
 
   it('keeps canonical not-found responses on 404 after mismatch correction fails', async () => {
+    mockProductDetailInvoke('merch_wrong', 'ext_missing_1', 404, {
+      error: 'PRODUCT_NOT_FOUND',
+      message: 'Product not found',
+    });
+    mockProductDetailInvoke('external_seed', 'ext_missing_1', 404, {
+      error: 'PRODUCT_NOT_FOUND',
+      message: 'Product not found',
+    });
+
     nock(process.env.PIVOTA_API_BASE)
       .get('/agent/v1/products/merch_wrong/ext_missing_1')
       .reply(404, { error: 'PRODUCT_NOT_FOUND', message: 'Product not found' });
@@ -167,6 +199,20 @@ describe('get_pdp_v2 stability semantics', () => {
   });
 
   it('attempts unscoped canonical resolution for external_seed ext_* routes after entry misses', async () => {
+    mockProductDetailInvoke('external_seed', 'ext_seed_2', 404, {
+      error: 'PRODUCT_NOT_FOUND',
+      message: 'Product not found',
+    });
+    mockProductDetailInvoke('merch_canonical', 'prod_canonical_2', 200, {
+      product: {
+        merchant_id: 'merch_canonical',
+        product_id: 'prod_canonical_2',
+        title: 'Canonical rescued PDP',
+        brand: 'Tom Ford',
+        currency: 'USD',
+      },
+    }, 2);
+
     nock(process.env.PIVOTA_API_BASE)
       .get('/agent/v1/products/external_seed/ext_seed_2')
       .reply(404, { error: 'PRODUCT_NOT_FOUND', message: 'Product not found' });
@@ -238,6 +284,11 @@ describe('get_pdp_v2 stability semantics', () => {
   });
 
   it('returns 504 UPSTREAM_TIMEOUT when canonical detail fetch times out', async () => {
+    mockProductDetailInvoke('merchant_slow', 'prod_timeout_1', 504, {
+      error: 'UPSTREAM_TIMEOUT',
+      message: 'timeout of 5000ms exceeded',
+    }, 2);
+
     nock(process.env.PIVOTA_API_BASE)
       .get('/agent/v1/products/merchant_slow/prod_timeout_1')
       .times(2)
