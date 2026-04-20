@@ -139,7 +139,7 @@ function normalizeBrandCandidates(value) {
     seen.add(key)
     out.push({
       brand,
-      match_status: normalizeMatchStatus(row.match_status),
+      match_status: normalizeMatchStatus(row.match_status || row.matchStatus),
       reason: normalizeText(row.reason, 180) || null,
     })
     if (out.length >= 6) break
@@ -246,24 +246,24 @@ function normalizeShoppingPreview(value) {
       brand: normalizeText(row.brand, 80) || null,
       category: normalizeText(row.category, 80) || null,
       reasons: normalizeStringArray(row.reasons, 4, 120),
-      product_source: normalizeProductSource(row.product_source),
+      product_source: normalizeProductSource(row.product_source || row.productSource),
       price: normalizeNumber(row.price),
       currency: normalizeText(row.currency, 12) || null,
     })
     if (products.length >= 3) break
   }
 
-  const channels = normalizeStringArray(value.buying_channels, 8, 60)
+  const channels = normalizeStringArray(value.buying_channels || value.buyingChannels, 8, 60)
     .map((x) => x.toLowerCase())
     .filter((x) => ALLOWED_BUYING_CHANNELS.has(x))
 
-  const brandCandidates = normalizeBrandCandidates(value.brand_candidates)
+  const brandCandidates = normalizeBrandCandidates(value.brand_candidates || value.brandCandidates)
 
   const out = {
     ...(products.length ? { products } : {}),
     ...(channels.length ? { buying_channels: channels } : {}),
     ...(brandCandidates.length ? { brand_candidates: brandCandidates } : {}),
-    ...(normalizeText(value.city_hint, 120) ? { city_hint: normalizeText(value.city_hint, 120) } : {}),
+    ...(normalizeText(value.city_hint || value.cityHint, 120) ? { city_hint: normalizeText(value.city_hint || value.cityHint, 120) } : {}),
     ...(normalizeText(value.note, 220) ? { note: normalizeText(value.note, 220) } : {}),
   }
 
@@ -474,12 +474,15 @@ function normalizeTravelReadinessPatch(value) {
   if (!isPlainObject(value)) return {}
   const out = {}
 
-  if (Array.isArray(value.adaptive_actions)) {
+  const adaptiveActionsRaw = Array.isArray(value.adaptive_actions)
+    ? value.adaptive_actions
+    : Array.isArray(value.adaptiveActions) ? value.adaptiveActions : []
+  if (adaptiveActionsRaw.length) {
     const adaptiveActions = []
-    for (const raw of value.adaptive_actions) {
+    for (const raw of adaptiveActionsRaw) {
       const row = isPlainObject(raw) ? raw : {}
       const why = normalizeText(row.why, 260)
-      const whatToDo = normalizeText(row.what_to_do, 320)
+      const whatToDo = normalizeText(row.what_to_do || row.whatToDo, 320)
       if (!why && !whatToDo) continue
       adaptiveActions.push({
         ...(why ? { why } : {}),
@@ -490,19 +493,22 @@ function normalizeTravelReadinessPatch(value) {
     if (adaptiveActions.length) out.adaptive_actions = adaptiveActions
   }
 
-  const recoBundle = normalizeRecoBundle(value.reco_bundle)
+  const recoBundle = normalizeRecoBundle(value.reco_bundle || value.recoBundle)
   if (recoBundle.length) out.reco_bundle = recoBundle
 
-  const storeExamples = normalizeStoreExamples(value.store_examples)
+  const storeExamples = normalizeStoreExamples(value.store_examples || value.storeExamples)
   if (storeExamples.length) out.store_examples = storeExamples
 
-  if (Array.isArray(value.personal_focus)) {
+  const personalFocusRaw = Array.isArray(value.personal_focus)
+    ? value.personal_focus
+    : Array.isArray(value.personalFocus) ? value.personalFocus : []
+  if (personalFocusRaw.length) {
     const personalFocus = []
-    for (const raw of value.personal_focus) {
+    for (const raw of personalFocusRaw) {
       const row = isPlainObject(raw) ? raw : {}
       const focus = normalizeText(row.focus, 120)
       const why = normalizeText(row.why, 260)
-      const whatToDo = normalizeText(row.what_to_do, 320)
+      const whatToDo = normalizeText(row.what_to_do || row.whatToDo, 320)
       if (!focus && !why && !whatToDo) continue
       personalFocus.push({
         ...(focus ? { focus } : {}),
@@ -514,36 +520,47 @@ function normalizeTravelReadinessPatch(value) {
     if (personalFocus.length) out.personal_focus = personalFocus
   }
 
-  if (isPlainObject(value.jetlag_sleep)) {
-    const node = value.jetlag_sleep
+  const jetlagNode = isPlainObject(value.jetlag_sleep)
+    ? value.jetlag_sleep
+    : isPlainObject(value.jetlagSleep) ? value.jetlagSleep : null
+  if (jetlagNode) {
+    const node = jetlagNode
     const jetlagSleep = {
-      ...(normalizeText(node.tz_home, 64) ? { tz_home: normalizeText(node.tz_home, 64) } : {}),
-      ...(normalizeText(node.tz_destination, 64) ? { tz_destination: normalizeText(node.tz_destination, 64) } : {}),
-      ...(normalizeNumber(node.hours_diff) != null ? { hours_diff: normalizeNumber(node.hours_diff) } : {}),
-      ...(normalizeText(node.risk_level, 24) ? { risk_level: normalizeText(node.risk_level, 24) } : {}),
-      ...(normalizeStringArray(node.sleep_tips, 4, 220).length ? { sleep_tips: normalizeStringArray(node.sleep_tips, 4, 220) } : {}),
-      ...(normalizeStringArray(node.mask_tips, 4, 220).length ? { mask_tips: normalizeStringArray(node.mask_tips, 4, 220) } : {}),
+      ...(normalizeText(node.tz_home || node.tzHome || node.tz_origin || node.tzOrigin, 64)
+        ? { tz_home: normalizeText(node.tz_home || node.tzHome || node.tz_origin || node.tzOrigin, 64) }
+        : {}),
+      ...(normalizeText(node.tz_destination || node.tzDestination, 64)
+        ? { tz_destination: normalizeText(node.tz_destination || node.tzDestination, 64) }
+        : {}),
+      ...(normalizeNumber(node.hours_diff || node.hoursDiff) != null ? { hours_diff: normalizeNumber(node.hours_diff || node.hoursDiff) } : {}),
+      ...(normalizeText(node.risk_level || node.riskLevel, 24) ? { risk_level: normalizeText(node.risk_level || node.riskLevel, 24) } : {}),
+      ...(normalizeStringArray(node.sleep_tips || node.sleepTips, 4, 220).length ? { sleep_tips: normalizeStringArray(node.sleep_tips || node.sleepTips, 4, 220) } : {}),
+      ...(normalizeStringArray(node.mask_tips || node.maskTips, 4, 220).length ? { mask_tips: normalizeStringArray(node.mask_tips || node.maskTips, 4, 220) } : {}),
     }
     if (Object.keys(jetlagSleep).length) out.jetlag_sleep = jetlagSleep
   }
 
-  const shoppingPreview = normalizeShoppingPreview(value.shopping_preview)
+  const shoppingPreview = normalizeShoppingPreview(value.shopping_preview || value.shoppingPreview)
   if (shoppingPreview) out.shopping_preview = shoppingPreview
 
-  if (isPlainObject(value.confidence)) {
-    const node = value.confidence
+  const confidenceNode = isPlainObject(value.confidence) ? value.confidence : null
+  if (confidenceNode) {
+    const node = confidenceNode
     const confidence = {
       ...(normalizeText(node.level, 24) ? { level: normalizeText(node.level, 24) } : {}),
-      ...(normalizeStringArray(node.missing_inputs, 12, 80).length ? { missing_inputs: normalizeStringArray(node.missing_inputs, 12, 80) } : {}),
-      ...(normalizeStringArray(node.improve_by, 8, 220).length ? { improve_by: normalizeStringArray(node.improve_by, 8, 220) } : {}),
+      ...(normalizeStringArray(node.missing_inputs || node.missingInputs, 12, 80).length ? { missing_inputs: normalizeStringArray(node.missing_inputs || node.missingInputs, 12, 80) } : {}),
+      ...(normalizeStringArray(node.improve_by || node.improveBy, 8, 220).length ? { improve_by: normalizeStringArray(node.improve_by || node.improveBy, 8, 220) } : {}),
       ...(normalizeNumber(node.score) != null ? { score: normalizeNumber(node.score) } : {}),
     }
     if (Object.keys(confidence).length) out.confidence = confidence
   }
 
-  if (Array.isArray(value.category_recommendations)) {
+  const categoryRecommendationsRaw = Array.isArray(value.category_recommendations)
+    ? value.category_recommendations
+    : Array.isArray(value.categoryRecommendations) ? value.categoryRecommendations : []
+  if (categoryRecommendationsRaw.length) {
     const categoryRecs = []
-    for (const raw of value.category_recommendations) {
+    for (const raw of categoryRecommendationsRaw) {
       const row = isPlainObject(raw) ? raw : {}
       const category = normalizeText(row.category, 40)
       if (!category) continue
@@ -551,7 +568,7 @@ function normalizeTravelReadinessPatch(value) {
         const prod = isPlainObject(p) ? p : {}
         return {
           name: normalizeText(prod.name, 140) || null,
-          ingredient_logic: normalizeText(prod.ingredient_logic, 260) || null,
+          ingredient_logic: normalizeText(prod.ingredient_logic || prod.ingredientLogic, 260) || null,
           usage: normalizeText(prod.usage, 260) || null,
         }
       }).filter((p) => p.name) : []
@@ -559,7 +576,7 @@ function normalizeTravelReadinessPatch(value) {
         category,
         why: normalizeText(row.why, 320) || null,
         products,
-        skip_reason: normalizeText(row.skip_reason, 160) || null,
+        skip_reason: normalizeText(row.skip_reason || row.skipReason, 160) || null,
       })
       if (categoryRecs.length >= 10) break
     }
@@ -752,8 +769,12 @@ function parseCalibrationPayload(text) {
   if (!isPlainObject(parsed)) return null
   const patch = isPlainObject(parsed.travel_readiness_patch)
     ? parsed.travel_readiness_patch
+    : isPlainObject(parsed.travelReadinessPatch)
+      ? parsed.travelReadinessPatch
     : isPlainObject(parsed.travel_readiness)
       ? parsed.travel_readiness
+      : isPlainObject(parsed.travelReadiness)
+        ? parsed.travelReadiness
       : parsed
 
   const travelReadinessPatch = normalizeTravelReadinessPatch(patch)
@@ -846,6 +867,8 @@ async function calibrateTravelReadinessWithLlm({
       if (!parsed) {
         const parseErr = new Error('travel_llm_invalid_json')
         parseErr.code = 'TRAVEL_LLM_INVALID_JSON'
+        parseErr.raw_text_chars = String(text || '').length
+        parseErr.raw_text_excerpt = normalizeText(text, 800)
         lastErr = parseErr
         continue
       }
@@ -900,6 +923,8 @@ async function calibrateTravelReadinessWithLlm({
       ...(normalizeNumber(errorMeta.gate_wait_ms) != null ? { gate_wait_ms: normalizeNumber(errorMeta.gate_wait_ms) } : {}),
       ...(normalizeNumber(errorMeta.upstream_ms) != null ? { upstream_ms: normalizeNumber(errorMeta.upstream_ms) } : {}),
       ...(normalizeNumber(errorMeta.total_ms) != null ? { total_ms: normalizeNumber(errorMeta.total_ms) } : {}),
+      ...(normalizeNumber(lastErr && lastErr.raw_text_chars) != null ? { raw_text_chars: normalizeNumber(lastErr.raw_text_chars) } : {}),
+      ...(normalizeText(lastErr && lastErr.raw_text_excerpt, 800) ? { raw_text_excerpt: normalizeText(lastErr.raw_text_excerpt, 800) } : {}),
     },
   }
 }

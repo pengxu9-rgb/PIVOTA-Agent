@@ -1440,6 +1440,8 @@ async function runTravelPipeline(input = {}) {
           gate_wait_ms: toNumber(llmSourceMeta.gate_wait_ms),
           upstream_ms: toNumber(llmSourceMeta.upstream_ms),
           total_ms: toNumber(llmSourceMeta.total_ms),
+          raw_text_chars: toNumber(llmSourceMeta.raw_text_chars),
+          raw_text_excerpt: normalizeText(llmSourceMeta.raw_text_excerpt, 360) || null,
         },
       });
     } catch (err) {

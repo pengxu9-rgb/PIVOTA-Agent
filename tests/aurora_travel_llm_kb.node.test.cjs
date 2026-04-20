@@ -331,3 +331,33 @@ test('travel LLM calibrator: Gemini request uses bounded low-thinking JSON confi
   assert.equal(request.config.thinkingConfig.includeThoughts, false);
   assert.equal(request.config.thinkingConfig.thinkingBudget <= 192, true);
 });
+
+test('travel LLM calibrator: parser accepts common camelCase patch keys', () => {
+  const parsed = travelLlmInternal.parseCalibrationPayload(JSON.stringify({
+    travelReadinessPatch: {
+      adaptiveActions: [{ why: 'UV is higher', whatToDo: 'Use SPF50 and reapply outside.' }],
+      personalFocus: [{ focus: 'Meetings', why: 'Jet lag can show around eyes.', whatToDo: 'Use cooling eye patches on arrival night.' }],
+      jetlagSleep: { tzHome: 'America/Los_Angeles', tzDestination: 'Asia/Shanghai', hoursDiff: 15, riskLevel: 'high', sleepTips: ['Anchor meals to Shanghai time.'] },
+      categoryRecommendations: [{
+        category: 'sun_protection',
+        why: 'UV is elevated versus Seattle.',
+        products: [{ name: 'SPF50+ fluid sunscreen', ingredientLogic: 'Photostable UVA filters', usage: 'AM and every 2h outdoors' }],
+      }],
+      shoppingPreview: {
+        products: [{ name: 'SPF50+ fluid sunscreen', productSource: 'llm_only' }],
+        brandCandidates: [{ brand: 'La Roche-Posay', matchStatus: 'llm_only', reason: 'Common pharmacy sunscreen brand.' }],
+        buyingChannels: ['pharmacy'],
+        cityHint: 'Shanghai, China',
+      },
+      confidence: { level: 'medium', missingInputs: ['recent_logs'], improveBy: ['Add recent check-ins.'] },
+    },
+  }));
+
+  assert.equal(parsed.travel_readiness_patch.adaptive_actions[0].what_to_do, 'Use SPF50 and reapply outside.');
+  assert.equal(parsed.travel_readiness_patch.personal_focus[0].what_to_do, 'Use cooling eye patches on arrival night.');
+  assert.equal(parsed.travel_readiness_patch.jetlag_sleep.hours_diff, 15);
+  assert.equal(parsed.travel_readiness_patch.category_recommendations[0].products[0].ingredient_logic, 'Photostable UVA filters');
+  assert.equal(parsed.travel_readiness_patch.shopping_preview.products[0].product_source, 'llm_generated');
+  assert.equal(parsed.travel_readiness_patch.shopping_preview.brand_candidates[0].match_status, 'llm_only');
+  assert.deepEqual(parsed.travel_readiness_patch.confidence.missing_inputs, ['recent_logs']);
+});
