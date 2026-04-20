@@ -165,36 +165,39 @@ describe('PDP grouped offers', () => {
   });
 
   test('attaches Shopify store discount evidence to internal offers without polluting external seeds', async () => {
-    jest.doMock('../src/promotionStore', () => ({
-      getAllPromotions: async () => [
-        {
-          id: 'promo_shopify_bxgy',
-          merchantId: 'merch_shopify',
-          name: 'PIVOTA_TEST_BXGY',
-          type: 'MULTI_BUY_DISCOUNT',
-          status: 'ACTIVE',
-          startAt: '2025-01-01T00:00:00Z',
-          endAt: null,
-          scope: {
-            shopifyItems: {
-              __typename: 'AllDiscountItems',
-            },
-          },
-          config: {
-            source: 'shopify_discount_node',
-            shopifyDiscountNodeId: 'gid://shopify/DiscountNode/2',
-            discountMethod: 'code',
-            discountType: 'bxgy',
-            status: 'ACTIVE',
-            summary: 'Buy 3, get 1 free',
-            minimumRequirement: {
-              __typename: 'DiscountMinimumQuantity',
-              greaterThanOrEqualToQuantity: 3,
-            },
-            codes: ['PIVOTA_TEST_BXGY'],
+    const merchantPromotions = [
+      {
+        id: 'promo_shopify_bxgy',
+        merchantId: 'merch_shopify',
+        name: 'PIVOTA_TEST_BXGY',
+        type: 'MULTI_BUY_DISCOUNT',
+        status: 'ACTIVE',
+        startAt: '2025-01-01T00:00:00Z',
+        endAt: null,
+        scope: {
+          shopifyItems: {
+            __typename: 'AllDiscountItems',
           },
         },
-      ],
+        config: {
+          source: 'shopify_discount_node',
+          shopifyDiscountNodeId: 'gid://shopify/DiscountNode/2',
+          discountMethod: 'code',
+          discountType: 'bxgy',
+          status: 'ACTIVE',
+          summary: 'Buy 3, get 1 free',
+          minimumRequirement: {
+            __typename: 'DiscountMinimumQuantity',
+            greaterThanOrEqualToQuantity: 3,
+          },
+          codes: ['PIVOTA_TEST_BXGY'],
+        },
+      },
+    ];
+    jest.doMock('../src/promotionStore', () => ({
+      getAllPromotions: async () => merchantPromotions,
+      getPromotionsForMerchant: async (merchantId) =>
+        merchantId === 'merch_shopify' ? merchantPromotions : [],
       getPromotionById: jest.fn(),
       upsertPromotion: jest.fn(),
       softDeletePromotion: jest.fn(),

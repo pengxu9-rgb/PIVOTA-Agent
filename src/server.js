@@ -74,6 +74,7 @@ const {
 const { findExternalSeedProductById } = require('./services/externalSeedDetail');
 const {
   getAllPromotions,
+  getPromotionsForMerchant,
   getPromotionById,
   upsertPromotion,
   softDeletePromotion,
@@ -3686,6 +3687,8 @@ async function resolveStoreDiscountEvidenceForOfferEntries(entries) {
     .map((entry) => buildStoreDiscountTargetForOfferEntry(entry))
     .filter(Boolean);
   diagnostics.target_count = targets.length;
+  const merchantIds = Array.from(new Set(targets.map((target) => target.merchant_id).filter(Boolean)));
+  diagnostics.merchant_count = merchantIds.length;
   if (!targets.length) {
     diagnostics.reason = 'no_internal_targets';
     diagnostics.duration_ms = Date.now() - startedAt;
@@ -3693,7 +3696,16 @@ async function resolveStoreDiscountEvidenceForOfferEntries(entries) {
   }
 
   try {
-    const promotionsPromise = getAllPromotions();
+    const promotionsPromise = Promise.all(
+      merchantIds.map((merchantId) =>
+        getPromotionsForMerchant(merchantId).then((promotions) =>
+          (Array.isArray(promotions) ? promotions : []).map((promotion) => ({
+            ...promotion,
+            merchantId: promotion?.merchantId || merchantId,
+          })),
+        ),
+      ),
+    ).then((groups) => groups.flat());
     promotionsPromise.catch(() => {});
     const timeoutPromise = new Promise((resolve) => {
       if (PDP_STORE_DISCOUNT_EVIDENCE_BUDGET_MS <= 0) return;

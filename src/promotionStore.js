@@ -41,6 +41,8 @@ if (process.env.NODE_ENV === 'production') {
 let lastKnownPromotions = [];
 let lastKnownPromotionsFetchedAtMs = 0;
 let remotePromotionsRefreshPromise = null;
+const lastKnownPromotionsByMerchant = new Map();
+const remotePromotionsRefreshByMerchant = new Map();
 const PROMO_REMOTE_CACHE_TTL_MS = Math.max(
   1000,
   Number(process.env.PROMO_REMOTE_CACHE_TTL_MS ?? 30_000) || 30_000
@@ -60,6 +62,27 @@ function hasRemotePromotionsCacheSnapshot() {
 function isRemotePromotionsCacheFresh() {
   if (!hasRemotePromotionsCacheSnapshot()) return false;
   return Date.now() - lastKnownPromotionsFetchedAtMs < PROMO_REMOTE_CACHE_TTL_MS;
+}
+
+function setLastKnownMerchantPromotions(merchantId, promos) {
+  const mid = String(merchantId || '').trim();
+  if (!mid) return;
+  lastKnownPromotionsByMerchant.set(mid, {
+    promotions: Array.isArray(promos) ? promos : [],
+    fetchedAtMs: Date.now(),
+  });
+}
+
+function getLastKnownMerchantPromotionsSnapshot(merchantId) {
+  const mid = String(merchantId || '').trim();
+  if (!mid) return null;
+  return lastKnownPromotionsByMerchant.get(mid) || null;
+}
+
+function isMerchantPromotionsCacheFresh(merchantId) {
+  const snapshot = getLastKnownMerchantPromotionsSnapshot(merchantId);
+  if (!snapshot) return false;
+  return Date.now() - snapshot.fetchedAtMs < PROMO_REMOTE_CACHE_TTL_MS;
 }
 
 // Note: Each promotion belongs to exactly one merchant (merchantId at root).
@@ -242,6 +265,51 @@ async function getAllPromotions() {
   return remotePromotionsRefreshPromise;
 }
 
+async function getPromotionsForMerchant(merchantId) {
+  const mid = String(merchantId || '').trim();
+  if (!mid) return [];
+
+  if (!USE_REMOTE_PROMO) {
+    const promos = loadPromotionsLocal().filter((promo) => String(promo?.merchantId || '').trim() === mid);
+    setLastKnownMerchantPromotions(mid, promos);
+    return promos;
+  }
+
+  const snapshot = getLastKnownMerchantPromotionsSnapshot(mid);
+  if (isMerchantPromotionsCacheFresh(mid)) {
+    return snapshot.promotions;
+  }
+
+  if (!remotePromotionsRefreshByMerchant.has(mid)) {
+    const refresh = (async () => {
+      try {
+        const path =
+          `/agent/internal/promotions?merchantId=${encodeURIComponent(mid)}&limit=200`;
+        const data = await fetchRemote(path, 'GET');
+        const promos = (data.promotions || []).map(normalizePromotionRecord);
+        setLastKnownMerchantPromotions(mid, promos);
+        return promos;
+      } catch (err) {
+        console.error(
+          '[promotionStore] Failed to fetch remote merchant promotions, falling back to cache:',
+          mid,
+          err.message
+        );
+        return snapshot ? snapshot.promotions : [];
+      } finally {
+        remotePromotionsRefreshByMerchant.delete(mid);
+      }
+    })();
+    remotePromotionsRefreshByMerchant.set(mid, refresh);
+  }
+
+  const refreshPromise = remotePromotionsRefreshByMerchant.get(mid);
+  if (PROMO_REMOTE_STALE_WHILE_REVALIDATE && snapshot) {
+    return snapshot.promotions;
+  }
+  return refreshPromise;
+}
+
 async function getPromotionById(id) {
   if (!USE_REMOTE_PROMO) {
     return loadPromotionsLocal().find((p) => p.id === id && !p.deletedAt);
@@ -366,6 +434,7 @@ function normalizePromotionRecord(promo) {
 
 module.exports = {
   getAllPromotions,
+  getPromotionsForMerchant,
   getPromotionById,
   upsertPromotion,
   softDeletePromotion,

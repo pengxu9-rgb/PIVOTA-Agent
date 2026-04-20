@@ -59,6 +59,40 @@ describe('promotionStore remote cache', () => {
     jest.useRealTimers();
   });
 
+  test('fetches and caches merchant-scoped remote promotions', async () => {
+    const axiosMock = jest.fn().mockResolvedValue({
+      data: {
+        promotions: [
+          {
+            id: 'promo_shopify_scope',
+            merchantId: 'merch_shopify',
+            scope: {
+              shopifyItems: {
+                __typename: 'AllDiscountItems',
+              },
+            },
+            config: {
+              source: 'shopify_discount_node',
+            },
+          },
+        ],
+      },
+    });
+    jest.doMock('axios', () => axiosMock);
+
+    const { getPromotionsForMerchant } = require('../src/promotionStore');
+
+    const first = await getPromotionsForMerchant('merch_shopify');
+    const second = await getPromotionsForMerchant('merch_shopify');
+
+    expect(first).toHaveLength(1);
+    expect(second).toHaveLength(1);
+    expect(axiosMock).toHaveBeenCalledTimes(1);
+    expect(axiosMock.mock.calls[0][0].url).toBe(
+      'https://promo-backend.test/agent/internal/promotions?merchantId=merch_shopify&limit=200',
+    );
+  });
+
   test('preserves Shopify discount scope metadata while stripping legacy merchant scope', () => {
     const { normalizePromotionRecord } = require('../src/promotionStore');
 
