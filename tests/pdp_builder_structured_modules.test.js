@@ -450,4 +450,54 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
       ]),
     );
   });
+
+  test('preserves savings presentation evidence on PDP product and variants', () => {
+    const paymentOfferEvidence = {
+      pricing_confidence: 'display_estimate',
+      offers: [
+        {
+          payment_offer_id: 'PIVOTA_TEST_CARD3',
+          display: { badge: '3% card benefit' },
+          application_policy: {
+            affects_shopify_discount: false,
+            affects_psp_amount_v1: false,
+          },
+        },
+      ],
+      decisions: [],
+    };
+    const storeDiscountEvidence = {
+      offers: [{ discount_id: 'PIVOTA_TEST_AMOUNT10', status: 'available' }],
+    };
+
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'shopify_product_1',
+        merchant_id: 'merch_test',
+        title: 'Savings Serum',
+        image_url: 'https://example.com/serum.png',
+        price: { amount: 10, currency: 'USD' },
+        payment_offer_evidence: paymentOfferEvidence,
+        payment_offer_badges: ['3% card benefit'],
+        store_discount_evidence: storeDiscountEvidence,
+        variants: [
+          {
+            id: 'variant_1',
+            title: 'Default',
+            price: { amount: 10, currency: 'USD' },
+            payment_offer_evidence: paymentOfferEvidence,
+            payment_offer_badges: ['3% card benefit'],
+          },
+        ],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    expect(payload.product.payment_offer_evidence).toEqual(paymentOfferEvidence);
+    expect(payload.product.payment_offer_badges).toEqual(['3% card benefit']);
+    expect(payload.product.store_discount_evidence).toEqual(storeDiscountEvidence);
+    expect(payload.product.variants[0].payment_offer_evidence).toEqual(paymentOfferEvidence);
+    expect(payload.product.variants[0].payment_offer_badges).toEqual(['3% card benefit']);
+  });
 });

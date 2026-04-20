@@ -61,6 +61,28 @@ function normalizeInStock(value) {
   return undefined;
 }
 
+const SAVINGS_PRESENTATION_FIELDS = [
+  'payment_offer_evidence',
+  'payment_offer_summary',
+  'payment_offer_badges',
+  'payment_pricing',
+  'store_discount_evidence',
+  'store_discount_summary',
+  'store_discount_badges',
+  'discount_evidence',
+  'promotion_lines',
+];
+
+function pickSavingsPresentationFields(source) {
+  if (!source || typeof source !== 'object') return {};
+  return SAVINGS_PRESENTATION_FIELDS.reduce((out, field) => {
+    if (Object.prototype.hasOwnProperty.call(source, field) && source[field] !== undefined) {
+      out[field] = source[field];
+    }
+    return out;
+  }, {});
+}
+
 function resolveProductBrandLabel(product) {
   if (!product || typeof product !== 'object') return null;
   const brandObject =
@@ -801,6 +823,7 @@ function buildVariants(product) {
         price: { current: { amount: normalizeAmount(product.price), currency } },
         availability,
         image_url: normalizePdpImageUrl(product.image_url) || undefined,
+        ...pickSavingsPresentationFields(product),
       },
     ];
   }
@@ -884,6 +907,7 @@ function buildVariants(product) {
       image_url: variantImages[0],
       images: variantImages,
       image_urls: variantImages,
+      ...pickSavingsPresentationFields(v),
     };
   });
 }
@@ -2662,6 +2686,7 @@ function buildPdpPayload(args) {
       availability: productAvailability,
       shipping: product.shipping || undefined,
       returns: product.returns || undefined,
+      ...pickSavingsPresentationFields(product),
       description: descriptionText || '',
       ...(brandStoryText ? { brand_story: brandStoryText } : {}),
       ...(product.size_guide || product.sizeGuide

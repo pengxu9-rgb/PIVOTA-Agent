@@ -305,7 +305,14 @@ describe('invoke external key auth', () => {
       });
 
     const backend = nock('https://backend.test')
-      .get('/agent/v1/products/external_seed/ext_test_product')
+      .post('/agent/shop/v1/invoke', (body) => {
+        return (
+          body &&
+          body.operation === 'get_product_detail' &&
+          body.payload?.product?.merchant_id === 'external_seed' &&
+          body.payload?.product?.product_id === 'ext_test_product'
+        );
+      })
       .matchHeader('X-API-Key', `ak_live_${'1'.repeat(64)}`)
       .reply(200, {
         product: {

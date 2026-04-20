@@ -2494,6 +2494,8 @@ const PRODUCT_DETAIL_STALE_MAX_AGE_HOURS = parsePositiveInt(
   30 * 24,
   { min: 1, max: 24 * 90 },
 );
+const PRODUCT_DETAIL_AUTHORITATIVE_INVOKE_ENABLED =
+  String(process.env.PRODUCT_DETAIL_AUTHORITATIVE_INVOKE_ENABLED || 'true').toLowerCase() !== 'false';
 
 function getProductDetailCacheEntry(cacheKey) {
   const key = String(cacheKey || '');
@@ -3064,6 +3066,121 @@ function getProductDetailSource(product) {
   return source || null;
 }
 
+const SAVINGS_PRESENTATION_FIELDS = [
+  'payment_offer_evidence',
+  'payment_offer_summary',
+  'payment_offer_badges',
+  'payment_pricing',
+  'store_discount_evidence',
+  'store_discount_summary',
+  'store_discount_badges',
+  'discount_evidence',
+  'promotion_lines',
+];
+
+function pickSavingsPresentationFields(source) {
+  if (!source || typeof source !== 'object') return {};
+  return SAVINGS_PRESENTATION_FIELDS.reduce((out, field) => {
+    if (Object.prototype.hasOwnProperty.call(source, field) && source[field] !== undefined) {
+      out[field] = source[field];
+    }
+    return out;
+  }, {});
+}
+
+function hasSavingsPresentationFields(source) {
+  return Object.keys(pickSavingsPresentationFields(source)).length > 0;
+}
+
+function getVariantEvidenceKeys(variant) {
+  if (!variant || typeof variant !== 'object') return [];
+  return [
+    variant.variant_id,
+    variant.variantId,
+    variant.id,
+    variant.sku_id,
+    variant.skuId,
+    variant.sku,
+    variant.admin_graphql_api_id,
+    variant.adminGraphqlApiId,
+  ]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean);
+}
+
+function mergeSavingsPresentationFields(target, source) {
+  if (!target || typeof target !== 'object' || !source || typeof source !== 'object') {
+    return target;
+  }
+  const merged = {
+    ...target,
+    ...pickSavingsPresentationFields(source),
+  };
+  const sourceVariants = Array.isArray(source.variants) ? source.variants : [];
+  const targetVariants = Array.isArray(target.variants) ? target.variants : [];
+  if (!targetVariants.length || !sourceVariants.length) return merged;
+
+  const sourceByKey = new Map();
+  sourceVariants.forEach((variant) => {
+    if (!variant || typeof variant !== 'object') return;
+    getVariantEvidenceKeys(variant).forEach((key) => {
+      if (!sourceByKey.has(key)) sourceByKey.set(key, variant);
+    });
+  });
+  if (!sourceByKey.size) return merged;
+
+  merged.variants = targetVariants.map((variant) => {
+    if (!variant || typeof variant !== 'object') return variant;
+    const match = getVariantEvidenceKeys(variant)
+      .map((key) => sourceByKey.get(key))
+      .find(Boolean);
+    if (!match || !hasSavingsPresentationFields(match)) return variant;
+    return {
+      ...variant,
+      ...pickSavingsPresentationFields(match),
+    };
+  });
+  return merged;
+}
+
+async function hydrateSavingsPresentationFromUpstream({
+  product,
+  canonicalProductRef,
+  checkoutToken,
+} = {}) {
+  if (!product || typeof product !== 'object') return product;
+  if (hasSavingsPresentationFields(product)) return product;
+  const merchantId = String(
+    canonicalProductRef?.merchant_id || product.merchant_id || product.merchantId || '',
+  ).trim();
+  const productId = String(
+    canonicalProductRef?.product_id || product.product_id || product.productId || product.id || '',
+  ).trim();
+  if (!merchantId || !productId || merchantId === EXTERNAL_SEED_MERCHANT_ID) return product;
+
+  try {
+    const upstreamProduct = await fetchProductDetailFromUpstream({
+      merchantId,
+      productId,
+      checkoutToken,
+      noRetry: true,
+    });
+    if (!upstreamProduct || typeof upstreamProduct !== 'object') return product;
+    if (!hasSavingsPresentationFields(upstreamProduct)) return product;
+    return mergeSavingsPresentationFields(product, upstreamProduct);
+  } catch (err) {
+    logger.warn(
+      {
+        err: err?.message || String(err),
+        merchant_id: merchantId,
+        product_id: productId,
+      },
+      'Failed to hydrate PDP savings presentation evidence',
+    );
+    return product;
+  }
+}
+
 async function fetchProductDetailForOffers(args) {
   const merchantId = String(args?.merchantId || '').trim();
   const productId = String(args?.productId || '').trim();
@@ -3186,7 +3303,7 @@ async function fetchProductDetailForOffers(args) {
     let upstreamProduct = null;
     let upstreamError = null;
     try {
-      upstreamProduct = await fetchLegacyProductDetailFromUpstream({
+      upstreamProduct = await fetchProductDetailFromUpstream({
         merchantId,
         productId,
         checkoutToken,
@@ -10465,12 +10582,11 @@ const ROUTE_MAP = {
     paramType: 'query'
   },
   get_product_detail: {
-    method: 'GET',
-    // Use the agent-facing product detail endpoint (legacy but stable).
-    // The newer `/agent/v1/products/merchants/{merchant_id}/product/{product_id}` shape
-    // can differ by identifier type and has shown PRODUCT_NOT_FOUND for ids returned by search.
-    path: '/agent/v1/products/{merchant_id}/{product_id}',
-    paramType: 'path',
+    // Product detail must use the Python shopping gateway so display evidence
+    // such as payment_offer_evidence/store_discount_evidence is preserved.
+    method: 'POST',
+    path: '/agent/shop/v1/invoke',
+    paramType: 'body',
   },
   preview_quote: {
     method: 'POST',
@@ -21116,16 +21232,27 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       const pdpSchemaProfile = resolvePdpSchemaProfile(canonicalProductForPdp);
       const allowsBeautyFormulaModules = isBeautyFormulaPdpProfile(pdpSchemaProfile);
 
-      if (allowsBeautyFormulaModules && (wantsActiveIngredients || wantsIngredientsInci || wantsProductIntel)) {
-        const reviewedIngredientAuthorityStartedAt = Date.now();
-        canonicalProductForPdp = await hydrateProductWithReviewedIngredientAuthority({
-          product: canonicalProductForPdp,
-          canonicalProductRef,
-        }).catch(() => canonicalProductForPdp);
-        markPdpV2Phase('reviewed_ingredient_authority', reviewedIngredientAuthorityStartedAt);
-      }
+	      if (allowsBeautyFormulaModules && (wantsActiveIngredients || wantsIngredientsInci || wantsProductIntel)) {
+	        const reviewedIngredientAuthorityStartedAt = Date.now();
+	        canonicalProductForPdp = await hydrateProductWithReviewedIngredientAuthority({
+	          product: canonicalProductForPdp,
+	          canonicalProductRef,
+	        }).catch(() => canonicalProductForPdp);
+	        markPdpV2Phase('reviewed_ingredient_authority', reviewedIngredientAuthorityStartedAt);
+	      }
 
-	      let relatedProducts = [];
+	      const savingsPresentationHydrationStartedAt = Date.now();
+	      canonicalProductForPdp = await hydrateSavingsPresentationFromUpstream({
+	        product: canonicalProductForPdp,
+	        canonicalProductRef,
+	        checkoutToken,
+	      });
+	      markPdpV2Phase(
+	        'savings_presentation_hydration',
+	        savingsPresentationHydrationStartedAt,
+	      );
+	
+		      let relatedProducts = [];
 	      let relatedProductsEnvelope = null;
 	      if (relatedProductsResult.status === 'fulfilled') {
 	        if (Array.isArray(relatedProductsResult.value)) {
@@ -22600,6 +22727,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     let productDetailDebug = false;
     let productDetailBypassCache = false;
     let productDetailCacheMeta = null;
+    let productDetailAuthoritativeInvoke = false;
     // Creator UI cold-start (empty query) should not be constrained by the
     // upstream live merchant recall limits. Prefer reading sellable products
     // from products_cache (same source as creator categories / merchant portal).
@@ -24766,6 +24894,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           String(options.cache_bypass || options.bypass_cache || '')
             .trim()
             .toLowerCase() === 'true';
+        productDetailAuthoritativeInvoke = PRODUCT_DETAIL_AUTHORITATIVE_INVOKE_ENABLED;
         if (!merchantId || !productId) {
           return res.status(400).json({
             error: 'MISSING_PARAMETERS',
@@ -24776,10 +24905,32 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           merchantId,
           productId,
           hasCheckoutToken: Boolean(checkoutToken),
+          contract: productDetailAuthoritativeInvoke ? 'shop_invoke_detail_v2' : 'legacy_detail',
         });
-        url = url
-          .replace('{merchant_id}', encodeURIComponent(merchantId))
-          .replace('{product_id}', encodeURIComponent(productId));
+        if (productDetailAuthoritativeInvoke) {
+          url = `${PIVOTA_API_BASE}/agent/shop/v1/invoke`;
+          upstreamMethod = 'POST';
+          requestBody = {
+            operation: 'get_product_detail',
+            payload: {
+              product: {
+                merchant_id: merchantId,
+                product_id: productId,
+                ...(payload.product?.sku_id || payload.product?.skuId
+                  ? { sku_id: payload.product.sku_id || payload.product.skuId }
+                  : {}),
+              },
+              ...(Array.isArray(payload.include) ? { include: payload.include } : {}),
+              ...(payload.view ? { view: payload.view } : {}),
+              ...(payload.options && typeof payload.options === 'object' ? { options: payload.options } : {}),
+            },
+            metadata,
+          };
+        } else {
+          url = `${PIVOTA_API_BASE}/agent/v1/products/${encodeURIComponent(
+            merchantId,
+          )}/${encodeURIComponent(productId)}`;
+        }
         break;
       }
 
@@ -25485,7 +25636,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             age_ms: ageMs,
             ttl_ms: PRODUCT_DETAIL_CACHE_TTL_MS,
           };
-        } else if (process.env.DATABASE_URL) {
+        } else if (!productDetailAuthoritativeInvoke && process.env.DATABASE_URL) {
           const fromDb = await fetchProductDetailFromProductsCache({
             merchantId: productDetailMerchantId,
             productId: productDetailProductId,
