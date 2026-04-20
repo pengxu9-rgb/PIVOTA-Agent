@@ -216,7 +216,10 @@ function compactTravelActionContextForFinalRewrite(travelReadiness) {
         timing: normalizeText(row.timing, 120) || null,
         why: normalizeText(row.why, 180) || null,
         actions: Array.isArray(row.actions)
-          ? row.actions.map((line) => normalizePromptSentence(line, 190)).filter(Boolean).slice(0, actionLimit)
+          ? row.actions
+              .map((line) => normalizePromptSentence(line, normalizeText(row.id, 80) === 'local_shopping' ? 300 : 190))
+              .filter(Boolean)
+              .slice(0, actionLimit)
           : [],
         product_role_ids: Array.isArray(row.product_role_ids || row.productRoleIds)
           ? (row.product_role_ids || row.productRoleIds).map((line) => normalizeText(line, 80)).filter(Boolean).slice(0, 5)

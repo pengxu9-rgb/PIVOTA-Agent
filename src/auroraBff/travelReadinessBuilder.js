@@ -620,7 +620,7 @@ function buildTravelProductUseReasons({ language, roleId, category, name, usageS
   if (/recovery_mask/.test(role) || (/mask|recovery|soothing|修护|舒缓|面膜/.test(haystack) && !/serum|essence|ampoule|精华|安瓶/.test(role))) {
     return localShoppingOnly
       ? [
-          t(language, '如果落地后需要补买，可作为飞行后或高 UV 户外日后的可选夜间恢复；已耐受再用。', 'If you need to buy it after arrival, use it only as optional night recovery after the flight or high-UV outdoor days if already tolerated.'),
+          t(language, '如果落地后需要补买，仅在已耐受时作为飞行后或高 UV 日后的可选夜间恢复。', 'If bought after arrival, use it only as optional night recovery after flight or high-UV days if already tolerated.'),
           t(language, '不作为每日必需步骤，也不要在旅行中突然新增刺激。', 'Do not treat it as a daily required step or a new experiment while traveling.'),
         ]
       : [
@@ -1273,16 +1273,17 @@ function buildLocalShoppingProductActions(products, language, max = 4) {
   for (const roleId of roleOrder) {
     const rows = grouped.get(roleId) || [];
     if (!rows.length) continue;
-    const productPhrases = rows.slice(0, roleId === 'sun_protection' || roleId === 'body_lip_hand' ? 2 : 1).map((product) => {
+    const productsForRole = rows.slice(0, roleId === 'sun_protection' || roleId === 'body_lip_hand' ? 2 : 1);
+    for (const product of productsForRole) {
       const name = formatTravelProductName(product);
       const reason = firstTravelProductReason(product);
-      return reason ? `${name}: ${reason}` : name;
-    }).filter(Boolean);
-    if (!productPhrases.length) continue;
-    actions.push(`${roleLabelForTravelShopping(roleId, language)}: ${productPhrases.join('; ')}`);
+      if (!name) continue;
+      actions.push(`${roleLabelForTravelShopping(roleId, language)}: ${reason ? `${name}: ${reason}` : name}`);
+      if (actions.length >= max) break;
+    }
     if (actions.length >= max) break;
   }
-  return uniqTravelPhaseActions(actions, max, 260);
+  return uniqTravelPhaseActions(actions, max, 320);
 }
 
 function buildPhaseActionsFromRecoBundle(recoBundle, roleIds, max = 2) {
@@ -1406,7 +1407,7 @@ function buildTravelPhasePlan({
         : t(lang, '当前没有命中具体本地商品，只保留品类准备方向，后续通过 catalog backfill 补库。', 'No specific local product is grounded yet; keep this as category direction until catalog backfill adds authority rows.'),
       defaults: groundedProducts.length
         ? [
-            ...buildLocalShoppingProductActions(groundedProducts, lang, 6),
+            ...buildLocalShoppingProductActions(groundedProducts, lang, 5),
             t(lang, '只按真实缺口购买；不要把已经带好的产品重复补货。', 'Buy only against real gaps; do not duplicate products you already packed.'),
           ]
         : [
