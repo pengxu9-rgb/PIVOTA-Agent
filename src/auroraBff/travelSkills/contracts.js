@@ -527,10 +527,17 @@ function ensureTravelPhasePlan(travelReadiness, language) {
   if (typeof _buildTravelPhasePlan !== 'function') return readiness;
 
   const shoppingPreview = isPlainObject(readiness.shopping_preview) ? readiness.shopping_preview : {};
+  const previewProducts = Array.isArray(shoppingPreview.products)
+    ? shoppingPreview.products.map((product) => (
+        isPlainObject(product) && !normalizeText(product.travel_usage_scope || product.travelUsageScope, 80)
+          ? { ...product, travel_usage_scope: 'local_shopping' }
+          : product
+      ))
+    : [];
   const phasePlan = _buildTravelPhasePlan({
     language,
     recoBundle: Array.isArray(readiness.reco_bundle) ? readiness.reco_bundle : [],
-    previewProducts: Array.isArray(shoppingPreview.products) ? shoppingPreview.products : [],
+    previewProducts,
     deltaVsHome: isPlainObject(readiness.delta_vs_home)
       ? readiness.delta_vs_home
       : isPlainObject(readiness.delta_vs_origin)
@@ -1522,6 +1529,7 @@ async function runTravelPipeline(input = {}) {
           travelAlerts: Array.isArray(alertsPayload && alertsPayload.alerts) ? alertsPayload.alerts : [],
           epiPayload,
           recommendationCandidates: authorityCandidates,
+          recommendationCandidateScope: 'local_shopping',
           nowMs,
         });
         travelReadiness = mergeKbPrefillIntoReadiness(travelReadiness, kbEntry);

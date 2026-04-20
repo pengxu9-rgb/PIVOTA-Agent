@@ -802,9 +802,16 @@ test('travel skills pipeline: Seoul local shopping wording reaches KR authority 
       assert.equal(out.travel_readiness?.shopping_preview?.coverage_status, 'grounded');
       assert.equal(out.travel_readiness?.shopping_preview?.products?.[0]?.currency, 'KRW');
       assert.equal(out.travel_readiness?.shopping_preview?.products?.[0]?.name, 'Round Lab Birch Juice Moisturizing Sunscreen');
+      assert.equal(out.travel_readiness?.shopping_preview?.products?.[0]?.travel_usage_scope, 'local_shopping');
       const phasePlan = Array.isArray(out.travel_readiness?.phase_plan) ? out.travel_readiness.phase_plan : [];
       assert.equal(phasePlan.find((phase) => phase.id === 'local_shopping')?.coverage_status, 'grounded');
       assert.ok(phasePlan.find((phase) => phase.id === 'local_shopping')?.product_ids?.includes('ext_kr_spf_1'));
+      assert.equal(
+        phasePlan
+          .filter((phase) => phase.id !== 'local_shopping')
+          .some((phase) => (phase.product_ids || []).includes('ext_kr_spf_1')),
+        false,
+      );
     },
   );
 });
@@ -949,6 +956,12 @@ test('travel skills pipeline: phase plan is restored when upstream readiness omi
           const localShopping = phasePlan.find((phase) => phase.id === 'local_shopping');
           assert.equal(localShopping?.coverage_status, 'grounded');
           assert.ok(localShopping.product_ids.includes('ext_jp_spf_1'));
+          assert.equal(
+            phasePlan
+              .filter((phase) => phase.id !== 'local_shopping')
+              .some((phase) => (phase.product_ids || []).includes('ext_jp_spf_1')),
+            false,
+          );
         },
       );
     },
