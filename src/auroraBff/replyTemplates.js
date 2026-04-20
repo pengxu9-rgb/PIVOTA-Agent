@@ -563,6 +563,20 @@ function dedupeLeadingPrefix(text) {
   return out;
 }
 
+function clipAssistantContentAtBoundary(content, maxLen) {
+  const raw = safeString(content).trim();
+  const limit = Number.isFinite(Number(maxLen)) ? Math.max(80, Math.trunc(Number(maxLen))) : 0;
+  if (!limit || raw.length <= limit) return raw;
+  const head = raw.slice(0, limit);
+  const lineBoundary = Math.max(head.lastIndexOf('\n- '), head.lastIndexOf('\n\n'), head.lastIndexOf('\n'));
+  const wordBoundary = head.lastIndexOf(' ');
+  if (lineBoundary > Math.floor(limit * 0.75)) {
+    return `${head.slice(0, lineBoundary).trim()}\n…`;
+  }
+  const boundary = wordBoundary > Math.floor(limit * 0.8) ? wordBoundary : limit;
+  return `${head.slice(0, boundary).replace(/[,\s.。；;:：-]+$/g, '').trim()}…`;
+}
+
 function hasUnsafeClaim(text) {
   const raw = safeString(text).toLowerCase();
   return (
@@ -615,7 +629,7 @@ function enforceMessageLimits(message, { allowMarkdown, richTravelReply = false 
   }
 
   const maxBullets = richTravelReply ? 40 : 6;
-  const maxMarkdownLen = richTravelReply ? 3200 : 520;
+  const maxMarkdownLen = richTravelReply ? 4800 : 520;
   const maxTextLen = richTravelReply ? 2400 : 280;
 
   if (format === 'markdown') {
@@ -631,9 +645,9 @@ function enforceMessageLimits(message, { allowMarkdown, richTravelReply = false 
       kept.push(line);
     }
     content = kept.join('\n').trim();
-    if (content.length > maxMarkdownLen) content = `${content.slice(0, maxMarkdownLen - 1).trim()}…`;
+    if (content.length > maxMarkdownLen) content = clipAssistantContentAtBoundary(content, maxMarkdownLen);
   } else {
-    if (content.length > maxTextLen) content = `${content.slice(0, maxTextLen - 1).trim()}…`;
+    if (content.length > maxTextLen) content = clipAssistantContentAtBoundary(content, maxTextLen);
   }
 
   return { role: 'assistant', format, content };

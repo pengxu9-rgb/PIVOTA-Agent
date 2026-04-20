@@ -106,10 +106,10 @@ test('replyTemplates: rich travel reply is preserved under env template and not 
   assert.ok(bulletCount(content) > 6);
   assert.ok(bulletCount(content) <= 40);
   assert.ok(content.length > 520);
-  assert.ok(content.length <= 3200);
+  assert.ok(content.length <= 4800);
 });
 
-test('replyTemplates: rich travel reply uses expanded 3200-char and 40-bullet limits', () => {
+test('replyTemplates: rich travel reply uses expanded 4800-char and 40-bullet limits', () => {
   const richLongText = [
     'Home region: SF -> Destination: Tokyo',
     'Daily forecast:',
@@ -130,8 +130,9 @@ test('replyTemplates: rich travel reply uses expanded 3200-char and 40-bullet li
   const content = String(out?.assistant_message?.content || '');
 
   assert.ok(bulletCount(content) <= 40);
-  assert.ok(content.length <= 3200);
+  assert.ok(content.length <= 4800);
   assert.match(content, /Daily forecast:/i);
+  assert.equal(/Checklist \d+:[^\n]*…$/.test(content), false);
 });
 
 test('replyTemplates: recommendations enforce RECO_RESULTS with actionable next-step chips', () => {

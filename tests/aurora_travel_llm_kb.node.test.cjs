@@ -327,9 +327,40 @@ test('travel LLM calibrator: Gemini request uses bounded low-thinking JSON confi
 
   assert.equal(request.model, 'gemini-3-flash-preview');
   assert.equal(request.config.responseMimeType, 'application/json');
-  assert.equal(request.config.maxOutputTokens <= 1500, true);
+  assert.equal(request.config.maxOutputTokens <= 1800, true);
+  assert.equal(request.config.responseSchema?.type, 'OBJECT');
+  assert.equal(request.config.responseSchema?.required?.includes('travel_readiness_patch'), true);
+  assert.equal(request.config.responseSchema?.properties?.travel_readiness_patch?.type, 'OBJECT');
   assert.equal(request.config.thinkingConfig.includeThoughts, false);
-  assert.equal(request.config.thinkingConfig.thinkingBudget <= 192, true);
+  assert.equal(request.config.thinkingConfig.thinkingBudget <= 96, true);
+});
+
+test('travel LLM calibrator: parse failures retain Gemini finish and token telemetry', async () => {
+  const mockGemini = async () => ({
+    text: '{"travel_readiness_patch":{"adaptive_actions":[{"why":"UV is higher","what_to_do":"Use SPF50"',
+    candidates: [{ finishReason: 'MAX_TOKENS', finishMessage: 'Output truncated.' }],
+    usageMetadata: {
+      promptTokenCount: 1200,
+      candidatesTokenCount: 1800,
+      totalTokenCount: 3000,
+    },
+  });
+
+  const result = await calibrateTravelReadinessWithLlm({
+    geminiGenerateContent: mockGemini,
+    language: 'EN',
+    travelLlmInput: { destination: 'Shanghai', month_bucket: 4 },
+    baseTravelReadiness: buildCompleteTravelReadiness(),
+    timeoutMs: 500,
+    maxRetries: 0,
+  });
+
+  assert.equal(result.used, false);
+  assert.equal(result.outcome, 'error');
+  assert.equal(result.source_meta.error_code, 'TRAVEL_LLM_INVALID_JSON');
+  assert.equal(result.source_meta.finish_reason, 'MAX_TOKENS');
+  assert.equal(result.source_meta.candidates_token_count, 1800);
+  assert.equal(result.source_meta.raw_text_chars > 0, true);
 });
 
 test('travel LLM calibrator: parser accepts common camelCase patch keys', () => {
