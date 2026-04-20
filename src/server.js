@@ -3211,11 +3211,82 @@ function buildPrefetchedOfferProductMap(products) {
   const out = new Map();
   (Array.isArray(products) ? products : []).forEach((product) => {
     if (!product || typeof product !== 'object') return;
+    const projected = buildOfferProductProjection(product);
     collectOfferProductRefKeys(product).forEach((key) => {
-      if (!out.has(key)) out.set(key, product);
+      if (!out.has(key)) out.set(key, projected);
     });
   });
   return out;
+}
+
+function buildOfferProductProjection(product) {
+  if (!product || typeof product !== 'object') return product;
+  const selectedRef =
+    product.selected_commerce_ref ||
+    product.selectedCommerceRef ||
+    product.commerce_ref ||
+    product.commerceRef ||
+    product.product_ref ||
+    product.productRef ||
+    {};
+  const merchantId = String(
+    selectedRef?.merchant_id ||
+      selectedRef?.merchantId ||
+      product.merchant_id ||
+      product.merchantId ||
+      '',
+  ).trim();
+  const productId = String(
+    selectedRef?.product_id ||
+      selectedRef?.productId ||
+      selectedRef?.id ||
+      product.product_id ||
+      product.productId ||
+      product.id ||
+      '',
+  ).trim();
+  return attachProductDetailSource(
+    normalizeProductDetailPrice({
+      merchant_id: merchantId || product.merchant_id || product.merchantId,
+      product_id: productId || product.product_id || product.productId || product.id,
+      id: productId || product.id || product.product_id || product.productId,
+      merchant_name: product.merchant_name || product.merchantName,
+      store_name: product.store_name || product.storeName,
+      seller_name: product.seller_name || product.sellerName,
+      seller_of_record: product.seller_of_record || product.sellerOfRecord,
+      vendor: product.vendor,
+      brand: product.brand,
+      price: product.price,
+      currency: product.currency,
+      shipping: product.shipping,
+      shipping_cost: product.shipping_cost,
+      returns: product.returns,
+      in_stock: product.in_stock,
+      fulfillment_type: product.fulfillment_type,
+      variants: Array.isArray(product.variants)
+        ? product.variants.map((variant) => ({
+            id: variant?.id,
+            variant_id: variant?.variant_id || variant?.variantId || variant?.id,
+            sku: variant?.sku,
+            sku_id: variant?.sku_id || variant?.skuId || variant?.sku,
+            title: variant?.title || variant?.name,
+            options: variant?.options || variant?.selected_options || variant?.selectedOptions,
+            price: variant?.price,
+            price_amount: variant?.price_amount || variant?.priceAmount,
+            currency: variant?.currency,
+            in_stock: variant?.in_stock,
+            available: variant?.available,
+            available_quantity: variant?.available_quantity,
+            inventory_quantity: variant?.inventory_quantity,
+            image_url: variant?.image_url || variant?.imageUrl,
+            ...pickSavingsPresentationFields(variant),
+          }))
+        : undefined,
+      ...pickSavingsPresentationFields(product),
+      ...buildOfferPurchaseMetadataFromProduct(product),
+    }),
+    getProductDetailSource(product) || 'pdp_prefetched',
+  );
 }
 
 function getVariantEvidenceKeys(variant) {
@@ -3966,6 +4037,12 @@ async function buildOffersFromGroupMembers(args) {
     : new Map();
 
   const fetched = [];
+  const buildSourceStats = {
+    identity_payload: 0,
+    prefetched: 0,
+    fetched: 0,
+    hydrated: 0,
+  };
   const chunkSize = 4;
   for (let i = 0; i < members.length; i += chunkSize) {
     const chunk = members.slice(i, i + chunkSize);
@@ -3976,6 +4053,8 @@ async function buildOffersFromGroupMembers(args) {
         const prefetchedProduct =
           prefetchedProductByKey.get(`${m.merchant_id}:${m.product_id}`) || null;
         const usedPrefetchedProduct = Boolean(prefetchedProduct);
+        if (memberPayloadProduct) buildSourceStats.identity_payload += 1;
+        else if (usedPrefetchedProduct) buildSourceStats.prefetched += 1;
         const product =
           memberPayloadProduct ||
           prefetchedProduct ||
@@ -3986,6 +4065,9 @@ async function buildOffersFromGroupMembers(args) {
             bypassCache,
             skipUpstreamFallback: m.merchant_id === EXTERNAL_SEED_MERCHANT_ID,
           }).catch(() => null));
+        if (!memberPayloadProduct && !usedPrefetchedProduct && product) {
+          buildSourceStats.fetched += 1;
+        }
         const hydratedProduct =
           m.merchant_id === EXTERNAL_SEED_MERCHANT_ID || usedPrefetchedProduct
             ? product
@@ -3993,6 +4075,14 @@ async function buildOffersFromGroupMembers(args) {
                 product,
                 checkoutToken,
               }).catch(() => product);
+        if (
+          product &&
+          hydratedProduct &&
+          m.merchant_id !== EXTERNAL_SEED_MERCHANT_ID &&
+          !usedPrefetchedProduct
+        ) {
+          buildSourceStats.hydrated += 1;
+        }
         return hydratedProduct ? { member: m, product: hydratedProduct } : null;
       }),
     );
@@ -4131,6 +4221,10 @@ async function buildOffersFromGroupMembers(args) {
     offers,
     default_offer_id: defaultOfferId,
     best_price_offer_id: bestPriceOfferId,
+    diagnostics: {
+      build_sources: buildSourceStats,
+      merchant_name_lookup_enabled: merchantProfileNameLookupEnabled,
+    },
   };
 }
 
