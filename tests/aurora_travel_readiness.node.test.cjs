@@ -113,7 +113,8 @@ test('buildTravelReadiness returns actionable structure with deltas and shopping
   assert.match(spfPreview.reasons.join(' '), /AM\/outdoor SPF step/);
   assert.match(spfPreview.reasons.join(' '), /reapply based on outdoor exposure time/);
   const lipPreview = payload.shopping_preview.products.find((item) => item && item.product_id === 'sku_4');
-  assert.match(lipPreview.reasons.join(' '), /lips, hands, or exposed skin/);
+  assert.match(lipPreview.reasons.join(' '), /Use on lips/);
+  assert.match(lipPreview.reasons.join(' '), /do not treat a lip product as hand or body care/);
   assert.equal(/AM\/outdoor SPF step/.test(lipPreview.reasons.join(' ')), false);
   assert.ok(Array.isArray(payload.phase_plan));
   assert.deepEqual(payload.phase_plan.map((phase) => phase.id), [

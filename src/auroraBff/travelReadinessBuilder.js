@@ -563,10 +563,11 @@ function isWeakTravelProductReason(value) {
   return !text || /^local catalog authority match\b/i.test(text) || /^category\s*:/i.test(text);
 }
 
-function buildTravelProductUseReasons({ language, roleId, category } = {}) {
+function buildTravelProductUseReasons({ language, roleId, category, name } = {}) {
   const role = normalizeText(roleId, 80).toLowerCase();
   const cat = normalizeText(category, 120).toLowerCase();
-  const haystack = `${role} ${cat}`;
+  const productName = normalizeText(name, 160).toLowerCase();
+  const haystack = `${role} ${cat} ${productName}`;
   if (/recovery_mask/.test(role) || (/mask|recovery|soothing|修护|舒缓|面膜/.test(haystack) && !/serum|essence|ampoule|精华|安瓶/.test(role))) {
     return [
       t(language, '仅作为飞行后或高 UV 户外日后的可选夜间恢复；已耐受再用。', 'Use only as optional night recovery after the flight or high-UV outdoor days if already tolerated.'),
@@ -574,6 +575,24 @@ function buildTravelProductUseReasons({ language, roleId, category } = {}) {
     ];
   }
   if (/body_lip_hand|body|lip|hand|身体|唇|手/.test(role) || (/body|lip|hand|身体|唇|手/.test(haystack) && !/sun_protection/.test(role))) {
+    if (/lip|唇|립밤|リップ/.test(productName) || /lip|唇/.test(cat)) {
+      return [
+        t(language, '用于唇部，帮助应对机舱干燥和户外通勤时的唇部紧绷。', 'Use on lips to manage tightness from cabin dryness and outdoor commuting.'),
+        t(language, '适合随身携带，不要把润唇产品当作手部或身体护理。', 'Fits carry-on use; do not treat a lip product as hand or body care.'),
+      ];
+    }
+    if (/hand|手|ハンド/.test(productName) || /hand|手/.test(cat)) {
+      return [
+        t(language, '用于手部，帮助应对频繁清洁、机舱干燥和当地通勤带来的手部干燥。', 'Use on hands to manage dryness from cleansing, cabin air, and local commuting.'),
+        t(language, '适合随身携带，在飞行和当地通勤时补充。', 'Fits carry-on use for the flight and local commuting.'),
+      ];
+    }
+    if (/body|身体|ボディ/.test(productName) || /body|身体/.test(cat)) {
+      return [
+        t(language, '用于暴露身体皮肤，因为 UV 和风干不只影响脸部。', 'Use on exposed body skin because UV and dry air do not only affect the face.'),
+        t(language, '适合当地户外通勤或长时间步行时补充。', 'Fits local commuting or longer outdoor walks.'),
+      ];
+    }
     return [
       t(language, '用于唇部、手部或暴露皮肤，因为机舱干燥和 UV 不只影响脸部。', 'Use for lips, hands, or exposed skin because cabin dryness and UV do not only affect the face.'),
       t(language, '适合随身携带，在飞行和当地通勤时补充。', 'Fits carry-on use for the flight and local commuting.'),
@@ -626,7 +645,7 @@ function normalizePreviewProducts(recommendationCandidates, language) {
         : [];
     const reasons = uniqStrings(
       [
-        ...buildTravelProductUseReasons({ language, roleId, category }),
+        ...buildTravelProductUseReasons({ language, roleId, category, name }),
         ...rawReasons.filter((reason) => !isWeakTravelProductReason(reason)),
       ],
       3,
