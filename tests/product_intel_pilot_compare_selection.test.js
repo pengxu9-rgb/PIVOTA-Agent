@@ -158,6 +158,39 @@ describe('product_intel pilot compare selection', () => {
         rejected: /^Blush$/i,
       },
       {
+        title: 'Bright Fix Instant Brightening + Blurring Powder - Banana',
+        category: 'Foundation',
+        description:
+          'A brightening blurring powder that smooths and blurs for a soft-focused natural finish.',
+        tags: ['Powder', 'Blurring'],
+        expectedKind: 'color_makeup',
+        expectedHeadline: /Setting powder/i,
+        expectedSubtitle: 'Setting Powder',
+        rejected: /^Foundation$/i,
+      },
+      {
+        title: 'Cheeks Out Freestyle Cream Bronzer - Amber',
+        category: 'Blush',
+        description:
+          'A light-as-air cream bronzer that instantly melts into skin for warmth and soft sculpting.',
+        tags: ['Blush', 'Bronzer'],
+        expectedKind: 'color_makeup',
+        expectedHeadline: /Bronzer/i,
+        expectedSubtitle: 'Bronzer',
+        rejected: /^Blush$/i,
+      },
+      {
+        title: 'Dew N Plump Intense Hydration Slushie Overnight Face Mask',
+        category: 'Face Oil',
+        description:
+          'An overnight face mask with a slushie texture and hydration-boosting oil bubbles.',
+        tags: ['Face Oil', 'Mask', 'Hyaluronic Acid'],
+        expectedKind: 'treatment_mask',
+        expectedHeadline: /Treatment mask/i,
+        expectedSubtitle: 'Treatment Mask',
+        rejected: /^Face Oil$/i,
+      },
+      {
         title: 'Mini Glow Trio',
         category: 'Toner',
         description:

@@ -247,6 +247,7 @@ function inferTitleSpecialtyCompactSubtitle(product) {
   if (/\b(?:glow mist|hydrating milky mist|dream-y mist|face mist|makeup mist|facial mist)\b/.test(text)) return 'Face Mist';
   if (/\b(?:eye patch|eye patches|eyepatch|anywhere patches|hydrogel patches|eye mask goggles|eye mask)\b/.test(text) || /\b(?:detoxifeye|beautifeye|nutrifeye|fortifeye)\b/.test(title)) return 'Eye Patches';
   if (/\b(?:lippatch|lip patch)\b/.test(text)) return 'Lip Patches';
+  if (/\b(?:overnight face mask|face mask|sleeping mask|slushie overnight)\b/.test(text)) return 'Treatment Mask';
   if (/\b(?:retinol oil|overnight .* oil|face oil|facial oil|essence oil)\b/.test(text)) return 'Face Oil';
   if (/\b(?:brush cup|brush holder|brush storage|makeup brush cup)\b/.test(text)) return 'Brush Storage';
   if (/\b(?:brush bundle|brush trio|brush duo|brush set)\b/.test(text)) return 'Brush Set';
@@ -260,11 +261,12 @@ function inferTitleSpecialtyCompactSubtitle(product) {
   if (/\b(?:eau de parfum|edp)\b/.test(text)) return 'Eau De Parfum';
   if (/\b(?:fragrance|perfume|parfum|body mist)\b/.test(fragranceText)) return 'Fragrance';
   if (/\bskin tint\b/.test(text)) return 'Skin Tint';
+  if (/\b(?:brightening\s+\+?\s*blurring powder|brightening blurring powder|blurring powder|setting powder)\b/.test(text)) return 'Setting Powder';
   if (/\bfoundation\b/.test(text) && !/\bbrush\b/.test(title)) return 'Foundation';
-  if (/\bsetting powder\b/.test(text)) return 'Setting Powder';
   if (/\b(?:powder blush stick|blush stick)\b/.test(text)) return 'Blush Stick';
   if (/\b(?:lip\s*&\s*cheek|lip and cheek).*blush tint\b/.test(text)) return 'Blush Tint';
   if (/\b(?:lip nourisher|tinted butter balm|butter balm)\b/.test(text)) return 'Tinted Lip Balm';
+  if (/\bbronzer\b/.test(text)) return 'Bronzer';
   if (/\b(?:pressed blush|hybrid blush|powder blush|blush)\b/.test(text)) return 'Blush';
   if (/\b(?:eyeshadow|eye shadow).*palette\b/.test(text) || /\bpalette\b/.test(title)) return 'Eyeshadow Palette';
   if (/\bmascara|kylash\b/.test(text)) return 'Mascara';
@@ -428,6 +430,9 @@ function buildCompactSubtitle({ product, bundle }) {
       'Primer',
       'Lip Balm',
       'Tinted Lip Balm',
+      'Bronzer',
+      'Setting Powder',
+      'Treatment Mask',
     ].includes(compactHeadline)
   ) {
     return compactHeadline;

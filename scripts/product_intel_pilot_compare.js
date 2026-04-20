@@ -387,6 +387,12 @@ function inferProductKindFromContext(context) {
   if (/\b(?:glow mist|hydrating milky mist|dream-y mist|face mist|makeup mist|facial mist)\b/.test(titleCategoryDescription)) {
     return 'face_mist';
   }
+  if (/\b(?:overnight face mask|face mask|sleeping mask|slushie overnight)\b/.test(titleCategoryDescription)) {
+    return 'treatment_mask';
+  }
+  if (/\b(?:brightening\s+\+?\s*blurring powder|brightening blurring powder|blurring powder|setting powder)\b/.test(titleCategoryDescription)) {
+    return 'color_makeup';
+  }
   if (/\b(?:facial radiance|ingrown hair|aha|bha|glycolic|lactic)\s+pads?\b/.test(text) || /\bpads?\s+with\s+(?:bha|aha|glycolic|lactic)/.test(text)) {
     return 'treatment_pads';
   }
@@ -465,11 +471,12 @@ function inferSpecificBeautySubtypeLabel(context) {
   if (/\b(?:eau de parfum|edp)\b/.test(text)) return 'Eau de parfum';
   if (/\b(?:fragrance|perfume|parfum|body mist)\b/.test(fragranceText)) return 'Fragrance';
   if (/\bskin tint\b/.test(text)) return 'Skin tint';
+  if (/\b(?:brightening\s+\+?\s*blurring powder|brightening blurring powder|blurring powder|setting powder)\b/.test(text)) return 'Setting powder';
   if (/\bfoundation\b/.test(text) && !/\bbrush\b/.test(title)) return 'Foundation';
-  if (/\bsetting powder\b/.test(text)) return 'Setting powder';
   if (/\b(?:powder blush stick|blush stick)\b/.test(text)) return 'Blush stick';
   if (/\b(?:lip\s*&\s*cheek|lip and cheek).*blush tint\b/.test(text)) return 'Blush tint';
   if (/\b(?:lip nourisher|tinted butter balm|butter balm)\b/.test(text)) return 'Tinted lip balm';
+  if (/\bbronzer\b/.test(text)) return 'Bronzer';
   if (/\b(?:pressed blush|hybrid blush|powder blush|blush)\b/.test(text)) return 'Blush';
   if (/\b(?:eyeshadow|eye shadow).*palette\b/.test(text) || /\bpalette\b/.test(title)) return 'Eyeshadow palette';
   if (/\bmascara|kylash\b/.test(text)) return 'Mascara';
@@ -1732,6 +1739,7 @@ function buildHumanStandardWhatItIs(context, baselineBundle) {
       'Blush stick': 'A blush stick for buildable cheek color, blendability, and finish control.',
       'Blush tint': 'A blush tint for lightweight cheek color and a fresh color finish.',
       Blush: 'A blush product for cheek color, blendability, and finish control.',
+      Bronzer: 'A bronzer product for warmth, soft sculpting, and blendable complexion color.',
       'Setting powder': 'A setting powder for setting complexion makeup, soft-focus blur, and finish control.',
       Eyeliner: 'An eyeliner for lash-line definition, shape, and color intensity.',
       'Brow gel': 'A brow gel for brow shape, hold, and definition.',
