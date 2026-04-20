@@ -1862,6 +1862,10 @@ const PDP_V2_CORE_HOT_CACHE_MAX_ENTRIES = Math.max(
 );
 const PDP_CORE_PREWARM_ENABLED =
   String(process.env.PDP_CORE_PREWARM_ENABLED || 'false').toLowerCase() === 'true';
+const PDP_SELF_OFFER_FALLBACK_ENABLED = parseBooleanEnv(
+  process.env.PDP_SELF_OFFER_FALLBACK_ENABLED,
+  false,
+);
 const PDP_CORE_PREWARM_TIMEOUT_MS = Math.max(
   1000,
   parseTimeoutMs(process.env.PDP_CORE_PREWARM_TIMEOUT_MS, 6500),
@@ -18124,7 +18128,7 @@ async function buildProductIntelOffersDataForContext({
         }).catch(() => null)
       : null;
 
-  if (!offersData) {
+  if (!offersData && PDP_SELF_OFFER_FALLBACK_ENABLED) {
     const fallbackOfferId =
       buildOfferId({
         merchant_id: context.canonicalProductRef.merchant_id,
@@ -18164,6 +18168,8 @@ async function buildProductIntelOffersDataForContext({
       best_price_offer_id: fallbackOfferId,
     };
   }
+
+  if (!offersData) return null;
 
   return {
     ...offersData,
@@ -22488,92 +22494,89 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       if (wantsOffers || wantsProductIntel) {
         const offersModuleStartedAt = Date.now();
         try {
-          offersData =
-            groupMembers.length > 0
-              ? await buildOffersFromGroupMembers({
-                  productGroupId,
-                  members: groupMembers,
-                  checkoutToken,
-                  bypassCache,
-                  limit: payload?.offers?.limit || 10,
-                  preferredMerchantId: requestedMerchantId || null,
-                  debug,
-                  prefetchedProducts: [
-                    canonicalProductForPdp,
-                    canonicalProduct,
-                    precheckedMerchantProduct,
-                  ].filter(Boolean),
-                })
-              : (() => {
-                  const fallbackProductGroupId =
-                    productGroupId ||
-                    (canonicalProductForPdp.platform && canonicalProductForPdp.platform_product_id
-                      ? buildProductGroupId({
-                          platform: String(canonicalProductForPdp.platform || '').trim(),
-                          platform_product_id: String(
-                            canonicalProductForPdp.platform_product_id || '',
-                          ).trim(),
-                        })
-                      : null) ||
-                    `pg:pid:${String(canonicalProductRef.product_id || productId).trim()}`;
-                  const fallbackOfferVariants = buildOfferVariantsForPayload(
-                    canonicalProductForPdp,
-                    canonicalProductForPdp.currency || 'USD',
-                  );
-                  return {
-                  status: 'success',
+          if (groupMembers.length > 0) {
+            offersData = await buildOffersFromGroupMembers({
+              productGroupId,
+              members: groupMembers,
+              checkoutToken,
+              bypassCache,
+              limit: payload?.offers?.limit || 10,
+              preferredMerchantId: requestedMerchantId || null,
+              debug,
+              prefetchedProducts: [
+                canonicalProductForPdp,
+                canonicalProduct,
+                precheckedMerchantProduct,
+              ].filter(Boolean),
+            });
+          } else if (PDP_SELF_OFFER_FALLBACK_ENABLED) {
+            const fallbackProductGroupId =
+              productGroupId ||
+              (canonicalProductForPdp.platform && canonicalProductForPdp.platform_product_id
+                ? buildProductGroupId({
+                    platform: String(canonicalProductForPdp.platform || '').trim(),
+                    platform_product_id: String(canonicalProductForPdp.platform_product_id || '').trim(),
+                  })
+                : null) ||
+              `pg:pid:${String(canonicalProductRef.product_id || productId).trim()}`;
+            const fallbackOfferVariants = buildOfferVariantsForPayload(
+              canonicalProductForPdp,
+              canonicalProductForPdp.currency || 'USD',
+            );
+            offersData = {
+              status: 'success',
+              product_group_id: fallbackProductGroupId,
+              canonical_product_ref: canonicalProductRef,
+              offers_count: 1,
+              offers: [
+                {
+                  offer_id: (() => {
+                    const mid = String(canonicalProductRef.merchant_id || '').trim();
+                    return (
+                      buildOfferId({
+                        merchant_id: mid,
+                        product_group_id: fallbackProductGroupId,
+                        fulfillment_type: canonicalProductForPdp.fulfillment_type || 'merchant',
+                        tier: 'default',
+                      }) ||
+                      `of:v1:${mid}:${fallbackProductGroupId}:${canonicalProductForPdp.fulfillment_type || 'merchant'}:default`
+                    );
+                  })(),
                   product_group_id: fallbackProductGroupId,
-                  canonical_product_ref: canonicalProductRef,
-	                  offers_count: 1,
-	                  offers: [
-	                    {
-	                      offer_id: (() => {
-	                        const mid = String(canonicalProductRef.merchant_id || '').trim();
-	                        return (
-	                          buildOfferId({
-	                            merchant_id: mid,
-	                            product_group_id: fallbackProductGroupId,
-	                            fulfillment_type: canonicalProductForPdp.fulfillment_type || 'merchant',
-	                            tier: 'default',
-	                          }) ||
-	                          `of:v1:${mid}:${fallbackProductGroupId}:${canonicalProductForPdp.fulfillment_type || 'merchant'}:default`
-	                        );
-	                      })(),
-	                      product_group_id: fallbackProductGroupId,
-	                      product_id: canonicalProductRef.product_id,
-	                      merchant_id: canonicalProductRef.merchant_id,
-	                      merchant_name:
-	                        resolveOfferSellerDisplayName({
-	                          product: canonicalProductForPdp,
-	                          merchantId: canonicalProductRef.merchant_id,
-	                        }) || undefined,
-                      price: normalizeOfferMoney(
-                        canonicalProductForPdp.price,
-                        canonicalProductForPdp.currency || 'USD',
-                      ),
-                      shipping: canonicalProductForPdp.shipping || undefined,
-                      returns: canonicalProductForPdp.returns || undefined,
-	                      inventory: {
-	                        in_stock:
-	                          typeof canonicalProductForPdp.in_stock === 'boolean'
-	                            ? canonicalProductForPdp.in_stock
-	                            : undefined,
-	                      },
-		                      fulfillment_type: canonicalProductForPdp.fulfillment_type || undefined,
-	                      ...(fallbackOfferVariants.length
-	                        ? {
-	                            variants: fallbackOfferVariants,
-	                          }
-	                        : {}),
-	                      ...pickSavingsPresentationFields(canonicalProductForPdp),
-	                      ...buildOfferPurchaseMetadataFromProduct(canonicalProductForPdp),
-		                      risk_tier: 'standard',
-	                    },
-                  ],
-                  default_offer_id: null,
-                  best_price_offer_id: null,
-                };
-                })();
+                  product_id: canonicalProductRef.product_id,
+                  merchant_id: canonicalProductRef.merchant_id,
+                  merchant_name:
+                    resolveOfferSellerDisplayName({
+                      product: canonicalProductForPdp,
+                      merchantId: canonicalProductRef.merchant_id,
+                    }) || undefined,
+                  price: normalizeOfferMoney(
+                    canonicalProductForPdp.price,
+                    canonicalProductForPdp.currency || 'USD',
+                  ),
+                  shipping: canonicalProductForPdp.shipping || undefined,
+                  returns: canonicalProductForPdp.returns || undefined,
+                  inventory: {
+                    in_stock:
+                      typeof canonicalProductForPdp.in_stock === 'boolean'
+                        ? canonicalProductForPdp.in_stock
+                        : undefined,
+                  },
+                  fulfillment_type: canonicalProductForPdp.fulfillment_type || undefined,
+                  ...(fallbackOfferVariants.length
+                    ? {
+                        variants: fallbackOfferVariants,
+                      }
+                    : {}),
+                  ...pickSavingsPresentationFields(canonicalProductForPdp),
+                  ...buildOfferPurchaseMetadataFromProduct(canonicalProductForPdp),
+                  risk_tier: 'standard',
+                },
+              ],
+              default_offer_id: null,
+              best_price_offer_id: null,
+            };
+          }
         } catch {
           offersData = null;
         }
@@ -22606,18 +22609,20 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               data: offersData,
             });
           }
-	        } else if (wantsOffers) {
-	          modules.push({
-              type: 'offers',
-              required: false,
-              data: null,
-              reason: 'unavailable',
-            });
-	          missing.push({ type: 'offers', reason: 'unavailable' });
-	        }
-	        if (wantsOffers) {
-	          markPdpV2Module('offers', offersModuleStartedAt);
-	        }
+        } else if (wantsOffers) {
+          const offersUnavailableReason =
+            groupMembers.length > 0 ? 'unavailable' : 'no_product_group_members';
+          modules.push({
+            type: 'offers',
+            required: false,
+            data: null,
+            reason: offersUnavailableReason,
+          });
+          missing.push({ type: 'offers', reason: offersUnavailableReason });
+        }
+        if (wantsOffers) {
+          markPdpV2Module('offers', offersModuleStartedAt);
+        }
 	      }
 
       let productIntel = null;

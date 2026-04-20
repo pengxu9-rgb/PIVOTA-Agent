@@ -145,6 +145,74 @@ describe('get_pdp_v2 stability semantics', () => {
     );
   });
 
+  it('does not synthesize a self offer when product identity has no group members', async () => {
+    const product = {
+      merchant_id: 'merch_solo',
+      product_id: 'solo_1',
+      title: 'Solo Merchant Product',
+      brand: 'Solo',
+      currency: 'USD',
+      price: {
+        amount: 42,
+        currency: 'USD',
+      },
+      in_stock: true,
+      variants: [
+        {
+          variant_id: 'solo_variant_1',
+          title: 'Default Title',
+          price: 42,
+          currency: 'USD',
+        },
+      ],
+      store_discount_evidence: {
+        pricing_confidence: 'display_estimate',
+        offers: [{ title: 'SHOULD_NOT_LEAK_AS_SELF_OFFER' }],
+      },
+    };
+
+    const productDetailScope = mockProductDetailInvoke('merch_solo', 'solo_1', 200, {
+      product,
+    });
+
+    const groupScope = nock(process.env.PIVOTA_API_BASE)
+      .get('/agent/v1/product-groups/resolve')
+      .query((query) => query && query.merchant_id === 'merch_solo' && query.product_id === 'solo_1')
+      .reply(404, { error: 'PRODUCT_GROUP_NOT_FOUND', message: 'No product group' });
+
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'get_pdp_v2',
+        payload: {
+          include: ['offers'],
+          product_ref: {
+            merchant_id: 'merch_solo',
+            product_id: 'solo_1',
+          },
+        },
+      })
+      .expect(200);
+
+    expect(productDetailScope.isDone()).toBe(true);
+    expect(groupScope.isDone()).toBe(true);
+    const offersModule = res.body.modules.find((module) => module.type === 'offers');
+    expect(offersModule).toEqual(
+      expect.objectContaining({
+        data: null,
+        reason: 'no_product_group_members',
+      }),
+    );
+    expect(res.body.missing).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'offers',
+          reason: 'no_product_group_members',
+        }),
+      ]),
+    );
+  });
+
   it('keeps canonical not-found responses on 404 after mismatch correction fails', async () => {
     mockProductDetailInvoke('merch_wrong', 'ext_missing_1', 404, {
       error: 'PRODUCT_NOT_FOUND',
