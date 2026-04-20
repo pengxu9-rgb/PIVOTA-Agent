@@ -275,6 +275,34 @@ test('travel skills pipeline: final rewrite becomes visible prose authority and 
   );
 });
 
+test('travel skills pipeline: failed final rewrite uses phase-plan brief instead of legacy baseline', async () => {
+  await withEnv(
+    {
+      TRAVEL_KB_ASYNC_BACKFILL_ENABLED: 'false',
+      AURORA_TRAVEL_LLM_CALIBRATION_ENABLED: 'false',
+      AURORA_TRAVEL_FINAL_REWRITE_ENABLED: 'true',
+    },
+    async () => {
+      const mockGemini = async () => ({
+        text: JSON.stringify({ assistant_text: 'Tokyo has higher UV. Use sunscreen.' }),
+      });
+      const { runTravelPipeline } = loadFreshPipeline();
+      const out = await runTravelPipeline(
+        buildInput('I am traveling to Tokyo next week. Build a phased skincare plan.', {
+          travelFinalRewriteGeminiGenerateContent: mockGemini,
+        }),
+      );
+
+      assert.equal(out.assistant_final_rewrite_used, false);
+      assert.match(out.assistant_final_rewrite_reason, /^rewrite_/);
+      assert.match(out.assistant_text, /Before you leave|Before departure/i);
+      assert.match(out.assistant_text, /On the flight/i);
+      assert.match(out.assistant_text, /Local shopping|Shop locally/i);
+      assert.equal(/Travel product preview:|Key deltas:|Travel skincare kit:/i.test(out.assistant_text), false);
+    },
+  );
+});
+
 test('travel skills pipeline: destination-present request triggers llm skill with prompt telemetry', async () => {
   await withEnv(
     {
