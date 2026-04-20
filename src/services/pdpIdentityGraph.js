@@ -67,6 +67,18 @@ const PDP_IDENTITY_GRAPH_LIVE_CACHE_TTL_MS = Math.max(
 const liveSyntheticPdpCache = new Map();
 const liveSyntheticPdpInflight = new Map();
 
+const SAVINGS_PRESENTATION_FIELDS = Object.freeze([
+  'payment_offer_evidence',
+  'payment_offer_summary',
+  'payment_offer_badges',
+  'payment_pricing',
+  'store_discount_evidence',
+  'store_discount_summary',
+  'store_discount_badges',
+  'discount_evidence',
+  'promotion_lines',
+]);
+
 function asString(value) {
   if (typeof value === 'string') return value.trim();
   if (value == null) return '';
@@ -80,6 +92,16 @@ function cloneJsonSafe(value) {
   } catch {
     return value;
   }
+}
+
+function pickSavingsPresentationFields(source) {
+  if (!source || typeof source !== 'object') return {};
+  return SAVINGS_PRESENTATION_FIELDS.reduce((out, field) => {
+    if (Object.prototype.hasOwnProperty.call(source, field) && source[field] !== undefined) {
+      out[field] = source[field];
+    }
+    return out;
+  }, {});
 }
 
 function buildLiveSyntheticPdpCacheKey({ merchantId, productId } = {}) {
@@ -1633,10 +1655,7 @@ function overlaySelectedCommerceFields(product, selectedListing, fallbackProduct
     'canonical_url',
     'url',
     'product_url',
-    'discount_evidence',
-    'promotion_lines',
-    'store_discount_evidence',
-    'payment_offer_evidence',
+    ...SAVINGS_PRESENTATION_FIELDS,
   ];
   for (const key of directFields) {
     if (selectedPayload[key] !== undefined) next[key] = selectedPayload[key];
@@ -1872,7 +1891,7 @@ function buildIdentitySearchOffer(listing, groupId) {
     ...(price ? { price } : {}),
     ...(payload.inventory ? { inventory: payload.inventory } : {}),
     ...(payload.shipping ? { shipping: payload.shipping } : {}),
-    ...(payload.discount_evidence ? { discount_evidence: payload.discount_evidence } : {}),
+    ...pickSavingsPresentationFields(payload),
     offer_source: 'group_fused',
     commerce_source: 'selected_seller_store',
   };

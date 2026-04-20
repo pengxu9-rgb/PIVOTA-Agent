@@ -690,6 +690,42 @@ describe('get_pdp_v2 identity graph live read', () => {
       price: { amount: 28, currency: 'USD' },
       platform: 'shopify',
       platform_product_id: '10064558096681',
+      store_discount_evidence: {
+        pricing_confidence: 'display_estimate',
+        offers: [
+          {
+            id: 'shopify_discount_node_1',
+            label: '10% off at checkout',
+            discount_type: 'basic',
+            status: 'available',
+          },
+        ],
+      },
+      store_discount_badges: ['10% off at checkout'],
+      payment_offer_evidence: {
+        pricing_confidence: 'display_estimate',
+        offers: [
+          {
+            payment_offer_id: 'pay_mastercard_1',
+            label: 'Mastercard offer available',
+            eligibility: { status: 'potential' },
+          },
+        ],
+      },
+      payment_offer_badges: ['Mastercard offer available'],
+      discount_evidence: {
+        pricing_confidence: 'partial',
+        codes: [{ code: 'PIVOTA_TEST_AMOUNT10', applicable: true, source: 'storefront' }],
+        applications: [],
+      },
+      promotion_lines: [
+        {
+          source: 'shopify_storefront',
+          title: 'PIVOTA_TEST_AMOUNT10',
+          amount: 2.8,
+          currency: 'USD',
+        },
+      ],
       variants: [
         {
           id: 'gid://shopify/ProductVariant/111',
@@ -712,7 +748,7 @@ describe('get_pdp_v2 identity graph live read', () => {
       platform: 'external',
       platform_product_id: 'ext_krave_gbr_45',
     };
-    mockProductDetailInvoke('merch_new', '10064558096681', newMerchantProduct, 3);
+    mockProductDetailInvoke('merch_new', '10064558096681', newMerchantProduct, 6);
     mockProductDetailInvoke('external_seed', 'ext_krave_gbr_45', externalKraveProduct, 2);
 
     nock(process.env.PIVOTA_API_BASE)
@@ -784,6 +820,20 @@ describe('get_pdp_v2 identity graph live read', () => {
         product_id: '10064558096681',
         description: 'Pivota-reviewed canonical barrier serum copy.',
         price: { current: { amount: 28, currency: 'USD' } },
+        store_discount_evidence: expect.objectContaining({
+          pricing_confidence: 'display_estimate',
+        }),
+        payment_offer_evidence: expect.objectContaining({
+          pricing_confidence: 'display_estimate',
+        }),
+        discount_evidence: expect.objectContaining({
+          pricing_confidence: 'partial',
+        }),
+        promotion_lines: expect.arrayContaining([
+          expect.objectContaining({
+            title: 'PIVOTA_TEST_AMOUNT10',
+          }),
+        ]),
       }),
     );
     expect(offersModule?.data).toEqual(
@@ -800,6 +850,20 @@ describe('get_pdp_v2 identity graph live read', () => {
           product_id: '10064558096681',
           offer_source: 'group_fused',
           price: { amount: 28, currency: 'USD' },
+          store_discount_evidence: expect.objectContaining({
+            pricing_confidence: 'display_estimate',
+          }),
+          payment_offer_evidence: expect.objectContaining({
+            pricing_confidence: 'display_estimate',
+          }),
+          discount_evidence: expect.objectContaining({
+            pricing_confidence: 'partial',
+          }),
+          promotion_lines: expect.arrayContaining([
+            expect.objectContaining({
+              title: 'PIVOTA_TEST_AMOUNT10',
+            }),
+          ]),
         }),
         expect.objectContaining({
           merchant_id: 'external_seed',
