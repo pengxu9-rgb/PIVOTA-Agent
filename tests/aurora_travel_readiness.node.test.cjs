@@ -133,7 +133,12 @@ test('buildTravelReadiness returns actionable structure with deltas and shopping
   );
   assert.ok(payload.phase_plan.find((phase) => phase.id === 'pre_trip_prepare').product_ids.includes('sku_2'));
   assert.ok(payload.phase_plan.find((phase) => phase.id === 'flight_cabin').product_ids.includes('sku_3'));
-  assert.ok(payload.phase_plan.find((phase) => phase.id === 'local_shopping').product_ids.includes('sku_4'));
+  const localShopping = payload.phase_plan.find((phase) => phase.id === 'local_shopping');
+  assert.ok(localShopping.product_ids.includes('sku_4'));
+  assert.match(localShopping.actions.join(' '), /Sun protection: BrandB UV Shield SPF50/);
+  assert.match(localShopping.actions.join(' '), /AM\/outdoor SPF step/);
+  assert.match(localShopping.actions.join(' '), /Body, lip, or hand care: BrandD SPF Lip Balm/);
+  assert.match(localShopping.actions.join(' '), /Use on lips/);
   assert.ok(Array.isArray(sunProtection.brand_suggestions));
   assert.ok(sunProtection.brand_suggestions.some((item) => item && item.product === 'UV Shield SPF50'));
   assert.ok(moisturization);

@@ -208,14 +208,15 @@ function compactTravelActionContextForFinalRewrite(travelReadiness) {
         .map((productId) => groundedProductsById.get(productId))
         .filter(Boolean)
         .map(stripPromptOnlyProductIdentity)
-        .slice(0, normalizeText(row.id, 80) === 'local_shopping' ? 3 : 1);
+        .slice(0, normalizeText(row.id, 80) === 'local_shopping' ? 5 : 1);
+      const actionLimit = normalizeText(row.id, 80) === 'local_shopping' ? 3 : 2;
       return {
         id: normalizeText(row.id, 80) || null,
         title: normalizeText(row.title, 120) || null,
         timing: normalizeText(row.timing, 120) || null,
         why: normalizeText(row.why, 180) || null,
         actions: Array.isArray(row.actions)
-          ? row.actions.map((line) => normalizePromptSentence(line, 170)).filter(Boolean).slice(0, 2)
+          ? row.actions.map((line) => normalizePromptSentence(line, 190)).filter(Boolean).slice(0, actionLimit)
           : [],
         product_role_ids: Array.isArray(row.product_role_ids || row.productRoleIds)
           ? (row.product_role_ids || row.productRoleIds).map((line) => normalizeText(line, 80)).filter(Boolean).slice(0, 5)
