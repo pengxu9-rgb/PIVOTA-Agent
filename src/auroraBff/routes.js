@@ -88925,6 +88925,50 @@ function mountAuroraBffRoutes(app, { logger }) {
         }
         return '';
       };
+      const buildTravelSafetyNoticeText = (safety) => {
+        const s = safety && typeof safety === 'object' ? safety : null;
+        if (!s) return '';
+        if (s.block_level !== BLOCK_LEVEL.WARN) return buildSafetyNoticeText(s);
+        const reasons = Array.isArray(s.reasons)
+          ? s.reasons
+            .slice(0, 2)
+            .map((line) => String(line || '').trim())
+            .filter(Boolean)
+          : [];
+        const alternatives = Array.isArray(s.safe_alternatives)
+          ? s.safe_alternatives
+            .slice(0, 2)
+            .map((line) => String(line || '').trim())
+            .filter(Boolean)
+          : [];
+        const lang = ctx.lang === 'CN' ? 'CN' : 'EN';
+        return lang === 'CN'
+          ? [
+            '旅行安全调整：',
+            ...reasons.map((line) => `- ${line}`),
+            ...(alternatives.length ? [`- 保守准备品类：${alternatives.join(' / ')}`] : []),
+          ].join('\n')
+          : [
+            'Travel safety adjustment:',
+            ...reasons.map((line) => `- ${line}`),
+            ...(alternatives.length ? [`- Conservative category to keep available: ${alternatives.join(' / ')}`] : []),
+          ].join('\n');
+      };
+      const insertTravelSafetyNotice = (adviceText, safetyText) => {
+        const text = typeof adviceText === 'string' ? adviceText.trim() : '';
+        const notice = typeof safetyText === 'string' ? safetyText.trim() : '';
+        if (!notice) return text;
+        const markers = ctx.lang === 'CN'
+          ? ['\n\n护肤调整建议：', '\n\n分阶段计划：']
+          : ['\n\nAdjusted routine guidance:', '\n\nPhased plan:'];
+        for (const marker of markers) {
+          const idx = text.indexOf(marker);
+          if (idx >= 0) return `${text.slice(0, idx)}\n\n${notice}${text.slice(idx)}`;
+        }
+        const firstBreak = text.indexOf('\n\n');
+        if (firstBreak > 0) return `${text.slice(0, firstBreak)}\n\n${notice}${text.slice(firstBreak)}`;
+        return [notice, text].filter(Boolean).join('\n\n');
+      };
       const resolveSafetyGateActionV2 = ({ safety, profileValue, conflictIntent }) => {
         const s = safety && typeof safety === 'object' ? safety : null;
         if (!s) return { mode: 'bypass', advisory: null, ask_once_fields: [] };
@@ -90787,8 +90831,8 @@ function mountAuroraBffRoutes(app, { logger }) {
                 : null;
 
             if (safetyDecision && safetyDecision.block_level && safetyDecision.block_level !== BLOCK_LEVEL.INFO) {
-              const safetyText = buildSafetyNoticeText(safetyDecision);
-              if (safetyText) advice = `${safetyText}\n\n${advice}`;
+              const safetyText = buildTravelSafetyNoticeText(safetyDecision);
+              if (safetyText) advice = insertTravelSafetyNotice(advice, safetyText);
             }
 
             const pipelinePatch =
@@ -91148,8 +91192,8 @@ function mountAuroraBffRoutes(app, { logger }) {
           advice = (lang === 'CN' ? epiLinesCn : epiLinesEn).join('\n');
         }
         if (safetyDecision && safetyDecision.block_level && safetyDecision.block_level !== BLOCK_LEVEL.INFO) {
-          const safetyText = buildSafetyNoticeText(safetyDecision);
-          if (safetyText) advice = `${safetyText}\n\n${advice}`;
+          const safetyText = buildTravelSafetyNoticeText(safetyDecision);
+          if (safetyText) advice = insertTravelSafetyNotice(advice, safetyText);
         }
 
         if (

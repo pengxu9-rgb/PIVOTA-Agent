@@ -365,6 +365,20 @@ test('travelReplyComposer keeps travel kit copy complete and user-readable', () 
     },
   ];
   readiness.shopping_preview.buying_channels = ['beauty_retail', 'pharmacy', 'department_store', 'ecommerce'];
+  readiness.shopping_preview.mode = 'category_guidance';
+  readiness.shopping_preview.coverage_status = 'category_only';
+  readiness.shopping_preview.products = [
+    {
+      name: 'Face SPF50+ PA++++ sunscreen',
+      product_source: 'category_guidance',
+      authority_status: 'category_only',
+    },
+    {
+      name: 'Portable reapply format',
+      product_source: 'category_guidance',
+      authority_status: 'category_only',
+    },
+  ];
 
   const result = composeTravelReply({
     message: 'Build me a skincare trip plan for Shanghai.',
@@ -377,6 +391,34 @@ test('travelReplyComposer keeps travel kit copy complete and user-readable', () 
 
   assert.doesNotMatch(result.text, /\.\.\./);
   assert.match(result.text, /easy large-area application/i);
+  assert.match(result.text, /Suggested product categories: Face SPF50\+ PA\+\+\+\+ sunscreen \/ Portable reapply format\./i);
+  assert.doesNotMatch(result.text, /Suggested products:/i);
   assert.match(result.text, /Local buying in Shanghai, China: beauty retailers \/ pharmacies \/ department-store beauty counters \/ local e-commerce/i);
   assert.doesNotMatch(result.text, /beauty_retail|department_store/i);
+});
+
+test('travelReplyComposer labels grounded shopping rows as product options', () => {
+  const readiness = buildReadiness({ baselineStatus: 'ok' });
+  readiness.shopping_preview.mode = 'grounded_products';
+  readiness.shopping_preview.coverage_status = 'grounded';
+  readiness.shopping_preview.products = [
+    {
+      name: 'Grounded SPF Fluid',
+      product_id: 'sku_grounded_spf',
+      product_source: 'catalog',
+      authority_status: 'grounded',
+    },
+  ];
+
+  const result = composeTravelReply({
+    message: 'Build me a skincare trip plan for Shanghai.',
+    language: 'EN',
+    travelReadiness: readiness,
+    destination: 'Shanghai, China',
+    homeRegion: 'Seattle, WA',
+    envSource: 'weather_api',
+  });
+
+  assert.match(result.text, /Product options to review: Grounded SPF Fluid\./i);
+  assert.doesNotMatch(result.text, /Suggested product categories: Grounded SPF Fluid/i);
 });
