@@ -19306,6 +19306,42 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         .trim()
         .toLowerCase();
       if (operation === 'find_products_multi') {
+        const payloadBody =
+          req?.body?.payload && typeof req.body.payload === 'object' && !Array.isArray(req.body.payload)
+            ? req.body.payload
+            : {};
+        const queryParams =
+          payloadBody.search && typeof payloadBody.search === 'object' && !Array.isArray(payloadBody.search)
+            ? payloadBody.search
+            : payloadBody;
+        const queryText = String(
+          debugRuntime.rawUserQuery ||
+            payloadBody.search?.query ||
+            payloadBody.query ||
+            extractSearchQueryText(queryParams) ||
+            '',
+        ).trim();
+        finalBody = maybeOverlayFinalIdentityRecallSearchProducts({
+          operation,
+          responseBody: finalBody,
+          queryText,
+          queryParams,
+        });
+      }
+    } catch (identityOverlayErr) {
+      logger.warn(
+        {
+          gateway_request_id: gatewayRequestId,
+          err: identityOverlayErr?.message || String(identityOverlayErr),
+        },
+        'failed to apply final identity graph search overlay',
+      );
+    }
+    try {
+      const operation = String(debugRuntime.operation || req?.body?.operation || '')
+        .trim()
+        .toLowerCase();
+      if (operation === 'find_products_multi') {
         const exposeDebugBundle = shouldExposeDebugBundle(req);
         const logDebugBundle = exposeDebugBundle || shouldLogDebugBundle(req);
         if (exposeDebugBundle || logDebugBundle) {
