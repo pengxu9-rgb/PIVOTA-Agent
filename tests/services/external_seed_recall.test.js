@@ -337,6 +337,59 @@ describe('externalSeedRecall', () => {
     expect(doc.vertical).toBe('makeup');
   });
 
+  test('does not classify makeup cream textures as moisturizers', () => {
+    const examples = [
+      ['Cheeks Out Freestyle Cream Bronzer — Teddy', 'Bronzer', 'makeup'],
+      ['Bright Fix Eye Brightener — Seashell', 'Concealer', 'makeup'],
+      ['Triple Drip Gloss Bomb Trio', 'Lip Gloss', 'makeup'],
+      ["Showstopp'r Football Sponge", 'Makeup Sponge', 'beauty_tools'],
+    ];
+
+    for (const [title, expectedCategory, expectedVertical] of examples) {
+      const doc = buildExternalSeedRecallDoc({
+        row: {
+          id: `eps_${expectedCategory.toLowerCase().replace(/\s+/g, '_')}`,
+          title,
+        },
+        seedData: {
+          brand: 'Fenty Beauty',
+          category: 'Skincare',
+          description: `${title} with a creamy feel.`,
+        },
+        snapshot: {},
+      });
+
+      expect(doc.category).toBe(expectedCategory);
+      expect(doc.vertical).toBe(expectedVertical);
+    }
+  });
+
+  test('prefers specific body, hand, and eye cream leaves before generic moisturizer', () => {
+    const examples = [
+      ['Hand and Nail Cream', 'Hand Cream'],
+      ['Ultra-Comforting Body Cream 48H', 'Body Cream'],
+      ['The Radiance Eye Balm', 'Eye Cream'],
+    ];
+
+    for (const [title, expectedCategory] of examples) {
+      const doc = buildExternalSeedRecallDoc({
+        row: {
+          id: `eps_${expectedCategory.toLowerCase().replace(/\s+/g, '_')}`,
+          title,
+        },
+        seedData: {
+          brand: 'NUXE',
+          category: 'Skincare',
+          description: `${title} for targeted care.`,
+        },
+        snapshot: {},
+      });
+
+      expect(doc.category).toBe(expectedCategory);
+      expect(doc.vertical).toBe('skincare');
+    }
+  });
+
   test('prefers explicit body oil title over incorrect raw serum product_type', () => {
     const doc = buildExternalSeedRecallDoc({
       row: {
