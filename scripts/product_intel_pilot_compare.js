@@ -254,6 +254,8 @@ function isGenericWhatItIsHeadline(text) {
     'pivota insight',
     'product insight',
     'product insights',
+    'product',
+    'makeup product',
     'cleansing product',
     'skincare product',
     'beauty product',
@@ -347,7 +349,8 @@ function hasProblematicGeneratedText(text) {
     /[a-z]\d+%[a-z]/i,
     /\b[a-z]{8,}(?:and|to|of|with)[a-z]{8,}\b/i,
     /\b(?:combinationand|skintypesseeking|uneventone|anddullness|deliversa)\w*\b/i,
-    /\b(?:our|we|us)\b/i,
+    /\b(?:our|we|us|my)\b/i,
+    /\bembody the essence\b/i,
     /\bmiracle ingredient\b/i,
     /\bs\s+lightly\b/i,
     /\btexture\s+help\b/i,
@@ -355,7 +358,10 @@ function hasProblematicGeneratedText(text) {
 }
 
 function inferProductKindFromContext(context) {
-  const text = `${context?.title || ''} ${context?.category || ''} ${context?.description || ''} ${(context?.tags || []).join(' ')}`.toLowerCase();
+  const title = asString(context?.title).toLowerCase();
+  const category = asString(context?.category).toLowerCase();
+  const titleCategory = `${title} ${category}`.trim();
+  const text = `${title} ${category} ${context?.description || ''} ${(context?.tags || []).join(' ')}`.toLowerCase();
   if (/\b(?:facial radiance|ingrown hair|aha|bha|glycolic|lactic)\s+pads?\b/.test(text) || /\bpads?\s+with\s+(?:bha|aha|glycolic|lactic)/.test(text)) {
     return 'treatment_pads';
   }
@@ -382,15 +388,45 @@ function inferProductKindFromContext(context) {
   if (/\bsleeping\s+pack\b/.test(text)) return 'sleeping_pack';
   if (/\bmask\b/.test(text) && !/\b(cleanser|cleansing)\b/.test(text)) return 'treatment_mask';
   if (/\b(sunscreen|spf|uv)\b/.test(text) && /\b(tint|tinted|skin tint)\b/.test(text)) return 'tinted_sunscreen';
-  if (/\b(foundation|concealer|skin tint|tint|base|cc stick)\b/.test(text)) return 'complexion_makeup';
-  if (/\b(highlighter|bronzer|blush|eyeshadow|eye shadow|eyeliner|mascara|brow|powder|diamond veil|demi'?glow)\b/.test(text)) return 'color_makeup';
+  if (/\b(fragrance|perfume|parfum|eau de|edt|edp|body mist)\b/.test(titleCategory)) return 'fragrance';
+  if (/\b(foundation|concealer|skin tint|tint|cc stick)\b/.test(text) || /\b(?:base makeup|makeup base)\b/.test(text)) return 'complexion_makeup';
+  if (/\b(highlighter|bronzer|blush|eyeshadow|eye shadow|eyeliner|mascara|brow|powder|palette|diamond veil|demi'?glow)\b/.test(text)) return 'color_makeup';
   if (/\b(cleanser|cleansing|face wash|wash)\b/.test(text)) return 'cleanser';
   if (/\b(sunscreen|spf|uv)\b/.test(text)) return 'sunscreen';
   if (/\b(toner|toning water|skin prep)\b/.test(text)) return 'toner';
   if (/\b(moisturizer|moisturising|moisturizing|cream|gel-cream|lotion|body cream|barrier butter|body butter|butta drop)\b/.test(text)) return 'moisturizer';
   if (/\b(serum|ampoule|treatment|essence)\b/.test(text)) return 'serum';
-  if (/\b(fragrance|perfume|parfum|eau de parfum|edt|scent)\b/.test(text)) return 'fragrance';
   return 'product';
+}
+
+function inferSpecificBeautySubtypeLabel(context) {
+  const title = asString(context?.title).toLowerCase();
+  const category = asString(context?.category).toLowerCase();
+  const description = asString(context?.description).toLowerCase();
+  const text = `${title} ${category} ${description}`.trim();
+  if (!text) return '';
+
+  if (/\b(?:brush bundle|brush trio|brush duo|brush set)\b/.test(text)) return 'Brush set';
+  if (/\b(?:blending|packing|shader|foundation|skin tint|concealer|face|eyeliner|kyliner)?\s*brush\s*\d*\b/.test(title)) return 'Makeup brush';
+  if (/\b(?:eau de parfum|edp)\b/.test(text)) return 'Eau de parfum';
+  if (/\b(?:fragrance|perfume|parfum|body mist)\b/.test(text)) return 'Fragrance';
+  if (/\bskin tint\b/.test(text)) return 'Skin tint';
+  if (/\bfoundation\b/.test(text) && !/\bbrush\b/.test(title)) return 'Foundation';
+  if (/\bsetting powder\b/.test(text)) return 'Setting powder';
+  if (/\b(?:powder blush stick|blush stick)\b/.test(text)) return 'Blush stick';
+  if (/\b(?:lip\s*&\s*cheek|lip and cheek).*blush tint\b/.test(text)) return 'Blush tint';
+  if (/\b(?:pressed blush|hybrid blush|powder blush|blush)\b/.test(text)) return 'Blush';
+  if (/\b(?:eyeshadow|eye shadow).*palette\b/.test(text) || /\bpalette\b/.test(title)) return 'Eyeshadow palette';
+  if (/\bmascara|kylash\b/.test(text)) return 'Mascara';
+  if (/\b(?:eyeliner|kyliner)\b/.test(text)) return 'Eyeliner';
+  if (/\b(?:brow|kybrow)\b/.test(text)) return 'Brow gel';
+  if (/\b(?:lip liner|pout liner)\b/.test(text)) return 'Lip liner';
+  if (/\b(?:lip oil)\b/.test(text)) return 'Lip oil';
+  if (/\b(?:lip glaze|lip gloss|gloss drip|plumping gloss)\b/.test(text)) return 'Lip gloss';
+  if (/\b(?:lipstick|lip stick)\b/.test(text)) return 'Lipstick';
+  if (/\b(?:tinted butter balm|butter balm)\b/.test(text)) return 'Tinted lip balm';
+  if (/\btoner\b/.test(text)) return 'Hydrating toner';
+  return '';
 }
 
 function hasExternalEvidenceLanguage(text) {
@@ -1361,6 +1397,7 @@ function buildHumanStandardBodyFromFacts(context, kind, formulaSignals) {
 
 function buildHumanStandardWhatItIs(context, baselineBundle) {
   const kind = inferProductKindFromContext(context);
+  const subtypeLabel = inferSpecificBeautySubtypeLabel(context);
   const formulaSignals = buildFormulaSignals(context);
   const usefulDescriptionRaw = firstUsefulSentence(context.description);
   const usefulDescription = hasProblematicGeneratedText(usefulDescriptionRaw)
@@ -1377,15 +1414,26 @@ function buildHumanStandardWhatItIs(context, baselineBundle) {
   const preferredFactsBody = formulaSignals.length ? factsBody : safeUsefulDescription || factsBody;
 
   if (kind === 'lip') {
+    const headline = subtypeLabel || 'Lip product';
+    const bodyBySubtype = {
+      'Lip liner': 'A lip liner for defining, shaping, and contouring the lip line before lipstick, gloss, or balm.',
+      'Lip oil': 'A lip oil focused on glossy shine, cushion, and soft-feeling lips.',
+      'Lip gloss': 'A lip gloss focused on shine, cushion, and color payoff.',
+      Lipstick: 'A lipstick focused on color payoff, comfortable wear, and a defined lip finish.',
+      'Tinted lip balm': 'A tinted lip balm focused on soft-feeling lip comfort with sheer color.',
+    };
     return {
-      headline: /lip/i.test(baseHeadline) ? baseHeadline : 'Glossy lip oil',
-      body: 'A lip product focused on glossy shine, soft-feeling lips, and a fuller-looking finish.',
+      headline,
+      body: bodyBySubtype[headline] || 'A lip product focused on color, finish, and soft-feeling lip comfort.',
     };
   }
   if (kind === 'fragrance') {
+    const scentTerms = extractActiveTerms(context).slice(0, 4);
     return {
-      headline: /fragrance|parfum|scent/i.test(baseHeadline) ? baseHeadline : 'Fragrance profile',
-      body: preferredFactsBody,
+      headline: subtypeLabel || (/fragrance|parfum|scent/i.test(baseHeadline) ? baseHeadline : 'Fragrance profile'),
+      body: scentTerms.length
+        ? `A fragrance built around ${scentTerms.join(', ')} scent notes for shoppers comparing fragrance profiles.`
+        : 'A fragrance profile for shoppers comparing scent family, intensity, and wear context.',
     };
   }
   if (kind === 'body_scrub') {
@@ -1509,17 +1557,31 @@ function buildHumanStandardWhatItIs(context, baselineBundle) {
     };
   }
   if (kind === 'complexion_makeup') {
+    const headline = subtypeLabel || 'Complexion makeup';
+    const bodyBySubtype = {
+      Foundation: 'A foundation for complexion coverage, shade matching, finish control, and longer-wear makeup routines.',
+      'Skin tint': 'A skin tint for lightweight complexion coverage, shade matching, and a natural-looking finish.',
+    };
     return {
-      headline: /foundation|tint|makeup|base/i.test(baseHeadline) ? baseHeadline : 'Complexion makeup',
-      body: preferredFactsBody,
+      headline,
+      body: bodyBySubtype[headline] || preferredFactsBody,
     };
   }
   if (kind === 'color_makeup') {
+    const headline = subtypeLabel || 'Color makeup';
+    const bodyBySubtype = {
+      'Eyeshadow palette': 'An eyeshadow palette for building eye looks through shade range, finish, and blendability.',
+      Mascara: 'A mascara for lash definition, volume, lift, and fuller-looking lashes.',
+      'Blush stick': 'A blush stick for buildable cheek color, blendability, and finish control.',
+      'Blush tint': 'A blush tint for lightweight cheek color and a fresh color finish.',
+      Blush: 'A blush product for cheek color, blendability, and finish control.',
+      'Setting powder': 'A setting powder for setting complexion makeup, soft-focus blur, and finish control.',
+      Eyeliner: 'An eyeliner for lash-line definition, shape, and color intensity.',
+      'Brow gel': 'A brow gel for brow shape, hold, and definition.',
+    };
     return {
-      headline: /highlight|blush|bronzer|mascara|liner|brow/i.test(baseHeadline)
-        ? baseHeadline
-        : 'Color makeup',
-      body: factsBody,
+      headline,
+      body: bodyBySubtype[headline] || factsBody,
     };
   }
   if (kind === 'moisturizer') {
@@ -1561,12 +1623,22 @@ function buildHumanStandardWhatItIs(context, baselineBundle) {
 
 function buildHumanStandardBestFor(context, baselineBundle) {
   const kind = inferProductKindFromContext(context);
+  const subtypeLabel = inferSpecificBeautySubtypeLabel(context);
   const text = `${context?.title || ''} ${context?.category || ''} ${context?.description || ''}`.toLowerCase();
   const formulaSignals = buildFormulaSignals(context);
   const hasSignal = (key) => formulaSignals.some((item) => item.key === key);
   const item = (tag, label) => ({ tag, label, confidence: 'moderate' });
 
   if (kind === 'lip') {
+    if (subtypeLabel === 'Lip liner') {
+      return [item('lip_definition', 'Lip definition'), item('lip_contour', 'Lip contour routines')];
+    }
+    if (subtypeLabel === 'Lipstick') {
+      return [item('lip_color', 'Lip color payoff'), item('comfortable_lip_wear', 'Comfortable lip wear')];
+    }
+    if (subtypeLabel === 'Tinted lip balm') {
+      return [item('tinted_lip_comfort', 'Tinted lip comfort'), item('soft_lip_finish', 'Soft lip finish')];
+    }
     return [item('lip_shine', 'Glossy lip shine'), item('lip_comfort', 'Soft-feeling lip comfort')];
   }
   if (kind === 'fragrance') {
@@ -1631,11 +1703,32 @@ function buildHumanStandardBestFor(context, baselineBundle) {
   }
   if (kind === 'complexion_makeup') {
     return [
-      item(text.includes('matte') ? 'soft_matte_finish' : 'complexion_finish', text.includes('matte') ? 'Soft-matte finish' : 'Complexion finish'),
+      item(
+        subtypeLabel === 'Foundation'
+          ? 'foundation_coverage'
+          : subtypeLabel === 'Skin tint'
+            ? 'skin_tint_coverage'
+            : text.includes('matte')
+              ? 'soft_matte_finish'
+              : 'complexion_finish',
+        subtypeLabel === 'Foundation'
+          ? 'Foundation coverage'
+          : subtypeLabel === 'Skin tint'
+            ? 'Skin-tint coverage'
+            : text.includes('matte')
+              ? 'Soft-matte finish'
+              : 'Complexion finish',
+      ),
       item('coverage_preferences', 'Coverage-focused makeup routines'),
     ];
   }
   if (kind === 'color_makeup') {
+    if (subtypeLabel === 'Mascara') return [item('lash_volume', 'Lash volume'), item('lash_definition', 'Lash definition')];
+    if (subtypeLabel === 'Eyeshadow palette') return [item('eye_looks', 'Eye looks'), item('shade_range', 'Shade range')];
+    if (subtypeLabel === 'Blush' || subtypeLabel === 'Blush stick' || subtypeLabel === 'Blush tint') {
+      return [item('cheek_color', 'Cheek color'), item('blendable_blush', 'Blendable blush finish')];
+    }
+    if (subtypeLabel === 'Setting powder') return [item('set_makeup', 'Makeup setting'), item('soft_focus_finish', 'Soft-focus finish')];
     return [item('shade_finish', 'Shade and finish preference'), item('targeted_makeup', 'Targeted makeup placement')];
   }
   if (kind === 'tinted_sunscreen') {
@@ -2013,6 +2106,21 @@ function buildHumanStandardPairingNotes(kind) {
   return ['Use according to the product category and seller directions.'];
 }
 
+function buildSubtypeAwarePairingNotes(kind, subtypeLabel) {
+  if (subtypeLabel === 'Lip liner') return ['Line or define lips before lipstick, gloss, or balm.'];
+  if (subtypeLabel === 'Lipstick') return ['Apply as the lip color step; pair with liner when more definition is needed.'];
+  if (subtypeLabel === 'Lip gloss') return ['Apply as the lip shine step alone or over lip color.'];
+  if (subtypeLabel === 'Lip oil') return ['Apply as a glossy comfort step and reapply when lips feel dry.'];
+  if (subtypeLabel === 'Foundation') return ['Apply in the complexion step and choose shade, coverage, and finish separately.'];
+  if (subtypeLabel === 'Skin tint') return ['Apply as a lightweight complexion step and choose shade separately.'];
+  if (subtypeLabel === 'Setting powder') return ['Use after complexion makeup to set, blur, or control finish.'];
+  if (subtypeLabel === 'Blush' || subtypeLabel === 'Blush stick' || subtypeLabel === 'Blush tint') return ['Apply on cheeks after complexion products and build color gradually.'];
+  if (subtypeLabel === 'Eyeshadow palette') return ['Use on eyelids and choose shades based on the eye look.'];
+  if (subtypeLabel === 'Mascara') return ['Apply to lashes after eye makeup or on bare lashes for definition.'];
+  if (subtypeLabel === 'Eau de parfum' || subtypeLabel === 'Fragrance') return ['Apply to pulse points and adjust amount based on scent intensity preference.'];
+  return buildHumanStandardPairingNotes(kind);
+}
+
 function buildHumanStandardRoutineStep(kind, fallbackStep = '') {
   if (kind === 'body_scrub') return 'body exfoliation';
   if (kind === 'body_mist') return 'body treatment';
@@ -2080,6 +2188,7 @@ function buildHumanStandardAmPm(kind, fallbackAmPm = []) {
 
 function inferTextureForHumanStandardKind(kind, context) {
   const text = `${context?.title || ''} ${context?.description || ''}`.toLowerCase();
+  const subtypeLabel = inferSpecificBeautySubtypeLabel(context);
   if (kind === 'body_scrub') return 'scrub';
   if (kind === 'body_mist') return 'mist';
   if (kind === 'conditioner') return 'conditioner';
@@ -2098,11 +2207,30 @@ function inferTextureForHumanStandardKind(kind, context) {
   if (kind === 'sun_stick') return 'stick';
   if (kind === 'hand_cream') return 'cream';
   if (kind === 'skin_milk') return 'milk';
+  if (kind === 'fragrance') return 'spray';
   if (kind === 'color_makeup') {
+    if (subtypeLabel === 'Mascara') return 'mascara';
+    if (subtypeLabel === 'Eyeshadow palette') return 'pressed powder';
+    if (subtypeLabel === 'Setting powder') return 'powder';
+    if (subtypeLabel === 'Blush stick') return 'stick';
+    if (subtypeLabel === 'Blush tint') return 'tint';
     if (/\bpowder\b/.test(text)) return 'powder';
     if (/\bcream\b/.test(text)) return 'cream';
     if (/\bstick\b/.test(text)) return 'stick';
     return 'makeup';
+  }
+  if (kind === 'complexion_makeup') {
+    if (subtypeLabel === 'Skin tint') return 'fluid tint';
+    if (subtypeLabel === 'Foundation') return 'foundation';
+    return 'complexion makeup';
+  }
+  if (kind === 'lip') {
+    if (subtypeLabel === 'Lip liner') return 'pencil';
+    if (subtypeLabel === 'Lipstick') return 'lipstick';
+    if (subtypeLabel === 'Lip oil') return 'oil';
+    if (subtypeLabel === 'Lip gloss') return 'gloss';
+    if (subtypeLabel === 'Tinted lip balm') return 'balm';
+    return 'lip product';
   }
   if (kind === 'sleeping_pack') {
     if (/\bgel\b/.test(text)) return 'gel';
@@ -2180,8 +2308,9 @@ function buildHumanStandardRewriteOutput(caseRow, baselineBundle, geminiOutput) 
       !isGenericSellerHighlightText(`${item.headline} ${item.body}`),
   );
   const kind = inferProductKindFromContext(context);
+  const subtypeLabel = inferSpecificBeautySubtypeLabel(context);
   const routineStep = buildHumanStandardRoutineStep(kind, baselineRoutine.step);
-  const pairingNotes = buildHumanStandardPairingNotes(kind);
+  const pairingNotes = buildSubtypeAwarePairingNotes(kind, subtypeLabel);
 
   return {
     product_intel_core: {
@@ -2540,6 +2669,49 @@ function hasWeakPublishHighlights(highlights) {
   return !items.some((item) => isPublishableHighlight(item));
 }
 
+function shouldPreferHumanStandardRewriteForPublish(caseRow) {
+  const context = buildProductContext(caseRow);
+  const kind = inferProductKindFromContext(context);
+  return [
+    'lip',
+    'fragrance',
+    'complexion_makeup',
+    'color_makeup',
+    'tinted_sunscreen',
+    'sunscreen',
+    'toner',
+    'moisturizer',
+    'serum',
+    'cleanser',
+    'lip_balm',
+    'cleansing_oil',
+    'eye_balm',
+    'eye_cream',
+    'treatment_mask',
+    'body_oil',
+    'body_mist',
+    'body_scrub',
+    'conditioner',
+    'hair_treatment',
+    'heat_protectant',
+  ].includes(kind);
+}
+
+function isUsableHumanStandardPatch(patch) {
+  const core = patch?.product_intel_core || {};
+  const patchHighlights = toList(core.why_it_stands_out).filter((item) =>
+    isPublishableHighlight(item),
+  );
+  return Boolean(
+    asString(core.what_it_is?.body).length >= 24 &&
+      !isGenericWhatItIsHeadline(core.what_it_is?.headline) &&
+      Array.isArray(core.best_for) &&
+      core.best_for.length > 0 &&
+      !isWeakBestForForPublish(core.best_for) &&
+      patchHighlights.length > 0,
+  );
+}
+
 function evaluateGeminiCandidateQuality(baselineBundle, geminiCandidateBundle) {
   if (!baselineBundle || !geminiCandidateBundle) {
     return {
@@ -2810,6 +2982,39 @@ function buildSelectedBundle(caseRow, baselineBundle, geminiCandidateBundle, qua
       fieldSources.why_it_stands_out = 'baseline';
     }
   }
+
+  const hasGeminiSelectedCore = ['what_it_is', 'best_for', 'why_it_stands_out'].some(
+    (field) => fieldSources[field] === 'gemini',
+  );
+  if (
+    !generatedUnsafeForRepair &&
+    !hasGeminiSelectedCore &&
+    shouldPreferHumanStandardRewriteForPublish(caseRow)
+  ) {
+    const patch = humanStandardPatch();
+    if (isUsableHumanStandardPatch(patch)) {
+      selected.product_intel_core.what_it_is = deepClone(patch.product_intel_core.what_it_is);
+      selected.product_intel_core.best_for = deepClone(patch.product_intel_core.best_for);
+      selected.product_intel_core.why_it_stands_out = deepClone(
+        toList(patch.product_intel_core.why_it_stands_out).filter((item) =>
+          isPublishableHighlight(item),
+        ),
+      );
+      selected.product_intel_core.routine_fit = deepClone(patch.product_intel_core.routine_fit);
+      selected.product_intel_core.watchouts = deepClone(patch.product_intel_core.watchouts || []);
+      if (hasMeaningfulTextureFinish(patch.texture_finish)) {
+        selected.texture_finish = deepClone(patch.texture_finish);
+      }
+      fieldSources.what_it_is = 'human_standard';
+      fieldSources.best_for = 'human_standard';
+      fieldSources.why_it_stands_out = 'human_standard';
+      fieldSources.routine_fit = 'human_standard';
+      fieldSources.watchouts = 'human_standard';
+      if (hasMeaningfulTextureFinish(patch.texture_finish)) {
+        fieldSources.texture_finish = 'human_standard';
+      }
+    }
+  }
   if (Array.isArray(selected.product_intel_core?.watchouts)) {
     selected.product_intel_core.watchouts = selected.product_intel_core.watchouts.filter(
       (item) =>
@@ -2832,6 +3037,19 @@ function buildSelectedBundle(caseRow, baselineBundle, geminiCandidateBundle, qua
       selected.product_intel_core.freshness = deepClone(selected.freshness);
     }
   }
+  const provenanceQualityGate = deepClone(
+    quality || {
+      candidate_available: false,
+      overall_pass: false,
+      quality_score: 0,
+      fail_reasons: ['missing_candidate'],
+      field_decisions: {},
+    },
+  );
+  if (humanStandardSelected) {
+    provenanceQualityGate.human_standard_rewrite = true;
+    provenanceQualityGate.human_standard_reviewer_model = HUMAN_STANDARD_REWRITE_MODEL;
+  }
 
   selected.provenance = {
     ...(selected.provenance || {}),
@@ -2846,13 +3064,7 @@ function buildSelectedBundle(caseRow, baselineBundle, geminiCandidateBundle, qua
     selection_strategy: 'baseline_first_gemini_guarded',
     gemini_model: geminiCandidateBundle ? model : null,
     field_sources: fieldSources,
-    gemini_quality_gate: quality || {
-      candidate_available: false,
-      overall_pass: false,
-      quality_score: 0,
-      fail_reasons: ['missing_candidate'],
-      field_decisions: {},
-    },
+    gemini_quality_gate: provenanceQualityGate,
   };
 
   return {

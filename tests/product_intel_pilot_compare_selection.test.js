@@ -229,6 +229,110 @@ describe('product_intel pilot compare selection', () => {
     expect(makeupRewrite.product_intel_core.what_it_is.body).not.toMatch(/skin-care|hydration/i);
   });
 
+  test('human-standard rewrite is preferred for publishable makeup and fragrance subtypes', () => {
+    const cases = [
+      {
+        title: 'Power Plush Longwear Foundation',
+        category: 'Makeup Product',
+        description: 'A foundation with medium buildable coverage and a smooth satin finish.',
+        expectedSubtitle: 'Foundation',
+        expectedHeadline: 'Foundation',
+        expectedBestFor: /Foundation coverage/,
+        expectedBody: /foundation|complexion coverage/i,
+      },
+      {
+        title: 'Crème Lipstick',
+        category: 'Daily Moisturizer',
+        description: 'A creamy lipstick with color-rich payoff, satin sheen, and comfortable wear.',
+        expectedSubtitle: 'Lipstick',
+        expectedHeadline: 'Lipstick',
+        expectedBestFor: /Lip color payoff/,
+      },
+      {
+        title: 'Powder Blush Stick',
+        category: 'Daily Moisturizer',
+        description: 'A cream-to-powder blush stick for buildable cheek color and a soft-matte finish.',
+        expectedSubtitle: 'Blush Stick',
+        expectedHeadline: 'Blush stick',
+        expectedBestFor: /Cheek color/,
+        expectedBody: /blush stick|cheek color/i,
+      },
+      {
+        title: 'The Classic Matte Palette',
+        category: 'Makeup Product',
+        description: 'An all-matte eyeshadow palette with essential shades for natural or smokey eye looks.',
+        expectedSubtitle: 'Eyeshadow Palette',
+        expectedHeadline: 'Eyeshadow palette',
+        expectedBestFor: /Eye looks/,
+        expectedBody: /eyeshadow palette|eye looks/i,
+        forbiddenBody: /complexion product|coverage/i,
+      },
+      {
+        title: 'Cosmic Kylie Jenner 2.0 Eau de Parfum',
+        category: 'Treatment Serum',
+        description: 'A floral amber eau de parfum with pear, pink pepper, lavender, and amber notes.',
+        expectedSubtitle: 'Eau De Parfum',
+        expectedHeadline: 'Eau de parfum',
+        expectedBestFor: /Fragrance wear/,
+        expectedBody: /fragrance|scent notes/i,
+        forbiddenBody: /embody the essence/i,
+      },
+      {
+        title: 'Mini Kylash Volume Mascara',
+        category: 'Product',
+        description: 'A mascara for lifted, defined, fuller-looking lashes with volume and curl hold.',
+        expectedSubtitle: 'Mascara',
+        expectedHeadline: 'Mascara',
+        expectedBestFor: /Lash volume/,
+      },
+    ];
+
+    for (const [index, item] of cases.entries()) {
+      const productId = `ext_kylie_subtype_${index}`;
+      const caseRow = {
+        case_id: `live_${productId}`,
+        canonical_product_ref: {
+          merchant_id: 'external_seed',
+          product_id: productId,
+        },
+        product: {
+          merchant_id: 'external_seed',
+          product_id: productId,
+          brand: 'Kylie Cosmetics',
+          title: item.title,
+          category: item.category,
+          description: item.description,
+        },
+      };
+      const baseline = buildProductIntelDraftBundle({
+        product: caseRow.product,
+        canonicalProductRef: caseRow.canonical_product_ref,
+      });
+
+      const selected = buildSelectedBundle(caseRow, baseline, null, null, 'gemini-test');
+
+      expect(selected.selected_mode).toBe('human_standard_rewrite');
+      expect(selected.field_sources.what_it_is).toBe('human_standard');
+      expect(selected.field_sources.best_for).toBe('human_standard');
+      expect(selected.bundle.provenance.gemini_quality_gate.human_standard_rewrite).toBe(true);
+      expect(selected.bundle.product_intel_core.what_it_is.headline).toBe(item.expectedHeadline);
+      if (item.expectedBody) {
+        expect(selected.bundle.product_intel_core.what_it_is.body).toMatch(item.expectedBody);
+      }
+      if (item.forbiddenBody) {
+        expect(selected.bundle.product_intel_core.what_it_is.body).not.toMatch(item.forbiddenBody);
+      }
+      expect(selected.bundle.product_intel_core.best_for.map((entry) => entry.label).join(' ')).toMatch(
+        item.expectedBestFor,
+      );
+      expect(selected.bundle.shopping_card.subtitle).toBe(item.expectedSubtitle);
+      expect(selected.bundle.search_card.compact_candidate).toBe(item.expectedSubtitle);
+      expect(selected.bundle.shopping_card.subtitle).not.toMatch(/Daily Moisturizer|Makeup Product|Treatment Serum|Product/);
+      expect(selected.bundle.shopping_card.intro || '').not.toMatch(/\b(my|our|we|us)\b|embody the essence/i);
+      expect(selected.bundle.search_card.intro_candidate || '').not.toMatch(/\b(my|our|we|us)\b|embody the essence/i);
+    }
+  });
+
   test('human-standard cleanser rewrite ignores incidental acid and oil texture cues', () => {
     const caseRow = {
       case_id: 'live_ext_milky_cleanser',

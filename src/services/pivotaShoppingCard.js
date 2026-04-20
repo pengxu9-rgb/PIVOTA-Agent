@@ -231,6 +231,26 @@ function inferTitleSpecialtyCompactSubtitle(product) {
   const text = `${title} ${category} ${description}`.trim();
   if (!text) return '';
 
+  if (/\b(?:brush bundle|brush trio|brush duo|brush set)\b/.test(text)) return 'Brush Set';
+  if (/\b(?:blending|packing|shader|foundation|skin tint|concealer|face|eyeliner|kyliner)?\s*brush\s*\d*\b/.test(title)) return 'Makeup Brush';
+  if (/\b(?:eau de parfum|edp)\b/.test(text)) return 'Eau De Parfum';
+  if (/\b(?:fragrance|perfume|parfum|body mist)\b/.test(text)) return 'Fragrance';
+  if (/\bskin tint\b/.test(text)) return 'Skin Tint';
+  if (/\bfoundation\b/.test(text) && !/\bbrush\b/.test(title)) return 'Foundation';
+  if (/\bsetting powder\b/.test(text)) return 'Setting Powder';
+  if (/\b(?:powder blush stick|blush stick)\b/.test(text)) return 'Blush Stick';
+  if (/\b(?:lip\s*&\s*cheek|lip and cheek).*blush tint\b/.test(text)) return 'Blush Tint';
+  if (/\b(?:pressed blush|hybrid blush|powder blush|blush)\b/.test(text)) return 'Blush';
+  if (/\b(?:eyeshadow|eye shadow).*palette\b/.test(text) || /\bpalette\b/.test(title)) return 'Eyeshadow Palette';
+  if (/\bmascara|kylash\b/.test(text)) return 'Mascara';
+  if (/\b(?:eyeliner|kyliner)\b/.test(text)) return 'Eyeliner';
+  if (/\b(?:brow|kybrow)\b/.test(text)) return 'Brow Gel';
+  if (/\b(?:lip liner|pout liner)\b/.test(text)) return 'Lip Liner';
+  if (/\b(?:lip oil)\b/.test(text)) return 'Lip Oil';
+  if (/\b(?:lip glaze|lip gloss|gloss drip|plumping gloss)\b/.test(text)) return 'Lip Gloss';
+  if (/\b(?:lipstick|lip stick)\b/.test(text)) return 'Lipstick';
+  if (/\b(?:tinted butter balm|butter balm)\b/.test(text)) return 'Tinted Lip Balm';
+  if (/\btoner\b/.test(text)) return 'Hydrating Toner';
   if (/\b(?:facial radiance|ingrown hair|aha|bha|glycolic|lactic)\s+pads?\b/.test(text) || /\bpads?\s+with\s+(?:bha|aha|glycolic|lactic)/.test(text)) {
     if (/\b(?:aha|bha|glycolic|lactic|salicylic)\b/.test(text)) return 'Exfoliating Pads';
     return 'Treatment Pads';
