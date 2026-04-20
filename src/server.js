@@ -500,6 +500,11 @@ const CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MAX_MS = parsePositiveInt(
   Math.max(240000, CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MS * 4),
   { min: CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MS, max: 20 * 60 * 1000 },
 );
+const HEALTHZ_DISCOVERY_TIMEOUT_MS = parsePositiveInt(
+  process.env.HEALTHZ_DISCOVERY_TIMEOUT_MS,
+  1500,
+  { min: 100, max: 10_000 },
+);
 
 function getCreatorCatalogAutoSyncIntervalConfig() {
   const maxIntervalMinutes = Math.max(
@@ -16310,6 +16315,44 @@ function buildDiscoveryHealthFallbackSnapshot(err = null) {
   };
 }
 
+function healthProbeTimeoutError(label, timeoutMs) {
+  const err = new Error(`${label} timed out after ${timeoutMs}ms`);
+  err.code = 'HEALTH_PROBE_TIMEOUT';
+  err.timeout_ms = timeoutMs;
+  return err;
+}
+
+function withHealthProbeTimeout(promise, { label, timeoutMs, onError }) {
+  const boundedTimeoutMs = Math.max(0, Number(timeoutMs) || 0);
+  if (!boundedTimeoutMs) {
+    return Promise.resolve(promise).catch(onError);
+  }
+
+  let settled = false;
+  let timer = null;
+  return new Promise((resolve) => {
+    timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      resolve(onError(healthProbeTimeoutError(label, boundedTimeoutMs)));
+    }, boundedTimeoutMs);
+
+    Promise.resolve(promise)
+      .then((value) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(value);
+      })
+      .catch((err) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(onError(err));
+      });
+  });
+}
+
 function buildDiscoveryUnavailableInvokeResponse(payload = {}, err = null) {
   const context =
     payload?.context && typeof payload.context === 'object' && !Array.isArray(payload.context)
@@ -16389,9 +16432,26 @@ const healthRouteHandler = (req, res) => {
     includeCacheStats && dbConfigured && merchantIds.length
       ? probeCreatorCacheDbStats(merchantIds, 'unknown', { force: true })
       : Promise.resolve(null);
-  const discoveryHealthPromise = getDiscoveryHealthSnapshot().catch((err) => {
-    logger.warn({ err: err?.message || String(err) }, 'healthz discovery probe failed');
-    return buildDiscoveryHealthFallbackSnapshot(err);
+  const discoveryHealthPromise = withHealthProbeTimeout(getDiscoveryHealthSnapshot(), {
+    label: 'healthz discovery probe',
+    timeoutMs: HEALTHZ_DISCOVERY_TIMEOUT_MS,
+    onError: (err) => {
+      const timedOut = err?.code === 'HEALTH_PROBE_TIMEOUT';
+      logger.warn(
+        {
+          err: err?.message || String(err),
+          timeout_ms: HEALTHZ_DISCOVERY_TIMEOUT_MS,
+          timed_out: timedOut,
+        },
+        timedOut ? 'healthz discovery probe timed out' : 'healthz discovery probe failed',
+      );
+      return {
+        ...buildDiscoveryHealthFallbackSnapshot(err),
+        warning: timedOut ? 'healthz_discovery_probe_timeout' : 'healthz_discovery_probe_failed',
+        timeout_ms: HEALTHZ_DISCOVERY_TIMEOUT_MS,
+        timed_out: timedOut,
+      };
+    },
   });
 
   Promise.all([cacheStatsPromise, discoveryHealthPromise])
@@ -16470,6 +16530,7 @@ const healthRouteHandler = (req, res) => {
       limit_clamped_to_max: limitConfig.limitClampedToMax,
       request_timeout_ms: CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MS,
       request_timeout_max_ms: CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MAX_MS,
+      healthz_discovery_timeout_ms: HEALTHZ_DISCOVERY_TIMEOUT_MS,
       retry_attempts: CREATOR_CATALOG_AUTO_SYNC_RETRIES,
       retry_backoff_ms: CREATOR_CATALOG_AUTO_SYNC_RETRY_BACKOFF_MS,
       non_retryable_cooldown_seconds: CREATOR_CATALOG_AUTO_SYNC_NON_RETRYABLE_COOLDOWN_SECONDS,

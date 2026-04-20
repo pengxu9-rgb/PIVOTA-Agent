@@ -24,6 +24,10 @@ describe('health endpoints', () => {
     jest.resetModules();
   });
 
+  afterEach(() => {
+    jest.dontMock('../src/services/discoveryFeed');
+  });
+
   it('serves /health as an alias of /healthz', async () => {
     const app = require('../src/server');
 
@@ -137,6 +141,46 @@ describe('health endpoints', () => {
           }),
         );
         expect(resp.body.products_available).toBe(false);
+      },
+    );
+  });
+
+  it('/healthz returns a bounded response when discovery health probe stalls', async () => {
+    await withEnv(
+      {
+        HEALTHZ_DISCOVERY_TIMEOUT_MS: '100',
+        DATABASE_URL: undefined,
+        PIVOTA_API_BASE: undefined,
+        PIVOTA_BACKEND_BASE_URL: undefined,
+      },
+      async () => {
+        jest.doMock('../src/services/discoveryFeed', () => {
+          const actual = jest.requireActual('../src/services/discoveryFeed');
+          return {
+            ...actual,
+            getDiscoveryHealthSnapshot: jest.fn(() => new Promise(() => {})),
+          };
+        });
+        jest.resetModules();
+        const app = require('../src/server');
+        const startedAt = Date.now();
+        const resp = await request(app).get('/healthz').expect(200);
+
+        expect(Date.now() - startedAt).toBeLessThan(1000);
+        expect(resp.body.ok).toBe(true);
+        expect(resp.body.discovery).toEqual(
+          expect.objectContaining({
+            discovery_ready: false,
+            warning: 'healthz_discovery_probe_timeout',
+            timeout_ms: 100,
+            timed_out: true,
+          }),
+        );
+        expect(resp.body.catalog_sync).toEqual(
+          expect.objectContaining({
+            healthz_discovery_timeout_ms: 100,
+          }),
+        );
       },
     );
   });
