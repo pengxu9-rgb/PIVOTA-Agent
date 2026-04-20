@@ -476,6 +476,7 @@ function inferSpecificBeautySubtypeLabel(context) {
   if (/\b(?:blending|packing|shader|foundation|skin tint|concealer|face|eyeliner|kyliner)?\s*brush\s*\d*\b/.test(title)) return 'Makeup brush';
   if (/\b(?:fragrance layering balm|fragrance balm|scent balm)\b/.test(text)) return 'Fragrance balm';
   if (/\b(?:hair\s*\+\s*body fragrance mist|hair and body fragrance mist|hair\s*\+\s*body mist|hair and body mist|body fragrance mist|fragrance mist|fenty parfum hair\s*\+\s*body mist)\b/.test(text)) return 'Fragrance mist';
+  if (/\b(?:strong hold gel|hair gel|styling gel|curl gel|hold gel)\b/.test(text)) return 'Hair styling gel';
   if (/\b(?:eye duo|eye trio|eye set|eye kit|eye colour routine|eye color routine|essential eye duo|mascara.*(?:duo|set)|(?:duo|set).*mascara)\b/.test(text)) return 'Eye makeup set';
   if (/\b(?:lip duo|lip set|lip kit)\b/.test(text)) return 'Lip set';
   if (/\b(?:makeup set|makeup kit|makeup essentials|makeup trio|beauty set|beauty kit)\b/.test(text)) return 'Makeup set';
@@ -503,7 +504,6 @@ function inferSpecificBeautySubtypeLabel(context) {
   if (/\b(?:lip glaze|lip gloss|gloss drip|plumping gloss|gloss bomb heat|gloss bomb universal|lip luminizer|plumper)\b/.test(text)) return 'Lip gloss';
   if (/\b(?:lipstick|lip stick)\b/.test(text)) return 'Lipstick';
   if (/\bdry\s+shampoo\b/.test(text)) return 'Dry shampoo';
-  if (/\b(?:strong hold gel|hair gel|styling gel|curl gel|hold gel)\b/.test(text)) return 'Hair styling gel';
   if (/\btoner\b/.test(text)) return 'Hydrating toner';
   return '';
 }
@@ -2544,6 +2544,9 @@ function buildHumanStandardPairingNotes(kind) {
 }
 
 function buildSubtypeAwarePairingNotes(kind, subtypeLabel) {
+  if (kind === 'hair_styling_gel' || subtypeLabel === 'Hair styling gel') {
+    return ['Apply through damp or dry hair to define shape and hold according to seller directions.'];
+  }
   if (subtypeLabel === 'Lip liner') return ['Line or define lips before lipstick, gloss, or balm.'];
   if (subtypeLabel === 'Lipstick') return ['Apply as the lip color step; pair with liner when more definition is needed.'];
   if (subtypeLabel === 'Lip gloss') return ['Apply as the lip shine step alone or over lip color.'];

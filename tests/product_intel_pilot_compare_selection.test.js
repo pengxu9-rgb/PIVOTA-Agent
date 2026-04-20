@@ -11,6 +11,10 @@ const {
   normalizeGeminiDraftOutput,
 } = require('../scripts/product_intel_pilot_compare');
 
+function toText(value) {
+  return Array.isArray(value) ? value.join(' ') : String(value || '');
+}
+
 describe('product_intel pilot compare selection', () => {
   test('human-standard rewrite keeps Pixi mist patch oil and blush products out of stale fallback subtypes', () => {
     const cases = [
@@ -320,6 +324,7 @@ describe('product_intel pilot compare selection', () => {
         expectedKind: 'hair_styling_gel',
         expectedHeadline: /Hair styling gel/i,
         expectedSubtitle: 'Hair Styling Gel',
+        expectedPairing: /damp or dry hair/i,
         rejected: /Shampoo|Fragrance|Wash-day cleanse/i,
       },
       {
@@ -403,6 +408,10 @@ describe('product_intel pilot compare selection', () => {
       expect(selectedCore.what_it_is.headline).toMatch(item.expectedHeadline);
       expect(`${selectedCore.what_it_is.headline} ${selectedCore.what_it_is.body} ${card.subtitle}`).not.toMatch(item.rejected);
       expect(card.subtitle).toBe(item.expectedSubtitle);
+      if (item.expectedPairing) {
+        expect(toText(selectedCore.routine_fit?.pairing_notes)).toMatch(item.expectedPairing);
+        expect(toText(selectedCore.routine_fit?.pairing_notes)).not.toMatch(item.rejected);
+      }
       expect(card.intro || '').not.toMatch(/^[•*\-]\s*/);
     }
   });
