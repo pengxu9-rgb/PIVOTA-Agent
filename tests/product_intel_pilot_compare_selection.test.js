@@ -284,6 +284,62 @@ describe('product_intel pilot compare selection', () => {
         expectedSubtitle: 'Mascara',
         expectedHeadline: 'Mascara',
         expectedBestFor: /Lash volume/,
+        expectedHighlight: /Lash definition step/,
+      },
+      {
+        title: 'Always an Optimist Pore Diffusing Primer',
+        category: 'Makeup Product',
+        description: 'A pore diffusing primer for smoothing visible texture before foundation.',
+        expectedSubtitle: 'Primer',
+        expectedHeadline: 'Primer',
+        expectedBestFor: /Makeup prep/,
+        expectedBody: /primer|pre-foundation|finish control/i,
+        expectedHighlight: /Makeup prep layer/,
+        forbiddenBody: /foundation for complexion coverage/i,
+      },
+      {
+        title: 'Find Comfort Hydrating Body Lotion',
+        category: 'Skincare',
+        description: 'A hydrating body lotion with niacinamide and glycerin for body skin comfort.',
+        expectedSubtitle: 'Body Lotion',
+        expectedHeadline: 'Body lotion',
+        expectedBestFor: /Body hydration/,
+        expectedBody: /body lotion|body-skin hydration/i,
+        expectedHighlight: /Post-shower body lotion/,
+        forbiddenBody: /daily moisturizer/i,
+      },
+      {
+        title: 'Fragrance Layering Balm - Woody Oak',
+        category: 'Fragrance',
+        description: 'A fragrance layering balm for targeted scent placement with woody oak notes.',
+        expectedSubtitle: 'Fragrance Balm',
+        expectedHeadline: 'Fragrance balm',
+        expectedBestFor: /Fragrance wear/,
+        expectedBody: /fragrance balm|targeted|close-to-skin/i,
+        expectedHighlight: /Targeted scent layer/,
+        forbiddenBody: /eau de parfum/i,
+      },
+      {
+        title: 'Selena’s Essential Eye Duo',
+        category: 'Makeup Set',
+        description: 'An essential eye duo with mascara and liner for coordinated eye makeup looks.',
+        expectedSubtitle: 'Eye Makeup Set',
+        expectedHeadline: 'Eye makeup set',
+        expectedBestFor: /Coordinated makeup steps/,
+        expectedBody: /makeup set|coordinated makeup/i,
+        expectedHighlight: /Coordinated makeup set/,
+        forbiddenBody: /A mascara for lash definition/i,
+      },
+      {
+        title: 'Kind Words Matte Lip Liner',
+        category: 'Lip Liner',
+        description: 'A matte lip liner for defining and shaping lips before lipstick or gloss.',
+        expectedSubtitle: 'Lip Liner',
+        expectedHeadline: 'Lip liner',
+        expectedBestFor: /Lip definition/,
+        expectedBody: /lip liner|defining/i,
+        expectedHighlight: /Lip definition step/,
+        forbiddenBody: /lip oil|Gloss and lip comfort/i,
       },
     ];
 
@@ -325,6 +381,13 @@ describe('product_intel pilot compare selection', () => {
       expect(selected.bundle.product_intel_core.best_for.map((entry) => entry.label).join(' ')).toMatch(
         item.expectedBestFor,
       );
+      if (item.expectedHighlight) {
+        expect(
+          selected.bundle.product_intel_core.why_it_stands_out
+            .map((entry) => `${entry.headline} ${entry.body}`)
+            .join(' '),
+        ).toMatch(item.expectedHighlight);
+      }
       expect(selected.bundle.shopping_card.subtitle).toBe(item.expectedSubtitle);
       expect(selected.bundle.search_card.compact_candidate).toBe(item.expectedSubtitle);
       expect(selected.bundle.shopping_card.subtitle).not.toMatch(/Daily Moisturizer|Makeup Product|Treatment Serum|Product/);

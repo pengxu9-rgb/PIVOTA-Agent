@@ -233,6 +233,12 @@ function inferTitleSpecialtyCompactSubtitle(product) {
 
   if (/\b(?:brush bundle|brush trio|brush duo|brush set)\b/.test(text)) return 'Brush Set';
   if (/\b(?:blending|packing|shader|foundation|skin tint|concealer|face|eyeliner|kyliner)?\s*brush\s*\d*\b/.test(title)) return 'Makeup Brush';
+  if (/\b(?:fragrance layering balm|fragrance balm|scent balm)\b/.test(text)) return 'Fragrance Balm';
+  if (/\b(?:eye duo|eye set|eye kit|essential eye duo|mascara.*(?:duo|set)|(?:duo|set).*mascara)\b/.test(text)) return 'Eye Makeup Set';
+  if (/\b(?:lip duo|lip set|lip kit)\b/.test(text)) return 'Lip Set';
+  if (/\b(?:makeup set|makeup kit|beauty set)\b/.test(text)) return 'Makeup Set';
+  if (/\b(?:pore diffusing primer|illuminating primer|face primer|makeup primer|primer)\b/.test(text)) return 'Primer';
+  if (/\bbody\s+lotion\b/.test(text)) return 'Body Lotion';
   if (/\b(?:eau de parfum|edp)\b/.test(text)) return 'Eau De Parfum';
   if (/\b(?:fragrance|perfume|parfum|body mist)\b/.test(text)) return 'Fragrance';
   if (/\bskin tint\b/.test(text)) return 'Skin Tint';
