@@ -488,6 +488,21 @@ function extractLooseAssistantTextJsonObject(text) {
   return assistantText ? { assistant_text: assistantText } : null;
 }
 
+function neutralizeTravelFinalRewriteText(text) {
+  const src = normalizeText(text, 3000);
+  if (!src) return '';
+  return src
+    .replace(/\bmust-have\b/gi, 'useful')
+    .replace(/\bholy grail\b/gi, 'notable option')
+    .replace(/\bmiracle\b/gi, 'notable')
+    .replace(/\bguaranteed\b/gi, 'intended')
+    .replace(/\bperfect\b/gi, 'suitable')
+    .replace(/\bexcellent\b/gi, 'solid')
+    .replace(/\bideal\b/gi, 'suitable')
+    .replace(/\bbest\b/gi, 'strong')
+    .replace(/\bmost\b/gi, 'many');
+}
+
 function stringifyForRewriteQuality(value) {
   try {
     return JSON.stringify(value || {});
@@ -838,7 +853,9 @@ async function rewriteTravelAssistantTextWithLlm({
       };
     }
 
-    const validation = validateTravelFinalRewriteText(parsed.assistant_text, { promptInput });
+    const assistantText = neutralizeTravelFinalRewriteText(parsed.assistant_text);
+    const absoluteWordingNeutralized = assistantText !== parsed.assistant_text;
+    const validation = validateTravelFinalRewriteText(assistantText, { promptInput });
     if (!validation.ok) {
       return {
         stage,
@@ -865,12 +882,13 @@ async function rewriteTravelAssistantTextWithLlm({
       used: true,
       outcome: 'call',
       reason: 'ok',
-      assistant_text: parsed.assistant_text,
+      assistant_text: assistantText,
       source_meta: {
         provider: 'gemini',
         model: effectiveModel,
         prompt_hash: promptHash,
         prompt_chars: promptChars,
+        ...(absoluteWordingNeutralized ? { absolute_wording_neutralized: true } : {}),
         ...(isPlainObject(callResult && callResult.meta) ? callResult.meta : {}),
         ...responseMeta,
       },
@@ -916,6 +934,7 @@ module.exports = {
     buildGeminiRequest,
     parseTravelFinalRewritePayload,
     validateTravelFinalRewriteText,
+    neutralizeTravelFinalRewriteText,
     compactShoppingForFinalRewrite,
     compactStructuredSectionsForFinalRewrite,
     compactSafetyDecisionForFinalRewrite,

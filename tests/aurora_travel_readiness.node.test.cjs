@@ -141,6 +141,39 @@ test('buildTravelReadiness returns actionable structure with deltas and shopping
   assert.ok(payload.confidence.missing_inputs.includes('current_routine'));
 });
 
+test('buildTravelReadiness uses product name before generic body-lip-hand category', () => {
+  const payload = buildTravelReadiness({
+    language: 'EN',
+    profile: { skinType: 'oily', region: 'Seattle, WA' },
+    recentLogs: [],
+    destination: 'Tokyo',
+    destinationWeather: {
+      source: 'weather_api',
+      location: { timezone: 'Asia/Tokyo' },
+      summary: { temperature_max_c: 21, humidity_mean: 66, uv_index_max: 7.4 },
+    },
+    homeWeather: {
+      source: 'weather_api',
+      location: { timezone: 'America/Los_Angeles' },
+      summary: { temperature_max_c: 16, humidity_mean: 77, uv_index_max: 6.3 },
+    },
+    recommendationCandidates: [
+      {
+        step: 'Body, lip, or hand support',
+        role_id: 'body_lip_hand',
+        sku: { product_id: 'jp_hand_1', brand: 'Kao Curel', name: 'Curel Hand Cream' },
+        reasons: ['Category: Body, lip, or hand support.'],
+      },
+    ],
+    nowMs: Date.parse('2026-04-20T12:00:00.000Z'),
+  });
+
+  const hand = payload.shopping_preview.products.find((item) => item && item.product_id === 'jp_hand_1');
+  assert.ok(hand);
+  assert.match(hand.reasons.join(' '), /Use on hands/);
+  assert.equal(/Use on lips/.test(hand.reasons.join(' ')), false);
+});
+
 test('buildTravelReadiness keeps recovery mask use rationale ahead of hydrating category wording', () => {
   const payload = buildTravelReadiness({
     language: 'EN',
