@@ -234,6 +234,53 @@ test('travel final assistant rewriter: guard rejects stale fallback labels and a
   assert.equal(dumpHeading.reason, 'rewrite_forbidden_heading');
 });
 
+test('travel final assistant rewriter: reasoning guard accepts natural causal wording', () => {
+  const promptInput = travelFinalRewriteInternal.buildFinalRewritePromptInput({
+    language: 'EN',
+    message: 'Seattle to Seoul work trip. Build a skincare plan.',
+    travelReadiness: {
+      delta_vs_home: {
+        temperature: { home: 16.1, destination: 18.8, delta: 2.7, unit: 'C' },
+        humidity: { home: 77, destination: 61.4, delta: -15.6, unit: '%' },
+        uv: { home: 6.3, destination: 7.2, delta: 0.9, unit: '' },
+      },
+      jetlag_sleep: { hours_diff: 16, risk_level: 'high' },
+      reco_bundle: [
+        {
+          trigger: 'Long-haul cabin dryness',
+          action: 'Use moisturizer before boarding; keep a tolerated mask optional.',
+          product_types: ['Lightweight moisturizer', 'Hydrating mask'],
+        },
+        {
+          trigger: 'Elevated UV',
+          action: 'Use face SPF and body SPF; keep lip balm and hand cream available.',
+          product_types: ['Face SPF50+', 'Body SPF', 'Lip balm', 'Hand cream'],
+        },
+      ],
+      shopping_preview: {
+        mode: 'category_guidance',
+        coverage_status: 'category_only',
+        grounded_count: 0,
+        products: [{ name: 'Face SPF50+', category: 'sun protection', product_source: 'category_guidance' }],
+      },
+    },
+  });
+
+  const accepted = travelFinalRewriteInternal.validateTravelFinalRewriteText(
+    [
+      'Moving from Seattle to Seoul means a slightly warmer, drier, higher-UV environment, which can lead to surface dehydration while oily skin compensates with more shine.',
+      'Before departure, keep your familiar routine and pack face sunscreen, body sunscreen, lip balm, and hand cream so outdoor exposure and cabin dryness are covered.',
+      'On the flight, use a lightweight moisturizer before boarding; a hydrating mask can stay optional only if it is already tolerated.',
+      'First 48 hours after landing, keep cleansing and moisturizer simple, then reapply SPF during outdoor commutes.',
+      'Local shopping should stay category-led for now: review sunscreen, light moisturizer, and recovery mask categories rather than treating them as confirmed product picks.',
+    ].join('\n'),
+    { promptInput },
+  );
+
+  assert.equal(accepted.ok, true);
+  assert.equal(accepted.reason, 'ok');
+});
+
 test('travel final assistant rewriter: parser recovers loose assistant_text JSON', () => {
   const loose = [
     '{',

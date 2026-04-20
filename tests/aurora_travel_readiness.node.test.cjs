@@ -112,6 +112,9 @@ test('buildTravelReadiness returns actionable structure with deltas and shopping
   assert.equal(spfPreview.pdp_open.merchant_id, 'm_paris');
   assert.match(spfPreview.reasons.join(' '), /AM\/outdoor SPF step/);
   assert.match(spfPreview.reasons.join(' '), /reapply based on outdoor exposure time/);
+  const lipPreview = payload.shopping_preview.products.find((item) => item && item.product_id === 'sku_4');
+  assert.match(lipPreview.reasons.join(' '), /lips, hands, or exposed skin/);
+  assert.equal(/AM\/outdoor SPF step/.test(lipPreview.reasons.join(' ')), false);
   assert.ok(Array.isArray(payload.phase_plan));
   assert.deepEqual(payload.phase_plan.map((phase) => phase.id), [
     'pre_trip_prepare',
@@ -135,6 +138,40 @@ test('buildTravelReadiness returns actionable structure with deltas and shopping
   assert.equal(payload.confidence.level, 'high');
   assert.ok(payload.confidence.missing_inputs.includes('recent_logs'));
   assert.ok(payload.confidence.missing_inputs.includes('current_routine'));
+});
+
+test('buildTravelReadiness keeps recovery mask use rationale ahead of hydrating category wording', () => {
+  const payload = buildTravelReadiness({
+    language: 'EN',
+    profile: { skinType: 'oily', region: 'Seattle, WA' },
+    recentLogs: [],
+    destination: 'Seoul',
+    destinationWeather: {
+      source: 'weather_api',
+      location: { timezone: 'Asia/Seoul' },
+      summary: { temperature_max_c: 19, humidity_mean: 61, uv_index_max: 7.2 },
+    },
+    homeWeather: {
+      source: 'weather_api',
+      location: { timezone: 'America/Los_Angeles' },
+      summary: { temperature_max_c: 16, humidity_mean: 77, uv_index_max: 6.3 },
+    },
+    recommendationCandidates: [
+      {
+        step: 'Hydrating or soothing mask',
+        role_id: 'recovery_mask',
+        sku: { product_id: 'mask_1', brand: 'Round Lab', name: 'Birch Juice Moisturizing Mask' },
+        reasons: ['Category: Hydrating or soothing mask.'],
+      },
+    ],
+    nowMs: Date.parse('2026-04-20T12:00:00.000Z'),
+  });
+
+  const mask = payload.shopping_preview.products.find((item) => item && item.product_id === 'mask_1');
+  assert.ok(mask);
+  assert.match(mask.reasons.join(' '), /optional night recovery/);
+  assert.match(mask.reasons.join(' '), /already tolerated/);
+  assert.equal(/Use under moisturizer/.test(mask.reasons.join(' ')), false);
 });
 
 test('buildTravelReadiness marks baseline_unavailable when home baseline cannot be resolved', () => {
