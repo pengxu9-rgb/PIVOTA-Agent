@@ -9347,6 +9347,68 @@ function hasSearchProductIdentityMatch(product, queryText) {
   return Boolean(matchBasis && normalizeSearchTextForMatch(matchBasis).includes(normalizedQuery));
 }
 
+function overlayIdentityRecallOnSearchProduct(product, identityProduct) {
+  if (
+    !product ||
+    typeof product !== 'object' ||
+    !identityProduct ||
+    typeof identityProduct !== 'object'
+  ) {
+    return product;
+  }
+  const merchantId = String(
+    product.merchant_id ||
+      product.product_ref?.merchant_id ||
+      product.seller?.merchant_id ||
+      '',
+  ).trim();
+  const productId = String(
+    product.product_id ||
+      product.id ||
+      product.platform_product_id ||
+      product.product_ref?.product_id ||
+      '',
+  ).trim();
+  const selectedRef =
+    merchantId && productId
+      ? { merchant_id: merchantId, product_id: productId }
+      : identityProduct.selected_commerce_ref || identityProduct.product_ref || null;
+  return {
+    ...identityProduct,
+    ...product,
+    ...(merchantId ? { merchant_id: merchantId } : {}),
+    ...(productId ? { product_id: productId, id: productId } : {}),
+    ...(selectedRef ? { product_ref: selectedRef, selected_commerce_ref: selectedRef } : {}),
+    canonical_product_ref: identityProduct.canonical_product_ref || product.canonical_product_ref || null,
+    sellable_item_group_id:
+      identityProduct.sellable_item_group_id || product.sellable_item_group_id || null,
+    product_group_id: identityProduct.product_group_id || product.product_group_id || null,
+    offers: Array.isArray(identityProduct.offers) ? identityProduct.offers : product.offers,
+    offers_count: Math.max(
+      Number(identityProduct.offers_count || 0) || 0,
+      Number(product.offers_count || product.offer_count || 0) || 0,
+    ),
+    offer_count: Math.max(
+      Number(identityProduct.offer_count || identityProduct.offers_count || 0) || 0,
+      Number(product.offer_count || product.offers_count || 0) || 0,
+    ),
+    has_multiple_offers:
+      identityProduct.has_multiple_offers === true ||
+      product.has_multiple_offers === true ||
+      Number(identityProduct.offers_count || 0) > 1,
+    grouped:
+      identityProduct.grouped === true ||
+      product.grouped === true ||
+      Number(identityProduct.offers_count || 0) > 1,
+    pdp_content_source: identityProduct.pdp_content_source || product.pdp_content_source || 'canonical_inherited',
+    offer_source: identityProduct.offer_source || product.offer_source || 'group_fused',
+    commerce_source: 'selected_seller_store',
+    content_review_state:
+      identityProduct.content_review_state || product.content_review_state || 'pending',
+    search_recall_source: 'pdp_identity_graph',
+  };
+}
+
 async function maybeRescueSearchFromPdpIdentityGraph({
   operation,
   upstreamData,
@@ -9411,6 +9473,14 @@ async function maybeRescueSearchFromPdpIdentityGraph({
     seen.add(key);
     mergedProducts.push(product);
   };
+  const primaryIdentityProduct =
+    recalledProducts.find((product) => product?.pdp_content_source === 'canonical_inherited') ||
+    recalledProducts[0] ||
+    null;
+  existingProducts
+    .filter((product) => hasSearchProductIdentityMatch(product, normalizedQueryText))
+    .map((product) => overlayIdentityRecallOnSearchProduct(product, primaryIdentityProduct))
+    .forEach(add);
   recalledProducts.forEach(add);
   existingProducts.forEach(add);
   const limitedProducts = mergedProducts.slice(0, requestedLimit);
