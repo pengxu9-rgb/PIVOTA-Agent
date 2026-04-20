@@ -370,11 +370,19 @@ function inferProductKindFromContext(context) {
   if (/\b(?:makeup fixing mist|fixing mist|setting spray|makeup setting spray|setting mist)\b/.test(titleCategoryDescription)) {
     return 'setting_spray';
   }
+  if (/\b(?:self[-\s]?tan|self tanner|sunless tan|gradualglow)\b/.test(titleCategoryDescription)) {
+    return 'self_tanner';
+  }
+  if (/\b(?:eye patch|eye patches|eyepatch|lippatch|lip patch|anywhere patches|hydrogel patches|eye mask goggles|eye mask)\b/.test(titleCategoryDescription) || /\b(?:detoxifeye|beautifeye|nutrifeye|fortifeye)\b/.test(title)) {
+    return 'eye_patch';
+  }
+  if (/\b(?:beauty kit|makeup kit|makeup set|eye trio|eye colour routine|eye color routine|glow trio|glow kit|routine bundle|full-size bundle|starter bundle)\b/.test(titleCategoryDescription)) {
+    return /\b(?:beauty kit|makeup kit|makeup set|eye trio|eye colour routine|eye color routine)\b/.test(titleCategoryDescription)
+      ? 'makeup_set'
+      : 'routine_bundle';
+  }
   if (/\b(?:glow mist|hydrating milky mist|dream-y mist|face mist|makeup mist|facial mist)\b/.test(titleCategoryDescription)) {
     return 'face_mist';
-  }
-  if (/\b(?:eye patch|eye patches|eyepatch|lippatch|lip patch|anywhere patches)\b/.test(titleCategoryDescription)) {
-    return 'eye_patch';
   }
   if (/\b(?:facial radiance|ingrown hair|aha|bha|glycolic|lactic)\s+pads?\b/.test(text) || /\bpads?\s+with\s+(?:bha|aha|glycolic|lactic)/.test(text)) {
     return 'treatment_pads';
@@ -389,7 +397,7 @@ function inferProductKindFromContext(context) {
   if (/\b(?:blush|bronzer|highlighter|eyeshadow|eye shadow|eyeliner|mascara|brow|powder|palette|diamond veil|demi'?glow)\b/.test(titleCategory)) {
     return 'color_makeup';
   }
-  if (/\b(?:duo|trio|set|kit|bundle)\b/.test(titleCategory) && /\b(?:eye|lash|mascara|liner|brow|lip|blush|makeup|essential)\b/.test(text)) {
+  if (/\b(?:duo|trio|set|kit|bundle)\b/.test(titleCategory) && /\b(?:eye|lash|mascara|liner|brow|lip|blush|makeup|essential|shade)\b/.test(text)) {
     return 'makeup_set';
   }
   if (/\b(?:primer|makeup base|pore diffusing|illuminating primer)\b/.test(text)) return 'primer';
@@ -402,7 +410,7 @@ function inferProductKindFromContext(context) {
   if (/\b(?:conditioner|hair conditioner)\b/.test(text)) return 'conditioner';
   if (/\b(?:heat protectant|styling cream)\b/.test(text) && /\bhair\b/.test(text)) return 'heat_protectant';
   if (/\b(?:bond builder|damage repair treatment|hair treatment|strand|strands|frizz|de-frizz|leave-in)\b/.test(text)) return 'hair_treatment';
-  if (/\b(?:skin start.?rs|routine bundle|full-size bundle|starter bundle|set with mineral spf)\b/.test(text)) return 'routine_bundle';
+  if (/\b(?:skin start.?rs|routine bundle|full-size bundle|starter bundle|set with mineral spf|glow trio|glow kit)\b/.test(text)) return 'routine_bundle';
   if (/\bbody\s+scrub\b/.test(text) || /\bbump\s+eraser\b/.test(text)) return 'body_scrub';
   if (/\bshav(?:e|ing)\s+cream\b/.test(text)) return 'shave_cream';
   if (/\bdeodorant\b/.test(text)) return 'deodorant';
@@ -436,17 +444,18 @@ function inferSpecificBeautySubtypeLabel(context) {
   if (!text) return '';
 
   if (/\b(?:makeup fixing mist|fixing mist|setting spray|makeup setting spray|setting mist)\b/.test(text)) return 'Setting spray';
+  if (/\b(?:self[-\s]?tan|self tanner|sunless tan|gradualglow)\b/.test(text)) return 'Self-tanner';
   if (/\b(?:glow mist|hydrating milky mist|dream-y mist|face mist|makeup mist|facial mist)\b/.test(text)) return 'Face mist';
-  if (/\b(?:eye patch|eye patches|eyepatch|anywhere patches)\b/.test(text)) return 'Eye patches';
+  if (/\b(?:eye patch|eye patches|eyepatch|anywhere patches|hydrogel patches|eye mask goggles|eye mask)\b/.test(text) || /\b(?:detoxifeye|beautifeye|nutrifeye|fortifeye)\b/.test(title)) return 'Eye patches';
   if (/\b(?:lippatch|lip patch)\b/.test(text)) return 'Lip patches';
   if (/\b(?:retinol oil|overnight .* oil|face oil|facial oil|essence oil)\b/.test(text)) return 'Face oil';
   if (/\b(?:brush cup|brush holder|brush storage|makeup brush cup)\b/.test(text)) return 'Brush storage';
   if (/\b(?:brush bundle|brush trio|brush duo|brush set)\b/.test(text)) return 'Brush set';
   if (/\b(?:blending|packing|shader|foundation|skin tint|concealer|face|eyeliner|kyliner)?\s*brush\s*\d*\b/.test(title)) return 'Makeup brush';
   if (/\b(?:fragrance layering balm|fragrance balm|scent balm)\b/.test(text)) return 'Fragrance balm';
-  if (/\b(?:eye duo|eye set|eye kit|essential eye duo|mascara.*(?:duo|set)|(?:duo|set).*mascara)\b/.test(text)) return 'Eye makeup set';
+  if (/\b(?:eye duo|eye trio|eye set|eye kit|eye colour routine|eye color routine|essential eye duo|mascara.*(?:duo|set)|(?:duo|set).*mascara)\b/.test(text)) return 'Eye makeup set';
   if (/\b(?:lip duo|lip set|lip kit)\b/.test(text)) return 'Lip set';
-  if (/\b(?:makeup set|makeup kit|beauty set)\b/.test(text)) return 'Makeup set';
+  if (/\b(?:makeup set|makeup kit|beauty set|beauty kit)\b/.test(text)) return 'Makeup set';
   if (/\b(?:pore diffusing primer|illuminating primer|face primer|makeup primer|primer)\b/.test(text)) return 'Primer';
   if (/\bbody\s+lotion\b/.test(text)) return 'Body lotion';
   if (/\b(?:eau de parfum|edp)\b/.test(text)) return 'Eau de parfum';
@@ -1354,6 +1363,9 @@ function buildHumanStandardBodyFromFacts(context, kind, formulaSignals) {
   if (kind === 'setting_spray') {
     return `A makeup setting spray${withFormula} for setting, refreshing, and extending makeup wear.`;
   }
+  if (kind === 'self_tanner') {
+    return `A self-tanning serum${withFormula} for building a gradual, sunless glow while keeping skin comfortable.`;
+  }
   if (kind === 'eye_patch') {
     return `An under-eye patch treatment${withFormula} for targeted eye-area masking and temporary refreshed-looking skin.`;
   }
@@ -1531,6 +1543,12 @@ function buildHumanStandardWhatItIs(context, baselineBundle) {
   if (kind === 'setting_spray') {
     return {
       headline: subtypeLabel || (/setting|fixing|spray|mist/i.test(baseHeadline) ? baseHeadline : 'Setting spray'),
+      body: factsBody,
+    };
+  }
+  if (kind === 'self_tanner') {
+    return {
+      headline: subtypeLabel || (/self[-\s]?tan|sunless|gradual/i.test(baseHeadline) ? baseHeadline : 'Self-tanner'),
       body: factsBody,
     };
   }
@@ -1733,7 +1751,7 @@ function buildHumanStandardWhatItIs(context, baselineBundle) {
   }
   if (kind === 'toner') {
     return {
-      headline: /toner/i.test(baseHeadline) ? baseHeadline : 'Hydrating toner',
+      headline: /toner/i.test(baseHeadline) && !/prep or toner step/i.test(baseHeadline) ? baseHeadline : 'Hydrating toner',
       body: preferredFactsBody,
     };
   }
@@ -1790,6 +1808,9 @@ function buildHumanStandardBestFor(context, baselineBundle) {
   }
   if (kind === 'setting_spray') {
     return [item('makeup_setting', 'Makeup setting'), item('makeup_refresh', 'Makeup refresh steps')];
+  }
+  if (kind === 'self_tanner') {
+    return [item('gradual_sunless_glow', 'Gradual sunless glow'), item('body_or_face_tan_building', 'Buildable tan routines')];
   }
   if (kind === 'eye_patch') {
     return [item('under_eye_treatment', 'Under-eye treatment'), item('targeted_masking', 'Targeted masking routines')];
@@ -2040,6 +2061,11 @@ function buildHumanStandardHighlights(context) {
   if (kind === 'setting_spray') {
     return [
       highlight('Makeup setting step', 'Spray format supports setting, refreshing, or extending makeup wear after complexion steps.'),
+    ];
+  }
+  if (kind === 'self_tanner') {
+    return [
+      highlight('Gradual sunless glow', 'Self-tan format keeps the product framed around buildable color development instead of SPF protection.'),
     ];
   }
   if (kind === 'eye_patch') {
@@ -2370,6 +2396,7 @@ function buildHumanStandardPairingNotes(kind) {
   if (kind === 'body_mist') return ['Spray onto targeted body areas according to seller directions.'];
   if (kind === 'face_mist') return ['Mist over skin before or after makeup according to seller directions.'];
   if (kind === 'setting_spray') return ['Mist over finished makeup or refresh makeup according to seller directions.'];
+  if (kind === 'self_tanner') return ['Apply evenly according to seller directions and let the gradual tan develop before reapplying.'];
   if (kind === 'eye_patch') return ['Place under the eyes for the seller-directed treatment time, then remove.'];
   if (kind === 'conditioner') return ['Use after shampoo, then rinse according to seller directions.'];
   if (kind === 'hair_treatment') return ['Use as the hair treatment step according to seller directions.'];
@@ -2427,6 +2454,7 @@ function buildHumanStandardRoutineStep(kind, fallbackStep = '') {
   if (kind === 'body_mist') return 'body treatment';
   if (kind === 'face_mist') return 'face mist';
   if (kind === 'setting_spray') return 'setting spray';
+  if (kind === 'self_tanner') return 'self tan';
   if (kind === 'eye_patch') return 'eye treatment';
   if (kind === 'conditioner') return 'conditioner';
   if (kind === 'hair_treatment') return 'hair treatment';
@@ -2473,6 +2501,7 @@ function buildHumanStandardAmPm(kind, fallbackAmPm = []) {
       'body_mist',
       'face_mist',
       'setting_spray',
+      'self_tanner',
       'eye_patch',
       'conditioner',
       'hair_treatment',
@@ -2514,6 +2543,7 @@ function inferTextureForHumanStandardKind(kind, context) {
   if (kind === 'body_mist') return 'mist';
   if (kind === 'face_mist') return 'mist';
   if (kind === 'setting_spray') return 'spray';
+  if (kind === 'self_tanner') return 'serum';
   if (kind === 'eye_patch') return 'patch';
   if (kind === 'conditioner') return 'conditioner';
   if (kind === 'hair_treatment') return 'treatment';
@@ -3021,6 +3051,7 @@ function shouldPreferHumanStandardRewriteForPublish(caseRow) {
     'cleansing_oil',
     'eye_balm',
     'eye_cream',
+    'routine_bundle',
     'brush_set',
     'makeup_brush',
     'brush_storage',
@@ -3033,6 +3064,7 @@ function shouldPreferHumanStandardRewriteForPublish(caseRow) {
     'face_oil',
     'face_mist',
     'setting_spray',
+    'self_tanner',
     'eye_patch',
     'body_scrub',
     'conditioner',

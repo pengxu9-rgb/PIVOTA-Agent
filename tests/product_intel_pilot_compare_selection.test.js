@@ -80,6 +80,72 @@ describe('product_intel pilot compare selection', () => {
         expectedSubtitle: 'Blush',
         rejected: /lip product/i,
       },
+      {
+        title: 'Ultimate Beauty Kit 7th Edition',
+        category: 'Blush',
+        description:
+          'Contains 18 face shades and 20 eye shades with blendable pigments in a limited-edition Ultimate Beauty Kit.',
+        tags: ['Blush', 'Mica'],
+        expectedKind: 'makeup_set',
+        expectedHeadline: /Makeup set/i,
+        expectedSubtitle: 'Makeup Set',
+        rejected: /^Blush$/i,
+      },
+      {
+        title: 'Choose Your Endless Silky Eye Trio',
+        category: 'external',
+        description:
+          'A customizable trio bundle of Endless Silky Eye Pen shades with an included sharpener.',
+        tags: ['external', 'Vitamin E'],
+        expectedKind: 'makeup_set',
+        expectedHeadline: /Eye makeup set/i,
+        expectedSubtitle: 'Eye Makeup Set',
+        rejected: /^Eyeliner$/i,
+      },
+      {
+        title: 'AntioxifEYE Eye Mask Goggles (Set of 3)',
+        category: 'Treatment',
+        description:
+          'Hydrogel Eye Mask Goggles in a wide-area goggle shape for the delicate eye area.',
+        tags: ['Treatment', 'Ceramide NP'],
+        expectedKind: 'eye_patch',
+        expectedHeadline: /Eye patches/i,
+        expectedSubtitle: 'Eye Patches',
+        rejected: /makeup set|treatment mask/i,
+      },
+      {
+        title: 'Glow Tonic Travel Size',
+        category: 'Toner',
+        description:
+          'Glow Tonic exfoliates and purifies with 5% Glycolic Acid while Aloe Vera soothes and hydrates.',
+        tags: ['Toner', 'Glycolic acid'],
+        expectedKind: 'toner',
+        expectedHeadline: /Hydrating toner/i,
+        expectedSubtitle: 'Hydrating Toner',
+        rejected: /prep or toner step/i,
+      },
+      {
+        title: 'GradualGlow Self-Tan Petite Size',
+        category: 'Sunscreen',
+        description:
+          'GradualGlow Self Tan Serum gives skin a hydrated, healthy-looking finish and develops into a soft, gradual sun-kissed tint.',
+        tags: ['Sunscreen', 'Hyaluronic acid', 'DHA 2.5%'],
+        expectedKind: 'self_tanner',
+        expectedHeadline: /Self-tanner/i,
+        expectedSubtitle: 'Self-Tanner',
+        rejected: /daily sunscreen/i,
+      },
+      {
+        title: 'Mini Glow Trio',
+        category: 'Toner',
+        description:
+          'Mini Peel & Polish, Glow Tonic To-Go Dual Packette, and Mini Glow Mist in one travel-friendly glow trio.',
+        tags: ['Toner', 'Glycolic acid'],
+        expectedKind: 'routine_bundle',
+        expectedHeadline: /Routine set/i,
+        expectedSubtitle: 'Routine Set',
+        rejected: /prep or toner step/i,
+      },
     ];
 
     for (const [index, item] of cases.entries()) {
@@ -130,6 +196,52 @@ describe('product_intel pilot compare selection', () => {
       expect(card.subtitle).toBe(item.expectedSubtitle);
       expect(card.intro || '').not.toMatch(/^[•*\-]\s*/);
     }
+  });
+
+  test('human-standard selected cards do not reuse stale explicit baseline intros', () => {
+    const product = {
+      product_id: 'ext_pixi_stale_intro',
+      merchant_id: 'external_seed',
+      brand: 'PIXI BEAUTY',
+      title: 'Mini Glow Trio',
+      category: 'Toner',
+      description:
+        'Mini Peel & Polish, Glow Tonic To-Go Dual Packette, and Mini Glow Mist in one travel-friendly glow trio.',
+      tags: ['Toner', 'Glycolic acid'],
+    };
+    const caseRow = {
+      case_id: 'live_ext_pixi_stale_intro',
+      canonical_product_ref: {
+        merchant_id: 'external_seed',
+        product_id: product.product_id,
+      },
+      product,
+    };
+    const baseline = buildProductIntelDraftBundle({
+      product,
+      canonicalProductRef: caseRow.canonical_product_ref,
+    });
+    baseline.shopping_card = {
+      ...(baseline.shopping_card || {}),
+      intro: 'Niacinamide cleanser for makeup, oil, and impurities.',
+    };
+    baseline.search_card = {
+      ...(baseline.search_card || {}),
+      intro_candidate: 'Niacinamide cleanser for makeup, oil, and impurities.',
+    };
+
+    const selected = buildSelectedBundle(
+      caseRow,
+      baseline,
+      null,
+      evaluateGeminiCandidateQuality(baseline, null),
+      'test',
+    );
+
+    expect(selected.selected_mode).toBe('human_standard_rewrite');
+    expect(selected.bundle.shopping_card.subtitle).toBe('Routine Set');
+    expect(selected.bundle.shopping_card.intro || '').toMatch(/multi-product routine set/i);
+    expect(selected.bundle.shopping_card.intro || '').not.toMatch(/niacinamide cleanser/i);
   });
 
   test('human-standard rewrite preserves specialty body scrub product type over stale category', () => {

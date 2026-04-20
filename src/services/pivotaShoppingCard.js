@@ -101,6 +101,14 @@ function buildHeuristicIntroCandidate(value, maxChars) {
   if (!text) return '';
 
   const has = (token) => lower.includes(token);
+  if (has('multi-product routine set')) {
+    const candidate = 'Multi-product routine set for a complete routine.';
+    if (candidate.length <= maxChars) return candidate;
+  }
+  if (has('makeup set that groups')) {
+    const candidate = 'Coordinated makeup set for multiple makeup steps.';
+    if (candidate.length <= maxChars) return candidate;
+  }
   if ((has('multi-active') || has('multi-benefit')) && has('serum')) {
     if (
       has('vitamin c') &&
@@ -234,17 +242,18 @@ function inferTitleSpecialtyCompactSubtitle(product) {
   if (!text) return '';
 
   if (/\b(?:makeup fixing mist|fixing mist|setting spray|makeup setting spray|setting mist)\b/.test(text)) return 'Setting Spray';
+  if (/\b(?:self[-\s]?tan|self tanner|sunless tan|gradualglow)\b/.test(text)) return 'Self-Tanner';
   if (/\b(?:glow mist|hydrating milky mist|dream-y mist|face mist|makeup mist|facial mist)\b/.test(text)) return 'Face Mist';
-  if (/\b(?:eye patch|eye patches|eyepatch|anywhere patches)\b/.test(text)) return 'Eye Patches';
+  if (/\b(?:eye patch|eye patches|eyepatch|anywhere patches|hydrogel patches|eye mask goggles|eye mask)\b/.test(text) || /\b(?:detoxifeye|beautifeye|nutrifeye|fortifeye)\b/.test(title)) return 'Eye Patches';
   if (/\b(?:lippatch|lip patch)\b/.test(text)) return 'Lip Patches';
   if (/\b(?:retinol oil|overnight .* oil|face oil|facial oil|essence oil)\b/.test(text)) return 'Face Oil';
   if (/\b(?:brush cup|brush holder|brush storage|makeup brush cup)\b/.test(text)) return 'Brush Storage';
   if (/\b(?:brush bundle|brush trio|brush duo|brush set)\b/.test(text)) return 'Brush Set';
   if (/\b(?:blending|packing|shader|crease|definer|smudge|foundation|skin tint|concealer|face|eyeliner|kyliner|tapered)?\s*brush\s*\d*\b/.test(title)) return 'Makeup Brush';
   if (/\b(?:fragrance layering balm|fragrance balm|scent balm)\b/.test(text)) return 'Fragrance Balm';
-  if (/\b(?:eye duo|eye set|eye kit|essential eye duo|mascara.*(?:duo|set)|(?:duo|set).*mascara)\b/.test(text)) return 'Eye Makeup Set';
+  if (/\b(?:eye duo|eye trio|eye set|eye kit|eye colour routine|eye color routine|essential eye duo|mascara.*(?:duo|set)|(?:duo|set).*mascara)\b/.test(text)) return 'Eye Makeup Set';
   if (/\b(?:lip duo|lip set|lip kit)\b/.test(text)) return 'Lip Set';
-  if (/\b(?:makeup set|makeup kit|beauty set)\b/.test(text)) return 'Makeup Set';
+  if (/\b(?:makeup set|makeup kit|beauty set|beauty kit)\b/.test(text)) return 'Makeup Set';
   if (/\b(?:pore diffusing primer|illuminating primer|face primer|makeup primer|primer)\b/.test(text)) return 'Primer';
   if (/\bbody\s+lotion\b/.test(text)) return 'Body Lotion';
   if (/\b(?:eau de parfum|edp)\b/.test(text)) return 'Eau De Parfum';
@@ -412,6 +421,7 @@ function buildCompactSubtitle({ product, bundle }) {
       'Color Makeup',
       'Face Mist',
       'Setting Spray',
+      'Self-Tanner',
       'Eye Patches',
       'Face Oil',
     ].includes(compactHeadline)
@@ -474,7 +484,9 @@ function buildCardIntro({ bundle }) {
   const explicitIntro = asString(
     bundle?.search_card?.intro_candidate || bundle?.shopping_card?.intro,
   );
-  if (explicitIntro) {
+  const humanStandardWhatItIs =
+    bundle?.provenance?.field_sources?.what_it_is === 'human_standard';
+  if (explicitIntro && !humanStandardWhatItIs) {
     return normalizeCardIntroCandidate(explicitIntro, {
       fallback: bundle?.product_intel_core?.what_it_is?.body,
       maxChars: 90,
