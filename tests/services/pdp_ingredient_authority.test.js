@@ -66,6 +66,26 @@ describe('pdpIngredientAuthority', () => {
     expect(authority.active_items).toEqual(['Niacinamide']);
   });
 
+  test('filters stale non-reviewed existing authority active items against INCI', () => {
+    const authority = buildAuthoritativeIngredientView({
+      ingredient_intel: {
+        authoritative: {
+          raw_text: 'Water, Glycerin, Niacinamide, Squalane, Lactic Acid',
+          items: ['Water', 'Glycerin', 'Niacinamide', 'Squalane', 'Lactic Acid'],
+          active_items: ['Ceramide NP', 'Niacinamide', 'Vitamin C (Ascorbic acid)', 'Squalane'],
+          source_origin: 'pdp_section',
+          purity_status: 'authoritative',
+        },
+      },
+    });
+
+    expect(authority.source_origin).toBe('pdp_section');
+    expect(authority.active_items).toEqual(['Niacinamide', 'Squalane']);
+    expect(authority.active_items).not.toEqual(
+      expect.arrayContaining(['Ceramide NP', 'Vitamin C (Ascorbic acid)']),
+    );
+  });
+
   test('repairs stale sunscreen active items from authoritative INCI', () => {
     const authority = buildAuthoritativeIngredientView({
       title: 'Daily Tinted Fluid Sunscreen DN350 SPF 40',

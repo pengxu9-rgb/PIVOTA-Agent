@@ -296,6 +296,11 @@ function reconcileActiveItemsWithIngredients(product, activeItems, items, rawTex
   ]);
 }
 
+function isReviewedIngredientAuthoritySource(sourceOrigin) {
+  const normalized = asString(sourceOrigin).toLowerCase();
+  return normalized === 'kb_reviewed' || normalized === 'kb_reviewed_read_through';
+}
+
 function buildAuthorityRecord({
   rawText = '',
   items = [],
@@ -467,11 +472,12 @@ function buildAuthoritativeIngredientView(product, options = {}) {
 
   const existingAuthority = asPlainObject(inputs.authoritative);
   if (existingAuthority) {
+    const existingSourceOrigin = existingAuthority.source_origin || 'existing_authority';
     const normalizedExisting = buildAuthorityRecord({
       rawText: existingAuthority.raw_text,
       items: existingAuthority.items,
       activeItems: existingAuthority.active_items,
-      sourceOrigin: existingAuthority.source_origin || 'existing_authority',
+      sourceOrigin: existingSourceOrigin,
       purityStatus: existingAuthority.purity_status || 'authoritative',
       suppressedReason: existingAuthority.suppressed_reason,
       generatedAt: existingAuthority.generated_at || generatedAt,
@@ -484,6 +490,7 @@ function buildAuthoritativeIngredientView(product, options = {}) {
           normalizedExisting.active_items,
           normalizedExisting.items,
           normalizedExisting.raw_text,
+          { validateAgainstIngredients: !isReviewedIngredientAuthoritySource(existingSourceOrigin) },
         ),
       };
     }
