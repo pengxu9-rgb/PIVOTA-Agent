@@ -1215,7 +1215,7 @@ function buildLocalShoppingProductActions(products, language, max = 4) {
   for (const roleId of roleOrder) {
     const rows = grouped.get(roleId) || [];
     if (!rows.length) continue;
-    const productPhrases = rows.slice(0, roleId === 'sun_protection' ? 2 : 1).map((product) => {
+    const productPhrases = rows.slice(0, roleId === 'sun_protection' || roleId === 'body_lip_hand' ? 2 : 1).map((product) => {
       const name = formatTravelProductName(product);
       const reason = firstTravelProductReason(product);
       return reason ? `${name}: ${reason}` : name;
@@ -1348,7 +1348,7 @@ function buildTravelPhasePlan({
         : t(lang, '当前没有命中具体本地商品，只保留品类准备方向，后续通过 catalog backfill 补库。', 'No specific local product is grounded yet; keep this as category direction until catalog backfill adds authority rows.'),
       defaults: groundedProducts.length
         ? [
-            ...buildLocalShoppingProductActions(groundedProducts, lang, 4),
+            ...buildLocalShoppingProductActions(groundedProducts, lang, 6),
             t(lang, '只按真实缺口购买；不要把已经带好的产品重复补货。', 'Buy only against real gaps; do not duplicate products you already packed.'),
           ]
         : [
@@ -1367,7 +1367,7 @@ function buildTravelPhasePlan({
       ...(phase.id === 'local_shopping' && groundedProducts.length
         ? []
         : buildPhaseActionsFromRecoBundle(recoBundle, roleIds, 2)),
-    ], 4, 240);
+    ], phase.id === 'local_shopping' ? 6 : 4, 240);
     return {
       id: phase.id,
       title: phase.title,

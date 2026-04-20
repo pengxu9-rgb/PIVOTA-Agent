@@ -139,6 +139,7 @@ test('buildTravelReadiness returns actionable structure with deltas and shopping
   assert.match(localShopping.actions.join(' '), /AM\/outdoor SPF step/);
   assert.match(localShopping.actions.join(' '), /Body, lip, or hand care: BrandD SPF Lip Balm/);
   assert.match(localShopping.actions.join(' '), /Use on lips/);
+  assert.equal(localShopping.actions.length >= 4, true);
   assert.ok(Array.isArray(sunProtection.brand_suggestions));
   assert.ok(sunProtection.brand_suggestions.some((item) => item && item.product === 'UV Shield SPF50'));
   assert.ok(moisturization);
@@ -184,6 +185,56 @@ test('buildTravelReadiness uses product name before generic body-lip-hand catego
   assert.ok(hand);
   assert.match(hand.reasons.join(' '), /Use on hands/);
   assert.equal(/Use on lips/.test(hand.reasons.join(' ')), false);
+});
+
+test('buildTravelReadiness keeps both hand and lip local shopping actions when both are grounded', () => {
+  const payload = buildTravelReadiness({
+    language: 'EN',
+    profile: { skinType: 'oily', region: 'Seattle, WA' },
+    recentLogs: [],
+    destination: 'Tokyo',
+    destinationWeather: {
+      source: 'weather_api',
+      location: { timezone: 'Asia/Tokyo' },
+      summary: { temperature_max_c: 21, humidity_mean: 66, uv_index_max: 7.4 },
+    },
+    homeWeather: {
+      source: 'weather_api',
+      location: { timezone: 'America/Los_Angeles' },
+      summary: { temperature_max_c: 16, humidity_mean: 77, uv_index_max: 6.3 },
+    },
+    recommendationCandidates: [
+      {
+        step: 'Sunscreen',
+        role_id: 'sun_protection',
+        sku: { product_id: 'jp_spf_1', brand: 'Biore UV', name: 'Aqua Rich Watery Essence' },
+      },
+      {
+        step: 'Moisturizer',
+        role_id: 'lightweight_moisturizer',
+        sku: { product_id: 'jp_milk_1', brand: 'Kao Curel', name: 'Moisture Milk' },
+      },
+      {
+        step: 'Hand support',
+        role_id: 'body_lip_hand',
+        sku: { product_id: 'jp_hand_1', brand: 'Kao Curel', name: 'Curel Hand Cream' },
+      },
+      {
+        step: 'Lip support',
+        role_id: 'body_lip_hand',
+        sku: { product_id: 'jp_lip_1', brand: 'Kao Curel', name: 'Curel Lip Care Cream' },
+      },
+    ],
+    nowMs: Date.parse('2026-04-20T12:00:00.000Z'),
+  });
+
+  const localShopping = payload.phase_plan.find((phase) => phase.id === 'local_shopping');
+  assert.ok(localShopping);
+  const actionText = localShopping.actions.join(' ');
+  assert.match(actionText, /Curel Hand Cream/);
+  assert.match(actionText, /Use on hands/);
+  assert.match(actionText, /Curel Lip Care Cream/);
+  assert.match(actionText, /Use on lips/);
 });
 
 test('buildTravelReadiness keeps recovery mask use rationale ahead of hydrating category wording', () => {
