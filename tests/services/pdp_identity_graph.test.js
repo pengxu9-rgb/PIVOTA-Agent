@@ -776,16 +776,29 @@ describe('pdpIdentityGraph', () => {
       sourceKind: 'internal',
     });
     expect(shopifyListing.sellable_item_group_id).toBe(externalListing.sellable_item_group_id);
+    const jumboListing = {
+      ...externalListing,
+      source_listing_ref: 'external_seed:ext_krave_gbr_100',
+      product_id: 'ext_krave_gbr_100',
+      sellable_item_group_id: 'sig_krave_gbr_100',
+      identity_confidence: 0.99,
+      variant_axes: { size: '100ml' },
+      source_payload: {
+        ...externalListing.source_payload,
+        title: 'Jumbo Great Barrier Relief',
+        price: { amount: 50, currency: 'EUR' },
+      },
+    };
 
     const queryFn = jest.fn(async (sql, params) => {
       const normalizedSql = String(sql).replace(/\s+/g, ' ');
       if (normalizedSql.includes('sellable_item_group_id = ANY')) {
-        expect(params).toEqual([[externalListing.sellable_item_group_id]]);
-        return { rows: [shopifyListing, externalListing] };
+        expect(params).toEqual([[jumboListing.sellable_item_group_id, externalListing.sellable_item_group_id]]);
+        return { rows: [jumboListing, shopifyListing, externalListing] };
       }
       expect(params[0]).toBe('kravebeauty great barrier relief');
       expect(params[1]).toBe('kravebeautygreatbarrierrelief');
-      return { rows: [externalListing] };
+      return { rows: [jumboListing, externalListing] };
     });
 
     const result = await searchPdpIdentityGroupsForQuery({
@@ -801,7 +814,7 @@ describe('pdpIdentityGraph', () => {
         reason: 'identity_group_match',
       }),
     );
-    expect(result.products).toHaveLength(1);
+    expect(result.products).toHaveLength(2);
     expect(result.products[0]).toEqual(
       expect.objectContaining({
         merchant_id: 'merch_krave',

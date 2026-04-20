@@ -1937,6 +1937,30 @@ function buildIdentitySearchProduct(groupId, rows) {
   return product;
 }
 
+function scoreIdentitySearchProductForQuery(product, normalizedQuery) {
+  if (!product || typeof product !== 'object') return -Infinity;
+  let score = 0;
+  const title = normalizeTitleToken(firstNonEmptyString(product.title, product.name, product.display_name));
+  const queryText = normalizeTitleToken(normalizedQuery);
+  if (title && queryText) {
+    if (title === queryText) score += 40;
+    else if (queryText.includes(title)) score += 24;
+    else if (title.includes(queryText)) score += 10;
+  }
+  const selectedMerchant = asString(product.selected_commerce_ref?.merchant_id || product.merchant_id);
+  if (selectedMerchant && selectedMerchant !== EXTERNAL_SEED_MERCHANT_ID) score += 24;
+  if (product.has_multiple_offers === true || Number(product.offers_count || 0) > 1) score += 20;
+  if (asString(product.pdp_content_source) === 'canonical_inherited') score += 10;
+  if (asString(product.offer_source) === 'group_fused') score += 5;
+  score += Math.min(10, Math.max(0, Number(product.identity_confidence || 0) * 10));
+
+  const variantPenaltyTokens = ['jumbo', 'mini', 'refill', 'travel', 'sample', '100 ml', '100ml'];
+  for (const token of variantPenaltyTokens) {
+    if (title.includes(token) && !queryText.includes(token)) score -= 18;
+  }
+  return score;
+}
+
 async function searchPdpIdentityGroupsForQuery({
   queryText,
   limit = 5,
@@ -2027,6 +2051,11 @@ async function searchPdpIdentityGroupsForQuery({
     const products = groupIds
       .map((groupId) => buildIdentitySearchProduct(groupId, rowsByGroup.get(groupId) || []))
       .filter(Boolean)
+      .sort(
+        (a, b) =>
+          scoreIdentitySearchProductForQuery(b, normalizedQuery) -
+          scoreIdentitySearchProductForQuery(a, normalizedQuery),
+      )
       .slice(0, normalizedLimit);
     return {
       products,
