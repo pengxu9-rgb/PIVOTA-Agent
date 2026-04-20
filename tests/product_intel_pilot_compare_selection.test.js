@@ -191,6 +191,72 @@ describe('product_intel pilot compare selection', () => {
         rejected: /^Face Oil$/i,
       },
       {
+        title: 'The Rich One Moisture Repair Shampoo',
+        category: 'Cleanser',
+        description:
+          'A rich moisture repair shampoo for wash-day cleansing with Replenicore-5, panthenol, and amino acid support.',
+        tags: ['Cleanser', 'Haircare', 'Shampoo'],
+        expectedKind: 'shampoo',
+        expectedHeadline: /Shampoo/i,
+        expectedSubtitle: 'Hair Shampoo',
+        rejected: /Daily Cleanser/i,
+      },
+      {
+        title: 'Killawatt Freestyle Highlighter - Lightning Dust/Fire Crystal',
+        category: 'Color Makeup',
+        description:
+          'A cream-powder highlighter duo for targeted glow, reflective finish, and shade placement.',
+        tags: ['Highlighter', 'Makeup'],
+        expectedKind: 'color_makeup',
+        expectedHeadline: /Highlighter/i,
+        expectedSubtitle: 'Highlighter',
+        rejected: /^Color Makeup$/i,
+      },
+      {
+        title: "Plush Puddin' Intensive Recovery Lip Mask - Salted Caramel",
+        category: 'Treatment Mask',
+        description:
+          'A cushiony lip mask for recovery-style lip comfort, softness, and overnight moisture routines.',
+        tags: ['Mask', 'Lip Care'],
+        expectedKind: 'lip',
+        expectedHeadline: /Lip mask/i,
+        expectedSubtitle: 'Lip Mask',
+        rejected: /Treatment Mask|Lip product/i,
+      },
+      {
+        title: 'Gloss Bomb Heat Universal Lip Luminizer + Plumper - Hot Cherry',
+        category: 'Lipstick',
+        description:
+          'A plumping lip luminizer and gloss for shine, cushion, and color payoff.',
+        tags: ['Lipstick', 'Lip Plumper'],
+        expectedKind: 'lip',
+        expectedHeadline: /Lip gloss/i,
+        expectedSubtitle: 'Lip Gloss',
+        rejected: /^Lipstick$/i,
+      },
+      {
+        title: 'Fine Linez Lash Line-Enhancing Eyeliner - Vanilla Killa',
+        category: 'Mascara',
+        description:
+          'A lash line-enhancing eyeliner for precise lash-line definition and color intensity.',
+        tags: ['Mascara', 'Eyeliner'],
+        expectedKind: 'color_makeup',
+        expectedHeadline: /Eyeliner/i,
+        expectedSubtitle: 'Eyeliner',
+        rejected: /^Mascara$/i,
+      },
+      {
+        title: "Pro Filt'r Soft Matte Powder Foundation - 498",
+        category: 'Powder',
+        description:
+          'A soft-matte powder foundation for complexion coverage, shade matching, and finish control.',
+        tags: ['Powder', 'Foundation'],
+        expectedKind: 'complexion_makeup',
+        expectedHeadline: /Foundation/i,
+        expectedSubtitle: 'Foundation',
+        rejected: /Formula focus|Titanium Dioxide/i,
+      },
+      {
         title: 'Mini Glow Trio',
         category: 'Toner',
         description:
@@ -297,6 +363,50 @@ describe('product_intel pilot compare selection', () => {
     expect(selected.bundle.shopping_card.subtitle).toBe('Routine Set');
     expect(selected.bundle.shopping_card.intro || '').toMatch(/multi-product routine set/i);
     expect(selected.bundle.shopping_card.intro || '').not.toMatch(/niacinamide cleanser/i);
+  });
+
+  test('skipped generated candidate does not block deterministic human-standard rewrite', () => {
+    const product = {
+      product_id: 'ext_fenty_lip_mask_skipped_generation',
+      merchant_id: 'external_seed',
+      brand: 'Fenty Beauty',
+      title: "Plush Puddin' Intensive Recovery Lip Mask - Salted Caramel",
+      category: 'Treatment',
+      description:
+        'A cushiony lip mask for recovery-style lip comfort, softness, and overnight moisture routines.',
+      tags: ['Treatment'],
+    };
+    const caseRow = {
+      case_id: 'live_ext_fenty_lip_mask_skipped_generation',
+      canonical_product_ref: {
+        merchant_id: 'external_seed',
+        product_id: product.product_id,
+      },
+      product,
+    };
+    const baseline = buildProductIntelDraftBundle({
+      product,
+      canonicalProductRef: caseRow.canonical_product_ref,
+    });
+    const selected = buildSelectedBundle(
+      caseRow,
+      baseline,
+      null,
+      {
+        candidate_available: true,
+        seller_only_violation: true,
+        problematic_generated_text: false,
+        field_decisions: {},
+      },
+      null,
+    );
+
+    expect(selected.selected_mode).toBe('human_standard_rewrite');
+    expect(selected.bundle.product_intel_core.what_it_is.headline).toBe('Lip mask');
+    expect(selected.bundle.shopping_card.subtitle).toBe('Lip Mask');
+    expect(selected.bundle.product_intel_core.what_it_is.body).not.toMatch(/Treatment mask/i);
+    expect(selected.bundle.product_intel_core.why_it_stands_out[0].headline).toBe('Lip comfort mask');
+    expect(selected.bundle.product_intel_core.why_it_stands_out[0].body).not.toMatch(/get people talking/i);
   });
 
   test('human-standard rewrite preserves specialty body scrub product type over stale category', () => {
@@ -511,8 +621,8 @@ describe('product_intel pilot compare selection', () => {
       },
       null,
     );
-    expect(makeupRewrite.product_intel_core.what_it_is.headline).toBe('Color makeup');
-    expect(makeupRewrite.product_intel_core.what_it_is.body).toMatch(/color makeup|shade|finish/i);
+    expect(makeupRewrite.product_intel_core.what_it_is.headline).toBe('Highlighter');
+    expect(makeupRewrite.product_intel_core.what_it_is.body).toMatch(/highlighter|targeted glow|finish/i);
     expect(makeupRewrite.product_intel_core.what_it_is.body).not.toMatch(/skin-care|hydration/i);
   });
 
