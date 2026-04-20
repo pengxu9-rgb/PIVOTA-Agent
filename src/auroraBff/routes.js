@@ -91043,6 +91043,7 @@ function mountAuroraBffRoutes(app, { logger }) {
                 start_date: travelReadiness.destination_context?.start_date || null,
                 end_date: travelReadiness.destination_context?.end_date || null,
                 reco_bundle: Array.isArray(travelReadiness.reco_bundle) ? travelReadiness.reco_bundle.slice(0, 5) : [],
+                phase_plan: Array.isArray(travelReadiness.phase_plan) ? travelReadiness.phase_plan.slice(0, 5) : [],
                 shopping_preview: travelReadiness.shopping_preview || null,
               };
             }

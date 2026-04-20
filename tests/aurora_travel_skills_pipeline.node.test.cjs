@@ -757,6 +757,99 @@ test('travel skills pipeline: category-only rows do not become fake reco product
   );
 });
 
+test('travel skills pipeline: phase plan is restored when upstream readiness omits new contract field', async () => {
+  await withEnv(
+    {
+      TRAVEL_KB_ASYNC_BACKFILL_ENABLED: 'false',
+      AURORA_TRAVEL_LLM_CALIBRATION_ENABLED: 'false',
+    },
+    async () => {
+      await withModuleOverrides(
+        {
+          [ROOT_READINESS]: {
+            buildTravelReadiness: () => ({
+              destination_context: {
+                destination: 'Tokyo, Japan',
+                start_date: '2026-04-27',
+                end_date: '2026-05-02',
+                env_source: 'weather_api',
+              },
+              origin_context: { label: 'Seattle, WA', source: 'trip_departure' },
+              delta_vs_home: {
+                humidity: { home: 77, destination: 65, delta: -12, unit: '%' },
+                uv: { home: 6.3, destination: 7.4, delta: 1.1, unit: '' },
+                summary_tags: ['warmer', 'drier'],
+                baseline_status: 'ok',
+              },
+              forecast_window: [{ date: '2026-04-27' }],
+              jetlag_sleep: {
+                hours_diff: 16,
+                risk_level: 'high',
+              },
+              reco_bundle: [
+                {
+                  trigger: 'Elevated UV',
+                  action: 'Face: SPF50+ PA++++ and reapply outdoors.',
+                  product_types: ['Face SPF50+ PA++++ sunscreen'],
+                },
+              ],
+              shopping_preview: {
+                mode: 'grounded_products',
+                coverage_status: 'grounded',
+                grounded_count: 1,
+                products: [
+                  {
+                    product_id: 'ext_jp_spf_1',
+                    name: 'Biore UV Aqua Rich Watery Essence',
+                    brand: 'Biore UV',
+                    category: 'Sun protection',
+                    product_source: 'catalog',
+                    authority_status: 'grounded',
+                    match_status: 'catalog_verified',
+                    is_grounded: true,
+                    price: 1078,
+                    currency: 'JPY',
+                    pdp_open: {
+                      merchant_id: 'external_seed',
+                      product_id: 'ext_jp_spf_1',
+                      canonical_url: 'https://example.com/jp-spf',
+                    },
+                  },
+                ],
+                buying_channels: ['pharmacy'],
+              },
+              adaptive_actions: [],
+              alerts: [],
+              confidence: { score: 0.9, level: 'high' },
+            }),
+          },
+        },
+        async () => {
+          const { runTravelPipeline } = loadFreshPipeline();
+          const out = await runTravelPipeline(
+            buildInput('I am traveling from Seattle to Tokyo. What should I buy locally and how should I prepare?'),
+          );
+
+          const phasePlan = Array.isArray(out.travel_readiness?.phase_plan)
+            ? out.travel_readiness.phase_plan
+            : [];
+          assert.equal(phasePlan.length, 5);
+          assert.deepEqual(phasePlan.map((phase) => phase.id), [
+            'pre_trip_prepare',
+            'flight_cabin',
+            'arrival_first_48h',
+            'during_trip_daily',
+            'local_shopping',
+          ]);
+          const localShopping = phasePlan.find((phase) => phase.id === 'local_shopping');
+          assert.equal(localShopping?.coverage_status, 'grounded');
+          assert.ok(localShopping.product_ids.includes('ext_jp_spf_1'));
+        },
+      );
+    },
+  );
+});
+
 test('travel skills pipeline: ambiguous destination returns clarification chips instead of fake weather', async () => {
   await withEnv(
     {

@@ -4,7 +4,13 @@ const { getTravelWeather, climateFallback } = require('../weatherAdapter');
 const { normalizeDestinationPlace, resolveDestinationInput } = require('../destinationResolver');
 const { buildEpiPayload } = require('../epiCalculator');
 const { getTravelAlerts } = require('../travelAlertsProvider');
-const { buildTravelReadiness, __internal: { buildCategorizedKit: _buildCategorizedKit } } = require('../travelReadinessBuilder');
+const {
+  buildTravelReadiness,
+  __internal: {
+    buildCategorizedKit: _buildCategorizedKit,
+    buildTravelPhasePlan: _buildTravelPhasePlan,
+  },
+} = require('../travelReadinessBuilder');
 const { calibrateTravelReadinessWithLlm } = require('../travelLlmCalibrator');
 const { rewriteTravelAssistantTextWithLlm } = require('../travelFinalAssistantRewriter');
 const { loadTravelLocalProductAuthorityCandidates } = require('../travelLocalProductAuthority');
@@ -503,6 +509,30 @@ function mergeKbPrefillIntoReadiness(baseReadiness, kbEntry) {
       ...(brandCandidates.length ? { brand_candidates: brandCandidates } : {}),
     },
   };
+}
+
+function ensureTravelPhasePlan(travelReadiness, language) {
+  const readiness = isPlainObject(travelReadiness) ? { ...travelReadiness } : null;
+  if (!readiness) return travelReadiness;
+  if (Array.isArray(readiness.phase_plan) && readiness.phase_plan.length >= 5) return readiness;
+  if (typeof _buildTravelPhasePlan !== 'function') return readiness;
+
+  const shoppingPreview = isPlainObject(readiness.shopping_preview) ? readiness.shopping_preview : {};
+  const phasePlan = _buildTravelPhasePlan({
+    language,
+    recoBundle: Array.isArray(readiness.reco_bundle) ? readiness.reco_bundle : [],
+    previewProducts: Array.isArray(shoppingPreview.products) ? shoppingPreview.products : [],
+    deltaVsHome: isPlainObject(readiness.delta_vs_home)
+      ? readiness.delta_vs_home
+      : isPlainObject(readiness.delta_vs_origin)
+        ? readiness.delta_vs_origin
+        : {},
+    jetlagSleep: isPlainObject(readiness.jetlag_sleep) ? readiness.jetlag_sleep : {},
+  });
+
+  return Array.isArray(phasePlan) && phasePlan.length
+    ? { ...readiness, phase_plan: phasePlan }
+    : readiness;
 }
 
 function formatRecoPreviewText({ language, recoPreview }) {
@@ -1817,6 +1847,7 @@ async function runTravelPipeline(input = {}) {
       structured_sections: followupReply.structured_sections,
     };
   }
+  travelReadiness = ensureTravelPhasePlan(travelReadiness, language);
 
   const defaultAssistantText =
     language === 'CN'
