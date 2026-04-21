@@ -682,6 +682,55 @@ describe('RecommendationEngine external candidate fetch', () => {
     expect(queryMock.mock.calls.some(([sql]) => String(sql).includes('domain = ANY($4)'))).toBe(true);
   });
 
+  test('deep-domain recall returns same-domain matches before category scans when domain coverage is already sufficient', async () => {
+    process.env.DATABASE_URL = 'postgres://example.test/pivota';
+
+    const queryMock = jest.fn(async (sql, params) => {
+      const sqlText = String(sql);
+      if (sqlText.includes('domain = ANY($4)')) {
+        expect(params?.[3]).toEqual(['tomfordbeauty.com', 'www.tomfordbeauty.com']);
+        return {
+          rows: Array.from({ length: 6 }).map((_, index) =>
+            makeExternalRow({
+              id: `eps_tf_deep_${index}`,
+              external_product_id: `ext_tf_deep_${index}`,
+              title: `Tom Ford Concealer ${index}`,
+              brand: 'Tom Ford Beauty',
+              category: 'Concealer',
+              domain: 'www.tomfordbeauty.com',
+            }),
+          ),
+        };
+      }
+      if (sqlText.includes("lower(coalesce(seed_data->'derived'->'recall'->>'category','')) = ANY($4)")) {
+        throw new Error('category query should not run after sufficient deep-domain matches');
+      }
+      return { rows: [] };
+    });
+
+    jest.doMock('../../src/db', () => ({ query: queryMock }));
+    jest.doMock('../../src/logger', () => ({ warn: jest.fn(), info: jest.fn() }));
+
+    const { _internals } = require('../../src/services/RecommendationEngine');
+    const products = await _internals.fetchExternalCandidates({
+      brandHint: 'Tom Ford Beauty',
+      categoryHint: 'Concealer',
+      domainHints: ['https://www.tomfordbeauty.com/products/shade-and-illuminate-concealer'],
+      limit: 12,
+      minFocusedCandidates: 6,
+      deepDomainRecall: true,
+    });
+
+    expect(products).toHaveLength(6);
+    expect(products.every((product) => product.domain === 'www.tomfordbeauty.com')).toBe(true);
+    expect(queryMock.mock.calls.some(([sql]) => String(sql).includes('domain = ANY($4)'))).toBe(true);
+    expect(
+      queryMock.mock.calls.some(([sql]) =>
+        String(sql).includes("lower(coalesce(seed_data->'derived'->'recall'->>'category','')) = ANY($4)"),
+      ),
+    ).toBe(false);
+  });
+
   test('recommend fetches internal and external pools in parallel instead of serially stacking source latency', async () => {
     process.env.DATABASE_URL = 'postgres://example.test/pivota';
 

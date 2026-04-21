@@ -1825,6 +1825,21 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
 
   const out = [];
   let preloadedCategoryMatches = null;
+  let preloadedDomainMatches = null;
+  if (deepDomainRecall && normalizedDomainHints.length) {
+    const deepRecallDomainCap = Math.min(safeLimit, Math.max(60, safeMinFocusedCandidates * 10));
+    preloadedDomainMatches = await runTimedExternalQuery(
+      'external_domain',
+      () => runDomainQuery(deepRecallDomainCap),
+      PDP_RECS_EXTERNAL_RECALL_QUERY_TIMEOUT_MS,
+    );
+    out.push(...preloadedDomainMatches);
+    const domainFocusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
+    if (domainFocusedCandidates.length >= safeMinFocusedCandidates) {
+      return domainFocusedCandidates.slice(0, safeLimit * 3);
+    }
+  }
+
   if (deepDomainRecall && category) {
     preloadedCategoryMatches = await loadCategoryMatches();
     out.push(...preloadedCategoryMatches);
@@ -1837,11 +1852,13 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
   const domainCap = deepDomainRecall
     ? Math.min(safeLimit, Math.max(60, safeMinFocusedCandidates * 10))
     : Math.min(safeLimit, Math.max(12, safeMinFocusedCandidates * 2));
-  const domainMatches = await runTimedExternalQuery(
-    'external_domain',
-    () => runDomainQuery(domainCap),
-    deepDomainRecall ? PDP_RECS_EXTERNAL_DOMAIN_QUERY_TIMEOUT_MS : PDP_RECS_EXTERNAL_UNDERFILL_QUERY_TIMEOUT_MS,
-  );
+  const domainMatches =
+    preloadedDomainMatches ||
+    (await runTimedExternalQuery(
+      'external_domain',
+      () => runDomainQuery(domainCap),
+      deepDomainRecall ? PDP_RECS_EXTERNAL_RECALL_QUERY_TIMEOUT_MS : PDP_RECS_EXTERNAL_UNDERFILL_QUERY_TIMEOUT_MS,
+    ));
   out.push(...domainMatches);
   const domainFocusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
   if (!deepDomainRecall && domainFocusedCandidates.length >= safeMinFocusedCandidates) {
