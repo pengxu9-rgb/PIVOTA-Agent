@@ -9389,6 +9389,97 @@ test('__internal: latest reco context rehydrates under-makeup semantic intent fo
   assert.equal(state.selected_recommendations[1]?.product_id, 'haruharu_portable_stick');
 });
 
+test('__internal: framework tiebreak prefers first-wear finish-fit sunscreen over portable reapplication stick when role scores tie', () => {
+  const { __internal } = loadRoutesFresh();
+  const targetContext = {
+    framework_id: 'recofw_test_finish_fit_tiebreak_over_portable_stick',
+    primary_role_id: 'daily_sunscreen_finish_fit',
+    comparison_mode: 'same_role_comparison',
+    routine_mode: 'same_role_comparison',
+    request_text: 'Based on my routine and the skin analysis, what should I buy for daytime so my makeup stops pilling?',
+    semantic_plan: {
+      primary_concern: 'makeup pilling and daytime layering with impaired barrier',
+      comparison_mode: 'same_role_comparison',
+      routine_mode: 'same_role_comparison',
+      must_satisfy_constraints: ['under makeup', 'avoid pilling', 'lightweight finish'],
+    },
+    framework_roles: [
+      {
+        role_id: 'daily_sunscreen_finish_fit',
+        rank: 1,
+        preferred_step: 'sunscreen',
+        label: 'Daily sunscreen finish fit',
+        query_terms: ['sunscreen under makeup', 'lightweight sunscreen oily skin'],
+        fit_keywords: ['under makeup', 'lightweight', 'non-greasy', 'no white cast', 'invisible', 'fluid'],
+        ingredient_hypotheses: ['UV filters'],
+        product_type_hypotheses: ['sunscreen', 'serum'],
+      },
+    ],
+  };
+
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [
+      {
+        product_id: 'haruharu_portable_stick_tie',
+        merchant_id: 'external_seed',
+        brand: 'Haruharu Wonder',
+        name: 'Daily Soothing Sun Shield SPF50+ PA++++',
+        display_name: 'Haruharu Wonder Daily Soothing Sun Shield SPF50+ PA++++',
+        category: 'Sunscreen',
+        product_type: 'Sunscreen',
+        retrieval_source: 'external_seed',
+        retrieval_reason: 'external_seed_local_search:support_category_exact',
+        retrieval_match_stage: 'support_category_exact',
+        retrieval_role_id: 'daily_sunscreen_finish_fit',
+        retrieval_query: 'sunscreen',
+        local_external_seed_role_fit_score: 1.305,
+        short_description: 'Feather-light, cooling texture with a non-greasy, semi-matte finish that stays invisible through the day.',
+        key_features: ['Niacinamide'],
+        product_intel: {
+          shopping_card: {
+            intro: 'Portable SPF50+ sun stick for quick daytime touchups.',
+          },
+          what_it_is: {
+            body: 'A chemical-filter sun stick designed for portable daytime reapplication.',
+          },
+          product_intel_core: {
+            what_it_is: {
+              body: 'A chemical-filter sun stick designed for portable daytime reapplication.',
+            },
+          },
+        },
+      },
+      {
+        product_id: 'boj_aqua_fresh_tie',
+        merchant_id: 'external_seed',
+        brand: 'Beauty of Joseon',
+        name: 'Relief Sun Aqua-Fresh : Rice + B5 (SPF50+ PA++++)',
+        display_name: 'Beauty of Joseon Relief Sun Aqua-Fresh : Rice + B5 (SPF50+ PA++++)',
+        category: 'Sunscreen',
+        product_type: 'Sunscreen',
+        retrieval_source: 'external_seed',
+        retrieval_reason: 'external_seed_local_search:support_category_exact',
+        retrieval_match_stage: 'support_category_exact',
+        retrieval_role_id: 'daily_sunscreen_finish_fit',
+        retrieval_query: 'sunscreen',
+        local_external_seed_role_fit_score: 1.305,
+        short_description: 'A lightweight sunscreen fluid that layers smoothly under makeup with no white cast.',
+        description: 'A daily sunscreen built around modern organic UV filters for lightweight daytime layering under makeup with no white cast.',
+      },
+    ].map((row) => __internal.normalizeRecoCatalogProduct(row)),
+    { targetContext },
+  );
+
+  assert.equal(state.primary_role_matched, true);
+  assert.equal(state.selected_recommendations[0]?.product_id, 'boj_aqua_fresh_tie');
+  assert.equal(state.selected_recommendations[1]?.product_id, 'haruharu_portable_stick_tie');
+  const stick = state.viable_candidate_pool.find((row) => row?.product_id === 'haruharu_portable_stick_tie') || null;
+  const fluid = state.viable_candidate_pool.find((row) => row?.product_id === 'boj_aqua_fresh_tie') || null;
+  assert.ok(stick);
+  assert.ok(fluid);
+  assert.ok(Number(fluid.framework_tiebreak_score || 0) > Number(stick.framework_tiebreak_score || 0));
+});
+
 test('__internal: framework pool demotes mini sunscreen variants behind full-size same-role options', () => {
   const { __internal } = loadRoutesFresh();
   const state = __internal.finalizeConcernFrameworkCandidatePools(

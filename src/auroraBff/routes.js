@@ -22720,7 +22720,82 @@ function scoreConcernFrameworkRetailSizePenalty(row = null) {
   return 0;
 }
 
-function scoreConcernFrameworkCandidateTiebreak(row) {
+function buildConcernFrameworkTiebreakIntentText(targetContext = null) {
+  const semanticPlan = isPlainObject(targetContext?.semantic_plan) ? targetContext.semantic_plan : null;
+  return [
+    targetContext?.request_text,
+    targetContext?.focus_text,
+    targetContext?.primary_concern,
+    targetContext?.concern,
+    semanticPlan?.primary_concern,
+    semanticPlan?.routine_mode,
+    semanticPlan?.comparison_mode,
+    ...(Array.isArray(semanticPlan?.must_satisfy_constraints) ? semanticPlan.must_satisfy_constraints : []),
+    ...(Array.isArray(semanticPlan?.evidence_needed) ? semanticPlan.evidence_needed : []),
+  ]
+    .map((value) => String(value || '').trim().toLowerCase())
+    .filter(Boolean)
+    .join(' ');
+}
+
+function buildConcernFrameworkTiebreakRoleText(role = null) {
+  return [
+    role?.role_id,
+    role?.label,
+    role?.why_this_role,
+    role?.preferred_step,
+    ...(Array.isArray(role?.fit_keywords) ? role.fit_keywords : []),
+    ...(Array.isArray(role?.query_terms) ? role.query_terms : []),
+    ...(Array.isArray(role?.ingredient_hypotheses) ? role.ingredient_hypotheses : []),
+    ...(Array.isArray(role?.product_type_hypotheses) ? role.product_type_hypotheses : []),
+  ]
+    .map((value) => String(value || '').trim().toLowerCase())
+    .filter(Boolean)
+    .join(' ');
+}
+
+function buildConcernFrameworkTiebreakCandidateText(row = null) {
+  const candidate = isPlainObject(row) ? row : {};
+  return uniqCaseInsensitiveStrings([
+    buildConcernFrameworkCandidateText(candidate),
+    buildConcernCandidateText(candidate),
+    buildPurchasableRecoveryCandidateText(candidate),
+    candidate.short_description,
+    candidate.shortDescription,
+    candidate.description,
+    candidate.summary,
+    candidate.subtitle,
+    candidate.why_this_one,
+    candidate.whyThisOne,
+    candidate?.product_intel?.shopping_card?.intro,
+    candidate?.product_intel?.search_card?.intro_candidate,
+    candidate?.product_intel?.what_it_is?.body,
+    candidate?.product_intel?.product_intel_core?.what_it_is?.body,
+    candidate?.pivota_insights?.what_it_is,
+    ...(Array.isArray(candidate?.best_for) ? candidate.best_for : []),
+    ...(Array.isArray(candidate?.compare_highlights) ? candidate.compare_highlights : []),
+    ...(Array.isArray(candidate?.benefit_tags) ? candidate.benefit_tags : []),
+  ], 24)
+    .map((value) => String(value || '').trim().toLowerCase())
+    .filter(Boolean)
+    .join(' ');
+}
+
+function roleExpectsConcernFrameworkPrimaryUnderMakeupSunscreen(role = null, targetContext = null) {
+  const preferredStep = normalizeRecoTargetStep(role?.preferred_step);
+  if (preferredStep !== 'sunscreen') return false;
+  const intentText = buildConcernFrameworkTiebreakIntentText(targetContext);
+  const combined = `${buildConcernFrameworkTiebreakRoleText(role)} ${intentText}`.trim();
+  if (!/\b(makeup|under makeup|pilling|layering|finish fit|smooth finish|white cast|greasy finish)\b/i.test(combined)) {
+    return false;
+  }
+  if (/\b(reapply|reapplication|touch[- ]?up|touchup|portable|commute|on[- ]the[- ]go|outdoor|outdoors|sweat|gym|beach|hike)\b/i.test(intentText)) {
+    return false;
+  }
+  return true;
+}
+
+function scoreConcernFrameworkCandidateTiebreak(row, { targetContext = null, matchedRole = null } = {}) {
   const candidate = isPlainObject(row) ? row : {};
   const socialRefScore = Number.isFinite(Number(candidate.social_ref_score)) ? Number(candidate.social_ref_score) : 0;
   const ingredientSignalCount = Array.isArray(candidate.ingredient_tokens) ? candidate.ingredient_tokens.length : 0;
@@ -22735,6 +22810,15 @@ function scoreConcernFrameworkCandidateTiebreak(row) {
     candidate.productUrl,
     candidate.url,
   );
+  const candidateText = buildConcernFrameworkTiebreakCandidateText(candidate);
+  const primaryUnderMakeupSunscreenExpected = roleExpectsConcernFrameworkPrimaryUnderMakeupSunscreen(
+    matchedRole,
+    targetContext,
+  );
+  const portableReapplicationSignal = /\b(stick|sun stick|touch[- ]?up|touchup|reapply|reapplication|portable|on[- ]the[- ]go|mess[- ]?free|pocket|commute|travel(?:-|\s)?bag|carry[- ]on)\b/i
+    .test(candidateText);
+  const underMakeupFinishSignal = /\b(under makeup|makeup compatible|non[- ]?pilling|no pilling|smooth finish|invisible|fluid|serum sunscreen|lightweight|non[- ]?greasy|no white cast|layers? well|airy|weightless)\b/i
+    .test(candidateText);
   let score = 0;
   score += Math.max(0, Math.min(0.06, socialRefScore * 0.03));
   if (directUrl) score += 0.014;
@@ -22742,6 +22826,8 @@ function scoreConcernFrameworkCandidateTiebreak(row) {
   if (tagSignalCount > 0) score += Math.min(0.012, tagSignalCount * 0.0025);
   // Neutralize insertion-order bias when internal and external candidates land with the same role score.
   if (retrievalSource === 'external_seed') score += 0.01;
+  if (primaryUnderMakeupSunscreenExpected && portableReapplicationSignal) score -= 0.08;
+  if (primaryUnderMakeupSunscreenExpected && underMakeupFinishSignal && !portableReapplicationSignal) score += 0.03;
   score -= scoreConcernFrameworkRetailSizePenalty(candidate);
   return Number(score.toFixed(4));
 }
@@ -23479,7 +23565,10 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
       framework_rank_score: frameworkRankScore,
       framework_role_fit_score: frameworkRoleFitScore != null ? Number(frameworkRoleFitScore) : null,
       framework_role_fit_rank_adjustment: frameworkRoleFitRankAdjustment,
-      framework_tiebreak_score: scoreConcernFrameworkCandidateTiebreak(row),
+      framework_tiebreak_score: scoreConcernFrameworkCandidateTiebreak(row, {
+        targetContext,
+        matchedRole: bestRole,
+      }),
       framework_semantic_fit: Boolean(bestRoleScore.semantic_fit_matched),
       framework_role_semantic_fit: Boolean(bestRoleScore.role_semantic_fit_matched),
       candidate_step: candidateStep || null,
