@@ -413,13 +413,21 @@ describe('get_pdp_v2 identity graph live read', () => {
       app._debug.stripResponseOwnedPdpModulesFromCanonicalPayload({
         modules: [
           { type: 'media_gallery' },
+          { type: 'active_ingredients' },
+          { type: 'ingredients_inci' },
+          { type: 'how_to_use' },
           { type: 'product_intel' },
           { type: 'recommendations' },
           { type: 'reviews_preview' },
           { type: 'similar' },
         ],
       }).modules,
-    ).toEqual([{ type: 'media_gallery' }]);
+    ).toEqual([
+      { type: 'media_gallery' },
+      { type: 'active_ingredients' },
+      { type: 'ingredients_inci' },
+      { type: 'how_to_use' },
+    ]);
     expect(reviewsModule?.data).toEqual(
       expect.objectContaining({
         aggregation_scope: 'product_line',

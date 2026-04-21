@@ -735,9 +735,6 @@ const RESPONSE_OWNED_PDP_CANONICAL_MODULE_TYPES = new Set([
   'recommendations',
   'reviews_preview',
   'similar',
-  'active_ingredients',
-  'ingredients_inci',
-  'how_to_use',
 ]);
 
 function stripResponseOwnedPdpModulesFromCanonicalPayload(pdpPayload) {
