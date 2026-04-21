@@ -645,6 +645,44 @@ test('daily sunscreen finish-fit prefers first-wear fluid sunscreen over portabl
   assert.ok(Number(fluidScore?.score || 0) > Number(stickScore?.score || 0));
 });
 
+test('daily sunscreen finish-fit demotes tinted coverage sunscreen when the request only asks for under-makeup wear', () => {
+  const role = buildDailySunscreenFinishFitRole();
+  const targetContext = buildUnderMakeupSunscreenTargetContext();
+
+  const tintedScore = scoreConcernRoleCandidate(
+    {
+      title: 'Daily Tinted Fluid Sunscreen DN310',
+      retrieval_role_id: 'daily_sunscreen_finish_fit',
+    },
+    role,
+    {
+      candidateStep: 'sunscreen',
+      targetContext,
+      candidateText:
+        'Daily Tinted Fluid Sunscreen DN310 lightweight fluid sunscreen with SPF 40, sheer tint coverage, and under-makeup wear.',
+    },
+  );
+  const untintedScore = scoreConcernRoleCandidate(
+    {
+      title: 'Relief Sun Aqua-Fresh SPF 50',
+      retrieval_role_id: 'daily_sunscreen_finish_fit',
+    },
+    role,
+    {
+      candidateStep: 'sunscreen',
+      targetContext,
+      candidateText:
+        'Relief Sun Aqua-Fresh SPF 50 lightweight sunscreen fluid that layers smoothly under makeup with no white cast.',
+    },
+  );
+
+  assert.ok(tintedScore);
+  assert.ok(untintedScore);
+  assert.equal(tintedScore?.sunscreen_coverage_tint_mismatch_applied, true);
+  assert.equal(untintedScore?.sunscreen_coverage_tint_mismatch_applied, false);
+  assert.ok(Number(untintedScore?.score || 0) > Number(tintedScore?.score || 0));
+});
+
 test('daily sunscreen finish-fit keeps portable stick viable when the user explicitly asked for reapplication convenience', () => {
   const score = scoreConcernRoleCandidate(
     {

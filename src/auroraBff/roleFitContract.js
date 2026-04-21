@@ -269,7 +269,7 @@ function hasCoverageTintSignal(text = '') {
 function roleExplicitlyAllowsCoverageTint(role = null, targetContext = null) {
   const roleText = buildConcernRoleFitText(role);
   const contextText = buildConcernTargetContextFitText(targetContext);
-  return /\b(tint(?:ed)?|coverage|skin tint|bb cream|cc cream|tone[- ]?up|complexion|finish fit|under makeup|makeup|primer|base)\b/i.test(
+  return /\b(tint(?:ed)?|coverage|skin tint|bb cream|cc cream|tone[- ]?up|complexion|shade|shade match)\b/i.test(
     `${roleText} ${contextText}`.trim(),
   );
 }
