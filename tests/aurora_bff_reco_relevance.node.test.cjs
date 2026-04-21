@@ -4598,6 +4598,90 @@ test('__internal: local external seed support-role fastpath overfetches and role
   assert.ok(Number(out.products[0]?.local_external_seed_role_fit_score || 0) > Number(out.products[1]?.local_external_seed_role_fit_score || 0));
 });
 
+test('__internal: local external seed sunscreen search uses target intent to demote portable reapplication sticks', async () => {
+  const { __internal } = loadRoutesFresh();
+  const makeRow = (id, title, description, benefitTags = []) => ({
+    id,
+    external_product_id: `ext_sunscreen_target_intent_${id}`,
+    destination_url: `https://example.com/products/sunscreen-target-intent-${id}`,
+    canonical_url: `https://example.com/products/sunscreen-target-intent-${id}`,
+    domain: 'example.com',
+    title,
+    image_url: `https://example.com/products/sunscreen-target-intent-${id}.jpg`,
+    price_amount: 22,
+    price_currency: 'USD',
+    availability: 'in_stock',
+    match_stage: 'support_category_positive',
+    match_score: 54,
+    seed_data: {
+      derived: {
+        recall: {
+          retrieval_title: title,
+          retrieval_summary: description,
+          category: 'sunscreen',
+          vertical: 'skincare',
+          alias_tokens: ['daily sunscreen', ...benefitTags],
+        },
+      },
+      snapshot: {
+        title,
+        description,
+        category: 'Sunscreen',
+      },
+      benefit_tags: benefitTags,
+      skin_type_tags: ['oily'],
+    },
+    updated_at: new Date(2026, 1, Number(id)).toISOString(),
+    created_at: new Date(2026, 1, Number(id)).toISOString(),
+  });
+
+  const out = await __internal.searchLocalExternalSeedProducts({
+    query: 'daily sunscreen',
+    limit: 2,
+    role: {
+      role_id: 'daily_sunscreen_finish_fit',
+      rank: 1,
+      preferred_step: 'sunscreen',
+      query_terms: ['daily sunscreen', 'lightweight sunscreen'],
+      fit_keywords: ['spf', 'lightweight'],
+      product_type_hypotheses: ['sunscreen'],
+    },
+    preferredStep: 'sunscreen',
+    targetContext: {
+      request_text: 'My daytime products pill under makeup. What sunscreen should I buy?',
+      primary_concern: 'daytime routine under makeup',
+      semantic_plan: {
+        primary_concern: 'daytime routine under makeup',
+        comparison_mode: 'same_role_comparison',
+        must_satisfy_constraints: ['under makeup', 'avoid pilling', 'lightweight finish'],
+      },
+    },
+    queryFn: async () => ({
+      rows: [
+        makeRow(
+          '201',
+          'Anywhere Sun Stick SPF 50',
+          'A sunscreen stick for quick touchups and portable reapplication during the day.',
+          ['spf 50', 'portable reapplication'],
+        ),
+        makeRow(
+          '202',
+          'Invisible Fluid Shield SPF 50',
+          'A lightweight fluid sunscreen with no white cast that layers smoothly for daytime wear.',
+          ['spf 50', 'lightweight finish'],
+        ),
+      ],
+    }),
+  });
+
+  assert.equal(out.ok, true);
+  assert.equal(out.products[0]?.title, 'Invisible Fluid Shield SPF 50');
+  assert.ok(
+    Number(out.products[0]?.local_external_seed_role_fit_score || 0)
+      > Number(out.products[1]?.local_external_seed_role_fit_score || 0),
+  );
+});
+
 test('__internal: local external seed support category terms keep face-lotion moisturizer variants authoritative', () => {
   const { __internal } = loadRoutesFresh();
   const terms = __internal.buildLocalExternalSeedSupportCategoryTerms({
@@ -9042,6 +9126,80 @@ test('__internal: framework pool uses external seed role-fit ranking for finish-
     state.selected_recommendations.some((row) => row.product_id === 'murad_spf_moisturizer_fit_1'),
     false,
   );
+});
+
+test('__internal: framework pool preserves same-band external seed role-fit differences for same-role sunscreen ranking', () => {
+  const { __internal } = loadRoutesFresh();
+  const targetContext = {
+    framework_id: 'recofw_test_same_band_sunscreen_role_fit_rank',
+    primary_role_id: 'daily_sunscreen_finish_fit',
+    comparison_mode: 'same_role_comparison',
+    routine_mode: 'same_role_comparison',
+    semantic_plan: {
+      primary_concern: 'daytime routine under makeup',
+      comparison_mode: 'same_role_comparison',
+      must_satisfy_constraints: ['under makeup', 'avoid pilling'],
+    },
+    framework_roles: [
+      {
+        role_id: 'daily_sunscreen_finish_fit',
+        rank: 1,
+        preferred_step: 'sunscreen',
+        label: 'Daily sunscreen finish fit',
+        query_terms: ['daily sunscreen', 'lightweight sunscreen'],
+        fit_keywords: ['spf', 'lightweight'],
+        ingredient_hypotheses: ['UV filters'],
+        product_type_hypotheses: ['sunscreen'],
+      },
+    ],
+  };
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [
+      {
+        product_id: 'alpha_lower_role_fit_spf',
+        merchant_id: 'external_seed',
+        brand: 'Alpha',
+        name: 'A Cloud Shield SPF 50',
+        display_name: 'Alpha A Cloud Shield SPF 50',
+        category: 'Sunscreen',
+        product_type: 'Sunscreen',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'daily_sunscreen_finish_fit',
+        retrieval_query: 'daily sunscreen',
+        local_external_seed_role_fit_score: 1.26,
+        benefit_tags: ['spf 50', 'lightweight'],
+        short_description: 'A lightweight daily sunscreen for regular daytime wear.',
+      },
+      {
+        product_id: 'beta_higher_role_fit_spf',
+        merchant_id: 'external_seed',
+        brand: 'Beta',
+        name: 'B Cloud Veil SPF 50',
+        display_name: 'Beta B Cloud Veil SPF 50',
+        category: 'Sunscreen',
+        product_type: 'Sunscreen',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'daily_sunscreen_finish_fit',
+        retrieval_query: 'daily sunscreen',
+        local_external_seed_role_fit_score: 1.34,
+        benefit_tags: ['spf 50', 'lightweight'],
+        short_description: 'A lightweight daily sunscreen for regular daytime wear.',
+      },
+    ].map((row) => __internal.normalizeRecoCatalogProduct(row)),
+    { targetContext },
+  );
+
+  assert.equal(state.primary_role_matched, true);
+  assert.equal(state.selected_recommendations[0]?.product_id, 'beta_higher_role_fit_spf');
+  const lower = state.viable_candidate_pool.find((row) => row?.product_id === 'alpha_lower_role_fit_spf') || null;
+  const higher = state.viable_candidate_pool.find((row) => row?.product_id === 'beta_higher_role_fit_spf') || null;
+  assert.ok(lower);
+  assert.ok(higher);
+  assert.ok(
+    Number(higher.framework_role_fit_rank_adjustment || 0)
+      > Number(lower.framework_role_fit_rank_adjustment || 0),
+  );
+  assert.ok(Number(higher.framework_rank_score || 0) > Number(lower.framework_rank_score || 0));
 });
 
 test('__internal: framework pool demotes mini sunscreen variants behind full-size same-role options', () => {

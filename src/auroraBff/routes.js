@@ -8937,28 +8937,31 @@ function scoreLocalExternalSeedSupportRoleFit(candidate, {
   query = '',
   role = null,
   preferredStep = '',
+  targetContext = null,
 } = {}) {
   const product = isPlainObject(candidate) ? candidate : null;
   const roleObj = isPlainObject(role) ? role : null;
   if (!product || !roleObj) return 0;
   const roleId = String(roleObj?.role_id || '').trim();
-  const targetContext = {
-    framework_id: 'local_external_seed_support_role_rank',
-    primary_role_id: roleId || null,
-    framework_roles: [roleObj],
-  };
+  const effectiveTargetContext = isPlainObject(targetContext)
+    ? targetContext
+    : {
+      framework_id: 'local_external_seed_support_role_rank',
+      primary_role_id: roleId || null,
+      framework_roles: [roleObj],
+    };
   try {
     const candidateText = uniqCaseInsensitiveStrings([
       buildConcernFrameworkCandidateText(product),
       buildConcernCandidateText(product),
       buildPurchasableRecoveryCandidateText(product),
     ], 3).join(' ').trim();
-    const stepResolution = normalizeCandidateStep(product, { targetContext });
+    const stepResolution = normalizeCandidateStep(product, { targetContext: effectiveTargetContext });
     const candidateStep = normalizeRecoTargetStep(stepResolution?.candidate_step);
     const roleScore = scoreConcernRoleCandidate(product, roleObj, {
       candidateStep,
       candidateText,
-      targetContext,
+      targetContext: effectiveTargetContext,
     });
     const preferred = normalizeRecoTargetStep(preferredStep || roleObj?.preferred_step);
     const coarseAuthority = classifyConcernFrameworkNegativeAuthority(product, roleObj);
@@ -8994,6 +8997,7 @@ function scoreLocalExternalSeedSupportRoleFit(candidate, {
 function rankLocalExternalSeedSupportCandidatesForRole(candidates = [], query = '', {
   role = null,
   preferredStep = '',
+  targetContext = null,
 } = {}) {
   const rows = Array.isArray(candidates) ? candidates.filter((item) => isPlainObject(item)) : [];
   if (rows.length <= 1 || !isPlainObject(role)) return rows.slice();
@@ -9008,7 +9012,12 @@ function rankLocalExternalSeedSupportCandidatesForRole(candidates = [], query = 
         row,
         index,
         roleFitSignalHits: countConcernRoleSignalMatches(candidateText, role?.fit_keywords, 5),
-        roleFitScore: scoreLocalExternalSeedSupportRoleFit(row, { query, role, preferredStep }),
+        roleFitScore: scoreLocalExternalSeedSupportRoleFit(row, {
+          query,
+          role,
+          preferredStep,
+          targetContext,
+        }),
         queryOverlap: computePurchasableRecoveryQueryOverlap(row, tokenizePurchasableRecoveryQuery(query)),
         surfacingScore: Number(computeExternalSeedSurfacingMatch({ query, candidate: row })?.score || 0),
       };
@@ -9287,6 +9296,7 @@ async function searchLocalExternalSeedProducts({
   transportPolicyMode = 'framework_first_turn',
   role = null,
   preferredStep = '',
+  targetContext = null,
 } = {}) {
   const q = String(query || '').trim();
   if (!q) {
@@ -9362,7 +9372,7 @@ async function searchLocalExternalSeedProducts({
       const ranked = rankLocalExternalSeedSupportCandidatesForRole(
         rankPurchasableRecoveryCandidates(surfacingCandidates, q),
         q,
-        { role, preferredStep },
+        { role, preferredStep, targetContext },
       ).slice(0, safeLimit);
       const candidateDebug = buildLocalExternalSeedCandidateDebug({
         rows,
@@ -9409,7 +9419,11 @@ async function searchLocalExternalSeedProducts({
       q,
     );
     const ranked = (isPlainObject(role)
-      ? rankLocalExternalSeedSupportCandidatesForRole(surfacingCandidates, q, { role, preferredStep })
+      ? rankLocalExternalSeedSupportCandidatesForRole(surfacingCandidates, q, {
+        role,
+        preferredStep,
+        targetContext,
+      })
       : surfacingCandidates).slice(0, safeLimit);
 
     return {
@@ -19203,6 +19217,7 @@ async function executeRecoRecallPlanEntry({
       preferredStep: normalizedPreferredStep,
       semanticFamily: normalizedSemanticFamily,
       queryStepStrength: normalizedQueryStepStrength,
+      targetContext,
       authHeaders,
     });
   }
@@ -22659,7 +22674,7 @@ function scoreConcernFrameworkRoleFitRankAdjustment(row, { matchedRoleId = '' } 
   if (roleFitScore === null || roleFitScore === undefined) return 0;
   const normalizedScore = Math.max(-1, Math.min(1.35, Number(roleFitScore)));
   if (normalizedScore >= 0.75) {
-    return Number(Math.min(0.12, (normalizedScore - 0.75) * 0.3).toFixed(4));
+    return Number(Math.min(0.18, (normalizedScore - 0.75) * 0.3).toFixed(4));
   }
   if (normalizedScore < 0.55) {
     return Number((-Math.min(0.08, (0.55 - normalizedScore) * 0.3)).toFixed(4));
@@ -24948,6 +24963,7 @@ async function buildPurchasableFallbackCandidates({
   preferredStep = '',
   semanticFamily = '',
   queryStepStrength = '',
+  targetContext = null,
   authHeaders = null,
 } = {}) {
   const runSearch = typeof searchFn === 'function' ? searchFn : searchPivotaBackendProducts;
@@ -25051,14 +25067,14 @@ async function buildPurchasableFallbackCandidates({
       const normalizedPreferredStep = normalizeRecoTargetStep(preferredStep || role?.preferred_step);
       return rows.some((product) => {
         if (!isPlainObject(product)) return false;
-        const stepResolution = normalizeCandidateStep(product, {});
+        const stepResolution = normalizeCandidateStep(product, { targetContext });
         const candidateStep = normalizeRecoTargetStep(stepResolution?.candidate_step);
         if (role) {
           const candidateText = uniqCaseInsensitiveStrings([
             buildConcernFrameworkCandidateText(product),
             buildConcernCandidateText(product),
           ], 2).join(' ').trim();
-          const roleScore = scoreConcernRoleCandidate(product, role, { candidateStep, candidateText });
+          const roleScore = scoreConcernRoleCandidate(product, role, { candidateStep, candidateText, targetContext });
           if (!roleScore) return false;
           const preferredRoleStep = normalizeRecoTargetStep(role?.preferred_step);
           return Number(roleScore.score || 0) >= 0.58
@@ -25081,6 +25097,7 @@ async function buildPurchasableFallbackCandidates({
       transportPolicyMode: effectiveTransportPolicy.mode,
       role,
       preferredStep,
+      targetContext,
     });
     let backendExternalStage = null;
     let rankedExternal = rankExternalSeedProducts(localExternalStage?.products);
