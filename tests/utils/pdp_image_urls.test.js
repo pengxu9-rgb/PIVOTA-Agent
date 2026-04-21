@@ -27,4 +27,14 @@ describe('pdp image URL normalization', () => {
     ]);
     expect(buildPdpImageDedupeKey(urls[0])).not.toBe(buildPdpImageDedupeKey(urls[1]));
   });
+
+  test('resolves Shopify width placeholders into concrete asset URLs', () => {
+    expect(
+      normalizePdpImageUrl(
+        'https://www.rarebeauty.com/cdn/shop/files/PDP-USAGE-FIND-COMFORT-BODY-HAIR-FRAGRANCE-MIST-MINI-1268x1268_%7Bwidth%7Dx.jpg?v=1740424675',
+      ),
+    ).toBe(
+      'https://www.rarebeauty.com/cdn/shop/files/PDP-USAGE-FIND-COMFORT-BODY-HAIR-FRAGRANCE-MIST-MINI-1268x1268_1024x.jpg?v=1740424675',
+    );
+  });
 });

@@ -94,6 +94,8 @@ describe('backfill-external-product-seeds-catalog', () => {
       sanitizeSeedImageUrls([
         'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T93Y01_2000x2000_0.png?v=1774596807',
         'https://www.tomfordbeauty.com/cdn/shop/files/Menu.svg?v=1771253635&width=24',
+        'https://www.rarebeauty.com/cdn/shop/files/gnav-shop-fragrance-fa25_1024x.png?v=1753828599',
+        'https://www.rarebeauty.com/cdn/shop/files/SHADE-FINDER-HERO-MIDDLE_1024x.jpg?v=1613736184',
       ]),
     ).toEqual([
       'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T93Y01_2000x2000_0.png?v=1774596807',
@@ -2105,5 +2107,79 @@ describe('backfill-external-product-seeds-catalog', () => {
       'https://cdn.shopify.com/s/files/1/0558/4135/7989/files/Daily-Tinted-Fluid-Sunscreen-DN350_Beauty-of-Joseon_59516391-51502368031092.jpg?v=1763451773',
       'https://cdn.shopify.com/s/files/1/0558/4135/7989/files/Untitled_design_95.jpg?v=1763500000',
     ]);
+  });
+
+  test('promotes richer selected variant galleries to top-level seed images', () => {
+    const row = {
+      id: 'eps_rare_mini',
+      external_product_id: 'ext_b8adb51e4b986a2b0bfb69c4',
+      market: 'US',
+      tool: 'creator_agents',
+      title: 'Find Comfort Body & Hair Fragrance Mist Mini',
+      canonical_url: 'https://rarebeauty.com/products/find-comfort-body-hair-fragrance-mist-mini',
+      destination_url: 'https://rarebeauty.com/products/find-comfort-body-hair-fragrance-mist-mini',
+      image_url: 'https://cdn.shopify.com/s/files/1/0314/1143/7703/files/ECOMM-FIND-COMFORT-BODY-HAIR-FRAGRANCE-MIST-MINI-CLOSED.jpg?v=1762301243',
+      price_amount: 18,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      seed_data: {
+        brand: 'Rare Beauty',
+        selected_variant_id: '44731790315607',
+        snapshot: {
+          canonical_url: 'https://rarebeauty.com/products/find-comfort-body-hair-fragrance-mist-mini',
+          selected_variant_id: '44731790315607',
+        },
+      },
+    };
+
+    const payload = buildSeedUpdatePayload(
+      row,
+      {
+        products: [
+          {
+            title: 'Find Comfort Body & Hair Fragrance Mist Mini',
+            url: 'https://rarebeauty.com/products/find-comfort-body-hair-fragrance-mist-mini',
+            image_url:
+              'https://cdn.shopify.com/s/files/1/0314/1143/7703/files/ECOMM-FIND-COMFORT-BODY-HAIR-FRAGRANCE-MIST-MINI-CLOSED.jpg?v=1762301243',
+            image_urls: [
+              'https://cdn.shopify.com/s/files/1/0314/1143/7703/files/ECOMM-FIND-COMFORT-BODY-HAIR-FRAGRANCE-MIST-MINI-CLOSED.jpg?v=1762301243',
+              'https://cdn.shopify.com/s/files/1/0314/1143/7703/files/ECOMM-FIND-COMFORT-BODY-HAIR-FRAGRANCE-MIST-MINI.jpg?v=1740424689',
+            ],
+            variants: [
+              {
+                id: '44731790315607',
+                sku: 'RB-FC-MINI',
+                option_name: 'Size',
+                option_value: 'Default',
+                price: '18.00',
+                currency: 'USD',
+                stock: 'In Stock',
+                product_url: 'https://rarebeauty.com/products/find-comfort-body-hair-fragrance-mist-mini',
+                image_url:
+                  'https://cdn.shopify.com/s/files/1/0314/1143/7703/files/ECOMM-FIND-COMFORT-BODY-HAIR-FRAGRANCE-MIST-MINI-CLOSED.jpg?v=1762301243',
+                image_urls: [
+                  'https://cdn.shopify.com/s/files/1/0314/1143/7703/files/ECOMM-FIND-COMFORT-BODY-HAIR-FRAGRANCE-MIST-MINI-CLOSED.jpg?v=1762301243',
+                  'https://cdn.shopify.com/s/files/1/0314/1143/7703/files/ECOMM-FIND-COMFORT-BODY-HAIR-FRAGRANCE-MIST-MINI.jpg?v=1740424689',
+                  'https://www.rarebeauty.com/cdn/shop/files/PDP-USAGE-FIND-COMFORT-BODY-HAIR-FRAGRANCE-MIST-MINI-1268x1268_%7Bwidth%7Dx.jpg?v=1740424675',
+                  'https://www.rarebeauty.com/cdn/shop/files/IMPERFECT-CIRCLE-FC-BODY-HAIR-FRAGRANCE-MIST-MINI-800x864_%7Bwidth%7Dx.png?v=1740424658',
+                ],
+              },
+            ],
+          },
+        ],
+        variants: [],
+        diagnostics: {},
+      },
+      'https://rarebeauty.com/products/find-comfort-body-hair-fragrance-mist-mini',
+    );
+
+    expect(payload.nextRow.seed_data.image_urls).toEqual([
+      'https://cdn.shopify.com/s/files/1/0314/1143/7703/files/ECOMM-FIND-COMFORT-BODY-HAIR-FRAGRANCE-MIST-MINI-CLOSED.jpg?v=1762301243',
+      'https://cdn.shopify.com/s/files/1/0314/1143/7703/files/ECOMM-FIND-COMFORT-BODY-HAIR-FRAGRANCE-MIST-MINI.jpg?v=1740424689',
+      'https://www.rarebeauty.com/cdn/shop/files/PDP-USAGE-FIND-COMFORT-BODY-HAIR-FRAGRANCE-MIST-MINI-1268x1268_1024x.jpg?v=1740424675',
+      'https://www.rarebeauty.com/cdn/shop/files/IMPERFECT-CIRCLE-FC-BODY-HAIR-FRAGRANCE-MIST-MINI-800x864_1024x.png?v=1740424658',
+    ]);
+    expect(payload.nextRow.seed_data.snapshot.image_urls).toEqual(payload.nextRow.seed_data.image_urls);
+    expect(payload.nextRow.seed_data.snapshot.variants[0].image_urls).toEqual(payload.nextRow.seed_data.image_urls);
   });
 });

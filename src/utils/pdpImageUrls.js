@@ -18,6 +18,7 @@ const KNOWN_SDCND_FILENAME_ALIASES = {
   'tf_sku_t2ss02_3000x3000_0.png': 'tf_sku_T2SS02_3000x3000_1.png',
 };
 const TOM_FORD_SHOPIFY_FILES_PREFIX = '/s/files/1/0761/9690/5173/files/';
+const DEFAULT_SHOPIFY_WIDTH_PLACEHOLDER = '1024';
 
 function isAbsoluteHttpUrl(value) {
   return ABSOLUTE_HTTP_URL_RE.test(String(value || '').trim());
@@ -65,7 +66,11 @@ function normalizeShopifyLikeFilename(filename, options = {}) {
   } catch {
     decoded = trimmed;
   }
-  const compacted = decoded.replace(/\s*_\s*/g, '_').trim();
+  const compacted = decoded
+    .replace(/\{width\}x/gi, `${DEFAULT_SHOPIFY_WIDTH_PLACEHOLDER}x`)
+    .replace(/\{width\}/gi, DEFAULT_SHOPIFY_WIDTH_PLACEHOLDER)
+    .replace(/\s*_\s*/g, '_')
+    .trim();
   const aliased = KNOWN_SDCND_FILENAME_ALIASES[compacted.toLowerCase()] || compacted;
   if (!stripHash) {
     return aliased;

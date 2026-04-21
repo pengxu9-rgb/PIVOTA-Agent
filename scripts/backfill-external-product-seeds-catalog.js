@@ -366,7 +366,9 @@ function isDecorativeSeedImageUrl(value) {
     normalized.includes('icon-cart') ||
     normalized.includes('icon-account') ||
     normalized.includes('/logo.svg') ||
-    normalized.includes('/tf_logo.svg')
+    normalized.includes('/tf_logo.svg') ||
+    normalized.includes('gnav-shop-') ||
+    normalized.includes('shade-finder-hero-')
   );
 }
 
@@ -1301,7 +1303,7 @@ function mapSnapshotVariants(product, response, existingSeedData) {
     .map((variant, idx) => {
       if (!variant || typeof variant !== 'object') return null;
       const responseVariant = findResponseVariantMatch(variant) || {};
-      const imageUrls = uniqueStrings([
+      const imageUrls = sanitizeSeedImageUrls([
         ...(Array.isArray(variant.image_urls) ? variant.image_urls : []),
         ...(Array.isArray(responseVariant.image_urls) ? responseVariant.image_urls : []),
         variant.image_url,
@@ -1474,6 +1476,13 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
   let mergedImageUrls = extractedImageUrls.length > 0 ? extractedImageUrls : existingImageUrls;
   const manualImageOverrideApplied = mergedImageUrls.length === 0 && overrideImageUrls.length > 0;
   if (manualImageOverrideApplied) mergedImageUrls = overrideImageUrls;
+  const richestVariantImageUrls = sanitizeSeedImageUrls([
+    ...(selectedVariantImageUrls.length > 0 ? selectedVariantImageUrls : []),
+    ...(effectiveSnapshotVariants.length === 1 ? effectiveSnapshotVariants[0]?.image_urls || [] : []),
+  ]);
+  if (richestVariantImageUrls.length > mergedImageUrls.length) {
+    mergedImageUrls = sanitizeSeedImageUrls([...richestVariantImageUrls, ...mergedImageUrls]);
+  }
   const imageUrl = mergedImageUrls[0] || '';
   const variantSkus = uniqueStrings(effectiveSnapshotVariants.map((variant) => variant.sku));
   const variantsForPrice = selectedSnapshotVariant ? [selectedSnapshotVariant] : effectiveSnapshotVariants;
