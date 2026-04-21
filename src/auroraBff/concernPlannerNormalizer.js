@@ -343,9 +343,6 @@ function inferConcernPlannerRequestNarrowing({
     [requestText, focus, primaryConcern].filter(Boolean).join(' '),
   );
   if (!contextText) return null;
-  if (/\b(routine|regimen|am pm|am\/pm|steps|kit|set|bundle|full routine)\b/.test(contextText)) {
-    return null;
-  }
   const explicitOneProduct = /\b(one product|single product|just one|only one|one thing)\b/.test(contextText);
   const useFirstAsk = /\b(use first|start with|what should i use first|what product should i use first)\b/.test(contextText);
   const buyNextAsk = /\b(buy next|use next|what should i buy next|what product should i buy next)\b/.test(contextText);
@@ -354,19 +351,41 @@ function inferConcernPlannerRequestNarrowing({
   const serumAsk = /\b(serum|essence|ampoule)\b/.test(contextText);
   const cleanserAsk = /\b(cleanser|face wash|face cleanser|wash)\b/.test(contextText);
   const treatmentAsk = /\b(treatment|retinoid|retinol|acid)\b/.test(contextText);
+  const layeringIntent = /\b(makeup|under makeup|pilling|pill|balls up|rolls off|layering)\b/.test(contextText);
+  const broadProductAsk = /\b(what should i buy|what product should i buy|what skincare product should i buy|what should i use|what product should i use|what skincare product should i use|use instead|buy instead)\b/.test(contextText);
+  const explicitDaytimeLayeringAsk = broadProductAsk
+    && layeringIntent
+    && /\b(daytime|day time|morning|am|under makeup|makeup)\b/.test(contextText);
+  if (
+    /\b(routine|regimen|am pm|am\/pm|steps|kit|set|bundle|full routine)\b/.test(contextText)
+    && !explicitDaytimeLayeringAsk
+    && !useFirstAsk
+    && !buyNextAsk
+    && !moisturizerAsk
+    && !sunscreenAsk
+    && !serumAsk
+    && !cleanserAsk
+    && !treatmentAsk
+  ) {
+    return null;
+  }
   const directSlotAsk = moisturizerAsk || sunscreenAsk || serumAsk || cleanserAsk || treatmentAsk;
-  if (!directSlotAsk && !useFirstAsk && !buyNextAsk) return null;
+  if (!directSlotAsk && !useFirstAsk && !buyNextAsk && !explicitDaytimeLayeringAsk) return null;
 
   const barrierStress =
     /\b(dry|tight|after washing|flaky|barrier|sensitive|reactive|irritat|redness|retinoid|retinol|another active|dont want another active|don t want another active|no another active|no more actives?)\b/.test(contextText);
   const oilyOrHumid = /\b(oily|oil|greasy|shine|humid|humidity|non greasy|lightweight)\b/.test(contextText);
   const toneOrMarks = /\b(post breakout|post acne|dark spot|marks|uneven tone|hyperpigmentation)\b/.test(contextText);
   const acneOrClogged = /\b(acne|breakout|clogged|pore|blemish)\b/.test(contextText);
-  const layeringIntent = /\b(makeup|under makeup|pilling|pill|balls up|rolls off|layering)\b/.test(contextText);
   const sunscreenFinishIntent = layeringIntent || /\b(spf|sunscreen|commute|humidity|white cast|matte|invisible)\b/.test(contextText);
 
   let primaryRoleId = '';
-  if (moisturizerAsk) {
+  if (explicitDaytimeLayeringAsk) {
+    primaryRoleId = resolvePreferredConcernRoleId(
+      ['daily_sunscreen_finish_fit', 'layering_compatible_moisturizer_or_spf', 'daily_sunscreen'],
+      { ontologyRoles, coreRoles, supportRoles },
+    );
+  } else if (moisturizerAsk) {
     primaryRoleId = resolvePreferredConcernRoleId(
       barrierStress
         ? ['hydrating_barrier_moisturizer', 'barrier_moisturizer']
@@ -439,7 +458,11 @@ function inferConcernPlannerRequestNarrowing({
     must_satisfy_constraint: explicitOneProduct
       ? 'single product only'
       : sameRoleConstraint,
-    reason: directSlotAsk ? 'explicit_step_product_request' : 'use_first_or_buy_next_focus',
+    reason: explicitDaytimeLayeringAsk
+      ? 'explicit_daytime_layering_request'
+      : directSlotAsk
+        ? 'explicit_step_product_request'
+        : 'use_first_or_buy_next_focus',
   };
 }
 
