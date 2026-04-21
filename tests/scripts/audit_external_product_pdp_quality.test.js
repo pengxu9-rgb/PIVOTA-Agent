@@ -94,6 +94,37 @@ describe('audit-external-product-pdp-quality helpers', () => {
     });
   });
 
+  test('builds public find_similar_products payloads with nested similar request', () => {
+    expect(
+      buildPublicGatewayPayload('find_similar_products', {
+        product_id: 'ext_123',
+        limit: 4,
+        exclude_items: ['a', 'b'],
+        options: { trace: true },
+      }),
+    ).toEqual({
+      operation: 'find_similar_products',
+      payload: {
+        similar: {
+          merchant_id: 'external_seed',
+          product_id: 'ext_123',
+          limit: 4,
+          exclude_items: ['a', 'b'],
+        },
+        options: {
+          trace: true,
+          debug: true,
+          no_cache: true,
+          cache_bypass: true,
+        },
+      },
+      metadata: {
+        scope: { catalog: 'global', region: 'US', language: 'en-US' },
+        entry: 'pdp_quality_audit',
+      },
+    });
+  });
+
   test('builds authoritative find_similar_products payloads for invoke endpoint probes', () => {
     expect(
       buildAuthoritativePayload('find_similar_products', {
