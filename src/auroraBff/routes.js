@@ -20309,8 +20309,6 @@ function buildRecoFinishFitSpecificWhy({
 } = {}) {
   if (!recoRoleNeedsFinishFitNarrative(roleText)) return '';
   const isCn = String(language || '').trim().toUpperCase() === 'CN';
-  const productText = String(productName || '').trim()
-    || (isCn ? '这支防晒' : 'This sunscreen');
   const text = collectRecoPromptTextList(
     [
       pickFirstTrimmed(
@@ -20344,37 +20342,37 @@ function buildRecoFinishFitSpecificWhy({
 
   if (isCn) {
     if (hasSoftFocus || (hasLayering && hasWeightless)) {
-      return `${productText}更贴合这类妆前防晒诉求，因为它强调更轻、更顺的白天叠加肤感，而不是偏厚重的成膜感。`;
+      return '更强调轻一点、顺一点的白天叠加肤感，而不是偏厚重的成膜感。';
     }
     if (hasWeightless && hasSensitiveCue) {
-      return `${productText}更贴合这类妆前防晒诉求，因为它偏轻薄、低气味线索，对敏感肌白天佩戴更友好。`;
+      return '偏轻薄、低气味线索，对敏感肌白天佩戴更友好。';
     }
     if (hasCreamierCue) {
-      return `${productText}更适合想要白天多一点保湿缓冲的人，但它会更偏面霜型防晒肤感，而不是最轻薄的一类。`;
+      return '更适合想要白天多一点保湿缓冲的人，但肤感会更偏面霜型，而不是最轻薄的一类。';
     }
     if (hasWhiteCastCue) {
-      return `${productText}更贴合这类妆前防晒诉求，因为它更强调白天上脸后的清透感和后续叠加表现。`;
+      return '更强调白天上脸后的清透感和后续叠加表现。';
     }
     if (hasLayering) {
-      return `${productText}更贴合这类妆前防晒诉求，因为它本身就带有更顺的白天叠加线索。`;
+      return '本身就带有更顺的白天叠加线索。';
     }
     return '';
   }
 
   if (hasSoftFocus || (hasLayering && hasWeightless)) {
-    return `${productText} fits this under-makeup sunscreen ask because it points to lighter, smoother daytime layering instead of a richer cream finish.`;
+    return 'it points to lighter, smoother daytime layering instead of a richer cream finish';
   }
   if (hasWeightless && hasSensitiveCue) {
-    return `${productText} fits this under-makeup sunscreen ask because it keeps the wear sheer and weightless while staying simpler for sensitive-skin daytime use.`;
+    return 'it keeps the wear sheer and weightless while staying simpler for sensitive-skin daytime use';
   }
   if (hasCreamierCue) {
-    return `${productText} fits this under-makeup sunscreen ask if you want more daytime moisture from a creamier SPF texture, not just the lightest finish.`;
+    return 'it gives more daytime moisture from a creamier SPF texture, not just the lightest finish';
   }
   if (hasWhiteCastCue) {
-    return `${productText} fits this under-makeup sunscreen ask because it points to cleaner daytime wear with lower white-cast risk.`;
+    return 'it points to cleaner daytime wear with lower white-cast risk';
   }
   if (hasLayering) {
-    return `${productText} fits this under-makeup sunscreen ask because it is positioned for smoother daytime layering.`;
+    return 'it is positioned for smoother daytime layering';
   }
   return '';
 }
