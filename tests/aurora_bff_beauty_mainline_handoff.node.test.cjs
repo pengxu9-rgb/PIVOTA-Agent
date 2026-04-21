@@ -2881,7 +2881,7 @@ test('runConcernSemanticPlanner forwards analysis handoff targets into prompt an
   }
 });
 
-test('runConcernSemanticPlanner repairs analysis-context makeup layering drift back to sunscreen-led routine semantics', async () => {
+test('runConcernSemanticPlanner narrows analysis-context makeup layering asks to finish-fit sunscreen comparison', async () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
     __internal.__setCallGeminiJsonObjectForTest(async (args = {}) => ({
@@ -2928,12 +2928,12 @@ test('runConcernSemanticPlanner repairs analysis-context makeup layering drift b
     assert.equal(out.semanticPlan?.selection_owner_state, 'trusted');
     assert.deepEqual(
       out.semanticPlan?.core_roles?.map((role) => role?.role_id).slice(0, 3),
-      ['daily_sunscreen_finish_fit', 'layering_compatible_moisturizer_or_spf', 'barrier_moisturizer'],
+      ['daily_sunscreen_finish_fit'],
     );
-    assert.equal(
-      out.semanticPlan?.selection_constraints?.plan_invariants_applied?.includes('routine_mix_removed_lowest_priority_role_for_finish_fit_coverage'),
-      true,
-    );
+    assert.deepEqual(out.semanticPlan?.support_roles?.map((role) => role?.role_id), []);
+    assert.equal(out.semanticPlan?.routine_mode, 'same_role_comparison');
+    assert.equal(out.semanticPlan?.comparison_mode, 'same_role_comparison');
+    assert.equal(out.semanticPlan?.selection_constraints?.narrowing_reason, 'explicit_daytime_layering_request');
   } finally {
     __internal.__resetCallGeminiJsonObjectForTest();
     delete require.cache[moduleId];

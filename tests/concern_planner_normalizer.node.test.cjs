@@ -79,14 +79,14 @@ test('concern planner normalizer trusts JSON output selecting ontology roles out
   assert.equal(normalized.selection_owner_state, 'trusted');
   assert.deepEqual(
     normalized.core_roles.map((role) => role.role_id),
-    ['daily_sunscreen_finish_fit', 'layering_compatible_moisturizer_or_spf', 'oil_control_treatment'],
+    ['daily_sunscreen_finish_fit'],
   );
-  assert.equal(normalized.comparison_mode, 'routine_mix');
+  assert.deepEqual(normalized.support_roles.map((role) => role.role_id), []);
+  assert.equal(normalized.routine_mode, 'same_role_comparison');
+  assert.equal(normalized.comparison_mode, 'same_role_comparison');
   assert.deepEqual(normalized.evidence_needed, ['finish', 'layering compatibility', 'price']);
-  assert.equal(
-    normalized.selection_constraints.plan_invariants_applied.includes('routine_mix_added_oil_control_support_for_oily_layering'),
-    true,
-  );
+  assert.equal(normalized.selection_constraints.narrowing_reason, 'explicit_step_product_request');
+  assert.equal(normalized.must_satisfy_constraints.includes('sunscreen-only same-slot comparison'), true);
 });
 
 test('concern planner normalizer keeps oily under-makeup routines oil-aware when sensitivity is medium but barrier is stable', () => {
@@ -126,17 +126,12 @@ test('concern planner normalizer keeps oily under-makeup routines oil-aware when
 
   assert.deepEqual(
     normalized.core_roles.map((role) => role.role_id),
-    ['daily_sunscreen_finish_fit', 'layering_compatible_moisturizer_or_spf', 'oil_control_treatment'],
+    ['daily_sunscreen_finish_fit'],
   );
-  assert.equal(
-    normalized.selection_constraints.plan_invariants_applied.includes('routine_mix_added_oil_control_support_for_oily_layering')
-      || normalized.selection_constraints.plan_invariants_applied.includes('routine_mix_promoted_oil_control_support_tertiary'),
-    true,
-  );
-  assert.equal(
-    normalized.core_roles.some((role) => role.role_id === 'hydrating_barrier_moisturizer'),
-    false,
-  );
+  assert.deepEqual(normalized.support_roles.map((role) => role.role_id), []);
+  assert.equal(normalized.routine_mode, 'same_role_comparison');
+  assert.equal(normalized.comparison_mode, 'same_role_comparison');
+  assert.equal(normalized.selection_constraints.narrowing_reason, 'explicit_step_product_request');
 });
 
 test('concern semantic fallback makes finish-fit sunscreen primary for makeup layering asks', () => {
@@ -188,22 +183,15 @@ test('concern planner normalizer repairs makeup layering sunscreen support to fi
 
   assert.deepEqual(
     normalized.core_roles.map((role) => role.role_id),
-    [
-      'daily_sunscreen_finish_fit',
-      'layering_compatible_moisturizer_or_spf',
-      'hydrating_serum_or_essence',
-    ],
+    ['daily_sunscreen_finish_fit'],
   );
-  assert.deepEqual(
-    normalized.selection_constraints.plan_invariants_applied,
-    [
-      'routine_mix_replaced_generic_sunscreen_with_finish_fit',
-      'routine_mix_promoted_finish_fit_sunscreen_primary',
-    ],
-  );
+  assert.deepEqual(normalized.support_roles.map((role) => role.role_id), []);
+  assert.equal(normalized.routine_mode, 'same_role_comparison');
+  assert.equal(normalized.comparison_mode, 'same_role_comparison');
+  assert.equal(normalized.selection_constraints.narrowing_reason, 'explicit_daytime_layering_request');
 });
 
-test('concern planner normalizer keeps analysis-context makeup layering asks sunscreen-led under barrier stress', () => {
+test('concern planner normalizer narrows analysis-context makeup layering asks to finish-fit sunscreen comparison', () => {
   const requestText = 'Based on my routine and the skin analysis, what should I buy for daytime so my makeup stops pilling?';
   const fallbackPlan = buildConcernSemanticPlanFallback({
     text: requestText,
@@ -243,24 +231,13 @@ test('concern planner normalizer keeps analysis-context makeup layering asks sun
 
   assert.deepEqual(
     normalized.core_roles.map((role) => role.role_id),
-    [
-      'daily_sunscreen_finish_fit',
-      'layering_compatible_moisturizer_or_spf',
-      'barrier_moisturizer',
-    ],
+    ['daily_sunscreen_finish_fit'],
   );
-  assert.equal(
-    normalized.selection_constraints.plan_invariants_applied.includes('routine_mix_removed_lowest_priority_role_for_finish_fit_coverage'),
-    true,
-  );
-  assert.equal(
-    normalized.selection_constraints.plan_invariants_applied.includes('routine_mix_added_finish_fit_sunscreen'),
-    true,
-  );
-  assert.equal(
-    normalized.selection_constraints.plan_invariants_applied.includes('routine_mix_added_hydrating_barrier_support_for_layering'),
-    true,
-  );
+  assert.deepEqual(normalized.support_roles.map((role) => role.role_id), []);
+  assert.equal(normalized.routine_mode, 'same_role_comparison');
+  assert.equal(normalized.comparison_mode, 'same_role_comparison');
+  assert.equal(normalized.selection_constraints.narrowing_reason, 'explicit_daytime_layering_request');
+  assert.equal(normalized.must_satisfy_constraints.includes('sunscreen-only same-slot comparison'), true);
 });
 
 test('support role query variants prioritize dull-skin tone queries before post-acne aliases', () => {
