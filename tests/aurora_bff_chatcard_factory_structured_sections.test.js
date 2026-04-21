@@ -876,6 +876,62 @@ describe('aurora chatCardFactory structured sections for adapter inputs', () => 
     expect(products[2].short_description).toMatch(/richer cream-spf base|more moisture under makeup/i);
   });
 
+  test('recommendations card infers finish-fit tradeoffs from product titles when raw copy is generic', () => {
+    const cards = mapLegacyCardToSpecCards(
+      {
+        type: 'recommendations',
+        card_id: 'legacy_recommendations_finish_fit_title_cues',
+        payload: {
+          recommendation_meta: {
+            selected_target_ids: ['daily_sunscreen_finish_fit'],
+            ranked_targets: [
+              {
+                target_id: 'daily_sunscreen_finish_fit',
+                target_label: 'Daily sunscreen with finish fit',
+              },
+            ],
+          },
+          recommendations: [
+            {
+              product_id: 'prod_unseen',
+              merchant_id: 'external_seed',
+              brand: 'Supergoop',
+              name: 'Supergoop Unseen Sunscreen SPF 50',
+              matched_role_id: 'daily_sunscreen_finish_fit',
+              matched_role_label: 'Daily sunscreen with finish fit',
+              short_description: 'Weightless formula for daily wear.',
+            },
+            {
+              product_id: 'prod_fab_mineral',
+              merchant_id: 'external_seed',
+              brand: 'First Aid Beauty',
+              name: 'Ultra Light Liquid Mineral Sunscreen with Zinc Oxide SPF 30',
+              matched_role_id: 'daily_sunscreen_finish_fit',
+              matched_role_label: 'Daily sunscreen with finish fit',
+              short_description: 'Silky liquid formula for lightweight sun protection.',
+            },
+            {
+              product_id: 'prod_fab_milk',
+              merchant_id: 'external_seed',
+              brand: 'First Aid Beauty',
+              name: 'Hydrating Sunscreen Milk with Colloidal Oatmeal Broad Spectrum SPF 45',
+              matched_role_id: 'daily_sunscreen_finish_fit',
+              matched_role_label: 'Daily sunscreen with finish fit',
+              short_description: 'Comfort-focused SPF for daily wear.',
+            },
+          ],
+        },
+      },
+      { requestId: 'req_card_factory_finish_fit_title_cues', language: 'EN', index: 0 },
+    );
+
+    const products = cards[0].payload.sections[0].products;
+    expect(products[1].why_this_one).toMatch(/more mineral|sensitive-skin-oriented|sheer and weightless/i);
+    expect(products[1].short_description).toMatch(/mineral sunscreen option|sensitive skin/i);
+    expect(products[2].why_this_one).toMatch(/richer cream-spf base|more cushioning under makeup|lightest finish/i);
+    expect(products[2].short_description).toMatch(/richer cream-spf base|more moisture under makeup/i);
+  });
+
   test('offers_resolved shares the rich product row contract and mirrors it into payload.sections', () => {
     const cards = mapLegacyCardToSpecCards(
       {

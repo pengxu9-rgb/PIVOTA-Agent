@@ -532,9 +532,23 @@ function looksLikeDescriptiveRecommendationFinishFitCopy(value) {
   return startsLikeDescriptor && hasFinishFitProductCue;
 }
 
+function looksLikeLowSpecificityRecommendationFinishFitCopy(value) {
+  const text = normalizeRecommendationSemanticText(value);
+  if (!text) return false;
+  const genericProtectionCue =
+    /\b(?:sun protection|daily wear|comfortable wear|silky liquid formula|lightweight formula|lightweight sun protection|comfortable daytime wear)\b/.test(text);
+  const distinctTradeoffCue =
+    /\b(?:under makeup|makeup|pilling|soft[-\s]?focus|blur(?:ring)?|primer[-\s]?like|weightless|sheer|invisible|white cast|sensitive skin|mineral|cream(?:ier)?|cream-spf|milk|hydrating|richer|more moisturizing)\b/.test(text);
+  return genericProtectionCue && !distinctTradeoffCue;
+}
+
 function collectRecommendationFinishFitSourceText(row) {
   const item = isPlainObject(row) ? row : {};
   return [
+    item.display_name,
+    item.displayName,
+    item.name,
+    item.title,
     item.short_description,
     item.shortDescription,
     item.why_this_one,
@@ -542,6 +556,8 @@ function collectRecommendationFinishFitSourceText(row) {
     item.description,
     item.summary,
     item.subtitle,
+    item.product && (item.product.display_name || item.product.displayName || item.product.name || item.product.title),
+    item.sku && (item.sku.display_name || item.sku.displayName || item.sku.name || item.sku.title),
     item.shopping_card && item.shopping_card.intro,
     item.search_card && item.search_card.intro_candidate,
     item.product_intel && item.product_intel.shopping_card && item.product_intel.shopping_card.intro,
@@ -567,7 +583,7 @@ function buildRecommendationFinishFitSpecificWhy(row) {
   const hasMineralCue = /\b(?:mineral|zinc oxide|titanium dioxide)\b/i.test(texts);
   const hasWhiteCastCue = /\b(?:no white cast|white cast[-\s]?free|lower white[-\s]?cast|invisible)\b/i.test(texts);
   const hasSensitiveCue = /\b(?:sensitive skin|scentless|fragrance[-\s]?free|bisabolol|ectoin)\b/i.test(texts);
-  const hasCreamierCue = /\b(?:hydrating daily cream|hydrating cream|cream format|cream texture|moisturizer[-\s]?style hydration|moisturizer[-\s]?format|cream-spf|cream spf)\b/i.test(texts);
+  const hasCreamierCue = /\b(?:hydrating daily cream|hydrating cream|cream format|cream texture|moisturizer[-\s]?style hydration|moisturizer[-\s]?format|cream-spf|cream spf|sunscreen milk|milk spf|milky sunscreen|hydrating sunscreen milk|spf milk|spf lotion)\b/i.test(texts);
 
   if (hasCreamierCue) {
     return 'it gives a richer cream-SPF base when you want more cushioning under makeup, not just the lightest finish';
@@ -600,7 +616,7 @@ function buildRecommendationFinishFitSpecificShortDescription(row) {
   const hasMineralCue = /\b(?:mineral|zinc oxide|titanium dioxide)\b/i.test(texts);
   const hasWhiteCastCue = /\b(?:no white cast|white cast[-\s]?free|lower white[-\s]?cast|invisible)\b/i.test(texts);
   const hasSensitiveCue = /\b(?:sensitive skin|scentless|fragrance[-\s]?free|bisabolol|ectoin)\b/i.test(texts);
-  const hasCreamierCue = /\b(?:hydrating daily cream|hydrating cream|cream format|cream texture|moisturizer[-\s]?style hydration|moisturizer[-\s]?format|cream-spf|cream spf)\b/i.test(texts);
+  const hasCreamierCue = /\b(?:hydrating daily cream|hydrating cream|cream format|cream texture|moisturizer[-\s]?style hydration|moisturizer[-\s]?format|cream-spf|cream spf|sunscreen milk|milk spf|milky sunscreen|hydrating sunscreen milk|spf milk|spf lotion)\b/i.test(texts);
 
   if (hasCreamierCue) {
     return 'A richer cream-SPF base when you want more moisture under makeup.';
@@ -1003,6 +1019,7 @@ function normalizeRecommendationProductCard(raw, options = {}) {
       || looksLikeWeakRecommendationFinishFitCopy(baseWhyThisOne)
       || looksLikeGenericRecommendationFinishFitCopy(baseWhyThisOne)
       || looksLikeDescriptiveRecommendationFinishFitCopy(baseWhyThisOne)
+      || looksLikeLowSpecificityRecommendationFinishFitCopy(baseWhyThisOne)
     )
     ? finishFitSpecificWhy
     : baseWhyThisOne;
@@ -1012,6 +1029,7 @@ function normalizeRecommendationProductCard(raw, options = {}) {
       || looksLikeWeakRecommendationFinishFitCopy(baseShortDescription)
       || looksLikeGenericRecommendationFinishFitCopy(baseShortDescription)
       || looksLikeDescriptiveRecommendationFinishFitCopy(baseShortDescription)
+      || looksLikeLowSpecificityRecommendationFinishFitCopy(baseShortDescription)
     )
     ? finishFitSpecificShortDescription
     : baseShortDescription;
