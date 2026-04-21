@@ -20289,6 +20289,25 @@ function looksLikeWeakRecoFinishFitNarrative(value = '') {
   return weakSignal && !strongSignal;
 }
 
+function looksLikeGenericRecoFinishFitNarrative(value = '') {
+  const text = normalizeSemanticAuditText(value);
+  if (!text) return false;
+  if (looksLikeWeakRecoFinishFitNarrative(text)) return true;
+  return /\b(?:lighter smoother daytime layering|lighter smoother layering|smoother daytime layering|daily spf cream with moisturizer style hydration cues|daily sunscreen built around|moisturizer style hydration cues|positioned for smoother daytime layering)\b/.test(text);
+}
+
+function shouldPreferSpecificRecoFinishFitWhy(existingWhy = '', specificWhy = '') {
+  const existing = normalizeSemanticAuditText(existingWhy);
+  const specific = normalizeSemanticAuditText(specificWhy);
+  if (!specific) return false;
+  if (!existing) return true;
+  if (existing === specific) return false;
+  const existingHasDistinctTradeoff = /\b(?:mineral|sensitive skin|fragrance free|scentless|creamier|more moisturizing|white cast|weightless|sheer)\b/.test(existing);
+  const specificHasDistinctTradeoff = /\b(?:mineral|sensitive skin|fragrance free|scentless|creamier|more moisturizing|white cast|weightless|sheer)\b/.test(specific);
+  if (specificHasDistinctTradeoff && !existingHasDistinctTradeoff) return true;
+  return looksLikeGenericRecoFinishFitNarrative(existing);
+}
+
 function buildRecoFinishFitBestFor({ language = 'EN' } = {}) {
   const isCn = String(language || '').trim().toUpperCase() === 'CN';
   return isCn
@@ -20509,7 +20528,10 @@ function buildRecoDerivedShopperCopy({
     && /^(?:daily spf wear|daily sunscreen|daily spf routines?)$/i.test(String(rawExistingBestFor || '').trim());
   const shouldDeprioritizeExistingFinishFitWhy =
     recoRoleNeedsFinishFitNarrative(roleText)
-    && looksLikeWeakRecoFinishFitNarrative(rawExistingWhy)
+    && (
+      looksLikeWeakRecoFinishFitNarrative(rawExistingWhy)
+      || shouldPreferSpecificRecoFinishFitWhy(existingWhy, finishFitSpecificWhy)
+    )
     && Boolean(finishFitSpecificWhy || roleAlignedSpecificNarrative);
   const bestFor = (
     shouldDeprioritizeExistingFinishFitBestFor

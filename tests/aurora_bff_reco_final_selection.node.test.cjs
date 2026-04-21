@@ -387,6 +387,80 @@ test('beauty mainline reco rows rewrite finish-fit sunscreen copy toward under-m
   }
 });
 
+test('beauty mainline reco rows keep finish-fit same-slot cards differentiated by mineral and cream tradeoffs', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const rows = __internal.buildRecoRowsFromMainlineProducts(
+      [
+        {
+          product_id: 'spf_unseen',
+          merchant_id: 'external_seed',
+          brand: 'Supergoop',
+          display_name: 'Unseen Sunscreen SPF 50',
+          category: 'Sunscreen',
+          product_type: 'Sunscreen',
+          short_description: 'A daily sunscreen built around soft-focus powders for comfortable daytime layering under makeup.',
+          why_this_one: 'it points to lighter, smoother daytime layering instead of a richer cream finish',
+          matched_role_id: 'daily_sunscreen_finish_fit',
+          matched_role_label: 'Daily sunscreen with finish fit',
+          preferred_step: 'sunscreen',
+        },
+        {
+          product_id: 'spf_mineral_unseen',
+          merchant_id: 'external_seed',
+          brand: 'Supergoop',
+          display_name: 'Mineral Unseen Sunscreen SPF 40',
+          category: 'Sunscreen',
+          product_type: 'Sunscreen',
+          short_description: 'A sheer, weightless, scentless mineral sunscreen recommended for sensitive skin.',
+          why_this_one: 'it points to lighter, smoother daytime layering instead of a richer cream finish',
+          matched_role_id: 'daily_sunscreen_finish_fit',
+          matched_role_label: 'Daily sunscreen with finish fit',
+          preferred_step: 'sunscreen',
+        },
+        {
+          product_id: 'spf_superscreen',
+          merchant_id: 'external_seed',
+          brand: 'Supergoop',
+          display_name: 'Superscreen Hydrating Daily Cream SPF 40',
+          category: 'Sunscreen',
+          product_type: 'Sunscreen',
+          short_description: 'A hydrating daily cream SPF with moisturizer-style hydration cues.',
+          why_this_one: 'Daily SPF cream with moisturizer-style hydration cues.',
+          matched_role_id: 'daily_sunscreen_finish_fit',
+          matched_role_label: 'Daily sunscreen with finish fit',
+          preferred_step: 'sunscreen',
+        },
+      ],
+      {
+        targetContext: {
+          resolved_target_step: 'sunscreen',
+          primary_role_id: 'daily_sunscreen_finish_fit',
+          framework_roles: [
+            {
+              role_id: 'daily_sunscreen_finish_fit',
+              label: 'Daily sunscreen with finish fit',
+              rank: 1,
+              preferred_step: 'sunscreen',
+              why_this_role: 'Use a daily sunscreen that layers cleanly under makeup.',
+            },
+          ],
+        },
+        language: 'EN',
+      },
+    );
+
+    assert.equal(rows.length, 3);
+    assert.match(String(rows[0].why_this_one || ''), /lighter, smoother daytime layering/i);
+    assert.match(String(rows[1].why_this_one || ''), /sheer and weightless|sensitive-skin daytime use|weightless/i);
+    assert.match(String(rows[2].why_this_one || ''), /more daytime moisture|creamier SPF texture|moisturizing/i);
+    assert.notEqual(rows[1].why_this_one, rows[0].why_this_one);
+    assert.notEqual(rows[2].why_this_one, rows[0].why_this_one);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('reco assistant refinement question prioritizes missing skin type before climate and lifestyle', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
