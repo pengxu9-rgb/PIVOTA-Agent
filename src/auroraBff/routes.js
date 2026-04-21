@@ -1328,6 +1328,11 @@ const RECO_CATALOG_FRAMEWORK_LOCAL_HANDOFF_TIMEOUT_MS = (() => {
   const v = Number.isFinite(n) ? Math.trunc(n) : 16500;
   return Math.max(2400, Math.min(24000, v));
 })();
+const RECO_CATALOG_PRIMARY_INTERNAL_QUERY_TIMEOUT_MS = (() => {
+  const n = Number(process.env.AURORA_BFF_RECO_CATALOG_PRIMARY_INTERNAL_QUERY_TIMEOUT_MS || 2500);
+  const v = Number.isFinite(n) ? Math.trunc(n) : 2500;
+  return Math.max(400, Math.min(5000, v));
+})();
 const RECO_CATALOG_PRIMARY_EXTERNAL_SEED_QUERY_TIMEOUT_MS = (() => {
   const n = Number(process.env.AURORA_BFF_RECO_CATALOG_PRIMARY_EXTERNAL_SEED_QUERY_TIMEOUT_MS || 8000);
   const v = Number.isFinite(n) ? Math.trunc(n) : 8000;
@@ -23724,6 +23729,9 @@ function resolveRecoQueryEntryTimeoutMs(queryEntry = null, effectiveTimeoutMs = 
     Number.isFinite(Number(queryEntry?.fair_support_internal_round)) ||
     Number.isFinite(Number(queryEntry?.fair_support_external_round));
   if (sourceScope !== 'external_seed') {
+    if (stageId === 'framework_stage_a_primary_internal') {
+      return Math.min(normalizedTimeoutMs, RECO_CATALOG_PRIMARY_INTERNAL_QUERY_TIMEOUT_MS);
+    }
     return isFrameworkSupportStage
       ? Math.min(normalizedTimeoutMs, RECO_CATALOG_SUPPORT_INTERNAL_QUERY_TIMEOUT_MS)
       : normalizedTimeoutMs;

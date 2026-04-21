@@ -548,7 +548,7 @@ test('handoffRecoToBeautyMainlineSearch keeps framework local budget when sunscr
     assert.equal(internalCaptured.length > 0, true);
     assert.equal(internalCaptured.every((row) => row.callerLane === 'beauty_chat_handoff'), true);
     assert.equal(
-      internalCaptured.some((row) => row.timeoutMs === 16500),
+      internalCaptured.some((row) => row.timeoutMs === 2500),
       true,
     );
     assert.equal(externalCaptured.some((row) => row.roleId === 'daily_sunscreen_finish_fit'), true);
@@ -667,7 +667,7 @@ test('handoffRecoToBeautyMainlineSearch records primary-first strict-empty ledge
       ],
     );
     assert.equal(captured.every((row) => row.callerLane === 'beauty_chat_handoff'), true);
-    assert.equal(captured.slice(0, 2).every((row) => row.timeoutMs === 16500), true);
+    assert.equal(captured.slice(0, 2).every((row) => row.timeoutMs === 2500), true);
     assert.equal(captured.slice(2).every((row) => row.timeoutMs === 2400), true);
     assert.equal(captured.every((row) => row.allowExternalSeed === false), true);
     assert.equal(
