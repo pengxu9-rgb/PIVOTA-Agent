@@ -207,6 +207,96 @@ describe('pdpIdentityGraph', () => {
     expect(composed.product.pdp_content_source).toBe('canonical_inherited');
   });
 
+  test('composeSyntheticCanonicalProduct fills missing canonical content from product-line authority without changing commerce', () => {
+    const { buildIdentityListingFromProduct, composeSyntheticCanonicalProduct } = require('../../src/services/pdpIdentityGraph');
+
+    const externalExact = buildIdentityListingFromProduct({
+      merchantId: 'external_seed',
+      productId: 'ext_krave_gbr_45',
+      sourceKind: 'external_seed',
+      sourceTier: 'brand',
+      product: {
+        title: 'Great Barrier Relief',
+        brand: 'KraveBeauty',
+        description: 'Reviewed canonical overview.',
+        source_url: 'https://kravebeauty.com/products/great-barrier-relief',
+        variants: [
+          {
+            variant_id: 'seed-standard',
+            title: 'Standard - 45 mL',
+            option1: '45 mL',
+          },
+        ],
+      },
+    });
+    const externalLineSibling = buildIdentityListingFromProduct({
+      merchantId: 'external_seed',
+      productId: 'ext_krave_gbr_jumbo',
+      sourceKind: 'external_seed',
+      sourceTier: 'brand',
+      product: {
+        title: 'Great Barrier Relief Jumbo',
+        brand: 'KraveBeauty',
+        pdp_how_to_use_raw: 'Apply one to two pumps after toner.',
+        pdp_details_sections: [
+          {
+            heading: 'How to Use',
+            content: 'Use after toner and before moisturizer.',
+          },
+        ],
+        source_url: 'https://kravebeauty.com/products/great-barrier-relief',
+        variants: [
+          {
+            variant_id: 'seed-jumbo',
+            title: 'Jumbo - 100 mL',
+            option1: '100 mL',
+          },
+        ],
+      },
+    });
+    const internalShopify = buildIdentityListingFromProduct({
+      merchantId: 'merch_krave',
+      productId: '10064558096681',
+      sourceKind: 'internal',
+      sourceTier: 'merchant',
+      product: {
+        title: 'Great Barrier Relief',
+        vendor: 'KraveBeauty',
+        price: { amount: 28, currency: 'USD' },
+        store_discount_badges: ['10% off'],
+        variants: [
+          {
+            id: 'shopify-standard',
+            title: 'Standard - 45 mL',
+            price: { amount: 28, currency: 'USD' },
+            option1: '45 mL',
+          },
+        ],
+      },
+    });
+
+    const composed = composeSyntheticCanonicalProduct({
+      requestedListing: internalShopify,
+      exactListings: [internalShopify, externalExact],
+      lineListings: [internalShopify, externalExact, externalLineSibling],
+    });
+
+    expect(composed.product.description).toBe('Reviewed canonical overview.');
+    expect(composed.product.pdp_how_to_use_raw).toBe('Apply one to two pumps after toner.');
+    expect(composed.product.pdp_details_sections).toEqual([
+      expect.objectContaining({
+        heading: 'How to Use',
+        content: 'Use after toner and before moisturizer.',
+      }),
+    ]);
+    expect(composed.product.price).toEqual({ amount: 28, currency: 'USD' });
+    expect(composed.product.store_discount_badges).toEqual(['10% off']);
+    expect(composed.selected_commerce_ref).toEqual({
+      merchant_id: 'merch_krave',
+      product_id: '10064558096681',
+    });
+  });
+
   test('buildIdentityListingFromProduct groups multi-page shade siblings into one product line', () => {
     const {
       buildIdentityListingFromProduct,

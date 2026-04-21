@@ -1709,7 +1709,23 @@ function composeSyntheticCanonicalProduct({
     canonical_scope: 'synthetic',
   };
 
-  for (const listing of sortedExact) {
+  const contentMergeListings = [];
+  const seenContentListingKeys = new Set();
+  for (const listing of [...contentExact, ...contentLine, ...sortedExact, ...sortedLine]) {
+    if (!listing || typeof listing !== 'object') continue;
+    const listingKey = [
+      asString(listing?.merchant_id),
+      asString(listing?.product_id),
+      asString(listing?.source_kind),
+    ]
+      .filter(Boolean)
+      .join('::');
+    if (listingKey && seenContentListingKeys.has(listingKey)) continue;
+    if (listingKey) seenContentListingKeys.add(listingKey);
+    contentMergeListings.push(listing);
+  }
+
+  for (const listing of contentMergeListings) {
     const payload = asPlainObject(listing?.source_payload) || {};
     product = fillMissingString(product, payload, [
       'title',
