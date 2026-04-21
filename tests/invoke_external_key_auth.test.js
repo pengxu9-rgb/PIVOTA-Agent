@@ -158,6 +158,72 @@ describe('invoke external key auth', () => {
     expect(res.body).toMatchObject({ error: 'INVALID_REQUEST' });
   });
 
+  it('accepts the configured service api key without calling introspection', async () => {
+    jest.resetModules();
+    process.env = {
+      ...ORIGINAL_ENV,
+      NODE_ENV: 'test',
+      AGENT_AUTH_INTROSPECT_URL: `${INTROSPECT_BASE}${INTROSPECT_PATH}`,
+      AGENT_AUTH_INTROSPECT_INTERNAL_KEY: 'internal_test_key',
+      AGENT_AUTH_INTROSPECT_TIMEOUT_MS: '1200',
+      AGENT_AUTH_CACHE_POSITIVE_TTL_MS: '60000',
+      AGENT_AUTH_CACHE_NEGATIVE_TTL_MS: '3000',
+      PIVOTA_API_KEY: `ak_live_${'5'.repeat(64)}`,
+    };
+    app = require('../src/server');
+
+    const scope = nock(INTROSPECT_BASE)
+      .post(INTROSPECT_PATH)
+      .matchHeader('X-Internal-Key', 'internal_test_key')
+      .reply(200, {
+        valid: true,
+        agent_id: 'agent_should_not_be_called',
+        is_active: true,
+        auth_source: 'api_keys',
+      });
+
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .set('X-Agent-API-Key', `ak_live_${'5'.repeat(64)}`)
+      .send({});
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({ error: 'INVALID_REQUEST' });
+    expect(scope.isDone()).toBe(false);
+  });
+
+  it('accepts configured backend bridge api keys without calling introspection', async () => {
+    jest.resetModules();
+    process.env = {
+      ...ORIGINAL_ENV,
+      NODE_ENV: 'test',
+      AGENT_AUTH_INTROSPECT_URL: `${INTROSPECT_BASE}${INTROSPECT_PATH}`,
+      AGENT_AUTH_INTROSPECT_INTERNAL_KEY: 'internal_test_key',
+      AGENT_AUTH_INTROSPECT_TIMEOUT_MS: '1200',
+      AGENT_AUTH_CACHE_POSITIVE_TTL_MS: '60000',
+      AGENT_AUTH_CACHE_NEGATIVE_TTL_MS: '3000',
+      PIVOTA_BACKEND_AGENT_API_KEY: `ak_live_${'6'.repeat(64)}`,
+    };
+    app = require('../src/server');
+
+    const scope = nock(INTROSPECT_BASE)
+      .post(INTROSPECT_PATH)
+      .matchHeader('X-Internal-Key', 'internal_test_key')
+      .reply(200, {
+        valid: true,
+        agent_id: 'agent_should_not_be_called',
+        is_active: true,
+        auth_source: 'api_keys',
+      });
+
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .set('X-Agent-API-Key', `ak_live_${'6'.repeat(64)}`)
+      .send({});
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({ error: 'INVALID_REQUEST' });
+    expect(scope.isDone()).toBe(false);
+  });
+
   it('keeps returning 503 for keys that do not match the configured service api key', async () => {
     jest.resetModules();
     process.env = {

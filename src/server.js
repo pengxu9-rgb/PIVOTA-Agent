@@ -13559,6 +13559,9 @@ const AGENT_AUTH_SERVICE_FALLBACK_KEYS = parseSecretList(
   process.env.AGENT_API_KEY,
   process.env.SHOP_GATEWAY_AGENT_API_KEY,
   process.env.CREATOR_INVOKE_API_KEY,
+  process.env.PIVOTA_BACKEND_AGENT_API_KEY,
+  process.env.PIVOTA_AGENT_API_KEY,
+  process.env.NEXT_PUBLIC_AGENT_API_KEY,
 );
 const AGENT_AUTH_EMERGENCY_FALLBACK_KEYS = parseSecretList(
   process.env.AGENT_AUTH_EMERGENCY_API_KEY,
@@ -13568,6 +13571,19 @@ const AGENT_AUTH_EMERGENCY_FALLBACK_KEYS = parseSecretList(
 function getInvokeAuthSource(req) {
   const fromHeader = String(req?.header('X-Agent-API-Key') || req?.header('x-agent-api-key') || '').trim();
   return fromHeader ? 'x-agent-api-key' : 'authorization_bearer';
+}
+
+function resolveConfiguredInvokeAuthFastPath(apiKey) {
+  const normalized = String(apiKey || '').trim();
+  if (!normalized) return null;
+  if (!AGENT_AUTH_SERVICE_FALLBACK_KEYS.includes(normalized)) return null;
+  return {
+    valid: true,
+    agent_id: AGENT_AUTH_SERVICE_FALLBACK_AGENT_ID,
+    is_active: true,
+    auth_source: 'configured_service_key',
+    cache_hit: false,
+  };
 }
 
 function adoptInvokeEmergencyAuthFallback({ req, provided, keyFingerprint, errorCode, reason }) {
@@ -13790,6 +13806,22 @@ async function requireExternalInvokeAuth(req, res, next) {
       error: 'UNAUTHORIZED',
       message: 'Missing or invalid API key',
     });
+  }
+
+  const configuredFastPath = resolveConfiguredInvokeAuthFastPath(provided);
+  if (configuredFastPath) {
+    req.invokeAuth = {
+      key_fingerprint: keyFingerprint,
+      auth_source: getInvokeAuthSource(req),
+      auth_mode: 'api_key',
+      agent_id: configuredFastPath.agent_id || null,
+      raw_token: provided,
+      cache_hit: configuredFastPath.cache_hit === true,
+      introspect_auth_source: configuredFastPath.auth_source || null,
+      auth_degraded: false,
+      auth_degraded_reason: null,
+    };
+    return next();
   }
 
   let introspection;
