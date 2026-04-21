@@ -1171,11 +1171,11 @@ function normalizeDetailSectionHeading(value) {
   if (/^texture$/i.test(heading)) return 'Texture';
   if (/^free of$/i.test(heading)) return 'Free Of';
   if (/^set includes$/i.test(heading)) return 'Set Includes';
-  if (/^(?:how to use|how to apply|directions?|usage)$/i.test(heading)) return 'How to Use';
-  if (/^(?:ingredients?|ingredients and safety|ingredient list|full ingredients?|full ingredient list|inci)$/i.test(heading)) {
+  if (/^(?:how to use|how to apply|directions?|usage)\b/i.test(heading)) return 'How to Use';
+  if (/^(?:ingredients?|ingredients and safety|ingredient list|full ingredients?|full ingredient list|inci)\b/i.test(heading)) {
     return 'Ingredients';
   }
-  if (/^(?:faq|frequently asked questions?|q(?:uestions)?\s*&\s*a|questions?)$/i.test(heading)) {
+  if (/^(?:faq|frequently asked questions?|q(?:uestions)?\s*&\s*a|questions?)\b/i.test(heading)) {
     return 'FAQ';
   }
   return heading;
@@ -1296,6 +1296,15 @@ function collectStructuredDetailSections(product) {
   return out;
 }
 
+function isFreeformOverviewDetailSection(section) {
+  return !(
+    STRUCTURED_DETAIL_SECTION_RE.test(section.heading) ||
+    FACT_DETAIL_SECTION_RE.test(section.heading) ||
+    BRAND_STORY_SECTION_RE.test(section.heading) ||
+    isFaqOrCrossSellDetailSection(section)
+  );
+}
+
 function resolveProductDescriptionText(product, detailSections = collectStructuredDetailSections(product)) {
   const explicitPdpDescription = asNonEmptyString(product.pdp_description_raw);
   const capturedNarrativeSoup = looksLikeCapturedExternalSeedNarrativeSoup(
@@ -1324,15 +1333,7 @@ function resolveProductDescriptionText(product, detailSections = collectStructur
 
   const overviewSection =
     detailSections.find((section) => OVERVIEW_DETAIL_SECTION_RE.test(section.heading)) ||
-    (!capturedNarrativeSoup
-      ? detailSections.find(
-          (section) =>
-            !STRUCTURED_DETAIL_SECTION_RE.test(section.heading) &&
-            !FACT_DETAIL_SECTION_RE.test(section.heading) &&
-            !BRAND_STORY_SECTION_RE.test(section.heading) &&
-            !isFaqOrCrossSellDetailSection(section),
-        )
-      : undefined);
+    detailSections.find((section) => isFreeformOverviewDetailSection(section));
   const cleanedOverview = cleanOverviewDescriptionText(overviewSection?.content || '');
   if (cleanedOverview) return cleanedOverview;
   const cleanedPdpDescription = capturedNarrativeSoup ? '' : cleanOverviewDescriptionText(explicitPdpDescription);

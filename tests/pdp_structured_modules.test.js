@@ -264,13 +264,15 @@ describe('pdpBuilder structured PDP modules', () => {
       entryPoint: 'agent',
     });
 
-    expect(payload.product.description).toBe('');
+    expect(payload.product.description).toBe('This formula helps hydrate.');
+    expect(findModule(payload, 'product_overview')?.data?.sections).toEqual([
+      expect.objectContaining({
+        heading: 'Description',
+        content: 'This formula helps hydrate.',
+      }),
+    ]);
     expect(findModule(payload, 'supplemental_details')?.data?.sections).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({
-          heading: 'Rice-Infused Hydration',
-          content: 'This formula helps hydrate.',
-        }),
         expect.objectContaining({
           heading: 'Secret Sebum-Control Layer',
           content: 'The fluid helps control sebum.',
@@ -292,6 +294,55 @@ describe('pdpBuilder structured PDP modules', () => {
       expect.objectContaining({
         raw_text: 'Shake well and apply as the last skincare step.',
       }),
+    );
+  });
+
+  test('treats prefixed how-to headings as structured modules instead of supplemental details', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_boj_prefixed_howto',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'Daily Tinted Fluid Sunscreen DN350',
+        category: 'Sunscreen',
+        image_url: 'https://cdn.example.com/daily-tinted-prefixed.jpg',
+        price: { amount: 10, currency: 'USD' },
+        pdp_description_raw: 'Meet the Tint + SPF You’ll Actually Wear\nA breathable tinted sunscreen.',
+        pdp_details_sections: [
+          {
+            heading: 'Meet the Tint + SPF You’ll Actually Wear',
+            body: 'A breathable tinted sunscreen.',
+            source_kind: 'custom_pdp',
+          },
+          {
+            heading: 'How to Use DTFS the Right Way',
+            body: 'Shake well before use. Apply in layers and wait 5 minutes.',
+            source_kind: 'custom_pdp',
+          },
+        ],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    expect(findModule(payload, 'how_to_use')?.data).toEqual(
+      expect.objectContaining({
+        raw_text: 'Shake well before use. Apply in layers and wait 5 minutes.',
+      }),
+    );
+    expect(findModule(payload, 'supplemental_details')?.data?.sections || []).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          heading: 'How to Use',
+        }),
+      ]),
+    );
+    expect(findModule(payload, 'supplemental_details')?.data?.sections || []).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          heading: 'How to Use DTFS the Right Way',
+        }),
+      ]),
     );
   });
 
