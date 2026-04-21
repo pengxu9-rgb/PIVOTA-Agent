@@ -346,6 +346,52 @@ describe('pdpBuilder structured PDP modules', () => {
     );
   });
 
+  test('extracts a clean overview sentence from details soup when no freeform overview section exists', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_tomford_concealer',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'Shade and Illuminate Concealer',
+        category: 'Concealer',
+        image_url: 'https://cdn.example.com/tomford-concealer.jpg',
+        price: { amount: 60, currency: 'USD' },
+        pdp_description_raw:
+          'Key Notes \n\nSkin Type \n\nSkin Concern \n\nFinish \n\nRadiant\n\nCoverage \n\nBuildable, Full\n\n' +
+          'Infused with hyaluronic acid, this crease-proof concealer moisturizes, visibly obscures redness, and reduces the look of undereye circles.\n\n' +
+          'Benefits \n\n- 24H wear',
+        pdp_details_sections: [
+          {
+            heading: 'Details',
+            body:
+              'Key Notes \n\nSkin Type \n\nSkin Concern \n\nFinish \n\nRadiant\n\nCoverage \n\nBuildable, Full\n\n' +
+              'Infused with hyaluronic acid, this crease-proof concealer moisturizes, visibly obscures redness, and reduces the look of undereye circles.\n\n' +
+              'Benefits \n\n- 24H wear',
+            source_kind: 'details_summary',
+          },
+          {
+            heading: 'How to Use',
+            body: 'Use the plush side for coverage and the tip for precision.',
+            source_kind: 'details_summary',
+          },
+        ],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    expect(payload.product.description).toBe(
+      'Infused with hyaluronic acid, this crease-proof concealer moisturizes, visibly obscures redness, and reduces the look of undereye circles.',
+    );
+    expect(findModule(payload, 'product_overview')?.data?.sections).toEqual([
+      expect.objectContaining({
+        heading: 'Description',
+        content:
+          'Infused with hyaluronic acid, this crease-proof concealer moisturizes, visibly obscures redness, and reduces the look of undereye circles.',
+      }),
+    ]);
+  });
+
   test('renders a clean captured external seed PDP description as overview details', () => {
     const payload = buildPdpPayload({
       product: {
