@@ -546,12 +546,13 @@ test('beauty mainline reco rows keep finish-fit same-slot cards differentiated b
     assert.equal(rows.length, 3);
     assert.match(String(rows[0].why_this_one || ''), /lighter, smoother daytime layering/i);
     assert.match(String(rows[0].short_description || ''), /soft-focus|under makeup|daytime layering/i);
-    assert.match(String(rows[1].why_this_one || ''), /sheer and weightless|sensitive-skin daytime use|weightless/i);
-    assert.match(String(rows[2].why_this_one || ''), /more daytime moisture|creamier SPF texture|moisturizing/i);
+    assert.match(String(rows[1].why_this_one || ''), /more mineral|sensitive-skin-oriented|sheer and weightless/i);
+    assert.match(String(rows[2].why_this_one || ''), /richer cream-spf base|cushioning under makeup|lightest finish/i);
     assert.match(String(rows[1].short_description || ''), /sheer|weightless|sensitive skin|mineral/i);
-    assert.match(String(rows[2].short_description || ''), /more daytime moisture|creamier SPF texture|moisturizing/i);
+    assert.match(String(rows[2].short_description || ''), /richer cream-spf base|cushioning under makeup|lightest finish|moisturizing/i);
     assert.notEqual(rows[1].why_this_one, rows[0].why_this_one);
     assert.notEqual(rows[2].why_this_one, rows[0].why_this_one);
+    assert.doesNotMatch(String(rows[1].why_this_one || ''), /^Sheer, weightless, scentless mineral sunscreen/i);
     assert.doesNotMatch(String(rows[2].short_description || ''), /moisturizer-style hydration cues/i);
   } finally {
     delete require.cache[moduleId];

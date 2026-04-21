@@ -20299,6 +20299,19 @@ function looksLikeGenericRecoFinishFitNarrative(value = '') {
   return /\b(?:lighter smoother daytime layering|lighter smoother layering|smoother daytime layering|daily spf cream with moisturizer style hydration cues|daily sunscreen built around|moisturizer style hydration cues|positioned for smoother daytime layering)\b/.test(text);
 }
 
+function looksLikeDescriptiveRecoFinishFitNarrative(value = '') {
+  const text = normalizeSemanticAuditText(value);
+  if (!text) return false;
+  if (looksLikeWeakRecoFinishFitNarrative(text) || looksLikeGenericRecoFinishFitNarrative(text)) return false;
+  const hasExplicitTradeoff =
+    /\b(?:instead of|rather than|while keeping|while staying|leans more|leans richer|leans lighter|more mineral|more moisturizing|richer cream|cream spf base|lighter smoother|sensitive-skin-oriented|white-cast risk)\b/.test(text)
+    || /\b(?:it|this)\s+(?:keeps?|gives?|offers?|leans?|points?|works?|wears?|sits?|feels?|stays?)\b/.test(text);
+  if (hasExplicitTradeoff) return false;
+  const startsLikeDescriptor = /^(?:a|an|the)?\s*(?:sheer|weightless|scentless|mineral|hydrating|daily|soft[-\s]?focus|invisible|fragrance[-\s]?free|creamy|creamier|rich|richer|lightweight|airy)\b/.test(text);
+  const hasFinishFitProductCue = /\b(?:sunscreen|spf|daily cream|cream spf|cream-spf|mineral sunscreen)\b/.test(text);
+  return startsLikeDescriptor && hasFinishFitProductCue;
+}
+
 function shouldPreferSpecificRecoFinishFitWhy(existingWhy = '', specificWhy = '') {
   const existing = normalizeSemanticAuditText(existingWhy);
   const specific = normalizeSemanticAuditText(specificWhy);
@@ -20308,6 +20321,7 @@ function shouldPreferSpecificRecoFinishFitWhy(existingWhy = '', specificWhy = ''
   const existingHasDistinctTradeoff = /\b(?:mineral|sensitive skin|fragrance free|scentless|creamier|more moisturizing|white cast|weightless|sheer)\b/.test(existing);
   const specificHasDistinctTradeoff = /\b(?:mineral|sensitive skin|fragrance free|scentless|creamier|more moisturizing|white cast|weightless|sheer)\b/.test(specific);
   if (specificHasDistinctTradeoff && !existingHasDistinctTradeoff) return true;
+  if (specificHasDistinctTradeoff && looksLikeDescriptiveRecoFinishFitNarrative(existing)) return true;
   return looksLikeGenericRecoFinishFitNarrative(existing);
 }
 
@@ -20365,10 +20379,10 @@ function buildRecoFinishFitSpecificWhy({
 
   if (isCn) {
     if (hasCreamierCue) {
-      return '更适合想要白天多一点保湿缓冲的人，但肤感会更偏面霜型，而不是最轻薄的一类。';
+      return '更像偏滋润的面霜型防晒打底，适合想在妆前多一点保湿缓冲的人。';
     }
     if (hasMineralCue && (hasSensitiveCue || hasWeightless || hasWhiteCastCue)) {
-      return '偏轻薄、低气味线索，对敏感肌白天佩戴更友好。';
+      return '更偏矿物和敏感肌取向，同时尽量保持轻薄清透的白天肤感。';
     }
     if (hasSoftFocus || (hasLayering && hasWeightless)) {
       return '更强调轻一点、顺一点的白天叠加肤感，而不是偏厚重的成膜感。';
@@ -20386,10 +20400,10 @@ function buildRecoFinishFitSpecificWhy({
   }
 
   if (hasCreamierCue) {
-    return 'it gives more daytime moisture from a creamier SPF texture, not just the lightest finish';
+    return 'it gives a richer cream-SPF base when you want more cushioning under makeup, not just the lightest finish';
   }
   if (hasMineralCue && (hasSensitiveCue || hasWeightless || hasWhiteCastCue)) {
-    return 'it keeps the wear sheer and weightless while staying simpler for sensitive-skin daytime use';
+    return 'it gives a more mineral, sensitive-skin-oriented option while keeping the finish sheer and weightless';
   }
   if (hasSoftFocus || (hasLayering && hasWeightless)) {
     return 'it points to lighter, smoother daytime layering instead of a richer cream finish';
