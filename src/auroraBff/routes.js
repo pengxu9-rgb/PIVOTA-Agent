@@ -55449,11 +55449,11 @@ function buildRecoAssistantTradeoffNote(detail = {}, {
     const mineralCue = /\b(mineral|zinc|zinc oxide|titanium dioxide)\b/i.test(text);
     const sensitiveCue = /\b(sensitive skin|scentless|fragrance[-\s]?free|simple formula|gentle)\b/i.test(text);
     if (mineralCue || sensitiveCue) {
-      return 'it leans more mineral and sensitive-skin-oriented than the lead option';
+      return 'it gives a more mineral, sensitive-skin-oriented option while keeping a sheer, weightless finish';
     }
     const creamCue = /\b(hydrating daily cream|hydrating cream|cream format|cream texture|moisturizer[-\s]?style hydration|more moisture|richer cream)\b/i.test(text);
     if (creamCue) {
-      return 'it leans richer and more moisturizing than the lead option';
+      return 'it gives a richer, more moisturizing cream-SPF option';
     }
     const weightlessCue = /\b(sheer|weightless|airy|invisible|soft[-\s]?focus|fluid|water[-\s]?fit|watery)\b/i.test(text);
     if (weightlessCue) {

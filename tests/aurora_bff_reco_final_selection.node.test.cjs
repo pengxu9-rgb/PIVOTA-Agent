@@ -263,11 +263,11 @@ test('reco assistant rewrite prompt carries finish-fit same-slot tradeoff notes 
     assert.match(prompt, /If target_label or selected_target_ids indicates daily_sunscreen_finish_fit, explain under-makeup wear, pilling risk, white-cast, fluid versus cream texture, or weightless versus richer finish before defaulting to UV-filter identity\./);
     assert.match(
       JSON.stringify(context.assistant_write_plan.same_role_options),
-      /mineral and sensitive-skin-oriented than the lead option/,
+      /more mineral, sensitive-skin-oriented option while keeping a sheer, weightless finish/,
     );
     assert.match(
       JSON.stringify(context.assistant_write_plan.same_role_options),
-      /richer and more moisturizing than the lead option/,
+      /richer, more moisturizing cream-SPF option/,
     );
     assert.doesNotMatch(
       JSON.stringify(context.assistant_write_plan.same_role_options),
