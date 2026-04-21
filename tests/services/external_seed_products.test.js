@@ -1076,6 +1076,66 @@ describe('externalSeedProducts helper', () => {
     expect(products.map((product) => product.product_type)).toEqual(['Sunscreen', 'Sunscreen']);
   });
 
+  test('prefers makeup form factor over SPF wording when a foundation seed is polluted to sunscreen', () => {
+    const product = buildExternalSeedProduct({
+      id: 'eps_tomford_architecture_foundation',
+      external_product_id: 'ext_tomford_architecture_foundation',
+      canonical_url: 'https://www.tomfordbeauty.com/products/architecture-radiance-hydrating-foundation',
+      destination_url: 'https://www.tomfordbeauty.com/products/architecture-radiance-hydrating-foundation',
+      domain: 'www.tomfordbeauty.com',
+      title: 'Architecture Radiance Hydrating Foundation Broad Spectrum SPF 50+',
+      seed_brand: 'Tom Ford Beauty',
+      seed_category: 'Sunscreen',
+      seed_product_type: 'Sunscreen',
+      seed_description:
+        'A hydrating foundation with broad spectrum SPF 50+ protection and a radiant finish.',
+      seed_data: {
+        brand: 'Tom Ford Beauty',
+        snapshot: {
+          canonical_url: 'https://www.tomfordbeauty.com/products/architecture-radiance-hydrating-foundation',
+          title: 'Architecture Radiance Hydrating Foundation Broad Spectrum SPF 50+',
+          category: 'Sunscreen',
+          product_type: 'Sunscreen',
+          description:
+            'A hydrating foundation with broad spectrum SPF 50+ protection and a radiant finish.',
+          variants: [],
+        },
+      },
+    });
+
+    expect(product.category).toBe('Foundation');
+    expect(product.product_type).toBe('Foundation');
+  });
+
+  test('still classifies true sunscreen products as sunscreen when no makeup form factor is present', () => {
+    const product = buildExternalSeedProduct({
+      id: 'eps_true_sunscreen_face_fluid',
+      external_product_id: 'ext_true_sunscreen_face_fluid',
+      canonical_url: 'https://example.com/products/daily-invisible-sunscreen-spf-50',
+      destination_url: 'https://example.com/products/daily-invisible-sunscreen-spf-50',
+      domain: 'example.com',
+      title: 'Daily Invisible Sunscreen SPF 50',
+      seed_brand: 'Example Beauty',
+      seed_category: 'Sunscreen',
+      seed_product_type: 'Sunscreen',
+      seed_description: 'A lightweight daily sunscreen fluid for broad spectrum UV protection.',
+      seed_data: {
+        brand: 'Example Beauty',
+        snapshot: {
+          canonical_url: 'https://example.com/products/daily-invisible-sunscreen-spf-50',
+          title: 'Daily Invisible Sunscreen SPF 50',
+          category: 'Sunscreen',
+          product_type: 'Sunscreen',
+          description: 'A lightweight daily sunscreen fluid for broad spectrum UV protection.',
+          variants: [],
+        },
+      },
+    });
+
+    expect(product.category).toBe('Sunscreen');
+    expect(product.product_type).toBe('Sunscreen');
+  });
+
   test('does not infer powder from ingredient-style description mentions when title surface is non-powder', () => {
     const bananaStick = buildExternalSeedProduct({
       id: 'eps_ole_banana_cc_stick',

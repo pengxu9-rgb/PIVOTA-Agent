@@ -234,6 +234,56 @@ describe('RecommendationEngine external candidate fetch', () => {
     expect(out.semantic?.rescue_fields).toEqual(expect.arrayContaining(['category']));
   });
 
+  test('enrichExternalBaseProduct keeps SPF foundation products in makeup vertical when category is foundation', async () => {
+    process.env.DATABASE_URL = 'postgres://example.test/pivota';
+
+    const queryMock = jest.fn(async () => ({
+      rows: [
+        {
+          id: 'eps_tf_arch_foundation',
+          external_product_id: 'ext_tf_arch_foundation',
+          title: 'Architecture Radiance Hydrating Foundation Broad Spectrum SPF 50+',
+          seed_data: {
+            brand: 'Tom Ford Beauty',
+            category: 'Foundation',
+            product_type: 'Foundation',
+            snapshot: {
+              brand: 'Tom Ford Beauty',
+              description:
+                'A hydrating foundation with broad spectrum SPF 50+ protection and a radiant finish.',
+              category: 'Foundation',
+              product_type: 'Foundation',
+            },
+          },
+        },
+      ],
+    }));
+
+    jest.doMock('../../src/db', () => ({ query: queryMock }));
+    jest.doMock('../../src/logger', () => ({ warn: jest.fn(), info: jest.fn() }));
+
+    const { _internals } = require('../../src/services/RecommendationEngine');
+    const out = await _internals.enrichExternalBaseProduct({
+      merchant_id: 'external_seed',
+      product_id: 'ext_tf_arch_foundation',
+      external_product_id: 'ext_tf_arch_foundation',
+      title: 'Architecture Radiance Hydrating Foundation Broad Spectrum SPF 50+',
+      brand: 'Tom Ford Beauty',
+      category: 'Foundation',
+      product_type: 'Foundation',
+      source: 'external_seed',
+    });
+
+    expect(out.product).toEqual(
+      expect.objectContaining({
+        category: 'Foundation',
+        product_type: 'Foundation',
+      }),
+    );
+    expect(_internals.getLeafCategory(out.product)).toBe('foundation');
+    expect(out.semantic?.vertical).toBe('makeup');
+  });
+
   test('includes attached same-brand seeds through broad brand fallback matching', async () => {
     process.env.DATABASE_URL = 'postgres://example.test/pivota';
 

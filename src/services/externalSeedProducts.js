@@ -52,6 +52,19 @@ const BEAUTY_CATEGORY_DESCRIPTION_PATTERNS = BEAUTY_CATEGORY_PATTERNS.map(([labe
   }
   return [label, pattern];
 });
+const MAKEUP_FORM_FACTOR_PATTERNS = [
+  ['Concealer', /\b(concealer)\b/i],
+  ['Foundation', /\b(foundation|skin tint|foundation stick|cushion foundation)\b/i],
+  ['Powder', /\b(powder|setting powder|pressed powder|loose powder|blurring powder|finishing powder)\b/i],
+  ['Highlighter', /\b(highlighter|illuminator|luminizer|luminiser|killawatt)\b/i],
+  ['Blush', /\b(blush|cheeks out|cheek tint|flush)\b/i],
+  ['Bronzer', /\b(bronzer|contour)\b/i],
+  ['Eyeshadow', /\b(eye\s?shadow|eyeshadow|eye color|eye colour)\b/i],
+  ['Mascara', /\b(mascara)\b/i],
+  ['Brow Pencil', /\b(brow pencil|eyebrow pencil|brow definer|brow sculptor|brow styler)\b/i],
+  ['Lip Balm', /\b(lip balm|lip treatment)\b/i],
+  ['Lipstick', /\b(lipstick|lip color|lip colour|liquid lip|lip luxe|lip lacquer|lip gloss)\b/i],
+];
 const STRONG_ACTIVE_SOLUTION_INGREDIENT_IDS = new Set([
   'salicylic_acid',
   'niacinamide',
@@ -330,6 +343,15 @@ function collectStructuredIngredientIds(row, seedData, snapshot) {
   return out;
 }
 
+function inferPrimaryMakeupFormFactor(text) {
+  const primarySurfaceText = String(text || '').trim();
+  if (!primarySurfaceText) return '';
+  for (const [label, pattern] of MAKEUP_FORM_FACTOR_PATTERNS) {
+    if (pattern.test(primarySurfaceText)) return label;
+  }
+  return '';
+}
+
 function inferExternalSeedBeautyCategory({
   explicitCategory,
   title,
@@ -343,7 +365,9 @@ function inferExternalSeedBeautyCategory({
     .map((value) => String(value || '').trim())
     .filter(Boolean)
     .join(' ');
+  const primaryMakeupFormFactor = inferPrimaryMakeupFormFactor(primarySurfaceText);
   if (explicit) {
+    if (explicit === 'Sunscreen' && primaryMakeupFormFactor) return primaryMakeupFormFactor;
     if (explicit === 'Fragrance' && SUNSCREEN_CATEGORY_RE.test(primarySurfaceText)) return 'Sunscreen';
     return explicit;
   }
@@ -360,6 +384,8 @@ function inferExternalSeedBeautyCategory({
   ) {
     return 'Serum';
   }
+
+  if (primaryMakeupFormFactor) return primaryMakeupFormFactor;
 
   for (const [label, pattern] of BEAUTY_CATEGORY_PATTERNS) {
     if (pattern.test(primarySurfaceText)) return label;

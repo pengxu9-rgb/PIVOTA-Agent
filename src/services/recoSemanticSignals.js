@@ -126,6 +126,15 @@ const VERTICAL_KEYWORDS = {
   ],
 };
 
+const STRONG_CATEGORY_VERTICAL_OVERRIDES = [
+  ['tools', /\b(brush|makeup brush|foundation brush|powder brush|blush brush|shader brush|kabuki|blender|applicator|spatula|sharpener)\b/i],
+  ['fragrance', /\b(fragrance|perfume|parfum|eau de parfum|eau de toilette|cologne|scent)\b/i],
+  ['haircare', /\b(hair care|haircare|shampoo|conditioner|deep conditioner|styling cream|styling gel|leave in|leave-in|detangling|repair)\b/i],
+  ['bodycare', /\b(body cream|body lotion|body butter|body oil|body wash|body scrub|body milk)\b/i],
+  ['makeup', /\b(foundation|concealer|blush|bronzer|highlighter|illuminator|mascara|eyeliner|eyeshadow|powder|brow pencil|eyebrow pencil|lipstick|lip gloss|lip balm|lip oil|lip stain|lip tint)\b/i],
+  ['skincare', /\b(cleanser|serum|essence|moisturizer|moisturiser|sunscreen|spf|toner|face cream|spot treatment|treatment gel)\b/i],
+];
+
 function normalizeText(text) {
   return String(text || '')
     .toLowerCase()
@@ -192,6 +201,15 @@ function buildWeightedSemanticText(product) {
   };
 }
 
+function inferStrongCategoryVertical(categoryText) {
+  const normalizedCategoryText = normalizeText(categoryText);
+  if (!normalizedCategoryText) return '';
+  for (const [vertical, pattern] of STRONG_CATEGORY_VERTICAL_OVERRIDES) {
+    if (pattern.test(normalizedCategoryText)) return vertical;
+  }
+  return '';
+}
+
 function inferVerticalFromProduct(product) {
   const weightedText = buildWeightedSemanticText(product);
   const text = buildProductSemanticText(product);
@@ -221,6 +239,17 @@ function inferVerticalFromProduct(product) {
       scores[vertical] += (titleHit ? 3 : 0) + (categoryHit ? 2 : 0) + (bodyHit ? 1 : 0);
       if (matches[vertical].length < 5) matches[vertical].push(keyword);
     }
+  }
+
+  const strongCategoryVertical = inferStrongCategoryVertical(weightedText.category);
+  if (strongCategoryVertical) {
+    return {
+      vertical: strongCategoryVertical,
+      inferred: true,
+      score: Math.max(scores[strongCategoryVertical] || 0, 6),
+      scores,
+      matched_keywords: matches[strongCategoryVertical] || [],
+    };
   }
 
   const ordered = Object.entries(scores).sort((a, b) => {
