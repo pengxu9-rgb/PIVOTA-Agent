@@ -20355,19 +20355,23 @@ function buildRecoFinishFitSpecificWhy({
   const hasSoftFocus = /\b(?:soft[-\s]?focus|blur(?:ring)?|primer[-\s]?like)\b/i.test(text);
   const hasLayering = /\b(?:under makeup|makeup|layer(?:ing)?|non[-\s]?pilling|no pilling|pilling)\b/i.test(text);
   const hasWeightless = /\b(?:weightless|lightweight|airy|fluid|watery|water[-\s]?fit|invisible|non[-\s]?greasy|sheer)\b/i.test(text);
+  const hasMineralCue = /\b(?:mineral|zinc oxide|titanium dioxide)\b/i.test(text);
   const hasWhiteCastCue = /\b(?:no white cast|white cast[-\s]?free|lower white[-\s]?cast|invisible)\b/i.test(text);
   const hasSensitiveCue = /\b(?:sensitive skin|scentless|fragrance[-\s]?free|bisabolol|ectoin)\b/i.test(text);
   const hasCreamierCue = /\b(?:hydrating daily cream|hydrating cream|cream format|cream texture|moisturizer[-\s]?style hydration|moisturizer[-\s]?format)\b/i.test(text);
 
   if (isCn) {
+    if (hasCreamierCue) {
+      return '更适合想要白天多一点保湿缓冲的人，但肤感会更偏面霜型，而不是最轻薄的一类。';
+    }
+    if (hasMineralCue && (hasSensitiveCue || hasWeightless || hasWhiteCastCue)) {
+      return '偏轻薄、低气味线索，对敏感肌白天佩戴更友好。';
+    }
     if (hasSoftFocus || (hasLayering && hasWeightless)) {
       return '更强调轻一点、顺一点的白天叠加肤感，而不是偏厚重的成膜感。';
     }
     if (hasWeightless && hasSensitiveCue) {
       return '偏轻薄、低气味线索，对敏感肌白天佩戴更友好。';
-    }
-    if (hasCreamierCue) {
-      return '更适合想要白天多一点保湿缓冲的人，但肤感会更偏面霜型，而不是最轻薄的一类。';
     }
     if (hasWhiteCastCue) {
       return '更强调白天上脸后的清透感和后续叠加表现。';
@@ -20378,14 +20382,17 @@ function buildRecoFinishFitSpecificWhy({
     return '';
   }
 
+  if (hasCreamierCue) {
+    return 'it gives more daytime moisture from a creamier SPF texture, not just the lightest finish';
+  }
+  if (hasMineralCue && (hasSensitiveCue || hasWeightless || hasWhiteCastCue)) {
+    return 'it keeps the wear sheer and weightless while staying simpler for sensitive-skin daytime use';
+  }
   if (hasSoftFocus || (hasLayering && hasWeightless)) {
     return 'it points to lighter, smoother daytime layering instead of a richer cream finish';
   }
   if (hasWeightless && hasSensitiveCue) {
     return 'it keeps the wear sheer and weightless while staying simpler for sensitive-skin daytime use';
-  }
-  if (hasCreamierCue) {
-    return 'it gives more daytime moisture from a creamier SPF texture, not just the lightest finish';
   }
   if (hasWhiteCastCue) {
     return 'it points to cleaner daytime wear with lower white-cast risk';
@@ -21110,6 +21117,13 @@ function buildRecoVisibleProductFields(picked, { role = null, language = 'EN' } 
     stableAnchorProduct,
     language,
   });
+  const shouldDeprioritizeExistingFinishFitShortDescription =
+    recoRoleNeedsFinishFitNarrative(visibleRoleText)
+    && looksLikeGenericRecoFinishFitNarrative(roleAlignedShortDescription)
+    && Boolean(derivedShopperCopy.why_this_one || preferredNarrative);
+  const visibleShortDescription = shouldDeprioritizeExistingFinishFitShortDescription
+    ? pickFirstTrimmed(derivedShopperCopy.why_this_one, preferredNarrative, roleAlignedShortDescription)
+    : pickFirstTrimmed(roleAlignedShortDescription, preferredNarrative, derivedShopperCopy.why_this_one);
   const description = pickFirstVisibleRecoCopy(
     row.description,
     row.sku?.description,
@@ -21224,8 +21238,8 @@ function buildRecoVisibleProductFields(picked, { role = null, language = 'EN' } 
     } : {}),
     ...(imageUrl ? { image_url: imageUrl } : {}),
     ...(price ? { price } : {}),
-    ...((roleAlignedShortDescription || preferredNarrative || derivedShopperCopy.why_this_one)
-      ? { short_description: roleAlignedShortDescription || preferredNarrative || derivedShopperCopy.why_this_one }
+    ...(visibleShortDescription
+      ? { short_description: visibleShortDescription }
       : {}),
     ...(description ? { description } : {}),
     ...(derivedShopperCopy.best_for ? { best_for: derivedShopperCopy.best_for } : {}),

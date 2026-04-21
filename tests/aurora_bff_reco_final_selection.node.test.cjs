@@ -412,8 +412,14 @@ test('beauty mainline reco rows keep finish-fit same-slot cards differentiated b
           display_name: 'Mineral Unseen Sunscreen SPF 40',
           category: 'Sunscreen',
           product_type: 'Sunscreen',
-          short_description: 'A sheer, weightless, scentless mineral sunscreen recommended for sensitive skin.',
+          short_description: 'Sheer, weightless, scentless mineral sunscreen that’s recommended for sensitive skin.',
+          description: 'An invisible, weightless mineral sunscreen that layers under makeup while staying simpler for sensitive skin.',
           why_this_one: 'it points to lighter, smoother daytime layering instead of a richer cream finish',
+          compare_highlights: [
+            'Uses mineral UV-filter cues for shoppers who need a daily sunscreen step with clear filter identity.',
+            'Suited for Daily SPF wear',
+            'Suited for Mineral-filter preference',
+          ],
           matched_role_id: 'daily_sunscreen_finish_fit',
           matched_role_label: 'Daily sunscreen with finish fit',
           preferred_step: 'sunscreen',
@@ -426,7 +432,11 @@ test('beauty mainline reco rows keep finish-fit same-slot cards differentiated b
           category: 'Sunscreen',
           product_type: 'Sunscreen',
           short_description: 'A hydrating daily cream SPF with moisturizer-style hydration cues.',
+          description: 'A richer hydrating daily cream SPF for shoppers who want more moisture from the sunscreen step.',
           why_this_one: 'Daily SPF cream with moisturizer-style hydration cues.',
+          compare_highlights: [
+            'Combines daily SPF use with moisturizer-style hydration cues, so it should be judged on both sun-care use and daytime skin comfort.',
+          ],
           matched_role_id: 'daily_sunscreen_finish_fit',
           matched_role_label: 'Daily sunscreen with finish fit',
           preferred_step: 'sunscreen',
@@ -454,8 +464,11 @@ test('beauty mainline reco rows keep finish-fit same-slot cards differentiated b
     assert.match(String(rows[0].why_this_one || ''), /lighter, smoother daytime layering/i);
     assert.match(String(rows[1].why_this_one || ''), /sheer and weightless|sensitive-skin daytime use|weightless/i);
     assert.match(String(rows[2].why_this_one || ''), /more daytime moisture|creamier SPF texture|moisturizing/i);
+    assert.match(String(rows[1].short_description || ''), /sheer|weightless|sensitive skin|mineral/i);
+    assert.match(String(rows[2].short_description || ''), /more daytime moisture|creamier SPF texture|moisturizing/i);
     assert.notEqual(rows[1].why_this_one, rows[0].why_this_one);
     assert.notEqual(rows[2].why_this_one, rows[0].why_this_one);
+    assert.doesNotMatch(String(rows[2].short_description || ''), /moisturizer-style hydration cues/i);
   } finally {
     delete require.cache[moduleId];
   }
