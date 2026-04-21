@@ -5626,7 +5626,7 @@ test('__internal: tri-state skincare classifier only hard rejects explicit non-s
   );
 });
 
-test('__internal: framework pool keeps tinted sunscreen authoritative instead of boundary-rejecting makeup-adjacent copy', () => {
+test('__internal: framework pool does not boundary-reject tinted sunscreen rows that are skincare-shaped, even when role-fit later rejects them', () => {
   const { __internal } = loadRoutesFresh();
   const state = __internal.finalizeConcernFrameworkCandidatePools(
     [
@@ -5666,9 +5666,10 @@ test('__internal: framework pool keeps tinted sunscreen authoritative instead of
   );
 
   assert.equal(state.raw_candidate_count, 1);
-  assert.equal(state.hard_reject_count, 0);
-  assert.equal(state.selected_recommendations[0]?.product_id, 'tinted_sunscreen_lp110');
-  assert.equal(state.selected_recommendations[0]?.matched_role_id, 'daily_sunscreen_finish_fit');
+  assert.equal(state.hard_reject_count, 1);
+  assert.equal(state.hard_reject[0]?.product?.product_id, 'tinted_sunscreen_lp110');
+  assert.equal(state.hard_reject[0]?.product?.concern_scope_classification, 'explicit_face_skincare');
+  assert.equal(state.selected_recommendations.length, 0);
 });
 
 test('__internal: framework pool does not let low-fit external seeds satisfy routine support coverage', () => {
@@ -9200,6 +9201,96 @@ test('__internal: framework pool preserves same-band external seed role-fit diff
       > Number(lower.framework_role_fit_rank_adjustment || 0),
   );
   assert.ok(Number(higher.framework_rank_score || 0) > Number(lower.framework_rank_score || 0));
+});
+
+test('__internal: framework pool prefers untinted finish-fit sunscreen over tinted shade variants when tint was not requested', () => {
+  const { __internal } = loadRoutesFresh();
+  const targetContext = {
+    framework_id: 'recofw_test_finish_fit_untinted_over_tint',
+    primary_role_id: 'daily_sunscreen_finish_fit',
+    comparison_mode: 'same_role_comparison',
+    routine_mode: 'same_role_comparison',
+    semantic_plan: {
+      primary_concern: 'daytime sunscreen under makeup',
+      comparison_mode: 'same_role_comparison',
+      must_satisfy_constraints: ['under makeup', 'avoid pilling'],
+    },
+    framework_roles: [
+      {
+        role_id: 'daily_sunscreen_finish_fit',
+        rank: 1,
+        preferred_step: 'sunscreen',
+        label: 'Daily sunscreen finish fit',
+        query_terms: ['sunscreen under makeup', 'lightweight sunscreen'],
+        fit_keywords: ['spf', 'lightweight', 'under makeup', 'fluid'],
+        ingredient_hypotheses: ['UV filters'],
+        product_type_hypotheses: ['sunscreen'],
+      },
+    ],
+  };
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [
+      {
+        product_id: 'boj_tinted_dn310',
+        merchant_id: 'external_seed',
+        brand: 'Beauty of Joseon',
+        name: 'Daily Tinted Fluid Sunscreen DN310',
+        display_name: 'Beauty of Joseon Daily Tinted Fluid Sunscreen DN310',
+        category: 'Sunscreen',
+        product_type: 'Sunscreen',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'daily_sunscreen_finish_fit',
+        retrieval_query: 'sunscreen under makeup',
+        local_external_seed_role_fit_score: 1.08,
+        benefit_tags: ['spf 40', 'lightweight', 'under makeup', 'tinted'],
+        short_description: 'A lightweight fluid sunscreen with sheer tint coverage for makeup-base wear.',
+      },
+      {
+        product_id: 'boj_aqua_fresh_untinted',
+        merchant_id: 'external_seed',
+        brand: 'Beauty of Joseon',
+        name: 'Relief Sun Aqua-Fresh : Rice + B5 (SPF50+ PA++++)',
+        display_name: 'Beauty of Joseon Relief Sun Aqua-Fresh : Rice + B5 (SPF50+ PA++++)',
+        category: 'Sunscreen',
+        product_type: 'Sunscreen',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'daily_sunscreen_finish_fit',
+        retrieval_query: 'sunscreen under makeup',
+        local_external_seed_role_fit_score: 1.04,
+        benefit_tags: ['spf 50', 'lightweight', 'under makeup', 'fluid'],
+        short_description: 'A lightweight sunscreen fluid that layers smoothly under makeup with no white cast.',
+      },
+      {
+        product_id: 'haruharu_finish_fit_untinted',
+        merchant_id: 'external_seed',
+        brand: 'Haruharu Wonder',
+        name: 'Black Rice Moisture Airyfit Daily Sunscreen SPF 50+',
+        display_name: 'Haruharu Wonder Black Rice Moisture Airyfit Daily Sunscreen SPF 50+',
+        category: 'Sunscreen',
+        product_type: 'Sunscreen',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'daily_sunscreen_finish_fit',
+        retrieval_query: 'sunscreen under makeup',
+        local_external_seed_role_fit_score: 1.01,
+        benefit_tags: ['spf 50', 'lightweight', 'under makeup'],
+        short_description: 'An airy daily sunscreen that sits smoothly under makeup without a heavy finish.',
+      },
+    ].map((row) => __internal.normalizeRecoCatalogProduct(row)),
+    { targetContext },
+  );
+
+  assert.equal(state.primary_role_matched, true);
+  assert.equal(state.selected_recommendations[0]?.product_id, 'boj_aqua_fresh_untinted');
+  assert.deepEqual(
+    state.selected_recommendations.slice(0, 2).map((row) => row.product_id),
+    ['boj_aqua_fresh_untinted', 'haruharu_finish_fit_untinted'],
+  );
+  assert.equal(state.selected_recommendations[2]?.product_id, 'boj_tinted_dn310');
+  const tinted = state.viable_candidate_pool.find((row) => row?.product_id === 'boj_tinted_dn310') || null;
+  const untinted = state.viable_candidate_pool.find((row) => row?.product_id === 'boj_aqua_fresh_untinted') || null;
+  assert.ok(tinted);
+  assert.ok(untinted);
+  assert.ok(Number(untinted.framework_rank_score || 0) > Number(tinted.framework_rank_score || 0));
 });
 
 test('__internal: framework pool demotes mini sunscreen variants behind full-size same-role options', () => {
