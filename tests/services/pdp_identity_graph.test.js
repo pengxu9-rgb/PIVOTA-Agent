@@ -659,6 +659,73 @@ describe('pdpIdentityGraph', () => {
     ]);
   });
 
+  test('maybeBuildLiveSyntheticPdp keeps curated Tom Ford live reads enabled alongside configured allowlist', async () => {
+    jest.resetModules();
+    process.env = {
+      ...ORIGINAL_ENV,
+      NODE_ENV: 'test',
+      DATABASE_URL: 'postgres://test',
+      PDP_IDENTITY_GRAPH_ENABLED: 'true',
+      PDP_IDENTITY_GRAPH_BRAND_ALLOWLIST: 'Beauty of Joseon',
+    };
+    const { maybeBuildLiveSyntheticPdp } = require('../../src/services/pdpIdentityGraph');
+    const sourceRow = {
+      source_listing_ref: 'external_seed:ext_tf_concealer_1',
+      merchant_id: 'external_seed',
+      product_id: 'ext_tf_concealer_1',
+      source_kind: 'external_seed',
+      source_tier: 'brand',
+      live_read_enabled: true,
+      sellable_item_group_id: 'sig_tf_concealer_1',
+      product_line_id: 'pl_tf_concealer',
+      review_family_id: 'rf_tf_concealer',
+      identity_status: 'approved',
+      identity_confidence: 0.92,
+      brand_norm: 'tom ford beauty',
+      match_basis: ['variant_family:tom ford beauty:shade and illuminate concealer'],
+      variant_axes: { shade: '0.5 rose', multi_variant: true },
+      source_payload: {
+        title: 'Shade and Illuminate Concealer 0.5 Rose',
+        images: [{ url: 'https://cdn.example.com/tf-05-rose.jpg' }],
+      },
+    };
+    const siblingRow = {
+      ...sourceRow,
+      source_listing_ref: 'external_seed:ext_tf_concealer_2',
+      product_id: 'ext_tf_concealer_2',
+      sellable_item_group_id: 'sig_tf_concealer_2',
+      variant_axes: { shade: '1.4 bone', multi_variant: true },
+      source_payload: {
+        title: 'Shade and Illuminate Concealer 1.4 Bone',
+        images: [{ url: 'https://cdn.example.com/tf-14-bone.jpg' }],
+      },
+    };
+    const queryFn = jest.fn(async (sql) => {
+      const normalizedSql = String(sql || '').replace(/\s+/g, ' ').trim();
+      if (normalizedSql.includes('merchant_id = $1')) return { rows: [sourceRow] };
+      if (normalizedSql.includes('sellable_item_group_id = $1')) return { rows: [sourceRow] };
+      if (normalizedSql.includes('product_line_id = $1')) return { rows: [sourceRow, siblingRow] };
+      return { rows: [] };
+    });
+
+    const result = await maybeBuildLiveSyntheticPdp({
+      merchantId: 'external_seed',
+      productId: 'ext_tf_concealer_1',
+      canonicalProduct: {
+        product_id: 'ext_tf_concealer_1',
+        merchant_id: 'external_seed',
+        title: 'Shade and Illuminate Concealer 0.5 Rose',
+      },
+      queryFn,
+    });
+
+    expect(result?.canonical_scope).toBe('synthetic');
+    expect(result?.synthetic_product.product_line_options).toEqual([
+      expect.objectContaining({ selected: true, product_id: 'ext_tf_concealer_1' }),
+      expect.objectContaining({ selected: false, product_id: 'ext_tf_concealer_2' }),
+    ]);
+  });
+
   test('buildIdentityListingFromProduct canonicalizes official URL host before conflict checks', () => {
     const { buildIdentityListingFromProduct, _internals } = require('../../src/services/pdpIdentityGraph');
 

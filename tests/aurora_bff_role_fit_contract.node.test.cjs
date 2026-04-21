@@ -682,7 +682,6 @@ test('daily sunscreen finish-fit demotes tinted coverage sunscreen when the requ
   assert.equal(untintedScore?.sunscreen_coverage_tint_mismatch_applied, false);
   assert.ok(Number(untintedScore?.score || 0) > Number(tintedScore?.score || 0));
 });
-
 test('daily sunscreen finish-fit keeps portable stick viable when the user explicitly asked for reapplication convenience', () => {
   const score = scoreConcernRoleCandidate(
     {

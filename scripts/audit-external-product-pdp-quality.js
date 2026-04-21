@@ -166,6 +166,31 @@ function buildPublicGatewayPayload(operation, payload = {}) {
       },
     };
   }
+  if (operation === 'find_similar_products') {
+    return {
+      operation,
+      payload: {
+        similar: {
+          merchant_id: 'external_seed',
+          product_id: normalizeNonEmptyString(payload.product_id),
+          limit: Number(payload.limit) > 0 ? Number(payload.limit) : 6,
+          ...(Array.isArray(payload.exclude_items) && payload.exclude_items.length > 0
+            ? { exclude_items: payload.exclude_items }
+            : {}),
+        },
+        options: {
+          ...ensureJsonObject(payload.options),
+          debug: true,
+          no_cache: true,
+          cache_bypass: true,
+        },
+      },
+      metadata: {
+        scope: { catalog: 'global', region: 'US', language: 'en-US' },
+        entry: 'pdp_quality_audit',
+      },
+    };
+  }
   return { operation, payload };
 }
 

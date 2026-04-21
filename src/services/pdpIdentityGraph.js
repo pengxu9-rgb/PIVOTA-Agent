@@ -41,6 +41,7 @@ const PDP_IDENTITY_GRAPH_CONFIGURED_BRAND_ALLOWLIST = String(
 const PDP_IDENTITY_GRAPH_CURATED_BRAND_ALLOWLIST_ADDITIONS = Object.freeze([
   'beauty of joseon',
   'fenty beauty',
+  'tom ford beauty',
 ]);
 const PDP_IDENTITY_GRAPH_BRAND_ALLOWLIST = new Set([
   ...PDP_IDENTITY_GRAPH_CONFIGURED_BRAND_ALLOWLIST,

@@ -36,6 +36,16 @@ function stripHtml(input) {
     .trim();
 }
 
+function stripHtmlPreserveBreaks(input) {
+  return String(input || '')
+    .replace(/<\s*br\s*\/?>/gi, '\n')
+    .replace(/<\/(?:p|div|li|h[1-6]|section|article)>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/\r/g, '')
+    .trim();
+}
+
 function normalizeAmount(value) {
   if (typeof value === 'number') return value;
   if (typeof value === 'string') return Number(value) || 0;
@@ -1171,11 +1181,11 @@ function normalizeDetailSectionHeading(value) {
   if (/^texture$/i.test(heading)) return 'Texture';
   if (/^free of$/i.test(heading)) return 'Free Of';
   if (/^set includes$/i.test(heading)) return 'Set Includes';
-  if (/^(?:how to use|how to apply|directions?|usage)$/i.test(heading)) return 'How to Use';
-  if (/^(?:ingredients?|ingredients and safety|ingredient list|full ingredients?|full ingredient list|inci)$/i.test(heading)) {
+  if (/^(?:how to use|how to apply|directions?|usage)\b/i.test(heading)) return 'How to Use';
+  if (/^(?:ingredients?|ingredients and safety|ingredient list|full ingredients?|full ingredient list|inci)\b/i.test(heading)) {
     return 'Ingredients';
   }
-  if (/^(?:faq|frequently asked questions?|q(?:uestions)?\s*&\s*a|questions?)$/i.test(heading)) {
+  if (/^(?:faq|frequently asked questions?|q(?:uestions)?\s*&\s*a|questions?)\b/i.test(heading)) {
     return 'FAQ';
   }
   return heading;
@@ -1231,6 +1241,39 @@ function looksLikeSectionSoupText(value) {
   );
 }
 
+function looksLikeIngredientBlobText(value) {
+  const text = asNonEmptyString(value);
+  if (!text) return false;
+  return (
+    /\b(?:ingredients?|water aqua eau|mica|iron oxides?|titanium dioxide|ci\s*\d{4,}|phenoxyethanol)\b/i.test(text) &&
+    text.split(',').length >= 6
+  );
+}
+
+function extractNarrativeOverviewParagraph(value) {
+  const text = stripHtmlPreserveBreaks(value);
+  if (!text) return '';
+  const candidates = text
+    .split(/\n+/)
+    .map((entry) => cleanStructuredToken(entry))
+    .filter(Boolean);
+  for (const candidate of candidates) {
+    if (candidate.length < 50) continue;
+    if (candidate.split(/\s+/).length < 8) continue;
+    if (
+      /^(?:key notes?|skin type|skin concern|finish|coverage|benefits?|set includes|shades included|what else you should know|what else you need to know|free from|how to use|how to apply|directions?|ingredients?|active ingredients?|clinical results?|results?|texture|details?|overview)$/i.test(
+        candidate,
+      )
+    ) {
+      continue;
+    }
+    if (looksLikeIngredientBlobText(candidate)) continue;
+    if (extractSectionSoupSegments(candidate).length >= 2) continue;
+    return candidate;
+  }
+  return '';
+}
+
 function cleanOverviewDescriptionText(value) {
   const text = asNonEmptyString(value);
   if (!text) return '';
@@ -1239,7 +1282,11 @@ function cleanOverviewDescriptionText(value) {
   const preferred =
     segments.find((section) => OVERVIEW_DETAIL_SECTION_RE.test(section.heading)) ||
     segments.find((section) => !STRUCTURED_DETAIL_SECTION_RE.test(section.heading) && !FACT_DETAIL_SECTION_RE.test(section.heading));
-  return preferred?.content || '';
+  if (preferred?.content) {
+    const nestedSegments = extractSectionSoupSegments(preferred.content);
+    if (!nestedSegments.length) return preferred.content;
+  }
+  return extractNarrativeOverviewParagraph(preferred?.content || value) || '';
 }
 
 function extractFactSectionsFromSection(section) {
@@ -1296,7 +1343,18 @@ function collectStructuredDetailSections(product) {
   return out;
 }
 
+function isFreeformOverviewDetailSection(section) {
+  return !(
+    STRUCTURED_DETAIL_SECTION_RE.test(section.heading) ||
+    FACT_DETAIL_SECTION_RE.test(section.heading) ||
+    BRAND_STORY_SECTION_RE.test(section.heading) ||
+    isFaqOrCrossSellDetailSection(section)
+  );
+}
+
 function resolveProductDescriptionText(product, detailSections = collectStructuredDetailSections(product)) {
+  const explicitPdpDescriptionRaw =
+    typeof product?.pdp_description_raw === 'string' ? stripHtmlPreserveBreaks(product.pdp_description_raw) : '';
   const explicitPdpDescription = asNonEmptyString(product.pdp_description_raw);
   const capturedNarrativeSoup = looksLikeCapturedExternalSeedNarrativeSoup(
     product,
@@ -1324,18 +1382,12 @@ function resolveProductDescriptionText(product, detailSections = collectStructur
 
   const overviewSection =
     detailSections.find((section) => OVERVIEW_DETAIL_SECTION_RE.test(section.heading)) ||
-    (!capturedNarrativeSoup
-      ? detailSections.find(
-          (section) =>
-            !STRUCTURED_DETAIL_SECTION_RE.test(section.heading) &&
-            !FACT_DETAIL_SECTION_RE.test(section.heading) &&
-            !BRAND_STORY_SECTION_RE.test(section.heading) &&
-            !isFaqOrCrossSellDetailSection(section),
-        )
-      : undefined);
+    detailSections.find((section) => isFreeformOverviewDetailSection(section));
   const cleanedOverview = cleanOverviewDescriptionText(overviewSection?.content || '');
   if (cleanedOverview) return cleanedOverview;
-  const cleanedPdpDescription = capturedNarrativeSoup ? '' : cleanOverviewDescriptionText(explicitPdpDescription);
+  const cleanedPdpDescription = capturedNarrativeSoup
+    ? ''
+    : cleanOverviewDescriptionText(explicitPdpDescriptionRaw || explicitPdpDescription);
   if (cleanedPdpDescription) return cleanedPdpDescription;
 
   const structuredDescription =

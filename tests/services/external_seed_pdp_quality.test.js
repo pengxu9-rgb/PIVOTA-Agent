@@ -5,6 +5,7 @@ const {
   buildLivePdpGate,
   buildSimilarGate,
   buildExternalSeedQualityResult,
+  looksLikeSectionSoupText,
 } = require('../../src/services/externalSeedPdpQuality');
 
 describe('externalSeedPdpQuality', () => {
@@ -273,6 +274,22 @@ describe('externalSeedPdpQuality', () => {
 
     expect(livePdpGate.details_status.compressed_structured_sections).toBe(false);
     expect(livePdpGate.failure_reasons).not.toContain('structured_sections_compressed_to_description_category');
+  });
+
+  test('does not treat clean marketing overview prose as section soup', () => {
+    const text =
+      'Naturally radiant, this tinted fluid sunscreen delivers lightweight coverage with a breathable finish. ' +
+      'The formula blends zinc oxide UV protection with skin-evening pigments and ingredients chosen for everyday wear.';
+
+    expect(looksLikeSectionSoupText(text)).toBe(false);
+  });
+
+  test('still detects stitched heading blobs as section soup', () => {
+    const text =
+      'Description: A breathable tinted sunscreen. Benefits: Helps even skin tone. ' +
+      'Ingredients: Zinc Oxide, Glycerin. How to Use: Shake well before use.';
+
+    expect(looksLikeSectionSoupText(text)).toBe(true);
   });
 
   test('does not count category-only similar cards as highlight-ready', () => {

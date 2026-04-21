@@ -199,23 +199,45 @@ function collectLiveGalleryImages(livePayload = {}) {
   return Array.from(new Set(urls));
 }
 
+function hasSectionSoupBoundary(text, index) {
+  if (index <= 0) return true;
+  const prefix = text.slice(0, index).replace(/\s+$/, '');
+  if (!prefix) return true;
+  return /[:;.!?\n\r\u2022]/.test(prefix[prefix.length - 1]);
+}
+
+function isHeadingStyleSoupLabel(text, match) {
+  const rawLabel = String(match?.[1] || '');
+  if (!rawLabel) return false;
+  if (!hasSectionSoupBoundary(text, match.index)) return false;
+  if (/^(coverage|finish|texture)$/i.test(rawLabel) && rawLabel[0] !== rawLabel[0].toUpperCase()) {
+    return false;
+  }
+  return match.index === 0 || rawLabel[0] === rawLabel[0].toUpperCase();
+}
+
 function countSectionSoupLabels(value) {
   const text = normalizeNonEmptyString(value);
   if (!text) return 0;
   SECTION_SOUP_LABEL_RE.lastIndex = 0;
   let count = 0;
-  while (SECTION_SOUP_LABEL_RE.exec(text)) count += 1;
+  let match = SECTION_SOUP_LABEL_RE.exec(text);
+  while (match) {
+    if (isHeadingStyleSoupLabel(text, match)) count += 1;
+    match = SECTION_SOUP_LABEL_RE.exec(text);
+  }
   return count;
 }
 
 function looksLikeSectionSoupText(value) {
   const text = normalizeNonEmptyString(value);
   if (!text) return false;
-  if (countSectionSoupLabels(text) >= 2) return true;
+  const labelCount = countSectionSoupLabels(text);
+  if (labelCount >= 2) return true;
   return (
-    text.length > 500 &&
-    /\b(description|details?|overview)\b/i.test(text) &&
-    /\b(benefits?|how to use|ingredients?|clinical results?|coverage|finish)\b/i.test(text)
+    text.length > 700 &&
+    /\b(?:Description|Details?|Overview)\b\s*:/i.test(text) &&
+    /\b(?:Benefits?|How to Use|How to Apply|Directions?|Ingredients?|Clinical Results?|Coverage|Finish)\b\s*:/i.test(text)
   );
 }
 
