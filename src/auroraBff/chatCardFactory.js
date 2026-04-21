@@ -542,6 +542,22 @@ function looksLikeLowSpecificityRecommendationFinishFitCopy(value) {
   return genericProtectionCue && !distinctTradeoffCue;
 }
 
+function recommendationFinishFitSourceNeedsMoreSpecificCue(value, row) {
+  const visible = normalizeRecommendationSemanticText(value);
+  const source = normalizeRecommendationSemanticText(collectRecommendationFinishFitSourceText(row));
+  if (!visible || !source) return false;
+
+  const sourceHasMineralCue = /\b(?:mineral|zinc oxide|titanium dioxide)\b/.test(source);
+  const visibleHasMineralCue = /\b(?:mineral|sensitive skin|sensitive-skin|zinc oxide|titanium dioxide)\b/.test(visible);
+  if (sourceHasMineralCue && !visibleHasMineralCue) return true;
+
+  const sourceHasCreamCue = /\b(?:hydrating daily cream|hydrating cream|cream format|cream texture|cream-spf|cream spf|sunscreen milk|milk spf|milky sunscreen|hydrating sunscreen milk|spf milk|spf lotion|more moisture|more moisturizing|richer)\b/.test(source);
+  const visibleHasCreamCue = /\b(?:cream|cream-spf|hydrating|moisturizing|milk|richer|more moisture)\b/.test(visible);
+  if (sourceHasCreamCue && !visibleHasCreamCue) return true;
+
+  return false;
+}
+
 function collectRecommendationFinishFitSourceText(row) {
   const item = isPlainObject(row) ? row : {};
   return [
@@ -1020,6 +1036,7 @@ function normalizeRecommendationProductCard(raw, options = {}) {
       || looksLikeGenericRecommendationFinishFitCopy(baseWhyThisOne)
       || looksLikeDescriptiveRecommendationFinishFitCopy(baseWhyThisOne)
       || looksLikeLowSpecificityRecommendationFinishFitCopy(baseWhyThisOne)
+      || recommendationFinishFitSourceNeedsMoreSpecificCue(baseWhyThisOne, row)
     )
     ? finishFitSpecificWhy
     : baseWhyThisOne;
@@ -1030,6 +1047,7 @@ function normalizeRecommendationProductCard(raw, options = {}) {
       || looksLikeGenericRecommendationFinishFitCopy(baseShortDescription)
       || looksLikeDescriptiveRecommendationFinishFitCopy(baseShortDescription)
       || looksLikeLowSpecificityRecommendationFinishFitCopy(baseShortDescription)
+      || recommendationFinishFitSourceNeedsMoreSpecificCue(baseShortDescription, row)
     )
     ? finishFitSpecificShortDescription
     : baseShortDescription;
