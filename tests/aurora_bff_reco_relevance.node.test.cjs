@@ -7867,7 +7867,7 @@ test('__internal: reco assistant rewrite prompt exposes same-role price comparis
   const { __internal } = loadRoutesFresh();
   const prompt = __internal.buildRecoAssistantRewritePrompt({
     language: 'EN',
-    userRequestText: 'im oily skin. what product should i buy?',
+    userRequestText: 'im oily skin. what product should i buy, and which one is worth paying more for?',
     profile: { skinType: 'oily', goals: ['oil control'] },
     payload: {
       roles: [
@@ -7926,6 +7926,7 @@ test('__internal: reco assistant rewrite prompt exposes same-role price comparis
   assert.match(prompt, /compare lower-priced versus higher-priced options only inside the same role/i);
 
   const context = extractRecoRewritePromptContext(prompt);
+  assert.equal(context.price_compare_requested, true);
   assert.equal(context.selected_product_role_mix, 'same_role_comparison');
   assert.equal(context.primary_role_selected_count, 3);
   assert.equal(context.support_role_selected_count, 0);

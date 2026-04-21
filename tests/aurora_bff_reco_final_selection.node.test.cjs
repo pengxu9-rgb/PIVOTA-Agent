@@ -81,7 +81,7 @@ test('reco assistant rewrite prompt omits deterministic base text and carries re
     assert.match(prompt, /If selected_product_role_mix is "routine_mix", make it clear these are different routine steps, not interchangeable substitutes, and do not use the phrase "selected products"\./);
     assert.match(prompt, /If selected_product_role_mix is "same_role_comparison", present a concise horizontal comparison and name each selected product exactly once if space allows\./);
     assert.match(prompt, /If selected_product_role_mix is "routine_mix", present a basic routine by role or step, and do not imply products from different roles are interchangeable\./);
-    assert.match(prompt, /If known_price_count is 2 or more and selected_product_role_mix is "same_role_comparison", compare price\/value or ROI in plain shopper terms using only listed prices; do not compute per-use ROI, percentages, or size-normalized value unless Context provides size and usage data\./);
+    assert.match(prompt, /If selected_product_role_mix is "same_role_comparison", omit price, affordability, or ROI language unless the user explicitly asked about price, budget, value, or ROI\./);
     assert.match(prompt, /If known_price_count is 2 or more and selected_product_role_mix is "routine_mix", prices may be stated as per-step costs only; do not compare affordability across different routine roles\./);
     assert.match(prompt, /Price may support a recommendation, but price alone is not enough; pair it with at least one concrete fit, formula, texture, ingredient, or use-case reason from Context\./);
     assert.match(prompt, /Use selected_product_details\.compare_highlights and selected_product_details\.pivota_insights when available; do not invent highlights that are absent from Context\./);
@@ -261,6 +261,7 @@ test('reco assistant rewrite prompt carries finish-fit same-slot tradeoff notes 
 
     assert.match(prompt, /If assistant_write_plan\.same_role_options is non-empty, use their tradeoff_note or reason_points to explain how they differ from the lead pick\./);
     assert.match(prompt, /If target_label or selected_target_ids indicates daily_sunscreen_finish_fit, explain under-makeup wear, pilling risk, white-cast, fluid versus cream texture, or weightless versus richer finish before defaulting to UV-filter identity\./);
+    assert.match(prompt, /default to wear, texture, finish, and formula tradeoffs; do not mention price, affordability, or higher\/lower-priced language unless the user explicitly asked for it\./);
     assert.match(
       JSON.stringify(context.assistant_write_plan.same_role_options),
       /more mineral, sensitive-skin-oriented option while keeping a sheer, weightless finish/,
@@ -269,10 +270,88 @@ test('reco assistant rewrite prompt carries finish-fit same-slot tradeoff notes 
       JSON.stringify(context.assistant_write_plan.same_role_options),
       /richer, more moisturizing cream-SPF option/,
     );
+    assert.equal(context.price_compare_requested, false);
+    assert.deepEqual(context.price_order_summary, []);
     assert.doesNotMatch(
       JSON.stringify(context.assistant_write_plan.same_role_options),
       /"price_note":"\\$40"|\"price_note\":\"\\$48\"/,
     );
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('reco assistant rewrite prompt keeps same-role price context only when user explicitly asks for value comparison', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const payload = __internal.applyRecoContentSpineToPayload(
+      {
+        recommendations: [
+          {
+            product_id: 'spf_unseen',
+            display_name: 'Supergoop Unseen Sunscreen SPF 50',
+            brand: 'Supergoop',
+            category: 'Sunscreen',
+            short_description: 'A lighter finish sunscreen for smoother daytime layering.',
+            price: { amount: 19, currency: 'USD', unknown: false },
+            matched_role_id: 'daily_sunscreen_finish_fit',
+            matched_role_label: 'Daily sunscreen with finish fit',
+          },
+          {
+            product_id: 'spf_mineral_unseen',
+            display_name: 'Supergoop Mineral Unseen Sunscreen SPF 40',
+            brand: 'Supergoop',
+            category: 'Sunscreen',
+            short_description: 'A sheer, weightless mineral sunscreen for sensitive skin.',
+            price: { amount: 40, currency: 'USD', unknown: false },
+            matched_role_id: 'daily_sunscreen_finish_fit',
+            matched_role_label: 'Daily sunscreen with finish fit',
+          },
+          {
+            product_id: 'spf_superscreen',
+            display_name: 'Supergoop Superscreen Hydrating Daily Cream SPF 40',
+            brand: 'Supergoop',
+            category: 'Sunscreen',
+            short_description: 'A richer hydrating cream-SPF.',
+            price: { amount: 48, currency: 'USD', unknown: false },
+            matched_role_id: 'daily_sunscreen_finish_fit',
+            matched_role_label: 'Daily sunscreen with finish fit',
+          },
+        ],
+        roles: [
+          {
+            role_id: 'daily_sunscreen_finish_fit',
+            label: 'Daily sunscreen with finish fit',
+            preferred_step: 'sunscreen',
+            why_this_role: 'Use a daily sunscreen that layers cleanly under makeup.',
+          },
+        ],
+        recommendation_meta: {
+          resolved_target_step: 'sunscreen',
+          mainline_status: 'grounded_success',
+        },
+      },
+      {
+        primary_target_id: 'daily_sunscreen_finish_fit',
+        ranked_targets: [{ target_id: 'daily_sunscreen_finish_fit', resolved_target_step: 'sunscreen' }],
+        selected_target_ids: ['daily_sunscreen_finish_fit'],
+        resolved_target_step: 'sunscreen',
+      },
+    );
+    const prompt = __internal.buildRecoAssistantRewritePrompt({
+      payload,
+      language: 'EN',
+      profile: { skinType: 'combination', goals: ['smooth layering'] },
+      userRequestText: 'My sunscreen pills under makeup. Which one is worth paying more for?',
+      allowLockedSelectionRewrite: true,
+    });
+    const context = JSON.parse(prompt.match(/Context: (\{[\s\S]*\})$/)[1]);
+
+    assert.equal(context.price_compare_requested, true);
+    assert.equal(context.known_price_count, 3);
+    assert.match(JSON.stringify(context.price_order_summary), /\$19/);
+    assert.match(JSON.stringify(context.price_order_summary), /\$48/);
+    assert.match(prompt, /compare lower-priced versus higher-priced options only inside the same role/);
   } finally {
     delete require.cache[moduleId];
   }
@@ -614,8 +693,8 @@ test('reco assistant rewrite prompt frames multi-role selections as routine mix 
     assert.match(prompt, /Do not name brands\/products outside Context\.selected_products\./);
     assert.match(prompt, /If user_relevant_concern_families does not include tone_brightening, do not mention glow, radiance, dark spots, uneven tone, brightening, or dullness\./);
     assert.match(prompt, /If user_relevant_concern_families does not include aging_texture, do not mention wrinkles, fine lines, aging, anti-aging, or texture repair\./);
-    assert.match(prompt, /compare price\/value or ROI in plain shopper terms using only listed prices/);
-    assert.match(prompt, /do not compute per-use ROI, percentages, or size-normalized value unless Context provides size and usage data/);
+    assert.doesNotMatch(prompt, /compare price\/value or ROI in plain shopper terms using only listed prices/);
+    assert.match(prompt, /If known_price_count is 2 or more and selected_product_role_mix is "routine_mix", prices may be stated as per-step costs only; do not compare affordability across different routine roles\./);
   } finally {
     delete require.cache[moduleId];
   }

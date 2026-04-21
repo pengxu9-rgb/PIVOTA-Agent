@@ -55397,6 +55397,7 @@ function inferRecoAssistantEvidenceDimensions(detail = {}) {
 
 function buildRecoAssistantPriceNote(detail = {}, {
   selectedProductRoleMix = 'single_product',
+  allowPriceComparisonHints = true,
 } = {}) {
   const item = isPlainObject(detail) ? detail : {};
   const priceLabel = pickFirstTrimmed(item.price_label);
@@ -55408,6 +55409,7 @@ function buildRecoAssistantPriceNote(detail = {}, {
     return `${priceLabel} for the lead step`;
   }
   if (selectedProductRoleMix === 'same_role_comparison') {
+    if (!allowPriceComparisonHints) return null;
     if (pricePosition === 'lowest' || pricePosition === 'lower') return `${priceLabel} and the lower-priced option`;
     if (pricePosition === 'highest' || pricePosition === 'higher') return `${priceLabel} and the higher-priced option`;
     return null;
@@ -55484,6 +55486,7 @@ function buildRecoAssistantWritePlan({
   selectedProductRoleMix = 'single_product',
   requestMode = 'generic',
   targetLabel = null,
+  allowPriceComparisonHints = true,
 } = {}) {
   const products = Array.isArray(selectedProductDetails) ? selectedProductDetails : [];
   if (!products.length) return null;
@@ -55497,7 +55500,7 @@ function buildRecoAssistantWritePlan({
       preferred_step: pickFirstTrimmed(item.preferred_step),
       role_scope: pickFirstTrimmed(item.role_scope),
       fit_assessment: pickFirstTrimmed(item.fit_assessment),
-      price_note: buildRecoAssistantPriceNote(item, { selectedProductRoleMix }),
+      price_note: buildRecoAssistantPriceNote(item, { selectedProductRoleMix, allowPriceComparisonHints }),
       reason_points: buildRecoAssistantReasonPoints(item, { max: 3 }),
       watchout_points: buildRecoAssistantWatchoutPoints(item, { max: 1 }),
       routine_pairing_notes: collectRecoPromptTextList(item.routine_pairing_notes, { max: 1, maxLen: 100 }),
@@ -55507,7 +55510,7 @@ function buildRecoAssistantWritePlan({
     .filter((item) => item && item !== lead && pickFirstTrimmed(item.matched_role_id) === pickFirstTrimmed(lead?.matched_role_id))
     .map((item) => ({
       name: pickFirstTrimmed(item.name),
-      price_note: buildRecoAssistantPriceNote(item, { selectedProductRoleMix }),
+      price_note: buildRecoAssistantPriceNote(item, { selectedProductRoleMix, allowPriceComparisonHints }),
       tradeoff_note: buildRecoAssistantTradeoffNote(item, { selectedProductRoleMix }),
       reason_points: buildRecoAssistantReasonPoints(item, { max: 2 }),
       watchout_points: buildRecoAssistantWatchoutPoints(item, { max: 1 }),
@@ -55523,7 +55526,7 @@ function buildRecoAssistantWritePlan({
       preferred_step: pickFirstTrimmed(lead?.preferred_step),
       role_scope: pickFirstTrimmed(lead?.role_scope),
       fit_assessment: pickFirstTrimmed(lead?.fit_assessment),
-      price_note: buildRecoAssistantPriceNote(lead, { selectedProductRoleMix }),
+      price_note: buildRecoAssistantPriceNote(lead, { selectedProductRoleMix, allowPriceComparisonHints }),
       evidence_dimensions: inferRecoAssistantEvidenceDimensions(lead),
       must_use_reason_points: leadReasonPoints,
       watchout_points: buildRecoAssistantWatchoutPoints(lead, { max: 2 }),
@@ -55542,6 +55545,13 @@ function buildRecoAssistantWritePlan({
         : 'product_record_only',
     },
   };
+}
+
+function recoAssistantUserExplicitlyAskedForPriceComparison(text = '') {
+  const value = String(text || '').replace(/\s+/g, ' ').trim();
+  if (!value) return false;
+  return /\b(price|cost|budget|afford(?:able)?|cheap(?:er|est)?|expensive|splurge|value|roi|return on investment|worth it|worth paying more|price difference|higher[-\s]?priced|lower[-\s]?priced|premium over|save money|paying more)\b/i.test(value)
+    || /价格|预算|便宜|更贵|贵一点|值不值|性价比|回报率/i.test(value);
 }
 
 function inferRecoAssistantSelectedProductRoleMix(recommendations = []) {
@@ -55966,6 +55976,7 @@ function buildCompactRecoAssistantPromptLines({
   selectedProductRoleMix = 'single_product',
   retryInstruction = null,
   strictSelectedOnlyContext = false,
+  allowPriceComparisonHints = true,
 } = {}) {
   const lines = [
     'Return strict JSON only.',
@@ -56013,7 +56024,11 @@ function buildCompactRecoAssistantPromptLines({
   } else if (selectedProductRoleMix === 'same_role_comparison') {
     lines.push('Treat the products as same-slot comparison options, not a routine.');
     lines.push('Pick one lead product, then compare the other options with one short tradeoff each.');
-    lines.push('Use same-role price/value differences only when Context.price_order_summary or assistant_write_plan provides them.');
+    if (allowPriceComparisonHints) {
+      lines.push('Use same-role price/value differences only when Context.price_order_summary or assistant_write_plan provides them.');
+    } else {
+      lines.push('Focus on wear, texture, finish, and formula tradeoffs; do not bring price or affordability into the comparison unless the user explicitly asked for it.');
+    }
     lines.push('For same-role comparisons, use assistant_write_plan.same_role_options.tradeoff_note before leaning on price_note, so each alternative differs from the lead by wear, texture, finish, or formula stance.');
     lines.push(`Use at most 3 recommendation sentences${questionSuffix}`);
   } else {
@@ -56036,6 +56051,7 @@ function buildStructuredRecoAssistantReasonPromptLines({
   requestMode = 'generic',
   selectedProductRoleMix = 'single_product',
   retryInstruction = null,
+  allowPriceComparisonHints = true,
 } = {}) {
   const lines = [
     'Return strict JSON only.',
@@ -56069,6 +56085,9 @@ function buildStructuredRecoAssistantReasonPromptLines({
   } else if (selectedProductRoleMix === 'same_role_comparison') {
     lines.push('For same_role_comparison, support_reasons should explain same-slot tradeoffs using only available evidence.');
     lines.push('For same_role_comparison, prefer assistant_write_plan.same_role_options.tradeoff_note before price-only reasoning.');
+    if (!allowPriceComparisonHints) {
+      lines.push('For same_role_comparison, omit price or affordability language unless the user explicitly asked about price, budget, value, or ROI.');
+    }
   } else {
     lines.push('For single_product, support_reasons should be an empty array.');
   }
@@ -56192,6 +56211,13 @@ function buildRecoAssistantRewritePrompt({
     ? payload.recommendations.filter((item) => isPlainObject(item)).slice(0, 4)
     : [];
   const requestMode = inferRecoAssistantRequestMode(
+    pickFirstTrimmed(
+      userRequestText,
+      payload?.recommendation_meta?.request_text,
+      payload?.request_text,
+    ),
+  );
+  const priceComparisonRequested = recoAssistantUserExplicitlyAskedForPriceComparison(
     pickFirstTrimmed(
       userRequestText,
       payload?.recommendation_meta?.request_text,
@@ -56437,6 +56463,16 @@ function buildRecoAssistantRewritePrompt({
     4,
   );
   const selectedProductRoleMix = inferRecoAssistantSelectedProductRoleMix(selectedProductDetails);
+  const suppressPriceComparisonHints =
+    selectedProductRoleMix === 'same_role_comparison' && !priceComparisonRequested;
+  const promptSelectedProductDetails = suppressPriceComparisonHints
+    ? selectedProductDetails.map((item) => ({
+        ...item,
+        price: null,
+        price_label: null,
+        price_position: null,
+      }))
+    : selectedProductDetails;
   const knownPriceCount = priceDiagnostics.known_price_count;
   const roleMixSummary = selectedProductRoleIds.map((roleId) => {
     const roleMeta = frameworkRoleById.get(roleId) || null;
@@ -56449,10 +56485,11 @@ function buildRecoAssistantRewritePrompt({
     };
   });
   const assistantWritePlan = buildRecoAssistantWritePlan({
-    selectedProductDetails,
+    selectedProductDetails: promptSelectedProductDetails,
     selectedProductRoleMix,
     requestMode,
     targetLabel: primaryTargetLabel || null,
+    allowPriceComparisonHints: priceComparisonRequested,
   });
   const refinementQuestionPlan = buildRecoAssistantRefinementQuestionPlan({
     profile,
@@ -56487,14 +56524,15 @@ function buildRecoAssistantRewritePrompt({
       resolved_target_step: pickFirstTrimmed(target && target.resolved_target_step),
     })),
     selected_products: names,
-    selected_product_details: selectedProductDetails,
+    selected_product_details: promptSelectedProductDetails,
     selected_product_role_ids: selectedProductRoleIds,
     selected_product_role_mix: selectedProductRoleMix,
     role_mix_summary: roleMixSummary,
     primary_role_selected_count: selectedProductDetails.filter((item) => item.role_scope === 'primary').length,
     support_role_selected_count: selectedProductDetails.filter((item) => item.role_scope !== 'primary').length,
-    known_price_count: knownPriceCount,
-    price_order_summary: priceDiagnostics.price_order_summary.map((entry) => {
+    known_price_count: suppressPriceComparisonHints ? 0 : knownPriceCount,
+    price_compare_requested: priceComparisonRequested,
+    price_order_summary: suppressPriceComparisonHints ? [] : priceDiagnostics.price_order_summary.map((entry) => {
       const product = selectedProductDetails[entry.product_index] || null;
       return {
         name: pickFirstTrimmed(product?.name),
@@ -56564,6 +56602,7 @@ function buildRecoAssistantRewritePrompt({
       requestMode,
       selectedProductRoleMix,
       retryInstruction,
+      allowPriceComparisonHints: priceComparisonRequested,
     })
     : compactContext
     ? buildCompactRecoAssistantPromptLines({
@@ -56571,6 +56610,7 @@ function buildRecoAssistantRewritePrompt({
       selectedProductRoleMix,
       retryInstruction,
       strictSelectedOnlyContext,
+      allowPriceComparisonHints: priceComparisonRequested,
     })
     : [
       'Return strict JSON only.',
@@ -56593,7 +56633,9 @@ function buildRecoAssistantRewritePrompt({
       'If selected_product_role_mix is "routine_mix", explicitly treat them as different steps in a basic routine and not the same type of product.',
       'If request_mode is "buy" and there is one selected product with no secondary targets, use exactly 2 recommendation sentences; if Context.refinement_question exists, add one short final question.',
       'If selected_product_role_mix is "same_role_comparison", present a concise horizontal comparison and name each selected product exactly once if space allows.',
-      'If selected_product_role_mix is "same_role_comparison", compare lower-priced versus higher-priced options only inside the same role when price_order_summary supports it.',
+      ...(priceComparisonRequested
+        ? ['If selected_product_role_mix is "same_role_comparison", compare lower-priced versus higher-priced options only inside the same role when price_order_summary supports it.']
+        : ['If selected_product_role_mix is "same_role_comparison", default to wear, texture, finish, and formula tradeoffs; do not mention price, affordability, or higher/lower-priced language unless the user explicitly asked for it.']),
       'If selected_product_role_mix is "routine_mix", present a basic routine by role or step, and do not imply products from different roles are interchangeable.',
       'If selected_product_role_mix is "routine_mix", use selected_product_details.role_scope, matched_role_label, and preferred_step to label what each product is doing in the routine.',
       'If selected_product_role_mix is "routine_mix", do not call one product the cheapest, most affordable, lower-priced, best value, or better ROI versus another selected product; they are different steps.',
@@ -56608,7 +56650,9 @@ function buildRecoAssistantRewritePrompt({
       'If selected_product_details.reviewed_insight_available is false for a product, treat why_this_one, key_features, best_for, and description_snippet as product-record evidence only; do not imply independent review, clinical, or community proof.',
       'If every selected_product_details.reviewed_insight_available value is false, do not use "clinically proven", "clinically shown", "dermatologist recommended", review/social-proof, viral, or community-favorite language even if raw product copy contains it.',
       'Do not discuss alternatives/dupes pros and cons unless alternatives_count is greater than 0 or compare_highlights/pivota_insights provide explicit tradeoff evidence.',
-      'If known_price_count is 2 or more and selected_product_role_mix is "same_role_comparison", compare price/value or ROI in plain shopper terms using only listed prices; do not compute per-use ROI, percentages, or size-normalized value unless Context provides size and usage data.',
+      ...(priceComparisonRequested
+        ? ['If known_price_count is 2 or more and selected_product_role_mix is "same_role_comparison", compare price/value or ROI in plain shopper terms using only listed prices; do not compute per-use ROI, percentages, or size-normalized value unless Context provides size and usage data.']
+        : ['If selected_product_role_mix is "same_role_comparison", omit price, affordability, or ROI language unless the user explicitly asked about price, budget, value, or ROI.']),
       'If known_price_count is 2 or more and selected_product_role_mix is "routine_mix", prices may be stated as per-step costs only; do not compare affordability across different routine roles.',
       'Price may support a recommendation, but price alone is not enough; pair it with at least one concrete fit, formula, texture, ingredient, or use-case reason from Context.',
       'Use price_order_summary and selected_product_details.price_position only for same-role comparisons; routine_mix should not use cross-role lower-cost or higher-cost framing.',
