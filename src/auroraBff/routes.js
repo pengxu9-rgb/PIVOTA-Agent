@@ -55380,8 +55380,55 @@ function buildRecoAssistantTradeoffNote(detail = {}, {
   selectedProductRoleMix = 'single_product',
 } = {}) {
   const item = isPlainObject(detail) ? detail : {};
-  if (pickFirstTrimmed(item.tradeoff_hint)) return pickFirstTrimmed(item.tradeoff_hint);
   if (selectedProductRoleMix !== 'same_role_comparison') return null;
+  const rawTradeoffHint = pickFirstTrimmed(item.tradeoff_hint);
+  const finishFitTradeoff = (() => {
+    const roleText = [
+      pickFirstTrimmed(item.matched_role_label),
+      pickFirstTrimmed(item.preferred_step),
+      pickFirstTrimmed(item.evidence_target_text),
+    ]
+      .filter(Boolean)
+      .join(' ');
+    if (!recoRoleNeedsFinishFitNarrative(roleText)) return null;
+    const text = collectRecoPromptTextList(
+      [
+        pickFirstTrimmed(item.why_this_one),
+        pickFirstTrimmed(item.short_description),
+        pickFirstTrimmed(item.description_snippet),
+        pickFirstTrimmed(item.best_for),
+        ...(Array.isArray(item.reason_points) ? item.reason_points : []),
+        ...(Array.isArray(item.key_features) ? item.key_features : []),
+        ...(Array.isArray(item.compare_highlights) ? item.compare_highlights : []),
+      ],
+      { max: 12, maxLen: 120 },
+    ).join(' ');
+    if (!text) return null;
+    if (/\b(tinted|shade match|tone-up|tone up|beige|ivory|fair-light)\b/i.test(text)) {
+      return 'it leans more like a tinted makeup-base SPF, so it makes more sense if you already want complexion coverage';
+    }
+    const mineralCue = /\b(mineral|zinc|zinc oxide|titanium dioxide)\b/i.test(text);
+    const sensitiveCue = /\b(sensitive skin|scentless|fragrance[-\s]?free|simple formula|gentle)\b/i.test(text);
+    if (mineralCue || sensitiveCue) {
+      return 'it leans more mineral and sensitive-skin-oriented than the lead option';
+    }
+    const creamCue = /\b(hydrating daily cream|hydrating cream|cream format|cream texture|moisturizer[-\s]?style hydration|more moisture|richer cream)\b/i.test(text);
+    if (creamCue) {
+      return 'it leans richer and more moisturizing than the lead option';
+    }
+    const weightlessCue = /\b(sheer|weightless|airy|invisible|soft[-\s]?focus|fluid|water[-\s]?fit|watery)\b/i.test(text);
+    if (weightlessCue) {
+      return 'it keeps the feel lighter and more invisible if you want less weight under makeup';
+    }
+    const whiteCastCue = /\b(no white cast|white cast[-\s]?free|lower white[-\s]?cast)\b/i.test(text);
+    if (whiteCastCue) {
+      return 'it is more focused on cleaner wear with lower white-cast risk';
+    }
+    return null;
+  })();
+  const genericHint = /\b(?:same-slot option|same slot option|extra angle it adds|pricier same-slot option|lower-cost same-slot option)\b/i.test(rawTradeoffHint);
+  if (finishFitTradeoff) return finishFitTradeoff;
+  if (rawTradeoffHint && !genericHint) return rawTradeoffHint;
   const priceLabel = pickFirstTrimmed(item.price_label);
   const pricePosition = pickFirstTrimmed(item.price_position);
   if ((pricePosition === 'lowest' || pricePosition === 'lower') && priceLabel) {
@@ -55928,6 +55975,7 @@ function buildCompactRecoAssistantPromptLines({
     lines.push('Treat the products as same-slot comparison options, not a routine.');
     lines.push('Pick one lead product, then compare the other options with one short tradeoff each.');
     lines.push('Use same-role price/value differences only when Context.price_order_summary or assistant_write_plan provides them.');
+    lines.push('For same-role comparisons, use assistant_write_plan.same_role_options.tradeoff_note before leaning on price_note, so each alternative differs from the lead by wear, texture, finish, or formula stance.');
     lines.push(`Use at most 3 recommendation sentences${questionSuffix}`);
   } else {
     lines.push('Treat the products as different routine steps, not interchangeable substitutes.');
@@ -55981,6 +56029,7 @@ function buildStructuredRecoAssistantReasonPromptLines({
     lines.push('For routine_mix, do not write cheaper/lower-priced/affordable/best-value/ROI comparisons across different routine steps.');
   } else if (selectedProductRoleMix === 'same_role_comparison') {
     lines.push('For same_role_comparison, support_reasons should explain same-slot tradeoffs using only available evidence.');
+    lines.push('For same_role_comparison, prefer assistant_write_plan.same_role_options.tradeoff_note before price-only reasoning.');
   } else {
     lines.push('For single_product, support_reasons should be an empty array.');
   }

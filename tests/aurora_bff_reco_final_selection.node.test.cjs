@@ -187,6 +187,93 @@ test('reco assistant rewrite prompt neutralizes absolute marketing copy in selec
   }
 });
 
+test('reco assistant rewrite prompt carries finish-fit same-slot tradeoff notes before price-only compare', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const payload = __internal.applyRecoContentSpineToPayload(
+      {
+        recommendations: [
+          {
+            product_id: 'spf_unseen',
+            display_name: 'Unseen Sunscreen SPF 50',
+            brand: 'Supergoop',
+            category: 'Sunscreen',
+            short_description: 'A daily sunscreen built around soft-focus powders for comfortable daytime layering under makeup.',
+            why_this_one: 'it points to lighter, smoother daytime layering instead of a richer cream finish',
+            price: { amount: 19, currency: 'USD', unknown: false },
+            matched_role_id: 'daily_sunscreen_finish_fit',
+            matched_role_label: 'Daily sunscreen with finish fit',
+            preferred_step: 'sunscreen',
+          },
+          {
+            product_id: 'spf_mineral_unseen',
+            display_name: 'Mineral Unseen Sunscreen SPF 40',
+            brand: 'Supergoop',
+            category: 'Sunscreen',
+            short_description: 'A sheer, weightless, scentless mineral sunscreen recommended for sensitive skin.',
+            why_this_one: 'it keeps the wear sheer and weightless while staying simpler for sensitive-skin daytime use',
+            price: { amount: 40, currency: 'USD', unknown: false },
+            matched_role_id: 'daily_sunscreen_finish_fit',
+            matched_role_label: 'Daily sunscreen with finish fit',
+            preferred_step: 'sunscreen',
+          },
+          {
+            product_id: 'spf_superscreen',
+            display_name: 'Superscreen Hydrating Daily Cream SPF 40',
+            brand: 'Supergoop',
+            category: 'Sunscreen',
+            short_description: 'A hydrating daily cream SPF with moisturizer-style hydration cues.',
+            why_this_one: 'it gives more daytime moisture from a creamier SPF texture, not just the lightest finish',
+            price: { amount: 48, currency: 'USD', unknown: false },
+            matched_role_id: 'daily_sunscreen_finish_fit',
+            matched_role_label: 'Daily sunscreen with finish fit',
+            preferred_step: 'sunscreen',
+          },
+        ],
+        roles: [
+          {
+            role_id: 'daily_sunscreen_finish_fit',
+            label: 'Daily sunscreen with finish fit',
+            preferred_step: 'sunscreen',
+            why_this_role: 'Use a daily sunscreen that layers cleanly under makeup.',
+          },
+        ],
+        recommendation_meta: {
+          resolved_target_step: 'sunscreen',
+          mainline_status: 'grounded_success',
+        },
+      },
+      {
+        primary_target_id: 'daily_sunscreen_finish_fit',
+        ranked_targets: [{ target_id: 'daily_sunscreen_finish_fit', resolved_target_step: 'sunscreen' }],
+        selected_target_ids: ['daily_sunscreen_finish_fit'],
+        resolved_target_step: 'sunscreen',
+      },
+    );
+    const prompt = __internal.buildRecoAssistantRewritePrompt({
+      payload,
+      language: 'EN',
+      profile: { skinType: 'combination', goals: ['smooth layering'] },
+      userRequestText: 'My daytime routine pills under makeup. What sunscreen should I buy?',
+      allowLockedSelectionRewrite: true,
+    });
+    const context = JSON.parse(prompt.match(/Context: (\{[\s\S]*\})$/)[1]);
+
+    assert.match(prompt, /If assistant_write_plan\.same_role_options is non-empty, use their tradeoff_note or reason_points to explain how they differ from the lead pick\./);
+    assert.match(prompt, /If target_label or selected_target_ids indicates daily_sunscreen_finish_fit, explain under-makeup wear, pilling risk, white-cast, fluid versus cream texture, or weightless versus richer finish before defaulting to UV-filter identity\./);
+    assert.match(
+      JSON.stringify(context.assistant_write_plan.same_role_options),
+      /mineral and sensitive-skin-oriented than the lead option/,
+    );
+    assert.match(
+      JSON.stringify(context.assistant_write_plan.same_role_options),
+      /richer and more moisturizing than the lead option/,
+    );
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('beauty mainline reco rows prefer role-grounded sunscreen copy over marketing-heavy seed narrative', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
