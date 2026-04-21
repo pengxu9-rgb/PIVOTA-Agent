@@ -287,6 +287,75 @@ function roleExpectsLowIrritationSupportProduct(role = null, preferredStep = '',
   return /\b(barrier|repair|soothing|calming|sensitive|retinoid|retinol|irritation|redness|reactive|no extra active|avoid active)\b/.test(contextText);
 }
 
+function roleExpectsDryBarrierRecoveryMoisturizer(role = null, preferredStep = '', targetContext = null) {
+  if (preferredStep !== 'moisturizer') return false;
+  const roleText = buildConcernRoleFitText(role);
+  const intentText = buildConcernTargetIntentText(targetContext);
+  const combined = `${roleText} ${intentText}`.trim();
+  if (!/\b(barrier|repair|soothing|sensitive|dry skin|tight skin|flaky)\b/i.test(combined)) return false;
+  return /\b(dry|tight|flak(?:e|y|ing)|retinoid|retinol|barrier|impaired|stinging|sensitive|no extra active|avoid active|repair|irritat|redness|post[- ]?cleanse)\b/i.test(
+    intentText,
+  );
+}
+
+function hasExplicitOilyComboPositioningSignal(text = '') {
+  return /\b(oily|combination|acne[- ]?prone|for oily skin|for combination skin|oil[- ]?control|shine[- ]?control)\b/i.test(String(text || ''));
+}
+
+function hasGelLightweightShapeSignal(text = '') {
+  return /\b(gel(?:[- ]?cream)?|water(?:[- ]?(?:gel|cream))|oil[- ]?free|non[- ]?greasy|lightweight|breathable|non[- ]?comedogenic)\b/i.test(
+    String(text || ''),
+  );
+}
+
+function hasDryBarrierRecoverySupportSignal(text = '') {
+  return /\b(dry skin|tight skin|flak(?:e|y|ing)|barrier repair|barrier support|barrier lipids?|panthenol|comfort|relief|rescue|soothing|calming|sensitive skin|retinoid dryness)\b/i.test(
+    String(text || ''),
+  );
+}
+
+function buildConcernTargetIntentText(targetContext = null) {
+  const semanticPlan = targetContext && typeof targetContext === 'object' ? targetContext.semantic_plan : null;
+  return [
+    targetContext?.request_text,
+    targetContext?.focus_text,
+    targetContext?.primary_concern,
+    targetContext?.concern,
+    semanticPlan?.primary_concern,
+    semanticPlan?.routine_mode,
+    semanticPlan?.comparison_mode,
+    ...(Array.isArray(semanticPlan?.must_satisfy_constraints) ? semanticPlan.must_satisfy_constraints : []),
+    ...(Array.isArray(semanticPlan?.evidence_needed) ? semanticPlan.evidence_needed : []),
+  ]
+    .map((value) => String(value || '').trim().toLowerCase())
+    .filter(Boolean)
+    .join(' ');
+}
+
+function roleExpectsPrimaryUnderMakeupSunscreen(role = null, preferredStep = '', targetContext = null) {
+  if (preferredStep !== 'sunscreen') return false;
+  const roleText = buildConcernRoleFitText(role);
+  const intentText = buildConcernTargetIntentText(targetContext);
+  const combined = `${roleText} ${intentText}`.trim();
+  if (!/\b(makeup|under makeup|pilling|layering|finish fit|smooth finish|white cast|greasy finish)\b/i.test(combined)) return false;
+  if (/\b(reapply|reapplication|touch[- ]?up|touchup|portable|commute|on[- ]the[- ]go|outdoor|outdoors|sweat|gym|beach|hike)\b/i.test(intentText)) {
+    return false;
+  }
+  return true;
+}
+
+function hasReapplicationPortableSunscreenSignal(text = '') {
+  return /\b(stick|sun stick|touch[- ]?up|touchup|reapply|reapplication|portable|on[- ]the[- ]go|mess[- ]?free|pocket|commute)\b/i.test(
+    String(text || ''),
+  );
+}
+
+function hasUnderMakeupFinishSunscreenSignal(text = '') {
+  return /\b(under makeup|makeup compatible|non[- ]?pilling|no pilling|smooth finish|invisible|fluid|serum sunscreen|lightweight|non[- ]?greasy|no white cast|layers? well)\b/i.test(
+    String(text || ''),
+  );
+}
+
 function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '', targetContext = null } = {}) {
   const roleId = String(role?.role_id || '').trim();
   if (!roleId) return null;
@@ -358,6 +427,15 @@ function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '
     && lowIrritationSupportExpected;
   const lowIrritationActiveMismatchApplied =
     lowIrritationRetinoidMismatchApplied || lowIrritationOfftargetActiveMismatchApplied;
+  const dryBarrierRecoveryExpected = roleExpectsDryBarrierRecoveryMoisturizer(role, preferredStep, targetContext);
+  const dryBarrierLightweightBiasMismatchApplied =
+    dryBarrierRecoveryExpected
+    && hasExplicitOilyComboPositioningSignal(candidateEvidenceText)
+    && hasGelLightweightShapeSignal(candidateEvidenceText);
+  const dryBarrierRecoverySupportBonusApplied =
+    dryBarrierRecoveryExpected
+    && hasDryBarrierRecoverySupportSignal(candidateEvidenceText)
+    && !dryBarrierLightweightBiasMismatchApplied;
   const eyeAreaRoleMismatchApplied =
     preferredStep === 'sunscreen'
     && hasEyeAreaProductSignal(candidateEvidenceText)
@@ -388,6 +466,15 @@ function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '
     preferredStep === 'sunscreen'
     && hasCoverageTintSignal(candidateEvidenceText)
     && !roleExplicitlyAllowsCoverageTint(role, targetContext);
+  const primaryUnderMakeupSunscreenExpected =
+    roleExpectsPrimaryUnderMakeupSunscreen(role, preferredStep, targetContext);
+  const sunscreenPortableReapplicationMismatchApplied =
+    primaryUnderMakeupSunscreenExpected
+    && hasReapplicationPortableSunscreenSignal(candidateEvidenceText);
+  const sunscreenUnderMakeupFinishBonusApplied =
+    primaryUnderMakeupSunscreenExpected
+    && hasUnderMakeupFinishSunscreenSignal(candidateEvidenceText)
+    && !sunscreenPortableReapplicationMismatchApplied;
 
   let score = 0;
   if (exactStep) score += preferredStep === 'treatment' ? 0.22 : 0.34;
@@ -412,6 +499,8 @@ function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '
   ) {
     score += 0.14;
   }
+  if (dryBarrierRecoverySupportBonusApplied) score += 0.12;
+  if (sunscreenUnderMakeupFinishBonusApplied) score += 0.1;
   if (treatmentSerumIngredientRescueApplied) score += 0.32;
   if (treatmentSerumActiveSemanticRescueApplied && !treatmentSerumIngredientRescueApplied) score += 0.08;
   // For routine-ready support slots, keep exact-step moisturizer/sunscreen matches viable
@@ -428,11 +517,13 @@ function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '
   }
   if (
     lowIrritationActiveMismatchApplied
+    || dryBarrierLightweightBiasMismatchApplied
     || eyeAreaRoleMismatchApplied
     || lightweightTextureMismatchApplied
     || lightweightMoisturizerFormFactorMismatchApplied
     || cosmeticFinishProductShapeMismatchApplied
     || sunscreenCoverageTintMismatchApplied
+    || sunscreenPortableReapplicationMismatchApplied
   ) {
     score = Math.min(score - 0.34, 0.38);
   }
@@ -449,12 +540,16 @@ function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '
     low_irritation_active_mismatch_applied: lowIrritationActiveMismatchApplied,
     low_irritation_retinoid_mismatch_applied: lowIrritationRetinoidMismatchApplied,
     low_irritation_offtarget_active_mismatch_applied: lowIrritationOfftargetActiveMismatchApplied,
+    dry_barrier_lightweight_bias_mismatch_applied: dryBarrierLightweightBiasMismatchApplied,
+    dry_barrier_recovery_support_bonus_applied: dryBarrierRecoverySupportBonusApplied,
     eye_area_role_mismatch_applied: eyeAreaRoleMismatchApplied,
     lightweight_texture_mismatch_applied: lightweightTextureMismatchApplied,
     lightweight_moisturizer_form_factor_mismatch_applied: lightweightMoisturizerFormFactorMismatchApplied,
     cosmetic_finish_product_shape_mismatch_applied: cosmeticFinishProductShapeMismatchApplied,
     lightweight_texture_evidence_missing_applied: lightweightTextureEvidenceMissingApplied,
     sunscreen_coverage_tint_mismatch_applied: sunscreenCoverageTintMismatchApplied,
+    sunscreen_portable_reapplication_mismatch_applied: sunscreenPortableReapplicationMismatchApplied,
+    sunscreen_under_makeup_finish_bonus_applied: sunscreenUnderMakeupFinishBonusApplied,
     treatment_serum_ingredient_rescue_applied: treatmentSerumIngredientRescueApplied,
     treatment_serum_active_semantic_rescue_applied: treatmentSerumActiveSemanticRescueApplied,
     fit_keyword_matches: fitKeywordMatches,
