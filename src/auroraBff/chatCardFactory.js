@@ -487,6 +487,105 @@ function buildRecommendationComparisonMode({ row, defaultComparisonMode = '', pe
   return 'routine_mix';
 }
 
+function normalizeRecommendationSemanticText(value) {
+  return asString(value).replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+function recommendationNeedsFinishFitTradeoff({ matchedRoleId = '', matchedRoleLabel = '', comparisonMode = '', peerCount = 0 } = {}) {
+  const roleText = `${asString(matchedRoleId).replace(/[_-]+/g, ' ')} ${asString(matchedRoleLabel).replace(/[_-]+/g, ' ')}`.trim().toLowerCase();
+  if (!roleText) return false;
+  const sunscreenRole = /\b(?:sunscreen|spf|uv)\b/.test(roleText);
+  const finishFitRole = /\b(?:finish fit|under makeup|makeup|layer(?:ing)?|pilling|smooth finish)\b/.test(roleText);
+  return sunscreenRole && (finishFitRole || comparisonMode === 'same_role_comparison' || peerCount > 1);
+}
+
+function looksLikeWeakRecommendationFinishFitCopy(value) {
+  const text = normalizeRecommendationSemanticText(value);
+  if (!text) return false;
+  const weakSignal =
+    /\b(?:uv filter cues?|modern organic uv filters?|mineral uv filters?|clear filter identity|reapplication expectations explicit|daily spf wear|daily sunscreen step|sun care use|daytime skin comfort)\b/.test(text);
+  const strongSignal =
+    /\b(?:under makeup|makeup|layer(?:ing)?|pilling|soft focus|soft-focus|blur|primer|weightless|sheer|fluid|watery|invisible|white cast|non greasy|non-greasy|fragrance-free|scentless|sensitive skin|cream format|cream texture|hydrating cream)\b/.test(text);
+  return weakSignal && !strongSignal;
+}
+
+function looksLikeGenericRecommendationFinishFitCopy(value) {
+  const text = normalizeRecommendationSemanticText(value);
+  if (!text) return false;
+  if (looksLikeWeakRecommendationFinishFitCopy(text)) return true;
+  if (/\b(?:soft[-\s]?focus|blur(?:ring)?|primer[-\s]?like|under makeup|makeup|weightless|sheer|sensitive skin|creamier|more moisturizing)\b/.test(text)) {
+    return false;
+  }
+  return /\b(?:lighter smoother daytime layering|lighter smoother layering|smoother daytime layering|daily spf cream with moisturizer style hydration cues|daily sunscreen built around|moisturizer style hydration cues|positioned for smoother daytime layering)\b/.test(text);
+}
+
+function looksLikeDescriptiveRecommendationFinishFitCopy(value) {
+  const text = normalizeRecommendationSemanticText(value);
+  if (!text) return false;
+  if (looksLikeWeakRecommendationFinishFitCopy(text) || looksLikeGenericRecommendationFinishFitCopy(text)) return false;
+  const hasExplicitTradeoff =
+    /\b(?:instead of|rather than|while keeping|while staying|leans more|leans richer|leans lighter|more mineral|more moisturizing|richer cream|cream spf base|lighter smoother|sensitive-skin-oriented|white-cast risk)\b/.test(text)
+    || /\b(?:it|this)\s+(?:keeps?|gives?|offers?|leans?|points?|works?|wears?|sits?|feels?|stays?)\b/.test(text);
+  if (hasExplicitTradeoff) return false;
+  const startsLikeDescriptor = /^(?:a|an|the)?\s*(?:sheer|weightless|scentless|mineral|hydrating|daily|soft[-\s]?focus|invisible|fragrance[-\s]?free|creamy|creamier|rich|richer|lightweight|airy)\b/.test(text);
+  const hasFinishFitProductCue = /\b(?:sunscreen|spf|daily cream|cream spf|cream-spf|mineral sunscreen)\b/.test(text);
+  return startsLikeDescriptor && hasFinishFitProductCue;
+}
+
+function buildRecommendationFinishFitSpecificWhy(row) {
+  const item = isPlainObject(row) ? row : {};
+  const texts = [
+    item.short_description,
+    item.shortDescription,
+    item.why_this_one,
+    item.whyThisOne,
+    item.description,
+    item.summary,
+    item.subtitle,
+    item.shopping_card && item.shopping_card.intro,
+    item.search_card && item.search_card.intro_candidate,
+    item.product_intel && item.product_intel.shopping_card && item.product_intel.shopping_card.intro,
+    item.product_intel && item.product_intel.search_card && item.product_intel.search_card.intro_candidate,
+    item.product_intel && item.product_intel.product_intel_core && item.product_intel.product_intel_core.what_it_is && item.product_intel.product_intel_core.what_it_is.body,
+    item.pivota_insights && item.pivota_insights.what_it_is,
+    ...(Array.isArray(item.key_features) ? item.key_features : []),
+    ...(Array.isArray(item.keyFeatures) ? item.keyFeatures : []),
+    ...(Array.isArray(item.compare_highlights) ? item.compare_highlights : []),
+  ]
+    .map((value) => asString(value))
+    .filter(Boolean)
+    .join(' ');
+  if (!texts) return '';
+
+  const hasSoftFocus = /\b(?:soft[-\s]?focus|blur(?:ring)?|primer[-\s]?like)\b/i.test(texts);
+  const hasLayering = /\b(?:under makeup|makeup|layer(?:ing)?|non[-\s]?pilling|no pilling|pilling)\b/i.test(texts);
+  const hasWeightless = /\b(?:weightless|lightweight|airy|fluid|watery|water[-\s]?fit|invisible|non[-\s]?greasy|sheer)\b/i.test(texts);
+  const hasMineralCue = /\b(?:mineral|zinc oxide|titanium dioxide)\b/i.test(texts);
+  const hasWhiteCastCue = /\b(?:no white cast|white cast[-\s]?free|lower white[-\s]?cast|invisible)\b/i.test(texts);
+  const hasSensitiveCue = /\b(?:sensitive skin|scentless|fragrance[-\s]?free|bisabolol|ectoin)\b/i.test(texts);
+  const hasCreamierCue = /\b(?:hydrating daily cream|hydrating cream|cream format|cream texture|moisturizer[-\s]?style hydration|moisturizer[-\s]?format|cream-spf|cream spf)\b/i.test(texts);
+
+  if (hasCreamierCue) {
+    return 'it gives a richer cream-SPF base when you want more cushioning under makeup, not just the lightest finish';
+  }
+  if (hasMineralCue && (hasSensitiveCue || hasWeightless || hasWhiteCastCue)) {
+    return 'it gives a more mineral, sensitive-skin-oriented option while keeping the finish sheer and weightless';
+  }
+  if (hasSoftFocus || (hasLayering && hasWeightless)) {
+    return 'it points to lighter, smoother daytime layering instead of a richer cream finish';
+  }
+  if (hasWeightless && hasSensitiveCue) {
+    return 'it gives a more mineral, sensitive-skin-oriented option while keeping the finish sheer and weightless';
+  }
+  if (hasWhiteCastCue) {
+    return 'it points to cleaner daytime wear with lower white-cast risk';
+  }
+  if (hasLayering) {
+    return 'it is positioned for smoother daytime layering';
+  }
+  return '';
+}
+
 const RECOMMENDATION_CARD_CONCERN_FAMILY_PATTERNS = Object.freeze([
   ['oil_control', /\b(oil|oily|oiliness|shine|sebum|greasy|mattif|zinc\s*pca|zinc|oil[-\s]?control)\b/i],
   ['tone_brightening', /\b(dull(?:ness)?|uneven\s+tone|dark\s+spots?|hyperpigmentation|post[-\s]?(?:acne|breakout)\s+marks?|brighten(?:ing)?|radiance|radiant|glow(?:ing)?|improv(?:e|es|ing)\s+(?:the\s+look\s+of\s+)?skin\s+tone|even(?:s|ing)?\s+skin\s+tone)\b/i],
@@ -823,7 +922,7 @@ function normalizeRecommendationProductCard(raw, options = {}) {
     asString(row.matchedRoleLabel) ||
     asString(roleLabelById.get(matchedRoleId)) ||
     humanizeRoleId(matchedRoleId);
-  const whyThisOne = neutralizeVisibleRecommendationCardCopy(pickTargetAlignedRecommendationCardCopy(
+  const baseWhyThisOne = neutralizeVisibleRecommendationCardCopy(pickTargetAlignedRecommendationCardCopy(
     [
       row.why_this_one,
       row.whyThisOne,
@@ -842,6 +941,23 @@ function normalizeRecommendationProductCard(raw, options = {}) {
       ].join(' '),
     },
   ));
+  const finishFitSpecificWhy = recommendationNeedsFinishFitTradeoff({
+    matchedRoleId,
+    matchedRoleLabel,
+    comparisonMode,
+    peerCount,
+  })
+    ? buildRecommendationFinishFitSpecificWhy(row)
+    : '';
+  const whyThisOne = finishFitSpecificWhy
+    && (
+      !baseWhyThisOne
+      || looksLikeWeakRecommendationFinishFitCopy(baseWhyThisOne)
+      || looksLikeGenericRecommendationFinishFitCopy(baseWhyThisOne)
+      || looksLikeDescriptiveRecommendationFinishFitCopy(baseWhyThisOne)
+    )
+    ? finishFitSpecificWhy
+    : baseWhyThisOne;
   const selfKey = recommendationProductIdentityKey(row);
   const sameRoleCandidates = matchedRoleId
     ? asRecordArray(peerCandidatesByRoleId.get(matchedRoleId), 12).filter((candidate) => {

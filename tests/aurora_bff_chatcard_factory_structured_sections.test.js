@@ -813,6 +813,65 @@ describe('aurora chatCardFactory structured sections for adapter inputs', () => 
     ]);
   });
 
+  test('recommendations card rewrites finish-fit same-slot why copy into shopper tradeoffs', () => {
+    const cards = mapLegacyCardToSpecCards(
+      {
+        type: 'recommendations',
+        card_id: 'legacy_recommendations_finish_fit_tradeoffs',
+        payload: {
+          recommendation_meta: {
+            selected_target_ids: ['daily_sunscreen_finish_fit'],
+            ranked_targets: [
+              {
+                target_id: 'daily_sunscreen_finish_fit',
+                target_label: 'Daily sunscreen with finish fit',
+              },
+            ],
+          },
+          recommendations: [
+            {
+              product_id: 'prod_unseen',
+              merchant_id: 'external_seed',
+              brand: 'Supergoop',
+              name: 'Unseen Sunscreen SPF 50',
+              matched_role_id: 'daily_sunscreen_finish_fit',
+              matched_role_label: 'Daily sunscreen with finish fit',
+              short_description: 'A daily sunscreen built around soft-focus powders for comfortable daytime layering under makeup.',
+              why_this_one: 'it points to lighter, smoother daytime layering instead of a richer cream finish',
+            },
+            {
+              product_id: 'prod_mineral_unseen',
+              merchant_id: 'external_seed',
+              brand: 'Supergoop',
+              name: 'Mineral Unseen Sunscreen SPF 40',
+              matched_role_id: 'daily_sunscreen_finish_fit',
+              matched_role_label: 'Daily sunscreen with finish fit',
+              short_description: 'Sheer, weightless, scentless mineral sunscreen that’s recommended for sensitive skin.',
+              why_this_one: 'Sheer, weightless, scentless mineral sunscreen that’s recommended for sensitive skin.',
+            },
+            {
+              product_id: 'prod_superscreen',
+              merchant_id: 'external_seed',
+              brand: 'Supergoop',
+              name: 'Superscreen Hydrating Daily Cream SPF 40',
+              matched_role_id: 'daily_sunscreen_finish_fit',
+              matched_role_label: 'Daily sunscreen with finish fit',
+              short_description: 'A hydrating daily cream SPF with moisturizer-style hydration cues.',
+              why_this_one: 'Daily SPF cream with moisturizer-style hydration cues.',
+            },
+          ],
+        },
+      },
+      { requestId: 'req_card_factory_finish_fit_tradeoffs', language: 'EN', index: 0 },
+    );
+
+    const products = cards[0].payload.sections[0].products;
+    expect(products[0].why_this_one).toMatch(/lighter, smoother daytime layering/i);
+    expect(products[1].why_this_one).toMatch(/more mineral|sensitive-skin-oriented|sheer and weightless/i);
+    expect(products[1].why_this_one).not.toMatch(/^Sheer, weightless, scentless mineral sunscreen/i);
+    expect(products[2].why_this_one).toMatch(/richer cream-spf base|cushioning under makeup|lightest finish/i);
+  });
+
   test('offers_resolved shares the rich product row contract and mirrors it into payload.sections', () => {
     const cards = mapLegacyCardToSpecCards(
       {
