@@ -55991,6 +55991,7 @@ function buildCompactRecoAssistantPromptLines({
   retryInstruction = null,
   strictSelectedOnlyContext = false,
   allowPriceComparisonHints = true,
+  enforceFinishFitPrimerCalibration = false,
 } = {}) {
   const lines = [
     'Return strict JSON only.',
@@ -56011,6 +56012,9 @@ function buildCompactRecoAssistantPromptLines({
     'When reviewed_insight_available is false, avoid clinical/review/social-proof language; treat evidence as seller/product-record copy.',
     'Compact retry mode: keep the answer tight, prioritize the selected product evidence, and skip optional background detail.',
   ];
+  if (enforceFinishFitPrimerCalibration) {
+    lines.push('Do not say sunscreen doubles as a primer; turn soft-focus or primer-like cues into smoother under-makeup wear or a softer-focus finish.');
+  }
   if (!strictSelectedOnlyContext) {
     lines.push('Append Context.refinement_question once as the final question when present.');
   }
@@ -56066,6 +56070,7 @@ function buildStructuredRecoAssistantReasonPromptLines({
   selectedProductRoleMix = 'single_product',
   retryInstruction = null,
   allowPriceComparisonHints = true,
+  enforceFinishFitPrimerCalibration = false,
 } = {}) {
   const lines = [
     'Return strict JSON only.',
@@ -56088,6 +56093,9 @@ function buildStructuredRecoAssistantReasonPromptLines({
     'When reviewed_insight_available is false, do not use clinical, dermatologist, review, community, or social-proof claim language.',
     'Price may be included only when Context provides price_label or price_order_summary, and it must be paired with a non-price fit reason.',
   ];
+  if (enforceFinishFitPrimerCalibration) {
+    lines.push('Do not claim a sunscreen doubles as, acts as, works as, or serves as a primer; translate soft-focus or primer-like cues into smoother under-makeup wear, a softer-focus finish, or primer-like finish language without implying it replaces a primer.');
+  }
   if (requestMode === 'buy') {
     lines.push('Use buy/pick rationale, but do not include buy wording that depends on product names.');
   } else if (requestMode === 'use_first') {
@@ -56136,6 +56144,9 @@ function describeRecoAssistantRewriteFailureReason(reason) {
   }
   if (normalized === 'rewrite_vague_benefit_language') {
     return 'Replace vague benefit language with concrete product-specific evidence from Context.';
+  }
+  if (normalized === 'rewrite_unsupported_primer_equivalence') {
+    return 'Do not say a sunscreen doubles as, acts as, or works as a primer. Rephrase that evidence as smoother under-makeup wear, a softer-focus finish, or primer-like finish language only when Context supports it.';
   }
   if (normalized === 'rewrite_tautological_reason') {
     return 'Do not use tautological reason clauses like "directly fits the request"; cite concrete formula, ingredient, texture, finish, price, or use-case evidence from Context.';
@@ -56246,6 +56257,18 @@ function buildRecoAssistantRewritePrompt({
       pickFirstTrimmed(primaryTarget && primaryTarget.resolved_target_step, payload?.recommendation_meta?.resolved_target_step, 'other'),
       lang,
     ),
+  );
+  const finishFitPrimerCalibration = recoRoleNeedsFinishFitNarrative(
+    [
+      primaryTargetLabel,
+      ...selectedTargetIds,
+      ...recommendations.map((item) => pickFirstTrimmed(
+        item?.matched_role_label,
+        item?.matchedRoleLabel,
+        item?.matched_role_id,
+        item?.matchedRoleId,
+      )),
+    ].filter(Boolean).join(' '),
   );
   const selectedProductDetailsBase = recommendations.map((item) => {
     const matchedRoleId = pickFirstTrimmed(item.matched_role_id, item.matchedRoleId);
@@ -56617,6 +56640,7 @@ function buildRecoAssistantRewritePrompt({
       selectedProductRoleMix,
       retryInstruction,
       allowPriceComparisonHints: priceComparisonRequested,
+      enforceFinishFitPrimerCalibration: finishFitPrimerCalibration,
     })
     : compactContext
     ? buildCompactRecoAssistantPromptLines({
@@ -56625,6 +56649,7 @@ function buildRecoAssistantRewritePrompt({
       retryInstruction,
       strictSelectedOnlyContext,
       allowPriceComparisonHints: priceComparisonRequested,
+      enforceFinishFitPrimerCalibration: finishFitPrimerCalibration,
     })
     : [
       'Return strict JSON only.',
@@ -56701,6 +56726,7 @@ function buildRecoAssistantRewritePrompt({
       'If secondary targets exist, mention them briefly and explicitly as secondary.',
       'If confidence_level is low, keep the wording conservative and non-definitive.',
       'Use plain shopper-facing skincare language. Avoid vague phrases like "surface activity".',
+      'Do not say a sunscreen doubles as, acts as, works as, or serves as a primer. If Context has soft-focus or primer-like cues, restate them as smoother under-makeup wear, a softer-focus finish, or primer-like finish language without implying the product replaces a primer.',
       'Avoid generic filler like "great choice", "balanced complexion", or "solution for oiliness".',
       'Do not add unsupported benefits like pore-minimizing unless they already appear in Context.',
       'Do not mention "Direction 1/2/3", generic shopping filler, or any product not in selected_products.',
@@ -56900,6 +56926,27 @@ function assistantTextUsesFutureRoutineUpsell(text) {
 
 function assistantTextUsesVagueRecoBenefitLanguage(text) {
   return /\bsurface activity\b/i.test(String(text || ''));
+}
+
+function assistantTextUsesUnsupportedPrimerEquivalence(text, {
+  payload = null,
+  primaryTarget = null,
+} = {}) {
+  const raw = String(text || '').trim();
+  if (!/\bprimer\b/i.test(raw)) return false;
+  const targetText = [
+    primaryTarget && primaryTarget.target_id,
+    primaryTarget && primaryTarget.ingredient_query,
+    primaryTarget && primaryTarget.resolved_target_step,
+    ...(Array.isArray(payload?.recommendations) ? payload.recommendations : []).map((item) => [
+      pickFirstTrimmed(item?.matched_role_id, item?.matchedRoleId),
+      pickFirstTrimmed(item?.matched_role_label, item?.matchedRoleLabel),
+      pickFirstTrimmed(item?.preferred_step, item?.preferredStep),
+    ].filter(Boolean).join(' ')),
+  ].filter(Boolean).join(' ');
+  if (!recoRoleNeedsFinishFitNarrative(targetText)) return false;
+  return /\b(?:double(?:s|d|ing)?|act(?:s|ed|ing)?|work(?:s|ed|ing)?|serve(?:s|d|ing)?|function(?:s|ed|ing)?)\s+as\s+(?:an?\s+)?primer\b/i.test(raw)
+    || /\b(?:is|feels|wears)\s+like\s+(?:an?\s+)?primer\b/i.test(raw);
 }
 
 function assistantTextUsesTautologicalRecoReason(text) {
@@ -57240,6 +57287,10 @@ function validateRecoAssistantRewriteCandidate({
     && !selectedProductRoutineMix
     && assistantTextUsesFutureRoutineUpsell(text);
   const usesVagueBenefitLanguage = assistantTextUsesVagueRecoBenefitLanguage(text);
+  const usesUnsupportedPrimerEquivalence = assistantTextUsesUnsupportedPrimerEquivalence(text, {
+    payload,
+    primaryTarget,
+  });
   const usesTautologicalReason = assistantTextUsesTautologicalRecoReason(text);
   const usesOffTargetConcernClaim = assistantTextUsesOffTargetRecoConcern(text, {
     payload,
@@ -57273,6 +57324,7 @@ function validateRecoAssistantRewriteCandidate({
     || mentionsUnselectedCandidate
     || buyUsesRoutineUpsell
     || usesVagueBenefitLanguage
+    || usesUnsupportedPrimerEquivalence
     || usesTautologicalReason
     || usesTemplatedRoutineBridge
     || usesStiffSelectionFraming
@@ -57294,6 +57346,7 @@ function validateRecoAssistantRewriteCandidate({
     if (mentionsUnselectedCandidate) return { ok: false, reason: 'rewrite_mentions_unselected_product' };
     if (buyUsesRoutineUpsell) return { ok: false, reason: 'rewrite_buy_addon_filler' };
     if (usesVagueBenefitLanguage) return { ok: false, reason: 'rewrite_vague_benefit_language' };
+    if (usesUnsupportedPrimerEquivalence) return { ok: false, reason: 'rewrite_unsupported_primer_equivalence' };
     if (usesTautologicalReason) return { ok: false, reason: 'rewrite_tautological_reason' };
     if (usesTemplatedRoutineBridge) return { ok: false, reason: 'rewrite_templated_routine_bridge' };
     if (usesStiffSelectionFraming) return { ok: false, reason: 'rewrite_stiff_selection_framing' };
@@ -57329,6 +57382,7 @@ function shouldRetryRecoAssistantRewrite(reason) {
     || normalized === 'rewrite_ungrammatical_reason_fragment'
     || normalized === 'rewrite_mentions_unselected_product'
     || normalized === 'rewrite_off_target_concern_claim'
+    || normalized === 'rewrite_unsupported_primer_equivalence'
     || normalized === 'rewrite_reasks_known_profile_field'
     || normalized === 'rewrite_unexpected_refinement_question'
     || normalized === 'rewrite_missing_refinement_question'
@@ -57464,6 +57518,21 @@ function normalizeRecoAssistantReasonFragment(value, {
   }
   text = text
     .replace(/[“”"]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  text = text
+    .replace(
+      /\b(?:double(?:s|d|ing)?|act(?:s|ed|ing)?|work(?:s|ed|ing)?|serve(?:s|d|ing)?|function(?:s|ed|ing)?)\s+as\s+(?:an?\s+)?primer\s+to\s+support\s+smoother\s+(?:daytime\s+)?layering\s+under\s+makeup\b/ig,
+      'supports smoother daytime layering under makeup',
+    )
+    .replace(
+      /\b(?:double(?:s|d|ing)?|act(?:s|ed|ing)?|work(?:s|ed|ing)?|serve(?:s|d|ing)?|function(?:s|ed|ing)?)\s+as\s+(?:an?\s+)?primer\b/ig,
+      'supports smoother wear under makeup',
+    )
+    .replace(
+      /\b(?:is|feels|wears)\s+like\s+(?:an?\s+)?primer\b/ig,
+      'has a more primer-like finish',
+    )
     .replace(/\s+/g, ' ')
     .trim();
   const directBuyForOnlyRegex = new RegExp(`^(?:it\\s+is\\s+|is\\s+)?(?:(?:your|the)\\s+)?${directBuyFramingPattern}\\s+(?:for|to)\\s+`, 'i');
@@ -57636,7 +57705,7 @@ function buildRecoAssistantEvidenceSynthesisReason(detail = {}, { targetLabel = 
 
   const finishClaims = [];
   const isFinishFitTarget = recoRoleNeedsFinishFitNarrative(targetLabel);
-  if (/\b(soft[-\s]?focus|blur(?:ring)?|primer[-\s]?like)\b/i.test(allText)) finishClaims.push('softer, primer-like wear');
+  if (/\b(soft[-\s]?focus|blur(?:ring)?|primer[-\s]?like)\b/i.test(allText)) finishClaims.push('a softer-focus finish for smoother under-makeup wear');
   if (/\binvisible\b/i.test(allText)) finishClaims.push('an invisible finish');
   if (/\b(no\s+white\s+cast|white\s+cast[-\s]?free)\b/i.test(allText)) finishClaims.push('low white-cast wear');
   if (/\b(makeup|layer(?:ing)?|under\s+makeup|heavy\s+layering|pilling)\b/i.test(allText)) finishClaims.push('makeup-friendly layering');

@@ -262,6 +262,7 @@ test('reco assistant rewrite prompt carries finish-fit same-slot tradeoff notes 
     assert.match(prompt, /If assistant_write_plan\.same_role_options is non-empty, use their tradeoff_note or reason_points to explain how they differ from the lead pick\./);
     assert.match(prompt, /If target_label or selected_target_ids indicates daily_sunscreen_finish_fit, explain under-makeup wear, pilling risk, white-cast, fluid versus cream texture, or weightless versus richer finish before defaulting to UV-filter identity\./);
     assert.match(prompt, /default to wear, texture, finish, and formula tradeoffs; do not mention price, affordability, or higher\/lower-priced language unless the user explicitly asked for it\./);
+    assert.match(prompt, /Do not say a sunscreen doubles as, acts as, works as, or serves as a primer\./);
     assert.match(
       JSON.stringify(context.assistant_write_plan.same_role_options),
       /more mineral, sensitive-skin-oriented option while keeping a sheer, weightless finish/,
@@ -3200,7 +3201,147 @@ test('reco assistant structured renderer compares finish-fit sunscreen options w
     assert.doesNotMatch(text, /sheer, weightless, scentless mineral sunscreen recommended/i);
     assert.doesNotMatch(text, /hydrating daily cream spf with moisturizer-style hydration cues/i);
     assert.doesNotMatch(text, /daily sunscreen with finish fit/i);
+    assert.doesNotMatch(text, /(?:doubles?|acts?|works?|serves?) as (?:an? )?primer/i);
     assert.match(text, /wears more smoothly under makeup|under makeup/i);
+    assert.equal(validation.ok, true);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('reco assistant validator rejects unsupported primer-equivalence claims for finish-fit sunscreen copy', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const payload = __internal.applyRecoContentSpineToPayload(
+      {
+        recommendations: [
+          {
+            product_id: 'spf_unseen',
+            display_name: 'Unseen Sunscreen SPF 50',
+            brand: 'Supergoop',
+            category: 'Sunscreen',
+            short_description: 'A weightless sunscreen with soft-focus wear for smoother daytime layering under makeup.',
+            why_this_one: 'it points to lighter, smoother daytime layering instead of a richer cream finish',
+            matched_role_id: 'daily_sunscreen_finish_fit',
+            matched_role_label: 'Daily sunscreen with finish fit',
+            preferred_step: 'sunscreen',
+          },
+        ],
+        roles: [
+          {
+            role_id: 'daily_sunscreen_finish_fit',
+            label: 'Daily sunscreen with finish fit',
+            preferred_step: 'sunscreen',
+            why_this_role: 'Use a daily sunscreen that layers cleanly under makeup.',
+          },
+        ],
+        recommendation_meta: {
+          resolved_target_step: 'sunscreen',
+          mainline_status: 'grounded_success',
+        },
+      },
+      {
+        ingredient_query: 'Daily sunscreen with finish fit',
+        resolved_target_step: 'sunscreen',
+        primary_target_id: 'daily_sunscreen_finish_fit',
+        ranked_targets: [
+          {
+            target_id: 'daily_sunscreen_finish_fit',
+            ingredient_query: 'Daily sunscreen with finish fit',
+            resolved_target_step: 'sunscreen',
+          },
+        ],
+        selected_target_ids: ['daily_sunscreen_finish_fit'],
+      },
+    );
+    const primaryTarget = payload.recommendation_meta.ranked_targets[0];
+    const validation = __internal.validateRecoAssistantRewriteCandidate({
+      candidateText: 'Unseen Sunscreen SPF 50 fits this request because it is a weightless, scentless formula that doubles as a primer to support smoother daytime layering under makeup.',
+      payload,
+      language: 'EN',
+      primaryTarget,
+      secondaryTargets: [],
+      names: ['Unseen Sunscreen SPF 50'],
+      requestMode: 'buy',
+    });
+
+    assert.equal(validation.ok, false);
+    assert.equal(validation.reason, 'rewrite_unsupported_primer_equivalence');
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('reco assistant structured renderer downgrades primer-equivalence wording into under-makeup wear language', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const payload = __internal.applyRecoContentSpineToPayload(
+      {
+        recommendations: [
+          {
+            product_id: 'spf_unseen',
+            display_name: 'Unseen Sunscreen SPF 50',
+            brand: 'Supergoop',
+            category: 'Sunscreen',
+            short_description: 'A weightless sunscreen with soft-focus wear for smoother daytime layering under makeup.',
+            why_this_one: 'it points to lighter, smoother daytime layering instead of a richer cream finish',
+            matched_role_id: 'daily_sunscreen_finish_fit',
+            matched_role_label: 'Daily sunscreen with finish fit',
+            preferred_step: 'sunscreen',
+          },
+        ],
+        roles: [
+          {
+            role_id: 'daily_sunscreen_finish_fit',
+            label: 'Daily sunscreen with finish fit',
+            preferred_step: 'sunscreen',
+            why_this_role: 'Use a daily sunscreen that layers cleanly under makeup.',
+          },
+        ],
+        recommendation_meta: {
+          resolved_target_step: 'sunscreen',
+          mainline_status: 'grounded_success',
+        },
+      },
+      {
+        ingredient_query: 'Daily sunscreen with finish fit',
+        resolved_target_step: 'sunscreen',
+        primary_target_id: 'daily_sunscreen_finish_fit',
+        ranked_targets: [
+          {
+            target_id: 'daily_sunscreen_finish_fit',
+            ingredient_query: 'Daily sunscreen with finish fit',
+            resolved_target_step: 'sunscreen',
+          },
+        ],
+        selected_target_ids: ['daily_sunscreen_finish_fit'],
+      },
+    );
+    const primaryTarget = payload.recommendation_meta.ranked_targets[0];
+    const text = __internal.renderRecoAssistantStructuredReasonRewrite({
+      structuredReason: {
+        lead_reason: 'it is a weightless, scentless formula that doubles as a primer to support smoother daytime layering under makeup',
+        support_reasons: [],
+      },
+      payload,
+      language: 'EN',
+      primaryTarget,
+      names: ['Unseen Sunscreen SPF 50'],
+      requestMode: 'buy',
+      selectedProductRoleMix: 'single_product',
+    });
+    const validation = __internal.validateRecoAssistantRewriteCandidate({
+      candidateText: text,
+      payload,
+      language: 'EN',
+      primaryTarget,
+      secondaryTargets: [],
+      names: ['Unseen Sunscreen SPF 50'],
+      requestMode: 'buy',
+    });
+
+    assert.doesNotMatch(text, /(?:doubles?|acts?|works?|serves?) as (?:an? )?primer/i);
+    assert.match(text, /smoother (?:daytime )?layering under makeup|under-makeup wear|under makeup/i);
     assert.equal(validation.ok, true);
   } finally {
     delete require.cache[moduleId];
