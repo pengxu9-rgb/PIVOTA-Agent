@@ -96,6 +96,71 @@ function buildBarrierMoisturizerRole() {
   };
 }
 
+function buildHydratingBarrierMoisturizerRole() {
+  return {
+    role_id: 'hydrating_barrier_moisturizer',
+    rank: 1,
+    preferred_step: 'moisturizer',
+    label: 'Hydrating barrier moisturizer',
+    fit_keywords: ['hydrating', 'barrier repair', 'ceramide', 'dry skin', 'soothing'],
+    query_terms: ['hydrating moisturizer dry skin', 'barrier repair moisturizer', 'ceramide cream sensitive skin'],
+    ingredient_hypotheses: ['Ceramide NP', 'Panthenol', 'Glycerin', 'Squalane'],
+    product_type_hypotheses: ['moisturizer', 'cream', 'lotion'],
+  };
+}
+
+function buildDailySunscreenFinishFitRole() {
+  return {
+    role_id: 'daily_sunscreen_finish_fit',
+    rank: 1,
+    preferred_step: 'sunscreen',
+    label: 'Daily sunscreen with finish fit',
+    fit_keywords: ['under makeup', 'lightweight', 'non-greasy', 'no white cast', 'invisible', 'fluid', 'matte'],
+    query_terms: ['sunscreen under makeup', 'invisible fluid sunscreen', 'non greasy sunscreen'],
+    ingredient_hypotheses: ['UV filters'],
+    product_type_hypotheses: ['sunscreen', 'fluid'],
+  };
+}
+
+function buildDryBarrierTargetContext() {
+  return {
+    request_text: 'My skin feels dry and tight after washing. What product should I use first?',
+    primary_concern: 'barrier_support',
+    semantic_plan: {
+      primary_concern: 'dry tight barrier support',
+      comparison_mode: 'same_role_comparison',
+      must_satisfy_constraints: ['dry tight skin', 'low irritation', 'use first'],
+    },
+    framework_roles: [buildHydratingBarrierMoisturizerRole()],
+  };
+}
+
+function buildUnderMakeupSunscreenTargetContext() {
+  return {
+    request_text: 'Based on my routine, what should I buy for daytime so my makeup stops pilling?',
+    primary_concern: 'daily_sunscreen_finish_fit',
+    semantic_plan: {
+      primary_concern: 'under makeup sunscreen fit',
+      comparison_mode: 'same_role_comparison',
+      must_satisfy_constraints: ['daytime makeup layering', 'under makeup finish', 'avoid pilling'],
+    },
+    framework_roles: [buildDailySunscreenFinishFitRole(), buildLayeringMoisturizerRole()],
+  };
+}
+
+function buildReapplicationSunscreenTargetContext() {
+  return {
+    request_text: 'I need a sunscreen stick that is easy to reapply on the go during my commute.',
+    primary_concern: 'daily_sunscreen_finish_fit',
+    semantic_plan: {
+      primary_concern: 'portable sunscreen reapplication',
+      comparison_mode: 'same_role_comparison',
+      must_satisfy_constraints: ['portable reapplication', 'commute friendly'],
+    },
+    framework_roles: [buildDailySunscreenFinishFitRole()],
+  };
+}
+
 test('treatment role rescues serum candidate with paired oil-control actives', () => {
   const score = scoreConcernRoleCandidate(
     {
@@ -502,4 +567,100 @@ test('layering moisturizer role stays viable when lightweight lotion evidence is
   assert.ok(score);
   assert.equal(score?.lightweight_texture_evidence_missing_applied, false);
   assert.ok(Number(score?.score || 0) >= 0.58);
+});
+
+test('hydrating barrier moisturizer prefers dry-barrier repair cream over oily gel cream in dry retinoid context', () => {
+  const role = buildHydratingBarrierMoisturizerRole();
+  const targetContext = buildDryBarrierTargetContext();
+
+  const oilyGelScore = scoreConcernRoleCandidate(
+    {
+      title: 'Hydrating Dewy Gel Cream',
+      retrieval_role_id: 'hydrating_barrier_moisturizer',
+    },
+    role,
+    {
+      candidateStep: 'moisturizer',
+      targetContext,
+      candidateText:
+        'Hydrating Dewy Gel Cream moisturizer with hyaluronic acid and ceramides in a lightweight non-comedogenic gel-cream for oily or combination skin.',
+    },
+  );
+  const barrierCreamScore = scoreConcernRoleCandidate(
+    {
+      title: 'Soybean Panthenol Cream',
+      retrieval_role_id: 'hydrating_barrier_moisturizer',
+    },
+    role,
+    {
+      candidateStep: 'moisturizer',
+      targetContext,
+      candidateText:
+        'Soybean Panthenol Cream barrier repair moisturizer with panthenol, calming extracts, and barrier lipids for dry or tight skin comfort.',
+    },
+  );
+
+  assert.ok(oilyGelScore);
+  assert.ok(barrierCreamScore);
+  assert.equal(oilyGelScore?.dry_barrier_lightweight_bias_mismatch_applied, true);
+  assert.equal(barrierCreamScore?.dry_barrier_recovery_support_bonus_applied, true);
+  assert.ok(Number(barrierCreamScore?.score || 0) > Number(oilyGelScore?.score || 0));
+});
+
+test('daily sunscreen finish-fit prefers first-wear fluid sunscreen over portable stick in makeup-pilling context', () => {
+  const role = buildDailySunscreenFinishFitRole();
+  const targetContext = buildUnderMakeupSunscreenTargetContext();
+
+  const stickScore = scoreConcernRoleCandidate(
+    {
+      title: 'Daily Soothing Sun Shield SPF50+ PA++++ Stick',
+      retrieval_role_id: 'daily_sunscreen_finish_fit',
+    },
+    role,
+    {
+      candidateStep: 'sunscreen',
+      targetContext,
+      candidateText:
+        'Daily Soothing Sun Shield SPF50+ PA++++ sunscreen stick for quick midday touchups and mess-free reapplication.',
+    },
+  );
+  const fluidScore = scoreConcernRoleCandidate(
+    {
+      title: 'Invisible Fluid SPF 50',
+      retrieval_role_id: 'daily_sunscreen_finish_fit',
+    },
+    role,
+    {
+      candidateStep: 'sunscreen',
+      targetContext,
+      candidateText:
+        'Invisible Fluid SPF 50 lightweight sunscreen fluid that layers smoothly under makeup with no white cast.',
+    },
+  );
+
+  assert.ok(stickScore);
+  assert.ok(fluidScore);
+  assert.equal(stickScore?.sunscreen_portable_reapplication_mismatch_applied, true);
+  assert.equal(fluidScore?.sunscreen_under_makeup_finish_bonus_applied, true);
+  assert.ok(Number(fluidScore?.score || 0) > Number(stickScore?.score || 0));
+});
+
+test('daily sunscreen finish-fit keeps portable stick viable when the user explicitly asked for reapplication convenience', () => {
+  const score = scoreConcernRoleCandidate(
+    {
+      title: 'Daily Soothing Sun Shield SPF50+ PA++++ Stick',
+      retrieval_role_id: 'daily_sunscreen_finish_fit',
+    },
+    buildDailySunscreenFinishFitRole(),
+    {
+      candidateStep: 'sunscreen',
+      targetContext: buildReapplicationSunscreenTargetContext(),
+      candidateText:
+        'Daily Soothing Sun Shield SPF50+ PA++++ sunscreen stick for quick midday touchups and mess-free reapplication.',
+    },
+  );
+
+  assert.ok(score);
+  assert.equal(score?.sunscreen_portable_reapplication_mismatch_applied, false);
+  assert.ok(Number(score?.score || 0) >= 0.52);
 });
