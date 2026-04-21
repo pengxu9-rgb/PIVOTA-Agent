@@ -22444,11 +22444,35 @@ async function runBeautyMainlineLocalHandoffSearch({
     ...(collectedBase && typeof collectedBase === 'object' && !Array.isArray(collectedBase) ? collectedBase : {}),
     localHandoffStageSummary,
   };
-  const selectedProducts = Array.isArray(collected?.candidateState?.selected_recommendations)
+  let effectiveCandidateState =
+    collected?.candidateState && typeof collected.candidateState === 'object' && !Array.isArray(collected.candidateState)
+      ? collected.candidateState
+      : null;
+  if (
+    isFrameworkLocalHandoff
+    && Array.isArray(effectiveCandidateState?.viable_candidate_pool)
+    && effectiveCandidateState.viable_candidate_pool.length > 1
+  ) {
+    const hydratedFrameworkPool = await hydrateRecoCandidatesProductIntelFromKb(effectiveCandidateState.viable_candidate_pool);
+    const rerankedFrameworkState = finalizeConcernFrameworkCandidatePools(hydratedFrameworkPool, { targetContext });
+    if (Array.isArray(rerankedFrameworkState?.selected_recommendations) && rerankedFrameworkState.selected_recommendations.length > 0) {
+      effectiveCandidateState = mergeConcernFrameworkRerankedState(
+        effectiveCandidateState,
+        rerankedFrameworkState,
+        { candidateCount: hydratedFrameworkPool.length },
+      );
+    }
+  }
+  const selectedProducts = Array.isArray(effectiveCandidateState?.selected_recommendations)
+    ? effectiveCandidateState.selected_recommendations
+    : Array.isArray(collected?.candidateState?.selected_recommendations)
     ? collected.candidateState.selected_recommendations
     : [];
   return buildBeautyMainlineLocalSearchResult({
-    collected,
+    collected: {
+      ...collected,
+      ...(effectiveCandidateState ? { candidateState: effectiveCandidateState } : {}),
+    },
     selectedProducts,
   });
 }
@@ -22922,6 +22946,41 @@ function compareConcernFrameworkCandidates(left, right) {
   const leftName = String(pickFirstTrimmed(left?.display_name, left?.displayName, left?.name, left?.title) || '').trim().toLowerCase();
   const rightName = String(pickFirstTrimmed(right?.display_name, right?.displayName, right?.name, right?.title) || '').trim().toLowerCase();
   return leftName.localeCompare(rightName);
+}
+
+function mergeConcernFrameworkRerankedState(baseState, rerankedState, { candidateCount = 0 } = {}) {
+  const base = isPlainObject(baseState) ? baseState : {};
+  const reranked = isPlainObject(rerankedState) ? rerankedState : {};
+  return {
+    ...base,
+    ...(Array.isArray(reranked.viable_candidate_pool) ? { viable_candidate_pool: reranked.viable_candidate_pool } : {}),
+    ...(Array.isArray(reranked.selected_recommendations) ? { selected_recommendations: reranked.selected_recommendations } : {}),
+    ...(Number.isFinite(Number(reranked.selected_candidate_count))
+      ? { selected_candidate_count: Number(reranked.selected_candidate_count) }
+      : {}),
+    ...(isPlainObject(reranked.selected_source_counts) ? { selected_source_counts: reranked.selected_source_counts } : {}),
+    ...(isPlainObject(reranked.selected_source_tier_counts)
+      ? { selected_source_tier_counts: reranked.selected_source_tier_counts }
+      : {}),
+    ...(isPlainObject(reranked.role_pool_stats) ? { role_pool_stats: reranked.role_pool_stats } : {}),
+    ...(pickFirstTrimmed(reranked.primary_recommendation_id, base.primary_recommendation_id)
+      ? { primary_recommendation_id: pickFirstTrimmed(reranked.primary_recommendation_id, base.primary_recommendation_id) }
+      : {}),
+    ...(typeof reranked.terminal_success === 'boolean' ? { terminal_success: reranked.terminal_success } : {}),
+    ...(typeof reranked.comparison_fill_applied === 'boolean'
+      ? { comparison_fill_applied: reranked.comparison_fill_applied }
+      : {}),
+    ...(Number.isFinite(Number(reranked.comparison_fill_count))
+      ? { comparison_fill_count: Number(reranked.comparison_fill_count) }
+      : {}),
+    ...(typeof reranked.comparison_slot_reserved === 'boolean'
+      ? { comparison_slot_reserved: reranked.comparison_slot_reserved }
+      : {}),
+    ...(typeof reranked.weak_viable_pool === 'boolean' ? { weak_viable_pool: reranked.weak_viable_pool } : {}),
+    ...(pickFirstTrimmed(reranked.viable_pool_strength) ? { viable_pool_strength: pickFirstTrimmed(reranked.viable_pool_strength) } : {}),
+    product_intel_rerank_applied: true,
+    product_intel_rerank_candidate_count: Math.max(0, Math.trunc(Number(candidateCount) || 0)),
+  };
 }
 
 function shouldPreserveConcernFrameworkRetrievalRoleScore(roleScore = null) {
@@ -25698,12 +25757,9 @@ async function buildRecoGenerateFromCatalog({
     const hydratedFrameworkPool = await hydrateRecoCandidatesProductIntelFromKb(candidateState.viable_candidate_pool);
     const rerankedFrameworkState = finalizeConcernFrameworkCandidatePools(hydratedFrameworkPool, { targetContext });
     if (Array.isArray(rerankedFrameworkState?.selected_recommendations) && rerankedFrameworkState.selected_recommendations.length > 0) {
-      candidateState = {
-        ...candidateState,
-        ...rerankedFrameworkState,
-        product_intel_rerank_applied: true,
-        product_intel_rerank_candidate_count: hydratedFrameworkPool.length,
-      };
+      candidateState = mergeConcernFrameworkRerankedState(candidateState, rerankedFrameworkState, {
+        candidateCount: hydratedFrameworkPool.length,
+      });
     }
   }
   const selectedCandidates = Array.isArray(candidateState.selected_recommendations)

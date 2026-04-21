@@ -3606,6 +3606,177 @@ test('handoffRecoToBeautyMainlineSearch exposes reviewed intel on hydrated rows 
   }
 });
 
+test('handoffRecoToBeautyMainlineSearch local handoff reranks finish-fit sunscreen picks with reviewed intel', async () => {
+  const productIntelKbStore = require('../src/auroraBff/productIntelKbStore');
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    await productIntelKbStore.upsertProductIntelKbEntry({
+      kb_key: 'product:ext_d4b52c2dad8f0c8ac77ff7ac',
+      source: 'pivota_product_intel_pilot_selected',
+      analysis: {
+        product_intel_v1: {
+          contract_version: 'pivota.product_intel.v1',
+          product_intel_core: {
+            what_it_is: {
+              body: 'A portable chemical-filter sun stick designed for quick daytime reapplication.',
+            },
+          },
+          shopping_card: {
+            intro: 'Portable SPF50+ sun stick for quick daytime touchups.',
+          },
+          search_card: {
+            intro_candidate: 'Portable SPF50+ sun stick for quick daytime touchups.',
+          },
+          quality_state: 'limited',
+        },
+      },
+      source_meta: {
+        review_tier: 'assistant_reviewed',
+      },
+      last_success_at: new Date().toISOString(),
+    });
+    await productIntelKbStore.upsertProductIntelKbEntry({
+      kb_key: 'product:ext_f84eb0354d9578e047520615',
+      source: 'pivota_product_intel_pilot_selected',
+      analysis: {
+        product_intel_v1: {
+          contract_version: 'pivota.product_intel.v1',
+          product_intel_core: {
+            what_it_is: {
+              body: 'A lightweight sunscreen fluid built for first-wear daytime layering under makeup.',
+            },
+          },
+          shopping_card: {
+            intro: 'Lightweight sunscreen fluid that layers smoothly under makeup with no white cast.',
+          },
+          search_card: {
+            intro_candidate: 'Lightweight sunscreen fluid that layers smoothly under makeup with no white cast.',
+          },
+          quality_state: 'limited',
+        },
+      },
+      source_meta: {
+        review_tier: 'assistant_reviewed',
+      },
+      last_success_at: new Date().toISOString(),
+    });
+
+    __internal.__setRouteDependencyOverridesForTest({
+      searchInternalProductsPrimitive: async () => ({
+        ok: false,
+        products: [],
+        reason: 'upstream_timeout',
+        attempted_internal_paths: ['/agent/internal/products/search'],
+        transport_hops: [],
+        transport_hop_count: 0,
+        nested_orchestrator_hops: 0,
+        primary_transport_owner: 'internal_products_search_primitive',
+        primary_endpoint_kind: 'internal_primitive',
+      }),
+      searchLocalExternalSeedProducts: async (args) => {
+        if (String(args?.role?.role_id || '') !== 'daily_sunscreen_finish_fit') {
+          return {
+            ok: true,
+            products: [],
+            reason: 'empty',
+            actual_http_attempt_count: 0,
+            attempted_base_urls: [],
+            attempted_paths: [],
+          };
+        }
+        return {
+          ok: true,
+          products: [
+            {
+              product_id: 'ext_d4b52c2dad8f0c8ac77ff7ac',
+              merchant_id: 'external_seed',
+              title: 'Daily Soothing Sun Shield SPF50+ PA++++',
+              brand: 'Haruharu Wonder',
+              category: 'Sunscreen',
+              product_type: 'Sunscreen',
+              retrieval_source: 'external_seed',
+              retrieval_role_id: 'daily_sunscreen_finish_fit',
+              retrieval_reason: 'external_seed_local_search:support_category_exact',
+              retrieval_match_stage: 'support_category_exact',
+              retrieval_query: String(args?.query || ''),
+              local_external_seed_role_fit_score: 1.305,
+              description: 'Daily sunscreen for daytime UV protection.',
+            },
+            {
+              product_id: 'ext_f84eb0354d9578e047520615',
+              merchant_id: 'external_seed',
+              title: 'Relief Sun Aqua-Fresh : Rice + B5 (SPF50+ PA++++)',
+              brand: 'Beauty of Joseon',
+              category: 'Sunscreen',
+              product_type: 'Sunscreen',
+              retrieval_source: 'external_seed',
+              retrieval_role_id: 'daily_sunscreen_finish_fit',
+              retrieval_reason: 'external_seed_local_search:support_category_exact',
+              retrieval_match_stage: 'support_category_exact',
+              retrieval_query: String(args?.query || ''),
+              local_external_seed_role_fit_score: 1.305,
+              description: 'Daily sunscreen for daytime UV protection.',
+            },
+            {
+              product_id: 'ext_03dfb4ac825988a3ae86c1ac',
+              merchant_id: 'external_seed',
+              title: 'Day Dew Sunscreen 10ml',
+              brand: 'Beauty of Joseon',
+              category: 'Sunscreen',
+              product_type: 'Sunscreen',
+              retrieval_source: 'external_seed',
+              retrieval_role_id: 'daily_sunscreen_finish_fit',
+              retrieval_reason: 'external_seed_local_search:support_category_exact',
+              retrieval_match_stage: 'support_category_exact',
+              retrieval_query: String(args?.query || ''),
+              local_external_seed_role_fit_score: 1.005,
+              description: 'Travel sunscreen for trial use.',
+            },
+          ],
+          reason: null,
+          actual_http_attempt_count: 0,
+          attempted_base_urls: [],
+          attempted_paths: [],
+          transport_policy_mode: String(args?.transportPolicyMode || ''),
+          local_external_seed_search_mode: 'staged_support_fastpath',
+          local_external_seed_stage_debug: [],
+        };
+      },
+    });
+
+    const query = 'Based on my routine and the skin analysis, what should I buy for daytime so my makeup stops pilling?';
+    const out = await __internal.handoffRecoToBeautyMainlineSearch({
+      ctx: { lang: 'EN', request_id: 'req_finish_fit_local_handoff_rerank' },
+      primaryQuery: query,
+      fallbackMessage: query,
+      targetContext: resolveRecommendationTargetContext({
+        text: query,
+        focus: '',
+        entryType: 'chat',
+      }),
+      timeoutMs: 5000,
+      minTimeoutMs: 5000,
+    });
+
+    assert.deepEqual(
+      out.recommendations.map((item) => item.product_id),
+      [
+        'ext_f84eb0354d9578e047520615',
+        'ext_d4b52c2dad8f0c8ac77ff7ac',
+        'ext_03dfb4ac825988a3ae86c1ac',
+      ],
+    );
+    assert.equal(
+      out.searchResult?.metadata?.search_stage_ledger?.final_selection?.selected_titles?.[0],
+      'Relief Sun Aqua-Fresh : Rice + B5 (SPF50+ PA++++)',
+    );
+  } finally {
+    __internal.__resetRouteDependencyOverridesForTest();
+    productIntelKbStore.__internal.clearMemoryCacheForTest();
+    delete require.cache[moduleId];
+  }
+});
+
 test('beauty chat mainline entry keeps framework source mode when real handoff derives generic concern context', async () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
