@@ -9044,6 +9044,80 @@ test('__internal: framework pool uses external seed role-fit ranking for finish-
   );
 });
 
+test('__internal: framework pool demotes mini sunscreen variants behind full-size same-role options', () => {
+  const { __internal } = loadRoutesFresh();
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [
+      {
+        product_id: 'day_dew_sunscreen_full_size',
+        merchant_id: 'external_seed',
+        brand: 'LightLab',
+        name: 'Day Dew Sunscreen SPF 50',
+        display_name: 'LightLab Day Dew Sunscreen SPF 50',
+        category: 'Sunscreen',
+        product_type: 'Sunscreen',
+        retrieval_source: 'external_seed',
+        retrieval_query: 'lightweight sunscreen oily skin',
+        retrieval_step: 'sunscreen',
+        retrieval_role_id: 'daily_sunscreen_finish_fit',
+        local_external_seed_role_fit_score: 0.94,
+        benefit_tags: ['spf 50', 'lightweight', 'under makeup'],
+        short_description: 'A lightweight fluid sunscreen that wears well under makeup.',
+        canonical_pdp_url: 'https://example.com/products/day-dew-sunscreen',
+      },
+      {
+        product_id: 'day_dew_sunscreen_mini_10ml',
+        merchant_id: 'external_seed',
+        brand: 'LightLab',
+        name: 'Day Dew Sunscreen SPF 50 10ml',
+        display_name: 'LightLab Day Dew Sunscreen SPF 50 10ml',
+        category: 'Sunscreen',
+        product_type: 'Sunscreen',
+        retrieval_source: 'external_seed',
+        retrieval_query: 'lightweight sunscreen oily skin',
+        retrieval_step: 'sunscreen',
+        retrieval_role_id: 'daily_sunscreen_finish_fit',
+        local_external_seed_role_fit_score: 0.94,
+        benefit_tags: ['spf 50', 'lightweight', 'under makeup'],
+        short_description: 'A lightweight fluid sunscreen that wears well under makeup.',
+        canonical_pdp_url: 'https://example.com/products/day-dew-sunscreen-mini',
+      },
+    ],
+    {
+      targetContext: {
+        framework_id: 'recofw_test_same_role_full_size_over_mini',
+        primary_role_id: 'daily_sunscreen_finish_fit',
+        routine_mode: 'same_role_comparison',
+        comparison_mode: 'same_role_comparison',
+        framework_roles: [
+          {
+            role_id: 'daily_sunscreen_finish_fit',
+            rank: 1,
+            preferred_step: 'sunscreen',
+            label: 'Daily sunscreen finish fit',
+            query_terms: ['lightweight sunscreen oily skin', 'sunscreen under makeup'],
+            fit_keywords: ['spf', 'lightweight', 'under makeup', 'fluid'],
+            ingredient_hypotheses: ['UV filters'],
+            product_type_hypotheses: ['sunscreen'],
+          },
+        ],
+      },
+    },
+  );
+
+  assert.equal(state.primary_role_matched, true);
+  assert.deepEqual(
+    state.selected_recommendations.map((row) => row.product_id),
+    ['day_dew_sunscreen_full_size', 'day_dew_sunscreen_mini_10ml'],
+  );
+  const fullSize = state.viable_candidate_pool.find((row) => row?.product_id === 'day_dew_sunscreen_full_size') || null;
+  const mini = state.viable_candidate_pool.find((row) => row?.product_id === 'day_dew_sunscreen_mini_10ml') || null;
+  assert.ok(fullSize);
+  assert.ok(mini);
+  assert.ok(Number(fullSize.framework_rank_score || 0) >= Number(mini.framework_rank_score || 0));
+  assert.ok(Number(fullSize.framework_tiebreak_score || 0) > Number(mini.framework_tiebreak_score || 0));
+});
+
 test('__internal: framework pool rejects cosmetic finish products from under-makeup routine support roles', () => {
   const { __internal } = loadRoutesFresh();
   const targetContext = {
