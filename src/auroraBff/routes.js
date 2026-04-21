@@ -22572,6 +22572,36 @@ function applyConcernSelectorRaceOrdering(recommendations, selectorRace) {
   return applyConcernSelectorRaceOrderingPolicy(recommendations, selectorRace);
 }
 
+function scoreConcernFrameworkRetailSizePenalty(row = null) {
+  const candidate = isPlainObject(row) ? row : {};
+  const identityText = [
+    buildConcernCandidatePrimaryIdentityText(candidate),
+    pickFirstTrimmed(candidate.category, candidate.product_type, candidate.productType, candidate.candidate_step),
+  ]
+    .filter(Boolean)
+    .join(' ');
+  if (!identityText) return 0;
+  if (
+    /\b(?:mini|travel[\s-]?size|travel[\s-]?sized|sample(?:\s+size)?|trial(?:\s+size)?|deluxe\s+sample|discovery\s+size|pocket\s+size)\b/i.test(
+      identityText,
+    )
+  ) {
+    return 0.05;
+  }
+  const leaveOnFaceShape = /\b(?:sunscreen|moisturi[sz]er|cream|lotion|serum|essence|ampoule|gel|treatment|face)\b/i.test(
+    identityText,
+  );
+  if (!leaveOnFaceShape) return 0;
+  const metricMatch = identityText.match(/\b(\d+(?:\.\d+)?)\s*(ml|mL|g|oz|fl\.?\s*oz)\b/i);
+  if (!metricMatch) return 0;
+  const amount = Number(metricMatch[1]);
+  if (!Number.isFinite(amount) || amount <= 0) return 0;
+  const unit = String(metricMatch[2] || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  if ((unit === 'ml' || unit === 'g') && amount <= 15) return 0.03;
+  if ((unit === 'oz' || unit === 'fl oz' || unit === 'fl. oz') && amount <= 0.5) return 0.03;
+  return 0;
+}
+
 function scoreConcernFrameworkCandidateTiebreak(row) {
   const candidate = isPlainObject(row) ? row : {};
   const socialRefScore = Number.isFinite(Number(candidate.social_ref_score)) ? Number(candidate.social_ref_score) : 0;
@@ -22594,6 +22624,7 @@ function scoreConcernFrameworkCandidateTiebreak(row) {
   if (tagSignalCount > 0) score += Math.min(0.012, tagSignalCount * 0.0025);
   // Neutralize insertion-order bias when internal and external candidates land with the same role score.
   if (retrievalSource === 'external_seed') score += 0.01;
+  score -= scoreConcernFrameworkRetailSizePenalty(candidate);
   return Number(score.toFixed(4));
 }
 

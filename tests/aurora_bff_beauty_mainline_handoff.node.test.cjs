@@ -2736,7 +2736,7 @@ test('handoffRecoToBeautyMainlineSearch prioritizes lightweight layering queries
   }
 });
 
-test('runConcernSemanticPlanner uses structured Gemini JSON with minimal thinking', async () => {
+test('runConcernSemanticPlanner narrows dry use-first asks into moisturizer-led same-slot comparison', async () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
     let capturedArgs = null;
@@ -2794,10 +2794,87 @@ test('runConcernSemanticPlanner uses structured Gemini JSON with minimal thinkin
     assert.equal(out.trace?.planner_failure_class, null);
     assert.equal(out.trace?.planner_attempts?.[0]?.structured_contract, 'json_object');
     assert.equal(out.semanticPlan?.selection_owner_state, 'trusted');
-    assert.deepEqual(
-      out.semanticPlan?.core_roles?.map((role) => role?.role_id).slice(0, 3),
-      ['hydrating_barrier_moisturizer', 'hydrating_serum_or_essence', 'daily_sunscreen'],
-    );
+    assert.deepEqual(out.semanticPlan?.core_roles?.map((role) => role?.role_id), ['hydrating_barrier_moisturizer']);
+    assert.deepEqual(out.semanticPlan?.support_roles?.map((role) => role?.role_id), []);
+    assert.equal(out.semanticPlan?.routine_mode, 'same_role_comparison');
+    assert.equal(out.semanticPlan?.comparison_mode, 'same_role_comparison');
+    assert.equal(out.semanticPlan?.selection_constraints?.narrowing_reason, 'use_first_or_buy_next_focus');
+    assert.equal(out.semanticPlan?.must_satisfy_constraints?.includes('moisturizer-only same-slot comparison'), true);
+  } finally {
+    __internal.__resetCallGeminiJsonObjectForTest();
+    delete require.cache[moduleId];
+  }
+});
+
+test('runConcernSemanticPlanner forwards analysis handoff targets into prompt and keeps explicit moisturizer follow-up narrowed', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  let capturedArgs = null;
+  try {
+    __internal.__setCallGeminiJsonObjectForTest(async (args = {}) => {
+      capturedArgs = args;
+      return {
+        ok: true,
+        json: {
+          primary_concern: 'barrier repair after retinoid dryness',
+          primary_role_id: 'hydrating_barrier_moisturizer',
+          support_role_ids: ['soothing_treatment', 'daily_sunscreen'],
+          routine_mode: 'routine_mix',
+          query_intents: [
+            {
+              role_id: 'hydrating_barrier_moisturizer',
+              intent: 'barrier moisturizer after retinoid dryness',
+              query_terms: ['barrier moisturizer retinoid dryness'],
+            },
+          ],
+          must_satisfy_constraints: ['no more actives'],
+          comparison_mode: 'routine_mix',
+          evidence_needed: ['barrier support', 'comfort', 'non-active step'],
+          ingredient_hypotheses: ['ceramides', 'panthenol'],
+          product_type_hypotheses: ['moisturizer', 'serum', 'sunscreen'],
+        },
+        parse_status: 'parsed',
+        provider: 'gemini',
+        requested_model: args.model,
+        effective_model: args.model,
+        selection_source: 'local_gemini_rest_direct',
+      };
+    });
+
+    const out = await __internal.runConcernSemanticPlanner({
+      ctx: { lang: 'EN', request_id: 'req_analysis_handoff_moisturizer_followup' },
+      requestText: 'What moisturizer product should I buy next? I do not want another active.',
+      focus: 'moisturizer',
+      recommendationTaskContext: {
+        context_mode: 'latest_reco_context',
+        source_detail: 'analysis_handoff',
+        primary_target_id: 'hydrating_barrier_moisturizer',
+        resolved_target_step: 'moisturizer',
+        goal: 'barrier support after retinoid dryness',
+        ingredient_query: 'ceramide moisturizer',
+        snapshot_fields_used: ['ranked_targets'],
+        hard_context_fields_used: ['ranked_targets', 'target_step'],
+        ranked_targets: [
+          {
+            target_id: 'hydrating_barrier_moisturizer',
+            target_role: 'primary',
+            resolved_target_step: 'moisturizer',
+            target_confidence: 'high',
+            ingredient_query: 'ceramide moisturizer',
+          },
+        ],
+      },
+      deadlineAtMs: Date.now() + 5000,
+    });
+
+    assert.match(String(capturedArgs?.userPrompt || ''), /"primary_target_id":"hydrating_barrier_moisturizer"/);
+    assert.match(String(capturedArgs?.userPrompt || ''), /"resolved_target_step":"moisturizer"/);
+    assert.match(String(capturedArgs?.userPrompt || ''), /"ranked_targets":\[/);
+    assert.equal(out.semanticPlan?.selection_owner_state, 'trusted');
+    assert.deepEqual(out.semanticPlan?.core_roles?.map((role) => role?.role_id), ['hydrating_barrier_moisturizer']);
+    assert.deepEqual(out.semanticPlan?.support_roles?.map((role) => role?.role_id), []);
+    assert.equal(out.semanticPlan?.routine_mode, 'same_role_comparison');
+    assert.equal(out.semanticPlan?.comparison_mode, 'same_role_comparison');
+    assert.equal(out.semanticPlan?.selection_constraints?.narrowing_reason, 'explicit_step_product_request');
   } finally {
     __internal.__resetCallGeminiJsonObjectForTest();
     delete require.cache[moduleId];
