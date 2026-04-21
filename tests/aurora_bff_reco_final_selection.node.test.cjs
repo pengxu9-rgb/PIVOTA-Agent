@@ -3193,10 +3193,14 @@ test('reco assistant structured renderer compares finish-fit sunscreen options w
       requestMode: 'buy',
     });
 
-    assert.match(text, /soft-focus powders|comfortable daytime layering under makeup|under makeup/i);
-    assert.match(text, /sheer, weightless|sensitive skin/i);
-    assert.match(text, /hydrating daily cream spf|moisturizer-style hydration|creamier/i);
+    assert.match(text, /lighter, smoother daytime layering instead of a richer cream finish|keeps the feel lighter and more invisible if you want less weight under makeup/i);
+    assert.match(text, /more mineral, sensitive-skin-oriented option while keeping (?:a |the finish )?sheer, weightless/i);
+    assert.match(text, /richer, more moisturizing cream-spf option/i);
     assert.doesNotMatch(text, /uv-filter cues|filter identity|reapplication expectations explicit/i);
+    assert.doesNotMatch(text, /sheer, weightless, scentless mineral sunscreen recommended/i);
+    assert.doesNotMatch(text, /hydrating daily cream spf with moisturizer-style hydration cues/i);
+    assert.doesNotMatch(text, /daily sunscreen with finish fit/i);
+    assert.match(text, /wears more smoothly under makeup|under makeup/i);
     assert.equal(validation.ok, true);
   } finally {
     delete require.cache[moduleId];

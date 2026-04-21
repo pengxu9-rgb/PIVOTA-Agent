@@ -57700,12 +57700,26 @@ function buildRecoAssistantEvidenceSynthesisReason(detail = {}, { targetLabel = 
 
 function buildRecoAssistantStructuredReasonFallback(detail = {}, {
   targetLabel = '',
+  selectedProductRoleMix = 'single_product',
   selectedNames = [],
   forbiddenNames = [],
   forbiddenAliases = [],
 } = {}) {
   const points = buildRecoAssistantReasonPoints(detail, { max: 2 });
   const targetText = buildRecoAssistantEvidenceTargetText(detail, targetLabel);
+  if (selectedProductRoleMix === 'same_role_comparison' && recoRoleNeedsFinishFitNarrative(targetText)) {
+    const tradeoffFirst = normalizeRecoAssistantReasonFragment(
+      buildRecoAssistantTradeoffNote(detail, { selectedProductRoleMix }),
+      {
+        selectedNames,
+        forbiddenNames,
+        forbiddenAliases,
+      },
+    );
+    if (tradeoffFirst && !recoAssistantReasonHasUnsupportedConcern(tradeoffFirst, targetText)) {
+      return tradeoffFirst;
+    }
+  }
   for (const point of points) {
     const primary = normalizeRecoAssistantReasonFragment(point, {
       selectedNames,
@@ -57859,6 +57873,14 @@ function pickRecoAssistantStructuredFollowupReason(detail = {}, {
 function formatRecoAssistantTargetPhrase(targetLabel, language) {
   const raw = String(targetLabel || '').replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
   if (!raw) return '';
+  const normalized = raw.toLowerCase();
+  const sunscreenFinishFit =
+    /\b(?:sunscreen|spf|uv)\b/.test(normalized)
+    && /\b(?:finish fit|under makeup|makeup|pilling|smooth finish)\b/.test(normalized);
+  if (sunscreenFinishFit) {
+    if (language === 'CN') return '，更适合妆前叠擦的防晒';
+    return ' for sunscreen that wears more smoothly under makeup';
+  }
   if (language === 'CN') return `针对${raw}`;
   return ` for ${raw.toLowerCase()}`;
 }
@@ -57909,6 +57931,7 @@ function renderRecoAssistantStructuredReasonRewrite({
     forbiddenAliases,
     fallback: buildRecoAssistantStructuredReasonFallback(details[0], {
       targetLabel,
+      selectedProductRoleMix,
       selectedNames,
       forbiddenNames,
       forbiddenAliases,
@@ -57924,6 +57947,7 @@ function renderRecoAssistantStructuredReasonRewrite({
     const supportTargetLabel = buildRecoAssistantSupportTargetLabel(detail, targetLabel);
     const fallbackReason = buildRecoAssistantStructuredReasonFallback(detail, {
       targetLabel: supportTargetLabel,
+      selectedProductRoleMix,
       selectedNames,
       forbiddenNames,
       forbiddenAliases,
@@ -57970,6 +57994,7 @@ function renderRecoAssistantStructuredReasonRewrite({
       const reason = supportReasons[index] || normalizeRecoAssistantBecauseReasonFragment(
         buildRecoAssistantStructuredReasonFallback(detail, {
           targetLabel,
+          selectedProductRoleMix,
           selectedNames,
           forbiddenNames,
           forbiddenAliases,
@@ -58006,6 +58031,7 @@ function renderRecoAssistantStructuredReasonRewrite({
     const reason = supportReasons[index] || normalizeRecoAssistantBecauseReasonFragment(
       buildRecoAssistantStructuredReasonFallback(detail, {
         targetLabel,
+        selectedProductRoleMix,
         selectedNames,
         forbiddenNames,
         forbiddenAliases,

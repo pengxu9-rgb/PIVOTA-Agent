@@ -532,9 +532,9 @@ function looksLikeDescriptiveRecommendationFinishFitCopy(value) {
   return startsLikeDescriptor && hasFinishFitProductCue;
 }
 
-function buildRecommendationFinishFitSpecificWhy(row) {
+function collectRecommendationFinishFitSourceText(row) {
   const item = isPlainObject(row) ? row : {};
-  const texts = [
+  return [
     item.short_description,
     item.shortDescription,
     item.why_this_one,
@@ -555,6 +555,10 @@ function buildRecommendationFinishFitSpecificWhy(row) {
     .map((value) => asString(value))
     .filter(Boolean)
     .join(' ');
+}
+
+function buildRecommendationFinishFitSpecificWhy(row) {
+  const texts = collectRecommendationFinishFitSourceText(row);
   if (!texts) return '';
 
   const hasSoftFocus = /\b(?:soft[-\s]?focus|blur(?:ring)?|primer[-\s]?like)\b/i.test(texts);
@@ -582,6 +586,39 @@ function buildRecommendationFinishFitSpecificWhy(row) {
   }
   if (hasLayering) {
     return 'it is positioned for smoother daytime layering';
+  }
+  return '';
+}
+
+function buildRecommendationFinishFitSpecificShortDescription(row) {
+  const texts = collectRecommendationFinishFitSourceText(row);
+  if (!texts) return '';
+
+  const hasSoftFocus = /\b(?:soft[-\s]?focus|blur(?:ring)?|primer[-\s]?like)\b/i.test(texts);
+  const hasLayering = /\b(?:under makeup|makeup|layer(?:ing)?|non[-\s]?pilling|no pilling|pilling)\b/i.test(texts);
+  const hasWeightless = /\b(?:weightless|lightweight|airy|fluid|watery|water[-\s]?fit|invisible|non[-\s]?greasy|sheer)\b/i.test(texts);
+  const hasMineralCue = /\b(?:mineral|zinc oxide|titanium dioxide)\b/i.test(texts);
+  const hasWhiteCastCue = /\b(?:no white cast|white cast[-\s]?free|lower white[-\s]?cast|invisible)\b/i.test(texts);
+  const hasSensitiveCue = /\b(?:sensitive skin|scentless|fragrance[-\s]?free|bisabolol|ectoin)\b/i.test(texts);
+  const hasCreamierCue = /\b(?:hydrating daily cream|hydrating cream|cream format|cream texture|moisturizer[-\s]?style hydration|moisturizer[-\s]?format|cream-spf|cream spf)\b/i.test(texts);
+
+  if (hasCreamierCue) {
+    return 'A richer cream-SPF base when you want more moisture under makeup.';
+  }
+  if (hasMineralCue && (hasSensitiveCue || hasWeightless || hasWhiteCastCue)) {
+    return 'A sheer, weightless mineral sunscreen option for sensitive skin.';
+  }
+  if (hasSoftFocus || (hasLayering && hasWeightless)) {
+    return 'A lighter, smoother sunscreen feel for daytime layering under makeup.';
+  }
+  if (hasWeightless && hasSensitiveCue) {
+    return 'A lighter mineral sunscreen option that stays sheer and simple on sensitive skin.';
+  }
+  if (hasWhiteCastCue) {
+    return 'A lighter sunscreen option with lower white-cast risk for daytime wear.';
+  }
+  if (hasLayering) {
+    return 'A sunscreen option that sits more smoothly under makeup.';
   }
   return '';
 }
@@ -949,6 +986,17 @@ function normalizeRecommendationProductCard(raw, options = {}) {
   })
     ? buildRecommendationFinishFitSpecificWhy(row)
     : '';
+  const baseShortDescription = neutralizeVisibleRecommendationCardCopy(
+    asString(row.short_description) || asString(row.shortDescription) || baseWhyThisOne,
+  );
+  const finishFitSpecificShortDescription = recommendationNeedsFinishFitTradeoff({
+    matchedRoleId,
+    matchedRoleLabel,
+    comparisonMode,
+    peerCount,
+  })
+    ? buildRecommendationFinishFitSpecificShortDescription(row)
+    : '';
   const whyThisOne = finishFitSpecificWhy
     && (
       !baseWhyThisOne
@@ -958,6 +1006,15 @@ function normalizeRecommendationProductCard(raw, options = {}) {
     )
     ? finishFitSpecificWhy
     : baseWhyThisOne;
+  const shortDescription = finishFitSpecificShortDescription
+    && (
+      !baseShortDescription
+      || looksLikeWeakRecommendationFinishFitCopy(baseShortDescription)
+      || looksLikeGenericRecommendationFinishFitCopy(baseShortDescription)
+      || looksLikeDescriptiveRecommendationFinishFitCopy(baseShortDescription)
+    )
+    ? finishFitSpecificShortDescription
+    : baseShortDescription;
   const selfKey = recommendationProductIdentityKey(row);
   const sameRoleCandidates = matchedRoleId
     ? asRecordArray(peerCandidatesByRoleId.get(matchedRoleId), 12).filter((candidate) => {
@@ -988,7 +1045,7 @@ function normalizeRecommendationProductCard(raw, options = {}) {
     key_features: keyFeatures,
     price_tier: priceTier,
     why_this_one: whyThisOne,
-    short_description: neutralizeVisibleRecommendationCardCopy(asString(row.short_description) || asString(row.shortDescription) || whyThisOne),
+    short_description: shortDescription,
     see_more: row.see_more !== false,
     ...(asString(row.image_url) || asString(product.image_url) || asString(sku.image_url)
       ? { image_url: asString(row.image_url) || asString(product.image_url) || asString(sku.image_url) }
