@@ -20293,6 +20293,9 @@ function looksLikeGenericRecoFinishFitNarrative(value = '') {
   const text = normalizeSemanticAuditText(value);
   if (!text) return false;
   if (looksLikeWeakRecoFinishFitNarrative(text)) return true;
+  if (/\b(?:soft[-\s]?focus|blur(?:ring)?|primer[-\s]?like|under makeup|makeup|weightless|sheer|sensitive skin|creamier|more moisturizing)\b/.test(text)) {
+    return false;
+  }
   return /\b(?:lighter smoother daytime layering|lighter smoother layering|smoother daytime layering|daily spf cream with moisturizer style hydration cues|daily sunscreen built around|moisturizer style hydration cues|positioned for smoother daytime layering)\b/.test(text);
 }
 
@@ -55407,7 +55410,7 @@ function buildRecoAssistantPriceNote(detail = {}, {
   if (selectedProductRoleMix === 'same_role_comparison') {
     if (pricePosition === 'lowest' || pricePosition === 'lower') return `${priceLabel} and the lower-priced option`;
     if (pricePosition === 'highest' || pricePosition === 'higher') return `${priceLabel} and the higher-priced option`;
-    return priceLabel;
+    return null;
   }
   return priceLabel;
 }

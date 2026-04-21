@@ -269,6 +269,10 @@ test('reco assistant rewrite prompt carries finish-fit same-slot tradeoff notes 
       JSON.stringify(context.assistant_write_plan.same_role_options),
       /richer and more moisturizing than the lead option/,
     );
+    assert.doesNotMatch(
+      JSON.stringify(context.assistant_write_plan.same_role_options),
+      /"price_note":"\\$40"|\"price_note\":\"\\$48\"/,
+    );
   } finally {
     delete require.cache[moduleId];
   }
@@ -462,6 +466,7 @@ test('beauty mainline reco rows keep finish-fit same-slot cards differentiated b
 
     assert.equal(rows.length, 3);
     assert.match(String(rows[0].why_this_one || ''), /lighter, smoother daytime layering/i);
+    assert.match(String(rows[0].short_description || ''), /soft-focus|under makeup|daytime layering/i);
     assert.match(String(rows[1].why_this_one || ''), /sheer and weightless|sensitive-skin daytime use|weightless/i);
     assert.match(String(rows[2].why_this_one || ''), /more daytime moisture|creamier SPF texture|moisturizing/i);
     assert.match(String(rows[1].short_description || ''), /sheer|weightless|sensitive skin|mineral/i);
