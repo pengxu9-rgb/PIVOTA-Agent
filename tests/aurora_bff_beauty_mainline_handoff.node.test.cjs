@@ -3415,6 +3415,197 @@ test('handoffRecoToBeautyMainlineSearch hydrates reviewed product intel before b
   }
 });
 
+test('handoffRecoToBeautyMainlineSearch exposes reviewed intel on hydrated rows for downstream finish-fit reranking', async () => {
+  const productIntelKbStore = require('../src/auroraBff/productIntelKbStore');
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    await productIntelKbStore.upsertProductIntelKbEntry({
+      kb_key: 'product:spf_portable_1',
+      source: 'pivota_product_intel_pilot_selected',
+      analysis: {
+        product_intel_v1: {
+          contract_version: 'pivota.product_intel.v1',
+          product_intel_core: {
+            what_it_is: {
+              body: 'A portable chemical-filter sun stick designed for quick daytime reapplication.',
+            },
+          },
+          shopping_card: {
+            title: 'Portable SPF stick',
+            subtitle: 'Portable SPF touchup',
+            intro: 'Portable SPF50+ sun stick for quick daytime touchups.',
+          },
+          search_card: {
+            intro_candidate: 'Portable SPF50+ sun stick for quick daytime touchups.',
+          },
+          quality_state: 'limited',
+          evidence_profile: 'seller_only',
+          texture_finish: {
+            texture: 'smooth balm stick',
+            layering_notes: ['Works best as a portable reapplication format over an existing morning routine.'],
+          },
+        },
+      },
+      source_meta: {
+        review_tier: 'assistant_reviewed',
+      },
+      last_success_at: new Date().toISOString(),
+    });
+
+    await productIntelKbStore.upsertProductIntelKbEntry({
+      kb_key: 'product:spf_fluid_1',
+      source: 'pivota_product_intel_pilot_selected',
+      analysis: {
+        product_intel_v1: {
+          contract_version: 'pivota.product_intel.v1',
+          product_intel_core: {
+            what_it_is: {
+              body: 'A lightweight sunscreen fluid built for first-wear daytime layering under makeup.',
+            },
+          },
+          shopping_card: {
+            title: 'Finish-fit daily sunscreen',
+            subtitle: 'Daily sunscreen',
+            intro: 'Lightweight sunscreen fluid that layers smoothly under makeup with no white cast.',
+          },
+          search_card: {
+            intro_candidate: 'Lightweight sunscreen fluid that layers smoothly under makeup with no white cast.',
+          },
+          quality_state: 'limited',
+          evidence_profile: 'seller_plus_formula',
+          texture_finish: {
+            texture: 'fluid',
+            layering_notes: ['Use as the last morning skin-care step before makeup.'],
+          },
+        },
+      },
+      source_meta: {
+        review_tier: 'assistant_reviewed',
+      },
+      last_success_at: new Date().toISOString(),
+    });
+
+    const out = await __internal.handoffRecoToBeautyMainlineSearch({
+      ctx: { lang: 'EN' },
+      primaryQuery: 'Based on my routine and the skin analysis, what should I buy for daytime so my makeup stops pilling?',
+      fallbackMessage: 'Based on my routine and the skin analysis, what should I buy for daytime so my makeup stops pilling?',
+      targetContext: {
+        entry_type: 'chat',
+        intent_mode: 'generic_concern',
+        step_aware_intent: false,
+        concern: 'makeup pilling',
+        primary_concern: 'makeup pilling',
+        request_text: 'Based on my routine and the skin analysis, what should I buy for daytime so my makeup stops pilling?',
+        primary_role_id: 'daily_sunscreen_finish_fit',
+        routine_mode: 'same_role_comparison',
+        comparison_mode: 'same_role_comparison',
+        framework_roles: [
+          {
+            role_id: 'daily_sunscreen_finish_fit',
+            rank: 1,
+            preferred_step: 'sunscreen',
+            label: 'Daily sunscreen finish fit',
+            why_this_role: 'Use a daily sunscreen that layers cleanly under makeup.',
+            query_terms: ['sunscreen under makeup', 'lightweight sunscreen oily skin'],
+            fit_keywords: ['under makeup', 'lightweight', 'non-greasy', 'no white cast', 'invisible', 'fluid'],
+            ingredient_hypotheses: ['UV filters'],
+            product_type_hypotheses: ['sunscreen', 'fluid'],
+          },
+        ],
+        semantic_plan: {
+          primary_concern: 'makeup pilling and daytime layering with impaired barrier',
+          comparison_mode: 'same_role_comparison',
+          routine_mode: 'same_role_comparison',
+          must_satisfy_constraints: ['under makeup', 'avoid pilling', 'lightweight finish'],
+        },
+      },
+      timeoutMs: 5000,
+      minTimeoutMs: 5000,
+      searchFn: async () => ({
+        ok: true,
+        products: [
+          {
+            product_id: 'spf_portable_1',
+            merchant_id: 'external_seed',
+            title: 'Daily Soothing Sun Shield SPF50+ PA++++',
+            brand: 'Haruharu Wonder',
+            category: 'Sunscreen',
+            product_type: 'Sunscreen',
+            candidate_step: 'sunscreen',
+            retrieval_source: 'external_seed',
+            retrieval_reason: 'external_seed_local_search:support_category_exact',
+            retrieval_match_stage: 'support_category_exact',
+            retrieval_role_id: 'daily_sunscreen_finish_fit',
+            retrieval_query: 'sunscreen',
+            local_external_seed_role_fit_score: 1.305,
+            description: 'Daily sunscreen for daytime UV protection.',
+          },
+          {
+            product_id: 'spf_fluid_1',
+            merchant_id: 'external_seed',
+            title: 'Relief Sun Aqua-Fresh : Rice + B5 (SPF50+ PA++++)',
+            brand: 'Beauty of Joseon',
+            category: 'Sunscreen',
+            product_type: 'Sunscreen',
+            candidate_step: 'sunscreen',
+            retrieval_source: 'external_seed',
+            retrieval_reason: 'external_seed_local_search:support_category_exact',
+            retrieval_match_stage: 'support_category_exact',
+            retrieval_role_id: 'daily_sunscreen_finish_fit',
+            retrieval_query: 'sunscreen',
+            local_external_seed_role_fit_score: 1.305,
+            description: 'Daily sunscreen for daytime UV protection.',
+          },
+        ],
+        decision_owner: 'shopping_agent_beauty_mainline',
+        semantic_owner: 'shopping_agent_beauty_mainline',
+        query_source: 'agent_products_search',
+      }),
+    });
+
+    const rerankedState = __internal.finalizeConcernFrameworkCandidatePools(
+      Array.isArray(out.searchResult?.products) ? out.searchResult.products : [],
+      {
+        targetContext: {
+          primary_role_id: 'daily_sunscreen_finish_fit',
+          request_text: 'Based on my routine and the skin analysis, what should I buy for daytime so my makeup stops pilling?',
+          comparison_mode: 'same_role_comparison',
+          routine_mode: 'same_role_comparison',
+          semantic_plan: {
+            primary_concern: 'makeup pilling and daytime layering with impaired barrier',
+            comparison_mode: 'same_role_comparison',
+            routine_mode: 'same_role_comparison',
+            must_satisfy_constraints: ['under makeup', 'avoid pilling', 'lightweight finish'],
+          },
+          framework_roles: [
+            {
+              role_id: 'daily_sunscreen_finish_fit',
+              rank: 1,
+              preferred_step: 'sunscreen',
+              label: 'Daily sunscreen finish fit',
+              why_this_role: 'Use a daily sunscreen that layers cleanly under makeup.',
+              query_terms: ['sunscreen under makeup', 'lightweight sunscreen oily skin'],
+              fit_keywords: ['under makeup', 'lightweight', 'non-greasy', 'no white cast', 'invisible', 'fluid'],
+              ingredient_hypotheses: ['UV filters'],
+              product_type_hypotheses: ['sunscreen', 'fluid'],
+            },
+          ],
+        },
+      },
+    );
+
+    assert.deepEqual(
+      rerankedState.selected_recommendations.map((item) => item.product_id),
+      ['spf_fluid_1', 'spf_portable_1'],
+    );
+    assert.equal(out.searchResult?.products?.[0]?.metadata?.product_intel_kb_used, true);
+    assert.equal(out.searchResult?.products?.[1]?.metadata?.product_intel_kb_used, true);
+  } finally {
+    productIntelKbStore.__internal.clearMemoryCacheForTest();
+    delete require.cache[moduleId];
+  }
+});
+
 test('beauty chat mainline entry keeps framework source mode when real handoff derives generic concern context', async () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {

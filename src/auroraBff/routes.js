@@ -25652,13 +25652,17 @@ async function buildRecoGenerateFromCatalog({
       });
   const results = Array.isArray(collected.searchResults) ? collected.searchResults : [];
   let rawCandidates = Array.isArray(collected.rawCandidates) ? collected.rawCandidates.slice() : [];
-  let candidateState = isPlainObject(collected.candidateState)
-    ? collected.candidateState
-    : (
-      targetContext && Array.isArray(targetContext.framework_roles) && targetContext.framework_roles.length > 0
-        ? finalizeConcernFrameworkCandidatePools([], { targetContext })
-        : finalizeRecommendationCandidatePools([], { targetContext, recoContext: recommendationTaskContext })
-    );
+  if (frameworkMode && rawCandidates.length > 0) {
+    rawCandidates = await hydrateRecoCandidatesProductIntelFromKb(rawCandidates);
+    debugInfo.framework_candidate_product_intel_hydrated = true;
+    debugInfo.framework_candidate_product_intel_count = rawCandidates.length;
+  }
+  let candidateState =
+    frameworkMode && targetContext && Array.isArray(targetContext.framework_roles) && targetContext.framework_roles.length > 0
+      ? finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext })
+      : isPlainObject(collected.candidateState)
+        ? collected.candidateState
+        : finalizeRecommendationCandidatePools([], { targetContext, recoContext: recommendationTaskContext });
   const verifiedContextCandidates = buildVerifiedRecoContextCandidates({
     recoContext: ingredientContext,
     targetContext,
@@ -25674,6 +25678,11 @@ async function buildRecoGenerateFromCatalog({
       ...verifiedContextCandidates.normalizedCandidates,
       ...rawCandidates,
     ];
+    if (frameworkMode && rawCandidates.length > 0) {
+      rawCandidates = await hydrateRecoCandidatesProductIntelFromKb(rawCandidates);
+      debugInfo.framework_candidate_product_intel_hydrated = true;
+      debugInfo.framework_candidate_product_intel_count = rawCandidates.length;
+    }
     const effectiveTargetContext = verifiedContextCandidates.effectiveTargetContext;
     candidateState =
       effectiveTargetContext && Array.isArray(effectiveTargetContext.framework_roles) && effectiveTargetContext.framework_roles.length > 0
@@ -25684,6 +25693,18 @@ async function buildRecoGenerateFromCatalog({
             targetContext: effectiveTargetContext,
             recoContext: verifiedContextCandidates.normalizedContext || recommendationTaskContext,
           });
+  }
+  if (frameworkMode && Array.isArray(candidateState?.viable_candidate_pool) && candidateState.viable_candidate_pool.length > 1) {
+    const hydratedFrameworkPool = await hydrateRecoCandidatesProductIntelFromKb(candidateState.viable_candidate_pool);
+    const rerankedFrameworkState = finalizeConcernFrameworkCandidatePools(hydratedFrameworkPool, { targetContext });
+    if (Array.isArray(rerankedFrameworkState?.selected_recommendations) && rerankedFrameworkState.selected_recommendations.length > 0) {
+      candidateState = {
+        ...candidateState,
+        ...rerankedFrameworkState,
+        product_intel_rerank_applied: true,
+        product_intel_rerank_candidate_count: hydratedFrameworkPool.length,
+      };
+    }
   }
   const selectedCandidates = Array.isArray(candidateState.selected_recommendations)
     ? candidateState.selected_recommendations
