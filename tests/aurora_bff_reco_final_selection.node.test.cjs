@@ -253,6 +253,53 @@ test('beauty mainline reco rows prefer role-grounded sunscreen copy over marketi
   }
 });
 
+test('beauty mainline reco rows rewrite finish-fit sunscreen copy toward under-makeup wear cues', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const rows = __internal.buildRecoRowsFromMainlineProducts(
+      [
+        {
+          product_id: 'supergoop_unseen_finish_fit',
+          merchant_id: 'external_seed',
+          brand: 'Supergoop',
+          display_name: 'Unseen Sunscreen SPF 50',
+          category: 'Sunscreen',
+          product_type: 'Sunscreen',
+          short_description: 'A daily sunscreen built around modern organic UV filters, ectoin/bisabolol-style soothing support plus soft-focus powders for AM UV protection and comfortable daytime layering.',
+          why_this_one: 'Uses modern organic UV-filter cues for a daily sunscreen step while keeping reapplication expectations explicit.',
+          key_features: ['UV filters'],
+          matched_role_id: 'daily_sunscreen_finish_fit',
+          matched_role_label: 'Daily sunscreen with finish fit',
+          preferred_step: 'sunscreen',
+        },
+      ],
+      {
+        targetContext: {
+          resolved_target_step: 'sunscreen',
+          primary_role_id: 'daily_sunscreen_finish_fit',
+          framework_roles: [
+            {
+              role_id: 'daily_sunscreen_finish_fit',
+              label: 'Daily sunscreen with finish fit',
+              rank: 1,
+              preferred_step: 'sunscreen',
+              why_this_role: 'Use a daily sunscreen that layers cleanly under makeup.',
+            },
+          ],
+        },
+        language: 'EN',
+      },
+    );
+
+    assert.equal(rows.length, 1);
+    assert.match(String(rows[0].best_for || ''), /under makeup|sits more smoothly/i);
+    assert.match(String(rows[0].why_this_one || ''), /under-makeup sunscreen ask|lighter, smoother daytime layering/i);
+    assert.doesNotMatch(String(rows[0].why_this_one || ''), /uv-filter cues|filter identity|reapplication expectations explicit/i);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('reco assistant refinement question prioritizes missing skin type before climate and lifestyle', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
@@ -2786,6 +2833,111 @@ test('reco assistant structured renderer replaces tautological lead reasons with
     assert.doesNotMatch(text, /matches the selected card evidence/i);
     assert.match(text, /SPF 30/i);
     assert.match(text, /niacinamide|hyaluronic acid|invisible|makeup/i);
+    assert.equal(validation.ok, true);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('reco assistant structured renderer compares finish-fit sunscreen options with wear and texture tradeoffs', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const payload = __internal.applyRecoContentSpineToPayload(
+      {
+        recommendations: [
+          {
+            product_id: 'spf_unseen',
+            display_name: 'Unseen Sunscreen SPF 50',
+            brand: 'Supergoop',
+            category: 'Sunscreen',
+            short_description: 'A daily sunscreen built around soft-focus powders for comfortable daytime layering under makeup.',
+            why_this_one: 'Uses modern organic UV-filter cues for a daily sunscreen step while keeping reapplication expectations explicit.',
+            key_features: ['SPF 50'],
+            matched_role_id: 'daily_sunscreen_finish_fit',
+            matched_role_label: 'Daily sunscreen with finish fit',
+            preferred_step: 'sunscreen',
+          },
+          {
+            product_id: 'spf_mineral_unseen',
+            display_name: 'Mineral Unseen Sunscreen SPF 40',
+            brand: 'Supergoop',
+            category: 'Sunscreen',
+            short_description: 'A sheer, weightless, scentless mineral sunscreen recommended for sensitive skin.',
+            why_this_one: 'Uses mineral UV-filter cues for shoppers who need a daily sunscreen step with clear filter identity.',
+            key_features: ['Zinc PCA', 'Glycerin'],
+            matched_role_id: 'daily_sunscreen_finish_fit',
+            matched_role_label: 'Daily sunscreen with finish fit',
+            preferred_step: 'sunscreen',
+          },
+          {
+            product_id: 'spf_superscreen',
+            display_name: 'Superscreen Hydrating Daily Cream SPF 40',
+            brand: 'Supergoop',
+            category: 'Sunscreen',
+            short_description: 'A hydrating daily cream SPF with moisturizer-style hydration cues.',
+            why_this_one: 'Combines daily SPF use with moisturizer-style hydration cues, so it should be judged on both sun-care use and daytime skin comfort.',
+            key_features: ['Ceramide NP', 'Glycerin'],
+            matched_role_id: 'daily_sunscreen_finish_fit',
+            matched_role_label: 'Daily sunscreen with finish fit',
+            preferred_step: 'sunscreen',
+          },
+        ],
+        roles: [
+          {
+            role_id: 'daily_sunscreen_finish_fit',
+            label: 'Daily sunscreen with finish fit',
+            preferred_step: 'sunscreen',
+            why_this_role: 'Use a daily sunscreen that layers cleanly under makeup.',
+          },
+        ],
+        recommendation_meta: {
+          resolved_target_step: 'sunscreen',
+          mainline_status: 'grounded_success',
+        },
+      },
+      {
+        ingredient_query: 'Daily sunscreen with finish fit',
+        resolved_target_step: 'sunscreen',
+        primary_target_id: 'daily_sunscreen_finish_fit',
+        ranked_targets: [
+          {
+            target_id: 'daily_sunscreen_finish_fit',
+            ingredient_query: 'Daily sunscreen with finish fit',
+            resolved_target_step: 'sunscreen',
+          },
+        ],
+        selected_target_ids: ['daily_sunscreen_finish_fit'],
+      },
+    );
+    const names = [
+      'Unseen Sunscreen SPF 50',
+      'Mineral Unseen Sunscreen SPF 40',
+      'Superscreen Hydrating Daily Cream SPF 40',
+    ];
+    const primaryTarget = payload.recommendation_meta.ranked_targets[0];
+    const text = __internal.renderRecoAssistantStructuredReasonRewrite({
+      structuredReason: { lead_reason: '', support_reasons: [] },
+      payload,
+      language: 'EN',
+      primaryTarget,
+      names,
+      requestMode: 'buy',
+      selectedProductRoleMix: 'same_role_comparison',
+    });
+    const validation = __internal.validateRecoAssistantRewriteCandidate({
+      candidateText: text,
+      payload,
+      language: 'EN',
+      primaryTarget,
+      secondaryTargets: [],
+      names,
+      requestMode: 'buy',
+    });
+
+    assert.match(text, /soft-focus powders|comfortable daytime layering under makeup|under makeup/i);
+    assert.match(text, /sheer, weightless|sensitive skin/i);
+    assert.match(text, /hydrating daily cream spf|moisturizer-style hydration|creamier/i);
+    assert.doesNotMatch(text, /uv-filter cues|filter identity|reapplication expectations explicit/i);
     assert.equal(validation.ok, true);
   } finally {
     delete require.cache[moduleId];

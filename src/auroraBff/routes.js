@@ -20272,6 +20272,113 @@ function buildRecoRoleGroundedWhyThisOne({
   return '';
 }
 
+function recoRoleNeedsFinishFitNarrative(roleText = '') {
+  const role = String(roleText || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  if (!role) return false;
+  return /\b(?:sunscreen|spf|uv)\b/.test(role)
+    && /\b(?:finish fit|makeup|under makeup|layer(?:ing)?|pilling|smooth finish)\b/.test(role);
+}
+
+function looksLikeWeakRecoFinishFitNarrative(value = '') {
+  const text = normalizeSemanticAuditText(value);
+  if (!text) return false;
+  const weakSignal =
+    /\b(?:uv filter cues?|modern organic uv filters?|mineral uv filters?|clear filter identity|reapplication expectations explicit|daily spf wear|daily sunscreen step|sun care use|daytime skin comfort)\b/.test(text);
+  const strongSignal =
+    /\b(?:under makeup|makeup|layer(?:ing)?|pilling|soft focus|soft-focus|blur|primer|weightless|sheer|fluid|watery|invisible|white cast|non greasy|non-greasy|fragrance-free|scentless|sensitive skin|cream format|cream texture|hydrating cream)\b/.test(text);
+  return weakSignal && !strongSignal;
+}
+
+function buildRecoFinishFitBestFor({ language = 'EN' } = {}) {
+  const isCn = String(language || '').trim().toUpperCase() === 'CN';
+  return isCn
+    ? '适合需要让白天防晒在妆前更顺、更不容易搓泥的场景'
+    : 'Suited for daily sunscreen that sits more smoothly under makeup';
+}
+
+function buildRecoFinishFitSpecificWhy({
+  roleText = '',
+  productName = '',
+  rawRow = null,
+  stableAnchorProduct = null,
+  productIntel = null,
+  pivotaInsights = null,
+  shoppingCard = null,
+  searchCard = null,
+  language = 'EN',
+} = {}) {
+  if (!recoRoleNeedsFinishFitNarrative(roleText)) return '';
+  const isCn = String(language || '').trim().toUpperCase() === 'CN';
+  const productText = String(productName || '').trim()
+    || (isCn ? '这支防晒' : 'This sunscreen');
+  const text = collectRecoPromptTextList(
+    [
+      pickFirstTrimmed(
+        rawRow?.short_description,
+        rawRow?.shortDescription,
+        rawRow?.description,
+        rawRow?.why_this_one,
+        rawRow?.whyThisOne,
+        rawRow?.reason,
+      ),
+      pickFirstTrimmed(shoppingCard?.intro),
+      pickFirstTrimmed(searchCard?.intro_candidate, searchCard?.intro),
+      pickFirstTrimmed(productIntel?.product_intel_core?.what_it_is?.body),
+      pickFirstTrimmed(pivotaInsights?.what_it_is),
+      ...(Array.isArray(rawRow?.key_features) ? rawRow.key_features : []),
+      ...(Array.isArray(rawRow?.keyFeatures) ? rawRow.keyFeatures : []),
+      ...(Array.isArray(rawRow?.benefit_tags) ? rawRow.benefit_tags : []),
+      ...(Array.isArray(rawRow?.benefitTags) ? rawRow.benefitTags : []),
+      ...(Array.isArray(stableAnchorProduct?.benefit_tags) ? stableAnchorProduct.benefit_tags : []),
+    ],
+    { max: 12, maxLen: 180 },
+  ).join(' ');
+  if (!text) return '';
+
+  const hasSoftFocus = /\b(?:soft[-\s]?focus|blur(?:ring)?|primer[-\s]?like)\b/i.test(text);
+  const hasLayering = /\b(?:under makeup|makeup|layer(?:ing)?|non[-\s]?pilling|no pilling|pilling)\b/i.test(text);
+  const hasWeightless = /\b(?:weightless|lightweight|airy|fluid|watery|water[-\s]?fit|invisible|non[-\s]?greasy|sheer)\b/i.test(text);
+  const hasWhiteCastCue = /\b(?:no white cast|white cast[-\s]?free|lower white[-\s]?cast|invisible)\b/i.test(text);
+  const hasSensitiveCue = /\b(?:sensitive skin|scentless|fragrance[-\s]?free|bisabolol|ectoin)\b/i.test(text);
+  const hasCreamierCue = /\b(?:hydrating daily cream|hydrating cream|cream format|cream texture|moisturizer[-\s]?style hydration|moisturizer[-\s]?format)\b/i.test(text);
+
+  if (isCn) {
+    if (hasSoftFocus || (hasLayering && hasWeightless)) {
+      return `${productText}更贴合这类妆前防晒诉求，因为它强调更轻、更顺的白天叠加肤感，而不是偏厚重的成膜感。`;
+    }
+    if (hasWeightless && hasSensitiveCue) {
+      return `${productText}更贴合这类妆前防晒诉求，因为它偏轻薄、低气味线索，对敏感肌白天佩戴更友好。`;
+    }
+    if (hasCreamierCue) {
+      return `${productText}更适合想要白天多一点保湿缓冲的人，但它会更偏面霜型防晒肤感，而不是最轻薄的一类。`;
+    }
+    if (hasWhiteCastCue) {
+      return `${productText}更贴合这类妆前防晒诉求，因为它更强调白天上脸后的清透感和后续叠加表现。`;
+    }
+    if (hasLayering) {
+      return `${productText}更贴合这类妆前防晒诉求，因为它本身就带有更顺的白天叠加线索。`;
+    }
+    return '';
+  }
+
+  if (hasSoftFocus || (hasLayering && hasWeightless)) {
+    return `${productText} fits this under-makeup sunscreen ask because it points to lighter, smoother daytime layering instead of a richer cream finish.`;
+  }
+  if (hasWeightless && hasSensitiveCue) {
+    return `${productText} fits this under-makeup sunscreen ask because it keeps the wear sheer and weightless while staying simpler for sensitive-skin daytime use.`;
+  }
+  if (hasCreamierCue) {
+    return `${productText} fits this under-makeup sunscreen ask if you want more daytime moisture from a creamier SPF texture, not just the lightest finish.`;
+  }
+  if (hasWhiteCastCue) {
+    return `${productText} fits this under-makeup sunscreen ask because it points to cleaner daytime wear with lower white-cast risk.`;
+  }
+  if (hasLayering) {
+    return `${productText} fits this under-makeup sunscreen ask because it is positioned for smoother daytime layering.`;
+  }
+  return '';
+}
+
 function buildRecoDerivedShopperCopy({
   role = null,
   row = null,
@@ -20388,7 +20495,32 @@ function buildRecoDerivedShopperCopy({
       language,
     },
   );
-  const bestFor = existingBestFor || reviewedBestFor || (() => {
+  const finishFitSpecificWhy = buildRecoFinishFitSpecificWhy({
+    roleText,
+    productName,
+    rawRow,
+    stableAnchorProduct,
+    productIntel,
+    pivotaInsights,
+    shoppingCard,
+    searchCard,
+    language,
+  });
+  const shouldDeprioritizeExistingFinishFitBestFor =
+    recoRoleNeedsFinishFitNarrative(roleText)
+    && /^(?:daily spf wear|daily sunscreen|daily spf routines?)$/i.test(String(rawExistingBestFor || '').trim());
+  const shouldDeprioritizeExistingFinishFitWhy =
+    recoRoleNeedsFinishFitNarrative(roleText)
+    && looksLikeWeakRecoFinishFitNarrative(rawExistingWhy)
+    && Boolean(finishFitSpecificWhy || roleAlignedSpecificNarrative);
+  const bestFor = (
+    shouldDeprioritizeExistingFinishFitBestFor
+      ? ''
+      : existingBestFor
+  ) || reviewedBestFor || (() => {
+    if (recoRoleNeedsFinishFitNarrative(roleText)) {
+      return buildRecoFinishFitBestFor({ language });
+    }
     if (/\boil|shine|sebum\b/i.test(roleText)) {
       return isCn ? '适合出油和午后泛油光' : 'Suited for excess oil and mid-day shine';
     }
@@ -20411,7 +20543,16 @@ function buildRecoDerivedShopperCopy({
       ? `适合放进当前的${humanizeRecoProductType(productType || 'other', 'CN')}`
       : `Works as your ${humanizeRecoProductType(productType || 'other', 'EN').toLowerCase()} step`;
   })();
-  const whyThisOne = existingWhy || roleAlignedSpecificNarrative || roleGroundedWhy || (() => {
+  const whyThisOne = (
+    shouldDeprioritizeExistingFinishFitWhy
+      ? ''
+      : existingWhy
+  ) || finishFitSpecificWhy || roleAlignedSpecificNarrative || roleGroundedWhy || (() => {
+    if (recoRoleNeedsFinishFitNarrative(roleText)) {
+      return isCn
+        ? '这一步更关注防晒在白天妆前的叠加表现，而不是只看有没有防晒值。'
+        : 'It focuses on how the sunscreen wears under makeup during the day, not just on SPF coverage.';
+    }
     if (/\boil|shine|sebum\b/i.test(roleText)) {
       return isCn
         ? '这是一支更轻薄的控油精华，适合把出油问题先压下来。'
@@ -55160,7 +55301,10 @@ function buildRecoAssistantReasonPoints(detail, { max = 4 } = {}) {
         pickFirstTrimmed(item.short_description),
       ],
       { max: Math.max(4, max * 2), maxLen: 120 },
-    ),
+    ).filter((value) => !(
+      recoRoleNeedsFinishFitNarrative(targetText)
+      && looksLikeWeakRecoFinishFitNarrative(value)
+    )),
     { targetText, max: Math.max(2, max) },
   );
 }
@@ -56398,6 +56542,7 @@ function buildRecoAssistantRewritePrompt({
       'Do not call a product, routine, or bundle the top, best, strongest, perfect, or ideal choice. Give concrete evidence instead.',
       'If selected_product_details.fit_assessment is "soft_match" or comparison_fill_reason is present, frame that product as a softer or broader alternative instead of an equally direct match.',
       'If selected_product_details.tradeoff_hint exists, honor it.',
+      'If target_label or selected_target_ids indicates daily_sunscreen_finish_fit, explain under-makeup wear, pilling risk, white-cast, fluid versus cream texture, or weightless versus richer finish before defaulting to UV-filter identity.',
       'Prefer product-specific evidence over generic role language when both are available.',
       'For single-direction answers, sentence 2 should explain the fit in shopper-facing language instead of repeating the question.',
       'Do not end with a generic closing sentence like "these steps support your skin" or "together they help balance the routine".',
@@ -57346,13 +57491,19 @@ function buildRecoAssistantEvidenceSynthesisReason(detail = {}, { targetLabel = 
   const ingredientPhrase = formatRecoAssistantEvidencePhraseList(ingredients, 3);
 
   const finishClaims = [];
+  const isFinishFitTarget = recoRoleNeedsFinishFitNarrative(targetLabel);
+  if (/\b(soft[-\s]?focus|blur(?:ring)?|primer[-\s]?like)\b/i.test(allText)) finishClaims.push('softer, primer-like wear');
   if (/\binvisible\b/i.test(allText)) finishClaims.push('an invisible finish');
   if (/\b(no\s+white\s+cast|white\s+cast[-\s]?free)\b/i.test(allText)) finishClaims.push('low white-cast wear');
   if (/\b(makeup|layer(?:ing)?|under\s+makeup|heavy\s+layering|pilling)\b/i.test(allText)) finishClaims.push('makeup-friendly layering');
+  if (/\b(sheer|weightless|airy)\b/i.test(allText)) finishClaims.push('sheer, weightless wear');
   if (/\b(lightweight|light[-\s]?weight|non[-\s]?greasy|non\s+greasy|breathable)\b/i.test(allText)) finishClaims.push('a lightweight, non-greasy feel');
   if (/\bmatte|mattif/i.test(allText)) finishClaims.push('a matte-leaning finish');
   if (/\bgel[-\s]?cream|gel cream\b/i.test(allText)) finishClaims.push('gel-cream hydration');
   if (/\bfluid|watery|water[-\s]?fit|serum[-\s]?like\b/i.test(allText)) finishClaims.push('a fluid texture');
+  if (/\b(hydrating daily cream|hydrating cream|cream format|cream texture|moisturizer[-\s]?style hydration|moisturizer[-\s]?format)\b/i.test(allText)) {
+    finishClaims.push('a creamier, more moisturizing SPF feel');
+  }
   if (/\bmoisturizer\s+format|moisturizer[-\s]?and[-\s]?spf|moisturizer\s+with\s+spf\b/i.test(allText)) finishClaims.push('a moisturizer-format SPF step');
   if (!finishClaims.length && /\bhydrat|moistur/i.test(allText)) finishClaims.push('hydrating support');
   if (!finishClaims.length && /\b(oil|oily|shine|sebum|pore)\b/i.test(allText)) finishClaims.push('excess-oil support');
@@ -57362,6 +57513,20 @@ function buildRecoAssistantEvidenceSynthesisReason(detail = {}, { targetLabel = 
   const hasUnsupportedConcern =
     recoAssistantReasonHasUnsupportedConcern(allText, target || buildRecoAssistantEvidenceTargetText(item));
   if (hasUnsupportedConcern && !spf && !ingredientPhrase && !finishPhrase) return '';
+  if (isFinishFitTarget && spf && finishPhrase) {
+    return `it combines ${spf} protection with ${finishPhrase} for cleaner daytime layering`;
+  }
+  if (isFinishFitTarget && ingredientPhrase && finishPhrase) {
+    return `it pairs ${ingredientPhrase} with ${finishPhrase} for cleaner daytime layering`;
+  }
+  if (isFinishFitTarget && finishPhrase) {
+    const verb = /\blayering\b/i.test(finishPhrase)
+      ? 'supports'
+      : /^(?:a|an)\s+/i.test(finishPhrase)
+        ? 'has'
+        : 'provides';
+    return `it ${verb} ${finishPhrase} for cleaner daytime layering`;
+  }
   if (spf && ingredientPhrase && finishPhrase) {
     return `it pairs ${spf} protection with ${ingredientPhrase} and ${finishPhrase}`;
   }
