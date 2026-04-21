@@ -18537,6 +18537,62 @@ function mergeRecoContextRankedTargets(leftTargets, rightTargets, primaryTargetI
   }));
 }
 
+function normalizeRecoContextComparisonMode(value) {
+  const token = String(value || '').trim().toLowerCase();
+  if (!token) return '';
+  if (token === 'same_role' || token === 'same-role') return 'same_role_comparison';
+  if (token === 'single' || token === 'one_product' || token === 'one-product') return 'single_product';
+  return ['routine_mix', 'same_role_comparison', 'single_product'].includes(token) ? token : '';
+}
+
+function normalizeRecoContextSemanticPlanSubset(raw) {
+  const plan = isPlainObject(raw) ? raw : null;
+  if (!plan) return null;
+  const selectionConstraints = isPlainObject(plan.selection_constraints)
+    ? plan.selection_constraints
+    : isPlainObject(plan.selectionConstraints)
+      ? plan.selectionConstraints
+      : null;
+  const primaryConcern = pickFirstTrimmed(plan.primary_concern, plan.primaryConcern);
+  const routineMode = normalizeRecoContextComparisonMode(
+    pickFirstTrimmed(
+      plan.routine_mode,
+      plan.routineMode,
+      selectionConstraints?.routine_mode,
+      selectionConstraints?.routineMode,
+    ),
+  );
+  const comparisonMode = normalizeRecoContextComparisonMode(
+    pickFirstTrimmed(
+      plan.comparison_mode,
+      plan.comparisonMode,
+      selectionConstraints?.comparison_mode,
+      selectionConstraints?.comparisonMode,
+    ),
+  );
+  const mustSatisfyConstraints = normalizeArrayOfStrings(
+    plan.must_satisfy_constraints || plan.mustSatisfyConstraints,
+    { max: 8, maxLen: 96 },
+  );
+  const evidenceNeeded = normalizeArrayOfStrings(
+    plan.evidence_needed || plan.evidenceNeeded,
+    { max: 6, maxLen: 96 },
+  );
+  const out = {};
+  if (primaryConcern) out.primary_concern = primaryConcern.slice(0, 160);
+  if (routineMode) out.routine_mode = routineMode;
+  if (comparisonMode) out.comparison_mode = comparisonMode;
+  if (mustSatisfyConstraints.length) out.must_satisfy_constraints = mustSatisfyConstraints;
+  if (evidenceNeeded.length) out.evidence_needed = evidenceNeeded;
+  const normalizedSelectionConstraints = {};
+  if (routineMode) normalizedSelectionConstraints.routine_mode = routineMode;
+  if (comparisonMode) normalizedSelectionConstraints.comparison_mode = comparisonMode;
+  if (Object.keys(normalizedSelectionConstraints).length) {
+    out.selection_constraints = normalizedSelectionConstraints;
+  }
+  return Object.keys(out).length ? out : null;
+}
+
 function normalizeIngredientRecoContextValue(raw) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const intent = pickFirstTrimmed(raw.intent);
@@ -18544,6 +18600,8 @@ function normalizeIngredientRecoContextValue(raw) {
   const triggerSource = pickFirstTrimmed(raw.trigger_source, raw.triggerSource);
   const artifactId = pickFirstTrimmed(raw.artifact_id, raw.artifactId);
   const contextOrigin = pickFirstTrimmed(raw.context_origin, raw.contextOrigin);
+  const requestText = pickFirstTrimmed(raw.request_text, raw.requestText, raw.message);
+  const focusText = pickFirstTrimmed(raw.focus_text, raw.focusText);
   const query = pickFirstTrimmed(
     raw.query,
     raw.ingredient_query,
@@ -18618,6 +18676,30 @@ function normalizeIngredientRecoContextValue(raw) {
         ? raw.rankedTargets
         : [],
   );
+  const semanticPlan = normalizeRecoContextSemanticPlanSubset(
+    isPlainObject(raw.semantic_plan)
+      ? raw.semantic_plan
+      : isPlainObject(raw.semanticPlan)
+        ? raw.semanticPlan
+        : null,
+  );
+  const primaryConcern = pickFirstTrimmed(raw.primary_concern, raw.primaryConcern, semanticPlan?.primary_concern);
+  const routineMode = normalizeRecoContextComparisonMode(
+    pickFirstTrimmed(
+      raw.routine_mode,
+      raw.routineMode,
+      semanticPlan?.routine_mode,
+      semanticPlan?.selection_constraints?.routine_mode,
+    ),
+  );
+  const comparisonMode = normalizeRecoContextComparisonMode(
+    pickFirstTrimmed(
+      raw.comparison_mode,
+      raw.comparisonMode,
+      semanticPlan?.comparison_mode,
+      semanticPlan?.selection_constraints?.comparison_mode,
+    ),
+  );
   const primaryTargetId = pickFirstTrimmed(
     raw.primary_target_id,
     raw.primaryTargetId,
@@ -18628,6 +18710,9 @@ function normalizeIngredientRecoContextValue(raw) {
   const targetBundleOwner = pickFirstTrimmed(raw.target_bundle_owner, raw.targetBundleOwner);
   const finalOutcomeOwner = pickFirstTrimmed(raw.final_outcome_owner, raw.finalOutcomeOwner);
   const ownerShiftReason = pickFirstTrimmed(raw.owner_shift_reason, raw.ownerShiftReason);
+  const explicitSingleProductRequest =
+    raw.explicit_single_product_request === true
+    || raw.explicitSingleProductRequest === true;
   const selectedTargetIds = normalizeRecoContextTargetIds(
     Array.isArray(raw.selected_target_ids)
       ? raw.selected_target_ids
@@ -18645,13 +18730,21 @@ function normalizeIngredientRecoContextValue(raw) {
     productCandidates.length === 0 &&
     !primaryFocus &&
     rankedTargets.length === 0 &&
-    !primaryTargetId
+    !primaryTargetId &&
+    !requestText &&
+    !focusText &&
+    !primaryConcern &&
+    !routineMode &&
+    !comparisonMode &&
+    !semanticPlan
   ) return null;
   const out = {
     ...(intent ? { intent: String(intent).slice(0, 48) } : {}),
     ...(sourceDetail ? { source_detail: String(sourceDetail).slice(0, 64) } : {}),
     ...(triggerSource ? { trigger_source: String(triggerSource).slice(0, 64) } : {}),
     ...(artifactId ? { artifact_id: String(artifactId).slice(0, 128) } : {}),
+    ...(requestText ? { request_text: String(requestText).slice(0, 240) } : {}),
+    ...(focusText ? { focus_text: String(focusText).slice(0, 160) } : {}),
     ...(query ? { query: String(query).slice(0, 120) } : {}),
     ...(query ? { ingredient_query: String(query).slice(0, 120) } : {}),
     ...(goal ? { goal } : {}),
@@ -18673,12 +18766,17 @@ function normalizeIngredientRecoContextValue(raw) {
     ...(primaryFocus ? { primary_focus: primaryFocus } : {}),
     ...(rankedTargets.length ? { ranked_targets: rankedTargets } : {}),
     ...(confidencePolicy ? { confidence_policy: confidencePolicy } : {}),
+    ...(primaryConcern ? { primary_concern: primaryConcern.slice(0, 160) } : {}),
+    ...(routineMode ? { routine_mode: routineMode } : {}),
+    ...(comparisonMode ? { comparison_mode: comparisonMode } : {}),
+    ...(semanticPlan ? { semantic_plan: semanticPlan } : {}),
     ...(primaryTargetId ? { primary_target_id: primaryTargetId } : {}),
     ...(ownerSource ? { owner_source: ownerSource.slice(0, 64) } : {}),
     ...(targetBundleOwner ? { target_bundle_owner: targetBundleOwner.slice(0, 64) } : {}),
     ...(finalOutcomeOwner ? { final_outcome_owner: finalOutcomeOwner.slice(0, 64) } : {}),
     ...(ownerShiftReason ? { owner_shift_reason: ownerShiftReason.slice(0, 120) } : {}),
     ...(selectedTargetIds.length ? { selected_target_ids: selectedTargetIds } : {}),
+    ...(explicitSingleProductRequest ? { explicit_single_product_request: true } : {}),
   };
   if (Number.isFinite(updatedRaw) && updatedRaw > 0) {
     out.updated_at_ms = Math.trunc(updatedRaw);
@@ -36811,6 +36909,8 @@ function isVerifiedBeautyProductCandidate(row) {
 function sanitizeRecoRequestContext(raw = {}) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const message = String(raw.message || '').trim();
+  const requestText = pickFirstTrimmed(raw.request_text, raw.requestText, raw.message);
+  const focusText = pickFirstTrimmed(raw.focus_text, raw.focusText);
   const actionId = String(raw.action_id || '').trim();
   const sourceDetail = normalizeRecoSourceDetail(raw.source_detail || raw.sourceDetail);
   const intent = String(raw.intent || '').trim().toLowerCase();
@@ -36837,6 +36937,30 @@ function sanitizeRecoRequestContext(raw = {}) {
   );
   const confidencePolicy = normalizeRecoConfidencePolicy(
     isPlainObject(raw.confidence_policy) ? raw.confidence_policy : isPlainObject(raw.confidencePolicy) ? raw.confidencePolicy : null,
+  );
+  const semanticPlan = normalizeRecoContextSemanticPlanSubset(
+    isPlainObject(raw.semantic_plan)
+      ? raw.semantic_plan
+      : isPlainObject(raw.semanticPlan)
+        ? raw.semanticPlan
+        : null,
+  );
+  const primaryConcern = pickFirstTrimmed(raw.primary_concern, raw.primaryConcern, semanticPlan?.primary_concern);
+  const routineMode = normalizeRecoContextComparisonMode(
+    pickFirstTrimmed(
+      raw.routine_mode,
+      raw.routineMode,
+      semanticPlan?.routine_mode,
+      semanticPlan?.selection_constraints?.routine_mode,
+    ),
+  );
+  const comparisonMode = normalizeRecoContextComparisonMode(
+    pickFirstTrimmed(
+      raw.comparison_mode,
+      raw.comparisonMode,
+      semanticPlan?.comparison_mode,
+      semanticPlan?.selection_constraints?.comparison_mode,
+    ),
   );
   const rankedTargets = normalizeRecoContextRankedTargets(
     Array.isArray(raw.ranked_targets)
@@ -36865,6 +36989,9 @@ function sanitizeRecoRequestContext(raw = {}) {
   const createdAtMsRaw = Number(raw.created_at_ms || raw.createdAtMs);
   const createdAtMs = Number.isFinite(createdAtMsRaw) ? Math.max(0, Math.trunc(createdAtMsRaw)) : Date.now();
   const includeAlternatives = raw.include_alternatives === true;
+  const explicitSingleProductRequest =
+    raw.explicit_single_product_request === true
+    || raw.explicitSingleProductRequest === true;
   const out = {
     source_detail: sourceDetail,
     intent: intent || 'reco_products',
@@ -36873,6 +37000,8 @@ function sanitizeRecoRequestContext(raw = {}) {
     include_alternatives: includeAlternatives,
   };
   if (message) out.message = message.slice(0, 240);
+  if (requestText) out.request_text = requestText.slice(0, 240);
+  if (focusText) out.focus_text = focusText.slice(0, 160);
   if (actionId) out.action_id = actionId.slice(0, 120);
   if (ingredientQuery) out.ingredient_query = ingredientQuery.slice(0, 120);
   if (goal) out.goal = goal.slice(0, 80);
@@ -36884,6 +37013,10 @@ function sanitizeRecoRequestContext(raw = {}) {
   if (productCandidates.length) out.product_candidates = productCandidates;
   if (primaryFocus) out.primary_focus = primaryFocus;
   if (confidencePolicy) out.confidence_policy = confidencePolicy;
+  if (primaryConcern) out.primary_concern = primaryConcern.slice(0, 160);
+  if (routineMode) out.routine_mode = routineMode;
+  if (comparisonMode) out.comparison_mode = comparisonMode;
+  if (semanticPlan) out.semantic_plan = semanticPlan;
   if (rankedTargets.length) out.ranked_targets = rankedTargets;
   if (primaryTargetId) out.primary_target_id = primaryTargetId;
   if (ownerSource) out.owner_source = ownerSource.slice(0, 64);
@@ -36891,6 +37024,7 @@ function sanitizeRecoRequestContext(raw = {}) {
   if (finalOutcomeOwner) out.final_outcome_owner = finalOutcomeOwner.slice(0, 64);
   if (ownerShiftReason) out.owner_shift_reason = ownerShiftReason.slice(0, 120);
   if (selectedTargetIds.length) out.selected_target_ids = selectedTargetIds;
+  if (explicitSingleProductRequest) out.explicit_single_product_request = true;
   return out;
 }
 
@@ -65201,9 +65335,98 @@ function applyIngredientRecoConstraint(payload, context) {
 
 function buildEffectiveRecoContextTargetContext(recoContext, targetContext) {
   const normalizedContext = normalizeIngredientRecoContextValue(recoContext);
+  const primaryConcern = pickFirstTrimmed(
+    targetContext?.primary_concern,
+    targetContext?.primaryConcern,
+    targetContext?.semantic_plan?.primary_concern,
+    normalizedContext?.primary_concern,
+    normalizedContext?.primaryConcern,
+    normalizedContext?.semantic_plan?.primary_concern,
+  );
+  const routineMode = normalizeRecoContextComparisonMode(
+    pickFirstTrimmed(
+      targetContext?.routine_mode,
+      targetContext?.routineMode,
+      targetContext?.semantic_plan?.routine_mode,
+      targetContext?.semantic_plan?.selection_constraints?.routine_mode,
+      normalizedContext?.routine_mode,
+      normalizedContext?.routineMode,
+      normalizedContext?.semantic_plan?.routine_mode,
+      normalizedContext?.semantic_plan?.selection_constraints?.routine_mode,
+    ),
+  );
+  const comparisonMode = normalizeRecoContextComparisonMode(
+    pickFirstTrimmed(
+      targetContext?.comparison_mode,
+      targetContext?.comparisonMode,
+      targetContext?.semantic_plan?.comparison_mode,
+      targetContext?.semantic_plan?.selection_constraints?.comparison_mode,
+      normalizedContext?.comparison_mode,
+      normalizedContext?.comparisonMode,
+      normalizedContext?.semantic_plan?.comparison_mode,
+      normalizedContext?.semantic_plan?.selection_constraints?.comparison_mode,
+    ),
+  );
+  const effectiveSemanticPlan = normalizeRecoContextSemanticPlanSubset({
+    ...(isPlainObject(normalizedContext?.semantic_plan) ? normalizedContext.semantic_plan : {}),
+    ...(isPlainObject(targetContext?.semantic_plan) ? targetContext.semantic_plan : {}),
+    ...(primaryConcern ? { primary_concern: primaryConcern } : {}),
+    ...(routineMode ? { routine_mode: routineMode } : {}),
+    ...(comparisonMode ? { comparison_mode: comparisonMode } : {}),
+    must_satisfy_constraints: uniqCaseInsensitiveStrings([
+      ...(Array.isArray(normalizedContext?.semantic_plan?.must_satisfy_constraints)
+        ? normalizedContext.semantic_plan.must_satisfy_constraints
+        : []),
+      ...(Array.isArray(targetContext?.semantic_plan?.must_satisfy_constraints)
+        ? targetContext.semantic_plan.must_satisfy_constraints
+        : []),
+    ], 8),
+    evidence_needed: uniqCaseInsensitiveStrings([
+      ...(Array.isArray(normalizedContext?.semantic_plan?.evidence_needed)
+        ? normalizedContext.semantic_plan.evidence_needed
+        : []),
+      ...(Array.isArray(targetContext?.semantic_plan?.evidence_needed)
+        ? targetContext.semantic_plan.evidence_needed
+        : []),
+    ], 6),
+  });
   const effectiveTargetContext = {
     ...(isPlainObject(normalizedContext) ? normalizedContext : {}),
     ...(isPlainObject(targetContext) ? targetContext : {}),
+    ...(pickFirstTrimmed(
+      targetContext?.request_text,
+      targetContext?.requestText,
+      normalizedContext?.request_text,
+      normalizedContext?.requestText,
+      targetContext?.message,
+      normalizedContext?.message,
+    )
+      ? {
+          request_text: pickFirstTrimmed(
+            targetContext?.request_text,
+            targetContext?.requestText,
+            normalizedContext?.request_text,
+            normalizedContext?.requestText,
+            targetContext?.message,
+            normalizedContext?.message,
+          ),
+        }
+      : {}),
+    ...(pickFirstTrimmed(
+      targetContext?.focus_text,
+      targetContext?.focusText,
+      normalizedContext?.focus_text,
+      normalizedContext?.focusText,
+    )
+      ? {
+          focus_text: pickFirstTrimmed(
+            targetContext?.focus_text,
+            targetContext?.focusText,
+            normalizedContext?.focus_text,
+            normalizedContext?.focusText,
+          ),
+        }
+      : {}),
     ...(pickFirstTrimmed(
       targetContext?.query,
       targetContext?.ingredient_query,
@@ -65237,8 +65460,15 @@ function buildEffectiveRecoContextTargetContext(recoContext, targetContext) {
     ...(pickFirstTrimmed(targetContext?.goal, normalizedContext?.goal)
       ? { goal: pickFirstTrimmed(targetContext?.goal, normalizedContext?.goal) }
       : {}),
+    ...(primaryConcern ? { primary_concern: primaryConcern } : {}),
+    ...(routineMode ? { routine_mode: routineMode } : {}),
+    ...(comparisonMode ? { comparison_mode: comparisonMode } : {}),
+    ...(effectiveSemanticPlan ? { semantic_plan: effectiveSemanticPlan } : {}),
     ...(pickFirstTrimmed(targetContext?.primary_target_id, normalizedContext?.primary_target_id)
       ? { primary_target_id: pickFirstTrimmed(targetContext?.primary_target_id, normalizedContext?.primary_target_id) }
+      : {}),
+    ...(targetContext?.explicit_single_product_request === true || normalizedContext?.explicit_single_product_request === true
+      ? { explicit_single_product_request: true }
       : {}),
     ...(Array.isArray(targetContext?.ranked_targets) && targetContext.ranked_targets.length
       ? { ranked_targets: targetContext.ranked_targets }
@@ -94257,6 +94487,7 @@ const __internal = {
   normalizeIngredientRecoContextValue,
   normalizeRecoConfidencePolicy,
   mergeIngredientRecoContextValue,
+  buildEffectiveRecoContextTargetContext,
   buildIngredientRecoUpstreamPrompt,
   resolveRecoMainPromptSpec,
   buildAuroraProductRecommendationsPromptBundle,

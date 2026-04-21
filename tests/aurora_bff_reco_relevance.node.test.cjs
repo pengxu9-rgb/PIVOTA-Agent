@@ -9293,6 +9293,102 @@ test('__internal: framework pool prefers untinted finish-fit sunscreen over tint
   assert.ok(Number(untinted.framework_rank_score || 0) > Number(tinted.framework_rank_score || 0));
 });
 
+test('__internal: latest reco context rehydrates under-makeup semantic intent for finish-fit sunscreen ranking', () => {
+  const { __internal } = loadRoutesFresh();
+  const recoContext = __internal.sanitizeRecoRequestContext({
+    source_detail: 'analysis_handoff',
+    trigger_source: 'analysis_handoff',
+    message: 'Based on my routine and the skin analysis, what should I buy for daytime so my makeup stops pilling?',
+    primary_target_id: 'daily_sunscreen_finish_fit',
+    selected_target_ids: ['daily_sunscreen_finish_fit'],
+    ranked_targets: [
+      {
+        target_id: 'daily_sunscreen_finish_fit',
+        target_role: 'primary',
+        ingredient_query: 'daily sunscreen finish fit',
+        resolved_target_step: 'sunscreen',
+        source: 'analysis_handoff',
+      },
+    ],
+    routine_mode: 'same_role_comparison',
+    comparison_mode: 'same_role_comparison',
+    semantic_plan: {
+      primary_concern: 'daytime routine under makeup',
+      routine_mode: 'same_role_comparison',
+      comparison_mode: 'same_role_comparison',
+      must_satisfy_constraints: ['under makeup', 'avoid pilling', 'lightweight finish'],
+      evidence_needed: ['finish fit', 'layering compatibility'],
+    },
+  });
+  assert.ok(recoContext);
+  assert.match(String(recoContext?.request_text || ''), /makeup stops pilling/i);
+
+  const { effectiveTargetContext } = __internal.buildEffectiveRecoContextTargetContext(recoContext, {
+    framework_id: 'recofw_test_latest_context_finish_fit_rehydration',
+    primary_role_id: 'daily_sunscreen_finish_fit',
+    framework_roles: [
+      {
+        role_id: 'daily_sunscreen_finish_fit',
+        rank: 1,
+        preferred_step: 'sunscreen',
+        label: 'Daily sunscreen finish fit',
+        query_terms: ['sunscreen under makeup', 'lightweight sunscreen'],
+        fit_keywords: ['spf', 'lightweight', 'under makeup', 'fluid'],
+        ingredient_hypotheses: ['UV filters'],
+        product_type_hypotheses: ['sunscreen'],
+      },
+    ],
+  });
+
+  assert.equal(effectiveTargetContext?.comparison_mode, 'same_role_comparison');
+  assert.equal(effectiveTargetContext?.routine_mode, 'same_role_comparison');
+  assert.match(String(effectiveTargetContext?.request_text || ''), /makeup stops pilling/i);
+  assert.deepEqual(
+    effectiveTargetContext?.semantic_plan?.must_satisfy_constraints,
+    ['under makeup', 'avoid pilling', 'lightweight finish'],
+  );
+
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [
+      {
+        product_id: 'haruharu_portable_stick',
+        merchant_id: 'external_seed',
+        brand: 'Haruharu Wonder',
+        name: 'Daily Soothing Sun Shield SPF50+ PA++++',
+        display_name: 'Haruharu Wonder Daily Soothing Sun Shield SPF50+ PA++++',
+        category: 'Sunscreen',
+        product_type: 'Sunscreen',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'daily_sunscreen_finish_fit',
+        retrieval_query: 'daily sunscreen finish fit',
+        local_external_seed_role_fit_score: 1.06,
+        benefit_tags: ['spf 50', 'portable', 'reapplication', 'stick'],
+        short_description: 'A stick-format sunscreen built for portable midday touchups and reapplication.',
+      },
+      {
+        product_id: 'boj_aqua_fresh_untinted',
+        merchant_id: 'external_seed',
+        brand: 'Beauty of Joseon',
+        name: 'Relief Sun Aqua-Fresh : Rice + B5 (SPF50+ PA++++)',
+        display_name: 'Beauty of Joseon Relief Sun Aqua-Fresh : Rice + B5 (SPF50+ PA++++)',
+        category: 'Sunscreen',
+        product_type: 'Sunscreen',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'daily_sunscreen_finish_fit',
+        retrieval_query: 'daily sunscreen finish fit',
+        local_external_seed_role_fit_score: 1.03,
+        benefit_tags: ['spf 50', 'lightweight', 'under makeup', 'fluid'],
+        short_description: 'A lightweight sunscreen fluid that layers smoothly under makeup with no white cast.',
+      },
+    ].map((row) => __internal.normalizeRecoCatalogProduct(row)),
+    { targetContext: effectiveTargetContext },
+  );
+
+  assert.equal(state.primary_role_matched, true);
+  assert.equal(state.selected_recommendations[0]?.product_id, 'boj_aqua_fresh_untinted');
+  assert.equal(state.selected_recommendations[1]?.product_id, 'haruharu_portable_stick');
+});
+
 test('__internal: framework pool demotes mini sunscreen variants behind full-size same-role options', () => {
   const { __internal } = loadRoutesFresh();
   const state = __internal.finalizeConcernFrameworkCandidatePools(
