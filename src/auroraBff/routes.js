@@ -58435,10 +58435,94 @@ function normalizeRecoAssistantFinishFitTradeoffReason(reason = '', {
   return text;
 }
 
+function classifyRecoAssistantFinishFitComparisonLabel(reason = '') {
+  const text = normalizeSemanticAuditText(reason);
+  if (!text) return '';
+  if (/\b(?:fresher and dewier|dewy|dewier)\b/.test(text)) return 'fresher, dewier';
+  if (/\b(?:matte and shine controlling|matte|shine controlling|less slip under makeup)\b/.test(text)) {
+    return 'more matte, shine-controlling';
+  }
+  if (/\b(?:more mineral and sensitive skin friendly|mineral and sensitive skin friendly|mineral leaning)\b/.test(text)) {
+    return 'more mineral-leaning';
+  }
+  if (/\b(?:richer and more moisturizing|more cushion under makeup|cream spf base)\b/.test(text)) {
+    return 'richer, more moisturizing';
+  }
+  if (/\b(?:lighter and smoother under makeup|less heavy daytime layer)\b/.test(text)) {
+    return 'lighter, smoother';
+  }
+  if (/\b(?:lighter and more invisible|less weight under makeup)\b/.test(text)) {
+    return 'lighter, less noticeable';
+  }
+  if (/\b(?:tinted makeup base|complexion coverage)\b/.test(text)) {
+    return 'more tinted';
+  }
+  return '';
+}
+
+function buildRecoAssistantFinishFitLeadContrastClause(reasons = []) {
+  const labels = uniqCaseInsensitiveStrings(
+    (Array.isArray(reasons) ? reasons : [])
+      .map((reason) => classifyRecoAssistantFinishFitComparisonLabel(reason))
+      .filter(Boolean)
+      .filter((label) => !/^lighter, (?:smoother|less noticeable)$/i.test(label)),
+    2,
+  );
+  if (!labels.length) return '';
+  if (labels.length === 1) return `instead of a ${labels[0]} finish`;
+  return `instead of a ${labels[0]} or ${labels[1]} finish`;
+}
+
+function formatRecoAssistantFinishFitCompareTail(raw = '', {
+  prefix = 'with',
+} = {}) {
+  const text = String(raw || '').replace(/\s+/g, ' ').trim().replace(/[.!?]+$/g, '');
+  if (!text) return '';
+  return ` ${prefix} ${text}`;
+}
+
+function renderRecoAssistantStructuredFinishFitCompareOptionSentence(name, reason) {
+  const productName = pickFirstTrimmed(name);
+  const normalizedReason = normalizeRecoAssistantBecauseReasonFragment(reason);
+  if (!productName || !normalizedReason) return '';
+  let match = normalizedReason.match(/^it leans fresher and dewier if you want (.+)$/i);
+  if (match && match[1]) {
+    return formatRecoAssistantStructuredSentence(
+      `${productName} makes more sense if you want a fresher, dewier finish${formatRecoAssistantFinishFitCompareTail(match[1])}`,
+    );
+  }
+  match = normalizedReason.match(/^it leans more matte and shine-controlling if you want (.+)$/i);
+  if (match && match[1]) {
+    return formatRecoAssistantStructuredSentence(
+      `${productName} makes more sense if you want a more matte, shine-controlling finish${formatRecoAssistantFinishFitCompareTail(match[1])}`,
+    );
+  }
+  match = normalizedReason.match(/^it leans more mineral and sensitive-skin-friendly if you want (.+)$/i);
+  if (match && match[1]) {
+    return formatRecoAssistantStructuredSentence(
+      `${productName} makes more sense if you want a more mineral, sensitive-skin-friendly option${formatRecoAssistantFinishFitCompareTail(match[1])}`,
+    );
+  }
+  match = normalizedReason.match(/^it leans richer and more moisturizing if you want (.+)$/i);
+  if (match && match[1]) {
+    return formatRecoAssistantStructuredSentence(
+      `${productName} makes more sense if you want a richer, more moisturizing feel${formatRecoAssistantFinishFitCompareTail(match[1])}`,
+    );
+  }
+  match = normalizedReason.match(/^it keeps the feel lighter and more invisible if you want (.+)$/i);
+  if (match && match[1]) {
+    return formatRecoAssistantStructuredSentence(
+      `${productName} makes more sense if you want the lightest, least noticeable sunscreen layer${formatRecoAssistantFinishFitCompareTail(match[1])}`,
+    );
+  }
+  return '';
+}
+
 function renderRecoAssistantStructuredSameSlotSupportSentence(name, reason, {
   targetLabel = '',
   detail = null,
   language = 'EN',
+  requestMode = '',
 } = {}) {
   const productName = pickFirstTrimmed(name);
   const normalizedReason = normalizeRecoAssistantBecauseReasonFragment(reason);
@@ -58452,6 +58536,10 @@ function renderRecoAssistantStructuredSameSlotSupportSentence(name, reason, {
     pickFirstTrimmed(detail?.preferred_step),
   ].filter(Boolean).join(' ');
   if (recoRoleNeedsFinishFitNarrative(roleText)) {
+    if (String(requestMode || '').toLowerCase() === 'buy') {
+      const compareSentence = renderRecoAssistantStructuredFinishFitCompareOptionSentence(productName, normalizedReason);
+      if (compareSentence) return compareSentence;
+    }
     const subjectReason = normalizedReason.replace(/^(?:it|this)\s+/i, '');
     if (/^(?:offers?|provides?|gives?|keeps?|leans?|stays?|wears?|feels?|points?|works?)\b/i.test(subjectReason)) {
       return formatRecoAssistantStructuredSentence(`${productName} ${subjectReason}`);
@@ -58466,6 +58554,7 @@ function renderRecoAssistantStructuredLeadProductSentence(name, reason, {
   language = 'EN',
   requestMode = '',
   targetPhrase = '',
+  contrastClause = '',
 } = {}) {
   const productName = pickFirstTrimmed(name);
   const normalizedReason = normalizeRecoAssistantBecauseReasonFragment(reason);
@@ -58491,11 +58580,11 @@ function renderRecoAssistantStructuredLeadProductSentence(name, reason, {
   if (hasUnderMakeupCue && hasLighterCue && hasSmootherCue) {
     if (hasPillingCue) {
       return formatRecoAssistantStructuredSentence(
-        `${productName} keeps the finish lighter and smoother under makeup, which helps reduce pilling during the day`,
+        `${productName} keeps the finish lighter and smoother under makeup, which helps reduce pilling during the day${contrastClause ? ` ${contrastClause}` : ''}`,
       );
     }
     return formatRecoAssistantStructuredSentence(
-      `${productName} keeps the finish lighter and smoother under makeup for easier daytime wear`,
+      `${productName} keeps the finish lighter and smoother under makeup for easier daytime wear${contrastClause ? ` ${contrastClause}` : ''}`,
     );
   }
   const subjectReason = normalizedReason.replace(/^(?:it|this)\s+/i, '');
@@ -58677,6 +58766,10 @@ function renderRecoAssistantStructuredReasonRewrite({
     }
     return candidateReason;
   });
+  const finishFitLeadContrastClause =
+    finishFitSameSlotLead
+      ? buildRecoAssistantFinishFitLeadContrastClause(supportReasons)
+      : '';
   if (language === 'CN') {
     const leadSentence =
       requestMode === 'use_first'
@@ -58712,6 +58805,7 @@ function renderRecoAssistantStructuredReasonRewrite({
         targetLabel,
         detail,
         language,
+        requestMode,
       });
     }
     return formatRecoAssistantStructuredSentence(`${name}负责${step}，因为${reason}`);
@@ -58734,6 +58828,7 @@ function renderRecoAssistantStructuredReasonRewrite({
               language,
               requestMode,
               targetPhrase,
+              contrastClause: finishFitLeadContrastClause,
             }) || `${selectedNames[0]} fits this request because ${grammaticalLeadReason}`
             : `${selectedNames[0]} fits this request${targetPhrase} because ${grammaticalLeadReason}`
         );
@@ -58766,6 +58861,7 @@ function renderRecoAssistantStructuredReasonRewrite({
         targetLabel,
         detail,
         language,
+        requestMode,
       });
     }
     const step = pickFirstTrimmed(detail.preferred_step, detail.matched_role_label, 'support step');

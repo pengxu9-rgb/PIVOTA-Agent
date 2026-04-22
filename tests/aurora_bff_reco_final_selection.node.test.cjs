@@ -3333,9 +3333,10 @@ test('reco assistant structured renderer compares finish-fit sunscreen options w
       requestMode: 'buy',
     });
 
-    assert.match(text, /lighter, smoother daytime layering instead of a richer cream finish|keeps the finish lighter and smoother under makeup if you want a less heavy daytime layer|keeps the finish lighter and smoother under makeup for easier daytime wear|keeps the feel lighter and more invisible if you want less weight under makeup/i);
-    assert.match(text, /(?:more mineral, sensitive-skin-oriented option while keeping (?:a |the finish )?sheer, weightless|leans more mineral and sensitive-skin-friendly if you want a sheer, weightless finish)/i);
-    assert.match(text, /richer, more moisturizing cream-spf option|leans richer and more moisturizing if you want more cushion under makeup/i);
+    assert.match(text, /lighter, smoother daytime layering instead of a richer cream finish|keeps the finish lighter and smoother under makeup if you want a less heavy daytime layer|keeps the finish lighter and smoother under makeup for easier daytime wear/i);
+    assert.match(text, /instead of a (?:more mineral-leaning or richer, more moisturizing|richer, more moisturizing or more mineral-leaning) finish/i);
+    assert.match(text, /(?:makes more sense if you want a more mineral, sensitive-skin-friendly option with a sheer, weightless finish|leans more mineral and sensitive-skin-friendly if you want a sheer, weightless finish|gives a more mineral, sensitive-skin-oriented option)/i);
+    assert.match(text, /(?:makes more sense if you want a richer, more moisturizing feel with more cushion under makeup|richer, more moisturizing cream-spf option|leans richer and more moisturizing if you want more cushion under makeup)/i);
     assert.doesNotMatch(text, /uv-filter cues|filter identity|reapplication expectations explicit/i);
     assert.doesNotMatch(text, /sheer, weightless, scentless mineral sunscreen recommended/i);
     assert.doesNotMatch(text, /hydrating daily cream spf with moisturizer-style hydration cues/i);
@@ -3562,7 +3563,7 @@ test('reco assistant structured renderer removes generic SPF utility tails from 
 
     assert.doesNotMatch(text, /AM UV protection|daily protection/i);
     assert.match(text, /help reduce pilling|lighter for daytime layering/i);
-    assert.match(text, /if you want more (?:moisture|cushion) under makeup/i);
+    assert.match(text, /(?:if you want a richer, more moisturizing feel with more cushion under makeup|if you want more (?:moisture|cushion) under makeup)/i);
   } finally {
     delete require.cache[moduleId];
   }
@@ -3761,17 +3762,17 @@ test('reco assistant rewrite uses structured primary attempt for finish-fit same
     assert.equal(rewrite.attempts?.[0]?.max_output_tokens, 180);
     assert.match(
       rewrite.text,
-      /Unseen Sunscreen SPF 50 keeps the finish lighter and smoother under makeup(?:, which helps reduce pilling during the day| for easier daytime wear)/i,
+      /Unseen Sunscreen SPF 50 keeps the finish lighter and smoother under makeup(?:, which helps reduce pilling during the day| for easier daytime wear)(?: instead of a (?:more mineral-leaning or richer, more moisturizing|richer, more moisturizing or more mineral-leaning) finish)?/i,
     );
     assert.doesNotMatch(rewrite.text, /fits this request for sunscreen that wears more smoothly under makeup because/i);
     assert.doesNotMatch(rewrite.text, /Unseen Sunscreen SPF 50 fits this request because/i);
     assert.match(
       rewrite.text,
-      /Ultra Light Liquid Mineral Sunscreen with Zinc Oxide SPF 30 (?:leans more mineral and sensitive-skin-friendly if you want a sheer, weightless finish|gives a more mineral, sensitive-skin-oriented option)/i,
+      /Ultra Light Liquid Mineral Sunscreen with Zinc Oxide SPF 30 (?:makes more sense if you want a more mineral, sensitive-skin-friendly option with a sheer, weightless finish|leans more mineral and sensitive-skin-friendly if you want a sheer, weightless finish|gives a more mineral, sensitive-skin-oriented option)/i,
     );
     assert.match(
       rewrite.text,
-      /Hydrating Sunscreen Milk with Colloidal Oatmeal Broad Spectrum SPF 45 (?:leans richer and more moisturizing if you want more cushion under makeup|gives a richer cream-spf base)/i,
+      /Hydrating Sunscreen Milk with Colloidal Oatmeal Broad Spectrum SPF 45 (?:makes more sense if you want a richer, more moisturizing feel with more cushion under makeup|leans richer and more moisturizing if you want more cushion under makeup|gives a richer cream-spf base)/i,
     );
     assert.doesNotMatch(rewrite.text, /same-slot comparison option because/i);
     assert.doesNotMatch(rewrite.text, /What city or climate are you usually in/i);
@@ -3897,15 +3898,15 @@ test('reco assistant rewrite uses normalized recommendation card authority when 
     );
     assert.match(
       rewrite.text,
-      /Beauty of Joseon Relief Sun Aqua-Fresh : Rice \+ B5 \(SPF50\+ PA\+\+\+\+\) keeps the finish lighter and smoother under makeup/i,
+      /Beauty of Joseon Relief Sun Aqua-Fresh : Rice \+ B5 \(SPF50\+ PA\+\+\+\+\) keeps the finish lighter and smoother under makeup(?:, which helps reduce pilling during the day| for easier daytime wear) instead of a fresher, dewier or more matte, shine-controlling finish/i,
     );
     assert.match(
       rewrite.text,
-      /Beauty of Joseon Day Dew Sunscreen leans fresher and dewier if you want a bit more hydration without a heavier cream feel/i,
+      /Beauty of Joseon Day Dew Sunscreen makes more sense if you want a fresher, dewier finish with a bit more hydration without a heavier cream feel/i,
     );
     assert.match(
       rewrite.text,
-      /SKINTIFIC Matte Fit Serum Sunscreen SPF 50\+ PA\+\+\+\+ leans more matte and shine-controlling if you want less slip under makeup/i,
+      /SKINTIFIC Matte Fit Serum Sunscreen SPF 50\+ PA\+\+\+\+ makes more sense if you want a more matte, shine-controlling finish with less slip under makeup/i,
     );
     assert.doesNotMatch(rewrite.text, /because it uses hyaluronic acid, glycerin, and ceramides in the formula/i);
     assert.doesNotMatch(rewrite.text, /because it uses zinc pca and oat extract in the formula/i);
@@ -4007,11 +4008,11 @@ test('reco assistant structured renderer pins finish-fit same-slot support sente
     );
     assert.match(
       text,
-      /First Aid Beauty Ultra Light Liquid Mineral Sunscreen with Zinc Oxide SPF 30 leans more mineral and sensitive-skin-friendly if you want a sheer, weightless finish/i,
+      /First Aid Beauty Ultra Light Liquid Mineral Sunscreen with Zinc Oxide SPF 30 (?:makes more sense if you want a more mineral, sensitive-skin-friendly option with a sheer, weightless finish|leans more mineral and sensitive-skin-friendly if you want a sheer, weightless finish)/i,
     );
     assert.match(
       text,
-      /First Aid Beauty Hydrating Sunscreen Milk with Colloidal Oatmeal Broad Spectrum SPF 45 leans richer and more moisturizing if you want more cushion under makeup/i,
+      /First Aid Beauty Hydrating Sunscreen Milk with Colloidal Oatmeal Broad Spectrum SPF 45 (?:makes more sense if you want a richer, more moisturizing feel with more cushion under makeup|leans richer and more moisturizing if you want more cushion under makeup)/i,
     );
     assert.doesNotMatch(text, /Supergoop Unseen Sunscreen SPF 50 supports lighter, smoother daytime layering under makeup/i);
     assert.doesNotMatch(text, /same-slot comparison option because/i);
