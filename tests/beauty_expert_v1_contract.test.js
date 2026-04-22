@@ -123,6 +123,67 @@ describe('beauty_expert_v1 contract', () => {
     ]);
   });
 
+  test('guided beauty reco compare axes collapse long niacinamide reasons into a stable treatment label', () => {
+    const result = buildBeautyExpertV1Response({
+      source: 'shopping_agent',
+      entryLayer: 'orchestration',
+      delegatedLayer: 'decisioning',
+      taskType: 'discovery',
+      context: {
+        source_profile: {
+          source: 'shopping_agent',
+          default_entry_layer: 'decisioning',
+        },
+        vertical: 'beauty',
+        category: 'skincare',
+        raw_user_goal: 'what should I use for my skin?',
+      },
+      metadata: {
+        source: 'shopping_agent',
+        catalog_surface: 'beauty',
+      },
+      payload: {
+        search: {
+          query: 'what should I use for my skin?',
+        },
+      },
+      response: {
+        products: [
+          {
+            id: 'sku_treatment',
+            merchant_id: 'm_1',
+            title: 'Niacinamide Serum',
+            why_this_one:
+              'This serum contains a high concentration of niacinamide (vitamin B3) and zinc PCA to support the skin barrier while helping balance oil.',
+          },
+          {
+            id: 'sku_moisturizer',
+            merchant_id: 'm_2',
+            title: 'Barrier Lotion',
+            why_this_one: 'Adds more hydration and barrier support in a lightweight daily lotion.',
+          },
+          {
+            id: 'sku_spf',
+            merchant_id: 'm_3',
+            title: 'Sun Serum',
+            why_this_one: 'Provides a serum-like sunscreen texture with SPF 50+ protection.',
+          },
+        ],
+        metadata: {
+          mainline_status: 'grounded_success',
+          decision_owner: 'shopping_agent_beauty_mainline',
+          semantic_owner: 'shopping_agent_beauty_mainline',
+        },
+      },
+    });
+
+    expect(result.compare_axes.map((axis) => axis.label)).toEqual([
+      'targeted treatment / balancing serum',
+      'more hydration / dewier finish',
+      'serum-like / thinner feel',
+    ]);
+  });
+
   test('aurora orchestration emits beauty_expert_v1 and persists beauty_request into context', async () => {
     const result = await handleAuroraBeautyOrchestration({
       context: {
