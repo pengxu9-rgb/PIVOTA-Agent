@@ -597,7 +597,33 @@ function collectRecommendationFinishFitSourceText(row) {
     .join(' ');
 }
 
-function buildRecommendationFinishFitSpecificWhy(row) {
+function classifyRecommendationFinishFitPeerContrastLabel(raw) {
+  const texts = collectRecommendationFinishFitSourceText(raw);
+  if (!texts) return '';
+  if (/\b(?:day dew|dewy|fresh[-\s]?dewy|dewier)\b/i.test(texts)) return 'dewy';
+  if (/\b(?:matte|mattif(?:y|ies|ying)|oil[-\s]?control(?:ling)?|shine[-\s]?control|anti[-\s]?shine|sebum)\b/i.test(texts)) {
+    return 'matte';
+  }
+  if (/\b(?:mineral|zinc oxide|titanium dioxide)\b/i.test(texts)) return 'mineral-leaning';
+  if (/\b(?:hydrating daily cream|hydrating cream|cream format|cream texture|moisturizer[-\s]?style hydration|moisturizer[-\s]?format|cream-spf|cream spf|sunscreen milk|milk spf|milky sunscreen|hydrating sunscreen milk|spf milk|spf lotion)\b/i.test(texts)) {
+    return 'cream-heavy';
+  }
+  return '';
+}
+
+function buildRecommendationFinishFitLeadPeerContrastSuffix(sameRoleCandidates = []) {
+  const labels = Array.from(new Set(
+    asRecordArray(sameRoleCandidates, 8)
+      .map((candidate) => classifyRecommendationFinishFitPeerContrastLabel(candidate))
+      .filter(Boolean)
+      .filter((label) => label !== 'lighter' && label !== 'less noticeable'),
+  )).slice(0, 2);
+  if (!labels.length) return '';
+  if (labels.length === 1) return ` when you do not want to go too ${labels[0]}`;
+  return ` when you do not want to go too ${labels[0]} or too ${labels[1]}`;
+}
+
+function buildRecommendationFinishFitSpecificWhy(row, { sameRoleCandidates = [] } = {}) {
   const texts = collectRecommendationFinishFitSourceText(row);
   if (!texts) return '';
 
@@ -624,7 +650,8 @@ function buildRecommendationFinishFitSpecificWhy(row) {
     return 'it leans more mineral and sensitive-skin-friendly if you want a sheer, weightless finish';
   }
   if (hasSoftFocus || (hasLayering && hasWeightless)) {
-    return 'it keeps the finish lighter and smoother under makeup if you want a less heavy daytime layer';
+    const peerContrastSuffix = buildRecommendationFinishFitLeadPeerContrastSuffix(sameRoleCandidates);
+    return `it keeps the finish lighter and smoother under makeup${peerContrastSuffix || ' if you want a less heavy daytime layer'}`;
   }
   if (hasWeightless && hasSensitiveCue) {
     return 'it leans more mineral and sensitive-skin-friendly if you want a sheer, weightless finish';
@@ -638,7 +665,7 @@ function buildRecommendationFinishFitSpecificWhy(row) {
   return '';
 }
 
-function buildRecommendationFinishFitSpecificShortDescription(row) {
+function buildRecommendationFinishFitSpecificShortDescription(row, { sameRoleCandidates = [] } = {}) {
   const texts = collectRecommendationFinishFitSourceText(row);
   if (!texts) return '';
 
@@ -665,7 +692,8 @@ function buildRecommendationFinishFitSpecificShortDescription(row) {
     return 'Leans more mineral and sensitive-skin-friendly with a sheer, weightless finish.';
   }
   if (hasSoftFocus || (hasLayering && hasWeightless)) {
-    return 'Keeps the sunscreen feel lighter and smoother under makeup.';
+    const peerContrastSuffix = buildRecommendationFinishFitLeadPeerContrastSuffix(sameRoleCandidates);
+    return `Keeps the sunscreen feel lighter and smoother under makeup${peerContrastSuffix ? `${peerContrastSuffix}.` : '.'}`;
   }
   if (hasWeightless && hasSensitiveCue) {
     return 'A lighter mineral sunscreen option that stays sheer and simple on sensitive skin.';
@@ -1034,13 +1062,20 @@ function normalizeRecommendationProductCard(raw, options = {}) {
       ].join(' '),
     },
   ));
+  const selfKey = recommendationProductIdentityKey(row);
+  const sameRoleCandidates = matchedRoleId
+    ? asRecordArray(peerCandidatesByRoleId.get(matchedRoleId), 12).filter((candidate) => {
+        const candidateKey = recommendationProductIdentityKey(candidate);
+        return !selfKey || !candidateKey || !recommendationProductsShareIdentity(row, candidate);
+      })
+    : [];
   const finishFitSpecificWhy = recommendationNeedsFinishFitTradeoff({
     matchedRoleId,
     matchedRoleLabel,
     comparisonMode,
     peerCount,
   })
-    ? buildRecommendationFinishFitSpecificWhy(row)
+    ? buildRecommendationFinishFitSpecificWhy(row, { sameRoleCandidates })
     : '';
   const baseShortDescription = neutralizeVisibleRecommendationCardCopy(
     asString(row.short_description) || asString(row.shortDescription) || baseWhyThisOne,
@@ -1051,7 +1086,7 @@ function normalizeRecommendationProductCard(raw, options = {}) {
     comparisonMode,
     peerCount,
   })
-    ? buildRecommendationFinishFitSpecificShortDescription(row)
+    ? buildRecommendationFinishFitSpecificShortDescription(row, { sameRoleCandidates })
     : '';
   const whyThisOne = finishFitSpecificWhy
     && (
@@ -1075,13 +1110,6 @@ function normalizeRecommendationProductCard(raw, options = {}) {
     )
     ? finishFitSpecificShortDescription
     : baseShortDescription;
-  const selfKey = recommendationProductIdentityKey(row);
-  const sameRoleCandidates = matchedRoleId
-    ? asRecordArray(peerCandidatesByRoleId.get(matchedRoleId), 12).filter((candidate) => {
-        const candidateKey = recommendationProductIdentityKey(candidate);
-        return !selfKey || !candidateKey || !recommendationProductsShareIdentity(row, candidate);
-      })
-    : [];
   const normalized = {
     ...row,
     category:

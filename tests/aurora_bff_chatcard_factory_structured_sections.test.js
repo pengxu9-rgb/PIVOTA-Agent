@@ -1033,6 +1033,92 @@ describe('aurora chatCardFactory structured sections for adapter inputs', () => 
     expect(products[1].short_description).not.toMatch(/Fresh-dewy SPF for daily wear/i);
   });
 
+  test('recommendations card keeps the finish-fit lead card compare-aware when matte and dewy peers are present', () => {
+    const cards = mapLegacyCardToSpecCards(
+      {
+        type: 'recommendations',
+        card_id: 'legacy_recommendations_finish_fit_lead_compare_aware',
+        payload: {
+          recommendation_meta: {
+            selected_target_ids: ['daily_sunscreen_finish_fit'],
+            ranked_targets: [
+              {
+                target_id: 'daily_sunscreen_finish_fit',
+                target_label: 'Daily sunscreen with finish fit',
+                product_candidates: [
+                  {
+                    product_id: 'prod_aqua_fresh',
+                    merchant_id: 'external_seed',
+                    brand: 'Beauty of Joseon',
+                    name: 'Relief Sun Aqua-Fresh : Rice + B5 (SPF50+ PA++++)',
+                    matched_role_id: 'daily_sunscreen_finish_fit',
+                    matched_role_label: 'Daily sunscreen with finish fit',
+                    short_description: 'A lightweight sunscreen fluid that layers smoothly under makeup with no white cast.',
+                  },
+                  {
+                    product_id: 'prod_matte_fit',
+                    merchant_id: 'external_seed',
+                    brand: 'SKINTIFIC',
+                    name: 'Matte Fit Serum Sunscreen SPF 50+ PA++++',
+                    matched_role_id: 'daily_sunscreen_finish_fit',
+                    matched_role_label: 'Daily sunscreen with finish fit',
+                    short_description: 'A matte sunscreen that helps cut shine under makeup.',
+                  },
+                  {
+                    product_id: 'prod_day_dew',
+                    merchant_id: 'external_seed',
+                    brand: 'Beauty of Joseon',
+                    name: 'Day Dew Sunscreen',
+                    matched_role_id: 'daily_sunscreen_finish_fit',
+                    matched_role_label: 'Daily sunscreen with finish fit',
+                    short_description: 'A fresher, dewier sunscreen for a bit more hydration under makeup.',
+                  },
+                ],
+              },
+            ],
+          },
+          recommendations: [
+            {
+              product_id: 'prod_aqua_fresh',
+              merchant_id: 'external_seed',
+              brand: 'Beauty of Joseon',
+              name: 'Relief Sun Aqua-Fresh : Rice + B5 (SPF50+ PA++++)',
+              matched_role_id: 'daily_sunscreen_finish_fit',
+              matched_role_label: 'Daily sunscreen with finish fit',
+              short_description: 'A lightweight sunscreen fluid that layers smoothly under makeup with no white cast.',
+              why_this_one: 'it keeps the finish lighter and smoother under makeup if you want a less heavy daytime layer',
+            },
+            {
+              product_id: 'prod_matte_fit',
+              merchant_id: 'external_seed',
+              brand: 'SKINTIFIC',
+              name: 'Matte Fit Serum Sunscreen SPF 50+ PA++++',
+              matched_role_id: 'daily_sunscreen_finish_fit',
+              matched_role_label: 'Daily sunscreen with finish fit',
+              short_description: 'A matte sunscreen that helps cut shine under makeup.',
+            },
+            {
+              product_id: 'prod_day_dew',
+              merchant_id: 'external_seed',
+              brand: 'Beauty of Joseon',
+              name: 'Day Dew Sunscreen',
+              matched_role_id: 'daily_sunscreen_finish_fit',
+              matched_role_label: 'Daily sunscreen with finish fit',
+              short_description: 'A fresher, dewier sunscreen for a bit more hydration under makeup.',
+            },
+          ],
+        },
+      },
+      { requestId: 'req_card_factory_finish_fit_lead_compare_aware', language: 'EN', index: 0 },
+    );
+
+    const products = cards[0].payload.sections[0].products;
+    expect(products[0].why_this_one).toMatch(/lighter and smoother under makeup/i);
+    expect(products[0].why_this_one).toMatch(/too matte or too dewy/i);
+    expect(products[0].short_description).toMatch(/lighter and smoother under makeup/i);
+    expect(products[0].short_description).toMatch(/too matte or too dewy/i);
+  });
+
   test('offers_resolved shares the rich product row contract and mirrors it into payload.sections', () => {
     const cards = mapLegacyCardToSpecCards(
       {
