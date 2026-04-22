@@ -144,6 +144,40 @@ test('__internal: support role query builder keeps finish-fit sunscreen recall t
   assert.equal(queries.includes('makeup friendly sunscreen'), false);
 });
 
+test('__internal: framework recall planner keeps finish-fit sunscreen internal recall compact while leaving external precise recall open', () => {
+  const { __internal } = loadRoutesFresh();
+  const plan = __internal.buildRecoRecallPlan({
+    mode: 'framework_generic',
+    targetContext: {
+      request_text: 'My daytime products pill under makeup. What skincare product should I use instead?',
+      primary_role_id: 'daily_sunscreen_finish_fit',
+      comparison_mode: 'same_role_comparison',
+      framework_roles: [
+        {
+          role_id: 'daily_sunscreen_finish_fit',
+          rank: 1,
+          preferred_step: 'sunscreen',
+          label: 'Daily sunscreen finish fit',
+          query_terms: ['sunscreen under makeup', 'lightweight sunscreen oily skin'],
+          fit_keywords: ['under makeup', 'lightweight', 'non-greasy', 'fluid'],
+          ingredient_hypotheses: ['UV filters'],
+          product_type_hypotheses: ['sunscreen'],
+        },
+      ],
+    },
+  });
+
+  assert.deepEqual(plan.stages[0]?.entries?.map((entry) => entry?.query), [
+    'spf fluid oily skin',
+    'sunscreen under makeup',
+  ]);
+  assert.deepEqual(plan.stages[1]?.entries?.map((entry) => entry?.query), [
+    'spf fluid oily skin',
+    'sunscreen under makeup',
+    'lightweight sunscreen oily skin',
+  ]);
+});
+
 function getConfidenceNoticePayload(responseBody) {
   const cards = Array.isArray(responseBody?.cards) ? responseBody.cards : [];
   const noticeCard = cards.find((card) => card && card.type === 'confidence_notice') || null;

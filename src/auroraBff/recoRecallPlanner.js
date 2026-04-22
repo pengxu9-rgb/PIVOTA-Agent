@@ -349,6 +349,7 @@ function buildBeautyMainlineRecallPlan({ mode, semanticContract = null, rawQuery
   if (String(mode || '').trim().toLowerCase() === 'framework_generic' && frameworkRoles.length > 0) {
     const primaryRole = frameworkRoles[0] || null;
     const supportRoles = frameworkRoles.slice(1, 3);
+    const primaryRoleId = normalizeConcernQueryToken(primaryRole?.role_id).toLowerCase();
     const buildRoleStageQueries = (
       role,
       {
@@ -385,9 +386,11 @@ function buildBeautyMainlineRecallPlan({ mode, semanticContract = null, rawQuery
             semanticContract: contract,
           }).slice(0, allowConcernFallback ? 3 : 2);
     };
+    const compactFinishFitInternalQueries = primaryRoleId === 'daily_sunscreen_finish_fit';
     const primaryInternalQueries = buildRoleStageQueries(primaryRole, {
       allowConcernFallback: true,
       preferProductLedInternal: true,
+      maxQueriesOverride: compactFinishFitInternalQueries ? 2 : null,
     });
     const primaryExternalQueries = buildRoleStageQueries(primaryRole, {
       allowConcernFallback: true,
