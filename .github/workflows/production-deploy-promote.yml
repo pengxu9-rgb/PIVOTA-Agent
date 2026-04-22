@@ -1,0 +1,56 @@
+name: Production Deploy Promote
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: production-deploy-promote
+  cancel-in-progress: true
+
+jobs:
+  trigger-production-deploy:
+    name: Trigger Production Deploy From GitHub Main
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PROD_DEPLOY_WEBHOOK_URL: ${{ secrets.RAILWAY_PRODUCTION_DEPLOY_WEBHOOK_URL || secrets.PIVOTA_AGENT_PROD_DEPLOY_WEBHOOK_URL || secrets.RAILWAY_DEPLOY_WEBHOOK_URL || '' }}
+      PROD_SMOKE_BASE_URL: ${{ vars.PIVOTA_AGENT_PROD_INVOKE_BASE_URL || vars.COMMERCE_CORE_PROD_SMOKE_BASE_URL || 'https://pivota-agent-production.up.railway.app' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Require production deploy webhook
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${PROD_DEPLOY_WEBHOOK_URL}" ]]; then
+            echo "::error::Missing production deploy webhook secret. Set RAILWAY_PRODUCTION_DEPLOY_WEBHOOK_URL or PIVOTA_AGENT_PROD_DEPLOY_WEBHOOK_URL."
+            exit 1
+          fi
+
+      - name: Trigger production deploy webhook
+        shell: bash
+        env:
+          DEPLOY_WEBHOOK_URL: ${{ env.PROD_DEPLOY_WEBHOOK_URL }}
+          DEPLOY_REASON: github_push_main_promote
+          TARGET_SHA: ${{ github.sha }}
+          TARGET_REF: ${{ github.ref }}
+          TARGET_REPOSITORY: ${{ github.repository }}
+          TRIGGER_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          TRIGGER_ACTOR: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+          bash scripts/trigger_deploy_webhook.sh
+
+      - name: Verify deployed commit via /version
+        shell: bash
+        run: |
+          set -euo pipefail
+          INVOKE_BASE_URL="$PROD_SMOKE_BASE_URL" \
+          TARGET_COMMIT="${GITHUB_SHA:0:12}" \
+          MAX_ATTEMPTS=24 \
+          SLEEP_SECONDS=10 \
+          bash scripts/verify_deployed_commit_matches.sh
