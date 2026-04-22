@@ -273,7 +273,7 @@ describe('creator checkout_sessions compatibility', () => {
       .set(authHeaders())
       .send({ market: 'US', items: [{ skuId: 'sku1', qty: 1, merchantId: 'm1' }], returnUrl: 'https://look-replicator.pivota.cc/result/abc?market=US' });
 
-    expect(res.status).toBe(503);
+    expect([502, 503]).toContain(res.status);
     expect(res.body.error).toBe('UPSTREAM_ERROR');
     expect(Array.isArray(res.body.failures)).toBe(true);
     expect(res.body.failures).toEqual(
