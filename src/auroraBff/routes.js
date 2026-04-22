@@ -57186,7 +57186,7 @@ function assistantTextMissesExpectedRecoFollowupQuestion({
   return !questions.some((question) => normalizeSemanticAuditText(question) === normalizedExpected);
 }
 
-function assistantTextHasDirectBuyLead(text, names) {
+function assistantTextHasDirectBuyLead(text, names, primaryTarget = null) {
   const lead = String(text || '').trim();
   if (!lead) return false;
   const mentionsSelectedProduct = assistantTextMentionsAny(lead, names);
@@ -57194,7 +57194,17 @@ function assistantTextHasDirectBuyLead(text, names) {
     || /\b(?:fits?|matches?|works\s+for|is\s+(?:a\s+)?(?:practical|clear|good|sensible|useful)\s+(?:option|fit)|is\s+worth\s+considering)\b/i.test(lead)
     || /(买|购买|入手|下单|推荐)/i.test(lead);
   const opensWithUseFirstLanguage = /\b(start with|start\b)\b/i.test(lead) || /(先用|先从)/i.test(lead);
-  return mentionsSelectedProduct && usesBuyLanguage && !opensWithUseFirstLanguage;
+  const finishFitTargetText = [
+    primaryTarget && primaryTarget.target_id,
+    primaryTarget && primaryTarget.ingredient_query,
+    primaryTarget && primaryTarget.ingredient_id,
+    primaryTarget && primaryTarget.resolved_target_step,
+  ].filter(Boolean).join(' ');
+  const usesTargetAwareLead =
+    recoRoleNeedsFinishFitNarrative(finishFitTargetText)
+    && assistantTextMentionsRecoTargetSemantics(lead, primaryTarget)
+    && /\b(?:features?|offers?|provides?|gives?|keeps?|supports?|wears?|feels?|stays?)\b/i.test(lead);
+  return mentionsSelectedProduct && !opensWithUseFirstLanguage && (usesBuyLanguage || usesTargetAwareLead);
 }
 
 function resolveRecoAssistantRewriteThinkingLevel({ llmProvider, llmModel } = {}) {
@@ -57253,7 +57263,7 @@ function validateRecoAssistantRewriteCandidate({
     secondaryTargets.length <= 1
       ? false
       : secondaryTargets.length > 2;
-  const buyLeadNotDirect = requestMode === 'buy' && !assistantTextHasDirectBuyLead(leadSentence, names);
+  const buyLeadNotDirect = requestMode === 'buy' && !assistantTextHasDirectBuyLead(leadSentence, names, primaryTarget);
   const mentionsUnselectedCandidate = assistantTextMentionsUnselectedRecoCandidate(text, payload);
   const selectedRecommendationRoleIds = uniqCaseInsensitiveStrings(
     (Array.isArray(payload?.recommendations) ? payload.recommendations : [])
@@ -58019,6 +58029,37 @@ function renderRecoAssistantStructuredSameSlotSupportSentence(name, reason, {
   return formatRecoAssistantStructuredSentence(`${productName} is the same-slot comparison option because ${normalizedReason}`);
 }
 
+function renderRecoAssistantStructuredLeadProductSentence(name, reason, {
+  targetLabel = '',
+  detail = null,
+  language = 'EN',
+  requestMode = '',
+  targetPhrase = '',
+} = {}) {
+  const productName = pickFirstTrimmed(name);
+  const normalizedReason = normalizeRecoAssistantBecauseReasonFragment(reason);
+  if (!productName || !normalizedReason) return '';
+  if (String(language || '').toUpperCase() !== 'EN') {
+    return '';
+  }
+  if (String(requestMode || '').toLowerCase() !== 'buy') {
+    return '';
+  }
+  const roleText = [
+    targetLabel,
+    pickFirstTrimmed(detail?.matched_role_label),
+    pickFirstTrimmed(detail?.preferred_step),
+  ].filter(Boolean).join(' ');
+  if (!recoRoleNeedsFinishFitNarrative(roleText)) {
+    return '';
+  }
+  const subjectReason = normalizedReason.replace(/^(?:it|this)\s+/i, '');
+  if (/^(?:features?|offers?|provides?|gives?|keeps?|leans?|stays?|wears?|feels?|points?|works?|supports?)\b/i.test(subjectReason)) {
+    return formatRecoAssistantStructuredSentence(`${productName} ${subjectReason}`);
+  }
+  return formatRecoAssistantStructuredSentence(`${productName} fits this request${targetPhrase} because ${normalizedReason}`);
+}
+
 function renderRecoAssistantStructuredReasonRewrite({
   structuredReason,
   payload,
@@ -58165,7 +58206,13 @@ function renderRecoAssistantStructuredReasonRewrite({
         ? `${selectedNames[0]} is a practical option${targetPhrase} because ${grammaticalLeadReason}`
         : (
           selectedProductRoleMix === 'same_role_comparison' && recoRoleNeedsFinishFitNarrative(targetLabel)
-            ? `${selectedNames[0]} fits this request because ${grammaticalLeadReason}`
+            ? renderRecoAssistantStructuredLeadProductSentence(selectedNames[0], grammaticalLeadReason, {
+              targetLabel,
+              detail: details[0] || {},
+              language,
+              requestMode,
+              targetPhrase,
+            }) || `${selectedNames[0]} fits this request because ${grammaticalLeadReason}`
             : `${selectedNames[0]} fits this request${targetPhrase} because ${grammaticalLeadReason}`
         );
   if (selectedNames.length === 1) {
