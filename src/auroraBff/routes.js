@@ -20501,6 +20501,7 @@ function buildRecoFinishFitSpecificWhy({
   const hasWeightless = /\b(?:weightless|lightweight|airy|fluid|watery|water[-\s]?fit|invisible|non[-\s]?greasy|sheer)\b/i.test(text);
   const hasMineralCue = /\b(?:mineral|zinc oxide|titanium dioxide)\b/i.test(text);
   const hasMatteCue = /\b(?:matte|mattif(?:y|ies|ying)|oil[-\s]?control(?:ling)?|shine[-\s]?control|anti[-\s]?shine|sebum)\b/i.test(text);
+  const hasDewyCue = /\b(?:day dew|dewy|fresh[-\s]?dewy|dewier|refreshing hydration)\b/i.test(text);
   const hasWhiteCastCue = /\b(?:no white cast|white cast[-\s]?free|lower white[-\s]?cast|invisible)\b/i.test(text);
   const hasSensitiveCue = /\b(?:sensitive skin|scentless|fragrance[-\s]?free|bisabolol|ectoin)\b/i.test(text);
   const hasCreamierCue = /\b(?:hydrating daily cream|hydrating cream|cream format|cream texture|moisturizer[-\s]?style hydration|moisturizer[-\s]?format)\b/i.test(text);
@@ -20508,6 +20509,9 @@ function buildRecoFinishFitSpecificWhy({
   if (isCn) {
     if (hasCreamierCue) {
       return '更像偏滋润的面霜型防晒打底，适合想在妆前多一点保湿缓冲的人。';
+    }
+    if (hasDewyCue) {
+      return '更偏清透水润的肤感，适合想多一点保湿舒适度、但又不想走到厚重面霜感的人。';
     }
     if (hasMatteCue) {
       return '更偏哑光和控油取向，适合想让妆前肤感少一点滑、少一点泛油的人。';
@@ -20532,6 +20536,9 @@ function buildRecoFinishFitSpecificWhy({
 
   if (hasCreamierCue) {
     return 'it leans richer and more moisturizing if you want more cushion under makeup';
+  }
+  if (hasDewyCue) {
+    return 'it leans fresher and dewier if you want a bit more hydration without a heavier cream feel';
   }
   if (hasMatteCue) {
     return 'it leans more matte and shine-controlling if you want less slip under makeup';
@@ -55755,8 +55762,12 @@ function buildRecoAssistantTradeoffNote(detail = {}, {
       return 'it leans more like a tinted makeup-base SPF, so it makes more sense if you already want complexion coverage';
     }
     const matteCue = /\b(matte|mattif(?:y|ies|ying)|oil[-\s]?control(?:ling)?|shine[-\s]?control|anti[-\s]?shine|sebum)\b/i.test(text);
+    const dewyCue = /\b(day dew|dewy|fresh[-\s]?dewy|dewier|refreshing hydration)\b/i.test(text);
     const mineralCue = /\b(mineral(?: sunscreen)?|zinc oxide|titanium dioxide|non[-\s]?nano zinc)\b/i.test(text);
     const sensitiveCue = /\b(sensitive skin|scentless|fragrance[-\s]?free|simple formula|gentle)\b/i.test(text);
+    if (dewyCue) {
+      return 'it leans fresher and dewier if you want a bit more hydration without a heavier cream feel';
+    }
     if (matteCue) {
       return 'it leans more matte and shine-controlling if you want less slip under makeup';
     }
@@ -58338,6 +58349,10 @@ function normalizeRecoAssistantFinishFitTradeoffReason(reason = '', {
     .replace(
       /\bprovides a richer, more moisturizing cream-based texture for those needing extra hydration during daily wear\b/ig,
       'leans richer and more moisturizing if you want more cushion under makeup',
+    )
+    .replace(
+      /\bpairs niacinamide, hyaluronic acid, and glycerin with makeup-friendly layering for cleaner daytime layering\b/ig,
+      'leans fresher and dewier if you want a bit more hydration without a heavier cream feel',
     )
     .replace(
       /\b(?:gives|offers|provides)\s+(?:a\s+)?matte(?:[^.]{0,80})under-makeup wear\b/ig,

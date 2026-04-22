@@ -982,6 +982,54 @@ describe('aurora chatCardFactory structured sections for adapter inputs', () => 
     expect(products[1].short_description).not.toMatch(/UVA, UVB, and blue light/i);
   });
 
+  test('recommendations card rewrites Day Dew style finish-fit sunscreen into dewy hydration tradeoff copy', () => {
+    const cards = mapLegacyCardToSpecCards(
+      {
+        type: 'recommendations',
+        card_id: 'legacy_recommendations_finish_fit_dewy_tradeoff',
+        payload: {
+          recommendation_meta: {
+            selected_target_ids: ['daily_sunscreen_finish_fit'],
+            ranked_targets: [
+              {
+                target_id: 'daily_sunscreen_finish_fit',
+                target_label: 'Daily sunscreen with finish fit',
+              },
+            ],
+          },
+          recommendations: [
+            {
+              product_id: 'prod_aqua_fresh',
+              merchant_id: 'external_seed',
+              brand: 'Beauty of Joseon',
+              name: 'Relief Sun Aqua-Fresh : Rice + B5 (SPF50+ PA++++)',
+              matched_role_id: 'daily_sunscreen_finish_fit',
+              matched_role_label: 'Daily sunscreen with finish fit',
+              short_description: 'A lightweight sunscreen fluid that layers smoothly under makeup with no white cast.',
+              why_this_one: 'it keeps the finish lighter and smoother under makeup if you want a less heavy daytime layer',
+            },
+            {
+              product_id: 'prod_day_dew',
+              merchant_id: 'external_seed',
+              brand: 'Beauty of Joseon',
+              name: 'Day Dew Sunscreen',
+              matched_role_id: 'daily_sunscreen_finish_fit',
+              matched_role_label: 'Daily sunscreen with finish fit',
+              short_description: 'Fresh-dewy SPF for daily wear and makeup-friendly layering.',
+              description: 'Pairs niacinamide, hyaluronic acid, and glycerin with makeup-friendly layering for cleaner daytime layering.',
+            },
+          ],
+        },
+      },
+      { requestId: 'req_card_factory_finish_fit_dewy_tradeoff', language: 'EN', index: 0 },
+    );
+
+    const products = cards[0].payload.sections[0].products;
+    expect(products[1].why_this_one).toMatch(/fresher and dewier|more hydration without a heavier cream feel/i);
+    expect(products[1].short_description).toMatch(/fresher, dewier sunscreen feel|more hydration without a heavy cream finish/i);
+    expect(products[1].short_description).not.toMatch(/Fresh-dewy SPF for daily wear/i);
+  });
+
   test('offers_resolved shares the rich product row contract and mirrors it into payload.sections', () => {
     const cards = mapLegacyCardToSpecCards(
       {

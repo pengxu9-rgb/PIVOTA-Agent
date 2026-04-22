@@ -364,6 +364,64 @@ test('reco assistant rewrite prompt keeps matte finish-fit tradeoff distinct fro
   }
 });
 
+test('reco assistant rewrite prompt carries dewy finish-fit tradeoff for Day Dew style options', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const payload = __internal.applyRecoContentSpineToPayload(
+      {
+        recommendations: [
+          {
+            product_id: 'spf_lead',
+            display_name: 'Relief Sun Aqua-Fresh : Rice + B5 (SPF50+ PA++++)',
+            brand: 'Beauty of Joseon',
+            category: 'Sunscreen',
+            short_description: 'A lightweight sunscreen fluid that layers smoothly under makeup with no white cast.',
+            why_this_one: 'it keeps the finish lighter and smoother under makeup if you want a less heavy daytime layer',
+            matched_role_id: 'daily_sunscreen_finish_fit',
+            matched_role_label: 'Daily sunscreen with finish fit',
+            preferred_step: 'sunscreen',
+          },
+          {
+            product_id: 'spf_day_dew',
+            display_name: 'Day Dew Sunscreen',
+            brand: 'Beauty of Joseon',
+            category: 'Sunscreen',
+            short_description: 'Fresh-dewy SPF for daily wear and makeup-friendly layering.',
+            description: 'Pairs niacinamide, hyaluronic acid, and glycerin with makeup-friendly layering for cleaner daytime layering.',
+            matched_role_id: 'daily_sunscreen_finish_fit',
+            matched_role_label: 'Daily sunscreen with finish fit',
+            preferred_step: 'sunscreen',
+          },
+        ],
+        recommendation_meta: {
+          resolved_target_step: 'sunscreen',
+          mainline_status: 'grounded_success',
+        },
+      },
+      {
+        primary_target_id: 'daily_sunscreen_finish_fit',
+        ranked_targets: [{ target_id: 'daily_sunscreen_finish_fit', resolved_target_step: 'sunscreen' }],
+        selected_target_ids: ['daily_sunscreen_finish_fit'],
+        resolved_target_step: 'sunscreen',
+      },
+    );
+
+    const prompt = __internal.buildRecoAssistantRewritePrompt({
+      payload,
+      language: 'EN',
+      profile: { skinType: 'combination', goals: ['smooth layering'] },
+      userRequestText: 'My makeup pills. What sunscreen should I buy?',
+      allowLockedSelectionRewrite: true,
+    });
+    const context = JSON.parse(prompt.match(/Context: (\{[\s\S]*\})$/)[1]);
+    const tradeoffNotes = JSON.stringify(context.assistant_write_plan.same_role_options || []);
+
+    assert.match(tradeoffNotes, /leans fresher and dewier if you want a bit more hydration without a heavier cream feel/i);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('reco assistant rewrite prompt keeps same-role price context only when user explicitly asks for value comparison', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
