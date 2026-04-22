@@ -106,20 +106,27 @@ function inferAuthorityStatus(response = {}, metadata = {}) {
 function buildAxisFromReason(reason = '', index = 0) {
   const normalized = normalizeText(reason);
   if (!normalized) return null;
+  if (
+    /\b(not|don't|do not|without)\b[^.]{0,32}\btoo\b[^.]{0,16}\b(dewy|matte)\b/.test(normalized) ||
+    /\bbetween\b[^.]{0,48}\bmatte\b[^.]{0,48}\bdewy\b/.test(normalized) ||
+    /\bbetween\b[^.]{0,48}\bdewy\b[^.]{0,48}\bmatte\b/.test(normalized)
+  ) {
+    return { id: `axis_${index + 1}`, label: 'lighter / smoother finish' };
+  }
+  if (/\bmineral|sensitive\b/.test(normalized)) {
+    return { id: `axis_${index + 1}`, label: 'mineral / sensitive-skin' };
+  }
+  if (/\bserum-like|serum like|fluid\b/.test(normalized)) {
+    return { id: `axis_${index + 1}`, label: 'serum-like / thinner feel' };
+  }
   if (/\bmatte|shine|oil-control|oil control|less slip\b/.test(normalized)) {
     return { id: `axis_${index + 1}`, label: 'matte / shine control' };
   }
   if (/\bdewy|hydrat|moistur|fresh|cushion|cream\b/.test(normalized)) {
     return { id: `axis_${index + 1}`, label: 'more hydration / dewier finish' };
   }
-  if (/\bmineral|sensitive\b/.test(normalized)) {
-    return { id: `axis_${index + 1}`, label: 'mineral / sensitive-skin' };
-  }
-  if (/\blight|smooth|weightless|sheer|thin|under makeup|under-makeup\b/.test(normalized)) {
+  if (/\blight|lighter|smooth|weightless|sheer|thin|under makeup|under-makeup\b/.test(normalized)) {
     return { id: `axis_${index + 1}`, label: 'lighter / smoother finish' };
-  }
-  if (/\bserum-like|serum like|fluid\b/.test(normalized)) {
-    return { id: `axis_${index + 1}`, label: 'serum-like / thinner feel' };
   }
   return {
     id: `axis_${index + 1}`,
@@ -238,22 +245,31 @@ function inferMissingContext(beautyRequest, queryText) {
 function inferBeautyMode({ taskType, beautyRequest, queryText, response } = {}) {
   const normalizedQuery = normalizeText(queryText);
   const productContext = isPlainObject(beautyRequest?.product_context) ? beautyRequest.product_context : {};
+  const missingContext = inferMissingContext(beautyRequest, queryText);
+  const explicitCategoryPattern =
+    /\b(sunscreen|spf|moisturizer|moisturiser|cleanser|serum|toner|essence|retinol|retinoid|mask|balm|oil|cream|lotion)\b/;
+  const genericGuidancePattern =
+    /\bwhat should i (use|buy)\b(?:[^.]{0,24}\bfor my skin\b)?|\bhelp my skin\b|\bfor my skin\b/;
+  const hasExplicitCategory = explicitCategoryPattern.test(normalizedQuery);
+  const isGenericGuidanceAsk = genericGuidancePattern.test(normalizedQuery);
   if (
     String(taskType || '').trim() === 'exact_product' ||
     pickFirstTrimmed(productContext.product_id, productContext.product_group_id, productContext.canonical_product_ref)
   ) {
     return 'exact_product_assist';
   }
+  if (!hasExplicitCategory && isGenericGuidanceAsk && missingContext.length > 0) {
+    return 'guided_beauty_reco';
+  }
   if (
     Array.isArray(response?.products) && response.products.length > 0 &&
-    /\b(compare|which|what.*(buy|use)|recommend|sunscreen|moisturizer|cleanser|serum|spf)\b/.test(normalizedQuery)
+    (/\b(compare|comparison|which)\b/.test(normalizedQuery) || hasExplicitCategory)
   ) {
     return 'category_compare';
   }
   if (
-    /\b(compare|comparison|which|what.*(buy|use)|recommend|moisturizer|cleanser|serum|sunscreen|spf|routine)\b/.test(
-      normalizedQuery,
-    )
+    /\b(compare|comparison|which)\b/.test(normalizedQuery) ||
+    hasExplicitCategory
   ) {
     return 'category_compare';
   }
