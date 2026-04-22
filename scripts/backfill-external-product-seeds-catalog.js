@@ -609,7 +609,7 @@ function isProductRelevantSeedImageUrl(value, relevanceContext) {
   ) {
     const imageSignatureTokens = extractImageSignatureTokens(imageTokens);
     if (
-      imageSignatureTokens.length > 0 &&
+      imageSignatureTokens.length > 1 &&
       !imageSignatureTokens.some((token) => relevanceContext.signatureTokens.includes(token))
     ) {
       return false;

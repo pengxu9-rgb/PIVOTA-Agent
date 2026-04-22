@@ -158,6 +158,22 @@ describe('backfill-external-product-seeds-catalog', () => {
     ]);
   });
 
+  test('does not drop legitimate product images when filename collapses product words into one token', () => {
+    expect(
+      sanitizeSeedImageUrls(
+        [
+          'https://cdn.shopify.com/s/files/1/0651/7656/8022/files/PineCicaTonerPad-4.jpg?v=1775497752',
+        ],
+        {
+          productTitle: 'Pine Calming Cica Toner Pad',
+          productUrl: 'https://roundlab.com/products/pine-calming-cica-toner-pad',
+        },
+      ),
+    ).toEqual([
+      'https://cdn.shopify.com/s/files/1/0651/7656/8022/files/PineCicaTonerPad-4.jpg?v=1775497752',
+    ]);
+  });
+
   test('keeps mixed product-type images for bundle-like PDPs', () => {
     expect(
       sanitizeSeedImageUrls(
