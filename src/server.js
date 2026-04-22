@@ -1705,6 +1705,8 @@ function normalizeCreateOrderCompat(upstreamPayload = {}) {
     ...order,
     total_amount: amounts.total != null ? amounts.total : upstreamPayload.total_amount,
     subtotal: amounts.subtotal != null ? amounts.subtotal : upstreamPayload.subtotal,
+    discount_total:
+      amounts.discount_total != null ? amounts.discount_total : upstreamPayload.discount_total,
     shipping_fee: amounts.shipping_fee != null ? amounts.shipping_fee : upstreamPayload.shipping_fee,
     tax: amounts.tax != null ? amounts.tax : upstreamPayload.tax,
     currency: firstNonEmptyString(amounts.currency, upstreamPayload.currency),
@@ -1713,6 +1715,86 @@ function normalizeCreateOrderCompat(upstreamPayload = {}) {
     tracking: Object.keys(fulfillmentSummary).length ? fulfillmentSummary : upstreamPayload.tracking,
     order_lines: Array.isArray(order.line_items) ? order.line_items : upstreamPayload.order_lines,
     order,
+  };
+}
+
+function normalizeGetOrderStatusCompat(upstreamPayload = {}) {
+  if (!isPlainObject(upstreamPayload)) {
+    return upstreamPayload;
+  }
+  const tracking = isPlainObject(upstreamPayload.tracking) ? upstreamPayload.tracking : {};
+  const order = isPlainObject(upstreamPayload.order) ? upstreamPayload.order : {};
+  const amounts = isPlainObject(order.amounts) ? order.amounts : {};
+  const pricing = isPlainObject(tracking.pricing)
+    ? tracking.pricing
+    : isPlainObject(upstreamPayload.pricing)
+      ? upstreamPayload.pricing
+      : {};
+
+  const normalizedPricing = pruneEmptyFields({
+    subtotal:
+      pricing.subtotal != null
+        ? pricing.subtotal
+        : tracking.subtotal != null
+          ? tracking.subtotal
+          : amounts.subtotal,
+    discount_total:
+      pricing.discount_total != null
+        ? pricing.discount_total
+        : tracking.discount_total != null
+          ? tracking.discount_total
+          : amounts.discount_total,
+    shipping_fee:
+      pricing.shipping_fee != null
+        ? pricing.shipping_fee
+        : tracking.shipping_fee != null
+          ? tracking.shipping_fee
+          : amounts.shipping_fee,
+    tax:
+      pricing.tax != null ? pricing.tax : tracking.tax != null ? tracking.tax : amounts.tax,
+    total:
+      pricing.total != null
+        ? pricing.total
+        : tracking.total != null
+          ? tracking.total
+          : amounts.total,
+    currency: firstNonEmptyString(
+      pricing.currency,
+      tracking.currency,
+      amounts.currency,
+      upstreamPayload.currency,
+      order.currency,
+    ),
+  });
+
+  return {
+    ...upstreamPayload,
+    ...tracking,
+    subtotal:
+      normalizedPricing.subtotal != null ? normalizedPricing.subtotal : upstreamPayload.subtotal,
+    discount_total:
+      normalizedPricing.discount_total != null
+        ? normalizedPricing.discount_total
+        : upstreamPayload.discount_total,
+    shipping_fee:
+      normalizedPricing.shipping_fee != null
+        ? normalizedPricing.shipping_fee
+        : upstreamPayload.shipping_fee,
+    tax: normalizedPricing.tax != null ? normalizedPricing.tax : upstreamPayload.tax,
+    total: normalizedPricing.total != null ? normalizedPricing.total : upstreamPayload.total,
+    currency: firstNonEmptyString(
+      normalizedPricing.currency,
+      upstreamPayload.currency,
+      order.currency,
+    ),
+    pricing: normalizedPricing,
+    order:
+      Object.keys(order).length > 0
+        ? {
+            ...order,
+            pricing: normalizedPricing,
+          }
+        : upstreamPayload.order,
   };
 }
 // Reviews are optional UI modules; keep their upstream timeout low so PDP can render quickly
@@ -2367,6 +2449,8 @@ const PRODUCT_DETAIL_STALE_MAX_AGE_HOURS = parsePositiveInt(
   30 * 24,
   { min: 1, max: 24 * 90 },
 );
+const PRODUCT_DETAIL_AUTHORITATIVE_INVOKE_ENABLED =
+  String(process.env.PRODUCT_DETAIL_AUTHORITATIVE_INVOKE_ENABLED || 'true').toLowerCase() !== 'false';
 
 function getProductDetailCacheEntry(cacheKey) {
   const key = String(cacheKey || '');
@@ -9954,12 +10038,11 @@ const ROUTE_MAP = {
     paramType: 'query'
   },
   get_product_detail: {
-    method: 'GET',
-    // Use the agent-facing product detail endpoint (legacy but stable).
-    // The newer `/agent/v1/products/merchants/{merchant_id}/product/{product_id}` shape
-    // can differ by identifier type and has shown PRODUCT_NOT_FOUND for ids returned by search.
-    path: '/agent/v1/products/{merchant_id}/{product_id}',
-    paramType: 'path',
+    // Product detail must use the Python shopping gateway so display evidence
+    // such as payment_offer_evidence/store_discount_evidence is preserved.
+    method: 'POST',
+    path: '/agent/shop/v1/invoke',
+    paramType: 'body',
   },
   preview_quote: {
     method: 'POST',
@@ -19544,9 +19627,26 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               order_id: payload.order?.order_id,
               status: 'processing',
               created_at: new Date().toISOString(),
-              total: 50.00,
-              currency: 'USD'
-            }
+              currency: 'USD',
+              pricing: {
+                subtotal: 42.0,
+                discount_total: 0,
+                shipping_fee: 8.0,
+                tax: 0,
+                total: 50.0,
+              },
+            },
+            tracking: {
+              status: 'processing',
+              currency: 'USD',
+              pricing: {
+                subtotal: 42.0,
+                discount_total: 0,
+                shipping_fee: 8.0,
+                tax: 0,
+                total: 50.0,
+              },
+            },
           };
           break;
         }
@@ -21618,10 +21718,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     let resolvedMerchantId = null;
     let productDetailMerchantId = null;
     let productDetailProductId = null;
-    let productDetailCacheKey = null;
-    let productDetailDebug = false;
-    let productDetailBypassCache = false;
-    let productDetailCacheMeta = null;
+	    let productDetailCacheKey = null;
+	    let productDetailDebug = false;
+	    let productDetailBypassCache = false;
+	    let productDetailCacheMeta = null;
+	    let productDetailAuthoritativeInvoke = false;
     // Creator UI cold-start (empty query) should not be constrained by the
     // upstream live merchant recall limits. Prefer reading sellable products
     // from products_cache (same source as creator categories / merchant portal).
@@ -23756,30 +23857,53 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           options.debug === true ||
           String(options.debug || '').trim().toLowerCase() === 'true' ||
           payload.debug === true;
-        productDetailBypassCache =
-          options.no_cache === true ||
-          options.cache_bypass === true ||
+	        productDetailBypassCache =
+	          options.no_cache === true ||
+	          options.cache_bypass === true ||
           options.bypass_cache === true ||
           String(options.no_cache || '').trim().toLowerCase() === 'true' ||
-          String(options.cache_bypass || options.bypass_cache || '')
-            .trim()
-            .toLowerCase() === 'true';
-        if (!merchantId || !productId) {
+	          String(options.cache_bypass || options.bypass_cache || '')
+	            .trim()
+	            .toLowerCase() === 'true';
+	        productDetailAuthoritativeInvoke = PRODUCT_DETAIL_AUTHORITATIVE_INVOKE_ENABLED;
+	        if (!merchantId || !productId) {
           return res.status(400).json({
             error: 'MISSING_PARAMETERS',
             message: 'merchant_id and product_id are required'
           });
         }
-        productDetailCacheKey = JSON.stringify({
-          merchantId,
-          productId,
-          hasCheckoutToken: Boolean(checkoutToken),
-        });
-        url = url
-          .replace('{merchant_id}', encodeURIComponent(merchantId))
-          .replace('{product_id}', encodeURIComponent(productId));
-        break;
-      }
+	        productDetailCacheKey = JSON.stringify({
+	          merchantId,
+	          productId,
+	          hasCheckoutToken: Boolean(checkoutToken),
+	          contract: productDetailAuthoritativeInvoke ? 'shop_invoke_detail_v2' : 'legacy_detail',
+	        });
+	        if (productDetailAuthoritativeInvoke) {
+	          url = `${PIVOTA_API_BASE}/agent/shop/v1/invoke`;
+	          upstreamMethod = 'POST';
+	          requestBody = {
+	            operation: 'get_product_detail',
+	            payload: {
+	              product: {
+	                merchant_id: merchantId,
+	                product_id: productId,
+	                ...(payload.product?.sku_id || payload.product?.skuId
+	                  ? { sku_id: payload.product.sku_id || payload.product.skuId }
+	                  : {}),
+	              },
+	              ...(Array.isArray(payload.include) ? { include: payload.include } : {}),
+	              ...(payload.view ? { view: payload.view } : {}),
+	              ...(payload.options && typeof payload.options === 'object' ? { options: payload.options } : {}),
+	            },
+	            metadata,
+	          };
+	        } else {
+	          url = `${PIVOTA_API_BASE}/agent/v1/products/${encodeURIComponent(
+	            merchantId,
+	          )}/${encodeURIComponent(productId)}`;
+	        }
+	        break;
+	      }
 
 	      case 'preview_quote': {
 	        const quote = payload.quote || {};
@@ -24483,7 +24607,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             age_ms: ageMs,
             ttl_ms: PRODUCT_DETAIL_CACHE_TTL_MS,
           };
-        } else if (process.env.DATABASE_URL) {
+	        } else if (!productDetailAuthoritativeInvoke && process.env.DATABASE_URL) {
           const fromDb = await fetchProductDetailFromProductsCache({
             merchantId: productDetailMerchantId,
             productId: productDetailProductId,
@@ -25978,19 +26102,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       );
     }
 
-    if (
-      operation === 'get_order_status' &&
-      upstreamData &&
-      typeof upstreamData === 'object' &&
-      !Array.isArray(upstreamData) &&
-      upstreamData.tracking &&
-      typeof upstreamData.tracking === 'object' &&
-      !Array.isArray(upstreamData.tracking)
-    ) {
-      upstreamData = {
-        ...upstreamData,
-        ...upstreamData.tracking,
-      };
+    if (operation === 'get_order_status') {
+      upstreamData = normalizeGetOrderStatusCompat(upstreamData);
     }
 
     if (
