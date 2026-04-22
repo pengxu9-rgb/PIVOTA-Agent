@@ -58588,7 +58588,15 @@ function normalizeRecoAssistantFinishFitTradeoffReason(reason = '', {
       '$1',
     )
     .replace(
+      /\b(under makeup|less slip under makeup|less weight under makeup)\s*,\s*uvb(?:,\s*and\s+blue\s+light)?\b/ig,
+      '$1',
+    )
+    .replace(
       /\b(?:against|protect(?: your skin)? from)\s+uva,\s*uvb(?:,\s*and\s+blue\s+light)?\b/ig,
+      '',
+    )
+    .replace(
+      /\b,\s*uvb(?:,\s*and\s+blue\s+light)?\b/ig,
       '',
     )
     .replace(/\bduring am uv protection\b/ig, 'during daytime wear')
