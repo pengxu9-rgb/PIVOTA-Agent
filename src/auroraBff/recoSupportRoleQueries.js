@@ -170,6 +170,7 @@ function buildSupportRoleQueryVariants({
   const barrierSignal = /\b(barrier|ceramide|ceramides|lotion)\b/.test(signalText);
   const layeringSignal = /\b(layering|makeup|under makeup|pilling)\b/.test(roleSpecificSignalText);
   const fluidSignal = /\b(fluid|invisible|water[- ]?fit|serum sunscreen|spf fluid)\b/.test(signalText);
+  const finishFitSunscreenSignal = step === 'sunscreen' && (layeringSignal || fluidSignal);
   const hydrationSerumSignal = /\b(hydrat|dehydrat|hyaluronic|essence|plumping|water[- ]?fit|dull skin)\b/.test(signalText);
   const soothingTreatmentSignal = /\b(soothing|redness|calming|irritation|cica|panthenol|madecassoside)\b/.test(signalText);
   const toneTreatmentSignal = /\b(post[- ]?acne|marks?|dark spot|tone|brighten|radiance|glow|dull|hyperpigmentation|uneven)\b/.test(signalText);
@@ -213,14 +214,16 @@ function buildSupportRoleQueryVariants({
     if (!layeringSignal) candidates.push('lightweight moisturizer');
     candidates.push('moisturizer');
   } else if (step === 'sunscreen') {
-    if (fluidSignal || oilySignal) candidates.push(oilySignal ? 'spf fluid oily skin' : 'spf fluid');
+    if (fluidSignal || layeringSignal || oilySignal) candidates.push(oilySignal ? 'spf fluid oily skin' : 'spf fluid');
     if (layeringSignal) candidates.push('sunscreen under makeup');
     candidates.push(oilySignal ? 'lightweight sunscreen oily skin' : 'lightweight sunscreen');
-    if (oilySignal) candidates.push('oil control sunscreen');
-    if (layeringSignal) candidates.push('makeup friendly sunscreen');
-    candidates.push('daily sunscreen');
-    candidates.push('broad spectrum sunscreen');
-    candidates.push('sunscreen');
+    if (!finishFitSunscreenSignal && oilySignal) candidates.push('oil control sunscreen');
+    if (!finishFitSunscreenSignal && layeringSignal) candidates.push('makeup friendly sunscreen');
+    if (!finishFitSunscreenSignal) {
+      candidates.push('daily sunscreen');
+      candidates.push('broad spectrum sunscreen');
+      candidates.push('sunscreen');
+    }
   } else if (step === 'serum') {
     if (hydrationSerumSignal) {
       candidates.push('hyaluronic acid serum');
@@ -262,7 +265,7 @@ function buildSupportRoleQueryVariants({
       if (scoreDiff !== 0) return scoreDiff;
       return Number(left.index || 0) - Number(right.index || 0);
     })
-    .slice(0, Math.max(1, Number(maxQueries) || 1))
+    .slice(0, finishFitSunscreenSignal ? Math.min(Math.max(1, Number(maxQueries) || 1), 3) : Math.max(1, Number(maxQueries) || 1))
     .map((entry) => entry.query);
 }
 

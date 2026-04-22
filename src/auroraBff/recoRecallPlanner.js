@@ -710,10 +710,11 @@ function buildFrameworkRoleQueries(
   const roleObj = role && typeof role === 'object' && !Array.isArray(role) ? role : null;
   if (!roleObj) return [];
   const preferredStep = String(roleObj.preferred_step || '').trim();
+  const normalizedPreferredStep = preferredStep.toLowerCase();
   const roleQueries = Array.isArray(roleObj.query_terms) ? roleObj.query_terms : [];
   const out = [];
   const isTreatmentPrimary =
-    allowConcernFallback && String(preferredStep).trim().toLowerCase() === 'treatment';
+    allowConcernFallback && normalizedPreferredStep === 'treatment';
   const anchorQuery = isTreatmentPrimary ? buildPrimaryTreatmentAnchorQuery(roleObj) : '';
   const ingredientLedQueries = isTreatmentPrimary
     ? buildPrimaryTreatmentIngredientQueries(roleObj, {
@@ -754,7 +755,11 @@ function buildFrameworkRoleQueries(
       maxQueries,
     }));
   }
-  if (allowConcernFallback && concernText) {
+  const allowRawConcernFallback =
+    allowConcernFallback
+    && concernText
+    && normalizedPreferredStep !== 'sunscreen';
+  if (allowRawConcernFallback) {
     if (preferredStep) out.push(`${concernText} ${preferredStep}`);
     out.push(concernText);
   }

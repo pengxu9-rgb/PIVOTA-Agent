@@ -23,6 +23,9 @@ const diagnosisArtifactStore = require('../src/auroraBff/diagnosisArtifactStore'
 const {
   createBeautyChatMainlineEntryRuntime,
 } = require('../src/auroraBff/beautyChatMainlineEntry');
+const {
+  buildSupportRoleQueryVariants,
+} = require('../src/auroraBff/recoSupportRoleQueries');
 const ROUTES_MODULE_PATH = require.resolve('../src/auroraBff/routes');
 const AURORA_DECISION_CLIENT_MODULE_PATH = require.resolve('../src/auroraBff/auroraDecisionClient');
 const { saveDiagnosisArtifact } = require('../src/auroraBff/diagnosisArtifactStore');
@@ -119,6 +122,27 @@ function getRecommendationsPayload(responseBody) {
   const recoCard = cards.find((card) => card && card.type === 'recommendations') || null;
   return recoCard && recoCard.payload && typeof recoCard.payload === 'object' ? recoCard.payload : null;
 }
+
+test('__internal: support role query builder keeps finish-fit sunscreen recall to the top three precise variants', () => {
+  const queries = buildSupportRoleQueryVariants({
+    roleId: 'daily_sunscreen_finish_fit',
+    roleLabel: 'Daily sunscreen finish fit',
+    preferredStep: 'sunscreen',
+    queryTerms: ['sunscreen under makeup', 'lightweight sunscreen oily skin'],
+    fitKeywords: ['under makeup', 'lightweight', 'non-greasy', 'fluid'],
+    semanticFamily: 'sunscreen',
+    concernText: 'makeup pilling during the day',
+    maxQueries: 4,
+  });
+
+  assert.deepEqual(queries, [
+    'spf fluid oily skin',
+    'sunscreen under makeup',
+    'lightweight sunscreen oily skin',
+  ]);
+  assert.equal(queries.includes('oil control sunscreen'), false);
+  assert.equal(queries.includes('makeup friendly sunscreen'), false);
+});
 
 function getConfidenceNoticePayload(responseBody) {
   const cards = Array.isArray(responseBody?.cards) ? responseBody.cards : [];

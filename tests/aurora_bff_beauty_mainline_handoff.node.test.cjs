@@ -848,6 +848,10 @@ test('handoffRecoToBeautyMainlineSearch runs finish-fit sunscreen external queri
       externalCaptured.some((row) => row.query === 'sunscreen'),
       false,
     );
+    assert.equal(
+      externalCaptured.some((row) => /My daytime products pill under makeup/i.test(row.query)),
+      false,
+    );
   } finally {
     __internal.__resetRouteDependencyOverridesForTest();
     delete require.cache[moduleId];
