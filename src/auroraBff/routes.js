@@ -74159,6 +74159,20 @@ function rewriteGroundedAlternativeVisibleShopperLine(row, value) {
   const item = isPlainObject(row) ? row : {};
   const text = cleanRecoVisibleCopy(value).replace(/\s+/g, ' ').trim();
   if (!text) return '';
+  const candidateHaystack = buildRecoAlternativePoolCandidateText(item);
+  const hasStrongComfortCue = /\b(colloidal\s+oatmeal|oat(?:meal)?|allantoin|ectoin|cica|centella|reactive|stinging?)\b/i.test(candidateHaystack);
+  const hasLighterDewyCue = /\b(gel[-\s]?cream|water[-\s]?(?:cream|gel)|lightweight|ultra[-\s]?sheer|breathable|quick[-\s]?absorbing|dewy)\b/i.test(candidateHaystack);
+  const hasOilControlCue = /\b(oil[-\s]?control|mattifying|matte|shine[-\s]?free|shine[-\s]?controlling|powder[-\s]?soft)\b/i.test(candidateHaystack);
+
+  if (/adds more calming barrier-comfort cues for dry, tight, or easily irritated skin/i.test(text)) {
+    if (hasOilControlCue) {
+      return 'Leans lighter and more oil-controlling if you want less richness from a barrier moisturizer.';
+    }
+    if (hasLighterDewyCue && !hasStrongComfortCue) {
+      return 'Leans lighter and dewier if you want hydration without a heavier cream feel.';
+    }
+    return text;
+  }
   if (
     /keeps the compare inside the same hydration-first moisturizer lane/i.test(text) ||
     /more hydration-led than barrier-led compared with the anchor/i.test(text)
@@ -74173,6 +74187,12 @@ function rewriteGroundedAlternativeVisibleShopperLine(row, value) {
       item.metadata && typeof item.metadata === 'object' && !Array.isArray(item.metadata)
         ? item.metadata
         : {};
+    if (hasOilControlCue) {
+      return 'Leans lighter and more oil-controlling if you want less richness from a barrier moisturizer.';
+    }
+    if (hasLighterDewyCue && !hasStrongComfortCue) {
+      return 'Leans lighter and dewier if you want hydration without a heavier cream feel.';
+    }
     if (Number(metadata.barrier_fit_penalty || 0) > 0) {
       return 'Leans more hydration-first than barrier-first if you want a bit more moisture.';
     }
@@ -74212,10 +74232,22 @@ function buildGroundedAlternativeFallbackVisibleShopperCopy(row) {
   const comfortSignal =
     metadata.barrier_comfort_match === true ||
     RECO_ALTERNATIVE_BARRIER_COMFORT_SIGNAL_RE.test(candidateHaystack);
+  const strongComfortSignal = /\b(colloidal\s+oatmeal|oat(?:meal)?|allantoin|ectoin|cica|centella|reactive|stinging?)\b/i.test(candidateHaystack);
+  const lighterDewySignal = /\b(gel[-\s]?cream|water[-\s]?(?:cream|gel)|lightweight|ultra[-\s]?sheer|breathable|quick[-\s]?absorbing|dewy)\b/i.test(candidateHaystack);
+  const oilControlSignal = /\b(oil[-\s]?control|mattifying|matte|shine[-\s]?free|shine[-\s]?controlling|powder[-\s]?soft)\b/i.test(candidateHaystack);
   const strongBarrierSignal = RECO_ALTERNATIVE_STRONG_BARRIER_BRIDGE_RE.test(candidateHaystack);
 
+  if (oilControlSignal) {
+    return 'Leans lighter and more oil-controlling if you want less richness from a barrier moisturizer.';
+  }
   if (comfortSignal) {
+    if (lighterDewySignal && !strongComfortSignal) {
+      return 'Leans lighter and dewier if you want hydration without a heavier cream feel.';
+    }
     return 'Adds more calming barrier-comfort cues for dry, tight, or easily irritated skin.';
+  }
+  if (lighterDewySignal && hydrationTradeoff) {
+    return 'Leans lighter and dewier if you want hydration without a heavier cream feel.';
   }
   if (hydrationTradeoff) {
     return 'Leans more hydration-first than barrier-first if you want a bit more moisture.';
