@@ -20501,7 +20501,7 @@ function buildRecoFinishFitSpecificWhy({
   const hasWeightless = /\b(?:weightless|lightweight|airy|fluid|watery|water[-\s]?fit|invisible|non[-\s]?greasy|sheer)\b/i.test(text);
   const hasMineralCue = /\b(?:mineral|zinc oxide|titanium dioxide)\b/i.test(text);
   const hasMatteCue = /\b(?:matte|mattif(?:y|ies|ying)|oil[-\s]?control(?:ling)?|shine[-\s]?control|anti[-\s]?shine|sebum)\b/i.test(text);
-  const hasDewyCue = /\b(?:day dew|dewy|fresh[-\s]?dewy|dewier|refreshing hydration)\b/i.test(text);
+  const hasDewyCue = /\b(?:day dew|dewy|fresh[-\s]?dewy|dewier)\b/i.test(text);
   const hasWhiteCastCue = /\b(?:no white cast|white cast[-\s]?free|lower white[-\s]?cast|invisible)\b/i.test(text);
   const hasSensitiveCue = /\b(?:sensitive skin|scentless|fragrance[-\s]?free|bisabolol|ectoin)\b/i.test(text);
   const hasCreamierCue = /\b(?:hydrating daily cream|hydrating cream|cream format|cream texture|moisturizer[-\s]?style hydration|moisturizer[-\s]?format)\b/i.test(text);
@@ -55762,7 +55762,7 @@ function buildRecoAssistantTradeoffNote(detail = {}, {
       return 'it leans more like a tinted makeup-base SPF, so it makes more sense if you already want complexion coverage';
     }
     const matteCue = /\b(matte|mattif(?:y|ies|ying)|oil[-\s]?control(?:ling)?|shine[-\s]?control|anti[-\s]?shine|sebum)\b/i.test(text);
-    const dewyCue = /\b(day dew|dewy|fresh[-\s]?dewy|dewier|refreshing hydration)\b/i.test(text);
+    const dewyCue = /\b(day dew|dewy|fresh[-\s]?dewy|dewier)\b/i.test(text);
     const mineralCue = /\b(mineral(?: sunscreen)?|zinc oxide|titanium dioxide|non[-\s]?nano zinc)\b/i.test(text);
     const sensitiveCue = /\b(sensitive skin|scentless|fragrance[-\s]?free|simple formula|gentle)\b/i.test(text);
     if (dewyCue) {

@@ -555,7 +555,7 @@ function recommendationFinishFitSourceNeedsMoreSpecificCue(value, row) {
   const visibleHasMatteCue = /\b(?:mattif(?:y|ies|ying)|oil[-\s]?control(?:ling)?|shine[-\s]?control|anti[-\s]?shine|less slip under makeup|less shine under makeup)\b/.test(visible);
   if (sourceHasMatteCue && !visibleHasMatteCue) return true;
 
-  const sourceHasDewyCue = /\b(?:day dew|dewy|fresh[-\s]?dewy|dewier|refreshing hydration)\b/.test(source);
+  const sourceHasDewyCue = /\b(?:day dew|dewy|fresh[-\s]?dewy|dewier)\b/.test(source);
   const visibleHasDewyCue = /\b(?:fresher and dewier|more hydration without a heavier cream feel|more hydration without a heavy cream finish)\b/.test(visible);
   if (sourceHasDewyCue && !visibleHasDewyCue) return true;
 
@@ -606,7 +606,7 @@ function buildRecommendationFinishFitSpecificWhy(row) {
   const hasWeightless = /\b(?:weightless|lightweight|airy|fluid|watery|water[-\s]?fit|invisible|non[-\s]?greasy|sheer)\b/i.test(texts);
   const hasMineralCue = /\b(?:mineral|zinc oxide|titanium dioxide)\b/i.test(texts);
   const hasMatteCue = /\b(?:matte|mattif(?:y|ies|ying)|oil[-\s]?control(?:ling)?|shine[-\s]?control|anti[-\s]?shine|sebum)\b/i.test(texts);
-  const hasDewyCue = /\b(?:day dew|dewy|fresh[-\s]?dewy|dewier|refreshing hydration)\b/i.test(texts);
+  const hasDewyCue = /\b(?:day dew|dewy|fresh[-\s]?dewy|dewier)\b/i.test(texts);
   const hasWhiteCastCue = /\b(?:no white cast|white cast[-\s]?free|lower white[-\s]?cast|invisible)\b/i.test(texts);
   const hasSensitiveCue = /\b(?:sensitive skin|scentless|fragrance[-\s]?free|bisabolol|ectoin)\b/i.test(texts);
   const hasCreamierCue = /\b(?:hydrating daily cream|hydrating cream|cream format|cream texture|moisturizer[-\s]?style hydration|moisturizer[-\s]?format|cream-spf|cream spf|sunscreen milk|milk spf|milky sunscreen|hydrating sunscreen milk|spf milk|spf lotion)\b/i.test(texts);
@@ -647,7 +647,7 @@ function buildRecommendationFinishFitSpecificShortDescription(row) {
   const hasWeightless = /\b(?:weightless|lightweight|airy|fluid|watery|water[-\s]?fit|invisible|non[-\s]?greasy|sheer)\b/i.test(texts);
   const hasMineralCue = /\b(?:mineral|zinc oxide|titanium dioxide)\b/i.test(texts);
   const hasMatteCue = /\b(?:matte|mattif(?:y|ies|ying)|oil[-\s]?control(?:ling)?|shine[-\s]?control|anti[-\s]?shine|sebum)\b/i.test(texts);
-  const hasDewyCue = /\b(?:day dew|dewy|fresh[-\s]?dewy|dewier|refreshing hydration)\b/i.test(texts);
+  const hasDewyCue = /\b(?:day dew|dewy|fresh[-\s]?dewy|dewier)\b/i.test(texts);
   const hasWhiteCastCue = /\b(?:no white cast|white cast[-\s]?free|lower white[-\s]?cast|invisible)\b/i.test(texts);
   const hasSensitiveCue = /\b(?:sensitive skin|scentless|fragrance[-\s]?free|bisabolol|ectoin)\b/i.test(texts);
   const hasCreamierCue = /\b(?:hydrating daily cream|hydrating cream|cream format|cream texture|moisturizer[-\s]?style hydration|moisturizer[-\s]?format|cream-spf|cream spf|sunscreen milk|milk spf|milky sunscreen|hydrating sunscreen milk|spf milk|spf lotion)\b/i.test(texts);

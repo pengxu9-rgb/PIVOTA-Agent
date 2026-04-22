@@ -956,6 +956,7 @@ describe('aurora chatCardFactory structured sections for adapter inputs', () => 
               matched_role_id: 'daily_sunscreen_finish_fit',
               matched_role_label: 'Daily sunscreen with finish fit',
               short_description: 'A lightweight sunscreen fluid that layers smoothly under makeup with no white cast.',
+              description: 'An ultra-lightweight fluid texture with rice seed water that provides refreshing hydration while remaining suited for layering in morning routines.',
               why_this_one: 'it keeps the finish lighter and smoother under makeup if you want a less heavy daytime layer',
             },
             {
@@ -1025,6 +1026,8 @@ describe('aurora chatCardFactory structured sections for adapter inputs', () => 
     );
 
     const products = cards[0].payload.sections[0].products;
+    expect(products[0].why_this_one).toMatch(/lighter and smoother under makeup|less heavy daytime layer/i);
+    expect(products[0].why_this_one).not.toMatch(/fresher and dewier|more hydration without a heavier cream feel/i);
     expect(products[1].why_this_one).toMatch(/fresher and dewier|more hydration without a heavier cream feel/i);
     expect(products[1].short_description).toMatch(/fresher, dewier sunscreen feel|more hydration without a heavy cream finish/i);
     expect(products[1].short_description).not.toMatch(/Fresh-dewy SPF for daily wear/i);
