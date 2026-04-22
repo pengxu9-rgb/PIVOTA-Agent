@@ -23245,7 +23245,7 @@ function buildConcernFrameworkCandidateText(row) {
   return buildConcernFrameworkCandidateTextPolicy(row);
 }
 
-const FACIAL_FRAMEWORK_SCOPE_BLOCK_RE = /\b(hand|body|foot|heel|elbow|cuticle|lip balm|lip mask|lip cream|lip oil|lip treatment|lip gloss|body wash|body lotion|body cream|body oil|hand cream|hand lotion|hand balm|foot cream|foot mask|scalp|hair|shampoo|conditioner|deodorant)\b/i;
+const FACIAL_FRAMEWORK_SCOPE_BLOCK_RE = /\b(hand|body|foot|heel|elbow|cuticle|lip balm|lip mask|lip cream|lip oil|lip treatment|lip gloss|body wash|body lotion|body cream|body oil|hand cream|hand lotion|hand balm|foot cream|foot mask|scalp|hair|shampoo|conditioner|deodorant|shave cream|shaving cream|aftershave|after shave)\b/i;
 const FACIAL_FRAMEWORK_SCOPE_ALLOW_RE = /\b(face|facial|cheek|forehead|chin|t-zone)\b/i;
 
 function isConcernFrameworkOutOfScopeArea(row, candidateText) {

@@ -6585,6 +6585,21 @@ test('fetchRecoAlternativesForProduct: thin role-scope moisturizer anchors do no
                 },
               },
               {
+                product_id: 'ext_fab_smooth_shave',
+                merchant_id: 'external_seed',
+                brand: 'First Aid Beauty',
+                name: 'Smooth Shave Cream',
+                display_name: 'Smooth Shave Cream',
+                product_type: 'Moisturizer',
+                category: 'Moisturizer',
+                retrieval_source: 'external_seed',
+                description: 'Shaving cream for a smoother razor glide.',
+                canonical_product_ref: {
+                  product_id: 'ext_fab_smooth_shave',
+                  merchant_id: 'external_seed',
+                },
+              },
+              {
                 product_id: 'ext_pc_electrolyte_moisturizer',
                 merchant_id: 'external_seed',
                 brand: "Paula's Choice",
@@ -6671,6 +6686,7 @@ test('fetchRecoAlternativesForProduct: thin role-scope moisturizer anchors do no
         assert.equal(names.some((name) => /dark spot|radiance/i.test(name)), false);
         assert.equal(names.some((name) => /tinted moisturizer/i.test(name)), false);
         assert.equal(names.some((name) => /lip souffl[eé]|matte lip cream/i.test(name)), false);
+        assert.equal(names.some((name) => /smooth shave cream|shave cream/i.test(name)), false);
         assert.equal(out.alternatives.every((row) => /moisturizer/i.test(String(row?.product?.category || ''))), true);
       } finally {
         const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
