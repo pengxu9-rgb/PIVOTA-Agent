@@ -6698,6 +6698,156 @@ test('fetchRecoAlternativesForProduct: thin role-scope moisturizer anchors do no
   );
 });
 
+test('fetchRecoAlternativesForProduct: barrier moisturizer alternatives rank barrier-support evidence ahead of generic hydration', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_BFF_USE_MOCK: 'false',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+      AURORA_BFF_RECO_CATALOG_SELF_PROXY_ENABLED: 'false',
+    },
+    async () => {
+      const axios = require('axios');
+      const originalGet = axios.get;
+      axios.get = async (url) => {
+        if (!isProductsSearchUrl(url)) {
+          throw new Error(`Unexpected axios.get: ${url}`);
+        }
+        return {
+          status: 200,
+          data: {
+            products: [
+              {
+                product_id: 'ext_joseon_dynasty_cream',
+                merchant_id: 'external_seed',
+                brand: 'Beauty of Joseon',
+                name: 'Dynasty Cream',
+                display_name: 'Dynasty Cream',
+                product_type: 'Moisturizer',
+                category: 'Moisturizer',
+                retrieval_source: 'external_seed',
+                description: 'Hydrating cream with niacinamide and a dewy finish.',
+                canonical_product_ref: {
+                  product_id: 'ext_joseon_dynasty_cream',
+                  merchant_id: 'external_seed',
+                },
+              },
+              {
+                product_id: 'ext_fab_ultra_repair_face_lotion',
+                merchant_id: 'external_seed',
+                brand: 'First Aid Beauty',
+                name: 'Ultra Repair Face Lotion with Colloidal Oatmeal',
+                display_name: 'Ultra Repair Face Lotion with Colloidal Oatmeal',
+                product_type: 'Moisturizer',
+                category: 'Moisturizer',
+                retrieval_source: 'external_seed',
+                description: 'Barrier-support face lotion with colloidal oatmeal, ceramides, and calming hydration.',
+                canonical_product_ref: {
+                  product_id: 'ext_fab_ultra_repair_face_lotion',
+                  merchant_id: 'external_seed',
+                },
+              },
+              {
+                product_id: 'ext_dieux_air_angel',
+                merchant_id: 'external_seed',
+                brand: 'Dieux',
+                name: 'Air Angel Peptide Plumping Gel Cream',
+                display_name: 'Air Angel Peptide Plumping Gel Cream',
+                product_type: 'Moisturizer',
+                category: 'Moisturizer',
+                retrieval_source: 'external_seed',
+                description: 'Light gel-cream hydration with peptides for daily moisture.',
+                canonical_product_ref: {
+                  product_id: 'ext_dieux_air_angel',
+                  merchant_id: 'external_seed',
+                },
+              },
+              {
+                product_id: 'ext_bubble_level_up',
+                merchant_id: 'external_seed',
+                brand: 'Bubble',
+                name: 'Level Up',
+                display_name: 'Level Up',
+                product_type: 'Moisturizer',
+                category: 'Moisturizer',
+                retrieval_source: 'external_seed',
+                description: 'Daily hydration moisturizer with lightweight moisture support.',
+                canonical_product_ref: {
+                  product_id: 'ext_bubble_level_up',
+                  merchant_id: 'external_seed',
+                },
+              },
+            ],
+          },
+        };
+      };
+
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      try {
+        const routeModule = require('../src/auroraBff/routes');
+        const { __internal } = routeModule;
+        let geminiCalled = false;
+        __internal.__setCallGeminiJsonObjectForTest(async () => {
+          geminiCalled = true;
+          throw new Error('provider should not run when barrier moisturizer pool is sufficient');
+        });
+
+        const out = await __internal.fetchRecoAlternativesForProduct({
+          ctx: {
+            lang: 'EN',
+            request_id: 'req_barrier_alt_rank',
+            trace_id: 'trace_barrier_alt_rank',
+          },
+          profileSummary: null,
+          recentLogs: [],
+          productInput: 'Round Lab Soybean Panthenol Cream',
+          productObj: {
+            product_id: 'ext_roundlab_soybean_panthenol_cream',
+            merchant_id: 'external_seed',
+            name: 'Round Lab Soybean Panthenol Cream',
+            display_name: 'Round Lab Soybean Panthenol Cream',
+            category: 'Moisturizer',
+            product_type: 'Moisturizer',
+            role_scope: 'hydrating_barrier_moisturizer',
+            selected_target_id: 'hydrating_barrier_moisturizer',
+            short_description: 'Barrier-support cream for dry, tight skin.',
+            description: 'Barrier-support cream for dry, tight skin built around panthenol and ceramide comfort.',
+          },
+          anchorId: 'ext_roundlab_soybean_panthenol_cream',
+          maxTotal: 4,
+          candidatePool: [],
+          debug: true,
+          logger: null,
+          options: {
+            recommendation_mode: 'pool_open_world_mixed',
+            disable_synthetic_local_fallback: true,
+            skip_anchor_precheck: true,
+          },
+        });
+
+        assert.equal(out?.ok, true);
+        assert.equal(geminiCalled, false);
+        assert.equal(out?.compare_meta?.open_world_status, 'skipped_sufficient_pool');
+        const names = out.alternatives.map((row) => String(row?.product?.name || row?.name || ''));
+        assert.equal(names[0], 'Ultra Repair Face Lotion with Colloidal Oatmeal');
+        const topReasons = Array.isArray(out.alternatives[0]?.reasons) ? out.alternatives[0].reasons : [];
+        assert.ok(topReasons.some((line) => /barrier-support cues line up|same barrier-friendly moisturizer step/i.test(String(line))), JSON.stringify(topReasons));
+        const genericHydrationRow = out.alternatives.find((row) => /air angel|level up/i.test(String(row?.product?.name || row?.name || '')));
+        const tradeoffNotes = Array.isArray(genericHydrationRow?.tradeoff_notes) ? genericHydrationRow.tradeoff_notes : [];
+        assert.ok(tradeoffNotes.some((line) => /more hydration-led than barrier-led|less explicit barrier-support evidence/i.test(String(line))), JSON.stringify(tradeoffNotes));
+      } finally {
+        const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
+        loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
+        axios.get = originalGet;
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
 test('fetchRecoAlternativesForProduct: grounded pool folds promo and subscription variants before skipping open-world', async () => {
   return withEnv(
     {

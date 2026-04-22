@@ -73228,7 +73228,9 @@ const RECO_ALTERNATIVE_STRONG_AGING_INTENT_RE = /\b(wrinkles?|fine[-\s]?lines?|a
 const RECO_ALTERNATIVE_STRONG_SENSITIVITY_INTENT_RE = /\b(redness|sensitive|sensitized|sooth(?:e|ing)?|calm(?:ing)?|irritat(?:e|ion)|stinging?|red[-\s]?prone)\b/i;
 const RECO_ALTERNATIVE_STRONG_ACNE_INTENT_RE = /\b(acne|breakouts?|blemish(?:es)?|clog(?:ged)?|pores?|breakout[-\s]?prone)\b/i;
 const RECO_ALTERNATIVE_STRONG_BARRIER_BRIDGE_RE =
-  /\b(barrier|ceramides?|repair|cica|centella|panthenol|tamanu|lipids?|cholesterol|fatty\s+acids?)\b/i;
+  /\b(barrier|ceramides?|repair|cica|centella|panthenol|tamanu|lipids?|cholesterol|fatty\s+acids?|oat(?:meal)?|colloidal\s+oatmeal|beta[-\s]?glucan|ectoin|allantoin)\b/i;
+const RECO_ALTERNATIVE_HYDRATION_SUPPORT_RE =
+  /\b(hydrat\w*|moist\w*|glycerin|hyaluronic|squalane|beta[-\s]?glucan|oat(?:meal)?|colloidal\s+oatmeal|panthenol|ceramides?)\b/i;
 
 function buildRecoAlternativePoolCandidateText(normalized) {
   const row = isPlainObject(normalized) ? normalized : {};
@@ -73354,7 +73356,83 @@ function computeRecoAlternativeSameRoleLabelMatchScore(targetRole, candidateLabe
   const label = String(candidateLabel || '').trim();
   if (!role || role === 'unknown' || !label) return 0;
   if (role === 'sunscreen') return /\b(?:sunscreen|spf|sun\s*(?:screen|cream|fluid|serum)?|uv)\b/i.test(label) ? 1 : 0;
+  if (role === 'moisturizer') {
+    return /\b(?:moisturi[sz]er|cream|lotion|gel[-\s]?cream|water[-\s]?(?:cream|gel)|emulsion|face lotion)\b/i.test(label) ? 1 : 0;
+  }
   return 0;
+}
+
+function computeRecoAlternativeBarrierFitAdjustment(targetSignals, candidateText, candidateLabel) {
+  const targetRole = String(targetSignals?.usageRole || '').trim().toLowerCase();
+  if (targetRole !== 'moisturizer') {
+    return {
+      targetBarrierIntent: false,
+      strongBarrierMatch: false,
+      hydrationSupportMatch: false,
+      bonus: 0,
+      penalty: 0,
+    };
+  }
+  const targetText = [
+    targetSignals?.roleScope,
+    targetSignals?.name,
+    targetSignals?.productType,
+    targetSignals?.category,
+    targetSignals?.notes,
+    ...(Array.isArray(targetSignals?.primaryClaims) ? targetSignals.primaryClaims : []),
+    ...(Array.isArray(targetSignals?.heroIngredients) ? targetSignals.heroIngredients : []),
+    ...(Array.isArray(targetSignals?.knownActives) ? targetSignals.knownActives : []),
+  ]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(' ');
+  const targetBarrierIntent =
+    RECO_ALTERNATIVE_STRONG_BARRIER_BRIDGE_RE.test(targetText) ||
+    /\b(dry|tight|sensitive|redness|reactive|fragile|impaired|comfort|repair|sooth\w*|calm\w*)\b/i.test(targetText);
+  if (!targetBarrierIntent) {
+    return {
+      targetBarrierIntent: false,
+      strongBarrierMatch: false,
+      hydrationSupportMatch: false,
+      bonus: 0,
+      penalty: 0,
+    };
+  }
+
+  const candidateHaystack = [candidateLabel, candidateText]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(' ');
+  if (!candidateHaystack) {
+    return {
+      targetBarrierIntent: true,
+      strongBarrierMatch: false,
+      hydrationSupportMatch: false,
+      bonus: 0,
+      penalty: 0.06,
+    };
+  }
+
+  const strongBarrierMatch = RECO_ALTERNATIVE_STRONG_BARRIER_BRIDGE_RE.test(candidateHaystack);
+  const hydrationSupportMatch = RECO_ALTERNATIVE_HYDRATION_SUPPORT_RE.test(candidateHaystack);
+  let bonus = 0;
+  let penalty = 0;
+  if (strongBarrierMatch) {
+    bonus = 0.14;
+  } else if (hydrationSupportMatch) {
+    bonus = 0.05;
+    penalty = 0.02;
+  } else {
+    penalty = 0.06;
+  }
+
+  return {
+    targetBarrierIntent,
+    strongBarrierMatch,
+    hydrationSupportMatch,
+    bonus,
+    penalty,
+  };
 }
 
 function applyRecoAlternativeCosmeticFinishPenaltyToRow(row, {
@@ -73464,6 +73542,7 @@ function normalizePoolAlternativeRow(row, {
   const textureOverlap = computeExternalSeedSignalOverlap(textureTokens, candidateText);
   const cosmeticFinishPenalty = computeRecoAlternativeCosmeticFinishPenalty(targetSignals, candidateText, candidateLabel);
   const concernIntentPenalty = computeRecoAlternativeConcernIntentPenalty(targetSignals, candidateText, candidateLabel);
+  const barrierFit = computeRecoAlternativeBarrierFitAdjustment(targetSignals, candidateText, candidateLabel);
   const roleScore = !targetRole || targetRole === 'unknown'
     ? 0.72
     : candidateRole === targetRole
@@ -73490,7 +73569,9 @@ function normalizePoolAlternativeRow(row, {
     stableIdBonus +
     retrievalBonus -
     cosmeticFinishPenalty -
-    concernIntentPenalty,
+    concernIntentPenalty +
+    barrierFit.bonus -
+    barrierFit.penalty,
   );
   const minimumPoolScore = targetRole === 'sunscreen' && candidateRole === 'sunscreen' ? 0.5 : 0.55;
   if (mixedScore < minimumPoolScore) return null;
@@ -73513,6 +73594,25 @@ function normalizePoolAlternativeRow(row, {
             }
           : { path: 'external', external: { query: candidateLabel } };
 
+  const sameStepReason =
+    roleScore >= 0.9 && targetRole && targetRole !== 'unknown'
+      ? (targetRole === 'moisturizer' && barrierFit.targetBarrierIntent
+          ? 'Same barrier-friendly moisturizer step.'
+          : `Same ${targetRole} step.`)
+      : '';
+  const barrierReason =
+    barrierFit.targetBarrierIntent && barrierFit.strongBarrierMatch
+      ? 'Barrier-support cues line up with the anchor instead of drifting into a more generic moisturizer compare.'
+      : barrierFit.targetBarrierIntent && barrierFit.hydrationSupportMatch
+        ? 'Keeps the compare inside the same hydration-first moisturizer lane.'
+        : '';
+  const barrierTradeoff =
+    barrierFit.targetBarrierIntent && !barrierFit.strongBarrierMatch
+      ? (barrierFit.hydrationSupportMatch
+          ? 'More hydration-led than barrier-led compared with the anchor.'
+          : 'Less explicit barrier-support evidence than the anchor.')
+      : '';
+
   return applyGroundedAlternativeAuthorityExperience({
     kind: 'similar',
     candidate_origin: 'pool',
@@ -73534,9 +73634,8 @@ function normalizePoolAlternativeRow(row, {
     similarity_score: Math.max(1, Math.min(100, Math.round(mixedScore * 100))),
     reasons: uniqCaseInsensitiveStrings(
       [
-        roleScore >= 0.9 && targetRole && targetRole !== 'unknown'
-          ? `Same ${targetRole} step in the Pivota product pool.`
-          : '',
+        sameStepReason,
+        barrierReason,
         sameRoleLabelMatch >= 0.9 ? `Names the ${targetRole} role directly.` : '',
         titleActiveMatch >= 0.34 ? 'Names the anchor hero active directly.' : '',
         ingredientOverlap >= 0.34 ? 'Matches key active or ingredient signals from the anchor.' : '',
@@ -73552,6 +73651,7 @@ function normalizePoolAlternativeRow(row, {
           ? 'Pool hit is external-backed, so internal PDP coverage may vary.'
           : '',
         candidateRole === 'unknown' ? 'Exact usage role is inferred from sparse catalog text.' : '',
+        barrierTradeoff,
         cosmeticFinishPenalty > 0
           ? 'Finish leans more cosmetic than the anchor, so it ranks lower for a straightforward sunscreen compare.'
           : '',
@@ -73561,7 +73661,11 @@ function normalizePoolAlternativeRow(row, {
       ],
       2,
     ),
-    best_use: targetRole && targetRole !== 'unknown' ? `Comparable ${targetRole} option.` : null,
+    best_use: targetRole && targetRole !== 'unknown'
+      ? (targetRole === 'moisturizer' && barrierFit.targetBarrierIntent
+          ? 'Comparable barrier-friendly moisturizer option.'
+          : `Comparable ${targetRole} option.`)
+      : null,
     pdp_open: pdpOpen,
     metadata: {
       compare_stage: 'pool_only',
@@ -73571,15 +73675,24 @@ function normalizePoolAlternativeRow(row, {
       ...(titleActiveMatch > 0 ? { title_active_match: Number(titleActiveMatch.toFixed(3)) } : {}),
       ...(cosmeticFinishPenalty > 0 ? { cosmetic_finish_penalty: Number(cosmeticFinishPenalty.toFixed(3)) } : {}),
       ...(concernIntentPenalty > 0 ? { concern_intent_penalty: Number(concernIntentPenalty.toFixed(3)) } : {}),
+      ...(barrierFit.bonus > 0 ? { barrier_fit_bonus: Number(barrierFit.bonus.toFixed(3)) } : {}),
+      ...(barrierFit.penalty > 0 ? { barrier_fit_penalty: Number(barrierFit.penalty.toFixed(3)) } : {}),
       ...(
-        sameRoleLabelMatch > 0 || titleActiveMatch > 0 || cosmeticFinishPenalty > 0 || concernIntentPenalty > 0
+        sameRoleLabelMatch > 0 ||
+        titleActiveMatch > 0 ||
+        cosmeticFinishPenalty > 0 ||
+        concernIntentPenalty > 0 ||
+        barrierFit.bonus > 0 ||
+        barrierFit.penalty > 0
           ? {
               ranking_signals_used: uniqCaseInsensitiveStrings([
                 sameRoleLabelMatch > 0 ? 'same_role_label_match_bonus' : '',
                 titleActiveMatch > 0 ? 'title_active_match_bonus' : '',
                 cosmeticFinishPenalty > 0 ? 'cosmetic_finish_mismatch_penalty' : '',
                 concernIntentPenalty > 0 ? 'concern_intent_mismatch_penalty' : '',
-              ], 4),
+                barrierFit.bonus > 0 ? 'barrier_fit_bonus' : '',
+                barrierFit.penalty > 0 ? 'barrier_fit_penalty' : '',
+              ], 6),
             }
           : {}
       ),
