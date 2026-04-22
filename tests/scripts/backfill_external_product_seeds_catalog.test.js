@@ -124,6 +124,23 @@ describe('backfill-external-product-seeds-catalog', () => {
     ]);
   });
 
+  test('drops sibling same-type gallery images when signature tokens do not match', () => {
+    expect(
+      sanitizeSeedImageUrls(
+        [
+          'https://nl.beautyofjoseon.com/cdn/shop/files/ground-rice-honey-glow-mask-1-front.webp?crop=center&v=1770286001',
+          'https://nl.beautyofjoseon.com/cdn/shop/files/glow-replenshing-rice-milk-1-front.webp?crop=center&v=1769660112',
+        ],
+        {
+          productTitle: 'Ground Rice and Honey Glow Mask',
+          productUrl: 'https://beautyofjoseon.com/products/ground-rice-and-honey-glow-mask',
+        },
+      ),
+    ).toEqual([
+      'https://nl.beautyofjoseon.com/cdn/shop/files/ground-rice-honey-glow-mask-1-front.webp?crop=center&v=1770286001',
+    ]);
+  });
+
   test('keeps mixed product-type images for bundle-like PDPs', () => {
     expect(
       sanitizeSeedImageUrls(

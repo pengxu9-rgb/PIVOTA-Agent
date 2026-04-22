@@ -471,7 +471,9 @@ const IMAGE_RELEVANCE_NOISE_TOKENS = new Set([
   'swatch',
   'thumb',
   'thumbnail',
+  'design',
   'travel',
+  'untitled',
   'usage',
 ]);
 
@@ -510,6 +512,19 @@ function extractImageFilenameTokens(value) {
   }
 }
 
+function extractImageSignatureTokens(values) {
+  return uniqueStrings(
+    (Array.isArray(values) ? values : [])
+      .map((token) => normalizeNonEmptyString(token).toLowerCase())
+      .filter(Boolean)
+      .filter((token) => token.length >= 5)
+      .filter((token) => /^[a-z]+$/.test(token))
+      .filter((token) => !IMAGE_RELEVANCE_NOISE_TOKENS.has(token))
+      .filter((token) => !IMAGE_RELEVANCE_BUNDLE_TOKENS.has(token))
+      .filter((token) => !IMAGE_RELEVANCE_PRODUCT_TYPE_ALIASES[token]),
+  );
+}
+
 function extractImageFilenameText(value) {
   const normalized = normalizePdpImageUrl(value) || normalizeUrlLike(value);
   if (!normalized) return '';
@@ -525,9 +540,18 @@ function extractImageFilenameText(value) {
 }
 
 function buildSeedImageRelevanceContext(options = {}) {
+  let normalizedProductUrl = '';
+  const rawProductUrl = normalizeNonEmptyString(options.productUrl);
+  if (rawProductUrl) {
+    try {
+      normalizedProductUrl = decodeBasicHtmlEntities(decodeURIComponent(new URL(rawProductUrl).pathname || ''));
+    } catch {
+      normalizedProductUrl = rawProductUrl;
+    }
+  }
   const values = uniqueStrings([
     options.productTitle,
-    options.productUrl,
+    normalizedProductUrl,
     options.variantTitle && !isDefaultVariantTitle(options.variantTitle) ? options.variantTitle : '',
     ...(Array.isArray(options.additionalValues) ? options.additionalValues : []),
   ]);
@@ -535,6 +559,7 @@ function buildSeedImageRelevanceContext(options = {}) {
   return {
     bundleLike: tokens.some((token) => IMAGE_RELEVANCE_BUNDLE_TOKENS.has(token)),
     productTypes: extractCanonicalImageProductTypes(tokens),
+    signatureTokens: extractImageSignatureTokens(tokens),
   };
 }
 
@@ -568,8 +593,22 @@ function isProductRelevantSeedImageUrl(value, relevanceContext) {
     return true;
   }
   if (!relevanceContext.bundleLike && isCollectionStyleSeedImageUrl(value)) return false;
+  const imageTokens = extractImageFilenameTokens(value);
+  if (
+    !relevanceContext.bundleLike &&
+    Array.isArray(relevanceContext.signatureTokens) &&
+    relevanceContext.signatureTokens.length > 0
+  ) {
+    const imageSignatureTokens = extractImageSignatureTokens(imageTokens);
+    if (
+      imageSignatureTokens.length > 0 &&
+      !imageSignatureTokens.some((token) => relevanceContext.signatureTokens.includes(token))
+    ) {
+      return false;
+    }
+  }
   if (relevanceContext.bundleLike || relevanceContext.productTypes.length !== 1) return true;
-  const imageProductTypes = extractCanonicalImageProductTypes(extractImageFilenameTokens(value));
+  const imageProductTypes = extractCanonicalImageProductTypes(imageTokens);
   if (imageProductTypes.length === 0) return true;
   return imageProductTypes.includes(relevanceContext.productTypes[0]);
 }
