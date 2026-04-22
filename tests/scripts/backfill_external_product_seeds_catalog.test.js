@@ -185,6 +185,60 @@ describe('backfill-external-product-seeds-catalog', () => {
     ]);
   });
 
+  test('preserves Pixi collection-labeled PDP infographic assets', () => {
+    expect(
+      sanitizeSeedImageUrls(
+        [
+          'https://cdn.shopify.com/s/files/1/1463/5858/files/GlowMist-80ml-25JUL23-CloseLid-web.jpg?v=1768348335',
+          'https://cdn.shopify.com/s/files/1/1463/5858/files/pixi_skintreats_glowmist_collection_may_2020_2.jpg?v=1768348335',
+        ],
+        {
+          productTitle: 'Glow Mist',
+          productUrl: 'https://pixibeauty.com/products/glow-mist',
+        },
+      ),
+    ).toEqual([
+      'https://cdn.shopify.com/s/files/1/1463/5858/files/GlowMist-80ml-25JUL23-CloseLid-web.jpg?v=1768348335',
+      'https://cdn.shopify.com/s/files/1/1463/5858/files/pixi_skintreats_glowmist_collection_may_2020_2.jpg?v=1768348335',
+    ]);
+  });
+
+  test('preserves Ole Henriksen collection-labeled product infographics', () => {
+    expect(
+      sanitizeSeedImageUrls(
+        [
+          'https://cdn.shopify.com/s/files/1/0615/7785/5148/files/OH_SILO_PEACH_GLAZE_MIST_1500x1500_72DPI.jpg?v=1747952076',
+          'https://cdn.shopify.com/s/files/1/0615/7785/5148/files/OH869600_PEACH_PeachGlazePlumpingTrio_PPageInfographics_Collection_INGREDIENT_1500x1500_72DPI_128a3f5a-2e86-4159-a54e-0b62de3b6fb9.jpg?v=1763962328',
+        ],
+        {
+          productTitle: 'Peach Glaze Glow Mist',
+          productUrl: 'https://olehenriksen.com/products/peach-glaze-glow-mist',
+        },
+      ),
+    ).toEqual([
+      'https://cdn.shopify.com/s/files/1/0615/7785/5148/files/OH_SILO_PEACH_GLAZE_MIST_1500x1500_72DPI.jpg?v=1747952076',
+      'https://cdn.shopify.com/s/files/1/0615/7785/5148/files/OH869600_PEACH_PeachGlazePlumpingTrio_PPageInfographics_Collection_INGREDIENT_1500x1500_72DPI_128a3f5a-2e86-4159-a54e-0b62de3b6fb9.jpg?v=1763962328',
+    ]);
+  });
+
+  test('preserves Murad collection-labeled carousel assets', () => {
+    expect(
+      sanitizeSeedImageUrls(
+        [
+          'https://cdn.shopify.com/s/files/1/0816/7705/8351/files/673700_Sensitive_Skin_Collection_Face_Cleanser_SiteAsset_Murad_Carousel_1_Soldier.png?v=1762439971',
+          'https://cdn.shopify.com/s/files/1/0816/7705/8351/files/673700_Sensitive_Skin_Collection_Face_Cleanser_SiteAsset_Murad_Carousel_2_Benefit.jpg?v=1729220920',
+        ],
+        {
+          productTitle: 'Heartleaf Soothing Face Cleanser for Sensitive and Eczema-Prone Skin',
+          productUrl: 'https://www.murad.com/products/heartleaf-soothing-cleanser',
+        },
+      ),
+    ).toEqual([
+      'https://cdn.shopify.com/s/files/1/0816/7705/8351/files/673700_Sensitive_Skin_Collection_Face_Cleanser_SiteAsset_Murad_Carousel_1_Soldier.png?v=1762439971',
+      'https://cdn.shopify.com/s/files/1/0816/7705/8351/files/673700_Sensitive_Skin_Collection_Face_Cleanser_SiteAsset_Murad_Carousel_2_Benefit.jpg?v=1729220920',
+    ]);
+  });
+
   test('drops explicit fullgroup and bulk collection assets outside Rare', () => {
     expect(
       sanitizeSeedImageUrls(
