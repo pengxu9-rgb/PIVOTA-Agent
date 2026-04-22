@@ -56027,7 +56027,7 @@ function buildCompactRecoAssistantPromptLines({
   if (requestMode === 'buy') {
     lines.push('Use direct shopping advice tone.');
     lines.push('Start the first sentence with the lead product name.');
-    lines.push('The first sentence must give clear shopping guidance without absolute wording, for example: "<lead product name> fits this request because ...".');
+    lines.push('The first sentence must give clear shopping guidance without absolute wording, for example: "<lead product name> keeps the finish lighter under makeup ...".');
   } else if (requestMode === 'use_first') {
     lines.push('Use starting-point advice tone.');
     lines.push('Start with the lead product name and explain why it is the first step.');
@@ -56126,7 +56126,7 @@ function describeRecoAssistantRewriteFailureReason(reason) {
   const normalized = String(reason || '').trim().toLowerCase();
   if (!normalized) return null;
   if (normalized === 'rewrite_buy_lead_not_direct') {
-    return 'Open with the exact lead product name and clear shopping guidance, for example "<lead product name> fits this request because ...".';
+    return 'Open with the exact lead product name and clear shopping guidance, for example "<lead product name> keeps the finish lighter under makeup ...".';
   }
   if (normalized === 'rewrite_absolute_recommendation_wording') {
     return 'Use calibrated wording such as "fits this request", "is a practical option", or "is worth considering"; avoid best, most, top, strongest, perfect, ideal, winner, and must-have.';
@@ -56661,7 +56661,7 @@ function buildRecoAssistantRewritePrompt({
       'Do not ask for fields already present in Context.profile_summary; use only Context.refinement_question for follow-up.',
       'If request_mode is "buy", use direct shopping advice tone.',
       'If request_mode is "buy", start the first sentence with the lead product name rather than a generic concern summary.',
-      'If request_mode is "buy", the first sentence must give clear shopping guidance without absolute wording, for example: "<lead product name> fits this request because ...".',
+      'If request_mode is "buy", the first sentence must give clear shopping guidance without absolute wording, for example: "<lead product name> keeps the finish lighter under makeup ...".',
       'Never write ungrammatical fragments like "because a serum...", "because an SPF...", or "because best for..."; use "because it is..." or an active verb.',
       'Use one shopping-guidance phrase only once, in the first sentence; never repeat buy/pick framing inside the reason clause or final wrap-up.',
       'If request_mode is "buy" and there is one selected product, the first sentence must directly recommend that product by name.',
@@ -58052,6 +58052,20 @@ function renderRecoAssistantStructuredLeadProductSentence(name, reason, {
   ].filter(Boolean).join(' ');
   if (!recoRoleNeedsFinishFitNarrative(roleText)) {
     return '';
+  }
+  const hasUnderMakeupCue = /\bunder makeup|makeup\b/i.test(normalizedReason);
+  const hasPillingCue = /\bpilling\b/i.test(normalizedReason);
+  const hasLighterCue = /\blighter|weightless|invisible|sheer\b/i.test(normalizedReason);
+  const hasSmootherCue = /\bsmooth|smoother\b/i.test(normalizedReason);
+  if (hasUnderMakeupCue && hasLighterCue && hasSmootherCue) {
+    if (hasPillingCue) {
+      return formatRecoAssistantStructuredSentence(
+        `${productName} keeps the finish lighter and smoother under makeup, which helps reduce pilling during the day`,
+      );
+    }
+    return formatRecoAssistantStructuredSentence(
+      `${productName} keeps the finish lighter and smoother under makeup for easier daytime wear`,
+    );
   }
   const subjectReason = normalizedReason.replace(/^(?:it|this)\s+/i, '');
   if (/^(?:features?|offers?|provides?|gives?|keeps?|leans?|stays?|wears?|feels?|points?|works?|supports?)\b/i.test(subjectReason)) {

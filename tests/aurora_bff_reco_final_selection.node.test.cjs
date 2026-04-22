@@ -3620,7 +3620,10 @@ test('reco assistant rewrite uses structured primary attempt for finish-fit same
     assert.equal(rewrite.attempts?.[0]?.structured_reason_only, true);
     assert.equal(rewrite.attempts?.[0]?.strict_selected_only_context, true);
     assert.equal(rewrite.attempts?.[0]?.max_output_tokens, 180);
-    assert.match(rewrite.text, /Unseen Sunscreen SPF 50 supports lighter, smoother daytime layering under makeup/i);
+    assert.match(
+      rewrite.text,
+      /Unseen Sunscreen SPF 50 keeps the finish lighter and smoother under makeup(?:, which helps reduce pilling during the day| for easier daytime wear)/i,
+    );
     assert.doesNotMatch(rewrite.text, /fits this request for sunscreen that wears more smoothly under makeup because/i);
     assert.doesNotMatch(rewrite.text, /Unseen Sunscreen SPF 50 fits this request because/i);
     assert.match(rewrite.text, /Ultra Light Liquid Mineral Sunscreen with Zinc Oxide SPF 30 gives a more mineral, sensitive-skin-oriented option/i);
