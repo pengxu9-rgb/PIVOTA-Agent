@@ -8519,11 +8519,30 @@ function buildLocalExternalSeedPrimaryFinishFitQueryStage({
     return null;
   }
 
+  const normalizedPreciseQueries = queryPatterns
+    .map((value) => String(value || '').trim().toLowerCase().replace(/^%+|%+$/g, ''))
+    .filter(Boolean);
+  const allExplicitTradeoffBuckets =
+    normalizedPreciseQueries.length > 0 &&
+    normalizedPreciseQueries.every((value) =>
+      /^(?:spf fluid(?: oily skin)?|mineral sunscreen|sunscreen milk|lightweight sunscreen(?: oily skin)?|sunscreen under makeup)$/.test(
+        value,
+      ),
+    );
+  const needsSummaryField = normalizedPreciseQueries.some((value) => /under makeup/.test(value));
+
   return {
     categoryTerms: categories,
     queryPatterns,
-    queryCapMultiplier: 3,
-    searchFields: ['raw_title', 'retrieval_title', 'alias_tokens', 'retrieval_summary'],
+    queryCapMultiplier: allExplicitTradeoffBuckets ? 2 : 3,
+    searchFields: allExplicitTradeoffBuckets
+      ? [
+          'raw_title',
+          'retrieval_title',
+          'alias_tokens',
+          ...(needsSummaryField ? ['retrieval_summary'] : []),
+        ]
+      : ['raw_title', 'retrieval_title', 'alias_tokens', 'retrieval_summary'],
   };
 }
 
