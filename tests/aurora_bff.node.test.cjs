@@ -6842,6 +6842,8 @@ test('fetchRecoAlternativesForProduct: barrier moisturizer alternatives rank bar
         const topReasons = Array.isArray(out.alternatives[0]?.reasons) ? out.alternatives[0].reasons : [];
         assert.ok(topReasons.some((line) => /barrier-support cues line up|same barrier-friendly moisturizer step/i.test(String(line))), JSON.stringify(topReasons));
         assert.ok(topReasons.some((line) => /calming barrier-comfort cues/i.test(String(line))), JSON.stringify(topReasons));
+        assert.match(String(out.alternatives[0]?.why_this_one || ''), /calming barrier-comfort cues|dry, tight, or easily irritated skin/i);
+        assert.match(String(out.alternatives[0]?.short_description || ''), /calming barrier-comfort cues|dry, tight, or easily irritated skin/i);
         const genericHydrationRow = out.alternatives.find((row) => /air angel|level up/i.test(String(row?.product?.name || row?.name || '')));
         const tradeoffNotes = Array.isArray(genericHydrationRow?.tradeoff_notes) ? genericHydrationRow.tradeoff_notes : [];
         assert.ok(tradeoffNotes.some((line) => /more hydration-led than barrier-led|less explicit barrier-support evidence/i.test(String(line))), JSON.stringify(tradeoffNotes));

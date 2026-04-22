@@ -74134,6 +74134,45 @@ function isGenericGroundedAlternativeCopy(row) {
   );
 }
 
+function scoreGroundedAlternativeVisibleReasonLine(value) {
+  const text = cleanRecoVisibleCopy(value).replace(/\s+/g, ' ').trim();
+  if (!text) return Number.NEGATIVE_INFINITY;
+  let score = 0;
+  if (text.length >= 28) score += 1;
+  if (text.length <= 140) score += 1;
+  if (/^same\b/i.test(text)) score -= 6;
+  if (/^names the\b/i.test(text)) score -= 6;
+  if (/\b(calming|comfort|dry|tight|irritated|hydration-first|hydration-led|barrier-support|matte|dewier|dewy|weightless|sheer|mineral|moisturizing|shine-controlling|less slip|under makeup|lighter|smoother)\b/i.test(text)) {
+    score += 5;
+  }
+  if (/\banchor\b/i.test(text)) score -= 1;
+  if (/\bcurrent pool|product pool|role directly\b/i.test(text)) score -= 3;
+  return score;
+}
+
+function buildGroundedAlternativeVisibleShopperCopy(row) {
+  const item = isPlainObject(row) ? row : {};
+  const reasons = asStringArray(item.reasons, 4)
+    .map((value) => cleanRecoVisibleCopy(value).replace(/\s+/g, ' ').trim())
+    .filter(Boolean);
+  const tradeoffNotes = asStringArray(item.tradeoff_notes, 3)
+    .map((value) => cleanRecoVisibleCopy(value).replace(/\s+/g, ' ').trim())
+    .filter(Boolean);
+  const rankedReasons = reasons
+    .map((text) => ({ text, score: scoreGroundedAlternativeVisibleReasonLine(text) }))
+    .filter((entry) => Number.isFinite(entry.score) && entry.score >= 2)
+    .sort((left, right) => Number(right.score || 0) - Number(left.score || 0));
+  const rankedTradeoffs = tradeoffNotes
+    .map((text) => ({ text, score: scoreGroundedAlternativeVisibleReasonLine(text) + 0.5 }))
+    .filter((entry) => Number.isFinite(entry.score) && entry.score >= 2)
+    .sort((left, right) => Number(right.score || 0) - Number(left.score || 0));
+  const whyThisOne = pickFirstTrimmed(rankedReasons[0]?.text, rankedTradeoffs[0]?.text);
+  return {
+    whyThisOne,
+    shortDescription: whyThisOne ? truncateRecoNarrativeSnippet(whyThisOne, 110) : '',
+  };
+}
+
 function collectGroundedAlternativeAuthorityExperience(candidate) {
   const normalized = normalizeRecoCatalogProduct(candidate);
   if (!normalized) {
@@ -74220,6 +74259,7 @@ function collectGroundedAlternativeAuthorityExperienceFromBundle(bundle, fallbac
 function applyGroundedAlternativeAuthorityExperience(row, candidate) {
   const item = isPlainObject(row) ? { ...row } : {};
   const experience = collectGroundedAlternativeAuthorityExperience(candidate);
+  const derivedShopperCopy = buildGroundedAlternativeVisibleShopperCopy(item);
   const next = {
     ...item,
     ...(experience.compareHighlights.length ? { compare_highlights: experience.compareHighlights } : {}),
@@ -74227,9 +74267,9 @@ function applyGroundedAlternativeAuthorityExperience(row, candidate) {
     ...(experience.shoppingCard ? { shopping_card: experience.shoppingCard } : {}),
     ...(experience.searchCard ? { search_card: experience.searchCard } : {}),
     ...(experience.pivotaInsights ? { pivota_insights: experience.pivotaInsights } : {}),
-    ...(experience.whyThisOne ? { why_this_one: experience.whyThisOne } : {}),
+    ...(pickFirstTrimmed(derivedShopperCopy.whyThisOne, experience.whyThisOne) ? { why_this_one: pickFirstTrimmed(derivedShopperCopy.whyThisOne, experience.whyThisOne) } : {}),
     ...(experience.keyFeatures.length ? { key_features: experience.keyFeatures } : {}),
-    ...(experience.shortDescription ? { short_description: experience.shortDescription } : {}),
+    ...(pickFirstTrimmed(derivedShopperCopy.shortDescription, experience.shortDescription) ? { short_description: pickFirstTrimmed(derivedShopperCopy.shortDescription, experience.shortDescription) } : {}),
     ...(experience.description ? { description: experience.description } : {}),
     ...(experience.bestFor ? { best_for: experience.bestFor } : {}),
   };
@@ -74242,6 +74282,7 @@ function applyGroundedAlternativeAuthorityExperience(row, candidate) {
 function applyGroundedAlternativeAuthorityBundleExperience(row, bundle) {
   const item = isPlainObject(row) ? { ...row } : {};
   const experience = collectGroundedAlternativeAuthorityExperienceFromBundle(bundle, item);
+  const derivedShopperCopy = buildGroundedAlternativeVisibleShopperCopy(item);
   const next = {
     ...item,
     ...(experience.compareHighlights.length ? { compare_highlights: experience.compareHighlights } : {}),
@@ -74249,9 +74290,9 @@ function applyGroundedAlternativeAuthorityBundleExperience(row, bundle) {
     ...(experience.shoppingCard ? { shopping_card: experience.shoppingCard } : {}),
     ...(experience.searchCard ? { search_card: experience.searchCard } : {}),
     ...(experience.pivotaInsights ? { pivota_insights: experience.pivotaInsights } : {}),
-    ...(experience.whyThisOne ? { why_this_one: experience.whyThisOne } : {}),
+    ...(pickFirstTrimmed(derivedShopperCopy.whyThisOne, experience.whyThisOne) ? { why_this_one: pickFirstTrimmed(derivedShopperCopy.whyThisOne, experience.whyThisOne) } : {}),
     ...(experience.keyFeatures.length ? { key_features: experience.keyFeatures } : {}),
-    ...(experience.shortDescription ? { short_description: experience.shortDescription } : {}),
+    ...(pickFirstTrimmed(derivedShopperCopy.shortDescription, experience.shortDescription) ? { short_description: pickFirstTrimmed(derivedShopperCopy.shortDescription, experience.shortDescription) } : {}),
     ...(experience.description ? { description: experience.description } : {}),
     ...(experience.bestFor ? { best_for: experience.bestFor } : {}),
     metadata: {
