@@ -5492,3 +5492,137 @@ test('beauty chat mainline entry still runs selector when handoff targetContext 
     ['spf_alt', 'spf_lead'],
   );
 });
+
+test('beauty chat mainline entry hard-stops handoff at the stage deadline instead of letting handoff overrun the mainline budget', async () => {
+  const observed = {
+    handoffDeadlineAtMs: null,
+    fallbackErrCode: null,
+  };
+  const runtime = createBeautyChatMainlineEntryRuntime({
+    RECO_CATALOG_GROUNDED_ENABLED: true,
+    AURORA_BFF_CHAT_RECO_BUDGET_MS: 3000,
+    AURORA_RECO_ASSISTANT_REWRITE_TIMEOUT_MS: 4500,
+    RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS: 1000,
+    resolveRecommendationTargetContext: () => ({
+      entry_type: 'chat',
+      intent_mode: 'generic_concern',
+      step_aware_intent: false,
+      resolved_target_step: 'sunscreen',
+      primary_role_id: 'daily_sunscreen_finish_fit',
+      framework_roles: [
+        {
+          role_id: 'daily_sunscreen_finish_fit',
+          rank: 1,
+          preferred_step: 'sunscreen',
+          label: 'Daily sunscreen with finish fit',
+        },
+      ],
+      semantic_plan: {
+        comparison_mode: 'same_role_comparison',
+        selection_owner_state: 'trusted',
+        core_roles: [
+          {
+            role_id: 'daily_sunscreen_finish_fit',
+            rank: 1,
+            preferred_step: 'sunscreen',
+            label: 'Daily sunscreen with finish fit',
+          },
+        ],
+      },
+    }),
+    summarizeProfileForContext: (profile) => profile,
+    mergeIngredientRecoContextValue: (left, right) => ({ ...(left || {}), ...(right || {}) }),
+    appendLatestRecoContextToSessionPatch: () => {},
+    extractRecoFinalSelectionContract: () => null,
+    maybeRewriteRecoAssistantTextWithLlm: async () => ({
+      llm_used: true,
+      text: 'unreachable rewrite',
+    }),
+    makeAssistantMessage: (content) => ({ role: 'assistant', format: 'text', content }),
+    buildEnvelope: (_ctx, envelope) => envelope,
+    makeEvent: (_ctx, kind, data) => ({ kind, data }),
+    applyRecoContractToRecoRequestedEvents: (events) => ({ events }),
+    buildRecoRequestedEventData: ({ payload, source }) => ({ payload, source }),
+    normalizeRecoSourceDetail: (value) => value,
+    stateChangeAllowed: () => false,
+    handoffRecoToBeautyMainlineSearch: async (args) => {
+      observed.handoffDeadlineAtMs = args.deadlineAtMs;
+      await new Promise((resolve) => setTimeout(resolve, 800));
+      return {
+        targetContext: args.targetContext,
+        recommendations: [
+          {
+            product_id: 'spf_timeout',
+            display_name: 'Slow SPF',
+            matched_role_id: 'daily_sunscreen_finish_fit',
+          },
+        ],
+        searchResult: {
+          decision_owner: 'shopping_agent_beauty_mainline',
+          semantic_owner: 'shopping_agent_beauty_mainline',
+          metadata: {
+            final_selection: {
+              selection_owner: 'shopping_agent_beauty_mainline',
+              selected_product_ids: ['spf_timeout'],
+              selected_titles: ['Slow SPF'],
+              mainline_status: 'grounded_success',
+            },
+          },
+        },
+      };
+    },
+    buildRecoPayloadFromBeautyMainlineHandoff: () => ({
+      payload: {
+        source: 'catalog_grounded_v1',
+        mainline_status: 'grounded_success',
+        recommendations: [],
+        recommendation_meta: {},
+        metadata: {},
+      },
+      contract: {
+        version: 'test_contract',
+      },
+    }),
+    classifyBeautyMainlineHandoffFallback: ({ err }) => {
+      observed.fallbackErrCode = err?.code || null;
+      return {
+        reason: 'handoff_timeout',
+      };
+    },
+    buildBeautyMainlineHandoffFallbackEnvelope: () => ({
+      cards: [
+        {
+          type: 'confidence_notice',
+          payload: {
+            reason: 'handoff_timeout',
+          },
+        },
+      ],
+    }),
+    looksLikeRecommendationRequest: () => true,
+    sendChatEnvelope: async () => null,
+  });
+
+  const startedAtMs = Date.now();
+  const result = await runtime.maybeHandleBeautyOwnedChatReco({
+    ctx: {
+      request_id: 'req_handoff_deadline_guard',
+      trace_id: 'trace_handoff_deadline_guard',
+      lang: 'EN',
+      trigger_source: 'chat',
+    },
+    logger: null,
+    message: 'i have oily skin, what sunscreen should i buy?',
+    recoEntrySourceDetail: 'typed_reco',
+    profile: {
+      skinType: 'oily',
+    },
+  });
+  const elapsedMs = Date.now() - startedAtMs;
+
+  assert.equal(result?.handled, true);
+  assert.equal(result?.envelope?.cards?.[0]?.type, 'confidence_notice');
+  assert.equal(observed.fallbackErrCode, 'BEAUTY_MAINLINE_HANDOFF_TIMEOUT');
+  assert.equal(Number.isFinite(observed.handoffDeadlineAtMs), true);
+  assert.ok(elapsedMs < 750);
+});

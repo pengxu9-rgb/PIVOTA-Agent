@@ -5212,6 +5212,27 @@ test('beauty mainline reco hydrates selected card evidence from product intel KB
   }
 });
 
+test('beauty mainline reco skips product intel hydration when remaining budget is already exhausted', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const row = {
+      product_id: 'budget_exhausted_hydration_pick',
+      merchant_id: 'merchant_demo',
+      display_name: 'Budget Exhausted Hydration Pick',
+      category: 'Serum',
+    };
+    const hydrated = await __internal.hydrateRecoCandidatesProductIntelFromKb(
+      [row],
+      { deadlineAtMs: Date.now() + 10 },
+    );
+
+    assert.deepEqual(hydrated, [row]);
+    assert.equal(hydrated[0]?.metadata?.product_intel_kb_used, undefined);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('beauty mainline reco rows derive stable brand and shopper fields when source row is sparse', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
