@@ -691,7 +691,7 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
         typeof hardPathSelectorSemanticPlan === 'object' &&
         !Array.isArray(hardPathSelectorSemanticPlan) &&
         hardPathRecommendations.length > 1 &&
-        hardPathBudget.getRemainingMs(rewriteReserveMs + 1200) > 350
+        hardPathBudget.getRemainingMs(handoffRewriteReserveMs + 1200) > 350
       ) {
         const selectorStartedAtMs = Date.now();
         const selectorOut = await runConcernSelectorRace({

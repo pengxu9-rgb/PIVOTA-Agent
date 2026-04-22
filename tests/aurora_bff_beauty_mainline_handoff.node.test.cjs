@@ -4926,3 +4926,199 @@ test('beauty chat mainline entry lets llm selector rerank only grounded primary-
   assert.equal(payload?.metadata?.search_stage_ledger?.chat_mainline_timing?.selector_applied, true);
   assert.equal(Number.isFinite(payload?.metadata?.search_stage_ledger?.chat_mainline_timing?.selector_ms), true);
 });
+
+test('beauty chat mainline entry still runs selector when post-handoff budget only satisfies the bounded rewrite reserve', async () => {
+  const observed = {
+    selectorCalls: 0,
+  };
+  const semanticPlan = {
+    comparison_mode: 'same_role_comparison',
+    selection_owner_state: 'trusted',
+    core_roles: [
+      {
+        role_id: 'daily_sunscreen_finish_fit',
+        rank: 1,
+        preferred_step: 'sunscreen',
+        label: 'Daily sunscreen with finish fit',
+      },
+    ],
+  };
+  const runtime = createBeautyChatMainlineEntryRuntime({
+    RECO_CATALOG_GROUNDED_ENABLED: true,
+    AURORA_BFF_CHAT_RECO_BUDGET_MS: 6000,
+    AURORA_RECO_ASSISTANT_REWRITE_TIMEOUT_MS: 4500,
+    RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS: 1000,
+    resolveRecommendationTargetContext: () => ({
+      entry_type: 'chat',
+      intent_mode: 'generic_concern',
+      step_aware_intent: false,
+      resolved_target_step: 'sunscreen',
+      primary_role_id: 'daily_sunscreen_finish_fit',
+      framework_roles: [
+        {
+          role_id: 'daily_sunscreen_finish_fit',
+          rank: 1,
+          preferred_step: 'sunscreen',
+          label: 'Daily sunscreen with finish fit',
+        },
+      ],
+      semantic_plan: semanticPlan,
+    }),
+    summarizeProfileForContext: (profile) => profile,
+    mergeIngredientRecoContextValue: (left, right) => ({ ...(left || {}), ...(right || {}) }),
+    appendLatestRecoContextToSessionPatch: () => {},
+    extractRecoFinalSelectionContract: (value) =>
+      value?.metadata?.final_selection ||
+      value?.metadata?.search_stage_ledger?.final_selection ||
+      value?.final_selection ||
+      null,
+    maybeRewriteRecoAssistantTextWithLlm: async () => ({
+      llm_used: true,
+      text: 'selector budget check',
+    }),
+    makeAssistantMessage: (content) => ({ role: 'assistant', format: 'text', content }),
+    buildEnvelope: (_ctx, envelope) => envelope,
+    makeEvent: (_ctx, kind, data) => ({ kind, data }),
+    applyRecoContractToRecoRequestedEvents: (events) => ({ events }),
+    buildRecoRequestedEventData: ({ payload, source }) => ({ payload, source }),
+    normalizeRecoSourceDetail: (value) => value,
+    stateChangeAllowed: () => false,
+    handoffRecoToBeautyMainlineSearch: async (args) => {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      return {
+        targetContext: args.targetContext,
+        recommendations: [
+          {
+            product_id: 'spf_lead',
+            display_name: 'Lead SPF',
+            matched_role_id: 'daily_sunscreen_finish_fit',
+          },
+          {
+            product_id: 'spf_alt',
+            display_name: 'Alt SPF',
+            matched_role_id: 'daily_sunscreen_finish_fit',
+          },
+        ],
+        searchResult: {
+          decision_owner: 'shopping_agent_beauty_mainline',
+          semantic_owner: 'shopping_agent_beauty_mainline',
+          metadata: {
+            final_selection: {
+              selection_owner: 'shopping_agent_beauty_mainline',
+              selected_product_ids: ['spf_lead', 'spf_alt'],
+              selected_titles: ['Lead SPF', 'Alt SPF'],
+              selection_signature: 'search_sel_original_order',
+              mainline_status: 'grounded_success',
+              source_tier_counts: { fresh_external: 2 },
+            },
+            search_stage_ledger: {
+              final_selection: {
+                selection_owner: 'shopping_agent_beauty_mainline',
+                selected_product_ids: ['spf_lead', 'spf_alt'],
+                selected_titles: ['Lead SPF', 'Alt SPF'],
+                selection_signature: 'search_sel_original_order',
+                mainline_status: 'grounded_success',
+                source_tier_counts: { fresh_external: 2 },
+              },
+            },
+          },
+        },
+      };
+    },
+    runConcernSelectorRace: async () => {
+      observed.selectorCalls += 1;
+      return {
+        result: {
+          top_pick_product_id: 'spf_alt',
+          ordered_product_ids: ['spf_alt', 'spf_lead'],
+          selection_notes: ['better tradeoff spread'],
+        },
+        trace: {
+          llm_selector_used: true,
+          winner_source: 'llm_selector',
+        },
+      };
+    },
+    applyConcernSelectorRaceOrdering: (recommendations, selectorRace) => {
+      const byId = new Map(recommendations.map((item) => [item.product_id, item]));
+      return {
+        recommendations: selectorRace.ordered_product_ids.map((id) => byId.get(id)).filter(Boolean),
+        primary_recommendation_id: selectorRace.top_pick_product_id,
+        support_roles_surfaced: [],
+        winner_source: 'llm_selector',
+        selection_notes_by_product_id: {
+          spf_alt: selectorRace.selection_notes,
+        },
+      };
+    },
+    buildRecoPayloadFromBeautyMainlineHandoff: ({ handoff }) => ({
+      payload: {
+        source: 'catalog_grounded_v1',
+        mainline_status: 'grounded_success',
+        recommendations: handoff.recommendations,
+        recommendation_meta: {},
+        metadata: {},
+      },
+      contract: {
+        version: 'test_contract',
+      },
+    }),
+    classifyBeautyMainlineHandoffFallback: () => ({
+      reason: 'unreachable',
+    }),
+    buildBeautyMainlineHandoffFallbackEnvelope: () => ({
+      cards: [],
+    }),
+    looksLikeRecommendationRequest: () => true,
+    runConcernSemanticPlanner: async () => ({
+      semanticPlan,
+      trace: { planner_used: true, planner_fallback_used: false },
+    }),
+    buildConcernTargetContextFromSemanticPlan: () => ({
+      entry_type: 'chat',
+      intent_mode: 'generic_concern',
+      resolved_target_step: 'sunscreen',
+      primary_role_id: 'daily_sunscreen_finish_fit',
+      framework_roles: [
+        {
+          role_id: 'daily_sunscreen_finish_fit',
+          rank: 1,
+          preferred_step: 'sunscreen',
+          label: 'Daily sunscreen with finish fit',
+        },
+      ],
+      semantic_plan: semanticPlan,
+      mainline_fallback_policy: 'strict_no_runtime_fallback',
+      semantic_planner_required: true,
+    }),
+    sendChatEnvelope: async () => null,
+  });
+
+  const result = await runtime.maybeHandleBeautyOwnedChatReco({
+    ctx: {
+      request_id: 'req_selector_budget_guard',
+      trace_id: 'trace_selector_budget_guard',
+      lang: 'EN',
+      trigger_source: 'chat',
+    },
+    logger: null,
+    message: 'my sunscreen pills under makeup. what should i buy?',
+    recoEntrySourceDetail: 'typed_reco',
+    profile: {
+      skinType: 'combination',
+      sensitivity: 'high',
+      barrierStatus: 'impaired',
+      goals: ['smooth layering'],
+    },
+  });
+
+  const payload = result?.envelope?.cards?.[0]?.payload;
+  assert.equal(result?.handled, true);
+  assert.equal(observed.selectorCalls, 1);
+  assert.equal(payload?.metadata?.search_stage_ledger?.chat_mainline_timing?.selector_attempted, true);
+  assert.equal(payload?.metadata?.search_stage_ledger?.chat_mainline_timing?.selector_applied, true);
+  assert.deepEqual(
+    payload?.recommendations?.map((item) => item.product_id),
+    ['spf_alt', 'spf_lead'],
+  );
+});
