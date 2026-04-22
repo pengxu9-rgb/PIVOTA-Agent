@@ -20500,6 +20500,7 @@ function buildRecoFinishFitSpecificWhy({
   const hasLayering = /\b(?:under makeup|makeup|layer(?:ing)?|non[-\s]?pilling|no pilling|pilling)\b/i.test(text);
   const hasWeightless = /\b(?:weightless|lightweight|airy|fluid|watery|water[-\s]?fit|invisible|non[-\s]?greasy|sheer)\b/i.test(text);
   const hasMineralCue = /\b(?:mineral|zinc oxide|titanium dioxide)\b/i.test(text);
+  const hasMatteCue = /\b(?:matte|mattif(?:y|ies|ying)|oil[-\s]?control(?:ling)?|shine[-\s]?control|anti[-\s]?shine|sebum)\b/i.test(text);
   const hasWhiteCastCue = /\b(?:no white cast|white cast[-\s]?free|lower white[-\s]?cast|invisible)\b/i.test(text);
   const hasSensitiveCue = /\b(?:sensitive skin|scentless|fragrance[-\s]?free|bisabolol|ectoin)\b/i.test(text);
   const hasCreamierCue = /\b(?:hydrating daily cream|hydrating cream|cream format|cream texture|moisturizer[-\s]?style hydration|moisturizer[-\s]?format)\b/i.test(text);
@@ -20507,6 +20508,9 @@ function buildRecoFinishFitSpecificWhy({
   if (isCn) {
     if (hasCreamierCue) {
       return '更像偏滋润的面霜型防晒打底，适合想在妆前多一点保湿缓冲的人。';
+    }
+    if (hasMatteCue) {
+      return '更偏哑光和控油取向，适合想让妆前肤感少一点滑、少一点泛油的人。';
     }
     if (hasMineralCue && (hasSensitiveCue || hasWeightless || hasWhiteCastCue)) {
       return '更偏矿物和敏感肌取向，同时尽量保持轻薄清透的白天肤感。';
@@ -20528,6 +20532,9 @@ function buildRecoFinishFitSpecificWhy({
 
   if (hasCreamierCue) {
     return 'it leans richer and more moisturizing if you want more cushion under makeup';
+  }
+  if (hasMatteCue) {
+    return 'it leans more matte and shine-controlling if you want less slip under makeup';
   }
   if (hasMineralCue && (hasSensitiveCue || hasWeightless || hasWhiteCastCue)) {
     return 'it leans more mineral and sensitive-skin-friendly if you want a sheer, weightless finish';
@@ -55747,8 +55754,12 @@ function buildRecoAssistantTradeoffNote(detail = {}, {
     if (/\b(tinted|shade match|tone-up|tone up|beige|ivory|fair-light)\b/i.test(text)) {
       return 'it leans more like a tinted makeup-base SPF, so it makes more sense if you already want complexion coverage';
     }
-    const mineralCue = /\b(mineral|zinc|zinc oxide|titanium dioxide)\b/i.test(text);
+    const matteCue = /\b(matte|mattif(?:y|ies|ying)|oil[-\s]?control(?:ling)?|shine[-\s]?control|anti[-\s]?shine|sebum)\b/i.test(text);
+    const mineralCue = /\b(mineral(?: sunscreen)?|zinc oxide|titanium dioxide|non[-\s]?nano zinc)\b/i.test(text);
     const sensitiveCue = /\b(sensitive skin|scentless|fragrance[-\s]?free|simple formula|gentle)\b/i.test(text);
+    if (matteCue) {
+      return 'it leans more matte and shine-controlling if you want less slip under makeup';
+    }
     if (mineralCue || sensitiveCue) {
       return 'it leans more mineral and sensitive-skin-friendly if you want a sheer, weightless finish';
     }
@@ -58327,6 +58338,14 @@ function normalizeRecoAssistantFinishFitTradeoffReason(reason = '', {
     .replace(
       /\bprovides a richer, more moisturizing cream-based texture for those needing extra hydration during daily wear\b/ig,
       'leans richer and more moisturizing if you want more cushion under makeup',
+    )
+    .replace(
+      /\b(?:gives|offers|provides)\s+(?:a\s+)?matte(?:[^.]{0,80})under-makeup wear\b/ig,
+      'leans more matte and shine-controlling if you want less slip under makeup',
+    )
+    .replace(
+      /\b(?:gives|offers|provides)\s+(?:a\s+)?matte(?:[^.]{0,80})shine(?:[^.]{0,80})\b/ig,
+      'leans more matte and shine-controlling if you want less slip under makeup',
     )
     .replace(/\bduring am uv protection\b/ig, 'during daytime wear')
     .replace(/\bfor am uv protection\b/ig, 'for daytime wear')

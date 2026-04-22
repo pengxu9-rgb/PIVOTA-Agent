@@ -304,6 +304,66 @@ test('reco assistant rewrite prompt carries finish-fit same-slot tradeoff notes 
   }
 });
 
+test('reco assistant rewrite prompt keeps matte finish-fit tradeoff distinct from mineral cues', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const payload = __internal.applyRecoContentSpineToPayload(
+      {
+        recommendations: [
+          {
+            product_id: 'spf_lead',
+            display_name: 'Relief Sun Aqua-Fresh : Rice + B5 (SPF50+ PA++++)',
+            brand: 'Beauty of Joseon',
+            category: 'Sunscreen',
+            short_description: 'A lightweight sunscreen fluid that layers smoothly under makeup with no white cast.',
+            why_this_one: 'it keeps the finish lighter and smoother under makeup if you want a less heavy daytime layer',
+            matched_role_id: 'daily_sunscreen_finish_fit',
+            matched_role_label: 'Daily sunscreen with finish fit',
+            preferred_step: 'sunscreen',
+          },
+          {
+            product_id: 'spf_matte_fit',
+            display_name: 'Matte Fit Serum Sunscreen SPF 50+ PA++++',
+            brand: 'SKINTIFIC',
+            category: 'Sunscreen',
+            short_description: 'Protect your skin from UVA, UVB, and blue light with Matte Fit Serum Sunscreen SPF 50+ PA++++.',
+            description: 'This oil-controlling, non-greasy formula with Oat Extract and Zinc PCA is perfect for oily and acne-prone skin. Fast-absorbing, smooth finish with 8-hour shine control.',
+            key_features: ['Zinc PCA'],
+            matched_role_id: 'daily_sunscreen_finish_fit',
+            matched_role_label: 'Daily sunscreen with finish fit',
+            preferred_step: 'sunscreen',
+          },
+        ],
+        recommendation_meta: {
+          resolved_target_step: 'sunscreen',
+          mainline_status: 'grounded_success',
+        },
+      },
+      {
+        primary_target_id: 'daily_sunscreen_finish_fit',
+        ranked_targets: [{ target_id: 'daily_sunscreen_finish_fit', resolved_target_step: 'sunscreen' }],
+        selected_target_ids: ['daily_sunscreen_finish_fit'],
+        resolved_target_step: 'sunscreen',
+      },
+    );
+
+    const prompt = __internal.buildRecoAssistantRewritePrompt({
+      payload,
+      language: 'EN',
+      profile: { skinType: 'oily', goals: ['smooth layering'] },
+      userRequestText: 'My makeup pills. What sunscreen should I buy?',
+      allowLockedSelectionRewrite: true,
+    });
+    const context = JSON.parse(prompt.match(/Context: (\{[\s\S]*\})$/)[1]);
+    const tradeoffNotes = JSON.stringify(context.assistant_write_plan.same_role_options || []);
+
+    assert.match(tradeoffNotes, /matte and shine-controlling if you want less slip under makeup/i);
+    assert.doesNotMatch(tradeoffNotes, /mineral and sensitive-skin-friendly/i);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('reco assistant rewrite prompt keeps same-role price context only when user explicitly asks for value comparison', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
@@ -1708,7 +1768,7 @@ test('reco assistant rewrite uses structured retry for generic routine wrap-up',
     assert.match(rewrite.text, /Hydrating Dewy Gel Cream Moisturizer/);
     assert.match(rewrite.text, /because it (?:features|is) an ultra-sheer/);
     assert.match(rewrite.text, /because it (?:provides|is a) lightweight/);
-    assert.match(rewrite.text, /because it (?:gives|is a) matte SPF 50\+/);
+    assert.match(rewrite.text, /because it (?:gives|is a matte SPF 50\+|leans more matte and shine-controlling if you want less slip under makeup)/);
     assert.match(rewrite.text, /Matte Fit Serum Sunscreen SPF 50\+ PA\+\+\+\+/);
     assert.doesNotMatch(rewrite.text, /because (features|provides|gives)\b/i);
     assert.doesNotMatch(rewrite.text, /Together, these products support/);

@@ -932,6 +932,56 @@ describe('aurora chatCardFactory structured sections for adapter inputs', () => 
     expect(products[2].short_description).toMatch(/leans richer and more moisturizing|more cushion under makeup/i);
   });
 
+  test('recommendations card rewrites matte finish-fit sunscreen into shine-control tradeoff copy', () => {
+    const cards = mapLegacyCardToSpecCards(
+      {
+        type: 'recommendations',
+        card_id: 'legacy_recommendations_finish_fit_matte_tradeoff',
+        payload: {
+          recommendation_meta: {
+            selected_target_ids: ['daily_sunscreen_finish_fit'],
+            ranked_targets: [
+              {
+                target_id: 'daily_sunscreen_finish_fit',
+                target_label: 'Daily sunscreen with finish fit',
+              },
+            ],
+          },
+          recommendations: [
+            {
+              product_id: 'prod_aqua_fresh',
+              merchant_id: 'external_seed',
+              brand: 'Beauty of Joseon',
+              name: 'Relief Sun Aqua-Fresh : Rice + B5 (SPF50+ PA++++)',
+              matched_role_id: 'daily_sunscreen_finish_fit',
+              matched_role_label: 'Daily sunscreen with finish fit',
+              short_description: 'A lightweight sunscreen fluid that layers smoothly under makeup with no white cast.',
+              why_this_one: 'it keeps the finish lighter and smoother under makeup if you want a less heavy daytime layer',
+            },
+            {
+              product_id: 'prod_matte_fit',
+              merchant_id: 'external_seed',
+              brand: 'SKINTIFIC',
+              name: 'Matte Fit Serum Sunscreen SPF 50+ PA++++',
+              matched_role_id: 'daily_sunscreen_finish_fit',
+              matched_role_label: 'Daily sunscreen with finish fit',
+              short_description: 'Protect your skin from UVA, UVB, and blue light with Matte Fit Serum Sunscreen SPF 50+ PA++++.',
+              description: 'This oil-controlling, non-greasy formula with Oat Extract and Zinc PCA is perfect for oily and acne-prone skin. Fast-absorbing, smooth finish with 8-hour shine control.',
+              key_features: ['Zinc PCA'],
+            },
+          ],
+        },
+      },
+      { requestId: 'req_card_factory_finish_fit_matte_tradeoff', language: 'EN', index: 0 },
+    );
+
+    const products = cards[0].payload.sections[0].products;
+    expect(products[1].why_this_one).toMatch(/matte|shine-controlling|less slip under makeup/i);
+    expect(products[1].why_this_one).not.toMatch(/mineral|sensitive-skin-friendly/i);
+    expect(products[1].short_description).toMatch(/matte|shine-controlling|less slip under makeup/i);
+    expect(products[1].short_description).not.toMatch(/UVA, UVB, and blue light/i);
+  });
+
   test('offers_resolved shares the rich product row contract and mirrors it into payload.sections', () => {
     const cards = mapLegacyCardToSpecCards(
       {

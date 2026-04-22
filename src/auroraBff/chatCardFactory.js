@@ -503,7 +503,7 @@ function looksLikeWeakRecommendationFinishFitCopy(value) {
   const text = normalizeRecommendationSemanticText(value);
   if (!text) return false;
   const weakSignal =
-    /\b(?:uv filter cues?|modern organic uv filters?|mineral uv filters?|clear filter identity|reapplication expectations explicit|daily spf wear|daily sunscreen step|sun care use|daytime skin comfort)\b/.test(text);
+    /\b(?:uv filter cues?|modern organic uv filters?|mineral uv filters?|clear filter identity|reapplication expectations explicit|daily spf wear|daily sunscreen step|sun care use|daytime skin comfort|protect your skin from uva uvb(?: and blue light)?|uva uvb and blue light)\b/.test(text);
   const strongSignal =
     /\b(?:under makeup|makeup|layer(?:ing)?|pilling|soft focus|soft-focus|blur|primer|weightless|sheer|fluid|watery|invisible|white cast|non greasy|non-greasy|fragrance-free|scentless|sensitive skin|cream format|cream texture|hydrating cream)\b/.test(text);
   return weakSignal && !strongSignal;
@@ -551,6 +551,10 @@ function recommendationFinishFitSourceNeedsMoreSpecificCue(value, row) {
   const visibleHasMineralCue = /\b(?:mineral|sensitive skin|sensitive-skin|zinc oxide|titanium dioxide)\b/.test(visible);
   if (sourceHasMineralCue && !visibleHasMineralCue) return true;
 
+  const sourceHasMatteCue = /\b(?:matte|mattif(?:y|ies|ying)|oil[-\s]?control(?:ling)?|shine[-\s]?control|anti[-\s]?shine|sebum)\b/.test(source);
+  const visibleHasMatteCue = /\b(?:mattif(?:y|ies|ying)|oil[-\s]?control(?:ling)?|shine[-\s]?control|anti[-\s]?shine|less slip under makeup|less shine under makeup)\b/.test(visible);
+  if (sourceHasMatteCue && !visibleHasMatteCue) return true;
+
   const sourceHasCreamCue = /\b(?:hydrating daily cream|hydrating cream|cream format|cream texture|cream-spf|cream spf|sunscreen milk|milk spf|milky sunscreen|hydrating sunscreen milk|spf milk|spf lotion|more moisture|more moisturizing|richer)\b/.test(source);
   const visibleHasCreamCue = /\b(?:cream|cream-spf|hydrating|moisturizing|milk|richer|more moisture)\b/.test(visible);
   if (sourceHasCreamCue && !visibleHasCreamCue) return true;
@@ -597,12 +601,16 @@ function buildRecommendationFinishFitSpecificWhy(row) {
   const hasLayering = /\b(?:under makeup|makeup|layer(?:ing)?|non[-\s]?pilling|no pilling|pilling)\b/i.test(texts);
   const hasWeightless = /\b(?:weightless|lightweight|airy|fluid|watery|water[-\s]?fit|invisible|non[-\s]?greasy|sheer)\b/i.test(texts);
   const hasMineralCue = /\b(?:mineral|zinc oxide|titanium dioxide)\b/i.test(texts);
+  const hasMatteCue = /\b(?:matte|mattif(?:y|ies|ying)|oil[-\s]?control(?:ling)?|shine[-\s]?control|anti[-\s]?shine|sebum)\b/i.test(texts);
   const hasWhiteCastCue = /\b(?:no white cast|white cast[-\s]?free|lower white[-\s]?cast|invisible)\b/i.test(texts);
   const hasSensitiveCue = /\b(?:sensitive skin|scentless|fragrance[-\s]?free|bisabolol|ectoin)\b/i.test(texts);
   const hasCreamierCue = /\b(?:hydrating daily cream|hydrating cream|cream format|cream texture|moisturizer[-\s]?style hydration|moisturizer[-\s]?format|cream-spf|cream spf|sunscreen milk|milk spf|milky sunscreen|hydrating sunscreen milk|spf milk|spf lotion)\b/i.test(texts);
 
   if (hasCreamierCue) {
     return 'it leans richer and more moisturizing if you want more cushion under makeup';
+  }
+  if (hasMatteCue) {
+    return 'it leans more matte and shine-controlling if you want less slip under makeup';
   }
   if (hasMineralCue && (hasSensitiveCue || hasWeightless || hasWhiteCastCue)) {
     return 'it leans more mineral and sensitive-skin-friendly if you want a sheer, weightless finish';
@@ -630,12 +638,16 @@ function buildRecommendationFinishFitSpecificShortDescription(row) {
   const hasLayering = /\b(?:under makeup|makeup|layer(?:ing)?|non[-\s]?pilling|no pilling|pilling)\b/i.test(texts);
   const hasWeightless = /\b(?:weightless|lightweight|airy|fluid|watery|water[-\s]?fit|invisible|non[-\s]?greasy|sheer)\b/i.test(texts);
   const hasMineralCue = /\b(?:mineral|zinc oxide|titanium dioxide)\b/i.test(texts);
+  const hasMatteCue = /\b(?:matte|mattif(?:y|ies|ying)|oil[-\s]?control(?:ling)?|shine[-\s]?control|anti[-\s]?shine|sebum)\b/i.test(texts);
   const hasWhiteCastCue = /\b(?:no white cast|white cast[-\s]?free|lower white[-\s]?cast|invisible)\b/i.test(texts);
   const hasSensitiveCue = /\b(?:sensitive skin|scentless|fragrance[-\s]?free|bisabolol|ectoin)\b/i.test(texts);
   const hasCreamierCue = /\b(?:hydrating daily cream|hydrating cream|cream format|cream texture|moisturizer[-\s]?style hydration|moisturizer[-\s]?format|cream-spf|cream spf|sunscreen milk|milk spf|milky sunscreen|hydrating sunscreen milk|spf milk|spf lotion)\b/i.test(texts);
 
   if (hasCreamierCue) {
     return 'Leans richer and more moisturizing if you want more cushion under makeup.';
+  }
+  if (hasMatteCue) {
+    return 'A more matte, shine-controlling sunscreen feel when you want less slip under makeup.';
   }
   if (hasMineralCue && (hasSensitiveCue || hasWeightless || hasWhiteCastCue)) {
     return 'Leans more mineral and sensitive-skin-friendly with a sheer, weightless finish.';
