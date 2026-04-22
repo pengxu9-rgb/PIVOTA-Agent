@@ -464,7 +464,7 @@ test('beauty mainline reco rows rewrite finish-fit sunscreen copy toward under-m
 
     assert.equal(rows.length, 1);
     assert.match(String(rows[0].best_for || ''), /under makeup|sits more smoothly/i);
-    assert.match(String(rows[0].why_this_one || ''), /under-makeup sunscreen ask|lighter, smoother daytime layering/i);
+    assert.match(String(rows[0].why_this_one || ''), /under-makeup sunscreen ask|keeps the finish lighter and smoother under makeup|lighter, smoother daytime layering/i);
     assert.doesNotMatch(String(rows[0].why_this_one || ''), /uv-filter cues|filter identity|reapplication expectations explicit/i);
   } finally {
     delete require.cache[moduleId];
@@ -545,7 +545,7 @@ test('beauty mainline reco rows keep finish-fit same-slot cards differentiated b
     );
 
     assert.equal(rows.length, 3);
-    assert.match(String(rows[0].why_this_one || ''), /lighter, smoother daytime layering/i);
+    assert.match(String(rows[0].why_this_one || ''), /keeps the finish lighter and smoother under makeup|lighter, smoother daytime layering/i);
     assert.match(String(rows[0].short_description || ''), /soft-focus|under makeup|daytime layering/i);
     assert.match(String(rows[1].why_this_one || ''), /leans more mineral|sensitive-skin-friendly|sheer, weightless finish/i);
     assert.match(String(rows[2].why_this_one || ''), /leans richer and more moisturizing|more cushion under makeup/i);
@@ -3194,7 +3194,7 @@ test('reco assistant structured renderer compares finish-fit sunscreen options w
       requestMode: 'buy',
     });
 
-    assert.match(text, /lighter, smoother daytime layering instead of a richer cream finish|keeps the feel lighter and more invisible if you want less weight under makeup/i);
+    assert.match(text, /lighter, smoother daytime layering instead of a richer cream finish|keeps the finish lighter and smoother under makeup if you want a less heavy daytime layer|keeps the feel lighter and more invisible if you want less weight under makeup/i);
     assert.match(text, /(?:more mineral, sensitive-skin-oriented option while keeping (?:a |the finish )?sheer, weightless|leans more mineral and sensitive-skin-friendly if you want a sheer, weightless finish)/i);
     assert.match(text, /richer, more moisturizing cream-spf option/i);
     assert.doesNotMatch(text, /uv-filter cues|filter identity|reapplication expectations explicit/i);

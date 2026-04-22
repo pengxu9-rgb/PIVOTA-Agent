@@ -20406,7 +20406,7 @@ function buildRecoFinishFitSpecificWhy({
     return 'it leans more mineral and sensitive-skin-friendly if you want a sheer, weightless finish';
   }
   if (hasSoftFocus || (hasLayering && hasWeightless)) {
-    return 'it points to lighter, smoother daytime layering instead of a richer cream finish';
+    return 'it keeps the finish lighter and smoother under makeup if you want a less heavy daytime layer';
   }
   if (hasWeightless && hasSensitiveCue) {
     return 'it leans more mineral and sensitive-skin-friendly if you want a sheer, weightless finish';

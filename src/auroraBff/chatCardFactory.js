@@ -608,7 +608,7 @@ function buildRecommendationFinishFitSpecificWhy(row) {
     return 'it leans more mineral and sensitive-skin-friendly if you want a sheer, weightless finish';
   }
   if (hasSoftFocus || (hasLayering && hasWeightless)) {
-    return 'it points to lighter, smoother daytime layering instead of a richer cream finish';
+    return 'it keeps the finish lighter and smoother under makeup if you want a less heavy daytime layer';
   }
   if (hasWeightless && hasSensitiveCue) {
     return 'it leans more mineral and sensitive-skin-friendly if you want a sheer, weightless finish';
@@ -641,7 +641,7 @@ function buildRecommendationFinishFitSpecificShortDescription(row) {
     return 'Leans more mineral and sensitive-skin-friendly with a sheer, weightless finish.';
   }
   if (hasSoftFocus || (hasLayering && hasWeightless)) {
-    return 'A lighter, smoother sunscreen feel for daytime layering under makeup.';
+    return 'Keeps the sunscreen feel lighter and smoother under makeup.';
   }
   if (hasWeightless && hasSensitiveCue) {
     return 'A lighter mineral sunscreen option that stays sheer and simple on sensitive skin.';

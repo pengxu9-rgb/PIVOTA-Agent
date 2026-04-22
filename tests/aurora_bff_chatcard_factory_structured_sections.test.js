@@ -866,11 +866,11 @@ describe('aurora chatCardFactory structured sections for adapter inputs', () => 
     );
 
     const products = cards[0].payload.sections[0].products;
-    expect(products[0].why_this_one).toMatch(/lighter, smoother daytime layering/i);
+    expect(products[0].why_this_one).toMatch(/keeps the finish lighter and smoother under makeup|lighter, smoother daytime layering/i);
     expect(products[1].why_this_one).toMatch(/leans more mineral|sensitive-skin-friendly|sheer, weightless finish/i);
     expect(products[1].why_this_one).not.toMatch(/^Sheer, weightless, scentless mineral sunscreen/i);
     expect(products[2].why_this_one).toMatch(/leans richer and more moisturizing|more cushion under makeup/i);
-    expect(products[0].short_description).toMatch(/lighter, smoother sunscreen feel|under makeup/i);
+    expect(products[0].short_description).toMatch(/keeps the sunscreen feel lighter and smoother under makeup|lighter, smoother sunscreen feel|under makeup/i);
     expect(products[1].short_description).toMatch(/leans more mineral|sensitive-skin-friendly|sheer, weightless finish/i);
     expect(products[1].short_description).not.toMatch(/^Sheer, weightless, scentless mineral sunscreen/i);
     expect(products[2].short_description).toMatch(/leans richer and more moisturizing|more cushion under makeup/i);
