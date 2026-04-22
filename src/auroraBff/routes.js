@@ -74160,10 +74160,44 @@ function rewriteGroundedAlternativeVisibleShopperLine(row, value) {
   const text = cleanRecoVisibleCopy(value).replace(/\s+/g, ' ').trim();
   if (!text) return '';
   const candidateHaystack = buildRecoAlternativePoolCandidateText(item);
+  const product = getRecoAlternativeProductObject(item);
+  const sunscreenContextText = [
+    item.best_use,
+    item.best_for,
+    item.role_scope,
+    item.selected_target_id,
+    product.category,
+    product.product_type,
+    item.name,
+  ]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(' ');
+  const isSunscreenCompare =
+    /\b(?:sunscreen|spf|daily_sunscreen_finish_fit)\b/i.test(sunscreenContextText) ||
+    /\b(?:sunscreen|spf)\b/i.test(candidateHaystack);
+  const hasMineralSunscreenCue = /\b(mineral|zinc oxide|titanium dioxide)\b/i.test(candidateHaystack);
+  const hasSerumSunscreenCue = /\b(serum-like|sun serum|face serum|water-fit|watery|fresh finish|quick absorption|quick-absorbing|thin(?:ner)? feel)\b/i.test(candidateHaystack);
+  const hasHydratingMilkCue = /\b(sunscreen milk|sun milk|hydrating sunscreen milk|cream-based|creamier|colloidal oatmeal|oatmeal|soft-focus|more moisture|cushion(?:ing)?|hydrating)\b/i.test(candidateHaystack);
+  const hasMatteSunscreenCue = /\b(matte|mattifying|shine-control(?:ling)?|less slip)\b/i.test(candidateHaystack);
   const hasStrongComfortCue = /\b(colloidal\s+oatmeal|oat(?:meal)?|allantoin|ectoin|cica|centella|reactive|stinging?)\b/i.test(candidateHaystack);
   const hasLighterDewyCue = /\b(gel[-\s]?cream|water[-\s]?(?:cream|gel)|lightweight|ultra[-\s]?sheer|breathable|quick[-\s]?absorbing|dewy)\b/i.test(candidateHaystack);
   const hasOilControlCue = /\b(oil[-\s]?control|mattifying|matte|shine[-\s]?free|shine[-\s]?controlling|powder[-\s]?soft)\b/i.test(candidateHaystack);
 
+  if (isSunscreenCompare) {
+    if (/^same sunscreen step\.?$/i.test(text) || /^names the sunscreen role directly\.?$/i.test(text) || /overlaps the anchor use case and claims/i.test(text)) {
+      return '';
+    }
+    if (/weightless sun protection with spf/i.test(text) && hasMineralSunscreenCue) {
+      return 'Leans more mineral and weightless if you want a clear mineral sunscreen option.';
+    }
+    if (/serum-like spf|sunscreen that feels like a serum|serum texture/i.test(text) && hasSerumSunscreenCue) {
+      return 'Leans more serum-like and fresh if you want a thinner sunscreen feel.';
+    }
+    if (/daily sunscreen built around humectants|comfortable daytime layering|am uv protection/i.test(text) && hasHydratingMilkCue) {
+      return 'Leans more hydrating and creamier if you want a cushier sunscreen layer.';
+    }
+  }
   if (/adds more calming barrier-comfort cues for dry, tight, or easily irritated skin/i.test(text)) {
     if (hasOilControlCue) {
       return 'Leans lighter and more oil-controlling if you want less richness from a barrier moisturizer.';
@@ -74218,6 +74252,30 @@ function buildGroundedAlternativeFallbackVisibleShopperCopy(row) {
     .map((value) => String(value || '').trim())
     .filter(Boolean)
     .join(' ');
+  const product = getRecoAlternativeProductObject(item);
+  const candidateHaystack = buildRecoAlternativePoolCandidateText(item);
+  const isSunscreenCompare =
+    /\b(?:same sunscreen step|daily_sunscreen_finish_fit|sunscreen|spf)\b/i.test(contextText) ||
+    /\b(?:sunscreen|spf)\b/i.test([product.category, product.product_type, item.name, candidateHaystack].filter(Boolean).join(' '));
+  const mineralSunscreenSignal = /\b(mineral|zinc oxide|titanium dioxide)\b/i.test(candidateHaystack);
+  const serumSunscreenSignal = /\b(serum-like|sun serum|face serum|water-fit|watery|fresh finish|quick absorption|quick-absorbing|thin(?:ner)? feel)\b/i.test(candidateHaystack);
+  const hydratingMilkSignal = /\b(sunscreen milk|sun milk|hydrating sunscreen milk|cream-based|creamier|colloidal oatmeal|oatmeal|soft-focus|more moisture|cushion(?:ing)?|hydrating)\b/i.test(candidateHaystack);
+  const matteSunscreenSignal = /\b(matte|mattifying|shine-control(?:ling)?|less slip)\b/i.test(candidateHaystack);
+  if (isSunscreenCompare) {
+    if (matteSunscreenSignal) {
+      return 'Leans more matte and less slippery if you want less shine during the day.';
+    }
+    if (mineralSunscreenSignal) {
+      return 'Leans more mineral and weightless if you want a clear mineral sunscreen option.';
+    }
+    if (hydratingMilkSignal) {
+      return 'Leans more hydrating and creamier if you want a cushier sunscreen layer.';
+    }
+    if (serumSunscreenSignal) {
+      return 'Leans more serum-like and fresh if you want a thinner sunscreen feel.';
+    }
+    return '';
+  }
   const isBarrierMoisturizerCompare =
     /barrier-friendly moisturizer|hydrating_barrier_moisturizer|barrier-support|dry|tight|irritated|hydration-first|barrier-led/i.test(contextText) ||
     Number(metadata.barrier_fit_bonus || 0) > 0 ||
@@ -74225,7 +74283,6 @@ function buildGroundedAlternativeFallbackVisibleShopperCopy(row) {
     metadata.barrier_comfort_match === true;
   if (!isBarrierMoisturizerCompare) return '';
 
-  const candidateHaystack = buildRecoAlternativePoolCandidateText(item);
   const hydrationTradeoff =
     /hydration-first|hydration-led|dewy|plump|glycerin|hyaluronic|squalane/i.test(candidateHaystack) ||
     Number(metadata.barrier_fit_penalty || 0) > 0;

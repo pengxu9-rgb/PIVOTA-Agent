@@ -6386,6 +6386,8 @@ test('fetchRecoAlternativesForProduct: grounded sunscreen pool ranks texture-ali
         assert.ok(returnedNames.includes('Invisible Daily Defense Face Serum SPF 60+'));
         assert.ok(returnedNames.includes('Madagascar Centella Hyalu-Cica Water-Fit Sun Serum SPF50+'));
         assert.ok(!returnedNames.includes('Mineral Glowscreen Soft-Radiance Drops SPF 40'));
+        const serumRow = out.alternatives.find((row) => /face serum spf 60\+|water-fit sun serum/i.test(String(row?.product?.name || row?.name || '')));
+        assert.match(String(serumRow?.why_this_one || ''), /serum-like and fresh|thinner sunscreen feel|lighter daily sunscreen feel/i);
       } finally {
         const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
         loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
