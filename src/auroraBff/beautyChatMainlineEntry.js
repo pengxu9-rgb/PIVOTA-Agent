@@ -346,6 +346,40 @@ function classifyBeautyChatPlannerBlock(trace = null, semanticPlan = null) {
   };
 }
 
+function shouldClarifyBeautyChatBeforeHandoff({
+  message = '',
+  profileSummary = null,
+  latestRecoContextFromSession = null,
+  analysisContextUsageMeta = null,
+} = {}) {
+  const normalizedMessage = String(message || '').trim().toLowerCase();
+  if (!normalizedMessage) return false;
+  const explicitCategoryPattern =
+    /\b(sunscreen|spf|moisturizer|moisturiser|cleanser|serum|toner|essence|retinol|retinoid|mask|balm|oil|cream|lotion)\b/;
+  const genericGuidancePattern =
+    /\bwhat should i (use|buy)\b(?:[^.]{0,24}\bfor my skin\b)?|\bhelp my skin\b|\bfor my skin\b/;
+  const explicitSkinSignalPattern =
+    /\b(oily|dry|sensitive|combination|combo|acne-prone|acne prone|dehydrated|barrier|rosacea|eczema)\b/;
+  if (!genericGuidancePattern.test(normalizedMessage)) return false;
+  if (explicitCategoryPattern.test(normalizedMessage)) return false;
+  if (explicitSkinSignalPattern.test(normalizedMessage)) return false;
+  const profileSkinType = pickFirstTrimmed(
+    profileSummary?.skinType,
+    profileSummary?.skin_type,
+    profileSummary?.skin_type_tendency,
+  );
+  if (profileSkinType) return false;
+  if (analysisContextUsageMeta?.analysis_context_available === true) return false;
+  if (
+    latestRecoContextFromSession &&
+    typeof latestRecoContextFromSession === 'object' &&
+    !Array.isArray(latestRecoContextFromSession)
+  ) {
+    return false;
+  }
+  return true;
+}
+
 function elapsedBeautyChatStageMs(startedAtMs = 0) {
   const started = Number(startedAtMs);
   if (!Number.isFinite(started) || started <= 0) return 0;
@@ -540,6 +574,31 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
       analysisContextUsageMeta?.context_source_mode === 'analysis_handoff'
         ? 'analysis_handoff'
         : recoEntrySourceDetail;
+    if (
+      shouldClarifyBeautyChatBeforeHandoff({
+        message: pickFirstTrimmed(recoRequestMessage, message),
+        profileSummary,
+        latestRecoContextFromSession,
+        analysisContextUsageMeta,
+      })
+    ) {
+      return {
+        handled: true,
+        targetContext: hardPathRecoTargetContext,
+        envelope: buildBeautyMainlineHandoffFallbackEnvelope({
+          ctx,
+          fallback: {
+            fallback_reason: 'beauty_mainline_missing_context',
+            notice_reason: 'needs_more_context',
+            mainline_status: 'needs_more_context',
+            products_empty_reason: 'minimum_recommendation_context_unsatisfied',
+            telemetry_failure_reason: 'minimum_recommendation_context_unsatisfied',
+            source_mode: 'framework_mainline',
+          },
+          suggestedChips: [],
+        }),
+      };
+    }
     if (
       shouldUseBeautyChatMainlinePlanner(hardPathRecoTargetContext) &&
       typeof runConcernSemanticPlanner === 'function' &&
