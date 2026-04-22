@@ -3871,12 +3871,17 @@ test('reco assistant structured renderer pins finish-fit same-slot support sente
 
     assert.match(
       text,
+      /Supergoop Unseen Sunscreen SPF 50 keeps the finish lighter and smoother under makeup(?:, which helps reduce pilling during the day| for easier daytime wear)?/i,
+    );
+    assert.match(
+      text,
       /First Aid Beauty Ultra Light Liquid Mineral Sunscreen with Zinc Oxide SPF 30 leans more mineral and sensitive-skin-friendly if you want a sheer, weightless finish/i,
     );
     assert.match(
       text,
       /First Aid Beauty Hydrating Sunscreen Milk with Colloidal Oatmeal Broad Spectrum SPF 45 leans richer and more moisturizing if you want more cushion under makeup/i,
     );
+    assert.doesNotMatch(text, /Supergoop Unseen Sunscreen SPF 50 supports lighter, smoother daytime layering under makeup/i);
     assert.doesNotMatch(text, /same-slot comparison option because/i);
     assert.doesNotMatch(text, /less heavy under makeup/i);
   } finally {

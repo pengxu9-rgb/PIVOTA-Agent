@@ -58442,6 +58442,14 @@ function renderRecoAssistantStructuredLeadProductSentence(name, reason, {
   return formatRecoAssistantStructuredSentence(`${productName} fits this request${targetPhrase} because ${normalizedReason}`);
 }
 
+function hasStrongRecoAssistantFinishFitLeadCue(reason = '') {
+  const text = String(reason || '').trim().toLowerCase();
+  if (!text) return false;
+  const underMakeupCue = /\bunder makeup|under-makeup|makeup|pilling\b/.test(text);
+  const tradeoffCue = /\blighter|lighter and smoother|smoother|weightless|sheer|invisible|matte|shine-controlling|dewier|richer|more moisturizing\b/.test(text);
+  return underMakeupCue && tradeoffCue;
+}
+
 function shouldSuppressRecoAssistantOptionalRefinementQuestion({
   refinementQuestionPlan = null,
   selectedProductRoleMix = '',
@@ -58528,22 +58536,38 @@ function renderRecoAssistantStructuredReasonRewrite({
     : rawRefinementQuestionPlan;
   const forbiddenNames = collectRecoAssistantUnselectedCandidateDisplayNames(payload, 8);
   const forbiddenAliases = collectRecoAssistantUnselectedCandidateAliases(payload);
+  const finishFitSameSlotLead =
+    String(selectedProductRoleMix || '').toLowerCase() === 'same_role_comparison'
+    && recoRoleNeedsFinishFitNarrative([
+      targetLabel,
+      pickFirstTrimmed(details[0]?.matched_role_label),
+      pickFirstTrimmed(details[0]?.preferred_step),
+    ].filter(Boolean).join(' '));
+  const fallbackLeadReason = buildRecoAssistantStructuredReasonFallback(details[0], {
+    targetLabel,
+    selectedProductRoleMix,
+    selectedNames,
+    forbiddenNames,
+    forbiddenAliases,
+  });
+  const canonicalLeadReason = normalizeRecoAssistantFinishFitTradeoffReason(
+    normalizeRecoAssistantBecauseReasonFragment(fallbackLeadReason),
+    { targetLabel, detail: details[0] || {} },
+  );
   const leadReason = normalizeRecoAssistantReasonFragment(structuredReason?.lead_reason, {
     selectedNames,
     forbiddenNames,
     forbiddenAliases,
-    fallback: buildRecoAssistantStructuredReasonFallback(details[0], {
-      targetLabel,
-      selectedProductRoleMix,
-      selectedNames,
-      forbiddenNames,
-      forbiddenAliases,
-    }),
+    fallback: fallbackLeadReason,
   });
-  const grammaticalLeadReason = normalizeRecoAssistantFinishFitTradeoffReason(
+  const normalizedLeadReason = normalizeRecoAssistantFinishFitTradeoffReason(
     normalizeRecoAssistantBecauseReasonFragment(leadReason),
     { targetLabel, detail: details[0] || {} },
   );
+  const grammaticalLeadReason =
+    finishFitSameSlotLead && canonicalLeadReason && !hasStrongRecoAssistantFinishFitLeadCue(normalizedLeadReason)
+      ? canonicalLeadReason
+      : normalizedLeadReason;
   if (!grammaticalLeadReason) return '';
   const supportReasonValues = Array.isArray(structuredReason?.support_reasons)
     ? structuredReason.support_reasons
