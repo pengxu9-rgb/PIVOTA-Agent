@@ -229,6 +229,28 @@ test('reco assistant rewrite prompt carries finish-fit same-slot tradeoff notes 
             matched_role_label: 'Daily sunscreen with finish fit',
             preferred_step: 'sunscreen',
           },
+          {
+            product_id: 'spf_mineral',
+            display_name: 'Ultra Light Liquid Mineral Sunscreen with Zinc Oxide SPF 30',
+            brand: 'First Aid Beauty',
+            category: 'Sunscreen',
+            short_description: 'A sheer, weightless mineral sunscreen option for sensitive skin.',
+            why_this_one: 'it gives a more mineral, sensitive-skin-oriented option while keeping the finish sheer and weightless',
+            matched_role_id: 'daily_sunscreen_finish_fit',
+            matched_role_label: 'Daily sunscreen with finish fit',
+            preferred_step: 'sunscreen',
+          },
+          {
+            product_id: 'spf_rich',
+            display_name: 'Hydrating Sunscreen Milk with Colloidal Oatmeal Broad Spectrum SPF 45',
+            brand: 'First Aid Beauty',
+            category: 'Sunscreen',
+            short_description: 'A daily sunscreen built around humectants and soft-focus powders for AM UV protection and comfortable daytime layering.',
+            why_this_one: 'it keeps the feel lighter and more invisible if you want less weight under makeup',
+            matched_role_id: 'daily_sunscreen_finish_fit',
+            matched_role_label: 'Daily sunscreen with finish fit',
+            preferred_step: 'sunscreen',
+          },
         ],
         roles: [
           {
@@ -3317,14 +3339,6 @@ test('reco assistant structured renderer downgrades primer-equivalence wording i
         selected_target_ids: ['daily_sunscreen_finish_fit'],
       },
     );
-    payload.recommendations[1].why_this_one = 'it gives a more mineral, sensitive-skin-oriented option while keeping the finish sheer and weightless';
-    payload.recommendations[1].short_description = 'A sheer, weightless mineral sunscreen option for sensitive skin.';
-    payload.recommendations[2].why_this_one = 'it keeps the feel lighter and more invisible if you want less weight under makeup';
-    payload.recommendations[2].short_description = 'A daily sunscreen built around humectants and soft-focus powders for AM UV protection and comfortable daytime layering.';
-    payload.sections[0].products[1].why_this_one = 'it leans more mineral and sensitive-skin-friendly if you want a sheer, weightless finish';
-    payload.sections[0].products[1].short_description = 'Leans more mineral and sensitive-skin-friendly with a sheer, weightless finish.';
-    payload.sections[0].products[2].why_this_one = 'it leans richer and more moisturizing if you want more cushion under makeup';
-    payload.sections[0].products[2].short_description = 'Leans richer and more moisturizing if you want more cushion under makeup.';
     const primaryTarget = payload.recommendation_meta.ranked_targets[0];
     const text = __internal.renderRecoAssistantStructuredReasonRewrite({
       structuredReason: {
@@ -4351,6 +4365,135 @@ test('beauty mainline routine support fill keeps one card per support role', () 
       ['hydrating_barrier_moisturizer', 'daily_sunscreen'],
     );
     assert.equal(out.role_pool_stats.daily_sunscreen.viable_count, 1);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('concern selector race prompt carries finish-fit tradeoff evidence and diversity guidance', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  const prompts = [];
+  try {
+    __internal.__setCallGeminiTextResponseForTest(async (args = {}) => {
+      prompts.push(String(args.userPrompt || ''));
+      return {
+        text: JSON.stringify({
+          top_pick_product_id: 'spf_lead',
+          ordered_product_ids: ['spf_lead', 'spf_mineral', 'spf_rich'],
+          support_roles_surfaced: [],
+          selection_notes: [],
+          open_world_candidate_expansion_needed: false,
+        }),
+        provider: 'gemini',
+        requested_model: 'gemini-3-flash-preview',
+        effective_model: 'gemini-3-flash-preview',
+        selection_source: 'local_gemini_rest_direct',
+      };
+    });
+
+    await __internal.runConcernSelectorRace({
+      ctx: { lang: 'EN' },
+      logger: null,
+      requestText: 'My daytime routine pills under makeup. What sunscreen should I buy?',
+      semanticPlan: {
+        comparison_mode: 'same_role_comparison',
+        core_roles: [
+          {
+            role_id: 'daily_sunscreen_finish_fit',
+            label: 'Daily sunscreen with finish fit',
+            why_this_role: 'Use a daily sunscreen that layers cleanly under makeup.',
+            preferred_step: 'sunscreen',
+          },
+        ],
+        support_roles: [],
+      },
+      recommendations: [
+        {
+          product_id: 'spf_lead',
+          display_name: 'Unseen Sunscreen SPF 50',
+          matched_role_id: 'daily_sunscreen_finish_fit',
+          matched_role_label: 'Daily sunscreen with finish fit',
+          short_description: 'Keeps the sunscreen feel lighter and smoother under makeup.',
+          why_this_one: 'it keeps the finish lighter and smoother under makeup if you want a less heavy daytime layer',
+        },
+        {
+          product_id: 'spf_mineral',
+          display_name: 'Ultra Light Liquid Mineral Sunscreen with Zinc Oxide SPF 30',
+          matched_role_id: 'daily_sunscreen_finish_fit',
+          matched_role_label: 'Daily sunscreen with finish fit',
+          short_description: 'Leans more mineral and sensitive-skin-friendly with a sheer, weightless finish.',
+          why_this_one: 'it leans more mineral and sensitive-skin-friendly if you want a sheer, weightless finish',
+        },
+        {
+          product_id: 'spf_rich',
+          display_name: 'Hydrating Sunscreen Milk with Colloidal Oatmeal Broad Spectrum SPF 45',
+          matched_role_id: 'daily_sunscreen_finish_fit',
+          matched_role_label: 'Daily sunscreen with finish fit',
+          short_description: 'Leans richer and more moisturizing if you want more cushion under makeup.',
+          why_this_one: 'it leans richer and more moisturizing if you want more cushion under makeup',
+        },
+      ],
+      deadlineAtMs: Date.now() + 5000,
+    });
+
+    assert.equal(prompts.length, 1);
+    assert.match(prompts[0], /"comparison_mode":"same_role_comparison"/);
+    assert.match(prompts[0], /"tradeoff_note":"it leans more mineral and sensitive-skin-friendly if you want a sheer, weightless finish"/);
+    assert.match(prompts[0], /"tradeoff_note":"it leans richer and more moisturizing if you want more cushion under makeup"/);
+    assert.match(prompts[0], /maximize real tradeoff spread when authoritative options exist/i);
+    assert.match(prompts[0], /Do not rank multiple near-duplicate lightweight under-makeup sunscreens ahead of a clearly differentiated richer option/i);
+  } finally {
+    __internal.__resetCallGeminiTextResponseForTest();
+    delete require.cache[moduleId];
+  }
+});
+
+test('concern selector ordering diversifies finish-fit same-role comparisons across lighter mineral and richer options', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const applied = __internal.applyConcernSelectorRaceOrdering(
+      [
+        {
+          product_id: 'spf_lead',
+          display_name: 'Unseen Sunscreen SPF 50',
+          matched_role_id: 'daily_sunscreen_finish_fit',
+          why_this_one: 'it keeps the finish lighter and smoother under makeup if you want a less heavy daytime layer',
+          short_description: 'Keeps the sunscreen feel lighter and smoother under makeup.',
+        },
+        {
+          product_id: 'spf_mineral',
+          display_name: 'Ultra Light Liquid Mineral Sunscreen with Zinc Oxide SPF 30',
+          matched_role_id: 'daily_sunscreen_finish_fit',
+          why_this_one: 'it leans more mineral and sensitive-skin-friendly if you want a sheer, weightless finish',
+          short_description: 'Leans more mineral and sensitive-skin-friendly with a sheer, weightless finish.',
+        },
+        {
+          product_id: 'spf_light_alt',
+          display_name: 'Relief Sun Aqua-Fresh : Rice + B5 (SPF50+ PA++++)',
+          matched_role_id: 'daily_sunscreen_finish_fit',
+          why_this_one: 'it keeps the finish lighter and smoother under makeup if you want a less heavy daytime layer',
+          short_description: 'Keeps the sunscreen feel lighter and smoother under makeup.',
+        },
+        {
+          product_id: 'spf_rich',
+          display_name: 'Hydrating Sunscreen Milk with Colloidal Oatmeal Broad Spectrum SPF 45',
+          matched_role_id: 'daily_sunscreen_finish_fit',
+          why_this_one: 'it leans richer and more moisturizing if you want more cushion under makeup',
+          short_description: 'Leans richer and more moisturizing if you want more cushion under makeup.',
+        },
+      ],
+      {
+        top_pick_product_id: 'spf_lead',
+        ordered_product_ids: ['spf_lead', 'spf_mineral', 'spf_light_alt', 'spf_rich'],
+        comparison_mode: 'same_role_comparison',
+        primary_role_id: 'daily_sunscreen_finish_fit',
+      },
+    );
+
+    assert.deepEqual(
+      applied.recommendations.map((row) => row.product_id),
+      ['spf_lead', 'spf_mineral', 'spf_rich', 'spf_light_alt'],
+    );
   } finally {
     delete require.cache[moduleId];
   }

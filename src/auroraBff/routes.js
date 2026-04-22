@@ -55467,7 +55467,7 @@ function buildRecoAssistantTradeoffNote(detail = {}, {
     if (mineralCue || sensitiveCue) {
       return 'it leans more mineral and sensitive-skin-friendly if you want a sheer, weightless finish';
     }
-    const creamCue = /\b(hydrating daily cream|hydrating cream|cream format|cream texture|moisturizer[-\s]?style hydration|more moisture|richer cream)\b/i.test(text);
+    const creamCue = /\b(hydrating daily cream|hydrating cream|cream format|cream texture|cream[-\s]?based|cream[-\s]?spf|moisturizer[-\s]?style hydration|more moisture|more moisturizing|richer cream|sunscreen milk|milk texture|cushion under makeup)\b/i.test(text);
     if (creamCue) {
       return 'it leans richer and more moisturizing if you want more cushion under makeup';
     }
@@ -65310,6 +65310,16 @@ function buildConcernSelectorDisplayCandidates(recommendations = []) {
       if (!row) return null;
       const productId = pickFirstString(row.product_id, row.productId, row.sku?.product_id, row.sku?.productId);
       if (!productId) return null;
+      const tradeoffNote = buildRecoAssistantTradeoffNote(
+        {
+          ...row,
+          why_this_one: pickFirstTrimmed(row.why_this_one, row.whyThisOne),
+          short_description: pickFirstTrimmed(row.short_description, row.shortDescription),
+          description_snippet: pickFirstTrimmed(row.description_snippet, row.descriptionSnippet, row.description),
+          evidence_target_text: pickFirstTrimmed(row.evidence_target_text, row.ingredient_query, row.ingredientQuery),
+        },
+        { selectedProductRoleMix: 'same_role_comparison' },
+      );
       return {
         product_id: productId,
         display_name: pickFirstTrimmed(row.display_name, row.displayName, row.name, row.title),
@@ -65317,6 +65327,9 @@ function buildConcernSelectorDisplayCandidates(recommendations = []) {
         matched_role_id: pickFirstTrimmed(row.matched_role_id, row.matchedRoleId),
         matched_role_label: pickFirstTrimmed(row.matched_role_label, row.matchedRoleLabel),
         category: pickFirstTrimmed(row.category, row.product_type, row.step),
+        short_description: pickFirstTrimmed(row.short_description, row.shortDescription),
+        why_this_one: pickFirstTrimmed(row.why_this_one, row.whyThisOne),
+        tradeoff_note: tradeoffNote || null,
         notes: asStringArray(row.notes, 3),
         reasons: asStringArray(row.reasons, 3),
       };
@@ -65332,9 +65345,21 @@ function buildConcernSelectorRacePrompt({
   lang = 'EN',
 } = {}) {
   const plan = isPlainObject(semanticPlan) ? semanticPlan : {};
+  const primaryRoleId = pickFirstTrimmed(plan.core_roles?.[0]?.role_id);
+  const comparisonMode = String(
+    pickFirstTrimmed(
+      plan.comparison_mode,
+      plan.selection_constraints?.comparison_mode,
+      plan.routine_mode,
+    ) || '',
+  ).trim().toLowerCase();
+  const finishFitSameRoleComparison =
+    primaryRoleId === 'daily_sunscreen_finish_fit'
+    && (comparisonMode === 'same_role_comparison' || comparisonMode === 'same_role');
   const payload = {
     request_text: String(requestText || '').trim(),
-    primary_role_id: pickFirstTrimmed(plan.core_roles?.[0]?.role_id),
+    primary_role_id: primaryRoleId,
+    comparison_mode: comparisonMode || null,
     core_roles: Array.isArray(plan.core_roles) ? plan.core_roles.map((role) => ({
       role_id: role.role_id,
       label: role.label,
@@ -65359,6 +65384,10 @@ function buildConcernSelectorRacePrompt({
         '- 如果有安全且相关的 primary core role 商品，必须优先选择它作为 top pick。',
         '- support role 商品不能盖过 primary core role 商品。',
         '- 如果 primary role 候选过弱或为空，top_pick_product_id 必须为 null，并把 open_world_candidate_expansion_needed 设为 true。',
+        '- 候选里的 tradeoff_note、why_this_one、short_description 是排序时优先参考的 shopper-facing 证据，不要忽略它们。',
+        ...(finishFitSameRoleComparison
+          ? ['- 如果是 daily_sunscreen_finish_fit 的 same-role 比较，优先拉开真实 tradeoff：保留一个更轻薄顺滑的主推，再优先一个更偏 mineral / sensitive-skin 的选项，以及一个更偏 richer / moisturizing 的选项；不要把多个近似的轻薄款排在一起挤掉更有差异的 richer 选项。']
+          : []),
         '- 不能发明候选池之外的 product_id。',
       ]
     : [
@@ -65370,6 +65399,10 @@ function buildConcernSelectorRacePrompt({
         '- If there is a safe and relevant primary core-role product, it must win as the top pick.',
         '- A support-role product may not outrank a primary core-role product.',
         '- If the primary-role pool is too weak or empty, top_pick_product_id must be null and open_world_candidate_expansion_needed must be true.',
+        '- Candidate tradeoff_note, why_this_one, and short_description are the primary shopper-facing ranking evidence when present.',
+        ...(finishFitSameRoleComparison
+          ? ['- For daily_sunscreen_finish_fit same-role comparisons, maximize real tradeoff spread when authoritative options exist: keep one lighter/smoother lead, then prefer one mineral or sensitive-skin-oriented option and one richer or more moisturizing option. Do not rank multiple near-duplicate lightweight under-makeup sunscreens ahead of a clearly differentiated richer option.']
+          : []),
         '- Do not invent product ids outside the candidate pool.',
       ];
   return `${lines.join('\n')}\ncontext=${JSON.stringify(payload)}`;
@@ -65411,6 +65444,12 @@ function normalizeConcernSelectorRaceOutput(raw, { recommendations = [], semanti
     support_roles_surfaced: uniqCaseInsensitiveStrings(asStringArray(payload.support_roles_surfaced || payload.supportRolesSurfaced), 4),
     selection_notes: uniqCaseInsensitiveStrings(asStringArray(payload.selection_notes || payload.selectionNotes), 4),
     open_world_candidate_expansion_needed: payload.open_world_candidate_expansion_needed === true || (topPickProductId ? false : validPrimaryIds.length === 0),
+    comparison_mode: pickFirstTrimmed(
+      semanticPlan?.comparison_mode,
+      semanticPlan?.selection_constraints?.comparison_mode,
+      semanticPlan?.routine_mode,
+    ) || null,
+    primary_role_id: primaryRoleId || null,
   };
 }
 
@@ -95249,6 +95288,8 @@ const __internal = {
   buildRecoRecallTransportPolicy,
   resolveRecoRecallTransportModeForPlannerMode,
   buildRecoCatalogQueryLevels,
+  runConcernSelectorRace,
+  applyConcernSelectorRaceOrdering,
   runConcernSemanticPlanner,
   finalizeConcernFrameworkCandidatePools,
   collectRecoCandidatesFromRecallPlan,

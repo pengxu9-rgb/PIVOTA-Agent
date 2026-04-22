@@ -72,6 +72,84 @@ function isConcernPrimaryRoleWinnerSafe(row, { semanticPlan = null } = {}) {
   return true;
 }
 
+function buildConcernSelectorCandidateEvidenceText(row = null) {
+  const item = isPlainObject(row) ? row : {};
+  return uniqCaseInsensitiveStrings([
+    pickFirstTrimmed(item.display_name, item.displayName, item.name, item.title),
+    pickFirstTrimmed(item.category, item.product_type, item.productType),
+    pickFirstTrimmed(item.why_this_one, item.whyThisOne),
+    pickFirstTrimmed(item.short_description, item.shortDescription, item.description),
+    ...asStringArray(item.notes, 3),
+    ...asStringArray(item.reasons, 3),
+    ...asStringArray(item.compare_highlights, 3),
+  ], 18).join(' ').toLowerCase();
+}
+
+function classifyConcernSelectorFinishFitTradeoffBucket(row = null) {
+  const text = buildConcernSelectorCandidateEvidenceText(row);
+  if (!text) return 'general';
+  if (/\b(tinted|tone[-\s]?up|complexion coverage|coverage[-\s]?first|beige|ivory)\b/i.test(text)) {
+    return 'tinted_makeup_base';
+  }
+  const richerCue = /\b(richer|more moisturizing|more moisture|hydrating|cream(?:ier)?|cream[-\s]?based|cream[-\s]?spf|hydrating daily cream|milk|cushion|colloidal oatmeal)\b/i.test(text);
+  if (richerCue) return 'richer_moisturizing';
+  const mineralCue = /\b(mineral|zinc oxide|zinc|titanium dioxide|sensitive skin|sensitive-skin|fragrance[-\s]?free|scentless)\b/i.test(text);
+  if (mineralCue) return 'mineral_sensitive';
+  const lighterCue = /\b(lighter|lightweight|weightless|sheer|invisible|fluid|watery|water[-\s]?fit|under makeup|under-makeup|smooth(?:er)?|soft[-\s]?focus|non[-\s]?greasy|no white cast|lower white[-\s]?cast)\b/i.test(text);
+  if (lighterCue) return 'lighter_smoother';
+  return 'general';
+}
+
+function shouldDiversifyConcernSelectorFinishFitComparison(selector = {}, recommendations = []) {
+  const comparisonMode = String(
+    pickFirstTrimmed(selector?.comparison_mode, selector?.comparisonMode) || '',
+  ).trim().toLowerCase();
+  const primaryRoleId = String(
+    pickFirstTrimmed(selector?.primary_role_id, selector?.primaryRoleId) || '',
+  ).trim().toLowerCase();
+  return (
+    (comparisonMode === 'same_role_comparison' || comparisonMode === 'same_role')
+    && primaryRoleId === 'daily_sunscreen_finish_fit'
+    && Array.isArray(recommendations)
+    && recommendations.length > 2
+  );
+}
+
+function diversifyConcernSelectorFinishFitOrdering(recommendations = [], selector = {}) {
+  const ordered = Array.isArray(recommendations) ? recommendations.slice() : [];
+  if (!shouldDiversifyConcernSelectorFinishFitComparison(selector, ordered)) return ordered;
+  const topPickProductId = pickFirstTrimmed(selector?.top_pick_product_id, selector?.topPickProductId) || null;
+  const lead = (topPickProductId
+    ? ordered.find((row) => pickFirstString(row?.product_id, row?.productId) === topPickProductId)
+    : null) || ordered[0] || null;
+  if (!lead) return ordered;
+
+  const usedProductIds = new Set();
+  const diversified = [];
+  const pushUnique = (row) => {
+    const productId = pickFirstString(row?.product_id, row?.productId);
+    if (!productId || usedProductIds.has(productId)) return false;
+    usedProductIds.add(productId);
+    diversified.push(row);
+    return true;
+  };
+  pushUnique(lead);
+
+  const leadBucket = classifyConcernSelectorFinishFitTradeoffBucket(lead);
+  const desiredBuckets = ['lighter_smoother', 'mineral_sensitive', 'richer_moisturizing']
+    .filter((bucket) => bucket !== leadBucket);
+  for (const bucket of desiredBuckets) {
+    const match = ordered.find((row) => {
+      const productId = pickFirstString(row?.product_id, row?.productId);
+      if (!productId || usedProductIds.has(productId)) return false;
+      return classifyConcernSelectorFinishFitTradeoffBucket(row) === bucket;
+    });
+    if (match) pushUnique(match);
+  }
+  for (const row of ordered) pushUnique(row);
+  return diversified;
+}
+
 function applyConcernSelectorRaceOrdering(recommendations, selectorRace) {
   const recos = Array.isArray(recommendations) ? recommendations.slice() : [];
   const selector = isPlainObject(selectorRace) ? selectorRace : {};
@@ -104,9 +182,10 @@ function applyConcernSelectorRaceOrdering(recommendations, selectorRace) {
       return 0;
     });
   }
+  const diversifiedOrdered = diversifyConcernSelectorFinishFitOrdering(ordered, selector);
   const selectionNotes = uniqCaseInsensitiveStrings(asStringArray(selector.selection_notes), 3);
   return {
-    recommendations: ordered,
+    recommendations: diversifiedOrdered,
     primary_recommendation_id: topPickProductId,
     support_roles_surfaced: uniqCaseInsensitiveStrings(asStringArray(selector.support_roles_surfaced), 4),
     winner_source: topPickProductId ? 'llm_selector' : 'deterministic',
