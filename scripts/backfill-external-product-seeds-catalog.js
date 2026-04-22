@@ -373,6 +373,7 @@ function isDecorativeSeedImageUrl(value) {
     normalized.includes('icon-account') ||
     normalized.includes('/logo.svg') ||
     normalized.includes('/tf_logo.svg') ||
+    /[_-]\d{2,3}x\d{2,3}_crop_center(?:[._-]|$)/i.test(normalized) ||
     normalized.includes('gnav-shop-') ||
     normalized.includes('shade-finder-hero-')
   );
@@ -509,6 +510,20 @@ function extractImageFilenameTokens(value) {
   }
 }
 
+function extractImageFilenameText(value) {
+  const normalized = normalizePdpImageUrl(value) || normalizeUrlLike(value);
+  if (!normalized) return '';
+  try {
+    const parsed = new URL(normalized);
+    return decodeBasicHtmlEntities(decodeURIComponent(parsed.pathname.split('/').pop() || ''))
+      .replace(/\.[a-z0-9]+$/i, '')
+      .trim()
+      .toLowerCase();
+  } catch {
+    return normalizeNonEmptyString(normalized).toLowerCase();
+  }
+}
+
 function buildSeedImageRelevanceContext(options = {}) {
   const values = uniqueStrings([
     options.productTitle,
@@ -523,10 +538,22 @@ function buildSeedImageRelevanceContext(options = {}) {
   };
 }
 
+function isCollectionStyleSeedImageUrl(value) {
+  const filename = extractImageFilenameText(value);
+  if (!filename) return false;
+  return (
+    /(?:^|[-_ ])collection(?:[-_ ]|$)/i.test(filename) ||
+    /(?:^|[-_ ])pdp[-_ ]bundle[-_ ]thumbnail(?:[-_ ]|$)/i.test(filename) ||
+    /(?:^|[-_ ])bundle[-_ ]thumbnail(?:[-_ ]|$)/i.test(filename)
+  );
+}
+
 function isProductRelevantSeedImageUrl(value, relevanceContext) {
-  if (!relevanceContext || relevanceContext.bundleLike || relevanceContext.productTypes.length !== 1) {
+  if (!relevanceContext) {
     return true;
   }
+  if (!relevanceContext.bundleLike && isCollectionStyleSeedImageUrl(value)) return false;
+  if (relevanceContext.bundleLike || relevanceContext.productTypes.length !== 1) return true;
   const imageProductTypes = extractCanonicalImageProductTypes(extractImageFilenameTokens(value));
   if (imageProductTypes.length === 0) return true;
   return imageProductTypes.includes(relevanceContext.productTypes[0]);

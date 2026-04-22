@@ -131,6 +131,8 @@ describe('backfill-external-product-seeds-catalog', () => {
           'https://www.rarebeauty.com/cdn/shop/files/ECOMM-FIND-COMFORT-BODY-HAIR-FRAGRANCE-MIST-MINI-CLOSED_1024x.jpg?v=1762301243',
           'https://www.rarebeauty.com/cdn/shop/files/ECOMM-FIND-COMFORT-BODY-LOTION-MINI-CLOSED_1024x.jpg?v=1762301243',
           'https://www.rarebeauty.com/cdn/shop/files/ECOMM-FIND-COMFORT-EXFOLIATING-BODY-WASH-MINI_1024x.jpg?v=1762301245',
+          'https://www.rarebeauty.com/cdn/shop/files/SCENT-AWAKEN-CONFIDENCE-BODY-COLLECTION_89331bc8-aca5-4b0e-af1d-a33b663ec690.jpg?v=1732569750',
+          'https://www.rarebeauty.com/cdn/shop/files/pdp-bundle-thumbnail-fc-body-lotion-180x180_1024x.jpg?v=1709669070',
         ],
         {
           productTitle: 'Find Comfort Mini Discovery Set',
@@ -141,6 +143,27 @@ describe('backfill-external-product-seeds-catalog', () => {
       'https://www.rarebeauty.com/cdn/shop/files/ECOMM-FIND-COMFORT-BODY-HAIR-FRAGRANCE-MIST-MINI-CLOSED_1024x.jpg?v=1762301243',
       'https://www.rarebeauty.com/cdn/shop/files/ECOMM-FIND-COMFORT-BODY-LOTION-MINI-CLOSED_1024x.jpg?v=1762301243',
       'https://www.rarebeauty.com/cdn/shop/files/ECOMM-FIND-COMFORT-EXFOLIATING-BODY-WASH-MINI_1024x.jpg?v=1762301245',
+      'https://www.rarebeauty.com/cdn/shop/files/SCENT-AWAKEN-CONFIDENCE-BODY-COLLECTION_89331bc8-aca5-4b0e-af1d-a33b663ec690.jpg?v=1732569750',
+      'https://www.rarebeauty.com/cdn/shop/files/pdp-bundle-thumbnail-fc-body-lotion-180x180_1024x.jpg?v=1709669070',
+    ]);
+  });
+
+  test('drops collection and bundle thumbnail images for single-product PDPs', () => {
+    expect(
+      sanitizeSeedImageUrls(
+        [
+          'https://cdn.shopify.com/s/files/1/0314/1143/7703/files/find-comfort-body-lotion-closed-1440x1952.jpg?v=1762289702',
+          'https://www.rarebeauty.com/cdn/shop/files/imperfect-circle-find-comfort-collection-800x864_1024x.png?v=1701811855',
+          'https://www.rarebeauty.com/cdn/shop/files/pdp-bundle-thumbnail-fc-body-lotion-180x180_1024x.jpg?v=1709669070',
+          'https://www.rarebeauty.com/cdn/shop/files/find-comfort-body-lotion-pump-01-1440x1952_120x120_crop_center.jpg?v=1762291295',
+        ],
+        {
+          productTitle: 'Find Comfort Hydrating Body Lotion',
+          productUrl: 'https://rarebeauty.com/products/find-comfort-hydrating-body-lotion',
+        },
+      ),
+    ).toEqual([
+      'https://cdn.shopify.com/s/files/1/0314/1143/7703/files/find-comfort-body-lotion-closed-1440x1952.jpg?v=1762289702',
     ]);
   });
 
@@ -2296,6 +2319,80 @@ describe('backfill-external-product-seeds-catalog', () => {
       'https://cdn.shopify.com/s/files/1/0314/1143/7703/files/ECOMM-FIND-COMFORT-BODY-HAIR-FRAGRANCE-MIST-MINI.jpg?v=1740424689',
       'https://www.rarebeauty.com/cdn/shop/files/PDP-USAGE-FIND-COMFORT-BODY-HAIR-FRAGRANCE-MIST-MINI-1268x1268_1024x.jpg?v=1740424675',
       'https://www.rarebeauty.com/cdn/shop/files/IMPERFECT-CIRCLE-FC-BODY-HAIR-FRAGRANCE-MIST-MINI-800x864_1024x.png?v=1740424658',
+    ]);
+    expect(payload.nextRow.seed_data.snapshot.image_urls).toEqual(payload.nextRow.seed_data.image_urls);
+    expect(payload.nextRow.seed_data.snapshot.variants[0].image_urls).toEqual(payload.nextRow.seed_data.image_urls);
+  });
+
+  test('filters collection and thumbnail group shots from single-product Rare body lotion galleries', () => {
+    const row = {
+      id: 'eps_rare_body_lotion',
+      external_product_id: 'ext_8ed8e4a0ed758afbfe1a50fc',
+      market: 'US',
+      tool: 'creator_agents',
+      title: 'Find Comfort Hydrating Body Lotion',
+      canonical_url: 'https://rarebeauty.com/products/find-comfort-hydrating-body-lotion',
+      destination_url: 'https://rarebeauty.com/products/find-comfort-hydrating-body-lotion',
+      image_url: 'https://cdn.shopify.com/s/files/1/0314/1143/7703/files/find-comfort-body-lotion-closed-1440x1952.jpg?v=1762289702',
+      price_amount: 28,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      seed_data: {
+        brand: 'Rare Beauty',
+        snapshot: {
+          canonical_url: 'https://rarebeauty.com/products/find-comfort-hydrating-body-lotion',
+        },
+      },
+    };
+
+    const payload = buildSeedUpdatePayload(
+      row,
+      {
+        products: [
+          {
+            title: 'Find Comfort Hydrating Body Lotion',
+            url: 'https://rarebeauty.com/products/find-comfort-hydrating-body-lotion',
+            image_url:
+              'https://cdn.shopify.com/s/files/1/0314/1143/7703/files/find-comfort-body-lotion-closed-1440x1952.jpg?v=1762289702',
+            image_urls: [
+              'https://cdn.shopify.com/s/files/1/0314/1143/7703/files/find-comfort-body-lotion-closed-1440x1952.jpg?v=1762289702',
+              'https://cdn.shopify.com/s/files/1/0314/1143/7703/files/find-comfort-body-lotion-1440x1952.jpg?v=1701812958',
+              'https://www.rarebeauty.com/cdn/shop/files/imperfect-circle-find-comfort-collection-800x864_1024x.png?v=1701811855',
+              'https://www.rarebeauty.com/cdn/shop/files/pdp-bundle-thumbnail-fc-body-lotion-180x180_1024x.jpg?v=1709669070',
+              'https://www.rarebeauty.com/cdn/shop/files/find-comfort-body-lotion-pump-01-1440x1952_120x120_crop_center.jpg?v=1762291295',
+            ],
+            variants: [
+              {
+                id: 'rb-body-lotion-default',
+                sku: 'RB-BL-1',
+                option_name: 'Title',
+                option_value: 'Default Title',
+                price: '28.00',
+                currency: 'USD',
+                stock: 'In Stock',
+                product_url: 'https://rarebeauty.com/products/find-comfort-hydrating-body-lotion',
+                image_url:
+                  'https://cdn.shopify.com/s/files/1/0314/1143/7703/files/find-comfort-body-lotion-closed-1440x1952.jpg?v=1762289702',
+                image_urls: [
+                  'https://cdn.shopify.com/s/files/1/0314/1143/7703/files/find-comfort-body-lotion-closed-1440x1952.jpg?v=1762289702',
+                  'https://cdn.shopify.com/s/files/1/0314/1143/7703/files/find-comfort-body-lotion-1440x1952.jpg?v=1701812958',
+                  'https://www.rarebeauty.com/cdn/shop/files/imperfect-circle-find-comfort-collection-800x864_1024x.png?v=1701811855',
+                  'https://www.rarebeauty.com/cdn/shop/files/pdp-bundle-thumbnail-fc-body-lotion-180x180_1024x.jpg?v=1709669070',
+                  'https://www.rarebeauty.com/cdn/shop/files/find-comfort-body-lotion-pump-01-1440x1952_120x120_crop_center.jpg?v=1762291295',
+                ],
+              },
+            ],
+          },
+        ],
+        variants: [],
+        diagnostics: {},
+      },
+      'https://rarebeauty.com/products/find-comfort-hydrating-body-lotion',
+    );
+
+    expect(payload.nextRow.seed_data.image_urls).toEqual([
+      'https://cdn.shopify.com/s/files/1/0314/1143/7703/files/find-comfort-body-lotion-closed-1440x1952.jpg?v=1762289702',
+      'https://cdn.shopify.com/s/files/1/0314/1143/7703/files/find-comfort-body-lotion-1440x1952.jpg?v=1701812958',
     ]);
     expect(payload.nextRow.seed_data.snapshot.image_urls).toEqual(payload.nextRow.seed_data.image_urls);
     expect(payload.nextRow.seed_data.snapshot.variants[0].image_urls).toEqual(payload.nextRow.seed_data.image_urls);
