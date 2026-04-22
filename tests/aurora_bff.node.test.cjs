@@ -6732,6 +6732,9 @@ test('fetchRecoAlternativesForProduct: barrier moisturizer alternatives rank bar
                 product_intel: {
                   one_liner: 'A daily moisturizer built around niacinamide, ceramide/barrier-lipid support plus humectants for hydration.',
                 },
+                shopping_card: {
+                  intro: 'Barrier-support cues line up with the anchor instead of drifting into a more generic moisturizer compare.',
+                },
                 canonical_product_ref: {
                   product_id: 'ext_joseon_dynasty_cream',
                   merchant_id: 'external_seed',
@@ -6844,6 +6847,9 @@ test('fetchRecoAlternativesForProduct: barrier moisturizer alternatives rank bar
         assert.ok(topReasons.some((line) => /calming barrier-comfort cues/i.test(String(line))), JSON.stringify(topReasons));
         assert.match(String(out.alternatives[0]?.why_this_one || ''), /calming barrier-comfort cues|dry, tight, or easily irritated skin/i);
         assert.match(String(out.alternatives[0]?.short_description || ''), /calming barrier-comfort cues|dry, tight, or easily irritated skin/i);
+        const dynastyRow = out.alternatives.find((row) => /dynasty cream/i.test(String(row?.product?.name || row?.name || '')));
+        assert.match(String(dynastyRow?.why_this_one || ''), /hydration-first than barrier-first|hydration-led than barrier-led/i);
+        assert.match(String(dynastyRow?.short_description || ''), /hydration-first than barrier-first|hydration-led than barrier-led/i);
         const genericHydrationRow = out.alternatives.find((row) => /air angel|level up/i.test(String(row?.product?.name || row?.name || '')));
         const tradeoffNotes = Array.isArray(genericHydrationRow?.tradeoff_notes) ? genericHydrationRow.tradeoff_notes : [];
         assert.ok(tradeoffNotes.some((line) => /more hydration-led than barrier-led|less explicit barrier-support evidence/i.test(String(line))), JSON.stringify(tradeoffNotes));

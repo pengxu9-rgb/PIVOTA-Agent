@@ -74142,21 +74142,97 @@ function scoreGroundedAlternativeVisibleReasonLine(value) {
   if (text.length <= 140) score += 1;
   if (/^same\b/i.test(text)) score -= 6;
   if (/^names the\b/i.test(text)) score -= 6;
+  if (/\bexternal-backed\b|\binternal pdp coverage may vary\b/i.test(text)) score -= 8;
+  if (/\b(?:hydration-first|hydration-led|more\s+\w+(?:-\w+)?\s+than\s+\w+(?:-\w+)?|less\s+\w+(?:-\w+)?\s+than)\b/i.test(text)) {
+    score += 3;
+  }
   if (/\b(calming|comfort|dry|tight|irritated|hydration-first|hydration-led|barrier-support|matte|dewier|dewy|weightless|sheer|mineral|moisturizing|shine-controlling|less slip|under makeup|lighter|smoother)\b/i.test(text)) {
     score += 5;
   }
-  if (/\banchor\b/i.test(text)) score -= 1;
+  if (/\banchor\b/i.test(text)) score -= 2;
+  if (/\bgeneric moisturizer compare\b/i.test(text)) score -= 4;
   if (/\bcurrent pool|product pool|role directly\b/i.test(text)) score -= 3;
   return score;
+}
+
+function rewriteGroundedAlternativeVisibleShopperLine(row, value) {
+  const item = isPlainObject(row) ? row : {};
+  const text = cleanRecoVisibleCopy(value).replace(/\s+/g, ' ').trim();
+  if (!text) return '';
+  if (
+    /keeps the compare inside the same hydration-first moisturizer lane/i.test(text) ||
+    /more hydration-led than barrier-led compared with the anchor/i.test(text)
+  ) {
+    return 'Leans more hydration-first than barrier-first if you want a bit more moisture.';
+  }
+  if (/less explicit barrier-support evidence than the anchor/i.test(text)) {
+    return 'Leans less barrier-focused than the anchor if you want a lighter hydration-first option.';
+  }
+  if (/barrier-support cues line up with the anchor instead of drifting into a more generic moisturizer compare/i.test(text)) {
+    const metadata =
+      item.metadata && typeof item.metadata === 'object' && !Array.isArray(item.metadata)
+        ? item.metadata
+        : {};
+    if (Number(metadata.barrier_fit_penalty || 0) > 0) {
+      return 'Leans more hydration-first than barrier-first if you want a bit more moisture.';
+    }
+    return 'Stays closer to the anchor\'s barrier-support profile than a generic moisturizer.';
+  }
+  return text;
+}
+
+function buildGroundedAlternativeFallbackVisibleShopperCopy(row) {
+  const item = isPlainObject(row) ? row : {};
+  const metadata =
+    item.metadata && typeof item.metadata === 'object' && !Array.isArray(item.metadata)
+      ? item.metadata
+      : {};
+  const contextText = [
+    ...(Array.isArray(item.reasons) ? item.reasons : []),
+    ...(Array.isArray(item.tradeoff_notes) ? item.tradeoff_notes : []),
+    item.best_use,
+    item.best_for,
+    item.role_scope,
+    item.selected_target_id,
+  ]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(' ');
+  const isBarrierMoisturizerCompare =
+    /barrier-friendly moisturizer|hydrating_barrier_moisturizer|barrier-support|dry|tight|irritated|hydration-first|barrier-led/i.test(contextText) ||
+    Number(metadata.barrier_fit_bonus || 0) > 0 ||
+    Number(metadata.barrier_fit_penalty || 0) > 0 ||
+    metadata.barrier_comfort_match === true;
+  if (!isBarrierMoisturizerCompare) return '';
+
+  const candidateHaystack = buildRecoAlternativePoolCandidateText(item);
+  const hydrationTradeoff =
+    /hydration-first|hydration-led|dewy|plump|glycerin|hyaluronic|squalane/i.test(candidateHaystack) ||
+    Number(metadata.barrier_fit_penalty || 0) > 0;
+  const comfortSignal =
+    metadata.barrier_comfort_match === true ||
+    RECO_ALTERNATIVE_BARRIER_COMFORT_SIGNAL_RE.test(candidateHaystack);
+  const strongBarrierSignal = RECO_ALTERNATIVE_STRONG_BARRIER_BRIDGE_RE.test(candidateHaystack);
+
+  if (comfortSignal) {
+    return 'Adds more calming barrier-comfort cues for dry, tight, or easily irritated skin.';
+  }
+  if (hydrationTradeoff) {
+    return 'Leans more hydration-first than barrier-first if you want a bit more moisture.';
+  }
+  if (strongBarrierSignal) {
+    return 'Stays closer to the anchor\'s barrier-support profile than a generic moisturizer.';
+  }
+  return '';
 }
 
 function buildGroundedAlternativeVisibleShopperCopy(row) {
   const item = isPlainObject(row) ? row : {};
   const reasons = asStringArray(item.reasons, 4)
-    .map((value) => cleanRecoVisibleCopy(value).replace(/\s+/g, ' ').trim())
+    .map((value) => rewriteGroundedAlternativeVisibleShopperLine(item, value))
     .filter(Boolean);
   const tradeoffNotes = asStringArray(item.tradeoff_notes, 3)
-    .map((value) => cleanRecoVisibleCopy(value).replace(/\s+/g, ' ').trim())
+    .map((value) => rewriteGroundedAlternativeVisibleShopperLine(item, value))
     .filter(Boolean);
   const rankedReasons = reasons
     .map((text) => ({ text, score: scoreGroundedAlternativeVisibleReasonLine(text) }))
@@ -74166,7 +74242,11 @@ function buildGroundedAlternativeVisibleShopperCopy(row) {
     .map((text) => ({ text, score: scoreGroundedAlternativeVisibleReasonLine(text) + 0.5 }))
     .filter((entry) => Number.isFinite(entry.score) && entry.score >= 2)
     .sort((left, right) => Number(right.score || 0) - Number(left.score || 0));
-  const whyThisOne = pickFirstTrimmed(rankedReasons[0]?.text, rankedTradeoffs[0]?.text);
+  const whyThisOne = pickFirstTrimmed(
+    rankedReasons[0]?.text,
+    rankedTradeoffs[0]?.text,
+    buildGroundedAlternativeFallbackVisibleShopperCopy(item),
+  );
   return {
     whyThisOne,
     shortDescription: whyThisOne ? truncateRecoNarrativeSnippet(whyThisOne, 110) : '',
@@ -74703,19 +74783,32 @@ function isCatalogVerifiedRecoAlternative(row) {
   return String(item.grounding_status || '').trim().toLowerCase() === 'catalog_verified';
 }
 
+function applyFinalRecoAlternativeVisibleShopperCopy(row) {
+  const item = isPlainObject(row) ? { ...row } : row;
+  if (!isPlainObject(item) || !isCatalogVerifiedRecoAlternative(item)) return item;
+  const derived = buildGroundedAlternativeVisibleShopperCopy(item);
+  const whyThisOne = pickFirstTrimmed(derived.whyThisOne, item.why_this_one, item.whyThisOne);
+  const shortDescription = pickFirstTrimmed(derived.shortDescription, item.short_description, item.shortDescription);
+  return {
+    ...item,
+    ...(whyThisOne ? { why_this_one: whyThisOne } : {}),
+    ...(shortDescription ? { short_description: shortDescription } : {}),
+  };
+}
+
 function filterRecoAlternativesVisibleAuthorityRows(rows, { minGrounded = 1 } = {}) {
   const list = Array.isArray(rows) ? rows.filter((row) => isPlainObject(row)) : [];
   const grounded = list.filter(isCatalogVerifiedRecoAlternative);
   const minimum = Math.max(1, Math.trunc(Number(minGrounded) || 2));
   if (grounded.length < minimum) {
     return {
-      alternatives: list,
+      alternatives: list.map((row) => applyFinalRecoAlternativeVisibleShopperCopy(row)),
       hidden_unresolved_count: 0,
       visible_authority_only_filter_applied: false,
     };
   }
   return {
-    alternatives: grounded,
+    alternatives: grounded.map((row) => applyFinalRecoAlternativeVisibleShopperCopy(row)),
     hidden_unresolved_count: Math.max(0, list.length - grounded.length),
     visible_authority_only_filter_applied: grounded.length !== list.length,
   };
