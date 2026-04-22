@@ -5626,3 +5626,77 @@ test('beauty chat mainline entry hard-stops handoff at the stage deadline instea
   assert.equal(Number.isFinite(observed.handoffDeadlineAtMs), true);
   assert.ok(elapsedMs < 750);
 });
+
+test('beauty chat mainline entry clarifies a generic skin ask before heavy retrieval when no skin context is present', async () => {
+  let handoffCalls = 0;
+  const runtime = createBeautyChatMainlineEntryRuntime({
+    RECO_CATALOG_GROUNDED_ENABLED: true,
+    RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS: 1000,
+    resolveRecommendationTargetContext,
+    summarizeProfileForContext: (profile) => profile || {},
+    mergeIngredientRecoContextValue: (left, right) => ({ ...(left || {}), ...(right || {}) }),
+    appendLatestRecoContextToSessionPatch: () => {},
+    extractRecoFinalSelectionContract: () => null,
+    maybeRewriteRecoAssistantTextWithLlm: async () => ({
+      attempted: false,
+      llm_used: false,
+      attempt_count: 0,
+    }),
+    makeAssistantMessage: (content) => ({ role: 'assistant', format: 'text', content }),
+    buildEnvelope: (_ctx, envelope) => envelope,
+    makeEvent: (_ctx, kind, data) => ({ kind, data }),
+    applyRecoContractToRecoRequestedEvents: (events) => ({ events }),
+    buildRecoRequestedEventData: ({ payload, source }) => ({ payload, source }),
+    normalizeRecoSourceDetail: (value) => value,
+    stateChangeAllowed: () => false,
+    handoffRecoToBeautyMainlineSearch: async () => {
+      handoffCalls += 1;
+      return { attempted: true, recommendations: [] };
+    },
+    buildRecoPayloadFromBeautyMainlineHandoff: () => ({
+      payload: {},
+      contract: {},
+    }),
+    classifyBeautyMainlineHandoffFallback: () => ({
+      reason: 'unreachable',
+    }),
+    buildBeautyMainlineHandoffFallbackEnvelope: ({ fallback }) => ({
+      assistant_message: { role: 'assistant', content: 'need more context' },
+      cards: [
+        {
+          type: 'confidence_notice',
+          payload: {
+            reason: fallback.notice_reason,
+            mainline_status: fallback.mainline_status,
+            recommendation_meta: fallback,
+          },
+        },
+      ],
+    }),
+    looksLikeRecommendationRequest: () => true,
+    sendChatEnvelope: async () => null,
+  });
+
+  const result = await runtime.maybeHandleBeautyOwnedChatReco({
+    ctx: {
+      request_id: 'req_generic_skin_clarify',
+      trace_id: 'trace_generic_skin_clarify',
+      lang: 'EN',
+      trigger_source: 'chat',
+    },
+    logger: null,
+    message: 'what should I use for my skin?',
+    recoEntrySourceDetail: 'typed_reco',
+    profile: {},
+  });
+
+  assert.equal(result?.handled, true);
+  assert.equal(handoffCalls, 0);
+  assert.equal(result?.envelope?.cards?.[0]?.type, 'confidence_notice');
+  assert.equal(result?.envelope?.cards?.[0]?.payload?.reason, 'needs_more_context');
+  assert.equal(result?.envelope?.cards?.[0]?.payload?.mainline_status, 'needs_more_context');
+  assert.equal(
+    result?.envelope?.cards?.[0]?.payload?.recommendation_meta?.products_empty_reason,
+    'minimum_recommendation_context_unsatisfied',
+  );
+});
