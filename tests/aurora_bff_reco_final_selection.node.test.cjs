@@ -3423,7 +3423,7 @@ test('reco assistant structured renderer removes generic SPF utility tails from 
 
     assert.doesNotMatch(text, /AM UV protection|daily protection/i);
     assert.match(text, /help reduce pilling|lighter for daytime layering/i);
-    assert.match(text, /if you want more moisture under makeup/i);
+    assert.match(text, /if you want more (?:moisture|cushion) under makeup/i);
   } finally {
     delete require.cache[moduleId];
   }
@@ -3626,9 +3626,17 @@ test('reco assistant rewrite uses structured primary attempt for finish-fit same
     );
     assert.doesNotMatch(rewrite.text, /fits this request for sunscreen that wears more smoothly under makeup because/i);
     assert.doesNotMatch(rewrite.text, /Unseen Sunscreen SPF 50 fits this request because/i);
-    assert.match(rewrite.text, /Ultra Light Liquid Mineral Sunscreen with Zinc Oxide SPF 30 gives a more mineral, sensitive-skin-oriented option/i);
-    assert.match(rewrite.text, /Hydrating Sunscreen Milk with Colloidal Oatmeal Broad Spectrum SPF 45 gives a richer cream-spf base/i);
+    assert.match(
+      rewrite.text,
+      /Ultra Light Liquid Mineral Sunscreen with Zinc Oxide SPF 30 (?:leans more mineral and sensitive-skin-friendly if you want a sheer, weightless finish|gives a more mineral, sensitive-skin-oriented option)/i,
+    );
+    assert.match(
+      rewrite.text,
+      /Hydrating Sunscreen Milk with Colloidal Oatmeal Broad Spectrum SPF 45 (?:leans richer and more moisturizing if you want more cushion under makeup|gives a richer cream-spf base)/i,
+    );
     assert.doesNotMatch(rewrite.text, /same-slot comparison option because/i);
+    assert.doesNotMatch(rewrite.text, /What city or climate are you usually in/i);
+    assert.equal(rewrite.refinement_question?.field || null, null);
   } finally {
     __internal.__resetCallGeminiJsonObjectForTest();
     if (prevMock === undefined) delete process.env.AURORA_BFF_USE_MOCK;

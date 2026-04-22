@@ -57994,6 +57994,22 @@ function normalizeRecoAssistantFinishFitTradeoffReason(reason = '', {
       /\bis better suited to lighter daytime layering to prevent pilling\b/ig,
       'keeps the feel lighter for daytime layering to help reduce pilling',
     )
+    .replace(
+      /\boffers a sheer, silky liquid mineral formula for sensitive skin while maintaining a weightless finish\b/ig,
+      'leans more mineral and sensitive-skin-friendly if you want a sheer, weightless finish',
+    )
+    .replace(
+      /\boffers a sheer, weightless finish in a silky liquid formula for those seeking a mineral-based option for sensitive skin\b/ig,
+      'leans more mineral and sensitive-skin-friendly if you want a sheer, weightless finish',
+    )
+    .replace(
+      /\bprovides a richer, more moisturizing cream-based option if you want more moisture under makeup\b/ig,
+      'leans richer and more moisturizing if you want more cushion under makeup',
+    )
+    .replace(
+      /\bprovides a richer, more moisturizing cream-based texture for those needing extra hydration during daily wear\b/ig,
+      'leans richer and more moisturizing if you want more cushion under makeup',
+    )
     .replace(/\bduring am uv protection\b/ig, 'during daytime wear')
     .replace(/\bfor am uv protection\b/ig, 'for daytime wear')
     .replace(/\bfor daily protection\b/ig, 'for daytime wear')
@@ -58074,6 +58090,34 @@ function renderRecoAssistantStructuredLeadProductSentence(name, reason, {
   return formatRecoAssistantStructuredSentence(`${productName} fits this request${targetPhrase} because ${normalizedReason}`);
 }
 
+function shouldSuppressRecoAssistantOptionalRefinementQuestion({
+  refinementQuestionPlan = null,
+  selectedProductRoleMix = '',
+  requestMode = '',
+  primaryTarget = null,
+  recommendations = [],
+} = {}) {
+  const questionField = pickFirstTrimmed(refinementQuestionPlan?.field);
+  if (!questionField || questionField !== 'location_climate') return false;
+  if (String(requestMode || '').toLowerCase() !== 'buy') return false;
+  if (String(selectedProductRoleMix || '').toLowerCase() !== 'same_role_comparison') return false;
+  const targetText = [
+    pickFirstTrimmed(
+      primaryTarget && primaryTarget.ingredient_query,
+      primaryTarget && primaryTarget.ingredient_id,
+      primaryTarget && primaryTarget.target_id,
+      primaryTarget && primaryTarget.resolved_target_step,
+    ),
+    ...(Array.isArray(recommendations) ? recommendations : []).map((item) => pickFirstTrimmed(
+      item?.matched_role_label,
+      item?.matchedRoleLabel,
+      item?.matched_role_id,
+      item?.matchedRoleId,
+    )),
+  ].filter(Boolean).join(' ');
+  return recoRoleNeedsFinishFitNarrative(targetText);
+}
+
 function renderRecoAssistantStructuredReasonRewrite({
   structuredReason,
   payload,
@@ -58103,7 +58147,7 @@ function renderRecoAssistantStructuredReasonRewrite({
     ),
   );
   const targetPhrase = formatRecoAssistantTargetPhrase(targetLabel, language);
-  const refinementQuestionPlan = buildRecoAssistantRefinementQuestionPlan({
+  const rawRefinementQuestionPlan = buildRecoAssistantRefinementQuestionPlan({
     profile,
     userRequestText: pickFirstTrimmed(
       userRequestText,
@@ -58112,6 +58156,15 @@ function renderRecoAssistantStructuredReasonRewrite({
     ),
     language,
   });
+  const refinementQuestionPlan = shouldSuppressRecoAssistantOptionalRefinementQuestion({
+    refinementQuestionPlan: rawRefinementQuestionPlan,
+    selectedProductRoleMix,
+    requestMode,
+    primaryTarget,
+    recommendations,
+  })
+    ? null
+    : rawRefinementQuestionPlan;
   const forbiddenNames = collectRecoAssistantUnselectedCandidateDisplayNames(payload, 8);
   const forbiddenAliases = collectRecoAssistantUnselectedCandidateAliases(payload);
   const leadReason = normalizeRecoAssistantReasonFragment(structuredReason?.lead_reason, {
@@ -58297,7 +58350,7 @@ async function maybeRewriteRecoAssistantTextWithLlm({
       payload?.request_text,
     ),
   );
-  const refinementQuestionPlan = buildRecoAssistantRefinementQuestionPlan({
+  const rawRefinementQuestionPlan = buildRecoAssistantRefinementQuestionPlan({
     profile,
     userRequestText: pickFirstTrimmed(
       userRequestText,
@@ -58306,6 +58359,15 @@ async function maybeRewriteRecoAssistantTextWithLlm({
     ),
     language,
   });
+  const refinementQuestionPlan = shouldSuppressRecoAssistantOptionalRefinementQuestion({
+    refinementQuestionPlan: rawRefinementQuestionPlan,
+    selectedProductRoleMix,
+    requestMode,
+    primaryTarget,
+    recommendations,
+  })
+    ? null
+    : rawRefinementQuestionPlan;
   const finishFitPrimaryAttempt = recoRoleNeedsFinishFitNarrative(
     [
       pickFirstTrimmed(
