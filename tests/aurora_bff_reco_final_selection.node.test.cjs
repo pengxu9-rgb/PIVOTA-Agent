@@ -3349,6 +3349,70 @@ test('reco assistant structured renderer compares finish-fit sunscreen options w
   }
 });
 
+test('reco assistant structured renderer strips legacy uv-protection fragments from finish-fit compare copy', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const payload = __internal.applyRecoContentSpineToPayload(
+      {
+        recommendations: [
+          {
+            product_id: 'spf_matte',
+            display_name: 'Matte Fit Serum Sunscreen SPF 50+ PA++++',
+            brand: 'SKINTIFIC',
+            category: 'Sunscreen',
+            short_description: 'Protect your skin from UVA, UVB, and blue light with Matte Fit Serum Sunscreen SPF 50+ PA++++.',
+            why_this_one: 'it leans more matte and shine-controlling if you want less slip under makeupagainst UVA, UVB, and blue light',
+            matched_role_id: 'daily_sunscreen_finish_fit',
+            matched_role_label: 'Daily sunscreen with finish fit',
+            preferred_step: 'sunscreen',
+          },
+        ],
+        roles: [
+          {
+            role_id: 'daily_sunscreen_finish_fit',
+            label: 'Daily sunscreen with finish fit',
+            preferred_step: 'sunscreen',
+          },
+        ],
+        recommendation_meta: {
+          resolved_target_step: 'sunscreen',
+          mainline_status: 'grounded_success',
+        },
+      },
+      {
+        ingredient_query: 'Daily sunscreen with finish fit',
+        resolved_target_step: 'sunscreen',
+        primary_target_id: 'daily_sunscreen_finish_fit',
+        ranked_targets: [
+          {
+            target_id: 'daily_sunscreen_finish_fit',
+            ingredient_query: 'Daily sunscreen with finish fit',
+            resolved_target_step: 'sunscreen',
+          },
+        ],
+        selected_target_ids: ['daily_sunscreen_finish_fit'],
+      },
+    );
+    const names = ['Matte Fit Serum Sunscreen SPF 50+ PA++++'];
+    const primaryTarget = payload.recommendation_meta.ranked_targets[0];
+    const text = __internal.renderRecoAssistantStructuredReasonRewrite({
+      structuredReason: { lead_reason: '', support_reasons: [] },
+      payload,
+      language: 'EN',
+      primaryTarget,
+      names,
+      requestMode: 'buy',
+      selectedProductRoleMix: 'single_product',
+    });
+
+    assert.match(text, /less slip under makeup/i);
+    assert.doesNotMatch(text, /under makeupagainst/i);
+    assert.doesNotMatch(text, /UVA, UVB, and blue light/i);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('reco assistant validator rejects unsupported primer-equivalence claims for finish-fit sunscreen copy', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {

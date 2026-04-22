@@ -119,6 +119,9 @@ const {
   createLegacyRecoGenerationEngineRuntime,
 } = require('./legacyRecoGenerationEngine');
 const {
+  attachBeautyExpertV1ToResponse,
+} = require('../modules/orchestration/aurora_beauty/beautyExpertV1');
+const {
   createDirectRecoGenerateHandlerRuntime,
 } = require('./directRecoGenerateHandler');
 const {
@@ -18152,6 +18155,90 @@ function applyCommerceMedicalClaimGuard(text, lang) {
   return lang === 'CN'
     ? '我可以帮你查商品信息/成分/购买渠道，但不提供医疗诊断或治疗建议；如果你有皮炎、湿疹等情况，建议线下就医。你想查哪个品牌/单品？'
     : "I can help with product info/ingredients/where to buy, but I can't provide medical diagnosis or treatment advice. If you suspect dermatitis/eczema, please see a clinician. Which brand or product are you looking for?";
+}
+
+function buildBeautyExpertV1ChatAttachOptions({
+  req,
+  profile = null,
+  requestMessage = '',
+  responsePayload = null,
+} = {}) {
+  const userGoal = pickFirstTrimmed(
+    requestMessage,
+    req?.body?.message,
+    req?.body?.user_message,
+    req?.body?.query,
+  ) || null;
+  const skinType = pickFirstTrimmed(
+    profile?.skinType,
+    profile?.skin_type,
+    profile?.skin_type_tendency,
+  );
+  const sensitivity = pickFirstTrimmed(
+    profile?.sensitivity,
+    profile?.sensitivity_tendency,
+  );
+  const barrierStatus = pickFirstTrimmed(
+    profile?.barrierStatus,
+    profile?.barrier_status,
+  );
+  const goals = Array.isArray(profile?.goals)
+    ? profile.goals.map((value) => String(value || '').trim()).filter(Boolean).slice(0, 6)
+    : [];
+  const skinContext = {
+    ...(skinType ? { skin_type: skinType } : {}),
+    ...(sensitivity ? { sensitivity } : {}),
+    ...(barrierStatus ? { barrier_status: barrierStatus } : {}),
+    ...(goals.length ? { goals } : {}),
+  };
+  return {
+    source: 'aurora-bff',
+    entryLayer: 'orchestration',
+    delegatedLayer: 'decisioning',
+    projectionType: 'aurora_cards',
+    taskType: 'discovery',
+    context: {
+      source_profile: {
+        source: 'aurora-bff',
+        default_entry_layer: 'orchestration',
+      },
+      vertical: 'beauty',
+      category: 'skincare',
+      raw_user_goal: userGoal,
+      normalized_need: {
+        beauty_request: {
+          domain: 'beauty',
+          user_goal: userGoal,
+          skin_context: skinContext,
+        },
+      },
+    },
+    metadata: {
+      source: 'aurora-bff',
+      catalog_surface: 'beauty',
+      ...(pickFirstTrimmed(
+        responsePayload?.mainline_status,
+        responsePayload?.recommendation_meta?.mainline_status,
+        responsePayload?.metadata?.mainline_status,
+        responsePayload?.meta?.final_authority_status,
+      )
+        ? {
+            mainline_status: pickFirstTrimmed(
+              responsePayload?.mainline_status,
+              responsePayload?.recommendation_meta?.mainline_status,
+              responsePayload?.metadata?.mainline_status,
+              responsePayload?.meta?.final_authority_status,
+            ),
+          }
+        : {}),
+    },
+    payload: req?.body && typeof req.body === 'object' ? req.body : {},
+    messages: Array.isArray(req?.body?.messages)
+      ? req.body.messages
+      : userGoal
+        ? [{ role: 'user', content: userGoal }]
+        : [],
+  };
 }
 
 const RECO_CONTEXT_CONTENT_MAX_TARGETS = 3;
@@ -58496,11 +58583,20 @@ function normalizeRecoAssistantFinishFitTradeoffReason(reason = '', {
       /\b(?:gives|offers|provides)\s+(?:a\s+)?matte(?:[^.]{0,80})shine(?:[^.]{0,80})\b/ig,
       'leans more matte and shine-controlling if you want less slip under makeup',
     )
+    .replace(
+      /\b(under makeup|less slip under makeup|less weight under makeup)\s*(?:against|protect(?: your skin)? from)\s+uva,\s*uvb(?:,\s*and\s+blue\s+light)?\b/ig,
+      '$1',
+    )
+    .replace(
+      /\b(?:against|protect(?: your skin)? from)\s+uva,\s*uvb(?:,\s*and\s+blue\s+light)?\b/ig,
+      '',
+    )
     .replace(/\bduring am uv protection\b/ig, 'during daytime wear')
     .replace(/\bfor am uv protection\b/ig, 'for daytime wear')
     .replace(/\bfor daily protection\b/ig, 'for daytime wear')
     .replace(/\bduring daily protection\b/ig, 'during daytime wear')
     .replace(/\bis specifically suited for\b/ig, 'is better suited to')
+    .replace(/\s+([,.;!?])/g, '$1')
     .replace(/\s+/g, ' ')
     .trim();
   return text;
@@ -89951,9 +90047,18 @@ function mountAuroraBffRoutes(app, { logger }) {
       }
 
       emitAudit(envelopeWithGuardrails, templateCtx, { logger });
-      const responsePayload = AURORA_CHAT_LEGACY_ENVELOPE_RESPONSE
+      const baseResponsePayload = AURORA_CHAT_LEGACY_ENVELOPE_RESPONSE
         ? envelopeWithGuardrails
         : chatCardsResponse;
+      const responsePayload = attachBeautyExpertV1ToResponse(
+        baseResponsePayload,
+        buildBeautyExpertV1ChatAttachOptions({
+          req,
+          profile,
+          requestMessage,
+          responsePayload: baseResponsePayload,
+        }),
+      );
       if (statusCode >= 400) return res.status(statusCode).json(responsePayload);
       return res.json(responsePayload);
     };

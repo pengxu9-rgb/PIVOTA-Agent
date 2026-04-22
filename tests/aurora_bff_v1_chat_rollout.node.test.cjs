@@ -1596,6 +1596,8 @@ test('/v1/chat exposes v1-mainline routing headers for beauty reco ingress', asy
       assert.equal(response.headers['x-aurora-chat-ingress-delegate-target'], 'beauty_mainline');
       assert.equal(response.headers['x-aurora-chat-ingress-request-class'], 'beauty_discovery');
       assert.equal(response.headers['x-aurora-chat-early-beauty-lock'], 'true');
+      assert.equal(response.body?.beauty_expert_v1?.contract_version, 'beauty_expert_v1');
+      assert.equal(response.body?.beauty_expert_v1?.delegation_trace?.projection_type, 'aurora_cards');
     } finally {
       routes.__internal.__resetRouteDependencyOverridesForTest();
     }
