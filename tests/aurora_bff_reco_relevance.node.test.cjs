@@ -4918,7 +4918,7 @@ test('__internal: local external seed oil-control support search uses lean posit
   assert.equal(out.products[0].retrieval_match_stage, 'support_category_positive');
 });
 
-test('__internal: local external seed sunscreen finish query uses category-positive authority recall', async () => {
+test('__internal: local external seed sunscreen finish query uses precise query authority recall before broad fallback', async () => {
   const { __internal } = loadRoutesFresh();
   const observedQueries = [];
   const out = await __internal.searchLocalExternalSeedProducts({
@@ -4976,7 +4976,7 @@ test('__internal: local external seed sunscreen finish query uses category-posit
   assert.equal(out.ok, true);
   assert.equal(out.local_external_seed_search_mode, 'staged_support_fastpath');
   assert.equal(observedQueries.length, 1);
-  assert.match(observedQueries[0].sql, /support_category_positive/);
+  assert.match(observedQueries[0].sql, /support_query_precise/);
   assert.deepEqual(observedQueries[0].params[2], [
     'sunscreen',
     'spf',
@@ -4985,11 +4985,14 @@ test('__internal: local external seed sunscreen finish query uses category-posit
     'uv protection',
   ]);
   assert.ok(observedQueries[0].params[3].includes('%spf fluid%'));
-  assert.ok(observedQueries[0].params[3].includes('%oil-free%'));
+  assert.equal(
+    observedQueries[0].params[3].some((pattern) => pattern === '%oil-free%' || pattern === '%oil free%'),
+    true,
+  );
   assert.equal(observedQueries[0].params[3].includes('%spf%'), false);
-  assert.ok(observedQueries[0].params.some((param) => Array.isArray(param) && param.includes('%foundation%')));
-  assert.equal(out.local_external_seed_stage_debug[0]?.stage, 'support_category_positive');
-  assert.equal(out.local_external_seed_stage_debug[0]?.query_cap, 4);
+  assert.equal(out.local_external_seed_stage_debug[0]?.stage, 'support_query_precise');
+  assert.equal(out.local_external_seed_stage_debug[0]?.query_cap, 6);
+  assert.equal(out.products[0].retrieval_match_stage, 'support_category_positive');
   assert.equal(out.products[0].product_id, 'ext_support_sunscreen_221');
 });
 

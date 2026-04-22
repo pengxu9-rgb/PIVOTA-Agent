@@ -8475,7 +8475,7 @@ function isLocalExternalSeedSameRoleComparisonTargetContext(targetContext = null
   return comparisonMode === 'same_role_comparison' || comparisonMode === 'same_role';
 }
 
-function buildLocalExternalSeedPrimarySameRoleQueryStage({
+function buildLocalExternalSeedPrimaryFinishFitQueryStage({
   patterns = [],
   categoryTerms = [],
   role = null,
@@ -8486,7 +8486,6 @@ function buildLocalExternalSeedPrimarySameRoleQueryStage({
   const step = normalizeRecoTargetStep(preferredStep || role?.preferred_step);
   if (step !== 'sunscreen') return null;
   if (!Number.isFinite(roleRank) || roleRank !== 1) return null;
-  if (!isLocalExternalSeedSameRoleComparisonTargetContext(targetContext)) return null;
 
   const categories = uniqCaseInsensitiveStrings(categoryTerms, 16)
     .map((value) => String(value || '').trim().toLowerCase())
@@ -8506,6 +8505,15 @@ function buildLocalExternalSeedPrimarySameRoleQueryStage({
     12,
   ).map((value) => `%${value}%`);
   if (!queryPatterns.length) return null;
+  if (
+    !isLocalExternalSeedSameRoleComparisonTargetContext(targetContext)
+    && !queryPatterns.some((value) =>
+      /\b(fluid|under makeup|lightweight|invisible|oil[-\s]?free|non[-\s]?greasy|matte|mineral|milk)\b/.test(
+        String(value || '').replace(/^%+|%+$/g, ''),
+      ))
+  ) {
+    return null;
+  }
 
   return {
     categoryTerms: categories,
@@ -8773,23 +8781,23 @@ function buildLocalExternalSeedSupportStageDefinitions({
     });
   }
 
-  const primarySameRoleQueryStage = buildLocalExternalSeedPrimarySameRoleQueryStage({
+  const primaryFinishFitQueryStage = buildLocalExternalSeedPrimaryFinishFitQueryStage({
     patterns,
     categoryTerms,
     role,
     preferredStep,
     targetContext,
   });
-  if (primarySameRoleQueryStage) {
+  if (primaryFinishFitQueryStage) {
     hasLeanAuthorityStage = true;
     addStage({
       stage: 'support_query_precise',
       score: 58,
-      stopAfterAnyMatch: false,
+      stopAfterAnyMatch: true,
       buildWhereSql: (bind) => {
-        const categoryBind = bind(primarySameRoleQueryStage.categoryTerms);
-        const patternBind = bind(primarySameRoleQueryStage.queryPatterns);
-        const searchFields = new Set(primarySameRoleQueryStage.searchFields);
+        const categoryBind = bind(primaryFinishFitQueryStage.categoryTerms);
+        const patternBind = bind(primaryFinishFitQueryStage.queryPatterns);
+        const searchFields = new Set(primaryFinishFitQueryStage.searchFields);
         const shouldUseField = (field) => searchFields.size === 0 || searchFields.has(field);
         const fieldClauses = [
           shouldUseField('raw_title') ? `lower(coalesce(title, '')) LIKE ANY(${patternBind}::text[])` : '',
@@ -8810,7 +8818,7 @@ function buildLocalExternalSeedSupportStageDefinitions({
         Math.min(
           32,
           Math.max(1, Number(safeLimit) || 1)
-            * Math.max(1, Math.trunc(Number(primarySameRoleQueryStage.queryCapMultiplier || 3))),
+            * Math.max(1, Math.trunc(Number(primaryFinishFitQueryStage.queryCapMultiplier || 3))),
         ),
       ),
     });
