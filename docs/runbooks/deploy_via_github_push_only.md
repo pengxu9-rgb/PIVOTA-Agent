@@ -14,7 +14,8 @@ Reason: manual `railway up` can be overwritten by later GitHub auto-deploy and c
 1. Commit code in feature branch.
 2. Open PR and pass CI.
 3. Merge PR into `main`.
-4. Wait for Railway auto-deploy.
+4. Wait for Railway production deploy.
+   If the production environment is not directly GitHub-linked, `.github/workflows/production-deploy-promote.yml` must trigger the production deploy webhook from the `main` push.
 5. Verify deployed commit matches merged commit:
 
 ```bash
@@ -56,3 +57,12 @@ If manual `railway up` is unavoidable:
 
 Do not keep production in a state where deployed commit is not traceable to `main`.
 The scheduled workflow `.github/workflows/production-deploy-drift-guard.yml` is the backstop that catches later drift or an accidental old redeploy.
+
+## Required Production Wiring
+
+At least one of these must be true:
+
+1. Railway production is directly connected to GitHub `main`.
+2. `RAILWAY_PRODUCTION_DEPLOY_WEBHOOK_URL` or `PIVOTA_AGENT_PROD_DEPLOY_WEBHOOK_URL` is configured in GitHub Actions secrets so `.github/workflows/production-deploy-promote.yml` can trigger production from the `main` push.
+
+If neither is true, `git push` does not actually own production deploys and the policy is broken.
