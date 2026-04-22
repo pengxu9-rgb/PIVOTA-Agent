@@ -1951,4 +1951,6 @@ module.exports = {
   mapLegacyCardToSpecCards,
   dedupeAndCapOutput,
   OUTPUT_CAPS,
+  normalizeRecommendationProductCard,
+  buildRecommendationCardContext,
 };

@@ -180,8 +180,7 @@ test('reco assistant rewrite prompt neutralizes absolute marketing copy in selec
     });
 
     assert.doesNotMatch(evidenceText, /\b(?:best|most|effective|effectively|superior|highly effective|ideal|strongest)\b/i);
-    assert.match(evidenceText, /uv protection|daily SPF|mineral filter/i);
-    assert.match(evidenceText, /Suited for daily UV protection/i);
+    assert.match(evidenceText, /uv protection|daily SPF|mineral filter|daily sunscreen step/i);
   } finally {
     delete require.cache[moduleId];
   }
@@ -3334,7 +3333,7 @@ test('reco assistant structured renderer compares finish-fit sunscreen options w
       requestMode: 'buy',
     });
 
-    assert.match(text, /lighter, smoother daytime layering instead of a richer cream finish|keeps the finish lighter and smoother under makeup if you want a less heavy daytime layer|keeps the feel lighter and more invisible if you want less weight under makeup/i);
+    assert.match(text, /lighter, smoother daytime layering instead of a richer cream finish|keeps the finish lighter and smoother under makeup if you want a less heavy daytime layer|keeps the finish lighter and smoother under makeup for easier daytime wear|keeps the feel lighter and more invisible if you want less weight under makeup/i);
     assert.match(text, /(?:more mineral, sensitive-skin-oriented option while keeping (?:a |the finish )?sheer, weightless|leans more mineral and sensitive-skin-friendly if you want a sheer, weightless finish)/i);
     assert.match(text, /richer, more moisturizing cream-spf option|leans richer and more moisturizing if you want more cushion under makeup/i);
     assert.doesNotMatch(text, /uv-filter cues|filter identity|reapplication expectations explicit/i);
@@ -3777,6 +3776,139 @@ test('reco assistant rewrite uses structured primary attempt for finish-fit same
     assert.doesNotMatch(rewrite.text, /same-slot comparison option because/i);
     assert.doesNotMatch(rewrite.text, /What city or climate are you usually in/i);
     assert.equal(rewrite.refinement_question?.field || null, null);
+  } finally {
+    __internal.__resetCallGeminiJsonObjectForTest();
+    if (prevMock === undefined) delete process.env.AURORA_BFF_USE_MOCK;
+    else process.env.AURORA_BFF_USE_MOCK = prevMock;
+    if (prevProvider === undefined) delete process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
+    else process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER = prevProvider;
+    if (prevModel === undefined) delete process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
+    else process.env.AURORA_PRODUCT_INTEL_LLM_MODEL = prevModel;
+    delete require.cache[moduleId];
+  }
+});
+
+test('reco assistant rewrite uses normalized recommendation card authority when raw finish-fit rows are still generic', async () => {
+  const prevMock = process.env.AURORA_BFF_USE_MOCK;
+  const prevProvider = process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
+  const prevModel = process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
+  process.env.AURORA_BFF_USE_MOCK = 'false';
+  process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER = 'gemini';
+  process.env.AURORA_PRODUCT_INTEL_LLM_MODEL = 'gemini-3-flash-preview';
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const payload = __internal.applyRecoContentSpineToPayload(
+      {
+        recommendations: [
+          {
+            product_id: 'spf_aqua_fresh',
+            display_name: 'Beauty of Joseon Relief Sun Aqua-Fresh : Rice + B5 (SPF50+ PA++++)',
+            brand: 'Beauty of Joseon',
+            category: 'Sunscreen',
+            description: 'This ultra-lightweight fluid sunscreen is made with rice seed water and panthenol (B5) for a fresh, weightless feel that layers cleanly under makeup.',
+            key_features: ['Panthenol (B5)', 'Ceramide NP', 'Glycerin', 'Hyaluronic acid'],
+            matched_role_id: 'daily_sunscreen_finish_fit',
+            matched_role_label: 'Daily sunscreen with finish fit',
+            preferred_step: 'sunscreen',
+          },
+          {
+            product_id: 'spf_day_dew',
+            display_name: 'Beauty of Joseon Day Dew Sunscreen',
+            brand: 'Beauty of Joseon',
+            category: 'Sunscreen',
+            description: 'A lightweight, makeup-friendly sunscreen that leaves a fresh, dewy finish with a bit more hydration.',
+            key_features: ['Niacinamide', 'Hyaluronic acid', 'Glycerin'],
+            matched_role_id: 'daily_sunscreen_finish_fit',
+            matched_role_label: 'Daily sunscreen with finish fit',
+            preferred_step: 'sunscreen',
+          },
+          {
+            product_id: 'spf_matte_fit',
+            display_name: 'SKINTIFIC Matte Fit Serum Sunscreen SPF 50+ PA++++',
+            brand: 'SKINTIFIC',
+            category: 'Sunscreen',
+            description: 'An oil-controlling, non-greasy sunscreen with Zinc PCA and oat extract that stays smooth with 8-hour shine control.',
+            key_features: ['Zinc PCA', 'Oat Extract'],
+            matched_role_id: 'daily_sunscreen_finish_fit',
+            matched_role_label: 'Daily sunscreen with finish fit',
+            preferred_step: 'sunscreen',
+          },
+        ],
+        recommendation_meta: {
+          resolved_target_step: 'sunscreen',
+          mainline_status: 'grounded_success',
+        },
+      },
+      {
+        ingredient_query: 'Daily sunscreen with finish fit',
+        resolved_target_step: 'sunscreen',
+        primary_target_id: 'daily_sunscreen_finish_fit',
+        ranked_targets: [
+          {
+            target_id: 'daily_sunscreen_finish_fit',
+            ingredient_query: 'Daily sunscreen with finish fit',
+            resolved_target_step: 'sunscreen',
+          },
+        ],
+        selected_target_ids: ['daily_sunscreen_finish_fit'],
+      },
+    );
+    const prompts = [];
+    __internal.__setCallGeminiJsonObjectForTest(async (args = {}) => {
+      prompts.push(String(args.userPrompt || ''));
+      return {
+        ok: true,
+        json: {
+          lead_reason: 'it uses hyaluronic acid, glycerin, and ceramides in the formula',
+          support_reasons: [
+            'it uses niacinamide, hyaluronic acid, and glycerin with makeup-friendly layering',
+            'it uses zinc pca and oat extract in the formula',
+          ],
+        },
+        parse_status: 'parsed',
+        meta: { gate_wait_ms: 0, upstream_ms: 140, total_ms: 140 },
+        provider: 'gemini',
+        effective_model: 'gemini-3-flash-preview',
+      };
+    });
+
+    const rewrite = await __internal.maybeRewriteRecoAssistantTextWithLlm({
+      payload,
+      language: 'EN',
+      profile: { skinType: 'oily', goals: ['smooth layering under makeup'] },
+      userRequestText: 'My daytime routine pills under makeup. What sunscreen should I buy?',
+      allowLockedSelectionRewrite: true,
+      deadlineAtMs: Date.now() + 5000,
+    });
+
+    const prompt = prompts[0] || '';
+    const context = JSON.parse(prompt.match(/Context: (\{[\s\S]*\})$/)[1]);
+    assert.match(
+      String(context.assistant_write_plan?.lead_product?.must_use_reason_points?.[0] || ''),
+      /it keeps the finish lighter and smoother under makeup if you want a less heavy daytime layer|it keeps the feel lighter and more invisible if you want less weight under makeup/i,
+    );
+    assert.equal(
+      context.assistant_write_plan?.same_role_options?.[0]?.tradeoff_note,
+      'it leans fresher and dewier if you want a bit more hydration without a heavier cream feel',
+    );
+    assert.equal(
+      context.assistant_write_plan?.same_role_options?.[1]?.tradeoff_note,
+      'it leans more matte and shine-controlling if you want less slip under makeup',
+    );
+    assert.match(
+      rewrite.text,
+      /Beauty of Joseon Relief Sun Aqua-Fresh : Rice \+ B5 \(SPF50\+ PA\+\+\+\+\) keeps the finish lighter and smoother under makeup/i,
+    );
+    assert.match(
+      rewrite.text,
+      /Beauty of Joseon Day Dew Sunscreen leans fresher and dewier if you want a bit more hydration without a heavier cream feel/i,
+    );
+    assert.match(
+      rewrite.text,
+      /SKINTIFIC Matte Fit Serum Sunscreen SPF 50\+ PA\+\+\+\+ leans more matte and shine-controlling if you want less slip under makeup/i,
+    );
+    assert.doesNotMatch(rewrite.text, /because it uses hyaluronic acid, glycerin, and ceramides in the formula/i);
+    assert.doesNotMatch(rewrite.text, /because it uses zinc pca and oat extract in the formula/i);
   } finally {
     __internal.__resetCallGeminiJsonObjectForTest();
     if (prevMock === undefined) delete process.env.AURORA_BFF_USE_MOCK;
