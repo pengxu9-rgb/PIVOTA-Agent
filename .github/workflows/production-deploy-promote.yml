@@ -14,7 +14,7 @@ jobs:
   trigger-production-deploy:
     name: Trigger Production Deploy From GitHub Main
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     env:
       PROD_DEPLOY_WEBHOOK_URL: ${{ secrets.RAILWAY_PRODUCTION_DEPLOY_WEBHOOK_URL || secrets.PIVOTA_AGENT_PROD_DEPLOY_WEBHOOK_URL || secrets.RAILWAY_DEPLOY_WEBHOOK_URL || '' }}
       PROD_SMOKE_BASE_URL: ${{ vars.PIVOTA_AGENT_PROD_INVOKE_BASE_URL || vars.COMMERCE_CORE_PROD_SMOKE_BASE_URL || 'https://pivota-agent-production.up.railway.app' }}
@@ -53,6 +53,6 @@ jobs:
           set -euo pipefail
           INVOKE_BASE_URL="$PROD_SMOKE_BASE_URL" \
           TARGET_COMMIT="${GITHUB_SHA:0:12}" \
-          MAX_ATTEMPTS=24 \
+          MAX_ATTEMPTS=72 \
           SLEEP_SECONDS=10 \
           bash scripts/verify_deployed_commit_matches.sh
