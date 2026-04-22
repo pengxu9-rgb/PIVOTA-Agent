@@ -105,6 +105,22 @@ function getTargetContextPrimaryRoleId(targetContext = null) {
   return '';
 }
 
+function isSameRoleComparisonTargetContext(targetContext = null) {
+  const candidates = [
+    targetContext?.comparison_mode,
+    targetContext?.comparisonMode,
+    targetContext?.routine_mode,
+    targetContext?.routineMode,
+    targetContext?.semantic_plan?.comparison_mode,
+    targetContext?.semantic_plan?.routine_mode,
+    targetContext?.semanticPlan?.comparison_mode,
+    targetContext?.semanticPlan?.routine_mode,
+    targetContext?.semantic_plan?.selection_constraints?.comparison_mode,
+    targetContext?.semanticPlan?.selection_constraints?.comparison_mode,
+  ];
+  return candidates.some((raw) => normalizeConcernQueryToken(raw).toLowerCase() === 'same_role_comparison');
+}
+
 function orderFrameworkRolesForPrimary(roles = [], targetContext = null) {
   const roleList = Array.isArray(roles) ? roles.filter(Boolean) : [];
   const primaryRoleId = getTargetContextPrimaryRoleId(targetContext);
@@ -309,7 +325,7 @@ function deriveBeautyMainlineRawQuery({ mode, targetContext = null, queryLevels 
   return '';
 }
 
-function buildBeautyMainlineRecallPlan({ mode, semanticContract = null, rawQuery = '' } = {}) {
+function buildBeautyMainlineRecallPlan({ mode, semanticContract = null, rawQuery = '', targetContext = null } = {}) {
   const contract = semanticContract && typeof semanticContract === 'object' && !Array.isArray(semanticContract)
     ? semanticContract
     : null;
@@ -380,6 +396,9 @@ function buildBeautyMainlineRecallPlan({ mode, semanticContract = null, rawQuery
       maxQueriesOverride: 4,
     });
     const primaryPreferredStep = normalizeSemanticStepFamily(primaryRole?.preferred_step || contract.target_step_family);
+    const keepPrimaryExternalStageOpen =
+      primaryPreferredStep === 'sunscreen'
+      && isSameRoleComparisonTargetContext(targetContext);
     stages = [
       buildStage({
         stageId: 'framework_stage_a_primary_internal',
@@ -403,7 +422,7 @@ function buildBeautyMainlineRecallPlan({ mode, semanticContract = null, rawQuery
         queries: primaryExternalQueries,
         concurrency: 1,
         maxAttemptsForStage: Math.min(primaryExternalQueries.length || 1, 4),
-        stopOnViableMatch: true,
+        stopOnViableMatch: !keepPrimaryExternalStageOpen,
         reasonForInclusion: 'framework_primary_external_seed',
         runIf: 'if_surface_count_below_target',
         preferredStep: primaryPreferredStep,
@@ -754,6 +773,7 @@ function buildFrameworkGenericRecallPlan({ targetContext } = {}) {
   return buildBeautyMainlineRecallPlan({
     mode: 'framework_generic',
     semanticContract,
+    targetContext,
     rawQuery: deriveBeautyMainlineRawQuery({
       mode: 'framework_generic',
       targetContext,
@@ -766,6 +786,7 @@ function buildStepAwareRecallPlan({ targetContext = null, queryLevels } = {}) {
   return buildBeautyMainlineRecallPlan({
     mode: 'step_aware',
     semanticContract,
+    targetContext,
     rawQuery: deriveBeautyMainlineRawQuery({
       mode: 'step_aware',
       targetContext,

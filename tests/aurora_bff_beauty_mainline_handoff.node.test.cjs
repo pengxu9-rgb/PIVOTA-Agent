@@ -854,6 +854,172 @@ test('handoffRecoToBeautyMainlineSearch runs finish-fit sunscreen external queri
   }
 });
 
+test('handoffRecoToBeautyMainlineSearch keeps same-role finish-fit external stage open after the first viable query', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const externalCaptured = [];
+    __internal.__setRouteDependencyOverridesForTest({
+      searchInternalProductsPrimitive: async () => ({
+        ok: true,
+        products: [],
+        attempted_internal_paths: ['/agent/internal/products/search'],
+        transport_hops: [],
+        transport_hop_count: 0,
+        nested_orchestrator_hops: 0,
+        primary_transport_owner: 'internal_products_search_primitive',
+        primary_endpoint_kind: 'internal_primitive',
+      }),
+      searchLocalExternalSeedProducts: async (args) => {
+        const query = String(args?.query || '').trim().toLowerCase();
+        const roleId = String(args?.role?.role_id || '');
+        externalCaptured.push({ query, roleId });
+        const base = {
+          ok: true,
+          reason: null,
+          actual_http_attempt_count: 0,
+          attempted_base_urls: [],
+          attempted_paths: [],
+          transport_policy_mode: String(args?.transportPolicyMode || ''),
+          local_external_seed_search_mode: 'staged_support_fastpath',
+          local_external_seed_stage_debug: [{ stage: 'support_category_positive', row_count: 1, cumulative_row_count: 1, duration_ms: 4, cap: 6 }],
+        };
+        if (roleId !== 'daily_sunscreen_finish_fit') {
+          return { ...base, ok: false, products: [], reason: 'empty' };
+        }
+        if (query === 'spf fluid oily skin') {
+          return {
+            ...base,
+            products: [
+              {
+                product_id: 'same_role_spf_1',
+                merchant_id: 'external_seed',
+                brand: 'TestSkin',
+                name: 'Fluid Shield SPF 50',
+                display_name: 'TestSkin Fluid Shield SPF 50',
+                title: 'TestSkin Fluid Shield SPF 50',
+                category: 'Sunscreen',
+                product_type: 'sunscreen',
+                candidate_step: 'sunscreen',
+                benefit_tags: ['sunscreen', 'lightweight finish', 'under makeup'],
+                short_description: 'A lightweight sunscreen fluid for daytime layering.',
+                retrieval_source: 'external_seed',
+              },
+              {
+                product_id: 'same_role_spf_2',
+                merchant_id: 'external_seed',
+                brand: 'TestSkin',
+                name: 'Cloud Veil SPF 45',
+                display_name: 'TestSkin Cloud Veil SPF 45',
+                title: 'TestSkin Cloud Veil SPF 45',
+                category: 'Sunscreen',
+                product_type: 'sunscreen',
+                candidate_step: 'sunscreen',
+                benefit_tags: ['sunscreen', 'lightweight finish'],
+                short_description: 'A lightweight daily sunscreen.',
+                retrieval_source: 'external_seed',
+              },
+              {
+                product_id: 'same_role_spf_3',
+                merchant_id: 'external_seed',
+                brand: 'TestSkin',
+                name: 'Soft Screen SPF 40',
+                display_name: 'TestSkin Soft Screen SPF 40',
+                title: 'TestSkin Soft Screen SPF 40',
+                category: 'Sunscreen',
+                product_type: 'sunscreen',
+                candidate_step: 'sunscreen',
+                benefit_tags: ['sunscreen', 'lightweight'],
+                short_description: 'A soft-finish sunscreen for everyday wear.',
+                retrieval_source: 'external_seed',
+              },
+            ],
+          };
+        }
+        if (query === 'sunscreen under makeup') {
+          return {
+            ...base,
+            products: [
+              {
+                product_id: 'same_role_spf_4',
+                merchant_id: 'external_seed',
+                brand: 'MineralCo',
+                name: 'Silk Mineral Veil SPF 30',
+                display_name: 'MineralCo Silk Mineral Veil SPF 30',
+                title: 'MineralCo Silk Mineral Veil SPF 30',
+                category: 'Sunscreen',
+                product_type: 'sunscreen',
+                candidate_step: 'sunscreen',
+                benefit_tags: ['sunscreen', 'mineral', 'under makeup'],
+                short_description: 'A sheer mineral sunscreen designed for under-makeup wear.',
+                retrieval_source: 'external_seed',
+              },
+            ],
+          };
+        }
+        return {
+          ...base,
+          ok: false,
+          products: [],
+          reason: 'empty',
+        };
+      },
+    });
+
+    const out = await __internal.handoffRecoToBeautyMainlineSearch({
+      ctx: { lang: 'EN', request_id: 'req_same_role_finish_fit_external_open' },
+      primaryQuery: 'What should I buy for daytime so my makeup stops pilling?',
+      fallbackMessage: 'What should I buy for daytime so my makeup stops pilling?',
+      targetContext: {
+        primary_role_id: 'daily_sunscreen_finish_fit',
+        comparison_mode: 'same_role_comparison',
+        routine_mode: 'same_role_comparison',
+        semantic_plan: {
+          routine_mode: 'same_role_comparison',
+          comparison_mode: 'same_role_comparison',
+          selection_constraints: { comparison_mode: 'same_role_comparison' },
+        },
+        framework_summary: {
+          concern_text: 'daytime sunscreen under makeup',
+        },
+        framework_roles: [
+          {
+            role_id: 'daily_sunscreen_finish_fit',
+            rank: 1,
+            preferred_step: 'sunscreen',
+            label: 'Daily sunscreen finish fit',
+            query_terms: ['spf fluid oily skin', 'sunscreen under makeup', 'lightweight sunscreen oily skin'],
+            fit_keywords: ['spf', 'lightweight finish', 'makeup friendly', 'under makeup'],
+          },
+        ],
+        support_roles: [],
+      },
+      timeoutMs: 5000,
+      minTimeoutMs: 5000,
+    });
+
+    assert.deepEqual(
+      externalCaptured.slice(0, 2),
+      [
+        { query: 'spf fluid oily skin', roleId: 'daily_sunscreen_finish_fit' },
+        { query: 'sunscreen under makeup', roleId: 'daily_sunscreen_finish_fit' },
+      ],
+    );
+    const primaryExternalQueries = (out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts || [])
+      .filter((row) => row?.ladder_level === 'framework_stage_b_primary_external_seed')
+      .map((row) => ({ query: row?.query, result_count: Number(row?.result_count || 0) }));
+    assert.deepEqual(
+      primaryExternalQueries.slice(0, 2),
+      [
+        { query: 'spf fluid oily skin', result_count: 3 },
+        { query: 'sunscreen under makeup', result_count: 1 },
+      ],
+    );
+  } finally {
+    __internal.__resetRouteDependencyOverridesForTest();
+    delete require.cache[moduleId];
+  }
+});
+
 test('handoffRecoToBeautyMainlineSearch recovers acne primary from second planned primary query before support', async () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {

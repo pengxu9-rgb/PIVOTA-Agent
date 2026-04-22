@@ -19128,6 +19128,7 @@ function buildRecoCatalogQueryLevels({
     return (Array.isArray(recallPlan?.stages) ? recallPlan.stages : []).map((stage, index) => ({
       level_index: index,
       ladder_level: String(stage?.stage_id || `framework_stage_${index + 1}`).trim() || `framework_stage_${index + 1}`,
+      stop_on_viable_match: stage?.stop_on_viable_match === true,
       queries: (Array.isArray(stage?.entries) ? stage.entries : []).map((entry) => {
         const preferredStep = normalizeRecoTargetStep(entry?.preferred_step) || 'treatment';
         return {
@@ -19142,6 +19143,7 @@ function buildRecoCatalogQueryLevels({
           ).trim() || null,
           preferred_step: preferredStep,
           query_index: Number.isFinite(Number(entry?.query_index)) ? Number(entry.query_index) : 0,
+          stop_on_viable_match: entry?.stop_on_viable_match === true,
           allow_external_seed: String(entry?.source_scope || '').trim().toLowerCase() === 'external_seed',
           external_seed_strategy:
             String(entry?.source_scope || '').trim().toLowerCase() === 'external_seed'
@@ -22103,6 +22105,11 @@ function buildBeautyMainlineLocalHandoffStageSummary(queryLevels = []) {
       if (roundQueries.length) {
         keptLevels.push({
           ladder_level: `framework_stage_c_support_authority_round_${queryIndex + 1}`,
+          ...(hasPendingPrimaryExternalInRound
+            ? {
+                stop_on_viable_match: primaryExternalRoundQuery?.stop_on_viable_match === true,
+              }
+            : {}),
           fair_support_authority_round: queryIndex + 1,
           ...(internalSourceLevels.length
             ? {
@@ -24061,6 +24068,7 @@ function shouldSkipFrameworkPrimaryExternalSeedQuery(
   candidateState = null,
   { targetContext = null, forcePrimaryStage = false } = {},
 ) {
+  if (queryEntry?.stop_on_viable_match !== true) return false;
   const levelId = String(queryEntry?.ladder_level || queryEntry?.stage_id || '').trim().toLowerCase();
   if (!forcePrimaryStage && levelId !== 'framework_stage_b_primary_external_seed') return false;
   const allowExternalSeed = queryEntry?.allow_external_seed === true
@@ -24384,6 +24392,7 @@ async function collectRecoCandidatesFromQueryLevels({
     return false;
   };
   const shouldStopQueryLevelOnViableMatch = (level, runnableQueries = []) => {
+    if (level?.stop_on_viable_match !== true) return false;
     const roleId = resolveQueryLevelRoleId(level, runnableQueries);
     if (roleId) {
       const filledRoleIds = new Set(getRecoRecallFilledRoleIds(candidateState, { requireAlignedRetrieval: true }));
@@ -24711,7 +24720,7 @@ async function collectRecoCandidatesFromQueryLevels({
             targetContext,
             recommendationTaskContext,
           });
-          if (candidateState.primary_role_matched === true) break;
+          if (shouldStopQueryLevelOnViableMatch(level, primaryExternalLeadQueries)) break;
         }
       }
       if (shouldRunPendingSupportAlongsidePrimary) {
