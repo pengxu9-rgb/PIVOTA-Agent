@@ -4993,6 +4993,85 @@ test('__internal: local external seed sunscreen finish query uses category-posit
   assert.equal(out.products[0].product_id, 'ext_support_sunscreen_221');
 });
 
+test('__internal: local external seed same-role sunscreen compare runs precise query stage before broad category-positive recall', async () => {
+  const { __internal } = loadRoutesFresh();
+  const observedQueries = [];
+  const out = await __internal.searchLocalExternalSeedProducts({
+    query: 'sunscreen under makeup',
+    limit: 2,
+    role: {
+      role_id: 'daily_sunscreen_finish_fit',
+      rank: 1,
+      preferred_step: 'sunscreen',
+      query_terms: ['sunscreen under makeup'],
+      fit_keywords: ['under makeup', 'makeup friendly', 'lightweight'],
+      product_type_hypotheses: ['sunscreen'],
+    },
+    preferredStep: 'sunscreen',
+    targetContext: {
+      primary_role_id: 'daily_sunscreen_finish_fit',
+      comparison_mode: 'same_role_comparison',
+      routine_mode: 'same_role_comparison',
+      semantic_plan: {
+        comparison_mode: 'same_role_comparison',
+        routine_mode: 'same_role_comparison',
+        selection_constraints: { comparison_mode: 'same_role_comparison' },
+      },
+    },
+    queryFn: async (sql, params) => {
+      observedQueries.push({ sql: String(sql || ''), params });
+      if (String(sql || '').includes('support_query_precise')) {
+        return { rows: [] };
+      }
+      return {
+        rows: [
+          {
+            id: '222',
+            external_product_id: 'ext_support_sunscreen_222',
+            destination_url: 'https://example.com/products/under-makeup-fluid',
+            canonical_url: 'https://example.com/products/under-makeup-fluid',
+            domain: 'example.com',
+            title: 'Under Makeup Sun Fluid SPF 50',
+            image_url: 'https://example.com/products/under-makeup-fluid.jpg',
+            price_amount: 28,
+            price_currency: 'USD',
+            availability: 'in_stock',
+            match_stage: 'support_category_positive',
+            match_score: 54,
+            seed_data: {
+              derived: {
+                recall: {
+                  retrieval_title: 'Under Makeup Sun Fluid SPF 50',
+                  retrieval_summary: 'A lightweight sunscreen fluid designed for smoother wear under makeup.',
+                  category: 'Sunscreen',
+                  vertical: 'skincare',
+                },
+              },
+              snapshot: {
+                title: 'Under Makeup Sun Fluid SPF 50',
+                description: 'Lightweight sunscreen fluid for smoother wear under makeup.',
+                category: 'Sunscreen',
+              },
+            },
+            updated_at: new Date().toISOString(),
+            created_at: new Date().toISOString(),
+          },
+        ],
+      };
+    },
+  });
+
+  assert.equal(out.ok, true);
+  assert.equal(out.local_external_seed_search_mode, 'staged_support_fastpath');
+  assert.equal(observedQueries.length, 2);
+  assert.match(observedQueries[0].sql, /support_query_precise/);
+  assert.match(observedQueries[1].sql, /support_category_positive/);
+  assert.ok(observedQueries[0].params[3].includes('%under makeup%'));
+  assert.equal(out.local_external_seed_stage_debug[0]?.stage, 'support_query_precise');
+  assert.equal(out.local_external_seed_stage_debug[1]?.stage, 'support_category_positive');
+  assert.equal(out.products[0].retrieval_match_stage, 'support_category_positive');
+});
+
 test('__internal: local external seed hydrating serum ranking prefers leave-on serum forms over masks and pads', async () => {
   const { __internal } = loadRoutesFresh();
   const makeRow = ({ id, title, summary, category = 'Serum' }) => ({

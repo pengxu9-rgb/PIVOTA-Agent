@@ -8445,6 +8445,76 @@ function buildLocalExternalSeedSupportCategoryTerms({ role = null, preferredStep
   return uniqCaseInsensitiveStrings(terms, 16);
 }
 
+function isLocalExternalSeedSameRoleComparisonTargetContext(targetContext = null) {
+  const semanticPlan = isPlainObject(targetContext?.semantic_plan)
+    ? targetContext.semantic_plan
+    : isPlainObject(targetContext?.semanticPlan)
+      ? targetContext.semanticPlan
+      : null;
+  const selectionConstraints = isPlainObject(semanticPlan?.selection_constraints)
+    ? semanticPlan.selection_constraints
+    : isPlainObject(semanticPlan?.selectionConstraints)
+      ? semanticPlan.selectionConstraints
+      : null;
+  const comparisonMode = String(
+    pickFirstTrimmed(
+      targetContext?.comparison_mode,
+      targetContext?.comparisonMode,
+      targetContext?.routine_mode,
+      targetContext?.routineMode,
+      semanticPlan?.comparison_mode,
+      semanticPlan?.comparisonMode,
+      semanticPlan?.routine_mode,
+      semanticPlan?.routineMode,
+      selectionConstraints?.comparison_mode,
+      selectionConstraints?.comparisonMode,
+      selectionConstraints?.routine_mode,
+      selectionConstraints?.routineMode,
+    ) || '',
+  ).trim().toLowerCase();
+  return comparisonMode === 'same_role_comparison' || comparisonMode === 'same_role';
+}
+
+function buildLocalExternalSeedPrimarySameRoleQueryStage({
+  patterns = [],
+  categoryTerms = [],
+  role = null,
+  preferredStep = '',
+  targetContext = null,
+} = {}) {
+  const roleRank = Number(role?.rank);
+  const step = normalizeRecoTargetStep(preferredStep || role?.preferred_step);
+  if (step !== 'sunscreen') return null;
+  if (!Number.isFinite(roleRank) || roleRank !== 1) return null;
+  if (!isLocalExternalSeedSameRoleComparisonTargetContext(targetContext)) return null;
+
+  const categories = uniqCaseInsensitiveStrings(categoryTerms, 16)
+    .map((value) => String(value || '').trim().toLowerCase())
+    .filter((value) => ['sunscreen', 'spf', 'sun care', 'sun protection', 'uv protection'].includes(value));
+  if (!categories.length) return null;
+
+  const queryPatterns = uniqCaseInsensitiveStrings(
+    (Array.isArray(patterns) ? patterns : [])
+      .map((value) => String(value || '').trim().toLowerCase())
+      .map((value) => value.replace(/^%+|%+$/g, ''))
+      .filter((value) =>
+        value.length >= 6
+        && (
+          /\s/.test(value)
+          || /\b(fluid|under makeup|lightweight|invisible|oil[-\s]?free|non[-\s]?greasy|matte|mineral|milk)\b/.test(value)
+        )),
+    12,
+  ).map((value) => `%${value}%`);
+  if (!queryPatterns.length) return null;
+
+  return {
+    categoryTerms: categories,
+    queryPatterns,
+    queryCapMultiplier: 3,
+    searchFields: ['raw_title', 'retrieval_title', 'alias_tokens', 'retrieval_summary'],
+  };
+}
+
 function buildLocalExternalSeedExactCategoryHeadTerms({ query = '', categoryTerms = [] } = {}) {
   const normalizedQuery = String(query || '').trim().toLowerCase().replace(/\s+/g, ' ');
   if (!normalizedQuery) return [];
@@ -8663,6 +8733,7 @@ function buildLocalExternalSeedSupportStageDefinitions({
   query = '',
   role = null,
   preferredStep = '',
+  targetContext = null,
 } = {}) {
   const stageDefinitions = [];
   const addStage = ({ stage, score, buildWhereSql, stopAfterAnyMatch = false, queryCap = null }) => {
@@ -8699,6 +8770,49 @@ function buildLocalExternalSeedSupportStageDefinitions({
       stopAfterAnyMatch: true,
       buildWhereSql: (bind) =>
         `${EXTERNAL_SEED_RECALL_SQL_FIELDS.category} = ANY(${bind(exactCategoryTerms)}::text[])`,
+    });
+  }
+
+  const primarySameRoleQueryStage = buildLocalExternalSeedPrimarySameRoleQueryStage({
+    patterns,
+    categoryTerms,
+    role,
+    preferredStep,
+    targetContext,
+  });
+  if (primarySameRoleQueryStage) {
+    hasLeanAuthorityStage = true;
+    addStage({
+      stage: 'support_query_precise',
+      score: 58,
+      stopAfterAnyMatch: false,
+      buildWhereSql: (bind) => {
+        const categoryBind = bind(primarySameRoleQueryStage.categoryTerms);
+        const patternBind = bind(primarySameRoleQueryStage.queryPatterns);
+        const searchFields = new Set(primarySameRoleQueryStage.searchFields);
+        const shouldUseField = (field) => searchFields.size === 0 || searchFields.has(field);
+        const fieldClauses = [
+          shouldUseField('raw_title') ? `lower(coalesce(title, '')) LIKE ANY(${patternBind}::text[])` : '',
+          shouldUseField('retrieval_title') ? `${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalTitle} LIKE ANY(${patternBind}::text[])` : '',
+          shouldUseField('alias_tokens') ? `${EXTERNAL_SEED_RECALL_SQL_FIELDS.aliasTokens} LIKE ANY(${patternBind}::text[])` : '',
+          shouldUseField('retrieval_summary') ? `${EXTERNAL_SEED_RECALL_SQL_FIELDS.retrievalSummary} LIKE ANY(${patternBind}::text[])` : '',
+        ].filter(Boolean);
+        if (!fieldClauses.length) return '';
+        return `(
+          ${EXTERNAL_SEED_RECALL_SQL_FIELDS.category} = ANY(${categoryBind}::text[])
+          AND (
+            ${fieldClauses.join('\n            OR ')}
+          )
+        )`;
+      },
+      queryCap: Math.max(
+        Math.max(1, Number(safeLimit) || 1),
+        Math.min(
+          32,
+          Math.max(1, Number(safeLimit) || 1)
+            * Math.max(1, Math.trunc(Number(primarySameRoleQueryStage.queryCapMultiplier || 3))),
+        ),
+      ),
     });
   }
 
@@ -9046,6 +9160,7 @@ async function searchLocalExternalSeedProductsViaSupportStages({
   safeLimit = 6,
   market,
   tool,
+  targetContext = null,
 } = {}) {
   const categoryTerms = buildLocalExternalSeedSupportCategoryTerms({ role, preferredStep, query: q });
   const stageDefinitions = buildLocalExternalSeedSupportStageDefinitions({
@@ -9055,6 +9170,7 @@ async function searchLocalExternalSeedProductsViaSupportStages({
     query: q,
     role,
     preferredStep,
+    targetContext,
   });
   const stagedRows = [];
   const seenRowKeys = new Set();
@@ -9357,6 +9473,7 @@ async function searchLocalExternalSeedProducts({
         safeLimit,
         market,
         tool,
+        targetContext,
       });
       const rows = Array.isArray(staged?.rows) ? staged.rows : [];
       const surfacingCandidates = rows
