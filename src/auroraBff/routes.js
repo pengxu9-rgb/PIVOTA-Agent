@@ -72851,6 +72851,32 @@ function finalizeRecoAlternativesForCompetitiveQuality(rows, { maxTotal = 3 } = 
   return diversifyRecoAlternativesByBrand(out, { maxTotal: limit });
 }
 
+function classifyRecoAlternativeSunscreenTradeoffBucket(row) {
+  const text = buildRecoAlternativePoolCandidateText(row).toLowerCase();
+  if (!text) return '';
+  if (/\b(mineral|zinc oxide|titanium dioxide)\b/.test(text)) return 'mineral';
+  if (/\b(milk|creamier|cream-based|moisturizing|hydrating|colloidal oatmeal|cushier)\b/.test(text)) return 'hydrating';
+  if (/\b(matte|shine[-\s]?control|oil[-\s]?control|less slip)\b/.test(text)) return 'matte';
+  if (/\b(serum|watery|water[-\s]?fit|fresh|thinner sunscreen feel|ultra-lightweight fluid)\b/.test(text)) return 'serum';
+  if (/\b(dewy|dewier)\b/.test(text)) return 'dewy';
+  if (/\b(light|lighter|smooth|smoother|weightless)\b/.test(text)) return 'lightweight';
+  return '';
+}
+
+function hasRecoAlternativeSunscreenTradeoffCoverage(rows, { targetSignals = null, maxTotal = 3 } = {}) {
+  if (!isExternalSeedFinishFitSunscreenTarget(targetSignals)) return false;
+  const limit = Math.max(1, Math.min(8, Number.isFinite(Number(maxTotal)) ? Math.trunc(Number(maxTotal)) : 3));
+  const list = (Array.isArray(rows) ? rows : []).filter((row) => row && typeof row === 'object' && !Array.isArray(row));
+  if (list.length < Math.min(3, limit)) return false;
+  const buckets = new Set(
+    list
+      .slice(0, Math.max(3, limit))
+      .map((row) => classifyRecoAlternativeSunscreenTradeoffBucket(row))
+      .filter(Boolean),
+  );
+  return buckets.size >= 3 || (buckets.has('mineral') && buckets.has('hydrating'));
+}
+
 function mergeRecoAlternativesForHybrid(primary, fallback, { maxTotal = 3, preferBestScore = false } = {}) {
   const limit = Math.max(1, Math.min(8, Number.isFinite(Number(maxTotal)) ? Math.trunc(Number(maxTotal)) : 3));
   const ordered = [
@@ -73878,21 +73904,49 @@ async function collectExternalSeedPoolAlternatives({
       : Math.max(2, Math.min(4, normalizedLimit)),
   );
   const localSeedSearchRole = buildRecoAlternativesLocalSeedSearchRole(identity.targetSignals);
-  const localSeedResults = await Promise.allSettled(
-    queriesToRun.map((query) => searchLocalExternalSeedProducts({
-      query,
-      limit: 12,
-      logger,
-      transportPolicyMode: 'reco_alternatives_pool',
-      role: localSeedSearchRole,
-      preferredStep: localSeedSearchRole.preferred_step,
-    })),
-  );
-  for (const result of localSeedResults) {
-    const searched = result.status === 'fulfilled' ? result.value : null;
-    const list = Array.isArray(searched?.products) ? searched.products : [];
-    localCandidateRowCount += list.length;
-    for (const row of list) candidateRows.push(row);
+  if (finishFitSunscreenCompare) {
+    for (const query of queriesToRun) {
+      // For finish-fit sunscreen alternatives, stop once the pool already spans
+      // the main shopper-facing compare buckets instead of always exhausting
+      // every local query.
+      // eslint-disable-next-line no-await-in-loop
+      const searched = await searchLocalExternalSeedProducts({
+        query,
+        limit: 12,
+        logger,
+        transportPolicyMode: 'reco_alternatives_pool',
+        role: localSeedSearchRole,
+        preferredStep: localSeedSearchRole.preferred_step,
+      });
+      const list = Array.isArray(searched?.products) ? searched.products : [];
+      localCandidateRowCount += list.length;
+      for (const row of list) candidateRows.push(row);
+      const stagedDeduped = normalizeExternalSeedPoolCandidateRows(candidateRows, { identity, anchorId });
+      const stagedCompetitiveRows = finalizeRecoAlternativesForCompetitiveQuality(stagedDeduped, { maxTotal: normalizedLimit });
+      if (hasRecoAlternativeSunscreenTradeoffCoverage(stagedCompetitiveRows, {
+        targetSignals: identity.targetSignals,
+        maxTotal: normalizedLimit,
+      })) {
+        break;
+      }
+    }
+  } else {
+    const localSeedResults = await Promise.allSettled(
+      queriesToRun.map((query) => searchLocalExternalSeedProducts({
+        query,
+        limit: 12,
+        logger,
+        transportPolicyMode: 'reco_alternatives_pool',
+        role: localSeedSearchRole,
+        preferredStep: localSeedSearchRole.preferred_step,
+      })),
+    );
+    for (const result of localSeedResults) {
+      const searched = result.status === 'fulfilled' ? result.value : null;
+      const list = Array.isArray(searched?.products) ? searched.products : [];
+      localCandidateRowCount += list.length;
+      for (const row of list) candidateRows.push(row);
+    }
   }
 
   let deduped = normalizeExternalSeedPoolCandidateRows(candidateRows, { identity, anchorId });
