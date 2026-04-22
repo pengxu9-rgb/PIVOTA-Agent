@@ -867,13 +867,13 @@ describe('aurora chatCardFactory structured sections for adapter inputs', () => 
 
     const products = cards[0].payload.sections[0].products;
     expect(products[0].why_this_one).toMatch(/lighter, smoother daytime layering/i);
-    expect(products[1].why_this_one).toMatch(/more mineral|sensitive-skin-oriented|sheer and weightless/i);
+    expect(products[1].why_this_one).toMatch(/leans more mineral|sensitive-skin-friendly|sheer, weightless finish/i);
     expect(products[1].why_this_one).not.toMatch(/^Sheer, weightless, scentless mineral sunscreen/i);
-    expect(products[2].why_this_one).toMatch(/richer cream-spf base|cushioning under makeup|lightest finish/i);
+    expect(products[2].why_this_one).toMatch(/leans richer and more moisturizing|more cushion under makeup/i);
     expect(products[0].short_description).toMatch(/lighter, smoother sunscreen feel|under makeup/i);
-    expect(products[1].short_description).toMatch(/sheer, weightless mineral sunscreen option|sensitive skin/i);
+    expect(products[1].short_description).toMatch(/leans more mineral|sensitive-skin-friendly|sheer, weightless finish/i);
     expect(products[1].short_description).not.toMatch(/^Sheer, weightless, scentless mineral sunscreen/i);
-    expect(products[2].short_description).toMatch(/richer cream-spf base|more moisture under makeup/i);
+    expect(products[2].short_description).toMatch(/leans richer and more moisturizing|more cushion under makeup/i);
   });
 
   test('recommendations card infers finish-fit tradeoffs from product titles when raw copy is generic', () => {
@@ -926,10 +926,10 @@ describe('aurora chatCardFactory structured sections for adapter inputs', () => 
     );
 
     const products = cards[0].payload.sections[0].products;
-    expect(products[1].why_this_one).toMatch(/more mineral|sensitive-skin-oriented|sheer and weightless/i);
-    expect(products[1].short_description).toMatch(/mineral sunscreen option|sensitive skin/i);
-    expect(products[2].why_this_one).toMatch(/richer cream-spf base|more cushioning under makeup|lightest finish/i);
-    expect(products[2].short_description).toMatch(/richer cream-spf base|more moisture under makeup/i);
+    expect(products[1].why_this_one).toMatch(/leans more mineral|sensitive-skin-friendly|sheer, weightless finish/i);
+    expect(products[1].short_description).toMatch(/leans more mineral|sensitive-skin-friendly|sheer, weightless finish/i);
+    expect(products[2].why_this_one).toMatch(/leans richer and more moisturizing|more cushion under makeup/i);
+    expect(products[2].short_description).toMatch(/leans richer and more moisturizing|more cushion under makeup/i);
   });
 
   test('offers_resolved shares the rich product row contract and mirrors it into payload.sections', () => {

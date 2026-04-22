@@ -265,7 +265,7 @@ test('reco assistant rewrite prompt carries finish-fit same-slot tradeoff notes 
     assert.match(prompt, /Do not say a sunscreen doubles as, acts as, works as, or serves as a primer\./);
     assert.match(
       JSON.stringify(context.assistant_write_plan.same_role_options),
-      /more mineral, sensitive-skin-oriented option while keeping a sheer, weightless finish/,
+      /(?:more mineral, sensitive-skin-oriented option while keeping a sheer, weightless finish|leans more mineral and sensitive-skin-friendly if you want a sheer, weightless finish)/,
     );
     assert.match(
       JSON.stringify(context.assistant_write_plan.same_role_options),
@@ -547,10 +547,10 @@ test('beauty mainline reco rows keep finish-fit same-slot cards differentiated b
     assert.equal(rows.length, 3);
     assert.match(String(rows[0].why_this_one || ''), /lighter, smoother daytime layering/i);
     assert.match(String(rows[0].short_description || ''), /soft-focus|under makeup|daytime layering/i);
-    assert.match(String(rows[1].why_this_one || ''), /more mineral|sensitive-skin-oriented|sheer and weightless/i);
-    assert.match(String(rows[2].why_this_one || ''), /richer cream-spf base|cushioning under makeup|lightest finish/i);
+    assert.match(String(rows[1].why_this_one || ''), /leans more mineral|sensitive-skin-friendly|sheer, weightless finish/i);
+    assert.match(String(rows[2].why_this_one || ''), /leans richer and more moisturizing|more cushion under makeup/i);
     assert.match(String(rows[1].short_description || ''), /sheer|weightless|sensitive skin|mineral/i);
-    assert.match(String(rows[2].short_description || ''), /richer cream-spf base|cushioning under makeup|lightest finish|moisturizing/i);
+    assert.match(String(rows[2].short_description || ''), /leans richer and more moisturizing|more cushion under makeup|moisturizing/i);
     assert.notEqual(rows[1].why_this_one, rows[0].why_this_one);
     assert.notEqual(rows[2].why_this_one, rows[0].why_this_one);
     assert.doesNotMatch(String(rows[1].why_this_one || ''), /^Sheer, weightless, scentless mineral sunscreen/i);
@@ -3195,7 +3195,7 @@ test('reco assistant structured renderer compares finish-fit sunscreen options w
     });
 
     assert.match(text, /lighter, smoother daytime layering instead of a richer cream finish|keeps the feel lighter and more invisible if you want less weight under makeup/i);
-    assert.match(text, /more mineral, sensitive-skin-oriented option while keeping (?:a |the finish )?sheer, weightless/i);
+    assert.match(text, /(?:more mineral, sensitive-skin-oriented option while keeping (?:a |the finish )?sheer, weightless|leans more mineral and sensitive-skin-friendly if you want a sheer, weightless finish)/i);
     assert.match(text, /richer, more moisturizing cream-spf option/i);
     assert.doesNotMatch(text, /uv-filter cues|filter identity|reapplication expectations explicit/i);
     assert.doesNotMatch(text, /sheer, weightless, scentless mineral sunscreen recommended/i);
@@ -3370,8 +3370,8 @@ test('reco assistant structured renderer removes generic SPF utility tails from 
             display_name: 'Hydrating Sunscreen Milk with Colloidal Oatmeal Broad Spectrum SPF 45',
             brand: 'First Aid Beauty',
             category: 'Sunscreen',
-            short_description: 'A richer cream-SPF base when you want more moisture under makeup.',
-            why_this_one: 'it gives a richer cream-SPF base when you want more cushioning under makeup, not just the lightest finish',
+            short_description: 'Leans richer and more moisturizing if you want more cushion under makeup.',
+            why_this_one: 'it leans richer and more moisturizing if you want more cushion under makeup',
             matched_role_id: 'daily_sunscreen_finish_fit',
             matched_role_label: 'Daily sunscreen with finish fit',
             preferred_step: 'sunscreen',
@@ -3545,8 +3545,8 @@ test('reco assistant rewrite uses structured primary attempt for finish-fit same
             display_name: 'Ultra Light Liquid Mineral Sunscreen with Zinc Oxide SPF 30',
             brand: 'First Aid Beauty',
             category: 'Sunscreen',
-            short_description: 'A sheer, weightless mineral sunscreen option for sensitive skin.',
-            why_this_one: 'it gives a more mineral, sensitive-skin-oriented option while keeping the finish sheer and weightless',
+            short_description: 'Leans more mineral and sensitive-skin-friendly with a sheer, weightless finish.',
+            why_this_one: 'it leans more mineral and sensitive-skin-friendly if you want a sheer, weightless finish',
             matched_role_id: 'daily_sunscreen_finish_fit',
             matched_role_label: 'Daily sunscreen with finish fit',
             preferred_step: 'sunscreen',
@@ -3556,8 +3556,8 @@ test('reco assistant rewrite uses structured primary attempt for finish-fit same
             display_name: 'Hydrating Sunscreen Milk with Colloidal Oatmeal Broad Spectrum SPF 45',
             brand: 'First Aid Beauty',
             category: 'Sunscreen',
-            short_description: 'A richer cream-SPF base when you want more moisture under makeup.',
-            why_this_one: 'it gives a richer cream-SPF base when you want more cushioning under makeup, not just the lightest finish',
+            short_description: 'Leans richer and more moisturizing if you want more cushion under makeup.',
+            why_this_one: 'it leans richer and more moisturizing if you want more cushion under makeup',
             matched_role_id: 'daily_sunscreen_finish_fit',
             matched_role_label: 'Daily sunscreen with finish fit',
             preferred_step: 'sunscreen',
@@ -3592,8 +3592,8 @@ test('reco assistant rewrite uses structured primary attempt for finish-fit same
         json: {
           lead_reason: 'it supports lighter, smoother daytime layering under makeup',
           support_reasons: [
-            'it gives a more mineral, sensitive-skin-oriented option while keeping the finish sheer and weightless',
-            'it gives a richer cream-spf base when you want more cushioning under makeup',
+            'it leans more mineral and sensitive-skin-friendly if you want a sheer, weightless finish',
+            'it leans richer and more moisturizing if you want more cushion under makeup',
           ],
         },
         parse_status: 'parsed',

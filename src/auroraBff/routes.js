@@ -20400,16 +20400,16 @@ function buildRecoFinishFitSpecificWhy({
   }
 
   if (hasCreamierCue) {
-    return 'it gives a richer cream-SPF base when you want more cushioning under makeup, not just the lightest finish';
+    return 'it leans richer and more moisturizing if you want more cushion under makeup';
   }
   if (hasMineralCue && (hasSensitiveCue || hasWeightless || hasWhiteCastCue)) {
-    return 'it gives a more mineral, sensitive-skin-oriented option while keeping the finish sheer and weightless';
+    return 'it leans more mineral and sensitive-skin-friendly if you want a sheer, weightless finish';
   }
   if (hasSoftFocus || (hasLayering && hasWeightless)) {
     return 'it points to lighter, smoother daytime layering instead of a richer cream finish';
   }
   if (hasWeightless && hasSensitiveCue) {
-    return 'it keeps the wear sheer and weightless while staying simpler for sensitive-skin daytime use';
+    return 'it leans more mineral and sensitive-skin-friendly if you want a sheer, weightless finish';
   }
   if (hasWhiteCastCue) {
     return 'it points to cleaner daytime wear with lower white-cast risk';

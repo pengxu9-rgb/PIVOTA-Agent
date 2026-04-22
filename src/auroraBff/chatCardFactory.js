@@ -602,16 +602,16 @@ function buildRecommendationFinishFitSpecificWhy(row) {
   const hasCreamierCue = /\b(?:hydrating daily cream|hydrating cream|cream format|cream texture|moisturizer[-\s]?style hydration|moisturizer[-\s]?format|cream-spf|cream spf|sunscreen milk|milk spf|milky sunscreen|hydrating sunscreen milk|spf milk|spf lotion)\b/i.test(texts);
 
   if (hasCreamierCue) {
-    return 'it gives a richer cream-SPF base when you want more cushioning under makeup, not just the lightest finish';
+    return 'it leans richer and more moisturizing if you want more cushion under makeup';
   }
   if (hasMineralCue && (hasSensitiveCue || hasWeightless || hasWhiteCastCue)) {
-    return 'it gives a more mineral, sensitive-skin-oriented option while keeping the finish sheer and weightless';
+    return 'it leans more mineral and sensitive-skin-friendly if you want a sheer, weightless finish';
   }
   if (hasSoftFocus || (hasLayering && hasWeightless)) {
     return 'it points to lighter, smoother daytime layering instead of a richer cream finish';
   }
   if (hasWeightless && hasSensitiveCue) {
-    return 'it gives a more mineral, sensitive-skin-oriented option while keeping the finish sheer and weightless';
+    return 'it leans more mineral and sensitive-skin-friendly if you want a sheer, weightless finish';
   }
   if (hasWhiteCastCue) {
     return 'it points to cleaner daytime wear with lower white-cast risk';
@@ -635,10 +635,10 @@ function buildRecommendationFinishFitSpecificShortDescription(row) {
   const hasCreamierCue = /\b(?:hydrating daily cream|hydrating cream|cream format|cream texture|moisturizer[-\s]?style hydration|moisturizer[-\s]?format|cream-spf|cream spf|sunscreen milk|milk spf|milky sunscreen|hydrating sunscreen milk|spf milk|spf lotion)\b/i.test(texts);
 
   if (hasCreamierCue) {
-    return 'A richer cream-SPF base when you want more moisture under makeup.';
+    return 'Leans richer and more moisturizing if you want more cushion under makeup.';
   }
   if (hasMineralCue && (hasSensitiveCue || hasWeightless || hasWhiteCastCue)) {
-    return 'A sheer, weightless mineral sunscreen option for sensitive skin.';
+    return 'Leans more mineral and sensitive-skin-friendly with a sheer, weightless finish.';
   }
   if (hasSoftFocus || (hasLayering && hasWeightless)) {
     return 'A lighter, smoother sunscreen feel for daytime layering under makeup.';
