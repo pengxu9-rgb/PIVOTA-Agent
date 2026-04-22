@@ -102,6 +102,7 @@ function createRecoAlternativesRouteHandlerRuntime(deps = {}) {
         prompt_contract_issues: Array.isArray(out && out.prompt_contract_issues) ? out.prompt_contract_issues : [],
         no_result_reason: out && out.no_result_reason ? String(out.no_result_reason) : null,
         timeout_root_cause: out && out.timeout_root_cause ? String(out.timeout_root_cause) : null,
+        elapsed_ms: Number.isFinite(Number(out?.elapsed_ms)) ? Math.max(0, Math.trunc(Number(out.elapsed_ms))) : null,
         llm_trace: out && out.llm_trace && typeof out.llm_trace === 'object' ? out.llm_trace : null,
         ...(out && out.compare_meta && typeof out.compare_meta === 'object' ? { compare_meta: out.compare_meta } : {}),
         ...(includeDebug && out && out.debug && typeof out.debug === 'object' ? { debug: out.debug } : {}),

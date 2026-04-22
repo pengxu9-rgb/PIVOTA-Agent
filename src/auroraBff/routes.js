@@ -75211,6 +75211,27 @@ async function buildRecoAlternativesAuthorityBackfillLedger({
   }
 }
 
+function recordRecoAlternativesStageTiming(stageTimingsMs, name, startedAt) {
+  if (!stageTimingsMs || typeof stageTimingsMs !== 'object' || !name || !Number.isFinite(Number(startedAt))) return;
+  stageTimingsMs[name] = Math.max(0, Math.round(Date.now() - Number(startedAt)));
+}
+
+function buildRecoAlternativesTimingMeta(stageTimingsMs, requestStartedAt, extra = {}) {
+  const timings =
+    stageTimingsMs && typeof stageTimingsMs === 'object' && !Array.isArray(stageTimingsMs)
+      ? Object.fromEntries(
+          Object.entries(stageTimingsMs)
+            .filter(([, value]) => Number.isFinite(Number(value)) && Number(value) >= 0)
+            .map(([key, value]) => [key, Math.max(0, Math.round(Number(value)))]),
+        )
+      : {};
+  return {
+    ...extra,
+    total_elapsed_ms: Math.max(0, Math.round(Date.now() - Number(requestStartedAt || Date.now()))),
+    ...(Object.keys(timings).length ? { stage_timings_ms: timings } : {}),
+  };
+}
+
 function normalizeRecoAlternativesOpenWorldModel(raw) {
   const model = pickFirstTrimmed(raw);
   const lower = String(model || '').trim().toLowerCase();
@@ -75603,12 +75624,15 @@ async function fetchRecoAlternativesForExternalSeedProduct({
   maxTotal = 3,
   logger,
 } = {}) {
+  const requestStartedAt = Date.now();
+  const stageTimingsMs = {};
   const limit = Math.max(1, Math.min(6, Number.isFinite(Number(maxTotal)) ? Math.trunc(Number(maxTotal)) : 3));
   const openWorldModel = getRecoAlternativesOpenWorldModel();
   const maxOutputTokens = getRecoAlternativesOpenWorldMaxOutputTokens();
   const timeoutMs = getRecoAlternativesOpenWorldTimeoutMs();
   const queueTimeoutMs = getRecoAlternativesOpenWorldQueueTimeoutMs(timeoutMs);
   const upstreamTimeoutMs = getRecoAlternativesOpenWorldUpstreamTimeoutMs(timeoutMs, queueTimeoutMs);
+  const poolStageStartedAt = Date.now();
   const pool = await collectExternalSeedPoolAlternatives({
     ctx,
     productInput,
@@ -75617,6 +75641,7 @@ async function fetchRecoAlternativesForExternalSeedProduct({
     anchorId,
     logger,
   });
+  recordRecoAlternativesStageTiming(stageTimingsMs, 'pool_search', poolStageStartedAt);
   const targetSignals = pool.identity.targetSignals;
   const embeddedSelectorPool = buildRecoAlternativesCandidatePool({
     productObj,
@@ -75706,8 +75731,8 @@ async function fetchRecoAlternativesForExternalSeedProduct({
       cache_hit: false,
     };
   } else {
+    const openWorldStageStartedAt = Date.now();
     try {
-      const startedAt = Date.now();
       const resp = await callGeminiJsonObjectImpl({
         model: openWorldModel,
         systemPrompt,
@@ -75734,7 +75759,7 @@ async function fetchRecoAlternativesForExternalSeedProduct({
         provider_result_reason: resp?.meta?.result_reason || null,
         finish_reason: resp?.finish_reason || null,
         parse_status: resp?.parse_status || null,
-        latency_ms: Math.max(0, Date.now() - startedAt),
+        latency_ms: Math.max(0, Date.now() - openWorldStageStartedAt),
         error_class: resp?.ok === true ? null : classifyAlternativesFailureCode(resp?.reason),
       };
       const recoveredRawRows = resp?.ok === false
@@ -75795,6 +75820,7 @@ async function fetchRecoAlternativesForExternalSeedProduct({
       };
       openWorldStatus = 'provider_error';
     }
+    recordRecoAlternativesStageTiming(stageTimingsMs, 'open_world', openWorldStageStartedAt);
   }
 
   const merged = mergeRecoAlternativesForHybrid(poolCandidates, openWorldRows, {
@@ -75802,6 +75828,7 @@ async function fetchRecoAlternativesForExternalSeedProduct({
     preferBestScore: true,
   });
 
+  const finalizeStageStartedAt = Date.now();
   const hydratedAlternatives = await hydrateRecoAlternativesAuthorityExperienceRows(merged);
   const rankedHydratedAlternatives = sortRecoAlternativesByMixedScore(hydratedAlternatives, { useExperienceQualityBonus: true });
   const cleanedAlternatives = applyOpenWorldAlternativeVisibleCopy(rankedHydratedAlternatives.map((row) => {
@@ -75810,17 +75837,22 @@ async function fetchRecoAlternativesForExternalSeedProduct({
     return next;
   }), { targetSignals });
   const visibleAlternatives = filterRecoAlternativesVisibleAuthorityRows(cleanedAlternatives, { minGrounded: 2 });
+  recordRecoAlternativesStageTiming(stageTimingsMs, 'finalize_visible_rows', finalizeStageStartedAt);
+  const backfillStageStartedAt = Date.now();
   const backfillLedger = await buildRecoAlternativesAuthorityBackfillLedger({
     ctx,
     alternatives: cleanedAlternatives.length ? cleanedAlternatives : openWorldRows,
     logger,
   });
+  recordRecoAlternativesStageTiming(stageTimingsMs, 'authority_backfill_ledger', backfillStageStartedAt);
   const visibleAlternativeRows = visibleAlternatives.alternatives;
   const poolSelectedCount = visibleAlternativeRows.filter((row) => String(row?.candidate_origin || '') === 'pool').length;
   const openWorldSelectedCount = visibleAlternativeRows.filter((row) => String(row?.candidate_origin || '') === 'open_world').length;
   const compareMeta = {
     embedded_candidate_count: embeddedPoolCandidates.length,
     pool_candidate_count: poolCandidates.length,
+    search_query_count: Array.isArray(pool?.queries) ? pool.queries.length : 0,
+    executed_query_count: Array.isArray(pool?.executed_queries) ? pool.executed_queries.length : 0,
     pool_selected_count: poolSelectedCount,
     open_world_candidate_count: openWorldRows.length,
     open_world_selected_count: openWorldSelectedCount,
@@ -75839,6 +75871,7 @@ async function fetchRecoAlternativesForExternalSeedProduct({
     open_world_role: 'coverage_supplement',
     authority_backfill: backfillLedger,
   };
+  Object.assign(compareMeta, buildRecoAlternativesTimingMeta(stageTimingsMs, requestStartedAt));
 
   if (!visibleAlternativeRows.length) {
     return {
@@ -75855,6 +75888,7 @@ async function fetchRecoAlternativesForExternalSeedProduct({
         ? 'open_world_provider_error_after_pool_empty'
         : 'pool_and_open_world_empty',
       llm_trace: llmTrace,
+      elapsed_ms: Math.max(0, Math.round(Date.now() - requestStartedAt)),
       compare_meta: compareMeta,
     };
   }
@@ -75870,6 +75904,7 @@ async function fetchRecoAlternativesForExternalSeedProduct({
     failure_class: openWorldStatus === 'provider_error' && poolSelectedCount === 0 ? 'provider_error' : null,
     attempt_count: 1,
     llm_trace: llmTrace,
+    elapsed_ms: Math.max(0, Math.round(Date.now() - requestStartedAt)),
     compare_meta: compareMeta,
   };
 }
@@ -75888,6 +75923,8 @@ async function fetchRecoAlternativesForProduct({
   logger,
   options,
 }) {
+  const requestStartedAt = Date.now();
+  const stageTimingsMs = {};
   const opts = options && typeof options === 'object' && !Array.isArray(options) ? options : {};
   const recommendationMode = normalizeRecoAlternativesMode(opts.recommendation_mode);
   const profileMode = normalizeAlternativesProfileMode(opts.profile_mode);
@@ -76176,6 +76213,7 @@ async function fetchRecoAlternativesForProduct({
         continue_without_anchor: Boolean(!resolvedAnchor && canProceedWithoutAnchor),
         resolved_product_hydrated: Boolean(resolvedAnchorProduct),
       };
+      recordRecoAlternativesStageTiming(stageTimingsMs, 'anchor_precheck', startedAt);
       if (resolvedAnchor) {
         anchor = resolvedAnchor;
         if (resolvedAnchorProduct) {
@@ -76337,6 +76375,7 @@ async function fetchRecoAlternativesForProduct({
   let groundedPoolMeta = null;
   if (recommendationMode === 'pool_open_world_mixed' && !ignoreSelectorCandidates) {
     try {
+      const poolStageStartedAt = Date.now();
       const pool = await collectExternalSeedPoolAlternatives({
         ctx,
         productInput: bestInput,
@@ -76345,7 +76384,9 @@ async function fetchRecoAlternativesForProduct({
         anchorId: anchor,
         logger,
       });
+      recordRecoAlternativesStageTiming(stageTimingsMs, 'pool_search', poolStageStartedAt);
       const searchedPoolAlternatives = Array.isArray(pool?.candidates) ? pool.candidates : [];
+      const finalizeGroundedPoolStartedAt = Date.now();
       groundedPoolAlternatives = mergeRecoAlternativesForHybrid(
         selectorGroundedAlternatives,
         searchedPoolAlternatives,
@@ -76353,6 +76394,7 @@ async function fetchRecoAlternativesForProduct({
       );
       groundedPoolAlternatives = await hydrateRecoAlternativesAuthorityExperienceRows(groundedPoolAlternatives);
       groundedPoolAlternatives = sortRecoAlternativesByMixedScore(groundedPoolAlternatives, { useExperienceQualityBonus: true });
+      recordRecoAlternativesStageTiming(stageTimingsMs, 'finalize_visible_rows', finalizeGroundedPoolStartedAt);
       groundedPoolMeta = {
         selector_candidate_count: selectorCandidatePool.length,
         selector_grounded_count: selectorGroundedAlternatives.length,
@@ -76423,13 +76465,16 @@ async function fetchRecoAlternativesForProduct({
             enqueued_candidate_count: 0,
             brands: [],
           },
+          ...buildRecoAlternativesTimingMeta(stageTimingsMs, requestStartedAt),
         },
+        elapsed_ms: Math.max(0, Math.round(Date.now() - requestStartedAt)),
         ...(debug ? { debug: { anchor_precheck: anchorPrecheck, grounded_pool: groundedPoolMeta } } : {}),
       };
     }
 
     let openWorldOut = null;
     try {
+      const openWorldStageStartedAt = Date.now();
       openWorldOut = await fetchRecoAlternativesForLocalGeminiOpenWorld({
         ctx,
         productInput: bestInput,
@@ -76438,6 +76483,7 @@ async function fetchRecoAlternativesForProduct({
         profileMode,
         logger,
       });
+      recordRecoAlternativesStageTiming(stageTimingsMs, 'open_world', openWorldStageStartedAt);
     } catch (err) {
       openWorldOut = {
         ok: true,
@@ -76469,11 +76515,13 @@ async function fetchRecoAlternativesForProduct({
       openWorldAlternatives,
       { maxTotal: limit },
     );
+    const finalizeVisibleRowsStartedAt = Date.now();
     const hydratedAlternatives = await hydrateRecoAlternativesAuthorityExperienceRows(alternatives);
     const visibleAlternatives = filterRecoAlternativesVisibleAuthorityRows(
       sortRecoAlternativesByMixedScore(hydratedAlternatives, { useExperienceQualityBonus: true }),
       { minGrounded: 2 },
     );
+    recordRecoAlternativesStageTiming(stageTimingsMs, 'finalize_visible_rows', finalizeVisibleRowsStartedAt);
     const openWorldStatus = openWorldAlternatives.length
       ? 'success'
       : openWorldOut?.failure_class
@@ -76528,7 +76576,9 @@ async function fetchRecoAlternativesForProduct({
           enqueued_candidate_count: 0,
           brands: [],
         },
+        ...buildRecoAlternativesTimingMeta(stageTimingsMs, requestStartedAt),
       },
+      elapsed_ms: Math.max(0, Math.round(Date.now() - requestStartedAt)),
       ...(debug ? { debug: { anchor_precheck: anchorPrecheck, grounded_pool: groundedPoolMeta } } : {}),
     };
   }
