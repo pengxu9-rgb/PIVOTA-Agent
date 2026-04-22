@@ -374,6 +374,10 @@ function isDecorativeSeedImageUrl(value) {
     normalized.includes('/logo.svg') ||
     normalized.includes('/tf_logo.svg') ||
     /[_-]\d{2,3}x\d{2,3}_crop_center(?:[._-]|$)/i.test(normalized) ||
+    normalized.includes('sealofapproval') ||
+    normalized.includes('which_spf_is_right_for_you') ||
+    normalized.includes('/screenshot_') ||
+    normalized.includes('/screenshot20') ||
     normalized.includes('gnav-shop-') ||
     normalized.includes('shade-finder-hero-')
   );

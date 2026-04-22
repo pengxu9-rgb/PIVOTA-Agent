@@ -96,6 +96,9 @@ describe('backfill-external-product-seeds-catalog', () => {
         'https://www.tomfordbeauty.com/cdn/shop/files/Menu.svg?v=1771253635&width=24',
         'https://www.rarebeauty.com/cdn/shop/files/gnav-shop-fragrance-fa25_1024x.png?v=1753828599',
         'https://www.rarebeauty.com/cdn/shop/files/SHADE-FINDER-HERO-MIDDLE_1024x.jpg?v=1613736184',
+        'https://cdn.shopify.com/s/files/1/0651/7656/8022/files/Dermatest_Excellent_sealofapproval.png?v=1772850277',
+        'https://cdn.shopify.com/s/files/1/0651/7656/8022/files/which_spf_is_right_for_you_square.png?v=1775172904',
+        'https://cdn.shopify.com/s/files/1/0638/6535/6538/files/Screenshot_2025-04-18_155639.png?v=1745006245',
       ]),
     ).toEqual([
       'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T93Y01_2000x2000_0.png?v=1774596807',
