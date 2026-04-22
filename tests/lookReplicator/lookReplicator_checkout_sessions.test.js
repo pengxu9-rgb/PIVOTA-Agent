@@ -398,7 +398,6 @@ describe('creator checkout_sessions compatibility', () => {
       ),
     ).toBe(false);
   });
-
   test('forwards X-Agent-User-JWT to ACP checkout session creation', async () => {
     process.env.LOOK_REPLICATOR_CHECKOUT_PROVIDER = 'acp';
     axios.post.mockResolvedValueOnce({
