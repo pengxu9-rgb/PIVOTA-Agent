@@ -431,6 +431,7 @@ const IMAGE_RELEVANCE_PRODUCT_TYPE_ALIASES = {
   serum: 'serum',
   shampoo: 'shampoo',
   spray: 'mist',
+  stick: 'stick',
   toner: 'toner',
   wash: 'wash',
 };
@@ -594,6 +595,13 @@ function isProductRelevantSeedImageUrl(value, relevanceContext) {
   }
   if (!relevanceContext.bundleLike && isCollectionStyleSeedImageUrl(value)) return false;
   const imageTokens = extractImageFilenameTokens(value);
+  if (
+    !relevanceContext.bundleLike &&
+    imageTokens.some((token) => IMAGE_RELEVANCE_BUNDLE_TOKENS.has(token)) &&
+    extractCanonicalImageProductTypes(imageTokens).length > 1
+  ) {
+    return false;
+  }
   if (
     !relevanceContext.bundleLike &&
     Array.isArray(relevanceContext.signatureTokens) &&

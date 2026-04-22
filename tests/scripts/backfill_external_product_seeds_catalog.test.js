@@ -141,6 +141,23 @@ describe('backfill-external-product-seeds-catalog', () => {
     ]);
   });
 
+  test('drops bundle group images when filename mixes bundle tokens with multiple product types', () => {
+    expect(
+      sanitizeSeedImageUrls(
+        [
+          'https://cdn.shopify.com/s/files/1/0558/4135/7989/files/ginseng-moist-sun-serum-front.webp?v=1762679700',
+          'https://cdn.shopify.com/s/files/1/0558/4135/7989/files/Perfect-Hanbang-Sun-Trio-Relief-Sun-Matte-Sun-Stick-Sun-Serum-_Beauty-of-Joseon_81380730-52106203398516.jpg?v=1762679751',
+        ],
+        {
+          productTitle: 'Ginseng Moist Sun Serum (SPF 50+ PA++++)',
+          productUrl: 'https://beautyofjoseon.com/products/ginseng-moist-sun-serum',
+        },
+      ),
+    ).toEqual([
+      'https://cdn.shopify.com/s/files/1/0558/4135/7989/files/ginseng-moist-sun-serum-front.webp?v=1762679700',
+    ]);
+  });
+
   test('keeps mixed product-type images for bundle-like PDPs', () => {
     expect(
       sanitizeSeedImageUrls(
