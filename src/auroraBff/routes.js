@@ -55465,11 +55465,11 @@ function buildRecoAssistantTradeoffNote(detail = {}, {
     const mineralCue = /\b(mineral|zinc|zinc oxide|titanium dioxide)\b/i.test(text);
     const sensitiveCue = /\b(sensitive skin|scentless|fragrance[-\s]?free|simple formula|gentle)\b/i.test(text);
     if (mineralCue || sensitiveCue) {
-      return 'it gives a more mineral, sensitive-skin-oriented option while keeping a sheer, weightless finish';
+      return 'it leans more mineral and sensitive-skin-friendly if you want a sheer, weightless finish';
     }
     const creamCue = /\b(hydrating daily cream|hydrating cream|cream format|cream texture|moisturizer[-\s]?style hydration|more moisture|richer cream)\b/i.test(text);
     if (creamCue) {
-      return 'it gives a richer, more moisturizing cream-SPF option';
+      return 'it leans richer and more moisturizing if you want more cushion under makeup';
     }
     const weightlessCue = /\b(sheer|weightless|airy|invisible|soft[-\s]?focus|fluid|water[-\s]?fit|watery)\b/i.test(text);
     if (weightlessCue) {
@@ -58190,6 +58190,9 @@ function renderRecoAssistantStructuredReasonRewrite({
   const supportReasons = selectedNames.slice(1).map((name, index) => {
     const detail = details[index + 1] || {};
     const supportTargetLabel = buildRecoAssistantSupportTargetLabel(detail, targetLabel);
+    const finishFitSameSlotComparison =
+      String(selectedProductRoleMix || '').toLowerCase() === 'same_role_comparison'
+      && recoRoleNeedsFinishFitNarrative([targetLabel, supportTargetLabel].filter(Boolean).join(' '));
     const fallbackReason = buildRecoAssistantStructuredReasonFallback(detail, {
       targetLabel: supportTargetLabel,
       selectedProductRoleMix,
@@ -58197,6 +58200,10 @@ function renderRecoAssistantStructuredReasonRewrite({
       forbiddenNames,
       forbiddenAliases,
     });
+    const canonicalSupportReason = normalizeRecoAssistantFinishFitTradeoffReason(
+      normalizeRecoAssistantBecauseReasonFragment(fallbackReason),
+      { targetLabel: supportTargetLabel, detail },
+    );
     const candidateReason = normalizeRecoAssistantFinishFitTradeoffReason(
       normalizeRecoAssistantBecauseReasonFragment(
         normalizeRecoAssistantReasonFragment(
@@ -58211,14 +58218,14 @@ function renderRecoAssistantStructuredReasonRewrite({
       ),
       { targetLabel: supportTargetLabel, detail },
     );
+    if (finishFitSameSlotComparison && canonicalSupportReason) {
+      return canonicalSupportReason;
+    }
     if (recoAssistantStructuredSupportReasonMisusesPrimaryTarget(candidateReason, {
       detail,
       primaryTargetLabel: targetLabel,
     })) {
-      return normalizeRecoAssistantFinishFitTradeoffReason(
-        normalizeRecoAssistantBecauseReasonFragment(fallbackReason),
-        { targetLabel: supportTargetLabel, detail },
-      );
+      return canonicalSupportReason || candidateReason;
     }
     return candidateReason;
   });
