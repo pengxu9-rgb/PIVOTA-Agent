@@ -77,6 +77,28 @@ function buildCreatorCheckoutUrl(checkoutUiBaseUrl, orderItems, returnUrl, extra
   }
 }
 
+function normalizeBaseUrl(value) {
+  return String(value || '').trim().replace(/\/+$/, '') || null;
+}
+
+function isUcpOfferId(value) {
+  return String(value || '').trim().startsWith('offer_v1.');
+}
+
+function toMinorAmount(unitPrice, currency = 'USD') {
+  const numeric = Number(unitPrice);
+  if (!Number.isFinite(numeric)) return 0;
+  const normalizedCurrency = String(currency || 'USD').trim().toUpperCase();
+  if (normalizedCurrency === 'JPY') return Math.max(0, Math.round(numeric));
+  return Math.max(0, Math.round(numeric * 100));
+}
+
+function buildUcpAgentHeader(profileUrl) {
+  const normalized = String(profileUrl || '').trim();
+  if (!normalized) return null;
+  return `profile="${normalized}"`;
+}
+
 const CREATOR_CHECKOUT_SESSION_PATHS = [
   '/checkout-sessions',
   '/api/checkout-sessions',
@@ -140,6 +162,91 @@ async function axiosPostWithRetry(url, body, config, opts = {}) {
       throw err;
     }
   }
+}
+
+async function mintUcpOfferId({
+  ucpBaseUrl,
+  internalKey,
+  item,
+}) {
+  if (!ucpBaseUrl || !internalKey) {
+    throw new Error('UCP offer mint is not configured');
+  }
+  const res = await axiosPostWithRetry(
+    `${ucpBaseUrl}/internal/ucp/mint-offer`,
+    {
+      merchant_id: item.merchant_id,
+      product_id: item.product_id,
+      ...(item.variant_id ? { variant_id: item.variant_id } : {}),
+      ...(item.title ? { title: item.title } : {}),
+      ...(item.image_url ? { image_url: item.image_url } : {}),
+      currency: item.currency || 'USD',
+      price_minor: toMinorAmount(item.unit_price, item.currency || 'USD'),
+      exp_seconds: Number(process.env.UCP_CHECKOUT_OFFER_EXP_SECONDS || 3600) || 3600,
+    },
+    {
+      timeout: 30_000,
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Pivota-Internal-Key': internalKey,
+      },
+      validateStatus: () => true,
+    },
+    { retries: 1, minBackoffMs: 300 },
+  );
+  const offerId = String(res?.data?.offer_id || '').trim() || null;
+  if (!res || res.status < 200 || res.status >= 300 || !offerId) {
+    const err = new Error('Failed to mint UCP offer_id');
+    err.status = res?.status || 502;
+    err.body = compactUpstreamBody(res?.data);
+    throw err;
+  }
+  return offerId;
+}
+
+async function createUcpCheckoutSession({
+  ucpBaseUrl,
+  currency,
+  lineItems,
+  returnUrl,
+  ucpAgentHeader,
+}) {
+  if (!ucpBaseUrl) {
+    throw new Error('UCP checkout session base URL is not configured');
+  }
+  const createUrl = new URL(`${ucpBaseUrl}/ucp/v1/checkout-sessions`);
+  if (returnUrl) createUrl.searchParams.set('return', String(returnUrl));
+
+  const res = await axiosPostWithRetry(
+    createUrl.toString(),
+    {
+      currency,
+      line_items: lineItems,
+    },
+    {
+      timeout: 30_000,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(ucpAgentHeader ? { 'UCP-Agent': ucpAgentHeader } : {}),
+      },
+      validateStatus: () => true,
+    },
+    { retries: 1, minBackoffMs: 300 },
+  );
+
+  const checkoutUrlRaw = String(res?.data?.continue_url || '').trim() || null;
+  const checkoutSessionId = String(res?.data?.id || '').trim() || null;
+  if (!res || res.status < 200 || res.status >= 300 || !checkoutUrlRaw || !checkoutSessionId) {
+    const err = new Error('Failed to create UCP checkout session');
+    err.status = res?.status || 502;
+    err.body = compactUpstreamBody(res?.data);
+    throw err;
+  }
+
+  return {
+    checkoutUrl: checkoutUrlRaw,
+    checkoutSessionId,
+  };
 }
 
 function parseBearer(authHeader) {
@@ -1244,7 +1351,10 @@ function mountLookReplicatorRoutes(app, { logger }) {
   // - "legacy" body: { market, locale, items:[{skuId, qty}], returnUrl }
   // - ACP body: { items:[{id, quantity}], buyer?, fulfillment_address? }
   //
-  // We return { checkoutUrl } suitable for redirecting the user to checkout.
+  // Default behavior is now UCP session-first:
+  // validate cart -> resolve/mint offer_id -> create /ucp/v1/checkout-sessions -> return continue_url.
+  // Legacy creator checkout intents remain behind LOOK_REPLICATOR_ALLOW_LEGACY_CHECKOUT_FALLBACK
+  // as a controlled migration fallback and should not silently degrade to /order?items=...
   app.post(CREATOR_CHECKOUT_SESSION_PATHS, async (req, res) => {
     if (!requireLookReplicatorAuth(req, res)) return;
     res.set('Cache-Control', 'no-store');
@@ -1279,6 +1389,10 @@ function mountLookReplicatorRoutes(app, { logger }) {
               product_id: String(it.skuId || it.sku_id || '').trim(),
               quantity: Number(it.qty || it.quantity || 1) || 1,
               merchantId: String(it.merchantId || it.merchant_id || '').trim() || null,
+              offerId: String(it.offerId || it.offer_id || '').trim() || null,
+              title: String(it.title || '').trim() || null,
+              imageUrl: String(it.imageUrl || it.image_url || '').trim() || null,
+              currency: String(it.currency || '').trim().toUpperCase() || null,
             }))
             .filter((it) => it.product_id)
         : rawItems
@@ -1286,6 +1400,10 @@ function mountLookReplicatorRoutes(app, { logger }) {
               product_id: String(it.id || '').trim(),
               quantity: Number(it.quantity || 1) || 1,
               merchantId: String(it.merchantId || it.merchant_id || '').trim() || null,
+              offerId: String(it.offerId || it.offer_id || '').trim() || null,
+              title: String(it.title || '').trim() || null,
+              imageUrl: String(it.imageUrl || it.image_url || '').trim() || null,
+              currency: String(it.currency || '').trim().toUpperCase() || null,
             }))
             .filter((it) => it.product_id);
 
@@ -1320,6 +1438,18 @@ function mountLookReplicatorRoutes(app, { logger }) {
       .replace(/\/+$/, '');
     const allowLegacyCreatorCheckoutFallback = /^(1|true|yes|on)$/i.test(
       String(process.env.LOOK_REPLICATOR_ALLOW_LEGACY_CHECKOUT_FALLBACK || '').trim(),
+    );
+    const ucpBaseUrl =
+      normalizeBaseUrl(process.env.UCP_WEB_BASE_URL) ||
+      normalizeBaseUrl(process.env.PIVOTA_UCP_BASE_URL) ||
+      normalizeBaseUrl(checkoutUiBaseUrl);
+    const ucpInternalKey =
+      String(process.env.UCP_INTERNAL_OFFER_MINT_KEY || process.env.UCP_INTERNAL_API_KEY || '').trim() ||
+      null;
+    const ucpAgentHeader = buildUcpAgentHeader(
+      process.env.LOOK_REPLICATOR_UCP_AGENT_PROFILE_URL ||
+        process.env.UCP_AGENT_PROFILE_URL ||
+        null,
     );
 
     if (!agentApiKey) {
@@ -1406,6 +1536,14 @@ function mountLookReplicatorRoutes(app, { logger }) {
             let expiresAt = null;
 
             if (checkoutProvider === 'creator' || checkoutProvider === 'pivota') {
+              const rawItemsForMerchant = cartItems.filter((item) => (item.merchantId || defaultMerchantId) === mid);
+              const rawItemsByProductId = new Map();
+              for (const item of rawItemsForMerchant) {
+                const productId = String(item?.product_id || '').trim();
+                if (productId && !rawItemsByProductId.has(productId)) {
+                  rawItemsByProductId.set(productId, item);
+                }
+              }
               const validatedByVariantId = new Map();
               for (const v of validated) {
                 const vid = String(v?.variant_id || '').trim();
@@ -1423,114 +1561,161 @@ function mountLookReplicatorRoutes(app, { logger }) {
                   const pid = String(q.product_id || '').trim();
                   if (!vid || !pid) return null;
                   const v = validatedByVariantId.get(vid) || validatedByProductId.get(pid) || {};
+                  const raw = rawItemsByProductId.get(pid) || {};
                   const marketCurrency = market === 'JP' ? 'JPY' : 'USD';
+                  const currency =
+                    String(v.currency || cart.data?.pricing?.currency || raw.currency || marketCurrency)
+                      .trim()
+                      .toUpperCase() || marketCurrency;
+                  const unitPrice =
+                    Number(v.unit_price ?? v.unit_price_effective ?? v.price ?? 0) || 0;
                   return {
                     product_id: pid,
                     variant_id: vid,
                     sku: String(v.sku || '').trim() || undefined,
                     merchant_id: mid,
-                    title: String(v.product_title || v.title || 'Product'),
+                    offer_id: String(raw.offerId || v.offer_id || '').trim() || undefined,
+                    title: String(v.product_title || v.title || raw.title || 'Product'),
+                    image_url: String(v.image_url || raw.imageUrl || '').trim() || undefined,
                     quantity: Number(q.quantity || 1) || 1,
-                    // NOTE: cart/validate pricing is best-effort and may not reflect Storefront/Checkout pricing
-                    // (presentment currency, promotions, etc). Avoid sending potentially misleading prices/currency
-                    // into checkout; the checkout UI will always recompute via /agent/v1/quotes/preview after
-                    // the user enters shipping details.
-                    unit_price: 0,
-                    currency: marketCurrency,
+                    // UCP offer tokens bind merchant and price. Prefer validated pricing when available;
+                    // otherwise mint a zero-price capability and let hosted checkout re-quote later.
+                    unit_price: unitPrice,
+                    currency,
                   };
                 })
                 .filter(Boolean);
 
-              // Creator cart checkout is still token-first, not order-first. The backend
-              // /agent/v2/payments/checkout-sessions route is order-scoped and internally
-              // adapts back into checkout intents, so creator cart traffic should mint the
-              // checkout intent directly here until the product flow becomes order-based.
               try {
-                const intent = await axiosPostWithRetry(
-                  `${backendBaseUrl}/agent/v1/checkout/intents`,
-                  {
-                    items: orderItems,
-                    return_url: returnUrl || null,
-                    ...(buyerRef ? { buyer_ref: buyerRef } : {}),
-                    ...(jobId ? { job_id: jobId } : {}),
-                    market,
-                    source: 'creator_agent',
-                  },
-                  {
-                    timeout: 30_000,
-                    headers: {
-                      'Content-Type': 'application/json',
-                      'X-API-Key': agentApiKey,
-                      ...(agentUserJwt ? { 'X-Agent-User-JWT': agentUserJwt } : {}),
-                      ...(buyerRef ? { 'X-Buyer-Ref': buyerRef } : {}),
-                      ...(jobId ? { 'X-Look-Replicate-Job-Id': jobId } : {}),
-                    },
-                    validateStatus: () => true,
-                  },
-                  { retries: 1, minBackoffMs: 300 },
-                );
-
-                if (intent?.status >= 200 && intent?.status < 300) {
-                  const checkoutUrlRaw = String(intent.data?.checkout_url || intent.data?.checkoutUrl || '').trim() || null;
-                  checkoutUrl = checkoutUrlRaw
-                    ? urlWithReturn(checkoutUrlRaw, returnUrl, {
-                        entry: 'creator_agent',
-                        source: 'creator_agent',
-                      })
-                    : null;
-                  checkoutToken =
-                    String(intent.data?.checkout_token || intent.data?.checkoutToken || '').trim() || null;
-                  checkoutSessionId =
-                    String(
-                      intent.data?.checkout_session_id ||
-                        intent.data?.checkoutSessionId ||
-                        intent.data?.intent_id ||
-                        intent.data?.intentId ||
-                        '',
-                    ).trim() || null;
-                  expiresAt = Number(intent.data?.expires_at || intent.data?.expiresAt || 0) || null;
-                } else {
-                  failures.push({
-                    merchantId: mid,
-                    stage: 'creator_checkout_intent',
-                    status: intent?.status || 502,
-                    body: compactUpstreamBody(intent?.data),
-                    message: 'Failed to mint checkout token',
-                  });
+                const offerIds = [];
+                for (const item of orderItems) {
+                  if (isUcpOfferId(item.offer_id)) {
+                    offerIds.push(String(item.offer_id).trim());
+                    continue;
+                  }
+                  offerIds.push(
+                    await mintUcpOfferId({
+                      ucpBaseUrl,
+                      internalKey: ucpInternalKey,
+                      item,
+                    }),
+                  );
                 }
+
+                const session = await createUcpCheckoutSession({
+                  ucpBaseUrl,
+                  currency:
+                    String(orderItems[0]?.currency || cart.data?.pricing?.currency || 'USD')
+                      .trim()
+                      .toUpperCase() || 'USD',
+                  lineItems: orderItems.map((item, index) => ({
+                    item: {
+                      id: offerIds[index],
+                      ...(item.title ? { title: item.title } : {}),
+                      ...(item.image_url ? { image_url: item.image_url } : {}),
+                      ...(toMinorAmount(item.unit_price, item.currency || 'USD') > 0
+                        ? { price: toMinorAmount(item.unit_price, item.currency || 'USD') }
+                        : {}),
+                    },
+                    quantity: Math.max(1, Number(item.quantity || 1) || 1),
+                  })),
+                  returnUrl,
+                  ucpAgentHeader,
+                });
+
+                checkoutUrl = urlWithReturn(session.checkoutUrl, returnUrl, {
+                  entry: 'creator_agent',
+                  source: 'creator_agent',
+                  entry_mode: 'ucp_session',
+                });
+                checkoutSessionId = session.checkoutSessionId;
               } catch (err) {
                 failures.push({
                   merchantId: mid,
-                  stage: 'creator_checkout_intent',
-                  status: 502,
-                  body: null,
+                  stage: err?.message === 'Failed to mint UCP offer_id' ? 'creator_offer_mint' : 'creator_ucp_checkout_session',
+                  status: Number(err?.status) || 502,
+                  body: err?.body || null,
                   message: truncateText(err?.message || String(err), 400),
                 });
               }
 
-              // Emergency-only legacy fallback. Default behavior is strict: if checkout intent
-              // could not mint a tokenized checkout URL, surface the failure instead of silently
-              // redirecting creator traffic back onto the old /order?items=... path.
               if (!checkoutUrl && allowLegacyCreatorCheckoutFallback) {
-                checkoutUrl = buildCreatorCheckoutUrl(checkoutUiBaseUrl, orderItems, returnUrl, {
-                  market,
-                  provider: checkoutProvider,
-                  entry: 'creator_agent',
-                  source: 'creator_agent',
-                  ...(buyerRef ? { buyer_ref: buyerRef } : {}),
-                  ...(jobId ? { job_id: jobId } : {}),
-                });
+                try {
+                  const intent = await axiosPostWithRetry(
+                    `${backendBaseUrl}/agent/v1/checkout/intents`,
+                    {
+                      items: orderItems.map((item) => ({
+                        ...item,
+                        unit_price: 0,
+                      })),
+                      return_url: returnUrl || null,
+                      ...(buyerRef ? { buyer_ref: buyerRef } : {}),
+                      ...(jobId ? { job_id: jobId } : {}),
+                      market,
+                      source: 'creator_agent',
+                    },
+                    {
+                      timeout: 30_000,
+                      headers: {
+                        'Content-Type': 'application/json',
+                        'X-API-Key': agentApiKey,
+                        ...(agentUserJwt ? { 'X-Agent-User-JWT': agentUserJwt } : {}),
+                        ...(buyerRef ? { 'X-Buyer-Ref': buyerRef } : {}),
+                        ...(jobId ? { 'X-Look-Replicate-Job-Id': jobId } : {}),
+                      },
+                      validateStatus: () => true,
+                    },
+                    { retries: 1, minBackoffMs: 300 },
+                  );
+
+                  if (intent?.status >= 200 && intent?.status < 300) {
+                    const checkoutUrlRaw = String(intent.data?.checkout_url || intent.data?.checkoutUrl || '').trim() || null;
+                    checkoutUrl = checkoutUrlRaw
+                      ? urlWithReturn(checkoutUrlRaw, returnUrl, {
+                          entry: 'creator_agent',
+                          source: 'creator_agent',
+                        })
+                      : null;
+                    checkoutToken =
+                      String(intent.data?.checkout_token || intent.data?.checkoutToken || '').trim() || null;
+                    checkoutSessionId =
+                      String(
+                        intent.data?.checkout_session_id ||
+                          intent.data?.checkoutSessionId ||
+                          intent.data?.intent_id ||
+                          intent.data?.intentId ||
+                          '',
+                      ).trim() || null;
+                    expiresAt = Number(intent.data?.expires_at || intent.data?.expiresAt || 0) || null;
+                  } else {
+                    failures.push({
+                      merchantId: mid,
+                      stage: 'creator_checkout_intent_fallback',
+                      status: intent?.status || 502,
+                      body: compactUpstreamBody(intent?.data),
+                      message: 'Failed to mint legacy checkout token fallback',
+                    });
+                  }
+                } catch (err) {
+                  failures.push({
+                    merchantId: mid,
+                    stage: 'creator_checkout_intent_fallback',
+                    status: 502,
+                    body: null,
+                    message: truncateText(err?.message || String(err), 400),
+                  });
+                }
               }
 
               if (!checkoutUrl) {
                 failures.push({
                   merchantId: mid,
-                  stage: 'creator_checkout_intent',
+                  stage: 'creator_ucp_checkout_session',
                   status: 502,
                   body: null,
                   message: allowLegacyCreatorCheckoutFallback
-                    ? 'Checkout UI URL is not configured'
-                    : 'Creator checkout intent did not return checkout_url',
+                    ? 'Creator checkout did not return checkout_url'
+                    : 'Creator UCP checkout session did not return checkout_url',
                 });
                 return;
               }
