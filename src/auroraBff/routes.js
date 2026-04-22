@@ -73231,6 +73231,8 @@ const RECO_ALTERNATIVE_STRONG_BARRIER_BRIDGE_RE =
   /\b(barrier|ceramides?|repair|cica|centella|panthenol|tamanu|lipids?|cholesterol|fatty\s+acids?|oat(?:meal)?|colloidal\s+oatmeal|beta[-\s]?glucan|ectoin|allantoin)\b/i;
 const RECO_ALTERNATIVE_HYDRATION_SUPPORT_RE =
   /\b(hydrat\w*|moist\w*|glycerin|hyaluronic|squalane|beta[-\s]?glucan|oat(?:meal)?|colloidal\s+oatmeal|panthenol|ceramides?)\b/i;
+const RECO_ALTERNATIVE_BARRIER_COMFORT_SIGNAL_RE =
+  /\b(colloidal\s+oatmeal|oat(?:meal)?|sooth(?:e|ing)?|calm(?:ing)?|allantoin|centella|cica|redness|sensitive|reactive|irritat(?:e|ion)|stinging?)\b/i;
 
 function buildRecoAlternativePoolCandidateText(normalized) {
   const row = isPlainObject(normalized) ? normalized : {};
@@ -73340,7 +73342,12 @@ function computeRecoAlternativeConcernIntentPenalty(targetSignals, candidateText
     penalty = Math.max(penalty, hasAllowedFamily ? 0.12 : 0.22);
   }
   if (!targetFamilies.has('sensitivity_redness') && RECO_ALTERNATIVE_STRONG_SENSITIVITY_INTENT_RE.test(candidateHaystack)) {
-    penalty = Math.max(penalty, hasAllowedFamily ? 0.06 : 0.14);
+    const barrierMoisturizerContext = targetRole === 'moisturizer' && targetFamilies.has('hydration_barrier');
+    if (barrierMoisturizerContext && candidateFamilies.has('hydration_barrier')) {
+      penalty = Math.max(penalty, hasAllowedFamily ? 0 : 0.04);
+    } else {
+      penalty = Math.max(penalty, hasAllowedFamily ? 0.06 : 0.14);
+    }
   }
   if (!targetFamilies.has('acne_pore') && RECO_ALTERNATIVE_STRONG_ACNE_INTENT_RE.test(candidateHaystack)) {
     penalty = Math.max(penalty, hasAllowedFamily ? 0.06 : 0.14);
@@ -73369,6 +73376,7 @@ function computeRecoAlternativeBarrierFitAdjustment(targetSignals, candidateText
       targetBarrierIntent: false,
       strongBarrierMatch: false,
       hydrationSupportMatch: false,
+      comfortSignalMatch: false,
       bonus: 0,
       penalty: 0,
     };
@@ -73394,6 +73402,7 @@ function computeRecoAlternativeBarrierFitAdjustment(targetSignals, candidateText
       targetBarrierIntent: false,
       strongBarrierMatch: false,
       hydrationSupportMatch: false,
+      comfortSignalMatch: false,
       bonus: 0,
       penalty: 0,
     };
@@ -73408,6 +73417,7 @@ function computeRecoAlternativeBarrierFitAdjustment(targetSignals, candidateText
       targetBarrierIntent: true,
       strongBarrierMatch: false,
       hydrationSupportMatch: false,
+      comfortSignalMatch: false,
       bonus: 0,
       penalty: 0.06,
     };
@@ -73415,6 +73425,8 @@ function computeRecoAlternativeBarrierFitAdjustment(targetSignals, candidateText
 
   const strongBarrierMatch = RECO_ALTERNATIVE_STRONG_BARRIER_BRIDGE_RE.test(candidateHaystack);
   const hydrationSupportMatch = RECO_ALTERNATIVE_HYDRATION_SUPPORT_RE.test(candidateHaystack);
+  const comfortSensitiveTarget = /\b(dry|tight|sensitive|redness|reactive|fragile|impaired|irritat(?:e|ion)|stinging?)\b/i.test(targetText);
+  const comfortSignalMatch = comfortSensitiveTarget && RECO_ALTERNATIVE_BARRIER_COMFORT_SIGNAL_RE.test(candidateHaystack);
   let bonus = 0;
   let penalty = 0;
   if (strongBarrierMatch) {
@@ -73425,11 +73437,13 @@ function computeRecoAlternativeBarrierFitAdjustment(targetSignals, candidateText
   } else {
     penalty = 0.06;
   }
+  if (strongBarrierMatch && comfortSignalMatch) bonus += 0.04;
 
   return {
     targetBarrierIntent,
     strongBarrierMatch,
     hydrationSupportMatch,
+    comfortSignalMatch,
     bonus,
     penalty,
   };
@@ -73606,6 +73620,10 @@ function normalizePoolAlternativeRow(row, {
       : barrierFit.targetBarrierIntent && barrierFit.hydrationSupportMatch
         ? 'Keeps the compare inside the same hydration-first moisturizer lane.'
         : '';
+  const barrierComfortReason =
+    barrierFit.targetBarrierIntent && barrierFit.comfortSignalMatch
+      ? 'Adds more calming barrier-comfort cues for dry, tight, or easily irritated skin.'
+      : '';
   const barrierTradeoff =
     barrierFit.targetBarrierIntent && !barrierFit.strongBarrierMatch
       ? (barrierFit.hydrationSupportMatch
@@ -73636,6 +73654,7 @@ function normalizePoolAlternativeRow(row, {
       [
         sameStepReason,
         barrierReason,
+        barrierComfortReason,
         sameRoleLabelMatch >= 0.9 ? `Names the ${targetRole} role directly.` : '',
         titleActiveMatch >= 0.34 ? 'Names the anchor hero active directly.' : '',
         ingredientOverlap >= 0.34 ? 'Matches key active or ingredient signals from the anchor.' : '',
@@ -73677,6 +73696,7 @@ function normalizePoolAlternativeRow(row, {
       ...(concernIntentPenalty > 0 ? { concern_intent_penalty: Number(concernIntentPenalty.toFixed(3)) } : {}),
       ...(barrierFit.bonus > 0 ? { barrier_fit_bonus: Number(barrierFit.bonus.toFixed(3)) } : {}),
       ...(barrierFit.penalty > 0 ? { barrier_fit_penalty: Number(barrierFit.penalty.toFixed(3)) } : {}),
+      ...(barrierFit.comfortSignalMatch ? { barrier_comfort_match: true } : {}),
       ...(
         sameRoleLabelMatch > 0 ||
         titleActiveMatch > 0 ||
@@ -73692,6 +73712,7 @@ function normalizePoolAlternativeRow(row, {
                 concernIntentPenalty > 0 ? 'concern_intent_mismatch_penalty' : '',
                 barrierFit.bonus > 0 ? 'barrier_fit_bonus' : '',
                 barrierFit.penalty > 0 ? 'barrier_fit_penalty' : '',
+                barrierFit.comfortSignalMatch ? 'barrier_comfort_bonus' : '',
               ], 6),
             }
           : {}

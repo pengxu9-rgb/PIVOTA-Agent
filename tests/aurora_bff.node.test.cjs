@@ -6729,6 +6729,9 @@ test('fetchRecoAlternativesForProduct: barrier moisturizer alternatives rank bar
                 category: 'Moisturizer',
                 retrieval_source: 'external_seed',
                 description: 'Hydrating cream with niacinamide and a dewy finish.',
+                product_intel: {
+                  one_liner: 'A daily moisturizer built around niacinamide, ceramide/barrier-lipid support plus humectants for hydration.',
+                },
                 canonical_product_ref: {
                   product_id: 'ext_joseon_dynasty_cream',
                   merchant_id: 'external_seed',
@@ -6744,6 +6747,9 @@ test('fetchRecoAlternativesForProduct: barrier moisturizer alternatives rank bar
                 category: 'Moisturizer',
                 retrieval_source: 'external_seed',
                 description: 'Barrier-support face lotion with colloidal oatmeal, ceramides, and calming hydration.',
+                product_intel: {
+                  one_liner: 'Light daily lotion with colloidal oatmeal and ceramides for calming barrier comfort.',
+                },
                 canonical_product_ref: {
                   product_id: 'ext_fab_ultra_repair_face_lotion',
                   merchant_id: 'external_seed',
@@ -6835,6 +6841,7 @@ test('fetchRecoAlternativesForProduct: barrier moisturizer alternatives rank bar
         assert.equal(names[0], 'Ultra Repair Face Lotion with Colloidal Oatmeal');
         const topReasons = Array.isArray(out.alternatives[0]?.reasons) ? out.alternatives[0].reasons : [];
         assert.ok(topReasons.some((line) => /barrier-support cues line up|same barrier-friendly moisturizer step/i.test(String(line))), JSON.stringify(topReasons));
+        assert.ok(topReasons.some((line) => /calming barrier-comfort cues/i.test(String(line))), JSON.stringify(topReasons));
         const genericHydrationRow = out.alternatives.find((row) => /air angel|level up/i.test(String(row?.product?.name || row?.name || '')));
         const tradeoffNotes = Array.isArray(genericHydrationRow?.tradeoff_notes) ? genericHydrationRow.tradeoff_notes : [];
         assert.ok(tradeoffNotes.some((line) => /more hydration-led than barrier-led|less explicit barrier-support evidence/i.test(String(line))), JSON.stringify(tradeoffNotes));
