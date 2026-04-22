@@ -57994,6 +57994,31 @@ function normalizeRecoAssistantFinishFitTradeoffReason(reason = '', {
   return text;
 }
 
+function renderRecoAssistantStructuredSameSlotSupportSentence(name, reason, {
+  targetLabel = '',
+  detail = null,
+  language = 'EN',
+} = {}) {
+  const productName = pickFirstTrimmed(name);
+  const normalizedReason = normalizeRecoAssistantBecauseReasonFragment(reason);
+  if (!productName || !normalizedReason) return '';
+  if (String(language || '').toUpperCase() !== 'EN') {
+    return formatRecoAssistantStructuredSentence(`${productName}负责同类对比，因为${normalizedReason}`);
+  }
+  const roleText = [
+    targetLabel,
+    pickFirstTrimmed(detail?.matched_role_label),
+    pickFirstTrimmed(detail?.preferred_step),
+  ].filter(Boolean).join(' ');
+  if (recoRoleNeedsFinishFitNarrative(roleText)) {
+    const subjectReason = normalizedReason.replace(/^(?:it|this)\s+/i, '');
+    if (/^(?:offers?|provides?|gives?|keeps?|leans?|stays?|wears?|feels?|points?|works?)\b/i.test(subjectReason)) {
+      return formatRecoAssistantStructuredSentence(`${productName} ${subjectReason}`);
+    }
+  }
+  return formatRecoAssistantStructuredSentence(`${productName} is the same-slot comparison option because ${normalizedReason}`);
+}
+
 function renderRecoAssistantStructuredReasonRewrite({
   structuredReason,
   payload,
@@ -58109,18 +58134,25 @@ function renderRecoAssistantStructuredReasonRewrite({
     const supportSentences = selectedNames.slice(1).map((name, index) => {
       const detail = details[index + 1] || {};
       const step = pickFirstTrimmed(detail.preferred_step, detail.matched_role_label, 'support step');
-      const reason = supportReasons[index] || normalizeRecoAssistantBecauseReasonFragment(
-        buildRecoAssistantStructuredReasonFallback(detail, {
-          targetLabel,
-          selectedProductRoleMix,
-          selectedNames,
-          forbiddenNames,
-          forbiddenAliases,
-        }),
-      );
-      if (!reason) return '';
-      return formatRecoAssistantStructuredSentence(`${name}负责${step}，因为${reason}`);
-    });
+    const reason = supportReasons[index] || normalizeRecoAssistantBecauseReasonFragment(
+      buildRecoAssistantStructuredReasonFallback(detail, {
+        targetLabel,
+        selectedProductRoleMix,
+        selectedNames,
+        forbiddenNames,
+        forbiddenAliases,
+      }),
+    );
+    if (!reason) return '';
+    if (selectedProductRoleMix === 'same_role_comparison') {
+      return renderRecoAssistantStructuredSameSlotSupportSentence(name, reason, {
+        targetLabel,
+        detail,
+        language,
+      });
+    }
+    return formatRecoAssistantStructuredSentence(`${name}负责${step}，因为${reason}`);
+  });
     return appendRecoAssistantOptionalRefinementQuestion([
       formatRecoAssistantStructuredSentence(leadSentence),
       ...supportSentences,
@@ -58161,7 +58193,11 @@ function renderRecoAssistantStructuredReasonRewrite({
     );
     if (!reason) return '';
     if (selectedProductRoleMix === 'same_role_comparison') {
-      return formatRecoAssistantStructuredSentence(`${name} is the same-slot comparison option because ${reason}`);
+      return renderRecoAssistantStructuredSameSlotSupportSentence(name, reason, {
+        targetLabel,
+        detail,
+        language,
+      });
     }
     const step = pickFirstTrimmed(detail.preferred_step, detail.matched_role_label, 'support step');
     return formatRecoAssistantStructuredSentence(`${name} covers the ${String(step).toLowerCase()} step because ${reason}`);
