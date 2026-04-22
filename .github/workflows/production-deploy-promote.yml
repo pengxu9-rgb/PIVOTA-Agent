@@ -22,16 +22,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Require production deploy webhook
+      - name: Detect production deploy owner
         shell: bash
         run: |
           set -euo pipefail
           if [[ -z "${PROD_DEPLOY_WEBHOOK_URL}" ]]; then
-            echo "::error::Missing production deploy webhook secret. Set RAILWAY_PRODUCTION_DEPLOY_WEBHOOK_URL or PIVOTA_AGENT_PROD_DEPLOY_WEBHOOK_URL."
-            exit 1
+            echo "::notice::No production deploy webhook configured. Falling back to direct GitHub-linked production deploy detection."
+          else
+            echo "Production deploy webhook configured."
           fi
 
       - name: Trigger production deploy webhook
+        if: env.PROD_DEPLOY_WEBHOOK_URL != ''
         shell: bash
         env:
           DEPLOY_WEBHOOK_URL: ${{ env.PROD_DEPLOY_WEBHOOK_URL }}
