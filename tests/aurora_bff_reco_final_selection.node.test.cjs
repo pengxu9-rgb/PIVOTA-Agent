@@ -3348,6 +3348,87 @@ test('reco assistant structured renderer downgrades primer-equivalence wording i
   }
 });
 
+test('reco assistant structured renderer removes generic SPF utility tails from finish-fit tradeoff copy', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const payload = __internal.applyRecoContentSpineToPayload(
+      {
+        recommendations: [
+          {
+            product_id: 'spf_unseen',
+            display_name: 'Unseen Sunscreen SPF 50',
+            brand: 'Supergoop',
+            category: 'Sunscreen',
+            short_description: 'A weightless sunscreen with soft-focus wear for smoother daytime layering under makeup.',
+            why_this_one: 'it points to lighter, smoother daytime layering instead of a richer cream finish',
+            matched_role_id: 'daily_sunscreen_finish_fit',
+            matched_role_label: 'Daily sunscreen with finish fit',
+            preferred_step: 'sunscreen',
+          },
+          {
+            product_id: 'spf_milk',
+            display_name: 'Hydrating Sunscreen Milk with Colloidal Oatmeal Broad Spectrum SPF 45',
+            brand: 'First Aid Beauty',
+            category: 'Sunscreen',
+            short_description: 'A richer cream-SPF base when you want more moisture under makeup.',
+            why_this_one: 'it gives a richer cream-SPF base when you want more cushioning under makeup, not just the lightest finish',
+            matched_role_id: 'daily_sunscreen_finish_fit',
+            matched_role_label: 'Daily sunscreen with finish fit',
+            preferred_step: 'sunscreen',
+          },
+        ],
+        roles: [
+          {
+            role_id: 'daily_sunscreen_finish_fit',
+            label: 'Daily sunscreen with finish fit',
+            preferred_step: 'sunscreen',
+            why_this_role: 'Use a daily sunscreen that layers cleanly under makeup.',
+          },
+        ],
+        recommendation_meta: {
+          resolved_target_step: 'sunscreen',
+          mainline_status: 'grounded_success',
+        },
+      },
+      {
+        ingredient_query: 'Daily sunscreen with finish fit',
+        resolved_target_step: 'sunscreen',
+        primary_target_id: 'daily_sunscreen_finish_fit',
+        ranked_targets: [
+          {
+            target_id: 'daily_sunscreen_finish_fit',
+            ingredient_query: 'Daily sunscreen with finish fit',
+            resolved_target_step: 'sunscreen',
+          },
+        ],
+        selected_target_ids: ['daily_sunscreen_finish_fit'],
+      },
+    );
+    const primaryTarget = payload.recommendation_meta.ranked_targets[0];
+    const text = __internal.renderRecoAssistantStructuredReasonRewrite({
+      structuredReason: {
+        lead_reason: 'it features a weightless, invisible finish and is specifically suited for lighter daytime layering to prevent pilling',
+        support_reasons: ['it provides a richer, more moisturizing cream-based option for those needing extra hydration during AM UV protection'],
+      },
+      payload,
+      language: 'EN',
+      primaryTarget,
+      names: [
+        'Unseen Sunscreen SPF 50',
+        'Hydrating Sunscreen Milk with Colloidal Oatmeal Broad Spectrum SPF 45',
+      ],
+      requestMode: 'buy',
+      selectedProductRoleMix: 'same_role_comparison',
+    });
+
+    assert.doesNotMatch(text, /AM UV protection|daily protection/i);
+    assert.match(text, /help reduce pilling|lighter for daytime layering/i);
+    assert.match(text, /if you want more moisture under makeup/i);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('reco assistant rewrite uses structured primary attempt for compact single-product cases', async () => {
   const prevMock = process.env.AURORA_BFF_USE_MOCK;
   const prevProvider = process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;

@@ -57955,6 +57955,45 @@ function formatRecoAssistantTargetPhrase(targetLabel, language) {
   return ` for ${raw.toLowerCase()}`;
 }
 
+function normalizeRecoAssistantFinishFitTradeoffReason(reason = '', {
+  targetLabel = '',
+  detail = null,
+} = {}) {
+  const roleText = [
+    targetLabel,
+    pickFirstTrimmed(detail?.matched_role_label),
+    pickFirstTrimmed(detail?.preferred_step),
+  ].filter(Boolean).join(' ');
+  if (!recoRoleNeedsFinishFitNarrative(roleText)) return String(reason || '').trim();
+  let text = String(reason || '').replace(/\s+/g, ' ').trim();
+  if (!text) return '';
+  text = text
+    .replace(
+      /\bfor those needing extra hydration during am uv protection\b/ig,
+      'if you want more moisture under makeup',
+    )
+    .replace(
+      /\bfor those needing extra hydration during daytime (?:wear|protection)\b/ig,
+      'if you want more moisture under makeup',
+    )
+    .replace(
+      /\bis specifically suited for lighter daytime layering to prevent pilling\b/ig,
+      'keeps the feel lighter for daytime layering to help reduce pilling',
+    )
+    .replace(
+      /\bis better suited to lighter daytime layering to prevent pilling\b/ig,
+      'keeps the feel lighter for daytime layering to help reduce pilling',
+    )
+    .replace(/\bduring am uv protection\b/ig, 'during daytime wear')
+    .replace(/\bfor am uv protection\b/ig, 'for daytime wear')
+    .replace(/\bfor daily protection\b/ig, 'for daytime wear')
+    .replace(/\bduring daily protection\b/ig, 'during daytime wear')
+    .replace(/\bis specifically suited for\b/ig, 'is better suited to')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return text;
+}
+
 function renderRecoAssistantStructuredReasonRewrite({
   structuredReason,
   payload,
@@ -58007,7 +58046,10 @@ function renderRecoAssistantStructuredReasonRewrite({
       forbiddenAliases,
     }),
   });
-  const grammaticalLeadReason = normalizeRecoAssistantBecauseReasonFragment(leadReason);
+  const grammaticalLeadReason = normalizeRecoAssistantFinishFitTradeoffReason(
+    normalizeRecoAssistantBecauseReasonFragment(leadReason),
+    { targetLabel, detail: details[0] || {} },
+  );
   if (!grammaticalLeadReason) return '';
   const supportReasonValues = Array.isArray(structuredReason?.support_reasons)
     ? structuredReason.support_reasons
@@ -58022,22 +58064,28 @@ function renderRecoAssistantStructuredReasonRewrite({
       forbiddenNames,
       forbiddenAliases,
     });
-    const candidateReason = normalizeRecoAssistantBecauseReasonFragment(
-      normalizeRecoAssistantReasonFragment(
-        supportReasonValues[index],
-        {
-          selectedNames,
-          forbiddenNames,
-          forbiddenAliases,
-          fallback: fallbackReason,
-        },
+    const candidateReason = normalizeRecoAssistantFinishFitTradeoffReason(
+      normalizeRecoAssistantBecauseReasonFragment(
+        normalizeRecoAssistantReasonFragment(
+          supportReasonValues[index],
+          {
+            selectedNames,
+            forbiddenNames,
+            forbiddenAliases,
+            fallback: fallbackReason,
+          },
+        ),
       ),
+      { targetLabel: supportTargetLabel, detail },
     );
     if (recoAssistantStructuredSupportReasonMisusesPrimaryTarget(candidateReason, {
       detail,
       primaryTargetLabel: targetLabel,
     })) {
-      return normalizeRecoAssistantBecauseReasonFragment(fallbackReason);
+      return normalizeRecoAssistantFinishFitTradeoffReason(
+        normalizeRecoAssistantBecauseReasonFragment(fallbackReason),
+        { targetLabel: supportTargetLabel, detail },
+      );
     }
     return candidateReason;
   });
