@@ -3349,7 +3349,7 @@ test('reco assistant structured renderer compares finish-fit sunscreen options w
   }
 });
 
-test('reco assistant structured renderer strips legacy uv-protection fragments from finish-fit compare copy', () => {
+test('reco assistant structured renderer strips legacy uv-protection fragments and comma-tail uv residue from finish-fit compare copy', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
     const payload = __internal.applyRecoContentSpineToPayload(
@@ -3361,7 +3361,7 @@ test('reco assistant structured renderer strips legacy uv-protection fragments f
             brand: 'SKINTIFIC',
             category: 'Sunscreen',
             short_description: 'Protect your skin from UVA, UVB, and blue light with Matte Fit Serum Sunscreen SPF 50+ PA++++.',
-            why_this_one: 'it leans more matte and shine-controlling if you want less slip under makeupagainst UVA, UVB, and blue light',
+            why_this_one: 'it leans more matte and shine-controlling if you want less slip under makeup, UVB, and blue light',
             matched_role_id: 'daily_sunscreen_finish_fit',
             matched_role_label: 'Daily sunscreen with finish fit',
             preferred_step: 'sunscreen',
@@ -3408,6 +3408,7 @@ test('reco assistant structured renderer strips legacy uv-protection fragments f
     assert.match(text, /less slip under makeup/i);
     assert.doesNotMatch(text, /under makeupagainst/i);
     assert.doesNotMatch(text, /UVA, UVB, and blue light/i);
+    assert.doesNotMatch(text, /under makeup,\s*UVB/i);
   } finally {
     delete require.cache[moduleId];
   }
