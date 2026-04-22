@@ -4056,10 +4056,37 @@ async function hydrateRecoCandidateProductIntelFromKb(row) {
   };
 }
 
-async function hydrateRecoCandidatesProductIntelFromKb(rows) {
+async function hydrateRecoCandidatesProductIntelFromKb(rows, {
+  timeoutMs = 0,
+  deadlineAtMs = 0,
+} = {}) {
   const list = Array.isArray(rows) ? rows : [];
   if (!list.length) return list;
-  const settled = await Promise.allSettled(list.map((row) => hydrateRecoCandidateProductIntelFromKb(row)));
+  const normalizedTimeoutMs = Number.isFinite(Number(timeoutMs))
+    ? Math.max(0, Math.trunc(Number(timeoutMs)))
+    : 0;
+  const normalizedDeadlineAtMs = Number.isFinite(Number(deadlineAtMs))
+    ? Math.trunc(Number(deadlineAtMs))
+    : 0;
+  const remainingDeadlineMs = normalizedDeadlineAtMs > 0
+    ? Math.max(0, normalizedDeadlineAtMs - Date.now() - 20)
+    : null;
+  const effectiveTimeoutMs = Number.isFinite(remainingDeadlineMs)
+    ? (
+        normalizedTimeoutMs > 0
+          ? Math.min(normalizedTimeoutMs, remainingDeadlineMs)
+          : remainingDeadlineMs
+      )
+    : normalizedTimeoutMs;
+  if (Number.isFinite(effectiveTimeoutMs) && effectiveTimeoutMs > 0 && effectiveTimeoutMs < 80) {
+    return list;
+  }
+  const settled = await Promise.allSettled(list.map((row) => {
+    const hydratePromise = Promise.resolve().then(() => hydrateRecoCandidateProductIntelFromKb(row));
+    return Number.isFinite(effectiveTimeoutMs) && effectiveTimeoutMs > 0
+      ? withTimeout(hydratePromise, effectiveTimeoutMs, 'RECO_PRODUCT_INTEL_HYDRATE_TIMEOUT')
+      : hydratePromise;
+  }));
   return settled.map((result, index) => (
     result.status === 'fulfilled' && isPlainObject(result.value) ? result.value : list[index]
   ));
@@ -23081,7 +23108,13 @@ async function handoffRecoToBeautyMainlineSearch({
     });
   }
   const canonicalSelection = extractRecoFinalSelectionContract(searchResult);
-  const hydratedSearchProducts = await hydrateRecoCandidatesProductIntelFromKb(searchResult?.products);
+  const hydratedSearchProducts = await hydrateRecoCandidatesProductIntelFromKb(searchResult?.products, {
+    deadlineAtMs: normalizedDeadlineAtMs,
+    timeoutMs:
+      normalizedDeadlineAtMs > 0
+        ? Math.max(0, normalizedDeadlineAtMs - Date.now() - 20)
+        : 0,
+  });
   if (searchResult && typeof searchResult === 'object' && !Array.isArray(searchResult)) {
     searchResult.products = hydratedSearchProducts;
   }

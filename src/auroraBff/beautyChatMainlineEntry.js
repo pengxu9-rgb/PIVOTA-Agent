@@ -680,19 +680,29 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
     let hardPathHandoffErr = null;
     const handoffStartedAtMs = Date.now();
     try {
-      hardPathHandoff = await handoffRecoToBeautyMainlineSearch({
-        ctx,
-        logger,
-        primaryQuery: pickFirstTrimmed(recoRequestMessage, message),
-        fallbackMessage: message,
-        targetContext: effectivePlannerTargetContext,
-        fallbackFocus: hardPathRecoFocusForMainline,
-        profileSummary,
-        deadlineAtMs: handoffDeadlineAtMs,
-        debug: debugUpstream,
-        timeoutMs: RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS,
-        minTimeoutMs: RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS,
-      });
+      const handoffStageTimeoutMs = Math.max(0, handoffDeadlineAtMs - Date.now());
+      if (handoffStageTimeoutMs <= 150) {
+        const err = new Error(`BEAUTY_MAINLINE_HANDOFF_TIMEOUT after ${handoffStageTimeoutMs}ms`);
+        err.code = 'BEAUTY_MAINLINE_HANDOFF_TIMEOUT';
+        throw err;
+      }
+      hardPathHandoff = await withBeautyMainlineTimeout(
+        handoffRecoToBeautyMainlineSearch({
+          ctx,
+          logger,
+          primaryQuery: pickFirstTrimmed(recoRequestMessage, message),
+          fallbackMessage: message,
+          targetContext: effectivePlannerTargetContext,
+          fallbackFocus: hardPathRecoFocusForMainline,
+          profileSummary,
+          deadlineAtMs: handoffDeadlineAtMs,
+          debug: debugUpstream,
+          timeoutMs: RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS,
+          minTimeoutMs: RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS,
+        }),
+        handoffStageTimeoutMs,
+        'BEAUTY_MAINLINE_HANDOFF_TIMEOUT',
+      );
     } catch (err) {
       hardPathHandoffErr = err;
       logger?.warn(
