@@ -19770,14 +19770,23 @@ async function collectRecoCandidatesFromRecallPlan({
       });
     }
   };
-  const shouldStopRecallStageOnViableMatch = (stage) => {
+  const shouldStopRecallStageOnViableMatch = (stage, executedQueryCountForStage = 0) => {
+    const stageId = String(stage?.stage_id || '').trim();
+    if (shouldStopConcernFrameworkFinishFitPrimaryExternalEarly({
+      stageId,
+      targetContext,
+      candidateState,
+      executedQueryCount: executedQueryCountForStage,
+    })) {
+      return true;
+    }
     if (stage?.stop_on_viable_match !== true) return false;
     const stageRoleId = String(stage?.role_id || '').trim().toLowerCase();
     if (stageRoleId) {
       const filledRoleIds = new Set(getRecoRecallFilledRoleIds(candidateState, { requireAlignedRetrieval: true }));
       if (!filledRoleIds.has(stageRoleId)) return false;
-      const stageId = String(stage?.stage_id || '').trim().toLowerCase();
-      if (stageId === 'framework_stage_b_primary_external_seed' && isSameRoleComparisonContext()) {
+      const normalizedStageId = stageId.toLowerCase();
+      if (normalizedStageId === 'framework_stage_b_primary_external_seed' && isSameRoleComparisonContext()) {
         return getRecoRecallSelectedCount(candidateState) >= 2;
       }
       return true;
@@ -19827,7 +19836,7 @@ async function collectRecoCandidatesFromRecallPlan({
           targetContext,
           recommendationTaskContext,
         });
-        if (shouldStopRecallStageOnViableMatch(stage)) break;
+        if (shouldStopRecallStageOnViableMatch(stage, stageRows.length)) break;
       }
     } else {
       const rows = await mapWithConcurrency(
@@ -23436,6 +23445,40 @@ function buildConcernFrameworkFinishFitSpreadPrimaryBucket(primaryBucket = [], t
   return out;
 }
 
+function hasConcernFrameworkFinishFitSameRoleTradeoffCoverage(candidateState = null, {
+  minSelected = 3,
+  minDistinctBuckets = 3,
+} = {}) {
+  const selected = Array.isArray(candidateState?.selected_recommendations)
+    ? candidateState.selected_recommendations.filter((row) => isPlainObject(row))
+    : [];
+  if (selected.length < Math.max(1, Number(minSelected) || 0)) return false;
+  const distinctBuckets = uniqCaseInsensitiveStrings(
+    selected
+      .map((row) => classifyConcernFrameworkFinishFitTradeoffBucket(row))
+      .filter((bucket) => bucket && bucket !== 'other'),
+    8,
+  );
+  return distinctBuckets.length >= Math.max(1, Number(minDistinctBuckets) || 0);
+}
+
+function shouldStopConcernFrameworkFinishFitPrimaryExternalEarly({
+  stageId = '',
+  targetContext = null,
+  candidateState = null,
+  executedQueryCount = 0,
+} = {}) {
+  if (String(stageId || '').trim().toLowerCase() !== 'framework_stage_b_primary_external_seed') return false;
+  const primaryRoleId = String(targetContext?.primary_role_id || '').trim().toLowerCase();
+  if (!isConcernFrameworkFinishFitSameRoleComparison(targetContext, primaryRoleId)) return false;
+  if (!isPlainObject(candidateState) || candidateState.primary_role_matched !== true) return false;
+  if (Math.max(0, Math.trunc(Number(executedQueryCount) || 0)) < 2) return false;
+  return hasConcernFrameworkFinishFitSameRoleTradeoffCoverage(candidateState, {
+    minSelected: 3,
+    minDistinctBuckets: 3,
+  });
+}
+
 function mergeConcernFrameworkRerankedState(baseState, rerankedState, { candidateCount = 0 } = {}) {
   const base = isPlainObject(baseState) ? baseState : {};
   const reranked = isPlainObject(rerankedState) ? rerankedState : {};
@@ -24685,14 +24728,23 @@ async function collectRecoCandidatesFromQueryLevels({
     }
     return false;
   };
-  const shouldStopQueryLevelOnViableMatch = (level, runnableQueries = []) => {
+  const shouldStopQueryLevelOnViableMatch = (level, runnableQueries = [], executedQueryCountForLevel = 0) => {
+    const levelId = String(level?.ladder_level || level?.stage_id || '').trim();
+    if (shouldStopConcernFrameworkFinishFitPrimaryExternalEarly({
+      stageId: levelId,
+      targetContext,
+      candidateState,
+      executedQueryCount: executedQueryCountForLevel,
+    })) {
+      return true;
+    }
     if (level?.stop_on_viable_match !== true) return false;
     const roleId = resolveQueryLevelRoleId(level, runnableQueries);
     if (roleId) {
       const filledRoleIds = new Set(getRecoRecallFilledRoleIds(candidateState, { requireAlignedRetrieval: true }));
       if (!filledRoleIds.has(roleId)) return false;
-      const levelId = String(level?.ladder_level || level?.stage_id || '').trim().toLowerCase();
-      if (levelId === 'framework_stage_b_primary_external_seed' && isSameRoleComparisonContext()) {
+      const normalizedLevelId = levelId.toLowerCase();
+      if (normalizedLevelId === 'framework_stage_b_primary_external_seed' && isSameRoleComparisonContext()) {
         return getRecoRecallSelectedCount(candidateState) >= 2;
       }
       return true;
@@ -25014,7 +25066,7 @@ async function collectRecoCandidatesFromQueryLevels({
             targetContext,
             recommendationTaskContext,
           });
-          if (shouldStopQueryLevelOnViableMatch(level, primaryExternalLeadQueries)) break;
+          if (shouldStopQueryLevelOnViableMatch(level, primaryExternalLeadQueries, levelResults.length)) break;
         }
       }
       if (shouldRunPendingSupportAlongsidePrimary) {
@@ -25065,7 +25117,7 @@ async function collectRecoCandidatesFromQueryLevels({
           targetContext,
           recommendationTaskContext,
         });
-        if (shouldStopQueryLevelOnViableMatch(level, runnableQueries)) break;
+        if (shouldStopQueryLevelOnViableMatch(level, runnableQueries, levelResults.length)) break;
       }
     } else {
       const rows = await mapWithConcurrency(
@@ -95790,6 +95842,8 @@ const __internal = {
   buildRecoRecallTransportPolicy,
   resolveRecoRecallTransportModeForPlannerMode,
   buildRecoCatalogQueryLevels,
+  hasConcernFrameworkFinishFitSameRoleTradeoffCoverage,
+  shouldStopConcernFrameworkFinishFitPrimaryExternalEarly,
   runConcernSelectorRace,
   applyConcernSelectorRaceOrdering,
   runConcernSemanticPlanner,

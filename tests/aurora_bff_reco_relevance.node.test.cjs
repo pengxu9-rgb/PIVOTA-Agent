@@ -9448,6 +9448,62 @@ test('__internal: framework pool spreads finish-fit same-role sunscreen picks ac
   );
 });
 
+test('__internal: finish-fit same-role primary external stage can stop early once three tradeoff buckets are ready', () => {
+  const { __internal } = loadRoutesFresh();
+  const targetContext = {
+    primary_role_id: 'daily_sunscreen_finish_fit',
+    comparison_mode: 'same_role_comparison',
+    routine_mode: 'same_role_comparison',
+    semantic_plan: {
+      comparison_mode: 'same_role_comparison',
+      routine_mode: 'same_role_comparison',
+    },
+  };
+  const candidateState = {
+    primary_role_matched: true,
+    selected_recommendations: [
+      {
+        display_name: 'Beauty of Joseon Relief Sun Aqua-Fresh : Rice + B5 (SPF50+ PA++++)',
+        short_description: 'A lightweight sunscreen fluid for smoother under-makeup wear.',
+        benefit_tags: ['lightweight', 'under makeup', 'fluid'],
+      },
+      {
+        display_name: 'Beauty of Joseon Day Dew Sunscreen',
+        short_description: 'A fresher, dewier sunscreen with a bit more hydration.',
+        benefit_tags: ['dewy', 'under makeup'],
+      },
+      {
+        display_name: 'SKINTIFIC Matte Fit Serum Sunscreen SPF 50+ PA++++',
+        short_description: 'A matte sunscreen that helps cut shine under makeup.',
+        benefit_tags: ['matte', 'shine control', 'under makeup'],
+      },
+    ],
+  };
+
+  assert.equal(
+    __internal.hasConcernFrameworkFinishFitSameRoleTradeoffCoverage(candidateState),
+    true,
+  );
+  assert.equal(
+    __internal.shouldStopConcernFrameworkFinishFitPrimaryExternalEarly({
+      stageId: 'framework_stage_b_primary_external_seed',
+      targetContext,
+      candidateState,
+      executedQueryCount: 1,
+    }),
+    false,
+  );
+  assert.equal(
+    __internal.shouldStopConcernFrameworkFinishFitPrimaryExternalEarly({
+      stageId: 'framework_stage_b_primary_external_seed',
+      targetContext,
+      candidateState,
+      executedQueryCount: 2,
+    }),
+    true,
+  );
+});
+
 test('__internal: framework pool prefers untinted finish-fit sunscreen over tinted shade variants when tint was not requested', () => {
   const { __internal } = loadRoutesFresh();
   const targetContext = {
