@@ -58156,6 +58156,22 @@ async function maybeRewriteRecoAssistantTextWithLlm({
     ),
     language,
   });
+  const finishFitPrimaryAttempt = recoRoleNeedsFinishFitNarrative(
+    [
+      pickFirstTrimmed(
+        primaryTarget && primaryTarget.ingredient_query,
+        primaryTarget && primaryTarget.ingredient_id,
+        primaryTarget && primaryTarget.target_id,
+        primaryTarget && primaryTarget.resolved_target_step,
+      ),
+      ...recommendations.map((item) => pickFirstTrimmed(
+        item?.matched_role_label,
+        item?.matchedRoleLabel,
+        item?.matched_role_id,
+        item?.matchedRoleId,
+      )),
+    ].filter(Boolean).join(' '),
+  );
   if (!names.length || !primaryTarget) return { text: fallbackText, llm_used: false, reason: 'missing_primary_payload' };
   const rewriteAttempts = [];
   const finishRewrite = (out = {}) => ({
@@ -58401,10 +58417,20 @@ async function maybeRewriteRecoAssistantTextWithLlm({
     };
 
     const preferCompactPrimaryAttempt = recommendations.length <= 3;
+    const finishFitSameRoleStructuredPrimaryAttempt =
+      finishFitPrimaryAttempt
+      && selectedProductRoleMix === 'same_role_comparison'
+      && recommendations.length <= 3;
     const useStructuredReasonPrimaryAttempt =
       preferCompactPrimaryAttempt
-      && recommendations.length <= 2
-      && selectedProductRoleMix !== 'same_role_comparison';
+      && (
+        finishFitSameRoleStructuredPrimaryAttempt
+        || (
+          recommendations.length <= 2
+          && selectedProductRoleMix !== 'same_role_comparison'
+        )
+      );
+    const structuredPrimaryOutputTokenCap = finishFitSameRoleStructuredPrimaryAttempt ? 180 : 140;
     const minimumCompactRetryWindowMs = 1400;
     const compactOutputTokenCap = selectedProductRoleMix === 'same_role_comparison' ? 260 : 220;
     const preferredPrimaryTimeoutCapMs =
@@ -58428,7 +58454,7 @@ async function maybeRewriteRecoAssistantTextWithLlm({
       strictSelectedOnlyContext: useStructuredReasonPrimaryAttempt,
       structuredReasonOnly: useStructuredReasonPrimaryAttempt,
       maxOutputTokensOverride: useStructuredReasonPrimaryAttempt
-        ? Math.min(140, AURORA_RECO_ASSISTANT_REWRITE_MAX_OUTPUT_TOKENS)
+        ? Math.min(structuredPrimaryOutputTokenCap, AURORA_RECO_ASSISTANT_REWRITE_MAX_OUTPUT_TOKENS)
         : preferCompactPrimaryAttempt
           ? Math.min(compactOutputTokenCap, AURORA_RECO_ASSISTANT_REWRITE_MAX_OUTPUT_TOKENS)
           : null,

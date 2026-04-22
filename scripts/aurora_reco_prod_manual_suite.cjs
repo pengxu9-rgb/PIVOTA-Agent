@@ -158,6 +158,64 @@ function summarizeSearchStageLedger(ledgerInput) {
   };
 }
 
+function summarizeChatMainlineTiming(timingInput, latencyMs = null) {
+  const timing = asObject(timingInput) || null;
+  if (!timing) return null;
+  const totalElapsedMs = Number.isFinite(Number(timing.total_elapsed_ms))
+    ? Number(timing.total_elapsed_ms)
+    : null;
+  const endToEndLatencyMs = Number.isFinite(Number(latencyMs)) ? Number(latencyMs) : null;
+  return {
+    owner: asString(timing.owner) || null,
+    budget_ms: Number.isFinite(Number(timing.budget_ms)) ? Number(timing.budget_ms) : null,
+    planner_ms: Number.isFinite(Number(timing.planner_ms)) ? Number(timing.planner_ms) : null,
+    handoff_ms: Number.isFinite(Number(timing.handoff_ms)) ? Number(timing.handoff_ms) : null,
+    selector_ms: Number.isFinite(Number(timing.selector_ms)) ? Number(timing.selector_ms) : null,
+    rewrite_ms: Number.isFinite(Number(timing.rewrite_ms)) ? Number(timing.rewrite_ms) : null,
+    total_elapsed_ms: totalElapsedMs,
+    end_to_end_chat_latency_ms: endToEndLatencyMs,
+    unattributed_overhead_ms:
+      totalElapsedMs !== null && endToEndLatencyMs !== null
+        ? Math.max(0, Math.trunc(endToEndLatencyMs - totalElapsedMs))
+        : null,
+    planner_used: timing.planner_used === true,
+    planner_fallback_used: timing.planner_fallback_used === true,
+    selector_attempted: timing.selector_attempted === true,
+    selector_applied: timing.selector_applied === true,
+    rewrite_attempted: timing.rewrite_attempted === true,
+    rewrite_llm_used: timing.rewrite_llm_used === true,
+    rewrite_attempt_count: Number.isFinite(Number(timing.rewrite_attempt_count)) ? Number(timing.rewrite_attempt_count) : null,
+  };
+}
+
+function summarizeAssistantRewrite(metaInput) {
+  const meta = asObject(metaInput) || {};
+  const attempts = asArray(meta.assistant_rewrite_attempts).map((attempt) => {
+    const obj = asObject(attempt) || {};
+    return {
+      attempt_index: Number.isFinite(Number(obj.attempt_index)) ? Number(obj.attempt_index) : null,
+      ok: obj.ok === true,
+      reason: asString(obj.reason) || null,
+      compact_context: obj.compact_context === true,
+      strict_selected_only_context: obj.strict_selected_only_context === true,
+      structured_reason_only: obj.structured_reason_only === true,
+      max_output_tokens: Number.isFinite(Number(obj.max_output_tokens)) ? Number(obj.max_output_tokens) : null,
+      prompt_bytes: Number.isFinite(Number(obj.prompt_bytes)) ? Number(obj.prompt_bytes) : null,
+      gate_wait_ms: Number.isFinite(Number(obj.gate_wait_ms)) ? Number(obj.gate_wait_ms) : null,
+      upstream_ms: Number.isFinite(Number(obj.upstream_ms)) ? Number(obj.upstream_ms) : null,
+      total_ms: Number.isFinite(Number(obj.total_ms)) ? Number(obj.total_ms) : null,
+    };
+  });
+  return {
+    llm_used: meta.assistant_rewrite_llm_used === true,
+    reason: asString(meta.assistant_rewrite_reason) || null,
+    provider: asString(meta.assistant_rewrite_provider) || null,
+    model: asString(meta.assistant_rewrite_model) || null,
+    attempt_count: attempts.length,
+    attempts: attempts.slice(0, 3),
+  };
+}
+
 function summarizeAnalysisEnvelope(resp) {
   const root = asObject(resp) || {};
   const cards = asArray(root.cards);
@@ -310,7 +368,7 @@ async function postJson(routePath, body, headers) {
   };
 }
 
-function summarizeEnvelope(resp) {
+function summarizeEnvelope(resp, { latencyMs = null } = {}) {
   const root = asObject(resp) || {};
   const cards = asArray(root.cards);
   const cardTypes = cards.map((c) => asString(c && c.type)).filter(Boolean);
@@ -409,6 +467,11 @@ function summarizeEnvelope(resp) {
     analysis_context_usage: asObject(recoMeta.analysis_context_usage) || null,
     latest_reco_context: latestRecoContext,
     search_stage_ledger_summary: summarizeSearchStageLedger(recoMetadata.search_stage_ledger),
+    chat_mainline_timing_summary: summarizeChatMainlineTiming(
+      asObject(recoMetadata.search_stage_ledger)?.chat_mainline_timing,
+      latencyMs,
+    ),
+    assistant_rewrite_summary: summarizeAssistantRewrite(recoMeta),
     confidence_notice_reason: asString(confidencePayload.reason) || null,
     recos_requested_source: asString(recoRequestedData.source) || null,
     recos_requested_source_detail: asString(recoRequestedData.source_detail) || null,
@@ -595,7 +658,7 @@ async function runCase(spec) {
   output.chat = await postJson('/v1/chat', chatBody, headers);
 
   const analysisSummary = output.analysis_skin ? summarizeAnalysisEnvelope(output.analysis_skin.body) : null;
-  const chatSummary = summarizeEnvelope(output.chat.body);
+  const chatSummary = summarizeEnvelope(output.chat.body, { latencyMs: output.chat.latencyMs });
   const contextBridge = buildContextBridgeSummary(spec, analysisSummary, chatSummary);
   return {
     ...output,

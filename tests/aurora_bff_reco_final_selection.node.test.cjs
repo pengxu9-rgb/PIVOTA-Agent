@@ -3436,6 +3436,123 @@ test('reco assistant rewrite uses structured primary attempt for compact single-
   }
 });
 
+test('reco assistant rewrite uses structured primary attempt for finish-fit same-role comparisons', async () => {
+  const prevMock = process.env.AURORA_BFF_USE_MOCK;
+  const prevProvider = process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
+  const prevModel = process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
+  process.env.AURORA_BFF_USE_MOCK = 'false';
+  process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER = 'gemini';
+  process.env.AURORA_PRODUCT_INTEL_LLM_MODEL = 'gemini-3-flash-preview';
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const payload = __internal.applyRecoContentSpineToPayload(
+      {
+        recommendations: [
+          {
+            product_id: 'spf_unseen',
+            display_name: 'Unseen Sunscreen SPF 50',
+            brand: 'Supergoop',
+            category: 'Sunscreen',
+            short_description: 'A weightless sunscreen with soft-focus wear for smoother daytime layering under makeup.',
+            why_this_one: 'it points to lighter, smoother daytime layering instead of a richer cream finish',
+            matched_role_id: 'daily_sunscreen_finish_fit',
+            matched_role_label: 'Daily sunscreen with finish fit',
+            preferred_step: 'sunscreen',
+          },
+          {
+            product_id: 'spf_mineral',
+            display_name: 'Ultra Light Liquid Mineral Sunscreen with Zinc Oxide SPF 30',
+            brand: 'First Aid Beauty',
+            category: 'Sunscreen',
+            short_description: 'A sheer, weightless mineral sunscreen option for sensitive skin.',
+            why_this_one: 'it gives a more mineral, sensitive-skin-oriented option while keeping the finish sheer and weightless',
+            matched_role_id: 'daily_sunscreen_finish_fit',
+            matched_role_label: 'Daily sunscreen with finish fit',
+            preferred_step: 'sunscreen',
+          },
+          {
+            product_id: 'spf_milk',
+            display_name: 'Hydrating Sunscreen Milk with Colloidal Oatmeal Broad Spectrum SPF 45',
+            brand: 'First Aid Beauty',
+            category: 'Sunscreen',
+            short_description: 'A richer cream-SPF base when you want more moisture under makeup.',
+            why_this_one: 'it gives a richer cream-SPF base when you want more cushioning under makeup, not just the lightest finish',
+            matched_role_id: 'daily_sunscreen_finish_fit',
+            matched_role_label: 'Daily sunscreen with finish fit',
+            preferred_step: 'sunscreen',
+          },
+        ],
+        recommendation_meta: {
+          resolved_target_step: 'sunscreen',
+          mainline_status: 'grounded_success',
+        },
+      },
+      {
+        ingredient_query: 'Daily sunscreen with finish fit',
+        resolved_target_step: 'sunscreen',
+        primary_target_id: 'daily_sunscreen_finish_fit',
+        ranked_targets: [
+          {
+            target_id: 'daily_sunscreen_finish_fit',
+            ingredient_query: 'Daily sunscreen with finish fit',
+            resolved_target_step: 'sunscreen',
+          },
+        ],
+        selected_target_ids: ['daily_sunscreen_finish_fit'],
+      },
+    );
+    const prompts = [];
+    let callCount = 0;
+    __internal.__setCallGeminiJsonObjectForTest(async (args = {}) => {
+      callCount += 1;
+      prompts.push(String(args.userPrompt || ''));
+      return {
+        ok: true,
+        json: {
+          lead_reason: 'it supports lighter, smoother daytime layering under makeup',
+          support_reasons: [
+            'it gives a more mineral, sensitive-skin-oriented option while keeping the finish sheer and weightless',
+            'it gives a richer cream-spf base when you want more cushioning under makeup',
+          ],
+        },
+        parse_status: 'parsed',
+        meta: { gate_wait_ms: 0, upstream_ms: 180, total_ms: 180 },
+        provider: 'gemini',
+        effective_model: 'gemini-3-flash-preview',
+      };
+    });
+
+    const rewrite = await __internal.maybeRewriteRecoAssistantTextWithLlm({
+      payload,
+      language: 'EN',
+      profile: { skinType: 'combination', goals: ['smooth layering'] },
+      userRequestText: 'My daytime routine pills under makeup. What sunscreen should I buy?',
+      allowLockedSelectionRewrite: true,
+      deadlineAtMs: Date.now() + 5000,
+    });
+
+    assert.equal(callCount, 1);
+    assert.match(prompts[0], /Do not write the final assistant message/);
+    assert.match(prompts[0], /Schema: \{ "lead_reason": string, "support_reasons": string\[\] \}/);
+    assert.equal(rewrite.llm_used, true);
+    assert.equal(rewrite.attempts?.[0]?.structured_reason_only, true);
+    assert.equal(rewrite.attempts?.[0]?.strict_selected_only_context, true);
+    assert.equal(rewrite.attempts?.[0]?.max_output_tokens, 180);
+    assert.match(rewrite.text, /Unseen Sunscreen SPF 50 fits this request/i);
+    assert.match(rewrite.text, /Ultra Light Liquid Mineral Sunscreen with Zinc Oxide SPF 30 is the same-slot comparison option because/i);
+    assert.match(rewrite.text, /Hydrating Sunscreen Milk with Colloidal Oatmeal Broad Spectrum SPF 45 is the same-slot comparison option because/i);
+  } finally {
+    __internal.__resetCallGeminiJsonObjectForTest();
+    if (prevMock === undefined) delete process.env.AURORA_BFF_USE_MOCK;
+    else process.env.AURORA_BFF_USE_MOCK = prevMock;
+    if (prevProvider === undefined) delete process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
+    else process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER = prevProvider;
+    if (prevModel === undefined) delete process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
+    else process.env.AURORA_PRODUCT_INTEL_LLM_MODEL = prevModel;
+    delete require.cache[moduleId];
+  }
+});
+
 test('reco assistant rewrite retries gemini timeout with structured reason prompt context', async () => {
   const prevMock = process.env.AURORA_BFF_USE_MOCK;
   const prevProvider = process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
