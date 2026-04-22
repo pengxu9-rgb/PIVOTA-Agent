@@ -185,6 +185,25 @@ describe('backfill-external-product-seeds-catalog', () => {
     ]);
   });
 
+  test('drops explicit fullgroup and bulk collection assets outside Rare', () => {
+    expect(
+      sanitizeSeedImageUrls(
+        [
+          'https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FU_SPR24_T2PRODUCT_EDITORIAL_LE_SMURFSCOLLECTION_FULLGROUP_1200X1500_72DPI.jpg?v=1750272253',
+          'https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FB_FALL25_T2PRODUCT_EDITORIAL_DIAMOND-COLLECTION_GROUPSHOT_1200X1500_72DPI.jpg?v=1753223741',
+          'https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FB_SPR26_T2PRODUCT_EDITORIAL_LE_WATTAMOMENT_COLLECTION_GLOSSBOMB_WATTABRAT_WATABTCH_BULK_20PRODUCT_1200X1500_72DPI.jpg?v=1769721467',
+          'https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FB_FALL25_T2PRODUCT_ECOMM_LE-DIAMOND-COLLECTION_DIAMOND-BOMB_PINK-ICE_1200X1500_72DPI.jpg?v=1753918000',
+        ],
+        {
+          productTitle: 'Diamond Bomb All-Over Diamond Veil',
+          productUrl: 'https://fentybeauty.com/products/diamond-bomb-all-over-diamond-veil-pink-ice',
+        },
+      ),
+    ).toEqual([
+      'https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FB_FALL25_T2PRODUCT_ECOMM_LE-DIAMOND-COLLECTION_DIAMOND-BOMB_PINK-ICE_1200X1500_72DPI.jpg?v=1753918000',
+    ]);
+  });
+
   test('prefers canonical URL when building extract target', () => {
     const row = {
       canonical_url: 'https://example.com/p/canonical-product',

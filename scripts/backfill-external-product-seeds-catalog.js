@@ -556,7 +556,9 @@ function isCollectionStyleSeedImageUrl(value) {
     /(?:^|[-_ ])pdp[-_ ]bundle[-_ ]thumbnail(?:[-_ ]|$)/i.test(filename) ||
     /(?:^|[-_ ])bundle[-_ ]thumbnail(?:[-_ ]|$)/i.test(filename) ||
     /(?:^|[-_ ])fullgroup(?:[-_ ]|$)/i.test(filename) ||
+    /(?:^|[-_ ])groupshot(?:[-_ ]|$)/i.test(filename) ||
     /(?:^|[-_ ])group[-_ ]shot(?:[-_ ]|$)/i.test(filename) ||
+    /(?:^|[-_ ])bulk[-_ ]20product(?:[-_ ]|$)/i.test(filename) ||
     (/rarebeauty\.com$/i.test(hostname) && /(?:^|[-_ ])collection(?:[-_ ]|$)/i.test(filename))
   );
 }
