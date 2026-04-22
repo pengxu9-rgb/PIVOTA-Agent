@@ -269,7 +269,7 @@ test('reco assistant rewrite prompt carries finish-fit same-slot tradeoff notes 
     );
     assert.match(
       JSON.stringify(context.assistant_write_plan.same_role_options),
-      /richer, more moisturizing cream-SPF option/,
+      /richer, more moisturizing cream-SPF option|leans richer and more moisturizing if you want more cushion under makeup/,
     );
     assert.equal(context.price_compare_requested, false);
     assert.deepEqual(context.price_order_summary, []);
@@ -3317,6 +3317,14 @@ test('reco assistant structured renderer downgrades primer-equivalence wording i
         selected_target_ids: ['daily_sunscreen_finish_fit'],
       },
     );
+    payload.recommendations[1].why_this_one = 'it gives a more mineral, sensitive-skin-oriented option while keeping the finish sheer and weightless';
+    payload.recommendations[1].short_description = 'A sheer, weightless mineral sunscreen option for sensitive skin.';
+    payload.recommendations[2].why_this_one = 'it keeps the feel lighter and more invisible if you want less weight under makeup';
+    payload.recommendations[2].short_description = 'A daily sunscreen built around humectants and soft-focus powders for AM UV protection and comfortable daytime layering.';
+    payload.sections[0].products[1].why_this_one = 'it leans more mineral and sensitive-skin-friendly if you want a sheer, weightless finish';
+    payload.sections[0].products[1].short_description = 'Leans more mineral and sensitive-skin-friendly with a sheer, weightless finish.';
+    payload.sections[0].products[2].why_this_one = 'it leans richer and more moisturizing if you want more cushion under makeup';
+    payload.sections[0].products[2].short_description = 'Leans richer and more moisturizing if you want more cushion under makeup.';
     const primaryTarget = payload.recommendation_meta.ranked_targets[0];
     const text = __internal.renderRecoAssistantStructuredReasonRewrite({
       structuredReason: {

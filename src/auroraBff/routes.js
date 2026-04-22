@@ -57906,6 +57906,39 @@ function pickRecoAssistantRenderDetail(row = {}) {
   };
 }
 
+function pickRecoAssistantCanonicalSectionProductRow(payload = {}, {
+  selectedName = '',
+  recommendation = null,
+  index = 0,
+} = {}) {
+  const sections = Array.isArray(payload?.sections) ? payload.sections : [];
+  const selectedNameNorm = normalizeSemanticAuditText(selectedName);
+  const recommendationProductId = pickFirstTrimmed(recommendation?.product_id, recommendation?.productId);
+  const rows = [];
+  for (const section of sections) {
+    if (!isPlainObject(section)) continue;
+    const products = Array.isArray(section.products) ? section.products : [];
+    for (const product of products) {
+      if (isPlainObject(product)) rows.push(product);
+    }
+  }
+  if (!rows.length) return null;
+  if (recommendationProductId) {
+    const byId = rows.find((row) => pickFirstTrimmed(row.product_id, row.productId) === recommendationProductId);
+    if (byId) return byId;
+  }
+  if (selectedNameNorm) {
+    const byName = rows.find((row) => {
+      const rowName = normalizeSemanticAuditText(
+        pickFirstTrimmed(row.display_name, row.displayName, row.title, row.name),
+      );
+      return rowName && rowName === selectedNameNorm;
+    });
+    if (byName) return byName;
+  }
+  return rows[index] || null;
+}
+
 function formatRecoAssistantStructuredSentence(sentence) {
   const text = dedupeRecoAssistantStructuredSentenceText(sentence);
   if (!text) return '';
@@ -58134,10 +58167,19 @@ function renderRecoAssistantStructuredReasonRewrite({
   const recommendations = Array.isArray(payload?.recommendations)
     ? payload.recommendations.filter((item) => isPlainObject(item)).slice(0, selectedNames.length)
     : [];
-  const details = selectedNames.map((name, index) => ({
-    ...pickRecoAssistantRenderDetail(recommendations[index] || {}),
-    name,
-  }));
+  const details = selectedNames.map((name, index) => {
+    const recommendation = recommendations[index] || {};
+    const canonicalSectionRow = pickRecoAssistantCanonicalSectionProductRow(payload, {
+      selectedName: name,
+      recommendation,
+      index,
+    });
+    return {
+      ...pickRecoAssistantRenderDetail(recommendation),
+      ...(canonicalSectionRow ? pickRecoAssistantRenderDetail(canonicalSectionRow) : {}),
+      name,
+    };
+  });
   const targetLabel = pickFirstTrimmed(
     primaryTarget && primaryTarget.ingredient_query,
     primaryTarget && primaryTarget.ingredient_id,
