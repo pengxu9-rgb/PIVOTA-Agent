@@ -3334,7 +3334,7 @@ test('reco assistant structured renderer compares finish-fit sunscreen options w
     });
 
     assert.match(text, /lighter, smoother daytime layering instead of a richer cream finish|keeps the finish lighter and smoother under makeup if you want a less heavy daytime layer|keeps the finish lighter and smoother under makeup for easier daytime wear/i);
-    assert.match(text, /instead of a (?:more mineral-leaning or richer, more moisturizing|richer, more moisturizing or more mineral-leaning) finish/i);
+    assert.match(text, /(?:so it stays between the (?:more mineral-leaning|richer, more moisturizing) option and the (?:more mineral-leaning|richer, more moisturizing) option|instead of leaning toward the (?:more mineral-leaning|richer, more moisturizing) option)/i);
     assert.match(text, /(?:makes more sense if you want a more mineral, sensitive-skin-friendly option with a sheer, weightless finish|leans more mineral and sensitive-skin-friendly if you want a sheer, weightless finish|gives a more mineral, sensitive-skin-oriented option)/i);
     assert.match(text, /(?:makes more sense if you want a richer, more moisturizing feel with more cushion under makeup|richer, more moisturizing cream-spf option|leans richer and more moisturizing if you want more cushion under makeup)/i);
     assert.doesNotMatch(text, /uv-filter cues|filter identity|reapplication expectations explicit/i);
@@ -3762,7 +3762,7 @@ test('reco assistant rewrite uses structured primary attempt for finish-fit same
     assert.equal(rewrite.attempts?.[0]?.max_output_tokens, 180);
     assert.match(
       rewrite.text,
-      /Unseen Sunscreen SPF 50 keeps the finish lighter and smoother under makeup(?:, which helps reduce pilling during the day| for easier daytime wear)(?: instead of a (?:more mineral-leaning or richer, more moisturizing|richer, more moisturizing or more mineral-leaning) finish)?/i,
+      /Unseen Sunscreen SPF 50 keeps the finish lighter and smoother under makeup(?:, which helps reduce pilling during the day| for easier daytime wear)(?: so it stays between the (?:more mineral-leaning|richer, more moisturizing) option and the (?:more mineral-leaning|richer, more moisturizing) option| instead of leaning toward the (?:more mineral-leaning|richer, more moisturizing) option)?/i,
     );
     assert.doesNotMatch(rewrite.text, /fits this request for sunscreen that wears more smoothly under makeup because/i);
     assert.doesNotMatch(rewrite.text, /Unseen Sunscreen SPF 50 fits this request because/i);
@@ -3898,7 +3898,7 @@ test('reco assistant rewrite uses normalized recommendation card authority when 
     );
     assert.match(
       rewrite.text,
-      /Beauty of Joseon Relief Sun Aqua-Fresh : Rice \+ B5 \(SPF50\+ PA\+\+\+\+\) keeps the finish lighter and smoother under makeup(?:, which helps reduce pilling during the day| for easier daytime wear) instead of a fresher, dewier or more matte, shine-controlling finish/i,
+      /Beauty of Joseon Relief Sun Aqua-Fresh : Rice \+ B5 \(SPF50\+ PA\+\+\+\+\) keeps the finish lighter and smoother under makeup(?:, which helps reduce pilling during the day| for easier daytime wear) so it stays between the (?:fresher, dewier|more matte, shine-controlling) option and the (?:fresher, dewier|more matte, shine-controlling) option/i,
     );
     assert.match(
       rewrite.text,

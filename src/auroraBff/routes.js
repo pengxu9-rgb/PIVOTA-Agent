@@ -58521,8 +58521,8 @@ function buildRecoAssistantFinishFitLeadContrastClause(reasons = []) {
     2,
   );
   if (!labels.length) return '';
-  if (labels.length === 1) return `instead of a ${labels[0]} finish`;
-  return `instead of a ${labels[0]} or ${labels[1]} finish`;
+  if (labels.length === 1) return `instead of leaning toward the ${labels[0]} option`;
+  return `so it stays between the ${labels[0]} option and the ${labels[1]} option`;
 }
 
 function formatRecoAssistantFinishFitCompareTail(raw = '', {
