@@ -56095,6 +56095,7 @@ function buildStructuredRecoAssistantReasonPromptLines({
   ];
   if (enforceFinishFitPrimerCalibration) {
     lines.push('Do not claim a sunscreen doubles as, acts as, works as, or serves as a primer; translate soft-focus or primer-like cues into smoother under-makeup wear, a softer-focus finish, or primer-like finish language without implying it replaces a primer.');
+    lines.push('For finish-fit sunscreen comparisons, keep every reason on wear, texture, finish, white-cast, sensitivity, or richer-versus-lighter tradeoffs; avoid generic SPF utility phrasing like "for AM UV protection" or "for daily protection" unless that tradeoff is explicit.');
   }
   if (requestMode === 'buy') {
     lines.push('Use buy/pick rationale, but do not include buy wording that depends on product names.');
@@ -58082,7 +58083,11 @@ function renderRecoAssistantStructuredReasonRewrite({
       ? `Start with ${selectedNames[0]}${targetPhrase} because ${grammaticalLeadReason}`
       : requestMode === 'use'
         ? `${selectedNames[0]} is a practical option${targetPhrase} because ${grammaticalLeadReason}`
-        : `${selectedNames[0]} fits this request${targetPhrase} because ${grammaticalLeadReason}`;
+        : (
+          selectedProductRoleMix === 'same_role_comparison' && recoRoleNeedsFinishFitNarrative(targetLabel)
+            ? `${selectedNames[0]} fits this request because ${grammaticalLeadReason}`
+            : `${selectedNames[0]} fits this request${targetPhrase} because ${grammaticalLeadReason}`
+        );
   if (selectedNames.length === 1) {
     const followupReason = pickRecoAssistantStructuredFollowupReason(details[0], {
       leadReason: grammaticalLeadReason,
