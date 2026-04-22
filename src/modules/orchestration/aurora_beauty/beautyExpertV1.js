@@ -119,6 +119,9 @@ function buildAxisFromReason(reason = '', index = 0) {
   if (/\bserum-like|serum like|fluid\b/.test(normalized)) {
     return { id: `axis_${index + 1}`, label: 'serum-like / thinner feel' };
   }
+  if (/\bniacinamide|zinc pca|targeted treatment|skin-balancing|skin balancing|oil-balancing|oil balancing|clarifying serum|blemish serum\b/.test(normalized)) {
+    return { id: `axis_${index + 1}`, label: 'targeted treatment / balancing serum' };
+  }
   if (/\bmatte|shine|oil-control|oil control|less slip\b/.test(normalized)) {
     return { id: `axis_${index + 1}`, label: 'matte / shine control' };
   }
