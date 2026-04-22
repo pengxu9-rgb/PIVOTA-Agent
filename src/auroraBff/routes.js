@@ -21,6 +21,7 @@ const {
   buildRecoAuthorityQueryVariants,
   buildRecoAuthoritySearchAliases,
 } = require('../services/recoAlternativesAuthority');
+const { buildSupportRoleQueryVariants } = require('./recoSupportRoleQueries');
 const {
   deduplicateCandidates: dedupeDupeCandidatesV2,
   filterSelfReferences: filterDupeSelfReferencesV2,
@@ -73006,12 +73007,93 @@ function buildExternalSeedCompareIdentity(productObj, productInput) {
   };
 }
 
+function isExternalSeedFinishFitSunscreenTarget(targetSignals = null) {
+  const target = isPlainObject(targetSignals) ? targetSignals : {};
+  const roleScope = String(target.roleScope || '').trim().toLowerCase();
+  const usageRole = String(target.usageRole || '').trim().toLowerCase();
+  if (usageRole !== 'sunscreen') return false;
+  if (roleScope === 'daily_sunscreen_finish_fit') return true;
+  const signalText = [
+    target.name,
+    target.category,
+    target.productType,
+    target.notes,
+    ...(Array.isArray(target.primaryClaims) ? target.primaryClaims : []),
+    ...(Array.isArray(target.textureHints) ? target.textureHints : []),
+  ]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+  return /\b(makeup|under makeup|pilling|layering|fluid|lightweight|invisible|serum|water[-\s]?fit|matte|dewy|oil[-\s]?free|non[-\s]?greasy)\b/.test(
+    signalText,
+  );
+}
+
+function buildExternalSeedFinishFitSunscreenQueries(targetSignals = null) {
+  const target = isPlainObject(targetSignals) ? targetSignals : {};
+  if (!isExternalSeedFinishFitSunscreenTarget(target)) return [];
+  const signalText = [
+    target.name,
+    target.category,
+    target.productType,
+    target.notes,
+    ...(Array.isArray(target.primaryClaims) ? target.primaryClaims : []),
+    ...(Array.isArray(target.textureHints) ? target.textureHints : []),
+    ...(Array.isArray(target.heroIngredients) ? target.heroIngredients : []),
+    ...(Array.isArray(target.knownActives) ? target.knownActives : []),
+  ]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+  const fluidSignal = /\b(fluid|invisible|water[-\s]?fit|serum sunscreen|watery|ultra[-\s]?light|light serum|sun serum)\b/.test(signalText);
+  const oilySignal = /\b(oily|oil[-\s]?control|shine|matte|non[-\s]?greasy|oil[-\s]?free|sebum)\b/.test(signalText);
+  const semanticFamily = oilySignal ? 'oil_control' : 'finish_fit';
+  const queryTerms = uniqCaseInsensitiveStrings(
+    [
+      ...(Array.isArray(target.primaryClaims) ? target.primaryClaims : []),
+      ...(Array.isArray(target.knownActives) ? target.knownActives : []),
+      'under makeup',
+    ],
+    8,
+  );
+  const fitKeywords = uniqCaseInsensitiveStrings(
+    [
+      ...(Array.isArray(target.textureHints) ? target.textureHints : []),
+      ...(Array.isArray(target.heroIngredients) ? target.heroIngredients : []),
+      fluidSignal ? 'fluid finish' : '',
+      oilySignal ? 'matte finish' : '',
+      'daytime layering',
+    ],
+    8,
+  );
+  const precise = buildSupportRoleQueryVariants({
+    roleId: pickFirstTrimmed(target.roleScope) || 'daily_sunscreen_finish_fit',
+    roleLabel: pickFirstTrimmed(target.roleScope)
+      ? pickFirstTrimmed(target.roleScope).replace(/[_-]+/g, ' ')
+      : 'daily sunscreen finish fit',
+    preferredStep: 'sunscreen',
+    queryTerms,
+    fitKeywords,
+    semanticFamily,
+    concernText: signalText,
+    maxQueries: 3,
+  });
+  return uniqCaseInsensitiveStrings(
+    precise.filter((query) => !/^(?:sunscreen|daily sunscreen|broad spectrum sunscreen)$/i.test(String(query || '').trim())),
+    3,
+  );
+}
+
 function buildExternalSeedCompareSearchQueries({ productObj, productInput = '', lang = 'EN' } = {}) {
   const identity = buildExternalSeedCompareIdentity(productObj, productInput);
   const target = identity.targetSignals;
   const out = [];
   const seen = new Set();
   const usageRole = inferRecoAlternativesSearchUsageRole(target);
+  const finishFitSunscreenQueries = buildExternalSeedFinishFitSunscreenQueries(target);
+  const isFinishFitSunscreen = finishFitSunscreenQueries.length > 0;
   const stepTerms = uniqCaseInsensitiveStrings(
     [
       target.productType,
@@ -73031,13 +73113,17 @@ function buildExternalSeedCompareSearchQueries({ productObj, productInput = '', 
     out.push(query.slice(0, 180));
   };
 
-  pushQuery(identity.anchorLabel);
   const aliasQueries = identity.aliases.filter(
     (alias) => String(alias || '').trim().toLowerCase() !== String(identity.anchorLabel || '').trim().toLowerCase(),
   );
-  for (const alias of aliasQueries.slice(0, 1)) pushQuery(alias);
+  if (isFinishFitSunscreen) {
+    for (const query of finishFitSunscreenQueries) pushQuery(query);
+  } else {
+    pushQuery(identity.anchorLabel);
+    for (const alias of aliasQueries.slice(0, 1)) pushQuery(alias);
+  }
 
-  if (usageRole) {
+  if (usageRole && !isFinishFitSunscreen) {
     pushQuery(usageRole);
   }
   if (usageRole && usageRole !== 'sunscreen' && target.knownActives.length) {
@@ -73054,34 +73140,42 @@ function buildExternalSeedCompareSearchQueries({ productObj, productInput = '', 
   if (usageRole && usageRole !== 'unknown' && target.textureHints.length) {
     pushQuery(`${target.textureHints[0]} ${usageRole}`);
   }
-  if (stepTerms) {
+  if (stepTerms && !isFinishFitSunscreen) {
     pushQuery(stepTerms);
   }
-  if (stepTerms && target.primaryClaims.length) {
+  if (stepTerms && target.primaryClaims.length && !isFinishFitSunscreen) {
     pushQuery(`${stepTerms} ${target.primaryClaims[0]}`);
   }
-  if (stepTerms && target.textureHints.length) {
+  if (stepTerms && target.textureHints.length && !isFinishFitSunscreen) {
     pushQuery(`${stepTerms} ${target.textureHints[0]}`);
   }
   if (usageRole && usageRole !== 'unknown' && usageRole !== 'sunscreen' && target.knownActives.length) {
     pushQuery(`${target.knownActives[0]} ${usageRole}`);
   }
-  for (const alias of aliasQueries.slice(1)) pushQuery(alias);
+  if (!isFinishFitSunscreen) {
+    for (const alias of aliasQueries.slice(1)) pushQuery(alias);
+  }
 
-  if (target.brand && target.name && usageRole && usageRole !== 'unknown') {
+  if (target.brand && target.name && usageRole && usageRole !== 'unknown' && !isFinishFitSunscreen) {
     pushQuery(`${target.brand} ${target.name} ${usageRole}`);
   }
-  if (target.productType && usageRole && usageRole !== 'unknown' && String(target.productType).trim().toLowerCase() !== usageRole.toLowerCase()) {
+  if (
+    target.productType &&
+    usageRole &&
+    usageRole !== 'unknown' &&
+    String(target.productType).trim().toLowerCase() !== usageRole.toLowerCase() &&
+    !isFinishFitSunscreen
+  ) {
     pushQuery(`${target.productType} ${usageRole}`);
   }
-  if (target.productType && String(productInput || '').trim()) {
+  if (target.productType && String(productInput || '').trim() && !isFinishFitSunscreen) {
     pushQuery(`${target.productType} ${String(productInput || '').trim()}`);
   }
 
   if (!out.length) {
     pushQuery(String(productInput || '').trim());
   }
-  return out.slice(0, 6);
+  return out.slice(0, isFinishFitSunscreen ? 4 : 6);
 }
 
 function isExternalSeedPlaceholderCandidate(candidate) {
@@ -73784,7 +73878,13 @@ async function collectExternalSeedPoolAlternatives({
   });
   for (const row of embeddedPool) candidateRows.push(row);
 
-  const queriesToRun = queryPlan.slice(0, Math.max(2, Math.min(4, normalizedLimit)));
+  const finishFitSunscreenCompare = isExternalSeedFinishFitSunscreenTarget(identity.targetSignals);
+  const queriesToRun = queryPlan.slice(
+    0,
+    finishFitSunscreenCompare
+      ? 2
+      : Math.max(2, Math.min(4, normalizedLimit)),
+  );
   const localSeedSearchRole = buildRecoAlternativesLocalSeedSearchRole(identity.targetSignals);
   const localSeedResults = await Promise.allSettled(
     queriesToRun.map((query) => searchLocalExternalSeedProducts({

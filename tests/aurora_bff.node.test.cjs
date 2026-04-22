@@ -9477,7 +9477,10 @@ test('buildExternalSeedCompareSearchQueries: avoids duplicate role queries and p
       productInput: 'SKINTIFIC Matte Fit Serum Sunscreen SPF 50+ PA++++',
       lang: 'EN',
     });
-    assert.ok(thinSunscreenQueries.slice(0, 3).some((item) => /^sunscreen$/i.test(String(item || ''))));
+    assert.deepEqual(
+      thinSunscreenQueries.slice(0, 3),
+      ['spf fluid oily skin', 'sunscreen under makeup', 'lightweight sunscreen oily skin'],
+    );
     const productionLikeSunscreenQueries = __internal.buildExternalSeedCompareSearchQueries({
       productObj: {
         brand: 'SKINTIFIC',
@@ -9491,8 +9494,29 @@ test('buildExternalSeedCompareSearchQueries: avoids duplicate role queries and p
       productInput: 'Matte Fit Serum Sunscreen SPF 50+ PA++++',
       lang: 'EN',
     });
-    assert.ok(productionLikeSunscreenQueries.slice(0, 3).some((item) => /^sunscreen$/i.test(String(item || ''))));
+    assert.deepEqual(
+      productionLikeSunscreenQueries.slice(0, 3),
+      ['spf fluid oily skin', 'sunscreen under makeup', 'lightweight sunscreen oily skin'],
+    );
     assert.equal(productionLikeSunscreenQueries.slice(0, 3).some((item) => /^niacinamide sunscreen$/i.test(String(item || ''))), false);
+    assert.equal(productionLikeSunscreenQueries.slice(0, 3).some((item) => /^sunscreen$/i.test(String(item || ''))), false);
+    const wateryFinishSunscreenQueries = __internal.buildExternalSeedCompareSearchQueries({
+      productObj: {
+        brand: 'Beauty of Joseon',
+        name: 'Relief Sun Aqua-Fresh : Rice + B5 (SPF50+ PA++++)',
+        category: 'sunscreen',
+        product_type: 'sunscreen',
+        role_scope: 'daily_sunscreen_finish_fit',
+        texture_hints: ['water-gel texture', 'lightweight finish'],
+        short_description: 'Lightweight fluid sunscreen for smoother daytime layering under makeup.',
+      },
+      productInput: 'Beauty of Joseon Relief Sun Aqua-Fresh : Rice + B5 (SPF50+ PA++++)',
+      lang: 'EN',
+    });
+    assert.deepEqual(
+      wateryFinishSunscreenQueries.slice(0, 3),
+      ['spf fluid', 'sunscreen under makeup', 'lightweight sunscreen'],
+    );
     const thinSunscreenLocalSeedRole = __internal.buildRecoAlternativesLocalSeedSearchRole({
       roleScope: 'daily_sunscreen_finish_fit',
       usageRole: 'unknown',
