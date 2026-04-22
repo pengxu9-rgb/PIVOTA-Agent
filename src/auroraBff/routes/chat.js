@@ -37,7 +37,7 @@ function getAuroraChatRequestIdentityTimeoutMs() {
 }
 
 function getAuroraV1MainlineProxyTimeoutMs() {
-  return parseTimeoutMsValue(process.env.AURORA_V1_MAINLINE_PROXY_TIMEOUT_MS, 15000);
+  return parseTimeoutMsValue(process.env.AURORA_V1_MAINLINE_PROXY_TIMEOUT_MS, 25000);
 }
 
 function withTimeoutCode(promise, timeoutMs, timeoutCode, status = 504) {
@@ -1840,5 +1840,8 @@ module.exports = {
   },
   __resetInvokeV1MainlineChatForTests() {
     invokeV1MainlineChatImpl = invokeV1MainlineChat;
+  },
+  __getAuroraV1MainlineProxyTimeoutMsForTests() {
+    return getAuroraV1MainlineProxyTimeoutMs();
   },
 };
