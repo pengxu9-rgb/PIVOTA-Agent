@@ -58,11 +58,13 @@ function buildSupportRoleQueryScore(
     oilySignal = false,
     barrierSignal = false,
     layeringSignal = false,
+    fluidSignal = false,
   } = {},
 ) {
   const normalized = normalizeSupportRoleQueryToken(query).toLowerCase();
   if (!normalized) return 0;
   let score = 0;
+  const finishFitSignal = layeringSignal || fluidSignal || oilySignal;
   if (step === 'moisturizer') {
     if (/\b(moisturi[sz]er|cream|gel cream|lotion|emulsion|water cream|water gel)\b/.test(normalized)) score += 3;
     if (/\b(lightweight|oil free|oil-free|gel cream|water cream|water gel|breathable|non-greasy|non greasy)\b/.test(normalized)) score += 2;
@@ -85,12 +87,20 @@ function buildSupportRoleQueryScore(
   } else if (step === 'sunscreen') {
     if (/\b(sunscreen|spf|broad spectrum|sun fluid|sun cream|sun lotion|uv)\b/.test(normalized)) score += 3;
     if (/\b(oil control|lightweight|oily skin|matte|non-greasy|non greasy|fluid|invisible|water[- ]?fit)\b/.test(normalized)) score += 2;
-    if (/^oil control sunscreen$/.test(normalized)) score += 3;
-    if (/^lightweight sunscreen oily skin$/.test(normalized)) score += 2.4;
-    if (/^spf fluid oily skin$/.test(normalized)) score += 4.5;
-    if (/^sunscreen$/.test(normalized)) score += 10;
-    if (/^daily sunscreen$/.test(normalized)) score += 0.8;
-    if (/^broad spectrum sunscreen$/.test(normalized)) score += 0.6;
+    if (layeringSignal && /\b(layering|makeup|under makeup|pilling)\b/.test(normalized)) score += 3.4;
+    if ((fluidSignal || layeringSignal) && /\b(fluid|invisible|water[- ]?fit|serum sunscreen)\b/.test(normalized)) {
+      score += 2.6;
+    }
+    if (/^sunscreen under makeup(?: oily skin)?$/.test(normalized)) score += layeringSignal ? 7.2 : 2.6;
+    if (/^oil control sunscreen$/.test(normalized)) score += oilySignal ? 5.4 : 3;
+    if (/^lightweight sunscreen oily skin$/.test(normalized)) score += finishFitSignal ? 6.4 : 2.4;
+    if (/^lightweight sunscreen$/.test(normalized)) score += finishFitSignal ? 4.6 : 2.2;
+    if (/^spf fluid oily skin$/.test(normalized)) score += finishFitSignal ? 7.8 : 4.5;
+    if (/^spf fluid$/.test(normalized)) score += fluidSignal || layeringSignal ? 5.8 : 2.2;
+    if (/^makeup friendly sunscreen$/.test(normalized)) score += layeringSignal ? 4.8 : 1.4;
+    if (/^sunscreen$/.test(normalized)) score += finishFitSignal ? 0.3 : 10;
+    if (/^daily sunscreen$/.test(normalized)) score += finishFitSignal ? 0.2 : 0.8;
+    if (/^broad spectrum sunscreen$/.test(normalized)) score += finishFitSignal ? 0.2 : 0.6;
   } else if (step === 'serum') {
     if (/\b(serum|essence|ampoule)\b/.test(normalized)) score += 3;
     if (/\b(hyaluronic|hydrating|hydrate|dehydrated|plumping|water[- ]?fit|dull skin|glycerin|panthenol)\b/.test(normalized)) score += 2;
@@ -203,12 +213,14 @@ function buildSupportRoleQueryVariants({
     if (!layeringSignal) candidates.push('lightweight moisturizer');
     candidates.push('moisturizer');
   } else if (step === 'sunscreen') {
-    candidates.push('sunscreen');
     if (fluidSignal || oilySignal) candidates.push(oilySignal ? 'spf fluid oily skin' : 'spf fluid');
+    if (layeringSignal) candidates.push('sunscreen under makeup');
     candidates.push(oilySignal ? 'lightweight sunscreen oily skin' : 'lightweight sunscreen');
     if (oilySignal) candidates.push('oil control sunscreen');
+    if (layeringSignal) candidates.push('makeup friendly sunscreen');
     candidates.push('daily sunscreen');
     candidates.push('broad spectrum sunscreen');
+    candidates.push('sunscreen');
   } else if (step === 'serum') {
     if (hydrationSerumSignal) {
       candidates.push('hyaluronic acid serum');
@@ -242,7 +254,7 @@ function buildSupportRoleQueryVariants({
   return uniqueCaseInsensitiveStrings(candidates, 16)
     .map((query, index) => ({
       query,
-      score: buildSupportRoleQueryScore(query, { step, oilySignal, barrierSignal, layeringSignal }),
+      score: buildSupportRoleQueryScore(query, { step, oilySignal, barrierSignal, layeringSignal, fluidSignal }),
       index,
     }))
     .sort((left, right) => {

@@ -1779,9 +1779,9 @@ test('handoffRecoToBeautyMainlineSearch skips primary external seed when interna
       [
         'niacinamide serum oily skin',
         'gel cream moisturizer',
-        'sunscreen',
-        'lightweight moisturizer oily skin',
         'spf fluid oily skin',
+        'lightweight moisturizer oily skin',
+        'lightweight sunscreen oily skin',
         'oil control sunscreen',
       ],
     );
@@ -1789,9 +1789,9 @@ test('handoffRecoToBeautyMainlineSearch skips primary external seed when interna
       externalCaptured,
       [
         'gel cream moisturizer',
-        'sunscreen',
-        'lightweight moisturizer oily skin',
         'spf fluid oily skin',
+        'lightweight moisturizer oily skin',
+        'lightweight sunscreen oily skin',
       ],
     );
     const primaryExternalRows = out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts
@@ -1890,9 +1890,9 @@ test('handoffRecoToBeautyMainlineSearch skips primary external supplement for ro
       externalCaptured,
       [
         'gel cream moisturizer',
-        'sunscreen',
-        'lightweight moisturizer oily skin',
         'spf fluid oily skin',
+        'lightweight moisturizer oily skin',
+        'lightweight sunscreen oily skin',
       ],
     );
     const primaryExternalRows = out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts
@@ -2181,7 +2181,7 @@ test('handoffRecoToBeautyMainlineSearch interleaves support external queries acr
       externalCaptured,
       [
         'gel cream moisturizer',
-        'sunscreen',
+        'spf fluid oily skin',
       ],
     );
     assert.deepEqual(

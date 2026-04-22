@@ -303,6 +303,23 @@ test('support role query variants prioritize oily-skin layering query over gener
   assert.deepEqual(queries.slice(0, 2), ['lightweight moisturizer oily skin', 'gel cream moisturizer']);
 });
 
+test('support role query variants prioritize finish-fit sunscreen queries before generic sunscreen fallback', () => {
+  const queries = buildSupportRoleQueryVariants({
+    roleId: 'daily_sunscreen_finish_fit',
+    roleLabel: 'Daily sunscreen finish fit',
+    preferredStep: 'sunscreen',
+    queryTerms: ['sunscreen', 'sunscreen under makeup', 'lightweight sunscreen oily skin', 'spf fluid oily skin'],
+    fitKeywords: ['spf', 'under makeup', 'pilling', 'lightweight', 'fluid'],
+    concernText: 'oily skin sunscreen under makeup that pills by noon',
+    maxQueries: 4,
+  });
+
+  assert.deepEqual(
+    queries,
+    ['spf fluid oily skin', 'sunscreen under makeup', 'lightweight sunscreen oily skin', 'oil control sunscreen'],
+  );
+});
+
 test('concern planner normalizer repairs routine_mix sensitivity plans that omit barrier support', () => {
   const fallbackPlan = buildConcernSemanticPlanFallback({
     text: 'My skin is sensitive and red. What product should I buy?',
