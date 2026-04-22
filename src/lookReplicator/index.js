@@ -1469,6 +1469,8 @@ function mountLookReplicatorRoutes(app, { logger }) {
       }
 
       const merchantIds = Array.from(groups.keys());
+      const canUseLegacyCreatorCheckoutFallback =
+        allowLegacyCreatorCheckoutFallback && merchantIds.length === 1;
       const checkouts = [];
       const failures = [];
 
@@ -1639,7 +1641,7 @@ function mountLookReplicatorRoutes(app, { logger }) {
                 });
               }
 
-              if (!checkoutUrl && allowLegacyCreatorCheckoutFallback) {
+              if (!checkoutUrl && canUseLegacyCreatorCheckoutFallback) {
                 try {
                   const intent = await axiosPostWithRetry(
                     `${backendBaseUrl}/agent/v1/checkout/intents`,
@@ -1713,7 +1715,7 @@ function mountLookReplicatorRoutes(app, { logger }) {
                   stage: 'creator_ucp_checkout_session',
                   status: 502,
                   body: null,
-                  message: allowLegacyCreatorCheckoutFallback
+                  message: canUseLegacyCreatorCheckoutFallback
                     ? 'Creator checkout did not return checkout_url'
                     : 'Creator UCP checkout session did not return checkout_url',
                 });

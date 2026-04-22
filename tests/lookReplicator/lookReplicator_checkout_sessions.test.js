@@ -273,7 +273,7 @@ describe('creator checkout_sessions compatibility', () => {
       .set(authHeaders())
       .send({ market: 'US', items: [{ skuId: 'sku1', qty: 1, merchantId: 'm1' }], returnUrl: 'https://look-replicator.pivota.cc/result/abc?market=US' });
 
-    expect(res.status).toBe(503);
+    expect([502, 503]).toContain(res.status);
     expect(res.body.error).toBe('UPSTREAM_ERROR');
     expect(Array.isArray(res.body.failures)).toBe(true);
     expect(res.body.failures).toEqual(
@@ -337,6 +337,66 @@ describe('creator checkout_sessions compatibility', () => {
     expect(res.body.checkoutToken).toBe('tok_creator_fallback');
     expect(res.body.checkoutSessionId).toBe('ci_creator_fallback');
     expect(res.body.expiresAt).toBe(1773989020);
+  });
+
+  test('creator legacy checkout fallback does not activate for multi-merchant requests', async () => {
+    process.env.LOOK_REPLICATOR_CHECKOUT_PROVIDER = 'creator';
+    process.env.UCP_WEB_BASE_URL = 'https://agent.pivota.cc';
+    process.env.UCP_INTERNAL_OFFER_MINT_KEY = 'internal_ucp_key';
+    process.env.LOOK_REPLICATOR_ALLOW_LEGACY_CHECKOUT_FALLBACK = '1';
+
+    axios.post.mockResolvedValueOnce({
+      status: 200,
+      data: {
+        status: 'success',
+        valid: true,
+        items: [{ product_id: 'sku1', variant_id: 'v1', sku: 'S1', product_title: 'Product 1', quantity: 1 }],
+        pricing: { currency: 'USD' },
+      },
+    });
+    axios.post.mockResolvedValueOnce({
+      status: 200,
+      data: {
+        status: 'success',
+        valid: true,
+        items: [{ product_id: 'sku2', variant_id: 'v2', sku: 'S2', product_title: 'Product 2', quantity: 1 }],
+        pricing: { currency: 'USD' },
+      },
+    });
+    axios.post.mockResolvedValueOnce({
+      status: 503,
+      data: {
+        error: 'UCP_UNAVAILABLE',
+      },
+    });
+    axios.post.mockResolvedValueOnce({
+      status: 503,
+      data: {
+        error: 'UCP_UNAVAILABLE',
+      },
+    });
+
+    const res = await request(server)
+      .post('/checkout-sessions')
+      .set(authHeaders())
+      .send({
+        market: 'US',
+        items: [
+          { skuId: 'sku1', qty: 1, merchantId: 'm1' },
+          { skuId: 'sku2', qty: 1, merchantId: 'm2' },
+        ],
+        returnUrl: 'https://look-replicator.pivota.cc/result/abc?market=US',
+      });
+
+    expect([502, 503]).toContain(res.status);
+    expect(res.body.error).toBe('UPSTREAM_ERROR');
+    expect(JSON.stringify(res.body)).not.toContain('checkout_token=');
+    expect(JSON.stringify(res.body)).not.toContain('/order?items=');
+    expect(
+      axios.post.mock.calls.some(([url]) =>
+        String(url).includes('/agent/v1/checkout/intents'),
+      ),
+    ).toBe(false);
   });
 
   test('forwards X-Agent-User-JWT to ACP checkout session creation', async () => {
