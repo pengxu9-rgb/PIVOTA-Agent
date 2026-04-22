@@ -13,12 +13,61 @@ function pickFirstTrimmed(...values) {
 function shouldUseBeautyChatMainlinePlanner(targetContext = null) {
   const entryType = String(targetContext?.entry_type || 'chat').trim().toLowerCase();
   if (entryType && entryType !== 'chat') return false;
-  const intentMode = String(targetContext?.intent_mode || '').trim().toLowerCase();
+  const intentMode = String(
+    pickFirstTrimmed(
+      targetContext?.intent_mode,
+      targetContext?.semantic_plan?.intent_mode,
+    ) || '',
+  ).trim().toLowerCase();
   if (new Set(['exact_product', 'specific_product', 'pdp_open']).has(intentMode)) return false;
   if (intentMode === 'generic_concern') return true;
   if (intentMode === 'explicit_role' || intentMode === 'generic') return true;
   if (targetContext?.step_aware_intent && targetContext?.resolved_target_step) return true;
-  return Array.isArray(targetContext?.framework_roles) && targetContext.framework_roles.length > 0;
+  if (Array.isArray(targetContext?.framework_roles) && targetContext.framework_roles.length > 0) return true;
+  return hasBeautyChatMainlineSemanticPlannerContract(targetContext);
+}
+
+function resolveBeautyChatSelectorComparisonMode(targetContext = null) {
+  const semanticPlan =
+    targetContext?.semantic_plan && typeof targetContext.semantic_plan === 'object' && !Array.isArray(targetContext.semantic_plan)
+      ? targetContext.semantic_plan
+      : null;
+  return String(
+    pickFirstTrimmed(
+      targetContext?.comparison_mode,
+      semanticPlan?.comparison_mode,
+      semanticPlan?.selection_constraints?.comparison_mode,
+      targetContext?.routine_mode,
+      semanticPlan?.routine_mode,
+    ) || '',
+  ).trim().toLowerCase();
+}
+
+function hasBeautyChatMainlineSemanticPlannerContract(targetContext = null) {
+  const semanticPlan =
+    targetContext?.semantic_plan && typeof targetContext.semantic_plan === 'object' && !Array.isArray(targetContext.semantic_plan)
+      ? targetContext.semantic_plan
+      : null;
+  if (!semanticPlan) return false;
+  if (Array.isArray(semanticPlan.core_roles) && semanticPlan.core_roles.length > 0) return true;
+  if (pickFirstTrimmed(targetContext?.primary_role_id, semanticPlan?.primary_role_id)) return true;
+  if (pickFirstTrimmed(targetContext?.resolved_target_step)) return true;
+  return Boolean(resolveBeautyChatSelectorComparisonMode(targetContext));
+}
+
+function resolveBeautyChatSelectorReserveMs({
+  targetContext = null,
+  handoffRewriteReserveMs = 0,
+} = {}) {
+  const comparisonMode = resolveBeautyChatSelectorComparisonMode(targetContext);
+  if (comparisonMode === 'same_role_comparison' || comparisonMode === 'same_role') {
+    return clampBeautyMainlineStageBudgetMs(Math.min(handoffRewriteReserveMs, 1600), {
+      minMs: 1200,
+      maxMs: 1600,
+      fallbackMs: 1500,
+    });
+  }
+  return handoffRewriteReserveMs;
 }
 
 function canUseDeterministicBeautyChatPlannerFallback(targetContext = null) {
@@ -29,9 +78,10 @@ function normalizeBeautyChatPlannerTargetContext(baseTargetContext = null, plann
   if (
     plannerTargetContext &&
     typeof plannerTargetContext === 'object' &&
-    !Array.isArray(plannerTargetContext) &&
-    Array.isArray(plannerTargetContext.framework_roles) &&
-    plannerTargetContext.framework_roles.length > 0
+    !Array.isArray(plannerTargetContext) && (
+      (Array.isArray(plannerTargetContext.framework_roles) && plannerTargetContext.framework_roles.length > 0)
+      || hasBeautyChatMainlineSemanticPlannerContract(plannerTargetContext)
+    )
   ) {
     return plannerTargetContext;
   }
@@ -312,6 +362,7 @@ function buildBeautyChatMainlineTimingLedger({
   plannerTrace = null,
   selectorTrace = null,
   selectorApplied = null,
+  selectorSkipReason = '',
   rewrite = null,
 } = {}) {
   return {
@@ -328,6 +379,7 @@ function buildBeautyChatMainlineTimingLedger({
     planner_fallback_used: plannerTrace?.planner_fallback_used === true,
     selector_attempted: Boolean(selectorTrace),
     selector_applied: pickFirstTrimmed(selectorApplied?.winner_source).toLowerCase() === 'llm_selector',
+    ...(pickFirstTrimmed(selectorSkipReason) ? { selector_skip_reason: pickFirstTrimmed(selectorSkipReason) } : {}),
     rewrite_attempted: rewrite?.attempted === true,
     rewrite_llm_used: rewrite?.llm_used === true,
     rewrite_attempt_count: Number.isFinite(Number(rewrite?.attempt_count))
@@ -677,21 +729,42 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
       let effectiveHardPathHandoff = hardPathHandoff;
       let hardPathSelectorTrace = null;
       let hardPathSelectorApplied = null;
+      let hardPathSelectorSkipReason = '';
       const hardPathSelectorSemanticPlan =
         effectiveHandoffTargetContext?.semantic_plan &&
         typeof effectiveHandoffTargetContext.semantic_plan === 'object' &&
         !Array.isArray(effectiveHandoffTargetContext.semantic_plan)
           ? effectiveHandoffTargetContext.semantic_plan
           : hardPathPlannerSemanticPlan;
-      if (
-        shouldUseBeautyChatMainlinePlanner(effectiveHandoffTargetContext) &&
+      const selectorRewriteReserveMs = resolveBeautyChatSelectorReserveMs({
+        targetContext: effectiveHandoffTargetContext,
+        handoffRewriteReserveMs,
+      });
+      const selectorLeadTimeMs =
+        selectorRewriteReserveMs <= 1600
+          ? 700
+          : 1200;
+      const selectorDeadlineAtMs = Math.max(
+        Date.now() + 250,
+        hardPathBudget.deadlineAtMs - selectorRewriteReserveMs,
+      );
+      const selectorPlannerEligible = shouldUseBeautyChatMainlinePlanner(effectiveHandoffTargetContext);
+      const selectorDepsReady =
         typeof runConcernSelectorRace === 'function' &&
-        typeof applyConcernSelectorRaceOrdering === 'function' &&
+        typeof applyConcernSelectorRaceOrdering === 'function';
+      const selectorSemanticPlanReady =
         hardPathSelectorSemanticPlan &&
         typeof hardPathSelectorSemanticPlan === 'object' &&
-        !Array.isArray(hardPathSelectorSemanticPlan) &&
-        hardPathRecommendations.length > 1 &&
-        hardPathBudget.getRemainingMs(handoffRewriteReserveMs + 1200) > 350
+        !Array.isArray(hardPathSelectorSemanticPlan);
+      const selectorRecommendationCountReady = hardPathRecommendations.length > 1;
+      const selectorBudgetReady =
+        hardPathBudget.getRemainingMs(selectorRewriteReserveMs + selectorLeadTimeMs) > 150;
+      if (
+        selectorPlannerEligible &&
+        selectorDepsReady &&
+        selectorSemanticPlanReady &&
+        selectorRecommendationCountReady &&
+        selectorBudgetReady
       ) {
         const selectorStartedAtMs = Date.now();
         const selectorOut = await runConcernSelectorRace({
@@ -700,7 +773,7 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
           requestText: pickFirstTrimmed(recoRequestMessage, message),
           semanticPlan: hardPathSelectorSemanticPlan,
           recommendations: hardPathRecommendations,
-          deadlineAtMs: handoffDeadlineAtMs - 1200,
+          deadlineAtMs: selectorDeadlineAtMs,
         });
         hardPathSelectorTrace = {
           ...(selectorOut?.trace && typeof selectorOut.trace === 'object' ? selectorOut.trace : {}),
@@ -723,6 +796,16 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
           });
         }
         hardPathTiming.selectorMs = elapsedBeautyChatStageMs(selectorStartedAtMs);
+      } else if (!selectorPlannerEligible) {
+        hardPathSelectorSkipReason = 'planner_contract_missing';
+      } else if (!selectorDepsReady) {
+        hardPathSelectorSkipReason = 'selector_dependency_missing';
+      } else if (!selectorSemanticPlanReady) {
+        hardPathSelectorSkipReason = 'selector_semantic_plan_missing';
+      } else if (!selectorRecommendationCountReady) {
+        hardPathSelectorSkipReason = 'insufficient_recommendations';
+      } else if (!selectorBudgetReady) {
+        hardPathSelectorSkipReason = 'selector_budget_exhausted';
       }
       const hardPathRecoContext = mergeIngredientRecoContextValue(
         latestRecoContextFromSession,
@@ -883,6 +966,7 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
             plannerTrace: hardPathPlannerTrace,
             selectorTrace: hardPathSelectorTrace,
             selectorApplied: hardPathSelectorApplied,
+            selectorSkipReason: hardPathSelectorSkipReason,
             rewrite: {
               attempted: typeof maybeRewriteRecoAssistantTextWithLlm === 'function',
               llm_used: assistantRewrite?.llm_used === true,

@@ -182,6 +182,7 @@ function summarizeChatMainlineTiming(timingInput, latencyMs = null) {
     planner_fallback_used: timing.planner_fallback_used === true,
     selector_attempted: timing.selector_attempted === true,
     selector_applied: timing.selector_applied === true,
+    selector_skip_reason: asString(timing.selector_skip_reason) || null,
     rewrite_attempted: timing.rewrite_attempted === true,
     rewrite_llm_used: timing.rewrite_llm_used === true,
     rewrite_attempt_count: Number.isFinite(Number(timing.rewrite_attempt_count)) ? Number(timing.rewrite_attempt_count) : null,

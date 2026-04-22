@@ -67,11 +67,16 @@ on:
       - "src/server.js"
       - "src/auroraBff/routes/chat.js"
       - "src/auroraBff/routes.js"
+      - "src/auroraBff/beautyChatMainlineEntry.js"
       - "src/auroraBff/chatCardFactory.js"
       - "src/auroraBff/chatCardsSchema.js"
+      - "src/auroraBff/selectorWinnerPolicy.js"
       - "tests/celestial_commerce_core_contracts.test.js"
       - "tests/aurora_commerce_core_contracts.test.js"
       - "tests/aurora_bff_chatcard_factory_structured_sections.test.js"
+      - "tests/aurora_bff_beauty_mainline_handoff.node.test.cjs"
+      - "tests/aurora_bff_reco_final_selection.node.test.cjs"
+      - "tests/aurora_bff_reco_relevance.node.test.cjs"
       - "tests/celestial_commerce_core_layer_dispatch.test.js"
       - "tests/celestial_commerce_core_shopping_context.test.js"
       - "tests/celestial_commerce_core_source_policy.test.js"
@@ -184,6 +189,9 @@ jobs:
             tests/shopping_agent_guidance_ladder_outcome.test.js \
             tests/integration/invoke.find_products_multi_cache_search.test.js \
             tests/integration/invoke.find_products_multi_strict_surface.test.js
+          node --test tests/aurora_bff_beauty_mainline_handoff.node.test.cjs
+          node --test tests/aurora_bff_reco_final_selection.node.test.cjs
+          node --test tests/aurora_bff_reco_relevance.node.test.cjs
 
   readiness_audit:
     name: Celestial Commerce Core Readiness Audit
