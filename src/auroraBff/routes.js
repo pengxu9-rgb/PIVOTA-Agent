@@ -73882,7 +73882,7 @@ async function collectExternalSeedPoolAlternatives({
   const queriesToRun = queryPlan.slice(
     0,
     finishFitSunscreenCompare
-      ? 2
+      ? Math.min(3, queryPlan.length)
       : Math.max(2, Math.min(4, normalizedLimit)),
   );
   const localSeedSearchRole = buildRecoAlternativesLocalSeedSearchRole(identity.targetSignals);
