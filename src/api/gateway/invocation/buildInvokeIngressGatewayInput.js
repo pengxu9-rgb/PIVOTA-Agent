@@ -27,6 +27,9 @@ const FULL_PURCHASE_OPERATIONS = new Set([
   'request_after_sales',
 ]);
 
+const BEAUTY_DISCOVERY_PATTERN =
+  /\b(beauty|skin|skincare|routine|sunscreen|spf|moisturizer|moisturiser|cleanser|serum|toner|essence|retinol|retinoid|barrier|acne|oily|dry|sensitive|pilling|makeup)\b/i;
+
 function firstNonEmptyString(...values) {
   for (const value of values) {
     if (Array.isArray(value)) {
@@ -85,12 +88,73 @@ function resolveInvokeTaskType(operation) {
 }
 
 function resolveInvokeRequestedLayer(operation, source) {
+  return resolveInvokeRequestedLayerWithInput(operation, source, {});
+}
+
+function isBeautyDiscoveryCandidate({ operation, source, payload = {}, metadata = {}, declaredCapabilities = [] } = {}) {
+  const normalizedOperation = String(operation || '').trim().toLowerCase();
+  if (!DISCOVERY_OPERATIONS.has(normalizedOperation)) return false;
+
+  const normalizedSource = String(source || '').trim().toLowerCase();
+  if (!['shopping_agent', 'shopping-agent', 'shopping-agent-ui', 'creator_agent', 'creator-agent', 'creator-agent-ui'].includes(normalizedSource)) {
+    return false;
+  }
+
+  const allowDelegateRaw =
+    metadata.allow_orchestration_delegate ??
+    metadata.allowOrchestrationDelegate ??
+    payload.allow_orchestration_delegate ??
+    payload.allowOrchestrationDelegate;
+  if (allowDelegateRaw === false || String(allowDelegateRaw || '').trim().toLowerCase() === 'false') {
+    return false;
+  }
+
+  const search = payload.search && typeof payload.search === 'object' && !Array.isArray(payload.search)
+    ? payload.search
+    : {};
+  const queryText = firstNonEmptyString(
+    search.query,
+    payload.query,
+    metadata.query,
+  );
+  const catalogSurface = firstNonEmptyString(
+    search.catalog_surface,
+    search.catalogSurface,
+    payload.catalog_surface,
+    payload.catalogSurface,
+    metadata.catalog_surface,
+    metadata.catalogSurface,
+  ).toLowerCase();
+  if (catalogSurface === 'beauty') return true;
+
+  const beautyHint = firstNonEmptyString(
+    metadata.beauty_domain_hint,
+    metadata.beautyDomainHint,
+    payload.beauty_domain_hint,
+    payload.beautyDomainHint,
+  ).toLowerCase();
+  if (beautyHint === 'beauty' || beautyHint === 'skincare') return true;
+
+  const capabilityTokens = Array.isArray(declaredCapabilities)
+    ? declaredCapabilities.map((item) => String(item || '').trim().toLowerCase())
+    : [];
+  if (capabilityTokens.includes('beauty_expert_v1') || capabilityTokens.includes('beauty_domain')) {
+    return true;
+  }
+
+  return BEAUTY_DISCOVERY_PATTERN.test(queryText);
+}
+
+function resolveInvokeRequestedLayerWithInput(operation, source, options = {}) {
   const normalizedOperation = String(operation || '').trim().toLowerCase();
   if (FULL_PURCHASE_OPERATIONS.has(normalizedOperation)) return 'execution_facing';
   if (EXACT_RESOLUTION_OPERATIONS.has(normalizedOperation)) return 'execution_facing';
   if (DISCOVERY_OPERATIONS.has(normalizedOperation)) {
     const normalizedSource = String(source || '').trim().toLowerCase();
     if (normalizedSource === 'aurora-bff' || normalizedSource === 'aurora-chatbox') {
+      return 'orchestration';
+    }
+    if (isBeautyDiscoveryCandidate({ operation, source, ...options })) {
       return 'orchestration';
     }
     return 'decisioning';
@@ -326,7 +390,11 @@ function buildInvokeIngressGatewayInput({
     source,
     operation,
     task_type: resolveInvokeTaskType(operation),
-    requested_layer: resolveInvokeRequestedLayer(operation, source),
+    requested_layer: resolveInvokeRequestedLayerWithInput(operation, source, {
+      payload,
+      metadata,
+      declaredCapabilities,
+    }),
     invocation_surface: invocationSurface,
     protocol_family: firstNonEmptyString(
       metadata.protocol_family,
@@ -415,4 +483,6 @@ module.exports = {
   buildInvokeIngressGatewayInput,
   resolveInvokeTaskType,
   resolveInvokeRequestedLayer,
+  resolveInvokeRequestedLayerWithInput,
+  isBeautyDiscoveryCandidate,
 };

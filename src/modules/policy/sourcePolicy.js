@@ -2,6 +2,7 @@ const {
   normalizeSourceToken,
   isPublicSearchSource,
   isShoppingAgentSource,
+  isCreatorAgentSource,
   isAuroraSource,
 } = require('../../api/gateway/sourceProfiles');
 
@@ -107,21 +108,22 @@ function createSourcePolicyRuntime(config = {}) {
   }
 
   function isCreatorUiSource(source) {
-    return normalizeAgentSource(source) === 'creator-agent-ui';
+    return normalizeAgentSource(source) === 'creator-agent-ui' || normalizeAgentSource(source) === 'creator_agent_ui';
   }
 
   function isCatalogGuardSource(source) {
     const normalized = normalizeAgentSource(source);
     return (
       isShoppingSource(source) ||
-      normalized === 'creator-agent' ||
+      isCreatorAgentSource(source) ||
       normalized === 'creator-agent-ui' ||
+      normalized === 'creator_agent_ui' ||
       (forceAuroraFastMode && isAuroraSource(source))
     );
   }
 
   function isResolverFirstCatalogSource(source) {
-    return isShoppingSource(source) || normalizeAgentSource(source) === 'creator-agent';
+    return isShoppingSource(source) || isCreatorAgentSource(source);
   }
 
   function classifyInvokeSearchRail(source, options = {}) {
@@ -129,8 +131,9 @@ function createSourcePolicyRuntime(config = {}) {
     const normalized = normalizeAgentSource(source);
     if (
       explicitLegacy ||
-      normalized === 'creator-agent' ||
+      isCreatorAgentSource(source) ||
       normalized === 'creator-agent-ui' ||
+      normalized === 'creator_agent_ui' ||
       isAuroraSource(source)
     ) {
       return 'legacy_internal';

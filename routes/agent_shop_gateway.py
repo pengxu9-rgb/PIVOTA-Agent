@@ -214,7 +214,136 @@ def _normalize_catalog_surface(value: Any) -> str:
     return str(value or "").strip().lower()
 
 
-def _normalize_beauty_proxy_result(response_body: Dict[str, Any]) -> Dict[str, Any]:
+def _infer_beauty_compare_label(reason: str) -> Optional[str]:
+    text = str(reason or "").strip().lower()
+    if not text:
+        return None
+    if any(token in text for token in ("matte", "shine", "oil-control", "oil control", "less slip")):
+        return "matte / shine control"
+    if any(token in text for token in ("dewy", "hydrat", "moistur", "fresh", "cream", "cushion")):
+        return "more hydration / dewier finish"
+    if any(token in text for token in ("mineral", "sensitive")):
+        return "mineral / sensitive-skin"
+    if any(token in text for token in ("light", "smooth", "weightless", "sheer", "under makeup", "under-makeup")):
+        return "lighter / smoother finish"
+    if any(token in text for token in ("serum-like", "serum like", "fluid")):
+        return "serum-like / thinner feel"
+    return str(reason or "").strip()[:72]
+
+
+def _build_beauty_expert_projection(
+    response_body: Dict[str, Any],
+    request_body: Optional[Dict[str, Any]] = None,
+) -> Optional[Dict[str, Any]]:
+    response_body = response_body if isinstance(response_body, dict) else {}
+    request_body = request_body if isinstance(request_body, dict) else {}
+    metadata = response_body.get("metadata") if isinstance(response_body.get("metadata"), dict) else {}
+    products = response_body.get("products") if isinstance(response_body.get("products"), list) else []
+    if not products:
+        return None
+
+    payload = request_body.get("payload") if isinstance(request_body.get("payload"), dict) else {}
+    search = payload.get("search") if isinstance(payload.get("search"), dict) else {}
+    request_meta = request_body.get("metadata") if isinstance(request_body.get("metadata"), dict) else {}
+    query_text = (
+        str(search.get("query") or payload.get("query") or request_meta.get("query") or "").strip()
+    )
+    lead = products[0]
+    support = products[1:4]
+    compare_axes = []
+    for index, product in enumerate(products[:4]):
+        reason = (
+            str(product.get("why_this_one") or product.get("short_description") or product.get("description") or "").strip()
+        )
+        label = _infer_beauty_compare_label(reason)
+        if label:
+            compare_axes.append({"id": f"axis_{index + 1}", "label": label})
+
+    missing_context = []
+    normalized_query = query_text.lower()
+    if not any(token in normalized_query for token in ("oily", "dry", "sensitive", "combination")):
+        missing_context.append("skin_type")
+
+    next_actions = []
+    if missing_context:
+        next_actions.append(
+            {
+                "type": "consider_skin_analysis",
+                "label": "Consider skin analysis for a more precise recommendation",
+                "payload": {"reason": ",".join(missing_context)},
+            }
+        )
+    if len(products) > 1:
+        next_actions.append(
+            {
+                "type": "compare_same_type",
+                "label": "Compare similar options",
+                "payload": {
+                    "product_ids": [
+                        str(product.get("product_id") or product.get("id") or "").strip()
+                        for product in products[:4]
+                        if str(product.get("product_id") or product.get("id") or "").strip()
+                    ]
+                },
+            }
+        )
+
+    return {
+        "contract_version": "beauty_expert_v1",
+        "mode": "category_compare",
+        "beauty_intent": {
+            "domain": "beauty",
+            "user_goal": query_text or None,
+            "skin_context": {},
+            "routine_context": {},
+            "product_context": {},
+            "scenario_context": {},
+            "constraints": {},
+            "analysis_requested": False,
+        },
+        "analysis_summary": {
+            "user_goal": query_text or None,
+            "known_skin_context": {},
+            "routine_context": {},
+            "scenario_context": {},
+            "missing_context": missing_context,
+            "product_count": len(products),
+        },
+        "recommendation_scope": {
+            "request_kind": "category_compare",
+            "comparison_mode": "same_type_compare" if len(products) > 1 else "single_pick",
+            "final_authority_status": str(metadata.get("mainline_status") or "").strip() or None,
+        },
+        "reco_bundle": {
+            "lead_picks": lead and [lead] or [],
+            "support_picks": support,
+            "comparison_mode": "same_type_compare" if len(products) > 1 else "single_pick",
+            "authority_status": str(metadata.get("mainline_status") or "").strip() or None,
+        },
+        "compare_axes": compare_axes,
+        "confidence": {
+            "level": "high" if str(metadata.get("mainline_status") or "").strip() == "grounded_success" and not missing_context else "medium",
+            "reason_codes": [code for code in [str(metadata.get("mainline_status") or "").strip(), "missing_context" if missing_context else ""] if code],
+        },
+        "next_actions": next_actions,
+        "delegation_trace": {
+            "source_profile": str(request_meta.get("source") or "shopping_agent").strip(),
+            "entry_layer": "orchestration",
+            "beauty_capability_invoked": True,
+            "beauty_mode": "category_compare",
+            "delegated_layer": "decisioning",
+            "analysis_suggestion_reason": ",".join(missing_context) if missing_context else None,
+            "final_authority_status": str(metadata.get("mainline_status") or "").strip() or None,
+            "projection_type": "normalized_only",
+        },
+        "ui_projections": {},
+    }
+
+
+def _normalize_beauty_proxy_result(
+    response_body: Dict[str, Any],
+    request_body: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
     response_body = response_body if isinstance(response_body, dict) else {}
     metadata = response_body.get("metadata") if isinstance(response_body.get("metadata"), dict) else {}
     contract_bridge = metadata.get("contract_bridge") if isinstance(metadata.get("contract_bridge"), dict) else {}
@@ -245,8 +374,14 @@ def _normalize_beauty_proxy_result(response_body: Dict[str, Any]) -> Dict[str, A
         **metadata,
         **({"attempted_contract": attempted_contract} if attempted_contract else {}),
         **({"resolved_contract": resolved_contract} if resolved_contract else {}),
+        "beauty_capability_invoked": True,
+        "projection_type": "normalized_only",
     }
     normalized["reply"] = None
+    normalized["beauty_expert_v1"] = response_body.get("beauty_expert_v1") or _build_beauty_expert_projection(
+        response_body,
+        request_body,
+    )
     return normalized
 
 
@@ -297,7 +432,7 @@ async def _proxy_public_shop_invoke(request_body: Dict[str, Any]) -> Dict[str, A
         raise HTTPException(status_code=resp.status_code, detail=err_json)
 
     try:
-        return _normalize_beauty_proxy_result(resp.json())
+        return _normalize_beauty_proxy_result(resp.json(), request_body)
     except Exception:
         raise HTTPException(status_code=502, detail="Invalid JSON from mainline invoke")
 

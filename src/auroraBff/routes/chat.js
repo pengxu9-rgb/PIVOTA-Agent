@@ -8,6 +8,7 @@ const { buildRequestContext } = require('../requestContext');
 const { computeAuroraChatRolloutContext } = require('../rollout');
 const { GATE_POLICY_VERSION: AURORA_GATE_POLICY_META_VERSION } = require('../gatePolicyRegistry');
 const { shouldProxyFrameworkRecoToV1Mainline } = require('../recoOwnershipPolicy');
+const { attachBeautyExpertV1ToResponse } = require('../../modules/orchestration/aurora_beauty/beautyExpertV1');
 
 const ANALYSIS_FOLLOWUP_ACTION_IDS_V2 = new Set([
   'chip.aurora.next_action.deep_dive_skin',
@@ -1409,8 +1410,48 @@ async function handleChat(req, res) {
     if (proxyEligible && proxyAvailable) {
       setResponseHeader(res, 'x-aurora-reco-proxy-attempted', 'true');
       const mainlineResponse = await invokeBoundedV1MainlineChat({ req, body });
+      const normalizedMainlineResponse = attachBeautyExpertV1ToResponse(mainlineResponse, {
+        source: 'aurora-bff',
+        entryLayer: 'orchestration',
+        delegatedLayer: 'decisioning',
+        projectionType: 'aurora_cards',
+        taskType: 'discovery',
+        context: {
+          source_profile: {
+            source: 'aurora-bff',
+            default_entry_layer: 'orchestration',
+          },
+          vertical: 'beauty',
+          category: 'skincare',
+          raw_user_goal: pickFirstTrimmed(
+            body?.message,
+            body?.user_message,
+            body?.query,
+          ) || null,
+          normalized_need: {
+            beauty_request: {
+              domain: 'beauty',
+              user_goal: pickFirstTrimmed(
+                body?.message,
+                body?.user_message,
+                body?.query,
+              ) || null,
+            },
+          },
+        },
+        metadata: {
+          source: 'aurora-bff',
+          catalog_surface: 'beauty',
+        },
+        payload: body,
+        messages: Array.isArray(body?.messages)
+          ? body.messages
+          : pickFirstTrimmed(body?.message, body?.user_message)
+            ? [{ role: 'user', content: pickFirstTrimmed(body?.message, body?.user_message) }]
+            : [],
+      });
       res.json(
-        applyRolloutMeta(mergeResponseMeta(mainlineResponse, auth.ctx.auth_meta), {
+        applyRolloutMeta(mergeResponseMeta(normalizedMainlineResponse, auth.ctx.auth_meta), {
           req,
           ctx: auth.ctx,
           body,

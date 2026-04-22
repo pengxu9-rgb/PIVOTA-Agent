@@ -1,6 +1,7 @@
 const { randomUUID } = require('crypto');
 const { cloneSourceProfile } = require('./sourceProfile');
 const { normalizeTaskType } = require('./taskType');
+const { normalizeBeautyRequestBlock } = require('./beautyExpertContracts');
 
 const ALLOWED_TOP_LEVEL_KEYS = Object.freeze([
   'context_id',
@@ -92,6 +93,11 @@ function createShoppingContext(input = {}) {
     throw new Error(`SHOPPING_CONTEXT_INVALID:${parts.join(';')}`);
   }
 
+  const normalizedNeed = clonePlainObject(input.normalized_need);
+  if (isPlainObject(normalizedNeed.beauty_request)) {
+    normalizedNeed.beauty_request = normalizeBeautyRequestBlock(normalizedNeed.beauty_request);
+  }
+
   return {
     context_id: String(input.context_id || '').trim() || `shopctx_${randomUUID()}`,
     source_profile: input.source_profile ? cloneSourceProfile(input.source_profile) : null,
@@ -99,7 +105,7 @@ function createShoppingContext(input = {}) {
     vertical: String(input.vertical || '').trim() || null,
     category: String(input.category || '').trim() || null,
     raw_user_goal: String(input.raw_user_goal || '').trim() || null,
-    normalized_need: clonePlainObject(input.normalized_need),
+    normalized_need: normalizedNeed,
     conversation_state: clonePlainObject(input.conversation_state),
     decision_state: clonePlainObject(input.decision_state),
     execution_state: clonePlainObject(input.execution_state),

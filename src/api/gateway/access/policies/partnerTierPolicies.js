@@ -23,7 +23,7 @@ function resolvePartnerTierPolicy(identity = {}, options = {}) {
     internal: {
       access_scope: buildAccessScope({
         allowed_layers: ['orchestration', 'decisioning', 'execution_facing'],
-        allowed_sources: ['search', 'shopping_agent', 'aurora-bff'],
+        allowed_sources: ['search', 'shopping_agent', 'creator_agent', 'aurora-bff'],
         allow_execution_handoff: true,
         allow_checkout_handoff: allowCheckout,
         result_depth: 'deep_resolution',
@@ -45,7 +45,7 @@ function resolvePartnerTierPolicy(identity = {}, options = {}) {
         allowed_layers: allowPartnerOrchestration
           ? ['orchestration', 'decisioning', 'execution_facing']
           : ['decisioning', 'execution_facing'],
-        allowed_sources: ['search', 'shopping_agent'],
+        allowed_sources: ['search', 'shopping_agent', 'creator_agent'],
         allow_execution_handoff: true,
         allow_checkout_handoff: allowCheckout,
         result_depth: 'deep_resolution',
@@ -65,7 +65,7 @@ function resolvePartnerTierPolicy(identity = {}, options = {}) {
     approved_partner: {
       access_scope: buildAccessScope({
         allowed_layers: allowPartnerOrchestration ? ['orchestration', 'decisioning', 'execution_facing'] : ['decisioning', 'execution_facing'],
-        allowed_sources: ['search', 'shopping_agent'],
+        allowed_sources: ['search', 'shopping_agent', 'creator_agent'],
         allow_execution_handoff: true,
         allow_checkout_handoff: false,
         result_depth: 'bounded_results',
@@ -85,7 +85,7 @@ function resolvePartnerTierPolicy(identity = {}, options = {}) {
     public_api_agent: {
       access_scope: buildAccessScope({
         allowed_layers: ['decisioning', 'execution_facing'],
-        allowed_sources: ['search', 'shopping_agent'],
+        allowed_sources: ['search', 'shopping_agent', 'creator_agent'],
         allow_execution_handoff: true,
         allow_checkout_handoff: false,
         result_depth: 'bounded_results',
@@ -105,7 +105,7 @@ function resolvePartnerTierPolicy(identity = {}, options = {}) {
     generic_mcp_agent: {
       access_scope: buildAccessScope({
         allowed_layers: ['decisioning', 'execution_facing'],
-        allowed_sources: ['search', 'shopping_agent'],
+        allowed_sources: ['search', 'shopping_agent', 'creator_agent'],
         allow_execution_handoff: true,
         allow_checkout_handoff: false,
         result_depth: 'summary_only',

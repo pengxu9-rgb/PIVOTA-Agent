@@ -2,6 +2,7 @@ const {
   createAuroraOrchestrationInput,
   createAuroraOrchestrationOutput,
 } = require('../../contracts/auroraContracts');
+const { buildBeautyExpertV1Response } = require('./beautyExpertV1');
 
 function createAuroraBeautyOrchestrationRuntime(deps = {}) {
   const normalizeSearchUiSurfaceImpl =
@@ -2825,17 +2826,58 @@ function createAuroraBeautyOrchestrationRuntime(deps = {}) {
     const normalized = createAuroraOrchestrationInput(input);
     const conversationState = summarizeAuroraConversationState(normalized.messages);
     const hasMessages = normalized.messages.length > 0;
+    const sourceProfile = normalized.context?.source_profile || input.source_profile || null;
+    const beautyExpertV1 = buildBeautyExpertV1Response({
+      source: sourceProfile?.source || null,
+      entryLayer: 'orchestration',
+      taskType: normalized.context?.task_type || input.task_type || null,
+      context: normalized.context,
+      metadata: input.metadata,
+      payload: input.payload,
+      messages: normalized.messages,
+      response: {
+        metadata: {
+          mainline_status: hasMessages ? 'delegated' : 'analysis_only',
+          decision_owner: 'aurora_orchestration',
+          semantic_owner: 'aurora_orchestration',
+        },
+      },
+    });
+    const delegatedLayer =
+      beautyExpertV1?.mode === 'exact_product_assist'
+        ? 'execution_facing'
+        : hasMessages
+          ? 'decisioning'
+          : null;
+    const delegationPlan =
+      delegatedLayer === 'execution_facing'
+        ? 'call_execution'
+        : hasMessages
+          ? 'call_decisioning'
+          : 'stay_in_layer';
+    const updatedContext = {
+      ...normalized.context,
+      normalized_need: {
+        ...(normalized.context?.normalized_need || {}),
+        ...(beautyExpertV1?.beauty_intent ? { beauty_request: beautyExpertV1.beauty_intent } : {}),
+      },
+    };
     return createAuroraOrchestrationOutput({
       context: normalized.context,
+      updated_context: updatedContext,
       status: hasMessages ? 'delegated' : 'completed',
       prompt_intent: conversationState.promptIntent,
       conversation_progress: conversationState.conversationProgress,
       early_decision: conversationState.earlyDecision,
       decision_owner: 'aurora_orchestration',
-      delegation_plan: hasMessages ? 'call_decisioning' : 'stay_in_layer',
-      next_layer: hasMessages ? 'decisioning' : null,
+      delegation_plan: delegationPlan,
+      next_layer: delegatedLayer,
+      beauty_expert_v1: beautyExpertV1,
+      next_actions: beautyExpertV1?.next_actions || [],
       orchestration_notes: [
         'milestone0_orchestration_facade',
+        ...(beautyExpertV1 ? ['beauty_expert_v1'] : []),
+        ...(beautyExpertV1?.mode ? [`beauty_mode:${beautyExpertV1.mode}`] : []),
         ...(conversationState.latestShoppingIntent
           ? [`latest_shopping_intent:${conversationState.latestShoppingIntent}`]
           : []),

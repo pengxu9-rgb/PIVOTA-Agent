@@ -1,5 +1,6 @@
 const { createShoppingContext } = require('./shoppingContext');
 const { normalizeDelegationPlan } = require('./delegationPlan');
+const { createBeautyExpertV1Response } = require('./beautyExpertContracts');
 
 function normalizeMessages(messages) {
   if (!Array.isArray(messages)) return [];
@@ -43,6 +44,23 @@ function createAuroraOrchestrationOutput(input = {}) {
       input.next_layer === 'decisioning' || input.next_layer === 'execution_facing'
         ? input.next_layer
         : null,
+    beauty_expert_v1:
+      input.beauty_expert_v1 && typeof input.beauty_expert_v1 === 'object'
+        ? createBeautyExpertV1Response(input.beauty_expert_v1)
+        : null,
+    next_actions: Array.isArray(input.next_actions)
+      ? input.next_actions
+          .map((action) =>
+            action && typeof action === 'object'
+              ? {
+                  type: String(action.type || action.action_type || '').trim(),
+                  ...(String(action.label || '').trim() ? { label: String(action.label || '').trim() } : {}),
+                  ...(action.payload && typeof action.payload === 'object' ? { payload: JSON.parse(JSON.stringify(action.payload)) } : {}),
+                }
+              : null,
+          )
+          .filter((action) => action && action.type)
+      : [],
     orchestration_notes: Array.isArray(input.orchestration_notes)
       ? input.orchestration_notes.map((item) => String(item || '').trim()).filter(Boolean)
       : [],

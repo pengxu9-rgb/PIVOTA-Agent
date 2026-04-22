@@ -34,8 +34,10 @@ describe('Celestial commerce core source policy module', () => {
     expect(runtime.normalizeAgentSource('shopping agent ui')).toBe('shopping-agent-ui');
     expect(runtime.isShoppingSource('shopping_agent')).toBe(true);
     expect(runtime.isCreatorUiSource('creator_agent_ui')).toBe(true);
+    expect(runtime.isCatalogGuardSource('creator_agent')).toBe(true);
     expect(runtime.isCatalogGuardSource('aurora-bff')).toBe(true);
     expect(runtime.isResolverFirstCatalogSource('creator-agent')).toBe(true);
+    expect(runtime.isResolverFirstCatalogSource('creator_agent')).toBe(true);
     expect(runtime.getProxySearchApiBase('aurora-bff')).toBe('http://aurora.test');
     expect(runtime.getProxySearchApiBase('search')).toBe('http://pivota.test');
 
