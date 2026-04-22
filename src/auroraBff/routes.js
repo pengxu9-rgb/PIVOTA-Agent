@@ -21,7 +21,6 @@ const {
   buildRecoAuthorityQueryVariants,
   buildRecoAuthoritySearchAliases,
 } = require('../services/recoAlternativesAuthority');
-const { buildSupportRoleQueryVariants } = require('./recoSupportRoleQueries');
 const {
   deduplicateCandidates: dedupeDupeCandidatesV2,
   filterSelfReferences: filterDupeSelfReferencesV2,
@@ -73047,42 +73046,16 @@ function buildExternalSeedFinishFitSunscreenQueries(targetSignals = null) {
     .filter(Boolean)
     .join(' ')
     .toLowerCase();
-  const fluidSignal = /\b(fluid|invisible|water[-\s]?fit|serum sunscreen|watery|ultra[-\s]?light|light serum|sun serum)\b/.test(signalText);
+  const fluidSignal = /\b(fluid|invisible|water[-\s]?fit|serum sunscreen|watery|ultra[-\s]?light|light serum|sun serum|aqua)\b/.test(signalText);
   const oilySignal = /\b(oily|oil[-\s]?control|shine|matte|non[-\s]?greasy|oil[-\s]?free|sebum)\b/.test(signalText);
-  const semanticFamily = oilySignal ? 'oil_control' : 'finish_fit';
-  const queryTerms = uniqCaseInsensitiveStrings(
-    [
-      ...(Array.isArray(target.primaryClaims) ? target.primaryClaims : []),
-      ...(Array.isArray(target.knownActives) ? target.knownActives : []),
-      'under makeup',
-    ],
-    8,
-  );
-  const fitKeywords = uniqCaseInsensitiveStrings(
-    [
-      ...(Array.isArray(target.textureHints) ? target.textureHints : []),
-      ...(Array.isArray(target.heroIngredients) ? target.heroIngredients : []),
-      fluidSignal ? 'fluid finish' : '',
-      oilySignal ? 'matte finish' : '',
-      'daytime layering',
-    ],
-    8,
-  );
-  const precise = buildSupportRoleQueryVariants({
-    roleId: pickFirstTrimmed(target.roleScope) || 'daily_sunscreen_finish_fit',
-    roleLabel: pickFirstTrimmed(target.roleScope)
-      ? pickFirstTrimmed(target.roleScope).replace(/[_-]+/g, ' ')
-      : 'daily sunscreen finish fit',
-    preferredStep: 'sunscreen',
-    queryTerms,
-    fitKeywords,
-    semanticFamily,
-    concernText: signalText,
-    maxQueries: 3,
-  });
   return uniqCaseInsensitiveStrings(
-    precise.filter((query) => !/^(?:sunscreen|daily sunscreen|broad spectrum sunscreen)$/i.test(String(query || '').trim())),
-    3,
+    [
+      oilySignal ? 'spf fluid oily skin' : 'spf fluid',
+      'mineral sunscreen',
+      oilySignal ? 'lightweight sunscreen oily skin' : 'sunscreen milk',
+      'sunscreen under makeup',
+    ],
+    4,
   );
 }
 

@@ -9479,8 +9479,9 @@ test('buildExternalSeedCompareSearchQueries: avoids duplicate role queries and p
     });
     assert.deepEqual(
       thinSunscreenQueries.slice(0, 3),
-      ['spf fluid oily skin', 'sunscreen under makeup', 'lightweight sunscreen oily skin'],
+      ['spf fluid oily skin', 'mineral sunscreen', 'lightweight sunscreen oily skin'],
     );
+    assert.equal(thinSunscreenQueries.includes('sunscreen under makeup'), true);
     const productionLikeSunscreenQueries = __internal.buildExternalSeedCompareSearchQueries({
       productObj: {
         brand: 'SKINTIFIC',
@@ -9496,10 +9497,11 @@ test('buildExternalSeedCompareSearchQueries: avoids duplicate role queries and p
     });
     assert.deepEqual(
       productionLikeSunscreenQueries.slice(0, 3),
-      ['spf fluid oily skin', 'sunscreen under makeup', 'lightweight sunscreen oily skin'],
+      ['spf fluid oily skin', 'mineral sunscreen', 'lightweight sunscreen oily skin'],
     );
     assert.equal(productionLikeSunscreenQueries.slice(0, 3).some((item) => /^niacinamide sunscreen$/i.test(String(item || ''))), false);
     assert.equal(productionLikeSunscreenQueries.slice(0, 3).some((item) => /^sunscreen$/i.test(String(item || ''))), false);
+    assert.equal(productionLikeSunscreenQueries.includes('sunscreen under makeup'), true);
     const wateryFinishSunscreenQueries = __internal.buildExternalSeedCompareSearchQueries({
       productObj: {
         brand: 'Beauty of Joseon',
@@ -9515,8 +9517,9 @@ test('buildExternalSeedCompareSearchQueries: avoids duplicate role queries and p
     });
     assert.deepEqual(
       wateryFinishSunscreenQueries.slice(0, 3),
-      ['spf fluid', 'sunscreen under makeup', 'lightweight sunscreen'],
+      ['spf fluid', 'mineral sunscreen', 'sunscreen milk'],
     );
+    assert.equal(wateryFinishSunscreenQueries.includes('sunscreen under makeup'), true);
     const thinSunscreenLocalSeedRole = __internal.buildRecoAlternativesLocalSeedSearchRole({
       roleScope: 'daily_sunscreen_finish_fit',
       usageRole: 'unknown',
