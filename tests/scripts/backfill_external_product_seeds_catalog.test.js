@@ -167,6 +167,24 @@ describe('backfill-external-product-seeds-catalog', () => {
     ]);
   });
 
+  test('preserves non-Rare collection-labeled product assets', () => {
+    expect(
+      sanitizeSeedImageUrls(
+        [
+          'https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FB_FALL25_T2PRODUCT_ARMSWATCH_LE-DIAMOND-COLLECTION_DIAMONDBOMB_1200X1500_72DPI.jpg?v=1760673649',
+          'https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FB_FALL25_T2PRODUCT_ECOMM_LE-DIAMOND-COLLECTION_DIAMOND-BOMB_PINK-ICE_1200X1500_72DPI.jpg?v=1753918000',
+        ],
+        {
+          productTitle: 'Diamond Bomb All-Over Diamond Veil',
+          productUrl: 'https://fentybeauty.com/products/diamond-bomb-all-over-diamond-veil-pink-ice',
+        },
+      ),
+    ).toEqual([
+      'https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FB_FALL25_T2PRODUCT_ARMSWATCH_LE-DIAMOND-COLLECTION_DIAMONDBOMB_1200X1500_72DPI.jpg?v=1760673649',
+      'https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FB_FALL25_T2PRODUCT_ECOMM_LE-DIAMOND-COLLECTION_DIAMOND-BOMB_PINK-ICE_1200X1500_72DPI.jpg?v=1753918000',
+    ]);
+  });
+
   test('prefers canonical URL when building extract target', () => {
     const row = {
       canonical_url: 'https://example.com/p/canonical-product',

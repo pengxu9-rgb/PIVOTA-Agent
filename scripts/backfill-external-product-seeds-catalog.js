@@ -538,13 +538,26 @@ function buildSeedImageRelevanceContext(options = {}) {
   };
 }
 
+function imageAssetHostname(value) {
+  const normalized = normalizePdpImageUrl(value) || normalizeUrlLike(value);
+  if (!normalized) return '';
+  try {
+    return String(new URL(normalized).hostname || '').toLowerCase();
+  } catch {
+    return '';
+  }
+}
+
 function isCollectionStyleSeedImageUrl(value) {
   const filename = extractImageFilenameText(value);
   if (!filename) return false;
+  const hostname = imageAssetHostname(value);
   return (
-    /(?:^|[-_ ])collection(?:[-_ ]|$)/i.test(filename) ||
     /(?:^|[-_ ])pdp[-_ ]bundle[-_ ]thumbnail(?:[-_ ]|$)/i.test(filename) ||
-    /(?:^|[-_ ])bundle[-_ ]thumbnail(?:[-_ ]|$)/i.test(filename)
+    /(?:^|[-_ ])bundle[-_ ]thumbnail(?:[-_ ]|$)/i.test(filename) ||
+    /(?:^|[-_ ])fullgroup(?:[-_ ]|$)/i.test(filename) ||
+    /(?:^|[-_ ])group[-_ ]shot(?:[-_ ]|$)/i.test(filename) ||
+    (/rarebeauty\.com$/i.test(hostname) && /(?:^|[-_ ])collection(?:[-_ ]|$)/i.test(filename))
   );
 }
 
