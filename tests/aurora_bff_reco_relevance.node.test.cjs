@@ -9344,6 +9344,110 @@ test('__internal: framework pool preserves same-band external seed role-fit diff
   assert.ok(Number(higher.framework_rank_score || 0) > Number(lower.framework_rank_score || 0));
 });
 
+test('__internal: framework pool spreads finish-fit same-role sunscreen picks across distinct tradeoff buckets when authority exists', () => {
+  const { __internal } = loadRoutesFresh();
+  const targetContext = {
+    framework_id: 'recofw_test_finish_fit_same_role_tradeoff_spread',
+    primary_role_id: 'daily_sunscreen_finish_fit',
+    comparison_mode: 'same_role_comparison',
+    routine_mode: 'same_role_comparison',
+    request_text: 'Based on my routine and the skin analysis, what should I buy for daytime so my makeup stops pilling?',
+    semantic_plan: {
+      primary_concern: 'daytime routine under makeup',
+      comparison_mode: 'same_role_comparison',
+      routine_mode: 'same_role_comparison',
+      must_satisfy_constraints: ['under makeup', 'avoid pilling', 'lightweight finish'],
+    },
+    framework_roles: [
+      {
+        role_id: 'daily_sunscreen_finish_fit',
+        rank: 1,
+        preferred_step: 'sunscreen',
+        label: 'Daily sunscreen finish fit',
+        query_terms: ['sunscreen under makeup', 'lightweight sunscreen oily skin'],
+        fit_keywords: ['under makeup', 'lightweight', 'non-greasy', 'no white cast', 'invisible', 'fluid'],
+        ingredient_hypotheses: ['UV filters'],
+        product_type_hypotheses: ['sunscreen'],
+      },
+    ],
+  };
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [
+      {
+        product_id: 'boj_aqua_fresh_live',
+        merchant_id: 'external_seed',
+        brand: 'Beauty of Joseon',
+        name: 'Relief Sun Aqua-Fresh : Rice + B5 (SPF50+ PA++++)',
+        display_name: 'Beauty of Joseon Relief Sun Aqua-Fresh : Rice + B5 (SPF50+ PA++++)',
+        category: 'Sunscreen',
+        product_type: 'Sunscreen',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'daily_sunscreen_finish_fit',
+        retrieval_query: 'sunscreen under makeup',
+        local_external_seed_role_fit_score: 1.14,
+        benefit_tags: ['spf 50', 'lightweight', 'under makeup', 'fluid'],
+        short_description: 'A lightweight sunscreen fluid that layers smoothly under makeup with no white cast.',
+      },
+      {
+        product_id: 'boj_day_dew_live',
+        merchant_id: 'external_seed',
+        brand: 'Beauty of Joseon',
+        name: 'Day Dew Sunscreen',
+        display_name: 'Beauty of Joseon Day Dew Sunscreen',
+        category: 'Sunscreen',
+        product_type: 'Sunscreen',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'daily_sunscreen_finish_fit',
+        retrieval_query: 'sunscreen under makeup',
+        local_external_seed_role_fit_score: 1.06,
+        benefit_tags: ['spf 50', 'dewy', 'under makeup'],
+        short_description: 'A fresh-dewy sunscreen that keeps makeup layering comfortable.',
+      },
+      {
+        product_id: 'skintific_light_serum_live',
+        merchant_id: 'external_seed',
+        brand: 'SKINTIFIC',
+        name: 'Light Serum Sunscreen SPF 50+ PA++++',
+        display_name: 'SKINTIFIC Light Serum Sunscreen SPF 50+ PA++++',
+        category: 'Sunscreen',
+        product_type: 'Sunscreen',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'daily_sunscreen_finish_fit',
+        retrieval_query: 'sunscreen under makeup',
+        local_external_seed_role_fit_score: 1.11,
+        benefit_tags: ['spf 50', 'watery', 'under makeup', 'lightweight'],
+        short_description: 'A watery serum sunscreen that feels light and invisible under makeup.',
+      },
+      {
+        product_id: 'skintific_matte_fit_live',
+        merchant_id: 'external_seed',
+        brand: 'SKINTIFIC',
+        name: 'Matte Fit Serum Sunscreen SPF 50+ PA++++',
+        display_name: 'SKINTIFIC Matte Fit Serum Sunscreen SPF 50+ PA++++',
+        category: 'Sunscreen',
+        product_type: 'Sunscreen',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'daily_sunscreen_finish_fit',
+        retrieval_query: 'sunscreen under makeup',
+        local_external_seed_role_fit_score: 1.18,
+        benefit_tags: ['spf 50', 'matte', 'under makeup', 'oil control'],
+        short_description: 'A matte serum sunscreen that helps cut shine under makeup.',
+      },
+    ].map((row) => __internal.normalizeRecoCatalogProduct(row)),
+    { targetContext },
+  );
+
+  assert.equal(state.primary_role_matched, true);
+  assert.deepEqual(
+    state.selected_recommendations.map((row) => row.product_id),
+    ['skintific_matte_fit_live', 'boj_day_dew_live', 'boj_aqua_fresh_live'],
+  );
+  assert.equal(
+    state.selected_recommendations.some((row) => row.product_id === 'skintific_light_serum_live'),
+    false,
+  );
+});
+
 test('__internal: framework pool prefers untinted finish-fit sunscreen over tinted shade variants when tint was not requested', () => {
   const { __internal } = loadRoutesFresh();
   const targetContext = {

@@ -23272,6 +23272,152 @@ function compareConcernFrameworkCandidates(left, right) {
   return leftName.localeCompare(rightName);
 }
 
+function isConcernFrameworkFinishFitSameRoleComparison(targetContext = null, primaryRoleId = '') {
+  if (!isPlainObject(targetContext)) return false;
+  if (String(primaryRoleId || '').trim().toLowerCase() !== 'daily_sunscreen_finish_fit') return false;
+  const semanticPlan = isPlainObject(targetContext.semantic_plan) ? targetContext.semantic_plan : null;
+  const comparisonMode = String(
+    pickFirstTrimmed(
+      targetContext.comparison_mode,
+      targetContext.routine_mode,
+      semanticPlan?.comparison_mode,
+      semanticPlan?.routine_mode,
+      semanticPlan?.selection_constraints?.comparison_mode,
+      semanticPlan?.selection_constraints?.routine_mode,
+    ) || '',
+  ).trim().toLowerCase();
+  return comparisonMode === 'same_role_comparison' || comparisonMode === 'same_role';
+}
+
+function classifyConcernFrameworkFinishFitTradeoffBucket(candidate = null) {
+  const row = isPlainObject(candidate) ? candidate : null;
+  if (!row) return 'other';
+  const text = collectRecoPromptTextList(
+    [
+      pickFirstTrimmed(row.display_name, row.displayName, row.name, row.title),
+      pickFirstTrimmed(row.brand),
+      pickFirstTrimmed(row.short_description, row.shortDescription),
+      pickFirstTrimmed(row.why_this_one, row.whyThisOne),
+      pickFirstTrimmed(row.description),
+      ...(Array.isArray(row.benefit_tags) ? row.benefit_tags : []),
+      ...(Array.isArray(row.benefitTags) ? row.benefitTags : []),
+      ...(Array.isArray(row.key_features) ? row.key_features : []),
+      ...(Array.isArray(row.keyFeatures) ? row.keyFeatures : []),
+      ...(Array.isArray(row.compare_highlights) ? row.compare_highlights : []),
+    ],
+    { max: 16, maxLen: 140 },
+  ).join(' ');
+  if (!text) return 'other';
+  if (/\b(tinted|tone[-\s]?up|shade match|complexion coverage|beige|ivory|fair[-\s]?light)\b/i.test(text)) {
+    return 'tinted_makeup_base';
+  }
+  if (/\b(mineral|zinc oxide|titanium dioxide|sensitive skin|fragrance[-\s]?free|scentless)\b/i.test(text)) {
+    return 'mineral_sensitive';
+  }
+  if (/\b(dewy|day dew|hydrating cream|hydrating daily cream|cream[-\s]?based|cream[-\s]?spf|sunscreen milk|milk texture|more moisturiz|richer cream|cushion under makeup)\b/i.test(text)) {
+    return 'richer_moisturizing';
+  }
+  if (/\b(matte|mattif|oil[-\s]?control|shine[-\s]?control|anti[-\s]?shine|sebum)\b/i.test(text)) {
+    return 'matte_oil_control';
+  }
+  if (/\b(sheer|weightless|airy|invisible|soft[-\s]?focus|fluid|water[-\s]?fit|watery|light serum|lightweight)\b/i.test(text)) {
+    return 'light_invisible';
+  }
+  if (/\b(under makeup|makeup[-\s]?friendly|layer(?:ing)?|non[-\s]?greasy|no white cast)\b/i.test(text)) {
+    return 'smooth_layering';
+  }
+  return 'other';
+}
+
+function isConcernFrameworkTintedFinishFitCandidate(candidate = null) {
+  const row = isPlainObject(candidate) ? candidate : null;
+  if (!row) return false;
+  const text = collectRecoPromptTextList(
+    [
+      pickFirstTrimmed(row.display_name, row.displayName, row.name, row.title),
+      pickFirstTrimmed(row.short_description, row.shortDescription),
+      pickFirstTrimmed(row.why_this_one, row.whyThisOne),
+      ...(Array.isArray(row.benefit_tags) ? row.benefit_tags : []),
+      ...(Array.isArray(row.benefitTags) ? row.benefitTags : []),
+    ],
+    { max: 12, maxLen: 120 },
+  ).join(' ');
+  return /\b(tinted|tone[-\s]?up|shade match|complexion coverage|sheer tint|skin tint)\b/i.test(text);
+}
+
+function shouldAllowConcernFrameworkFinishFitTintedPromotion(targetContext = null) {
+  if (!isPlainObject(targetContext)) return false;
+  const semanticPlan = isPlainObject(targetContext.semantic_plan) ? targetContext.semantic_plan : null;
+  const text = collectRecoPromptTextList(
+    [
+      pickFirstTrimmed(targetContext.request_text, targetContext.requestText, targetContext.message),
+      pickFirstTrimmed(targetContext.latest_user_message),
+      pickFirstTrimmed(targetContext.concern_text, targetContext.concernText),
+      pickFirstTrimmed(semanticPlan?.primary_concern, semanticPlan?.primaryConcern),
+      ...(Array.isArray(semanticPlan?.must_satisfy_constraints) ? semanticPlan.must_satisfy_constraints : []),
+    ],
+    { max: 10, maxLen: 120 },
+  ).join(' ');
+  return /\b(tint|tinted|tone[-\s]?up|skin tint|coverage|shade)\b/i.test(text);
+}
+
+function buildConcernFrameworkFinishFitSpreadPrimaryBucket(primaryBucket = [], targetContext = null) {
+  const ordered = Array.isArray(primaryBucket) ? primaryBucket.filter(Boolean) : [];
+  if (ordered.length <= 2) return ordered;
+  const lead = ordered[0];
+  const leadBucket = classifyConcernFrameworkFinishFitTradeoffBucket(lead);
+  const allowTintedPromotion = shouldAllowConcernFrameworkFinishFitTintedPromotion(targetContext);
+  const bucketPriority = [
+    'mineral_sensitive',
+    'richer_moisturizing',
+    'matte_oil_control',
+    'light_invisible',
+    'smooth_layering',
+    'other',
+    'tinted_makeup_base',
+  ];
+  const chosenIds = new Set();
+  const chosenBuckets = new Set();
+  const out = [];
+  const deferredTinted = [];
+  const push = (item) => {
+    const productId = pickFirstString(item?.product_id, item?.productId, item?.id);
+    if (!productId || chosenIds.has(productId)) return false;
+    chosenIds.add(productId);
+    chosenBuckets.add(classifyConcernFrameworkFinishFitTradeoffBucket(item));
+    out.push(item);
+    return true;
+  };
+  push(lead);
+
+  const bestByBucket = new Map();
+  for (const item of ordered.slice(1)) {
+    const bucket = classifyConcernFrameworkFinishFitTradeoffBucket(item);
+    if (!allowTintedPromotion && isConcernFrameworkTintedFinishFitCandidate(item)) {
+      deferredTinted.push(item);
+      continue;
+    }
+    if (bucket === leadBucket || bestByBucket.has(bucket)) continue;
+    bestByBucket.set(bucket, item);
+  }
+  for (const bucket of bucketPriority) {
+    if (out.length >= ordered.length) break;
+    if (bucket === leadBucket) continue;
+    const picked = bestByBucket.get(bucket);
+    if (picked) push(picked);
+  }
+  for (const item of ordered.slice(1)) {
+    if (out.length >= ordered.length) break;
+    if (!allowTintedPromotion && isConcernFrameworkTintedFinishFitCandidate(item)) continue;
+    push(item);
+  }
+  for (const item of deferredTinted) {
+    if (out.length >= ordered.length) break;
+    push(item);
+  }
+  return out;
+}
+
 function mergeConcernFrameworkRerankedState(baseState, rerankedState, { candidateCount = 0 } = {}) {
   const base = isPlainObject(baseState) ? baseState : {};
   const reranked = isPlainObject(rerankedState) ? rerankedState : {};
@@ -23983,6 +24129,8 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
   const primaryRoleId = String(targetContext?.primary_role_id || '').trim();
   const orderedRoles = orderConcernFrameworkRolesForSelection(roles, { primaryRoleId });
   const primaryRole = orderedRoles.find((role) => String(role?.role_id || '').trim() === primaryRoleId) || null;
+  const finishFitSameRoleComparison =
+    isConcernFrameworkFinishFitSameRoleComparison(targetContext, primaryRoleId);
   const usedProductIds = new Set();
   const selected = [];
   const addSelectedCandidate = (item) => {
@@ -24028,9 +24176,12 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
   };
 
   const primaryBucket = primaryRoleId ? (roleBuckets.get(primaryRoleId) || []) : [];
+  const primarySelectionBucket = finishFitSameRoleComparison
+    ? buildConcernFrameworkFinishFitSpreadPrimaryBucket(primaryBucket, targetContext)
+    : primaryBucket;
   const roleCoverageFirst = shouldUseConcernFrameworkRoleCoverageFirst(targetContext, orderedRoles);
   const primaryPreSupportLimit = roleCoverageFirst ? 1 : 3;
-  for (const item of primaryBucket) {
+  for (const item of primarySelectionBucket) {
     addSelectedCandidate(item);
     if (selected.length >= primaryPreSupportLimit) break;
   }
@@ -24063,7 +24214,7 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
     && selected.length < 3
     && shouldAllowConcernFrameworkPrimaryRoleTopUp(targetContext, orderedRoles)
   ) {
-    for (const item of primaryBucket) {
+    for (const item of primarySelectionBucket) {
       addSelectedCandidate(item);
       if (selected.length >= 3) break;
     }
