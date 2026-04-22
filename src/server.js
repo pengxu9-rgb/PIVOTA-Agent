@@ -1839,6 +1839,8 @@ function normalizeCreateOrderCompat(upstreamPayload = {}) {
     ...order,
     total_amount: amounts.total != null ? amounts.total : upstreamPayload.total_amount,
     subtotal: amounts.subtotal != null ? amounts.subtotal : upstreamPayload.subtotal,
+    discount_total:
+      amounts.discount_total != null ? amounts.discount_total : upstreamPayload.discount_total,
     shipping_fee: amounts.shipping_fee != null ? amounts.shipping_fee : upstreamPayload.shipping_fee,
     tax: amounts.tax != null ? amounts.tax : upstreamPayload.tax,
     currency: firstNonEmptyString(amounts.currency, upstreamPayload.currency),
@@ -1847,6 +1849,86 @@ function normalizeCreateOrderCompat(upstreamPayload = {}) {
     tracking: Object.keys(fulfillmentSummary).length ? fulfillmentSummary : upstreamPayload.tracking,
     order_lines: Array.isArray(order.line_items) ? order.line_items : upstreamPayload.order_lines,
     order,
+  };
+}
+
+function normalizeGetOrderStatusCompat(upstreamPayload = {}) {
+  if (!isPlainObject(upstreamPayload)) {
+    return upstreamPayload;
+  }
+  const tracking = isPlainObject(upstreamPayload.tracking) ? upstreamPayload.tracking : {};
+  const order = isPlainObject(upstreamPayload.order) ? upstreamPayload.order : {};
+  const amounts = isPlainObject(order.amounts) ? order.amounts : {};
+  const pricing = isPlainObject(tracking.pricing)
+    ? tracking.pricing
+    : isPlainObject(upstreamPayload.pricing)
+      ? upstreamPayload.pricing
+      : {};
+
+  const normalizedPricing = pruneEmptyFields({
+    subtotal:
+      pricing.subtotal != null
+        ? pricing.subtotal
+        : tracking.subtotal != null
+          ? tracking.subtotal
+          : amounts.subtotal,
+    discount_total:
+      pricing.discount_total != null
+        ? pricing.discount_total
+        : tracking.discount_total != null
+          ? tracking.discount_total
+          : amounts.discount_total,
+    shipping_fee:
+      pricing.shipping_fee != null
+        ? pricing.shipping_fee
+        : tracking.shipping_fee != null
+          ? tracking.shipping_fee
+          : amounts.shipping_fee,
+    tax:
+      pricing.tax != null ? pricing.tax : tracking.tax != null ? tracking.tax : amounts.tax,
+    total:
+      pricing.total != null
+        ? pricing.total
+        : tracking.total != null
+          ? tracking.total
+          : amounts.total,
+    currency: firstNonEmptyString(
+      pricing.currency,
+      tracking.currency,
+      amounts.currency,
+      upstreamPayload.currency,
+      order.currency,
+    ),
+  });
+
+  return {
+    ...upstreamPayload,
+    ...tracking,
+    subtotal:
+      normalizedPricing.subtotal != null ? normalizedPricing.subtotal : upstreamPayload.subtotal,
+    discount_total:
+      normalizedPricing.discount_total != null
+        ? normalizedPricing.discount_total
+        : upstreamPayload.discount_total,
+    shipping_fee:
+      normalizedPricing.shipping_fee != null
+        ? normalizedPricing.shipping_fee
+        : upstreamPayload.shipping_fee,
+    tax: normalizedPricing.tax != null ? normalizedPricing.tax : upstreamPayload.tax,
+    total: normalizedPricing.total != null ? normalizedPricing.total : upstreamPayload.total,
+    currency: firstNonEmptyString(
+      normalizedPricing.currency,
+      upstreamPayload.currency,
+      order.currency,
+    ),
+    pricing: normalizedPricing,
+    order:
+      Object.keys(order).length > 0
+        ? {
+            ...order,
+            pricing: normalizedPricing,
+          }
+        : upstreamPayload.order,
   };
 }
 // Reviews are optional UI modules; keep their upstream timeout low so PDP can render quickly
@@ -29320,19 +29402,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       );
     }
 
-    if (
-      operation === 'get_order_status' &&
-      upstreamData &&
-      typeof upstreamData === 'object' &&
-      !Array.isArray(upstreamData) &&
-      upstreamData.tracking &&
-      typeof upstreamData.tracking === 'object' &&
-      !Array.isArray(upstreamData.tracking)
-    ) {
-      upstreamData = {
-        ...upstreamData,
-        ...upstreamData.tracking,
-      };
+    if (operation === 'get_order_status') {
+      upstreamData = normalizeGetOrderStatusCompat(upstreamData);
     }
 
     if (
