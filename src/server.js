@@ -30088,7 +30088,31 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       });
     }
 
-    return res.status(response.status).json(enriched);
+      const { attachBeautyExpertV1ToResponse } = require('./modules/orchestration/aurora_beauty/beautyExpertV1');
+      const enrichedWithBeautyExpert = attachBeautyExpertV1ToResponse(enriched, {
+        source: metadata?.source || 'shopping_agent',
+        entryLayer: 'orchestration',
+        delegatedLayer: 'decisioning',
+        taskType: 'discovery',
+        context: {
+          source_profile: {
+            source: String(metadata?.source || '').trim() || 'shopping_agent',
+            default_entry_layer: 'orchestration',
+          },
+          raw_user_goal: String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim() || null,
+          normalized_need: {},
+        },
+        metadata: {
+          ...(metadata || {}),
+          query: String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim() || null,
+        },
+        payload: effectivePayload,
+        messages: String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim()
+          ? [{ role: 'user', content: String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim() }]
+          : [],
+      });
+
+    return res.status(response.status).json(enrichedWithBeautyExpert);
 
 	  } catch (err) {
 	    if (operation === 'find_products' || operation === 'find_products_multi') {
@@ -30162,7 +30186,31 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           ) === 'travel_lookup'
             ? postProcessTravelLookupProductsResponse(cacheGuardDiagnosed)
             : cacheGuardDiagnosed;
-        return res.status(200).json(finalCacheGuardBody);
+        const { attachBeautyExpertV1ToResponse } = require('./modules/orchestration/aurora_beauty/beautyExpertV1');
+        return res.status(200).json(
+          attachBeautyExpertV1ToResponse(finalCacheGuardBody, {
+            source: metadata?.source || 'shopping_agent',
+            entryLayer: 'orchestration',
+            delegatedLayer: 'decisioning',
+            taskType: 'discovery',
+            context: {
+              source_profile: {
+                source: String(metadata?.source || '').trim() || 'shopping_agent',
+                default_entry_layer: 'orchestration',
+              },
+              raw_user_goal: String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim() || null,
+              normalized_need: {},
+            },
+            metadata: {
+              ...(metadata || {}),
+              query: String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim() || null,
+            },
+            payload: effectivePayload,
+            messages: String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim()
+              ? [{ role: 'user', content: String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim() }]
+              : [],
+          }),
+        );
       }
 	      const { code, message } = extractUpstreamErrorCode(err);
 	      const upstreamStatus =
@@ -30237,7 +30285,31 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           strict_empty: !strictEmptyHasClarification,
 	        ...(strictEmptyHasClarification ? {} : { strict_empty_reason: reason }),
 	      });
-	      return res.status(200).json(diagnosed);
+        const { attachBeautyExpertV1ToResponse } = require('./modules/orchestration/aurora_beauty/beautyExpertV1');
+	      return res.status(200).json(
+          attachBeautyExpertV1ToResponse(diagnosed, {
+            source: metadata?.source || 'shopping_agent',
+            entryLayer: 'orchestration',
+            delegatedLayer: 'decisioning',
+            taskType: 'discovery',
+            context: {
+              source_profile: {
+                source: String(metadata?.source || '').trim() || 'shopping_agent',
+                default_entry_layer: 'orchestration',
+              },
+              raw_user_goal: String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim() || null,
+              normalized_need: {},
+            },
+            metadata: {
+              ...(metadata || {}),
+              query: String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim() || null,
+            },
+            payload: effectivePayload,
+            messages: String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim()
+              ? [{ role: 'user', content: String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim() }]
+              : [],
+          }),
+        );
 	    }
 	    if (err.response) {
 	      const upstreamStatus = err.response.status || 502;

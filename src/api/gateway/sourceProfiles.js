@@ -32,6 +32,17 @@ const SOURCE_PROFILE_SPECS = Object.freeze([
     policy_tags: ['broad_commerce_search', 'internal_plus_external'],
   }),
   buildSourceProfile({
+    source: 'creator_agent',
+    caller_kind: 'agent_tool',
+    default_entry_layer: 'decisioning',
+    interaction_mode: 'conversational',
+    allow_clarification: true,
+    allow_external_supplement: true,
+    allow_execution_handoff: true,
+    response_contract: 'decisioning',
+    policy_tags: ['creator_agent', 'broad_commerce_search', 'internal_plus_external'],
+  }),
+  buildSourceProfile({
     source: 'aurora-bff',
     caller_kind: 'chat_surface',
     default_entry_layer: 'orchestration',
@@ -51,6 +62,11 @@ const SOURCE_ALIASES = Object.freeze({
   'shopping-agent-web': 'shopping_agent',
   'shopping-web': 'shopping_agent',
   'agent-sdk-fixed-delegate': 'shopping_agent',
+  'creator-agent': 'creator_agent',
+  'creator-agent-ui': 'creator_agent',
+  'creator-agent-web': 'creator_agent',
+  'creator_agent': 'creator_agent',
+  'creator_agent_ui': 'creator_agent',
   'aurora-bff': 'aurora-bff',
   'aurora-chatbox': 'aurora-bff',
 });
@@ -79,6 +95,10 @@ function isShoppingAgentSource(source) {
   return resolveSourceProfile(source)?.source === 'shopping_agent';
 }
 
+function isCreatorAgentSource(source) {
+  return resolveSourceProfile(source)?.source === 'creator_agent';
+}
+
 function isAuroraSource(source) {
   return resolveSourceProfile(source)?.source === 'aurora-bff';
 }
@@ -90,5 +110,6 @@ module.exports = {
   getDefaultEntryLayerForSource,
   isPublicSearchSource,
   isShoppingAgentSource,
+  isCreatorAgentSource,
   isAuroraSource,
 };

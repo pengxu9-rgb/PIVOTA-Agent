@@ -21,6 +21,13 @@
     "expected_status": "no_match"
   },
   {
+    "id": "creator_agent_audience_moisturizer_prompt",
+    "source": "creator_agent",
+    "task_type": "discovery",
+    "expected_entry_layer": "decisioning",
+    "expected_status": "no_match"
+  },
+  {
     "id": "public_search_exact_product_ipsa",
     "source": "search",
     "task_type": "exact_product",

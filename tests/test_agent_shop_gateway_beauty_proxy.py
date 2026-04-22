@@ -53,6 +53,8 @@ async def test_invoke_shop_operation_proxies_beauty_find_products_multi(monkeypa
     assert result["metadata"]["resolved_contract"] == "agent_v1_search_beauty_mainline"
     assert result["metadata"]["attempted_contract"] == "agent_v1_search_beauty_mainline"
     assert result["reply"] is None
+    assert result["beauty_expert_v1"]["contract_version"] == "beauty_expert_v1"
+    assert result["beauty_expert_v1"]["mode"] == "category_compare"
 
 
 @pytest.mark.asyncio

@@ -328,6 +328,8 @@ test('POST /v1/chat/stream proxies generic skincare reco requests to the v1 main
   assert.equal(result.request_id, 'req_stream_framework');
   assert.equal(result.cards?.[0]?.type, 'recommendations');
   assert.equal(result.cards?.[0]?.payload?.primary_role_id, 'oil_control_treatment');
+  assert.equal(result.beauty_expert_v1?.contract_version, 'beauty_expert_v1');
+  assert.equal(result.beauty_expert_v1?.delegation_trace?.projection_type, 'aurora_cards');
   assert.equal(result.cards?.[0]?.payload?.recommendation_meta?.framework_owner_source, 'generic_concern_framework_resolver');
   const thinkingSteps = parsed.filter((event) => event.event === 'thinking').map((event) => event.data?.step);
   assert.ok(thinkingSteps.includes('routing_framework_mainline'));
@@ -397,6 +399,8 @@ test('POST /v1/chat proxies generic skincare reco chip payloads to the v1 mainli
   assert.equal(response.body.request_id, 'req_v1_framework_action');
   assert.equal(response.body.cards?.[0]?.type, 'recommendations');
   assert.equal(response.body.cards?.[0]?.payload?.primary_role_id, 'oil_control_treatment');
+  assert.equal(response.body.beauty_expert_v1?.contract_version, 'beauty_expert_v1');
+  assert.equal(response.body.beauty_expert_v1?.delegation_trace?.projection_type, 'aurora_cards');
   assert.equal(
     response.body.cards?.[0]?.payload?.recommendation_meta?.framework_owner_source,
     'generic_concern_framework_resolver',

@@ -32,7 +32,11 @@ function resolveAgentIdentity(input = {}) {
   if (
     !hasExplicitInvocationSurface &&
     !hasRawClaims &&
-    (sourceProfile.source === 'aurora-bff' || sourceProfile.source === 'shopping_agent')
+    (
+      sourceProfile.source === 'aurora-bff' ||
+      sourceProfile.source === 'shopping_agent' ||
+      sourceProfile.source === 'creator_agent'
+    )
   ) {
     principalType = 'internal';
   } else if (rawAuthClaims.internal === true || input.internal === true) {

@@ -1,7 +1,7 @@
 const { normalizeLayerType } = require('./layerType');
 
 const RESULT_DEPTHS = new Set(['summary_only', 'bounded_results', 'deep_resolution']);
-const ALLOWED_SOURCES = new Set(['search', 'shopping_agent', 'aurora-bff']);
+const ALLOWED_SOURCES = new Set(['search', 'shopping_agent', 'creator_agent', 'aurora-bff']);
 
 function uniqueStrings(values = []) {
   return Array.from(

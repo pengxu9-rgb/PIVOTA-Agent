@@ -1,3 +1,26 @@
+jest.mock('openai', () => function OpenAI() { return {}; }, { virtual: true });
+jest.mock('../src/modules/decisioning/shopping_agent', () => ({
+  handleShoppingAgentDecisioning: async (input = {}) => ({
+    layer: 'decisioning',
+    status: 'no_match',
+    updated_context: input.context || {
+      context_id: 'mock_ctx',
+      source_profile: null,
+      task_type: 'discovery',
+      vertical: 'beauty',
+      category: 'skincare',
+      raw_user_goal: null,
+      normalized_need: {},
+      conversation_state: {},
+      decision_state: {},
+      execution_state: {},
+    },
+    ranked_candidates: [],
+    compare_matrix: [],
+    delegation_plan: 'stay_in_layer',
+  }),
+}));
+
 const baseline = require('../scripts/fixtures/celestial_commerce_core_milestone0_baseline.json');
 const { describeTaskType } = require('../src/modules/contracts/taskType');
 const { resolveSourceProfile } = require('../src/api/gateway/sourceProfiles');
