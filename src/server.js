@@ -657,10 +657,68 @@ const BACKEND_OWNED_PAYMENT_STATUSES = new Set([
   'succeeded',
 ]);
 const CLIENT_OWNED_PAYMENT_STATUSES = new Set([
-  'requires_payment_method',
-  'requires_confirmation',
   'requires_action',
 ]);
+
+const TERMINAL_FAILURE_PAYMENT_STATUSES = new Set([
+  'payment_failed',
+  'cancelled',
+  'refunded',
+  'partially_refunded',
+]);
+
+function normalizeSubmitOwner(rawValue) {
+  const token =
+    typeof rawValue === 'string'
+      ? rawValue.trim().toLowerCase()
+      : rawValue != null
+      ? String(rawValue).trim().toLowerCase()
+      : '';
+  if (!token) return null;
+  if (
+    token === 'external_button' ||
+    token === 'component' ||
+    token === 'redirect' ||
+    token === 'unsupported'
+  ) {
+    return token;
+  }
+  return null;
+}
+
+function inferSubmitOwnerFromActionType(actionType) {
+  if (actionType === 'stripe_client_secret') return 'external_button';
+  if (actionType === 'adyen_session') return 'component';
+  if (actionType === 'redirect_url') return 'redirect';
+  if (actionType === 'checkout_session') return 'unsupported';
+  return null;
+}
+
+function inferComponentKindFromActionType(actionType) {
+  if (actionType === 'stripe_client_secret') return 'stripe_payment_element';
+  if (actionType === 'adyen_session') return 'adyen_dropin';
+  if (actionType === 'checkout_session') return 'checkout_embedded';
+  return null;
+}
+
+function normalizeSubmitPaymentAction(paymentAction) {
+  if (!isPlainObject(paymentAction)) return paymentAction || null;
+  const submitOwner = normalizeSubmitOwner(paymentAction.submit_owner);
+  const componentKind = firstNonEmptyString(paymentAction.component_kind);
+  const supportedInShoppingUi =
+    typeof paymentAction.supported_in_shopping_ui === 'boolean'
+      ? paymentAction.supported_in_shopping_ui
+      : undefined;
+
+  return {
+    ...paymentAction,
+    ...(submitOwner ? { submit_owner: submitOwner } : {}),
+    ...(componentKind ? { component_kind: componentKind } : {}),
+    ...(typeof supportedInShoppingUi === 'boolean'
+      ? { supported_in_shopping_ui: supportedInShoppingUi }
+      : {}),
+  };
+}
 
 function normalizeSubmitPaymentStatus(rawStatus) {
   const statusString =
@@ -676,12 +734,24 @@ function normalizeSubmitPaymentStatus(rawStatus) {
     };
   }
   const normalized = statusString.toLowerCase();
+  const aliases = {
+    requires_payment_method: 'requires_action',
+    requires_confirmation: 'requires_action',
+    completed: 'paid',
+    succeeded: 'paid',
+    success: 'paid',
+    settled: 'paid',
+    failed: 'payment_failed',
+    canceled: 'cancelled',
+  };
+  const canonical = aliases[normalized] || normalized;
   if (
-    BACKEND_OWNED_PAYMENT_STATUSES.has(normalized) ||
-    CLIENT_OWNED_PAYMENT_STATUSES.has(normalized)
+    BACKEND_OWNED_PAYMENT_STATUSES.has(canonical) ||
+    CLIENT_OWNED_PAYMENT_STATUSES.has(canonical) ||
+    TERMINAL_FAILURE_PAYMENT_STATUSES.has(canonical)
   ) {
     return {
-      payment_status: normalized,
+      payment_status: canonical,
       payment_status_raw: null,
     };
   }
@@ -691,7 +761,7 @@ function normalizeSubmitPaymentStatus(rawStatus) {
   };
 }
 
-function resolveSubmitPaymentContract(upstreamPayload = {}) {
+function resolveSubmitPaymentContract(upstreamPayload = {}, paymentAction = null) {
   const topLevelStatus =
     upstreamPayload.payment_status != null
       ? upstreamPayload.payment_status
@@ -702,12 +772,101 @@ function resolveSubmitPaymentContract(upstreamPayload = {}) {
       : upstreamPayload?.payment?.status;
   const statusCandidate = topLevelStatus != null ? topLevelStatus : nestedStatus;
   const normalizedStatus = normalizeSubmitPaymentStatus(statusCandidate);
-  const isClientOwned = CLIENT_OWNED_PAYMENT_STATUSES.has(normalizedStatus.payment_status);
+  const explicitRequires =
+    typeof upstreamPayload.requires_client_confirmation === 'boolean'
+      ? upstreamPayload.requires_client_confirmation
+      : typeof upstreamPayload?.payment?.requires_client_confirmation === 'boolean'
+      ? upstreamPayload.payment.requires_client_confirmation
+      : null;
+  const explicitOwner = ['client', 'backend'].includes(upstreamPayload.confirmation_owner)
+    ? upstreamPayload.confirmation_owner
+    : ['client', 'backend'].includes(upstreamPayload?.payment?.confirmation_owner)
+    ? upstreamPayload.payment.confirmation_owner
+    : null;
+  const normalizedAction = normalizeSubmitPaymentAction(paymentAction);
+  const actionType = normalizedAction?.type
+    ? String(normalizedAction.type).trim().toLowerCase()
+    : null;
+  const explicitSubmitOwner = normalizeSubmitOwner(normalizedAction?.submit_owner);
+  const explicitComponentKind = firstNonEmptyString(normalizedAction?.component_kind);
+  const explicitSupported =
+    typeof normalizedAction?.supported_in_shopping_ui === 'boolean'
+      ? normalizedAction.supported_in_shopping_ui
+      : null;
+  const hasExplicitContractFields =
+    explicitRequires != null ||
+    explicitOwner != null ||
+    explicitSubmitOwner != null ||
+    explicitComponentKind != null ||
+    explicitSupported != null;
+
+  if (
+    BACKEND_OWNED_PAYMENT_STATUSES.has(normalizedStatus.payment_status) ||
+    TERMINAL_FAILURE_PAYMENT_STATUSES.has(normalizedStatus.payment_status)
+  ) {
+    return {
+      payment_status: normalizedStatus.payment_status,
+      payment_status_raw: normalizedStatus.payment_status_raw,
+      confirmation_owner: 'backend',
+      requires_client_confirmation: false,
+      submit_owner: null,
+      component_kind: null,
+      supported_in_shopping_ui: true,
+    };
+  }
+
+  if (hasExplicitContractFields) {
+    const confirmationOwner =
+      explicitOwner || (explicitRequires ? 'client' : 'backend');
+    const requiresClientConfirmation =
+      explicitRequires != null ? explicitRequires : confirmationOwner === 'client';
+    const hasExplicitOwnershipFields =
+      explicitRequires != null || explicitOwner != null;
+    const submitOwner = hasExplicitOwnershipFields
+      ? explicitSubmitOwner ||
+        (requiresClientConfirmation || actionType ? 'unsupported' : null)
+      : actionType
+      ? 'unsupported'
+      : null;
+    const componentKind =
+      hasExplicitOwnershipFields && explicitSubmitOwner ? explicitComponentKind : null;
+    const supportedInShoppingUi =
+      explicitSupported != null
+        ? explicitSupported
+        : submitOwner === 'unsupported'
+        ? false
+        : true;
+
+    return {
+      payment_status: normalizedStatus.payment_status,
+      payment_status_raw: normalizedStatus.payment_status_raw,
+      confirmation_owner: confirmationOwner,
+      requires_client_confirmation: requiresClientConfirmation,
+      submit_owner: submitOwner,
+      component_kind: componentKind,
+      supported_in_shopping_ui: supportedInShoppingUi,
+    };
+  }
+
+  const inferredSubmitOwner = inferSubmitOwnerFromActionType(actionType);
+  const supportedInShoppingUi =
+    inferredSubmitOwner === 'unsupported'
+      ? false
+      : true;
+  const isClientOwned =
+    Boolean(inferredSubmitOwner) ||
+    CLIENT_OWNED_PAYMENT_STATUSES.has(normalizedStatus.payment_status);
   return {
     payment_status: normalizedStatus.payment_status,
     payment_status_raw: normalizedStatus.payment_status_raw,
-    confirmation_owner: isClientOwned ? 'client' : 'backend',
+    confirmation_owner:
+      explicitOwner || (isClientOwned ? 'client' : 'backend'),
     requires_client_confirmation: isClientOwned,
+    submit_owner: inferredSubmitOwner,
+    component_kind: inferredSubmitOwner
+      ? inferComponentKindFromActionType(actionType)
+      : null,
+    supported_in_shopping_ui: supportedInShoppingUi,
   };
 }
 
@@ -29481,12 +29640,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             };
           }
         }
+        paymentAction = normalizeSubmitPaymentAction(paymentAction);
 
         const paymentStatusSource =
           checkoutSession && !p.payment_status && !p?.payment?.payment_status
             ? { ...p, payment_status: 'requires_action' }
             : p;
-        const paymentContract = resolveSubmitPaymentContract(paymentStatusSource);
+        const paymentContract = resolveSubmitPaymentContract(paymentStatusSource, paymentAction);
         checkoutRuntime.checkoutTraceId = gatewayRequestId;
         checkoutRuntime.paymentStatus = paymentContract.payment_status;
         checkoutRuntime.confirmationOwner = paymentContract.confirmation_owner;
@@ -29500,6 +29660,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           payment_status: paymentContract.payment_status,
           confirmation_owner: paymentContract.confirmation_owner,
           requires_client_confirmation: paymentContract.requires_client_confirmation,
+          ...(paymentContract.submit_owner ? { submit_owner: paymentContract.submit_owner } : {}),
+          ...(paymentContract.component_kind ? { component_kind: paymentContract.component_kind } : {}),
+          supported_in_shopping_ui: paymentContract.supported_in_shopping_ui,
           ...(paymentContract.payment_status_raw
             ? { payment_status_raw: paymentContract.payment_status_raw }
             : {}),
@@ -29521,6 +29684,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             payment_status: paymentContract.payment_status,
             confirmation_owner: paymentContract.confirmation_owner,
             requires_client_confirmation: paymentContract.requires_client_confirmation,
+            ...(paymentContract.submit_owner ? { submit_owner: paymentContract.submit_owner } : {}),
+            ...(paymentContract.component_kind ? { component_kind: paymentContract.component_kind } : {}),
+            supported_in_shopping_ui: paymentContract.supported_in_shopping_ui,
             ...(paymentContract.payment_status_raw
               ? { payment_status_raw: paymentContract.payment_status_raw }
               : {}),

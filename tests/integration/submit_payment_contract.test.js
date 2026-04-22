@@ -67,6 +67,79 @@ describe('submit_payment response contract normalization', () => {
     });
   });
 
+  it('propagates explicit submit ownership fields from the backend contract', async () => {
+    nock(API_BASE)
+      .post('/agent/v1/payments')
+      .reply(200, {
+        payment_status: 'requires_action',
+        confirmation_owner: 'client',
+        requires_client_confirmation: true,
+        psp: 'checkout',
+        payment_action: {
+          type: 'checkout_session',
+          client_secret: 'cko_session_123',
+          submit_owner: 'unsupported',
+          component_kind: 'checkout_embedded',
+          supported_in_shopping_ui: false,
+        },
+      });
+
+    const res = await invokeSubmitPayment();
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      payment_status: 'requires_action',
+      confirmation_owner: 'client',
+      requires_client_confirmation: true,
+      submit_owner: 'unsupported',
+      component_kind: 'checkout_embedded',
+      supported_in_shopping_ui: false,
+      payment_action: {
+        type: 'checkout_session',
+        submit_owner: 'unsupported',
+        component_kind: 'checkout_embedded',
+        supported_in_shopping_ui: false,
+      },
+      payment: {
+        confirmation_owner: 'client',
+        requires_client_confirmation: true,
+        submit_owner: 'unsupported',
+        component_kind: 'checkout_embedded',
+        supported_in_shopping_ui: false,
+      },
+    });
+  });
+
+  it('fails closed when upstream sends only a partial explicit contract', async () => {
+    nock(API_BASE)
+      .post('/agent/v1/payments')
+      .reply(200, {
+        payment_status: 'requires_action',
+        psp: 'stripe',
+        payment_action: {
+          type: 'stripe_client_secret',
+          client_secret: 'pi_123_secret_partial',
+          submit_owner: 'external_button',
+        },
+      });
+
+    const res = await invokeSubmitPayment();
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      payment_status: 'requires_action',
+      confirmation_owner: 'backend',
+      requires_client_confirmation: false,
+      submit_owner: 'unsupported',
+      supported_in_shopping_ui: false,
+      payment: {
+        payment_status: 'requires_action',
+        confirmation_owner: 'backend',
+        requires_client_confirmation: false,
+        submit_owner: 'unsupported',
+        supported_in_shopping_ui: false,
+      },
+    });
+  });
+
   it('marks requires_action status as client-owned confirmation', async () => {
     nock(API_BASE)
       .post('/agent/v1/payments')
@@ -112,6 +185,62 @@ describe('submit_payment response contract normalization', () => {
       payment: {
         payment_status: 'unknown',
         payment_status_raw: 'queued_for_review',
+        confirmation_owner: 'backend',
+        requires_client_confirmation: false,
+      },
+    });
+  });
+
+  it('normalizes failed statuses to payment_failed terminal state', async () => {
+    nock(API_BASE)
+      .post('/agent/v1/payments')
+      .reply(200, {
+        status: 'failed',
+        psp: 'stripe',
+      });
+
+    const res = await invokeSubmitPayment();
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      status: 'failed',
+      payment_status: 'payment_failed',
+      confirmation_owner: 'backend',
+      requires_client_confirmation: false,
+      payment: {
+        payment_status: 'payment_failed',
+        confirmation_owner: 'backend',
+        requires_client_confirmation: false,
+      },
+    });
+  });
+
+  it('ignores explicit client ownership on terminal payment failure', async () => {
+    nock(API_BASE)
+      .post('/agent/v1/payments')
+      .reply(200, {
+        payment_status: 'payment_failed',
+        confirmation_owner: 'client',
+        requires_client_confirmation: true,
+        psp: 'adyen',
+        payment_action: {
+          type: 'adyen_session',
+          client_secret: 'session_123',
+          submit_owner: 'component',
+          component_kind: 'adyen_dropin',
+          supported_in_shopping_ui: true,
+        },
+      });
+
+    const res = await invokeSubmitPayment();
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      payment_status: 'payment_failed',
+      confirmation_owner: 'backend',
+      requires_client_confirmation: false,
+      submit_owner: null,
+      component_kind: null,
+      payment: {
+        payment_status: 'payment_failed',
         confirmation_owner: 'backend',
         requires_client_confirmation: false,
       },
