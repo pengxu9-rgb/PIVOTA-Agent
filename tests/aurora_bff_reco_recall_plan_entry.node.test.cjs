@@ -320,3 +320,44 @@ test('framework recall planner preserves semantic support role order after prima
     ],
   );
 });
+
+test('framework recall planner preserves exact product anchor queries ahead of generic sunscreen queries', () => {
+  const targetContext = {
+    primary_role_id: 'daily_sunscreen_finish_fit',
+    comparison_mode: 'same_role_comparison',
+    framework_summary: {
+      concern_text: 'oily skin sunscreen under makeup',
+    },
+    framework_roles: [
+      {
+        role_id: 'daily_sunscreen_finish_fit',
+        rank: 1,
+        preferred_step: 'sunscreen',
+        label: 'Daily sunscreen with finish fit',
+        query_terms: ['spf fluid oily skin', 'sunscreen under makeup', 'lightweight sunscreen oily skin'],
+        exact_product_anchor_query_terms: [
+          'Beauty of Joseon Relief Sun Aqua-Fresh Rice + B5 SPF50+ PA++++',
+          'Relief Sun Aqua-Fresh Rice + B5 SPF50+ PA++++',
+          'Beauty of Joseon Relief Sun Aqua-Fresh Rice B5 SPF50',
+        ],
+        fit_keywords: ['oily skin', 'under makeup', 'fluid'],
+      },
+    ],
+  };
+
+  const plan = __internal.buildRecoRecallPlan({
+    mode: 'framework_generic',
+    targetContext,
+  });
+  const primaryExternalStage = plan.stages.find(
+    (stage) => stage?.stage_id === 'framework_stage_b_primary_external_seed',
+  );
+  const queries = (primaryExternalStage?.entries || []).map((entry) => entry.query);
+
+  assert.deepEqual(queries.slice(0, 3), [
+    'Beauty of Joseon Relief Sun Aqua-Fresh Rice + B5 SPF50+ PA++++',
+    'Relief Sun Aqua-Fresh Rice + B5 SPF50+ PA++++',
+    'Beauty of Joseon Relief Sun Aqua-Fresh Rice B5 SPF50',
+  ]);
+  assert.ok(queries.some((query) => /spf fluid oily skin|sunscreen under makeup|lightweight sunscreen/i.test(query)));
+});

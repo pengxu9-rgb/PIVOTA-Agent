@@ -67,6 +67,10 @@ function normalizeFrameworkSemanticRole(role = null) {
       Array.isArray(roleObj.query_terms) ? roleObj.query_terms : [],
       6,
     ),
+    exact_product_anchor_query_terms: uniqueCaseInsensitiveStrings(
+      Array.isArray(roleObj.exact_product_anchor_query_terms) ? roleObj.exact_product_anchor_query_terms : [],
+      3,
+    ),
     fit_keywords: uniqueCaseInsensitiveStrings(
       Array.isArray(roleObj.fit_keywords) ? roleObj.fit_keywords : [],
       10,
@@ -715,6 +719,10 @@ function buildFrameworkRoleQueries(
   const preferredStep = String(roleObj.preferred_step || '').trim();
   const normalizedPreferredStep = preferredStep.toLowerCase();
   const roleQueries = Array.isArray(roleObj.query_terms) ? roleObj.query_terms : [];
+  const protectedExactAnchorQueries = uniqueCaseInsensitiveStrings(
+    Array.isArray(roleObj.exact_product_anchor_query_terms) ? roleObj.exact_product_anchor_query_terms : [],
+    3,
+  );
   const out = [];
   const isTreatmentPrimary =
     allowConcernFallback && normalizedPreferredStep === 'treatment';
@@ -766,7 +774,13 @@ function buildFrameworkRoleQueries(
     if (preferredStep) out.push(`${concernText} ${preferredStep}`);
     out.push(concernText);
   }
-  return uniqueCaseInsensitiveStrings(out, maxQueries);
+  return uniqueCaseInsensitiveStrings(
+    [
+      ...protectedExactAnchorQueries,
+      ...out,
+    ],
+    maxQueries,
+  );
 }
 
 function buildFrameworkSupportStageId(roleId, sourceScope = 'internal') {
