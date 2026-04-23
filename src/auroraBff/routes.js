@@ -23991,9 +23991,18 @@ function hasConcernFrameworkExplicitNoAdditionalActiveConstraint(targetContext =
 
 function buildConcernFrameworkAdditionalActiveText(row = null) {
   const candidate = isPlainObject(row) ? row : {};
+  const sku = isPlainObject(candidate?.sku) ? candidate.sku : {};
   return uniqCaseInsensitiveStrings([
     buildConcernFrameworkCandidateText(candidate),
     buildConcernCandidateText(candidate),
+    candidate.display_name,
+    candidate.displayName,
+    candidate.name,
+    candidate.title,
+    sku.display_name,
+    sku.displayName,
+    sku.name,
+    sku.title,
     candidate.short_description,
     candidate.shortDescription,
     candidate.description,

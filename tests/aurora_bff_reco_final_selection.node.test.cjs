@@ -5118,6 +5118,97 @@ test('beauty mainline same-role moisturizer compare promotes non-active barrier 
   }
 });
 
+test('beauty mainline reco rows prune active moisturizer compare rows even when the active cue only survives in the title', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const targetContext = {
+      primary_role_id: 'hydrating_barrier_moisturizer',
+      routine_mode: 'same_role_comparison',
+      comparison_mode: 'same_role_comparison',
+      semantic_plan: {
+        routine_mode: 'same_role_comparison',
+        comparison_mode: 'same_role_comparison',
+        must_satisfy_constraints: ['must not contain active treatment ingredients', 'moisturizer-only same-slot comparison'],
+      },
+      request_text: 'What moisturizer product should I buy next? I do not want another active.',
+      framework_roles: [
+        {
+          role_id: 'hydrating_barrier_moisturizer',
+          label: 'Hydrating barrier moisturizer',
+          preferred_step: 'moisturizer',
+          rank: 40,
+        },
+      ],
+    };
+    const rows = __internal.buildRecoRowsFromMainlineProducts(
+      [
+        {
+          product_id: 'ext_9bc7ff02d709cc5383cc78ec',
+          merchant_id: 'external_seed',
+          display_name: 'Ultra Repair Face Lotion with Colloidal Oatmeal',
+          brand: 'First Aid Beauty',
+          category: 'Moisturizer',
+          product_type: 'Moisturizer',
+          retrieval_role_id: 'hydrating_barrier_moisturizer',
+          matched_role_id: 'hydrating_barrier_moisturizer',
+          retrieval_source: 'external_seed',
+          why_this_one: 'Dryness or barrier support',
+          short_description: 'Dryness or barrier support',
+        },
+        {
+          product_id: 'ext_a29393bd005135c81f47dade',
+          merchant_id: 'external_seed',
+          display_name: 'Hydrating Dewy Gel Cream Moisturizer with Hyaluronic Acid + Ceramides',
+          brand: 'First Aid Beauty',
+          category: 'Moisturizer',
+          product_type: 'Moisturizer',
+          retrieval_role_id: 'hydrating_barrier_moisturizer',
+          matched_role_id: 'hydrating_barrier_moisturizer',
+          retrieval_source: 'external_seed',
+          why_this_one: 'Oily or combination skin needing hydration',
+          short_description: 'Oily or combination skin needing hydration',
+        },
+        {
+          product_id: 'ext_62685854dfc71d2634e828e6',
+          merchant_id: 'external_seed',
+          display_name: 'Ultra Repair Firming Day Cream with Peptides, Niacinamide + Collagen',
+          brand: 'First Aid Beauty',
+          category: 'Moisturizer',
+          product_type: 'Moisturizer',
+          retrieval_role_id: 'hydrating_barrier_moisturizer',
+          matched_role_id: 'hydrating_barrier_moisturizer',
+          retrieval_source: 'external_seed',
+          why_this_one: 'Dryness or barrier support',
+          short_description: 'Dryness or barrier support',
+        },
+      ],
+      {
+        targetContext,
+        selectionContract: {
+          selected_product_ids: [
+            'ext_9bc7ff02d709cc5383cc78ec',
+            'ext_a29393bd005135c81f47dade',
+            'ext_62685854dfc71d2634e828e6',
+          ],
+          selected_titles: [
+            'Ultra Repair Face Lotion with Colloidal Oatmeal',
+            'Hydrating Dewy Gel Cream Moisturizer with Hyaluronic Acid + Ceramides',
+            'Ultra Repair Firming Day Cream with Peptides, Niacinamide + Collagen',
+          ],
+        },
+      },
+    );
+
+    assert.deepEqual(
+      rows.map((row) => row.product_id),
+      ['ext_9bc7ff02d709cc5383cc78ec', 'ext_a29393bd005135c81f47dade'],
+    );
+    assert.equal(rows.some((row) => row.product_id === 'ext_62685854dfc71d2634e828e6'), false);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('beauty mainline reco rows promote visible nested product fields to top level', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
