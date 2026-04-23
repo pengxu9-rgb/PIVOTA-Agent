@@ -58920,8 +58920,6 @@ function shouldSuppressRecoAssistantOptionalRefinementQuestion({
   recommendations = [],
 } = {}) {
   const questionField = pickFirstTrimmed(refinementQuestionPlan?.field);
-  if (!questionField || questionField !== 'location_climate') return false;
-  if (String(requestMode || '').toLowerCase() !== 'buy') return false;
   if (String(selectedProductRoleMix || '').toLowerCase() !== 'same_role_comparison') return false;
   const targetText = [
     pickFirstTrimmed(
@@ -58937,7 +58935,11 @@ function shouldSuppressRecoAssistantOptionalRefinementQuestion({
       item?.matchedRoleId,
     )),
   ].filter(Boolean).join(' ');
-  return recoRoleNeedsFinishFitNarrative(targetText);
+  if (!recoRoleNeedsFinishFitNarrative(targetText)) return false;
+  if (!questionField) return false;
+  const normalizedRequestMode = String(requestMode || '').toLowerCase();
+  if (!['buy', 'use', 'use_first'].includes(normalizedRequestMode)) return false;
+  return questionField === 'location_climate' || questionField === 'lifestyle_sleep';
 }
 
 function renderRecoAssistantStructuredReasonRewrite({
