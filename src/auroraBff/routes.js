@@ -42718,6 +42718,54 @@ function extractProfilePatchFromRequestContextPayload(payload) {
   return Object.keys(clean).length ? clean : null;
 }
 
+function extractDirectProfilePatchFromChatBody(payload) {
+  const root = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : null;
+  if (!root) return null;
+  const directProfile =
+    root.context && typeof root.context === 'object' && !Array.isArray(root.context) &&
+    root.context.profile && typeof root.context.profile === 'object' && !Array.isArray(root.context.profile)
+      ? root.context.profile
+      : root.profile && typeof root.profile === 'object' && !Array.isArray(root.profile)
+        ? root.profile
+        : null;
+  if (!directProfile) return null;
+
+  const patch = {};
+  const assignString = (key, value) => {
+    if (typeof value !== 'string') return;
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    patch[key] = trimmed;
+  };
+
+  assignString('skinType', directProfile.skinType);
+  assignString('sensitivity', directProfile.sensitivity);
+  assignString('barrierStatus', directProfile.barrierStatus);
+  assignString('region', directProfile.region);
+  assignString('budgetTier', directProfile.budgetTier);
+
+  if (Array.isArray(directProfile.goals)) {
+    const goals = directProfile.goals
+      .map((item) => (typeof item === 'string' ? item.trim() : ''))
+      .filter(Boolean)
+      .slice(0, 12);
+    if (goals.length) patch.goals = goals;
+  }
+  if (Object.prototype.hasOwnProperty.call(directProfile, 'currentRoutine')) {
+    patch.currentRoutine = normalizeRoutineInputWithPmShortcut(directProfile.currentRoutine);
+  } else if (Object.prototype.hasOwnProperty.call(directProfile, 'current_routine')) {
+    patch.currentRoutine = normalizeRoutineInputWithPmShortcut(directProfile.current_routine);
+  }
+  if (directProfile.travel_plan && typeof directProfile.travel_plan === 'object' && !Array.isArray(directProfile.travel_plan)) {
+    patch.travel_plan = directProfile.travel_plan;
+  }
+
+  const parsed = UserProfilePatchSchema.safeParse(patch);
+  if (!parsed.success) return null;
+  const clean = parsed.data;
+  return Object.keys(clean).length ? clean : null;
+}
+
 function extractAnalysisProfileContextOverlay(...sources) {
   const patch = {};
   const assignString = (key, value) => {
@@ -90344,7 +90392,9 @@ function mountAuroraBffRoutes(app, { logger }) {
           parsed.data?.session?.id,
         ),
       );
-      const rawProfilePatchFromRequestContext = extractProfilePatchFromRequestContextPayload(req.body || {});
+      const rawProfilePatchFromRequestContext =
+        extractDirectProfilePatchFromChatBody(req.body || {}) ||
+        extractProfilePatchFromRequestContextPayload(req.body || {});
       const ingressSignalSnapshot = buildChatIngressSignalSnapshot({
         data: parsed.data,
         language: ctx.match_lang || ctx.lang,
