@@ -58574,6 +58574,27 @@ function collectRecoAssistantCanonicalDisplayRows(payload = {}) {
     .filter((row) => isPlainObject(row));
 }
 
+function collectRecoAssistantSectionProductRows(payload = {}) {
+  const sections = Array.isArray(payload?.sections) ? payload.sections : [];
+  const rows = [];
+  for (const section of sections) {
+    if (!isPlainObject(section)) continue;
+    const products = Array.isArray(section.products) ? section.products : [];
+    for (const product of products) {
+      if (isPlainObject(product)) rows.push(product);
+    }
+  }
+  return rows;
+}
+
+function collectRecoAssistantRewriteRows(payload = {}) {
+  const rawRecommendations = Array.isArray(payload?.recommendations)
+    ? payload.recommendations.filter((item) => isPlainObject(item))
+    : [];
+  if (rawRecommendations.length) return rawRecommendations;
+  return collectRecoAssistantSectionProductRows(payload);
+}
+
 function pickRecoAssistantCanonicalSectionProductRow(payload = {}, {
   selectedName = '',
   recommendation = null,
@@ -58586,15 +58607,7 @@ function pickRecoAssistantCanonicalSectionProductRow(payload = {}, {
     index,
   });
   if (canonicalDisplayRow) return canonicalDisplayRow;
-  const sections = Array.isArray(payload?.sections) ? payload.sections : [];
-  const rows = [];
-  for (const section of sections) {
-    if (!isPlainObject(section)) continue;
-    const products = Array.isArray(section.products) ? section.products : [];
-    for (const product of products) {
-      if (isPlainObject(product)) rows.push(product);
-    }
-  }
+  const rows = collectRecoAssistantSectionProductRows(payload);
   return pickRecoAssistantCanonicalProductRowFromRows(rows, {
     selectedName,
     recommendation,
@@ -58953,9 +58966,7 @@ function renderRecoAssistantStructuredReasonRewrite({
 } = {}) {
   const selectedNames = asStringArray(names, 3);
   if (!selectedNames.length) return '';
-  const recommendations = Array.isArray(payload?.recommendations)
-    ? payload.recommendations.filter((item) => isPlainObject(item)).slice(0, selectedNames.length)
-    : [];
+  const recommendations = collectRecoAssistantRewriteRows(payload).slice(0, selectedNames.length);
   const details = selectedNames.map((name, index) => {
     const recommendation = recommendations[index] || {};
     const canonicalSectionRow = pickRecoAssistantCanonicalSectionProductRow(payload, {
@@ -59199,7 +59210,7 @@ async function maybeRewriteRecoAssistantTextWithLlm({
   if (!AURORA_RECO_ASSISTANT_REWRITE_ENABLED || USE_AURORA_BFF_MOCK) {
     return { text: fallbackText, llm_used: false, reason: 'rewrite_disabled' };
   }
-  const recommendations = Array.isArray(payload && payload.recommendations) ? payload.recommendations : [];
+  const recommendations = collectRecoAssistantRewriteRows(payload);
   if (!recommendations.length) return { text: fallbackText, llm_used: false, reason: 'no_recommendations' };
   const names = pickRecoNames(payload, 3);
   const { primaryTarget, secondaryTargets } = pickRecoMetaTargets(payload);
