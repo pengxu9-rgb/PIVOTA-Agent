@@ -60,3 +60,47 @@ test('visible alternatives recover score from ranking metadata when normalized s
 
   assert.equal(row.similarity_score, 71);
 });
+
+test('visible alternatives omit zero similarity when no ranking evidence exists', () => {
+  const row = __internal.normalizeRecoAlternativeVisibleAuthorityContract({
+    kind: 'similar',
+    candidate_origin: 'pool',
+    grounding_status: 'catalog_verified',
+    similarity_score: 0,
+    product: {
+      product_id: 'ext_unknown_score_spf',
+      merchant_id: 'external_seed',
+      brand: 'Haruharu Wonder',
+      name: 'Moisture Airyfit Daily Sunscreen SPF50+ PA++++',
+      category: 'Sunscreen',
+    },
+  });
+
+  assert.equal(Object.prototype.hasOwnProperty.call(row, 'similarity_score'), false);
+});
+
+test('final visible alternatives replace category-only tradeoff with shopper tradeoff copy', () => {
+  const row = __internal.applyFinalRecoAlternativeVisibleShopperCopy({
+    kind: 'similar',
+    candidate_origin: 'pool',
+    grounding_status: 'catalog_verified',
+    similarity_score: 0,
+    product: {
+      product_id: 'ext_airyfit',
+      merchant_id: 'external_seed',
+      brand: 'Haruharu Wonder',
+      name: 'Moisture Airyfit Daily Sunscreen SPF50+ PA++++',
+      category: 'Sunscreen',
+    },
+    brand: 'Haruharu Wonder',
+    name: 'Moisture Airyfit Daily Sunscreen SPF50+ PA++++',
+    reasons: [
+      'The source page lists a 4.9 star average across 385 buyer reviews.',
+    ],
+    tradeoffs: ['Category: Sunscreen'],
+  });
+
+  assert.equal(row.tradeoff_notes.includes('Category: Sunscreen'), false);
+  assert.match(row.tradeoff_notes[0], /serum-like|fresh|thinner sunscreen/i);
+  assert.match(row.why_this_one, /serum-like|fresh|thinner sunscreen/i);
+});
