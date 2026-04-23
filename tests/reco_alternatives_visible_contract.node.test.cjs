@@ -224,6 +224,39 @@ test('mixed ranking score consumes mapper similarity field, not only similarity_
   assert.ok(score > 0.8);
 });
 
+test('mixed ranking score favors closer sunscreen tradeoff rows over lower-SPF moisturizer rows', () => {
+  const serumScore = __internal.getRecoAlternativeMixedRankingScore({
+    kind: 'similar',
+    candidate_origin: 'pool',
+    grounding_status: 'catalog_verified',
+    _mixed_score: 0.69,
+    product: {
+      product_id: 'ext_airyfit',
+      merchant_id: 'external_seed',
+      brand: 'Haruharu Wonder',
+      name: 'Moisture Airyfit Daily Sunscreen SPF50+ PA++++',
+      category: 'Sunscreen',
+    },
+    tradeoff_notes: ['Leans more serum-like and fresh if you want a thinner sunscreen feel.'],
+  }, { useExperienceQualityBonus: true });
+  const moisturizerSpfScore = __internal.getRecoAlternativeMixedRankingScore({
+    kind: 'similar',
+    candidate_origin: 'pool',
+    grounding_status: 'catalog_verified',
+    _mixed_score: 0.72,
+    product: {
+      product_id: 'ext_dayscreen',
+      merchant_id: 'external_seed',
+      brand: 'Beauty of Joseon',
+      name: 'Dayscreen Moisturizer SPF 30',
+      category: 'Sunscreen',
+    },
+    tradeoff_notes: ['Leans more moisturizer-like and lower-SPF if you want a lighter daily layer rather than the closest SPF50+ sunscreen match.'],
+  }, { useExperienceQualityBonus: true });
+
+  assert.ok(serumScore > moisturizerSpfScore);
+});
+
 test('selector alternatives treat zero similarity as missing and assign order-based score', () => {
   const rows = __internal.mapSelectorCandidatesToAlternatives([
     {
