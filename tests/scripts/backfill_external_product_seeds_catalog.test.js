@@ -295,6 +295,89 @@ describe('backfill-external-product-seeds-catalog', () => {
     );
   });
 
+  test('persists extracted PDP FAQ items into seed_data and snapshot', () => {
+    const row = {
+      id: 'eps_pixi_clarity',
+      title: 'Clarity Tonic Travel Size',
+      canonical_url: 'https://pixibeauty.com/products/clarity-tonic',
+      destination_url: 'https://pixibeauty.com/products/clarity-tonic',
+      image_url: 'https://example.com/clarity.jpg',
+      price_amount: 15,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      seed_data: {
+        title: 'Clarity Tonic Travel Size',
+        snapshot: {
+          canonical_url: 'https://pixibeauty.com/products/clarity-tonic',
+        },
+      },
+    };
+
+    const payload = buildSeedUpdatePayload(
+      row,
+      {
+        products: [
+          {
+            title: 'Clarity Tonic Travel Size',
+            url: 'https://pixibeauty.com/products/clarity-tonic',
+            image_url: 'https://example.com/clarity.jpg',
+            image_urls: ['https://example.com/clarity.jpg'],
+            variant_skus: ['82154'],
+            variants: [
+              {
+                sku: '82154',
+                variant_id: '82154',
+                url: 'https://pixibeauty.com/products/clarity-tonic',
+                price: '15.00',
+                currency: 'USD',
+                stock: 'In Stock',
+                image_url: 'https://example.com/clarity.jpg',
+                image_urls: ['https://example.com/clarity.jpg'],
+              },
+            ],
+            description_raw: 'Clarifying tonic with potent AHAs.',
+            details_sections: [
+              { heading: 'How to Use', body: 'Use AM & PM after cleansing.', source_kind: 'accordion_control' },
+            ],
+            how_to_use_raw: 'Use AM & PM after cleansing.',
+            faq_items: [
+              {
+                question: 'What percentage of salicylic acid does this product contain?',
+                answer: "We don't disclose the percentage.",
+                source_kind: 'okendo_questions_api',
+                source_url: 'https://pixibeauty.com/products/clarity-tonic',
+                source_title: 'Product Questions',
+              },
+            ],
+            field_capture_status: {
+              description_raw: 'present',
+              details_sections: 'present',
+              ingredients_raw: 'missing',
+              active_ingredients_raw: 'missing',
+              how_to_use_raw: 'present',
+              faq_items: 'present',
+            },
+          },
+        ],
+        variants: [],
+        diagnostics: {},
+      },
+      'https://pixibeauty.com/products/clarity-tonic',
+    );
+
+    expect(payload.nextRow.seed_data.pdp_faq_items).toEqual([
+      {
+        question: 'What percentage of salicylic acid does this product contain?',
+        answer: "We don't disclose the percentage.",
+        source_kind: 'okendo_questions_api',
+        source_url: 'https://pixibeauty.com/products/clarity-tonic',
+        source_title: 'Product Questions',
+      },
+    ]);
+    expect(payload.nextRow.seed_data.snapshot.pdp_faq_items).toEqual(payload.nextRow.seed_data.pdp_faq_items);
+    expect(payload.nextRow.seed_data.pdp_field_capture_status.faq_items).toBe('present');
+  });
+
   test('persists PDP raw fields and provenance when extractor returns module-level product data', () => {
     const row = {
       id: 'eps_rare_spf',
