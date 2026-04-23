@@ -31,6 +31,26 @@ function normalizeText(value) {
     .replace(/\s+/g, ' ');
 }
 
+function normalizeProductToken(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function stripHtml(value) {
+  return String(value || '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function normalizeSourceToken(value) {
   return normalizeText(value).replace(/[\s_]+/g, '-');
 }
@@ -104,8 +124,18 @@ function inferAuthorityStatus(response = {}, metadata = {}) {
 }
 
 function buildAxisFromReason(reason = '', index = 0) {
-  const normalized = normalizeText(reason);
+  const rawReason = String(reason || '');
+  const cleanedReason = stripHtml(reason);
+  const normalized = normalizeText(cleanedReason);
   if (!normalized) return null;
+  const hasMarkup = /<[^>]+>/.test(rawReason) || /&(?:nbsp|amp|quot|#39);/i.test(rawReason);
+  if (
+    /(^|\s)(test fixture|ingredients|clinical study|made by|soft wash to smoky|synthetic fibers|with pouch)(\s|$)/.test(normalized) ||
+    /\b(brush|makeup brush|synthetic fibers|pouch)\b/.test(normalized) ||
+    (hasMarkup && cleanedReason.length > 96)
+  ) {
+    return null;
+  }
   if (
     /\b(not|don't|do not|without)\b[^.]{0,32}\btoo\b[^.]{0,16}\b(dewy|matte)\b/.test(normalized) ||
     /\bbetween\b[^.]{0,48}\bmatte\b[^.]{0,48}\bdewy\b/.test(normalized) ||
@@ -131,9 +161,12 @@ function buildAxisFromReason(reason = '', index = 0) {
   if (/\blight|lighter|smooth|weightless|sheer|thin|under makeup|under-makeup\b/.test(normalized)) {
     return { id: `axis_${index + 1}`, label: 'lighter / smoother finish' };
   }
+  if (normalized.length > 120) {
+    return null;
+  }
   return {
     id: `axis_${index + 1}`,
-    label: reason.length > 72 ? `${reason.slice(0, 69)}...` : reason,
+    label: cleanedReason.length > 72 ? `${cleanedReason.slice(0, 69)}...` : cleanedReason,
   };
 }
 
@@ -147,6 +180,86 @@ function buildCompareAxes(products = []) {
       ),
     )
     .filter(Boolean);
+}
+
+function buildAnchorTokens(beautyRequest = {}, queryText = '') {
+  const productContext = isPlainObject(beautyRequest.product_context) ? beautyRequest.product_context : {};
+  const brand = pickFirstTrimmed(productContext.brand);
+  const title = pickFirstTrimmed(
+    productContext.title,
+    productContext.name,
+    productContext.product_name,
+    productContext.display_name,
+    productContext.canonical_product_ref,
+    productContext.product_ref,
+  );
+  const tokens = uniqueStrings([
+    title,
+    brand && title ? `${brand} ${title}` : '',
+    pickFirstTrimmed(productContext.product_id),
+    pickFirstTrimmed(productContext.product_group_id),
+  ])
+    .map((item) => normalizeProductToken(item))
+    .filter(Boolean);
+  if (tokens.length > 0) return tokens;
+  return uniqueStrings([queryText])
+    .map((item) => normalizeProductToken(item))
+    .filter((item) => item.split(' ').length >= 4);
+}
+
+function buildProductMatchTokens(product = {}) {
+  const canonicalRef = isPlainObject(product.canonical_product_ref)
+    ? pickFirstTrimmed(
+        product.canonical_product_ref.product_id,
+        product.canonical_product_ref.canonical_product_ref,
+        product.canonical_product_ref.product_ref,
+      )
+    : pickFirstTrimmed(product.canonical_product_ref);
+  const name = pickFirstTrimmed(product.name, product.title, product.display_name);
+  const brand = pickFirstTrimmed(product.brand);
+  return uniqueStrings([
+    name,
+    brand && name ? `${brand} ${name}` : '',
+    pickFirstTrimmed(product.product_id, product.id),
+    pickFirstTrimmed(product.product_group_id),
+    pickFirstTrimmed(product.product_ref),
+    canonicalRef,
+  ])
+    .map((item) => normalizeProductToken(item))
+    .filter(Boolean);
+}
+
+function reorderProductsForBeautyMode(products = [], { mode, beautyRequest, queryText } = {}) {
+  const rows = Array.isArray(products) ? [...products] : [];
+  if (mode !== 'exact_product_assist' || rows.length <= 1) return rows;
+  const anchorTokens = buildAnchorTokens(beautyRequest, queryText);
+  if (anchorTokens.length === 0) return rows;
+
+  const matchScore = (product) => {
+    const productTokens = buildProductMatchTokens(product);
+    let score = 0;
+    for (const anchor of anchorTokens) {
+      for (const token of productTokens) {
+        if (!anchor || !token) continue;
+        if (anchor === token) score = Math.max(score, 3);
+        else if (anchor.includes(token) || token.includes(anchor)) score = Math.max(score, 2);
+        else if (anchor.split(' ').every((part) => token.includes(part))) score = Math.max(score, 1);
+      }
+    }
+    return score;
+  };
+
+  return rows
+    .map((product, index) => ({
+      product,
+      index,
+      score: matchScore(product),
+    }))
+    .sort((left, right) => {
+      if (right.score !== left.score) return right.score - left.score;
+      return left.index - right.index;
+    })
+    .map((item) => item.product);
 }
 
 function normalizeRecoProduct(product = {}) {
@@ -253,11 +366,22 @@ function inferBeautyMode({ taskType, beautyRequest, queryText, response } = {}) 
     /\b(sunscreen|spf|moisturizer|moisturiser|cleanser|serum|toner|essence|retinol|retinoid|mask|balm|oil|cream|lotion)\b/;
   const genericGuidancePattern =
     /\bwhat should i (use|buy)\b(?:[^.]{0,24}\bfor my skin\b)?|\bhelp my skin\b|\bfor my skin\b/;
+  const exactProductAskPattern =
+    /\b(is|would|should)\b[^.]{0,120}\b(good|better|right|fit|suit|work|use)\b|\bbetter than\b|\bvs\.?\b|\bversus\b/;
   const hasExplicitCategory = explicitCategoryPattern.test(normalizedQuery);
   const isGenericGuidanceAsk = genericGuidancePattern.test(normalizedQuery);
   if (
     String(taskType || '').trim() === 'exact_product' ||
-    pickFirstTrimmed(productContext.product_id, productContext.product_group_id, productContext.canonical_product_ref)
+    pickFirstTrimmed(
+      productContext.product_id,
+      productContext.product_group_id,
+      productContext.canonical_product_ref,
+      productContext.product_ref,
+      productContext.name,
+      productContext.title,
+    ) ||
+    (exactProductAskPattern.test(normalizedQuery) &&
+      /\b(beauty of joseon|ultra repair|first aid beauty|round lab|skin1004|paula'?s choice|glossier|supergoop)\b/.test(normalizedQuery))
   ) {
     return 'exact_product_assist';
   }
@@ -406,22 +530,32 @@ function buildBeautyExpertV1Response({
     user_goal: beautyRequest.user_goal || queryText || null,
   });
 
-  const products = extractRecommendationProducts(response);
+  const rawProducts = extractRecommendationProducts(response);
   const mode = inferBeautyMode({
     taskType,
     beautyRequest: normalizedBeautyIntent,
     queryText,
-    response: { products },
+    response: { products: rawProducts },
+  });
+  const products = reorderProductsForBeautyMode(rawProducts, {
+    mode,
+    beautyRequest: normalizedBeautyIntent,
+    queryText,
   });
   const authorityStatus = inferAuthorityStatus(response, metadata);
   const analysisSummary = buildAnalysisSummary(normalizedBeautyIntent, queryText, products);
   const confidence = buildConfidence(response, analysisSummary);
-  const compareAxes = buildCompareAxes(products);
+  const shouldSuppressRecoBundle =
+    mode === 'guided_beauty_reco' &&
+    Array.isArray(analysisSummary.missing_context) &&
+    analysisSummary.missing_context.length > 0;
+  const effectiveProducts = shouldSuppressRecoBundle ? [] : products;
+  const compareAxes = buildCompareAxes(effectiveProducts);
   const nextActions = buildNextActions({
     mode,
     beautyRequest,
     analysisSummary,
-    products,
+    products: effectiveProducts,
   });
   const delegatedLayerResolved =
     delegatedLayer || (mode === 'exact_product_assist' ? 'execution_facing' : 'decisioning');
@@ -433,10 +567,11 @@ function buildBeautyExpertV1Response({
     analysis_summary: analysisSummary,
     recommendation_scope: {
       request_kind: mode,
-      comparison_mode: products.length > 1 ? 'same_type_compare' : products.length === 1 ? 'single_pick' : 'none',
+      comparison_mode:
+        effectiveProducts.length > 1 ? 'same_type_compare' : effectiveProducts.length === 1 ? 'single_pick' : 'none',
       final_authority_status: authorityStatus,
     },
-    reco_bundle: buildRecoBundle(products, authorityStatus),
+    reco_bundle: buildRecoBundle(effectiveProducts, authorityStatus),
     compare_axes: compareAxes,
     confidence,
     next_actions: nextActions,

@@ -1,6 +1,13 @@
 const { extractRecoTargetStepFromText, normalizeRecoTargetStep } = require('./recoTargetStep');
 const { resolveRecommendationTargetContext } = require('./recommendationSharedStack');
 
+const BEAUTY_EXACT_BRAND_PATTERN =
+  /\b(beauty of joseon|ultra repair|first aid beauty|round lab|skin1004|paula'?s choice|glossier|supergoop|haruharu|byoma|dieux|the ordinary|good molecules|la roche-posay|la roche posay)\b/i;
+const BEAUTY_EXACT_CATEGORY_PATTERN =
+  /\b(beauty|skin|skincare|sunscreen|spf|moisturizer|moisturiser|cleanser|serum|toner|essence|retinol|retinoid|barrier|acne|pore|oily|dry|sensitive|hydration|dewy|matte|makeup|under makeup|tretinoin|ceramide|colloidal oatmeal)\b/i;
+const BEAUTY_EXACT_ASSIST_PATTERN =
+  /\b(is|would|should)\b[^.?!]{0,140}\b(good|better|right|fit|suit|work|use)\b|\bbetter than\b|\bvs\.?\b|\bversus\b/i;
+
 function isPlainObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
@@ -64,6 +71,21 @@ function buildRecoProfileSummary(input) {
   };
 }
 
+function extractBeautyRequestProductContext(input) {
+  const payload = isPlainObject(input) ? input : {};
+  const context = isPlainObject(payload.context) ? payload.context : {};
+  const normalizedNeed = isPlainObject(context.normalized_need) ? context.normalized_need : {};
+  const beautyRequest = isPlainObject(normalizedNeed.beauty_request) ? normalizedNeed.beauty_request : {};
+  const params = isPlainObject(payload.params) ? payload.params : {};
+  const action = isPlainObject(payload.action) ? payload.action : {};
+  const actionData = isPlainObject(action.data) ? action.data : {};
+  return {
+    ...(isPlainObject(beautyRequest.product_context) ? beautyRequest.product_context : {}),
+    ...(isPlainObject(params.product_context) ? params.product_context : {}),
+    ...(isPlainObject(actionData.product_context) ? actionData.product_context : {}),
+  };
+}
+
 function resolveRecoOwnershipTargetContext(input) {
   const message = extractRecoUserMessage(input);
   if (!message) return null;
@@ -90,11 +112,40 @@ function looksLikeFrameworkRecoConcernAsk(input) {
   return hasConcernSignal && hasProductAskSignal;
 }
 
+function looksLikeBeautyExactProductAssistAsk(input) {
+  const message = extractRecoUserMessage(input);
+  const normalized = String(message || '').trim().toLowerCase();
+  const productContext = extractBeautyRequestProductContext(input);
+  const hasAnchoredProductContext = Boolean(
+    pickFirstTrimmed(
+      productContext.product_id,
+      productContext.product_group_id,
+      productContext.canonical_product_ref,
+      productContext.product_ref,
+      productContext.name,
+      productContext.title,
+    ),
+  );
+  const hasExactAssistSignal = BEAUTY_EXACT_ASSIST_PATTERN.test(normalized);
+  if (!hasAnchoredProductContext && !hasExactAssistSignal) return false;
+  const beautyRequestDomain = pickFirstTrimmed(
+    input?.context?.normalized_need?.beauty_request?.domain,
+    input?.params?.beauty_domain,
+    input?.action?.data?.beauty_domain,
+  );
+  const hasBeautySignal =
+    String(beautyRequestDomain || '').trim().toLowerCase() === 'beauty' ||
+    BEAUTY_EXACT_CATEGORY_PATTERN.test(normalized) ||
+    BEAUTY_EXACT_BRAND_PATTERN.test(normalized);
+  return hasBeautySignal;
+}
+
 function shouldKeepTypedRecoRequestOnV1Mainline(input) {
   const targetContext = resolveRecoOwnershipTargetContext(input);
   const hasFrameworkRoles = Array.isArray(targetContext?.framework_roles) && targetContext.framework_roles.length > 0;
   return Boolean(
-    hasFrameworkRoles
+    looksLikeBeautyExactProductAssistAsk(input)
+    || hasFrameworkRoles
     || targetContext?.step_aware_intent
     || looksLikeFrameworkRecoConcernAsk(input),
   );
@@ -153,6 +204,7 @@ module.exports = {
   shouldProxyFrameworkRecoToV1Mainline,
   resolveRecoOwnershipTargetContext,
   looksLikeFrameworkRecoConcernAsk,
+  looksLikeBeautyExactProductAssistAsk,
   isPlainObject,
   extractRecoTargetStepFromText,
 };

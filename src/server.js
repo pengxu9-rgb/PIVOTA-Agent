@@ -30261,12 +30261,23 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         delegatedLayer: 'decisioning',
         taskType: 'discovery',
         context: {
+          ...((effectivePayload?.context && typeof effectivePayload.context === 'object' && !Array.isArray(effectivePayload.context))
+            ? effectivePayload.context
+            : {}),
           source_profile: {
             source: String(metadata?.source || '').trim() || 'shopping_agent',
             default_entry_layer: 'orchestration',
           },
           raw_user_goal: String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim() || null,
-          normalized_need: {},
+          normalized_need:
+            effectivePayload?.context &&
+            typeof effectivePayload.context === 'object' &&
+            !Array.isArray(effectivePayload.context) &&
+            effectivePayload.context.normalized_need &&
+            typeof effectivePayload.context.normalized_need === 'object' &&
+            !Array.isArray(effectivePayload.context.normalized_need)
+              ? effectivePayload.context.normalized_need
+              : {},
         },
         metadata: {
           ...(metadata || {}),
@@ -30360,12 +30371,23 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             delegatedLayer: 'decisioning',
             taskType: 'discovery',
             context: {
+              ...((effectivePayload?.context && typeof effectivePayload.context === 'object' && !Array.isArray(effectivePayload.context))
+                ? effectivePayload.context
+                : {}),
               source_profile: {
                 source: String(metadata?.source || '').trim() || 'shopping_agent',
                 default_entry_layer: 'orchestration',
               },
               raw_user_goal: String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim() || null,
-              normalized_need: {},
+              normalized_need:
+                effectivePayload?.context &&
+                typeof effectivePayload.context === 'object' &&
+                !Array.isArray(effectivePayload.context) &&
+                effectivePayload.context.normalized_need &&
+                typeof effectivePayload.context.normalized_need === 'object' &&
+                !Array.isArray(effectivePayload.context.normalized_need)
+                  ? effectivePayload.context.normalized_need
+                  : {},
             },
             metadata: {
               ...(metadata || {}),
@@ -30459,12 +30481,23 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             delegatedLayer: 'decisioning',
             taskType: 'discovery',
             context: {
+              ...((effectivePayload?.context && typeof effectivePayload.context === 'object' && !Array.isArray(effectivePayload.context))
+                ? effectivePayload.context
+                : {}),
               source_profile: {
                 source: String(metadata?.source || '').trim() || 'shopping_agent',
                 default_entry_layer: 'orchestration',
               },
               raw_user_goal: String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim() || null,
-              normalized_need: {},
+              normalized_need:
+                effectivePayload?.context &&
+                typeof effectivePayload.context === 'object' &&
+                !Array.isArray(effectivePayload.context) &&
+                effectivePayload.context.normalized_need &&
+                typeof effectivePayload.context.normalized_need === 'object' &&
+                !Array.isArray(effectivePayload.context.normalized_need)
+                  ? effectivePayload.context.normalized_need
+                  : {},
             },
             metadata: {
               ...(metadata || {}),
