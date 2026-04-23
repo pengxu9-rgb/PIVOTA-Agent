@@ -231,6 +231,7 @@ test('buildRecoPayloadFromBeautyMainlineHandoff prunes active moisturizer compar
         brand: 'First Aid Beauty',
         matched_role_id: 'hydrating_barrier_moisturizer',
         why_this_one: 'Oily or combination skin needing hydration',
+        description: 'Perfect for oily and combo skin, the ultra-sheer formula uses hyaluronic acid, ceramides, squalane and niacinamide to support the moisture barrier.',
       },
       {
         product_id: 'ext_62685854dfc71d2634e828e6',
@@ -239,6 +240,11 @@ test('buildRecoPayloadFromBeautyMainlineHandoff prunes active moisturizer compar
         brand: 'First Aid Beauty',
         matched_role_id: 'hydrating_barrier_moisturizer',
         why_this_one: 'Dryness or barrier support',
+        product_intel: {
+          shopping_card: {
+            highlight: 'With peptides + niacinamide',
+          },
+        },
       },
     ],
   };
