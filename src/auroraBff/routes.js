@@ -54590,6 +54590,15 @@ function stripInstructionalKnownFieldReaskNoise(text = '') {
     .replace(/^\s*usage notes?\b[^\n]*$/gim, '');
 }
 
+function isRecoAssistantQuestionLikeLine(line = '') {
+  const text = String(line || '').trim();
+  if (!text) return false;
+  return (
+    /\?/.test(text) ||
+    /^(?:-|\*|\d+\.)?\s*(?:which|what|what's|what is|can you share|could you share|are you|do you have|is your|确认|是否|还是|哪种|how sensitive)\b/i.test(text)
+  );
+}
+
 function extractKnownFieldReaskQuestionText(text = '') {
   const cleaned = stripInstructionalKnownFieldReaskNoise(text);
   const lines = cleaned
@@ -54597,10 +54606,7 @@ function extractKnownFieldReaskQuestionText(text = '') {
     .map((line) => String(line || '').trim())
     .filter(Boolean);
   return lines
-    .filter((line) => (
-      /\?/.test(line) ||
-      /^(?:-|\*|\d+\.)?\s*(?:which|what|what's|what is|can you share|could you share|are you|do you have|is your|确认|是否|还是|哪种|how sensitive)\b/i.test(line)
-    ))
+    .filter((line) => isRecoAssistantQuestionLikeLine(line))
     .join('\n');
 }
 
@@ -57757,7 +57763,7 @@ function splitRecoAssistantSentences(text, max = 6) {
 function stripRecoAssistantQuestionSentences(text, { max = 8 } = {}) {
   const sentences = splitRecoAssistantSentences(text, max);
   if (!sentences.length) return String(text || '').trim();
-  const filtered = sentences.filter((sentence) => !/[?？]\s*$/.test(String(sentence || '').trim()));
+  const filtered = sentences.filter((sentence) => !isRecoAssistantQuestionLikeLine(sentence));
   return filtered.join(' ').trim();
 }
 
