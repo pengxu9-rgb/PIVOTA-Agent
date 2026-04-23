@@ -5066,6 +5066,7 @@ test('beauty mainline same-role moisturizer compare promotes non-active barrier 
           product_type: 'Moisturizer',
           retrieval_role_id: 'hydrating_barrier_moisturizer',
           retrieval_source: 'external_seed',
+          local_external_seed_role_fit_score: 0.92,
           description: 'A firming day cream with peptides, niacinamide, and collagen for dryness-focused barrier support.',
         },
         {
@@ -5175,6 +5176,7 @@ test('beauty mainline same-role moisturizer compare for dry tight use-first keep
           product_type: 'Moisturizer',
           retrieval_role_id: 'hydrating_barrier_moisturizer',
           retrieval_source: 'external_seed',
+          local_external_seed_role_fit_score: 0.91,
           description: 'A daily facial lotion with colloidal oatmeal, immediate hydration, quick-absorbing comfort, and dry, tight skin support.',
         },
         {
@@ -5197,6 +5199,7 @@ test('beauty mainline same-role moisturizer compare for dry tight use-first keep
           product_type: 'Moisturizer',
           retrieval_role_id: 'hydrating_barrier_moisturizer',
           retrieval_source: 'external_seed',
+          local_external_seed_role_fit_score: 0.89,
           description: 'A hydrating gel cream with hyaluronic acid and ceramides for lighter barrier support.',
         },
       ],
