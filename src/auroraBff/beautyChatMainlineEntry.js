@@ -510,11 +510,11 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
       (requestContextProfilePatch && typeof requestContextProfilePatch === 'object' && !Array.isArray(requestContextProfilePatch))
         || (profile && typeof profile === 'object' && !Array.isArray(profile))
         ? {
-          ...(requestContextProfilePatch && typeof requestContextProfilePatch === 'object' && !Array.isArray(requestContextProfilePatch)
-            ? requestContextProfilePatch
-            : {}),
           ...(profile && typeof profile === 'object' && !Array.isArray(profile)
             ? profile
+            : {}),
+          ...(requestContextProfilePatch && typeof requestContextProfilePatch === 'object' && !Array.isArray(requestContextProfilePatch)
+            ? requestContextProfilePatch
             : {}),
         }
         : profile;
