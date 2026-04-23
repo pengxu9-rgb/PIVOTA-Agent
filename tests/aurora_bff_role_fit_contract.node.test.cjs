@@ -353,6 +353,81 @@ test('barrier moisturizer role demotes retinoid active moisturizers despite exac
   assert.ok(Number(score?.score || 0) < 0.42);
 });
 
+test('dry barrier use-first moisturizer context demotes aging-forward day creams and boosts immediate barrier-comfort lotions', () => {
+  const role = buildHydratingBarrierMoisturizerRole();
+  const targetContext = buildDryBarrierTargetContext();
+  const firming = scoreConcernRoleCandidate(
+    {
+      title: 'Ultra Repair Firming Day Cream with Peptides, Niacinamide + Collagen',
+      retrieval_role_id: 'hydrating_barrier_moisturizer',
+    },
+    role,
+    {
+      candidateStep: 'moisturizer',
+      targetContext,
+      candidateText:
+        'Ultra Repair Firming Day Cream with Peptides, Niacinamide + Collagen moisturizer for dryness and barrier support with collagen and firming benefits.',
+    },
+  );
+  const lotion = scoreConcernRoleCandidate(
+    {
+      title: 'Ultra Repair Face Lotion with Colloidal Oatmeal',
+      retrieval_role_id: 'hydrating_barrier_moisturizer',
+    },
+    role,
+    {
+      candidateStep: 'moisturizer',
+      targetContext,
+      candidateText:
+        'Ultra Repair Face Lotion with Colloidal Oatmeal daily facial lotion with immediate hydration, quick-absorbing comfort, and dry, tight skin support.',
+    },
+  );
+
+  assert.ok(firming);
+  assert.ok(lotion);
+  assert.equal(firming?.barrier_comfort_aging_moisturizer_mismatch_applied, true);
+  assert.equal(lotion?.barrier_comfort_first_immediate_hydration_bonus_applied, true);
+  assert.ok(Number(lotion?.score || 0) > Number(firming?.score || 0));
+  assert.ok(Number(firming?.score || 0) < 0.42);
+});
+
+test('dry barrier use-first moisturizer context keeps serum-like barrier bridge products below lotion-first picks', () => {
+  const role = buildHydratingBarrierMoisturizerRole();
+  const targetContext = buildDryBarrierTargetContext();
+  const serumBridge = scoreConcernRoleCandidate(
+    {
+      title: 'KraveBeauty Great Barrier Relief',
+      retrieval_role_id: 'hydrating_barrier_moisturizer',
+    },
+    role,
+    {
+      candidateStep: 'moisturizer',
+      targetContext,
+      candidateText:
+        'KraveBeauty Great Barrier Relief barrier-repair serum for over-sensitized or irritated skin with tamanu oil, niacinamide, and ceramides.',
+    },
+  );
+  const lotion = scoreConcernRoleCandidate(
+    {
+      title: 'Ultra Repair Face Lotion with Colloidal Oatmeal',
+      retrieval_role_id: 'hydrating_barrier_moisturizer',
+    },
+    role,
+    {
+      candidateStep: 'moisturizer',
+      targetContext,
+      candidateText:
+        'Ultra Repair Face Lotion with Colloidal Oatmeal daily facial lotion with immediate hydration, quick-absorbing comfort, and dry, tight skin support.',
+    },
+  );
+
+  assert.ok(serumBridge);
+  assert.ok(lotion);
+  assert.equal(serumBridge?.barrier_comfort_serum_bridge_mismatch_applied, true);
+  assert.ok(Number(serumBridge?.score || 0) < Number(lotion?.score || 0));
+  assert.ok(Number(serumBridge?.score || 0) >= 0.42);
+});
+
 test('daily sunscreen support demotes acne/tone active SPF in sensitive barrier routine context', () => {
   const score = scoreConcernRoleCandidate(
     {

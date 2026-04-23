@@ -312,6 +312,24 @@ function roleExpectsDryBarrierRecoveryMoisturizer(role = null, preferredStep = '
   ) || hasExplicitNoAdditionalActiveConstraint(intentText);
 }
 
+function roleExpectsBarrierComfortFirstMoisturizer(role = null, preferredStep = '', targetContext = null) {
+  if (!roleExpectsDryBarrierRecoveryMoisturizer(role, preferredStep, targetContext)) return false;
+  const semanticPlan =
+    targetContext && typeof targetContext === 'object' && targetContext.semantic_plan && typeof targetContext.semantic_plan === 'object'
+      ? targetContext.semantic_plan
+      : null;
+  const selectionConstraints =
+    semanticPlan && semanticPlan.selection_constraints && typeof semanticPlan.selection_constraints === 'object'
+      ? semanticPlan.selection_constraints
+      : null;
+  const requestMode = pickFirstTrimmed(targetContext?.request_mode, semanticPlan?.request_mode);
+  const narrowingReason = pickFirstTrimmed(selectionConstraints?.narrowing_reason, targetContext?.narrowing_reason);
+  const intentText = buildConcernTargetIntentText(targetContext);
+  if (requestMode === 'use_first' || requestMode === 'buy_next') return true;
+  if (narrowingReason === 'use_first_or_buy_next_focus') return true;
+  return /\b(use first|buy next|start with|after washing|post[- ]?wash|post[- ]?cleanse)\b/i.test(intentText);
+}
+
 function hasExplicitOilyComboPositioningSignal(text = '') {
   return /\b(oily|combination|acne[- ]?prone|for oily skin|for combination skin|oil[- ]?control|shine[- ]?control)\b/i.test(String(text || ''));
 }
@@ -326,6 +344,22 @@ function hasDryBarrierRecoverySupportSignal(text = '') {
   return /\b(dry skin|tight skin|flak(?:e|y|ing)|barrier repair|barrier support|barrier lipids?|panthenol|comfort|relief|rescue|soothing|calming|sensitive skin|retinoid dryness)\b/i.test(
     String(text || ''),
   );
+}
+
+function hasBarrierComfortImmediateHydrationSignal(text = '') {
+  return /\b(face lotion|daily facial lotion|immediate hydration|quick[- ]?absorbing|velvety finish|colloidal oatmeal|dry, tight|dry and tight|easily irritated|sensitive daily moisturizing)\b/i.test(
+    String(text || ''),
+  );
+}
+
+function hasBarrierComfortAgingMoisturizerSignal(text = '') {
+  return /\b(firm(?:ing|ness)?|anti[- ]?aging|wrinkles?|fine[- ]?lines?|collagen)\b/i.test(String(text || ''));
+}
+
+function hasBarrierComfortSerumBridgeSignal(text = '') {
+  const haystack = String(text || '');
+  return /\bserum(?:-like)?\b/i.test(haystack)
+    && /\b(barrier|repair|relief|sooth(?:e|ing)?|calm(?:ing)?|redness|ceramide|tamanu|sensitive|irritat(?:e|ion))\b/i.test(haystack);
 }
 
 function buildConcernTargetIntentText(targetContext = null) {
@@ -448,6 +482,8 @@ function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '
     explicitNoAdditionalActiveExpected
     && hasAdditionalActiveForwardSignal(candidateEvidenceText);
   const dryBarrierRecoveryExpected = roleExpectsDryBarrierRecoveryMoisturizer(role, preferredStep, targetContext);
+  const barrierComfortFirstMoisturizerExpected =
+    roleExpectsBarrierComfortFirstMoisturizer(role, preferredStep, targetContext);
   const dryBarrierLightweightBiasMismatchApplied =
     dryBarrierRecoveryExpected
     && hasExplicitOilyComboPositioningSignal(candidateEvidenceText)
@@ -456,6 +492,15 @@ function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '
     dryBarrierRecoveryExpected
     && hasDryBarrierRecoverySupportSignal(candidateEvidenceText)
     && !dryBarrierLightweightBiasMismatchApplied;
+  const barrierComfortImmediateHydrationBonusApplied =
+    barrierComfortFirstMoisturizerExpected
+    && hasBarrierComfortImmediateHydrationSignal(candidateEvidenceText);
+  const barrierComfortAgingMoisturizerMismatchApplied =
+    barrierComfortFirstMoisturizerExpected
+    && hasBarrierComfortAgingMoisturizerSignal(candidateEvidenceText);
+  const barrierComfortSerumBridgeMismatchApplied =
+    barrierComfortFirstMoisturizerExpected
+    && hasBarrierComfortSerumBridgeSignal(candidateEvidenceText);
   const eyeAreaRoleMismatchApplied =
     preferredStep === 'sunscreen'
     && hasEyeAreaProductSignal(candidateEvidenceText)
@@ -520,6 +565,7 @@ function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '
     score += 0.14;
   }
   if (dryBarrierRecoverySupportBonusApplied) score += 0.12;
+  if (barrierComfortImmediateHydrationBonusApplied) score += 0.08;
   if (sunscreenUnderMakeupFinishBonusApplied) score += 0.1;
   if (treatmentSerumIngredientRescueApplied) score += 0.32;
   if (treatmentSerumActiveSemanticRescueApplied && !treatmentSerumIngredientRescueApplied) score += 0.08;
@@ -535,10 +581,14 @@ function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '
   if (lightweightTextureEvidenceMissingApplied) {
     score = Math.min(score, 0.54);
   }
+  if (barrierComfortSerumBridgeMismatchApplied) {
+    score = Math.min(score - 0.16, 0.56);
+  }
   if (
     lowIrritationActiveMismatchApplied
     || explicitNoAdditionalActiveMismatchApplied
     || dryBarrierLightweightBiasMismatchApplied
+    || barrierComfortAgingMoisturizerMismatchApplied
     || eyeAreaRoleMismatchApplied
     || lightweightTextureMismatchApplied
     || lightweightMoisturizerFormFactorMismatchApplied
@@ -564,6 +614,9 @@ function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '
     explicit_no_additional_active_mismatch_applied: explicitNoAdditionalActiveMismatchApplied,
     dry_barrier_lightweight_bias_mismatch_applied: dryBarrierLightweightBiasMismatchApplied,
     dry_barrier_recovery_support_bonus_applied: dryBarrierRecoverySupportBonusApplied,
+    barrier_comfort_first_immediate_hydration_bonus_applied: barrierComfortImmediateHydrationBonusApplied,
+    barrier_comfort_aging_moisturizer_mismatch_applied: barrierComfortAgingMoisturizerMismatchApplied,
+    barrier_comfort_serum_bridge_mismatch_applied: barrierComfortSerumBridgeMismatchApplied,
     eye_area_role_mismatch_applied: eyeAreaRoleMismatchApplied,
     lightweight_texture_mismatch_applied: lightweightTextureMismatchApplied,
     lightweight_moisturizer_form_factor_mismatch_applied: lightweightMoisturizerFormFactorMismatchApplied,
