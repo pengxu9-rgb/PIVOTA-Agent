@@ -498,6 +498,7 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
     recoEntrySourceDetail = '',
     latestRecoContextFromSession = null,
     profile = null,
+    requestContextProfilePatch = null,
     recentLogs = [],
     includeAlternatives = false,
     actionId = '',
@@ -505,7 +506,19 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
     debugUpstream = false,
   } = {}) {
     const recoRequestMessage = String(message || '').trim();
-    const profileSummary = summarizeProfileForContext(profile);
+    const effectiveProfile =
+      (requestContextProfilePatch && typeof requestContextProfilePatch === 'object' && !Array.isArray(requestContextProfilePatch))
+        || (profile && typeof profile === 'object' && !Array.isArray(profile))
+        ? {
+          ...(requestContextProfilePatch && typeof requestContextProfilePatch === 'object' && !Array.isArray(requestContextProfilePatch)
+            ? requestContextProfilePatch
+            : {}),
+          ...(profile && typeof profile === 'object' && !Array.isArray(profile)
+            ? profile
+            : {}),
+        }
+        : profile;
+    const profileSummary = summarizeProfileForContext(effectiveProfile);
     const hardPathRecoFocusForMainline = pickFirstTrimmed(
       latestRecoContextFromSession?.resolved_target_step,
       latestRecoContextFromSession?.ingredient_query,
@@ -900,7 +913,7 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
       );
       const hardPathPayloadBundle = buildRecoPayloadFromBeautyMainlineHandoff({
         handoff: effectiveHardPathHandoff,
-        profile,
+        profile: effectiveProfile,
         targetContext: effectiveHandoffTargetContext,
         recoContext: hardPathRecoContext,
         taskMode: 'goal_based_products',
@@ -934,9 +947,17 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
             ? hardPathPayloadBundle.recoContext
             : hardPathRecoContext;
         const assistantProfile =
-          profileSummary && typeof profileSummary === 'object' && !Array.isArray(profileSummary)
-            ? profileSummary
-            : profile;
+          (effectiveProfile && typeof effectiveProfile === 'object' && !Array.isArray(effectiveProfile))
+            || (profileSummary && typeof profileSummary === 'object' && !Array.isArray(profileSummary))
+            ? {
+              ...(profileSummary && typeof profileSummary === 'object' && !Array.isArray(profileSummary)
+                ? profileSummary
+                : {}),
+              ...(effectiveProfile && typeof effectiveProfile === 'object' && !Array.isArray(effectiveProfile)
+                ? effectiveProfile
+                : {}),
+            }
+            : effectiveProfile;
         if (isPlainObject(hardPathPayloadBundle.payload?.recommendation_meta)) {
           hardPathPayloadBundle.payload.recommendation_meta.selector_race_applied =
             Boolean(hardPathSelectorTrace);

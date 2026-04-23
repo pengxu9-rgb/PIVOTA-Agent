@@ -90338,6 +90338,7 @@ function mountAuroraBffRoutes(app, { logger }) {
           parsed.data?.session?.id,
         ),
       );
+      const rawProfilePatchFromRequestContext = extractProfilePatchFromRequestContextPayload(req.body || {});
       const ingressSignalSnapshot = buildChatIngressSignalSnapshot({
         data: parsed.data,
         language: ctx.match_lang || ctx.lang,
@@ -90383,6 +90384,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             recoEntrySourceDetail: 'typed_reco',
             latestRecoContextFromSession: earlyLatestRecoContextFromSession,
             profile: earlyProfileForBeautyMainline,
+            requestContextProfilePatch: rawProfilePatchFromRequestContext,
             recentLogs: [],
             includeAlternatives: earlyIncludeAlternatives,
             actionId: earlyExplicitActionId,
@@ -90468,7 +90470,7 @@ function mountAuroraBffRoutes(app, { logger }) {
       // use it as an additional best-effort context source so we don't re-ask for already-known fields when DB reads fail.
       const profilePatchFromSession = ingressSignalSnapshot.profilePatchFromSession;
       const profilePatchFromRequestContext = ingressSignalSnapshot.profilePatchFromRequestContext;
-      if (!profilePatchFromSession && !profilePatchFromRequestContext) {
+      if (!profilePatchFromSession && !profilePatchFromRequestContext && !rawProfilePatchFromRequestContext) {
         recordProfileContextMissing({ side: 'frontend' });
       }
       if (profilePatchFromSession) {
@@ -90476,6 +90478,9 @@ function mountAuroraBffRoutes(app, { logger }) {
       }
       if (profilePatchFromRequestContext) {
         profile = { ...(profile || {}), ...profilePatchFromRequestContext };
+      }
+      if (rawProfilePatchFromRequestContext) {
+        profile = { ...(profile || {}), ...rawProfilePatchFromRequestContext };
       }
       if (!chatContext && profile && typeof profile === 'object' && profile.chatContext && typeof profile.chatContext === 'object') {
         chatContext = profile.chatContext;
@@ -95074,6 +95079,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             recoEntrySourceDetail,
             latestRecoContextFromSession,
             profile,
+            requestContextProfilePatch: rawProfilePatchFromRequestContext,
             recentLogs,
             includeAlternatives,
             actionId,
