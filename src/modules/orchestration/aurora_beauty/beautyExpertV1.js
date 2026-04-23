@@ -687,6 +687,83 @@ function projectBeautyExpertResponse(response = {}, beautyExpertV1 = null) {
   return next;
 }
 
+function getAssistantTextFromResponse(response = {}) {
+  return pickFirstTrimmed(
+    response?.assistant_message?.content,
+    response?.assistant_text,
+  );
+}
+
+function getProductDisplayName(product = {}) {
+  return pickFirstTrimmed(
+    product?.name,
+    product?.title,
+    product?.display_name,
+    product?.product_name,
+    product?.sku?.name,
+    product?.sku?.title,
+  );
+}
+
+function findNormalizedTitleIndex(text = '', title = '') {
+  const normalizedText = normalizeProductToken(text);
+  const normalizedTitle = normalizeProductToken(title);
+  if (!normalizedText || !normalizedTitle) return -1;
+  return normalizedText.indexOf(normalizedTitle);
+}
+
+function suppressExactProductConflictingAssistant(response = {}, beautyExpertV1 = null) {
+  if (!isPlainObject(response) || !isPlainObject(beautyExpertV1)) return response;
+  if (beautyExpertV1.mode !== 'exact_product_assist') return response;
+  const assistantText = getAssistantTextFromResponse(response);
+  if (!assistantText) return response;
+  const products = extractRecommendationProducts(response);
+  if (!Array.isArray(products) || products.length < 2) return response;
+  const leadTitle = getProductDisplayName(products[0]);
+  if (!leadTitle) return response;
+  const leadIndex = findNormalizedTitleIndex(assistantText, leadTitle);
+  let earliestOtherIndex = -1;
+  let earliestOtherTitle = '';
+  for (const product of products.slice(1, 4)) {
+    const title = getProductDisplayName(product);
+    if (!title) continue;
+    const index = findNormalizedTitleIndex(assistantText, title);
+    if (index < 0) continue;
+    if (earliestOtherIndex < 0 || index < earliestOtherIndex) {
+      earliestOtherIndex = index;
+      earliestOtherTitle = title;
+    }
+  }
+  if (earliestOtherIndex < 0) return response;
+  if (leadIndex >= 0 && leadIndex < earliestOtherIndex) return response;
+
+  const next = {
+    ...response,
+    assistant_message: null,
+  };
+  if (Object.prototype.hasOwnProperty.call(next, 'assistant_text')) {
+    next.assistant_text = '';
+  }
+  const suppressionMeta = {
+    assistant_visible_suppressed_reason: 'exact_product_projection_assistant_mismatch',
+    assistant_projection_expected_lead: leadTitle,
+    assistant_projection_conflicting_lead: earliestOtherTitle || null,
+  };
+  if (isPlainObject(next.meta)) {
+    next.meta = {
+      ...next.meta,
+      ...suppressionMeta,
+    };
+  }
+  if (isPlainObject(next.metadata)) {
+    next.metadata = {
+      ...next.metadata,
+      ...suppressionMeta,
+    };
+  }
+  return next;
+}
+
 function attachBeautyExpertV1ToResponse(response = {}, options = {}) {
   if (!isPlainObject(response)) return response;
   const beautyExpertV1 = buildBeautyExpertV1Response({
@@ -707,24 +784,28 @@ function attachBeautyExpertV1ToResponse(response = {}, options = {}) {
           },
         }
       : beautyExpertV1;
+  const projectedVisibleResponse = suppressExactProductConflictingAssistant(
+    projectedResponse,
+    projectedBeautyExpertV1,
+  );
 
   const next = {
-    ...projectedResponse,
+    ...projectedVisibleResponse,
     beauty_expert_v1: projectedBeautyExpertV1,
   };
 
-  if (isPlainObject(projectedResponse.metadata)) {
+  if (isPlainObject(projectedVisibleResponse.metadata)) {
     next.metadata = {
-      ...projectedResponse.metadata,
+      ...projectedVisibleResponse.metadata,
       beauty_capability_invoked: true,
       beauty_mode: projectedBeautyExpertV1.mode,
       final_authority_status:
         projectedBeautyExpertV1.delegation_trace?.final_authority_status || null,
       projection_type: projectedBeautyExpertV1.delegation_trace?.projection_type || null,
     };
-  } else if (isPlainObject(projectedResponse.meta)) {
+  } else if (isPlainObject(projectedVisibleResponse.meta)) {
     next.meta = {
-      ...projectedResponse.meta,
+      ...projectedVisibleResponse.meta,
       beauty_capability_invoked: true,
       beauty_mode: projectedBeautyExpertV1.mode,
       final_authority_status:
