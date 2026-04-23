@@ -135,6 +135,19 @@ function buildDryBarrierTargetContext() {
   };
 }
 
+function buildNoActiveMoisturizerTargetContext() {
+  return {
+    request_text: 'What moisturizer product should I buy next? I do not want another active.',
+    primary_concern: 'barrier_support',
+    semantic_plan: {
+      primary_concern: 'barrier support after retinoid dryness',
+      comparison_mode: 'same_role_comparison',
+      must_satisfy_constraints: ['no active ingredients', 'moisturizer-only same-slot comparison'],
+    },
+    framework_roles: [buildHydratingBarrierMoisturizerRole()],
+  };
+}
+
 function buildUnderMakeupSunscreenTargetContext() {
   return {
     request_text: 'Based on my routine, what should I buy for daytime so my makeup stops pilling?',
@@ -605,6 +618,44 @@ test('hydrating barrier moisturizer prefers dry-barrier repair cream over oily g
   assert.equal(oilyGelScore?.dry_barrier_lightweight_bias_mismatch_applied, true);
   assert.equal(barrierCreamScore?.dry_barrier_recovery_support_bonus_applied, true);
   assert.ok(Number(barrierCreamScore?.score || 0) > Number(oilyGelScore?.score || 0));
+});
+
+test('hydrating barrier moisturizer demotes active-leaning cream when the user explicitly does not want another active', () => {
+  const role = buildHydratingBarrierMoisturizerRole();
+  const targetContext = buildNoActiveMoisturizerTargetContext();
+
+  const activeCreamScore = scoreConcernRoleCandidate(
+    {
+      title: 'Ultra Repair Firming Day Cream with Peptides, Niacinamide + Collagen',
+      retrieval_role_id: 'hydrating_barrier_moisturizer',
+    },
+    role,
+    {
+      candidateStep: 'moisturizer',
+      targetContext,
+      candidateText:
+        'Ultra Repair Firming Day Cream with peptides, niacinamide, and collagen for dryness-focused barrier support.',
+    },
+  );
+  const faceLotionScore = scoreConcernRoleCandidate(
+    {
+      title: 'Ultra Repair Face Lotion with Colloidal Oatmeal',
+      retrieval_role_id: 'hydrating_barrier_moisturizer',
+    },
+    role,
+    {
+      candidateStep: 'moisturizer',
+      targetContext,
+      candidateText:
+        'Ultra Repair Face Lotion with colloidal oatmeal and glycerin adds calming barrier comfort for dry, tight, or easily irritated skin.',
+    },
+  );
+
+  assert.ok(activeCreamScore);
+  assert.ok(faceLotionScore);
+  assert.equal(activeCreamScore?.explicit_no_additional_active_mismatch_applied, true);
+  assert.equal(faceLotionScore?.explicit_no_additional_active_mismatch_applied, false);
+  assert.ok(Number(faceLotionScore?.score || 0) > Number(activeCreamScore?.score || 0));
 });
 
 test('daily sunscreen finish-fit prefers first-wear fluid sunscreen over portable stick in makeup-pilling context', () => {

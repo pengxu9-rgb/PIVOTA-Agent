@@ -5027,6 +5027,95 @@ test('beauty mainline routine selection rejects coming-soon support products', (
   }
 });
 
+test('beauty mainline same-role moisturizer compare promotes non-active barrier lotion when the user rejects another active', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const targetContext = {
+      primary_role_id: 'hydrating_barrier_moisturizer',
+      routine_mode: 'same_role_comparison',
+      comparison_mode: 'same_role_comparison',
+      semantic_plan: {
+        routine_mode: 'same_role_comparison',
+        comparison_mode: 'same_role_comparison',
+        must_satisfy_constraints: ['no active ingredients', 'moisturizer-only same-slot comparison'],
+      },
+      mainline_fallback_policy: 'strict_no_runtime_fallback',
+      semantic_planner_required: true,
+      request_text: 'What moisturizer product should I buy next? I do not want another active.',
+      framework_roles: [
+        {
+          role_id: 'hydrating_barrier_moisturizer',
+          label: 'Hydrating barrier moisturizer',
+          preferred_step: 'moisturizer',
+          rank: 40,
+          query_terms: ['barrier repair moisturizer', 'ceramide moisturizer'],
+          fit_keywords: ['hydrating', 'barrier repair', 'ceramide', 'dry skin', 'soothing'],
+          ingredient_hypotheses: ['Ceramide NP', 'Panthenol', 'Glycerin'],
+          product_type_hypotheses: ['moisturizer', 'cream', 'lotion'],
+        },
+      ],
+    };
+    const out = __internal.finalizeConcernFrameworkCandidatePools(
+      [
+        {
+          product_id: 'fab_firming_day_cream',
+          merchant_id: 'external_seed',
+          display_name: 'Ultra Repair Firming Day Cream with Peptides, Niacinamide + Collagen',
+          brand: 'First Aid Beauty',
+          category: 'Moisturizer',
+          product_type: 'Moisturizer',
+          retrieval_role_id: 'hydrating_barrier_moisturizer',
+          retrieval_source: 'external_seed',
+          description: 'A firming day cream with peptides, niacinamide, and collagen for dryness-focused barrier support.',
+        },
+        {
+          product_id: 'fab_face_lotion',
+          merchant_id: 'external_seed',
+          display_name: 'Ultra Repair Face Lotion with Colloidal Oatmeal',
+          brand: 'First Aid Beauty',
+          category: 'Moisturizer',
+          product_type: 'Moisturizer',
+          retrieval_role_id: 'hydrating_barrier_moisturizer',
+          retrieval_source: 'external_seed',
+          description: 'A lightweight face lotion with colloidal oatmeal and glycerin for dry, tight, or easily irritated skin comfort.',
+        },
+        {
+          product_id: 'krave_great_barrier_relief',
+          merchant_id: 'merchant_internal',
+          display_name: 'KraveBeauty Great Barrier Relief',
+          brand: 'KraveBeauty',
+          category: 'Moisturizer',
+          product_type: 'Moisturizer',
+          retrieval_role_id: 'hydrating_barrier_moisturizer',
+          retrieval_source: 'catalog',
+          description: 'A barrier-repair formula with tamanu oil, niacinamide, and ceramides for over-sensitized skin.',
+        },
+        {
+          product_id: 'fab_hydrating_dewy_gel',
+          merchant_id: 'external_seed',
+          display_name: 'Hydrating Dewy Gel Cream Moisturizer with Hyaluronic Acid + Ceramides',
+          brand: 'First Aid Beauty',
+          category: 'Moisturizer',
+          product_type: 'Moisturizer',
+          retrieval_role_id: 'hydrating_barrier_moisturizer',
+          retrieval_source: 'external_seed',
+          description: 'A lightweight gel-cream with hyaluronic acid and ceramides for oily or combination skin.',
+        },
+      ],
+      { targetContext },
+    );
+
+    assert.equal(out.primary_role_matched, true);
+    assert.equal(out.selected_recommendations[0]?.product_id, 'fab_face_lotion');
+    assert.ok(
+      out.selected_recommendations.findIndex((row) => row.product_id === 'fab_face_lotion')
+        < out.selected_recommendations.findIndex((row) => row.product_id === 'fab_firming_day_cream'),
+    );
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('beauty mainline reco rows promote visible nested product fields to top level', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
