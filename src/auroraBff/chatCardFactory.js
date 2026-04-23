@@ -1110,6 +1110,12 @@ function normalizeRecommendationProductCard(raw, options = {}) {
     )
     ? finishFitSpecificShortDescription
     : baseShortDescription;
+  const declaredAlternativesCount = Number(row.alternatives_count || row.alternativesCount || 0);
+  const alternativesCount = Math.max(
+    Array.isArray(row.alternatives) ? row.alternatives.length : 0,
+    sameRoleCandidates.length,
+    Number.isFinite(declaredAlternativesCount) ? declaredAlternativesCount : 0,
+  );
   const normalized = {
     ...row,
     category:
@@ -1157,7 +1163,7 @@ function normalizeRecommendationProductCard(raw, options = {}) {
     ...(sameRoleCandidates.length ? { product_candidates: sameRoleCandidates.slice(0, 8) } : {}),
     ...(sameRoleCandidates.length ? { alternative_candidates: sameRoleCandidates.slice(0, 8) } : {}),
     ...(sameRoleCandidates.length ? { same_role_candidate_count: sameRoleCandidates.length } : {}),
-    alternatives_count: Array.isArray(row.alternatives) ? row.alternatives.length : Number(row.alternatives_count || row.alternativesCount || 0),
+    alternatives_count: alternativesCount,
   };
   return normalized;
 }
