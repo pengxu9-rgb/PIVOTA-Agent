@@ -307,13 +307,25 @@ function roleExpectsDryBarrierRecoveryMoisturizer(role = null, preferredStep = '
   const intentText = buildConcernTargetIntentText(targetContext);
   const combined = `${roleText} ${intentText}`.trim();
   if (!/\b(barrier|repair|soothing|sensitive|dry skin|tight skin|flaky)\b/i.test(combined)) return false;
+  // "I don't want another active" should prune active-forward moisturizers,
+  // but it is not enough on its own to hard-reject lighter gel-cream options.
+  // Keep the stronger dry/barrier recovery bias for explicit recovery contexts.
   return /\b(dry|tight|flak(?:e|y|ing)|retinoid|retinol|barrier|impaired|stinging|sensitive|no extra active|avoid active|repair|irritat|redness|post[- ]?cleanse)\b/i.test(
     intentText,
-  ) || hasExplicitNoAdditionalActiveConstraint(intentText);
+  );
 }
 
 function roleExpectsBarrierComfortFirstMoisturizer(role = null, preferredStep = '', targetContext = null) {
-  if (!roleExpectsDryBarrierRecoveryMoisturizer(role, preferredStep, targetContext)) return false;
+  const roleText = buildConcernRoleFitText(role);
+  const intentText = buildConcernTargetIntentText(targetContext);
+  const explicitNoAdditionalActiveBarrierCompare =
+    preferredStep === 'moisturizer'
+    && hasExplicitNoAdditionalActiveConstraint(intentText)
+    && /\b(barrier|repair|soothing|sensitive|hydrating)\b/i.test(roleText);
+  if (
+    !roleExpectsDryBarrierRecoveryMoisturizer(role, preferredStep, targetContext)
+    && !explicitNoAdditionalActiveBarrierCompare
+  ) return false;
   const semanticPlan =
     targetContext && typeof targetContext === 'object' && targetContext.semantic_plan && typeof targetContext.semantic_plan === 'object'
       ? targetContext.semantic_plan
@@ -324,7 +336,6 @@ function roleExpectsBarrierComfortFirstMoisturizer(role = null, preferredStep = 
       : null;
   const requestMode = pickFirstTrimmed(targetContext?.request_mode, semanticPlan?.request_mode);
   const narrowingReason = pickFirstTrimmed(selectionConstraints?.narrowing_reason, targetContext?.narrowing_reason);
-  const intentText = buildConcernTargetIntentText(targetContext);
   if (requestMode === 'use_first' || requestMode === 'buy_next') return true;
   if (narrowingReason === 'use_first_or_buy_next_focus') return true;
   return /\b(use first|buy next|start with|after washing|post[- ]?wash|post[- ]?cleanse)\b/i.test(intentText);
