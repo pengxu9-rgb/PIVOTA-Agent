@@ -1180,6 +1180,13 @@ function mapAuroraAlternativesToRecoAlternatives(alternatives, { lang = 'EN', ma
     const similarity = similarityPct == null ? null : Math.max(0, Math.min(100, Math.round(similarityPct)));
 
     const t = asPlainObject(a.tradeoffs);
+    const upstreamTradeoffNotes = pickCleanAltNotes(
+      [
+        ...asStringArray(a.tradeoff_notes || a.tradeoffNotes || a.tradeoff_note || a.tradeoffNote),
+        ...(Array.isArray(a.tradeoffs) ? asStringArray(a.tradeoffs) : []),
+      ],
+      4,
+    );
     const missingActives = t ? uniqueStrings(asStringArray(t.missing_actives || t.missingActives)) : [];
     const addedBenefitsRaw = t ? uniqueStrings(asStringArray(t.added_benefits || t.addedBenefits)) : [];
     const addedBenefits = pickCleanAltNotes(addedBenefitsRaw, 8);
@@ -1201,7 +1208,13 @@ function mapAuroraAlternativesToRecoAlternatives(alternatives, { lang = 'EN', ma
     const candidateOriginToken = (asString(a.candidate_origin) || '').toLowerCase();
     const groundingStatusToken = (asString(a.grounding_status) || '').toLowerCase();
     const rankingModeToken = (asString(a.ranking_mode) || '').toLowerCase();
-    const candidateOrigin = candidateOriginToken === 'open_world' ? 'open_world' : candidateOriginToken === 'catalog' ? 'catalog' : null;
+    const candidateOrigin = candidateOriginToken === 'open_world'
+      ? 'open_world'
+      : candidateOriginToken === 'catalog'
+        ? 'catalog'
+        : candidateOriginToken === 'pool'
+          ? 'pool'
+          : null;
     const groundingStatus = groundingStatusToken === 'catalog_verified'
       ? 'catalog_verified'
       : groundingStatusToken === 'name_only'
@@ -1214,7 +1227,7 @@ function mapAuroraAlternativesToRecoAlternatives(alternatives, { lang = 'EN', ma
     const rankingMode = rankingModeToken === 'personalized' ? 'personalized' : rankingModeToken === 'anchor_only' ? 'anchor_only' : null;
     const profileFitReason = pickCleanAltNotes(asStringArray(a.profile_fit_reason || a.profileFitReason), 3);
 
-    const tradeoffs = [];
+    const tradeoffs = [...upstreamTradeoffNotes];
     if (missingActives.length) {
       tradeoffs.push(
         language === 'CN'
@@ -1303,6 +1316,16 @@ function mapAuroraAlternativesToRecoAlternatives(alternatives, { lang = 'EN', ma
     if (priceDeltaUsd == null) missing_info.push('price_delta_unknown');
     if (!t) missing_info.push('tradeoffs_detail_missing');
 
+    const compareHighlights = pickCleanAltNotes(asStringArray(a.compare_highlights || a.compareHighlights), 4);
+    const keyFeatures = pickCleanAltNotes(asStringArray(a.key_features || a.keyFeatures), 6);
+    const whyThisOne = asString(a.why_this_one || a.whyThisOne);
+    const shortDescription = asString(a.short_description || a.shortDescription);
+    const bestFor = asString(a.best_for || a.bestFor);
+    const productIntel = asPlainObject(a.product_intel || a.productIntel);
+    const pivotaInsights = asPlainObject(a.pivota_insights || a.pivotaInsights);
+    const shoppingCard = asPlainObject(a.shopping_card || a.shoppingCard);
+    const searchCard = asPlainObject(a.search_card || a.searchCard);
+
     mapped.push({
       kind,
       price_tier: priceTier,
@@ -1312,6 +1335,15 @@ function mapAuroraAlternativesToRecoAlternatives(alternatives, { lang = 'EN', ma
       ...(rankingMode ? { ranking_mode: rankingMode } : {}),
       ...(similarity != null ? { similarity } : {}),
       ...(reasons.length ? { reasons: uniqueStrings(reasons).slice(0, 2) } : {}),
+      ...(compareHighlights.length ? { compare_highlights: compareHighlights } : {}),
+      ...(whyThisOne ? { why_this_one: whyThisOne } : {}),
+      ...(shortDescription ? { short_description: shortDescription } : {}),
+      ...(bestFor ? { best_for: bestFor } : {}),
+      ...(keyFeatures.length ? { key_features: keyFeatures } : {}),
+      ...(productIntel ? { product_intel: productIntel } : {}),
+      ...(pivotaInsights ? { pivota_insights: pivotaInsights } : {}),
+      ...(shoppingCard ? { shopping_card: shoppingCard } : {}),
+      ...(searchCard ? { search_card: searchCard } : {}),
       ...(profileFitReason.length ? { profile_fit_reason: profileFitReason } : {}),
       tradeoffs: uniqueStrings(tradeoffs),
       ...(Object.keys(tradeoffs_detail).length ? { tradeoffs_detail } : {}),
@@ -1337,7 +1369,7 @@ function mapAuroraAlternativesToRecoAlternatives(alternatives, { lang = 'EN', ma
       }
     }
 
-    if (!hasTradeoff && item.product) {
+    if (!hasTradeoff && item.product && (!item.reasons || !item.reasons.length)) {
       const cat = asString(item.product.category || item.product.product_type || item.product.type);
       if (cat) {
         if (!item.tradeoffs) item.tradeoffs = [];

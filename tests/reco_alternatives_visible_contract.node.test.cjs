@@ -39,3 +39,24 @@ test('visible alternatives expose authoritative identity and PDP fields at row a
   assert.equal(row.product.merchant_id, row.merchant_id);
   assert.equal(row.product.pdp_open.path, 'ref');
 });
+
+test('visible alternatives recover score from ranking metadata when normalized score is zeroed', () => {
+  const row = __internal.normalizeRecoAlternativeVisibleAuthorityContract({
+    kind: 'similar',
+    candidate_origin: 'pool',
+    grounding_status: 'catalog_verified',
+    similarity_score: 0,
+    product: {
+      product_id: 'ext_mineral_spf',
+      merchant_id: 'external_seed',
+      brand: 'Haruharu Wonder',
+      name: 'Moisture Pure Mineral Relief Sunscreen SPF50+ PA++++',
+      category: 'Sunscreen',
+    },
+    metadata: {
+      raw_similarity_score: 0.71,
+    },
+  });
+
+  assert.equal(row.similarity_score, 71);
+});
