@@ -135,6 +135,35 @@ describe('mapAuroraAlternativesToRecoAlternatives: quality gates', () => {
     expect(hasExplanation).toBe(true);
   });
 
+  test('preserves upstream authority tradeoff notes instead of adding generic category copy', () => {
+    const result = mapAuroraAlternativesToRecoAlternatives([
+      makeAlternative({
+        similarity_score: 0.77,
+        tradeoffs: null,
+        tradeoff_notes: ['Leans more mineral and less slippery for daytime SPF wear.'],
+        reasons: ['Grounded same-role alternative from authority pool.'],
+      }),
+    ], { lang: 'EN', maxTotal: 3 });
+
+    expect(result).toHaveLength(1);
+    expect(result[0].tradeoffs).toContain('Leans more mineral and less slippery for daytime SPF wear');
+    expect(result[0].tradeoffs).not.toContain('Category: moisturizer');
+  });
+
+  test('does not add category-only tradeoff when a reason already explains the candidate', () => {
+    const result = mapAuroraAlternativesToRecoAlternatives([
+      makeAlternative({
+        similarity_score: 0.72,
+        tradeoffs: null,
+        reasons: ['Leans lighter and more oil-controlling than the anchor.'],
+      }),
+    ], { lang: 'EN', maxTotal: 3 });
+
+    expect(result).toHaveLength(1);
+    expect(result[0].reasons).toContain('Leans lighter and more oil-controlling than the anchor');
+    expect(result[0].tradeoffs || []).not.toContain('Category: moisturizer');
+  });
+
   test('open-world items dedupe by brand and name when IDs are missing', () => {
     const result = mapAuroraAlternativesToRecoAlternatives([
       makeAlternative({
