@@ -91780,7 +91780,12 @@ function mountAuroraBffRoutes(app, { logger }) {
             () => upsertProfileForIdentityForRoute(identityRef, { safetyPromptState: nextState }),
             { timeoutMs: getAuroraStorageWriteTimeoutMs(), timeoutCode: 'AURORA_CHAT_SAFETY_PROMPT_STATE_TIMEOUT' },
           );
-          if (saved && typeof saved === 'object') profile = saved;
+          if (saved && typeof saved === 'object') {
+            profile = {
+              ...saved,
+              ...(profile && typeof profile === 'object' && !Array.isArray(profile) ? profile : {}),
+            };
+          }
         } catch (err) {
           logger?.warn({ err: err.code || err.message }, 'aurora bff: failed to persist safety prompt state');
         }
