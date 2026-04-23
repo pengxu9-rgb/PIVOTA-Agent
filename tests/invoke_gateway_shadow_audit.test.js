@@ -31,7 +31,7 @@ describe('invoke gateway shadow audit', () => {
     process.env = { ...ORIGINAL_ENV };
   });
 
-  it('attaches shadow governance provenance for merchant-sweep MCP traffic without blocking the invoke response', async () => {
+  it('attaches shadow governance provenance for blocked MCP traffic without blocking the invoke response', async () => {
     nock('http://pivota.test')
       .post('/agent/v2/products/search')
       .query(true)
@@ -73,7 +73,7 @@ describe('invoke gateway shadow audit', () => {
     expect(res.body.metadata.gateway_governance.observed_action).toBe('block');
     expect(res.body.metadata.gateway_governance.would_enforce).toBe(true);
     expect(res.body.metadata.gateway_governance.query_governance.reason_codes).toContain(
-      'merchant_sweep_blocked',
+      'layer_not_allowed',
     );
   });
 });
