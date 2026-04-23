@@ -154,3 +154,20 @@ test('mixed ranking score consumes mapper similarity field, not only similarity_
 
   assert.ok(score > 0.8);
 });
+
+test('selector alternatives treat zero similarity as missing and assign order-based score', () => {
+  const rows = __internal.mapSelectorCandidatesToAlternatives([
+    {
+      product_id: 'ext_daily_soothing',
+      merchant_id: 'external_seed',
+      brand: 'Haruharu Wonder',
+      name: 'Daily Soothing Sun Shield SPF50+ PA++++',
+      category: 'Sunscreen',
+      similarity_score: 0,
+      signals: ['Leans more matte and less slippery under makeup.'],
+    },
+  ], { maxTotal: 3, lang: 'EN' });
+
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].similarity, 82);
+});
