@@ -455,4 +455,84 @@ describe('beauty_expert_v1 contract', () => {
     expect(result.beauty_expert_v1.ui_projections.aurora_cards).toHaveLength(1);
     expect(result.meta.beauty_capability_invoked).toBe(true);
   });
+
+  test('attachBeautyExpertV1ToResponse projects exact-product lead order back into aurora recommendation cards', () => {
+    const result = attachBeautyExpertV1ToResponse(
+      {
+        cards: [
+          {
+            type: 'recommendations',
+            payload: {
+              recommendations: [
+                {
+                  product_id: 'firming_cream',
+                  merchant_id: 'm_1',
+                  name: 'Ultra Repair Firming Day Cream with Peptides, Niacinamide + Collagen',
+                  why_this_one: 'A moisturizer for dryness or barrier support.',
+                },
+                {
+                  product_id: 'face_lotion',
+                  merchant_id: 'm_2',
+                  name: 'Ultra Repair Face Lotion with Colloidal Oatmeal',
+                  why_this_one: 'Adds more calming barrier-comfort cues for dry, tight, or easily irritated skin.',
+                },
+              ],
+            },
+            sections: [
+              {
+                products: [
+                  {
+                    product_id: 'firming_cream',
+                    merchant_id: 'm_1',
+                    name: 'Ultra Repair Firming Day Cream with Peptides, Niacinamide + Collagen',
+                    why_this_one: 'A moisturizer for dryness or barrier support.',
+                  },
+                  {
+                    product_id: 'face_lotion',
+                    merchant_id: 'm_2',
+                    name: 'Ultra Repair Face Lotion with Colloidal Oatmeal',
+                    why_this_one: 'Adds more calming barrier-comfort cues for dry, tight, or easily irritated skin.',
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+        meta: {},
+      },
+      {
+        source: 'aurora-bff',
+        entryLayer: 'orchestration',
+        projectionType: 'aurora_cards',
+        taskType: 'discovery',
+        context: {
+          source_profile: { source: 'aurora-bff', default_entry_layer: 'orchestration' },
+          vertical: 'beauty',
+          category: 'skincare',
+          normalized_need: {
+            beauty_request: {
+              domain: 'beauty',
+              user_goal: 'I use tretinoin. Is Ultra Repair Face Lotion a better next moisturizer than a peptide cream?',
+              routine_context: {
+                actives: ['tretinoin'],
+              },
+              product_context: {
+                canonical_product_ref: 'ultra repair face lotion',
+              },
+            },
+          },
+        },
+        metadata: { catalog_surface: 'beauty' },
+        payload: { message: 'I use tretinoin. Is Ultra Repair Face Lotion a better next moisturizer than a peptide cream?' },
+        messages: [{ role: 'user', content: 'I use tretinoin. Is Ultra Repair Face Lotion a better next moisturizer than a peptide cream?' }],
+      },
+    );
+
+    expect(result.beauty_expert_v1.mode).toBe('exact_product_assist');
+    expect(result.cards[0].sections[0].products[0]?.name).toBe('Ultra Repair Face Lotion with Colloidal Oatmeal');
+    expect(result.cards[0].payload.recommendations[0]?.name).toBe('Ultra Repair Face Lotion with Colloidal Oatmeal');
+    expect(result.beauty_expert_v1.ui_projections.aurora_cards[0].sections[0].products[0]?.name).toBe(
+      'Ultra Repair Face Lotion with Colloidal Oatmeal',
+    );
+  });
 });

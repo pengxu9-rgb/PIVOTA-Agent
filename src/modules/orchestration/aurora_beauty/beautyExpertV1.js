@@ -91,6 +91,13 @@ function extractCards(response = {}) {
   return [];
 }
 
+function getCardCollectionKey(response = {}) {
+  if (Array.isArray(response.cards)) return 'cards';
+  if (Array.isArray(response.cards_v1)) return 'cards_v1';
+  if (Array.isArray(response.chat_cards)) return 'chat_cards';
+  return null;
+}
+
 function extractRecommendationProducts(response = {}) {
   if (Array.isArray(response.products) && response.products.length > 0) {
     return response.products.filter((row) => isPlainObject(row));
@@ -597,6 +604,89 @@ function buildBeautyExpertV1Response({
   });
 }
 
+function reorderBeautyProjectionRows(rows = [], {
+  mode,
+  beautyIntent,
+} = {}) {
+  const list = Array.isArray(rows) ? rows.filter((row) => isPlainObject(row)) : [];
+  if (!list.length) return [];
+  return reorderProductsForBeautyMode(list, {
+    mode,
+    beautyRequest: beautyIntent,
+    queryText: pickFirstTrimmed(beautyIntent?.user_goal),
+  });
+}
+
+function rewriteRecommendationCardForBeautyExpert(card = {}, {
+  mode,
+  beautyIntent,
+} = {}) {
+  if (!isPlainObject(card) || normalizeText(card.type || card.card_type) !== 'recommendations') return card;
+  if (mode !== 'exact_product_assist') return card;
+  const nextCard = { ...card };
+  const payload = isPlainObject(card.payload) ? { ...card.payload } : null;
+  const reorderRows = (rows) => {
+    if (!Array.isArray(rows)) return rows;
+    const reordered = reorderBeautyProjectionRows(rows, { mode, beautyIntent });
+    return reordered.length === rows.length ? reordered : rows;
+  };
+
+  if (Array.isArray(nextCard.sections)) {
+    nextCard.sections = nextCard.sections.map((section) => {
+      if (!isPlainObject(section) || !Array.isArray(section.products)) return section;
+      return {
+        ...section,
+        products: reorderRows(section.products),
+      };
+    });
+  }
+
+  if (payload) {
+    if (Array.isArray(payload.recommendations)) {
+      payload.recommendations = reorderRows(payload.recommendations);
+    }
+    if (Array.isArray(payload.products)) {
+      payload.products = reorderRows(payload.products);
+    }
+    if (Array.isArray(payload.sections)) {
+      payload.sections = payload.sections.map((section) => {
+        if (!isPlainObject(section) || !Array.isArray(section.products)) return section;
+        return {
+          ...section,
+          products: reorderRows(section.products),
+        };
+      });
+    }
+    nextCard.payload = payload;
+  }
+
+  return nextCard;
+}
+
+function projectBeautyExpertResponse(response = {}, beautyExpertV1 = null) {
+  if (!isPlainObject(response) || !isPlainObject(beautyExpertV1)) return response;
+  if (beautyExpertV1.mode !== 'exact_product_assist') return response;
+  if (normalizeSourceToken(beautyExpertV1?.delegation_trace?.projection_type) !== 'aurora-cards') return response;
+
+  const next = { ...response };
+  if (Array.isArray(response.products)) {
+    next.products = reorderBeautyProjectionRows(response.products, {
+      mode: beautyExpertV1.mode,
+      beautyIntent: beautyExpertV1.beauty_intent,
+    });
+  }
+
+  const cardCollectionKey = getCardCollectionKey(response);
+  if (cardCollectionKey) {
+    next[cardCollectionKey] = response[cardCollectionKey].map((card) =>
+      rewriteRecommendationCardForBeautyExpert(card, {
+        mode: beautyExpertV1.mode,
+        beautyIntent: beautyExpertV1.beauty_intent,
+      }));
+  }
+  return next;
+}
+
 function attachBeautyExpertV1ToResponse(response = {}, options = {}) {
   if (!isPlainObject(response)) return response;
   const beautyExpertV1 = buildBeautyExpertV1Response({
@@ -605,28 +695,41 @@ function attachBeautyExpertV1ToResponse(response = {}, options = {}) {
   });
   if (!beautyExpertV1) return response;
 
+  const projectedResponse = projectBeautyExpertResponse(response, beautyExpertV1);
+  const projectedCards = extractCards(projectedResponse);
+  const projectedBeautyExpertV1 =
+    normalizeSourceToken(beautyExpertV1?.delegation_trace?.projection_type) === 'aurora-cards'
+      ? {
+          ...beautyExpertV1,
+          ui_projections: {
+            ...(isPlainObject(beautyExpertV1.ui_projections) ? beautyExpertV1.ui_projections : {}),
+            aurora_cards: cloneJsonSafe(projectedCards, []),
+          },
+        }
+      : beautyExpertV1;
+
   const next = {
-    ...response,
-    beauty_expert_v1: beautyExpertV1,
+    ...projectedResponse,
+    beauty_expert_v1: projectedBeautyExpertV1,
   };
 
-  if (isPlainObject(response.metadata)) {
+  if (isPlainObject(projectedResponse.metadata)) {
     next.metadata = {
-      ...response.metadata,
+      ...projectedResponse.metadata,
       beauty_capability_invoked: true,
-      beauty_mode: beautyExpertV1.mode,
+      beauty_mode: projectedBeautyExpertV1.mode,
       final_authority_status:
-        beautyExpertV1.delegation_trace?.final_authority_status || null,
-      projection_type: beautyExpertV1.delegation_trace?.projection_type || null,
+        projectedBeautyExpertV1.delegation_trace?.final_authority_status || null,
+      projection_type: projectedBeautyExpertV1.delegation_trace?.projection_type || null,
     };
-  } else if (isPlainObject(response.meta)) {
+  } else if (isPlainObject(projectedResponse.meta)) {
     next.meta = {
-      ...response.meta,
+      ...projectedResponse.meta,
       beauty_capability_invoked: true,
-      beauty_mode: beautyExpertV1.mode,
+      beauty_mode: projectedBeautyExpertV1.mode,
       final_authority_status:
-        beautyExpertV1.delegation_trace?.final_authority_status || null,
-      projection_type: beautyExpertV1.delegation_trace?.projection_type || null,
+        projectedBeautyExpertV1.delegation_trace?.final_authority_status || null,
+      projection_type: projectedBeautyExpertV1.delegation_trace?.projection_type || null,
     };
   }
 

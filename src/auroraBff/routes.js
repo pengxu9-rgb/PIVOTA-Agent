@@ -58898,6 +58898,60 @@ function formatRecoAssistantFinishFitCompareTail(raw = '', {
   return ` ${prefix} ${text}`;
 }
 
+function sanitizeRecoAssistantVisibleText(text = '') {
+  let next = String(text || '').replace(/\s+/g, ' ').trim();
+  if (!next) return '';
+
+  const rewriteFinishFitSameSlotSentence = (pattern, render) => {
+    next = next.replace(pattern, (match, productName, tail) => {
+      const safeName = pickFirstTrimmed(productName);
+      const safeTail = String(tail || '').trim();
+      if (!safeName || !safeTail) return match;
+      return render(safeName, safeTail);
+    });
+  };
+
+  rewriteFinishFitSameSlotSentence(
+    /\b([^.!?]+?) is the same-slot comparison option because it leans fresher and dewier if you want (.+?)(?=[.!?]|$)/ig,
+    (productName, tail) =>
+      `${productName} makes more sense if you want a fresher, dewier finish${formatRecoAssistantFinishFitCompareTail(tail)}`,
+  );
+  rewriteFinishFitSameSlotSentence(
+    /\b([^.!?]+?) is the same-slot comparison option because it leans more matte and shine-controlling if you want (.+?)(?=[.!?]|$)/ig,
+    (productName, tail) =>
+      `${productName} makes more sense if you want a more matte, shine-controlling finish${formatRecoAssistantFinishFitCompareTail(tail)}`,
+  );
+  rewriteFinishFitSameSlotSentence(
+    /\b([^.!?]+?) is the same-slot comparison option because it leans more mineral and sensitive-skin-friendly if you want (.+?)(?=[.!?]|$)/ig,
+    (productName, tail) =>
+      `${productName} makes more sense if you want a more mineral, sensitive-skin-friendly option${formatRecoAssistantFinishFitCompareTail(tail)}`,
+  );
+  rewriteFinishFitSameSlotSentence(
+    /\b([^.!?]+?) is the same-slot comparison option because it leans richer and more moisturizing if you want (.+?)(?=[.!?]|$)/ig,
+    (productName, tail) =>
+      `${productName} makes more sense if you want a richer, more moisturizing feel${formatRecoAssistantFinishFitCompareTail(tail)}`,
+  );
+  rewriteFinishFitSameSlotSentence(
+    /\b([^.!?]+?) is the same-slot comparison option because it keeps the feel lighter and more invisible if you want (.+?)(?=[.!?]|$)/ig,
+    (productName, tail) =>
+      `${productName} makes more sense if you want the lightest, least noticeable sunscreen layer${formatRecoAssistantFinishFitCompareTail(tail)}`,
+  );
+  rewriteFinishFitSameSlotSentence(
+    /\b([^.!?]+?) is the same-slot comparison option because it keeps the finish lighter and smoother under makeup if you want (.+?)(?=[.!?]|$)/ig,
+    (productName, tail) =>
+      `${productName} makes more sense if you want a lighter, smoother sunscreen feel${formatRecoAssistantFinishFitCompareTail(tail)}`,
+  );
+
+  next = next
+    .replace(/\b(under makeup|less slip under makeup|less weight under makeup)(?=[a-z])/ig, '$1 ')
+    .replace(/\b([^.?!]+?) is the same-slot comparison option because it ([^.?!]+?)(?=[.!?]|$)/ig, '$1 $2')
+    .replace(/\s+([,.;!?])/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return next;
+}
+
 function renderRecoAssistantStructuredFinishFitCompareOptionSentence(name, reason) {
   const productName = pickFirstTrimmed(name);
   const normalizedReason = normalizeRecoAssistantBecauseReasonFragment(reason);
@@ -59533,6 +59587,7 @@ async function maybeRewriteRecoAssistantTextWithLlm({
         candidateText = stripRecoAssistantQuestionSentences(candidateText);
       }
       candidateText = appendRecoAssistantOptionalRefinementQuestion(candidateText, refinementQuestionPlan);
+      candidateText = sanitizeRecoAssistantVisibleText(candidateText);
       if (!candidateText) {
         finalizeAttempt({
           ok: false,
@@ -96895,6 +96950,7 @@ const __internal = {
   buildRecoAssistantRewritePrompt,
   validateRecoAssistantRewriteCandidate,
   renderRecoAssistantStructuredReasonRewrite,
+  sanitizeRecoAssistantVisibleText,
   enforceRecoAssistantRewriteAttemptDeadline,
   maybeRewriteRecoAssistantTextWithLlm,
   normalizeRecoAssistantReasonFragment,
