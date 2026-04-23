@@ -1413,7 +1413,6 @@ async function handleChat(req, res) {
       const normalizedMainlineResponse = attachBeautyExpertV1ToResponse(mainlineResponse, {
         source: 'aurora-bff',
         entryLayer: 'orchestration',
-        delegatedLayer: 'decisioning',
         projectionType: 'aurora_cards',
         taskType: 'discovery',
         context: {
