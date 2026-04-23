@@ -904,6 +904,48 @@ function createBeautyChatMainlineEnvelopeRuntime(deps = {}) {
     nextPayload = applyRecoCanonicalSearchResultToPayload(nextPayload, effectiveSearchResult, {
       selectionOwner: effectiveSelectionOwner,
     });
+    const finalVisibleRecommendations = pruneEnvelopeExplicitNoAdditionalActiveSameRoleRows(
+      Array.isArray(nextPayload?.recommendations) ? nextPayload.recommendations : [],
+      { targetContext },
+    );
+    if (
+      Array.isArray(nextPayload?.recommendations)
+      && finalVisibleRecommendations.length > 0
+      && finalVisibleRecommendations.length !== nextPayload.recommendations.length
+    ) {
+      const finalVisibleSelection = buildEnvelopeVisibleSelectionContract(
+        extractRecoFinalSelectionContract(nextPayload) || selectionContract,
+        finalVisibleRecommendations,
+      );
+      const nextRecommendationMeta = isPlainObject(nextPayload.recommendation_meta)
+        ? { ...nextPayload.recommendation_meta }
+        : {};
+      const nextPayloadMeta = isPlainObject(nextPayload.metadata) ? { ...nextPayload.metadata } : {};
+      nextRecommendationMeta.final_selection = finalVisibleSelection;
+      nextRecommendationMeta.selected_product_ids = finalVisibleSelection.selected_product_ids;
+      nextRecommendationMeta.selected_titles = finalVisibleSelection.selected_titles;
+      nextRecommendationMeta.selection_signature = null;
+      if (isPlainObject(nextPayloadMeta.search_stage_ledger)) {
+        nextPayloadMeta.search_stage_ledger = {
+          ...nextPayloadMeta.search_stage_ledger,
+          final_selection: finalVisibleSelection,
+        };
+      }
+      nextPayloadMeta.final_selection = finalVisibleSelection;
+      nextPayloadMeta.selected_product_ids = finalVisibleSelection.selected_product_ids;
+      nextPayloadMeta.selected_titles = finalVisibleSelection.selected_titles;
+      nextPayloadMeta.selection_signature = null;
+      nextPayload = {
+        ...nextPayload,
+        recommendations: finalVisibleRecommendations,
+        grounded_count: finalVisibleRecommendations.length,
+        ...(Array.isArray(nextPayload?.products) ? { products: finalVisibleRecommendations } : {}),
+        primary_recommendation_id:
+          extractEnvelopeRecoSelectionProductId(finalVisibleRecommendations[0]) || nextPayload.primary_recommendation_id,
+        recommendation_meta: nextRecommendationMeta,
+        metadata: nextPayloadMeta,
+      };
+    }
     nextPayload = applyRecoAssistantSelectionSignature(nextPayload);
 
     return {
