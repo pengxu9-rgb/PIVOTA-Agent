@@ -5106,11 +5106,13 @@ test('beauty mainline same-role moisturizer compare promotes non-active barrier 
     );
 
     assert.equal(out.primary_role_matched, true);
+    assert.equal(out.selected_recommendations.length, 2);
     assert.equal(out.selected_recommendations[0]?.product_id, 'fab_face_lotion');
-    assert.ok(
-      out.selected_recommendations.findIndex((row) => row.product_id === 'fab_face_lotion')
-        < out.selected_recommendations.findIndex((row) => row.product_id === 'fab_firming_day_cream'),
+    assert.deepEqual(
+      out.selected_recommendations.map((row) => row.product_id),
+      ['fab_face_lotion', 'fab_hydrating_dewy_gel'],
     );
+    assert.equal(out.selected_recommendations.some((row) => row.product_id === 'fab_firming_day_cream'), false);
   } finally {
     delete require.cache[moduleId];
   }

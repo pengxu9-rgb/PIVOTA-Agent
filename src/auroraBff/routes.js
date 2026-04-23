@@ -23957,6 +23957,82 @@ function isConcernFrameworkCandidateOverBudget(candidate = null, targetContext =
   return budget.exclusive ? amount >= budget.amount : amount > budget.amount;
 }
 
+function hasConcernFrameworkExplicitNoAdditionalActiveConstraint(targetContext = null) {
+  if (!isPlainObject(targetContext)) return false;
+  const semanticPlan = isPlainObject(targetContext.semantic_plan) ? targetContext.semantic_plan : null;
+  const text = [
+    targetContext?.request_text,
+    targetContext?.focus_text,
+    semanticPlan?.primary_concern,
+    ...(Array.isArray(semanticPlan?.must_satisfy_constraints) ? semanticPlan.must_satisfy_constraints : []),
+  ]
+    .map((value) => String(value || '').trim().toLowerCase())
+    .filter(Boolean)
+    .join(' ');
+  if (!text) return false;
+  return /\b(?:do\s*not\s*want\s*another\s*active|don't\s*want\s*another\s*active|dont\s*want\s*another\s*active|not\s+another\s+active|no\s+(?:extra\s+|more\s+)?actives?|no\s+active\s+ingredients?|must\s+not\s+contain\s+active(?:\s+treatment)?\s+ingredients?|not\s+contain\s+active(?:\s+treatment)?\s+ingredients?|non[- ]?active(?:\s+step|\s+option|\s+moisturi[sz]er)?|without\s+actives?|avoid\s+(?:extra\s+)?actives?|avoid\s+active\s+ingredients?)\b/i.test(
+    text,
+  );
+}
+
+function buildConcernFrameworkAdditionalActiveText(row = null) {
+  const candidate = isPlainObject(row) ? row : {};
+  return uniqCaseInsensitiveStrings([
+    buildConcernFrameworkCandidateText(candidate),
+    buildConcernCandidateText(candidate),
+    candidate.short_description,
+    candidate.shortDescription,
+    candidate.description,
+    candidate.summary,
+    candidate.subtitle,
+    candidate.why_this_one,
+    candidate.whyThisOne,
+    candidate?.product_intel?.shopping_card?.intro,
+    candidate?.product_intel?.search_card?.intro_candidate,
+    candidate?.product_intel?.search_card?.highlight_candidate,
+    candidate?.product_intel?.what_it_is?.body,
+    candidate?.product_intel?.product_intel_core?.what_it_is?.body,
+    ...(Array.isArray(candidate?.key_features) ? candidate.key_features : []),
+    ...(Array.isArray(candidate?.keyFeatures) ? candidate.keyFeatures : []),
+    ...(Array.isArray(candidate?.compare_highlights) ? candidate.compare_highlights : []),
+  ], 24)
+    .map((value) => String(value || '').trim().toLowerCase())
+    .filter(Boolean)
+    .join(' ');
+}
+
+function hasConcernFrameworkAdditionalActiveSignal(row = null) {
+  const text = buildConcernFrameworkAdditionalActiveText(row);
+  if (!text) return false;
+  return /\b(?:niacinamide|peptide(?:s)?|retinol|retinal|retinaldehyde|retinoid|tretinoin|adapalene|salicylic acid|glycolic acid|lactic acid|mandelic acid|azelaic acid|benzoyl peroxide|vitamin c|ascorbic acid|tranexamic acid|arbutin|kojic acid|exfoliat(?:e|ing|ion|or)|acid complex|aha|bha|pha)\b/i.test(
+    text,
+  );
+}
+
+function pruneConcernFrameworkExplicitNoAdditionalActiveSameRoleRows(rows = [], {
+  targetContext = null,
+  primaryRole = null,
+} = {}) {
+  const selectedRows = Array.isArray(rows) ? rows.filter((row) => isPlainObject(row)) : [];
+  if (selectedRows.length <= 2) return selectedRows;
+  const semanticPlan = isPlainObject(targetContext?.semantic_plan) ? targetContext.semantic_plan : null;
+  const comparisonMode = String(
+    pickFirstTrimmed(
+      targetContext?.comparison_mode,
+      targetContext?.routine_mode,
+      semanticPlan?.comparison_mode,
+      semanticPlan?.routine_mode,
+      semanticPlan?.selection_constraints?.comparison_mode,
+      semanticPlan?.selection_constraints?.routine_mode,
+    ) || '',
+  ).trim().toLowerCase();
+  if (comparisonMode !== 'same_role_comparison' && comparisonMode !== 'same_role') return selectedRows;
+  if (normalizeRecoTargetStep(primaryRole?.preferred_step) !== 'moisturizer') return selectedRows;
+  if (!hasConcernFrameworkExplicitNoAdditionalActiveConstraint(targetContext)) return selectedRows;
+  const kept = selectedRows.filter((row) => !hasConcernFrameworkAdditionalActiveSignal(row));
+  return kept.length >= 2 ? kept : selectedRows;
+}
+
 function classifyConcernFrameworkNegativeAuthority(product, role = null) {
   const roleObj = isPlainObject(role) ? role : null;
   const queryText = uniqCaseInsensitiveStrings([
@@ -24424,17 +24500,20 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
 
   const primaryRoleMatched = selected.some((item) => String(item.matched_role_id || '').trim() === primaryRoleId);
   const primaryRecommendation = selected.find((item) => String(item.matched_role_id || '').trim() === primaryRoleId) || null;
-  const primarySelectedRecommendations = selected.filter((item) => String(item.matched_role_id || '').trim() === primaryRoleId);
-  const comparisonFillCount = selected.filter((item) => item?.comparison_fill === true).length;
-  const routineSupportFillCount = selected.filter((item) => {
+  const surfacedRecommendations = primaryRoleMatched
+    ? pruneConcernFrameworkExplicitNoAdditionalActiveSameRoleRows(selected, {
+        targetContext,
+        primaryRole,
+      })
+    : [];
+  const primarySelectedRecommendations = surfacedRecommendations.filter((item) => String(item.matched_role_id || '').trim() === primaryRoleId);
+  const comparisonFillCount = surfacedRecommendations.filter((item) => item?.comparison_fill === true).length;
+  const routineSupportFillCount = surfacedRecommendations.filter((item) => {
     const roleId = String(item?.matched_role_id || '').trim();
     return Boolean(roleId && roleId !== primaryRoleId);
   }).length;
-  const bestAvailableRecommendation = selected[0] || null;
+  const bestAvailableRecommendation = surfacedRecommendations[0] || selected[0] || null;
   const primaryMissingButAuthoritativeSupportSelected = false;
-  const surfacedRecommendations = primaryRoleMatched
-    ? selected
-    : [];
   const supportViableWithoutPrimaryCount = primaryRoleMatched
     ? 0
     : viable.filter((item) => {
