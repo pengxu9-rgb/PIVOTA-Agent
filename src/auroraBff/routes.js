@@ -24313,6 +24313,27 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
     });
     const frameworkScore = Number(bestRoleScore.score.toFixed(4));
     const frameworkRankScore = Number(Math.max(0, frameworkScore + frameworkRoleFitRankAdjustment).toFixed(4));
+    const frameworkScoreState = {
+      low_irritation_active_mismatch_applied: bestRoleScore.low_irritation_active_mismatch_applied === true,
+      low_irritation_retinoid_mismatch_applied: bestRoleScore.low_irritation_retinoid_mismatch_applied === true,
+      low_irritation_offtarget_active_mismatch_applied: bestRoleScore.low_irritation_offtarget_active_mismatch_applied === true,
+      explicit_no_additional_active_mismatch_applied: bestRoleScore.explicit_no_additional_active_mismatch_applied === true,
+      dry_barrier_lightweight_bias_mismatch_applied: bestRoleScore.dry_barrier_lightweight_bias_mismatch_applied === true,
+      dry_barrier_recovery_support_bonus_applied: bestRoleScore.dry_barrier_recovery_support_bonus_applied === true,
+      barrier_comfort_first_immediate_hydration_bonus_applied: bestRoleScore.barrier_comfort_first_immediate_hydration_bonus_applied === true,
+      barrier_comfort_aging_moisturizer_mismatch_applied: bestRoleScore.barrier_comfort_aging_moisturizer_mismatch_applied === true,
+      barrier_comfort_serum_bridge_mismatch_applied: bestRoleScore.barrier_comfort_serum_bridge_mismatch_applied === true,
+      eye_area_role_mismatch_applied: bestRoleScore.eye_area_role_mismatch_applied === true,
+      lightweight_texture_mismatch_applied: bestRoleScore.lightweight_texture_mismatch_applied === true,
+      lightweight_moisturizer_form_factor_mismatch_applied: bestRoleScore.lightweight_moisturizer_form_factor_mismatch_applied === true,
+      cosmetic_finish_product_shape_mismatch_applied: bestRoleScore.cosmetic_finish_product_shape_mismatch_applied === true,
+      lightweight_texture_evidence_missing_applied: bestRoleScore.lightweight_texture_evidence_missing_applied === true,
+      sunscreen_coverage_tint_mismatch_applied: bestRoleScore.sunscreen_coverage_tint_mismatch_applied === true,
+      sunscreen_portable_reapplication_mismatch_applied: bestRoleScore.sunscreen_portable_reapplication_mismatch_applied === true,
+      sunscreen_under_makeup_finish_bonus_applied: bestRoleScore.sunscreen_under_makeup_finish_bonus_applied === true,
+      treatment_serum_ingredient_rescue_applied: bestRoleScore.treatment_serum_ingredient_rescue_applied === true,
+      treatment_serum_active_semantic_rescue_applied: bestRoleScore.treatment_serum_active_semantic_rescue_applied === true,
+    };
     const annotatedBase = {
       ...row,
       matched_role_id: String(bestRole.role_id || '').trim() || null,
@@ -24331,6 +24352,7 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
       coarse_target_relevance_class: String(coarseAuthority?.target_relevance_class || '').trim() || null,
       coarse_noise_reason: String(coarseAuthority?.noise_reason || '').trim() || null,
       framework_retrieval_role_owner_preserved: retrievalRoleOwnerPreserved,
+      ...frameworkScoreState,
     };
     if (isConcernFrameworkRefillOnlyCandidate(row)) {
       hardReject.push({
@@ -24409,6 +24431,7 @@ function finalizeConcernFrameworkCandidatePools(rawCandidates, { targetContext }
       concern_scope_classification: scopeClassification.classification,
       concern_scope_penalty: Number(scopeClassification.penalty || 0),
       framework_retrieval_role_owner_preserved: retrievalRoleOwnerPreserved,
+      ...frameworkScoreState,
     };
     rolePoolStats[annotated.matched_role_id] = {
       viable_count: Number(rolePoolStats[annotated.matched_role_id]?.viable_count || 0),
