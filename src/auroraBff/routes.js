@@ -23339,10 +23339,16 @@ function scoreConcernFrameworkCandidateTiebreak(row, { targetContext = null, mat
     candidate.url,
   );
   const candidateText = buildConcernFrameworkTiebreakCandidateText(candidate);
+  const matchedRoleId = String(matchedRole?.role_id || '').trim().toLowerCase();
   const primaryUnderMakeupSunscreenExpected = roleExpectsConcernFrameworkPrimaryUnderMakeupSunscreen(
     matchedRole,
     targetContext,
   );
+  const explicitNoAdditionalActiveBarrierCompare =
+    matchedRoleId === 'hydrating_barrier_moisturizer'
+    && hasConcernFrameworkExplicitNoAdditionalActiveConstraint(targetContext)
+    && /\b(face lotion|daily facial lotion|immediate hydration|quick[- ]?absorbing|velvety finish|colloidal oatmeal|dry, tight|dry and tight|easily irritated|sensitive daily moisturizing)\b/i
+      .test(candidateText);
   const portableReapplicationSignal = /\b(stick|sun stick|touch[- ]?up|touchup|reapply|reapplication|portable|on[- ]the[- ]go|mess[- ]?free|pocket|commute|travel(?:-|\s)?bag|carry[- ]on)\b/i
     .test(candidateText);
   const underMakeupFinishSignal = /\b(under makeup|makeup compatible|non[- ]?pilling|no pilling|smooth finish|invisible|fluid|serum sunscreen|lightweight|non[- ]?greasy|no white cast|layers? well|airy|weightless)\b/i
@@ -23354,6 +23360,7 @@ function scoreConcernFrameworkCandidateTiebreak(row, { targetContext = null, mat
   if (tagSignalCount > 0) score += Math.min(0.012, tagSignalCount * 0.0025);
   // Neutralize insertion-order bias when internal and external candidates land with the same role score.
   if (retrievalSource === 'external_seed') score += 0.01;
+  if (explicitNoAdditionalActiveBarrierCompare) score += 0.032;
   if (primaryUnderMakeupSunscreenExpected && portableReapplicationSignal) score -= 0.08;
   if (primaryUnderMakeupSunscreenExpected && underMakeupFinishSignal && !portableReapplicationSignal) score += 0.03;
   score -= scoreConcernFrameworkRetailSizePenalty(candidate);
