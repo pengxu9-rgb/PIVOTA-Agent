@@ -5843,3 +5843,119 @@ test('beauty chat mainline entry clarifies a generic skin ask before heavy retri
     'minimum_recommendation_context_unsatisfied',
   );
 });
+
+test('beauty chat mainline entry lets request profile patch override null stored profile fields', async () => {
+  const observed = {
+    payloadProfile: null,
+    rewriteProfile: null,
+  };
+  const runtime = createBeautyChatMainlineEntryRuntime({
+    RECO_CATALOG_GROUNDED_ENABLED: true,
+    RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS: 1000,
+    resolveRecommendationTargetContext: () => ({
+      entry_type: 'chat',
+      intent_mode: 'explicit_role',
+      step_aware_intent: true,
+      resolved_target_step: 'sunscreen',
+      resolved_target_step_confidence: 'high',
+      resolved_target_step_source: 'explicit_target_step',
+    }),
+    summarizeProfileForContext: (profile) => profile || {},
+    mergeIngredientRecoContextValue: (left, right) => ({ ...(left || {}), ...(right || {}) }),
+    appendLatestRecoContextToSessionPatch: () => {},
+    extractRecoFinalSelectionContract: () => ({
+      selection_owner: 'shopping_agent_beauty_mainline',
+    }),
+    maybeRewriteRecoAssistantTextWithLlm: async ({ profile }) => {
+      observed.rewriteProfile = profile;
+      return {
+        attempted: true,
+        llm_used: false,
+        reason: 'test_passthrough',
+      };
+    },
+    makeAssistantMessage: (content) => ({ role: 'assistant', format: 'text', content }),
+    buildEnvelope: (_ctx, envelope) => envelope,
+    makeEvent: (_ctx, kind, data) => ({ kind, data }),
+    applyRecoContractToRecoRequestedEvents: (events) => ({ events }),
+    buildRecoRequestedEventData: ({ payload, source }) => ({ payload, source }),
+    normalizeRecoSourceDetail: (value) => value,
+    stateChangeAllowed: () => false,
+    handoffRecoToBeautyMainlineSearch: async () => ({
+      recommendations: [
+        {
+          product_id: 'sku_hot_humid_spf',
+          name: 'Light Serum Sunscreen',
+          matched_role_id: 'daily_sunscreen_finish_fit',
+        },
+      ],
+      searchResult: {
+        decision_owner: 'shopping_agent_beauty_mainline',
+      },
+    }),
+    buildRecoPayloadFromBeautyMainlineHandoff: ({ profile }) => {
+      observed.payloadProfile = profile;
+      return {
+        payload: {
+          recommendation_meta: {},
+          metadata: {},
+          recommendations: [
+            {
+              product_id: 'sku_hot_humid_spf',
+              name: 'Light Serum Sunscreen',
+            },
+          ],
+        },
+        contract: {},
+        recoContext: {},
+      };
+    },
+    classifyBeautyMainlineHandoffFallback: () => ({
+      reason: 'unreachable',
+    }),
+    buildBeautyMainlineHandoffFallbackEnvelope: ({ fallback }) => ({
+      cards: [{ type: 'confidence_notice', payload: fallback }],
+    }),
+    looksLikeRecommendationRequest: () => true,
+    sendChatEnvelope: async () => null,
+  });
+
+  const result = await runtime.maybeHandleBeautyOwnedChatReco({
+    ctx: {
+      request_id: 'req_request_patch_profile_override',
+      trace_id: 'trace_request_patch_profile_override',
+      lang: 'EN',
+      trigger_source: 'chat',
+    },
+    logger: null,
+    message: 'I commute in hot humid weather and hate heavy SPF. What sunscreen product should I use?',
+    recoEntrySourceDetail: 'typed_reco',
+    profile: {
+      skinType: null,
+      sensitivity: null,
+      barrierStatus: null,
+      goals: [],
+      travel_plan: {
+        destination: 'hot humid',
+      },
+    },
+    requestContextProfilePatch: {
+      skinType: 'combination',
+      sensitivity: 'low',
+      barrierStatus: 'stable',
+      goals: ['sun protection', 'lightweight finish'],
+    },
+  });
+
+  assert.equal(result?.handled, true);
+  assert.equal(observed.payloadProfile?.skinType, 'combination');
+  assert.equal(observed.payloadProfile?.sensitivity, 'low');
+  assert.equal(observed.payloadProfile?.barrierStatus, 'stable');
+  assert.deepEqual(observed.payloadProfile?.goals, ['sun protection', 'lightweight finish']);
+  assert.deepEqual(observed.payloadProfile?.travel_plan, { destination: 'hot humid' });
+  assert.equal(observed.rewriteProfile?.skinType, 'combination');
+  assert.equal(observed.rewriteProfile?.sensitivity, 'low');
+  assert.equal(observed.rewriteProfile?.barrierStatus, 'stable');
+  assert.deepEqual(observed.rewriteProfile?.goals, ['sun protection', 'lightweight finish']);
+  assert.deepEqual(observed.rewriteProfile?.travel_plan, { destination: 'hot humid' });
+});
