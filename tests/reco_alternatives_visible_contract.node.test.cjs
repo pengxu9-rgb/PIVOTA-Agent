@@ -104,3 +104,53 @@ test('final visible alternatives replace category-only tradeoff with shopper tra
   assert.match(row.tradeoff_notes[0], /serum-like|fresh|thinner sunscreen/i);
   assert.match(row.why_this_one, /serum-like|fresh|thinner sunscreen/i);
 });
+
+test('alternative duplicate merge preserves mapper similarity field for ranking parity', () => {
+  const merged = __internal.mergeRecoAlternativeDuplicateRows(
+    {
+      kind: 'similar',
+      candidate_origin: 'pool',
+      grounding_status: 'catalog_verified',
+      similarity: 82,
+      product: {
+        product_id: 'ext_airyfit',
+        merchant_id: 'external_seed',
+        brand: 'Haruharu Wonder',
+        name: 'Moisture Airyfit Daily Sunscreen SPF50+ PA++++',
+      },
+      reasons: ['Grounded same-role alternative.'],
+    },
+    {
+      kind: 'similar',
+      candidate_origin: 'pool',
+      grounding_status: 'catalog_verified',
+      similarity_score: 0,
+      product: {
+        product_id: 'ext_airyfit',
+        merchant_id: 'external_seed',
+        brand: 'Haruharu Wonder',
+        name: 'Moisture Airyfit Daily Sunscreen SPF50+ PA++++',
+      },
+      reasons: ['Catalog hydration row.'],
+    },
+  );
+
+  assert.equal(merged.similarity_score, 82);
+});
+
+test('mixed ranking score consumes mapper similarity field, not only similarity_score', () => {
+  const score = __internal.getRecoAlternativeMixedRankingScore({
+    kind: 'similar',
+    candidate_origin: 'pool',
+    grounding_status: 'catalog_verified',
+    similarity: 82,
+    product: {
+      product_id: 'ext_airyfit',
+      merchant_id: 'external_seed',
+      brand: 'Haruharu Wonder',
+      name: 'Moisture Airyfit Daily Sunscreen SPF50+ PA++++',
+    },
+  });
+
+  assert.ok(score > 0.8);
+});
