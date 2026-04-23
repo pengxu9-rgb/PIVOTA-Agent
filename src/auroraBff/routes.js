@@ -57754,6 +57754,13 @@ function splitRecoAssistantSentences(text, max = 6) {
     .slice(0, Math.max(1, max));
 }
 
+function stripRecoAssistantQuestionSentences(text, { max = 8 } = {}) {
+  const sentences = splitRecoAssistantSentences(text, max);
+  if (!sentences.length) return String(text || '').trim();
+  const filtered = sentences.filter((sentence) => !/[?？]\s*$/.test(String(sentence || '').trim()));
+  return filtered.join(' ').trim();
+}
+
 function compactSingleDirectionRecoAssistantText(text, {
   names = [],
   secondaryTargets = [],
@@ -59458,6 +59465,9 @@ async function maybeRewriteRecoAssistantTextWithLlm({
         names,
         secondaryTargets,
       });
+      if (finishFitPrimaryAttempt && selectedProductRoleMix === 'same_role_comparison') {
+        candidateText = stripRecoAssistantQuestionSentences(candidateText);
+      }
       candidateText = appendRecoAssistantOptionalRefinementQuestion(candidateText, refinementQuestionPlan);
       if (!candidateText) {
         finalizeAttempt({
