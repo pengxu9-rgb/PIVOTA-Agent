@@ -203,7 +203,7 @@ function hasOffTargetIrritationActiveSignal(text = '') {
 }
 
 function hasExplicitNoAdditionalActiveConstraint(text = '') {
-  return /\b(?:do\s*not\s*want\s*another\s*active|don't\s*want\s*another\s*active|dont\s*want\s*another\s*active|not\s+another\s+active|no\s+(?:extra\s+|more\s+)?actives?|no\s+active\s+ingredients?|non[- ]?active(?:\s+step|\s+option|\s+moisturi[sz]er)?|without\s+actives?|avoid\s+(?:extra\s+)?actives?|avoid\s+active\s+ingredients?)\b/i.test(
+  return /\b(?:do\s*not\s*want\s*another\s*active|don't\s*want\s*another\s*active|dont\s*want\s*another\s*active|not\s+another\s+active|no\s+(?:extra\s+|more\s+)?actives?|no\s+active\s+ingredients?|must\s+not\s+contain\s+active(?:\s+treatment)?\s+ingredients?|not\s+contain\s+active(?:\s+treatment)?\s+ingredients?|non[- ]?active(?:\s+step|\s+option|\s+moisturi[sz]er)?|without\s+actives?|avoid\s+(?:extra\s+)?actives?|avoid\s+active\s+ingredients?)\b/i.test(
     String(text || ''),
   );
 }

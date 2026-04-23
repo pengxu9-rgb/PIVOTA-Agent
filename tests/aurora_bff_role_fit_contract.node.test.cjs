@@ -142,7 +142,7 @@ function buildNoActiveMoisturizerTargetContext() {
     semantic_plan: {
       primary_concern: 'barrier support after retinoid dryness',
       comparison_mode: 'same_role_comparison',
-      must_satisfy_constraints: ['no active ingredients', 'moisturizer-only same-slot comparison'],
+      must_satisfy_constraints: ['must not contain active treatment ingredients', 'moisturizer-only same-slot comparison'],
     },
     framework_roles: [buildHydratingBarrierMoisturizerRole()],
   };

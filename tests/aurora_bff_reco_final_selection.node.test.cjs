@@ -5037,7 +5037,7 @@ test('beauty mainline same-role moisturizer compare promotes non-active barrier 
       semantic_plan: {
         routine_mode: 'same_role_comparison',
         comparison_mode: 'same_role_comparison',
-        must_satisfy_constraints: ['no active ingredients', 'moisturizer-only same-slot comparison'],
+        must_satisfy_constraints: ['must not contain active treatment ingredients', 'moisturizer-only same-slot comparison'],
       },
       mainline_fallback_policy: 'strict_no_runtime_fallback',
       semantic_planner_required: true,
