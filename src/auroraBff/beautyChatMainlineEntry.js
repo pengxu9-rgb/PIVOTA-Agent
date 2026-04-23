@@ -10,6 +10,86 @@ function pickFirstTrimmed(...values) {
   return '';
 }
 
+function uniqueBeautyMainlineStrings(values = [], max = 8) {
+  const out = [];
+  const seen = new Set();
+  for (const value of Array.isArray(values) ? values : []) {
+    const token = String(value || '').replace(/\s+/g, ' ').trim();
+    if (!token) continue;
+    const key = token.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(token);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+function collectBeautyExactProductQueryTerms(beautyRequestContext = null) {
+  const request =
+    beautyRequestContext && typeof beautyRequestContext === 'object' && !Array.isArray(beautyRequestContext)
+      ? beautyRequestContext
+      : null;
+  const productContext =
+    request?.product_context && typeof request.product_context === 'object' && !Array.isArray(request.product_context)
+      ? request.product_context
+      : null;
+  if (!productContext) return [];
+  const brand = pickFirstTrimmed(productContext.brand, productContext.brand_name);
+  const title = pickFirstTrimmed(
+    productContext.product_name,
+    productContext.name,
+    productContext.title,
+    productContext.display_name,
+    productContext.canonical_product_ref,
+    productContext.product_ref,
+  );
+  return uniqueBeautyMainlineStrings([
+    brand && title ? `${brand} ${title}` : '',
+    title,
+    pickFirstTrimmed(productContext.canonical_product_ref),
+    pickFirstTrimmed(productContext.product_ref),
+    pickFirstTrimmed(productContext.product_id),
+    pickFirstTrimmed(productContext.product_group_id),
+  ]);
+}
+
+function augmentBeautyExactProductTargetContext(targetContext = null, beautyRequestContext = null) {
+  const terms = collectBeautyExactProductQueryTerms(beautyRequestContext);
+  if (!terms.length || !isPlainObject(targetContext)) return targetContext;
+  const prependTerms = (values = []) => uniqueBeautyMainlineStrings([
+    ...terms,
+    ...(Array.isArray(values) ? values : []),
+  ], 12);
+  const augmentRole = (role) => {
+    if (!isPlainObject(role)) return role;
+    return {
+      ...role,
+      query_terms: prependTerms(role.query_terms),
+      exact_product_anchor_query_terms: terms.slice(0, 6),
+    };
+  };
+  const semanticPlan = isPlainObject(targetContext.semantic_plan)
+    ? {
+        ...targetContext.semantic_plan,
+      }
+    : null;
+  if (semanticPlan && Array.isArray(semanticPlan.core_roles)) {
+    semanticPlan.core_roles = semanticPlan.core_roles.map(augmentRole);
+  }
+  return {
+    ...targetContext,
+    exact_product_anchor_query_terms: terms.slice(0, 6),
+    framework_roles: Array.isArray(targetContext.framework_roles)
+      ? targetContext.framework_roles.map(augmentRole)
+      : targetContext.framework_roles,
+    support_roles: Array.isArray(targetContext.support_roles)
+      ? targetContext.support_roles.map(augmentRole)
+      : targetContext.support_roles,
+    ...(semanticPlan ? { semantic_plan: semanticPlan } : {}),
+  };
+}
+
 function shouldUseBeautyChatMainlinePlanner(targetContext = null) {
   const entryType = String(targetContext?.entry_type || 'chat').trim().toLowerCase();
   if (entryType && entryType !== 'chat') return false;
@@ -502,6 +582,7 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
     recentLogs = [],
     includeAlternatives = false,
     actionId = '',
+    beautyRequestContext = null,
     shouldAutoRerunRecommendationsFromProfilePatch = false,
     debugUpstream = false,
   } = {}) {
@@ -524,17 +605,20 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
       latestRecoContextFromSession?.ingredient_query,
       latestRecoContextFromSession?.goal,
     );
-    const hardPathRecoTargetContext = resolveRecommendationTargetContext({
-      explicitStep: pickFirstTrimmed(
-        latestRecoContextFromSession?.target_step,
-        latestRecoContextFromSession?.step,
-        latestRecoContextFromSession?.resolved_target_step,
-      ),
-      focus: hardPathRecoFocusForMainline,
-      text: recoRequestMessage || message,
-      entryType: 'chat',
-      profileSummary,
-    });
+    const hardPathRecoTargetContext = augmentBeautyExactProductTargetContext(
+      resolveRecommendationTargetContext({
+        explicitStep: pickFirstTrimmed(
+          latestRecoContextFromSession?.target_step,
+          latestRecoContextFromSession?.step,
+          latestRecoContextFromSession?.resolved_target_step,
+        ),
+        focus: hardPathRecoFocusForMainline,
+        text: recoRequestMessage || message,
+        entryType: 'chat',
+        profileSummary,
+      }),
+      beautyRequestContext,
+    );
     const hardPathBeautyRecoOwnership = isBeautyOwnedChatRecoRequest({
       typedRecoOwnershipKeepsV1Mainline,
       forceUpstreamAfterPendingAbandon,
@@ -659,11 +743,14 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
               : null;
           hardPathPlannerSemanticPlan = plannerSemanticPlan;
           if (plannerSemanticPlan) {
-            const plannerTargetContext = buildConcernTargetContextFromSemanticPlan(plannerSemanticPlan, {
-              text: pickFirstTrimmed(recoRequestMessage, message),
-              focus: hardPathRecoFocusForMainline,
-              entryType: 'chat',
-            });
+            const plannerTargetContext = augmentBeautyExactProductTargetContext(
+              buildConcernTargetContextFromSemanticPlan(plannerSemanticPlan, {
+                text: pickFirstTrimmed(recoRequestMessage, message),
+                focus: hardPathRecoFocusForMainline,
+                entryType: 'chat',
+              }),
+              beautyRequestContext,
+            );
             effectivePlannerTargetContext = normalizeBeautyChatPlannerTargetContext(
               hardPathRecoTargetContext,
               isPlainObject(plannerTargetContext)
@@ -1132,4 +1219,8 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
 
 module.exports = {
   createBeautyChatMainlineEntryRuntime,
+  __internal: {
+    collectBeautyExactProductQueryTerms,
+    augmentBeautyExactProductTargetContext,
+  },
 };

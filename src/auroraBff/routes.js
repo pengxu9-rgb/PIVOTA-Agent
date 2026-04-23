@@ -90534,6 +90534,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             recentLogs: [],
             includeAlternatives: earlyIncludeAlternatives,
             actionId: earlyExplicitActionId,
+            beautyRequestContext: parsed.data?.context?.normalized_need?.beauty_request,
             shouldAutoRerunRecommendationsFromProfilePatch: false,
             debugUpstream: earlyDebugUpstream,
           });
@@ -92189,6 +92190,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             recentLogs,
             includeAlternatives,
             actionId,
+            beautyRequestContext: parsed.data?.context?.normalized_need?.beauty_request,
             shouldAutoRerunRecommendationsFromProfilePatch: false,
             debugUpstream,
           });
@@ -95234,6 +95236,7 @@ function mountAuroraBffRoutes(app, { logger }) {
             recentLogs,
             includeAlternatives,
             actionId,
+            beautyRequestContext: parsed.data?.context?.normalized_need?.beauty_request,
             shouldAutoRerunRecommendationsFromProfilePatch,
             debugUpstream,
           });
