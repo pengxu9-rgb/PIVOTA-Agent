@@ -61436,24 +61436,28 @@ function looksLikeWeatherOrEnvironmentQuestion(message) {
   if (!t) return false;
 
   const lower = t.toLowerCase();
-
-  // English
-  if (
+  const hasWeatherLexicalSignal =
     /\b(snow|rain|weather|humidity|uv|climate|wind|dry air|cold|heat|sun exposure|travel|itinerary|destination|flight|ski)\b/i.test(
       lower,
-    )
-  )
-    return true;
-
-  // Chinese (keep focused on environment, not general skin symptoms)
-  if (
+    ) ||
     /(下雪|雪天|下雨|雨天|天气|气温|温度|湿度|紫外线|UV|风大|大风|寒冷|冷空气|高温|热浪|干燥(空气|天气)?|雾霾|污染|花粉|旅行|出差|飞行|飞机|高原|海边|滑雪|户外)/.test(
       t,
-    )
-  )
-    return true;
+    );
+  if (!hasWeatherLexicalSignal) return false;
 
-  return false;
+  const explicitTravelPlanningContext =
+    /\b(travel|trip|business trip|destination|itinerary|flight|airport|hotel|packing|pack|carry[- ]?on|departure|arrival|landing|layover|vacation)\b/i.test(
+      lower,
+    ) ||
+    /(旅行|出差|目的地|行程|航班|机场|酒店|打包|收拾行李|随身行李|起飞|落地|中转|度假)/.test(t);
+  const explicitBeautyProductAsk =
+    (looksLikeRecommendationRequest(t) || looksLikeSuitabilityRequest(t)) &&
+    /\b(sunscreen|spf|sun\s*screen|moisturi[sz]er|cream|lotion|serum|cleanser|face wash|gel[- ]?cream|routine|skincare\s+product|product|products?)\b/i.test(
+      lower,
+    );
+  if (explicitBeautyProductAsk && !explicitTravelPlanningContext) return false;
+
+  return true;
 }
 
 function extractWeatherScenario(message) {
