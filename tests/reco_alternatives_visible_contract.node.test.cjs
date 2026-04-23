@@ -310,3 +310,20 @@ test('selector alternatives treat zero similarity as missing and assign order-ba
   assert.equal(rows.length, 1);
   assert.equal(rows[0].similarity, 82);
 });
+
+test('selector alternatives preserve embedded authority metadata for final ranking', () => {
+  const rows = __internal.mapSelectorCandidatesToAlternatives([
+    {
+      product_id: 'ext_airyfit',
+      merchant_id: 'external_seed',
+      brand: 'Haruharu Wonder',
+      name: 'Moisture Airyfit Daily Sunscreen SPF50+ PA++++',
+      category: 'Sunscreen',
+      candidate_pool_source: 'product_alternative_candidates',
+      candidate_pool_rank: 2,
+    },
+  ], { maxTotal: 3, lang: 'EN' });
+
+  assert.equal(rows[0].metadata.embedded_alternative_candidate_source, 'product_alternative_candidates');
+  assert.equal(rows[0].metadata.embedded_alternative_candidate_rank, 2);
+});

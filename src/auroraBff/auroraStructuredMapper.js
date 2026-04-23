@@ -1325,6 +1325,7 @@ function mapAuroraAlternativesToRecoAlternatives(alternatives, { lang = 'EN', ma
     const pivotaInsights = asPlainObject(a.pivota_insights || a.pivotaInsights);
     const shoppingCard = asPlainObject(a.shopping_card || a.shoppingCard);
     const searchCard = asPlainObject(a.search_card || a.searchCard);
+    const metadata = asPlainObject(a.metadata || a.meta);
 
     mapped.push({
       kind,
@@ -1344,6 +1345,7 @@ function mapAuroraAlternativesToRecoAlternatives(alternatives, { lang = 'EN', ma
       ...(pivotaInsights ? { pivota_insights: pivotaInsights } : {}),
       ...(shoppingCard ? { shopping_card: shoppingCard } : {}),
       ...(searchCard ? { search_card: searchCard } : {}),
+      ...(metadata ? { metadata } : {}),
       ...(profileFitReason.length ? { profile_fit_reason: profileFitReason } : {}),
       tradeoffs: uniqueStrings(tradeoffs),
       ...(Object.keys(tradeoffs_detail).length ? { tradeoffs_detail } : {}),
