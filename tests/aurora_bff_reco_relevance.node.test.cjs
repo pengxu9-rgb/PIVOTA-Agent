@@ -5054,6 +5054,72 @@ test('__internal: local external seed sunscreen finish query uses precise query 
   assert.equal(out.products[0].product_id, 'ext_support_sunscreen_221');
 });
 
+test('__internal: local external seed multi-query sunscreen compare uses one precise authority query', async () => {
+  const { __internal } = loadRoutesFresh();
+  const observedQueries = [];
+  const out = await __internal.searchLocalExternalSeedProductsForQueryVariants({
+    queries: ['spf fluid', 'mineral sunscreen', 'sunscreen milk'],
+    limit: 3,
+    role: {
+      role_id: 'daily_sunscreen_finish_fit',
+      rank: 1,
+      preferred_step: 'sunscreen',
+      query_terms: ['spf fluid', 'mineral sunscreen', 'sunscreen milk'],
+      fit_keywords: ['spf', 'uv protection', 'under makeup'],
+      product_type_hypotheses: ['sunscreen'],
+    },
+    preferredStep: 'sunscreen',
+    queryFn: async (sql, params) => {
+      observedQueries.push({ sql: String(sql || ''), params });
+      return {
+        rows: [
+          {
+            id: '231',
+            external_product_id: 'ext_support_sunscreen_231',
+            destination_url: 'https://example.com/products/airy-sun-fluid',
+            canonical_url: 'https://example.com/products/airy-sun-fluid',
+            domain: 'example.com',
+            title: 'Airy Sun Fluid SPF 50',
+            image_url: 'https://example.com/products/airy-sun-fluid.jpg',
+            price_amount: 26,
+            price_currency: 'USD',
+            availability: 'in_stock',
+            match_stage: 'support_query_precise',
+            match_score: 58,
+            seed_data: {
+              derived: {
+                recall: {
+                  retrieval_title: 'Airy Sun Fluid SPF 50',
+                  retrieval_summary: 'A lightweight sunscreen fluid for smoother wear under makeup.',
+                  category: 'Sunscreen',
+                  vertical: 'skincare',
+                },
+              },
+              snapshot: {
+                title: 'Airy Sun Fluid SPF 50',
+                description: 'Lightweight sunscreen fluid.',
+                category: 'Sunscreen',
+              },
+            },
+            updated_at: new Date().toISOString(),
+            created_at: new Date().toISOString(),
+          },
+        ],
+      };
+    },
+  });
+
+  assert.equal(out.ok, true);
+  assert.equal(out.local_external_seed_search_mode, 'staged_support_multi_query');
+  assert.equal(out.local_external_seed_query_count, 3);
+  assert.equal(observedQueries.length, 1);
+  assert.match(observedQueries[0].sql, /support_query_precise/);
+  assert.ok(observedQueries[0].params[3].includes('%spf fluid%'));
+  assert.ok(observedQueries[0].params[3].includes('%mineral sunscreen%'));
+  assert.ok(observedQueries[0].params[3].includes('%sunscreen milk%'));
+  assert.equal(out.products[0].product_id, 'ext_support_sunscreen_231');
+});
+
 test('__internal: local external seed same-role sunscreen compare runs precise query stage before broad category-positive recall', async () => {
   const { __internal } = loadRoutesFresh();
   const observedQueries = [];

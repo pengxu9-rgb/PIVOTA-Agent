@@ -129,6 +129,51 @@ test('final visible alternatives replace weak similarity reasons with shopper tr
   assert.match(row.reasons[0], /serum-like|fresh|thinner sunscreen/i);
 });
 
+test('final visible alternatives drops generic overlap reason when tradeoff exists', () => {
+  const row = __internal.applyFinalRecoAlternativeVisibleShopperCopy({
+    kind: 'similar',
+    candidate_origin: 'pool',
+    grounding_status: 'catalog_verified',
+    product: {
+      product_id: 'ext_hydrating_milk',
+      merchant_id: 'external_seed',
+      brand: 'First Aid Beauty',
+      name: 'Hydrating Sunscreen Milk with Colloidal Oatmeal Broad Spectrum SPF 45',
+      category: 'Sunscreen',
+    },
+    brand: 'First Aid Beauty',
+    name: 'Hydrating Sunscreen Milk with Colloidal Oatmeal Broad Spectrum SPF 45',
+    reasons: ['Overlaps the anchor use case and claims.'],
+    tradeoff_notes: ['Leans more hydrating and creamier if you want a cushier sunscreen layer.'],
+  });
+
+  assert.equal(row.reasons.some((reason) => /overlaps the anchor/i.test(reason)), false);
+  assert.match(row.reasons[0], /hydrating|creamier|cushier/i);
+});
+
+test('final visible alternatives explains moisturizer-SPF rows as lower-SPF tradeoffs', () => {
+  const row = __internal.applyFinalRecoAlternativeVisibleShopperCopy({
+    kind: 'similar',
+    candidate_origin: 'pool',
+    grounding_status: 'catalog_verified',
+    product: {
+      product_id: 'ext_dayscreen',
+      merchant_id: 'external_seed',
+      brand: 'Beauty of Joseon',
+      name: 'Dayscreen Moisturizer SPF 30',
+      category: 'Sunscreen',
+      description: 'Lightweight daily moisturizer with SPF 30 and a breathable bare-skin finish.',
+    },
+    brand: 'Beauty of Joseon',
+    name: 'Dayscreen Moisturizer SPF 30',
+    description: 'Lightweight daily moisturizer with SPF 30 and a breathable bare-skin finish.',
+    reasons: ['Lightweight daily moisturizer with SPF 30 and a breathable finish.'],
+  });
+
+  assert.match(row.tradeoff_notes[0], /moisturizer-like|lower-SPF|SPF50/i);
+  assert.match(row.reasons[0], /moisturizer-like|lower-SPF|SPF50/i);
+});
+
 test('alternative duplicate merge preserves mapper similarity field for ranking parity', () => {
   const merged = __internal.mergeRecoAlternativeDuplicateRows(
     {
