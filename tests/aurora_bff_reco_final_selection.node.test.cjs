@@ -3414,6 +3414,22 @@ test('reco assistant structured renderer strips legacy uv-protection fragments a
   }
 });
 
+test('reco assistant visible-text sanitizer rewrites leaked same-slot finish-fit phrasing and fixes token glue', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const text = __internal.sanitizeRecoAssistantVisibleText(
+      'Beauty of Joseon Day Dew Sunscreen is the same-slot comparison option because it leans fresher and dewier if you want a bit more hydration without a heavier cream feel. SKINTIFIC Light Serum Sunscreen SPF 50+ PA++++ is the same-slot comparison option because it keeps the feel lighter and more invisible if you want less weight under makeupa serum texture.',
+    );
+
+    assert.match(text, /Beauty of Joseon Day Dew Sunscreen makes more sense if you want a fresher, dewier finish/i);
+    assert.match(text, /SKINTIFIC Light Serum Sunscreen SPF 50\+ PA\+\+\+\+ makes more sense if you want the lightest, least noticeable sunscreen layer/i);
+    assert.doesNotMatch(text, /same-slot comparison option because/i);
+    assert.doesNotMatch(text, /under makeupa/i);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('reco assistant validator rejects unsupported primer-equivalence claims for finish-fit sunscreen copy', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
