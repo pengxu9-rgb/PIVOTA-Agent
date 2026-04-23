@@ -934,8 +934,16 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
             ? hardPathPayloadBundle.recoContext
             : hardPathRecoContext;
         const assistantProfile =
-          profileSummary && typeof profileSummary === 'object' && !Array.isArray(profileSummary)
-            ? profileSummary
+          (profile && typeof profile === 'object' && !Array.isArray(profile))
+            || (profileSummary && typeof profileSummary === 'object' && !Array.isArray(profileSummary))
+            ? {
+              ...(profileSummary && typeof profileSummary === 'object' && !Array.isArray(profileSummary)
+                ? profileSummary
+                : {}),
+              ...(profile && typeof profile === 'object' && !Array.isArray(profile)
+                ? profile
+                : {}),
+            }
             : profile;
         if (isPlainObject(hardPathPayloadBundle.payload?.recommendation_meta)) {
           hardPathPayloadBundle.payload.recommendation_meta.selector_race_applied =
