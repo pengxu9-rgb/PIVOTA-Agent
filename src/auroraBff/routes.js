@@ -23677,6 +23677,7 @@ function shouldPreserveConcernFrameworkRetrievalRoleScore(roleScore = null) {
     || scoreObj.lightweight_moisturizer_form_factor_mismatch_applied === true
     || scoreObj.cosmetic_finish_product_shape_mismatch_applied === true
     || scoreObj.sunscreen_coverage_tint_mismatch_applied === true
+    || scoreObj.barrier_comfort_aging_moisturizer_mismatch_applied === true
   ) {
     return false;
   }
@@ -23744,6 +23745,9 @@ function isConcernFrameworkStrongViableCandidate(candidate, role = null) {
   const externalSeedAuthority =
     String(product?.retrieval_source || '').trim().toLowerCase() === 'external_seed'
     || String(product?.merchant_id || product?.merchantId || '').trim().toLowerCase() === 'external_seed';
+  if (product?.barrier_comfort_aging_moisturizer_mismatch_applied === true) {
+    return false;
+  }
   if (
     externalSeedAuthority
     && retrievalRoleMatched
