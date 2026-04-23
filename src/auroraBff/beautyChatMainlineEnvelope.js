@@ -14,6 +14,203 @@ function hasOwnKeys(value) {
   return isPlainObject(value) && Object.keys(value).length > 0;
 }
 
+function uniqCaseInsensitiveStrings(values, max = 24) {
+  const out = [];
+  const seen = new Set();
+  for (const raw of Array.isArray(values) ? values : []) {
+    const value = String(raw || '').trim();
+    if (!value) continue;
+    const key = value.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(value);
+    if (out.length >= Math.max(1, Number(max) || 24)) break;
+  }
+  return out;
+}
+
+function normalizeRecoComparisonMode(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (!normalized) return '';
+  if (normalized === 'same_role' || normalized === 'same_role_comparison') return 'same_role_comparison';
+  return normalized;
+}
+
+function normalizeRecoTargetStep(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (!normalized) return '';
+  if (normalized.includes('sunscreen') || normalized.includes('spf') || normalized.includes('sun')) return 'sunscreen';
+  if (normalized.includes('moistur') || normalized.includes('cream') || normalized.includes('lotion') || normalized.includes('gel cream')) return 'moisturizer';
+  if (normalized.includes('mask')) return 'mask';
+  if (normalized.includes('serum')) return 'serum';
+  if (normalized.includes('treatment') || normalized.includes('retinol') || normalized.includes('acid')) return 'treatment';
+  return normalized;
+}
+
+function hasEnvelopeExplicitNoAdditionalActiveConstraint(targetContext = null) {
+  if (!isPlainObject(targetContext)) return false;
+  const semanticPlan = isPlainObject(targetContext?.semantic_plan) ? targetContext.semantic_plan : null;
+  const text = [
+    targetContext?.request_text,
+    targetContext?.focus_text,
+    semanticPlan?.primary_concern,
+    ...(Array.isArray(semanticPlan?.must_satisfy_constraints) ? semanticPlan.must_satisfy_constraints : []),
+  ]
+    .map((value) => String(value || '').trim().toLowerCase())
+    .filter(Boolean)
+    .join(' ');
+  if (!text) return false;
+  return /\b(?:do\s*not\s*want\s*another\s*active|don't\s*want\s*another\s*active|dont\s*want\s*another\s*active|not\s+another\s+active|no\s+(?:extra\s+|more\s+)?actives?|no\s+active\s+ingredients?|must\s+not\s+contain\s+active(?:\s+treatment)?\s+ingredients?|not\s+contain\s+active(?:\s+treatment)?\s+ingredients?|non[- ]?active(?:\s+step|\s+option|\s+moisturi[sz]er)?|without\s+actives?|avoid\s+(?:extra\s+)?actives?|avoid\s+active\s+ingredients?)\b/i.test(
+    text,
+  );
+}
+
+function buildEnvelopeAdditionalActiveText(row = null) {
+  const candidate = isPlainObject(row) ? row : {};
+  const sku = isPlainObject(candidate?.sku) ? candidate.sku : {};
+  return uniqCaseInsensitiveStrings([
+    candidate.display_name,
+    candidate.displayName,
+    candidate.name,
+    candidate.title,
+    sku.display_name,
+    sku.displayName,
+    sku.name,
+    sku.title,
+    candidate.short_description,
+    candidate.shortDescription,
+    candidate.description,
+    candidate.summary,
+    candidate.subtitle,
+    candidate.why_this_one,
+    candidate.whyThisOne,
+    candidate?.product_intel?.shopping_card?.intro,
+    candidate?.product_intel?.search_card?.intro_candidate,
+    candidate?.product_intel?.search_card?.highlight_candidate,
+    candidate?.product_intel?.what_it_is?.body,
+    candidate?.product_intel?.product_intel_core?.what_it_is?.body,
+    ...(Array.isArray(candidate?.key_features) ? candidate.key_features : []),
+    ...(Array.isArray(candidate?.keyFeatures) ? candidate.keyFeatures : []),
+    ...(Array.isArray(candidate?.compare_highlights) ? candidate.compare_highlights : []),
+  ], 24)
+    .map((value) => String(value || '').trim().toLowerCase())
+    .filter(Boolean)
+    .join(' ');
+}
+
+function hasEnvelopeAdditionalActiveSignal(row = null) {
+  const text = buildEnvelopeAdditionalActiveText(row);
+  if (!text) return false;
+  return /\b(?:niacinamide|peptide(?:s)?|retinol|retinal|retinaldehyde|retinoid|tretinoin|adapalene|salicylic acid|glycolic acid|lactic acid|mandelic acid|azelaic acid|benzoyl peroxide|vitamin c|ascorbic acid|tranexamic acid|arbutin|kojic acid|exfoliat(?:e|ing|ion|or)|acid complex|aha|bha|pha)\b/i.test(
+    text,
+  );
+}
+
+function extractEnvelopeRecoSelectionProductId(row = null) {
+  if (!isPlainObject(row)) return '';
+  return pickFirstTrimmed(
+    row.product_id,
+    row.productId,
+    row.id,
+    row.sku?.product_id,
+    row.sku?.productId,
+    row.sku?.id,
+    row.product?.product_id,
+    row.product?.productId,
+    row.product?.id,
+  );
+}
+
+function extractEnvelopeRecoSelectionTitle(row = null) {
+  if (!isPlainObject(row)) return '';
+  const sku = isPlainObject(row?.sku) ? row.sku : isPlainObject(row?.product) ? row.product : null;
+  const brand = pickFirstTrimmed(
+    row.brand,
+    sku?.brand,
+    row.brand_name,
+    row.brandName,
+  );
+  const name = pickFirstTrimmed(
+    row.display_name,
+    row.displayName,
+    row.name,
+    row.title,
+    sku?.display_name,
+    sku?.displayName,
+    sku?.name,
+    sku?.title,
+  );
+  if (brand && name && String(name).trim().toLowerCase().startsWith(String(brand).trim().toLowerCase())) {
+    return name;
+  }
+  return [brand, name].filter(Boolean).join(' ').trim() || '';
+}
+
+function pruneEnvelopeExplicitNoAdditionalActiveSameRoleRows(rows = [], {
+  targetContext = null,
+} = {}) {
+  const selectedRows = Array.isArray(rows) ? rows.filter((row) => isPlainObject(row)) : [];
+  if (selectedRows.length <= 2) return selectedRows;
+  const semanticPlan = isPlainObject(targetContext?.semantic_plan) ? targetContext.semantic_plan : null;
+  const comparisonMode = normalizeRecoComparisonMode(
+    pickFirstTrimmed(
+      targetContext?.comparison_mode,
+      targetContext?.routine_mode,
+      semanticPlan?.comparison_mode,
+      semanticPlan?.routine_mode,
+      semanticPlan?.selection_constraints?.comparison_mode,
+      semanticPlan?.selection_constraints?.routine_mode,
+    ),
+  );
+  if (comparisonMode !== 'same_role_comparison') return selectedRows;
+  const frameworkRoles = Array.isArray(targetContext?.framework_roles)
+    ? targetContext.framework_roles.filter((role) => isPlainObject(role))
+    : [];
+  const primaryRole =
+    frameworkRoles.find((role) => pickFirstTrimmed(role?.role_id) === pickFirstTrimmed(targetContext?.primary_role_id))
+    || frameworkRoles[0]
+    || null;
+  if (normalizeRecoTargetStep(primaryRole?.preferred_step || targetContext?.resolved_target_step) !== 'moisturizer') {
+    return selectedRows;
+  }
+  if (!hasEnvelopeExplicitNoAdditionalActiveConstraint(targetContext)) return selectedRows;
+  const kept = selectedRows.filter((row) => !hasEnvelopeAdditionalActiveSignal(row));
+  return kept.length >= 2 ? kept : selectedRows;
+}
+
+function buildEnvelopeVisibleSelectionContract(baseSelection = null, recommendations = []) {
+  const visibleRows = Array.isArray(recommendations) ? recommendations.filter((row) => isPlainObject(row)) : [];
+  const selectedProductIds = [];
+  const selectedTitles = [];
+  const seenIds = new Set();
+  const seenTitles = new Set();
+  for (const row of visibleRows) {
+    const productId = extractEnvelopeRecoSelectionProductId(row);
+    if (productId) {
+      const key = productId.toLowerCase();
+      if (!seenIds.has(key)) {
+        seenIds.add(key);
+        selectedProductIds.push(productId);
+      }
+    }
+    const title = extractEnvelopeRecoSelectionTitle(row);
+    if (title) {
+      const key = title.toLowerCase();
+      if (!seenTitles.has(key)) {
+        seenTitles.add(key);
+        selectedTitles.push(title);
+      }
+    }
+  }
+  return {
+    ...(isPlainObject(baseSelection) ? baseSelection : {}),
+    selected_product_ids: selectedProductIds,
+    selected_titles: selectedTitles,
+    selected_products_count: visibleRows.length,
+    selection_signature: null,
+  };
+}
+
 function createBeautyChatMainlineEnvelopeRuntime(deps = {}) {
   const {
     BEAUTY_DISCOVERY_MAINLINE_OWNER = 'shopping_agent_beauty_mainline',
@@ -500,11 +697,23 @@ function createBeautyChatMainlineEnvelopeRuntime(deps = {}) {
     if (!hasCanonicalAuthority) return null;
 
     const rawRecommendations = Array.isArray(handoff?.recommendations) ? handoff.recommendations : [];
-    const canonicalRecommendations = orderRecoRecommendationsBySelection(
+    const orderedCanonicalRecommendations = orderRecoRecommendationsBySelection(
       rawRecommendations,
       selectionContract,
     );
+    const canonicalRecommendations = pruneEnvelopeExplicitNoAdditionalActiveSameRoleRows(
+      orderedCanonicalRecommendations,
+      { targetContext },
+    );
     if (!canonicalRecommendations.length) return null;
+    const effectiveSearchResult = (() => {
+      if (!isPlainObject(searchResult)) return searchResult;
+      if (canonicalRecommendations.length === orderedCanonicalRecommendations.length) return searchResult;
+      return {
+        ...searchResult,
+        final_selection: buildEnvelopeVisibleSelectionContract(selectionContract, canonicalRecommendations),
+      };
+    })();
 
     const frameworkRecoContextPatch = buildFrameworkRecoContextPatch({
       recoContext,
@@ -589,7 +798,7 @@ function createBeautyChatMainlineEnvelopeRuntime(deps = {}) {
       },
     };
 
-    nextPayload = applyRecoCanonicalSearchResultToPayload(nextPayload, searchResult, {
+    nextPayload = applyRecoCanonicalSearchResultToPayload(nextPayload, effectiveSearchResult, {
       selectionOwner: effectiveSelectionOwner,
     });
     nextPayload = applyRecoContentSpineToPayload(nextPayload, effectiveRecoContext);
@@ -692,7 +901,7 @@ function createBeautyChatMainlineEnvelopeRuntime(deps = {}) {
       ...extractRecoOutcomeContractArgsFromPayload(nextPayload, null),
     });
     nextPayload = attachRecoContractMeta(nextPayload, recoContract);
-    nextPayload = applyRecoCanonicalSearchResultToPayload(nextPayload, searchResult, {
+    nextPayload = applyRecoCanonicalSearchResultToPayload(nextPayload, effectiveSearchResult, {
       selectionOwner: effectiveSelectionOwner,
     });
     nextPayload = applyRecoAssistantSelectionSignature(nextPayload);

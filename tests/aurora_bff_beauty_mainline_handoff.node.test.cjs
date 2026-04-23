@@ -127,6 +127,143 @@ test('classifyBeautyMainlineHandoffFallback preserves weak viable pool reason fr
   assert.equal(fallback.telemetry_failure_reason, 'weak_viable_pool');
 });
 
+test('buildRecoPayloadFromBeautyMainlineHandoff prunes active moisturizer compare rows from the canonical visible set', () => {
+  const orderRecoRecommendationsBySelection = (recommendations, selectionContract) => {
+    const rows = Array.isArray(recommendations) ? recommendations : [];
+    const ids = Array.isArray(selectionContract?.selected_product_ids) ? selectionContract.selected_product_ids : [];
+    const byId = new Map(rows.map((row) => [row.product_id, row]));
+    return ids.map((id) => byId.get(id)).filter(Boolean);
+  };
+  const runtime = createBeautyChatMainlineEnvelopeRuntime({
+    summarizeProfileForContext: () => ({}),
+    applyRecoCanonicalSearchResultToPayload: (payload, searchResult) => {
+      const finalSelection = searchResult?.final_selection || null;
+      return {
+        ...payload,
+        recommendation_meta: {
+          ...(payload?.recommendation_meta || {}),
+          ...(finalSelection
+            ? {
+                final_selection: finalSelection,
+                selected_product_ids: finalSelection.selected_product_ids,
+                selected_titles: finalSelection.selected_titles,
+              }
+            : {}),
+          ranked_targets: [
+            {
+              target_id: 'hydrating_barrier_moisturizer',
+              target_role: 'primary',
+              ingredient_query: 'Hydrating barrier moisturizer',
+              resolved_target_step: 'moisturizer',
+            },
+          ],
+          primary_target_id: 'hydrating_barrier_moisturizer',
+          selected_target_ids: ['hydrating_barrier_moisturizer'],
+        },
+      };
+    },
+    applyRecoContentSpineToPayload: (payload) => payload,
+    buildRecoMainlineContract: () => ({ version: 'test_contract' }),
+    extractRecoOutcomeContractArgsFromPayload: () => ({}),
+    attachRecoContractMeta: (payload) => payload,
+    applyRecoAssistantSelectionSignature: (payload) => payload,
+    extractRecoFinalSelectionContract: (searchResult) => searchResult?.final_selection || null,
+    orderRecoRecommendationsBySelection,
+    buildConcernFrameworkSummary: () => null,
+  });
+
+  const targetContext = {
+    primary_role_id: 'hydrating_barrier_moisturizer',
+    comparison_mode: 'same_role_comparison',
+    routine_mode: 'same_role_comparison',
+    request_text: 'What moisturizer product should I buy next? I do not want another active.',
+    semantic_plan: {
+      comparison_mode: 'same_role_comparison',
+      routine_mode: 'same_role_comparison',
+      must_satisfy_constraints: [
+        'must not contain active treatment ingredients',
+        'moisturizer-only same-slot comparison',
+      ],
+    },
+    framework_roles: [
+      {
+        role_id: 'hydrating_barrier_moisturizer',
+        preferred_step: 'moisturizer',
+        label: 'Hydrating barrier moisturizer',
+      },
+    ],
+  };
+  const handoff = {
+    searchResult: {
+      final_selection: {
+        selection_owner: 'shopping_agent_beauty_mainline',
+        selected_product_ids: [
+          'ext_9bc7ff02d709cc5383cc78ec',
+          'ext_a29393bd005135c81f47dade',
+          'ext_62685854dfc71d2634e828e6',
+        ],
+        selected_titles: [
+          'Ultra Repair Face Lotion with Colloidal Oatmeal',
+          'Hydrating Dewy Gel Cream Moisturizer with Hyaluronic Acid + Ceramides',
+          'Ultra Repair Firming Day Cream with Peptides, Niacinamide + Collagen',
+        ],
+        mainline_status: 'grounded_success',
+        source_tier_counts: { fresh_external: 3 },
+      },
+      decision_owner: 'shopping_agent_beauty_mainline',
+      semantic_owner: 'shopping_agent_beauty_mainline',
+      source_breakdown: { source_tier_counts: { fresh_external: 3 } },
+      contract_bridge: { resolved_contract: 'agent_v1_search_beauty_mainline' },
+    },
+    recommendations: [
+      {
+        product_id: 'ext_9bc7ff02d709cc5383cc78ec',
+        merchant_id: 'external_seed',
+        display_name: 'Ultra Repair Face Lotion with Colloidal Oatmeal',
+        brand: 'First Aid Beauty',
+        matched_role_id: 'hydrating_barrier_moisturizer',
+        why_this_one: 'Dryness or barrier support',
+      },
+      {
+        product_id: 'ext_a29393bd005135c81f47dade',
+        merchant_id: 'external_seed',
+        display_name: 'Hydrating Dewy Gel Cream Moisturizer with Hyaluronic Acid + Ceramides',
+        brand: 'First Aid Beauty',
+        matched_role_id: 'hydrating_barrier_moisturizer',
+        why_this_one: 'Oily or combination skin needing hydration',
+      },
+      {
+        product_id: 'ext_62685854dfc71d2634e828e6',
+        merchant_id: 'external_seed',
+        display_name: 'Ultra Repair Firming Day Cream with Peptides, Niacinamide + Collagen',
+        brand: 'First Aid Beauty',
+        matched_role_id: 'hydrating_barrier_moisturizer',
+        why_this_one: 'Dryness or barrier support',
+      },
+    ],
+  };
+
+  const out = runtime.buildRecoPayloadFromBeautyMainlineHandoff({
+    handoff,
+    profile: {},
+    targetContext,
+    recoContext: {},
+    taskMode: 'goal_based_products',
+    sourceMode: 'framework_mainline',
+    triggerSource: 'analysis_handoff',
+    language: 'EN',
+  });
+
+  assert.deepEqual(
+    out?.payload?.recommendations?.map((row) => row.product_id),
+    ['ext_9bc7ff02d709cc5383cc78ec', 'ext_a29393bd005135c81f47dade'],
+  );
+  assert.deepEqual(
+    out?.payload?.recommendation_meta?.final_selection?.selected_product_ids,
+    ['ext_9bc7ff02d709cc5383cc78ec', 'ext_a29393bd005135c81f47dade'],
+  );
+});
+
 test('handoffRecoToBeautyMainlineSearch passes sunscreen-aligned contract to backend search', async () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
