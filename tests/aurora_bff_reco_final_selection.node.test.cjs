@@ -3425,6 +3425,55 @@ test('reco assistant visible-text sanitizer rewrites leaked same-slot finish-fit
     assert.match(text, /SKINTIFIC Light Serum Sunscreen SPF 50\+ PA\+\+\+\+ makes more sense if you want the lightest, least noticeable sunscreen layer/i);
     assert.doesNotMatch(text, /same-slot comparison option because/i);
     assert.doesNotMatch(text, /under makeupa/i);
+    assert.doesNotMatch(text, /under makeup a serum texture/i);
+
+    const finishFitText = __internal.sanitizeRecoAssistantVisibleText(
+      'SKINTIFIC Matte Fit Serum Sunscreen SPF 50+ PA++++ makes more sense if you want a more matte, shine-controlling finish with less slip under makeup a serum texture that helps manage excess oil throughout the day. Beauty of Joseon Day Dew Sunscreen gives less slip under makeup protection.',
+    );
+    assert.match(finishFitText, /less slip under makeup\./i);
+    assert.doesNotMatch(finishFitText, /under makeup a serum texture/i);
+    assert.doesNotMatch(finishFitText, /under makeup protection/i);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('beauty expert v1 v1-chat attach preserves incoming exact-product beauty context', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const options = __internal.buildBeautyExpertV1ChatAttachOptions({
+      req: {
+        body: {
+          message: 'I use tretinoin. Is Ultra Repair Face Lotion a better next moisturizer than a peptide cream?',
+          context: {
+            normalized_need: {
+              existing_marker: 'keep-me',
+              beauty_request: {
+                user_goal: 'compare Ultra Repair Face Lotion for tretinoin routine',
+                skin_context: { skin_type: 'dry' },
+                routine_context: { current_active: 'tretinoin' },
+                product_context: {
+                  canonical_product_ref: 'First Aid Beauty Ultra Repair Face Lotion',
+                  anchor_product_id: 'fab-ultra-repair-face-lotion',
+                },
+              },
+            },
+          },
+        },
+      },
+      profile: { skinType: 'dry sensitive', goals: ['barrier support'] },
+    });
+
+    const normalizedNeed = options.context.normalized_need;
+    const beautyRequest = normalizedNeed.beauty_request;
+    assert.equal(normalizedNeed.existing_marker, 'keep-me');
+    assert.equal(beautyRequest.domain, 'beauty');
+    assert.equal(beautyRequest.user_goal, 'compare Ultra Repair Face Lotion for tretinoin routine');
+    assert.equal(beautyRequest.product_context.canonical_product_ref, 'First Aid Beauty Ultra Repair Face Lotion');
+    assert.equal(beautyRequest.product_context.anchor_product_id, 'fab-ultra-repair-face-lotion');
+    assert.equal(beautyRequest.routine_context.current_active, 'tretinoin');
+    assert.equal(beautyRequest.skin_context.skin_type, 'dry sensitive');
+    assert.deepEqual(beautyRequest.skin_context.goals, ['barrier support']);
   } finally {
     delete require.cache[moduleId];
   }

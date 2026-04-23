@@ -18218,6 +18218,28 @@ function buildBeautyExpertV1ChatAttachOptions({
     ...(barrierStatus ? { barrier_status: barrierStatus } : {}),
     ...(goals.length ? { goals } : {}),
   };
+  const requestNormalizedNeed =
+    req?.body?.context?.normalized_need &&
+    typeof req.body.context.normalized_need === 'object' &&
+    !Array.isArray(req.body.context.normalized_need)
+      ? req.body.context.normalized_need
+      : {};
+  const requestBeautyRequest =
+    requestNormalizedNeed.beauty_request &&
+    typeof requestNormalizedNeed.beauty_request === 'object' &&
+    !Array.isArray(requestNormalizedNeed.beauty_request)
+      ? requestNormalizedNeed.beauty_request
+      : {};
+  const requestSkinContext =
+    requestBeautyRequest.skin_context &&
+    typeof requestBeautyRequest.skin_context === 'object' &&
+    !Array.isArray(requestBeautyRequest.skin_context)
+      ? requestBeautyRequest.skin_context
+      : {};
+  const mergedSkinContext = {
+    ...requestSkinContext,
+    ...skinContext,
+  };
   return {
     source: 'aurora-bff',
     entryLayer: 'orchestration',
@@ -18232,10 +18254,12 @@ function buildBeautyExpertV1ChatAttachOptions({
       category: 'skincare',
       raw_user_goal: userGoal,
       normalized_need: {
+        ...requestNormalizedNeed,
         beauty_request: {
+          ...requestBeautyRequest,
           domain: 'beauty',
-          user_goal: userGoal,
-          skin_context: skinContext,
+          user_goal: pickFirstTrimmed(requestBeautyRequest.user_goal, userGoal) || null,
+          skin_context: mergedSkinContext,
         },
       },
     },
@@ -58944,6 +58968,8 @@ function sanitizeRecoAssistantVisibleText(text = '') {
 
   next = next
     .replace(/\b(under makeup|less slip under makeup|less weight under makeup)(?=[a-z])/ig, '$1 ')
+    .replace(/\b(less slip under makeup|under makeup|less weight under makeup)\s+(?:a\s+)?serum texture(?:\s+that\b[^.?!]*)?/ig, '$1')
+    .replace(/\b(less slip under makeup|under makeup|less weight under makeup)\s+protection\b/ig, '$1')
     .replace(/\b([^.?!]+?) is the same-slot comparison option because it ([^.?!]+?)(?=[.!?]|$)/ig, '$1 $2')
     .replace(/\s+([,.;!?])/g, '$1')
     .replace(/\s+/g, ' ')
@@ -96821,6 +96847,7 @@ const __internal = {
   extractPrimaryChatRequestMessage,
   extractLastUserMessageFromChatRequestMessages,
   extractProfilePatchFromRequestContextPayload,
+  buildBeautyExpertV1ChatAttachOptions,
   getRequiredRouteContractsHealth,
   mapSuggestionForResponse,
   generatePrelabelsForAnchor,
