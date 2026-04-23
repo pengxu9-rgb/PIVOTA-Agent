@@ -59410,6 +59410,7 @@ async function maybeRewriteRecoAssistantTextWithLlm({
           total_ms: Number.isFinite(Number(resultMeta.total_ms))
             ? Math.max(0, Math.trunc(Number(resultMeta.total_ms)))
             : null,
+          profile_skin_type: pickFirstTrimmed(resultMeta.profile_skin_type) || null,
           candidate_preview: pickFirstTrimmed(resultMeta.candidate_preview) || null,
           question_like_text: pickFirstTrimmed(resultMeta.question_like_text) || null,
           expected_refinement_question: pickFirstTrimmed(resultMeta.expected_refinement_question) || null,
@@ -59520,6 +59521,11 @@ async function maybeRewriteRecoAssistantTextWithLlm({
           timeout_stage: result?.timeout_stage || null,
           meta: {
             ...(isPlainObject(result?.meta) ? result.meta : {}),
+            profile_skin_type: pickFirstTrimmed(
+              profile?.skinType,
+              profile?.skin_type,
+              profile?.skin_type_tendency,
+            ) || null,
             candidate_preview: String(candidateText || '').trim().slice(0, 400),
             question_like_text: extractKnownFieldReaskQuestionText(candidateText).slice(0, 240),
             expected_refinement_question: pickFirstTrimmed(refinementQuestionPlan?.question) || null,
