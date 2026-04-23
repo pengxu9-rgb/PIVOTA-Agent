@@ -6384,6 +6384,123 @@ test('beauty handoff payload builder replaces mixed planner rows with canonical 
   }
 });
 
+test('beauty handoff payload builder keeps non-active gel moisturizers when no-additional-active compare prunes active-forward options', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const out = __internal.buildRecoPayloadFromBeautyMainlineHandoff({
+      handoff: {
+        recommendations: [
+          {
+            product_id: 'ext_9bc7ff02d709cc5383cc78ec',
+            merchant_id: 'external_seed',
+            display_name: 'Ultra Repair Face Lotion with Colloidal Oatmeal',
+            brand: 'First Aid Beauty',
+            matched_role_id: 'hydrating_barrier_moisturizer',
+            why_this_one: 'Dryness or barrier support',
+          },
+          {
+            product_id: 'ext_a29393bd005135c81f47dade',
+            merchant_id: 'external_seed',
+            display_name: 'Hydrating Dewy Gel Cream Moisturizer with Hyaluronic Acid + Ceramides',
+            brand: 'First Aid Beauty',
+            matched_role_id: 'hydrating_barrier_moisturizer',
+            why_this_one: 'Oily or combination skin needing hydration',
+            description: 'Perfect for oily and combo skin, the ultra-sheer formula uses hyaluronic acid, ceramides, squalane and niacinamide to support the moisture barrier.',
+          },
+          {
+            product_id: 'ext_62685854dfc71d2634e828e6',
+            merchant_id: 'external_seed',
+            display_name: 'Ultra Repair Firming Day Cream with Peptides, Niacinamide + Collagen',
+            brand: 'First Aid Beauty',
+            matched_role_id: 'hydrating_barrier_moisturizer',
+            why_this_one: 'Dryness or barrier support',
+            product_intel: {
+              shopping_card: {
+                highlight: 'With peptides + niacinamide',
+              },
+            },
+          },
+        ],
+        searchResult: {
+          decision_owner: 'shopping_agent_beauty_mainline',
+          semantic_owner: 'shopping_agent_beauty_mainline',
+          query_source: 'agent_products_search',
+          contract_bridge: {
+            resolved_contract: 'agent_v1_search_beauty_mainline',
+          },
+          source_breakdown: {
+            source_tier_counts: { fresh_external: 3 },
+            top_candidate_provenance: { source_owner: 'external_seed' },
+          },
+          final_selection: {
+            selection_owner: 'shopping_agent_beauty_mainline',
+            selected_product_ids: [
+              'ext_9bc7ff02d709cc5383cc78ec',
+              'ext_a29393bd005135c81f47dade',
+              'ext_62685854dfc71d2634e828e6',
+            ],
+            selected_titles: [
+              'Ultra Repair Face Lotion with Colloidal Oatmeal',
+              'Hydrating Dewy Gel Cream Moisturizer with Hyaluronic Acid + Ceramides',
+              'Ultra Repair Firming Day Cream with Peptides, Niacinamide + Collagen',
+            ],
+            mainline_status: 'grounded_success',
+            source_tier_counts: { fresh_external: 3 },
+          },
+        },
+      },
+      profile: { skinType: 'dry', goals: ['barrier support'] },
+      targetContext: {
+        primary_role_id: 'hydrating_barrier_moisturizer',
+        comparison_mode: 'same_role_comparison',
+        routine_mode: 'same_role_comparison',
+        request_text: 'What moisturizer product should I buy next? I do not want another active.',
+        semantic_plan: {
+          comparison_mode: 'same_role_comparison',
+          routine_mode: 'same_role_comparison',
+          must_satisfy_constraints: [
+            'must not contain active treatment ingredients',
+            'moisturizer-only same-slot comparison',
+          ],
+        },
+        framework_roles: [
+          {
+            role_id: 'hydrating_barrier_moisturizer',
+            label: 'Hydrating barrier moisturizer',
+            rank: 1,
+            preferred_step: 'moisturizer',
+          },
+        ],
+      },
+      recoContext: {
+        resolved_target_step: 'moisturizer',
+      },
+      taskMode: 'goal_based_products',
+      triggerSource: 'analysis_handoff',
+      sourceMode: 'framework_mainline',
+      selectionOwner: 'shopping_agent_beauty_mainline',
+      entryType: 'chat',
+    });
+
+    assert.deepEqual(
+      out?.payload?.recommendations?.map((item) => item.product_id),
+      [
+        'ext_9bc7ff02d709cc5383cc78ec',
+        'ext_a29393bd005135c81f47dade',
+      ],
+    );
+    assert.deepEqual(
+      out?.payload?.recommendation_meta?.final_selection?.selected_product_ids,
+      [
+        'ext_9bc7ff02d709cc5383cc78ec',
+        'ext_a29393bd005135c81f47dade',
+      ],
+    );
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('beauty handoff payload builder fails closed when framework roles cannot materialize a canonical target bundle', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
