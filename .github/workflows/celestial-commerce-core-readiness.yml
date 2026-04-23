@@ -34,6 +34,7 @@ on:
       - "scripts/run_celestial_commerce_core_readiness_audit.sh"
       - "scripts/run_celestial_commerce_core_stabilization_acceptance.sh"
       - "scripts/run_celestial_commerce_core_staging_matrix.js"
+      - "scripts/run_celestial_commerce_core_beauty_cross_agent_matrix.js"
       - "scripts/probe_celestial_commerce_core_prod_canary.sh"
       - "scripts/generate_celestial_commerce_core_stabilization_report.js"
       - "scripts/smoke_celestial_commerce_core_prod.sh"
@@ -53,6 +54,7 @@ on:
       - "scripts/fixtures/celestial_commerce_core_prod_canary.json"
       - "scripts/fixtures/celestial_commerce_core_prompt_live_smoke.json"
       - "scripts/fixtures/celestial_commerce_core_shared_acceptance_corpus.json"
+      - "scripts/fixtures/celestial_commerce_core_beauty_cross_agent_corpus.json"
       - "scripts/fixtures/celestial_commerce_core_staging_acceptance_matrix.json"
       - "scripts/fixtures/commerce_invoke_rail_inventory.json"
       - "scripts/fixtures/celestial_commerce_core_stabilization_snapshot.json"
@@ -93,6 +95,7 @@ on:
       - "tests/celestial_commerce_gateway_daily_summary_script.test.js"
       - "tests/celestial_commerce_main_path_alerts_script.test.js"
       - "tests/celestial_commerce_core_staging_matrix_script.test.js"
+      - "tests/celestial_commerce_core_beauty_cross_agent_matrix_script.test.js"
       - "tests/celestial_commerce_core_stabilization_report_script.test.js"
       - "tests/celestial_commerce_core_prod_canary_script.test.js"
       - "tests/aurora_chat_rollout_headers.node.test.cjs"
@@ -143,6 +146,7 @@ jobs:
           node --check src/auroraBff/routes/chat.js
           node --check scripts/search_stability_matrix.js
           node --check scripts/run_celestial_commerce_core_staging_matrix.js
+          node --check scripts/run_celestial_commerce_core_beauty_cross_agent_matrix.js
           node --check scripts/generate_celestial_commerce_core_stabilization_report.js
           node --check scripts/extract_celestial_commerce_gateway_governance_shadow_from_search_matrix.js
           node --check scripts/fetch_celestial_commerce_gateway_governance_logs.js
@@ -176,6 +180,7 @@ jobs:
             tests/celestial_commerce_gateway_daily_summary_script.test.js \
             tests/celestial_commerce_main_path_alerts_script.test.js \
             tests/celestial_commerce_core_staging_matrix_script.test.js \
+            tests/celestial_commerce_core_beauty_cross_agent_matrix_script.test.js \
             tests/celestial_commerce_core_stabilization_report_script.test.js \
             tests/celestial_commerce_core_prod_canary_script.test.js \
             tests/aurora_chat_rollout_headers.node.test.cjs \

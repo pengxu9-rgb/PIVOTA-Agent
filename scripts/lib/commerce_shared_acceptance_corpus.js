@@ -88,6 +88,20 @@ function materializeSharedTargetCase(entry, target) {
   return applyTargetDefaults(deepMerge(base, targetSpec), target);
 }
 
+function loadSharedTargetCases(inputPath, target) {
+  const { payload } = readAcceptanceCorpus(inputPath);
+  if (isSharedAcceptanceCorpus(payload)) {
+    return payload.cases
+      .map((entry) => materializeSharedTargetCase(entry, target))
+      .filter(Boolean);
+  }
+  if (Array.isArray(payload)) return payload.map((item) => applyTargetDefaults(item, target));
+  if (Array.isArray(payload?.cases)) {
+    return payload.cases.map((item) => applyTargetDefaults(item, target));
+  }
+  return [];
+}
+
 function normalizeLoadedCase(testCase) {
   if (!isPlainObject(testCase)) return testCase;
 
@@ -113,17 +127,7 @@ function normalizeLoadedCase(testCase) {
 }
 
 function loadProdGateCases(inputPath) {
-  const { payload } = readAcceptanceCorpus(inputPath);
-  if (isSharedAcceptanceCorpus(payload)) {
-    return payload.cases
-      .map((entry) => materializeSharedTargetCase(entry, 'prod_gate'))
-      .filter(Boolean);
-  }
-  if (Array.isArray(payload)) return payload.map((item) => applyTargetDefaults(item, 'prod_gate'));
-  if (Array.isArray(payload?.cases)) {
-    return payload.cases.map((item) => applyTargetDefaults(item, 'prod_gate'));
-  }
-  return [];
+  return loadSharedTargetCases(inputPath, 'prod_gate');
 }
 
 function splitStagingCases(cases = []) {
@@ -173,9 +177,7 @@ function loadAuroraManualReviewCases(inputPath) {
 function loadPromptLiveSmokeCases(inputPath) {
   const { payload } = readAcceptanceCorpus(inputPath);
   if (isSharedAcceptanceCorpus(payload)) {
-    return payload.cases
-      .map((entry) => materializeSharedTargetCase(entry, 'prompt_live_smoke'))
-      .filter(Boolean);
+    return loadSharedTargetCases(inputPath, 'prompt_live_smoke');
   }
 
   if (Array.isArray(payload)) return payload.map((item) => applyTargetDefaults(item, 'prompt_live_smoke'));
@@ -183,10 +185,16 @@ function loadPromptLiveSmokeCases(inputPath) {
   return promptCases.map((item) => applyTargetDefaults(item, 'prompt_live_smoke'));
 }
 
+function loadBeautyCrossAgentCases(inputPath) {
+  return loadSharedTargetCases(inputPath, 'beauty_cross_agent');
+}
+
 module.exports = {
   isSharedAcceptanceCorpus,
+  loadSharedTargetCases,
   loadProdGateCases,
   loadStagingMatrixPayload,
   loadAuroraManualReviewCases,
   loadPromptLiveSmokeCases,
+  loadBeautyCrossAgentCases,
 };

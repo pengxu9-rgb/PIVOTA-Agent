@@ -1,0 +1,72 @@
+name: Celestial Commerce Beauty Cross-Agent Matrix
+
+on:
+  workflow_dispatch:
+    inputs:
+      invoke_base_url:
+        description: "Authenticated invoke base URL for shopping/creator matrix"
+        required: false
+        default: "https://pivota-agent-staging.up.railway.app"
+      aurora_base_url:
+        description: "Aurora chat base URL for public truth-alignment probes"
+        required: false
+        default: "https://pivota-agent-production.up.railway.app"
+      invoke_timeout_ms:
+        description: "Per-request timeout for invoke surfaces"
+        required: false
+        default: "25000"
+      aurora_timeout_ms:
+        description: "Per-request timeout for Aurora chat surfaces"
+        required: false
+        default: "30000"
+      cases_path:
+        description: "Cross-agent beauty corpus path"
+        required: false
+        default: "scripts/fixtures/celestial_commerce_core_beauty_cross_agent_corpus.json"
+
+concurrency:
+  group: celestial-commerce-beauty-cross-agent-matrix
+  cancel-in-progress: true
+
+jobs:
+  cross_agent_matrix:
+    name: Celestial Commerce Beauty Cross-Agent Matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      STAGING_AUTH_TOKEN: ${{ secrets.STAGING_AUTH_TOKEN || secrets.CELESTIAL_COMMERCE_STAGING_AUTH_TOKEN || secrets.STAGING_PUBLIC_AUTH_TOKEN || secrets.CELESTIAL_COMMERCE_STAGING_PUBLIC_AUTH_TOKEN || '' }}
+      STAGING_AGENT_API_KEY: ${{ secrets.STAGING_AGENT_API_KEY || secrets.CELESTIAL_COMMERCE_STAGING_AGENT_API_KEY || secrets.STAGING_PUBLIC_AGENT_API_KEY || secrets.CELESTIAL_COMMERCE_STAGING_PUBLIC_AGENT_API_KEY || '' }}
+      STAGING_PUBLIC_AUTH_TOKEN: ${{ secrets.STAGING_PUBLIC_AUTH_TOKEN || secrets.CELESTIAL_COMMERCE_STAGING_PUBLIC_AUTH_TOKEN || secrets.STAGING_AUTH_TOKEN || secrets.CELESTIAL_COMMERCE_STAGING_AUTH_TOKEN || '' }}
+      STAGING_PUBLIC_AGENT_API_KEY: ${{ secrets.STAGING_PUBLIC_AGENT_API_KEY || secrets.CELESTIAL_COMMERCE_STAGING_PUBLIC_AGENT_API_KEY || secrets.STAGING_AGENT_API_KEY || secrets.CELESTIAL_COMMERCE_STAGING_AGENT_API_KEY || '' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Run cross-agent beauty matrix
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/run_celestial_commerce_core_beauty_cross_agent_matrix.js \
+            --invoke-base-url "${{ inputs.invoke_base_url }}" \
+            --aurora-base-url "${{ inputs.aurora_base_url }}" \
+            --cases "${{ inputs.cases_path }}" \
+            --out-dir "reports/celestial-commerce-beauty-cross-agent-matrix-ci" \
+            --invoke-timeout-ms "${{ inputs.invoke_timeout_ms }}" \
+            --aurora-timeout-ms "${{ inputs.aurora_timeout_ms }}"
+
+      - name: Upload cross-agent matrix artifacts
+        if: ${{ always() && hashFiles('reports/celestial-commerce-beauty-cross-agent-matrix-ci/**') != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: celestial-commerce-beauty-cross-agent-matrix
+          path: reports/celestial-commerce-beauty-cross-agent-matrix-ci
+          if-no-files-found: warn

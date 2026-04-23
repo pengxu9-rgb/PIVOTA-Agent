@@ -1,0 +1,943 @@
+{
+  "schema_version": "celestial.commerce_core.acceptance_corpus.v1",
+  "cases": [
+    {
+      "id": "beauty_exact_relief_sun_under_makeup",
+      "family": "beauty_cross_agent_exact_product",
+      "query": "Is Beauty of Joseon Relief Sun Aqua-Fresh good for oily skin under makeup?",
+      "source": "shared",
+      "targets": {
+        "beauty_cross_agent": {
+          "title": "exact-product sunscreen assist stays on the beauty expert contract across shopping, creator, and Aurora",
+          "prompt": "Is Beauty of Joseon Relief Sun Aqua-Fresh good for oily skin under makeup?",
+          "expected_domain": "beauty",
+          "expected_beauty_mode": "exact_product_assist",
+          "expected_delegated_layer": "execution_facing",
+          "expected_next_actions_any": [
+            "open_pdp"
+          ],
+          "expected_compare_axes_any": [
+            "lighter / smoother finish"
+          ],
+          "expected_lead_pick_titles_any": [
+            "Beauty of Joseon Relief Sun Aqua-Fresh : Rice + B5 (SPF50+ PA++++)",
+            "Relief Sun Aqua-Fresh : Rice + B5 (SPF50+ PA++++)",
+            "Relief Sun Aqua-Fresh"
+          ],
+          "expect_beauty_expert": true,
+          "expect_non_beauty_isolation": false,
+          "invoke": {
+            "sources": [
+              "shopping_agent",
+              "creator_agent"
+            ],
+            "requires_auth": true,
+            "auth_profile": "default",
+            "operation": "find_products_multi",
+            "payload": {
+              "search": {
+                "query": "Is Beauty of Joseon Relief Sun Aqua-Fresh good for oily skin under makeup?",
+                "limit": 6,
+                "in_stock_only": true,
+                "catalog_surface": "beauty"
+              }
+            },
+            "metadata": {
+              "catalog_surface": "beauty",
+              "beauty_domain_hint": "beauty",
+              "allow_orchestration_delegate": true,
+              "requested_projection": "normalized_only"
+            },
+            "context": {
+              "normalized_need": {
+                "beauty_request": {
+                  "domain": "beauty",
+                  "user_goal": "Is Beauty of Joseon Relief Sun Aqua-Fresh good for oily skin under makeup?",
+                  "skin_context": {
+                    "skin_type": "oily"
+                  },
+                  "product_context": {
+                    "canonical_product_ref": "beauty of joseon relief sun aqua-fresh"
+                  },
+                  "scenario_context": {
+                    "use_case": "under makeup"
+                  }
+                }
+              }
+            }
+          },
+          "aurora": {
+            "surfaces": [
+              "v1_chat",
+              "v2_chat"
+            ],
+            "request": {
+              "message": "Is Beauty of Joseon Relief Sun Aqua-Fresh good for oily skin under makeup?",
+              "language": "EN",
+              "session": {
+                "state": "IDLE_CHAT",
+                "profile": {
+                  "skinType": "oily",
+                  "sensitivity": "low",
+                  "barrierStatus": "stable"
+                }
+              },
+              "context": {
+                "locale": "en",
+                "profile": {
+                  "skinType": "oily",
+                  "sensitivity": "low",
+                  "barrierStatus": "stable"
+                },
+                "normalized_need": {
+                  "beauty_request": {
+                    "domain": "beauty",
+                    "user_goal": "Is Beauty of Joseon Relief Sun Aqua-Fresh good for oily skin under makeup?",
+                    "skin_context": {
+                      "skin_type": "oily"
+                    },
+                    "product_context": {
+                      "canonical_product_ref": "beauty of joseon relief sun aqua-fresh"
+                    },
+                    "scenario_context": {
+                      "use_case": "under makeup"
+                    }
+                  }
+                }
+              },
+              "client_state": {
+                "state": "IDLE_CHAT"
+              },
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "Is Beauty of Joseon Relief Sun Aqua-Fresh good for oily skin under makeup?"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "beauty_exact_tretinoin_face_lotion",
+      "family": "beauty_cross_agent_exact_product",
+      "query": "I use tretinoin. Is Ultra Repair Face Lotion a better next moisturizer than a peptide cream?",
+      "source": "shared",
+      "targets": {
+        "beauty_cross_agent": {
+          "title": "exact-product moisturizer follow-up stays in exact-product assist and surfaces product-centric next actions",
+          "prompt": "I use tretinoin. Is Ultra Repair Face Lotion a better next moisturizer than a peptide cream?",
+          "expected_domain": "beauty",
+          "expected_beauty_mode": "exact_product_assist",
+          "expected_delegated_layer": "execution_facing",
+          "expected_next_actions_any": [
+            "open_pdp"
+          ],
+          "expected_lead_pick_titles_any": [
+            "Ultra Repair Face Lotion with Colloidal Oatmeal",
+            "First Aid Beauty Ultra Repair Face Lotion with Colloidal Oatmeal"
+          ],
+          "expect_beauty_expert": true,
+          "expect_non_beauty_isolation": false,
+          "invoke": {
+            "sources": [
+              "shopping_agent",
+              "creator_agent"
+            ],
+            "requires_auth": true,
+            "auth_profile": "default",
+            "operation": "find_products_multi",
+            "payload": {
+              "search": {
+                "query": "I use tretinoin. Is Ultra Repair Face Lotion a better next moisturizer than a peptide cream?",
+                "limit": 6,
+                "in_stock_only": true,
+                "catalog_surface": "beauty"
+              }
+            },
+            "metadata": {
+              "catalog_surface": "beauty",
+              "beauty_domain_hint": "beauty",
+              "allow_orchestration_delegate": true,
+              "requested_projection": "normalized_only"
+            },
+            "context": {
+              "normalized_need": {
+                "beauty_request": {
+                  "domain": "beauty",
+                  "user_goal": "I use tretinoin. Is Ultra Repair Face Lotion a better next moisturizer than a peptide cream?",
+                  "routine_context": {
+                    "actives": [
+                      "tretinoin"
+                    ]
+                  },
+                  "product_context": {
+                    "canonical_product_ref": "ultra repair face lotion"
+                  }
+                }
+              }
+            }
+          },
+          "aurora": {
+            "surfaces": [
+              "v1_chat",
+              "v2_chat"
+            ],
+            "request": {
+              "message": "I use tretinoin. Is Ultra Repair Face Lotion a better next moisturizer than a peptide cream?",
+              "language": "EN",
+              "session": {
+                "state": "IDLE_CHAT",
+                "profile": {
+                  "skinType": "dry",
+                  "barrierStatus": "stressed",
+                  "goals": [
+                    "barrier support"
+                  ]
+                }
+              },
+              "context": {
+                "locale": "en",
+                "profile": {
+                  "skinType": "dry",
+                  "barrierStatus": "stressed",
+                  "goals": [
+                    "barrier support"
+                  ]
+                },
+                "normalized_need": {
+                  "beauty_request": {
+                    "domain": "beauty",
+                    "user_goal": "I use tretinoin. Is Ultra Repair Face Lotion a better next moisturizer than a peptide cream?",
+                    "routine_context": {
+                      "actives": [
+                        "tretinoin"
+                      ]
+                    },
+                    "product_context": {
+                      "canonical_product_ref": "ultra repair face lotion"
+                    }
+                  }
+                }
+              },
+              "client_state": {
+                "state": "IDLE_CHAT"
+              },
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "I use tretinoin. Is Ultra Repair Face Lotion a better next moisturizer than a peptide cream?"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "beauty_compare_oily_sunscreen",
+      "family": "beauty_cross_agent_category_compare",
+      "query": "I have oily skin, what sunscreen should I buy?",
+      "source": "shared",
+      "targets": {
+        "beauty_cross_agent": {
+          "title": "oily-skin sunscreen compare stays on beauty expert and aligns compare axes across surfaces",
+          "prompt": "I have oily skin, what sunscreen should I buy?",
+          "expected_domain": "beauty",
+          "expected_beauty_mode": "category_compare",
+          "expected_delegated_layer": "decisioning",
+          "expected_next_actions_any": [
+            "compare_same_type",
+            "show_alternatives"
+          ],
+          "expected_compare_axes_any": [
+            "lighter / smoother finish",
+            "matte / shine control",
+            "more hydration / dewier finish"
+          ],
+          "expected_lead_pick_titles_any": [
+            "Beauty of Joseon Relief Sun Aqua-Fresh : Rice + B5 (SPF50+ PA++++)",
+            "SKINTIFIC Matte Fit Serum Sunscreen SPF 50+ PA++++",
+            "Beauty of Joseon Day Dew Sunscreen",
+            "SKINTIFIC Light Serum Sunscreen SPF 50+ PA++++"
+          ],
+          "expect_beauty_expert": true,
+          "expect_non_beauty_isolation": false,
+          "invoke": {
+            "sources": [
+              "shopping_agent",
+              "creator_agent"
+            ],
+            "requires_auth": true,
+            "auth_profile": "default",
+            "operation": "find_products_multi",
+            "payload": {
+              "search": {
+                "query": "I have oily skin, what sunscreen should I buy?",
+                "limit": 8,
+                "in_stock_only": true,
+                "catalog_surface": "beauty"
+              }
+            },
+            "metadata": {
+              "catalog_surface": "beauty",
+              "beauty_domain_hint": "beauty",
+              "allow_orchestration_delegate": true,
+              "requested_projection": "normalized_only"
+            }
+          },
+          "aurora": {
+            "surfaces": [
+              "v1_chat",
+              "v2_chat"
+            ],
+            "request": {
+              "message": "I have oily skin, what sunscreen should I buy?",
+              "language": "EN",
+              "session": {
+                "state": "IDLE_CHAT",
+                "profile": {
+                  "skinType": "oily",
+                  "sensitivity": "low",
+                  "barrierStatus": "stable",
+                  "goals": [
+                    "oil control"
+                  ]
+                }
+              },
+              "context": {
+                "locale": "en",
+                "profile": {
+                  "skinType": "oily",
+                  "sensitivity": "low",
+                  "barrierStatus": "stable",
+                  "goals": [
+                    "oil control"
+                  ]
+                }
+              },
+              "client_state": {
+                "state": "IDLE_CHAT"
+              },
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "I have oily skin, what sunscreen should I buy?"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "beauty_compare_dry_tight_moisturizer",
+      "family": "beauty_cross_agent_category_compare",
+      "query": "My skin feels dry and tight after washing. What moisturizer should I use first?",
+      "source": "shared",
+      "targets": {
+        "beauty_cross_agent": {
+          "title": "dry-tight moisturizer compare stays in category compare and preserves barrier-moisturizer lead picks",
+          "prompt": "My skin feels dry and tight after washing. What moisturizer should I use first?",
+          "expected_domain": "beauty",
+          "expected_beauty_mode": "category_compare",
+          "expected_delegated_layer": "decisioning",
+          "expected_next_actions_any": [
+            "compare_same_type"
+          ],
+          "expected_compare_axes_any": [
+            "more hydration / dewier finish"
+          ],
+          "expected_lead_pick_titles_any": [
+            "Ultra Repair Face Lotion with Colloidal Oatmeal",
+            "First Aid Beauty Ultra Repair Face Lotion with Colloidal Oatmeal",
+            "Hydrating Dewy Gel Cream Moisturizer with Hyaluronic Acid + Ceramides"
+          ],
+          "expect_beauty_expert": true,
+          "expect_non_beauty_isolation": false,
+          "invoke": {
+            "sources": [
+              "shopping_agent",
+              "creator_agent"
+            ],
+            "requires_auth": true,
+            "auth_profile": "default",
+            "operation": "find_products_multi",
+            "payload": {
+              "search": {
+                "query": "My skin feels dry and tight after washing. What moisturizer should I use first?",
+                "limit": 8,
+                "in_stock_only": true,
+                "catalog_surface": "beauty"
+              }
+            },
+            "metadata": {
+              "catalog_surface": "beauty",
+              "beauty_domain_hint": "beauty",
+              "allow_orchestration_delegate": true,
+              "requested_projection": "normalized_only"
+            }
+          },
+          "aurora": {
+            "surfaces": [
+              "v1_chat"
+            ],
+            "request": {
+              "message": "My skin feels dry and tight after washing. What moisturizer should I use first?",
+              "language": "EN",
+              "session": {
+                "state": "IDLE_CHAT",
+                "profile": {
+                  "skinType": "dry",
+                  "sensitivity": "medium",
+                  "barrierStatus": "stressed"
+                }
+              },
+              "context": {
+                "locale": "en",
+                "profile": {
+                  "skinType": "dry",
+                  "sensitivity": "medium",
+                  "barrierStatus": "stressed"
+                }
+              },
+              "client_state": {
+                "state": "IDLE_CHAT"
+              },
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "My skin feels dry and tight after washing. What moisturizer should I use first?"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "beauty_compare_hot_humid_sunscreen",
+      "family": "beauty_cross_agent_category_compare",
+      "query": "I commute in hot humid weather and hate heavy SPF. What sunscreen product should I use?",
+      "source": "shared",
+      "targets": {
+        "beauty_cross_agent": {
+          "title": "hot-humid sunscreen compare stays in beauty mainline rather than drifting into travel",
+          "prompt": "I commute in hot humid weather and hate heavy SPF. What sunscreen product should I use?",
+          "expected_domain": "beauty",
+          "expected_beauty_mode": "category_compare",
+          "expected_delegated_layer": "decisioning",
+          "expected_next_actions_any": [
+            "compare_same_type"
+          ],
+          "expected_compare_axes_any": [
+            "lighter / smoother finish",
+            "matte / shine control"
+          ],
+          "expected_lead_pick_titles_any": [
+            "SKINTIFIC Matte Fit Serum Sunscreen SPF 50+ PA++++",
+            "Beauty of Joseon Day Dew Sunscreen",
+            "SKINTIFIC Light Serum Sunscreen SPF 50+ PA++++",
+            "Beauty of Joseon Relief Sun Aqua-Fresh : Rice + B5 (SPF50+ PA++++)"
+          ],
+          "expect_beauty_expert": true,
+          "expect_non_beauty_isolation": false,
+          "invoke": {
+            "sources": [
+              "shopping_agent",
+              "creator_agent"
+            ],
+            "requires_auth": true,
+            "auth_profile": "default",
+            "operation": "find_products_multi",
+            "payload": {
+              "search": {
+                "query": "I commute in hot humid weather and hate heavy SPF. What sunscreen product should I use?",
+                "limit": 8,
+                "in_stock_only": true,
+                "catalog_surface": "beauty"
+              }
+            },
+            "metadata": {
+              "catalog_surface": "beauty",
+              "beauty_domain_hint": "beauty",
+              "allow_orchestration_delegate": true,
+              "requested_projection": "normalized_only"
+            }
+          },
+          "aurora": {
+            "surfaces": [
+              "v1_chat",
+              "v2_chat"
+            ],
+            "request": {
+              "message": "I commute in hot humid weather and hate heavy SPF. What sunscreen product should I use?",
+              "language": "EN",
+              "session": {
+                "state": "IDLE_CHAT",
+                "profile": {
+                  "skinType": "combination",
+                  "sensitivity": "low",
+                  "barrierStatus": "stable"
+                }
+              },
+              "context": {
+                "locale": "en",
+                "profile": {
+                  "skinType": "combination",
+                  "sensitivity": "low",
+                  "barrierStatus": "stable"
+                }
+              },
+              "client_state": {
+                "state": "IDLE_CHAT"
+              },
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "I commute in hot humid weather and hate heavy SPF. What sunscreen product should I use?"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "beauty_guided_generic_skin_help",
+      "family": "beauty_cross_agent_guided",
+      "query": "What should I use for my skin?",
+      "source": "shared",
+      "targets": {
+        "beauty_cross_agent": {
+          "title": "under-specified beauty prompt stays in guided beauty reco and asks for more context",
+          "prompt": "What should I use for my skin?",
+          "expected_domain": "beauty",
+          "expected_beauty_mode": "guided_beauty_reco",
+          "expected_delegated_layer": "decisioning",
+          "expected_next_actions_any": [
+            "consider_skin_analysis",
+            "ask_missing_constraint"
+          ],
+          "expected_compare_axes_any": [],
+          "expected_lead_pick_titles_any": [],
+          "expect_beauty_expert": true,
+          "expect_non_beauty_isolation": false,
+          "invoke": {
+            "sources": [
+              "shopping_agent",
+              "creator_agent"
+            ],
+            "requires_auth": true,
+            "auth_profile": "default",
+            "operation": "find_products_multi",
+            "payload": {
+              "search": {
+                "query": "What should I use for my skin?",
+                "limit": 6,
+                "in_stock_only": true,
+                "catalog_surface": "beauty"
+              }
+            },
+            "metadata": {
+              "catalog_surface": "beauty",
+              "beauty_domain_hint": "beauty",
+              "allow_orchestration_delegate": true,
+              "requested_projection": "normalized_only"
+            }
+          },
+          "aurora": {
+            "surfaces": [
+              "v1_chat",
+              "v2_chat"
+            ],
+            "request": {
+              "message": "What should I use for my skin?",
+              "language": "EN",
+              "session": {
+                "state": "IDLE_CHAT"
+              },
+              "context": {
+                "locale": "en"
+              },
+              "client_state": {
+                "state": "IDLE_CHAT"
+              },
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "What should I use for my skin?"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "beauty_guided_skin_off_lately",
+      "family": "beauty_cross_agent_guided",
+      "query": "My skin has been off lately. What should I buy?",
+      "source": "shared",
+      "targets": {
+        "beauty_cross_agent": {
+          "title": "generic beauty distress prompt stays honest and suggests more context instead of fabricating a confident compare set",
+          "prompt": "My skin has been off lately. What should I buy?",
+          "expected_domain": "beauty",
+          "expected_beauty_mode": "guided_beauty_reco",
+          "expected_delegated_layer": "decisioning",
+          "expected_next_actions_any": [
+            "consider_skin_analysis",
+            "ask_missing_constraint"
+          ],
+          "expected_compare_axes_any": [],
+          "expected_lead_pick_titles_any": [],
+          "expect_beauty_expert": true,
+          "expect_non_beauty_isolation": false,
+          "invoke": {
+            "sources": [
+              "shopping_agent",
+              "creator_agent"
+            ],
+            "requires_auth": true,
+            "auth_profile": "default",
+            "operation": "find_products_multi",
+            "payload": {
+              "search": {
+                "query": "My skin has been off lately. What should I buy?",
+                "limit": 6,
+                "in_stock_only": true,
+                "catalog_surface": "beauty"
+              }
+            },
+            "metadata": {
+              "catalog_surface": "beauty",
+              "beauty_domain_hint": "beauty",
+              "allow_orchestration_delegate": true,
+              "requested_projection": "normalized_only"
+            }
+          },
+          "aurora": {
+            "surfaces": [
+              "v1_chat"
+            ],
+            "request": {
+              "message": "My skin has been off lately. What should I buy?",
+              "language": "EN",
+              "session": {
+                "state": "IDLE_CHAT"
+              },
+              "context": {
+                "locale": "en"
+              },
+              "client_state": {
+                "state": "IDLE_CHAT"
+              },
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "My skin has been off lately. What should I buy?"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "beauty_creator_dry_sensitive_moisturizer",
+      "family": "beauty_cross_agent_creator",
+      "query": "My audience has dry sensitive skin, what moisturizer should I recommend?",
+      "source": "shared",
+      "targets": {
+        "beauty_cross_agent": {
+          "title": "creator-style moisturizer prompt still resolves through the shared beauty expert truth contract",
+          "prompt": "My audience has dry sensitive skin, what moisturizer should I recommend?",
+          "expected_domain": "beauty",
+          "expected_beauty_mode": "category_compare",
+          "expected_delegated_layer": "decisioning",
+          "expected_next_actions_any": [
+            "compare_same_type"
+          ],
+          "expected_compare_axes_any": [
+            "more hydration / dewier finish"
+          ],
+          "expected_lead_pick_titles_any": [
+            "Ultra Repair Face Lotion with Colloidal Oatmeal",
+            "First Aid Beauty Ultra Repair Face Lotion with Colloidal Oatmeal",
+            "Hydrating Dewy Gel Cream Moisturizer with Hyaluronic Acid + Ceramides"
+          ],
+          "expect_beauty_expert": true,
+          "expect_non_beauty_isolation": false,
+          "invoke": {
+            "sources": [
+              "shopping_agent",
+              "creator_agent"
+            ],
+            "requires_auth": true,
+            "auth_profile": "default",
+            "operation": "find_products_multi",
+            "payload": {
+              "search": {
+                "query": "My audience has dry sensitive skin, what moisturizer should I recommend?",
+                "limit": 8,
+                "in_stock_only": true,
+                "catalog_surface": "beauty"
+              }
+            },
+            "metadata": {
+              "catalog_surface": "beauty",
+              "beauty_domain_hint": "beauty",
+              "allow_orchestration_delegate": true,
+              "requested_projection": "normalized_only"
+            }
+          },
+          "aurora": {
+            "surfaces": [
+              "v1_chat"
+            ],
+            "request": {
+              "message": "My audience has dry sensitive skin, what moisturizer should I recommend?",
+              "language": "EN",
+              "session": {
+                "state": "IDLE_CHAT",
+                "profile": {
+                  "skinType": "dry",
+                  "sensitivity": "high",
+                  "barrierStatus": "stressed"
+                }
+              },
+              "context": {
+                "locale": "en",
+                "profile": {
+                  "skinType": "dry",
+                  "sensitivity": "high",
+                  "barrierStatus": "stressed"
+                }
+              },
+              "client_state": {
+                "state": "IDLE_CHAT"
+              },
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "My audience has dry sensitive skin, what moisturizer should I recommend?"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "beauty_creator_oily_under_makeup_roundup",
+      "family": "beauty_cross_agent_creator",
+      "query": "I'm making a skincare roundup for oily skin under makeup. What sunscreen options should I feature?",
+      "source": "shared",
+      "targets": {
+        "beauty_cross_agent": {
+          "title": "creator-style sunscreen roundup keeps the same lead picks and compare axes as shopper-facing surfaces",
+          "prompt": "I'm making a skincare roundup for oily skin under makeup. What sunscreen options should I feature?",
+          "expected_domain": "beauty",
+          "expected_beauty_mode": "category_compare",
+          "expected_delegated_layer": "decisioning",
+          "expected_next_actions_any": [
+            "compare_same_type",
+            "show_alternatives"
+          ],
+          "expected_compare_axes_any": [
+            "lighter / smoother finish",
+            "matte / shine control",
+            "more hydration / dewier finish"
+          ],
+          "expected_lead_pick_titles_any": [
+            "Beauty of Joseon Relief Sun Aqua-Fresh : Rice + B5 (SPF50+ PA++++)",
+            "SKINTIFIC Matte Fit Serum Sunscreen SPF 50+ PA++++",
+            "Beauty of Joseon Day Dew Sunscreen",
+            "SKINTIFIC Light Serum Sunscreen SPF 50+ PA++++"
+          ],
+          "expect_beauty_expert": true,
+          "expect_non_beauty_isolation": false,
+          "invoke": {
+            "sources": [
+              "shopping_agent",
+              "creator_agent"
+            ],
+            "requires_auth": true,
+            "auth_profile": "default",
+            "operation": "find_products_multi",
+            "payload": {
+              "search": {
+                "query": "I'm making a skincare roundup for oily skin under makeup. What sunscreen options should I feature?",
+                "limit": 8,
+                "in_stock_only": true,
+                "catalog_surface": "beauty"
+              }
+            },
+            "metadata": {
+              "catalog_surface": "beauty",
+              "beauty_domain_hint": "beauty",
+              "allow_orchestration_delegate": true,
+              "requested_projection": "normalized_only"
+            }
+          },
+          "aurora": {
+            "surfaces": [
+              "v2_chat"
+            ],
+            "request": {
+              "message": "I'm making a skincare roundup for oily skin under makeup. What sunscreen options should I feature?",
+              "language": "EN",
+              "session": {
+                "state": "IDLE_CHAT",
+                "profile": {
+                  "skinType": "oily",
+                  "sensitivity": "low",
+                  "barrierStatus": "stable"
+                }
+              },
+              "context": {
+                "locale": "en",
+                "profile": {
+                  "skinType": "oily",
+                  "sensitivity": "low",
+                  "barrierStatus": "stable"
+                }
+              },
+              "client_state": {
+                "state": "IDLE_CHAT"
+              },
+              "messages": [
+                {
+                  "role": "user",
+                  "content": "I'm making a skincare roundup for oily skin under makeup. What sunscreen options should I feature?"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "non_beauty_carry_on_suitcase",
+      "family": "cross_agent_non_beauty_control",
+      "query": "I need a carry-on suitcase under $200",
+      "source": "shared",
+      "targets": {
+        "beauty_cross_agent": {
+          "title": "carry-on luggage prompt must not trigger beauty delegation",
+          "prompt": "I need a carry-on suitcase under $200",
+          "expected_domain": "non_beauty",
+          "expected_beauty_mode": null,
+          "expected_delegated_layer": "decisioning",
+          "expected_next_actions_any": [],
+          "expected_compare_axes_any": [],
+          "expected_lead_pick_titles_any": [],
+          "expect_beauty_expert": false,
+          "expect_non_beauty_isolation": true,
+          "invoke": {
+            "sources": [
+              "shopping_agent",
+              "creator_agent"
+            ],
+            "requires_auth": true,
+            "auth_profile": "default",
+            "operation": "find_products_multi",
+            "payload": {
+              "search": {
+                "query": "I need a carry-on suitcase under $200",
+                "limit": 8,
+                "in_stock_only": true
+              }
+            },
+            "metadata": {
+              "allow_orchestration_delegate": true,
+              "requested_projection": "normalized_only"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "non_beauty_espresso_machine",
+      "family": "cross_agent_non_beauty_control",
+      "query": "What espresso machine should I buy for a small kitchen?",
+      "source": "shared",
+      "targets": {
+        "beauty_cross_agent": {
+          "title": "espresso-machine prompt must stay outside the beauty expert",
+          "prompt": "What espresso machine should I buy for a small kitchen?",
+          "expected_domain": "non_beauty",
+          "expected_beauty_mode": null,
+          "expected_delegated_layer": "decisioning",
+          "expected_next_actions_any": [],
+          "expected_compare_axes_any": [],
+          "expected_lead_pick_titles_any": [],
+          "expect_beauty_expert": false,
+          "expect_non_beauty_isolation": true,
+          "invoke": {
+            "sources": [
+              "shopping_agent",
+              "creator_agent"
+            ],
+            "requires_auth": true,
+            "auth_profile": "default",
+            "operation": "find_products_multi",
+            "payload": {
+              "search": {
+                "query": "What espresso machine should I buy for a small kitchen?",
+                "limit": 8,
+                "in_stock_only": true
+              }
+            },
+            "metadata": {
+              "allow_orchestration_delegate": true,
+              "requested_projection": "normalized_only"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "non_beauty_camera_creator_beginner",
+      "family": "cross_agent_non_beauty_control",
+      "query": "What camera should a beginner lifestyle creator buy?",
+      "source": "shared",
+      "targets": {
+        "beauty_cross_agent": {
+          "title": "creator-adjacent camera prompt must not become a false-positive beauty delegation",
+          "prompt": "What camera should a beginner lifestyle creator buy?",
+          "expected_domain": "non_beauty",
+          "expected_beauty_mode": null,
+          "expected_delegated_layer": "decisioning",
+          "expected_next_actions_any": [],
+          "expected_compare_axes_any": [],
+          "expected_lead_pick_titles_any": [],
+          "expect_beauty_expert": false,
+          "expect_non_beauty_isolation": true,
+          "invoke": {
+            "sources": [
+              "shopping_agent",
+              "creator_agent"
+            ],
+            "requires_auth": true,
+            "auth_profile": "default",
+            "operation": "find_products_multi",
+            "payload": {
+              "search": {
+                "query": "What camera should a beginner lifestyle creator buy?",
+                "limit": 8,
+                "in_stock_only": true
+              }
+            },
+            "metadata": {
+              "allow_orchestration_delegate": true,
+              "requested_projection": "normalized_only"
+            }
+          }
+        }
+      }
+    }
+  ]
+}
