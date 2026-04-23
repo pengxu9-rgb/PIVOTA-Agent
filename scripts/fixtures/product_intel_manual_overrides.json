@@ -677,8 +677,8 @@
       ],
       "why_it_stands_out": [
         {
-          "headline": "Wipe format for on-the-go cleansing",
-          "body": "Keeps cleansing in a pre-soaked wipe format instead of a rinse-off cleanser step.",
+          "headline": "Pre-soaked wipes for on-the-go cleansing",
+          "body": "Keeps cleansing in pre-soaked wipes instead of a rinse-off cleanser step.",
           "evidence_strength": "seller_grounded"
         },
         {
@@ -743,8 +743,8 @@
       ],
       "why_it_stands_out": [
         {
-          "headline": "Wipe format for on-the-go cleansing",
-          "body": "Keeps cleansing in a pre-soaked wipe format instead of a rinse-off cleanser step.",
+          "headline": "Pre-soaked wipes for on-the-go cleansing",
+          "body": "Keeps cleansing in pre-soaked wipes instead of a rinse-off cleanser step.",
           "evidence_strength": "seller_grounded"
         },
         {
@@ -840,8 +840,8 @@
           "evidence_strength": "seller_grounded"
         },
         {
-          "headline": "Gelée cleansing feel",
-          "body": "Uses an essence-like gelée texture rather than a stripped-down foaming cleanser format.",
+          "headline": "Gelée cleanser feel",
+          "body": "Uses an essence-like gelée texture rather than a stripped-down foaming cleanser.",
           "evidence_strength": "seller_grounded"
         }
       ],
@@ -904,8 +904,8 @@
           "evidence_strength": "seller_grounded"
         },
         {
-          "headline": "Gelée cleansing feel",
-          "body": "Uses an essence-like gelée texture rather than a stripped-down foaming cleanser format.",
+          "headline": "Gelée cleanser feel",
+          "body": "Uses an essence-like gelée texture rather than a stripped-down foaming cleanser.",
           "evidence_strength": "seller_grounded"
         }
       ],
@@ -976,7 +976,7 @@
       ],
       "why_it_stands_out": [
         {
-          "headline": "Intro routine format",
+          "headline": "Intro routine kit",
           "body": "Packages several core skincare steps into one entry kit instead of a single hero product.",
           "evidence_strength": "seller_grounded"
         },
@@ -1048,7 +1048,7 @@
       ],
       "why_it_stands_out": [
         {
-          "headline": "Intro routine format",
+          "headline": "Intro routine kit",
           "body": "Packages several core skincare steps into one entry kit instead of a single hero product.",
           "evidence_strength": "seller_grounded"
         },
@@ -1439,7 +1439,7 @@
           "evidence_strength": "seller_grounded"
         },
         {
-          "headline": "NMF-support positioning",
+          "headline": "NMF-support angle",
           "body": "Frames cleansing with more skin-supportive care than a plain soap-first body wash.",
           "evidence_strength": "seller_grounded"
         }
@@ -1505,7 +1505,7 @@
           "evidence_strength": "seller_grounded"
         },
         {
-          "headline": "NMF-support positioning",
+          "headline": "NMF-support angle",
           "body": "Frames cleansing with more skin-supportive care than a plain soap-first body wash.",
           "evidence_strength": "seller_grounded"
         }
@@ -2022,8 +2022,8 @@
       ],
       "why_it_stands_out": [
         {
-          "headline": "Powder-to-milk format",
-          "body": "Transforms from powder into a milky exfoliating texture instead of a harsher scrub format.",
+          "headline": "Powder-to-milk texture",
+          "body": "Transforms from powder into a milky exfoliating texture instead of a harsher scrub.",
           "evidence_strength": "seller_grounded"
         },
         {
@@ -2093,8 +2093,8 @@
       ],
       "why_it_stands_out": [
         {
-          "headline": "Powder-to-milk format",
-          "body": "Transforms from powder into a milky exfoliating texture instead of a harsher scrub format.",
+          "headline": "Powder-to-milk texture",
+          "body": "Transforms from powder into a milky exfoliating texture instead of a harsher scrub.",
           "evidence_strength": "seller_grounded"
         },
         {
@@ -3439,7 +3439,7 @@
       ],
       "why_it_stands_out": [
         {
-          "headline": "Set-of-5 wipe format",
+          "headline": "Set of 5 cleansing-wipe packs",
           "body": "Turns the vitamin C cloths into a multipack rather than a single on-the-go pack.",
           "evidence_strength": "seller_grounded"
         },
@@ -3505,7 +3505,7 @@
       ],
       "why_it_stands_out": [
         {
-          "headline": "Set-of-5 wipe format",
+          "headline": "Set of 5 cleansing-wipe packs",
           "body": "Turns the vitamin C cloths into a multipack rather than a single on-the-go pack.",
           "evidence_strength": "seller_grounded"
         },
@@ -9310,7 +9310,7 @@
     "notes": "Strict human QA override: replaces baseline-only generic/misclassified copy with seller-grounded normalized product intelligence.",
     "product_intel_core": {
       "what_it_is": {
-        "headline": "Refill format",
+        "headline": "Refill option",
         "body": "A refill format for restocking the same routine step without changing the underlying product role."
       },
       "best_for": [
@@ -9412,7 +9412,7 @@
     "notes": "Strict human QA override: replaces baseline-only generic/misclassified copy with seller-grounded normalized product intelligence.",
     "product_intel_core": {
       "what_it_is": {
-        "headline": "Refill format",
+        "headline": "Refill option",
         "body": "A refill format for restocking the same routine step without changing the underlying product role."
       },
       "best_for": [
@@ -9514,7 +9514,7 @@
     "notes": "Strict human QA override: replaces baseline-only generic/misclassified copy with seller-grounded normalized product intelligence.",
     "product_intel_core": {
       "what_it_is": {
-        "headline": "Refill format",
+        "headline": "Refill option",
         "body": "A refill format for restocking the same routine step without changing the underlying product role."
       },
       "best_for": [
@@ -9611,7 +9611,7 @@
     "notes": "Strict human QA override: replaces baseline-only generic/misclassified copy with seller-grounded normalized product intelligence.",
     "product_intel_core": {
       "what_it_is": {
-        "headline": "Refill format",
+        "headline": "Refill option",
         "body": "A refill format for restocking the same routine step without changing the underlying product role."
       },
       "best_for": [
@@ -25856,7 +25856,7 @@
     "notes": "Strict human QA override: replaces baseline-only generic/misclassified copy with seller-grounded normalized product intelligence.",
     "product_intel_core": {
       "what_it_is": {
-        "headline": "Refill format",
+        "headline": "Refill option",
         "body": "A refill format for restocking the same routine step without changing the underlying product role."
       },
       "best_for": [
@@ -25948,7 +25948,7 @@
     "notes": "Strict human QA override: replaces baseline-only generic/misclassified copy with seller-grounded normalized product intelligence.",
     "product_intel_core": {
       "what_it_is": {
-        "headline": "Refill format",
+        "headline": "Refill option",
         "body": "A refill format for restocking the same routine step without changing the underlying product role."
       },
       "best_for": [
@@ -41027,8 +41027,8 @@
           "evidence_strength": "seller_grounded"
         },
         {
-          "headline": "Refill format",
-          "body": "Lets you restock the serum without changing the role it plays in the routine.",
+          "headline": "Refill option",
+          "body": "Lets you restock the same serum step without changing where it sits in the routine.",
           "evidence_strength": "seller_grounded"
         }
       ],
@@ -41099,8 +41099,8 @@
           "evidence_strength": "seller_grounded"
         },
         {
-          "headline": "Refill format",
-          "body": "Lets you restock the serum without changing the role it plays in the routine.",
+          "headline": "Refill option",
+          "body": "Lets you restock the same serum step without changing where it sits in the routine.",
           "evidence_strength": "seller_grounded"
         }
       ],
@@ -41922,7 +41922,7 @@
         },
         {
           "headline": "Daily-use serum slot",
-          "body": "Reads as a regular brightening serum step rather than a heavy treatment-only format.",
+          "body": "Reads as a regular brightening serum step rather than a heavy treatment-only step.",
           "evidence_strength": "seller_grounded"
         }
       ],
@@ -41994,7 +41994,7 @@
         },
         {
           "headline": "Daily-use serum slot",
-          "body": "Reads as a regular brightening serum step rather than a heavy treatment-only format.",
+          "body": "Reads as a regular brightening serum step rather than a heavy treatment-only step.",
           "evidence_strength": "seller_grounded"
         }
       ],
@@ -42483,7 +42483,7 @@
       ],
       "why_it_stands_out": [
         {
-          "headline": "Dewy SPF 50 in a moisturizer format",
+          "headline": "Dewy SPF 50 moisturizer step",
           "body": "Keeps SPF 50 PA++++ protection in a daily moisturizer step that stays dewy rather than reading like a dry sunscreen cast layer.",
           "evidence_strength": "seller_grounded"
         },
@@ -42559,7 +42559,7 @@
       ],
       "why_it_stands_out": [
         {
-          "headline": "Dewy SPF 50 in a moisturizer format",
+          "headline": "Dewy SPF 50 moisturizer step",
           "body": "Keeps SPF 50 PA++++ protection in a daily moisturizer step that stays dewy rather than reading like a dry sunscreen cast layer.",
           "evidence_strength": "seller_grounded"
         },
@@ -43589,7 +43589,7 @@
       "why_it_stands_out": [
         {
           "headline": "0.05% retinaldehyde delivery",
-          "body": "Uses 0.05% retinaldehyde in a cream-serum format instead of a heavier night cream.",
+          "body": "Uses 0.05% retinaldehyde in a cream-serum texture instead of a heavier night cream.",
           "evidence_strength": "seller_grounded"
         },
         {
@@ -43660,7 +43660,7 @@
       "why_it_stands_out": [
         {
           "headline": "0.05% retinaldehyde delivery",
-          "body": "Uses 0.05% retinaldehyde in a cream-serum format instead of a heavier night cream.",
+          "body": "Uses 0.05% retinaldehyde in a cream-serum texture instead of a heavier night cream.",
           "evidence_strength": "seller_grounded"
         },
         {
@@ -43730,12 +43730,12 @@
       ],
       "why_it_stands_out": [
         {
-          "headline": "Multi-step bundle format",
+          "headline": "Multi-step bundle set",
           "body": "Packages more than one step into a single set instead of a standalone SKU.",
           "evidence_strength": "seller_grounded"
         },
         {
-          "headline": "Balance-focused positioning",
+          "headline": "Balance-focused angle",
           "body": "The Balance+ naming keeps the routine aimed at a more even, controlled feel.",
           "evidence_strength": "seller_grounded"
         }
@@ -43802,12 +43802,12 @@
       ],
       "why_it_stands_out": [
         {
-          "headline": "Multi-step bundle format",
+          "headline": "Multi-step bundle set",
           "body": "Packages more than one step into a single set instead of a standalone SKU.",
           "evidence_strength": "seller_grounded"
         },
         {
-          "headline": "Balance-focused positioning",
+          "headline": "Balance-focused angle",
           "body": "The Balance+ naming keeps the routine aimed at a more even, controlled feel.",
           "evidence_strength": "seller_grounded"
         }
@@ -44715,7 +44715,7 @@
           "evidence_strength": "seller_grounded"
         },
         {
-          "headline": "Set format over single SKU",
+          "headline": "Set over single SKU",
           "body": "Designed as a routine bundle instead of asking one product to do the full job.",
           "evidence_strength": "seller_grounded"
         }
@@ -44787,7 +44787,7 @@
           "evidence_strength": "seller_grounded"
         },
         {
-          "headline": "Set format over single SKU",
+          "headline": "Set over single SKU",
           "body": "Designed as a routine bundle instead of asking one product to do the full job.",
           "evidence_strength": "seller_grounded"
         }
@@ -44998,13 +44998,13 @@
       ],
       "why_it_stands_out": [
         {
-          "headline": "Pre-soaked pad format",
+          "headline": "Pre-soaked body pads",
           "body": "Puts body exfoliation into an easy wipe-on pad instead of a scrub or body wash step.",
           "evidence_strength": "seller_grounded"
         },
         {
           "headline": "Texture-smoothing body care",
-          "body": "Keeps retexturizing and smoothing body skin at the center of the product role.",
+          "body": "Keeps retexturizing and smoothing body skin at the center of the product.",
           "evidence_strength": "seller_grounded"
         }
       ],
@@ -45069,13 +45069,13 @@
       ],
       "why_it_stands_out": [
         {
-          "headline": "Pre-soaked pad format",
+          "headline": "Pre-soaked body pads",
           "body": "Puts body exfoliation into an easy wipe-on pad instead of a scrub or body wash step.",
           "evidence_strength": "seller_grounded"
         },
         {
           "headline": "Texture-smoothing body care",
-          "body": "Keeps retexturizing and smoothing body skin at the center of the product role.",
+          "body": "Keeps retexturizing and smoothing body skin at the center of the product.",
           "evidence_strength": "seller_grounded"
         }
       ],
@@ -45266,7 +45266,7 @@
       ],
       "why_it_stands_out": [
         {
-          "headline": "Starter retinol positioning",
+          "headline": "Starter retinol angle",
           "body": "Keeps the serum focused on a gentler retinol entry point rather than a stronger treatment pitch.",
           "evidence_strength": "seller_grounded"
         },
@@ -45337,7 +45337,7 @@
       ],
       "why_it_stands_out": [
         {
-          "headline": "Starter retinol positioning",
+          "headline": "Starter retinol angle",
           "body": "Keeps the serum focused on a gentler retinol entry point rather than a stronger treatment pitch.",
           "evidence_strength": "seller_grounded"
         },
@@ -45480,7 +45480,7 @@
         },
         {
           "headline": "Antioxidant-led glow angle",
-          "body": "Keeps antioxidant support and skin radiance at the center of the set's positioning.",
+          "body": "Keeps antioxidant support and skin radiance at the center of the set.",
           "evidence_strength": "seller_grounded"
         }
       ],
@@ -45536,7 +45536,7 @@
       ],
       "why_it_stands_out": [
         {
-          "headline": "Three-piece vitamin C format",
+          "headline": "Three-piece vitamin C set",
           "body": "Combines face prep, brightening, and lip care into one coordinated set instead of a generic makeup product label.",
           "evidence_strength": "seller_grounded"
         },
@@ -45597,8 +45597,8 @@
       ],
       "why_it_stands_out": [
         {
-          "headline": "Patch-format lip care",
-          "body": "Uses a patch format for targeted lip treatment instead of reading like a generic makeup item.",
+          "headline": "Patch-based lip care",
+          "body": "Uses a patch-based treatment for targeted lip care instead of reading like a generic makeup item.",
           "evidence_strength": "seller_grounded"
         },
         {
@@ -45715,13 +45715,13 @@
       ],
       "why_it_stands_out": [
         {
-          "headline": "All-over body format",
+          "headline": "All-over body coverage",
           "body": "Frames the product as a whole-body deodorant cream instead of letting it drift into a face-moisturizer category.",
           "evidence_strength": "seller_grounded"
         },
         {
           "headline": "Aluminum-free odor control",
-          "body": "Keeps odor control and body-use convenience at the center of the formula story.",
+          "body": "Keeps odor control and body-use convenience at the center of the product.",
           "evidence_strength": "seller_grounded"
         }
       ],
@@ -45783,13 +45783,13 @@
       ],
       "why_it_stands_out": [
         {
-          "headline": "Vitamin C tonic format",
+          "headline": "Vitamin C tonic step",
           "body": "Keeps the product grounded as a brightening tonic step instead of an undefined prep product.",
           "evidence_strength": "seller_grounded"
         },
         {
           "headline": "Mini size for carry-on routines",
-          "body": "The smaller format makes it easy to keep a familiar toner step in travel kits.",
+          "body": "The smaller size makes it easy to keep a familiar toner step in travel kits.",
           "evidence_strength": "seller_grounded"
         }
       ],
@@ -45901,7 +45901,7 @@
       ],
       "why_it_stands_out": [
         {
-          "headline": "12-piece sampler format",
+          "headline": "12-piece sampler set",
           "body": "Keeps the calendar grounded as a holiday sampler instead of a generic makeup product.",
           "evidence_strength": "seller_grounded"
         },
@@ -46090,7 +46090,7 @@
       ],
       "why_it_stands_out": [
         {
-          "headline": "Pine calming pad format",
+          "headline": "Pine calming toner pads",
           "body": "Keeps the product anchored as a soothing toner pad instead of a generic prep step.",
           "evidence_strength": "seller_grounded"
         },
@@ -46301,7 +46301,7 @@
       "why_it_stands_out": [
         {
           "headline": "Mugwort-led calming focus",
-          "body": "Keeps the toner centered on mugwort's soothing role instead of a generic tone-evening claim.",
+          "body": "Keeps the toner centered on mugwort's soothing use case instead of a generic tone-evening claim.",
           "evidence_strength": "seller_grounded"
         },
         {
@@ -46637,11 +46637,11 @@
       "why_it_stands_out": [
         {
           "headline": "Botanical 2GF serum focus",
-          "body": "Keeps the product anchored to its botanical 2GF ampoule positioning instead of placeholder seller copy.",
+          "body": "Keeps the product anchored to its botanical 2GF ampoule identity instead of placeholder seller copy.",
           "evidence_strength": "seller_grounded"
         },
         {
-          "headline": "Concentrated ampoule format",
+          "headline": "Concentrated ampoule step",
           "body": "Frames it as a treatment-layer serum rather than a generic undefined product.",
           "evidence_strength": "seller_grounded"
         }
@@ -46697,8 +46697,8 @@
           "evidence_strength": "seller_grounded"
         },
         {
-          "headline": "Unscented eye-area format",
-          "body": "Makes the fragrance-free eye cream positioning explicit for gentler daily use.",
+          "headline": "Unscented eye-area care",
+          "body": "Makes the fragrance-free eye-cream use case explicit for gentler daily use.",
           "evidence_strength": "seller_grounded"
         }
       ],
@@ -46939,5 +46939,127 @@
     },
     "external_highlight_review_status": "rewrite",
     "external_review_batch": "manual_search_expand60_searchonly_reviewed_2026_04_13"
+  },
+  "live_ext_b361fbdd0bc0fa335a1038d1": {
+    "notes": "Manual duplicate-seed mirror: this Guerlain duplicate shares canonical URL and product line with the already reviewed Youth Watery Oil Serum entry, so live surfaces should reuse the reviewed copy instead of counting it as a new uncovered line.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Face serum",
+        "body": "A lightweight oil-serum hybrid designed to nourish skin and support a smoother, more radiant look."
+      },
+      "best_for": [
+        {
+          "tag": "dullness",
+          "label": "Dull or tired-looking skin",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Formula angle",
+          "body": "A watery oil-serum texture built to combine lightweight spreadability with a more nourishing finish.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "serum",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Apply after cleansing and before cream moisturizer."
+        ]
+      },
+      "watchouts": []
+    },
+    "texture_finish": {
+      "texture": "oil",
+      "finish": "",
+      "sensory_notes": [],
+      "layering_notes": [],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "community_signals": {
+      "status": "unavailable",
+      "confidence": "low",
+      "evidence_profile": "seller_only",
+      "unavailable_reason": "insufficient_feedback"
+    },
+    "shopping_card": {
+      "subtitle": "Face Serum",
+      "intro": "Lightweight oil-serum hybrid for nourishment and radiance."
+    },
+    "search_card": {
+      "compact_candidate": "Face Serum",
+      "intro_candidate": "Lightweight oil-serum hybrid for nourishment and radiance."
+    },
+    "review_status": "completed",
+    "review_decision": "rewrite",
+    "reviewer": "Human QA",
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_duplicate_seed_mirror_2026_04_22"
+  },
+  "product:ext_b361fbdd0bc0fa335a1038d1": {
+    "notes": "Manual duplicate-seed mirror: this Guerlain duplicate shares canonical URL and product line with the already reviewed Youth Watery Oil Serum entry, so coverage and live surfaces should reuse the reviewed copy instead of treating it as a separate uncovered PDP line.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Face serum",
+        "body": "A lightweight oil-serum hybrid designed to nourish skin and support a smoother, more radiant look."
+      },
+      "best_for": [
+        {
+          "tag": "dullness",
+          "label": "Dull or tired-looking skin",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Formula angle",
+          "body": "A watery oil-serum texture built to combine lightweight spreadability with a more nourishing finish.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "serum",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Apply after cleansing and before cream moisturizer."
+        ]
+      },
+      "watchouts": []
+    },
+    "texture_finish": {
+      "texture": "oil",
+      "finish": "",
+      "sensory_notes": [],
+      "layering_notes": [],
+      "confidence": "moderate",
+      "evidence_profile": "seller_only"
+    },
+    "community_signals": {
+      "status": "unavailable",
+      "confidence": "low",
+      "evidence_profile": "seller_only",
+      "unavailable_reason": "insufficient_feedback"
+    },
+    "shopping_card": {
+      "subtitle": "Face Serum",
+      "intro": "Lightweight oil-serum hybrid for nourishment and radiance."
+    },
+    "search_card": {
+      "compact_candidate": "Face Serum",
+      "intro_candidate": "Lightweight oil-serum hybrid for nourishment and radiance."
+    },
+    "review_status": "completed",
+    "review_decision": "rewrite",
+    "reviewer": "Human QA",
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "manual_duplicate_seed_mirror_2026_04_22"
   }
 }
