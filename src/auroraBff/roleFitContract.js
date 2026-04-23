@@ -202,6 +202,18 @@ function hasOffTargetIrritationActiveSignal(text = '') {
   return /\b(salicylic acid|bha|glycolic acid|lactic acid|mandelic acid|azelaic acid|benzoyl peroxide|exfoliat(?:e|ing|ion|or)|retinol|retinal|retinaldehyde|retinoid|tretinoin|adapalene|vitamin c|ascorbic acid)\b/i.test(haystack);
 }
 
+function hasExplicitNoAdditionalActiveConstraint(text = '') {
+  return /\b(?:do\s*not\s*want\s*another\s*active|don't\s*want\s*another\s*active|dont\s*want\s*another\s*active|not\s+another\s+active|no\s+(?:extra\s+|more\s+)?actives?|no\s+active\s+ingredients?|non[- ]?active(?:\s+step|\s+option|\s+moisturi[sz]er)?|without\s+actives?|avoid\s+(?:extra\s+)?actives?|avoid\s+active\s+ingredients?)\b/i.test(
+    String(text || ''),
+  );
+}
+
+function hasAdditionalActiveForwardSignal(text = '') {
+  return /\b(niacinamide|peptide(?:s)?|retinol|retinal|retinaldehyde|retinoid|tretinoin|adapalene|salicylic acid|glycolic acid|lactic acid|mandelic acid|azelaic acid|benzoyl peroxide|vitamin c|ascorbic acid|tranexamic acid|arbutin|kojic acid|exfoliat(?:e|ing|ion|or)|acid complex|aha|bha|pha)\b/i.test(
+    String(text || ''),
+  );
+}
+
 function hasActiveForwardRoleSignal(text = '') {
   return /\b(acne|blemish|breakout|clogged pore|congestion|oil control|shine control|mattify|mattifying|sebum|brighten|brightening|dark spot|hyperpigmentation|tone|mark|anti[- ]?aging|firming|wrinkle|exfoliat(?:e|ing|ion|or))\b/i.test(String(text || ''));
 }
@@ -282,9 +294,11 @@ function roleExpectsLowIrritationSupportProduct(role = null, preferredStep = '',
   if (hasActiveForwardRoleSignal(roleText)) return false;
   if (preferredStep === 'moisturizer') {
     return /\b(barrier|repair|soothing|calming|sensitive|hydrating|lightweight|layering|irritation|redness)\b/.test(roleText)
-      || /\b(barrier|repair|soothing|calming|sensitive|retinoid|retinol|irritation|redness|reactive|no extra active|avoid active)\b/.test(contextText);
+      || /\b(barrier|repair|soothing|calming|sensitive|retinoid|retinol|irritation|redness|reactive|no extra active|avoid active)\b/.test(contextText)
+      || hasExplicitNoAdditionalActiveConstraint(contextText);
   }
-  return /\b(barrier|repair|soothing|calming|sensitive|retinoid|retinol|irritation|redness|reactive|no extra active|avoid active)\b/.test(contextText);
+  return /\b(barrier|repair|soothing|calming|sensitive|retinoid|retinol|irritation|redness|reactive|no extra active|avoid active)\b/.test(contextText)
+    || hasExplicitNoAdditionalActiveConstraint(contextText);
 }
 
 function roleExpectsDryBarrierRecoveryMoisturizer(role = null, preferredStep = '', targetContext = null) {
@@ -295,7 +309,7 @@ function roleExpectsDryBarrierRecoveryMoisturizer(role = null, preferredStep = '
   if (!/\b(barrier|repair|soothing|sensitive|dry skin|tight skin|flaky)\b/i.test(combined)) return false;
   return /\b(dry|tight|flak(?:e|y|ing)|retinoid|retinol|barrier|impaired|stinging|sensitive|no extra active|avoid active|repair|irritat|redness|post[- ]?cleanse)\b/i.test(
     intentText,
-  );
+  ) || hasExplicitNoAdditionalActiveConstraint(intentText);
 }
 
 function hasExplicitOilyComboPositioningSignal(text = '') {
@@ -427,6 +441,12 @@ function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '
     && lowIrritationSupportExpected;
   const lowIrritationActiveMismatchApplied =
     lowIrritationRetinoidMismatchApplied || lowIrritationOfftargetActiveMismatchApplied;
+  const explicitNoAdditionalActiveExpected =
+    preferredStep === 'moisturizer'
+    && hasExplicitNoAdditionalActiveConstraint(buildConcernTargetIntentText(targetContext));
+  const explicitNoAdditionalActiveMismatchApplied =
+    explicitNoAdditionalActiveExpected
+    && hasAdditionalActiveForwardSignal(candidateEvidenceText);
   const dryBarrierRecoveryExpected = roleExpectsDryBarrierRecoveryMoisturizer(role, preferredStep, targetContext);
   const dryBarrierLightweightBiasMismatchApplied =
     dryBarrierRecoveryExpected
@@ -517,6 +537,7 @@ function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '
   }
   if (
     lowIrritationActiveMismatchApplied
+    || explicitNoAdditionalActiveMismatchApplied
     || dryBarrierLightweightBiasMismatchApplied
     || eyeAreaRoleMismatchApplied
     || lightweightTextureMismatchApplied
@@ -540,6 +561,7 @@ function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '
     low_irritation_active_mismatch_applied: lowIrritationActiveMismatchApplied,
     low_irritation_retinoid_mismatch_applied: lowIrritationRetinoidMismatchApplied,
     low_irritation_offtarget_active_mismatch_applied: lowIrritationOfftargetActiveMismatchApplied,
+    explicit_no_additional_active_mismatch_applied: explicitNoAdditionalActiveMismatchApplied,
     dry_barrier_lightweight_bias_mismatch_applied: dryBarrierLightweightBiasMismatchApplied,
     dry_barrier_recovery_support_bonus_applied: dryBarrierRecoverySupportBonusApplied,
     eye_area_role_mismatch_applied: eyeAreaRoleMismatchApplied,
