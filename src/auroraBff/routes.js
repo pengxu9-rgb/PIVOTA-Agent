@@ -21567,7 +21567,17 @@ function buildConcernRecommendationsFromSelectedCandidates(selectedCandidates, {
   selectionNotesByProductId = null,
 } = {}) {
   const frameworkRoles = Array.isArray(targetContext?.framework_roles) ? targetContext.framework_roles : [];
-  return (Array.isArray(selectedCandidates) ? selectedCandidates : []).map((picked, index) => {
+  const primaryFrameworkRole = frameworkRoles.find(
+    (role) => String(role?.role_id || '').trim() === String(targetContext?.primary_role_id || '').trim(),
+  ) || frameworkRoles[0] || null;
+  const visibleCandidates = pruneConcernFrameworkExplicitNoAdditionalActiveSameRoleRows(
+    Array.isArray(selectedCandidates) ? selectedCandidates : [],
+    {
+      targetContext,
+      primaryRole: primaryFrameworkRole,
+    },
+  );
+  return visibleCandidates.map((picked, index) => {
     const matchedRole = frameworkRoles.find((role) => String(role?.role_id || '').trim() === String(picked?.matched_role_id || '').trim()) || null;
     const stepToken = pickFirstTrimmed(
       pickFirstTrimmed(matchedRole?.preferred_step, picked?.candidate_step),
@@ -21737,7 +21747,11 @@ function buildRecoRowsFromMainlineProducts(products, {
       primaryFrameworkRole?.preferred_step,
       targetContext?.resolved_target_step,
   );
-  return mainlineRows.map((picked, index) => {
+  const visibleRows = pruneConcernFrameworkExplicitNoAdditionalActiveSameRoleRows(mainlineRows, {
+    targetContext,
+    primaryRole: primaryFrameworkRole,
+  });
+  return visibleRows.map((picked, index) => {
     const matchedFrameworkRole = Array.isArray(targetContext?.framework_roles)
       ? targetContext.framework_roles.find((role) => (
         String(role?.role_id || '').trim()
