@@ -1429,13 +1429,23 @@ async function handleChat(req, res) {
             body?.query,
           ) || null,
           normalized_need: {
+            ...((body?.context?.normalized_need && typeof body.context.normalized_need === 'object' && !Array.isArray(body.context.normalized_need))
+              ? body.context.normalized_need
+              : {}),
             beauty_request: {
+              ...((body?.context?.normalized_need?.beauty_request &&
+                typeof body.context.normalized_need.beauty_request === 'object' &&
+                !Array.isArray(body.context.normalized_need.beauty_request))
+                ? body.context.normalized_need.beauty_request
+                : {}),
               domain: 'beauty',
-              user_goal: pickFirstTrimmed(
-                body?.message,
-                body?.user_message,
-                body?.query,
-              ) || null,
+              user_goal:
+                pickFirstTrimmed(
+                  body?.context?.normalized_need?.beauty_request?.user_goal,
+                  body?.message,
+                  body?.user_message,
+                  body?.query,
+                ) || null,
             },
           },
         },
