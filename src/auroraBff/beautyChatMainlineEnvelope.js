@@ -98,12 +98,71 @@ function buildEnvelopeAdditionalActiveText(row = null) {
     .join(' ');
 }
 
+function buildEnvelopeAdditionalActiveSignalParts(row = null) {
+  const candidate = isPlainObject(row) ? row : {};
+  const sku = isPlainObject(candidate?.sku) ? candidate.sku : {};
+  const titleText = uniqCaseInsensitiveStrings([
+    candidate.display_name,
+    candidate.displayName,
+    candidate.name,
+    candidate.title,
+    sku.display_name,
+    sku.displayName,
+    sku.name,
+    sku.title,
+    candidate?.product_intel?.shopping_card?.title,
+    candidate?.product_intel?.shopping_card?.subtitle,
+    candidate?.product_intel?.shopping_card?.highlight,
+    candidate?.product_intel?.search_card?.title_candidate,
+    candidate?.product_intel?.search_card?.compact_candidate,
+    candidate?.product_intel?.search_card?.highlight_candidate,
+  ], 16)
+    .map((value) => String(value || '').trim().toLowerCase())
+    .filter(Boolean)
+    .join(' ');
+  const positioningText = uniqCaseInsensitiveStrings([
+    candidate.short_description,
+    candidate.shortDescription,
+    candidate.subtitle,
+    candidate.why_this_one,
+    candidate.whyThisOne,
+    candidate?.product_intel?.shopping_card?.intro,
+    candidate?.product_intel?.search_card?.intro_candidate,
+    candidate?.product_intel?.what_it_is?.body,
+    candidate?.product_intel?.product_intel_core?.what_it_is?.body,
+    ...(Array.isArray(candidate?.compare_highlights) ? candidate.compare_highlights : []),
+  ], 24)
+    .map((value) => String(value || '').trim().toLowerCase())
+    .filter(Boolean)
+    .join(' ');
+  const detailText = uniqCaseInsensitiveStrings([
+    candidate.description,
+    candidate.summary,
+    ...(Array.isArray(candidate?.key_features) ? candidate.key_features : []),
+    ...(Array.isArray(candidate?.keyFeatures) ? candidate.keyFeatures : []),
+  ], 24)
+    .map((value) => String(value || '').trim().toLowerCase())
+    .filter(Boolean)
+    .join(' ');
+  return {
+    titleText,
+    positioningText,
+    detailText,
+    fullText: [titleText, positioningText, detailText].filter(Boolean).join(' '),
+  };
+}
+
 function hasEnvelopeAdditionalActiveSignal(row = null) {
-  const text = buildEnvelopeAdditionalActiveText(row);
-  if (!text) return false;
-  return /\b(?:niacinamide|peptide(?:s)?|retinol|retinal|retinaldehyde|retinoid|tretinoin|adapalene|salicylic acid|glycolic acid|lactic acid|mandelic acid|azelaic acid|benzoyl peroxide|vitamin c|ascorbic acid|tranexamic acid|arbutin|kojic acid|exfoliat(?:e|ing|ion|or)|acid complex|aha|bha|pha)\b/i.test(
-    text,
-  );
+  const { titleText, positioningText, detailText, fullText } = buildEnvelopeAdditionalActiveSignalParts(row);
+  if (!fullText) return false;
+  const strongActivePattern =
+    /\b(?:retinol|retinal|retinaldehyde|retinoid|tretinoin|adapalene|salicylic acid|glycolic acid|lactic acid|mandelic acid|azelaic acid|benzoyl peroxide|vitamin c|ascorbic acid|tranexamic acid|arbutin|kojic acid|exfoliat(?:e|ing|ion|or)|acid complex|aha|bha|pha)\b/i;
+  if (strongActivePattern.test(fullText)) return true;
+  const softActivePattern = /\b(?:niacinamide|peptide(?:s)?|collagen)\b/i;
+  if (softActivePattern.test(titleText)) return true;
+  const activeForwardContextPattern =
+    /\b(?:firm(?:ing|ness)?|fine lines?|wrinkles?|anti[- ]?aging|ageing|brighten(?:ing)?|dark spots?|post[- ]?breakout|tone|pigment|spot[- ]?fading|renewal|resurfac(?:e|ing)|treatment|correct(?:ing|ion)|smooth(?:ing)?)\b/i;
+  return softActivePattern.test(detailText) && activeForwardContextPattern.test(fullText);
 }
 
 function extractEnvelopeRecoSelectionProductId(row = null) {
