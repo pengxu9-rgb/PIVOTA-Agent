@@ -1327,10 +1327,13 @@ function mapAuroraAlternativesToRecoAlternatives(alternatives, { lang = 'EN', ma
     const searchCard = asPlainObject(a.search_card || a.searchCard);
     const metadata = asPlainObject(a.metadata || a.meta);
 
+    const mixedScore = asNumberOrNull(a._mixed_score ?? a.mixed_score ?? a.mixedScore);
+
     mapped.push({
       kind,
       price_tier: priceTier,
       product,
+      ...(mixedScore != null ? { _mixed_score: mixedScore } : {}),
       ...(candidateOrigin ? { candidate_origin: candidateOrigin } : {}),
       ...(groundingStatus ? { grounding_status: groundingStatus } : {}),
       ...(rankingMode ? { ranking_mode: rankingMode } : {}),

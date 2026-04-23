@@ -326,4 +326,5 @@ test('selector alternatives preserve embedded authority metadata for final ranki
 
   assert.equal(rows[0].metadata.embedded_alternative_candidate_source, 'product_alternative_candidates');
   assert.equal(rows[0].metadata.embedded_alternative_candidate_rank, 2);
+  assert.ok(rows[0]._mixed_score > 0.9);
 });
