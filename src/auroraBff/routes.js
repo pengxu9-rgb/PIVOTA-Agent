@@ -61460,6 +61460,34 @@ function looksLikeWeatherOrEnvironmentQuestion(message) {
   return true;
 }
 
+function hasExplicitTravelPlanningContext(message) {
+  const t = String(message || '').trim();
+  if (!t) return false;
+  const lower = t.toLowerCase();
+  return (
+    /\b(travel|trip|business trip|destination|itinerary|flight|airport|hotel|packing|pack|carry[- ]?on|departure|arrival|landing|layover|vacation)\b/i.test(
+      lower,
+    ) ||
+    /(旅行|出差|目的地|行程|航班|机场|酒店|打包|收拾行李|随身行李|起飞|落地|中转|度假)/.test(t)
+  );
+}
+
+function looksLikeExplicitBeautyProductAsk(message) {
+  const t = String(message || '').trim();
+  if (!t) return false;
+  const lower = t.toLowerCase();
+  return (
+    (looksLikeRecommendationRequest(t) || looksLikeSuitabilityRequest(t)) &&
+    /\b(sunscreen|spf|sun\s*screen|moisturi[sz]er|cream|lotion|serum|cleanser|face wash|gel[- ]?cream|routine|skincare\s+product|product|products?)\b/i.test(
+      lower,
+    )
+  );
+}
+
+function shouldSuppressWeatherEnvRoutingForBeautyAsk(message) {
+  return looksLikeExplicitBeautyProductAsk(message) && !hasExplicitTravelPlanningContext(message);
+}
+
 function extractWeatherScenario(message) {
   const t = String(message || '').trim();
   if (!t) return 'unknown';
@@ -93353,12 +93381,15 @@ function mountAuroraBffRoutes(app, { logger }) {
         }
       }
 
+      const suppressEnvTravelShortCircuitForBeautyAsk = shouldSuppressWeatherEnvRoutingForBeautyAsk(message);
+
       if (
         (
           looksLikeWeatherOrEnvironmentQuestion(message) ||
           canonicalIntent.intent === INTENT_ENUM.TRAVEL_PLANNING ||
           canonicalIntent.intent === INTENT_ENUM.WEATHER_ENV
         ) &&
+        !suppressEnvTravelShortCircuitForBeautyAsk &&
         (
           ctx.trigger_source === 'text' ||
           ctx.trigger_source === 'text_explicit' ||
