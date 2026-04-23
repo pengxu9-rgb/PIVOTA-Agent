@@ -546,6 +546,53 @@ describe('aurora chatCardFactory structured sections for adapter inputs', () => 
     expect(() => ChatCardSchema.parse(cards[0])).not.toThrow();
   });
 
+  test('recommendations card counts same-role alternative candidates as available alternatives', () => {
+    const cards = mapLegacyCardToSpecCards(
+      {
+        type: 'recommendations',
+        card_id: 'legacy_recommendations_inline_alternatives',
+        payload: {
+          recommendation_meta: {
+            selected_target_ids: ['daily_sunscreen_finish_fit'],
+            ranked_targets: [
+              {
+                target_id: 'daily_sunscreen_finish_fit',
+                target_label: 'Daily sunscreen with finish fit',
+                product_candidates: [
+                  {
+                    product_id: 'ext_alt_spf',
+                    merchant_id: 'external_seed',
+                    brand: 'Haruharu Wonder',
+                    name: 'Daily Soothing Sun Shield SPF50+ PA++++',
+                    category: 'Sunscreen',
+                  },
+                ],
+              },
+            ],
+          },
+          recommendations: [
+            {
+              product_id: 'ext_anchor_spf',
+              merchant_id: 'external_seed',
+              brand: 'Beauty of Joseon',
+              name: 'Relief Sun Aqua-Fresh',
+              matched_role_id: 'daily_sunscreen_finish_fit',
+              why_this_one: 'Light sunscreen texture for daytime layering.',
+              alternatives_count: 0,
+            },
+          ],
+        },
+      },
+      { requestId: 'req_card_factory_inline_alternatives', language: 'EN', index: 0 },
+    );
+
+    const product = cards[0].payload.sections[0].products[0];
+    expect(product.alternative_candidates).toHaveLength(1);
+    expect(product.alternatives_count).toBe(1);
+    expect(product.same_role_candidate_count).toBe(1);
+    expect(() => ChatCardSchema.parse(cards[0])).not.toThrow();
+  });
+
   test('recommendations card prefers target-aligned why copy over off-target product description claims', () => {
     const cards = mapLegacyCardToSpecCards(
       {
