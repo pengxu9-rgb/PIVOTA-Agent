@@ -30258,7 +30258,6 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       const enrichedWithBeautyExpert = attachBeautyExpertV1ToResponse(enriched, {
         source: metadata?.source || 'shopping_agent',
         entryLayer: 'orchestration',
-        delegatedLayer: 'decisioning',
         taskType: 'discovery',
         context: {
           ...((effectivePayload?.context && typeof effectivePayload.context === 'object' && !Array.isArray(effectivePayload.context))
@@ -30368,7 +30367,6 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           attachBeautyExpertV1ToResponse(finalCacheGuardBody, {
             source: metadata?.source || 'shopping_agent',
             entryLayer: 'orchestration',
-            delegatedLayer: 'decisioning',
             taskType: 'discovery',
             context: {
               ...((effectivePayload?.context && typeof effectivePayload.context === 'object' && !Array.isArray(effectivePayload.context))
@@ -30478,7 +30476,6 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           attachBeautyExpertV1ToResponse(diagnosed, {
             source: metadata?.source || 'shopping_agent',
             entryLayer: 'orchestration',
-            delegatedLayer: 'decisioning',
             taskType: 'discovery',
             context: {
               ...((effectivePayload?.context && typeof effectivePayload.context === 'object' && !Array.isArray(effectivePayload.context))

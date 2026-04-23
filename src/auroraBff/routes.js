@@ -18221,7 +18221,6 @@ function buildBeautyExpertV1ChatAttachOptions({
   return {
     source: 'aurora-bff',
     entryLayer: 'orchestration',
-    delegatedLayer: 'decisioning',
     projectionType: 'aurora_cards',
     taskType: 'discovery',
     context: {
