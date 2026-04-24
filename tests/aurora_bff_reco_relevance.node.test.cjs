@@ -144,7 +144,7 @@ test('__internal: support role query builder keeps finish-fit sunscreen recall t
   assert.equal(queries.includes('makeup friendly sunscreen'), false);
 });
 
-test('__internal: support role query builder keeps broad authority recall for generic daily sunscreen support', () => {
+test('__internal: support role query builder keeps generic daily sunscreen support compact at runtime', () => {
   const queries = buildSupportRoleQueryVariants({
     roleId: 'daily_sunscreen',
     roleLabel: 'Daily sunscreen',
@@ -153,16 +153,12 @@ test('__internal: support role query builder keeps broad authority recall for ge
     fitKeywords: ['spf', 'lightweight', 'oil control', 'non-greasy'],
     semanticFamily: 'sunscreen',
     concernText: 'im oily skin what product should i buy',
-    maxQueries: 6,
+    maxQueries: 2,
   });
 
   assert.deepEqual(queries, [
     'spf fluid oily skin',
     'lightweight sunscreen oily skin',
-    'oil control sunscreen',
-    'sunscreen',
-    'daily sunscreen',
-    'broad spectrum sunscreen',
   ]);
 });
 
@@ -200,7 +196,7 @@ test('__internal: framework recall planner keeps finish-fit sunscreen internal r
   ]);
 });
 
-test('__internal: framework recall planner keeps broad authority variants for generic daily sunscreen support', () => {
+test('__internal: framework recall planner keeps generic daily sunscreen support external runtime budget compact', () => {
   const { __internal } = loadRoutesFresh();
   const plan = __internal.buildRecoRecallPlan({
     mode: 'framework_generic',
@@ -239,10 +235,6 @@ test('__internal: framework recall planner keeps broad authority variants for ge
   assert.deepEqual(externalStage?.entries?.map((entry) => entry?.query), [
     'spf fluid oily skin',
     'lightweight sunscreen oily skin',
-    'oil control sunscreen',
-    'sunscreen',
-    'daily sunscreen',
-    'broad spectrum sunscreen',
   ]);
 });
 
@@ -5516,6 +5508,79 @@ test('__internal: local external seed support-role search uses exact category he
   assert.equal(out.local_external_seed_stage_debug[0]?.stage, 'support_category_exact');
   assert.equal(out.local_external_seed_stage_debug[0]?.query_cap, 8);
   assert.equal(out.products[0].retrieval_match_stage, 'support_category_exact');
+});
+
+test('__internal: local external seed generic daily sunscreen support uses category authority recall without broad runtime fanout', async () => {
+  const { __internal } = loadRoutesFresh();
+  const observedQueries = [];
+  const out = await __internal.searchLocalExternalSeedProducts({
+    query: 'spf fluid oily skin',
+    limit: 2,
+    role: {
+      role_id: 'daily_sunscreen',
+      rank: 30,
+      preferred_step: 'sunscreen',
+      query_terms: ['spf fluid oily skin', 'lightweight sunscreen oily skin', 'oil control sunscreen'],
+      fit_keywords: ['spf', 'uv protection', 'lightweight', 'oil control'],
+      product_type_hypotheses: ['sunscreen'],
+    },
+    preferredStep: 'sunscreen',
+    queryFn: async (sql, params) => {
+      observedQueries.push({ sql: String(sql || ''), params });
+      return {
+        rows: [
+          {
+            id: '225',
+            external_product_id: 'ext_support_daily_sunscreen_225',
+            destination_url: 'https://example.com/products/daily-lightweight-spf',
+            canonical_url: 'https://example.com/products/daily-lightweight-spf',
+            domain: 'example.com',
+            title: 'Daily Lightweight SPF 50',
+            image_url: 'https://example.com/products/daily-lightweight-spf.jpg',
+            price_amount: 26,
+            price_currency: 'USD',
+            availability: 'in_stock',
+            match_stage: 'support_category_exact',
+            match_score: 56,
+            seed_data: {
+              derived: {
+                recall: {
+                  retrieval_title: 'Daily Lightweight SPF 50 sunscreen',
+                  retrieval_summary: 'A lightweight daily face sunscreen for oily skin.',
+                  category: 'sunscreen',
+                  vertical: 'skincare',
+                },
+              },
+              snapshot: {
+                title: 'Daily Lightweight SPF 50',
+                description: 'Lightweight daily face sunscreen.',
+                category: 'Sunscreen',
+              },
+            },
+            updated_at: new Date().toISOString(),
+            created_at: new Date().toISOString(),
+          },
+        ],
+      };
+    },
+  });
+
+  assert.equal(out.ok, true);
+  assert.equal(out.local_external_seed_search_mode, 'staged_support_fastpath');
+  assert.equal(observedQueries.length, 1);
+  assert.match(observedQueries[0].sql, /support_category_exact/);
+  assert.match(observedQueries[0].sql, /vertical/i);
+  assert.doesNotMatch(observedQueries[0].sql, /retrieval_title/i);
+  assert.deepEqual(observedQueries[0].params[2], [
+    'sunscreen',
+    'spf',
+    'sun care',
+    'sun protection',
+    'uv protection',
+  ]);
+  assert.equal(out.local_external_seed_stage_debug[0]?.stage, 'support_category_exact');
+  assert.equal(out.products[0]?.retrieval_match_stage, 'support_category_exact');
+  assert.equal(out.products[0]?.retrieval_role_id, 'daily_sunscreen');
 });
 
 test('__internal: local external seed sunscreen broad recall does not let makeup SPF starve real sunscreen rows', async () => {
