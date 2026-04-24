@@ -256,6 +256,46 @@ describe('audit-external-seed-pdp-coverage-gaps helpers', () => {
     expect(result.actionable_fields).toEqual([]);
   });
 
+  test('treats shipping protection as non-merchandise', () => {
+    const result = classifyRow(
+      row({
+        external_product_id: 'ext_shipping_protection',
+        title: 'Shipping Protection',
+        canonical_url: 'https://example.com/products/shipping-protection',
+        destination_url: 'https://example.com/products/shipping-protection',
+        has_product_key_kb: false,
+        has_identity: false,
+        has_any_identity: true,
+      }),
+    );
+
+    expect(result.product_context.product_family).toBe('non_merchandise');
+    expect(result.field_status.identity).toBe('not_applicable');
+    expect(result.field_status.product_key_kb).toBe('not_applicable');
+    expect(result.actionable_fields).toEqual([]);
+  });
+
+  test('does not require INCI for accessory duos', () => {
+    const result = classifyRow(
+      row({
+        external_product_id: 'ext_sponge_duo',
+        title: 'Lil Precision Makeup Sponge Duo 105',
+        canonical_url: 'https://example.com/products/lil-precision-makeup-sponge-duo-105',
+        destination_url: 'https://example.com/products/lil-precision-makeup-sponge-duo-105',
+        seed_data: {
+          pdp_details_sections: [{ heading: 'Details', body: 'Two mini makeup sponges.' }],
+          pdp_how_to_use_raw: 'Use to blend concealer or foundation.',
+          snapshot: {},
+        },
+      }),
+    );
+
+    expect(result.product_context.product_family).toBe('tool_accessory');
+    expect(result.product_context.bundle).toBe(true);
+    expect(result.field_status.inci).toBe('not_applicable');
+    expect(result.actionable_fields).not.toContain('inci');
+  });
+
   test('context classifier keeps formula products distinct from accessories', () => {
     expect(
       classifyProductContext(
