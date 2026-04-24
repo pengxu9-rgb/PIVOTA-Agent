@@ -415,6 +415,23 @@ function hasUnderMakeupFinishSunscreenSignal(text = '') {
   );
 }
 
+function roleExpectsOilyDailySunscreen(role = null, preferredStep = '', targetContext = null) {
+  if (preferredStep !== 'sunscreen') return false;
+  const roleText = buildConcernRoleFitText(role);
+  const intentText = buildConcernTargetIntentText(targetContext);
+  const combined = `${roleText} ${intentText}`.trim();
+  if (!/\b(oily|oil[- ]?control|oiliness|shine|sebum|greasy|non[- ]?greasy|oil[- ]?free|matte|mattif(?:y|ies|ying))\b/i.test(combined)) {
+    return false;
+  }
+  return !/\b(dry|dehydrat(?:ed|ion)?|tight|barrier|eczema|flak(?:y|ing)|peeling|winter|cold dry)\b/i.test(intentText);
+}
+
+function hasDewyMoisturizingSunscreenSignal(text = '') {
+  return /\b(dewy|day dew|fresh[- ]?dewy|dewier|glow(?:y|ing)?|moisturizer[- ]?like|moisturizer[- ]?style|hydrating cream|hydrating daily cream|cream[- ]?based|cream[- ]?spf|sunscreen milk|milk texture|milky sunscreen|more moisturiz|richer cream|cushion under makeup|soft,\s*dewy finish)\b/i.test(
+    String(text || ''),
+  );
+}
+
 function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '', targetContext = null } = {}) {
   const roleId = String(role?.role_id || '').trim();
   if (!roleId) return null;
@@ -551,6 +568,9 @@ function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '
     primaryUnderMakeupSunscreenExpected
     && hasUnderMakeupFinishSunscreenSignal(candidateEvidenceText)
     && !sunscreenPortableReapplicationMismatchApplied;
+  const sunscreenOilyDewyMoisturizerMismatchApplied =
+    roleExpectsOilyDailySunscreen(role, preferredStep, targetContext)
+    && hasDewyMoisturizingSunscreenSignal(candidateEvidenceText);
 
   let score = 0;
   if (exactStep) score += preferredStep === 'treatment' ? 0.22 : 0.34;
@@ -609,6 +629,9 @@ function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '
   ) {
     score = Math.min(score - 0.34, 0.38);
   }
+  if (sunscreenOilyDewyMoisturizerMismatchApplied) {
+    score = Math.min(score - 0.14, 0.74);
+  }
   score = Math.max(0, score);
   return {
     role_id: roleId,
@@ -636,6 +659,7 @@ function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '
     sunscreen_coverage_tint_mismatch_applied: sunscreenCoverageTintMismatchApplied,
     sunscreen_portable_reapplication_mismatch_applied: sunscreenPortableReapplicationMismatchApplied,
     sunscreen_under_makeup_finish_bonus_applied: sunscreenUnderMakeupFinishBonusApplied,
+    sunscreen_oily_dewy_moisturizer_mismatch_applied: sunscreenOilyDewyMoisturizerMismatchApplied,
     treatment_serum_ingredient_rescue_applied: treatmentSerumIngredientRescueApplied,
     treatment_serum_active_semantic_rescue_applied: treatmentSerumActiveSemanticRescueApplied,
     fit_keyword_matches: fitKeywordMatches,

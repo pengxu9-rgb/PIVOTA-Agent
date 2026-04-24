@@ -509,9 +509,12 @@ test('beauty mainline reco rows prefer role-grounded sunscreen copy over marketi
           display_name: 'Round Lab Birch Mild-Up Sunscreen UVLock SPF 50+ Broad Spectrum',
           category: 'Sunscreen',
           product_type: 'Sunscreen',
-          short_description: 'Broad-Spectrum Physical Protection: Formulated with Zinc Oxide and Titanium Dioxide to reflect and',
-          description: 'Broad-Spectrum Physical Protection: Formulated with Zinc Oxide and Titanium Dioxide to reflect and scatter UVA and UVB rays. Experience superior sun protection with Round Lab’s lightweight mineral sunscreen. Why Choose Round Lab Birch Mild-Up Sunscreen? Perfect for Daily Use.',
-          why_this_one: 'Experience superior sun protection with highly effective physical UV filters.',
+          short_description:
+            'Korea’s #1 sunscreen 10M+ sold worldwide. Broad-Spectrum Physical Protection: Formulated with Zinc Oxide and Titanium Dioxide to reflect and',
+          description:
+            'Korea’s #1 sunscreen 10M+ sold worldwide. Featured in Allure. Broad-Spectrum Physical Protection: Formulated with Zinc Oxide and Titanium Dioxide to reflect and scatter UVA and UVB rays. Experience superior sun protection with Round Lab’s lightweight mineral sunscreen. Why Choose Round Lab Birch Mild-Up Sunscreen? Perfect for Daily Use.',
+          why_this_one:
+            'Clinically shown to deliver visible improvements in sun protection. Experience superior sun protection with highly effective physical UV filters.',
           key_features: ['UV filters', 'Zinc PCA'],
           matched_role_id: 'daily_sunscreen',
           matched_role_label: 'Daily sunscreen',
@@ -539,11 +542,11 @@ test('beauty mainline reco rows prefer role-grounded sunscreen copy over marketi
     assert.equal(rows.length, 1);
     assert.doesNotMatch(
       String(rows[0].why_this_one || ''),
-      /physical uv protection sun protection|experience superior|why choose|perfect for daily use|effective|superior/i,
+      /physical uv protection sun protection|experience superior|why choose|perfect for daily use|effective|superior|clinically shown|visible improvements|korea|#1|10m|sold worldwide|featured in/i,
     );
     assert.doesNotMatch(
       String(rows[0].short_description || ''),
-      /physical uv protection sun protection|experience superior|why choose|perfect for daily use|effective|superior/i,
+      /physical uv protection sun protection|experience superior|why choose|perfect for daily use|effective|superior|clinically shown|visible improvements|korea|#1|10m|sold worldwide|featured in/i,
     );
     assert.doesNotMatch(
       String(rows[0].short_description || ''),
@@ -3976,6 +3979,7 @@ test('reco assistant rewrite uses structured primary attempt for compact routine
 
     assert.equal(callCount, 1);
     assert.match(prompts[0], /Do not write the final assistant message/);
+    assert.match(prompts[0], /do not stop at generic SPF or broad-spectrum utility/i);
     assert.equal(rewrite.llm_used, true);
     assert.equal(rewrite.attempts?.[0]?.structured_reason_only, true);
     assert.equal(rewrite.attempts?.[0]?.strict_selected_only_context, true);
@@ -3983,6 +3987,7 @@ test('reco assistant rewrite uses structured primary attempt for compact routine
     assert.match(rewrite.text, /The Ordinary Niacinamide 10% \+ Zinc 1% fits this request/i);
     assert.match(rewrite.text, /Hydrating Dewy Gel Cream covers the moisturizer step/i);
     assert.match(rewrite.text, /Birch Mild-Up Sunscreen SPF 50 covers the sunscreen step/i);
+    assert.match(rewrite.text, /lightweight, non-greasy wear/i);
   } finally {
     __internal.__resetCallGeminiJsonObjectForTest();
     if (prevMock === undefined) delete process.env.AURORA_BFF_USE_MOCK;

@@ -405,6 +405,15 @@ function neutralizeVisibleRecommendationCardCopy(value) {
   return text;
 }
 
+function looksLikeRecommendationCardMarketingHeavyCopy(value) {
+  const text = asString(value).replace(/\s+/g, ' ').trim();
+  if (!text) return false;
+  return /\b(?:clinically\s+(?:shown|proven|tested)|testing\s+shows|clinical\s+(?:study|results?)|visible\s+improvements?\s+in)\b/i.test(text)
+    || /\b(?:korea[’']?s\s*#?\s*1|#\s*1\s+(?:sunscreen|serum|moisturi[sz]er)|\d+(?:\.\d+)?\s*(?:m|million|k)\+?\s+sold|sold\s+worldwide)\b/i.test(text)
+    || /\b(?:featured\s+in|as\s+seen\s+in)\s+(?:vogue|allure|nbc\s+select|byrdie|refinery29|elle|cosmopolitan)\b/i.test(text)
+    || /\b(?:viral|cult[-\s]?favorite|holy[-\s]?grail|award[-\s]?winning|editor[-\s]?approved)\b/i.test(text);
+}
+
 function normalizePrice(value, fallbackCurrency = '') {
   if (isPlainObject(value)) {
     const amount = asNumber(value.amount);
@@ -770,7 +779,12 @@ function looksLikeRecommendationCardFitOnlyCopy(value) {
 
 function pickTargetAlignedRecommendationCardCopy(values = [], { targetText = '' } = {}) {
   const candidates = normalizeStringList(values, 10)
-    .filter((value) => !looksLikeStandaloneRecommendationCardEvidenceFragment(value));
+    .map(neutralizeVisibleRecommendationCardCopy)
+    .filter((value) => (
+      value
+      && !looksLikeStandaloneRecommendationCardEvidenceFragment(value)
+      && !looksLikeRecommendationCardMarketingHeavyCopy(value)
+    ));
   if (!candidates.length) return '';
   const firstCandidate = candidates[0] || '';
   const targetFamilies = collectRecommendationCardConcernFamilies(targetText);

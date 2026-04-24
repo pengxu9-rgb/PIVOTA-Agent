@@ -809,6 +809,57 @@ test('daily sunscreen finish-fit demotes tinted coverage sunscreen when the requ
   assert.ok(Number(untintedScore?.score || 0) > Number(tintedScore?.score || 0));
 });
 
+test('oily daily sunscreen support demotes dewy moisturizing SPF when non-greasy fit is expected', () => {
+  const role = buildDailySunscreenRole();
+  const targetContext = {
+    request_text: 'im oily skin. what product should i buy?',
+    primary_concern: 'oil_control_treatment',
+    resolved_target_step: 'treatment',
+    semantic_plan: {
+      primary_concern: 'oily skin oil control',
+      routine_mode: 'routine_mix',
+      must_satisfy_constraints: ['oil control', 'non-greasy daytime SPF'],
+    },
+    framework_roles: [
+      buildOilControlTreatmentRole(),
+      role,
+    ],
+  };
+
+  const dewyMoisturizingScore = scoreConcernRoleCandidate(
+    {
+      title: 'Birch Moisturizing Sunscreen UVLock SPF 45+ Broad Spectrum',
+      retrieval_role_id: 'daily_sunscreen',
+    },
+    role,
+    {
+      candidateStep: 'sunscreen',
+      targetContext,
+      candidateText:
+        'Birch Moisturizing Sunscreen UVLock SPF 45+ Broad Spectrum sunscreen with a moisturizer-like feel and soft, dewy finish.',
+    },
+  );
+  const mineralNonGreasyScore = scoreConcernRoleCandidate(
+    {
+      title: 'Birch Mild-Up Sunscreen UVLock SPF 50+ Broad Spectrum',
+      retrieval_role_id: 'daily_sunscreen',
+    },
+    role,
+    {
+      candidateStep: 'sunscreen',
+      targetContext,
+      candidateText:
+        'Birch Mild-Up Sunscreen UVLock SPF 50+ Broad Spectrum mineral sunscreen with zinc oxide, titanium dioxide, and a lightweight non-greasy texture.',
+    },
+  );
+
+  assert.ok(dewyMoisturizingScore);
+  assert.ok(mineralNonGreasyScore);
+  assert.equal(dewyMoisturizingScore?.sunscreen_oily_dewy_moisturizer_mismatch_applied, true);
+  assert.equal(mineralNonGreasyScore?.sunscreen_oily_dewy_moisturizer_mismatch_applied, false);
+  assert.ok(Number(mineralNonGreasyScore?.score || 0) > Number(dewyMoisturizingScore?.score || 0));
+});
+
 test('daily sunscreen finish-fit keeps portable stick viable when the user explicitly asked for reapplication convenience', () => {
   const score = scoreConcernRoleCandidate(
     {
