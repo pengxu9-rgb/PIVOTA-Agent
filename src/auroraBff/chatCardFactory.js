@@ -401,6 +401,8 @@ function neutralizeVisibleRecommendationCardCopy(value) {
     .replace(/\bbest\s+/gi, '')
     .replace(/\bbest\b/gi, 'suitable')
     .replace(/\bperfect\b/gi, 'good')
+    .replace(/\s+or a richer cream as a more hydrating step for those with drier skin types\.?/gi, '')
+    .replace(/\s+as a more hydrating step for those with drier skin types\.?/gi, '')
     .trim();
   return text;
 }
@@ -411,7 +413,8 @@ function looksLikeRecommendationCardMarketingHeavyCopy(value) {
   return /\b(?:clinically\s+(?:shown|proven|tested)|testing\s+shows|clinical\s+(?:study|results?)|visible\s+improvements?\s+in)\b/i.test(text)
     || /\b(?:korea[’']?s\s*#?\s*1|#\s*1\s+(?:sunscreen|serum|moisturi[sz]er)|\d+(?:\.\d+)?\s*(?:m|million|k)\+?\s+sold|sold\s+worldwide)\b/i.test(text)
     || /\b(?:featured\s+in|as\s+seen\s+in)\s+(?:vogue|allure|nbc\s+select|byrdie|refinery29|elle|cosmopolitan)\b/i.test(text)
-    || /\b(?:viral|cult[-\s]?favorite|holy[-\s]?grail|award[-\s]?winning|editor[-\s]?approved)\b/i.test(text);
+    || /\b(?:viral|cult[-\s]?favorite|holy[-\s]?grail|award[-\s]?winning|editor[-\s]?approved)\b/i.test(text)
+    || /\b(?:evaluation\s+tied|filter\s+cues?|clear\s+filter\s+identity|reapplication\s+expectations?\s+explicit|moisturizer[-\s]?style\s+claims?|shoppers?\s+who\s+need\s+a\s+daily\s+sunscreen\s+step)\b/i.test(text);
 }
 
 function normalizePrice(value, fallbackCurrency = '') {

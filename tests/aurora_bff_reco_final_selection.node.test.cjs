@@ -515,6 +515,21 @@ test('beauty mainline reco rows prefer role-grounded sunscreen copy over marketi
             'Korea’s #1 sunscreen 10M+ sold worldwide. Featured in Allure. Broad-Spectrum Physical Protection: Formulated with Zinc Oxide and Titanium Dioxide to reflect and scatter UVA and UVB rays. Experience superior sun protection with Round Lab’s lightweight mineral sunscreen. Why Choose Round Lab Birch Mild-Up Sunscreen? Perfect for Daily Use.',
           why_this_one:
             'Clinically shown to deliver visible improvements in sun protection. Experience superior sun protection with highly effective physical UV filters.',
+          product_intel: {
+            product_intel_core: {
+              why_it_stands_out: [
+                {
+                  body: 'Keeps the sunscreen evaluation tied to AM UV protection and reapplication expectations, not just moisturizer-style claims.',
+                },
+                {
+                  body: 'Uses mineral UV-filter cues for shoppers who need a daily sunscreen step with clear filter identity.',
+                },
+              ],
+            },
+            shopping_card: {
+              intro: 'Korea’s #1 sunscreen 10M+ sold worldwide.',
+            },
+          },
           key_features: ['UV filters', 'Zinc PCA'],
           matched_role_id: 'daily_sunscreen',
           matched_role_label: 'Daily sunscreen',
@@ -542,11 +557,11 @@ test('beauty mainline reco rows prefer role-grounded sunscreen copy over marketi
     assert.equal(rows.length, 1);
     assert.doesNotMatch(
       String(rows[0].why_this_one || ''),
-      /physical uv protection sun protection|experience superior|why choose|perfect for daily use|effective|superior|clinically shown|visible improvements|korea|#1|10m|sold worldwide|featured in/i,
+      /physical uv protection sun protection|experience superior|why choose|perfect for daily use|effective|superior|clinically shown|visible improvements|korea|#1|10m|sold worldwide|featured in|evaluation tied|filter cues|clear filter identity|moisturizer-style claims/i,
     );
     assert.doesNotMatch(
       String(rows[0].short_description || ''),
-      /physical uv protection sun protection|experience superior|why choose|perfect for daily use|effective|superior|clinically shown|visible improvements|korea|#1|10m|sold worldwide|featured in/i,
+      /physical uv protection sun protection|experience superior|why choose|perfect for daily use|effective|superior|clinically shown|visible improvements|korea|#1|10m|sold worldwide|featured in|evaluation tied|filter cues|clear filter identity|moisturizer-style claims/i,
     );
     assert.doesNotMatch(
       String(rows[0].short_description || ''),
@@ -561,6 +576,51 @@ test('beauty mainline reco rows prefer role-grounded sunscreen copy over marketi
       /it is formulated with Zinc Oxide and Titanium Dioxide.+daily sunscreen step/i,
     );
     assert.match(String(rows[0].short_description || ''), /daily sunscreen step/i);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('beauty mainline reco rows remove off-context drier-skin tail copy from oily moisturizer cards', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const rows = __internal.buildRecoRowsFromMainlineProducts(
+      [
+        {
+          product_id: 'dieux_air_angel',
+          merchant_id: 'external_seed',
+          brand: 'Dieux',
+          display_name: 'Dieux Air Angel Peptide Plumping Gel Cream',
+          category: 'Moisturizer',
+          product_type: 'Moisturizer',
+          why_this_one:
+            'Finish is slightly matte and good under makeup or a richer cream as a more hydrating step for those with drier skin types.',
+          matched_role_id: 'lightweight_moisturizer',
+          matched_role_label: 'Lightweight moisturizer',
+          price: { amount: 34, currency: 'USD', unknown: false },
+        },
+      ],
+      {
+        targetContext: {
+          resolved_target_step: 'treatment',
+          primary_role_id: 'oil_control_treatment',
+          framework_roles: [
+            {
+              role_id: 'lightweight_moisturizer',
+              label: 'Lightweight moisturizer',
+              rank: 2,
+              preferred_step: 'moisturizer',
+              why_this_role: 'Add a light moisturizer step that does not feel greasy for oily skin.',
+            },
+          ],
+        },
+        language: 'EN',
+      },
+    );
+
+    assert.equal(rows.length, 1);
+    assert.match(String(rows[0].why_this_one || ''), /slightly matte and good under makeup/i);
+    assert.doesNotMatch(String(rows[0].why_this_one || ''), /drier skin types|richer cream/i);
   } finally {
     delete require.cache[moduleId];
   }
