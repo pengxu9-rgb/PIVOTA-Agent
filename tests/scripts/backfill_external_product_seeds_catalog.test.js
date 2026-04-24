@@ -1024,6 +1024,80 @@ describe('backfill-external-product-seeds-catalog', () => {
     expect(JSON.stringify(identityPayload.product)).not.toMatch(/GIVE IT TO ME QUICK|TELL ME MORE|HEAVY ON THE HYDRATION|must-haves/i);
   });
 
+  test('clears formula-only PDP fields from non-formula products', () => {
+    const row = {
+      id: 'eps_kylie_towel',
+      external_product_id: 'ext_kylie_towel',
+      title: 'Hooded Bath Towel',
+      canonical_url: 'https://kyliecosmetics.com/products/hooded-bath-towel',
+      destination_url: 'https://kyliecosmetics.com/products/hooded-bath-towel',
+      seed_data: {
+        pdp_ingredients_raw: 'Water, Zinc Oxide.',
+        pdp_active_ingredients_raw: 'Zinc Oxide 10%',
+        pdp_how_to_use_raw: 'Apply generously.',
+        active_ingredients: ['Zinc Oxide'],
+        snapshot: {
+          canonical_url: 'https://kyliecosmetics.com/products/hooded-bath-towel',
+          pdp_ingredients_raw: 'Water, Zinc Oxide.',
+          pdp_active_ingredients_raw: 'Zinc Oxide 10%',
+          pdp_how_to_use_raw: 'Apply generously.',
+          activeIngredients: ['Zinc Oxide'],
+        },
+      },
+    };
+
+    const payload = buildSeedUpdatePayload(
+      row,
+      {
+        products: [
+          {
+            title: 'Hooded Bath Towel',
+            url: 'https://kyliecosmetics.com/products/hooded-bath-towel',
+            product_kind: 'general_merchandise',
+            description_raw: 'A soft hooded towel for bath time.',
+            details_sections: [
+              {
+                heading: 'Details',
+                body: 'Made with cotton terry.',
+                source_kind: 'shopify_body_html_labeled_sections',
+              },
+              {
+                heading: 'How to Use',
+                body: 'Apply generously.',
+                source_kind: 'shopify_body_html_labeled_sections',
+              },
+              {
+                heading: 'Ingredients',
+                body: 'Water, Zinc Oxide.',
+                source_kind: 'shopify_body_html_labeled_sections',
+              },
+            ],
+          },
+        ],
+        variants: [],
+        diagnostics: {},
+      },
+      'https://kyliecosmetics.com/products/hooded-bath-towel',
+    );
+
+    expect(payload.nextRow.seed_data.product_kind).toBe('general_merchandise');
+    expect(payload.nextRow.seed_data.pdp_ingredients_raw).toBeUndefined();
+    expect(payload.nextRow.seed_data.pdp_active_ingredients_raw).toBeUndefined();
+    expect(payload.nextRow.seed_data.pdp_how_to_use_raw).toBeUndefined();
+    expect(payload.nextRow.seed_data.active_ingredients).toBeUndefined();
+    expect(payload.nextRow.seed_data.snapshot.pdp_ingredients_raw).toBeUndefined();
+    expect(payload.nextRow.seed_data.snapshot.pdp_active_ingredients_raw).toBeUndefined();
+    expect(payload.nextRow.seed_data.snapshot.pdp_how_to_use_raw).toBeUndefined();
+    expect(payload.nextRow.seed_data.snapshot.activeIngredients).toBeUndefined();
+    expect(payload.nextRow.seed_data.pdp_details_sections).toEqual([
+      {
+        heading: 'Details',
+        body: 'Made with cotton terry.',
+        source_kind: 'shopify_body_html_labeled_sections',
+      },
+    ]);
+  });
+
   test('suppresses storefront boilerplate descriptions instead of writing them to PDP fields', () => {
     const boilerplate =
       "Fenty Beauty by Rihanna was created with promise of inclusion for all women. With an unmatched offering of shades and colors for ALL skin tones, you'll never look elsewhere for your beauty staples. Browse our foundation line, lip colors, and so much more.";
