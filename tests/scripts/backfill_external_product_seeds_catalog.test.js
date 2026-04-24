@@ -521,6 +521,46 @@ describe('backfill-external-product-seeds-catalog', () => {
     ]);
   });
 
+  test('skips direct PDP backfill when extractor returns no products', async () => {
+    const row = {
+      id: 'eps_kylie_empty_pdp',
+      title: 'Chrome Makeup Bag',
+      market: 'US',
+      canonical_url: 'https://kyliecosmetics.com/products/chrome-makeup-bag',
+      destination_url: 'https://kyliecosmetics.com/products/chrome-makeup-bag',
+      seed_data: {
+        image_urls: ['https://cdn.example.com/stale.jpg'],
+        snapshot: {
+          canonical_url: 'https://kyliecosmetics.com/products/chrome-makeup-bag',
+          image_urls: ['https://cdn.example.com/stale.jpg'],
+        },
+      },
+    };
+
+    jest
+      .spyOn(axios, 'post')
+      .mockResolvedValueOnce({
+        data: {
+          products: [],
+          variants: [],
+          diagnostics: {
+            extraction_status: 'empty',
+          },
+        },
+      });
+
+    const result = await processRow(row, {
+      dryRun: true,
+      baseUrl: 'https://catalog.test',
+      validateImageHealth: false,
+      expandVariants: false,
+    });
+
+    expect(result.status).toBe('skipped');
+    expect(result.reason).toBe('catalog_empty_direct_pdp');
+    expect(result.payload.diagnostics).toEqual({ extraction_status: 'empty' });
+  });
+
   test('recovers the original PDP target from diagnostics when the stored URL drifted to contact-us', () => {
     const row = {
       canonical_url: 'https://theordinary.com/en-us/contact-us.html',

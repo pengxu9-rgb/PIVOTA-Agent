@@ -2500,6 +2500,17 @@ async function processRow(row, options) {
     const response = await extractSeed(targetUrl, row, options.baseUrl);
     const products = Array.isArray(response?.products) ? response.products : [];
     const representativeProduct = chooseRepresentativeProduct(response, targetUrl, row);
+    if (looksLikeDirectProductTargetUrl(targetUrl) && products.length === 0) {
+      return {
+        status: 'skipped',
+        reason: 'catalog_empty_direct_pdp',
+        row,
+        targetUrl,
+        payload: {
+          diagnostics: response?.diagnostics || null,
+        },
+      };
+    }
     if (looksLikeDirectProductTargetUrl(targetUrl) && products.length > 0 && !representativeProduct) {
       return {
         status: 'skipped',
