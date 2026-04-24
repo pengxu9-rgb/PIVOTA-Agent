@@ -569,11 +569,11 @@ test('beauty mainline reco rows prefer role-grounded sunscreen copy over marketi
     );
     assert.match(
       String(rows[0].why_this_one || ''),
-      /practical daily SPF option.+mineral filters.+zinc oxide.+titanium dioxide.+dedicated UV-protection step/i,
+      /practical daily SPF option.+mineral filters.+zinc oxide.+titanium dioxide.+dedicated daytime UV step/i,
     );
     assert.match(
       String(rows[0].short_description || ''),
-      /practical daily SPF option.+mineral filters.+zinc oxide.+titanium dioxide.+dedicated UV-protection step/i,
+      /practical daily SPF option.+mineral filters.+zinc oxide.+titanium dioxide.+dedicated daytime UV step/i,
     );
     assert.match(String(rows[0].short_description || ''), /daily SPF option/i);
   } finally {
@@ -3740,6 +3740,12 @@ test('reco assistant visible-text sanitizer rewrites leaked same-slot finish-fit
     assert.match(finishFitText, /less slip under makeup\./i);
     assert.doesNotMatch(finishFitText, /under makeup a serum texture/i);
     assert.doesNotMatch(finishFitText, /under makeup protection/i);
+
+    const truncatedRoutineTail = __internal.sanitizeRecoAssistantVisibleText(
+      'Round Lab Birch Mild-Up Sunscreen UVLock SPF 50+ Broad Spectrum covers the broad-spectrum sunscreen step because it uses mineral filters like zinc oxide and titanium dioxide, giving this routine a. What AM/PM steps or products are you already using?',
+    );
+    assert.match(truncatedRoutineTail, /because it uses mineral filters like zinc oxide and titanium dioxide for a dedicated daytime UV step\./i);
+    assert.doesNotMatch(truncatedRoutineTail, /giving this routine a/i);
   } finally {
     delete require.cache[moduleId];
   }
