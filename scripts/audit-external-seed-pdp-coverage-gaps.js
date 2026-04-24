@@ -11,13 +11,13 @@ const FORMULA_RE =
 const ACCESSORY_RE =
   /\b(brush|sponge|puff|applicator|sharpener|tweezer|curler|scissors|comb|mirror|case|bag|pouch|holder|spatula|tool|tools|gua sha|roller|headband|scrunchie|scarf|hat|cap|tote|clip|clips|lash curler|refill case)\b/i;
 const NON_MERCH_RE = /\b(?:e[-\s]?gift[-\s]?cards?|gift[-\s]?cards?|donat(?:e|ion)|sample service|appointment|booking)\b/i;
-const BUNDLE_RE = /\b(bundle|set|kit|duo|trio|routine|collection|mini set|travel set|starter set|value set)\b/i;
+const BUNDLE_RE = /\b(bundle|set|kit|duo|trio|routine|mini set|travel set|starter set|value set|collection set|collection kit|collection bundle)\b/i;
 const FRAGRANCE_RE = /\b(fragrance|perfume|parfum|eau de|edt|edp|cologne|body mist|mist|candle)\b/i;
 const HAIR_RE = /\b(hair|shampoo|conditioner|scalp|leave-in|styling|curl|detangler)\b/i;
 const MAKEUP_RE =
-  /\b(makeup|foundation|concealer|mascara|lipstick|lip gloss|lip oil|blush|bronzer|powder|highlighter|eyeshadow|eyeliner|brow|primer|setting spray|tint|shade|palette)\b/i;
+  /\b(makeup|foundation|concealer|mascara|lipstick|lip gloss|lip oil|lip luminizer|luminizer|blush|bronzer|powder|highlighter|eyeshadow|eyeliner|brow|primer|setting spray|tint|shade|palette)\b/i;
 const SKINCARE_RE =
-  /\b(skincare|skin care|cleanser|toner|essence|serum|ampoule|moisturi[sz]er|cream|lotion|balm|mask|peel|exfoliant|treatment|oil|sunscreen|spf|retinol|vitamin c|niacinamide|acid|salicylic|benzoyl|azelaic|ceramide|hyaluronic)\b/i;
+  /\b(skincare|skin care|cleanser|toner|essence|serum|ampoule|moisturi[sz]er|cream|lotion|balm|mask|scrub|body scrub|peel|exfoliant|treatment|oil|sunscreen|spf|retinol|vitamin c|niacinamide|aha|bha|acid|salicylic|benzoyl|azelaic|ceramide|hyaluronic)\b/i;
 const REGULATORY_ACTIVE_RE =
   /\b(sunscreen|spf|sun screen|uv|pa\+|acne|benzoyl peroxide|salicylic acid|zinc oxide|titanium dioxide|avobenzone|octocrylene|octisalate|homosalate|octinoxate|adapalene)\b/i;
 const SOURCE_BLOCKED_RE = /\b(no_product_urls|missing_target_url|bot_challenge|timeout|http_404|not_found|navigation_failed|extractor_failure)\b/i;

@@ -275,5 +275,23 @@ describe('audit-external-seed-pdp-coverage-gaps helpers', () => {
         }),
       ).product_family,
     ).toBe('makeup');
+    expect(
+      classifyProductContext(
+        row({
+          title: 'Gloss Bomb Universal Lip Luminizer: Arcane Collection — Kaboom',
+          canonical_url: 'https://example.com/products/gloss-bomb-universal-lip-luminizer-kaboom',
+          destination_url: 'https://example.com/products/gloss-bomb-universal-lip-luminizer-kaboom',
+        }),
+      ).product_family,
+    ).toBe('makeup');
+    expect(
+      classifyProductContext(
+        row({
+          title: 'Cherry Dub Triple Action AHA Body Scrub',
+          canonical_url: 'https://example.com/products/cherry-dub-triple-action-aha-body-scrub',
+          destination_url: 'https://example.com/products/cherry-dub-triple-action-aha-body-scrub',
+        }),
+      ).product_family,
+    ).toBe('skincare');
   });
 });
