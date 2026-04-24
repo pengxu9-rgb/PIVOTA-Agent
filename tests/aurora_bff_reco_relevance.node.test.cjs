@@ -7443,6 +7443,231 @@ test('__internal: strict single-product budget plans do not backfill same-role s
   assert.equal(state.comparison_fill_count, 0);
 });
 
+test('__internal: beauty mainline does not use soft-mismatch comparison fill for non-compare acne asks', async () => {
+  const { __internal } = loadRoutesFresh();
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [
+      {
+        product_id: 'acne_primary_niacinamide',
+        merchant_id: 'merchant_acne_primary_niacinamide',
+        brand: 'The Ordinary',
+        name: 'Niacinamide 10% + Zinc 1%',
+        display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+        category: 'serum',
+        product_type: 'serum',
+        retrieval_source: 'catalog',
+        retrieval_query: 'salicylic acid serum clogged pores',
+        retrieval_step: 'treatment',
+        retrieval_role_id: 'acne_clogged_pore_treatment',
+        benefit_tags: ['niacinamide', 'zinc', 'oil control', 'pores'],
+        short_description: 'A lightweight serum for excess oil, pore visibility, and congestion support.',
+      },
+      {
+        product_id: 'soft_barrier_treatment_should_not_fill',
+        merchant_id: 'merchant_soft_barrier_treatment_should_not_fill',
+        brand: 'KraveBeauty',
+        name: 'Great Barrier Relief',
+        display_name: 'KraveBeauty Great Barrier Relief',
+        category: 'treatment',
+        product_type: 'treatment',
+        retrieval_source: 'catalog',
+        retrieval_query: 'salicylic acid serum clogged pores',
+        retrieval_step: 'treatment',
+        retrieval_role_id: 'acne_clogged_pore_treatment',
+        short_description: 'A barrier-repair serum for over-sensitized or irritated skin with tamanu oil and ceramides.',
+      },
+    ],
+    {
+      targetContext: {
+        framework_id: 'recofw_test_no_runtime_comparison_fill_for_acne_use_first',
+        primary_role_id: 'acne_clogged_pore_treatment',
+        request_text: 'I get clogged pores and small breakouts around my forehead. What product should I use first?',
+        semantic_plan: {
+          routine_mode: 'single_product',
+          comparison_mode: 'single_product',
+        },
+        framework_roles: [
+          {
+            role_id: 'acne_clogged_pore_treatment',
+            rank: 1,
+            preferred_step: 'treatment',
+            alternate_steps: ['serum'],
+            label: 'Acne and clogged-pore treatment',
+            query_terms: ['salicylic acid serum clogged pores', 'acne treatment serum'],
+            fit_keywords: ['acne', 'clogged pores', 'pores', 'blemish', 'niacinamide', 'zinc'],
+          },
+        ],
+      },
+    },
+  );
+
+  assert.equal(state.primary_role_matched, true);
+  assert.equal(state.comparison_fill_allowed, false);
+  assert.equal(state.comparison_fill_applied, false);
+  assert.equal(state.comparison_fill_count, 0);
+  assert.deepEqual(
+    state.selected_recommendations.map((item) => item?.product_id),
+    ['acne_primary_niacinamide'],
+  );
+  assert.equal(
+    state.soft_mismatch.some((entry) => entry?.product?.product_id === 'soft_barrier_treatment_should_not_fill'),
+    true,
+  );
+});
+
+test('__internal: soft-mismatch rows do not skip primary external authority recall', async () => {
+  const { __internal } = loadRoutesFresh();
+  const startedQueries = [];
+  const targetContext = {
+    framework_id: 'recofw_test_soft_mismatch_does_not_skip_external_primary',
+    primary_role_id: 'acne_clogged_pore_treatment',
+    request_text: 'I get clogged pores and small breakouts around my forehead. What product should I use first?',
+    semantic_plan: {
+      routine_mode: 'single_product',
+      comparison_mode: 'single_product',
+    },
+    framework_roles: [
+      {
+        role_id: 'acne_clogged_pore_treatment',
+        rank: 1,
+        preferred_step: 'treatment',
+        alternate_steps: ['serum'],
+        label: 'Acne and clogged-pore treatment',
+        query_terms: ['salicylic acid serum clogged pores', 'acne treatment serum'],
+        fit_keywords: ['acne', 'clogged pores', 'pores', 'blemish', 'niacinamide', 'zinc', 'salicylic acid', 'bha'],
+      },
+    ],
+  };
+  const out = await __internal.collectRecoCandidatesFromQueryLevels({
+    queryLevels: [
+      {
+        ladder_level: 'framework_stage_a_primary_internal',
+        stop_on_viable_match: true,
+        queries: [
+          {
+            query: 'salicylic acid serum clogged pores',
+            step: 'treatment',
+            slot: 'other',
+            ladder_level: 'framework_stage_a_primary_internal',
+            role_id: 'acne_clogged_pore_treatment',
+            role_rank: 1,
+            preferred_step: 'treatment',
+            stop_on_viable_match: true,
+          },
+        ],
+      },
+      {
+        ladder_level: 'framework_stage_b_primary_external_seed',
+        stop_on_viable_match: true,
+        queries: [
+          {
+            query: 'salicylic acid serum clogged pores',
+            step: 'treatment',
+            slot: 'other',
+            ladder_level: 'framework_stage_b_primary_external_seed',
+            role_id: 'acne_clogged_pore_treatment',
+            role_rank: 1,
+            preferred_step: 'treatment',
+            allow_external_seed: true,
+            stop_on_viable_match: true,
+          },
+        ],
+      },
+    ],
+    targetContext,
+    recommendationTaskContext: null,
+    logger: null,
+    timeoutMs: 1000,
+    limit: 6,
+    usePurchasableFallback: false,
+    allowExternalSeed: true,
+    searchFn: async (args = {}) => {
+      startedQueries.push(`${args.sourceScope}:${args.role?.role_id}:${args.query}`);
+      const base = {
+        ok: true,
+        actual_http_attempt_count: 0,
+        attempted_base_urls: [],
+        attempted_paths: [],
+        attempted_request_timeouts_ms: [Number(args.timeoutMs || 0)],
+      };
+      if (String(args?.sourceScope || '') === 'external_seed') {
+        return {
+          ...base,
+          products: [
+            {
+              product_id: 'external_salicylic_pore_serum',
+              merchant_id: 'external_seed',
+              brand: 'ClearLab',
+              name: 'BHA Pore Serum',
+              display_name: 'ClearLab BHA Pore Serum',
+              category: 'serum',
+              product_type: 'serum',
+              candidate_step: 'treatment',
+              benefit_tags: ['salicylic acid', 'bha', 'clogged pores', 'blemish support'],
+              search_aliases: ['salicylic acid serum clogged pores'],
+              short_description: 'A salicylic-acid serum for clogged pores and small breakouts.',
+              retrieval_source: 'external_seed',
+            },
+          ],
+        };
+      }
+      return {
+        ...base,
+        products: [
+          {
+            product_id: 'internal_niacinamide_pore_serum',
+            merchant_id: 'merchant_internal_niacinamide_pore_serum',
+            brand: 'The Ordinary',
+            name: 'Niacinamide 10% + Zinc 1%',
+            display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+            category: 'serum',
+            product_type: 'serum',
+            candidate_step: 'treatment',
+            benefit_tags: ['niacinamide', 'zinc', 'oil control', 'pores'],
+            short_description: 'A lightweight serum for excess oil, pore visibility, and congestion support.',
+            retrieval_source: 'catalog',
+          },
+          {
+            product_id: 'internal_soft_barrier_treatment',
+            merchant_id: 'merchant_internal_soft_barrier_treatment',
+            brand: 'KraveBeauty',
+            name: 'Great Barrier Relief',
+            display_name: 'KraveBeauty Great Barrier Relief',
+            category: 'treatment',
+            product_type: 'treatment',
+            candidate_step: 'treatment',
+            short_description: 'A barrier-repair serum for over-sensitized or irritated skin with tamanu oil and ceramides.',
+            retrieval_source: 'catalog',
+          },
+        ],
+      };
+    },
+  });
+
+  assert.deepEqual(startedQueries, [
+    'internal:acne_clogged_pore_treatment:salicylic acid serum clogged pores',
+    'external_seed:acne_clogged_pore_treatment:salicylic acid serum clogged pores',
+  ]);
+  const externalRow = out.searchResults.find((row) =>
+    String(row?.source_scope || '').trim() === 'external_seed'
+    || row?.allow_external_seed === true,
+  );
+  assert.ok(externalRow);
+  assert.notEqual(externalRow.reason, 'skipped_primary_already_satisfied');
+  assert.notEqual(externalRow.skipped_runtime, true);
+  assert.equal(
+    out.rawCandidates.some((item) => item?.product_id === 'external_salicylic_pore_serum'),
+    true,
+  );
+  assert.equal(out.candidateState?.comparison_fill_allowed, false);
+  assert.equal(out.candidateState?.comparison_fill_applied, false);
+  assert.equal(
+    (out.candidateState?.selected_recommendations || []).some((item) =>
+      item?.product_id === 'internal_soft_barrier_treatment'),
+    false,
+  );
+});
+
 test('__internal: beauty mainline handoff payload preserves viable support role candidates in ranked targets even when they are not selected', async () => {
   const { __internal } = loadRoutesFresh();
   const semanticPlan = buildConcernSemanticPlanFixture();

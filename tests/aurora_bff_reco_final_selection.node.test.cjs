@@ -3375,6 +3375,97 @@ test('reco assistant structured renderer treats product texture as product evide
   }
 });
 
+test('reco assistant structured renderer converts full SPF card rationale into a because fragment', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const payload = __internal.applyRecoContentSpineToPayload(
+      {
+        recommendations: [
+          {
+            product_id: 'oil_serum',
+            display_name: 'Oil Control Serum',
+            brand: 'GoalSkin',
+            category: 'Serum',
+            why_this_one: 'it pairs niacinamide with zinc for visible shine',
+            matched_role_id: 'oil_control_treatment',
+            matched_role_label: 'Oil-control treatment',
+            preferred_step: 'treatment',
+          },
+          {
+            product_id: 'spf_roundlab',
+            display_name: 'Round Lab Birch Moisturizing Sunscreen UVLock SPF 45+ Broad Spectrum',
+            brand: 'Round Lab',
+            category: 'Sunscreen',
+            short_description: 'A practical daily SPF option because it pairs SPF 45 protection with fast-absorbing, non-greasy wear, which matters for oily skin and morning layering.',
+            why_this_one: 'A practical daily SPF option because it pairs SPF 45 protection with fast-absorbing, non-greasy wear, which matters for oily skin and morning layering.',
+            matched_role_id: 'daily_sunscreen',
+            matched_role_label: 'Daily sunscreen',
+            preferred_step: 'sunscreen',
+          },
+        ],
+        roles: [
+          {
+            role_id: 'oil_control_treatment',
+            label: 'Oil-control treatment',
+            preferred_step: 'treatment',
+          },
+          {
+            role_id: 'daily_sunscreen',
+            label: 'Daily sunscreen',
+            preferred_step: 'sunscreen',
+          },
+        ],
+        recommendation_meta: {
+          resolved_target_step: 'treatment',
+          mainline_status: 'grounded_success',
+        },
+      },
+      {
+        ingredient_query: 'Oil-control treatment',
+        resolved_target_step: 'treatment',
+        primary_target_id: 'oil_control_treatment',
+        ranked_targets: [
+          {
+            target_id: 'oil_control_treatment',
+            ingredient_query: 'Oil-control treatment',
+            resolved_target_step: 'treatment',
+          },
+          {
+            target_id: 'daily_sunscreen',
+            ingredient_query: 'Daily sunscreen',
+            resolved_target_step: 'sunscreen',
+          },
+        ],
+        selected_target_ids: ['oil_control_treatment', 'daily_sunscreen'],
+      },
+    );
+    const primaryTarget = payload.recommendation_meta.ranked_targets[0];
+    const text = __internal.renderRecoAssistantStructuredReasonRewrite({
+      structuredReason: {
+        lead_reason: 'it pairs niacinamide with zinc for visible shine',
+        support_reasons: [
+          'A practical daily SPF option because it pairs SPF 45 protection with fast-absorbing, non-greasy wear, which matters for oily skin and morning layering.',
+        ],
+      },
+      payload,
+      language: 'EN',
+      primaryTarget,
+      names: [
+        'Oil Control Serum',
+        'Round Lab Birch Moisturizing Sunscreen UVLock SPF 45+ Broad Spectrum',
+      ],
+      requestMode: 'buy',
+      selectedProductRoleMix: 'routine_mix',
+    });
+
+    assert.match(text, /Round Lab Birch Moisturizing Sunscreen.+because it pairs SPF 45 protection with fast-absorbing, non-greasy wear/i);
+    assert.doesNotMatch(text, /because a practical daily SPF option/i);
+    assert.doesNotMatch(text, /because A practical daily SPF option/i);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('reco assistant structured renderer replaces tautological lead reasons with product evidence', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
