@@ -3883,6 +3883,118 @@ test('reco assistant rewrite uses structured primary attempt for compact single-
   }
 });
 
+test('reco assistant rewrite uses structured primary attempt for compact routine mixes', async () => {
+  const prevMock = process.env.AURORA_BFF_USE_MOCK;
+  const prevProvider = process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
+  const prevModel = process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
+  process.env.AURORA_BFF_USE_MOCK = 'false';
+  process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER = 'gemini';
+  process.env.AURORA_PRODUCT_INTEL_LLM_MODEL = 'gemini-3-flash-preview';
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const payload = __internal.applyRecoContentSpineToPayload(
+      {
+        recommendations: [
+          {
+            product_id: 'oil_pick',
+            display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+            brand: 'The Ordinary',
+            category: 'Serum',
+            short_description: 'A niacinamide and zinc serum for oily skin and visible shine.',
+            matched_role_id: 'oil_control_treatment',
+            matched_role_label: 'Oil-control treatment',
+            preferred_step: 'treatment',
+          },
+          {
+            product_id: 'moisturizer_pick',
+            display_name: 'Hydrating Dewy Gel Cream',
+            brand: 'First Aid Beauty',
+            category: 'Moisturizer',
+            short_description: 'A lightweight gel cream with hyaluronic acid and ceramides.',
+            matched_role_id: 'lightweight_moisturizer',
+            matched_role_label: 'Lightweight moisturizer',
+            preferred_step: 'moisturizer',
+          },
+          {
+            product_id: 'spf_pick',
+            display_name: 'Birch Mild-Up Sunscreen SPF 50',
+            brand: 'Round Lab',
+            category: 'Sunscreen',
+            short_description: 'A daily sunscreen with lightweight, non-greasy wear.',
+            matched_role_id: 'daily_sunscreen',
+            matched_role_label: 'Daily sunscreen',
+            preferred_step: 'sunscreen',
+          },
+        ],
+        recommendation_meta: {
+          resolved_target_step: 'treatment',
+          mainline_status: 'grounded_success',
+          comparison_mode: 'routine_mix',
+        },
+      },
+      {
+        ingredient_query: 'oil control',
+        resolved_target_step: 'treatment',
+        primary_target_id: 'oil_control_treatment',
+        ranked_targets: [
+          { target_id: 'oil_control_treatment', ingredient_query: 'oil control', resolved_target_step: 'treatment' },
+          { target_id: 'lightweight_moisturizer', ingredient_query: 'lightweight moisturizer', resolved_target_step: 'moisturizer' },
+          { target_id: 'daily_sunscreen', ingredient_query: 'daily sunscreen', resolved_target_step: 'sunscreen' },
+        ],
+        selected_target_ids: ['oil_control_treatment', 'lightweight_moisturizer', 'daily_sunscreen'],
+      },
+    );
+    let callCount = 0;
+    const prompts = [];
+    __internal.__setCallGeminiJsonObjectForTest(async (args = {}) => {
+      callCount += 1;
+      prompts.push(String(args.userPrompt || ''));
+      return {
+        ok: true,
+        json: {
+          lead_reason: 'it pairs niacinamide with zinc to address visible shine and oil-control concerns',
+          support_reasons: [
+            'it adds lightweight hydration with gel-cream texture and barrier-supporting ceramides',
+            'it completes the daytime routine with lightweight daily sunscreen coverage',
+          ],
+        },
+        parse_status: 'parsed',
+        meta: { gate_wait_ms: 0, upstream_ms: 130, total_ms: 130 },
+        provider: 'gemini',
+        effective_model: 'gemini-3-flash-preview',
+      };
+    });
+
+    const rewrite = await __internal.maybeRewriteRecoAssistantTextWithLlm({
+      payload,
+      language: 'EN',
+      profile: { skinType: 'oily', goals: ['oil control'] },
+      userRequestText: 'im oily skin. what product should i buy?',
+      allowLockedSelectionRewrite: true,
+      deadlineAtMs: Date.now() + 5000,
+    });
+
+    assert.equal(callCount, 1);
+    assert.match(prompts[0], /Do not write the final assistant message/);
+    assert.equal(rewrite.llm_used, true);
+    assert.equal(rewrite.attempts?.[0]?.structured_reason_only, true);
+    assert.equal(rewrite.attempts?.[0]?.strict_selected_only_context, true);
+    assert.equal(rewrite.attempts?.[0]?.max_output_tokens, 220);
+    assert.match(rewrite.text, /The Ordinary Niacinamide 10% \+ Zinc 1% fits this request/i);
+    assert.match(rewrite.text, /Hydrating Dewy Gel Cream covers the moisturizer step/i);
+    assert.match(rewrite.text, /Birch Mild-Up Sunscreen SPF 50 covers the sunscreen step/i);
+  } finally {
+    __internal.__resetCallGeminiJsonObjectForTest();
+    if (prevMock === undefined) delete process.env.AURORA_BFF_USE_MOCK;
+    else process.env.AURORA_BFF_USE_MOCK = prevMock;
+    if (prevProvider === undefined) delete process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
+    else process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER = prevProvider;
+    if (prevModel === undefined) delete process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
+    else process.env.AURORA_PRODUCT_INTEL_LLM_MODEL = prevModel;
+    delete require.cache[moduleId];
+  }
+});
+
 test('reco assistant rewrite uses structured primary attempt for finish-fit same-role comparisons', async () => {
   const prevMock = process.env.AURORA_BFF_USE_MOCK;
   const prevProvider = process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
