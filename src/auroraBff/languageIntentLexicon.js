@@ -32,8 +32,9 @@ const RECOMMENDATION_CUES = [
   /\brecommend(?:ation|ations)?\b/i,
   /\bsuggest(?:ion|ions)?\b/i,
   /\bwhat should i (buy|use)\b/i,
+  /\bwhat should i add\b/i,
   /\b(what|which|best)\b.{0,24}\b(cleanser|serum|moisturizer|sunscreen|toner|mask)\b/i,
-  /\b(cleanser|serum|moisturizer|sunscreen|toner|mask)\b.{0,24}\bfor\b.{0,24}\b(oily|dry|combination|combo|sensitive|acne|redness|pores|dehydrat|aging)\b/i,
+  /\b(cleanser|serum|moisturizer|sunscreen|toner|mask)\b.{0,24}\bfor\b.{0,24}\b(oily|dry|combination|combo|sensitive|acne|redness|pores|dehydrat|aging|dull|blackheads?|clogged|stinging|peeling|barrier|irritat)/i,
   /\bgive me (a )?(plan|routine)\b/i,
   /\bbuild (me )?(an )?(am\/?pm )?(routine|plan)\b/i,
   /\breview my (current )?routine\b/i,
@@ -104,7 +105,7 @@ function isRecommendationLikeText(text) {
 
   return (
     hasAny(raw, RECOMMENDATION_CUES) ||
-    /\b(anti[-\s]?aging|anti[-\s]?age|wrinkles?|fine lines?|firming|dark spots?|hyperpigmentation|acne|pores?|redness)\b/i.test(raw) ||
+    /\b(anti[-\s]?aging|anti[-\s]?age|wrinkles?|fine lines?|firming|dark spots?|hyperpigmentation|acne|pores?|blackheads?|clogged pores?|clogged|redness|dull(?:ness)?|dehydrat(?:ed|ion)?|tight(?:ness)?|stinging|peeling|barrier|irritat(?:ed|ion)?)\b/i.test(raw) ||
     /(抗老|抗衰|抗皱|细纹|淡纹|紧致|提拉|痘痘|闭口|毛孔|泛红|暗沉|色沉|痘印|色斑)/.test(raw) ||
     /\bam\b/i.test(raw) ||
     /\bpm\b/i.test(raw)

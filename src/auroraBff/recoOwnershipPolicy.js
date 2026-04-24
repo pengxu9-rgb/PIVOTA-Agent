@@ -107,8 +107,8 @@ function looksLikeFrameworkRecoConcernAsk(input) {
   if (!message) return false;
   const normalized = String(message).trim().toLowerCase();
   if (!normalized) return false;
-  const hasConcernSignal = /\b(oily|dry|dehydrated|sensitive|combination|acne|breakout|redness|pores?|dark spots?)\b/.test(normalized);
-  const hasProductAskSignal = /\b(product|products|routine|use|recommend|should i use|what should i use)\b/.test(normalized);
+  const hasConcernSignal = /\b(oily|dry|dehydrat(?:ed|ion)?|sensitive|combination|combo|acne|breakout|redness|pores?|blackheads?|clogged|dark spots?|dull(?:ness)?|tight(?:ness)?|stinging|peeling|barrier|irritat(?:ed|ion)?)\b/.test(normalized);
+  const hasProductAskSignal = /\b(product|products|routine|use|add|recommend|should i use|what should i use|what should i add)\b/.test(normalized);
   return hasConcernSignal && hasProductAskSignal;
 }
 

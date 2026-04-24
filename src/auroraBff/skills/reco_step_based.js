@@ -363,8 +363,8 @@ class RecoStepBasedSkill extends BaseSkill {
 
     if (transient) {
       return {
-        en: `Catalog grounding is unstable right now, so I couldn't confirm a strong ${stepLabel || 'skincare'} match. Try again shortly or give me a target ingredient.`,
-        zh: `商品库当前有些不稳定，我暂时没法确认合适的${stepLabel || '护肤'}候选。你可以稍后重试，或直接告诉我目标成分。`,
+        en: `I couldn't confirm a grounded ${stepLabel || 'skincare'} product match in time. Try again shortly, or add your skin type, target step, and ingredients you want to avoid.`,
+        zh: `这轮没有及时确认合适的${stepLabel || '护肤'}商品。你可以稍后重试，或补充肤质、目标步骤和想避开的成分。`,
       };
     }
 
