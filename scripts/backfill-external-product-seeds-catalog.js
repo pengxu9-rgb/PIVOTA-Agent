@@ -1054,6 +1054,45 @@ function normalizeFaqItems(value, maxItems = 24) {
   return out;
 }
 
+const EXTERNAL_SEED_PRODUCT_KINDS = new Set([
+  'single_formula',
+  'bundle',
+  'accessory',
+  'fragrance',
+  'general_merchandise',
+]);
+
+function normalizeProductKind(value) {
+  const normalized = normalizeNonEmptyString(value)
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_');
+  return EXTERNAL_SEED_PRODUCT_KINDS.has(normalized) ? normalized : '';
+}
+
+function normalizeBundleComponents(value, maxItems = 24) {
+  const items = Array.isArray(value) ? value : [];
+  const out = [];
+  const seen = new Set();
+  for (const item of items) {
+    const name = normalizeNonEmptyString(item?.name);
+    const quantity = normalizeNonEmptyString(item?.quantity);
+    const sourceKind = normalizeNonEmptyString(item?.source_kind || item?.sourceKind) || 'catalog_intelligence_bundle_component';
+    const rawText = normalizeNonEmptyString(item?.raw_text || item?.rawText);
+    if (!name) continue;
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      name,
+      ...(quantity ? { quantity } : {}),
+      source_kind: sourceKind,
+      ...(rawText ? { raw_text: rawText } : {}),
+    });
+    if (out.length >= Math.max(1, Number(maxItems) || 24)) break;
+  }
+  return out;
+}
+
 function stableComparableJson(value) {
   if (Array.isArray(value)) return value.map((item) => stableComparableJson(item));
   if (value && typeof value === 'object') {
@@ -1574,6 +1613,10 @@ function comparableSeedData(value) {
     ...(Array.isArray(next.pdp_faq_items)
       ? { pdp_faq_items: normalizeFaqItems(next.pdp_faq_items) }
       : {}),
+    ...(normalizeProductKind(next.product_kind) ? { product_kind: normalizeProductKind(next.product_kind) } : {}),
+    ...(Array.isArray(next.bundle_components)
+      ? { bundle_components: normalizeBundleComponents(next.bundle_components) }
+      : {}),
     ...(Array.isArray(next.variants) ? { variants: normalizeSeedVariants(next, null) } : {}),
     ingredient_intel: {
       ...rootIngredientIntel,
@@ -1590,6 +1633,12 @@ function comparableSeedData(value) {
         : {}),
       ...(Array.isArray(snapshot.pdp_faq_items)
         ? { pdp_faq_items: normalizeFaqItems(snapshot.pdp_faq_items) }
+        : {}),
+      ...(normalizeProductKind(snapshot.product_kind)
+        ? { product_kind: normalizeProductKind(snapshot.product_kind) }
+        : {}),
+      ...(Array.isArray(snapshot.bundle_components)
+        ? { bundle_components: normalizeBundleComponents(snapshot.bundle_components) }
         : {}),
       ...(Array.isArray(snapshot.variants) ? { variants: normalizeSeedVariants(snapshot, null) } : {}),
       ingredient_intel: {
@@ -1757,6 +1806,25 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     representativeProduct?.faq_items ||
       representativeProduct?.pdp_faq_items,
   );
+  const extractedProductKind = normalizeProductKind(
+    representativeProduct?.product_kind ||
+      representativeProduct?.productKind,
+  );
+  const existingProductKind = normalizeProductKind(seedData.product_kind || snapshot.product_kind);
+  const nextProductKind = extractedProductKind || existingProductKind;
+  const extractedBundleComponents = normalizeBundleComponents(
+    representativeProduct?.bundle_components ||
+      representativeProduct?.bundleComponents,
+  );
+  const existingBundleComponents = normalizeBundleComponents(
+    Array.isArray(seedData.bundle_components) && seedData.bundle_components.length > 0
+      ? seedData.bundle_components
+      : snapshot.bundle_components,
+  );
+  const nextBundleComponents =
+    nextProductKind === 'bundle'
+      ? (extractedBundleComponents.length > 0 ? extractedBundleComponents : existingBundleComponents)
+      : [];
   const existingPdpDescriptionRaw = cleanPdpDescriptionCandidate(
     seedData.pdp_description_raw || snapshot.pdp_description_raw,
     pdpDetailsSections,
@@ -1896,6 +1964,8 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     ...(nextPdpFaqItems.length > 0 ? { pdp_faq_items: nextPdpFaqItems } : {}),
     ...(selectedVariantId ? { selected_variant_id: selectedVariantId, default_variant_id: selectedVariantId } : {}),
     ...(selectedVariantTitle && !isDefaultVariantTitle(selectedVariantTitle) ? { variant_title: selectedVariantTitle } : {}),
+    ...(nextProductKind ? { product_kind: nextProductKind } : {}),
+    ...(nextBundleComponents.length > 0 ? { bundle_components: nextBundleComponents } : {}),
     ...(nextDescriptionOrigin ? { seed_description_origin: nextDescriptionOrigin } : {}),
     ...(pdpFieldCaptureStatus ? { pdp_field_capture_status: pdpFieldCaptureStatus } : {}),
     image_url: imageUrl || normalizeNonEmptyString(snapshot.image_url),
@@ -1929,6 +1999,8 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     ...(nextPdpFaqItems.length > 0 ? { pdp_faq_items: nextPdpFaqItems } : {}),
     ...(selectedVariantId ? { selected_variant_id: selectedVariantId, default_variant_id: selectedVariantId } : {}),
     ...(selectedVariantTitle && !isDefaultVariantTitle(selectedVariantTitle) ? { variant_title: selectedVariantTitle } : {}),
+    ...(nextProductKind ? { product_kind: nextProductKind } : {}),
+    ...(nextBundleComponents.length > 0 ? { bundle_components: nextBundleComponents } : {}),
     ...(nextDescriptionOrigin ? { seed_description_origin: nextDescriptionOrigin } : {}),
     ...(pdpFieldCaptureStatus ? { pdp_field_capture_status: pdpFieldCaptureStatus } : {}),
     ...(imageUrl ? { image_url: imageUrl } : {}),
@@ -1943,6 +2015,10 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
   if (!nextPdpActiveIngredientsRaw) {
     delete nextSeedData.pdp_active_ingredients_raw;
     if (nextSeedData.snapshot && typeof nextSeedData.snapshot === 'object') delete nextSeedData.snapshot.pdp_active_ingredients_raw;
+  }
+  if (nextProductKind !== 'bundle') {
+    delete nextSeedData.bundle_components;
+    if (nextSeedData.snapshot && typeof nextSeedData.snapshot === 'object') delete nextSeedData.snapshot.bundle_components;
   }
   if (!nextPdpDescriptionRaw) {
     delete nextSeedData.pdp_description_raw;

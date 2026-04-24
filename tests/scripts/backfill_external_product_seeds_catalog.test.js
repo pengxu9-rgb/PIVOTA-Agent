@@ -810,6 +810,75 @@ describe('backfill-external-product-seeds-catalog', () => {
     ]);
   });
 
+  test('persists extractor product kind and structured bundle components', () => {
+    const row = {
+      id: 'eps_kylie_calendar',
+      title: '12 Days of Kylie Advent Calendar',
+      canonical_url: 'https://kyliecosmetics.com/products/kylie-advent-calendar-2025',
+      destination_url: 'https://kyliecosmetics.com/products/kylie-advent-calendar-2025',
+      image_url: '',
+      price_amount: 199,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      seed_data: {
+        product_kind: 'single_formula',
+        bundle_components: [{ name: 'stale serum', source_kind: 'legacy' }],
+        snapshot: {
+          product_kind: 'single_formula',
+          bundle_components: [{ name: 'stale serum', source_kind: 'legacy' }],
+        },
+      },
+    };
+
+    const payload = buildSeedUpdatePayload(
+      row,
+      {
+        products: [
+          {
+            title: '12 Days of Kylie Advent Calendar',
+            url: 'https://kyliecosmetics.com/products/kylie-advent-calendar-2025',
+            description_raw: 'A limited edition beauty advent calendar.',
+            product_kind: 'bundle',
+            bundle_components: [
+              {
+                name: 'Lip Glaze',
+                quantity: 'one',
+                source_kind: 'shopify_body_html_labeled_sections',
+                raw_text: 'one Lip Glaze',
+              },
+              {
+                name: 'Mini Fragrance',
+                source_kind: 'shopify_body_html_labeled_sections',
+              },
+            ],
+            variants: [],
+          },
+        ],
+        variants: [],
+        diagnostics: { failure_category: null },
+      },
+      'https://kyliecosmetics.com/products/kylie-advent-calendar-2025',
+    );
+
+    expect(payload.nextRow.seed_data.product_kind).toBe('bundle');
+    expect(payload.nextRow.seed_data.bundle_components).toEqual([
+      {
+        name: 'Lip Glaze',
+        quantity: 'one',
+        source_kind: 'shopify_body_html_labeled_sections',
+        raw_text: 'one Lip Glaze',
+      },
+      {
+        name: 'Mini Fragrance',
+        source_kind: 'shopify_body_html_labeled_sections',
+      },
+    ]);
+    expect(payload.nextRow.seed_data.snapshot.product_kind).toBe('bundle');
+    expect(payload.nextRow.seed_data.snapshot.bundle_components).toEqual(
+      payload.nextRow.seed_data.bundle_components,
+    );
+  });
+
   test('splits encoded Fenty accordion copy into structured PDP sections', () => {
     const fentyAccordion =
       'RECHARGEABLE MIRROR WITH 5X MAGNIFICATION\n\n' +
