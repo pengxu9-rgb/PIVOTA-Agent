@@ -863,6 +863,29 @@ test('reco assistant refinement question prioritizes missing skin type before cl
   }
 });
 
+test('reco assistant refinement question suppresses repeated questions after contextual follow-up answers', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const plan = __internal.buildRecoAssistantRefinementQuestionPlan({
+      language: 'EN',
+      profile: { skinType: 'dry', sensitivity: 'high', goals: ['barrier support'] },
+      userRequestText: 'I live in Denver where the air is very dry, and I use a retinoid three nights a week. I need nighttime support. Which moisturizer or barrier product should I pick first, and why over the others?',
+    });
+    assert.equal(plan, null);
+
+    const updates = __internal.extractRecoAssistantUserContextUpdates(
+      'I use foundation, want less white cast and no greasy slip, and I commute in LA sun. Compare the cards and tell me which one you would start with.',
+    );
+    assert.deepEqual(updates.makeup_layering, ['foundation']);
+    assert.ok(updates.finish_constraints.includes('white cast'));
+    assert.ok(updates.finish_constraints.includes('greasy slip'));
+    assert.ok(updates.location_climate.includes('LA'));
+    assert.ok(updates.location_climate.includes('LA sun'));
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('reco assistant rewrite prompt frames multi-role selections as routine mix with price ROI guard', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
@@ -956,6 +979,69 @@ test('reco assistant rewrite prompt frames multi-role selections as routine mix 
     assert.match(prompt, /If user_relevant_concern_families does not include aging_texture, do not mention wrinkles, fine lines, aging, anti-aging, or texture repair\./);
     assert.doesNotMatch(prompt, /compare price\/value or ROI in plain shopper terms using only listed prices/);
     assert.match(prompt, /If known_price_count is 2 or more and selected_product_role_mix is "routine_mix", prices may be stated as per-step costs only; do not compare affordability across different routine roles\./);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('reco assistant rewrite prompt carries follow-up user context updates into copy instructions', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const payload = __internal.applyRecoContentSpineToPayload(
+      {
+        recommendations: [
+          {
+            product_id: 'spf_1',
+            display_name: 'Daily Matte SPF',
+            brand: 'Test SPF',
+            category: 'Sunscreen',
+            short_description: 'Lightweight sunscreen with a less greasy finish and lower white-cast positioning.',
+            price: { amount: 24, currency: 'USD', unknown: false },
+            matched_role_id: 'daily_sunscreen_finish_fit',
+            matched_role_label: 'Daily sunscreen with finish fit',
+          },
+        ],
+        roles: [
+          {
+            role_id: 'daily_sunscreen_finish_fit',
+            label: 'Daily sunscreen with finish fit',
+            preferred_step: 'sunscreen',
+            why_this_role: 'Layer sunscreen cleanly under makeup.',
+          },
+        ],
+        recommendation_meta: {
+          resolved_target_step: 'sunscreen',
+          mainline_status: 'grounded_success',
+        },
+      },
+      {
+        ingredient_query: 'sunscreen',
+        resolved_target_step: 'sunscreen',
+        primary_target_id: 'daily_sunscreen_finish_fit',
+        ranked_targets: [
+          {
+            target_id: 'daily_sunscreen_finish_fit',
+            ingredient_query: 'sunscreen',
+            resolved_target_step: 'sunscreen',
+          },
+        ],
+        selected_target_ids: ['daily_sunscreen_finish_fit'],
+      },
+    );
+    const prompt = __internal.buildRecoAssistantRewritePrompt({
+      payload,
+      language: 'EN',
+      profile: { skinType: 'oily', region: 'US', goals: ['sun protection'] },
+      userRequestText: 'I use foundation, want less white cast and no greasy slip, and I commute in LA sun. Compare the cards and tell me which one you would start with.',
+    });
+
+    assert.match(prompt, /"user_context_updates":\{/);
+    assert.match(prompt, /"makeup_layering":\["foundation"\]/);
+    assert.match(prompt, /"finish_constraints":\["white cast","greasy slip"\]/);
+    assert.match(prompt, /"location_climate":\["LA","LA sun"\]/);
+    assert.match(prompt, /If Context\.user_context_updates contains values, explicitly use the relevant updates/);
+    assert.match(prompt, /do not ask what AM\/PM products the user is already using/);
+    assert.doesNotMatch(prompt, /"refinement_question":\{"field":"current_routine"/);
   } finally {
     delete require.cache[moduleId];
   }

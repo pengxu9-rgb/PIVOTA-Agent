@@ -4485,6 +4485,206 @@ test('beauty chat mainline entry invokes llm concern planner before deterministi
   ]);
 });
 
+test('beauty chat mainline entry carries prior reco context into planner and retrieval for contextual follow-ups', async () => {
+  const observed = {
+    resolverText: null,
+    plannerRequestText: null,
+    handoffPrimaryQuery: null,
+    rewriteUserRequestText: null,
+    payloadBaseMeta: null,
+  };
+  const runtime = createBeautyChatMainlineEntryRuntime({
+    RECO_CATALOG_GROUNDED_ENABLED: true,
+    RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS: 1000,
+    AURORA_BFF_CHAT_RECO_BUDGET_MS: 18000,
+    resolveRecommendationTargetContext: ({ text }) => {
+      observed.resolverText = text;
+      return {
+        entry_type: 'chat',
+        intent_mode: 'generic_concern',
+        step_aware_intent: false,
+        resolved_target_step: null,
+        primary_role_id: 'acne_clogged_pore_treatment',
+        framework_roles: [
+          {
+            role_id: 'acne_clogged_pore_treatment',
+            rank: 1,
+            preferred_step: 'treatment',
+          },
+        ],
+      };
+    },
+    summarizeProfileForContext: (profile) => profile,
+    mergeIngredientRecoContextValue: (left, right) => ({ ...(left || {}), ...(right || {}) }),
+    appendLatestRecoContextToSessionPatch: (sessionPatch, recoContext) => {
+      sessionPatch.latest_reco_context = recoContext;
+    },
+    extractRecoFinalSelectionContract: () => ({
+      selection_owner: 'shopping_agent_beauty_mainline',
+      selected_product_ids: ['acne_pick_1'],
+      selected_titles: ['Affordable Barrier Acne Treatment'],
+      mainline_status: 'grounded_success',
+      source_tier_counts: { fresh_external: 1 },
+    }),
+    makeAssistantMessage: (content) => ({ role: 'assistant', format: 'text', content }),
+    buildEnvelope: (_ctx, envelope) => envelope,
+    makeEvent: (_ctx, kind, data) => ({ kind, data }),
+    applyRecoContractToRecoRequestedEvents: (events) => ({ events }),
+    buildRecoRequestedEventData: ({ payload, source }) => ({ payload, source }),
+    normalizeRecoSourceDetail: (value) => value,
+    stateChangeAllowed: () => false,
+    runConcernSemanticPlanner: async ({ requestText }) => {
+      observed.plannerRequestText = requestText;
+      return {
+        semanticPlan: {
+          plan_id: 'ctx_acne_budget_plan',
+          selection_owner_state: 'trusted',
+          selection_owner_source: 'llm_concern_planner',
+          core_roles: [
+            {
+              role_id: 'acne_clogged_pore_treatment',
+              rank: 1,
+              preferred_step: 'treatment',
+              label: 'Acne clogged pore treatment',
+              query_terms: ['acne treatment barrier under $20'],
+            },
+          ],
+        },
+        trace: {
+          planner_used: true,
+          planner_source: 'llm_concern_planner',
+        },
+      };
+    },
+    buildConcernTargetContextFromSemanticPlan: (semanticPlan) => ({
+      entry_type: 'chat',
+      intent_mode: 'generic_concern',
+      framework_id: semanticPlan.plan_id,
+      framework_roles: semanticPlan.core_roles,
+      primary_role_id: 'acne_clogged_pore_treatment',
+      semantic_plan: semanticPlan,
+    }),
+    handoffRecoToBeautyMainlineSearch: async (args) => {
+      observed.handoffPrimaryQuery = args.primaryQuery;
+      return {
+        targetContext: args.targetContext,
+        recommendations: [
+          {
+            product_id: 'acne_pick_1',
+            display_name: 'Affordable Barrier Acne Treatment',
+            matched_role_id: 'acne_clogged_pore_treatment',
+          },
+        ],
+        searchResult: {
+          decision_owner: 'shopping_agent_beauty_mainline',
+          semantic_owner: 'shopping_agent_beauty_mainline',
+          metadata: {
+            contract_bridge: {
+              resolved_contract: 'agent_v1_search_beauty_mainline',
+            },
+            source_breakdown: {
+              source_tier_counts: { fresh_external: 1 },
+            },
+            search_stage_ledger: {
+              final_selection: {
+                selection_owner: 'shopping_agent_beauty_mainline',
+                selected_product_ids: ['acne_pick_1'],
+                selected_titles: ['Affordable Barrier Acne Treatment'],
+                selection_signature: 'ctx_acne_pick',
+                mainline_status: 'grounded_success',
+                source_tier_counts: { fresh_external: 1 },
+              },
+            },
+          },
+        },
+      };
+    },
+    buildRecoPayloadFromBeautyMainlineHandoff: ({ basePayload }) => {
+      observed.payloadBaseMeta = basePayload?.recommendation_meta || null;
+      return {
+        payload: {
+          source: 'catalog_grounded_v1',
+          mainline_status: 'grounded_success',
+          recommendations: [
+            {
+              product_id: 'acne_pick_1',
+              display_name: 'Affordable Barrier Acne Treatment',
+              matched_role_id: 'acne_clogged_pore_treatment',
+            },
+          ],
+          recommendation_meta: {
+            ...(basePayload?.recommendation_meta || {}),
+            primary_target_id: 'acne_clogged_pore_treatment',
+            ranked_targets: [
+              {
+                target_id: 'acne_clogged_pore_treatment',
+                ingredient_query: 'acne treatment',
+                resolved_target_step: 'treatment',
+              },
+            ],
+            selected_target_ids: ['acne_clogged_pore_treatment'],
+          },
+          metadata: {},
+        },
+        contract: { version: 'test_contract' },
+      };
+    },
+    maybeRewriteRecoAssistantTextWithLlm: async ({ userRequestText }) => {
+      observed.rewriteUserRequestText = userRequestText;
+      return {
+        text: 'Affordable Barrier Acne Treatment keeps the acne direction while respecting the new barrier and budget constraints.',
+        llm_used: true,
+      };
+    },
+    classifyBeautyMainlineHandoffFallback: () => ({ reason: 'unreachable' }),
+    buildBeautyMainlineHandoffFallbackEnvelope: () => ({ cards: [] }),
+    looksLikeRecommendationRequest: () => true,
+    sendChatEnvelope: async () => null,
+  });
+
+  const currentFollowup = 'My barrier gets irritated easily, and I still only want one affordable product. If there are not enough strong options, say that clearly. What should I do next?';
+  const result = await runtime.maybeHandleBeautyOwnedChatReco({
+    ctx: {
+      request_id: 'req_contextual_acne_followup',
+      trace_id: 'trace_contextual_acne_followup',
+      lang: 'EN',
+      trigger_source: 'chat',
+    },
+    logger: null,
+    message: currentFollowup,
+    recoEntrySourceDetail: 'typed_reco',
+    latestRecoContextFromSession: {
+      intent: 'reco_products',
+      message: 'I have acne-prone oily skin and want one product under $20 to buy first. What should I get?',
+      primary_target_id: 'acne_clogged_pore_treatment',
+      ranked_targets: [
+        {
+          target_id: 'acne_clogged_pore_treatment',
+          ingredient_query: 'acne treatment',
+          resolved_target_step: 'treatment',
+        },
+      ],
+    },
+    profile: {
+      skinType: 'oily',
+      sensitivity: 'medium',
+      barrierStatus: 'impaired',
+      goals: ['breakout control'],
+    },
+  });
+
+  assert.equal(result?.handled, true);
+  assert.match(observed.resolverText, /Previous recommendation request: I have acne-prone oily skin/i);
+  assert.match(observed.plannerRequestText, /Previous recommendation targets: acne_clogged_pore_treatment/i);
+  assert.match(observed.handoffPrimaryQuery, /Current follow-up constraints\/question: My barrier gets irritated easily/i);
+  assert.equal(observed.rewriteUserRequestText, currentFollowup);
+  assert.equal(observed.payloadBaseMeta?.contextual_reco_continuation, true);
+  assert.equal(observed.payloadBaseMeta?.current_request_text, currentFollowup);
+  assert.match(observed.payloadBaseMeta?.combined_request_text, /under \$20/i);
+  assert.match(observed.payloadBaseMeta?.combined_request_text, /affordable product/i);
+  assert.equal(result?.envelope?.session_patch?.latest_reco_context?.message, currentFollowup);
+});
+
 test('beauty chat mainline entry records analysis handoff context usage without changing runtime path', async () => {
   const observed = {
     payloadBaseMeta: null,

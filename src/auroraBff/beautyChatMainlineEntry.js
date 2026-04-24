@@ -154,6 +154,48 @@ function canUseDeterministicBeautyChatPlannerFallback(targetContext = null) {
   return false;
 }
 
+function looksLikeBeautyChatContextualRecoContinuationMessage(message = '', latestRecoContextFromSession = null) {
+  const context = isPlainObject(latestRecoContextFromSession) ? latestRecoContextFromSession : null;
+  if (!context) return false;
+  if (String(context.intent || '').trim().toLowerCase() !== 'reco_products') return false;
+  const text = String(message || '').trim();
+  if (!text) return false;
+  return /\b(given that|based on that|with that|for that|which (?:card|one|option)|these (?:cards|options)|compare (?:the )?(?:cards|options)|prioriti[sz]e|why over the others?|over the others?|first buy change|should the first buy change|tell me which one|what should i do next|if there are not enough|not enough strong options|under \$?\d+|\$\d+|budget|affordable|fragrance|white cast|foundation|makeup|shiny|greasy|retinoid|barrier|dry heat|high[-\s]?uv|commute)\b/i.test(text)
+    || /(基于这些|既然这样|这样的话|哪张卡|哪个更优先|优先哪个|对比一下|和其他相比|下一步怎么做|预算|香精|粉底|底妆|泛白|油光|屏障|刺激|高紫外线|通勤)/i.test(text);
+}
+
+function buildBeautyChatContextualRecoContinuationText({
+  message = '',
+  latestRecoContextFromSession = null,
+} = {}) {
+  const current = String(message || '').replace(/\s+/g, ' ').trim();
+  const context = isPlainObject(latestRecoContextFromSession) ? latestRecoContextFromSession : null;
+  if (!current || !context) return current;
+  if (!looksLikeBeautyChatContextualRecoContinuationMessage(current, context)) return current;
+  const rankedTargets = Array.isArray(context.ranked_targets)
+    ? context.ranked_targets.filter(isPlainObject).slice(0, 4)
+    : [];
+  const targetSummary = uniqueBeautyMainlineStrings([
+    pickFirstTrimmed(context.primary_target_id),
+    pickFirstTrimmed(context.ingredient_query, context.query, context.goal),
+    ...rankedTargets.map((target) => pickFirstTrimmed(
+      target.target_id,
+      target.ingredient_query,
+      target.resolved_target_step,
+    )),
+  ], 8).join(', ');
+  const priorMessage = pickFirstTrimmed(
+    context.message,
+    context.request_text,
+    context.user_request,
+  );
+  return [
+    priorMessage ? `Previous recommendation request: ${priorMessage}` : '',
+    targetSummary ? `Previous recommendation targets: ${targetSummary}` : '',
+    `Current follow-up constraints/question: ${current}`,
+  ].filter(Boolean).join('\n');
+}
+
 function normalizeBeautyChatPlannerTargetContext(baseTargetContext = null, plannerTargetContext = null) {
   if (
     plannerTargetContext &&
@@ -588,6 +630,24 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
     debugUpstream = false,
   } = {}) {
     const recoRequestMessage = String(message || '').trim();
+    const contextualRecoContinuation = looksLikeBeautyChatContextualRecoContinuationMessage(
+      recoRequestMessage || message,
+      latestRecoContextFromSession,
+    );
+    const contextualPlannerRequestText = buildBeautyChatContextualRecoContinuationText({
+      message: recoRequestMessage || message,
+      latestRecoContextFromSession,
+    });
+    const plannerAndRetrievalRequestText = contextualRecoContinuation
+      ? contextualPlannerRequestText
+      : pickFirstTrimmed(recoRequestMessage, message);
+    const priorRecoRequestText = contextualRecoContinuation
+      ? pickFirstTrimmed(
+        latestRecoContextFromSession?.message,
+        latestRecoContextFromSession?.request_text,
+        latestRecoContextFromSession?.user_request,
+      )
+      : '';
     const effectiveProfile =
       (requestContextProfilePatch && typeof requestContextProfilePatch === 'object' && !Array.isArray(requestContextProfilePatch))
         || (profile && typeof profile === 'object' && !Array.isArray(profile))
@@ -614,7 +674,7 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
           latestRecoContextFromSession?.resolved_target_step,
         ),
         focus: hardPathRecoFocusForMainline,
-        text: recoRequestMessage || message,
+        text: plannerAndRetrievalRequestText || recoRequestMessage || message,
         entryType: 'chat',
         profileSummary,
       }),
@@ -725,7 +785,7 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
             Promise.resolve().then(() => runConcernSemanticPlanner({
               ctx,
               logger,
-              requestText: pickFirstTrimmed(recoRequestMessage, message),
+              requestText: plannerAndRetrievalRequestText,
               focus: hardPathRecoFocusForMainline,
               profileSummary,
               recommendationTaskContext: latestRecoContextFromSession,
@@ -746,7 +806,7 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
           if (plannerSemanticPlan) {
             const plannerTargetContext = augmentBeautyExactProductTargetContext(
               buildConcernTargetContextFromSemanticPlan(plannerSemanticPlan, {
-                text: pickFirstTrimmed(recoRequestMessage, message),
+                text: plannerAndRetrievalRequestText,
                 focus: hardPathRecoFocusForMainline,
                 entryType: 'chat',
               }),
@@ -850,7 +910,7 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
         handoffRecoToBeautyMainlineSearch({
           ctx,
           logger,
-          primaryQuery: pickFirstTrimmed(recoRequestMessage, message),
+          primaryQuery: plannerAndRetrievalRequestText,
           fallbackMessage: message,
           targetContext: effectivePlannerTargetContext,
           fallbackFocus: hardPathRecoFocusForMainline,
@@ -940,7 +1000,7 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
         const selectorOut = await runConcernSelectorRace({
           ctx,
           logger,
-          requestText: pickFirstTrimmed(recoRequestMessage, message),
+          requestText: plannerAndRetrievalRequestText,
           semanticPlan: hardPathSelectorSemanticPlan,
           recommendations: hardPathRecommendations,
           deadlineAtMs: selectorDeadlineAtMs,
@@ -1017,6 +1077,15 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
           recommendation_meta: {
             ...buildBeautyChatPlannerMeta(hardPathPlannerTrace),
             ...(analysisContextUsageMeta ? { analysis_context_usage: analysisContextUsageMeta } : {}),
+            request_text: recoRequestMessage || message || '',
+            ...(contextualRecoContinuation
+              ? {
+                  contextual_reco_continuation: true,
+                  current_request_text: recoRequestMessage || message || '',
+                  prior_request_text: priorRecoRequestText || null,
+                  combined_request_text: plannerAndRetrievalRequestText,
+                }
+              : {}),
             recompute_from_profile_update:
               shouldAutoRerunRecommendationsFromProfilePatch === true,
             used_recent_logs: Array.isArray(recentLogs) && recentLogs.length > 0,
@@ -1223,5 +1292,7 @@ module.exports = {
   __internal: {
     collectBeautyExactProductQueryTerms,
     augmentBeautyExactProductTargetContext,
+    looksLikeBeautyChatContextualRecoContinuationMessage,
+    buildBeautyChatContextualRecoContinuationText,
   },
 };
