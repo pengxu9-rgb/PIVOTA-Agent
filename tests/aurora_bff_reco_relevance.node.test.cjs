@@ -4318,6 +4318,62 @@ staleFallbackPlannerTest('__internal: framework-first transport policy constrain
   }
 });
 
+test('__internal: external seed authority search scopes catalog endpoint to external seed merchant', async () => {
+  const { __internal } = loadRoutesFresh();
+  const originalGet = axios.get;
+  const calls = [];
+  axios.get = async (url, config = {}) => {
+    calls.push({ url, params: config.params || {} });
+    return {
+      status: 200,
+      data: {
+        products: [
+          {
+            product_id: 'ext_spf_authority_1',
+            merchant_id: 'external_seed',
+            brand: 'SKINTIFIC',
+            name: 'Matte Fit Serum Sunscreen SPF 50+ PA++++',
+            category: 'sunscreen',
+            product_type: 'sunscreen',
+            source: 'external_seed',
+          },
+        ],
+      },
+    };
+  };
+
+  try {
+    const out = await __internal.searchPivotaBackendProducts({
+      query: 'sunscreen oily skin',
+      limit: 6,
+      catalogSurface: 'beauty',
+      allowExternalSeed: true,
+      externalSeedStrategy: 'stage_planned',
+      merchantId: 'external_seed',
+      externalSeedOnly: true,
+      fastMode: true,
+      productOnly: true,
+      targetStepFamily: 'sunscreen',
+      semanticFamily: 'sunscreen',
+      queryStepStrength: 'supportive_family',
+      transportPolicy: __internal.buildExternalSeedDirectSearchTransportPolicy({ mode: 'framework_first_turn' }),
+    });
+
+    assert.equal(out.ok, true);
+    assert.equal(out.products?.[0]?.product_id, 'ext_spf_authority_1');
+    assert.equal(calls.length, 1);
+    assert.ok(String(calls[0]?.url || '').includes('/agent/v1/products/search'));
+    assert.equal(calls[0]?.params?.merchant_id, 'external_seed');
+    assert.equal(calls[0]?.params?.external_seed_only, true);
+    assert.equal(calls[0]?.params?.allow_external_seed, true);
+    assert.equal(calls[0]?.params?.external_seed_strategy, 'stage_planned');
+    assert.equal(calls[0]?.params?.catalog_surface, 'beauty');
+    assert.equal(calls[0]?.params?.target_step_family, 'sunscreen');
+  } finally {
+    axios.get = originalGet;
+  }
+});
+
 test('__internal: internal primitive client surfaces backend error details', async () => {
   const { __internal } = loadRoutesFresh();
   const originalPost = axios.post;
@@ -7611,9 +7667,51 @@ test('__internal: beauty local handoff external stage uses backend authority aft
         local_external_seed_stage_debug: [{ stage: 'support_query_precise', row_count: 0 }],
       };
     },
+    searchExternalSeedAuthorityProducts: async (args = {}) => {
+      calls.push({
+        kind: 'backend_external_seed',
+        query: args.query,
+        allowExternalSeed: args.allowExternalSeed === true,
+        externalSeedStrategy: args.externalSeedStrategy || null,
+        merchantId: args.merchantId || null,
+        externalSeedOnly: args.externalSeedOnly === true,
+        sourcePath: '/agent/v1/products/search',
+      });
+      const query = String(args.query || '').trim().toLowerCase();
+      if (args.allowExternalSeed === true && args.externalSeedOnly === true && query.includes('sunscreen')) {
+        return {
+          ok: true,
+          products: [
+            {
+              product_id: 'backend_sunscreen_authority_1',
+              merchant_id: 'external_seed',
+              brand: 'SunGuard',
+              name: 'Lightweight Daily Sunscreen SPF 50',
+              display_name: 'SunGuard Lightweight Daily Sunscreen SPF 50',
+              category: 'Sunscreen',
+              product_type: 'Sunscreen',
+              retrieval_source: 'external_seed',
+              short_description: 'A lightweight non-greasy sunscreen for oily skin.',
+              benefit_tags: ['spf', 'lightweight', 'non-greasy'],
+            },
+          ],
+          source_path: '/agent/v1/products/search',
+          endpoint_kind: 'external_seed_authority_search',
+          transport_owner: 'pivota_backend_products_search',
+        };
+      }
+      return {
+        ok: true,
+        products: [],
+        reason: 'empty',
+        source_path: '/agent/v1/products/search',
+        endpoint_kind: 'external_seed_authority_search',
+        transport_owner: 'pivota_backend_products_search',
+      };
+    },
     searchInternalProductsPrimitive: async (args = {}) => {
       calls.push({
-        kind: args.allowExternalSeed === true ? 'backend_external_seed' : 'internal',
+        kind: args.allowExternalSeed === true ? 'unexpected_internal_external_seed' : 'internal',
         query: args.query,
         allowExternalSeed: args.allowExternalSeed === true,
         externalSeedStrategy: args.externalSeedStrategy || null,
@@ -7642,25 +7740,6 @@ test('__internal: beauty local handoff external stage uses backend authority aft
         primary_transport_owner: 'internal_products_search_primitive',
         primary_endpoint_kind: 'internal_primitive',
       };
-      if (args.allowExternalSeed === true && query.includes('sunscreen')) {
-        return {
-          ...base,
-          products: [
-            {
-              product_id: 'backend_sunscreen_authority_1',
-              merchant_id: 'external_seed',
-              brand: 'SunGuard',
-              name: 'Lightweight Daily Sunscreen SPF 50',
-              display_name: 'SunGuard Lightweight Daily Sunscreen SPF 50',
-              category: 'Sunscreen',
-              product_type: 'Sunscreen',
-              retrieval_source: 'external_seed',
-              short_description: 'A lightweight non-greasy sunscreen for oily skin.',
-              benefit_tags: ['spf', 'lightweight', 'non-greasy'],
-            },
-          ],
-        };
-      }
       if (query.includes('niacinamide')) {
         return {
           ...base,
@@ -7729,8 +7808,11 @@ test('__internal: beauty local handoff external stage uses backend authority aft
         call.kind === 'backend_external_seed' &&
         call.query === 'sunscreen oily skin' &&
         call.allowExternalSeed === true &&
+        call.merchantId === 'external_seed' &&
+        call.externalSeedOnly === true &&
+        call.sourcePath === '/agent/v1/products/search' &&
         call.externalSeedStrategy === 'stage_planned' &&
-        call.callerLane === 'beauty_chat_handoff_external_seed_authority'),
+        !call.callerLane),
       JSON.stringify(calls),
     );
     const sunscreenAttempt = (out.search_stage_ledger?.primary_search?.query_pack_attempts || [])
