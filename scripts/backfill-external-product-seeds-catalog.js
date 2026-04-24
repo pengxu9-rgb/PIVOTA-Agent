@@ -182,6 +182,54 @@ function isVerifiedShopifyMarketReplacement(targetUrl, productUrl) {
   return productHandle.startsWith(`${targetBase}-`) || productBase === targetBase;
 }
 
+function productIdentityTokens(...values) {
+  const stopTokens = new Set(['and', 'with', 'the', 'a', 'an', 'by', 'for']);
+  return Array.from(
+    new Set(
+      values
+        .flatMap((value) => normalizeTitleKey(value).split(/\s+/))
+        .map((token) => token.trim())
+        .filter((token) => token && !stopTokens.has(token)),
+    ),
+  );
+}
+
+function tokenOverlapScore(leftTokens, rightTokens) {
+  const left = new Set(leftTokens);
+  const right = new Set(rightTokens);
+  if (!left.size || !right.size) return { common: 0, containment: 0, jaccard: 0 };
+  const common = Array.from(left).filter((token) => right.has(token)).length;
+  const union = new Set([...left, ...right]).size;
+  return {
+    common,
+    containment: common / Math.min(left.size, right.size),
+    jaccard: common / union,
+  };
+}
+
+function isVerifiedShopifyRedirectReplacement(targetUrl, product, row) {
+  const productUrl = normalizeUrlLike(product?.url);
+  if (!looksLikeDirectProductTargetUrl(targetUrl) || !looksLikeDirectProductTargetUrl(productUrl)) return false;
+  if (isVerifiedShopifyMarketReplacement(targetUrl, productUrl)) return true;
+
+  const targetHandle = extractShopifyHandleFromUrl(targetUrl);
+  const productHandle = extractShopifyHandleFromUrl(productUrl);
+  if (!targetHandle || !productHandle || targetHandle === productHandle) return false;
+
+  const seedData = ensureJsonObject(row?.seed_data);
+  const snapshot = ensureJsonObject(seedData.snapshot);
+  const leftTokens = productIdentityTokens(
+    targetHandle,
+    row?.title,
+    row?.name,
+    seedData.title,
+    snapshot.title,
+  );
+  const rightTokens = productIdentityTokens(productHandle, product?.title);
+  const score = tokenOverlapScore(leftTokens, rightTokens);
+  return score.common >= 4 && score.containment >= 0.65 && score.jaccard >= 0.55;
+}
+
 function looksLikeDirectProductTargetUrl(value) {
   const normalized = normalizeUrlLike(value);
   if (!normalized) return false;
@@ -1391,6 +1439,33 @@ function normalizeTargetUrlForMarket(value, market) {
   }
 }
 
+function normalizeRepresentativeProductUrlForSeedTarget(productUrl, targetUrl) {
+  const normalizedProductUrl = normalizeUrlLike(productUrl);
+  const normalizedTargetUrl = normalizeUrlLike(targetUrl);
+  if (!normalizedProductUrl || !normalizedTargetUrl) return normalizedProductUrl;
+
+  try {
+    const productParsed = new URL(normalizedProductUrl);
+    const targetParsed = new URL(normalizedTargetUrl);
+    if (productParsed.hostname.toLowerCase() !== targetParsed.hostname.toLowerCase()) return normalizedProductUrl;
+
+    const productSegments = productParsed.pathname.split('/').filter(Boolean);
+    const targetSegments = targetParsed.pathname.split('/').filter(Boolean);
+    if (!productSegments[0] || !LOCALE_PATH_SEGMENT_RE.test(productSegments[0])) return normalizedProductUrl;
+    if (productSegments[1] !== 'products' && productSegments[1] !== 'product') return normalizedProductUrl;
+
+    if (targetSegments[0] && LOCALE_PATH_SEGMENT_RE.test(targetSegments[0])) {
+      productSegments[0] = targetSegments[0];
+    } else {
+      productSegments.shift();
+    }
+    productParsed.pathname = `/${productSegments.join('/')}`;
+    return productParsed.toString();
+  } catch {
+    return normalizedProductUrl;
+  }
+}
+
 function parsePrice(value) {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
   const raw = normalizeNonEmptyString(value);
@@ -1494,7 +1569,7 @@ function chooseRepresentativeProduct(response, targetUrl, row) {
 
   if (looksLikeDirectProductTargetUrl(targetUrl) && products.length === 1) {
     const product = products[0];
-    if (isVerifiedShopifyMarketReplacement(targetUrl, product?.url)) return product;
+    if (isVerifiedShopifyRedirectReplacement(targetUrl, product, row)) return product;
   }
 
   if (looksLikeDirectProductTargetUrl(targetUrl)) return null;
@@ -1675,7 +1750,10 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     looksLikeKnownNonProductUrl(row?.canonical_url || row?.destination_url) &&
     looksLikeDirectProductTargetUrl(targetUrl);
   const representativeProduct = chooseRepresentativeProduct(response, targetUrl, row);
-  const representativeProductUrl = normalizeUrlLike(representativeProduct?.url) || normalizeUrlLike(targetUrl) || normalizeUrlLike(row?.canonical_url);
+  const representativeProductUrl =
+    normalizeRepresentativeProductUrlForSeedTarget(representativeProduct?.url, targetUrl) ||
+    normalizeUrlLike(targetUrl) ||
+    normalizeUrlLike(row?.canonical_url);
   const snapshotVariants = mapSnapshotVariants(representativeProduct, response, seedData);
   const effectiveSnapshotVariants = fallbackPollutedRow && !representativeProduct ? [] : snapshotVariants;
   const selectedSnapshotVariant = pickVariantByHints(effectiveSnapshotVariants, [

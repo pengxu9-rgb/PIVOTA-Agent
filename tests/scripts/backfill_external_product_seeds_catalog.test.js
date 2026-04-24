@@ -462,6 +462,78 @@ describe('backfill-external-product-seeds-catalog', () => {
     expect(product).toBeNull();
   });
 
+  test('accepts a verified Shopify direct-PDP redirect replacement', () => {
+    const row = {
+      title: 'Cosmic Kylie Jenner 2.0 50ml & Pen Spray Duo',
+      canonical_url: 'https://kyliecosmetics.com/products/cosmic-kylie-jenner-2-0-50ml-pen-spray-duo',
+      destination_url: 'https://kyliecosmetics.com/products/cosmic-kylie-jenner-2-0-50ml-pen-spray-duo',
+      seed_data: {
+        snapshot: {
+          canonical_url: 'https://kyliecosmetics.com/products/cosmic-kylie-jenner-2-0-50ml-pen-spray-duo',
+        },
+      },
+    };
+
+    const product = chooseRepresentativeProduct(
+      {
+        products: [
+          {
+            title: 'Cosmic Kylie Jenner 2.0 50ml & Pen Spray Gift Set',
+            url: 'https://kyliecosmetics.com/en-bl/products/cosmic-kylie-jenner-2-0-50ml-pen-spray-gift-set',
+          },
+        ],
+      },
+      'https://kyliecosmetics.com/products/cosmic-kylie-jenner-2-0-50ml-pen-spray-duo',
+      row,
+    );
+
+    expect(product.url).toBe(
+      'https://kyliecosmetics.com/en-bl/products/cosmic-kylie-jenner-2-0-50ml-pen-spray-gift-set',
+    );
+  });
+
+  test('normalizes same-host locale-prefixed replacement PDP URLs to the seed storefront', () => {
+    const row = {
+      id: 'eps_kylie_redirected_duo',
+      external_product_id: 'ext_kylie_redirected_duo',
+      title: 'Cosmic Kylie Jenner 2.0 50ml & Pen Spray Duo',
+      canonical_url: 'https://kyliecosmetics.com/products/cosmic-kylie-jenner-2-0-50ml-pen-spray-duo',
+      destination_url: 'https://kyliecosmetics.com/products/cosmic-kylie-jenner-2-0-50ml-pen-spray-duo',
+      price_amount: 66,
+      price_currency: 'USD',
+      seed_data: {
+        snapshot: {
+          canonical_url: 'https://kyliecosmetics.com/products/cosmic-kylie-jenner-2-0-50ml-pen-spray-duo',
+        },
+      },
+    };
+
+    const payload = buildSeedUpdatePayload(
+      row,
+      {
+        products: [
+          {
+            title: 'Cosmic Kylie Jenner 2.0 50ml & Pen Spray Gift Set',
+            url: 'https://kyliecosmetics.com/en-bl/products/cosmic-kylie-jenner-2-0-50ml-pen-spray-gift-set',
+            product_kind: 'bundle',
+            description_raw: 'A fragrance gift set with a full-size bottle and pen spray.',
+            image_urls: ['https://cdn.shopify.com/s/files/example/gift-set.jpg?v=1'],
+          },
+        ],
+        variants: [],
+        diagnostics: {},
+      },
+      'https://kyliecosmetics.com/products/cosmic-kylie-jenner-2-0-50ml-pen-spray-duo',
+    );
+
+    expect(payload.nextRow.canonical_url).toBe(
+      'https://kyliecosmetics.com/products/cosmic-kylie-jenner-2-0-50ml-pen-spray-gift-set',
+    );
+    expect(payload.nextRow.seed_data.snapshot.canonical_url).toBe(
+      'https://kyliecosmetics.com/products/cosmic-kylie-jenner-2-0-50ml-pen-spray-gift-set',
+    );
+  });
+
   test('skips direct PDP backfill when extractor only returns unrelated collection products', async () => {
     const row = {
       id: 'eps_tomford_missing_handle',
