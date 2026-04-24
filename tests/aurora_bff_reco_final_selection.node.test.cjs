@@ -569,13 +569,13 @@ test('beauty mainline reco rows prefer role-grounded sunscreen copy over marketi
     );
     assert.match(
       String(rows[0].why_this_one || ''),
-      /clearer mineral-filter profile.+daytime UV protection|it is formulated with Zinc Oxide and Titanium Dioxide.+daily sunscreen step/i,
+      /practical daily SPF option.+mineral filters.+zinc oxide.+titanium dioxide.+dedicated UV-protection step/i,
     );
     assert.match(
       String(rows[0].short_description || ''),
-      /clearer mineral-filter profile.+daytime UV protection|it is formulated with Zinc Oxide and Titanium Dioxide.+daily sunscreen step/i,
+      /practical daily SPF option.+mineral filters.+zinc oxide.+titanium dioxide.+dedicated UV-protection step/i,
     );
-    assert.match(String(rows[0].short_description || ''), /daily sunscreen step/i);
+    assert.match(String(rows[0].short_description || ''), /daily SPF option/i);
   } finally {
     delete require.cache[moduleId];
   }
@@ -675,8 +675,8 @@ test('beauty mainline reco rows prefer daily sunscreen finish evidence over gene
     );
 
     assert.equal(rows.length, 1);
-    assert.match(String(rows[0].why_this_one || ''), /fast-absorbing.+non-greasy/i);
-    assert.match(String(rows[0].short_description || ''), /fast-absorbing.+non-greasy/i);
+    assert.match(String(rows[0].why_this_one || ''), /practical daily SPF option.+SPF 45.+fast-absorbing.+non-greasy/i);
+    assert.match(String(rows[0].short_description || ''), /practical daily SPF option.+SPF 45.+fast-absorbing.+non-greasy/i);
     assert.doesNotMatch(String(rows[0].why_this_one || ''), /niacinamide plus humectants|comfortable daytime layering/i);
   } finally {
     delete require.cache[moduleId];
