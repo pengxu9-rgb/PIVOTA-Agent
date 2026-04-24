@@ -5121,6 +5121,7 @@ test('__internal: local external seed daily sunscreen support uses precise autho
     'uv protection',
   ]);
   assert.ok(observedQueries[0].params[3].includes('%lightweight sunscreen oily skin%'));
+  assert.ok(observedQueries[0].params[3].includes('%lightweight sunscreen%'));
   assert.equal(out.local_external_seed_stage_debug[0]?.stage, 'support_query_precise');
   assert.equal(out.products[0].retrieval_match_stage, 'support_query_precise');
   assert.equal(out.products[0].retrieval_role_id, 'daily_sunscreen');
