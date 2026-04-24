@@ -7425,6 +7425,191 @@ test('__internal: beauty mainline handoff payload preserves viable support role 
   assert.equal(persistedSunscreenTarget?.product_candidates?.[0]?.product_id, 'handoff_sunscreen_viable_1');
 });
 
+test('__internal: beauty local handoff external stage uses backend authority after local seed miss', async () => {
+  const { __internal } = loadRoutesFresh();
+  const calls = [];
+  const targetContext = {
+    framework_id: 'recofw_test_oily_backend_external_authority',
+    primary_role_id: 'oil_control_treatment',
+    routine_mode: 'routine_mix',
+    semantic_plan: { routine_mode: 'routine_mix', comparison_mode: 'routine_mix' },
+    framework_roles: [
+      {
+        role_id: 'oil_control_treatment',
+        rank: 10,
+        preferred_step: 'treatment',
+        label: 'Oil-control treatment',
+        query_terms: ['niacinamide serum oily skin'],
+        fit_keywords: ['oil control', 'shine control', 'niacinamide', 'zinc'],
+        ingredient_hypotheses: ['Niacinamide', 'Zinc PCA'],
+        product_type_hypotheses: ['serum', 'treatment'],
+      },
+      {
+        role_id: 'lightweight_moisturizer',
+        rank: 20,
+        preferred_step: 'moisturizer',
+        label: 'Lightweight moisturizer',
+        query_terms: ['lightweight moisturizer oily skin'],
+        fit_keywords: ['lightweight', 'gel cream', 'oil-free'],
+        product_type_hypotheses: ['moisturizer'],
+      },
+      {
+        role_id: 'daily_sunscreen',
+        rank: 30,
+        preferred_step: 'sunscreen',
+        label: 'Daily sunscreen',
+        query_terms: ['lightweight sunscreen oily skin'],
+        fit_keywords: ['spf', 'lightweight', 'oil control', 'non-greasy'],
+        product_type_hypotheses: ['sunscreen'],
+      },
+    ],
+  };
+
+  __internal.__setRouteDependencyOverridesForTest({
+    searchLocalExternalSeedProducts: async (args = {}) => {
+      calls.push({ kind: 'local_external_seed', query: args.query, preferredStep: args.preferredStep });
+      return {
+        ok: false,
+        products: [],
+        reason: 'empty',
+        local_external_seed_search_mode: 'staged_support_fastpath',
+        local_external_seed_stage_debug: [{ stage: 'support_query_precise', row_count: 0 }],
+      };
+    },
+    searchInternalProductsPrimitive: async (args = {}) => {
+      calls.push({
+        kind: args.allowExternalSeed === true ? 'backend_external_seed' : 'internal',
+        query: args.query,
+        allowExternalSeed: args.allowExternalSeed === true,
+        externalSeedStrategy: args.externalSeedStrategy || null,
+        callerLane: args.callerLane || null,
+      });
+      const query = String(args.query || '').trim().toLowerCase();
+      const base = {
+        ok: true,
+        attempted_base_urls: ['https://backend.test'],
+        attempted_paths: ['/agent/internal/products/search'],
+        attempted_request_timeouts_ms: [1000],
+        actual_http_attempt_count: 1,
+        transport_hops: [
+          {
+            caller_lane: args.callerLane || 'beauty_chat_handoff',
+            target_base_url: 'https://backend.test',
+            target_path: '/agent/internal/products/search',
+            endpoint_kind: 'internal_primitive',
+            transport_owner: 'internal_products_search_primitive',
+            latency_ms: 10,
+            result: 'ok',
+          },
+        ],
+        transport_hop_count: 1,
+        nested_orchestrator_hops: 0,
+        primary_transport_owner: 'internal_products_search_primitive',
+        primary_endpoint_kind: 'internal_primitive',
+      };
+      if (args.allowExternalSeed === true && query.includes('sunscreen')) {
+        return {
+          ...base,
+          products: [
+            {
+              product_id: 'backend_sunscreen_authority_1',
+              merchant_id: 'external_seed',
+              brand: 'SunGuard',
+              name: 'Lightweight Daily Sunscreen SPF 50',
+              display_name: 'SunGuard Lightweight Daily Sunscreen SPF 50',
+              category: 'Sunscreen',
+              product_type: 'Sunscreen',
+              retrieval_source: 'external_seed',
+              short_description: 'A lightweight non-greasy sunscreen for oily skin.',
+              benefit_tags: ['spf', 'lightweight', 'non-greasy'],
+            },
+          ],
+        };
+      }
+      if (query.includes('niacinamide')) {
+        return {
+          ...base,
+          products: [
+            {
+              product_id: 'internal_oil_control_1',
+              merchant_id: 'merchant_internal',
+              brand: 'The Ordinary',
+              name: 'Niacinamide 10% + Zinc 1%',
+              display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+              category: 'Serum',
+              product_type: 'Serum',
+              retrieval_source: 'catalog',
+              short_description: 'A niacinamide and zinc serum for oily skin.',
+              benefit_tags: ['niacinamide', 'oil control', 'zinc'],
+            },
+          ],
+        };
+      }
+      if (query.includes('moisturizer')) {
+        return {
+          ...base,
+          products: [
+            {
+              product_id: 'internal_moisturizer_1',
+              merchant_id: 'merchant_internal',
+              brand: 'GelLab',
+              name: 'Balance Gel Cream',
+              display_name: 'GelLab Balance Gel Cream',
+              category: 'Moisturizer',
+              product_type: 'Moisturizer',
+              retrieval_source: 'catalog',
+              short_description: 'A lightweight gel cream moisturizer for oily skin.',
+              benefit_tags: ['lightweight', 'gel cream'],
+            },
+          ],
+        };
+      }
+      return { ...base, products: [] };
+    },
+  });
+
+  try {
+    const out = await __internal.runBeautyMainlineLocalHandoffSearch({
+      ctx: { lang: 'EN' },
+      logger: null,
+      targetContext,
+      profileSummary: { skinType: 'oily', goals: ['oil control'] },
+      timeoutMs: 10000,
+      deadlineMs: Date.now() + 10000,
+    });
+
+    assert.equal(out?.ok, true);
+    assert.deepEqual(
+      (Array.isArray(out.products) ? out.products : []).map((item) => item?.matched_role_id),
+      ['oil_control_treatment', 'lightweight_moisturizer', 'daily_sunscreen'],
+    );
+    assert.ok(
+      calls.some((call) =>
+        call.kind === 'local_external_seed' &&
+        call.query === 'lightweight sunscreen oily skin'),
+      JSON.stringify(calls),
+    );
+    assert.ok(
+      calls.some((call) =>
+        call.kind === 'backend_external_seed' &&
+        call.query === 'lightweight sunscreen oily skin' &&
+        call.allowExternalSeed === true &&
+        call.externalSeedStrategy === 'stage_planned' &&
+        call.callerLane === 'beauty_chat_handoff_external_seed_authority'),
+      JSON.stringify(calls),
+    );
+    const sunscreenAttempt = (out.search_stage_ledger?.primary_search?.query_pack_attempts || [])
+      .find((entry) =>
+        entry?.role_id === 'daily_sunscreen' &&
+        entry?.source_scope === 'external_seed' &&
+        entry?.query === 'lightweight sunscreen oily skin') || null;
+    assert.ok(sunscreenAttempt);
+    assert.equal(sunscreenAttempt.external_seed_authority_backend_after_local_miss, true);
+  } finally {
+    __internal.__resetRouteDependencyOverridesForTest();
+  }
+});
+
 function extractRecoRewritePromptContext(prompt) {
   const raw = String(prompt || '');
   const marker = 'Context: ';
