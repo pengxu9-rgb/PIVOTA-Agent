@@ -135,6 +135,7 @@ function normalizeTurns(caseDef) {
         language: String((turn && turn.language) || (caseDef && caseDef.language) || 'EN').toUpperCase(),
         message: asString(turn && turn.message),
         action: fallbackAction,
+        dynamic_reply: isPlainObject(turn && turn.dynamic_reply) ? turn.dynamic_reply : null,
         chat_overrides: isPlainObject(turn && turn.chat_overrides) ? turn.chat_overrides : null,
         wait_after_ms: Number.isFinite(Number(turn && turn.wait_after_ms)) ? Number(turn.wait_after_ms) : 0,
         expected_turn: isPlainObject(turn && turn.expected_turn) ? turn.expected_turn : undefined,
@@ -149,6 +150,7 @@ function normalizeTurns(caseDef) {
       language: String((caseDef && caseDef.language) || 'EN').toUpperCase(),
       message: asString(caseDef && caseDef.message),
       action: null,
+      dynamic_reply: null,
       chat_overrides: null,
       wait_after_ms: 0,
       expected_turn: undefined,
@@ -330,6 +332,54 @@ function extractRecoCandidate(cardRows) {
     anchor_product_id: anchor,
     candidate_product_id: candidateProductId,
   };
+}
+
+function extractRecoRefinementQuestion(body) {
+  const cards = extractCardRows(body);
+  for (const card of cards) {
+    if (card.type !== 'recommendations' && card.type !== 'product_picks') continue;
+    const meta = isPlainObject(card.payload?.recommendation_meta) ? card.payload.recommendation_meta : {};
+    const question = isPlainObject(meta.assistant_refinement_question) ? meta.assistant_refinement_question : null;
+    if (question) {
+      const text = asString(question.question).trim();
+      const field = asString(question.field).trim();
+      if (text || field) {
+        return {
+          ...question,
+          field: field || null,
+          question: text || null,
+        };
+      }
+    }
+  }
+  return null;
+}
+
+function extractLastAssistantQuestion(text) {
+  const raw = String(text || '').trim();
+  if (!raw) return '';
+  const matches = raw.match(/[^.!?。！？]*[?？]/g) || [];
+  return matches
+    .map((part) => String(part || '').replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+    .pop() || '';
+}
+
+function resolveDynamicTurnMessage(turnDef, vars) {
+  const dynamicReply = isPlainObject(turnDef?.dynamic_reply) ? turnDef.dynamic_reply : null;
+  if (!dynamicReply) return asString(turnDef?.message);
+  const explicitMessage = asString(turnDef?.message).trim();
+  if (explicitMessage) return explicitMessage;
+  const answers = isPlainObject(dynamicReply.answers) ? dynamicReply.answers : {};
+  const field = asString(vars?.last_refinement_field).trim();
+  const sourceQuestion = asString(vars?.last_refinement_question || vars?.last_assistant_question).trim();
+  const fallback = asString(dynamicReply.fallback).trim();
+  const answer =
+    (field && asString(answers[field]).trim())
+    || asString(answers.default).trim()
+    || fallback
+    || (sourceQuestion ? `Answering your question: ${sourceQuestion}` : '');
+  return asString(applyTemplateVars(answer, vars)).trim();
 }
 
 function productDisplayText(row) {
@@ -974,7 +1024,10 @@ async function runLocalCases({ cases, llmBaseline, timeoutMs }) {
 
       const turnResults = [];
       for (let idx = 0; idx < turns.length; idx += 1) {
-        const turn = turns[idx];
+        const turn = {
+          ...turns[idx],
+          message: resolveDynamicTurnMessage(turns[idx], vars),
+        };
         const headers = headerMapForCase({ caseDef, turnDef: turn, runId });
         const expected = mergeTurnExpected(caseDef, turn, 'local');
         const beforeContext = deepClone(context);
@@ -1017,6 +1070,13 @@ async function runLocalCases({ cases, llmBaseline, timeoutMs }) {
 
         vars.last_request_id = asString(responseWrap.body?.request_id) || vars.last_request_id;
         vars.last_trace_id = asString(responseWrap.body?.trace_id) || vars.last_trace_id;
+        vars.last_assistant_text = extractAssistantText(responseWrap.body) || vars.last_assistant_text;
+        vars.last_assistant_question = extractLastAssistantQuestion(vars.last_assistant_text) || vars.last_assistant_question;
+        const refinementQuestion = extractRecoRefinementQuestion(responseWrap.body);
+        if (refinementQuestion) {
+          vars.last_refinement_field = asString(refinementQuestion.field) || vars.last_refinement_field;
+          vars.last_refinement_question = asString(refinementQuestion.question) || vars.last_refinement_question;
+        }
         const recoHint = extractRecoCandidate(extractCardRows(responseWrap.body));
         if (recoHint.anchor_product_id) vars.last_anchor_product_id = recoHint.anchor_product_id;
         if (recoHint.candidate_product_id) vars.last_candidate_product_id = recoHint.candidate_product_id;
@@ -1109,7 +1169,10 @@ async function runLiveCases({ cases, base, llmBaseline, timeoutMs, retryCount, r
 
     const turnResults = [];
     for (let idx = 0; idx < turns.length; idx += 1) {
-      const turn = turns[idx];
+      const turn = {
+        ...turns[idx],
+        message: resolveDynamicTurnMessage(turns[idx], vars),
+      };
       const headers = headerMapForCase({ caseDef, turnDef: turn, runId });
       const expected = mergeTurnExpected(caseDef, turn, 'live');
       const beforeContext = deepClone(context);
@@ -1136,6 +1199,13 @@ async function runLiveCases({ cases, base, llmBaseline, timeoutMs, retryCount, r
 
       vars.last_request_id = asString(body?.request_id) || vars.last_request_id;
       vars.last_trace_id = asString(body?.trace_id) || vars.last_trace_id;
+      vars.last_assistant_text = extractAssistantText(body) || vars.last_assistant_text;
+      vars.last_assistant_question = extractLastAssistantQuestion(vars.last_assistant_text) || vars.last_assistant_question;
+      const refinementQuestion = extractRecoRefinementQuestion(body);
+      if (refinementQuestion) {
+        vars.last_refinement_field = asString(refinementQuestion.field) || vars.last_refinement_field;
+        vars.last_refinement_question = asString(refinementQuestion.question) || vars.last_refinement_question;
+      }
       const recoHint = extractRecoCandidate(extractCardRows(body));
       if (recoHint.anchor_product_id) vars.last_anchor_product_id = recoHint.anchor_product_id;
       if (recoHint.candidate_product_id) vars.last_candidate_product_id = recoHint.candidate_product_id;
@@ -1392,6 +1462,9 @@ module.exports = {
     extractLlmMeta,
     extractProfilePatchFromResponse,
     extractRecommendationRows,
+    extractRecoRefinementQuestion,
+    extractLastAssistantQuestion,
+    resolveDynamicTurnMessage,
     mergeSessionPatchIntoContext,
   },
 };

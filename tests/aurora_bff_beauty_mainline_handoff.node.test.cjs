@@ -257,6 +257,17 @@ test('buildRecoPayloadFromBeautyMainlineHandoff prunes active moisturizer compar
     taskMode: 'goal_based_products',
     sourceMode: 'framework_mainline',
     triggerSource: 'analysis_handoff',
+    basePayload: {
+      recommendation_meta: {
+        request_text: 'current follow-up',
+        contextual_reco_continuation: true,
+        current_request_text: 'current follow-up',
+        prior_request_text: 'previous acne request',
+        combined_request_text: 'Previous recommendation request: previous acne request\nCurrent follow-up constraints/question: current follow-up',
+        chat_planner_used: true,
+        chat_planner_source: 'llm_concern_planner',
+      },
+    },
     language: 'EN',
   });
 
@@ -268,6 +279,11 @@ test('buildRecoPayloadFromBeautyMainlineHandoff prunes active moisturizer compar
     out?.payload?.recommendation_meta?.final_selection?.selected_product_ids,
     ['ext_9bc7ff02d709cc5383cc78ec', 'ext_a29393bd005135c81f47dade'],
   );
+  assert.equal(out?.payload?.recommendation_meta?.contextual_reco_continuation, true);
+  assert.equal(out?.payload?.recommendation_meta?.request_text, 'current follow-up');
+  assert.equal(out?.payload?.recommendation_meta?.prior_request_text, 'previous acne request');
+  assert.equal(out?.payload?.recommendation_meta?.chat_planner_used, true);
+  assert.equal(out?.payload?.recommendation_meta?.chat_planner_source, 'llm_concern_planner');
 });
 
 test('handoffRecoToBeautyMainlineSearch passes sunscreen-aligned contract to backend search', async () => {

@@ -826,6 +826,39 @@ function createBeautyChatMainlineEnvelopeRuntime(deps = {}) {
       task_mode: taskMode,
       recommendation_meta: {
         task_mode: taskMode,
+        ...(basePayload?.recommendation_meta?.request_text
+          ? { request_text: pickFirstTrimmed(basePayload.recommendation_meta.request_text) }
+          : {}),
+        ...(basePayload?.recommendation_meta?.contextual_reco_continuation === true
+          ? { contextual_reco_continuation: true }
+          : {}),
+        ...(basePayload?.recommendation_meta?.current_request_text
+          ? { current_request_text: pickFirstTrimmed(basePayload.recommendation_meta.current_request_text) }
+          : {}),
+        ...(basePayload?.recommendation_meta?.prior_request_text
+          ? { prior_request_text: pickFirstTrimmed(basePayload.recommendation_meta.prior_request_text) }
+          : {}),
+        ...(basePayload?.recommendation_meta?.combined_request_text
+          ? { combined_request_text: pickFirstTrimmed(basePayload.recommendation_meta.combined_request_text) }
+          : {}),
+        ...(basePayload?.recommendation_meta?.chat_planner_used === true
+          ? { chat_planner_used: true }
+          : {}),
+        ...(basePayload?.recommendation_meta?.chat_planner_fallback_used === true
+          ? { chat_planner_fallback_used: true }
+          : {}),
+        ...(basePayload?.recommendation_meta?.chat_planner_source
+          ? { chat_planner_source: pickFirstTrimmed(basePayload.recommendation_meta.chat_planner_source) }
+          : {}),
+        ...(basePayload?.recommendation_meta?.chat_planner_route
+          ? { chat_planner_route: pickFirstTrimmed(basePayload.recommendation_meta.chat_planner_route) }
+          : {}),
+        ...(basePayload?.recommendation_meta?.chat_planner_selection_source
+          ? { chat_planner_selection_source: pickFirstTrimmed(basePayload.recommendation_meta.chat_planner_selection_source) }
+          : {}),
+        ...(basePayload?.recommendation_meta?.chat_planner_failure_class
+          ? { chat_planner_failure_class: pickFirstTrimmed(basePayload.recommendation_meta.chat_planner_failure_class) }
+          : {}),
         source_mode:
           pickFirstTrimmed(
             sourceMode,
