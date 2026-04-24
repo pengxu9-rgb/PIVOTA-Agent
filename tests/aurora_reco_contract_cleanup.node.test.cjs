@@ -261,6 +261,61 @@ test('local external seed primary search does not treat null timeout as zero', a
   assert.ok(Number(result.local_external_seed_search_timeout_ms) >= 800);
 });
 
+test('alternatives visible authority filter hides unresolved rows once grounded rows exist', () => {
+  const result = __internal.filterRecoAlternativesVisibleAuthorityRows([
+    {
+      candidate_origin: 'pool',
+      grounding_status: 'catalog_verified',
+      product: {
+        product_id: 'grounded_1',
+        merchant_id: 'merchant_1',
+        name: 'Grounded Serum',
+        brand: 'Grounded Brand',
+      },
+      reasons: ['Comparable serum role with catalog identity.'],
+      tradeoff_notes: ['Compare texture and price before swapping.'],
+    },
+    {
+      candidate_origin: 'open_world',
+      grounding_status: 'name_only',
+      product: { name: 'Unresolved Serum', brand: 'Unresolved Brand' },
+      reasons: ['Same treatment step as the anchor.'],
+      tradeoff_notes: ['Key formula details still need verification before comparing actives or finish.'],
+    },
+  ], { minGrounded: 2 });
+
+  assert.equal(result.alternatives.length, 1);
+  assert.equal(result.alternatives[0].product.product_id, 'grounded_1');
+  assert.equal(result.hidden_unresolved_count, 1);
+  assert.equal(result.visible_authority_only_filter_applied, true);
+});
+
+test('open-world conservative copy does not expose old weak fallback phrases', () => {
+  const row = __internal.sanitizeOpenWorldAlternativeVisibleCopy(
+    {
+      candidate_origin: 'open_world',
+      grounding_status: 'name_only',
+      product: {
+        name: 'Candidate Serum',
+        brand: 'Candidate Brand',
+        category: 'serum',
+      },
+    },
+    { targetSignals: { usageRole: 'treatment_serum' }, mode: 'name_only' },
+  );
+
+  const visibleCopy = [
+    ...row.reasons,
+    ...row.tradeoff_notes,
+  ].join(' ');
+
+  assert.doesNotMatch(visibleCopy, /Same .* step as the anchor/i);
+  assert.doesNotMatch(visibleCopy, /distinct option for this compare/i);
+  assert.doesNotMatch(visibleCopy, /Key formula details still need verification/i);
+  assert.match(visibleCopy, /Tentative treatment serum match/i);
+  assert.match(visibleCopy, /not confirmed here/i);
+});
+
 test('chatCardsAssembler sanitizes derived ops experiment events from envelope events', () => {
   const out = buildChatCardsResponse({
     envelope: {
