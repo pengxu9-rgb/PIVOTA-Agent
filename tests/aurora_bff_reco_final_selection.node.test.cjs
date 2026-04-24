@@ -817,9 +817,9 @@ test('reco assistant rewrite prompt frames multi-role selections as routine mix 
     assert.match(prompt, /"selected_products":\["The Ordinary Niacinamide 10% \+ Zinc 1%","LightLab Oil-Free Gel Cream"\]/);
     assert.match(prompt, /"selected_product_role_ids":\["oil_control_treatment","lightweight_moisturizer"\]/);
     assert.match(prompt, /"selected_product_role_mix":"routine_mix"/);
-    assert.match(prompt, /"known_price_count":2/);
-    assert.match(prompt, /"price":\{"amount":12,"currency":"USD","unknown":false\}/);
-    assert.match(prompt, /"price":\{"amount":28,"currency":"USD","unknown":false\}/);
+    assert.match(prompt, /"known_price_count":0/);
+    assert.doesNotMatch(prompt, /"price":\{"amount":12,"currency":"USD","unknown":false\}/);
+    assert.doesNotMatch(prompt, /"price":\{"amount":28,"currency":"USD","unknown":false\}/);
     assert.match(prompt, /"assistant_write_plan":\{"request_mode":"buy","selected_product_role_mix":"routine_mix"/);
     assert.match(prompt, /"lead_product":\{"name":"The Ordinary Niacinamide 10% \+ Zinc 1%"/);
     assert.match(prompt, /"support_steps":\[\{"name":"LightLab Oil-Free Gel Cream"/);
@@ -836,6 +836,102 @@ test('reco assistant rewrite prompt frames multi-role selections as routine mix 
     assert.match(prompt, /If user_relevant_concern_families does not include aging_texture, do not mention wrinkles, fine lines, aging, anti-aging, or texture repair\./);
     assert.doesNotMatch(prompt, /compare price\/value or ROI in plain shopper terms using only listed prices/);
     assert.match(prompt, /If known_price_count is 2 or more and selected_product_role_mix is "routine_mix", prices may be stated as per-step costs only; do not compare affordability across different routine roles\./);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('concern selector race keeps routine support slots on highest authority role-fit candidates', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const rows = [
+      {
+        product_id: 'oil_lead',
+        display_name: 'Oil Control Serum',
+        matched_role_id: 'oil_control_treatment',
+        framework_score: 0.94,
+      },
+      {
+        product_id: 'night_cream_lower_fit',
+        display_name: 'Brightening Overnight Recovery Gel-Cream',
+        matched_role_id: 'lightweight_moisturizer',
+        framework_score: 0.62,
+      },
+      {
+        product_id: 'spf_generic_lower_fit',
+        display_name: 'Generic Daily Sunscreen',
+        matched_role_id: 'daily_sunscreen',
+        framework_score: 0.64,
+      },
+      {
+        product_id: 'day_gel_higher_fit',
+        display_name: 'Oil-Free Day Gel Cream',
+        matched_role_id: 'lightweight_moisturizer',
+        framework_score: 0.86,
+      },
+      {
+        product_id: 'matte_spf_higher_fit',
+        display_name: 'Matte Fit Serum Sunscreen SPF 50',
+        matched_role_id: 'daily_sunscreen',
+        framework_score: 0.88,
+      },
+    ];
+    const applied = __internal.applyConcernSelectorRaceOrdering(rows, {
+      top_pick_product_id: 'oil_lead',
+      primary_role_id: 'oil_control_treatment',
+      comparison_mode: 'routine_mix',
+      ordered_product_ids: [
+        'oil_lead',
+        'night_cream_lower_fit',
+        'spf_generic_lower_fit',
+        'day_gel_higher_fit',
+        'matte_spf_higher_fit',
+      ],
+    });
+
+    assert.deepEqual(
+      applied.recommendations.slice(0, 3).map((item) => item.product_id),
+      ['oil_lead', 'day_gel_higher_fit', 'matte_spf_higher_fit'],
+    );
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('concern selector race preserves same-role LLM ordering for comparison sets', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const rows = [
+      {
+        product_id: 'spf_a',
+        display_name: 'SPF A',
+        matched_role_id: 'daily_sunscreen_finish_fit',
+        framework_score: 0.91,
+      },
+      {
+        product_id: 'spf_b',
+        display_name: 'SPF B',
+        matched_role_id: 'daily_sunscreen_finish_fit',
+        framework_score: 0.72,
+      },
+      {
+        product_id: 'spf_c',
+        display_name: 'SPF C',
+        matched_role_id: 'daily_sunscreen_finish_fit',
+        framework_score: 0.88,
+      },
+    ];
+    const applied = __internal.applyConcernSelectorRaceOrdering(rows, {
+      top_pick_product_id: 'spf_b',
+      primary_role_id: 'daily_sunscreen_finish_fit',
+      comparison_mode: 'same_role_comparison',
+      ordered_product_ids: ['spf_b', 'spf_c', 'spf_a'],
+    });
+
+    assert.deepEqual(
+      applied.recommendations.map((item) => item.product_id),
+      ['spf_b', 'spf_c', 'spf_a'],
+    );
   } finally {
     delete require.cache[moduleId];
   }

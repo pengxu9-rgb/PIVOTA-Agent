@@ -7835,7 +7835,7 @@ function extractRecoRewritePromptContext(prompt) {
   return JSON.parse(raw.slice(idx + marker.length));
 }
 
-test('__internal: reco assistant rewrite prompt exposes routine roles and price order for mixed-role bundles', async () => {
+test('__internal: reco assistant rewrite prompt suppresses routine price hints absent price intent', async () => {
   const { __internal } = loadRoutesFresh();
   const prompt = __internal.buildRecoAssistantRewritePrompt({
     language: 'EN',
@@ -7933,23 +7933,18 @@ test('__internal: reco assistant rewrite prompt exposes routine roles and price 
   );
   assert.deepEqual(
     context.selected_product_details.map((item) => item.price_position),
-    ['lowest', 'highest', 'middle'],
+    [null, null, null],
   );
   assert.deepEqual(
-    context.price_order_summary.map((item) => item.name),
-    ['The Ordinary Niacinamide 10% + Zinc 1%', 'UV Filters SPF 45 Serum', 'Hydrating Dewy Gel Cream'],
+    context.selected_product_details.map((item) => item.price_label),
+    [null, null, null],
   );
+  assert.equal(context.known_price_count, 0);
+  assert.deepEqual(context.price_order_summary, []);
+  assert.equal(context.assistant_write_plan?.lead_product?.price_note, null);
   assert.deepEqual(
-    context.price_order_summary.map((item) => item.price_position),
-    ['lowest', 'middle', 'highest'],
-  );
-  assert.equal(
-    context.assistant_write_plan?.lead_product?.price_note,
-    '$12 for the lead step',
-  );
-  assert.doesNotMatch(
-    String(context.assistant_write_plan?.lead_product?.price_note || ''),
-    /lowest|lower|affordable|value/i,
+    context.assistant_write_plan?.support_steps?.map((item) => item.price_note),
+    [null, null],
   );
 });
 

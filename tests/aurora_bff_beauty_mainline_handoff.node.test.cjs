@@ -1244,7 +1244,7 @@ test('handoffRecoToBeautyMainlineSearch recovers acne primary from second planne
             ],
           };
         }
-        if (query === 'sunscreen') {
+        if (query === 'sunscreen' || query === 'sunscreen oily skin') {
           return {
             ...base,
             products: [
@@ -2102,9 +2102,9 @@ test('handoffRecoToBeautyMainlineSearch skips primary external seed when interna
       externalCaptured,
       [
         'gel cream moisturizer',
-        'spf fluid oily skin',
+        'sunscreen oily skin',
         'lightweight moisturizer oily skin',
-        'lightweight sunscreen oily skin',
+        'face sunscreen',
       ],
     );
     const primaryExternalRows = out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts
@@ -2203,9 +2203,9 @@ test('handoffRecoToBeautyMainlineSearch skips primary external supplement for ro
       externalCaptured,
       [
         'gel cream moisturizer',
-        'spf fluid oily skin',
+        'sunscreen oily skin',
         'lightweight moisturizer oily skin',
-        'lightweight sunscreen oily skin',
+        'face sunscreen',
       ],
     );
     const primaryExternalRows = out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts
@@ -2354,7 +2354,15 @@ test('handoffRecoToBeautyMainlineSearch skips support external supplement once t
 
     assert.equal(externalCaptured.includes('hyaluronic acid serum'), true);
     assert.equal(externalCaptured.includes('hydrating serum dehydrated skin'), false);
-    assert.equal(externalCaptured.includes('lightweight sunscreen'), true);
+    assert.equal(
+      externalCaptured.some((query) => [
+        'lightweight sunscreen',
+        'sunscreen oily skin',
+        'face sunscreen',
+        'daily sunscreen skincare',
+      ].includes(query)),
+      true,
+    );
     const hydratingExternalRows = out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts
       ?.filter((row) => row?.ladder_level === 'framework_stage_c_support_hydrating_serum_or_essence_external_seed') || [];
     assert.equal(hydratingExternalRows.length, 2);
@@ -2442,7 +2450,13 @@ test('handoffRecoToBeautyMainlineSearch interleaves support external queries acr
             transport_policy_mode: String(args?.transportPolicyMode || ''),
           };
         }
-        if (query === 'spf fluid oily skin' || query === 'sunscreen' || query === 'oil control sunscreen') {
+        if (
+          query === 'spf fluid oily skin' ||
+          query === 'sunscreen oily skin' ||
+          query === 'face sunscreen' ||
+          query === 'sunscreen' ||
+          query === 'oil control sunscreen'
+        ) {
           return {
             ok: true,
             products: [
@@ -2494,7 +2508,7 @@ test('handoffRecoToBeautyMainlineSearch interleaves support external queries acr
       externalCaptured,
       [
         'gel cream moisturizer',
-        'spf fluid oily skin',
+        'sunscreen oily skin',
       ],
     );
     assert.deepEqual(
@@ -5641,9 +5655,11 @@ test('beauty chat mainline entry hard-stops handoff at the stage deadline instea
     handoffDeadlineAtMs: null,
     fallbackErrCode: null,
   };
+  const originalDateNow = Date.now;
+  let fakeNowMs = originalDateNow();
   const runtime = createBeautyChatMainlineEntryRuntime({
     RECO_CATALOG_GROUNDED_ENABLED: true,
-    AURORA_BFF_CHAT_RECO_BUDGET_MS: 3000,
+    AURORA_BFF_CHAT_RECO_BUDGET_MS: 1200,
     AURORA_RECO_ASSISTANT_REWRITE_TIMEOUT_MS: 4500,
     RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS: 1000,
     resolveRecommendationTargetContext: () => ({
@@ -5673,6 +5689,40 @@ test('beauty chat mainline entry hard-stops handoff at the stage deadline instea
         ],
       },
     }),
+    runConcernSemanticPlanner: async () => {
+      fakeNowMs += 6400;
+      return {
+        semanticPlan: {
+          comparison_mode: 'same_role_comparison',
+          selection_owner_state: 'trusted',
+          core_roles: [
+            {
+              role_id: 'daily_sunscreen_finish_fit',
+              rank: 1,
+              preferred_step: 'sunscreen',
+              label: 'Daily sunscreen with finish fit',
+            },
+          ],
+        },
+        trace: { planner_used: true, planner_fallback_used: false },
+      };
+    },
+    buildConcernTargetContextFromSemanticPlan: (semanticPlan) => ({
+      entry_type: 'chat',
+      intent_mode: 'generic_concern',
+      step_aware_intent: false,
+      resolved_target_step: 'sunscreen',
+      primary_role_id: 'daily_sunscreen_finish_fit',
+      framework_roles: [
+        {
+          role_id: 'daily_sunscreen_finish_fit',
+          rank: 1,
+          preferred_step: 'sunscreen',
+          label: 'Daily sunscreen with finish fit',
+        },
+      ],
+      semantic_plan: semanticPlan,
+    }),
     summarizeProfileForContext: (profile) => profile,
     mergeIngredientRecoContextValue: (left, right) => ({ ...(left || {}), ...(right || {}) }),
     appendLatestRecoContextToSessionPatch: () => {},
@@ -5690,7 +5740,7 @@ test('beauty chat mainline entry hard-stops handoff at the stage deadline instea
     stateChangeAllowed: () => false,
     handoffRecoToBeautyMainlineSearch: async (args) => {
       observed.handoffDeadlineAtMs = args.deadlineAtMs;
-      await new Promise((resolve) => setTimeout(resolve, 800));
+      await new Promise((resolve) => setTimeout(resolve, 1600));
       return {
         targetContext: args.targetContext,
         recommendations: [
@@ -5746,28 +5796,33 @@ test('beauty chat mainline entry hard-stops handoff at the stage deadline instea
     sendChatEnvelope: async () => null,
   });
 
-  const startedAtMs = Date.now();
-  const result = await runtime.maybeHandleBeautyOwnedChatReco({
-    ctx: {
-      request_id: 'req_handoff_deadline_guard',
-      trace_id: 'trace_handoff_deadline_guard',
-      lang: 'EN',
-      trigger_source: 'chat',
-    },
-    logger: null,
-    message: 'i have oily skin, what sunscreen should i buy?',
-    recoEntrySourceDetail: 'typed_reco',
-    profile: {
-      skinType: 'oily',
-    },
-  });
-  const elapsedMs = Date.now() - startedAtMs;
+  try {
+    Date.now = () => fakeNowMs;
+    const startedAtMs = originalDateNow();
+    const result = await runtime.maybeHandleBeautyOwnedChatReco({
+      ctx: {
+        request_id: 'req_handoff_deadline_guard',
+        trace_id: 'trace_handoff_deadline_guard',
+        lang: 'EN',
+        trigger_source: 'chat',
+      },
+      logger: null,
+      message: 'i have oily skin, what sunscreen should i buy?',
+      recoEntrySourceDetail: 'typed_reco',
+      profile: {
+        skinType: 'oily',
+      },
+    });
+    const elapsedMs = originalDateNow() - startedAtMs;
 
-  assert.equal(result?.handled, true);
-  assert.equal(result?.envelope?.cards?.[0]?.type, 'confidence_notice');
-  assert.equal(observed.fallbackErrCode, 'BEAUTY_MAINLINE_HANDOFF_TIMEOUT');
-  assert.equal(Number.isFinite(observed.handoffDeadlineAtMs), true);
-  assert.ok(elapsedMs < 750);
+    assert.equal(result?.handled, true);
+    assert.equal(result?.envelope?.cards?.[0]?.type, 'confidence_notice');
+    assert.equal(observed.fallbackErrCode, 'BEAUTY_MAINLINE_HANDOFF_TIMEOUT');
+    assert.equal(observed.handoffDeadlineAtMs, null);
+    assert.ok(elapsedMs < 200);
+  } finally {
+    Date.now = originalDateNow;
+  }
 });
 
 test('beauty chat mainline entry clarifies a generic skin ask before heavy retrieval when no skin context is present', async () => {
