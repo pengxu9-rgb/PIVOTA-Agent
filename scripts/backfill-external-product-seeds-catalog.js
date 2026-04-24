@@ -1516,6 +1516,7 @@ function pickSeedTargetUrl(row) {
 function chooseRepresentativeProduct(response, targetUrl, row) {
   const products = Array.isArray(response?.products) ? response.products : [];
   if (!products.length) return null;
+  const directProductTarget = looksLikeDirectProductTargetUrl(targetUrl);
 
   const seedData = ensureJsonObject(row?.seed_data);
   const snapshot = ensureJsonObject(seedData.snapshot);
@@ -1543,10 +1544,11 @@ function chooseRepresentativeProduct(response, targetUrl, row) {
   for (const product of products) {
     const productKey = normalizeUrlKey(product?.url);
     const comparableProductKey = normalizeComparableUrlKey(product?.url);
+    if (directProductTarget && looksLikeKnownNonProductUrl(product?.url)) continue;
     if (candidateKeys.has(productKey) || comparableKeys.has(comparableProductKey)) return product;
   }
 
-  if (looksLikeDirectProductTargetUrl(targetUrl)) {
+  if (directProductTarget) {
     const titleKeys = new Set(
       [
         row?.title,
@@ -1567,12 +1569,12 @@ function chooseRepresentativeProduct(response, targetUrl, row) {
     }
   }
 
-  if (looksLikeDirectProductTargetUrl(targetUrl) && products.length === 1) {
+  if (directProductTarget && products.length === 1) {
     const product = products[0];
     if (isVerifiedShopifyRedirectReplacement(targetUrl, product, row)) return product;
   }
 
-  if (looksLikeDirectProductTargetUrl(targetUrl)) return null;
+  if (directProductTarget) return null;
   return products[0];
 }
 

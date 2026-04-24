@@ -462,6 +462,36 @@ describe('backfill-external-product-seeds-catalog', () => {
     expect(product).toBeNull();
   });
 
+  test('does not accept a stale collection destination as the representative for a direct PDP target', () => {
+    const row = {
+      title: 'Melt Awf Jelly Oil Makeup-Melting Cleanser',
+      canonical_url: 'https://fentybeauty.com/products/melt-awf-jelly-oil-makeup-melting-cleanser',
+      destination_url: 'https://fentybeauty.com/en-nl/collections/skincare-cleanser',
+      seed_data: {
+        snapshot: {
+          title: 'Melt Awf Jelly Oil Makeup-Melting Cleanser',
+          canonical_url: 'https://fentybeauty.com/products/melt-awf-jelly-oil-makeup-melting-cleanser',
+          destination_url: 'https://fentybeauty.com/en-nl/collections/skincare-cleanser',
+        },
+      },
+    };
+
+    const product = chooseRepresentativeProduct(
+      {
+        products: [
+          {
+            title: 'Cleanser',
+            url: 'https://fentybeauty.com/en-nl/collections/skincare-cleanser',
+          },
+        ],
+      },
+      'https://fentybeauty.com/products/melt-awf-jelly-oil-makeup-melting-cleanser',
+      row,
+    );
+
+    expect(product).toBeNull();
+  });
+
   test('accepts a verified Shopify direct-PDP redirect replacement', () => {
     const row = {
       title: 'Cosmic Kylie Jenner 2.0 50ml & Pen Spray Duo',
