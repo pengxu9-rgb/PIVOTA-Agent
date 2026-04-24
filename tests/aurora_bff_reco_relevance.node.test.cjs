@@ -5465,7 +5465,6 @@ test('__internal: local external seed support-role search uses exact category he
             price_amount: 24,
             price_currency: 'USD',
             availability: 'in_stock',
-            attached_product_key: 'shopify:daily-spf-fluid',
             match_stage: 'support_category_exact',
             match_score: 56,
             seed_data: {
@@ -5497,7 +5496,7 @@ test('__internal: local external seed support-role search uses exact category he
   assert.match(observedQueries[0].sql, /support_category_exact/);
   assert.match(observedQueries[0].sql, /category/);
   assert.doesNotMatch(observedQueries[0].sql, /retrieval_title/i);
-  assert.doesNotMatch(observedQueries[0].sql, /attached_product_key\s+IS\s+NULL/i);
+  assert.match(observedQueries[0].sql, /attached_product_key\s+IS\s+NULL/i);
   assert.deepEqual(observedQueries[0].params[2], [
     'sunscreen',
     'spf',
@@ -5571,6 +5570,7 @@ test('__internal: local external seed generic daily sunscreen support uses categ
   assert.match(observedQueries[0].sql, /support_category_exact/);
   assert.match(observedQueries[0].sql, /vertical/i);
   assert.doesNotMatch(observedQueries[0].sql, /retrieval_title/i);
+  assert.match(observedQueries[0].sql, /attached_product_key\s+IS\s+NULL/i);
   assert.deepEqual(observedQueries[0].params[2], [
     'sunscreen',
     'spf',
