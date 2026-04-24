@@ -446,6 +446,15 @@ function buildBeautyMainlineRecallPlan({ mode, semanticContract = null, rawQuery
           allowConcernFallback: false,
           maxQueriesOverride: 2,
         });
+        const authorityRecallableSupportExternalQueries =
+          buildRecallableDailySunscreenSupportExternalQueries(role, {
+            concernText: rawQuery,
+            maxQueries: 2,
+          });
+        const effectiveSupportExternalQueries =
+          authorityRecallableSupportExternalQueries.length > 0
+            ? authorityRecallableSupportExternalQueries
+            : supportExternalQueries;
         return [
           buildStage({
             stageId: buildFrameworkSupportStageId(role?.role_id, 'internal'),
@@ -466,9 +475,9 @@ function buildBeautyMainlineRecallPlan({ mode, semanticContract = null, rawQuery
             roleId: role?.role_id || null,
             roleRank: Number.isFinite(Number(role?.rank)) ? Number(role.rank) : null,
             sourceScope: 'external_seed',
-            queries: supportExternalQueries,
+            queries: effectiveSupportExternalQueries,
             concurrency: 1,
-            maxAttemptsForStage: Math.min(supportExternalQueries.length || 1, 2),
+            maxAttemptsForStage: Math.min(effectiveSupportExternalQueries.length || 1, 2),
             stopOnViableMatch: true,
             reasonForInclusion: 'framework_support_external_seed',
             runIf: 'if_role_unfilled_after_primary',
@@ -781,6 +790,43 @@ function buildFrameworkRoleQueries(
     ],
     maxQueries,
   );
+}
+
+function buildRecallableDailySunscreenSupportExternalQueries(role = null, {
+  concernText = '',
+  maxQueries = 2,
+} = {}) {
+  const roleObj = role && typeof role === 'object' && !Array.isArray(role) ? role : null;
+  if (!roleObj) return [];
+  const roleId = normalizeConcernQueryToken(roleObj.role_id).toLowerCase();
+  const preferredStep = normalizeSemanticStepFamily(roleObj.preferred_step || roleObj.step);
+  if (preferredStep !== 'sunscreen' || roleId !== 'daily_sunscreen') return [];
+  const signalText = uniqueCaseInsensitiveStrings([
+    concernText,
+    roleObj.role_id,
+    roleObj.label,
+    roleObj.semantic_family,
+    ...(Array.isArray(roleObj.query_terms) ? roleObj.query_terms : []),
+    ...(Array.isArray(roleObj.fit_keywords) ? roleObj.fit_keywords : []),
+  ], 24)
+    .map((value) => normalizeConcernQueryToken(value).toLowerCase())
+    .join(' ');
+  const oilySignal = /\b(oily skin|oil control|shine control|mattify|mattifying|sebum|greasy)\b/.test(signalText);
+  const finishSignal = /\b(under makeup|makeup|pilling|layering|matte|invisible)\b/.test(signalText);
+  const candidates = oilySignal
+    ? [
+        'sunscreen oily skin',
+        finishSignal ? 'matte sunscreen' : 'face sunscreen',
+        'lightweight spf',
+        'spf 50 sunscreen',
+      ]
+    : [
+        'face sunscreen',
+        finishSignal ? 'invisible sunscreen' : 'daily sunscreen',
+        'lightweight spf',
+        'spf 50 sunscreen',
+      ];
+  return uniqueCaseInsensitiveStrings(candidates, Math.max(1, Number(maxQueries) || 1));
 }
 
 function buildFrameworkSupportStageId(roleId, sourceScope = 'internal') {

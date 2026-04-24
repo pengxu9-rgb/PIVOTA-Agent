@@ -233,8 +233,8 @@ test('__internal: framework recall planner keeps generic daily sunscreen support
     'oil control sunscreen',
   ]);
   assert.deepEqual(externalStage?.entries?.map((entry) => entry?.query), [
-    'spf fluid oily skin',
-    'lightweight sunscreen oily skin',
+    'sunscreen oily skin',
+    'face sunscreen',
   ]);
 });
 
@@ -7721,13 +7721,13 @@ test('__internal: beauty local handoff external stage uses backend authority aft
     assert.ok(
       calls.some((call) =>
         call.kind === 'local_external_seed' &&
-        call.query === 'lightweight sunscreen oily skin'),
+        call.query === 'sunscreen oily skin'),
       JSON.stringify(calls),
     );
     assert.ok(
       calls.some((call) =>
         call.kind === 'backend_external_seed' &&
-        call.query === 'lightweight sunscreen oily skin' &&
+        call.query === 'sunscreen oily skin' &&
         call.allowExternalSeed === true &&
         call.externalSeedStrategy === 'stage_planned' &&
         call.callerLane === 'beauty_chat_handoff_external_seed_authority'),
@@ -7737,7 +7737,7 @@ test('__internal: beauty local handoff external stage uses backend authority aft
       .find((entry) =>
         entry?.role_id === 'daily_sunscreen' &&
         entry?.source_scope === 'external_seed' &&
-        entry?.query === 'lightweight sunscreen oily skin') || null;
+        entry?.query === 'sunscreen oily skin') || null;
     assert.ok(sunscreenAttempt);
     assert.equal(sunscreenAttempt.external_seed_authority_backend_after_local_miss, true);
   } finally {
