@@ -401,8 +401,8 @@ function neutralizeVisibleRecommendationCardCopy(value) {
     .replace(/\bbest\s+/gi, '')
     .replace(/\bbest\b/gi, 'suitable')
     .replace(/\bperfect\b/gi, 'good')
-    .replace(/\s+or a richer cream as a more hydrating step for those with drier skin types\.?/gi, '')
-    .replace(/\s+as a more hydrating step for those with drier skin types\.?/gi, '')
+    .replace(/\s+or a richer cream as a more hydrating step for those with drier\b[^.!?。！？]*[.!?。！？.]*$/gi, '')
+    .replace(/\s+as a more hydrating step for those with drier\b[^.!?。！？]*[.!?。！？.]*$/gi, '')
     .trim();
   return text;
 }

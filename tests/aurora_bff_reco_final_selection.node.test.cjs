@@ -594,7 +594,9 @@ test('beauty mainline reco rows remove off-context drier-skin tail copy from oil
           category: 'Moisturizer',
           product_type: 'Moisturizer',
           why_this_one:
-            'Finish is slightly matte and good under makeup or a richer cream as a more hydrating step for those with drier skin types.',
+            'Finish is slightly matte and good under makeup or a richer cream as a more hydrating step for those with drier...',
+          short_description:
+            'Finish is slightly matte and good under makeup or a richer cream as a more hydrating step for those with drier...',
           matched_role_id: 'lightweight_moisturizer',
           matched_role_label: 'Lightweight moisturizer',
           price: { amount: 34, currency: 'USD', unknown: false },
