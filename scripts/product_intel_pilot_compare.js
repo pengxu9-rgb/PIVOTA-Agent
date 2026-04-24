@@ -392,6 +392,9 @@ function inferProductKindFromContext(context) {
   if (/\b(?:scrunchie|hair scrunchie|satin scarf|hair scarf)\b/.test(titleCategoryDescription)) return 'hair_accessory';
   if (/\b(?:baseball hat|bucket hat|hat|cap)\b/.test(titleCategory)) return 'apparel_accessory';
   if (/\b(?:pencil sharpener|dual sharpener|makeup sharpener|sharpener)\b/.test(titleCategory)) return 'makeup_tool';
+  if (/\b(?:kisskiss bee glow|honey tint balm|lip balm)\b/.test(titleCategory)) return 'lip_balm';
+  if (/\b(?:contour g|lip pencil|lip liner|lipstick|lip stick|rouge g|lip care primer)\b/.test(titleCategory)) return 'lip';
+  if (/\b(?:youth watery oil serum|serum)\b/.test(titleCategory)) return 'serum';
   if (/\b(?:vanity mirror|led mirror|compact mirror|mirror)\b/.test(titleCategoryDescription)) return 'beauty_mirror';
   if (/\bbag\b/.test(titleCategory) || /\b(?:beauty bag|makeup bag|travel bag|jelly(?:\s+\w+)?\s+bag|embossed bag|teddy travel bag|pouch|cosmetic case|makeup case|travel case|tote)\b/.test(titleCategoryDescription)) return 'beauty_bag';
   if (/\b(?:glow trio|glow kit|routine bundle|full-size bundle|starter bundle)\b/.test(titleCategoryDescription)) {
@@ -504,6 +507,12 @@ function inferSpecificBeautySubtypeLabel(context) {
   if (/\b(?:satin scarf|hair scarf)\b/.test(text)) return 'Hair scarf';
   if (/\b(?:baseball hat|bucket hat|hat|cap)\b/.test(text)) return 'Apparel accessory';
   if (/\b(?:pencil sharpener|dual sharpener|makeup sharpener|sharpener)\b/.test(titleCategory)) return 'Makeup sharpener';
+  if (/\b(?:contour g|lip pencil|lip liner)\b/.test(titleCategory)) return 'Lip liner';
+  if (/\b(?:kisskiss bee glow|honey tint balm|lip balm)\b/.test(titleCategory)) return 'Tinted lip balm';
+  if (/\b(?:kisskiss bee lift|lip care primer|lip primer)\b/.test(titleCategory)) return 'Lip primer';
+  if (/\b(?:rouge g|lipstick|lip stick)\b/.test(titleCategory)) return 'Lipstick';
+  if (/\b(?:youth watery oil serum|serum)\b/.test(titleCategory)) return 'Serum';
+  if (/\b(?:terracotta light|bronzing powder|healthy glow powder)\b/.test(titleCategory)) return 'Bronzing powder';
   if (/\b(?:vanity mirror|led mirror|compact mirror|mirror)\b/.test(text)) return 'Vanity mirror';
   if (/\bbag\b/.test(title) || /\b(?:beauty bag|makeup bag|travel bag|jelly(?:\s+\w+)?\s+bag|embossed bag|teddy travel bag|pouch|cosmetic case|makeup case|travel case|tote)\b/.test(text)) return 'Beauty bag';
   if (/\b(?:makeup fixing mist|fixing mist|setting spray|makeup setting spray|setting mist)\b/.test(text)) return 'Setting spray';
@@ -1617,6 +1626,7 @@ function buildHumanStandardWhatItIs(context, baselineBundle) {
       'Lip mask': 'A lip mask focused on cushiony overnight or recovery-style lip comfort.',
       Lipstick: 'A lipstick focused on color payoff, comfortable wear, and a defined lip finish.',
       'Tinted lip balm': 'A tinted lip balm focused on soft-feeling lip comfort with sheer color.',
+      'Lip primer': 'A lip primer for smoothing lip prep, comfort, and longer-wearing lipstick application.',
     };
     return {
       headline,
@@ -1873,6 +1883,7 @@ function buildHumanStandardWhatItIs(context, baselineBundle) {
       'Blush tint': 'A blush tint for lightweight cheek color and a fresh color finish.',
       Blush: 'A blush product for cheek color, blendability, and finish control.',
       Bronzer: 'A bronzer for warmth, soft sculpting, and blendable complexion color.',
+      'Bronzing powder': 'A bronzing powder for sun-kissed warmth, soft sculpting, and blendable complexion color.',
       'Setting powder': 'A setting powder for setting complexion makeup, soft-focus blur, and finish control.',
       Highlighter: 'A highlighter for targeted glow, reflect, and finish placement on high points of the face.',
       Eyeliner: 'An eyeliner for lash-line definition, shape, and color intensity.',
@@ -1910,7 +1921,7 @@ function buildHumanStandardWhatItIs(context, baselineBundle) {
   }
   if (kind === 'serum') {
     return {
-      headline: /serum|treatment/i.test(baseHeadline) ? baseHeadline : 'Treatment serum',
+      headline: subtypeLabel === 'Serum' ? 'Serum' : /serum|treatment/i.test(baseHeadline) ? baseHeadline : 'Treatment serum',
       body: factsBody,
     };
   }
@@ -1959,6 +1970,9 @@ function buildHumanStandardBestFor(context, baselineBundle) {
     }
     if (subtypeLabel === 'Lipstick') {
       return [item('lip_color', 'Lip color payoff'), item('comfortable_lip_wear', 'Comfortable lip wear')];
+    }
+    if (subtypeLabel === 'Lip primer') {
+      return [item('lip_prep', 'Lip prep'), item('longer_lipstick_wear', 'Longer lipstick wear')];
     }
     if (subtypeLabel === 'Tinted lip balm') {
       return [item('tinted_lip_comfort', 'Tinted lip comfort'), item('soft_lip_finish', 'Soft lip finish')];
@@ -2141,6 +2155,7 @@ function buildHumanStandardBestFor(context, baselineBundle) {
       return [item('cheek_color', 'Cheek color'), item('blendable_blush', 'Blendable blush finish')];
     }
     if (subtypeLabel === 'Setting powder') return [item('set_makeup', 'Makeup setting'), item('soft_focus_finish', 'Soft-focus finish')];
+    if (subtypeLabel === 'Bronzing powder') return [item('sun_kissed_warmth', 'Sun-kissed warmth'), item('blendable_complexion_color', 'Blendable complexion color')];
     return [item('shade_finish', 'Shade and finish preference'), item('targeted_makeup', 'Targeted makeup placement')];
   }
   if (kind === 'tinted_sunscreen') {
@@ -2555,6 +2570,7 @@ function buildHumanStandardHighlights(context) {
       'Blush tint': highlight('Lightweight cheek tint', 'Focuses on fresh cheek color, blendability, and lightweight finish.'),
       Blush: highlight('Cheek color finish', 'Keeps the evaluation on cheek color, blendability, and finish control.'),
       Bronzer: highlight('Warmth and sculpting', 'Keeps the evaluation on warmth, soft sculpting, tone fit, and blendable complexion color.'),
+      'Bronzing powder': highlight('Sun-kissed powder warmth', 'Frames the product around bronzing powder warmth, blendability, and healthy-glow finish.'),
       'Setting powder': highlight('Makeup setting step', 'Frames the product around setting, blur, and finish control after complexion makeup.'),
     };
     if (highlightBySubtype[subtypeLabel]) {

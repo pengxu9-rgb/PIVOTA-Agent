@@ -60,7 +60,7 @@ function readDelimitedIdsFile(filePath) {
 }
 
 function normalizeNonEmptyString(value) {
-  const next = String(value || '').trim();
+  const next = String(value || '').replace(/\u0000/g, '').trim();
   return next || '';
 }
 
@@ -272,7 +272,18 @@ function uniqueStrings(values) {
 }
 
 function cloneJsonValue(value) {
-  return JSON.parse(JSON.stringify(value || {}));
+  return sanitizeJsonForPostgres(JSON.parse(JSON.stringify(value || {})));
+}
+
+function sanitizeJsonForPostgres(value) {
+  if (typeof value === 'string') return value.replace(/\u0000/g, '');
+  if (Array.isArray(value)) return value.map((item) => sanitizeJsonForPostgres(item));
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [key, sanitizeJsonForPostgres(item)]),
+    );
+  }
+  return value;
 }
 
 function stableHash(value, length = 24) {
@@ -1413,6 +1424,7 @@ function buildExtractRequestBody(targetUrl, row) {
   const requestBody = {
     brand: deriveCatalogExtractBrand(targetUrl, row) || row?.id,
     domain: targetUrl,
+    product_title: normalizeNonEmptyString(row?.title),
     limit: 50,
   };
 
@@ -2166,6 +2178,7 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     delete nextSeedData.description;
   }
 
+  const sanitizedNextSeedData = sanitizeJsonForPostgres(nextSeedData);
   const nextRow = {
     title,
     canonical_url: representativeProductUrl || normalizeNonEmptyString(row?.canonical_url),
@@ -2174,7 +2187,7 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     price_amount: priceAmount,
     price_currency: currency,
     availability: availability || normalizeNonEmptyString(row?.availability),
-    seed_data: nextSeedData,
+    seed_data: sanitizedNextSeedData,
   };
 
   const changed =
@@ -2185,7 +2198,7 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     (typeof row?.price_amount === 'number' ? row.price_amount : parsePrice(row?.price_amount)) !== nextRow.price_amount ||
     normalizeNonEmptyString(row?.price_currency).toUpperCase() !== nextRow.price_currency ||
     normalizeNonEmptyString(row?.availability) !== nextRow.availability ||
-    JSON.stringify(comparableSeedData(row?.seed_data)) !== JSON.stringify(comparableSeedData(nextSeedData));
+    JSON.stringify(comparableSeedData(row?.seed_data)) !== JSON.stringify(comparableSeedData(sanitizedNextSeedData));
 
   return {
     changed,

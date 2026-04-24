@@ -465,7 +465,11 @@ function buildCompactSubtitle({ product, bundle }) {
       'Lip Mask',
       'Lip Gloss',
       'Lip Oil',
+      'Lip Liner',
+      'Lipstick',
+      'Lip Primer',
       'Bronzer',
+      'Bronzing Powder',
       'Highlighter',
       'Eyeliner',
       'Brow Pencil',
@@ -483,6 +487,8 @@ function buildCompactSubtitle({ product, bundle }) {
       'Vanity Mirror',
       'Beauty Bag',
       'BHA Toner',
+      'Serum',
+      'Daily Moisturizer',
       'Treatment Mask',
     ].includes(compactHeadline)
   ) {

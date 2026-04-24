@@ -56,6 +56,26 @@ function normalizeNonEmptyString(value) {
   return String(value || '').trim();
 }
 
+function isKnownUnavailableCanonicalProductUrl(row = {}) {
+  const domain = normalizeNonEmptyString(row.domain).toLowerCase();
+  const urls = [row.canonical_url, row.destination_url]
+    .map((value) => normalizeNonEmptyString(value))
+    .filter(Boolean);
+
+  if (domain === 'www.tomfordbeauty.com') {
+    return urls.some((value) => {
+      try {
+        const parsed = new URL(value);
+        return parsed.pathname.startsWith('/product/');
+      } catch {
+        return /\/product\//i.test(value);
+      }
+    });
+  }
+
+  return false;
+}
+
 function asArray(value) {
   return Array.isArray(value) ? value : [];
 }
@@ -322,6 +342,7 @@ function classifyMissingField({ field, row, context, coverage, hasProductKeyKb, 
   }
 
   if (!context.product_url_like) return 'non_product_or_uncertain_url';
+  if (isKnownUnavailableCanonicalProductUrl(row)) return 'canonical_product_url_unavailable';
   if (coverage.extractor_failure_category && SOURCE_BLOCKED_RE.test(coverage.extractor_failure_category)) {
     return 'extractor_or_url_blocked';
   }
