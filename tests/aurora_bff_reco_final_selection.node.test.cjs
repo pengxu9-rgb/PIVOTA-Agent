@@ -1047,6 +1047,60 @@ test('reco assistant rewrite prompt carries follow-up user context updates into 
   }
 });
 
+test('reco assistant rewrite validator retries drafts that omit explicit follow-up context words', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const payload = __internal.applyRecoContentSpineToPayload(
+      {
+        recommendations: [
+          {
+            product_id: 'spf_1',
+            display_name: 'Daily Matte SPF',
+            brand: 'Test SPF',
+            category: 'Sunscreen',
+            short_description: 'Lightweight sunscreen with a less greasy finish and lower white-cast positioning.',
+            matched_role_id: 'daily_sunscreen_finish_fit',
+            matched_role_label: 'Daily sunscreen with finish fit',
+          },
+        ],
+        recommendation_meta: {
+          mainline_status: 'grounded_success',
+        },
+      },
+      {
+        ingredient_query: 'sunscreen',
+        resolved_target_step: 'sunscreen',
+        primary_target_id: 'daily_sunscreen_finish_fit',
+        ranked_targets: [
+          {
+            target_id: 'daily_sunscreen_finish_fit',
+            ingredient_query: 'sunscreen',
+            resolved_target_step: 'sunscreen',
+          },
+        ],
+        selected_target_ids: ['daily_sunscreen_finish_fit'],
+      },
+    );
+    const result = __internal.validateRecoAssistantRewriteCandidate({
+      candidateText: 'Daily Matte SPF fits this request because it has a lighter under-makeup finish with lower white-cast risk.',
+      payload,
+      language: 'EN',
+      profile: { skinType: 'oily' },
+      userRequestText: 'Compare the cards: I use foundation, want less white cast, and need a sunscreen option.',
+      refinementQuestionPlan: null,
+      primaryTarget: payload.recommendation_meta.ranked_targets[0],
+      secondaryTargets: [],
+      names: ['Daily Matte SPF'],
+      requestMode: 'buy',
+    });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.reason, 'rewrite_missing_user_context_update');
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('concern selector race keeps routine support slots on highest authority role-fit candidates', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
