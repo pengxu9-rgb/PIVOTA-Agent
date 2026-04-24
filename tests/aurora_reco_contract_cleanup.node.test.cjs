@@ -3,6 +3,8 @@ const assert = require('node:assert/strict');
 
 const { __internal } = require('../src/auroraBff/routes');
 const { buildChatCardsResponse } = require('../src/auroraBff/chatCardsAssembler');
+const { isRecommendationLikeText } = require('../src/auroraBff/languageIntentLexicon');
+const { shouldKeepTypedRecoRequestOnV1Mainline } = require('../src/auroraBff/recoOwnershipPolicy');
 
 function loadRoutesWithEnv(overrides = {}) {
   const routeModulePath = require.resolve('../src/auroraBff/routes');
@@ -171,6 +173,69 @@ test('buildConfidenceNoticeCardPayload filters none rationale tokens', () => {
 
   assert.equal(payload.reason, 'artifact_missing');
   assert.deepEqual(payload.confidence.rationale, ['artifact_missing']);
+});
+
+test('confidence notices do not expose fallback or internal planner wording', () => {
+  const timeoutPayload = __internal.buildConfidenceNoticeCardPayload({
+    language: 'EN',
+    reason: 'upstream_timeout_primary_role',
+    confidence: { score: 0.3, level: 'low', rationale: ['upstream_timeout_primary_role'] },
+  });
+  const plannerPayload = __internal.buildConfidenceNoticeCardPayload({
+    language: 'EN',
+    reason: 'planner_untrusted',
+    confidence: { score: 0.3, level: 'low', rationale: ['planner_untrusted'] },
+  });
+
+  assert.doesNotMatch(timeoutPayload.message, /retrieval chain|fallback|non-primary/i);
+  assert.doesNotMatch(plannerPayload.message, /owner|fallback|semantic planner/i);
+});
+
+test('travel gear shopping is isolated from travel skincare env routing', () => {
+  assert.equal(
+    __internal.looksLikeTravelGearShoppingRequest('I need a carry-on suitcase under $200 for a work trip.'),
+    true,
+  );
+  assert.equal(
+    __internal.looksLikeWeatherOrEnvironmentQuestion('I need a carry-on suitcase under $200 for a work trip.'),
+    false,
+  );
+  assert.equal(
+    __internal.looksLikeWeatherOrEnvironmentQuestion('I fly from Seattle to Seoul next Monday; how should I adjust skincare for the weather?'),
+    true,
+  );
+});
+
+test('beauty concern asks with broader concern language stay recommendation-like', () => {
+  const prompts = [
+    'I sleep late a lot and my skin looks dull. What should I add?',
+    'I have blackheads and clogged pores around my nose. What should I use first?',
+    'I started adapalene and now my skin is peeling. What should I use tonight?',
+    'My face gets red and stings after cleansing. What product should I use?',
+  ];
+
+  for (const message of prompts) {
+    assert.equal(isRecommendationLikeText(message), true, message);
+    assert.equal(
+      shouldKeepTypedRecoRequestOnV1Mainline({ message }),
+      true,
+      `mainline ownership failed for: ${message}`,
+    );
+  }
+});
+
+test('local external seed support search has a bounded timeout', async () => {
+  const result = await __internal.searchLocalExternalSeedProducts({
+    query: 'barrier moisturizer sensitive skin',
+    limit: 3,
+    role: { rank: 2, preferred_step: 'moisturizer' },
+    queryTimeoutMs: 25,
+    queryFn: () => new Promise(() => {}),
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, 'empty');
+  assert.equal(result.local_external_seed_search_timed_out, true);
 });
 
 test('chatCardsAssembler sanitizes derived ops experiment events from envelope events', () => {
