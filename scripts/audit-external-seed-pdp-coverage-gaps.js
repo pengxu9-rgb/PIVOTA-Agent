@@ -7,12 +7,13 @@ const { query, getPool } = require('../src/db');
 const { ensureJsonObject } = require('../src/services/externalSeedProducts');
 
 const FORMULA_RE =
-  /\b(skincare|skin care|makeup|cosmetic|haircare|hair care|fragrance|perfume|parfum|cologne|cleanser|toner|essence|serum|ampoule|moisturi[sz]er|cream|lotion|balm|mask|peel|exfoliant|treatment|oil|sunscreen|spf|foundation|concealer|mascara|lip(?:stick| gloss| balm| oil)?|blush|bronzer|powder|highlighter|eyeshadow|eyeliner|brow|primer|setting spray|shampoo|conditioner|body wash|body lotion|deodorant)\b/i;
+  /\b(skincare|skin care|makeup|cosmetic|haircare|hair care|fragrance|perfume|parfum|cologne|cleanser|toner|essence|serum|ampoule|moisturi[sz]er|cream|cr[eè]me|lotion|balm|butter|mask|peel|exfoliant|treatment|oil|sunscreen|spf|foundation|concealer|mascara|lip(?:stick| gloss| balm| oil)?|blush|bronzer|powder|highlighter|eyeshadow|eyeliner|brow|primer|setting spray|shampoo|conditioner|body wash|body lotion|deodorant)\b/i;
 const ACCESSORY_RE =
-  /\b(brush|sponge|puff|applicator|sharpener|tweezer|curler|scissors|comb|mirror|case|bag|pouch|holder|spatula|tool|tools|gua sha|roller|headband|scrunchie|scarf|hat|cap|tote|clip|clips|lash curler|refill case)\b/i;
+  /\b(brush|sponge|puff|applicator|sharpener|tweezer|curler|scissors|comb|mirror|case|bag|pouch|holder|spatula|tool|tools|gua sha|roller|headband|scrunchie|scarf|hat|cap|tote|clip|clips|key\s*chain|keychain|sticker|stickers|cuff|cuffs|washcloth|cloth|blotting paper|lash curler|refill case)\b/i;
 const NON_MERCH_RE =
   /\b(?:e[-\s]?gift[-\s]?cards?|gift[-\s]?cards?|donat(?:e|ion)|sample service|appointment|booking|shipping protection|package protection|route protection|order protection)\b/i;
-const BUNDLE_RE = /\b(bundle|set|kit|duo|trio|routine|mini set|travel set|starter set|value set|collection set|collection kit|collection bundle)\b/i;
+const BUNDLE_RE =
+  /\b(build your own|bundle|set|kit|duo|trio|routine|mini set|travel set|starter set|value set|collection set|collection kit|collection bundle|vault)\b/i;
 const FRAGRANCE_RE = /\b(fragrance|perfume|parfum|eau de|edt|edp|cologne|body mist|mist|candle)\b/i;
 const HAIR_RE = /\b(hair|shampoo|conditioner|scalp|leave-in|styling|curl|detangler)\b/i;
 const MAKEUP_RE =
@@ -23,6 +24,11 @@ const REGULATORY_ACTIVE_RE =
   /\b(sunscreen|spf|sun screen|uv|pa\+|acne|benzoyl peroxide|salicylic acid|zinc oxide|titanium dioxide|avobenzone|octocrylene|octisalate|homosalate|octinoxate|adapalene)\b/i;
 const SOURCE_BLOCKED_RE = /\b(no_product_urls|missing_target_url|bot_challenge|timeout|http_404|not_found|navigation_failed|extractor_failure)\b/i;
 const PRODUCT_URL_RE = /(?:\/products?\/|\/p\/|\/product\/|\.html(?:[?#]|$))/i;
+const KNOWN_PRODUCT_KINDS = new Set(['single_formula', 'bundle', 'accessory', 'fragrance', 'general_merchandise']);
+const OPTIONAL_HOW_TO_FAMILY = new Set(['makeup', 'fragrance', 'tool_accessory', 'general_merchandise', 'unknown_product']);
+const HOW_TO_SECTION_RE = /\b(how\s*to|how\s*to\s*use|how\s*to\s*apply|directions?|application|use instructions?|usage)\b/i;
+const INGREDIENT_SECTION_RE = /\b(ingredients?|inci|full ingredients?|ingredient list)\b/i;
+const ACTIVE_INGREDIENT_SECTION_RE = /\b(active ingredients?|drug facts?|sunscreen active)\b/i;
 
 const FIELD_NAMES = Object.freeze([
   'product_key_kb',
@@ -70,6 +76,19 @@ function pickFirstString(...values) {
   return '';
 }
 
+function normalizeProductKind(value) {
+  const normalized = normalizeNonEmptyString(value)
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_');
+  return KNOWN_PRODUCT_KINDS.has(normalized) ? normalized : '';
+}
+
+function getSeedDataAndSnapshot(row = {}) {
+  const seedData = ensureJsonObject(row.seed_data);
+  const snapshot = ensureJsonObject(seedData.snapshot);
+  return { seedData, snapshot };
+}
+
 function normalizePotentialProductLineKey(value) {
   return normalizeNonEmptyString(value)
     .toLowerCase()
@@ -84,8 +103,7 @@ function normalizePotentialProductLineKey(value) {
 }
 
 function collectSeedText(row = {}) {
-  const seedData = ensureJsonObject(row.seed_data);
-  const snapshot = ensureJsonObject(seedData.snapshot);
+  const { seedData, snapshot } = getSeedDataAndSnapshot(row);
   return [
     row.title,
     row.domain,
@@ -110,34 +128,47 @@ function collectSeedText(row = {}) {
 
 function classifyProductContext(row = {}) {
   const text = collectSeedText(row);
+  const { seedData, snapshot } = getSeedDataAndSnapshot(row);
+  const productKind = normalizeProductKind(seedData.product_kind || snapshot.product_kind);
+  const bundleComponents = [
+    ...asArray(seedData.bundle_components),
+    ...asArray(snapshot.bundle_components),
+  ].filter((item) => normalizeNonEmptyString(item?.name || item?.title || item?.raw_text));
   const lowerUrl = [row.canonical_url, row.destination_url].map((value) => normalizeNonEmptyString(value)).join(' ');
   const nonMerchandise = NON_MERCH_RE.test(text);
-  const accessory = ACCESSORY_RE.test(text);
-  const bundle = BUNDLE_RE.test(text);
+  const bundle = productKind === 'bundle' || bundleComponents.length > 0 || BUNDLE_RE.test(text);
+  const accessory = productKind === 'accessory' || productKind === 'general_merchandise' || (!bundle && ACCESSORY_RE.test(text));
   const fragrance = FRAGRANCE_RE.test(text);
   const hair = HAIR_RE.test(text);
   const makeup = MAKEUP_RE.test(text);
   const skincare = SKINCARE_RE.test(text);
-  const formula = !nonMerchandise && !accessory && (FORMULA_RE.test(text) || skincare || makeup || hair || fragrance);
+  const formula =
+    !nonMerchandise &&
+    !accessory &&
+    !bundle &&
+    (productKind === 'single_formula' || productKind === 'fragrance' || FORMULA_RE.test(text) || skincare || makeup || hair || fragrance);
   const regulatoryActiveExpected = REGULATORY_ACTIVE_RE.test(text);
   const productUrlLike = PRODUCT_URL_RE.test(lowerUrl);
 
   let product_family = 'unknown_product';
   if (nonMerchandise) product_family = 'non_merchandise';
-  else if (accessory) product_family = 'tool_accessory';
   else if (bundle) product_family = 'set_or_bundle';
+  else if (accessory && productKind === 'general_merchandise') product_family = 'general_merchandise';
+  else if (accessory) product_family = 'tool_accessory';
+  else if (productKind === 'fragrance' || fragrance) product_family = 'fragrance';
   else if (skincare) product_family = 'skincare';
   else if (makeup) product_family = 'makeup';
   else if (hair) product_family = 'haircare';
-  else if (fragrance) product_family = 'fragrance';
   else if (formula) product_family = 'formula_product';
 
   return {
+    product_kind: productKind || null,
     product_family,
     formula,
     accessory,
     non_merchandise: nonMerchandise,
     bundle,
+    bundle_components_count: bundleComponents.length,
     fragrance,
     regulatory_active_expected: regulatoryActiveExpected,
     product_url_like: productUrlLike,
@@ -145,8 +176,7 @@ function classifyProductContext(row = {}) {
 }
 
 function getSeedCoverage(row = {}) {
-  const seedData = ensureJsonObject(row.seed_data);
-  const snapshot = ensureJsonObject(seedData.snapshot);
+  const { seedData, snapshot } = getSeedDataAndSnapshot(row);
   const detailsSections = [
     ...asArray(seedData.pdp_details_sections),
     ...asArray(snapshot.pdp_details_sections),
@@ -173,6 +203,30 @@ function getSeedCoverage(row = {}) {
     seedData.how_to_use_raw,
     snapshot.how_to_use_raw,
   );
+  const detailsSectionText = detailsSections
+    .map((section) =>
+      [
+        section?.title,
+        section?.heading,
+        section?.label,
+        section?.text,
+        section?.body,
+        section?.content,
+      ]
+        .map((value) => normalizeNonEmptyString(value))
+        .filter(Boolean)
+        .join(' '),
+    )
+    .filter(Boolean);
+  const sectionTextByTitle = (titleRe) =>
+    detailsSections
+      .filter((section) => titleRe.test(normalizeNonEmptyString(section?.title || section?.heading || section?.label)))
+      .map((section) => normalizeNonEmptyString(section?.text || section?.body || section?.content))
+      .filter(Boolean)
+      .join('\n');
+  const howToFromSections = sectionTextByTitle(HOW_TO_SECTION_RE);
+  const inciFromSections = sectionTextByTitle(INGREDIENT_SECTION_RE);
+  const activeFromSections = sectionTextByTitle(ACTIVE_INGREDIENT_SECTION_RE);
   const inci = pickFirstString(
     seedData.pdp_ingredients_raw,
     snapshot.pdp_ingredients_raw,
@@ -180,15 +234,25 @@ function getSeedCoverage(row = {}) {
     snapshot.ingredients_raw,
     seedData.raw_ingredient_text_clean,
     snapshot.raw_ingredient_text_clean,
+    inciFromSections,
   );
   const active = pickFirstString(
     seedData.pdp_active_ingredients_raw,
     snapshot.pdp_active_ingredients_raw,
     seedData.active_ingredients,
     snapshot.active_ingredients,
+    activeFromSections,
   );
+  const fieldCaptureStatus = asObject(seedData.pdp_field_capture_status || snapshot.pdp_field_capture_status);
   const diagnostics = asObject(snapshot.diagnostics || seedData.diagnostics);
   const failureCategory = pickFirstString(diagnostics.failure_category, diagnostics.failureCategory);
+  const httpTrace = asArray(diagnostics.http_trace || diagnostics.httpTrace);
+  const productJson404 = httpTrace.some((item) => {
+    const url = normalizeNonEmptyString(item?.url);
+    const status = Number(item?.status);
+    return status === 404 && /\.js(?:[?#]|$)/i.test(url);
+  });
+  const discoveryStrategy = pickFirstString(diagnostics.discovery_strategy, diagnostics.discoveryStrategy);
   const imageCount = Math.max(
     countArray(seedData.image_urls),
     countArray(snapshot.image_urls),
@@ -199,12 +263,16 @@ function getSeedCoverage(row = {}) {
     description_chars: description.length,
     details_sections_count: detailsSections.length,
     faq_count: faqItems.length,
-    how_to_chars: howTo.length,
+    details_section_text_count: detailsSectionText.length,
+    how_to_chars: Math.max(howTo.length, howToFromSections.length),
     inci_chars: inci.length,
     active_ingredients_chars: active.length,
+    field_capture_status: fieldCaptureStatus,
     image_count: imageCount,
     variant_count: variants.length,
     extractor_failure_category: failureCategory || null,
+    discovery_strategy: discoveryStrategy || null,
+    product_json_404: productJson404,
   };
 }
 
@@ -217,19 +285,40 @@ function hasEnoughSeedContentForKb(coverage = {}) {
   );
 }
 
+function requiresHowToField(context = {}) {
+  if (context.non_merchandise || context.accessory || context.bundle) return false;
+  if (OPTIONAL_HOW_TO_FAMILY.has(context.product_family)) return false;
+  return context.formula || context.regulatory_active_expected;
+}
+
+function requiresInciField(context = {}) {
+  if (context.non_merchandise || context.accessory || context.bundle) return false;
+  return context.formula || context.fragrance;
+}
+
 function isFieldApplicable(field, context = {}) {
   if (context.non_merchandise) return false;
   if (field === 'faq') return false;
-  if (['product_key_kb', 'identity', 'details_sections'].includes(field)) return true;
-  if (field === 'how_to') return !context.accessory;
-  if (field === 'inci') return !context.accessory && (context.formula || context.bundle || context.fragrance);
+  if (['product_key_kb', 'identity'].includes(field)) return true;
+  if (field === 'details_sections') return !context.accessory && context.product_family !== 'general_merchandise';
+  if (field === 'how_to') return requiresHowToField(context);
+  if (field === 'inci') return requiresInciField(context);
   if (field === 'active_ingredients') return context.regulatory_active_expected;
   return true;
 }
 
 function classifyMissingField({ field, row, context, coverage, hasProductKeyKb, hasIdentity }) {
+  if (context.bundle && ['details_sections', 'how_to', 'inci', 'active_ingredients'].includes(field)) {
+    return context.bundle_components_count > 0 ? 'bundle_component_fields_delegated' : 'bundle_component_resolution_needed';
+  }
+
   if (!isFieldApplicable(field, context)) {
     if (field === 'faq') return 'source_optional_or_needs_truth_check';
+    if (field === 'details_sections' && (context.accessory || context.product_family === 'general_merchandise')) {
+      return 'accessory_detail_optional';
+    }
+    if (field === 'how_to' && !requiresHowToField(context)) return 'usage_optional_for_product_type';
+    if (field === 'inci' && !requiresInciField(context)) return 'not_applicable_non_formula_or_component_level';
     if (field === 'active_ingredients' && !context.regulatory_active_expected) {
       return 'not_applicable_without_regulatory_active_signal';
     }
@@ -239,6 +328,25 @@ function classifyMissingField({ field, row, context, coverage, hasProductKeyKb, 
   if (!context.product_url_like) return 'non_product_or_uncertain_url';
   if (coverage.extractor_failure_category && SOURCE_BLOCKED_RE.test(coverage.extractor_failure_category)) {
     return 'extractor_or_url_blocked';
+  }
+  if (
+    ['details_sections', 'how_to', 'inci', 'active_ingredients'].includes(field) &&
+    coverage.product_json_404 &&
+    normalizeNonEmptyString(coverage.discovery_strategy).toLowerCase() === 'seed_page'
+  ) {
+    return 'canonical_product_url_unavailable';
+  }
+
+  const captureStatusByField = {
+    details_sections: 'details_sections',
+    faq: 'faq_items',
+    how_to: 'how_to_use_raw',
+    inci: 'ingredients_raw',
+    active_ingredients: 'active_ingredients_raw',
+  };
+  const captureKey = captureStatusByField[field];
+  if (captureKey && normalizeNonEmptyString(coverage.field_capture_status?.[captureKey]).toLowerCase() === 'missing') {
+    return 'source_field_missing_after_catalog_capture';
   }
 
   if (field === 'product_key_kb') {
@@ -338,6 +446,8 @@ function summarizeRows(rows, { sampleLimit = 25 } = {}) {
       kb_generation_candidate: [],
       identity_backfill_candidate: [],
       seed_backfill_or_structuring_candidate: [],
+      bundle_component_resolution_candidate: [],
+      url_repair_candidate: [],
       product_line_fragmentation_candidate: [],
     },
     identity_fragmentation: {
@@ -367,6 +477,10 @@ function summarizeRows(rows, { sampleLimit = 25 } = {}) {
         } else {
           summary.candidate_external_product_ids.seed_backfill_or_structuring_candidate.push(row.external_product_id);
         }
+      } else if (status === 'bundle_component_resolution_needed') {
+        summary.candidate_external_product_ids.bundle_component_resolution_candidate.push(row.external_product_id);
+      } else if (status === 'canonical_product_url_unavailable') {
+        summary.candidate_external_product_ids.url_repair_candidate.push(row.external_product_id);
       }
     }
     if (rowActionable.size > 0) increment(summary.actionable_by_domain, row.domain);
