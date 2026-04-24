@@ -241,10 +241,11 @@ function buildBeautyChatAnalysisContextUsageMeta(latestRecoContextFromSession = 
 }
 
 function createBeautyChatMainlineBudget({ budgetMs = 0 } = {}) {
-  const normalizedBudgetMs =
+  const requestedBudgetMs =
     Number.isFinite(Number(budgetMs)) && Number(budgetMs) > 0
       ? Math.trunc(Number(budgetMs))
       : 13000;
+  const normalizedBudgetMs = Math.max(9000, Math.min(22000, requestedBudgetMs));
   const startedAtMs = Date.now();
   const deadlineAtMs = startedAtMs + normalizedBudgetMs;
   return {
