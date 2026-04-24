@@ -5494,6 +5494,7 @@ test('__internal: local external seed support-role search uses exact category he
   assert.equal(out.local_external_seed_search_mode, 'staged_support_fastpath');
   assert.equal(observedQueries.length, 1);
   assert.match(observedQueries[0].sql, /support_category_exact/);
+  assert.match(observedQueries[0].sql, /tool\s+=\s+ANY\(\$2::text\[\]\)/i);
   assert.match(observedQueries[0].sql, /category/);
   assert.doesNotMatch(observedQueries[0].sql, /retrieval_title/i);
   assert.match(observedQueries[0].sql, /attached_product_key\s+IS\s+NULL/i);
@@ -5568,6 +5569,7 @@ test('__internal: local external seed generic daily sunscreen support uses categ
   assert.equal(out.local_external_seed_search_mode, 'staged_support_fastpath');
   assert.equal(observedQueries.length, 1);
   assert.match(observedQueries[0].sql, /support_category_exact/);
+  assert.match(observedQueries[0].sql, /tool\s+=\s+ANY\(\$2::text\[\]\)/i);
   assert.match(observedQueries[0].sql, /vertical/i);
   assert.doesNotMatch(observedQueries[0].sql, /retrieval_title/i);
   assert.match(observedQueries[0].sql, /attached_product_key\s+IS\s+NULL/i);
