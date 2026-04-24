@@ -241,6 +241,23 @@ function mergeProfile(base, patch) {
   return src;
 }
 
+function mergeSessionPatchIntoContext(context, body) {
+  if (!isPlainObject(context) || !isPlainObject(body)) return;
+  const sessionPatch = isPlainObject(body.session_patch) ? body.session_patch : null;
+  if (sessionPatch) {
+    context.session = mergeProfile(isPlainObject(context.session) ? context.session : {}, sessionPatch);
+  }
+  const profilePatch = extractProfilePatchFromResponse(body);
+  if (isPlainObject(profilePatch)) {
+    context.profile = mergeProfile(context.profile, profilePatch);
+  }
+  const session = isPlainObject(context.session) ? context.session : {};
+  context.session = {
+    ...session,
+    profile: isPlainObject(context.profile) ? context.profile : {},
+  };
+}
+
 function extractMeta(body) {
   if (isPlainObject(body && body.meta)) return body.meta;
   if (isPlainObject(body && body.session_patch && body.session_patch.meta)) return body.session_patch.meta;
@@ -421,13 +438,16 @@ function headerMapForCase({ caseDef, turnDef, runId }) {
 
 function buildChatBody({ caseDef, turnDef, context, llmBaseline }) {
   const language = String(turnDef.language || caseDef.language || 'EN').toUpperCase();
+  const sessionFromContext = isPlainObject(context.session) ? deepClone(context.session) : {};
+  const session = {
+    ...sessionFromContext,
+    state: Object.prototype.hasOwnProperty.call(sessionFromContext, 'state') ? sessionFromContext.state : 'idle',
+    profile: isPlainObject(context.profile) ? context.profile : {},
+  };
   const base = {
     language,
     debug: true,
-    session: {
-      state: 'idle',
-      profile: isPlainObject(context.profile) ? context.profile : {},
-    },
+    session,
   };
   if (turnDef.message) base.message = String(turnDef.message);
   const action = isPlainObject(turnDef.action) ? turnDef.action : null;
@@ -928,6 +948,10 @@ async function runLocalCases({ cases, llmBaseline, timeoutMs }) {
       const turns = normalizeTurns(caseDef);
       const context = {
         profile: mergeProfile({}, isPlainObject(caseDef.seed_profile) ? caseDef.seed_profile : {}),
+        session: {
+          state: 'idle',
+          profile: mergeProfile({}, isPlainObject(caseDef.seed_profile) ? caseDef.seed_profile : {}),
+        },
         recent_logs: [],
       };
       const vars = {
@@ -942,6 +966,10 @@ async function runLocalCases({ cases, llmBaseline, timeoutMs }) {
         seedStatus = seedResp.status;
         const patch = extractProfilePatchFromResponse(seedResp.body);
         if (isPlainObject(patch)) context.profile = mergeProfile(context.profile, patch);
+        context.session = {
+          ...(isPlainObject(context.session) ? context.session : {}),
+          profile: isPlainObject(context.profile) ? context.profile : {},
+        };
       }
 
       const turnResults = [];
@@ -982,8 +1010,7 @@ async function runLocalCases({ cases, llmBaseline, timeoutMs }) {
           attempt: 1,
         };
 
-        const patch = extractProfilePatchFromResponse(responseWrap.body);
-        if (isPlainObject(patch)) context.profile = mergeProfile(context.profile, patch);
+        mergeSessionPatchIntoContext(context, responseWrap.body);
         if (Array.isArray(responseWrap.body?.session_patch?.recent_logs)) {
           context.recent_logs = responseWrap.body.session_patch.recent_logs;
         }
@@ -1043,6 +1070,10 @@ async function runLiveCases({ cases, base, llmBaseline, timeoutMs, retryCount, r
     const turns = normalizeTurns(caseDef);
     const context = {
       profile: mergeProfile({}, isPlainObject(caseDef.seed_profile) ? caseDef.seed_profile : {}),
+      session: {
+        state: 'idle',
+        profile: mergeProfile({}, isPlainObject(caseDef.seed_profile) ? caseDef.seed_profile : {}),
+      },
       recent_logs: [],
     };
     const vars = {
@@ -1070,6 +1101,10 @@ async function runLiveCases({ cases, base, llmBaseline, timeoutMs, retryCount, r
       seedStatus = seedResp?.response?.status || 0;
       const patch = extractProfilePatchFromResponse(seedResp?.response?.body || {});
       if (isPlainObject(patch)) context.profile = mergeProfile(context.profile, patch);
+      context.session = {
+        ...(isPlainObject(context.session) ? context.session : {}),
+        profile: isPlainObject(context.profile) ? context.profile : {},
+      };
     }
 
     const turnResults = [];
@@ -1096,8 +1131,7 @@ async function runLiveCases({ cases, base, llmBaseline, timeoutMs, retryCount, r
       });
 
       const body = isPlainObject(result?.response?.body) ? result.response.body : {};
-      const patch = extractProfilePatchFromResponse(body);
-      if (isPlainObject(patch)) context.profile = mergeProfile(context.profile, patch);
+      mergeSessionPatchIntoContext(context, body);
       if (Array.isArray(body?.session_patch?.recent_logs)) context.recent_logs = body.session_patch.recent_logs;
 
       vars.last_request_id = asString(body?.request_id) || vars.last_request_id;
@@ -1358,5 +1392,6 @@ module.exports = {
     extractLlmMeta,
     extractProfilePatchFromResponse,
     extractRecommendationRows,
+    mergeSessionPatchIntoContext,
   },
 };
