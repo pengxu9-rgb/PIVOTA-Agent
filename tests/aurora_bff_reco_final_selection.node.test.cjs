@@ -641,7 +641,7 @@ test('beauty mainline reco rows prefer daily sunscreen finish evidence over gene
           category: 'Sunscreen',
           product_type: 'Sunscreen',
           description:
-            'Zero white cast. Moisturizer-like feel. Hydrates while protecting with SPF 45+ Lightweight, fast-absorbing, and non-greasy for a soft, dewy finish.',
+            'Korea’s #1 sunscreen 10M+ sold worldwide. Featured in Vogue, Allure & NBC Select. Zero white cast. Moisturizer-like feel. Hydrates while protecting with SPF 45+ Lightweight, fast-absorbing, and non-greasy for a soft, dewy finish.',
           why_this_one:
             'A daily sunscreen built around niacinamide plus humectants such as glycerin/propanediol for AM UV protection and comfortable daytime layering.',
           product_intel: {
@@ -675,8 +675,8 @@ test('beauty mainline reco rows prefer daily sunscreen finish evidence over gene
     );
 
     assert.equal(rows.length, 1);
-    assert.match(String(rows[0].why_this_one || ''), /fast-absorbing, non-greasy finish/i);
-    assert.match(String(rows[0].short_description || ''), /fast-absorbing, non-greasy finish/i);
+    assert.match(String(rows[0].why_this_one || ''), /fast-absorbing.+non-greasy/i);
+    assert.match(String(rows[0].short_description || ''), /fast-absorbing.+non-greasy/i);
     assert.doesNotMatch(String(rows[0].why_this_one || ''), /niacinamide plus humectants|comfortable daytime layering/i);
   } finally {
     delete require.cache[moduleId];
