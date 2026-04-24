@@ -144,6 +144,28 @@ test('__internal: support role query builder keeps finish-fit sunscreen recall t
   assert.equal(queries.includes('makeup friendly sunscreen'), false);
 });
 
+test('__internal: support role query builder keeps broad authority recall for generic daily sunscreen support', () => {
+  const queries = buildSupportRoleQueryVariants({
+    roleId: 'daily_sunscreen',
+    roleLabel: 'Daily sunscreen',
+    preferredStep: 'sunscreen',
+    queryTerms: ['spf fluid oily skin', 'lightweight sunscreen oily skin', 'oil control sunscreen'],
+    fitKeywords: ['spf', 'lightweight', 'oil control', 'non-greasy'],
+    semanticFamily: 'sunscreen',
+    concernText: 'im oily skin what product should i buy',
+    maxQueries: 6,
+  });
+
+  assert.deepEqual(queries, [
+    'spf fluid oily skin',
+    'lightweight sunscreen oily skin',
+    'oil control sunscreen',
+    'sunscreen',
+    'daily sunscreen',
+    'broad spectrum sunscreen',
+  ]);
+});
+
 test('__internal: framework recall planner keeps finish-fit sunscreen internal recall compact while leaving external precise recall open', () => {
   const { __internal } = loadRoutesFresh();
   const plan = __internal.buildRecoRecallPlan({
@@ -175,6 +197,52 @@ test('__internal: framework recall planner keeps finish-fit sunscreen internal r
     'spf fluid oily skin',
     'sunscreen under makeup',
     'lightweight sunscreen oily skin',
+  ]);
+});
+
+test('__internal: framework recall planner keeps broad authority variants for generic daily sunscreen support', () => {
+  const { __internal } = loadRoutesFresh();
+  const plan = __internal.buildRecoRecallPlan({
+    mode: 'framework_generic',
+    targetContext: {
+      request_text: 'im oily skin. what product should i buy?',
+      primary_role_id: 'oil_control_treatment',
+      routine_mode: 'routine_mix',
+      semantic_plan: { routine_mode: 'routine_mix', comparison_mode: 'routine_mix' },
+      framework_roles: [
+        {
+          role_id: 'oil_control_treatment',
+          rank: 10,
+          preferred_step: 'treatment',
+          query_terms: ['niacinamide serum oily skin'],
+          fit_keywords: ['niacinamide', 'oil control', 'zinc'],
+        },
+        {
+          role_id: 'daily_sunscreen',
+          rank: 30,
+          preferred_step: 'sunscreen',
+          label: 'Daily sunscreen',
+          query_terms: ['spf fluid oily skin', 'lightweight sunscreen oily skin', 'oil control sunscreen'],
+          fit_keywords: ['spf', 'lightweight', 'oil control', 'non-greasy'],
+        },
+      ],
+    },
+  });
+  const internalStage = plan.stages.find((stage) => stage?.stage_id === 'framework_stage_c_support_daily_sunscreen');
+  const externalStage = plan.stages.find((stage) => stage?.stage_id === 'framework_stage_c_support_daily_sunscreen_external_seed');
+
+  assert.deepEqual(internalStage?.entries?.map((entry) => entry?.query), [
+    'spf fluid oily skin',
+    'lightweight sunscreen oily skin',
+    'oil control sunscreen',
+  ]);
+  assert.deepEqual(externalStage?.entries?.map((entry) => entry?.query), [
+    'spf fluid oily skin',
+    'lightweight sunscreen oily skin',
+    'oil control sunscreen',
+    'sunscreen',
+    'daily sunscreen',
+    'broad spectrum sunscreen',
   ]);
 });
 
