@@ -5054,6 +5054,78 @@ test('__internal: local external seed sunscreen finish query uses precise query 
   assert.equal(out.products[0].product_id, 'ext_support_sunscreen_221');
 });
 
+test('__internal: local external seed daily sunscreen support uses precise authority recall for form-fit queries', async () => {
+  const { __internal } = loadRoutesFresh();
+  const observedQueries = [];
+  const out = await __internal.searchLocalExternalSeedProducts({
+    query: 'lightweight sunscreen oily skin',
+    limit: 2,
+    role: {
+      role_id: 'daily_sunscreen',
+      rank: 3,
+      preferred_step: 'sunscreen',
+      query_terms: ['spf fluid oily skin', 'lightweight sunscreen oily skin', 'oil control sunscreen'],
+      fit_keywords: ['spf', 'lightweight', 'oil control', 'non-greasy'],
+      product_type_hypotheses: ['sunscreen'],
+    },
+    preferredStep: 'sunscreen',
+    queryFn: async (sql, params) => {
+      observedQueries.push({ sql: String(sql || ''), params });
+      return {
+        rows: [
+          {
+            id: '225',
+            external_product_id: 'ext_support_daily_sunscreen_225',
+            destination_url: 'https://example.com/products/lightweight-daily-spf',
+            canonical_url: 'https://example.com/products/lightweight-daily-spf',
+            domain: 'example.com',
+            title: 'Lightweight Daily Sunscreen SPF 50',
+            image_url: 'https://example.com/products/lightweight-daily-spf.jpg',
+            price_amount: 22,
+            price_currency: 'USD',
+            availability: 'in_stock',
+            match_stage: 'support_query_precise',
+            match_score: 58,
+            seed_data: {
+              derived: {
+                recall: {
+                  retrieval_title: 'Lightweight Daily Sunscreen SPF 50',
+                  retrieval_summary: 'A lightweight non-greasy sunscreen for oily skin.',
+                  category: 'Sunscreen',
+                  vertical: 'skincare',
+                },
+              },
+              snapshot: {
+                title: 'Lightweight Daily Sunscreen SPF 50',
+                description: 'Lightweight non-greasy sunscreen for oily skin.',
+                category: 'Sunscreen',
+              },
+            },
+            updated_at: new Date().toISOString(),
+            created_at: new Date().toISOString(),
+          },
+        ],
+      };
+    },
+  });
+
+  assert.equal(out.ok, true);
+  assert.equal(out.local_external_seed_search_mode, 'staged_support_fastpath');
+  assert.equal(observedQueries.length, 1);
+  assert.match(observedQueries[0].sql, /support_query_precise/);
+  assert.deepEqual(observedQueries[0].params[2], [
+    'sunscreen',
+    'spf',
+    'sun care',
+    'sun protection',
+    'uv protection',
+  ]);
+  assert.ok(observedQueries[0].params[3].includes('%lightweight sunscreen oily skin%'));
+  assert.equal(out.local_external_seed_stage_debug[0]?.stage, 'support_query_precise');
+  assert.equal(out.products[0].retrieval_match_stage, 'support_query_precise');
+  assert.equal(out.products[0].retrieval_role_id, 'daily_sunscreen');
+});
+
 test('__internal: local external seed multi-query sunscreen compare uses one precise authority query', async () => {
   const { __internal } = loadRoutesFresh();
   const observedQueries = [];
@@ -12792,7 +12864,7 @@ test('/v1/chat: beauty-owned hard path fails closed when handoff products lack c
     assert.ok(confidenceCard);
     assert.match(
       String(response.body?.assistant_message?.content || ''),
-      /not showing product picks|不展示商品推荐/i,
+      /not showing product picks|not forcing product picks|不展示商品推荐/i,
     );
   } finally {
     axios.get = originalGet;
