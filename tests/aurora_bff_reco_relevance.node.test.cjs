@@ -5510,7 +5510,7 @@ test('__internal: local external seed support-role search uses exact category he
   assert.equal(out.products[0].retrieval_match_stage, 'support_category_exact');
 });
 
-test('__internal: local external seed generic daily sunscreen support uses category authority recall without broad runtime fanout', async () => {
+test('__internal: local external seed generic daily sunscreen support skips broad category head for form-fit queries', async () => {
   const { __internal } = loadRoutesFresh();
   const observedQueries = [];
   const out = await __internal.searchLocalExternalSeedProducts({
@@ -5540,8 +5540,8 @@ test('__internal: local external seed generic daily sunscreen support uses categ
             price_amount: 26,
             price_currency: 'USD',
             availability: 'in_stock',
-            match_stage: 'support_category_exact',
-            match_score: 56,
+            match_stage: 'support_query_precise',
+            match_score: 58,
             seed_data: {
               derived: {
                 recall: {
@@ -5568,11 +5568,9 @@ test('__internal: local external seed generic daily sunscreen support uses categ
   assert.equal(out.ok, true);
   assert.equal(out.local_external_seed_search_mode, 'staged_support_fastpath');
   assert.equal(observedQueries.length, 1);
-  assert.match(observedQueries[0].sql, /support_category_exact/);
+  assert.match(observedQueries[0].sql, /support_query_precise/);
+  assert.doesNotMatch(observedQueries[0].sql, /support_category_exact/);
   assert.match(observedQueries[0].sql, /tool\s+=\s+ANY\(\$2::text\[\]\)/i);
-  assert.match(observedQueries[0].sql, /vertical/i);
-  assert.doesNotMatch(observedQueries[0].sql, /retrieval_title/i);
-  assert.match(observedQueries[0].sql, /attached_product_key\s+IS\s+NULL/i);
   assert.deepEqual(observedQueries[0].params[2], [
     'sunscreen',
     'spf',
@@ -5580,8 +5578,10 @@ test('__internal: local external seed generic daily sunscreen support uses categ
     'sun protection',
     'uv protection',
   ]);
-  assert.equal(out.local_external_seed_stage_debug[0]?.stage, 'support_category_exact');
-  assert.equal(out.products[0]?.retrieval_match_stage, 'support_category_exact');
+  assert.ok(observedQueries[0].params[3].includes('%spf fluid oily skin%'));
+  assert.ok(observedQueries[0].params[3].includes('%spf fluid%'));
+  assert.equal(out.local_external_seed_stage_debug[0]?.stage, 'support_query_precise');
+  assert.equal(out.products[0]?.retrieval_match_stage, 'support_query_precise');
   assert.equal(out.products[0]?.retrieval_role_id, 'daily_sunscreen');
 });
 
