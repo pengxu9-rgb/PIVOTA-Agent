@@ -206,6 +206,13 @@ function detectShoppingCardSubtypeMismatch({ title = '', subtitle = '' } = {}) {
   const normalizedTitle = asString(title).toLowerCase();
   const normalizedSubtitle = asString(subtitle).toLowerCase();
   if (!normalizedTitle || !normalizedSubtitle) return '';
+  if (
+    /\b(?:sunscreen|spf)\b/.test(normalizedTitle) &&
+    /\b(?:set|kit|duo|trio|bundle)\b/.test(normalizedTitle) &&
+    /\b(?:routine|set|bundle|kit)\b/.test(normalizedSubtitle)
+  ) {
+    return '';
+  }
 
   const checks = [
     {

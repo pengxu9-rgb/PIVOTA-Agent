@@ -383,6 +383,12 @@ function inferProductKindFromContext(context) {
   ) {
     return 'makeup_set';
   }
+  if (
+    /\b(?:set|kit|duo|trio|bundle)\b/.test(titleCategory) &&
+    /\b(?:sunscreen|spf|foundation|concealer|skin tint|moisturi[sz]er|complexion)\b/.test(titleCategoryDescription)
+  ) {
+    return 'routine_bundle';
+  }
   if (/\b(?:scrunchie|hair scrunchie|satin scarf|hair scarf)\b/.test(titleCategoryDescription)) return 'hair_accessory';
   if (/\b(?:baseball hat|bucket hat|hat|cap)\b/.test(titleCategory)) return 'apparel_accessory';
   if (/\b(?:pencil sharpener|dual sharpener|makeup sharpener|sharpener)\b/.test(titleCategory)) return 'makeup_tool';
@@ -404,6 +410,9 @@ function inferProductKindFromContext(context) {
     return 'self_tanner';
   }
   if (/\b(?:lip\s+mask|lip sleeping mask|plush puddin)\b/.test(titleCategoryDescription)) {
+    return 'lip';
+  }
+  if (/\b(?:lip luminizer|gloss bomb|lip gloss|lip plumper|plumping gloss|lip glaze)\b/.test(text)) {
     return 'lip';
   }
   if (/\b(?:eye patch|eye patches|eyepatch|lippatch|lip patch|anywhere patches|hydrogel patches|eye mask goggles|eye mask)\b/.test(titleCategoryDescription) || /\b(?:detoxifeye|beautifeye|nutrifeye|fortifeye)\b/.test(title)) {
@@ -528,6 +537,8 @@ function inferSpecificBeautySubtypeLabel(context) {
   if (/\b(?:fragrance|perfume|parfum|body mist)\b/.test(fragranceText)) return 'Fragrance';
   if (/\bskin tint\b/.test(text)) return 'Skin tint';
   if (/\b(?:brightening\s+\+?\s*blurring powder|brightening blurring powder|blurring powder|setting powder|blotting powder|mattifying powder|invisimatte)\b/.test(text)) return 'Setting powder';
+  if (/\b(?:lip glaze|lip gloss|gloss drip|plumping gloss|gloss bomb heat|gloss bomb universal|lip luminizer|plumper)\b/.test(text)) return 'Lip gloss';
+  if (/\b(?:set|kit|duo|trio|bundle)\b/.test(titleCategory) && /\b(?:sunscreen|spf|foundation|concealer|skin tint|moisturi[sz]er|complexion)\b/.test(text)) return 'Routine set';
   if (/\bconcealer\b/.test(text) && !/\bbrush\b/.test(title)) return 'Concealer';
   if (/\bfoundation\b/.test(text) && !/\bbrush\b/.test(title)) return 'Foundation';
   if (/\b(?:highlighter|killawatt|demi'?glow|diamond veil)\b/.test(text)) return 'Highlighter';
@@ -543,7 +554,6 @@ function inferSpecificBeautySubtypeLabel(context) {
   if (/\b(?:brow|kybrow)\b/.test(text)) return 'Brow gel';
   if (/\b(?:lip liner|pout liner)\b/.test(text)) return 'Lip liner';
   if (/\b(?:lip oil)\b/.test(text)) return 'Lip oil';
-  if (/\b(?:lip glaze|lip gloss|gloss drip|plumping gloss|gloss bomb heat|gloss bomb universal|lip luminizer|plumper)\b/.test(text)) return 'Lip gloss';
   if (/\b(?:lipstick|lip stick)\b/.test(text)) return 'Lipstick';
   if (/\bdry\s+shampoo\b/.test(text)) return 'Dry shampoo';
   if (/\btoner\b/.test(text)) return 'Hydrating toner';
@@ -1459,6 +1469,9 @@ function buildHumanStandardBodyFromFacts(context, kind, formulaSignals) {
     return `A hair styling cream${withFormula} for heat-styling prep, frizz smoothing, and softer-feeling lengths.`;
   }
   if (kind === 'routine_bundle') {
+    if (/\b(?:sunscreen|spf)\b/.test(titleText) && /\bfoundation\b/.test(titleText)) {
+      return `A routine bundle${withFormula} pairing SPF moisturizer with foundation for daytime skin prep and complexion coverage.`;
+    }
     return `A multi-product routine set${withFormula} that groups cleanser, treatment, moisturizer, or SPF steps for a complete routine.`;
   }
   if (kind === 'brush_set') {
@@ -2329,9 +2342,15 @@ function buildHumanStandardHighlights(context) {
   }
   if (kind === 'routine_bundle') {
     const subtypeLabel = inferSpecificBeautySubtypeLabel(context);
+    const text = `${context?.title || ''} ${context?.category || ''} ${context?.description || ''}`.toLowerCase();
     if (subtypeLabel === 'Hair care set') {
       return [
         highlight('Coordinated hair-care duo', 'Groups leave-in conditioner and heat protectant so shoppers compare the set by hair moisture and styling prep.'),
+      ];
+    }
+    if (/\b(?:sunscreen|spf)\b/.test(text) && /\bfoundation\b/.test(text)) {
+      return [
+        highlight('SPF and foundation pairing', 'Frames the bundle around daytime skin prep plus complexion coverage rather than a single foundation formula.'),
       ];
     }
     return [

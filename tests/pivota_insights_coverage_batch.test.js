@@ -272,6 +272,12 @@ describe('pivota_insights_coverage_batch', () => {
         subtitle: 'Daily Cleanser',
       }),
     ).toBe('');
+    expect(
+      detectShoppingCardSubtypeMismatch({
+        title: 'Fenty Beauty Build Your Own SPF Moisturizer + Foundation Bundle',
+        subtitle: 'Routine Set',
+      }),
+    ).toBe('');
   });
 
   test('rejects strict-review rows with compact subtitle type mismatch', () => {

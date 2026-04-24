@@ -239,6 +239,17 @@ describe('product_intel pilot compare selection', () => {
         rejected: /^Lipstick$/i,
       },
       {
+        title: 'Gloss Bomb Universal Lip Luminizer Deluxe Sample - Champ Stamp',
+        category: 'Highlighter',
+        description:
+          'A deluxe sample of Gloss Bomb lip luminizer for glossy shine, cushion, and color payoff.',
+        tags: ['Highlighter', 'Lip Gloss'],
+        expectedKind: 'lip',
+        expectedHeadline: /Lip gloss/i,
+        expectedSubtitle: 'Lip Gloss',
+        rejected: /^Highlighter$/i,
+      },
+      {
         title: 'Fine Linez Lash Line-Enhancing Eyeliner - Vanilla Killa',
         category: 'Mascara',
         description:
@@ -369,6 +380,20 @@ describe('product_intel pilot compare selection', () => {
         expectedHeadline: /Hair care set/i,
         expectedSubtitle: 'Hair Care Set',
         rejected: /^Hair Conditioner$|Post-shampoo conditioning/i,
+      },
+      {
+        title: 'Build Your Own SPF Moisturizer + Foundation Bundle',
+        category: 'Foundation',
+        description:
+          'A customizable bundle that pairs SPF moisturizer with foundation for daytime skin prep and complexion coverage.',
+        tags: ['Foundation', 'SPF'],
+        expectedKind: 'routine_bundle',
+        expectedHeadline: /Routine set/i,
+        expectedSubtitle: 'Routine Set',
+        expectedBestFor: /Complete routine sets|Multi-step routine shoppers/,
+        expectedBody: /SPF moisturizer.*foundation|foundation.*SPF moisturizer/i,
+        expectedHighlight: /SPF and foundation pairing/,
+        rejected: /^Foundation$/i,
       },
       {
         title: 'Mini Match Stix Duo Contour + Highlighter Set — Light Medium',
