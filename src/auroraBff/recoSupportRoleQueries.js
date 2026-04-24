@@ -170,7 +170,9 @@ function buildSupportRoleQueryVariants({
   const barrierSignal = /\b(barrier|ceramide|ceramides|lotion)\b/.test(signalText);
   const layeringSignal = /\b(layering|makeup|under makeup|pilling)\b/.test(roleSpecificSignalText);
   const fluidSignal = /\b(fluid|invisible|water[- ]?fit|serum sunscreen|spf fluid)\b/.test(signalText);
-  const finishFitSunscreenSignal = step === 'sunscreen' && (layeringSignal || fluidSignal);
+  const explicitFinishFitSunscreenSignal =
+    /\b(finish[-_\s]?fit|under makeup|makeup|layering|pilling)\b/.test(roleSpecificSignalText);
+  const finishFitSunscreenSignal = step === 'sunscreen' && (layeringSignal || explicitFinishFitSunscreenSignal);
   const hydrationSerumSignal = /\b(hydrat|dehydrat|hyaluronic|essence|plumping|water[- ]?fit|dull skin)\b/.test(signalText);
   const soothingTreatmentSignal = /\b(soothing|redness|calming|irritation|cica|panthenol|madecassoside)\b/.test(signalText);
   const toneTreatmentSignal = /\b(post[- ]?acne|marks?|dark spot|tone|brighten|radiance|glow|dull|hyperpigmentation|uneven)\b/.test(signalText);

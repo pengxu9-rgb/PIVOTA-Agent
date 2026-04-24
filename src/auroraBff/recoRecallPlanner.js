@@ -438,13 +438,14 @@ function buildBeautyMainlineRecallPlan({ mode, semanticContract = null, rawQuery
       ...supportRoles.flatMap((role) => {
         const supportPreferredStep = normalizeSemanticStepFamily(role?.preferred_step);
         const supportInternalMaxQueries = supportPreferredStep === 'sunscreen' ? 3 : 2;
+        const supportExternalMaxQueries = supportPreferredStep === 'sunscreen' ? 6 : 2;
         const supportInternalQueries = buildRoleStageQueries(role, {
           allowConcernFallback: false,
           maxQueriesOverride: supportInternalMaxQueries,
         });
         const supportExternalQueries = buildRoleStageQueries(role, {
           allowConcernFallback: false,
-          maxQueriesOverride: 2,
+          maxQueriesOverride: supportExternalMaxQueries,
         });
         return [
           buildStage({
@@ -468,7 +469,7 @@ function buildBeautyMainlineRecallPlan({ mode, semanticContract = null, rawQuery
             sourceScope: 'external_seed',
             queries: supportExternalQueries,
             concurrency: 1,
-            maxAttemptsForStage: Math.min(supportExternalQueries.length || 1, 2),
+            maxAttemptsForStage: Math.min(supportExternalQueries.length || 1, supportExternalMaxQueries),
             stopOnViableMatch: true,
             reasonForInclusion: 'framework_support_external_seed',
             runIf: 'if_role_unfilled_after_primary',
