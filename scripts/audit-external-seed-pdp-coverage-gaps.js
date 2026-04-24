@@ -308,10 +308,6 @@ function isFieldApplicable(field, context = {}) {
 }
 
 function classifyMissingField({ field, row, context, coverage, hasProductKeyKb, hasIdentity }) {
-  if (context.bundle && ['details_sections', 'how_to', 'inci', 'active_ingredients'].includes(field)) {
-    return context.bundle_components_count > 0 ? 'bundle_component_fields_delegated' : 'bundle_component_resolution_needed';
-  }
-
   if (!isFieldApplicable(field, context)) {
     if (field === 'faq') return 'source_optional_or_needs_truth_check';
     if (field === 'details_sections' && (context.accessory || context.product_family === 'general_merchandise')) {
@@ -335,6 +331,10 @@ function classifyMissingField({ field, row, context, coverage, hasProductKeyKb, 
     normalizeNonEmptyString(coverage.discovery_strategy).toLowerCase() === 'seed_page'
   ) {
     return 'canonical_product_url_unavailable';
+  }
+
+  if (context.bundle && ['details_sections', 'how_to', 'inci', 'active_ingredients'].includes(field)) {
+    return context.bundle_components_count > 0 ? 'bundle_component_fields_delegated' : 'bundle_component_resolution_needed';
   }
 
   const captureStatusByField = {
