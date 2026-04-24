@@ -1018,6 +1018,71 @@ test('buildChatIntentContract keeps analysis-context next-product followups on t
   assert.equal(contract.should_search, true);
 });
 
+test('buildChatIntentContract keeps reco context answers with climate constraints on the beauty mainline', async () => {
+  resetAuroraModules();
+  const { __internal } = require('../src/auroraBff/routes');
+
+  const contract = await __internal.buildChatIntentContract({
+    message: 'I am in Phoenix with dry heat and high UV, fragrance usually stings, and my budget is about $40. Should the first buy change? Compare the options plainly.',
+    language: 'EN',
+    session: {
+      state: {
+        latest_reco_context: {
+          intent: 'reco_products',
+          source_detail: 'typed_reco',
+          trigger_source: 'typed_reco',
+          primary_target_id: 'barrier_moisturizer',
+          ranked_targets: [{ target_id: 'barrier_moisturizer', target_role: 'primary' }],
+        },
+      },
+      profile: {
+        skinType: 'sensitive',
+        sensitivity: 'high',
+        goals: ['redness support', 'barrier support'],
+      },
+    },
+  });
+
+  assert.equal(contract.contract_version, 'chat_intent_v1');
+  assert.equal(contract.ownership_domain, 'beauty_mainline');
+  assert.equal(contract.request_class, 'beauty_discovery');
+  assert.equal(contract.delegate_target, 'beauty_mainline');
+  assert.equal(contract.should_search, true);
+  assert.equal(contract.contextual_reco_continuation, true);
+});
+
+test('buildChatIntentContract keeps card-comparison followups on reco context instead of compatibility parse', async () => {
+  resetAuroraModules();
+  const { __internal } = require('../src/auroraBff/routes');
+
+  const contract = await __internal.buildChatIntentContract({
+    message: 'I use foundation, want less white cast and no greasy slip, and I commute in LA sun. Compare the cards and tell me which one you would start with.',
+    language: 'EN',
+    session: {
+      state: {
+        latest_reco_context: {
+          intent: 'reco_products',
+          source_detail: 'typed_reco',
+          trigger_source: 'typed_reco',
+          primary_target_id: 'daily_sunscreen_finish_fit',
+          ranked_targets: [{ target_id: 'daily_sunscreen_finish_fit', target_role: 'primary' }],
+        },
+      },
+      profile: {
+        skinType: 'oily',
+        goals: ['sun protection', 'oil control'],
+      },
+    },
+  });
+
+  assert.equal(contract.contract_version, 'chat_intent_v1');
+  assert.equal(contract.ownership_domain, 'beauty_mainline');
+  assert.equal(contract.request_class, 'beauty_discovery');
+  assert.equal(contract.delegate_target, 'beauty_mainline');
+  assert.equal(contract.should_search, true);
+  assert.equal(contract.contextual_reco_continuation, true);
+});
+
 test('shouldEarlyLockBeautyOwnedChatReco locks current frontend beauty reco freeform payloads onto the bounded mainline path', async () => {
   resetAuroraModules();
   const { __internal } = require('../src/auroraBff/routes');
@@ -1043,6 +1108,29 @@ test('shouldEarlyLockBeautyOwnedChatReco locks current frontend beauty reco free
       actionId: '',
       actionLabel: '',
       message: 'im oily skin, what products should i use?',
+    }),
+    true,
+  );
+});
+
+test('shouldEarlyLockBeautyOwnedChatReco allows contextual reco continuation even when canonical intent sees weather terms', async () => {
+  resetAuroraModules();
+  const { __internal } = require('../src/auroraBff/routes');
+  const { inferCanonicalIntent } = require('../src/auroraBff/intentCanonical');
+
+  const message = 'I am in Phoenix with dry heat and high UV, fragrance usually stings, and my budget is about $40. Should the first buy change?';
+
+  assert.equal(
+    __internal.shouldEarlyLockBeautyOwnedChatReco({
+      ingressChatIntentContract: {
+        contract_version: 'chat_intent_v1',
+        ownership_domain: 'beauty_mainline',
+        request_class: 'beauty_discovery',
+        delegate_target: 'beauty_mainline',
+        contextual_reco_continuation: true,
+      },
+      message,
+      canonicalIntent: inferCanonicalIntent({ message, language: 'EN' }),
     }),
     true,
   );

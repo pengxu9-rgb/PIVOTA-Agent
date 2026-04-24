@@ -315,6 +315,98 @@ function extractRecoCandidate(cardRows) {
   };
 }
 
+function productDisplayText(row) {
+  if (!isPlainObject(row)) return '';
+  const product = isPlainObject(row.product) ? row.product : {};
+  const sku = isPlainObject(row.sku) ? row.sku : {};
+  const pieces = [
+    row.name,
+    row.title,
+    row.product_title,
+    row.display_name,
+    row.brand,
+    row.why_this_one,
+    row.role_scope,
+    product.name,
+    product.title,
+    product.brand,
+    sku.name,
+    sku.title,
+    sku.brand,
+  ];
+  return pieces
+    .map((value) => (value == null ? '' : String(value).trim()))
+    .filter(Boolean)
+    .join(' ');
+}
+
+function extractRecommendationRows(body) {
+  const cards = extractCardRows(body);
+  const rows = [];
+  const seen = new Set();
+  const addRow = (row) => {
+    if (!isPlainObject(row)) return;
+    const product = isPlainObject(row.product) ? row.product : {};
+    const sku = isPlainObject(row.sku) ? row.sku : {};
+    const key = [
+      row.product_id,
+      row.sku_id,
+      row.merchant_id,
+      row.name,
+      row.title,
+      product.product_id,
+      product.sku_id,
+      product.name,
+      product.title,
+      sku.product_id,
+      sku.sku_id,
+      sku.name,
+      sku.title,
+    ]
+      .map((value) => (value == null ? '' : String(value).trim().toLowerCase()))
+      .filter(Boolean)
+      .join('|');
+    const fallbackKey = productDisplayText(row).trim().toLowerCase();
+    const dedupeKey = key || fallbackKey;
+    if (dedupeKey && seen.has(dedupeKey)) return;
+    if (dedupeKey) seen.add(dedupeKey);
+    rows.push(row);
+  };
+  for (const card of cards) {
+    if (card.type !== 'recommendations' && card.type !== 'product_picks') continue;
+    const payload = isPlainObject(card.payload) ? card.payload : {};
+    for (const row of asArray(payload.recommendations)) {
+      addRow(row);
+    }
+    for (const row of asArray(payload.products)) {
+      addRow(row);
+    }
+    for (const section of asArray(payload.sections)) {
+      for (const row of asArray(section && section.products)) {
+        addRow(row);
+      }
+    }
+  }
+  return rows;
+}
+
+function recommendationTitle(row) {
+  if (!isPlainObject(row)) return '';
+  const product = isPlainObject(row.product) ? row.product : {};
+  const sku = isPlainObject(row.sku) ? row.sku : {};
+  return (
+    asString(row.name) ||
+    asString(row.title) ||
+    asString(row.product_title) ||
+    asString(row.display_name) ||
+    asString(product.name) ||
+    asString(product.title) ||
+    asString(sku.name) ||
+    asString(sku.title) ||
+    ''
+  );
+}
+
 function headerMapForCase({ caseDef, turnDef, runId }) {
   const lang = String(turnDef.language || caseDef.language || 'EN').toUpperCase();
   const caseId = String(caseDef.case_id || 'case').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 48);
@@ -583,6 +675,26 @@ function assertNotContainsText(text, phrases, label, errors) {
   }
 }
 
+function assertContainsAllText(text, phrases, label, errors) {
+  const source = String(text || '').toLowerCase();
+  for (const phrase of asArray(phrases)) {
+    const needle = String(phrase || '').toLowerCase();
+    if (!needle) continue;
+    if (!source.includes(needle)) errors.push(`${label} missing required phrase: ${String(phrase)}`);
+  }
+}
+
+function assertContainsAnyText(text, phrases, label, errors) {
+  const needles = asArray(phrases)
+    .map((phrase) => String(phrase || '').trim())
+    .filter(Boolean);
+  if (!needles.length) return;
+  const source = String(text || '').toLowerCase();
+  if (!needles.some((phrase) => source.includes(phrase.toLowerCase()))) {
+    errors.push(`${label} missing any required phrase: ${JSON.stringify(needles)}`);
+  }
+}
+
 function assertAny(rows, expectedAny) {
   const expected = asArray(expectedAny).map((x) => String(x));
   if (!expected.length) return true;
@@ -610,6 +722,9 @@ function evaluateTurn({ caseDef, turnDef, expected, requestSpec, response, befor
   const eventNames = eventRows.map((evt) => evt.event_name);
   const cards = extractCardRows(body);
   const cardTypes = cards.map((card) => card.type).filter(Boolean);
+  const recommendationRows = extractRecommendationRows(body);
+  const recommendationTitles = recommendationRows.map(recommendationTitle).filter(Boolean);
+  const recommendationText = recommendationRows.map(productDisplayText).filter(Boolean).join('\n');
 
   if (status < 200 || status >= 300) {
     errors.push(`status expected 2xx, got ${status}`);
@@ -625,6 +740,23 @@ function evaluateTurn({ caseDef, turnDef, expected, requestSpec, response, befor
   }
   if (asArray(expected.must_have_any_card_types).length && !assertAny(cardTypes, expected.must_have_any_card_types)) {
     errors.push(`must_have_any_card_types failed: expected any ${JSON.stringify(expected.must_have_any_card_types)} actual=${JSON.stringify(cardTypes)}`);
+  }
+
+  if (Number.isFinite(Number(expected.must_have_min_recommendations))) {
+    const minimum = Math.max(0, Math.trunc(Number(expected.must_have_min_recommendations)));
+    if (recommendationRows.length < minimum) {
+      errors.push(`must_have_min_recommendations failed: expected >=${minimum} actual=${recommendationRows.length}`);
+    }
+  }
+
+  if (asArray(expected.must_have_all_assistant_contains).length) {
+    assertContainsAllText(assistantText, expected.must_have_all_assistant_contains, 'assistant_text', errors);
+  }
+  if (asArray(expected.must_have_any_assistant_contains).length) {
+    assertContainsAnyText(assistantText, expected.must_have_any_assistant_contains, 'assistant_text', errors);
+  }
+  if (asArray(expected.must_have_any_recommendation_text_contains).length) {
+    assertContainsAnyText(recommendationText, expected.must_have_any_recommendation_text_contains, 'recommendation_text', errors);
   }
 
   if (asArray(expected.must_have_events).length && !assertAll(eventNames, expected.must_have_events)) {
@@ -695,6 +827,9 @@ function evaluateTurn({ caseDef, turnDef, expected, requestSpec, response, befor
     if (asArray(rule.assistant_contains).length) {
       assertNotContainsText(assistantText, rule.assistant_contains, 'assistant_text', errors);
     }
+    if (asArray(rule.recommendation_text_contains).length) {
+      assertNotContainsText(recommendationText, rule.recommendation_text_contains, 'recommendation_text', errors);
+    }
     if (asArray(rule.card_types).length) {
       for (const t of rule.card_types) {
         if (cardTypes.includes(String(t))) errors.push(`must_not_have.card_types includes forbidden type ${String(t)}`);
@@ -743,6 +878,8 @@ function evaluateTurn({ caseDef, turnDef, expected, requestSpec, response, befor
     status,
     assistant_text: assistantText,
     card_types: cardTypes,
+    recommendations_count: recommendationRows.length,
+    recommendation_titles: recommendationTitles,
     event_names: eventNames,
     meta,
     llm_meta: llmMeta,
@@ -1220,5 +1357,6 @@ module.exports = {
     extractMeta,
     extractLlmMeta,
     extractProfilePatchFromResponse,
+    extractRecommendationRows,
   },
 };
