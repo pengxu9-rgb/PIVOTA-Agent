@@ -244,6 +244,23 @@ test('local external seed support search has a bounded timeout', async () => {
   assert.equal(result.local_external_seed_search_timed_out, true);
 });
 
+test('local external seed primary search does not treat null timeout as zero', async () => {
+  const startedAt = Date.now();
+  const result = await __internal.searchLocalExternalSeedProducts({
+    query: 'spf fluid oily skin',
+    limit: 3,
+    role: { rank: 1, preferred_step: 'sunscreen' },
+    queryTimeoutMs: null,
+    queryFn: () => new Promise(() => {}),
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, 'empty');
+  assert.equal(result.local_external_seed_search_timed_out, true);
+  assert.ok(Date.now() - startedAt >= 750);
+  assert.ok(Number(result.local_external_seed_search_timeout_ms) >= 800);
+});
+
 test('chatCardsAssembler sanitizes derived ops experiment events from envelope events', () => {
   const out = buildChatCardsResponse({
     envelope: {
