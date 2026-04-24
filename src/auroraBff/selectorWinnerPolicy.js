@@ -37,6 +37,11 @@ function asStringArray(value, max = 20) {
   return out;
 }
 
+function toFiniteNumberOrNull(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
 function uniqCaseInsensitiveStrings(items, max = 80) {
   const out = [];
   const seen = new Set();
@@ -115,6 +120,90 @@ function shouldDiversifyConcernSelectorFinishFitComparison(selector = {}, recomm
   );
 }
 
+function isConcernSelectorRoutineMix(selector = {}, recommendations = []) {
+  const comparisonMode = String(
+    pickFirstTrimmed(selector?.comparison_mode, selector?.comparisonMode) || '',
+  ).trim().toLowerCase();
+  if (comparisonMode === 'routine_mix' || comparisonMode === 'routine') return true;
+  const roleIds = new Set();
+  for (const row of Array.isArray(recommendations) ? recommendations : []) {
+    const roleId = pickFirstTrimmed(row?.matched_role_id, row?.matchedRoleId);
+    if (roleId) roleIds.add(roleId);
+  }
+  return roleIds.size > 1;
+}
+
+function concernSelectorAuthorityScore(row = null) {
+  const item = isPlainObject(row) ? row : {};
+  const direct = toFiniteNumberOrNull(
+    item.framework_score
+      ?? item.frameworkScore
+      ?? item.recommendation_score
+      ?? item.recommendationScore
+      ?? item.match_score
+      ?? item.matchScore
+      ?? item.score,
+  );
+  if (direct != null) return direct;
+  const nested = toFiniteNumberOrNull(item.score_breakdown?.score_total ?? item.scoreBreakdown?.scoreTotal);
+  return nested != null ? nested : 0;
+}
+
+function stabilizeConcernSelectorRoutineMixOrdering(recommendations = [], selector = {}) {
+  const original = Array.isArray(recommendations) ? recommendations.slice() : [];
+  if (!isConcernSelectorRoutineMix(selector, original) || original.length <= 2) return original;
+
+  const topPickProductId = pickFirstTrimmed(selector?.top_pick_product_id, selector?.topPickProductId) || null;
+  const lead = (topPickProductId
+    ? original.find((row) => pickFirstString(row?.product_id, row?.productId) === topPickProductId)
+    : null) || original[0] || null;
+  if (!lead) return original;
+
+  const primaryRoleId = pickFirstTrimmed(
+    selector?.primary_role_id,
+    selector?.primaryRoleId,
+    lead?.matched_role_id,
+    lead?.matchedRoleId,
+  );
+  const usedProductIds = new Set();
+  const stabilized = [];
+  const pushUnique = (row) => {
+    const productId = pickFirstString(row?.product_id, row?.productId);
+    if (!productId || usedProductIds.has(productId)) return false;
+    usedProductIds.add(productId);
+    stabilized.push(row);
+    return true;
+  };
+  pushUnique(lead);
+
+  const roleOrder = [];
+  const byRole = new Map();
+  for (const row of original) {
+    const roleId = pickFirstTrimmed(row?.matched_role_id, row?.matchedRoleId);
+    const productId = pickFirstString(row?.product_id, row?.productId);
+    if (!roleId || !productId || productId === pickFirstString(lead?.product_id, lead?.productId)) continue;
+    if (primaryRoleId && roleId === primaryRoleId) continue;
+    if (!byRole.has(roleId)) {
+      byRole.set(roleId, []);
+      roleOrder.push(roleId);
+    }
+    byRole.get(roleId).push(row);
+  }
+
+  for (const roleId of roleOrder) {
+    const rows = byRole.get(roleId) || [];
+    rows.sort((left, right) => {
+      const scoreDelta = concernSelectorAuthorityScore(right) - concernSelectorAuthorityScore(left);
+      if (Math.abs(scoreDelta) > 1e-6) return scoreDelta;
+      return original.indexOf(left) - original.indexOf(right);
+    });
+    if (rows[0]) pushUnique(rows[0]);
+  }
+
+  for (const row of original) pushUnique(row);
+  return stabilized;
+}
+
 function diversifyConcernSelectorFinishFitOrdering(recommendations = [], selector = {}) {
   const ordered = Array.isArray(recommendations) ? recommendations.slice() : [];
   if (!shouldDiversifyConcernSelectorFinishFitComparison(selector, ordered)) return ordered;
@@ -182,7 +271,8 @@ function applyConcernSelectorRaceOrdering(recommendations, selectorRace) {
       return 0;
     });
   }
-  const diversifiedOrdered = diversifyConcernSelectorFinishFitOrdering(ordered, selector);
+  const routineStabilizedOrdered = stabilizeConcernSelectorRoutineMixOrdering(ordered, selector);
+  const diversifiedOrdered = diversifyConcernSelectorFinishFitOrdering(routineStabilizedOrdered, selector);
   const selectionNotes = uniqCaseInsensitiveStrings(asStringArray(selector.selection_notes), 3);
   return {
     recommendations: diversifiedOrdered,
