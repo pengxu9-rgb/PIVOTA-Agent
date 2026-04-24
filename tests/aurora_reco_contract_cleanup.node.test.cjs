@@ -186,9 +186,15 @@ test('confidence notices do not expose fallback or internal planner wording', ()
     reason: 'planner_untrusted',
     confidence: { score: 0.3, level: 'low', rationale: ['planner_untrusted'] },
   });
+  const noRecallPayload = __internal.buildConfidenceNoticeCardPayload({
+    language: 'EN',
+    reason: 'no_recall_from_planned_sources',
+    confidence: { score: 0.3, level: 'low', rationale: ['no_recall_from_planned_sources'] },
+  });
 
-  assert.doesNotMatch(timeoutPayload.message, /retrieval chain|fallback|non-primary/i);
+  assert.doesNotMatch(timeoutPayload.message, /retrieval chain|fallback|non-primary|\bmost\b/i);
   assert.doesNotMatch(plannerPayload.message, /owner|fallback|semantic planner/i);
+  assert.doesNotMatch(noRecallPayload.message, /care framework|mainline|authority-grounded|fallback/i);
 });
 
 test('travel gear shopping is isolated from travel skincare env routing', () => {
