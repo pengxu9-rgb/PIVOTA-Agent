@@ -547,10 +547,15 @@ function createBeautyChatMainlineEnvelopeRuntime(deps = {}) {
       const normalizedRoleId = String(roleId || '').trim();
       const candidate = buildRecoContextProductCandidateFromRecommendation(row);
       if (!normalizedRoleId || !candidate) return;
+      const candidateWithRole = {
+        ...candidate,
+        matched_role_id: normalizedRoleId,
+        role_id: normalizedRoleId,
+      };
       const dedupeKey = [
-        pickFirstTrimmed(candidate?.product_id, candidate?.productId),
-        pickFirstTrimmed(candidate?.merchant_id, candidate?.merchantId),
-        pickFirstTrimmed(candidate?.display_name, candidate?.displayName, candidate?.name, candidate?.title),
+        pickFirstTrimmed(candidateWithRole?.product_id, candidateWithRole?.productId),
+        pickFirstTrimmed(candidateWithRole?.merchant_id, candidateWithRole?.merchantId),
+        pickFirstTrimmed(candidateWithRole?.display_name, candidateWithRole?.displayName, candidateWithRole?.name, candidateWithRole?.title),
       ].join('::').toLowerCase();
       if (!dedupeKey || dedupeKey === '::::') return;
       const seen = seenByRole.get(normalizedRoleId) || new Set();
@@ -558,7 +563,7 @@ function createBeautyChatMainlineEnvelopeRuntime(deps = {}) {
       seen.add(dedupeKey);
       seenByRole.set(normalizedRoleId, seen);
       const current = out.get(normalizedRoleId) || [];
-      out.set(normalizedRoleId, [...current, candidate].slice(0, 4));
+      out.set(normalizedRoleId, [...current, candidateWithRole].slice(0, 4));
     };
 
     const viableCandidates = Array.isArray(candidateState?.viable_candidate_pool)

@@ -913,6 +913,9 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
           primaryQuery: plannerAndRetrievalRequestText,
           fallbackMessage: message,
           targetContext: effectivePlannerTargetContext,
+          recommendationTaskContext: contextualRecoContinuation
+            ? latestRecoContextFromSession
+            : null,
           fallbackFocus: hardPathRecoFocusForMainline,
           profileSummary,
           deadlineAtMs: handoffDeadlineAtMs,
