@@ -20,7 +20,52 @@ describe('beauty role compatible selection policy', () => {
       inferBeautyRoleIntent({
         queryText: 'Combination skin, clogged pores, Seattle winter, simple routine.',
       }),
-    ).toBeNull();
+    ).toBe('moisturizer');
+  });
+
+  test('keeps simple routine and first-buy asks focused on routine-compatible moisturizers', () => {
+    const result = applyBeautyRoleCompatibleSelection({
+      operation: 'find_products_multi',
+      invokeSearchRail: 'authoritative_shopping',
+      queryText: 'I have combination skin with clogged pores in Seattle winter and want a simple routine.',
+      search: {
+        catalog_surface: 'beauty',
+      },
+      metadata: {
+        source: 'shopping_agent',
+        catalog_surface: 'beauty',
+      },
+      beautyRequest: {
+        domain: 'beauty',
+        user_goal: 'I have combination skin with clogged pores in Seattle winter and want a simple routine.',
+        skin_context: { skin_type: 'combination', concerns: ['clogged pores'] },
+        scenario_context: { location: 'Seattle', season: 'winter' },
+        constraints: { routine_complexity: 'simple' },
+      },
+      responseBody: {
+        products: [
+          { canonical_title: 'Air Angel Peptide Plumping Gel Cream', brand: 'Dieux', canonical_category: 'external' },
+          { canonical_title: 'Triple Lipid-Peptide Cream', brand: 'Skinfix', canonical_category: 'external' },
+          { canonical_title: 'Acne Healing Dots Jumbo', brand: 'Peace Out Skincare', canonical_category: 'external' },
+          { canonical_title: 'Acne Healing Dots', brand: 'Peace Out Skincare', canonical_category: 'external' },
+        ],
+        metadata: {},
+      },
+    });
+
+    expect(result.products.map((product) => product.canonical_title)).toEqual([
+      'Air Angel Peptide Plumping Gel Cream',
+      'Triple Lipid-Peptide Cream',
+    ]);
+    expect(result.metadata.beauty_role_compatible_selection).toMatchObject({
+      applied: true,
+      role: 'moisturizer',
+      original_count: 4,
+      selected_count: 2,
+    });
+    expect(result.metadata.beauty_role_compatible_selection.dropped_titles.map((row) => row.title)).toEqual(
+      expect.arrayContaining(['Acne Healing Dots Jumbo', 'Acne Healing Dots']),
+    );
   });
 
   test('scores retinoid-conflicting and spf moisturizer rows below role-compatible moisturizers', () => {

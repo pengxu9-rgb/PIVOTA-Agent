@@ -600,6 +600,42 @@ describe('beauty_expert_v1 contract', () => {
     expect(result.next_actions.map((action) => action.type)).toContain('open_pdp');
   });
 
+  test('empty normalized beauty_request block does not auto-invoke beauty expert for non-beauty requests', () => {
+    const result = buildBeautyExpertV1Response({
+      source: 'creator_agent',
+      entryLayer: 'orchestration',
+      taskType: 'discovery',
+      context: {
+        source_profile: {
+          source: 'creator_agent',
+          default_entry_layer: 'decisioning',
+        },
+        raw_user_goal: 'What camera should a beginner lifestyle creator buy?',
+        normalized_need: {
+          query: 'What camera should a beginner lifestyle creator buy?',
+          beauty_request: {},
+        },
+      },
+      metadata: {
+        source: 'creator_agent',
+        query: 'What camera should a beginner lifestyle creator buy?',
+      },
+      payload: {
+        search: {
+          query: 'What camera should a beginner lifestyle creator buy?',
+        },
+      },
+      response: {
+        products: [],
+        metadata: {
+          query_source: 'agent_products_error_fallback',
+        },
+      },
+    });
+
+    expect(result).toBeNull();
+  });
+
   test('exact_product_assist reorders the normalized lead pick to the anchored product', () => {
     const result = buildBeautyExpertV1Response({
       source: 'aurora-bff',

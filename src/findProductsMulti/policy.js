@@ -1519,7 +1519,7 @@ function inferBeautyIngredientHypotheses(rawQuery = '') {
   if (/\bcica\b|积雪草|積雪草/.test(normalized)) push('cica');
   if (/\bhyaluronic\b|透明质酸|透明質酸|玻尿酸/.test(normalized)) push('hyaluronic acid');
   if (
-    /\b(oily skin|oil control|shine control|mattify|mattifying|anti-shine|sebum|acne|blemish|breakout)\b/.test(
+    /\b(oily skin|oil control|shine control|mattify|mattifying|anti-shine|sebum|pores?|clogged pores?|blackheads?|congestion|congested|acne|blemish|breakout)\b/.test(
       normalized,
     ) || /控油|祛痘|痘痘|闭口|閉口|出油/.test(normalized)
   ) {
@@ -1586,7 +1586,7 @@ function inferBeautyTargetStepFamily({
     /\b(serum|ampoule|concentrate|essence)\b/.test(normalized) ||
     /精华|精華|美容液/.test(normalized);
   const hasTreatmentSignal =
-    /\b(treatment|niacinamide|salicylic|retinol|vitamin c|peptide|azelaic|aha|bha|acne|blemish|breakout|oily skin|oil control|shine control|mattify)\b/.test(
+    /\b(treatment|niacinamide|salicylic|retinol|vitamin c|peptide|azelaic|aha|bha|acne|blemish|breakout|blackheads?|clogged|pores?|congestion|congested|oily skin|oil control|shine control|mattify)\b/.test(
       normalized,
     ) || /祛痘|痘痘|控油|水杨酸|水楊酸|烟酰胺|煙酰胺/.test(normalized);
   if (hasSerumSignal) {
@@ -1634,6 +1634,12 @@ function resolveBeautyPrimaryRoleId({
       /屏障|修护|修護|神经酰胺|神經醯胺|舒缓|舒緩|泛醇/.test(normalizedQuery)
     ) {
       return 'barrier_moisturizer';
+    }
+    if (
+      normalizedFamily === 'hydration' ||
+      /\b(hydrat\w*|dehydrat\w*|dry and tight|tight after washing|hyalur\w*)\b/.test(normalizedQuery)
+    ) {
+      return 'hydrating_moisturizer';
     }
     return 'lightweight_moisturizer';
   }
@@ -1879,7 +1885,8 @@ function buildDeterministicStrictSemanticQueryPack({
     normalizeSemanticContractIdentifier(
       inferBeautyConcernClass(raw, targetStepFamily === 'sunscreen' ? 'skincare' : null),
       '',
-    );
+    ) ||
+    (targetStepFamily === 'treatment' ? normalizeSemanticContractIdentifier(semanticFamily, '') : null);
   const ingredientHypotheses = normalizeSemanticStringList(contract?.ingredient_hypotheses, 8)
     .map((value) => normalizeSemanticQueryLabel(value))
     .filter(Boolean);
@@ -1910,7 +1917,21 @@ function buildDeterministicStrictSemanticQueryPack({
               push('treatment');
             }
           } else if (targetStepFamily === 'moisturizer') {
-            push(primaryRoleLabel || 'lightweight moisturizer');
+            if (concernClass === 'barrier_repair') {
+              push(primaryRoleLabel || 'barrier moisturizer');
+              if (/\b(sensitive|retinoid|tretinoin|dry and tight|tight after washing|fragrance free|fragrance-free)\b/.test(raw)) {
+                push('sensitive skin moisturizer');
+              }
+              push('ceramide moisturizer');
+              push('barrier repair moisturizer');
+            } else if (concernClass === 'hydration') {
+              push(primaryRoleLabel || 'hydrating moisturizer');
+              push('hyaluronic moisturizer');
+              push('face moisturizer');
+            } else {
+              push(primaryRoleLabel || 'lightweight moisturizer');
+              push('face moisturizer');
+            }
           } else if (targetStepFamily === 'sunscreen') {
             push(primaryRoleLabel || 'daily sunscreen');
           } else if (primaryRoleLabel) {
@@ -1926,7 +1947,7 @@ function buildDeterministicStrictSemanticQueryPack({
           if (out.length < 3 && concernClass === 'oil_control' && targetStepFamily === 'treatment') {
             push('oil control serum');
           }
-          if (out.length < 3 && raw) push(raw);
+          if (out.length < 3 && targetStepFamily !== 'moisturizer' && raw) push(raw);
           return out.slice(0, 3);
         })()
       : [];
@@ -2030,6 +2051,9 @@ function buildDeterministicStrictSemanticQueryPack({
   } else if (targetStepFamily === 'moisturizer') {
     if (concernClass === 'barrier_repair') {
       push('barrier moisturizer');
+      if (/\b(sensitive|retinoid|tretinoin|dry and tight|tight after washing|fragrance free|fragrance-free)\b/.test(raw)) {
+        push('sensitive skin moisturizer');
+      }
       push('ceramide moisturizer');
       push('panthenol moisturizer');
     } else if (concernClass === 'hydration') {
@@ -2235,6 +2259,18 @@ function buildSemanticOwnerSearchQuery({
   const normalizedQueryPack = Array.isArray(semanticRewriteResult?.normalized_query_pack)
     ? semanticRewriteResult.normalized_query_pack
     : [];
+  const targetStepFamily = normalizeSemanticStepFamily(
+    semanticRewriteResult?.hard_filters?.target_step_family,
+  );
+  if (targetStepFamily === 'moisturizer' && normalizedQueryPack.length > 1) {
+    const joined = normalizedQueryPack
+      .map((value) => normalizeSemanticQueryLabel(value))
+      .filter(Boolean)
+      .slice(0, 3)
+      .join(' ')
+      .trim();
+    if (joined) return joined.length > 220 ? joined.slice(0, 220).trim() : joined;
+  }
   const primaryQuery = normalizedQueryPack
     .map((value) => String(value || '').trim())
     .find(Boolean);

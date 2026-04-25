@@ -562,7 +562,7 @@ describe('find_products_multi context building', () => {
         query: 'vitamin c serum under €30',
         catalog_surface: 'agent_api',
         commerce_surface: 'agent_api',
-        target_step_family: 'treatment',
+        target_step_family: 'serum',
         semantic_family: 'brightening',
       }),
     );
@@ -773,12 +773,15 @@ describe('find_products_multi context building', () => {
         }),
       }),
     );
+    expect(String(adjustedPayload?.search?.query || '').toLowerCase()).toBe(
+      'barrier moisturizer ceramide moisturizer barrier repair moisturizer',
+    );
     expect(expansion_meta.semantic_rewrite_result).toEqual(
       expect.objectContaining({
         normalized_query_pack: [
           'barrier moisturizer',
           'ceramide moisturizer',
-          'panthenol moisturizer',
+          'barrier repair moisturizer',
         ],
       }),
     );
@@ -795,7 +798,7 @@ describe('find_products_multi context building', () => {
     });
 
     const expanded = String(adjustedPayload?.search?.query || '').toLowerCase();
-    expect(expanded).toBe('hydrating moisturizer');
+    expect(expanded).toBe('hydrating moisturizer hyaluronic moisturizer face moisturizer');
     expect(expanded).not.toContain('foundation');
     expect(expansion_meta.semantic_rewrite_result).toEqual(
       expect.objectContaining({
@@ -803,6 +806,82 @@ describe('find_products_multi context building', () => {
           'hydrating moisturizer',
           'hyaluronic moisturizer',
           'face moisturizer',
+        ],
+      }),
+    );
+  });
+
+  test('dry sensitive retinoid moisturizer asks include sensitive-skin recall terms in the owner query', async () => {
+    const { adjustedPayload, expansion_meta } = await buildFindProductsMultiContext({
+      payload: {
+        search: { query: 'I have dry sensitive skin, use tretinoin at night, and want a moisturizer under $30.' },
+        user: { recent_queries: [] },
+        messages: [
+          {
+            role: 'user',
+            content: 'I have dry sensitive skin, use tretinoin at night, and want a moisturizer under $30.',
+          },
+        ],
+      },
+      metadata: {},
+    });
+
+    expect(String(adjustedPayload?.search?.query || '').toLowerCase()).toBe(
+      'barrier moisturizer sensitive skin moisturizer ceramide moisturizer',
+    );
+    expect(adjustedPayload.search).toEqual(
+      expect.objectContaining({
+        target_step_family: 'moisturizer',
+        concern_class: 'barrier_repair',
+      }),
+    );
+    expect(expansion_meta.semantic_rewrite_result).toEqual(
+      expect.objectContaining({
+        owner: 'shopping_agent_beauty_mainline',
+        normalized_query_pack: [
+          'barrier moisturizer',
+          'sensitive skin moisturizer',
+          'ceramide moisturizer',
+        ],
+      }),
+    );
+  });
+
+  test('skin profile routine query stays in beauty semantic owner instead of apparel winter expansion', async () => {
+    const { adjustedPayload, expansion_meta } = await buildFindProductsMultiContext({
+      payload: {
+        search: { query: 'Combination skin, clogged pores, Seattle winter, simple routine.' },
+        user: { recent_queries: [] },
+        messages: [
+          {
+            role: 'user',
+            content: 'Combination skin, clogged pores, Seattle winter, simple routine.',
+          },
+        ],
+      },
+      metadata: {
+        source: 'shopping_agent',
+        catalog_surface: 'beauty',
+      },
+    });
+
+    const expanded = String(adjustedPayload?.search?.query || '').toLowerCase();
+    expect(expanded).toBe('oil control treatment');
+    expect(expanded).not.toMatch(/\b(coat|jacket|outerwear|down jacket)\b/);
+    expect(adjustedPayload.search).toEqual(
+      expect.objectContaining({
+        catalog_surface: 'beauty',
+        target_step_family: 'treatment',
+        concern_class: 'oil_control',
+      }),
+    );
+    expect(expansion_meta.semantic_rewrite_result).toEqual(
+      expect.objectContaining({
+        owner: 'shopping_agent_beauty_mainline',
+        normalized_query_pack: [
+          'oil control treatment',
+          'niacinamide treatment',
+          'salicylic acid treatment',
         ],
       }),
     );
