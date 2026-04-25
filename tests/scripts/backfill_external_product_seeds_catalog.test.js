@@ -665,6 +665,61 @@ describe('backfill-external-product-seeds-catalog', () => {
     );
   });
 
+  test('uses target URL overrides to recover polluted rows before extraction', async () => {
+    const recoveredUrl = 'https://fentybeauty.com/products/dry-brush-cleaning-sponge';
+    const row = {
+      id: 'eps_fenty_dry_brush',
+      external_product_id: 'ext_dry_brush',
+      title: 'Jumbo Butta Drop Whipped Oil Body Cream with Tropical Oils + Shea Butter',
+      market: 'US',
+      canonical_url:
+        'https://fentybeauty.com/products/jumbo-butta-drop-whipped-oil-body-cream-with-tropical-oils-shea-butter-vanilla-dream',
+      destination_url:
+        'https://fentybeauty.com/products/jumbo-butta-drop-whipped-oil-body-cream-with-tropical-oils-shea-butter-vanilla-dream',
+      seed_data: {
+        title: 'Dry Brush-Cleaning Sponge',
+        snapshot: {
+          title: 'Dry Brush-Cleaning Sponge',
+          canonical_url:
+            'https://fentybeauty.com/products/jumbo-butta-drop-whipped-oil-body-cream-with-tropical-oils-shea-butter-vanilla-dream',
+        },
+      },
+    };
+
+    jest.spyOn(axios, 'post').mockResolvedValueOnce({
+      data: {
+        products: [
+          {
+            title: 'Dry Brush-Cleaning Sponge',
+            url: recoveredUrl,
+            description_raw: 'A dry brush cleaning sponge.',
+            variants: [],
+          },
+        ],
+        variants: [],
+        diagnostics: {},
+      },
+    });
+
+    const result = await processRow(row, {
+      dryRun: true,
+      baseUrl: 'https://catalog.test',
+      validateImageHealth: false,
+      expandVariants: false,
+      targetUrlOverrides: {
+        ext_dry_brush: recoveredUrl,
+      },
+    });
+
+    expect(axios.post.mock.calls[0][1].domain).toBe(recoveredUrl);
+    expect(result.status).toBe('dry_run');
+    expect(result.targetUrl).toBe(recoveredUrl);
+    expect(result.payload.blocked).toBeUndefined();
+    expect(result.payload.nextRow.title).toBe('Dry Brush-Cleaning Sponge');
+    expect(result.payload.nextRow.seed_data.title).toBe('Dry Brush-Cleaning Sponge');
+    expect(result.payload.nextRow.canonical_url).toBe(recoveredUrl);
+  });
+
   test('skips direct PDP backfill when extractor only returns unrelated collection products', async () => {
     const row = {
       id: 'eps_tomford_missing_handle',

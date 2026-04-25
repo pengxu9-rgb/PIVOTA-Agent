@@ -59,6 +59,59 @@ function readDelimitedIdsFile(filePath) {
   return parseDelimitedIds(fs.readFileSync(path, 'utf8'));
 }
 
+function readTargetUrlOverridesFile(filePath) {
+  const normalizedPath = normalizeNonEmptyString(filePath);
+  if (!normalizedPath) return {};
+  const raw = fs.readFileSync(normalizedPath, 'utf8');
+  if (!normalizeNonEmptyString(raw)) return {};
+  const parsed = JSON.parse(raw);
+  const entries = Array.isArray(parsed)
+    ? parsed
+    : Array.isArray(parsed?.exact)
+      ? parsed.exact
+      : null;
+  const overrides = {};
+  const addOverride = (key, url) => {
+    const normalizedKey = normalizeNonEmptyString(key);
+    const normalizedUrl = normalizeUrlLike(url);
+    if (normalizedKey && normalizedUrl) overrides[normalizedKey] = normalizedUrl;
+  };
+
+  if (entries) {
+    for (const entry of entries) {
+      addOverride(
+        entry?.seed_id || entry?.seedId || entry?.id || entry?.external_product_id || entry?.externalProductId,
+        entry?.target_url || entry?.targetUrl || entry?.recovered_url || entry?.recoveredUrl || entry?.canonical_url || entry?.url,
+      );
+      addOverride(
+        entry?.external_product_id || entry?.externalProductId,
+        entry?.target_url || entry?.targetUrl || entry?.recovered_url || entry?.recoveredUrl || entry?.canonical_url || entry?.url,
+      );
+    }
+    return overrides;
+  }
+
+  if (parsed && typeof parsed === 'object') {
+    for (const [key, value] of Object.entries(parsed)) {
+      if (typeof value === 'string') {
+        addOverride(key, value);
+      } else if (value && typeof value === 'object') {
+        addOverride(key, value.target_url || value.targetUrl || value.recovered_url || value.recoveredUrl || value.canonical_url || value.url);
+      }
+    }
+  }
+  return overrides;
+}
+
+function resolveTargetUrlOverride(row, overrides) {
+  const source = overrides && typeof overrides === 'object' ? overrides : {};
+  return (
+    normalizeUrlLike(source[normalizeNonEmptyString(row?.id)]) ||
+    normalizeUrlLike(source[normalizeNonEmptyString(row?.external_product_id)]) ||
+    ''
+  );
+}
+
 function normalizeNonEmptyString(value) {
   const next = String(value || '').trim();
   return next || '';
@@ -2706,7 +2759,10 @@ async function extractSeed(targetUrl, row, baseUrl) {
 }
 
 async function processRow(row, options) {
-  const targetUrl = normalizeTargetUrlForMarket(pickSeedTargetUrl(row), row?.market);
+  const targetUrl = normalizeTargetUrlForMarket(
+    resolveTargetUrlOverride(row, options?.targetUrlOverrides) || pickSeedTargetUrl(row),
+    row?.market,
+  );
   if (!targetUrl) {
     return { status: 'skipped', reason: 'missing_target_url', row };
   }
@@ -3057,6 +3113,13 @@ async function main() {
   const limit = Math.max(1, Math.min(Number(argValue('limit') || 50), 1000));
   const offset = Math.max(0, Number(argValue('offset') || 0));
   const concurrency = Math.max(1, Math.min(Number(argValue('concurrency') || 3), 10));
+  const targetUrlOverrides = readTargetUrlOverridesFile(
+    argValue('target-url-overrides-file') ||
+      argValue('targetUrlOverridesFile') ||
+      argValue('target-url-overrides') ||
+      argValue('targetUrlOverrides') ||
+      '',
+  );
   const externalProductId = argValue('external-product-id') || argValue('externalProductId') || null;
   const externalProductIds = Array.from(
     new Set([
@@ -3080,6 +3143,7 @@ async function main() {
     skipInsights: hasFlag('skip-insights') || hasFlag('skipInsights'),
     insightsOutDir: argValue('insights-out-dir') || argValue('insightsOutDir') || '',
     insightsSkipGemini: hasFlag('insights-skip-gemini') || hasFlag('insightsSkipGemini'),
+    targetUrlOverrides,
     validateImageHealth:
       !(hasFlag('dry-run') || hasFlag('dryRun')) &&
       !hasFlag('skip-image-health-validation') &&
@@ -3088,7 +3152,13 @@ async function main() {
   };
 
   const rows = await fetchRows(options);
-  console.log(JSON.stringify({ rows: rows.length, ...options }, null, 2));
+  const printableOptions = {
+    ...options,
+    targetUrlOverrides: undefined,
+    targetUrlOverridesCount: Object.keys(targetUrlOverrides).length,
+  };
+  delete printableOptions.targetUrlOverrides;
+  console.log(JSON.stringify({ rows: rows.length, ...printableOptions }, null, 2));
 
   const results = await mapWithConcurrency(rows, concurrency, async (row) => processRow(row, options));
   const summary = {
@@ -3135,6 +3205,8 @@ module.exports = {
   pickSeedTargetUrl,
   parseDelimitedIds,
   readDelimitedIdsFile,
+  readTargetUrlOverridesFile,
+  resolveTargetUrlOverride,
   buildExtractRequestBody,
   chooseRepresentativeProduct,
   buildSeedUpdatePayload,
