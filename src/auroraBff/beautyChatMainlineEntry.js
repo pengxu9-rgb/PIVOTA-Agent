@@ -196,6 +196,189 @@ function buildBeautyChatContextualRecoContinuationText({
   ].filter(Boolean).join('\n');
 }
 
+function normalizeBeautyChatPriorRecoTargetRole(value = '', index = 0) {
+  const token = String(value || '').trim().toLowerCase();
+  if (token === 'primary' || token === 'secondary') return token;
+  return index === 0 ? 'primary' : 'secondary';
+}
+
+function normalizeBeautyChatPriorRecoTargets(latestRecoContextFromSession = null, max = 4) {
+  const context = isPlainObject(latestRecoContextFromSession) ? latestRecoContextFromSession : null;
+  const sourceTargets = Array.isArray(context?.ranked_targets)
+    ? context.ranked_targets
+    : [];
+  const out = [];
+  const seen = new Set();
+  for (const [index, raw] of sourceTargets.entries()) {
+    if (!isPlainObject(raw)) continue;
+    const targetId = pickFirstTrimmed(raw.target_id, raw.targetId);
+    const ingredientQuery = pickFirstTrimmed(
+      raw.ingredient_query,
+      raw.ingredientQuery,
+      raw.query,
+      raw.ingredient_name,
+      raw.ingredientName,
+      targetId && targetId.replace(/_/g, ' '),
+    );
+    const resolvedTargetStep = pickFirstTrimmed(
+      raw.resolved_target_step,
+      raw.resolvedTargetStep,
+      raw.target_step,
+      raw.targetStep,
+      raw.step,
+    );
+    const roleId = pickFirstTrimmed(targetId, ingredientQuery && ingredientQuery.toLowerCase().replace(/[^a-z0-9]+/g, '_'));
+    if (!roleId) continue;
+    const key = roleId.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      ...raw,
+      target_id: roleId,
+      target_role: normalizeBeautyChatPriorRecoTargetRole(
+        pickFirstTrimmed(raw.target_role, raw.targetRole),
+        index,
+      ),
+      ...(ingredientQuery ? { ingredient_query: ingredientQuery } : {}),
+      ...(resolvedTargetStep ? { resolved_target_step: resolvedTargetStep } : {}),
+    });
+    if (out.length >= max) break;
+  }
+  if (!out.length) return [];
+  const selectedIds = new Set(
+    uniqueBeautyMainlineStrings([
+      ...(Array.isArray(context?.selected_target_ids) ? context.selected_target_ids : []),
+      pickFirstTrimmed(context?.primary_target_id),
+    ], max).map((item) => item.toLowerCase()),
+  );
+  const primaryId = pickFirstTrimmed(
+    context?.primary_target_id,
+    out.find((item) => item.target_role === 'primary')?.target_id,
+    out[0]?.target_id,
+  );
+  return out
+    .filter((item) => !selectedIds.size || selectedIds.has(String(item.target_id || '').toLowerCase()))
+    .map((item, index) => ({
+      ...item,
+      target_role: String(item.target_id || '').toLowerCase() === String(primaryId || '').toLowerCase()
+        ? 'primary'
+        : normalizeBeautyChatPriorRecoTargetRole(item.target_role, index),
+    }));
+}
+
+function buildBeautyChatPriorRecoContinuationTargetContext({
+  latestRecoContextFromSession = null,
+  currentRequestText = '',
+} = {}) {
+  const context = isPlainObject(latestRecoContextFromSession) ? latestRecoContextFromSession : null;
+  if (!context || String(context.intent || '').trim().toLowerCase() !== 'reco_products') return null;
+  const rankedTargets = normalizeBeautyChatPriorRecoTargets(context, 4);
+  if (rankedTargets.length < 2) return null;
+  const selectedTargetIds = uniqueBeautyMainlineStrings([
+    ...(Array.isArray(context.selected_target_ids) ? context.selected_target_ids : []),
+    ...rankedTargets.map((target) => target.target_id),
+  ], 4).filter((targetId) =>
+    rankedTargets.some((target) => String(target.target_id || '').toLowerCase() === String(targetId || '').toLowerCase()));
+  if (selectedTargetIds.length < 2) return null;
+  const primaryTargetId = pickFirstTrimmed(
+    context.primary_target_id,
+    rankedTargets.find((target) => target.target_role === 'primary')?.target_id,
+    selectedTargetIds[0],
+  );
+  const roles = rankedTargets.map((target, index) => {
+    const roleId = pickFirstTrimmed(target.target_id, target.ingredient_query);
+    const label = pickFirstTrimmed(
+      target.label,
+      target.target_label,
+      target.ingredient_query,
+      roleId && roleId.replace(/_/g, ' '),
+    );
+    const preferredStep = pickFirstTrimmed(target.resolved_target_step, target.target_step, target.step);
+    return {
+      role_id: roleId,
+      label,
+      rank: Number.isFinite(Number(target.rank)) ? Number(target.rank) : (index + 1) * 10,
+      ...(preferredStep ? { preferred_step: preferredStep } : {}),
+      query_terms: uniqueBeautyMainlineStrings([
+        target.ingredient_query,
+        label,
+        roleId && roleId.replace(/_/g, ' '),
+        preferredStep,
+      ], 6),
+      source: 'prior_reco_context',
+    };
+  }).filter((role) => pickFirstTrimmed(role.role_id));
+  if (roles.length < 2) return null;
+  const semanticPlan = {
+    plan_id: 'prior_reco_context_continuation',
+    selection_owner_state: 'trusted',
+    selection_owner_source: 'prior_reco_context',
+    primary_role_id: primaryTargetId,
+    routine_mode: 'routine_mix',
+    comparison_mode: 'routine_mix',
+    current_followup_constraints: pickFirstTrimmed(currentRequestText).slice(0, 500),
+    core_roles: roles,
+    selection_constraints: {
+      routine_mode: 'routine_mix',
+      comparison_mode: 'routine_mix',
+    },
+  };
+  return {
+    entry_type: 'chat',
+    intent_mode: 'generic_concern',
+    framework_id: 'prior_reco_context_continuation',
+    primary_role_id: primaryTargetId,
+    selected_target_ids: selectedTargetIds,
+    ranked_targets: rankedTargets,
+    framework_roles: roles,
+    support_roles: roles.filter((role) => String(role.role_id || '').toLowerCase() !== String(primaryTargetId || '').toLowerCase()),
+    routine_mode: 'routine_mix',
+    comparison_mode: 'routine_mix',
+    semantic_plan: semanticPlan,
+    mainline_fallback_policy: 'strict_no_runtime_fallback',
+    semantic_planner_required: true,
+    contextual_reco_target_policy: 'preserve_prior_reco_bundle',
+  };
+}
+
+function looksLikeBeautyChatExplicitContextNarrowingMessage(message = '') {
+  const text = String(message || '').trim();
+  if (!text) return false;
+  return /\b(?:only|just|focus\s+on|narrow\s+to|switch\s+to|instead\s+show|instead\s+recommend)\b.{0,48}\b(?:sunscreens?|spf|moisturi[sz]ers?|lotions?|creams?|serums?|treatments?|cleansers?|toners?|masks?)\b/i.test(text)
+    || /\b(?:skip|remove|drop)\b.{0,48}\b(?:sunscreens?|spf|moisturi[sz]ers?|lotions?|creams?|serums?|treatments?|cleansers?|toners?|masks?)\b/i.test(text);
+}
+
+function mergeBeautyChatPriorRecoConstraintsIntoSemanticPlan(priorTargetContext = null, plannerSemanticPlan = null) {
+  const priorPlan = isPlainObject(priorTargetContext?.semantic_plan) ? priorTargetContext.semantic_plan : null;
+  if (!priorPlan) return priorTargetContext;
+  const plannerPlan = isPlainObject(plannerSemanticPlan) ? plannerSemanticPlan : null;
+  const mergedPlan = {
+    ...priorPlan,
+    ...(Array.isArray(priorPlan.core_roles) ? { core_roles: priorPlan.core_roles } : {}),
+    ...(Array.isArray(plannerPlan?.must_satisfy_constraints) && plannerPlan.must_satisfy_constraints.length
+      ? {
+          must_satisfy_constraints: uniqueBeautyMainlineStrings([
+            ...(Array.isArray(priorPlan.must_satisfy_constraints) ? priorPlan.must_satisfy_constraints : []),
+            ...plannerPlan.must_satisfy_constraints,
+          ], 10),
+        }
+      : {}),
+    ...(Array.isArray(plannerPlan?.evidence_needed) && plannerPlan.evidence_needed.length
+      ? {
+          evidence_needed: uniqueBeautyMainlineStrings([
+            ...(Array.isArray(priorPlan.evidence_needed) ? priorPlan.evidence_needed : []),
+            ...plannerPlan.evidence_needed,
+          ], 8),
+        }
+      : {}),
+    prior_reco_context_bundle_preserved: true,
+  };
+  return {
+    ...priorTargetContext,
+    semantic_plan: mergedPlan,
+  };
+}
+
 function normalizeBeautyChatPlannerTargetContext(baseTargetContext = null, plannerTargetContext = null) {
   if (
     plannerTargetContext &&
@@ -641,6 +824,15 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
     const plannerAndRetrievalRequestText = contextualRecoContinuation
       ? contextualPlannerRequestText
       : pickFirstTrimmed(recoRequestMessage, message);
+    const shouldPreservePriorRecoTargetBundle =
+      contextualRecoContinuation &&
+      !looksLikeBeautyChatExplicitContextNarrowingMessage(recoRequestMessage || message);
+    const priorRecoContinuationTargetContext = shouldPreservePriorRecoTargetBundle
+      ? buildBeautyChatPriorRecoContinuationTargetContext({
+          latestRecoContextFromSession,
+          currentRequestText: recoRequestMessage || message,
+        })
+      : null;
     const priorRecoRequestText = contextualRecoContinuation
       ? pickFirstTrimmed(
         latestRecoContextFromSession?.message,
@@ -822,6 +1014,22 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
                   }
                 : plannerTargetContext,
             );
+            if (priorRecoContinuationTargetContext) {
+              effectivePlannerTargetContext = mergeBeautyChatPriorRecoConstraintsIntoSemanticPlan(
+                priorRecoContinuationTargetContext,
+                plannerSemanticPlan,
+              );
+              hardPathPlannerSemanticPlan = effectivePlannerTargetContext.semantic_plan;
+              hardPathPlannerTrace = {
+                ...(hardPathPlannerTrace && typeof hardPathPlannerTrace === 'object' && !Array.isArray(hardPathPlannerTrace)
+                  ? hardPathPlannerTrace
+                  : {}),
+                prior_reco_context_target_bundle_preserved: true,
+                prior_reco_context_target_count: Array.isArray(priorRecoContinuationTargetContext.ranked_targets)
+                  ? priorRecoContinuationTargetContext.ranked_targets.length
+                  : 0,
+              };
+            }
           }
         } catch (err) {
           const errMessage = String(err?.message || err || '').trim();
@@ -894,6 +1102,25 @@ function createBeautyChatMainlineEntryRuntime(deps = {}) {
             : hardPathPlannerSemanticPlan;
         effectivePlannerTargetContext = hardPathRecoTargetContext;
       }
+    }
+    if (
+      priorRecoContinuationTargetContext &&
+      (!hardPathPlannerSemanticPlan || hardPathPlannerTrace?.prior_reco_context_target_bundle_preserved !== true)
+    ) {
+      effectivePlannerTargetContext = mergeBeautyChatPriorRecoConstraintsIntoSemanticPlan(
+        priorRecoContinuationTargetContext,
+        hardPathPlannerSemanticPlan,
+      );
+      hardPathPlannerSemanticPlan = effectivePlannerTargetContext.semantic_plan;
+      hardPathPlannerTrace = {
+        ...(hardPathPlannerTrace && typeof hardPathPlannerTrace === 'object' && !Array.isArray(hardPathPlannerTrace)
+          ? hardPathPlannerTrace
+          : {}),
+        prior_reco_context_target_bundle_preserved: true,
+        prior_reco_context_target_count: Array.isArray(priorRecoContinuationTargetContext.ranked_targets)
+          ? priorRecoContinuationTargetContext.ranked_targets.length
+          : 0,
+      };
     }
 
     let hardPathHandoff = null;

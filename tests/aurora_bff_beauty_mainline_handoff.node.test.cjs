@@ -4818,6 +4818,197 @@ test('beauty chat mainline entry carries prior reco context into planner and ret
   assert.equal(result?.envelope?.session_patch?.latest_reco_context?.message, currentFollowup);
 });
 
+test('beauty chat mainline entry preserves prior routine target bundle for assistant-question followups', async () => {
+  const observed = {
+    handoffTargetContext: null,
+    handoffRecommendationTaskContext: null,
+    payloadBaseMeta: null,
+  };
+  const runtime = createBeautyChatMainlineEntryRuntime({
+    RECO_CATALOG_GROUNDED_ENABLED: true,
+    RECO_CATALOG_SELF_PROXY_TIMEOUT_FLOOR_MS: 1000,
+    AURORA_BFF_CHAT_RECO_BUDGET_MS: 18000,
+    resolveRecommendationTargetContext: () => ({
+      entry_type: 'chat',
+      intent_mode: 'generic_concern',
+      primary_role_id: 'lightweight_moisturizer',
+      framework_roles: [
+        {
+          role_id: 'lightweight_moisturizer',
+          rank: 1,
+          preferred_step: 'moisturizer',
+          label: 'Lightweight moisturizer',
+        },
+      ],
+    }),
+    summarizeProfileForContext: (profile) => profile,
+    mergeIngredientRecoContextValue: (left, right) => ({ ...(left || {}), ...(right || {}) }),
+    appendLatestRecoContextToSessionPatch: (sessionPatch, recoContext) => {
+      sessionPatch.latest_reco_context = recoContext;
+    },
+    extractRecoFinalSelectionContract: () => ({
+      selection_owner: 'shopping_agent_beauty_mainline',
+      selected_product_ids: ['oil_pick', 'moisturizer_pick', 'spf_pick'],
+      selected_titles: ['Oil Serum', 'Light Gel Cream', 'Daily SPF'],
+      mainline_status: 'grounded_success',
+      source_tier_counts: { fresh_external: 3 },
+    }),
+    makeAssistantMessage: (content) => ({ role: 'assistant', format: 'text', content }),
+    buildEnvelope: (_ctx, envelope) => envelope,
+    makeEvent: (_ctx, kind, data) => ({ kind, data }),
+    applyRecoContractToRecoRequestedEvents: (events) => ({ events }),
+    buildRecoRequestedEventData: ({ payload, source }) => ({ payload, source }),
+    normalizeRecoSourceDetail: (value) => value,
+    stateChangeAllowed: () => false,
+    runConcernSemanticPlanner: async () => ({
+      semanticPlan: {
+        plan_id: 'collapsed_followup_plan',
+        selection_owner_state: 'trusted',
+        selection_owner_source: 'llm_concern_planner',
+        primary_role_id: 'lightweight_moisturizer',
+        core_roles: [
+          {
+            role_id: 'lightweight_moisturizer',
+            rank: 1,
+            preferred_step: 'moisturizer',
+            label: 'Lightweight moisturizer',
+            query_terms: ['lightweight moisturizer under makeup'],
+          },
+        ],
+        must_satisfy_constraints: ['Seattle', 'under $30', 'fragrance-free'],
+      },
+      trace: {
+        planner_used: true,
+        planner_source: 'llm_concern_planner',
+      },
+    }),
+    buildConcernTargetContextFromSemanticPlan: (semanticPlan) => ({
+      entry_type: 'chat',
+      intent_mode: 'generic_concern',
+      framework_id: semanticPlan.plan_id,
+      framework_roles: semanticPlan.core_roles,
+      primary_role_id: semanticPlan.primary_role_id,
+      semantic_plan: semanticPlan,
+    }),
+    handoffRecoToBeautyMainlineSearch: async (args) => {
+      observed.handoffTargetContext = args.targetContext;
+      observed.handoffRecommendationTaskContext = args.recommendationTaskContext;
+      return {
+        targetContext: args.targetContext,
+        recommendations: [
+          { product_id: 'oil_pick', display_name: 'Oil Serum', matched_role_id: 'oil_control_treatment' },
+          { product_id: 'moisturizer_pick', display_name: 'Light Gel Cream', matched_role_id: 'lightweight_moisturizer' },
+          { product_id: 'spf_pick', display_name: 'Daily SPF', matched_role_id: 'daily_sunscreen' },
+        ],
+        searchResult: {
+          decision_owner: 'shopping_agent_beauty_mainline',
+          semantic_owner: 'shopping_agent_beauty_mainline',
+          metadata: {
+            search_stage_ledger: {
+              final_selection: {
+                selection_owner: 'shopping_agent_beauty_mainline',
+                selected_product_ids: ['oil_pick', 'moisturizer_pick', 'spf_pick'],
+                selected_titles: ['Oil Serum', 'Light Gel Cream', 'Daily SPF'],
+                selection_signature: 'ctx_preserved_routine',
+                mainline_status: 'grounded_success',
+                source_tier_counts: { fresh_external: 3 },
+              },
+            },
+          },
+        },
+      };
+    },
+    buildRecoPayloadFromBeautyMainlineHandoff: ({ basePayload }) => {
+      observed.payloadBaseMeta = basePayload?.recommendation_meta || null;
+      return {
+        payload: {
+          source: 'catalog_grounded_v1',
+          mainline_status: 'grounded_success',
+          recommendations: [
+            { product_id: 'oil_pick', display_name: 'Oil Serum', matched_role_id: 'oil_control_treatment' },
+            { product_id: 'moisturizer_pick', display_name: 'Light Gel Cream', matched_role_id: 'lightweight_moisturizer' },
+            { product_id: 'spf_pick', display_name: 'Daily SPF', matched_role_id: 'daily_sunscreen' },
+          ],
+          recommendation_meta: {
+            ...(basePayload?.recommendation_meta || {}),
+            primary_target_id: 'oil_control_treatment',
+            selected_target_ids: ['oil_control_treatment', 'lightweight_moisturizer', 'daily_sunscreen'],
+          },
+          metadata: {},
+        },
+        contract: { version: 'test_contract' },
+      };
+    },
+    maybeRewriteRecoAssistantTextWithLlm: async () => ({
+      text: 'The oil-control serum stays first, with the gel cream and SPF still present as support cards after the Seattle and makeup constraints.',
+      llm_used: true,
+    }),
+    classifyBeautyMainlineHandoffFallback: () => ({ reason: 'unreachable' }),
+    buildBeautyMainlineHandoffFallbackEnvelope: () => ({ cards: [] }),
+    looksLikeRecommendationRequest: () => true,
+    sendChatEnvelope: async () => null,
+  });
+
+  const result = await runtime.maybeHandleBeautyOwnedChatReco({
+    ctx: {
+      request_id: 'req_contextual_prior_bundle',
+      trace_id: 'trace_contextual_prior_bundle',
+      lang: 'EN',
+      trigger_source: 'chat',
+    },
+    logger: null,
+    message: 'I live in Seattle, wear makeup daily, get shiny by noon, and prefer fragrance-free products under $30.',
+    recoEntrySourceDetail: 'typed_reco',
+    latestRecoContextFromSession: {
+      intent: 'reco_products',
+      message: 'im oily skin. what product should i buy?',
+      primary_target_id: 'oil_control_treatment',
+      selected_target_ids: ['oil_control_treatment', 'lightweight_moisturizer', 'daily_sunscreen'],
+      ranked_targets: [
+        {
+          target_id: 'oil_control_treatment',
+          target_role: 'primary',
+          ingredient_query: 'Oil-control treatment',
+          resolved_target_step: 'treatment',
+          product_candidates: [{ product_id: 'oil_pick', merchant_id: 'external_seed', name: 'Oil Serum', product_type: 'serum' }],
+        },
+        {
+          target_id: 'lightweight_moisturizer',
+          target_role: 'secondary',
+          ingredient_query: 'Lightweight moisturizer',
+          resolved_target_step: 'moisturizer',
+          product_candidates: [{ product_id: 'moisturizer_pick', merchant_id: 'external_seed', name: 'Light Gel Cream', product_type: 'moisturizer' }],
+        },
+        {
+          target_id: 'daily_sunscreen',
+          target_role: 'secondary',
+          ingredient_query: 'Daily sunscreen',
+          resolved_target_step: 'sunscreen',
+          product_candidates: [{ product_id: 'spf_pick', merchant_id: 'external_seed', name: 'Daily SPF', product_type: 'sunscreen' }],
+        },
+      ],
+    },
+  });
+
+  assert.equal(result?.handled, true);
+  assert.deepEqual(
+    observed.handoffTargetContext?.selected_target_ids,
+    ['oil_control_treatment', 'lightweight_moisturizer', 'daily_sunscreen'],
+  );
+  assert.deepEqual(
+    observed.handoffTargetContext?.framework_roles?.map((role) => role.role_id),
+    ['oil_control_treatment', 'lightweight_moisturizer', 'daily_sunscreen'],
+  );
+  assert.equal(observed.handoffTargetContext?.semantic_plan?.selection_owner_source, 'prior_reco_context');
+  assert.equal(observed.handoffTargetContext?.semantic_plan?.prior_reco_context_bundle_preserved, true);
+  assert.deepEqual(
+    observed.handoffTargetContext?.semantic_plan?.must_satisfy_constraints,
+    ['Seattle', 'under $30', 'fragrance-free'],
+  );
+  assert.equal(observed.handoffRecommendationTaskContext?.message, 'im oily skin. what product should i buy?');
+  assert.equal(observed.payloadBaseMeta?.contextual_reco_continuation, true);
+});
+
 test('beauty chat mainline entry records analysis handoff context usage without changing runtime path', async () => {
   const observed = {
     payloadBaseMeta: null,
