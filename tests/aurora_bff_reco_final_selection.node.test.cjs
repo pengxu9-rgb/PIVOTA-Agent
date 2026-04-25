@@ -4779,6 +4779,115 @@ test('reco assistant rewrite uses structured primary attempt for compact routine
   }
 });
 
+test('reco assistant routine-mix compare explains support cards are not direct replacements', async () => {
+  const prevMock = process.env.AURORA_BFF_USE_MOCK;
+  const prevProvider = process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
+  const prevModel = process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
+  process.env.AURORA_BFF_USE_MOCK = 'false';
+  process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER = 'gemini';
+  process.env.AURORA_PRODUCT_INTEL_LLM_MODEL = 'gemini-3-flash-preview';
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const payload = __internal.applyRecoContentSpineToPayload(
+      {
+        recommendations: [
+          {
+            product_id: 'barrier_pick',
+            display_name: 'KraveBeauty Great Barrier Relief',
+            brand: 'KraveBeauty',
+            category: 'Moisturizer',
+            short_description: 'A barrier-repair serum with tamanu oil and niacinamide.',
+            matched_role_id: 'hydrating_barrier_moisturizer',
+            matched_role_label: 'Hydrating barrier moisturizer',
+            preferred_step: 'moisturizer',
+          },
+          {
+            product_id: 'serum_pick',
+            display_name: 'Round Lab Birch Moisturizing Serum',
+            brand: 'Round Lab',
+            category: 'Serum',
+            short_description: 'A lightweight birch and hyaluronic-acid hydration serum.',
+            matched_role_id: 'hydrating_serum_or_essence',
+            matched_role_label: 'Hydrating serum or essence',
+            preferred_step: 'serum',
+          },
+          {
+            product_id: 'spf_pick',
+            display_name: 'Round Lab Birch Mild-Up Sunscreen UVLock SPF 50+ Broad Spectrum',
+            brand: 'Round Lab',
+            category: 'Sunscreen',
+            short_description: 'A mineral daily sunscreen with zinc oxide and titanium dioxide.',
+            matched_role_id: 'daily_sunscreen',
+            matched_role_label: 'Daily sunscreen',
+            preferred_step: 'sunscreen',
+          },
+        ],
+        recommendation_meta: {
+          resolved_target_step: 'moisturizer',
+          mainline_status: 'grounded_success',
+          comparison_mode: 'routine_mix',
+        },
+      },
+      {
+        ingredient_query: 'Hydrating barrier moisturizer',
+        resolved_target_step: 'moisturizer',
+        primary_target_id: 'hydrating_barrier_moisturizer',
+        ranked_targets: [
+          { target_id: 'hydrating_barrier_moisturizer', ingredient_query: 'Hydrating barrier moisturizer', resolved_target_step: 'moisturizer' },
+          { target_id: 'hydrating_serum_or_essence', ingredient_query: 'Hydrating serum or essence', resolved_target_step: 'serum' },
+          { target_id: 'daily_sunscreen', ingredient_query: 'Daily sunscreen', resolved_target_step: 'sunscreen' },
+        ],
+        selected_target_ids: ['hydrating_barrier_moisturizer', 'hydrating_serum_or_essence', 'daily_sunscreen'],
+      },
+    );
+    let callCount = 0;
+    __internal.__setCallGeminiJsonObjectForTest(async () => {
+      callCount += 1;
+      return {
+        ok: true,
+        json: {
+          lead_reason:
+            'it gives the barrier-focused support needed with retinoid use in Denver dry air',
+          support_reasons: [
+            'it adds lightweight water-based hydration before moisturizer',
+            'it is the daytime mineral sunscreen step with zinc oxide and titanium dioxide',
+          ],
+        },
+        parse_status: 'parsed',
+        meta: { gate_wait_ms: 0, upstream_ms: 140, total_ms: 140 },
+        provider: 'gemini',
+        effective_model: 'gemini-3-flash-preview',
+      };
+    });
+
+    const rewrite = await __internal.maybeRewriteRecoAssistantTextWithLlm({
+      payload,
+      language: 'EN',
+      profile: { skinType: 'dry', sensitivity: 'high', goals: ['barrier support'] },
+      userRequestText:
+        'Now compare the cards plainly and tell me which one you would use first at night after retinoid in Denver dry air.',
+      allowLockedSelectionRewrite: true,
+      deadlineAtMs: Date.now() + 5000,
+    });
+
+    assert.equal(callCount, 1);
+    assert.equal(rewrite.llm_used, true);
+    assert.match(rewrite.text, /Start with KraveBeauty Great Barrier Relief/i);
+    assert.match(rewrite.text, /Round Lab Birch Moisturizing Serum is the hydration serum/i);
+    assert.match(rewrite.text, /Round Lab Birch Mild-Up Sunscreen UVLock SPF 50\+ Broad Spectrum is the daytime SPF/i);
+    assert.match(rewrite.text, /support steps rather than direct replacements for the first night moisturizer/i);
+  } finally {
+    __internal.__resetCallGeminiJsonObjectForTest();
+    if (prevMock === undefined) delete process.env.AURORA_BFF_USE_MOCK;
+    else process.env.AURORA_BFF_USE_MOCK = prevMock;
+    if (prevProvider === undefined) delete process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
+    else process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER = prevProvider;
+    if (prevModel === undefined) delete process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
+    else process.env.AURORA_PRODUCT_INTEL_LLM_MODEL = prevModel;
+    delete require.cache[moduleId];
+  }
+});
+
 test('reco assistant rewrite uses structured primary attempt for finish-fit same-role comparisons', async () => {
   const prevMock = process.env.AURORA_BFF_USE_MOCK;
   const prevProvider = process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
