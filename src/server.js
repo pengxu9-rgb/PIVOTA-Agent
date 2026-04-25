@@ -2129,6 +2129,10 @@ const PDP_SIMILAR_CARD_ENRICH_BUDGET_MS = Math.max(
   100,
   parseTimeoutMs(process.env.PDP_SIMILAR_CARD_ENRICH_BUDGET_MS, 900),
 );
+const PDP_PRODUCT_INTEL_SYNC_BUDGET_MS = Math.max(
+  250,
+  parseTimeoutMs(process.env.PDP_PRODUCT_INTEL_SYNC_BUDGET_MS, 1500),
+);
 const PDP_CORE_PREWARM_TIMEOUT_MS = Math.max(
   1000,
   parseTimeoutMs(process.env.PDP_CORE_PREWARM_TIMEOUT_MS, 6500),
@@ -23986,32 +23990,61 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       let productIntelMissingReason = wantsProductIntel ? 'kb_or_identity_missing' : null;
 	      const requiresProductIntelModule = wantsProductIntel;
       if (requiresProductIntelModule) {
-        productIntel =
-          identityGraphPublishedIntel ||
-          (await buildProductIntelTopLevelModuleData({
-            product: canonicalProductForPdp,
-            relatedProducts,
-            offersData,
-            canonicalProductRef,
-            alternateCanonicalProductRefs: identityGraphLive?.line_members,
-            productGroupId,
-          })) ||
-          identityGraphPublishedIntel;
+        const productIntelModuleStartedAt = Date.now();
+        let productIntelTimedOut = false;
+        let productIntelFailed = false;
+        try {
+          const computedProductIntel = identityGraphPublishedIntel
+            ? identityGraphPublishedIntel
+            : await withStageBudget(
+                buildProductIntelTopLevelModuleData({
+                  product: canonicalProductForPdp,
+                  relatedProducts,
+                  offersData,
+                  canonicalProductRef,
+                  alternateCanonicalProductRefs: identityGraphLive?.line_members,
+                  productGroupId,
+                }),
+                PDP_PRODUCT_INTEL_SYNC_BUDGET_MS,
+                'pdp_product_intel',
+              ).catch((err) => {
+                if (err?.code === 'STAGE_TIMEOUT') {
+                  productIntelTimedOut = true;
+                  return null;
+                }
+                productIntelFailed = true;
+                logger.warn(
+                  {
+                    err: err?.message || String(err),
+                    product_id: canonicalProductRef?.product_id || null,
+                  },
+                  'PDP product_intel module failed',
+                );
+                return null;
+              });
+          productIntel = computedProductIntel || identityGraphPublishedIntel;
+        } finally {
+          markPdpV2Module('product_intel', productIntelModuleStartedAt);
+        }
         if (productIntel) {
           productIntelStatus = 'ready';
           productIntelMissingReason = null;
         } else {
           productIntelStatus = 'missing_blocked';
-          productIntelMissingReason = identityGraphLive?.synthetic_product
-            ? 'published_intel_missing'
-            : 'identity_or_published_intel_missing';
-          missing.push({ type: 'product_intel', reason: productIntelStatus });
+          productIntelMissingReason = productIntelTimedOut
+            ? 'product_intel_budget_exceeded'
+            : productIntelFailed
+              ? 'product_intel_unavailable'
+              : identityGraphLive?.synthetic_product
+                ? 'published_intel_missing'
+                : 'identity_or_published_intel_missing';
+          missing.push({ type: 'product_intel', reason: productIntelMissingReason });
         }
         modules.push({
           type: 'product_intel',
           required: Boolean(identityGraphLive?.synthetic_product),
           data: productIntel,
-          ...(productIntel ? {} : { reason: productIntelStatus }),
+          ...(productIntel ? {} : { reason: productIntelMissingReason || productIntelStatus }),
         });
       }
 
