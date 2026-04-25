@@ -982,6 +982,8 @@ test('reco assistant refinement question suppresses repeated questions after con
     assert.match(barrierUnderfillRepair, /not a barrier-first comfort product/i);
     assert.match(barrierUnderfillRepair, /underfilled for barrier support/i);
     assert.doesNotMatch(barrierUnderfillRepair, /with The Ordinary Niacinamide 10% \+ Zinc 1% as the comfort step/i);
+    assert.doesNotMatch(barrierUnderfillRepair, /say clearly|not enough strong options/i);
+    assert.doesNotMatch(barrierUnderfillRepair, /under \$20, affordable/i);
 
     const sunscreenLeadContextRepair = __internal.repairRecoAssistantMissingUserContextText({
       text: 'Daily Soothing Sun Shield SPF50+ PA++++ makes sense because it wears more smoothly under makeup.',
