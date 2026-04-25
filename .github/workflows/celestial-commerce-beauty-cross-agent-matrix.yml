@@ -23,6 +23,10 @@ on:
         description: "Cross-agent beauty corpus path"
         required: false
         default: "scripts/fixtures/celestial_commerce_core_beauty_cross_agent_corpus.json"
+      run_single_matrix:
+        description: "Run the single-turn cross-agent/Aurora matrix"
+        required: false
+        default: "true"
       run_multiturn:
         description: "Also run shopping/creator multi-turn invoke acceptance"
         required: false
@@ -56,6 +60,7 @@ jobs:
         run: npm ci
 
       - name: Run cross-agent beauty matrix
+        if: ${{ inputs.run_single_matrix == 'true' }}
         shell: bash
         run: |
           set -euo pipefail
