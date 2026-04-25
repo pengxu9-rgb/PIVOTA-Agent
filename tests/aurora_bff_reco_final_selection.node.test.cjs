@@ -901,6 +901,21 @@ test('reco assistant refinement question suppresses repeated questions after con
       ].join('\n'),
     });
     assert.equal(routineAnswerPlan, null);
+
+    const missingDirectAnswerTerms = __internal.collectMissingRequiredRecoUserContextTerms({
+      text: 'KraveBeauty Great Barrier Relief fits this request because it supports an over-sensitized skin barrier.',
+      userRequestText: 'I am in Phoenix with dry heat and high UV, fragrance usually stings, and my budget is about $40.',
+    });
+    assert.ok(missingDirectAnswerTerms.some((item) => item.key === 'fragrance'));
+
+    const repaired = __internal.repairRecoAssistantMissingUserContextText({
+      text: 'KraveBeauty Great Barrier Relief fits this request because it supports an over-sensitized skin barrier.',
+      userRequestText: 'I am in Phoenix with dry heat and high UV, fragrance usually stings, and my budget is about $40.',
+    });
+    assert.match(repaired, /Phoenix dry heat|Phoenix/i);
+    assert.match(repaired, /high UV/i);
+    assert.match(repaired, /fragrance/i);
+    assert.doesNotMatch(repaired, /Phoenix, dry heat, high UV, Phoenix dry heat/i);
   } finally {
     delete require.cache[moduleId];
   }
