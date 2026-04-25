@@ -23,6 +23,10 @@ on:
         description: "Cross-agent beauty corpus path"
         required: false
         default: "scripts/fixtures/celestial_commerce_core_beauty_cross_agent_corpus.json"
+      run_multiturn:
+        description: "Also run shopping/creator multi-turn invoke acceptance"
+        required: false
+        default: "true"
 
 concurrency:
   group: celestial-commerce-beauty-cross-agent-matrix
@@ -63,10 +67,29 @@ jobs:
             --invoke-timeout-ms "${{ inputs.invoke_timeout_ms }}" \
             --aurora-timeout-ms "${{ inputs.aurora_timeout_ms }}"
 
+      - name: Run cross-agent beauty multi-turn invoke matrix
+        if: ${{ inputs.run_multiturn == 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/run_celestial_commerce_core_beauty_cross_agent_multiturn_live.js \
+            --base-url "${{ inputs.invoke_base_url }}" \
+            --out-dir "reports/celestial-commerce-beauty-cross-agent-multiturn-live-ci" \
+            --rounds "1" \
+            --timeout-ms "${{ inputs.invoke_timeout_ms }}"
+
       - name: Upload cross-agent matrix artifacts
         if: ${{ always() && hashFiles('reports/celestial-commerce-beauty-cross-agent-matrix-ci/**') != '' }}
         uses: actions/upload-artifact@v7
         with:
           name: celestial-commerce-beauty-cross-agent-matrix
           path: reports/celestial-commerce-beauty-cross-agent-matrix-ci
+          if-no-files-found: warn
+
+      - name: Upload cross-agent multi-turn artifacts
+        if: ${{ always() && hashFiles('reports/celestial-commerce-beauty-cross-agent-multiturn-live-ci/**') != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: celestial-commerce-beauty-cross-agent-multiturn-live
+          path: reports/celestial-commerce-beauty-cross-agent-multiturn-live-ci
           if-no-files-found: warn

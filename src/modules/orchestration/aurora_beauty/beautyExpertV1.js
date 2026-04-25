@@ -370,7 +370,7 @@ function inferBeautyMode({ taskType, beautyRequest, queryText, response } = {}) 
   const productContext = isPlainObject(beautyRequest?.product_context) ? beautyRequest.product_context : {};
   const missingContext = inferMissingContext(beautyRequest, queryText);
   const explicitCategoryPattern =
-    /\b(sunscreen|spf|moisturizer|moisturiser|cleanser|serum|toner|essence|retinol|retinoid|mask|balm|oil|cream|lotion)\b/;
+    /\b(sunscreens?|spf|moisturi[sz]ers?|cleansers?|serums?|toners?|essences?|retinols?|retinoids?|masks?|balms?|oils?|creams?|lotions?)\b/;
   const genericGuidancePattern =
     /\bwhat should i (use|buy)\b(?:[^.]{0,24}\bfor my skin\b)?|\bhelp my skin\b|\bfor my skin\b/;
   const exactProductAskPattern =
@@ -394,6 +394,13 @@ function inferBeautyMode({ taskType, beautyRequest, queryText, response } = {}) 
   }
   if (!hasExplicitCategory && isGenericGuidanceAsk && missingContext.length > 0) {
     return 'guided_beauty_reco';
+  }
+  if (
+    Array.isArray(response?.products) &&
+    response.products.length > 0 &&
+    missingContext.length === 0
+  ) {
+    return 'category_compare';
   }
   if (
     Array.isArray(response?.products) && response.products.length > 0 &&

@@ -184,6 +184,132 @@ describe('beauty_expert_v1 contract', () => {
     ]);
   });
 
+  test('context-rich beauty follow-up with products exits guided mode even without repeating category words', () => {
+    const result = buildBeautyExpertV1Response({
+      source: 'shopping_agent',
+      entryLayer: 'orchestration',
+      delegatedLayer: 'decisioning',
+      taskType: 'discovery',
+      context: {
+        source_profile: {
+          source: 'shopping_agent',
+          default_entry_layer: 'decisioning',
+        },
+        vertical: 'beauty',
+        category: 'skincare',
+        normalized_need: {
+          beauty_request: {
+            domain: 'beauty',
+            user_goal: 'Combination skin, clogged pores, Seattle winter, simple routine.',
+            skin_context: {
+              skin_type: 'combination',
+              concerns: ['clogged pores'],
+            },
+            scenario_context: {
+              location: 'Seattle',
+              season: 'winter',
+            },
+          },
+        },
+      },
+      metadata: {
+        source: 'shopping_agent',
+        beauty_domain_hint: 'beauty',
+      },
+      payload: {
+        search: {
+          query: 'Combination skin, clogged pores, Seattle winter, simple routine.',
+        },
+      },
+      response: {
+        products: [
+          {
+            id: 'sku_1',
+            merchant_id: 'm_1',
+            title: 'Niacinamide Serum',
+            why_this_one: 'Affordable oil-balancing treatment direction for clogged pores.',
+          },
+          {
+            id: 'sku_2',
+            merchant_id: 'm_2',
+            title: 'Light Water Cream',
+            why_this_one: 'Lightweight moisturizer support for a simple routine.',
+          },
+        ],
+        metadata: {
+          mainline_status: 'grounded_success',
+          decision_owner: 'shopping_agent_beauty_mainline',
+          semantic_owner: 'shopping_agent_beauty_mainline',
+        },
+      },
+    });
+
+    expect(result.mode).toBe('category_compare');
+    expect(result.reco_bundle.lead_picks).toHaveLength(1);
+    expect(result.next_actions.map((action) => action.type)).toContain('compare_same_type');
+  });
+
+  test('plural category wording keeps creator follow-ups in category compare', () => {
+    const result = buildBeautyExpertV1Response({
+      source: 'creator_agent',
+      entryLayer: 'orchestration',
+      delegatedLayer: 'decisioning',
+      taskType: 'discovery',
+      context: {
+        source_profile: {
+          source: 'creator_agent',
+          default_entry_layer: 'decisioning',
+        },
+        vertical: 'beauty',
+        category: 'skincare',
+        normalized_need: {
+          beauty_request: {
+            domain: 'beauty',
+            user_goal: 'Recommend beginner-friendly moisturizers for dry sensitive users who use retinoids.',
+            skin_context: {
+              skin_type: 'dry sensitive',
+            },
+            routine_context: {
+              audience_actives: ['retinoids'],
+            },
+          },
+        },
+      },
+      metadata: {
+        source: 'creator_agent',
+        beauty_domain_hint: 'beauty',
+      },
+      payload: {
+        search: {
+          query: 'They are mostly beginners and some use retinoids.',
+        },
+      },
+      response: {
+        products: [
+          {
+            id: 'sku_1',
+            merchant_id: 'm_1',
+            title: 'Barrier Lotion',
+            why_this_one: 'Barrier-supporting lotion direction for retinoid-stressed skin.',
+          },
+          {
+            id: 'sku_2',
+            merchant_id: 'm_2',
+            title: 'Simple Daily Moisturizer',
+            why_this_one: 'Lower-cost simple moisturizer for beginners.',
+          },
+        ],
+        metadata: {
+          mainline_status: 'grounded_success',
+          decision_owner: 'shopping_agent_beauty_mainline',
+          semantic_owner: 'shopping_agent_beauty_mainline',
+        },
+      },
+    });
+
+    expect(result.mode).toBe('category_compare');
+  });
+
   test('aurora orchestration emits beauty_expert_v1 and persists beauty_request into context', async () => {
     const result = await handleAuroraBeautyOrchestration({
       context: {
