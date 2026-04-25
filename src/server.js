@@ -4429,7 +4429,10 @@ async function fetchProductDetailForOffers(args) {
   const skipUpstreamFallback = args?.skipUpstreamFallback === true;
   const totalTimeoutMs = Math.max(0, Number(args?.totalTimeoutMs || args?.stageTimeoutMs || 0) || 0);
   if (!merchantId || !productId) return null;
-  const useMemoryCache = PRODUCT_DETAIL_CACHE_ENABLED && !bypassCache;
+  const useMemoryCache =
+    PRODUCT_DETAIL_CACHE_ENABLED &&
+    !bypassCache &&
+    merchantId !== EXTERNAL_SEED_MERCHANT_ID;
 
   const cacheKey = buildProductDetailCacheKey({ merchantId, productId, checkoutToken });
 
@@ -22950,6 +22953,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	    const pdpV2ModuleTimings = {};
 	    let pdpV2SavingsPresentationHydrationMode = 'not_started';
 	    let pdpV2ProductGroupResolveMode = 'not_started';
+	    let pdpV2ProductGroupResolveBudgetExceeded = false;
 	    const markPdpV2Phase = (name, startedAt) => {
 	      pdpV2PhaseTimings[name] = Date.now() - startedAt;
 	    };
@@ -22989,6 +22993,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         modules: pdpV2ModuleTimings,
         savings_presentation_hydration_mode: pdpV2SavingsPresentationHydrationMode,
         product_group_resolve_mode: pdpV2ProductGroupResolveMode,
+        product_group_resolve_budget_exceeded: Boolean(pdpV2ProductGroupResolveBudgetExceeded),
+        product_group_resolve_budget_ms: PDP_EXTERNAL_SEED_UNSCOPED_GROUP_BUDGET_MS,
         requested_product_id: requestedProductId || null,
         requested_merchant_id: requestedMerchantId || null,
         resolved_product_id: resolvedProductId || null,
@@ -23391,7 +23397,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	        if (
 	          attemptUnscopedExternalSeedResolve &&
 	          externalSeedRouteProductId &&
-	          requestedMerchantId === EXTERNAL_SEED_MERCHANT_ID &&
+	          (!requestedMerchantId || requestedMerchantId === EXTERNAL_SEED_MERCHANT_ID) &&
 	          !hasExplicitProductGroup &&
 	          !offerProductGroupId
 	        ) {
@@ -23401,6 +23407,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	            'pdp_external_seed_unscoped_group',
 	          ).catch((err) => {
 	            if (err?.code === 'STAGE_TIMEOUT') {
+	              pdpV2ProductGroupResolveBudgetExceeded = true;
 	              pdpV2ProductGroupResolveMode = 'timeout_unscoped_external_seed';
 	              logger.warn(
 	                {
