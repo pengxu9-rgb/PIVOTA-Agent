@@ -8391,6 +8391,84 @@ describe('discovery feed service', () => {
     );
   });
 
+  test('beauty interest mainline expands providers when authority identity dedupe underfills display slots', async () => {
+    process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://discovery-catalog.test';
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://wrong-backend.test';
+    delete process.env.PIVOTA_API_BASE;
+    delete process.env.PIVOTA_API_KEY;
+    process.env.PIVOTA_BACKEND_AGENT_API_KEY = 'bridge-key';
+
+    const hydraVariants = Array.from({ length: 6 }, (_, idx) =>
+      makeProduct({
+        merchant_id: 'external_seed',
+        product_id: `hydra_variant_${idx + 1}`,
+        title: `Hydra Vizor SPF 30 Sunscreen Moisturizer Variant ${idx + 1}`,
+        brand: 'Fenty Skin',
+        category: 'Skincare',
+        product_type: 'Sunscreen',
+      }),
+    );
+    const searchProducts = Array.from({ length: 6 }, (_, idx) =>
+      makeProduct({
+        merchant_id: `m_search_${idx + 1}`,
+        product_id: `search_spf_${idx + 1}`,
+        title: `Lightweight Daily Sunscreen ${idx + 1}`,
+        brand: `Search Brand ${idx + 1}`,
+        category: 'Skincare',
+        product_type: 'Sunscreen',
+      }),
+    );
+    const identityRowsResolver = jest.fn(async ({ sourceListingRefs }) =>
+      sourceListingRefs
+        .filter((ref) => ref.startsWith('external_seed:hydra_variant_'))
+        .map((ref) => ({
+          source_listing_ref: ref,
+          sellable_item_group_id: 'fenty_hydra_vizor_spf30',
+        })),
+    );
+
+    nock('http://discovery-catalog.test')
+      .matchHeader('x-agent-api-key', 'bridge-key')
+      .matchHeader('x-api-key', 'bridge-key')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, { products: searchProducts });
+
+    const response = await getDiscoveryFeed(
+      {
+        surface: 'home_hot_deals',
+        limit: 6,
+        debug: true,
+        context: {
+          auth_state: 'authenticated',
+          recent_views: [],
+          recent_queries: ['daily sunscreen'],
+        },
+      },
+      {
+        providerOverrides: {
+          beauty_interest_mainline: async () => hydraVariants,
+        },
+        identityGraphRowsResolverFn: identityRowsResolver,
+      },
+    );
+
+    expect(response.products).toHaveLength(6);
+    expect(response.metadata.discovery_strategy).toBe('personalized_interest');
+    expect(response.metadata.candidate_source).toBe('beauty_interest_mainline+multi_provider');
+    expect(response.metadata.primary_path_used).toBe('beauty_interest_mainline');
+    expect(response.metadata.fallback_triggered).toBe(true);
+    expect(response.metadata.fallback_reason).toBe('beauty_interest_mainline_insufficient');
+    expect(response.metadata.provider_breakdown).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ provider: 'beauty_interest_mainline', successful: true, returned: 6 }),
+        expect.objectContaining({ provider: 'products_search', successful: true, returned: 6 }),
+      ]),
+    );
+    expect(response.metadata.candidate_counts.identity_graph_deduped).toBeGreaterThanOrEqual(5);
+    expect(nock.isDone()).toBe(true);
+  });
+
   test('beauty interest mainline covers personalized browse page 2 before falling back', async () => {
     delete process.env.PIVOTA_BACKEND_BASE_URL;
     delete process.env.PIVOTA_API_BASE;

@@ -6659,6 +6659,7 @@ async function loadCatalogCandidates({
   profile = null,
   limit = MAX_CANDIDATE_FETCH,
   providerOverrides = null,
+  identityGraphRowsResolverFn = listLivePdpIdentityRowsForRefs,
 } = {}) {
   const safeLimit = clampInt(
     limit,
@@ -6737,6 +6738,23 @@ async function loadCatalogCandidates({
     if (!result || typeof result !== 'object') return;
     providerResults.push(result);
     mergeProducts(result.products);
+  };
+
+  const resolveIdentityAwareSufficiencyProducts = async (products = []) => {
+    const normalized = [];
+    for (let idx = 0; idx < (Array.isArray(products) ? products : []).length; idx += 1) {
+      const candidate = normalizeCandidateProduct(products[idx], idx);
+      if (candidate) normalized.push(candidate);
+    }
+    if (normalized.length < 1) return [];
+    const deduped = await applyIdentityGraphDiscoveryDedupe(normalized, {
+      request,
+      identityGraphRowsResolverFn,
+    });
+    if (deduped?.stats?.error) return products;
+    return (Array.isArray(deduped?.candidates) ? deduped.candidates : normalized)
+      .map((candidate) => candidate?.raw)
+      .filter(Boolean);
   };
 
   const fetchProductsSearchProviderResult = async () => {
@@ -6860,7 +6878,8 @@ async function loadCatalogCandidates({
       providerResults.push(buildProviderErrorResult('beauty_interest_mainline', err));
     }
 
-    const beautyMainlineEnough = hasSufficientProviderCandidates(mergedProducts, {
+    const beautyMainlineSufficiencyProducts = await resolveIdentityAwareSufficiencyProducts(mergedProducts);
+    const beautyMainlineEnough = hasSufficientProviderCandidates(beautyMainlineSufficiencyProducts, {
       request,
       profile,
       enoughThreshold: primaryPathEnoughThreshold,
@@ -9987,6 +10006,7 @@ async function getDiscoveryFeed(payload = {}, options = {}) {
           profile,
           limit: candidateLimit,
           providerOverrides: options.providerOverrides || null,
+          identityGraphRowsResolverFn: options.identityGraphRowsResolverFn,
         });
     const rawCandidates = Array.isArray(candidateLoadResult?.products)
       ? candidateLoadResult.products
