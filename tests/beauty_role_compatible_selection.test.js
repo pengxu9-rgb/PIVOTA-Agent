@@ -164,6 +164,59 @@ describe('beauty role compatible selection policy', () => {
     ]);
   });
 
+  test('infers exact-product sunscreen role from authoritative product rows and drops cross-role noise', () => {
+    const result = applyBeautyRoleCompatibleSelection({
+      operation: 'find_products_multi',
+      invokeSearchRail: 'authoritative_shopping',
+      queryText: 'Is Beauty of Joseon Relief Sun Aqua-Fresh good for oily skin under makeup?',
+      search: {
+        catalog_surface: 'beauty',
+      },
+      metadata: {
+        source: 'shopping_agent',
+        catalog_surface: 'beauty',
+      },
+      beautyRequest: {
+        domain: 'beauty',
+        user_goal: 'Is Beauty of Joseon Relief Sun Aqua-Fresh good for oily skin under makeup?',
+        skin_context: { skin_type: 'oily' },
+        product_context: { canonical_product_ref: 'beauty of joseon relief sun aqua-fresh' },
+        scenario_context: { use_case: 'under makeup' },
+      },
+      responseBody: {
+        products: [
+          {
+            canonical_title: 'Relief Sun Aqua-Fresh 10ml',
+            canonical_category: 'Sunscreen',
+            product_type: 'Sunscreen',
+            description: 'SPF 50+ PA++++ lightweight fast-absorbing sunscreen.',
+          },
+          { canonical_title: 'The Ordinary Niacinamide 10% + Zinc 1%', canonical_category: 'Serum' },
+          { canonical_title: 'Moroccanoil Treatment Original', brand: 'Moroccanoil', canonical_category: 'external' },
+          { canonical_title: 'Small Eyeshadow Brush', canonical_category: 'Beauty Tool' },
+        ],
+        metadata: {},
+      },
+    });
+
+    expect(result.products.map((product) => product.canonical_title)).toEqual([
+      'Relief Sun Aqua-Fresh 10ml',
+    ]);
+    expect(result.metadata.beauty_role_compatible_selection).toMatchObject({
+      applied: true,
+      role: 'sunscreen',
+      original_count: 4,
+      selected_count: 1,
+    });
+    expect(result.metadata.beauty_role_compatible_selection.dropped_titles.map((row) => row.title)).toEqual(
+      expect.arrayContaining([
+        'The Ordinary Niacinamide 10% + Zinc 1%',
+        'Moroccanoil Treatment Original',
+        'Small Eyeshadow Brush',
+      ]),
+    );
+  });
+
   test('returns an honest empty response when moisturizer recall only contains incompatible rows', () => {
     const result = applyBeautyRoleCompatibleSelection({
       operation: 'find_products_multi',

@@ -100,6 +100,47 @@ describe('non-beauty domain isolation policy', () => {
     expect(result.reply).toBeUndefined();
   });
 
+  test('also isolates known non-beauty requests on creator fixed-delegate search lanes', () => {
+    const result = applyNonBeautyDomainIsolation({
+      operation: 'find_products_multi',
+      invokeSearchRail: 'fixed_delegate',
+      queryText: 'What espresso machine should I buy for a small kitchen?',
+      responseBody: {
+        products: [
+          {
+            canonical_title: 'Escape-Proof No-Pull Tactical Dog Harness for Small to Medium Dogs',
+            brand: 'PetCozy',
+            canonical_category: 'Pet Harness',
+          },
+          {
+            canonical_title: 'Winona Soothing Repair Serum',
+            brand: 'Winona',
+            canonical_category: 'Serum',
+          },
+        ],
+        metadata: {
+          catalog_surface: 'all',
+        },
+      },
+      search: {
+        query: 'What espresso machine should I buy for a small kitchen?',
+      },
+      metadata: {
+        source: 'creator_agent',
+        catalog_surface: 'all',
+      },
+    });
+
+    expect(result.products).toEqual([]);
+    expect(result.reply).toContain('grounded espresso machine match');
+    expect(result.metadata.non_beauty_domain_isolation).toMatchObject({
+      applied: true,
+      intent_id: 'espresso_machine',
+      original_count: 2,
+      kept_count: 0,
+    });
+  });
+
   test('does not run on explicit beauty surfaces', () => {
     const body = {
       products: [

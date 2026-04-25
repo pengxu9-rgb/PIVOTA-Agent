@@ -98,7 +98,6 @@ function applyNonBeautyDomainIsolation({
 } = {}) {
   if (!isPlainObject(responseBody)) return responseBody;
   if (String(operation || '').trim() !== 'find_products_multi') return responseBody;
-  if (String(invokeSearchRail || '').trim().toLowerCase() !== 'authoritative_shopping') return responseBody;
   if (hasBeautySurfaceHint({ search, metadata })) return responseBody;
   const intent = inferNonBeautyDomainIntent(queryText || search.query || search.q);
   if (!intent) return responseBody;
