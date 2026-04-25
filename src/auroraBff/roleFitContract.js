@@ -99,6 +99,135 @@ function buildConcernRoleFitText(role = null) {
     .join(' ');
 }
 
+function uniqCaseInsensitiveStrings(values = [], max = 24) {
+  const out = [];
+  const seen = new Set();
+  for (const raw of Array.isArray(values) ? values : []) {
+    const value = String(raw || '').replace(/\s+/g, ' ').trim();
+    if (!value) continue;
+    const key = value.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(value);
+    if (out.length >= Math.max(1, Number(max) || 24)) break;
+  }
+  return out;
+}
+
+function buildKnownConcernRoleSignals(roleId = '', preferredStep = '') {
+  const normalizedRoleId = String(roleId || '').trim().toLowerCase();
+  if (!normalizedRoleId) {
+    return {
+      queryTerms: [],
+      fitKeywords: [],
+      ingredientHypotheses: [],
+      productTypeHypotheses: [],
+    };
+  }
+  if (normalizedRoleId === 'oil_control_treatment') {
+    return {
+      queryTerms: ['oil control serum', 'oil balance serum', 'shine control serum', 'mattifying serum', 'niacinamide serum oily skin'],
+      fitKeywords: ['oil control', 'oil balance', 'shine control', 'mattifying', 'mattify', 'sebum', 'excess oil', 'pores'],
+      ingredientHypotheses: ['Niacinamide', 'Zinc PCA', 'Salicylic acid'],
+      productTypeHypotheses: ['treatment', 'serum'],
+    };
+  }
+  if (normalizedRoleId === 'acne_clogged_pore_treatment') {
+    return {
+      queryTerms: ['salicylic acid serum clogged pores', 'acne treatment serum', 'blemish treatment', 'pore clearing serum'],
+      fitKeywords: ['salicylic acid', 'bha', 'blemish', 'acne', 'clogged pores', 'congestion', 'pore clearing', 'clarifying'],
+      ingredientHypotheses: ['Salicylic acid', 'Niacinamide', 'Zinc PCA'],
+      productTypeHypotheses: ['treatment', 'serum'],
+    };
+  }
+  if (normalizedRoleId === 'lightweight_moisturizer') {
+    return {
+      queryTerms: ['lightweight moisturizer oily skin', 'gel cream oily skin', 'barrier lotion oily skin', 'oil free gel moisturizer'],
+      fitKeywords: ['lightweight', 'gel cream', 'water gel', 'breathable', 'barrier lotion', 'oil-free', 'non-greasy'],
+      ingredientHypotheses: ['Glycerin', 'Ceramide NP', 'Panthenol'],
+      productTypeHypotheses: ['moisturizer'],
+    };
+  }
+  if (normalizedRoleId === 'daily_sunscreen') {
+    return {
+      queryTerms: ['daily sunscreen skincare', 'broad spectrum sunscreen', 'lightweight sunscreen'],
+      fitKeywords: ['spf', 'uv filters', 'broad spectrum', 'lightweight', 'non-greasy'],
+      ingredientHypotheses: ['UV filters'],
+      productTypeHypotheses: ['sunscreen'],
+    };
+  }
+  if (normalizedRoleId === 'daily_sunscreen_finish_fit') {
+    return {
+      queryTerms: ['sunscreen under makeup', 'lightweight sunscreen oily skin', 'non greasy sunscreen', 'invisible fluid sunscreen', 'serum sunscreen spf'],
+      fitKeywords: ['under makeup', 'lightweight', 'non-greasy', 'no white cast', 'invisible', 'fluid', 'serum sunscreen', 'humidity', 'matte', 'sweat'],
+      ingredientHypotheses: ['UV filters'],
+      productTypeHypotheses: ['sunscreen', 'serum'],
+    };
+  }
+  if (normalizedRoleId === 'hydrating_barrier_moisturizer') {
+    return {
+      queryTerms: ['hydrating moisturizer dry skin', 'barrier repair moisturizer', 'ceramide cream sensitive skin', 'winter flaky skin moisturizer'],
+      fitKeywords: ['hydrating', 'barrier repair', 'ceramide', 'soothing', 'sensitive skin', 'fragrance free', 'flaky', 'dry skin'],
+      ingredientHypotheses: ['Ceramide NP', 'Panthenol', 'Glycerin', 'Squalane'],
+      productTypeHypotheses: ['moisturizer'],
+    };
+  }
+  if (normalizedRoleId === 'barrier_moisturizer') {
+    return {
+      queryTerms: ['barrier repair moisturizer', 'ceramide cream sensitive skin', 'soothing moisturizer'],
+      fitKeywords: ['barrier repair', 'ceramide', 'soothing', 'sensitive skin', 'fragrance free'],
+      ingredientHypotheses: ['Ceramide NP', 'Panthenol', 'Glycerin'],
+      productTypeHypotheses: ['moisturizer'],
+    };
+  }
+  if (normalizedRoleId === 'hydrating_serum_or_essence') {
+    return {
+      queryTerms: ['hyaluronic acid serum', 'hydrating serum dehydrated skin', 'hydrating essence'],
+      fitKeywords: ['hydrating', 'dehydrated', 'hyaluronic acid', 'water based', 'essence'],
+      ingredientHypotheses: ['Hyaluronic acid', 'Glycerin', 'Panthenol'],
+      productTypeHypotheses: ['serum', 'essence'],
+    };
+  }
+  if (normalizedRoleId === 'tone_mark_treatment') {
+    return {
+      queryTerms: ['dark spot serum', 'post breakout mark serum', 'tone correcting serum'],
+      fitKeywords: ['dark spot', 'post-breakout', 'mark', 'tone', 'hyperpigmentation', 'brightening', 'uneven'],
+      ingredientHypotheses: ['Niacinamide', 'Tranexamic acid', 'Vitamin C', 'Azelaic acid'],
+      productTypeHypotheses: ['treatment', 'serum'],
+    };
+  }
+  if (normalizedRoleId === 'layering_compatible_moisturizer_or_spf') {
+    return {
+      queryTerms: ['layering moisturizer under makeup', 'non pilling moisturizer spf', 'lightweight layering skincare'],
+      fitKeywords: ['layering', 'non-pilling', 'under makeup', 'lightweight', 'non-greasy', 'smooth finish'],
+      ingredientHypotheses: ['Glycerin', 'Panthenol', 'UV filters'],
+      productTypeHypotheses: preferredStep ? [preferredStep] : ['moisturizer', 'sunscreen'],
+    };
+  }
+  return {
+    queryTerms: [],
+    fitKeywords: [],
+    ingredientHypotheses: [],
+    productTypeHypotheses: [],
+  };
+}
+
+function isVerifiedPriorRecoContextCandidate(row = null) {
+  const candidate = row && typeof row === 'object' && !Array.isArray(row) ? row : {};
+  const text = [
+    candidate.retrieval_ladder_level,
+    candidate.retrievalLadderLevel,
+    candidate.retrieval_reason,
+    candidate.retrievalReason,
+    candidate.candidate_pool_source,
+    candidate.candidatePoolSource,
+  ]
+    .map((value) => String(value || '').trim().toLowerCase())
+    .filter(Boolean)
+    .join(' ');
+  return /\b(?:prior_reco_context|verified_context|verified_context_handoff)\b/i.test(text);
+}
+
 function buildConcernRowEvidenceText(row = null, candidateText = '') {
   const sku = row && typeof row.sku === 'object' && !Array.isArray(row.sku) ? row.sku : {};
   const product = row && typeof row.product === 'object' && !Array.isArray(row.product) ? row.product : {};
@@ -437,6 +566,37 @@ function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '
   if (!roleId) return null;
   const preferredStep = normalizeRecoTargetStep(role?.preferred_step);
   const roleText = buildConcernRoleFitText(role);
+  const knownSignals = isVerifiedPriorRecoContextCandidate(row)
+    ? buildKnownConcernRoleSignals(roleId, preferredStep)
+    : {
+        queryTerms: [],
+        fitKeywords: [],
+        ingredientHypotheses: [],
+        productTypeHypotheses: [],
+      };
+  const roleFitKeywords = uniqCaseInsensitiveStrings([
+    ...(Array.isArray(role?.fit_keywords) ? role.fit_keywords : []),
+    ...knownSignals.fitKeywords,
+  ], 16);
+  const roleQueryTerms = uniqCaseInsensitiveStrings([
+    ...(Array.isArray(role?.query_terms) ? role.query_terms : []),
+    ...knownSignals.queryTerms,
+  ], 16);
+  const roleIngredientHypotheses = uniqCaseInsensitiveStrings([
+    ...(Array.isArray(role?.ingredient_hypotheses) ? role.ingredient_hypotheses : []),
+    ...knownSignals.ingredientHypotheses,
+  ], 16);
+  const roleProductTypeHypotheses = uniqCaseInsensitiveStrings([
+    ...(Array.isArray(role?.product_type_hypotheses) ? role.product_type_hypotheses : []),
+    ...knownSignals.productTypeHypotheses,
+  ], 12);
+  const effectiveRole = {
+    ...role,
+    fit_keywords: roleFitKeywords,
+    query_terms: roleQueryTerms,
+    ingredient_hypotheses: roleIngredientHypotheses,
+    product_type_hypotheses: roleProductTypeHypotheses,
+  };
   const candidateEvidenceText = buildConcernRowEvidenceText(row, candidateText);
   const candidateIdentityText = buildConcernRowIdentityText(row);
   // Treatment roles often land on serum-shaped catalog items even when the planner
@@ -450,12 +610,12 @@ function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '
   const alternateSteps = [...alternateStepSet];
   const retrievalRoleId = pickFirstTrimmed(row?.retrieval_role_id, row?.role_id);
   const retrievalRoleMatched = Boolean(retrievalRoleId && retrievalRoleId === roleId);
-  const fitKeywordMatches = countConcernRoleSignalMatches(candidateText, role?.fit_keywords, 3);
-  const queryTermMatches = countConcernRoleSignalMatches(candidateText, role?.query_terms, 3);
-  const ingredientMatches = countConcernIngredientMatches(candidateText, role?.ingredient_hypotheses, 2);
+  const fitKeywordMatches = countConcernRoleSignalMatches(candidateText, effectiveRole.fit_keywords, 3);
+  const queryTermMatches = countConcernRoleSignalMatches(candidateText, effectiveRole.query_terms, 3);
+  const ingredientMatches = countConcernIngredientMatches(candidateText, effectiveRole.ingredient_hypotheses, 2);
   const productTypeMatches = countConcernRoleSignalMatches(
     candidateText,
-    buildConcernRoleProductTypeHypotheses(role, preferredStep),
+    buildConcernRoleProductTypeHypotheses(effectiveRole, preferredStep),
     2,
   );
   const strongSemanticFitMatched = fitKeywordMatches > 0 || queryTermMatches > 0;
