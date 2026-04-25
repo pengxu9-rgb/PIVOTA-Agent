@@ -27310,6 +27310,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             sim?.options?.debug === true;
 
           if (productId) {
+            const directCandidateLimit = Math.max(limit, Math.min(30, limit + 4));
             const baseProduct =
               (merchantId
                 ? await fetchProductDetailForOffers({
@@ -27318,11 +27319,19 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                     checkoutToken,
                     bypassCache,
                   }).catch(() => null)
-                : null) || { merchant_id: merchantId || null, product_id: productId };
+                : null) ||
+              (isExternalSeedProductId(productId)
+                ? {
+                    merchant_id: EXTERNAL_SEED_MERCHANT_ID,
+                    product_id: productId,
+                    external_product_id: productId,
+                    source: 'external_seed',
+                  }
+                : { merchant_id: merchantId || null, product_id: productId });
 
-            const rec = await recommendPdpProducts({
+            const rec = await fetchSimilarProductsDeduped({
               pdp_product: baseProduct,
-              k: limit,
+              k: directCandidateLimit,
               locale: payload?.context?.locale || payload?.context?.language || payload?.locale || 'en-US',
               currency: baseProduct.currency || baseProduct.price?.currency || 'USD',
               options: {

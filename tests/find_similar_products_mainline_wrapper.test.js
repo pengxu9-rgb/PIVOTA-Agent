@@ -60,9 +60,11 @@ describe('find_similar_products mainline wrapper', () => {
     expect(recommendMock).toHaveBeenCalledWith(
       expect.objectContaining({
         pdp_product: expect.objectContaining({
+          merchant_id: 'external_seed',
           product_id: 'ext_demo_1',
+          source: 'external_seed',
         }),
-        k: 4,
+        k: 8,
       }),
     );
     expect(res.body.products).toEqual([
