@@ -24,6 +24,9 @@ const {
 const {
   applyNonBeautyDomainIsolation,
 } = require('./modules/policy/nonBeautyDomainIsolation');
+const {
+  applyBeautyRoleCompatibleSelection,
+} = require('./modules/policy/beautyRoleCompatibleSelection');
 const { CREATOR_CONFIGS, getCreatorConfig } = require('./creatorConfig');
 const { mockProducts, searchProducts, getProductById } = require('./mockProducts');
 const {
@@ -30581,6 +30584,26 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         invokeSearchRail,
         search: queryParams,
         metadata,
+      });
+      enriched = applyBeautyRoleCompatibleSelection({
+        responseBody: enriched,
+        queryText: String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim(),
+        operation,
+        invokeSearchRail,
+        search: queryParams,
+        metadata,
+        beautyRequest:
+          effectivePayload?.context &&
+          typeof effectivePayload.context === 'object' &&
+          !Array.isArray(effectivePayload.context) &&
+          effectivePayload.context.normalized_need &&
+          typeof effectivePayload.context.normalized_need === 'object' &&
+          !Array.isArray(effectivePayload.context.normalized_need) &&
+          effectivePayload.context.normalized_need.beauty_request &&
+          typeof effectivePayload.context.normalized_need.beauty_request === 'object' &&
+          !Array.isArray(effectivePayload.context.normalized_need.beauty_request)
+            ? effectivePayload.context.normalized_need.beauty_request
+            : {},
       });
     }
 
