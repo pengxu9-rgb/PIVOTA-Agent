@@ -2141,6 +2141,10 @@ const PDP_PRODUCT_INTEL_SYNC_BUDGET_MS = Math.max(
   250,
   parseTimeoutMs(process.env.PDP_PRODUCT_INTEL_SYNC_BUDGET_MS, 1500),
 );
+const PDP_EXTERNAL_SEED_UNSCOPED_GROUP_BUDGET_MS = Math.max(
+  100,
+  parseTimeoutMs(process.env.PDP_EXTERNAL_SEED_UNSCOPED_GROUP_BUDGET_MS, 1200),
+);
 const PDP_CORE_PREWARM_TIMEOUT_MS = Math.max(
   1000,
   parseTimeoutMs(process.env.PDP_CORE_PREWARM_TIMEOUT_MS, 6500),
@@ -23376,7 +23380,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	        pdpV2ProductGroupResolveMode = attemptUnscopedExternalSeedResolve
 	          ? 'started_unscoped'
 	          : 'started_scoped';
-	        return resolveProductGroupCached({
+	        const groupResolvePromise = resolveProductGroupCached({
 	          productId,
 	          merchantId: attemptUnscopedExternalSeedResolve ? null : requestedMerchantId || null,
 	          platform,
@@ -23384,6 +23388,33 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	          bypassCache,
 	          debug: false,
 	        }).catch(() => null);
+	        if (
+	          attemptUnscopedExternalSeedResolve &&
+	          externalSeedRouteProductId &&
+	          requestedMerchantId === EXTERNAL_SEED_MERCHANT_ID &&
+	          !hasExplicitProductGroup &&
+	          !offerProductGroupId
+	        ) {
+	          return withStageBudget(
+	            groupResolvePromise,
+	            PDP_EXTERNAL_SEED_UNSCOPED_GROUP_BUDGET_MS,
+	            'pdp_external_seed_unscoped_group',
+	          ).catch((err) => {
+	            if (err?.code === 'STAGE_TIMEOUT') {
+	              pdpV2ProductGroupResolveMode = 'timeout_unscoped_external_seed';
+	              logger.warn(
+	                {
+	                  product_id: productId,
+	                  merchant_id: requestedMerchantId,
+	                  budget_ms: PDP_EXTERNAL_SEED_UNSCOPED_GROUP_BUDGET_MS,
+	                },
+	                'get_pdp_v2 external_seed unscoped group resolve exceeded first-paint budget',
+	              );
+	            }
+	            return null;
+	          });
+	        }
+	        return groupResolvePromise;
 	      };
 	      if (
 	        !canonicalProductRef &&

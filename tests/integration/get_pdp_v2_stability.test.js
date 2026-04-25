@@ -1,5 +1,6 @@
 process.env.PIVOTA_API_BASE = 'http://localhost:8080';
 process.env.PIVOTA_API_KEY = 'test-token';
+process.env.PDP_EXTERNAL_SEED_UNSCOPED_GROUP_BUDGET_MS = '100';
 delete process.env.DATABASE_URL;
 
 const request = require('supertest');
@@ -393,6 +394,58 @@ describe('get_pdp_v2 stability semantics', () => {
         resolution_source: 'product_group_unscoped',
       }),
     );
+  });
+
+  it('does not block external_seed PDP rendering on slow unscoped group resolution', async () => {
+    mockProductDetailInvoke('external_seed', 'ext_seed_slow_group', 200, {
+      product: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_seed_slow_group',
+        source: 'external_seed',
+        title: 'External seed direct PDP',
+        brand: 'Beauty Brand',
+        currency: 'USD',
+      },
+    });
+
+    nock(process.env.PIVOTA_API_BASE)
+      .get('/agent/v1/product-groups/resolve-by-product-id')
+      .query((query) => query && query.product_id === 'ext_seed_slow_group')
+      .delay(250)
+      .reply(200, {
+        status: 'success',
+        product_group_id: 'pg_late',
+        canonical_product_ref: {
+          merchant_id: 'merchant_late',
+          product_id: 'prod_late',
+        },
+      });
+
+    const startedAt = Date.now();
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'get_pdp_v2',
+        payload: {
+          product_ref: {
+            merchant_id: 'external_seed',
+            product_id: 'ext_seed_slow_group',
+          },
+        },
+      })
+      .expect(200);
+
+    expect(Date.now() - startedAt).toBeLessThan(220);
+    expect(res.body.metadata.identity_resolution).toEqual(
+      expect.objectContaining({
+        requested_product_id: 'ext_seed_slow_group',
+        requested_merchant_id: 'external_seed',
+        resolved_product_id: 'ext_seed_slow_group',
+        resolved_merchant_id: 'external_seed',
+        resolution_source: 'external_seed_product_id',
+      }),
+    );
+    expect(res.body.metadata.route_health.product_group_resolve_mode).toBe('timeout_unscoped_external_seed');
   });
 
   it('returns 504 UPSTREAM_TIMEOUT when canonical detail fetch times out', async () => {
