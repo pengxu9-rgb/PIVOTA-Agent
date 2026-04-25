@@ -2431,8 +2431,8 @@ test('reco assistant rewrite rejects candidate-pool product names that are not f
     assert.equal(callCount, 2);
     assert.equal(rewrite.llm_used, true);
     assert.equal(rewrite.reason, null);
-    assert.match(rewrite.text, /First Aid Beauty Dark Spot Serum with Niacinamide fits this request/);
-    assert.match(rewrite.text, /because it is a niacinamide serum/);
+    assert.match(rewrite.text, /Start with First Aid Beauty Dark Spot Serum with Niacinamide/);
+    assert.match(rewrite.text, /It is a niacinamide serum/);
     assert.doesNotMatch(rewrite.text, /because (A|An|The)\b/);
     assert.doesNotMatch(rewrite.text, /because (niacinamide|brightening|vitamin c|oil-control support|oil control support)\b/i);
     assert.match(rewrite.text, /Jurlique Brightening Serum/);
@@ -2595,9 +2595,9 @@ test('reco assistant rewrite uses structured retry for generic routine wrap-up',
     assert.equal(rewrite.reason, null);
     assert.equal(schemas[1]?.required?.includes('lead_reason'), true);
     assert.match(rewrite.text, /Hydrating Dewy Gel Cream Moisturizer/);
-    assert.match(rewrite.text, /because it (?:features|is) an ultra-sheer/);
-    assert.match(rewrite.text, /because it (?:provides|is a) lightweight/);
-    assert.match(rewrite.text, /because it (?:gives|is a matte SPF 50\+|leans more matte and shine-controlling if you want less slip under makeup)/);
+    assert.match(rewrite.text, /It (?:features|is) an ultra-sheer/);
+    assert.match(rewrite.text, /It (?:provides|is a) lightweight/);
+    assert.match(rewrite.text, /It (?:gives|is a matte SPF 50\+|leans more matte and shine-controlling if you want less slip under makeup)/);
     assert.match(rewrite.text, /Matte Fit Serum Sunscreen SPF 50\+ PA\+\+\+\+/);
     assert.doesNotMatch(rewrite.text, /because (features|provides|gives)\b/i);
     assert.doesNotMatch(rewrite.text, /Together, these products support/);
@@ -2709,7 +2709,7 @@ test('reco assistant structured retry normalizes function-as support grammar', a
 
     assert.equal(callCount, 2);
     assert.equal(rewrite.llm_used, true);
-    assert.match(rewrite.text, /Dynasty Cream 10ml covers the moisturizer step because it functions as a hydrating moisturizer step before sunscreen application\./);
+    assert.match(rewrite.text, /Use Beauty of Joseon Dynasty Cream 10ml as the moisturizer\. It functions as a hydrating moisturizer step before sunscreen application\./i);
     assert.doesNotMatch(rewrite.text, /because functions\b/i);
     assert.doesNotMatch(rewrite.text, /before sunscreen application before sunscreen application/i);
   } finally {
@@ -3721,9 +3721,9 @@ test('reco assistant rewrite uses structured reason retry for repeated buy frami
     assert.equal(rewrite.reason, null);
     assert.match(prompts[1], /Return evidence-grounded reason fragments only/i);
     assert.match(prompts[1], /Fix required: Use calibrated wording/i);
-    assert.match(String(rewrite.text || ''), /Beauty of Joseon Dynasty Cream 10ml fits this request/i);
-    assert.match(String(rewrite.text || ''), /Winona Soothing Repair Serum covers the serum step/i);
-    assert.match(String(rewrite.text || ''), /KraveBeauty Great Barrier Relief covers the moisturizer step/i);
+    assert.match(String(rewrite.text || ''), /Start with Beauty of Joseon Dynasty Cream 10ml/i);
+    assert.match(String(rewrite.text || ''), /Use Winona Soothing Repair Serum as the hydration serum/i);
+    assert.match(String(rewrite.text || ''), /Use KraveBeauty Great Barrier Relief as the moisturizer/i);
     assert.match(String(rewrite.text || ''), /What city or climate are you usually in \(humid, dry, cold, or high-UV\)\?/i);
     assert.equal(rewrite.refinement_question?.field, 'location_climate');
     assert.doesNotMatch(String(rewrite.text || ''), /top pick|strongest choice|most direct fit/i);
@@ -3844,7 +3844,7 @@ test('reco assistant structured retry keeps support reasons on support roles', a
     assert.equal(callCount, 2);
     assert.equal(rewrite.llm_used, true);
     assert.doesNotMatch(String(rewrite.text || ''), /Truth Serum[^.]+directly fits the daily sunscreen/i);
-    assert.match(String(rewrite.text || ''), /Truth Serum covers the serum step because it is a lightweight hydrating serum to use before SPF/i);
+    assert.match(String(rewrite.text || ''), /Use Olehenriksen Truth Serum as the hydration serum\. It is a lightweight hydrating serum to use before SPF/i);
   } finally {
     __internal.__resetCallGeminiJsonObjectForTest();
     if (prevMock === undefined) delete process.env.AURORA_BFF_USE_MOCK;
@@ -3923,7 +3923,7 @@ test('reco assistant structured renderer treats product texture as product evide
       requestMode: 'buy',
     });
 
-    assert.match(text, /because it frames this as a moisturizer-and-SPF step rather than a standalone sunscreen texture/i);
+    assert.match(text, /It frames this as a moisturizer-and-SPF step rather than a standalone sunscreen texture/i);
     assert.doesNotMatch(text, /because frames/i);
     assert.equal(validation.ok, true);
   } finally {
@@ -4014,7 +4014,7 @@ test('reco assistant structured renderer converts full SPF card rationale into a
       selectedProductRoleMix: 'routine_mix',
     });
 
-    assert.match(text, /Round Lab Birch Moisturizing Sunscreen.+because it pairs SPF 45 protection with fast-absorbing, non-greasy wear/i);
+    assert.match(text, /Use Round Lab Birch Moisturizing Sunscreen.+as the daytime SPF\. It pairs SPF 45 protection with fast-absorbing, non-greasy wear/i);
     assert.doesNotMatch(text, /because a practical daily SPF option/i);
     assert.doesNotMatch(text, /because A practical daily SPF option/i);
   } finally {
@@ -4713,7 +4713,7 @@ test('reco assistant rewrite uses structured primary attempt for compact single-
     assert.equal(rewrite.attempts?.[0]?.structured_reason_only, true);
     assert.equal(rewrite.attempts?.[0]?.strict_selected_only_context, true);
     assert.equal(rewrite.attempts?.[0]?.max_output_tokens, 140);
-    assert.match(rewrite.text, /Daily Layering SPF 50 fits this request/i);
+    assert.match(rewrite.text, /Start with Murad Daily Layering SPF 50/i);
   } finally {
     __internal.__resetCallGeminiJsonObjectForTest();
     if (prevMock === undefined) delete process.env.AURORA_BFF_USE_MOCK;
@@ -4828,9 +4828,9 @@ test('reco assistant rewrite uses structured primary attempt for compact routine
     assert.equal(rewrite.attempts?.[0]?.max_output_tokens, 220);
     assert.ok(timeouts[0] >= 3000);
     assert.ok(timeouts[0] <= 3400);
-    assert.match(rewrite.text, /The Ordinary Niacinamide 10% \+ Zinc 1% fits this request/i);
-    assert.match(rewrite.text, /Hydrating Dewy Gel Cream covers the moisturizer step/i);
-    assert.match(rewrite.text, /Birch Mild-Up Sunscreen SPF 50 covers the sunscreen step/i);
+    assert.match(rewrite.text, /Start with The Ordinary Niacinamide 10% \+ Zinc 1%/i);
+    assert.match(rewrite.text, /Use First Aid Beauty Hydrating Dewy Gel Cream as the moisturizer/i);
+    assert.match(rewrite.text, /Use Round Lab Birch Mild-Up Sunscreen SPF 50 as the daytime SPF/i);
     assert.match(rewrite.text, /lightweight, non-greasy wear/i);
   } finally {
     __internal.__resetCallGeminiJsonObjectForTest();
@@ -5816,7 +5816,7 @@ test('reco assistant rewrite retries routine-mix drafts that end in a generic cl
     assert.equal(rewrite.reason, null);
     assert.match(prompts[1], /Previous draft failed the quality gate\./);
     assert.match(prompts[1], /Fix required: Do not end with a generic routine wrap-up\./);
-    assert.match(String(rewrite.text || ''), /The Ordinary Niacinamide 10% \+ Zinc 1% fits this request/);
+    assert.match(String(rewrite.text || ''), /Start with The Ordinary Niacinamide 10% \+ Zinc 1%/);
     assert.match(prompts[1], /Do not write the final assistant message\./);
     assert.doesNotMatch(String(rewrite.text || ''), /These secondary steps support your oily skin/i);
   } finally {
