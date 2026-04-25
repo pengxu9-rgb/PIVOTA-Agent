@@ -2129,6 +2129,14 @@ const PDP_SIMILAR_CARD_ENRICH_BUDGET_MS = Math.max(
   100,
   parseTimeoutMs(process.env.PDP_SIMILAR_CARD_ENRICH_BUDGET_MS, 900),
 );
+const PDP_SIMILAR_CARD_DETAIL_BUDGET_MS = Math.max(
+  50,
+  parseTimeoutMs(process.env.PDP_SIMILAR_CARD_DETAIL_BUDGET_MS, 250),
+);
+const PDP_SIMILAR_BASE_DETAIL_BUDGET_MS = Math.max(
+  50,
+  parseTimeoutMs(process.env.PDP_SIMILAR_BASE_DETAIL_BUDGET_MS, 450),
+);
 const PDP_PRODUCT_INTEL_SYNC_BUDGET_MS = Math.max(
   250,
   parseTimeoutMs(process.env.PDP_PRODUCT_INTEL_SYNC_BUDGET_MS, 1500),
@@ -13596,7 +13604,8 @@ function annotateSimilarCardStatus(item = {}) {
 }
 
 function shouldEnrichSimilarCard(item = {}) {
-  return !hasSimilarCardPresentation(item) || !hasSimilarCardImage(item);
+  // Missing highlight no longer blocks card rendering; only pay detail latency to fill images.
+  return !hasSimilarCardImage(item);
 }
 
 function mergeSimilarCardEnrichment(candidate = {}, detail = {}) {
@@ -13643,19 +13652,49 @@ function filterSimilarProductsWithCardHighlights(items = []) {
   );
 }
 
+function attachSimilarCardEnrichmentMetadata(items, metadata = {}) {
+  if (!Array.isArray(items)) return items;
+  Object.defineProperty(items, '_enrichmentMetadata', {
+    value: metadata && typeof metadata === 'object' ? metadata : {},
+    enumerable: false,
+    configurable: true,
+  });
+  return items;
+}
+
+function getSimilarCardEnrichmentMetadata(items) {
+  return items && typeof items._enrichmentMetadata === 'object' && !Array.isArray(items._enrichmentMetadata)
+    ? items._enrichmentMetadata
+    : {};
+}
+
 async function enrichSimilarProductsForPdpCards({
   items = [],
   checkoutToken = null,
   bypassCache = false,
   maxItems = 6,
   budgetMs = PDP_SIMILAR_CARD_ENRICH_BUDGET_MS,
+  detailBudgetMs = PDP_SIMILAR_CARD_DETAIL_BUDGET_MS,
 } = {}) {
   const list = Array.isArray(items) ? items : [];
   const head = list.slice(0, Math.max(0, Number(maxItems) || 0));
   const tail = list.slice(head.length);
   const fallback = [...head.map((item) => annotateSimilarCardStatus(item)), ...tail];
+  const normalizedBudgetMs = Math.max(1, Number(budgetMs || 0) || 0);
+  const normalizedDetailBudgetMs = Math.max(
+    1,
+    Math.min(normalizedBudgetMs, Number(detailBudgetMs || 0) || normalizedBudgetMs),
+  );
+  const metadata = {
+    card_enrichment_budget_ms: normalizedBudgetMs,
+    card_enrichment_detail_budget_ms: normalizedDetailBudgetMs,
+    card_enrichment_attempted_count: 0,
+    card_enrichment_timeout_count: 0,
+    card_enrichment_failed_count: 0,
+    card_enrichment_status: 'ready',
+  };
   if (!head.some((item) => shouldEnrichSimilarCard(item))) {
-    return fallback;
+    return attachSimilarCardEnrichmentMetadata(fallback, metadata);
   }
 
   const enrichmentTask = Promise.all(
@@ -13669,13 +13708,27 @@ async function enrichSimilarProductsForPdpCards({
       if (!merchantId || !productId) {
         return annotateSimilarCardStatus(item);
       }
-      const detail = await fetchProductDetailForOffers({
-        merchantId,
-        productId,
-        checkoutToken,
-        bypassCache,
-        skipUpstreamFallback: true,
-      }).catch(() => null);
+      metadata.card_enrichment_attempted_count += 1;
+      const detail = await withStageBudget(
+        fetchProductDetailForOffers({
+          merchantId,
+          productId,
+          checkoutToken,
+          bypassCache,
+          skipUpstreamFallback: true,
+          totalTimeoutMs: normalizedDetailBudgetMs,
+          noRetry: true,
+        }),
+        normalizedDetailBudgetMs,
+        'pdp_similar_card_detail',
+      ).catch((err) => {
+        if (err?.code === 'STAGE_TIMEOUT') {
+          metadata.card_enrichment_timeout_count += 1;
+        } else {
+          metadata.card_enrichment_failed_count += 1;
+        }
+        return null;
+      });
       if (!detail || typeof detail !== 'object') {
         return annotateSimilarCardStatus(item);
       }
@@ -13695,11 +13748,21 @@ async function enrichSimilarProductsForPdpCards({
         },
         'PDP similar card enrichment budget exceeded',
       );
+      metadata.card_enrichment_timeout_count += Math.max(1, head.length);
       return fallback.slice(0, head.length);
     }
     throw err;
   });
-  return [...enriched, ...tail];
+  const result = [...enriched, ...tail];
+  if (metadata.card_enrichment_timeout_count > 0) {
+    metadata.card_enrichment_status = 'budget_exceeded';
+  } else if (
+    metadata.card_enrichment_failed_count > 0 ||
+    result.some((item) => String(item?.card_image_status || '').trim() === 'image_missing')
+  ) {
+    metadata.card_enrichment_status = 'partial';
+  }
+  return attachSimilarCardEnrichmentMetadata(result, metadata);
 }
 
 async function prewarmPdpSimilarForProduct({
@@ -23699,6 +23762,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	          bypassCache,
 	          maxItems: similarCandidateLimit,
 	        });
+        const cardEnrichmentMetadata = getSimilarCardEnrichmentMetadata(enrichedRelatedProducts);
         const missingHighlightCount = enrichedRelatedProducts.filter(
           (item) => String(item?.card_highlight_status || '').trim() === 'highlight_missing',
         ).length;
@@ -23721,10 +23785,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               ...(relatedProductsEnvelope.metadata && typeof relatedProductsEnvelope.metadata === 'object'
                 ? relatedProductsEnvelope.metadata
                 : {}),
+              ...cardEnrichmentMetadata,
               card_enrichment_status:
-                relatedProducts.length > 0 && missingHighlightCount <= 0 && missingImageCount <= 0
+                cardEnrichmentMetadata.card_enrichment_status ||
+                (relatedProducts.length > 0 && missingHighlightCount <= 0 && missingImageCount <= 0
                   ? 'ready'
-                  : 'partial',
+                  : 'partial'),
               card_highlight_missing_count: missingHighlightCount,
               card_image_missing_count: missingImageCount,
               card_highlight_filtered_count: filteredHighlightMissingCount,
@@ -27344,16 +27410,32 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 
           if (productId) {
             const directCandidateLimit = Math.max(limit, Math.min(30, limit + 4));
+            const isExternalSeedDirectBase =
+              isExternalSeedProductId(productId) &&
+              (!merchantId || merchantId === EXTERNAL_SEED_MERCHANT_ID);
             const baseProduct =
-              (merchantId
-                ? await fetchProductDetailForOffers({
-                    merchantId,
-                    productId,
-                    checkoutToken,
-                    bypassCache,
-                  }).catch(() => null)
+              (isExternalSeedDirectBase
+                ? {
+                    merchant_id: EXTERNAL_SEED_MERCHANT_ID,
+                    product_id: productId,
+                    external_product_id: productId,
+                    source: 'external_seed',
+                  }
+                : merchantId
+                ? await withStageBudget(
+                    fetchProductDetailForOffers({
+                      merchantId,
+                      productId,
+                      checkoutToken,
+                      bypassCache,
+                      totalTimeoutMs: PDP_SIMILAR_BASE_DETAIL_BUDGET_MS,
+                      noRetry: true,
+                    }),
+                    PDP_SIMILAR_BASE_DETAIL_BUDGET_MS,
+                    'find_similar_base_detail',
+                  ).catch(() => null)
                 : null) ||
-              (isExternalSeedProductId(productId)
+              (isExternalSeedDirectBase || isExternalSeedProductId(productId)
                 ? {
                     merchant_id: EXTERNAL_SEED_MERCHANT_ID,
                     product_id: productId,
@@ -27384,6 +27466,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               bypassCache,
               maxItems: limit,
             });
+            const cardEnrichmentMetadata = getSimilarCardEnrichmentMetadata(enrichedProducts);
             const products = filterSimilarProductsWithCardHighlights(enrichedProducts).slice(0, limit);
             const cardHighlightMissingCount = enrichedProducts.filter(
               (item) => String(item?.card_highlight_status || '').trim() === 'highlight_missing',
@@ -27400,10 +27483,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               metadata: {
                 route: 'find_similar_products_mainline_wrapper',
                 ...(rec?.metadata && typeof rec.metadata === 'object' ? rec.metadata : {}),
+                direct_base_detail_mode: isExternalSeedDirectBase ? 'external_seed_minimal' : 'bounded_detail',
+                direct_base_detail_budget_ms: PDP_SIMILAR_BASE_DETAIL_BUDGET_MS,
+                ...cardEnrichmentMetadata,
                 card_enrichment_status:
-                  products.length > 0 && cardHighlightMissingCount <= 0 && cardImageMissingCount <= 0
+                  cardEnrichmentMetadata.card_enrichment_status ||
+                  (products.length > 0 && cardHighlightMissingCount <= 0 && cardImageMissingCount <= 0
                     ? 'ready'
-                    : 'partial',
+                    : 'partial'),
                 card_highlight_missing_count: cardHighlightMissingCount,
                 card_highlight_filtered_count: Math.max(0, enrichedProducts.length - products.length),
                 card_image_missing_count: cardImageMissingCount,
@@ -30904,6 +30991,9 @@ module.exports._debug = {
   resolvePublicBeautyCompoundIntent,
   shouldBridgePublicBeautySearchToDiscovery,
   filterSimilarProductsWithCardHighlights,
+  enrichSimilarProductsForPdpCards,
+  getSimilarCardEnrichmentMetadata,
+  shouldEnrichSimilarCard,
   buildFindProductsMultiDiscoveryBridgeResponse,
   fetchProductDetailForOffers,
   fetchExternalSeedProductDetailFromDb,
