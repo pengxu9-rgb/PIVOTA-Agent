@@ -4679,9 +4679,11 @@ test('reco assistant rewrite uses structured primary attempt for compact routine
     );
     let callCount = 0;
     const prompts = [];
+    const timeouts = [];
     __internal.__setCallGeminiJsonObjectForTest(async (args = {}) => {
       callCount += 1;
       prompts.push(String(args.userPrompt || ''));
+      timeouts.push(Number(args.timeoutMs || 0));
       return {
         ok: true,
         json: {
@@ -4714,6 +4716,8 @@ test('reco assistant rewrite uses structured primary attempt for compact routine
     assert.equal(rewrite.attempts?.[0]?.structured_reason_only, true);
     assert.equal(rewrite.attempts?.[0]?.strict_selected_only_context, true);
     assert.equal(rewrite.attempts?.[0]?.max_output_tokens, 220);
+    assert.ok(timeouts[0] >= 3000);
+    assert.ok(timeouts[0] <= 3400);
     assert.match(rewrite.text, /The Ordinary Niacinamide 10% \+ Zinc 1% fits this request/i);
     assert.match(rewrite.text, /Hydrating Dewy Gel Cream covers the moisturizer step/i);
     assert.match(rewrite.text, /Birch Mild-Up Sunscreen SPF 50 covers the sunscreen step/i);
