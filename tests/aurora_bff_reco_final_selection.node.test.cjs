@@ -1889,7 +1889,7 @@ test('reco assistant rewrite uses minimal thinking for gemini 3 structured outpu
       __internal.normalizeRecoAssistantReasonFragment('it is the top pick because it supports barrier repair', {
         fallback: 'it supports barrier repair with tamanu oil and niacinamide',
       }),
-      'it supports barrier repair',
+      'it supports the skin barrier',
     );
 
     const rewrite = await __internal.maybeRewriteRecoAssistantTextWithLlm({
@@ -4292,6 +4292,25 @@ test('reco assistant visible-text sanitizer rewrites leaked same-slot finish-fit
     );
     assert.match(repairedBuiltAroundGrammar, /built around tamanu oil and niacinamide to support/i);
     assert.doesNotMatch(repairedBuiltAroundGrammar, /built a tamanu oil/i);
+
+    const neutralizedOilClaim = __internal.sanitizeRecoAssistantVisibleText(
+      'The Ordinary Niacinamide 10% + Zinc 1% fits this request because it utilizes a 10% niacinamide concentration paired with 1% zinc PCA to specifically regulate sebum production and manage surface oiliness.',
+    );
+    assert.match(neutralizedOilClaim, /uses a 10% niacinamide concentration paired with 1% zinc PCA for visible shine-control support/i);
+    assert.doesNotMatch(neutralizedOilClaim, /utilizes|regulate sebum production|manage surface oiliness|actively/i);
+
+    const neutralizedBarrierClaim = __internal.sanitizeRecoAssistantVisibleText(
+      'KraveBeauty Great Barrier Relief fits this request because it is a restorative barrier-repair treatment designed to repair over-sensitized skin and counteract dryness from retinoid use.',
+    );
+    assert.match(neutralizedBarrierClaim, /barrier-support/i);
+    assert.match(neutralizedBarrierClaim, /over-sensitized barrier support/i);
+    assert.match(neutralizedBarrierClaim, /dryness-prone routines around retinoid use/i);
+    assert.doesNotMatch(neutralizedBarrierClaim, /barrier-repair|repair over-sensitized|counteract dryness/i);
+
+    assert.equal(
+      __internal.normalizeRecoAssistantReasonFragment('utilizes niacinamide and zinc PCA to actively regulate sebum production.'),
+      'uses niacinamide and zinc PCA for visible shine-control support',
+    );
   } finally {
     delete require.cache[moduleId];
   }
