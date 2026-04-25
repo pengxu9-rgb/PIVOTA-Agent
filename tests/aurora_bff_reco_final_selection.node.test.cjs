@@ -963,6 +963,26 @@ test('reco assistant refinement question suppresses repeated questions after con
     assert.doesNotMatch(oilyContextRepair, /barrier-first setup/i);
     assert.doesNotMatch(oilyContextRepair, /stronger active/i);
 
+    const barrierUnderfillRepair = __internal.repairRecoAssistantMissingUserContextText({
+      text: 'The Ordinary Niacinamide 10% + Zinc 1% fits this request because it combines niacinamide with zinc PCA to support visible shine control while remaining affordable.',
+      userRequestText: 'My barrier gets irritated easily, and I still only want one affordable product. If there are not enough strong options, say that clearly. What should I do next?',
+      payload: {
+        recommendations: [
+          {
+            product_id: 'ordinary_niacinamide',
+            display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+            matched_role_id: 'acne_clogged_pore_treatment',
+            matched_role_label: 'Acne and clogged-pore treatment',
+            preferred_step: 'treatment',
+          },
+        ],
+      },
+    });
+    assert.match(barrierUnderfillRepair, /barrier/i);
+    assert.match(barrierUnderfillRepair, /not a barrier-first comfort product/i);
+    assert.match(barrierUnderfillRepair, /underfilled for barrier support/i);
+    assert.doesNotMatch(barrierUnderfillRepair, /with The Ordinary Niacinamide 10% \+ Zinc 1% as the comfort step/i);
+
     const sunscreenLeadContextRepair = __internal.repairRecoAssistantMissingUserContextText({
       text: 'Daily Soothing Sun Shield SPF50+ PA++++ makes sense because it wears more smoothly under makeup.',
       userRequestText: 'I use foundation, want less white cast and no greasy slip, and I commute in LA sun. Compare the cards and tell me which one you would start with.',
