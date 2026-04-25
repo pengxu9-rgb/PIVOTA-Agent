@@ -2040,6 +2040,44 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     representativeProductUrl ||
     (fallbackPollutedRow ? normalizeUrlLike(targetUrl) : normalizeUrlLike(row?.destination_url)) ||
     normalizeUrlLike(targetUrl);
+  const crossProductBackfillBlock = buildCrossProductBackfillBlock(
+    row,
+    seedData,
+    snapshot,
+    targetUrl,
+    representativeProduct,
+    representativeProductUrl,
+  );
+  if (crossProductBackfillBlock) {
+    const blockedSnapshot = {
+      ...snapshot,
+      diagnostics: {
+        ...ensureJsonObject(snapshot.diagnostics),
+        catalog_backfill_blocked: crossProductBackfillBlock,
+      },
+    };
+    const blockedSeedData = {
+      ...seedData,
+      snapshot: blockedSnapshot,
+    };
+    const nextRow = {
+      title: normalizeNonEmptyString(row?.title),
+      canonical_url: normalizeNonEmptyString(row?.canonical_url),
+      destination_url: normalizeNonEmptyString(row?.destination_url),
+      image_url: normalizeNonEmptyString(row?.image_url),
+      price_amount: typeof row?.price_amount === 'number' ? row.price_amount : parsePrice(row?.price_amount),
+      price_currency: normalizeNonEmptyString(row?.price_currency),
+      availability: normalizeNonEmptyString(row?.availability),
+      seed_data: blockedSeedData,
+    };
+    return {
+      changed: JSON.stringify(comparableSeedData(row?.seed_data)) !== JSON.stringify(comparableSeedData(blockedSeedData)),
+      nextRow,
+      representativeProduct,
+      snapshot: blockedSnapshot,
+      blocked: crossProductBackfillBlock,
+    };
+  }
 
   const nextSnapshot = {
     ...snapshot,
@@ -2089,6 +2127,7 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
 
   const nextSeedData = {
     ...seedData,
+    title,
     ...(description ? { description } : {}),
     ...(nextPdpDescriptionRaw ? { pdp_description_raw: nextPdpDescriptionRaw } : {}),
     ...(nextPdpDetailsSections.length > 0 ? { pdp_details_sections: nextPdpDetailsSections } : {}),
@@ -2335,6 +2374,79 @@ function buildIdentityListingSourcePayload(row, nextRow) {
   return {
     source_listing_ref: `${merchantId}:${productId}`,
     product,
+  };
+}
+
+const TITLE_IDENTITY_STOPWORDS = new Set([
+  'a',
+  'an',
+  'and',
+  'by',
+  'for',
+  'from',
+  'in',
+  'of',
+  'off',
+  'on',
+  'plus',
+  'the',
+  'to',
+  'with',
+]);
+
+function titleIdentityTokens(value) {
+  return uniqueStrings(
+    normalizeNonEmptyString(value)
+      .toLowerCase()
+      .replace(/&/g, ' and ')
+      .replace(/[’']/g, '')
+      .replace(/[^a-z0-9]+/g, ' ')
+      .split(/\s+/)
+      .map((token) => token.trim())
+      .filter((token) => token.length >= 2 && !TITLE_IDENTITY_STOPWORDS.has(token)),
+  );
+}
+
+function titleIdentityOverlapRatio(left, right) {
+  const leftTokens = titleIdentityTokens(left);
+  const rightTokens = titleIdentityTokens(right);
+  if (!leftTokens.length || !rightTokens.length) return 0;
+  const rightSet = new Set(rightTokens);
+  const shared = leftTokens.filter((token) => rightSet.has(token)).length;
+  return shared / Math.min(leftTokens.length, rightTokens.length);
+}
+
+function normalizeTitleIdentityKey(value) {
+  return titleIdentityTokens(value).join(' ');
+}
+
+function looksLikeCrossProductTitleDrift(existingTitle, extractedTitle) {
+  const existing = normalizeNonEmptyString(existingTitle);
+  const extracted = normalizeNonEmptyString(extractedTitle);
+  if (!existing || !extracted) return false;
+  const existingKey = normalizeTitleIdentityKey(existing);
+  const extractedKey = normalizeTitleIdentityKey(extracted);
+  if (!existingKey || !extractedKey || existingKey === extractedKey) return false;
+  if (existingKey.includes(extractedKey) || extractedKey.includes(existingKey)) return false;
+  return titleIdentityOverlapRatio(existing, extracted) < 0.35;
+}
+
+function buildCrossProductBackfillBlock(row, seedData, snapshot, targetUrl, representativeProduct, representativeProductUrl) {
+  const extractedTitle = normalizeNonEmptyString(representativeProduct?.title);
+  if (!extractedTitle) return null;
+  const existingTitle =
+    normalizeNonEmptyString(seedData?.title) ||
+    normalizeNonEmptyString(snapshot?.title) ||
+    normalizeNonEmptyString(row?.title);
+  if (!looksLikeCrossProductTitleDrift(existingTitle, extractedTitle)) return null;
+  return {
+    reason: 'cross_product_title_drift',
+    existing_title: existingTitle,
+    extracted_title: extractedTitle,
+    row_title: normalizeNonEmptyString(row?.title),
+    target_url: normalizeUrlLike(targetUrl),
+    extracted_url: normalizeUrlLike(representativeProductUrl || representativeProduct?.url),
+    overlap_ratio: Number(titleIdentityOverlapRatio(existingTitle, extractedTitle).toFixed(3)),
   };
 }
 

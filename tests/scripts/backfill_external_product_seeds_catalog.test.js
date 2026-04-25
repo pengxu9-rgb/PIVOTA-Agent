@@ -564,6 +564,107 @@ describe('backfill-external-product-seeds-catalog', () => {
     );
   });
 
+  test('blocks cross-product PDP writes when preserved seed title conflicts with extracted product', () => {
+    const row = {
+      id: 'eps_fenty_dry_brush',
+      title: 'Jumbo Butta Drop Whipped Oil Body Cream with Tropical Oils + Shea Butter',
+      canonical_url:
+        'https://fentybeauty.com/products/jumbo-butta-drop-whipped-oil-body-cream-with-tropical-oils-shea-butter-vanilla-dream',
+      destination_url:
+        'https://fentybeauty.com/products/jumbo-butta-drop-whipped-oil-body-cream-with-tropical-oils-shea-butter-vanilla-dream',
+      image_url: 'https://cdn.example.com/dry-brush.jpg',
+      price_amount: 18,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      seed_data: {
+        title: 'Dry Brush-Cleaning Sponge',
+        snapshot: {
+          title: 'Dry Brush-Cleaning Sponge',
+          canonical_url: 'https://fentybeauty.com/products/dry-brush-cleaning-sponge',
+        },
+      },
+    };
+
+    const payload = buildSeedUpdatePayload(
+      row,
+      {
+        products: [
+          {
+            title: 'Jumbo Butta Drop Whipped Oil Body Cream with Tropical Oils + Shea Butter',
+            url: 'https://fentybeauty.com/products/jumbo-butta-drop-whipped-oil-body-cream-with-tropical-oils-shea-butter-vanilla-dream',
+            description_raw: 'A whipped body cream.',
+            variants: [],
+          },
+        ],
+        variants: [],
+        diagnostics: {
+          discovery_strategy: 'shopify_json',
+        },
+      },
+      'https://fentybeauty.com/products/jumbo-butta-drop-whipped-oil-body-cream-with-tropical-oils-shea-butter-vanilla-dream',
+    );
+
+    expect(payload.blocked).toEqual(
+      expect.objectContaining({
+        reason: 'cross_product_title_drift',
+        existing_title: 'Dry Brush-Cleaning Sponge',
+        extracted_title: 'Jumbo Butta Drop Whipped Oil Body Cream with Tropical Oils + Shea Butter',
+      }),
+    );
+    expect(payload.nextRow.title).toBe('Jumbo Butta Drop Whipped Oil Body Cream with Tropical Oils + Shea Butter');
+    expect(payload.nextRow.canonical_url).toBe(
+      'https://fentybeauty.com/products/jumbo-butta-drop-whipped-oil-body-cream-with-tropical-oils-shea-butter-vanilla-dream',
+    );
+    expect(payload.nextRow.seed_data.snapshot.diagnostics.catalog_backfill_blocked.reason).toBe(
+      'cross_product_title_drift',
+    );
+  });
+
+  test('syncs seed_data title when a refreshed PDP passes identity checks', () => {
+    const row = {
+      id: 'eps_fenty_body_cream',
+      title: 'Jumbo Butta Drop Whipped Oil Body Cream',
+      canonical_url: 'https://fentybeauty.com/products/jumbo-butta-drop-whipped-oil-body-cream',
+      destination_url: 'https://fentybeauty.com/products/jumbo-butta-drop-whipped-oil-body-cream',
+      price_amount: 36,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      seed_data: {
+        title: 'Jumbo Butta Drop Whipped Oil Body Cream',
+        snapshot: {
+          title: 'Jumbo Butta Drop Whipped Oil Body Cream',
+          canonical_url: 'https://fentybeauty.com/products/jumbo-butta-drop-whipped-oil-body-cream',
+        },
+      },
+    };
+
+    const payload = buildSeedUpdatePayload(
+      row,
+      {
+        products: [
+          {
+            title: 'Jumbo Butta Drop Whipped Oil Body Cream with Tropical Oils + Shea Butter',
+            url: 'https://fentybeauty.com/products/jumbo-butta-drop-whipped-oil-body-cream',
+            description_raw: 'A whipped body cream with tropical oils and shea butter.',
+            variants: [],
+          },
+        ],
+        variants: [],
+        diagnostics: {},
+      },
+      'https://fentybeauty.com/products/jumbo-butta-drop-whipped-oil-body-cream',
+    );
+
+    expect(payload.blocked).toBeUndefined();
+    expect(payload.nextRow.title).toBe('Jumbo Butta Drop Whipped Oil Body Cream with Tropical Oils + Shea Butter');
+    expect(payload.nextRow.seed_data.title).toBe(
+      'Jumbo Butta Drop Whipped Oil Body Cream with Tropical Oils + Shea Butter',
+    );
+    expect(payload.nextRow.seed_data.snapshot.title).toBe(
+      'Jumbo Butta Drop Whipped Oil Body Cream with Tropical Oils + Shea Butter',
+    );
+  });
+
   test('skips direct PDP backfill when extractor only returns unrelated collection products', async () => {
     const row = {
       id: 'eps_tomford_missing_handle',
