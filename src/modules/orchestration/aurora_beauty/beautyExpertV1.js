@@ -11,6 +11,10 @@ function asString(value) {
   return typeof value === 'string' ? value.trim() : '';
 }
 
+function asArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
 function pickFirstTrimmed(...values) {
   for (const value of values) {
     if (Array.isArray(value)) {
@@ -49,6 +53,33 @@ function stripHtml(value) {
     .replace(/&#39;/gi, "'")
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function compactVisibleEvidence(value) {
+  const raw = String(value || '');
+  const cleaned = stripHtml(raw);
+  const normalized = normalizeText(cleaned);
+  if (!normalized) return '';
+  const hasMarkup = /<[^>]+>/.test(raw) || /&(?:nbsp|amp|quot|#39);/i.test(raw);
+  if (
+    /(^|\s)(test fixture|ingredients|ingredient list|full ingredient|clinical study|made by|product details|how to use|directions|soft wash to smoky|synthetic fibers|with pouch)(\s|$)/.test(normalized) ||
+    /\b(brush|makeup brush|synthetic fibers|pouch)\b/.test(normalized) ||
+    /\bmerchant-network search candidate\b/i.test(cleaned) ||
+    (hasMarkup && cleaned.length > 96)
+  ) {
+    return '';
+  }
+  if (cleaned.length <= 160) return cleaned;
+  const firstSentence = cleaned.match(/^(.{40,150}?[.!?])(?:\s|$)/)?.[1]?.trim();
+  return firstSentence || '';
+}
+
+function pickVisibleEvidence(...values) {
+  for (const value of values) {
+    const evidence = compactVisibleEvidence(value);
+    if (evidence) return evidence;
+  }
+  return '';
 }
 
 function normalizeSourceToken(value) {
@@ -130,7 +161,7 @@ function inferAuthorityStatus(response = {}, metadata = {}) {
   );
 }
 
-function buildAxisFromReason(reason = '', index = 0) {
+function buildAxisFromReason(reason = '', index = 0, { allowFallbackLabel = true } = {}) {
   const rawReason = String(reason || '');
   const cleanedReason = stripHtml(reason);
   const normalized = normalizeText(cleanedReason);
@@ -150,10 +181,10 @@ function buildAxisFromReason(reason = '', index = 0) {
   ) {
     return { id: `axis_${index + 1}`, label: 'lighter / smoother finish' };
   }
-  if (/\bmineral|sensitive\b/.test(normalized)) {
+  if (/\bmineral|sensitive|mild up|mild-up\b/.test(normalized)) {
     return { id: `axis_${index + 1}`, label: 'mineral / sensitive-skin' };
   }
-  if (/\bserum-like|serum like|fluid\b/.test(normalized)) {
+  if (/\bserum-like|serum like|fluid|airy|aqua fresh|aqua-fresh|gel|watery\b/.test(normalized)) {
     return { id: `axis_${index + 1}`, label: 'serum-like / thinner feel' };
   }
   if (/\bniacinamide|zinc pca|targeted treatment|skin-balancing|skin balancing|oil-balancing|oil balancing|clarifying serum|blemish serum\b/.test(normalized)) {
@@ -171,6 +202,12 @@ function buildAxisFromReason(reason = '', index = 0) {
   if (normalized.length > 120) {
     return null;
   }
+  if (/\b(sunscreen|spf|cream|serum|lotion|toner|cleanser|moisturizer|moisturiser)\b/.test(normalized)) {
+    return null;
+  }
+  if (!allowFallbackLabel) {
+    return null;
+  }
   return {
     id: `axis_${index + 1}`,
     label: cleanedReason.length > 72 ? `${cleanedReason.slice(0, 69)}...` : cleanedReason,
@@ -180,13 +217,78 @@ function buildAxisFromReason(reason = '', index = 0) {
 function buildCompareAxes(products = []) {
   return products
     .slice(0, 4)
-    .map((product, index) =>
-      buildAxisFromReason(
-        pickFirstTrimmed(product?.why_this_one, product?.short_description, product?.description),
-        index,
-      ),
-    )
+    .map((product, index) => {
+      const evidence = pickVisibleEvidence(product?.why_this_one, product?.short_description);
+      if (evidence) return buildAxisFromReason(evidence, index);
+      const title = pickFirstTrimmed(product?.title, product?.name, product?.canonical_title);
+      return buildAxisFromReason(title, index, { allowFallbackLabel: false });
+    })
     .filter(Boolean);
+}
+
+function buildRecoTitleDedupeKey(product = {}) {
+  const title = pickFirstTrimmed(product.title, product.name, product.canonical_title);
+  if (!title) return '';
+  const brand = normalizeProductToken(pickFirstTrimmed(product.brand, product.vendor));
+  const normalizedTitle = normalizeProductToken(title)
+    .replace(/\bdeal\b/g, ' ')
+    .replace(/\bsubscription\b/g, ' ')
+    .replace(/\bsubscribe\b/g, ' ')
+    .replace(/\bautoship\b/g, ' ')
+    .replace(/\bauto ship\b/g, ' ')
+    .replace(/\bbroad spectrum\b/g, ' ')
+    .replace(/\bspf\s*\d+\+?\b/g, ' ')
+    .replace(/\bpa\s*\+{2,4}\b/g, ' ')
+    .replace(/\buvlock\b/g, ' ')
+    .replace(/\b\d+(?:\.\d+)?\s*(?:ml|oz|fl oz|g)\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return `title:${brand}:${normalizedTitle || normalizeProductToken(title)}`;
+}
+
+function buildRecoDedupeKeys(product = {}) {
+  const keys = [];
+  const titleKey = buildRecoTitleDedupeKey(product);
+  if (titleKey) keys.push(titleKey);
+  const exactKey = pickFirstTrimmed(product.product_group_id, product.dedupe_group_id);
+  if (exactKey) keys.push(`id:${normalizeProductToken(exactKey)}`);
+  return keys;
+}
+
+function buildRecoDedupeKey(product = {}) {
+  return buildRecoDedupeKeys(product)[0] || '';
+}
+
+function scoreRecoDedupeRepresentative(product = {}) {
+  const title = normalizeText(pickFirstTrimmed(product.title, product.name, product.canonical_title));
+  let score = 0;
+  if (pickFirstTrimmed(product.product_id, product.id)) score += 2;
+  if (pickFirstTrimmed(product.product_group_id, product.dedupe_group_id)) score += 1;
+  if (product.pdp_open) score += 2;
+  if (pickFirstTrimmed(product.image_url)) score += 1;
+  if (pickFirstTrimmed(product.price)) score += 1;
+  if (/\b(deal|subscription|subscribe|autoship|auto ship)\b/.test(title)) score -= 10;
+  return score;
+}
+
+function dedupeRecoProducts(products = []) {
+  const rows = Array.isArray(products) ? products.filter((row) => isPlainObject(row)) : [];
+  const seen = new Map();
+  const out = [];
+  for (const product of rows) {
+    const keys = buildRecoDedupeKeys(product);
+    const existingIndex = keys.map((key) => seen.get(key)).find((index) => Number.isInteger(index));
+    if (Number.isInteger(existingIndex)) {
+      if (scoreRecoDedupeRepresentative(product) > scoreRecoDedupeRepresentative(out[existingIndex])) {
+        out[existingIndex] = product;
+      }
+      for (const key of keys) seen.set(key, existingIndex);
+      continue;
+    }
+    for (const key of keys) seen.set(key, out.length);
+    out.push(product);
+  }
+  return out;
 }
 
 function buildAnchorTokens(beautyRequest = {}, queryText = '') {
@@ -222,7 +324,7 @@ function buildProductMatchTokens(product = {}) {
         product.canonical_product_ref.product_ref,
       )
     : pickFirstTrimmed(product.canonical_product_ref);
-  const name = pickFirstTrimmed(product.name, product.title, product.display_name);
+  const name = pickFirstTrimmed(product.name, product.title, product.canonical_title, product.display_name);
   const brand = pickFirstTrimmed(product.brand);
   return uniqueStrings([
     name,
@@ -272,32 +374,37 @@ function reorderProductsForBeautyMode(products = [], { mode, beautyRequest, quer
 function normalizeRecoProduct(product = {}) {
   if (!isPlainObject(product)) return null;
   const productId = pickFirstTrimmed(product.product_id, product.id);
-  const name = pickFirstTrimmed(product.name, product.title);
+  const name = pickFirstTrimmed(product.name, product.title, product.canonical_title);
   if (!productId && !name) return null;
+  const firstOffer = Array.isArray(product.offers) && isPlainObject(product.offers[0]) ? product.offers[0] : {};
 
   let price = null;
   let currency = null;
   if (isPlainObject(product.price)) {
     const parsed = Number(product.price.amount ?? product.price.value ?? product.price.major);
     price = Number.isFinite(parsed) ? parsed : null;
-    currency = pickFirstTrimmed(product.price.currency, product.currency);
+    currency = pickFirstTrimmed(product.price.currency, product.currency, firstOffer.currency);
   } else {
-    const parsed = Number(product.price);
+    const parsed = Number(product.price ?? firstOffer.price);
     price = Number.isFinite(parsed) ? parsed : null;
-    currency = pickFirstTrimmed(product.currency);
+    currency = pickFirstTrimmed(product.currency, firstOffer.currency);
   }
 
   return {
     ...(productId ? { product_id: productId } : {}),
-    ...(pickFirstTrimmed(product.merchant_id) ? { merchant_id: pickFirstTrimmed(product.merchant_id) } : {}),
+    ...(pickFirstTrimmed(product.merchant_id, firstOffer.merchant_id)
+      ? { merchant_id: pickFirstTrimmed(product.merchant_id, firstOffer.merchant_id) }
+      : {}),
     ...(pickFirstTrimmed(product.product_group_id) ? { product_group_id: pickFirstTrimmed(product.product_group_id) } : {}),
     ...(name ? { name } : {}),
     ...(pickFirstTrimmed(product.brand) ? { brand: pickFirstTrimmed(product.brand) } : {}),
-    ...(pickFirstTrimmed(product.image_url) ? { image_url: pickFirstTrimmed(product.image_url) } : {}),
+    ...(pickFirstTrimmed(product.image_url, product.image_refs)
+      ? { image_url: pickFirstTrimmed(product.image_url, product.image_refs) }
+      : {}),
     ...(price != null ? { price } : {}),
     ...(currency ? { currency } : {}),
-    ...(pickFirstTrimmed(product.why_this_one, product.short_description, product.description)
-      ? { why_this_one: pickFirstTrimmed(product.why_this_one, product.short_description, product.description) }
+    ...(pickVisibleEvidence(product.why_this_one, product.short_description)
+      ? { why_this_one: pickVisibleEvidence(product.why_this_one, product.short_description) }
       : {}),
     ...(product.pdp_open != null ? { pdp_open: cloneJsonSafe(product.pdp_open, null) } : {}),
     ...(pickFirstTrimmed(product.authority_status, product.grounding_status)
@@ -370,7 +477,7 @@ function inferBeautyMode({ taskType, beautyRequest, queryText, response } = {}) 
   const productContext = isPlainObject(beautyRequest?.product_context) ? beautyRequest.product_context : {};
   const missingContext = inferMissingContext(beautyRequest, queryText);
   const explicitCategoryPattern =
-    /\b(sunscreen|spf|moisturizer|moisturiser|cleanser|serum|toner|essence|retinol|retinoid|mask|balm|oil|cream|lotion)\b/;
+    /\b(sunscreens?|spf|moisturi[sz]ers?|cleansers?|serums?|toners?|essences?|retinols?|retinoids?|masks?|balms?|oils?|creams?|lotions?)\b/;
   const genericGuidancePattern =
     /\bwhat should i (use|buy)\b(?:[^.]{0,24}\bfor my skin\b)?|\bhelp my skin\b|\bfor my skin\b/;
   const exactProductAskPattern =
@@ -394,6 +501,13 @@ function inferBeautyMode({ taskType, beautyRequest, queryText, response } = {}) 
   }
   if (!hasExplicitCategory && isGenericGuidanceAsk && missingContext.length > 0) {
     return 'guided_beauty_reco';
+  }
+  if (
+    Array.isArray(response?.products) &&
+    response.products.length > 0 &&
+    missingContext.length === 0
+  ) {
+    return 'category_compare';
   }
   if (
     Array.isArray(response?.products) && response.products.length > 0 &&
@@ -556,7 +670,7 @@ function buildBeautyExpertV1Response({
     mode === 'guided_beauty_reco' &&
     Array.isArray(analysisSummary.missing_context) &&
     analysisSummary.missing_context.length > 0;
-  const effectiveProducts = shouldSuppressRecoBundle ? [] : products;
+  const effectiveProducts = shouldSuppressRecoBundle ? [] : dedupeRecoProducts(products);
   const compareAxes = buildCompareAxes(effectiveProducts);
   const nextActions = buildNextActions({
     mode,
@@ -698,6 +812,7 @@ function getProductDisplayName(product = {}) {
   return pickFirstTrimmed(
     product?.name,
     product?.title,
+    product?.canonical_title,
     product?.display_name,
     product?.product_name,
     product?.sku?.name,
@@ -764,6 +879,100 @@ function suppressExactProductConflictingAssistant(response = {}, beautyExpertV1 
   return next;
 }
 
+function isGenericInvokeReply(reply = '') {
+  const normalized = normalizeProductToken(reply);
+  return (
+    normalized === 'here are some more suitable picks based on your request' ||
+    normalized.startsWith('here are some more suitable picks based on your request budget')
+  );
+}
+
+function formatPrice(product = {}) {
+  const amount = Number(product.price);
+  const currency = pickFirstTrimmed(product.currency);
+  if (!Number.isFinite(amount) || amount <= 0) return '';
+  return `${currency || 'USD'} ${amount}`;
+}
+
+function inferProductRoleLabel(product = {}) {
+  const haystack = normalizeText([
+    product.name,
+    product.title,
+    product.canonical_title,
+    product.brand,
+    product.why_this_one,
+  ].filter(Boolean).join(' '));
+  if (/\bspf|sunscreen|sun\b/.test(haystack)) return 'sunscreen role';
+  if (/\bmoistur|cream|lotion|barrier\b/.test(haystack)) return 'moisturizer/barrier role';
+  if (/\bserum|niacinamide|retinol|bha|aha|treatment\b/.test(haystack)) return 'treatment role';
+  if (/\bcleanser|wash\b/.test(haystack)) return 'cleanser role';
+  return 'requested role';
+}
+
+function describeProductForVisibleCopy(product = {}) {
+  const reason = pickVisibleEvidence(product.why_this_one, product.short_description);
+  if (reason) return reason;
+  const parts = [];
+  const role = inferProductRoleLabel(product);
+  if (role) parts.push(`it matches the ${role}`);
+  const price = formatPrice(product);
+  if (price) parts.push(`it is listed around ${price}`);
+  return parts.join(' and ') || 'it is a grounded catalog option for this request';
+}
+
+function buildBeautyExpertVisibleReply(beautyExpertV1 = {}) {
+  const mode = String(beautyExpertV1.mode || '').trim();
+  const products = [
+    ...asArray(beautyExpertV1.reco_bundle?.lead_picks),
+    ...asArray(beautyExpertV1.reco_bundle?.support_picks),
+  ].filter(isPlainObject);
+  const sourceProfile = normalizeSourceToken(beautyExpertV1?.delegation_trace?.source_profile);
+  const creatorFacing = sourceProfile === 'creator-agent';
+
+  if (mode === 'guided_beauty_reco' && products.length === 0) {
+    const missing = asArray(beautyExpertV1.analysis_summary?.missing_context).filter(Boolean);
+    const missingCopy = missing.length > 0
+      ? missing.join(', ')
+      : 'skin type, main concern, current routine, climate, and budget';
+    return `I need a bit more context before narrowing products: ${missingCopy}. A skin analysis can help if you want a more precise routine, but it is not required to continue.`;
+  }
+
+  if (products.length === 0) return '';
+  const lead = products[0];
+  const support = products.slice(1, 3);
+  const leadName = getProductDisplayName(lead) || 'the lead option';
+  const leadReason = describeProductForVisibleCopy(lead);
+  const prefix = creatorFacing
+    ? 'For a creator-facing shortlist, '
+    : '';
+  const supportCopy = support
+    .map((product) => {
+      const name = getProductDisplayName(product);
+      if (!name) return '';
+      return `${name} is the comparison option because ${describeProductForVisibleCopy(product)}`;
+    })
+    .filter(Boolean);
+  const compareSentence = supportCopy.length > 0
+    ? `Compared with it, ${supportCopy.join('; ')}.`
+    : 'I would still compare price, texture, and routine fit before making it the only pick.';
+  return `${prefix}${leadName} is the current lead because ${leadReason}. ${compareSentence}`;
+}
+
+function projectBeautyExpertVisibleReply(response = {}, beautyExpertV1 = null) {
+  if (!isPlainObject(response) || !isPlainObject(beautyExpertV1)) return response;
+  const existingReply = pickFirstTrimmed(response.reply);
+  const shouldReplace =
+    !existingReply ||
+    isGenericInvokeReply(existingReply);
+  if (!shouldReplace) return response;
+  const reply = buildBeautyExpertVisibleReply(beautyExpertV1);
+  if (!reply) return response;
+  return {
+    ...response,
+    reply,
+  };
+}
+
 function attachBeautyExpertV1ToResponse(response = {}, options = {}) {
   if (!isPlainObject(response)) return response;
   const beautyExpertV1 = buildBeautyExpertV1Response({
@@ -785,7 +994,7 @@ function attachBeautyExpertV1ToResponse(response = {}, options = {}) {
         }
       : beautyExpertV1;
   const projectedVisibleResponse = suppressExactProductConflictingAssistant(
-    projectedResponse,
+    projectBeautyExpertVisibleReply(projectedResponse, projectedBeautyExpertV1),
     projectedBeautyExpertV1,
   );
 

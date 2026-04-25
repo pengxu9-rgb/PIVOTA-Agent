@@ -40,6 +40,24 @@ describe('Celestial commerce core source policy module', () => {
     expect(runtime.isResolverFirstCatalogSource('creator_agent')).toBe(true);
     expect(runtime.getProxySearchApiBase('aurora-bff')).toBe('http://aurora.test');
     expect(runtime.getProxySearchApiBase('search')).toBe('http://pivota.test');
+    expect(runtime.classifyInvokeSearchRail('creator_agent')).toBe('legacy_internal');
+    expect(
+      runtime.classifyInvokeSearchRail('creator_agent', {
+        metadata: {
+          catalog_surface: 'beauty',
+          beauty_domain_hint: 'beauty',
+        },
+      }),
+    ).toBe('authoritative_shopping');
+    expect(
+      runtime.classifyInvokeSearchRail('creator_agent', {
+        explicitLegacy: true,
+        metadata: {
+          catalog_surface: 'beauty',
+          beauty_domain_hint: 'beauty',
+        },
+      }),
+    ).toBe('legacy_internal');
 
     expect(runtime.getAuroraFallbackOverrides('aurora-bff', 'find_products_multi')).toEqual({
       active: true,
@@ -75,6 +93,40 @@ describe('Celestial commerce core source policy module', () => {
       allow_external_seed: true,
       allow_stale_cache: false,
       external_seed_strategy: 'unified_relevance',
+      fast_mode: true,
+    });
+
+    expect(
+      runtime.applyShoppingCatalogQueryGuards(
+        {
+          query: 'moisturizer',
+          catalog_surface: 'beauty',
+          external_seed_strategy: 'unified_relevance',
+        },
+        'creator_agent',
+      ),
+    ).toMatchObject({
+      query: 'moisturizer',
+      catalog_surface: 'beauty',
+      allow_external_seed: true,
+      allow_stale_cache: false,
+      external_seed_strategy: 'unified_relevance',
+      fast_mode: true,
+    });
+
+    expect(
+      runtime.applyShoppingCatalogQueryGuards(
+        {
+          query: 'camera',
+          external_seed_strategy: 'unified_relevance',
+        },
+        'creator_agent',
+      ),
+    ).toMatchObject({
+      query: 'camera',
+      allow_external_seed: true,
+      allow_stale_cache: false,
+      external_seed_strategy: 'supplement_internal_first',
       fast_mode: true,
     });
 

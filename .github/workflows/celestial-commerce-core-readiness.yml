@@ -147,6 +147,8 @@ jobs:
           node --check scripts/search_stability_matrix.js
           node --check scripts/run_celestial_commerce_core_staging_matrix.js
           node --check scripts/run_celestial_commerce_core_beauty_cross_agent_matrix.js
+          node --check scripts/run_celestial_commerce_core_beauty_cross_agent_multiturn_local.js
+          node --check scripts/run_celestial_commerce_core_beauty_cross_agent_multiturn_live.js
           node --check scripts/generate_celestial_commerce_core_stabilization_report.js
           node --check scripts/extract_celestial_commerce_gateway_governance_shadow_from_search_matrix.js
           node --check scripts/fetch_celestial_commerce_gateway_governance_logs.js
@@ -181,6 +183,8 @@ jobs:
             tests/celestial_commerce_main_path_alerts_script.test.js \
             tests/celestial_commerce_core_staging_matrix_script.test.js \
             tests/celestial_commerce_core_beauty_cross_agent_matrix_script.test.js \
+            tests/celestial_commerce_core_beauty_cross_agent_multiturn_local_script.test.js \
+            tests/celestial_commerce_core_beauty_cross_agent_multiturn_live_script.test.js \
             tests/celestial_commerce_core_stabilization_report_script.test.js \
             tests/celestial_commerce_core_prod_canary_script.test.js \
             tests/aurora_chat_rollout_headers.node.test.cjs \

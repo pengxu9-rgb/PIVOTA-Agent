@@ -4,6 +4,9 @@ const path = require('path');
 const http = require('http');
 const { execFile } = require('child_process');
 const { promisify } = require('util');
+const {
+  classifyExecution,
+} = require('../scripts/run_celestial_commerce_core_beauty_cross_agent_matrix');
 
 const execFileAsync = promisify(execFile);
 
@@ -22,6 +25,42 @@ function readJsonBody(req) {
 }
 
 describe('Celestial commerce beauty cross-agent matrix runner', () => {
+  test('flags non-beauty product contamination from returned product titles', () => {
+    const testCase = {
+      id: 'non_beauty_case',
+      prompt: 'I need a carry-on suitcase under $200',
+      expect_beauty_expert: false,
+      expect_non_beauty_isolation: true,
+    };
+    const failures = classifyExecution(
+      {
+        testCase,
+        surface_type: 'invoke',
+      },
+      {
+        beauty_expert_v1: false,
+        next_actions: [],
+        compare_axes: [],
+        lead_pick_titles: ['Moisture Airyfit Daily Sunscreen SPF50+/PA++++'],
+        support_pick_titles: ['Pet Jacket'],
+        raw_card_titles: [
+          'Moisture Airyfit Daily Sunscreen SPF50+/PA++++',
+          'Daily Soothing Sun Shield SPF50+ PA++++',
+          'Pet Jacket',
+        ],
+        visible_compare_reasons: [],
+        visible_text: 'Here are some more suitable picks based on your request.',
+      },
+      {
+        ok: true,
+        status: 200,
+        body: {},
+      },
+    );
+
+    expect(failures).toContain('non_beauty_false_positive');
+  });
+
   test('runs continuous waves and produces a stable cross-surface summary', async () => {
     const repoRoot = path.join(__dirname, '..');
     const scriptPath = path.join(

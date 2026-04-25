@@ -184,6 +184,330 @@ describe('beauty_expert_v1 contract', () => {
     ]);
   });
 
+  test('dedupes deal/subscription variants and builds axes from product titles when reasons are missing', () => {
+    const result = buildBeautyExpertV1Response({
+      source: 'shopping_agent',
+      entryLayer: 'orchestration',
+      delegatedLayer: 'decisioning',
+      taskType: 'discovery',
+      context: {
+        source_profile: {
+          source: 'shopping_agent',
+          default_entry_layer: 'decisioning',
+        },
+        vertical: 'beauty',
+        category: 'skincare',
+        raw_user_goal: 'I have oily skin, what sunscreen should I buy?',
+      },
+      metadata: {
+        source: 'shopping_agent',
+        catalog_surface: 'beauty',
+      },
+      payload: {
+        search: {
+          query: 'I have oily skin, what sunscreen should I buy?',
+        },
+      },
+      response: {
+        products: [
+          {
+            product_id: 'ext_roundlab_mild',
+            merchant_id: 'external_seed',
+            title: 'Birch Mild-Up Sunscreen UVLock SPF 50+ Broad Spectrum',
+            brand: 'Round Lab',
+            price: 25,
+            currency: 'USD',
+          },
+          {
+            product_id: 'ext_roundlab_mild_deal',
+            merchant_id: 'external_seed',
+            title: '[DEAL] Birch Mild-Up Sunscreen UVLock SPF 50+ Broad Spectrum',
+            brand: 'Round Lab',
+            price: 22,
+            currency: 'USD',
+          },
+          {
+            product_id: 'ext_roundlab_moisturizing',
+            merchant_id: 'external_seed',
+            title: 'Birch Moisturizing Sunscreen UVLock SPF 45+ Broad Spectrum [Subscription]',
+            brand: 'Round Lab',
+            price: 26,
+            currency: 'USD',
+          },
+          {
+            product_id: 'ext_roundlab_moisturizing_clean',
+            merchant_id: 'external_seed',
+            title: 'Birch Moisturizing Sunscreen UVLock SPF 45+ Broad Spectrum',
+            brand: 'Round Lab',
+            price: 27,
+            currency: 'USD',
+          },
+        ],
+        metadata: {
+          mainline_status: 'grounded_success',
+          decision_owner: 'shopping_agent_beauty_mainline',
+          semantic_owner: 'shopping_agent_beauty_mainline',
+        },
+      },
+    });
+
+    expect([
+      ...result.reco_bundle.lead_picks,
+      ...result.reco_bundle.support_picks,
+    ].map((product) => product.name)).toEqual([
+      'Birch Mild-Up Sunscreen UVLock SPF 50+ Broad Spectrum',
+      'Birch Moisturizing Sunscreen UVLock SPF 45+ Broad Spectrum',
+    ]);
+    expect(result.compare_axes.length).toBeGreaterThan(0);
+  });
+
+  test('replaces generic invoke reply with neutral beauty expert comparison copy', () => {
+    const result = attachBeautyExpertV1ToResponse(
+      {
+        reply: 'Here are some more suitable picks based on your request.',
+        products: [
+          {
+            product_id: 'sku_1',
+            merchant_id: 'm_1',
+            title: 'Fluid Sunscreen',
+            brand: 'Demo',
+            price: 18,
+            currency: 'USD',
+            why_this_one: 'Lighter sunscreen texture for oily skin under makeup.',
+          },
+          {
+            product_id: 'sku_2',
+            merchant_id: 'm_2',
+            title: 'Matte Sunscreen',
+            brand: 'Demo',
+            price: 22,
+            currency: 'USD',
+            why_this_one: 'More matte finish if shine control is the priority.',
+          },
+        ],
+        metadata: {
+          mainline_status: 'grounded_success',
+          decision_owner: 'shopping_agent_beauty_mainline',
+          semantic_owner: 'shopping_agent_beauty_mainline',
+        },
+      },
+      {
+        source: 'shopping_agent',
+        entryLayer: 'orchestration',
+        delegatedLayer: 'decisioning',
+        taskType: 'discovery',
+        context: {
+          vertical: 'beauty',
+          category: 'skincare',
+          raw_user_goal: 'I have oily skin, what sunscreen should I buy?',
+        },
+        metadata: {
+          source: 'shopping_agent',
+          catalog_surface: 'beauty',
+        },
+        payload: {
+          search: {
+            query: 'I have oily skin, what sunscreen should I buy?',
+          },
+        },
+      },
+    );
+
+    expect(result.reply).toContain('Fluid Sunscreen is the current lead because');
+    expect(result.reply).toContain('Compared with it');
+    expect(result.reply).not.toBe('Here are some more suitable picks based on your request.');
+  });
+
+  test('does not project long PDP descriptions into visible invoke copy or compare axes', () => {
+    const result = attachBeautyExpertV1ToResponse(
+      {
+        reply: 'Here are some more suitable picks based on your request.',
+        products: [
+          {
+            product_id: 'spf_1',
+            merchant_id: 'm_1',
+            title: 'Weightless Daily Sunscreen SPF 50',
+            price: 22,
+            currency: 'USD',
+            description:
+              'Full ingredient list and product details: water, glycerin, niacinamide, multiple copied storefront paragraphs, how to use directions, repeated marketing copy, clinical study references, and a long PDP block that should never become assistant text.',
+          },
+          {
+            product_id: 'spf_2',
+            merchant_id: 'm_2',
+            title: 'Matte Daily Sunscreen SPF 50',
+            price: 18,
+            currency: 'USD',
+            short_description:
+              'This is a very long storefront description with product details, how to use directions, ingredient list, copied PDP language, and enough extra words to look like raw catalog copy rather than a reviewed reason.',
+          },
+        ],
+        metadata: {
+          mainline_status: 'grounded_success',
+          decision_owner: 'shopping_agent_beauty_mainline',
+          semantic_owner: 'shopping_agent_beauty_mainline',
+        },
+      },
+      {
+        source: 'shopping_agent',
+        entryLayer: 'orchestration',
+        delegatedLayer: 'decisioning',
+        taskType: 'discovery',
+        context: {
+          vertical: 'beauty',
+          category: 'skincare',
+          raw_user_goal: 'I have oily skin, what sunscreen should I buy?',
+        },
+        metadata: {
+          source: 'shopping_agent',
+          catalog_surface: 'beauty',
+        },
+        payload: {
+          search: {
+            query: 'I have oily skin, what sunscreen should I buy?',
+          },
+        },
+      },
+    );
+
+    expect(result.reply).toContain(
+      'Weightless Daily Sunscreen SPF 50 is the current lead because it matches the sunscreen role',
+    );
+    expect(result.reply).toContain('it is listed around USD 22');
+    expect(result.reply).not.toMatch(/Full ingredient|product details|clinical study|how to use|copied PDP/i);
+    expect(result.reply.length).toBeLessThan(450);
+    expect(result.beauty_expert_v1.reco_bundle.lead_picks[0].why_this_one).toBeUndefined();
+    expect(result.beauty_expert_v1.compare_axes.map((axis) => axis.label).join(' ')).not.toMatch(
+      /Full ingredient|product details|clinical study|how to use|copied PDP/i,
+    );
+  });
+
+  test('context-rich beauty follow-up with products exits guided mode even without repeating category words', () => {
+    const result = buildBeautyExpertV1Response({
+      source: 'shopping_agent',
+      entryLayer: 'orchestration',
+      delegatedLayer: 'decisioning',
+      taskType: 'discovery',
+      context: {
+        source_profile: {
+          source: 'shopping_agent',
+          default_entry_layer: 'decisioning',
+        },
+        vertical: 'beauty',
+        category: 'skincare',
+        normalized_need: {
+          beauty_request: {
+            domain: 'beauty',
+            user_goal: 'Combination skin, clogged pores, Seattle winter, simple routine.',
+            skin_context: {
+              skin_type: 'combination',
+              concerns: ['clogged pores'],
+            },
+            scenario_context: {
+              location: 'Seattle',
+              season: 'winter',
+            },
+          },
+        },
+      },
+      metadata: {
+        source: 'shopping_agent',
+        beauty_domain_hint: 'beauty',
+      },
+      payload: {
+        search: {
+          query: 'Combination skin, clogged pores, Seattle winter, simple routine.',
+        },
+      },
+      response: {
+        products: [
+          {
+            id: 'sku_1',
+            merchant_id: 'm_1',
+            title: 'Niacinamide Serum',
+            why_this_one: 'Affordable oil-balancing treatment direction for clogged pores.',
+          },
+          {
+            id: 'sku_2',
+            merchant_id: 'm_2',
+            title: 'Light Water Cream',
+            why_this_one: 'Lightweight moisturizer support for a simple routine.',
+          },
+        ],
+        metadata: {
+          mainline_status: 'grounded_success',
+          decision_owner: 'shopping_agent_beauty_mainline',
+          semantic_owner: 'shopping_agent_beauty_mainline',
+        },
+      },
+    });
+
+    expect(result.mode).toBe('category_compare');
+    expect(result.reco_bundle.lead_picks).toHaveLength(1);
+    expect(result.next_actions.map((action) => action.type)).toContain('compare_same_type');
+  });
+
+  test('plural category wording keeps creator follow-ups in category compare', () => {
+    const result = buildBeautyExpertV1Response({
+      source: 'creator_agent',
+      entryLayer: 'orchestration',
+      delegatedLayer: 'decisioning',
+      taskType: 'discovery',
+      context: {
+        source_profile: {
+          source: 'creator_agent',
+          default_entry_layer: 'decisioning',
+        },
+        vertical: 'beauty',
+        category: 'skincare',
+        normalized_need: {
+          beauty_request: {
+            domain: 'beauty',
+            user_goal: 'Recommend beginner-friendly moisturizers for dry sensitive users who use retinoids.',
+            skin_context: {
+              skin_type: 'dry sensitive',
+            },
+            routine_context: {
+              audience_actives: ['retinoids'],
+            },
+          },
+        },
+      },
+      metadata: {
+        source: 'creator_agent',
+        beauty_domain_hint: 'beauty',
+      },
+      payload: {
+        search: {
+          query: 'They are mostly beginners and some use retinoids.',
+        },
+      },
+      response: {
+        products: [
+          {
+            id: 'sku_1',
+            merchant_id: 'm_1',
+            title: 'Barrier Lotion',
+            why_this_one: 'Barrier-supporting lotion direction for retinoid-stressed skin.',
+          },
+          {
+            id: 'sku_2',
+            merchant_id: 'm_2',
+            title: 'Simple Daily Moisturizer',
+            why_this_one: 'Lower-cost simple moisturizer for beginners.',
+          },
+        ],
+        metadata: {
+          mainline_status: 'grounded_success',
+          decision_owner: 'shopping_agent_beauty_mainline',
+          semantic_owner: 'shopping_agent_beauty_mainline',
+        },
+      },
+    });
+
+    expect(result.mode).toBe('category_compare');
+  });
+
   test('aurora orchestration emits beauty_expert_v1 and persists beauty_request into context', async () => {
     const result = await handleAuroraBeautyOrchestration({
       context: {

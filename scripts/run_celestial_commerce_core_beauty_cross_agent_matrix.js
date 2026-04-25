@@ -45,6 +45,57 @@ const BANNED_INTERNAL_TERMS = [
   'products actually selected this time',
 ];
 
+const BEAUTY_PRODUCT_TERMS = [
+  'acne',
+  'aha',
+  'bha',
+  'barrier',
+  'beauty of joseon',
+  'cleanser',
+  'cream',
+  'exfoliant',
+  'glossier',
+  'good molecules',
+  'inkey list',
+  'kravebeauty',
+  'la roche posay',
+  'lotion',
+  'moisturizer',
+  'niacinamide',
+  'paula',
+  'peptide',
+  'retinol',
+  'round lab',
+  'serum',
+  'skin1004',
+  'skincare',
+  'spf',
+  'sunscreen',
+  'supergoop',
+  'toner',
+  'tretinoin',
+  'vanicream',
+  'winona',
+];
+
+const NON_BEAUTY_DOMAIN_RULES = [
+  {
+    id: 'luggage',
+    intent: ['carry on', 'carry-on', 'luggage', 'suitcase'],
+    product: ['carry on', 'carry-on', 'hardshell', 'luggage', 'spinner', 'suitcase', 'travelpro', 'samsonite', 'monos', 'away', 'calpak'],
+  },
+  {
+    id: 'espresso',
+    intent: ['coffee', 'espresso'],
+    product: ['bambino', 'breville', 'coffee', 'delonghi', 'espresso', 'gaggia', 'grinder'],
+  },
+  {
+    id: 'camera',
+    intent: ['camera', 'lifestyle creator', 'beginner lifestyle creator'],
+    product: ['camera', 'canon', 'fujifilm', 'lens', 'mirrorless', 'nikon', 'panasonic', 'sony', 'vlogging'],
+  },
+];
+
 function parseArgs(argv) {
   const args = {
     invokeBaseUrl: DEFAULT_INVOKE_BASE_URL,
@@ -151,6 +202,50 @@ function titlesFromProducts(products) {
       ),
     )
     .filter(Boolean);
+}
+
+function collectVisibleProductText(normalized = {}) {
+  return [
+    ...asArray(normalized.lead_pick_titles),
+    ...asArray(normalized.support_pick_titles),
+    ...asArray(normalized.raw_card_titles),
+    ...asArray(normalized.visible_compare_reasons),
+  ]
+    .map((item) => asString(item))
+    .filter(Boolean);
+}
+
+function containsAnyNormalized(haystack, needles = []) {
+  const text = normalizeText(haystack);
+  if (!text) return false;
+  return asArray(needles)
+    .map((needle) => normalizeText(needle))
+    .filter(Boolean)
+    .some((needle) => text.includes(needle));
+}
+
+function inferNonBeautyDomainRule(testCase = {}) {
+  const prompt = normalizeText(testCase.prompt);
+  return NON_BEAUTY_DOMAIN_RULES.find((rule) => containsAnyNormalized(prompt, rule.intent)) || null;
+}
+
+function findNonBeautyProductContamination(testCase = {}, normalized = {}) {
+  const productTextRows = collectVisibleProductText(normalized);
+  if (productTextRows.length === 0) return [];
+
+  const reasons = [];
+  const joined = productTextRows.join(' | ');
+  if (containsAnyNormalized(joined, BEAUTY_PRODUCT_TERMS)) {
+    reasons.push('beauty_product_returned_for_non_beauty_prompt');
+  }
+
+  const inferredRule = inferNonBeautyDomainRule(testCase);
+  if (inferredRule) {
+    const aligned = productTextRows.some((row) => containsAnyNormalized(row, inferredRule.product));
+    if (!aligned) reasons.push(`product_domain_mismatch:${inferredRule.id}`);
+  }
+
+  return uniqueStrings(reasons);
 }
 
 function extractRecommendationCard(body = {}) {
@@ -633,6 +728,9 @@ function classifyExecution(execution, normalized, response) {
     if (normalized.compare_axes.length > 0 && normalized.compare_axes.some(Boolean)) {
       failures.push('non_beauty_false_positive');
     }
+    if (findNonBeautyProductContamination(testCase, normalized).length > 0) {
+      failures.push('non_beauty_false_positive');
+    }
   }
 
   return uniqueStrings(failures);
@@ -987,7 +1085,10 @@ function summarizeResults(allResults, cases) {
         skipped: item.skipped,
         mode: item.normalized.mode,
         lead_pick_titles: item.normalized.lead_pick_titles,
+        support_pick_titles: item.normalized.support_pick_titles,
+        raw_card_titles: item.normalized.raw_card_titles,
         compare_axes: item.normalized.compare_axes,
+        visible_text: item.normalized.visible_text,
         failure_classes: item.failure_classes,
         artifact_path: item.artifact_path,
       });
