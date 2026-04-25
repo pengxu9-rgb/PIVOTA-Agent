@@ -1944,7 +1944,8 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
       representativeProduct?.productKind,
   );
   const existingProductKind = normalizeProductKind(seedData.product_kind || snapshot.product_kind);
-  const nextProductKind = extractedProductKind || existingProductKind;
+  const identityRepairBackfill = isIdentityRepairBackfill(row, seedData, snapshot, targetUrl, representativeProduct);
+  const nextProductKind = extractedProductKind || (identityRepairBackfill ? '' : existingProductKind);
   const extractedBundleComponents = normalizeBundleComponents(
     representativeProduct?.bundle_components ||
       representativeProduct?.bundleComponents,
@@ -1959,7 +1960,7 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
       ? (extractedBundleComponents.length > 0 ? extractedBundleComponents : existingBundleComponents)
       : [];
   const existingPdpDescriptionRaw = cleanPdpDescriptionCandidate(
-    seedData.pdp_description_raw || snapshot.pdp_description_raw,
+    identityRepairBackfill ? '' : seedData.pdp_description_raw || snapshot.pdp_description_raw,
     pdpDetailsSections,
   );
   const nextPdpDescriptionRaw =
@@ -1968,7 +1969,9 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
   let nextPdpDetailsSections =
     pdpDetailsSections.length > 0
       ? pdpDetailsSections
-      : normalizeDetailsSections(
+      : identityRepairBackfill
+        ? []
+        : normalizeDetailsSections(
           Array.isArray(seedData.pdp_details_sections) && seedData.pdp_details_sections.length > 0
             ? seedData.pdp_details_sections
             : snapshot.pdp_details_sections,
@@ -1990,13 +1993,13 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     ? pickPdpIngredientsRaw(
         pdpIngredientsRaw,
         nextPdpDetailsSections,
-        normalizeNonEmptyString(seedData.pdp_ingredients_raw || snapshot.pdp_ingredients_raw),
+        identityRepairBackfill ? '' : normalizeNonEmptyString(seedData.pdp_ingredients_raw || snapshot.pdp_ingredients_raw),
       )
     : '';
   const nextPdpActiveIngredientsRaw = supportsFormulaPdpFields
     ? cleanPdpActiveIngredientsRaw(
         pdpActiveIngredientsRaw ||
-          normalizeNonEmptyString(seedData.pdp_active_ingredients_raw || snapshot.pdp_active_ingredients_raw),
+          (identityRepairBackfill ? '' : normalizeNonEmptyString(seedData.pdp_active_ingredients_raw || snapshot.pdp_active_ingredients_raw)),
       )
     : '';
   const pdpHowToUseContext = [
@@ -2014,7 +2017,7 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     ? pickPdpHowToUseRaw(
         pdpHowToUseRaw,
         nextPdpDetailsSections,
-        normalizeNonEmptyString(seedData.pdp_how_to_use_raw || snapshot.pdp_how_to_use_raw),
+        identityRepairBackfill ? '' : normalizeNonEmptyString(seedData.pdp_how_to_use_raw || snapshot.pdp_how_to_use_raw),
         pdpHowToUseContext,
       )
     : '';
@@ -2022,7 +2025,9 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
   const nextPdpFaqItems =
     pdpFaqItems.length > 0
       ? pdpFaqItems
-      : normalizeFaqItems(
+      : identityRepairBackfill
+        ? []
+        : normalizeFaqItems(
           Array.isArray(seedData.pdp_faq_items) && seedData.pdp_faq_items.length > 0
             ? seedData.pdp_faq_items
             : snapshot.pdp_faq_items,
@@ -2222,6 +2227,14 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
   if (nextPdpDetailsSections.length === 0) {
     delete nextSeedData.pdp_details_sections;
     if (nextSeedData.snapshot && typeof nextSeedData.snapshot === 'object') delete nextSeedData.snapshot.pdp_details_sections;
+  }
+  if (nextPdpFaqItems.length === 0) {
+    delete nextSeedData.pdp_faq_items;
+    if (nextSeedData.snapshot && typeof nextSeedData.snapshot === 'object') delete nextSeedData.snapshot.pdp_faq_items;
+  }
+  if (!nextProductKind) {
+    delete nextSeedData.product_kind;
+    if (nextSeedData.snapshot && typeof nextSeedData.snapshot === 'object') delete nextSeedData.snapshot.product_kind;
   }
   if (!description || isStorefrontBoilerplateDescription(nextSeedData.description)) {
     delete nextSeedData.description;
@@ -2501,6 +2514,29 @@ function buildCrossProductBackfillBlock(row, seedData, snapshot, targetUrl, repr
     extracted_url: normalizeUrlLike(representativeProductUrl || representativeProduct?.url),
     overlap_ratio: Number(titleIdentityOverlapRatio(existingTitle, extractedTitle).toFixed(3)),
   };
+}
+
+function isIdentityRepairBackfill(row, seedData, snapshot, targetUrl, representativeProduct) {
+  const targetKey = normalizeComparableUrlKey(targetUrl);
+  const storedUrlKeys = uniqueStrings([
+    row?.canonical_url,
+    row?.destination_url,
+    seedData?.canonical_url,
+    seedData?.destination_url,
+    snapshot?.canonical_url,
+    snapshot?.destination_url,
+  ].map(normalizeComparableUrlKey).filter(Boolean));
+  const targetRepointsStoredUrl = Boolean(targetKey && storedUrlKeys.length > 0 && !storedUrlKeys.includes(targetKey));
+  const rowTitle = normalizeNonEmptyString(row?.title);
+  const preservedTitle =
+    normalizeNonEmptyString(seedData?.title) ||
+    normalizeNonEmptyString(snapshot?.title);
+  const extractedTitle = normalizeNonEmptyString(representativeProduct?.title);
+  return (
+    targetRepointsStoredUrl ||
+    looksLikeCrossProductTitleDrift(rowTitle, preservedTitle) ||
+    looksLikeCrossProductTitleDrift(rowTitle, extractedTitle)
+  );
 }
 
 async function refreshPdpIdentityListingSourcePayload(client, row, nextRow) {

@@ -678,10 +678,35 @@ describe('backfill-external-product-seeds-catalog', () => {
         'https://fentybeauty.com/products/jumbo-butta-drop-whipped-oil-body-cream-with-tropical-oils-shea-butter-vanilla-dream',
       seed_data: {
         title: 'Dry Brush-Cleaning Sponge',
+        pdp_details_sections: [
+          {
+            heading: 'Details',
+            body: 'A whipped body cream that buttas you up.',
+            source_kind: 'stale_previous_product',
+          },
+        ],
+        pdp_ingredients_raw: '7 Luxe Oils, Shea Butter, Mango Butter',
+        pdp_how_to_use_raw: 'Apply all over body once a day.',
+        pdp_faq_items: [
+          {
+            question: 'Is this a body cream?',
+            answer: 'Yes.',
+            source_kind: 'stale_previous_product',
+          },
+        ],
         snapshot: {
           title: 'Dry Brush-Cleaning Sponge',
           canonical_url:
             'https://fentybeauty.com/products/jumbo-butta-drop-whipped-oil-body-cream-with-tropical-oils-shea-butter-vanilla-dream',
+          pdp_details_sections: [
+            {
+              heading: 'Details',
+              body: 'A whipped body cream that buttas you up.',
+              source_kind: 'stale_previous_product',
+            },
+          ],
+          pdp_ingredients_raw: '7 Luxe Oils, Shea Butter, Mango Butter',
+          pdp_how_to_use_raw: 'Apply all over body once a day.',
         },
       },
     };
@@ -718,6 +743,13 @@ describe('backfill-external-product-seeds-catalog', () => {
     expect(result.payload.nextRow.title).toBe('Dry Brush-Cleaning Sponge');
     expect(result.payload.nextRow.seed_data.title).toBe('Dry Brush-Cleaning Sponge');
     expect(result.payload.nextRow.canonical_url).toBe(recoveredUrl);
+    expect(result.payload.nextRow.seed_data.pdp_details_sections).toBeUndefined();
+    expect(result.payload.nextRow.seed_data.pdp_ingredients_raw).toBeUndefined();
+    expect(result.payload.nextRow.seed_data.pdp_how_to_use_raw).toBeUndefined();
+    expect(result.payload.nextRow.seed_data.pdp_faq_items).toBeUndefined();
+    expect(result.payload.nextRow.seed_data.snapshot.pdp_details_sections).toBeUndefined();
+    expect(result.payload.nextRow.seed_data.snapshot.pdp_ingredients_raw).toBeUndefined();
+    expect(result.payload.nextRow.seed_data.snapshot.pdp_how_to_use_raw).toBeUndefined();
   });
 
   test('skips direct PDP backfill when extractor only returns unrelated collection products', async () => {
