@@ -409,4 +409,83 @@ describe('external seed product detail hydration', () => {
       }),
     );
   });
+
+  test('get_pdp_v2 does not block external seed PDP on slow unscoped product group resolve', async () => {
+    const { app, db } = loadServerWithDb({
+      PIVOTA_API_BASE: 'https://backend.test',
+      PIVOTA_API_KEY: 'test-token',
+      PDP_EXTERNAL_SEED_GROUP_RESOLVE_BUDGET_MS: '50',
+    });
+
+    db.query.mockResolvedValueOnce({
+      rows: [
+        {
+          id: 'eps_seed_db_slow_group',
+          external_product_id: 'ext_seed_db_slow_group',
+          canonical_url: 'https://www.rarebeauty.com/products/soft-pinch-liquid-blush',
+          destination_url: 'https://www.rarebeauty.com/products/soft-pinch-liquid-blush',
+          title: 'Soft Pinch Liquid Blush',
+          image_url: 'https://cdn.example.com/rare-blush.jpg',
+          price_amount: '25.00',
+          price_currency: 'USD',
+          availability: 'In Stock',
+          seed_data: {
+            brand: 'Rare Beauty',
+            description: 'A weightless liquid blush.',
+            snapshot: {
+              canonical_url: 'https://www.rarebeauty.com/products/soft-pinch-liquid-blush',
+              product_id: 'ext_seed_db_slow_group',
+            },
+          },
+        },
+      ],
+    });
+
+    nock('https://backend.test')
+      .get('/agent/v1/product-groups/resolve-by-product-id')
+      .query((query) => query && query.product_id === 'ext_seed_db_slow_group')
+      .delay(250)
+      .reply(200, {
+        product_group_id: 'pg_should_not_block',
+        members: [
+          {
+            merchant_id: 'external_seed',
+            product_id: 'ext_seed_db_slow_group',
+            is_primary: true,
+          },
+        ],
+      });
+
+    const startedAt = Date.now();
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'get_pdp_v2',
+        payload: {
+          product_ref: {
+            product_id: 'ext_seed_db_slow_group',
+          },
+        },
+      })
+      .expect(200);
+    const elapsedMs = Date.now() - startedAt;
+
+    expect(elapsedMs).toBeLessThan(220);
+    expect(res.body.metadata.route_health).toEqual(
+      expect.objectContaining({
+        product_group_resolve_mode: 'budget_exceeded_unscoped',
+        product_group_resolve_budget_exceeded: true,
+        product_group_resolve_budget_ms: 50,
+        resolved_product_id: 'ext_seed_db_slow_group',
+        resolved_merchant_id: 'external_seed',
+      }),
+    );
+    expect(res.body.metadata.identity_resolution).toEqual(
+      expect.objectContaining({
+        resolution_source: 'external_seed_product_id',
+      }),
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 275));
+  });
 });

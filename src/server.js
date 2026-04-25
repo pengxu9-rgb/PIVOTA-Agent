@@ -2137,6 +2137,10 @@ const PDP_SIMILAR_BASE_DETAIL_BUDGET_MS = Math.max(
   50,
   parseTimeoutMs(process.env.PDP_SIMILAR_BASE_DETAIL_BUDGET_MS, 450),
 );
+const PDP_EXTERNAL_SEED_GROUP_RESOLVE_BUDGET_MS = Math.max(
+  50,
+  parseTimeoutMs(process.env.PDP_EXTERNAL_SEED_GROUP_RESOLVE_BUDGET_MS, 650),
+);
 const PDP_PRODUCT_INTEL_SYNC_BUDGET_MS = Math.max(
   250,
   parseTimeoutMs(process.env.PDP_PRODUCT_INTEL_SYNC_BUDGET_MS, 1500),
@@ -4425,7 +4429,10 @@ async function fetchProductDetailForOffers(args) {
   const skipUpstreamFallback = args?.skipUpstreamFallback === true;
   const totalTimeoutMs = Math.max(0, Number(args?.totalTimeoutMs || args?.stageTimeoutMs || 0) || 0);
   if (!merchantId || !productId) return null;
-  const useMemoryCache = PRODUCT_DETAIL_CACHE_ENABLED && !bypassCache;
+  const useMemoryCache =
+    PRODUCT_DETAIL_CACHE_ENABLED &&
+    !bypassCache &&
+    merchantId !== EXTERNAL_SEED_MERCHANT_ID;
 
   const cacheKey = buildProductDetailCacheKey({ merchantId, productId, checkoutToken });
 
@@ -22946,6 +22953,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	    const pdpV2ModuleTimings = {};
 	    let pdpV2SavingsPresentationHydrationMode = 'not_started';
 	    let pdpV2ProductGroupResolveMode = 'not_started';
+	    let pdpV2ProductGroupResolveBudgetExceeded = false;
 	    const markPdpV2Phase = (name, startedAt) => {
 	      pdpV2PhaseTimings[name] = Date.now() - startedAt;
 	    };
@@ -22985,6 +22993,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         modules: pdpV2ModuleTimings,
         savings_presentation_hydration_mode: pdpV2SavingsPresentationHydrationMode,
         product_group_resolve_mode: pdpV2ProductGroupResolveMode,
+        product_group_resolve_budget_exceeded: Boolean(pdpV2ProductGroupResolveBudgetExceeded),
+        product_group_resolve_budget_ms: PDP_EXTERNAL_SEED_GROUP_RESOLVE_BUDGET_MS,
         requested_product_id: requestedProductId || null,
         requested_merchant_id: requestedMerchantId || null,
         resolved_product_id: resolvedProductId || null,
@@ -23376,14 +23386,35 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	        pdpV2ProductGroupResolveMode = attemptUnscopedExternalSeedResolve
 	          ? 'started_unscoped'
 	          : 'started_scoped';
-	        return resolveProductGroupCached({
+	        const resolvePromise = resolveProductGroupCached({
 	          productId,
 	          merchantId: attemptUnscopedExternalSeedResolve ? null : requestedMerchantId || null,
 	          platform,
 	          checkoutToken,
 	          bypassCache,
 	          debug: false,
-	        }).catch(() => null);
+	        });
+	        if (!attemptUnscopedExternalSeedResolve) {
+	          return resolvePromise.catch(() => null);
+	        }
+	        return withStageBudget(
+	          resolvePromise,
+	          PDP_EXTERNAL_SEED_GROUP_RESOLVE_BUDGET_MS,
+	          'pdp_external_seed_group_resolve',
+	        ).catch((err) => {
+	          if (err?.code === 'STAGE_TIMEOUT') {
+	            pdpV2ProductGroupResolveBudgetExceeded = true;
+	            pdpV2ProductGroupResolveMode = 'budget_exceeded_unscoped';
+	            logger.warn(
+	              {
+	                product_id: productId,
+	                timeout_ms: PDP_EXTERNAL_SEED_GROUP_RESOLVE_BUDGET_MS,
+	              },
+	              'PDP external seed product group resolve budget exceeded',
+	            );
+	          }
+	          return null;
+	        });
 	      };
 	      if (
 	        !canonicalProductRef &&
