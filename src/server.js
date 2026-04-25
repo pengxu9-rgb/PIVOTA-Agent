@@ -21,6 +21,9 @@ const {
   parseSecretList,
   resolveInvokeEmergencyAuthFallback,
 } = require('./api/gateway/access/invokeAuthEmergencyFallback');
+const {
+  applyNonBeautyDomainIsolation,
+} = require('./modules/policy/nonBeautyDomainIsolation');
 const { CREATOR_CONFIGS, getCreatorConfig } = require('./creatorConfig');
 const { mockProducts, searchProducts, getProductById } = require('./mockProducts');
 const {
@@ -8054,6 +8057,31 @@ function hasExplicitLegacyInvokeContracts(metadata = null) {
   return metadata.legacy_contracts === true || metadata.legacy_contract === true;
 }
 
+function hasBeautyInvokeHint(metadata = null) {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return false;
+  const catalogSurface = String(
+    firstNonEmptyString(
+      metadata.catalog_surface,
+      metadata.catalogSurface,
+      metadata.beauty_catalog_surface,
+      metadata.beautyCatalogSurface,
+    ) || '',
+  )
+    .trim()
+    .toLowerCase();
+  const beautyDomainHint = String(
+    firstNonEmptyString(
+      metadata.beauty_domain_hint,
+      metadata.beautyDomainHint,
+      metadata.domain_hint,
+      metadata.domainHint,
+    ) || '',
+  )
+    .trim()
+    .toLowerCase();
+  return catalogSurface === 'beauty' || beautyDomainHint === 'beauty';
+}
+
 function getSearchRequestContractFromMetadata(metadata = null) {
   if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return null;
   return metadata.search_request_contract &&
@@ -8093,11 +8121,11 @@ function isPublicSearchRouteMetadata(metadata = null) {
 
 function classifyInvokeSearchRail(source, { explicitLegacy = false, metadata = null } = {}) {
   const normalized = normalizeAgentSource(source);
-  if (
-    explicitLegacy ||
-    isCreatorInvokeSource(normalized)
-  ) {
+  if (explicitLegacy) {
     return 'legacy_internal';
+  }
+  if (isCreatorInvokeSource(normalized)) {
+    return hasBeautyInvokeHint(metadata) ? 'authoritative_shopping' : 'legacy_internal';
   }
   if (isShoppingSource(source)) {
     return 'authoritative_shopping';
@@ -8228,8 +8256,11 @@ function applyShoppingCatalogQueryGuards(queryParams, source) {
       (isAurora ? PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY : 'supplement_internal_first'),
     isAurora ? PROXY_SEARCH_AURORA_EXTERNAL_SEED_STRATEGY : 'supplement_internal_first',
   );
+  const creatorBeautySource =
+    isCreatorInvokeSource(source) &&
+    hasBeautyInvokeHint({ catalog_surface: params.catalog_surface, catalogSurface: params.catalogSurface });
   const externalSeedStrategy =
-    isShoppingSource(source) || isAurora
+    isShoppingSource(source) || isAurora || creatorBeautySource
       ? normalizedExternalSeedStrategy
       : normalizedExternalSeedStrategy === 'unified_relevance'
         ? 'supplement_internal_first'
@@ -30369,6 +30400,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         operation,
         responseBody: enriched,
         checkoutToken,
+      });
+      enriched = applyNonBeautyDomainIsolation({
+        responseBody: enriched,
+        queryText: String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim(),
+        operation,
+        invokeSearchRail,
+        search: queryParams,
+        metadata,
       });
     }
 

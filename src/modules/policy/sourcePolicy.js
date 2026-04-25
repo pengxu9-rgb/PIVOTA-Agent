@@ -43,6 +43,30 @@ function fallbackParseQueryBoolean(value) {
   return undefined;
 }
 
+function hasBeautyInvokeHint({ metadata = {}, search = {} } = {}) {
+  const catalogSurface = String(
+    fallbackFirstQueryParamValue(
+      metadata?.catalog_surface ||
+        metadata?.catalogSurface ||
+        search?.catalog_surface ||
+        search?.catalogSurface,
+    ) || '',
+  )
+    .trim()
+    .toLowerCase();
+  const beautyDomainHint = String(
+    fallbackFirstQueryParamValue(
+      metadata?.beauty_domain_hint ||
+        metadata?.beautyDomainHint ||
+        search?.beauty_domain_hint ||
+        search?.beautyDomainHint,
+    ) || '',
+  )
+    .trim()
+    .toLowerCase();
+  return catalogSurface === 'beauty' || beautyDomainHint === 'beauty';
+}
+
 function shouldDefaultPublicSearchExternalSeedContract(search = {}, metadata = {}) {
   const queryText = String(search?.query || search?.q || '')
     .trim()
@@ -129,15 +153,17 @@ function createSourcePolicyRuntime(config = {}) {
   function classifyInvokeSearchRail(source, options = {}) {
     const explicitLegacy = options?.explicitLegacy === true;
     const normalized = normalizeAgentSource(source);
-    if (
-      explicitLegacy ||
-      isCreatorAgentSource(source) ||
-      normalized === 'creator-agent-ui' ||
-      normalized === 'creator_agent_ui' ||
-      isAuroraSource(source)
-    ) {
+    if (explicitLegacy) {
       return 'legacy_internal';
     }
+    const creatorSource =
+      isCreatorAgentSource(source) ||
+      normalized === 'creator-agent-ui' ||
+      normalized === 'creator_agent_ui';
+    if (creatorSource && hasBeautyInvokeHint({ metadata: options?.metadata, search: options?.search })) {
+      return 'authoritative_shopping';
+    }
+    if (creatorSource || isAuroraSource(source)) return 'legacy_internal';
     if (isShoppingSource(source)) {
       return 'authoritative_shopping';
     }
@@ -186,8 +212,11 @@ function createSourcePolicyRuntime(config = {}) {
         (auroraSource ? auroraExternalSeedStrategy : 'supplement_internal_first'),
       auroraSource ? auroraExternalSeedStrategy : 'supplement_internal_first',
     );
+    const creatorBeautySource =
+      isCreatorAgentSource(source) &&
+      hasBeautyInvokeHint({ search: params });
     const externalSeedStrategy =
-      isShoppingSource(source) || auroraSource
+      isShoppingSource(source) || auroraSource || creatorBeautySource
         ? normalizedStrategy
         : normalizedStrategy === 'unified_relevance'
           ? 'supplement_internal_first'

@@ -234,6 +234,14 @@ describe('beauty_expert_v1 contract', () => {
             price: 26,
             currency: 'USD',
           },
+          {
+            product_id: 'ext_roundlab_moisturizing_clean',
+            merchant_id: 'external_seed',
+            title: 'Birch Moisturizing Sunscreen UVLock SPF 45+ Broad Spectrum',
+            brand: 'Round Lab',
+            price: 27,
+            currency: 'USD',
+          },
         ],
         metadata: {
           mainline_status: 'grounded_success',
@@ -248,7 +256,7 @@ describe('beauty_expert_v1 contract', () => {
       ...result.reco_bundle.support_picks,
     ].map((product) => product.name)).toEqual([
       'Birch Mild-Up Sunscreen UVLock SPF 50+ Broad Spectrum',
-      'Birch Moisturizing Sunscreen UVLock SPF 45+ Broad Spectrum [Subscription]',
+      'Birch Moisturizing Sunscreen UVLock SPF 45+ Broad Spectrum',
     ]);
     expect(result.compare_axes.length).toBeGreaterThan(0);
   });
@@ -308,6 +316,70 @@ describe('beauty_expert_v1 contract', () => {
     expect(result.reply).toContain('Fluid Sunscreen is the current lead because');
     expect(result.reply).toContain('Compared with it');
     expect(result.reply).not.toBe('Here are some more suitable picks based on your request.');
+  });
+
+  test('does not project long PDP descriptions into visible invoke copy or compare axes', () => {
+    const result = attachBeautyExpertV1ToResponse(
+      {
+        reply: 'Here are some more suitable picks based on your request.',
+        products: [
+          {
+            product_id: 'spf_1',
+            merchant_id: 'm_1',
+            title: 'Weightless Daily Sunscreen SPF 50',
+            price: 22,
+            currency: 'USD',
+            description:
+              'Full ingredient list and product details: water, glycerin, niacinamide, multiple copied storefront paragraphs, how to use directions, repeated marketing copy, clinical study references, and a long PDP block that should never become assistant text.',
+          },
+          {
+            product_id: 'spf_2',
+            merchant_id: 'm_2',
+            title: 'Matte Daily Sunscreen SPF 50',
+            price: 18,
+            currency: 'USD',
+            short_description:
+              'This is a very long storefront description with product details, how to use directions, ingredient list, copied PDP language, and enough extra words to look like raw catalog copy rather than a reviewed reason.',
+          },
+        ],
+        metadata: {
+          mainline_status: 'grounded_success',
+          decision_owner: 'shopping_agent_beauty_mainline',
+          semantic_owner: 'shopping_agent_beauty_mainline',
+        },
+      },
+      {
+        source: 'shopping_agent',
+        entryLayer: 'orchestration',
+        delegatedLayer: 'decisioning',
+        taskType: 'discovery',
+        context: {
+          vertical: 'beauty',
+          category: 'skincare',
+          raw_user_goal: 'I have oily skin, what sunscreen should I buy?',
+        },
+        metadata: {
+          source: 'shopping_agent',
+          catalog_surface: 'beauty',
+        },
+        payload: {
+          search: {
+            query: 'I have oily skin, what sunscreen should I buy?',
+          },
+        },
+      },
+    );
+
+    expect(result.reply).toContain(
+      'Weightless Daily Sunscreen SPF 50 is the current lead because it matches the sunscreen role',
+    );
+    expect(result.reply).toContain('it is listed around USD 22');
+    expect(result.reply).not.toMatch(/Full ingredient|product details|clinical study|how to use|copied PDP/i);
+    expect(result.reply.length).toBeLessThan(450);
+    expect(result.beauty_expert_v1.reco_bundle.lead_picks[0].why_this_one).toBeUndefined();
+    expect(result.beauty_expert_v1.compare_axes.map((axis) => axis.label).join(' ')).not.toMatch(
+      /Full ingredient|product details|clinical study|how to use|copied PDP/i,
+    );
   });
 
   test('context-rich beauty follow-up with products exits guided mode even without repeating category words', () => {
