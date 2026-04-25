@@ -962,6 +962,30 @@ test('reco assistant refinement question suppresses repeated questions after con
     assert.match(oilyContextRepair, /under \$30/i);
     assert.doesNotMatch(oilyContextRepair, /barrier-first setup/i);
     assert.doesNotMatch(oilyContextRepair, /stronger active/i);
+
+    const sunscreenLeadContextRepair = __internal.repairRecoAssistantMissingUserContextText({
+      text: 'Daily Soothing Sun Shield SPF50+ PA++++ makes sense because it wears more smoothly under makeup.',
+      userRequestText: 'I use foundation, want less white cast and no greasy slip, and I commute in LA sun. Compare the cards and tell me which one you would start with.',
+      payload: {
+        recommendations: [
+          {
+            product_id: 'haruharu_daily_soothing',
+            display_name: 'Daily Soothing Sun Shield SPF50+ PA++++',
+            matched_role_id: 'daily_sunscreen_finish_fit',
+            preferred_step: 'sunscreen',
+          },
+          {
+            product_id: 'ordinary_niacinamide',
+            display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+            matched_role_id: 'oil_control_treatment',
+            preferred_step: 'treatment',
+          },
+        ],
+      },
+    });
+    assert.match(sunscreenLeadContextRepair, /finish, white cast, and slip under makeup/i);
+    assert.match(sunscreenLeadContextRepair, /Daily Soothing Sun Shield SPF50\+ PA\+\+\+\+/i);
+    assert.doesNotMatch(sunscreenLeadContextRepair, /oil-control layer first/i);
   } finally {
     delete require.cache[moduleId];
   }
@@ -4876,6 +4900,100 @@ test('reco assistant routine-mix compare explains support cards are not direct r
     assert.match(rewrite.text, /Round Lab Birch Moisturizing Serum is the hydration serum/i);
     assert.match(rewrite.text, /Round Lab Birch Mild-Up Sunscreen UVLock SPF 50\+ Broad Spectrum is the daytime SPF/i);
     assert.match(rewrite.text, /support steps rather than direct replacements for the first night moisturizer/i);
+  } finally {
+    __internal.__resetCallGeminiJsonObjectForTest();
+    if (prevMock === undefined) delete process.env.AURORA_BFF_USE_MOCK;
+    else process.env.AURORA_BFF_USE_MOCK = prevMock;
+    if (prevProvider === undefined) delete process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
+    else process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER = prevProvider;
+    if (prevModel === undefined) delete process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
+    else process.env.AURORA_PRODUCT_INTEL_LLM_MODEL = prevModel;
+    delete require.cache[moduleId];
+  }
+});
+
+test('reco assistant routine-mix compare uses singular support wording for one support card', async () => {
+  const prevMock = process.env.AURORA_BFF_USE_MOCK;
+  const prevProvider = process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
+  const prevModel = process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
+  process.env.AURORA_BFF_USE_MOCK = 'false';
+  process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER = 'gemini';
+  process.env.AURORA_PRODUCT_INTEL_LLM_MODEL = 'gemini-3-flash-preview';
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const payload = __internal.applyRecoContentSpineToPayload(
+      {
+        recommendations: [
+          {
+            product_id: 'ordinary_niacinamide',
+            display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+            brand: 'The Ordinary',
+            category: 'Serum',
+            short_description: 'A lightweight niacinamide serum for visible shine.',
+            matched_role_id: 'oil_control_treatment',
+            matched_role_label: 'Oil-control treatment',
+            preferred_step: 'treatment',
+          },
+          {
+            product_id: 'spf_pick',
+            display_name: 'Round Lab Birch Mild-Up Sunscreen UVLock SPF 50+ Broad Spectrum',
+            brand: 'Round Lab',
+            category: 'Sunscreen',
+            short_description: 'A mineral daily sunscreen with zinc oxide and titanium dioxide.',
+            matched_role_id: 'daily_sunscreen',
+            matched_role_label: 'Daily sunscreen',
+            preferred_step: 'sunscreen',
+          },
+        ],
+        recommendation_meta: {
+          resolved_target_step: 'treatment',
+          mainline_status: 'grounded_success',
+          comparison_mode: 'routine_mix',
+        },
+      },
+      {
+        ingredient_query: 'Oil-control treatment',
+        resolved_target_step: 'treatment',
+        primary_target_id: 'oil_control_treatment',
+        ranked_targets: [
+          { target_id: 'oil_control_treatment', ingredient_query: 'Oil-control treatment', resolved_target_step: 'treatment' },
+          { target_id: 'daily_sunscreen', ingredient_query: 'Daily sunscreen', resolved_target_step: 'sunscreen' },
+        ],
+        selected_target_ids: ['oil_control_treatment', 'daily_sunscreen'],
+      },
+    );
+    let callCount = 0;
+    __internal.__setCallGeminiJsonObjectForTest(async () => {
+      callCount += 1;
+      return {
+        ok: true,
+        json: {
+          lead_reason: 'it targets visible shine as the treatment step for oily skin',
+          support_reasons: ['it is the daytime mineral sunscreen step'],
+        },
+        parse_status: 'parsed',
+        meta: { gate_wait_ms: 0, upstream_ms: 120, total_ms: 120 },
+        provider: 'gemini',
+        effective_model: 'gemini-3-flash-preview',
+      };
+    });
+
+    const rewrite = await __internal.maybeRewriteRecoAssistantTextWithLlm({
+      payload,
+      language: 'EN',
+      profile: { skinType: 'oily', sensitivity: 'medium', goals: ['oil control'] },
+      userRequestText:
+        'Now compare the cards plainly and tell me which one you would start with first for oily skin.',
+      allowLockedSelectionRewrite: true,
+      deadlineAtMs: Date.now() + 5000,
+    });
+
+    assert.equal(callCount, 1);
+    assert.equal(rewrite.llm_used, true);
+    assert.match(rewrite.text, /Start with The Ordinary Niacinamide 10% \+ Zinc 1%/i);
+    assert.match(rewrite.text, /Round Lab Birch Mild-Up Sunscreen UVLock SPF 50\+ Broad Spectrum is the daytime SPF/i);
+    assert.match(rewrite.text, /that is a support step rather than a direct replacement for the first treatment/i);
+    assert.doesNotMatch(rewrite.text, /those are support steps/i);
   } finally {
     __internal.__resetCallGeminiJsonObjectForTest();
     if (prevMock === undefined) delete process.env.AURORA_BFF_USE_MOCK;
