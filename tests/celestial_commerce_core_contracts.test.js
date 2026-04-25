@@ -223,7 +223,7 @@ describe('Celestial commerce core source contracts', () => {
     );
   });
 
-  test('PDP similar card filter removes category-only highlight fallbacks', () => {
+  test('PDP similar card filter keeps mainline cards when highlight copy is missing', () => {
     const app = require('../src/server');
     const { filterSimilarProductsWithCardHighlights } = app._debug;
 
@@ -238,7 +238,11 @@ describe('Celestial commerce core source contracts', () => {
       },
     ]);
 
-    expect(out.map((item) => item.product_id)).toEqual(['ext_ready']);
+    expect(out.map((item) => item.product_id)).toEqual([
+      'ext_category_only',
+      'ext_missing',
+      'ext_ready',
+    ]);
   });
 
   test('shopping agent loop-break builds a scenario-aware retry query from short user selection', () => {
