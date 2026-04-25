@@ -516,6 +516,120 @@ test('handoffRecoToBeautyMainlineSearch defaults to local beauty mainline over i
   }
 });
 
+test('handoffRecoToBeautyMainlineSearch uses prior card candidates for contextual card followups', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    __internal.__setRouteDependencyOverridesForTest({
+      searchInternalProductsPrimitive: async () => ({
+        ok: true,
+        products: [],
+        attempted_internal_paths: ['/agent/internal/products/search'],
+        transport_hops: [],
+        transport_hop_count: 0,
+        nested_orchestrator_hops: 0,
+        primary_transport_owner: 'internal_products_search_primitive',
+        primary_endpoint_kind: 'internal_primitive',
+      }),
+      searchExternalSeedAuthorityProducts: async () => ({
+        ok: true,
+        products: [],
+        reason: 'empty',
+        transport_hops: [],
+        transport_hop_count: 0,
+        nested_orchestrator_hops: 0,
+      }),
+      searchLocalExternalSeedProducts: async () => ({
+        ok: true,
+        products: [],
+        reason: 'empty',
+        actual_http_attempt_count: 0,
+        attempted_base_urls: [],
+        attempted_paths: [],
+      }),
+    });
+
+    const targetContext = {
+      entry_type: 'chat',
+      intent_mode: 'generic_concern',
+      framework_id: 'ctx_followup_compare',
+      primary_role_id: 'lightweight_moisturizer',
+      framework_roles: [
+        {
+          role_id: 'lightweight_moisturizer',
+          label: 'Lightweight moisturizer',
+          preferred_step: 'moisturizer',
+          query_terms: ['lightweight moisturizer under makeup'],
+          rank: 1,
+        },
+      ],
+      semantic_plan: {
+        selection_owner_state: 'trusted',
+        primary_role_id: 'lightweight_moisturizer',
+        core_roles: [
+          {
+            role_id: 'lightweight_moisturizer',
+            label: 'Lightweight moisturizer',
+            preferred_step: 'moisturizer',
+            query_terms: ['lightweight moisturizer under makeup'],
+            rank: 1,
+          },
+        ],
+      },
+      mainline_fallback_policy: 'strict_no_runtime_fallback',
+      semantic_planner_required: true,
+    };
+
+    const out = await __internal.handoffRecoToBeautyMainlineSearch({
+      ctx: { lang: 'EN', request_id: 'req_prior_card_candidates' },
+      primaryQuery: [
+        'Previous recommendation request: im oily skin. what product should i buy?',
+        'Previous recommendation targets: oil_control_treatment, lightweight_moisturizer, daily_sunscreen',
+        'Current follow-up constraints/question: Given that, which card would you actually start with and why over the others?',
+      ].join('\n'),
+      fallbackMessage: 'Given that, which card would you actually start with and why over the others?',
+      targetContext,
+      recommendationTaskContext: {
+        intent: 'reco_products',
+        message: 'im oily skin. what product should i buy?',
+        primary_target_id: 'oil_control_treatment',
+        selected_target_ids: ['oil_control_treatment', 'lightweight_moisturizer', 'daily_sunscreen'],
+        ranked_targets: [
+          {
+            target_id: 'lightweight_moisturizer',
+            target_role: 'secondary',
+            ingredient_query: 'Lightweight moisturizer',
+            resolved_target_step: 'moisturizer',
+            product_candidates: [
+              {
+                product_id: 'air_angel_1',
+                merchant_id: 'external_seed',
+                brand: 'Dieux',
+                name: 'Air Angel Peptide Plumping Gel Cream',
+                display_name: 'Dieux Air Angel Peptide Plumping Gel Cream',
+                category: 'Moisturizer',
+                product_type: 'moisturizer',
+                matched_role_id: 'lightweight_moisturizer',
+                retrieval_source: 'external_seed',
+                url: 'https://example.test/air-angel',
+              },
+            ],
+          },
+        ],
+      },
+      timeoutMs: 5000,
+      minTimeoutMs: 5000,
+    });
+
+    assert.equal(out.searchResult?.query_source, 'beauty_mainline_local_handoff');
+    assert.equal(out.searchResult?.metadata?.prior_reco_context_candidate_count, 1);
+    assert.equal(out.searchResult?.metadata?.prior_reco_context_candidates_applied, true);
+    assert.deepEqual(out.recommendations.map((item) => item.product_id), ['air_angel_1']);
+  } finally {
+    __internal.__resetRouteDependencyOverridesForTest();
+    delete require.cache[moduleId];
+  }
+});
+
 test('handoffRecoToBeautyMainlineSearch clamps local internal primitive timeout by deadline budget', async () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
@@ -4506,6 +4620,7 @@ test('beauty chat mainline entry carries prior reco context into planner and ret
     resolverText: null,
     plannerRequestText: null,
     handoffPrimaryQuery: null,
+    handoffRecommendationTaskContext: null,
     rewriteUserRequestText: null,
     payloadBaseMeta: null,
   };
@@ -4582,6 +4697,7 @@ test('beauty chat mainline entry carries prior reco context into planner and ret
     }),
     handoffRecoToBeautyMainlineSearch: async (args) => {
       observed.handoffPrimaryQuery = args.primaryQuery;
+      observed.handoffRecommendationTaskContext = args.recommendationTaskContext;
       return {
         targetContext: args.targetContext,
         recommendations: [
@@ -4693,6 +4809,7 @@ test('beauty chat mainline entry carries prior reco context into planner and ret
   assert.match(observed.resolverText, /Previous recommendation request: I have acne-prone oily skin/i);
   assert.match(observed.plannerRequestText, /Previous recommendation targets: acne_clogged_pore_treatment/i);
   assert.match(observed.handoffPrimaryQuery, /Current follow-up constraints\/question: My barrier gets irritated easily/i);
+  assert.equal(observed.handoffRecommendationTaskContext?.message, 'I have acne-prone oily skin and want one product under $20 to buy first. What should I get?');
   assert.equal(observed.rewriteUserRequestText, currentFollowup);
   assert.equal(observed.payloadBaseMeta?.contextual_reco_continuation, true);
   assert.equal(observed.payloadBaseMeta?.current_request_text, currentFollowup);
