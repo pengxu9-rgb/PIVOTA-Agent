@@ -11384,6 +11384,87 @@ test('__internal: framework pool rejects generic niacinamide serum as hydrating-
   );
 });
 
+test('__internal: framework pool scores prior continuation candidates with thin canonical role ids', () => {
+  const { __internal } = loadRoutesFresh();
+  const targetContext = {
+    framework_id: 'prior_reco_context_continuation',
+    primary_role_id: 'oil_control_treatment',
+    routine_mode: 'routine_mix',
+    semantic_plan: { routine_mode: 'routine_mix', comparison_mode: 'routine_mix' },
+    framework_roles: [
+      {
+        role_id: 'oil_control_treatment',
+        rank: 10,
+        preferred_step: 'treatment',
+        label: 'Oil-control treatment',
+      },
+      {
+        role_id: 'lightweight_moisturizer',
+        rank: 20,
+        preferred_step: 'moisturizer',
+        label: 'Lightweight moisturizer',
+      },
+      {
+        role_id: 'daily_sunscreen',
+        rank: 30,
+        preferred_step: 'sunscreen',
+        label: 'Daily sunscreen',
+      },
+    ],
+  };
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [
+      {
+        product_id: 'prior_oil_serum_1',
+        merchant_id: 'merchant_internal',
+        brand: 'The Ordinary',
+        name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+        display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+        category: 'Serum',
+        product_type: 'Serum',
+        retrieval_source: 'catalog',
+        retrieval_role_id: 'oil_control_treatment',
+        retrieval_ladder_level: 'prior_reco_context',
+        short_description: 'A serum with niacinamide and zinc PCA to target excess oil, visible shine, and pore appearance.',
+      },
+      {
+        product_id: 'prior_light_moisturizer_1',
+        merchant_id: 'external_seed',
+        brand: 'Dieux',
+        name: 'Air Angel Peptide Plumping Gel Cream',
+        display_name: 'Air Angel Peptide Plumping Gel Cream',
+        category: 'Moisturizer',
+        product_type: 'Moisturizer',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'lightweight_moisturizer',
+        retrieval_ladder_level: 'prior_reco_context',
+        short_description: 'A lightweight gel cream moisturizer that feels breathable and non-greasy under makeup.',
+      },
+      {
+        product_id: 'prior_daily_sunscreen_1',
+        merchant_id: 'external_seed',
+        brand: 'Round Lab',
+        name: 'Birch Mild-Up Sunscreen UVLock SPF 50+ Broad Spectrum',
+        display_name: 'Birch Mild-Up Sunscreen UVLock SPF 50+ Broad Spectrum',
+        category: 'Sunscreen',
+        product_type: 'Sunscreen',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'daily_sunscreen',
+        retrieval_ladder_level: 'prior_reco_context',
+        short_description: 'A lightweight broad spectrum SPF 50 sunscreen for daily UV protection.',
+      },
+    ],
+    { targetContext },
+  );
+
+  assert.equal(state.primary_role_matched, true);
+  assert.deepEqual(
+    state.selected_recommendations.map((row) => row.product_id),
+    ['prior_oil_serum_1', 'prior_light_moisturizer_1', 'prior_daily_sunscreen_1'],
+  );
+  assert.ok(Number(state.selected_recommendations[0]?.framework_score || 0) >= 0.58);
+});
+
 test('__internal: framework pool keeps external seed skincare candidates when skincare evidence lives only in alias and description', async () => {
   const { __internal } = loadRoutesFresh();
   const normalized = __internal.normalizeRecoCatalogProduct({
