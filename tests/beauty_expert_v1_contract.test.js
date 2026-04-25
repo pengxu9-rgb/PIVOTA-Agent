@@ -184,6 +184,132 @@ describe('beauty_expert_v1 contract', () => {
     ]);
   });
 
+  test('dedupes deal/subscription variants and builds axes from product titles when reasons are missing', () => {
+    const result = buildBeautyExpertV1Response({
+      source: 'shopping_agent',
+      entryLayer: 'orchestration',
+      delegatedLayer: 'decisioning',
+      taskType: 'discovery',
+      context: {
+        source_profile: {
+          source: 'shopping_agent',
+          default_entry_layer: 'decisioning',
+        },
+        vertical: 'beauty',
+        category: 'skincare',
+        raw_user_goal: 'I have oily skin, what sunscreen should I buy?',
+      },
+      metadata: {
+        source: 'shopping_agent',
+        catalog_surface: 'beauty',
+      },
+      payload: {
+        search: {
+          query: 'I have oily skin, what sunscreen should I buy?',
+        },
+      },
+      response: {
+        products: [
+          {
+            product_id: 'ext_roundlab_mild',
+            merchant_id: 'external_seed',
+            title: 'Birch Mild-Up Sunscreen UVLock SPF 50+ Broad Spectrum',
+            brand: 'Round Lab',
+            price: 25,
+            currency: 'USD',
+          },
+          {
+            product_id: 'ext_roundlab_mild_deal',
+            merchant_id: 'external_seed',
+            title: '[DEAL] Birch Mild-Up Sunscreen UVLock SPF 50+ Broad Spectrum',
+            brand: 'Round Lab',
+            price: 22,
+            currency: 'USD',
+          },
+          {
+            product_id: 'ext_roundlab_moisturizing',
+            merchant_id: 'external_seed',
+            title: 'Birch Moisturizing Sunscreen UVLock SPF 45+ Broad Spectrum [Subscription]',
+            brand: 'Round Lab',
+            price: 26,
+            currency: 'USD',
+          },
+        ],
+        metadata: {
+          mainline_status: 'grounded_success',
+          decision_owner: 'shopping_agent_beauty_mainline',
+          semantic_owner: 'shopping_agent_beauty_mainline',
+        },
+      },
+    });
+
+    expect([
+      ...result.reco_bundle.lead_picks,
+      ...result.reco_bundle.support_picks,
+    ].map((product) => product.name)).toEqual([
+      'Birch Mild-Up Sunscreen UVLock SPF 50+ Broad Spectrum',
+      'Birch Moisturizing Sunscreen UVLock SPF 45+ Broad Spectrum [Subscription]',
+    ]);
+    expect(result.compare_axes.length).toBeGreaterThan(0);
+  });
+
+  test('replaces generic invoke reply with neutral beauty expert comparison copy', () => {
+    const result = attachBeautyExpertV1ToResponse(
+      {
+        reply: 'Here are some more suitable picks based on your request.',
+        products: [
+          {
+            product_id: 'sku_1',
+            merchant_id: 'm_1',
+            title: 'Fluid Sunscreen',
+            brand: 'Demo',
+            price: 18,
+            currency: 'USD',
+            why_this_one: 'Lighter sunscreen texture for oily skin under makeup.',
+          },
+          {
+            product_id: 'sku_2',
+            merchant_id: 'm_2',
+            title: 'Matte Sunscreen',
+            brand: 'Demo',
+            price: 22,
+            currency: 'USD',
+            why_this_one: 'More matte finish if shine control is the priority.',
+          },
+        ],
+        metadata: {
+          mainline_status: 'grounded_success',
+          decision_owner: 'shopping_agent_beauty_mainline',
+          semantic_owner: 'shopping_agent_beauty_mainline',
+        },
+      },
+      {
+        source: 'shopping_agent',
+        entryLayer: 'orchestration',
+        delegatedLayer: 'decisioning',
+        taskType: 'discovery',
+        context: {
+          vertical: 'beauty',
+          category: 'skincare',
+          raw_user_goal: 'I have oily skin, what sunscreen should I buy?',
+        },
+        metadata: {
+          source: 'shopping_agent',
+          catalog_surface: 'beauty',
+        },
+        payload: {
+          search: {
+            query: 'I have oily skin, what sunscreen should I buy?',
+          },
+        },
+      },
+    );
+
+    expect(result.reply).toContain('Fluid Sunscreen is the current lead because');
+    expect(result.reply).toContain('Compared with it');
+    expect(result.reply).not.toBe('Here are some more suitable picks based on your request.');
+  });
+
   test('context-rich beauty follow-up with products exits guided mode even without repeating category words', () => {
     const result = buildBeautyExpertV1Response({
       source: 'shopping_agent',
