@@ -47,6 +47,7 @@ function getBeautyRequestText({ queryText = '', beautyRequest = {} } = {}) {
     beautyRequest.user_goal,
     flattenObjectText(beautyRequest.skin_context),
     flattenObjectText(beautyRequest.routine_context),
+    flattenObjectText(beautyRequest.product_context),
     flattenObjectText(beautyRequest.scenario_context),
     flattenObjectText(beautyRequest.constraints),
   ].filter(Boolean).join(' '));
@@ -66,6 +67,23 @@ function hasBeautySurfaceHint({ search = {}, metadata = {}, beautyRequest = {} }
       metadata.beautyDomainHint,
   );
   return catalogSurface === 'beauty' || beautyDomainHint === 'beauty' || normalizeText(beautyRequest.domain) === 'beauty';
+}
+
+function hasExactProductContext({ queryText = '', beautyRequest = {} } = {}) {
+  const productContext = isPlainObject(beautyRequest.product_context) ? beautyRequest.product_context : {};
+  if (
+    productContext.product_id ||
+    productContext.product_group_id ||
+    productContext.product_ref ||
+    productContext.canonical_product_ref ||
+    productContext.name ||
+    productContext.title
+  ) {
+    return true;
+  }
+  return /\b(is|would|should|can)\b[^.]{0,120}\b(good|right|fit|suit|work|use)\b|\bbetter than\b|\bvs\.?\b|\bversus\b/.test(
+    normalizeText(queryText),
+  );
 }
 
 function inferBeautyRoleIntent({ queryText = '', beautyRequest = {} } = {}) {
@@ -103,6 +121,9 @@ function evaluateProductForBeautyRole(product = {}, role = null, queryText = '')
   if (/\b(dog|dogs|cat|cats|pet|paw|overalls|knit\s*sweater)\b/.test(text)) hardReasons.push('pet');
   if (/\b(brush|bristle|applicator|sponge|puff|dry'n shape|dryn shape|tool|tower face|spa)\b/.test(text)) hardReasons.push('tool');
   if (/\b(shampoo|conditioner|hair|scalp|dry\s*shampoo)\b/.test(text)) hardReasons.push('hair');
+  if (/\bmoroccanoil\b/.test(text) && !/\b(face|facial|skin|skincare|spf|sunscreen|moisturizer|cream|cleanser|serum|toner)\b/.test(text)) {
+    hardReasons.push('hair_brand');
+  }
   if (/\b(gloss|lipstick|mascara|eyeshadow|blush|powder|foundation|concealer|setting\s*powder)\b/.test(text)) hardReasons.push('makeup');
   if (/\b(body|hand\s*cream|foot|deodorant)\b/.test(text)) hardReasons.push('body');
 
@@ -157,6 +178,17 @@ function evaluateProductForBeautyRole(product = {}, role = null, queryText = '')
   };
 }
 
+function inferBeautyRoleFromProducts(products = []) {
+  for (const product of Array.isArray(products) ? products : []) {
+    const text = getProductText(product);
+    if (/\b(sunscreen|spf|sun\s*shield|sunblock|uv|pa\+)\b/.test(text)) return 'sunscreen';
+    if (/\b(moisturizer|moisturiser|moisturizing|moisturising|cream|lotion|gel\s*cream|balm)\b/.test(text)) return 'moisturizer';
+    if (/\b(cleanser|cleansing|wash|face\s*wash)\b/.test(text)) return 'cleanser';
+    if (/\b(serum|treatment|niacinamide|salicylic|bha|azelaic|retinol|retinal|vitamin\s*c|acne|blemish|pore|pores|ampoule)\b/.test(text)) return 'treatment';
+  }
+  return null;
+}
+
 function appendReason(existing, reason) {
   const rows = Array.isArray(existing) ? existing.slice() : [];
   if (!rows.includes(reason)) rows.push(reason);
@@ -191,7 +223,11 @@ function applyBeautyRoleCompatibleSelection({
   const products = Array.isArray(responseBody.products) ? responseBody.products.filter(isPlainObject) : [];
   if (products.length === 0) return responseBody;
   const requestText = getBeautyRequestText({ queryText: queryText || search.query || search.q, beautyRequest });
-  const role = inferBeautyRoleIntent({ queryText: requestText, beautyRequest });
+  const role =
+    inferBeautyRoleIntent({ queryText: requestText, beautyRequest }) ||
+    (hasExactProductContext({ queryText: requestText, beautyRequest })
+      ? inferBeautyRoleFromProducts(products)
+      : null);
   const evaluated = products.map((product, index) => ({
     product,
     index,

@@ -30301,6 +30301,54 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     }
 
     let enriched = applyDealsToResponse(maybePolicy, promotions, now, creatorId);
+    const requestBodyContext =
+      req?.body?.context &&
+      typeof req.body.context === 'object' &&
+      !Array.isArray(req.body.context)
+        ? req.body.context
+        : {};
+    const effectivePayloadContext =
+      effectivePayload?.context &&
+      typeof effectivePayload.context === 'object' &&
+      !Array.isArray(effectivePayload.context)
+        ? effectivePayload.context
+        : {};
+    const requestNormalizedNeed =
+      requestBodyContext.normalized_need &&
+      typeof requestBodyContext.normalized_need === 'object' &&
+      !Array.isArray(requestBodyContext.normalized_need)
+        ? requestBodyContext.normalized_need
+        : {};
+    const payloadNormalizedNeed =
+      effectivePayloadContext.normalized_need &&
+      typeof effectivePayloadContext.normalized_need === 'object' &&
+      !Array.isArray(effectivePayloadContext.normalized_need)
+        ? effectivePayloadContext.normalized_need
+        : {};
+    const requestBeautyRequest =
+      requestNormalizedNeed.beauty_request &&
+      typeof requestNormalizedNeed.beauty_request === 'object' &&
+      !Array.isArray(requestNormalizedNeed.beauty_request)
+        ? requestNormalizedNeed.beauty_request
+        : {};
+    const payloadBeautyRequest =
+      payloadNormalizedNeed.beauty_request &&
+      typeof payloadNormalizedNeed.beauty_request === 'object' &&
+      !Array.isArray(payloadNormalizedNeed.beauty_request)
+        ? payloadNormalizedNeed.beauty_request
+        : {};
+    const effectiveInvokeContext = {
+      ...requestBodyContext,
+      ...effectivePayloadContext,
+      normalized_need: {
+        ...requestNormalizedNeed,
+        ...payloadNormalizedNeed,
+        beauty_request: {
+          ...requestBeautyRequest,
+          ...payloadBeautyRequest,
+        },
+      },
+    };
 
     if (operation === 'find_products' || operation === 'find_products_multi') {
       const queryText = String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim();
@@ -30592,18 +30640,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         invokeSearchRail,
         search: queryParams,
         metadata,
-        beautyRequest:
-          effectivePayload?.context &&
-          typeof effectivePayload.context === 'object' &&
-          !Array.isArray(effectivePayload.context) &&
-          effectivePayload.context.normalized_need &&
-          typeof effectivePayload.context.normalized_need === 'object' &&
-          !Array.isArray(effectivePayload.context.normalized_need) &&
-          effectivePayload.context.normalized_need.beauty_request &&
-          typeof effectivePayload.context.normalized_need.beauty_request === 'object' &&
-          !Array.isArray(effectivePayload.context.normalized_need.beauty_request)
-            ? effectivePayload.context.normalized_need.beauty_request
-            : {},
+        beautyRequest: effectiveInvokeContext.normalized_need.beauty_request,
       });
     }
 
@@ -30613,23 +30650,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         entryLayer: 'orchestration',
         taskType: 'discovery',
         context: {
-          ...((effectivePayload?.context && typeof effectivePayload.context === 'object' && !Array.isArray(effectivePayload.context))
-            ? effectivePayload.context
-            : {}),
+          ...effectiveInvokeContext,
           source_profile: {
             source: String(metadata?.source || '').trim() || 'shopping_agent',
             default_entry_layer: 'orchestration',
           },
           raw_user_goal: String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim() || null,
-          normalized_need:
-            effectivePayload?.context &&
-            typeof effectivePayload.context === 'object' &&
-            !Array.isArray(effectivePayload.context) &&
-            effectivePayload.context.normalized_need &&
-            typeof effectivePayload.context.normalized_need === 'object' &&
-            !Array.isArray(effectivePayload.context.normalized_need)
-              ? effectivePayload.context.normalized_need
-              : {},
+          normalized_need: effectiveInvokeContext.normalized_need,
         },
         metadata: {
           ...(metadata || {}),
