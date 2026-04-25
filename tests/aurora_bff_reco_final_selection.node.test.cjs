@@ -1101,6 +1101,234 @@ test('reco assistant rewrite validator retries drafts that omit explicit follow-
   }
 });
 
+test('reco assistant rewrite prompt carries prior follow-up context into later given-that turns', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const payload = __internal.applyRecoContentSpineToPayload(
+      {
+        recommendations: [
+          {
+            product_id: 'barrier_1',
+            display_name: 'Barrier Serum',
+            brand: 'Test Barrier',
+            category: 'Serum',
+            short_description: 'Barrier support for sensitive skin.',
+            matched_role_id: 'hydrating_barrier_moisturizer',
+            matched_role_label: 'Hydrating barrier moisturizer',
+          },
+          {
+            product_id: 'barrier_2',
+            display_name: 'Calming Serum',
+            brand: 'Test Barrier',
+            category: 'Serum',
+            short_description: 'Calming hydration for reactive skin.',
+            matched_role_id: 'hydrating_barrier_moisturizer',
+            matched_role_label: 'Hydrating barrier moisturizer',
+          },
+        ],
+        recommendation_meta: {
+          resolved_target_step: 'moisturizer',
+          mainline_status: 'grounded_success',
+          current_request_text: 'Should the first buy change after that? Compare the options plainly.',
+          prior_request_text:
+            'I am in Phoenix with dry heat and high UV, fragrance usually stings, and my budget is about $40.',
+        },
+      },
+      {
+        ingredient_query: 'Hydrating barrier moisturizer',
+        resolved_target_step: 'moisturizer',
+        primary_target_id: 'hydrating_barrier_moisturizer',
+        ranked_targets: [
+          {
+            target_id: 'hydrating_barrier_moisturizer',
+            ingredient_query: 'Hydrating barrier moisturizer',
+            resolved_target_step: 'moisturizer',
+          },
+        ],
+        selected_target_ids: ['hydrating_barrier_moisturizer'],
+      },
+    );
+    const prompt = __internal.buildRecoAssistantRewritePrompt({
+      payload,
+      language: 'EN',
+      profile: { skinType: 'sensitive', region: 'US' },
+      userRequestText: 'Should the first buy change after that? Compare the options plainly.',
+    });
+
+    assert.match(prompt, /"user_context_updates":\{/);
+    assert.match(prompt, /"location_climate":\["Phoenix","dry heat","high UV","Phoenix dry heat"\]/);
+    assert.match(prompt, /"sensitivity_constraints":\["fragrance","irritation sensitivity"\]/);
+    assert.match(prompt, /"budget":\["\$40","budget"\]/);
+    assert.doesNotMatch(prompt, /"refinement_question":\{"field":"location_climate"/);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('reco assistant rewrite accepts context-rich drafts after stripping invented follow-up questions', async () => {
+  const prevMock = process.env.AURORA_BFF_USE_MOCK;
+  const prevProvider = process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
+  const prevModel = process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
+  process.env.AURORA_BFF_USE_MOCK = 'false';
+  process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER = 'gemini';
+  process.env.AURORA_PRODUCT_INTEL_LLM_MODEL = 'gemini-3-flash-preview';
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const payload = __internal.applyRecoContentSpineToPayload(
+      {
+        recommendations: [
+          {
+            product_id: 'barrier_1',
+            display_name: 'Barrier Serum',
+            brand: 'Test Barrier',
+            category: 'Serum',
+            short_description: 'Barrier support for sensitive skin in dry climates.',
+            matched_role_id: 'hydrating_barrier_moisturizer',
+            matched_role_label: 'Hydrating barrier moisturizer',
+          },
+          {
+            product_id: 'barrier_2',
+            display_name: 'Calming Serum',
+            brand: 'Test Barrier',
+            category: 'Serum',
+            short_description: 'A lower-cost calming hydration serum.',
+            matched_role_id: 'hydrating_barrier_moisturizer',
+            matched_role_label: 'Hydrating barrier moisturizer',
+          },
+        ],
+        recommendation_meta: {
+          resolved_target_step: 'moisturizer',
+          mainline_status: 'grounded_success',
+          current_request_text: 'Should the first buy change after that? Compare the options plainly.',
+          prior_request_text:
+            'I am in Phoenix with dry heat and high UV, fragrance usually stings, and my budget is about $40.',
+        },
+      },
+      {
+        ingredient_query: 'Hydrating barrier moisturizer',
+        resolved_target_step: 'moisturizer',
+        primary_target_id: 'hydrating_barrier_moisturizer',
+        ranked_targets: [
+          {
+            target_id: 'hydrating_barrier_moisturizer',
+            ingredient_query: 'Hydrating barrier moisturizer',
+            resolved_target_step: 'moisturizer',
+          },
+        ],
+        selected_target_ids: ['hydrating_barrier_moisturizer'],
+      },
+    );
+    __internal.__setCallGeminiJsonObjectForTest(async () => ({
+      ok: true,
+      json: {
+        assistant_text:
+          'Test Barrier Barrier Serum fits this request for hydrating barrier moisturizer because it supports sensitive skin in Phoenix dry heat while keeping fragrance sensitivity in view. Test Barrier Calming Serum provides a lower-cost $40-budget alternative for lighter hydration. What city or climate are you usually in?',
+      },
+      parse_status: 'parsed',
+      provider: 'gemini',
+      effective_model: 'gemini-3-flash-preview',
+    }));
+
+    const rewrite = await __internal.maybeRewriteRecoAssistantTextWithLlm({
+      payload,
+      language: 'EN',
+      profile: { skinType: 'sensitive', region: 'US' },
+      userRequestText: 'Should the first buy change after that? Compare the options plainly.',
+      allowLockedSelectionRewrite: true,
+    });
+
+    assert.equal(rewrite.llm_used, true);
+    assert.doesNotMatch(rewrite.text, /What city or climate are you usually in/i);
+    assert.match(rewrite.text, /Phoenix dry heat/i);
+    assert.match(rewrite.text, /fragrance/i);
+  } finally {
+    __internal.__resetCallGeminiJsonObjectForTest();
+    if (prevMock === undefined) delete process.env.AURORA_BFF_USE_MOCK;
+    else process.env.AURORA_BFF_USE_MOCK = prevMock;
+    if (prevProvider === undefined) delete process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
+    else process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER = prevProvider;
+    if (prevModel === undefined) delete process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
+    else process.env.AURORA_PRODUCT_INTEL_LLM_MODEL = prevModel;
+    delete require.cache[moduleId];
+  }
+});
+
+test('reco assistant rewrite repairs otherwise valid drafts that drop concrete follow-up words', async () => {
+  const prevMock = process.env.AURORA_BFF_USE_MOCK;
+  const prevProvider = process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
+  const prevModel = process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
+  process.env.AURORA_BFF_USE_MOCK = 'false';
+  process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER = 'gemini';
+  process.env.AURORA_PRODUCT_INTEL_LLM_MODEL = 'gemini-3-flash-preview';
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const payload = __internal.applyRecoContentSpineToPayload(
+      {
+        recommendations: [
+          {
+            product_id: 'spf_1',
+            display_name: 'Daily Matte SPF',
+            brand: 'Test SPF',
+            category: 'Sunscreen',
+            short_description: 'Lightweight sunscreen with a less greasy finish and lower white-cast positioning.',
+            matched_role_id: 'daily_sunscreen_finish_fit',
+            matched_role_label: 'Daily sunscreen with finish fit',
+          },
+        ],
+        recommendation_meta: {
+          resolved_target_step: 'sunscreen',
+          mainline_status: 'grounded_success',
+        },
+      },
+      {
+        ingredient_query: 'sunscreen',
+        resolved_target_step: 'sunscreen',
+        primary_target_id: 'daily_sunscreen_finish_fit',
+        ranked_targets: [
+          {
+            target_id: 'daily_sunscreen_finish_fit',
+            ingredient_query: 'sunscreen',
+            resolved_target_step: 'sunscreen',
+          },
+        ],
+        selected_target_ids: ['daily_sunscreen_finish_fit'],
+      },
+    );
+    __internal.__setCallGeminiJsonObjectForTest(async () => ({
+      ok: true,
+      json: {
+        assistant_text:
+          'Test SPF Daily Matte SPF is a practical option for sunscreen because it has a lighter under-makeup finish with lower white-cast risk and less greasy slip.',
+      },
+      parse_status: 'parsed',
+      provider: 'gemini',
+      effective_model: 'gemini-3-flash-preview',
+    }));
+
+    const rewrite = await __internal.maybeRewriteRecoAssistantTextWithLlm({
+      payload,
+      language: 'EN',
+      profile: { skinType: 'oily' },
+      userRequestText:
+        'Compare the cards: I use foundation, want less white cast, and need a sunscreen option to buy.',
+      allowLockedSelectionRewrite: true,
+    });
+
+    assert.equal(rewrite.llm_used, true);
+    assert.match(rewrite.text, /foundation/i);
+    assert.match(rewrite.text, /white-cast/i);
+  } finally {
+    __internal.__resetCallGeminiJsonObjectForTest();
+    if (prevMock === undefined) delete process.env.AURORA_BFF_USE_MOCK;
+    else process.env.AURORA_BFF_USE_MOCK = prevMock;
+    if (prevProvider === undefined) delete process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
+    else process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER = prevProvider;
+    if (prevModel === undefined) delete process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
+    else process.env.AURORA_PRODUCT_INTEL_LLM_MODEL = prevModel;
+    delete require.cache[moduleId];
+  }
+});
+
 test('concern selector race keeps routine support slots on highest authority role-fit candidates', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
