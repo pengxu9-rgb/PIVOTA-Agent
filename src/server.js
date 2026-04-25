@@ -2123,7 +2123,11 @@ const PDP_OFFER_GROUP_MEMBER_FETCH_TIMEOUT_MS = Math.max(
 );
 const PDP_SIMILAR_SYNC_BUDGET_MS = Math.max(
   250,
-  parseTimeoutMs(process.env.PDP_SIMILAR_SYNC_BUDGET_MS, 1800),
+  parseTimeoutMs(process.env.PDP_SIMILAR_SYNC_BUDGET_MS, 3500),
+);
+const PDP_SIMILAR_CARD_ENRICH_BUDGET_MS = Math.max(
+  100,
+  parseTimeoutMs(process.env.PDP_SIMILAR_CARD_ENRICH_BUDGET_MS, 900),
 );
 const PDP_CORE_PREWARM_TIMEOUT_MS = Math.max(
   1000,
@@ -3038,6 +3042,54 @@ function resolvePdpSimilarDisplayLimit(payload = {}) {
 function resolvePdpSimilarCandidateLimit(displayLimit) {
   const limit = Math.max(6, Math.min(24, Number(displayLimit) || 6));
   return Math.max(limit + 4, Math.min(30, limit * 2));
+}
+
+function isTruthyCacheBypassFlag(value) {
+  if (value === true) return true;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    return normalized === 'true' || normalized === '1' || normalized === 'yes';
+  }
+  return false;
+}
+
+function hasExplicitCacheBypassFlag(...sources) {
+  for (const source of sources) {
+    if (!source || typeof source !== 'object') continue;
+    if (
+      isTruthyCacheBypassFlag(source.no_cache) ||
+      isTruthyCacheBypassFlag(source.cache_bypass) ||
+      isTruthyCacheBypassFlag(source.bypass_cache)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function resolvePdpSimilarCacheBypass(payload = {}) {
+  const options = payload?.options && typeof payload.options === 'object' ? payload.options : {};
+  const similar = payload?.similar && typeof payload.similar === 'object' ? payload.similar : {};
+  const similarOptions = similar?.options && typeof similar.options === 'object' ? similar.options : {};
+  const recommendations =
+    payload?.recommendations && typeof payload.recommendations === 'object'
+      ? payload.recommendations
+      : {};
+  const recommendationsOptions =
+    recommendations?.options && typeof recommendations.options === 'object'
+      ? recommendations.options
+      : {};
+
+  return (
+    isTruthyCacheBypassFlag(options.similar_cache_bypass) ||
+    isTruthyCacheBypassFlag(options.similar_no_cache) ||
+    hasExplicitCacheBypassFlag(
+      similar,
+      similarOptions,
+      recommendations,
+      recommendationsOptions,
+    )
+  );
 }
 
 function buildPdpSimilarBaseProduct({
@@ -13516,6 +13568,33 @@ function hasSimilarCardPresentation(product = {}) {
   );
 }
 
+function hasSimilarCardImage(product = {}) {
+  if (!product || typeof product !== 'object') return false;
+  const candidates = [
+    product.image_url,
+    product.imageUrl,
+    product.image,
+    Array.isArray(product.images) ? product.images[0] : null,
+    Array.isArray(product.image_urls) ? product.image_urls[0] : null,
+    product.shopping_card?.image_url,
+    product.search_card?.image_url,
+  ];
+  return candidates.some((value) => String(value || '').trim().length > 0);
+}
+
+function annotateSimilarCardStatus(item = {}) {
+  if (!item || typeof item !== 'object') return item;
+  return {
+    ...item,
+    card_highlight_status: hasSimilarCardPresentation(item) ? 'ready' : 'highlight_missing',
+    card_image_status: hasSimilarCardImage(item) ? 'ready' : 'image_missing',
+  };
+}
+
+function shouldEnrichSimilarCard(item = {}) {
+  return !hasSimilarCardPresentation(item) || !hasSimilarCardImage(item);
+}
+
 function mergeSimilarCardEnrichment(candidate = {}, detail = {}) {
   const next = { ...candidate };
   const copyIfMissing = (targetKey, ...values) => {
@@ -13550,6 +13629,7 @@ function mergeSimilarCardEnrichment(candidate = {}, detail = {}) {
     next.external_highlight_signals = detail.external_highlight_signals;
   }
   next.card_highlight_status = hasSimilarCardPresentation(next) ? 'ready' : 'highlight_missing';
+  next.card_image_status = hasSimilarCardImage(next) ? 'ready' : 'image_missing';
   return next;
 }
 
@@ -13566,26 +13646,26 @@ async function enrichSimilarProductsForPdpCards({
   checkoutToken = null,
   bypassCache = false,
   maxItems = 6,
+  budgetMs = PDP_SIMILAR_CARD_ENRICH_BUDGET_MS,
 } = {}) {
   const list = Array.isArray(items) ? items : [];
   const head = list.slice(0, Math.max(0, Number(maxItems) || 0));
   const tail = list.slice(head.length);
-  const enriched = await Promise.all(
+  const fallback = [...head.map((item) => annotateSimilarCardStatus(item)), ...tail];
+  if (!head.some((item) => shouldEnrichSimilarCard(item))) {
+    return fallback;
+  }
+
+  const enrichmentTask = Promise.all(
     head.map(async (item) => {
       if (!item || typeof item !== 'object') return item;
-      if (hasSimilarCardPresentation(item)) {
-        return {
-          ...item,
-          card_highlight_status: item.card_highlight_status || 'ready',
-        };
+      if (!shouldEnrichSimilarCard(item)) {
+        return annotateSimilarCardStatus(item);
       }
       const merchantId = String(item.merchant_id || item.merchant?.id || item.merchant_uuid || '').trim();
       const productId = String(item.product_id || item.productId || item.id || '').trim();
       if (!merchantId || !productId) {
-        return {
-          ...item,
-          card_highlight_status: 'highlight_missing',
-        };
+        return annotateSimilarCardStatus(item);
       }
       const detail = await fetchProductDetailForOffers({
         merchantId,
@@ -13595,14 +13675,28 @@ async function enrichSimilarProductsForPdpCards({
         skipUpstreamFallback: true,
       }).catch(() => null);
       if (!detail || typeof detail !== 'object') {
-        return {
-          ...item,
-          card_highlight_status: 'highlight_missing',
-        };
+        return annotateSimilarCardStatus(item);
       }
       return mergeSimilarCardEnrichment(item, detail);
     }),
   );
+  const enriched = await withStageBudget(
+    enrichmentTask,
+    budgetMs,
+    'pdp_similar_card_enrichment',
+  ).catch((err) => {
+    if (err?.code === 'STAGE_TIMEOUT') {
+      logger.warn(
+        {
+          timeout_ms: Math.max(1, Number(budgetMs || 0) || 0),
+          items: head.length,
+        },
+        'PDP similar card enrichment budget exceeded',
+      );
+      return fallback.slice(0, head.length);
+    }
+    throw err;
+  });
   return [...enriched, ...tail];
 }
 
@@ -19557,6 +19651,7 @@ async function resolveProductIntelInvokeContext({
 
   const relatedProductsDisplayLimit = resolvePdpSimilarDisplayLimit(payload);
   const relatedProductsCandidateLimit = resolvePdpSimilarCandidateLimit(relatedProductsDisplayLimit);
+  const similarCacheBypass = resolvePdpSimilarCacheBypass(payload);
   const relatedProducts = includeRecommendations
     ? await fetchSimilarProductsDeduped({
         pdp_product: product,
@@ -19564,9 +19659,9 @@ async function resolveProductIntelInvokeContext({
         locale: payload?.context?.locale || payload?.context?.language || payload?.locale || 'en-US',
         currency: product.currency || 'USD',
         options: {
-          no_cache: bypassCache,
-          cache_bypass: bypassCache,
-          bypass_cache: bypassCache,
+          no_cache: similarCacheBypass,
+          cache_bypass: similarCacheBypass,
+          bypass_cache: similarCacheBypass,
         },
       }).catch(() => null)
     : [];
@@ -23456,6 +23551,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	          })()
 	        : Promise.resolve(null);
 
+      const similarCacheBypass = wantsSimilar ? resolvePdpSimilarCacheBypass(payload) : false;
+
 	      // Similar products (non-blocking; can be requested by include=similar).
 	      // Run in parallel with reviews fetch to avoid additive latency on first paint.
       const relatedProductsPromise = wantsSimilar
@@ -23467,7 +23564,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 canonicalProductForPdp,
                 canonicalProductRef,
                 canonicalProduct,
-                bypassCache,
+                bypassCache: similarCacheBypass,
                 debug,
               });
               return await resolvePdpSimilarWithBudget(fetchSimilarProductsDeduped(fetchArgs));
@@ -23577,6 +23674,19 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	        );
 	      }
 
+      if (wantsSimilar && relatedProductsEnvelope && typeof relatedProductsEnvelope === 'object') {
+        relatedProductsEnvelope = {
+          ...relatedProductsEnvelope,
+          metadata: {
+            ...(relatedProductsEnvelope.metadata && typeof relatedProductsEnvelope.metadata === 'object'
+              ? relatedProductsEnvelope.metadata
+              : {}),
+            similar_cache_bypass: similarCacheBypass,
+            similar_sync_budget_ms: PDP_SIMILAR_SYNC_BUDGET_MS,
+          },
+        };
+      }
+
       if (wantsSimilar && relatedProducts.length > 0) {
 	        const similarCardEnrichmentStartedAt = Date.now();
 	        const similarLimit = resolvePdpSimilarDisplayLimit(payload);
@@ -23589,6 +23699,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	        });
         const missingHighlightCount = enrichedRelatedProducts.filter(
           (item) => String(item?.card_highlight_status || '').trim() === 'highlight_missing',
+        ).length;
+        const missingImageCount = enrichedRelatedProducts.filter(
+          (item) => String(item?.card_image_status || '').trim() === 'image_missing',
         ).length;
         const displayableRelatedProducts = filterSimilarProductsWithCardHighlights(
           enrichedRelatedProducts,
@@ -23609,6 +23722,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               card_enrichment_status:
                 relatedProducts.length > 0 && filteredHighlightMissingCount <= 0 ? 'ready' : 'partial',
               card_highlight_missing_count: missingHighlightCount,
+              card_image_missing_count: missingImageCount,
               card_highlight_filtered_count: filteredHighlightMissingCount,
             },
           };
@@ -27229,6 +27343,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               maxItems: limit,
             });
             const products = filterSimilarProductsWithCardHighlights(enrichedProducts).slice(0, limit);
+            const cardImageMissingCount = enrichedProducts.filter(
+              (item) => String(item?.card_image_status || '').trim() === 'image_missing',
+            ).length;
 
             // Keep response structure stable for existing clients.
             const baseResponse = {
@@ -27241,6 +27358,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 card_enrichment_status:
                   products.length > 0 && products.length === enrichedProducts.length ? 'ready' : 'partial',
                 card_highlight_filtered_count: Math.max(0, enrichedProducts.length - products.length),
+                card_image_missing_count: cardImageMissingCount,
               },
               total: products.length,
               page: 1,
@@ -30755,6 +30873,9 @@ module.exports._debug = {
   resolveStoreDiscountEvidenceFromPromotionMetadata,
   summarizeStoreDiscountEvidence,
   storeDiscountBadges,
+  resolvePdpSimilarCacheBypass,
+  buildPdpSimilarFetchArgs,
+  hasSimilarCardImage,
   resolvePdpSimilarWithBudget,
   mergeRecommendationModuleWithEnvelope,
   mergeInvokeGatewayAuditMetadata,

@@ -306,6 +306,71 @@ describe('PDP grouped offers', () => {
     );
   });
 
+  test('does not let top-level PDP cache bypass poison similar recommendation cache', () => {
+    const app = require('../src/server');
+
+    expect(
+      app._debug.resolvePdpSimilarCacheBypass({
+        options: { cache_bypass: true },
+      }),
+    ).toBe(false);
+
+    expect(
+      app._debug.resolvePdpSimilarCacheBypass({
+        options: { cache_bypass: true },
+        similar: { options: { cache_bypass: true } },
+      }),
+    ).toBe(true);
+
+    const args = app._debug.buildPdpSimilarFetchArgs({
+      payload: {
+        options: { cache_bypass: true },
+        similar: { limit: 6 },
+      },
+      canonicalProductForPdp: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_rare_blush',
+        title: 'Rare Beauty Blush',
+        currency: 'USD',
+      },
+      canonicalProductRef: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_rare_blush',
+      },
+      bypassCache: app._debug.resolvePdpSimilarCacheBypass({
+        options: { cache_bypass: true },
+        similar: { limit: 6 },
+      }),
+    });
+
+    expect(args.fetchArgs.options).toEqual(
+      expect.objectContaining({
+        no_cache: false,
+        cache_bypass: false,
+        bypass_cache: false,
+      }),
+    );
+  });
+
+  test('detects missing similar card images separately from highlight readiness', () => {
+    const app = require('../src/server');
+
+    expect(
+      app._debug.hasSimilarCardImage({
+        title: 'Ready highlight without image',
+        card_highlight: 'Soft glow finish',
+      }),
+    ).toBe(false);
+
+    expect(
+      app._debug.hasSimilarCardImage({
+        title: 'Ready image',
+        card_highlight: 'Soft glow finish',
+        image_url: 'https://example.test/image.jpg',
+      }),
+    ).toBe(true);
+  });
+
   test('preserves recommendation metadata when similar items are returned through canonical payload', () => {
     const app = require('../src/server');
 
