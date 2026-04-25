@@ -4262,6 +4262,51 @@ test('reco assistant visible-text sanitizer rewrites leaked same-slot finish-fit
     );
     assert.match(truncatedDaytimeTail, /because it uses mineral UV filters like zinc oxide and titanium dioxide\./i);
     assert.doesNotMatch(truncatedDaytimeTail, /dedicated daytim/i);
+
+    const repairedBuiltAroundGrammar = __internal.sanitizeRecoAssistantVisibleText(
+      'KraveBeauty Great Barrier Relief fits this request because it uses a formula built a tamanu oil and niacinamide to support the moisture barrier in dry heat.',
+    );
+    assert.match(repairedBuiltAroundGrammar, /built around tamanu oil and niacinamide to support/i);
+    assert.doesNotMatch(repairedBuiltAroundGrammar, /built a tamanu oil/i);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('reco assistant rewrite validator rejects vague filler benefit language', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const validation = __internal.validateRecoAssistantRewriteCandidate({
+      candidateText:
+        'GoalSkin Oil Control Serum fits this request for oil-control treatment because it supports a balanced complexion.',
+      payload: {
+        recommendations: [
+          {
+            display_name: 'GoalSkin Oil Control Serum',
+            matched_role_id: 'oil_control_treatment',
+            matched_role_label: 'Oil-control treatment',
+            preferred_step: 'treatment',
+          },
+        ],
+        recommendation_meta: {
+          resolved_target_step: 'treatment',
+          recommendation_confidence_level: 'high',
+        },
+      },
+      language: 'EN',
+      profile: { skinType: 'oily', goals: ['oil control'] },
+      userRequestText: 'im oily skin. what product should i buy?',
+      refinementQuestionPlan: null,
+      primaryTarget: {
+        ingredient_query: 'Oil-control treatment',
+        resolved_target_step: 'treatment',
+      },
+      secondaryTargets: [],
+      names: ['GoalSkin Oil Control Serum'],
+      requestMode: 'buy',
+    });
+    assert.equal(validation.ok, false);
+    assert.equal(validation.reason, 'rewrite_vague_benefit_language');
   } finally {
     delete require.cache[moduleId];
   }
