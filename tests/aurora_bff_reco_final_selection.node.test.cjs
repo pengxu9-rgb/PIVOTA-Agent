@@ -911,10 +911,31 @@ test('reco assistant refinement question suppresses repeated questions after con
     const repaired = __internal.repairRecoAssistantMissingUserContextText({
       text: 'KraveBeauty Great Barrier Relief fits this request because it supports an over-sensitized skin barrier.',
       userRequestText: 'I am in Phoenix with dry heat and high UV, fragrance usually stings, and my budget is about $40.',
+      payload: {
+        recommendations: [
+          {
+            product_id: 'krave_gbr',
+            display_name: 'KraveBeauty Great Barrier Relief',
+            matched_role_id: 'hydrating_barrier_moisturizer',
+            preferred_step: 'moisturizer',
+          },
+          {
+            product_id: 'birch_sunscreen',
+            display_name: 'Birch Mild-Up Sunscreen UVLock SPF 50+ Broad Spectrum',
+            matched_role_id: 'daily_sunscreen_finish_fit',
+            preferred_step: 'sunscreen',
+          },
+        ],
+      },
     });
     assert.match(repaired, /Phoenix dry heat|Phoenix/i);
     assert.match(repaired, /high UV/i);
     assert.match(repaired, /fragrance/i);
+    assert.match(repaired, /KraveBeauty Great Barrier Relief/i);
+    assert.match(repaired, /Birch Mild-Up Sunscreen/i);
+    assert.match(repaired, /stronger active/i);
+    assert.doesNotMatch(repaired, /keep those constraints in mind/i);
+    assert.doesNotMatch(repaired, /\$40, and budget/i);
     assert.doesNotMatch(repaired, /Phoenix, dry heat, high UV, Phoenix dry heat/i);
   } finally {
     delete require.cache[moduleId];
