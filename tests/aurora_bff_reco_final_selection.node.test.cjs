@@ -881,6 +881,26 @@ test('reco assistant refinement question suppresses repeated questions after con
     assert.ok(updates.finish_constraints.includes('greasy slip'));
     assert.ok(updates.location_climate.includes('LA'));
     assert.ok(updates.location_climate.includes('LA sun'));
+
+    const directAnswerPlan = __internal.buildRecoAssistantRefinementQuestionPlan({
+      language: 'EN',
+      profile: { skinType: 'oily', sensitivity: 'medium', goals: ['oil control'] },
+      userRequestText: [
+        'im oily skin. what product should i buy?',
+        'I live in Seattle, wear makeup daily, get shiny by noon, and prefer fragrance-free products under $30.',
+      ].join('\n'),
+    });
+    assert.equal(directAnswerPlan, null);
+
+    const routineAnswerPlan = __internal.buildRecoAssistantRefinementQuestionPlan({
+      language: 'EN',
+      profile: { skinType: 'dry', sensitivity: 'high', goals: ['barrier support'] },
+      userRequestText: [
+        'My skin gets flaky in winter. What skincare product should I buy?',
+        'My PM routine includes a retinoid three nights a week, and I need nighttime barrier support in Denver dry air.',
+      ].join('\n'),
+    });
+    assert.equal(routineAnswerPlan, null);
   } finally {
     delete require.cache[moduleId];
   }
@@ -1096,6 +1116,67 @@ test('reco assistant rewrite validator retries drafts that omit explicit follow-
 
     assert.equal(result.ok, false);
     assert.equal(result.reason, 'rewrite_missing_user_context_update');
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('reco assistant rewrite guard allows user-provided retinoid context for barrier followups', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const payload = __internal.applyRecoContentSpineToPayload(
+      {
+        recommendations: [
+          {
+            product_id: 'barrier_1',
+            display_name: 'KraveBeauty Great Barrier Relief',
+            brand: 'KraveBeauty',
+            category: 'Moisturizer',
+            short_description: 'Barrier support for dry, flaky skin.',
+            matched_role_id: 'hydrating_barrier_moisturizer',
+            matched_role_label: 'Hydrating barrier moisturizer',
+          },
+        ],
+        roles: [
+          {
+            role_id: 'hydrating_barrier_moisturizer',
+            label: 'Hydrating barrier moisturizer',
+            preferred_step: 'moisturizer',
+            why_this_role: 'Support dry, flaky barrier stress.',
+          },
+        ],
+        recommendation_meta: {
+          mainline_status: 'grounded_success',
+        },
+      },
+      {
+        ingredient_query: 'Hydrating barrier moisturizer',
+        resolved_target_step: 'moisturizer',
+        primary_target_id: 'hydrating_barrier_moisturizer',
+        ranked_targets: [
+          {
+            target_id: 'hydrating_barrier_moisturizer',
+            ingredient_query: 'Hydrating barrier moisturizer',
+            resolved_target_step: 'moisturizer',
+          },
+        ],
+        selected_target_ids: ['hydrating_barrier_moisturizer'],
+      },
+    );
+    const result = __internal.validateRecoAssistantRewriteCandidate({
+      candidateText: 'KraveBeauty Great Barrier Relief fits this request for hydrating barrier moisturizer because it supports barrier comfort when retinoid use and Denver dry air are making skin feel flaky.',
+      payload,
+      language: 'EN',
+      profile: { skinType: 'dry', sensitivity: 'high' },
+      userRequestText: 'I live in Denver where the air is very dry, and I use a retinoid three nights a week. I need nighttime support. Which moisturizer or barrier product should I pick first, and why over the others?',
+      refinementQuestionPlan: null,
+      primaryTarget: payload.recommendation_meta.ranked_targets[0],
+      secondaryTargets: [],
+      names: ['KraveBeauty Great Barrier Relief'],
+      requestMode: 'generic',
+    });
+
+    assert.equal(result.ok, true);
   } finally {
     delete require.cache[moduleId];
   }
