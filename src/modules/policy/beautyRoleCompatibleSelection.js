@@ -95,8 +95,15 @@ function inferBeautyRoleIntent({ queryText = '', beautyRequest = {} } = {}) {
   const explicitTreatment =
     /\b(serum|treatment|spot\s*treat|niacinamide|bha|salicylic|azelaic|retinol|retinal|vitamin\s*c)\b/.test(text);
   const explicitCleanser = /\b(cleanser|cleanse|wash|face\s*wash)\b/.test(text);
+  const firstBuyRoutine =
+    /\b(simple\s+routine|starter\s+routine|use\s+first|buy\s+first|first\s+product|only\s+buy\s+one|one\s+product)\b/.test(text);
+  const barrierLeaningContext =
+    /\b(winter|dry|tight|barrier|sensitive|retinoid|tretinoin|lightweight|gel\s*cream|moisture|hydration|hydrating)\b/.test(text);
   if (explicitSunscreen && !explicitMoisturizer) return 'sunscreen';
   if (explicitMoisturizer) return 'moisturizer';
+  if (firstBuyRoutine && barrierLeaningContext && !explicitSunscreen && !explicitTreatment && !explicitCleanser) {
+    return 'moisturizer';
+  }
   if (explicitCleanser) return 'cleanser';
   if (explicitTreatment) return 'treatment';
   return null;

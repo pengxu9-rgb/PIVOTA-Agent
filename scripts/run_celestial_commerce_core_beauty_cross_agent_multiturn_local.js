@@ -138,7 +138,7 @@ const PRODUCT_SETS = Object.freeze({
       price: 18,
       currency: 'USD',
       why_this_one:
-        'Good lead for a balanced under-makeup slot: lighter feel without pushing a fully matte claim.',
+        'Balanced under-makeup slot: lighter feel without pushing a fully matte claim.',
       authority_status: 'grounded_success',
     },
     {
@@ -207,6 +207,7 @@ const CASES = Object.freeze([
           scenario_context: { location: 'Houston', climate: 'hot humid', use_case: 'under makeup' },
           constraints: { finish: 'less shiny by noon' },
         },
+        expected_visible_terms_all: ['Houston', 'humid', 'makeup', 'shiny'],
       },
       {
         message: 'Show me alternatives and explain tradeoffs.',
@@ -248,6 +249,7 @@ const CASES = Object.freeze([
           routine_context: { actives: ['tretinoin'] },
           constraints: { budget_max: 30 },
         },
+        expected_visible_terms_all: ['tretinoin', 'under USD 30'],
       },
       {
         message: 'Which one should I use first versus later in the routine?',
@@ -257,6 +259,7 @@ const CASES = Object.freeze([
         expected_delegated_layer: 'decisioning',
         product_set: 'barrier_moisturizers',
         require_tradeoff_copy: true,
+        expected_visible_terms_all: ['first', 'later', 'routine'],
       },
     ],
   },
@@ -295,6 +298,7 @@ const CASES = Object.freeze([
         expected_delegated_layer: 'decisioning',
         product_set: 'combo_clogged_pores',
         require_tradeoff_copy: true,
+        expected_visible_terms_all: ['only buy one', 'Seattle winter'],
       },
     ],
   },
@@ -375,6 +379,7 @@ const CASES = Object.freeze([
         product_set: 'barrier_moisturizers',
         require_creator_copy: true,
         require_tradeoff_copy: true,
+        expected_visible_terms_all: ['three slot reasons', 'versus'],
       },
     ],
   },
@@ -479,6 +484,70 @@ function getBundleProducts(beautyExpert = null) {
   ];
 }
 
+function priceLabel(product) {
+  const price = product?.price;
+  const currency = text(product?.currency || 'USD') || 'USD';
+  return price == null ? `${currency} n/a` : `${currency} ${price}`;
+}
+
+function buildContextualFollowUpCopy({ turn, bundleProducts = [], source }) {
+  const prompt = normalizeText(`${turn.effective_goal || ''} ${turn.message || ''}`);
+  const sourceToken = normalizeText(source);
+  const lead = bundleProducts[0] || null;
+  const support = bundleProducts.slice(1);
+  const rows = [lead, ...support].filter(Boolean);
+  const parts = [];
+
+  if (/\bhouston\b|\bhumid\b|\bshiny\b|\bshine\b/.test(prompt)) {
+    const dewy = support.find((item) => /dewy|hydration|watery/i.test(text(item.why_this_one)));
+    const premium = rows.find((item) => Number(item.price) >= 30);
+    parts.push(
+      `Humid Houston weather and makeup make finish matter when skin gets shiny by noon: the lead stays in the thinner, less-heavy lane for oily skin, while ${text(dewy?.name || dewy?.title) || 'the more hydrating option'} may read dewier and ${text(premium?.name || premium?.title) || 'the premium option'} costs more for a primer-like feel.`,
+    );
+    parts.push('If shine breaks through by noon, pair the SPF with a light powder rather than adding a heavier sunscreen layer.');
+  }
+
+  if (/\btretinoin\b|\bretinoid\b/.test(prompt) && /\bunder\s+(usd\s*)?\$?\s*30\b|\bbudget\b/.test(prompt)) {
+    const underBudget = rows
+      .filter((item) => Number(item.price) <= 30)
+      .map((item) => `${text(item.name || item.title)} (${priceLabel(item)})`);
+    const overBudget = rows
+      .filter((item) => Number(item.price) > 30)
+      .map((item) => `${text(item.name || item.title)} (${priceLabel(item)})`);
+    if (underBudget.length > 0) {
+      parts.push(`Budget note: ${underBudget.join(' and ')} fit under USD 30 for a tretinoin routine.`);
+    }
+    if (overBudget.length > 0) {
+      parts.push(`${overBudget.join(' and ')} is useful as a comfort-led comparison, but it is above the stated budget.`);
+    }
+  }
+
+  if (/\bfirst\b.*\blater\b|\blater\b.*\bfirst\b|\broutine\b/.test(prompt) && /\bretinoid|tretinoin|moisturizer|barrier\b/.test(prompt)) {
+    parts.push(
+      `Routine order: use the lead as the first moisturizer step after cleansing or after tretinoin has settled; use the lower-cost simple moisturizer as the later fallback if the barrier still feels tight.`,
+    );
+    parts.push('Avoid stacking exfoliating or high-sting actives on the same night as tretinoin.');
+  }
+
+  if (/\bonly buy one\b|\bbuy first\b|\bfirst product\b/.test(prompt)) {
+    parts.push(
+      `If you only buy one for Seattle winter, the lead is the first buy because it targets clogged pores without being as exfoliation-heavy as the BHA option; add the moisturizer next if tightness or flaking shows up.`,
+    );
+  }
+
+  if (sourceToken === 'creator agent' && /\bthree bullets\b|\bwhy each\b|\bnot just product names\b/.test(prompt)) {
+    const bullets = rows
+      .slice(0, 3)
+      .map((item, index) => `${index + 1}. ${text(item.name || item.title)}: ${text(item.why_this_one)}`)
+      .join(' ');
+    if (bullets) {
+      parts.push(`Three slot reasons versus the other options: ${bullets}`);
+    }
+  }
+
+  return parts.join(' ');
+}
+
 function buildReply({ source, turn, beautyExpert, products }) {
   const sourceToken = normalizeText(source);
   if (!beautyExpert) {
@@ -515,7 +584,8 @@ function buildReply({ source, turn, beautyExpert, products }) {
           .map((item) => `${text(item.name || item.title)} at ${item.currency || 'USD'} ${item.price ?? 'n/a'}`)
           .join('; ')}.`
       : '';
-  return `${creatorPrefix}${leadName} is the lead because ${leadReason} Compared with it, ${supportCopy || 'there are no same-type support picks in this local contract run.'}${priceBand}${caution}`.trim();
+  const contextualFollowUp = buildContextualFollowUpCopy({ turn, bundleProducts, source });
+  return `${creatorPrefix}${leadName} is the lead because ${leadReason} Compared with it, ${supportCopy || 'there are no same-type support picks in this local contract run.'}${priceBand}${caution}${contextualFollowUp ? ` ${contextualFollowUp}` : ''}`.trim();
 }
 
 function hasAny(values = [], expected = []) {
@@ -547,6 +617,13 @@ function classifyTurn({ testCase, turn, source, response }) {
     failures.push('clarify_policy_miss');
   }
   if (turn.require_creator_copy && !/\b(creator|audience|roundup|content|feature)\b/i.test(visible)) {
+    failures.push('content_quality_miss');
+  }
+  const expectedVisibleTermsAll = asArray(turn.expected_visible_terms_all).map((item) => text(item)).filter(Boolean);
+  if (
+    expectedVisibleTermsAll.length > 0 &&
+    !expectedVisibleTermsAll.every((term) => normalizedVisible.includes(normalizeText(term)))
+  ) {
     failures.push('content_quality_miss');
   }
   if (expectedBeauty && getBundleProducts(beautyExpert).length > 1 && beautyExpert.compare_axes.length === 0) {

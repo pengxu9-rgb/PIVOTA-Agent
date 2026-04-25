@@ -426,7 +426,11 @@ function buildRecoBundle(products = [], authorityStatus = null) {
 function extractBeautyRequest(input = {}) {
   const context = isPlainObject(input.context) ? input.context : {};
   const normalizedNeed = isPlainObject(context.normalized_need) ? context.normalized_need : {};
-  const beautyRequest = isPlainObject(normalizedNeed.beauty_request)
+  const rawBeautyRequest = isPlainObject(normalizedNeed.beauty_request)
+    ? normalizedNeed.beauty_request
+    : null;
+  const hasBeautyRequestBlock = rawBeautyRequest && Object.keys(rawBeautyRequest).length > 0;
+  const beautyRequest = hasBeautyRequestBlock
     ? normalizeBeautyRequestBlock(normalizedNeed.beauty_request)
     : {
         domain: null,
@@ -525,7 +529,7 @@ function inferBeautyMode({ taskType, beautyRequest, queryText, response } = {}) 
 }
 
 function isBeautyRequest({ beautyRequest, metadata, context, queryText, response } = {}) {
-  if (beautyRequest?.domain === 'beauty') return true;
+  if (normalizeText(beautyRequest?.domain) === 'beauty') return true;
   if (normalizeText(metadata?.catalog_surface) === 'beauty') return true;
   if (normalizeText(context?.vertical) === 'beauty') return true;
   if (

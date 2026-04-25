@@ -30337,17 +30337,24 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       !Array.isArray(payloadNormalizedNeed.beauty_request)
         ? payloadNormalizedNeed.beauty_request
         : {};
+    const hasRequestBeautyRequest = Object.keys(requestBeautyRequest).length > 0;
+    const hasPayloadBeautyRequest = Object.keys(payloadBeautyRequest).length > 0;
+    const effectiveNormalizedNeed = {
+      ...requestNormalizedNeed,
+      ...payloadNormalizedNeed,
+    };
+    if (hasRequestBeautyRequest || hasPayloadBeautyRequest) {
+      effectiveNormalizedNeed.beauty_request = {
+        ...requestBeautyRequest,
+        ...payloadBeautyRequest,
+      };
+    } else {
+      delete effectiveNormalizedNeed.beauty_request;
+    }
     const effectiveInvokeContext = {
       ...requestBodyContext,
       ...effectivePayloadContext,
-      normalized_need: {
-        ...requestNormalizedNeed,
-        ...payloadNormalizedNeed,
-        beauty_request: {
-          ...requestBeautyRequest,
-          ...payloadBeautyRequest,
-        },
-      },
+      normalized_need: effectiveNormalizedNeed,
     };
 
     if (operation === 'find_products' || operation === 'find_products_multi') {

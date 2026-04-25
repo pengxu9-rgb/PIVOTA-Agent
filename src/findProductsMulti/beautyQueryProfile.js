@@ -26,7 +26,7 @@ function inferBeautyConcernClass(queryText, bucket = null) {
   }
 
   if (
-    /\b(oily skin|oil control|shine control|anti-shine|mattify|mattifying|sebum|pore|minimizing|niacinamide|salicylic(?:\s+acid)?|zinc)\b/.test(
+    /\b(oily skin|oil control|shine control|anti-shine|mattify|mattifying|sebum|pores?|clogged pores?|blackheads?|congestion|congested|minimizing|niacinamide|salicylic(?:\s+acid)?|zinc)\b/.test(
       q,
     ) ||
     /控油|出油|毛孔|水杨酸|水楊酸|烟酰胺|煙酰胺/.test(q)
@@ -44,7 +44,7 @@ function inferBeautyConcernClass(queryText, bucket = null) {
   }
 
   if (
-    /\b(barrier|repair|ceramide|panthenol|b5|cica|centella|redness|sensitive|soothing|calming)\b/.test(
+    /\b(barrier|repair|ceramide|panthenol|b5|cica|centella|redness|sensitive|soothing|calming|tight after washing|dry and tight)\b/.test(
       q,
     ) ||
     /屏障|修护|修護|神经酰胺|神經醯胺|泛醇|积雪草|積雪草|敏感|泛红|泛紅|舒缓|舒緩/.test(q)
@@ -95,7 +95,7 @@ function classifyBeautyBucketFromText(text) {
     /沐浴露|身体乳|身體乳|ボディウォッシュ|ボディローション/.test(q);
 
   const hasSkincareTreatmentSignal =
-    /\b(serum|toner|essence|ampoule|moisturi(?:z|s)er|cleanser|sunscreen|spf\b|sunblock|face wash|niacinamide|retinol|vitamin c|peptide|ceramide|cica|hyaluronic|salicylic|azelaic|glycolic|lactic acid|aha|bha|exfoliant|exfoliating|exfoliator|resurfacing|peel|oil control|shine control|congestion|blemish|acne treatment|spot treatment|clarifying|pore care)\b/i.test(
+    /\b(serum|toner|essence|ampoule|moisturi(?:z|s)er|cleanser|sunscreen|spf\b|sunblock|face wash|niacinamide|retinol|vitamin c|peptide|ceramide|cica|hyaluronic|salicylic|azelaic|glycolic|lactic acid|aha|bha|exfoliant|exfoliating|exfoliator|resurfacing|peel|oil control|shine control|congestion|congested|blemish|breakouts?|acne treatment|spot treatment|clarifying|pore care|pores?|clogged pores?|blackheads?|simple routine|starter routine|oily skin|dry skin|combination skin|combo skin|sensitive skin)\b/i.test(
       q,
     ) ||
     /护肤|護膚|精华|精華|化妆水|化妝水|乳液|洁面|潔面|防晒|防曬|日焼け止め|美容液|洗顔料/.test(
