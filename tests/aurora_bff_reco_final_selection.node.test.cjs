@@ -937,6 +937,31 @@ test('reco assistant refinement question suppresses repeated questions after con
     assert.doesNotMatch(repaired, /keep those constraints in mind/i);
     assert.doesNotMatch(repaired, /\$40, and budget/i);
     assert.doesNotMatch(repaired, /Phoenix, dry heat, high UV, Phoenix dry heat/i);
+
+    const oilyContextRepair = __internal.repairRecoAssistantMissingUserContextText({
+      text: 'Start with The Ordinary Niacinamide 10% + Zinc 1% for oil control because it targets excess oil.',
+      userRequestText: 'I live in Seattle, wear makeup daily, get shiny by noon, and prefer fragrance-free products under $30.',
+      payload: {
+        recommendations: [
+          {
+            product_id: 'ordinary_niacinamide',
+            display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+            matched_role_id: 'oil_control_treatment',
+            preferred_step: 'treatment',
+          },
+          {
+            product_id: 'birch_sunscreen',
+            display_name: 'Birch Mild-Up Sunscreen UVLock SPF 50+ Broad Spectrum',
+            matched_role_id: 'daily_sunscreen_finish_fit',
+            preferred_step: 'sunscreen',
+          },
+        ],
+      },
+    });
+    assert.match(oilyContextRepair, /oil-control layer first/i);
+    assert.match(oilyContextRepair, /under \$30/i);
+    assert.doesNotMatch(oilyContextRepair, /barrier-first setup/i);
+    assert.doesNotMatch(oilyContextRepair, /stronger active/i);
   } finally {
     delete require.cache[moduleId];
   }
