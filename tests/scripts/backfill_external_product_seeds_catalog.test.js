@@ -687,6 +687,12 @@ describe('backfill-external-product-seeds-catalog', () => {
         ],
         pdp_ingredients_raw: '7 Luxe Oils, Shea Butter, Mango Butter',
         pdp_how_to_use_raw: 'Apply all over body once a day.',
+        raw_ingredient_text_clean: 'ORYZA SATIVA (RICE) BRAN OIL, SHEA BUTTER',
+        ingredient_tokens: ['rice bran oil', 'shea butter'],
+        key_ingredients: ['Rice Bran Oil', 'Shea Butter'],
+        ingredient_intel: {
+          inci_raw: 'ORYZA SATIVA (RICE) BRAN OIL, SHEA BUTTER',
+        },
         pdp_faq_items: [
           {
             question: 'Is this a body cream?',
@@ -707,6 +713,12 @@ describe('backfill-external-product-seeds-catalog', () => {
           ],
           pdp_ingredients_raw: '7 Luxe Oils, Shea Butter, Mango Butter',
           pdp_how_to_use_raw: 'Apply all over body once a day.',
+          raw_ingredient_text_clean: 'ORYZA SATIVA (RICE) BRAN OIL, SHEA BUTTER',
+          ingredient_tokens: ['rice bran oil', 'shea butter'],
+          key_ingredients: ['Rice Bran Oil', 'Shea Butter'],
+          ingredient_intel: {
+            inci_raw: 'ORYZA SATIVA (RICE) BRAN OIL, SHEA BUTTER',
+          },
         },
       },
     };
@@ -747,9 +759,17 @@ describe('backfill-external-product-seeds-catalog', () => {
     expect(result.payload.nextRow.seed_data.pdp_ingredients_raw).toBeUndefined();
     expect(result.payload.nextRow.seed_data.pdp_how_to_use_raw).toBeUndefined();
     expect(result.payload.nextRow.seed_data.pdp_faq_items).toBeUndefined();
+    expect(result.payload.nextRow.seed_data.raw_ingredient_text_clean).toBeUndefined();
+    expect(result.payload.nextRow.seed_data.ingredient_tokens).toBeUndefined();
+    expect(result.payload.nextRow.seed_data.key_ingredients).toBeUndefined();
+    expect(result.payload.nextRow.seed_data.ingredient_intel).toBeUndefined();
     expect(result.payload.nextRow.seed_data.snapshot.pdp_details_sections).toBeUndefined();
     expect(result.payload.nextRow.seed_data.snapshot.pdp_ingredients_raw).toBeUndefined();
     expect(result.payload.nextRow.seed_data.snapshot.pdp_how_to_use_raw).toBeUndefined();
+    expect(result.payload.nextRow.seed_data.snapshot.raw_ingredient_text_clean).toBeUndefined();
+    expect(result.payload.nextRow.seed_data.snapshot.ingredient_tokens).toBeUndefined();
+    expect(result.payload.nextRow.seed_data.snapshot.key_ingredients).toBeUndefined();
+    expect(result.payload.nextRow.seed_data.snapshot.ingredient_intel).toBeUndefined();
   });
 
   test('skips direct PDP backfill when extractor only returns unrelated collection products', async () => {

@@ -1793,6 +1793,26 @@ function shouldClearStaleSeedActiveIngredients(seedData, nextPdpActiveIngredient
   return currentActiveIngredients.length > 0;
 }
 
+function clearStructuredIngredientFieldsForIdentityRepair(seedData) {
+  if (!seedData || typeof seedData !== 'object') return;
+  const fields = [
+    'raw_ingredient_text_clean',
+    'inci_list',
+    'ingredient_tokens',
+    'active_ingredients',
+    'activeIngredients',
+    'key_ingredients',
+    'keyIngredients',
+    'ingredient_intel',
+  ];
+  for (const target of [seedData, seedData.snapshot]) {
+    if (!target || typeof target !== 'object') continue;
+    for (const field of fields) {
+      delete target[field];
+    }
+  }
+}
+
 function buildSeedUpdatePayload(row, response, targetUrl) {
   const seedData = ensureJsonObject(row?.seed_data);
   const snapshot = ensureJsonObject(seedData.snapshot);
@@ -2251,6 +2271,9 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     isStorefrontBoilerplateDescription(nextSeedData.snapshot.description)
   ) {
     delete nextSeedData.snapshot.description;
+  }
+  if (identityRepairBackfill) {
+    clearStructuredIngredientFieldsForIdentityRepair(nextSeedData);
   }
   const nextDerived = ensureJsonObject(nextSeedData.derived);
   nextSeedData.derived = {
