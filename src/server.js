@@ -13634,11 +13634,9 @@ function mergeSimilarCardEnrichment(candidate = {}, detail = {}) {
 }
 
 function filterSimilarProductsWithCardHighlights(items = []) {
-  return (Array.isArray(items) ? items : []).filter((item) => {
-    if (!item || typeof item !== 'object') return false;
-    if (String(item.card_highlight_status || '').trim() === 'highlight_missing') return false;
-    return hasSimilarCardPresentation(item);
-  });
+  return (Array.isArray(items) ? items : []).filter(
+    (item) => item && typeof item === 'object',
+  );
 }
 
 async function enrichSimilarProductsForPdpCards({
@@ -23720,7 +23718,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 ? relatedProductsEnvelope.metadata
                 : {}),
               card_enrichment_status:
-                relatedProducts.length > 0 && filteredHighlightMissingCount <= 0 ? 'ready' : 'partial',
+                relatedProducts.length > 0 && missingHighlightCount <= 0 && missingImageCount <= 0
+                  ? 'ready'
+                  : 'partial',
               card_highlight_missing_count: missingHighlightCount,
               card_image_missing_count: missingImageCount,
               card_highlight_filtered_count: filteredHighlightMissingCount,
@@ -27343,6 +27343,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               maxItems: limit,
             });
             const products = filterSimilarProductsWithCardHighlights(enrichedProducts).slice(0, limit);
+            const cardHighlightMissingCount = enrichedProducts.filter(
+              (item) => String(item?.card_highlight_status || '').trim() === 'highlight_missing',
+            ).length;
             const cardImageMissingCount = enrichedProducts.filter(
               (item) => String(item?.card_image_status || '').trim() === 'image_missing',
             ).length;
@@ -27356,7 +27359,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 route: 'find_similar_products_mainline_wrapper',
                 ...(rec?.metadata && typeof rec.metadata === 'object' ? rec.metadata : {}),
                 card_enrichment_status:
-                  products.length > 0 && products.length === enrichedProducts.length ? 'ready' : 'partial',
+                  products.length > 0 && cardHighlightMissingCount <= 0 && cardImageMissingCount <= 0
+                    ? 'ready'
+                    : 'partial',
+                card_highlight_missing_count: cardHighlightMissingCount,
                 card_highlight_filtered_count: Math.max(0, enrichedProducts.length - products.length),
                 card_image_missing_count: cardImageMissingCount,
               },
