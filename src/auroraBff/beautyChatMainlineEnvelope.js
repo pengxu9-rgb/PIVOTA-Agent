@@ -506,6 +506,10 @@ function createBeautyChatMainlineEnvelopeRuntime(deps = {}) {
       row.category_name,
       row.categoryName,
     );
+    const evidenceArray = (value, max = 4) => uniqCaseInsensitiveStrings(
+      Array.isArray(value) ? value : [],
+      max,
+    );
     if (!productId && !merchantId && !displayName && !name) return null;
     return {
       ...(productId ? { product_id: productId } : {}),
@@ -515,6 +519,48 @@ function createBeautyChatMainlineEnvelopeRuntime(deps = {}) {
       ...(displayName ? { display_name: displayName } : {}),
       ...(category ? { category } : {}),
       ...(productType ? { product_type: productType } : {}),
+      ...(pickFirstTrimmed(row.short_description, row.shortDescription)
+        ? { short_description: pickFirstTrimmed(row.short_description, row.shortDescription).slice(0, 500) }
+        : {}),
+      ...(pickFirstTrimmed(row.description, row.long_description, row.longDescription)
+        ? { description: pickFirstTrimmed(row.description, row.long_description, row.longDescription).slice(0, 1000) }
+        : {}),
+      ...(pickFirstTrimmed(row.why_this_one, row.whyThisOne)
+        ? { why_this_one: pickFirstTrimmed(row.why_this_one, row.whyThisOne).slice(0, 500) }
+        : {}),
+      ...(evidenceArray(row.key_features || row.keyFeatures, 5).length
+        ? { key_features: evidenceArray(row.key_features || row.keyFeatures, 5) }
+        : {}),
+      ...(evidenceArray(row.best_for || row.bestFor, 5).length
+        ? { best_for: evidenceArray(row.best_for || row.bestFor, 5) }
+        : {}),
+      ...(evidenceArray(row.compare_highlights || row.compareHighlights, 5).length
+        ? { compare_highlights: evidenceArray(row.compare_highlights || row.compareHighlights, 5) }
+        : {}),
+      ...(row.price && typeof row.price === 'object' && !Array.isArray(row.price)
+        ? { price: row.price }
+        : {}),
+      ...(pickFirstTrimmed(row.image_url, row.imageUrl)
+        ? { image_url: pickFirstTrimmed(row.image_url, row.imageUrl) }
+        : {}),
+      ...(row.canonical_product_ref && typeof row.canonical_product_ref === 'object' && !Array.isArray(row.canonical_product_ref)
+        ? { canonical_product_ref: row.canonical_product_ref }
+        : {}),
+      ...(row.pdp_open && typeof row.pdp_open === 'object' && !Array.isArray(row.pdp_open)
+        ? { pdp_open: row.pdp_open }
+        : {}),
+      ...(Number.isFinite(Number(row.framework_score))
+        ? { framework_score: Number(row.framework_score) }
+        : {}),
+      ...(Number.isFinite(Number(row.framework_tiebreak_score))
+        ? { framework_tiebreak_score: Number(row.framework_tiebreak_score) }
+        : {}),
+      ...(pickFirstTrimmed(row.candidate_step, row.candidateStep, row.step)
+        ? { candidate_step: pickFirstTrimmed(row.candidate_step, row.candidateStep, row.step) }
+        : {}),
+      ...(pickFirstTrimmed(row.matched_role_id, row.matchedRoleId, row.role_id, row.roleId)
+        ? { matched_role_id: pickFirstTrimmed(row.matched_role_id, row.matchedRoleId, row.role_id, row.roleId) }
+        : {}),
       ...(pickFirstTrimmed(row.retrieval_source, row.retrievalSource, row.source)
         ? { retrieval_source: pickFirstTrimmed(row.retrieval_source, row.retrievalSource, row.source) }
         : {}),
@@ -559,10 +605,51 @@ function createBeautyChatMainlineEnvelopeRuntime(deps = {}) {
       ].join('::').toLowerCase();
       if (!dedupeKey || dedupeKey === '::::') return;
       const seen = seenByRole.get(normalizedRoleId) || new Set();
-      if (seen.has(dedupeKey)) return;
+      const current = out.get(normalizedRoleId) || [];
+      if (seen.has(dedupeKey)) {
+        const existingIndex = current.findIndex((item) => {
+          const itemKey = [
+            pickFirstTrimmed(item?.product_id, item?.productId),
+            pickFirstTrimmed(item?.merchant_id, item?.merchantId),
+            pickFirstTrimmed(item?.display_name, item?.displayName, item?.name, item?.title),
+          ].join('::').toLowerCase();
+          return itemKey === dedupeKey;
+        });
+        if (existingIndex >= 0) {
+          current[existingIndex] = {
+            ...candidateWithRole,
+            ...current[existingIndex],
+            ...(pickFirstTrimmed(current[existingIndex].short_description, candidateWithRole.short_description)
+              ? { short_description: pickFirstTrimmed(current[existingIndex].short_description, candidateWithRole.short_description) }
+              : {}),
+            ...(pickFirstTrimmed(current[existingIndex].description, candidateWithRole.description)
+              ? { description: pickFirstTrimmed(current[existingIndex].description, candidateWithRole.description) }
+              : {}),
+            ...(pickFirstTrimmed(current[existingIndex].why_this_one, candidateWithRole.why_this_one)
+              ? { why_this_one: pickFirstTrimmed(current[existingIndex].why_this_one, candidateWithRole.why_this_one) }
+              : {}),
+            ...(Array.isArray(current[existingIndex].key_features)
+              ? { key_features: current[existingIndex].key_features }
+              : Array.isArray(candidateWithRole.key_features)
+                ? { key_features: candidateWithRole.key_features }
+                : {}),
+            ...(Array.isArray(current[existingIndex].best_for)
+              ? { best_for: current[existingIndex].best_for }
+              : Array.isArray(candidateWithRole.best_for)
+                ? { best_for: candidateWithRole.best_for }
+                : {}),
+            ...(Array.isArray(current[existingIndex].compare_highlights)
+              ? { compare_highlights: current[existingIndex].compare_highlights }
+              : Array.isArray(candidateWithRole.compare_highlights)
+                ? { compare_highlights: candidateWithRole.compare_highlights }
+                : {}),
+          };
+          out.set(normalizedRoleId, current);
+        }
+        return;
+      }
       seen.add(dedupeKey);
       seenByRole.set(normalizedRoleId, seen);
-      const current = out.get(normalizedRoleId) || [];
       out.set(normalizedRoleId, [...current, candidateWithRole].slice(0, 4));
     };
 
@@ -710,6 +797,46 @@ function createBeautyChatMainlineEnvelopeRuntime(deps = {}) {
     }
 
     return Object.keys(patch).length > 0 ? patch : null;
+  }
+
+  function buildEnvelopeRankedTargetsForPersistence(primaryRankedTargets, contextRankedTargets) {
+    const primaryTargets = Array.isArray(primaryRankedTargets) ? primaryRankedTargets : [];
+    const contextTargets = Array.isArray(contextRankedTargets) ? contextRankedTargets : [];
+    if (!primaryTargets.length) return contextTargets;
+    if (!contextTargets.length) return primaryTargets;
+
+    const contextById = new Map();
+    for (const target of contextTargets) {
+      if (!isPlainObject(target)) continue;
+      const targetId = pickFirstTrimmed(target.target_id, target.targetId, target.id);
+      if (targetId) contextById.set(targetId.toLowerCase(), target);
+    }
+
+    return primaryTargets.map((target) => {
+      if (!isPlainObject(target)) return target;
+      const targetId = pickFirstTrimmed(target.target_id, target.targetId, target.id);
+      const contextTarget = targetId ? contextById.get(targetId.toLowerCase()) : null;
+      if (!isPlainObject(contextTarget)) return target;
+
+      const targetCandidates = Array.isArray(target.product_candidates)
+        ? target.product_candidates.filter(isPlainObject)
+        : [];
+      const contextCandidates = Array.isArray(contextTarget.product_candidates)
+        ? contextTarget.product_candidates.filter(isPlainObject)
+        : [];
+      if (!contextCandidates.length || targetCandidates.length) return target;
+
+      return {
+        ...contextTarget,
+        ...target,
+        product_candidates: contextCandidates,
+        verified_product_count: Number.isFinite(Number(target.verified_product_count))
+          ? Math.max(Number(target.verified_product_count), contextCandidates.length)
+          : Number.isFinite(Number(contextTarget.verified_product_count))
+            ? Math.max(Number(contextTarget.verified_product_count), contextCandidates.length)
+            : contextCandidates.length,
+      };
+    });
   }
 
   function buildRecoPayloadFromBeautyMainlineHandoff({
@@ -953,6 +1080,10 @@ function createBeautyChatMainlineEnvelopeRuntime(deps = {}) {
     if (Array.isArray(targetContext?.framework_roles) && targetContext.framework_roles.length > 0 && !hasCanonicalTargetBundle(nextPayload)) {
       return null;
     }
+    const persistedRankedTargets = buildEnvelopeRankedTargetsForPersistence(
+      nextPayload.recommendation_meta?.ranked_targets,
+      effectiveRecoContext?.ranked_targets,
+    );
     const persistedRecoContext = {
       ...(isPlainObject(effectiveRecoContext) ? effectiveRecoContext : {}),
       primary_focus: isPlainObject(nextPayload.recommendation_meta?.primary_focus)
@@ -961,9 +1092,7 @@ function createBeautyChatMainlineEnvelopeRuntime(deps = {}) {
       confidence_policy: isPlainObject(nextPayload.recommendation_meta?.confidence_policy)
         ? nextPayload.recommendation_meta.confidence_policy
         : effectiveRecoContext?.confidence_policy,
-      ranked_targets: Array.isArray(nextPayload.recommendation_meta?.ranked_targets)
-        ? nextPayload.recommendation_meta.ranked_targets
-        : effectiveRecoContext?.ranked_targets,
+      ranked_targets: persistedRankedTargets,
       primary_target_id: pickFirstTrimmed(
         nextPayload.recommendation_meta?.primary_target_id,
         effectiveRecoContext?.primary_target_id,
