@@ -284,6 +284,11 @@ test('buildRecoPayloadFromBeautyMainlineHandoff prunes active moisturizer compar
   assert.equal(out?.payload?.recommendation_meta?.prior_request_text, 'previous acne request');
   assert.equal(out?.payload?.recommendation_meta?.chat_planner_used, true);
   assert.equal(out?.payload?.recommendation_meta?.chat_planner_source, 'llm_concern_planner');
+  const persistedHydratingGel = out?.recoContext?.ranked_targets
+    ?.flatMap((target) => target.product_candidates || [])
+    ?.find((candidate) => candidate.product_id === 'ext_a29393bd005135c81f47dade');
+  assert.match(persistedHydratingGel?.description || '', /hyaluronic acid, ceramides, squalane and niacinamide/i);
+  assert.equal(persistedHydratingGel?.why_this_one, 'Oily or combination skin needing hydration');
 });
 
 test('handoffRecoToBeautyMainlineSearch passes sunscreen-aligned contract to backend search', async () => {
