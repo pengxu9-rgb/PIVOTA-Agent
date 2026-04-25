@@ -947,4 +947,106 @@ describe('pdpProductIntel KB hydration', () => {
       }),
     ).toBeNull();
   });
+
+  test('uses KB source_meta review contract when bundle provenance lacks review fields', async () => {
+    jest.doMock('../src/auroraBff/productIntelKbStore', () => ({
+      getProductIntelKbEntry: jest.fn(async (kbKey) => {
+        if (kbKey !== 'product:ext_source_meta_reviewed_1') return null;
+        return {
+          kb_key: kbKey,
+          source: 'pivota_product_intel_pilot_selected',
+          last_success_at: '2026-04-19T22:21:20.103Z',
+          source_meta: {
+            review_status: 'completed',
+            review_decision: 'rewrite',
+            reviewer: 'Codex',
+            reviewer_kind: 'assistant',
+            review_tier: 'assistant_reviewed',
+          },
+          analysis: {
+            product_intel_v1: {
+              contract_version: 'pivota.product_intel.v1',
+              display_name: 'Pivota Insights',
+              canonical_product_ref: {
+                merchant_id: 'external_seed',
+                product_id: 'ext_source_meta_reviewed_1',
+              },
+              provenance: {
+                source: 'product_intel_pilot_compare',
+                generator: 'baseline_plus_gemini',
+                selection_strategy: 'baseline_first_gemini_guarded',
+              },
+              product_intel_core: {
+                what_it_is: {
+                  headline: 'Brightening serum',
+                  body: 'A rice and alpha-arbutin serum positioned for tone care, glow, and a dedicated treatment step.',
+                },
+                best_for: [{ tag: 'tone', label: 'Uneven tone support', confidence: 'moderate' }],
+                why_it_stands_out: [
+                  {
+                    headline: 'Tone-care active pairing',
+                    body: 'Pairs rice extract positioning with alpha-arbutin for a more specific brightening routine role.',
+                  },
+                ],
+                routine_fit: {
+                  step: 'serum',
+                  am_pm: ['am', 'pm'],
+                  pairing_notes: ['Use before moisturizer, then SPF in the morning.'],
+                },
+                watchouts: [],
+                confidence: { overall: 'moderate' },
+                freshness: {
+                  generated_at: '2026-04-19T22:21:20.103Z',
+                  source_version: 'pilot_selected:gemini-guarded',
+                },
+                quality_state: 'eligible',
+                evidence_profile: 'seller_plus_formula',
+              },
+              quality_state: 'eligible',
+              evidence_profile: 'seller_plus_formula',
+            },
+          },
+        };
+      }),
+    }));
+
+    jest.doMock('../src/auroraBff/normalize', () => ({
+      normalizeProductAnalysis: jest.fn((raw) => ({
+        payload: raw,
+      })),
+    }));
+
+    const { hydrateProductWithPublishedIntel, buildProductIntelBundle } = require('../src/pdpProductIntel');
+
+    const hydrated = await hydrateProductWithPublishedIntel({
+      product: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_source_meta_reviewed_1',
+        title: 'Glow Deep Serum : Rice + Alpha-Arbutin',
+        category: 'Skincare/Serum',
+      },
+      canonicalProductRef: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_source_meta_reviewed_1',
+      },
+      requireReviewedBundle: true,
+      allowLegacyAnalysisFallback: false,
+    });
+
+    expect(hydrated.product_intel.contract_version).toBe('pivota.product_intel.v1');
+    expect(hydrated.provenance.review_tier).toBe('assistant_reviewed');
+    expect(hydrated.provenance.review_status).toBe('completed');
+
+    const bundle = buildProductIntelBundle({
+      product: hydrated,
+      canonicalProductRef: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_source_meta_reviewed_1',
+      },
+      requireReviewedBundle: true,
+    });
+
+    expect(bundle).toBeTruthy();
+    expect(bundle.product_intel_core.what_it_is.body).toMatch(/alpha-arbutin serum/i);
+  });
 });

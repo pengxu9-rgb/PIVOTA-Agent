@@ -224,6 +224,7 @@ function isHumanReviewedProductIntelBundle(bundle) {
   const provenanceSource = asString(provenance?.source).toLowerCase();
   const reviewStatus = asString(provenance?.review_status).toLowerCase();
   const reviewDecision = asString(provenance?.review_decision).toLowerCase();
+  const reviewTier = asString(provenance?.review_tier).toLowerCase();
   const generator = asString(provenance?.generator).toLowerCase();
   const reviewerKind = asString(provenance?.reviewer_kind).toLowerCase();
   const selectedStrategy = asString(provenance?.selection_strategy).toLowerCase();
@@ -234,6 +235,13 @@ function isHumanReviewedProductIntelBundle(bundle) {
   if (sourceVersion === 'pilot_selected:strict_human_reviewed') return true;
   if (generator === 'strict_human_manual_rewrite') return true;
   if (hasHumanField && qualityGate?.human_standard_rewrite === true) return true;
+  if (
+    reviewStatus === 'completed' &&
+    ['pass', 'rewrite', 'seller_only_fallback', 'reject_external'].includes(reviewDecision) &&
+    ['strict_human', 'assistant_reviewed', 'legacy_reviewed'].includes(reviewTier)
+  ) {
+    return true;
+  }
   if (
     reviewerKind === 'assistant' &&
     reviewStatus === 'completed' &&
@@ -492,8 +500,19 @@ function normalizePublishedProductIntelBundle(bundle, {
   provenance = null,
   requireReviewed = false,
 } = {}) {
-  const source = asPlainObject(bundle);
-  if (!source) return null;
+  const rawSource = asPlainObject(bundle);
+  if (!rawSource) return null;
+  const sourceProvenance = asPlainObject(rawSource.provenance);
+  const overlayProvenance = asPlainObject(provenance);
+  const source = overlayProvenance
+    ? {
+        ...rawSource,
+        provenance: {
+          ...(sourceProvenance || {}),
+          ...overlayProvenance,
+        },
+      }
+    : rawSource;
   const core = asPlainObject(source.product_intel_core);
   if (!core) return null;
   const reviewedForPublicDisplay = isHumanReviewedProductIntelBundle(source);
@@ -769,6 +788,7 @@ async function hydrateProductWithPublishedIntel({
     }
     const kbAnalysis = asPlainObject(kbEntry?.analysis);
     if (!kbAnalysis) continue;
+    const kbSourceMeta = asPlainObject(kbEntry?.source_meta);
     const directBundleSource =
       asPlainObject(kbAnalysis.product_intel_v1) ||
       asPlainObject(kbAnalysis.product_intel) ||
@@ -781,6 +801,7 @@ async function hydrateProductWithPublishedIntel({
           requireReviewed: requireReviewedBundle,
           provenance: {
             ...(asPlainObject(sourceProduct.provenance) || {}),
+            ...(kbSourceMeta || {}),
             kb_key: kbKey,
             source: asString(kbEntry?.source) || 'aurora_product_intel_kb',
             generated_at:
@@ -813,6 +834,7 @@ async function hydrateProductWithPublishedIntel({
         },
         provenance: {
           ...(asPlainObject(sourceProduct.provenance) || {}),
+          ...(kbSourceMeta || {}),
           kb_key: kbKey,
           source: asString(kbEntry?.source) || 'aurora_product_intel_kb',
           generated_at:
