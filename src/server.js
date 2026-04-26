@@ -2151,6 +2151,10 @@ const PDP_EXTERNAL_SEED_UNSCOPED_GROUP_BUDGET_MS = Math.max(
   100,
   parseTimeoutMs(process.env.PDP_EXTERNAL_SEED_UNSCOPED_GROUP_BUDGET_MS, 1200),
 );
+const PDP_EXTERNAL_SEED_UPSTREAM_GROUP_RESOLVE_ENABLED = parseBooleanEnv(
+  process.env.PDP_EXTERNAL_SEED_UPSTREAM_GROUP_RESOLVE_ENABLED,
+  false,
+);
 const PDP_EXTERNAL_SEED_STATUS_PRECHECK_BUDGET_MS = Math.max(
   50,
   parseTimeoutMs(process.env.PDP_EXTERNAL_SEED_STATUS_PRECHECK_BUDGET_MS, 250),
@@ -23682,29 +23686,36 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 		        productId = String(canonicalProductRef.product_id || '').trim();
 		      }
 
+		      const externalSeedRouteProductId = entryProductIsExternalSeed || isExternalSeedProductId(productId);
+	      const precheckMerchantId =
+	        requestedMerchantId || (externalSeedRouteProductId ? EXTERNAL_SEED_MERCHANT_ID : '');
 	      // Fast-fail for merchant-scoped PDP requests where the entry product doesn't exist.
 	      // We keep this as a soft precheck: do not fail the whole PDP when upstream jitters.
 	      let precheckedMerchantProduct = null;
 	      let precheckEntryProductMissing = false;
 	      const shouldPrecheckMerchantScoped =
-	        Boolean(requestedMerchantId) &&
+	        Boolean(precheckMerchantId) &&
 	        Boolean(productId) &&
 	        !offerProductGroupId &&
 	        !hasExplicitProductGroup;
 	      const precheckEntryProductStartedAt = Date.now();
 	      const precheckEntryProductPromise = shouldPrecheckMerchantScoped
 	        ? fetchProductDetailForOffers({
-	            merchantId: requestedMerchantId,
+	            merchantId: precheckMerchantId,
 	            productId,
 	            checkoutToken,
 	            bypassCache,
 	          }).catch(() => null)
 	        : Promise.resolve(null);
 
-	        const externalSeedRouteProductId = entryProductIsExternalSeed || isExternalSeedProductId(productId);
+	      const canSkipExternalSeedUpstreamGroupResolve =
+	        externalSeedRouteProductId &&
+	        (!requestedMerchantId || requestedMerchantId === EXTERNAL_SEED_MERCHANT_ID) &&
+	        !PDP_EXTERNAL_SEED_UPSTREAM_GROUP_RESOLVE_ENABLED;
 	      const canResolveExternalSeedUnscopedWithoutPrecheck =
 	        externalSeedRouteProductId &&
-	        (!requestedMerchantId || requestedMerchantId === EXTERNAL_SEED_MERCHANT_ID);
+	        (!requestedMerchantId || requestedMerchantId === EXTERNAL_SEED_MERCHANT_ID) &&
+	        !canSkipExternalSeedUpstreamGroupResolve;
 	      let resolveGroupCachedStartedAt = Date.now();
 	      let resolveGroupCachedPromise = null;
 	      const startResolveGroupCached = (attemptUnscopedExternalSeedResolve) => {
@@ -23777,6 +23788,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	      }
 	      markPdpV2Phase('precheck_entry_product', precheckEntryProductStartedAt);
 	      entryPrecheckMissingCtx = precheckEntryProductMissing;
+	      const shouldSkipExternalSeedUpstreamGroupResolve =
+	        canSkipExternalSeedUpstreamGroupResolve && Boolean(precheckedMerchantProduct);
 
 	      const shouldAttemptUnscopedExternalSeedResolve =
 	        externalSeedRouteProductId &&
@@ -23784,13 +23797,17 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	          !requestedMerchantId ||
 	          precheckEntryProductMissing ||
 	          requestedMerchantId === EXTERNAL_SEED_MERCHANT_ID
-	        );
+	        ) &&
+	        !shouldSkipExternalSeedUpstreamGroupResolve;
 
 	      if (!canonicalProductRef) {
 	        const shouldResolveGroupBeforeCanonical =
-	          !precheckedMerchantProduct ||
-	          shouldAttemptUnscopedExternalSeedResolve ||
-	          !shouldPrecheckMerchantScoped;
+	          !shouldSkipExternalSeedUpstreamGroupResolve &&
+	          (
+	            !precheckedMerchantProduct ||
+	            shouldAttemptUnscopedExternalSeedResolve ||
+	            !shouldPrecheckMerchantScoped
+	          );
 	        if (shouldResolveGroupBeforeCanonical) {
 	          if (!resolveGroupCachedPromise) {
 	            resolveGroupCachedPromise = startResolveGroupCached(shouldAttemptUnscopedExternalSeedResolve);
@@ -23815,11 +23832,15 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	            }
 	          }
 	        } else {
-	          pdpV2ProductGroupResolveMode = 'skipped_prechecked_entry';
+	          pdpV2ProductGroupResolveMode = shouldSkipExternalSeedUpstreamGroupResolve
+	            ? 'skipped_external_seed_upstream_disabled'
+	            : 'skipped_prechecked_entry';
 	        }
 	      }
 	      if (pdpV2ProductGroupResolveMode === 'not_started') {
-	        pdpV2ProductGroupResolveMode = canonicalProductRef ? 'not_needed' : 'skipped';
+	        pdpV2ProductGroupResolveMode = shouldSkipExternalSeedUpstreamGroupResolve
+	          ? 'skipped_external_seed_upstream_disabled'
+	          : canonicalProductRef ? 'not_needed' : 'skipped';
 	      }
 	      markPdpV2Phase('resolve_group_cached', resolveGroupCachedStartedAt);
 
@@ -23848,21 +23869,21 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	            canonicalizationReasonCode = 'PRODUCT_ROUTE_MERCHANT_MISMATCH';
 	          }
 	      }
-        resolvedProductIdCtx = canonicalProductRef?.product_id || null;
-        resolvedMerchantIdCtx = canonicalProductRef?.merchant_id || null;
-        canonicalizationAppliedCtx = canonicalizationApplied;
-        canonicalizationReasonCodeCtx = canonicalizationReasonCode;
-        identityResolutionSourceCtx = identityResolutionSource;
+	      resolvedProductIdCtx = canonicalProductRef?.product_id || null;
+	      resolvedMerchantIdCtx = canonicalProductRef?.merchant_id || null;
+	      canonicalizationAppliedCtx = canonicalizationApplied;
+	      canonicalizationReasonCodeCtx = canonicalizationReasonCode;
+	      identityResolutionSourceCtx = identityResolutionSource;
 
 	      // Fetch canonical detail (cached via products_cache + memory cache).
 	      const fetchCanonicalProductStartedAt = Date.now();
 	      let canonicalProduct =
 	        precheckedMerchantProduct &&
-	        canonicalProductRef.merchant_id === requestedMerchantId &&
-		        canonicalProductRef.product_id === productId
-		          ? precheckedMerchantProduct
-		          : await fetchProductDetailForOffers({
-		              merchantId: canonicalProductRef.merchant_id,
+	        canonicalProductRef.merchant_id === precheckMerchantId &&
+	        canonicalProductRef.product_id === productId
+	          ? precheckedMerchantProduct
+	          : await fetchProductDetailForOffers({
+	              merchantId: canonicalProductRef.merchant_id,
 	              productId: canonicalProductRef.product_id,
 	              checkoutToken,
                 bypassCache,
