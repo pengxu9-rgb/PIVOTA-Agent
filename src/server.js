@@ -2151,6 +2151,10 @@ const PDP_EXTERNAL_SEED_UNSCOPED_GROUP_BUDGET_MS = Math.max(
   100,
   parseTimeoutMs(process.env.PDP_EXTERNAL_SEED_UNSCOPED_GROUP_BUDGET_MS, 1200),
 );
+const PDP_EXTERNAL_SEED_STATUS_PRECHECK_BUDGET_MS = Math.max(
+  50,
+  parseTimeoutMs(process.env.PDP_EXTERNAL_SEED_STATUS_PRECHECK_BUDGET_MS, 250),
+);
 const PDP_CORE_PREWARM_TIMEOUT_MS = Math.max(
   1000,
   parseTimeoutMs(process.env.PDP_CORE_PREWARM_TIMEOUT_MS, 6500),
@@ -23464,9 +23468,36 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	        (!requestedMerchantId || requestedMerchantId === EXTERNAL_SEED_MERCHANT_ID)
 	      ) {
 	        const externalSeedStatusStartedAt = Date.now();
-	        const externalSeedRouteStatus = await fetchExternalSeedRouteStatusFromDb({
-	          productId: entryProductId,
-	        });
+	        let externalSeedRouteStatus = null;
+	        try {
+	          externalSeedRouteStatus = await withStageBudget(
+	            fetchExternalSeedRouteStatusFromDb({
+	              productId: entryProductId,
+	            }),
+	            PDP_EXTERNAL_SEED_STATUS_PRECHECK_BUDGET_MS,
+	            'pdp_external_seed_status_precheck',
+	          );
+	        } catch (err) {
+	          if (err?.code === 'STAGE_TIMEOUT') {
+	            logger.warn(
+	              {
+	                product_id: entryProductId,
+	                merchant_id: requestedMerchantId || EXTERNAL_SEED_MERCHANT_ID,
+	                budget_ms: PDP_EXTERNAL_SEED_STATUS_PRECHECK_BUDGET_MS,
+	              },
+	              'get_pdp_v2 external_seed status precheck exceeded first-paint budget',
+	            );
+	          } else {
+	            logger.warn(
+	              {
+	                err: err?.message || String(err),
+	                product_id: entryProductId,
+	                merchant_id: requestedMerchantId || EXTERNAL_SEED_MERCHANT_ID,
+	              },
+	              'get_pdp_v2 external_seed status precheck failed',
+	            );
+	          }
+	        }
 	        markPdpV2Phase('external_seed_status_precheck', externalSeedStatusStartedAt);
 	        const externalSeedStatus = String(externalSeedRouteStatus?.status || '').trim().toLowerCase();
 	        if (externalSeedStatus && externalSeedStatus !== 'active') {
