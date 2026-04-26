@@ -3408,6 +3408,61 @@ async function fetchExternalSeedProductDetailFromDb(args) {
   }
 }
 
+async function fetchExternalSeedRouteStatusFromDb(args) {
+  if (!process.env.DATABASE_URL) return null;
+  const productId = String(args?.productId || '').trim();
+  if (!productId) return null;
+
+  try {
+    const res = await query(
+      `
+        SELECT
+          id,
+          external_product_id,
+          status,
+          updated_at,
+          created_at
+        FROM external_product_seeds
+        WHERE (
+          external_product_id = $1
+          OR id::text = $1
+          OR seed_data->>'external_product_id' = $1
+          OR seed_data->>'product_id' = $1
+          OR seed_data->'snapshot'->>'product_id' = $1
+        )
+        ORDER BY
+          CASE WHEN status = 'active' THEN 0 ELSE 1 END,
+          updated_at DESC NULLS LAST,
+          created_at DESC NULLS LAST
+        LIMIT 1
+      `,
+      [productId],
+    );
+    const row = Array.isArray(res?.rows) ? res.rows[0] : null;
+    if (!row) return null;
+    return {
+      external_seed_id: row.id ? String(row.id) : null,
+      external_product_id: row.external_product_id ? String(row.external_product_id) : null,
+      status: String(row.status || '').trim().toLowerCase() || null,
+      updated_at: row.updated_at || null,
+      created_at: row.created_at || null,
+    };
+  } catch (err) {
+    const message = String(err?.message || err || '');
+    if (
+      err?.code === 'NO_DATABASE' ||
+      (message.includes('external_product_seeds') && message.includes('does not exist'))
+    ) {
+      return null;
+    }
+    logger.warn(
+      { err: err?.message || String(err), productId },
+      'Failed to read external seed route status from DB',
+    );
+    return null;
+  }
+}
+
 function attachProductDetailSource(product, detailSource) {
   if (!product || typeof product !== 'object') return product;
   const source = String(detailSource || '').trim();
@@ -4492,6 +4547,26 @@ async function fetchProductDetailForOffers(args) {
         }
         return seedDetail.product;
       }
+      const fromExternalSeeds = await findExternalSeedProductById({ productId }).catch(() => null);
+      if (fromExternalSeeds) {
+        const normalizedExternalSeed = attachProductDetailSource(
+          normalizeProductDetailPrice(fromExternalSeeds),
+          'external_seed_db',
+        );
+        if (useMemoryCache) {
+          setProductDetailCache(cacheKey, {
+            status: 'success',
+            success: true,
+            product: normalizedExternalSeed,
+            metadata: {
+              query_source: 'external_product_seeds',
+            },
+          });
+        }
+        return normalizedExternalSeed;
+      }
+
+      return null;
     }
 
     if (process.env.DATABASE_URL) {
@@ -4517,27 +4592,6 @@ async function fetchProductDetailForOffers(args) {
           });
         }
         return normalizedDb;
-      }
-    }
-
-    if (process.env.DATABASE_URL && merchantId === EXTERNAL_SEED_MERCHANT_ID) {
-      const fromExternalSeeds = await findExternalSeedProductById({ productId }).catch(() => null);
-      if (fromExternalSeeds) {
-        const normalizedExternalSeed = attachProductDetailSource(
-          normalizeProductDetailPrice(fromExternalSeeds),
-          'external_seed_db',
-        );
-        if (useMemoryCache) {
-          setProductDetailCache(cacheKey, {
-            status: 'success',
-            success: true,
-            product: normalizedExternalSeed,
-            metadata: {
-              query_source: 'external_product_seeds',
-            },
-          });
-        }
-        return normalizedExternalSeed;
       }
     }
 
@@ -23392,8 +23446,38 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	        });
 	      }
 
-		      const entryProductId = productId;
+	      const entryProductId = productId;
 	      const entryProductIsExternalSeed = isExternalSeedProductId(entryProductId);
+	      if (
+	        entryProductIsExternalSeed &&
+	        (!requestedMerchantId || requestedMerchantId === EXTERNAL_SEED_MERCHANT_ID)
+	      ) {
+	        const externalSeedStatusStartedAt = Date.now();
+	        const externalSeedRouteStatus = await fetchExternalSeedRouteStatusFromDb({
+	          productId: entryProductId,
+	        });
+	        markPdpV2Phase('external_seed_status_precheck', externalSeedStatusStartedAt);
+	        const externalSeedStatus = String(externalSeedRouteStatus?.status || '').trim().toLowerCase();
+	        if (externalSeedStatus && externalSeedStatus !== 'active') {
+	          return res.status(404).json({
+	            ...buildPdpV2ErrorBody({
+	              error: 'PRODUCT_NOT_FOUND',
+	              message: 'Product not found',
+	              reasonCode: 'PRODUCT_NOT_FOUND',
+	              details: {
+	                reason: 'external_seed_not_active',
+	                external_seed_status: externalSeedStatus,
+	                external_seed_id: externalSeedRouteStatus?.external_seed_id || null,
+	                external_product_id:
+	                  externalSeedRouteStatus?.external_product_id || entryProductId || null,
+	              },
+	              requestedProductId: entryProductId || null,
+	              requestedMerchantId: requestedMerchantId || null,
+	              resolutionSource: 'external_seed_status_precheck',
+	            }),
+	          });
+	        }
+	      }
 	      if (
 	        entryProductIsExternalSeed &&
 	        (!requestedMerchantId || requestedMerchantId === EXTERNAL_SEED_MERCHANT_ID)
