@@ -21583,13 +21583,47 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     }
 
     const { operation, payload } = parsed.data;
+    const requestLevelContext =
+      req?.body?.context && typeof req.body.context === 'object' && !Array.isArray(req.body.context)
+        ? req.body.context
+        : {};
+    const payloadWithRequestContext =
+      operation === 'find_products_multi' && Object.keys(requestLevelContext).length > 0
+        ? {
+            ...(payload || {}),
+            context: {
+              ...(
+                payload?.context && typeof payload.context === 'object' && !Array.isArray(payload.context)
+                  ? payload.context
+                  : {}
+              ),
+              ...requestLevelContext,
+              normalized_need: {
+                ...(
+                  payload?.context?.normalized_need &&
+                  typeof payload.context.normalized_need === 'object' &&
+                  !Array.isArray(payload.context.normalized_need)
+                    ? payload.context.normalized_need
+                    : {}
+                ),
+                ...(
+                  requestLevelContext.normalized_need &&
+                  typeof requestLevelContext.normalized_need === 'object' &&
+                  !Array.isArray(requestLevelContext.normalized_need)
+                    ? requestLevelContext.normalized_need
+                    : {}
+                ),
+              },
+            },
+          }
+        : payload;
     debugRuntime.operation = String(operation || '').trim().toLowerCase();
     if (CHECKOUT_TIMING_OPS.has(debugRuntime.operation)) {
       checkoutRuntime.checkoutTraceId = gatewayRequestId;
     }
     let metadata = normalizeMetadata(req.body.metadata, payload);
     const sourceContractPayload = applyFindProductsMultiSourceContract(
-      payload,
+      payloadWithRequestContext,
       metadata,
       operation,
     );

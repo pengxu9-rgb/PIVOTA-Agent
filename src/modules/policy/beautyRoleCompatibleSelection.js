@@ -229,6 +229,8 @@ function inferBeautyRoleFromSemanticContract({ responseBody = {}, search = {}, m
         ? metadata.semantic_contract
         : null;
   return (
+    normalizeRoleFamily(semanticContract?.semantic_family) ||
+    normalizeRoleFamily(contract?.semantic_family) ||
     normalizeRoleFamily(semanticContract?.target_step_family) ||
     normalizeRoleFamily(contract?.target_step_family) ||
     normalizeRoleFamily(semanticContract?.primary_role_id) ||
@@ -270,12 +272,14 @@ function applyBeautyRoleCompatibleSelection({
   const products = Array.isArray(responseBody.products) ? responseBody.products.filter(isPlainObject) : [];
   if (products.length === 0) return responseBody;
   const requestText = getBeautyRequestText({ queryText: queryText || search.query || search.q, beautyRequest });
+  const exactProductContext = hasExactProductContext({ queryText: requestText, beautyRequest });
+  const intentRole = inferBeautyRoleIntent({ queryText: requestText, beautyRequest });
+  const semanticRole = inferBeautyRoleFromSemanticContract({ responseBody, search, metadata });
   const role =
-    inferBeautyRoleFromSemanticContract({ responseBody, search, metadata }) ||
-    inferBeautyRoleIntent({ queryText: requestText, beautyRequest }) ||
-    (hasExactProductContext({ queryText: requestText, beautyRequest })
-      ? inferBeautyRoleFromProducts(products)
-      : null);
+    (exactProductContext && intentRole ? intentRole : null) ||
+    semanticRole ||
+    intentRole ||
+    (exactProductContext ? inferBeautyRoleFromProducts(products) : null);
   const evaluated = products.map((product, index) => ({
     product,
     index,

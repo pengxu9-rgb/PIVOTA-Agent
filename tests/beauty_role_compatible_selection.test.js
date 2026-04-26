@@ -132,6 +132,49 @@ describe('beauty role compatible selection policy', () => {
     });
   });
 
+  test('does not let stale treatment contract override exact moisturizer context', () => {
+    const result = applyBeautyRoleCompatibleSelection({
+      operation: 'find_products_multi',
+      invokeSearchRail: 'authoritative_shopping',
+      queryText: 'I use tretinoin. Is Ultra Repair Face Lotion a better next moisturizer than a peptide cream?',
+      search: {
+        catalog_surface: 'beauty',
+      },
+      metadata: {
+        source: 'shopping_agent',
+        catalog_surface: 'beauty',
+      },
+      beautyRequest: {
+        domain: 'beauty',
+        user_goal: 'I use tretinoin. Is Ultra Repair Face Lotion a better next moisturizer than a peptide cream?',
+        routine_context: { actives: ['tretinoin'] },
+        product_context: { canonical_product_ref: 'ultra repair face lotion' },
+      },
+      responseBody: {
+        products: [
+          { canonical_title: 'Ultra Repair Face Lotion with Colloidal Oatmeal', canonical_category: 'Moisturizer' },
+          { canonical_title: 'Niacinamide Treatment Serum', canonical_category: 'Serum' },
+        ],
+        metadata: {
+          search_request_contract: {
+            target_step_family: 'treatment',
+            semantic_family: 'barrier_repair',
+          },
+        },
+      },
+    });
+
+    expect(result.products.map((product) => product.canonical_title)).toEqual([
+      'Ultra Repair Face Lotion with Colloidal Oatmeal',
+    ]);
+    expect(result.metadata.beauty_role_compatible_selection).toMatchObject({
+      applied: true,
+      role: 'moisturizer',
+      original_count: 2,
+      selected_count: 1,
+    });
+  });
+
   test('scores retinoid-conflicting and spf moisturizer rows below role-compatible moisturizers', () => {
     const queryText = 'I have dry sensitive skin, use tretinoin at night, and want a moisturizer under $30.';
     const tripleLipid = evaluateProductForBeautyRole(

@@ -1112,6 +1112,42 @@ describe('find_products_multi context building', () => {
     expect(expanded).not.toContain('化妆刷');
   });
 
+  test('beauty_request product context becomes the exact-product retrieval query', async () => {
+    const { adjustedPayload, expansion_meta } = await buildFindProductsMultiContext({
+      payload: {
+        search: {
+          query: 'I use tretinoin. Is Ultra Repair Face Lotion a better next moisturizer than a peptide cream?',
+          limit: 6,
+          in_stock_only: true,
+          catalog_surface: 'beauty',
+        },
+        context: {
+          normalized_need: {
+            beauty_request: {
+              domain: 'beauty',
+              user_goal: 'I use tretinoin. Is Ultra Repair Face Lotion a better next moisturizer than a peptide cream?',
+              routine_context: { actives: ['tretinoin'] },
+              product_context: { canonical_product_ref: 'ultra repair face lotion' },
+              constraints: { budget_max: 30 },
+            },
+          },
+        },
+      },
+      metadata: {
+        source: 'shopping_agent',
+        catalog_surface: 'beauty',
+      },
+    });
+
+    const query = String(adjustedPayload.search.query || '').toLowerCase();
+    expect(query).toContain('ultra repair face lotion');
+    expect(query).toContain('face moisturizer');
+    expect(query).toContain('barrier moisturizer');
+    expect(adjustedPayload.search.price_max).toBe(30);
+    expect(expansion_meta.beauty_context_budget_max).toBe(30);
+    expect(String(adjustedPayload.search.target_step_family || '')).toBe('moisturizer');
+  });
+
   test('sleepwear query routes to human apparel (not pet)', async () => {
     const intent = extractIntentRuleBased('给我推荐一个睡觉很舒服，好看的睡衣', [], []);
     expect(intent.primary_domain).toBe('human_apparel');
