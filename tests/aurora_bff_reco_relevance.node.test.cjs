@@ -10334,6 +10334,94 @@ test('__internal: framework pool avoids all-same-brand finish-fit sunscreen comp
   );
 });
 
+test('__internal: framework pool demotes moisturizer-SPF30 rows behind dedicated SPF50 finish-fit sunscreens', () => {
+  const { __internal } = loadRoutesFresh();
+  const targetContext = {
+    framework_id: 'recofw_test_finish_fit_demote_moisturizer_spf30',
+    primary_role_id: 'daily_sunscreen_finish_fit',
+    comparison_mode: 'same_role_comparison',
+    routine_mode: 'same_role_comparison',
+    request_text: 'I have oily skin, what sunscreen should I buy?',
+    semantic_plan: {
+      primary_concern: 'oily daytime sunscreen',
+      comparison_mode: 'same_role_comparison',
+      routine_mode: 'same_role_comparison',
+      must_satisfy_constraints: ['lightweight finish', 'oily skin'],
+    },
+    framework_roles: [
+      {
+        role_id: 'daily_sunscreen_finish_fit',
+        rank: 1,
+        preferred_step: 'sunscreen',
+        label: 'Daily sunscreen finish fit',
+        query_terms: ['sunscreen oily skin', 'lightweight sunscreen oily skin'],
+        fit_keywords: ['lightweight', 'non-greasy', 'matte', 'invisible'],
+        ingredient_hypotheses: ['UV filters'],
+        product_type_hypotheses: ['sunscreen'],
+      },
+    ],
+  };
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [
+      {
+        product_id: 'boj_dayscreen_spf30_moisturizer',
+        merchant_id: 'external_seed',
+        brand: 'Beauty of Joseon',
+        name: 'Dayscreen Moisturizer SPF 30',
+        display_name: 'Beauty of Joseon Dayscreen Moisturizer SPF 30',
+        category: 'Sunscreen',
+        product_type: 'Sunscreen',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'daily_sunscreen_finish_fit',
+        retrieval_query: 'sunscreen oily skin',
+        local_external_seed_role_fit_score: 1.3,
+        benefit_tags: ['spf 30', 'lightweight', 'daily moisturizer', 'bare-skin finish'],
+        short_description: 'A lightweight daily moisturizer with SPF 30 and a breathable finish.',
+      },
+      {
+        product_id: 'round_lab_birch_spf50_finish_fit',
+        merchant_id: 'external_seed',
+        brand: 'Round Lab',
+        name: 'Birch Moisturizing Mild-Up Sunscreen SPF 50+ PA++++',
+        display_name: 'Round Lab Birch Moisturizing Mild-Up Sunscreen SPF 50+ PA++++',
+        category: 'Sunscreen',
+        product_type: 'Sunscreen',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'daily_sunscreen_finish_fit',
+        retrieval_query: 'lightweight sunscreen oily skin',
+        local_external_seed_role_fit_score: 1.04,
+        benefit_tags: ['spf 50', 'pa++++', 'watery', 'lightweight'],
+        short_description: 'A watery SPF50+ sunscreen texture for daily wear.',
+      },
+      {
+        product_id: 'haruharu_airyfit_spf50_finish_fit',
+        merchant_id: 'external_seed',
+        brand: 'Haruharu Wonder',
+        name: 'Moisture Airyfit Daily Sunscreen SPF50+/PA++++',
+        display_name: 'Haruharu Wonder Moisture Airyfit Daily Sunscreen SPF50+/PA++++',
+        category: 'Sunscreen',
+        product_type: 'Sunscreen',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'daily_sunscreen_finish_fit',
+        retrieval_query: 'lightweight sunscreen oily skin',
+        local_external_seed_role_fit_score: 1.02,
+        benefit_tags: ['spf 50', 'pa++++', 'airyfit', 'non-greasy'],
+        short_description: 'A SPF50+ sunscreen with a lightweight velvety finish for daily wear.',
+      },
+    ].map((row) => __internal.normalizeRecoCatalogProduct(row)),
+    { targetContext },
+  );
+
+  assert.equal(state.primary_role_matched, true);
+  assert.notEqual(state.selected_recommendations[0]?.product_id, 'boj_dayscreen_spf30_moisturizer');
+  const dayscreen = state.viable_candidate_pool.find((row) => row?.product_id === 'boj_dayscreen_spf30_moisturizer') || null;
+  const dedicated = state.viable_candidate_pool.find((row) => row?.product_id === 'round_lab_birch_spf50_finish_fit') || null;
+  assert.ok(dayscreen);
+  assert.ok(dedicated);
+  assert.ok(Number(dayscreen.framework_role_fit_rank_adjustment || 0) < Number(dedicated.framework_role_fit_rank_adjustment || 0));
+  assert.ok(Number(dayscreen.framework_rank_score || 0) < Number(dedicated.framework_rank_score || 0));
+});
+
 test('__internal: finish-fit same-role primary external stage can stop early once three tradeoff buckets are ready', () => {
   const { __internal } = loadRoutesFresh();
   const targetContext = {
