@@ -959,6 +959,179 @@ function projectBeautyExpertResponse(response = {}, beautyExpertV1 = null) {
   return next;
 }
 
+function getBeautyExpertRecoRows(beautyExpertV1 = {}, authorityResponse = {}) {
+  const normalizedRows = [
+    ...asArray(beautyExpertV1?.reco_bundle?.lead_picks),
+    ...asArray(beautyExpertV1?.reco_bundle?.support_picks),
+  ].filter(isPlainObject);
+  const rawProducts = extractRecommendationProducts(authorityResponse);
+  const rawById = new Map();
+  const rawByTitle = new Map();
+  for (const product of rawProducts) {
+    const productId = pickFirstTrimmed(product.product_id, product.id);
+    const title = getProductDisplayName(product);
+    if (productId) rawById.set(productId, product);
+    if (title) rawByTitle.set(normalizeProductToken(title), product);
+  }
+  return normalizedRows
+    .map((row) => {
+      const productId = pickFirstTrimmed(row.product_id, row.id);
+      const title = getProductDisplayName(row);
+      const raw = (productId && rawById.get(productId)) || (title && rawByTitle.get(normalizeProductToken(title))) || {};
+      return normalizeRecoProduct({
+        ...raw,
+        ...row,
+        product_id: pickFirstTrimmed(row.product_id, raw.product_id, raw.id),
+        id: pickFirstTrimmed(row.product_id, raw.product_id, raw.id),
+        merchant_id: pickFirstTrimmed(row.merchant_id, raw.merchant_id),
+        name: pickFirstTrimmed(row.name, raw.name, raw.title, raw.canonical_title),
+        title: pickFirstTrimmed(row.name, raw.title, raw.name, raw.canonical_title),
+        brand: pickFirstTrimmed(row.brand, raw.brand, raw.vendor),
+        image_url: pickFirstTrimmed(row.image_url, raw.image_url, raw.image_refs),
+        price: row.price ?? raw.price,
+        currency: pickFirstTrimmed(row.currency, raw.currency),
+        why_this_one: pickFirstTrimmed(row.why_this_one, raw.why_this_one, raw.short_description),
+        pdp_open: row.pdp_open != null ? row.pdp_open : raw.pdp_open,
+      });
+    })
+    .filter(Boolean);
+}
+
+function buildBeautyExpertCardProductRow(product = {}, index = 0, beautyExpertV1 = {}) {
+  if (!isPlainObject(product)) return null;
+  const productId = pickFirstTrimmed(product.product_id, product.id);
+  const name = getProductDisplayName(product);
+  if (!productId && !name) return null;
+  const comparisonMode = pickFirstTrimmed(
+    beautyExpertV1?.reco_bundle?.comparison_mode,
+    beautyExpertV1?.recommendation_scope?.comparison_mode,
+  );
+  return {
+    ...(productId ? { product_id: productId } : {}),
+    ...(pickFirstTrimmed(product.merchant_id) ? { merchant_id: pickFirstTrimmed(product.merchant_id) } : {}),
+    ...(pickFirstTrimmed(product.product_group_id) ? { product_group_id: pickFirstTrimmed(product.product_group_id) } : {}),
+    ...(pickFirstTrimmed(product.product_ref) ? { product_ref: pickFirstTrimmed(product.product_ref) } : {}),
+    ...(product.canonical_product_ref != null ? { canonical_product_ref: cloneJsonSafe(product.canonical_product_ref, product.canonical_product_ref) } : {}),
+    ...(product.pdp_open != null ? { pdp_open: cloneJsonSafe(product.pdp_open, product.pdp_open) } : {}),
+    ...(name ? { name } : {}),
+    ...(pickFirstTrimmed(product.brand) ? { brand: pickFirstTrimmed(product.brand) } : {}),
+    ...(pickFirstTrimmed(product.image_url) ? { image_url: pickFirstTrimmed(product.image_url) } : {}),
+    ...(product.price != null ? { price: product.price } : {}),
+    ...(pickFirstTrimmed(product.currency) ? { currency: pickFirstTrimmed(product.currency) } : {}),
+    ...(product.price != null || pickFirstTrimmed(product.currency)
+      ? { price_label: [pickFirstTrimmed(product.currency), product.price].filter((value) => value != null && value !== '').join(' ') }
+      : {}),
+    ...(pickFirstTrimmed(product.why_this_one) ? { why_this_one: pickFirstTrimmed(product.why_this_one) } : {}),
+    role_scope: index === 0 ? 'lead' : 'support',
+    comparison_mode: comparisonMode || (index === 0 ? 'single_pick' : 'same_type_compare'),
+    same_role_peer_count: Math.max(0, asArray(beautyExpertV1?.reco_bundle?.support_picks).length),
+    authority_status: pickFirstTrimmed(product.authority_status, beautyExpertV1?.reco_bundle?.authority_status) || 'grounded',
+  };
+}
+
+function makeBeautyExpertRecommendationsCard(rows = [], beautyExpertV1 = {}) {
+  const products = rows
+    .map((row, index) => buildBeautyExpertCardProductRow(row, index, beautyExpertV1))
+    .filter(Boolean);
+  return {
+    type: 'recommendations',
+    card_type: 'recommendations',
+    sections: [
+      {
+        title: beautyExpertV1.mode === 'exact_product_assist' ? 'Grounded product check' : 'Recommended options',
+        products,
+      },
+    ],
+    payload: {
+      recommendations: products,
+      products,
+      recommendations_count: products.length,
+      source: 'beauty_expert_v1_shared_truth',
+    },
+  };
+}
+
+function rewriteCardsWithBeautyExpertRows(cards = [], rows = [], beautyExpertV1 = {}) {
+  const productRows = rows
+    .map((row, index) => buildBeautyExpertCardProductRow(row, index, beautyExpertV1))
+    .filter(Boolean);
+  const sourceCards = Array.isArray(cards) ? cards.filter(isPlainObject) : [];
+  let touched = false;
+  const nextCards = sourceCards.map((card) => {
+    if (normalizeText(card.type || card.card_type) !== 'recommendations') return card;
+    touched = true;
+    const nextCard = {
+      ...card,
+      sections: Array.isArray(card.sections)
+        ? card.sections.map((section, index) => {
+            if (!isPlainObject(section)) return section;
+            if (index > 0 && Array.isArray(section.products)) {
+              return { ...section, products: [] };
+            }
+            return {
+              ...section,
+              products: productRows,
+            };
+          })
+        : [{ title: beautyExpertV1.mode === 'exact_product_assist' ? 'Grounded product check' : 'Recommended options', products: productRows }],
+    };
+    const payload = isPlainObject(card.payload) ? { ...card.payload } : {};
+    payload.recommendations = productRows;
+    payload.products = productRows;
+    payload.recommendations_count = productRows.length;
+    payload.source = 'beauty_expert_v1_shared_truth';
+    nextCard.payload = payload;
+    return nextCard;
+  });
+  if (!touched) nextCards.push(makeBeautyExpertRecommendationsCard(rows, beautyExpertV1));
+  return nextCards;
+}
+
+function projectBeautyExpertAuthorityResponse(response = {}, authorityResponse = {}) {
+  if (!isPlainObject(response) || !isPlainObject(authorityResponse)) return response;
+  const beautyExpertV1 = isPlainObject(authorityResponse.beauty_expert_v1)
+    ? authorityResponse.beauty_expert_v1
+    : null;
+  if (!beautyExpertV1) return response;
+  const rows = getBeautyExpertRecoRows(beautyExpertV1, authorityResponse);
+  const isExactAnchorMiss =
+    beautyExpertV1.mode === 'exact_product_assist' &&
+    asArray(beautyExpertV1?.reco_bundle?.lead_picks).length === 0 &&
+    asArray(beautyExpertV1?.reco_bundle?.support_picks).length === 0;
+  if (rows.length === 0 && !isExactAnchorMiss) return response;
+
+  const next = { ...response };
+  const cardCollectionKey = getCardCollectionKey(response);
+  if (cardCollectionKey) {
+    next[cardCollectionKey] = rewriteCardsWithBeautyExpertRows(response[cardCollectionKey], rows, beautyExpertV1);
+  } else if (rows.length > 0 || isExactAnchorMiss) {
+    next.cards = [makeBeautyExpertRecommendationsCard(rows, beautyExpertV1)];
+  }
+
+  const visibleText = pickFirstTrimmed(
+    authorityResponse.reply,
+    authorityResponse.assistant_message?.content,
+    authorityResponse.assistant_text,
+  );
+  if (visibleText) {
+    next.assistant_message = { role: 'assistant', content: visibleText, format: 'text' };
+    if (Object.prototype.hasOwnProperty.call(next, 'assistant_text')) next.assistant_text = visibleText;
+    if (Object.prototype.hasOwnProperty.call(next, 'reply')) next.reply = visibleText;
+  }
+
+  const projectionMeta = {
+    beauty_shared_truth_applied: true,
+    beauty_shared_truth_source: 'beauty_expert_v1_invoke',
+    beauty_shared_truth_mode: beautyExpertV1.mode || null,
+    beauty_shared_truth_product_count: rows.length,
+  };
+  if (isPlainObject(next.meta)) next.meta = { ...next.meta, ...projectionMeta };
+  else if (isPlainObject(next.metadata)) next.metadata = { ...next.metadata, ...projectionMeta };
+  else next.meta = projectionMeta;
+
+  return next;
+}
+
 function getAssistantTextFromResponse(response = {}) {
   return pickFirstTrimmed(
     response?.assistant_message?.content,
@@ -1457,4 +1630,5 @@ function attachBeautyExpertV1ToResponse(response = {}, options = {}) {
 module.exports = {
   attachBeautyExpertV1ToResponse,
   buildBeautyExpertV1Response,
+  projectBeautyExpertAuthorityResponse,
 };
