@@ -54,8 +54,8 @@ describe('pdpBuilder structured PDP modules', () => {
       : [];
 
     expect(urls).toEqual([
-      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T1QT01_3000x3000_0.png',
-      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T1QT01_2000x2000_1.jpg',
+      'https://sdcdn.io/tf/tf_sku_T1QT01_3000x3000_0.png',
+      'https://sdcdn.io/tf/tf_sku_T1QT01_2000x2000_1.jpg',
     ]);
     expect(urls.some((url) => url.includes('T1QW01'))).toBe(false);
     expect(urls.some((url) => url.includes('plpbanner'))).toBe(false);

@@ -431,22 +431,22 @@ describe('externalSeedProducts helper', () => {
     const variants = normalizeSeedVariants(row.seed_data, row);
     expect(variants).toHaveLength(2);
     expect(variants[0].images).toEqual([
-      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T1QT01_2000x2000_1.jpg',
-      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T1QT01_2000x2000_2.jpg',
+      'https://sdcdn.io/tf/tf_sku_T1QT01_2000x2000_1.jpg',
+      'https://sdcdn.io/tf/tf_sku_T1QT01_2000x2000_2.jpg',
     ]);
     expect(variants[1].images).toEqual([
-      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T1QS01_2000x2000_1.jpg',
-      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T1QS01_2000x2000_2.jpg',
+      'https://sdcdn.io/tf/tf_sku_T1QS01_2000x2000_1.jpg',
+      'https://sdcdn.io/tf/tf_sku_T1QS01_2000x2000_2.jpg',
     ]);
 
     const product = buildExternalSeedProduct(row);
     expect(product.variants[0].images).toEqual([
-      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T1QT01_2000x2000_1.jpg',
-      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T1QT01_2000x2000_2.jpg',
+      'https://sdcdn.io/tf/tf_sku_T1QT01_2000x2000_1.jpg',
+      'https://sdcdn.io/tf/tf_sku_T1QT01_2000x2000_2.jpg',
     ]);
     expect(product.variants[1].images).toEqual([
-      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T1QS01_2000x2000_1.jpg',
-      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T1QS01_2000x2000_2.jpg',
+      'https://sdcdn.io/tf/tf_sku_T1QS01_2000x2000_1.jpg',
+      'https://sdcdn.io/tf/tf_sku_T1QS01_2000x2000_2.jpg',
     ]);
   });
 

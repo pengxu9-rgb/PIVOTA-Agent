@@ -30,6 +30,10 @@ function isKnownHost(hostname, candidates) {
   return candidates.some((host) => normalizedHost === host || normalizedHost.endsWith(`.${host}`));
 }
 
+function isSdcdnHost(hostname) {
+  return isKnownHost(hostname, ['sdcdn.io']);
+}
+
 function isShopifyLikeAsset(parsed) {
   const pathname = String(parsed?.pathname || '').toLowerCase();
   return (
@@ -46,6 +50,10 @@ function rewriteTomFordAssetToOfficialShopify(parsed) {
     { stripHash: false },
   );
   if (!filename) return next;
+
+  if (isSdcdnHost(next.hostname)) {
+    return next;
+  }
 
   if (/^tfb?_sku_/i.test(filename)) {
     const rewritten = new URL(`https://cdn.shopify.com${TOM_FORD_SHOPIFY_FILES_PREFIX}${filename}`);

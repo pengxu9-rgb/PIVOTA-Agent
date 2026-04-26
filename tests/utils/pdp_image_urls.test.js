@@ -28,6 +28,14 @@ describe('pdp image URL normalization', () => {
     expect(buildPdpImageDedupeKey(urls[0])).not.toBe(buildPdpImageDedupeKey(urls[1]));
   });
 
+  test('preserves valid sdcdn Tom Ford assets instead of rewriting them to stale Shopify URLs', () => {
+    expect(
+      normalizePdpImageUrl(
+        'https://sdcdn.io/tf/tf_sku_T73C23_2000x2000_0.png?height=700&width=700',
+      ),
+    ).toBe('https://sdcdn.io/tf/tf_sku_T73C23_2000x2000_0.png');
+  });
+
   test('resolves Shopify width placeholders into concrete asset URLs', () => {
     expect(
       normalizePdpImageUrl(
