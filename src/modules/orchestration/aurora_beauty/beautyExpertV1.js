@@ -92,6 +92,13 @@ function pickVisibleEvidence(...values) {
   return '';
 }
 
+function asEvidenceFragment(value = '') {
+  const text = asString(value);
+  if (!text) return '';
+  if (/^[A-Z]{2,}\b/.test(text)) return text;
+  return `${text.charAt(0).toLowerCase()}${text.slice(1)}`;
+}
+
 function normalizeSourceToken(value) {
   return normalizeText(value).replace(/[\s_]+/g, '-');
 }
@@ -966,7 +973,8 @@ function isGenericInvokeReply(reply = '') {
     normalized === 'here are some more suitable picks based on your request' ||
     normalized.startsWith('here are some more suitable picks based on your request budget') ||
     normalized.startsWith('i only found a few weak matches') ||
-    normalized.startsWith('i do not have a role compatible grounded skincare match')
+    normalized.startsWith('i do not have a role compatible grounded skincare match') ||
+    normalized.startsWith('to avoid off topic recommendations what should we prioritize')
   );
 }
 
@@ -1083,7 +1091,7 @@ function inferProductRoleLabel(product = {}) {
 
 function describeProductForVisibleCopy(product = {}, beautyIntent = {}) {
   const reason = pickVisibleEvidence(product.why_this_one, product.short_description);
-  if (reason) return reason;
+  if (reason) return asEvidenceFragment(reason);
   const contextText = getBeautyIntentContextText(beautyIntent);
   const productText = normalizeText([
     product.name,
@@ -1145,6 +1153,18 @@ function buildBeautyExpertRoutineOrderReply(products = [], beautyIntent = {}, { 
   const leadName = getProductDisplayName(lead) || 'the lead option';
   const contextFrame = buildBeautyContextFrame(beautyIntent);
   const leadReason = describeProductForVisibleCopy(lead, beautyIntent);
+  const contextText = getBeautyIntentContextText(beautyIntent);
+  const leadRole = inferProductRoleLabel(lead);
+  let placementCopy = 'place it after cleansing and before creamier steps, then keep sunscreen as the daytime final step';
+  if (/\bsunscreen\b/.test(leadRole)) {
+    placementCopy = 'use it as the final morning skincare step before makeup or sun exposure';
+  } else if (/\bmoisturizer\b/.test(leadRole)) {
+    placementCopy = /\b(tretinoin|retinoid)\b/.test(contextText)
+      ? 'use it after watery serums and after your retinoid on retinoid nights'
+      : 'use it after cleansing and any watery serum, then follow with SPF in the morning';
+  } else if (/\btreatment\b/.test(leadRole)) {
+    placementCopy = 'use it after cleansing and before moisturizer, then avoid stacking extra strong actives in the same routine until tolerance is clear';
+  }
   const supportCopy = support
     .map((product) => {
       const name = getProductDisplayName(product);
@@ -1154,9 +1174,9 @@ function buildBeautyExpertRoutineOrderReply(products = [], beautyIntent = {}, { 
     .filter(Boolean);
   const supportSentence = supportCopy.length > 0
     ? `Compared with it, ${supportCopy.join('; ')}.`
-    : 'If this is the only product you buy first, keep the rest of the routine simple and reassess before adding another active.';
+    : 'If this is the only product you buy first, keep the rest of the routine simple; treat stronger actives or richer texture swaps as later comparisons after you see tolerance.';
   const prefix = creatorFacing ? 'For a creator-facing recommendation, ' : '';
-  return `${contextFrame ? `${contextFrame} ` : ''}${prefix}If you only buy one first, use ${leadName} as the first purchase decision. In the routine, place it later than watery serums and after tretinoin on nights you use tretinoin, because ${leadReason}. ${supportSentence}`;
+  return `${contextFrame ? `${contextFrame} ` : ''}${prefix}If you only buy one first, use ${leadName} as the first purchase decision. In the routine, ${placementCopy}, because ${leadReason}. ${supportSentence}`;
 }
 
 function buildBeautyExpertVisibleReply(beautyExpertV1 = {}) {

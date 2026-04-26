@@ -1122,6 +1122,64 @@ describe('beauty_expert_v1 contract', () => {
     expect(result.reply).toContain('routine');
   });
 
+  test('routine-order copy does not mention tretinoin when the user did not provide retinoid context', () => {
+    const result = attachBeautyExpertV1ToResponse(
+      {
+        reply: 'I only found a few weak matches, so I won’t force unrelated recommendations.',
+        products: [
+          {
+            product_id: 'niacinamide',
+            title: 'The Ordinary Niacinamide 10% + Zinc 1%',
+            brand: 'The Ordinary',
+            price: 12,
+            currency: 'USD',
+          },
+          {
+            product_id: 'winona',
+            title: 'Winona Soothing Repair Serum',
+            brand: 'Winona',
+            price: 18,
+            currency: 'USD',
+          },
+        ],
+        metadata: {
+          mainline_status: 'grounded_success',
+          decision_owner: 'shopping_agent_beauty_mainline',
+          semantic_owner: 'shopping_agent_beauty_mainline',
+        },
+      },
+      {
+        source: 'shopping_agent',
+        entryLayer: 'orchestration',
+        taskType: 'discovery',
+        context: {
+          source_profile: { source: 'shopping_agent', default_entry_layer: 'orchestration' },
+          vertical: 'beauty',
+          category: 'skincare',
+          normalized_need: {
+            beauty_request: {
+              domain: 'beauty',
+              user_goal: 'For combination skin with clogged pores in Seattle winter, pick the first product to buy if I only buy one.',
+              skin_context: { skin_type: 'combination', concerns: ['clogged pores'] },
+              scenario_context: { location: 'Seattle', season: 'winter' },
+              constraints: { routine_complexity: 'simple' },
+            },
+          },
+        },
+        metadata: { source: 'shopping_agent', catalog_surface: 'beauty' },
+        payload: {
+          search: {
+            query: 'For combination skin with clogged pores in Seattle winter, pick the first product to buy if I only buy one.',
+          },
+        },
+      },
+    );
+
+    expect(result.reply).toContain('If you only buy one first');
+    expect(result.reply).not.toMatch(/tretinoin|retinoid/i);
+    expect(result.reply).toContain('before moisturizer');
+  });
+
   test('creator follow-up can return three explicit versus bullets', () => {
     const result = attachBeautyExpertV1ToResponse(
       {

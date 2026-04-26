@@ -1148,6 +1148,41 @@ describe('find_products_multi context building', () => {
     expect(String(adjustedPayload.search.target_step_family || '')).toBe('moisturizer');
   });
 
+  test('beauty_request plural moisturizer context keeps role terms ahead of long follow-up text', async () => {
+    const { adjustedPayload, expansion_meta } = await buildFindProductsMultiContext({
+      payload: {
+        search: {
+          query: 'Recommend beginner-friendly moisturizers for a dry sensitive audience where some use retinoids.',
+          limit: 6,
+          in_stock_only: true,
+          catalog_surface: 'beauty',
+        },
+        context: {
+          normalized_need: {
+            beauty_request: {
+              domain: 'beauty',
+              user_goal: 'Recommend beginner-friendly moisturizers for a dry sensitive audience where some use retinoids.',
+              skin_context: { skin_type: 'dry sensitive' },
+              routine_context: { audience_actives: ['retinoids'] },
+              scenario_context: { audience: 'beginner creator audience' },
+            },
+          },
+        },
+      },
+      metadata: {
+        source: 'creator_agent',
+        catalog_surface: 'beauty',
+      },
+    });
+
+    const query = String(adjustedPayload.search.query || '').toLowerCase();
+    expect(query.startsWith('retinoids dry sensitive face moisturizer barrier moisturizer')).toBe(true);
+    expect(query).toContain('barrier repair moisturizer');
+    expect(query).toContain('ceramide moisturizer');
+    expect(String(adjustedPayload.search.target_step_family || '')).toBe('moisturizer');
+    expect(String(expansion_meta.beauty_context_retrieval_query || '').toLowerCase()).toBe(query);
+  });
+
   test('sleepwear query routes to human apparel (not pet)', async () => {
     const intent = extractIntentRuleBased('给我推荐一个睡觉很舒服，好看的睡衣', [], []);
     expect(intent.primary_domain).toBe('human_apparel');

@@ -1569,19 +1569,21 @@ function buildBeautyContextRetrievalQuery({
       pickFirstNonEmptyString(skinContext.barrier_status, skinContext.barrierStatus),
     ].filter(Boolean).join(' '),
   });
-  if (normalizedRole === 'moisturizer') contextTerms.push('face moisturizer', 'barrier moisturizer');
+  if (normalizedRole === 'moisturizer') {
+    contextTerms.push('face moisturizer', 'barrier moisturizer', 'barrier repair moisturizer', 'ceramide moisturizer');
+  }
   if (normalizedRole === 'sunscreen') contextTerms.push('face sunscreen', 'spf');
   if (normalizedRole === 'serum' || normalizedRole === 'treatment') contextTerms.push('serum', 'treatment');
 
   const parts = exactProductAssist
     ? [productRef, ...contextTerms]
-    : [expanded, ...contextTerms];
+    : [...contextTerms, expanded];
   const deduped = Array.from(
     new Set(parts.map((item) => String(item || '').trim()).filter(Boolean)),
   );
   const candidate = deduped.join(' ').trim();
   if (!candidate) return expanded;
-  return candidate.length > 180 ? candidate.slice(0, 180).trim() : candidate;
+  return candidate.length > 240 ? candidate.slice(0, 240).trim() : candidate;
 }
 
 const STRICT_SEMANTIC_OWNER = BEAUTY_DISCOVERY_MAINLINE_OWNER;
@@ -1696,7 +1698,7 @@ function inferBeautyTargetStepFamily({
       normalized,
     ) || /祛痘|痘痘|控油|水杨酸|水楊酸|烟酰胺|煙酰胺/.test(normalized);
   const hasExplicitMoisturizerRoleSignal =
-    /\b(moisturi(?:z|s)er|face moisturizer|barrier moisturizer|barrier cream|gel cream|face cream|face lotion)\b/.test(
+    /\b(moisturi[sz](?:ers?|ing|e|ed)?|face moisturizer|barrier moisturizer|barrier cream|gel cream|face cream|face lotion)\b/.test(
       normalized,
     ) || /保湿|保濕|面霜|乳液|霜/.test(normalized);
   const hasGenericMoisturizerFormSignal =
@@ -1776,7 +1778,7 @@ function shouldForceBeautyDiscoveryContract({
   if (brandLike) return false;
 
   const hasRoleSignal =
-    /\b(serum|treatment|ampoule|essence|moisturi(?:z|s)er|cream|gel cream|lotion|cleanser|face wash|toner|mist|sunscreen|spf\b|sunblock)\b/.test(
+    /\b(serum|treatment|ampoule|essence|moisturi[sz](?:ers?|ing|e|ed)?|cream|gel cream|lotion|cleanser|face wash|toner|mist|sunscreen|spf\b|sunblock)\b/.test(
       normalizedQuery,
     ) || /精华|精華|美容液|面霜|乳液|洁面|潔面|化妆水|化妝水|防晒|防曬|日焼け止め/.test(normalizedQuery);
   const hasConcernSignal =
@@ -4921,7 +4923,7 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
           /\b(sunscreen|spf\b|sunblock|broad spectrum|uv)\b/i.test(q) ||
           /防晒|防曬|日焼け止め/.test(q);
         const wantsMoisturizer =
-          /\b(moisturi(?:z|s)er|cream|face moisturizer|barrier moisturizer|barrier cream)\b/i.test(q) ||
+          /\b(moisturi[sz](?:ers?|ing|e|ed)?|cream|face moisturizer|barrier moisturizer|barrier cream)\b/i.test(q) ||
           /保湿|保濕|乳液|面霜|クリーム/.test(q);
         const wantsSerum =
           /\b(serum|essence|ampoule|niacinamide|retinol|vitamin c|peptide|ceramide|cica|hyaluronic|salicylic|azelaic|aha|bha)\b/i.test(

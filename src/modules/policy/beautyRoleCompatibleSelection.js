@@ -91,7 +91,7 @@ function inferBeautyRoleIntent({ queryText = '', beautyRequest = {} } = {}) {
   if (!text) return null;
   const explicitSunscreen = /\b(sunscreen|spf|sun\s*screen|sunblock|uv)\b/.test(text);
   const explicitMoisturizer =
-    /\b(moisturizer|moisturiser|moisturize|moisturise|cream|lotion|gel\s*cream|barrier|dry|tight|retinoid|tretinoin)\b/.test(text);
+    /\b(moisturi[sz](?:ers?|ing|e|ed)?|cream|lotion|gel\s*cream|barrier|dry|tight|retinoid|tretinoin)\b/.test(text);
   const explicitTreatment =
     /\b(serum|treatment|spot\s*treat|niacinamide|bha|salicylic|azelaic|retinol|retinal|vitamin\s*c)\b/.test(text);
   const explicitCleanser = /\b(cleanser|cleanse|wash|face\s*wash)\b/.test(text);
@@ -117,10 +117,15 @@ function hasSpfRequestContext(queryText = '') {
   return /\b(sunscreen|spf|sun\s*screen|sunblock|uv|daytime|day\s*time|morning)\b/.test(queryText);
 }
 
+function hasEyeRequestContext(queryText = '') {
+  return /\b(eye|under\s*eye|around\s*eye|eyelid)\b/.test(queryText);
+}
+
 function evaluateProductForBeautyRole(product = {}, role = null, queryText = '') {
   const text = getProductText(product);
   const retinoidConflict = hasRetinoidConflictContext(queryText);
   const spfRequested = hasSpfRequestContext(queryText);
+  const eyeRequested = hasEyeRequestContext(queryText);
   const hardReasons = [];
   let score = 0;
 
@@ -135,18 +140,23 @@ function evaluateProductForBeautyRole(product = {}, role = null, queryText = '')
   if (/\b(body|hand\s*cream|foot|deodorant)\b/.test(text)) hardReasons.push('body');
 
   if (role === 'moisturizer') {
+    if (!eyeRequested && /\b(eye\s*cream|eye\s*serum|eye\s*gel|under\s*eye)\b/.test(text)) {
+      hardReasons.push('eye_area');
+    }
     if (retinoidConflict && /\b(retinol|retinal|ginseng\s*\+?\s*retinol|resurfacing|peel|aha|bha|glycolic)\b/.test(text)) {
       hardReasons.push('active_conflict');
     }
-    if (/\b(moisturizer|moisturiser|moisturizing|moisturising|cream|lotion|gel\s*cream|balm)\b/.test(text)) score += 70;
+    if (/\b(moisturi[sz](?:ers?|ing|e|ed)?|cream|lotion|gel\s*cream|balm)\b/.test(text)) score += 70;
     if (/\b(ceramide|colloidal|oat|oatmeal|panthenol|cica|centella|calming|soothing|repair|lipid|peptide|hydrating|sensitive)\b/.test(text)) score += 28;
     if (/\b(serum|toner|essence|ampoule|dots|patch|acne)\b/.test(text)) score -= 38;
     if (!spfRequested && /\b(spf|sunscreen|sun\s*shield|dayscreen|superscreen)\b/.test(text)) score -= 62;
     if (/\b(set|kit|routine|duo|bundle)\b/.test(text)) score -= 28;
   } else if (role === 'sunscreen') {
-    if (/\b(sunscreen|spf|sun\s*shield|sunblock|uv|pa\+)\b/.test(text)) score += 80;
+    const hasSunscreenToken = /\b(sunscreen|spf|sun\s*shield|sunblock|uv|pa\+)\b/.test(text);
+    if (hasSunscreenToken) score += 80;
     if (/\b(lightweight|airy|fluid|gel|watery|aqua|mild|mineral|matte|oil|shine|makeup)\b/.test(text)) score += 20;
-    if (/\b(serum|toner|cleanser|shampoo|gloss|patch|dots)\b/.test(text)) score -= 35;
+    if (/\b(toner|cleanser|shampoo|gloss|patch|dots)\b/.test(text)) score -= 35;
+    if (!hasSunscreenToken && /\bserum\b/.test(text)) score -= 35;
     if (/\b(set|kit|routine|duo|bundle)\b/.test(text)) score -= 20;
   } else if (role === 'treatment') {
     if (/\b(serum|treatment|niacinamide|salicylic|bha|azelaic|retinol|retinal|vitamin\s*c|acne|blemish|pore|pores|ampoule)\b/.test(text)) score += 65;
@@ -189,7 +199,7 @@ function inferBeautyRoleFromProducts(products = []) {
   for (const product of Array.isArray(products) ? products : []) {
     const text = getProductText(product);
     if (/\b(sunscreen|spf|sun\s*shield|sunblock|uv|pa\+)\b/.test(text)) return 'sunscreen';
-    if (/\b(moisturizer|moisturiser|moisturizing|moisturising|cream|lotion|gel\s*cream|balm)\b/.test(text)) return 'moisturizer';
+    if (/\b(moisturi[sz](?:ers?|ing|e|ed)?|cream|lotion|gel\s*cream|balm)\b/.test(text)) return 'moisturizer';
     if (/\b(cleanser|cleansing|wash|face\s*wash)\b/.test(text)) return 'cleanser';
     if (/\b(serum|treatment|niacinamide|salicylic|bha|azelaic|retinol|retinal|vitamin\s*c|acne|blemish|pore|pores|ampoule)\b/.test(text)) return 'treatment';
   }
@@ -200,7 +210,7 @@ function normalizeRoleFamily(value) {
   const text = normalizeText(value);
   if (!text) return null;
   if (/\b(sunscreen|spf|sun\s*screen|sunblock|uv|dayscreen)\b/.test(text)) return 'sunscreen';
-  if (/\b(moisturizer|moisturiser|moisturizing|moisturising|cream|lotion|barrier|gel\s*cream|balm)\b/.test(text)) {
+  if (/\b(moisturi[sz](?:ers?|ing|e|ed)?|cream|lotion|barrier|gel\s*cream|balm)\b/.test(text)) {
     return 'moisturizer';
   }
   if (/\b(cleanser|cleansing|wash|face\s*wash)\b/.test(text)) return 'cleanser';
@@ -228,13 +238,15 @@ function inferBeautyRoleFromSemanticContract({ responseBody = {}, search = {}, m
       : isPlainObject(metadata.semantic_contract)
         ? metadata.semantic_contract
         : null;
-  return (
-    normalizeRoleFamily(semanticContract?.semantic_family) ||
-    normalizeRoleFamily(contract?.semantic_family) ||
+  const explicitStepRole =
     normalizeRoleFamily(semanticContract?.target_step_family) ||
     normalizeRoleFamily(contract?.target_step_family) ||
     normalizeRoleFamily(semanticContract?.primary_role_id) ||
-    normalizeRoleFamily(contract?.primary_role_id)
+    normalizeRoleFamily(contract?.primary_role_id);
+  if (explicitStepRole) return explicitStepRole;
+  return (
+    normalizeRoleFamily(semanticContract?.semantic_family) ||
+    normalizeRoleFamily(contract?.semantic_family)
   );
 }
 
