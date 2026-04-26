@@ -463,6 +463,128 @@ describe('beauty_expert_v1 contract', () => {
     expect(result.reply).not.toContain('matches the sunscreen role and it is listed around');
   });
 
+  test('relief sun exact-product copy uses sunscreen texture evidence instead of role and price fallback', () => {
+    const result = attachBeautyExpertV1ToResponse(
+      {
+        reply: null,
+        products: [
+          {
+            product_id: 'relief_sun_aqua_fresh_10ml',
+            merchant_id: 'external_seed',
+            title: 'Relief Sun Aqua-Fresh 10ml',
+            brand: 'Beauty of Joseon',
+            price: 3.75,
+            currency: 'USD',
+          },
+        ],
+        metadata: {
+          mainline_status: 'grounded_success',
+          decision_owner: 'shopping_agent_beauty_mainline',
+          semantic_owner: 'shopping_agent_beauty_mainline',
+        },
+      },
+      {
+        source: 'shopping_agent',
+        entryLayer: 'orchestration',
+        delegatedLayer: 'execution_facing',
+        taskType: 'discovery',
+        context: {
+          vertical: 'beauty',
+          category: 'skincare',
+          normalized_need: {
+            beauty_request: {
+              domain: 'beauty',
+              user_goal: 'Is Beauty of Joseon Relief Sun Aqua-Fresh good for oily skin under makeup?',
+              skin_context: { skin_type: 'oily' },
+              product_context: {
+                canonical_product_ref: 'beauty of joseon relief sun aqua-fresh',
+              },
+              scenario_context: { use_case: 'under makeup' },
+            },
+          },
+        },
+        metadata: {
+          source: 'shopping_agent',
+          catalog_surface: 'beauty',
+        },
+        payload: {
+          search: {
+            query: 'Is Beauty of Joseon Relief Sun Aqua-Fresh good for oily skin under makeup?',
+          },
+        },
+      },
+    );
+
+    expect(result.reply).toContain('lighter aqua-fresh texture lane');
+    expect(result.reply).not.toContain('matches the sunscreen role and it is listed around');
+  });
+
+  test('dedupes tinted sunscreen shade variants before selecting support picks', () => {
+    const result = buildBeautyExpertV1Response({
+      source: 'shopping_agent',
+      entryLayer: 'orchestration',
+      delegatedLayer: 'decisioning',
+      taskType: 'discovery',
+      context: {
+        source_profile: {
+          source: 'shopping_agent',
+          default_entry_layer: 'decisioning',
+        },
+        vertical: 'beauty',
+        category: 'skincare',
+        raw_user_goal: 'I commute in hot humid weather and hate heavy SPF. What sunscreen product should I use?',
+      },
+      metadata: {
+        source: 'shopping_agent',
+        catalog_surface: 'beauty',
+      },
+      payload: {
+        search: {
+          query: 'I commute in hot humid weather and hate heavy SPF. What sunscreen product should I use?',
+        },
+      },
+      response: {
+        products: [
+          {
+            product_id: 'mild',
+            merchant_id: 'external_seed',
+            title: 'Birch Mild-Up Sunscreen UVLock SPF 50+ Broad Spectrum',
+            brand: 'Round Lab',
+          },
+          {
+            product_id: 'tinted_my220',
+            merchant_id: 'external_seed',
+            title: 'Daily Tinted Fluid Sunscreen MY220',
+            brand: 'Beauty of Joseon',
+          },
+          {
+            product_id: 'tinted_dy300',
+            merchant_id: 'external_seed',
+            title: 'Daily Tinted Fluid Sunscreen DY300',
+            brand: 'Beauty of Joseon',
+          },
+          {
+            product_id: 'moisturizing',
+            merchant_id: 'external_seed',
+            title: 'Birch Moisturizing Sunscreen UVLock SPF 45+ Broad Spectrum',
+            brand: 'Round Lab',
+          },
+        ],
+        metadata: {
+          mainline_status: 'grounded_success',
+          decision_owner: 'shopping_agent_beauty_mainline',
+          semantic_owner: 'shopping_agent_beauty_mainline',
+        },
+      },
+    });
+
+    const titles = [
+      ...result.reco_bundle.lead_picks,
+      ...result.reco_bundle.support_picks,
+    ].map((product) => product.name);
+    expect(titles.filter((title) => /Daily Tinted Fluid Sunscreen/.test(title))).toHaveLength(1);
+  });
+
   test('does not project long PDP descriptions into visible invoke copy or compare axes', () => {
     const result = attachBeautyExpertV1ToResponse(
       {
@@ -1236,6 +1358,67 @@ describe('beauty_expert_v1 contract', () => {
     expect(result.assistant_message).toBeNull();
     expect(result.assistant_text).toBe('');
     expect(result.meta.assistant_visible_suppressed_reason).toBe('exact_product_projection_assistant_mismatch');
+  });
+
+  test('attachBeautyExpertV1ToResponse suppresses exact-product assistant text when the anchor row is missing', () => {
+    const result = attachBeautyExpertV1ToResponse(
+      {
+        assistant_message: {
+          role: 'assistant',
+          content:
+            'Haruharu Wonder Daily Soothing Sun Shield SPF50+ PA++++ fits this request because it leans more matte under makeup.',
+          format: 'text',
+        },
+        cards: [
+          {
+            type: 'recommendations',
+            sections: [
+              {
+                products: [
+                  {
+                    product_id: 'haruharu_spf',
+                    merchant_id: 'external_seed',
+                    name: 'Haruharu Wonder Daily Soothing Sun Shield SPF50+ PA++++',
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+        meta: {},
+      },
+      {
+        source: 'aurora-bff',
+        entryLayer: 'orchestration',
+        projectionType: 'aurora_cards',
+        taskType: 'discovery',
+        context: {
+          source_profile: { source: 'aurora-bff', default_entry_layer: 'orchestration' },
+          vertical: 'beauty',
+          category: 'skincare',
+          normalized_need: {
+            beauty_request: {
+              domain: 'beauty',
+              user_goal: 'Is Beauty of Joseon Relief Sun Aqua-Fresh good for oily skin under makeup?',
+              skin_context: { skin_type: 'oily' },
+              product_context: {
+                canonical_product_ref: 'beauty of joseon relief sun aqua-fresh',
+              },
+              scenario_context: { use_case: 'under makeup' },
+            },
+          },
+        },
+        metadata: { catalog_surface: 'beauty' },
+        payload: { message: 'Is Beauty of Joseon Relief Sun Aqua-Fresh good for oily skin under makeup?' },
+        messages: [{ role: 'user', content: 'Is Beauty of Joseon Relief Sun Aqua-Fresh good for oily skin under makeup?' }],
+      },
+    );
+
+    expect(result.beauty_expert_v1.mode).toBe('exact_product_assist');
+    expect(result.beauty_expert_v1.reco_bundle.lead_picks).toHaveLength(0);
+    expect(result.cards[0].sections[0].products).toHaveLength(0);
+    expect(result.assistant_message).toBeNull();
+    expect(result.meta.assistant_visible_suppressed_reason).toBe('exact_product_anchor_missing');
   });
 
   test('invoke projection respects retinoid budget context and answers routine-order follow-up', () => {
