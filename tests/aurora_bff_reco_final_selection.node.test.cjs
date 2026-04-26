@@ -807,9 +807,9 @@ test('beauty mainline reco rows keep finish-fit same-slot cards differentiated b
     assert.match(String(rows[0].why_this_one || ''), /keeps the finish lighter and smoother under makeup|lighter, smoother daytime layering/i);
     assert.match(String(rows[0].short_description || ''), /soft-focus|under makeup|daytime layering/i);
     assert.match(String(rows[1].why_this_one || ''), /leans more mineral|sensitive-skin-friendly|sheer, weightless finish/i);
-    assert.match(String(rows[2].why_this_one || ''), /leans richer and more moisturizing|more cushion under makeup/i);
+    assert.match(String(rows[2].why_this_one || ''), /leans richer and more moisturizing|more cushion under makeup|moisturizer-SPF hybrid/i);
     assert.match(String(rows[1].short_description || ''), /sheer|weightless|sensitive skin|mineral/i);
-    assert.match(String(rows[2].short_description || ''), /leans richer and more moisturizing|more cushion under makeup|moisturizing/i);
+    assert.match(String(rows[2].short_description || ''), /leans richer and more moisturizing|more cushion under makeup|moisturizing|moisturizer-SPF hybrid/i);
     assert.notEqual(rows[1].why_this_one, rows[0].why_this_one);
     assert.notEqual(rows[2].why_this_one, rows[0].why_this_one);
     assert.doesNotMatch(String(rows[1].why_this_one || ''), /^Sheer, weightless, scentless mineral sunscreen/i);
@@ -4304,7 +4304,7 @@ test('reco assistant visible-text sanitizer rewrites leaked same-slot finish-fit
     );
 
     assert.match(text, /Beauty of Joseon Day Dew Sunscreen makes more sense if you want a fresher, dewier finish/i);
-    assert.match(text, /SKINTIFIC Light Serum Sunscreen SPF 50\+ PA\+\+\+\+ makes more sense if you want the lightest, least noticeable sunscreen layer/i);
+    assert.match(text, /SKINTIFIC Light Serum Sunscreen SPF 50\+ PA\+\+\+\+ makes more sense if you want a lighter, less noticeable sunscreen layer/i);
     assert.doesNotMatch(text, /same-slot comparison option because/i);
     assert.doesNotMatch(text, /under makeupa/i);
     assert.doesNotMatch(text, /under makeup a serum texture/i);
