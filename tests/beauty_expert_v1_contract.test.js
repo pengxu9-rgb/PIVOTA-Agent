@@ -1,6 +1,7 @@
 const {
   buildBeautyExpertV1Response,
   attachBeautyExpertV1ToResponse,
+  projectBeautyExpertAuthorityResponse,
 } = require('../src/modules/orchestration/aurora_beauty/beautyExpertV1');
 const {
   handleAuroraBeautyOrchestration,
@@ -1599,5 +1600,135 @@ describe('beauty_expert_v1 contract', () => {
     expect(result.reply).toContain('Three slot reasons');
     expect(result.reply).toContain('versus');
     expect(result.reply.split('\n').filter((line) => line.startsWith('- '))).toHaveLength(3);
+  });
+
+  test('shared authority projection replaces divergent Aurora recommendation cards', () => {
+    const result = projectBeautyExpertAuthorityResponse(
+      {
+        assistant_message: {
+          role: 'assistant',
+          content: 'Daily Soothing Sun Shield is the current lead.',
+        },
+        cards: [
+          {
+            type: 'recommendations',
+            sections: [
+              {
+                title: 'Recommended options',
+                products: [
+                  {
+                    product_id: 'haruharu-sun-shield',
+                    merchant_id: 'external_seed',
+                    name: 'Daily Soothing Sun Shield SPF50+ PA++++',
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      {
+        reply:
+          'Birch Mild-Up Sunscreen UVLock SPF 50+ Broad Spectrum is the current lead because it is a grounded SPF option in a milder or mineral lane.',
+        products: [
+          {
+            product_id: 'round-lab-birch-mild-up',
+            merchant_id: 'external_seed',
+            title: 'Birch Mild-Up Sunscreen UVLock SPF 50+ Broad Spectrum',
+            brand: 'Round Lab',
+            price: 28,
+            currency: 'USD',
+            pdp_open: { product_id: 'round-lab-birch-mild-up', merchant_id: 'external_seed' },
+          },
+          {
+            product_id: 'boj-aqua-fresh',
+            merchant_id: 'external_seed',
+            title: 'Relief Sun Aqua-Fresh 10ml',
+            brand: 'Beauty of Joseon',
+            price: 6,
+            currency: 'USD',
+          },
+        ],
+        beauty_expert_v1: {
+          mode: 'category_compare',
+          reco_bundle: {
+            lead_picks: [
+              {
+                product_id: 'round-lab-birch-mild-up',
+                merchant_id: 'external_seed',
+                name: 'Birch Mild-Up Sunscreen UVLock SPF 50+ Broad Spectrum',
+                brand: 'Round Lab',
+              },
+            ],
+            support_picks: [
+              {
+                product_id: 'boj-aqua-fresh',
+                merchant_id: 'external_seed',
+                name: 'Relief Sun Aqua-Fresh 10ml',
+                brand: 'Beauty of Joseon',
+              },
+            ],
+            comparison_mode: 'same_type_compare',
+            authority_status: 'grounded_success',
+          },
+        },
+      },
+    );
+
+    const products = result.cards[0].sections[0].products;
+    expect(products.map((product) => product.name)).toEqual([
+      'Birch Mild-Up Sunscreen UVLock SPF 50+ Broad Spectrum',
+      'Relief Sun Aqua-Fresh 10ml',
+    ]);
+    expect(products[0].pdp_open).toEqual({ product_id: 'round-lab-birch-mild-up', merchant_id: 'external_seed' });
+    expect(result.assistant_message.content).toContain('Birch Mild-Up Sunscreen');
+    expect(result.meta.beauty_shared_truth_applied).toBe(true);
+    expect(result.meta.beauty_shared_truth_product_count).toBe(2);
+  });
+
+  test('shared authority projection clears Aurora cards for exact-product authority misses', () => {
+    const result = projectBeautyExpertAuthorityResponse(
+      {
+        assistant_message: {
+          role: 'assistant',
+          content: 'Haruharu sunscreen is a nearby option.',
+        },
+        cards: [
+          {
+            type: 'recommendations',
+            sections: [
+              {
+                title: 'Recommended options',
+                products: [
+                  {
+                    product_id: 'adjacent-spf',
+                    merchant_id: 'external_seed',
+                    name: 'Adjacent Sunscreen SPF50',
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      {
+        reply:
+          'I do not have a grounded row for ultra repair face lotion in the current catalog yet, so I should not compare it as if verified.',
+        beauty_expert_v1: {
+          mode: 'exact_product_assist',
+          reco_bundle: {
+            lead_picks: [],
+            support_picks: [],
+            comparison_mode: 'none',
+            authority_status: 'empty',
+          },
+        },
+      },
+    );
+
+    expect(result.cards[0].sections[0].products).toEqual([]);
+    expect(result.assistant_message.content).toContain('do not have a grounded row');
+    expect(result.meta.beauty_shared_truth_applied).toBe(true);
+    expect(result.meta.beauty_shared_truth_product_count).toBe(0);
   });
 });
