@@ -1478,6 +1478,112 @@ function normalizeSearchSemanticContract(raw) {
   };
 }
 
+function pickFirstNonEmptyString(...values) {
+  for (const value of values) {
+    if (Array.isArray(value)) {
+      const nested = pickFirstNonEmptyString(...value);
+      if (nested) return nested;
+      continue;
+    }
+    const token = String(value || '').trim();
+    if (token) return token;
+  }
+  return '';
+}
+
+function getPayloadBeautyRequest(payload = {}) {
+  const context = isPlainObject(payload?.context) ? payload.context : {};
+  const normalizedNeed = isPlainObject(context.normalized_need) ? context.normalized_need : {};
+  return isPlainObject(normalizedNeed.beauty_request) ? normalizedNeed.beauty_request : {};
+}
+
+function getBeautyBudgetMax(beautyRequest = {}) {
+  const constraints = isPlainObject(beautyRequest?.constraints) ? beautyRequest.constraints : {};
+  const raw = pickFirstNonEmptyString(
+    constraints.budget_max,
+    constraints.max_budget,
+    constraints.price_max,
+    constraints.max_price,
+    constraints.under,
+  );
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function buildBeautyContextRetrievalQuery({
+  rawQuery = '',
+  expandedQuery = '',
+  beautyRequest = {},
+} = {}) {
+  const query = String(rawQuery || '').trim();
+  const expanded = String(expandedQuery || query).trim();
+  if (!query) return expanded;
+  if (!isPlainObject(beautyRequest) || Object.keys(beautyRequest).length === 0) return expanded;
+  const productContext = isPlainObject(beautyRequest?.product_context) ? beautyRequest.product_context : {};
+  const routineContext = isPlainObject(beautyRequest?.routine_context) ? beautyRequest.routine_context : {};
+  const skinContext = isPlainObject(beautyRequest?.skin_context) ? beautyRequest.skin_context : {};
+  const constraints = isPlainObject(beautyRequest?.constraints) ? beautyRequest.constraints : {};
+  const hasActionableContext =
+    Object.keys(productContext).length > 0 ||
+    Object.keys(routineContext).length > 0 ||
+    Object.keys(skinContext).length > 0 ||
+    Object.keys(constraints).length > 0 ||
+    Object.keys(isPlainObject(beautyRequest?.scenario_context) ? beautyRequest.scenario_context : {}).length > 0;
+  if (!hasActionableContext) return expanded;
+  const productRef = pickFirstNonEmptyString(
+    productContext.canonical_product_ref,
+    productContext.product_ref,
+    productContext.name,
+    productContext.title,
+    productContext.product_name,
+  );
+  const normalized = query.toLowerCase();
+  const exactProductAssist =
+    Boolean(productRef) &&
+    (
+      /\b(is|would|should|can)\b[^.]{0,140}\b(good|better|right|fit|suit|work|use)\b/.test(normalized) ||
+      /\b(better than|vs\.?|versus)\b/.test(normalized)
+    );
+  const contextTerms = [];
+  const actives = Array.isArray(routineContext.actives)
+    ? routineContext.actives
+    : Array.isArray(routineContext.audience_actives)
+      ? routineContext.audience_actives
+      : [];
+  contextTerms.push(...actives);
+  contextTerms.push(
+    pickFirstNonEmptyString(skinContext.skin_type, skinContext.skinType),
+    pickFirstNonEmptyString(skinContext.barrier_status, skinContext.barrierStatus),
+  );
+  if (getBeautyBudgetMax(beautyRequest) != null) {
+    contextTerms.push(`under ${getBeautyBudgetMax(beautyRequest)}`);
+  }
+  if (pickFirstNonEmptyString(constraints.routine_complexity, constraints.routineComplexity)) {
+    contextTerms.push(pickFirstNonEmptyString(constraints.routine_complexity, constraints.routineComplexity));
+  }
+  const normalizedRole = inferBeautyTargetStepFamily({
+    rawQuery: [
+      query,
+      productRef,
+      pickFirstNonEmptyString(skinContext.skin_type, skinContext.skinType),
+      pickFirstNonEmptyString(skinContext.barrier_status, skinContext.barrierStatus),
+    ].filter(Boolean).join(' '),
+  });
+  if (normalizedRole === 'moisturizer') contextTerms.push('face moisturizer', 'barrier moisturizer');
+  if (normalizedRole === 'sunscreen') contextTerms.push('face sunscreen', 'spf');
+  if (normalizedRole === 'serum' || normalizedRole === 'treatment') contextTerms.push('serum', 'treatment');
+
+  const parts = exactProductAssist
+    ? [productRef, ...contextTerms]
+    : [expanded, ...contextTerms];
+  const deduped = Array.from(
+    new Set(parts.map((item) => String(item || '').trim()).filter(Boolean)),
+  );
+  const candidate = deduped.join(' ').trim();
+  if (!candidate) return expanded;
+  return candidate.length > 180 ? candidate.slice(0, 180).trim() : candidate;
+}
+
 const STRICT_SEMANTIC_OWNER = BEAUTY_DISCOVERY_MAINLINE_OWNER;
 
 function normalizeSemanticQueryLabel(value) {
@@ -1589,15 +1695,22 @@ function inferBeautyTargetStepFamily({
     /\b(treatment|niacinamide|salicylic|retinol|vitamin c|peptide|azelaic|aha|bha|acne|blemish|breakout|blackheads?|clogged|pores?|congestion|congested|oily skin|oil control|shine control|mattify)\b/.test(
       normalized,
     ) || /祛痘|痘痘|控油|水杨酸|水楊酸|烟酰胺|煙酰胺/.test(normalized);
+  const hasExplicitMoisturizerRoleSignal =
+    /\b(moisturi(?:z|s)er|face moisturizer|barrier moisturizer|barrier cream|gel cream|face cream|face lotion)\b/.test(
+      normalized,
+    ) || /保湿|保濕|面霜|乳液|霜/.test(normalized);
+  const hasGenericMoisturizerFormSignal =
+    /\b(cream|lotion)\b/.test(normalized) || /面霜|乳液|霜/.test(normalized);
+  const hasTreatmentProductFormSignal =
+    /\b(serum|ampoule|concentrate|essence|spot treatment|treatment serum|retinol cream|retinal cream|resurfacing cream)\b/.test(
+      normalized,
+    );
   if (hasSerumSignal) {
     return 'serum';
   }
   if (
-    (
-      /\b(moisturi(?:z|s)er|gel cream|barrier cream|face cream|cream|lotion)\b/.test(normalized) ||
-      /保湿|保濕|面霜|乳液|霜/.test(normalized)
-    ) &&
-    !hasTreatmentSignal
+    hasExplicitMoisturizerRoleSignal ||
+    (hasGenericMoisturizerFormSignal && !hasTreatmentSignal && !hasTreatmentProductFormSignal)
   ) {
     return 'moisturizer';
   }
@@ -4262,6 +4375,7 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
     : looksLikeRealQuery(queryFromMessages)
       ? queryFromMessages
       : queryFromSearch;
+  const payloadBeautyRequest = getPayloadBeautyRequest(payload);
   const normalizedSearchInput = {
     ...topLevelSearchCompat,
     ...(search && typeof search === 'object' ? search : {}),
@@ -4911,6 +5025,12 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
         fallbackQuery: expandedWithAssociation || latestUserQuery,
       })
     : expandedWithAssociation;
+  const beautyContextRetrievalQuery = buildBeautyContextRetrievalQuery({
+    rawQuery: latestUserQuery,
+    expandedQuery: effectiveExpandedQuery,
+    beautyRequest: payloadBeautyRequest,
+  });
+  const beautyBudgetMax = getBeautyBudgetMax(payloadBeautyRequest);
 
   const adjustedPayload = {
     ...(payload || {}),
@@ -4922,11 +5042,22 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
       ...topLevelSearchCompat,
       ...(payload?.search || {}),
       ...(effectiveExpandedQuery ? { query: effectiveExpandedQuery } : {}),
+      ...(beautyContextRetrievalQuery ? { query: beautyContextRetrievalQuery } : {}),
       ...(effectiveCatalogSurface ? { catalog_surface: effectiveCatalogSurface } : {}),
       ...(effectiveCommerceSurface ? { commerce_surface: effectiveCommerceSurface } : {}),
       ...(effectiveTargetStepFamily ? { target_step_family: effectiveTargetStepFamily } : {}),
       ...(effectiveSemanticFamily ? { semantic_family: effectiveSemanticFamily } : {}),
       ...(effectiveConcernClass ? { concern_class: effectiveConcernClass } : {}),
+      ...(beautyBudgetMax != null &&
+      search?.price_max == null &&
+      search?.max_price == null &&
+      payload?.price_max == null &&
+      payload?.max_price == null
+        ? {
+            price_max: beautyBudgetMax,
+            max_price: beautyBudgetMax,
+          }
+        : {}),
       ...(adjustedSemanticContract ? { semantic_contract: adjustedSemanticContract } : {}),
     },
   };
@@ -4936,8 +5067,16 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
     mode: rewriteGate.mode,
     strategy_version: STRATEGY_VERSION,
     raw_query: latestUserQuery,
-    expanded_query: effectiveExpandedQuery,
-    applied: Boolean(effectiveExpandedQuery && String(effectiveExpandedQuery) !== String(latestUserQuery)),
+    expanded_query: beautyContextRetrievalQuery || effectiveExpandedQuery,
+    applied: Boolean(
+      (beautyContextRetrievalQuery || effectiveExpandedQuery) &&
+        String(beautyContextRetrievalQuery || effectiveExpandedQuery) !== String(latestUserQuery),
+    ),
+    beauty_context_retrieval_query:
+      beautyContextRetrievalQuery && beautyContextRetrievalQuery !== effectiveExpandedQuery
+        ? beautyContextRetrievalQuery
+        : null,
+    beauty_context_budget_max: beautyBudgetMax,
     query_class: queryClass,
     semantic_contract: adjustedSemanticContract,
     semantic_rewrite_result: semanticRewriteResult,

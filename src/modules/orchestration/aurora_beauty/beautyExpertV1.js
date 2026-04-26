@@ -387,6 +387,36 @@ function reorderProductsForBeautyMode(products = [], { mode, beautyRequest, quer
       })
       .map((item) => item.product);
   }
+  const retinoidBarrierFit =
+    mode === 'category_compare' &&
+    /\b(moisturizer|moisturiser|cream|lotion|barrier)\b/.test(requestText) &&
+    /\b(tretinoin|retinoid|dry|sensitive|tight|barrier)\b/.test(requestText);
+  if (retinoidBarrierFit) {
+    return rows
+      .map((product, index) => {
+        const text = normalizeText([
+          product?.name,
+          product?.title,
+          product?.canonical_title,
+          product?.brand,
+          product?.why_this_one,
+          product?.short_description,
+        ].filter(Boolean).join(' '));
+        let score = 0;
+        if (/\b(moisturizer|moisturiser|cream|lotion|gel cream|balm)\b/.test(text)) score += 40;
+        if (/\b(oat|oatmeal|colloidal|ceramide|panthenol|cica|centella|repair|barrier|sensitive|fragrance free|calming|soothing)\b/.test(text)) score += 30;
+        if (/\b(ultra repair|first aid beauty|vanicream|skinfix|lipid)\b/.test(text)) score += 12;
+        if (/\b(retinol|retinal|resurfacing|peel|aha|bha|glycolic|firming|brightening)\b/.test(text)) score -= 35;
+        if (/\b(set|kit|bundle|routine)\b/.test(text)) score -= 20;
+        if (/\b(sunscreen|spf|serum|toner|essence|ampoule|cleanser)\b/.test(text)) score -= 25;
+        return { product, index, score };
+      })
+      .sort((left, right) => {
+        if (right.score !== left.score) return right.score - left.score;
+        return left.index - right.index;
+      })
+      .map((item) => item.product);
+  }
   if (mode !== 'exact_product_assist') return rows;
   const anchorTokens = buildAnchorTokens(beautyRequest, queryText);
   if (anchorTokens.length === 0) return rows;
@@ -721,7 +751,9 @@ function buildBeautyExpertV1Response({
     mode === 'guided_beauty_reco' &&
     Array.isArray(analysisSummary.missing_context) &&
     analysisSummary.missing_context.length > 0;
-  const effectiveProducts = shouldSuppressRecoBundle ? [] : dedupeRecoProducts(products);
+  const effectiveProducts = shouldSuppressRecoBundle
+    ? []
+    : applyBeautyIntentProductConstraints(dedupeRecoProducts(products), normalizedBeautyIntent, { mode });
   const compareAxes = buildCompareAxes(effectiveProducts);
   const nextActions = buildNextActions({
     mode,
@@ -775,11 +807,12 @@ function reorderBeautyProjectionRows(rows = [], {
 } = {}) {
   const list = Array.isArray(rows) ? rows.filter((row) => isPlainObject(row)) : [];
   if (!list.length) return [];
-  return reorderProductsForBeautyMode(list, {
+  const reordered = reorderProductsForBeautyMode(list, {
     mode,
     beautyRequest: beautyIntent,
     queryText: pickFirstTrimmed(beautyIntent?.user_goal),
   });
+  return applyBeautyIntentProductConstraints(dedupeRecoProducts(reordered), beautyIntent, { mode });
 }
 
 function rewriteRecommendationCardForBeautyExpert(card = {}, {
@@ -787,13 +820,12 @@ function rewriteRecommendationCardForBeautyExpert(card = {}, {
   beautyIntent,
 } = {}) {
   if (!isPlainObject(card) || normalizeText(card.type || card.card_type) !== 'recommendations') return card;
-  if (mode !== 'exact_product_assist') return card;
   const nextCard = { ...card };
   const payload = isPlainObject(card.payload) ? { ...card.payload } : null;
   const reorderRows = (rows) => {
     if (!Array.isArray(rows)) return rows;
     const reordered = reorderBeautyProjectionRows(rows, { mode, beautyIntent });
-    return reordered.length === rows.length ? reordered : rows;
+    return reordered.length > 0 ? reordered : rows;
   };
 
   if (Array.isArray(nextCard.sections)) {
@@ -830,8 +862,6 @@ function rewriteRecommendationCardForBeautyExpert(card = {}, {
 
 function projectBeautyExpertResponse(response = {}, beautyExpertV1 = null) {
   if (!isPlainObject(response) || !isPlainObject(beautyExpertV1)) return response;
-  if (beautyExpertV1.mode !== 'exact_product_assist') return response;
-  if (normalizeSourceToken(beautyExpertV1?.delegation_trace?.projection_type) !== 'aurora-cards') return response;
 
   const next = { ...response };
   if (Array.isArray(response.products)) {
@@ -934,7 +964,9 @@ function isGenericInvokeReply(reply = '') {
   const normalized = normalizeProductToken(reply);
   return (
     normalized === 'here are some more suitable picks based on your request' ||
-    normalized.startsWith('here are some more suitable picks based on your request budget')
+    normalized.startsWith('here are some more suitable picks based on your request budget') ||
+    normalized.startsWith('i only found a few weak matches') ||
+    normalized.startsWith('i do not have a role compatible grounded skincare match')
   );
 }
 
@@ -943,6 +975,59 @@ function formatPrice(product = {}) {
   const currency = pickFirstTrimmed(product.currency);
   if (!Number.isFinite(amount) || amount <= 0) return '';
   return `${currency || 'USD'} ${amount}`;
+}
+
+function getProductPriceAmount(product = {}) {
+  const amount = Number(product.price);
+  return Number.isFinite(amount) && amount > 0 ? amount : null;
+}
+
+function getBeautyBudgetMax(beautyIntent = {}) {
+  const constraints = isPlainObject(beautyIntent?.constraints) ? beautyIntent.constraints : {};
+  for (const raw of [
+    constraints.budget_max,
+    constraints.max_budget,
+    constraints.price_max,
+    constraints.max_price,
+    constraints.under,
+  ]) {
+    if (raw == null || raw === '') continue;
+    const parsed = Number(raw);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+  return null;
+}
+
+function productHasRetinoidActiveConflict(product = {}) {
+  const text = normalizeText([
+    product.name,
+    product.title,
+    product.canonical_title,
+    product.brand,
+    product.why_this_one,
+    product.short_description,
+  ].filter(Boolean).join(' '));
+  return /\b(retinol|retinal|resurfacing|peel|aha|bha|glycolic|lactic|firming)\b/.test(text);
+}
+
+function applyBeautyIntentProductConstraints(products = [], beautyIntent = {}, { mode = null } = {}) {
+  const rows = Array.isArray(products) ? products.filter(isPlainObject) : [];
+  if (rows.length <= 1) return rows;
+  const contextText = getBeautyIntentContextText(beautyIntent);
+  const budgetMax = getBeautyBudgetMax(beautyIntent);
+  let filtered = rows;
+  if (budgetMax != null) {
+    const inBudget = rows.filter((product) => {
+      const amount = getProductPriceAmount(product);
+      return amount == null || amount <= budgetMax;
+    });
+    if (inBudget.length > 0) filtered = inBudget;
+  }
+  if (mode !== 'exact_product_assist' && /\b(tretinoin|retinoid|dry|sensitive|barrier)\b/.test(contextText)) {
+    const calmerRows = filtered.filter((product) => !productHasRetinoidActiveConflict(product));
+    if (calmerRows.length > 0) filtered = calmerRows;
+  }
+  return filtered;
 }
 
 function getBeautyIntentContextText(beautyIntent = {}) {
@@ -965,11 +1050,15 @@ function buildBeautyContextFrame(beautyIntent = {}) {
         ? ' in humid weather'
         : '';
     const makeupCopy = /\b(makeup|under makeup)\b/.test(text) ? ' under makeup' : '';
-    const shineCopy = /\b(shiny|shine)\b/.test(text) ? ' and midday shine' : '';
-    return `For ${skinCopy}${placeCopy}${makeupCopy}, finish${shineCopy} matter as much as basic SPF coverage.`;
+    if (/\b(shiny|shine)\b/.test(text)) {
+      return `For ${skinCopy}${placeCopy}${makeupCopy}, finish, midday shine, and the fact that you get shiny by noon matter as much as basic SPF coverage.`;
+    }
+    return `For ${skinCopy}${placeCopy}${makeupCopy}, finish matters as much as basic SPF coverage.`;
   }
   if (/\b(tretinoin|retinoid)\b/.test(text) && /\b(dry|sensitive|tight|barrier)\b/.test(text)) {
-    return 'For dry sensitive skin using tretinoin, compare barrier comfort, sting risk, and budget rather than adding more active pressure.';
+    const budgetMax = getBeautyBudgetMax(beautyIntent);
+    const budgetCopy = budgetMax != null ? ` under USD ${budgetMax}` : '';
+    return `For dry sensitive skin using tretinoin${budgetCopy}, compare barrier comfort, sting risk, and budget rather than adding more active pressure.`;
   }
   if (/\b(clogged pores|pores|combination)\b/.test(text) && /\b(winter|seattle)\b/.test(text)) {
     return 'For combination skin with clogged pores in Seattle winter, the tradeoff is oil-control support without letting the barrier get too tight.';
@@ -1030,6 +1119,46 @@ function describeProductForVisibleCopy(product = {}, beautyIntent = {}) {
   return parts.join(' and ') || 'it is a grounded catalog option for this request';
 }
 
+function buildBeautyExpertBulletReply(products = [], beautyIntent = {}, { creatorFacing = false } = {}) {
+  const rows = products.slice(0, 3);
+  if (rows.length === 0) return '';
+  const contextFrame = buildBeautyContextFrame(beautyIntent);
+  const header = creatorFacing
+    ? 'Three slot reasons for a creator-facing shortlist:'
+    : 'Three slot reasons:';
+  const bullets = rows.map((product, index) => {
+    const name = getProductDisplayName(product) || `Option ${index + 1}`;
+    const label = index === 0 ? 'lead slot' : `comparison slot ${index + 1}`;
+    const reason = describeProductForVisibleCopy(product, beautyIntent);
+    const versus = index === 0
+      ? 'versus the others, it is the reference point for fit, price, and routine risk'
+      : 'versus the lead, use it when its texture, price, or positioning fits the audience better';
+    return `- ${name}: ${label}; ${reason}; ${versus}.`;
+  });
+  return `${contextFrame ? `${contextFrame} ` : ''}${header}\n${bullets.join('\n')}`;
+}
+
+function buildBeautyExpertRoutineOrderReply(products = [], beautyIntent = {}, { creatorFacing = false } = {}) {
+  const lead = products[0];
+  if (!lead) return '';
+  const support = products.slice(1, 3);
+  const leadName = getProductDisplayName(lead) || 'the lead option';
+  const contextFrame = buildBeautyContextFrame(beautyIntent);
+  const leadReason = describeProductForVisibleCopy(lead, beautyIntent);
+  const supportCopy = support
+    .map((product) => {
+      const name = getProductDisplayName(product);
+      if (!name) return '';
+      return `${name} is a later comparison if you want to trade off texture, price, or active load because ${describeProductForVisibleCopy(product, beautyIntent)}`;
+    })
+    .filter(Boolean);
+  const supportSentence = supportCopy.length > 0
+    ? `Compared with it, ${supportCopy.join('; ')}.`
+    : 'If this is the only product you buy first, keep the rest of the routine simple and reassess before adding another active.';
+  const prefix = creatorFacing ? 'For a creator-facing recommendation, ' : '';
+  return `${contextFrame ? `${contextFrame} ` : ''}${prefix}If you only buy one first, use ${leadName} as the first purchase decision. In the routine, place it later than watery serums and after tretinoin on nights you use tretinoin, because ${leadReason}. ${supportSentence}`;
+}
+
 function buildBeautyExpertVisibleReply(beautyExpertV1 = {}) {
   const mode = String(beautyExpertV1.mode || '').trim();
   const products = [
@@ -1052,6 +1181,15 @@ function buildBeautyExpertVisibleReply(beautyExpertV1 = {}) {
   const support = products.slice(1, 3);
   const leadName = getProductDisplayName(lead) || 'the lead option';
   const beautyIntent = isPlainObject(beautyExpertV1.beauty_intent) ? beautyExpertV1.beauty_intent : {};
+  const intentText = getBeautyIntentContextText(beautyIntent);
+  if (/\b(three bullets|three slot reasons|why each|not just product names|slot versus|explain why each)\b/.test(intentText)) {
+    const bulletReply = buildBeautyExpertBulletReply(products, beautyIntent, { creatorFacing });
+    if (bulletReply) return bulletReply;
+  }
+  if (/\b(first versus later|first vs later|use first|buy first|only buy one|one product|first product)\b/.test(intentText)) {
+    const routineReply = buildBeautyExpertRoutineOrderReply(products, beautyIntent, { creatorFacing });
+    if (routineReply) return routineReply;
+  }
   const contextFrame = buildBeautyContextFrame(beautyIntent);
   const leadReason = describeProductForVisibleCopy(lead, beautyIntent);
   const prefix = creatorFacing

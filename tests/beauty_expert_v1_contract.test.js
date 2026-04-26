@@ -1042,4 +1042,126 @@ describe('beauty_expert_v1 contract', () => {
     expect(result.assistant_text).toBe('');
     expect(result.meta.assistant_visible_suppressed_reason).toBe('exact_product_projection_assistant_mismatch');
   });
+
+  test('invoke projection respects retinoid budget context and answers routine-order follow-up', () => {
+    const result = attachBeautyExpertV1ToResponse(
+      {
+        status: 'success',
+        products: [
+          {
+            product_id: 'expensive_lipid',
+            merchant_id: 'external_seed',
+            canonical_title: 'Triple Lipid-Peptide Cream',
+            brand: 'Skinfix',
+            price: 54,
+            currency: 'USD',
+          },
+          {
+            product_id: 'face_lotion',
+            merchant_id: 'external_seed',
+            canonical_title: 'Ultra Repair Face Lotion with Colloidal Oatmeal',
+            brand: 'First Aid Beauty',
+            price: 28,
+            currency: 'USD',
+          },
+          {
+            product_id: 'resurfacing',
+            merchant_id: 'external_seed',
+            canonical_title: 'Daily Resurfacing Lotion with 2% Niacinamide',
+            brand: 'Example',
+            price: 20,
+            currency: 'USD',
+          },
+        ],
+        reply: 'I only found a few weak matches, so I won’t force unrelated recommendations.',
+        metadata: {
+          mainline_status: 'grounded_success',
+          decision_owner: 'shopping_agent_beauty_mainline',
+          semantic_owner: 'shopping_agent_beauty_mainline',
+        },
+      },
+      {
+        source: 'shopping_agent',
+        entryLayer: 'orchestration',
+        taskType: 'discovery',
+        context: {
+          source_profile: { source: 'shopping_agent', default_entry_layer: 'orchestration' },
+          vertical: 'beauty',
+          category: 'skincare',
+          normalized_need: {
+            beauty_request: {
+              domain: 'beauty',
+              user_goal:
+                'For dry sensitive retinoid-stressed skin, compare which moisturizer to use first versus later in the routine.',
+              skin_context: { skin_type: 'dry sensitive', barrier_status: 'retinoid-stressed' },
+              routine_context: { actives: ['tretinoin'] },
+              scenario_context: { use_case: 'first moisturizer step' },
+              constraints: { budget_max: 30 },
+            },
+          },
+        },
+        metadata: { source: 'shopping_agent', catalog_surface: 'beauty' },
+        payload: {
+          search: {
+            query:
+              'For dry sensitive retinoid-stressed skin, compare which moisturizer to use first versus later in the routine.',
+          },
+        },
+      },
+    );
+
+    expect(result.products.map((product) => product.canonical_title)).toEqual([
+      'Ultra Repair Face Lotion with Colloidal Oatmeal',
+    ]);
+    expect(result.beauty_expert_v1.reco_bundle.lead_picks[0].name).toBe(
+      'Ultra Repair Face Lotion with Colloidal Oatmeal',
+    );
+    expect(result.reply).toContain('under USD 30');
+    expect(result.reply).toContain('first');
+    expect(result.reply).toContain('later');
+    expect(result.reply).toContain('routine');
+  });
+
+  test('creator follow-up can return three explicit versus bullets', () => {
+    const result = attachBeautyExpertV1ToResponse(
+      {
+        status: 'success',
+        products: [
+          { product_id: 'p1', title: 'Barrier Cream', price: 15, currency: 'USD', why_this_one: 'Supports a simple moisturizer/barrier role.' },
+          { product_id: 'p2', title: 'Gel Cream', price: 25, currency: 'USD', why_this_one: 'Feels lighter for users who dislike rich creams.' },
+          { product_id: 'p3', title: 'Repair Lotion', price: 28, currency: 'USD', why_this_one: 'Leans calming for sensitive skin routines.' },
+        ],
+        reply: 'Here are some more suitable picks based on your request.',
+        metadata: {
+          mainline_status: 'grounded_success',
+          decision_owner: 'shopping_agent_beauty_mainline',
+          semantic_owner: 'shopping_agent_beauty_mainline',
+        },
+      },
+      {
+        source: 'creator_agent',
+        entryLayer: 'orchestration',
+        taskType: 'discovery',
+        context: {
+          source_profile: { source: 'creator_agent', default_entry_layer: 'orchestration' },
+          vertical: 'beauty',
+          normalized_need: {
+            beauty_request: {
+              domain: 'beauty',
+              user_goal:
+                'For a dry sensitive beginner audience, explain why each moisturizer earns a slot versus the other options. Give me three bullets that explain why each one, not just product names.',
+              skin_context: { skin_type: 'dry sensitive' },
+              scenario_context: { audience: 'creator audience' },
+            },
+          },
+        },
+        metadata: { source: 'creator_agent', catalog_surface: 'beauty' },
+        payload: { search: { query: 'Give me three bullets that explain why each one, not just product names.' } },
+      },
+    );
+
+    expect(result.reply).toContain('Three slot reasons');
+    expect(result.reply).toContain('versus');
+    expect(result.reply.split('\n').filter((line) => line.startsWith('- '))).toHaveLength(3);
+  });
 });
