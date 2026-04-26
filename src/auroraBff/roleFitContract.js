@@ -539,7 +539,7 @@ function hasReapplicationPortableSunscreenSignal(text = '') {
 }
 
 function hasUnderMakeupFinishSunscreenSignal(text = '') {
-  return /\b(under makeup|makeup compatible|non[- ]?pilling|no pilling|smooth finish|invisible|fluid|serum sunscreen|lightweight|non[- ]?greasy|no white cast|layers? well)\b/i.test(
+  return /\b(under makeup|makeup compatible|non[- ]?pilling|no pilling|smooth finish|invisible|fluid|serum sunscreen|lightweight|non[- ]?greasy|no white cast|layers? well|primer(?:[- ]?like)?|primes? for makeup|soft[- ]?matte|mattifying|matte)\b/i.test(
     String(text || ''),
   );
 }
@@ -728,6 +728,11 @@ function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '
     primaryUnderMakeupSunscreenExpected
     && hasUnderMakeupFinishSunscreenSignal(candidateEvidenceText)
     && !sunscreenPortableReapplicationMismatchApplied;
+  const sunscreenCoverageTintSoftTradeoffApplied =
+    sunscreenCoverageTintMismatchApplied
+    && primaryUnderMakeupSunscreenExpected
+    && hasUnderMakeupFinishSunscreenSignal(candidateEvidenceText)
+    && !sunscreenPortableReapplicationMismatchApplied;
   const sunscreenOilyDewyMoisturizerMismatchApplied =
     roleExpectsOilyDailySunscreen(role, preferredStep, targetContext)
     && hasDewyMoisturizingSunscreenSignal(candidateEvidenceText);
@@ -784,10 +789,13 @@ function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '
     || lightweightTextureMismatchApplied
     || lightweightMoisturizerFormFactorMismatchApplied
     || cosmeticFinishProductShapeMismatchApplied
-    || sunscreenCoverageTintMismatchApplied
+    || (sunscreenCoverageTintMismatchApplied && !sunscreenCoverageTintSoftTradeoffApplied)
     || sunscreenPortableReapplicationMismatchApplied
   ) {
     score = Math.min(score - 0.34, 0.38);
+  }
+  if (sunscreenCoverageTintSoftTradeoffApplied) {
+    score = Math.min(score - 0.1, 0.56);
   }
   if (sunscreenOilyDewyMoisturizerMismatchApplied) {
     score = Math.min(score - 0.14, 0.74);
@@ -819,6 +827,7 @@ function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '
     sunscreen_coverage_tint_mismatch_applied: sunscreenCoverageTintMismatchApplied,
     sunscreen_portable_reapplication_mismatch_applied: sunscreenPortableReapplicationMismatchApplied,
     sunscreen_under_makeup_finish_bonus_applied: sunscreenUnderMakeupFinishBonusApplied,
+    sunscreen_coverage_tint_soft_tradeoff_applied: sunscreenCoverageTintSoftTradeoffApplied,
     sunscreen_oily_dewy_moisturizer_mismatch_applied: sunscreenOilyDewyMoisturizerMismatchApplied,
     treatment_serum_ingredient_rescue_applied: treatmentSerumIngredientRescueApplied,
     treatment_serum_active_semantic_rescue_applied: treatmentSerumActiveSemanticRescueApplied,

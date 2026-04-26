@@ -6102,7 +6102,7 @@ test('__internal: tri-state skincare classifier only hard rejects explicit non-s
   );
 });
 
-test('__internal: framework pool does not boundary-reject tinted sunscreen rows that are skincare-shaped, even when role-fit later rejects them', () => {
+test('__internal: framework pool does not boundary-reject tinted sunscreen rows that are skincare-shaped', () => {
   const { __internal } = loadRoutesFresh();
   const state = __internal.finalizeConcernFrameworkCandidatePools(
     [
@@ -6142,10 +6142,10 @@ test('__internal: framework pool does not boundary-reject tinted sunscreen rows 
   );
 
   assert.equal(state.raw_candidate_count, 1);
-  assert.equal(state.hard_reject_count, 1);
-  assert.equal(state.hard_reject[0]?.product?.product_id, 'tinted_sunscreen_lp110');
-  assert.equal(state.hard_reject[0]?.product?.concern_scope_classification, 'explicit_face_skincare');
-  assert.equal(state.selected_recommendations.length, 0);
+  assert.equal(state.hard_reject_count, 0);
+  assert.equal(state.viable_candidate_count, 1);
+  assert.equal(state.selected_recommendations[0]?.product_id, 'tinted_sunscreen_lp110');
+  assert.equal(state.selected_recommendations[0]?.concern_scope_classification, 'explicit_face_skincare');
 });
 
 test('__internal: framework pool does not let low-fit external seeds satisfy routine support coverage', () => {
@@ -8087,6 +8087,7 @@ test('__internal: beauty local handoff runs same-role sunscreen external authori
           'sunscreen under makeup',
           'lightweight sunscreen oily skin',
           'matte sunscreen',
+          'invisible sunscreen',
         ],
         fit_keywords: ['spf', 'airy', 'non-greasy', 'under makeup'],
         product_type_hypotheses: ['sunscreen'],
@@ -8153,6 +8154,19 @@ test('__internal: beauty local handoff runs same-role sunscreen external authori
     assert.equal(calls[0]?.kind, 'backend_external_seed', JSON.stringify(calls));
     assert.equal(calls[1]?.kind, 'backend_external_seed', JSON.stringify(calls));
     assert.ok(calls[0]?.timeoutMs >= 16000, JSON.stringify(calls));
+    assert.deepEqual(
+      calls
+        .filter((call) => call.kind === 'backend_external_seed')
+        .slice(0, 4)
+        .map((call) => call.query),
+      [
+        'sunscreen oily skin',
+        'matte sunscreen',
+        'invisible sunscreen',
+        'sunscreen under makeup',
+      ],
+      JSON.stringify(calls),
+    );
     assert.equal(
       out.search_stage_ledger?.primary_search?.routine_support_strategy,
       'primary_authority_parallel_same_role',
@@ -10528,6 +10542,114 @@ test('__internal: framework pool avoids all-same-brand finish-fit sunscreen comp
   assert.ok(selectedBrands.size >= 2);
   assert.equal(
     state.selected_recommendations.every((row) => String(row.brand || '') === 'Haruharu Wonder'),
+    false,
+  );
+});
+
+test('__internal: framework pool keeps matte primer-like tinted sunscreen as low-rank finish-fit tradeoff', () => {
+  const { __internal } = loadRoutesFresh();
+  const targetContext = {
+    framework_id: 'recofw_test_finish_fit_tint_soft_tradeoff',
+    primary_role_id: 'daily_sunscreen_finish_fit',
+    comparison_mode: 'same_role_comparison',
+    routine_mode: 'same_role_comparison',
+    request_text: 'I have oily skin, what sunscreen should I buy?',
+    semantic_plan: {
+      primary_concern: 'oily daytime sunscreen',
+      comparison_mode: 'same_role_comparison',
+      routine_mode: 'same_role_comparison',
+      must_satisfy_constraints: ['matte finish', 'oily skin'],
+    },
+    framework_roles: [
+      {
+        role_id: 'daily_sunscreen_finish_fit',
+        rank: 1,
+        preferred_step: 'sunscreen',
+        label: 'Daily sunscreen finish fit',
+        query_terms: ['sunscreen oily skin', 'matte sunscreen', 'invisible sunscreen'],
+        fit_keywords: ['under makeup', 'lightweight', 'non-greasy', 'no white cast', 'invisible', 'fluid', 'matte', 'primer'],
+        ingredient_hypotheses: ['UV filters'],
+        product_type_hypotheses: ['sunscreen'],
+      },
+    ],
+  };
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [
+      {
+        product_id: 'skintific_matte_fit_authority',
+        merchant_id: 'external_seed',
+        brand: 'SKINTIFIC',
+        name: 'Matte Fit Serum Sunscreen SPF 50+ PA++++',
+        display_name: 'SKINTIFIC Matte Fit Serum Sunscreen SPF 50+ PA++++',
+        category: 'Sunscreen',
+        product_type: 'Sunscreen',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'daily_sunscreen_finish_fit',
+        retrieval_query: 'matte sunscreen',
+        local_external_seed_role_fit_score: 1.18,
+        description: 'This oil-controlling, non-greasy formula is positioned for oily and acne-prone skin.',
+      },
+      {
+        product_id: 'ole_mineral_spf30_authority',
+        merchant_id: 'external_seed',
+        brand: 'Olehenriksen',
+        name: 'Banana Bright Mineral Sunscreen SPF 30',
+        display_name: 'Olehenriksen Banana Bright Mineral Sunscreen SPF 30',
+        category: 'Sunscreen',
+        product_type: 'Sunscreen',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'daily_sunscreen_finish_fit',
+        retrieval_query: 'matte sunscreen',
+        local_external_seed_role_fit_score: 1.05,
+        description: 'A daily sunscreen with a soft-matte finish that is never greasy.',
+      },
+      {
+        product_id: 'supergoop_mattescreen_authority',
+        merchant_id: 'external_seed',
+        brand: 'Supergoop!',
+        name: 'Mineral Mattescreen SPF 40',
+        display_name: 'Supergoop! Mineral Mattescreen SPF 40',
+        category: 'Sunscreen',
+        product_type: 'Sunscreen',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'daily_sunscreen_finish_fit',
+        retrieval_query: 'matte sunscreen',
+        local_external_seed_role_fit_score: 0.98,
+        description: 'A mineral, mattifying tinted sunscreen that visibly blurs pores, smooths the appearance of skin, and primes for makeup.',
+      },
+      {
+        product_id: 'boj_tinted_fluid_authority',
+        merchant_id: 'external_seed',
+        brand: 'Beauty of Joseon',
+        name: 'Daily Tinted Fluid Sunscreen MY210',
+        display_name: 'Beauty of Joseon Daily Tinted Fluid Sunscreen MY210',
+        category: 'Sunscreen',
+        product_type: 'Sunscreen',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'daily_sunscreen_finish_fit',
+        retrieval_query: 'matte sunscreen',
+        local_external_seed_role_fit_score: 0.92,
+        description: 'A tinted fluid sunscreen with a silky, lightweight texture and a balance of hydration and control.',
+      },
+    ].map((row) => __internal.normalizeRecoCatalogProduct(row)),
+    { targetContext },
+  );
+
+  assert.equal(state.primary_role_matched, true);
+  assert.deepEqual(
+    state.selected_recommendations.map((row) => row.product_id),
+    [
+      'skintific_matte_fit_authority',
+      'ole_mineral_spf30_authority',
+      'supergoop_mattescreen_authority',
+    ],
+  );
+  const supergoop = state.viable_candidate_pool.find((row) => row.product_id === 'supergoop_mattescreen_authority');
+  assert.ok(supergoop);
+  assert.equal(supergoop.sunscreen_coverage_tint_mismatch_applied, true);
+  assert.equal(supergoop.sunscreen_coverage_tint_soft_tradeoff_applied, true);
+  assert.equal(
+    state.selected_recommendations.some((row) => row.product_id === 'boj_tinted_fluid_authority'),
     false,
   );
 });

@@ -1118,8 +1118,8 @@ test('handoffRecoToBeautyMainlineSearch runs finish-fit sunscreen authority quer
         .filter((row) => row.roleId === 'daily_sunscreen_finish_fit')
         .map((row) => row.query),
       [
-        'sunscreen under makeup',
-        'lightweight sunscreen oily skin',
+        'sunscreen oily skin',
+        'matte sunscreen',
       ],
     );
     assert.equal(
@@ -1168,28 +1168,28 @@ test('handoffRecoToBeautyMainlineSearch keeps same-role finish-fit external stag
         if (roleId !== 'daily_sunscreen_finish_fit') {
           return { ...base, ok: false, products: [], reason: 'empty' };
         }
-        if (query === 'sunscreen under makeup') {
+        if (query === 'sunscreen oily skin') {
           return {
             ...base,
             products: [
               {
                 product_id: 'same_role_spf_4',
                 merchant_id: 'external_seed',
-                brand: 'MineralCo',
-                name: 'Silk Mineral Veil SPF 30',
-                display_name: 'MineralCo Silk Mineral Veil SPF 30',
-                title: 'MineralCo Silk Mineral Veil SPF 30',
+                brand: 'SKINTIFIC',
+                name: 'Matte Fit Serum Sunscreen SPF 50+ PA++++',
+                display_name: 'SKINTIFIC Matte Fit Serum Sunscreen SPF 50+ PA++++',
+                title: 'SKINTIFIC Matte Fit Serum Sunscreen SPF 50+ PA++++',
                 category: 'Sunscreen',
                 product_type: 'sunscreen',
                 candidate_step: 'sunscreen',
-                benefit_tags: ['sunscreen', 'mineral', 'under makeup'],
-                short_description: 'A sheer mineral sunscreen designed for under-makeup wear.',
+                benefit_tags: ['sunscreen', 'matte', 'oil control'],
+                short_description: 'A non-greasy matte sunscreen for oily skin.',
                 retrieval_source: 'external_seed',
               },
             ],
           };
         }
-        if (query === 'lightweight sunscreen oily skin') {
+        if (query === 'matte sunscreen') {
           return {
             ...base,
             products: [
@@ -1268,8 +1268,8 @@ test('handoffRecoToBeautyMainlineSearch keeps same-role finish-fit external stag
     assert.deepEqual(
       externalCaptured.slice(0, 2),
       [
-        { query: 'sunscreen under makeup', roleId: 'daily_sunscreen_finish_fit' },
-        { query: 'lightweight sunscreen oily skin', roleId: 'daily_sunscreen_finish_fit' },
+        { query: 'sunscreen oily skin', roleId: 'daily_sunscreen_finish_fit' },
+        { query: 'matte sunscreen', roleId: 'daily_sunscreen_finish_fit' },
       ],
     );
     const primaryExternalQueries = (out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts || [])
@@ -1278,8 +1278,8 @@ test('handoffRecoToBeautyMainlineSearch keeps same-role finish-fit external stag
     assert.deepEqual(
       primaryExternalQueries.slice(0, 2),
       [
-        { query: 'sunscreen under makeup', result_count: 1 },
-        { query: 'lightweight sunscreen oily skin', result_count: 2 },
+        { query: 'sunscreen oily skin', result_count: 1 },
+        { query: 'matte sunscreen', result_count: 2 },
       ],
     );
   } finally {
@@ -1505,7 +1505,7 @@ test('handoffRecoToBeautyMainlineSearch uses source-aware support authority whil
         };
         if (
           roleId === 'daily_sunscreen_finish_fit' &&
-          (query === 'lightweight sunscreen oily skin' || query === 'sunscreen under makeup')
+          (query === 'sunscreen oily skin' || query === 'lightweight sunscreen oily skin' || query === 'sunscreen under makeup')
         ) {
           return {
             ...base,
@@ -1585,7 +1585,7 @@ test('handoffRecoToBeautyMainlineSearch uses source-aware support authority whil
       minTimeoutMs: 5000,
     });
 
-    assert.deepEqual(externalCaptured[0], { query: 'sunscreen under makeup', roleId: 'daily_sunscreen_finish_fit' });
+    assert.deepEqual(externalCaptured[0], { query: 'sunscreen oily skin', roleId: 'daily_sunscreen_finish_fit' });
     assert.deepEqual(externalCaptured[1], { query: 'niacinamide serum oily skin', roleId: 'oil_control_treatment' });
     assert.equal(
       externalCaptured.some((row) =>
