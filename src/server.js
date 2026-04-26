@@ -3430,31 +3430,24 @@ async function fetchExternalSeedRouteStatusFromDb(args) {
   `;
 
   try {
-    let res = await query(
-      selectSql.replace(
-        '%%MATCH_CLAUSE%%',
-        `(
-          external_product_id = $1
-          OR id::text = $1
-        )`,
-      ),
-      [productId],
-    );
-    let row = Array.isArray(res?.rows) ? res.rows[0] : null;
+    let row = null;
+    const matchClauses = [
+      'external_product_id = $1',
+      'id::text = $1',
+      `(
+        seed_data->>'external_product_id' = $1
+        OR seed_data->>'product_id' = $1
+        OR seed_data->'snapshot'->>'product_id' = $1
+      )`,
+    ];
 
-    if (!row) {
-      res = await query(
-        selectSql.replace(
-          '%%MATCH_CLAUSE%%',
-          `(
-            seed_data->>'external_product_id' = $1
-            OR seed_data->>'product_id' = $1
-            OR seed_data->'snapshot'->>'product_id' = $1
-          )`,
-        ),
+    for (const matchClause of matchClauses) {
+      const res = await query(
+        selectSql.replace('%%MATCH_CLAUSE%%', matchClause),
         [productId],
       );
       row = Array.isArray(res?.rows) ? res.rows[0] : null;
+      if (row) break;
     }
 
     if (!row) return null;
