@@ -571,11 +571,34 @@ function recommendationFinishFitSourceNeedsMoreSpecificCue(value, row) {
   const visibleHasDewyCue = /\b(?:fresher and dewier|more hydration without a heavier cream feel|more hydration without a heavy cream finish)\b/.test(visible);
   if (sourceHasDewyCue && !visibleHasDewyCue) return true;
 
-  const sourceHasCreamCue = /\b(?:hydrating daily cream|hydrating cream|cream format|cream texture|cream-spf|cream spf|sunscreen milk|milk spf|milky sunscreen|hydrating sunscreen milk|spf milk|spf lotion|more moisture|more moisturizing|richer)\b/.test(source);
+  const sourceHasCreamCue = recommendationFinishFitHasCreamierCue(source);
   const visibleHasCreamCue = /\b(?:cream|cream-spf|hydrating|moisturizing|milk|richer|more moisture)\b/.test(visible);
   if (sourceHasCreamCue && !visibleHasCreamCue) return true;
 
   return false;
+}
+
+function recommendationFinishFitHasLightweightTextureCue(value) {
+  const text = asString(value);
+  if (!text) return false;
+  return /\b(?:weightless|lightweight|airy(?:[-\s]?fit)?|non[-\s]?greasy|velvety|sheer|fluid|watery|water[-\s]?fit|invisible|fast[-\s]?absorbing|less heavy)\b/i.test(text);
+}
+
+function recommendationFinishFitHasDirectTextureEvidence(value) {
+  const text = asString(value);
+  if (!text || !recommendationFinishFitHasLightweightTextureCue(text)) return false;
+  return /\b(?:sunscreen|spf|finish|texture|under makeup|makeup|layer(?:ing)?|daytime|wearable|daily wear)\b/i.test(text);
+}
+
+function recommendationFinishFitHasCreamierCue(value) {
+  const text = asString(value);
+  if (!text) return false;
+  const hasStrongCreamCue = /\b(?:hydrating daily cream|hydrating cream|moisturizer[-\s]?style hydration|moisturizer[-\s]?format|cream[-\s]?spf|sunscreen milk|milk spf|milky sunscreen|hydrating sunscreen milk|spf milk|more moisture|more moisturizing|richer)\b/i.test(text);
+  if (hasStrongCreamCue) return true;
+  const hasNeutralCreamTextureCue = /\b(?:cream format|cream texture|spf lotion)\b/i.test(text);
+  if (!hasNeutralCreamTextureCue) return false;
+  // "Lightweight cream texture" is a texture format cue, not enough evidence to rewrite the row as richer.
+  return !recommendationFinishFitHasLightweightTextureCue(text);
 }
 
 function collectRecommendationFinishFitSourceText(row) {
@@ -617,7 +640,7 @@ function classifyRecommendationFinishFitPeerContrastLabel(raw) {
     return 'matte';
   }
   if (/\b(?:mineral|zinc oxide|titanium dioxide)\b/i.test(texts)) return 'mineral-leaning';
-  if (/\b(?:hydrating daily cream|hydrating cream|cream format|cream texture|moisturizer[-\s]?style hydration|moisturizer[-\s]?format|cream-spf|cream spf|sunscreen milk|milk spf|milky sunscreen|hydrating sunscreen milk|spf milk|spf lotion)\b/i.test(texts)) {
+  if (recommendationFinishFitHasCreamierCue(texts)) {
     return 'cream-heavy';
   }
   return '';
@@ -647,11 +670,8 @@ function buildRecommendationFinishFitSpecificWhy(row, { sameRoleCandidates = [] 
   const hasDewyCue = /\b(?:day dew|dewy|fresh[-\s]?dewy|dewier)\b/i.test(texts);
   const hasWhiteCastCue = /\b(?:no white cast|white cast[-\s]?free|lower white[-\s]?cast|invisible)\b/i.test(texts);
   const hasSensitiveCue = /\b(?:sensitive skin|scentless|fragrance[-\s]?free|bisabolol|ectoin)\b/i.test(texts);
-  const hasCreamierCue = /\b(?:hydrating daily cream|hydrating cream|cream format|cream texture|moisturizer[-\s]?style hydration|moisturizer[-\s]?format|cream-spf|cream spf|sunscreen milk|milk spf|milky sunscreen|hydrating sunscreen milk|spf milk|spf lotion)\b/i.test(texts);
+  const hasCreamierCue = recommendationFinishFitHasCreamierCue(texts);
 
-  if (hasCreamierCue) {
-    return 'it leans richer and more moisturizing if you want more cushion under makeup';
-  }
   if (hasDewyCue) {
     return 'it leans fresher and dewier if you want a bit more hydration without a heavier cream feel';
   }
@@ -664,6 +684,9 @@ function buildRecommendationFinishFitSpecificWhy(row, { sameRoleCandidates = [] 
   if (hasSoftFocus || (hasLayering && hasWeightless)) {
     const peerContrastSuffix = buildRecommendationFinishFitLeadPeerContrastSuffix(sameRoleCandidates);
     return `it keeps the finish lighter and smoother under makeup${peerContrastSuffix || ' if you want a less heavy daytime layer'}`;
+  }
+  if (hasCreamierCue) {
+    return 'it leans richer and more moisturizing if you want more cushion under makeup';
   }
   if (hasWeightless && hasSensitiveCue) {
     return 'it leans more mineral and sensitive-skin-friendly if you want a sheer, weightless finish';
@@ -689,11 +712,8 @@ function buildRecommendationFinishFitSpecificShortDescription(row, { sameRoleCan
   const hasDewyCue = /\b(?:day dew|dewy|fresh[-\s]?dewy|dewier)\b/i.test(texts);
   const hasWhiteCastCue = /\b(?:no white cast|white cast[-\s]?free|lower white[-\s]?cast|invisible)\b/i.test(texts);
   const hasSensitiveCue = /\b(?:sensitive skin|scentless|fragrance[-\s]?free|bisabolol|ectoin)\b/i.test(texts);
-  const hasCreamierCue = /\b(?:hydrating daily cream|hydrating cream|cream format|cream texture|moisturizer[-\s]?style hydration|moisturizer[-\s]?format|cream-spf|cream spf|sunscreen milk|milk spf|milky sunscreen|hydrating sunscreen milk|spf milk|spf lotion)\b/i.test(texts);
+  const hasCreamierCue = recommendationFinishFitHasCreamierCue(texts);
 
-  if (hasCreamierCue) {
-    return 'Leans richer and more moisturizing if you want more cushion under makeup.';
-  }
   if (hasDewyCue) {
     return 'A fresher, dewier sunscreen feel when you want a bit more hydration without a heavy cream finish.';
   }
@@ -706,6 +726,9 @@ function buildRecommendationFinishFitSpecificShortDescription(row, { sameRoleCan
   if (hasSoftFocus || (hasLayering && hasWeightless)) {
     const peerContrastSuffix = buildRecommendationFinishFitLeadPeerContrastSuffix(sameRoleCandidates);
     return `Keeps the sunscreen feel lighter and smoother under makeup${peerContrastSuffix ? `${peerContrastSuffix}.` : '.'}`;
+  }
+  if (hasCreamierCue) {
+    return 'Leans richer and more moisturizing if you want more cushion under makeup.';
   }
   if (hasWeightless && hasSensitiveCue) {
     return 'A lighter mineral sunscreen option that stays sheer and simple on sensitive skin.';
@@ -1060,7 +1083,16 @@ function normalizeRecommendationProductCard(raw, options = {}) {
     asString(row.matchedRoleLabel) ||
     asString(roleLabelById.get(matchedRoleId)) ||
     humanizeRoleId(matchedRoleId);
-  const baseWhyThisOne = neutralizeVisibleRecommendationCardCopy(pickTargetAlignedRecommendationCardCopy(
+  const needsFinishFitTradeoff = recommendationNeedsFinishFitTradeoff({
+    matchedRoleId,
+    matchedRoleLabel,
+    comparisonMode,
+    peerCount,
+  });
+  const explicitWhyThisOne = neutralizeVisibleRecommendationCardCopy(
+    asString(row.why_this_one) || asString(row.whyThisOne) || asString(row.reason),
+  );
+  const pickedBaseWhyThisOne = neutralizeVisibleRecommendationCardCopy(pickTargetAlignedRecommendationCardCopy(
     [
       row.why_this_one,
       row.whyThisOne,
@@ -1079,6 +1111,10 @@ function normalizeRecommendationProductCard(raw, options = {}) {
       ].join(' '),
     },
   ));
+  const baseWhyThisOne =
+    needsFinishFitTradeoff && recommendationFinishFitHasDirectTextureEvidence(explicitWhyThisOne)
+      ? explicitWhyThisOne
+      : pickedBaseWhyThisOne;
   const selfKey = recommendationProductIdentityKey(row);
   const sameRoleCandidates = matchedRoleId
     ? asRecordArray(peerCandidatesByRoleId.get(matchedRoleId), 12).filter((candidate) => {
@@ -1086,44 +1122,44 @@ function normalizeRecommendationProductCard(raw, options = {}) {
         return !selfKey || !candidateKey || !recommendationProductsShareIdentity(row, candidate);
       })
     : [];
-  const finishFitSpecificWhy = recommendationNeedsFinishFitTradeoff({
-    matchedRoleId,
-    matchedRoleLabel,
-    comparisonMode,
-    peerCount,
-  })
+  const finishFitSpecificWhy = needsFinishFitTradeoff
     ? buildRecommendationFinishFitSpecificWhy(row, { sameRoleCandidates })
     : '';
   const baseShortDescription = neutralizeVisibleRecommendationCardCopy(
     asString(row.short_description) || asString(row.shortDescription) || baseWhyThisOne,
   );
-  const finishFitSpecificShortDescription = recommendationNeedsFinishFitTradeoff({
-    matchedRoleId,
-    matchedRoleLabel,
-    comparisonMode,
-    peerCount,
-  })
+  const finishFitSpecificShortDescription = needsFinishFitTradeoff
     ? buildRecommendationFinishFitSpecificShortDescription(row, { sameRoleCandidates })
     : '';
   const whyThisOne = finishFitSpecificWhy
     && (
       !baseWhyThisOne
-      || looksLikeWeakRecommendationFinishFitCopy(baseWhyThisOne)
-      || looksLikeGenericRecommendationFinishFitCopy(baseWhyThisOne)
-      || looksLikeDescriptiveRecommendationFinishFitCopy(baseWhyThisOne)
-      || looksLikeLowSpecificityRecommendationFinishFitCopy(baseWhyThisOne)
-      || recommendationFinishFitSourceNeedsMoreSpecificCue(baseWhyThisOne, row)
+      || (
+        !recommendationFinishFitHasDirectTextureEvidence(baseWhyThisOne)
+        && (
+          looksLikeWeakRecommendationFinishFitCopy(baseWhyThisOne)
+          || looksLikeGenericRecommendationFinishFitCopy(baseWhyThisOne)
+          || looksLikeDescriptiveRecommendationFinishFitCopy(baseWhyThisOne)
+          || looksLikeLowSpecificityRecommendationFinishFitCopy(baseWhyThisOne)
+          || recommendationFinishFitSourceNeedsMoreSpecificCue(baseWhyThisOne, row)
+        )
+      )
     )
     ? finishFitSpecificWhy
     : baseWhyThisOne;
   const shortDescription = finishFitSpecificShortDescription
     && (
       !baseShortDescription
-      || looksLikeWeakRecommendationFinishFitCopy(baseShortDescription)
-      || looksLikeGenericRecommendationFinishFitCopy(baseShortDescription)
-      || looksLikeDescriptiveRecommendationFinishFitCopy(baseShortDescription)
-      || looksLikeLowSpecificityRecommendationFinishFitCopy(baseShortDescription)
-      || recommendationFinishFitSourceNeedsMoreSpecificCue(baseShortDescription, row)
+      || (
+        !recommendationFinishFitHasDirectTextureEvidence(baseShortDescription)
+        && (
+          looksLikeWeakRecommendationFinishFitCopy(baseShortDescription)
+          || looksLikeGenericRecommendationFinishFitCopy(baseShortDescription)
+          || looksLikeDescriptiveRecommendationFinishFitCopy(baseShortDescription)
+          || looksLikeLowSpecificityRecommendationFinishFitCopy(baseShortDescription)
+          || recommendationFinishFitSourceNeedsMoreSpecificCue(baseShortDescription, row)
+        )
+      )
     )
     ? finishFitSpecificShortDescription
     : baseShortDescription;

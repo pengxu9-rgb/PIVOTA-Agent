@@ -119,6 +119,92 @@ test('reco assistant rewrite prompt omits deterministic base text and carries re
   }
 });
 
+test('reco assistant rewrite prompt keeps airy sunscreen context over neutral cream-texture cue', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const roleId = 'daily_sunscreen_finish_fit';
+    const recommendations = [
+      {
+        product_id: 'ext_6caa0a0e7a6095fec92b93b6',
+        display_name: 'Moisture Airyfit Daily Sunscreen SPF50+/PA++++ / Unscented',
+        brand: 'Haruharu Wonder',
+        selected_target_id: roleId,
+        matched_role_id: roleId,
+        matched_role_label: 'Daily sunscreen with finish fit',
+        comparison_mode: 'same_role_comparison',
+        short_description: 'SPF50+ sunscreen with a lightweight velvety finish for daily wear.',
+        why_this_one: 'it has more direct airy, non-greasy texture evidence for oily skin under makeup while staying in a dedicated SPF50+ sunscreen lane',
+        compare_highlights: [
+          'The airy-fit, non-greasy finish is the clearest product cue here, making it more about wearable daytime texture than about glow-heavy sunscreen styling.',
+        ],
+        pivota_insights: {
+          what_it_is: 'SPF50+ PA++++ daily sunscreen with a lightweight cream texture and a velvety finish.',
+        },
+      },
+      {
+        product_id: 'ext_c72a4eb40e754beaa43a39d0',
+        display_name: 'Moisture Pure Mineral Relief Sunscreen SPF50+/PA++++ /Unscented',
+        brand: 'Haruharu Wonder',
+        selected_target_id: roleId,
+        matched_role_id: roleId,
+        matched_role_label: 'Daily sunscreen with finish fit',
+        short_description: 'Mineral SPF with sensitive-skin positioning.',
+      },
+      {
+        product_id: 'ext_0fff03f61c59e019e5b8cccd',
+        display_name: 'Dayscreen Moisturizer SPF 30',
+        brand: 'Beauty of Joseon',
+        selected_target_id: roleId,
+        matched_role_id: roleId,
+        matched_role_label: 'Daily sunscreen with finish fit',
+        short_description: 'Moisturizer-SPF hybrid with light hydration.',
+      },
+    ];
+    const payload = {
+      recommendations,
+      roles: [
+        {
+          role_id: roleId,
+          label: 'Daily sunscreen with finish fit',
+          preferred_step: 'sunscreen',
+          product_candidates: recommendations,
+        },
+      ],
+      recommendation_meta: {
+        mainline_status: 'grounded_success',
+        primary_target_id: roleId,
+        selected_target_ids: [roleId],
+        ranked_targets: [
+          {
+            target_id: roleId,
+            target_label: 'Daily sunscreen with finish fit',
+            preferred_step: 'sunscreen',
+            product_candidates: recommendations,
+          },
+        ],
+      },
+    };
+    const prompt = __internal.buildRecoAssistantRewritePrompt({
+      payload,
+      language: 'EN',
+      profile: { skinType: 'oily' },
+      userRequestText: 'I have oily skin, what sunscreen should I buy?',
+      compactContext: true,
+      strictSelectedOnlyContext: true,
+      structuredReasonOnly: true,
+    });
+    const contextMatch = prompt.match(/Context: (\{[\s\S]*\})$/);
+    assert.ok(contextMatch);
+    const context = JSON.parse(contextMatch[1]);
+    const leadContext = JSON.stringify(context.assistant_write_plan.lead_product);
+
+    assert.match(leadContext, /airy, non-greasy texture evidence/i);
+    assert.doesNotMatch(leadContext, /richer|more moisturizing|cushion/i);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('reco assistant rewrite prompt neutralizes absolute marketing copy in selected product evidence', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
@@ -286,7 +372,7 @@ test('reco assistant rewrite prompt carries finish-fit same-slot tradeoff notes 
     assert.match(prompt, /Do not say a sunscreen doubles as, acts as, works as, or serves as a primer\./);
     assert.match(
       JSON.stringify(context.assistant_write_plan.same_role_options),
-      /(?:more mineral, sensitive-skin-oriented option while keeping a sheer, weightless finish|leans more mineral and sensitive-skin-friendly if you want a sheer, weightless finish)/,
+      /(?:more mineral, sensitive-skin-oriented option while keeping a sheer, weightless finish|leans more mineral and sensitive-skin-friendly if you want a sheer, weightless finish|keeps the wear sheer and weightless while staying simpler for sensitive-skin daytime use)/,
     );
     assert.match(
       JSON.stringify(context.assistant_write_plan.same_role_options),
@@ -5518,7 +5604,7 @@ test('reco assistant structured renderer repairs transferred rich sunscreen reas
 
     assert.match(
       text,
-      /Moisture Airyfit Daily Sunscreen SPF50\+\/PA\+\+\+\+ \/ Unscented (?:keeps the finish lighter and smoother under makeup|keeps the feel lighter and more invisible if you want less weight under makeup)/i,
+      /Moisture Airyfit Daily Sunscreen SPF50\+\/PA\+\+\+\+ \/ Unscented is a practical option[^.]+it has more direct airy, non-greasy texture evidence for oily skin under makeup while staying in a dedicated SPF50\+ sunscreen lane/i,
     );
     assert.doesNotMatch(
       text,
