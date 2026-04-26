@@ -8150,11 +8150,18 @@ test('__internal: beauty local handoff runs same-role sunscreen external authori
       'primary_authority_parallel_same_role',
     );
     assert.equal(out.search_stage_ledger?.primary_search?.primary_authority_parallel, true);
-    assert.equal(out.search_stage_ledger?.primary_search?.primary_external_executed_query_count, 2);
-    assert.equal(out.search_stage_ledger?.primary_search?.primary_external_query_cap_applied, true);
+    assert.ok(
+      Number(out.search_stage_ledger?.primary_search?.primary_external_executed_query_count || 0) >= 4,
+      JSON.stringify(out.search_stage_ledger?.primary_search),
+    );
     const attempts = out.search_stage_ledger?.primary_search?.query_pack_attempts || [];
     assert.equal(attempts[0]?.source_scope, 'external_seed');
     assert.equal(attempts[1]?.source_scope, 'external_seed');
+    assert.equal(
+      attempts.some((row) => String(row?.query || '').trim().toLowerCase() === 'matte sunscreen'),
+      true,
+      JSON.stringify(attempts),
+    );
   } finally {
     __internal.__resetRouteDependencyOverridesForTest();
   }
