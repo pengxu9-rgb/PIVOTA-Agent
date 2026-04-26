@@ -18,6 +18,9 @@ const {
 const { buildExternalSeedRecallDoc } = require('../src/services/externalSeedRecall');
 const { enrichExternalSeedRowIngredients } = require('../src/services/externalSeedIngredientEnrichment');
 const { isDisplayablePdpFaqItem } = require('../src/services/pdpFaqQuality');
+const {
+  deriveReviewContractFromSourceMeta,
+} = require('../src/services/pivotaProductIntelReviewPolicy');
 const { buildPdpImageDedupeKey, normalizePdpImageUrl } = require('../src/utils/pdpImageUrls');
 
 const DEFAULT_CATALOG_BASE_URL =
@@ -470,6 +473,53 @@ function collectVariantImageUrls(variant, options = {}) {
   );
 }
 
+function collectRawVariantImageUrls(variant) {
+  const out = [];
+  if (!variant || typeof variant !== 'object') return out;
+  if (variant.image_url) out.push(variant.image_url);
+  if (variant.image) out.push(variant.image);
+  if (Array.isArray(variant.image_urls)) out.push(...variant.image_urls);
+  if (Array.isArray(variant.images)) out.push(...variant.images);
+  return out.map(normalizeNonEmptyString).filter(Boolean);
+}
+
+function hasNestedVariantImageSanitizationDelta(seedData) {
+  const parsed = ensureJsonObject(seedData);
+  const snapshot = ensureJsonObject(parsed.snapshot);
+  const variants = [
+    ...(Array.isArray(parsed.variants) ? parsed.variants : []),
+    ...(Array.isArray(snapshot.variants) ? snapshot.variants : []),
+  ];
+  for (const variant of variants) {
+    const rawUrls = collectRawVariantImageUrls(variant);
+    for (const url of rawUrls) {
+      const normalized = normalizePdpImageUrl(url) || normalizeUrlLike(url);
+      if (!normalized || isDecorativeSeedImageUrl(normalized)) return true;
+    }
+  }
+  return false;
+}
+
+function applySanitizedNestedVariantImages(nextRow) {
+  const seedData = ensureJsonObject(nextRow?.seed_data);
+  if (!hasNestedVariantImageSanitizationDelta(seedData)) return nextRow;
+  const snapshot = ensureJsonObject(seedData.snapshot);
+  const variants = normalizeSeedVariants(seedData, nextRow);
+  if (!variants.length) return nextRow;
+  const nextSeedData = {
+    ...seedData,
+    variants,
+    snapshot: {
+      ...snapshot,
+      variants: cloneJsonValue(variants),
+    },
+  };
+  return {
+    ...nextRow,
+    seed_data: nextSeedData,
+  };
+}
+
 function collectProductImageUrls(product, options = {}) {
   return sanitizeSeedImageUrls(
     [
@@ -847,10 +897,11 @@ function applyValidatedImageUrls(nextRow, validImageUrls, validation) {
 }
 
 async function validateNextRowImageHealth(nextRow) {
-  const seedData = ensureJsonObject(nextRow.seed_data);
+  const variantSanitizedNextRow = applySanitizedNestedVariantImages(nextRow);
+  const seedData = ensureJsonObject(variantSanitizedNextRow.seed_data);
   const snapshot = ensureJsonObject(seedData.snapshot);
   const imageUrls = sanitizeSeedImageUrls([
-    nextRow.image_url,
+    variantSanitizedNextRow.image_url,
     seedData.image_url,
     ...(Array.isArray(seedData.image_urls) ? seedData.image_urls : []),
     snapshot.image_url,
@@ -858,7 +909,7 @@ async function validateNextRowImageHealth(nextRow) {
   ]);
   if (!imageUrls.length) {
     return {
-      nextRow,
+      nextRow: variantSanitizedNextRow,
       validation: {
         skipped: true,
         reason: 'no_candidate_images',
@@ -882,7 +933,7 @@ async function validateNextRowImageHealth(nextRow) {
   };
   if (!validImageUrls.length) {
     return {
-      nextRow,
+      nextRow: variantSanitizedNextRow,
       validation: {
         ...validation,
         status: 'failed_no_valid_images',
@@ -890,7 +941,7 @@ async function validateNextRowImageHealth(nextRow) {
     };
   }
   return {
-    nextRow: applyValidatedImageUrls(nextRow, validImageUrls, {
+    nextRow: applyValidatedImageUrls(variantSanitizedNextRow, validImageUrls, {
       ...validation,
       status: broken.length ? 'filtered_broken_images' : 'passed',
     }),
@@ -2661,7 +2712,11 @@ async function maybePersistPreservedImageHealth(row, targetUrl, options, reason,
   const nextRow = validationResult.nextRow || row;
   const changed =
     normalizeNonEmptyString(row?.image_url) !== normalizeNonEmptyString(nextRow?.image_url) ||
-    JSON.stringify(comparableSeedData(row?.seed_data)) !== JSON.stringify(comparableSeedData(nextRow?.seed_data));
+    JSON.stringify(comparableSeedData(row?.seed_data)) !== JSON.stringify(comparableSeedData(nextRow?.seed_data)) ||
+    (
+      hasNestedVariantImageSanitizationDelta(row?.seed_data) &&
+      !hasNestedVariantImageSanitizationDelta(nextRow?.seed_data)
+    );
   if (!changed) return null;
 
   let identityListingRefresh = null;
@@ -3031,7 +3086,11 @@ async function processRow(row, options) {
     const changed =
       payload.changed ||
       JSON.stringify(comparableSeedData(payload.nextRow.seed_data)) !==
-        JSON.stringify(comparableSeedData(enrichedNextRow.seed_data));
+        JSON.stringify(comparableSeedData(enrichedNextRow.seed_data)) ||
+      (
+        hasNestedVariantImageSanitizationDelta(row?.seed_data) &&
+        !hasNestedVariantImageSanitizationDelta(enrichedNextRow.seed_data)
+      );
     const enrichedPayload = {
       ...payload,
       changed,
@@ -3193,7 +3252,7 @@ async function filterProductIdsMissingPivotaInsights(productIds) {
     const keys = ids.map((id) => `product:${id}`);
     const res = await query(
       `
-        SELECT kb_key
+        SELECT kb_key, analysis, source_meta
         FROM aurora_product_intel_kb
         WHERE kb_key = ANY($1::text[])
           AND last_error IS NULL
@@ -3206,6 +3265,7 @@ async function filterProductIdsMissingPivotaInsights(productIds) {
     );
     const covered = new Set(
       (res.rows || [])
+        .filter((row) => isDisplayableProductIntelKbRow(row))
         .map((row) => normalizeNonEmptyString(row?.kb_key).replace(/^product:/, ''))
         .filter(Boolean),
     );
@@ -3219,6 +3279,33 @@ async function filterProductIdsMissingPivotaInsights(productIds) {
       check_error: normalizeNonEmptyString(error?.message || error),
     };
   }
+}
+
+function isDisplayableProductIntelKbRow(row) {
+  const analysis = ensureJsonObject(row?.analysis);
+  const bundle = ensureJsonObject(analysis.product_intel_v1 || analysis.product_intel);
+  if (!bundle || !Object.keys(bundle).length) return false;
+
+  const sourceMeta = ensureJsonObject(row?.source_meta);
+  const metaReview = deriveReviewContractFromSourceMeta(sourceMeta);
+  if (metaReview.approved === true) return true;
+
+  const provenanceReview = deriveReviewContractFromSourceMeta(bundle.provenance);
+  if (provenanceReview.approved === true) return true;
+
+  const qualityState = normalizeNonEmptyString(
+    bundle.quality_state ||
+      bundle.qualityState ||
+      bundle.product_intel_core?.quality_state ||
+      sourceMeta.quality_state,
+  ).toLowerCase();
+  const evidenceProfile = normalizeNonEmptyString(
+    bundle.evidence_profile ||
+      bundle.evidenceProfile ||
+      bundle.product_intel_core?.evidence_profile ||
+      sourceMeta.evidence_profile,
+  ).toLowerCase();
+  return qualityState === 'verified' && evidenceProfile === 'pivota_reviewed';
 }
 
 function runPivotaInsightsCoverageForProductIds(productIds, options = {}) {
@@ -3410,9 +3497,11 @@ module.exports = {
   sanitizeTextForPostgres,
   stringifyPostgresJsonb,
   validateNextRowImageHealth,
+  hasNestedVariantImageSanitizationDelta,
   buildIdentityListingSourcePayload,
   collectBackfilledExternalProductIds,
   filterProductIdsMissingPivotaInsights,
+  isDisplayableProductIntelKbRow,
   preparePivotaInsightsForBackfill,
   runPivotaInsightsCoverageForProductIds,
 };

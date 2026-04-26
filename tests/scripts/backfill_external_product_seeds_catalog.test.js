@@ -17,8 +17,10 @@ const {
   sanitizeTextForPostgres,
   stringifyPostgresJsonb,
   validateNextRowImageHealth,
+  hasNestedVariantImageSanitizationDelta,
   buildIdentityListingSourcePayload,
   collectBackfilledExternalProductIds,
+  isDisplayableProductIntelKbRow,
 } = require('../../scripts/backfill-external-product-seeds-catalog');
 
 describe('backfill-external-product-seeds-catalog', () => {
@@ -77,6 +79,83 @@ describe('backfill-external-product-seeds-catalog', () => {
     ).toEqual(['ext_parent', 'ext_child_a', 'ext_child_b']);
   });
 
+  test('detects nested variant image pollution even when canonical gallery is already clean', () => {
+    const productImage =
+      'https://theordinary.com/dw/image/v2/BFKJ_PRD/on/demandware.static/-/Sites-deciem-master/default/dw0fd80738/Images/products/The%20Ordinary/product.png?sw=900&sh=900&sm=fit';
+    const siteChromeImage =
+      'https://theordinary.com/on/demandware.static/-/Library-Sites-DeciemSharedLibrary/default/dw665025d6/theordinary/homepage/slotA/heroes-slot-a-mobile.jpg';
+    const logo =
+      'https://theordinary.com/on/demandware.static/Sites-deciem-us-Site/-/default/dw7498968d/images/brands-logo/theOrdinary-logo.svg';
+
+    expect(
+      hasNestedVariantImageSanitizationDelta({
+        image_urls: [productImage],
+        variants: [
+          {
+            image_url: productImage,
+            image_urls: [productImage, siteChromeImage, logo],
+          },
+        ],
+        snapshot: {
+          image_urls: [productImage],
+          variants: [
+            {
+              image_url: productImage,
+              image_urls: [productImage, siteChromeImage, logo],
+            },
+          ],
+        },
+      }),
+    ).toBe(true);
+
+    expect(
+      hasNestedVariantImageSanitizationDelta({
+        variants: [{ image_url: productImage, image_urls: [productImage] }],
+        snapshot: { variants: [{ image_url: productImage, image_urls: [productImage] }] },
+      }),
+    ).toBe(false);
+  });
+
+  test('does not treat unreviewed limited product intel KB rows as displayable coverage', () => {
+    const bundle = {
+      contract_version: 'pivota.product_intel.v1',
+      quality_state: 'limited',
+      evidence_profile: 'seller_only',
+      product_intel_core: {
+        what_it_is: {
+          headline: 'Treatment serum',
+          body: 'A peptide lash and brow serum.',
+        },
+      },
+    };
+
+    expect(
+      isDisplayableProductIntelKbRow({
+        kb_key: 'product:ext_case',
+        analysis: { product_intel_v1: bundle },
+        source_meta: {
+          selected_mode: 'baseline_only',
+          quality_state: 'limited',
+        },
+      }),
+    ).toBe(false);
+
+    expect(
+      isDisplayableProductIntelKbRow({
+        kb_key: 'product:ext_case',
+        analysis: { product_intel_v1: bundle },
+        source_meta: {
+          selected_mode: 'curated_override',
+          review_status: 'completed',
+          review_decision: 'seller_only_fallback',
+          reviewer: 'Codex',
+          reviewer_kind: 'assistant',
+          reviewed_at: '2026-04-26T00:00:00.000Z',
+        },
+      }),
+    ).toBe(true);
+  });
+
   test('filters broken image URLs before seed writes while preserving Shopify asset identity', async () => {
     jest
       .spyOn(axios, 'head')
@@ -93,14 +172,30 @@ describe('backfill-external-product-seeds-catalog', () => {
       'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T93Y01_2000x2000_0.png?v=1774596807';
     const brokenUrl =
       'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T93Y01_2000x2000_0.png';
+    const siteChromeUrl =
+      'https://theordinary.com/on/demandware.static/-/Library-Sites-DeciemSharedLibrary/default/dw665025d6/theordinary/homepage/slotA/heroes-slot-a-mobile.jpg';
 
     const result = await validateNextRowImageHealth({
       image_url: validUrl,
       seed_data: {
         image_url: validUrl,
         image_urls: [validUrl, brokenUrl],
+        variants: [
+          {
+            sku: 'sku_1',
+            image_url: validUrl,
+            image_urls: [validUrl, siteChromeUrl],
+          },
+        ],
         snapshot: {
           image_urls: [validUrl, brokenUrl],
+          variants: [
+            {
+              sku: 'sku_1',
+              image_url: validUrl,
+              image_urls: [validUrl, siteChromeUrl],
+            },
+          ],
         },
       },
     });
@@ -115,6 +210,8 @@ describe('backfill-external-product-seeds-catalog', () => {
     );
     expect(result.nextRow.image_url).toBe(validUrl);
     expect(result.nextRow.seed_data.image_urls).toEqual([validUrl]);
+    expect(result.nextRow.seed_data.variants[0].image_urls).toEqual([validUrl]);
+    expect(result.nextRow.seed_data.snapshot.variants[0].image_urls).toEqual([validUrl]);
     expect(result.nextRow.seed_data.snapshot.diagnostics.image_health_validation.status).toBe(
       'filtered_broken_images',
     );
