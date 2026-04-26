@@ -277,7 +277,6 @@ function createBeautyChatMainlineEnvelopeRuntime(deps = {}) {
     isTransientRecoUpstreamFailureCode,
     buildConfidenceNoticeCardPayload,
     buildEnvelope,
-    makeAssistantMessage,
     makeEvent,
     summarizeProfileForContext,
     applyRecoCanonicalSearchResultToPayload,
@@ -452,12 +451,7 @@ function createBeautyChatMainlineEnvelopeRuntime(deps = {}) {
       noticePayload.recommendation_meta = recommendationMeta;
     }
     return buildEnvelope(ctx, {
-      assistant_message: makeAssistantMessage(
-        String(noticePayload.message || '').trim() ||
-          (ctx?.lang === 'CN'
-            ? '这轮 beauty 主链没有稳定拿到可落地商品，所以我先不展示商品推荐。'
-            : 'The beauty mainline did not return a stable grounded product set for this turn, so I am not showing product picks yet.'),
-      ),
+      assistant_message: null,
       suggested_chips: Array.isArray(suggestedChips) ? suggestedChips : [],
       cards: [
         {
