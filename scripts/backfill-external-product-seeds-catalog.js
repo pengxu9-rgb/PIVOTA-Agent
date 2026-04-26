@@ -2623,6 +2623,58 @@ async function refreshPdpIdentityListingSourcePayload(client, row, nextRow) {
   };
 }
 
+async function maybePersistPreservedImageHealth(row, targetUrl, options, reason, extraPayload = {}) {
+  if (!options.validateImageHealth) return null;
+  const validationResult = await validateNextRowImageHealth({
+    ...row,
+    seed_data: ensureJsonObject(row?.seed_data),
+  });
+  const validation = validationResult.validation || {};
+  if (validation.skipped || validation.status === 'failed_no_valid_images') return null;
+  const nextRow = validationResult.nextRow || row;
+  const changed =
+    normalizeNonEmptyString(row?.image_url) !== normalizeNonEmptyString(nextRow?.image_url) ||
+    JSON.stringify(comparableSeedData(row?.seed_data)) !== JSON.stringify(comparableSeedData(nextRow?.seed_data));
+  if (!changed) return null;
+
+  let identityListingRefresh = null;
+  if (!options.dryRun) {
+    await query(
+      `
+        UPDATE external_product_seeds
+        SET
+          image_url = CASE WHEN $2 <> '' THEN $2 ELSE image_url END,
+          seed_data = $3::jsonb,
+          updated_at = now()
+        WHERE id = $1
+      `,
+      [
+        row.id,
+        sanitizeTextForPostgres(nextRow.image_url),
+        stringifyPostgresJsonb(nextRow.seed_data),
+      ],
+    );
+    await withClient(async (client) => {
+      identityListingRefresh = await refreshPdpIdentityListingSourcePayload(client, row, nextRow);
+    });
+  }
+
+  return {
+    status: options.dryRun ? 'dry_run' : 'updated',
+    reason,
+    row,
+    targetUrl,
+    payload: {
+      ...extraPayload,
+      nextRow,
+      image_health_validation: validation,
+      identity_listing_refresh: identityListingRefresh,
+      preserved_image_health_only: true,
+      variant_seed_rows: [],
+    },
+  };
+}
+
 async function upsertVariantSeedRows(client, rows) {
   for (const row of Array.isArray(rows) ? rows : []) {
     await client.query(
@@ -2862,6 +2914,14 @@ async function processRow(row, options) {
     const products = Array.isArray(response?.products) ? response.products : [];
     const representativeProduct = chooseRepresentativeProduct(response, targetUrl, row);
     if (looksLikeDirectProductTargetUrl(targetUrl) && products.length === 0) {
+      const preservedImageHealth = await maybePersistPreservedImageHealth(
+        row,
+        targetUrl,
+        options,
+        'preserved_image_health_catalog_empty_direct_pdp',
+        { diagnostics: response?.diagnostics || null },
+      );
+      if (preservedImageHealth) return preservedImageHealth;
       return {
         status: 'skipped',
         reason: 'catalog_empty_direct_pdp',
@@ -2873,6 +2933,21 @@ async function processRow(row, options) {
       };
     }
     if (looksLikeDirectProductTargetUrl(targetUrl) && products.length > 0 && !representativeProduct) {
+      const candidateProductUrls = products
+        .map((product) => normalizeUrlLike(product?.url))
+        .filter(Boolean)
+        .slice(0, 10);
+      const preservedImageHealth = await maybePersistPreservedImageHealth(
+        row,
+        targetUrl,
+        options,
+        'preserved_image_health_representative_product_not_found',
+        {
+          diagnostics: response?.diagnostics || null,
+          candidate_product_urls: candidateProductUrls,
+        },
+      );
+      if (preservedImageHealth) return preservedImageHealth;
       return {
         status: 'skipped',
         reason: 'representative_product_not_found',
@@ -2880,10 +2955,7 @@ async function processRow(row, options) {
         targetUrl,
         payload: {
           diagnostics: response?.diagnostics || null,
-          candidate_product_urls: products
-            .map((product) => normalizeUrlLike(product?.url))
-            .filter(Boolean)
-            .slice(0, 10),
+          candidate_product_urls: candidateProductUrls,
         },
       };
     }
