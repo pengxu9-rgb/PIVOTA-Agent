@@ -328,6 +328,19 @@ function cloneJsonValue(value) {
   return JSON.parse(JSON.stringify(value || {}));
 }
 
+function sanitizeJsonForPostgres(value) {
+  if (typeof value === 'string') return value.replace(/\u0000/g, '');
+  if (Array.isArray(value)) return value.map((item) => sanitizeJsonForPostgres(item));
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(
+    Object.entries(value).map(([key, candidate]) => [key, sanitizeJsonForPostgres(candidate)]),
+  );
+}
+
+function stringifyPostgresJsonb(value) {
+  return JSON.stringify(sanitizeJsonForPostgres(value || {}));
+}
+
 function stableHash(value, length = 24) {
   return crypto.createHash('sha256').update(String(value || '')).digest('hex').slice(0, length);
 }
@@ -2659,7 +2672,7 @@ async function upsertVariantSeedRows(client, rows) {
         row.created_by_employee_id,
         row.attached_product_key,
         row.attached_variant_id,
-        JSON.stringify(row.seed_data),
+        stringifyPostgresJsonb(row.seed_data),
         row.utm_template,
         row.partner_type,
         row.disclosure_text,
@@ -2971,7 +2984,7 @@ async function processRow(row, options) {
             enrichedPayload.nextRow.price_amount,
             enrichedPayload.nextRow.price_currency,
             enrichedPayload.nextRow.availability,
-            JSON.stringify(enrichedPayload.nextRow.seed_data),
+            stringifyPostgresJsonb(enrichedPayload.nextRow.seed_data),
           ],
         );
         identityListingRefresh = await refreshPdpIdentityListingSourcePayload(client, row, enrichedPayload.nextRow);
@@ -3016,7 +3029,7 @@ async function processRow(row, options) {
           SET seed_data = $2::jsonb, updated_at = now()
           WHERE id = $1
         `,
-        [row.id, JSON.stringify(persistedSeedData)],
+        [row.id, stringifyPostgresJsonb(persistedSeedData)],
       );
     }
     return { status: 'failed', row, targetUrl, error };
@@ -3276,6 +3289,8 @@ module.exports = {
   normalizeTargetUrlForMarket,
   recoverTargetUrlFromDiagnostics,
   sanitizeSeedImageUrls,
+  sanitizeJsonForPostgres,
+  stringifyPostgresJsonb,
   validateNextRowImageHealth,
   buildIdentityListingSourcePayload,
   collectBackfilledExternalProductIds,

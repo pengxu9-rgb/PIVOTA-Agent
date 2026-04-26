@@ -13,6 +13,8 @@ const {
   recoverTargetUrlFromDiagnostics,
   parseDelimitedIds,
   sanitizeSeedImageUrls,
+  sanitizeJsonForPostgres,
+  stringifyPostgresJsonb,
   validateNextRowImageHealth,
   buildIdentityListingSourcePayload,
   collectBackfilledExternalProductIds,
@@ -25,6 +27,25 @@ describe('backfill-external-product-seeds-catalog', () => {
 
   test('parses external product id lists from comma or newline input', () => {
     expect(parseDelimitedIds('ext_a, ext_b\next_a\n\next_c')).toEqual(['ext_a', 'ext_b', 'ext_c']);
+  });
+
+  test('removes null bytes from JSON before postgres jsonb writes', () => {
+    const sanitized = sanitizeJsonForPostgres({
+      title: 'Shade\u0000and Illuminate',
+      nested: {
+        body: 'Clean\u0000 copy',
+        items: ['One\u0000', 'Two'],
+      },
+    });
+
+    expect(sanitized).toEqual({
+      title: 'Shadeand Illuminate',
+      nested: {
+        body: 'Clean copy',
+        items: ['One', 'Two'],
+      },
+    });
+    expect(stringifyPostgresJsonb(sanitized)).not.toContain('\\u0000');
   });
 
   test('collects updated external product ids for post-backfill Pivota Insights coverage', () => {
