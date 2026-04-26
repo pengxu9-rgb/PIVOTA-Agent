@@ -8059,6 +8059,107 @@ test('__internal: beauty local handoff external stage uses backend authority as 
   }
 });
 
+test('__internal: beauty local handoff runs same-role sunscreen external authority in the primary round', async () => {
+  const { __internal } = loadRoutesFresh();
+  const calls = [];
+  const targetContext = {
+    framework_id: 'recofw_test_sunscreen_same_role_parallel_authority',
+    primary_role_id: 'daily_sunscreen_finish_fit',
+    routine_mode: 'same_role_comparison',
+    comparison_mode: 'same_role_comparison',
+    semantic_plan: { routine_mode: 'same_role_comparison', comparison_mode: 'same_role_comparison' },
+    framework_roles: [
+      {
+        role_id: 'daily_sunscreen_finish_fit',
+        rank: 10,
+        preferred_step: 'sunscreen',
+        label: 'Daily sunscreen finish fit',
+        query_terms: [
+          'sunscreen oily skin',
+          'sunscreen under makeup',
+          'lightweight sunscreen oily skin',
+          'matte sunscreen',
+        ],
+        fit_keywords: ['spf', 'airy', 'non-greasy', 'under makeup'],
+        product_type_hypotheses: ['sunscreen'],
+      },
+    ],
+  };
+
+  __internal.__setRouteDependencyOverridesForTest({
+    searchExternalSeedAuthorityProducts: async (args = {}) => {
+      calls.push({
+        kind: 'backend_external_seed',
+        query: args.query,
+        timeoutMs: Number(args.timeoutMs || 0),
+        sourceScope: args.sourceScope || null,
+      });
+      return {
+        ok: true,
+        products: [
+          {
+            product_id: `external_sunscreen_${calls.length}`,
+            merchant_id: 'external_seed',
+            brand: 'Haruharu Wonder',
+            name: 'Moisture Airyfit Daily Sunscreen SPF50+/PA++++ / Unscented',
+            display_name: 'Haruharu Wonder Moisture Airyfit Daily Sunscreen SPF50+/PA++++ / Unscented',
+            category: 'Sunscreen',
+            product_type: 'Sunscreen',
+            retrieval_source: 'external_seed',
+            short_description: 'An airy, non-greasy daily sunscreen designed for smoother wear under makeup.',
+            benefit_tags: ['spf', 'airy', 'non-greasy', 'under makeup'],
+          },
+        ],
+        attempted_request_timeouts_ms: [Number(args.timeoutMs || 0)],
+        actual_http_attempt_count: 1,
+      };
+    },
+    searchInternalProductsPrimitive: async (args = {}) => {
+      calls.push({
+        kind: 'internal',
+        query: args.query,
+        timeoutMs: Number(args.timeoutMs || 0),
+        sourceScope: args.sourceScope || null,
+      });
+      return {
+        ok: true,
+        products: [],
+        reason: 'empty',
+        attempted_request_timeouts_ms: [Number(args.timeoutMs || 0)],
+        actual_http_attempt_count: 1,
+      };
+    },
+  });
+
+  try {
+    const out = await __internal.runBeautyMainlineLocalHandoffSearch({
+      ctx: { lang: 'EN' },
+      logger: null,
+      targetContext,
+      profileSummary: { skinType: 'oily', goals: ['sunscreen under makeup'] },
+      timeoutMs: 26000,
+      deadlineMs: Date.now() + 26000,
+    });
+
+    assert.equal(out?.ok, true);
+    assert.equal(calls[0]?.kind, 'backend_external_seed', JSON.stringify(calls));
+    assert.equal(calls[1]?.kind, 'backend_external_seed', JSON.stringify(calls));
+    assert.ok(calls[0]?.timeoutMs >= 16000, JSON.stringify(calls));
+    assert.equal(
+      out.search_stage_ledger?.primary_search?.routine_support_strategy,
+      'primary_authority_parallel_same_role',
+    );
+    assert.equal(out.search_stage_ledger?.primary_search?.primary_authority_parallel, true);
+    assert.equal(out.search_stage_ledger?.primary_search?.primary_external_executed_query_count, 2);
+    assert.equal(out.search_stage_ledger?.primary_search?.primary_external_query_cap_applied, true);
+    const attempts = out.search_stage_ledger?.primary_search?.query_pack_attempts || [];
+    assert.equal(attempts[0]?.source_scope, 'external_seed');
+    assert.equal(attempts[1]?.source_scope, 'external_seed');
+  } finally {
+    __internal.__resetRouteDependencyOverridesForTest();
+  }
+});
+
 function extractRecoRewritePromptContext(prompt) {
   const raw = String(prompt || '');
   const marker = 'Context: ';
@@ -12597,6 +12698,33 @@ test('__internal: collectRecoCandidatesFromQueryLevels caps support external see
   }
 });
 
+test('__internal: primary external seed timeout budget covers slow authority recall without widening support budget', () => {
+  const { __internal } = loadRoutesFresh();
+
+  const primaryExternalTimeout = __internal.resolveRecoQueryEntryTimeoutMs({
+    source_scope: 'external_seed',
+    ladder_level: 'framework_stage_b_primary_external_seed',
+    role_id: 'daily_sunscreen_finish_fit',
+    preferred_step: 'sunscreen',
+  }, 26000);
+  const supportExternalTimeout = __internal.resolveRecoQueryEntryTimeoutMs({
+    source_scope: 'external_seed',
+    ladder_level: 'framework_stage_c_support_lightweight_moisturizer_external_seed',
+    role_id: 'lightweight_moisturizer',
+    preferred_step: 'moisturizer',
+  }, 26000);
+  const primaryInternalTimeout = __internal.resolveRecoQueryEntryTimeoutMs({
+    source_scope: 'internal',
+    ladder_level: 'framework_stage_a_primary_internal',
+    role_id: 'daily_sunscreen_finish_fit',
+    preferred_step: 'sunscreen',
+  }, 26000);
+
+  assert.equal(primaryExternalTimeout, 18000);
+  assert.equal(supportExternalTimeout, 8000);
+  assert.equal(primaryInternalTimeout, 2500);
+});
+
 staleFallbackPlannerTest('/v1/chat: profile-driven beauty-owned reco chip without explicit ask clean fail-closes before legacy planner', async () => {
   const originalGet = axios.get;
   const observedQueries = [];
@@ -14023,9 +14151,10 @@ test('/v1/chat: beauty-owned hard path fails closed when handoff products lack c
     const cards = Array.isArray(response.body?.cards) ? response.body.cards : [];
     const confidenceCard = cards.find((card) => card && card.type === 'confidence_notice') || null;
     assert.ok(confidenceCard);
+    assert.equal(response.body?.assistant_message, null);
     assert.match(
-      String(response.body?.assistant_message?.content || ''),
-      /not showing product picks|not forcing product picks|不展示商品推荐/i,
+      String(confidenceCard?.payload?.message || ''),
+      /not showing product picks|not forcing product picks|could not confirm|不展示商品推荐/i,
     );
   } finally {
     axios.get = originalGet;
@@ -14106,9 +14235,10 @@ test('/v1/chat: beauty-owned reco helper miss still fails closed before legacy p
     const notice = getConfidenceNoticePayload(response.body);
     assert.ok(notice);
     assert.equal(String(notice.reason || ''), 'upstream_empty_recommendations');
+    assert.equal(response.body?.assistant_message, null);
     assert.match(
-      String(response.body?.assistant_message?.content || ''),
-      /not showing product picks|不展示商品推荐/i,
+      String(notice.message || ''),
+      /not showing product picks|not forcing product picks|could not confirm|不展示商品推荐/i,
     );
   } finally {
     axios.get = originalGet;
