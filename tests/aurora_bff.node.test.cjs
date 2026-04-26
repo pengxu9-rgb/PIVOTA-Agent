@@ -7349,6 +7349,38 @@ test('fetchRecoAlternativesForProduct: finish-fit sunscreen pool rejects categor
                 },
               },
               {
+                product_id: 'ext_fenty_huez_refill_3',
+                merchant_id: 'external_seed',
+                brand: 'Fenty Beauty',
+                name: 'Hydra Vizor Huez Tinted Moisturizer Broad Spectrum Mineral SPF 30 Sunscreen Refill (EU) - 3',
+                display_name: 'Hydra Vizor Huez Tinted Moisturizer Broad Spectrum Mineral SPF 30 Sunscreen Refill (EU) - 3',
+                product_type: 'Sunscreen',
+                category: 'Sunscreen',
+                retrieval_source: 'external_seed',
+                key_features: ['Tinted moisturizer SPF', 'Refill format', 'Shade 3'],
+                short_description: 'A refill-only tinted SPF moisturizer shade variant.',
+                canonical_product_ref: {
+                  product_id: 'ext_fenty_huez_refill_3',
+                  merchant_id: 'external_seed',
+                },
+              },
+              {
+                product_id: 'ext_fenty_huez_refill_4',
+                merchant_id: 'external_seed',
+                brand: 'Fenty Beauty',
+                name: 'Hydra Vizor Huez Tinted Moisturizer Broad Spectrum Mineral SPF 30 Sunscreen Refill (EU) - 4',
+                display_name: 'Hydra Vizor Huez Tinted Moisturizer Broad Spectrum Mineral SPF 30 Sunscreen Refill (EU) - 4',
+                product_type: 'Sunscreen',
+                category: 'Sunscreen',
+                retrieval_source: 'external_seed',
+                key_features: ['Tinted moisturizer SPF', 'Refill format', 'Shade 4'],
+                short_description: 'A refill-only tinted SPF moisturizer shade variant.',
+                canonical_product_ref: {
+                  product_id: 'ext_fenty_huez_refill_4',
+                  merchant_id: 'external_seed',
+                },
+              },
+              {
                 product_id: 'ext_round_lab_sun_cushion',
                 merchant_id: 'external_seed',
                 brand: 'Round Lab',
@@ -7439,6 +7471,7 @@ test('fetchRecoAlternativesForProduct: finish-fit sunscreen pool rejects categor
         assert.ok(names.some((name) => /Ginseng Moist Sun Serum/i.test(name)));
         assert.ok(names.some((name) => /Airyfit Daily Sunscreen/i.test(name)));
         assert.equal(names.some((name) => /C15 Super Booster/i.test(name)), false);
+        assert.equal(names.some((name) => /Refill/i.test(name)), false);
         assert.equal(names.some((name) => /Sun Cushion/i.test(name)), false);
         assert.equal(names.some((name) => /Glowscreen/i.test(name)), false);
       } finally {
