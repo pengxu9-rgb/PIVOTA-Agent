@@ -196,6 +196,46 @@ function inferBeautyRoleFromProducts(products = []) {
   return null;
 }
 
+function normalizeRoleFamily(value) {
+  const text = normalizeText(value);
+  if (!text) return null;
+  if (/\b(sunscreen|spf|sun\s*screen|sunblock|uv|dayscreen)\b/.test(text)) return 'sunscreen';
+  if (/\b(moisturizer|moisturiser|moisturizing|moisturising|cream|lotion|barrier|gel\s*cream|balm)\b/.test(text)) {
+    return 'moisturizer';
+  }
+  if (/\b(cleanser|cleansing|wash|face\s*wash)\b/.test(text)) return 'cleanser';
+  if (/\b(serum|treatment|toner|essence|ampoule|oil\s*control|clogged\s*pore|acne|blemish|pore|pores|niacinamide|bha|salicylic|azelaic|retinol|retinal|vitamin\s*c)\b/.test(text)) {
+    return 'treatment';
+  }
+  return null;
+}
+
+function inferBeautyRoleFromSemanticContract({ responseBody = {}, search = {}, metadata = {} } = {}) {
+  const responseMetadata = isPlainObject(responseBody?.metadata) ? responseBody.metadata : {};
+  const contract = isPlainObject(responseMetadata.search_request_contract)
+    ? responseMetadata.search_request_contract
+    : isPlainObject(search.search_request_contract)
+      ? search.search_request_contract
+      : isPlainObject(search.searchRequestContract)
+        ? search.searchRequestContract
+        : isPlainObject(metadata.search_request_contract)
+          ? metadata.search_request_contract
+          : null;
+  const semanticContract = isPlainObject(contract?.semantic_contract)
+    ? contract.semantic_contract
+    : isPlainObject(search.semantic_contract)
+      ? search.semantic_contract
+      : isPlainObject(metadata.semantic_contract)
+        ? metadata.semantic_contract
+        : null;
+  return (
+    normalizeRoleFamily(semanticContract?.target_step_family) ||
+    normalizeRoleFamily(contract?.target_step_family) ||
+    normalizeRoleFamily(semanticContract?.primary_role_id) ||
+    normalizeRoleFamily(contract?.primary_role_id)
+  );
+}
+
 function appendReason(existing, reason) {
   const rows = Array.isArray(existing) ? existing.slice() : [];
   if (!rows.includes(reason)) rows.push(reason);
@@ -231,6 +271,7 @@ function applyBeautyRoleCompatibleSelection({
   if (products.length === 0) return responseBody;
   const requestText = getBeautyRequestText({ queryText: queryText || search.query || search.q, beautyRequest });
   const role =
+    inferBeautyRoleFromSemanticContract({ responseBody, search, metadata }) ||
     inferBeautyRoleIntent({ queryText: requestText, beautyRequest }) ||
     (hasExactProductContext({ queryText: requestText, beautyRequest })
       ? inferBeautyRoleFromProducts(products)
@@ -303,6 +344,7 @@ function applyBeautyRoleCompatibleSelection({
 
 module.exports = {
   inferBeautyRoleIntent,
+  inferBeautyRoleFromSemanticContract,
   evaluateProductForBeautyRole,
   applyBeautyRoleCompatibleSelection,
 };

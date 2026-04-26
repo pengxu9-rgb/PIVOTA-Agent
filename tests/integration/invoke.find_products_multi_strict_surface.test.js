@@ -322,6 +322,109 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
     );
   });
 
+  test('beauty ingredient-direct hits still attach shared beauty expert projection', async () => {
+    mockDbRows([
+      seedRow({
+        id: 'seed_vanicream_ceramide',
+        external_product_id: 'seed_vanicream_ceramide_product',
+        title: 'Vanicream Daily Facial Moisturizer with Ceramides',
+        domain: 'vanicream.com',
+        price_amount: 16,
+        price_currency: 'USD',
+        seed_data: {
+          ...seedRow().seed_data,
+          title: 'Vanicream Daily Facial Moisturizer with Ceramides',
+          description: 'Fragrance-free daily facial moisturizer with ceramide support.',
+          category: 'Moisturizer',
+          brand: 'Vanicream',
+          reviewed_ingredient_ids: ['ceramide_np'],
+          variants: [
+            {
+              id: 'seed_vanicream_variant',
+              title: 'Default Title',
+              price: 16,
+              currency: 'USD',
+              availability: 'in_stock',
+            },
+          ],
+        },
+      }),
+    ]);
+
+    const legacyInvoke = nock('http://pivota.test')
+      .post('/agent/shop/v1/invoke')
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+        metadata: { query_source: 'cache_multi_intent' },
+      });
+
+    const app = require('../../src/server');
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'I have dry sensitive skin and want a ceramide moisturizer under $30.',
+            limit: 10,
+            in_stock_only: true,
+            catalog_surface: 'beauty',
+          },
+          context: {
+            source_profile: { source: 'shopping_agent', default_entry_layer: 'orchestration' },
+            task_type: 'discovery',
+            vertical: 'beauty',
+            raw_user_goal: 'I have dry sensitive skin and want a ceramide moisturizer under $30.',
+            normalized_need: {
+              beauty_request: {
+                domain: 'beauty',
+                user_goal: 'I have dry sensitive skin and want a ceramide moisturizer under $30.',
+                skin_context: { skin_type: 'dry sensitive' },
+                constraints: { budget_max: 30 },
+              },
+            },
+          },
+        },
+        metadata: {
+          source: 'shopping_agent',
+          catalog_surface: 'beauty',
+          beauty_domain_hint: 'beauty',
+          allow_orchestration_delegate: true,
+        },
+      })
+      .expect(200);
+
+    expect(legacyInvoke.isDone()).toBe(false);
+    expect(res.body.products.map((product) => product.title)).toEqual([
+      'Vanicream Daily Facial Moisturizer with Ceramides',
+    ]);
+    expect(res.body.metadata).toEqual(
+      expect.objectContaining({
+        query_source: INGREDIENT_DIRECT_QUERY_SOURCE,
+        beauty_capability_invoked: true,
+        beauty_mode: 'category_compare',
+      }),
+    );
+    expect(res.body.beauty_expert_v1).toEqual(
+      expect.objectContaining({
+        mode: 'category_compare',
+        delegation_trace: expect.objectContaining({
+          beauty_capability_invoked: true,
+          delegated_layer: 'decisioning',
+        }),
+      }),
+    );
+    expect(res.body.beauty_expert_v1.reco_bundle.lead_picks[0]).toEqual(
+      expect.objectContaining({
+        name: 'Vanicream Daily Facial Moisturizer with Ceramides',
+      }),
+    );
+    expect(res.body.reply).toContain('Vanicream Daily Facial Moisturizer with Ceramides');
+  });
+
   test('strict ingredient empty responses stay on ingredient direct authority without fallback', async () => {
     mockDbRows([]);
 

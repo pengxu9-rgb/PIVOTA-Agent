@@ -318,6 +318,83 @@ describe('beauty_expert_v1 contract', () => {
     expect(result.reply).not.toBe('Here are some more suitable picks based on your request.');
   });
 
+  test('uses request context in sunscreen visible copy when product records lack reviewed reasons', () => {
+    const result = attachBeautyExpertV1ToResponse(
+      {
+        reply: null,
+        products: [
+          {
+            product_id: 'round_lab_mild',
+            merchant_id: 'external_seed',
+            title: 'Birch Mild-Up Sunscreen UVLock SPF 50+ Broad Spectrum',
+            brand: 'Round Lab',
+            price: 25,
+            currency: 'USD',
+          },
+          {
+            product_id: 'round_lab_moisturizing',
+            merchant_id: 'external_seed',
+            title: 'Birch Moisturizing Sunscreen UVLock SPF 45+ Broad Spectrum',
+            brand: 'Round Lab',
+            price: 25,
+            currency: 'USD',
+          },
+          {
+            product_id: 'day_dew',
+            merchant_id: 'external_seed',
+            title: 'Day Dew Sunscreen 10ml',
+            brand: 'Glossier',
+            price: 4,
+            currency: 'EUR',
+          },
+        ],
+        metadata: {
+          mainline_status: 'grounded_success',
+          decision_owner: 'shopping_agent_beauty_mainline',
+          semantic_owner: 'shopping_agent_beauty_mainline',
+        },
+      },
+      {
+        source: 'shopping_agent',
+        entryLayer: 'orchestration',
+        delegatedLayer: 'decisioning',
+        taskType: 'discovery',
+        context: {
+          vertical: 'beauty',
+          category: 'skincare',
+          raw_user_goal:
+            'I have oily skin in hot humid Houston, wear makeup, and get shiny by noon. What sunscreen should I buy?',
+          normalized_need: {
+            beauty_request: {
+              domain: 'beauty',
+              user_goal:
+                'I have oily skin in hot humid Houston, wear makeup, and get shiny by noon. What sunscreen should I buy?',
+              skin_context: { skin_type: 'oily' },
+              scenario_context: { location: 'Houston', climate: 'hot humid', use_case: 'under makeup' },
+              constraints: { finish: 'less shiny by noon' },
+            },
+          },
+        },
+        metadata: {
+          source: 'shopping_agent',
+          catalog_surface: 'beauty',
+        },
+        payload: {
+          search: {
+            query:
+              'I have oily skin in hot humid Houston, wear makeup, and get shiny by noon. What sunscreen should I buy?',
+          },
+        },
+      },
+    );
+
+    expect(result.reply).toContain('humid Houston under makeup');
+    expect(result.reply).toContain('midday shine');
+    expect(result.reply).toContain('record does not prove a matte finish');
+    expect(result.reply).toContain('moisturizing or dewy positioning may be less aligned');
+    expect(result.reply).not.toContain('selected products');
+  });
+
   test('does not project long PDP descriptions into visible invoke copy or compare axes', () => {
     const result = attachBeautyExpertV1ToResponse(
       {
