@@ -10611,7 +10611,7 @@ test('__internal: finish-fit product card reasons prefer reviewed texture eviden
   );
 });
 
-test('__internal: finish-fit same-role primary external stage can stop early once three tradeoff buckets are ready', () => {
+test('__internal: finish-fit same-role primary external stage can stop early once sufficient tradeoff coverage is ready', () => {
   const { __internal } = loadRoutesFresh();
   const targetContext = {
     primary_role_id: 'daily_sunscreen_finish_fit',
@@ -10682,6 +10682,42 @@ test('__internal: finish-fit same-role primary external stage can stop early onc
       executedQueryCount: 2,
     }),
     false,
+  );
+  const twoBucketAuthoritativeState = {
+    primary_role_matched: true,
+    selected_recommendations: [
+      {
+        brand: 'Haruharu Wonder',
+        display_name: 'Moisture Airyfit Daily Sunscreen SPF50+/PA++++ / Unscented',
+        short_description: 'An airy-fit, non-greasy sunscreen for smoother under-makeup wear.',
+        benefit_tags: ['airy', 'non-greasy', 'under makeup'],
+      },
+      {
+        brand: 'Haruharu Wonder',
+        display_name: 'Moisture Pure Mineral Relief Sunscreen SPF50+/PA++++ /Unscented',
+        short_description: 'A mineral sunscreen with a sheer, weightless finish.',
+        benefit_tags: ['mineral', 'weightless'],
+      },
+      {
+        brand: 'Round Lab',
+        display_name: 'Birch Moisturizing Mild-Up Sunscreen SPF 50+, PA++++',
+        short_description: 'A mineral sunscreen option that keeps daytime wear simple.',
+        benefit_tags: ['mineral', 'daytime'],
+      },
+    ],
+  };
+  assert.equal(
+    __internal.hasConcernFrameworkFinishFitSameRoleTradeoffCoverage(twoBucketAuthoritativeState),
+    false,
+  );
+  assert.equal(
+    __internal.shouldStopConcernFrameworkFinishFitPrimaryExternalEarly({
+      stageId: 'framework_stage_b_primary_external_seed',
+      targetContext,
+      candidateState: twoBucketAuthoritativeState,
+      executedQueryCount: 2,
+    }),
+    true,
   );
 });
 
@@ -13065,7 +13101,8 @@ test('/v1/chat: step-aware sunscreen ask stays on beauty mainline handoff instea
     assert.equal(response.statusCode, 200);
     const payload = getRecommendationsPayload(response.body);
     assert.equal(payload, null);
-    assert.match(String(response.body?.assistant_text || ''), /not showing product picks|不展示商品推荐/i);
+    assert.equal(response.body?.assistant_message, null);
+    assert.equal(String(response.body?.assistant_text || ''), '');
     const cards = Array.isArray(response.body?.cards) ? response.body.cards : [];
     const confidenceCard = cards.find((card) => card && card.type === 'confidence_notice') || null;
     assert.ok(confidenceCard);

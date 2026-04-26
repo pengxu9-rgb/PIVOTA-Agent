@@ -559,7 +559,19 @@ function shouldPreserveNullAssistantForBeautyMainlineReco(envelope) {
   const cards = Array.isArray(base.cards) ? base.cards : [];
   const recoCard =
     cards.find((card) => asString(card && card.type).trim().toLowerCase() === 'recommendations') || null;
-  return isBeautyMainlineLocalHandoffRecommendationsCard(recoCard);
+  if (isBeautyMainlineLocalHandoffRecommendationsCard(recoCard)) return true;
+  const confidenceCard =
+    cards.find((card) => asString(card && card.type).trim().toLowerCase() === 'confidence_notice') || null;
+  const confidencePayload = isPlainObject(confidenceCard && confidenceCard.payload) ? confidenceCard.payload : {};
+  const confidenceRationale = Array.isArray(confidencePayload?.confidence?.rationale)
+    ? confidencePayload.confidence.rationale
+    : [];
+  const confidenceDetails = Array.isArray(confidencePayload.details) ? confidencePayload.details : [];
+  return (
+    confidenceRationale.some((item) => asString(item).trim() === 'beauty_mainline_handoff_controlled_fallback') ||
+    confidenceDetails.some((item) => /beauty_mainline_handoff_/i.test(asString(item))) ||
+    asString(confidencePayload?.recommendation_meta?.fallback_reason).startsWith('beauty_mainline_handoff_')
+  );
 }
 
 function buildLegacyEnvelopeView({ envelope, assistantText }) {

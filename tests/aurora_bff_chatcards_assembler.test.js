@@ -332,4 +332,32 @@ describe('chatCardsAssembler safety mapping', () => {
     expect(out.assistant_text).toBe('');
     expect(out.assistant_message).toBeNull();
   });
+
+  test('beauty mainline handoff confidence notices preserve null assistant text instead of generic filler', () => {
+    const out = buildChatCardsResponse({
+      envelope: makeEnvelope({
+        assistant_message: null,
+        cards: [
+          {
+            type: 'confidence_notice',
+            card_id: 'conf_beauty_handoff_timeout',
+            payload: {
+              reason: 'upstream_timeout_primary_role',
+              confidence: {
+                score: 0.12,
+                level: 'low',
+                rationale: ['beauty_mainline_handoff_controlled_fallback'],
+              },
+              details: ['fallback_reason: beauty_mainline_handoff_timeout'],
+            },
+          },
+        ],
+      }),
+      ctx: makeCtx(),
+      intent: 'reco_products',
+    });
+
+    expect(out.assistant_text).toBe('');
+    expect(out.assistant_message).toBeNull();
+  });
 });
