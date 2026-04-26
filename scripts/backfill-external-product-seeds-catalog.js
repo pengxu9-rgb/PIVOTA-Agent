@@ -23,6 +23,7 @@ const { buildPdpImageDedupeKey, normalizePdpImageUrl } = require('../src/utils/p
 const DEFAULT_CATALOG_BASE_URL =
   process.env.CATALOG_INTELLIGENCE_BASE_URL ||
   'https://pivota-catalog-intelligence-production.up.railway.app';
+const seedImageProbeCache = new Map();
 const MARKET_LOCALE_SEGMENT = {
   US: 'en-us',
   'EU-DE': 'de-de',
@@ -743,6 +744,13 @@ function shouldMergeProductGalleryForSelectedVariant(selectedVariantImageUrls, p
 async function probeSeedImageUrl(url) {
   const target = normalizeUrlLike(url);
   if (!target) return { url, ok: false, status: null, content_type: null, error: 'invalid_url' };
+  if (seedImageProbeCache.has(target)) return seedImageProbeCache.get(target);
+  const probePromise = probeSeedImageUrlUncached(target);
+  seedImageProbeCache.set(target, probePromise);
+  return probePromise;
+}
+
+async function probeSeedImageUrlUncached(target) {
   const requestConfig = {
     timeout: Number(process.env.EXTERNAL_SEED_BACKFILL_IMAGE_TIMEOUT_MS || 5000),
     headers: {

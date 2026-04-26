@@ -112,6 +112,25 @@ describe('backfill-external-product-seeds-catalog', () => {
     );
   });
 
+  test('reuses image health probes for duplicate URLs across rows', async () => {
+    const headSpy = jest.spyOn(axios, 'head').mockResolvedValue({
+      status: 200,
+      headers: { 'content-type': 'image/jpeg' },
+    });
+    const imageUrl = 'https://cdn.example.com/cache-test-product.jpg';
+
+    await validateNextRowImageHealth({
+      image_url: imageUrl,
+      seed_data: { image_url: imageUrl, image_urls: [imageUrl] },
+    });
+    await validateNextRowImageHealth({
+      image_url: imageUrl,
+      seed_data: { image_url: imageUrl, image_urls: [imageUrl] },
+    });
+
+    expect(headSpy).toHaveBeenCalledTimes(1);
+  });
+
   test('sanitizes decorative image URLs without stripping versioned Shopify assets', () => {
     expect(
       sanitizeSeedImageUrls([
