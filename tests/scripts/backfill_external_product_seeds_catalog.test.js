@@ -32,6 +32,7 @@ describe('backfill-external-product-seeds-catalog', () => {
   test('removes null bytes from JSON before postgres jsonb writes', () => {
     const sanitized = sanitizeJsonForPostgres({
       title: 'Shade\u0000and Illuminate',
+      'bad\u0000key': 'value',
       nested: {
         body: 'Clean\u0000 copy',
         items: ['One\u0000', 'Two'],
@@ -40,6 +41,7 @@ describe('backfill-external-product-seeds-catalog', () => {
 
     expect(sanitized).toEqual({
       title: 'Shadeand Illuminate',
+      badkey: 'value',
       nested: {
         body: 'Clean copy',
         items: ['One', 'Two'],
