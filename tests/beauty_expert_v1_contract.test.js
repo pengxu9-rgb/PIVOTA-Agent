@@ -464,6 +464,107 @@ describe('beauty_expert_v1 contract', () => {
     expect(result.reply).not.toContain('matches the sunscreen role and it is listed around');
   });
 
+  test('oily sunscreen projection keeps dedicated SPF50 ahead of moisturizer SPF30 rows', () => {
+    const result = attachBeautyExpertV1ToResponse(
+      {
+        reply: null,
+        cards: [
+          {
+            type: 'recommendations',
+            payload: {
+              recommendations: [
+                {
+                  product_id: 'dayscreen',
+                  merchant_id: 'external_seed',
+                  name: 'Dayscreen Moisturizer SPF 30',
+                  brand: 'Beauty of Joseon',
+                  why_this_one:
+                    'it keeps the finish lighter and smoother under makeup if you want a less heavy daytime layer',
+                },
+                {
+                  product_id: 'airyfit',
+                  merchant_id: 'external_seed',
+                  name: 'Moisture Airyfit Daily Sunscreen SPF50+/PA++++ / Unscented',
+                  brand: 'Haruharu Wonder',
+                  why_this_one:
+                    'features an airy-fit, non-greasy finish for wearable daytime use and provides a moisturizing cushion for smoother under-makeup wear',
+                },
+                {
+                  product_id: 'pure_mineral',
+                  merchant_id: 'external_seed',
+                  name: 'Moisture Pure Mineral Relief Sunscreen SPF50+/PA++++ /Unscented',
+                  brand: 'Haruharu Wonder',
+                  why_this_one:
+                    'a mineral SPF50 option if sensitivity is a bigger concern than the lightest feel',
+                },
+              ],
+            },
+            sections: [
+              {
+                title: 'Recommended options',
+                products: [
+                  {
+                    product_id: 'dayscreen',
+                    merchant_id: 'external_seed',
+                    name: 'Dayscreen Moisturizer SPF 30',
+                    brand: 'Beauty of Joseon',
+                    why_this_one:
+                      'it keeps the finish lighter and smoother under makeup if you want a less heavy daytime layer',
+                  },
+                  {
+                    product_id: 'pure_mineral',
+                    merchant_id: 'external_seed',
+                    name: 'Moisture Pure Mineral Relief Sunscreen SPF50+/PA++++ /Unscented',
+                    brand: 'Haruharu Wonder',
+                    why_this_one:
+                      'a mineral SPF50 option if sensitivity is a bigger concern than the lightest feel',
+                  },
+                  {
+                    product_id: 'airyfit',
+                    merchant_id: 'external_seed',
+                    name: 'Moisture Airyfit Daily Sunscreen SPF50+/PA++++ / Unscented',
+                    brand: 'Haruharu Wonder',
+                    why_this_one:
+                      'features an airy-fit, non-greasy finish for wearable daytime use and provides a moisturizing cushion for smoother under-makeup wear',
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+        meta: {},
+      },
+      {
+        source: 'aurora-bff',
+        entryLayer: 'orchestration',
+        projectionType: 'aurora_cards',
+        taskType: 'discovery',
+        context: {
+          source_profile: { source: 'aurora-bff', default_entry_layer: 'orchestration' },
+          vertical: 'beauty',
+          category: 'skincare',
+          raw_user_goal: 'I have oily skin, what sunscreen should I buy?',
+        },
+        metadata: { catalog_surface: 'beauty' },
+        payload: { message: 'I have oily skin, what sunscreen should I buy?' },
+        messages: [{ role: 'user', content: 'I have oily skin, what sunscreen should I buy?' }],
+      },
+    );
+
+    const projectedProducts = result.cards[0].sections[0].products;
+    expect(result.beauty_expert_v1.reco_bundle.lead_picks[0]?.name).toBe(
+      'Moisture Airyfit Daily Sunscreen SPF50+/PA++++ / Unscented',
+    );
+    expect(projectedProducts[0]?.name).toBe('Moisture Airyfit Daily Sunscreen SPF50+/PA++++ / Unscented');
+    expect(result.cards[0].payload.recommendations[0]?.name).toBe(
+      'Moisture Airyfit Daily Sunscreen SPF50+/PA++++ / Unscented',
+    );
+    expect(projectedProducts.map((product) => product.name)).toEqual(
+      result.cards[0].payload.recommendations.map((product) => product.name),
+    );
+    expect(projectedProducts[projectedProducts.length - 1]?.name).toBe('Dayscreen Moisturizer SPF 30');
+  });
+
   test('relief sun exact-product copy uses sunscreen texture evidence instead of role and price fallback', () => {
     const result = attachBeautyExpertV1ToResponse(
       {
