@@ -10422,6 +10422,113 @@ test('__internal: framework pool demotes moisturizer-SPF30 rows behind dedicated
   assert.ok(Number(dayscreen.framework_rank_score || 0) < Number(dedicated.framework_rank_score || 0));
 });
 
+test('__internal: finish-fit product card reasons prefer reviewed texture evidence over generic moisturizer cues', () => {
+  const { __internal } = loadRoutesFresh();
+  const targetContext = {
+    primary_role_id: 'daily_sunscreen_finish_fit',
+    resolved_target_step: 'sunscreen',
+    framework_roles: [
+      {
+        role_id: 'daily_sunscreen_finish_fit',
+        rank: 1,
+        preferred_step: 'sunscreen',
+        label: 'Daily sunscreen with finish fit',
+      },
+    ],
+  };
+
+  const rows = __internal.buildRecoRowsFromMainlineProducts(
+    [
+      {
+        product_id: 'haruharu_airyfit_spf50_finish_fit',
+        merchant_id: 'external_seed',
+        brand: 'Haruharu Wonder',
+        name: 'Moisture Airyfit Daily Sunscreen SPF50+/PA++++ / Unscented',
+        display_name: 'Haruharu Wonder Moisture Airyfit Daily Sunscreen SPF50+/PA++++ / Unscented',
+        category: 'Sunscreen',
+        product_type: 'Sunscreen',
+        matched_role_id: 'daily_sunscreen_finish_fit',
+        short_description: 'SPF50+ sunscreen with a lightweight velvety finish for daily wear.',
+        description: 'Experience an airy-light, fast-absorbing formula with SPF50+ PA++++ protection.',
+        compare_highlights: [
+          'The airy-fit, non-greasy finish is the clearest product cue here, making it more about wearable daytime texture than glow-heavy sunscreen styling.',
+        ],
+        product_intel: {
+          product_intel_core: {
+            what_it_is: {
+              body: 'SPF50+ PA++++ daily sunscreen with a lightweight cream texture and a velvety finish, positioned for comfortable everyday wear rather than moisturizer-only use.',
+            },
+            why_it_stands_out: [
+              {
+                body: 'The airy-fit, non-greasy finish is the clearest product cue here, making it more about wearable daytime texture than glow-heavy sunscreen styling.',
+              },
+            ],
+          },
+          texture_finish: {
+            finish: 'Velvety soft-matte finish',
+            texture: 'Lightweight sunscreen cream',
+            layering_notes: ['Sits best over lighter skincare layers and under makeup.'],
+          },
+        },
+      },
+      {
+        product_id: 'boj_dayscreen_spf30_moisturizer',
+        merchant_id: 'external_seed',
+        brand: 'Beauty of Joseon',
+        name: 'Dayscreen Moisturizer SPF 30',
+        display_name: 'Beauty of Joseon Dayscreen Moisturizer SPF 30',
+        category: 'Sunscreen',
+        product_type: 'Sunscreen',
+        matched_role_id: 'daily_sunscreen_finish_fit',
+        short_description: 'Lightweight daily moisturizer with SPF 30 and a breathable finish.',
+        description: 'A breathable moisturizer and SPF in one with refreshing hydration and an invisible, bare-skin finish.',
+        compare_highlights: [
+          'A breathable moisturizer-and-SPF format built to melt in with a bare-skin finish instead of a heavy sunscreen feel.',
+        ],
+      },
+      {
+        product_id: 'haruharu_pure_mineral_spf50',
+        merchant_id: 'external_seed',
+        brand: 'Haruharu Wonder',
+        name: 'Moisture Pure Mineral Relief Sunscreen SPF50+/PA++++ /Unscented',
+        display_name: 'Haruharu Wonder Moisture Pure Mineral Relief Sunscreen SPF50+/PA++++ /Unscented',
+        category: 'Sunscreen',
+        product_type: 'Sunscreen',
+        matched_role_id: 'daily_sunscreen_finish_fit',
+        short_description: 'Mineral zinc-oxide sunscreen for daily protection and sensitive-skin use.',
+        description: 'A zinc oxide mineral sunscreen for daytime protection in a lightweight cream format.',
+      },
+    ],
+    { targetContext },
+  );
+
+  const byId = new Map(rows.map((row) => [row.product_id, row]));
+  assert.match(
+    byId.get('haruharu_airyfit_spf50_finish_fit')?.why_this_one || '',
+    /airy, non-greasy texture evidence/i,
+  );
+  assert.match(
+    byId.get('haruharu_airyfit_spf50_finish_fit')?.why_this_one || '',
+    /dedicated SPF50\+ sunscreen/i,
+  );
+  assert.match(
+    byId.get('boj_dayscreen_spf30_moisturizer')?.why_this_one || '',
+    /moisturizer-SPF hybrid/i,
+  );
+  assert.match(
+    byId.get('boj_dayscreen_spf30_moisturizer')?.why_this_one || '',
+    /SPF30 rather than an SPF50 sunscreen/i,
+  );
+  assert.doesNotMatch(
+    byId.get('boj_dayscreen_spf30_moisturizer')?.why_this_one || '',
+    /mineral|sensitive/i,
+  );
+  assert.match(
+    byId.get('haruharu_pure_mineral_spf50')?.why_this_one || '',
+    /mineral/i,
+  );
+});
+
 test('__internal: finish-fit same-role primary external stage can stop early once three tradeoff buckets are ready', () => {
   const { __internal } = loadRoutesFresh();
   const targetContext = {
