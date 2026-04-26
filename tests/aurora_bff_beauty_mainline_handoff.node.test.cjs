@@ -1065,7 +1065,7 @@ test('handoffRecoToBeautyMainlineSearch records primary-first strict-empty ledge
   }
 });
 
-test('handoffRecoToBeautyMainlineSearch runs finish-fit sunscreen external queries before broad category heads', async () => {
+test('handoffRecoToBeautyMainlineSearch runs finish-fit sunscreen authority queries before generic category heads', async () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
     const externalCaptured = [];
@@ -1118,8 +1118,8 @@ test('handoffRecoToBeautyMainlineSearch runs finish-fit sunscreen external queri
         .filter((row) => row.roleId === 'daily_sunscreen_finish_fit')
         .map((row) => row.query),
       [
-        'spf fluid oily skin',
         'lightweight sunscreen oily skin',
+        'sunscreen oily skin',
       ],
     );
     assert.equal(
@@ -1168,7 +1168,7 @@ test('handoffRecoToBeautyMainlineSearch keeps same-role finish-fit external stag
         if (roleId !== 'daily_sunscreen_finish_fit') {
           return { ...base, ok: false, products: [], reason: 'empty' };
         }
-        if (query === 'spf fluid oily skin') {
+        if (query === 'sunscreen oily skin') {
           return {
             ...base,
             products: [
@@ -1282,7 +1282,7 @@ test('handoffRecoToBeautyMainlineSearch keeps same-role finish-fit external stag
     assert.deepEqual(
       externalCaptured.slice(0, 2),
       [
-        { query: 'spf fluid oily skin', roleId: 'daily_sunscreen_finish_fit' },
+        { query: 'sunscreen oily skin', roleId: 'daily_sunscreen_finish_fit' },
         { query: 'sunscreen under makeup', roleId: 'daily_sunscreen_finish_fit' },
       ],
     );
@@ -1292,7 +1292,7 @@ test('handoffRecoToBeautyMainlineSearch keeps same-role finish-fit external stag
     assert.deepEqual(
       primaryExternalQueries.slice(0, 2),
       [
-        { query: 'spf fluid oily skin', result_count: 3 },
+        { query: 'sunscreen oily skin', result_count: 3 },
         { query: 'sunscreen under makeup', result_count: 1 },
       ],
     );
@@ -1517,7 +1517,7 @@ test('handoffRecoToBeautyMainlineSearch uses source-aware support authority whil
           local_external_seed_search_mode: 'staged_support_fastpath',
           local_external_seed_stage_debug: [{ stage: 'support_category_exact', row_count: 1, cumulative_row_count: 1, duration_ms: 5, cap: 6 }],
         };
-        if (roleId === 'daily_sunscreen_finish_fit' && query === 'spf fluid oily skin') {
+        if (roleId === 'daily_sunscreen_finish_fit' && query === 'lightweight sunscreen oily skin') {
           return {
             ...base,
             products: [
@@ -1596,7 +1596,7 @@ test('handoffRecoToBeautyMainlineSearch uses source-aware support authority whil
       minTimeoutMs: 5000,
     });
 
-    assert.deepEqual(externalCaptured[0], { query: 'spf fluid oily skin', roleId: 'daily_sunscreen_finish_fit' });
+    assert.deepEqual(externalCaptured[0], { query: 'lightweight sunscreen oily skin', roleId: 'daily_sunscreen_finish_fit' });
     assert.deepEqual(externalCaptured[1], { query: 'niacinamide serum oily skin', roleId: 'oil_control_treatment' });
     assert.equal(
       externalCaptured.some((row) =>
