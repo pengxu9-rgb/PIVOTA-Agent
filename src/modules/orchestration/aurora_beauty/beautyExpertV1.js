@@ -355,6 +355,76 @@ function buildProductMatchTokens(product = {}) {
     .filter(Boolean);
 }
 
+function getMeaningfulProductTokenParts(text = '') {
+  return normalizeProductToken(text)
+    .split(' ')
+    .map((part) => part.trim())
+    .filter((part) =>
+      part.length >= 3 &&
+      ![
+        'and',
+        'the',
+        'for',
+        'with',
+        'from',
+        'skin',
+        'care',
+        'face',
+        'cream',
+        'lotion',
+        'serum',
+        'sunscreen',
+        'moisturizer',
+        'moisturiser',
+      ].includes(part));
+}
+
+function scoreProductAgainstAnchor(product = {}, beautyRequest = {}, queryText = '') {
+  const anchorTokens = buildAnchorTokens(beautyRequest, queryText);
+  if (anchorTokens.length === 0) return 0;
+  const productTokens = buildProductMatchTokens(product);
+  let score = 0;
+  for (const anchor of anchorTokens) {
+    for (const token of productTokens) {
+      if (!anchor || !token) continue;
+      if (anchor === token) score = Math.max(score, 3);
+      else if (anchor.includes(token) || token.includes(anchor)) score = Math.max(score, 2);
+      else if (anchor.split(' ').every((part) => token.includes(part))) score = Math.max(score, 1);
+      else {
+        const anchorParts = getMeaningfulProductTokenParts(anchor);
+        const tokenParts = getMeaningfulProductTokenParts(token);
+        const tokenPartSet = new Set(tokenParts);
+        const overlap = anchorParts.filter((part) => tokenPartSet.has(part)).length;
+        if (overlap >= 3 && overlap / Math.max(anchorParts.length, 1) >= 0.45) {
+          score = Math.max(score, 1);
+        }
+      }
+    }
+  }
+  return score;
+}
+
+function filterExactAnchorProducts(products = [], { mode, beautyRequest, queryText } = {}) {
+  const rows = Array.isArray(products) ? products.filter(isPlainObject) : [];
+  if (mode !== 'exact_product_assist' || rows.length === 0) return rows;
+  const anchorTokens = buildAnchorTokens(beautyRequest, queryText);
+  if (anchorTokens.length === 0) return rows;
+  const scored = rows.map((product, index) => ({
+    product,
+    index,
+    score: scoreProductAgainstAnchor(product, beautyRequest, queryText),
+  }));
+  const maxScore = Math.max(...scored.map((item) => item.score));
+  if (maxScore <= 0) return [];
+  return scored
+    .filter((item) => item.score > 0)
+    .sort((left, right) => {
+      if (right.score !== left.score) return right.score - left.score;
+      return left.index - right.index;
+    })
+    .map((item) => item.product);
+}
+
 function reorderProductsForBeautyMode(products = [], { mode, beautyRequest, queryText } = {}) {
   const rows = Array.isArray(products) ? [...products] : [];
   if (rows.length <= 1) return rows;
@@ -368,7 +438,7 @@ function reorderProductsForBeautyMode(products = [], { mode, beautyRequest, quer
   const sunscreenFinishFit =
     mode === 'category_compare' &&
     /\b(sunscreen|spf)\b/.test(requestText) &&
-    /\b(humid|houston|makeup|shiny|shine|under makeup)\b/.test(requestText);
+    /\b(oily|oil|humid|houston|makeup|shiny|shine|greasy|heavy|under makeup)\b/.test(requestText);
   if (sunscreenFinishFit) {
     return rows
       .map((product, index) => {
@@ -382,8 +452,10 @@ function reorderProductsForBeautyMode(products = [], { mode, beautyRequest, quer
         ].filter(Boolean).join(' '));
         let score = 0;
         if (/\b(sunscreen|spf|uv|sun)\b/.test(text)) score += 40;
-        if (/\b(unseen|primer|matte|fluid|aqua|aqua fresh|water fit|serum|airy|lightweight|clear)\b/.test(text)) score += 18;
+        if (/\b(unseen|primer|matte|fluid|aqua|aqua fresh|water fit|serum|airy|lightweight|weightless|clear)\b/.test(text)) score += 18;
+        if (/\b(lighter|smoother|smooth|balanced)\b/.test(text)) score += 20;
         if (/\b(mild|mild up|mineral|sensitive)\b/.test(text)) score += 8;
+        if (/\b(stick|cushion|tinted|tint|shade)\b/.test(text)) score -= 16;
         if (/\b(moisturizing|moisturising|dewy|dew|glow|tinted|drops|hydrating|cream)\b/.test(text)) score -= 14;
         if (/\b(deal|subscription|subscribe|autoship|auto ship)\b/.test(text)) score -= 30;
         return { product, index, score };
@@ -425,28 +497,11 @@ function reorderProductsForBeautyMode(products = [], { mode, beautyRequest, quer
       .map((item) => item.product);
   }
   if (mode !== 'exact_product_assist') return rows;
-  const anchorTokens = buildAnchorTokens(beautyRequest, queryText);
-  if (anchorTokens.length === 0) return rows;
-
-  const matchScore = (product) => {
-    const productTokens = buildProductMatchTokens(product);
-    let score = 0;
-    for (const anchor of anchorTokens) {
-      for (const token of productTokens) {
-        if (!anchor || !token) continue;
-        if (anchor === token) score = Math.max(score, 3);
-        else if (anchor.includes(token) || token.includes(anchor)) score = Math.max(score, 2);
-        else if (anchor.split(' ').every((part) => token.includes(part))) score = Math.max(score, 1);
-      }
-    }
-    return score;
-  };
-
   return rows
     .map((product, index) => ({
       product,
       index,
-      score: matchScore(product),
+      score: scoreProductAgainstAnchor(product, beautyRequest, queryText),
     }))
     .sort((left, right) => {
       if (right.score !== left.score) return right.score - left.score;
@@ -760,7 +815,14 @@ function buildBeautyExpertV1Response({
     analysisSummary.missing_context.length > 0;
   const effectiveProducts = shouldSuppressRecoBundle
     ? []
-    : applyBeautyIntentProductConstraints(dedupeRecoProducts(products), normalizedBeautyIntent, { mode });
+    : filterExactAnchorProducts(
+        applyBeautyIntentProductConstraints(dedupeRecoProducts(products), normalizedBeautyIntent, { mode }),
+        {
+          mode,
+          beautyRequest: normalizedBeautyIntent,
+          queryText,
+        },
+      );
   const compareAxes = buildCompareAxes(effectiveProducts);
   const nextActions = buildNextActions({
     mode,
@@ -819,7 +881,14 @@ function reorderBeautyProjectionRows(rows = [], {
     beautyRequest: beautyIntent,
     queryText: pickFirstTrimmed(beautyIntent?.user_goal),
   });
-  return applyBeautyIntentProductConstraints(dedupeRecoProducts(reordered), beautyIntent, { mode });
+  return filterExactAnchorProducts(
+    applyBeautyIntentProductConstraints(dedupeRecoProducts(reordered), beautyIntent, { mode }),
+    {
+      mode,
+      beautyRequest: beautyIntent,
+      queryText: pickFirstTrimmed(beautyIntent?.user_goal),
+    },
+  );
 }
 
 function rewriteRecommendationCardForBeautyExpert(card = {}, {
@@ -832,7 +901,7 @@ function rewriteRecommendationCardForBeautyExpert(card = {}, {
   const reorderRows = (rows) => {
     if (!Array.isArray(rows)) return rows;
     const reordered = reorderBeautyProjectionRows(rows, { mode, beautyIntent });
-    return reordered.length > 0 ? reordered : rows;
+    return mode === 'exact_product_assist' ? reordered : (reordered.length > 0 ? reordered : rows);
   };
 
   if (Array.isArray(nextCard.sections)) {
@@ -921,10 +990,38 @@ function suppressExactProductConflictingAssistant(response = {}, beautyExpertV1 
   const assistantText = getAssistantTextFromResponse(response);
   if (!assistantText) return response;
   const products = extractRecommendationProducts(response);
-  if (!Array.isArray(products) || products.length < 2) return response;
+  if (!Array.isArray(products) || products.length < 1) return response;
   const leadTitle = getProductDisplayName(products[0]);
   if (!leadTitle) return response;
   const leadIndex = findNormalizedTitleIndex(assistantText, leadTitle);
+  if (products.length < 2) {
+    if (leadIndex >= 0 && leadIndex <= 80) return response;
+    const next = {
+      ...response,
+      assistant_message: null,
+    };
+    if (Object.prototype.hasOwnProperty.call(next, 'assistant_text')) {
+      next.assistant_text = '';
+    }
+    const suppressionMeta = {
+      assistant_visible_suppressed_reason: 'exact_product_projection_assistant_mismatch',
+      assistant_projection_expected_lead: leadTitle,
+      assistant_projection_conflicting_lead: null,
+    };
+    if (isPlainObject(next.meta)) {
+      next.meta = {
+        ...next.meta,
+        ...suppressionMeta,
+      };
+    }
+    if (isPlainObject(next.metadata)) {
+      next.metadata = {
+        ...next.metadata,
+        ...suppressionMeta,
+      };
+    }
+    return next;
+  }
   let earliestOtherIndex = -1;
   let earliestOtherTitle = '';
   for (const product of products.slice(1, 4)) {
@@ -1099,15 +1196,21 @@ function describeProductForVisibleCopy(product = {}, beautyIntent = {}) {
     product.canonical_title,
     product.brand,
   ].filter(Boolean).join(' '));
-  if (/\b(sunscreen|spf)\b/.test(productText) && /\b(humid|houston|makeup|shiny|shine|under makeup)\b/.test(contextText)) {
-    if (/\b(moisturizing|moisturising|dewy|dew|glow|tinted|drops|hydrating)\b/.test(productText)) {
+  if (/\b(sunscreen|spf)\b/.test(productText) && /\b(oily|oil|humid|houston|makeup|shiny|shine|greasy|heavy|under makeup)\b/.test(contextText)) {
+    if (/\b(stick|cushion)\b/.test(productText)) {
+      return 'it is a grounded SPF option that is more useful as a reapplication or touch-up lane than as the first full-face base if low-shine wear is the priority';
+    }
+    if (/\b(tinted|tint|shade)\b/.test(productText)) {
+      return 'it is a grounded SPF option that can help when shade or coverage fit matters, but it is a less universal first pick for oily skin';
+    }
+    if (/\b(moisturizing|moisturising|dewy|dew|glow|drops|hydrating)\b/.test(productText)) {
       return 'it is a grounded SPF option, but its moisturizing or dewy positioning may be less aligned if shine control under makeup is the priority';
     }
-    if (/\b(unseen|primer|matte|fluid|aqua|aqua fresh|water fit|serum|airy|lightweight|clear)\b/.test(productText)) {
+    if (/\b(unseen|primer|matte|fluid|aqua|aqua fresh|water fit|serum|airy|lightweight|weightless|clear)\b/.test(productText)) {
       return 'it is a grounded SPF option whose title points to a lighter or smoother texture lane for oily skin under makeup';
     }
     if (/\b(mild|mild up|mineral|sensitive)\b/.test(productText)) {
-      return 'it is a grounded SPF option that reads less hydration-led than the moisturizing variants, though the record does not prove a matte finish';
+      return 'it is a grounded SPF option in a milder or mineral lane, which is a cleaner low-shine comparison than moisturizing or tinted variants, though the record does not prove a matte finish';
     }
     return 'it is a grounded SPF option, but the current product record does not prove makeup wear or shine-control performance';
   }
@@ -1185,6 +1288,7 @@ function buildBeautyExpertVisibleReply(beautyExpertV1 = {}) {
     ...asArray(beautyExpertV1.reco_bundle?.lead_picks),
     ...asArray(beautyExpertV1.reco_bundle?.support_picks),
   ].filter(isPlainObject);
+  const beautyIntent = isPlainObject(beautyExpertV1.beauty_intent) ? beautyExpertV1.beauty_intent : {};
   const sourceProfile = normalizeSourceToken(beautyExpertV1?.delegation_trace?.source_profile);
   const creatorFacing = sourceProfile === 'creator-agent';
 
@@ -1196,11 +1300,24 @@ function buildBeautyExpertVisibleReply(beautyExpertV1 = {}) {
     return `I need a bit more context before narrowing products: ${missingCopy}. A skin analysis can help if you want a more precise routine, but it is not required to continue.`;
   }
 
+  if (mode === 'exact_product_assist' && products.length === 0) {
+    const productContext = isPlainObject(beautyIntent.product_context) ? beautyIntent.product_context : {};
+    const anchorName = pickFirstTrimmed(
+      productContext.title,
+      productContext.name,
+      productContext.product_name,
+      productContext.display_name,
+      productContext.canonical_product_ref,
+      productContext.product_ref,
+      'that exact product',
+    );
+    return `I do not have a grounded row for ${anchorName} in the current catalog yet, so I should not compare it as if verified. I can compare adjacent category options separately, but the exact product needs authority backfill before a direct verdict.`;
+  }
+
   if (products.length === 0) return '';
   const lead = products[0];
   const support = products.slice(1, 3);
   const leadName = getProductDisplayName(lead) || 'the lead option';
-  const beautyIntent = isPlainObject(beautyExpertV1.beauty_intent) ? beautyExpertV1.beauty_intent : {};
   const intentText = getBeautyIntentContextText(beautyIntent);
   if (/\b(three bullets|three slot reasons|why each|not just product names|slot versus|explain why each)\b/.test(intentText)) {
     const bulletReply = buildBeautyExpertBulletReply(products, beautyIntent, { creatorFacing });
@@ -1231,7 +1348,12 @@ function buildBeautyExpertVisibleReply(beautyExpertV1 = {}) {
 function projectBeautyExpertVisibleReply(response = {}, beautyExpertV1 = null) {
   if (!isPlainObject(response) || !isPlainObject(beautyExpertV1)) return response;
   const existingReply = pickFirstTrimmed(response.reply);
+  const exactAnchorMiss =
+    beautyExpertV1.mode === 'exact_product_assist' &&
+    asArray(beautyExpertV1.reco_bundle?.lead_picks).length === 0 &&
+    asArray(beautyExpertV1.reco_bundle?.support_picks).length === 0;
   const shouldReplace =
+    exactAnchorMiss ||
     !existingReply ||
     isGenericInvokeReply(existingReply);
   if (!shouldReplace) return response;
