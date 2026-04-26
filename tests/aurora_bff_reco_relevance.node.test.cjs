@@ -5315,6 +5315,102 @@ test('__internal: local external seed multi-query sunscreen compare uses one pre
   assert.equal(out.products[0].product_id, 'ext_support_sunscreen_231');
 });
 
+test('__internal: local external seed multi-query sunscreen compare does not stop on a single precise self-like hit', async () => {
+  const { __internal } = loadRoutesFresh();
+  const observedQueries = [];
+  const makeSeedRow = ({ id, title, summary, stage }) => ({
+    id,
+    external_product_id: `ext_${id}`,
+    destination_url: `https://example.com/products/${id}`,
+    canonical_url: `https://example.com/products/${id}`,
+    domain: 'example.com',
+    title,
+    image_url: `https://example.com/products/${id}.jpg`,
+    price_amount: 24,
+    price_currency: 'USD',
+    availability: 'in_stock',
+    match_stage: stage,
+    match_score: stage === 'support_query_precise' ? 58 : 54,
+    seed_data: {
+      derived: {
+        recall: {
+          retrieval_title: title,
+          retrieval_summary: summary,
+          category: 'Sunscreen',
+          vertical: 'skincare',
+        },
+      },
+      snapshot: {
+        title,
+        description: summary,
+        category: 'Sunscreen',
+      },
+    },
+    updated_at: new Date().toISOString(),
+    created_at: new Date().toISOString(),
+  });
+
+  const out = await __internal.searchLocalExternalSeedProductsForQueryVariants({
+    queries: ['sunscreen oily skin', 'matte sunscreen', 'invisible sunscreen', 'water fit sunscreen'],
+    limit: 4,
+    role: {
+      role_id: 'daily_sunscreen_finish_fit',
+      rank: 1,
+      preferred_step: 'sunscreen',
+      query_terms: ['sunscreen oily skin', 'matte sunscreen', 'invisible sunscreen', 'water fit sunscreen'],
+      fit_keywords: ['spf', 'uv protection', 'matte', 'invisible', 'water fit', 'non-greasy'],
+      product_type_hypotheses: ['sunscreen'],
+    },
+    preferredStep: 'sunscreen',
+    minRowsBeforeStageStop: 3,
+    queryFn: async (sql, params) => {
+      observedQueries.push({ sql: String(sql || ''), params });
+      if (String(sql || '').includes('support_query_precise')) {
+        return {
+          rows: [
+            makeSeedRow({
+              id: 'skintific_anchor_self',
+              title: 'Matte Fit Serum Sunscreen SPF 50+ PA++++',
+              summary: 'A matte non-greasy sunscreen for oily skin.',
+              stage: 'support_query_precise',
+            }),
+          ],
+        };
+      }
+      if (String(sql || '').includes('support_category_positive')) {
+        return {
+          rows: [
+            makeSeedRow({
+              id: 'skin1004_water_fit',
+              title: 'Madagascar Centella Hyalu-Cica Water-Fit Sun Serum SPF50+ PA++++',
+              summary: 'A water-fit sun serum with SPF50+ PA++++ for a lightweight daily sunscreen layer.',
+              stage: 'support_category_positive',
+            }),
+            makeSeedRow({
+              id: 'boj_aqua_fresh',
+              title: 'Relief Sun Aqua-Fresh : Rice + B5 SPF50+ PA++++',
+              summary: 'A fresh sunscreen fluid with SPF50+ PA++++ for daily wear.',
+              stage: 'support_category_positive',
+            }),
+          ],
+        };
+      }
+      return { rows: [] };
+    },
+  });
+
+  assert.equal(out.ok, true);
+  assert.equal(out.local_external_seed_search_mode, 'staged_support_multi_query');
+  assert.equal(observedQueries.length, 2);
+  assert.match(observedQueries[0].sql, /support_query_precise/);
+  assert.match(observedQueries[1].sql, /support_category_positive/);
+  assert.equal(out.local_external_seed_stage_debug[0]?.stage, 'support_query_precise');
+  assert.equal(out.local_external_seed_stage_debug[1]?.stage, 'support_category_positive');
+  const productIds = out.products.map((row) => String(row.product_id || ''));
+  assert.ok(productIds.includes('ext_skin1004_water_fit'));
+  assert.ok(productIds.includes('ext_boj_aqua_fresh'));
+});
+
 test('__internal: local external seed same-role sunscreen compare runs precise query stage before broad category-positive recall', async () => {
   const { __internal } = loadRoutesFresh();
   const observedQueries = [];
