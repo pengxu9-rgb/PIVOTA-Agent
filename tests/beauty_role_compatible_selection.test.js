@@ -14,6 +14,11 @@ describe('beauty role compatible selection policy', () => {
     ).toBe('moisturizer');
     expect(
       inferBeautyRoleIntent({
+        queryText: 'Recommend beginner-friendly moisturizers for a dry sensitive audience where some use retinoids.',
+      }),
+    ).toBe('moisturizer');
+    expect(
+      inferBeautyRoleIntent({
         queryText: 'I have oily skin, what sunscreen should I buy?',
       }),
     ).toBe('sunscreen');
@@ -132,6 +137,71 @@ describe('beauty role compatible selection policy', () => {
     });
   });
 
+  test('explicit sunscreen semantic role wins over oil-control concern family', () => {
+    expect(
+      inferBeautyRoleFromSemanticContract({
+        responseBody: {
+          metadata: {
+            search_request_contract: {
+              target_step_family: 'sunscreen',
+              semantic_family: 'oil_control',
+              semantic_contract: {
+                target_step_family: 'sunscreen',
+                primary_role_id: 'daily_sunscreen',
+                semantic_family: 'oil_control',
+              },
+            },
+          },
+        },
+      }),
+    ).toBe('sunscreen');
+
+    const result = applyBeautyRoleCompatibleSelection({
+      operation: 'find_products_multi',
+      invokeSearchRail: 'authoritative_shopping',
+      queryText: 'I have oily skin, what sunscreen should I buy?',
+      search: {
+        catalog_surface: 'beauty',
+      },
+      metadata: {
+        source: 'shopping_agent',
+        catalog_surface: 'beauty',
+      },
+      beautyRequest: {
+        domain: 'beauty',
+        user_goal: 'I have oily skin, what sunscreen should I buy?',
+      },
+      responseBody: {
+        products: [
+          { canonical_title: 'Birch Mild-Up Sunscreen UVLock SPF 50+ Broad Spectrum', canonical_category: 'Sunscreen' },
+          { canonical_title: 'Moisture Airyfit Daily Sunscreen SPF50+/PA++++ / Unscented', canonical_category: 'Sunscreen' },
+          { canonical_title: 'The Ordinary Niacinamide 10% + Zinc 1%', canonical_category: 'Serum' },
+        ],
+        metadata: {
+          search_request_contract: {
+            target_step_family: 'sunscreen',
+            semantic_family: 'oil_control',
+            semantic_contract: {
+              target_step_family: 'sunscreen',
+              primary_role_id: 'daily_sunscreen',
+              semantic_family: 'oil_control',
+            },
+          },
+        },
+      },
+    });
+
+    expect(result.products.map((product) => product.canonical_title)).toEqual([
+      'Birch Mild-Up Sunscreen UVLock SPF 50+ Broad Spectrum',
+      'Moisture Airyfit Daily Sunscreen SPF50+/PA++++ / Unscented',
+    ]);
+    expect(result.metadata.beauty_role_compatible_selection).toMatchObject({
+      applied: true,
+      role: 'sunscreen',
+      selected_count: 2,
+    });
+  });
+
   test('does not let stale treatment contract override exact moisturizer context', () => {
     const result = applyBeautyRoleCompatibleSelection({
       operation: 'find_products_multi',
@@ -197,6 +267,17 @@ describe('beauty role compatible selection policy', () => {
     expect(dayscreen.role_fit).toBe('role_mismatch');
     expect(revive.role_fit).toBe('hard_invalid');
     expect(revive.hard_reasons).toContain('active_conflict');
+  });
+
+  test('drops eye-area rows from general face moisturizer recommendations', () => {
+    const result = evaluateProductForBeautyRole(
+      { canonical_title: 'Barrier Repair Eye Cream', canonical_category: 'Eye Cream' },
+      'moisturizer',
+      'My audience has dry sensitive skin, what moisturizer should I recommend?',
+    );
+
+    expect(result.role_fit).toBe('hard_invalid');
+    expect(result.hard_reasons).toContain('eye_area');
   });
 
   test('filters moisturizer requests to role-compatible rows before beauty expert projection', () => {
