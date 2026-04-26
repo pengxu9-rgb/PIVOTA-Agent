@@ -4501,6 +4501,25 @@ test('__internal: local external seed search patterns do not fall back to single
   assert.equal(patterns.includes('%control serum%'), true);
 });
 
+test('__internal: local external seed search patterns include hyphenated water-fit sunscreen aliases', async () => {
+  const { __internal } = loadRoutesFresh();
+  const patterns = __internal.buildLocalExternalSeedSearchPatterns('water fit sunscreen', {
+    role: {
+      role_id: 'daily_sunscreen_finish_fit',
+      rank: 1,
+      preferred_step: 'sunscreen',
+      query_terms: ['water fit sunscreen'],
+      fit_keywords: ['water fit', 'lightweight', 'sun serum'],
+      product_type_hypotheses: ['sunscreen'],
+    },
+    preferredStep: 'sunscreen',
+  });
+  assert.equal(patterns.includes('%water fit%'), true);
+  assert.equal(patterns.includes('%water-fit%'), true);
+  assert.equal(patterns.includes('%water fit sun serum%'), true);
+  assert.equal(patterns.includes('%water-fit sun serum%'), true);
+});
+
 test('__internal: local external seed search patterns expand with framework role phrases for primary external seed recall', async () => {
   const { __internal } = loadRoutesFresh();
   const patterns = __internal.buildLocalExternalSeedSearchPatterns('oil control serum', {
@@ -5404,6 +5423,9 @@ test('__internal: local external seed multi-query sunscreen compare does not sto
   assert.equal(observedQueries.length, 2);
   assert.match(observedQueries[0].sql, /support_query_precise/);
   assert.match(observedQueries[1].sql, /support_category_positive/);
+  const categoryPositivePatternParam = observedQueries[1].params.find((param) => Array.isArray(param)
+    && param.includes('%water-fit%'));
+  assert.ok(categoryPositivePatternParam.includes('%water-fit sun serum%'));
   assert.equal(out.local_external_seed_stage_debug[0]?.stage, 'support_query_precise');
   assert.equal(out.local_external_seed_stage_debug[1]?.stage, 'support_category_positive');
   const productIds = out.products.map((row) => String(row.product_id || ''));
