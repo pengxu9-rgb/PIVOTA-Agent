@@ -94,6 +94,7 @@ const CASES = Object.freeze([
           scenario_context: { location: 'Houston', climate: 'hot humid', use_case: 'under makeup' },
           constraints: { finish: 'less shiny by noon' },
         },
+        expected_visible_terms_all: ['Houston', 'humid', 'makeup', 'shiny'],
       },
       {
         message: 'Show me alternatives and explain tradeoffs.',
@@ -128,6 +129,7 @@ const CASES = Object.freeze([
           routine_context: { actives: ['tretinoin'] },
           constraints: { budget_max: 30 },
         },
+        expected_visible_terms_all: ['tretinoin', 'under USD 30'],
       },
       {
         message: 'Which one should I use first versus later in the routine?',
@@ -135,6 +137,7 @@ const CASES = Object.freeze([
           'For dry sensitive retinoid-stressed skin, compare which moisturizer to use first versus later in the routine.',
         expected_mode: 'category_compare',
         require_tradeoff_copy: true,
+        expected_visible_terms_all: ['first', 'later', 'routine'],
       },
     ],
   },
@@ -168,6 +171,7 @@ const CASES = Object.freeze([
           'For combination skin with clogged pores in Seattle winter, pick the first product to buy if I only buy one.',
         expected_mode: 'category_compare',
         require_tradeoff_copy: true,
+        expected_visible_terms_all: ['only buy one', 'Seattle winter'],
       },
     ],
   },
@@ -236,6 +240,7 @@ const CASES = Object.freeze([
         expected_mode: 'category_compare',
         require_creator_copy: true,
         require_tradeoff_copy: true,
+        expected_visible_terms_all: ['three slot reasons', 'versus'],
       },
     ],
   },
@@ -622,6 +627,13 @@ function classifyTurn({ testCase, turn, normalized, response }) {
   if (
     turn.require_creator_copy &&
     !/\b(creator|audience|roundup|content|feature|followers|viewers)\b/i.test(reply)
+  ) {
+    failures.push('content_quality_miss');
+  }
+  const expectedVisibleTermsAll = asArray(turn.expected_visible_terms_all).map((item) => text(item)).filter(Boolean);
+  if (
+    expectedVisibleTermsAll.length > 0 &&
+    !expectedVisibleTermsAll.every((term) => normalizedReply.includes(normalizeText(term)))
   ) {
     failures.push('content_quality_miss');
   }

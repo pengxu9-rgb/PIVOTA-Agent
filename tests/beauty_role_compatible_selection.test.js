@@ -1,5 +1,6 @@
 const {
   inferBeautyRoleIntent,
+  inferBeautyRoleFromSemanticContract,
   evaluateProductForBeautyRole,
   applyBeautyRoleCompatibleSelection,
 } = require('../src/modules/policy/beautyRoleCompatibleSelection');
@@ -66,6 +67,69 @@ describe('beauty role compatible selection policy', () => {
     expect(result.metadata.beauty_role_compatible_selection.dropped_titles.map((row) => row.title)).toEqual(
       expect.arrayContaining(['Acne Healing Dots Jumbo', 'Acne Healing Dots']),
     );
+  });
+
+  test('uses semantic contract role before simple-routine text heuristics', () => {
+    expect(
+      inferBeautyRoleFromSemanticContract({
+        responseBody: {
+          metadata: {
+            search_request_contract: {
+              target_step_family: 'treatment',
+              semantic_contract: {
+                target_step_family: 'treatment',
+                primary_role_id: 'oil_control_treatment',
+              },
+            },
+          },
+        },
+      }),
+    ).toBe('treatment');
+
+    const result = applyBeautyRoleCompatibleSelection({
+      operation: 'find_products_multi',
+      invokeSearchRail: 'authoritative_shopping',
+      queryText: 'I have combination skin with clogged pores in Seattle winter and want a simple routine.',
+      search: {
+        catalog_surface: 'beauty',
+      },
+      metadata: {
+        source: 'shopping_agent',
+        catalog_surface: 'beauty',
+      },
+      beautyRequest: {
+        domain: 'beauty',
+        user_goal: 'I have combination skin with clogged pores in Seattle winter and want a simple routine.',
+        skin_context: { skin_type: 'combination', concerns: ['clogged pores'] },
+        scenario_context: { location: 'Seattle', season: 'winter' },
+        constraints: { routine_complexity: 'simple' },
+      },
+      responseBody: {
+        products: [
+          { canonical_title: 'The Ordinary Niacinamide 10% + Zinc 1%', canonical_category: 'Serum' },
+          { canonical_title: 'KraveBeauty Oat So Simple Water Cream', canonical_category: 'Moisturizer' },
+        ],
+        metadata: {
+          search_request_contract: {
+            target_step_family: 'treatment',
+            semantic_contract: {
+              target_step_family: 'treatment',
+              primary_role_id: 'oil_control_treatment',
+            },
+          },
+        },
+      },
+    });
+
+    expect(result.products.map((product) => product.canonical_title)).toEqual([
+      'The Ordinary Niacinamide 10% + Zinc 1%',
+    ]);
+    expect(result.metadata.beauty_role_compatible_selection).toMatchObject({
+      applied: true,
+      role: 'treatment',
+      original_count: 2,
+      selected_count: 1,
+    });
   });
 
   test('scores retinoid-conflicting and spf moisturizer rows below role-compatible moisturizers', () => {

@@ -72,11 +72,30 @@ function beautyResponse(body) {
           why_this_one: 'Barrier-supporting serum-lotion texture for retinoid-stressed skin.',
         },
       ];
+  const baseReply = creator
+    ? `${products[0].title} is the creator lead because it gives a clear audience angle. Compared with it, ${products[1].title} is the tradeoff option while ${products[2].title} gives a different content angle.`
+    : `${products[0].title} is the lead because it fits the stated scenario. Compared with it, ${products[1].title} is the tradeoff option while ${products[2].title} covers a different use case.`;
+  const contextualReply = [
+    baseReply,
+    query.includes('houston') || query.includes('shiny')
+      ? 'Houston humid weather, makeup wear, and getting shiny by noon make the lighter finish tradeoff important.'
+      : '',
+    query.includes('tretinoin') && query.includes('$30')
+      ? 'For tretinoin use, keep the first pick under USD 30 and avoid extra exfoliating pressure.'
+      : '',
+    query.includes('first versus later') || query.includes('routine')
+      ? 'Use the calmer moisturizer first, then keep the richer option for later in the routine if tightness persists.'
+      : '',
+    query.includes('only buy one')
+      ? 'If you only buy one for Seattle winter, start with the lead and add support only if tightness persists.'
+      : '',
+    query.includes('why each') || query.includes('not just product names')
+      ? 'Three slot reasons versus the other options: lead for comfort, second for value, third for barrier support.'
+      : '',
+  ].filter(Boolean).join(' ');
   return {
     layer: 'orchestration',
-    reply: creator
-      ? `${products[0].title} is the creator lead because it gives a clear audience angle. Compared with it, ${products[1].title} is the tradeoff option while ${products[2].title} gives a different content angle.`
-      : `${products[0].title} is the lead because it fits the stated scenario. Compared with it, ${products[1].title} is the tradeoff option while ${products[2].title} covers a different use case.`,
+    reply: contextualReply,
     products,
     beauty_expert_v1: {
       contract_version: 'beauty_expert_v1',

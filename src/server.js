@@ -21136,6 +21136,137 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     requiresClientConfirmation: null,
     timingSpansMs: {},
   };
+  const buildInvokeBeautyExpertAttachOptions = () => {
+    const requestBody = req?.body && typeof req.body === 'object' && !Array.isArray(req.body)
+      ? req.body
+      : {};
+    const metadata = requestBody.metadata && typeof requestBody.metadata === 'object' && !Array.isArray(requestBody.metadata)
+      ? requestBody.metadata
+      : {};
+    const payload = requestBody.payload && typeof requestBody.payload === 'object' && !Array.isArray(requestBody.payload)
+      ? requestBody.payload
+      : {};
+    const search =
+      payload.search && typeof payload.search === 'object' && !Array.isArray(payload.search)
+        ? payload.search
+        : payload;
+    const requestContext =
+      requestBody.context && typeof requestBody.context === 'object' && !Array.isArray(requestBody.context)
+        ? requestBody.context
+        : {};
+    const payloadContext =
+      payload.context && typeof payload.context === 'object' && !Array.isArray(payload.context)
+        ? payload.context
+        : {};
+    const requestNormalizedNeed =
+      requestContext.normalized_need &&
+      typeof requestContext.normalized_need === 'object' &&
+      !Array.isArray(requestContext.normalized_need)
+        ? requestContext.normalized_need
+        : {};
+    const payloadNormalizedNeed =
+      payloadContext.normalized_need &&
+      typeof payloadContext.normalized_need === 'object' &&
+      !Array.isArray(payloadContext.normalized_need)
+        ? payloadContext.normalized_need
+        : {};
+    const requestBeautyRequest =
+      requestNormalizedNeed.beauty_request &&
+      typeof requestNormalizedNeed.beauty_request === 'object' &&
+      !Array.isArray(requestNormalizedNeed.beauty_request)
+        ? requestNormalizedNeed.beauty_request
+        : {};
+    const payloadBeautyRequest =
+      payloadNormalizedNeed.beauty_request &&
+      typeof payloadNormalizedNeed.beauty_request === 'object' &&
+      !Array.isArray(payloadNormalizedNeed.beauty_request)
+        ? payloadNormalizedNeed.beauty_request
+        : {};
+    const effectiveNormalizedNeed = {
+      ...requestNormalizedNeed,
+      ...payloadNormalizedNeed,
+    };
+    if (Object.keys(requestBeautyRequest).length > 0 || Object.keys(payloadBeautyRequest).length > 0) {
+      effectiveNormalizedNeed.beauty_request = {
+        ...requestBeautyRequest,
+        ...payloadBeautyRequest,
+      };
+    } else {
+      delete effectiveNormalizedNeed.beauty_request;
+    }
+    const rawGoal = String(
+      debugRuntime.rawUserQuery ||
+        requestContext.raw_user_goal ||
+        payloadContext.raw_user_goal ||
+        search.query ||
+        payload.query ||
+        extractSearchQueryText(search) ||
+        '',
+    ).trim();
+    const source =
+      String(
+        metadata.source ||
+          payloadContext.source_profile?.source ||
+          requestContext.source_profile?.source ||
+          (clientChannel === 'creator' ? 'creator_agent' : 'shopping_agent'),
+      ).trim() || (clientChannel === 'creator' ? 'creator_agent' : 'shopping_agent');
+    const requestSourceProfile =
+      requestContext.source_profile &&
+      typeof requestContext.source_profile === 'object' &&
+      !Array.isArray(requestContext.source_profile)
+        ? requestContext.source_profile
+        : {};
+    const payloadSourceProfile =
+      payloadContext.source_profile &&
+      typeof payloadContext.source_profile === 'object' &&
+      !Array.isArray(payloadContext.source_profile)
+        ? payloadContext.source_profile
+        : {};
+    return {
+      source,
+      entryLayer: 'orchestration',
+      taskType: 'discovery',
+      context: {
+        ...requestContext,
+        ...payloadContext,
+        source_profile: {
+          ...requestSourceProfile,
+          ...payloadSourceProfile,
+          source,
+          default_entry_layer: 'orchestration',
+        },
+        raw_user_goal: rawGoal || null,
+        normalized_need: effectiveNormalizedNeed,
+      },
+      metadata: {
+        ...metadata,
+        query: rawGoal || null,
+      },
+      payload,
+      messages: rawGoal ? [{ role: 'user', content: rawGoal }] : [],
+    };
+  };
+  const maybeAttachInvokeBeautyExpertProjection = (body) => {
+    const operation = String(debugRuntime.operation || req?.body?.operation || '')
+      .trim()
+      .toLowerCase();
+    if (operation !== 'find_products_multi') return body;
+    if (!body || typeof body !== 'object' || Array.isArray(body)) return body;
+    if (body.beauty_expert_v1 && typeof body.beauty_expert_v1 === 'object') return body;
+    try {
+      const { attachBeautyExpertV1ToResponse } = require('./modules/orchestration/aurora_beauty/beautyExpertV1');
+      return attachBeautyExpertV1ToResponse(body, buildInvokeBeautyExpertAttachOptions());
+    } catch (beautyExpertErr) {
+      logger.warn(
+        {
+          gateway_request_id: gatewayRequestId,
+          err: beautyExpertErr?.message || String(beautyExpertErr),
+        },
+        'failed to attach beauty expert projection',
+      );
+      return body;
+    }
+  };
   let upstreamElapsedMs = 0;
   let gatewayRetryCount = 0;
   let gatewayGovernanceAudit = null;
@@ -21435,6 +21566,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         'failed to stamp invoke search rail metadata',
       );
     }
+    finalBody = maybeAttachInvokeBeautyExpertProjection(finalBody);
     setInvokePerfHeaders();
     return originalJson(finalBody);
   };

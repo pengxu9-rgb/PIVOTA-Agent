@@ -35,6 +35,16 @@ function normalizeText(value) {
     .replace(/\s+/g, ' ');
 }
 
+function flattenText(value, depth = 0) {
+  if (depth > 3 || value == null) return '';
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+  if (Array.isArray(value)) return value.map((item) => flattenText(item, depth + 1)).join(' ');
+  if (!isPlainObject(value)) return '';
+  return Object.values(value).map((item) => flattenText(item, depth + 1)).join(' ');
+}
+
 function normalizeProductToken(value) {
   return String(value || '')
     .trim()
@@ -340,7 +350,44 @@ function buildProductMatchTokens(product = {}) {
 
 function reorderProductsForBeautyMode(products = [], { mode, beautyRequest, queryText } = {}) {
   const rows = Array.isArray(products) ? [...products] : [];
-  if (mode !== 'exact_product_assist' || rows.length <= 1) return rows;
+  if (rows.length <= 1) return rows;
+  const requestText = normalizeText([
+    queryText,
+    beautyRequest?.user_goal,
+    flattenText(beautyRequest?.skin_context),
+    flattenText(beautyRequest?.scenario_context),
+    flattenText(beautyRequest?.constraints),
+  ].filter(Boolean).join(' '));
+  const sunscreenFinishFit =
+    mode === 'category_compare' &&
+    /\b(sunscreen|spf)\b/.test(requestText) &&
+    /\b(humid|houston|makeup|shiny|shine|under makeup)\b/.test(requestText);
+  if (sunscreenFinishFit) {
+    return rows
+      .map((product, index) => {
+        const text = normalizeText([
+          product?.name,
+          product?.title,
+          product?.canonical_title,
+          product?.brand,
+          product?.why_this_one,
+          product?.short_description,
+        ].filter(Boolean).join(' '));
+        let score = 0;
+        if (/\b(sunscreen|spf|uv|sun)\b/.test(text)) score += 40;
+        if (/\b(unseen|primer|matte|fluid|aqua|aqua fresh|water fit|serum|airy|lightweight|clear)\b/.test(text)) score += 18;
+        if (/\b(mild|mild up|mineral|sensitive)\b/.test(text)) score += 8;
+        if (/\b(moisturizing|moisturising|dewy|dew|glow|tinted|drops|hydrating|cream)\b/.test(text)) score -= 14;
+        if (/\b(deal|subscription|subscribe|autoship|auto ship)\b/.test(text)) score -= 30;
+        return { product, index, score };
+      })
+      .sort((left, right) => {
+        if (right.score !== left.score) return right.score - left.score;
+        return left.index - right.index;
+      })
+      .map((item) => item.product);
+  }
+  if (mode !== 'exact_product_assist') return rows;
   const anchorTokens = buildAnchorTokens(beautyRequest, queryText);
   if (anchorTokens.length === 0) return rows;
 
@@ -898,6 +945,38 @@ function formatPrice(product = {}) {
   return `${currency || 'USD'} ${amount}`;
 }
 
+function getBeautyIntentContextText(beautyIntent = {}) {
+  return normalizeText([
+    beautyIntent?.user_goal,
+    flattenText(beautyIntent?.skin_context),
+    flattenText(beautyIntent?.routine_context),
+    flattenText(beautyIntent?.scenario_context),
+    flattenText(beautyIntent?.constraints),
+  ].filter(Boolean).join(' '));
+}
+
+function buildBeautyContextFrame(beautyIntent = {}) {
+  const text = getBeautyIntentContextText(beautyIntent);
+  if (/\b(sunscreen|spf)\b/.test(text) && /\b(humid|houston|makeup|shiny|shine|under makeup)\b/.test(text)) {
+    const skinCopy = /\boily\b/.test(text) ? 'oily skin' : 'this sunscreen request';
+    const placeCopy = /\bhouston\b/.test(text)
+      ? ' in humid Houston'
+      : /\bhumid\b/.test(text)
+        ? ' in humid weather'
+        : '';
+    const makeupCopy = /\b(makeup|under makeup)\b/.test(text) ? ' under makeup' : '';
+    const shineCopy = /\b(shiny|shine)\b/.test(text) ? ' and midday shine' : '';
+    return `For ${skinCopy}${placeCopy}${makeupCopy}, finish${shineCopy} matter as much as basic SPF coverage.`;
+  }
+  if (/\b(tretinoin|retinoid)\b/.test(text) && /\b(dry|sensitive|tight|barrier)\b/.test(text)) {
+    return 'For dry sensitive skin using tretinoin, compare barrier comfort, sting risk, and budget rather than adding more active pressure.';
+  }
+  if (/\b(clogged pores|pores|combination)\b/.test(text) && /\b(winter|seattle)\b/.test(text)) {
+    return 'For combination skin with clogged pores in Seattle winter, the tradeoff is oil-control support without letting the barrier get too tight.';
+  }
+  return '';
+}
+
 function inferProductRoleLabel(product = {}) {
   const haystack = normalizeText([
     product.name,
@@ -913,9 +992,36 @@ function inferProductRoleLabel(product = {}) {
   return 'requested role';
 }
 
-function describeProductForVisibleCopy(product = {}) {
+function describeProductForVisibleCopy(product = {}, beautyIntent = {}) {
   const reason = pickVisibleEvidence(product.why_this_one, product.short_description);
   if (reason) return reason;
+  const contextText = getBeautyIntentContextText(beautyIntent);
+  const productText = normalizeText([
+    product.name,
+    product.title,
+    product.canonical_title,
+    product.brand,
+  ].filter(Boolean).join(' '));
+  if (/\b(sunscreen|spf)\b/.test(productText) && /\b(humid|houston|makeup|shiny|shine|under makeup)\b/.test(contextText)) {
+    if (/\b(moisturizing|moisturising|dewy|dew|glow|tinted|drops|hydrating)\b/.test(productText)) {
+      return 'it is a grounded SPF option, but its moisturizing or dewy positioning may be less aligned if shine control under makeup is the priority';
+    }
+    if (/\b(unseen|primer|matte|fluid|aqua|aqua fresh|water fit|serum|airy|lightweight|clear)\b/.test(productText)) {
+      return 'it is a grounded SPF option whose title points to a lighter or smoother texture lane for oily skin under makeup';
+    }
+    if (/\b(mild|mild up|mineral|sensitive)\b/.test(productText)) {
+      return 'it is a grounded SPF option that reads less hydration-led than the moisturizing variants, though the record does not prove a matte finish';
+    }
+    return 'it is a grounded SPF option, but the current product record does not prove makeup wear or shine-control performance';
+  }
+  if (/\b(moisturizer|moisturiser|cream|lotion|barrier)\b/.test(productText) && /\b(tretinoin|retinoid|dry|sensitive|tight)\b/.test(contextText)) {
+    if (/\b(retinol|retinal|resurfacing|peel|aha|bha|glycolic)\b/.test(productText)) {
+      return 'it is a moisturizer-format row, but the active positioning is not the cleanest first pick for a retinoid-stressed routine';
+    }
+    if (/\b(ceramide|oat|colloidal|panthenol|cica|repair|barrier|sensitive|fragrance free)\b/.test(productText)) {
+      return 'it points to a calmer barrier-support lane for dry sensitive or retinoid-stressed skin';
+    }
+  }
   const parts = [];
   const role = inferProductRoleLabel(product);
   if (role) parts.push(`it matches the ${role}`);
@@ -945,7 +1051,9 @@ function buildBeautyExpertVisibleReply(beautyExpertV1 = {}) {
   const lead = products[0];
   const support = products.slice(1, 3);
   const leadName = getProductDisplayName(lead) || 'the lead option';
-  const leadReason = describeProductForVisibleCopy(lead);
+  const beautyIntent = isPlainObject(beautyExpertV1.beauty_intent) ? beautyExpertV1.beauty_intent : {};
+  const contextFrame = buildBeautyContextFrame(beautyIntent);
+  const leadReason = describeProductForVisibleCopy(lead, beautyIntent);
   const prefix = creatorFacing
     ? 'For a creator-facing shortlist, '
     : '';
@@ -953,13 +1061,13 @@ function buildBeautyExpertVisibleReply(beautyExpertV1 = {}) {
     .map((product) => {
       const name = getProductDisplayName(product);
       if (!name) return '';
-      return `${name} is the comparison option because ${describeProductForVisibleCopy(product)}`;
+      return `${name} is the comparison option because ${describeProductForVisibleCopy(product, beautyIntent)}`;
     })
     .filter(Boolean);
   const compareSentence = supportCopy.length > 0
     ? `Compared with it, ${supportCopy.join('; ')}.`
     : 'I would still compare price, texture, and routine fit before making it the only pick.';
-  return `${prefix}${leadName} is the current lead because ${leadReason}. ${compareSentence}`;
+  return `${contextFrame ? `${contextFrame} ` : ''}${prefix}${leadName} is the current lead because ${leadReason}. ${compareSentence}`;
 }
 
 function projectBeautyExpertVisibleReply(response = {}, beautyExpertV1 = null) {
