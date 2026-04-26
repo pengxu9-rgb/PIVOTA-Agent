@@ -34,8 +34,8 @@ describe('backfill-external-product-seeds-catalog', () => {
       title: 'Shade\u0000and Illuminate',
       'bad\u0000key': 'value',
       nested: {
-        body: 'Clean\u0000 copy',
-        items: ['One\u0000', 'Two'],
+        body: 'Clean\u0000 copy and literal \\u0000 escape',
+        items: ['One\u0000', 'Two\\u0000'],
       },
     });
 
@@ -43,7 +43,7 @@ describe('backfill-external-product-seeds-catalog', () => {
       title: 'Shadeand Illuminate',
       badkey: 'value',
       nested: {
-        body: 'Clean copy',
+        body: 'Clean copy and literal  escape',
         items: ['One', 'Two'],
       },
     });

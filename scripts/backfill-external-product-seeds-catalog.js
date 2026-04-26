@@ -114,7 +114,7 @@ function resolveTargetUrlOverride(row, overrides) {
 }
 
 function normalizeNonEmptyString(value) {
-  const next = String(value || '').replace(/\u0000/g, '').trim();
+  const next = String(value || '').replace(/\u0000/g, '').replace(/\\u0000/gi, '').trim();
   return next || '';
 }
 
@@ -330,12 +330,12 @@ function cloneJsonValue(value) {
 }
 
 function sanitizeJsonForPostgres(value) {
-  if (typeof value === 'string') return value.replace(/\u0000/g, '');
+  if (typeof value === 'string') return value.replace(/\u0000/g, '').replace(/\\u0000/gi, '');
   if (Array.isArray(value)) return value.map((item) => sanitizeJsonForPostgres(item));
   if (!value || typeof value !== 'object') return value;
   return Object.fromEntries(
     Object.entries(value).map(([key, candidate]) => [
-      String(key).replace(/\u0000/g, ''),
+      String(key).replace(/\u0000/g, '').replace(/\\u0000/gi, ''),
       sanitizeJsonForPostgres(candidate),
     ]),
   );
