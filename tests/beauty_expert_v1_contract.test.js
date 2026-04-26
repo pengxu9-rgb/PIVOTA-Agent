@@ -395,6 +395,74 @@ describe('beauty_expert_v1 contract', () => {
     expect(result.reply).not.toContain('selected products');
   });
 
+  test('oily sunscreen ranking treats stick and cushion as comparison lanes, not the lead full-face base', () => {
+    const result = attachBeautyExpertV1ToResponse(
+      {
+        reply: null,
+        products: [
+          {
+            product_id: 'round_lab_stick',
+            merchant_id: 'external_seed',
+            title: 'Birch Moisturizing Sun Stick SPF 50+',
+            brand: 'Round Lab',
+            price: 25,
+            currency: 'USD',
+          },
+          {
+            product_id: 'round_lab_mild',
+            merchant_id: 'external_seed',
+            title: 'Birch Mild-Up Sunscreen UVLock SPF 50+ Broad Spectrum',
+            brand: 'Round Lab',
+            price: 25,
+            currency: 'USD',
+          },
+          {
+            product_id: 'round_lab_cushion',
+            merchant_id: 'external_seed',
+            title: 'Birch Moisturizing Sun Cushion SPF 50+',
+            brand: 'Round Lab',
+            price: 27,
+            currency: 'USD',
+          },
+        ],
+        metadata: {
+          mainline_status: 'grounded_success',
+          decision_owner: 'shopping_agent_beauty_mainline',
+          semantic_owner: 'shopping_agent_beauty_mainline',
+        },
+      },
+      {
+        source: 'shopping_agent',
+        entryLayer: 'orchestration',
+        delegatedLayer: 'decisioning',
+        taskType: 'discovery',
+        context: {
+          vertical: 'beauty',
+          category: 'skincare',
+          raw_user_goal: 'I have oily skin, what sunscreen should I buy?',
+        },
+        metadata: {
+          source: 'shopping_agent',
+          catalog_surface: 'beauty',
+        },
+        payload: {
+          search: {
+            query: 'I have oily skin, what sunscreen should I buy?',
+          },
+        },
+      },
+    );
+
+    expect(result.products.map((product) => product.title)).toEqual([
+      'Birch Mild-Up Sunscreen UVLock SPF 50+ Broad Spectrum',
+      'Birch Moisturizing Sun Stick SPF 50+',
+      'Birch Moisturizing Sun Cushion SPF 50+',
+    ]);
+    expect(result.reply).toContain('milder or mineral lane');
+    expect(result.reply).toContain('reapplication or touch-up lane');
+    expect(result.reply).not.toContain('matches the sunscreen role and it is listed around');
+  });
+
   test('does not project long PDP descriptions into visible invoke copy or compare axes', () => {
     const result = attachBeautyExpertV1ToResponse(
       {
@@ -447,10 +515,8 @@ describe('beauty_expert_v1 contract', () => {
       },
     );
 
-    expect(result.reply).toContain(
-      'Weightless Daily Sunscreen SPF 50 is the current lead because it matches the sunscreen role',
-    );
-    expect(result.reply).toContain('it is listed around USD 22');
+    expect(result.reply).toContain('Weightless Daily Sunscreen SPF 50 is the current lead because');
+    expect(result.reply).toContain('lighter or smoother texture lane');
     expect(result.reply).not.toMatch(/Full ingredient|product details|clinical study|how to use|copied PDP/i);
     expect(result.reply.length).toBeLessThan(450);
     expect(result.beauty_expert_v1.reco_bundle.lead_picks[0].why_this_one).toBeUndefined();
@@ -782,9 +848,136 @@ describe('beauty_expert_v1 contract', () => {
 
     expect(result.mode).toBe('exact_product_assist');
     expect(result.reco_bundle.lead_picks[0]?.name).toBe('Ultra Repair Face Lotion with Colloidal Oatmeal');
-    expect(result.reco_bundle.support_picks[0]?.name).toBe(
-      'Ultra Repair Firming Day Cream with Peptides, Niacinamide + Collagen',
+    expect(result.reco_bundle.support_picks).toHaveLength(0);
+  });
+
+  test('exact_product_assist does not answer with adjacent products when the named product is missing', () => {
+    const result = attachBeautyExpertV1ToResponse(
+      {
+        reply: 'Dynasty Cream is the current lead because it is a moisturizer option.',
+        products: [
+          {
+            product_id: 'dynasty_cream',
+            merchant_id: 'external_seed',
+            title: 'Dynasty Cream',
+            brand: 'Beauty of Joseon',
+            price: 24,
+            currency: 'USD',
+          },
+          {
+            product_id: 'ultra_repair_cream',
+            merchant_id: 'external_seed',
+            title: 'Ultra Repair Cream Intense Hydration',
+            brand: 'First Aid Beauty',
+            price: 38,
+            currency: 'USD',
+          },
+        ],
+        metadata: {
+          mainline_status: 'grounded_success',
+          decision_owner: 'shopping_agent_beauty_mainline',
+          semantic_owner: 'shopping_agent_beauty_mainline',
+        },
+      },
+      {
+        source: 'shopping_agent',
+        entryLayer: 'orchestration',
+        delegatedLayer: 'execution_facing',
+        taskType: 'discovery',
+        context: {
+          source_profile: { source: 'shopping_agent', default_entry_layer: 'orchestration' },
+          vertical: 'beauty',
+          category: 'skincare',
+          normalized_need: {
+            beauty_request: {
+              domain: 'beauty',
+              user_goal: 'I use tretinoin. Is Ultra Repair Face Lotion a better next moisturizer than a peptide cream?',
+              routine_context: { actives: ['tretinoin'] },
+              product_context: {
+                canonical_product_ref: 'Ultra Repair Face Lotion',
+              },
+            },
+          },
+        },
+        metadata: { source: 'shopping_agent', catalog_surface: 'beauty' },
+        payload: {
+          search: {
+            query: 'I use tretinoin. Is Ultra Repair Face Lotion a better next moisturizer than a peptide cream?',
+          },
+        },
+      },
     );
+
+    expect(result.beauty_expert_v1.mode).toBe('exact_product_assist');
+    expect(result.beauty_expert_v1.reco_bundle.lead_picks).toHaveLength(0);
+    expect(result.beauty_expert_v1.reco_bundle.support_picks).toHaveLength(0);
+    expect(result.products).toEqual([]);
+    expect(result.reply).toContain('I do not have a grounded row for Ultra Repair Face Lotion');
+    expect(result.reply).not.toContain('Dynasty Cream is the current lead');
+  });
+
+  test('exact_product_assist keeps an authority row when the named product is present without a brand prefix', () => {
+    const result = buildBeautyExpertV1Response({
+      source: 'shopping_agent',
+      entryLayer: 'orchestration',
+      delegatedLayer: 'execution_facing',
+      taskType: 'discovery',
+      context: {
+        source_profile: {
+          source: 'shopping_agent',
+          default_entry_layer: 'decisioning',
+        },
+        vertical: 'beauty',
+        category: 'skincare',
+        normalized_need: {
+          beauty_request: {
+            domain: 'beauty',
+            user_goal: 'Is Beauty of Joseon Relief Sun Aqua-Fresh good for oily skin under makeup?',
+            product_context: {
+              title: 'Beauty of Joseon Relief Sun Aqua-Fresh',
+            },
+          },
+        },
+      },
+      metadata: {
+        source: 'shopping_agent',
+        catalog_surface: 'beauty',
+      },
+      payload: {
+        search: {
+          query: 'Is Beauty of Joseon Relief Sun Aqua-Fresh good for oily skin under makeup?',
+        },
+      },
+      response: {
+        products: [
+          {
+            product_id: 'relief_sun_aqua_fresh_10ml',
+            merchant_id: 'external_seed',
+            title: 'Relief Sun Aqua-Fresh 10ml',
+            brand: 'Beauty of Joseon',
+            price: 3.75,
+            currency: 'USD',
+          },
+          {
+            product_id: 'dynasty_cream',
+            merchant_id: 'external_seed',
+            title: 'Dynasty Cream',
+            brand: 'Beauty of Joseon',
+            price: 24,
+            currency: 'USD',
+          },
+        ],
+        metadata: {
+          mainline_status: 'grounded_success',
+          decision_owner: 'shopping_agent_beauty_mainline',
+          semantic_owner: 'shopping_agent_beauty_mainline',
+        },
+      },
+    });
+
+    expect(result.mode).toBe('exact_product_assist');
+    expect(result.reco_bundle.lead_picks[0]?.name).toBe('Relief Sun Aqua-Fresh 10ml');
+    expect(result.reco_bundle.support_picks).toHaveLength(0);
   });
 
   test('guided beauty reco with missing context suppresses opportunistic products and polluted compare axes', () => {
@@ -968,6 +1161,8 @@ describe('beauty_expert_v1 contract', () => {
     expect(result.beauty_expert_v1.mode).toBe('exact_product_assist');
     expect(result.cards[0].sections[0].products[0]?.name).toBe('Ultra Repair Face Lotion with Colloidal Oatmeal');
     expect(result.cards[0].payload.recommendations[0]?.name).toBe('Ultra Repair Face Lotion with Colloidal Oatmeal');
+    expect(result.cards[0].sections[0].products).toHaveLength(1);
+    expect(result.cards[0].payload.recommendations).toHaveLength(1);
     expect(result.beauty_expert_v1.ui_projections.aurora_cards[0].sections[0].products[0]?.name).toBe(
       'Ultra Repair Face Lotion with Colloidal Oatmeal',
     );
