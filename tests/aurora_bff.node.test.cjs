@@ -5816,6 +5816,38 @@ test('reco alternatives target signals and query plan retain sunscreen compare c
   }
 });
 
+test('reco alternatives finish-fit sunscreen query plan starts with oily and matte authority variants', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const product = {
+      product_id: 'ext_skintific_matte_fit',
+      merchant_id: 'external_seed',
+      brand: 'SKINTIFIC',
+      name: 'Matte Fit Serum Sunscreen SPF 50+ PA++++',
+      display_name: 'Matte Fit Serum Sunscreen SPF 50+ PA++++',
+      category: 'sunscreen',
+      product_type: 'sunscreen',
+      role_scope: 'daily_sunscreen_finish_fit',
+      selected_target_id: 'daily_sunscreen_finish_fit',
+      key_features: ['Oil-control', 'Matte finish', 'Non-greasy texture'],
+      description: 'Oil-controlling, non-greasy sunscreen for oily and acne-prone skin.',
+    };
+
+    const queries = __internal.buildExternalSeedCompareSearchQueries({
+      productObj: product,
+      productInput: 'SKINTIFIC Matte Fit Serum Sunscreen SPF 50+ PA++++',
+      lang: 'EN',
+    });
+
+    assert.deepEqual(
+      queries.slice(0, 4),
+      ['sunscreen oily skin', 'matte sunscreen', 'invisible sunscreen', 'sunscreen under makeup'],
+    );
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('reco alternatives target signals prefer role-scope over noisy narrative form words', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
@@ -6899,7 +6931,7 @@ test('fetchRecoAlternativesForProduct: grounded pool folds promo and subscriptio
         }
         const queryText = String(config?.params?.q || config?.params?.query || config?.params?.text || '').trim();
         seenQueries.push(queryText);
-        if (!/^sunscreen$/i.test(queryText)) {
+        if (!/^(?:sunscreen oily skin|matte sunscreen|invisible sunscreen)$/i.test(queryText)) {
           return { status: 200, data: { products: [] } };
         }
         return {
@@ -7099,7 +7131,7 @@ test('fetchRecoAlternativesForProduct: sunscreen titles beat seed category drift
         }
         const queryText = String(config?.params?.q || config?.params?.query || config?.params?.text || '').trim();
         seenQueries.push(queryText);
-        if (!/^sunscreen$/i.test(queryText)) {
+        if (!/^(?:sunscreen oily skin|matte sunscreen|invisible sunscreen)$/i.test(queryText)) {
           return { status: 200, data: { products: [] } };
         }
         return {
@@ -7208,11 +7240,207 @@ test('fetchRecoAlternativesForProduct: sunscreen titles beat seed category drift
         assert.equal(geminiCalled, false);
         assert.equal(out?.compare_meta?.open_world_status, 'skipped_sufficient_pool');
         assert.equal(out?.compare_meta?.pool_recall_status, 'full');
-        assert.ok(seenQueries.slice(0, 3).some((query) => /^sunscreen$/i.test(String(query || ''))));
+        assert.deepEqual(
+          seenQueries.slice(0, 3),
+          ['sunscreen oily skin', 'matte sunscreen', 'invisible sunscreen'],
+        );
         const names = out.alternatives.map((row) => String(row?.product?.name || row?.name || ''));
         assert.equal(out.alternatives.length, 3);
         assert.ok(names.some((name) => /Moisture Airyfit Daily Sunscreen/i.test(name)));
         assert.ok(names.some((name) => /Birch Mild-Up Sunscreen/i.test(name)));
+      } finally {
+        const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
+        loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
+        axios.get = originalGet;
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
+test('fetchRecoAlternativesForProduct: finish-fit sunscreen pool rejects category-only treatment drift and touch-up formats', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_BFF_USE_MOCK: 'false',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+      AURORA_BFF_RECO_CATALOG_SELF_PROXY_ENABLED: 'false',
+    },
+    async () => {
+      const axios = require('axios');
+      const originalGet = axios.get;
+      axios.get = async (url, config = {}) => {
+        if (!isProductsSearchUrl(url)) {
+          throw new Error(`Unexpected axios.get: ${url}`);
+        }
+        const queryText = String(config?.params?.q || config?.params?.query || config?.params?.text || '').trim();
+        if (!/^(?:sunscreen oily skin|matte sunscreen|invisible sunscreen)$/i.test(queryText)) {
+          return { status: 200, data: { products: [] } };
+        }
+        return {
+          status: 200,
+          data: {
+            products: [
+              {
+                product_id: 'ext_fenty_hydra_vizor',
+                merchant_id: 'external_seed',
+                brand: 'Fenty Beauty',
+                name: 'Hydra Vizor Invisible Moisturizer Broad Spectrum SPF 30 Sunscreen',
+                display_name: 'Hydra Vizor Invisible Moisturizer Broad Spectrum SPF 30 Sunscreen',
+                product_type: 'Sunscreen',
+                category: 'Sunscreen',
+                retrieval_source: 'external_seed',
+                key_features: ['Broad spectrum SPF', 'Invisible finish', 'Daytime skin prep'],
+                short_description: 'An invisible broad-spectrum sunscreen moisturizer for daytime wear.',
+                canonical_product_ref: {
+                  product_id: 'ext_fenty_hydra_vizor',
+                  merchant_id: 'external_seed',
+                },
+              },
+              {
+                product_id: 'ext_boj_ginseng_sun_serum',
+                merchant_id: 'external_seed',
+                brand: 'Beauty of Joseon',
+                name: 'Ginseng Moist Sun Serum SPF 50+ PA++++',
+                display_name: 'Ginseng Moist Sun Serum SPF 50+ PA++++',
+                product_type: 'Sunscreen',
+                category: 'Sunscreen',
+                retrieval_source: 'external_seed',
+                key_features: ['Sun serum', 'SPF 50+', 'Fresh finish'],
+                short_description: 'A serum-like sunscreen with SPF 50+ PA++++ and a fresh finish.',
+                canonical_product_ref: {
+                  product_id: 'ext_boj_ginseng_sun_serum',
+                  merchant_id: 'external_seed',
+                },
+              },
+              {
+                product_id: 'ext_haruharu_airyfit',
+                merchant_id: 'external_seed',
+                brand: 'Haruharu Wonder',
+                name: 'Moisture Airyfit Daily Sunscreen SPF50+/PA++++ / Unscented',
+                display_name: 'Moisture Airyfit Daily Sunscreen SPF50+/PA++++ / Unscented',
+                product_type: 'Sunscreen',
+                category: 'Sunscreen',
+                retrieval_source: 'external_seed',
+                key_features: ['Airy sunscreen', 'Daily UV protection', 'Unscented finish'],
+                short_description: 'A lightweight face sunscreen with an airy finish.',
+                canonical_product_ref: {
+                  product_id: 'ext_haruharu_airyfit',
+                  merchant_id: 'external_seed',
+                },
+              },
+              {
+                product_id: 'ext_paula_c15',
+                merchant_id: 'external_seed',
+                brand: "Paula's Choice",
+                name: 'C15 Super Booster',
+                display_name: 'C15 Super Booster',
+                product_type: 'Sunscreen',
+                category: 'Sunscreen',
+                retrieval_source: 'external_seed',
+                key_features: ['15% vitamin C', 'Brightening booster', 'Glow support'],
+                short_description: 'A 15% vitamin C booster for dullness and uneven tone.',
+                description: 'Brightens skin, improves the look of fine lines, and boosts glow.',
+                canonical_product_ref: {
+                  product_id: 'ext_paula_c15',
+                  merchant_id: 'external_seed',
+                },
+              },
+              {
+                product_id: 'ext_round_lab_sun_cushion',
+                merchant_id: 'external_seed',
+                brand: 'Round Lab',
+                name: 'Birch Moisturizing Sun Cushion SPF50+',
+                display_name: 'Birch Moisturizing Sun Cushion SPF50+',
+                product_type: 'Sunscreen',
+                category: 'Sunscreen',
+                retrieval_source: 'external_seed',
+                key_features: ['Sun cushion', 'SPF 50+', 'Touch-up format'],
+                short_description: 'A sun cushion format for on-the-go reapplication.',
+                canonical_product_ref: {
+                  product_id: 'ext_round_lab_sun_cushion',
+                  merchant_id: 'external_seed',
+                },
+              },
+              {
+                product_id: 'ext_supergoop_glowscreen',
+                merchant_id: 'external_seed',
+                brand: 'Supergoop',
+                name: 'Glowscreen Golden Hour SPF 40',
+                display_name: 'Glowscreen Golden Hour SPF 40',
+                product_type: 'Sunscreen',
+                category: 'Sunscreen',
+                retrieval_source: 'external_seed',
+                key_features: ['Glowy tint', 'Radiant finish', 'SPF 40'],
+                short_description: 'A glowy tinted sunscreen with a luminous finish.',
+                canonical_product_ref: {
+                  product_id: 'ext_supergoop_glowscreen',
+                  merchant_id: 'external_seed',
+                },
+              },
+            ],
+          },
+        };
+      };
+
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      try {
+        const routeModule = require('../src/auroraBff/routes');
+        const { __internal } = routeModule;
+        let geminiCalled = false;
+        __internal.__setCallGeminiJsonObjectForTest(async () => {
+          geminiCalled = true;
+          throw new Error('provider should not run when authoritative sunscreen pool is sufficient');
+        });
+
+        const out = await __internal.fetchRecoAlternativesForProduct({
+          ctx: {
+            lang: 'EN',
+            request_id: 'req_sunscreen_pool_authority_filter',
+            trace_id: 'trace_sunscreen_pool_authority_filter',
+          },
+          profileSummary: null,
+          recentLogs: [],
+          productInput: 'SKINTIFIC Matte Fit Serum Sunscreen SPF 50+ PA++++',
+          productObj: {
+            product_id: 'ext_skintific_matte_fit',
+            merchant_id: 'external_seed',
+            brand: 'SKINTIFIC',
+            name: 'Matte Fit Serum Sunscreen SPF 50+ PA++++',
+            display_name: 'Matte Fit Serum Sunscreen SPF 50+ PA++++',
+            product_type: 'sunscreen',
+            category: 'sunscreen',
+            role_scope: 'daily_sunscreen_finish_fit',
+            selected_target_id: 'daily_sunscreen_finish_fit',
+            key_features: ['Oil-control', 'Matte finish', 'Non-greasy texture'],
+            description: 'Oil-controlling, non-greasy sunscreen for oily and acne-prone skin.',
+          },
+          anchorId: 'ext_skintific_matte_fit',
+          maxTotal: 3,
+          candidatePool: [],
+          debug: true,
+          logger: null,
+          options: {
+            recommendation_mode: 'pool_open_world_mixed',
+            disable_synthetic_local_fallback: true,
+            skip_anchor_precheck: true,
+          },
+        });
+
+        assert.equal(out?.ok, true);
+        assert.equal(geminiCalled, false);
+        assert.equal(out?.compare_meta?.open_world_status, 'skipped_sufficient_pool');
+        const names = out.alternatives.map((row) => String(row?.product?.name || row?.name || ''));
+        assert.equal(out.alternatives.length, 3);
+        assert.ok(names.some((name) => /Hydra Vizor/i.test(name)));
+        assert.ok(names.some((name) => /Ginseng Moist Sun Serum/i.test(name)));
+        assert.ok(names.some((name) => /Airyfit Daily Sunscreen/i.test(name)));
+        assert.equal(names.some((name) => /C15 Super Booster/i.test(name)), false);
+        assert.equal(names.some((name) => /Sun Cushion/i.test(name)), false);
+        assert.equal(names.some((name) => /Glowscreen/i.test(name)), false);
       } finally {
         const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
         loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
@@ -9491,11 +9719,11 @@ test('buildExternalSeedCompareSearchQueries: avoids duplicate role queries and p
       productInput: 'SKINTIFIC Matte Fit Serum Sunscreen SPF 50+ PA++++',
       lang: 'EN',
     });
-      assert.deepEqual(
-        thinSunscreenQueries.slice(0, 3),
-        ['lightweight sunscreen oily skin', 'sunscreen under makeup', 'spf fluid oily skin'],
-      );
-      assert.equal(thinSunscreenQueries.includes('sunscreen under makeup'), true);
+    assert.deepEqual(
+      thinSunscreenQueries.slice(0, 4),
+      ['sunscreen oily skin', 'matte sunscreen', 'invisible sunscreen', 'sunscreen under makeup'],
+    );
+    assert.equal(thinSunscreenQueries.includes('sunscreen under makeup'), true);
     const productionLikeSunscreenQueries = __internal.buildExternalSeedCompareSearchQueries({
       productObj: {
         brand: 'SKINTIFIC',
@@ -9509,10 +9737,10 @@ test('buildExternalSeedCompareSearchQueries: avoids duplicate role queries and p
       productInput: 'Matte Fit Serum Sunscreen SPF 50+ PA++++',
       lang: 'EN',
     });
-      assert.deepEqual(
-        productionLikeSunscreenQueries.slice(0, 3),
-        ['lightweight sunscreen oily skin', 'sunscreen under makeup', 'spf fluid oily skin'],
-      );
+    assert.deepEqual(
+      productionLikeSunscreenQueries.slice(0, 4),
+      ['sunscreen oily skin', 'matte sunscreen', 'invisible sunscreen', 'sunscreen under makeup'],
+    );
     assert.equal(productionLikeSunscreenQueries.slice(0, 3).some((item) => /^niacinamide sunscreen$/i.test(String(item || ''))), false);
     assert.equal(productionLikeSunscreenQueries.slice(0, 3).some((item) => /^sunscreen$/i.test(String(item || ''))), false);
     assert.equal(productionLikeSunscreenQueries.includes('sunscreen under makeup'), true);
@@ -9546,8 +9774,8 @@ test('buildExternalSeedCompareSearchQueries: avoids duplicate role queries and p
         lang: 'EN',
       });
       assert.deepEqual(
-        airyFitSunscreenQueries.slice(0, 3),
-        ['lightweight sunscreen oily skin', 'sunscreen under makeup', 'spf fluid oily skin'],
+        airyFitSunscreenQueries.slice(0, 4),
+        ['sunscreen oily skin', 'matte sunscreen', 'invisible sunscreen', 'sunscreen under makeup'],
       );
       assert.equal(airyFitSunscreenQueries.includes('mineral sunscreen'), false);
       const thinSunscreenLocalSeedRole = __internal.buildRecoAlternativesLocalSeedSearchRole({
