@@ -341,6 +341,11 @@ function sanitizeJsonForPostgres(value) {
   );
 }
 
+function sanitizeTextForPostgres(value) {
+  if (value === null || value === undefined) return value;
+  return String(value).replace(/\u0000/g, '').replace(/\\u0000/gi, '');
+}
+
 function stringifyPostgresJsonb(value) {
   return JSON.stringify(sanitizeJsonForPostgres(value || {}));
 }
@@ -2606,7 +2611,9 @@ async function refreshPdpIdentityListingSourcePayload(client, row, nextRow) {
       payload.source_listing_ref,
       stringifyPostgresJsonb(payload.product),
       stringifyPostgresJsonb(ensureJsonObject(payload.product.review_summary)),
-      normalizeUrlLike(payload.product.canonical_url || payload.product.url || payload.product.destination_url),
+      sanitizeTextForPostgres(
+        normalizeUrlLike(payload.product.canonical_url || payload.product.url || payload.product.destination_url),
+      ),
     ],
   );
   return {
@@ -2668,26 +2675,26 @@ async function upsertVariantSeedRows(client, rows) {
       `,
       [
         row.id,
-        row.market,
-        row.tool,
-        row.destination_url,
-        row.canonical_url,
-        row.domain,
-        row.title,
-        row.image_url,
+        sanitizeTextForPostgres(row.market),
+        sanitizeTextForPostgres(row.tool),
+        sanitizeTextForPostgres(row.destination_url),
+        sanitizeTextForPostgres(row.canonical_url),
+        sanitizeTextForPostgres(row.domain),
+        sanitizeTextForPostgres(row.title),
+        sanitizeTextForPostgres(row.image_url),
         row.price_amount,
-        row.price_currency,
-        row.availability,
-        row.status,
-        row.notes,
-        row.created_by_employee_id,
-        row.attached_product_key,
-        row.attached_variant_id,
+        sanitizeTextForPostgres(row.price_currency),
+        sanitizeTextForPostgres(row.availability),
+        sanitizeTextForPostgres(row.status),
+        sanitizeTextForPostgres(row.notes),
+        sanitizeTextForPostgres(row.created_by_employee_id),
+        sanitizeTextForPostgres(row.attached_product_key),
+        sanitizeTextForPostgres(row.attached_variant_id),
         stringifyPostgresJsonb(row.seed_data),
-        row.utm_template,
-        row.partner_type,
-        row.disclosure_text,
-        row.external_product_id,
+        sanitizeTextForPostgres(row.utm_template),
+        sanitizeTextForPostgres(row.partner_type),
+        sanitizeTextForPostgres(row.disclosure_text),
+        sanitizeTextForPostgres(row.external_product_id),
       ],
     );
   }
@@ -2988,13 +2995,13 @@ async function processRow(row, options) {
           `,
           [
             row.id,
-            enrichedPayload.nextRow.title,
-            enrichedPayload.nextRow.canonical_url,
-            enrichedPayload.nextRow.destination_url,
-            enrichedPayload.nextRow.image_url,
+            sanitizeTextForPostgres(enrichedPayload.nextRow.title),
+            sanitizeTextForPostgres(enrichedPayload.nextRow.canonical_url),
+            sanitizeTextForPostgres(enrichedPayload.nextRow.destination_url),
+            sanitizeTextForPostgres(enrichedPayload.nextRow.image_url),
             enrichedPayload.nextRow.price_amount,
-            enrichedPayload.nextRow.price_currency,
-            enrichedPayload.nextRow.availability,
+            sanitizeTextForPostgres(enrichedPayload.nextRow.price_currency),
+            sanitizeTextForPostgres(enrichedPayload.nextRow.availability),
             stringifyPostgresJsonb(enrichedPayload.nextRow.seed_data),
           ],
         );
@@ -3301,6 +3308,7 @@ module.exports = {
   recoverTargetUrlFromDiagnostics,
   sanitizeSeedImageUrls,
   sanitizeJsonForPostgres,
+  sanitizeTextForPostgres,
   stringifyPostgresJsonb,
   validateNextRowImageHealth,
   buildIdentityListingSourcePayload,

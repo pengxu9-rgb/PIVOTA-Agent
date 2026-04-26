@@ -14,6 +14,7 @@ const {
   parseDelimitedIds,
   sanitizeSeedImageUrls,
   sanitizeJsonForPostgres,
+  sanitizeTextForPostgres,
   stringifyPostgresJsonb,
   validateNextRowImageHealth,
   buildIdentityListingSourcePayload,
@@ -48,6 +49,13 @@ describe('backfill-external-product-seeds-catalog', () => {
       },
     });
     expect(stringifyPostgresJsonb(sanitized)).not.toContain('\\u0000');
+  });
+
+  test('removes null bytes from postgres text column values', () => {
+    expect(sanitizeTextForPostgres('Ultra\u0000-Shine Lip Color \\u0000')).toBe(
+      'Ultra-Shine Lip Color ',
+    );
+    expect(sanitizeTextForPostgres(null)).toBeNull();
   });
 
   test('collects updated external product ids for post-backfill Pivota Insights coverage', () => {
