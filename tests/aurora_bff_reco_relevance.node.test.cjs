@@ -7907,6 +7907,11 @@ test('__internal: beauty local handoff external stage uses backend authority as 
         merchantId: args.merchantId || null,
         externalSeedOnly: args.externalSeedOnly === true,
         sourcePath: '/agent/v1/products/search',
+        transportPolicy: {
+          includeSelfProxy: args.transportPolicy?.include_self_proxy === true,
+          preferSelfProxyFirst: args.transportPolicy?.prefer_self_proxy_first === true,
+          maxBaseUrls: Number(args.transportPolicy?.max_base_urls || 0),
+        },
       });
       const query = String(args.query || '').trim().toLowerCase();
       if (args.allowExternalSeed === true && args.externalSeedOnly === true && query.includes('sunscreen')) {
@@ -8042,6 +8047,9 @@ test('__internal: beauty local handoff external stage uses backend authority as 
         call.externalSeedOnly === true &&
         call.sourcePath === '/agent/v1/products/search' &&
         call.externalSeedStrategy === 'stage_planned' &&
+        call.transportPolicy?.includeSelfProxy === true &&
+        call.transportPolicy?.preferSelfProxyFirst === true &&
+        call.transportPolicy?.maxBaseUrls === 1 &&
         !call.callerLane),
       JSON.stringify(calls),
     );
