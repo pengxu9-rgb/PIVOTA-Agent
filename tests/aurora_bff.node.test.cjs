@@ -7259,6 +7259,168 @@ test('fetchRecoAlternativesForProduct: sunscreen titles beat seed category drift
   );
 });
 
+test('fetchRecoAlternativesForProduct: hides suspicious USD sunscreen price outliers from visible alternatives', async () => {
+  return withEnv(
+    {
+      AURORA_BFF_RETENTION_DAYS: '0',
+      DATABASE_URL: undefined,
+      AURORA_BFF_USE_MOCK: 'false',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+      AURORA_BFF_RECO_CATALOG_SELF_PROXY_ENABLED: 'false',
+    },
+    async () => {
+      const axios = require('axios');
+      const originalGet = axios.get;
+      axios.get = async (url, config = {}) => {
+        if (!isProductsSearchUrl(url)) {
+          throw new Error(`Unexpected axios.get: ${url}`);
+        }
+        const queryText = String(config?.params?.q || config?.params?.query || config?.params?.text || '').trim();
+        if (!/^(?:sunscreen oily skin|matte sunscreen|invisible sunscreen)$/i.test(queryText)) {
+          return { status: 200, data: { products: [] } };
+        }
+        return {
+          status: 200,
+          data: {
+            products: [
+              {
+                product_id: 'ext_olay_bad_price',
+                merchant_id: 'external_seed',
+                brand: 'Olay',
+                name: 'Complete + Daily Facial Moisturizer with Sunscreen Broad Spectrum SPF 40',
+                display_name: 'Complete + Daily Facial Moisturizer with Sunscreen Broad Spectrum SPF 40',
+                product_type: 'Sunscreen',
+                category: 'Sunscreen',
+                retrieval_source: 'external_seed',
+                key_features: ['Daily sunscreen', 'Matte finish'],
+                short_description: 'A daily face moisturizer with SPF 40.',
+                price: { amount: 626.65, currency: 'USD', unknown: false },
+                canonical_product_ref: {
+                  product_id: 'ext_olay_bad_price',
+                  merchant_id: 'external_seed',
+                },
+              },
+              {
+                product_id: 'ext_the_ordinary_uv_filters',
+                merchant_id: 'external_seed',
+                brand: 'The Ordinary',
+                name: 'UV Filters SPF 45 Serum',
+                display_name: 'UV Filters SPF 45 Serum',
+                product_type: 'Sunscreen',
+                category: 'Sunscreen',
+                retrieval_source: 'external_seed',
+                key_features: ['Serum sunscreen', 'Lightweight SPF'],
+                short_description: 'A lightweight SPF serum for daily UV protection.',
+                price: { amount: 14.63, currency: 'USD', unknown: false },
+                canonical_product_ref: {
+                  product_id: 'ext_the_ordinary_uv_filters',
+                  merchant_id: 'external_seed',
+                },
+              },
+              {
+                product_id: 'ext_boj_relief_sun',
+                merchant_id: 'external_seed',
+                brand: 'Beauty of Joseon',
+                name: 'Relief Sun : Rice + Probiotics (SPF50+ PA++++)',
+                display_name: 'Relief Sun : Rice + Probiotics (SPF50+ PA++++)',
+                product_type: 'Sunscreen',
+                category: 'Sunscreen',
+                retrieval_source: 'external_seed',
+                key_features: ['Daily SPF', 'SPF50+ PA++++'],
+                short_description: 'A daily sunscreen with SPF50+ PA++++.',
+                price: { amount: 23, currency: 'USD', unknown: false },
+                canonical_product_ref: {
+                  product_id: 'ext_boj_relief_sun',
+                  merchant_id: 'external_seed',
+                },
+              },
+              {
+                product_id: 'ext_haruharu_airyfit',
+                merchant_id: 'external_seed',
+                brand: 'Haruharu Wonder',
+                name: 'Moisture Airyfit Daily Sunscreen SPF50+/PA++++ / Unscented',
+                display_name: 'Moisture Airyfit Daily Sunscreen SPF50+/PA++++ / Unscented',
+                product_type: 'Sunscreen',
+                category: 'Sunscreen',
+                retrieval_source: 'external_seed',
+                key_features: ['Airy sunscreen', 'Daily UV protection'],
+                short_description: 'A lightweight face sunscreen with an airy finish.',
+                price: { amount: 17.5, currency: 'USD', unknown: false },
+                canonical_product_ref: {
+                  product_id: 'ext_haruharu_airyfit',
+                  merchant_id: 'external_seed',
+                },
+              },
+            ],
+          },
+        };
+      };
+
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      try {
+        const routeModule = require('../src/auroraBff/routes');
+        const { __internal } = routeModule;
+        let geminiCalled = false;
+        __internal.__setCallGeminiJsonObjectForTest(async () => {
+          geminiCalled = true;
+          throw new Error('provider should not run when grounded pool is sufficient');
+        });
+
+        const out = await __internal.fetchRecoAlternativesForProduct({
+          ctx: {
+            lang: 'EN',
+            request_id: 'req_sunscreen_price_outlier',
+            trace_id: 'trace_sunscreen_price_outlier',
+          },
+          profileSummary: null,
+          recentLogs: [],
+          productInput: 'SKINTIFIC Matte Fit Serum Sunscreen SPF 50+ PA++++',
+          productObj: {
+            product_id: 'ext_skintific_matte_fit',
+            merchant_id: 'external_seed',
+            brand: 'SKINTIFIC',
+            name: 'Matte Fit Serum Sunscreen SPF 50+ PA++++',
+            display_name: 'Matte Fit Serum Sunscreen SPF 50+ PA++++',
+            product_type: 'sunscreen',
+            category: 'sunscreen',
+            role_scope: 'daily_sunscreen_finish_fit',
+            selected_target_id: 'daily_sunscreen_finish_fit',
+            key_features: ['Lightweight serum', 'Matte finish'],
+            description: 'Oil-controlling, non-greasy sunscreen with Zinc PCA for oily skin.',
+          },
+          anchorId: 'ext_skintific_matte_fit',
+          maxTotal: 4,
+          candidatePool: [],
+          debug: true,
+          logger: null,
+          options: {
+            recommendation_mode: 'pool_open_world_mixed',
+            disable_synthetic_local_fallback: true,
+            skip_anchor_precheck: true,
+          },
+        });
+
+        assert.equal(out?.ok, true);
+        assert.equal(geminiCalled, false);
+        assert.equal(out?.compare_meta?.visible_price_outlier_filter_applied, true);
+        assert.equal(out?.compare_meta?.hidden_price_outlier_count, 1);
+        const names = out.alternatives.map((row) => String(row?.product?.name || row?.name || ''));
+        assert.equal(out.alternatives.length, 3);
+        assert.equal(names.some((name) => /Olay/i.test(name)), false);
+        assert.ok(names.some((name) => /UV Filters SPF 45 Serum/i.test(name)));
+        assert.ok(names.some((name) => /Relief Sun/i.test(name)));
+      } finally {
+        const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
+        loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
+        axios.get = originalGet;
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
 test('fetchRecoAlternativesForProduct: finish-fit sunscreen pool rejects category-only treatment drift and touch-up formats', async () => {
   return withEnv(
     {
