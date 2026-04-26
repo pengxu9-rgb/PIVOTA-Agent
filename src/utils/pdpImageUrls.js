@@ -13,6 +13,9 @@ const IMAGE_DEDUPE_IGNORED_QUERY_KEYS = new Set([
   'format',
   'fm',
   'fit',
+  'sw',
+  'sh',
+  'sm',
 ]);
 const KNOWN_SDCND_FILENAME_ALIASES = {
   'tf_sku_t2ss02_3000x3000_0.png': 'tf_sku_T2SS02_3000x3000_1.png',

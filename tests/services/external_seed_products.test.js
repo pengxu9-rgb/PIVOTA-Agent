@@ -67,6 +67,42 @@ describe('externalSeedProducts helper', () => {
     );
   });
 
+  test('filters site chrome and placeholder images from external seed product galleries', () => {
+    const productImage =
+      'https://theordinary.com/dw/image/v2/BFKJ_PRD/on/demandware.static/-/Sites-deciem-master/default/dw0fd80738/Images/products/The%20Ordinary/rdn-multi-peptide-lash-and-brow-serum-eu-5ml.png?sw=900&sh=900&sm=fit';
+    const productImageResize =
+      'https://theordinary.com/dw/image/v2/BFKJ_PRD/on/demandware.static/-/Sites-deciem-master/default/dw0fd80738/Images/products/The%20Ordinary/rdn-multi-peptide-lash-and-brow-serum-eu-5ml.png?sw=860&sh=860&sm=fit';
+    const benefitImage =
+      'https://theordinary.com/dw/image/v2/BFKJ_PRD/on/demandware.static/-/Sites-deciem-master/default/dw233a3a1a/Images/products/The%20Ordinary/infographics/ord-multi-peptide-lash-brow-benefits-graphic.jpg?sw=900&sh=900&sm=fit';
+
+    const product = buildExternalSeedProduct({
+      id: 'eps_theordinary_lash_brow',
+      external_product_id: 'ext_theordinary_lash_brow',
+      canonical_url: 'https://theordinary.com/en-us/multi-peptide-lash-brow-serum-100111.html',
+      destination_url: 'https://theordinary.com/en-us/multi-peptide-lash-brow-serum-100111.html',
+      title: 'Multi-Peptide Lash and Brow Serum',
+      image_url: productImage,
+      seed_data: {
+        brand: 'The Ordinary',
+        snapshot: {
+          image_url: productImage,
+          image_urls: [
+            productImage,
+            benefitImage,
+            'https://theordinary.com/on/demandware.static/-/Library-Sites-DeciemSharedLibrary/default/dw665025d6/theordinary/homepage/slotA/heroes-slot-a-mobile.jpg',
+            'https://theordinary.com/on/demandware.static/Sites-deciem-us-Site/-/default/dw6a974392/images/theordinary/navbar-email-signup-popup-img-TO.png',
+            'https://theordinary.com/on/demandware.static/Sites-deciem-us-Site/-/default/dw7498968d/images/brands-logo/theOrdinary-logo.svg',
+            'https://theordinary.com/en-us/iVBORw0KGgoAAAANSUhEUgAAAAEAAAABAQMAAAAl21bKAAAAAXNSR0IB2cksfwAAAAlwSFlzAAALEwAACxMBAJqcGAAAAANQTFRF+Pj4c64OKQAAAApJREFUeJxjYAAAAAIAAUivpHEAAAAASUVORK5CYII=',
+            productImageResize,
+          ],
+        },
+      },
+    });
+
+    expect(product.images).toEqual([productImage, benefitImage]);
+    expect(product.image_url).toBe(productImage);
+  });
+
   test('carries seed review summary into external seed runtime product', () => {
     const product = buildExternalSeedProduct({
       id: 'eps_reviewed_seed',

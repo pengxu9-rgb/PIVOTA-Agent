@@ -146,9 +146,15 @@ describe('backfill-external-product-seeds-catalog', () => {
         'https://www.tomfordbeauty.com/cdn/shop/files/Menu.svg?v=1771253635&width=24',
         'https://www.rarebeauty.com/cdn/shop/files/gnav-shop-fragrance-fa25_1024x.png?v=1753828599',
         'https://www.rarebeauty.com/cdn/shop/files/SHADE-FINDER-HERO-MIDDLE_1024x.jpg?v=1613736184',
+        'https://theordinary.com/on/demandware.static/-/Library-Sites-DeciemSharedLibrary/default/dw665025d6/theordinary/homepage/slotA/heroes-slot-a-mobile.jpg',
+        'https://theordinary.com/on/demandware.static/Sites-deciem-us-Site/-/default/dw6a974392/images/theordinary/navbar-email-signup-popup-img-TO.png',
+        'https://theordinary.com/en-us/iVBORw0KGgoAAAANSUhEUgAAAAEAAAABAQMAAAAl21bKAAAAAXNSR0IB2cksfwAAAAlwSFlzAAALEwAACxMBAJqcGAAAAANQTFRF+Pj4c64OKQAAAApJREFUeJxjYAAAAAIAAUivpHEAAAAASUVORK5CYII=',
+        'https://theordinary.com/dw/image/v2/BFKJ_PRD/on/demandware.static/-/Sites-deciem-master/default/dw0fd80738/Images/products/The%20Ordinary/rdn-multi-peptide-lash-and-brow-serum-eu-5ml.png?sw=900&sh=900&sm=fit',
+        'https://theordinary.com/dw/image/v2/BFKJ_PRD/on/demandware.static/-/Sites-deciem-master/default/dw0fd80738/Images/products/The%20Ordinary/rdn-multi-peptide-lash-and-brow-serum-eu-5ml.png?sw=860&sh=860&sm=fit',
       ]),
     ).toEqual([
       'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T93Y01_2000x2000_0.png?v=1774596807',
+      'https://theordinary.com/dw/image/v2/BFKJ_PRD/on/demandware.static/-/Sites-deciem-master/default/dw0fd80738/Images/products/The%20Ordinary/rdn-multi-peptide-lash-and-brow-serum-eu-5ml.png?sw=900&sh=900&sm=fit',
     ]);
   });
 

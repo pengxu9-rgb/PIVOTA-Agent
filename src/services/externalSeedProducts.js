@@ -6,7 +6,7 @@ const {
   resolveExternalSeedProtectionContract,
 } = require('./externalSeedRecall');
 const { isDisplayablePdpFaqItem } = require('./pdpFaqQuality');
-const { normalizePdpImageUrl } = require('../utils/pdpImageUrls');
+const { buildPdpImageDedupeKey, normalizePdpImageUrl } = require('../utils/pdpImageUrls');
 
 const SHOPIFY_ASSET_HASH_SUFFIX_RE =
   /^(.*?_[0-9a-z]+(?:[a-z])?)_(?:[0-9a-f]{8,}(?:-[0-9a-f]{4,}){2,}|[0-9a-f-]{16,})(\.[a-z0-9]+)$/i;
@@ -604,7 +604,13 @@ function appendImageUrls(out, value) {
 
   if (typeof value === 'string') {
     const url = normalizePdpImageUrl(value);
-    if (!url || out.includes(url)) return;
+    if (!url || isNonProductSeedImageUrl(url)) return;
+    const dedupeKey = buildPdpImageDedupeKey(url) || url.toLowerCase();
+    const alreadySeen = out.some((existing) => {
+      const existingKey = buildPdpImageDedupeKey(existing) || String(existing || '').toLowerCase();
+      return existingKey === dedupeKey;
+    });
+    if (alreadySeen) return;
     out.push(url);
     return;
   }
@@ -619,6 +625,55 @@ function appendImageUrls(out, value) {
   appendImageUrls(out, value.url);
   appendImageUrls(out, value.src);
   appendImageUrls(out, value.contentUrl);
+}
+
+function decodeUrlPathnameForImageFilter(value) {
+  try {
+    return decodeURIComponent(new URL(value).pathname || '').toLowerCase();
+  } catch {
+    return String(value || '').toLowerCase();
+  }
+}
+
+function isNonProductSeedImageUrl(value) {
+  const normalized = normalizePdpImageUrl(value);
+  if (!normalized) return true;
+  const lower = normalized.toLowerCase();
+  const pathname = decodeUrlPathnameForImageFilter(normalized);
+  const filename = String(pathname.split('/').pop() || '').trim();
+  if (!filename) return true;
+  if (
+    lower.endsWith('.svg') ||
+    lower.includes('.svg?') ||
+    lower.includes('data:image') ||
+    /\/(?:ivborw0kggo|r0lgodlh|base64)/i.test(pathname)
+  ) {
+    return true;
+  }
+  if (filename.length > 120 && !/\.(?:avif|gif|jpe?g|png|webp)$/i.test(filename)) {
+    return true;
+  }
+  if (
+    pathname.includes('/navigation/') ||
+    pathname.includes('/navbar') ||
+    pathname.includes('/homepage/') ||
+    pathname.includes('/home-page/') ||
+    pathname.includes('/brand-logo') ||
+    pathname.includes('/brands-logo') ||
+    pathname.includes('/icons/svg/') ||
+    pathname.includes('/email-signup') ||
+    pathname.includes('/popup') ||
+    pathname.includes('/track-order') ||
+    pathname.includes('/menu.') ||
+    /\/(?:cart|account|search)(?:[._/-]|$)/i.test(pathname) ||
+    pathname.includes('/flyout') ||
+    pathname.includes('/slot-a') ||
+    pathname.includes('/slota/') ||
+    pathname.includes('/heroes-slot')
+  ) {
+    return true;
+  }
+  return false;
 }
 
 function normalizeImageFamilyToken(value) {

@@ -485,9 +485,22 @@ function collectProductImageUrls(product, options = {}) {
 function isDecorativeSeedImageUrl(value) {
   const normalized = normalizeUrlLike(value).toLowerCase();
   if (!normalized) return false;
+  let pathname = normalized;
+  let filename = '';
+  try {
+    const parsed = new URL(normalized);
+    pathname = decodeURIComponent(parsed.pathname || '').toLowerCase();
+    filename = String(pathname.split('/').pop() || '').trim();
+  } catch {
+    pathname = normalized;
+    filename = normalized.split('/').pop() || '';
+  }
   return (
     normalized.endsWith('.svg') ||
     normalized.includes('.svg?') ||
+    normalized.includes('data:image') ||
+    /\/(?:ivborw0kggo|r0lgodlh|base64)/i.test(pathname) ||
+    (filename.length > 120 && !/\.(?:avif|gif|jpe?g|png|webp)$/i.test(filename)) ||
     normalized.includes('/menu.svg') ||
     normalized.includes('/close.svg') ||
     normalized.includes('/icon-') ||
@@ -496,6 +509,20 @@ function isDecorativeSeedImageUrl(value) {
     normalized.includes('icon-account') ||
     normalized.includes('/logo.svg') ||
     normalized.includes('/tf_logo.svg') ||
+    pathname.includes('/navigation/') ||
+    pathname.includes('/navbar') ||
+    pathname.includes('/homepage/') ||
+    pathname.includes('/home-page/') ||
+    pathname.includes('/brand-logo') ||
+    pathname.includes('/brands-logo') ||
+    pathname.includes('/icons/svg/') ||
+    pathname.includes('/email-signup') ||
+    pathname.includes('/popup') ||
+    pathname.includes('/track-order') ||
+    pathname.includes('/flyout') ||
+    pathname.includes('/slot-a') ||
+    pathname.includes('/slota/') ||
+    pathname.includes('/heroes-slot') ||
     /[_-]\d{2,3}x\d{2,3}_crop_center(?:[._-]|$)/i.test(normalized) ||
     normalized.includes('gnav-shop-') ||
     normalized.includes('shade-finder-hero-')

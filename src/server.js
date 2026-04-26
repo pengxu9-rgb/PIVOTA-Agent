@@ -23966,6 +23966,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	                canonicalProductRef.product_id ||
 	                '',
 	            ).trim();
+	            if (
+	              canonicalProductRef.merchant_id === EXTERNAL_SEED_MERCHANT_ID ||
+	              reviewPlatform.toLowerCase() === 'external' ||
+	              isExternalSeedProductId(canonicalProductRef.product_id) ||
+	              isExternalSeedProductId(reviewPlatformProductId)
+	            ) {
+	              return null;
+	            }
 	            if (!reviewPlatform || !reviewPlatformProductId) return null;
 	            return await fetchReviewSummaryCached({
 	              merchantId: canonicalProductRef.merchant_id,
