@@ -5431,6 +5431,173 @@ test('reco assistant structured renderer pins finish-fit same-slot support sente
   }
 });
 
+test('reco assistant structured renderer repairs transferred rich sunscreen reasons before validation', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const payload = __internal.applyRecoContentSpineToPayload(
+      {
+        recommendations: [
+          {
+            product_id: 'spf_airyfit',
+            display_name: 'Moisture Airyfit Daily Sunscreen SPF50+/PA++++ / Unscented',
+            brand: 'Haruharu Wonder',
+            category: 'Sunscreen',
+            short_description: 'SPF50+ sunscreen with an airy-fit, non-greasy finish for wearable daytime use.',
+            why_this_one:
+              'it has more direct airy, non-greasy texture evidence for oily skin under makeup while staying in a dedicated SPF50+ sunscreen lane',
+            matched_role_id: 'daily_sunscreen_finish_fit',
+            matched_role_label: 'Daily sunscreen with finish fit',
+            preferred_step: 'sunscreen',
+          },
+          {
+            product_id: 'spf_mineral',
+            display_name: 'Moisture Pure Mineral Relief Sunscreen SPF50+/PA++++ /Unscented',
+            brand: 'Haruharu Wonder',
+            category: 'Sunscreen',
+            short_description: 'Mineral zinc-oxide sunscreen for daily protection and sensitive-skin use.',
+            why_this_one:
+              'it leans more mineral and sensitive-skin-friendly if you want a sheer, weightless finish',
+            matched_role_id: 'daily_sunscreen_finish_fit',
+            matched_role_label: 'Daily sunscreen with finish fit',
+            preferred_step: 'sunscreen',
+          },
+          {
+            product_id: 'spf_dayscreen',
+            display_name: 'Dayscreen Moisturizer SPF 30',
+            brand: 'Beauty of Joseon',
+            category: 'Sunscreen',
+            short_description: 'Lightweight daily moisturizer with SPF 30 and a breathable finish.',
+            why_this_one:
+              'it is more of a moisturizer-SPF hybrid for light hydration, so it is a comparison option if you are comfortable with SPF30 rather than an SPF50 sunscreen',
+            matched_role_id: 'daily_sunscreen_finish_fit',
+            matched_role_label: 'Daily sunscreen with finish fit',
+            preferred_step: 'sunscreen',
+          },
+        ],
+        recommendation_meta: {
+          resolved_target_step: 'sunscreen',
+          mainline_status: 'grounded_success',
+        },
+      },
+      {
+        ingredient_query: 'Daily sunscreen with finish fit',
+        resolved_target_step: 'sunscreen',
+        primary_target_id: 'daily_sunscreen_finish_fit',
+        ranked_targets: [
+          {
+            target_id: 'daily_sunscreen_finish_fit',
+            ingredient_query: 'Daily sunscreen with finish fit',
+            resolved_target_step: 'sunscreen',
+          },
+        ],
+        selected_target_ids: ['daily_sunscreen_finish_fit'],
+      },
+    );
+    const names = [
+      'Moisture Airyfit Daily Sunscreen SPF50+/PA++++ / Unscented',
+      'Moisture Pure Mineral Relief Sunscreen SPF50+/PA++++ /Unscented',
+      'Dayscreen Moisturizer SPF 30',
+    ];
+    const primaryTarget = payload.recommendation_meta.ranked_targets[0];
+    const text = __internal.renderRecoAssistantStructuredReasonRewrite({
+      structuredReason: {
+        lead_reason: 'it provides a richer, more moisturizing cream-based option if you want more moisture under makeup',
+        support_reasons: [
+          'it leans more mineral and sensitive-skin-friendly if you want a sheer, weightless finish',
+          'it is more of a moisturizer-SPF hybrid for light hydration',
+        ],
+      },
+      payload,
+      language: 'EN',
+      profile: { skinType: 'oily' },
+      primaryTarget,
+      names,
+      requestMode: 'buy',
+      selectedProductRoleMix: 'same_role_comparison',
+    });
+
+    assert.match(
+      text,
+      /Moisture Airyfit Daily Sunscreen SPF50\+\/PA\+\+\+\+ \/ Unscented (?:keeps the finish lighter and smoother under makeup|keeps the feel lighter and more invisible if you want less weight under makeup)/i,
+    );
+    assert.doesNotMatch(
+      text,
+      /Moisture Airyfit Daily Sunscreen SPF50\+\/PA\+\+\+\+ \/ Unscented[^.]+richer|Moisture Airyfit Daily Sunscreen SPF50\+\/PA\+\+\+\+ \/ Unscented[^.]+moisturizer-SPF hybrid/i,
+    );
+    const validation = __internal.validateRecoAssistantRewriteCandidate({
+      candidateText: text,
+      payload,
+      language: 'EN',
+      profile: { skinType: 'oily' },
+      userRequestText: 'I have oily skin, what sunscreen should I buy?',
+      refinementQuestionPlan: null,
+      primaryTarget,
+      secondaryTargets: [],
+      names,
+      requestMode: 'buy',
+    });
+    assert.equal(validation.reason, null);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('reco assistant rewrite validator accepts neutral practical-choice buy lead wording', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const payload = {
+      recommendations: [
+        {
+          display_name: 'Moisture Airyfit Daily Sunscreen SPF50+/PA++++ / Unscented',
+          brand: 'Haruharu Wonder',
+          matched_role_id: 'daily_sunscreen_finish_fit',
+          matched_role_label: 'Daily sunscreen with finish fit',
+          why_this_one:
+            'it has airy, non-greasy texture evidence for oily skin under makeup',
+        },
+        {
+          display_name: 'Moisture Pure Mineral Relief Sunscreen SPF50+/PA++++ /Unscented',
+          brand: 'Haruharu Wonder',
+          matched_role_id: 'daily_sunscreen_finish_fit',
+          matched_role_label: 'Daily sunscreen with finish fit',
+          why_this_one:
+            'it leans more mineral and sensitive-skin-friendly if you want a sheer, weightless finish',
+        },
+      ],
+      recommendation_meta: {
+        ranked_targets: [
+          {
+            target_id: 'daily_sunscreen_finish_fit',
+            ingredient_query: 'Daily sunscreen with finish fit',
+            resolved_target_step: 'sunscreen',
+          },
+        ],
+        selected_target_ids: ['daily_sunscreen_finish_fit'],
+      },
+    };
+    const primaryTarget = payload.recommendation_meta.ranked_targets[0];
+    const validation = __internal.validateRecoAssistantRewriteCandidate({
+      candidateText:
+        'Moisture Airyfit Daily Sunscreen SPF50+/PA++++ / Unscented is a practical choice for oily skin because it has airy, non-greasy texture evidence for daytime sunscreen wear under makeup. Moisture Pure Mineral Relief Sunscreen SPF50+/PA++++ /Unscented makes more sense if you want a more mineral, sensitive-skin-friendly option with a sheer, weightless finish.',
+      payload,
+      language: 'EN',
+      profile: { skinType: 'oily' },
+      userRequestText: 'I have oily skin, what sunscreen should I buy?',
+      refinementQuestionPlan: null,
+      primaryTarget,
+      secondaryTargets: [],
+      names: [
+        'Moisture Airyfit Daily Sunscreen SPF50+/PA++++ / Unscented',
+        'Moisture Pure Mineral Relief Sunscreen SPF50+/PA++++ /Unscented',
+      ],
+      requestMode: 'buy',
+    });
+    assert.equal(validation.reason, null);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('reco assistant rewrite retries gemini timeout with structured reason prompt context', async () => {
   const prevMock = process.env.AURORA_BFF_USE_MOCK;
   const prevProvider = process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
