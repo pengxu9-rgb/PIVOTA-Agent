@@ -92,9 +92,13 @@ function buildSupportRoleQueryScore(
       score += 2.6;
     }
     if (/^sunscreen under makeup(?: oily skin)?$/.test(normalized)) score += layeringSignal ? 7.2 : 2.6;
+    if (/^sunscreen oily skin$/.test(normalized)) score += oilySignal ? 6.2 : 1.4;
     if (/^oil control sunscreen$/.test(normalized)) score += oilySignal ? 5.4 : 3;
     if (/^lightweight sunscreen oily skin$/.test(normalized)) score += finishFitSignal ? 6.4 : 2.4;
     if (/^lightweight sunscreen$/.test(normalized)) score += finishFitSignal ? 4.6 : 2.2;
+    if (/^matte sunscreen$/.test(normalized)) score += oilySignal ? 5.8 : 2.2;
+    if (/^invisible sunscreen$/.test(normalized)) score += fluidSignal || layeringSignal ? 5.6 : 2.4;
+    if (/^face sunscreen$/.test(normalized)) score += finishFitSignal ? 2.4 : 1.2;
     if (/^spf fluid oily skin$/.test(normalized)) score += finishFitSignal ? 7.8 : 4.5;
     if (/^spf fluid$/.test(normalized)) score += fluidSignal || layeringSignal ? 5.8 : 2.2;
     if (/^makeup friendly sunscreen$/.test(normalized)) score += layeringSignal ? 4.8 : 1.4;
@@ -124,6 +128,44 @@ function buildSupportRoleQueryScore(
     score += 1;
   }
   return score;
+}
+
+function getFinishFitSunscreenQueryPriority(
+  query = '',
+  {
+    oilySignal = false,
+  } = {},
+) {
+  const normalized = normalizeSupportRoleQueryToken(query).toLowerCase();
+  if (!normalized) return Number.POSITIVE_INFINITY;
+  const priority = oilySignal
+    ? [
+        'sunscreen oily skin',
+        'sunscreen under makeup',
+        'lightweight sunscreen oily skin',
+        'matte sunscreen',
+        'invisible sunscreen',
+        'spf fluid oily skin',
+        'oil control sunscreen',
+        'makeup friendly sunscreen',
+        'face sunscreen',
+        'daily sunscreen',
+        'broad spectrum sunscreen',
+        'sunscreen',
+      ]
+    : [
+        'sunscreen under makeup',
+        'lightweight sunscreen',
+        'invisible sunscreen',
+        'spf fluid',
+        'makeup friendly sunscreen',
+        'face sunscreen',
+        'daily sunscreen',
+        'broad spectrum sunscreen',
+        'sunscreen',
+      ];
+  const index = priority.indexOf(normalized);
+  return index >= 0 ? index : Number.POSITIVE_INFINITY;
 }
 
 function buildSupportRoleQueryVariants({
@@ -216,12 +258,20 @@ function buildSupportRoleQueryVariants({
     if (!layeringSignal) candidates.push('lightweight moisturizer');
     candidates.push('moisturizer');
   } else if (step === 'sunscreen') {
-    if (fluidSignal || layeringSignal || oilySignal) candidates.push(oilySignal ? 'spf fluid oily skin' : 'spf fluid');
-    if (layeringSignal) candidates.push('sunscreen under makeup');
-    candidates.push(oilySignal ? 'lightweight sunscreen oily skin' : 'lightweight sunscreen');
-    if (!finishFitSunscreenSignal && oilySignal) candidates.push('oil control sunscreen');
-    if (!finishFitSunscreenSignal && layeringSignal) candidates.push('makeup friendly sunscreen');
-    if (!finishFitSunscreenSignal) {
+    if (finishFitSunscreenSignal) {
+      candidates.push(oilySignal ? 'sunscreen oily skin' : 'face sunscreen');
+      candidates.push('sunscreen under makeup');
+      candidates.push(oilySignal ? 'lightweight sunscreen oily skin' : 'lightweight sunscreen');
+      if (oilySignal) candidates.push('matte sunscreen');
+      if (fluidSignal || layeringSignal || oilySignal) candidates.push('invisible sunscreen');
+      if (fluidSignal || layeringSignal || oilySignal) candidates.push(oilySignal ? 'spf fluid oily skin' : 'spf fluid');
+      if (layeringSignal) candidates.push('makeup friendly sunscreen');
+    } else {
+      if (fluidSignal || layeringSignal || oilySignal) candidates.push(oilySignal ? 'spf fluid oily skin' : 'spf fluid');
+      if (layeringSignal) candidates.push('sunscreen under makeup');
+      candidates.push(oilySignal ? 'lightweight sunscreen oily skin' : 'lightweight sunscreen');
+      if (oilySignal) candidates.push('oil control sunscreen');
+      if (layeringSignal) candidates.push('makeup friendly sunscreen');
       candidates.push('daily sunscreen');
       candidates.push('broad spectrum sunscreen');
       candidates.push('sunscreen');
@@ -256,6 +306,7 @@ function buildSupportRoleQueryVariants({
     }
     candidates.push('treatment serum');
   }
+  const effectiveMaxQueries = Math.max(1, Number(maxQueries) || 1);
   return uniqueCaseInsensitiveStrings(candidates, 16)
     .map((query, index) => ({
       query,
@@ -263,11 +314,16 @@ function buildSupportRoleQueryVariants({
       index,
     }))
     .sort((left, right) => {
+      if (finishFitSunscreenSignal) {
+        const priorityDiff = getFinishFitSunscreenQueryPriority(left.query, { oilySignal }) -
+          getFinishFitSunscreenQueryPriority(right.query, { oilySignal });
+        if (priorityDiff !== 0) return priorityDiff;
+      }
       const scoreDiff = Number(right.score || 0) - Number(left.score || 0);
       if (scoreDiff !== 0) return scoreDiff;
       return Number(left.index || 0) - Number(right.index || 0);
     })
-    .slice(0, finishFitSunscreenSignal ? Math.min(Math.max(1, Number(maxQueries) || 1), 3) : Math.max(1, Number(maxQueries) || 1))
+    .slice(0, effectiveMaxQueries)
     .map((entry) => entry.query);
 }
 

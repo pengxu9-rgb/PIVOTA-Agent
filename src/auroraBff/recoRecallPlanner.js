@@ -391,6 +391,11 @@ function buildBeautyMainlineRecallPlan({ mode, semanticContract = null, rawQuery
           }).slice(0, allowConcernFallback ? 3 : 2);
     };
     const compactFinishFitInternalQueries = primaryRoleId === 'daily_sunscreen_finish_fit';
+    const primaryPreferredStep = normalizeSemanticStepFamily(primaryRole?.preferred_step || contract.target_step_family);
+    const finishFitSameRolePrimary =
+      primaryRoleId === 'daily_sunscreen_finish_fit'
+      && primaryPreferredStep === 'sunscreen'
+      && isSameRoleComparisonTargetContext(targetContext);
     const primaryInternalQueries = buildRoleStageQueries(primaryRole, {
       allowConcernFallback: true,
       preferProductLedInternal: true,
@@ -400,9 +405,8 @@ function buildBeautyMainlineRecallPlan({ mode, semanticContract = null, rawQuery
       allowConcernFallback: true,
       allowDefaultTreatmentIngredientFallback: true,
       includeIngredientAlternates: true,
-      maxQueriesOverride: 4,
+      maxQueriesOverride: finishFitSameRolePrimary ? 5 : 4,
     });
-    const primaryPreferredStep = normalizeSemanticStepFamily(primaryRole?.preferred_step || contract.target_step_family);
     const keepPrimaryExternalStageOpen =
       primaryPreferredStep === 'sunscreen'
       && isSameRoleComparisonTargetContext(targetContext);
@@ -428,7 +432,7 @@ function buildBeautyMainlineRecallPlan({ mode, semanticContract = null, rawQuery
         sourceScope: 'external_seed',
         queries: primaryExternalQueries,
         concurrency: 1,
-        maxAttemptsForStage: Math.min(primaryExternalQueries.length || 1, 4),
+        maxAttemptsForStage: Math.min(primaryExternalQueries.length || 1, finishFitSameRolePrimary ? 5 : 4),
         stopOnViableMatch: !keepPrimaryExternalStageOpen,
         reasonForInclusion: 'framework_primary_external_seed',
         runIf: 'if_surface_count_below_target',

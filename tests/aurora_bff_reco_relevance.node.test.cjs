@@ -123,7 +123,7 @@ function getRecommendationsPayload(responseBody) {
   return recoCard && recoCard.payload && typeof recoCard.payload === 'object' ? recoCard.payload : null;
 }
 
-test('__internal: support role query builder keeps finish-fit sunscreen recall to the top three precise variants', () => {
+test('__internal: support role query builder expands finish-fit sunscreen recall beyond narrow SPF-fluid variants', () => {
   const queries = buildSupportRoleQueryVariants({
     roleId: 'daily_sunscreen_finish_fit',
     roleLabel: 'Daily sunscreen finish fit',
@@ -136,10 +136,12 @@ test('__internal: support role query builder keeps finish-fit sunscreen recall t
   });
 
   assert.deepEqual(queries, [
-    'spf fluid oily skin',
+    'sunscreen oily skin',
     'sunscreen under makeup',
     'lightweight sunscreen oily skin',
+    'matte sunscreen',
   ]);
+  assert.equal(queries.includes('spf fluid oily skin'), false);
   assert.equal(queries.includes('oil control sunscreen'), false);
   assert.equal(queries.includes('makeup friendly sunscreen'), false);
 });
@@ -186,14 +188,18 @@ test('__internal: framework recall planner keeps finish-fit sunscreen internal r
   });
 
   assert.deepEqual(plan.stages[0]?.entries?.map((entry) => entry?.query), [
-    'spf fluid oily skin',
+    'sunscreen oily skin',
     'sunscreen under makeup',
   ]);
   assert.deepEqual(plan.stages[1]?.entries?.map((entry) => entry?.query), [
-    'spf fluid oily skin',
+    'sunscreen oily skin',
     'sunscreen under makeup',
     'lightweight sunscreen oily skin',
+    'matte sunscreen',
+    'invisible sunscreen',
   ]);
+  assert.equal(plan.stages[1]?.max_attempts_for_stage, 5);
+  assert.equal(plan.stages[1]?.stop_on_viable_match, false);
 });
 
 test('__internal: framework recall planner keeps generic daily sunscreen support external runtime budget compact', () => {
@@ -10210,6 +10216,124 @@ test('__internal: framework pool spreads finish-fit same-role sunscreen picks ac
   );
 });
 
+test('__internal: framework pool avoids all-same-brand finish-fit sunscreen comparison when other authority brands exist', () => {
+  const { __internal } = loadRoutesFresh();
+  const targetContext = {
+    framework_id: 'recofw_test_finish_fit_same_role_brand_spread',
+    primary_role_id: 'daily_sunscreen_finish_fit',
+    comparison_mode: 'same_role_comparison',
+    routine_mode: 'same_role_comparison',
+    request_text: 'I have oily skin, what sunscreen should I buy?',
+    semantic_plan: {
+      primary_concern: 'oily daytime sunscreen',
+      comparison_mode: 'same_role_comparison',
+      routine_mode: 'same_role_comparison',
+      must_satisfy_constraints: ['lightweight finish', 'oily skin'],
+    },
+    framework_roles: [
+      {
+        role_id: 'daily_sunscreen_finish_fit',
+        rank: 1,
+        preferred_step: 'sunscreen',
+        label: 'Daily sunscreen finish fit',
+        query_terms: ['sunscreen oily skin', 'lightweight sunscreen oily skin'],
+        fit_keywords: ['lightweight', 'non-greasy', 'matte', 'invisible'],
+        ingredient_hypotheses: ['UV filters'],
+        product_type_hypotheses: ['sunscreen'],
+      },
+    ],
+  };
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [
+      {
+        product_id: 'haruharu_matte_fit_live',
+        merchant_id: 'external_seed',
+        brand: 'Haruharu Wonder',
+        name: 'Daily Soothing Sun Shield SPF50+ PA++++',
+        display_name: 'Haruharu Wonder Daily Soothing Sun Shield SPF50+ PA++++',
+        category: 'Sunscreen',
+        product_type: 'Sunscreen',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'daily_sunscreen_finish_fit',
+        retrieval_query: 'sunscreen oily skin',
+        local_external_seed_role_fit_score: 1.2,
+        benefit_tags: ['spf 50', 'matte', 'oil control'],
+        short_description: 'A matte daily sunscreen for oily skin and shine control.',
+      },
+      {
+        product_id: 'haruharu_mineral_fit_live',
+        merchant_id: 'external_seed',
+        brand: 'Haruharu Wonder',
+        name: 'Moisture Pure Mineral Relief Sunscreen SPF50+ PA++++',
+        display_name: 'Haruharu Wonder Moisture Pure Mineral Relief Sunscreen SPF50+ PA++++',
+        category: 'Sunscreen',
+        product_type: 'Sunscreen',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'daily_sunscreen_finish_fit',
+        retrieval_query: 'sunscreen oily skin',
+        local_external_seed_role_fit_score: 1.18,
+        benefit_tags: ['spf 50', 'mineral', 'sensitive skin'],
+        short_description: 'A mineral sunscreen for sensitive skin.',
+      },
+      {
+        product_id: 'haruharu_dewy_fit_live',
+        merchant_id: 'external_seed',
+        brand: 'Haruharu Wonder',
+        name: 'Moisture Airyfit Daily Sunscreen SPF50+ PA++++',
+        display_name: 'Haruharu Wonder Moisture Airyfit Daily Sunscreen SPF50+ PA++++',
+        category: 'Sunscreen',
+        product_type: 'Sunscreen',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'daily_sunscreen_finish_fit',
+        retrieval_query: 'sunscreen oily skin',
+        local_external_seed_role_fit_score: 1.16,
+        benefit_tags: ['spf 50', 'dewy', 'lightweight'],
+        short_description: 'A dewy sunscreen with a lighter daily finish.',
+      },
+      {
+        product_id: 'boj_aqua_fresh_brand_spread',
+        merchant_id: 'external_seed',
+        brand: 'Beauty of Joseon',
+        name: 'Relief Sun Aqua-Fresh : Rice + B5 (SPF50+ PA++++)',
+        display_name: 'Beauty of Joseon Relief Sun Aqua-Fresh : Rice + B5 (SPF50+ PA++++)',
+        category: 'Sunscreen',
+        product_type: 'Sunscreen',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'daily_sunscreen_finish_fit',
+        retrieval_query: 'lightweight sunscreen oily skin',
+        local_external_seed_role_fit_score: 1.05,
+        benefit_tags: ['spf 50', 'lightweight', 'fluid', 'no white cast'],
+        short_description: 'A lightweight sunscreen fluid that layers without a heavy finish.',
+      },
+      {
+        product_id: 'round_lab_birch_brand_spread',
+        merchant_id: 'external_seed',
+        brand: 'Round Lab',
+        name: 'Birch Juice Moisturizing Sunscreen SPF50+ PA++++',
+        display_name: 'Round Lab Birch Juice Moisturizing Sunscreen SPF50+ PA++++',
+        category: 'Sunscreen',
+        product_type: 'Sunscreen',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'daily_sunscreen_finish_fit',
+        retrieval_query: 'lightweight sunscreen oily skin',
+        local_external_seed_role_fit_score: 1.04,
+        benefit_tags: ['spf 50', 'watery', 'lightweight'],
+        short_description: 'A watery sunscreen texture for daily wear.',
+      },
+    ].map((row) => __internal.normalizeRecoCatalogProduct(row)),
+    { targetContext },
+  );
+
+  assert.equal(state.primary_role_matched, true);
+  assert.equal(state.selected_recommendations.length, 3);
+  const selectedBrands = new Set(state.selected_recommendations.map((row) => String(row.brand || '').toLowerCase()));
+  assert.ok(selectedBrands.size >= 2);
+  assert.equal(
+    state.selected_recommendations.every((row) => String(row.brand || '') === 'Haruharu Wonder'),
+    false,
+  );
+});
+
 test('__internal: finish-fit same-role primary external stage can stop early once three tradeoff buckets are ready', () => {
   const { __internal } = loadRoutesFresh();
   const targetContext = {
@@ -10225,16 +10349,19 @@ test('__internal: finish-fit same-role primary external stage can stop early onc
     primary_role_matched: true,
     selected_recommendations: [
       {
+        brand: 'Beauty of Joseon',
         display_name: 'Beauty of Joseon Relief Sun Aqua-Fresh : Rice + B5 (SPF50+ PA++++)',
         short_description: 'A lightweight sunscreen fluid for smoother under-makeup wear.',
         benefit_tags: ['lightweight', 'under makeup', 'fluid'],
       },
       {
+        brand: 'Beauty of Joseon',
         display_name: 'Beauty of Joseon Day Dew Sunscreen',
         short_description: 'A fresher, dewier sunscreen with a bit more hydration.',
         benefit_tags: ['dewy', 'under makeup'],
       },
       {
+        brand: 'SKINTIFIC',
         display_name: 'SKINTIFIC Matte Fit Serum Sunscreen SPF 50+ PA++++',
         short_description: 'A matte sunscreen that helps cut shine under makeup.',
         benefit_tags: ['matte', 'shine control', 'under makeup'],
@@ -10263,6 +10390,21 @@ test('__internal: finish-fit same-role primary external stage can stop early onc
       executedQueryCount: 2,
     }),
     true,
+  );
+  assert.equal(
+    __internal.shouldStopConcernFrameworkFinishFitPrimaryExternalEarly({
+      stageId: 'framework_stage_b_primary_external_seed',
+      targetContext,
+      candidateState: {
+        primary_role_matched: true,
+        selected_recommendations: candidateState.selected_recommendations.map((row) => ({
+          ...row,
+          brand: 'Haruharu Wonder',
+        })),
+      },
+      executedQueryCount: 2,
+    }),
+    false,
   );
 });
 
