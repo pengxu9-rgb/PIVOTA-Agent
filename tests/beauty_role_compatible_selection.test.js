@@ -24,6 +24,14 @@ describe('beauty role compatible selection policy', () => {
     ).toBe('sunscreen');
     expect(
       inferBeautyRoleIntent({
+        queryText: 'Is Beauty of Joseon Relief Sun Aqua-Fresh good for oily skin under makeup?',
+        beautyRequest: {
+          product_context: { canonical_product_ref: 'beauty of joseon relief sun aqua-fresh' },
+        },
+      }),
+    ).toBe('sunscreen');
+    expect(
+      inferBeautyRoleIntent({
         queryText: 'Combination skin, clogged pores, Seattle winter, simple routine.',
       }),
     ).toBe('moisturizer');

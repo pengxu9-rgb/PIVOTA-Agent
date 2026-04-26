@@ -1510,15 +1510,54 @@ function getBeautyBudgetMax(beautyRequest = {}) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
+function inferBeautyProductRefStepFamily(productRef = '') {
+  const normalized = String(productRef || '').trim().toLowerCase();
+  if (!normalized) return null;
+  if (
+    /\b(sunscreen|spf\b|sunblock|sun protection|uv|relief\s+sun|sun\s+(?:aqua|fresh|shield|cream|stick|serum|fluid))\b/.test(
+      normalized,
+    )
+  ) {
+    return 'sunscreen';
+  }
+  if (/\b(face\s+lotion|face\s+cream|moisturi[sz](?:ers?|ing|e|ed)?|barrier\s+cream|gel\s+cream)\b/.test(normalized)) {
+    return 'moisturizer';
+  }
+  if (/\b(cleanser|face\s+wash|cleansing)\b/.test(normalized)) return 'cleanser';
+  if (/\b(serum|ampoule|essence|treatment|niacinamide|retinol|bha|aha|azelaic|vitamin\s+c)\b/.test(normalized)) {
+    return 'treatment';
+  }
+  return null;
+}
+
+function flattenBeautyContextText(value, depth = 0) {
+  if (depth > 3 || value == null) return '';
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (Array.isArray(value)) return value.map((item) => flattenBeautyContextText(item, depth + 1)).join(' ');
+  if (!isPlainObject(value)) return '';
+  return Object.values(value).map((item) => flattenBeautyContextText(item, depth + 1)).join(' ');
+}
+
 function buildBeautyContextRetrievalQuery({
   rawQuery = '',
   expandedQuery = '',
   beautyRequest = {},
+  targetStepFamily = null,
+  semanticFamily = null,
 } = {}) {
   const query = String(rawQuery || '').trim();
   const expanded = String(expandedQuery || query).trim();
   if (!query) return expanded;
-  if (!isPlainObject(beautyRequest) || Object.keys(beautyRequest).length === 0) return expanded;
+  const explicitRole = normalizeSemanticStepFamily(targetStepFamily);
+  const explicitSemanticRole = normalizeSemanticStepFamily(semanticFamily);
+  const hasBeautyRequest = isPlainObject(beautyRequest) && Object.keys(beautyRequest).length > 0;
+  const allowRoleOnlyContext = !hasBeautyRequest && explicitRole === 'sunscreen';
+  if (
+    !hasBeautyRequest &&
+    !allowRoleOnlyContext
+  ) {
+    return expanded;
+  }
   const productContext = isPlainObject(beautyRequest?.product_context) ? beautyRequest.product_context : {};
   const routineContext = isPlainObject(beautyRequest?.routine_context) ? beautyRequest.routine_context : {};
   const skinContext = isPlainObject(beautyRequest?.skin_context) ? beautyRequest.skin_context : {};
@@ -1528,7 +1567,8 @@ function buildBeautyContextRetrievalQuery({
     Object.keys(routineContext).length > 0 ||
     Object.keys(skinContext).length > 0 ||
     Object.keys(constraints).length > 0 ||
-    Object.keys(isPlainObject(beautyRequest?.scenario_context) ? beautyRequest.scenario_context : {}).length > 0;
+    Object.keys(isPlainObject(beautyRequest?.scenario_context) ? beautyRequest.scenario_context : {}).length > 0 ||
+    allowRoleOnlyContext;
   if (!hasActionableContext) return expanded;
   const productRef = pickFirstNonEmptyString(
     productContext.canonical_product_ref,
@@ -1544,6 +1584,15 @@ function buildBeautyContextRetrievalQuery({
       /\b(is|would|should|can)\b[^.]{0,140}\b(good|better|right|fit|suit|work|use)\b/.test(normalized) ||
       /\b(better than|vs\.?|versus)\b/.test(normalized)
     );
+  if (allowRoleOnlyContext && explicitRole === 'sunscreen') {
+    const expandedNormalized = expanded.toLowerCase();
+    const alreadySpecific =
+      /\b(face sunscreen|lightweight sunscreen|daily sunscreen|broad spectrum sunscreen|spf\s*\d)\b/.test(expandedNormalized);
+    const textureNeeded =
+      /\b(humid|hot|makeup|shine|shiny|heavy|greasy|commute)\b/.test([query, expanded].join(' ').toLowerCase()) &&
+      !/\b(lightweight|non greasy|non-greasy|matte|oil free|oil-free)\b/.test(expandedNormalized);
+    if (alreadySpecific && !textureNeeded) return expanded;
+  }
   const contextTerms = [];
   const actives = Array.isArray(routineContext.actives)
     ? routineContext.actives
@@ -1561,18 +1610,26 @@ function buildBeautyContextRetrievalQuery({
   if (pickFirstNonEmptyString(constraints.routine_complexity, constraints.routineComplexity)) {
     contextTerms.push(pickFirstNonEmptyString(constraints.routine_complexity, constraints.routineComplexity));
   }
-  const normalizedRole = inferBeautyTargetStepFamily({
+  const productRefRole = exactProductAssist ? inferBeautyProductRefStepFamily(productRef) : null;
+  const normalizedRole = productRefRole || explicitRole || inferBeautyTargetStepFamily({
     rawQuery: [
       query,
       productRef,
       pickFirstNonEmptyString(skinContext.skin_type, skinContext.skinType),
       pickFirstNonEmptyString(skinContext.barrier_status, skinContext.barrierStatus),
     ].filter(Boolean).join(' '),
+    explicitSemanticFamily: semanticFamily,
   });
   if (normalizedRole === 'moisturizer') {
     contextTerms.push('face moisturizer', 'barrier moisturizer', 'barrier repair moisturizer', 'ceramide moisturizer');
   }
-  if (normalizedRole === 'sunscreen') contextTerms.push('face sunscreen', 'spf');
+  if (normalizedRole === 'sunscreen') {
+    contextTerms.push('face sunscreen', 'spf', 'daily sunscreen');
+    const requestContext = [query, expanded, beautyRequest?.user_goal, flattenBeautyContextText(beautyRequest?.scenario_context)].filter(Boolean).join(' ').toLowerCase();
+    if (/\b(oily|humid|hot|makeup|shine|shiny|heavy|greasy|commute)\b/.test(requestContext)) {
+      contextTerms.push('lightweight sunscreen', 'non greasy sunscreen', 'matte sunscreen');
+    }
+  }
   if (normalizedRole === 'serum' || normalizedRole === 'treatment') contextTerms.push('serum', 'treatment');
 
   const parts = exactProductAssist
@@ -5031,6 +5088,8 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
     rawQuery: latestUserQuery,
     expandedQuery: effectiveExpandedQuery,
     beautyRequest: payloadBeautyRequest,
+    targetStepFamily: effectiveTargetStepFamily,
+    semanticFamily: effectiveSemanticFamily,
   });
   const beautyBudgetMax = getBeautyBudgetMax(payloadBeautyRequest);
 

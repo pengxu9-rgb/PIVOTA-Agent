@@ -89,7 +89,8 @@ function hasExactProductContext({ queryText = '', beautyRequest = {} } = {}) {
 function inferBeautyRoleIntent({ queryText = '', beautyRequest = {} } = {}) {
   const text = getBeautyRequestText({ queryText, beautyRequest });
   if (!text) return null;
-  const explicitSunscreen = /\b(sunscreen|spf|sun\s*screen|sunblock|uv)\b/.test(text);
+  const explicitSunscreen =
+    /\b(sunscreen|spf|sun\s*screen|sunblock|uv|relief\s+sun|sun\s+(?:aqua|fresh|shield|cream|stick|serum|fluid))\b/.test(text);
   const explicitMoisturizer =
     /\b(moisturi[sz](?:ers?|ing|e|ed)?|cream|lotion|gel\s*cream|barrier|dry|tight|retinoid|tretinoin)\b/.test(text);
   const explicitTreatment =

@@ -1148,6 +1148,41 @@ describe('find_products_multi context building', () => {
     expect(String(adjustedPayload.search.target_step_family || '')).toBe('moisturizer');
   });
 
+  test('exact sunscreen product context does not get rewritten into treatment recall', async () => {
+    const { adjustedPayload, expansion_meta } = await buildFindProductsMultiContext({
+      payload: {
+        search: {
+          query: 'Is Beauty of Joseon Relief Sun Aqua-Fresh good for oily skin under makeup?',
+          limit: 6,
+          in_stock_only: true,
+          catalog_surface: 'beauty',
+        },
+        context: {
+          normalized_need: {
+            beauty_request: {
+              domain: 'beauty',
+              user_goal: 'Is Beauty of Joseon Relief Sun Aqua-Fresh good for oily skin under makeup?',
+              skin_context: { skin_type: 'oily' },
+              product_context: { canonical_product_ref: 'beauty of joseon relief sun aqua-fresh' },
+              scenario_context: { use_case: 'under makeup' },
+            },
+          },
+        },
+      },
+      metadata: {
+        source: 'shopping_agent',
+        catalog_surface: 'beauty',
+      },
+    });
+
+    const query = String(adjustedPayload.search.query || '').toLowerCase();
+    expect(query).toContain('beauty of joseon relief sun aqua-fresh');
+    expect(query).toContain('face sunscreen');
+    expect(query).toContain('lightweight sunscreen');
+    expect(query).not.toContain('serum treatment');
+    expect(String(expansion_meta.beauty_context_retrieval_query || '').toLowerCase()).toContain('face sunscreen');
+  });
+
   test('beauty_request plural moisturizer context keeps role terms ahead of long follow-up text', async () => {
     const { adjustedPayload, expansion_meta } = await buildFindProductsMultiContext({
       payload: {
@@ -1180,6 +1215,30 @@ describe('find_products_multi context building', () => {
     expect(query).toContain('barrier repair moisturizer');
     expect(query).toContain('ceramide moisturizer');
     expect(String(adjustedPayload.search.target_step_family || '')).toBe('moisturizer');
+    expect(String(expansion_meta.beauty_context_retrieval_query || '').toLowerCase()).toBe(query);
+  });
+
+  test('semantic sunscreen prompts without beauty_request still get role-first recall terms', async () => {
+    const { adjustedPayload, expansion_meta } = await buildFindProductsMultiContext({
+      payload: {
+        search: {
+          query: 'I commute in hot humid weather and hate heavy SPF. What sunscreen product should I use?',
+          limit: 8,
+          in_stock_only: true,
+          catalog_surface: 'beauty',
+        },
+      },
+      metadata: {
+        source: 'shopping_agent',
+        catalog_surface: 'beauty',
+      },
+    });
+
+    const query = String(adjustedPayload.search.query || '').toLowerCase();
+    expect(query.startsWith('face sunscreen spf daily sunscreen lightweight sunscreen')).toBe(true);
+    expect(query).toContain('non greasy sunscreen');
+    expect(query).toContain('matte sunscreen');
+    expect(String(adjustedPayload.search.target_step_family || '')).toBe('sunscreen');
     expect(String(expansion_meta.beauty_context_retrieval_query || '').toLowerCase()).toBe(query);
   });
 
