@@ -3413,32 +3413,50 @@ async function fetchExternalSeedRouteStatusFromDb(args) {
   const productId = String(args?.productId || '').trim();
   if (!productId) return null;
 
+  const selectSql = `
+    SELECT
+      id,
+      external_product_id,
+      status,
+      updated_at,
+      created_at
+    FROM external_product_seeds
+    WHERE %%MATCH_CLAUSE%%
+    ORDER BY
+      CASE WHEN status = 'active' THEN 0 ELSE 1 END,
+      updated_at DESC NULLS LAST,
+      created_at DESC NULLS LAST
+    LIMIT 1
+  `;
+
   try {
-    const res = await query(
-      `
-        SELECT
-          id,
-          external_product_id,
-          status,
-          updated_at,
-          created_at
-        FROM external_product_seeds
-        WHERE (
+    let res = await query(
+      selectSql.replace(
+        '%%MATCH_CLAUSE%%',
+        `(
           external_product_id = $1
           OR id::text = $1
-          OR seed_data->>'external_product_id' = $1
-          OR seed_data->>'product_id' = $1
-          OR seed_data->'snapshot'->>'product_id' = $1
-        )
-        ORDER BY
-          CASE WHEN status = 'active' THEN 0 ELSE 1 END,
-          updated_at DESC NULLS LAST,
-          created_at DESC NULLS LAST
-        LIMIT 1
-      `,
+        )`,
+      ),
       [productId],
     );
-    const row = Array.isArray(res?.rows) ? res.rows[0] : null;
+    let row = Array.isArray(res?.rows) ? res.rows[0] : null;
+
+    if (!row) {
+      res = await query(
+        selectSql.replace(
+          '%%MATCH_CLAUSE%%',
+          `(
+            seed_data->>'external_product_id' = $1
+            OR seed_data->>'product_id' = $1
+            OR seed_data->'snapshot'->>'product_id' = $1
+          )`,
+        ),
+        [productId],
+      );
+      row = Array.isArray(res?.rows) ? res.rows[0] : null;
+    }
+
     if (!row) return null;
     return {
       external_seed_id: row.id ? String(row.id) : null,
