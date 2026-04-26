@@ -8729,6 +8729,88 @@ test('__internal: reco assistant rewrite guard ignores selected product-name con
   assert.equal(offTarget.reason, 'rewrite_off_target_concern_claim');
 });
 
+test('__internal: reco assistant rewrite guard rejects product reason transfer across same-role sunscreen cards', async () => {
+  const { __internal } = loadRoutesFresh();
+  const payload = {
+    roles: [
+      {
+        role_id: 'daily_sunscreen_finish_fit',
+        label: 'Daily sunscreen with finish fit',
+        why_this_role: 'Choose an SPF that wears smoothly for oily skin under makeup.',
+        preferred_step: 'sunscreen',
+      },
+    ],
+    recommendation_meta: {
+      selected_target_ids: ['daily_sunscreen_finish_fit'],
+      ranked_targets: [
+        {
+          target_id: 'daily_sunscreen_finish_fit',
+          ingredient_query: 'Daily sunscreen with finish fit',
+          resolved_target_step: 'sunscreen',
+        },
+      ],
+    },
+    recommendations: [
+      {
+        display_name: 'Moisture Airyfit Daily Sunscreen SPF50+/PA++++ / Unscented',
+        brand: 'Haruharu Wonder',
+        matched_role_id: 'daily_sunscreen_finish_fit',
+        matched_role_label: 'Daily sunscreen with finish fit',
+        why_this_one:
+          'it has more direct airy, non-greasy texture evidence for oily skin under makeup while staying in a dedicated SPF50+ sunscreen lane',
+      },
+      {
+        display_name: 'Moisture Pure Mineral Relief Sunscreen SPF50+/PA++++ /Unscented',
+        brand: 'Haruharu Wonder',
+        matched_role_id: 'daily_sunscreen_finish_fit',
+        matched_role_label: 'Daily sunscreen with finish fit',
+        why_this_one:
+          'it leans more mineral and sensitive-skin-friendly if you want a sheer, weightless finish',
+      },
+      {
+        display_name: 'Dayscreen Moisturizer SPF 30',
+        brand: 'Beauty of Joseon',
+        matched_role_id: 'daily_sunscreen_finish_fit',
+        matched_role_label: 'Daily sunscreen with finish fit',
+        why_this_one:
+          'it is more of a moisturizer-SPF hybrid for light hydration, so it is a comparison option if you are comfortable with SPF30 rather than an SPF50 sunscreen',
+      },
+    ],
+  };
+  const baseArgs = {
+    payload,
+    language: 'EN',
+    primaryTarget: {
+      target_id: 'daily_sunscreen_finish_fit',
+      ingredient_query: 'Daily sunscreen with finish fit',
+      resolved_target_step: 'sunscreen',
+    },
+    secondaryTargets: [],
+    names: [
+      'Moisture Airyfit Daily Sunscreen SPF50+/PA++++ / Unscented',
+      'Moisture Pure Mineral Relief Sunscreen SPF50+/PA++++ /Unscented',
+      'Dayscreen Moisturizer SPF 30',
+    ],
+    requestMode: 'buy',
+    userRequestText: 'I have oily skin in humid Houston, what sunscreen should I buy?',
+    refinementQuestionPlan: null,
+  };
+
+  const valid = __internal.validateRecoAssistantRewriteCandidate({
+    ...baseArgs,
+    candidateText:
+      'Haruharu Wonder Moisture Airyfit Daily Sunscreen SPF50+/PA++++ / Unscented fits this request for daily sunscreen with finish fit because it has airy, non-greasy texture evidence for oily skin under makeup. Beauty of Joseon Dayscreen Moisturizer SPF 30 is the softer comparison option because it is more of a moisturizer-SPF hybrid for light hydration and SPF30.',
+  });
+  assert.equal(valid.reason, null);
+
+  const invalid = __internal.validateRecoAssistantRewriteCandidate({
+    ...baseArgs,
+    candidateText:
+      'Haruharu Wonder Moisture Airyfit Daily Sunscreen SPF50+/PA++++ / Unscented fits this request for daily sunscreen with finish fit because it has airy, non-greasy texture evidence for oily skin under makeup. Beauty of Joseon Dayscreen Moisturizer SPF 30 makes more sense if you want a more mineral, sensitive-skin-friendly option with a sheer, weightless finish.',
+  });
+  assert.equal(invalid.reason, 'rewrite_product_reason_transfer');
+});
+
 test('__internal: reco assistant rewrite normalizes best-for fragments instead of surfacing because-best-for copy', async () => {
   const { __internal } = loadRoutesFresh();
 
