@@ -469,8 +469,8 @@ function createBeautyChatMainlineBudget({ budgetMs = 0 } = {}) {
   const requestedBudgetMs =
     Number.isFinite(Number(budgetMs)) && Number(budgetMs) > 0
       ? Math.trunc(Number(budgetMs))
-      : 13000;
-  const normalizedBudgetMs = Math.max(9000, Math.min(22000, requestedBudgetMs));
+      : 26000;
+  const normalizedBudgetMs = Math.max(9000, Math.min(30000, requestedBudgetMs));
   const startedAtMs = Date.now();
   const deadlineAtMs = startedAtMs + normalizedBudgetMs;
   return {
