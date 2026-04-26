@@ -426,6 +426,24 @@ function filterExactAnchorProducts(products = [], { mode, beautyRequest, queryTe
     .map((item) => item.product);
 }
 
+function scoreBeautyExpertFinishFitSunscreenAdjustment(text = '') {
+  const normalized = normalizeText(text);
+  if (!normalized) return 0;
+  let score = 0;
+  if (/\b(spf\s*50|spf50|pa\+{3,4}|uvapf)\b/.test(normalized)) score += 12;
+  if (/\b(non[-\s]?greasy|air(?:y)?fit|water[-\s]?fit|aqua[-\s]?fresh|fluid|serum|invisible|clear|matte|lightweight|weightless)\b/.test(normalized)) {
+    score += 10;
+  }
+  const moisturizerSpfCue =
+    /\b(dayscreen|day\s*screen|moisturi[sz]er\s+(?:with\s+)?spf|daily moisturizer|moisturizer[-\s]?and[-\s]?spf|bare[-\s]?skin finish)\b/
+      .test(normalized);
+  const lowerSpfCue = /\bspf\s*(?:15|20|25|30|35|40|45)\b/.test(normalized);
+  if (moisturizerSpfCue && lowerSpfCue) score -= 38;
+  else if (moisturizerSpfCue) score -= 24;
+  else if (lowerSpfCue) score -= 16;
+  return score;
+}
+
 function reorderProductsForBeautyMode(products = [], { mode, beautyRequest, queryText } = {}) {
   const rows = Array.isArray(products) ? [...products] : [];
   if (rows.length <= 1) return rows;
@@ -458,6 +476,7 @@ function reorderProductsForBeautyMode(products = [], { mode, beautyRequest, quer
         if (/\b(mild|mild up|mineral|sensitive)\b/.test(text)) score += 8;
         if (/\b(stick|cushion|tinted|tint|shade)\b/.test(text)) score -= 16;
         if (/\b(moisturizing|moisturising|dewy|dew|glow|tinted|drops|hydrating|cream)\b/.test(text)) score -= 14;
+        score += scoreBeautyExpertFinishFitSunscreenAdjustment(text);
         if (/\b(deal|subscription|subscribe|autoship|auto ship)\b/.test(text)) score -= 30;
         return { product, index, score };
       })
