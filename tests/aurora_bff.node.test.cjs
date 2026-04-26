@@ -5841,8 +5841,9 @@ test('reco alternatives finish-fit sunscreen query plan starts with oily and mat
 
     assert.deepEqual(
       queries.slice(0, 4),
-      ['sunscreen oily skin', 'matte sunscreen', 'invisible sunscreen', 'sunscreen under makeup'],
+      ['sunscreen oily skin', 'matte sunscreen', 'invisible sunscreen', 'water fit sunscreen'],
     );
+    assert.equal(queries.includes('sunscreen under makeup'), true);
   } finally {
     delete require.cache[moduleId];
   }
@@ -9754,7 +9755,7 @@ test('buildExternalSeedCompareSearchQueries: avoids duplicate role queries and p
     });
     assert.deepEqual(
       thinSunscreenQueries.slice(0, 4),
-      ['sunscreen oily skin', 'matte sunscreen', 'invisible sunscreen', 'sunscreen under makeup'],
+      ['sunscreen oily skin', 'matte sunscreen', 'invisible sunscreen', 'water fit sunscreen'],
     );
     assert.equal(thinSunscreenQueries.includes('sunscreen under makeup'), true);
     const productionLikeSunscreenQueries = __internal.buildExternalSeedCompareSearchQueries({
@@ -9772,7 +9773,7 @@ test('buildExternalSeedCompareSearchQueries: avoids duplicate role queries and p
     });
     assert.deepEqual(
       productionLikeSunscreenQueries.slice(0, 4),
-      ['sunscreen oily skin', 'matte sunscreen', 'invisible sunscreen', 'sunscreen under makeup'],
+      ['sunscreen oily skin', 'matte sunscreen', 'invisible sunscreen', 'water fit sunscreen'],
     );
     assert.equal(productionLikeSunscreenQueries.slice(0, 3).some((item) => /^niacinamide sunscreen$/i.test(String(item || ''))), false);
     assert.equal(productionLikeSunscreenQueries.slice(0, 3).some((item) => /^sunscreen$/i.test(String(item || ''))), false);
@@ -9808,8 +9809,9 @@ test('buildExternalSeedCompareSearchQueries: avoids duplicate role queries and p
       });
       assert.deepEqual(
         airyFitSunscreenQueries.slice(0, 4),
-        ['sunscreen oily skin', 'matte sunscreen', 'invisible sunscreen', 'sunscreen under makeup'],
+        ['sunscreen oily skin', 'matte sunscreen', 'invisible sunscreen', 'water fit sunscreen'],
       );
+      assert.equal(airyFitSunscreenQueries.includes('sunscreen under makeup'), true);
       assert.equal(airyFitSunscreenQueries.includes('mineral sunscreen'), false);
       const thinSunscreenLocalSeedRole = __internal.buildRecoAlternativesLocalSeedSearchRole({
         roleScope: 'daily_sunscreen_finish_fit',
