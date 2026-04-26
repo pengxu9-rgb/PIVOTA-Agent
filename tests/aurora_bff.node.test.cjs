@@ -5807,7 +5807,10 @@ test('reco alternatives target signals and query plan retain sunscreen compare c
     assert.ok(signals.textureHints.includes('serum texture'));
     assert.ok(signals.textureHints.includes('lightweight finish'));
     assert.equal(queries.some((query) => /sunscreen sunscreen/i.test(String(query))), false);
-    assert.ok(queries.slice(0, 4).some((query) => /sun protection|hydration|lightweight finish/i.test(String(query))));
+      assert.deepEqual(
+        queries.slice(0, 3),
+        ['lightweight sunscreen', 'spf fluid', 'sunscreen under makeup'],
+      );
   } finally {
     delete require.cache[moduleId];
   }
@@ -5867,7 +5870,7 @@ test('/v1/reco/alternatives: external_seed sunscreen compare recalls pool hits f
           '',
         ).trim();
         seenQueries.push(queryText);
-        if (/(sun protection|hydration|lightweight finish).*(sunscreen)|sunscreen.*(sun protection|hydration|lightweight finish)/i.test(queryText)) {
+          if (/(lightweight sunscreen|sunscreen under makeup|spf fluid|invisible sunscreen)/i.test(queryText)) {
           return {
             status: 200,
             data: {
@@ -5954,14 +5957,13 @@ test('/v1/reco/alternatives: external_seed sunscreen compare recalls pool hits f
         return { status: 200, data: { products: [] } };
       };
 
-      const kbStoreModuleId = require.resolve('../src/auroraBff/productIntelKbStore');
-      delete require.cache[kbStoreModuleId];
-      const kbStore = require('../src/auroraBff/productIntelKbStore');
-      const originalGetProductIntelKbEntry = kbStore.getProductIntelKbEntry;
-      kbStore.getProductIntelKbEntry = async (kbKey) => {
-        if (kbKey !== 'product:ext_neutrogena_face_serum') return null;
-        return {
-          kb_key: kbKey,
+        const kbStoreModuleId = require.resolve('../src/auroraBff/productIntelKbStore');
+        delete require.cache[kbStoreModuleId];
+        const kbStore = require('../src/auroraBff/productIntelKbStore');
+        const originalGetProductIntelKbEntry = kbStore.getProductIntelKbEntry;
+        const originalGetProductIntelKbEntries = kbStore.getProductIntelKbEntries;
+        const neutrogenaKbEntry = {
+          kb_key: 'product:ext_neutrogena_face_serum',
           analysis: {
             product_intel_v1: {
               contract_version: 'pivota.product_intel.v1',
@@ -5993,7 +5995,18 @@ test('/v1/reco/alternatives: external_seed sunscreen compare recalls pool hits f
             },
           },
         };
-      };
+        kbStore.getProductIntelKbEntry = async (kbKey) => (
+          kbKey === 'product:ext_neutrogena_face_serum'
+            ? { ...neutrogenaKbEntry, kb_key: kbKey }
+            : null
+        );
+        kbStore.getProductIntelKbEntries = async (kbKeys = []) => {
+          const out = new Map();
+          for (const key of Array.isArray(kbKeys) ? kbKeys : []) {
+            if (key === 'product:ext_neutrogena_face_serum') out.set(key, { ...neutrogenaKbEntry, kb_key: key });
+          }
+          return out;
+        };
 
       const moduleId = require.resolve('../src/auroraBff/routes');
       delete require.cache[moduleId];
@@ -6045,7 +6058,7 @@ test('/v1/reco/alternatives: external_seed sunscreen compare recalls pool hits f
         assert.equal(resp.body?.source_mode, 'pool_open_world_mixed');
         assert.equal(resp.body?.compare_meta?.open_world_status, 'skipped_sufficient_pool');
         assert.ok(Number(resp.body?.compare_meta?.pool_selected_count || 0) >= 3);
-        assert.ok(seenQueries.some((query) => /sun protection|hydration|lightweight finish/i.test(String(query))));
+          assert.ok(seenQueries.some((query) => /lightweight sunscreen|sunscreen under makeup|spf fluid/i.test(String(query))));
         assert.equal(resp.body.alternatives.every((alt) => String(alt?.candidate_origin || '') === 'pool'), true);
         assert.equal(resp.body.alternatives.every((alt) => String(alt?.grounding_status || '') === 'catalog_verified'), true);
         const names = resp.body.alternatives.map((alt) => String(alt?.product?.name || alt?.name || ''));
@@ -6063,9 +6076,10 @@ test('/v1/reco/alternatives: external_seed sunscreen compare recalls pool hits f
         );
       } finally {
         const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
-        loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
-        kbStore.getProductIntelKbEntry = originalGetProductIntelKbEntry;
-        axios.get = originalGet;
+          loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
+          kbStore.getProductIntelKbEntry = originalGetProductIntelKbEntry;
+          kbStore.getProductIntelKbEntries = originalGetProductIntelKbEntries;
+          axios.get = originalGet;
         delete require.cache[moduleId];
         delete require.cache[kbStoreModuleId];
       }
@@ -6253,9 +6267,9 @@ test('fetchRecoAlternativesForProduct: grounded sunscreen pool ranks texture-ali
         }
         const queryText = String(config?.params?.q || config?.params?.query || config?.params?.text || '').trim();
         seenQueries.push(queryText);
-        if (!/^sunscreen$/i.test(queryText)) {
-          return { status: 200, data: { products: [] } };
-        }
+          if (!/(lightweight sunscreen|sunscreen under makeup|spf fluid|invisible sunscreen)/i.test(queryText)) {
+            return { status: 200, data: { products: [] } };
+          }
         return {
           status: 200,
           data: {
@@ -9477,11 +9491,11 @@ test('buildExternalSeedCompareSearchQueries: avoids duplicate role queries and p
       productInput: 'SKINTIFIC Matte Fit Serum Sunscreen SPF 50+ PA++++',
       lang: 'EN',
     });
-    assert.deepEqual(
-      thinSunscreenQueries.slice(0, 3),
-      ['spf fluid oily skin', 'mineral sunscreen', 'lightweight sunscreen oily skin'],
-    );
-    assert.equal(thinSunscreenQueries.includes('sunscreen under makeup'), true);
+      assert.deepEqual(
+        thinSunscreenQueries.slice(0, 3),
+        ['lightweight sunscreen oily skin', 'sunscreen under makeup', 'spf fluid oily skin'],
+      );
+      assert.equal(thinSunscreenQueries.includes('sunscreen under makeup'), true);
     const productionLikeSunscreenQueries = __internal.buildExternalSeedCompareSearchQueries({
       productObj: {
         brand: 'SKINTIFIC',
@@ -9495,10 +9509,10 @@ test('buildExternalSeedCompareSearchQueries: avoids duplicate role queries and p
       productInput: 'Matte Fit Serum Sunscreen SPF 50+ PA++++',
       lang: 'EN',
     });
-    assert.deepEqual(
-      productionLikeSunscreenQueries.slice(0, 3),
-      ['spf fluid oily skin', 'mineral sunscreen', 'lightweight sunscreen oily skin'],
-    );
+      assert.deepEqual(
+        productionLikeSunscreenQueries.slice(0, 3),
+        ['lightweight sunscreen oily skin', 'sunscreen under makeup', 'spf fluid oily skin'],
+      );
     assert.equal(productionLikeSunscreenQueries.slice(0, 3).some((item) => /^niacinamide sunscreen$/i.test(String(item || ''))), false);
     assert.equal(productionLikeSunscreenQueries.slice(0, 3).some((item) => /^sunscreen$/i.test(String(item || ''))), false);
     assert.equal(productionLikeSunscreenQueries.includes('sunscreen under makeup'), true);
@@ -9515,14 +9529,30 @@ test('buildExternalSeedCompareSearchQueries: avoids duplicate role queries and p
       productInput: 'Beauty of Joseon Relief Sun Aqua-Fresh : Rice + B5 (SPF50+ PA++++)',
       lang: 'EN',
     });
-    assert.deepEqual(
-      wateryFinishSunscreenQueries.slice(0, 3),
-      ['spf fluid', 'mineral sunscreen', 'sunscreen milk'],
-    );
-    assert.equal(wateryFinishSunscreenQueries.includes('sunscreen under makeup'), true);
-    const thinSunscreenLocalSeedRole = __internal.buildRecoAlternativesLocalSeedSearchRole({
-      roleScope: 'daily_sunscreen_finish_fit',
-      usageRole: 'unknown',
+      assert.deepEqual(
+        wateryFinishSunscreenQueries.slice(0, 3),
+        ['lightweight sunscreen', 'spf fluid', 'sunscreen under makeup'],
+      );
+      assert.equal(wateryFinishSunscreenQueries.includes('sunscreen under makeup'), true);
+      const airyFitSunscreenQueries = __internal.buildExternalSeedCompareSearchQueries({
+        productObj: {
+          brand: 'Haruharu Wonder',
+          name: 'Moisture Airyfit Daily Sunscreen SPF50+/PA++++ / Unscented',
+          category: 'sunscreen',
+          product_type: 'sunscreen',
+          why_this_one: 'Airy, non-greasy texture evidence for oily skin under makeup.',
+        },
+        productInput: 'Haruharu Wonder Moisture Airyfit Daily Sunscreen SPF50+/PA++++ / Unscented',
+        lang: 'EN',
+      });
+      assert.deepEqual(
+        airyFitSunscreenQueries.slice(0, 3),
+        ['lightweight sunscreen oily skin', 'sunscreen under makeup', 'spf fluid oily skin'],
+      );
+      assert.equal(airyFitSunscreenQueries.includes('mineral sunscreen'), false);
+      const thinSunscreenLocalSeedRole = __internal.buildRecoAlternativesLocalSeedSearchRole({
+        roleScope: 'daily_sunscreen_finish_fit',
+        usageRole: 'unknown',
       primaryClaims: ['oil control'],
       textureHints: ['matte finish'],
     });
@@ -10634,6 +10664,56 @@ test('sortRecoAlternativesByMixedScore does not let reviewed insight bonus outra
   }
 });
 
+test('sortRecoAlternativesByMixedScore keeps full-face sunscreen formats ahead of stick cushion and tinted options', () => {
+  const moduleId = require.resolve('../src/auroraBff/routes');
+  delete require.cache[moduleId];
+  try {
+    const { __internal } = require('../src/auroraBff/routes');
+    const sorted = __internal.sortRecoAlternativesByMixedScore(
+      [
+        {
+          product: { product_id: 'ext_round_lab_cushion', name: 'Birch Moisturizing Sun Cushion SPF50+' },
+          grounding_status: 'catalog_verified',
+          similarity_score: 77,
+          _mixed_score: 0.77,
+          reasons: ['Daily sunscreen option.'],
+          tradeoff_notes: ['Cushion format is better for touch-ups than full-face morning application.'],
+        },
+        {
+          product: { product_id: 'ext_round_lab_stick', name: 'Birch Moisturizing Sun Stick SPF50+' },
+          grounding_status: 'catalog_verified',
+          similarity_score: 76,
+          _mixed_score: 0.76,
+          reasons: ['Daily sunscreen option.'],
+          tradeoff_notes: ['Stick format is better for reapplication than under-makeup base wear.'],
+        },
+        {
+          product: { product_id: 'ext_tinted_fluid', name: 'Daily Tinted Fluid Sunscreen MY210' },
+          grounding_status: 'catalog_verified',
+          similarity_score: 75,
+          _mixed_score: 0.75,
+          reasons: ['Fluid sunscreen option.'],
+          tradeoff_notes: ['Tinted shade format is a narrower match for an untinted sunscreen compare.'],
+        },
+        {
+          product: { product_id: 'ext_skin1004_water_fit', name: 'Madagascar Centella Hyalu-Cica Water-Fit Sun Serum SPF50+' },
+          grounding_status: 'catalog_verified',
+          similarity_score: 70,
+          _mixed_score: 0.7,
+          reasons: ['Water-fit sun serum format for lightweight daily SPF.'],
+          tradeoff_notes: ['Formula specifics still need product-level comparison.'],
+        },
+      ],
+      { useExperienceQualityBonus: true },
+    );
+
+    assert.equal(sorted[0]?.product?.product_id, 'ext_skin1004_water_fit');
+    assert.equal(sorted.slice(0, 2).some((row) => /stick|cushion/i.test(row?.product?.name || '')), false);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('/v1/reco/alternatives: external_seed compare uses reviewed insight as close-tie signal only', async () => {
   return withEnv(
     {
@@ -10655,14 +10735,13 @@ test('/v1/reco/alternatives: external_seed compare uses reviewed insight as clos
         return { status: 200, data: { products: [] } };
       };
 
-      const kbStoreModuleId = require.resolve('../src/auroraBff/productIntelKbStore');
-      delete require.cache[kbStoreModuleId];
-      const kbStore = require('../src/auroraBff/productIntelKbStore');
-      const originalGetProductIntelKbEntry = kbStore.getProductIntelKbEntry;
-      kbStore.getProductIntelKbEntry = async (kbKey) => {
-        if (kbKey !== 'product:ext_lrp_aox') return null;
-        return {
-          kb_key: kbKey,
+        const kbStoreModuleId = require.resolve('../src/auroraBff/productIntelKbStore');
+        delete require.cache[kbStoreModuleId];
+        const kbStore = require('../src/auroraBff/productIntelKbStore');
+        const originalGetProductIntelKbEntry = kbStore.getProductIntelKbEntry;
+        const originalGetProductIntelKbEntries = kbStore.getProductIntelKbEntries;
+        const lrpKbEntry = {
+          kb_key: 'product:ext_lrp_aox',
           analysis: {
             product_intel_v1: {
               contract_version: 'pivota.product_intel.v1',
@@ -10694,7 +10773,18 @@ test('/v1/reco/alternatives: external_seed compare uses reviewed insight as clos
             },
           },
         };
-      };
+        kbStore.getProductIntelKbEntry = async (kbKey) => (
+          kbKey === 'product:ext_lrp_aox'
+            ? { ...lrpKbEntry, kb_key: kbKey }
+            : null
+        );
+        kbStore.getProductIntelKbEntries = async (kbKeys = []) => {
+          const out = new Map();
+          for (const key of Array.isArray(kbKeys) ? kbKeys : []) {
+            if (key === 'product:ext_lrp_aox') out.set(key, { ...lrpKbEntry, kb_key: key });
+          }
+          return out;
+        };
 
       const moduleId = require.resolve('../src/auroraBff/routes');
       delete require.cache[moduleId];
@@ -10799,10 +10889,11 @@ test('/v1/reco/alternatives: external_seed compare uses reviewed insight as clos
         assert.equal(resp.body.alternatives[1]?.product?.product_id, 'ext_skin1004_water_fit');
       } finally {
         const loaded = require.cache[moduleId] && require.cache[moduleId].exports;
-        loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
-        loaded?.__internal?.__resetResolveProductRefForTest?.();
-        kbStore.getProductIntelKbEntry = originalGetProductIntelKbEntry;
-        axios.get = originalGet;
+          loaded?.__internal?.__resetCallGeminiJsonObjectForTest?.();
+          loaded?.__internal?.__resetResolveProductRefForTest?.();
+          kbStore.getProductIntelKbEntry = originalGetProductIntelKbEntry;
+          kbStore.getProductIntelKbEntries = originalGetProductIntelKbEntries;
+          axios.get = originalGet;
         delete require.cache[moduleId];
         delete require.cache[kbStoreModuleId];
       }
@@ -12166,12 +12257,12 @@ test('/v1/chat: budget clarification chip continues routine/reco flow when in S6
       },
     });
 
-	    assert.equal(resp.status, 200);
-	    const cardTypes = (resp.body?.cards || []).map((c) => c && c.type).filter(Boolean);
-	    assert.ok(cardTypes.includes('recommendations') || cardTypes.includes('confidence_notice'));
-	    assert.equal(cardTypes.includes('budget_gate'), false);
-	    const assistantText = String(resp.body?.assistant_message?.content || '').toLowerCase();
-	    assert.equal(assistantText.includes('did not receive any renderable structured cards'), false);
+      assert.equal(resp.status, 200);
+      const cardTypes = (resp.body?.cards || []).map((c) => c && c.type).filter(Boolean);
+      assert.ok(cardTypes.includes('recommendations') || cardTypes.includes('confidence_notice'));
+      assert.equal(cardTypes.includes('budget_gate'), false);
+      const assistantText = String(resp.body?.assistant_message?.content || '').toLowerCase();
+      assert.equal(assistantText.includes('did not receive any renderable structured cards'), false);
   });
 });
 
@@ -13088,23 +13179,23 @@ test('/v1/chat: chip_get_recos first clarifies goal, then yields recommendations
       'X-Lang': 'EN',
     };
 
-	    const resp1 = await invokeRoute(app, 'POST', '/v1/chat', {
-	      headers,
-	      body: {
-	        action: { action_id: 'chip_get_recos', kind: 'chip', data: { trigger_source: 'chip' } },
+      const resp1 = await invokeRoute(app, 'POST', '/v1/chat', {
+        headers,
+        body: {
+          action: { action_id: 'chip_get_recos', kind: 'chip', data: { trigger_source: 'chip' } },
         session: { state: 'idle' },
         language: 'EN',
       },
     });
 
-	    assert.equal(resp1.status, 200);
-	    const cards1 = Array.isArray(resp1.body?.cards) ? resp1.body.cards : [];
+      assert.equal(resp1.status, 200);
+      const cards1 = Array.isArray(resp1.body?.cards) ? resp1.body.cards : [];
       const chips1 = Array.isArray(resp1.body?.suggested_chips) ? resp1.body.suggested_chips : [];
-	    const nextState1 = resp1.body?.session_patch?.next_state;
-	    assert.ok(nextState1 === undefined || nextState1 === 'RECO_RESULTS' || nextState1 === 'IDLE_CHAT' || nextState1 === 'S7_PRODUCT_RECO');
-	    assert.equal(cards1.some((c) => c && c.type === 'diagnosis_gate'), false);
-	    const reco1 = cards1.find((c) => c && c.type === 'recommendations') || null;
-	    const conf1 = cards1.find((c) => c && c.type === 'confidence_notice') || null;
+      const nextState1 = resp1.body?.session_patch?.next_state;
+      assert.ok(nextState1 === undefined || nextState1 === 'RECO_RESULTS' || nextState1 === 'IDLE_CHAT' || nextState1 === 'S7_PRODUCT_RECO');
+      assert.equal(cards1.some((c) => c && c.type === 'diagnosis_gate'), false);
+      const reco1 = cards1.find((c) => c && c.type === 'recommendations') || null;
+      const conf1 = cards1.find((c) => c && c.type === 'confidence_notice') || null;
     assert.equal(reco1, null);
     assert.equal(conf1, null);
     assert.ok(chips1.length >= 5);
@@ -13392,15 +13483,15 @@ test('/v1/chat: collapses overlong templated answers when cards are present', as
     });
     assert.equal(seed.status, 200);
 
-	    const resp = await invokeRoute(app, 'POST', '/v1/chat', {
-	      headers: { 'X-Aurora-UID': 'test_uid_overlong_template', 'X-Trace-ID': 'test_trace', 'X-Brief-ID': 'test_brief', 'X-Lang': 'CN' },
-	      body: {
-	        // Ensure we go through the upstream structured path (not deterministic recommendation routing).
-	        message: 'OVERLONG_TEMPLATE_CONTEXT_TEST',
-	        session: { state: 'idle' },
-	        language: 'CN',
-	      },
-	    });
+      const resp = await invokeRoute(app, 'POST', '/v1/chat', {
+        headers: { 'X-Aurora-UID': 'test_uid_overlong_template', 'X-Trace-ID': 'test_trace', 'X-Brief-ID': 'test_brief', 'X-Lang': 'CN' },
+        body: {
+          // Ensure we go through the upstream structured path (not deterministic recommendation routing).
+          message: 'OVERLONG_TEMPLATE_CONTEXT_TEST',
+          session: { state: 'idle' },
+          language: 'CN',
+        },
+      });
 
     assert.equal(resp.status, 200);
     const assistant = String(resp.body?.assistant_message?.content || '').trim();
@@ -13409,11 +13500,11 @@ test('/v1/chat: collapses overlong templated answers when cards are present', as
     assert.ok(assistant.length < 120);
     assert.equal(/\bpart\s*\d+\s*:/i.test(assistant), false);
 
-	    const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
-	    assert.ok(cards.some((c) => c && c.type === 'aurora_structured'));
-	    assert.equal(JSON.stringify(resp.body).includes('kb:'), false);
-	  });
-	});
+      const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+      assert.ok(cards.some((c) => c && c.type === 'aurora_structured'));
+      assert.equal(JSON.stringify(resp.body).includes('kb:'), false);
+    });
+  });
 
 test('/v1/chat: overlong template without renderable cards does NOT claim "cards below"', async () => {
   await withEnv({ AURORA_BFF_CONFLICT_HEATMAP_V1_ENABLED: 'true', AURORA_BFF_RETENTION_DAYS: '0' }, async () => {
