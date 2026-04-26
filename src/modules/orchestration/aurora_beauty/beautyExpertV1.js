@@ -257,6 +257,7 @@ function buildRecoTitleDedupeKey(product = {}) {
     .replace(/\bspf\s*\d+\+?\b/g, ' ')
     .replace(/\bpa\s*\+{2,4}\b/g, ' ')
     .replace(/\buvlock\b/g, ' ')
+    .replace(/\b[a-z]{1,3}\d{2,4}\b/g, ' ')
     .replace(/\b\d+(?:\.\d+)?\s*(?:ml|oz|fl oz|g)\b/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
@@ -990,7 +991,37 @@ function suppressExactProductConflictingAssistant(response = {}, beautyExpertV1 
   const assistantText = getAssistantTextFromResponse(response);
   if (!assistantText) return response;
   const products = extractRecommendationProducts(response);
-  if (!Array.isArray(products) || products.length < 1) return response;
+  if (!Array.isArray(products) || products.length < 1) {
+    const exactAnchorMiss =
+      asArray(beautyExpertV1.reco_bundle?.lead_picks).length === 0 &&
+      asArray(beautyExpertV1.reco_bundle?.support_picks).length === 0;
+    if (!exactAnchorMiss) return response;
+    const next = {
+      ...response,
+      assistant_message: null,
+    };
+    if (Object.prototype.hasOwnProperty.call(next, 'assistant_text')) {
+      next.assistant_text = '';
+    }
+    const suppressionMeta = {
+      assistant_visible_suppressed_reason: 'exact_product_anchor_missing',
+      assistant_projection_expected_lead: null,
+      assistant_projection_conflicting_lead: null,
+    };
+    if (isPlainObject(next.meta)) {
+      next.meta = {
+        ...next.meta,
+        ...suppressionMeta,
+      };
+    }
+    if (isPlainObject(next.metadata)) {
+      next.metadata = {
+        ...next.metadata,
+        ...suppressionMeta,
+      };
+    }
+    return next;
+  }
   const leadTitle = getProductDisplayName(products[0]);
   if (!leadTitle) return response;
   const leadIndex = findNormalizedTitleIndex(assistantText, leadTitle);
@@ -1196,12 +1227,17 @@ function describeProductForVisibleCopy(product = {}, beautyIntent = {}) {
     product.canonical_title,
     product.brand,
   ].filter(Boolean).join(' '));
-  if (/\b(sunscreen|spf)\b/.test(productText) && /\b(oily|oil|humid|houston|makeup|shiny|shine|greasy|heavy|under makeup)\b/.test(contextText)) {
+  const isSunscreenProduct =
+    /\b(sunscreen|spf|sun shield|relief sun|sun)\b/.test(productText);
+  if (isSunscreenProduct && /\b(oily|oil|humid|houston|makeup|shiny|shine|greasy|heavy|under makeup)\b/.test(contextText)) {
     if (/\b(stick|cushion)\b/.test(productText)) {
       return 'it is a grounded SPF option that is more useful as a reapplication or touch-up lane than as the first full-face base if low-shine wear is the priority';
     }
     if (/\b(tinted|tint|shade)\b/.test(productText)) {
       return 'it is a grounded SPF option that can help when shade or coverage fit matters, but it is a less universal first pick for oily skin';
+    }
+    if (/\b(relief sun|aqua|aqua fresh|fresh|water fit)\b/.test(productText)) {
+      return 'it is a grounded SPF option whose title points to a lighter aqua-fresh texture lane for oily skin under makeup';
     }
     if (/\b(moisturizing|moisturising|dewy|dew|glow|drops|hydrating)\b/.test(productText)) {
       return 'it is a grounded SPF option, but its moisturizing or dewy positioning may be less aligned if shine control under makeup is the priority';
