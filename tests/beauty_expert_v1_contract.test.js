@@ -517,7 +517,7 @@ describe('beauty_expert_v1 contract', () => {
                     name: 'Moisture Pure Mineral Relief Sunscreen SPF50+/PA++++ /Unscented',
                     brand: 'Haruharu Wonder',
                     why_this_one:
-                      'a mineral SPF50 option if sensitivity is a bigger concern than the lightest feel',
+                      'it leans richer and more moisturizing if you want more cushion under makeup',
                   },
                   {
                     product_id: 'airyfit',
@@ -525,7 +525,7 @@ describe('beauty_expert_v1 contract', () => {
                     name: 'Moisture Airyfit Daily Sunscreen SPF50+/PA++++ / Unscented',
                     brand: 'Haruharu Wonder',
                     why_this_one:
-                      'features an airy-fit, non-greasy finish for wearable daytime use and provides a moisturizing cushion for smoother under-makeup wear',
+                      'it leans richer and more moisturizing if you want more cushion under makeup',
                   },
                 ],
               },
@@ -562,6 +562,8 @@ describe('beauty_expert_v1 contract', () => {
     expect(projectedProducts.map((product) => product.name)).toEqual(
       result.cards[0].payload.recommendations.map((product) => product.name),
     );
+    expect(projectedProducts[0]?.why_this_one).toContain('non-greasy');
+    expect(projectedProducts[0]?.why_this_one).not.toContain('richer and more moisturizing');
     expect(projectedProducts[projectedProducts.length - 1]?.name).toBe('Dayscreen Moisturizer SPF 30');
   });
 

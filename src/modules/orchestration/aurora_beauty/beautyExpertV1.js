@@ -146,6 +146,40 @@ function getCardCollectionKey(response = {}) {
   return null;
 }
 
+function getRecommendationCardPayloadRows(card = {}) {
+  const payload = isPlainObject(card?.payload) ? card.payload : {};
+  const directRows = [
+    payload.recommendations,
+    payload.products,
+  ];
+  for (const rows of directRows) {
+    if (Array.isArray(rows) && rows.some(isPlainObject)) {
+      return rows.filter((row) => isPlainObject(row));
+    }
+  }
+  const payloadSections = Array.isArray(payload.sections) ? payload.sections : [];
+  const sectionRows = [];
+  for (const section of payloadSections) {
+    const products = Array.isArray(section?.products) ? section.products : [];
+    for (const product of products) {
+      if (isPlainObject(product)) sectionRows.push(product);
+    }
+  }
+  return sectionRows;
+}
+
+function getRecommendationCardSectionRows(card = {}) {
+  const sections = Array.isArray(card?.sections) ? card.sections : [];
+  const rows = [];
+  for (const section of sections) {
+    const products = Array.isArray(section?.products) ? section.products : [];
+    for (const product of products) {
+      if (isPlainObject(product)) rows.push(product);
+    }
+  }
+  return rows;
+}
+
 function extractRecommendationProducts(response = {}) {
   if (Array.isArray(response.products) && response.products.length > 0) {
     return response.products.filter((row) => isPlainObject(row));
@@ -155,15 +189,10 @@ function extractRecommendationProducts(response = {}) {
     const type = normalizeText(card?.type || card?.card_type);
     return type === 'recommendations';
   });
-  const sections = Array.isArray(recoCard?.sections) ? recoCard.sections : [];
-  const rows = [];
-  for (const section of sections) {
-    const products = Array.isArray(section?.products) ? section.products : [];
-    for (const product of products) {
-      if (isPlainObject(product)) rows.push(product);
-    }
-  }
-  return rows;
+  if (!recoCard) return [];
+  const payloadRows = getRecommendationCardPayloadRows(recoCard);
+  if (payloadRows.length > 0) return payloadRows;
+  return getRecommendationCardSectionRows(recoCard);
 }
 
 function inferAuthorityStatus(response = {}, metadata = {}) {
@@ -431,7 +460,11 @@ function scoreBeautyExpertFinishFitSunscreenAdjustment(text = '') {
   if (!normalized) return 0;
   let score = 0;
   if (/\b(spf\s*50|spf50|pa\+{3,4}|uvapf)\b/.test(normalized)) score += 12;
-  if (/\b(non[-\s]?greasy|air(?:y)?fit|water[-\s]?fit|aqua[-\s]?fresh|fluid|serum|invisible|clear|matte|lightweight|weightless)\b/.test(normalized)) {
+  const airyNonGreasyCue =
+    /\b(non[-\s]?greasy|airy[-\s]?fit|air[-\s]?fit|airy[-\s]?light|fast[-\s]?absorbing|soft[-\s]?matte)\b/.test(normalized);
+  if (airyNonGreasyCue) score += 18;
+  if (airyNonGreasyCue && /\b(under makeup|makeup|oily skin|shine|greasy)\b/.test(normalized)) score += 16;
+  if (/\b(water[-\s]?fit|aqua[-\s]?fresh|fluid|serum|invisible|clear|matte|lightweight|weightless)\b/.test(normalized)) {
     score += 10;
   }
   const moisturizerSpfCue =
@@ -471,7 +504,7 @@ function reorderProductsForBeautyMode(products = [], { mode, beautyRequest, quer
         ].filter(Boolean).join(' '));
         let score = 0;
         if (/\b(sunscreen|spf|uv|sun)\b/.test(text)) score += 40;
-        if (/\b(unseen|primer|matte|fluid|aqua|aqua fresh|water fit|serum|airy|lightweight|weightless|clear)\b/.test(text)) score += 18;
+        if (/\b(unseen|primer|matte|fluid|aqua|aqua fresh|water fit|serum|airy|airyfit|airy fit|non[-\s]?greasy|lightweight|weightless|clear)\b/.test(text)) score += 18;
         if (/\b(lighter|smoother|smooth|balanced)\b/.test(text)) score += 20;
         if (/\b(mild|mild up|mineral|sensitive)\b/.test(text)) score += 8;
         if (/\b(stick|cushion|tinted|tint|shade)\b/.test(text)) score -= 16;
@@ -923,13 +956,53 @@ function rewriteRecommendationCardForBeautyExpert(card = {}, {
     const reordered = reorderBeautyProjectionRows(rows, { mode, beautyIntent });
     return mode === 'exact_product_assist' ? reordered : (reordered.length > 0 ? reordered : rows);
   };
+  const syncSections = (sections, products) => {
+    const productRows = Array.isArray(products) ? products.filter(isPlainObject) : [];
+    if (!productRows.length) return sections;
+    const baseSections = Array.isArray(sections) && sections.length > 0
+      ? sections
+      : [{ kind: 'product_cards', products: [] }];
+    return baseSections.map((section, index) => {
+      if (!isPlainObject(section)) return section;
+      if (index > 0 && Array.isArray(section.products)) {
+        return { ...section, products: [] };
+      }
+      if (index === 0 || Array.isArray(section.products)) {
+        return {
+          ...section,
+          products: productRows,
+        };
+      }
+      return section;
+    });
+  };
+  const canonicalPayloadRows = payload ? getRecommendationCardPayloadRows({ payload }) : [];
+  const canonicalProducts = canonicalPayloadRows.length > 0 ? reorderRows(canonicalPayloadRows) : [];
 
+  if (canonicalProducts.length > 0) {
+    nextCard.sections = syncSections(nextCard.sections, canonicalProducts);
+    if (payload) {
+      payload.recommendations = canonicalProducts;
+      payload.products = canonicalProducts;
+      if (Array.isArray(payload.sections)) {
+        payload.sections = syncSections(payload.sections, canonicalProducts);
+      }
+      nextCard.payload = payload;
+    }
+    return nextCard;
+  }
+
+  let projectedSectionProducts = [];
   if (Array.isArray(nextCard.sections)) {
     nextCard.sections = nextCard.sections.map((section) => {
       if (!isPlainObject(section) || !Array.isArray(section.products)) return section;
+      const products = reorderRows(section.products);
+      if (projectedSectionProducts.length === 0 && Array.isArray(products)) {
+        projectedSectionProducts = products.filter(isPlainObject);
+      }
       return {
         ...section,
-        products: reorderRows(section.products),
+        products,
       };
     });
   }
@@ -949,6 +1022,9 @@ function rewriteRecommendationCardForBeautyExpert(card = {}, {
           products: reorderRows(section.products),
         };
       });
+    }
+    if (projectedSectionProducts.length > 0 && !Array.isArray(payload.recommendations)) {
+      payload.recommendations = projectedSectionProducts;
     }
     nextCard.payload = payload;
   }
