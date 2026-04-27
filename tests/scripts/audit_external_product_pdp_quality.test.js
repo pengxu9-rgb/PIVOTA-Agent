@@ -8,6 +8,7 @@ const {
   buildIdentityGate,
   buildProductIntelGate,
   buildLivePdpGate,
+  buildVariantGate,
   buildExternalSeedQualityResult,
 } = require('../../src/services/externalSeedPdpQuality');
 
@@ -267,5 +268,49 @@ describe('audit-external-product-pdp-quality helpers', () => {
     expect(livePdpGate.failure_reasons).not.toContain('polluted_product_description');
     expect(livePdpGate.failure_reasons).not.toContain('polluted_product_details');
     expect(livePdpGate.failure_reasons).not.toContain('polluted_product_facts');
+  });
+
+  test('flags variant drift for skincare color locale and generic size axis leaks', () => {
+    const livePayload = {
+      product: {
+        product_id: 'ext_variant_polluted',
+        merchant_id: 'external_seed',
+        title: 'Hydra Vizor Broad Spectrum Mineral SPF 30 Sunscreen Moisturizer Refill',
+        category: 'Skincare',
+        product_type: 'Moisturizer',
+        product_line_options: [
+          {
+            option_name: 'Color',
+            axis: 'color',
+            value: 'US',
+            image_url: 'https://example.com/us.png',
+          },
+        ],
+        variants: [
+          {
+            variant_id: 'v100',
+            title: '100.0 ml',
+            options: [{ name: 'Variant', value: '100.0 ml' }],
+          },
+        ],
+      },
+      modules: [{ type: 'variant_selector', data: { selected_variant_id: 'v100' } }],
+    };
+
+    const gate = buildVariantGate({
+      seedData: {
+        category: 'Skincare',
+        product_type: 'Moisturizer',
+        snapshot: { title: 'Hydra Vizor Broad Spectrum Mineral SPF 30 Sunscreen Moisturizer Refill' },
+      },
+      livePayload,
+      liveResponse: { modules: [{ type: 'canonical', data: { pdp_payload: livePayload } }] },
+    });
+
+    expect(gate.failure_reasons).toEqual(
+      expect.arrayContaining(['wrong_axis_for_category', 'size_value_generic_axis']),
+    );
+    expect(gate.wrong_axis_for_category_count).toBeGreaterThan(0);
+    expect(gate.size_value_generic_axis_count).toBeGreaterThan(0);
   });
 });

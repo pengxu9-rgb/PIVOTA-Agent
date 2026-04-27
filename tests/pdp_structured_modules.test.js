@@ -162,7 +162,7 @@ describe('pdpBuilder structured PDP modules', () => {
     expect(activeModule?.data).toEqual(
       expect.objectContaining({
         title: 'Active ingredients',
-        items: ['Ceramide NP', 'Glycerin'],
+        items: ['Ceramide NP'],
       }),
     );
     expect(howToUseModule?.data).toEqual(
@@ -215,7 +215,8 @@ describe('pdpBuilder structured PDP modules', () => {
     expect(findModule(payload, 'active_ingredients')?.data).toEqual(
       expect.objectContaining({
         raw_text: 'Niacinamide, Glycerin',
-        items: ['Niacinamide', 'Glycerin'],
+        title: 'Active ingredients',
+        items: ['Niacinamide'],
       }),
     );
     expect(findModule(payload, 'how_to_use')?.data).toEqual(

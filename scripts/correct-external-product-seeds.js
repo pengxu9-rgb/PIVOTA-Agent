@@ -10,7 +10,11 @@ const {
   recordExternalSeedAuditFindings,
   recordExternalSeedCorrection,
 } = require('../src/services/externalSeedAuditLedger');
-const { buildSeedCorrectionPlan, runSeedCorrectionCycle } = require('../src/services/externalSeedCorrection');
+const {
+  SEED_CORRECTION_TYPE,
+  buildSeedCorrectionPlan,
+  runSeedCorrectionCycle,
+} = require('../src/services/externalSeedCorrection');
 
 function argValue(name) {
   const idx = process.argv.indexOf(`--${name}`);
@@ -123,6 +127,7 @@ async function main() {
     offset,
     concurrency,
     dryRun: hasFlag('dry-run') || hasFlag('dryRun'),
+    variantContractOnly: hasFlag('variant-contract-only') || hasFlag('variantContractOnly'),
     persistRun: !hasFlag('no-ledger'),
     baseUrl:
       normalizeNonEmptyString(argValue('base-url') || argValue('baseUrl')) ||
@@ -150,6 +155,7 @@ async function main() {
         external_product_id: options.externalProductId,
         domain: options.domain,
         brand: options.brand,
+        variant_contract_only: options.variantContractOnly,
         limit: options.limit,
         offset: options.offset,
       },
@@ -161,8 +167,16 @@ async function main() {
     );
   }
 
+  const correctionTypes = options.variantContractOnly
+    ? [SEED_CORRECTION_TYPE.normalizeVariantDisplayContract]
+    : null;
   const corrected = await mapWithConcurrency(rows, concurrency, async (row) =>
-    runSeedCorrectionCycle(row, { baseUrl: options.baseUrl, dryRun: options.dryRun }),
+    runSeedCorrectionCycle(row, {
+      baseUrl: options.baseUrl,
+      dryRun: options.dryRun,
+      correctionTypes,
+      skipIngredientEnrichment: options.variantContractOnly,
+    }),
   );
 
   if (options.persistRun) {
@@ -205,6 +219,7 @@ async function main() {
         external_product_id: options.externalProductId,
         domain: options.domain,
         brand: options.brand,
+        variant_contract_only: options.variantContractOnly,
         limit: options.limit,
         offset: options.offset,
       },
@@ -219,6 +234,7 @@ async function main() {
   const summary = {
     scanned: rows.length,
     dry_run: options.dryRun,
+    variant_contract_only: options.variantContractOnly,
     initial_audit_run_id: initialAuditRunId,
     post_correction_audit_run_id: postCorrectionAuditRunId,
     corrections_applied: corrected.reduce(

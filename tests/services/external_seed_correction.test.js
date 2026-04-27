@@ -27,6 +27,7 @@ const {
   buildSeedCorrectionPlan,
   runSeedCorrectionCycle,
 } = require('../../src/services/externalSeedCorrection');
+const { query } = require('../../src/db');
 const { processRow } = require('../../scripts/backfill-external-product-seeds-catalog');
 
 describe('externalSeedCorrection', () => {
@@ -121,6 +122,76 @@ describe('externalSeedCorrection', () => {
     );
   });
 
+  test('normalizes polluted variant axes without rerunning extraction', async () => {
+    const row = {
+      id: 'eps_fenty_color_us',
+      market: 'US',
+      domain: 'fentybeauty.com',
+      canonical_url: 'https://fentybeauty.com/products/hydra-vizor-refill',
+      title: 'Hydra Vizor Broad Spectrum Mineral SPF 30 Sunscreen Moisturizer Refill',
+      seed_data: {
+        category: 'Skincare',
+        variants: [
+          {
+            variant_id: 'v1',
+            title: 'US',
+            option_name: 'Color',
+            option_value: 'US',
+            image_url: 'https://example.com/refill-us.jpg',
+          },
+        ],
+        snapshot: {
+          variants: [
+            {
+              variant_id: 'v1',
+              title: 'US',
+              option_name: 'Color',
+              option_value: 'US',
+              image_url: 'https://example.com/refill-us.jpg',
+            },
+          ],
+        },
+      },
+    };
+
+    const plan = buildSeedCorrectionPlan(row);
+    expect(plan.actions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          correction_type: SEED_CORRECTION_TYPE.normalizeVariantDisplayContract,
+        }),
+      ]),
+    );
+
+    const result = await applySeedCorrectionAction(
+      row,
+      { correction_type: SEED_CORRECTION_TYPE.normalizeVariantDisplayContract },
+      { dryRun: true },
+    );
+
+    expect(processRow).not.toHaveBeenCalled();
+    expect(result.changed).toBe(true);
+    expect(result.dry_run).toBe(true);
+    expect(result.row.seed_data.snapshot.variants[0]).toEqual(
+      expect.objectContaining({
+        title: 'Default',
+        options: [],
+        source_quality_status: 'blocked',
+      }),
+    );
+    expect(result.row.seed_data.snapshot.variants[0].option_name).toBeUndefined();
+    expect(result.row.seed_data.snapshot.variants[0].option_value).toBeUndefined();
+    expect(result.row.seed_data.variants[0]).toEqual(
+      expect.objectContaining({
+        title: 'Default',
+        options: [],
+        source_quality_status: 'blocked',
+      }),
+    );
+    expect(result.row.seed_data.variants[0].option_name).toBeUndefined();
+    expect(result.row.seed_data.variants[0].option_value).toBeUndefined();
+  });
+
   test('dry-run rerun extraction previews the refreshed price without persisting', async () => {
     const row = {
       id: 'eps_fenty_minor_unit',
@@ -197,6 +268,109 @@ describe('externalSeedCorrection', () => {
     expect(result.dry_run).toBe(true);
     expect(result.row.price_amount).toBe(113);
     expect(result.row.seed_data.snapshot.variants[0].price).toBe('113.00');
+  });
+
+  test('can restrict correction cycle to variant contract cleanup only', async () => {
+    const row = {
+      id: 'eps_variant_only',
+      market: 'US',
+      domain: 'fentybeauty.com',
+      canonical_url: 'https://fentybeauty.com/products/hydra-vizor-refill',
+      title: 'Hydra Vizor Broad Spectrum Mineral SPF 30 Sunscreen Moisturizer Refill',
+      seed_data: {
+        category: 'Skincare',
+        snapshot: {
+          variants: [
+            {
+              variant_id: 'v1',
+              title: 'US',
+              option_name: 'Color',
+              option_value: 'US',
+              image_url: 'https://example.com/refill-us.jpg',
+            },
+          ],
+        },
+      },
+    };
+
+    const result = await runSeedCorrectionCycle(row, {
+      dryRun: true,
+      correctionTypes: [SEED_CORRECTION_TYPE.normalizeVariantDisplayContract],
+    });
+
+    expect(processRow).not.toHaveBeenCalled();
+    expect(result.actions).toHaveLength(1);
+    expect(result.actions[0]).toEqual(
+      expect.objectContaining({
+        correction_type: SEED_CORRECTION_TYPE.normalizeVariantDisplayContract,
+        dry_run: true,
+      }),
+    );
+    expect(result.row.seed_data.snapshot.variants[0].option_name).toBeUndefined();
+  });
+
+  test('flags generic variant axis names for contract normalization', () => {
+    const row = {
+      id: 'eps_generic_variant_axis',
+      market: 'US',
+      domain: 'www.guerlain.com',
+      canonical_url: 'https://www.guerlain.com/products/kisskiss-bee-glow',
+      title: 'KISSKISS BEE GLOW honey tint balm',
+      seed_data: {
+        snapshot: {
+          variants: [
+            {
+              variant_id: 'v1',
+              option_name: 'Variant',
+              option_value: '458 POP ROSE GLOW',
+              image_url: 'https://example.com/pop-rose.jpg',
+            },
+          ],
+        },
+      },
+    };
+
+    expect(buildSeedCorrectionPlan(row).actions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          correction_type: SEED_CORRECTION_TYPE.normalizeVariantDisplayContract,
+        }),
+      ]),
+    );
+  });
+
+  test('strips NUL bytes before persisting corrected seed JSON', async () => {
+    query.mockResolvedValue({ rows: [] });
+    const row = {
+      id: 'eps_nul_variant',
+      market: 'US',
+      domain: 'example.com',
+      canonical_url: 'https://example.com/products/a',
+      title: 'NUL test',
+      seed_data: {
+        snapshot: {
+          variants: [
+            {
+              variant_id: 'v1',
+              option_name: 'Title',
+              option_value: 'Default Title',
+              description: 'before\u0000after',
+            },
+          ],
+        },
+      },
+    };
+
+    await applySeedCorrectionAction(
+      row,
+      { correction_type: SEED_CORRECTION_TYPE.normalizeVariantDisplayContract },
+      { skipIngredientEnrichment: true },
+    );
+
+    const updateCall = query.mock.calls.find((call) => String(call[0]).includes('UPDATE external_product_seeds'));
+    expect(updateCall).toBeTruthy();
+    expect(updateCall[1][8]).not.toContain('\u0000');
+    expect(updateCall[1][8]).not.toContain('\\u0000');
   });
 
   test('runSeedCorrectionCycle clears beauty minor-unit blocker after dry-run preview', async () => {

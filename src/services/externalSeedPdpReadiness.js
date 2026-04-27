@@ -3,6 +3,7 @@ const {
   normalizePublishedProductIntelBundle,
 } = require('../pdpProductIntel');
 const { buildAuthoritativeIngredientView } = require('./pdpIngredientAuthority');
+const { normalizeSeedVariants } = require('./externalSeedProducts');
 
 function asString(value) {
   if (typeof value === 'string') return value.trim();
@@ -167,6 +168,22 @@ const GENERIC_INTEL_RE =
   /\b(product data|merchant product data|routine context|positions? itself|formula story|title[-\s]?driven|listing[-\s]?grounded|general use|all skin types|anchors? the product)\b/i;
 const INVALID_ACTIVE_FRAGMENT_RE =
   /^(?:see|learn more|tab on|restores damaged|chapped|none|n\/a)$/i;
+const VARIANT_IDENTITY_OPTION_NAMES = new Set([
+  'offer',
+  'sku',
+  'sku id',
+  'variant sku',
+  'barcode',
+  'upc',
+  'ean',
+  'gtin',
+  'product id',
+  'variant id',
+  'title',
+]);
+const GENERIC_VARIANT_AXIS_NAMES = new Set(['option', 'variant', 'selection']);
+const SHADE_AXIS_NAMES = new Set(['shade', 'color', 'colour', 'tone', 'hue']);
+const LOCALE_LIKE_VARIANT_VALUES = new Set(['us', 'usa', 'uk', 'eu', 'fr', 'de', 'es', 'it', 'ca', 'au', 'jp', 'kr', 'cn']);
 
 function normalizedTerm(value) {
   return lowerText(value).replace(/[^a-z0-9]+/g, ' ').trim();
@@ -492,6 +509,94 @@ function collectDescriptiveText(row) {
     .join(' ');
 }
 
+function allowsShadeAxis(text) {
+  return /\b(tinted?|skin tint|shade|color correct|colour correct|tone up|tone correct|lip tint|lipstick|lip gloss|lip oil|lip balm|foundation|concealer|bronzer|blush|highlighter|powder|eyeshadow|eyeliner|brow|mascara|makeup|cosmetic)\b/i.test(
+    text,
+  );
+}
+
+function isSkincareLike(text) {
+  return /\b(serum|essence|ampoule|moisturi[sz]er|cream|cleanser|toner|lotion|balm|mask|treatment|sunscreen|spf|sun protection|skin care|skincare|barrier|retinol|niacinamide|vitamin c|acid)\b/i.test(
+    text,
+  );
+}
+
+function looksLikeSizeValue(value) {
+  const text = stripHtml(value);
+  if (!text) return false;
+  return (
+    /\b\d+(?:\.\d+)?\s*(ml|m l|g|kg|oz|fl oz|l|lb|lbs|mm|cm)\b/i.test(text) ||
+    /\b(pack of|set of)\s*\d+\b/i.test(text) ||
+    /\b\d+\s*(pack|ct|count|pcs|pieces)\b/i.test(text) ||
+    /\b(refill|travel size|full size|mini|jumbo|regular)\b/i.test(text)
+  );
+}
+
+function hasVariantVisualEvidence(variant) {
+  return Boolean(
+    stripHtml(
+      variant?.label_image_url ||
+        variant?.swatch_image_url ||
+        variant?.image_url ||
+        variant?.image,
+    ) ||
+      stripHtml(
+        variant?.swatch?.hex ||
+          variant?.swatch_color ||
+          variant?.color_hex ||
+          variant?.shade_hex,
+      ),
+  );
+}
+
+function classifyVariantReadiness(row) {
+  const variants = normalizeSeedVariants(row?.seed_data, row);
+  const contextText = lowerText(collectContextText(row));
+  const rows = [];
+  for (const variant of variants) {
+    for (const option of asArray(variant?.options)) {
+      rows.push({
+        axis_name: lowerText(option?.name),
+        axis_kind: lowerText(option?.axis_kind || variant?.axis_kind),
+        value: lowerText(option?.value),
+        visual: hasVariantVisualEvidence(variant),
+      });
+    }
+  }
+  const visibleRows = rows.filter((item) => item.value);
+  const identityOptionVisible = visibleRows.filter((item) => VARIANT_IDENTITY_OPTION_NAMES.has(item.axis_name));
+  const wrongAxisForCategory = visibleRows.filter((item) => {
+    const axisName = item.axis_kind || item.axis_name;
+    if (!SHADE_AXIS_NAMES.has(axisName)) return false;
+    if (allowsShadeAxis(contextText)) return false;
+    return LOCALE_LIKE_VARIANT_VALUES.has(item.value) || isSkincareLike(contextText);
+  });
+  const makeupShadeMissingVisual = visibleRows.filter((item) => {
+    const axisName = item.axis_kind || item.axis_name;
+    return SHADE_AXIS_NAMES.has(axisName) && allowsShadeAxis(contextText) && !item.visual;
+  });
+  const sizeValueGenericAxis = visibleRows.filter((item) => {
+    const axisName = item.axis_kind || item.axis_name;
+    return GENERIC_VARIANT_AXIS_NAMES.has(axisName) && looksLikeSizeValue(item.value);
+  });
+  const issues = [];
+  if (identityOptionVisible.length) issues.push('identity_option_visible');
+  if (wrongAxisForCategory.length) issues.push('wrong_axis_for_category');
+  if (makeupShadeMissingVisual.length) issues.push('makeup_shade_missing_visual');
+  if (sizeValueGenericAxis.length) issues.push('size_value_generic_axis');
+  return {
+    status: issues.length ? 'flagged' : visibleRows.length ? 'ready' : 'no_visible_variant_axis',
+    issues,
+    visible_variant_rows: visibleRows.length,
+    examples: {
+      identity_option_visible: identityOptionVisible.slice(0, 4),
+      wrong_axis_for_category: wrongAxisForCategory.slice(0, 4),
+      makeup_shade_missing_visual: makeupShadeMissingVisual.slice(0, 4),
+      size_value_generic_axis: sizeValueGenericAxis.slice(0, 4),
+    },
+  };
+}
+
 function isNonMerchOrAccessory(row) {
   const text = collectContextText(row);
   return NON_MERCH_RE.test(text) || ACCESSORY_RE.test(text);
@@ -642,6 +747,7 @@ function buildReadinessRow(row, context = {}) {
   const domain = asString(row?.domain) || 'unknown';
   const productIntel = classifyEffectiveProductIntel(row, context);
   const activeIngredients = classifyActiveIngredientReadiness(row);
+  const variantReadiness = classifyVariantReadiness(row);
   return {
     seed_id: asString(row?.id),
     external_product_id: productId,
@@ -653,6 +759,7 @@ function buildReadinessRow(row, context = {}) {
     product_line_id: productIntel.product_line_id,
     pivota_insights: productIntel,
     active_ingredients: activeIngredients,
+    variants: variantReadiness,
     coverage: activeIngredients.coverage,
   };
 }
@@ -710,6 +817,12 @@ function summarizeReadinessRows(rows, options = {}) {
       issues: {},
       issue_domains: {},
       source_origin: {},
+      samples: {},
+    },
+    variants: {
+      status: {},
+      issues: {},
+      issue_domains: {},
       samples: {},
     },
   };
@@ -792,6 +905,23 @@ function summarizeReadinessRows(rows, options = {}) {
         sampleLimit,
       );
     }
+
+    const variants = row.variants || {};
+    increment(summary.variants.status, variants.status || 'unknown');
+    for (const issue of asArray(variants.issues)) {
+      increment(summary.variants.issues, issue);
+      increment(summary.variants.issue_domains, `${row.domain}::${issue}`);
+      addSample(
+        summary.variants.samples,
+        issue,
+        row,
+        {
+          status: variants.status,
+          examples: variants.examples?.[issue] || [],
+        },
+        sampleLimit,
+      );
+    }
   }
 
   return {
@@ -812,6 +942,12 @@ function summarizeReadinessRows(rows, options = {}) {
       issue_domains: topEntries(summary.active_ingredients.issue_domains, 30),
       source_origin: topEntries(summary.active_ingredients.source_origin, 20),
     },
+    variants: {
+      ...summary.variants,
+      status: topEntries(summary.variants.status, 20),
+      issues: topEntries(summary.variants.issues, 25),
+      issue_domains: topEntries(summary.variants.issue_domains, 30),
+    },
   };
 }
 
@@ -823,6 +959,7 @@ module.exports = {
   classifyProductIntelKbRow,
   classifyEffectiveProductIntel,
   classifyActiveIngredientReadiness,
+  classifyVariantReadiness,
   classifyProductFamily,
   buildReadinessRow,
   summarizeReadinessRows,

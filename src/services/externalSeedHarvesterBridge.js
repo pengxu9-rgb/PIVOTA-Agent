@@ -194,10 +194,53 @@ function buildCandidateId(row, variant, index) {
   return `${prefix}:${token}`;
 }
 
-function buildProductName(baseTitle, variant) {
+function getRawHarvesterVariants(seedData) {
+  const collections = [
+    seedData?.snapshot?.variants,
+    seedData?.variants,
+    seedData?.snapshot?.product?.variants,
+    seedData?.product?.variants,
+    seedData?.snapshot?.skus,
+    seedData?.skus,
+    seedData?.snapshot?.product?.skus,
+    seedData?.product?.skus,
+  ];
+  for (const collection of collections) {
+    if (Array.isArray(collection) && collection.length > 0) return collection;
+  }
+  return [];
+}
+
+function isDefaultVariantLabel(value) {
+  const normalized = normalizeNonEmptyString(value);
+  return !normalized || /^default(?:\s+title)?$/i.test(normalized);
+}
+
+function rawIdentityVariantLabel(rawVariant) {
+  const rawValue = normalizeNonEmptyString(rawVariant?.option_value || rawVariant?.title || rawVariant?.name);
+  if (isDefaultVariantLabel(rawValue)) return '';
+
+  const tokens = [
+    rawVariant?.sku,
+    rawVariant?.sku_id,
+    rawVariant?.variant_sku,
+    rawVariant?.variant_id,
+    rawVariant?.id,
+  ]
+    .map((value) => normalizeNonEmptyString(value))
+    .filter(Boolean);
+  if (tokens.some((token) => rawValue.toLowerCase() === token.toLowerCase())) return rawValue;
+
+  return /^\d{8,}$/.test(rawValue) || /^[A-Z0-9_-]{10,}$/i.test(rawValue) ? rawValue : '';
+}
+
+function buildProductName(baseTitle, variant, rawVariant = null) {
   const title = normalizeNonEmptyString(baseTitle);
   const optionValue = normalizeNonEmptyString(variant?.option_value || variant?.title);
-  if (!optionValue || /^default(?:\s+title)?$/i.test(optionValue)) return title;
+  if (isDefaultVariantLabel(optionValue)) {
+    const rawIdentityLabel = rawIdentityVariantLabel(rawVariant);
+    return rawIdentityLabel ? `${title} - ${rawIdentityLabel}` : title;
+  }
   return `${title} - ${optionValue}`;
 }
 
@@ -263,6 +306,7 @@ function buildExternalSeedHarvesterCandidates(row, options = {}) {
   const brand = normalizeNonEmptyString(seedData.brand || snapshot.brand || row?.brand || row?.domain);
   const market = normalizeNonEmptyString(row?.market || snapshot.market || seedData.market || 'US').toUpperCase();
   const variants = normalizeSeedVariants(seedData, row);
+  const rawVariants = getRawHarvesterVariants(seedData);
   const sourceUrl =
     normalizeUrlLike(snapshot.canonical_url) ||
     normalizeUrlLike(row?.canonical_url) ||
@@ -317,7 +361,7 @@ function buildExternalSeedHarvesterCandidates(row, options = {}) {
         external_product_id: normalizeNonEmptyString(row?.external_product_id),
         market,
         brand,
-        product_name: buildProductName(baseTitle, variant),
+        product_name: buildProductName(baseTitle, variant, rawVariants[index]),
         variant_sku: normalizeNonEmptyString(variant?.sku),
         variant_id: variantId,
         source_type: 'external_seed',
