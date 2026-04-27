@@ -783,11 +783,12 @@ function shouldSuppressLowConfidenceActiveIngredients(product, candidate, data, 
   if (String(product?.source || '').trim().toLowerCase() !== 'external_seed') return false;
   if (detectTemplateHint(product) !== 'beauty') return false;
   if (isRegulatoryActiveIngredientSource(candidate)) return false;
-  if (String(data?.source_origin || '').trim().toLowerCase() === 'ingredients_inci') return false;
-  if (String(data?.source_quality_status || '').trim().toLowerCase() === 'derived_from_inci') return false;
   if (String(data?.source_quality_status || '').trim().toLowerCase() === 'high') return false;
-  const itemCount = Array.isArray(data?.items) ? data.items.length : 0;
+  const items = Array.isArray(data?.items) ? data.items : [];
+  const itemCount = items.length;
   const ingredientsCount = Array.isArray(ingredientsInci?.items) ? ingredientsInci.items.length : 0;
+  if (itemCount > 0 && items.every((item) => isLowSignalActiveIngredientName(item))) return true;
+  if (items.some((item) => isDisplayableHeroActiveIngredient(product, item, ingredientsInci))) return false;
   return itemCount <= 1 && ingredientsCount >= 4;
 }
 
@@ -1553,9 +1554,77 @@ const SUNSCREEN_ACTIVE_INGREDIENTS = [
   'Mexoryl SX',
   'Mexoryl XL',
 ];
+const HERO_ACTIVE_INGREDIENT_RE =
+  /\b(niacinamide|hyaluronic acid|ceramide|peptide|retinol|retinal|retinaldehyde|bakuchiol|vitamin c|ascorbic acid|ethyl ascorbic acid|tetrahexyldecyl ascorbate|glycolic acid|lactic acid|mandelic acid|salicylic acid|azelaic acid|tranexamic acid|pha|gluconolactone|panthenol|centella|madecassoside|snail mucin|rice|propolis|alpha arbutin|caffeine|squalane|urea|colloidal oatmeal|ectoin|zinc pca|tamanu oil)\b/i;
+const NON_SUNSCREEN_REGULATORY_ACTIVE_RE =
+  /\b(benzoyl peroxide|adapalene|sulfur)\b/i;
+const LOW_SIGNAL_ACTIVE_INGREDIENTS = new Set([
+  'water',
+  'aqua',
+  'glycerin',
+  'butylene glycol',
+  'propylene glycol',
+  'caprylyl glycol',
+  'phenoxyethanol',
+  'ethylhexylglycerin',
+  'fragrance',
+  'parfum',
+  'disodium edta',
+  'sodium chloride',
+  'xanthan gum',
+  'citric acid',
+  'sodium hydroxide',
+  'carbomer',
+  'tocopherol',
+  'alcohol',
+  'alcohol denat',
+  '1,2-hexanediol',
+  'hexylene glycol',
+  'dipropylene glycol',
+  'polysorbate 20',
+  'triethanolamine',
+]);
 
 function normalizeIngredientMatchKey(value) {
   return asNonEmptyString(value).toLowerCase().replace(/[^a-z0-9]+/g, '');
+}
+
+function isLowSignalActiveIngredientName(value) {
+  return LOW_SIGNAL_ACTIVE_INGREDIENTS.has(asNonEmptyString(value).toLowerCase());
+}
+
+function isDisplayableHeroActiveIngredient(product, value, ingredientsInci) {
+  const text = asNonEmptyString(value);
+  if (!text || isLowSignalActiveIngredientName(text)) return false;
+  if (SUNSCREEN_ACTIVE_INGREDIENTS.some((item) => normalizeIngredientMatchKey(item) === normalizeIngredientMatchKey(text))) {
+    return isLikelySunscreenProduct(product, ingredientsInci);
+  }
+  if (NON_SUNSCREEN_REGULATORY_ACTIVE_RE.test(text)) return true;
+  return HERO_ACTIVE_INGREDIENT_RE.test(text);
+}
+
+function normalizeActiveIngredientItems(candidate) {
+  if (Array.isArray(candidate)) {
+    return uniqueNonEmptyStrings(
+      candidate.flatMap((item) => {
+        if (!item || typeof item !== 'object' || Array.isArray(item)) return normalizeStructuredItems(item);
+        const direct =
+          asNonEmptyString(item.title) ||
+          asNonEmptyString(item.name) ||
+          asNonEmptyString(item.label) ||
+          asNonEmptyString(item.value);
+        return direct ? [direct] : normalizeStructuredItems(item);
+      }),
+    );
+  }
+  return normalizeStructuredItems(candidate);
+}
+
+function filterDisplayableActiveIngredients(product, data, ingredientsInci) {
+  const items = Array.isArray(data?.items) ? data.items : [];
+  return uniqueNonEmptyStrings(
+    items.filter((item) => isDisplayableHeroActiveIngredient(product, item, ingredientsInci)),
+  );
 }
 
 function collectIngredientInciText(ingredientsInci) {
@@ -1647,7 +1716,7 @@ function buildActiveIngredients(product, ingredientsInci) {
   for (const candidate of candidates) {
     if (!candidate) continue;
     const rawText = pickStructuredText(candidate);
-    const items = uniqueNonEmptyStrings(normalizeStructuredItems(candidate));
+    const items = uniqueNonEmptyStrings(normalizeActiveIngredientItems(candidate));
     if (!items.length && !rawText) continue;
     const candidateText = uniqueNonEmptyStrings([rawText, ...items]).join(' ');
     if (looksLikeActiveCompatibilityFaqText(candidateText) && !isRegulatoryActiveIngredientSource(candidate)) {
@@ -1659,6 +1728,7 @@ function buildActiveIngredients(product, ingredientsInci) {
       items,
       ...extractStructuredSourceMeta(candidate),
     }, ingredientsInci);
+    data.items = filterDisplayableActiveIngredients(product, data, ingredientsInci);
     if (!Array.isArray(data.items) || !data.items.length) continue;
     if (shouldSuppressLowConfidenceActiveIngredients(product, candidate, data, ingredientsInci)) {
       return null;

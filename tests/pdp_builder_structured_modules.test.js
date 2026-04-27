@@ -104,9 +104,7 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
         }),
       ]),
     );
-    expect(activeIngredients?.data?.items).toEqual(
-      expect.arrayContaining(['Helps support the skin barrier.']),
-    );
+    expect(activeIngredients?.data?.items).toEqual(expect.arrayContaining(['Ceramide NP']));
     expect(ingredientsInci?.data?.items).toEqual(['Water', 'Glycerin', 'Ceramide NP']);
     expect(howToUse?.data?.steps).toEqual(['Apply after cleansing.', 'Use SPF in the morning.']);
     expect(payload.product.source).toBe('external_seed');
@@ -470,9 +468,7 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
       'Glycerin',
       'Panthenol',
     ]);
-    expect(payload.modules.find((module) => module.type === 'active_ingredients')?.data?.items).toEqual([
-      'Glycerin',
-    ]);
+    expect(payload.modules.find((module) => module.type === 'active_ingredients')).toBeFalsy();
     expect(payload.modules.find((module) => module.type === 'materials')).toBeFalsy();
   });
 
