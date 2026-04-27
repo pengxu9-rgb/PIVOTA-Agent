@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const {
+  mapLegacyCardToSpecCards,
   buildRecommendationCardContext,
   normalizeRecommendationProductCard,
 } = require('../src/auroraBff/chatCardFactory');
@@ -73,4 +74,75 @@ test('finish-fit card mapper keeps airy sunscreen evidence over neutral cream-te
   assert.doesNotMatch(normalized.why_this_one, /richer|more moisturizing|cushion/i);
   assert.match(normalized.short_description, /lightweight velvety finish/i);
   assert.doesNotMatch(normalized.short_description, /richer|more moisturizing|cushion/i);
+});
+
+test('recommendations card renderer follows final_selection order for visible product cards', () => {
+  const recommendations = [
+    {
+      product_id: 'spf_matte',
+      display_name: 'Matte Fit Serum Sunscreen SPF 50+',
+      brand: 'SKINTIFIC',
+      matched_role_id: 'daily_sunscreen_finish_fit',
+      why_this_one: 'direct matte and non-greasy evidence for oily skin under makeup',
+    },
+    {
+      product_id: 'spf_light',
+      display_name: 'Light Serum Sunscreen SPF 50+',
+      brand: 'SKINTIFIC',
+      matched_role_id: 'daily_sunscreen_finish_fit',
+      why_this_one: 'lighter serum format for daily wear',
+    },
+    {
+      product_id: 'spf_unseen',
+      display_name: 'Unseen Sunscreen SPF 50',
+      brand: 'Supergoop',
+      matched_role_id: 'daily_sunscreen_finish_fit',
+      why_this_one: 'invisible finish for daily SPF wear',
+    },
+  ];
+  const [card] = mapLegacyCardToSpecCards(
+    {
+      card_id: 'reco_order_test',
+      type: 'recommendations',
+      payload: {
+        recommendations,
+        recommendation_meta: {
+          final_selection: {
+            selected_product_ids: ['spf_light', 'spf_unseen', 'spf_matte'],
+            selected_titles: [
+              'SKINTIFIC Light Serum Sunscreen SPF 50+',
+              'Supergoop Unseen Sunscreen SPF 50',
+              'SKINTIFIC Matte Fit Serum Sunscreen SPF 50+',
+            ],
+          },
+        },
+        metadata: {
+          search_stage_ledger: {
+            final_selection: {
+              selected_product_ids: ['spf_light', 'spf_unseen', 'spf_matte'],
+              selected_titles: [
+                'SKINTIFIC Light Serum Sunscreen SPF 50+',
+                'Supergoop Unseen Sunscreen SPF 50',
+                'SKINTIFIC Matte Fit Serum Sunscreen SPF 50+',
+              ],
+            },
+          },
+        },
+      },
+    },
+    { requestId: 'req_reco_order_test', language: 'EN' },
+  );
+
+  assert.deepEqual(
+    card.payload.recommendations.map((item) => item.product_id),
+    ['spf_light', 'spf_unseen', 'spf_matte'],
+  );
+  assert.deepEqual(
+    card.payload.products.map((item) => item.product_id),
+    ['spf_light', 'spf_unseen', 'spf_matte'],
+  );
+  assert.deepEqual(
+    card.sections[0].products.map((item) => item.product_id),
+    ['spf_light', 'spf_unseen', 'spf_matte'],
+  );
 });
