@@ -18,6 +18,15 @@ describe('product_intel_pilot_compare gemini fallback', () => {
 
   test('parses requested model list before fallback defaults', () => {
     expect(parseGeminiModelList('models/gemini-3-pro-preview,gemini-2.5-flash')).toEqual([
+      'gemini-3-pro-preview',
+      'gemini-2.5-flash',
+      'gemini-3-flash-preview',
+      'gemini-3.1-pro-preview',
+    ]);
+  });
+
+  test('uses fallback defaults when no model is requested', () => {
+    expect(parseGeminiModelList('')).toEqual([
       'gemini-3-flash-preview',
       'gemini-3.1-pro-preview',
     ]);

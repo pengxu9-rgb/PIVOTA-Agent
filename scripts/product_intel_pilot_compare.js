@@ -64,8 +64,15 @@ function parseArgs(argv) {
   return out;
 }
 
-function parseGeminiModelList(_rawModel) {
-  return GEMINI_MODEL_DEFAULTS.map((model) => normalizeGeminiModel(model));
+function parseGeminiModelList(rawModel) {
+  const requested = String(rawModel || '')
+    .split(',')
+    .map((model) => normalizeGeminiModel(model))
+    .filter(Boolean);
+  const defaults = GEMINI_MODEL_DEFAULTS.map((model) => normalizeGeminiModel(model));
+  return requested.length
+    ? Array.from(new Set([...requested, ...defaults]))
+    : defaults;
 }
 
 function normalizeGeminiModel(rawModel) {
