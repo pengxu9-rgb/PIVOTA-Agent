@@ -1131,36 +1131,48 @@ function normalizeRecommendationProductCard(raw, options = {}) {
   const finishFitSpecificShortDescription = needsFinishFitTradeoff
     ? buildRecommendationFinishFitSpecificShortDescription(row, { sameRoleCandidates })
     : '';
-  const whyThisOne = finishFitSpecificWhy
-    && (
-      !baseWhyThisOne
-      || (
-        !recommendationFinishFitHasDirectTextureEvidence(baseWhyThisOne)
-        && (
-          looksLikeWeakRecommendationFinishFitCopy(baseWhyThisOne)
-          || looksLikeGenericRecommendationFinishFitCopy(baseWhyThisOne)
-          || looksLikeDescriptiveRecommendationFinishFitCopy(baseWhyThisOne)
-          || looksLikeLowSpecificityRecommendationFinishFitCopy(baseWhyThisOne)
-          || recommendationFinishFitSourceNeedsMoreSpecificCue(baseWhyThisOne, row)
-        )
-      )
+  const finishFitWhyAddsPeerContrast =
+    finishFitSpecificWhy && /\bwhen you do not want to go too\b/i.test(finishFitSpecificWhy);
+  const baseWhyNeedsFinishFitRewrite =
+    !baseWhyThisOne
+    || looksLikeDescriptiveRecommendationFinishFitCopy(baseWhyThisOne)
+    || recommendationFinishFitSourceNeedsMoreSpecificCue(baseWhyThisOne, row)
+    || (
+      finishFitWhyAddsPeerContrast
+      && !/\bwhen you do not want to go too\b/i.test(baseWhyThisOne)
     )
+    || (
+      !recommendationFinishFitHasDirectTextureEvidence(baseWhyThisOne)
+      && (
+        looksLikeWeakRecommendationFinishFitCopy(baseWhyThisOne)
+        || looksLikeGenericRecommendationFinishFitCopy(baseWhyThisOne)
+        || looksLikeLowSpecificityRecommendationFinishFitCopy(baseWhyThisOne)
+      )
+    );
+  const finishFitShortDescriptionAddsPeerContrast =
+    finishFitSpecificShortDescription && /\bwhen you do not want to go too\b/i.test(finishFitSpecificShortDescription);
+  const baseShortDescriptionNeedsFinishFitRewrite =
+    !baseShortDescription
+    || looksLikeDescriptiveRecommendationFinishFitCopy(baseShortDescription)
+    || recommendationFinishFitSourceNeedsMoreSpecificCue(baseShortDescription, row)
+    || (
+      finishFitShortDescriptionAddsPeerContrast
+      && !/\bwhen you do not want to go too\b/i.test(baseShortDescription)
+    )
+    || (
+      !recommendationFinishFitHasDirectTextureEvidence(baseShortDescription)
+      && (
+        looksLikeWeakRecommendationFinishFitCopy(baseShortDescription)
+        || looksLikeGenericRecommendationFinishFitCopy(baseShortDescription)
+        || looksLikeLowSpecificityRecommendationFinishFitCopy(baseShortDescription)
+      )
+    );
+  const whyThisOne = finishFitSpecificWhy
+    && baseWhyNeedsFinishFitRewrite
     ? finishFitSpecificWhy
     : baseWhyThisOne;
   const shortDescription = finishFitSpecificShortDescription
-    && (
-      !baseShortDescription
-      || (
-        !recommendationFinishFitHasDirectTextureEvidence(baseShortDescription)
-        && (
-          looksLikeWeakRecommendationFinishFitCopy(baseShortDescription)
-          || looksLikeGenericRecommendationFinishFitCopy(baseShortDescription)
-          || looksLikeDescriptiveRecommendationFinishFitCopy(baseShortDescription)
-          || looksLikeLowSpecificityRecommendationFinishFitCopy(baseShortDescription)
-          || recommendationFinishFitSourceNeedsMoreSpecificCue(baseShortDescription, row)
-        )
-      )
-    )
+    && baseShortDescriptionNeedsFinishFitRewrite
     ? finishFitSpecificShortDescription
     : baseShortDescription;
   const declaredAlternativesCount = Number(row.alternatives_count || row.alternativesCount || 0);

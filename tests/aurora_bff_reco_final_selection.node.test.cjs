@@ -6978,6 +6978,10 @@ test('beauty mainline reco rows promote visible nested product fields to top lev
     assert.equal(rows[0].brand, 'The Ordinary');
     assert.equal(rows[0].image_url, 'https://cdn.shopify.com/s/files/1/0944/6998/0488/files/89K57102_S2.webp?v=1770439122');
     assert.deepEqual(rows[0].price, { amount: 12, currency: 'USD', unknown: false });
+    assert.equal(rows[0].price_label, '$12');
+    assert.equal(rows[0].role_scope, 'oil_control_treatment');
+    assert.equal(rows[0].selected_target_id, 'oil_control_treatment');
+    assert.equal(rows[0].comparison_mode, 'single_pick');
     assert.equal(rows[0].short_description, 'Helps reduce visible shine without feeling heavy.');
     assert.equal(rows[0].description, 'Daily serum for oily skin that targets excess sebum.');
     assert.equal(rows[0].url, 'https://agent.pivota.cc/products/9886499864904?merchant_id=merch_efbc46b4619cfbdf&entry=creator_agent');
@@ -7004,6 +7008,59 @@ test('beauty mainline reco rows promote visible nested product fields to top lev
       /\b(?:best|top|most|strongest|perfect|ideal)\b/i,
     );
     assert.equal(rows[0].shopping_card.title, 'The Ordinary Niacinamide 10% + Zinc 1%');
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('beauty mainline reco rows fill stable-alias official commerce fields when internal row is thin', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const rows = __internal.buildRecoRowsFromMainlineProducts(
+      [
+        {
+          product_id: '9886499864904',
+          merchant_id: 'merch_efbc46b4619cfbdf',
+          brand: 'The Ordinary',
+          display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+          category: 'Serum',
+          matched_role_id: 'oil_control_treatment',
+          matched_role_label: 'Oil-control treatment',
+          short_description: 'A focused serum for excess oil, texture and visible pores.',
+        },
+      ],
+      {
+        targetContext: {
+          primary_role_id: 'oil_control_treatment',
+          semantic_plan: {
+            comparison_mode: 'routine_mix',
+          },
+          framework_roles: [
+            {
+              role_id: 'oil_control_treatment',
+              label: 'Oil-control treatment',
+              rank: 1,
+              preferred_step: 'treatment',
+            },
+            {
+              role_id: 'daily_sunscreen',
+              label: 'Daily sunscreen',
+              rank: 2,
+              preferred_step: 'sunscreen',
+            },
+          ],
+        },
+        language: 'EN',
+      },
+    );
+
+    assert.equal(rows.length, 1);
+    assert.match(rows[0].image_url || '', /rdn-niacinamide-10pct-zinc-1pct-30ml\.png/i);
+    assert.deepEqual(rows[0].price, { amount: 4.62, currency: 'USD', unknown: false });
+    assert.equal(rows[0].price_label, '$4.62');
+    assert.equal(rows[0].role_scope, 'oil_control_treatment');
+    assert.equal(rows[0].selected_target_id, 'oil_control_treatment');
+    assert.equal(rows[0].comparison_mode, 'routine_mix');
   } finally {
     delete require.cache[moduleId];
   }
