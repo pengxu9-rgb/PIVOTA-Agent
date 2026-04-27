@@ -9506,6 +9506,13 @@ test('__internal: reco assistant rewrite guard rejects re-asking known skin type
   });
   assert.equal(validLocationQuestion.reason, null);
 
+  const invalidBuyUseFirstOpening = __internal.validateRecoAssistantRewriteCandidate({
+    ...baseArgs,
+    candidateText:
+      'Start with The Ordinary Niacinamide 10% + Zinc 1% for oil-control treatment because it pairs niacinamide with zinc for visible shine. It also fits because it is a lightweight serum format. What city or climate are you usually in (humid, dry, cold, or high-UV)?',
+  });
+  assert.equal(invalidBuyUseFirstOpening.reason, 'rewrite_buy_started_with_use_first_copy');
+
   const invalidMissingPlannedFollowup = __internal.validateRecoAssistantRewriteCandidate({
     ...baseArgs,
     userRequestText: 'im oily skin. what product should i buy?',
@@ -9654,6 +9661,100 @@ test('__internal: compact reco assistant rewrite prompt keeps per-product eviden
   assert.ok(
     context.assistant_write_plan?.lead_product?.evidence_dimensions?.includes('formula_or_ingredient'),
   );
+});
+
+test('__internal: structured reco rewrite renders buy routine without use-first opening', async () => {
+  const { __internal } = loadRoutesFresh();
+  const payload = {
+    roles: [
+      {
+        role_id: 'oil_control_treatment',
+        label: 'Oil-control treatment',
+        preferred_step: 'treatment',
+      },
+      {
+        role_id: 'lightweight_moisturizer',
+        label: 'Lightweight moisturizer',
+        preferred_step: 'moisturizer',
+      },
+      {
+        role_id: 'daily_sunscreen',
+        label: 'Daily sunscreen',
+        preferred_step: 'sunscreen',
+      },
+    ],
+    recommendation_meta: {
+      primary_target_id: 'oil_control_treatment',
+      selected_target_ids: ['oil_control_treatment', 'lightweight_moisturizer', 'daily_sunscreen'],
+      ranked_targets: [
+        {
+          target_id: 'oil_control_treatment',
+          ingredient_query: 'Oil-control treatment',
+          resolved_target_step: 'treatment',
+        },
+      ],
+    },
+    recommendations: [
+      {
+        display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+        brand: 'The Ordinary',
+        matched_role_id: 'oil_control_treatment',
+        matched_role_label: 'Oil-control treatment',
+        preferred_step: 'treatment',
+        why_this_one: 'Targets excess oil and visible shine with niacinamide and zinc PCA.',
+        key_features: ['Niacinamide 10%', 'Zinc PCA'],
+      },
+      {
+        display_name: 'Hydrating Dewy Gel Cream',
+        brand: 'First Aid Beauty',
+        matched_role_id: 'lightweight_moisturizer',
+        matched_role_label: 'Lightweight moisturizer',
+        preferred_step: 'moisturizer',
+        why_this_one: 'Adds breathable gel-cream hydration without a greasy feel.',
+        key_features: ['Gel cream texture'],
+      },
+      {
+        display_name: 'Relief Sun SPF50',
+        brand: 'Beauty of Joseon',
+        matched_role_id: 'daily_sunscreen',
+        matched_role_label: 'Daily sunscreen',
+        preferred_step: 'sunscreen',
+        why_this_one: 'Provides lightweight daytime SPF protection as the final morning step.',
+        key_features: ['SPF 50', 'Lightweight texture'],
+      },
+    ],
+  };
+
+  const text = __internal.renderRecoAssistantStructuredReasonRewrite({
+    structuredReason: {
+      lead_reason: 'it pairs niacinamide with zinc PCA for visible shine support',
+      support_reasons: [
+        'it provides breathable gel-cream hydration without a greasy feel',
+        'it provides lightweight daytime SPF protection as the final morning step',
+      ],
+    },
+    payload,
+    language: 'EN',
+    profile: { skinType: 'oily' },
+    userRequestText: 'im oily skin. what product should i buy?',
+    primaryTarget: {
+      target_id: 'oil_control_treatment',
+      ingredient_query: 'Oil-control treatment',
+      resolved_target_step: 'treatment',
+    },
+    names: [
+      'The Ordinary Niacinamide 10% + Zinc 1%',
+      'Hydrating Dewy Gel Cream',
+      'Relief Sun SPF50',
+    ],
+    requestMode: 'buy',
+    selectedProductRoleMix: 'routine_mix',
+  });
+
+  assert.doesNotMatch(text, /^Start with\b/i);
+  assert.match(text, /^The Ordinary Niacinamide 10% \+ Zinc 1% is a practical oil-control treatment to buy first in this routine/i);
+  assert.match(text, /Hydrating Dewy Gel Cream adds the moisturizer step because it provides breathable gel-cream hydration/i);
+  assert.match(text, /Relief Sun SPF50 covers the daytime SPF step because it provides lightweight daytime SPF protection/i);
 });
 
 test('__internal: reco assistant rewrite prompt prioritizes target-aligned evidence over off-target product claims', async () => {
