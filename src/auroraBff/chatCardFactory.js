@@ -1292,6 +1292,101 @@ function buildProductCardSections(products) {
   ];
 }
 
+function extractRecommendationCardSelection(payload) {
+  const root = isPlainObject(payload) ? payload : {};
+  const recommendationMeta = isPlainObject(root.recommendation_meta) ? root.recommendation_meta : {};
+  const payloadMeta = isPlainObject(root.metadata) ? root.metadata : {};
+  const stageLedger = isPlainObject(payloadMeta.search_stage_ledger) ? payloadMeta.search_stage_ledger : {};
+  const candidates = [
+    recommendationMeta.final_selection,
+    payloadMeta.final_selection,
+    stageLedger.final_selection,
+    root.final_selection,
+  ];
+  for (const candidate of candidates) {
+    if (!isPlainObject(candidate)) continue;
+    const selectedProductIds = asStringArray(candidate.selected_product_ids || candidate.selectedProductIds, 12);
+    const selectedTitles = asStringArray(candidate.selected_titles || candidate.selectedTitles, 12);
+    if (selectedProductIds.length || selectedTitles.length) {
+      return {
+        selected_product_ids: selectedProductIds,
+        selected_titles: selectedTitles,
+      };
+    }
+  }
+  return null;
+}
+
+function pickRecommendationProductId(raw) {
+  const { row, sku, product, canonicalProductRef, directProductRef } = flattenRecommendationProductSource(raw);
+  return (
+    asString(row.product_id) ||
+    asString(row.productId) ||
+    asString(product.product_id) ||
+    asString(product.productId) ||
+    asString(sku.product_id) ||
+    asString(sku.productId) ||
+    asString(canonicalProductRef && canonicalProductRef.product_id) ||
+    asString(directProductRef && directProductRef.product_id)
+  );
+}
+
+function pickRecommendationProductTitle(raw) {
+  const { row, sku, product } = flattenRecommendationProductSource(raw);
+  const brand =
+    asString(row.brand) ||
+    asString(product.brand) ||
+    asString(product.vendor) ||
+    asString(sku.brand) ||
+    asString(sku.Brand);
+  const name =
+    asString(row.product_name) ||
+    asString(row.name) ||
+    asString(row.display_name) ||
+    asString(row.displayName) ||
+    asString(product.display_name) ||
+    asString(product.displayName) ||
+    asString(product.name) ||
+    asString(product.title) ||
+    asString(sku.display_name) ||
+    asString(sku.displayName) ||
+    asString(sku.name);
+  if (brand && name && name.toLowerCase().startsWith(brand.toLowerCase())) return name;
+  return [brand, name].filter(Boolean).join(' ').trim() || name || brand;
+}
+
+function orderRecommendationRowsByCardSelection(rows, payload) {
+  const sourceRows = Array.isArray(rows) ? rows.filter(isPlainObject) : [];
+  if (sourceRows.length <= 1) return sourceRows;
+  const selection = extractRecommendationCardSelection(payload);
+  if (!selection) return sourceRows;
+
+  const byId = new Map();
+  const byTitle = new Map();
+  for (const row of sourceRows) {
+    const productId = pickRecommendationProductId(row);
+    if (productId && !byId.has(productId.toLowerCase())) byId.set(productId.toLowerCase(), row);
+    const title = pickRecommendationProductTitle(row);
+    if (title && !byTitle.has(title.toLowerCase())) byTitle.set(title.toLowerCase(), row);
+  }
+
+  const ordered = [];
+  const seen = new Set();
+  const push = (row) => {
+    if (!row) return;
+    const productId = pickRecommendationProductId(row);
+    const title = pickRecommendationProductTitle(row);
+    const key = productId ? `id:${productId.toLowerCase()}` : title ? `title:${title.toLowerCase()}` : '';
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    ordered.push(row);
+  };
+
+  for (const productId of selection.selected_product_ids) push(byId.get(productId.toLowerCase()));
+  for (const title of selection.selected_titles) push(byTitle.get(title.toLowerCase()));
+  return ordered.length ? ordered : sourceRows;
+}
+
 function buildStructuredRoutineSteps(steps) {
   const list = asStringArray(steps, 8);
   return list.map((name) => ({
@@ -1760,7 +1855,10 @@ function buildPassthroughCard({ card, requestId, index, language = 'EN', fallbac
 
 function buildRecommendationsCard({ card, requestId, index, language = 'EN' }) {
   const payload = isPlainObject(card && card.payload) ? card.payload : {};
-  const recommendations = Array.isArray(payload.recommendations) ? payload.recommendations : [];
+  const recommendations = orderRecommendationRowsByCardSelection(
+    Array.isArray(payload.recommendations) ? payload.recommendations : [],
+    payload,
+  );
   const cardContext = buildRecommendationCardContext(payload, recommendations);
   const products = recommendations
     .map((row) => normalizeRecommendationProductCard(row, cardContext))
@@ -1769,6 +1867,7 @@ function buildRecommendationsCard({ card, requestId, index, language = 'EN' }) {
   const nextPayload = {
     ...payload,
     source_card_type: 'recommendations',
+    recommendations,
     products,
     sections,
   };
