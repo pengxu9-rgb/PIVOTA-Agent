@@ -418,6 +418,33 @@ describe('pdpIdentityGraph', () => {
     ]);
   });
 
+  test('buildIdentityListingFromProduct does not infer long numeric option identifiers as shade', () => {
+    const { buildIdentityListingFromProduct } = require('../../src/services/pdpIdentityGraph');
+
+    const listing = buildIdentityListingFromProduct({
+      merchantId: 'external_seed',
+      productId: 'ext_theordinary_lash_serum',
+      sourceKind: 'external_seed',
+      product: {
+        title: 'Multi-Peptide Lash and Brow Serum',
+        brand: 'The Ordinary',
+        source_url: 'https://theordinary.com/products/multi-peptide-lash-brow-serum',
+        default_variant_id: '769915233636',
+        variants: [
+          {
+            variant_id: '769915233636',
+            title: '769915233636',
+            option_name: 'Option',
+            option_value: '769915233636',
+          },
+        ],
+      },
+    });
+
+    expect(listing.variant_axes).toEqual({ multi_variant: false });
+    expect(listing.match_basis).not.toContain('variant_axes:shade:769915233636');
+  });
+
   test('buildIdentityListingFromProduct groups numeric shade PDPs into one product line', () => {
     const { buildIdentityListingFromProduct } = require('../../src/services/pdpIdentityGraph');
 

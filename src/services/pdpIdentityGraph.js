@@ -654,10 +654,19 @@ function parseGenericSizeToken(text) {
   return '';
 }
 
+function isLikelyVariantIdentityToken(value) {
+  const normalized = normalizeAxisValue(value);
+  if (!normalized) return false;
+  const compact = normalized.replace(/[\s-]+/g, '');
+  if (/^\d{8,14}$/.test(compact)) return true;
+  return /^[a-z]{0,4}\d{6,}[a-z0-9-]*$/i.test(normalized) && normalized.length >= 8 && !/\s/.test(normalized);
+}
+
 function inferAxisFromGenericOptionValue(value) {
   const normalized = normalizeAxisValue(value);
   if (!normalized) return null;
   if (/^(?:default|default title|title|option|standard default)$/i.test(normalized)) return null;
+  if (isLikelyVariantIdentityToken(normalized)) return null;
   const volume = parseQuantityToken(normalized, ['ml', 'm l', 'g', 'kg', 'oz', 'fl oz']);
   if (volume) return { volume };
   const pack = parsePackToken(normalized);

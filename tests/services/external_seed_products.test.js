@@ -271,6 +271,69 @@ describe('externalSeedProducts helper', () => {
     );
   });
 
+  test('suppresses single Offer UPC variants from customer-facing options', () => {
+    const [variant] = normalizeSeedVariants(
+      {
+        variants: [
+          {
+            variant_id: 'e3cf79a9b040',
+            sku: '769915233636',
+            title: '769915233636',
+            option_name: 'Offer',
+            option_value: '769915233636',
+            price: '15.00',
+            currency: 'USD',
+          },
+        ],
+      },
+      null,
+    );
+
+    expect(variant.title).toBe('Default');
+    expect(variant.options).toEqual([]);
+    expect(variant.option_name).toBeUndefined();
+    expect(variant.option_value).toBeUndefined();
+  });
+
+  test('keeps real generic option axes such as refill selectable', () => {
+    const variants = normalizeSeedVariants(
+      {
+        variants: [
+          {
+            variant_id: '41148734668848',
+            title: 'Extreme Cream',
+            option_name: 'Option',
+            option_value: 'Full Size',
+          },
+          {
+            variant_id: '41148734701616',
+            title: 'Extreme Cream',
+            option_name: 'Option',
+            option_value: 'Refill',
+          },
+        ],
+      },
+      null,
+    );
+
+    expect(variants).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          variant_id: '41148734668848',
+          options: [{ name: 'Option', value: 'Full Size' }],
+          option_name: 'Option',
+          option_value: 'Full Size',
+        }),
+        expect.objectContaining({
+          variant_id: '41148734701616',
+          options: [{ name: 'Option', value: 'Refill' }],
+          option_name: 'Option',
+          option_value: 'Refill',
+        }),
+      ]),
+    );
+  });
+
   test('infers selected variant from destination url variant token for external seeds', () => {
     const row = {
       id: 'eps_guerlain_variant_1',
