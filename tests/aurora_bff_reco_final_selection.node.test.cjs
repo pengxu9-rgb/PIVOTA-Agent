@@ -8077,6 +8077,165 @@ test('beauty handoff payload builder replaces mixed planner rows with canonical 
   }
 });
 
+test('beauty handoff payload builder restamps final selection to final visible recommendation order', () => {
+  const { createBeautyChatMainlineEnvelopeRuntime } = require('../src/auroraBff/beautyChatMainlineEnvelope');
+  const staleSelection = {
+    selection_owner: 'shopping_agent_beauty_mainline',
+    selected_product_ids: ['light', 'unseen', 'matte'],
+    selected_titles: [
+      'SKINTIFIC Light Serum Sunscreen SPF 50+ PA++++',
+      'Supergoop Unseen Sunscreen SPF 50',
+      'SKINTIFIC Matte Fit Serum Sunscreen SPF 50+ PA++++',
+    ],
+    selection_signature: 'stale_selector_order',
+    mainline_status: 'grounded_success',
+    source_tier_counts: { fresh_external: 3 },
+  };
+  const runtime = createBeautyChatMainlineEnvelopeRuntime({
+    BEAUTY_DISCOVERY_MAINLINE_OWNER: 'shopping_agent_beauty_mainline',
+    summarizeProfileForContext: (profile) => profile || {},
+    applyRecoContentSpineToPayload: (payload, recoContext) => ({
+      ...payload,
+      recommendation_meta: {
+        ...(payload.recommendation_meta || {}),
+        ...(recoContext?.primary_target_id ? { primary_target_id: recoContext.primary_target_id } : {}),
+        ...(Array.isArray(recoContext?.selected_target_ids) ? { selected_target_ids: recoContext.selected_target_ids } : {}),
+        ...(Array.isArray(recoContext?.ranked_targets) ? { ranked_targets: recoContext.ranked_targets } : {}),
+      },
+    }),
+    buildRecoMainlineContract: () => ({
+      ok: true,
+      contract_status: 'recommendations_ready',
+      source_mode: 'framework_mainline',
+      source: 'catalog_grounded_v1',
+      mainline_status: 'grounded_success',
+      grounding_status: 'grounded',
+      grounded_count: 3,
+      ungrounded_count: 0,
+    }),
+    extractRecoOutcomeContractArgsFromPayload: () => ({}),
+    attachRecoContractMeta: (payload, contract) => ({
+      ...payload,
+      recommendation_meta: {
+        ...(payload.recommendation_meta || {}),
+        ...(contract.source_mode ? { source_mode: contract.source_mode } : {}),
+        ...(contract.contract_status ? { contract_status: contract.contract_status } : {}),
+        ...(contract.mainline_status ? { mainline_status: contract.mainline_status } : {}),
+      },
+    }),
+    applyRecoAssistantSelectionSignature: (payload) => payload,
+    extractRecoFinalSelectionContract: (value) => (
+      value?.final_selection ||
+      value?.recommendation_meta?.final_selection ||
+      value?.metadata?.final_selection ||
+      value?.metadata?.search_stage_ledger?.final_selection ||
+      null
+    ),
+    orderRecoRecommendationsBySelection: (recommendations) => recommendations,
+    applyRecoCanonicalSearchResultToPayload: (payload, searchResult) => ({
+      ...payload,
+      recommendation_meta: {
+        ...(payload.recommendation_meta || {}),
+        final_selection: staleSelection,
+        selected_product_ids: staleSelection.selected_product_ids,
+        selected_titles: staleSelection.selected_titles,
+      },
+      metadata: {
+        ...(payload.metadata || {}),
+        final_selection: staleSelection,
+        search_stage_ledger: {
+          ...(payload.metadata?.search_stage_ledger || {}),
+          ...(searchResult.metadata?.search_stage_ledger || {}),
+          final_selection: staleSelection,
+        },
+      },
+    }),
+    buildConcernFrameworkSummary: () => null,
+  });
+
+  const out = runtime.buildRecoPayloadFromBeautyMainlineHandoff({
+    handoff: {
+      recommendations: [
+        {
+          product_id: 'matte',
+          merchant_id: 'external_seed',
+          display_name: 'SKINTIFIC Matte Fit Serum Sunscreen SPF 50+ PA++++',
+          brand: 'SKINTIFIC',
+          matched_role_id: 'daily_sunscreen_finish_fit',
+          category: 'Sunscreen',
+        },
+        {
+          product_id: 'light',
+          merchant_id: 'external_seed',
+          display_name: 'SKINTIFIC Light Serum Sunscreen SPF 50+ PA++++',
+          brand: 'SKINTIFIC',
+          matched_role_id: 'daily_sunscreen_finish_fit',
+          category: 'Sunscreen',
+        },
+        {
+          product_id: 'unseen',
+          merchant_id: 'external_seed',
+          display_name: 'Supergoop Unseen Sunscreen SPF 50',
+          brand: 'Supergoop',
+          matched_role_id: 'daily_sunscreen_finish_fit',
+          category: 'Sunscreen',
+        },
+      ],
+      searchResult: {
+        decision_owner: 'shopping_agent_beauty_mainline',
+        semantic_owner: 'shopping_agent_beauty_mainline',
+        query_source: 'beauty_mainline_local_handoff',
+        metadata: {
+          contract_bridge: {
+            resolved_contract: 'agent_v1_search_beauty_mainline',
+          },
+          source_breakdown: {
+            source_tier_counts: { fresh_external: 3 },
+          },
+          search_stage_ledger: {
+            final_selection: staleSelection,
+          },
+        },
+      },
+    },
+    profile: { skinType: 'oily' },
+    targetContext: {
+      resolved_target_step: 'sunscreen',
+      primary_role_id: 'daily_sunscreen_finish_fit',
+      framework_roles: [
+        {
+          role_id: 'daily_sunscreen_finish_fit',
+          label: 'Daily sunscreen with finish fit',
+          preferred_step: 'sunscreen',
+          rank: 1,
+        },
+      ],
+    },
+    recoContext: {
+      primary_target_id: 'daily_sunscreen_finish_fit',
+      selected_target_ids: ['daily_sunscreen_finish_fit'],
+      ranked_targets: [{ target_id: 'daily_sunscreen_finish_fit', target_role: 'primary' }],
+    },
+    sourceMode: 'framework_mainline',
+    selectionOwner: 'shopping_agent_beauty_mainline',
+    entryType: 'chat',
+    language: 'EN',
+  });
+
+  assert.deepEqual(
+    out?.payload?.recommendations?.map((item) => item.product_id),
+    ['matte', 'light', 'unseen'],
+  );
+  assert.deepEqual(
+    out?.payload?.recommendation_meta?.selected_product_ids,
+    ['matte', 'light', 'unseen'],
+  );
+  assert.deepEqual(
+    out?.payload?.metadata?.search_stage_ledger?.final_selection?.selected_product_ids,
+    ['matte', 'light', 'unseen'],
+  );
+});
+
 test('beauty handoff payload builder keeps non-active gel moisturizers when no-additional-active compare prunes active-forward options', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {

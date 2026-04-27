@@ -270,6 +270,58 @@ function buildEnvelopeVisibleSelectionContract(baseSelection = null, recommendat
   };
 }
 
+function applyEnvelopeVisibleSelectionContractToPayload(payload = null, {
+  baseSelection = null,
+  recommendations = null,
+  targetContext = null,
+} = {}) {
+  if (!isPlainObject(payload)) return payload;
+  const sourceRecommendations = Array.isArray(recommendations)
+    ? recommendations
+    : Array.isArray(payload.recommendations)
+      ? payload.recommendations
+      : [];
+  const visibleRecommendations = pruneEnvelopeExplicitNoAdditionalActiveSameRoleRows(
+    sourceRecommendations,
+    { targetContext },
+  );
+  if (!visibleRecommendations.length) return payload;
+
+  const visibleSelection = buildEnvelopeVisibleSelectionContract(
+    baseSelection || extractRecoFinalSelectionContract(payload),
+    visibleRecommendations,
+  );
+  const nextRecommendationMeta = isPlainObject(payload.recommendation_meta)
+    ? { ...payload.recommendation_meta }
+    : {};
+  const nextPayloadMeta = isPlainObject(payload.metadata) ? { ...payload.metadata } : {};
+  nextRecommendationMeta.final_selection = visibleSelection;
+  nextRecommendationMeta.selected_product_ids = visibleSelection.selected_product_ids;
+  nextRecommendationMeta.selected_titles = visibleSelection.selected_titles;
+  nextRecommendationMeta.selection_signature = null;
+  if (isPlainObject(nextPayloadMeta.search_stage_ledger)) {
+    nextPayloadMeta.search_stage_ledger = {
+      ...nextPayloadMeta.search_stage_ledger,
+      final_selection: visibleSelection,
+    };
+  }
+  nextPayloadMeta.final_selection = visibleSelection;
+  nextPayloadMeta.selected_product_ids = visibleSelection.selected_product_ids;
+  nextPayloadMeta.selected_titles = visibleSelection.selected_titles;
+  nextPayloadMeta.selection_signature = null;
+
+  return {
+    ...payload,
+    recommendations: visibleRecommendations,
+    grounded_count: visibleRecommendations.length,
+    ...(Array.isArray(payload.products) ? { products: visibleRecommendations } : {}),
+    primary_recommendation_id:
+      extractEnvelopeRecoSelectionProductId(visibleRecommendations[0]) || payload.primary_recommendation_id,
+    recommendation_meta: nextRecommendationMeta,
+    metadata: nextPayloadMeta,
+  };
+}
+
 function createBeautyChatMainlineEnvelopeRuntime(deps = {}) {
   const {
     BEAUTY_DISCOVERY_MAINLINE_OWNER = 'shopping_agent_beauty_mainline',
@@ -1124,48 +1176,11 @@ function createBeautyChatMainlineEnvelopeRuntime(deps = {}) {
     nextPayload = applyRecoCanonicalSearchResultToPayload(nextPayload, effectiveSearchResult, {
       selectionOwner: effectiveSelectionOwner,
     });
-    const finalVisibleRecommendations = pruneEnvelopeExplicitNoAdditionalActiveSameRoleRows(
-      Array.isArray(nextPayload?.recommendations) ? nextPayload.recommendations : [],
-      { targetContext },
-    );
-    if (
-      Array.isArray(nextPayload?.recommendations)
-      && finalVisibleRecommendations.length > 0
-      && finalVisibleRecommendations.length !== nextPayload.recommendations.length
-    ) {
-      const finalVisibleSelection = buildEnvelopeVisibleSelectionContract(
-        extractRecoFinalSelectionContract(nextPayload) || selectionContract,
-        finalVisibleRecommendations,
-      );
-      const nextRecommendationMeta = isPlainObject(nextPayload.recommendation_meta)
-        ? { ...nextPayload.recommendation_meta }
-        : {};
-      const nextPayloadMeta = isPlainObject(nextPayload.metadata) ? { ...nextPayload.metadata } : {};
-      nextRecommendationMeta.final_selection = finalVisibleSelection;
-      nextRecommendationMeta.selected_product_ids = finalVisibleSelection.selected_product_ids;
-      nextRecommendationMeta.selected_titles = finalVisibleSelection.selected_titles;
-      nextRecommendationMeta.selection_signature = null;
-      if (isPlainObject(nextPayloadMeta.search_stage_ledger)) {
-        nextPayloadMeta.search_stage_ledger = {
-          ...nextPayloadMeta.search_stage_ledger,
-          final_selection: finalVisibleSelection,
-        };
-      }
-      nextPayloadMeta.final_selection = finalVisibleSelection;
-      nextPayloadMeta.selected_product_ids = finalVisibleSelection.selected_product_ids;
-      nextPayloadMeta.selected_titles = finalVisibleSelection.selected_titles;
-      nextPayloadMeta.selection_signature = null;
-      nextPayload = {
-        ...nextPayload,
-        recommendations: finalVisibleRecommendations,
-        grounded_count: finalVisibleRecommendations.length,
-        ...(Array.isArray(nextPayload?.products) ? { products: finalVisibleRecommendations } : {}),
-        primary_recommendation_id:
-          extractEnvelopeRecoSelectionProductId(finalVisibleRecommendations[0]) || nextPayload.primary_recommendation_id,
-        recommendation_meta: nextRecommendationMeta,
-        metadata: nextPayloadMeta,
-      };
-    }
+    nextPayload = applyEnvelopeVisibleSelectionContractToPayload(nextPayload, {
+      baseSelection: extractRecoFinalSelectionContract(nextPayload) || selectionContract,
+      recommendations: Array.isArray(nextPayload?.recommendations) ? nextPayload.recommendations : [],
+      targetContext,
+    });
     nextPayload = applyRecoAssistantSelectionSignature(nextPayload);
 
     return {
