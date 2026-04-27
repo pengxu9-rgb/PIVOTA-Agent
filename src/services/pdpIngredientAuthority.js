@@ -70,6 +70,10 @@ const REGULATORY_ACTIVE_RE =
   /\b(zinc oxide|titanium dioxide|avobenzone|octocrylene|octisalate|homosalate|octinoxate|ensulizole|meradimate|oxybenzone|tinosorb s|tinosorb m|uvinul a plus|uvinul t 150|mexoryl sx|mexoryl xl|benzoyl peroxide|adapalene|sulfur)\b/i;
 const CONTEXT_SENSITIVE_HERO_ACTIVE_RE =
   /\b(glycolic acid|lactic acid|mandelic acid|salicylic acid)\b/i;
+const VITAMIN_C_ACTIVE_RE =
+  /\b(vitamin c|ascorbic acid|ethyl ascorbic acid|tetrahexyldecyl ascorbate)\b/i;
+const TRUE_VITAMIN_C_INGREDIENT_RE =
+  /\b(ascorbic acid|ascorbyl|ascorbate|ethyl ascorbic acid|tetrahexyldecyl ascorbate|3-o-ethyl ascorbic acid)\b/i;
 const LOW_SIGNAL_ACTIVE_ITEMS = new Set([
   'water',
   'aqua',
@@ -311,9 +315,23 @@ function collectProductRoleContext(product) {
   return contextValues.map((value) => asString(value)).filter(Boolean).join(' ');
 }
 
+function collectProductTitleContext(product) {
+  return [
+    product?.title,
+    product?.name,
+    product?.category,
+    product?.product_type,
+  ].map((value) => asString(value)).filter(Boolean).join(' ');
+}
+
 function hasExplicitActiveRoleContext(product, value) {
   const text = asString(value);
   if (!text) return false;
+  if (VITAMIN_C_ACTIVE_RE.test(text)) {
+    const titleContext = collectProductTitleContext(product);
+    const roleContext = collectProductRoleContext(product);
+    return VITAMIN_C_ACTIVE_RE.test(titleContext) || TRUE_VITAMIN_C_INGREDIENT_RE.test(roleContext);
+  }
   if (!CONTEXT_SENSITIVE_HERO_ACTIVE_RE.test(text)) return true;
   const context = collectProductRoleContext(product);
   if (!context) return false;
@@ -409,12 +427,17 @@ function reconcileActiveItemsWithIngredients(product, activeItems, items, rawTex
     items.length >= 3;
   if (!inferredSunscreenActives.length && !shouldValidateAgainstIngredients) return normalizedActiveItems;
   const retained = shouldValidateAgainstIngredients || inferredSunscreenActives.length
-    ? normalizedActiveItems.filter((item) => {
+      ? normalizedActiveItems.filter((item) => {
         const key = ingredientKey(item);
-        if (normalizedItemsText && !normalizedItemsText.includes(key)) return false;
+        if (normalizedItemsText && !normalizedItemsText.includes(key)) {
+          const vitaminCIngredientMatch =
+            VITAMIN_C_ACTIVE_RE.test(item) &&
+            TRUE_VITAMIN_C_INGREDIENT_RE.test([rawText, collectProductRoleContext(product)].join(' '));
+          if (!vitaminCIngredientMatch) return false;
+        }
         if (
           shouldValidateAgainstIngredients &&
-          CONTEXT_SENSITIVE_HERO_ACTIVE_RE.test(item) &&
+          (CONTEXT_SENSITIVE_HERO_ACTIVE_RE.test(item) || VITAMIN_C_ACTIVE_RE.test(item)) &&
           !hasExplicitActiveRoleContext(product, item)
         ) {
           return false;
@@ -667,7 +690,11 @@ function buildAuthoritativeIngredientView(product, options = {}) {
   }
 
   if (activeItems.length) {
-    const displayableActiveItems = filterDisplayableActiveItems(product, activeItems);
+    const displayableActiveItems = filterDisplayableActiveItems(product, activeItems)
+      .filter((item) => {
+        if (!activeCandidateResult.validateAgainstIngredients) return true;
+        return hasExplicitActiveRoleContext(product, item);
+      });
     if (!displayableActiveItems.length) {
       return buildAuthorityRecord({
         items: [],

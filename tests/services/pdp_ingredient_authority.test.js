@@ -168,6 +168,33 @@ describe('pdpIngredientAuthority', () => {
     expect(authority.active_items).toEqual(['Lactic Acid']);
   });
 
+  test('does not convert vitamin-c-rich fruit complex into ascorbic acid active', () => {
+    const authority = buildAuthoritativeIngredientView({
+      title: "Cherry Dub Pore Purify'r Gel Cleanser with Niacinamide + Aloe Juice",
+      description:
+        'Triple Cherry Complex brightens the look of skin while niacinamide refines pores.',
+      pdp_active_ingredients_raw:
+        'Triple Cherry Complex\n\nThree forms of Vitamin C-rich Barbados Cherry (enzyme, ferment + fruit water); brighten, clarify + renew skin\n\nNiacinamide (Vitamin B3)\n\nRefines pores + skin texture\n\nAloe Juice\n\nSoothes + conditions',
+      ingredient_intel: {
+        active_ingredients: ['Niacinamide', 'Vitamin C (Ascorbic acid)'],
+      },
+    });
+
+    expect(authority.active_items).toEqual(['Niacinamide']);
+  });
+
+  test('keeps vitamin c when product context names the active', () => {
+    const authority = buildAuthoritativeIngredientView({
+      title: 'Vitamin C Brightening Serum',
+      pdp_ingredients_raw: 'Water, 3-O-Ethyl Ascorbic Acid, Glycerin, Phenoxyethanol.',
+      ingredient_intel: {
+        active_ingredients: ['Vitamin C (Ascorbic acid)'],
+      },
+    });
+
+    expect(authority.active_items).toEqual(['Vitamin C (Ascorbic acid)']);
+  });
+
   test('suppresses low-signal active items while keeping authoritative INCI', () => {
     const authority = buildAuthoritativeIngredientView({
       title: 'Multi-Peptide Lash and Brow Serum',
