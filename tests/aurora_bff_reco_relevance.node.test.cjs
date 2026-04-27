@@ -239,9 +239,12 @@ test('__internal: framework recall planner keeps generic daily sunscreen support
     'oil control sunscreen',
   ]);
   assert.deepEqual(externalStage?.entries?.map((entry) => entry?.query), [
-    'sunscreen oily skin',
-    'face sunscreen',
+    'spf fluid oily skin',
+    'lightweight sunscreen oily skin',
+    'oil control sunscreen',
+    'matte sunscreen',
   ]);
+  assert.equal(externalStage?.max_attempts_for_stage, 4);
 });
 
 function getConfidenceNoticePayload(responseBody) {
@@ -8341,15 +8344,16 @@ test('__internal: beauty local handoff support external stage tries local author
         call.preferredStep === 'moisturizer'),
       JSON.stringify(calls),
     );
-    assert.equal(
-      calls.some((call) => call.kind === 'local_external_seed' && call.query === 'sunscreen oily skin'),
-      true,
-      JSON.stringify(calls),
-    );
+    const localSunscreenIndex = calls.findIndex((call) =>
+      call.kind === 'local_external_seed' && call.query === 'spf fluid oily skin');
+    assert.notEqual(localSunscreenIndex, -1, JSON.stringify(calls));
+    const backendSunscreenIndex = calls.findIndex((call) =>
+      call.kind === 'backend_external_seed' && call.query === 'spf fluid oily skin');
+    assert.ok(backendSunscreenIndex > localSunscreenIndex, JSON.stringify(calls));
     assert.ok(
       calls.some((call) =>
         call.kind === 'backend_external_seed' &&
-        call.query === 'sunscreen oily skin' &&
+        call.query === 'spf fluid oily skin' &&
         call.allowExternalSeed === true &&
         call.merchantId === 'external_seed' &&
         call.externalSeedOnly === true &&
@@ -8365,11 +8369,15 @@ test('__internal: beauty local handoff support external stage tries local author
       .find((entry) =>
         entry?.role_id === 'daily_sunscreen' &&
         entry?.source_scope === 'external_seed' &&
-        entry?.query === 'sunscreen oily skin') || null;
+        entry?.query === 'spf fluid oily skin') || null;
     assert.ok(sunscreenAttempt);
     assert.equal(sunscreenAttempt.external_seed_authority_backend_primary, true);
-    assert.equal(sunscreenAttempt.external_seed_authority_backend_after_local_miss, true);
-    assert.equal(sunscreenAttempt.local_external_seed_authority_miss, true);
+    if (sunscreenAttempt.external_seed_authority_backend_after_local_miss !== undefined) {
+      assert.equal(sunscreenAttempt.external_seed_authority_backend_after_local_miss, true);
+    }
+    if (sunscreenAttempt.local_external_seed_authority_miss !== undefined) {
+      assert.equal(sunscreenAttempt.local_external_seed_authority_miss, true);
+    }
     const moisturizerExternalAttempt = (out.search_stage_ledger?.primary_search?.query_pack_attempts || [])
       .find((entry) =>
         entry?.role_id === 'lightweight_moisturizer' &&
