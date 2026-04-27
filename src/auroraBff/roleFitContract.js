@@ -816,7 +816,7 @@ function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '
     score = Math.min(score - 0.1, 0.56);
   }
   if (sunscreenPortableRoutineMismatchApplied) {
-    score = Math.min(score - 0.18, 0.58);
+    score = Math.min(score - 0.42, 0.32);
   }
   if (sunscreenOilyDewyMoisturizerMismatchApplied) {
     score = Math.min(score - 0.14, 0.74);
