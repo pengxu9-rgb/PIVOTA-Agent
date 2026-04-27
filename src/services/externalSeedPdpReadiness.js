@@ -182,6 +182,7 @@ const VARIANT_IDENTITY_OPTION_NAMES = new Set([
   'title',
 ]);
 const GENERIC_VARIANT_AXIS_NAMES = new Set(['option', 'variant', 'selection']);
+const VARIANT_SIZE_EVIDENCE_RE = /\b\d+(?:\.\d+)?\s*(ml|m l|g|kg|oz|fl oz|l|lb|lbs|mm|cm)\b/i;
 const SHADE_AXIS_NAMES = new Set(['shade', 'color', 'colour', 'tone', 'hue']);
 const LOCALE_LIKE_VARIANT_VALUES = new Set(['us', 'usa', 'uk', 'eu', 'fr', 'de', 'es', 'it', 'ca', 'au', 'jp', 'kr', 'cn']);
 
@@ -549,6 +550,54 @@ function hasVariantVisualEvidence(variant) {
   );
 }
 
+function collectVariantSizeEvidence(row) {
+  const seedData = ensureObject(row?.seed_data);
+  const snapshot = ensureObject(seedData.snapshot);
+  const rawVariants = [
+    ...asArray(snapshot.variants),
+    ...asArray(seedData.variants),
+    ...asArray(snapshot.skus),
+    ...asArray(seedData.skus),
+  ];
+  const parts = [
+    row?.title,
+    row?.canonical_url,
+    row?.destination_url,
+    row?.image_url,
+    seedData.size,
+    snapshot.size,
+    seedData.volume,
+    snapshot.volume,
+    seedData.product_size,
+    snapshot.product_size,
+    seedData.product_volume,
+    snapshot.product_volume,
+    seedData.net_content,
+    snapshot.net_content,
+    seedData.net_size,
+    snapshot.net_size,
+    seedData.image_url,
+    snapshot.image_url,
+    ...asArray(seedData.image_urls),
+    ...asArray(snapshot.image_urls),
+    ...rawVariants.flatMap((variant) => [
+      variant?.title,
+      variant?.option_name,
+      variant?.option_value,
+      variant?.url,
+      variant?.image_url,
+      ...asArray(variant?.image_urls),
+    ]),
+  ]
+    .map(stripHtml)
+    .filter(Boolean);
+  const evidence = parts.find((part) => VARIANT_SIZE_EVIDENCE_RE.test(part)) || '';
+  return {
+    raw_variant_count: rawVariants.length,
+    evidence,
+  };
+}
+
 function classifyVariantReadiness(row) {
   const variants = normalizeSeedVariants(row?.seed_data, row);
   const contextText = lowerText(collectContextText(row));
@@ -579,11 +628,17 @@ function classifyVariantReadiness(row) {
     const axisName = item.axis_kind || item.axis_name;
     return GENERIC_VARIANT_AXIS_NAMES.has(axisName) && looksLikeSizeValue(item.value);
   });
+  const sizeEvidence = collectVariantSizeEvidence(row);
+  const defaultOptionSizeEvidenceMissingAxis =
+    visibleRows.length === 0 && sizeEvidence.raw_variant_count > 0 && sizeEvidence.evidence
+      ? [{ axis_name: 'default', axis_kind: 'volume', value: sizeEvidence.evidence, visual: false }]
+      : [];
   const issues = [];
   if (identityOptionVisible.length) issues.push('identity_option_visible');
   if (wrongAxisForCategory.length) issues.push('wrong_axis_for_category');
   if (makeupShadeMissingVisual.length) issues.push('makeup_shade_missing_visual');
   if (sizeValueGenericAxis.length) issues.push('size_value_generic_axis');
+  if (defaultOptionSizeEvidenceMissingAxis.length) issues.push('default_option_size_evidence_missing_axis');
   return {
     status: issues.length ? 'flagged' : visibleRows.length ? 'ready' : 'no_visible_variant_axis',
     issues,
@@ -593,6 +648,7 @@ function classifyVariantReadiness(row) {
       wrong_axis_for_category: wrongAxisForCategory.slice(0, 4),
       makeup_shade_missing_visual: makeupShadeMissingVisual.slice(0, 4),
       size_value_generic_axis: sizeValueGenericAxis.slice(0, 4),
+      default_option_size_evidence_missing_axis: defaultOptionSizeEvidenceMissingAxis.slice(0, 4),
     },
   };
 }

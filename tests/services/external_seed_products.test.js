@@ -481,6 +481,38 @@ describe('externalSeedProducts helper', () => {
     expect(variant.option_value).toBeUndefined();
   });
 
+  test('uses product-level size when a single Offer SKU variant is otherwise non-displayable', () => {
+    const [variant] = normalizeSeedVariants(
+      {
+        snapshot: {
+          size: '5ml',
+        },
+        variants: [
+          {
+            variant_id: 'e3cf79a9b040',
+            sku: '769915233636',
+            title: '769915233636',
+            option_name: 'Offer',
+            option_value: '769915233636',
+            price: '11.47',
+            currency: 'USD',
+          },
+        ],
+      },
+      {
+        title: 'Multi-Peptide Lash and Brow Serum',
+        canonical_url: 'https://theordinary.com/en-us/multi-peptide-lash-brow-serum-100111.html',
+      },
+    );
+
+    expect(variant.title).toBe('5ml');
+    expect(variant.options).toEqual([
+      expect.objectContaining({ name: 'Size', value: '5ml', axis_kind: 'volume' }),
+    ]);
+    expect(variant.option_name).toBe('Size');
+    expect(variant.option_value).toBe('5ml');
+  });
+
   test('keeps real generic option axes such as refill selectable', () => {
     const variants = normalizeSeedVariants(
       {

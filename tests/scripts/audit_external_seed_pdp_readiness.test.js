@@ -3,6 +3,7 @@ const {
   classifyEffectiveProductIntel,
   classifyProductFamily,
   classifyProductIntelKbRow,
+  classifyVariantReadiness,
   summarizeReadinessRows,
   buildReadinessRow,
 } = require('../../src/services/externalSeedPdpReadiness');
@@ -203,6 +204,33 @@ describe('external seed PDP readiness audit helpers', () => {
 
     expect(result.status).toBe('invalid_token_in_active');
     expect(result.issues).toContain('invalid_token_in_active');
+  });
+
+  test('flags default-only variants when product media exposes a missing size axis', () => {
+    const result = classifyVariantReadiness(
+      seedRow({
+        title: 'Multi-Peptide Lash and Brow Serum',
+        canonical_url: 'https://theordinary.com/en-us/multi-peptide-lash-brow-serum-100111.html',
+        seed_data: {
+          snapshot: {
+            image_url:
+              'https://theordinary.com/dw/image/v2/BFKJ_PRD/on/demandware.static/-/Sites-deciem-master/default/dw0fd80738/Images/products/The%20Ordinary/rdn-multi-peptide-lash-and-brow-serum-eu-5ml.png?sw=900&sh=900&sm=fit',
+            variants: [
+              {
+                sku: '769915233636',
+                variant_id: 'e3cf79a9b040',
+                option_name: 'Offer',
+                option_value: '769915233636',
+              },
+            ],
+          },
+        },
+      }),
+    );
+
+    expect(result.status).toBe('flagged');
+    expect(result.issues).toContain('default_option_size_evidence_missing_axis');
+    expect(result.examples.default_option_size_evidence_missing_axis[0].value).toContain('5ml');
   });
 
   test('summarizes effective insights separately from direct KB coverage', () => {
