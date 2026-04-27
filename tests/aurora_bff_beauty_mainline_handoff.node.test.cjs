@@ -945,8 +945,8 @@ test('handoffRecoToBeautyMainlineSearch records stable-alias primary recovery be
         'spf fluid oily skin',
         'lightweight moisturizer oily skin',
         'lightweight sunscreen oily skin',
-        'oil control sunscreen',
-        'lightweight sunscreen',
+        'sunscreen under makeup',
+        'sunscreen oily skin',
       ],
     );
     assert.equal(captured.every((row) => row.callerLane === 'beauty_chat_handoff'), true);
@@ -2292,8 +2292,8 @@ test('handoffRecoToBeautyMainlineSearch skips primary external seed when interna
         'spf fluid oily skin',
         'lightweight moisturizer oily skin',
         'lightweight sunscreen oily skin',
-        'oil control sunscreen',
-        'lightweight sunscreen',
+        'sunscreen under makeup',
+        'sunscreen oily skin',
       ],
     );
     const primaryExternalRows = out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts
@@ -2393,8 +2393,8 @@ test('handoffRecoToBeautyMainlineSearch skips primary external supplement for ro
         'spf fluid oily skin',
         'lightweight moisturizer oily skin',
         'lightweight sunscreen oily skin',
-        'oil control sunscreen',
-        'lightweight sunscreen',
+        'sunscreen under makeup',
+        'sunscreen oily skin',
       ],
     );
     const primaryExternalRows = out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts

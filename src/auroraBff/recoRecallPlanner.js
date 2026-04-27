@@ -832,10 +832,11 @@ function buildRecallableDailySunscreenSupportExternalQueries(role = null, {
     ? [
         'spf fluid oily skin',
         'lightweight sunscreen oily skin',
+        'sunscreen under makeup',
+        'sunscreen oily skin',
         'oil control sunscreen',
         'matte sunscreen',
-        ...(finishSignal ? ['sunscreen under makeup', 'invisible sunscreen'] : []),
-        'sunscreen oily skin',
+        ...(finishSignal ? ['invisible sunscreen'] : []),
         'face sunscreen',
       ]
     : [
@@ -848,12 +849,12 @@ function buildRecallableDailySunscreenSupportExternalQueries(role = null, {
       ];
   return uniqueCaseInsensitiveStrings(
     [
+      ...authorityFirstQueries,
       ...sharedSupportQueries.filter((query) =>
         !/^(?:sunscreen|daily sunscreen|broad spectrum sunscreen|face sunscreen|spf 50 sunscreen)$/i.test(
           String(query || '').trim(),
         )
       ),
-      ...authorityFirstQueries,
       ...sharedSupportQueries,
     ],
     Math.max(1, Number(maxQueries) || 1),

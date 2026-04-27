@@ -241,8 +241,8 @@ test('__internal: framework recall planner keeps generic daily sunscreen support
   assert.deepEqual(externalStage?.entries?.map((entry) => entry?.query), [
     'spf fluid oily skin',
     'lightweight sunscreen oily skin',
-    'oil control sunscreen',
-    'matte sunscreen',
+    'sunscreen under makeup',
+    'sunscreen oily skin',
   ]);
   assert.equal(externalStage?.max_attempts_for_stage, 4);
 });
