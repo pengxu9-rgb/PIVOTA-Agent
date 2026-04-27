@@ -555,6 +555,20 @@ function roleExpectsOilyDailySunscreen(role = null, preferredStep = '', targetCo
   return !/\b(dry|dehydrat(?:ed|ion)?|tight|barrier|eczema|flak(?:y|ing)|peeling|winter|cold dry)\b/i.test(intentText);
 }
 
+function roleExpectsFirstWearDailySunscreen(role = null, preferredStep = '', targetContext = null) {
+  if (preferredStep !== 'sunscreen') return false;
+  const roleText = buildConcernRoleFitText(role);
+  const intentText = buildConcernTargetIntentText(targetContext);
+  const combined = `${roleText} ${intentText}`.trim();
+  if (/\b(reapply|reapplication|touch[- ]?up|touchup|portable|on[- ]the[- ]go|commute|travel(?:-|\s)?bag|carry[- ]on)\b/i.test(intentText)) {
+    return false;
+  }
+  if (/\b(sun\s*stick|sunscreen\s*stick|spf\s*stick|stick|touch[- ]?up|touchup|portable|reapplication)\b/i.test(roleText)) {
+    return false;
+  }
+  return /\b(daily|daytime|sunscreen|spf|broad\s+spectrum|uv|full[- ]?face|regular wear|routine)\b/i.test(combined);
+}
+
 function hasDewyMoisturizingSunscreenSignal(text = '') {
   return /\b(dewy|day dew|fresh[- ]?dewy|dewier|glow(?:y|ing)?|moisturizer[- ]?like|moisturizer[- ]?style|hydrating cream|hydrating daily cream|cream[- ]?based|cream[- ]?spf|sunscreen milk|milk texture|milky sunscreen|more moisturiz|richer cream|cushion under makeup|soft,\s*dewy finish)\b/i.test(
     String(text || ''),
@@ -724,6 +738,10 @@ function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '
   const sunscreenPortableReapplicationMismatchApplied =
     primaryUnderMakeupSunscreenExpected
     && hasReapplicationPortableSunscreenSignal(candidateEvidenceText);
+  const sunscreenPortableRoutineMismatchApplied =
+    !sunscreenPortableReapplicationMismatchApplied
+    && roleExpectsFirstWearDailySunscreen(role, preferredStep, targetContext)
+    && hasReapplicationPortableSunscreenSignal(candidateEvidenceText);
   const sunscreenUnderMakeupFinishBonusApplied =
     primaryUnderMakeupSunscreenExpected
     && hasUnderMakeupFinishSunscreenSignal(candidateEvidenceText)
@@ -797,6 +815,9 @@ function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '
   if (sunscreenCoverageTintSoftTradeoffApplied) {
     score = Math.min(score - 0.1, 0.56);
   }
+  if (sunscreenPortableRoutineMismatchApplied) {
+    score = Math.min(score - 0.18, 0.58);
+  }
   if (sunscreenOilyDewyMoisturizerMismatchApplied) {
     score = Math.min(score - 0.14, 0.74);
   }
@@ -826,6 +847,7 @@ function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '
     lightweight_texture_evidence_missing_applied: lightweightTextureEvidenceMissingApplied,
     sunscreen_coverage_tint_mismatch_applied: sunscreenCoverageTintMismatchApplied,
     sunscreen_portable_reapplication_mismatch_applied: sunscreenPortableReapplicationMismatchApplied,
+    sunscreen_portable_routine_mismatch_applied: sunscreenPortableRoutineMismatchApplied,
     sunscreen_under_makeup_finish_bonus_applied: sunscreenUnderMakeupFinishBonusApplied,
     sunscreen_coverage_tint_soft_tradeoff_applied: sunscreenCoverageTintSoftTradeoffApplied,
     sunscreen_oily_dewy_moisturizer_mismatch_applied: sunscreenOilyDewyMoisturizerMismatchApplied,
