@@ -8151,7 +8151,7 @@ test('__internal: beauty mainline handoff payload preserves viable support role 
   assert.equal(persistedSunscreenTarget?.product_candidates?.[0]?.product_id, 'handoff_sunscreen_viable_1');
 });
 
-test('__internal: beauty local handoff support external stage tries local authority before backend authority', async () => {
+test('__internal: beauty local handoff support external stage uses local authority without backend fallback', async () => {
   const { __internal } = loadRoutesFresh();
   const calls = [];
   const targetContext = {
@@ -8194,6 +8194,29 @@ test('__internal: beauty local handoff support external stage tries local author
   __internal.__setRouteDependencyOverridesForTest({
     searchLocalExternalSeedProducts: async (args = {}) => {
       calls.push({ kind: 'local_external_seed', query: args.query, preferredStep: args.preferredStep });
+      const query = String(args.query || '').trim().toLowerCase();
+      if (query === 'spf fluid oily skin') {
+        return {
+          ok: true,
+          products: [
+            {
+              product_id: 'local_sunscreen_authority_1',
+              merchant_id: 'external_seed',
+              brand: 'SunGuard',
+              name: 'Lightweight Daily Sunscreen SPF 50',
+              display_name: 'SunGuard Lightweight Daily Sunscreen SPF 50',
+              category: 'Sunscreen',
+              product_type: 'Sunscreen',
+              retrieval_source: 'external_seed',
+              short_description: 'A lightweight non-greasy sunscreen for oily skin.',
+              benefit_tags: ['spf', 'lightweight', 'non-greasy'],
+            },
+          ],
+          reason: null,
+          local_external_seed_search_mode: 'staged_support_fastpath',
+          local_external_seed_stage_debug: [{ stage: 'support_query_precise', row_count: 1 }],
+        };
+      }
       return {
         ok: false,
         products: [],
@@ -8347,22 +8370,9 @@ test('__internal: beauty local handoff support external stage tries local author
     const localSunscreenIndex = calls.findIndex((call) =>
       call.kind === 'local_external_seed' && call.query === 'spf fluid oily skin');
     assert.notEqual(localSunscreenIndex, -1, JSON.stringify(calls));
-    const backendSunscreenIndex = calls.findIndex((call) =>
-      call.kind === 'backend_external_seed' && call.query === 'spf fluid oily skin');
-    assert.ok(backendSunscreenIndex > localSunscreenIndex, JSON.stringify(calls));
-    assert.ok(
-      calls.some((call) =>
-        call.kind === 'backend_external_seed' &&
-        call.query === 'spf fluid oily skin' &&
-        call.allowExternalSeed === true &&
-        call.merchantId === 'external_seed' &&
-        call.externalSeedOnly === true &&
-        call.sourcePath === '/agent/v1/products/search' &&
-        call.externalSeedStrategy === 'stage_planned' &&
-        call.transportPolicy?.includeSelfProxy === true &&
-        call.transportPolicy?.preferSelfProxyFirst === true &&
-        call.transportPolicy?.maxBaseUrls === 1 &&
-        !call.callerLane),
+    assert.equal(
+      calls.some((call) => call.kind === 'backend_external_seed' && call.query === 'spf fluid oily skin'),
+      false,
       JSON.stringify(calls),
     );
     const sunscreenAttempt = (out.search_stage_ledger?.primary_search?.query_pack_attempts || [])
@@ -8371,23 +8381,24 @@ test('__internal: beauty local handoff support external stage tries local author
         entry?.source_scope === 'external_seed' &&
         entry?.query === 'spf fluid oily skin') || null;
     assert.ok(sunscreenAttempt);
-    assert.equal(sunscreenAttempt.external_seed_authority_backend_primary, true);
-    if (sunscreenAttempt.external_seed_authority_backend_after_local_miss !== undefined) {
-      assert.equal(sunscreenAttempt.external_seed_authority_backend_after_local_miss, true);
-    }
-    if (sunscreenAttempt.local_external_seed_authority_miss !== undefined) {
-      assert.equal(sunscreenAttempt.local_external_seed_authority_miss, true);
-    }
+    assert.equal(sunscreenAttempt.support_external_seed_authority_local_primary, true);
+    assert.equal(sunscreenAttempt.support_external_seed_authority_backend_skipped, true);
+    assert.equal(
+      sunscreenAttempt.support_external_seed_authority_backend_skip_reason,
+      'support_local_authority_hit',
+    );
     const moisturizerExternalAttempt = (out.search_stage_ledger?.primary_search?.query_pack_attempts || [])
       .find((entry) =>
         entry?.role_id === 'lightweight_moisturizer' &&
         entry?.source_scope === 'external_seed' &&
         entry?.query === 'gel cream moisturizer') || null;
     assert.ok(moisturizerExternalAttempt);
-    assert.equal(moisturizerExternalAttempt.external_seed_authority_backend_primary, true);
-    assert.equal(moisturizerExternalAttempt.external_seed_authority_peer_used, true);
-    assert.equal(moisturizerExternalAttempt.local_external_seed_authority_peer, true);
-    assert.equal(moisturizerExternalAttempt.local_external_seed_authority_miss, true);
+    assert.equal(moisturizerExternalAttempt.support_external_seed_authority_local_primary, true);
+    assert.equal(moisturizerExternalAttempt.support_external_seed_authority_backend_skipped, true);
+    assert.equal(
+      moisturizerExternalAttempt.support_external_seed_authority_backend_skip_reason,
+      'support_local_authority_primary_miss',
+    );
   } finally {
     __internal.__resetRouteDependencyOverridesForTest();
   }
