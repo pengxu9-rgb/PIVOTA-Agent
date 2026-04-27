@@ -252,6 +252,10 @@ function buildKnownStableAliasEntries() {
       ...(firstNonEmptyString(item.destination_url) ? { destination_url: firstNonEmptyString(item.destination_url) } : {}),
       ...(firstNonEmptyString(item.source_url) ? { source_url: firstNonEmptyString(item.source_url) } : {}),
       ...(firstNonEmptyString(item.source_page_type) ? { source_page_type: firstNonEmptyString(item.source_page_type) } : {}),
+      ...(firstNonEmptyString(item.image_url) ? { image_url: firstNonEmptyString(item.image_url) } : {}),
+      ...(Array.isArray(item.image_urls) && item.image_urls.length ? { image_urls: item.image_urls } : {}),
+      ...(item.price != null ? { price: item.price } : {}),
+      ...(firstNonEmptyString(item.currency) ? { currency: firstNonEmptyString(item.currency) } : {}),
       ...(firstNonEmptyString(item.content_quality) ? { content_quality: firstNonEmptyString(item.content_quality) } : {}),
       ...(firstNonEmptyString(item.category) ? { category: firstNonEmptyString(item.category) } : {}),
       ...(typeof item.raw_ingredient_text_clean === 'string' && item.raw_ingredient_text_clean.trim()
