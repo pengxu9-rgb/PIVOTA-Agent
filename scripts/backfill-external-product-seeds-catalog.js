@@ -12,6 +12,7 @@ const {
   ensureJsonObject,
   collectSeedImageUrls,
   normalizeSeedVariants,
+  sanitizeSeedVariantDisplayFields,
   normalizeSeedAvailability,
   buildExternalSeedProduct,
 } = require('../src/services/externalSeedProducts');
@@ -1833,7 +1834,12 @@ function mapSnapshotVariants(product, response, existingSeedData) {
     })
     .filter(Boolean);
 
-  if (mapped.length > 0) return mapped;
+  if (mapped.length > 0) {
+    return mapped.map((variant) => ({
+      ...variant,
+      ...sanitizeSeedVariantDisplayFields(variant),
+    }));
+  }
   return normalizeSeedVariants(existingSeedData, null);
 }
 

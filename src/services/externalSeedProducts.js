@@ -888,6 +888,65 @@ function isSkuLikeVariantText(value, rawVariant) {
   return /^[a-z]*\d[a-z0-9-]*$/i.test(normalized) && normalized.length >= 4 && !/\s/.test(normalized);
 }
 
+const NON_DISPLAYABLE_IDENTITY_OPTION_NAMES = new Set([
+  'offer',
+  'sku',
+  'sku id',
+  'variant sku',
+  'barcode',
+  'upc',
+  'ean',
+  'gtin',
+  'product id',
+  'variant id',
+]);
+
+const GENERIC_VARIANT_OPTION_NAMES = new Set([
+  'option',
+  'variant',
+  'title',
+  'selection',
+]);
+
+function isVariantIdentityValue(value, rawVariant) {
+  const normalized = normalizeOptionText(value).toLowerCase();
+  if (!normalized) return false;
+  const compact = normalized.replace(/[\s-]+/g, '');
+  if (/^\d{8,14}$/.test(compact)) return true;
+
+  const identityTokens = [
+    rawVariant?.sku,
+    rawVariant?.sku_id,
+    rawVariant?.variant_sku,
+    rawVariant?.variant_id,
+    rawVariant?.id,
+  ]
+    .map((item) => normalizeOptionText(item).toLowerCase())
+    .filter(Boolean);
+  if (identityTokens.includes(normalized)) return true;
+
+  return /^[a-z]{0,4}\d{6,}[a-z0-9-]*$/i.test(normalized) && normalized.length >= 8 && !/\s/.test(normalized);
+}
+
+function isNonDisplayableVariantOption(option, rawVariant) {
+  const optionName = normalizeOptionNameKey(option?.name);
+  const optionValue = normalizeOptionText(option?.value);
+  if (!optionName || !optionValue) return true;
+  if (NON_DISPLAYABLE_IDENTITY_OPTION_NAMES.has(optionName)) {
+    return isSkuLikeVariantText(optionValue, rawVariant) || isVariantIdentityValue(optionValue, rawVariant);
+  }
+  if (GENERIC_VARIANT_OPTION_NAMES.has(optionName)) {
+    return isVariantIdentityValue(optionValue, rawVariant);
+  }
+  return false;
+}
+
+function filterDisplayableVariantOptions(options, rawVariant) {
+  return (Array.isArray(options) ? options : []).filter(
+    (option) => !isNonDisplayableVariantOption(option, rawVariant),
+  );
+}
+
 function shouldPreferUrlVariantOptions(options, urlOptions, rawVariant) {
   if (!urlOptions.length) return false;
   if (!options.length) return true;
@@ -1238,7 +1297,9 @@ function normalizeOptions(rawVariant, optionName, optionValue, productOptionName
     if (Array.isArray(source)) {
       const normalized = normalizeOptionEntries(source);
       if (normalized.length > 0) {
-        return shouldPreferUrlVariantOptions(normalized, urlOptions, rawVariant) ? urlOptions : normalized;
+        if (shouldPreferUrlVariantOptions(normalized, urlOptions, rawVariant)) return urlOptions;
+        const displayable = filterDisplayableVariantOptions(normalized, rawVariant);
+        if (displayable.length > 0) return displayable;
       }
     }
 
@@ -1247,7 +1308,9 @@ function normalizeOptions(rawVariant, optionName, optionValue, productOptionName
         Object.entries(source).map(([name, value]) => ({ name, value })),
       );
       if (normalized.length > 0) {
-        return shouldPreferUrlVariantOptions(normalized, urlOptions, rawVariant) ? urlOptions : normalized;
+        if (shouldPreferUrlVariantOptions(normalized, urlOptions, rawVariant)) return urlOptions;
+        const displayable = filterDisplayableVariantOptions(normalized, rawVariant);
+        if (displayable.length > 0) return displayable;
       }
     }
   }
@@ -1255,7 +1318,9 @@ function normalizeOptions(rawVariant, optionName, optionValue, productOptionName
   if (Array.isArray(rawVariant?.options)) {
     const normalized = normalizeOptionEntries(rawVariant.options);
     if (normalized.length > 0) {
-      return shouldPreferUrlVariantOptions(normalized, urlOptions, rawVariant) ? urlOptions : normalized;
+      if (shouldPreferUrlVariantOptions(normalized, urlOptions, rawVariant)) return urlOptions;
+      const displayable = filterDisplayableVariantOptions(normalized, rawVariant);
+      if (displayable.length > 0) return displayable;
     }
   }
 
@@ -1270,18 +1335,50 @@ function normalizeOptions(rawVariant, optionName, optionValue, productOptionName
       })
       .filter(Boolean),
   );
-  if (tupleOptions.length > 0) return tupleOptions;
+  if (tupleOptions.length > 0) {
+    const displayable = filterDisplayableVariantOptions(tupleOptions, rawVariant);
+    if (displayable.length > 0) return displayable;
+  }
 
   if (optionName || optionValue) {
     const direct = normalizeOptionEntries([
       { name: optionName || 'Variant', value: optionValue || 'Default' },
     ]);
     if (direct.length > 0) {
-      return shouldPreferUrlVariantOptions(direct, urlOptions, rawVariant) ? urlOptions : direct;
+      if (shouldPreferUrlVariantOptions(direct, urlOptions, rawVariant)) return urlOptions;
+      const displayable = filterDisplayableVariantOptions(direct, rawVariant);
+      if (displayable.length > 0) return displayable;
     }
   }
 
   return urlOptions;
+}
+
+function sanitizeSeedVariantDisplayFields(rawVariant, productOptionNames = []) {
+  const optionName = String(rawVariant?.option_name || '').trim();
+  const optionValue = String(rawVariant?.option_value || '').trim();
+  const sku = String(
+    rawVariant?.sku || rawVariant?.sku_id || rawVariant?.variant_sku || rawVariant?.variant_id || rawVariant?.id || '',
+  ).trim();
+  const options = normalizeOptions(rawVariant, optionName, optionValue, productOptionNames);
+  const rawTitle = String(rawVariant?.title || rawVariant?.name || optionValue || sku || '').trim();
+  const inferredTitle = options.map((option) => option.value).filter(Boolean).join(' / ');
+  const rawTitleIsSkuLike = rawTitle && isSkuLikeVariantText(rawTitle, rawVariant);
+  const title =
+    (rawTitle && !rawTitleIsSkuLike ? rawTitle : inferredTitle) ||
+    (rawTitleIsSkuLike ? 'Default' : rawTitle) ||
+    'Default';
+  const directOptionDisplayable =
+    optionName &&
+    optionValue &&
+    !isNonDisplayableVariantOption({ name: optionName, value: optionValue }, rawVariant);
+
+  return {
+    title,
+    options,
+    option_name: directOptionDisplayable ? optionName : undefined,
+    option_value: directOptionDisplayable ? optionValue : undefined,
+  };
 }
 
 function normalizeSeedVariants(seedData, row) {
@@ -1361,13 +1458,7 @@ function normalizeSeedVariants(seedData, row) {
       const narrowedImageUrls = narrowVariantImageUrls(imageUrls, rawVariant);
       const normalizedImageUrls = narrowedImageUrls.length > 0 ? narrowedImageUrls : productImageUrls;
       const imageUrl = normalizedImageUrls[0];
-      const options = normalizeOptions(rawVariant, optionName, optionValue, productOptionNames);
-      const rawTitle = String(rawVariant.title || rawVariant.name || optionValue || sku || '').trim();
-      const inferredTitle = options.map((option) => option.value).filter(Boolean).join(' / ');
-      const title =
-        (rawTitle && !isSkuLikeVariantText(rawTitle, rawVariant) ? rawTitle : inferredTitle) ||
-        rawTitle ||
-        `Variant ${idx + 1}`;
+      const displayFields = sanitizeSeedVariantDisplayFields(rawVariant, productOptionNames);
       const url = normalizeHttpUrl(rawVariant.deep_link || rawVariant.url || rawVariant.product_url);
       const availability = normalizeSeedAvailability(rawAvailability);
       const description = String(
@@ -1386,8 +1477,8 @@ function normalizeSeedVariants(seedData, row) {
         variant_id: variantId,
         sku_id: sku || variantId,
         sku: sku || variantId,
-        title,
-        options,
+        title: displayFields.title || `Variant ${idx + 1}`,
+        options: displayFields.options,
         price,
         currency,
         pricing: { current: { amount: price, currency } },
@@ -1395,8 +1486,8 @@ function normalizeSeedVariants(seedData, row) {
         in_stock: inStock,
         available: typeof inStock === 'boolean' ? inStock : undefined,
         availability: availability || undefined,
-        option_name: optionName || undefined,
-        option_value: optionValue || undefined,
+        option_name: displayFields.option_name,
+        option_value: displayFields.option_value,
         description: description || undefined,
         image_url: imageUrl || undefined,
         images: normalizedImageUrls,
@@ -2001,6 +2092,7 @@ module.exports = {
   collectSeedImageUrls,
   normalizeSeedImageUrls,
   normalizeSeedVariants,
+  sanitizeSeedVariantDisplayFields,
   canonicalizeExternalSeedSnapshot,
   buildExternalSeedProduct,
   buildExternalSeedBrandSearchProduct,
