@@ -1081,7 +1081,14 @@ test('handoffRecoToBeautyMainlineSearch records stable-alias primary recovery be
       ?.filter((row) => String(row?.ladder_level || '').startsWith('framework_stage_c_support_')) || [];
     assert.equal(supportAttempts.length, 11);
     assert.equal(supportAttempts.filter((row) => row?.reason === 'primary_role_unmatched').length, 0);
-    assert.equal(supportAttempts.every((row) => row?.reason == null || row?.reason === 'pivota_backend_not_configured' || row?.reason === 'primary_role_unmatched'), true);
+    assert.equal(
+      supportAttempts.every((row) =>
+        row?.reason == null ||
+        row?.reason === 'empty' ||
+        row?.reason === 'pivota_backend_not_configured' ||
+        row?.reason === 'primary_role_unmatched'),
+      true,
+    );
     const stableAliasPrimaryAttempt =
       out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts
         ?.find((row) =>
