@@ -326,10 +326,20 @@ function buildCoverageGroups(rows, market = ASYNC_BACKFILL_MARKET) {
       brand,
       market,
       preferredTitles: [],
+      evidenceSearchQueries: [],
       rows: [],
     };
     current.rows.push(row);
     current.preferredTitles = uniqueStrings([...current.preferredTitles, name], ASYNC_BACKFILL_TITLE_LIMIT);
+    current.evidenceSearchQueries = uniqueStrings(
+      [
+        ...current.evidenceSearchQueries,
+        ...(Array.isArray(metadata.external_compare_evidence_search_queries)
+          ? metadata.external_compare_evidence_search_queries
+          : []),
+      ],
+      24,
+    );
     grouped.set(key, current);
   }
   return {
@@ -887,7 +897,7 @@ function sourceSpecExists(sourceSpecs = [], domain) {
   return (Array.isArray(sourceSpecs) ? sourceSpecs : []).some((sourceSpec) => ensureHttpUrl(sourceSpec?.domain).toLowerCase() === key);
 }
 
-async function runBackfillJobDefault({ brand, market, preferredTitles, sourcePlan, logger } = {}) {
+async function runBackfillJobDefault({ brand, market, preferredTitles, sourcePlan, evidenceSearchQueries = [], logger } = {}) {
   const primaryDomain = ensureHttpUrl(sourcePlan?.primaryDomain);
   let fallbackDomains = uniqueStrings(sourcePlan?.fallbackDomains || [], 8).map((value) => ensureHttpUrl(value)).filter(Boolean);
   if (!primaryDomain) {
@@ -896,6 +906,7 @@ async function runBackfillJobDefault({ brand, market, preferredTitles, sourcePla
       brand,
       market,
       preferred_titles: uniqueStrings(preferredTitles, ASYNC_BACKFILL_TITLE_LIMIT),
+      evidence_search_queries: uniqueStrings(evidenceSearchQueries, 24),
     };
   }
 
@@ -982,6 +993,7 @@ async function runBackfillJobDefault({ brand, market, preferredTitles, sourcePla
       status: 'empty_manifest',
       manifest_path: manifestPath,
       preferred_titles: uniqueStrings(preferredTitles, ASYNC_BACKFILL_TITLE_LIMIT),
+      evidence_search_queries: uniqueStrings(evidenceSearchQueries, 24),
       source_plan: {
         primary_domain: primaryDomain,
         fallback_domains: fallbackDomains,
@@ -1050,6 +1062,7 @@ async function runBackfillJobDefault({ brand, market, preferredTitles, sourcePla
     mode: applyMode,
     manifest_path: manifestPath,
     preferred_titles: uniqueStrings(preferredTitles, ASYNC_BACKFILL_TITLE_LIMIT),
+    evidence_search_queries: uniqueStrings(evidenceSearchQueries, 24),
     source_plan: {
       primary_domain: primaryDomain,
       fallback_domains: fallbackDomains,
@@ -1140,6 +1153,7 @@ async function enqueueRecoAlternativesAuthorityBackfill({
         brand,
         status: `skipped_${pickFirstTrimmed(sourcePlan?.reason, 'unknown')}`,
         preferred_titles: preferredTitles,
+        evidence_search_queries: uniqueStrings(group?.evidenceSearchQueries, 12),
       });
       continue;
     }
@@ -1148,6 +1162,7 @@ async function enqueueRecoAlternativesAuthorityBackfill({
         brand,
         status: 'deduped',
         preferred_titles: preferredTitles,
+        evidence_search_queries: uniqueStrings(group?.evidenceSearchQueries, 12),
         source_domain: sourcePlan.primaryDomain || null,
       });
       continue;
@@ -1160,6 +1175,7 @@ async function enqueueRecoAlternativesAuthorityBackfill({
       brand,
       status: 'enqueued',
       preferred_titles: preferredTitles,
+      evidence_search_queries: uniqueStrings(group?.evidenceSearchQueries, 12),
       source_domain: sourcePlan.primaryDomain || null,
       fallback_domains: uniqueStrings(sourcePlan.fallbackDomains, 8),
     });
@@ -1177,6 +1193,7 @@ async function enqueueRecoAlternativesAuthorityBackfill({
           market: group?.market || market,
           preferredTitles,
           sourcePlan,
+          evidenceSearchQueries: uniqueStrings(group?.evidenceSearchQueries, 24),
           ctx,
           logger,
         });
