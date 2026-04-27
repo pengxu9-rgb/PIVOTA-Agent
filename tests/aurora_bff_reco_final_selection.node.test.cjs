@@ -1783,7 +1783,6 @@ test('concern framework keeps high-fit external seed sunscreen in its support ro
           retrieval_query: 'sunscreen under makeup',
           retrieval_step: 'sunscreen',
           framework_role_fit_score: 0.76,
-          local_external_seed_role_fit_score: 0.76,
         },
       ],
       {
@@ -1802,6 +1801,8 @@ test('concern framework keeps high-fit external seed sunscreen in its support ro
 
     assert.equal(result.role_pool_stats?.daily_sunscreen?.viable_count, 1);
     assert.equal(result.viable?.[0]?.matched_role_id, 'daily_sunscreen');
+    assert.equal(result.viable?.[0]?.framework_retrieval_role_owner_preserved, true);
+    assert.equal(result.viable?.[0]?.external_seed_retrieval_role_score_rescue_applied, true);
     assert.deepEqual(
       result.hard_reject_preview.map((item) => item.reason),
       [],
