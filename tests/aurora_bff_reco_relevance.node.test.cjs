@@ -7240,8 +7240,8 @@ test('__internal: framework pool prefers full-face daily SPF over portable stick
         retrieval_role_id: 'daily_sunscreen',
         local_external_seed_role_fit_score: 1.14,
         search_aliases: ['Birch Moisturizing Sunscreen UVLock SPF 45+ Broad Spectrum'],
-        benefit_tags: ['spf 45', 'uv filters'],
-        short_description: 'A moisturizing broad-spectrum sunscreen with lightweight cream texture for full-face daily wear.',
+        benefit_tags: ['spf 45', 'uv filters', 'niacinamide'],
+        short_description: 'A moisturizing broad-spectrum sunscreen with lightweight cream texture for full-face daily wear. Niacinamide helps reduce hyperpigmentation and calm redness.',
       },
     ],
     { targetContext },
@@ -7251,6 +7251,10 @@ test('__internal: framework pool prefers full-face daily SPF over portable stick
   const sunscreen = state.selected_recommendations.find((item) => item?.matched_role_id === 'daily_sunscreen') || null;
   assert.ok(sunscreen);
   assert.equal(sunscreen.product_id, 'external_seed_sunscreen_first_wear_fluid');
+  assert.equal(
+    state.hard_reject.some((entry) => entry?.product?.product_id === 'external_seed_sunscreen_first_wear_fluid'),
+    false,
+  );
   const stick = state.viable_candidate_pool.find((item) => item?.product_id === 'external_seed_sunscreen_first_wear_stick') || null;
   assert.ok(stick);
   assert.equal(stick.sunscreen_portable_routine_mismatch_applied, true);
