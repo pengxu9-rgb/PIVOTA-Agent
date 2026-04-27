@@ -8078,7 +8078,7 @@ test('__internal: beauty mainline handoff payload preserves viable support role 
   assert.equal(persistedSunscreenTarget?.product_candidates?.[0]?.product_id, 'handoff_sunscreen_viable_1');
 });
 
-test('__internal: beauty local handoff external stage uses backend authority as primary executor', async () => {
+test('__internal: beauty local handoff support external stage tries local authority before backend authority', async () => {
   const { __internal } = loadRoutesFresh();
   const calls = [];
   const targetContext = {
@@ -8273,7 +8273,7 @@ test('__internal: beauty local handoff external stage uses backend authority as 
     );
     assert.equal(
       calls.some((call) => call.kind === 'local_external_seed' && call.query === 'sunscreen oily skin'),
-      false,
+      true,
       JSON.stringify(calls),
     );
     assert.ok(
@@ -8298,8 +8298,8 @@ test('__internal: beauty local handoff external stage uses backend authority as 
         entry?.query === 'sunscreen oily skin') || null;
     assert.ok(sunscreenAttempt);
     assert.equal(sunscreenAttempt.external_seed_authority_backend_primary, true);
-    assert.equal(sunscreenAttempt.local_external_seed_search_skipped, true);
-    assert.equal(sunscreenAttempt.local_external_seed_skip_reason, 'backend_authority_primary');
+    assert.equal(sunscreenAttempt.external_seed_authority_backend_after_local_miss, true);
+    assert.equal(sunscreenAttempt.local_external_seed_authority_miss, true);
     const moisturizerExternalAttempt = (out.search_stage_ledger?.primary_search?.query_pack_attempts || [])
       .find((entry) =>
         entry?.role_id === 'lightweight_moisturizer' &&

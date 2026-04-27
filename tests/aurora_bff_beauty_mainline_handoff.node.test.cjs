@@ -1803,7 +1803,7 @@ test('handoffRecoToBeautyMainlineSearch does not let delayed primary external st
     });
 
     assert.equal(supportStartedBeforePrimaryResolved, true);
-    assert.equal(externalCaptured[0]?.roleId, 'daily_sunscreen_finish_fit');
+    assert.ok(externalCaptured.some((row) => row?.roleId === 'daily_sunscreen_finish_fit'));
     assert.deepEqual(
       externalCaptured.find((row) => row?.roleId === 'layering_compatible_moisturizer_or_spf'),
       {
