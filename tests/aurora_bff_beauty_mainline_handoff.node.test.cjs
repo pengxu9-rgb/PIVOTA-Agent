@@ -3534,7 +3534,7 @@ test('handoffRecoToBeautyMainlineSearch exposes raw candidate pool sources when 
   }
 });
 
-test('handoffRecoToBeautyMainlineSearch preserves local empty result without proxy rescue', async () => {
+test('handoffRecoToBeautyMainlineSearch resolves stable alias authority without proxy rescue', async () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
     const localCalls = [];
@@ -3578,17 +3578,24 @@ test('handoffRecoToBeautyMainlineSearch preserves local empty result without pro
 
     assert.equal(localCalls.length > 0, true);
     assert.equal(proxyAttempts, 0);
-    assert.deepEqual(out.recommendations, []);
+    assert.deepEqual(
+      out.recommendations.map((item) => item.product_id),
+      ['9886499864904'],
+    );
     assert.equal(out.searchResult?.query_source, 'beauty_mainline_local_handoff');
-    assert.equal(out.searchResult?.metadata?.final_decision, 'strict_empty');
-    assert.equal(out.searchResult?.reason, 'empty');
+    assert.equal(out.searchResult?.metadata?.final_decision, 'products_returned');
+    assert.equal(out.searchResult?.metadata?.candidate_pool_summary?.primary_role_matched, true);
+    const stableAliasAttempt = out.searchResult?.metadata?.search_stage_ledger?.primary_search?.query_pack_attempts
+      ?.find((row) => row?.stable_alias_authority_used === true) || null;
+    assert.ok(stableAliasAttempt);
+    assert.equal(stableAliasAttempt.primary_transport_owner, 'local_stable_alias_authority');
   } finally {
     __internal.__resetRouteDependencyOverridesForTest();
     delete require.cache[moduleId];
   }
 });
 
-test('handoffRecoToBeautyMainlineSearch fail-closes before selecting support rows when primary recall is missing', async () => {
+test('handoffRecoToBeautyMainlineSearch uses stable alias primary before selecting support rows', async () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
     __internal.__setRouteDependencyOverridesForTest({
@@ -3658,7 +3665,7 @@ test('handoffRecoToBeautyMainlineSearch fail-closes before selecting support row
 
     assert.deepEqual(
       out.recommendations.map((item) => item.product_id),
-      [],
+      ['9886499864904', 'support_moist_1', 'support_spf_1'],
     );
     assert.equal(
       out.searchResult?.metadata?.candidate_pool_summary?.weak_viable_pool,
@@ -3666,19 +3673,19 @@ test('handoffRecoToBeautyMainlineSearch fail-closes before selecting support row
     );
     assert.equal(
       out.searchResult?.metadata?.candidate_pool_summary?.viable_pool_strength,
-      'empty',
+      'strong',
+    );
+    assert.equal(
+      out.searchResult?.metadata?.candidate_pool_summary?.primary_role_matched,
+      true,
     );
     assert.equal(
       out.searchResult?.metadata?.candidate_pool_summary?.primary_missing_authoritative_support_selected,
       false,
     );
     assert.equal(
-      out.searchResult?.metadata?.search_stage_ledger?.candidate_drop_stage,
-      'no_recall_from_planned_sources',
-    );
-    assert.equal(
       out.searchResult?.metadata?.search_stage_ledger?.primary_failure_stage ?? null,
-      'no_recall_from_planned_sources',
+      null,
     );
     const supportAttempts = out.searchResult?.metadata?.search_stage_ledger?.primary_search?.query_pack_attempts
       ?.filter((row) => String(row?.ladder_level || '').startsWith('framework_stage_c_support_')) || [];
@@ -3690,6 +3697,10 @@ test('handoffRecoToBeautyMainlineSearch fail-closes before selecting support row
       out.searchResult?.metadata?.candidate_pool_summary?.primary_missing_authoritative_support_selected,
       false,
     );
+    const stableAliasAttempt = out.searchResult?.metadata?.search_stage_ledger?.primary_search?.query_pack_attempts
+      ?.find((row) => row?.stable_alias_authority_used === true) || null;
+    assert.ok(stableAliasAttempt);
+    assert.equal(stableAliasAttempt.primary_transport_owner, 'local_stable_alias_authority');
   } finally {
     __internal.__resetRouteDependencyOverridesForTest();
     delete require.cache[moduleId];
