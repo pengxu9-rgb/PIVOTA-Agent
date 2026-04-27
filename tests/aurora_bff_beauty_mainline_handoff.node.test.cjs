@@ -848,7 +848,7 @@ test('handoffRecoToBeautyMainlineSearch keeps framework local budget when sunscr
   }
 });
 
-test('handoffRecoToBeautyMainlineSearch records primary-first strict-empty ledger without spending support runtime', async () => {
+test('handoffRecoToBeautyMainlineSearch records stable-alias primary recovery before spending support runtime', async () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
     const captured = [];
@@ -935,13 +935,21 @@ test('handoffRecoToBeautyMainlineSearch records primary-first strict-empty ledge
       [
         'niacinamide serum oily skin',
         'oil control serum',
+        'gel cream moisturizer',
+        'spf fluid oily skin',
+        'lightweight moisturizer oily skin',
+        'lightweight sunscreen oily skin',
+        'oil control sunscreen',
       ],
     );
     assert.deepEqual(
       externalCaptured.map((row) => row.query),
       [
         'niacinamide serum oily skin',
-        'salicylic acid serum oily skin',
+        'gel cream moisturizer',
+        'sunscreen oily skin',
+        'lightweight moisturizer oily skin',
+        'face sunscreen',
       ],
     );
     assert.equal(captured.every((row) => row.callerLane === 'beauty_chat_handoff'), true);
@@ -958,7 +966,7 @@ test('handoffRecoToBeautyMainlineSearch records primary-first strict-empty ledge
     );
     assert.equal(
       externalCaptured.filter((row) => row.roleId === 'oil_control_treatment').length,
-      2,
+      1,
     );
     assert.equal(
       externalCaptured.filter((row) => row.roleId === 'oil_control_treatment').every((row) =>
@@ -968,8 +976,8 @@ test('handoffRecoToBeautyMainlineSearch records primary-first strict-empty ledge
       true,
     );
     assert.equal(
-      externalCaptured.filter((row) => row.roleId !== 'oil_control_treatment').map((row) => row.roleId).join(','),
-      '',
+      externalCaptured.filter((row) => row.roleId !== 'oil_control_treatment').length,
+      4,
     );
     assert.equal(
       externalCaptured.filter((row) => row.roleId !== 'oil_control_treatment').every((row) =>
@@ -980,6 +988,9 @@ test('handoffRecoToBeautyMainlineSearch records primary-first strict-empty ledge
         && row.transportPolicyMode === 'framework_first_turn'),
       true,
     );
+    assert.equal(out.recommendations?.length, 1);
+    assert.equal(out.recommendations?.[0]?.product_id, '9886499864904');
+    assert.equal(out.recommendations?.[0]?.display_name, 'The Ordinary Niacinamide 10% + Zinc 1%');
     assert.equal(out.searchResult?.query_source, 'beauty_mainline_local_handoff');
     assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.planned_level_count, 6);
     assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_level_count, 4);
@@ -1037,26 +1048,42 @@ test('handoffRecoToBeautyMainlineSearch records primary-first strict-empty ledge
     );
     assert.deepEqual(
       out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts?.map((row) => row?.source_scope),
-      ['internal', 'internal', 'external_seed', 'external_seed', 'external_seed', 'internal', 'internal', 'external_seed', 'external_seed', 'external_seed', 'internal', 'internal', 'internal'],
+      ['internal', 'internal', 'external_seed', 'external_seed', 'external_seed', 'internal', 'internal', 'external_seed', 'internal', 'internal', 'external_seed', 'external_seed', 'internal'],
     );
     assert.deepEqual(
       out.searchResult?.metadata?.search_stage_ledger?.primary_search?.query_pack_attempts?.map((row) => row?.source_scope),
-      ['internal', 'internal', 'external_seed', 'external_seed', 'external_seed', 'internal', 'internal', 'external_seed', 'external_seed', 'external_seed', 'internal', 'internal', 'internal'],
+      ['internal', 'internal', 'external_seed', 'external_seed', 'external_seed', 'internal', 'internal', 'external_seed', 'internal', 'internal', 'external_seed', 'external_seed', 'internal'],
     );
     const supportAttempts = out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts
       ?.filter((row) => String(row?.ladder_level || '').startsWith('framework_stage_c_support_')) || [];
-    assert.equal(supportAttempts.some((row) => row?.reason === 'primary_role_unmatched'), true);
-    assert.equal(supportAttempts.some((row) => row?.reason !== 'primary_role_unmatched'), false);
-    const skippedSupportExternalAttempt =
+    assert.equal(supportAttempts.length, 9);
+    assert.equal(supportAttempts.some((row) => row?.reason === 'primary_role_unmatched'), false);
+    assert.equal(supportAttempts.every((row) => row?.reason == null || row?.reason === 'pivota_backend_not_configured'), true);
+    const stableAliasPrimaryAttempt =
       out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts
         ?.find((row) =>
-          row?.ladder_level === 'framework_stage_c_support_lightweight_moisturizer_external_seed'
-          && row?.reason === 'primary_role_unmatched')
+          row?.ladder_level === 'framework_stage_b_primary_external_seed'
+          && row?.query === 'niacinamide serum oily skin'
+          && row?.stable_alias_authority_used === true)
       || out.searchResult?.metadata?.search_stage_ledger?.primary_search?.query_pack_attempts
         ?.find((row) =>
-          row?.ladder_level === 'framework_stage_c_support_lightweight_moisturizer_external_seed'
-          && row?.reason === 'primary_role_unmatched');
-    assert.ok(skippedSupportExternalAttempt);
+          row?.ladder_level === 'framework_stage_b_primary_external_seed'
+          && row?.query === 'niacinamide serum oily skin'
+          && row?.stable_alias_authority_used === true);
+    assert.ok(stableAliasPrimaryAttempt);
+    assert.equal(stableAliasPrimaryAttempt?.primary_endpoint_kind, 'local_stable_alias_authority');
+    const skippedDuplicatePrimaryAttempt =
+      out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts
+        ?.find((row) =>
+          row?.ladder_level === 'framework_stage_b_primary_external_seed'
+          && row?.query === 'salicylic acid serum oily skin'
+          && row?.reason === 'skipped_primary_already_satisfied')
+      || out.searchResult?.metadata?.search_stage_ledger?.primary_search?.query_pack_attempts
+        ?.find((row) =>
+          row?.ladder_level === 'framework_stage_b_primary_external_seed'
+          && row?.query === 'salicylic acid serum oily skin'
+          && row?.reason === 'skipped_primary_already_satisfied');
+    assert.ok(skippedDuplicatePrimaryAttempt);
     assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.skipped_external_seed_levels, undefined);
     assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.skipped_support_levels, undefined);
   } finally {
