@@ -4561,6 +4561,27 @@ test('__internal: local external seed support-role patterns avoid bare fit keywo
   assert.equal(patterns.includes('%oil free moisturizer%'), false);
 });
 
+test('__internal: local external seed sunscreen support-role patterns expand under-makeup aliases without broad singleton noise', async () => {
+  const { __internal } = loadRoutesFresh();
+  const patterns = __internal.buildLocalExternalSeedSearchPatterns('sunscreen under makeup', {
+    role: {
+      role_id: 'daily_sunscreen',
+      rank: 30,
+      preferred_step: 'sunscreen',
+      query_terms: ['sunscreen under makeup', 'lightweight sunscreen oily skin'],
+      fit_keywords: ['spf', 'lightweight', 'makeup friendly'],
+    },
+    preferredStep: 'sunscreen',
+  });
+  assert.equal(patterns.includes('%sunscreen under makeup%'), true);
+  assert.equal(patterns.includes('%under makeup%'), true);
+  assert.equal(patterns.includes('%makeup friendly%'), true);
+  assert.equal(patterns.includes('%makeup-friendly%'), true);
+  assert.equal(patterns.includes('%lightweight sunscreen%'), true);
+  assert.equal(patterns.includes('%sunscreen%'), false);
+  assert.equal(patterns.includes('%makeup%'), false);
+});
+
 test('__internal: local external seed support-role search uses precise category-positive recall before broad text recall', async () => {
   const { __internal } = loadRoutesFresh();
   const observedQueries = [];
