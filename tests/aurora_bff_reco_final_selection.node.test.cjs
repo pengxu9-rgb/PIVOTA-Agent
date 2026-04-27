@@ -5830,6 +5830,138 @@ test('reco assistant structured renderer keeps production sunscreen tradeoffs at
   }
 });
 
+test('reco assistant validator ignores negated matte contrast on lighter sunscreen peers', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const payload = __internal.applyRecoContentSpineToPayload(
+      {
+        recommendations: [
+          {
+            product_id: 'skintific_matte_fit',
+            display_name: 'Matte Fit Serum Sunscreen SPF 50+ PA++++',
+            brand: 'SKINTIFIC',
+            category: 'Sunscreen',
+            short_description: 'Matte SPF 50+ PA++++ sunscreen with shine control.',
+            why_this_one:
+              'it has more direct airy, non-greasy texture evidence for oily skin under makeup while staying in a dedicated SPF50+ sunscreen lane',
+            compare_highlights: [
+              'Fast-absorbing serum sunscreen is positioned to control shine while protecting against UV exposure.',
+              'Suited for Oily or combination skin',
+            ],
+            matched_role_id: 'daily_sunscreen_finish_fit',
+            matched_role_label: 'Daily sunscreen with finish fit',
+            preferred_step: 'sunscreen',
+          },
+          {
+            product_id: 'skintific_light_serum_spf',
+            display_name: 'Light Serum Sunscreen SPF 50+ PA++++',
+            brand: 'SKINTIFIC',
+            category: 'Sunscreen',
+            short_description: 'Lightweight SPF 50+ PA++++ serum sunscreen for daily wear.',
+            why_this_one:
+              'it keeps the finish lighter and smoother under makeup if you want a less heavy daytime layer',
+            compare_highlights: [
+              'Serum-format sunscreen is positioned for daily high-SPF wear with a lighter skin feel.',
+              'Suited for Daytime wear',
+            ],
+            matched_role_id: 'daily_sunscreen_finish_fit',
+            matched_role_label: 'Daily sunscreen with finish fit',
+            preferred_step: 'sunscreen',
+          },
+          {
+            product_id: 'supergoop_unseen_spf50',
+            display_name: 'Unseen Sunscreen SPF 50',
+            brand: 'Supergoop',
+            category: 'Sunscreen',
+            short_description:
+              'it keeps the finish lighter and smoother under makeup if you want a less heavy daytime layer',
+            why_this_one:
+              'it keeps the finish lighter and smoother under makeup if you want a less heavy daytime layer',
+            matched_role_id: 'daily_sunscreen_finish_fit',
+            matched_role_label: 'Daily sunscreen with finish fit',
+            preferred_step: 'sunscreen',
+          },
+        ],
+        recommendation_meta: {
+          resolved_target_step: 'sunscreen',
+          mainline_status: 'grounded_success',
+        },
+      },
+      {
+        ingredient_query: 'Daily sunscreen with finish fit',
+        resolved_target_step: 'sunscreen',
+        primary_target_id: 'daily_sunscreen_finish_fit',
+        ranked_targets: [
+          {
+            target_id: 'daily_sunscreen_finish_fit',
+            ingredient_query: 'Daily sunscreen with finish fit',
+            resolved_target_step: 'sunscreen',
+          },
+        ],
+        selected_target_ids: ['daily_sunscreen_finish_fit'],
+      },
+    );
+    const names = [
+      'Matte Fit Serum Sunscreen SPF 50+ PA++++',
+      'Light Serum Sunscreen SPF 50+ PA++++',
+      'Unseen Sunscreen SPF 50',
+    ];
+    const primaryTarget = payload.recommendation_meta.ranked_targets[0];
+    const text = __internal.renderRecoAssistantStructuredReasonRewrite({
+      structuredReason: {
+        lead_reason:
+          'it has more direct airy, non-greasy texture evidence for oily skin under makeup while staying in a dedicated SPF50+ sunscreen lane',
+        support_reasons: [
+          'it keeps the finish lighter and smoother under makeup if you want a less heavy daytime layer',
+          'it keeps the finish lighter and smoother under makeup if you want a less heavy daytime layer',
+        ],
+      },
+      payload,
+      language: 'EN',
+      profile: { skinType: 'oily' },
+      primaryTarget,
+      names,
+      requestMode: 'buy',
+      selectedProductRoleMix: 'same_role_comparison',
+    });
+
+    const renderedValidation = __internal.validateRecoAssistantRewriteCandidate({
+      candidateText: text,
+      payload,
+      language: 'EN',
+      profile: { skinType: 'oily' },
+      userRequestText: 'I have oily skin, what sunscreen should I buy?',
+      refinementQuestionPlan: null,
+      primaryTarget,
+      secondaryTargets: [],
+      names,
+      requestMode: 'buy',
+    });
+    assert.equal(renderedValidation.reason, null);
+
+    const contrastText = [
+      'Matte Fit Serum Sunscreen SPF 50+ PA++++ leans more matte and shine-controlling if you want less slip under makeup.',
+      'Light Serum Sunscreen SPF 50+ PA++++ keeps the finish lighter and smoother under makeup when you do not want to go too matte.',
+      'Unseen Sunscreen SPF 50 keeps the finish lighter and smoother under makeup when you do not want to go too matte.',
+    ].join(' ');
+    const validation = __internal.validateRecoAssistantRewriteCandidate({
+      candidateText: contrastText,
+      payload,
+      language: 'EN',
+      profile: { skinType: 'oily' },
+      userRequestText: 'I have oily skin, what sunscreen should I buy?',
+      refinementQuestionPlan: null,
+      primaryTarget,
+      secondaryTargets: [],
+      names,
+      requestMode: 'buy',
+    });
+    assert.equal(validation.reason, null);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('reco assistant rewrite validator accepts neutral practical-choice buy lead wording', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
