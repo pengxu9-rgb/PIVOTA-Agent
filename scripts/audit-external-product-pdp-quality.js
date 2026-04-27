@@ -13,6 +13,7 @@ const {
   buildProductIntelGate,
   buildLivePdpGate,
   buildSimilarGate,
+  buildVariantGate,
   buildExternalSeedQualityResult,
   collectLiveGalleryImages,
 } = require('../src/services/externalSeedPdpQuality');
@@ -434,6 +435,11 @@ async function auditRow(row, { catalogBaseUrl, gatewayUrl, imageHealthEnabled = 
     liveResponse: ensureJsonObject(livePdp),
     exclusionFlags: recall.exclusion_flags || {},
   });
+  const variantGate = buildVariantGate({
+    seedData,
+    livePayload,
+    liveResponse: ensureJsonObject(livePdp),
+  });
   return buildExternalSeedQualityResult({
     seedId: row.id,
     externalProductId: productId,
@@ -446,6 +452,7 @@ async function auditRow(row, { catalogBaseUrl, gatewayUrl, imageHealthEnabled = 
     productIntelGate,
     livePdpGate,
     similarGate,
+    variantGate,
   });
 }
 

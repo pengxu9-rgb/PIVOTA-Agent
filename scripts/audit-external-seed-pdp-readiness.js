@@ -227,6 +227,7 @@ function renderSummary(payload) {
   const summary = payload.summary || {};
   const intel = summary.pivota_insights || {};
   const active = summary.active_ingredients || {};
+  const variants = summary.variants || {};
   const lines = [];
   lines.push(`scanned=${summary.scanned || 0}`);
   lines.push(`by_market=${JSON.stringify(summary.by_market || {})}`);
@@ -240,6 +241,9 @@ function renderSummary(payload) {
   lines.push(`active_ingredients.status=${JSON.stringify(active.status || [])}`);
   lines.push(`active_ingredients.issues=${JSON.stringify(active.issues || [])}`);
   lines.push(`active_ingredients.issue_domains=${JSON.stringify((active.issue_domains || []).slice(0, 12))}`);
+  lines.push(`variants.status=${JSON.stringify(variants.status || [])}`);
+  lines.push(`variants.issues=${JSON.stringify(variants.issues || [])}`);
+  lines.push(`variants.issue_domains=${JSON.stringify((variants.issue_domains || []).slice(0, 12))}`);
   if (payload.warnings?.length) {
     lines.push(`warnings=${JSON.stringify(payload.warnings.slice(0, 12))}`);
   }

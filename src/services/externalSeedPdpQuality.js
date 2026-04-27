@@ -11,6 +11,11 @@ const SHOPIFY_HASHED_FILENAME_RE =
   /_[0-9a-f]{8,}(?:-[0-9a-f]{4,}){2,}\.(?:avif|gif|jpe?g|png|webp)$/i;
 const TOM_FORD_BARE_NON_PRIMARY_ASSET_RE =
   /^tfb?_sku_.*_(?:[1-9]\d*|[0-9]+[a-z]+|[a-z]+[0-9]+)\.(?:avif|gif|jpe?g|png|webp)$/i;
+const VARIANT_IDENTITY_OPTION_RE =
+  /^(offer|sku|sku id|variant sku|barcode|upc|ean|gtin|product id|variant id|title)$/i;
+const GENERIC_VARIANT_AXIS_RE = /^(option|variant|selection)$/i;
+const SHADE_AXIS_RE = /^(shade|color|colour|tone|hue)$/i;
+const LOCALE_LIKE_VARIANT_VALUE_RE = /^(us|usa|uk|eu|fr|de|es|it|ca|au|jp|kr|cn)$/i;
 
 function normalizeAmount(value) {
   if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
@@ -119,6 +124,100 @@ function collectLiveActiveIngredients(livePayload = {}, liveResponse = {}) {
     findModuleData('active_ingredients', liveResponse, livePayload) ||
     ensureJsonObject(liveResponse?.active_ingredients || livePayload?.active_ingredients);
   return Array.isArray(data?.items) ? data.items : [];
+}
+
+function collectVariantAuditContext(seedData = {}, livePayload = {}) {
+  const snapshot = ensureJsonObject(seedData?.snapshot);
+  return [
+    seedData?.title,
+    snapshot?.title,
+    livePayload?.product?.title,
+    livePayload?.product?.name,
+    seedData?.category,
+    snapshot?.category,
+    livePayload?.product?.category,
+    seedData?.product_type,
+    snapshot?.product_type,
+    livePayload?.product?.product_type,
+    ...(Array.isArray(seedData?.tags) ? seedData.tags : []),
+    ...(Array.isArray(snapshot?.tags) ? snapshot.tags : []),
+    ...(Array.isArray(livePayload?.product?.tags) ? livePayload.product.tags : []),
+  ]
+    .map((value) => normalizeNonEmptyString(value).toLowerCase())
+    .filter(Boolean)
+    .join(' ');
+}
+
+function allowsShadeAxis(contextText = '') {
+  return /\b(tinted?|skin tint|shade|color[-\s]?correct|colour[-\s]?correct|tone[-\s]?up|tone[-\s]?correct|lip tint|lipstick|lip gloss|lip oil|lip balm|foundation|concealer|bronzer|blush|highlighter|powder|eyeshadow|eyeliner|brow|mascara|makeup|cosmetic)\b/i.test(
+    contextText,
+  );
+}
+
+function isSkincareLikeContext(contextText = '') {
+  return /\b(serum|essence|ampoule|moisturi[sz]er|cream|cleanser|toner|lotion|balm|mask|treatment|sunscreen|spf|sun protection|skin care|skincare|barrier|retinol|niacinamide|vitamin c|acid)\b/i.test(
+    contextText,
+  );
+}
+
+function looksLikeSizeValue(value = '') {
+  const normalized = normalizeNonEmptyString(value);
+  if (!normalized) return false;
+  return (
+    /\b\d+(?:\.\d+)?\s*(ml|m l|g|kg|oz|fl oz|l|lb|lbs|mm|cm)\b/i.test(normalized) ||
+    /\b(pack of|set of)\s*\d+\b/i.test(normalized) ||
+    /\b\d+\s*(pack|ct|count|pcs|pieces)\b/i.test(normalized) ||
+    /\b(refill|travel size|full size|mini|jumbo|regular)\b/i.test(normalized)
+  );
+}
+
+function hasVariantVisualEvidence(item = {}) {
+  return Boolean(
+    normalizeNonEmptyString(
+      item?.label_image_url ||
+        item?.swatch_image_url ||
+        item?.image_url ||
+        item?.image,
+    ) ||
+      normalizeNonEmptyString(
+        item?.swatch?.hex ||
+          item?.swatch_color ||
+          item?.color_hex ||
+          item?.shade_hex,
+      ),
+  );
+}
+
+function collectLiveVariantAuditRows(livePayload = {}) {
+  const product = ensureJsonObject(livePayload?.product);
+  const productLineOptions = Array.isArray(product?.product_line_options) ? product.product_line_options : [];
+  const variants = Array.isArray(product?.variants) ? product.variants : [];
+  const rows = [];
+
+  for (const option of productLineOptions) {
+    rows.push({
+      source: 'product_line_option',
+      axis_name: normalizeNonEmptyString(option?.option_name || option?.axis || option?.name),
+      axis_kind: normalizeNonEmptyString(option?.axis),
+      value: normalizeNonEmptyString(option?.value || option?.label),
+      visual: hasVariantVisualEvidence(option),
+    });
+  }
+
+  for (const variant of variants) {
+    const options = Array.isArray(variant?.options) ? variant.options : [];
+    for (const option of options) {
+      rows.push({
+        source: 'variant_option',
+        axis_name: normalizeNonEmptyString(option?.name),
+        axis_kind: normalizeNonEmptyString(option?.axis_kind || option?.axis),
+        value: normalizeNonEmptyString(option?.value),
+        visual: hasVariantVisualEvidence(variant),
+      });
+    }
+  }
+
+  return rows.filter((row) => row.axis_name || row.axis_kind || row.value);
 }
 
 function collectSeedContextText(seedData = {}) {
@@ -579,6 +678,56 @@ function buildSimilarGate({ similarResponse = {}, livePayload = {}, liveResponse
   };
 }
 
+function buildVariantGate({ seedData = {}, livePayload = {}, liveResponse = {} } = {}) {
+  const liveModuleList = collectLiveModuleList(livePayload, liveResponse);
+  const contextText = collectVariantAuditContext(seedData, livePayload);
+  const rows = collectLiveVariantAuditRows(livePayload);
+  const visibleRows = rows.filter((row) => row.value);
+  const identityOptionRows = visibleRows.filter((row) => VARIANT_IDENTITY_OPTION_RE.test(row.axis_name));
+  const wrongAxisRows = visibleRows.filter((row) => {
+    const axisName = row.axis_kind || row.axis_name;
+    if (!SHADE_AXIS_RE.test(axisName)) return false;
+    if (allowsShadeAxis(contextText)) return false;
+    return LOCALE_LIKE_VARIANT_VALUE_RE.test(row.value) || isSkincareLikeContext(contextText);
+  });
+  const missingVisualRows = visibleRows.filter((row) => {
+    const axisName = row.axis_kind || row.axis_name;
+    return SHADE_AXIS_RE.test(axisName) && allowsShadeAxis(contextText) && !row.visual;
+  });
+  const genericSizeRows = visibleRows.filter((row) => {
+    const axisName = row.axis_kind || row.axis_name;
+    return GENERIC_VARIANT_AXIS_RE.test(axisName) && looksLikeSizeValue(row.value);
+  });
+  const failureReasons = [];
+  if (liveModuleList.includes('variant_selector') && identityOptionRows.length > 0) {
+    failureReasons.push('identity_option_visible');
+  }
+  if (liveModuleList.includes('variant_selector') && wrongAxisRows.length > 0) {
+    failureReasons.push('wrong_axis_for_category');
+  }
+  if (liveModuleList.includes('variant_selector') && missingVisualRows.length > 0) {
+    failureReasons.push('makeup_shade_missing_visual');
+  }
+  if (liveModuleList.includes('variant_selector') && genericSizeRows.length > 0) {
+    failureReasons.push('size_value_generic_axis');
+  }
+  return {
+    status: failureReasons.length ? 'failed' : 'passed',
+    visible_variant_row_count: visibleRows.length,
+    identity_option_visible_count: identityOptionRows.length,
+    wrong_axis_for_category_count: wrongAxisRows.length,
+    makeup_shade_missing_visual_count: missingVisualRows.length,
+    size_value_generic_axis_count: genericSizeRows.length,
+    examples: {
+      identity_option_visible: identityOptionRows.slice(0, 5),
+      wrong_axis_for_category: wrongAxisRows.slice(0, 5),
+      makeup_shade_missing_visual: missingVisualRows.slice(0, 5),
+      size_value_generic_axis: genericSizeRows.slice(0, 5),
+    },
+    failure_reasons: failureReasons,
+  };
+}
+
 function buildExternalSeedQualityResult({
   seedId = '',
   externalProductId = '',
@@ -591,6 +740,7 @@ function buildExternalSeedQualityResult({
   productIntelGate = {},
   livePdpGate = {},
   similarGate = {},
+  variantGate = {},
 } = {}) {
   const failureReasons = [
     ...(Array.isArray(seedGate.failure_reasons) ? seedGate.failure_reasons : []),
@@ -599,6 +749,7 @@ function buildExternalSeedQualityResult({
     ...(Array.isArray(productIntelGate.failure_reasons) ? productIntelGate.failure_reasons : []),
     ...(Array.isArray(livePdpGate.failure_reasons) ? livePdpGate.failure_reasons : []),
     ...(Array.isArray(similarGate.failure_reasons) ? similarGate.failure_reasons : []),
+    ...(Array.isArray(variantGate.failure_reasons) ? variantGate.failure_reasons : []),
   ].filter(Boolean);
   const rootCauseClassification = [];
   if (failureReasons.includes('extractor_failure')) rootCauseClassification.push('extractor_issue');
@@ -633,6 +784,14 @@ function buildExternalSeedQualityResult({
   ) {
     rootCauseClassification.push('similar_issue');
   }
+  if (
+    failureReasons.includes('identity_option_visible') ||
+    failureReasons.includes('wrong_axis_for_category') ||
+    failureReasons.includes('makeup_shade_missing_visual') ||
+    failureReasons.includes('size_value_generic_axis')
+  ) {
+    rootCauseClassification.push('variant_contract_issue');
+  }
   return {
     seed_id: normalizeNonEmptyString(seedId),
     external_product_id: normalizeNonEmptyString(externalProductId),
@@ -645,6 +804,7 @@ function buildExternalSeedQualityResult({
     product_intel_gate: productIntelGate,
     live_pdp_gate: livePdpGate,
     similar_gate: similarGate,
+    variant_gate: variantGate,
     root_cause_classification: Array.from(new Set(rootCauseClassification)),
     failure_reasons: Array.from(new Set(failureReasons)),
   };
@@ -667,5 +827,6 @@ module.exports = {
   buildProductIntelGate,
   buildLivePdpGate,
   buildSimilarGate,
+  buildVariantGate,
   buildExternalSeedQualityResult,
 };

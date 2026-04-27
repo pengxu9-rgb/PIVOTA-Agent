@@ -904,8 +904,46 @@ const NON_DISPLAYABLE_IDENTITY_OPTION_NAMES = new Set([
 const GENERIC_VARIANT_OPTION_NAMES = new Set([
   'option',
   'variant',
+  'variants',
   'title',
   'selection',
+  'choose a size',
+  'choose size',
+  'select size',
+]);
+
+const VARIANT_AXIS_LABELS = Object.freeze({
+  shade: 'Shade',
+  color: 'Color',
+  size: 'Size',
+  volume: 'Size',
+  pack: 'Pack',
+  format: 'Format',
+  scent: 'Scent',
+  strength: 'Strength',
+});
+
+const NON_DISPLAYABLE_VARIANT_VALUES = new Set([
+  'default',
+  'default title',
+  'title',
+  'variant',
+]);
+
+const LOCALE_LIKE_VARIANT_VALUES = new Set([
+  'us',
+  'usa',
+  'uk',
+  'eu',
+  'fr',
+  'de',
+  'es',
+  'it',
+  'ca',
+  'au',
+  'jp',
+  'kr',
+  'cn',
 ]);
 
 function isVariantIdentityValue(value, rawVariant) {
@@ -932,6 +970,7 @@ function isNonDisplayableVariantOption(option, rawVariant) {
   const optionName = normalizeOptionNameKey(option?.name);
   const optionValue = normalizeOptionText(option?.value);
   if (!optionName || !optionValue) return true;
+  if (NON_DISPLAYABLE_VARIANT_VALUES.has(optionValue.toLowerCase())) return true;
   if (NON_DISPLAYABLE_IDENTITY_OPTION_NAMES.has(optionName)) {
     return isSkuLikeVariantText(optionValue, rawVariant) || isVariantIdentityValue(optionValue, rawVariant);
   }
@@ -945,6 +984,219 @@ function filterDisplayableVariantOptions(options, rawVariant) {
   return (Array.isArray(options) ? options : []).filter(
     (option) => !isNonDisplayableVariantOption(option, rawVariant),
   );
+}
+
+function buildVariantContext(seedData, row) {
+  const parsed = ensureJsonObject(seedData);
+  const snapshot = ensureJsonObject(parsed.snapshot);
+  const text = [
+    row?.title,
+    row?.canonical_url,
+    row?.destination_url,
+    row?.domain,
+    parsed?.brand,
+    snapshot?.brand,
+    parsed?.category,
+    snapshot?.category,
+    parsed?.product_type,
+    snapshot?.product_type,
+    parsed?.productType,
+    snapshot?.productType,
+    ...(Array.isArray(parsed?.tags) ? parsed.tags : []),
+    ...(Array.isArray(snapshot?.tags) ? snapshot.tags : []),
+  ]
+    .map((value) => normalizeOptionText(value).toLowerCase())
+    .filter(Boolean)
+    .join(' ');
+  const allowsShadeAxis =
+    /\b(tinted?|skin tint|shade|color[-\s]?correct|tone[-\s]?up|tone[-\s]?correct|lip tint|tint balm|honey tint|lipstick|lip gloss|lip oil|lip balm|foundation|concealer|bronzer|blush|highlighter|powder|eyeshadow|eyeliner|brow|mascara|makeup|cosmetic)\b/i.test(
+      text,
+    );
+  const skincareLike =
+    /\b(serum|essence|ampoule|moisturi[sz]er|cream|cleanser|toner|lotion|balm|mask|treatment|sunscreen|spf|sun protection|skin care|skincare|barrier|retinol|niacinamide|vitamin c|acid)\b/i.test(
+      text,
+    );
+  return {
+    text,
+    allowsShadeAxis,
+    skincareLike,
+  };
+}
+
+function parseVariantQuantityValue(value) {
+  const normalized = normalizeOptionText(value);
+  if (!normalized) return '';
+  const match = normalized.match(/\b(\d+(?:\.\d+)?)\s*(ml|m l|g|kg|oz|fl oz|l|lb|lbs|mm|cm)\b/i);
+  if (!match) return '';
+  const amount = Number(match[1]);
+  if (!Number.isFinite(amount) || amount <= 0) return '';
+  return `${amount}${String(match[2] || '').toLowerCase().replace(/\s+/g, '')}`;
+}
+
+function parseVariantPackValue(value) {
+  const normalized = normalizeOptionText(value);
+  if (!normalized) return '';
+  if (/^\s*single\s*$/i.test(normalized)) return '1pack';
+  const explicit = normalized.match(/\b(pack of|set of)\s*(\d+)\b/i);
+  if (explicit) return `${Number(explicit[2]) || 0}pack`;
+  const short = normalized.match(/\b(\d+)\s*-?\s*(pack|ct|count|pcs|pieces)\b/i);
+  if (short) return `${Number(short[1]) || 0}pack`;
+  if (/\bduo\b/i.test(normalized)) return '2pack';
+  if (/\btrio\b/i.test(normalized)) return '3pack';
+  return '';
+}
+
+function parseVariantFormatValue(value) {
+  const normalized = normalizeOptionText(value);
+  if (!normalized) return '';
+  if (/\brefill\b/i.test(normalized)) return 'Refill';
+  if (/\btravel size\b/i.test(normalized)) return 'Travel Size';
+  if (/\bfull size\b/i.test(normalized)) return 'Full Size';
+  if (/\bmini\b/i.test(normalized)) return 'Mini';
+  if (/\bjumbo\b/i.test(normalized)) return 'Jumbo';
+  if (/\bregular\b/i.test(normalized)) return 'Regular';
+  return '';
+}
+
+function parseVariantStrengthValue(value) {
+  const normalized = normalizeOptionText(value);
+  if (!normalized) return '';
+  const percent = normalized.match(/\b(\d+(?:\.\d+)?)\s*%/);
+  if (percent) return `${percent[1]}%`;
+  const spf = normalized.match(/\bspf\s*(\d{1,3})\b/i);
+  if (spf) return `SPF ${spf[1]}`;
+  return '';
+}
+
+function inferVariantAxisKind(option, context = {}) {
+  const optionName = normalizeOptionNameKey(option?.name);
+  const optionValue = normalizeOptionText(option?.value);
+  if (!optionValue || NON_DISPLAYABLE_VARIANT_VALUES.has(optionValue.toLowerCase())) {
+    return { axis_kind: 'non_displayable', display_label: '', normalized_value: '' };
+  }
+
+  const volume = parseVariantQuantityValue(optionValue);
+  const pack = parseVariantPackValue(optionValue);
+  const format = parseVariantFormatValue(optionValue);
+  const strength = parseVariantStrengthValue(optionValue);
+  const localeLike = LOCALE_LIKE_VARIANT_VALUES.has(optionValue.toLowerCase());
+
+  if (['shade', 'tone', 'hue'].includes(optionName)) {
+    if (!context.allowsShadeAxis) {
+      if (volume) return { axis_kind: 'volume', display_label: VARIANT_AXIS_LABELS.volume, normalized_value: optionValue };
+      if (format) return { axis_kind: 'format', display_label: VARIANT_AXIS_LABELS.format, normalized_value: format };
+      if (localeLike) return { axis_kind: 'non_displayable', display_label: '', normalized_value: '' };
+    }
+    return { axis_kind: 'shade', display_label: VARIANT_AXIS_LABELS.shade, normalized_value: optionValue };
+  }
+  if (['color', 'colour'].includes(optionName)) {
+    if (!context.allowsShadeAxis || localeLike) {
+      if (volume) return { axis_kind: 'volume', display_label: VARIANT_AXIS_LABELS.volume, normalized_value: optionValue };
+      if (format) return { axis_kind: 'format', display_label: VARIANT_AXIS_LABELS.format, normalized_value: format };
+      if (localeLike || context.skincareLike) {
+        return { axis_kind: 'non_displayable', display_label: '', normalized_value: '' };
+      }
+    }
+    return { axis_kind: 'color', display_label: VARIANT_AXIS_LABELS.color, normalized_value: optionValue };
+  }
+  if (optionName === 'size') {
+    return { axis_kind: volume ? 'volume' : 'size', display_label: volume ? VARIANT_AXIS_LABELS.volume : VARIANT_AXIS_LABELS.size, normalized_value: optionValue };
+  }
+  if (['volume', 'voume', 'capacity', 'amount', 'ml', 'm l'].includes(optionName)) {
+    return { axis_kind: 'volume', display_label: VARIANT_AXIS_LABELS.volume, normalized_value: optionValue };
+  }
+  if (['pack', 'count', 'quantity', 'ct', 'ct.', 'sachet', 'unit', 'unité'].includes(optionName) || pack) {
+    return { axis_kind: 'pack', display_label: VARIANT_AXIS_LABELS.pack, normalized_value: optionValue };
+  }
+  if (['format', 'type', 'benefit'].includes(optionName) || format) {
+    return { axis_kind: 'format', display_label: VARIANT_AXIS_LABELS.format, normalized_value: format || optionValue };
+  }
+  if (['strength', 'concentration'].includes(optionName) || strength) {
+    return { axis_kind: 'strength', display_label: VARIANT_AXIS_LABELS.strength, normalized_value: strength || optionValue };
+  }
+  if (['scent', 'fragrance', 'flavor', 'flavour'].includes(optionName)) {
+    return { axis_kind: 'scent', display_label: VARIANT_AXIS_LABELS.scent, normalized_value: optionValue };
+  }
+  if (GENERIC_VARIANT_OPTION_NAMES.has(optionName)) {
+    if (volume) return { axis_kind: 'volume', display_label: VARIANT_AXIS_LABELS.volume, normalized_value: optionValue };
+    if (pack) return { axis_kind: 'pack', display_label: VARIANT_AXIS_LABELS.pack, normalized_value: optionValue };
+    if (format) return { axis_kind: 'format', display_label: VARIANT_AXIS_LABELS.format, normalized_value: format };
+    if (strength) return { axis_kind: 'strength', display_label: VARIANT_AXIS_LABELS.strength, normalized_value: strength };
+    if (context.allowsShadeAxis) {
+      return { axis_kind: 'shade', display_label: VARIANT_AXIS_LABELS.shade, normalized_value: optionValue };
+    }
+    return { axis_kind: 'non_displayable', display_label: '', normalized_value: '' };
+  }
+  return { axis_kind: 'non_displayable', display_label: '', normalized_value: '' };
+}
+
+function normalizeVariantVisualFields(rawVariant, fallbackImageUrl) {
+  const swatchImageUrl = normalizeHttpUrl(
+    rawVariant?.swatch_image_url ||
+      rawVariant?.label_image_url ||
+      rawVariant?.thumbnail_url ||
+      rawVariant?.thumbnail ||
+      rawVariant?.swatch?.image_url ||
+      rawVariant?.swatch?.imageUrl ||
+      rawVariant?.swatch?.url,
+  );
+  const swatchHex = firstNonEmptyString(
+    rawVariant?.color_hex,
+    rawVariant?.swatch?.hex,
+    rawVariant?.beauty_meta?.shade_hex,
+    rawVariant?.shade_hex,
+    rawVariant?.hex,
+  );
+  return {
+    image_url: normalizeHttpUrl(rawVariant?.image_url || rawVariant?.image) || fallbackImageUrl || '',
+    swatch_image_url: swatchImageUrl || '',
+    swatch_hex: swatchHex || '',
+  };
+}
+
+function applySeedVariantDisplayContract({ options, rawVariant, context, imageUrl }) {
+  const visual = normalizeVariantVisualFields(rawVariant, imageUrl);
+  const normalizedOptions = [];
+  const seen = new Set();
+  for (const option of Array.isArray(options) ? options : []) {
+    const normalizedValue = normalizeOptionText(option?.value);
+    if (!normalizedValue) continue;
+    const contract = inferVariantAxisKind(option, context);
+    if (contract.axis_kind === 'non_displayable') continue;
+    const needsVisual = ['shade', 'color'].includes(contract.axis_kind);
+    const hasVisual = Boolean(visual.swatch_image_url || visual.swatch_hex || visual.image_url);
+    if (needsVisual && !hasVisual) continue;
+    const key = `${contract.axis_kind}|${normalizedValue.toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    normalizedOptions.push({
+      name: contract.display_label || option.name,
+      value: contract.normalized_value || normalizedValue,
+      axis_kind: contract.axis_kind,
+    });
+  }
+  return {
+    options: normalizedOptions,
+    axis_kind: normalizedOptions.length === 1 ? normalizedOptions[0].axis_kind : undefined,
+    display_label:
+      normalizedOptions.length === 1 ? `${normalizedOptions[0].name}: ${normalizedOptions[0].value}` : undefined,
+    visual: {
+      image_url: visual.image_url || undefined,
+      swatch_image_url: visual.swatch_image_url || undefined,
+      swatch_hex: visual.swatch_hex || undefined,
+      source: visual.swatch_image_url ? 'swatch_image' : visual.swatch_hex ? 'swatch_hex' : visual.image_url ? 'variant_image' : undefined,
+    },
+    source_quality_status:
+      normalizedOptions.some((item) => ['shade', 'color'].includes(item.axis_kind))
+        ? visual.swatch_image_url || visual.image_url
+          ? 'captured'
+          : visual.swatch_hex
+            ? 'inferred'
+            : 'blocked'
+        : normalizedOptions.length
+          ? 'captured'
+          : 'blocked',
+  };
 }
 
 function shouldPreferUrlVariantOptions(options, urlOptions, rawVariant) {
@@ -1385,6 +1637,7 @@ function normalizeSeedVariants(seedData, row) {
   const parsedSeedData = ensureJsonObject(seedData);
   const rawVariants = getRawSeedVariants(parsedSeedData);
   const productOptionNames = getSeedProductOptionNames(parsedSeedData);
+  const variantContext = buildVariantContext(parsedSeedData, row);
 
   if (!rawVariants.length) return [];
 
@@ -1471,14 +1724,27 @@ function normalizeSeedVariants(seedData, row) {
         rawVariant.shade_hex,
         rawVariant.hex,
       );
+      const contractedDisplay = applySeedVariantDisplayContract({
+        options: displayFields.options,
+        rawVariant,
+        context: variantContext,
+        imageUrl,
+      });
+      const contractedTitle =
+        contractedDisplay.options.map((option) => option.value).filter(Boolean).join(' / ') ||
+        (contractedDisplay.source_quality_status !== 'blocked' &&
+        displayFields.title &&
+        !NON_DISPLAYABLE_VARIANT_VALUES.has(displayFields.title.toLowerCase())
+          ? displayFields.title
+          : 'Default');
 
       return {
         id: variantId,
         variant_id: variantId,
         sku_id: sku || variantId,
         sku: sku || variantId,
-        title: displayFields.title || `Variant ${idx + 1}`,
-        options: displayFields.options,
+        title: contractedTitle || `Variant ${idx + 1}`,
+        options: contractedDisplay.options,
         price,
         currency,
         pricing: { current: { amount: price, currency } },
@@ -1486,12 +1752,22 @@ function normalizeSeedVariants(seedData, row) {
         in_stock: inStock,
         available: typeof inStock === 'boolean' ? inStock : undefined,
         availability: availability || undefined,
-        option_name: displayFields.option_name,
-        option_value: displayFields.option_value,
+        option_name: contractedDisplay.options.length === 1 ? contractedDisplay.options[0].name : undefined,
+        option_value: contractedDisplay.options.length === 1 ? contractedDisplay.options[0].value : undefined,
         description: description || undefined,
         image_url: imageUrl || undefined,
         images: normalizedImageUrls,
         image_urls: normalizedImageUrls,
+        ...(contractedDisplay.axis_kind ? { axis_kind: contractedDisplay.axis_kind } : {}),
+        ...(contractedDisplay.display_label ? { display_label: contractedDisplay.display_label } : {}),
+        ...(contractedDisplay.visual?.swatch_image_url
+          ? { label_image_url: contractedDisplay.visual.swatch_image_url }
+          : contractedDisplay.visual?.image_url
+            ? { label_image_url: contractedDisplay.visual.image_url }
+            : {}),
+        ...(contractedDisplay.visual?.swatch_image_url ? { swatch_image_url: contractedDisplay.visual.swatch_image_url } : {}),
+        ...(contractedDisplay.visual ? { visual: contractedDisplay.visual } : {}),
+        ...(contractedDisplay.source_quality_status ? { source_quality_status: contractedDisplay.source_quality_status } : {}),
         ...(swatchHex ? { color_hex: swatchHex, swatch: { hex: swatchHex } } : {}),
         ...(rawVariant.beauty_meta && typeof rawVariant.beauty_meta === 'object'
           ? { beauty_meta: rawVariant.beauty_meta }
@@ -1509,7 +1785,20 @@ function canonicalizeExternalSeedSnapshot(seedData, row, options = {}) {
   const snapshot = ensureJsonObject(nextSeedData.snapshot);
   const canonicalVariants = normalizeSeedVariants(nextSeedData, row);
   if (canonicalVariants.length > 0) {
+    nextSeedData.variants = cloneJsonValue(canonicalVariants);
     snapshot.variants = cloneJsonValue(canonicalVariants);
+    if (nextSeedData.product && typeof nextSeedData.product === 'object' && Array.isArray(nextSeedData.product.variants)) {
+      nextSeedData.product = {
+        ...nextSeedData.product,
+        variants: cloneJsonValue(canonicalVariants),
+      };
+    }
+    if (snapshot.product && typeof snapshot.product === 'object' && Array.isArray(snapshot.product.variants)) {
+      snapshot.product = {
+        ...snapshot.product,
+        variants: cloneJsonValue(canonicalVariants),
+      };
+    }
   } else if (!Array.isArray(snapshot.variants)) {
     snapshot.variants = [];
   }

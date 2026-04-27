@@ -1,7 +1,7 @@
 const { query } = require('../db');
 const { auditExternalSeedRow, detectGenericTemplateDescription } = require('./externalSeedContentAudit');
 const { lookupExternalSeedImageOverride } = require('./externalSeedImageOverrides');
-const { ensureJsonObject, collectSeedImageUrls, normalizeSeedVariants } = require('./externalSeedProducts');
+const { ensureJsonObject, collectSeedImageUrls, canonicalizeExternalSeedSnapshot } = require('./externalSeedProducts');
 const { enrichExternalSeedRowIngredients } = require('./externalSeedIngredientEnrichment');
 const { buildExternalSeedRecallDoc } = require('./externalSeedRecall');
 const {
@@ -18,6 +18,7 @@ const SEED_CORRECTION_TYPE = Object.freeze({
   normalizeBeautyMinorUnitPrice: 'normalize_beauty_minor_unit_price',
   applyManualImageOverride: 'apply_manual_image_override',
   clearGenericTemplateDescription: 'clear_generic_template_description',
+  normalizeVariantDisplayContract: 'normalize_variant_display_contract',
   markBlockedNoProductUrls: 'mark_blocked_no_product_urls',
 });
 
@@ -32,6 +33,23 @@ function normalizeUrlLike(value) {
 
 function cloneJson(value) {
   return JSON.parse(JSON.stringify(value || null));
+}
+
+function stripPostgresNulBytes(value) {
+  return String(value || '').replace(/\u0000/g, '');
+}
+
+function sanitizeJsonForPostgres(value) {
+  if (typeof value === 'string') return stripPostgresNulBytes(value);
+  if (Array.isArray(value)) return value.map((item) => sanitizeJsonForPostgres(item));
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(
+    Object.entries(value).map(([key, item]) => [stripPostgresNulBytes(key), sanitizeJsonForPostgres(item)]),
+  );
+}
+
+function stringifyJsonForPostgres(value) {
+  return JSON.stringify(sanitizeJsonForPostgres(value)).replace(/\\u0000/gi, '');
 }
 
 function refreshDerivedRecall(nextRow) {
@@ -99,6 +117,144 @@ function loadSnapshot(row) {
   return { seedData, snapshot };
 }
 
+function normalizeVariantOptionName(value) {
+  return normalizeNonEmptyString(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function normalizeVariantOptionValue(value) {
+  return normalizeNonEmptyString(value).replace(/\s+/g, ' ');
+}
+
+function variantCollections(row) {
+  const { seedData, snapshot } = loadSnapshot(row);
+  return [
+    snapshot.variants,
+    seedData.variants,
+    snapshot.product?.variants,
+    seedData.product?.variants,
+    snapshot.skus,
+    seedData.skus,
+  ].filter((collection) => Array.isArray(collection));
+}
+
+function collectVariantOptionRows(row) {
+  const rows = [];
+  for (const variants of variantCollections(row)) {
+    for (const variant of variants) {
+      if (!variant || typeof variant !== 'object') continue;
+      const directName = normalizeVariantOptionName(variant.option_name || variant.optionName);
+      const directValue = normalizeVariantOptionValue(variant.option_value || variant.optionValue);
+      if (directName || directValue) rows.push({ variant, name: directName, value: directValue });
+      const options = Array.isArray(variant.options) ? variant.options : [];
+      for (const option of options) {
+        if (!option || typeof option !== 'object') continue;
+        const name = normalizeVariantOptionName(option.name || option.option_name || option.label || option.key);
+        const value = normalizeVariantOptionValue(option.value ?? option.option_value ?? option.selected);
+        if (name || value) rows.push({ variant, name, value });
+      }
+    }
+  }
+  return rows;
+}
+
+function isVariantIdentityAxisName(name) {
+  return [
+    'offer',
+    'sku',
+    'sku id',
+    'variant sku',
+    'barcode',
+    'upc',
+    'ean',
+    'gtin',
+    'product id',
+    'variant id',
+    'title',
+  ].includes(name);
+}
+
+function isLocaleLikeVariantValue(value) {
+  return ['us', 'usa', 'uk', 'eu', 'fr', 'de', 'es', 'it', 'ca', 'au', 'jp', 'kr', 'cn'].includes(
+    normalizeVariantOptionName(value),
+  );
+}
+
+function looksLikeGenericSizeOrFormatValue(value) {
+  const normalized = normalizeVariantOptionValue(value);
+  if (!normalized) return false;
+  return (
+    /\b\d+(?:\.\d+)?\s*(ml|m l|g|kg|oz|fl oz|l|lb|lbs|mm|cm)\b/i.test(normalized) ||
+    /\b(pack of|set of)\s*\d+\b/i.test(normalized) ||
+    /\b\d+\s*-?\s*(pack|ct|count|pcs|pieces)\b/i.test(normalized) ||
+    /\b(refill|travel size|full size|mini|jumbo|regular|single)\b/i.test(normalized)
+  );
+}
+
+function isGenericVariantDisplayAxisName(name) {
+  return [
+    'option',
+    'variant',
+    'variants',
+    'selection',
+    'choose a size',
+    'choose size',
+    'select size',
+    'ml',
+    'm l',
+    'ct',
+    'ct.',
+    'sachet',
+    'unité',
+    'unit',
+    'voume',
+  ].includes(name);
+}
+
+function hasVariantVisualEvidence(variant) {
+  return Boolean(
+    normalizeNonEmptyString(
+      variant?.label_image_url ||
+        variant?.labelImageUrl ||
+        variant?.swatch_image_url ||
+        variant?.swatchImageUrl ||
+        variant?.image_url ||
+        variant?.image ||
+        variant?.swatch?.image_url ||
+        variant?.swatch?.imageUrl,
+    ) ||
+      normalizeNonEmptyString(
+        variant?.color_hex ||
+          variant?.colorHex ||
+          variant?.shade_hex ||
+          variant?.shadeHex ||
+          variant?.swatch_color ||
+          variant?.swatchColor ||
+          variant?.swatch?.hex,
+      )
+  );
+}
+
+function hasVariantDisplayContractDrift(row) {
+  return collectVariantOptionRows(row).some((item) => {
+    if (!item.name || !item.value) return false;
+    if (isVariantIdentityAxisName(item.name)) return true;
+    if (['color', 'colour', 'shade', 'tone', 'hue'].includes(item.name) && isLocaleLikeVariantValue(item.value)) {
+      return true;
+    }
+    if (isGenericVariantDisplayAxisName(item.name)) return true;
+    if (['option', 'variant', 'selection'].includes(item.name) && looksLikeGenericSizeOrFormatValue(item.value)) {
+      return true;
+    }
+    if (['color', 'colour', 'shade', 'tone', 'hue'].includes(item.name) && !hasVariantVisualEvidence(item.variant)) {
+      return true;
+    }
+    return false;
+  });
+}
+
 async function loadExternalSeedRowById(seedId) {
   const res = await query(
     `
@@ -129,19 +285,22 @@ async function loadExternalSeedRowById(seedId) {
   return res.rows?.[0] || null;
 }
 
-async function persistExternalSeedRow(row) {
+async function persistExternalSeedRow(row, options = {}) {
   const recallRefreshedRow = refreshDerivedRecall(row);
-  const enrichment = await enrichExternalSeedRowIngredients({
-    row: recallRefreshedRow,
-    ingredientId:
-      normalizeNonEmptyString(recallRefreshedRow?.ingredient_id) ||
-      normalizeNonEmptyString(ensureJsonObject(recallRefreshedRow?.seed_data).ingredient_id),
-    ingredientName:
-      normalizeNonEmptyString(recallRefreshedRow?.ingredient_name) ||
-      normalizeNonEmptyString(ensureJsonObject(recallRefreshedRow?.seed_data).ingredient_name),
-  });
+  const enrichment = options.skipIngredientEnrichment
+    ? null
+    : await enrichExternalSeedRowIngredients({
+        row: recallRefreshedRow,
+        ingredientId:
+          normalizeNonEmptyString(recallRefreshedRow?.ingredient_id) ||
+          normalizeNonEmptyString(ensureJsonObject(recallRefreshedRow?.seed_data).ingredient_id),
+        ingredientName:
+          normalizeNonEmptyString(recallRefreshedRow?.ingredient_name) ||
+          normalizeNonEmptyString(ensureJsonObject(recallRefreshedRow?.seed_data).ingredient_name),
+      });
   const persistedRow =
     enrichment?.row && typeof enrichment.row === 'object' ? refreshDerivedRecall(enrichment.row) : recallRefreshedRow;
+  const sanitizedSeedData = sanitizeJsonForPostgres(ensureJsonObject(persistedRow.seed_data));
   await query(
     `
       UPDATE external_product_seeds
@@ -159,14 +318,14 @@ async function persistExternalSeedRow(row) {
     `,
     [
       persistedRow.id,
-      normalizeNonEmptyString(persistedRow.title),
-      normalizeUrlLike(persistedRow.canonical_url),
-      normalizeUrlLike(persistedRow.destination_url),
-      normalizeNonEmptyString(persistedRow.image_url),
+      stripPostgresNulBytes(normalizeNonEmptyString(persistedRow.title)),
+      stripPostgresNulBytes(normalizeUrlLike(persistedRow.canonical_url)),
+      stripPostgresNulBytes(normalizeUrlLike(persistedRow.destination_url)),
+      stripPostgresNulBytes(normalizeNonEmptyString(persistedRow.image_url)),
       persistedRow.price_amount ?? null,
-      normalizeNonEmptyString(persistedRow.price_currency),
-      normalizeNonEmptyString(persistedRow.availability),
-      JSON.stringify(ensureJsonObject(persistedRow.seed_data)),
+      stripPostgresNulBytes(normalizeNonEmptyString(persistedRow.price_currency)),
+      stripPostgresNulBytes(normalizeNonEmptyString(persistedRow.availability)),
+      stringifyJsonForPostgres(sanitizedSeedData),
     ],
   );
   return loadExternalSeedRowById(persistedRow.id);
@@ -350,6 +509,17 @@ function applyBeautyMinorUnitPriceNormalization(row) {
   return { changed, row: nextRow };
 }
 
+function applyVariantDisplayContractNormalization(row) {
+  const nextRow = cloneJson(row);
+  const before = JSON.stringify(ensureJsonObject(nextRow.seed_data));
+  nextRow.seed_data = canonicalizeExternalSeedSnapshot(nextRow.seed_data, nextRow, { stripLegacy: false });
+  const after = JSON.stringify(ensureJsonObject(nextRow.seed_data));
+  return {
+    changed: before !== after,
+    row: before !== after ? nextRow : row,
+  };
+}
+
 function buildSeedCorrectionPlan(row, auditResult = auditExternalSeedRow(row)) {
   const findings = Array.isArray(auditResult?.findings) ? auditResult.findings : [];
   const anomalyTypes = new Set(findings.map((finding) => normalizeNonEmptyString(finding?.anomaly_type)));
@@ -388,6 +558,9 @@ function buildSeedCorrectionPlan(row, auditResult = auditExternalSeedRow(row)) {
   }
   if (anomalyTypes.has('beauty_minor_unit_price_suspected')) {
     actions.push({ correction_type: SEED_CORRECTION_TYPE.normalizeBeautyMinorUnitPrice, auto_applied: true });
+  }
+  if (hasVariantDisplayContractDrift(row)) {
+    actions.push({ correction_type: SEED_CORRECTION_TYPE.normalizeVariantDisplayContract, auto_applied: true });
   }
 
   return {
@@ -436,6 +609,8 @@ async function applySeedCorrectionAction(row, action, options = {}) {
     applied = applyGenericTemplateClear(row);
   } else if (correctionType === SEED_CORRECTION_TYPE.normalizeBeautyMinorUnitPrice) {
     applied = applyBeautyMinorUnitPriceNormalization(row);
+  } else if (correctionType === SEED_CORRECTION_TYPE.normalizeVariantDisplayContract) {
+    applied = applyVariantDisplayContractNormalization(row);
   } else if (correctionType === SEED_CORRECTION_TYPE.applyManualImageOverride) {
     applied = applyManualImageOverride(row);
   } else if (correctionType === SEED_CORRECTION_TYPE.markBlockedNoProductUrls) {
@@ -457,7 +632,9 @@ async function applySeedCorrectionAction(row, action, options = {}) {
     };
   }
 
-  const persistedRow = await persistExternalSeedRow(applied.row);
+  const persistedRow = await persistExternalSeedRow(applied.row, {
+    skipIngredientEnrichment: Boolean(options.skipIngredientEnrichment),
+  });
   return {
     changed: true,
     row: persistedRow || applied.row,
@@ -470,17 +647,29 @@ async function applySeedCorrectionAction(row, action, options = {}) {
 async function runSeedCorrectionCycle(row, options = {}) {
   const initialAudit = auditExternalSeedRow(row);
   const plan = buildSeedCorrectionPlan(row, initialAudit);
+  const allowedCorrectionTypes = Array.isArray(options.correctionTypes)
+    ? new Set(options.correctionTypes.map(normalizeNonEmptyString).filter(Boolean))
+    : null;
   let workingRow = row;
   const actions = [];
 
-  for (const action of plan.actions) {
+  const plannedActions = allowedCorrectionTypes
+    ? plan.actions.filter((action) => allowedCorrectionTypes.has(normalizeNonEmptyString(action?.correction_type)))
+    : plan.actions;
+
+  for (const action of plannedActions) {
     const result = await applySeedCorrectionAction(workingRow, action, options);
     workingRow = result.row || workingRow;
     actions.push(result);
   }
 
   let finalAudit = auditExternalSeedRow(workingRow);
-  if (finalAudit.findings.some((finding) => normalizeNonEmptyString(finding?.anomaly_type) === 'zero_variants')) {
+  const canApplyBlockedMarker =
+    !allowedCorrectionTypes || allowedCorrectionTypes.has(SEED_CORRECTION_TYPE.markBlockedNoProductUrls);
+  if (
+    canApplyBlockedMarker &&
+    finalAudit.findings.some((finding) => normalizeNonEmptyString(finding?.anomaly_type) === 'zero_variants')
+  ) {
     const markResult = await applySeedCorrectionAction(
       workingRow,
       { correction_type: SEED_CORRECTION_TYPE.markBlockedNoProductUrls, auto_applied: true },
@@ -507,6 +696,8 @@ module.exports = {
   mergePreviewRow,
   refreshDerivedRecall,
   applyBeautyMinorUnitPriceNormalization,
+  applyVariantDisplayContractNormalization,
+  hasVariantDisplayContractDrift,
   applySeedCorrectionAction,
   runSeedCorrectionCycle,
 };

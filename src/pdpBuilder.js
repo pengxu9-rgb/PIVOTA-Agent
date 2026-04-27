@@ -817,6 +817,88 @@ function getProductOptionNames(product) {
   return normalized;
 }
 
+const NON_DISPLAYABLE_VARIANT_OPTION_NAMES = new Set([
+  'offer',
+  'sku',
+  'sku id',
+  'variant sku',
+  'barcode',
+  'upc',
+  'ean',
+  'gtin',
+  'product id',
+  'variant id',
+]);
+
+const GENERIC_VARIANT_OPTION_NAMES = new Set([
+  'option',
+  'variant',
+  'title',
+  'selection',
+]);
+
+function normalizeBuilderOptionName(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function isLikelyIdentityOptionValue(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (!normalized) return true;
+  const compact = normalized.replace(/[\s-]+/g, '');
+  if (/^\d{8,14}$/.test(compact)) return true;
+  return /^[a-z]{0,4}\d{6,}[a-z0-9-]*$/i.test(normalized) && normalized.length >= 8 && !/\s/.test(normalized);
+}
+
+function isDisplayableBuilderVariantOption(option) {
+  const name = normalizeBuilderOptionName(option?.name);
+  const value = asNonEmptyString(option?.value);
+  if (!name || !value) return false;
+  if (/^(default|default title|title|variant)$/i.test(value)) return false;
+  if (NON_DISPLAYABLE_VARIANT_OPTION_NAMES.has(name)) return false;
+  if (GENERIC_VARIANT_OPTION_NAMES.has(name) && isLikelyIdentityOptionValue(value)) return false;
+  return true;
+}
+
+function filterBuilderDisplayableVariantOptions(options) {
+  return (Array.isArray(options) ? options : []).filter((option) => isDisplayableBuilderVariantOption(option));
+}
+
+function variantHasVisualEvidence(variant) {
+  return Boolean(
+    normalizePdpImageUrl(
+      variant?.label_image_url ||
+        variant?.swatch_image_url ||
+        variant?.image_url ||
+        variant?.image,
+    ) ||
+      normalizeHexColor(
+        variant?.swatch?.hex ||
+          variant?.swatch_color ||
+          variant?.color_hex ||
+          variant?.shade_hex,
+      ),
+  );
+}
+
+function variantHasDisplayableChoice(variant) {
+  const options = filterBuilderDisplayableVariantOptions(variant?.options);
+  if (options.length === 0) return false;
+  const hasShadeAxis = options.some((option) => ['shade', 'color', 'colour', 'tone', 'hue'].includes(normalizeBuilderOptionName(option?.name)));
+  if (hasShadeAxis && !variantHasVisualEvidence(variant)) return false;
+  return true;
+}
+
+function shouldRenderVariantSelector(product, variants, productLineOptions) {
+  if (Array.isArray(productLineOptions) && productLineOptions.length > 1) return true;
+  if (!Array.isArray(variants) || variants.length <= 1) return false;
+  const displayableCount = variants.filter((variant) => variantHasDisplayableChoice(variant)).length;
+  return displayableCount > 1;
+}
+
 function toVariantPrice(input, currency) {
   if (!input) return undefined;
   const amount =
@@ -944,17 +1026,34 @@ function buildVariants(product) {
       ...(Array.isArray(v.image_urls) ? v.image_urls : []),
     ]);
 
+    const filteredOptions = filterBuilderDisplayableVariantOptions(options);
     return {
       variant_id: String(variantId),
       sku_id: attrs.sku || v.sku_id || v.sku || v.sku_code,
       title: String(title),
-      options,
+      options: filteredOptions,
       swatch: swatchHex ? { hex: swatchHex } : undefined,
       price: toVariantPrice(v.price || v.pricing, currency),
       availability,
       image_url: variantImages[0],
+      label_image_url: normalizePdpImageUrl(
+        v.label_image_url ||
+          v.swatch_image_url ||
+          v.thumbnail_url ||
+          v.thumbnail ||
+          v.swatch?.image_url ||
+          v.swatch?.imageUrl ||
+          (filteredOptions.some((option) =>
+            ['shade', 'color', 'colour', 'tone', 'hue'].includes(normalizeBuilderOptionName(option?.name)),
+          )
+            ? variantImages[0]
+            : undefined),
+      ),
       images: variantImages,
       image_urls: variantImages,
+      axis_kind: asNonEmptyString(v.axis_kind || v.axisKind),
+      display_label: asNonEmptyString(v.display_label || v.displayLabel),
+      source_quality_status: asNonEmptyString(v.source_quality_status || v.sourceQualityStatus),
       ...pickSavingsPresentationFields(v),
     };
   });
@@ -2692,7 +2791,7 @@ function buildPdpPayload(args) {
       },
     });
   }
-  if (variants.length > 1 || productLineOptions.length > 1) {
+  if (shouldRenderVariantSelector(product, variants, productLineOptions)) {
     modules.push({
       module_id: 'm_variant',
       type: 'variant_selector',

@@ -561,6 +561,34 @@ describe('pdpIdentityGraph', () => {
     expect(saltedCaramel.sellable_item_group_id).not.toBe(fentyFreshShimmering.sellable_item_group_id);
   });
 
+  test('buildIdentityListingFromProduct suppresses locale-like color axes for skincare refill PDPs', () => {
+    const { buildIdentityListingFromProduct } = require('../../src/services/pdpIdentityGraph');
+
+    const listing = buildIdentityListingFromProduct({
+      merchantId: 'external_seed',
+      productId: 'ext_fenty_refill_locale',
+      sourceKind: 'external_seed',
+      product: {
+        title: 'Hydra Vizor Broad Spectrum Mineral SPF 30 Sunscreen Moisturizer Refill',
+        brand: 'Fenty Skin',
+        category: 'Skincare',
+        product_type: 'Moisturizer',
+        source_url: 'https://fentybeauty.com/products/hydra-vizor-broad-spectrum-mineral-spf-30-sunscreen-moisturizer-refill',
+        variants: [
+          {
+            variant_id: 'v1',
+            title: 'US',
+            option_name: 'Color',
+            option_value: 'US',
+          },
+        ],
+      },
+    });
+
+    expect(listing.variant_axes).toEqual({ multi_variant: false });
+    expect(listing.match_basis).not.toContain('variant_axes:color:us');
+  });
+
   test('buildIdentityListingFromProduct groups named shade PDPs for eye and brow color families', () => {
     const { buildIdentityListingFromProduct } = require('../../src/services/pdpIdentityGraph');
 

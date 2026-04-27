@@ -171,8 +171,8 @@ describe('externalSeedProducts helper', () => {
       expect.objectContaining({
         sku: 'SKU-RED-S',
         options: [
-          { name: 'Color', value: 'Red' },
-          { name: 'Size', value: 'S' },
+          expect.objectContaining({ name: 'Color', value: 'Red', axis_kind: 'color' }),
+          expect.objectContaining({ name: 'Size', value: 'S', axis_kind: 'size' }),
         ],
         color_hex: '#ff0000',
         swatch: { hex: '#ff0000' },
@@ -182,8 +182,8 @@ describe('externalSeedProducts helper', () => {
     const product = buildExternalSeedProduct(row);
     expect(product.variants).toHaveLength(2);
     expect(product.variants[0].options).toEqual([
-      { name: 'Color', value: 'Red' },
-      { name: 'Size', value: 'S' },
+      expect.objectContaining({ name: 'Color', value: 'Red' }),
+      expect.objectContaining({ name: 'Size', value: 'S' }),
     ]);
   });
 
@@ -246,8 +246,8 @@ describe('externalSeedProducts helper', () => {
         sku: '62835',
         title: '30ml / Single',
         options: [
-          { name: 'Size', value: '30ml' },
-          { name: 'Option', value: 'Single' },
+          expect.objectContaining({ name: 'Size', value: '30ml', axis_kind: 'volume' }),
+          expect.objectContaining({ name: 'Pack', value: 'Single', axis_kind: 'pack' }),
         ],
       }),
     );
@@ -255,8 +255,8 @@ describe('externalSeedProducts helper', () => {
       expect.objectContaining({
         title: '30ml / 2-Pack',
         options: [
-          { name: 'Size', value: '30ml' },
-          { name: 'Option', value: '2-Pack' },
+          expect.objectContaining({ name: 'Size', value: '30ml', axis_kind: 'volume' }),
+          expect.objectContaining({ name: 'Pack', value: '2-Pack', axis_kind: 'pack' }),
         ],
       }),
     );
@@ -264,9 +264,195 @@ describe('externalSeedProducts helper', () => {
       expect.objectContaining({
         title: '75ml / Single',
         options: [
-          { name: 'Size', value: '75ml' },
-          { name: 'Option', value: 'Single' },
+          expect.objectContaining({ name: 'Size', value: '75ml', axis_kind: 'volume' }),
+          expect.objectContaining({ name: 'Pack', value: 'Single', axis_kind: 'pack' }),
         ],
+      }),
+    );
+  });
+
+  test('normalizes generic Variant volume rows into displayable size options', () => {
+    const row = {
+      id: 'eps_tf_perfume_100ml',
+      external_product_id: 'ext_tf_perfume_100ml',
+      canonical_url: 'https://example.com/products/perfume',
+      destination_url: 'https://example.com/products/perfume',
+      title: 'Perfume',
+      seed_data: {
+        category: 'Fragrance',
+        snapshot: {
+          variants: [
+            {
+              id: 'v1',
+              title: '100.0 ml',
+              option_name: 'Variant',
+              option_value: '100.0 ml',
+              image_url: 'https://example.com/perfume-100ml.jpg',
+            },
+          ],
+        },
+      },
+    };
+
+    const variants = normalizeSeedVariants(row.seed_data, row);
+    expect(variants[0]).toEqual(
+      expect.objectContaining({
+        title: '100.0 ml',
+        option_name: 'Size',
+        option_value: '100.0 ml',
+        axis_kind: 'volume',
+        options: [{ name: 'Size', value: '100.0 ml', axis_kind: 'volume' }],
+      }),
+    );
+  });
+
+  test('normalizes merchant-specific size/count axis labels', () => {
+    const variants = normalizeSeedVariants(
+      {
+        snapshot: {
+          variants: [
+            {
+              id: 'v1',
+              option_name: 'Choose a size',
+              option_value: 'Full (1.7 FL OZ)',
+            },
+            {
+              id: 'v2',
+              option_name: 'Ct.',
+              option_value: '60 Patches',
+            },
+            {
+              id: 'v3',
+              option_name: 'Voume',
+              option_value: '80 ml',
+            },
+          ],
+        },
+      },
+      { title: 'Skincare set' },
+    );
+
+    expect(variants[0]).toEqual(
+      expect.objectContaining({
+        option_name: 'Size',
+        option_value: 'Full (1.7 FL OZ)',
+        axis_kind: 'volume',
+      }),
+    );
+    expect(variants[1]).toEqual(
+      expect.objectContaining({
+        option_name: 'Pack',
+        option_value: '60 Patches',
+        axis_kind: 'pack',
+      }),
+    );
+    expect(variants[2]).toEqual(
+      expect.objectContaining({
+        option_name: 'Size',
+        option_value: '80 ml',
+        axis_kind: 'volume',
+      }),
+    );
+  });
+
+  test('normalizes generic Variant shade rows for tinted products when visual evidence exists', () => {
+    const variants = normalizeSeedVariants(
+      {
+        snapshot: {
+          variants: [
+            {
+              id: 'v1',
+              option_name: 'Variant',
+              option_value: '458 POP ROSE GLOW',
+              image_url: 'https://example.com/pop-rose-glow.jpg',
+            },
+          ],
+        },
+      },
+      { title: 'KISSKISS BEE GLOW honey tint balm' },
+    );
+
+    expect(variants[0]).toEqual(
+      expect.objectContaining({
+        option_name: 'Shade',
+        option_value: '458 POP ROSE GLOW',
+        axis_kind: 'shade',
+        label_image_url: 'https://example.com/pop-rose-glow.jpg',
+        source_quality_status: 'captured',
+      }),
+    );
+  });
+
+  test('suppresses wrong Color locale axis for non-tinted skincare products', () => {
+    const row = {
+      id: 'eps_fenty_refill',
+      external_product_id: 'ext_fenty_refill',
+      canonical_url: 'https://example.com/products/hydra-vizor-refill',
+      destination_url: 'https://example.com/products/hydra-vizor-refill',
+      title: 'Hydra Vizor Broad Spectrum Mineral SPF 30 Sunscreen Moisturizer Refill',
+      seed_data: {
+        category: 'Skincare',
+        product_type: 'Moisturizer',
+        snapshot: {
+          variants: [
+            {
+              id: 'v1',
+              title: 'US',
+              option_name: 'Color',
+              option_value: 'US',
+              image_url: 'https://example.com/refill-us.jpg',
+            },
+          ],
+        },
+      },
+    };
+
+    const variants = normalizeSeedVariants(row.seed_data, row);
+    expect(variants[0]).toEqual(
+      expect.objectContaining({
+        title: 'Default',
+        options: [],
+        source_quality_status: 'blocked',
+      }),
+    );
+    expect(variants[0].option_name).toBeUndefined();
+    expect(variants[0].option_value).toBeUndefined();
+  });
+
+  test('preserves tinted shade variants with visual evidence', () => {
+    const row = {
+      id: 'eps_boj_dn350',
+      external_product_id: 'ext_boj_dn350',
+      canonical_url: 'https://example.com/products/tinted-fluid-sunscreen',
+      destination_url: 'https://example.com/products/tinted-fluid-sunscreen',
+      title: 'Daily Tinted Fluid Sunscreen',
+      seed_data: {
+        category: 'Sunscreen',
+        product_type: 'Tinted Sunscreen',
+        snapshot: {
+          variants: [
+            {
+              id: 'v1',
+              title: 'DN350',
+              option_name: 'Shade',
+              option_value: 'DN350',
+              swatch_image_url: 'https://example.com/dn350-swatch.png',
+            },
+          ],
+        },
+      },
+    };
+
+    const variants = normalizeSeedVariants(row.seed_data, row);
+    expect(variants[0]).toEqual(
+      expect.objectContaining({
+        title: 'DN350',
+        option_name: 'Shade',
+        option_value: 'DN350',
+        axis_kind: 'shade',
+        source_quality_status: 'captured',
+        swatch_image_url: 'https://example.com/dn350-swatch.png',
+        label_image_url: 'https://example.com/dn350-swatch.png',
       }),
     );
   });
@@ -320,14 +506,14 @@ describe('externalSeedProducts helper', () => {
       expect.arrayContaining([
         expect.objectContaining({
           variant_id: '41148734668848',
-          options: [{ name: 'Option', value: 'Full Size' }],
-          option_name: 'Option',
+          options: [expect.objectContaining({ name: 'Format', value: 'Full Size', axis_kind: 'format' })],
+          option_name: 'Format',
           option_value: 'Full Size',
         }),
         expect.objectContaining({
           variant_id: '41148734701616',
-          options: [{ name: 'Option', value: 'Refill' }],
-          option_name: 'Option',
+          options: [expect.objectContaining({ name: 'Format', value: 'Refill', axis_kind: 'format' })],
+          option_name: 'Format',
           option_value: 'Refill',
         }),
       ]),
@@ -474,8 +660,8 @@ describe('externalSeedProducts helper', () => {
     const variants = normalizeSeedVariants(row.seed_data, row);
     expect(variants).toHaveLength(1);
     expect(variants[0].options).toEqual([
-      { name: 'Color', value: '35 Rose Topaz' },
-      { name: 'Size', value: '8.0 g' },
+      expect.objectContaining({ name: 'Color', value: '35 Rose Topaz', axis_kind: 'color' }),
+      expect.objectContaining({ name: 'Size', value: '8.0 g', axis_kind: 'volume' }),
     ]);
     expect(variants[0].image_url).toBe(
       'https://cdn.shopify.com/s/files/1/2139/2967/files/Rose_Topaz_1200_4ee4c5e8-a218-4e0a-8af8-2db3c98f0c79.png?v=1750422282',
@@ -581,7 +767,7 @@ describe('externalSeedProducts helper', () => {
     expect(out.snapshot.variants[0]).toEqual(
       expect.objectContaining({
         sku: 'SKU-WIX-1',
-        options: [{ name: 'Size', value: '30ml' }],
+        options: [expect.objectContaining({ name: 'Size', value: '30ml', axis_kind: 'volume' })],
       }),
     );
     expect(out.variants).toBeUndefined();

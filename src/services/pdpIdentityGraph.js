@@ -433,6 +433,22 @@ const SHADE_FAMILY_CONTEXT_TOKENS = Object.freeze([
   'tone',
 ]);
 
+const LOCALE_LIKE_AXIS_VALUES = new Set([
+  'us',
+  'usa',
+  'uk',
+  'eu',
+  'fr',
+  'de',
+  'es',
+  'it',
+  'ca',
+  'au',
+  'jp',
+  'kr',
+  'cn',
+]);
+
 function normalizeShadeCodeToken(value) {
   const compact = normalizeAxisValue(value).replace(/[^a-z0-9]+/gi, '').toLowerCase();
   if (!compact) return '';
@@ -500,6 +516,46 @@ function hasShadeFamilyContext(product) {
     const escaped = normalizedToken.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
     return new RegExp(`\\b${escaped}\\b`, 'i').test(haystack);
   });
+}
+
+function collectVariantCategoryContext(product) {
+  return normalizeTitleToken(
+    collectDeepStrings([
+      product?.title,
+      product?.name,
+      product?.display_name,
+      product?.subtitle,
+      product?.description,
+      product?.product_type,
+      product?.category,
+      product?.category_path,
+      product?.department,
+      product?.tags,
+    ]).join(' '),
+  );
+}
+
+function allowsColorAxisForProduct(product) {
+  const haystack = collectVariantCategoryContext(product);
+  if (!haystack) return false;
+  return /\b(tinted?|skin tint|shade|color correct|colour correct|tone up|tone correct|lip tint|lipstick|lip gloss|lip oil|lip balm|foundation|concealer|bronzer|blush|highlighter|powder|eyeshadow|eyeliner|brow|mascara|makeup|cosmetic)\b/i.test(
+    haystack,
+  );
+}
+
+function isSkincareLikeProduct(product) {
+  const haystack = collectVariantCategoryContext(product);
+  if (!haystack) return false;
+  return /\b(serum|essence|ampoule|moisturi[sz]er|cream|cleanser|toner|lotion|balm|mask|treatment|sunscreen|spf|sun protection|skin care|skincare|barrier|retinol|niacinamide|vitamin c|acid)\b/i.test(
+    haystack,
+  );
+}
+
+function shouldSuppressColorAxisValue(product, value) {
+  const normalized = normalizeAxisValue(value).toLowerCase();
+  if (!normalized) return true;
+  if (LOCALE_LIKE_AXIS_VALUES.has(normalized)) return true;
+  return false;
 }
 
 function extractMultiPageShadeFamilyCandidate(product) {
@@ -796,11 +852,13 @@ function extractVariantAxes(product) {
     inferredGenericAxis.volume || parseQuantityToken(joined, ['ml', 'm l', 'g', 'kg', 'oz', 'fl oz']);
   const pack = inferredGenericAxis.pack || parsePackToken(joined);
   const shadeFamily = extractMultiPageShadeFamilyCandidate(product);
-  const color = parseNamedAxisFromOptions(product, ['color', 'colour']) || inferredGenericAxis.color;
-  const shade =
+  const rawColor = parseNamedAxisFromOptions(product, ['color', 'colour']) || inferredGenericAxis.color;
+  const rawShade =
     parseNamedAxisFromOptions(product, ['shade', 'tone', 'hue']) ||
     inferredGenericAxis.shade ||
-    (!color ? shadeFamily?.value : '');
+    (!rawColor ? shadeFamily?.value : '');
+  const color = shouldSuppressColorAxisValue(product, rawColor) ? '' : rawColor;
+  const shade = shouldSuppressColorAxisValue(product, rawShade) ? '' : rawShade;
   const normalized = {
     ...(size ? { size } : {}),
     ...(volume ? { volume } : {}),
@@ -1307,20 +1365,24 @@ function readListingSwatchData(listing, axis = '', value = '') {
   const variantCandidates = asArray(payload.variants);
   let swatchImageUrl = readSwatchImageUrlFromObject(payload);
   let swatchColor = readSwatchHexFromObject(payload);
+  let sourceQualityStatus = swatchImageUrl || swatchColor ? 'captured' : '';
 
   for (const variant of variantCandidates) {
     if (!swatchImageUrl) swatchImageUrl = readSwatchImageUrlFromObject(variant);
     if (!swatchColor) swatchColor = readSwatchHexFromObject(variant);
+    if ((swatchImageUrl || swatchColor) && !sourceQualityStatus) sourceQualityStatus = 'captured';
     if (swatchImageUrl && swatchColor) break;
   }
 
   if (!swatchColor && ['shade', 'color'].includes(axis)) {
     swatchColor = inferShadeCodeSwatchHex(value);
+    if (swatchColor && !sourceQualityStatus) sourceQualityStatus = 'inferred';
   }
 
   return {
     swatchImageUrl,
     swatchColor,
+    sourceQualityStatus: sourceQualityStatus || 'blocked',
   };
 }
 
@@ -1402,8 +1464,10 @@ function buildProductLineOptions({ lineListings, baseListing } = {}) {
     if (!productId) continue;
     const payload = asPlainObject(listing?.source_payload) || {};
     const firstImage = buildImageEntriesForListing(listing, 'product_line_option')[0];
-    const { swatchImageUrl, swatchColor } = readListingSwatchData(listing, axis, value);
+    const { swatchImageUrl, swatchColor, sourceQualityStatus } = readListingSwatchData(listing, axis, value);
     const selected = isSameListingIdentity(listing, baseListing);
+    const hasVisualEvidence = Boolean(swatchImageUrl || swatchColor || firstImage?.url);
+    if (['shade', 'color'].includes(axis) && !hasVisualEvidence) continue;
     const option = {
       option_id: asString(listing?.source_listing_ref) || buildSourceListingRef({ merchantId, productId }),
       option_name: optionName,
@@ -1414,6 +1478,7 @@ function buildProductLineOptions({ lineListings, baseListing } = {}) {
       product_id: productId,
       title: firstNonEmptyString(payload.title, payload.name, listing?.title) || undefined,
       image_url: firstImage?.url,
+      source_quality_status: sourceQualityStatus,
       ...(swatchImageUrl ? { swatch_image_url: swatchImageUrl, label_image_url: swatchImageUrl } : {}),
       ...(swatchColor ? { swatch_color: swatchColor, color_hex: swatchColor, swatch: { hex: swatchColor } } : {}),
       selected,
