@@ -8264,8 +8264,15 @@ test('__internal: beauty local handoff external stage uses backend authority as 
       (Array.isArray(out.products) ? out.products : []).map((item) => item?.matched_role_id),
       ['oil_control_treatment', 'lightweight_moisturizer', 'daily_sunscreen'],
     );
+    assert.ok(
+      calls.some((call) =>
+        call.kind === 'local_external_seed' &&
+        call.query === 'gel cream moisturizer' &&
+        call.preferredStep === 'moisturizer'),
+      JSON.stringify(calls),
+    );
     assert.equal(
-      calls.some((call) => call.kind === 'local_external_seed'),
+      calls.some((call) => call.kind === 'local_external_seed' && call.query === 'sunscreen oily skin'),
       false,
       JSON.stringify(calls),
     );
@@ -8293,6 +8300,113 @@ test('__internal: beauty local handoff external stage uses backend authority as 
     assert.equal(sunscreenAttempt.external_seed_authority_backend_primary, true);
     assert.equal(sunscreenAttempt.local_external_seed_search_skipped, true);
     assert.equal(sunscreenAttempt.local_external_seed_skip_reason, 'backend_authority_primary');
+    const moisturizerExternalAttempt = (out.search_stage_ledger?.primary_search?.query_pack_attempts || [])
+      .find((entry) =>
+        entry?.role_id === 'lightweight_moisturizer' &&
+        entry?.source_scope === 'external_seed' &&
+        entry?.query === 'gel cream moisturizer') || null;
+    assert.ok(moisturizerExternalAttempt);
+    assert.equal(moisturizerExternalAttempt.external_seed_authority_backend_primary, true);
+    assert.equal(moisturizerExternalAttempt.external_seed_authority_peer_used, true);
+    assert.equal(moisturizerExternalAttempt.local_external_seed_authority_peer, true);
+    assert.equal(moisturizerExternalAttempt.local_external_seed_authority_miss, true);
+  } finally {
+    __internal.__resetRouteDependencyOverridesForTest();
+  }
+});
+
+test('__internal: beauty local handoff external stage uses local authority peer after backend timeout', async () => {
+  const { __internal } = loadRoutesFresh();
+  const calls = [];
+  const targetContext = {
+    framework_id: 'recofw_test_oily_backend_timeout_local_peer',
+    primary_role_id: 'oil_control_treatment',
+    routine_mode: 'same_role_comparison',
+    semantic_plan: { routine_mode: 'same_role_comparison', comparison_mode: 'same_role_comparison' },
+    framework_roles: [
+      {
+        role_id: 'oil_control_treatment',
+        rank: 10,
+        preferred_step: 'treatment',
+        label: 'Oil-control treatment',
+        query_terms: ['niacinamide serum oily skin'],
+        fit_keywords: ['oil control', 'shine control', 'niacinamide', 'zinc'],
+        ingredient_hypotheses: ['Niacinamide', 'Zinc PCA'],
+        product_type_hypotheses: ['serum', 'treatment'],
+      },
+    ],
+  };
+
+  __internal.__setRouteDependencyOverridesForTest({
+    searchExternalSeedAuthorityProducts: async (args = {}) => {
+      calls.push({ kind: 'backend_external_seed', query: args.query });
+      return {
+        ok: false,
+        products: [],
+        reason: 'upstream_timeout',
+        source_path: '/agent/v1/products/search',
+        endpoint_kind: 'external_seed_authority_search',
+        transport_owner: 'pivota_backend_products_search',
+      };
+    },
+    searchLocalExternalSeedProducts: async (args = {}) => {
+      calls.push({ kind: 'local_external_seed', query: args.query, preferredStep: args.preferredStep });
+      return {
+        ok: true,
+        products: [
+          {
+            product_id: 'local_oil_control_1',
+            merchant_id: 'external_seed',
+            brand: 'The Ordinary',
+            name: 'Niacinamide 10% + Zinc 1%',
+            display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+            category: 'Serum',
+            product_type: 'Serum',
+            retrieval_source: 'external_seed',
+            short_description: 'A niacinamide and zinc serum for oily skin.',
+            benefit_tags: ['niacinamide', 'oil control', 'zinc'],
+          },
+        ],
+        local_external_seed_search_mode: 'single_query',
+      };
+    },
+    searchInternalProductsPrimitive: async (args = {}) => {
+      calls.push({ kind: 'internal', query: args.query });
+      return { ok: true, products: [] };
+    },
+  });
+
+  try {
+    const out = await __internal.runBeautyMainlineLocalHandoffSearch({
+      ctx: { lang: 'EN' },
+      logger: null,
+      targetContext,
+      profileSummary: { skinType: 'oily', goals: ['oil control'] },
+      timeoutMs: 10000,
+      deadlineMs: Date.now() + 10000,
+    });
+
+    assert.equal(out?.ok, true);
+    assert.deepEqual(
+      (Array.isArray(out.products) ? out.products : []).map((item) => item?.product_id),
+      ['local_oil_control_1'],
+    );
+    assert.ok(
+      calls.some((call) => call.kind === 'backend_external_seed' && call.query === 'niacinamide serum oily skin'),
+      JSON.stringify(calls),
+    );
+    assert.ok(
+      calls.some((call) => call.kind === 'local_external_seed' && call.query === 'niacinamide serum oily skin'),
+      JSON.stringify(calls),
+    );
+    const attempt = (out.search_stage_ledger?.primary_search?.query_pack_attempts || [])
+      .find((entry) => entry?.query === 'niacinamide serum oily skin' && entry?.source_scope === 'external_seed') || null;
+    assert.ok(attempt);
+    assert.equal(attempt.external_seed_authority_backend_primary, true);
+    assert.equal(attempt.external_seed_authority_backend_reason, 'upstream_timeout');
+    assert.equal(attempt.external_seed_authority_peer_used, true);
+    assert.equal(attempt.local_external_seed_authority_peer, true);
+    assert.equal(attempt.primary_transport_owner, 'local_external_seed_search');
   } finally {
     __internal.__resetRouteDependencyOverridesForTest();
   }
