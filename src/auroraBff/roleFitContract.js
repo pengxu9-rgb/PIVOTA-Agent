@@ -809,6 +809,7 @@ function scoreConcernRoleCandidate(row, role, { candidateStep, candidateText = '
     || cosmeticFinishProductShapeMismatchApplied
     || (sunscreenCoverageTintMismatchApplied && !sunscreenCoverageTintSoftTradeoffApplied)
     || sunscreenPortableReapplicationMismatchApplied
+    || sunscreenPortableRoutineMismatchApplied
   ) {
     score = Math.min(score - 0.34, 0.38);
   }
