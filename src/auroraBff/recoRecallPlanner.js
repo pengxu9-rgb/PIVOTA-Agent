@@ -442,18 +442,19 @@ function buildBeautyMainlineRecallPlan({ mode, semanticContract = null, rawQuery
       ...supportRoles.flatMap((role) => {
         const supportPreferredStep = normalizeSemanticStepFamily(role?.preferred_step);
         const supportInternalMaxQueries = supportPreferredStep === 'sunscreen' ? 3 : 2;
+        const supportExternalMaxQueries = supportPreferredStep === 'sunscreen' ? 4 : 2;
         const supportInternalQueries = buildRoleStageQueries(role, {
           allowConcernFallback: false,
           maxQueriesOverride: supportInternalMaxQueries,
         });
         const supportExternalQueries = buildRoleStageQueries(role, {
           allowConcernFallback: false,
-          maxQueriesOverride: 2,
+          maxQueriesOverride: supportExternalMaxQueries,
         });
         const authorityRecallableSupportExternalQueries =
           buildRecallableDailySunscreenSupportExternalQueries(role, {
             concernText: rawQuery,
-            maxQueries: 2,
+            maxQueries: supportExternalMaxQueries,
           });
         const effectiveSupportExternalQueries =
           authorityRecallableSupportExternalQueries.length > 0
@@ -481,7 +482,7 @@ function buildBeautyMainlineRecallPlan({ mode, semanticContract = null, rawQuery
             sourceScope: 'external_seed',
             queries: effectiveSupportExternalQueries,
             concurrency: 1,
-            maxAttemptsForStage: Math.min(effectiveSupportExternalQueries.length || 1, 2),
+            maxAttemptsForStage: Math.min(effectiveSupportExternalQueries.length || 1, supportExternalMaxQueries),
             stopOnViableMatch: true,
             reasonForInclusion: 'framework_support_external_seed',
             runIf: 'if_role_unfilled_after_primary',
@@ -798,7 +799,7 @@ function buildFrameworkRoleQueries(
 
 function buildRecallableDailySunscreenSupportExternalQueries(role = null, {
   concernText = '',
-  maxQueries = 2,
+  maxQueries = 4,
 } = {}) {
   const roleObj = role && typeof role === 'object' && !Array.isArray(role) ? role : null;
   if (!roleObj) return [];
@@ -817,20 +818,46 @@ function buildRecallableDailySunscreenSupportExternalQueries(role = null, {
     .join(' ');
   const oilySignal = /\b(oily skin|oil control|shine control|mattify|mattifying|sebum|greasy)\b/.test(signalText);
   const finishSignal = /\b(under makeup|makeup|pilling|layering|matte|invisible)\b/.test(signalText);
-  const candidates = oilySignal
+  const sharedSupportQueries = buildSupportRoleQueryVariants({
+    roleId: roleObj.role_id,
+    roleLabel: roleObj.label,
+    preferredStep,
+    queryTerms: Array.isArray(roleObj.query_terms) ? roleObj.query_terms : [],
+    fitKeywords: Array.isArray(roleObj.fit_keywords) ? roleObj.fit_keywords : [],
+    semanticFamily: roleObj.semantic_family || '',
+    concernText,
+    maxQueries: 8,
+  });
+  const authorityFirstQueries = oilySignal
     ? [
+        'spf fluid oily skin',
+        'lightweight sunscreen oily skin',
+        'oil control sunscreen',
+        'matte sunscreen',
+        ...(finishSignal ? ['sunscreen under makeup', 'invisible sunscreen'] : []),
         'sunscreen oily skin',
-        finishSignal ? 'matte sunscreen' : 'face sunscreen',
-        'lightweight spf',
-        'spf 50 sunscreen',
+        'face sunscreen',
       ]
     : [
+        'spf fluid',
+        'lightweight sunscreen',
         'face sunscreen',
-        finishSignal ? 'invisible sunscreen' : 'daily sunscreen',
-        'lightweight spf',
+        ...(finishSignal ? ['sunscreen under makeup', 'invisible sunscreen'] : []),
+        'daily sunscreen',
         'spf 50 sunscreen',
       ];
-  return uniqueCaseInsensitiveStrings(candidates, Math.max(1, Number(maxQueries) || 1));
+  return uniqueCaseInsensitiveStrings(
+    [
+      ...sharedSupportQueries.filter((query) =>
+        !/^(?:sunscreen|daily sunscreen|broad spectrum sunscreen|face sunscreen|spf 50 sunscreen)$/i.test(
+          String(query || '').trim(),
+        )
+      ),
+      ...authorityFirstQueries,
+      ...sharedSupportQueries,
+    ],
+    Math.max(1, Number(maxQueries) || 1),
+  );
 }
 
 function buildFrameworkSupportStageId(roleId, sourceScope = 'internal') {
