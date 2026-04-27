@@ -7486,6 +7486,107 @@ test('__internal: framework pool keeps thin daily sunscreen authority when retri
   );
 });
 
+test('__internal: framework pool keeps role-fit-owned daily sunscreen authority when title identity is thin', async () => {
+  const { __internal } = loadRoutesFresh();
+  const targetContext = {
+    framework_id: 'recofw_test_oily_support_rolefit_spf_identity_thin',
+    primary_role_id: 'oil_control_treatment',
+    request_text: 'im oily skin. what product should i buy?',
+    semantic_plan: {
+      routine_mode: 'routine_mix',
+      primary_concern: 'oily skin',
+    },
+    framework_roles: [
+      {
+        role_id: 'oil_control_treatment',
+        rank: 1,
+        preferred_step: 'treatment',
+        alternate_steps: ['serum'],
+        label: 'Oil-control treatment',
+        query_terms: ['niacinamide serum oily skin'],
+        fit_keywords: ['oil control', 'shine control', 'sebum'],
+        ingredient_hypotheses: ['Niacinamide', 'Zinc PCA'],
+        product_type_hypotheses: ['treatment', 'serum'],
+      },
+      {
+        role_id: 'lightweight_moisturizer',
+        rank: 2,
+        preferred_step: 'moisturizer',
+        label: 'Lightweight moisturizer',
+        query_terms: ['lightweight moisturizer oily skin'],
+        fit_keywords: ['lightweight', 'gel cream', 'non-greasy'],
+        ingredient_hypotheses: ['Glycerin'],
+        product_type_hypotheses: ['moisturizer'],
+      },
+      {
+        role_id: 'daily_sunscreen',
+        rank: 3,
+        preferred_step: 'sunscreen',
+        label: 'Daily sunscreen',
+        query_terms: ['daily sunscreen', 'lightweight sunscreen oily skin'],
+        fit_keywords: ['spf', 'lightweight', 'uv filters', 'non-greasy'],
+        ingredient_hypotheses: ['UV filters'],
+        product_type_hypotheses: ['sunscreen'],
+      },
+    ],
+  };
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [
+      {
+        product_id: 'catalog_oil_balance_rolefit_spf_anchor',
+        merchant_id: 'merchant_catalog_oil_balance_rolefit_spf_anchor',
+        brand: 'Clarity Lab',
+        name: 'Oil Balance Serum',
+        display_name: 'Clarity Lab Oil Balance Serum',
+        category: 'serum',
+        product_type: 'serum',
+        retrieval_source: 'catalog',
+        retrieval_query: 'niacinamide serum oily skin',
+        retrieval_step: 'treatment',
+        retrieval_role_id: 'oil_control_treatment',
+        benefit_tags: ['oil control', 'shine control'],
+        short_description: 'A niacinamide serum for oil control and midday shine.',
+      },
+      {
+        product_id: 'external_seed_moisturizer_rolefit_spf_support',
+        merchant_id: 'external_seed',
+        brand: 'LightLab',
+        name: 'Daily Balance Gel Cream',
+        display_name: 'LightLab Daily Balance Gel Cream',
+        category: 'moisturizer',
+        product_type: 'moisturizer',
+        retrieval_source: 'external_seed',
+        retrieval_query: 'lightweight moisturizer oily skin',
+        retrieval_step: 'moisturizer',
+        retrieval_role_id: 'lightweight_moisturizer',
+        short_description: 'A breathable gel cream moisturizer for oily skin.',
+      },
+      {
+        product_id: 'external_seed_daily_spf_rolefit_identity_thin',
+        merchant_id: 'external_seed',
+        brand: 'Beauty of Joseon',
+        title: 'Relief Sun Rice Probiotics',
+        retrieval_source: 'external_seed',
+        retrieval_query: 'sunscreen under makeup',
+        retrieval_step: 'sunscreen',
+        retrieval_role_id: 'daily_sunscreen',
+        local_external_seed_role_fit_score: 0.685,
+      },
+    ],
+    { targetContext },
+  );
+
+  assert.equal(state.selected_candidate_count, 3);
+  const sunscreen = state.selected_recommendations.find((item) => item?.matched_role_id === 'daily_sunscreen') || null;
+  assert.ok(sunscreen);
+  assert.equal(sunscreen.product_id, 'external_seed_daily_spf_rolefit_identity_thin');
+  assert.equal(sunscreen.framework_semantic_fit, true);
+  assert.equal(
+    state.hard_reject.some((entry) => entry?.product?.product_id === 'external_seed_daily_spf_rolefit_identity_thin'),
+    false,
+  );
+});
+
 test('__internal: framework pool rejects cross-step cleanser-plus-spf bundles from the sunscreen support pool', async () => {
   const { __internal } = loadRoutesFresh();
   const state = __internal.finalizeConcernFrameworkCandidatePools(
