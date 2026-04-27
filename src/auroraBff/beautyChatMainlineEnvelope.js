@@ -270,6 +270,26 @@ function buildEnvelopeVisibleSelectionContract(baseSelection = null, recommendat
   };
 }
 
+function orderEnvelopeRecoRowsBySelection(rows = [], selectionContract = null) {
+  const sourceRows = Array.isArray(rows) ? rows.filter((row) => isPlainObject(row)) : [];
+  const selectedIds = Array.isArray(selectionContract?.selected_product_ids)
+    ? selectionContract.selected_product_ids.map((value) => String(value || '').trim()).filter(Boolean)
+    : [];
+  if (!selectedIds.length) return sourceRows;
+  const byId = new Map();
+  for (const row of sourceRows) {
+    const productId = extractEnvelopeRecoSelectionProductId(row);
+    if (!productId || byId.has(productId)) continue;
+    byId.set(productId, row);
+  }
+  const orderedRows = [];
+  for (const productId of selectedIds) {
+    const row = byId.get(productId);
+    if (row) orderedRows.push(row);
+  }
+  return orderedRows;
+}
+
 function applyEnvelopeVisibleSelectionContractToPayload(payload = null, {
   baseSelection = null,
   recommendations = null,
@@ -309,12 +329,30 @@ function applyEnvelopeVisibleSelectionContractToPayload(payload = null, {
   nextPayloadMeta.selected_product_ids = visibleSelection.selected_product_ids;
   nextPayloadMeta.selected_titles = visibleSelection.selected_titles;
   nextPayloadMeta.selection_signature = null;
+  const visibleProducts = Array.isArray(payload.products)
+    ? (() => {
+      const orderedProducts = orderEnvelopeRecoRowsBySelection(payload.products, visibleSelection);
+      return orderedProducts.length > 0 ? orderedProducts : visibleRecommendations;
+    })()
+    : null;
+  const visibleSections = Array.isArray(payload.sections)
+    ? payload.sections.map((section) => {
+      if (!isPlainObject(section) || !Array.isArray(section.products)) return section;
+      const orderedSectionProducts = orderEnvelopeRecoRowsBySelection(section.products, visibleSelection);
+      const sectionProducts = orderedSectionProducts.length > 0 ? orderedSectionProducts : visibleRecommendations;
+      return {
+        ...section,
+        products: sectionProducts,
+      };
+    })
+    : null;
 
   return {
     ...payload,
     recommendations: visibleRecommendations,
     grounded_count: visibleRecommendations.length,
-    ...(Array.isArray(payload.products) ? { products: visibleRecommendations } : {}),
+    ...(visibleProducts ? { products: visibleProducts } : {}),
+    ...(visibleSections ? { sections: visibleSections } : {}),
     primary_recommendation_id:
       extractEnvelopeRecoSelectionProductId(visibleRecommendations[0]) || payload.primary_recommendation_id,
     recommendation_meta: nextRecommendationMeta,
