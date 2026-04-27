@@ -7133,6 +7133,130 @@ test('__internal: framework pool rescues exact-step sunscreen support from role-
   assert.equal(state.role_pool_stats?.daily_sunscreen?.viable_count, 1);
 });
 
+test('__internal: framework pool prefers full-face daily SPF over portable stick for routine sunscreen support', async () => {
+  const { __internal } = loadRoutesFresh();
+  const targetContext = {
+    framework_id: 'recofw_test_oily_support_sunscreen_first_wear_rank',
+    primary_role_id: 'oil_control_treatment',
+    request_text: 'im oily skin. what product should i buy?',
+    semantic_plan: {
+      routine_mode: 'routine_mix',
+      primary_concern: 'oily skin',
+    },
+    framework_roles: [
+      {
+        role_id: 'oil_control_treatment',
+        rank: 1,
+        preferred_step: 'treatment',
+        alternate_steps: ['serum'],
+        label: 'Oil-control treatment',
+        query_terms: ['niacinamide serum oily skin'],
+        fit_keywords: ['oil control', 'shine control', 'sebum'],
+        ingredient_hypotheses: ['Niacinamide', 'Zinc PCA'],
+        product_type_hypotheses: ['treatment', 'serum'],
+      },
+      {
+        role_id: 'lightweight_moisturizer',
+        rank: 2,
+        preferred_step: 'moisturizer',
+        label: 'Lightweight moisturizer',
+        query_terms: ['lightweight moisturizer oily skin'],
+        fit_keywords: ['lightweight', 'gel cream', 'non-greasy'],
+        ingredient_hypotheses: ['Glycerin'],
+        product_type_hypotheses: ['moisturizer'],
+      },
+      {
+        role_id: 'daily_sunscreen',
+        rank: 3,
+        preferred_step: 'sunscreen',
+        label: 'Daily sunscreen',
+        query_terms: ['daily sunscreen', 'lightweight sunscreen oily skin'],
+        fit_keywords: ['spf', 'lightweight', 'uv filters', 'non-greasy'],
+        ingredient_hypotheses: ['UV filters'],
+        product_type_hypotheses: ['sunscreen'],
+      },
+    ],
+  };
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [
+      {
+        product_id: 'catalog_oil_balance_first_wear_anchor',
+        merchant_id: 'merchant_catalog_oil_balance_first_wear_anchor',
+        brand: 'Clarity Lab',
+        name: 'Oil Balance Serum',
+        display_name: 'Clarity Lab Oil Balance Serum',
+        category: 'serum',
+        product_type: 'serum',
+        retrieval_source: 'catalog',
+        retrieval_query: 'niacinamide serum oily skin',
+        retrieval_step: 'treatment',
+        retrieval_role_id: 'oil_control_treatment',
+        search_aliases: ['Oil Control Serum'],
+        benefit_tags: ['oil control', 'shine control'],
+        short_description: 'A niacinamide serum for oil control and midday shine.',
+      },
+      {
+        product_id: 'external_seed_moisturizer_first_wear_support',
+        merchant_id: 'external_seed',
+        brand: 'LightLab',
+        name: 'Daily Balance Gel Cream',
+        display_name: 'LightLab Daily Balance Gel Cream',
+        category: 'moisturizer',
+        product_type: 'moisturizer',
+        retrieval_source: 'external_seed',
+        retrieval_query: 'lightweight moisturizer oily skin',
+        retrieval_step: 'moisturizer',
+        retrieval_role_id: 'lightweight_moisturizer',
+        short_description: 'A breathable gel cream moisturizer for oily skin.',
+      },
+      {
+        product_id: 'external_seed_sunscreen_first_wear_stick',
+        merchant_id: 'external_seed',
+        brand: 'SunGuard',
+        name: 'Anywhere Sun Stick SPF 40',
+        display_name: 'SunGuard Anywhere Sun Stick SPF 40',
+        category: 'sunscreen',
+        product_type: 'sunscreen',
+        retrieval_source: 'external_seed',
+        retrieval_query: 'sunscreen under makeup',
+        retrieval_step: 'sunscreen',
+        retrieval_role_id: 'daily_sunscreen',
+        local_external_seed_role_fit_score: 1.12,
+        search_aliases: ['daily sunscreen', 'spf stick'],
+        benefit_tags: ['spf 40', 'portable reapplication'],
+        short_description: 'A sunscreen stick for quick touchups and portable reapplication during the day.',
+      },
+      {
+        product_id: 'external_seed_sunscreen_first_wear_fluid',
+        merchant_id: 'external_seed',
+        brand: 'SunGuard',
+        name: 'Invisible Daily Fluid SPF 50',
+        display_name: 'SunGuard Invisible Daily Fluid SPF 50',
+        category: 'sunscreen',
+        product_type: 'sunscreen',
+        retrieval_source: 'external_seed',
+        retrieval_query: 'sunscreen under makeup',
+        retrieval_step: 'sunscreen',
+        retrieval_role_id: 'daily_sunscreen',
+        local_external_seed_role_fit_score: 0.86,
+        search_aliases: ['daily sunscreen', 'lightweight sunscreen oily skin'],
+        benefit_tags: ['spf 50', 'lightweight', 'non-greasy'],
+        short_description: 'A lightweight non-greasy full-face daily sunscreen fluid with UV filters.',
+      },
+    ],
+    { targetContext },
+  );
+
+  assert.equal(state.selected_candidate_count, 3);
+  const sunscreen = state.selected_recommendations.find((item) => item?.matched_role_id === 'daily_sunscreen') || null;
+  assert.ok(sunscreen);
+  assert.equal(sunscreen.product_id, 'external_seed_sunscreen_first_wear_fluid');
+  const stick = state.viable_candidate_pool.find((item) => item?.product_id === 'external_seed_sunscreen_first_wear_stick') || null;
+  assert.ok(stick);
+  assert.equal(stick.sunscreen_portable_routine_mismatch_applied, true);
+  assert.ok(Number(sunscreen.framework_rank_score || 0) > Number(stick.framework_rank_score || 0));
+});
+
 test('__internal: framework pool rejects cross-step cleanser-plus-spf bundles from the sunscreen support pool', async () => {
   const { __internal } = loadRoutesFresh();
   const state = __internal.finalizeConcernFrameworkCandidatePools(
