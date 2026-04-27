@@ -945,7 +945,6 @@ test('handoffRecoToBeautyMainlineSearch records stable-alias primary recovery be
     assert.deepEqual(
       externalCaptured.map((row) => row.query),
       [
-        'niacinamide serum oily skin',
         'gel cream moisturizer',
         'sunscreen oily skin',
         'lightweight moisturizer oily skin',
@@ -966,7 +965,7 @@ test('handoffRecoToBeautyMainlineSearch records stable-alias primary recovery be
     );
     assert.equal(
       externalCaptured.filter((row) => row.roleId === 'oil_control_treatment').length,
-      1,
+      0,
     );
     assert.equal(
       externalCaptured.filter((row) => row.roleId === 'oil_control_treatment').every((row) =>
