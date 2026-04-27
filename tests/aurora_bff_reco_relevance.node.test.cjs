@@ -8480,8 +8480,9 @@ test('__internal: beauty local handoff uses stable alias authority when seed sea
       .find((entry) => entry?.query === 'niacinamide serum oily skin' && entry?.source_scope === 'external_seed') || null;
     assert.ok(attempt);
     assert.equal(attempt.stable_alias_authority_preflight, true);
+    assert.equal(attempt.stable_alias_primary_authority_seeded, true);
     assert.equal(attempt.local_external_seed_search_skipped, true);
-    assert.equal(attempt.local_external_seed_skip_reason, 'stable_alias_authority_preflight');
+    assert.equal(attempt.local_external_seed_skip_reason, 'stable_alias_primary_authority_seed');
     assert.equal(attempt.stable_alias_authority_used, true);
     assert.equal(attempt.primary_transport_owner, 'local_stable_alias_authority');
     assert.equal(
@@ -14629,7 +14630,7 @@ staleFallbackPlannerTest('/v1/chat: beauty-owned hard path fails closed when bea
   }
 });
 
-test('/v1/chat: beauty-owned hard path fails closed when handoff products lack canonical authority', { concurrency: false }, async () => {
+test('/v1/chat: beauty-owned hard path uses stable authority before legacy planner when backend rows lack canonical authority', { concurrency: false }, async () => {
   const originalGet = axios.get;
   let auroraChatCallCount = 0;
   const harness = createAppWithPatchedAuroraChat({
@@ -14725,15 +14726,17 @@ test('/v1/chat: beauty-owned hard path fails closed when handoff products lack c
     assert.equal(response.statusCode, 200);
     assert.equal(auroraChatCallCount, 0);
     const payload = getRecommendationsPayload(response.body);
-    assert.equal(payload, null);
+    assert.ok(payload);
+    assert.equal(payload.primary_recommendation_id, '9886499864904');
+    assert.equal(payload.recommendation_meta?.query_source, 'beauty_mainline_local_handoff');
+    const stableAttempt = payload.metadata?.search_stage_ledger?.primary_search?.query_pack_attempts
+      ?.find((row) => row?.stable_alias_primary_authority_seeded === true) || null;
+    assert.ok(stableAttempt);
+    assert.equal(stableAttempt.primary_transport_owner, 'local_stable_alias_authority');
     const cards = Array.isArray(response.body?.cards) ? response.body.cards : [];
     const confidenceCard = cards.find((card) => card && card.type === 'confidence_notice') || null;
-    assert.ok(confidenceCard);
+    assert.equal(confidenceCard, null);
     assert.equal(response.body?.assistant_message, null);
-    assert.match(
-      String(confidenceCard?.payload?.message || ''),
-      /not showing product picks|not forcing product picks|could not confirm|不展示商品推荐/i,
-    );
   } finally {
     axios.get = originalGet;
     harness.restore();
@@ -15545,10 +15548,8 @@ test('/v1/chat: exact oily first-turn matrix keeps canonical target bundle and g
     }
 
     assert.equal(auroraChatCallCount, 0);
-    assert.equal(
-      observedInternalQueries.filter((query) => query === 'oil control serum').length >= cases.length,
-      true,
-    );
+    assert.equal(observedInternalQueries.filter((query) => query === 'oil control serum').length, 0);
+    assert.equal(observedInternalQueries.some((query) => query === 'gel cream moisturizer'), true);
   } finally {
     harness.routesMod.__internal.__resetRouteDependencyOverridesForTest();
     harness.restore();
