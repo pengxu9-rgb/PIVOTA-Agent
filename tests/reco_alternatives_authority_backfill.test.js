@@ -286,6 +286,36 @@ describe('recoAlternativesAuthorityBackfill', () => {
     });
   });
 
+  test('carries compare-evidence search queries into coverage-repair groups', () => {
+    const backfill = require('../src/auroraBff/recoAlternativesAuthorityBackfill');
+    const coverage = backfill._internals.buildCoverageGroups([
+      {
+        candidate_origin: 'open_world',
+        grounding_status: 'name_only',
+        product: {
+          brand: 'Skin1004',
+          name: 'Madagascar Centella Hyalu-Cica Water-Fit Sun Serum SPF50+',
+        },
+        metadata: {
+          grounding_failure_class: 'coverage_miss',
+          external_compare_evidence_search_queries: [
+            'SKINTIFIC Matte Fit Serum Sunscreen Skin1004 Water-Fit Sun Serum comparison',
+            'Skin1004 Water-Fit Sun Serum alternative to SKINTIFIC Matte Fit Serum Sunscreen',
+          ],
+        },
+      },
+    ], 'US');
+
+    expect(coverage.coverage_gap_count).toBe(1);
+    expect(coverage.groups[0]).toMatchObject({
+      brand: 'Skin1004',
+      preferredTitles: ['Madagascar Centella Hyalu-Cica Water-Fit Sun Serum SPF50+'],
+      evidenceSearchQueries: expect.arrayContaining([
+        'SKINTIFIC Matte Fit Serum Sunscreen Skin1004 Water-Fit Sun Serum comparison',
+      ]),
+    });
+  });
+
   test('runs post-apply enrichment and queues pivota insights for clean seeds', async () => {
     const query = jest.fn(async () => ({
       rows: [
