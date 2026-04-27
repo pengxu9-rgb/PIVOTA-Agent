@@ -198,7 +198,7 @@ test('reco assistant rewrite prompt keeps airy sunscreen context over neutral cr
     const context = JSON.parse(contextMatch[1]);
     const leadContext = JSON.stringify(context.assistant_write_plan.lead_product);
 
-    assert.match(leadContext, /airy, non-greasy texture evidence/i);
+    assert.match(leadContext, /airy(?:[-\s]?fit)?, non-greasy/i);
     assert.doesNotMatch(leadContext, /richer|more moisturizing|cushion/i);
   } finally {
     delete require.cache[moduleId];
@@ -662,6 +662,73 @@ test('beauty mainline reco rows prefer role-grounded sunscreen copy over marketi
       /practical daily SPF option.+mineral UV filters.+zinc oxide.+titanium dioxide/i,
     );
     assert.match(String(rows[0].short_description || ''), /daily SPF option/i);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('beauty mainline reco rows expose row-level alternatives affordance for same-role comparisons', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const rows = __internal.buildRecoRowsFromMainlineProducts(
+      [
+        {
+          product_id: 'skintific_matte_fit',
+          merchant_id: 'external_seed',
+          brand: 'SKINTIFIC',
+          display_name: 'Matte Fit Serum Sunscreen SPF 50+ PA++++',
+          category: 'Sunscreen',
+          product_type: 'Sunscreen',
+          matched_role_id: 'daily_sunscreen_finish_fit',
+          matched_role_label: 'Daily sunscreen with finish fit',
+          why_this_one: 'Matte serum sunscreen for oily skin under makeup.',
+        },
+        {
+          product_id: 'supergoop_unseen_spf50',
+          merchant_id: 'external_seed',
+          brand: 'Supergoop',
+          display_name: 'Unseen Sunscreen SPF 50',
+          category: 'Sunscreen',
+          product_type: 'Sunscreen',
+          matched_role_id: 'daily_sunscreen_finish_fit',
+          matched_role_label: 'Daily sunscreen with finish fit',
+          why_this_one: 'Lighter and smoother under makeup.',
+        },
+        {
+          product_id: 'fenty_hydra_vizor_spf30',
+          merchant_id: 'external_seed',
+          brand: 'Fenty Beauty',
+          display_name: 'Hydra Vizor Invisible Moisturizer Broad Spectrum SPF 30 Sunscreen',
+          category: 'Sunscreen',
+          product_type: 'Sunscreen',
+          matched_role_id: 'daily_sunscreen_finish_fit',
+          matched_role_label: 'Daily sunscreen with finish fit',
+          why_this_one: 'Moisturizer-SPF hybrid for light hydration.',
+        },
+      ],
+      {
+        targetContext: {
+          resolved_target_step: 'sunscreen',
+          primary_role_id: 'daily_sunscreen_finish_fit',
+          comparison_mode: 'same_role_comparison',
+          semantic_plan: { comparison_mode: 'same_role_comparison' },
+          framework_roles: [
+            {
+              role_id: 'daily_sunscreen_finish_fit',
+              label: 'Daily sunscreen with finish fit',
+              rank: 1,
+              preferred_step: 'sunscreen',
+            },
+          ],
+        },
+        language: 'EN',
+      },
+    );
+
+    assert.equal(rows.length, 3);
+    assert.deepEqual(rows.map((row) => row.same_role_peer_count), [2, 2, 2]);
+    assert.deepEqual(rows.map((row) => row.alternatives_count), [2, 2, 2]);
+    assert.deepEqual(rows.map((row) => row.see_more), [true, true, true]);
   } finally {
     delete require.cache[moduleId];
   }
@@ -5610,6 +5677,141 @@ test('reco assistant structured renderer repairs transferred rich sunscreen reas
       text,
       /Moisture Airyfit Daily Sunscreen SPF50\+\/PA\+\+\+\+ \/ Unscented[^.]+richer|Moisture Airyfit Daily Sunscreen SPF50\+\/PA\+\+\+\+ \/ Unscented[^.]+moisturizer-SPF hybrid/i,
     );
+    const validation = __internal.validateRecoAssistantRewriteCandidate({
+      candidateText: text,
+      payload,
+      language: 'EN',
+      profile: { skinType: 'oily' },
+      userRequestText: 'I have oily skin, what sunscreen should I buy?',
+      refinementQuestionPlan: null,
+      primaryTarget,
+      secondaryTargets: [],
+      names,
+      requestMode: 'buy',
+    });
+    assert.equal(validation.reason, null);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('reco assistant structured renderer keeps production sunscreen tradeoffs attached to the right product', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const payload = __internal.applyRecoContentSpineToPayload(
+      {
+        recommendations: [
+          {
+            product_id: 'skintific_matte_fit',
+            display_name: 'Matte Fit Serum Sunscreen SPF 50+ PA++++',
+            brand: 'SKINTIFIC',
+            category: 'Sunscreen',
+            short_description: 'Matte SPF 50+ PA++++ sunscreen with shine control.',
+            why_this_one:
+              'it has more direct airy, non-greasy texture evidence for oily skin under makeup while staying in a dedicated SPF50+ sunscreen lane',
+            key_features: ['Lightweight serum'],
+            compare_highlights: [
+              'Fast-absorbing serum sunscreen is positioned to control shine while protecting against UV exposure.',
+              'Suited for Oily or combination skin',
+            ],
+            matched_role_id: 'daily_sunscreen_finish_fit',
+            matched_role_label: 'Daily sunscreen with finish fit',
+            preferred_step: 'sunscreen',
+          },
+          {
+            product_id: 'supergoop_unseen_spf50',
+            display_name: 'Unseen Sunscreen SPF 50',
+            brand: 'Supergoop',
+            category: 'Sunscreen',
+            short_description:
+              'it keeps the finish lighter and smoother under makeup if you want a less heavy daytime layer',
+            why_this_one:
+              'it keeps the finish lighter and smoother under makeup if you want a less heavy daytime layer',
+            compare_highlights: [
+              'Suited for Daily SPF wear',
+              'Suited for AM layering routines',
+            ],
+            matched_role_id: 'daily_sunscreen_finish_fit',
+            matched_role_label: 'Daily sunscreen with finish fit',
+            preferred_step: 'sunscreen',
+          },
+          {
+            product_id: 'fenty_hydra_vizor_spf30',
+            display_name:
+              'Hydra Vizor Invisible Moisturizer Broad Spectrum SPF 30 Sunscreen with Niacinamide + Kalahari Melon',
+            brand: 'Fenty Beauty',
+            category: 'Sunscreen',
+            short_description:
+              'it is more of a moisturizer-SPF hybrid for light hydration, so it is a comparison option if you are comfortable with SPF30 rather than an SPF50 sunscreen',
+            why_this_one:
+              'it is more of a moisturizer-SPF hybrid for light hydration, so it is a comparison option if you are comfortable with SPF30 rather than an SPF50 sunscreen',
+            compare_highlights: [
+              'Suited for Daily SPF',
+              'Suited for Skin prep',
+            ],
+            matched_role_id: 'daily_sunscreen_finish_fit',
+            matched_role_label: 'Daily sunscreen with finish fit',
+            preferred_step: 'sunscreen',
+          },
+        ],
+        recommendation_meta: {
+          resolved_target_step: 'sunscreen',
+          mainline_status: 'grounded_success',
+        },
+      },
+      {
+        ingredient_query: 'Daily sunscreen with finish fit',
+        resolved_target_step: 'sunscreen',
+        primary_target_id: 'daily_sunscreen_finish_fit',
+        ranked_targets: [
+          {
+            target_id: 'daily_sunscreen_finish_fit',
+            ingredient_query: 'Daily sunscreen with finish fit',
+            resolved_target_step: 'sunscreen',
+          },
+        ],
+        selected_target_ids: ['daily_sunscreen_finish_fit'],
+      },
+    );
+    const names = [
+      'Matte Fit Serum Sunscreen SPF 50+ PA++++',
+      'Unseen Sunscreen SPF 50',
+      'Hydra Vizor Invisible Moisturizer Broad Spectrum SPF 30 Sunscreen with Niacinamide + Kalahari Melon',
+    ];
+    const primaryTarget = payload.recommendation_meta.ranked_targets[0];
+    const text = __internal.renderRecoAssistantStructuredReasonRewrite({
+      structuredReason: {
+        lead_reason:
+          'it has more direct airy, non-greasy texture evidence for oily skin under makeup while staying in a dedicated SPF50+ sunscreen lane',
+        support_reasons: [
+          'it keeps the finish lighter and smoother under makeup if you want a less heavy daytime layer',
+          'it is more of a moisturizer-SPF hybrid for light hydration, so it is a comparison option if you are comfortable with SPF30 rather than an SPF50 sunscreen',
+        ],
+      },
+      payload,
+      language: 'EN',
+      profile: { skinType: 'oily' },
+      primaryTarget,
+      names,
+      requestMode: 'buy',
+      selectedProductRoleMix: 'same_role_comparison',
+    });
+
+    assert.match(
+      text,
+      /Matte Fit Serum Sunscreen SPF 50\+ PA\+\+\+\+[^.]+matte|Matte Fit Serum Sunscreen SPF 50\+ PA\+\+\+\+[^.]+shine-controlling|Matte Fit Serum Sunscreen SPF 50\+ PA\+\+\+\+[^.]+non-greasy/i,
+    );
+    assert.match(
+      text,
+      /Unseen Sunscreen SPF 50 (?:makes more sense if you want a lighter, smoother sunscreen feel with a less heavy daytime layer|keeps the finish lighter and smoother under makeup if you want a less heavy daytime layer)/i,
+    );
+    assert.match(
+      text,
+      /Hydra Vizor Invisible Moisturizer Broad Spectrum SPF 30 Sunscreen with Niacinamide \+ Kalahari Melon makes more sense if you want a moisturizer-SPF hybrid with light hydration if you are comfortable with SPF30 rather than an SPF50 sunscreen/i,
+    );
+    assert.doesNotMatch(text, /Unseen Sunscreen SPF 50[^.]+matte|Unseen Sunscreen SPF 50[^.]+shine-controlling/i);
+    assert.doesNotMatch(text, /Hydra Vizor Invisible[^.]+lighter, less noticeable/i);
+
     const validation = __internal.validateRecoAssistantRewriteCandidate({
       candidateText: text,
       payload,
