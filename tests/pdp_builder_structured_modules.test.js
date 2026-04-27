@@ -249,7 +249,7 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
 
     expect(activeIngredients?.data?.items).toEqual(['Niacinamide']);
     expect(activeIngredients?.data?.items).not.toEqual(expect.arrayContaining(['AHAs', 'BHAs']));
-    expect(ingredientsInci?.data?.items).toEqual(['Water', 'Propanediol', 'Niacinamide', 'Ceramide NP.']);
+    expect(ingredientsInci?.data?.items).toEqual(['Water', 'Propanediol', 'Niacinamide', 'Ceramide NP']);
     expect(howToUse).toBeFalsy();
     expect(overview?.data?.sections?.[0]?.content).toBe('A barrier-support serum for irritated skin.');
     expect(supplemental?.data?.sections || []).not.toEqual(
@@ -264,6 +264,35 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
         source: 'merchant_faq',
       }),
     ]);
+  });
+
+  test('uses ingredient authority instead of legacy active block fragments for external seeds', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_fenty_cherry_cleanser',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: "Cherry Dub Pore Purify'r Gel Cleanser with Niacinamide + Aloe Juice",
+        category: 'Cleanser',
+        description:
+          'A foaming gel cleanser with Triple Cherry Complex, niacinamide, and aloe juice.',
+        image_url: 'https://example.com/cherry-cleanser.png',
+        price: { amount: 28, currency: 'USD' },
+        pdp_active_ingredients_raw:
+          "Triple Cherry Complex\n\nThree forms of Vitamin C-rich Barbados Cherry (enzyme, ferment + fruit water); brighten, clarify + renew skin\n\nNiacinamide (Vitamin B3)\n\nRefines pores + skin's texture\n\nAloe Juice\n\nSoothes + conditions",
+        ingredient_intel: {
+          active_ingredients: ['Niacinamide', 'Vitamin C (Ascorbic acid)'],
+        },
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    const activeIngredients = payload.modules.find((module) => module.type === 'active_ingredients');
+
+    expect(activeIngredients?.data?.items).toEqual(['Niacinamide']);
+    expect(activeIngredients?.data?.items.join(' ')).not.toMatch(/Triple Cherry|clarify|renew skin|Aloe Juice/i);
+    expect(activeIngredients?.data?.items).not.toContain('Vitamin C (Ascorbic acid)');
   });
 
   test('emits cross-url product line options in variant selector data', () => {

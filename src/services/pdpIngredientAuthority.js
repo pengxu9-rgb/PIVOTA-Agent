@@ -480,26 +480,51 @@ function buildAuthorityRecord({
 }
 
 function readStructuredArrayAuthority(product) {
+  const readItems = (...values) => {
+    for (const value of values) {
+      const list = Array.isArray(value)
+        ? value
+        : value && typeof value === 'object' && Array.isArray(value.items)
+          ? value.items
+          : null;
+      if (list) {
+        return list.map((item) => {
+          if (!item || typeof item !== 'object' || Array.isArray(item)) return item;
+          return item.title || item.name || item.label || item.value || item.text || '';
+        });
+      }
+    }
+    return [];
+  };
   const directItems = normalizeIngredientItems(
-    Array.isArray(product?.ingredients_inci)
-      ? product.ingredients_inci
-      : Array.isArray(product?.ingredients)
-        ? product.ingredients
-        : Array.isArray(product?.inci)
-          ? product.inci
-          : [],
+    readItems(
+      product?.ingredients_inci,
+      product?.ingredientsInci,
+      product?.inci_ingredients,
+      product?.inciIngredients,
+      product?.ingredients,
+      product?.inci,
+    ),
   );
-  if (directItems.length < 3) return null;
+  const rawText = asString(
+    product?.ingredients_inci?.raw_text ||
+      product?.ingredientsInci?.raw_text ||
+      product?.inci_ingredients?.raw_text ||
+      product?.inciIngredients?.raw_text ||
+      product?.ingredients?.raw_text ||
+      product?.inci?.raw_text,
+  );
+  const parsedRawItems = directItems.length < 3 && rawText
+    ? normalizeIngredientItems(splitIngredientText(sanitizeIngredientRawText(rawText)), { max: 180 })
+    : [];
+  const finalItems = directItems.length >= 3 ? directItems : parsedRawItems;
+  if (finalItems.length < 3) return null;
   const activeItems = normalizeIngredientItems(
-    Array.isArray(product?.active_ingredients)
-      ? product.active_ingredients
-      : Array.isArray(product?.activeIngredients)
-        ? product.activeIngredients
-        : [],
+    readItems(product?.active_ingredients, product?.activeIngredients),
   );
   return buildAuthorityRecord({
-    rawText: directItems.join(', '),
-    items: directItems,
+    rawText: rawText || finalItems.join(', '),
+    items: finalItems,
     activeItems,
     sourceOrigin: 'structured_array',
     purityStatus: 'authoritative',
@@ -572,7 +597,13 @@ function buildAuthorityFromLegacyRaw(product, inputs) {
 }
 
 function activeCandidate(items, sourceOrigin, options = {}) {
-  const normalized = normalizeIngredientItems(Array.isArray(items) ? items : [], { max: 16 });
+  const normalized = normalizeIngredientItems(
+    (Array.isArray(items) ? items : []).map((item) => {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) return item;
+      return item.title || item.name || item.label || item.value || item.text || '';
+    }),
+    { max: 16 },
+  );
   if (!normalized.length) return null;
   return {
     items: normalized,
@@ -757,7 +788,11 @@ function buildStructuredPdpIngredientModules(product, options = {}) {
           title: 'Active Ingredients',
           items: authority.active_items,
           source_origin: authority.source_origin || 'active_block',
-          source_quality_status: authority.purity_status || 'authoritative',
+          source_quality_status: authority.active_items.some((item) => REGULATORY_ACTIVE_RE.test(item))
+            ? 'regulatory_active'
+            : authority.purity_status === 'suppressed'
+              ? 'captured'
+              : authority.purity_status || 'authoritative',
         }
       : null;
   return {

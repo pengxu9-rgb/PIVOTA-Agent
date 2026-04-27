@@ -1,5 +1,6 @@
 const { buildPdpImageDedupeKey, normalizePdpImageUrl, normalizePdpImageUrls } = require('./utils/pdpImageUrls');
 const { isDisplayablePdpFaqItem } = require('./services/pdpFaqQuality');
+const { buildStructuredPdpIngredientModules } = require('./services/pdpIngredientAuthority');
 const {
   resolvePdpSchemaProfile,
   isBeautyFormulaPdpProfile,
@@ -2645,8 +2646,20 @@ function buildPdpPayload(args) {
   const productOverview = buildProductOverviewSections(product, detailSections);
   const supplementalDetails = buildSupplementalDetailSections(product, detailSections);
   const productFacts = buildProductFactsSections(product, detailSections);
-  const ingredientsInci = isBeautyFormulaProfile ? buildIngredientsInci(product) : null;
-  const activeIngredients = isBeautyFormulaProfile ? buildActiveIngredients(product, ingredientsInci) : null;
+  const externalSeedIngredientAuthority =
+    isBeautyFormulaProfile && isExternalSeedLikeProduct(product)
+      ? buildStructuredPdpIngredientModules(product)
+      : null;
+  const ingredientsInci = isBeautyFormulaProfile
+    ? externalSeedIngredientAuthority
+      ? externalSeedIngredientAuthority.ingredientsInciData
+      : buildIngredientsInci(product)
+    : null;
+  const activeIngredients = isBeautyFormulaProfile
+    ? externalSeedIngredientAuthority
+      ? externalSeedIngredientAuthority.activeIngredientsData
+      : buildActiveIngredients(product, ingredientsInci)
+    : null;
   const howToUse = buildHowToUse(product);
   const genericAttributeModules = isBeautyFormulaProfile
     ? {}
