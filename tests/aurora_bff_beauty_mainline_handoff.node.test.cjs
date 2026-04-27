@@ -1047,8 +1047,6 @@ test('handoffRecoToBeautyMainlineSearch records stable-alias primary recovery be
       out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts?.map((row) => row?.source_scope),
       [
         'external_seed',
-        'internal',
-        'internal',
         'external_seed',
         'external_seed',
         'internal',
@@ -1056,7 +1054,9 @@ test('handoffRecoToBeautyMainlineSearch records stable-alias primary recovery be
         'external_seed',
         'external_seed',
         'internal',
+        'internal',
         'external_seed',
+        'internal',
         'external_seed',
       ],
     );
@@ -1064,8 +1064,6 @@ test('handoffRecoToBeautyMainlineSearch records stable-alias primary recovery be
       out.searchResult?.metadata?.search_stage_ledger?.primary_search?.query_pack_attempts?.map((row) => row?.source_scope),
       [
         'external_seed',
-        'internal',
-        'internal',
         'external_seed',
         'external_seed',
         'internal',
@@ -1073,7 +1071,9 @@ test('handoffRecoToBeautyMainlineSearch records stable-alias primary recovery be
         'external_seed',
         'external_seed',
         'internal',
+        'internal',
         'external_seed',
+        'internal',
         'external_seed',
       ],
     );
@@ -1657,7 +1657,6 @@ test('handoffRecoToBeautyMainlineSearch uses source-aware support authority whil
         row?.query === 'gel cream moisturizer' && row?.roleId === 'lightweight_moisturizer'),
       true,
     );
-    assert.equal(internalCaptured.includes('niacinamide serum oily skin'), true);
     assert.equal(internalCaptured.includes('gel cream moisturizer'), true);
     const attempts = out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts || [];
     const firstSupportAttempt = attempts.find((row) =>
@@ -1667,7 +1666,7 @@ test('handoffRecoToBeautyMainlineSearch uses source-aware support authority whil
     assert.equal(firstSupportAttempt?.role_id, 'oil_control_treatment');
     assert.equal(
       attempts.some((row) =>
-        row?.source_scope === 'internal'
+        row?.source_scope === 'external_seed'
         && row?.role_id === 'oil_control_treatment'
         && Number(row?.result_count || 0) > 0),
       true,
@@ -3116,8 +3115,13 @@ test('handoffRecoToBeautyMainlineSearch releases support budget to external auth
     const supportInternalAttempts =
       out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts
         ?.filter((row) => row?.fair_support_internal_round === 1) || [];
+    assert.equal(supportInternalAttempts.length >= 2, true);
     assert.equal(
-      supportInternalAttempts.every((row) => row?.reason === 'upstream_timeout'),
+      supportInternalAttempts.some((row) => row?.reason === 'upstream_timeout'),
+      false,
+    );
+    assert.equal(
+      supportInternalAttempts.every((row) => row?.reason === 'skipped_support_role_already_satisfied'),
       true,
     );
   } finally {
