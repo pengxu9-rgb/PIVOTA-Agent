@@ -8092,7 +8092,7 @@ test('__internal: beauty local handoff external stage uses backend authority as 
         rank: 10,
         preferred_step: 'treatment',
         label: 'Oil-control treatment',
-        query_terms: ['niacinamide serum oily skin'],
+        query_terms: ['shine control serum oily skin'],
         fit_keywords: ['oil control', 'shine control', 'niacinamide', 'zinc'],
         ingredient_hypotheses: ['Niacinamide', 'Zinc PCA'],
         product_type_hypotheses: ['serum', 'treatment'],
@@ -8329,9 +8329,9 @@ test('__internal: beauty local handoff external stage uses local authority peer 
         rank: 10,
         preferred_step: 'treatment',
         label: 'Oil-control treatment',
-        query_terms: ['niacinamide serum oily skin'],
-        fit_keywords: ['oil control', 'shine control', 'niacinamide', 'zinc'],
-        ingredient_hypotheses: ['Niacinamide', 'Zinc PCA'],
+        query_terms: ['shine control serum oily skin'],
+        fit_keywords: ['shine control', 'zinc'],
+        ingredient_hypotheses: ['Zinc PCA'],
         product_type_hypotheses: ['serum', 'treatment'],
       },
     ],
@@ -8392,15 +8392,15 @@ test('__internal: beauty local handoff external stage uses local authority peer 
       ['local_oil_control_1'],
     );
     assert.ok(
-      calls.some((call) => call.kind === 'backend_external_seed' && call.query === 'niacinamide serum oily skin'),
+      calls.some((call) => call.kind === 'backend_external_seed' && call.query === 'shine control serum'),
       JSON.stringify(calls),
     );
     assert.ok(
-      calls.some((call) => call.kind === 'local_external_seed' && call.query === 'niacinamide serum oily skin'),
+      calls.some((call) => call.kind === 'local_external_seed' && call.query === 'shine control serum'),
       JSON.stringify(calls),
     );
     const attempt = (out.search_stage_ledger?.primary_search?.query_pack_attempts || [])
-      .find((entry) => entry?.query === 'niacinamide serum oily skin' && entry?.source_scope === 'external_seed') || null;
+      .find((entry) => entry?.query === 'shine control serum' && entry?.source_scope === 'external_seed') || null;
     assert.ok(attempt);
     assert.equal(attempt.external_seed_authority_backend_primary, true);
     assert.equal(attempt.external_seed_authority_backend_reason, 'upstream_timeout');
@@ -8418,8 +8418,8 @@ test('__internal: beauty local handoff uses stable alias authority when seed sea
   const targetContext = {
     framework_id: 'recofw_test_oily_stable_alias_peer',
     primary_role_id: 'oil_control_treatment',
-    routine_mode: 'same_role_comparison',
-    semantic_plan: { routine_mode: 'same_role_comparison', comparison_mode: 'same_role_comparison' },
+    routine_mode: 'routine_mix',
+    semantic_plan: { routine_mode: 'routine_mix', comparison_mode: 'routine_mix' },
     framework_roles: [
       {
         role_id: 'oil_control_treatment',
@@ -8479,11 +8479,21 @@ test('__internal: beauty local handoff uses stable alias authority when seed sea
     const attempt = (out.search_stage_ledger?.primary_search?.query_pack_attempts || [])
       .find((entry) => entry?.query === 'niacinamide serum oily skin' && entry?.source_scope === 'external_seed') || null;
     assert.ok(attempt);
-    assert.equal(attempt.external_seed_authority_backend_primary, true);
-    assert.equal(attempt.external_seed_authority_peer_used, true);
-    assert.equal(attempt.local_external_seed_authority_peer, true);
+    assert.equal(attempt.stable_alias_authority_preflight, true);
+    assert.equal(attempt.local_external_seed_search_skipped, true);
+    assert.equal(attempt.local_external_seed_skip_reason, 'stable_alias_authority_preflight');
     assert.equal(attempt.stable_alias_authority_used, true);
     assert.equal(attempt.primary_transport_owner, 'local_stable_alias_authority');
+    assert.equal(
+      calls.some((call) => call.kind === 'backend_external_seed' && call.query === 'niacinamide serum oily skin'),
+      false,
+      JSON.stringify(calls),
+    );
+    assert.equal(
+      calls.some((call) => call.kind === 'local_external_seed' && call.query === 'niacinamide serum oily skin'),
+      false,
+      JSON.stringify(calls),
+    );
   } finally {
     __internal.__resetRouteDependencyOverridesForTest();
   }
