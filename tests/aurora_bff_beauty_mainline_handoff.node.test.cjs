@@ -505,16 +505,14 @@ test('handoffRecoToBeautyMainlineSearch defaults to local beauty mainline over i
     assert.equal(out.searchResult?.metadata?.primary_failure_stage, undefined);
     assert.deepEqual(
       out.searchResult?.metadata?.final_selection?.selected_product_ids,
-      ['oil_control_serum_1'],
+      ['9886499864904'],
     );
     assert.deepEqual(
       out.recommendations.map((item) => item.display_name),
-      ['GoalSkin Oil Control Serum'],
+      ['The Ordinary Niacinamide 10% + Zinc 1%'],
     );
-    assert.deepEqual(
-      out.searchResult?.metadata?.semantic_owner_query_attempts?.[0]?.attempted_internal_paths,
-      ['/agent/internal/products/search'],
-    );
+    assert.equal(out.searchResult?.metadata?.semantic_owner_query_attempts?.[0]?.stable_alias_primary_authority_seeded, true);
+    assert.equal(out.searchResult?.metadata?.semantic_owner_query_attempts?.[0]?.primary_transport_owner, 'local_stable_alias_authority');
   } finally {
     __internal.__resetRouteDependencyOverridesForTest();
     delete require.cache[moduleId];
@@ -933,8 +931,6 @@ test('handoffRecoToBeautyMainlineSearch records stable-alias primary recovery be
     assert.deepEqual(
       captured.map((row) => row.query),
       [
-        'niacinamide serum oily skin',
-        'oil control serum',
         'gel cream moisturizer',
         'spf fluid oily skin',
         'lightweight moisturizer oily skin',
@@ -952,14 +948,12 @@ test('handoffRecoToBeautyMainlineSearch records stable-alias primary recovery be
       ],
     );
     assert.equal(captured.every((row) => row.callerLane === 'beauty_chat_handoff'), true);
-    assert.equal(captured.slice(0, 2).every((row) => row.timeoutMs === 2500), true);
-    assert.equal(captured.slice(2).every((row) => row.timeoutMs === 2400), true);
+    assert.equal(captured.every((row) => row.timeoutMs === 2400), true);
     assert.equal(captured.every((row) => row.allowExternalSeed === false), true);
     assert.equal(
-      captured.slice(0, 2).every((row) =>
-        row.targetStepFamily === 'serum'
-        && row.semanticFamily === 'oil_control_treatment'
-        && row.queryStepStrength === 'strong_goal_family'
+      captured.every((row) =>
+        ['moisturizer', 'sunscreen'].includes(row.targetStepFamily)
+        && row.queryStepStrength === 'supportive_family'
         && row.productOnly === true),
       true,
     );
@@ -993,10 +987,12 @@ test('handoffRecoToBeautyMainlineSearch records stable-alias primary recovery be
     assert.equal(out.searchResult?.query_source, 'beauty_mainline_local_handoff');
     assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.planned_level_count, 6);
     assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_level_count, 4);
-    assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_query_count, 13);
+    assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.executed_query_count, 10);
     assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.primary_internal_query_cap_applied, true);
     assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.primary_internal_original_query_count, 3);
-    assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.primary_internal_executed_query_count, 2);
+    assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.primary_internal_executed_query_count, 0);
+    assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.stable_alias_primary_authority_seeded, true);
+    assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.primary_internal_skipped_for_stable_alias_seed, true);
     assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.routine_support_budget_timeout_cap_ms, undefined);
     assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.primary_external_timeout_cap_applied, undefined);
     assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.support_external_timeout_cap_applied, undefined);
@@ -1047,17 +1043,17 @@ test('handoffRecoToBeautyMainlineSearch records stable-alias primary recovery be
     );
     assert.deepEqual(
       out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts?.map((row) => row?.source_scope),
-      ['internal', 'internal', 'external_seed', 'external_seed', 'external_seed', 'internal', 'internal', 'external_seed', 'internal', 'internal', 'external_seed', 'external_seed', 'internal'],
+      ['external_seed', 'internal', 'internal', 'external_seed', 'external_seed', 'internal', 'internal', 'external_seed', 'external_seed', 'internal'],
     );
     assert.deepEqual(
       out.searchResult?.metadata?.search_stage_ledger?.primary_search?.query_pack_attempts?.map((row) => row?.source_scope),
-      ['internal', 'internal', 'external_seed', 'external_seed', 'external_seed', 'internal', 'internal', 'external_seed', 'internal', 'internal', 'external_seed', 'external_seed', 'internal'],
+      ['external_seed', 'internal', 'internal', 'external_seed', 'external_seed', 'internal', 'internal', 'external_seed', 'external_seed', 'internal'],
     );
     const supportAttempts = out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts
       ?.filter((row) => String(row?.ladder_level || '').startsWith('framework_stage_c_support_')) || [];
     assert.equal(supportAttempts.length, 9);
-    assert.equal(supportAttempts.some((row) => row?.reason === 'primary_role_unmatched'), false);
-    assert.equal(supportAttempts.every((row) => row?.reason == null || row?.reason === 'pivota_backend_not_configured'), true);
+    assert.equal(supportAttempts.filter((row) => row?.reason === 'primary_role_unmatched').length, 0);
+    assert.equal(supportAttempts.every((row) => row?.reason == null || row?.reason === 'pivota_backend_not_configured' || row?.reason === 'primary_role_unmatched'), true);
     const stableAliasPrimaryAttempt =
       out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts
         ?.find((row) =>
@@ -1071,18 +1067,20 @@ test('handoffRecoToBeautyMainlineSearch records stable-alias primary recovery be
           && row?.stable_alias_authority_used === true);
     assert.ok(stableAliasPrimaryAttempt);
     assert.equal(stableAliasPrimaryAttempt?.primary_endpoint_kind, 'local_stable_alias_authority');
-    const skippedDuplicatePrimaryAttempt =
+    assert.equal(stableAliasPrimaryAttempt?.stable_alias_primary_authority_seeded, true);
+    assert.equal(stableAliasPrimaryAttempt?.local_external_seed_skip_reason, 'stable_alias_primary_authority_seed');
+    const removedDuplicatePrimaryAttempt =
       out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts
         ?.find((row) =>
           row?.ladder_level === 'framework_stage_b_primary_external_seed'
           && row?.query === 'salicylic acid serum oily skin'
-          && row?.reason === 'skipped_primary_already_satisfied')
+        )
       || out.searchResult?.metadata?.search_stage_ledger?.primary_search?.query_pack_attempts
         ?.find((row) =>
           row?.ladder_level === 'framework_stage_b_primary_external_seed'
           && row?.query === 'salicylic acid serum oily skin'
-          && row?.reason === 'skipped_primary_already_satisfied');
-    assert.ok(skippedDuplicatePrimaryAttempt);
+        );
+    assert.equal(removedDuplicatePrimaryAttempt, undefined);
     assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.skipped_external_seed_levels, undefined);
     assert.equal(out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.skipped_support_levels, undefined);
   } finally {
@@ -2240,7 +2238,6 @@ test('handoffRecoToBeautyMainlineSearch skips primary external seed when interna
     assert.deepEqual(
       internalCaptured,
       [
-        'niacinamide serum oily skin',
         'gel cream moisturizer',
         'spf fluid oily skin',
         'lightweight moisturizer oily skin',
@@ -2259,14 +2256,12 @@ test('handoffRecoToBeautyMainlineSearch skips primary external seed when interna
     );
     const primaryExternalRows = out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts
       ?.filter((row) => row?.ladder_level === 'framework_stage_b_primary_external_seed') || [];
-    assert.equal(primaryExternalRows.length, 2);
-    assert.equal(
-      primaryExternalRows.every((row) => row?.reason === 'skipped_primary_already_satisfied'),
-      true,
-    );
+    assert.equal(primaryExternalRows.length, 1);
+    assert.equal(primaryExternalRows[0]?.stable_alias_primary_authority_seeded, true);
+    assert.equal(primaryExternalRows[0]?.primary_transport_owner, 'local_stable_alias_authority');
     assert.deepEqual(
       out.recommendations.map((item) => item?.product_id).sort(),
-      ['primary_compare_1'],
+      ['9886499864904'],
     );
   } finally {
     __internal.__resetRouteDependencyOverridesForTest();
@@ -2360,11 +2355,9 @@ test('handoffRecoToBeautyMainlineSearch skips primary external supplement for ro
     );
     const primaryExternalRows = out.searchResult?.metadata?.search_stage_ledger?.local_handoff?.query_pack_attempts
       ?.filter((row) => row?.ladder_level === 'framework_stage_b_primary_external_seed') || [];
-    assert.equal(primaryExternalRows.length, 2);
-    assert.equal(
-      primaryExternalRows.every((row) => row?.reason === 'skipped_primary_already_satisfied'),
-      true,
-    );
+    assert.equal(primaryExternalRows.length, 1);
+    assert.equal(primaryExternalRows[0]?.stable_alias_primary_authority_seeded, true);
+    assert.equal(primaryExternalRows[0]?.primary_transport_owner, 'local_stable_alias_authority');
   } finally {
     __internal.__resetRouteDependencyOverridesForTest();
     delete require.cache[moduleId];
