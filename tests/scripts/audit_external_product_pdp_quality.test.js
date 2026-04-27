@@ -226,4 +226,46 @@ describe('audit-external-product-pdp-quality helpers', () => {
     );
     expect(result.live_pdp_gate.live_modules).toEqual(expect.arrayContaining(['canonical', 'media_gallery', 'product_details']));
   });
+
+  test('does not treat formula support language as storefront support pollution', () => {
+    const livePayload = {
+      product: {
+        product_id: 'ext_lash',
+        merchant_id: 'external_seed',
+        description:
+          'A lightweight serum created to support thicker, fuller, and healthier-looking lashes and brows.',
+      },
+      modules: [
+        {
+          type: 'product_overview',
+          data: {
+            sections: [
+              {
+                heading: 'Description',
+                content:
+                  'A lightweight serum created to support thicker, fuller, and healthier-looking lashes and brows.',
+              },
+            ],
+          },
+        },
+        {
+          type: 'product_facts',
+          data: {
+            sections: [
+              {
+                heading: 'Key Ingredients',
+                content: 'Peptide complexes and plant extracts support visible lash and brow density.',
+              },
+            ],
+          },
+        },
+      ],
+    };
+
+    const livePdpGate = buildLivePdpGate({ livePayload, liveResponse: { modules: [] } });
+
+    expect(livePdpGate.failure_reasons).not.toContain('polluted_product_description');
+    expect(livePdpGate.failure_reasons).not.toContain('polluted_product_details');
+    expect(livePdpGate.failure_reasons).not.toContain('polluted_product_facts');
+  });
 });

@@ -128,7 +128,7 @@ describe('pdpIngredientAuthority', () => {
     });
 
     expect(authority.purity_status).toBe('authoritative');
-    expect(authority.active_items).toEqual(['Niacinamide', 'Glycerin', 'Squalane', 'Lactic Acid']);
+    expect(authority.active_items).toEqual(['Niacinamide', 'Squalane', 'Lactic Acid']);
     expect(authority.active_items).not.toEqual(
       expect.arrayContaining([
         'Ceramide NP',
@@ -136,6 +136,34 @@ describe('pdpIngredientAuthority', () => {
         'Hyaluronic acid',
       ]),
     );
+  });
+
+  test('suppresses low-signal active items while keeping authoritative INCI', () => {
+    const authority = buildAuthoritativeIngredientView({
+      title: 'Multi-Peptide Lash and Brow Serum',
+      pdp_ingredients_raw: 'Water, Glycerin, Myristoyl Pentapeptide-17, Biotinoyl Tripeptide-1, Caffeine',
+      active_ingredients: ['Glycerin'],
+    });
+
+    expect(authority.purity_status).toBe('authoritative');
+    expect(authority.items).toEqual(
+      expect.arrayContaining(['Water', 'Glycerin', 'Myristoyl Pentapeptide-17', 'Caffeine']),
+    );
+    expect(authority.active_items).toEqual([]);
+    expect(authority.suppressed_reason).toBe('active_items_low_signal');
+  });
+
+  test('does not treat titanium dioxide as a regulatory active outside sunscreen context', () => {
+    const authority = buildAuthoritativeIngredientView({
+      title: 'Shade and Illuminate Concealer',
+      pdp_ingredients_raw: 'Water, Glycerin, Titanium Dioxide, Iron Oxides',
+      active_ingredients: ['Glycerin', 'Titanium Dioxide'],
+    });
+
+    expect(authority.purity_status).toBe('authoritative');
+    expect(authority.items).toEqual(expect.arrayContaining(['Titanium Dioxide', 'Iron Oxides']));
+    expect(authority.active_items).toEqual([]);
+    expect(authority.suppressed_reason).toBe('active_items_low_signal');
   });
 
   test('parses inline full ingredient list from generic details sections', () => {

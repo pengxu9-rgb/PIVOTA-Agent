@@ -63,6 +63,39 @@ const SOURCE_PRIORITY = {
   structured_array: 2,
   active_block: 1,
 };
+const SUNSCREEN_CONTEXT_RE = /\b(spf\s*\d*|sunscreen|sun screen|sunblock|sun care|uv protection|broad spectrum|pa\+|mineral sunscreen|chemical sunscreen)\b/i;
+const HERO_ACTIVE_RE =
+  /\b(niacinamide|hyaluronic acid|ceramide|peptide|retinol|retinal|retinaldehyde|bakuchiol|vitamin c|ascorbic acid|ethyl ascorbic acid|tetrahexyldecyl ascorbate|glycolic acid|lactic acid|mandelic acid|salicylic acid|azelaic acid|tranexamic acid|pha|gluconolactone|panthenol|centella|madecassoside|snail mucin|rice|propolis|alpha arbutin|caffeine|squalane|urea|colloidal oatmeal|ectoin|zinc pca|tamanu oil)\b/i;
+const REGULATORY_ACTIVE_RE =
+  /\b(zinc oxide|titanium dioxide|avobenzone|octocrylene|octisalate|homosalate|octinoxate|ensulizole|meradimate|oxybenzone|tinosorb s|tinosorb m|uvinul a plus|uvinul t 150|mexoryl sx|mexoryl xl|benzoyl peroxide|adapalene|sulfur)\b/i;
+const LOW_SIGNAL_ACTIVE_ITEMS = new Set([
+  'water',
+  'aqua',
+  'glycerin',
+  'butylene glycol',
+  'propylene glycol',
+  'caprylyl glycol',
+  'phenoxyethanol',
+  'ethylhexylglycerin',
+  'fragrance',
+  'parfum',
+  'disodium edta',
+  'sodium chloride',
+  'xanthan gum',
+  'citric acid',
+  'sodium hydroxide',
+  'carbomer',
+  'tocopherol',
+  'alcohol',
+  'alcohol denat',
+  '1,2-hexanediol',
+  'hexylene glycol',
+  'dipropylene glycol',
+  'polysorbate 20',
+  'triethanolamine',
+]);
+const INVALID_ACTIVE_FRAGMENT_RE =
+  /^(?:see|learn more|tab on|restores damaged|chapped|none|n\/a|select shade|choose shade)$/i;
 
 function collectSectionBlocks(product) {
   const sections = [];
@@ -253,7 +286,23 @@ function ingredientKey(value) {
   return asString(value).toLowerCase().replace(/[^a-z0-9]+/g, '');
 }
 
+function hasSunscreenContext(product) {
+  const contextText = [
+    product?.title,
+    product?.name,
+    product?.category,
+    product?.product_type,
+    product?.description,
+    ...(Array.isArray(product?.tags) ? product.tags : []),
+  ]
+    .map((value) => asString(value))
+    .filter(Boolean)
+    .join(' ');
+  return SUNSCREEN_CONTEXT_RE.test(contextText);
+}
+
 function inferSunscreenActiveItems(product, items, rawText) {
+  if (!hasSunscreenContext(product)) return [];
   const haystack = [
     product?.title,
     product?.name,
@@ -272,6 +321,46 @@ function inferSunscreenActiveItems(product, items, rawText) {
   }
   const normalized = ingredientKey(haystack);
   return SUNSCREEN_ACTIVE_ITEMS.filter((item) => normalized.includes(ingredientKey(item)));
+}
+
+function isLowSignalActiveItem(value) {
+  return LOW_SIGNAL_ACTIVE_ITEMS.has(asString(value).toLowerCase());
+}
+
+function isInvalidActiveItem(value) {
+  const text = asString(value);
+  if (!text) return true;
+  if (INVALID_ACTIVE_FRAGMENT_RE.test(text)) return true;
+  if (text.length > 90) return true;
+  if (/[.!?]/.test(text)) return true;
+  if (/\$/.test(text)) return true;
+  return false;
+}
+
+function isDisplayableActiveItem(product, value) {
+  const text = asString(value);
+  if (!text) return false;
+  if (isInvalidActiveItem(text)) return false;
+  if (REGULATORY_ACTIVE_RE.test(text)) {
+    if (/zinc oxide|titanium dioxide/i.test(text)) return hasSunscreenContext(product);
+    return true;
+  }
+  if (isLowSignalActiveItem(text)) return false;
+  return HERO_ACTIVE_RE.test(text);
+}
+
+function filterDisplayableActiveItems(product, items) {
+  return uniqueStrings(
+    (Array.isArray(items) ? items : []).filter((item) => isDisplayableActiveItem(product, item)),
+  );
+}
+
+function classifySuppressedActiveItems(items) {
+  const source = Array.isArray(items) ? items : [];
+  if (!source.length) return null;
+  if (source.some(isInvalidActiveItem)) return 'active_items_invalid_fragment';
+  if (source.some(isLowSignalActiveItem)) return 'active_items_low_signal';
+  return 'active_items_not_displayable';
 }
 
 function reconcileActiveItemsWithIngredients(product, activeItems, items, rawText, options = {}) {
@@ -293,7 +382,7 @@ function reconcileActiveItemsWithIngredients(product, activeItems, items, rawTex
   return uniqueStrings([
     ...retained,
     ...inferredSunscreenActives,
-  ]);
+  ]).filter((item) => isDisplayableActiveItem(product, item));
 }
 
 function isReviewedIngredientAuthoritySource(sourceOrigin) {
@@ -512,26 +601,43 @@ function buildAuthoritativeIngredientView(product, options = {}) {
   const activeCandidateResult = readActiveCandidates(product, inputs);
   const activeItems = activeCandidateResult.items;
   if (picked) {
+    const candidateActiveItems = activeItems.length ? activeItems : picked.active_items;
+    const reconciledActiveItems = reconcileActiveItemsWithIngredients(
+      product,
+      candidateActiveItems,
+      picked.items,
+      picked.raw_text,
+      { validateAgainstIngredients: activeItems.length ? activeCandidateResult.validateAgainstIngredients : false },
+    );
     return buildAuthorityRecord({
       rawText: picked.raw_text,
       items: picked.items,
-      activeItems: reconcileActiveItemsWithIngredients(
-        product,
-        activeItems.length ? activeItems : picked.active_items,
-        picked.items,
-        picked.raw_text,
-        { validateAgainstIngredients: activeItems.length ? activeCandidateResult.validateAgainstIngredients : false },
-      ),
+      activeItems: reconciledActiveItems,
       sourceOrigin: picked.source_origin,
       purityStatus: 'authoritative',
+      suppressedReason:
+        candidateActiveItems.length && !reconciledActiveItems.length
+          ? classifySuppressedActiveItems(candidateActiveItems)
+          : null,
       generatedAt,
     });
   }
 
   if (activeItems.length) {
+    const displayableActiveItems = filterDisplayableActiveItems(product, activeItems);
+    if (!displayableActiveItems.length) {
+      return buildAuthorityRecord({
+        items: [],
+        activeItems: [],
+        sourceOrigin: 'none',
+        purityStatus: 'suppressed',
+        suppressedReason: classifySuppressedActiveItems(activeItems) || 'active_items_not_displayable',
+        generatedAt,
+      });
+    }
     return buildAuthorityRecord({
       items: [],
-      activeItems,
+      activeItems: displayableActiveItems,
       sourceOrigin: 'active_block',
       purityStatus: 'suppressed',
       suppressedReason: 'full_inci_low_purity',

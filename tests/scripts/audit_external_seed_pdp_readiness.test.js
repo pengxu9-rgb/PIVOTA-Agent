@@ -1,0 +1,291 @@
+const {
+  classifyActiveIngredientReadiness,
+  classifyEffectiveProductIntel,
+  classifyProductFamily,
+  classifyProductIntelKbRow,
+  summarizeReadinessRows,
+  buildReadinessRow,
+} = require('../../src/services/externalSeedPdpReadiness');
+
+function reviewedBundle(overrides = {}) {
+  const qualityState = overrides.quality_state || 'verified';
+  const evidenceProfile = overrides.evidence_profile || 'seller_plus_formula';
+  const highlight = overrides.highlight === undefined ? 'Mineral SPF' : overrides.highlight;
+  const bundle = {
+    contract_version: 'pivota.product_intel.v1',
+    quality_state: qualityState,
+    evidence_profile: evidenceProfile,
+    product_intel_core: {
+      quality_state: qualityState,
+      evidence_profile: evidenceProfile,
+      what_it_is: {
+        headline: 'Tinted mineral sunscreen',
+        body: 'A zinc oxide mineral sunscreen with a fluid tint and daily SPF coverage.',
+      },
+      why_it_stands_out: [
+        {
+          headline: 'Zinc oxide protection',
+          body: 'Uses zinc oxide for daily mineral UV protection.',
+        },
+      ],
+      best_for: [{ label: 'Mineral SPF', tag: 'spf', confidence: 'moderate' }],
+      watchouts: [{ body: 'Patch test before daily use.' }],
+      routine_fit: { step: 'sunscreen', pairing_notes: ['Use as the final morning step.'] },
+    },
+    shopping_card: {
+      title: 'Daily Mineral Sunscreen',
+      subtitle: 'Tinted Mineral Sunscreen',
+      ...(highlight ? { highlight } : {}),
+    },
+    search_card: {
+      title_candidate: 'Daily Mineral Sunscreen',
+      compact_candidate: 'Tinted Mineral Sunscreen',
+      ...(highlight ? { highlight_candidate: highlight } : {}),
+    },
+    provenance: {
+      generator: 'strict_human_manual_rewrite',
+    },
+    ...overrides,
+  };
+  if (overrides.reviewed === false) {
+    bundle.provenance = {};
+  }
+  return bundle;
+}
+
+function kbRow(productId, bundle) {
+  return {
+    kb_key: `product:${productId}`,
+    analysis: { product_intel_v1: bundle },
+    source: 'aurora_product_intel_kb',
+    source_meta: {},
+  };
+}
+
+function seedRow(overrides = {}) {
+  return {
+    id: 'seed_1',
+    external_product_id: 'ext_1',
+    market: 'US',
+    domain: 'example.com',
+    title: 'Daily Mineral Sunscreen SPF 50',
+    canonical_url: 'https://example.com/products/daily-mineral-sunscreen',
+    destination_url: 'https://example.com/products/daily-mineral-sunscreen',
+    seed_data: {
+      snapshot: {},
+      pdp_ingredients_raw: 'Water, Zinc Oxide, Glycerin',
+    },
+    ...overrides,
+  };
+}
+
+describe('external seed PDP readiness audit helpers', () => {
+  test('classifies sets and non-merch rows separately from single formula PDPs', () => {
+    expect(classifyProductFamily(seedRow({ title: 'The Daily Set' }))).toBe('set_or_collection');
+    expect(classifyProductFamily(seedRow({ title: 'Digital Gift Card' }))).toBe('non_merch');
+    expect(classifyProductFamily(seedRow({ title: 'Niacinamide 10% + Zinc 1%' }))).toBe('single_formula');
+  });
+
+  test('classifies reviewed Pivota Insights with compact card highlight as high quality ready', () => {
+    const result = classifyProductIntelKbRow(kbRow('ext_1', reviewedBundle()), { productId: 'ext_1' });
+
+    expect(result.displayable).toBe(true);
+    expect(result.high_quality_ready).toBe(true);
+    expect(result.issues).not.toContain('missing_card_highlight');
+    expect(result.issues).not.toContain('not_reviewed');
+  });
+
+  test('does not treat an unreviewed limited KB row as displayable coverage', () => {
+    const result = classifyProductIntelKbRow(
+      kbRow(
+        'ext_1',
+        reviewedBundle({
+          reviewed: false,
+          quality_state: 'limited',
+          evidence_profile: 'seller_only',
+        }),
+      ),
+      { productId: 'ext_1' },
+    );
+
+    expect(result.displayable).toBe(false);
+    expect(result.high_quality_ready).toBe(false);
+    expect(result.issues).toContain('not_reviewed');
+    expect(result.issues).toContain('not_displayable_gate');
+  });
+
+  test('uses a high quality sibling KB when the direct product-line shade KB is not displayable', () => {
+    const kbByProductId = new Map([
+      [
+        'ext_direct',
+        kbRow(
+          'ext_direct',
+          reviewedBundle({
+            reviewed: false,
+            quality_state: 'eligible',
+            evidence_profile: 'seller_plus_formula',
+          }),
+        ),
+      ],
+      ['ext_sibling', kbRow('ext_sibling', reviewedBundle())],
+    ]);
+    const productLineIdByProductId = new Map([
+      ['ext_direct', 'pl_1'],
+      ['ext_sibling', 'pl_1'],
+    ]);
+    const productIdsByLineId = new Map([['pl_1', ['ext_direct', 'ext_sibling']]]);
+
+    const result = classifyEffectiveProductIntel(
+      seedRow({ external_product_id: 'ext_direct', identity_product_line_id: 'pl_1' }),
+      { kbByProductId, productLineIdByProductId, productIdsByLineId },
+    );
+
+    expect(result.direct.displayable).toBe(false);
+    expect(result.effective.product_id).toBe('ext_sibling');
+    expect(result.effective.high_quality_ready).toBe(true);
+    expect(result.borrowed_from_sibling).toBe(true);
+  });
+
+  test('keeps SPF zinc oxide as regulatory active even when only the INCI raw text is present', () => {
+    const result = classifyActiveIngredientReadiness(
+      seedRow({
+        title: 'Daily Mineral Sunscreen SPF 50',
+        seed_data: {
+          snapshot: {},
+          pdp_ingredients_raw: 'Water, Zinc Oxide, Caprylic/Capric Triglyceride, Glycerin',
+        },
+      }),
+    );
+
+    expect(result.regulatory_expected).toBe(true);
+    expect(result.status).toBe('ready_regulatory');
+    expect(result.active_items).toContain('Zinc Oxide');
+  });
+
+  test('flags glycerin-only active ingredients as low signal instead of ready hero content', () => {
+    const result = classifyActiveIngredientReadiness(
+      seedRow({
+        title: 'Multi-Peptide Lash and Brow Serum',
+        canonical_url: 'https://example.com/products/multi-peptide-lash-brow-serum',
+        destination_url: 'https://example.com/products/multi-peptide-lash-brow-serum',
+        seed_data: {
+          snapshot: {},
+          active_ingredients: ['Glycerin'],
+          pdp_ingredients_raw: 'Water, Glycerin, Myristoyl Pentapeptide-17, Caffeine',
+          pdp_details_sections: [
+            {
+              heading: 'Details',
+              content: 'A peptide serum for fuller-looking lashes and brows.',
+            },
+          ],
+        },
+      }),
+    );
+
+    expect(result.hero_expected).toBe(true);
+    expect(result.status).toBe('low_signal_active');
+    expect(result.issues).toContain('low_signal_active');
+  });
+
+  test('flags storefront fragments such as See as invalid active ingredient tokens', () => {
+    const result = classifyActiveIngredientReadiness(
+      seedRow({
+        title: 'Sheer Shiny Lipstick',
+        canonical_url: 'https://example.com/products/sheer-shiny-lipstick',
+        destination_url: 'https://example.com/products/sheer-shiny-lipstick',
+        seed_data: {
+          snapshot: {},
+          active_ingredients: ['See'],
+          pdp_ingredients_raw: 'Ricinus Communis Seed Oil, Titanium Dioxide, Iron Oxides',
+        },
+      }),
+    );
+
+    expect(result.status).toBe('invalid_token_in_active');
+    expect(result.issues).toContain('invalid_token_in_active');
+  });
+
+  test('summarizes effective insights separately from direct KB coverage', () => {
+    const kbByProductId = new Map([
+      [
+        'ext_direct',
+        kbRow(
+          'ext_direct',
+          reviewedBundle({
+            reviewed: false,
+            quality_state: 'limited',
+            evidence_profile: 'seller_only',
+          }),
+        ),
+      ],
+      ['ext_sibling', kbRow('ext_sibling', reviewedBundle())],
+    ]);
+    const context = {
+      kbByProductId,
+      productLineIdByProductId: new Map([
+        ['ext_direct', 'pl_1'],
+        ['ext_sibling', 'pl_1'],
+      ]),
+      productIdsByLineId: new Map([['pl_1', ['ext_direct', 'ext_sibling']]]),
+    };
+    const readinessRow = buildReadinessRow(
+      seedRow({
+        external_product_id: 'ext_direct',
+        identity_product_line_id: 'pl_1',
+      }),
+      context,
+    );
+    const summary = summarizeReadinessRows([readinessRow]);
+
+    expect(summary.pivota_insights.direct.not_displayable).toBe(1);
+    expect(summary.pivota_insights.effective.high_quality_ready).toBe(1);
+    expect(summary.pivota_insights.effective.borrowed_from_sibling).toBe(1);
+  });
+});
+
+describe('external seed PDP readiness audit script DB resilience', () => {
+  afterEach(() => {
+    jest.resetModules();
+    jest.dontMock('../../src/db');
+  });
+
+  test('skips unreadable identity rows instead of failing the whole audit context', async () => {
+    const queryMock = jest.fn(async (sql, params) => {
+      const values = params[0] || [];
+      const isLineLookup = sql.includes('product_line_id = ANY');
+      if (!isLineLookup && values.includes('ext_bad')) {
+        throw new Error('invalid byte sequence for encoding "UTF8": 0x00');
+      }
+      if (isLineLookup) {
+        return {
+          rows: [
+            { product_id: 'ext_good', product_line_id: 'pl_1' },
+            { product_id: 'ext_sibling', product_line_id: 'pl_1' },
+          ],
+        };
+      }
+      return {
+        rows: values.includes('ext_good')
+          ? [{ product_id: 'ext_good', product_line_id: 'pl_1' }]
+          : [],
+      };
+    });
+    jest.doMock('../../src/db', () => ({
+      query: queryMock,
+      getPool: jest.fn(),
+    }));
+
+    const { fetchIdentityContext } = require('../../scripts/audit-external-seed-pdp-readiness');
+    const context = await fetchIdentityContext(['ext_good', 'ext_bad']);
+
+    expect(context.productLineIdByProductId.get('ext_good')).toBe('pl_1');
+    expect(context.productIdsByLineId.get('pl_1')).toEqual(['ext_good', 'ext_sibling']);
+    expect(context.allProductIds).toEqual(expect.arrayContaining(['ext_good', 'ext_bad', 'ext_sibling']));
+    expect(context.warnings).toEqual([
+      expect.objectContaining({
+        scope: 'pdp_identity_listing.product_id',
+        value: 'ext_bad',
+      }),
+    ]);
+  });
+});
