@@ -5803,6 +5803,76 @@ test('__internal: local external seed support-role search uses exact category he
   assert.equal(out.products[0].retrieval_match_stage, 'support_category_exact');
 });
 
+test('__internal: local external seed support-role search treats skin-qualified sunscreen as exact category authority', async () => {
+  const { __internal } = loadRoutesFresh();
+  const observedQueries = [];
+  const out = await __internal.searchLocalExternalSeedProducts({
+    query: 'sunscreen oily skin',
+    limit: 2,
+    role: {
+      role_id: 'daily_sunscreen',
+      rank: 30,
+      preferred_step: 'sunscreen',
+      query_terms: ['sunscreen oily skin', 'lightweight sunscreen oily skin'],
+      fit_keywords: ['spf', 'uv protection', 'oil control'],
+      product_type_hypotheses: ['sunscreen'],
+    },
+    preferredStep: 'sunscreen',
+    queryFn: async (sql, params) => {
+      observedQueries.push({ sql: String(sql || ''), params });
+      return {
+        rows: [
+          {
+            id: '226',
+            external_product_id: 'ext_support_sunscreen_oily_226',
+            destination_url: 'https://example.com/products/oily-face-spf',
+            canonical_url: 'https://example.com/products/oily-face-spf',
+            domain: 'example.com',
+            title: 'Oil-Control Face Sunscreen SPF 50',
+            image_url: 'https://example.com/products/oily-face-spf.jpg',
+            price_amount: 24,
+            price_currency: 'USD',
+            availability: 'in_stock',
+            match_stage: 'support_category_exact',
+            match_score: 56,
+            seed_data: {
+              derived: {
+                recall: {
+                  retrieval_title: 'Oil-Control Face Sunscreen SPF 50',
+                  retrieval_summary: 'A lightweight daily face sunscreen for oily skin.',
+                  category: 'sunscreen',
+                  vertical: 'skincare',
+                },
+              },
+              snapshot: {
+                title: 'Oil-Control Face Sunscreen SPF 50',
+                description: 'Lightweight face SPF for oily skin.',
+                category: 'Sunscreen',
+              },
+            },
+            updated_at: new Date().toISOString(),
+            created_at: new Date().toISOString(),
+          },
+        ],
+      };
+    },
+  });
+
+  assert.equal(out.ok, true);
+  assert.equal(observedQueries.length, 1);
+  assert.match(observedQueries[0].sql, /support_category_exact/);
+  assert.doesNotMatch(observedQueries[0].sql, /support_category_positive/);
+  assert.deepEqual(observedQueries[0].params[2], [
+    'sunscreen',
+    'spf',
+    'sun care',
+    'sun protection',
+    'uv protection',
+  ]);
+  assert.equal(out.local_external_seed_stage_debug[0]?.stage, 'support_category_exact');
+  assert.equal(out.products[0].retrieval_match_stage, 'support_category_exact');
+});
+
 test('__internal: local external seed generic daily sunscreen support skips broad category head for form-fit queries', async () => {
   const { __internal } = loadRoutesFresh();
   const observedQueries = [];
