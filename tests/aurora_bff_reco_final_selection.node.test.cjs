@@ -1746,6 +1746,71 @@ test('concern selector race keeps routine support slots on highest authority rol
   }
 });
 
+test('concern framework keeps high-fit external seed sunscreen in its support role pool', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const roles = [
+      {
+        role_id: 'oil_control_treatment',
+        label: 'Oil-control treatment',
+        why_this_role: 'Use a targeted treatment to manage excess shine, sebum, congestion, or clogged pores.',
+        rank: 10,
+        preferred_step: 'treatment',
+      },
+      {
+        role_id: 'lightweight_moisturizer',
+        label: 'Lightweight moisturizer',
+        why_this_role: 'Keep hydration light and breathable so skin stays balanced without feeling heavy.',
+        rank: 20,
+        preferred_step: 'moisturizer',
+      },
+      {
+        role_id: 'daily_sunscreen',
+        label: 'Daily sunscreen',
+        why_this_role: 'Use daily UV protection as the daytime support step for most routines.',
+        rank: 30,
+        preferred_step: 'sunscreen',
+      },
+    ];
+    const result = __internal.finalizeConcernFrameworkCandidatePools(
+      [
+        {
+          product_id: 'external_round_lab_spf',
+          merchant_id: 'external_seed',
+          title: '[DEAL] Birch Moisturizing Sunscreen UVLock SPF 45+ Broad Spectrum',
+          retrieval_source: 'external_seed',
+          retrieval_role_id: 'daily_sunscreen',
+          retrieval_query: 'sunscreen under makeup',
+          retrieval_step: 'sunscreen',
+          framework_role_fit_score: 0.76,
+          local_external_seed_role_fit_score: 0.76,
+        },
+      ],
+      {
+        targetContext: {
+          framework_roles: roles,
+          primary_role_id: 'oil_control_treatment',
+          routine_mode: 'routine_mix',
+          semantic_plan: {
+            routine_mode: 'routine_mix',
+            primary_role_id: 'oil_control_treatment',
+            support_role_ids: ['lightweight_moisturizer', 'daily_sunscreen'],
+          },
+        },
+      },
+    );
+
+    assert.equal(result.role_pool_stats?.daily_sunscreen?.viable_count, 1);
+    assert.equal(result.viable?.[0]?.matched_role_id, 'daily_sunscreen');
+    assert.deepEqual(
+      result.hard_reject_preview.map((item) => item.reason),
+      [],
+    );
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('concern selector race preserves same-role LLM ordering for comparison sets', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
@@ -8324,6 +8389,68 @@ test('canonical search result mirror keeps payload-bound assistant text when can
     assert.equal(routeAwareText, assistantText);
     assert.match(String(routeAwareText || ''), /Primary recommendation focus: keep this pass centered on Oil-control treatment\./i);
     assert.doesNotMatch(String(routeAwareText || ''), /Priority order:|care framework|Top pick for that first role/i);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('canonical final selection reorders recommendations, products, and section products together', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const rows = [
+      { product_id: 'matte_spf', display_name: 'Matte Fit Serum Sunscreen SPF 50' },
+      { product_id: 'light_spf', display_name: 'Light Serum Sunscreen SPF 50' },
+      { product_id: 'unseen_spf', display_name: 'Unseen Sunscreen SPF 50' },
+    ];
+    const payload = {
+      recommendations: rows,
+      products: rows.map((row) => ({ ...row, row_source: 'top_level_products' })),
+      sections: [
+        {
+          id: 'comparison',
+          title: 'Compare sunscreen options',
+          products: rows.map((row) => ({ ...row, row_source: 'section_products' })),
+        },
+      ],
+      recommendation_meta: {},
+      metadata: {},
+    };
+    const searchResult = {
+      decision_owner: 'shopping_agent_beauty_mainline',
+      semantic_owner: 'shopping_agent_beauty_mainline',
+      query_source: 'beauty_mainline_local_handoff',
+      metadata: {
+        search_stage_ledger: {
+          final_selection: {
+            selection_owner: 'shopping_agent_beauty_mainline',
+            selected_product_ids: ['light_spf', 'unseen_spf', 'matte_spf'],
+            selected_titles: [
+              'Light Serum Sunscreen SPF 50',
+              'Unseen Sunscreen SPF 50',
+              'Matte Fit Serum Sunscreen SPF 50',
+            ],
+            mainline_status: 'grounded_success',
+          },
+        },
+      },
+    };
+
+    const mirrored = __internal.applyRecoCanonicalSearchResultToPayload(payload, searchResult, {
+      selectionOwner: 'shopping_agent_beauty_mainline',
+    });
+
+    assert.deepEqual(
+      mirrored.recommendations.map((row) => row.product_id),
+      ['light_spf', 'unseen_spf', 'matte_spf'],
+    );
+    assert.deepEqual(
+      mirrored.products.map((row) => row.product_id),
+      ['light_spf', 'unseen_spf', 'matte_spf'],
+    );
+    assert.deepEqual(
+      mirrored.sections[0].products.map((row) => row.product_id),
+      ['light_spf', 'unseen_spf', 'matte_spf'],
+    );
   } finally {
     delete require.cache[moduleId];
   }
