@@ -425,9 +425,15 @@ function reconcileActiveItemsWithIngredients(product, activeItems, items, rawTex
     normalizedItemsText &&
     Array.isArray(items) &&
     items.length >= 3;
-  if (!inferredSunscreenActives.length && !shouldValidateAgainstIngredients) return normalizedActiveItems;
+  if (
+    !inferredSunscreenActives.length &&
+    !shouldValidateAgainstIngredients &&
+    options.validateAgainstIngredients !== true
+  ) {
+    return normalizedActiveItems;
+  }
   const retained = shouldValidateAgainstIngredients || inferredSunscreenActives.length
-      ? normalizedActiveItems.filter((item) => {
+    ? normalizedActiveItems.filter((item) => {
         const key = ingredientKey(item);
         if (normalizedItemsText && !normalizedItemsText.includes(key)) {
           const vitaminCIngredientMatch =
@@ -445,8 +451,11 @@ function reconcileActiveItemsWithIngredients(product, activeItems, items, rawTex
         return true;
       })
     : normalizedActiveItems;
+  const roleValidated = options.validateAgainstIngredients === true
+    ? retained.filter((item) => hasExplicitActiveRoleContext(product, item))
+    : retained;
   return uniqueStrings([
-    ...retained,
+    ...roleValidated,
     ...inferredSunscreenActives,
   ]).filter((item) => isDisplayableActiveItem(product, item));
 }
