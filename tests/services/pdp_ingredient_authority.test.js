@@ -128,14 +128,44 @@ describe('pdpIngredientAuthority', () => {
     });
 
     expect(authority.purity_status).toBe('authoritative');
-    expect(authority.active_items).toEqual(['Niacinamide', 'Squalane', 'Lactic Acid']);
+    expect(authority.active_items).toEqual(['Niacinamide', 'Squalane']);
     expect(authority.active_items).not.toEqual(
       expect.arrayContaining([
         'Ceramide NP',
         'Vitamin C (Ascorbic acid)',
         'Hyaluronic acid',
+        'Lactic Acid',
       ]),
     );
+  });
+
+  test('does not promote formula-buffer acid from unreviewed active arrays', () => {
+    const authority = buildAuthoritativeIngredientView({
+      title: 'Alpha Arbutin 2% + HA',
+      description:
+        'A water-based serum designed to target uneven skin tone and dark spots with alpha arbutin and hyaluronic acid.',
+      pdp_ingredients_raw:
+        'Aqua (Water), Alpha-Arbutin, Hydrolyzed Sodium Hyaluronate, Propanediol, Lactic Acid, Phenoxyethanol.',
+      ingredient_intel: {
+        active_ingredients: ['Alpha Arbutin', 'Hyaluronic acid', 'Lactic acid'],
+      },
+    });
+
+    expect(authority.active_items).toEqual(['Alpha Arbutin']);
+  });
+
+  test('keeps exfoliating acids when PDP role context is explicit', () => {
+    const authority = buildAuthoritativeIngredientView({
+      title: 'Lactic Acid 10% + HA',
+      description: 'A lactic acid serum for exfoliation and uneven texture.',
+      pdp_ingredients_raw:
+        'Aqua (Water), Lactic Acid, Glycerin, Sodium Hyaluronate, Phenoxyethanol.',
+      ingredient_intel: {
+        active_ingredients: ['Lactic Acid', 'Hyaluronic acid'],
+      },
+    });
+
+    expect(authority.active_items).toEqual(['Lactic Acid']);
   });
 
   test('suppresses low-signal active items while keeping authoritative INCI', () => {

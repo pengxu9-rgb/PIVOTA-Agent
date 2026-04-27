@@ -68,6 +68,8 @@ const HERO_ACTIVE_RE =
   /\b(niacinamide|hyaluronic acid|ceramide|peptide|retinol|retinal|retinaldehyde|bakuchiol|vitamin c|ascorbic acid|ethyl ascorbic acid|tetrahexyldecyl ascorbate|glycolic acid|lactic acid|mandelic acid|salicylic acid|azelaic acid|tranexamic acid|pha|gluconolactone|panthenol|centella|madecassoside|snail mucin|rice|propolis|alpha arbutin|caffeine|squalane|urea|colloidal oatmeal|ectoin|zinc pca|tamanu oil)\b/i;
 const REGULATORY_ACTIVE_RE =
   /\b(zinc oxide|titanium dioxide|avobenzone|octocrylene|octisalate|homosalate|octinoxate|ensulizole|meradimate|oxybenzone|tinosorb s|tinosorb m|uvinul a plus|uvinul t 150|mexoryl sx|mexoryl xl|benzoyl peroxide|adapalene|sulfur)\b/i;
+const CONTEXT_SENSITIVE_HERO_ACTIVE_RE =
+  /\b(glycolic acid|lactic acid|mandelic acid|salicylic acid)\b/i;
 const LOW_SIGNAL_ACTIVE_ITEMS = new Set([
   'water',
   'aqua',
@@ -286,6 +288,39 @@ function ingredientKey(value) {
   return asString(value).toLowerCase().replace(/[^a-z0-9]+/g, '');
 }
 
+function collectProductRoleContext(product) {
+  const seedData = asPlainObject(product?.seed_data) || {};
+  const snapshot = asPlainObject(seedData.snapshot) || {};
+  const contextValues = [
+    product?.title,
+    product?.name,
+    product?.category,
+    product?.product_type,
+    product?.description,
+    product?.pdp_description_raw,
+    seedData.description,
+    seedData.pdp_description_raw,
+    snapshot.description,
+    snapshot.pdp_description_raw,
+    ...(Array.isArray(product?.tags) ? product.tags : []),
+  ];
+  for (const section of collectSectionBlocks(product)) {
+    if (/ingredient|inci|full ingredient/i.test(asString(section.heading))) continue;
+    contextValues.push(section.heading, section.content);
+  }
+  return contextValues.map((value) => asString(value)).filter(Boolean).join(' ');
+}
+
+function hasExplicitActiveRoleContext(product, value) {
+  const text = asString(value);
+  if (!text) return false;
+  if (!CONTEXT_SENSITIVE_HERO_ACTIVE_RE.test(text)) return true;
+  const context = collectProductRoleContext(product);
+  if (!context) return false;
+  return new RegExp(`\\b${text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+')}\\b`, 'i')
+    .test(context);
+}
+
 function hasSunscreenContext(product) {
   const contextText = [
     product?.title,
@@ -376,7 +411,15 @@ function reconcileActiveItemsWithIngredients(product, activeItems, items, rawTex
   const retained = shouldValidateAgainstIngredients || inferredSunscreenActives.length
     ? normalizedActiveItems.filter((item) => {
         const key = ingredientKey(item);
-        return !normalizedItemsText || normalizedItemsText.includes(key);
+        if (normalizedItemsText && !normalizedItemsText.includes(key)) return false;
+        if (
+          shouldValidateAgainstIngredients &&
+          CONTEXT_SENSITIVE_HERO_ACTIVE_RE.test(item) &&
+          !hasExplicitActiveRoleContext(product, item)
+        ) {
+          return false;
+        }
+        return true;
       })
     : normalizedActiveItems;
   return uniqueStrings([
