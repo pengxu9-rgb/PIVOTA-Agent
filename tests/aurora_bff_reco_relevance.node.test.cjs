@@ -8499,6 +8499,15 @@ test('__internal: beauty local handoff uses stable alias authority when seed sea
   }
 });
 
+test('__internal: stable alias authority resolves oil-control role query variants', () => {
+  const { __internal } = loadRoutesFresh();
+  for (const query of ['oil balance serum', 'shine control serum', 'mattifying serum', 'balancing serum oily skin']) {
+    const out = __internal.resolveLocalStableAliasProductForProductInput({ inputText: query });
+    assert.equal(out?.ok, true, query);
+    assert.equal(out?.product?.product_id, '9886499864904', query);
+  }
+});
+
 test('__internal: beauty local handoff runs same-role sunscreen external authority in the primary round', async () => {
   const { __internal } = loadRoutesFresh();
   const calls = [];
