@@ -29,6 +29,7 @@ function parseTimeoutMs(raw, fallbackMs) {
 const PDP_RECS_CACHE_ENABLED = process.env.PDP_RECS_CACHE_ENABLED !== 'false';
 const PDP_RECS_CACHE_TTL_MS = parseTimeoutMs(process.env.PDP_RECS_CACHE_TTL_MS, 10 * 60 * 1000);
 const PDP_RECS_CACHE_MAX_ENTRIES = Math.max(0, Number(process.env.PDP_RECS_CACHE_MAX_ENTRIES || 2000) || 2000);
+const PDP_RECS_CARD_KB_CONTRACT_VERSION = 'pdp_recs_kb_card_v1';
 const PDP_RECS_INTERNAL_FETCH_TIMEOUT_MS = Math.max(
   300,
   parseTimeoutMs(process.env.PDP_RECS_INTERNAL_FETCH_TIMEOUT_MS, 2200),
@@ -386,6 +387,119 @@ function toCandidate(product, overrides = {}) {
     ...(product.product_id ? {} : { product_id: pid }),
     ...overrides,
   };
+}
+
+function asPlainObject(value) {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : null;
+}
+
+function recCardString(value) {
+  if (typeof value === 'string') return value.trim();
+  if (value == null) return '';
+  return String(value).trim();
+}
+
+function extractRecommendationProductIntelBundle(kbEntry) {
+  const analysis = asPlainObject(kbEntry?.analysis);
+  if (!analysis) return null;
+  return (
+    asPlainObject(analysis.product_intel_v1) ||
+    asPlainObject(analysis.product_intel) ||
+    asPlainObject(analysis.bundle) ||
+    null
+  );
+}
+
+function isReviewedRecommendationProductIntel(kbEntry, bundle) {
+  const sourceMeta = asPlainObject(kbEntry?.source_meta) || {};
+  const provenance = asPlainObject(bundle?.provenance) || {};
+  const core = asPlainObject(bundle?.product_intel_core) || {};
+  const qualityState = recCardString(
+    sourceMeta.quality_state ||
+      provenance.quality_state ||
+      bundle?.quality_state ||
+      core.quality_state,
+  ).toLowerCase();
+  const reviewStatus = recCardString(sourceMeta.review_status || provenance.review_status).toLowerCase();
+  const reviewerKind = recCardString(sourceMeta.reviewer_kind || provenance.reviewer_kind).toLowerCase();
+  const source = recCardString(kbEntry?.source || provenance.source).toLowerCase();
+  return (
+    qualityState === 'reviewed' ||
+    qualityState === 'verified' ||
+    reviewStatus === 'completed' ||
+    reviewerKind === 'human' ||
+    source.includes('pivota_product_intel_pilot_selected')
+  );
+}
+
+function applyRecommendationProductIntelBundle(product, bundle) {
+  const shoppingCard = asPlainObject(bundle?.shopping_card);
+  const searchCard = asPlainObject(bundle?.search_card);
+  const cardTitle = recCardString(shoppingCard?.title || searchCard?.title_candidate);
+  const cardSubtitle = recCardString(shoppingCard?.subtitle || searchCard?.compact_candidate);
+  const cardHighlight = recCardString(shoppingCard?.highlight || searchCard?.highlight_candidate);
+  const cardBadge = recCardString(shoppingCard?.proof_badge || searchCard?.proof_badge_candidate);
+  const cardIntro = recCardString(shoppingCard?.intro || searchCard?.intro_candidate);
+  if (!shoppingCard && !searchCard && !cardHighlight && !cardSubtitle && !cardIntro) return product;
+  return {
+    ...product,
+    product_intel: bundle,
+    ...(shoppingCard ? { shopping_card: shoppingCard } : {}),
+    ...(searchCard ? { search_card: searchCard } : {}),
+    ...(cardTitle && !recCardString(product?.card_title) ? { card_title: cardTitle } : {}),
+    ...(cardSubtitle && !recCardString(product?.card_subtitle) ? { card_subtitle: cardSubtitle } : {}),
+    ...(cardHighlight && !recCardString(product?.card_highlight) ? { card_highlight: cardHighlight } : {}),
+    ...(cardBadge && !recCardString(product?.card_badge) ? { card_badge: cardBadge } : {}),
+    ...(cardIntro && !recCardString(product?.card_intro) ? { card_intro: cardIntro } : {}),
+  };
+}
+
+async function hydrateRecommendationItemsWithReviewedProductIntel(items) {
+  const list = Array.isArray(items) ? items : [];
+  const stats = {
+    attempted_count: 0,
+    hydrated_count: 0,
+    skipped_unreviewed_count: 0,
+    failed: false,
+  };
+  const ids = Array.from(new Set(list.map((item) => getProductId(item)).filter(Boolean)));
+  if (!ids.length) return { items: list, stats };
+
+  let getProductIntelKbEntries = null;
+  try {
+    ({ getProductIntelKbEntries } = require('../auroraBff/productIntelKbStore'));
+  } catch {
+    return { items: list, stats };
+  }
+  if (typeof getProductIntelKbEntries !== 'function') return { items: list, stats };
+
+  let entriesByKey = null;
+  try {
+    entriesByKey = await getProductIntelKbEntries(ids.map((id) => `product:${id}`));
+  } catch (err) {
+    logger.warn(
+      { err: err?.message || String(err), items: ids.length },
+      'recommendations product intel card hydration failed',
+    );
+    return { items: list, stats: { ...stats, failed: true } };
+  }
+  if (!entriesByKey || typeof entriesByKey.get !== 'function') return { items: list, stats };
+
+  stats.attempted_count = ids.length;
+  const hydrated = list.map((item) => {
+    const productId = getProductId(item);
+    const kbEntry = productId ? entriesByKey.get(`product:${productId}`) : null;
+    const bundle = extractRecommendationProductIntelBundle(kbEntry);
+    if (!bundle) return item;
+    if (!isReviewedRecommendationProductIntel(kbEntry, bundle)) {
+      stats.skipped_unreviewed_count += 1;
+      return item;
+    }
+    const next = applyRecommendationProductIntelBundle(item, bundle);
+    if (next !== item) stats.hydrated_count += 1;
+    return next;
+  });
+  return { items: hydrated, stats };
 }
 
 function buildCandidateKey(product) {
@@ -2147,6 +2261,7 @@ async function recommend({
 
   const baseCurrency = currency || normalizeCurrency(rawBaseProduct, 'USD');
   const cacheKey = JSON.stringify({
+    contract: PDP_RECS_CARD_KB_CONTRACT_VERSION,
     merchant_id: baseMerchantId || null,
     product_id: baseProductId,
     k: safeK,
@@ -2356,6 +2471,9 @@ async function recommend({
     }
   }
 
+  const productIntelCardHydration = await hydrateRecommendationItemsWithReviewedProductIntel(finalItems);
+  finalItems = productIntelCardHydration.items;
+
   const elapsedMs = Date.now() - start;
   const finalSourceCounts = countRecommendationSources(finalItems);
   const finalMetadata = {
@@ -2367,6 +2485,7 @@ async function recommend({
     ...(identityDedupe?.stats?.applied
       ? { identity_dedupe: identityDedupe.stats }
       : {}),
+    product_intel_card_hydration: productIntelCardHydration.stats,
   };
 
   if (historyFallbackDebug.used) {
@@ -2397,6 +2516,7 @@ async function recommend({
       },
       sources: finalSourceCounts,
       history_fallback: historyFallbackDebug,
+      product_intel_card_hydration: productIntelCardHydration.stats,
       base_semantic: baseSemantic || null,
       cache_key_hash: debugEnabled ? stableHashShort(cacheKey) : undefined,
     },
@@ -2433,6 +2553,7 @@ module.exports = {
   recommend,
   pickLayeredRecommendations,
   getCacheStats,
+  hydrateRecommendationItemsWithReviewedProductIntel,
   // Exposed for tests.
   _internals: {
     resetCache: () => {
@@ -2450,6 +2571,9 @@ module.exports = {
     getLeafCategory,
     getParentCategory,
     isExternalProduct,
+    applyRecommendationProductIntelBundle,
+    extractRecommendationProductIntelBundle,
+    hydrateRecommendationItemsWithReviewedProductIntel,
     fetchExternalCandidates,
     fetchInternalCandidates,
     enrichExternalBaseProduct,

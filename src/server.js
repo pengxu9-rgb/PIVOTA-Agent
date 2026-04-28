@@ -268,7 +268,11 @@ try {
   );
 }
 const { applyGatewayGuardrails } = require('./guardrails/gatewayGuardrails');
-const { recommend: recommendPdpProducts, getCacheStats: getPdpRecsCacheStats } = require('./services/RecommendationEngine');
+const {
+  recommend: recommendPdpProducts,
+  getCacheStats: getPdpRecsCacheStats,
+  hydrateRecommendationItemsWithReviewedProductIntel,
+} = require('./services/RecommendationEngine');
 const { getGeminiGlobalGate } = require('./lib/geminiGlobalGate');
 const {
   resolveProductRef,
@@ -13791,8 +13795,34 @@ async function enrichSimilarProductsForPdpCards({
   detailBudgetMs = PDP_SIMILAR_CARD_DETAIL_BUDGET_MS,
 } = {}) {
   const list = Array.isArray(items) ? items : [];
-  const head = list.slice(0, Math.max(0, Number(maxItems) || 0));
+  let head = list.slice(0, Math.max(0, Number(maxItems) || 0));
   const tail = list.slice(head.length);
+  let productIntelCardHydrationMetadata = {
+    attempted_count: 0,
+    hydrated_count: 0,
+    skipped_unreviewed_count: 0,
+    failed: false,
+  };
+  try {
+    if (typeof hydrateRecommendationItemsWithReviewedProductIntel === 'function') {
+      const productIntelCardHydration = await hydrateRecommendationItemsWithReviewedProductIntel(head);
+      if (Array.isArray(productIntelCardHydration?.items)) {
+        head = productIntelCardHydration.items;
+      }
+      if (productIntelCardHydration?.stats && typeof productIntelCardHydration.stats === 'object') {
+        productIntelCardHydrationMetadata = productIntelCardHydration.stats;
+      }
+    }
+  } catch (err) {
+    productIntelCardHydrationMetadata = {
+      ...productIntelCardHydrationMetadata,
+      failed: true,
+    };
+    logger.warn(
+      { err: err?.message || String(err), items: head.length },
+      'PDP similar product-intel card hydration failed',
+    );
+  }
   const fallback = [...head.map((item) => annotateSimilarCardStatus(item)), ...tail];
   const normalizedBudgetMs = Math.max(1, Number(budgetMs || 0) || 0);
   const normalizedDetailBudgetMs = Math.max(
@@ -13806,6 +13836,7 @@ async function enrichSimilarProductsForPdpCards({
     card_enrichment_timeout_count: 0,
     card_enrichment_failed_count: 0,
     card_enrichment_status: 'ready',
+    product_intel_card_hydration: productIntelCardHydrationMetadata,
   };
   if (!head.some((item) => shouldEnrichSimilarCard(item))) {
     return attachSimilarCardEnrichmentMetadata(fallback, metadata);
