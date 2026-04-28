@@ -418,6 +418,56 @@ describe('pdpIdentityGraph', () => {
     ]);
   });
 
+  test('composeSyntheticCanonicalProduct preserves fresh external seed normalized variants over stale identity payload', () => {
+    const { composeSyntheticCanonicalProduct } = require('../../src/services/pdpIdentityGraph');
+
+    const staleListing = {
+      merchant_id: 'external_seed',
+      product_id: 'ext_fenty_sample',
+      source_kind: 'external_seed',
+      source_tier: 'brand',
+      sellable_item_group_id: 'sig_fenty_sample',
+      product_line_id: 'pl_fenty_gloss_bomb_heat',
+      review_family_id: 'rf_fenty_gloss_bomb_heat',
+      identity_confidence: 0.98,
+      source_payload: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_fenty_sample',
+        title: 'Gloss Bomb Heat Universal Lip Luminizer + Plumper Deluxe Sample',
+        variants: [{ variant_id: 'v1', title: 'Default Title' }],
+      },
+    };
+
+    const composed = composeSyntheticCanonicalProduct({
+      requestedListing: staleListing,
+      exactListings: [staleListing],
+      lineListings: [staleListing],
+      fallbackProduct: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_fenty_sample',
+        title: 'Gloss Bomb Heat Universal Lip Luminizer + Plumper Deluxe Sample',
+        variants: [
+          {
+            variant_id: 'v1',
+            title: '2ml',
+            option_name: 'Size',
+            option_value: '2ml',
+            options: [{ name: 'Size', value: '2ml' }],
+            axis_kind: 'volume',
+          },
+        ],
+      },
+    });
+
+    expect(composed.product.variants).toEqual([
+      expect.objectContaining({
+        title: '2ml',
+        option_name: 'Size',
+        option_value: '2ml',
+      }),
+    ]);
+  });
+
   test('buildIdentityListingFromProduct does not infer long numeric option identifiers as shade', () => {
     const { buildIdentityListingFromProduct } = require('../../src/services/pdpIdentityGraph');
 

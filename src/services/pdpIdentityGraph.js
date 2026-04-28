@@ -1695,6 +1695,15 @@ function sameListingRef(left, right) {
   );
 }
 
+function shouldPreserveFreshExternalSeedVariantFields(selectedListing, selectedPayload, fallbackProduct) {
+  const selectedMerchantId = asString(selectedListing?.merchant_id || selectedPayload?.merchant_id);
+  if (selectedMerchantId !== EXTERNAL_SEED_MERCHANT_ID) return false;
+  const selectedProductId = asString(selectedListing?.product_id || selectedPayload?.product_id || selectedPayload?.id);
+  const fallbackProductId = asString(fallbackProduct?.product_id || fallbackProduct?.id);
+  if (selectedProductId && fallbackProductId && selectedProductId !== fallbackProductId) return false;
+  return asArray(fallbackProduct?.variants).length > 0;
+}
+
 function overlaySelectedCommerceFields(product, selectedListing, fallbackProduct = null) {
   const selectedPayload =
     asPlainObject(selectedListing?.source_payload) || asPlainObject(fallbackProduct) || {};
@@ -1740,6 +1749,19 @@ function overlaySelectedCommerceFields(product, selectedListing, fallbackProduct
   ];
   for (const key of directFields) {
     if (selectedPayload[key] !== undefined) next[key] = selectedPayload[key];
+  }
+
+  if (shouldPreserveFreshExternalSeedVariantFields(selectedListing, selectedPayload, fallbackProduct)) {
+    for (const key of [
+      'variants',
+      'variant',
+      'default_variant_id',
+      'defaultVariantId',
+      'selected_variant_id',
+      'selectedVariantId',
+    ]) {
+      if (fallbackProduct?.[key] !== undefined) next[key] = fallbackProduct[key];
+    }
   }
 
   next.merchant_id = asString(selectedListing?.merchant_id || selectedPayload.merchant_id) || next.merchant_id;
@@ -2407,12 +2429,13 @@ async function maybeBuildLiveSyntheticPdp({
   productId,
   canonicalProduct = null,
   queryFn = query,
+  bypassCache = false,
 } = {}) {
   if (!PDP_IDENTITY_GRAPH_ENABLED || !process.env.DATABASE_URL || typeof queryFn !== 'function') {
     return null;
   }
 
-  const cacheKey = queryFn === query ? buildLiveSyntheticPdpCacheKey({ merchantId, productId }) : '';
+  const cacheKey = queryFn === query && !bypassCache ? buildLiveSyntheticPdpCacheKey({ merchantId, productId }) : '';
   const cached = readLiveSyntheticPdpCache(cacheKey);
   if (cached !== undefined) return cached;
 
