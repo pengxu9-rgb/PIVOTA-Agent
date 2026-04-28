@@ -48,6 +48,22 @@ describe('pdpIngredientAuthority', () => {
     expect(modules.authority.suppressed_reason).toBe('full_inci_low_purity');
   });
 
+  test('suppresses single-formula ingredient modules for external seed sets', () => {
+    const modules = buildStructuredPdpIngredientModules({
+      merchant_id: 'external_seed',
+      source: 'external_seed',
+      title: 'Radiance Routine Set',
+      canonical_url: 'https://example.com/products/radiance-routine-set',
+      pdp_ingredients_raw: 'Water, Glycerin, Niacinamide, Panthenol',
+      pdp_active_ingredients_raw: 'Active Ingredients: Niacinamide, Panthenol',
+    });
+
+    expect(modules.ingredientsInciData).toBeNull();
+    expect(modules.activeIngredientsData).toBeNull();
+    expect(modules.authority.purity_status).toBe('suppressed');
+    expect(modules.authority.suppressed_reason).toBe('product_family_set_or_collection');
+  });
+
   test('prefers existing authoritative ingredient block when already clean', () => {
     const authority = buildAuthoritativeIngredientView({
       ingredient_intel: {

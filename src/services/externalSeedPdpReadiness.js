@@ -4,6 +4,7 @@ const {
 } = require('../pdpProductIntel');
 const { buildAuthoritativeIngredientView } = require('./pdpIngredientAuthority');
 const { normalizeSeedVariants } = require('./externalSeedProducts');
+const { classifyExternalSeedProductKind } = require('./externalSeedProductKind');
 
 function asString(value) {
   if (typeof value === 'string') return value.trim();
@@ -152,14 +153,6 @@ const LOW_SIGNAL_ACTIVE_ITEMS = new Set([
   'triethanolamine',
 ]);
 
-const ACCESSORY_RE =
-  /\b(brush|sponge|puff|applicator|sharpener|tweezer|curler|scissors|comb|mirror|case|bag|pouch|holder|spatula|tool|tools|gua sha|roller|headband|scrunchie|scarf|hat|cap|tote|clip|clips|lash curler|refill case)\b/i;
-const NON_MERCH_RE =
-  /\b(?:e[-\s]?gift[-\s]?cards?|gift[-\s]?cards?|donat(?:e|ion)|sample service|appointment|booking|shipping protection|package protection|route protection|order protection)\b/i;
-const BUNDLE_RE =
-  /\b(bundle|set|kit|collection|duo|trio|routine|makeup look|mini set|travel set|starter set|value set|collection set|collection kit|collection bundle)\b/i;
-const FORMULA_PRODUCT_RE =
-  /\b(skincare|skin care|makeup|cosmetic|haircare|hair care|fragrance|perfume|parfum|cologne|cleanser|toner|essence|serum|ampoule|solution|suspension|emulsion|moisturi[sz]er|cream|lotion|balm|mask|peel|exfoliant|exfoliator|treatment|oil|acid|acne control|sunscreen|spf|foundation|concealer|mascara|lash|lip(?:stick| gloss| balm| oil)?|blush|bronzer|powder|highlighter|eyeshadow|eyeliner|brow|primer|setting spray|shampoo|conditioner|body wash|body lotion)\b/i;
 const SUNSCREEN_CONTEXT_RE =
   /\b(spf\s*\d*|sunscreen|sun screen|sunblock|broad spectrum|pa\+|uv protection|mineral sunscreen|chemical sunscreen)\b/i;
 const ACNE_REGULATORY_CONTEXT_RE =
@@ -534,9 +527,8 @@ function looksLikeSizeValue(value) {
 }
 
 function shouldRequireDefaultVariantSizeAxis(row) {
-  const text = collectContextText(row);
-  if (NON_MERCH_RE.test(text) || ACCESSORY_RE.test(text) || BUNDLE_RE.test(text)) return false;
-  return true;
+  const family = classifyExternalSeedProductKind(row).family;
+  return !['set_or_collection', 'non_merch', 'accessory'].includes(family);
 }
 
 function hasVariantVisualEvidence(variant) {
@@ -663,17 +655,12 @@ function classifyVariantReadiness(row) {
 }
 
 function isNonMerchOrAccessory(row) {
-  const text = collectContextText(row);
-  return NON_MERCH_RE.test(text) || ACCESSORY_RE.test(text);
+  const family = classifyExternalSeedProductKind(row).family;
+  return family === 'non_merch' || family === 'accessory' || family === 'set_or_collection';
 }
 
 function classifyProductFamily(row) {
-  const text = collectContextText(row);
-  if (NON_MERCH_RE.test(text)) return 'non_merch';
-  if (ACCESSORY_RE.test(text)) return 'accessory';
-  if (BUNDLE_RE.test(text)) return 'set_or_collection';
-  if (FORMULA_PRODUCT_RE.test(text)) return 'single_formula';
-  return 'unknown_product';
+  return classifyExternalSeedProductKind(row).family;
 }
 
 function isRegulatoryActiveExpected(row) {
@@ -724,6 +711,21 @@ function isInvalidActiveItem(value) {
 
 function classifyActiveIngredientReadiness(row) {
   const coverage = readSeedCoverage(row);
+  const productFamily = classifyProductFamily(row);
+  if (['set_or_collection', 'non_merch', 'accessory'].includes(productFamily)) {
+    return {
+      status: 'not_applicable_product_family',
+      issues: [],
+      regulatory_expected: false,
+      hero_expected: false,
+      active_items: [],
+      source_origin: 'none',
+      source_quality_status: 'blocked',
+      coverage,
+      invalid_fragments: [],
+      suppressed_reason: productFamily,
+    };
+  }
   const regulatoryExpected = isRegulatoryActiveExpected(row);
   const heroExpected = isHeroIngredientExpected(row);
   let authority = {

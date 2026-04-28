@@ -1527,8 +1527,52 @@ describe('externalSeedProducts helper', () => {
     };
 
     const product = buildExternalSeedProduct(row);
+    expect(product.product_family).toBe('single_formula');
     expect(product.category).toBe('Eyeshadow');
     expect(product.product_type).toBe('Eyeshadow');
+  });
+
+  test('keeps setting powder as a single formula instead of a set PDP', () => {
+    const product = buildExternalSeedProduct({
+      id: 'eps_setting_powder',
+      external_product_id: 'ext_setting_powder',
+      canonical_url: 'https://fentybeauty.com/products/invisimatte-instant-setting-blotting-powder',
+      destination_url: 'https://fentybeauty.com/products/invisimatte-instant-setting-blotting-powder',
+      domain: 'fentybeauty.com',
+      title: 'Invisimatte Instant Setting + Blotting Powder',
+      seed_data: {
+        brand: 'Fenty Beauty',
+        snapshot: {},
+      },
+    });
+
+    expect(product.product_family).toBe('single_formula');
+    expect(product.category).toBe('Powder');
+    expect(product.product_type).toBe('Powder');
+  });
+
+  test('marks external seed sets as set PDPs and suppresses single-formula ingredient modules', () => {
+    const product = buildExternalSeedProduct({
+      id: 'eps_bundle',
+      external_product_id: 'ext_bundle',
+      canonical_url: 'https://example.com/products/radiance-routine-set',
+      destination_url: 'https://example.com/products/radiance-routine-set',
+      domain: 'example.com',
+      title: 'Radiance Routine Set',
+      seed_data: {
+        brand: 'Example',
+        pdp_ingredients_raw: 'Water, Glycerin, Niacinamide, Panthenol',
+        pdp_active_ingredients_raw: 'Active Ingredients: Niacinamide, Panthenol',
+        snapshot: {},
+      },
+    });
+
+    expect(product.product_family).toBe('set_or_collection');
+    expect(product.category).toBe('Set');
+    expect(product.product_type).toBe('Set');
+    expect(product.ingredients_inci).toBeUndefined();
+    expect(product.active_ingredients).toBeUndefined();
+    expect(product.ingredient_intel?.authoritative?.suppressed_reason).toBe('product_family_set_or_collection');
   });
 
   test('classifies sunscreen authority rows from title even when seed category is polluted', () => {

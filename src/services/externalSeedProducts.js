@@ -14,6 +14,10 @@ const {
   buildAuthoritativeIngredientView,
   mergeIngredientIntelWithAuthority,
 } = require('./pdpIngredientAuthority');
+const {
+  classifyExternalSeedProductKind,
+  isIngredientAuthorityEligibleExternalSeed,
+} = require('./externalSeedProductKind');
 
 const EXTERNAL_SEED_MERCHANT_ID = 'external_seed';
 const SUNSCREEN_CATEGORY_RE =
@@ -2133,9 +2137,26 @@ function buildExternalSeedProduct(row, options = {}) {
     normalizeExplicitBeautyCategory(row.seed_product_type) ||
     normalizeExplicitBeautyCategory(row.category) ||
     normalizeExplicitBeautyCategory(row.product_type);
+  const productKind = classifyExternalSeedProductKind({
+    ...row,
+    title,
+    description,
+    category: explicitCategory || row.category,
+    product_type: explicitCategory || row.product_type,
+    canonical_url: canonicalUrl,
+    destination_url: destinationUrl,
+    seed_data: seedData,
+  });
+  const productFamily = productKind.family;
+  const forcedCategory =
+    productFamily === 'non_merch'
+      ? 'Gift Card'
+      : productFamily === 'accessory'
+        ? explicitCategory || 'Accessory'
+        : '';
   const ingredientTokens = collectSeedIngredientSignalTokens(seedData, row);
   const ingredientIds = collectStructuredIngredientIds(row, seedData, snapshot);
-  const category = inferExternalSeedBeautyCategory({
+  const inferredCategory = inferExternalSeedBeautyCategory({
     explicitCategory,
     title,
     description: categoryDescription,
@@ -2143,6 +2164,9 @@ function buildExternalSeedProduct(row, options = {}) {
     destinationUrl,
     ingredientIds,
   });
+  const category =
+    forcedCategory ||
+    (productFamily === 'set_or_collection' ? inferredCategory || 'Set' : inferredCategory);
   const normalizedCategory = category || undefined;
 
   let variants = normalizeSeedVariants(seedData, row);
@@ -2267,9 +2291,16 @@ function buildExternalSeedProduct(row, options = {}) {
     exclusionFlags: recall.exclusion_flags,
   });
 
-  const authority = buildAuthoritativeIngredientView({
+  const authorityInput = {
     product_id: externalProductId,
     merchant_id: EXTERNAL_SEED_MERCHANT_ID,
+    source: 'external_seed',
+    title,
+    description,
+    category: normalizedCategory || explicitCategory || '',
+    product_type: normalizedCategory || explicitCategory || '',
+    canonical_url: canonicalUrl,
+    destination_url: destinationUrl,
     seed_data: seedData,
     raw_ingredient_text_clean:
       seedData.raw_ingredient_text_clean ||
@@ -2297,7 +2328,17 @@ function buildExternalSeedProduct(row, options = {}) {
           ? snapshot.details_sections
           : undefined,
     ingredient_intel: ingredientIntel,
-  });
+  };
+  const authority = isIngredientAuthorityEligibleExternalSeed(authorityInput)
+    ? buildAuthoritativeIngredientView(authorityInput)
+    : {
+        items: [],
+        active_items: [],
+        source_origin: 'none',
+        purity_status: 'suppressed',
+        suppressed_reason: `product_family_${productFamily}`,
+        generated_at: new Date().toISOString(),
+      };
   const mergedIngredientIntel = mergeIngredientIntelWithAuthority(ingredientIntel, authority);
 
   return {
@@ -2319,6 +2360,9 @@ function buildExternalSeedProduct(row, options = {}) {
     availability: availability || undefined,
     product_type: normalizedCategory || 'external',
     source: 'external_seed',
+    product_family: productFamily,
+    external_seed_product_family: productFamily,
+    external_seed_product_kind_reasons: productKind.reasons,
     ...(seedData.parent_external_product_id ? { parent_external_product_id: String(seedData.parent_external_product_id).trim() } : {}),
     ...(seedData.source_listing_scope ? { source_listing_scope: String(seedData.source_listing_scope).trim() } : {}),
     ...(ingredientIds.length ? { ingredient_ids: ingredientIds } : {}),
