@@ -8032,6 +8032,76 @@ test('beauty canonical ownership recomputes final selection from surfaced recomm
   }
 });
 
+test('beauty canonical ownership uses existing selector final_selection to order visible card rows', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const selectorSelection = {
+      selection_owner: 'shopping_agent_beauty_mainline',
+      selected_product_ids: ['light', 'unseen', 'matte'],
+      selected_titles: ['Light Serum Sunscreen', 'Unseen Sunscreen', 'Matte Fit Serum Sunscreen'],
+      mainline_status: 'grounded_success',
+      source_tier_counts: { fresh_external: 3 },
+    };
+    const rows = [
+      { product_id: 'matte', display_name: 'Matte Fit Serum Sunscreen' },
+      { product_id: 'light', display_name: 'Light Serum Sunscreen' },
+      { product_id: 'unseen', display_name: 'Unseen Sunscreen' },
+    ];
+    const out = __internal.applyBeautyCanonicalOwnershipToEnvelope({
+      envelope: {
+        assistant_message: {
+          role: 'assistant',
+          content: 'Light Serum Sunscreen is the first comparison option.',
+        },
+        cards: [
+          {
+            card_id: 'reco_order_test',
+            type: 'recommendations',
+            payload: {
+              query_source: 'beauty_mainline_local_handoff',
+              decision_owner: 'shopping_agent_beauty_mainline',
+              semantic_owner: 'shopping_agent_beauty_mainline',
+              recommendations: rows,
+              products: rows,
+              sections: [{ kind: 'product_cards', products: rows }],
+              recommendation_meta: {
+                source_mode: 'framework_mainline',
+                final_selection: selectorSelection,
+              },
+              metadata: {
+                final_selection: selectorSelection,
+                search_stage_ledger: { final_selection: selectorSelection },
+              },
+            },
+          },
+        ],
+      },
+      route: 'reco',
+      assistantText: 'Light Serum Sunscreen is the first comparison option.',
+    });
+
+    const payload = out.cards[0].payload;
+    assert.deepEqual(
+      payload.recommendation_meta.final_selection.selected_product_ids,
+      ['light', 'unseen', 'matte'],
+    );
+    assert.deepEqual(
+      payload.recommendations.map((item) => item.product_id),
+      ['light', 'unseen', 'matte'],
+    );
+    assert.deepEqual(
+      payload.products.map((item) => item.product_id),
+      ['light', 'unseen', 'matte'],
+    );
+    assert.deepEqual(
+      payload.sections[0].products.map((item) => item.product_id),
+      ['light', 'unseen', 'matte'],
+    );
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('beauty canonical ownership keeps beauty mainline reco card-only when assistant rewrite fails', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
@@ -8596,7 +8666,7 @@ test('beauty handoff payload builder replaces mixed planner rows with canonical 
   }
 });
 
-test('beauty handoff payload builder restamps final selection to final visible recommendation order', () => {
+test('beauty handoff payload builder preserves final selection as visible recommendation authority', () => {
   const { createBeautyChatMainlineEnvelopeRuntime } = require('../src/auroraBff/beautyChatMainlineEnvelope');
   const staleSelection = {
     selection_owner: 'shopping_agent_beauty_mainline',
@@ -8743,15 +8813,15 @@ test('beauty handoff payload builder restamps final selection to final visible r
 
   assert.deepEqual(
     out?.payload?.recommendations?.map((item) => item.product_id),
-    ['matte', 'light', 'unseen'],
+    ['light', 'unseen', 'matte'],
   );
   assert.deepEqual(
     out?.payload?.recommendation_meta?.selected_product_ids,
-    ['matte', 'light', 'unseen'],
+    ['light', 'unseen', 'matte'],
   );
   assert.deepEqual(
     out?.payload?.metadata?.search_stage_ledger?.final_selection?.selected_product_ids,
-    ['matte', 'light', 'unseen'],
+    ['light', 'unseen', 'matte'],
   );
 });
 

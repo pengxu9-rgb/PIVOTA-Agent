@@ -567,6 +567,100 @@ describe('beauty_expert_v1 contract', () => {
     expect(projectedProducts[projectedProducts.length - 1]?.name).toBe('Dayscreen Moisturizer SPF 30');
   });
 
+  test('aurora projection preserves explicit final_selection order over beauty expert reranking', () => {
+    const finalSelection = {
+      selected_product_ids: ['light_spf', 'unseen_spf', 'matte_spf'],
+      selected_titles: [
+        'SKINTIFIC Light Serum Sunscreen SPF 50+ PA++++',
+        'Supergoop Unseen Sunscreen SPF 50',
+        'SKINTIFIC Matte Fit Serum Sunscreen SPF 50+ PA++++',
+      ],
+      mainline_status: 'grounded_success',
+    };
+    const rows = [
+      {
+        product_id: 'matte_spf',
+        merchant_id: 'external_seed',
+        name: 'SKINTIFIC Matte Fit Serum Sunscreen SPF 50+ PA++++',
+        brand: 'SKINTIFIC',
+        why_this_one:
+          'it has more direct airy, non-greasy texture evidence for oily skin under makeup while staying in a dedicated SPF50+ sunscreen lane',
+      },
+      {
+        product_id: 'light_spf',
+        merchant_id: 'external_seed',
+        name: 'SKINTIFIC Light Serum Sunscreen SPF 50+ PA++++',
+        brand: 'SKINTIFIC',
+        why_this_one:
+          'it keeps the finish lighter and smoother under makeup for easier daytime wear',
+      },
+      {
+        product_id: 'unseen_spf',
+        merchant_id: 'external_seed',
+        name: 'Supergoop Unseen Sunscreen SPF 50',
+        brand: 'Supergoop',
+        why_this_one:
+          'it keeps the finish lighter and smoother under makeup when you do not want to go too matte',
+      },
+    ];
+    const assistantText =
+      'SKINTIFIC Light Serum Sunscreen SPF 50+ PA++++ keeps the finish lighter and smoother under makeup. Supergoop Unseen Sunscreen SPF 50 keeps the finish lighter and smoother when you do not want to go too matte. SKINTIFIC Matte Fit Serum Sunscreen SPF 50+ PA++++ makes more sense if you want a more matte, shine-controlling finish.';
+
+    const result = attachBeautyExpertV1ToResponse(
+      {
+        reply:
+          'Matte Fit Serum Sunscreen SPF 50+ PA++++ is the current lead because it has more direct matte evidence.',
+        assistant_text: assistantText,
+        assistant_message: {
+          role: 'assistant',
+          content: assistantText,
+          format: 'text',
+        },
+        cards: [
+          {
+            type: 'recommendations',
+            payload: {
+              recommendations: rows,
+              products: rows,
+              sections: [{ kind: 'product_cards', products: rows }],
+              recommendation_meta: { final_selection: finalSelection },
+              metadata: {
+                final_selection: finalSelection,
+                search_stage_ledger: { final_selection: finalSelection },
+              },
+            },
+            sections: [{ kind: 'product_cards', products: rows }],
+          },
+        ],
+        meta: {},
+      },
+      {
+        source: 'aurora-bff',
+        entryLayer: 'orchestration',
+        projectionType: 'aurora_cards',
+        taskType: 'discovery',
+        context: {
+          source_profile: { source: 'aurora-bff', default_entry_layer: 'orchestration' },
+          vertical: 'beauty',
+          category: 'skincare',
+          raw_user_goal: 'I have oily skin, what sunscreen should I buy under makeup?',
+        },
+        metadata: { catalog_surface: 'beauty' },
+        payload: { message: 'I have oily skin, what sunscreen should I buy under makeup?' },
+        messages: [{ role: 'user', content: 'I have oily skin, what sunscreen should I buy under makeup?' }],
+      },
+    );
+
+    const expected = ['light_spf', 'unseen_spf', 'matte_spf'];
+    expect(result.beauty_expert_v1.reco_bundle.lead_picks[0]?.product_id).toBe('light_spf');
+    expect(result.cards[0].payload.recommendations.map((product) => product.product_id)).toEqual(expected);
+    expect(result.cards[0].payload.products.map((product) => product.product_id)).toEqual(expected);
+    expect(result.cards[0].payload.sections[0].products.map((product) => product.product_id)).toEqual(expected);
+    expect(result.cards[0].sections[0].products.map((product) => product.product_id)).toEqual(expected);
+    expect(result.reply).toBe(assistantText);
+    expect(result.assistant_message.content).toBe(assistantText);
+  });
+
   test('relief sun exact-product copy uses sunscreen texture evidence instead of role and price fallback', () => {
     const result = attachBeautyExpertV1ToResponse(
       {

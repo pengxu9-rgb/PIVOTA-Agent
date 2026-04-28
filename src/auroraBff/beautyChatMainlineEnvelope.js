@@ -290,6 +290,27 @@ function orderEnvelopeRecoRowsBySelection(rows = [], selectionContract = null) {
   return orderedRows;
 }
 
+function envelopeFinalSelectionCoversRows(selectionContract = null, rows = []) {
+  const sourceRows = Array.isArray(rows) ? rows.filter((row) => isPlainObject(row)) : [];
+  const selectedIds = Array.isArray(selectionContract?.selected_product_ids)
+    ? selectionContract.selected_product_ids.map((value) => String(value || '').trim()).filter(Boolean)
+    : [];
+  if (!sourceRows.length || !selectedIds.length) return false;
+  const selectedSet = new Set(selectedIds.map((value) => value.toLowerCase()));
+  const rowIds = [];
+  const seen = new Set();
+  for (const row of sourceRows) {
+    const productId = extractEnvelopeRecoSelectionProductId(row);
+    if (!productId) continue;
+    const key = productId.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    rowIds.push(productId);
+  }
+  if (!rowIds.length) return false;
+  return rowIds.every((productId) => selectedSet.has(productId.toLowerCase()));
+}
+
 function applyEnvelopeVisibleSelectionContractToPayload(payload = null, {
   baseSelection = null,
   recommendations = null,
@@ -306,10 +327,18 @@ function applyEnvelopeVisibleSelectionContractToPayload(payload = null, {
     { targetContext },
   );
   if (!visibleRecommendations.length) return payload;
+  const candidateSelectionAuthority = baseSelection || extractRecoFinalSelectionContract(payload);
+  const selectionAuthority = envelopeFinalSelectionCoversRows(candidateSelectionAuthority, visibleRecommendations)
+    ? candidateSelectionAuthority
+    : null;
+  const orderedVisibleRecommendations = (() => {
+    const ordered = orderEnvelopeRecoRowsBySelection(visibleRecommendations, selectionAuthority);
+    return ordered.length > 0 ? ordered : visibleRecommendations;
+  })();
 
   const visibleSelection = buildEnvelopeVisibleSelectionContract(
-    baseSelection || extractRecoFinalSelectionContract(payload),
-    visibleRecommendations,
+    selectionAuthority,
+    orderedVisibleRecommendations,
   );
   const nextRecommendationMeta = isPlainObject(payload.recommendation_meta)
     ? { ...payload.recommendation_meta }
@@ -332,14 +361,14 @@ function applyEnvelopeVisibleSelectionContractToPayload(payload = null, {
   const visibleProducts = Array.isArray(payload.products)
     ? (() => {
       const orderedProducts = orderEnvelopeRecoRowsBySelection(payload.products, visibleSelection);
-      return orderedProducts.length > 0 ? orderedProducts : visibleRecommendations;
+      return orderedProducts.length > 0 ? orderedProducts : orderedVisibleRecommendations;
     })()
     : null;
   const visibleSections = Array.isArray(payload.sections)
     ? payload.sections.map((section) => {
       if (!isPlainObject(section) || !Array.isArray(section.products)) return section;
       const orderedSectionProducts = orderEnvelopeRecoRowsBySelection(section.products, visibleSelection);
-      const sectionProducts = orderedSectionProducts.length > 0 ? orderedSectionProducts : visibleRecommendations;
+      const sectionProducts = orderedSectionProducts.length > 0 ? orderedSectionProducts : orderedVisibleRecommendations;
       return {
         ...section,
         products: sectionProducts,
@@ -349,12 +378,12 @@ function applyEnvelopeVisibleSelectionContractToPayload(payload = null, {
 
   return {
     ...payload,
-    recommendations: visibleRecommendations,
-    grounded_count: visibleRecommendations.length,
+    recommendations: orderedVisibleRecommendations,
+    grounded_count: orderedVisibleRecommendations.length,
     ...(visibleProducts ? { products: visibleProducts } : {}),
     ...(visibleSections ? { sections: visibleSections } : {}),
     primary_recommendation_id:
-      extractEnvelopeRecoSelectionProductId(visibleRecommendations[0]) || payload.primary_recommendation_id,
+      extractEnvelopeRecoSelectionProductId(orderedVisibleRecommendations[0]) || payload.primary_recommendation_id,
     recommendation_meta: nextRecommendationMeta,
     metadata: nextPayloadMeta,
   };
