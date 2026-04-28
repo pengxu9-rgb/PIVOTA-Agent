@@ -128,6 +128,12 @@ function isConcernSelectorDedicatedFinishFitSunscreen(row = null) {
   return /\b(sunscreen|sun\s*screen|spf\s*\d{1,3}\+?|pa\+{2,4}|uv[ab]?|broad\s+spectrum)\b/i.test(text);
 }
 
+function isConcernSelectorPackagingOnlyFinishFitVariant(row = null) {
+  const text = buildConcernSelectorCandidateEvidenceText(row);
+  if (!text) return false;
+  return /\b(?:deal|subscription|subscribe(?:\s*(?:and|&)\s*save)?|refill(?:\s+(?:pouch|pack|pod|cartridge|bottle))?|(?:pouch|pack|pod|cartridge|bottle)\s+refill|replacement\s+(?:pouch|pack|pod|cartridge|bottle)|duo|bundle|kit|set\s+of\s+\d+|value\s+set)\b/i.test(text);
+}
+
 function shouldDiversifyConcernSelectorFinishFitComparison(selector = {}, recommendations = []) {
   const comparisonMode = String(
     pickFirstTrimmed(selector?.comparison_mode, selector?.comparisonMode) || '',
@@ -140,6 +146,21 @@ function shouldDiversifyConcernSelectorFinishFitComparison(selector = {}, recomm
     && primaryRoleId === 'daily_sunscreen_finish_fit'
     && Array.isArray(recommendations)
     && recommendations.length > 2
+  );
+}
+
+function shouldFilterConcernSelectorFinishFitPackagingVariants(selector = {}, recommendations = []) {
+  const comparisonMode = String(
+    pickFirstTrimmed(selector?.comparison_mode, selector?.comparisonMode) || '',
+  ).trim().toLowerCase();
+  const primaryRoleId = String(
+    pickFirstTrimmed(selector?.primary_role_id, selector?.primaryRoleId) || '',
+  ).trim().toLowerCase();
+  return (
+    (comparisonMode === 'same_role_comparison' || comparisonMode === 'same_role')
+    && primaryRoleId === 'daily_sunscreen_finish_fit'
+    && Array.isArray(recommendations)
+    && recommendations.length > 1
   );
 }
 
@@ -230,12 +251,14 @@ function stabilizeConcernSelectorRoutineMixOrdering(recommendations = [], select
 function diversifyConcernSelectorFinishFitOrdering(recommendations = [], selector = {}) {
   const ordered = Array.isArray(recommendations) ? recommendations.slice() : [];
   if (!shouldDiversifyConcernSelectorFinishFitComparison(selector, ordered)) return ordered;
+  const standardOrdered = ordered.filter((row) => !isConcernSelectorPackagingOnlyFinishFitVariant(row));
+  const eligibleOrdered = standardOrdered.length ? standardOrdered : ordered;
   const topPickProductId = pickFirstTrimmed(selector?.top_pick_product_id, selector?.topPickProductId) || null;
   const requestedLead = (topPickProductId
-    ? ordered.find((row) => pickFirstString(row?.product_id, row?.productId) === topPickProductId)
-    : null) || ordered[0] || null;
-  const dedicatedRows = ordered.filter((row) => isConcernSelectorDedicatedFinishFitSunscreen(row));
-  const dedicatedCoverageCanFillCards = dedicatedRows.length >= Math.min(3, ordered.length);
+    ? eligibleOrdered.find((row) => pickFirstString(row?.product_id, row?.productId) === topPickProductId)
+    : null) || eligibleOrdered[0] || null;
+  const dedicatedRows = eligibleOrdered.filter((row) => isConcernSelectorDedicatedFinishFitSunscreen(row));
+  const dedicatedCoverageCanFillCards = dedicatedRows.length >= Math.min(3, eligibleOrdered.length);
   const lead = (
     requestedLead && !isConcernSelectorLowerCoverageMoisturizerSpfHybrid(requestedLead)
       ? requestedLead
@@ -259,7 +282,7 @@ function diversifyConcernSelectorFinishFitOrdering(recommendations = [], selecto
   const desiredBuckets = ['lighter_smoother', 'matte_oil_control', 'mineral_sensitive', 'richer_moisturizing']
     .filter((bucket) => bucket !== leadBucket);
   for (const bucket of desiredBuckets) {
-    const match = ordered.find((row) => {
+    const match = eligibleOrdered.find((row) => {
       const productId = pickFirstString(row?.product_id, row?.productId);
       if (!productId || usedProductIds.has(productId)) return false;
       if (dedicatedCoverageCanFillCards && isConcernSelectorLowerCoverageMoisturizerSpfHybrid(row)) return false;
@@ -267,7 +290,7 @@ function diversifyConcernSelectorFinishFitOrdering(recommendations = [], selecto
     });
     if (match) pushUnique(match);
   }
-  for (const row of ordered) {
+  for (const row of eligibleOrdered) {
     if (dedicatedCoverageCanFillCards && isConcernSelectorLowerCoverageMoisturizerSpfHybrid(row)) {
       deferredHybrids.push(row);
       continue;
@@ -310,7 +333,14 @@ function applyConcernSelectorRaceOrdering(recommendations, selectorRace) {
       return 0;
     });
   }
-  const routineStabilizedOrdered = stabilizeConcernSelectorRoutineMixOrdering(ordered, selector);
+  const finishFitPackagingFilteredOrdered =
+    shouldFilterConcernSelectorFinishFitPackagingVariants(selector, ordered)
+      ? (() => {
+          const standardRows = ordered.filter((row) => !isConcernSelectorPackagingOnlyFinishFitVariant(row));
+          return standardRows.length ? standardRows : ordered;
+        })()
+      : ordered;
+  const routineStabilizedOrdered = stabilizeConcernSelectorRoutineMixOrdering(finishFitPackagingFilteredOrdered, selector);
   const diversifiedOrdered = diversifyConcernSelectorFinishFitOrdering(routineStabilizedOrdered, selector);
   const effectiveTopPickProductId =
     pickFirstString(diversifiedOrdered[0]?.product_id, diversifiedOrdered[0]?.productId)
