@@ -5359,6 +5359,81 @@ test('__internal: local external seed daily sunscreen support uses precise autho
   assert.equal(out.products[0].retrieval_role_id, 'daily_sunscreen');
 });
 
+test('__internal: local external seed finish-fit invisible sunscreen expands unseen alias without summary scan', async () => {
+  const { __internal } = loadRoutesFresh();
+  const observedQueries = [];
+  const out = await __internal.searchLocalExternalSeedProducts({
+    query: 'invisible sunscreen',
+    limit: 2,
+    role: {
+      role_id: 'daily_sunscreen_finish_fit',
+      rank: 1,
+      preferred_step: 'sunscreen',
+      query_terms: ['invisible sunscreen'],
+      fit_keywords: ['spf', 'invisible', 'under makeup'],
+      product_type_hypotheses: ['sunscreen'],
+    },
+    preferredStep: 'sunscreen',
+    targetContext: {
+      primary_role_id: 'daily_sunscreen_finish_fit',
+      comparison_mode: 'same_role_comparison',
+      routine_mode: 'same_role_comparison',
+      semantic_plan: {
+        comparison_mode: 'same_role_comparison',
+        routine_mode: 'same_role_comparison',
+        selection_constraints: { comparison_mode: 'same_role_comparison' },
+      },
+    },
+    queryFn: async (sql, params) => {
+      observedQueries.push({ sql: String(sql || ''), params });
+      return {
+        rows: [
+          {
+            id: '229',
+            external_product_id: 'ext_support_unseen_sunscreen_229',
+            destination_url: 'https://example.com/products/unseen-spf',
+            canonical_url: 'https://example.com/products/unseen-spf',
+            domain: 'example.com',
+            title: 'Unseen Sunscreen SPF 50',
+            image_url: 'https://example.com/products/unseen-spf.jpg',
+            price_amount: 19,
+            price_currency: 'USD',
+            availability: 'in_stock',
+            match_stage: 'support_query_precise',
+            match_score: 58,
+            seed_data: {
+              derived: {
+                recall: {
+                  retrieval_title: 'Unseen Sunscreen SPF 50',
+                  retrieval_summary: 'A weightless sunscreen for smoother wear under makeup.',
+                  category: 'Sunscreen',
+                  vertical: 'skincare',
+                  alias_tokens: ['unseen sunscreen', 'invisible sunscreen'],
+                },
+              },
+              snapshot: {
+                title: 'Unseen Sunscreen SPF 50',
+                description: 'Weightless unseen sunscreen.',
+                category: 'Sunscreen',
+              },
+            },
+            updated_at: new Date().toISOString(),
+            created_at: new Date().toISOString(),
+          },
+        ],
+      };
+    },
+  });
+
+  assert.equal(out.ok, true);
+  assert.equal(observedQueries.length, 1);
+  assert.match(observedQueries[0].sql, /support_query_precise/);
+  assert.ok(observedQueries[0].params[3].includes('%invisible sunscreen%'));
+  assert.ok(observedQueries[0].params[3].includes('%unseen sunscreen%'));
+  assert.doesNotMatch(observedQueries[0].sql, /retrieval_summary/i);
+  assert.equal(out.products[0].product_id, 'ext_support_unseen_sunscreen_229');
+});
+
 test('__internal: local external seed multi-query sunscreen compare uses one precise authority query', async () => {
   const { __internal } = loadRoutesFresh();
   const observedQueries = [];
@@ -5514,6 +5589,7 @@ test('__internal: local external seed multi-query sunscreen compare does not sto
   assert.equal(observedQueries.length, 2);
   assert.match(observedQueries[0].sql, /support_query_precise/);
   assert.match(observedQueries[1].sql, /support_category_positive/);
+  assert.ok(observedQueries[0].params[3].includes('%unseen sunscreen%'));
   const categoryPositivePatternParam = observedQueries[1].params.find((param) => Array.isArray(param)
     && param.includes('%water-fit%'));
   assert.ok(categoryPositivePatternParam.includes('%water-fit sun serum%'));
@@ -9336,14 +9412,18 @@ test('__internal: beauty local handoff runs same-role sunscreen primary authorit
     assert.deepEqual(
       calls
         .filter((call) => call.kind === 'local_external_seed')
-        .slice(0, 4)
+        .slice(0, 3)
         .map((call) => call.query),
       [
         'sunscreen oily skin',
         'matte sunscreen',
         'invisible sunscreen',
-        'sunscreen under makeup',
       ],
+      JSON.stringify(calls),
+    );
+    assert.equal(
+      calls.some((call) => call.kind === 'local_external_seed' && call.query === 'sunscreen under makeup'),
+      false,
       JSON.stringify(calls),
     );
     assert.equal(
@@ -9354,7 +9434,7 @@ test('__internal: beauty local handoff runs same-role sunscreen primary authorit
     assert.ok(
       calls
         .filter((call) => call.kind === 'local_external_seed')
-        .slice(0, 4)
+        .slice(0, 3)
         .every((call) => call.timeoutMs > 0 && call.timeoutMs <= 2200),
       JSON.stringify(calls),
     );
@@ -9364,7 +9444,7 @@ test('__internal: beauty local handoff runs same-role sunscreen primary authorit
     );
     assert.equal(out.search_stage_ledger?.primary_search?.primary_authority_parallel, true);
     assert.ok(
-      Number(out.search_stage_ledger?.primary_search?.primary_external_executed_query_count || 0) >= 4,
+      Number(out.search_stage_ledger?.primary_search?.primary_external_executed_query_count || 0) >= 3,
       JSON.stringify(out.search_stage_ledger?.primary_search),
     );
     const attempts = out.search_stage_ledger?.primary_search?.query_pack_attempts || [];
