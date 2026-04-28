@@ -343,6 +343,7 @@ describe('PDP grouped offers', () => {
       }),
     });
 
+    expect(args.candidateLimit).toBe(8);
     expect(args.fetchArgs.options).toEqual(
       expect.objectContaining({
         no_cache: false,

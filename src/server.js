@@ -3075,7 +3075,7 @@ function resolvePdpSimilarDisplayLimit(payload = {}) {
 
 function resolvePdpSimilarCandidateLimit(displayLimit) {
   const limit = Math.max(6, Math.min(24, Number(displayLimit) || 6));
-  return Math.max(limit + 4, Math.min(30, limit * 2));
+  return Math.max(limit, Math.min(30, limit + 2));
 }
 
 function isTruthyCacheBypassFlag(value) {
