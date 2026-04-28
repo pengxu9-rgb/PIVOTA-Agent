@@ -5983,6 +5983,121 @@ test('reco assistant structured renderer keeps production sunscreen tradeoffs at
   }
 });
 
+test('reco assistant structured renderer follows visible card order before raw recommendation order', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const matte = {
+      product_id: 'skintific_matte_fit',
+      display_name: 'Matte Fit Serum Sunscreen SPF 50+ PA++++',
+      brand: 'SKINTIFIC',
+      category: 'Sunscreen',
+      why_this_one:
+        'it has more direct airy, non-greasy texture evidence for oily skin under makeup while staying in a dedicated SPF50+ sunscreen lane',
+      matched_role_id: 'daily_sunscreen_finish_fit',
+      matched_role_label: 'Daily sunscreen with finish fit',
+      preferred_step: 'sunscreen',
+    };
+    const lightSerum = {
+      product_id: 'skintific_light_serum_spf',
+      display_name: 'Light Serum Sunscreen SPF 50+ PA++++',
+      brand: 'SKINTIFIC',
+      category: 'Sunscreen',
+      why_this_one:
+        'it leans serum-light with skincare-support ingredients if you want SPF50+ without the stronger matte finish',
+      matched_role_id: 'daily_sunscreen_finish_fit',
+      matched_role_label: 'Daily sunscreen with finish fit',
+      preferred_step: 'sunscreen',
+    };
+    const unseen = {
+      product_id: 'supergoop_unseen_spf50',
+      display_name: 'Unseen Sunscreen SPF 50',
+      brand: 'Supergoop',
+      category: 'Sunscreen',
+      why_this_one: 'it is the clearer, more invisible-feeling option for smoother under-makeup wear',
+      matched_role_id: 'daily_sunscreen_finish_fit',
+      matched_role_label: 'Daily sunscreen with finish fit',
+      preferred_step: 'sunscreen',
+    };
+    const payload = __internal.applyRecoContentSpineToPayload(
+      {
+        recommendations: [matte, lightSerum, unseen],
+        sections: [
+          {
+            kind: 'product_cards',
+            products: [matte, unseen, lightSerum],
+          },
+        ],
+        recommendation_meta: {
+          resolved_target_step: 'sunscreen',
+          mainline_status: 'grounded_success',
+        },
+      },
+      {
+        ingredient_query: 'Daily sunscreen with finish fit',
+        resolved_target_step: 'sunscreen',
+        primary_target_id: 'daily_sunscreen_finish_fit',
+        ranked_targets: [
+          {
+            target_id: 'daily_sunscreen_finish_fit',
+            ingredient_query: 'Daily sunscreen with finish fit',
+            resolved_target_step: 'sunscreen',
+          },
+        ],
+        selected_target_ids: ['daily_sunscreen_finish_fit'],
+      },
+    );
+    payload.sections = [
+      {
+        kind: 'product_cards',
+        products: [matte, unseen, lightSerum],
+      },
+    ];
+    const names = [
+      'Matte Fit Serum Sunscreen SPF 50+ PA++++',
+      'Unseen Sunscreen SPF 50',
+      'Light Serum Sunscreen SPF 50+ PA++++',
+    ];
+    const primaryTarget = payload.recommendation_meta.ranked_targets[0];
+    const text = __internal.renderRecoAssistantStructuredReasonRewrite({
+      structuredReason: {
+        lead_reason:
+          'it has more direct airy, non-greasy texture evidence for oily skin under makeup while staying in a dedicated SPF50+ sunscreen lane',
+        support_reasons: [
+          'makes more sense if you want a more matte, shine-controlling finish with less slip under makeup',
+          'makes more sense if you want a more matte, shine-controlling finish with less slip under makeup',
+        ],
+      },
+      payload,
+      language: 'EN',
+      profile: { skinType: 'oily' },
+      userRequestText: 'I have oily skin, what sunscreen should I buy?',
+      primaryTarget,
+      names,
+      requestMode: 'buy',
+      selectedProductRoleMix: 'same_role_comparison',
+    });
+
+    assert.match(text, /Unseen Sunscreen SPF 50 is the clearer, more invisible-feeling option/i);
+    assert.match(text, /Light Serum Sunscreen SPF 50\+ PA\+\+\+\+ leans serum-light with skincare-support ingredients/i);
+    assert.doesNotMatch(text, /Unseen Sunscreen SPF 50[^.]+matte|Light Serum Sunscreen SPF 50\+ PA\+\+\+\+[^.]+matte, shine-controlling/i);
+    const validation = __internal.validateRecoAssistantRewriteCandidate({
+      candidateText: text,
+      payload,
+      language: 'EN',
+      profile: { skinType: 'oily' },
+      userRequestText: 'I have oily skin, what sunscreen should I buy?',
+      refinementQuestionPlan: null,
+      primaryTarget,
+      secondaryTargets: [],
+      names,
+      requestMode: 'buy',
+    });
+    assert.equal(validation.reason, null);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('reco assistant validator ignores negated matte contrast on lighter sunscreen peers', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
