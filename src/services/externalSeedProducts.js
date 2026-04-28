@@ -763,6 +763,9 @@ const VARIANT_OPTION_QUERY_PARAM_LABELS = new Map([
   ['quantity', 'Quantity'],
   ['qty', 'Quantity'],
   ['volume', 'Size'],
+  ['weight', 'Size'],
+  ['net weight', 'Size'],
+  ['net wt', 'Size'],
   ['format', 'Format'],
   ['finish', 'Finish'],
   ['style', 'Style'],
@@ -776,7 +779,15 @@ function getVariantOptionQueryParamLabel(name) {
 
 function isCombinedColorSizeOptionName(name) {
   const normalized = normalizeOptionNameKey(name);
-  return normalized.includes('color') && normalized.includes('size');
+  const hasVisualOrScentAxis = /\b(color|colour|shade|tone|hue|scent|fragrance|flavo[u]?r)\b/.test(normalized);
+  return hasVisualOrScentAxis && /\b(size|volume|weight)\b/.test(normalized);
+}
+
+function inferCombinedVariantPrimaryLabel(name) {
+  const normalized = normalizeOptionNameKey(name);
+  if (/\b(scent|fragrance|flavo[u]?r)\b/.test(normalized)) return 'Scent';
+  if (/\b(shade|tone|hue)\b/.test(normalized)) return 'Shade';
+  return 'Color';
 }
 
 function parseCombinedColorSizeValue(value) {
@@ -807,7 +818,7 @@ function normalizeOptionEntries(options) {
           const parsed = parseCombinedColorSizeValue(optionValue);
           return parsed
             ? [
-                { name: 'Color', value: parsed.color },
+                { name: inferCombinedVariantPrimaryLabel(optionName), value: parsed.color },
                 { name: 'Size', value: parsed.size },
               ]
             : [{ name: 'Variant', value: optionValue }];
@@ -1054,11 +1065,16 @@ function buildVariantContext(seedData, row) {
 function parseVariantQuantityValue(value) {
   const normalized = normalizeOptionText(value);
   if (!normalized) return '';
-  const match = normalized.match(/\b(\d+(?:\.\d+)?)\s*(ml|m l|g|kg|oz|fl oz|l|lb|lbs|mm|cm)\b/i);
+  const match = normalized.match(/\b(\d+(?:\.\d+)?)\s*(ml|m l|g|kg|oz|fl\.?\s*oz\.?|fluid\s*ounces?|l|lb|lbs|mm|cm)\b/i);
   if (!match) return '';
   const amount = Number(match[1]);
   if (!Number.isFinite(amount) || amount <= 0) return '';
-  return `${amount}${String(match[2] || '').toLowerCase().replace(/\s+/g, '')}`;
+  const unit = String(match[2] || '')
+    .toLowerCase()
+    .replace(/fluid\s*ounces?/g, 'fl oz')
+    .replace(/fl\.?\s*oz\.?/g, 'fl oz')
+    .replace(/\s+/g, '');
+  return `${amount}${unit}`;
 }
 
 function parseVariantPackValue(value) {
@@ -1114,6 +1130,7 @@ function inferVariantAxisKind(option, context = {}) {
       if (volume) return { axis_kind: 'volume', display_label: VARIANT_AXIS_LABELS.volume, normalized_value: optionValue };
       if (format) return { axis_kind: 'format', display_label: VARIANT_AXIS_LABELS.format, normalized_value: format };
       if (localeLike) return { axis_kind: 'non_displayable', display_label: '', normalized_value: '' };
+      return { axis_kind: 'non_displayable', display_label: '', normalized_value: '' };
     }
     return { axis_kind: 'shade', display_label: VARIANT_AXIS_LABELS.shade, normalized_value: optionValue };
   }
@@ -1130,7 +1147,7 @@ function inferVariantAxisKind(option, context = {}) {
   if (optionName === 'size') {
     return { axis_kind: volume ? 'volume' : 'size', display_label: volume ? VARIANT_AXIS_LABELS.volume : VARIANT_AXIS_LABELS.size, normalized_value: optionValue };
   }
-  if (['volume', 'voume', 'capacity', 'amount', 'ml', 'm l'].includes(optionName)) {
+  if (['volume', 'voume', 'capacity', 'amount', 'weight', 'net weight', 'net wt', 'ml', 'm l'].includes(optionName)) {
     return { axis_kind: 'volume', display_label: VARIANT_AXIS_LABELS.volume, normalized_value: optionValue };
   }
   if (['pack', 'count', 'quantity', 'ct', 'ct.', 'sachet', 'unit', 'unité'].includes(optionName) || pack) {
