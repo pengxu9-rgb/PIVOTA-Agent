@@ -206,7 +206,7 @@ describe('external seed PDP readiness audit helpers', () => {
     expect(result.issues).toContain('invalid_token_in_active');
   });
 
-  test('flags default-only variants when product media exposes a missing size axis', () => {
+  test('passes default-only variants when seed-level product media can supply a size axis', () => {
     const result = classifyVariantReadiness(
       seedRow({
         title: 'Multi-Peptide Lash and Brow Serum',
@@ -228,9 +228,41 @@ describe('external seed PDP readiness audit helpers', () => {
       }),
     );
 
+    expect(result.status).toBe('ready');
+    expect(result.issues).not.toContain('default_option_size_evidence_missing_axis');
+  });
+
+  test('still flags multi-variant rows when product-level size evidence would mask mixed-product pollution', () => {
+    const result = classifyVariantReadiness(
+      seedRow({
+        title: '100% Organic Virgin Chia Seed Oil',
+        canonical_url: 'https://theordinary.com/en-us/100-organic-virgin-chia-seed-face-oil-100395.html',
+        seed_data: {
+          snapshot: {
+            image_url:
+              'https://theordinary.com/Images/products/The%20Ordinary/rdn-100pct-organic-cold-pressed-rose-hip-seed-oil-30ml.png',
+            variants: [
+              {
+                sku: 'rdn-100pct-organic-cold-pressed-rose-hip-seed-oil-30ml',
+                variant_id: 'rose-hip',
+                option_name: 'Offer',
+                option_value: 'rdn-100pct-organic-cold-pressed-rose-hip-seed-oil-30ml',
+              },
+              {
+                sku: 'rdn-100pct-cold-pressed-virgin-marula-oil-30ml',
+                variant_id: 'marula',
+                option_name: 'Offer',
+                option_value: 'rdn-100pct-cold-pressed-virgin-marula-oil-30ml',
+              },
+            ],
+          },
+        },
+      }),
+    );
+
     expect(result.status).toBe('flagged');
     expect(result.issues).toContain('default_option_size_evidence_missing_axis');
-    expect(result.examples.default_option_size_evidence_missing_axis[0].value).toContain('5ml');
+    expect(result.examples.default_option_size_evidence_missing_axis[0].value).toContain('30ml');
   });
 
   test('does not flag tint balm shade variants as skincare axis drift', () => {
