@@ -658,6 +658,22 @@ function buildRecommendationFinishFitLeadPeerContrastSuffix(sameRoleCandidates =
   return ` when you do not want to go too ${labels[0]} or too ${labels[1]}`;
 }
 
+function extractRecommendationFinishFitPeerContrastSuffix(value) {
+  const text = asString(value);
+  if (!text) return '';
+  const match = text.match(/\s+when you do not want to go too\b[^.?!]*/i);
+  return match ? match[0].trimEnd() : '';
+}
+
+function appendRecommendationFinishFitPeerContrast(value, suffix) {
+  const base = asString(value);
+  const rawAddition = asString(suffix);
+  const addition = rawAddition && !/^\s/.test(rawAddition) ? ` ${rawAddition}` : rawAddition;
+  if (!base || !addition) return base;
+  if (new RegExp(addition.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i').test(base)) return base;
+  return `${base.replace(/[.!?]\s*$/, '')}${addition}`;
+}
+
 function buildRecommendationFinishFitSpecificWhy(row, { sameRoleCandidates = [] } = {}) {
   const texts = collectRecommendationFinishFitSourceText(row);
   if (!texts) return '';
@@ -1167,13 +1183,39 @@ function normalizeRecommendationProductCard(raw, options = {}) {
         || looksLikeLowSpecificityRecommendationFinishFitCopy(baseShortDescription)
       )
     );
+  const finishFitWhyPeerSuffix = extractRecommendationFinishFitPeerContrastSuffix(finishFitSpecificWhy);
+  const finishFitShortDescriptionPeerSuffix =
+    extractRecommendationFinishFitPeerContrastSuffix(finishFitSpecificShortDescription);
+  const preserveDirectWhyWithPeerContrast = Boolean(
+    recommendationFinishFitHasDirectTextureEvidence(baseWhyThisOne) &&
+    finishFitWhyPeerSuffix,
+  );
+  const preserveDirectShortDescriptionWithPeerContrast = Boolean(
+    recommendationFinishFitHasDirectTextureEvidence(baseShortDescription) &&
+    finishFitShortDescriptionPeerSuffix &&
+    /\b(?:airy|non[-\s]?greasy|velvety)\b/i.test(baseShortDescription),
+  );
   const whyThisOne = finishFitSpecificWhy
     && baseWhyNeedsFinishFitRewrite
-    ? finishFitSpecificWhy
+    ? (
+        preserveDirectWhyWithPeerContrast
+          ? appendRecommendationFinishFitPeerContrast(
+              baseWhyThisOne,
+              finishFitWhyPeerSuffix,
+            )
+          : finishFitSpecificWhy
+      )
     : baseWhyThisOne;
   const shortDescription = finishFitSpecificShortDescription
     && baseShortDescriptionNeedsFinishFitRewrite
-    ? finishFitSpecificShortDescription
+    ? (
+        preserveDirectShortDescriptionWithPeerContrast
+          ? appendRecommendationFinishFitPeerContrast(
+              baseShortDescription,
+              finishFitShortDescriptionPeerSuffix,
+            )
+          : finishFitSpecificShortDescription
+      )
     : baseShortDescription;
   const declaredAlternativesCount = Number(row.alternatives_count || row.alternativesCount || 0);
   const alternativesCount = Math.max(

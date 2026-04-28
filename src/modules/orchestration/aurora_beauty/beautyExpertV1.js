@@ -180,9 +180,126 @@ function getRecommendationCardSectionRows(card = {}) {
   return rows;
 }
 
+function normalizeFinalSelectionIds(values = []) {
+  const out = [];
+  const seen = new Set();
+  for (const value of Array.isArray(values) ? values : []) {
+    const token = asString(value);
+    if (!token) continue;
+    const key = token.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(token);
+  }
+  return out;
+}
+
+function extractFinalSelectionContractFromValue(value = {}) {
+  if (!isPlainObject(value)) return null;
+  const candidates = [
+    value.final_selection,
+    value.recommendation_meta?.final_selection,
+    value.metadata?.final_selection,
+    value.metadata?.search_stage_ledger?.final_selection,
+    value.search_stage_ledger?.final_selection,
+    value.payload?.final_selection,
+    value.payload?.recommendation_meta?.final_selection,
+    value.payload?.metadata?.final_selection,
+    value.payload?.metadata?.search_stage_ledger?.final_selection,
+  ];
+  for (const candidate of candidates) {
+    if (!isPlainObject(candidate)) continue;
+    const selectedProductIds = normalizeFinalSelectionIds(
+      candidate.selected_product_ids || candidate.selectedProductIds,
+    );
+    const selectedTitles = normalizeFinalSelectionIds(
+      candidate.selected_titles || candidate.selectedTitles,
+    );
+    if (selectedProductIds.length > 0 || selectedTitles.length > 0) {
+      return {
+        selected_product_ids: selectedProductIds,
+        selected_titles: selectedTitles,
+      };
+    }
+  }
+  return null;
+}
+
+function getProductIdForFinalSelection(product = {}) {
+  const canonicalRef = isPlainObject(product.canonical_product_ref)
+    ? pickFirstTrimmed(
+        product.canonical_product_ref.product_id,
+        product.canonical_product_ref.productId,
+        product.canonical_product_ref.id,
+      )
+    : '';
+  const productRef = isPlainObject(product.product_ref)
+    ? pickFirstTrimmed(product.product_ref.product_id, product.product_ref.productId, product.product_ref.id)
+    : '';
+  const sku = isPlainObject(product.sku) ? product.sku : {};
+  const nestedProduct = isPlainObject(product.product) ? product.product : {};
+  return pickFirstTrimmed(
+    product.product_id,
+    product.productId,
+    product.id,
+    canonicalRef,
+    productRef,
+    sku.product_id,
+    sku.productId,
+    sku.id,
+    nestedProduct.product_id,
+    nestedProduct.productId,
+    nestedProduct.id,
+  );
+}
+
+function orderRowsByFinalSelection(rows = [], selectionContract = null) {
+  const sourceRows = Array.isArray(rows) ? rows.filter(isPlainObject) : [];
+  if (sourceRows.length <= 1 || !isPlainObject(selectionContract)) return sourceRows;
+  const selectedIds = normalizeFinalSelectionIds(selectionContract.selected_product_ids);
+  const selectedTitles = normalizeFinalSelectionIds(selectionContract.selected_titles);
+  if (selectedIds.length <= 0 && selectedTitles.length <= 0) return sourceRows;
+
+  const byId = new Map();
+  const byTitle = new Map();
+  const sourceIds = [];
+  for (const row of sourceRows) {
+    const productId = getProductIdForFinalSelection(row);
+    if (productId && !byId.has(productId.toLowerCase())) {
+      byId.set(productId.toLowerCase(), row);
+      sourceIds.push(productId.toLowerCase());
+    }
+    const title = getProductDisplayName(row);
+    if (title && !byTitle.has(title.toLowerCase())) byTitle.set(title.toLowerCase(), row);
+  }
+  const selectedIdSet = new Set(selectedIds.map((productId) => productId.toLowerCase()));
+  if (selectedIds.length > 0 && sourceIds.length > 0 && !sourceIds.every((productId) => selectedIdSet.has(productId))) {
+    return sourceRows;
+  }
+
+  const ordered = [];
+  const seen = new Set();
+  const push = (row) => {
+    if (!row) return;
+    const productId = getProductIdForFinalSelection(row);
+    const title = getProductDisplayName(row);
+    const key = productId ? `id:${productId.toLowerCase()}` : title ? `title:${title.toLowerCase()}` : '';
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    ordered.push(row);
+  };
+
+  for (const productId of selectedIds) push(byId.get(productId.toLowerCase()));
+  for (const title of selectedTitles) push(byTitle.get(title.toLowerCase()));
+  return ordered.length > 0 ? ordered : sourceRows;
+}
+
 function extractRecommendationProducts(response = {}) {
   if (Array.isArray(response.products) && response.products.length > 0) {
-    return response.products.filter((row) => isPlainObject(row));
+    return orderRowsByFinalSelection(
+      response.products.filter((row) => isPlainObject(row)),
+      extractFinalSelectionContractFromValue(response),
+    );
   }
   const cards = extractCards(response);
   const recoCard = cards.find((card) => {
@@ -190,9 +307,10 @@ function extractRecommendationProducts(response = {}) {
     return type === 'recommendations';
   });
   if (!recoCard) return [];
+  const selectionContract = extractFinalSelectionContractFromValue(recoCard);
   const payloadRows = getRecommendationCardPayloadRows(recoCard);
-  if (payloadRows.length > 0) return payloadRows;
-  return getRecommendationCardSectionRows(recoCard);
+  if (payloadRows.length > 0) return orderRowsByFinalSelection(payloadRows, selectionContract);
+  return orderRowsByFinalSelection(getRecommendationCardSectionRows(recoCard), selectionContract);
 }
 
 function inferAuthorityStatus(response = {}, metadata = {}) {
@@ -847,6 +965,11 @@ function buildBeautyExpertV1Response({
     user_goal: beautyRequest.user_goal || queryText || null,
   });
 
+  const finalSelectionContract = extractFinalSelectionContractFromValue(response)
+    || extractCards(response)
+      .map((card) => extractFinalSelectionContractFromValue(card))
+      .find(Boolean)
+    || null;
   const rawProducts = extractRecommendationProducts(response);
   const mode = inferBeautyMode({
     taskType,
@@ -854,11 +977,13 @@ function buildBeautyExpertV1Response({
     queryText,
     response: { products: rawProducts },
   });
-  const products = reorderProductsForBeautyMode(rawProducts, {
-    mode,
-    beautyRequest: normalizedBeautyIntent,
-    queryText,
-  });
+  const products = finalSelectionContract
+    ? orderRowsByFinalSelection(rawProducts, finalSelectionContract)
+    : reorderProductsForBeautyMode(rawProducts, {
+        mode,
+        beautyRequest: normalizedBeautyIntent,
+        queryText,
+      });
   const authorityStatus = inferAuthorityStatus(response, metadata);
   const analysisSummary = buildAnalysisSummary(normalizedBeautyIntent, queryText, products);
   const confidence = buildConfidence(response, analysisSummary);
@@ -926,9 +1051,13 @@ function buildBeautyExpertV1Response({
 function reorderBeautyProjectionRows(rows = [], {
   mode,
   beautyIntent,
+  finalSelectionContract = null,
 } = {}) {
   const list = Array.isArray(rows) ? rows.filter((row) => isPlainObject(row)) : [];
   if (!list.length) return [];
+  if (finalSelectionContract) {
+    return orderRowsByFinalSelection(list, finalSelectionContract);
+  }
   const reordered = reorderProductsForBeautyMode(list, {
     mode,
     beautyRequest: beautyIntent,
@@ -951,9 +1080,10 @@ function rewriteRecommendationCardForBeautyExpert(card = {}, {
   if (!isPlainObject(card) || normalizeText(card.type || card.card_type) !== 'recommendations') return card;
   const nextCard = { ...card };
   const payload = isPlainObject(card.payload) ? { ...card.payload } : null;
+  const finalSelectionContract = extractFinalSelectionContractFromValue(card);
   const reorderRows = (rows) => {
     if (!Array.isArray(rows)) return rows;
-    const reordered = reorderBeautyProjectionRows(rows, { mode, beautyIntent });
+    const reordered = reorderBeautyProjectionRows(rows, { mode, beautyIntent, finalSelectionContract });
     return mode === 'exact_product_assist' ? reordered : (reordered.length > 0 ? reordered : rows);
   };
   const syncSections = (sections, products) => {
@@ -1036,11 +1166,18 @@ function projectBeautyExpertResponse(response = {}, beautyExpertV1 = null) {
   if (!isPlainObject(response) || !isPlainObject(beautyExpertV1)) return response;
 
   const next = { ...response };
+  const finalSelectionContract = extractFinalSelectionContractFromValue(response)
+    || extractCards(response)
+      .map((card) => extractFinalSelectionContractFromValue(card))
+      .find(Boolean)
+    || null;
   if (Array.isArray(response.products)) {
-    next.products = reorderBeautyProjectionRows(response.products, {
-      mode: beautyExpertV1.mode,
-      beautyIntent: beautyExpertV1.beauty_intent,
-    });
+    next.products = finalSelectionContract
+      ? orderRowsByFinalSelection(response.products, finalSelectionContract)
+      : reorderBeautyProjectionRows(response.products, {
+          mode: beautyExpertV1.mode,
+          beautyIntent: beautyExpertV1.beauty_intent,
+        });
   }
 
   const cardCollectionKey = getCardCollectionKey(response);
@@ -1652,6 +1789,24 @@ function buildBeautyExpertVisibleReply(beautyExpertV1 = {}) {
 function projectBeautyExpertVisibleReply(response = {}, beautyExpertV1 = null) {
   if (!isPlainObject(response) || !isPlainObject(beautyExpertV1)) return response;
   const existingReply = pickFirstTrimmed(response.reply);
+  const assistantSurfaceText = pickFirstTrimmed(response.assistant_message?.content, response.assistant_text);
+  const projectionType = normalizeSourceToken(beautyExpertV1?.delegation_trace?.projection_type);
+  const hasFinalSelectionAuthority = Boolean(
+    extractFinalSelectionContractFromValue(response) ||
+    extractCards(response).map((card) => extractFinalSelectionContractFromValue(card)).find(Boolean),
+  );
+  if (
+    projectionType === 'aurora-cards' &&
+    hasFinalSelectionAuthority &&
+    assistantSurfaceText &&
+    existingReply &&
+    existingReply !== assistantSurfaceText
+  ) {
+    return {
+      ...response,
+      reply: assistantSurfaceText,
+    };
+  }
   const exactAnchorMiss =
     beautyExpertV1.mode === 'exact_product_assist' &&
     asArray(beautyExpertV1.reco_bundle?.lead_picks).length === 0 &&
