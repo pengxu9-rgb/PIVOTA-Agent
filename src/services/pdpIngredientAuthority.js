@@ -883,14 +883,28 @@ function buildAuthoritativeIngredientView(product, options = {}) {
       generatedAt: existingAuthority.generated_at || generatedAt,
     });
     if (normalizedExisting.items.length || normalizedExisting.active_items.length) {
+      const explicitActiveCandidate = readExplicitActiveCandidates(product, inputs);
+      const titleDeclaredActiveItems = inferTitleDeclaredActiveItems(
+        product,
+        normalizedExisting.items,
+        normalizedExisting.raw_text,
+      );
+      const candidateActiveItems = uniqueStrings([
+        ...(explicitActiveCandidate?.items?.length ? explicitActiveCandidate.items : normalizedExisting.active_items),
+        ...titleDeclaredActiveItems,
+      ]);
       return {
         ...normalizedExisting,
         active_items: reconcileActiveItemsWithIngredients(
           product,
-          normalizedExisting.active_items,
+          candidateActiveItems,
           normalizedExisting.items,
           normalizedExisting.raw_text,
-          { validateAgainstIngredients: !isReviewedIngredientAuthoritySource(existingSourceOrigin) },
+          {
+            validateAgainstIngredients: explicitActiveCandidate?.items?.length
+              ? explicitActiveCandidate.validateAgainstIngredients
+              : !isReviewedIngredientAuthoritySource(existingSourceOrigin) || titleDeclaredActiveItems.length > 0,
+          },
         ),
       };
     }

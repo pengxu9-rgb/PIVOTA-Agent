@@ -289,6 +289,50 @@ describe('pdpIngredientAuthority', () => {
     expect(authority.active_items).toEqual(['Avobenzone', 'Homosalate', 'Octisalate', 'Octocrylene']);
   });
 
+  test('augments existing non-reviewed authority with formula title evidence', () => {
+    const authority = buildAuthoritativeIngredientView({
+      title: 'Rice Lipids + Ectoin Microemulsion',
+      ingredient_intel: {
+        authoritative: {
+          raw_text:
+            'Aqua/Water/Eau, Oryza Sativa (Rice) Lipids, Simmondsia Chinensis (Jojoba) Seed Oil, Ectoin, Glycerin.',
+          items: [
+            'Aqua/Water/Eau',
+            'Oryza Sativa (Rice) Lipids',
+            'Simmondsia Chinensis (Jojoba) Seed Oil',
+            'Ectoin',
+            'Glycerin',
+          ],
+          active_items: [],
+          source_origin: 'pdp_section',
+          purity_status: 'authoritative',
+        },
+      },
+    });
+
+    expect(authority.active_items).toEqual(['Rice Lipids', 'Ectoin']);
+  });
+
+  test('uses explicit active block even when existing authority has no active items', () => {
+    const authority = buildAuthoritativeIngredientView({
+      title: 'UV Filters SPF 45 Serum',
+      category: 'Sunscreen',
+      pdp_active_ingredients_raw:
+        'Avobenzone 3.0% (UV Filter)\nHomosalate 7.0% (UV Filter)\nOctisalate 4.5% (UV Filter)\nOctocrylene 10.0% (UV Filter)',
+      ingredient_intel: {
+        authoritative: {
+          raw_text: 'Aqua, Glycerin, Phenoxyethanol.',
+          items: ['Aqua', 'Glycerin', 'Phenoxyethanol'],
+          active_items: [],
+          source_origin: 'pdp_section',
+          purity_status: 'authoritative',
+        },
+      },
+    });
+
+    expect(authority.active_items).toEqual(['Avobenzone', 'Homosalate', 'Octisalate', 'Octocrylene']);
+  });
+
   test('does not treat titanium dioxide as a regulatory active outside sunscreen context', () => {
     const authority = buildAuthoritativeIngredientView({
       title: 'Shade and Illuminate Concealer',
