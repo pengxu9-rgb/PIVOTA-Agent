@@ -1799,7 +1799,6 @@ function projectBeautyExpertVisibleReply(response = {}, beautyExpertV1 = null) {
     projectionType === 'aurora-cards' &&
     hasFinalSelectionAuthority &&
     assistantSurfaceText &&
-    existingReply &&
     existingReply !== assistantSurfaceText
   ) {
     return {
