@@ -12,11 +12,19 @@ function isProductionLikeEnvironment() {
   return nodeEnv === 'production' || railwayEnv === 'production' || vercelEnv === 'production';
 }
 
+function isTestRuntimeEnvironment() {
+  const nodeEnv = String(process.env.NODE_ENV || '').trim().toLowerCase();
+  const nodeTestContext = String(process.env.NODE_TEST_CONTEXT || '').trim();
+  return nodeEnv === 'test' || Boolean(nodeTestContext);
+}
+
 const REQUESTED_AURORA_MOCK = String(process.env.AURORA_BFF_USE_MOCK || '').toLowerCase() === 'true';
-const USE_AURORA_MOCK = REQUESTED_AURORA_MOCK && !isProductionLikeEnvironment();
+const USE_AURORA_MOCK = REQUESTED_AURORA_MOCK && isTestRuntimeEnvironment() && !isProductionLikeEnvironment();
 if (REQUESTED_AURORA_MOCK && isProductionLikeEnvironment()) {
   // Never allow mock upstreams to service production-like traffic.
   console.warn('[auroraDecisionClient] Ignoring AURORA_BFF_USE_MOCK in production-like environment');
+} else if (REQUESTED_AURORA_MOCK && !isTestRuntimeEnvironment()) {
+  console.warn('[auroraDecisionClient] Ignoring AURORA_BFF_USE_MOCK outside test runtime');
 }
 
 function sleep(ms) {

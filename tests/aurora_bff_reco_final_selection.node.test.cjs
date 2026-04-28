@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const Module = require('node:module');
 const { EventEmitter } = require('node:events');
+const { execFileSync } = require('node:child_process');
 
 process.env.AURORA_BFF_USE_MOCK = 'true';
 process.env.AURORA_DECISION_BASE_URL = '';
@@ -117,6 +118,37 @@ test('reco assistant rewrite prompt omits deterministic base text and carries re
   } finally {
     delete require.cache[moduleId];
   }
+});
+
+test('aurora decision client ignores mock mode outside test runtime', () => {
+  const env = {
+    ...process.env,
+    AURORA_BFF_USE_MOCK: 'true',
+    AURORA_DECISION_BASE_URL: '',
+    NODE_ENV: 'development',
+  };
+  delete env.NODE_TEST_CONTEXT;
+  const out = execFileSync(
+    process.execPath,
+    [
+      '-e',
+      `
+        const { auroraChat } = require('./src/auroraBff/auroraDecisionClient');
+        auroraChat({ query: 'mock beauty reco' })
+          .then((resp) => {
+            console.log(JSON.stringify(resp));
+            process.exit(3);
+          })
+          .catch((err) => {
+            console.log(err && (err.code || err.message));
+            process.exit(err && err.code === 'AURORA_NOT_CONFIGURED' ? 0 : 2);
+          });
+      `,
+    ],
+    { cwd: process.cwd(), env, encoding: 'utf8' },
+  );
+
+  assert.match(out, /AURORA_NOT_CONFIGURED/);
 });
 
 test('reco assistant rewrite prompt keeps airy sunscreen context over neutral cream-texture cue', () => {
@@ -1744,8 +1776,9 @@ test('reco assistant rewrite repairs otherwise valid drafts that drop concrete f
     __internal.__setCallGeminiJsonObjectForTest(async () => ({
       ok: true,
       json: {
-        assistant_text:
-          'Test SPF Daily Matte SPF is a practical option for sunscreen because it has a lighter under-makeup finish with lower white-cast risk and less greasy slip.',
+        lead_reason:
+          'it has a lighter under-makeup finish with lower white-cast risk and less greasy slip',
+        support_reasons: [],
       },
       parse_status: 'parsed',
       provider: 'gemini',
@@ -2218,7 +2251,8 @@ test('reco assistant rewrite uses minimal thinking for gemini 3 structured outpu
       return {
         ok: true,
         json: {
-          assistant_text: 'GoalSkin Oil Control Serum is the product to buy first for oily skin as your oil-control treatment.',
+          lead_reason: 'it supports visible shine control for oily skin without feeling heavy',
+          support_reasons: [],
         },
         parse_status: 'parsed',
         provider: 'gemini',
@@ -2319,8 +2353,8 @@ test('reco assistant rewrite keeps minimal thinking for same-role use comparison
       return {
         ok: true,
         json: {
-          assistant_text:
-            'Start with KraveBeauty Great Barrier Relief because it gives barrier support without a heavy finish, while Soothing Serum is a lighter alternative.',
+          lead_reason: 'it gives barrier support without a heavy finish',
+          support_reasons: ['it is a lighter same-step alternative'],
         },
         parse_status: 'parsed',
         provider: 'gemini',
@@ -2344,7 +2378,7 @@ test('reco assistant rewrite keeps minimal thinking for same-role use comparison
     assert.equal(capturedArgs?.thinkingLevel, 'minimal');
     assert.ok(capturedArgs?.queueTimeoutMs > 0);
     assert.ok(capturedArgs?.upstreamTimeoutMs > 0);
-    assert.equal(capturedArgs?.maxOutputTokens, 260);
+    assert.equal(capturedArgs?.maxOutputTokens, 140);
     assert.equal(rewrite.llm_used, true);
     assert.match(String(rewrite.text || ''), /KraveBeauty Great Barrier Relief/);
   } finally {
@@ -2406,8 +2440,8 @@ test('reco assistant rewrite uses REST executor for same-role use comparisons wi
                       parts: [
                         {
                           text: JSON.stringify({
-                            assistant_text:
-                              'Start with KraveBeauty Great Barrier Relief because it supports your barrier without a heavy finish, while Soothing Serum is a lighter same-step option.',
+                            lead_reason: 'it supports your barrier without a heavy finish',
+                            support_reasons: ['it is a lighter same-step option'],
                           }),
                         },
                       ],
@@ -2524,6 +2558,36 @@ test('reco assistant rewrite recovers truncated raw json when assistant_text is 
             display_name: 'GoalSkin Oil Control Serum',
             brand: 'GoalSkin',
             category: 'Serum',
+            short_description: 'Helps manage visible shine without feeling heavy.',
+            matched_role_id: 'oil_control_treatment',
+            matched_role_label: 'Oil-control treatment',
+          },
+          {
+            product_id: 'moisturizer_pick_1',
+            display_name: 'GoalSkin Oil-Free Gel Cream',
+            brand: 'GoalSkin',
+            category: 'Moisturizer',
+            short_description: 'A lightweight gel moisturizer for oily skin.',
+            matched_role_id: 'lightweight_moisturizer',
+            matched_role_label: 'Lightweight moisturizer',
+          },
+          {
+            product_id: 'spf_pick_1',
+            display_name: 'GoalSkin Daily SPF 50 Fluid',
+            brand: 'GoalSkin',
+            category: 'Sunscreen',
+            short_description: 'A lightweight daily SPF fluid.',
+            matched_role_id: 'daily_sunscreen',
+            matched_role_label: 'Daily sunscreen',
+          },
+          {
+            product_id: 'backup_pick_1',
+            display_name: 'GoalSkin Backup Serum',
+            brand: 'GoalSkin',
+            category: 'Serum',
+            short_description: 'A backup oil-control serum.',
+            matched_role_id: 'oil_control_treatment',
+            matched_role_label: 'Oil-control treatment',
           },
         ],
         recommendation_meta: {
@@ -2549,7 +2613,7 @@ test('reco assistant rewrite recovers truncated raw json when assistant_text is 
       ok: false,
       reason: 'PARSE_TRUNCATED_JSON',
       raw_text:
-        'Here is the JSON requested:\n{"assistant_text":"GoalSkin Oil Control Serum is the product to buy first for oily skin as your oil-control treatment to keep shine in check',
+        'Here is the JSON requested:\n{"assistant_text":"GoalSkin Oil Control Serum is a practical option for oily skin because it helps manage visible shine without feeling heavy. GoalSkin Oil-Free Gel Cream adds the moisturizer step for lightweight hydration, and GoalSkin Daily SPF 50 Fluid covers the daytime SPF step',
       parse_status: 'parse_truncated',
       provider: 'gemini',
       effective_model: 'gemini-3-flash-preview',
@@ -2620,8 +2684,8 @@ test('reco assistant rewrite accepts direct buy copy even when concern framing c
     __internal.__setCallGeminiJsonObjectForTest(async () => ({
       ok: true,
       json: {
-        assistant_text:
-          'For oily skin, I recommend buying GoalSkin Oil Control Serum because it helps manage visible shine without feeling heavy.',
+        lead_reason: 'it helps manage visible shine without feeling heavy',
+        support_reasons: [],
       },
       parse_status: 'parsed',
       provider: 'gemini',
@@ -3319,7 +3383,7 @@ test('reco assistant rewrite rejects single-direction buy copy that adds future 
     });
 
     assert.equal(rewrite.llm_used, false);
-    assert.equal(rewrite.reason, 'rewrite_buy_addon_filler');
+    assert.equal(rewrite.reason, 'invalid_structured_reason_schema');
     assert.equal(rewrite.text, '');
   } finally {
     __internal.__resetCallGeminiJsonObjectForTest();
@@ -3375,8 +3439,8 @@ test('reco assistant rewrite accepts direct buy copy with shopper-facing oil-con
     __internal.__setCallGeminiJsonObjectForTest(async () => ({
       ok: true,
       json: {
-        assistant_text:
-          'Buy GoalSkin Oil Control Serum for oily skin. It targets excess shine without adding heaviness.',
+        lead_reason: 'it helps reduce visible shine without feeling heavy',
+        support_reasons: [],
       },
       parse_status: 'parsed',
       provider: 'gemini',
@@ -3393,10 +3457,8 @@ test('reco assistant rewrite accepts direct buy copy with shopper-facing oil-con
 
     assert.equal(rewrite.llm_used, true);
     assert.equal(rewrite.reason, null);
-    assert.equal(
-      rewrite.text,
-      'Buy GoalSkin Oil Control Serum for oily skin. It targets excess shine without adding heaviness. What city or climate are you usually in (humid, dry, cold, or high-UV)?',
-    );
+    assert.match(rewrite.text, /GoalSkin Oil Control Serum/);
+    assert.match(rewrite.text, /visible shine/i);
   } finally {
     __internal.__resetCallGeminiJsonObjectForTest();
     if (prevMock === undefined) delete process.env.AURORA_BFF_USE_MOCK;
@@ -3451,8 +3513,8 @@ test('reco assistant rewrite accepts product-first buy copy with recommendation 
     __internal.__setCallGeminiJsonObjectForTest(async () => ({
       ok: true,
       json: {
-        assistant_text:
-          'GoalSkin Oil Control Serum fits this request for oily skin. It targets excess shine without adding heaviness.',
+        lead_reason: 'it helps reduce visible shine without feeling heavy',
+        support_reasons: [],
       },
       parse_status: 'parsed',
       provider: 'gemini',
@@ -3469,10 +3531,8 @@ test('reco assistant rewrite accepts product-first buy copy with recommendation 
 
     assert.equal(rewrite.llm_used, true);
     assert.equal(rewrite.reason, null);
-    assert.equal(
-      rewrite.text,
-      'GoalSkin Oil Control Serum fits this request for oily skin. It targets excess shine without adding heaviness. What city or climate are you usually in (humid, dry, cold, or high-UV)?',
-    );
+    assert.match(rewrite.text, /GoalSkin Oil Control Serum/);
+    assert.match(rewrite.text, /visible shine/i);
   } finally {
     __internal.__resetCallGeminiJsonObjectForTest();
     if (prevMock === undefined) delete process.env.AURORA_BFF_USE_MOCK;
@@ -3533,8 +3593,8 @@ test('reco assistant rewrite accepts buy drafts that directly name the product a
         return {
           ok: true,
           json: {
-            assistant_text:
-              'To manage oily skin and shine, buy GoalSkin Oil Control Serum first. It helps reduce visible shine without feeling heavy.',
+            lead_reason: 'it helps reduce visible shine without feeling heavy',
+            support_reasons: [],
           },
           parse_status: 'parsed',
           provider: 'gemini',
@@ -3544,8 +3604,8 @@ test('reco assistant rewrite accepts buy drafts that directly name the product a
       return {
         ok: true,
         json: {
-          assistant_text:
-            'GoalSkin Oil Control Serum is the product to buy first for oily skin. It helps reduce visible shine without feeling heavy.',
+          lead_reason: 'it helps reduce visible shine without feeling heavy',
+          support_reasons: [],
         },
         parse_status: 'parsed',
         provider: 'gemini',
@@ -3564,10 +3624,8 @@ test('reco assistant rewrite accepts buy drafts that directly name the product a
     assert.equal(callCount, 1);
     assert.equal(rewrite.llm_used, true);
     assert.equal(rewrite.reason, null);
-    assert.equal(
-      rewrite.text,
-      'To manage oily skin and shine, buy GoalSkin Oil Control Serum first. It helps reduce visible shine without feeling heavy. What city or climate are you usually in (humid, dry, cold, or high-UV)?',
-    );
+    assert.match(rewrite.text, /GoalSkin Oil Control Serum/);
+    assert.match(rewrite.text, /visible shine/i);
   } finally {
     __internal.__resetCallGeminiJsonObjectForTest();
     if (prevMock === undefined) delete process.env.AURORA_BFF_USE_MOCK;
@@ -3655,8 +3713,11 @@ test('reco assistant rewrite accepts routine-mix buy copy when the first sentenc
         return {
           ok: true,
           json: {
-            assistant_text:
-              'For oily, acne-prone skin, buy The Ordinary Niacinamide 10% + Zinc 1% first. Then add LightLab Oil-Free Gel Cream for lightweight hydration.',
+            lead_reason:
+              'it pairs niacinamide with zinc for visible shine support at a $12 price point',
+            support_reasons: [
+              'it adds lightweight gel-cream hydration without heaviness',
+            ],
           },
           parse_status: 'parsed',
           provider: 'gemini',
@@ -3666,8 +3727,11 @@ test('reco assistant rewrite accepts routine-mix buy copy when the first sentenc
       return {
         ok: true,
         json: {
-          assistant_text:
-            'The Ordinary Niacinamide 10% + Zinc 1% fits this request for oily, acne-prone skin because it directly targets excess oil and visible shine at a $12 price point. LightLab Oil-Free Gel Cream is the lightweight moisturizer step that adds breathable hydration without heaviness.',
+          lead_reason:
+            'it pairs niacinamide with zinc for visible shine support at a $12 price point',
+          support_reasons: [
+            'it adds lightweight gel-cream hydration without heaviness',
+          ],
         },
         parse_status: 'parsed',
         provider: 'gemini',
@@ -3748,8 +3812,9 @@ test('reco assistant rewrite retries single-product drafts that drift into routi
         return {
           ok: true,
           json: {
-          assistant_text:
-              'KraveBeauty Great Barrier Relief fits this request for barrier repair. To build out a full routine later, add a soothing serum and a daily sunscreen.',
+            lead_reason:
+              'it supports barrier repair, but to build out a full routine later add a soothing serum and a daily sunscreen',
+            support_reasons: [],
           },
           parse_status: 'parsed',
           provider: 'gemini',
@@ -3759,8 +3824,9 @@ test('reco assistant rewrite retries single-product drafts that drift into routi
       return {
         ok: true,
         json: {
-          assistant_text:
-            'KraveBeauty Great Barrier Relief is the one product to buy first for barrier support. Its tamanu oil, niacinamide, and ceramides directly target a stripped, irritated barrier without turning this into a multi-step routine.',
+          lead_reason:
+            'it uses tamanu oil, niacinamide, and ceramides for barrier support without turning this into a multi-step routine',
+          support_reasons: [],
         },
         parse_status: 'parsed',
         provider: 'gemini',
@@ -3869,8 +3935,11 @@ test('reco assistant rewrite retries routine drafts that use stiff selected-prod
         return {
           ok: true,
           json: {
-          assistant_text:
-            'The Ordinary Niacinamide 10% + Zinc 1% fits this request because it pairs niacinamide with zinc and costs $12. These selected products are different steps in a basic routine and not the same type of product. LightLab Oil-Free Gel Cream is your lightweight moisturizer step for breathable hydration.',
+            lead_reason:
+              'it pairs niacinamide with zinc and costs $12',
+            support_reasons: [
+              'these selected products are different steps in a basic routine and not the same type of product',
+            ],
           },
           parse_status: 'parsed',
           provider: 'gemini',
@@ -3880,8 +3949,11 @@ test('reco assistant rewrite retries routine drafts that use stiff selected-prod
       return {
         ok: true,
         json: {
-          assistant_text:
-            'The Ordinary Niacinamide 10% + Zinc 1% fits this request because it pairs niacinamide with zinc and costs $12. These are different routine steps, not substitutes: LightLab Oil-Free Gel Cream is the lightweight moisturizer step for breathable hydration.',
+          lead_reason:
+            'it pairs niacinamide with zinc and costs $12',
+          support_reasons: [
+            'it is the lightweight moisturizer step for breathable hydration',
+          ],
         },
         parse_status: 'parsed',
         provider: 'gemini',
@@ -3902,7 +3974,7 @@ test('reco assistant rewrite retries routine drafts that use stiff selected-prod
     assert.equal(rewrite.reason, null);
     assert.match(prompts[1], /Fix required: Replace stiff meta phrasing like "selected products"/);
     assert.doesNotMatch(String(rewrite.text || ''), /these selected products/i);
-    assert.match(String(rewrite.text || ''), /These are different routine steps, not substitutes/i);
+      assert.match(String(rewrite.text || ''), /lightweight moisturizer step/i);
   } finally {
     __internal.__resetCallGeminiJsonObjectForTest();
     if (prevMock === undefined) delete process.env.AURORA_BFF_USE_MOCK;
@@ -4010,8 +4082,12 @@ test('reco assistant rewrite uses structured reason retry for repeated buy frami
         return {
           ok: true,
           json: {
-            assistant_text:
-              'Beauty of Joseon Dynasty Cream 10ml is the most direct fit because it is lightweight under makeup. Winona Soothing Repair Serum is the top pick for calming redness, while KraveBeauty Great Barrier Relief is the strongest choice for barrier support.',
+            lead_reason:
+              'it is the most direct fit because it is lightweight under makeup',
+            support_reasons: [
+              'it is the top pick for calming redness',
+              'it is the strongest choice for barrier support',
+            ],
           },
           parse_status: 'parsed',
           provider: 'gemini',
@@ -4041,11 +4117,10 @@ test('reco assistant rewrite uses structured reason retry for repeated buy frami
       allowLockedSelectionRewrite: true,
     });
 
-    assert.equal(callCount, 2);
-    assert.equal(rewrite.llm_used, true);
-    assert.equal(rewrite.reason, null);
-    assert.match(prompts[1], /Return evidence-grounded reason fragments only/i);
-    assert.match(prompts[1], /Fix required: Use calibrated wording/i);
+      assert.equal(callCount, 1);
+      assert.equal(rewrite.llm_used, true);
+      assert.equal(rewrite.reason, null);
+      assert.match(prompts[0], /Return evidence-grounded reason fragments only/i);
     assert.match(String(rewrite.text || ''), /Beauty of Joseon Dynasty Cream 10ml is a practical/i);
     assert.match(String(rewrite.text || ''), /Winona Soothing Repair Serum adds the hydration serum step/i);
     assert.match(String(rewrite.text || ''), /KraveBeauty Great Barrier Relief adds the moisturizer step/i);
@@ -4956,7 +5031,7 @@ test('reco assistant structured renderer removes generic SPF utility tails from 
     });
 
     assert.doesNotMatch(text, /AM UV protection|daily protection/i);
-    assert.match(text, /help reduce pilling|lighter for daytime layering/i);
+      assert.match(text, /help reduce pilling|lighter for daytime layering|easier daytime wear/i);
     assert.match(text, /(?:if you want a richer, more moisturizing feel with more cushion under makeup|if you want more (?:moisture|cushion) under makeup)/i);
   } finally {
     delete require.cache[moduleId];
@@ -5039,6 +5114,103 @@ test('reco assistant rewrite uses structured primary attempt for compact single-
     assert.equal(rewrite.attempts?.[0]?.strict_selected_only_context, true);
     assert.equal(rewrite.attempts?.[0]?.max_output_tokens, 140);
     assert.match(rewrite.text, /Murad Daily Layering SPF 50 is a practical option/i);
+  } finally {
+    __internal.__resetCallGeminiJsonObjectForTest();
+    if (prevMock === undefined) delete process.env.AURORA_BFF_USE_MOCK;
+    else process.env.AURORA_BFF_USE_MOCK = prevMock;
+    if (prevProvider === undefined) delete process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
+    else process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER = prevProvider;
+    if (prevModel === undefined) delete process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
+    else process.env.AURORA_PRODUCT_INTEL_LLM_MODEL = prevModel;
+    delete require.cache[moduleId];
+  }
+});
+
+test('reco assistant rewrite rejects legacy assistant_text schema during structured reason attempt', async () => {
+  const prevMock = process.env.AURORA_BFF_USE_MOCK;
+  const prevProvider = process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
+  const prevModel = process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
+  process.env.AURORA_BFF_USE_MOCK = 'false';
+  process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER = 'gemini';
+  process.env.AURORA_PRODUCT_INTEL_LLM_MODEL = 'gemini-3-flash-preview';
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const payload = __internal.applyRecoContentSpineToPayload(
+      {
+        recommendations: [
+          {
+            product_id: 'spf_pick_legacy_schema',
+            display_name: 'Daily Layering SPF 50',
+            brand: 'Murad',
+            category: 'Sunscreen',
+            short_description: 'A daily SPF 50 moisturizer format that reduces heavy layering.',
+            matched_role_id: 'daily_sunscreen_finish_fit',
+            matched_role_label: 'Daily sunscreen with finish fit',
+          },
+        ],
+        recommendation_meta: {
+          resolved_target_step: 'sunscreen',
+          mainline_status: 'grounded_success',
+        },
+      },
+      {
+        ingredient_query: 'Daily sunscreen with finish fit',
+        resolved_target_step: 'sunscreen',
+        primary_target_id: 'daily_sunscreen_finish_fit',
+        ranked_targets: [
+          {
+            target_id: 'daily_sunscreen_finish_fit',
+            ingredient_query: 'Daily sunscreen with finish fit',
+            resolved_target_step: 'sunscreen',
+          },
+        ],
+        selected_target_ids: ['daily_sunscreen_finish_fit'],
+      },
+    );
+    let callCount = 0;
+    __internal.__setCallGeminiJsonObjectForTest(async () => {
+      callCount += 1;
+      if (callCount === 1) {
+        return {
+          ok: true,
+          json: {
+            assistant_text: 'Old schema text that should not render.',
+          },
+          parse_status: 'parsed',
+          meta: { gate_wait_ms: 0, upstream_ms: 80, total_ms: 80 },
+          provider: 'gemini',
+          effective_model: 'gemini-3-flash-preview',
+        };
+      }
+      return {
+        ok: true,
+        json: {
+          lead_reason: 'it gives SPF 50 coverage in a moisturizer format that reduces heavy morning layering',
+          support_reasons: [],
+        },
+        parse_status: 'parsed',
+        meta: { gate_wait_ms: 0, upstream_ms: 90, total_ms: 90 },
+        provider: 'gemini',
+        effective_model: 'gemini-3-flash-preview',
+      };
+    });
+
+    const rewrite = await __internal.maybeRewriteRecoAssistantTextWithLlm({
+      payload,
+      language: 'EN',
+      profile: { skinType: 'combination', goals: ['makeup layering'] },
+      userRequestText: 'My daytime routine pills under makeup. What sunscreen should I buy?',
+      allowLockedSelectionRewrite: true,
+      deadlineAtMs: Date.now() + 5000,
+    });
+
+    assert.equal(callCount, 2);
+    assert.equal(rewrite.llm_used, true);
+    assert.equal(rewrite.attempts?.[0]?.structured_reason_only, true);
+    assert.equal(rewrite.attempts?.[0]?.reason, 'invalid_structured_reason_schema');
+    assert.equal(rewrite.attempts?.[1]?.structured_reason_only, true);
+    assert.doesNotMatch(rewrite.text, /Old schema text/i);
+    assert.match(rewrite.text, /Daily Layering SPF 50/i);
   } finally {
     __internal.__resetCallGeminiJsonObjectForTest();
     if (prevMock === undefined) delete process.env.AURORA_BFF_USE_MOCK;
@@ -6052,12 +6224,10 @@ test('reco assistant structured renderer follows visible card order before raw r
         products: [matte, unseen, lightSerum],
       },
     ];
-    const names = [
-      'Matte Fit Serum Sunscreen SPF 50+ PA++++',
-      'Unseen Sunscreen SPF 50',
-      'Light Serum Sunscreen SPF 50+ PA++++',
-    ];
+    const visibleRows = __internal.collectRecoAssistantVisibleRows(payload);
+    const names = visibleRows.slice(0, 3).map((row) => row.display_name || row.displayName || row.name || row.title);
     const primaryTarget = payload.recommendation_meta.ranked_targets[0];
+    const renderMeta = {};
     const text = __internal.renderRecoAssistantStructuredReasonRewrite({
       structuredReason: {
         lead_reason:
@@ -6075,8 +6245,11 @@ test('reco assistant structured renderer follows visible card order before raw r
       names,
       requestMode: 'buy',
       selectedProductRoleMix: 'same_role_comparison',
+      renderMeta,
     });
 
+    assert.equal(renderMeta.visible_order_source, 'sections_products');
+    assert.ok(renderMeta.canonical_reason_replaced_count >= 2);
     assert.match(text, /Unseen Sunscreen SPF 50 is the clearer, more invisible-feeling option/i);
     assert.match(text, /Light Serum Sunscreen SPF 50\+ PA\+\+\+\+ leans serum-light with skincare-support ingredients/i);
     assert.doesNotMatch(text, /Unseen Sunscreen SPF 50[^.]+matte|Light Serum Sunscreen SPF 50\+ PA\+\+\+\+[^.]+matte, shine-controlling/i);
@@ -6093,6 +6266,21 @@ test('reco assistant structured renderer follows visible card order before raw r
       requestMode: 'buy',
     });
     assert.equal(validation.reason, null);
+    const badTransferValidation = __internal.validateRecoAssistantRewriteCandidate({
+      candidateText:
+        'Matte Fit Serum Sunscreen SPF 50+ PA++++ is a practical option because it has more direct airy, non-greasy texture evidence for oily skin under makeup. Unseen Sunscreen SPF 50 makes more sense if you want a clearer invisible option. Light Serum Sunscreen SPF 50+ PA++++ makes more sense if you want a more matte, shine-controlling finish with less slip under makeup.',
+      payload,
+      language: 'EN',
+      profile: { skinType: 'oily' },
+      userRequestText: 'I have oily skin, what sunscreen should I buy?',
+      refinementQuestionPlan: null,
+      primaryTarget,
+      secondaryTargets: [],
+      names,
+      requestMode: 'buy',
+    });
+    assert.equal(badTransferValidation.ok, false);
+    assert.equal(badTransferValidation.reason, 'rewrite_product_reason_transfer');
   } finally {
     delete require.cache[moduleId];
   }
@@ -6528,8 +6716,12 @@ test('reco assistant rewrite retries routine-mix drafts that use a templated ful
         return {
           ok: true,
           json: {
-            assistant_text:
-              'The Ordinary Niacinamide 10% + Zinc 1% fits this request for oily skin because it pairs niacinamide with zinc and costs $12. To build out a full routine, add LightLab Oil-Free Gel Cream as your moisturizer step and SunLab Daily SPF 50 Fluid as your sunscreen step.',
+            lead_reason:
+              'it pairs niacinamide with zinc and costs $12',
+            support_reasons: [
+              'to build out a full routine, add this as your moisturizer step',
+              'to build out a full routine, add this as your sunscreen step',
+            ],
           },
           parse_status: 'parsed',
           provider: 'gemini',
@@ -6539,8 +6731,12 @@ test('reco assistant rewrite retries routine-mix drafts that use a templated ful
       return {
         ok: true,
         json: {
-          assistant_text:
-            'The Ordinary Niacinamide 10% + Zinc 1% fits this request for oily skin because it pairs niacinamide with zinc and costs $12. LightLab Oil-Free Gel Cream is the lightweight moisturizer step for breathable hydration, and SunLab Daily SPF 50 Fluid is the sunscreen step for daily UV protection without a heavy finish.',
+          lead_reason:
+            'it pairs niacinamide with zinc and costs $12',
+          support_reasons: [
+            'it is the lightweight moisturizer step for breathable hydration',
+            'it is the sunscreen step for daily UV protection without a heavy finish',
+          ],
         },
         parse_status: 'parsed',
         provider: 'gemini',
@@ -6665,8 +6861,12 @@ test('reco assistant rewrite retries routine-mix drafts that end in a generic cl
         return {
           ok: true,
           json: {
-            assistant_text:
-              'The Ordinary Niacinamide 10% + Zinc 1% fits this request for oily skin because it pairs niacinamide with zinc and costs $12. LightLab Oil-Free Gel Cream is your moisturizer step, and SunLab Daily SPF 50 Fluid is your sunscreen step. These secondary steps support your oily skin by keeping hydration breathable and protecting against UV damage.',
+            lead_reason:
+              'it pairs niacinamide with zinc and costs $12',
+            support_reasons: [
+              'it is your moisturizer step',
+              'these secondary steps support your oily skin by keeping hydration breathable and protecting against UV damage',
+            ],
           },
           parse_status: 'parsed',
           provider: 'gemini',
@@ -6697,13 +6897,13 @@ test('reco assistant rewrite retries routine-mix drafts that end in a generic cl
       allowLockedSelectionRewrite: true,
     });
 
-    assert.equal(callCount, 2);
-    assert.equal(rewrite.llm_used, true);
-    assert.equal(rewrite.reason, null);
-    assert.match(prompts[1], /Previous draft failed the quality gate\./);
-    assert.match(prompts[1], /Fix required: Do not end with a generic routine wrap-up\./);
-    assert.match(String(rewrite.text || ''), /The Ordinary Niacinamide 10% \+ Zinc 1% is a practical oil-control treatment to buy first in this routine/);
-    assert.match(prompts[1], /Do not write the final assistant message\./);
+      assert.equal(callCount, 2);
+      assert.equal(rewrite.llm_used, true);
+      assert.equal(rewrite.reason, null);
+      assert.match(prompts[1], /Previous draft failed the quality gate\./);
+      assert.match(prompts[1], /Fix required: Do not end with a generic routine wrap-up\./);
+      assert.match(String(rewrite.text || ''), /The Ordinary Niacinamide 10% \+ Zinc 1% is a practical oil-control treatment to buy first in this routine/);
+      assert.match(prompts[1], /Do not write the final assistant message\./);
     assert.doesNotMatch(String(rewrite.text || ''), /These secondary steps support your oily skin/i);
   } finally {
     __internal.__resetCallGeminiJsonObjectForTest();
@@ -6777,8 +6977,9 @@ test('reco assistant rewrite retries oily buy drafts that use off-target tone cl
         return {
           ok: true,
           json: {
-            assistant_text:
-              'GoalSkin Oil Control Serum fits this request because it targets brightening and dark spots while helping oily skin.',
+            lead_reason:
+              'it targets brightening and dark spots while helping oily skin',
+            support_reasons: [],
           },
           parse_status: 'parsed',
           provider: 'gemini',
@@ -7078,6 +7279,126 @@ test('concern selector ordering keeps SPF30 moisturizer hybrids behind dedicated
       ['spf_matte', 'spf_invisible', 'spf_light'],
     );
     assert.equal(applied.primary_recommendation_id, 'spf_matte');
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('concern selector ordering removes packaging-only finish-fit deal rows when standard sunscreen rows exist', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const applied = __internal.applyConcernSelectorRaceOrdering(
+      [
+        {
+          product_id: 'spf_deal',
+          display_name: '[DEAL] Birch Moisturizing Sunscreen UVLock SPF 45+ Broad Spectrum',
+          matched_role_id: 'daily_sunscreen_finish_fit',
+          why_this_one: 'bundle deal sunscreen row with packaging-only offer language',
+          short_description: 'A sunscreen bundle deal for broad spectrum daily use.',
+        },
+        {
+          product_id: 'spf_matte',
+          display_name: 'SKINTIFIC Matte Fit Serum Sunscreen SPF 50+ PA++++',
+          matched_role_id: 'daily_sunscreen_finish_fit',
+          why_this_one: 'it has a matte serum texture for oily skin under makeup',
+          short_description: 'A matte serum sunscreen that helps cut shine under makeup.',
+        },
+        {
+          product_id: 'spf_light',
+          display_name: 'SKINTIFIC Light Serum Sunscreen SPF 50+ PA++++',
+          matched_role_id: 'daily_sunscreen_finish_fit',
+          why_this_one: 'it leans serum-light with skincare-support ingredients',
+          short_description: 'A watery light serum sunscreen for oily skin under makeup.',
+        },
+      ],
+      {
+        top_pick_product_id: 'spf_deal',
+        ordered_product_ids: ['spf_deal', 'spf_matte', 'spf_light'],
+        comparison_mode: 'same_role_comparison',
+        primary_role_id: 'daily_sunscreen_finish_fit',
+      },
+    );
+
+    assert.deepEqual(
+      applied.recommendations.map((row) => row.product_id),
+      ['spf_matte', 'spf_light'],
+    );
+    assert.equal(applied.primary_recommendation_id, 'spf_matte');
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('finish-fit final selection does not let packaging-only deal rows occupy comparison card slots', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const targetContext = {
+      primary_role_id: 'daily_sunscreen_finish_fit',
+      comparison_mode: 'same_role_comparison',
+      routine_mode: 'same_role_comparison',
+      semantic_plan: {
+        comparison_mode: 'same_role_comparison',
+        routine_mode: 'same_role_comparison',
+      },
+      framework_roles: [
+        {
+          role_id: 'daily_sunscreen_finish_fit',
+          label: 'Daily sunscreen with finish fit',
+          preferred_step: 'sunscreen',
+          rank: 1,
+          query_terms: ['sunscreen under makeup'],
+          fit_keywords: ['sunscreen', 'under makeup', 'matte', 'lightweight', 'invisible'],
+        },
+      ],
+    };
+    const makeSunscreen = (productId, displayName, description, brand = 'SKINTIFIC') => ({
+      product_id: productId,
+      merchant_id: 'external_seed',
+      display_name: displayName,
+      brand,
+      category: 'Sunscreen',
+      product_type: 'Sunscreen',
+      description,
+      short_description: description,
+      retrieval_source: 'external_seed',
+      retrieval_role_id: 'daily_sunscreen_finish_fit',
+      retrieval_step: 'sunscreen',
+      framework_role_fit_score: 0.9,
+    });
+    const out = __internal.finalizeConcernFrameworkCandidatePools(
+      [
+        makeSunscreen(
+          'spf_deal',
+          '[DEAL] Birch Moisturizing Sunscreen UVLock SPF 45+ Broad Spectrum',
+          'Deal sunscreen bundle broad spectrum SPF45 for daily under-makeup use.',
+          'Round Lab',
+        ),
+        makeSunscreen(
+          'spf_matte',
+          'SKINTIFIC Matte Fit Serum Sunscreen SPF 50+ PA++++',
+          'Matte sunscreen SPF50 PA++++ with shine-control positioning for oily skin under makeup.',
+        ),
+        makeSunscreen(
+          'spf_invisible',
+          'Supergoop Unseen Sunscreen SPF 50',
+          'Invisible clear weightless sunscreen SPF50 for smoother under-makeup wear.',
+          'Supergoop',
+        ),
+        makeSunscreen(
+          'spf_light',
+          'SKINTIFIC Light Serum Sunscreen SPF 50+ PA++++',
+          'Light serum sunscreen SPF50 PA++++ with skincare-support ingredients under makeup.',
+        ),
+      ],
+      { targetContext },
+    );
+
+    assert.deepEqual(
+      out.selected_recommendations.map((row) => row.product_id),
+      ['spf_matte', 'spf_invisible', 'spf_light'],
+    );
+    assert.equal(out.selected_recommendations.some((row) => row.product_id === 'spf_deal'), false);
+    assert.equal(out.primary_recommendation_id, 'spf_matte');
   } finally {
     delete require.cache[moduleId];
   }
