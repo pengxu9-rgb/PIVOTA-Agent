@@ -210,6 +210,35 @@ describe('pdpIngredientAuthority', () => {
     expect(authority.suppressed_reason).toBe('active_items_low_signal');
   });
 
+  test('keeps hero peptide and panthenol actives when full INCI has matching evidence', () => {
+    const authority = buildAuthoritativeIngredientView({
+      title: 'Multi-Peptide Lash and Brow Serum',
+      category: 'Serum',
+      pdp_ingredients_raw:
+        'Aqua (Water), Glycerin, Butylene Glycol, Myristoyl Pentapeptide-17, Biotinoyl Tripeptide-1, Oligopeptide-2, Acetyl Tetrapeptide-3, Caffeine, Panthenol, Arginine, Zinc Chloride, Phenoxyethanol.',
+      ingredient_intel: {
+        active_ingredients: ['Peptides', 'Panthenol (B5)', 'Zinc PCA', 'Glycerin'],
+      },
+    });
+
+    expect(authority.purity_status).toBe('authoritative');
+    expect(authority.active_items).toEqual(['Peptides', 'Panthenol (B5)']);
+    expect(authority.active_items).not.toEqual(expect.arrayContaining(['Zinc PCA', 'Glycerin']));
+  });
+
+  test('does not promote generic peptides without peptide INCI evidence', () => {
+    const authority = buildAuthoritativeIngredientView({
+      title: 'Strengthening Serum',
+      pdp_ingredients_raw: 'Water, Glycerin, Panthenol, Caffeine, Phenoxyethanol.',
+      ingredient_intel: {
+        active_ingredients: ['Peptides'],
+      },
+    });
+
+    expect(authority.active_items).toEqual([]);
+    expect(authority.suppressed_reason).toBe('active_items_not_displayable');
+  });
+
   test('does not treat titanium dioxide as a regulatory active outside sunscreen context', () => {
     const authority = buildAuthoritativeIngredientView({
       title: 'Shade and Illuminate Concealer',
