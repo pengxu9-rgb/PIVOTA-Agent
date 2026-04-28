@@ -9219,7 +9219,7 @@ test('__internal: stable alias authority resolves oil-control role query variant
   }
 });
 
-test('__internal: beauty local handoff runs same-role sunscreen external authority in the primary round', async () => {
+test('__internal: beauty local handoff runs same-role sunscreen primary authority locally before backend', async () => {
   const { __internal } = loadRoutesFresh();
   const calls = [];
   const targetContext = {
@@ -9256,23 +9256,53 @@ test('__internal: beauty local handoff runs same-role sunscreen external authori
         sourceScope: args.sourceScope || null,
       });
       return {
+        ok: false,
+        products: [],
+        reason: 'upstream_timeout',
+        attempted_request_timeouts_ms: [Number(args.timeoutMs || 0)],
+        actual_http_attempt_count: 1,
+      };
+    },
+    searchLocalExternalSeedProducts: async (args = {}) => {
+      calls.push({
+        kind: 'local_external_seed',
+        query: args.query,
+        timeoutMs: Number(args.queryTimeoutMs || 0),
+        sourceScope: args.sourceScope || null,
+      });
+      const normalizedQuery = String(args.query || '').trim().toLowerCase().replace(/\s+/g, '_');
+      return {
         ok: true,
         products: [
           {
-            product_id: `external_sunscreen_${calls.length}`,
+            product_id: `local_sunscreen_${normalizedQuery}`,
             merchant_id: 'external_seed',
             brand: 'Haruharu Wonder',
-            name: 'Moisture Airyfit Daily Sunscreen SPF50+/PA++++ / Unscented',
-            display_name: 'Haruharu Wonder Moisture Airyfit Daily Sunscreen SPF50+/PA++++ / Unscented',
+            name: `Moisture Airyfit ${args.query}`,
+            display_name: `Haruharu Wonder Moisture Airyfit ${args.query}`,
             category: 'Sunscreen',
             product_type: 'Sunscreen',
+            candidate_step: 'sunscreen',
             retrieval_source: 'external_seed',
             short_description: 'An airy, non-greasy daily sunscreen designed for smoother wear under makeup.',
             benefit_tags: ['spf', 'airy', 'non-greasy', 'under makeup'],
           },
         ],
-        attempted_request_timeouts_ms: [Number(args.timeoutMs || 0)],
-        actual_http_attempt_count: 1,
+        actual_http_attempt_count: 0,
+        attempted_base_urls: [],
+        attempted_paths: [],
+        transport_policy_mode: 'framework_first_turn',
+        local_external_seed_search_mode: 'staged_support_fastpath',
+        local_external_seed_stage_debug: [
+          {
+            stage: 'support_query_precise',
+            row_count: 1,
+            cumulative_row_count: 1,
+            duration_ms: 5,
+            cap: 6,
+            query_cap: 18,
+          },
+        ],
       };
     },
     searchInternalProductsPrimitive: async (args = {}) => {
@@ -9303,12 +9333,9 @@ test('__internal: beauty local handoff runs same-role sunscreen external authori
     });
 
     assert.equal(out?.ok, true);
-    assert.equal(calls[0]?.kind, 'backend_external_seed', JSON.stringify(calls));
-    assert.equal(calls[1]?.kind, 'backend_external_seed', JSON.stringify(calls));
-    assert.ok(calls[0]?.timeoutMs >= 16000, JSON.stringify(calls));
     assert.deepEqual(
       calls
-        .filter((call) => call.kind === 'backend_external_seed')
+        .filter((call) => call.kind === 'local_external_seed')
         .slice(0, 4)
         .map((call) => call.query),
       [
@@ -9317,6 +9344,18 @@ test('__internal: beauty local handoff runs same-role sunscreen external authori
         'invisible sunscreen',
         'sunscreen under makeup',
       ],
+      JSON.stringify(calls),
+    );
+    assert.equal(
+      calls.some((call) => call.kind === 'backend_external_seed'),
+      false,
+      JSON.stringify(calls),
+    );
+    assert.ok(
+      calls
+        .filter((call) => call.kind === 'local_external_seed')
+        .slice(0, 4)
+        .every((call) => call.timeoutMs > 0 && call.timeoutMs <= 2200),
       JSON.stringify(calls),
     );
     assert.equal(
@@ -9331,6 +9370,8 @@ test('__internal: beauty local handoff runs same-role sunscreen external authori
     const attempts = out.search_stage_ledger?.primary_search?.query_pack_attempts || [];
     assert.equal(attempts[0]?.source_scope, 'external_seed');
     assert.equal(attempts[1]?.source_scope, 'external_seed');
+    assert.equal(attempts[0]?.primary_external_seed_authority_local_primary, true);
+    assert.equal(attempts[0]?.primary_external_seed_authority_backend_skipped, true);
     assert.equal(
       attempts.some((row) => String(row?.query || '').trim().toLowerCase() === 'matte sunscreen'),
       true,
