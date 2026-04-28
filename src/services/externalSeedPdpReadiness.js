@@ -157,7 +157,7 @@ const ACCESSORY_RE =
 const NON_MERCH_RE =
   /\b(?:e[-\s]?gift[-\s]?cards?|gift[-\s]?cards?|donat(?:e|ion)|sample service|appointment|booking|shipping protection|package protection|route protection|order protection)\b/i;
 const BUNDLE_RE =
-  /\b(bundle|set|kit|collection|duo|trio|routine|mini set|travel set|starter set|value set|collection set|collection kit|collection bundle)\b/i;
+  /\b(bundle|set|kit|collection|duo|trio|routine|makeup look|mini set|travel set|starter set|value set|collection set|collection kit|collection bundle)\b/i;
 const FORMULA_PRODUCT_RE =
   /\b(skincare|skin care|makeup|cosmetic|haircare|hair care|fragrance|perfume|parfum|cologne|cleanser|toner|essence|serum|ampoule|solution|suspension|emulsion|moisturi[sz]er|cream|lotion|balm|mask|peel|exfoliant|exfoliator|treatment|oil|acid|acne control|sunscreen|spf|foundation|concealer|mascara|lash|lip(?:stick| gloss| balm| oil)?|blush|bronzer|powder|highlighter|eyeshadow|eyeliner|brow|primer|setting spray|shampoo|conditioner|body wash|body lotion)\b/i;
 const SUNSCREEN_CONTEXT_RE =
