@@ -62,6 +62,10 @@ describe('externalSeedRecall', () => {
             body: 'Rice extract and rice amino acids support long-lasting hydration and a dewy finish.',
           },
           {
+            heading: 'Secret Sebum-Control Layer',
+            body: 'A sebum-control powder layer helps the toner balance shine without a greasy finish.',
+          },
+          {
             heading: 'Clinical Results',
             body: 'Clinically proven to be non-irritating in a 24-hour patch test.',
           },
@@ -72,6 +76,8 @@ describe('externalSeedRecall', () => {
 
     expect(doc.retrieval_body).toMatch(/The layers in my toner are separated/);
     expect(doc.retrieval_body).toMatch(/Rice-Infused Hydration: Rice extract/);
+    expect(doc.category).toBe('Toner');
+    expect(doc.vertical).toBe('skincare');
     expect(doc.retrieval_body).toMatch(/Clinical Results: Clinically proven/);
   });
 
