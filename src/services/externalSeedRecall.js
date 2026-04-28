@@ -99,6 +99,16 @@ const RECALL_LEAF_CATEGORY_PATTERNS = Object.freeze([
   ['Treatment', /\b(treatment|treatments|mask|masks|peel|peels|exfoliant|exfoliants)\b/i],
   ['Fragrance', /\b(fragrance|fragrances|perfume|perfumes|parfum|parfums|cologne|colognes|eau\s+de\s+(?:parfum|toilette))\b/i],
 ]);
+const RECALL_SKINCARE_TEXT_CATEGORY_PATTERNS = Object.freeze([
+  ['Sunscreen', /\b(sunscreen|sunscreens|spf)\b/i],
+  ['Cleanser', /\b(cleanser|cleansers|cleansing\s+(?:gel|foam|balm|oil|cream)?|face\s+wash)\b/i],
+  ['Toner', /\b(toner|toners|tonic|tonics)\b/i],
+  ['Essence', /\b(essence|essences|ampoule|ampoules)\b/i],
+  ['Serum', /\bserums?\b(?![-\s]*like)\b/i],
+  ['Moisturizer', /\b(moisturizer|moisturizers|moisturiser|moisturisers|gel[-\s]?cream|cream|creams|lotion|lotions)\b/i],
+  ['Hydrating Mask', /\b(?:(?:hydrating|hydration|hyalu-cica|dew\s+n\s+plump)(?:[\s-]+[a-z0-9+-]+){0,6}[\s-]+mask|mask(?:[\s-]+[a-z0-9+-]+){0,3}hydrating)\b/i],
+  ['Treatment', /\b(treatment|treatments|peel|peels|exfoliant|exfoliants)\b/i],
+]);
 const EXTERNAL_SEED_SUPPRESSION_FLAG_KEYS = Object.freeze([
   'exclude_from_recall',
   'exclude_from_similar',
@@ -199,6 +209,15 @@ function inferRecallLeafCategoryFromText(value) {
   return '';
 }
 
+function inferSkincareRecallLeafCategoryFromText(value) {
+  const normalized = normalizeNonEmptyString(value);
+  if (!normalized) return '';
+  for (const [category, pattern] of RECALL_SKINCARE_TEXT_CATEGORY_PATTERNS) {
+    if (pattern.test(normalized)) return category;
+  }
+  return '';
+}
+
 function normalizeRecallLeafCategory(value, { allowBroad = false } = {}) {
   const raw = normalizeNonEmptyString(value);
   if (!raw) return '';
@@ -247,7 +266,11 @@ function resolveRecallCategory({ seedData = {}, snapshot = {}, row = {}, title =
     .find(Boolean);
   if (categoryLeaf) return categoryLeaf;
 
-  const inferredLeaf = inferRecallLeafCategoryFromText((Array.isArray(textCandidates) ? textCandidates : []).join(' '));
+  const textBlob = (Array.isArray(textCandidates) ? textCandidates : []).join(' ');
+  const skincareInferredLeaf = inferSkincareRecallLeafCategoryFromText(textBlob);
+  if (skincareInferredLeaf) return skincareInferredLeaf;
+
+  const inferredLeaf = inferRecallLeafCategoryFromText(textBlob);
   if (inferredLeaf) return inferredLeaf;
 
   return firstNonEmptyString(
