@@ -831,6 +831,63 @@ describe('pdpIdentityGraph', () => {
     ]);
   });
 
+  test('maybeBuildLiveSyntheticPdp trusts approved exact live rows outside configured brand allowlist', async () => {
+    jest.resetModules();
+    process.env = {
+      ...ORIGINAL_ENV,
+      NODE_ENV: 'test',
+      DATABASE_URL: 'postgres://test',
+      PDP_IDENTITY_GRAPH_ENABLED: 'true',
+      PDP_IDENTITY_GRAPH_BRAND_ALLOWLIST: 'KraveBeauty',
+    };
+    const { maybeBuildLiveSyntheticPdp } = require('../../src/services/pdpIdentityGraph');
+    const sourceRow = {
+      source_listing_ref: 'external_seed:ext_ordinary_serum',
+      merchant_id: 'external_seed',
+      product_id: 'ext_ordinary_serum',
+      source_kind: 'external_seed',
+      source_tier: 'brand',
+      live_read_enabled: true,
+      sellable_item_group_id: 'sig_ordinary_serum',
+      product_line_id: 'pl_ordinary_serum',
+      review_family_id: 'rf_ordinary_serum',
+      identity_status: 'approved',
+      identity_confidence: 0.92,
+      review_required: false,
+      brand_norm: 'the ordinary',
+      match_basis: ['official_url:https://theordinary.com/products/serum'],
+      variant_axes: { volume: '30ml', multi_variant: true },
+      source_payload: {
+        title: 'Multi-Peptide + HA Serum',
+        brand: 'The Ordinary',
+        images: [{ url: 'https://cdn.example.com/ordinary-serum.jpg' }],
+      },
+    };
+    const queryFn = jest.fn(async (sql) => {
+      const normalizedSql = String(sql || '').replace(/\s+/g, ' ').trim();
+      if (normalizedSql.includes('merchant_id = $1')) return { rows: [sourceRow] };
+      if (normalizedSql.includes('sellable_item_group_id = $1')) return { rows: [sourceRow] };
+      if (normalizedSql.includes('product_line_id = $1')) return { rows: [sourceRow] };
+      return { rows: [] };
+    });
+
+    const result = await maybeBuildLiveSyntheticPdp({
+      merchantId: 'external_seed',
+      productId: 'ext_ordinary_serum',
+      canonicalProduct: {
+        product_id: 'ext_ordinary_serum',
+        merchant_id: 'external_seed',
+        title: 'Multi-Peptide + HA Serum',
+        brand: 'The Ordinary',
+      },
+      queryFn,
+    });
+
+    expect(result?.canonical_scope).toBe('synthetic');
+    expect(result?.sellable_item_group_id).toBe('sig_ordinary_serum');
+    expect(result?.product_line_id).toBe('pl_ordinary_serum');
+  });
+
   test('buildIdentityListingFromProduct canonicalizes official URL host before conflict checks', () => {
     const { buildIdentityListingFromProduct, _internals } = require('../../src/services/pdpIdentityGraph');
 

@@ -2424,6 +2424,16 @@ function isBrandAllowedForLive(product, identityRow = null) {
   return brand ? PDP_IDENTITY_GRAPH_BRAND_ALLOWLIST.has(brand) : false;
 }
 
+function isTrustedExactLiveIdentityRow(row) {
+  if (!row || typeof row !== 'object') return false;
+  return (
+    asString(row.identity_status).toLowerCase() === 'approved' &&
+    row.live_read_enabled === true &&
+    row.review_required !== true &&
+    Boolean(asString(row.sellable_item_group_id) || asString(row.product_line_id))
+  );
+}
+
 async function maybeBuildLiveSyntheticPdp({
   merchantId,
   productId,
@@ -2448,12 +2458,14 @@ async function maybeBuildLiveSyntheticPdp({
           AND product_id = $2
           AND identity_status = 'approved'
           AND live_read_enabled = true
+          AND review_required = false
         LIMIT 1
       `,
       [merchantId, productId],
     );
+    const exactSourceRow = parseIdentityRow(sourceRowRes?.rows?.[0]);
     const sourceRow =
-      parseIdentityRow(sourceRowRes?.rows?.[0]) ||
+      exactSourceRow ||
       (await findApprovedIdentityMatchForLiveProduct({
         merchantId,
         productId,
@@ -2461,7 +2473,9 @@ async function maybeBuildLiveSyntheticPdp({
         queryFn,
       }));
     if (!sourceRow) return writeLiveSyntheticPdpCache(cacheKey, null);
-    if (!isBrandAllowedForLive(canonicalProduct, sourceRow)) return writeLiveSyntheticPdpCache(cacheKey, null);
+    if (!isTrustedExactLiveIdentityRow(exactSourceRow) && !isBrandAllowedForLive(canonicalProduct, sourceRow)) {
+      return writeLiveSyntheticPdpCache(cacheKey, null);
+    }
     const allowApprovedWithoutLiveRead =
       asPlainObject(sourceRow.source_meta)?.live_identity_match === true;
 
