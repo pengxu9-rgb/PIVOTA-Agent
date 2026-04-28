@@ -511,7 +511,7 @@ function collectDescriptiveText(row) {
 }
 
 function allowsShadeAxis(text) {
-  return /\b(tinted?|skin tint|shade|color correct|colour correct|tone up|tone correct|lip tint|lipstick|lip gloss|lip oil|lip balm|foundation|concealer|bronzer|blush|highlighter|powder|eyeshadow|eyeliner|brow|mascara|makeup|cosmetic)\b/i.test(
+  return /\b(tinted?|skin tint|shade|color[-\s]?correct|colour[-\s]?correct|tone[-\s]?up|tone[-\s]?correct|lip tint|tint balm|honey tint|lipstick|lip gloss|lip oil|lip balm|foundation|concealer|bronzer|blush|highlighter|powder|eyeshadow|eyeliner|brow|mascara|makeup|cosmetic)\b/i.test(
     text,
   );
 }
@@ -526,11 +526,17 @@ function looksLikeSizeValue(value) {
   const text = stripHtml(value);
   if (!text) return false;
   return (
-    /\b\d+(?:\.\d+)?\s*(ml|m l|g|kg|oz|fl oz|l|lb|lbs|mm|cm)\b/i.test(text) ||
+    /\b\d+(?:\.\d+)?\s*(ml|m l|g|kg|oz|fl\.?\s*oz\.?|fluid\s*ounces?|l|lb|lbs|mm|cm)\b/i.test(text) ||
     /\b(pack of|set of)\s*\d+\b/i.test(text) ||
     /\b\d+\s*(pack|ct|count|pcs|pieces)\b/i.test(text) ||
     /\b(refill|travel size|full size|mini|jumbo|regular)\b/i.test(text)
   );
+}
+
+function shouldRequireDefaultVariantSizeAxis(row) {
+  const text = collectContextText(row);
+  if (NON_MERCH_RE.test(text) || ACCESSORY_RE.test(text) || BUNDLE_RE.test(text)) return false;
+  return true;
 }
 
 function hasVariantVisualEvidence(variant) {
@@ -630,7 +636,10 @@ function classifyVariantReadiness(row) {
   });
   const sizeEvidence = collectVariantSizeEvidence(row);
   const defaultOptionSizeEvidenceMissingAxis =
-    visibleRows.length === 0 && sizeEvidence.raw_variant_count > 0 && sizeEvidence.evidence
+    visibleRows.length === 0 &&
+    sizeEvidence.raw_variant_count > 0 &&
+    sizeEvidence.evidence &&
+    shouldRequireDefaultVariantSizeAxis(row)
       ? [{ axis_name: 'default', axis_kind: 'volume', value: sizeEvidence.evidence, visual: false }]
       : [];
   const issues = [];
