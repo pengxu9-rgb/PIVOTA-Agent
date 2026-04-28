@@ -96,6 +96,12 @@ function classifyConcernSelectorFinishFitTradeoffBucket(row = null) {
   if (/\b(tinted|tone[-\s]?up|complexion coverage|coverage[-\s]?first|beige|ivory)\b/i.test(text)) {
     return 'tinted_makeup_base';
   }
+  if (isConcernSelectorLowerCoverageMoisturizerSpfHybrid(row)) {
+    return 'moisturizer_spf_hybrid';
+  }
+  if (/\b(matte|mattif|oil[-\s]?control|shine[-\s]?control|anti[-\s]?shine|sebum)\b/i.test(text)) {
+    return 'matte_oil_control';
+  }
   const richerCue = /\b(richer|more moisturizing|more moisture|hydrating|cream(?:ier)?|cream[-\s]?based|cream[-\s]?spf|hydrating daily cream|milk|cushion|colloidal oatmeal)\b/i.test(text);
   if (richerCue) return 'richer_moisturizing';
   const mineralCue = /\b(mineral|zinc oxide|zinc|titanium dioxide|sensitive skin|sensitive-skin|fragrance[-\s]?free|scentless)\b/i.test(text);
@@ -103,6 +109,23 @@ function classifyConcernSelectorFinishFitTradeoffBucket(row = null) {
   const lighterCue = /\b(lighter|lightweight|weightless|sheer|invisible|fluid|watery|water[-\s]?fit|under makeup|under-makeup|smooth(?:er)?|soft[-\s]?focus|non[-\s]?greasy|no white cast|lower white[-\s]?cast)\b/i.test(text);
   if (lighterCue) return 'lighter_smoother';
   return 'general';
+}
+
+function isConcernSelectorLowerCoverageMoisturizerSpfHybrid(row = null) {
+  const text = buildConcernSelectorCandidateEvidenceText(row);
+  if (!text) return false;
+  const hybridCue =
+    /\b(moisturi[sz]er\s+(?:with\s+)?spf|moisturizer[-\s]spf|spf\s+moisturi[sz]er|daily moisturizer|invisible moisturizer|hydrating moisturizer|day\s*screen|dayscreen|bare[-\s]?skin finish)\b/i
+      .test(text);
+  const lowerCoverageCue = /\bspf\s*30\b/i.test(text);
+  return Boolean(hybridCue && lowerCoverageCue);
+}
+
+function isConcernSelectorDedicatedFinishFitSunscreen(row = null) {
+  const text = buildConcernSelectorCandidateEvidenceText(row);
+  if (!text) return false;
+  if (isConcernSelectorLowerCoverageMoisturizerSpfHybrid(row)) return false;
+  return /\b(sunscreen|sun\s*screen|spf\s*\d{1,3}\+?|pa\+{2,4}|uv[ab]?|broad\s+spectrum)\b/i.test(text);
 }
 
 function shouldDiversifyConcernSelectorFinishFitComparison(selector = {}, recommendations = []) {
@@ -208,13 +231,21 @@ function diversifyConcernSelectorFinishFitOrdering(recommendations = [], selecto
   const ordered = Array.isArray(recommendations) ? recommendations.slice() : [];
   if (!shouldDiversifyConcernSelectorFinishFitComparison(selector, ordered)) return ordered;
   const topPickProductId = pickFirstTrimmed(selector?.top_pick_product_id, selector?.topPickProductId) || null;
-  const lead = (topPickProductId
+  const requestedLead = (topPickProductId
     ? ordered.find((row) => pickFirstString(row?.product_id, row?.productId) === topPickProductId)
     : null) || ordered[0] || null;
+  const dedicatedRows = ordered.filter((row) => isConcernSelectorDedicatedFinishFitSunscreen(row));
+  const dedicatedCoverageCanFillCards = dedicatedRows.length >= Math.min(3, ordered.length);
+  const lead = (
+    requestedLead && !isConcernSelectorLowerCoverageMoisturizerSpfHybrid(requestedLead)
+      ? requestedLead
+      : dedicatedRows[0] || requestedLead
+  ) || null;
   if (!lead) return ordered;
 
   const usedProductIds = new Set();
   const diversified = [];
+  const deferredHybrids = [];
   const pushUnique = (row) => {
     const productId = pickFirstString(row?.product_id, row?.productId);
     if (!productId || usedProductIds.has(productId)) return false;
@@ -225,17 +256,25 @@ function diversifyConcernSelectorFinishFitOrdering(recommendations = [], selecto
   pushUnique(lead);
 
   const leadBucket = classifyConcernSelectorFinishFitTradeoffBucket(lead);
-  const desiredBuckets = ['lighter_smoother', 'mineral_sensitive', 'richer_moisturizing']
+  const desiredBuckets = ['lighter_smoother', 'matte_oil_control', 'mineral_sensitive', 'richer_moisturizing']
     .filter((bucket) => bucket !== leadBucket);
   for (const bucket of desiredBuckets) {
     const match = ordered.find((row) => {
       const productId = pickFirstString(row?.product_id, row?.productId);
       if (!productId || usedProductIds.has(productId)) return false;
+      if (dedicatedCoverageCanFillCards && isConcernSelectorLowerCoverageMoisturizerSpfHybrid(row)) return false;
       return classifyConcernSelectorFinishFitTradeoffBucket(row) === bucket;
     });
     if (match) pushUnique(match);
   }
-  for (const row of ordered) pushUnique(row);
+  for (const row of ordered) {
+    if (dedicatedCoverageCanFillCards && isConcernSelectorLowerCoverageMoisturizerSpfHybrid(row)) {
+      deferredHybrids.push(row);
+      continue;
+    }
+    pushUnique(row);
+  }
+  for (const row of deferredHybrids) pushUnique(row);
   return diversified;
 }
 
@@ -273,14 +312,17 @@ function applyConcernSelectorRaceOrdering(recommendations, selectorRace) {
   }
   const routineStabilizedOrdered = stabilizeConcernSelectorRoutineMixOrdering(ordered, selector);
   const diversifiedOrdered = diversifyConcernSelectorFinishFitOrdering(routineStabilizedOrdered, selector);
+  const effectiveTopPickProductId =
+    pickFirstString(diversifiedOrdered[0]?.product_id, diversifiedOrdered[0]?.productId)
+    || topPickProductId;
   const selectionNotes = uniqCaseInsensitiveStrings(asStringArray(selector.selection_notes), 3);
   return {
     recommendations: diversifiedOrdered,
-    primary_recommendation_id: topPickProductId,
+    primary_recommendation_id: effectiveTopPickProductId || null,
     support_roles_surfaced: uniqCaseInsensitiveStrings(asStringArray(selector.support_roles_surfaced), 4),
     winner_source: topPickProductId ? 'llm_selector' : 'deterministic',
     selection_notes_by_product_id: topPickProductId && selectionNotes.length
-      ? { [topPickProductId]: selectionNotes }
+      ? { [effectiveTopPickProductId || topPickProductId]: selectionNotes }
       : {},
   };
 }
