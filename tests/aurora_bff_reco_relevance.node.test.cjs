@@ -9462,6 +9462,122 @@ test('__internal: beauty local handoff runs same-role sunscreen primary authorit
   }
 });
 
+test('__internal: beauty local handoff does not backend-fallback same-role sunscreen after local primary miss', async () => {
+  const { __internal } = loadRoutesFresh();
+  const calls = [];
+  const targetContext = {
+    framework_id: 'recofw_test_sunscreen_same_role_local_miss_no_backend',
+    primary_role_id: 'daily_sunscreen_finish_fit',
+    routine_mode: 'same_role_comparison',
+    comparison_mode: 'same_role_comparison',
+    semantic_plan: { routine_mode: 'same_role_comparison', comparison_mode: 'same_role_comparison' },
+    framework_roles: [
+      {
+        role_id: 'daily_sunscreen_finish_fit',
+        rank: 10,
+        preferred_step: 'sunscreen',
+        label: 'Daily sunscreen finish fit',
+        query_terms: ['sunscreen oily skin', 'matte sunscreen', 'invisible sunscreen'],
+        fit_keywords: ['spf', 'airy', 'non-greasy', 'under makeup'],
+        product_type_hypotheses: ['sunscreen'],
+      },
+    ],
+  };
+
+  __internal.__setRouteDependencyOverridesForTest({
+    searchExternalSeedAuthorityProducts: async (args = {}) => {
+      calls.push({ kind: 'backend_external_seed', query: args.query });
+      return {
+        ok: true,
+        products: [
+          {
+            product_id: 'backend_pollution_spf',
+            merchant_id: 'external_seed',
+            brand: 'Backend',
+            name: 'Backend Polluting SPF',
+            display_name: 'Backend Polluting SPF',
+            category: 'Sunscreen',
+            product_type: 'Sunscreen',
+          },
+        ],
+        reason: null,
+      };
+    },
+    searchLocalExternalSeedProducts: async (args = {}) => {
+      calls.push({ kind: 'local_external_seed', query: args.query });
+      if (String(args.query || '').trim().toLowerCase() === 'matte sunscreen') {
+        return {
+          ok: false,
+          products: [],
+          reason: 'upstream_timeout',
+          local_external_seed_search_mode: 'staged_support_fastpath',
+        };
+      }
+      const normalizedQuery = String(args.query || '').trim().toLowerCase().replace(/\s+/g, '_');
+      return {
+        ok: true,
+        products: [
+          {
+            product_id: `local_sunscreen_${normalizedQuery}`,
+            merchant_id: 'external_seed',
+            brand: 'Local',
+            name: `Local ${args.query}`,
+            display_name: `Local ${args.query}`,
+            category: 'Sunscreen',
+            product_type: 'Sunscreen',
+            candidate_step: 'sunscreen',
+            retrieval_source: 'external_seed',
+            short_description: 'An airy sunscreen for smoother wear under makeup.',
+            benefit_tags: ['spf', 'airy', 'under makeup'],
+          },
+        ],
+        actual_http_attempt_count: 0,
+        attempted_base_urls: [],
+        attempted_paths: [],
+        transport_policy_mode: 'framework_first_turn',
+        local_external_seed_search_mode: 'staged_support_fastpath',
+      };
+    },
+    searchInternalProductsPrimitive: async () => ({
+      ok: true,
+      products: [],
+      reason: 'empty',
+      actual_http_attempt_count: 1,
+    }),
+  });
+
+  try {
+    const out = await __internal.runBeautyMainlineLocalHandoffSearch({
+      ctx: { lang: 'EN' },
+      logger: null,
+      targetContext,
+      profileSummary: { skinType: 'oily', goals: ['sunscreen under makeup'] },
+      timeoutMs: 26000,
+      deadlineMs: Date.now() + 26000,
+    });
+
+    assert.equal(out?.ok, true);
+    assert.equal(
+      calls.some((call) => call.kind === 'backend_external_seed'),
+      false,
+      JSON.stringify(calls),
+    );
+    const attempts = out.search_stage_ledger?.primary_search?.query_pack_attempts || [];
+    const matteAttempt = attempts.find((row) => String(row?.query || '').trim().toLowerCase() === 'matte sunscreen');
+    assert.equal(matteAttempt?.reason, 'upstream_timeout');
+    assert.equal(matteAttempt?.primary_external_seed_authority_local_primary, true);
+    assert.equal(matteAttempt?.primary_external_seed_authority_backend_skipped, true);
+    assert.equal(
+      matteAttempt?.primary_external_seed_authority_backend_skip_reason,
+      'primary_finish_fit_local_authority_miss',
+    );
+    const selectedNames = (out.selectedProducts || []).map((row) => row.display_name || row.name || row.product_id);
+    assert.equal(selectedNames.some((name) => /backend polluting/i.test(name)), false, JSON.stringify(selectedNames));
+  } finally {
+    __internal.__resetRouteDependencyOverridesForTest();
+  }
+});
+
 function extractRecoRewritePromptContext(prompt) {
   const raw = String(prompt || '');
   const marker = 'Context: ';
