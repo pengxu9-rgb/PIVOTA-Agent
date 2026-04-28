@@ -68,6 +68,7 @@ describe('audit-external-product-pdp-quality helpers', () => {
         options: {
           debug: true,
           no_cache: true,
+          cache_bypass: true,
         },
       },
     });
@@ -147,6 +148,7 @@ describe('audit-external-product-pdp-quality helpers', () => {
           trace: true,
           debug: true,
           no_cache: true,
+          cache_bypass: true,
         },
       },
     });
