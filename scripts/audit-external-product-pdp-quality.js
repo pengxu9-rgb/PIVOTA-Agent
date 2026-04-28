@@ -116,6 +116,7 @@ function buildAuthoritativePayload(operation, payload = {}) {
           debug: true,
           no_cache: true,
           cache_bypass: true,
+          similar_cache_bypass: true,
         },
       },
     };
@@ -137,6 +138,7 @@ function buildAuthoritativePayload(operation, payload = {}) {
           debug: true,
           no_cache: true,
           cache_bypass: true,
+          similar_cache_bypass: true,
         },
       },
     };
@@ -161,6 +163,7 @@ function buildPublicGatewayPayload(operation, payload = {}) {
           debug: true,
           no_cache: true,
           cache_bypass: true,
+          similar_cache_bypass: true,
         },
       },
       metadata: {

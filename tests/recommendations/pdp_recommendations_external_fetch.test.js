@@ -88,7 +88,7 @@ describe('RecommendationEngine external candidate fetch', () => {
       queryMock.mock.calls.some(([sql]) =>
         String(sql).includes("regexp_replace(lower(coalesce(seed_data->>'brand'") &&
         String(sql).includes("lower(coalesce(seed_data->'snapshot'->>'brand'") &&
-        !String(sql).includes('attached_product_key IS NULL'),
+        String(sql).includes('attached_product_key IS NULL'),
       ),
     ).toBe(true);
   });
@@ -284,10 +284,13 @@ describe('RecommendationEngine external candidate fetch', () => {
     expect(out.semantic?.vertical).toBe('makeup');
   });
 
-  test('includes attached same-brand seeds through broad brand fallback matching', async () => {
+  test('excludes attached same-brand seed rows from broad brand fallback matching', async () => {
     process.env.DATABASE_URL = 'postgres://example.test/pivota';
 
     const queryMock = jest.fn(async (sql, params) => {
+      if (String(sql).includes('attached_product_key IS NULL')) {
+        return { rows: [] };
+      }
       const brandAliases = params?.[3];
       if (
         Array.isArray(brandAliases) &&
@@ -327,16 +330,9 @@ describe('RecommendationEngine external candidate fetch', () => {
       limit: 12,
     });
 
-    expect(products).toHaveLength(1);
-    expect(products[0]).toEqual(
-      expect.objectContaining({
-        product_id: 'ext_matcha',
-        brand: 'KraveBeauty',
-        title: 'KraveBeauty Matcha Hemp Hydrating Cleanser',
-      }),
-    );
+    expect(products).toHaveLength(0);
     expect(
-      queryMock.mock.calls.every(([sql]) => !String(sql).includes('attached_product_key IS NULL')),
+      queryMock.mock.calls.every(([sql]) => String(sql).includes('attached_product_key IS NULL')),
     ).toBe(true);
   });
 
@@ -452,7 +448,7 @@ describe('RecommendationEngine external candidate fetch', () => {
           ),
         };
       }
-      if (sqlText.includes("lower(coalesce(seed_data->'derived'->'recall'->>'category',''))")) {
+      if (sqlText.includes("seed_data->'derived'->'recall'->>'category")) {
         return {
           rows: [
             makeExternalRow({
@@ -493,7 +489,7 @@ describe('RecommendationEngine external candidate fetch', () => {
       'ext_niacinamide_serum_1',
       'ext_niacinamide_serum_2',
     ]);
-    expect(queryMock.mock.calls.some(([sql]) => String(sql).includes("lower(coalesce(seed_data->'derived'->'recall'->>'category',''))"))).toBe(true);
+    expect(queryMock.mock.calls.some(([sql]) => String(sql).includes("seed_data->'derived'->'recall'->>'category"))).toBe(true);
   });
 
   test('uses title category tokens when structured category rows underfill target', async () => {
@@ -732,7 +728,7 @@ describe('RecommendationEngine external candidate fetch', () => {
     expect(queryMock.mock.calls.some(([sql]) => String(sql).includes('domain = ANY($4)'))).toBe(true);
   });
 
-  test('deep-domain recall returns same-domain matches before category scans when domain coverage is already sufficient', async () => {
+  test('deep-domain recall prefers category scans before same-domain fallback when a category hint is available', async () => {
     process.env.DATABASE_URL = 'postgres://example.test/pivota';
 
     const queryMock = jest.fn(async (sql, params) => {
@@ -752,8 +748,20 @@ describe('RecommendationEngine external candidate fetch', () => {
           ),
         };
       }
-      if (sqlText.includes("lower(coalesce(seed_data->'derived'->'recall'->>'category','')) = ANY($4)")) {
-        throw new Error('category query should not run after sufficient deep-domain matches');
+      if (sqlText.includes("seed_data->'derived'->'recall'->>'category")) {
+        expect(params?.[3]).toContain('concealer');
+        return {
+          rows: Array.from({ length: 6 }).map((_, index) =>
+            makeExternalRow({
+              id: `eps_category_${index}`,
+              external_product_id: `ext_category_${index}`,
+              title: `Cross Brand Concealer ${index}`,
+              brand: `Concealer Brand ${index}`,
+              category: 'Concealer',
+              domain: `brand-${index}.example`,
+            }),
+          ),
+        };
       }
       return { rows: [] };
     });
@@ -771,14 +779,15 @@ describe('RecommendationEngine external candidate fetch', () => {
       deepDomainRecall: true,
     });
 
-    expect(products).toHaveLength(6);
-    expect(products.every((product) => product.domain === 'www.tomfordbeauty.com')).toBe(true);
+    expect(products).toHaveLength(12);
+    expect(products.slice(0, 6).every((product) => product.category === 'Concealer')).toBe(true);
+    expect(products.slice(6).every((product) => product.domain === 'www.tomfordbeauty.com')).toBe(true);
     expect(queryMock.mock.calls.some(([sql]) => String(sql).includes('domain = ANY($4)'))).toBe(true);
     expect(
       queryMock.mock.calls.some(([sql]) =>
-        String(sql).includes("lower(coalesce(seed_data->'derived'->'recall'->>'category','')) = ANY($4)"),
+        String(sql).includes("seed_data->'derived'->'recall'->>'category"),
       ),
-    ).toBe(false);
+    ).toBe(true);
   });
 
   test('recommend fetches internal and external pools in parallel instead of serially stacking source latency', async () => {
