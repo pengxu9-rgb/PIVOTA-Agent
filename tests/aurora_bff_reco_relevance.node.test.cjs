@@ -4669,6 +4669,73 @@ test('__internal: local external seed support-role search uses precise category-
   assert.match(out.products[0].retrieval_reason, /support_category_positive/);
 });
 
+test('__internal: local external seed support search bounds moisturizer positive-stage rank pool', async () => {
+  const { __internal } = loadRoutesFresh();
+  const observedQueries = [];
+  const makeRow = (index) => ({
+    id: String(2000 + index),
+    external_product_id: `ext_support_moisturizer_pool_${index}`,
+    destination_url: `https://example.com/products/support-moisturizer-pool-${index}`,
+    canonical_url: `https://example.com/products/support-moisturizer-pool-${index}`,
+    domain: 'example.com',
+    title: `Support Gel Cream ${index}`,
+    image_url: `https://example.com/products/support-moisturizer-pool-${index}.jpg`,
+    price_amount: 18 + index,
+    price_currency: 'USD',
+    availability: 'in_stock',
+    match_stage: 'support_category_positive',
+    match_score: 54,
+    seed_data: {
+      derived: {
+        recall: {
+          retrieval_title: `Support Gel Cream ${index}`,
+          retrieval_summary: 'A lightweight gel cream moisturizer for oily skin.',
+          category: 'moisturizer',
+          vertical: 'skincare',
+          alias_tokens: ['gel cream', 'lightweight moisturizer'],
+        },
+      },
+      snapshot: {
+        title: `Support Gel Cream ${index}`,
+        description: 'Oil-free gel cream texture for oily skin.',
+        category: 'Moisturizer',
+      },
+      benefit_tags: ['lightweight', 'oil-free hydration'],
+      skin_type_tags: ['oily'],
+    },
+    updated_at: new Date(Date.now() - index * 1000).toISOString(),
+    created_at: new Date(Date.now() - index * 1000).toISOString(),
+  });
+
+  const out = await __internal.searchLocalExternalSeedProducts({
+    query: 'gel cream moisturizer',
+    limit: 6,
+    role: {
+      role_id: 'lightweight_moisturizer',
+      rank: 20,
+      preferred_step: 'moisturizer',
+      query_terms: ['gel cream moisturizer', 'lightweight moisturizer oily skin'],
+      fit_keywords: ['gel cream', 'oil-free', 'lightweight'],
+      product_type_hypotheses: ['moisturizer'],
+    },
+    preferredStep: 'moisturizer',
+    queryFn: async (sql, params) => {
+      observedQueries.push({ sql: String(sql || ''), params });
+      return { rows: Array.from({ length: 24 }, (_, index) => makeRow(index + 1)) };
+    },
+  });
+
+  assert.equal(out.ok, true);
+  assert.equal(observedQueries.length, 1);
+  assert.match(observedQueries[0].sql, /support_category_positive/);
+  assert.equal(observedQueries[0].params.at(-1), 12);
+  assert.equal(out.local_external_seed_stage_debug[0]?.query_cap, 12);
+  assert.equal(out.local_external_seed_stage_debug[0]?.cumulative_row_count, 12);
+  assert.equal(out.local_external_seed_candidate_debug?.stage_row_count, 12);
+  assert.equal(out.local_external_seed_candidate_debug?.rank_pool_row_count, 12);
+  assert.equal(out.products.length, 6);
+});
+
 test('__internal: local external seed support-role positive patterns stay query-specific within the same role', async () => {
   const { __internal } = loadRoutesFresh();
   const observedQueries = [];
