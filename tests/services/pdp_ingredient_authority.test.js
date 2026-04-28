@@ -239,6 +239,56 @@ describe('pdpIngredientAuthority', () => {
     expect(authority.suppressed_reason).toBe('active_items_not_displayable');
   });
 
+  test('uses formula title actives only when full INCI provides evidence', () => {
+    const authority = buildAuthoritativeIngredientView({
+      title: 'Retinal 0.2% Emulsion',
+      pdp_ingredients_raw:
+        'Aqua (Water), Coco-Caprylate/Caprate, Propanediol, Retinal, Ergothioneine, Bisabolol, Phenoxyethanol.',
+      ingredient_intel: {
+        active_ingredients: ['Lactic acid'],
+      },
+    });
+
+    expect(authority.active_items).toEqual(['Retinal']);
+  });
+
+  test('maps title PHA alias to its INCI evidence without promoting low-signal HA', () => {
+    const phaAuthority = buildAuthoritativeIngredientView({
+      title: 'PHA 5% Exfoliating Lip Serum',
+      pdp_ingredients_raw: 'Glycerin, Aqua/Water/Eau, Gluconolactone, Ectoin, Citric Acid, Sodium Hydroxide.',
+      ingredient_intel: {
+        active_ingredients: ['Glycerin'],
+      },
+    });
+    const haAuthority = buildAuthoritativeIngredientView({
+      title: 'Natural Moisturizing Factors + HA',
+      pdp_ingredients_raw:
+        'Aqua (Water), Caprylic/Capric Triglyceride, Glycerin, Sodium Hyaluronate, Arginine, Phenoxyethanol.',
+      ingredient_intel: {
+        active_ingredients: ['Glycerin', 'Hyaluronic acid', 'Lactic acid'],
+      },
+    });
+
+    expect(phaAuthority.active_items).toEqual(['PHA']);
+    expect(haAuthority.active_items).toEqual([]);
+  });
+
+  test('prefers explicit sunscreen active block over weak generated active arrays', () => {
+    const authority = buildAuthoritativeIngredientView({
+      title: 'UV Filters SPF 45 Serum',
+      category: 'Sunscreen',
+      pdp_active_ingredients_raw:
+        'Avobenzone 3.0% (UV Filter)\nHomosalate 7.0% (UV Filter)\nOctisalate 4.5% (UV Filter)\nOctocrylene 10.0% (UV Filter)',
+      pdp_ingredients_raw:
+        'Aqua, Behenyl Acrylate Polymer, Butyloctyl Salicylate, Glycerin, Magnesium Sulfate, Phenoxyethanol.',
+      ingredient_intel: {
+        active_ingredients: ['UV filters', 'Glycerin'],
+      },
+    });
+
+    expect(authority.active_items).toEqual(['Avobenzone', 'Homosalate', 'Octisalate', 'Octocrylene']);
+  });
+
   test('does not treat titanium dioxide as a regulatory active outside sunscreen context', () => {
     const authority = buildAuthoritativeIngredientView({
       title: 'Shade and Illuminate Concealer',
