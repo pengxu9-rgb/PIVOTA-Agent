@@ -87,6 +87,27 @@ describe('external seed PDP readiness audit helpers', () => {
     expect(classifyProductFamily(seedRow({ title: 'Niacinamide 10% + Zinc 1%' }))).toBe('single_formula');
   });
 
+  test('does not classify setting powder or collection member shades as set PDPs', () => {
+    expect(
+      classifyProductFamily(
+        seedRow({
+          title: 'Invisimatte Instant Setting + Blotting Powder',
+          canonical_url: 'https://fentybeauty.com/products/invisimatte-instant-setting-blotting-powder',
+          destination_url: 'https://fentybeauty.com/products/invisimatte-instant-setting-blotting-powder',
+        }),
+      ),
+    ).toBe('single_formula');
+    expect(
+      classifyProductFamily(
+        seedRow({
+          title: 'Glitty Lid Shimmer Liquid Eyeshadow Arcane Collection: Boozy Bronze',
+          canonical_url: 'https://example.com/products/glitty-lid-boozy-bronze',
+          destination_url: 'https://example.com/products/glitty-lid-boozy-bronze',
+        }),
+      ),
+    ).toBe('single_formula');
+  });
+
   test('classifies reviewed Pivota Insights with compact card highlight as high quality ready', () => {
     const result = classifyProductIntelKbRow(kbRow('ext_1', reviewedBundle()), { productId: 'ext_1' });
 
@@ -422,5 +443,113 @@ describe('external seed PDP readiness audit script DB resilience', () => {
         value: 'ext_bad',
       }),
     ]);
+  });
+
+  test('checkpointed audit writes and resumes per-domain payloads', async () => {
+    const fs = require('node:fs');
+    const os = require('node:os');
+    const path = require('node:path');
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pdp-readiness-checkpoint-'));
+    const rows = [
+      seedRow({ domain: 'brand-a.com', external_product_id: 'ext_a', title: 'Niacinamide Serum' }),
+      seedRow({ domain: 'brand-b.com', external_product_id: 'ext_b', title: 'Daily Set' }),
+    ];
+    const queryMock = jest.fn(async (sql, params) => {
+      if (/GROUP BY eps\.domain/i.test(sql)) {
+        return {
+          rows: [
+            { domain: 'brand-a.com', seed_count: 1 },
+            { domain: 'brand-b.com', seed_count: 1 },
+          ],
+        };
+      }
+      if (/FROM aurora_product_intel_kb/i.test(sql)) return { rows: [] };
+      if (/FROM pdp_identity_listing/i.test(sql)) return { rows: [] };
+      const domain = params.find((value) => value === 'brand-a.com' || value === 'brand-b.com');
+      return { rows: rows.filter((row) => row.domain === domain) };
+    });
+    jest.doMock('../../src/db', () => ({
+      query: queryMock,
+      getPool: jest.fn(),
+    }));
+
+    const { buildCheckpointedReadinessAudit } = require('../../scripts/audit-external-seed-pdp-readiness');
+    const first = await buildCheckpointedReadinessAudit({
+      market: 'US',
+      checkpointDir: tmpDir,
+      checkpointMode: 'domain',
+      intelContext: 'direct',
+      includeAttached: false,
+      limit: 10,
+      sampleLimit: 2,
+    });
+    const second = await buildCheckpointedReadinessAudit({
+      market: 'US',
+      checkpointDir: tmpDir,
+      checkpointMode: 'domain',
+      intelContext: 'direct',
+      includeAttached: false,
+      limit: 10,
+      sampleLimit: 2,
+      resume: true,
+    });
+
+    expect(first.summary.scanned).toBe(2);
+    expect(fs.existsSync(path.join(tmpDir, 'domains', 'brand-a.com.json'))).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, 'domains', 'brand-b.com.json'))).toBe(true);
+    expect(second.summary.scanned).toBe(2);
+    expect(second.manifest.skipped_domains).toHaveLength(2);
+  });
+
+  test('checkpointed audit can scan by id cursor pages', async () => {
+    const fs = require('node:fs');
+    const os = require('node:os');
+    const path = require('node:path');
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pdp-readiness-page-'));
+    const rows = [
+      seedRow({ id: 'eps_001', domain: 'brand-a.com', external_product_id: 'ext_a', title: 'Niacinamide Serum' }),
+      seedRow({ id: 'eps_002', domain: 'brand-b.com', external_product_id: 'ext_b', title: 'Daily Set' }),
+      seedRow({ id: 'eps_003', domain: 'brand-c.com', external_product_id: 'ext_c', title: 'Vitamin C Serum' }),
+    ];
+    const queryMock = jest.fn(async (sql, params) => {
+      if (/FROM aurora_product_intel_kb/i.test(sql)) return { rows: [] };
+      if (/FROM pdp_identity_listing/i.test(sql)) return { rows: [] };
+      const cursor = params.find((value) => /^eps_/.test(String(value || ''))) || '';
+      const limit = Number(params[params.length - 1] || 2);
+      return { rows: rows.filter((row) => row.id > cursor).slice(0, limit) };
+    });
+    jest.doMock('../../src/db', () => ({
+      query: queryMock,
+      getPool: jest.fn(),
+    }));
+
+    const { buildCheckpointedReadinessAudit } = require('../../scripts/audit-external-seed-pdp-readiness');
+    const first = await buildCheckpointedReadinessAudit({
+      market: 'US',
+      checkpointDir: tmpDir,
+      checkpointMode: 'page',
+      intelContext: 'direct',
+      includeAttached: false,
+      limit: 3,
+      pageSize: 2,
+      sampleLimit: 2,
+    });
+    const second = await buildCheckpointedReadinessAudit({
+      market: 'US',
+      checkpointDir: tmpDir,
+      checkpointMode: 'page',
+      intelContext: 'direct',
+      includeAttached: false,
+      limit: 3,
+      pageSize: 2,
+      sampleLimit: 2,
+      resume: true,
+    });
+
+    expect(first.summary.scanned).toBe(3);
+    expect(fs.existsSync(path.join(tmpDir, 'pages', 'page-000001.json'))).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, 'pages', 'page-000002.json'))).toBe(true);
+    expect(second.summary.scanned).toBe(3);
+    expect(second.manifest.skipped_pages).toHaveLength(2);
   });
 });

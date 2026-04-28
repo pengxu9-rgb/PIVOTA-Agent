@@ -29,6 +29,14 @@ function ensureParentDir(filePath) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
 }
 
+function safeFilePart(value) {
+  return normalizeString(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 120) || 'unknown';
+}
+
 function bindParam(params, value) {
   params.push(value);
   return `$${params.length}`;
@@ -80,6 +88,86 @@ async function fetchSeedRows(options = {}) {
     params,
   );
   return res.rows || [];
+}
+
+async function fetchSeedRowsPage(options = {}) {
+  const where = [
+    `eps.status = 'active'`,
+    `eps.external_product_id LIKE 'ext_%'`,
+  ];
+  const params = [];
+  if (!options.allMarkets) {
+    where.push(`eps.market = ${bindParam(params, options.market || 'US')}`);
+  }
+  if (!options.includeAttached) where.push(`eps.attached_product_key IS NULL`);
+  if (options.cursor) where.push(`eps.id > ${bindParam(params, options.cursor)}`);
+  params.push(Math.max(1, Math.min(Number(options.pageSize || options.limit || 250), 1000)));
+  const limitBind = `$${params.length}`;
+
+  const res = await query(
+    `
+      SELECT
+        eps.id,
+        eps.external_product_id,
+        eps.market,
+        eps.tool,
+        eps.domain,
+        eps.title,
+        eps.canonical_url,
+        eps.destination_url,
+        eps.image_url,
+        eps.attached_product_key,
+        coalesce(eps.seed_data, '{}'::jsonb) AS seed_data
+      FROM external_product_seeds eps
+      WHERE ${where.join('\n        AND ')}
+      ORDER BY eps.id
+      LIMIT ${limitBind}
+    `,
+    params,
+  );
+  return res.rows || [];
+}
+
+async function fetchSeedDomains(options = {}) {
+  const where = [
+    `eps.status = 'active'`,
+    `eps.external_product_id LIKE 'ext_%'`,
+  ];
+  const params = [];
+  if (!options.allMarkets) {
+    where.push(`eps.market = ${bindParam(params, options.market || 'US')}`);
+  }
+  if (!options.includeAttached) where.push(`eps.attached_product_key IS NULL`);
+
+  const res = await query(
+    `
+      SELECT eps.domain, count(*)::int AS seed_count
+      FROM external_product_seeds eps
+      WHERE ${where.join('\n        AND ')}
+      GROUP BY eps.domain
+      ORDER BY seed_count DESC, eps.domain
+    `,
+    params,
+  );
+  return (res.rows || []).map((row) => normalizeString(row.domain)).filter(Boolean);
+}
+
+async function fetchSeedRowsChunkedByDomain(options = {}) {
+  if (options.domain || options.externalProductId) return fetchSeedRows(options);
+  const domains = await fetchSeedDomains(options);
+  const rows = [];
+  const maxRows = Math.max(1, Math.min(Number(options.limit || 5000), 20000));
+  for (const domain of domains) {
+    if (rows.length >= maxRows) break;
+    const chunk = await fetchSeedRows({
+      ...options,
+      domain,
+      limit: maxRows - rows.length,
+      offset: 0,
+    });
+    rows.push(...chunk);
+  }
+  return rows;
 }
 
 async function fetchIdentityRowsBy(columnName, values, warnings, chunkSize = 500) {
@@ -204,11 +292,22 @@ async function fetchKbContext(productIds) {
   return kbByProductId;
 }
 
-async function buildReadinessAudit(options = {}) {
-  const seedRows = await fetchSeedRows(options);
+async function buildReadinessAuditForSeedRows(seedRows, options = {}) {
   const seedProductIds = seedRows.map((row) => row.external_product_id).filter(Boolean);
-  const identityContext = await fetchIdentityContext(seedProductIds);
-  const kbByProductId = await fetchKbContext(identityContext.allProductIds);
+  const intelContextMode = normalizeString(options.intelContext || 'effective').toLowerCase();
+  const identityContext =
+    intelContextMode === 'effective'
+      ? await fetchIdentityContext(seedProductIds)
+      : {
+          productLineIdByProductId: new Map(),
+          productIdsByLineId: new Map(),
+          allProductIds: seedProductIds,
+          warnings: [],
+        };
+  const kbByProductId =
+    intelContextMode === 'none'
+      ? new Map()
+      : await fetchKbContext(identityContext.allProductIds);
   const context = {
     ...identityContext,
     kbByProductId,
@@ -221,6 +320,197 @@ async function buildReadinessAudit(options = {}) {
     summary: summarizeReadinessRows(rows, { sampleLimit: options.sampleLimit }),
     rows,
   };
+}
+
+async function buildReadinessAudit(options = {}) {
+  const seedRows = options.chunkByDomain
+    ? await fetchSeedRowsChunkedByDomain(options)
+    : await fetchSeedRows(options);
+  return buildReadinessAuditForSeedRows(seedRows, options);
+}
+
+function readJsonFileIfPresent(filePath) {
+  try {
+    if (!fs.existsSync(filePath)) return null;
+    return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+function checkpointDomainPath(checkpointDir, domain) {
+  return path.join(checkpointDir, 'domains', `${safeFilePart(domain)}.json`);
+}
+
+async function buildCheckpointedReadinessAudit(options = {}) {
+  const checkpointMode = normalizeString(options.checkpointMode || 'page').toLowerCase();
+  if (checkpointMode === 'domain') return buildDomainCheckpointedReadinessAudit(options);
+  return buildPageCheckpointedReadinessAudit(options);
+}
+
+async function buildDomainCheckpointedReadinessAudit(options = {}) {
+  const checkpointDir = path.resolve(options.checkpointDir);
+  const domains = await fetchSeedDomains(options);
+  const selectedDomains = domains.slice(0, Math.max(1, Number(options.maxDomains || domains.length)));
+  const rows = [];
+  const warnings = [];
+  const manifest = {
+    generated_at: new Date().toISOString(),
+    checkpoint_dir: checkpointDir,
+    options,
+    domain_count: selectedDomains.length,
+    completed_domains: [],
+    skipped_domains: [],
+    failed_domains: [],
+  };
+
+  fs.mkdirSync(path.join(checkpointDir, 'domains'), { recursive: true });
+
+  for (const domain of selectedDomains) {
+    const filePath = checkpointDomainPath(checkpointDir, domain);
+    if (options.resume && !options.force && fs.existsSync(filePath)) {
+      const cached = readJsonFileIfPresent(filePath);
+      if (cached?.rows?.length) {
+        rows.push(...cached.rows);
+        warnings.push(...(cached.warnings || []));
+        manifest.skipped_domains.push({ domain, rows: cached.rows.length, file: filePath });
+        process.stderr.write(`[pdp-readiness] resume ${domain}: ${cached.rows.length} rows\n`);
+        continue;
+      }
+    }
+
+    process.stderr.write(`[pdp-readiness] audit ${domain}\n`);
+    try {
+      const domainPayload = await buildReadinessAudit({
+        ...options,
+        domain,
+        checkpointDir: null,
+        chunkByDomain: false,
+      });
+      ensureParentDir(filePath);
+      fs.writeFileSync(`${filePath}.tmp`, `${JSON.stringify(domainPayload, null, 2)}\n`, 'utf8');
+      fs.renameSync(`${filePath}.tmp`, filePath);
+      rows.push(...(domainPayload.rows || []));
+      warnings.push(...(domainPayload.warnings || []));
+      manifest.completed_domains.push({ domain, rows: domainPayload.rows?.length || 0, file: filePath });
+      process.stderr.write(`[pdp-readiness] done ${domain}: ${domainPayload.rows?.length || 0} rows\n`);
+    } catch (error) {
+      const entry = { domain, error: compactErrorMessage(error) };
+      manifest.failed_domains.push(entry);
+      process.stderr.write(`[pdp-readiness] failed ${domain}: ${entry.error}\n`);
+      if (!options.continueOnError) throw error;
+    }
+  }
+
+  const payload = {
+    generated_at: new Date().toISOString(),
+    options,
+    warnings,
+    summary: summarizeReadinessRows(rows, { sampleLimit: options.sampleLimit }),
+    rows,
+    manifest,
+  };
+  const manifestPath = path.join(checkpointDir, 'manifest.json');
+  fs.writeFileSync(`${manifestPath}.tmp`, `${JSON.stringify({ ...manifest, summary: payload.summary }, null, 2)}\n`, 'utf8');
+  fs.renameSync(`${manifestPath}.tmp`, manifestPath);
+  return payload;
+}
+
+function checkpointPagePath(checkpointDir, pageNumber) {
+  return path.join(checkpointDir, 'pages', `page-${String(pageNumber).padStart(6, '0')}.json`);
+}
+
+function listCheckpointPageFiles(checkpointDir) {
+  const dir = path.join(checkpointDir, 'pages');
+  try {
+    return fs.readdirSync(dir)
+      .filter((name) => /^page-\d+\.json$/.test(name))
+      .sort()
+      .map((name) => path.join(dir, name));
+  } catch {
+    return [];
+  }
+}
+
+async function buildPageCheckpointedReadinessAudit(options = {}) {
+  const checkpointDir = path.resolve(options.checkpointDir);
+  const rows = [];
+  const warnings = [];
+  const manifest = {
+    generated_at: new Date().toISOString(),
+    checkpoint_dir: checkpointDir,
+    options,
+    checkpoint_mode: 'page',
+    completed_pages: [],
+    skipped_pages: [],
+    failed_pages: [],
+  };
+  fs.mkdirSync(path.join(checkpointDir, 'pages'), { recursive: true });
+
+  let cursor = normalizeString(options.cursor);
+  let nextPageNumber = 1;
+  if (options.resume && !options.force) {
+    const cachedFiles = listCheckpointPageFiles(checkpointDir);
+    for (const filePath of cachedFiles) {
+      const cached = readJsonFileIfPresent(filePath);
+      if (!cached?.rows?.length) continue;
+      rows.push(...cached.rows);
+      warnings.push(...(cached.warnings || []));
+      cursor = normalizeString(cached.next_cursor || cached.rows[cached.rows.length - 1]?.seed_id || cursor);
+      manifest.skipped_pages.push({ page: nextPageNumber, rows: cached.rows.length, cursor, file: filePath });
+      nextPageNumber += 1;
+      process.stderr.write(`[pdp-readiness] resume page ${nextPageNumber - 1}: ${cached.rows.length} rows\n`);
+    }
+  }
+
+  const maxRows = Math.max(1, Math.min(Number(options.limit || 5000), 20000));
+  const maxPages = Math.max(0, Number(options.maxPages || 0));
+  const pageSize = Math.max(1, Math.min(Number(options.pageSize || 250), 1000));
+  while (rows.length < maxRows) {
+    if (maxPages && manifest.completed_pages.length >= maxPages) break;
+    const seedRows = await fetchSeedRowsPage({
+      ...options,
+      cursor,
+      pageSize: Math.min(pageSize, maxRows - rows.length),
+    });
+    if (!seedRows.length) break;
+    const pageNumber = nextPageNumber;
+    const filePath = checkpointPagePath(checkpointDir, pageNumber);
+    process.stderr.write(`[pdp-readiness] audit page ${pageNumber}: cursor=${cursor || 'start'} rows=${seedRows.length}\n`);
+    try {
+      const pagePayload = await buildReadinessAuditForSeedRows(seedRows, options);
+      const nextCursor = normalizeString(seedRows[seedRows.length - 1]?.id || cursor);
+      const payloadWithCursor = { ...pagePayload, next_cursor: nextCursor };
+      fs.writeFileSync(`${filePath}.tmp`, `${JSON.stringify(payloadWithCursor, null, 2)}\n`, 'utf8');
+      fs.renameSync(`${filePath}.tmp`, filePath);
+      rows.push(...(pagePayload.rows || []));
+      warnings.push(...(pagePayload.warnings || []));
+      cursor = nextCursor;
+      manifest.completed_pages.push({ page: pageNumber, rows: pagePayload.rows?.length || 0, cursor, file: filePath });
+      nextPageNumber += 1;
+      process.stderr.write(`[pdp-readiness] done page ${pageNumber}: ${pagePayload.rows?.length || 0} rows cursor=${cursor}\n`);
+    } catch (error) {
+      const entry = { page: pageNumber, cursor, error: compactErrorMessage(error) };
+      manifest.failed_pages.push(entry);
+      process.stderr.write(`[pdp-readiness] failed page ${pageNumber}: ${entry.error}\n`);
+      if (!options.continueOnError) throw error;
+      cursor = normalizeString(seedRows[seedRows.length - 1]?.id || cursor);
+      nextPageNumber += 1;
+    }
+  }
+
+  const payload = {
+    generated_at: new Date().toISOString(),
+    options,
+    warnings,
+    summary: summarizeReadinessRows(rows, { sampleLimit: options.sampleLimit }),
+    rows,
+    manifest,
+  };
+  const manifestPath = path.join(checkpointDir, 'manifest.json');
+  fs.writeFileSync(`${manifestPath}.tmp`, `${JSON.stringify({ ...manifest, summary: payload.summary }, null, 2)}\n`, 'utf8');
+  fs.renameSync(`${manifestPath}.tmp`, manifestPath);
+  return payload;
 }
 
 function renderSummary(payload) {
@@ -260,10 +550,23 @@ async function main() {
     limit: Math.max(1, Math.min(Number(argValue('limit') || 5000), 20000)),
     offset: Math.max(0, Number(argValue('offset') || 0)),
     sampleLimit: Math.max(1, Math.min(Number(argValue('sample-limit') || 8), 100)),
+    intelContext: normalizeString(argValue('intel-context') || argValue('intelContext') || 'effective').toLowerCase(),
+    chunkByDomain: hasFlag('chunk-by-domain') || hasFlag('chunkByDomain'),
+    checkpointDir: argValue('checkpoint-dir') || argValue('checkpointDir') || null,
+    checkpointMode: normalizeString(argValue('checkpoint-mode') || argValue('checkpointMode') || 'page').toLowerCase(),
+    resume: hasFlag('resume'),
+    force: hasFlag('force'),
+    continueOnError: hasFlag('continue-on-error') || hasFlag('continueOnError'),
+    maxDomains: Number(argValue('max-domains') || argValue('maxDomains') || 0),
+    maxPages: Number(argValue('max-pages') || argValue('maxPages') || 0),
+    pageSize: Math.max(1, Math.min(Number(argValue('page-size') || argValue('pageSize') || 250), 1000)),
+    cursor: argValue('cursor') || null,
     format: normalizeString(argValue('format') || 'summary').toLowerCase(),
     out: argValue('out') || null,
   };
-  const payload = await buildReadinessAudit(options);
+  const payload = options.checkpointDir && !options.domain && !options.externalProductId
+    ? await buildCheckpointedReadinessAudit(options)
+    : await buildReadinessAudit(options);
   const outputPayload = options.format === 'json' ? payload : { ...payload, rows: undefined };
   const output =
     options.format === 'json'
@@ -291,7 +594,14 @@ if (require.main === module) {
 
 module.exports = {
   buildReadinessAudit,
+  buildReadinessAuditForSeedRows,
+  buildCheckpointedReadinessAudit,
+  buildDomainCheckpointedReadinessAudit,
+  buildPageCheckpointedReadinessAudit,
   fetchSeedRows,
+  fetchSeedRowsPage,
+  fetchSeedDomains,
+  fetchSeedRowsChunkedByDomain,
   fetchIdentityContext,
   fetchIdentityRowsBy,
   fetchKbContext,

@@ -1,3 +1,5 @@
+const { classifyExternalSeedProductKind } = require('./externalSeedProductKind');
+
 function asString(value) {
   if (typeof value === 'string') return value.trim();
   if (value == null) return '';
@@ -629,6 +631,30 @@ function buildAuthorityRecord({
   };
 }
 
+function isExternalSeedProduct(product) {
+  return (
+    asString(product?.merchant_id) === 'external_seed' ||
+    asString(product?.source) === 'external_seed' ||
+    asString(product?.platform) === 'external' ||
+    Boolean(asString(product?.external_seed_id)) ||
+    Boolean(asPlainObject(product?.external_seed_recall))
+  );
+}
+
+function buildExternalSeedProductFamilySuppression(product, generatedAt) {
+  if (!isExternalSeedProduct(product)) return null;
+  const productKind = classifyExternalSeedProductKind(product);
+  if (!['set_or_collection', 'non_merch', 'accessory'].includes(productKind.family)) return null;
+  return buildAuthorityRecord({
+    items: [],
+    activeItems: [],
+    sourceOrigin: 'none',
+    purityStatus: 'suppressed',
+    suppressedReason: `product_family_${productKind.family}`,
+    generatedAt,
+  });
+}
+
 function readStructuredArrayAuthority(product) {
   const readItems = (...values) => {
     for (const value of values) {
@@ -869,6 +895,8 @@ function readActiveCandidates(product, inputs) {
 function buildAuthoritativeIngredientView(product, options = {}) {
   const inputs = readIngredientInputs(product);
   const generatedAt = options.generatedAt || new Date().toISOString();
+  const productFamilySuppression = buildExternalSeedProductFamilySuppression(product, generatedAt);
+  if (productFamilySuppression) return productFamilySuppression;
 
   const existingAuthority = asPlainObject(inputs.authoritative);
   if (existingAuthority) {
@@ -994,7 +1022,9 @@ function buildAuthoritativeIngredientView(product, options = {}) {
 
 function mergeIngredientIntelWithAuthority(existingValue, authority) {
   const existing = asPlainObject(existingValue) || {};
-  if (!authority || (authority.items?.length || 0) === 0 && (authority.active_items?.length || 0) === 0) {
+  const hasItems = (authority?.items?.length || 0) > 0 || (authority?.active_items?.length || 0) > 0;
+  const hasSuppression = Boolean(authority?.suppressed_reason || authority?.purity_status === 'suppressed');
+  if (!authority || (!hasItems && !hasSuppression)) {
     return existing;
   }
   return {
