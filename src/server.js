@@ -23931,6 +23931,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           merchantId: requestedMerchantId || canonicalProductRef?.merchant_id,
           productId: entryProductId || productId || canonicalProductRef?.product_id,
           canonicalProduct,
+          bypassCache,
         }).catch(() => null);
 	      markPdpV2Phase('identity_graph_live', identityGraphLiveStartedAt);
 	      if (identityGraphLive?.synthetic_product && wantsProductIntel) {
