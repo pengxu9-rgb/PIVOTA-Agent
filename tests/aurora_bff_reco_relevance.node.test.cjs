@@ -5359,7 +5359,7 @@ test('__internal: local external seed daily sunscreen support uses precise autho
   assert.equal(out.products[0].retrieval_role_id, 'daily_sunscreen');
 });
 
-test('__internal: local external seed finish-fit invisible sunscreen expands unseen alias without summary scan', async () => {
+test('__internal: local external seed finish-fit invisible sunscreen expands unseen alias without alias or summary scan', async () => {
   const { __internal } = loadRoutesFresh();
   const observedQueries = [];
   const out = await __internal.searchLocalExternalSeedProducts({
@@ -5430,6 +5430,7 @@ test('__internal: local external seed finish-fit invisible sunscreen expands uns
   assert.match(observedQueries[0].sql, /support_query_precise/);
   assert.ok(observedQueries[0].params[3].includes('%invisible sunscreen%'));
   assert.ok(observedQueries[0].params[3].includes('%unseen sunscreen%'));
+  assert.doesNotMatch(observedQueries[0].sql, /alias_tokens/i);
   assert.doesNotMatch(observedQueries[0].sql, /retrieval_summary/i);
   assert.equal(out.products[0].product_id, 'ext_support_unseen_sunscreen_229');
 });
@@ -9415,9 +9416,9 @@ test('__internal: beauty local handoff runs same-role sunscreen primary authorit
         .slice(0, 3)
         .map((call) => call.query),
       [
-        'sunscreen oily skin',
         'matte sunscreen',
         'invisible sunscreen',
+        'lightweight sunscreen oily skin',
       ],
       JSON.stringify(calls),
     );
@@ -9477,7 +9478,7 @@ test('__internal: beauty local handoff does not backend-fallback same-role sunsc
         rank: 10,
         preferred_step: 'sunscreen',
         label: 'Daily sunscreen finish fit',
-        query_terms: ['sunscreen oily skin', 'matte sunscreen', 'invisible sunscreen'],
+        query_terms: ['sunscreen oily skin', 'matte sunscreen', 'invisible sunscreen', 'lightweight sunscreen oily skin'],
         fit_keywords: ['spf', 'airy', 'non-greasy', 'under makeup'],
         product_type_hypotheses: ['sunscreen'],
       },
