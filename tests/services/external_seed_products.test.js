@@ -513,6 +513,91 @@ describe('externalSeedProducts helper', () => {
     expect(variant.option_value).toBe('5ml');
   });
 
+  test('normalizes merchant weight axes as displayable size variants', () => {
+    const [variant] = normalizeSeedVariants(
+      {
+        variants: [
+          {
+            variant_id: '40061',
+            sku: '40061',
+            title: '12 oz',
+            option_name: 'Weight',
+            option_value: '12 oz',
+            price: '38.00',
+            currency: 'USD',
+          },
+        ],
+      },
+      {
+        title: 'Ultra Repair Cream Intense Hydration Jumbo',
+        canonical_url: 'https://www.firstaidbeauty.com/products/ultra-repair-cream-intense-hydration-12oz',
+      },
+    );
+
+    expect(variant.title).toBe('12 oz');
+    expect(variant.axis_kind).toBe('volume');
+    expect(variant.options).toEqual([
+      expect.objectContaining({ name: 'Size', value: '12 oz', axis_kind: 'volume' }),
+    ]);
+    expect(variant.option_name).toBe('Size');
+    expect(variant.option_value).toBe('12 oz');
+  });
+
+  test('splits merchant shade-size axes and suppresses non-tinted skincare shade noise', () => {
+    const [variant] = normalizeSeedVariants(
+      {
+        variants: [
+          {
+            variant_id: '4100',
+            title: 'Lemonade / 3 oz',
+            option_name: 'Shade / Size',
+            option_value: 'Lemonade / 3 oz',
+            image_url: 'https://example.com/lemonade-scrub-3oz.jpg',
+          },
+        ],
+      },
+      {
+        title: 'Lemonade Smoothing Scrub',
+        canonical_url: 'https://www.olehenriksen.com/products/lemonade-smoothing-scrub-3oz',
+      },
+    );
+
+    expect(variant.title).toBe('3 oz');
+    expect(variant.options).toEqual([
+      expect.objectContaining({ name: 'Size', value: '3 oz', axis_kind: 'volume' }),
+    ]);
+    expect(variant.option_name).toBe('Size');
+    expect(variant.option_value).toBe('3 oz');
+  });
+
+  test('keeps shade-size axes for tinted products with variant imagery', () => {
+    const [variant] = normalizeSeedVariants(
+      {
+        variants: [
+          {
+            variant_id: '52402575475060',
+            title: 'DN350 / 50ml',
+            option_name: 'Shade / Size',
+            option_value: 'DN350 / 50ml',
+            image_url: 'https://example.com/daily-tinted-fluid-sunscreen-dn350.jpg',
+          },
+        ],
+      },
+      {
+        title: 'Daily Tinted Fluid Sunscreen DN350',
+        canonical_url: 'https://beautyofjoseon.com/products/daily-tinted-fluid-sunscreen-dn350',
+      },
+    );
+
+    expect(variant.title).toBe('DN350 / 50ml');
+    expect(variant.options).toEqual([
+      expect.objectContaining({ name: 'Shade', value: 'DN350', axis_kind: 'shade' }),
+      expect.objectContaining({ name: 'Size', value: '50ml', axis_kind: 'volume' }),
+    ]);
+    expect(variant.option_name).toBeUndefined();
+    expect(variant.option_value).toBeUndefined();
+  });
+
   test('keeps real generic option axes such as refill selectable', () => {
     const variants = normalizeSeedVariants(
       {

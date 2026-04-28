@@ -182,7 +182,7 @@ const VARIANT_IDENTITY_OPTION_NAMES = new Set([
   'title',
 ]);
 const GENERIC_VARIANT_AXIS_NAMES = new Set(['option', 'variant', 'selection']);
-const VARIANT_SIZE_EVIDENCE_RE = /\b\d+(?:\.\d+)?\s*(ml|m l|g|kg|oz|fl oz|l|lb|lbs|mm|cm)\b/i;
+const VARIANT_SIZE_EVIDENCE_RE = /\b\d+(?:\.\d+)?\s*(ml|m l|g|kg|oz|fl\.?\s*oz\.?|fluid\s*ounces?|l|lb|lbs|mm|cm)\b/i;
 const SHADE_AXIS_NAMES = new Set(['shade', 'color', 'colour', 'tone', 'hue']);
 const LOCALE_LIKE_VARIANT_VALUES = new Set(['us', 'usa', 'uk', 'eu', 'fr', 'de', 'es', 'it', 'ca', 'au', 'jp', 'kr', 'cn']);
 
