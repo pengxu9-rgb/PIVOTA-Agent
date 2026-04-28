@@ -233,6 +233,55 @@ describe('external seed PDP readiness audit helpers', () => {
     expect(result.examples.default_option_size_evidence_missing_axis[0].value).toContain('5ml');
   });
 
+  test('does not flag tint balm shade variants as skincare axis drift', () => {
+    const result = classifyVariantReadiness(
+      seedRow({
+        title: 'KISSKISS BEE GLOW 98% naturally-derived honey tint balm',
+        canonical_url: 'https://www.guerlain.com/us/en-us/p/kisskiss-bee-glow-honey-tint-balm.html',
+        seed_data: {
+          snapshot: {
+            variants: [
+              {
+                variant_id: '458',
+                option_name: 'Shade',
+                option_value: '458 Pop Rose Glow',
+                image_url: 'https://www.guerlain.com/shades/458-pop-rose-glow.jpg',
+              },
+            ],
+          },
+        },
+      }),
+    );
+
+    expect(result.status).toBe('ready');
+    expect(result.issues).not.toContain('wrong_axis_for_category');
+  });
+
+  test('does not require single variant size axes for sets that mention component sizes', () => {
+    const result = classifyVariantReadiness(
+      seedRow({
+        title: 'Glow & Hydration Duo APRICOT',
+        canonical_url: 'https://example.com/products/glow-hydration-duo-apricot',
+        seed_data: {
+          snapshot: {
+            image_url:
+              'https://cdn.shopify.com/s/files/1/0752/5643/0881/files/RadiantComplexionCreamApricot1.01fl.oz.jpg?v=1772122887',
+            variants: [
+              {
+                variant_id: 'duo-default',
+                option_name: 'Title',
+                option_value: 'Default Title',
+              },
+            ],
+          },
+        },
+      }),
+    );
+
+    expect(result.status).toBe('no_visible_variant_axis');
+    expect(result.issues).not.toContain('default_option_size_evidence_missing_axis');
+  });
+
   test('summarizes effective insights separately from direct KB coverage', () => {
     const kbByProductId = new Map([
       [
