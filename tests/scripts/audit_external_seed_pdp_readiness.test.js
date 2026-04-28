@@ -282,6 +282,32 @@ describe('external seed PDP readiness audit helpers', () => {
     expect(result.issues).not.toContain('default_option_size_evidence_missing_axis');
   });
 
+  test('does not require single variant size axes for makeup look bundles', () => {
+    const result = classifyVariantReadiness(
+      seedRow({
+        title: 'Perfect Nude Makeup Look',
+        canonical_url: 'https://example.com/products/perfect-nude-makeup-look',
+        seed_data: {
+          snapshot: {
+            image_url:
+              'https://cdn.shopify.com/s/files/1/0752/5643/0881/files/RadiantComplexionCreamApricot1.01fl.oz.jpg?v=1772122887',
+            variants: [
+              {
+                variant_id: 'look-default',
+                option_name: 'Title',
+                option_value: 'Default Title',
+              },
+            ],
+          },
+        },
+      }),
+    );
+
+    expect(classifyProductFamily(seedRow({ title: 'Perfect Nude Makeup Look' }))).toBe('set_or_collection');
+    expect(result.status).toBe('no_visible_variant_axis');
+    expect(result.issues).not.toContain('default_option_size_evidence_missing_axis');
+  });
+
   test('summarizes effective insights separately from direct KB coverage', () => {
     const kbByProductId = new Map([
       [
