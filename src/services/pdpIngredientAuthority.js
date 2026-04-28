@@ -65,7 +65,7 @@ const SOURCE_PRIORITY = {
 };
 const SUNSCREEN_CONTEXT_RE = /\b(spf\s*\d*|sunscreen|sun screen|sunblock|sun care|uv protection|broad spectrum|pa\+|mineral sunscreen|chemical sunscreen)\b/i;
 const HERO_ACTIVE_RE =
-  /\b(niacinamide|hyaluronic acid|ceramide|peptide|retinol|retinal|retinaldehyde|bakuchiol|vitamin c|ascorbic acid|ethyl ascorbic acid|tetrahexyldecyl ascorbate|glycolic acid|lactic acid|mandelic acid|salicylic acid|azelaic acid|tranexamic acid|pha|gluconolactone|panthenol|centella|madecassoside|snail mucin|rice|propolis|alpha arbutin|caffeine|squalane|urea|colloidal oatmeal|ectoin|zinc pca|tamanu oil)\b/i;
+  /\b(niacinamide|hyaluronic acid|ceramide|peptides?|retinol|retinal|retinaldehyde|bakuchiol|vitamin c|ascorbic acid|ethyl ascorbic acid|tetrahexyldecyl ascorbate|glycolic acid|lactic acid|mandelic acid|salicylic acid|azelaic acid|tranexamic acid|pha|gluconolactone|panthenol|centella|madecassoside|snail mucin|rice|propolis|alpha arbutin|caffeine|squalane|urea|colloidal oatmeal|ectoin|zinc pca|tamanu oil)\b/i;
 const REGULATORY_ACTIVE_RE =
   /\b(zinc oxide|titanium dioxide|avobenzone|octocrylene|octisalate|homosalate|octinoxate|ensulizole|meradimate|oxybenzone|tinosorb s|tinosorb m|uvinul a plus|uvinul t 150|mexoryl sx|mexoryl xl|benzoyl peroxide|adapalene|sulfur)\b/i;
 const CONTEXT_SENSITIVE_HERO_ACTIVE_RE =
@@ -402,6 +402,41 @@ function isDisplayableActiveItem(product, value) {
   return HERO_ACTIVE_RE.test(text);
 }
 
+function hasPeptideIngredientEvidence(items, rawText) {
+  const evidenceText = [
+    rawText,
+    ...(Array.isArray(items) ? items : []),
+  ]
+    .map((value) => asString(value))
+    .filter(Boolean)
+    .join(' ');
+  return /\b(?:[a-z]+oyl\s+)?(?:oligo|di|tri|tetra|penta|hexa)?peptide(?:-\d+)?\b/i.test(evidenceText);
+}
+
+function resolveActiveItemWithIngredientEvidence(product, item, normalizedItemsText, items, rawText) {
+  const text = asString(item);
+  const key = ingredientKey(text);
+  if (!text || !normalizedItemsText) return null;
+  if (normalizedItemsText.includes(key)) return text;
+
+  if (/^peptides?$/i.test(text) && hasPeptideIngredientEvidence(items, rawText)) {
+    return text;
+  }
+
+  if (/^(?:panthenol|vitamin b5|provitamin b5)(?:\s*\(b5\))?$/i.test(text) && normalizedItemsText.includes('panthenol')) {
+    return /panthenol/i.test(text) ? text : 'Panthenol (B5)';
+  }
+
+  if (
+    VITAMIN_C_ACTIVE_RE.test(text) &&
+    TRUE_VITAMIN_C_INGREDIENT_RE.test([rawText, collectProductRoleContext(product)].join(' '))
+  ) {
+    return text;
+  }
+
+  return null;
+}
+
 function filterDisplayableActiveItems(product, items) {
   return uniqueStrings(
     (Array.isArray(items) ? items : []).filter((item) => isDisplayableActiveItem(product, item)),
@@ -433,14 +468,14 @@ function reconcileActiveItemsWithIngredients(product, activeItems, items, rawTex
     return normalizedActiveItems;
   }
   const retained = shouldValidateAgainstIngredients || inferredSunscreenActives.length
-    ? normalizedActiveItems.filter((item) => {
-        const key = ingredientKey(item);
-        if (normalizedItemsText && !normalizedItemsText.includes(key)) {
-          const vitaminCIngredientMatch =
-            VITAMIN_C_ACTIVE_RE.test(item) &&
-            TRUE_VITAMIN_C_INGREDIENT_RE.test([rawText, collectProductRoleContext(product)].join(' '));
-          if (!vitaminCIngredientMatch) return false;
-        }
+    ? normalizedActiveItems.map((item) => resolveActiveItemWithIngredientEvidence(
+        product,
+        item,
+        normalizedItemsText,
+        items,
+        rawText,
+      )).filter((item) => {
+        if (!item) return false;
         if (
           shouldValidateAgainstIngredients &&
           (CONTEXT_SENSITIVE_HERO_ACTIVE_RE.test(item) || VITAMIN_C_ACTIVE_RE.test(item)) &&
