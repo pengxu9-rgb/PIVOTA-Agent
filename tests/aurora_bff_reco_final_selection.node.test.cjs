@@ -876,7 +876,7 @@ test('beauty mainline reco rows rewrite finish-fit sunscreen copy toward under-m
 
     assert.equal(rows.length, 1);
     assert.match(String(rows[0].best_for || ''), /under makeup|sits more smoothly/i);
-    assert.match(String(rows[0].why_this_one || ''), /under-makeup sunscreen ask|keeps the finish lighter and smoother under makeup|lighter, smoother daytime layering/i);
+    assert.match(String(rows[0].why_this_one || ''), /clearer, more invisible-feeling|keeps the finish lighter and smoother under makeup|lighter, smoother daytime layering/i);
     assert.doesNotMatch(String(rows[0].why_this_one || ''), /uv-filter cues|filter identity|reapplication expectations explicit/i);
   } finally {
     delete require.cache[moduleId];
@@ -957,7 +957,7 @@ test('beauty mainline reco rows keep finish-fit same-slot cards differentiated b
     );
 
     assert.equal(rows.length, 3);
-    assert.match(String(rows[0].why_this_one || ''), /keeps the finish lighter and smoother under makeup|lighter, smoother daytime layering/i);
+    assert.match(String(rows[0].why_this_one || ''), /clearer, more invisible-feeling|keeps the finish lighter and smoother under makeup|lighter, smoother daytime layering/i);
     assert.match(String(rows[0].short_description || ''), /soft-focus|under makeup|daytime layering/i);
     assert.match(String(rows[1].why_this_one || ''), /leans more mineral|sensitive-skin-friendly|sheer, weightless finish/i);
     assert.match(String(rows[2].why_this_one || ''), /leans richer and more moisturizing|more cushion under makeup|moisturizer-SPF hybrid/i);
@@ -967,6 +967,93 @@ test('beauty mainline reco rows keep finish-fit same-slot cards differentiated b
     assert.notEqual(rows[2].why_this_one, rows[0].why_this_one);
     assert.doesNotMatch(String(rows[1].why_this_one || ''), /^Sheer, weightless, scentless mineral sunscreen/i);
     assert.doesNotMatch(String(rows[2].short_description || ''), /moisturizer-style hydration cues/i);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('beauty mainline reco rows differentiate production finish-fit sunscreen reasons', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const rows = __internal.buildRecoRowsFromMainlineProducts(
+      [
+        {
+          product_id: 'skintific_matte_fit',
+          merchant_id: 'external_seed',
+          brand: 'SKINTIFIC',
+          display_name: 'Matte Fit Serum Sunscreen SPF 50+ PA++++',
+          category: 'Sunscreen',
+          product_type: 'Sunscreen',
+          short_description: 'Matte SPF 50+ PA++++ sunscreen with shine control.',
+          description: 'This oil-controlling, non-greasy formula with Oat Extract and Zinc PCA is for oily and acne-prone skin. Fast-absorbing, smooth finish with 8-hour shine control.',
+          key_features: ['Ceramide NP', 'Niacinamide', 'Zinc PCA', 'Vitamin C (Ascorbic acid)'],
+          compare_highlights: [
+            'Fast-absorbing serum sunscreen is positioned to control shine while protecting against UV exposure.',
+            'Suited for Oily or combination skin',
+          ],
+          matched_role_id: 'daily_sunscreen_finish_fit',
+          matched_role_label: 'Daily sunscreen with finish fit',
+          preferred_step: 'sunscreen',
+        },
+        {
+          product_id: 'supergoop_unseen_spf50',
+          merchant_id: 'external_seed',
+          brand: 'Supergoop',
+          display_name: 'Unseen Sunscreen SPF 50',
+          category: 'Sunscreen',
+          product_type: 'Sunscreen',
+          short_description: 'Award-winning invisible, weightless, scentless sunscreen.',
+          description: 'The iconic 100% invisible, weightless, scentless sunscreen that doubles as a primer for all-day makeup wear.',
+          compare_highlights: [
+            'Suited for Daily SPF wear',
+            'Suited for AM layering routines',
+          ],
+          matched_role_id: 'daily_sunscreen_finish_fit',
+          matched_role_label: 'Daily sunscreen with finish fit',
+          preferred_step: 'sunscreen',
+        },
+        {
+          product_id: 'skintific_light_serum_spf',
+          merchant_id: 'external_seed',
+          brand: 'SKINTIFIC',
+          display_name: 'Light Serum Sunscreen SPF 50+ PA++++',
+          category: 'Sunscreen',
+          product_type: 'Sunscreen',
+          short_description: 'Lightweight SPF 50+ PA++++ serum sunscreen for daily wear.',
+          description: 'Sunscreen with watery texture, smooth texture feeling after applied, without sticky and greasy feeling. 2 in 1 skincare with Vitamin C, Ferulic Acid, Tocopherol, Ceramide NP, Niacinamide and Hyaluronic acid.',
+          key_features: ['Ceramide NP', 'Niacinamide', 'Vitamin C (Ascorbic acid)', 'Hyaluronic acid'],
+          compare_highlights: [
+            'Serum-format sunscreen is positioned for daily high-SPF wear with a lighter skin feel.',
+            'Suited for Daytime wear',
+          ],
+          matched_role_id: 'daily_sunscreen_finish_fit',
+          matched_role_label: 'Daily sunscreen with finish fit',
+          preferred_step: 'sunscreen',
+        },
+      ],
+      {
+        targetContext: {
+          resolved_target_step: 'sunscreen',
+          primary_role_id: 'daily_sunscreen_finish_fit',
+          framework_roles: [
+            {
+              role_id: 'daily_sunscreen_finish_fit',
+              label: 'Daily sunscreen with finish fit',
+              rank: 1,
+              preferred_step: 'sunscreen',
+              why_this_role: 'Use a daily sunscreen that layers cleanly under makeup.',
+            },
+          ],
+        },
+        language: 'EN',
+      },
+    );
+
+    assert.equal(rows.length, 3);
+    assert.match(String(rows[0].why_this_one || ''), /airy, non-greasy|matte|shine-controlling/i);
+    assert.match(String(rows[1].why_this_one || ''), /clearer, more invisible-feeling/i);
+    assert.match(String(rows[2].why_this_one || ''), /serum-light with skincare-support ingredients/i);
+    assert.equal(new Set(rows.map((row) => row.why_this_one)).size, 3);
   } finally {
     delete require.cache[moduleId];
   }
