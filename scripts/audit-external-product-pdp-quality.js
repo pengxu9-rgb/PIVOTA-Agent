@@ -115,6 +115,7 @@ function buildAuthoritativePayload(operation, payload = {}) {
           ...ensureJsonObject(payload.options),
           debug: true,
           no_cache: true,
+          cache_bypass: true,
         },
       },
     };
@@ -135,6 +136,7 @@ function buildAuthoritativePayload(operation, payload = {}) {
           ...ensureJsonObject(payload.options),
           debug: true,
           no_cache: true,
+          cache_bypass: true,
         },
       },
     };
