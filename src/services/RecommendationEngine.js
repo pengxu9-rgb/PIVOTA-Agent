@@ -1845,6 +1845,7 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
           WHERE status = 'active'
             AND market = $1
             AND (tool = '*' OR tool = $2)
+            AND attached_product_key IS NULL
             ${whereSql}
           ORDER BY updated_at DESC, created_at DESC
           LIMIT $3
@@ -1877,6 +1878,7 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
           WHERE status = 'active'
             AND market = $1
             AND (tool = '*' OR tool = $2)
+            AND attached_product_key IS NULL
             AND domain = ANY($4)
           ORDER BY updated_at DESC, created_at DESC
           LIMIT $3
@@ -1919,14 +1921,16 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
       'external_category',
       () => runQuery(
         `AND (
-              lower(coalesce(seed_data->'derived'->'recall'->>'category','')) = ANY($4)
-              OR lower(coalesce(seed_data->>'category','')) = ANY($4)
-              OR lower(coalesce(seed_data->>'product_type','')) = ANY($4)
-              OR lower(coalesce(seed_data->>'productType','')) = ANY($4)
-              OR lower(coalesce(seed_data->'product'->>'category','')) = ANY($4)
-              OR lower(coalesce(seed_data->'snapshot'->>'category','')) = ANY($4)
-              OR lower(coalesce(seed_data->'snapshot'->>'product_type','')) = ANY($4)
-              OR lower(coalesce(seed_data->'snapshot'->>'productType','')) = ANY($4)
+              lower(coalesce(
+                seed_data->'derived'->'recall'->>'category',
+                seed_data->>'category',
+                seed_data->'product'->>'category',
+                seed_data->'snapshot'->>'category',
+                seed_data->>'product_type',
+                seed_data->'product'->>'product_type',
+                seed_data->'snapshot'->>'product_type',
+                ''
+              )) = ANY($4)
             )`,
         [categoryAliases],
         deepDomainRecall
@@ -1940,7 +1944,25 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
   const out = [];
   let preloadedCategoryMatches = null;
   let preloadedDomainMatches = null;
-  if (deepDomainRecall && normalizedDomainHints.length) {
+  if (deepDomainRecall && category && normalizedDomainHints.length) {
+    const deepRecallDomainCap = Math.min(safeLimit, Math.max(60, safeMinFocusedCandidates * 10));
+    [preloadedCategoryMatches, preloadedDomainMatches] = await Promise.all([
+      loadCategoryMatches(),
+      runTimedExternalQuery(
+        'external_domain',
+        () => runDomainQuery(deepRecallDomainCap),
+        PDP_RECS_EXTERNAL_RECALL_QUERY_TIMEOUT_MS,
+      ),
+    ]);
+    out.push(...preloadedCategoryMatches);
+    out.push(...preloadedDomainMatches);
+    const categoryFocusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
+    if (categoryFocusedCandidates.length >= safeMinFocusedCandidates) {
+      return categoryFocusedCandidates.slice(0, safeLimit * 3);
+    }
+  }
+
+  if (deepDomainRecall && normalizedDomainHints.length && !preloadedDomainMatches) {
     const deepRecallDomainCap = Math.min(safeLimit, Math.max(60, safeMinFocusedCandidates * 10));
     preloadedDomainMatches = await runTimedExternalQuery(
       'external_domain',
@@ -1949,12 +1971,12 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
     );
     out.push(...preloadedDomainMatches);
     const domainFocusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
-    if (domainFocusedCandidates.length >= safeMinFocusedCandidates) {
+    if (!category && domainFocusedCandidates.length >= safeMinFocusedCandidates) {
       return domainFocusedCandidates.slice(0, safeLimit * 3);
     }
   }
 
-  if (deepDomainRecall && category) {
+  if (deepDomainRecall && category && !preloadedCategoryMatches) {
     preloadedCategoryMatches = await loadCategoryMatches();
     out.push(...preloadedCategoryMatches);
     const categoryFocusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
