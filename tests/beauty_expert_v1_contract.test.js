@@ -608,8 +608,7 @@ describe('beauty_expert_v1 contract', () => {
 
     const result = attachBeautyExpertV1ToResponse(
       {
-        reply:
-          'Matte Fit Serum Sunscreen SPF 50+ PA++++ is the current lead because it has more direct matte evidence.',
+        reply: null,
         assistant_text: assistantText,
         assistant_message: {
           role: 'assistant',
