@@ -5869,7 +5869,7 @@ test('reco assistant structured renderer keeps production sunscreen tradeoffs at
     );
     assert.match(
       text,
-      /Unseen Sunscreen SPF 50 (?:makes more sense if you want a lighter, smoother sunscreen feel with a less heavy daytime layer|keeps the finish lighter and smoother under makeup if you want a less heavy daytime layer)/i,
+      /Unseen Sunscreen SPF 50 is the clearer, more invisible-feeling option for smoother under-makeup wear/i,
     );
     assert.match(
       text,
@@ -6004,6 +6004,18 @@ test('reco assistant validator ignores negated matte contrast on lighter sunscre
       requestMode: 'buy',
     });
     assert.equal(renderedValidation.reason, null);
+    assert.match(
+      text,
+      /Light Serum Sunscreen SPF 50\+ PA\+\+\+\+ leans serum-light(?:(?: with skincare-support ingredients)? if you want SPF50\+ without the stronger matte finish| if you want SPF50\+ with a lighter feel rather than the stronger matte finish)/i,
+    );
+    assert.match(
+      text,
+      /Unseen Sunscreen SPF 50 is the clearer, more invisible-feeling option for smoother under-makeup wear/i,
+    );
+    assert.doesNotMatch(
+      text,
+      /Light Serum Sunscreen SPF 50\+ PA\+\+\+\+ keeps the finish lighter and smoother under makeup[^.]+Unseen Sunscreen SPF 50 keeps the finish lighter and smoother under makeup/i,
+    );
 
     const contrastText = [
       'Matte Fit Serum Sunscreen SPF 50+ PA++++ leans more matte and shine-controlling if you want less slip under makeup.',
