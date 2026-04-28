@@ -11928,6 +11928,110 @@ test('__internal: framework pool demotes moisturizer-SPF30 rows behind dedicated
   assert.ok(Number(dayscreen.framework_rank_score || 0) < Number(dedicated.framework_rank_score || 0));
 });
 
+test('__internal: framework pool keeps SPF30 moisturizer hybrids out when dedicated finish-fit sunscreen coverage exists', () => {
+  const { __internal } = loadRoutesFresh();
+  const targetContext = {
+    framework_id: 'recofw_test_finish_fit_exclude_spf30_hybrid_when_dedicated_covered',
+    primary_role_id: 'daily_sunscreen_finish_fit',
+    comparison_mode: 'same_role_comparison',
+    routine_mode: 'same_role_comparison',
+    request_text: 'I have oily skin. What sunscreen should I buy for under makeup?',
+    semantic_plan: {
+      primary_concern: 'oily daytime sunscreen under makeup',
+      comparison_mode: 'same_role_comparison',
+      routine_mode: 'same_role_comparison',
+      must_satisfy_constraints: ['lightweight finish', 'oily skin', 'under makeup'],
+    },
+    framework_roles: [
+      {
+        role_id: 'daily_sunscreen_finish_fit',
+        rank: 1,
+        preferred_step: 'sunscreen',
+        label: 'Daily sunscreen finish fit',
+        query_terms: ['sunscreen oily skin', 'matte sunscreen', 'invisible sunscreen'],
+        fit_keywords: ['lightweight', 'non-greasy', 'matte', 'invisible', 'under makeup'],
+        ingredient_hypotheses: ['UV filters'],
+        product_type_hypotheses: ['sunscreen'],
+      },
+    ],
+  };
+  const state = __internal.finalizeConcernFrameworkCandidatePools(
+    [
+      {
+        product_id: 'fenty_hydra_vizor_spf30_hybrid',
+        merchant_id: 'external_seed',
+        brand: 'Fenty Beauty',
+        name: 'Hydra Vizor Invisible Moisturizer Broad Spectrum SPF 30 Sunscreen',
+        display_name: 'Fenty Beauty Hydra Vizor Invisible Moisturizer Broad Spectrum SPF 30 Sunscreen',
+        category: 'Sunscreen',
+        product_type: 'Sunscreen',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'daily_sunscreen_finish_fit',
+        retrieval_query: 'invisible sunscreen',
+        local_external_seed_role_fit_score: 1.28,
+        benefit_tags: ['spf 30', 'invisible moisturizer', 'light hydration'],
+        short_description: 'An invisible moisturizer with broad spectrum SPF 30.',
+      },
+      {
+        product_id: 'skintific_matte_fit_spf50',
+        merchant_id: 'external_seed',
+        brand: 'SKINTIFIC',
+        name: 'Matte Fit Serum Sunscreen SPF 50+ PA++++',
+        display_name: 'SKINTIFIC Matte Fit Serum Sunscreen SPF 50+ PA++++',
+        category: 'Sunscreen',
+        product_type: 'Sunscreen',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'daily_sunscreen_finish_fit',
+        retrieval_query: 'matte sunscreen',
+        local_external_seed_role_fit_score: 1.18,
+        benefit_tags: ['spf 50', 'pa++++', 'matte', 'oil control', 'under makeup'],
+        short_description: 'A matte serum sunscreen that helps cut shine under makeup.',
+      },
+      {
+        product_id: 'supergoop_unseen_spf50',
+        merchant_id: 'external_seed',
+        brand: 'Supergoop',
+        name: 'Unseen Sunscreen SPF 50',
+        display_name: 'Supergoop Unseen Sunscreen SPF 50',
+        category: 'Sunscreen',
+        product_type: 'Sunscreen',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'daily_sunscreen_finish_fit',
+        retrieval_query: 'invisible sunscreen',
+        local_external_seed_role_fit_score: 1.08,
+        benefit_tags: ['spf 50', 'invisible', 'under makeup', 'smooth'],
+        short_description: 'An invisible sunscreen that layers smoothly under makeup.',
+      },
+      {
+        product_id: 'skintific_light_serum_spf50',
+        merchant_id: 'external_seed',
+        brand: 'SKINTIFIC',
+        name: 'Light Serum Sunscreen SPF 50+ PA++++',
+        display_name: 'SKINTIFIC Light Serum Sunscreen SPF 50+ PA++++',
+        category: 'Sunscreen',
+        product_type: 'Sunscreen',
+        retrieval_source: 'external_seed',
+        retrieval_role_id: 'daily_sunscreen_finish_fit',
+        retrieval_query: 'sunscreen under makeup',
+        local_external_seed_role_fit_score: 1.05,
+        benefit_tags: ['spf 50', 'pa++++', 'light serum', 'watery', 'under makeup'],
+        short_description: 'A watery light serum sunscreen for oily skin under makeup.',
+      },
+    ].map((row) => __internal.normalizeRecoCatalogProduct(row)),
+    { targetContext },
+  );
+
+  assert.equal(state.primary_role_matched, true);
+  assert.deepEqual(
+    state.selected_recommendations.map((row) => row.product_id),
+    ['skintific_matte_fit_spf50', 'supergoop_unseen_spf50', 'skintific_light_serum_spf50'],
+  );
+  assert.equal(
+    state.selected_recommendations.some((row) => row.product_id === 'fenty_hydra_vizor_spf30_hybrid'),
+    false,
+  );
+});
+
 test('__internal: finish-fit product card reasons prefer reviewed texture evidence over generic moisturizer cues', () => {
   const { __internal } = loadRoutesFresh();
   const targetContext = {

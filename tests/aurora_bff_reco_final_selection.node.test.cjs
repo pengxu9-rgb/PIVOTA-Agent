@@ -6758,8 +6758,8 @@ test('concern selector race prompt carries finish-fit tradeoff evidence and dive
     assert.match(prompts[0], /"comparison_mode":"same_role_comparison"/);
     assert.match(prompts[0], /"tradeoff_note":"it leans more mineral and sensitive-skin-friendly if you want a sheer, weightless finish"/);
     assert.match(prompts[0], /"tradeoff_note":"it leans richer and more moisturizing if you want more cushion under makeup"/);
-    assert.match(prompts[0], /maximize real tradeoff spread when authoritative options exist/i);
-    assert.match(prompts[0], /Do not rank multiple near-duplicate lightweight under-makeup sunscreens ahead of a clearly differentiated richer option/i);
+    assert.match(prompts[0], /maximize real tradeoff spread inside the dedicated sunscreen lane/i);
+    assert.match(prompts[0], /Only include an SPF30 moisturizer-SPF hybrid as a lower-priority third tradeoff/i);
   } finally {
     __internal.__resetCallGeminiTextResponseForTest();
     delete require.cache[moduleId];
@@ -6812,6 +6812,103 @@ test('concern selector ordering diversifies finish-fit same-role comparisons acr
       applied.recommendations.map((row) => row.product_id),
       ['spf_lead', 'spf_mineral', 'spf_rich', 'spf_light_alt'],
     );
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('concern selector ordering keeps SPF30 moisturizer hybrids behind dedicated finish-fit sunscreens', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const applied = __internal.applyConcernSelectorRaceOrdering(
+      [
+        {
+          product_id: 'spf_matte',
+          display_name: 'SKINTIFIC Matte Fit Serum Sunscreen SPF 50+ PA++++',
+          matched_role_id: 'daily_sunscreen_finish_fit',
+          why_this_one: 'it has a matte serum texture for oily skin under makeup',
+          short_description: 'A matte serum sunscreen that helps cut shine under makeup.',
+        },
+        {
+          product_id: 'spf_invisible',
+          display_name: 'Supergoop Unseen Sunscreen SPF 50',
+          matched_role_id: 'daily_sunscreen_finish_fit',
+          why_this_one: 'it keeps the finish lighter and smoother under makeup',
+          short_description: 'An invisible lightweight sunscreen that layers smoothly under makeup.',
+        },
+        {
+          product_id: 'spf_light',
+          display_name: 'SKINTIFIC Light Serum Sunscreen SPF 50+ PA++++',
+          matched_role_id: 'daily_sunscreen_finish_fit',
+          why_this_one: 'it keeps the finish lighter and smoother under makeup if you want a less heavy daytime layer',
+          short_description: 'A watery light serum sunscreen for oily skin under makeup.',
+        },
+        {
+          product_id: 'spf_hybrid',
+          display_name: 'Fenty Beauty Hydra Vizor Invisible Moisturizer Broad Spectrum SPF 30 Sunscreen',
+          matched_role_id: 'daily_sunscreen_finish_fit',
+          why_this_one: 'it is more of a moisturizer-SPF hybrid for light hydration if you are comfortable with SPF30 rather than an SPF50 sunscreen',
+          short_description: 'An invisible moisturizer with broad spectrum SPF 30.',
+        },
+      ],
+      {
+        top_pick_product_id: 'spf_hybrid',
+        ordered_product_ids: ['spf_hybrid', 'spf_matte', 'spf_invisible', 'spf_light'],
+        comparison_mode: 'same_role_comparison',
+        primary_role_id: 'daily_sunscreen_finish_fit',
+      },
+    );
+
+    assert.deepEqual(
+      applied.recommendations.slice(0, 3).map((row) => row.product_id),
+      ['spf_matte', 'spf_invisible', 'spf_light'],
+    );
+    assert.equal(applied.primary_recommendation_id, 'spf_matte');
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('concern selector ordering allows moisturizer-SPF hybrid as third only when dedicated finish-fit coverage is underfilled', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const applied = __internal.applyConcernSelectorRaceOrdering(
+      [
+        {
+          product_id: 'spf_invisible',
+          display_name: 'Supergoop Unseen Sunscreen SPF 50',
+          matched_role_id: 'daily_sunscreen_finish_fit',
+          why_this_one: 'it keeps the finish lighter and smoother under makeup',
+          short_description: 'An invisible lightweight sunscreen that layers smoothly under makeup.',
+        },
+        {
+          product_id: 'spf_matte',
+          display_name: 'SKINTIFIC Matte Fit Serum Sunscreen SPF 50+ PA++++',
+          matched_role_id: 'daily_sunscreen_finish_fit',
+          why_this_one: 'it has a matte serum texture for oily skin under makeup',
+          short_description: 'A matte serum sunscreen that helps cut shine under makeup.',
+        },
+        {
+          product_id: 'spf_hybrid',
+          display_name: 'Fenty Beauty Hydra Vizor Invisible Moisturizer Broad Spectrum SPF 30 Sunscreen',
+          matched_role_id: 'daily_sunscreen_finish_fit',
+          why_this_one: 'it is more of a moisturizer-SPF hybrid for light hydration if you are comfortable with SPF30 rather than an SPF50 sunscreen',
+          short_description: 'An invisible moisturizer with broad spectrum SPF 30.',
+        },
+      ],
+      {
+        top_pick_product_id: 'spf_hybrid',
+        ordered_product_ids: ['spf_hybrid', 'spf_invisible', 'spf_matte'],
+        comparison_mode: 'same_role_comparison',
+        primary_role_id: 'daily_sunscreen_finish_fit',
+      },
+    );
+
+    assert.deepEqual(
+      applied.recommendations.slice(0, 3).map((row) => row.product_id),
+      ['spf_invisible', 'spf_matte', 'spf_hybrid'],
+    );
+    assert.equal(applied.primary_recommendation_id, 'spf_invisible');
   } finally {
     delete require.cache[moduleId];
   }
