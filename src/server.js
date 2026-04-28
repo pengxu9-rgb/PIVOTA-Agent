@@ -2133,7 +2133,7 @@ const PDP_OFFER_GROUP_MEMBER_FETCH_TIMEOUT_MS = Math.max(
 );
 const PDP_SIMILAR_SYNC_BUDGET_MS = Math.max(
   250,
-  parseTimeoutMs(process.env.PDP_SIMILAR_SYNC_BUDGET_MS, 4500),
+  parseTimeoutMs(process.env.PDP_SIMILAR_SYNC_BUDGET_MS, 6000),
 );
 const PDP_SIMILAR_CARD_ENRICH_BUDGET_MS = Math.max(
   100,
