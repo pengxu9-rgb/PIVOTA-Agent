@@ -513,6 +513,98 @@ describe('externalSeedProducts helper', () => {
     expect(variant.option_value).toBe('5ml');
   });
 
+  test('infers single default variant size from seed-level product URL', () => {
+    const [variant] = normalizeSeedVariants(
+      {
+        snapshot: {
+          variants: [
+            {
+              variant_id: '82170',
+              sku: '82170',
+              title: 'Default',
+              option_name: 'Title',
+              option_value: 'Default Title',
+            },
+          ],
+        },
+      },
+      {
+        title: 'Pixi + Hello Kitty Glow Tonic Original Size',
+        canonical_url: 'https://pixibeauty.com/products/hello-kitty-glow-tonic-250ml',
+      },
+    );
+
+    expect(variant.title).toBe('250ml');
+    expect(variant.options).toEqual([
+      expect.objectContaining({ name: 'Size', value: '250ml', axis_kind: 'volume' }),
+    ]);
+    expect(variant.option_name).toBe('Size');
+    expect(variant.option_value).toBe('250ml');
+  });
+
+  test('infers single default variant size from seed-level product image', () => {
+    const [variant] = normalizeSeedVariants(
+      {
+        snapshot: {
+          image_url:
+            'https://cdn.shopify.com/s/files/1/0651/8449/7835/files/3264680025105-VN058001-VIEW-2-RDT-MOISTURISING-LOTION-400ML-2000x2000.jpg?v=1718290512',
+          variants: [
+            {
+              variant_id: '44171552161963',
+              sku: 'NXVN058001',
+              title: 'Default',
+              option_name: 'Title',
+              option_value: 'Default Title',
+            },
+          ],
+        },
+      },
+      {
+        title: 'Revitalising Moisturising Milk',
+        canonical_url: 'https://us.nuxe.com/products/revitalising-moisturising-milk',
+      },
+    );
+
+    expect(variant.title).toBe('400ml');
+    expect(variant.options).toEqual([
+      expect.objectContaining({ name: 'Size', value: '400ml', axis_kind: 'volume' }),
+    ]);
+  });
+
+  test('does not infer one seed-level image size across multiple polluted variants', () => {
+    const variants = normalizeSeedVariants(
+      {
+        snapshot: {
+          image_url:
+            'https://theordinary.com/Images/products/The%20Ordinary/rdn-100pct-organic-cold-pressed-rose-hip-seed-oil-30ml.png',
+          variants: [
+            {
+              variant_id: 'rose-hip',
+              sku: 'rdn-100pct-organic-cold-pressed-rose-hip-seed-oil-30ml',
+              title: '[object Object]',
+              option_name: 'Offer',
+              option_value: 'rdn-100pct-organic-cold-pressed-rose-hip-seed-oil-30ml',
+            },
+            {
+              variant_id: 'marula',
+              sku: 'rdn-100pct-cold-pressed-virgin-marula-oil-30ml',
+              title: '[object Object]',
+              option_name: 'Offer',
+              option_value: 'rdn-100pct-cold-pressed-virgin-marula-oil-30ml',
+            },
+          ],
+        },
+      },
+      {
+        title: '100% Organic Virgin Chia Seed Oil',
+        canonical_url: 'https://theordinary.com/en-us/100-organic-virgin-chia-seed-face-oil-100395.html',
+      },
+    );
+
+    expect(variants).toHaveLength(2);
+    expect(variants.every((variant) => variant.options.length === 0)).toBe(true);
+  });
+
   test('normalizes merchant weight axes as displayable size variants', () => {
     const [variant] = normalizeSeedVariants(
       {

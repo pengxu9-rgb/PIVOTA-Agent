@@ -883,7 +883,105 @@ function collectVariantOptionsFromRawVariantUrl(rawVariant) {
   return [];
 }
 
-function collectProductLevelVariantOptions(seedData) {
+function decodeVariantHintText(value) {
+  const raw = normalizeOptionText(value);
+  if (!raw) return '';
+  let decoded = raw;
+  try {
+    decoded = decodeURIComponent(raw);
+  } catch {
+    decoded = raw;
+  }
+  return decoded
+    .replace(/https?:\/\//gi, ' ')
+    .replace(/[/?#=&%]+/g, ' ')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\.(?:jpg|jpeg|png|webp|gif|avif|html?|js)\b/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function formatVariantQuantityDisplayValue(amount, unit) {
+  const numericAmount = Number(amount);
+  if (!Number.isFinite(numericAmount) || numericAmount <= 0) return '';
+  const normalizedUnit = String(unit || '')
+    .toLowerCase()
+    .replace(/fluid\s*ounces?/g, 'fl oz')
+    .replace(/fl\.?\s*oz\.?/g, 'fl oz')
+    .replace(/m\s*l/g, 'ml')
+    .replace(/\s+/g, ' ')
+    .replace(/\.$/, '')
+    .trim();
+  if (!normalizedUnit) return '';
+  const displayAmount = String(numericAmount).replace(/\.0+$/, '');
+  if (normalizedUnit === 'fl oz') return `${displayAmount} fl oz`;
+  if (['oz', 'lb', 'lbs'].includes(normalizedUnit)) return `${displayAmount} ${normalizedUnit}`;
+  return `${displayAmount}${normalizedUnit.replace(/\s+/g, '')}`;
+}
+
+function extractVariantQuantityDisplayValue(value) {
+  const decoded = decodeVariantHintText(value);
+  if (!decoded) return '';
+  const match = decoded.match(/\b(\d+(?:\.\d+)?)\s*(ml|m l|g|kg|oz|fl\.?\s*oz\.?|fluid\s*ounces?|l|lb|lbs|mm|cm)\b/i);
+  if (!match) return '';
+  return formatVariantQuantityDisplayValue(match[1], match[2]);
+}
+
+function collectInferredProductLevelVariantOptions(seedData, row) {
+  const parsed = ensureJsonObject(seedData);
+  const snapshot = ensureJsonObject(parsed.snapshot);
+  const candidates = [
+    row?.title,
+    parsed.title,
+    snapshot.title,
+    row?.canonical_url,
+    row?.destination_url,
+    parsed.canonical_url,
+    parsed.destination_url,
+    snapshot.canonical_url,
+    snapshot.destination_url,
+    row?.image_url,
+    parsed.image_url,
+    snapshot.image_url,
+    ...(Array.isArray(parsed.image_urls) ? parsed.image_urls : []),
+    ...(Array.isArray(snapshot.image_urls) ? snapshot.image_urls : []),
+  ];
+  for (const candidate of candidates) {
+    const value = extractVariantQuantityDisplayValue(candidate);
+    if (value) return [{ name: 'Size', value }];
+  }
+  return [];
+}
+
+function shouldInferProductLevelVariantOptions(seedData, row) {
+  const parsed = ensureJsonObject(seedData);
+  const snapshot = ensureJsonObject(parsed.snapshot);
+  const text = [
+    row?.title,
+    row?.canonical_url,
+    row?.destination_url,
+    row?.domain,
+    parsed?.title,
+    snapshot?.title,
+    parsed?.brand,
+    snapshot?.brand,
+    parsed?.category,
+    snapshot?.category,
+    parsed?.product_type,
+    snapshot?.product_type,
+    parsed?.productType,
+    snapshot?.productType,
+  ]
+    .map((value) => normalizeOptionText(value).toLowerCase())
+    .filter(Boolean)
+    .join(' ');
+  if (!text) return false;
+  return !/\b(e[-\s]?gift[-\s]?cards?|gift[-\s]?cards?|donat(?:e|ion)|sample service|appointment|booking|shipping protection|package protection|route protection|order protection|brush|sponge|puff|applicator|sharpener|tweezer|curler|scissors|comb|mirror|case|bag|pouch|holder|spatula|tool|tools|gua sha|roller|headband|scrunchie|scarf|hat|cap|tote|clip|clips|lash curler|refill case|bundle|set|kit|collection|duo|trio|routine|makeup look|mini set|travel set|starter set|value set|collection set|collection kit|collection bundle)\b/i.test(
+    text,
+  );
+}
+
+function collectProductLevelVariantOptions(seedData, row = null, options = {}) {
   const parsed = ensureJsonObject(seedData);
   const snapshot = ensureJsonObject(parsed.snapshot);
   const candidates = [
@@ -904,6 +1002,11 @@ function collectProductLevelVariantOptions(seedData) {
     ['Size', parsed.net_size],
     ['Size', snapshot.net_size],
   ];
+  if (options.includeInferredHints) {
+    for (const item of collectInferredProductLevelVariantOptions(parsed, row)) {
+      candidates.push([item.name, item.value]);
+    }
+  }
   return normalizeOptionEntries(
     candidates
       .map(([name, value]) => ({ name, value }))
@@ -1685,7 +1788,9 @@ function normalizeSeedVariants(seedData, row) {
   const parsedSeedData = ensureJsonObject(seedData);
   const rawVariants = getRawSeedVariants(parsedSeedData);
   const productOptionNames = getSeedProductOptionNames(parsedSeedData);
-  const productLevelOptions = collectProductLevelVariantOptions(parsedSeedData);
+  const productLevelOptions = collectProductLevelVariantOptions(parsedSeedData, row, {
+    includeInferredHints: rawVariants.length === 1 && shouldInferProductLevelVariantOptions(parsedSeedData, row),
+  });
   const variantContext = buildVariantContext(parsedSeedData, row);
 
   if (!rawVariants.length) return [];
