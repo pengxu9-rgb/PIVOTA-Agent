@@ -6195,6 +6195,86 @@ test('__internal: local external seed sunscreen support broadens to authority ca
   assert.equal(out.products[0]?.retrieval_role_id, 'daily_sunscreen');
 });
 
+test('__internal: local external seed sunscreen support ranks past shade variants in broad authority pool', async () => {
+  const { __internal } = loadRoutesFresh();
+  const observedQueries = [];
+  const makeRow = ({
+    id,
+    title,
+    summary,
+  }) => ({
+    id,
+    external_product_id: id,
+    destination_url: `https://example.com/products/${id}`,
+    canonical_url: `https://example.com/products/${id}`,
+    domain: 'example.com',
+    title,
+    image_url: `https://example.com/products/${id}.jpg`,
+    price_amount: 24,
+    price_currency: 'USD',
+    availability: 'in_stock',
+    match_stage: 'support_category_fit_broad',
+    match_score: 53,
+    seed_data: {
+      derived: {
+        recall: {
+          retrieval_title: title,
+          retrieval_summary: summary,
+          category: 'sunscreen',
+          vertical: 'skincare',
+        },
+      },
+      snapshot: {
+        title,
+        description: summary,
+        category: 'Sunscreen',
+      },
+    },
+    updated_at: new Date().toISOString(),
+    created_at: new Date().toISOString(),
+  });
+  const shadeRows = Array.from({ length: 14 }, (_, index) => makeRow({
+    id: `shade_spf_${index + 1}`,
+    title: `Daily Tinted Fluid Sunscreen Shade ${index + 1}`,
+    summary: 'A tinted mineral sunscreen shade variant.',
+  }));
+  const out = await __internal.searchLocalExternalSeedProducts({
+    query: 'lightweight sunscreen oily skin',
+    limit: 3,
+    role: {
+      role_id: 'daily_sunscreen',
+      rank: 30,
+      preferred_step: 'sunscreen',
+      query_terms: ['lightweight sunscreen oily skin', 'sunscreen under makeup'],
+      fit_keywords: ['spf', 'lightweight', 'oil control', 'non-greasy'],
+      product_type_hypotheses: ['sunscreen'],
+    },
+    preferredStep: 'sunscreen',
+    queryFn: async (sql, params) => {
+      const sqlText = String(sql || '');
+      observedQueries.push({ sql: sqlText, params });
+      if (/support_query_precise/.test(sqlText)) return { rows: [] };
+      return {
+        rows: [
+          ...shadeRows,
+          makeRow({
+            id: 'uv_filters_spf45_serum',
+            title: 'UV Filters SPF 45 Serum',
+            summary: 'A lightweight serum-textured sunscreen that blends without a white cast and layers with makeup.',
+          }),
+        ],
+      };
+    },
+  });
+
+  assert.equal(out.ok, true);
+  assert.equal(observedQueries.length, 2);
+  assert.match(observedQueries[1].sql, /support_category_fit_broad/);
+  assert.equal(out.local_external_seed_candidate_debug?.rank_pool_row_count, 15);
+  assert.equal(out.products[0]?.product_id, 'uv_filters_spf45_serum');
+  assert.equal(out.products[0]?.retrieval_role_id, 'daily_sunscreen');
+});
+
 test('__internal: local external seed sunscreen broad recall does not let makeup SPF starve real sunscreen rows', async () => {
   const { __internal } = loadRoutesFresh();
   const observedQueries = [];
