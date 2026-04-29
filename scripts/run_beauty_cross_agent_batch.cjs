@@ -235,6 +235,16 @@ function extractAssistantText(body) {
       push(card.title);
       push(card.text);
       push(card.body);
+      if (Array.isArray(card.sections)) {
+        for (const section of card.sections) {
+          if (!isPlainObject(section)) continue;
+          push(section.text);
+          push(section.text_en);
+          push(section.text_zh);
+          push(section.title);
+          push(section.body);
+        }
+      }
       if (isPlainObject(card.payload)) {
         push(card.payload.title);
         push(card.payload.summary);
@@ -250,7 +260,7 @@ function extractAssistantText(body) {
 
 function extractCardTypes(body) {
   return Array.isArray(body && body.cards)
-    ? body.cards.map((card) => String(card && card.type || '').trim()).filter(Boolean)
+    ? body.cards.map((card) => String(card && (card.type || card.card_type) || '').trim()).filter(Boolean)
     : [];
 }
 
