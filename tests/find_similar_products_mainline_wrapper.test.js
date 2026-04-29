@@ -117,6 +117,44 @@ describe('find_similar_products mainline wrapper', () => {
     );
   });
 
+  it('calibrates underfill metadata against final visible similar products', async () => {
+    const app = require('../src/server');
+
+    const metadata = app._debug.calibrateSimilarMetadataForVisibleProducts({
+      requestedLimit: 6,
+      products: [
+        { product_id: 'ext_1', merchant_id: 'external_seed', source: 'external' },
+        { product_id: 'ext_2', merchant_id: 'external_seed', source: 'external' },
+        { product_id: 'ext_3', merchant_id: 'external_seed', source: 'external' },
+        { product_id: 'ext_4', merchant_id: 'external_seed', source: 'external' },
+        { product_id: 'ext_5', merchant_id: 'external_seed', source: 'external' },
+        { product_id: 'ext_6', merchant_id: 'external_seed', source: 'external' },
+      ],
+      metadata: {
+        similar_confidence: 'high',
+        low_confidence: true,
+        low_confidence_reason_codes: ['UNDERFILL_FOR_QUALITY'],
+        underfill: 2,
+        retrieval_mix: { internal: 0, external: 8 },
+        similar_status: 'ready',
+      },
+    });
+
+    expect(metadata).toEqual(
+      expect.objectContaining({
+        requested_count: 6,
+        visible_count: 6,
+        underfill: 0,
+        raw_underfill: 2,
+        low_confidence: false,
+        low_confidence_reason_codes: [],
+        retrieval_mix: { internal: 0, external: 6 },
+        raw_retrieval_mix: { internal: 0, external: 8 },
+        similar_status: 'ready',
+      }),
+    );
+  });
+
   it('returns 503 when mainline recommendations fail instead of falling back upstream', async () => {
     const recommendMock = jest.fn().mockRejectedValue(new Error('engine unavailable'));
 

@@ -14383,6 +14383,74 @@ function getSimilarCardEnrichmentMetadata(items) {
     : {};
 }
 
+function countVisibleSimilarSources(items = []) {
+  return (Array.isArray(items) ? items : []).reduce(
+    (acc, item) => {
+      const merchantId = String(item?.merchant_id || item?.merchantId || item?.product?.merchant_id || '').trim();
+      const productId = String(item?.product_id || item?.productId || item?.id || item?.product?.product_id || '').trim();
+      const source = String(item?.source || item?.retrieval_source || '').trim().toLowerCase();
+      if (source === 'external' || source === 'external_seed' || merchantId === EXTERNAL_SEED_MERCHANT_ID || productId.startsWith('ext_')) {
+        acc.external += 1;
+      } else {
+        acc.internal += 1;
+      }
+      return acc;
+    },
+    { internal: 0, external: 0 },
+  );
+}
+
+function withoutReasonCode(values = [], reasonCode) {
+  return (Array.isArray(values) ? values : [])
+    .map((value) => String(value || '').trim())
+    .filter((value) => value && value !== reasonCode);
+}
+
+function appendReasonCode(values = [], reasonCode) {
+  const out = withoutReasonCode(values, '');
+  if (reasonCode && !out.includes(reasonCode)) out.push(reasonCode);
+  return out;
+}
+
+function calibrateSimilarMetadataForVisibleProducts({
+  metadata = {},
+  products = [],
+  requestedLimit = 6,
+} = {}) {
+  const visibleProducts = Array.isArray(products) ? products : [];
+  const safeRequestedLimit = Math.max(1, Math.min(Number(requestedLimit || 6) || 6, 30));
+  const visibleUnderfill = Math.max(0, safeRequestedLimit - visibleProducts.length);
+  const rawUnderfill =
+    Number.isFinite(Number(metadata?.underfill)) ? Math.max(0, Number(metadata.underfill)) : null;
+  const rawRetrievalMix =
+    metadata?.retrieval_mix && typeof metadata.retrieval_mix === 'object' && !Array.isArray(metadata.retrieval_mix)
+      ? metadata.retrieval_mix
+      : null;
+  const visibleRetrievalMix = countVisibleSimilarSources(visibleProducts);
+  const originalReasonCodes = Array.isArray(metadata?.low_confidence_reason_codes)
+    ? metadata.low_confidence_reason_codes
+    : [];
+  const lowConfidenceReasonCodes =
+    visibleUnderfill > 0
+      ? appendReasonCode(originalReasonCodes, 'UNDERFILL_FOR_QUALITY')
+      : withoutReasonCode(originalReasonCodes, 'UNDERFILL_FOR_QUALITY');
+  const similarConfidence = String(metadata?.similar_confidence || '').trim() || (visibleProducts.length > 0 ? 'medium' : 'low');
+  const lowConfidence = lowConfidenceReasonCodes.length > 0 || similarConfidence === 'low';
+
+  return {
+    ...metadata,
+    ...(rawUnderfill != null && rawUnderfill !== visibleUnderfill ? { raw_underfill: rawUnderfill } : {}),
+    ...(rawRetrievalMix ? { raw_retrieval_mix: rawRetrievalMix } : {}),
+    requested_count: safeRequestedLimit,
+    visible_count: visibleProducts.length,
+    underfill: visibleUnderfill,
+    low_confidence: lowConfidence,
+    low_confidence_reason_codes: lowConfidenceReasonCodes,
+    retrieval_mix: visibleRetrievalMix,
+    similar_status: visibleProducts.length > 0 ? 'ready' : metadata?.similar_status || 'empty',
+  };
+}
+
 async function enrichSimilarProductsForPdpCards({
   items = [],
   checkoutToken = null,
@@ -27527,7 +27595,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               products,
               metadata: {
                 route: 'find_similar_products_mainline_wrapper',
-                ...(rec?.metadata && typeof rec.metadata === 'object' ? rec.metadata : {}),
+                ...calibrateSimilarMetadataForVisibleProducts({
+                  metadata: rec?.metadata && typeof rec.metadata === 'object' ? rec.metadata : {},
+                  products,
+                  requestedLimit: limit,
+                }),
                 direct_base_detail_mode: isExternalSeedDirectBase ? 'external_seed_minimal' : 'bounded_detail',
                 direct_base_detail_budget_ms: PDP_SIMILAR_BASE_DETAIL_BUDGET_MS,
                 ...cardEnrichmentMetadata,
@@ -31098,6 +31170,7 @@ module.exports._debug = {
   resolvePublicBeautyCompoundIntent,
   shouldBridgePublicBeautySearchToDiscovery,
   filterSimilarProductsWithCardHighlights,
+  calibrateSimilarMetadataForVisibleProducts,
   enrichSimilarProductsForPdpCards,
   getSimilarCardEnrichmentMetadata,
   shouldEnrichSimilarCard,
