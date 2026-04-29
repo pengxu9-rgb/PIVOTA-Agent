@@ -41,6 +41,11 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       CREATOR_CATALOG_CACHE_TTL_SECONDS: process.env.CREATOR_CATALOG_CACHE_TTL_SECONDS,
       CREATOR_CATALOG_AUTO_SYNC_INTERVAL_MINUTES: process.env.CREATOR_CATALOG_AUTO_SYNC_INTERVAL_MINUTES,
       AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED: process.env.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED,
+      PIVOT_BEAUTY_CONTRACT_V1_ENABLED: process.env.PIVOT_BEAUTY_CONTRACT_V1_ENABLED,
+      PIVOT_BEAUTY_LEGACY_FALLBACK_ISOLATION_ENABLED:
+        process.env.PIVOT_BEAUTY_LEGACY_FALLBACK_ISOLATION_ENABLED,
+      PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED:
+        process.env.PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED,
     };
 
     process.env.PIVOTA_API_BASE = 'http://pivota.test';
@@ -141,8 +146,25 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     if (prevEnv.SEARCH_EVAL_INTERNAL_ONLY_FORCE_NO_EARLY_DECISION === undefined) {
       delete process.env.SEARCH_EVAL_INTERNAL_ONLY_FORCE_NO_EARLY_DECISION;
     } else {
-      process.env.SEARCH_EVAL_INTERNAL_ONLY_FORCE_NO_EARLY_DECISION =
-        prevEnv.SEARCH_EVAL_INTERNAL_ONLY_FORCE_NO_EARLY_DECISION;
+    process.env.SEARCH_EVAL_INTERNAL_ONLY_FORCE_NO_EARLY_DECISION =
+      prevEnv.SEARCH_EVAL_INTERNAL_ONLY_FORCE_NO_EARLY_DECISION;
+    }
+    if (prevEnv.PIVOT_BEAUTY_CONTRACT_V1_ENABLED === undefined) {
+      delete process.env.PIVOT_BEAUTY_CONTRACT_V1_ENABLED;
+    } else {
+      process.env.PIVOT_BEAUTY_CONTRACT_V1_ENABLED = prevEnv.PIVOT_BEAUTY_CONTRACT_V1_ENABLED;
+    }
+    if (prevEnv.PIVOT_BEAUTY_LEGACY_FALLBACK_ISOLATION_ENABLED === undefined) {
+      delete process.env.PIVOT_BEAUTY_LEGACY_FALLBACK_ISOLATION_ENABLED;
+    } else {
+      process.env.PIVOT_BEAUTY_LEGACY_FALLBACK_ISOLATION_ENABLED =
+        prevEnv.PIVOT_BEAUTY_LEGACY_FALLBACK_ISOLATION_ENABLED;
+    }
+    if (prevEnv.PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED === undefined) {
+      delete process.env.PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED;
+    } else {
+      process.env.PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED =
+        prevEnv.PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED;
     }
     if (prevEnv.CREATOR_CATALOG_CACHE_TTL_SECONDS === undefined) {
       delete process.env.CREATOR_CATALOG_CACHE_TTL_SECONDS;
@@ -1331,7 +1353,11 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(observedSql.join('\n')).not.toMatch(/seed_data::text/i);
     expect(observedSql.join('\n')).not.toMatch(/LIKE ANY/i);
     expect(observedSql.join('\n')).not.toMatch(/recall'->>'vertical'/i);
-    expect(observedSql.join('\n')).toMatch(/tool = ANY/i);
+    expect(observedSql.join('\n')).not.toMatch(/tool = ANY/i);
+    expect(observedSql.join('\n')).toMatch(/tool = \$3/i);
+    expect(observedSql.join('\n')).toMatch(/seed_data->'derived'->'recall'->>'category'/i);
+    expect(observedSql.join('\n')).toMatch(/seed_data->>'product_type'/i);
+    expect(observedSql.join('\n')).not.toMatch(/CASE\s+WHEN\s+tool/i);
     expect(observedSql.join('\n')).not.toMatch(/FROM products_cache/i);
   });
 
@@ -2992,6 +3018,68 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(resp.body.products.map((product) => product.product_id)).toContain('ext_azelaic_1');
     expect(resp.body.products.map((product) => product.product_id)).not.toContain('ext_retinol_1');
     expect(resp.body.metadata?.beauty_mainline_filter?.safety_rules).toContain('avoid_retinoids');
+    expect(upstreamSearch.isDone()).toBe(false);
+  });
+
+  test('beauty pivot contract returns failed mainline empty instead of falling through to legacy fallback', async () => {
+    const observedSql = [];
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        observedSql.push(text);
+        if (text.includes('FROM products_cache')) {
+          throw new Error('products_cache should not be touched by beauty contract direct path');
+        }
+        if (text.includes('FROM external_product_seeds')) {
+          return { rows: [] };
+        }
+        return { rows: [] };
+      },
+    }));
+
+    const upstreamSearch = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [{ product_id: 'legacy_spf_1', title: 'Legacy SPF Should Not Be Adopted' }],
+        total: 1,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'daily sunscreen sensitive skin',
+            page: 1,
+            limit: 6,
+            in_stock_only: true,
+            market: 'US',
+          },
+        },
+        metadata: {
+          source: 'beauty_cross_agent_batch',
+          test_suite: 'beauty_cross_agent_multiturn',
+          ui_surface: 'beauty_cross_agent_batch',
+          market: 'US',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.pivot_contract_version).toBe('pivot.agent.v1');
+    expect(resp.body.status).toBe('failed');
+    expect(resp.body.success).toBe(false);
+    expect(resp.body.products).toEqual([]);
+    expect(resp.body.metadata?.failure_class).toBe('beauty_mainline_empty');
+    expect(resp.body.metadata?.fallback_attempted).toBe(false);
+    expect(resp.body.metadata?.fallback_adopted).toBe(false);
+    expect(resp.body.metadata?.contract_bridge?.legacy_fallback).toBe(false);
+    expect(resp.body.metadata?.route_health?.primary_path_used).toBe('beauty_external_seed_mainline');
+    expect(observedSql.some((sql) => sql.includes('FROM external_product_seeds'))).toBe(true);
     expect(upstreamSearch.isDone()).toBe(false);
   });
 });

@@ -9,6 +9,7 @@ describe('external seed products in creator categories', () => {
     process.env.CREATOR_CATEGORIES_INCLUDE_EXTERNAL_SEEDS = 'true';
     process.env.CREATOR_CATEGORIES_EXTERNAL_SEEDS_LIMIT = '25';
     process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET = 'US';
+    const observedSql = [];
 
     const taxonomy = {
       version: 'test@v1',
@@ -71,6 +72,7 @@ describe('external seed products in creator categories', () => {
     jest.doMock('../../src/db', () => ({
       query: async (sql) => {
         const text = String(sql || '');
+        observedSql.push(text);
         if (text.includes('FROM products_cache')) {
           return { rows: [] };
         }
@@ -153,7 +155,10 @@ describe('external seed products in creator categories', () => {
     }));
 
     // eslint-disable-next-line global-require
-    return require('../../src/services/categories');
+    return {
+      ...require('../../src/services/categories'),
+      observedSql,
+    };
   }
 
   test('counts external seeds into canonical taxonomy categories', async () => {
@@ -171,7 +176,7 @@ describe('external seed products in creator categories', () => {
   });
 
   test('builds external products with seed snapshot variants and image galleries', async () => {
-    const { getCreatorCategoryProducts } = loadCategoriesServiceWithDb();
+    const { getCreatorCategoryProducts, observedSql } = loadCategoriesServiceWithDb();
 
     const result = await getCreatorCategoryProducts('test-creator', 'beauty-tools', {
       viewId: 'GLOBAL_BEAUTY',
@@ -191,5 +196,11 @@ describe('external seed products in creator categories', () => {
         image_url: 'https://example.com/img.jpg',
       }),
     );
+    const externalSeedSql = observedSql.filter((sql) => sql.includes('FROM external_product_seeds')).join('\n');
+    expect(externalSeedSql).toMatch(/tool = \$3/i);
+    expect(externalSeedSql).not.toMatch(/tool = ANY/i);
+    expect(externalSeedSql).toMatch(/seed_data->'derived'->'recall'->>'category'/i);
+    expect(externalSeedSql).toMatch(/seed_data->>'product_type'/i);
+    expect(externalSeedSql).not.toMatch(/CASE\s+WHEN\s+tool/i);
   });
 });

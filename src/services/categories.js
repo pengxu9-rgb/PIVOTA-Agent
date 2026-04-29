@@ -13,6 +13,23 @@ const PIVOTA_API_BASE = (process.env.PIVOTA_API_BASE || 'http://localhost:8080')
 
 const CHANNEL_CREATOR = 'creator_agents';
 const CREATOR_CATEGORY_TREE_CACHE = new Map();
+const PIVOT_BEAUTY_CONTRACT_VERSION = 'pivot.agent.v1';
+
+function parseBooleanEnv(value, fallback = false) {
+  const raw = String(value || '').trim().toLowerCase();
+  if (!raw) return fallback;
+  if (['1', 'true', 'yes', 'y', 'on'].includes(raw)) return true;
+  if (['0', 'false', 'no', 'n', 'off'].includes(raw)) return false;
+  return fallback;
+}
+
+function isPivotBeautyContractEnabled() {
+  return parseBooleanEnv(process.env.PIVOT_BEAUTY_CONTRACT_V1_ENABLED, true);
+}
+
+function isPivotBeautyDirectRecallEnabled() {
+  return parseBooleanEnv(process.env.PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED, true);
+}
 
 function parsePositiveInt(value, fallback) {
   const n = Number(value);
@@ -1312,63 +1329,64 @@ function buildBeautyCategoryProductTerms(categorySlug, taxonomy, targetId) {
 }
 
 async function queryExternalSeedProductsForBeautyCategory({ categorySlug, taxonomy, targetId, limit }) {
+  if (!isPivotBeautyDirectRecallEnabled()) return [];
   if (!process.env.DATABASE_URL) return [];
   const market =
     String(process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET || 'US').trim().toUpperCase() || 'US';
   const terms = buildBeautyCategoryProductTerms(categorySlug, taxonomy, targetId);
   if (!terms.length) return [];
   const safeLimit = Math.max(1, Math.min(Number(limit || 20) || 20, 80));
-  const res = await query(
-    `
-      SELECT
-        id,
-        external_product_id,
-        market,
-        tool,
-        destination_url,
-        canonical_url,
-        domain,
-        title,
-        image_url,
-        price_amount,
-        price_currency,
-        availability,
-        seed_data,
-        status,
-        attached_product_key,
-        created_at,
-        updated_at
-      FROM external_product_seeds
-      WHERE status = 'active'
-        AND attached_product_key IS NULL
-        AND market = $1
-        AND tool = ANY($3::text[])
-        AND coalesce(lower(availability), '') NOT IN ('out of stock', 'out_of_stock', 'outofstock', 'oos')
-        AND lower(coalesce(
-          seed_data->'derived'->'recall'->>'category',
-          seed_data->>'category',
-          seed_data->'product'->>'category',
-          seed_data->'snapshot'->>'category',
-          seed_data->>'product_type',
-          seed_data->'product'->>'product_type',
-          seed_data->'snapshot'->>'product_type',
-          ''
-        )) = ANY($2::text[])
-      ORDER BY
-        CASE
-          WHEN tool = 'creator_agents' THEN 0
-          WHEN tool = '*' OR tool = '' THEN 1
-          ELSE 2
-        END,
-        updated_at DESC NULLS LAST,
-        created_at DESC NULLS LAST
-      LIMIT $4
-    `,
-    [market, terms, [CHANNEL_CREATOR, '*', ''], safeLimit],
-  );
+  const categoryAuthoritySql = `lower(coalesce(
+    seed_data->'derived'->'recall'->>'category',
+    seed_data->>'category',
+    seed_data->'product'->>'category',
+    seed_data->'snapshot'->>'category',
+    seed_data->>'product_type',
+    seed_data->'product'->>'product_type',
+    seed_data->'snapshot'->>'product_type',
+    ''
+  ))`;
+  const rows = [];
+  for (const tool of [CHANNEL_CREATOR, '*', '']) {
+    if (rows.length >= safeLimit) break;
+    const remainingLimit = Math.max(1, safeLimit - rows.length);
+    const res = await query(
+      `
+        SELECT
+          id,
+          external_product_id,
+          market,
+          tool,
+          destination_url,
+          canonical_url,
+          domain,
+          title,
+          image_url,
+          price_amount,
+          price_currency,
+          availability,
+          seed_data,
+          status,
+          attached_product_key,
+          created_at,
+          updated_at
+        FROM external_product_seeds
+        WHERE status = 'active'
+          AND attached_product_key IS NULL
+          AND market = $1
+          AND tool = $3
+          AND coalesce(lower(availability), '') NOT IN ('out of stock', 'out_of_stock', 'outofstock', 'oos')
+          AND ${categoryAuthoritySql} = ANY($2::text[])
+        ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+        LIMIT $4
+      `,
+      [market, terms, tool, remainingLimit],
+    );
+    rows.push(...(Array.isArray(res?.rows) ? res.rows : []));
+  }
   const seen = new Set();
   const products = [];
-  for (const row of Array.isArray(res?.rows) ? res.rows : []) {
+  for (const row of rows) {
     const product = buildExternalSeedProduct(row);
     if (!product) continue;
     const key = `${product.merchant_id || product.merchantId || ''}::${product.product_id || product.id || ''}`;
@@ -1828,6 +1846,13 @@ async function getCreatorCategoryProducts(creatorId, categorySlug, options = {})
         return {
           creatorId,
           categorySlug,
+          ...(isPivotBeautyContractEnabled()
+            ? {
+                pivot_contract_version: PIVOT_BEAUTY_CONTRACT_VERSION,
+                status: 'success',
+                route_authority: 'creator_agent',
+              }
+            : {}),
           products: fastProducts.slice(startIdx, endIdx),
           pagination: {
             page,
@@ -1835,7 +1860,15 @@ async function getCreatorCategoryProducts(creatorId, categorySlug, options = {})
             total: fastProducts.length,
           },
           metadata: {
+            ...(isPivotBeautyContractEnabled()
+              ? {
+                  pivot_contract_version: PIVOT_BEAUTY_CONTRACT_VERSION,
+                  status: 'success',
+                  route_authority: 'creator_agent',
+                }
+              : {}),
             query_source: 'creator_category_beauty_external_seed_mainline',
+            creator_id: creatorId,
           },
         };
       }

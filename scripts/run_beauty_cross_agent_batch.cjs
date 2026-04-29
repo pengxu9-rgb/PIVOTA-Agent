@@ -475,6 +475,9 @@ function classifyResponseDegradation(body, response) {
   const diagnostics = stringifyForDiagnostics(body);
   const reasons = [];
   const source = String(querySource || '').trim();
+  const contractStatus = String(body && body.status || '').trim().toLowerCase();
+  if (contractStatus === 'failed') reasons.push('contract_failed');
+  if (contractStatus === 'degraded') reasons.push('contract_degraded');
   const lowerDiag = diagnostics.toLowerCase();
   if (source === 'agent_products_error_fallback') reasons.push('error_fallback');
   if (source.includes('fallback') && products.length === 0) reasons.push('empty_fallback');
