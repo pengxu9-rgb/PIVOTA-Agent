@@ -9354,48 +9354,10 @@ async function queryCreatorHumanApparelExternalSeedRows({
 }
 
 const BEAUTY_EXTERNAL_SEED_CATEGORY_TERMS_BY_FAMILY = Object.freeze({
-  sunscreen: [
-    'sunscreen',
-    'sun screen',
-    'sun care',
-    'sun protection',
-    'spf',
-    'face sunscreen',
-    'facial sunscreen',
-  ],
-  cleanser: [
-    'cleanser',
-    'face cleanser',
-    'facial cleanser',
-    'face wash',
-    'facial wash',
-    'cleansing gel',
-    'cleansing milk',
-  ],
-  moisturizer: [
-    'moisturizer',
-    'moisturiser',
-    'cream',
-    'face cream',
-    'facial cream',
-    'gel cream',
-    'barrier cream',
-    'repair cream',
-    'cica cream',
-    'balm',
-    'lotion',
-  ],
-  serum: [
-    'serum',
-    'essence',
-    'ampoule',
-    'treatment',
-    'brightening serum',
-    'vitamin c serum',
-    'niacinamide serum',
-    'peptide serum',
-    'azelaic serum',
-  ],
+  sunscreen: ['sunscreen'],
+  cleanser: ['cleanser'],
+  moisturizer: ['moisturizer'],
+  serum: ['serum', 'essence', 'ampoule'],
 });
 
 function buildBeautyExternalSeedCategoryTerms(intent = null) {
@@ -9414,11 +9376,6 @@ function buildBeautyExternalSeedCategoryTerms(intent = null) {
   }
   if (terms.length === 0) {
     [
-      'skincare',
-      'skin care',
-      'skin-care',
-      'facial care',
-      'beauty',
       'sunscreen',
       'cleanser',
       'moisturizer',
@@ -9463,24 +9420,18 @@ async function queryBeautyExternalSeedRowsFast({
   const safeLimit = Math.max(1, Math.min(240, Number(limit || 80) || 80));
   const categoryTerms = buildBeautyExternalSeedCategoryTerms(intent);
   const recallPatterns = buildBeautyExternalSeedRecallPatterns({ queryText, intent });
-  const sqlParams = [safeMarket, categoryTerms, recallPatterns];
+  const sqlParams = [safeMarket, categoryTerms];
   const filters = [
-    `(
-      lower(coalesce(
-        seed_data->'derived'->'recall'->>'category',
-        seed_data->>'category',
-        seed_data->'product'->>'category',
-        seed_data->'snapshot'->>'category',
-        seed_data->>'product_type',
-        seed_data->'product'->>'product_type',
-        seed_data->'snapshot'->>'product_type',
-        ''
-      )) = ANY($2::text[])
-      OR lower(coalesce(seed_data->'derived'->'recall'->>'vertical', '')) IN ('beauty', 'skincare', 'skin care', 'skin-care')
-      OR lower(coalesce(seed_data->'derived'->'recall'->>'retrieval_title', '')) LIKE ANY($3::text[])
-      OR lower(coalesce(seed_data->'derived'->'recall'->>'retrieval_summary', '')) LIKE ANY($3::text[])
-      OR lower(coalesce(title, '')) LIKE ANY($3::text[])
-    )`,
+    `lower(coalesce(
+      seed_data->'derived'->'recall'->>'category',
+      seed_data->>'category',
+      seed_data->'product'->>'category',
+      seed_data->'snapshot'->>'category',
+      seed_data->>'product_type',
+      seed_data->'product'->>'product_type',
+      seed_data->'snapshot'->>'product_type',
+      ''
+    )) = ANY($2::text[])`,
   ];
 
   if (inStockOnly) {

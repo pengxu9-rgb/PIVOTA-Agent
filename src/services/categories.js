@@ -1269,43 +1269,27 @@ function stripCounts(nodes) {
 }
 
 const BEAUTY_CATEGORY_PRODUCT_TERMS_BY_SLUG = Object.freeze({
-  beauty: [
-    'skincare',
-    'skin care',
-    'skin-care',
-    'facial care',
-    'sunscreen',
-    'cleanser',
-    'moisturizer',
-    'serum',
-  ],
+  beauty: ['sunscreen', 'cleanser', 'moisturizer', 'serum', 'essence'],
   'skin-care': [
-    'skincare',
-    'skin care',
-    'skin-care',
-    'facial care',
     'sunscreen',
     'cleanser',
     'moisturizer',
-    'cream',
     'serum',
+    'essence',
   ],
   'facial-care': [
-    'facial care',
-    'skincare',
-    'skin care',
     'sunscreen',
     'cleanser',
     'moisturizer',
-    'cream',
     'serum',
+    'essence',
   ],
-  sunscreen: ['sunscreen', 'sun care', 'sun protection', 'spf', 'face sunscreen'],
-  cleanser: ['cleanser', 'face cleanser', 'facial cleanser', 'face wash', 'cleansing gel'],
-  moisturizer: ['moisturizer', 'moisturiser', 'cream', 'face cream', 'gel cream', 'barrier cream'],
-  serum: ['serum', 'essence', 'ampoule', 'treatment', 'brightening serum'],
-  makeup: ['makeup', 'cosmetics', 'foundation', 'blush', 'bronzer', 'highlighter'],
-  haircare: ['haircare', 'hair care', 'shampoo', 'conditioner', 'hair oil', 'hair mask'],
+  sunscreen: ['sunscreen'],
+  cleanser: ['cleanser'],
+  moisturizer: ['moisturizer'],
+  serum: ['serum', 'essence', 'ampoule'],
+  makeup: ['foundation', 'blush', 'bronzer', 'highlighter'],
+  haircare: ['shampoo', 'conditioner', 'hair oil', 'hair mask'],
 });
 
 function buildBeautyCategoryProductTerms(categorySlug, taxonomy, targetId) {
@@ -1333,7 +1317,6 @@ async function queryExternalSeedProductsForBeautyCategory({ categorySlug, taxono
     String(process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET || 'US').trim().toUpperCase() || 'US';
   const terms = buildBeautyCategoryProductTerms(categorySlug, taxonomy, targetId);
   if (!terms.length) return [];
-  const patterns = terms.map((term) => `%${term}%`);
   const safeLimit = Math.max(1, Math.min(Number(limit || 20) || 20, 80));
   const res = await query(
     `
@@ -1359,34 +1342,29 @@ async function queryExternalSeedProductsForBeautyCategory({ categorySlug, taxono
       WHERE status = 'active'
         AND attached_product_key IS NULL
         AND market = $1
-        AND (tool = '*' OR tool IS NULL OR tool = '' OR tool = $4)
+        AND (tool = '*' OR tool IS NULL OR tool = '' OR tool = $3)
         AND coalesce(lower(availability), '') NOT IN ('out of stock', 'out_of_stock', 'outofstock', 'oos')
-        AND (
-          lower(coalesce(
-            seed_data->'derived'->'recall'->>'category',
-            seed_data->>'category',
-            seed_data->'product'->>'category',
-            seed_data->'snapshot'->>'category',
-            seed_data->>'product_type',
-            seed_data->'product'->>'product_type',
-            seed_data->'snapshot'->>'product_type',
-            ''
-          )) = ANY($2::text[])
-          OR lower(coalesce(seed_data->'derived'->'recall'->>'retrieval_title', '')) LIKE ANY($3::text[])
-          OR lower(coalesce(seed_data->'derived'->'recall'->>'retrieval_summary', '')) LIKE ANY($3::text[])
-          OR lower(coalesce(title, '')) LIKE ANY($3::text[])
-        )
+        AND lower(coalesce(
+          seed_data->'derived'->'recall'->>'category',
+          seed_data->>'category',
+          seed_data->'product'->>'category',
+          seed_data->'snapshot'->>'category',
+          seed_data->>'product_type',
+          seed_data->'product'->>'product_type',
+          seed_data->'snapshot'->>'product_type',
+          ''
+        )) = ANY($2::text[])
       ORDER BY
         CASE
-          WHEN tool = $4 THEN 0
+          WHEN tool = $3 THEN 0
           WHEN tool = '*' OR tool IS NULL OR tool = '' THEN 1
           ELSE 2
         END,
         updated_at DESC NULLS LAST,
         created_at DESC NULLS LAST
-      LIMIT $5
+      LIMIT $4
     `,
-    [market, terms, patterns, CHANNEL_CREATOR, safeLimit],
+    [market, terms, CHANNEL_CREATOR, safeLimit],
   );
   const seen = new Set();
   const products = [];
