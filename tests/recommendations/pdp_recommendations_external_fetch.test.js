@@ -287,6 +287,91 @@ describe('RecommendationEngine external candidate fetch', () => {
     );
   });
 
+  test('enrichExternalBaseProduct rescues seed price for cross-brand primer recall scoring', async () => {
+    process.env.DATABASE_URL = 'postgres://example.test/pivota';
+
+    const queryMock = jest.fn(async () => ({
+      rows: [
+        {
+          id: 'eps_tirtir_primer',
+          external_product_id: 'ext_tirtir_reflect',
+          title: 'Reflect Glow Prep Primer',
+          image_url: 'https://tirtir.example/primer.jpg',
+          price_amount: 17.6,
+          price_currency: 'USD',
+          availability: 'in_stock',
+          seed_data: {
+            brand: 'TIRTIR',
+            recall_category: 'Primer',
+            recall_vertical: 'makeup',
+            category: 'Primer',
+            product_type: 'Primer',
+          },
+        },
+      ],
+    }));
+
+    jest.doMock('../../src/db', () => ({ query: queryMock }));
+    jest.doMock('../../src/logger', () => ({ warn: jest.fn(), info: jest.fn() }));
+
+    const { _internals, pickLayeredRecommendations } = require('../../src/services/RecommendationEngine');
+    const out = await _internals.enrichExternalBaseProduct({
+      merchant_id: 'external_seed',
+      product_id: 'ext_tirtir_reflect',
+      external_product_id: 'ext_tirtir_reflect',
+      title: 'Reflect Glow Prep Primer',
+      source: 'external_seed',
+    });
+
+    expect(out.product).toEqual(
+      expect.objectContaining({
+        category: 'Primer',
+        price_amount: 17.6,
+        price: 17.6,
+        currency: 'USD',
+        price_currency: 'USD',
+        availability: 'in_stock',
+        image_url: 'https://tirtir.example/primer.jpg',
+      }),
+    );
+    expect(out.semantic?.rescue_fields).toEqual(
+      expect.arrayContaining(['category', 'price', 'currency', 'availability', 'image']),
+    );
+
+    const picked = pickLayeredRecommendations({
+      baseProduct: out.product,
+      baseSemantic: out.semantic,
+      k: 6,
+      internalCandidates: [],
+      externalCandidates: [
+        {
+          merchant_id: 'external_seed',
+          product_id: 'ext_fenty_grip_trip',
+          source: 'external_seed',
+          platform: 'external',
+          title: 'Grip Trip Hydrating + Plumping Primer',
+          brand: 'Fenty Beauty',
+          category: 'Primer',
+          product_type: 'Primer',
+          price_amount: 22,
+          currency: 'USD',
+          availability: 'in_stock',
+          in_stock: true,
+          semantic_vertical: 'makeup',
+        },
+      ],
+    });
+
+    expect(picked.items).toHaveLength(1);
+    expect(picked.items[0]).toEqual(
+      expect.objectContaining({
+        product_id: 'ext_fenty_grip_trip',
+        reason: expect.stringContaining('L3'),
+      }),
+    );
+    expect(picked.debug.filters.by_confidence).toBe(0);
+  });
+
   test('fetchExternalCandidates carries stored recall vertical for primer candidates', async () => {
     process.env.DATABASE_URL = 'postgres://example.test/pivota';
 

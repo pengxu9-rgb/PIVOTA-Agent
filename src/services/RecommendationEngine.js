@@ -1151,6 +1151,10 @@ const EXTERNAL_SEED_SEMANTIC_SELECT = `
         id,
         external_product_id,
         title,
+        image_url,
+        price_amount,
+        price_currency,
+        availability,
         jsonb_strip_nulls(jsonb_build_object(
           'title', seed_data->>'title',
           'brand', coalesce(seed_data->>'brand', seed_data->'derived'->'recall'->>'brand'),
@@ -1163,6 +1167,11 @@ const EXTERNAL_SEED_SEMANTIC_SELECT = `
           'recall_category', seed_data->'derived'->'recall'->>'category',
           'recall_vertical', seed_data->'derived'->'recall'->>'vertical',
           'description', seed_data->>'description',
+          'image_url', seed_data->>'image_url',
+          'price_amount', seed_data->>'price_amount',
+          'price', seed_data->>'price',
+          'price_currency', seed_data->>'price_currency',
+          'availability', seed_data->>'availability',
           'snapshot', jsonb_strip_nulls(jsonb_build_object(
             'title', seed_data->'snapshot'->>'title',
             'brand', seed_data->'snapshot'->>'brand',
@@ -1172,7 +1181,13 @@ const EXTERNAL_SEED_SEMANTIC_SELECT = `
             'category', seed_data->'snapshot'->>'category',
             'product_type', seed_data->'snapshot'->>'product_type',
             'productType', seed_data->'snapshot'->>'productType',
-            'description', seed_data->'snapshot'->>'description'
+            'description', seed_data->'snapshot'->>'description',
+            'image_url', seed_data->'snapshot'->>'image_url',
+            'image', seed_data->'snapshot'->'image',
+            'price_amount', seed_data->'snapshot'->>'price_amount',
+            'price', seed_data->'snapshot'->>'price',
+            'price_currency', seed_data->'snapshot'->>'price_currency',
+            'availability', seed_data->'snapshot'->>'availability'
           ))
         )) AS seed_data,
         updated_at
@@ -2271,6 +2286,61 @@ async function enrichExternalBaseProduct(baseProduct) {
   if (!String(enriched.description || '').trim() && seedDescription) {
     enriched.description = seedDescription;
     rescueFields.push('description');
+  }
+
+  const seedPriceAmount = normalizeAmount(
+    seedRecord?.price_amount ??
+      seedData?.price_amount ??
+      seedData?.price ??
+      snapshot?.price_amount ??
+      snapshot?.price,
+  );
+  if (!(getPriceAmount(enriched) > 0) && seedPriceAmount > 0) {
+    enriched.price_amount = seedPriceAmount;
+    enriched.price = seedPriceAmount;
+    rescueFields.push('price');
+  }
+
+  const seedCurrency = String(
+    seedRecord?.price_currency ||
+      seedData?.price_currency ||
+      snapshot?.price_currency ||
+      '',
+  ).trim();
+  if (!String(enriched.currency || enriched.price_currency || '').trim() && seedCurrency) {
+    enriched.currency = seedCurrency.toUpperCase();
+    enriched.price_currency = seedCurrency.toUpperCase();
+    rescueFields.push('currency');
+  }
+
+  const seedAvailability = String(
+    seedRecord?.availability ||
+      seedData?.availability ||
+      snapshot?.availability ||
+      '',
+  ).trim();
+  if (!String(enriched.availability || '').trim() && seedAvailability) {
+    enriched.availability = seedAvailability;
+    const normalizedAvailability = seedAvailability.toLowerCase();
+    enriched.in_stock = !['out_of_stock', 'sold_out', 'unavailable', 'discontinued'].includes(
+      normalizedAvailability,
+    );
+    rescueFields.push('availability');
+  }
+
+  const seedImageUrl = firstImageUrl(
+    seedRecord?.image_url,
+    seedData?.image_url,
+    seedData?.image,
+    snapshot?.image_url,
+    snapshot?.image,
+    Array.isArray(seedData?.images) ? seedData.images[0] : null,
+    Array.isArray(snapshot?.images) ? snapshot.images[0] : null,
+  );
+  if (!String(enriched.image_url || enriched.image || '').trim() && seedImageUrl) {
+    enriched.image_url = seedImageUrl;
+    enriched.image = seedImageUrl;
+    rescueFields.push('image');
   }
 
   if (!String(enriched.external_seed_id || '').trim() && seedRecord?.id) {
