@@ -234,6 +234,115 @@ describe('RecommendationEngine external candidate fetch', () => {
     expect(out.semantic?.rescue_fields).toEqual(expect.arrayContaining(['category']));
   });
 
+  test('enrichExternalBaseProduct uses stored recall vertical before title/body inference', async () => {
+    process.env.DATABASE_URL = 'postgres://example.test/pivota';
+
+    const queryMock = jest.fn(async () => ({
+      rows: [
+        {
+          id: 'eps_tirtir_primer',
+          external_product_id: 'ext_tirtir_primer',
+          title: 'Reflect Glow Prep Primer',
+          seed_data: {
+            brand: 'TIRTIR',
+            recall_category: 'Primer',
+            recall_vertical: 'makeup',
+            category: 'Primer',
+            product_type: 'Primer',
+            description: '95% skincare-infused red serum primer for crystal glow, plumping and grip.',
+          },
+        },
+      ],
+    }));
+
+    jest.doMock('../../src/db', () => ({ query: queryMock }));
+    jest.doMock('../../src/logger', () => ({ warn: jest.fn(), info: jest.fn() }));
+
+    const { _internals } = require('../../src/services/RecommendationEngine');
+    const out = await _internals.enrichExternalBaseProduct({
+      merchant_id: 'external_seed',
+      product_id: 'ext_tirtir_primer',
+      external_product_id: 'ext_tirtir_primer',
+      title: 'Reflect Glow Prep Primer',
+      brand: 'TIRTIR',
+      category: 'Skincare',
+      product_type: 'Products',
+      description: '95% skincare-infused red serum primer for crystal glow, plumping and grip.',
+      source: 'external_seed',
+    });
+
+    expect(_internals.getLeafCategory(out.product)).toBe('primer');
+    expect(out.product).toEqual(
+      expect.objectContaining({
+        category: 'Primer',
+        product_type: 'Primer',
+        semantic_vertical: 'makeup',
+      }),
+    );
+    expect(out.semantic).toEqual(
+      expect.objectContaining({
+        vertical: 'makeup',
+        vertical_inferred: false,
+      }),
+    );
+  });
+
+  test('fetchExternalCandidates carries stored recall vertical for primer candidates', async () => {
+    process.env.DATABASE_URL = 'postgres://example.test/pivota';
+
+    const queryMock = jest.fn(async (_sql, params) => {
+      const brandAliases = params?.[3];
+      if (Array.isArray(brandAliases) && brandAliases.includes('tirtir')) {
+        return {
+          rows: [
+            {
+              ...makeExternalRow({
+                id: 'eps_tirtir_primer',
+                external_product_id: 'ext_tirtir_primer',
+                title: 'Reflect Glow Prep Primer',
+                brand: 'TIRTIR',
+                category: '',
+                description: '95% skincare-infused red serum primer.',
+              }),
+              seed_category: '',
+              seed_product_type: '',
+              seed_data: {
+                brand: 'TIRTIR',
+                derived: {
+                  recall: {
+                    category: 'Primer',
+                    vertical: 'makeup',
+                  },
+                },
+              },
+            },
+          ],
+        };
+      }
+      return { rows: [] };
+    });
+
+    jest.doMock('../../src/db', () => ({ query: queryMock }));
+    jest.doMock('../../src/logger', () => ({ warn: jest.fn(), info: jest.fn() }));
+
+    const { _internals } = require('../../src/services/RecommendationEngine');
+    const products = await _internals.fetchExternalCandidates({
+      brandHint: 'TIRTIR',
+      categoryHint: 'Primer',
+      limit: 12,
+    });
+
+    expect(products).toHaveLength(1);
+    expect(products[0]).toEqual(
+      expect.objectContaining({
+        product_id: 'ext_tirtir_primer',
+        category: 'Primer',
+        product_type: 'Primer',
+        semantic_vertical: 'makeup',
+      }),
+    );
+  });
+
   test('enrichExternalBaseProduct keeps SPF foundation products in makeup vertical when category is foundation', async () => {
     process.env.DATABASE_URL = 'postgres://example.test/pivota';
 

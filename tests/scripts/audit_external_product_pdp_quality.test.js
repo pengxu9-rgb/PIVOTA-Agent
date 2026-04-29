@@ -2,6 +2,8 @@ const {
   resolveGatewayUrl,
   buildAuthoritativePayload,
   buildPublicGatewayPayload,
+  buildProbeFailureResponse,
+  mergePdpProbeResponses,
   unwrapLivePdpPayload,
 } = require('../../scripts/audit-external-product-pdp-quality');
 const {
@@ -55,13 +57,7 @@ describe('audit-external-product-pdp-quality helpers', () => {
         include: [
           'canonical',
           'product_intel',
-          'product_details',
-          'product_facts',
-          'active_ingredients',
-          'ingredients_inci',
-          'how_to_use',
           'reviews_preview',
-          'similar',
           'variant_selector',
           'offers',
         ],
@@ -69,7 +65,56 @@ describe('audit-external-product-pdp-quality helpers', () => {
           debug: true,
           no_cache: true,
           cache_bypass: true,
-          similar_cache_bypass: true,
+        },
+      },
+    });
+  });
+
+  test('merges core and details PDP probe modules while preserving details probe errors', () => {
+    const merged = mergePdpProbeResponses(
+      {
+        status: 'success',
+        modules: [
+          { type: 'canonical', data: { product_group_id: 'pg_1' } },
+          { type: 'product_intel', data: { product_intel_core: { what_it_is: { body: 'Primer.' } } } },
+        ],
+      },
+      {
+        status: 'error',
+        error: { code: 'PROBE_TIMEOUT', message: 'timeout of 25000ms exceeded' },
+      },
+    );
+
+    expect(merged.modules.map((module) => module.type)).toEqual(['canonical', 'product_intel']);
+    expect(merged.error).toEqual({ code: 'PROBE_TIMEOUT', message: 'timeout of 25000ms exceeded' });
+    expect(unwrapLivePdpPayload(merged).modules.map((module) => module.type)).toEqual(['canonical', 'product_intel']);
+  });
+
+  test('keeps authoritative get_pdp_v2 include override explicit for specialized probes', () => {
+    expect(buildAuthoritativePayload('get_pdp_v2', {
+      product_id: 'ext_123',
+      include: ['similar'],
+    })).toMatchObject({
+      payload: {
+        include: ['similar'],
+      },
+    });
+  });
+
+  test('wraps gateway timeouts as probe failure payloads instead of throwing out of audit rows', () => {
+    const response = buildProbeFailureResponse(
+      Object.assign(new Error('timeout of 12000ms exceeded'), { code: 'ECONNABORTED' }),
+      { operation: 'find_similar_products', probe: 'similar_slow' },
+    );
+
+    expect(response).toEqual({
+      status: 'error',
+      error: {
+        code: 'PROBE_TIMEOUT',
+        message: 'timeout of 12000ms exceeded',
+        details: {
+          operation: 'find_similar_products',
+          probe: 'similar_slow',
         },
       },
     });

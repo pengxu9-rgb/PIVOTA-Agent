@@ -343,6 +343,28 @@ describe('externalSeedRecall', () => {
     expect(doc.vertical).toBe('makeup');
   });
 
+  test('classifies makeup primer before serum texture copy', () => {
+    const doc = buildExternalSeedRecallDoc({
+      row: {
+        id: 'eps_tirtir_primer',
+        title: 'Reflect Glow Prep Primer',
+      },
+      seedData: {
+        brand: 'TIRTIR',
+        pdp_description_raw:
+          '95% skincare-infused red serum primer for crystal glow, plumping and grip.',
+        pdp_details_sections: [
+          { heading: '5% NIACINAMIDE', body: 'Refines the look of tone and texture.' },
+        ],
+      },
+      snapshot: {},
+    });
+
+    expect(doc.category).toBe('Primer');
+    expect(doc.vertical).toBe('makeup');
+    expect(doc.alias_tokens).toEqual(expect.arrayContaining(['Primer', 'prep primer']));
+  });
+
   test('does not classify makeup cream textures as moisturizers', () => {
     const examples = [
       ['Cheeks Out Freestyle Cream Bronzer — Teddy', 'Bronzer', 'makeup'],

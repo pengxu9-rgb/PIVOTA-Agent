@@ -14,7 +14,7 @@ const BEAUTY_VERTICAL_PATTERNS = Object.freeze([
   ['fragrance', /\b(fragrance|perfume|parfum|cologne|eau de parfum|eau de toilette|scent)\b/i],
   ['haircare', /\b(shampoo|conditioner|hair|leave-in|leave in|detangling|repair mask|hair mask|scalp|curl|edge control|styling gel)\b/i],
   ['beauty_tools', /\b(brush|makeup brush|kabuki|tool|tools|applicator|sponge|detangling brush)\b/i],
-  ['makeup', /\b(concealer|foundation|powder|mascara|lip|lipstick|gloss|blush|bronzer|eyeshadow|eye shadow|brow|liner|highlighter)\b/i],
+  ['makeup', /\b(primer|concealer|foundation|powder|mascara|lip|lipstick|gloss|blush|bronzer|eyeshadow|eye shadow|brow|liner|highlighter)\b/i],
   ['skincare', /\b(cleanser|serum|toner|mist|cream|moisturizer|moisturiser|mask|treatment|essence|ampoule|sunscreen|spf|lotion)\b/i],
 ]);
 const BROAD_RECALL_CATEGORY_KEYS = new Set([
@@ -76,6 +76,7 @@ const RECALL_LEAF_CATEGORY_PATTERNS = Object.freeze([
   ['Eye Cream', /\beye(?:[\s-]+[a-z0-9+-]+){0,4}[\s-]+(?:creams?|balms?|gels?)\b/i],
   ['Exfoliant', /\b(?:scrub|scrubs|exfoliant|exfoliants|exfoliator|exfoliators)\b/i],
   ['Foundation', /\bfoundations?\b/i],
+  ['Primer', /\b(?:face\s+)?primers?\b/i],
   ['Concealer', /\b(?:concealers?|eye\s+brightener|undereye\s+brightener|under[-\s]?eye\s+brightener)\b/i],
   ['Powder', /\b(?:powder|setting powder|pressed powder|loose powder|blurring powder|finishing powder)\b/i],
   ['Mascara', /\bmascaras?\b/i],

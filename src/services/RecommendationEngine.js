@@ -77,6 +77,22 @@ const PDP_RECS_CACHE_METRICS = {
   bypasses: 0,
   evictions: 0,
 };
+const STORED_SEMANTIC_VERTICALS = new Set([
+  'fragrance',
+  'skincare',
+  'haircare',
+  'bodycare',
+  'makeup',
+  'tools',
+]);
+const STORED_SEMANTIC_VERTICAL_ALIASES = Object.freeze({
+  beauty_tools: 'tools',
+  beauty_tool: 'tools',
+  tool: 'tools',
+  skin_care: 'skincare',
+  body_care: 'bodycare',
+  hair_care: 'haircare',
+});
 
 function getCacheStats() {
   return {
@@ -163,6 +179,13 @@ function normalizeText(input) {
     .replace(/[^a-z0-9\s-]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function normalizeStoredSemanticVertical(value) {
+  const normalized = normalizeText(value).replace(/\s+/g, '_');
+  if (!normalized || normalized === UNKNOWN_VERTICAL) return '';
+  const aliased = STORED_SEMANTIC_VERTICAL_ALIASES[normalized] || normalized;
+  return STORED_SEMANTIC_VERTICALS.has(aliased) ? aliased : '';
 }
 
 function normalizeHostname(input) {
@@ -934,6 +957,17 @@ function buildExternalSeedRecommendationCandidate(row, options = {}) {
   );
   const sourceListingScope = firstNonEmptyText(seedData.source_listing_scope, snapshot.source_listing_scope);
   const variantTitle = firstNonEmptyText(seedData.variant_title, snapshot.variant_title);
+  const recallCategory = firstNonEmptyText(
+    seedData.recall_category,
+    seedData.derived?.recall?.category,
+  );
+  const recallVertical = normalizeStoredSemanticVertical(
+    firstNonEmptyText(
+      seedData.recall_vertical,
+      seedData.semantic_vertical,
+      seedData.derived?.recall?.vertical,
+    ),
+  );
 
   if (!externalProductId) return null;
 
@@ -966,6 +1000,7 @@ function buildExternalSeedRecommendationCandidate(row, options = {}) {
   );
   const productType = firstNonEmptyText(
     row.seed_product_type,
+    recallCategory,
     seedData.product_type,
     seedData.productType,
     snapshot.product_type,
@@ -973,6 +1008,7 @@ function buildExternalSeedRecommendationCandidate(row, options = {}) {
   );
   const category = firstNonEmptyText(
     row.seed_category,
+    recallCategory,
     seedData.category,
     seedData.product?.category,
     snapshot.category,
@@ -1039,6 +1075,7 @@ function buildExternalSeedRecommendationCandidate(row, options = {}) {
     ...(parentExternalProductId ? { parent_external_product_id: parentExternalProductId } : {}),
     ...(sourceListingScope ? { source_listing_scope: sourceListingScope } : {}),
     ...(variantTitle ? { variant_title: variantTitle } : {}),
+    ...(recallVertical ? { semantic_vertical: recallVertical, recall_vertical: recallVertical } : {}),
   };
 }
 
@@ -1064,6 +1101,8 @@ const EXTERNAL_SEED_RECOMMENDATION_SELECT = `
               'category', coalesce(seed_data->>'category', seed_data->'derived'->'recall'->>'category'),
               'product_type', coalesce(seed_data->>'product_type', seed_data->'derived'->'recall'->>'category'),
               'productType', seed_data->>'productType',
+              'recall_category', seed_data->'derived'->'recall'->>'category',
+              'recall_vertical', seed_data->'derived'->'recall'->>'vertical',
               'image_url', seed_data->>'image_url',
               'price_amount', seed_data->>'price_amount',
               'price', seed_data->>'price',
@@ -1121,6 +1160,8 @@ const EXTERNAL_SEED_SEMANTIC_SELECT = `
           'category', coalesce(seed_data->>'category', seed_data->'derived'->'recall'->>'category'),
           'product_type', coalesce(seed_data->>'product_type', seed_data->'derived'->'recall'->>'category'),
           'productType', seed_data->>'productType',
+          'recall_category', seed_data->'derived'->'recall'->>'category',
+          'recall_vertical', seed_data->'derived'->'recall'->>'vertical',
           'description', seed_data->>'description',
           'snapshot', jsonb_strip_nulls(jsonb_build_object(
             'title', seed_data->'snapshot'->>'title',
@@ -1189,12 +1230,23 @@ function scoreCandidate(base, cand) {
   };
 }
 
-function buildBaseFeatures(baseProduct) {
+function resolveSemanticVerticalOverride(product, semantic = null) {
+  return (
+    normalizeStoredSemanticVertical(semantic?.vertical) ||
+    normalizeStoredSemanticVertical(product?.semantic_vertical) ||
+    normalizeStoredSemanticVertical(product?.recall_vertical)
+  );
+}
+
+function buildBaseFeatures(baseProduct, semantic = null) {
   const brand = getBrandName(baseProduct);
   const leafCategory = getLeafCategory(baseProduct);
   const parentCategory = getParentCategory(baseProduct);
   const priceAmount = getPriceAmount(baseProduct);
-  const verticalSignal = inferVerticalFromProduct(baseProduct);
+  const semanticVertical = resolveSemanticVerticalOverride(baseProduct, semantic);
+  const verticalSignal = semanticVertical
+    ? { vertical: semanticVertical, inferred: false, matched_keywords: [] }
+    : inferVerticalFromProduct(baseProduct);
   const tokens = tokenize([baseProduct.title, baseProduct.name, brand, leafCategory, parentCategory].filter(Boolean).join(' '));
   const normalizedTitle = normalizeText(baseProduct.title || baseProduct.name);
   return {
@@ -1220,7 +1272,10 @@ function buildCandidateFeatures(candidateProduct, baseCurrency) {
   const parentCategory = getParentCategory(candidateProduct);
   const priceAmount = getPriceAmount(candidateProduct);
   const currency = normalizeCurrency(candidateProduct, baseCurrency);
-  const verticalSignal = inferVerticalFromProduct(candidateProduct);
+  const semanticVertical = resolveSemanticVerticalOverride(candidateProduct);
+  const verticalSignal = semanticVertical
+    ? { vertical: semanticVertical, inferred: false, matched_keywords: [] }
+    : inferVerticalFromProduct(candidateProduct);
   const tokens = tokenize([candidateProduct.title, candidateProduct.name, brand, leafCategory, parentCategory].filter(Boolean).join(' '));
   const normalizedTitle = normalizeText(candidateProduct.title || candidateProduct.name);
   return {
@@ -1405,7 +1460,7 @@ function pickLayeredRecommendations({
   baseSemantic = null,
 }) {
   const K = Math.max(1, Math.min(Number(k || 6) || 6, 30));
-  const base = buildBaseFeatures(baseProduct);
+  const base = buildBaseFeatures(baseProduct, baseSemantic);
 
   const nearPriceTight = (relDiff) => relDiff != null && relDiff <= 0.25;
   const nearPriceLoose = (relDiff) => relDiff != null && relDiff <= 0.6;
@@ -2183,7 +2238,9 @@ async function enrichExternalBaseProduct(baseProduct) {
   }
 
   const seedCategory = String(
-    seedData?.category ||
+    seedData?.recall_category ||
+      seedData?.derived?.recall?.category ||
+      seedData?.category ||
       seedData?.product?.category ||
       seedData?.product_type ||
       seedData?.productType ||
@@ -2224,15 +2281,25 @@ async function enrichExternalBaseProduct(baseProduct) {
   }
 
   const inferred = inferVerticalFromProduct(enriched);
+  const storedRecallVertical = normalizeStoredSemanticVertical(
+    seedData?.recall_vertical ||
+      seedData?.semantic_vertical ||
+      seedData?.derived?.recall?.vertical,
+  );
+  const effectiveVertical = storedRecallVertical || inferred.vertical;
+  if (storedRecallVertical) {
+    enriched.semantic_vertical = storedRecallVertical;
+    enriched.recall_vertical = storedRecallVertical;
+  }
   return {
     product: enriched,
     semantic: {
-      vertical: inferred.vertical,
-      vertical_inferred: inferred.inferred,
+      vertical: effectiveVertical,
+      vertical_inferred: storedRecallVertical ? false : inferred.inferred,
       signal_strength: computeSemanticSignalStrength({
         brand: getBrandName(enriched),
         leafCategory: getLeafCategory(enriched),
-        vertical: inferred.vertical,
+        vertical: effectiveVertical,
       }),
       rescue_applied: rescueFields.length > 0,
       rescue_fields: rescueFields,

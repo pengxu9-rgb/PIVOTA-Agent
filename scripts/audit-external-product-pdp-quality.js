@@ -16,6 +16,7 @@ const {
   buildVariantGate,
   buildExternalSeedQualityResult,
   collectLiveGalleryImages,
+  extractProbeError,
 } = require('../src/services/externalSeedPdpQuality');
 const {
   pickSeedTargetUrl,
@@ -34,18 +35,19 @@ const DEFAULT_GATEWAY_URL =
   process.env.PDP_SMOKE_GATEWAY ||
   `${DEFAULT_PUBLIC_GATEWAY_ORIGIN}${PUBLIC_GATEWAY_PATH}`;
 const PUBLIC_PDP_AUDIT_INCLUDE = ['product_intel', 'reviews_preview'];
-const AUTHORITATIVE_PDP_AUDIT_INCLUDE = [
+const AUTHORITATIVE_PDP_CORE_AUDIT_INCLUDE = [
   'canonical',
   'product_intel',
+  'reviews_preview',
+  'variant_selector',
+  'offers',
+];
+const AUTHORITATIVE_PDP_DETAILS_AUDIT_INCLUDE = [
   'product_details',
   'product_facts',
   'active_ingredients',
   'ingredients_inci',
   'how_to_use',
-  'reviews_preview',
-  'similar',
-  'variant_selector',
-  'offers',
 ];
 
 function argValue(name) {
@@ -67,6 +69,12 @@ function normalizeNonEmptyString(value) {
 function normalizeUrlLike(value) {
   const normalized = normalizeNonEmptyString(value);
   return /^https?:\/\//i.test(normalized) ? normalized : '';
+}
+
+function parsePositiveInt(value, fallback, min = 1, max = Number.MAX_SAFE_INTEGER) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return Math.max(min, Math.min(max, Math.floor(parsed)));
 }
 
 function resolveGatewayUrl(value) {
@@ -110,13 +118,14 @@ function buildAuthoritativePayload(operation, payload = {}) {
           merchant_id: 'external_seed',
           product_id: normalizeNonEmptyString(payload.product_id),
         },
-        include: AUTHORITATIVE_PDP_AUDIT_INCLUDE,
+        include: Array.isArray(payload.include) && payload.include.length > 0
+          ? payload.include
+          : AUTHORITATIVE_PDP_CORE_AUDIT_INCLUDE,
         options: {
           ...ensureJsonObject(payload.options),
           debug: true,
           no_cache: true,
           cache_bypass: true,
-          similar_cache_bypass: true,
         },
       },
     };
@@ -275,7 +284,24 @@ async function fetchExtractorTruth(row, baseUrl) {
   };
 }
 
-async function invokeGateway(gatewayUrl, operation, payload) {
+function buildProbeFailureResponse(error, { operation = '', probe = '' } = {}) {
+  const code = normalizeNonEmptyString(error?.code);
+  const message = normalizeNonEmptyString(error?.message || error);
+  const timedOut = code === 'ECONNABORTED' || /timeout/i.test(message);
+  return {
+    status: 'error',
+    error: {
+      code: timedOut ? 'PROBE_TIMEOUT' : code || 'PROBE_FAILED',
+      message: timedOut ? message || 'Probe timed out' : message || 'Probe failed',
+      details: {
+        operation,
+        probe,
+      },
+    },
+  };
+}
+
+async function invokeGateway(gatewayUrl, operation, payload, options = {}) {
   const resolvedGatewayUrl = resolveGatewayUrl(gatewayUrl);
   const requestBody = isAuthoritativeInvokeUrl(resolvedGatewayUrl)
     ? buildAuthoritativePayload(operation, ensureJsonObject(payload))
@@ -284,12 +310,28 @@ async function invokeGateway(gatewayUrl, operation, payload) {
     resolvedGatewayUrl,
     requestBody,
     {
-      timeout: Number(process.env.EXTERNAL_PDP_QUALITY_GATE_TIMEOUT_MS || 45000),
+      timeout: parsePositiveInt(
+        options.timeoutMs,
+        parsePositiveInt(process.env.EXTERNAL_PDP_QUALITY_GATE_TIMEOUT_MS, 45000, 1000, 300000),
+        1000,
+        300000,
+      ),
       headers: getHeaders(),
       validateStatus: () => true,
     },
   );
   return response.data || {};
+}
+
+async function invokeGatewayProbe(gatewayUrl, operation, payload, options = {}) {
+  try {
+    return await invokeGateway(gatewayUrl, operation, payload, options);
+  } catch (error) {
+    return buildProbeFailureResponse(error, {
+      operation,
+      probe: normalizeNonEmptyString(options.probe) || operation,
+    });
+  }
 }
 
 async function probeImageUrl(url) {
@@ -383,7 +425,52 @@ function unwrapLivePdpPayload(response = {}) {
   return ensureJsonObject(response);
 }
 
-async function auditRow(row, { catalogBaseUrl, gatewayUrl, imageHealthEnabled = true, imageHealthLimit = null }) {
+function mergeModuleLists(...moduleLists) {
+  const byType = new Map();
+  for (const modules of moduleLists) {
+    for (const module of Array.isArray(modules) ? modules : []) {
+      const type = normalizeNonEmptyString(module?.type);
+      if (!type || byType.has(type)) continue;
+      byType.set(type, module);
+    }
+  }
+  return Array.from(byType.values());
+}
+
+function mergePdpProbeResponses(coreResponse = {}, detailsResponse = {}) {
+  const core = ensureJsonObject(coreResponse);
+  const details = ensureJsonObject(detailsResponse);
+  const corePayload = unwrapLivePdpPayload(core);
+  const detailsPayload = unwrapLivePdpPayload(details);
+  const mergedPayload = {
+    ...corePayload,
+    ...detailsPayload,
+    product: {
+      ...ensureJsonObject(corePayload.product),
+      ...ensureJsonObject(detailsPayload.product),
+    },
+    modules: mergeModuleLists(corePayload.modules, detailsPayload.modules),
+  };
+  const detailsProbeError = extractProbeError(details);
+  return {
+    ...core,
+    ...details,
+    ...(detailsProbeError ? { error: details.error || detailsProbeError } : {}),
+    modules: mergeModuleLists(core.modules, details.modules),
+    pdp_payload: mergedPayload,
+  };
+}
+
+async function auditRow(row, {
+  catalogBaseUrl,
+  gatewayUrl,
+  imageHealthEnabled = true,
+  imageHealthLimit = null,
+  similarEnabled = true,
+  pdpTimeoutMs = null,
+  detailsPdpTimeoutMs = null,
+  similarTimeoutMs = null,
+}) {
   const seedData = ensureJsonObject(row.seed_data);
   const snapshot = ensureJsonObject(seedData.snapshot);
   const variantScopedSeed =
@@ -395,18 +482,56 @@ async function auditRow(row, { catalogBaseUrl, gatewayUrl, imageHealthEnabled = 
     normalizeNonEmptyString(row.external_product_id) ||
     normalizeNonEmptyString(seedData.external_product_id) ||
     normalizeNonEmptyString(seedData.product_id);
-  const [livePdp, similar] = await Promise.all([
+  const effectiveCorePdpTimeoutMs = parsePositiveInt(
+    pdpTimeoutMs,
+    parsePositiveInt(process.env.EXTERNAL_PDP_QUALITY_CORE_PDP_TIMEOUT_MS, 10000, 1000, 300000),
+    1000,
+    300000,
+  );
+  const effectiveDetailsPdpTimeoutMs = parsePositiveInt(
+    detailsPdpTimeoutMs,
+    parsePositiveInt(process.env.EXTERNAL_PDP_QUALITY_DETAILS_PDP_TIMEOUT_MS, 25000, 1000, 300000),
+    1000,
+    300000,
+  );
+  const effectiveSimilarTimeoutMs = parsePositiveInt(
+    similarTimeoutMs,
+    parsePositiveInt(process.env.EXTERNAL_PDP_QUALITY_SIMILAR_TIMEOUT_MS, 12000, 1000, 300000),
+    1000,
+    300000,
+  );
+
+  const [corePdp, detailsPdp, similar] = await Promise.all([
     productId
-      ? invokeGateway(gatewayUrl, 'get_pdp_v2', { product_id: productId })
+      ? invokeGatewayProbe(gatewayUrl, 'get_pdp_v2', {
+          product_id: productId,
+          include: AUTHORITATIVE_PDP_CORE_AUDIT_INCLUDE,
+        }, {
+          timeoutMs: effectiveCorePdpTimeoutMs,
+          probe: 'pdp_core',
+        })
       : Promise.resolve({ error: 'missing_product_id' }),
     productId
-      ? invokeGateway(gatewayUrl, 'find_similar_products', {
+      ? invokeGatewayProbe(gatewayUrl, 'get_pdp_v2', {
+          product_id: productId,
+          include: AUTHORITATIVE_PDP_DETAILS_AUDIT_INCLUDE,
+        }, {
+          timeoutMs: effectiveDetailsPdpTimeoutMs,
+          probe: 'pdp_details',
+        })
+      : Promise.resolve({ error: 'missing_product_id' }),
+    similarEnabled && productId
+      ? invokeGatewayProbe(gatewayUrl, 'find_similar_products', {
           product_id: productId,
           limit: 6,
           options: { debug: true, no_cache: true },
+        }, {
+          timeoutMs: effectiveSimilarTimeoutMs,
+          probe: 'similar_slow',
         })
-      : Promise.resolve({ error: 'missing_product_id' }),
+      : Promise.resolve({ skipped: true, reason: similarEnabled ? 'missing_product_id' : 'similar_probe_disabled' }),
   ]);
+  const livePdp = mergePdpProbeResponses(corePdp, detailsPdp);
   const livePayload = unwrapLivePdpPayload(livePdp);
   const imageHealth = await probeImageHealth(collectLiveGalleryImages(livePayload), {
     skip: !imageHealthEnabled,
@@ -427,23 +552,24 @@ async function auditRow(row, { catalogBaseUrl, gatewayUrl, imageHealthEnabled = 
     imageHealth,
   });
   const identityGate = buildIdentityGate({
-    livePayload,
-    liveResponse: ensureJsonObject(livePdp),
+    livePayload: unwrapLivePdpPayload(corePdp),
+    liveResponse: ensureJsonObject(corePdp),
   });
   const productIntelGate = buildProductIntelGate({
-    livePayload,
-    liveResponse: ensureJsonObject(livePdp),
+    livePayload: unwrapLivePdpPayload(corePdp),
+    liveResponse: ensureJsonObject(corePdp),
   });
   const similarGate = buildSimilarGate({
     similarResponse: ensureJsonObject(similar),
-    livePayload,
-    liveResponse: ensureJsonObject(livePdp),
+    livePayload: similarEnabled ? livePayload : {},
+    liveResponse: similarEnabled ? ensureJsonObject(livePdp) : {},
     exclusionFlags: recall.exclusion_flags || {},
+    skippedReason: similarEnabled ? '' : 'similar_probe_disabled',
   });
   const variantGate = buildVariantGate({
     seedData,
-    livePayload,
-    liveResponse: ensureJsonObject(livePdp),
+    livePayload: unwrapLivePdpPayload(corePdp),
+    liveResponse: ensureJsonObject(corePdp),
   });
   return buildExternalSeedQualityResult({
     seedId: row.id,
@@ -469,6 +595,10 @@ async function main() {
   const gatewayUrl = resolveGatewayUrl(argValue('gateway-url') || argValue('gateway') || argValue('gateway-base-url'));
   const imageHealthEnabled = !hasArg('skip-image-health');
   const imageHealthLimit = argValue('image-health-limit');
+  const similarEnabled = !hasArg('skip-similar') && !hasArg('fast-only');
+  const pdpTimeoutMs = argValue('pdp-timeout-ms');
+  const detailsPdpTimeoutMs = argValue('details-pdp-timeout-ms');
+  const similarTimeoutMs = argValue('similar-timeout-ms');
   const rows = await fetchRows({
     market,
     seedId: argValue('seed-id'),
@@ -487,6 +617,10 @@ async function main() {
         gatewayUrl,
         imageHealthEnabled,
         imageHealthLimit,
+        similarEnabled,
+        pdpTimeoutMs,
+        detailsPdpTimeoutMs,
+        similarTimeoutMs,
       }),
     );
   }
@@ -525,8 +659,11 @@ module.exports = {
   getHeaders,
   buildAuthoritativePayload,
   buildPublicGatewayPayload,
+  buildProbeFailureResponse,
+  invokeGatewayProbe,
   isAuthoritativeInvokeUrl,
   unwrapLivePdpPayload,
+  mergePdpProbeResponses,
   probeImageUrl,
   probeImageHealth,
   auditRow,

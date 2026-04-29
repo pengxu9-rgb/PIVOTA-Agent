@@ -136,6 +136,17 @@ describe('externalSeedPdpQuality', () => {
     expect(similarGate.failure_reasons).toEqual([]);
   });
 
+  test('treats disabled similar probes as skipped instead of PDP quality failures', () => {
+    const similarGate = buildSimilarGate({
+      similarResponse: { skipped: true, reason: 'similar_probe_disabled' },
+      exclusionFlags: { gift_card: false, donation_bundle: false, non_merchandise: false },
+    });
+
+    expect(similarGate.status).toBe('skipped');
+    expect(similarGate.skipped_reason).toBe('similar_probe_disabled');
+    expect(similarGate.failure_reasons).toEqual([]);
+  });
+
   test('fails product intel gate when the module is present but blocked or empty', () => {
     const gate = buildProductIntelGate({
       liveResponse: {

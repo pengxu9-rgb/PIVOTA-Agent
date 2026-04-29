@@ -635,7 +635,24 @@ function buildLivePdpGate({
   };
 }
 
-function buildSimilarGate({ similarResponse = {}, livePayload = {}, liveResponse = {}, exclusionFlags = {} } = {}) {
+function buildSimilarGate({
+  similarResponse = {},
+  livePayload = {},
+  liveResponse = {},
+  exclusionFlags = {},
+  skippedReason = '',
+} = {}) {
+  const normalizedSkippedReason = normalizeNonEmptyString(skippedReason || similarResponse?.reason);
+  if (similarResponse?.skipped || normalizedSkippedReason) {
+    return {
+      status: 'skipped',
+      similar_count: 0,
+      card_highlight_missing_count: 0,
+      exempt: false,
+      skipped_reason: normalizedSkippedReason || 'similar_probe_skipped',
+      failure_reasons: [],
+    };
+  }
   const similarModuleData =
     findModuleData('similar', liveResponse, livePayload) ||
     findModuleData('recommendations', liveResponse, livePayload) ||
@@ -765,7 +782,8 @@ function buildExternalSeedQualityResult({
     failureReasons.includes('duplicated_description_facts') ||
     failureReasons.includes('structured_sections_compressed_to_description_category') ||
     failureReasons.includes('merchant_faq_dropped') ||
-    failureReasons.includes('active_ingredients_expected_but_hidden')
+    failureReasons.includes('active_ingredients_expected_but_hidden') ||
+    failureReasons.includes('live_pdp_probe_failed')
   ) {
     rootCauseClassification.push('pdp_shaping_issue');
   }
@@ -779,6 +797,7 @@ function buildExternalSeedQualityResult({
     rootCauseClassification.push('product_intel_gap');
   }
   if (
+    failureReasons.includes('similar_probe_failed') ||
     failureReasons.includes('similar_underfill') ||
     failureReasons.includes('similar_card_missing_highlight')
   ) {
