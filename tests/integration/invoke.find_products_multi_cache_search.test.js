@@ -1251,6 +1251,87 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(upstreamSearch.isDone()).toBe(false);
   });
 
+  test('beauty production batch query uses indexed external seed mainline before cache or upstream', async () => {
+    process.env.DATABASE_URL = 'postgres://beauty-mainline-indexed-test';
+
+    const observedSql = [];
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        observedSql.push(text);
+        if (text.includes('FROM external_product_seeds')) {
+          const now = new Date().toISOString();
+          return {
+            rows: [
+              {
+                id: 'seed_spf_1',
+                market: 'US',
+                tool: '*',
+                title: 'Daily Mineral Sunscreen SPF 50',
+                canonical_url: 'https://example.com/products/daily-mineral-sunscreen-spf-50',
+                destination_url: 'https://example.com/products/daily-mineral-sunscreen-spf-50',
+                availability: 'in stock',
+                seed_data: { brand: 'Test Skin', category: 'sunscreen' },
+                updated_at: now,
+                created_at: now,
+              },
+              {
+                id: 'seed_spf_2',
+                market: 'US',
+                tool: 'creator_agents',
+                title: 'Lightweight Face Sunscreen SPF 45',
+                canonical_url: 'https://example.com/products/lightweight-face-sunscreen-spf-45',
+                destination_url: 'https://example.com/products/lightweight-face-sunscreen-spf-45',
+                availability: 'in stock',
+                seed_data: { brand: 'Test Skin', category: 'sunscreen' },
+                updated_at: now,
+                created_at: now,
+              },
+            ],
+          };
+        }
+        if (text.includes('FROM products_cache')) {
+          throw new Error('products_cache should not be touched by beauty mainline direct path');
+        }
+        return { rows: [] };
+      },
+    }));
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'daily sunscreen sensitive skin',
+            page: 1,
+            limit: 6,
+            in_stock_only: true,
+            market: 'US',
+          },
+        },
+        metadata: {
+          source: 'beauty_cross_agent_batch',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.metadata?.query_source).toBe('agent_products_beauty_external_seed_mainline');
+    expect(resp.body.metadata?.route_health).toEqual(
+      expect.objectContaining({
+        primary_path_used: 'beauty_external_seed_mainline',
+        fallback_triggered: false,
+      }),
+    );
+    expect((resp.body.products || []).map((item) => String(item?.title || ''))).toEqual(
+      expect.arrayContaining(['Daily Mineral Sunscreen SPF 50', 'Lightweight Face Sunscreen SPF 45']),
+    );
+    expect(observedSql.some((sql) => sql.includes('FROM external_product_seeds'))).toBe(true);
+    expect(observedSql.join('\n')).not.toMatch(/seed_data::text/i);
+    expect(observedSql.join('\n')).not.toMatch(/FROM products_cache/i);
+  });
+
   test('public source=search serum bridges cache contributors through unified discovery recall', async () => {
     process.env.SEARCH_EXTERNAL_HARD_RULE_PRUNE = 'true';
     let discoveryPayload = null;

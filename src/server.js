@@ -9353,6 +9353,217 @@ async function queryCreatorHumanApparelExternalSeedRows({
   };
 }
 
+const BEAUTY_EXTERNAL_SEED_CATEGORY_TERMS_BY_FAMILY = Object.freeze({
+  sunscreen: [
+    'sunscreen',
+    'sun screen',
+    'sun care',
+    'sun protection',
+    'spf',
+    'face sunscreen',
+    'facial sunscreen',
+  ],
+  cleanser: [
+    'cleanser',
+    'face cleanser',
+    'facial cleanser',
+    'face wash',
+    'facial wash',
+    'cleansing gel',
+    'cleansing milk',
+  ],
+  moisturizer: [
+    'moisturizer',
+    'moisturiser',
+    'cream',
+    'face cream',
+    'facial cream',
+    'gel cream',
+    'barrier cream',
+    'repair cream',
+    'cica cream',
+    'balm',
+    'lotion',
+  ],
+  serum: [
+    'serum',
+    'essence',
+    'ampoule',
+    'treatment',
+    'brightening serum',
+    'vitamin c serum',
+    'niacinamide serum',
+    'peptide serum',
+    'azelaic serum',
+  ],
+});
+
+function buildBeautyExternalSeedCategoryTerms(intent = null) {
+  const families = Array.isArray(intent?.families) ? intent.families : [];
+  const terms = [];
+  const seen = new Set();
+  const push = (value) => {
+    const normalized = normalizeSearchTextForMatch(value);
+    if (!normalized || seen.has(normalized)) return;
+    seen.add(normalized);
+    terms.push(normalized);
+  };
+  for (const family of families) {
+    const familyTerms = BEAUTY_EXTERNAL_SEED_CATEGORY_TERMS_BY_FAMILY[family] || [];
+    familyTerms.forEach(push);
+  }
+  if (terms.length === 0) {
+    [
+      'skincare',
+      'skin care',
+      'skin-care',
+      'facial care',
+      'beauty',
+      'sunscreen',
+      'cleanser',
+      'moisturizer',
+      'serum',
+    ].forEach(push);
+  }
+  return terms.slice(0, 28);
+}
+
+function buildBeautyExternalSeedRecallPatterns({ queryText = '', intent = null } = {}) {
+  const patterns = [];
+  const seen = new Set();
+  const push = (value) => {
+    const normalized = normalizeSearchTextForMatch(value);
+    if (!normalized || normalized.length < 3 || seen.has(normalized)) return;
+    seen.add(normalized);
+    patterns.push(`%${normalized}%`);
+  };
+  push(queryText);
+  buildBeautyMainlineRetrievalQueries(queryText, intent).forEach(push);
+  return patterns.slice(0, 14);
+}
+
+async function queryBeautyExternalSeedRowsFast({
+  market,
+  queryText,
+  intent,
+  inStockOnly,
+  limit,
+  toolScope = 'all_tools',
+} = {}) {
+  if (!process.env.DATABASE_URL) {
+    return {
+      rawProducts: [],
+      variantResults: [],
+      categoryTerms: [],
+      recallPatterns: [],
+    };
+  }
+
+  const safeMarket = String(market || 'US').trim().toUpperCase() || 'US';
+  const safeLimit = Math.max(1, Math.min(240, Number(limit || 80) || 80));
+  const categoryTerms = buildBeautyExternalSeedCategoryTerms(intent);
+  const recallPatterns = buildBeautyExternalSeedRecallPatterns({ queryText, intent });
+  const sqlParams = [safeMarket, categoryTerms, recallPatterns];
+  const filters = [
+    `(
+      lower(coalesce(
+        seed_data->'derived'->'recall'->>'category',
+        seed_data->>'category',
+        seed_data->'product'->>'category',
+        seed_data->'snapshot'->>'category',
+        seed_data->>'product_type',
+        seed_data->'product'->>'product_type',
+        seed_data->'snapshot'->>'product_type',
+        ''
+      )) = ANY($2::text[])
+      OR lower(coalesce(seed_data->'derived'->'recall'->>'vertical', '')) IN ('beauty', 'skincare', 'skin care', 'skin-care')
+      OR lower(coalesce(seed_data->'derived'->'recall'->>'retrieval_title', '')) LIKE ANY($3::text[])
+      OR lower(coalesce(seed_data->'derived'->'recall'->>'retrieval_summary', '')) LIKE ANY($3::text[])
+      OR lower(coalesce(title, '')) LIKE ANY($3::text[])
+    )`,
+  ];
+
+  if (inStockOnly) {
+    filters.push(
+      `coalesce(lower(availability), '') NOT IN ('out of stock', 'out_of_stock', 'outofstock', 'oos')`,
+    );
+  }
+
+  let toolClause = '';
+  let orderClause = 'updated_at DESC NULLS LAST, created_at DESC NULLS LAST';
+  if (toolScope === 'creator_preferred') {
+    sqlParams.push('creator_agents');
+    const toolBind = `$${sqlParams.length}`;
+    toolClause = `AND (tool = '*' OR tool IS NULL OR tool = '' OR tool = ${toolBind})`;
+    orderClause = `CASE
+      WHEN tool = ${toolBind} THEN 0
+      WHEN tool = '*' OR tool IS NULL OR tool = '' THEN 1
+      ELSE 2
+    END, updated_at DESC NULLS LAST, created_at DESC NULLS LAST`;
+  }
+
+  sqlParams.push(safeLimit);
+  const limitBind = `$${sqlParams.length}`;
+
+  const result = await query(
+    `
+      SELECT
+        id,
+        external_product_id,
+        market,
+        tool,
+        destination_url,
+        canonical_url,
+        domain,
+        title,
+        image_url,
+        price_amount,
+        price_currency,
+        availability,
+        seed_data,
+        updated_at,
+        created_at
+      FROM external_product_seeds
+      WHERE status = 'active'
+        AND attached_product_key IS NULL
+        AND market = $1
+        ${toolClause}
+        AND ${filters.join('\n        AND ')}
+      ORDER BY ${orderClause}
+      LIMIT ${limitBind}
+    `,
+    sqlParams,
+  );
+
+  const seen = new Set();
+  const rawProducts = [];
+  for (const row of Array.isArray(result?.rows) ? result.rows : []) {
+    const product = buildExternalSeedProduct(row);
+    if (!product) continue;
+    product.market = row.market || safeMarket;
+    product.tool = row.tool || null;
+    product.external_seed_id = product.external_seed_id || row.id || null;
+    const key = buildSearchProductKey(product);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    rawProducts.push(product);
+  }
+
+  return {
+    rawProducts,
+    variantResults: [
+      {
+        query: String(queryText || '').trim(),
+        row_count: rawProducts.length,
+        category_terms: categoryTerms,
+        recall_pattern_count: recallPatterns.length,
+      },
+    ],
+    categoryTerms,
+    recallPatterns,
+  };
+}
+
 function scoreCreatorHumanApparelExternalSeedProduct({
   product,
   normalizedQuery,
@@ -9853,11 +10064,12 @@ async function searchBeautyExternalSeedProductsMainline({
       .toUpperCase() || 'US';
   const retrievalQueries = buildBeautyMainlineRetrievalQueries(queryText, beautyIntent);
   const perQueryLimit = Math.max(36, Math.min(160, safeLimit * 8));
-  const creatorScopedRows = await queryCreatorHumanApparelExternalSeedRows({
+  const creatorScopedRows = await queryBeautyExternalSeedRowsFast({
     market,
-    retrievalQueries,
+    queryText,
+    intent: beautyIntent,
     inStockOnly,
-    perQueryLimit,
+    limit: perQueryLimit,
     toolScope: creatorScoped ? 'creator_preferred' : 'all_tools',
   });
   const creatorScopedProducts = Array.isArray(creatorScopedRows?.rawProducts)
@@ -9875,11 +10087,12 @@ async function searchBeautyExternalSeedProductsMainline({
       }).relevant !== true,
     );
   const broadenedRows = shouldBroaden
-    ? await queryCreatorHumanApparelExternalSeedRows({
+    ? await queryBeautyExternalSeedRowsFast({
         market,
-        retrievalQueries,
+        queryText,
+        intent: beautyIntent,
         inStockOnly,
-        perQueryLimit,
+        limit: perQueryLimit,
         toolScope: 'all_tools',
       })
     : null;
@@ -22189,6 +22402,105 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         'failed to prepare gateway governance audit for invoke ingress',
       );
       gatewayGovernanceAudit = null;
+    }
+    if (operation === 'find_products_multi') {
+      const earlySearch =
+        sourceContractPayload?.search &&
+        typeof sourceContractPayload.search === 'object' &&
+        !Array.isArray(sourceContractPayload.search)
+          ? sourceContractPayload.search
+          : sourceContractPayload && typeof sourceContractPayload === 'object' && !Array.isArray(sourceContractPayload)
+            ? sourceContractPayload
+            : {};
+      const earlyQueryText = String(earlySearch.query || earlySearch.q || '').trim();
+      const earlyStrictDecision = getStrictFindProductsMultiConstraintDecision({
+        search: earlySearch,
+        metadata,
+      });
+      const earlyMerchantIdsRaw = earlySearch.merchant_ids || earlySearch.merchantIds;
+      const earlyMerchantIds = Array.isArray(earlyMerchantIdsRaw)
+        ? earlyMerchantIdsRaw.map((value) => String(value || '').trim()).filter(Boolean)
+        : typeof earlyMerchantIdsRaw === 'string'
+          ? earlyMerchantIdsRaw.split(',').map((value) => String(value || '').trim()).filter(Boolean)
+          : [];
+      const earlyHasMerchantScope =
+        Boolean(String(earlySearch.merchant_id || earlySearch.merchantId || '').trim()) ||
+        earlyMerchantIds.length > 0;
+      const earlyBeautyIntent = inferBeautyMainlineIntent(earlyQueryText);
+      if (
+        earlyQueryText &&
+        earlyBeautyIntent.beautyLike &&
+        !earlyStrictDecision.enabled &&
+        !earlyHasMerchantScope
+      ) {
+        const earlyGuardrails = applyGatewayGuardrails({
+          req,
+          operation,
+          payload,
+          effectivePayload: sourceContractPayload,
+          metadata,
+        });
+        if (earlyGuardrails?.blocked) {
+          if (typeof earlyGuardrails.blocked.retryAfterSec === 'number') {
+            res.setHeader('Retry-After', String(Math.max(1, earlyGuardrails.blocked.retryAfterSec)));
+          }
+          return res.status(earlyGuardrails.blocked.status).json(earlyGuardrails.blocked.body);
+        }
+        const earlyDirectStartedAt = Date.now();
+        try {
+          const earlyCreatorId = extractCreatorId({ ...payload, metadata });
+          const earlySource = metadata?.source;
+          const earlyCreatorScoped =
+            isCreatorUiSource(earlySource) || normalizeAgentSource(earlySource) === 'creator-agent';
+          const directResponse = await searchBeautyExternalSeedProductsMainline({
+            search: earlySearch,
+            metadata,
+            intent: null,
+            creatorScoped: earlyCreatorScoped,
+          });
+          const directProducts = Array.isArray(directResponse?.products)
+            ? directResponse.products
+            : [];
+          if (directProducts.length > 0) {
+            return res.json({
+              ...directResponse,
+              metadata: {
+                ...(directResponse.metadata || {}),
+                service_version:
+                  directResponse.metadata?.service_version || buildServiceVersionMetadata(),
+                route_health: {
+                  ...((directResponse.metadata && directResponse.metadata.route_health) || {}),
+                  primary_path_used: 'beauty_external_seed_mainline',
+                  primary_latency_ms: Math.max(0, Date.now() - earlyDirectStartedAt),
+                  fallback_triggered: false,
+                  fallback_reason: null,
+                  final_returned_count: directProducts.length,
+                },
+                search_trace: {
+                  trace_id: gatewayRequestId,
+                  raw_query: earlyQueryText,
+                  upstream_stage: {
+                    called: false,
+                    timeout: false,
+                    status: null,
+                  },
+                  final_decision: 'beauty_mainline_direct_returned',
+                },
+                ...(earlyCreatorId ? { creator_id: earlyCreatorId } : {}),
+              },
+            });
+          }
+        } catch (earlyDirectErr) {
+          logger.warn(
+            {
+              gateway_request_id: gatewayRequestId,
+              err: earlyDirectErr?.message || String(earlyDirectErr),
+              query: earlyQueryText,
+            },
+            'early beauty external-seed mainline search failed; continuing to standard invoke path',
+          );
+        }
+      }
     }
     let findProductsMultiCtx = null;
     if (operation === 'find_products_multi') {
