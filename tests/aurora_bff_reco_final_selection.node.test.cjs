@@ -6153,6 +6153,137 @@ test('reco assistant structured renderer follows visible card order before raw r
   }
 });
 
+test('reco assistant structured renderer repairs brand-prefixed finish-fit reason transfer', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const matte = {
+      product_id: 'skintific_matte_fit',
+      display_name: 'Matte Fit Serum Sunscreen SPF 50+ PA++++',
+      brand: 'SKINTIFIC',
+      category: 'Sunscreen',
+      why_this_one:
+        'it has more direct airy, non-greasy texture evidence for oily skin under makeup while staying in a dedicated SPF50+ sunscreen lane',
+      matched_role_id: 'daily_sunscreen_finish_fit',
+      matched_role_label: 'Daily sunscreen with finish fit',
+      preferred_step: 'sunscreen',
+    };
+    const unseen = {
+      product_id: 'supergoop_unseen_spf50',
+      display_name: 'Unseen Sunscreen SPF 50',
+      brand: 'Supergoop',
+      category: 'Sunscreen',
+      why_this_one: 'it is the clearer, more invisible-feeling option for smoother under-makeup wear',
+      matched_role_id: 'daily_sunscreen_finish_fit',
+      matched_role_label: 'Daily sunscreen with finish fit',
+      preferred_step: 'sunscreen',
+    };
+    const lightSerum = {
+      product_id: 'skintific_light_serum_spf',
+      display_name: 'Light Serum Sunscreen SPF 50+ PA++++',
+      brand: 'SKINTIFIC',
+      category: 'Sunscreen',
+      why_this_one:
+        'it leans serum-light with skincare-support ingredients if you want SPF50+ without the stronger matte finish',
+      matched_role_id: 'daily_sunscreen_finish_fit',
+      matched_role_label: 'Daily sunscreen with finish fit',
+      preferred_step: 'sunscreen',
+    };
+    const payload = __internal.applyRecoContentSpineToPayload(
+      {
+        recommendations: [matte, unseen, lightSerum],
+        products: [matte, unseen, lightSerum],
+        sections: [
+          {
+            kind: 'product_cards',
+            products: [matte, unseen, lightSerum],
+          },
+        ],
+        recommendation_meta: {
+          resolved_target_step: 'sunscreen',
+          mainline_status: 'grounded_success',
+          final_selection: {
+            selection_owner: 'shopping_agent_beauty_mainline',
+            selected_product_ids: [
+              'skintific_matte_fit',
+              'supergoop_unseen_spf50',
+              'skintific_light_serum_spf',
+            ],
+            selected_titles: [
+              'SKINTIFIC Matte Fit Serum Sunscreen SPF 50+ PA++++',
+              'Supergoop Unseen Sunscreen SPF 50',
+              'SKINTIFIC Light Serum Sunscreen SPF 50+ PA++++',
+            ],
+            mainline_status: 'grounded_success',
+          },
+        },
+      },
+      {
+        ingredient_query: 'Daily sunscreen with finish fit',
+        resolved_target_step: 'sunscreen',
+        primary_target_id: 'daily_sunscreen_finish_fit',
+        ranked_targets: [
+          {
+            target_id: 'daily_sunscreen_finish_fit',
+            ingredient_query: 'Daily sunscreen with finish fit',
+            resolved_target_step: 'sunscreen',
+          },
+        ],
+        selected_target_ids: ['daily_sunscreen_finish_fit'],
+      },
+    );
+    payload.recommendation_meta.final_selection.selected_titles = [
+      'SKINTIFIC Matte Fit Serum Sunscreen SPF 50+ PA++++',
+      'Supergoop Unseen Sunscreen SPF 50',
+      'SKINTIFIC Light Serum Sunscreen SPF 50+ PA++++',
+    ];
+    const primaryTarget = payload.recommendation_meta.ranked_targets[0];
+    const names = payload.recommendation_meta.final_selection.selected_titles;
+    const renderMeta = {};
+    const text = __internal.renderRecoAssistantStructuredReasonRewrite({
+      structuredReason: {
+        lead_reason:
+          'SKINTIFIC Matte Fit Serum Sunscreen SPF 50+ PA++++ leans more matte and shine-controlling if you want less slip under makeup',
+        support_reasons: [
+          'Supergoop Unseen Sunscreen SPF 50 is the clearer, more invisible-feeling option for smoother under-makeup wear when you do not want to go too matte',
+          'SKINTIFIC Light Serum Sunscreen SPF 50+ PA++++ makes more sense if you want a more matte, shine-controlling finish with less slip under makeup',
+        ],
+      },
+      payload,
+      language: 'EN',
+      profile: { skinType: 'oily' },
+      userRequestText: 'I have oily skin and wear makeup every day. What sunscreen product should I buy?',
+      primaryTarget,
+      names,
+      requestMode: 'buy',
+      selectedProductRoleMix: 'same_role_comparison',
+      renderMeta,
+    });
+
+    assert.equal(renderMeta.visible_order_source, 'sections_products');
+    assert.ok(renderMeta.canonical_reason_replaced_count >= 3);
+    assert.match(text, /SKINTIFIC Light Serum Sunscreen SPF 50\+ PA\+\+\+\+ leans serum-light with skincare-support ingredients/i);
+    assert.doesNotMatch(text, /SKINTIFIC Light Serum Sunscreen SPF 50\+ PA\+\+\+\+[^.]+more matte, shine-controlling/i);
+
+    const badTransferValidation = __internal.validateRecoAssistantRewriteCandidate({
+      candidateText:
+        'SKINTIFIC Matte Fit Serum Sunscreen SPF 50+ PA++++ leans more matte and shine-controlling if you want less slip under makeup. Supergoop Unseen Sunscreen SPF 50 is the clearer, more invisible-feeling option for smoother under-makeup wear when you do not want to go too matte. SKINTIFIC Light Serum Sunscreen SPF 50+ PA++++ makes more sense if you want a more matte, shine-controlling finish with less slip under makeup.',
+      payload,
+      language: 'EN',
+      profile: { skinType: 'oily' },
+      userRequestText: 'I have oily skin and wear makeup every day. What sunscreen product should I buy?',
+      refinementQuestionPlan: null,
+      primaryTarget,
+      secondaryTargets: [],
+      names,
+      requestMode: 'buy',
+    });
+    assert.equal(badTransferValidation.ok, false);
+    assert.equal(badTransferValidation.reason, 'rewrite_product_reason_transfer');
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('reco assistant validator ignores negated matte contrast on lighter sunscreen peers', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
