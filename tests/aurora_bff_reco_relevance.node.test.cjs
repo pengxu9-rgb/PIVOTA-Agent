@@ -9296,7 +9296,7 @@ test('__internal: stable alias authority resolves oil-control role query variant
   }
 });
 
-test('__internal: beauty local handoff runs same-role sunscreen primary authority locally before backend', async () => {
+test('__internal: beauty local handoff keeps same-role sunscreen authority open through under-makeup query', async () => {
   const { __internal } = loadRoutesFresh();
   const calls = [];
   const targetContext = {
@@ -9413,18 +9413,20 @@ test('__internal: beauty local handoff runs same-role sunscreen primary authorit
     assert.deepEqual(
       calls
         .filter((call) => call.kind === 'local_external_seed')
-        .slice(0, 3)
+        .slice(0, 5)
         .map((call) => call.query),
       [
         'matte sunscreen',
         'invisible sunscreen',
         'lightweight sunscreen oily skin',
+        'sunscreen under makeup',
+        'sunscreen oily skin',
       ],
       JSON.stringify(calls),
     );
     assert.equal(
       calls.some((call) => call.kind === 'local_external_seed' && call.query === 'sunscreen under makeup'),
-      false,
+      true,
       JSON.stringify(calls),
     );
     assert.equal(
@@ -9435,7 +9437,7 @@ test('__internal: beauty local handoff runs same-role sunscreen primary authorit
     assert.ok(
       calls
         .filter((call) => call.kind === 'local_external_seed')
-        .slice(0, 3)
+        .slice(0, 5)
         .every((call) => call.timeoutMs > 0 && call.timeoutMs <= 2200),
       JSON.stringify(calls),
     );
