@@ -80,6 +80,8 @@ test('reco assistant rewrite prompt omits deterministic base text and carries re
     assert.match(prompt, /For single_product, support_reasons should be an empty array\./);
     assert.match(prompt, /Price may be included only when Context provides price_label or price_order_summary, and it must be paired with a non-price fit reason\./);
     assert.match(prompt, /Use only evidence already present in Context\.selected_product_details or Context\.assistant_write_plan\./);
+    assert.match(prompt, /Reason fragments must follow "because" grammatically/);
+    assert.match(prompt, /If reviewed_insight_available is false, phrase evidence as conservative product-record fit/);
     assert.match(prompt, /Do not include direct buy\/pick framing or absolute terms such as best, most, top, strongest, perfect, ideal, winner, or must-have inside any reason fragment\./);
     assert.match(prompt, /Never use tautologies like "directly fits the request"; cite concrete evidence\./);
     assert.match(prompt, /Keep cosmetic evidence conservative: do not say a product regulates sebum production/);
@@ -127,6 +129,132 @@ test('aurora decision client ignores mock mode outside test runtime', () => {
   );
 
   assert.match(out, /AURORA_NOT_CONFIGURED/);
+});
+
+test('reco assistant structured renderer repairs bare-verb product-record support evidence', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const payload = {
+      roles: [
+        {
+          role_id: 'oil_control_treatment',
+          label: 'Oil-control treatment',
+          preferred_step: 'treatment',
+        },
+        {
+          role_id: 'lightweight_moisturizer',
+          label: 'Lightweight moisturizer',
+          preferred_step: 'moisturizer',
+        },
+      ],
+      recommendation_meta: {
+        primary_target_id: 'oil_control_treatment',
+        selected_target_ids: ['oil_control_treatment', 'lightweight_moisturizer'],
+        ranked_targets: [
+          {
+            target_id: 'oil_control_treatment',
+            ingredient_query: 'Oil-control treatment',
+            resolved_target_step: 'treatment',
+          },
+        ],
+      },
+      recommendations: [
+        {
+          display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+          brand: 'The Ordinary',
+          matched_role_id: 'oil_control_treatment',
+          matched_role_label: 'Oil-control treatment',
+          preferred_step: 'treatment',
+          why_this_one: 'Targets excess oil and visible shine with niacinamide and zinc PCA.',
+        },
+        {
+          display_name: 'Cloud Surf',
+          brand: 'Bubble',
+          matched_role_id: 'lightweight_moisturizer',
+          matched_role_label: 'Lightweight moisturizer',
+          preferred_step: 'moisturizer',
+          why_this_one:
+            'Quenches and rebalances skin with a light-as-air water cream texture that avoids a heavy feel.',
+        },
+      ],
+    };
+
+    const text = __internal.renderRecoAssistantStructuredReasonRewrite({
+      structuredReason: {
+        lead_reason: 'it pairs niacinamide with zinc PCA for visible shine support',
+        support_reasons: [
+          'quenches and rebalances skin with a light-as-air water cream texture that avoids a heavy feel',
+        ],
+      },
+      payload,
+      language: 'EN',
+      profile: { skinType: 'oily' },
+      userRequestText: 'im oily skin. what product should i buy?',
+      primaryTarget: {
+        target_id: 'oil_control_treatment',
+        ingredient_query: 'Oil-control treatment',
+        resolved_target_step: 'treatment',
+      },
+      names: ['The Ordinary Niacinamide 10% + Zinc 1%', 'Cloud Surf'],
+      requestMode: 'buy',
+      selectedProductRoleMix: 'routine_mix',
+    });
+
+    assert.doesNotMatch(text, /\bbecause\s+quenches\b/i);
+    assert.doesNotMatch(text, /\bbecause\s+rebalances\b/i);
+    assert.match(
+      text,
+      /Cloud Surf adds the moisturizer step because it supports skin hydration and a balanced feel with a light-as-air water cream texture that avoids a heavy feel\./i,
+    );
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
+test('reco assistant validator rejects bare-verb evidence after because', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const payload = {
+      recommendations: [
+        {
+          display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
+          matched_role_id: 'oil_control_treatment',
+          matched_role_label: 'Oil-control treatment',
+        },
+        {
+          display_name: 'Cloud Surf',
+          matched_role_id: 'lightweight_moisturizer',
+          matched_role_label: 'Lightweight moisturizer',
+        },
+      ],
+      recommendation_meta: {
+        primary_target_id: 'oil_control_treatment',
+        selected_target_ids: ['oil_control_treatment', 'lightweight_moisturizer'],
+      },
+    };
+    const validation = __internal.validateRecoAssistantRewriteCandidate({
+      candidateText:
+        'The Ordinary Niacinamide 10% + Zinc 1% is a practical oil-control treatment to buy first in this routine; it pairs niacinamide with zinc PCA for visible shine support. Cloud Surf adds the moisturizer step because quenches and rebalances skin with a light-as-air water cream texture.',
+      payload,
+      language: 'EN',
+      profile: { skinType: 'oily' },
+      userRequestText: 'im oily skin. what product should i buy?',
+      refinementQuestionPlan: null,
+      primaryTarget: {
+        target_id: 'oil_control_treatment',
+        ingredient_query: 'Oil-control treatment',
+        resolved_target_step: 'treatment',
+      },
+      secondaryTargets: [],
+      names: ['The Ordinary Niacinamide 10% + Zinc 1%', 'Cloud Surf'],
+      requestMode: 'buy',
+    });
+
+    assert.equal(validation.ok, false);
+    assert.equal(validation.reason, 'rewrite_ungrammatical_reason_fragment');
+  } finally {
+    delete require.cache[moduleId];
+  }
 });
 
 test('reco assistant rewrite prompt keeps airy sunscreen context over neutral cream-texture cue', () => {
@@ -1368,7 +1496,7 @@ test('reco assistant rewrite prompt frames multi-role selections as routine mix 
     assert.match(prompt, /Do not end with a generic closing sentence like "these steps support your skin" or "together they help balance the routine"\./);
     assert.match(prompt, /Strict selected-only retry: only Context\.selected_products may be named\./);
     assert.match(prompt, /Never output Context\.forbidden_product_names or their partial names\/brands\./);
-    assert.match(prompt, /If user_relevant_concern_families does not include tone_brightening, do not mention glow, radiance, dark spots, uneven tone, brightening, or dullness\./);
+    assert.match(prompt, /If user_relevant_concern_families does not include tone_brightening, do not mention dullness, uneven tone, dark spots, glow, or brightening\./);
     assert.match(prompt, /If user_relevant_concern_families does not include aging_texture, do not mention wrinkles, fine lines, aging, anti-aging, or texture repair\./);
     assert.doesNotMatch(prompt, /compare price\/value or ROI in plain shopper terms using only listed prices/);
     assert.match(prompt, /If known_price_count is 2 or more and selected_product_role_mix is "routine_mix", prices may be stated as per-step costs only; do not compare affordability across different routine roles\./);
@@ -2033,7 +2161,7 @@ test('reco assistant structured selected-only prompt keeps same-role comparison 
     assert.match(prompt, /Do not write the final assistant message\./);
     assert.match(prompt, /Schema: \{ "lead_reason": string, "support_reasons": string\[\] \}/);
     assert.match(prompt, /Do not include any brand name or product name inside lead_reason or support_reasons\./);
-    assert.match(prompt, /If user_relevant_concern_families does not include tone_brightening, do not mention glow, radiance, dark spots, uneven tone, brightening, or dullness\./);
+    assert.match(prompt, /If user_relevant_concern_families does not include tone_brightening, do not mention dullness, uneven tone, dark spots, glow, or brightening\./);
     assert.match(prompt, /If user_relevant_concern_families does not include aging_texture, do not mention wrinkles, fine lines, aging, anti-aging, or texture repair\./);
     assert.ok(prompt.length < 8000);
   } finally {
