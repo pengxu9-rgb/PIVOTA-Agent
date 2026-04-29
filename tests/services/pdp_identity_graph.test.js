@@ -529,6 +529,52 @@ describe('pdpIdentityGraph', () => {
     expect(queries).toHaveLength(2);
   });
 
+  test('backfill product fetch keeps plus-sign brands aligned between SQL selection and JS post-filter', async () => {
+    const { _internals } = require('../../src/services/pdpIdentityGraph');
+    const queryFn = jest.fn(async (sql, params) => {
+      if (String(sql).includes('FROM products_cache')) {
+        expect(params).toEqual(['external_seed', 'drjart', '%drjart%', 10]);
+        return { rows: [] };
+      }
+      if (String(sql).includes('FROM external_product_seeds')) {
+        expect(params).toEqual(['drjart', '%drjart%', 10]);
+        return {
+          rows: [
+            {
+              id: 'eps_drjart',
+              external_product_id: 'ext_drjart_ceramidin',
+              title: 'Ceramidin Skin Barrier Moisturizing Cream',
+              canonical_url: 'https://drjart.com/products/ceramidin-skin-barrier-moisturizing-cream',
+              destination_url: 'https://drjart.com/products/ceramidin-skin-barrier-moisturizing-cream',
+              seed_data: {
+                brand: 'Dr. Jart+',
+                title: 'Ceramidin Skin Barrier Moisturizing Cream',
+                canonical_url: 'https://drjart.com/products/ceramidin-skin-barrier-moisturizing-cream',
+                destination_url: 'https://drjart.com/products/ceramidin-skin-barrier-moisturizing-cream',
+              },
+            },
+          ],
+        };
+      }
+      throw new Error(`unexpected query: ${sql}`);
+    });
+
+    const rows = await _internals.fetchBackfillProducts({
+      limit: 10,
+      brandFilter: 'Dr. Jart+',
+      queryFn,
+    });
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toEqual(
+      expect.objectContaining({
+        merchant_id: 'external_seed',
+        product_id: 'ext_drjart_ceramidin',
+        source_kind: 'external_seed',
+      }),
+    );
+  });
+
   test('listLivePdpIdentityRowsForRefs does not depend on PDP live-read feature flag', async () => {
     process.env = {
       ...ORIGINAL_ENV,

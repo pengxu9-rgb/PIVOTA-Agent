@@ -260,7 +260,7 @@ function buildGroupMember(row) {
 }
 
 function normalizeBrandToken(value) {
-  return normalizeResolverText(value).replace(/\s+/g, ' ').trim();
+  return normalizeResolverText(value).replace(/\bplus\b/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
 function normalizeCompactBrandToken(value) {
