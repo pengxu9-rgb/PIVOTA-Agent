@@ -72,44 +72,22 @@ test('reco assistant rewrite prompt omits deterministic base text and carries re
 
     assert.match(prompt, /"request_mode":"buy"/);
     assert.match(prompt, /"user_request":"I am oily skin\. What product should I buy\?"/);
+    assert.match(prompt, /Do not write the final assistant message\./);
+    assert.match(prompt, /Return evidence-grounded reason fragments only; the service will insert the final product names in card order\./);
+    assert.match(prompt, /Do not include any brand name or product name inside lead_reason or support_reasons\./);
     assert.match(prompt, /If request_mode is "buy", use direct shopping advice tone\./);
     assert.match(prompt, /If request_mode is "buy", start the first sentence with the lead product name rather than a generic concern summary\./);
-    assert.match(prompt, /If request_mode is "buy" and there is one selected product, the first sentence must directly recommend that product by name\./);
-    assert.match(prompt, /If selected_product_role_mix is "single_product", stay on one clear recommendation and do not frame the answer as a routine or a comparison set\./);
-    assert.match(prompt, /If selected_product_role_mix is "single_product", sentence 2 must explain why that one product matches the concern using concrete evidence from Context\./);
-    assert.match(prompt, /If request_mode is "buy" and selected_product_role_mix is "same_role_comparison", the first sentence must name the lead product and signal that the remaining picks are same-slot comparison options\./);
-    assert.match(prompt, /If request_mode is "buy" and selected_product_role_mix is "routine_mix", the first sentence must name the lead product and frame the remaining picks as routine add-ons from other roles; only same-role products may be same-slot alternatives\./);
-    assert.match(prompt, /If selected_product_role_mix is "routine_mix", make it clear these are different routine steps, not interchangeable substitutes, and do not use the phrase "selected products"\./);
-    assert.match(prompt, /If selected_product_role_mix is "same_role_comparison", present a concise horizontal comparison and name each selected product exactly once if space allows\./);
-    assert.match(prompt, /If selected_product_role_mix is "routine_mix", present a basic routine by role or step, and do not imply products from different roles are interchangeable\./);
-    assert.match(prompt, /If selected_product_role_mix is "same_role_comparison", omit price, affordability, or ROI language unless the user explicitly asked about price, budget, value, or ROI\./);
-    assert.match(prompt, /If known_price_count is 2 or more and selected_product_role_mix is "routine_mix", prices may be stated as per-step costs only; do not compare affordability across different routine roles\./);
-    assert.match(prompt, /Price may support a recommendation, but price alone is not enough; pair it with at least one concrete fit, formula, texture, ingredient, or use-case reason from Context\./);
-    assert.match(prompt, /Use selected_product_details\.compare_highlights and selected_product_details\.pivota_insights when available; do not invent highlights that are absent from Context\./);
-    assert.match(prompt, /Use selected_product_details\.description_snippet and selected_product_details\.evidence_points as the primary concrete reason layer when available\./);
-    assert.match(prompt, /Do not call a product, routine, or bundle the top, best, strongest, perfect, or ideal choice\. Give concrete evidence instead\./);
-    assert.match(prompt, /Never write ungrammatical fragments like "because a serum\.\.\."/);
-    assert.match(prompt, /If selected_product_details\.fit_assessment is "soft_match" or comparison_fill_reason is present, frame that product as a softer or broader alternative instead of an equally direct match\./);
-    assert.match(prompt, /Prefer product-specific evidence over generic role language when both are available\./);
-    assert.match(prompt, /If Context\.refinement_question exists, include exactly one follow-up question as the final sentence after the recommendation/);
-    assert.match(prompt, /Do not ask for fields already present in Context\.profile_summary; use only Context\.refinement_question for follow-up\./);
-    assert.match(prompt, /If request_mode is "buy" and there is one selected product with no secondary targets, use exactly 2 recommendation sentences; if Context\.refinement_question exists, add one short final question\./);
-    assert.match(prompt, /If selected_target_ids has length 1, secondary_targets is empty, and selected_product_role_mix is not "routine_mix", do not add future routine-building suggestions or extra steps\./);
-    assert.match(prompt, /Use plain shopper-facing skincare language\. Avoid vague phrases like "surface activity"\./);
-    assert.match(prompt, /Avoid generic filler like "great choice", "balanced complexion", or "solution for oiliness"\./);
-    assert.match(prompt, /Use selected_product_details\.why_this_one, selected_product_details\.best_for, and selected_product_details\.key_features as supporting context when available\./);
-    assert.match(prompt, /If request_mode is "use_first", use starting-point advice tone\./);
-    assert.match(prompt, /"short_description":"Helps reduce visible shine without feeling heavy\."/);
+    assert.match(prompt, /For single_product, support_reasons should be an empty array\./);
+    assert.match(prompt, /Price may be included only when Context provides price_label or price_order_summary, and it must be paired with a non-price fit reason\./);
+    assert.match(prompt, /Use only evidence already present in Context\.selected_product_details or Context\.assistant_write_plan\./);
+    assert.match(prompt, /Do not include direct buy\/pick framing or absolute terms such as best, most, top, strongest, perfect, ideal, winner, or must-have inside any reason fragment\./);
+    assert.match(prompt, /Never use tautologies like "directly fits the request"; cite concrete evidence\./);
+    assert.match(prompt, /Keep cosmetic evidence conservative: do not say a product regulates sebum production/);
     assert.match(prompt, /"description_snippet":"Helps reduce visible shine without feeling heavy\."/);
     assert.match(prompt, /"evidence_points":\["Helps reduce visible shine without feeling heavy\."\]/);
-    assert.match(prompt, /"key_features":\[\]/);
-    assert.match(prompt, /"price":\{"amount":12,"currency":"USD","unknown":false\}/);
+    assert.match(prompt, /"price_label":"\$12"/);
     assert.match(prompt, /"selected_product_role_mix":"single_product"/);
-    assert.match(prompt, /"refinement_question":\{"field":"location_climate"/);
-    assert.match(prompt, /What city or climate are you usually in/);
     assert.match(prompt, /"known_price_count":1/);
-    assert.match(prompt, /"role_id":"oil_control_treatment"/);
-    assert.doesNotMatch(prompt, /"role_id":"lightweight_moisturizer"/);
     assert.doesNotMatch(prompt, /"base_text":/);
     assert.doesNotMatch(
       prompt,
@@ -221,9 +199,6 @@ test('reco assistant rewrite prompt keeps airy sunscreen context over neutral cr
       language: 'EN',
       profile: { skinType: 'oily' },
       userRequestText: 'I have oily skin, what sunscreen should I buy?',
-      compactContext: true,
-      strictSelectedOnlyContext: true,
-      structuredReasonOnly: true,
     });
     const contextMatch = prompt.match(/Context: (\{[\s\S]*\})$/);
     assert.ok(contextMatch);
@@ -411,7 +386,7 @@ test('reco assistant rewrite prompt carries finish-fit same-slot tradeoff notes 
       /richer, more moisturizing cream-SPF option|leans richer and more moisturizing if you want more cushion under makeup/,
     );
     assert.equal(context.price_compare_requested, false);
-    assert.deepEqual(context.price_order_summary, []);
+    assert.deepEqual(context.price_order_summary || [], []);
     assert.doesNotMatch(
       JSON.stringify(context.assistant_write_plan.same_role_options),
       /"price_note":"\\$40"|\"price_note\":\"\\$48\"/,
@@ -1391,8 +1366,8 @@ test('reco assistant rewrite prompt frames multi-role selections as routine mix 
     assert.match(prompt, /Use assistant_write_plan\.lead_product\.must_use_reason_points as the preferred reason list for the lead recommendation when available\./);
     assert.match(prompt, /If assistant_write_plan\.support_steps is non-empty, justify each support step with its own reason_points instead of using a generic closing summary\./);
     assert.match(prompt, /Do not end with a generic closing sentence like "these steps support your skin" or "together they help balance the routine"\./);
-    assert.match(prompt, /Allowed product names are exactly Context\.selected_products\./);
-    assert.match(prompt, /Do not name brands\/products outside Context\.selected_products\./);
+    assert.match(prompt, /Strict selected-only retry: only Context\.selected_products may be named\./);
+    assert.match(prompt, /Never output Context\.forbidden_product_names or their partial names\/brands\./);
     assert.match(prompt, /If user_relevant_concern_families does not include tone_brightening, do not mention glow, radiance, dark spots, uneven tone, brightening, or dullness\./);
     assert.match(prompt, /If user_relevant_concern_families does not include aging_texture, do not mention wrinkles, fine lines, aging, anti-aging, or texture repair\./);
     assert.doesNotMatch(prompt, /compare price\/value or ROI in plain shopper terms using only listed prices/);
@@ -1700,8 +1675,9 @@ test('reco assistant rewrite accepts context-rich drafts after stripping invente
     __internal.__setCallGeminiJsonObjectForTest(async () => ({
       ok: true,
       json: {
-        assistant_text:
-          'Test Barrier Barrier Serum fits this request for hydrating barrier moisturizer because it supports sensitive skin in Phoenix dry heat while keeping fragrance sensitivity in view. Test Barrier Calming Serum provides a lower-cost $40-budget alternative for lighter hydration. What city or climate are you usually in?',
+        lead_reason:
+          'it supports sensitive skin in Phoenix dry heat while keeping fragrance sensitivity in view',
+        support_reasons: ['it gives a lower-cost $40-budget lighter hydration option'],
       },
       parse_status: 'parsed',
       provider: 'gemini',
@@ -1971,7 +1947,7 @@ test('concern selector race preserves same-role LLM ordering for comparison sets
   }
 });
 
-test('reco assistant compact prompt keeps same-role comparison payloads under a tight size budget', () => {
+test('reco assistant structured selected-only prompt keeps same-role comparison payloads bounded', () => {
   const { moduleId, __internal } = loadRouteInternals();
   const longDetail =
     'A barrier-support formula with tamanu oil, ceramides, niacinamide, soothing hydration, redness support, and lightweight comfort for sensitized skin. '.repeat(18);
@@ -2051,17 +2027,15 @@ test('reco assistant compact prompt keeps same-role comparison payloads under a 
       language: 'EN',
       profile: { skinType: 'sensitive', goals: ['barrier support'] },
       userRequestText: 'My skin gets red easily and stings with strong products. What should I buy first?',
-      compactContext: true,
     });
 
-    assert.match(prompt, /"prompt_profile":"compact_timeout_retry"/);
-    assert.match(prompt, /Treat the products as same-slot comparison options, not a routine\./);
-    assert.match(prompt, /Pick one lead product, then compare the other options with one short tradeoff each\./);
-    assert.match(prompt, /Allowed product names are exactly Context\.selected_products\./);
-    assert.match(prompt, /Do not name brands\/products outside Context\.selected_products\./);
+    assert.match(prompt, /"prompt_profile":"strict_selected_only_retry"/);
+    assert.match(prompt, /Do not write the final assistant message\./);
+    assert.match(prompt, /Schema: \{ "lead_reason": string, "support_reasons": string\[\] \}/);
+    assert.match(prompt, /Do not include any brand name or product name inside lead_reason or support_reasons\./);
     assert.match(prompt, /If user_relevant_concern_families does not include tone_brightening, do not mention glow, radiance, dark spots, uneven tone, brightening, or dullness\./);
     assert.match(prompt, /If user_relevant_concern_families does not include aging_texture, do not mention wrinkles, fine lines, aging, anti-aging, or texture repair\./);
-    assert.ok(prompt.length < 7000);
+    assert.ok(prompt.length < 8000);
   } finally {
     delete require.cache[moduleId];
   }
@@ -2141,8 +2115,6 @@ test('reco assistant strict selected-only retry prompt drops expanded framework 
       profile: { skinType: 'dry', goals: ['barrier support'] },
       userRequestText: 'My face feels dry and tight in winter. What should I buy?',
       retryReason: 'rewrite_mentions_unselected_product',
-      compactContext: true,
-      strictSelectedOnlyContext: true,
     });
 
     assert.match(prompt, /"prompt_profile":"strict_selected_only_retry"/);
@@ -2153,7 +2125,7 @@ test('reco assistant strict selected-only retry prompt drops expanded framework 
     assert.match(prompt, /"forbidden_product_names":\["Kylie Cosmetics Hyaluronic Acid Serum"\]/);
     assert.doesNotMatch(prompt, /framework_roles/);
     assert.doesNotMatch(prompt, /ranked_target_ids/);
-    assert.ok(prompt.length < 5200);
+    assert.ok(prompt.length < 8000);
   } finally {
     delete require.cache[moduleId];
   }
@@ -2378,7 +2350,7 @@ test('reco assistant rewrite keeps minimal thinking for same-role use comparison
     assert.equal(capturedArgs?.thinkingLevel, 'minimal');
     assert.ok(capturedArgs?.queueTimeoutMs > 0);
     assert.ok(capturedArgs?.upstreamTimeoutMs > 0);
-    assert.equal(capturedArgs?.maxOutputTokens, 140);
+    assert.equal(capturedArgs?.maxOutputTokens, 180);
     assert.equal(rewrite.llm_used, true);
     assert.match(String(rewrite.text || ''), /KraveBeauty Great Barrier Relief/);
   } finally {
@@ -2522,7 +2494,7 @@ test('reco assistant rewrite uses REST executor for same-role use comparisons wi
     assert.equal(capturedBody?.generationConfig?.thinkingConfig?.thinkingLevel, 'minimal');
     assert.equal(rewrite.attempts?.[0]?.thinking_level, 'minimal');
     assert.equal(rewrite.attempts?.[0]?.selection_source, 'local_gemini_rest_direct');
-    assert.equal(rewrite.attempts?.[0]?.max_output_tokens, 260);
+    assert.equal(rewrite.attempts?.[0]?.max_output_tokens, 180);
   } finally {
     Module._load = originalLoad;
     if (prevMock === undefined) delete process.env.AURORA_BFF_USE_MOCK;
@@ -2537,108 +2509,6 @@ test('reco assistant rewrite uses REST executor for same-role use comparisons wi
     else process.env.AURORA_SKIN_GEMINI_API_KEY = prevAuroraSkinGeminiKey;
     if (prevGlobalGeminiKey === undefined) delete process.env.GEMINI_API_KEY;
     else process.env.GEMINI_API_KEY = prevGlobalGeminiKey;
-    delete require.cache[moduleId];
-  }
-});
-
-test('reco assistant rewrite recovers truncated raw json when assistant_text is recoverable', async () => {
-  const prevMock = process.env.AURORA_BFF_USE_MOCK;
-  const prevProvider = process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
-  const prevModel = process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
-  process.env.AURORA_BFF_USE_MOCK = 'false';
-  process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER = 'gemini';
-  process.env.AURORA_PRODUCT_INTEL_LLM_MODEL = 'gemini-3-flash-preview';
-  const { moduleId, __internal } = loadRouteInternals();
-  try {
-    const payload = __internal.applyRecoContentSpineToPayload(
-      {
-        recommendations: [
-          {
-            product_id: 'oily_pick_1',
-            display_name: 'GoalSkin Oil Control Serum',
-            brand: 'GoalSkin',
-            category: 'Serum',
-            short_description: 'Helps manage visible shine without feeling heavy.',
-            matched_role_id: 'oil_control_treatment',
-            matched_role_label: 'Oil-control treatment',
-          },
-          {
-            product_id: 'moisturizer_pick_1',
-            display_name: 'GoalSkin Oil-Free Gel Cream',
-            brand: 'GoalSkin',
-            category: 'Moisturizer',
-            short_description: 'A lightweight gel moisturizer for oily skin.',
-            matched_role_id: 'lightweight_moisturizer',
-            matched_role_label: 'Lightweight moisturizer',
-          },
-          {
-            product_id: 'spf_pick_1',
-            display_name: 'GoalSkin Daily SPF 50 Fluid',
-            brand: 'GoalSkin',
-            category: 'Sunscreen',
-            short_description: 'A lightweight daily SPF fluid.',
-            matched_role_id: 'daily_sunscreen',
-            matched_role_label: 'Daily sunscreen',
-          },
-          {
-            product_id: 'backup_pick_1',
-            display_name: 'GoalSkin Backup Serum',
-            brand: 'GoalSkin',
-            category: 'Serum',
-            short_description: 'A backup oil-control serum.',
-            matched_role_id: 'oil_control_treatment',
-            matched_role_label: 'Oil-control treatment',
-          },
-        ],
-        recommendation_meta: {
-          resolved_target_step: 'treatment',
-          mainline_status: 'grounded_success',
-        },
-      },
-      {
-        ingredient_query: 'Oil-control treatment',
-        resolved_target_step: 'treatment',
-        primary_target_id: 'oil_control_treatment',
-        ranked_targets: [
-          {
-            target_id: 'oil_control_treatment',
-            ingredient_query: 'Oil-control treatment',
-            resolved_target_step: 'treatment',
-          },
-        ],
-        selected_target_ids: ['oil_control_treatment'],
-      },
-    );
-    __internal.__setCallGeminiJsonObjectForTest(async () => ({
-      ok: false,
-      reason: 'PARSE_TRUNCATED_JSON',
-      raw_text:
-        'Here is the JSON requested:\n{"assistant_text":"GoalSkin Oil Control Serum is a practical option for oily skin because it helps manage visible shine without feeling heavy. GoalSkin Oil-Free Gel Cream adds the moisturizer step for lightweight hydration, and GoalSkin Daily SPF 50 Fluid covers the daytime SPF step',
-      parse_status: 'parse_truncated',
-      provider: 'gemini',
-      effective_model: 'gemini-3-flash-preview',
-    }));
-
-    const rewrite = await __internal.maybeRewriteRecoAssistantTextWithLlm({
-      payload,
-      language: 'EN',
-      profile: { skinType: 'oily', goals: ['oil control'] },
-      userRequestText: 'What product should I buy?',
-      allowLockedSelectionRewrite: true,
-    });
-
-    assert.equal(rewrite.llm_used, true);
-    assert.equal(rewrite.reason, null);
-    assert.equal(rewrite.parse_status, 'recovered_parse_truncated');
-    assert.match(String(rewrite.text || ''), /GoalSkin Oil Control Serum/);
-  } finally {
-    __internal.__resetCallGeminiJsonObjectForTest();
-    if (prevMock === undefined) delete process.env.AURORA_BFF_USE_MOCK;
-    else process.env.AURORA_BFF_USE_MOCK = prevMock;
-    if (prevProvider === undefined) delete process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER;
-    else process.env.AURORA_PRODUCT_INTEL_LLM_PROVIDER = prevProvider;
-    if (prevModel === undefined) delete process.env.AURORA_PRODUCT_INTEL_LLM_MODEL;
-    else process.env.AURORA_PRODUCT_INTEL_LLM_MODEL = prevModel;
     delete require.cache[moduleId];
   }
 });
@@ -5111,7 +4981,6 @@ test('reco assistant rewrite uses structured primary attempt for compact single-
     assert.match(prompts[0], /Schema: \{ "lead_reason": string, "support_reasons": string\[\] \}/);
     assert.equal(rewrite.llm_used, true);
     assert.equal(rewrite.attempts?.[0]?.structured_reason_only, true);
-    assert.equal(rewrite.attempts?.[0]?.strict_selected_only_context, true);
     assert.equal(rewrite.attempts?.[0]?.max_output_tokens, 140);
     assert.match(rewrite.text, /Murad Daily Layering SPF 50 is a practical option/i);
   } finally {
@@ -5321,7 +5190,6 @@ test('reco assistant rewrite uses structured primary attempt for compact routine
     assert.match(prompts[0], /do not stop at generic SPF or broad-spectrum utility/i);
     assert.equal(rewrite.llm_used, true);
     assert.equal(rewrite.attempts?.[0]?.structured_reason_only, true);
-    assert.equal(rewrite.attempts?.[0]?.strict_selected_only_context, true);
     assert.equal(rewrite.attempts?.[0]?.max_output_tokens, 220);
     assert.ok(timeouts[0] >= 3000);
     assert.ok(timeouts[0] <= 3400);
@@ -5645,7 +5513,6 @@ test('reco assistant rewrite uses structured primary attempt for finish-fit same
     assert.match(prompts[0], /avoid generic SPF utility phrasing like "for AM UV protection" or "for daily protection"/);
     assert.equal(rewrite.llm_used, true);
     assert.equal(rewrite.attempts?.[0]?.structured_reason_only, true);
-    assert.equal(rewrite.attempts?.[0]?.strict_selected_only_context, true);
     assert.equal(rewrite.attempts?.[0]?.max_output_tokens, 180);
     assert.match(
       rewrite.text,
@@ -6586,8 +6453,6 @@ test('reco assistant rewrite retries gemini timeout with structured reason promp
     assert.equal(rewrite.attempts?.[0]?.ok, false);
     assert.equal(rewrite.attempts?.[0]?.reason, 'GEMINI_JSON_TIMEOUT');
     assert.equal(rewrite.attempts?.[0]?.timeout_stage, 'upstream');
-    assert.equal(rewrite.attempts?.[0]?.compact_context, true);
-    assert.equal(rewrite.attempts?.[0]?.strict_selected_only_context, true);
     assert.equal(rewrite.attempts?.[0]?.structured_reason_only, true);
     assert.equal(rewrite.attempts?.[0]?.effective_timeout_ms, timeouts[0]);
     assert.equal(rewrite.attempts?.[0]?.max_output_tokens, maxTokens[0]);

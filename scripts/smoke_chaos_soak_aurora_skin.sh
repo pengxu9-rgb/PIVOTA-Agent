@@ -252,15 +252,13 @@ preflight_local_database_config() {
   if [[ "$db_ready" == "false" ]]; then
     local allow_raw
     allow_raw="$(printf '%s' "$SOAK_ALLOW_DB_NOT_CONFIGURED" | tr '[:upper:]' '[:lower:]')"
-    local allow_mock="${AURORA_BFF_USE_MOCK:-false}"
-    allow_mock="$(printf '%s' "$allow_mock" | tr '[:upper:]' '[:lower:]')"
-    if [[ "$allow_raw" =~ ^(1|true|yes|y|on)$ || "$allow_mock" =~ ^(1|true|yes|y|on)$ ]]; then
-      log_line "local db preflight warning url=${db_health_url} db_ready=false reason=${reason:-unknown} (continuing due mock/override)"
+    if [[ "$allow_raw" =~ ^(1|true|yes|y|on)$ ]]; then
+      log_line "local db preflight warning url=${db_health_url} db_ready=false reason=${reason:-unknown} (continuing due explicit SOAK_ALLOW_DB_NOT_CONFIGURED override)"
       return 0
     fi
 
     log_line "local db preflight failed url=${db_health_url} db_ready=false reason=${reason:-DATABASE_URL not configured}"
-    log_line "hint: configure DATABASE_URL, or start server with AURORA_BFF_USE_MOCK=true AURORA_BFF_RETENTION_DAYS=0, or set SOAK_ALLOW_DB_NOT_CONFIGURED=true to bypass"
+    log_line "hint: configure DATABASE_URL, or set SOAK_ALLOW_DB_NOT_CONFIGURED=true for an explicit non-production soak override"
     exit 2
   fi
 

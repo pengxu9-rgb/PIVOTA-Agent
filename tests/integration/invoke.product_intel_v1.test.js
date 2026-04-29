@@ -1,4 +1,102 @@
 const { once } = require('events');
+const nock = require('nock');
+
+const TEST_CATALOG_BASE_URL = 'http://product-intel.test';
+
+function cloneJson(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function buildProductGroupForFixture(product) {
+  const merchantId = String(product?.merchant_id || '').trim();
+  const productId = String(product?.product_id || product?.id || '').trim();
+  const productGroupId = String(product?.product_group_id || `pg:pid:${productId}`).trim();
+  return {
+    status: 'success',
+    product_group_id: productGroupId,
+    canonical_product_ref: {
+      merchant_id: merchantId,
+      product_id: productId,
+    },
+    members: [
+      {
+        merchant_id: merchantId,
+        merchant_name: product?.merchant_name || product?.brand || undefined,
+        product_id: productId,
+        is_primary: true,
+      },
+    ],
+  };
+}
+
+function installCatalogFixtureNocks(productsByKey) {
+  const findProduct = ({ merchantId, productId }) => {
+    const pid = String(productId || '').trim();
+    const mid = String(merchantId || '').trim();
+    return (
+      productsByKey.get(`${mid}:${pid}`) ||
+      productsByKey.get(`external_seed:${pid}`) ||
+      Array.from(productsByKey.values()).find((product) => String(product?.product_id || '') === pid) ||
+      null
+    );
+  };
+
+  const scope = nock(TEST_CATALOG_BASE_URL).persist();
+
+  scope
+    .post('/agent/shop/v1/invoke', (body) => body?.operation === 'get_product_detail')
+    .reply(200, (_uri, body) => {
+      const ref = body?.payload?.product || {};
+      const product = findProduct({
+        merchantId: ref.merchant_id || ref.merchantId,
+        productId: ref.product_id || ref.productId,
+      });
+      if (!product) {
+        return {
+          status: 'error',
+          error: 'PRODUCT_NOT_FOUND',
+          message: 'Fixture product not found',
+        };
+      }
+      return {
+        status: 'success',
+        success: true,
+        product: cloneJson(product),
+      };
+    });
+
+  scope
+    .post('/agent/shop/v1/invoke', (body) => body?.operation === 'find_similar_products')
+    .reply(200, {
+      status: 'success',
+      success: true,
+      products: [],
+      total: 0,
+    });
+
+  scope
+    .get('/agent/v1/product-groups/resolve')
+    .query(true)
+    .reply(200, (uri) => {
+      const url = new URL(`${TEST_CATALOG_BASE_URL}${uri}`);
+      const product = findProduct({
+        merchantId: url.searchParams.get('merchant_id'),
+        productId: url.searchParams.get('product_id'),
+      });
+      return buildProductGroupForFixture(product || {});
+    });
+
+  scope
+    .get('/agent/v1/product-groups/resolve-by-product-id')
+    .query(true)
+    .reply(200, (uri) => {
+      const url = new URL(`${TEST_CATALOG_BASE_URL}${uri}`);
+      const product = findProduct({
+        productId: url.searchParams.get('product_id'),
+      });
+      return buildProductGroupForFixture(product || {});
+    });
+}
 
 function hasRuntimeDeps() {
   for (const dep of ['dotenv', 'express', 'axios']) {
@@ -17,6 +115,7 @@ describeIfRuntimeDeps('/agent/shop/v1/invoke product intel contracts', () => {
   let app;
   let server;
   let baseUrl;
+  let previousEnv;
 
   async function invoke(operation, payload) {
     const response = await fetch(`${baseUrl}/agent/shop/v1/invoke`, {
@@ -30,11 +129,35 @@ describeIfRuntimeDeps('/agent/shop/v1/invoke product intel contracts', () => {
 
   beforeAll(async () => {
     jest.resetModules();
-    process.env.API_MODE = 'MOCK';
-    delete process.env.PIVOTA_API_KEY;
-    const { mockProducts } = require('../../src/mockProducts');
-    const seeded = mockProducts.merch_208139f7600dbf42.find((item) => item.product_id === 'BOTTLE_001');
-    Object.assign(seeded, {
+    previousEnv = {
+      API_MODE: process.env.API_MODE,
+      PIVOTA_API_BASE: process.env.PIVOTA_API_BASE,
+      PIVOTA_BACKEND_BASE_URL: process.env.PIVOTA_BACKEND_BASE_URL,
+      PIVOTA_API_KEY: process.env.PIVOTA_API_KEY,
+      DATABASE_URL: process.env.DATABASE_URL,
+      PDP_SELF_OFFER_FALLBACK_ENABLED: process.env.PDP_SELF_OFFER_FALLBACK_ENABLED,
+    };
+    process.env.API_MODE = 'REAL';
+    process.env.PIVOTA_API_BASE = TEST_CATALOG_BASE_URL;
+    process.env.PIVOTA_BACKEND_BASE_URL = TEST_CATALOG_BASE_URL;
+    process.env.PIVOTA_API_KEY = 'test-token';
+    process.env.PDP_SELF_OFFER_FALLBACK_ENABLED = 'true';
+    delete process.env.DATABASE_URL;
+    const seeded = {
+      id: 'BOTTLE_001',
+      product_id: 'BOTTLE_001',
+      merchant_id: 'merch_208139f7600dbf42',
+      merchant_name: 'Pivota Test Merchant',
+      title: 'Everyday Insulated Bottle',
+      name: 'Everyday Insulated Bottle',
+      brand: 'Pivota',
+      category: 'Hydration',
+      product_type: 'Bottle',
+      price: 32,
+      currency: 'USD',
+      in_stock: true,
+      fulfillment_type: 'merchant',
+      image_url: 'https://cdn.example.test/bottle.png',
       assessment: {
         summary: 'A double-wall insulated bottle designed for daily hydration.',
         best_for: ['Daily hydration'],
@@ -122,18 +245,24 @@ describeIfRuntimeDeps('/agent/shop/v1/invoke product intel contracts', () => {
         'Tamanu Oil: Soothes visible redness and supports the skin barrier. Full Ingredients: Water, Glycerin, Caprylic/Capric Triglyceride, 1,2-Hexanediol, Niacinamide, Cetearyl Alcohol. Warning: For external use only.',
       pdp_active_ingredients_raw:
         'Active Ingredients: Niacinamide, Tamanu Oil. Can I use this with an active ingredient?',
-    });
-    mockProducts.external_seed = [
+    };
+    const externalSeedRows = [
       {
         product_id: 'ext_mock_intel_1',
         merchant_id: 'external_seed',
         title: 'Hydra Vizor Invisible Moisturizer SPF 30',
+        name: 'Hydra Vizor Invisible Moisturizer SPF 30',
+        brand: 'Fenty Skin',
         description:
           'A daily moisturizer with broad spectrum SPF 30 that hydrates the skin and wears invisibly under makeup.',
         category: 'Skincare/Sunscreen',
+        product_type: 'Sunscreen',
         price: 39,
         currency: 'USD',
         in_stock: true,
+        source: 'external_seed',
+        destination_url: 'https://example.test/hydra-vizor',
+        image_url: 'https://cdn.example.test/hydra-vizor.png',
         assessment: {
           summary:
             'A daily moisturizer with broad spectrum SPF 30 that provides invisible sun protection while hydrating the skin.',
@@ -214,6 +343,7 @@ describeIfRuntimeDeps('/agent/shop/v1/invoke product intel contracts', () => {
         product_id: 'ext_mock_draft_1',
         merchant_id: 'external_seed',
         title: 'Vitamin C Super Eye Cream Plus',
+        name: 'Vitamin C Super Eye Cream Plus',
         description:
           'A vitamin C eye cream for daily brightening support and lightweight hydration around the eye area.',
         category: 'Skincare/Eye Treatment',
@@ -222,9 +352,16 @@ describeIfRuntimeDeps('/agent/shop/v1/invoke product intel contracts', () => {
         price: 26,
         currency: 'USD',
         in_stock: true,
+        source: 'external_seed',
+        destination_url: 'https://example.test/vitamin-c-eye-cream',
+        image_url: 'https://cdn.example.test/vitamin-c-eye-cream.png',
         tags: ['vitamin c', 'eye cream', 'brightening'],
       },
     ];
+    installCatalogFixtureNocks(new Map([
+      [`${seeded.merchant_id}:${seeded.product_id}`, seeded],
+      ...externalSeedRows.map((product) => [`${product.merchant_id}:${product.product_id}`, product]),
+    ]));
     app = require('../../src/server');
     server = app.listen(0);
     await once(server, 'listening');
@@ -238,7 +375,13 @@ describeIfRuntimeDeps('/agent/shop/v1/invoke product intel contracts', () => {
         server.close((err) => (err ? reject(err) : resolve()));
       });
     }
-    delete process.env.API_MODE;
+    nock.cleanAll();
+    if (previousEnv) {
+      for (const [key, value] of Object.entries(previousEnv)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
     jest.resetModules();
   });
 

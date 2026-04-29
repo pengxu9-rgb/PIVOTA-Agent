@@ -106,7 +106,7 @@ Photo smoke/probe fixture policy:
 
 ### Feature flags (do NOT enable in prod unless intended)
 
-- `AURORA_BFF_USE_MOCK=true` → mock Aurora + mock offers resolve (for offline/dev only)
+- `AURORA_BFF_USE_MOCK=true` → test-runtime-only Aurora adapter. Production-like runtimes ignore it/fail closed; do not use it as a local substitute for real catalog credentials.
 - `AURORA_BFF_INCLUDE_RAW_CONTEXT=true` → includes `aurora_context_raw` card in `/v1/chat`
 - `AURORA_BFF_CONFLICT_HEATMAP_V1_ENABLED=true` → emit full `conflict_heatmap` payload (otherwise placeholder-only)
 

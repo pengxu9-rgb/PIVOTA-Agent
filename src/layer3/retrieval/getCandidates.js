@@ -3,8 +3,27 @@ const { ProductCategorySchema } = require('../schemas/productAttributesV0');
 
 const PIVOTA_API_BASE = (process.env.PIVOTA_API_BASE || 'http://localhost:8080').replace(/\/$/, '');
 const PIVOTA_API_KEY = process.env.PIVOTA_API_KEY || '';
-function getApiMode() {
-  return process.env.API_MODE || (PIVOTA_API_KEY ? 'REAL' : 'MOCK');
+
+function buildCatalogConfigError(message, code) {
+  const err = new Error(message);
+  err.code = code;
+  return err;
+}
+
+function assertRealCatalogRuntimeConfigured() {
+  const requested = String(process.env.API_MODE || '').trim().toUpperCase();
+  if (requested === 'MOCK') {
+    throw buildCatalogConfigError(
+      'API_MODE=MOCK is disabled for runtime retrieval; configure a real catalog backend instead',
+      'MOCK_RUNTIME_DISABLED'
+    );
+  }
+  if (!PIVOTA_API_KEY) {
+    throw buildCatalogConfigError(
+      'PIVOTA_API_KEY is required for runtime retrieval',
+      'PIVOTA_API_KEY_REQUIRED'
+    );
+  }
 }
 
 function normalizeString(v) {
@@ -96,7 +115,7 @@ async function getCandidates(input) {
   const fetcher =
     input.fetcher ??
     (async ({ query, limit }) => {
-      if (getApiMode() === 'MOCK') return [];
+      assertRealCatalogRuntimeConfigured();
 
       const payload = {
         operation: 'find_products_multi',
@@ -116,7 +135,7 @@ async function getCandidates(input) {
       };
 
       const resp = await axios.post(`${PIVOTA_API_BASE}/agent/shop/v1/invoke`, payload, {
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${PIVOTA_API_KEY}` },
         timeout: 15000,
       });
 
