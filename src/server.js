@@ -350,6 +350,19 @@ const PROXY_SEARCH_AURORA_API_BASE = String(
   .trim()
   .replace(/\/+$/, '');
 const PIVOTA_API_KEY = process.env.PIVOTA_API_KEY || '';
+const PIVOT_BEAUTY_CONTRACT_VERSION = 'pivot.agent.v1';
+const PIVOT_BEAUTY_CONTRACT_V1_ENABLED = parseBooleanEnv(
+  process.env.PIVOT_BEAUTY_CONTRACT_V1_ENABLED,
+  true,
+);
+const PIVOT_BEAUTY_LEGACY_FALLBACK_ISOLATION_ENABLED = parseBooleanEnv(
+  process.env.PIVOT_BEAUTY_LEGACY_FALLBACK_ISOLATION_ENABLED,
+  true,
+);
+const PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED = parseBooleanEnv(
+  process.env.PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED,
+  true,
+);
 const REVIEWS_API_BASE = (
   process.env.REVIEWS_API_BASE ||
   process.env.REVIEWS_BACKEND_URL ||
@@ -7859,6 +7872,346 @@ function buildProxySearchSoftFallbackResponse({
   });
 }
 
+function getInvokeRequestMetadata(req) {
+  return req?.body?.metadata && isPlainObject(req.body.metadata) ? req.body.metadata : {};
+}
+
+function getInvokeRequestPayload(req) {
+  return req?.body?.payload && isPlainObject(req.body.payload) ? req.body.payload : {};
+}
+
+function getInvokeSearchPayload(req) {
+  const payload = getInvokeRequestPayload(req);
+  return payload.search && isPlainObject(payload.search) ? payload.search : payload;
+}
+
+function getInvokeRequestContext(req) {
+  const payload = getInvokeRequestPayload(req);
+  const requestContext = req?.body?.context && isPlainObject(req.body.context) ? req.body.context : {};
+  const payloadContext = payload.context && isPlainObject(payload.context) ? payload.context : {};
+  return {
+    ...requestContext,
+    ...payloadContext,
+    normalized_need: {
+      ...(payloadContext.normalized_need && isPlainObject(payloadContext.normalized_need)
+        ? payloadContext.normalized_need
+        : {}),
+      ...(requestContext.normalized_need && isPlainObject(requestContext.normalized_need)
+        ? requestContext.normalized_need
+        : {}),
+    },
+  };
+}
+
+function hasBeautyContractNormalizedNeed(value) {
+  const context = value && isPlainObject(value) ? value : {};
+  const normalizedNeed =
+    context.normalized_need && isPlainObject(context.normalized_need) ? context.normalized_need : context;
+  const beautyRequest =
+    normalizedNeed.beauty_request && isPlainObject(normalizedNeed.beauty_request)
+      ? normalizedNeed.beauty_request
+      : null;
+  if (beautyRequest && Object.keys(beautyRequest).length > 0) return true;
+  const domain = String(
+    normalizedNeed.domain ||
+      normalizedNeed.vertical ||
+      normalizedNeed.category_domain ||
+      '',
+  ).trim().toLowerCase();
+  return domain === 'beauty' || domain === 'skincare' || domain === 'skin_care';
+}
+
+function hasBeautyProfileContractSignal(value) {
+  if (!value || !isPlainObject(value)) return false;
+  const profile = value.profile && isPlainObject(value.profile) ? value.profile : value;
+  const signal = [
+    profile.skin_type,
+    profile.skinType,
+    profile.sensitivity,
+    profile.barrier_status,
+    profile.barrierStatus,
+    profile.product_fit,
+    profile.productFit,
+    profile.skin_analysis,
+    profile.skinAnalysis,
+  ]
+    .filter((item) => item != null)
+    .join(' ');
+  return /\b(skin|sensitive|barrier|dry|oily|acne|rosacea|product[_\s-]?fit|analysis)\b/i.test(signal);
+}
+
+function getPivotBeautyContractQueryText({ req = null, responseBody = null } = {}) {
+  const search = getInvokeSearchPayload(req);
+  return firstNonEmptyString(
+    search.query,
+    search.q,
+    responseBody?.metadata?.query,
+    responseBody?.metadata?.search_trace?.raw_query,
+    extractSearchQueryText(search),
+  );
+}
+
+function getPivotBeautyContractSignals({ req = null, responseBody = null } = {}) {
+  const requestMetadata = getInvokeRequestMetadata(req);
+  const responseMetadata =
+    responseBody?.metadata && isPlainObject(responseBody.metadata) ? responseBody.metadata : {};
+  const search = getInvokeSearchPayload(req);
+  const context = getInvokeRequestContext(req);
+  const queryText = getPivotBeautyContractQueryText({ req, responseBody });
+  const querySource = firstNonEmptyString(responseMetadata.query_source, requestMetadata.query_source);
+  const source = firstNonEmptyString(requestMetadata.source, responseMetadata.source);
+  const uiSurface = firstNonEmptyString(
+    search.ui_surface,
+    search.uiSurface,
+    requestMetadata.ui_surface,
+    responseMetadata.ui_surface,
+  );
+  const testSuite = firstNonEmptyString(requestMetadata.test_suite, responseMetadata.test_suite);
+  const creatorView = firstNonEmptyString(search.creator_view, requestMetadata.creator_view, requestMetadata.view);
+  const explicitDomain = firstNonEmptyString(
+    search.domain,
+    requestMetadata.domain,
+    responseMetadata.domain,
+    requestMetadata?.normalized_need?.domain,
+  );
+  const normalizedExplicitDomain = String(explicitDomain || '').trim().toLowerCase();
+  const beautyIntent = inferBeautyMainlineIntent(queryText);
+  return {
+    queryText,
+    querySource,
+    source,
+    uiSurface,
+    testSuite,
+    creatorView,
+    explicitDomain: normalizedExplicitDomain,
+    hasNormalizedNeed: hasBeautyContractNormalizedNeed(context),
+    hasProfileSignal: hasBeautyProfileContractSignal(context),
+    beautyIntent,
+    responseAlreadyBeautyMainline: /beauty_external_seed_mainline|beauty_discovery_mainline/i.test(querySource),
+    explicitBeautyBatch:
+      /beauty_cross_agent/i.test(source) ||
+      /beauty_cross_agent/i.test(uiSurface) ||
+      /beauty_cross_agent|beauty.*multiturn/i.test(testSuite),
+  };
+}
+
+function isPivotBeautyContractInvokeRequest({ operation = '', req = null, responseBody = null } = {}) {
+  if (!PIVOT_BEAUTY_CONTRACT_V1_ENABLED) return false;
+  if (String(operation || '').trim().toLowerCase() !== 'find_products_multi') return false;
+  const signals = getPivotBeautyContractSignals({ req, responseBody });
+  if (signals.explicitBeautyBatch) return true;
+  if (signals.responseAlreadyBeautyMainline) return true;
+  if (signals.explicitDomain === 'beauty' || signals.explicitDomain === 'skincare') return true;
+  if (signals.hasNormalizedNeed) return true;
+  if (String(signals.creatorView || '').trim().toUpperCase() === 'GLOBAL_BEAUTY') return true;
+  if (signals.hasProfileSignal && signals.beautyIntent.beautyLike) return true;
+  return false;
+}
+
+function getInvokeProductsArray(body) {
+  return Array.isArray(body?.products) ? body.products : [];
+}
+
+function isPivotBeautyFallbackLikeResponse(body) {
+  const metadata = body?.metadata && isPlainObject(body.metadata) ? body.metadata : {};
+  const querySource = String(metadata.query_source || '').trim().toLowerCase();
+  const proxyFallback =
+    metadata.proxy_search_fallback && isPlainObject(metadata.proxy_search_fallback)
+      ? metadata.proxy_search_fallback
+      : {};
+  const routeHealth =
+    metadata.route_health && isPlainObject(metadata.route_health) ? metadata.route_health : {};
+  const searchDecision =
+    metadata.search_decision && isPlainObject(metadata.search_decision) ? metadata.search_decision : {};
+  const diagnosticText = [
+    querySource,
+    proxyFallback.applied === true ? 'proxy_fallback_applied' : '',
+    proxyFallback.reason,
+    proxyFallback.source,
+    metadata.strict_empty_reason,
+    metadata.fallback_reason,
+    metadata.failure_class,
+    metadata.error_code,
+    routeHealth.fallback_reason,
+    routeHealth.primary_path_used,
+    searchDecision.final_decision,
+    searchDecision.failure_class,
+    searchDecision.decision_authority,
+  ]
+    .filter((value) => value != null && String(value).trim())
+    .map((value) => String(value).trim().toLowerCase())
+    .join(' ');
+  return Boolean(
+    querySource.includes('fallback') ||
+      querySource.includes('resolver') ||
+      proxyFallback.applied === true ||
+      routeHealth.fallback_triggered === true ||
+      /timeout|econnaborted|error_soft_fallback|agent_products_error_fallback|proxy|resolver/.test(diagnosticText),
+  );
+}
+
+function buildPivotBeautySafetyContract({ queryText = '', body = null } = {}) {
+  const intent = inferBeautyMainlineIntent(queryText);
+  const metadata = body?.metadata && isPlainObject(body.metadata) ? body.metadata : {};
+  const rulesApplied = [];
+  for (const family of Array.isArray(intent.families) ? intent.families : []) {
+    rulesApplied.push(`product_class_gate:${family}`);
+  }
+  for (const rule of Array.isArray(intent.safety) ? intent.safety : []) {
+    rulesApplied.push(`safety_exclusion:${rule}`);
+  }
+  const blocked = [];
+  const contraindicatedCount = Math.max(
+    0,
+    Number(
+      metadata.contraindicated_product_filtered_count ??
+        metadata.beauty_mainline_filter?.removed_contraindicated_count ??
+        0,
+    ) || 0,
+  );
+  if (contraindicatedCount > 0) blocked.push(`contraindicated_products:${contraindicatedCount}`);
+  return {
+    risk_level: rulesApplied.some((item) => item.includes('safety_exclusion')) ? 'warn' : 'info',
+    rules_applied: Array.from(new Set(rulesApplied)),
+    contraindications_blocked: blocked,
+  };
+}
+
+function resolvePivotBeautyRouteAuthority(req) {
+  const pathText = String(req?.path || req?.originalUrl || '').toLowerCase();
+  if (pathText.includes('/agent/creator/')) return 'creator_agent';
+  return 'shopping_agent';
+}
+
+function applyPivotBeautyContractToInvokeSearchResponse({
+  body,
+  req,
+  operation,
+  gatewayRequestId = null,
+} = {}) {
+  if (!body || !isPlainObject(body)) return body;
+  if (!isPivotBeautyContractInvokeRequest({ operation, req, responseBody: body })) return body;
+
+  const queryText = getPivotBeautyContractQueryText({ req, responseBody: body });
+  const products = getInvokeProductsArray(body);
+  const fallbackAttempted = isPivotBeautyFallbackLikeResponse(body);
+  const blockFallbackAdoption =
+    PIVOT_BEAUTY_LEGACY_FALLBACK_ISOLATION_ENABLED && fallbackAttempted;
+  const effectiveProducts = blockFallbackAdoption ? [] : products;
+  const existingMeta = body.metadata && isPlainObject(body.metadata) ? body.metadata : {};
+  const routeHealth =
+    existingMeta.route_health && isPlainObject(existingMeta.route_health)
+      ? existingMeta.route_health
+      : {};
+  const searchDecision =
+    existingMeta.search_decision && isPlainObject(existingMeta.search_decision)
+      ? existingMeta.search_decision
+      : {};
+  const existingContractBridge =
+    existingMeta.contract_bridge && isPlainObject(existingMeta.contract_bridge)
+      ? existingMeta.contract_bridge
+      : {};
+  const failureClass = blockFallbackAdoption
+    ? 'beauty_legacy_fallback_blocked'
+    : effectiveProducts.length === 0
+      ? 'beauty_mainline_empty'
+      : null;
+  const contractStatus = failureClass
+    ? 'failed'
+    : String(body.status || '').trim().toLowerCase() === 'degraded'
+      ? 'degraded'
+      : 'success';
+  const routeAuthority = resolvePivotBeautyRouteAuthority(req);
+  const safety = buildPivotBeautySafetyContract({ queryText, body });
+  const mainlineLatencyMs = Math.max(
+    0,
+    Number(routeHealth.primary_latency_ms ?? existingMeta.mainline_latency_ms ?? 0) || 0,
+  );
+  const querySource = firstNonEmptyString(existingMeta.query_source, 'agent_products_beauty_mainline');
+  const returnedCount = effectiveProducts.length;
+  const responseTotal = failureClass
+    ? 0
+    : Math.max(
+        returnedCount,
+        Number(body.total ?? body.total_count ?? returnedCount) || returnedCount,
+      );
+  const responsePageSize = failureClass
+    ? 0
+    : Number(body.page_size ?? body.pageSize ?? returnedCount) || returnedCount;
+  const degradedReason =
+    contractStatus === 'degraded'
+      ? firstNonEmptyString(existingMeta.degraded_reason, 'optional_layer_degraded')
+      : existingMeta.degraded_reason || null;
+
+  return {
+    ...body,
+    pivot_contract_version: PIVOT_BEAUTY_CONTRACT_VERSION,
+    status: contractStatus,
+    success: contractStatus === 'success',
+    route_authority: routeAuthority,
+    products: effectiveProducts,
+    total: responseTotal,
+    page_size: responsePageSize,
+    ...(failureClass
+      ? {
+          reply:
+            body.reply ||
+            'Beauty product search did not return contract-safe mainline results. Please retry shortly.',
+        }
+      : {}),
+    safety: {
+      ...(body.safety && isPlainObject(body.safety) ? body.safety : {}),
+      ...safety,
+    },
+    metadata: {
+      ...existingMeta,
+      pivot_contract_version: PIVOT_BEAUTY_CONTRACT_VERSION,
+      route_authority: routeAuthority,
+      status: contractStatus,
+      query_source: querySource,
+      decision_authority:
+        firstNonEmptyString(
+          existingMeta.decision_authority,
+          searchDecision.decision_authority,
+          querySource,
+        ) || null,
+      mainline_latency_ms: mainlineLatencyMs,
+      degraded_reason: degradedReason,
+      failure_class: failureClass,
+      fallback_attempted: fallbackAttempted,
+      fallback_adopted: fallbackAttempted && !blockFallbackAdoption && returnedCount > 0,
+      request_id: firstNonEmptyString(existingMeta.request_id, gatewayRequestId),
+      contract_bridge: {
+        ...existingContractBridge,
+        attempted_contract: PIVOT_BEAUTY_CONTRACT_VERSION,
+        resolved_contract: PIVOT_BEAUTY_CONTRACT_VERSION,
+        legacy_fallback: false,
+      },
+      route_health: {
+        ...routeHealth,
+        fallback_triggered: fallbackAttempted,
+        fallback_reason:
+          firstNonEmptyString(routeHealth.fallback_reason, existingMeta.fallback_reason) ||
+          (fallbackAttempted ? 'legacy_or_proxy_fallback' : null),
+        fallback_adopted: fallbackAttempted && !blockFallbackAdoption && returnedCount > 0,
+        primary_path_used:
+          firstNonEmptyString(routeHealth.primary_path_used, 'beauty_external_seed_mainline'),
+        final_returned_count: returnedCount,
+      },
+      search_decision: {
+        ...searchDecision,
+        final_decision: failureClass
+          ? failureClass
+          : firstNonEmptyString(searchDecision.final_decision, 'products_returned'),
+        decision_authority:
+          firstNonEmptyString(searchDecision.decision_authority, querySource) || null,
+        decision_locked: true,
+        decision_lock_reason: 'pivot_beauty_contract_v1',
+      },
+    },
+  };
+}
+
 function firstQueryParamValue(value) {
   if (Array.isArray(value)) {
     for (const item of value) {
@@ -9420,74 +9773,76 @@ async function queryBeautyExternalSeedRowsFast({
   const safeLimit = Math.max(1, Math.min(240, Number(limit || 80) || 80));
   const categoryTerms = buildBeautyExternalSeedCategoryTerms(intent);
   const recallPatterns = buildBeautyExternalSeedRecallPatterns({ queryText, intent });
-  const sqlParams = [safeMarket, categoryTerms];
-  const filters = [
-    `lower(coalesce(
-      seed_data->'derived'->'recall'->>'category',
-      seed_data->>'category',
-      seed_data->'product'->>'category',
-      seed_data->'snapshot'->>'category',
-      seed_data->>'product_type',
-      seed_data->'product'->>'product_type',
-      seed_data->'snapshot'->>'product_type',
-      ''
-    )) = ANY($2::text[])`,
-  ];
-
-  if (inStockOnly) {
-    filters.push(
-      `coalesce(lower(availability), '') NOT IN ('out of stock', 'out_of_stock', 'outofstock', 'oos')`,
-    );
-  }
-
   const toolScopes = toolScope === 'creator_preferred'
     ? ['creator_agents', '*', '']
     : ['creator_agents', '*', 'shopping_agents', ''];
-  sqlParams.push(toolScopes);
-  const toolBind = `$${sqlParams.length}`;
-  const toolClause = `AND tool = ANY(${toolBind}::text[])`;
-  const orderClause = `CASE
-    WHEN tool = 'creator_agents' THEN 0
-    WHEN tool = '*' OR tool = '' THEN 1
-    ELSE 2
-  END, updated_at DESC NULLS LAST, created_at DESC NULLS LAST`;
 
-  sqlParams.push(safeLimit);
-  const limitBind = `$${sqlParams.length}`;
-
-  const result = await query(
-    `
-      SELECT
-        id,
-        external_product_id,
-        market,
-        tool,
-        destination_url,
-        canonical_url,
-        domain,
-        title,
-        image_url,
-        price_amount,
-        price_currency,
-        availability,
-        seed_data,
-        updated_at,
-        created_at
-      FROM external_product_seeds
-      WHERE status = 'active'
-        AND attached_product_key IS NULL
-        AND market = $1
-        ${toolClause}
-        AND ${filters.join('\n        AND ')}
-      ORDER BY ${orderClause}
-      LIMIT ${limitBind}
-    `,
-    sqlParams,
-  );
+  const rows = [];
+  const variantResults = [];
+  const categoryAuthoritySql = `lower(coalesce(
+    seed_data->'derived'->'recall'->>'category',
+    seed_data->>'category',
+    seed_data->'product'->>'category',
+    seed_data->'snapshot'->>'category',
+    seed_data->>'product_type',
+    seed_data->'product'->>'product_type',
+    seed_data->'snapshot'->>'product_type',
+    ''
+  ))`;
+  for (const tool of toolScopes) {
+    if (rows.length >= safeLimit) break;
+    const remainingLimit = Math.max(1, safeLimit - rows.length);
+    const filters = [
+      `${categoryAuthoritySql} = ANY($2::text[])`,
+    ];
+    if (inStockOnly) {
+      filters.push(
+        `coalesce(lower(availability), '') NOT IN ('out of stock', 'out_of_stock', 'outofstock', 'oos')`,
+      );
+    }
+    const result = await query(
+      `
+        SELECT
+          id,
+          external_product_id,
+          market,
+          tool,
+          destination_url,
+          canonical_url,
+          domain,
+          title,
+          image_url,
+          price_amount,
+          price_currency,
+          availability,
+          seed_data,
+          updated_at,
+          created_at
+        FROM external_product_seeds
+        WHERE status = 'active'
+          AND attached_product_key IS NULL
+          AND market = $1
+          AND tool = $3
+          AND ${filters.join('\n          AND ')}
+        ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+        LIMIT $4
+      `,
+      [safeMarket, categoryTerms, tool, remainingLimit],
+    );
+    const nextRows = Array.isArray(result?.rows) ? result.rows : [];
+    rows.push(...nextRows);
+    variantResults.push({
+      query: String(queryText || '').trim(),
+      row_count: nextRows.length,
+      category_terms: categoryTerms,
+      recall_pattern_count: recallPatterns.length,
+      tool_scope: tool || '(empty)',
+    });
+  }
 
   const seen = new Set();
   const rawProducts = [];
-  for (const row of Array.isArray(result?.rows) ? result.rows : []) {
+  for (const row of rows) {
     const product = buildExternalSeedProduct(row);
     if (!product) continue;
     product.market = row.market || safeMarket;
@@ -9501,14 +9856,7 @@ async function queryBeautyExternalSeedRowsFast({
 
   return {
     rawProducts,
-    variantResults: [
-      {
-        query: String(queryText || '').trim(),
-        row_count: rawProducts.length,
-        category_terms: categoryTerms,
-        recall_pattern_count: recallPatterns.length,
-      },
-    ],
+    variantResults,
     categoryTerms,
     recallPatterns,
   };
@@ -9994,6 +10342,7 @@ async function searchBeautyExternalSeedProductsMainline({
   intent = null,
   creatorScoped = false,
 } = {}) {
+  if (!PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED) return null;
   if (!process.env.DATABASE_URL) return null;
   const queryText = extractSearchQueryText(search);
   const beautyIntent = inferBeautyMainlineIntent(queryText);
@@ -18704,6 +19053,29 @@ app.get('/creator/:creatorId/categories', async (req, res) => {
       ...(locale ? { locale } : {}),
       ...(viewId ? { viewId } : {}),
     });
+    if (
+      PIVOT_BEAUTY_CONTRACT_V1_ENABLED &&
+      String(viewId || '').trim().toUpperCase() === 'GLOBAL_BEAUTY' &&
+      tree &&
+      typeof tree === 'object' &&
+      !Array.isArray(tree)
+    ) {
+      return res.json({
+        ...tree,
+        pivot_contract_version: PIVOT_BEAUTY_CONTRACT_VERSION,
+        status: Array.isArray(tree.roots) && tree.roots.length > 0 ? 'success' : 'failed',
+        route_authority: 'creator_agent',
+        meta: {
+          ...(tree.meta && typeof tree.meta === 'object' && !Array.isArray(tree.meta)
+            ? tree.meta
+            : {}),
+          pivot_contract_version: PIVOT_BEAUTY_CONTRACT_VERSION,
+          route_authority: 'creator_agent',
+          status: Array.isArray(tree.roots) && tree.roots.length > 0 ? 'success' : 'failed',
+          creator_id: creatorId,
+        },
+      });
+    }
     return res.json(tree);
   } catch (err) {
     if (err.code === 'UNKNOWN_CREATOR') {
@@ -22335,6 +22707,25 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         'failed to stamp invoke search rail metadata',
       );
     }
+    try {
+      const operation = String(debugRuntime.operation || req?.body?.operation || '')
+        .trim()
+        .toLowerCase();
+      finalBody = applyPivotBeautyContractToInvokeSearchResponse({
+        body: finalBody,
+        req,
+        operation,
+        gatewayRequestId,
+      });
+    } catch (contractErr) {
+      logger.warn(
+        {
+          gateway_request_id: gatewayRequestId,
+          err: contractErr?.message || String(contractErr),
+        },
+        'failed to apply pivot beauty contract metadata',
+      );
+    }
     finalBody = maybeAttachInvokeBeautyExpertProjection(finalBody);
     setInvokePerfHeaders();
     return originalJson(finalBody);
@@ -22445,7 +22836,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         Boolean(String(earlySearch.merchant_id || earlySearch.merchantId || '').trim()) ||
         earlyMerchantIds.length > 0;
       const earlyBeautyIntent = inferBeautyMainlineIntent(earlyQueryText);
+      const earlyPivotBeautyContractRequest = isPivotBeautyContractInvokeRequest({
+        operation,
+        req,
+      });
       if (
+        PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED &&
+        earlyPivotBeautyContractRequest &&
         earlyQueryText &&
         earlyBeautyIntent.beautyLike &&
         !earlyStrictDecision.enabled &&
@@ -22503,6 +22900,46 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                     status: null,
                   },
                   final_decision: 'beauty_mainline_direct_returned',
+                },
+                ...(earlyCreatorId ? { creator_id: earlyCreatorId } : {}),
+              },
+            });
+          }
+          if (
+            directResponse &&
+            isPivotBeautyContractInvokeRequest({
+              operation,
+              req,
+              responseBody: directResponse,
+            })
+          ) {
+            return res.json({
+              ...directResponse,
+              metadata: {
+                ...(directResponse.metadata || {}),
+                service_version:
+                  directResponse.metadata?.service_version || buildServiceVersionMetadata(),
+                failure_class: 'beauty_mainline_empty',
+                fallback_attempted: false,
+                fallback_adopted: false,
+                route_health: {
+                  ...((directResponse.metadata && directResponse.metadata.route_health) || {}),
+                  primary_path_used: 'beauty_external_seed_mainline',
+                  primary_latency_ms: Math.max(0, Date.now() - earlyDirectStartedAt),
+                  fallback_triggered: false,
+                  fallback_reason: null,
+                  fallback_adopted: false,
+                  final_returned_count: 0,
+                },
+                search_trace: {
+                  trace_id: gatewayRequestId,
+                  raw_query: earlyQueryText,
+                  upstream_stage: {
+                    called: false,
+                    timeout: false,
+                    status: null,
+                  },
+                  final_decision: 'beauty_mainline_empty',
                 },
                 ...(earlyCreatorId ? { creator_id: earlyCreatorId } : {}),
               },

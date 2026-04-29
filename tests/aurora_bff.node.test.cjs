@@ -1293,6 +1293,66 @@ test('/v1/chat: travel intent with missing destination/date asks travel fields b
   );
 });
 
+test('/v1/chat: active trip skincare follow-up stays on travel path instead of ingredient report', async () => {
+  await withEnv(
+    {
+      AURORA_QA_PLANNER_V1_ENABLED: 'true',
+      AURORA_TRAVEL_WEATHER_LIVE_ENABLED: 'false',
+      AURORA_BFF_BEAUTY_SHARED_TRUTH_ENABLED: 'true',
+      PIVOTA_API_BASE: 'http://shared-truth-should-not-be-called.test',
+      PIVOTA_API_KEY: 'test_key',
+      OPENAI_API_KEY: '',
+    },
+    async () => {
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+      const app = express();
+      app.use(express.json({ limit: '1mb' }));
+      mountAuroraBffRoutes(app, { logger: null });
+
+      const resp = await supertest(app)
+        .post('/v1/chat')
+        .set({
+          'X-Aurora-UID': 'test_uid_travel_followup_retinol',
+          'X-Trace-ID': 'test_trace',
+          'X-Brief-ID': 'test_brief',
+          'X-Lang': 'CN',
+        })
+        .send({
+          message: '我带了视黄醇和去角质水，出发前后怎么安排更稳？',
+          session: {
+            state: 'idle',
+            profile: {
+              skinType: 'dry_sensitive',
+              sensitivity: 'high',
+              barrierStatus: 'fragile',
+              current_actives: ['retinol', 'exfoliating_acid'],
+              travel_plan: {
+                destination: 'Reykjavik',
+                start_date: '2026-05-20',
+                end_date: '2026-05-26',
+                origin: 'San Francisco, CA',
+              },
+            },
+          },
+          language: 'CN',
+        })
+        .expect(200);
+
+      const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+      const types = cards.map((card) => String(card?.type || '')).filter(Boolean);
+      assert.equal(types.includes('env_stress'), true);
+      assert.equal(types.includes('aurora_ingredient_report'), false);
+      assert.equal(typeof resp.body?.assistant_message?.content, 'string');
+      assert.match(resp.body.assistant_message.content, /旅行|出发|视黄醇|酸|屏障|修护/);
+
+      delete require.cache[moduleId];
+    },
+  );
+});
+
 test('/v1/chat: retinoid with unknown pregnancy requires info before availability/catalog short-circuit', async () => {
   await withEnv(
     {
