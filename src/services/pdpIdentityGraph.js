@@ -137,6 +137,79 @@ function normalizeComparableDomain(value) {
   }
 }
 
+function normalizeCompactComparableToken(value) {
+  return normalizeResolverText(value).replace(/[^a-z0-9]+/g, '');
+}
+
+function collectUniqueDomains(values, limit = 24) {
+  const seen = new Set();
+  const out = [];
+  for (const value of values || []) {
+    const domain = normalizeComparableDomain(value);
+    if (!domain || seen.has(domain)) continue;
+    seen.add(domain);
+    out.push(domain);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+function compactDomainCandidates(domain) {
+  const normalized = normalizeComparableDomain(domain);
+  if (!normalized) return [];
+  const parts = normalized.split('.').filter(Boolean);
+  const registered =
+    parts.length >= 2
+      ? parts[parts.length - 2]
+      : parts[0] || '';
+  const withoutCountrySubdomain =
+    parts.length >= 3 && ['us', 'usa', 'uk', 'eu', 'global'].includes(parts[0])
+      ? parts.slice(1).join('')
+      : '';
+  return uniqueStrings(
+    [
+      normalizeCompactComparableToken(normalized),
+      normalizeCompactComparableToken(registered),
+      normalizeCompactComparableToken(withoutCountrySubdomain),
+      ...parts.map((part) => normalizeCompactComparableToken(part)),
+    ],
+    16,
+  ).filter((item) => item.length >= 3 && !['com', 'net', 'org', 'shop', 'store'].includes(item));
+}
+
+function compactBrandCandidates(value) {
+  const normalized = normalizeBrandToken(value);
+  if (!normalized) return [];
+  const compact = normalizeCompactComparableToken(normalized);
+  const words = normalized
+    .split(/\s+/g)
+    .map((word) => normalizeCompactComparableToken(word))
+    .filter(Boolean);
+  const withoutDecorators = words.filter(
+    (word) =>
+      ![
+        'by',
+        'the',
+        'us',
+        'usa',
+        'global',
+        'official',
+        'shop',
+        'store',
+        'beauty',
+        'skincare',
+      ].includes(word),
+  );
+  return uniqueStrings(
+    [
+      compact,
+      withoutDecorators.join(''),
+      ...withoutDecorators,
+    ],
+    16,
+  ).filter((item) => item.length >= 4);
+}
+
 function looksLikeRelationMissing(err) {
   const message = String(err?.message || err || '').toLowerCase();
   return (
@@ -542,8 +615,6 @@ function extractOfficialHandle(product, officialUrl) {
 
 function extractOfficialUrl(product) {
   const candidates = [
-    product?.source_url,
-    product?.sourceUrl,
     product?.canonical_url,
     product?.canonicalUrl,
     product?.destination_url,
@@ -553,6 +624,8 @@ function extractOfficialUrl(product) {
     product?.productUrl,
     product?.online_store_url,
     product?.onlineStoreUrl,
+    product?.source_url,
+    product?.sourceUrl,
   ];
   for (const candidate of candidates) {
     const normalized = normalizeComparableUrl(candidate);
@@ -655,13 +728,123 @@ function computeIdentityConfidence({ sourceTier, strongIdentity, softIdentity, a
   return Math.max(0.05, Math.min(0.99, Number(score.toFixed(4))));
 }
 
+function collectProductSourceDomains(product) {
+  const seedData = asPlainObject(product?.seed_data) || {};
+  const snapshot = asPlainObject(seedData?.snapshot) || {};
+  const authoritySource = asPlainObject(seedData?.authority_source) || {};
+  return collectUniqueDomains([
+    product?.canonical_url,
+    product?.canonicalUrl,
+    product?.destination_url,
+    product?.destinationUrl,
+    product?.url,
+    product?.product_url,
+    product?.productUrl,
+    product?.online_store_url,
+    product?.onlineStoreUrl,
+    product?.source_url,
+    product?.sourceUrl,
+    seedData?.canonical_url,
+    seedData?.destination_url,
+    seedData?.source_url,
+    snapshot?.canonical_url,
+    snapshot?.destination_url,
+    snapshot?.source_url,
+    authoritySource?.source_url,
+    authoritySource?.url,
+  ]);
+}
+
+function collectProductBrandCandidates(product) {
+  const seedData = asPlainObject(product?.seed_data) || {};
+  const snapshot = asPlainObject(seedData?.snapshot) || {};
+  return uniqueStrings(
+    [
+      product?.brand?.name,
+      product?.brand,
+      product?.brand_name,
+      product?.vendor,
+      product?.vendor_name,
+      seedData?.brand?.name,
+      seedData?.brand,
+      seedData?.brand_name,
+      seedData?.vendor,
+      seedData?.vendor_name,
+      snapshot?.brand?.name,
+      snapshot?.brand,
+      snapshot?.brand_name,
+      snapshot?.vendor,
+      snapshot?.vendor_name,
+    ],
+    12,
+  ).flatMap((item) => compactBrandCandidates(item));
+}
+
+function collectExternalSeedSourceRoles(product) {
+  const seedData = asPlainObject(product?.seed_data) || {};
+  const snapshot = asPlainObject(seedData?.snapshot) || {};
+  const authoritySource = asPlainObject(seedData?.authority_source) || {};
+  return uniqueStrings(
+    [
+      product?.source_role,
+      product?.sourceRole,
+      product?.source_kind,
+      product?.sourceKind,
+      product?.source_listing_scope,
+      product?.sourceListingScope,
+      seedData?.source_role,
+      seedData?.sourceRole,
+      seedData?.source_kind,
+      seedData?.sourceKind,
+      seedData?.source_listing_scope,
+      seedData?.sourceListingScope,
+      snapshot?.source_role,
+      snapshot?.sourceRole,
+      authoritySource?.source_role,
+      authoritySource?.sourceRole,
+      authoritySource?.role,
+    ].map((item) => normalizeResolverText(item)),
+    12,
+  );
+}
+
+function isExternalSeedBrandOwnedSource(product) {
+  const roles = collectExternalSeedSourceRoles(product);
+  if (
+    roles.some((role) =>
+      /\b(retailer|channel|marketplace|market place|reseller|affiliate|aggregator|multi brand|multibrand)\b/i.test(role),
+    )
+  ) {
+    return false;
+  }
+  if (roles.some((role) => /\b(official|brand|dtc|direct to consumer|owned)\b/i.test(role))) {
+    return true;
+  }
+  const brandCandidates = collectProductBrandCandidates(product);
+  if (!brandCandidates.length) return false;
+  const domainCandidates = collectProductSourceDomains(product).flatMap((domain) =>
+    compactDomainCandidates(domain),
+  );
+  return brandCandidates.some((brand) =>
+    domainCandidates.some((domain) => domain === brand || domain.includes(brand)),
+  );
+}
+
 function chooseSourceTier(product, sourceKind) {
-  if (sourceKind === 'external_seed') return 'brand';
+  if (sourceKind === 'external_seed') {
+    return isExternalSeedBrandOwnedSource(product) ? 'brand' : 'merchant';
+  }
   const domain = normalizeComparableDomain(extractOfficialUrl(product));
-  const brand = normalizeBrandToken(
+  const brand = compactBrandCandidates(
     firstNonEmptyString(product?.brand?.name, product?.brand, product?.vendor),
   );
-  if (domain && brand && domain.includes(brand.replace(/\s+/g, ''))) {
+  const domains = compactDomainCandidates(domain);
+  if (
+    domains.length &&
+    brand.some((candidate) =>
+      domains.some((domainCandidate) => domainCandidate === candidate || domainCandidate.includes(candidate)),
+    )
+  ) {
     return 'brand';
   }
   return 'merchant';
