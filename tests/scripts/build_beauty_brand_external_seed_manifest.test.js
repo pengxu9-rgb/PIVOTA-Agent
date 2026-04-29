@@ -88,6 +88,18 @@ describe('build_beauty_brand_external_seed_manifest', () => {
     expect(looksLikeBundleLikeProduct({ title: '[Amazon] SOLID IN Lip Essence' })).toBe(true);
     expect(looksLikeBundleLikeProduct({ title: "Glowin' Softly Hydration Heros" })).toBe(true);
     expect(looksLikeBundleLikeProduct({ title: 'SOLID IN Lip Essence', url: 'https://torriden.us/products/solid-in-lip-essence-set' })).toBe(true);
+    expect(looksLikeBundleLikeProduct({ title: '🎁 Glow Deep Serum : Rice + Alpha-Arbutin (100% off)' })).toBe(true);
+    expect(looksLikeBundleLikeProduct({ title: 'Icon Gift Laneige Throw Blanket' })).toBe(true);
+    expect(looksLikeBundleLikeProduct({ title: 'Laneige Magnetic Phone Grip Lipbalm Holder' })).toBe(true);
+    expect(looksLikeBundleLikeProduct({ title: 'SKIN1004 Signature Pouch' })).toBe(true);
+    expect(looksLikeBundleLikeProduct({ title: 'Hyalu-Cica Water-Fit Sun Serum Value Pack' })).toBe(true);
+    expect(looksLikeBundleLikeProduct({ title: 'Laneige Blue Crossbody Bag' })).toBe(true);
+    expect(looksLikeBundleLikeProduct({ title: 'Laneige Hydration Hug Tumbler' })).toBe(true);
+    expect(looksLikeBundleLikeProduct({ title: 'LANEIGE x Baskin-Robbins™ Tie-Dye Crewneck' })).toBe(true);
+    expect(looksLikeBundleLikeProduct({ title: 'Glaze Craze Tinted Lip Serum Blister' })).toBe(true);
+    expect(looksLikeBundleLikeProduct({ title: 'Water Sleeping Mask (2mL)' })).toBe(true);
+    expect(looksLikeBundleLikeProduct({ title: '(Short-dated) Advanced Snail 96 Mucin Power Essence' })).toBe(true);
+    expect(looksLikeBundleLikeProduct({ title: 'Round Lab Sheet Mask Sampler - 9pc' })).toBe(true);
     expect(looksLikeBundleLikeProduct({ title: 'SPF! Canvas Tote Bag ($15 value)' })).toBe(true);
     expect(looksLikeBundleLikeProduct({ title: 'Niacinamide Serum' })).toBe(false);
     expect(manifest.extracted_product_count).toBe(2);
