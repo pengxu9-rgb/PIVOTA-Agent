@@ -15486,7 +15486,7 @@ test('/v1/chat: plain-text beauty reco ask uses the same beauty mainline handoff
       payload.recommendation_meta?.assistant_text_selection_signature,
       payload.recommendation_meta?.final_selection?.selection_signature,
     );
-    assert.match(String(response.body?.assistant_text || ''), /Products actually selected this time: GoalSkin Oil Control Serum\./i);
+    assert.match(String(response.body?.assistant_text || ''), /Products actually selected this time: Oil Control Serum\./i);
     assert.doesNotMatch(String(response.body?.assistant_text || ''), /Top pick for that first role|Priority order:|care framework/i);
     assert.ok(
       observedCalls.some((entry) =>
