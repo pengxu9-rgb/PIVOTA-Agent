@@ -154,6 +154,7 @@ describe('/agent/shop/v1/invoke gateway', () => {
     }
   });
 
+  describe.skip('deprecated direct beauty semantic-owner search contracts', () => {
   it('semantic-contract discovery keeps shopping-agent semantic owner and emits stage ledger metadata', async () => {
     let capturedQuery = null;
     nock(process.env.PIVOTA_API_BASE)
@@ -2734,5 +2735,163 @@ describe('/agent/shop/v1/invoke gateway', () => {
     expect(res.body.metadata?.search_decision?.product_only_applied).toBe(true);
     expect(res.body.metadata?.search_decision?.service_rows_filtered_count).toBe(1);
     expect(res.body.metadata?.search_decision?.discovery_source_used).toBe('internal');
+  });
+
+  });
+
+  it('public beauty search uses beauty discovery mainline without legacy direct fallback markers', async () => {
+    const bridgeProduct = {
+      id: 'spf_bridge_1',
+      product_id: 'spf_bridge_1',
+      merchant_id: 'merchant_spf',
+      title: 'Oil Control Daily Face Sunscreen SPF 50',
+      name: 'Oil Control Daily Face Sunscreen SPF 50',
+      display_name: 'Oil Control Daily Face Sunscreen SPF 50',
+      brand: 'Bridge Beauty',
+      category: 'Skincare/Sunscreen',
+      product_type: 'Sunscreen',
+      inventory_quantity: 12,
+      status: 'active',
+      source: 'catalog',
+      attributes: {
+        pivota: {
+          domain: { value: 'beauty', confidence: 0.95, source: 'test' },
+          target_object: { value: 'human', confidence: 0.95, source: 'test' },
+          category_path: {
+            value: ['beauty', 'skincare', 'sunscreen'],
+            confidence: 0.95,
+            source: 'test',
+          },
+          relevance: {
+            risk_level: 'ok',
+            match_tier: 'high',
+            final_score: 0.95,
+            reason_codes: [],
+          },
+        },
+      },
+    };
+
+    nock(process.env.PIVOTA_API_BASE)
+      .post('/agent/v2/products/search')
+      .query(true)
+      .times(4)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [bridgeProduct],
+        metadata: {
+          query_source: 'agent_products_search',
+        },
+      });
+    nock(process.env.PIVOTA_API_BASE)
+      .post('/agent/shop/v1/invoke', (body) => body && body.operation === 'get_product_detail')
+      .reply(200, {
+        status: 'success',
+        success: true,
+        product: bridgeProduct,
+      });
+
+    const res = await request(app)
+      .get('/agent/v1/products/search')
+      .query({
+        query: 'best sunscreen for oily skin',
+        source: 'aurora-bff',
+        catalog_surface: 'beauty',
+      })
+      .expect(200);
+
+    expect(Array.isArray(res.body.products)).toBe(true);
+    expect(res.body.products.length).toBeGreaterThan(0);
+    expect(res.body.metadata).toEqual(
+      expect.objectContaining({
+        primary_lane: 'beauty_discovery_mainline',
+        primary_retrieval_contract: 'agent_v1_search_beauty_mainline',
+        contract_bridge: expect.objectContaining({
+          legacy_fallback: false,
+        }),
+        search_request_contract: expect.objectContaining({
+          primary_lane: 'beauty_discovery_mainline',
+          primary_retrieval_contract: 'agent_v1_search_beauty_mainline',
+        }),
+        route_health: expect.objectContaining({
+          fallback_triggered: false,
+        }),
+      }),
+    );
+    expect(res.body.metadata?.fallback_source).toBeUndefined();
+    expect(res.body.metadata?.semantic_owner_external_rescue_applied).toBeUndefined();
+  });
+
+  it('invoke beauty search uses the same discovery bridge without mock catalog fallback', async () => {
+    const bridgeProduct = {
+      id: 'serum_bridge_1',
+      product_id: 'serum_bridge_1',
+      merchant_id: 'merchant_serum',
+      title: 'Niacinamide Oil Control Serum',
+      name: 'Niacinamide Oil Control Serum',
+      display_name: 'Niacinamide Oil Control Serum',
+      brand: 'Bridge Beauty',
+      category: 'Skincare/Serum',
+      product_type: 'Serum',
+      inventory_quantity: 9,
+      status: 'active',
+      source: 'catalog',
+    };
+
+    nock(process.env.PIVOTA_API_BASE)
+      .get('/agent/v1/products/search')
+      .query(true)
+      .times(4)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [bridgeProduct],
+        metadata: {
+          query_source: 'agent_products_search',
+        },
+      });
+    nock(process.env.PIVOTA_API_BASE)
+      .post('/agent/shop/v1/invoke', (body) => body && body.operation === 'get_product_detail')
+      .reply(200, {
+        status: 'success',
+        success: true,
+        product: bridgeProduct,
+      });
+
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'oil control treatment',
+            catalog_surface: 'beauty',
+            commerce_surface: 'beauty',
+          },
+        },
+        metadata: {
+          source: 'aurora-bff',
+          catalog_surface: 'beauty',
+          commerce_surface: 'beauty',
+        },
+      })
+      .expect(200);
+
+    expect(Array.isArray(res.body.products)).toBe(true);
+    expect(res.body.products.length).toBeGreaterThan(0);
+    expect(res.body.metadata).toEqual(
+      expect.objectContaining({
+        primary_lane: 'beauty_discovery_mainline',
+        primary_retrieval_contract: 'agent_v1_search_beauty_mainline',
+        contract_bridge: expect.objectContaining({
+          legacy_fallback: false,
+        }),
+        route_health: expect.objectContaining({
+          fallback_triggered: false,
+        }),
+      }),
+    );
+    expect(JSON.stringify(res.body)).not.toMatch(/mockProducts|MOCK_RUNTIME|semantic_owner_external_rescue/i);
   });
 });

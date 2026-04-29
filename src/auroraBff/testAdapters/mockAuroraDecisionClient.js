@@ -1,0 +1,890 @@
+function normalizeMockInput(input) {
+  if (typeof input === 'string') return { query: input, anchor_product_id: null, messages: [] };
+  if (!input || typeof input !== 'object') return { query: '', anchor_product_id: null, messages: [] };
+  const obj = input;
+  return {
+    query: String(obj.query || ''),
+    anchor_product_id: typeof obj.anchor_product_id === 'string' ? obj.anchor_product_id : null,
+    messages: Array.isArray(obj.messages) ? obj.messages : [],
+  };
+}
+
+function mockAuroraChat(input) {
+  const norm = normalizeMockInput(input);
+  const q = String(norm.query || '');
+  const anchorId = String(norm.anchor_product_id || '').trim();
+
+  // Test helper: allow asserting what the BFF sent upstream (prefix includes profile/recent logs/meta).
+  if (/CHAT_PROFILE_PREFIX_ECHO_TEST/i.test(q)) {
+    return { answer: q, intent: 'chat', cards: [] };
+  }
+
+  if (/CLARIFICATION_FLOW_V2_FREE_TEXT_CONTINUE_TEST/i.test(q)) {
+    return {
+      answer: 'Mock: free text after pending clarification abandon.',
+      intent: 'chat',
+      cards: [],
+    };
+  }
+
+  if (/CLARIFICATION_FLOW_V2_TTL_TEST/i.test(q)) {
+    return {
+      answer: 'Mock: pending clarification TTL fallback to upstream.',
+      intent: 'chat',
+      cards: [],
+    };
+  }
+
+  if (/CLARIFICATION_FLOW_V2_TRUNCATION_TEST/i.test(q)) {
+    const questions = Array.from({ length: 8 }).map((_, i) => ({
+      id: `question_${i}`,
+      question: `Question ${i} ${'Q'.repeat(260)}`,
+      options: Array.from({ length: 12 }).map((__, j) => `Option ${i}-${j} ${'O'.repeat(120)}`),
+    }));
+    return {
+      answer: 'Mock: clarification truncation stress.',
+      intent: 'clarify',
+      cards: [],
+      clarification: { questions },
+    };
+  }
+
+  if (/CLARIFICATION_FLOW_V2_RESUME_ECHO_TEST/i.test(q)) {
+    if (/clarification_history/i.test(q)) {
+      return { answer: q, intent: 'chat', cards: [] };
+    }
+    return {
+      answer: 'Mock: clarification flow start.',
+      intent: 'clarify',
+      cards: [],
+      clarification: {
+        questions: [
+          {
+            id: 'skin_type',
+            question: 'Which skin type fits you best?',
+            options: ['Oily', 'Dry', 'Combination', 'Not sure'],
+          },
+          {
+            id: 'goals',
+            question: 'What is your top goal now?',
+            options: ['Acne control', 'Barrier repair', 'Brightening'],
+          },
+        ],
+      },
+    };
+  }
+
+  if (/CLARIFICATION_FLOW_V2_RESUME_PROBE_BAD_TEST/i.test(q)) {
+    if (/clarification_history/i.test(q)) {
+      return {
+        answer:
+          'Before I can recommend products safely, I need a quick skin profile:\n' +
+          '1) What is your skin type?\n' +
+          '2) Is your barrier stable or do you have stinging/redness?\n' +
+          '3) What is your main goal?',
+        intent: 'chat',
+        cards: [],
+      };
+    }
+    return {
+      answer: 'Mock: clarification flow start.',
+      intent: 'clarify',
+      cards: [],
+      clarification: {
+        questions: [
+          {
+            id: 'skin_type',
+            question: 'Which skin type fits you best?',
+            options: ['Oily', 'Dry', 'Combination', 'Not sure'],
+          },
+          {
+            id: 'goals',
+            question: 'What is your top goal now?',
+            options: ['Acne control', 'Barrier repair', 'Brightening'],
+          },
+        ],
+      },
+    };
+  }
+
+  if (/RESUME_PROBE_NON_RESUME_BAD_TEXT_TEST/i.test(q)) {
+    return {
+      answer:
+        'Before I can recommend products safely, I need a quick skin profile:\n' +
+        '1) What is your skin type?\n' +
+        '2) What is your main goal?',
+      intent: 'chat',
+      cards: [],
+    };
+  }
+
+  if (/CLARIFICATION_FLOW_V2_TWO_QUESTIONS_TEST/i.test(q)) {
+    if (/clarification_history/i.test(q)) {
+      return {
+        answer: 'Mock: clarification flow resumed with history context.',
+        intent: 'chat',
+        cards: [],
+      };
+    }
+    return {
+      answer: 'Mock: clarification flow start.',
+      intent: 'clarify',
+      cards: [],
+      clarification: {
+        questions: [
+          {
+            id: 'skin_type',
+            question: 'Which skin type fits you best?',
+            options: ['Oily', 'Dry', 'Combination', 'Not sure'],
+          },
+          {
+            id: 'goals',
+            question: 'What is your top goal now?',
+            options: ['Acne control', 'Barrier repair', 'Brightening'],
+          },
+        ],
+      },
+    };
+  }
+
+  if (/CLARIFICATION_FILTER_SKINTYPE_ONLY_TEST/i.test(q)) {
+    return {
+      answer: 'Mock: one clarification question.',
+      intent: 'clarify',
+      cards: [],
+      clarification: {
+        questions: [
+          {
+            id: 'skin_type',
+            question: 'Which skin type fits you best?',
+            options: ['Oily', 'Dry', 'Combination', 'Not sure'],
+          },
+        ],
+        missing_fields: ['skinType'],
+      },
+    };
+  }
+
+  if (/CLARIFICATION_FILTER_SKINTYPE_NEXT_TEST/i.test(q)) {
+    return {
+      answer: 'Mock: two clarification questions.',
+      intent: 'clarify',
+      cards: [],
+      clarification: {
+        questions: [
+          {
+            id: 'skin_type',
+            question: 'Which skin type fits you best?',
+            options: ['Oily', 'Dry', 'Combination', 'Not sure'],
+          },
+          {
+            id: 'next',
+            question: 'What do you want to do next?',
+            options: ['Build an AM/PM routine', 'Evaluate one product'],
+          },
+        ],
+      },
+    };
+  }
+
+  if (/CLARIFICATION_FILTER_INVALID_OPTIONS_TEST/i.test(q)) {
+    return {
+      answer: 'Mock: invalid clarification schema.',
+      intent: 'clarify',
+      cards: [],
+      clarification: {
+        questions: [
+          {
+            id: 'skin_type',
+            question: 'Which skin type fits you best?',
+            options: 'Oily',
+          },
+        ],
+      },
+    };
+  }
+
+  if (/DUPE_SUGGEST_TEST/i.test(q)) {
+    return {
+      answer: 'Mock: dupe suggest alternatives.',
+      intent: 'product',
+      cards: [],
+      structured: {
+        schema_version: 'aurora.structured.v1',
+        alternatives: [
+          {
+            product: { sku_id: 'mock_dupe_1', brand: 'MockBrand', name: 'Mock Dupe Cleanser' },
+            similarity_score: 0.92,
+            tradeoffs: {
+              price_delta_usd: -12,
+              added_benefits: ['Niacinamide'],
+              texture_finish_differences: ['More gel-like finish'],
+              availability_note: 'Widely available',
+            },
+            reasons: ['Cheaper but close ingredient profile', 'Lower irritation risk for sensitive skin'],
+            evidence: { kb_citations: ['kb:mock_dupe_1'] },
+            missing_info: [],
+          },
+          {
+            product: { sku_id: 'mock_dupe_2', brand: 'MockBrand', name: 'Mock Budget Wash' },
+            similarity_score: 0.88,
+            tradeoffs: {
+              price_delta_usd: -7,
+              missing_actives: ['Ceramides'],
+              texture_finish_differences: ['Slightly foaming'],
+            },
+            reasons: ['Budget option with similar cleansing strength'],
+            evidence: { kb_citations: ['kb:mock_dupe_2'] },
+            missing_info: [],
+          },
+          {
+            product: { sku_id: 'mock_similar_1', brand: 'MockBrand', name: 'Mock Similar Cleanser' },
+            similarity_score: 0.9,
+            tradeoffs: { price_delta_usd: 0, texture_finish_differences: ['More creamy texture'] },
+            reasons: ['Very similar positioning and feel'],
+            evidence: { kb_citations: ['kb:mock_similar_1'] },
+            missing_info: [],
+          },
+          {
+            product: { sku_id: 'mock_premium_1', brand: 'MockBrand', name: 'Mock Premium Cleanser' },
+            similarity_score: 0.86,
+            tradeoffs: { price_delta_usd: 9, added_benefits: ['Ceramides'], availability_note: 'Sephora / Dermstore' },
+            reasons: ['Premium upgrade with added barrier support'],
+            evidence: { kb_citations: ['kb:mock_premium_1'] },
+            missing_info: [],
+          },
+        ],
+      },
+      context: {},
+    };
+  }
+
+  if (/ACTION_REPLY_TEXT_TEST/.test(q)) {
+    return {
+      answer: 'Mock: action reply_text received.',
+      intent: 'chat',
+      cards: [],
+    };
+  }
+
+  if (/OVERLONG_TEMPLATE_CONTEXT_TEST/i.test(q)) {
+    const longAnswer = [
+      'Part 1: Diagnosis 🩺',
+      '- This is a long templated answer that should be collapsed when structured cards are present.',
+      '',
+      'Part 2: The Routine 📅',
+      'AM (Protection):',
+      '- Cleanser - Mock Gentle Cleanser kb:mock_reco_1',
+      '- Moisturizer - Mock Barrier Cream kb:mock_reco_2',
+      'PM (Treatment):',
+      '- Treatment - Mock Gentle Treatment kb:mock_reco_3',
+      '',
+      'Part 3: Budget Analysis 💰',
+      '- Price unknown for some items.',
+      '',
+      'Part 4: Safety Warning ⚠️',
+      '- Start 2-3x/week and wear SPF.',
+      '',
+      'Citations:',
+      'kb:mock_reco_1',
+      'kb:mock_reco_2',
+      'kb:mock_reco_3',
+      '',
+      'Notes:',
+      '- (filler) '.repeat(80),
+    ].join('\n');
+
+    return {
+      answer: longAnswer,
+      intent: 'science',
+      cards: [],
+      structured: {
+        schema_version: 'aurora.structured.v1',
+        parse: { normalized_query: 'OVERLONG_TEMPLATE_CONTEXT_TEST', parse_confidence: 1, normalized_query_language: 'zh-CN' },
+      },
+      context: {
+        external_verification: {
+          query: 'niacinamide clinical evidence',
+          citations: [
+            {
+              title: 'Niacinamide - mechanisms of action and its topical use in dermatology.',
+              source: 'Skin pharmacology and physiology',
+              year: 2014,
+              url: 'https://pubmed.ncbi.nlm.nih.gov/24993939/',
+              note: 'PMID:24993939',
+            },
+          ],
+          note: 'Mock citations list.',
+        },
+        env_stress: {
+          schema_version: 'aurora.env_stress.v1',
+          ess: 53,
+          tier: 'Medium',
+          contributors: [
+            { key: 'barrier', weight: 0.4, note: 'barrier_status=healthy' },
+            { key: 'weather', weight: 0.7, note: 'scenario=snow' },
+            { key: 'uv', weight: 0.65, note: 'uv=high' },
+          ],
+          missing_inputs: ['profile.sensitivity', 'recent_logs'],
+          generated_at: new Date().toISOString(),
+        },
+      },
+    };
+  }
+
+  if (/STRUCTURED_STUB_ONLY_TEST/i.test(q)) {
+    const longAnswer = [
+      'Part 1: Diagnosis 🩺',
+      '- This is a long templated answer, but upstream did not return any renderable cards.',
+      '',
+      'Part 2: The Routine 📅',
+      'AM (Protection):',
+      '- Cleanser - Mock Gentle Cleanser',
+      'PM (Treatment):',
+      '- Treatment - Mock Gentle Treatment',
+      '',
+      'Part 3: Budget Analysis 💰',
+      '- Price unknown.',
+      '',
+      'Part 4: Safety Warning ⚠️',
+      '- Wear SPF.',
+      '',
+      'Notes:',
+      '- (filler) '.repeat(80),
+    ].join('\n');
+
+    return {
+      answer: longAnswer,
+      intent: 'product',
+      cards: [],
+      structured: {
+        schema_version: 'aurora.structured.v1',
+        parse: { normalized_query: 'STRUCTURED_STUB_ONLY_TEST', parse_confidence: 1, normalized_query_language: 'zh-CN' },
+        conflicts: { schema_version: 'aurora.conflicts.v1', safe: true, conflicts: [], summary: '未发现明显冲突。' },
+      },
+      context: {},
+    };
+  }
+
+  if (/SHORT_CARDS_BELOW_STUB_TEST/i.test(q)) {
+    return {
+      answer: 'I summarized the key results into structured cards below.',
+      intent: 'product',
+      cards: [],
+      structured: {
+        schema_version: 'aurora.structured.v1',
+        parse: { normalized_query: 'SHORT_CARDS_BELOW_STUB_TEST', parse_confidence: 1, normalized_query_language: 'zh-CN' },
+        conflicts: { schema_version: 'aurora.conflicts.v1', safe: true, conflicts: [], summary: '未发现明显冲突。' },
+      },
+      context: {},
+    };
+  }
+
+  if (/NON_GENERIC_STUB_TEST/i.test(q)) {
+    return {
+      answer: 'Here is a quick summary based on what I could parse.',
+      intent: 'product',
+      cards: [],
+      structured: {
+        schema_version: 'aurora.structured.v1',
+        parse: { normalized_query: 'NON_GENERIC_STUB_TEST', parse_confidence: 1, normalized_query_language: 'zh-CN' },
+        conflicts: { schema_version: 'aurora.conflicts.v1', safe: true, conflicts: [], summary: '未发现明显冲突。' },
+      },
+      context: {},
+    };
+  }
+
+  if (/SHORT_CARDS_BELOW_STRIPPED_RECO_TEST/i.test(q)) {
+    return {
+      answer: 'I summarized the key results into structured cards below.',
+      intent: 'product',
+      // Include a reco-like card so the BFF strips it (non-explicit), leaving only hidden cards.
+      cards: [{ type: 'recommendations', payload: { recommendations: [{ sku_id: 'mock_sku_generic' }] } }],
+      structured: {
+        schema_version: 'aurora.structured.v1',
+        parse: { normalized_query: 'SHORT_CARDS_BELOW_STRIPPED_RECO_TEST', parse_confidence: 1, normalized_query_language: 'zh-CN' },
+        conflicts: { schema_version: 'aurora.conflicts.v1', safe: true, conflicts: [], summary: '未发现明显冲突。' },
+      },
+      context: {},
+    };
+  }
+
+  if (/ANCHOR_CONTEXT_ONLY_TEST/i.test(q)) {
+    const longAnswer = [
+      'Part 1: Diagnosis 🩺',
+      '- This is a long templated answer, but upstream only returned parse/conflicts plus an anchor in context.',
+      '',
+      'Part 2: The Routine 📅',
+      'AM (Protection):',
+      '- Cleanser - Mock Gentle Cleanser',
+      'PM (Treatment):',
+      '- Treatment - Mock Gentle Treatment',
+      '',
+      'Part 3: Budget Analysis 💰',
+      '- Price unknown.',
+      '',
+      'Part 4: Safety Warning ⚠️',
+      '- Wear SPF.',
+      '',
+      'Notes:',
+      '- (filler) '.repeat(80),
+    ].join('\n');
+
+    return {
+      answer: longAnswer,
+      intent: 'product',
+      cards: [],
+      structured: {
+        schema_version: 'aurora.structured.v1',
+        parse: { normalized_query: 'ANCHOR_CONTEXT_ONLY_TEST', parse_confidence: 1, normalized_query_language: 'zh-CN' },
+        conflicts: { schema_version: 'aurora.conflicts.v1', safe: true, conflicts: [], summary: '未发现明显冲突。' },
+      },
+      context: {
+        anchor: {
+          id: 'mock_anchor_niacinamide',
+          brand: 'The Ordinary',
+          name: 'Niacinamide 10% + Zinc 1%',
+          vetoed: false,
+          score: { science: 42, social: 73, engineering: 75, total: 64, vetoed: false },
+          risk_flags: ['high_irritation'],
+          risk_flags_canonical: ['high_irritation'],
+          kb_profile: {
+            keyActives: ['Niacinamide 10%', 'Zinc PCA 1%'],
+            comparisonNotes: ['Good budget option'],
+            sensitivityFlags: ['high_irritation'],
+            pairingRules: [],
+            textureFinish: ['Texture: lotion', 'Finish: natural'],
+          },
+          social: {
+            red_score: 65,
+            reddit_score: 80,
+            burn_rate: 0.1,
+            top_keywords: ['oil control', 'pores', 'blemishes'],
+          },
+        },
+      },
+    };
+  }
+
+  if (/CONTEXT_CARDS_TEST/i.test(q)) {
+    const hasAnchor = Boolean(anchorId);
+    return {
+      answer: 'Mock: context cards test.',
+      intent: 'science',
+      cards: [],
+      structured: {
+        schema_version: 'aurora.structured.v1',
+        parse: { normalized_query: 'CONTEXT_CARDS_TEST', parse_confidence: 1, normalized_query_language: 'en-US' },
+      },
+      context: {
+        external_verification: {
+          query: 'niacinamide clinical evidence',
+          citations: [
+            {
+              title: 'Niacinamide - mechanisms of action and its topical use in dermatology.',
+              source: 'Skin pharmacology and physiology',
+              year: 2014,
+              url: 'https://pubmed.ncbi.nlm.nih.gov/24993939/',
+              note: 'PMID:24993939',
+            },
+            {
+              title: 'Niacinamide: A B vitamin that improves aging facial skin appearance.',
+              source: 'Dermatologic surgery : official publication for American Society for Dermatologic Surgery [et al.]',
+              year: 2005,
+              url: 'https://pubmed.ncbi.nlm.nih.gov/16029679/',
+              note: 'PMID:16029679',
+            },
+          ],
+          note: 'Mock citations list.',
+        },
+        env_stress: {
+          schema_version: 'aurora.env_stress.v1',
+          ess: 88,
+          tier: 'High',
+          contributors: [
+            { key: 'barrier', weight: 0.5, note: 'barrier_status=impaired' },
+            { key: 'sensitivity', weight: 0.5, note: 'sensitivity=high' },
+          ],
+          missing_inputs: [],
+          generated_at: '2026-02-04T06:00:00.000Z',
+        },
+        ...(hasAnchor
+          ? {
+            conflict_detector: {
+              schema_version: 'aurora.conflicts.v1',
+              safe: false,
+              conflicts: [
+                {
+                  severity: 'warn',
+                  rule_id: 'retinoid_x_acids',
+                  message: '维A类 + 去角质酸（AHA/BHA/PHA）叠加更容易刺痛/爆皮；更安全的做法是错开晚用，并从低频开始逐步加量。',
+                },
+              ],
+              summary: '需要注意：共 1 条提示（0 条为阻断级）。',
+            },
+          }
+          : {}),
+      },
+    };
+  }
+
+  if (/Task:\s*Parse\b/i.test(q)) {
+    const inputMatch = q.match(/Input:\s*(.+)\s*$/im);
+    const input = inputMatch ? String(inputMatch[1]).trim() : 'Mock Parsed Product';
+    const lower = input.toLowerCase();
+    const skuId = lower.includes('dupe') || lower.includes('competitor') || lower.includes('mock_dupe')
+      ? 'mock_dupe_1'
+      : 'mock_sku_1';
+    const brand = skuId === 'mock_dupe_1' ? 'MockDupeBrand' : 'MockBrand';
+    const name = skuId === 'mock_dupe_1' ? 'Mock Dupe Product' : 'Mock Parsed Product';
+    const anchorProduct = {
+      product_id: skuId,
+      sku_id: skuId,
+      brand,
+      name,
+      category: skuId === 'mock_dupe_1' ? 'treatment' : 'treatment',
+      display_name: `${brand} ${name}`,
+      availability: ['Global'],
+      price: { usd: null, cny: null, unknown: true },
+    };
+
+    const altProduct = {
+      product_id: 'mock_dupe_1',
+      sku_id: 'mock_dupe_1',
+      brand: 'MockDupeBrand',
+      name: 'Mock Dupe Product',
+      category: 'treatment',
+      display_name: 'MockDupeBrand Mock Dupe Product',
+      availability: ['Global'],
+      price: { usd: null, cny: null, unknown: true },
+    };
+
+    return {
+      answer: JSON.stringify({
+        product: anchorProduct,
+        confidence: 0.7,
+        missing_info: [],
+      }),
+      intent: 'product',
+      cards: [],
+      structured: {
+        schema_version: 'aurora.structured.v1',
+        parse: {
+          normalized_query: input,
+          parse_confidence: 0.7,
+          normalized_query_language: 'en-US',
+          anchor_product: anchorProduct,
+        },
+        analyze: {
+          verdict: 'Suitable',
+          confidence: 0.6,
+          reasons: ['Mock: broadly compatible with most routines.'],
+          science_evidence: [
+            {
+              key: 'niacinamide',
+              in_product: true,
+              mechanism: 'Barrier support; oil control.',
+              targets: ['Oil control'],
+              risks: ['Some tingling possible.'],
+              evidence: [{ kind: 'kb', citations: ['kb:mock_parse_1'] }],
+            },
+          ],
+          social_signals: {
+            red_score: 65,
+            reddit_score: 80,
+            burn_rate: 0.12,
+            top_keywords: ['gentle', 'oil control'],
+          },
+          expert_notes: { chemist_notes: 'Mock notes', citations: ['kb:mock_parse_1', 'kb:mock_parse_2'] },
+          how_to_use: null,
+        },
+        alternatives: skuId === 'mock_dupe_1'
+          ? []
+          : [
+            {
+              product: altProduct,
+              similarity_score: 82,
+              tradeoffs: {
+                missing_actives: ['niacinamide'],
+                added_benefits: ['peptides'],
+                texture_finish_differences: ['Mock: dupe has a lighter texture.'],
+                price_delta_usd: null,
+                availability_note: null,
+              },
+              evidence: { kb_citations: ['kb:mock_alt_1'] },
+            },
+          ],
+        kb_requirements_check: { missing_fields: [], notes: [] },
+      },
+    };
+  }
+
+  if (/Task:\s*Deep-scan\b/i.test(q)) {
+    const isDupe = anchorId === 'mock_dupe_1' || /\bmock_dupe\b/i.test(q);
+    const anchorProduct = isDupe
+      ? {
+        product_id: 'mock_dupe_1',
+        sku_id: 'mock_dupe_1',
+        brand: 'MockDupeBrand',
+        name: 'Mock Dupe Product',
+        category: 'treatment',
+        display_name: 'MockDupeBrand Mock Dupe Product',
+        availability: ['Global'],
+        price: { usd: null, cny: null, unknown: true },
+      }
+      : {
+        product_id: 'mock_sku_1',
+        sku_id: 'mock_sku_1',
+        brand: 'MockBrand',
+        name: 'Mock Parsed Product',
+        category: 'treatment',
+        display_name: 'MockBrand Mock Parsed Product',
+        availability: ['Global'],
+        price: { usd: null, cny: null, unknown: true },
+      };
+    return {
+      answer: 'Mock deep-scan completed.',
+      intent: 'product',
+      cards: [],
+      structured: {
+        schema_version: 'aurora.structured.v1',
+        parse: {
+          normalized_query: 'Mock Parsed Product',
+          parse_confidence: 0.8,
+          normalized_query_language: 'en-US',
+          anchor_product: anchorProduct,
+        },
+        analyze: {
+          verdict: 'Suitable',
+          confidence: 0.62,
+          reasons: [isDupe ? 'Mock: hydrating-focused option.' : 'Mock: fits typical oily skin routines.'],
+          science_evidence: [
+            {
+              key: isDupe ? 'hyaluronic acid' : 'niacinamide',
+              in_product: true,
+              mechanism: isDupe ? 'Humectant hydration support.' : 'Barrier support; oil control.',
+              targets: [isDupe ? 'Hydration' : 'Oil control'],
+              risks: [isDupe ? 'Low irritation risk.' : 'Start slowly if sensitive.'],
+              evidence: [{ kind: 'kb', citations: [isDupe ? 'kb:mock_scan_dupe_1' : 'kb:mock_scan_1'] }],
+            },
+          ],
+          social_signals: {
+            red_score: 70,
+            reddit_score: 75,
+            burn_rate: 0.1,
+            top_keywords: ['soothing'],
+          },
+          expert_notes: { sensitivity_flags: 'Patch test recommended.', citations: ['kb:mock_scan_1'] },
+          how_to_use: null,
+        },
+        alternatives: [
+          {
+            product: {
+              product_id: 'mock_dupe_1',
+              sku_id: 'mock_dupe_1',
+              brand: 'MockDupeBrand',
+              name: 'Mock Dupe Product',
+              category: 'treatment',
+              display_name: 'MockDupeBrand Mock Dupe Product',
+              availability: ['Global'],
+              price: { usd: null, cny: null, unknown: true },
+            },
+            similarity_score: 82,
+            tradeoffs: {
+              missing_actives: ['niacinamide'],
+              added_benefits: ['peptides'],
+              texture_finish_differences: ['Mock: dupe has a lighter texture.'],
+              price_delta_usd: null,
+              availability_note: null,
+            },
+            evidence: { kb_citations: ['kb:mock_alt_1'] },
+          },
+        ],
+        kb_requirements_check: { missing_fields: [], notes: [] },
+      },
+    };
+  }
+
+  if (/Task:\s*Compare\b/i.test(q)) {
+    if (/COMPARE_EMPTY_TEST/i.test(q)) {
+      return {
+        answer: JSON.stringify({
+          tradeoffs: [],
+          evidence: null,
+          confidence: null,
+          missing_info: ['upstream_missing_or_empty'],
+        }),
+        intent: 'dupe',
+        cards: [],
+      };
+    }
+    return {
+      answer: JSON.stringify({
+        tradeoffs: ['Mock tradeoff: texture difference', 'Mock tradeoff: fragrance risk'],
+        evidence: {
+          science: { key_ingredients: [], mechanisms: [], fit_notes: [], risk_notes: [] },
+          social_signals: { typical_positive: [], typical_negative: [], risk_for_groups: [] },
+          expert_notes: [],
+          confidence: 0.5,
+          missing_info: [],
+        },
+        confidence: 0.5,
+        missing_info: [],
+      }),
+      intent: 'dupe',
+      cards: [],
+    };
+  }
+
+  if (/STRUCTURED_COMMERCE_TEST/i.test(q)) {
+    return {
+      answer: JSON.stringify({
+        recommendations: [
+          {
+            sku_id: 'mock_reco_sku_1',
+            name: 'Mock Reco Product',
+            offers: [{ purchase_route: 'affiliate_outbound', affiliate_url: 'https://example.com/mock_reco_sku_1' }],
+          },
+        ],
+        confidence: 0.51,
+      }),
+      intent: 'chat',
+      cards: [],
+    };
+  }
+
+  if (/Task:\s*Generate skincare recommendations\b/i.test(q)) {
+    return {
+      answer: JSON.stringify({
+        recommendations: [
+          {
+            sku_id: 'mock_cleanser_1',
+            name: 'Mock Gentle Cleanser',
+            brand: 'MockBrand',
+            category: 'cleanser',
+            offers: [
+              {
+                offer_id: 'mock_offer_1',
+                purchase_route: 'affiliate_outbound',
+                affiliate_url: 'https://example.com/mock_cleanser_1',
+              },
+            ],
+          },
+        ],
+        evidence: {
+          science: { key_ingredients: [], mechanisms: [], fit_notes: [], risk_notes: [] },
+          social_signals: { typical_positive: [], typical_negative: [], risk_for_groups: [] },
+          expert_notes: [],
+          confidence: 0.4,
+          missing_info: ['real_offers_not_resolved'],
+        },
+        confidence: 0.4,
+        missing_info: ['real_offers_not_resolved'],
+      }),
+      intent: 'reco',
+      cards: [{ type: 'recommendations', payload: { recommendations: [{ sku_id: 'mock_cleanser_1' }] } }],
+    };
+  }
+
+  if (/Task:\s*Generate skincare product picks\b/i.test(q)) {
+    return {
+      answer: JSON.stringify({
+        recommendations: [
+          {
+            slot: 'other',
+            step: 'Treatment',
+            score: 68,
+            sku: {
+              sku_id: 'mock_reco_sku_1',
+              product_id: 'mock_reco_sku_1',
+              brand: 'MockBrand',
+              name: 'Mock Gentle Treatment',
+              category: 'treatment',
+              display_name: 'MockBrand Mock Gentle Treatment',
+              availability: ['Global'],
+              price: { usd: null, cny: null, unknown: true },
+            },
+            reasons: ['Mock: gentle option that fits most oily skin routines.'],
+            evidence_pack: { keyActives: ['niacinamide'], sensitivityFlags: ['low irritant'], citations: ['kb:mock_reco_1'] },
+            missing_info: [],
+            warnings: [],
+          },
+        ],
+        evidence: {
+          science: { key_ingredients: [], mechanisms: [], fit_notes: [], risk_notes: [] },
+          social_signals: { typical_positive: [], typical_negative: [], risk_for_groups: [] },
+          expert_notes: [],
+          confidence: 0.4,
+          missing_info: [],
+        },
+        confidence: 0.4,
+        missing_info: [],
+        warnings: [],
+      }),
+      intent: 'reco',
+      cards: [],
+    };
+  }
+
+  if (/AM\s*\/\s*PM\s*skincare routine/i.test(q) || /recommend a simple AM\/PM skincare routine/i.test(q)) {
+    return {
+      answer: 'Mock routine generated.',
+      intent: 'routine',
+      cards: [],
+      context: {
+        budget: '¥500',
+        routine: {
+          am: [
+            {
+              step: 'Cleanser',
+              sku: {
+                sku_id: 'mock_cleanser_1',
+                name: 'Mock Gentle Cleanser',
+                brand: 'MockBrand',
+                category: 'cleanser',
+                price: 0,
+                currency: 'USD',
+                social_stats: { platform_scores: { Reddit: 0.8 } },
+              },
+              notes: ['Mock: gentle cleanse.'],
+              product_id: 'mock_cleanser_1',
+              evidence_pack: { keyActives: ['PHA'], pairingRules: ['Mock: avoid over-exfoliation.'], citations: ['kb:mock_routine_1'] },
+              ingredients: { hero_actives: [], highlights: [] },
+            },
+          ],
+          pm: [
+            {
+              step: 'Moisturizer',
+              sku: {
+                sku_id: 'mock_moisturizer_1',
+                name: 'Mock Barrier Cream',
+                brand: 'MockBrand',
+                category: 'moisturizer',
+                price: 0,
+                currency: 'USD',
+                social_stats: { platform_scores: { Reddit: 0.75 } },
+              },
+              notes: ['Mock: barrier support.'],
+              product_id: 'mock_moisturizer_1',
+              evidence_pack: { keyActives: ['ceramides'], pairingRules: [], citations: ['kb:mock_routine_2'] },
+              ingredients: { hero_actives: [], highlights: [] },
+            },
+          ],
+          total_usd: null,
+          total_cny: null,
+        },
+      },
+    };
+  }
+
+  return {
+    answer: 'Mock Aurora reply.',
+    intent: 'chat',
+    // Always include a reco-like card so the BFF recommendation gate can be tested offline.
+    cards: [{ type: 'recommendations', payload: { recommendations: [{ sku_id: 'mock_sku_generic' }] } }],
+  };
+}
+
+module.exports = {
+  mockAuroraChat,
+};

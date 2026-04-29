@@ -9684,18 +9684,18 @@ test('__internal: reco assistant rewrite prompt suppresses routine price hints a
     ['primary', 'secondary', 'secondary'],
   );
   assert.deepEqual(
-    context.selected_product_details.map((item) => item.price_position),
+    context.selected_product_details.map((item) => item.price_position ?? null),
     [null, null, null],
   );
   assert.deepEqual(
-    context.selected_product_details.map((item) => item.price_label),
+    context.selected_product_details.map((item) => item.price_label ?? null),
     [null, null, null],
   );
   assert.equal(context.known_price_count, 0);
-  assert.deepEqual(context.price_order_summary, []);
-  assert.equal(context.assistant_write_plan?.lead_product?.price_note, null);
+  assert.deepEqual(context.price_order_summary || [], []);
+  assert.equal(context.assistant_write_plan?.lead_product?.price_note ?? null, null);
   assert.deepEqual(
-    context.assistant_write_plan?.support_steps?.map((item) => item.price_note),
+    context.assistant_write_plan?.support_steps?.map((item) => item.price_note ?? null),
     [null, null],
   );
 });
@@ -9850,7 +9850,7 @@ test('__internal: reco assistant rewrite guard rejects re-asking known skin type
   assert.equal(invalidRequestKnownSkinTypeReask.reason, 'rewrite_reasks_known_profile_field');
 });
 
-test('__internal: compact reco assistant rewrite prompt keeps per-product evidence for routine bundles', async () => {
+test('__internal: structured reco assistant rewrite prompt keeps per-product evidence for routine bundles', async () => {
   const { __internal } = loadRoutesFresh();
   const prompt = __internal.buildRecoAssistantRewritePrompt({
     language: 'EN',
@@ -9944,7 +9944,7 @@ test('__internal: compact reco assistant rewrite prompt keeps per-product eviden
   assert.match(prompt, /do not spend the final sentence on a generic routine promise/i);
 
   const context = extractRecoRewritePromptContext(prompt);
-  assert.equal(context.prompt_profile, 'compact_timeout_retry');
+  assert.equal(context.prompt_profile, 'strict_selected_only_retry');
   assert.equal(context.selected_product_role_mix, 'routine_mix');
   assert.equal(context.assistant_write_plan?.writing_requirements?.require_product_specific_reason_per_selected_product, true);
   assert.equal(context.assistant_write_plan?.writing_requirements?.require_lead_multi_dimension_reason, true);

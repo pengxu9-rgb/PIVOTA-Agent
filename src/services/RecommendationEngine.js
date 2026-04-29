@@ -148,6 +148,13 @@ async function withSoftTimeout(promise, timeoutMs, fallbackValue, onTimeout) {
   }
 }
 
+function buildDatabaseNotConfiguredError(route = 'pdp_recommendations') {
+  const err = new Error('DATABASE_URL is required for authority-grounded recommendations');
+  err.code = 'DATABASE_NOT_CONFIGURED';
+  err.route = route;
+  return err;
+}
+
 function normalizeText(input) {
   return String(input || '')
     .toLowerCase()
@@ -1693,30 +1700,8 @@ async function fetchInternalCandidates({ merchantId, limit, excludeMerchantId, c
   const safeLimit = Math.min(Math.max(1, Number(limit || 120)), 400);
   const categoryAliases = buildNormalizedAliases(categoryHint);
 
-  // In MOCK mode we may not have DATABASE_URL configured; use in-memory mock catalog
-  // so PDP recommendations are still non-empty and fast locally.
   if (!process.env.DATABASE_URL) {
-    try {
-      // Lazy require to avoid impacting production paths.
-      // eslint-disable-next-line global-require
-      const { mockProducts } = require('../mockProducts');
-      const out = [];
-
-      if (mid && Array.isArray(mockProducts?.[mid])) {
-        for (const p of mockProducts[mid]) out.push(toCandidate(p, { merchant_id: mid }));
-      }
-
-      for (const [merchant_id, products] of Object.entries(mockProducts || {})) {
-        if (!Array.isArray(products)) continue;
-        if (merchant_id === EXTERNAL_SEED_MERCHANT_ID) continue;
-        if (excludeMerchantId && merchant_id === String(excludeMerchantId || '').trim()) continue;
-        for (const p of products) out.push(toCandidate(p, { merchant_id }));
-      }
-
-      return uniqueByKey(out.filter(Boolean), (p) => `${getMerchantId(p)}::${getProductId(p)}`).slice(0, safeLimit * 4);
-    } catch {
-      return [];
-    }
+    throw buildDatabaseNotConfiguredError('pdp_recommendations_internal_candidates');
   }
   const out = [];
 
@@ -1814,7 +1799,9 @@ async function fetchExternalCandidates({
   minFocusedCandidates = 6,
   deepDomainRecall = false,
 }) {
-  if (!process.env.DATABASE_URL) return [];
+  if (!process.env.DATABASE_URL) {
+    throw buildDatabaseNotConfiguredError('pdp_recommendations_external_candidates');
+  }
   const safeLimit = Math.min(Math.max(1, Number(limit || 180)), 500);
   const safeMinFocusedCandidates = Math.max(
     1,
@@ -2264,6 +2251,9 @@ async function recommend({
   const baseProductId = getProductId(rawBaseProduct);
   if (!baseProductId) {
     return { items: [], debug: { error: 'missing_product_id' } };
+  }
+  if (!process.env.DATABASE_URL) {
+    throw buildDatabaseNotConfiguredError('pdp_recommendations');
   }
   const baseMerchantId = getMerchantId(rawBaseProduct);
   const safeK = Math.max(1, Math.min(Number(k || 6) || 6, 30));

@@ -1,8 +1,8 @@
 # 连接真实商品数据指南
 
-**问题**: Agent搜索不到真实商户的商品（如white hoodie）  
-**原因**: Gateway在MOCK模式，只返回预定义的10个测试商品  
-**解决**: 切换到HYBRID或REAL模式，连接真实Pivota后端
+**问题**: Agent搜索不到真实商户的商品（如white hoodie）
+**原因**: Gateway未连接真实 Pivota 后端或缺少必要 key/DB 配置
+**解决**: 使用 REAL 模式连接真实 Pivota 后端；runtime MOCK 已禁用，不能再靠预定义测试商品兜底
 
 ## 🎯 目标
 
@@ -33,7 +33,7 @@
    点击 Variables 标签，添加：
 
    ```
-   API_MODE=HYBRID
+   API_MODE=REAL
    PIVOTA_API_BASE=https://web-production-fedb.up.railway.app
    PIVOTA_API_KEY=your-actual-api-key-here
    ```
@@ -87,14 +87,13 @@ curl https://pivota-agent-production.up.railway.app/healthz | jq .
 
 ## 🎯 模式说明
 
-### MOCK模式（当前）
+### MOCK模式（已禁用）
 ```
 API_MODE=MOCK
 ```
-- 使用内置的10个测试商品
-- 适合演示和开发
-- ✅ 优点：无需API密钥，稳定
-- ❌ 缺点：商品有限，无法搜索真实商品
+- runtime 不再支持内置商品兜底；设置后会被忽略或 fail closed
+- 本地/CI 如需 fixture，应使用显式 test adapter 或 nock，不要通过生产代码返回 mock products
+- 缺 `PIVOTA_API_KEY` / `DATABASE_URL` 时应暴露配置问题，而不是展示假商品
 
 ### HYBRID模式（推荐）
 ```

@@ -5,7 +5,25 @@ import { ProductCategorySchema } from "../schemas/productAttributesV0";
 
 const PIVOTA_API_BASE = (process.env.PIVOTA_API_BASE || "http://localhost:8080").replace(/\/$/, "");
 const PIVOTA_API_KEY = process.env.PIVOTA_API_KEY || "";
-const API_MODE = process.env.API_MODE || (PIVOTA_API_KEY ? "REAL" : "MOCK");
+
+function buildCatalogConfigError(message: string, code: string): Error & { code?: string } {
+  const err = new Error(message) as Error & { code?: string };
+  err.code = code;
+  return err;
+}
+
+function assertRealCatalogRuntimeConfigured(): void {
+  const requested = String(process.env.API_MODE || "").trim().toUpperCase();
+  if (requested === "MOCK") {
+    throw buildCatalogConfigError(
+      "API_MODE=MOCK is disabled for runtime retrieval; configure a real catalog backend instead",
+      "MOCK_RUNTIME_DISABLED"
+    );
+  }
+  if (!PIVOTA_API_KEY) {
+    throw buildCatalogConfigError("PIVOTA_API_KEY is required for runtime retrieval", "PIVOTA_API_KEY_REQUIRED");
+  }
+}
 
 export type RawSkuCandidate = Record<string, unknown>;
 
@@ -112,7 +130,7 @@ export async function getCandidates(input: {
   const fetcher: (args: { query: string; limit: number }) => Promise<RawSkuCandidate[]> =
     input.fetcher ??
     (async ({ query, limit }) => {
-      if (API_MODE === "MOCK") return [];
+      assertRealCatalogRuntimeConfigured();
 
       const payload = {
         operation: "find_products_multi",
@@ -134,7 +152,7 @@ export async function getCandidates(input: {
       };
 
       const resp = await axios.post(`${PIVOTA_API_BASE}/agent/shop/v1/invoke`, payload, {
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${PIVOTA_API_KEY}` },
         timeout: 15000,
       });
 
