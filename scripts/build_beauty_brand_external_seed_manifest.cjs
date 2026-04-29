@@ -22,13 +22,18 @@ const BUNDLE_LIKE_TITLE_PATTERNS = [
   /\bessentials\b/i,
   /\bbestsell(?:er|ers?)\b/i,
   /\bvalue\s+set\b/i,
+  /\b(?:hydration\s+)?heroe?s\b/i,
   /\btravel\b/i,
   /\bcollection\b/i,
   /\bfree\b/i,
+  /\bfree\s*gift\b/i,
+  /\bfreegift\b/i,
+  /\bgift\s+with\s+purchase\b/i,
   /\bmini\b/i,
   /\bpack\s+of\s+\d+\b/i,
   /\b\d+\s*-\s*pack\b/i,
   /\b\d+\s+pack\b/i,
+  /\bamazon\b/i,
   /\btote\b/i,
   /\bbeanie\b/i,
   /\bhat\b/i,
@@ -132,7 +137,9 @@ function resolvePathMaybeRelative(targetPath) {
 
 function looksLikeBundleLikeProduct(product = {}) {
   const title = normalizeNonEmptyString(product?.title || product?.name);
-  return BUNDLE_LIKE_TITLE_PATTERNS.some((pattern) => pattern.test(title));
+  const targetUrl = normalizeNonEmptyString(product?.url || product?.canonical_url || product?.product_url);
+  const combined = `${title} ${targetUrl}`;
+  return BUNDLE_LIKE_TITLE_PATTERNS.some((pattern) => pattern.test(combined));
 }
 
 function looksLikeNonProductCatalogPage(product = {}) {
@@ -149,8 +156,11 @@ function looksLikeNonProductCatalogPage(product = {}) {
   if (/\/(?:category|collections?|collection|board|search|pages?)\//i.test(urlPath)) return true;
   if (/(?:^|[?&])cate_no=\d+/i.test(urlPath) && !/\/product\/(?:detail|[^/]+\/)/i.test(urlPath)) return true;
   if (/\/product\/list\.html/i.test(urlPath)) return true;
+  if (/\/(?:notice|privacy|policy|policies|terms|mothers?-day|gift-guide)(?:[/?#-]|$)/i.test(urlPath)) return true;
   if (/veritas-hub\.cafe24\.com\/challenge/i.test(targetUrl)) return true;
   if (/^(?:all|md'?pick|라인별)\s*[-:]/i.test(title)) return true;
+  if (/\bcolor correctors\s*&\s*tinted moisturizers\b/i.test(title)) return true;
+  if (/\b(?:privacy|policy|statement|gift guide|mothers? day|online shop|wholesale)\b/i.test(title)) return true;
   return false;
 }
 

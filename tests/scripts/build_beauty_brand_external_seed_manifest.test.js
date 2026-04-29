@@ -84,6 +84,10 @@ describe('build_beauty_brand_external_seed_manifest', () => {
 
     expect(looksLikeBundleLikeProduct({ title: 'Travel Essentials Routine' })).toBe(true);
     expect(looksLikeBundleLikeProduct({ title: 'FREE Hyaluronic Acid Serum 30ml' })).toBe(true);
+    expect(looksLikeBundleLikeProduct({ title: '[FreeGift] DIVE IN Multi Pad 2 sheets' })).toBe(true);
+    expect(looksLikeBundleLikeProduct({ title: '[Amazon] SOLID IN Lip Essence' })).toBe(true);
+    expect(looksLikeBundleLikeProduct({ title: "Glowin' Softly Hydration Heros" })).toBe(true);
+    expect(looksLikeBundleLikeProduct({ title: 'SOLID IN Lip Essence', url: 'https://torriden.us/products/solid-in-lip-essence-set' })).toBe(true);
     expect(looksLikeBundleLikeProduct({ title: 'SPF! Canvas Tote Bag ($15 value)' })).toBe(true);
     expect(looksLikeBundleLikeProduct({ title: 'Niacinamide Serum' })).toBe(false);
     expect(manifest.extracted_product_count).toBe(2);
@@ -118,6 +122,9 @@ describe('build_beauty_brand_external_seed_manifest', () => {
     });
 
     expect(looksLikeNonProductCatalogPage({ title: 'ALL - 포 맨', url: 'https://roundlab.co.kr/category/foo/108/' })).toBe(true);
+    expect(looksLikeNonProductCatalogPage({ title: 'Consumer Health Data Privacy Statement', url: 'https://www.drjart.com/consumer-health-data-privacy-statement' })).toBe(true);
+    expect(looksLikeNonProductCatalogPage({ title: 'Color Correctors & Tinted Moisturizers', url: 'https://www.drjart.com/bb-cream-color-correcting' })).toBe(true);
+    expect(looksLikeNonProductCatalogPage({ title: 'Korean Cosmetics Online Shop & Wholesale, K-Beauty No.1, K-Style', url: 'http://www.stylekorean.com/shop/stylekorean_notice.html' })).toBe(true);
     expect(looksLikeNonProductCatalogPage({ title: 'Birch Juice Sunscreen', url: 'https://roundlab.co.kr/product/birch-juice-sunscreen/1234/' })).toBe(false);
     expect(manifest.excluded_non_product_page_count).toBe(1);
     expect(manifest.item_count).toBe(1);
