@@ -146,10 +146,15 @@ test('reco assistant structured renderer repairs bare-verb product-record suppor
           label: 'Lightweight moisturizer',
           preferred_step: 'moisturizer',
         },
+        {
+          role_id: 'daily_sunscreen',
+          label: 'Daily sunscreen',
+          preferred_step: 'sunscreen',
+        },
       ],
       recommendation_meta: {
         primary_target_id: 'oil_control_treatment',
-        selected_target_ids: ['oil_control_treatment', 'lightweight_moisturizer'],
+        selected_target_ids: ['oil_control_treatment', 'lightweight_moisturizer', 'daily_sunscreen'],
         ranked_targets: [
           {
             target_id: 'oil_control_treatment',
@@ -176,6 +181,15 @@ test('reco assistant structured renderer repairs bare-verb product-record suppor
           why_this_one:
             'Quenches and rebalances skin with a light-as-air water cream texture that avoids a heavy feel.',
         },
+        {
+          display_name: 'UV Filters SPF 45 Serum',
+          brand: 'The Ordinary',
+          matched_role_id: 'daily_sunscreen',
+          matched_role_label: 'Daily sunscreen',
+          preferred_step: 'sunscreen',
+          why_this_one:
+            'Completes the morning routine as a daily UV-protection step with a lighter wear profile suitable for oily skin types.',
+        },
       ],
     };
 
@@ -184,6 +198,7 @@ test('reco assistant structured renderer repairs bare-verb product-record suppor
         lead_reason: 'it pairs niacinamide with zinc PCA for visible shine support',
         support_reasons: [
           'quenches and rebalances skin with a light-as-air water cream texture that avoids a heavy feel',
+          'completes the morning routine as a daily UV-protection step with a lighter wear profile suitable for oily skin types',
         ],
       },
       payload,
@@ -195,16 +210,21 @@ test('reco assistant structured renderer repairs bare-verb product-record suppor
         ingredient_query: 'Oil-control treatment',
         resolved_target_step: 'treatment',
       },
-      names: ['The Ordinary Niacinamide 10% + Zinc 1%', 'Cloud Surf'],
+      names: ['The Ordinary Niacinamide 10% + Zinc 1%', 'Cloud Surf', 'UV Filters SPF 45 Serum'],
       requestMode: 'buy',
       selectedProductRoleMix: 'routine_mix',
     });
 
     assert.doesNotMatch(text, /\bbecause\s+quenches\b/i);
     assert.doesNotMatch(text, /\bbecause\s+rebalances\b/i);
+    assert.doesNotMatch(text, /\bbecause\s+completes\b/i);
     assert.match(
       text,
       /Cloud Surf adds the moisturizer step because it supports skin hydration and a balanced feel with a light-as-air water cream texture that avoids a heavy feel\./i,
+    );
+    assert.match(
+      text,
+      /UV Filters SPF 45 Serum covers the daytime SPF step because it completes the morning routine as a daily UV-protection step with a lighter wear profile suitable for oily skin types\./i,
     );
   } finally {
     delete require.cache[moduleId];
