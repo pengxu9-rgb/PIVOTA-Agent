@@ -74,6 +74,70 @@ describe('pdpIdentityGraph', () => {
     expect(jumboListing.product_line_id).toBe(externalListing.product_line_id);
   });
 
+  test('buildIdentityListingFromProduct classifies external seed source tier by brand-owned domain', () => {
+    const { buildIdentityListingFromProduct } = require('../../src/services/pdpIdentityGraph');
+
+    const officialListing = buildIdentityListingFromProduct({
+      merchantId: 'external_seed',
+      productId: 'ext_tirtir_milk_toner',
+      sourceKind: 'external_seed',
+      product: {
+        title: 'Milk Skin Toner',
+        brand: 'TIRTIR Global',
+        canonical_url: 'https://tirtir.global/products/milk-skin-toner',
+        seed_data: {
+          authority_source: {
+            source_url: 'https://tirtir.global/collections/skincare',
+            source_role: 'primary',
+          },
+        },
+      },
+    });
+    const retailerListing = buildIdentityListingFromProduct({
+      merchantId: 'external_seed',
+      productId: 'ext_soko_cosrx_moisturizer',
+      sourceKind: 'external_seed',
+      product: {
+        title: 'Ceramide Skin Barrier Moisturizer',
+        brand: 'COSRX',
+        canonical_url: 'https://sokoglam.com/products/cosrx-ceramide-skin-barrier-moisturizer',
+        seed_data: {
+          authority_source: {
+            source_url: 'https://sokoglam.com/collections/cosrx',
+            source_role: 'primary',
+          },
+        },
+      },
+    });
+
+    expect(officialListing.source_tier).toBe('brand');
+    expect(retailerListing.source_tier).toBe('merchant');
+    expect(retailerListing.identity_confidence).toBeLessThan(officialListing.identity_confidence);
+  });
+
+  test('buildIdentityListingFromProduct prefers product PDP URL over collection source URL for exact identity', () => {
+    const { buildIdentityListingFromProduct } = require('../../src/services/pdpIdentityGraph');
+
+    const listing = buildIdentityListingFromProduct({
+      merchantId: 'external_seed',
+      productId: 'ext_soko_cosrx_moisturizer',
+      sourceKind: 'external_seed',
+      product: {
+        title: 'Ceramide Skin Barrier Moisturizer',
+        brand: 'COSRX',
+        source_url: 'https://sokoglam.com/collections/cosrx',
+        canonical_url: 'https://sokoglam.com/products/cosrx-ceramide-skin-barrier-moisturizer',
+      },
+    });
+
+    expect(listing.strong_identity.official_url).toBe(
+      'https://sokoglam.com/products/cosrx-ceramide-skin-barrier-moisturizer',
+    );
+    expect(listing.match_basis).toContain(
+      'official_url:https://sokoglam.com/products/cosrx-ceramide-skin-barrier-moisturizer',
+    );
+  });
+
   test('clusterIdentityListings bridges official seed and Shopify product variant axes without mixing sibling variants', () => {
     const { buildIdentityListingFromProduct, _internals } = require('../../src/services/pdpIdentityGraph');
 
