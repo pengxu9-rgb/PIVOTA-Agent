@@ -1329,6 +1329,8 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     );
     expect(observedSql.some((sql) => sql.includes('FROM external_product_seeds'))).toBe(true);
     expect(observedSql.join('\n')).not.toMatch(/seed_data::text/i);
+    expect(observedSql.join('\n')).not.toMatch(/LIKE ANY/i);
+    expect(observedSql.join('\n')).not.toMatch(/recall'->>'vertical'/i);
     expect(observedSql.join('\n')).not.toMatch(/FROM products_cache/i);
   });
 
