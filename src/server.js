@@ -9440,18 +9440,17 @@ async function queryBeautyExternalSeedRowsFast({
     );
   }
 
-  let toolClause = '';
-  let orderClause = 'updated_at DESC NULLS LAST, created_at DESC NULLS LAST';
-  if (toolScope === 'creator_preferred') {
-    sqlParams.push('creator_agents');
-    const toolBind = `$${sqlParams.length}`;
-    toolClause = `AND (tool = '*' OR tool IS NULL OR tool = '' OR tool = ${toolBind})`;
-    orderClause = `CASE
-      WHEN tool = ${toolBind} THEN 0
-      WHEN tool = '*' OR tool IS NULL OR tool = '' THEN 1
-      ELSE 2
-    END, updated_at DESC NULLS LAST, created_at DESC NULLS LAST`;
-  }
+  const toolScopes = toolScope === 'creator_preferred'
+    ? ['creator_agents', '*', '']
+    : ['creator_agents', '*', 'shopping_agents', ''];
+  sqlParams.push(toolScopes);
+  const toolBind = `$${sqlParams.length}`;
+  const toolClause = `AND tool = ANY(${toolBind}::text[])`;
+  const orderClause = `CASE
+    WHEN tool = 'creator_agents' THEN 0
+    WHEN tool = '*' OR tool = '' THEN 1
+    ELSE 2
+  END, updated_at DESC NULLS LAST, created_at DESC NULLS LAST`;
 
   sqlParams.push(safeLimit);
   const limitBind = `$${sqlParams.length}`;

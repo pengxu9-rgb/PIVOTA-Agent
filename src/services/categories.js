@@ -1342,7 +1342,7 @@ async function queryExternalSeedProductsForBeautyCategory({ categorySlug, taxono
       WHERE status = 'active'
         AND attached_product_key IS NULL
         AND market = $1
-        AND (tool = '*' OR tool IS NULL OR tool = '' OR tool = $3)
+        AND tool = ANY($3::text[])
         AND coalesce(lower(availability), '') NOT IN ('out of stock', 'out_of_stock', 'outofstock', 'oos')
         AND lower(coalesce(
           seed_data->'derived'->'recall'->>'category',
@@ -1356,15 +1356,15 @@ async function queryExternalSeedProductsForBeautyCategory({ categorySlug, taxono
         )) = ANY($2::text[])
       ORDER BY
         CASE
-          WHEN tool = $3 THEN 0
-          WHEN tool = '*' OR tool IS NULL OR tool = '' THEN 1
+          WHEN tool = 'creator_agents' THEN 0
+          WHEN tool = '*' OR tool = '' THEN 1
           ELSE 2
         END,
         updated_at DESC NULLS LAST,
         created_at DESC NULLS LAST
       LIMIT $4
     `,
-    [market, terms, CHANNEL_CREATOR, safeLimit],
+    [market, terms, [CHANNEL_CREATOR, '*', ''], safeLimit],
   );
   const seen = new Set();
   const products = [];
