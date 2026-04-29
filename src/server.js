@@ -9569,6 +9569,393 @@ async function searchCreatorHumanApparelExternalSeedProductsDirect({
   };
 }
 
+function inferBeautyMainlineIntent(queryText = '') {
+  const raw = String(queryText || '');
+  const normalized = normalizeSearchTextForMatch(raw);
+  const families = new Set();
+  const safety = new Set();
+
+  if (
+    /\b(sunscreen|spf|sunblock|sun\s*protection|uv|uva|uvb|pa\+{1,4})\b/i.test(raw) ||
+    /防晒|防曬|日焼け止め/.test(raw)
+  ) {
+    families.add('sunscreen');
+  }
+  if (
+    /\b(cleanser|cleansing|face\s*wash|facial\s*wash|洗面|foam|gel\s*cleanser)\b/i.test(raw) ||
+    /洁面|潔面|洗面奶|洗面乳|洗脸|洗臉/.test(raw)
+  ) {
+    families.add('cleanser');
+  }
+  if (
+    /\b(moisturi[sz]er|cream|gel\s*cream|barrier|repair|cica|ceramide|panthenol|b5|lotion)\b/i.test(raw) ||
+    /保湿|保濕|面霜|乳液|屏障|修护|修護|舒缓|舒緩|神经酰胺|神經醯胺|泛醇/.test(raw)
+  ) {
+    families.add('moisturizer');
+  }
+  if (
+    /\b(serum|essence|ampoule|vitamin\s*c|ascorbic|azelaic|niacinamide|tranexamic|brighten|brightening|anti[-\s]?aging|peptide)\b/i.test(raw) ||
+    /精华|精華|提亮|淡斑|抗老|胜肽|煙酰胺|烟酰胺|壬二酸|传明酸|傳明酸/.test(raw)
+  ) {
+    families.add('serum');
+  }
+  if (/\b(travel|travel[-\s]?size|portable|flight|carry[-\s]?on)\b/i.test(raw) || /旅行|便携|便攜|飞机|飛機/.test(raw)) {
+    safety.add('travel_size_preferred');
+  }
+  if (
+    /\b(pregnan\w*|pregnancy|trying\s*to\s*conceive|ttc|retinol[-\s]?free|retinoid[-\s]?free|avoid\s+retinoid|no\s+retinol)\b/i.test(raw) ||
+    /怀孕|懷孕|备孕|備孕|孕期|不要视黄醇|不含视黄醇|避开视黄醇/.test(raw)
+  ) {
+    safety.add('avoid_retinoids');
+  }
+  if (
+    (
+      /\b(rosacea|redness|sensitive|sensiti[sz]ed|stinging|burning)\b/i.test(raw) ||
+      /玫瑰痤疮|酒糟|泛红|泛紅|敏感|刺痛/.test(raw)
+    ) &&
+    (
+      /\b(cleanser|cleansing|face\s*wash|wash)\b/i.test(raw) ||
+      /洁面|潔面|洗面/.test(raw)
+    )
+  ) {
+    safety.add('avoid_cooling_strong_cleanser');
+  }
+  if (
+    /\b(barrier\s*damage|damaged\s*barrier|over[-\s]?exfoliat|peeling|flaking|stinging|burning)\b/i.test(raw) ||
+    /屏障受损|屏障受損|脱皮|脫皮|刺痛|刷酸过度|刷酸過度/.test(raw)
+  ) {
+    safety.add('avoid_exfoliating_acids');
+  }
+
+  return {
+    raw,
+    normalized,
+    beautyLike: hasBeautyMakeupSearchSignal(raw) || detectBeautyQueryBucket(raw) != null || families.size > 0,
+    families: Array.from(families),
+    safety: Array.from(safety),
+  };
+}
+
+function beautyProductMatchesFamily(product, family) {
+  const text = buildFallbackCandidateText(product);
+  if (!text) return false;
+  const normalizedFamily = String(family || '').trim().toLowerCase();
+  if (normalizedFamily === 'sunscreen') {
+    const sunscreenText = text.replace(/\b(without|no|not|non)\s+(spf|sunscreen|sunblock)\b/gi, ' ');
+    return /\b(spf|sunscreen|sunblock|broad\s*spectrum|uv|uva|uvb|pa\+{1,4}|anthelios|mineral\s*screen)\b/i.test(sunscreenText) ||
+      /防晒|防曬|日焼け止め/.test(text);
+  }
+  if (normalizedFamily === 'cleanser') {
+    return /\b(cleanser|cleansing|face\s*wash|facial\s*wash|foaming\s*wash|wash\s*gel|cleansing\s*gel|cleansing\s*milk)\b/i.test(text) ||
+      /洁面|潔面|洗面奶|洗面乳|洗顔料/.test(text);
+  }
+  if (normalizedFamily === 'moisturizer') {
+    return /\b(moisturi[sz]er|cream|gel\s*cream|barrier|repair|cica|ceramide|panthenol|b5|lotion|balm)\b/i.test(text) ||
+      /保湿|保濕|面霜|乳液|屏障|修护|修護|舒缓|舒緩|神经酰胺|神經醯胺|泛醇|クリーム/.test(text);
+  }
+  if (normalizedFamily === 'serum') {
+    return /\b(serum|essence|ampoule|vitamin\s*c|ascorbic|azelaic|niacinamide|tranexamic|peptide|brighten|brightening)\b/i.test(text) ||
+      /精华|精華|美容液|提亮|淡斑|胜肽|烟酰胺|煙酰胺|壬二酸|传明酸|傳明酸/.test(text);
+  }
+  return false;
+}
+
+function isBeautyProductContraindicatedForQuery(product, queryText = '', intent = null) {
+  const text = buildFallbackCandidateText(product);
+  if (!text) return false;
+  const profile = intent || inferBeautyMainlineIntent(queryText);
+  const safety = new Set(Array.isArray(profile.safety) ? profile.safety : []);
+
+  if (safety.has('avoid_retinoids')) {
+    const retinoidHit =
+      /\b(retinol|retinal|retinoid|retinyl|tretinoin|adapalene|hydroxypinacolone|hpr)\b/i.test(text) ||
+      /视黄醇|視黃醇|维a醇|維a醇|维甲酸|維甲酸|a醇/.test(text);
+    if (retinoidHit && !/\b(retinol[-\s]?free|retinoid[-\s]?free|no\s+retinol|without\s+retinol)\b/i.test(text)) {
+      return true;
+    }
+  }
+  if (safety.has('avoid_cooling_strong_cleanser')) {
+    if (
+      /\b(menthol|mint|peppermint|eucalyptus|cooling|scrub|polish|deep\s*clean|deep\s*cleansing|purifying\s*scrub|exfoliating\s*cleanser)\b/i.test(text) ||
+      /薄荷|清凉|清涼|磨砂|去角质洁面|去角質潔面|强清洁|強清潔/.test(text)
+    ) {
+      return true;
+    }
+  }
+  if (safety.has('avoid_exfoliating_acids')) {
+    if (
+      /\b(aha|bha|pha|glycolic|lactic|mandelic|salicylic|peeling\s*solution|exfoliating\s*(acid|toner|pads?))\b/i.test(text) ||
+      /果酸|水杨酸|水楊酸|杏仁酸|乳酸|刷酸|去角质酸|去角質酸/.test(text)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function filterBeautyMainlineProductsByQuery(products = [], queryText = '', options = {}) {
+  const list = Array.isArray(products) ? products : [];
+  const intent = inferBeautyMainlineIntent(queryText);
+  if (!intent.beautyLike || list.length === 0) {
+    return {
+      products: list,
+      applied: false,
+      removed_count: 0,
+      removed_contraindicated_count: 0,
+      removed_class_mismatch_count: 0,
+      target_families: intent.families,
+      safety_rules: intent.safety,
+    };
+  }
+
+  const strictClass = options.strictClass !== false;
+  const out = [];
+  let removedContra = 0;
+  let removedClass = 0;
+  for (const product of list) {
+    if (isBeautyProductContraindicatedForQuery(product, queryText, intent)) {
+      removedContra += 1;
+      continue;
+    }
+    if (strictClass && intent.families.length > 0) {
+      const familyMatch = intent.families.some((family) =>
+        beautyProductMatchesFamily(product, family),
+      );
+      if (!familyMatch) {
+        removedClass += 1;
+        continue;
+      }
+    } else if (!hasBeautyCatalogProductSignal(buildFallbackCandidateText(product))) {
+      removedClass += 1;
+      continue;
+    }
+    out.push(product);
+  }
+  return {
+    products: out,
+    applied: true,
+    removed_count: Math.max(0, list.length - out.length),
+    removed_contraindicated_count: removedContra,
+    removed_class_mismatch_count: removedClass,
+    target_families: intent.families,
+    safety_rules: intent.safety,
+  };
+}
+
+function buildBeautyMainlineRetrievalQueries(queryText = '', intent = null) {
+  const raw = String(queryText || '').trim();
+  if (!raw) return [];
+  const profile = intent || inferBeautyMainlineIntent(raw);
+  const out = [];
+  const seen = new Set();
+  const push = (value) => {
+    const text = String(value || '').trim();
+    if (!text) return;
+    const key = normalizeSearchTextForMatch(text);
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    out.push(text);
+  };
+  push(raw);
+  push(sanitizeSearchQueryForRelevance(raw));
+  for (const family of profile.families) {
+    if (family === 'sunscreen') {
+      push('sunscreen SPF face lightweight');
+      push('daily sunscreen SPF');
+    } else if (family === 'cleanser') {
+      push('gentle cleanser face wash');
+      push('fragrance free gentle cleanser');
+    } else if (family === 'moisturizer') {
+      push('barrier repair moisturizer cream');
+      push('fragrance free moisturizer ceramide');
+    } else if (family === 'serum') {
+      push('gentle brightening serum');
+      push('niacinamide azelaic serum');
+    }
+  }
+  if (profile.safety.includes('avoid_retinoids')) {
+    push('pregnancy safe skincare brightening');
+    push('retinol free brightening serum');
+    push('daily sunscreen pregnancy safe');
+  }
+  if (profile.safety.includes('avoid_cooling_strong_cleanser')) {
+    push('rosacea gentle cleanser fragrance free');
+    push('sensitive skin cleanser');
+  }
+  if (profile.safety.includes('avoid_exfoliating_acids')) {
+    push('barrier repair cream');
+    push('gentle hydrating cleanser');
+  }
+  return out.slice(0, 8);
+}
+
+function scoreBeautyExternalSeedProduct({ product, queryText, intent, normalizedQuery, queryTokens }) {
+  const candidateText = buildFallbackCandidateText(product);
+  if (!candidateText) return { product, relevant: false, score: -100 };
+  if (isBeautyProductContraindicatedForQuery(product, queryText, intent)) {
+    return { product, relevant: false, score: -100 };
+  }
+
+  const targetFamilies = Array.isArray(intent?.families) ? intent.families : [];
+  const familyMatches = targetFamilies.filter((family) => beautyProductMatchesFamily(product, family));
+  if (targetFamilies.length > 0 && familyMatches.length === 0) {
+    return { product, relevant: false, score: -40 };
+  }
+  if (targetFamilies.length === 0 && !hasBeautyCatalogProductSignal(candidateText)) {
+    return { product, relevant: false, score: -30 };
+  }
+
+  let score = 0;
+  if (normalizedQuery && candidateText.includes(normalizedQuery)) score += 32;
+  score += familyMatches.length * 24;
+  const bucket = classifyBeautyBucketFromText(candidateText);
+  if (bucket === 'skincare') score += 12;
+  if (bucket === 'bodycare' && targetFamilies.includes('moisturizer')) score += 4;
+  if (intent?.safety?.includes('avoid_retinoids') && /\b(retinol[-\s]?free|retinoid[-\s]?free|pregnancy[-\s]?safe)\b/i.test(candidateText)) {
+    score += 16;
+  }
+  if (intent?.safety?.includes('avoid_cooling_strong_cleanser') && /\b(fragrance[-\s]?free|gentle|sensitive|soap[-\s]?free)\b/i.test(candidateText)) {
+    score += 12;
+  }
+  if (intent?.safety?.includes('avoid_exfoliating_acids') && /\b(barrier|repair|ceramide|panthenol|cica|gentle|hydrating)\b/i.test(candidateText)) {
+    score += 12;
+  }
+  const overlap = (Array.isArray(queryTokens) ? queryTokens : []).filter(
+    (token) => token.length >= 3 && candidateText.includes(token),
+  ).length;
+  score += Math.min(18, overlap * 3);
+  return { product, relevant: true, score };
+}
+
+async function searchBeautyExternalSeedProductsMainline({
+  search = {},
+  metadata = {},
+  intent = null,
+  creatorScoped = false,
+} = {}) {
+  if (!process.env.DATABASE_URL) return null;
+  const queryText = extractSearchQueryText(search);
+  const beautyIntent = inferBeautyMainlineIntent(queryText);
+  if (!beautyIntent.beautyLike || !String(queryText || '').trim()) return null;
+
+  const safeLimit = Math.max(1, Math.min(SEARCH_LIMIT_MAX, Math.floor(Number(search.limit || 20) || 20)));
+  const safePage = Math.max(1, Math.floor(Number(search.page || 1) || 1));
+  const safeOffset = Math.max(
+    0,
+    Number.isFinite(Number(search.offset))
+      ? Math.floor(Number(search.offset))
+      : (safePage - 1) * safeLimit,
+  );
+  const inStockOnly = parseQueryBoolean(search.in_stock_only ?? search.inStockOnly) !== false;
+  const market =
+    String(search.market || metadata.market || process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET || 'US')
+      .trim()
+      .toUpperCase() || 'US';
+  const retrievalQueries = buildBeautyMainlineRetrievalQueries(queryText, beautyIntent);
+  const perQueryLimit = Math.max(36, Math.min(160, safeLimit * 8));
+  const creatorScopedRows = await queryCreatorHumanApparelExternalSeedRows({
+    market,
+    retrievalQueries,
+    inStockOnly,
+    perQueryLimit,
+    toolScope: creatorScoped ? 'creator_preferred' : 'all_tools',
+  });
+  const creatorScopedProducts = Array.isArray(creatorScopedRows?.rawProducts)
+    ? creatorScopedRows.rawProducts
+    : [];
+  const shouldBroaden =
+    creatorScoped &&
+    creatorScopedProducts.every((product) =>
+      scoreBeautyExternalSeedProduct({
+        product,
+        queryText,
+        intent: beautyIntent,
+        normalizedQuery: beautyIntent.normalized,
+        queryTokens: Array.from(new Set(tokenizeSearchTextForMatch(beautyIntent.normalized))),
+      }).relevant !== true,
+    );
+  const broadenedRows = shouldBroaden
+    ? await queryCreatorHumanApparelExternalSeedRows({
+        market,
+        retrievalQueries,
+        inStockOnly,
+        perQueryLimit,
+        toolScope: 'all_tools',
+      })
+    : null;
+  const selectedRows = broadenedRows || creatorScopedRows;
+  const normalizedQuery = beautyIntent.normalized;
+  const queryTokens = Array.from(new Set(tokenizeSearchTextForMatch(normalizedQuery)));
+  const scored = (Array.isArray(selectedRows?.rawProducts) ? selectedRows.rawProducts : [])
+    .map((product) =>
+      scoreBeautyExternalSeedProduct({
+        product,
+        queryText,
+        intent: beautyIntent,
+        normalizedQuery,
+        queryTokens,
+      }),
+    )
+    .filter((row) => row.relevant === true)
+    .sort((left, right) => {
+      if (right.score !== left.score) return right.score - left.score;
+      return String(left.product?.title || '').localeCompare(String(right.product?.title || ''));
+    });
+  const rankedProducts = scored.map((row) => row.product);
+  const pagedProducts = rankedProducts.slice(safeOffset, safeOffset + safeLimit);
+  const querySource = creatorScoped
+    ? 'agent_products_creator_beauty_external_seed_mainline'
+    : 'agent_products_beauty_external_seed_mainline';
+
+  return {
+    status: 'success',
+    success: true,
+    products: pagedProducts,
+    total: rankedProducts.length,
+    page: safePage,
+    page_size: pagedProducts.length,
+    reply: pagedProducts.length > 0 ? null : 'No matching beauty products found on the mainline catalog path.',
+    metadata: {
+      query_source: querySource,
+      fetched_at: new Date().toISOString(),
+      external_seed_only_requested: true,
+      external_seed_rows_fetched: Array.isArray(selectedRows?.rawProducts) ? selectedRows.rawProducts.length : 0,
+      external_seed_rows_built: rankedProducts.length,
+      external_seed_returned_count: pagedProducts.length,
+      creator_external_seed_tool_scope: broadenedRows ? 'all_tools' : (creatorScoped ? 'creator_preferred' : 'all_tools'),
+      retrieval_query_variants: retrievalQueries,
+      retrieval_query_debug: selectedRows?.variantResults || [],
+      beauty_mainline_filter: {
+        target_families: beautyIntent.families,
+        safety_rules: beautyIntent.safety,
+      },
+      source_breakdown: {
+        internal_count: 0,
+        external_seed_count: pagedProducts.length,
+        stale_cache_used: false,
+        strategy_applied: 'beauty_external_seed_mainline',
+      },
+      search_decision: {
+        final_decision: pagedProducts.length > 0 ? 'products_returned' : 'empty',
+        decision_authority: querySource,
+        query_target_domain: 'beauty',
+      },
+      route_debug: {
+        beauty_external_seed_mainline: {
+          attempted: true,
+          query: queryText,
+          target_families: beautyIntent.families,
+          safety_rules: beautyIntent.safety,
+          creator_scoped: Boolean(creatorScoped),
+          broadened_tool_scope: Boolean(broadenedRows),
+        },
+      },
+      ...(metadata?.creator_id ? { creator_id: metadata.creator_id } : {}),
+      ...(metadata?.creator_name ? { creator_name: metadata.creator_name } : {}),
+    },
+  };
+}
+
 const LOOKUP_EQUIVALENCE_FAMILIES = [
   ['winona', '薇诺娜'],
   ['ipsa', '茵芙莎', '流金水'],
@@ -24716,7 +25103,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           effectiveIntent?.hard_constraints?.price || null,
           directProducts,
         );
-        const filteredDirectProducts = directBudgetFilter.products;
+        const safetyFilter = filterBeautyMainlineProductsByQuery(
+          directBudgetFilter.products,
+          rawUserQuery || queryText,
+          { strictClass: false },
+        );
+        const filteredDirectProducts = safetyFilter.applied
+          ? safetyFilter.products
+          : directBudgetFilter.products;
         const pagedDirectProducts = filteredDirectProducts.slice(safeOffset, safeOffset + safeLimit);
         const directBudgetFxMetadata = directBudgetFilter.resolution?.metadata || null;
         const baseMetadata = {
@@ -24742,6 +25136,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             fallback_reason: null,
             final_returned_count: pagedDirectProducts.length,
           },
+          ...(safetyFilter.applied
+            ? {
+                beauty_mainline_filter: safetyFilter,
+                contraindicated_product_filtered_count:
+                  Number(safetyFilter.removed_contraindicated_count || 0),
+              }
+            : {}),
           ...(directBudgetFxMetadata || {}),
         };
         const directResponse =
@@ -25126,6 +25527,37 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           logger.warn(
             { err: err?.message || String(err), creatorId, source, queryText },
             'Creator UI human apparel external seed direct search failed; falling back to upstream',
+          );
+        }
+      }
+
+      const beautyMainlineIntentForDirect = inferBeautyMainlineIntent(queryText);
+      const creatorBeautyMainlineDirectEligible =
+        !strictCommerceFindProductsMulti &&
+        queryText.length > 0 &&
+        process.env.DATABASE_URL &&
+        beautyMainlineIntentForDirect.beautyLike &&
+        !hasMerchantScope;
+      if (creatorBeautyMainlineDirectEligible) {
+        try {
+          const directResponse = await searchBeautyExternalSeedProductsMainline({
+            search,
+            metadata,
+            intent: effectiveIntent,
+            creatorScoped: isCreatorHumanApparelSource,
+          });
+          const directProducts = Array.isArray(directResponse?.products)
+            ? directResponse.products
+            : [];
+          if (directProducts.length > 0) {
+            const promotions = await getActivePromotions(now, creatorId);
+            const enriched = applyDealsToResponse(directResponse, promotions, now, creatorId);
+            return res.json(enriched);
+          }
+        } catch (err) {
+          logger.warn(
+            { err: err?.message || String(err), creatorId, source, queryText },
+            'Beauty external-seed mainline search failed; continuing to remaining primary search paths',
           );
         }
       }
@@ -25535,6 +25967,18 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 }
               }
             }
+          }
+          const beautyMainlineCacheFilter = filterBeautyMainlineProductsByQuery(
+            supplementedProducts,
+            cacheQueryText,
+            { strictClass: true },
+          );
+          if (beautyMainlineCacheFilter.applied) {
+            supplementedProducts = beautyMainlineCacheFilter.products;
+            supplementMeta = {
+              ...supplementMeta,
+              beauty_mainline_filter: beautyMainlineCacheFilter,
+            };
           }
           const dedupePerTitleLimit = resolveSearchDedupePerTitleLimit({
             queryText: cacheQueryText,

@@ -107,3 +107,43 @@ test('/v1/product/analyze: request/session profile overlay feeds analysis contex
   assert.equal(meta.request_profile_overlay_applied, true);
   assert.deepEqual(meta.request_profile_overlay_keys, ['barrierStatus', 'goals', 'sensitivity', 'skinType']);
 });
+
+test('/v1/product/analyze: main-path exception returns diagnosable degraded product analysis card', async () => {
+  const app = express();
+  app.use(express.json({ limit: '1mb' }));
+  const logger = {
+    info() {},
+    warn() {},
+    error() {},
+    debug() {},
+  };
+  mountAuroraBffRoutes(app, { logger });
+
+  const resp = await invokeRoute(app, 'POST', '/v1/product/analyze', {
+    headers: { 'X-Aurora-UID': 'test_uid_pa_degraded', 'X-Trace-ID': 't', 'X-Brief-ID': 'b', 'X-Lang': 'EN' },
+    body: {
+      product: {
+        name: '15% L-AA Brightening Serum',
+        ingredients: ['L-Ascorbic Acid 15%', 'Alcohol Denat.', 'Fragrance'],
+        toJSON() {
+          throw new Error('forced product serialize failure');
+        },
+      },
+      session: {
+        profile: {
+          skinType: 'dry',
+          sensitivity: 'high',
+        },
+      },
+    },
+  });
+
+  assert.equal(resp.status, 200);
+  const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+  const card = cards.find((item) => item && item.type === 'product_analysis');
+  assert.ok(card);
+  assert.equal(resp.body?.session_patch?.meta?.product_analyze_degraded, true);
+  assert.equal(card.payload?.provenance?.retrieval_degradation?.degraded, true);
+  assert.equal(card.payload?.assessment?.verdict_level, 'high_risk');
+  assert.ok((card.payload?.evidence?.science?.risk_notes || []).includes('sensitive_vitamin_c_irritation_risk'));
+});

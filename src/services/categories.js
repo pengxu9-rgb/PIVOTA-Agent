@@ -12,6 +12,41 @@ const {
 const PIVOTA_API_BASE = (process.env.PIVOTA_API_BASE || 'http://localhost:8080').replace(/\/$/, '');
 
 const CHANNEL_CREATOR = 'creator_agents';
+const CREATOR_CATEGORY_TREE_CACHE = new Map();
+
+function parsePositiveInt(value, fallback) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return fallback;
+  return Math.floor(n);
+}
+
+function cloneJson(value) {
+  if (value == null) return value;
+  try {
+    return JSON.parse(JSON.stringify(value));
+  } catch (_) {
+    return value;
+  }
+}
+
+function withTimeout(promise, timeoutMs, code) {
+  const ms = parsePositiveInt(timeoutMs, 0);
+  if (!ms) return Promise.resolve(promise);
+  let timer = null;
+  return Promise.race([
+    Promise.resolve(promise),
+    new Promise((_, reject) => {
+      timer = setTimeout(() => {
+        const err = new Error(code || 'TIMEOUT');
+        err.code = code || 'TIMEOUT';
+        reject(err);
+      }, ms);
+      if (timer && typeof timer.unref === 'function') timer.unref();
+    }),
+  ]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
 
 function slugify(str) {
   return String(str || '')
@@ -41,7 +76,7 @@ async function loadExternalSeedProductsFromDb() {
   if (process.env.CREATOR_CATEGORIES_INCLUDE_EXTERNAL_SEEDS === 'false') return [];
   if (!process.env.DATABASE_URL) return [];
 
-  const limit = Math.max(1, Math.min(Number(process.env.CREATOR_CATEGORIES_EXTERNAL_SEEDS_LIMIT || 500), 5000));
+  const limit = Math.max(1, Math.min(Number(process.env.CREATOR_CATEGORIES_EXTERNAL_SEEDS_LIMIT || 300), 5000));
   const market =
     String(process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET || 'US').trim().toUpperCase() || 'US';
 
@@ -1011,7 +1046,7 @@ async function loadCreatorProducts(creatorId) {
   // by find_products_multi.
   if (merchantIds.length && process.env.DATABASE_URL) {
     try {
-      const limit = Number(process.env.CREATOR_CATEGORIES_MAX_PRODUCTS || 2000);
+      const limit = parsePositiveInt(process.env.CREATOR_CATEGORIES_MAX_PRODUCTS, 500);
       const res = await query(
         `
           SELECT product_data
@@ -1227,7 +1262,7 @@ function stripCounts(nodes) {
   }
 }
 
-async function buildCreatorCategoryTree(creatorId, options = {}) {
+async function buildCreatorCategoryTreeUncached(creatorId, options = {}) {
   const { dealsOnly = false, includeCounts = true, includeEmpty = false } = options;
   const { indexedProducts } = await loadCreatorProducts(creatorId);
 
@@ -1442,6 +1477,147 @@ async function buildCreatorCategoryTree(creatorId, options = {}) {
     roots: finalRoots,
     hotDeals,
   };
+}
+
+function buildCreatorCategoryTreeCacheKey(creatorId, options = {}) {
+  return [
+    String(creatorId || '').trim(),
+    String(options.viewId || '').trim(),
+    String(options.locale || '').trim(),
+    options.dealsOnly === true ? 'deals' : 'all',
+    options.includeCounts === false ? 'no_counts' : 'counts',
+    options.includeEmpty === true ? 'include_empty' : 'non_empty',
+  ].join('|');
+}
+
+function markCategoryTreeCacheMeta(tree, meta = {}) {
+  if (!tree || typeof tree !== 'object' || Array.isArray(tree)) return tree;
+  return {
+    ...tree,
+    meta: {
+      ...(tree.meta && typeof tree.meta === 'object' && !Array.isArray(tree.meta) ? tree.meta : {}),
+      ...meta,
+    },
+  };
+}
+
+async function buildMinimalCreatorCategoryTree(creatorId, options = {}, reason = 'timeout_no_cache') {
+  const taxonomy = await getTaxonomyView({
+    viewId: options.viewId,
+    locale: options.locale,
+  }).catch(() => null);
+  if (!taxonomy) {
+    return {
+      creatorId,
+      source: 'degraded',
+      roots: [],
+      hotDeals: [],
+      meta: {
+        degraded: true,
+        degraded_reason: reason,
+      },
+    };
+  }
+  const roots = taxonomy.roots
+    .map((id) => taxonomy.byId.get(id))
+    .filter(Boolean)
+    .filter((cat) => !cat.hidden)
+    .map((cat) => ({
+      category: {
+        id: cat.id,
+        slug: cat.slug,
+        name: cat.name,
+        parentId: cat.parentId,
+        level: cat.level,
+        imageUrl: cat.imageUrl || undefined,
+        productCount: 0,
+        path: cat.path || [cat.name],
+        priority: cat.priorityBase || 0,
+      },
+      children: [],
+    }));
+  return {
+    creatorId,
+    taxonomyVersion: taxonomy.version,
+    market: taxonomy.market,
+    locale: taxonomy.locale,
+    viewId: taxonomy.viewId,
+    source: 'canonical',
+    roots,
+    hotDeals: [],
+    meta: {
+      degraded: true,
+      degraded_reason: reason,
+      category_tree_cache: 'miss',
+    },
+  };
+}
+
+async function buildCreatorCategoryTree(creatorId, options = {}) {
+  const cacheEnabled = process.env.CREATOR_CATEGORIES_CACHE_ENABLED !== 'false';
+  const timeoutMs = parsePositiveInt(process.env.CREATOR_CATEGORIES_BUILD_TIMEOUT_MS, 8000);
+  const ttlMs = parsePositiveInt(process.env.CREATOR_CATEGORIES_CACHE_TTL_MS, 5 * 60 * 1000);
+  const staleTtlMs = parsePositiveInt(process.env.CREATOR_CATEGORIES_STALE_TTL_MS, 60 * 60 * 1000);
+  const cacheKey = buildCreatorCategoryTreeCacheKey(creatorId, options);
+  const now = Date.now();
+  const cached = cacheEnabled ? CREATOR_CATEGORY_TREE_CACHE.get(cacheKey) : null;
+  if (cached && now - cached.cachedAt <= ttlMs) {
+    return markCategoryTreeCacheMeta(cloneJson(cached.value), {
+      category_tree_cache: 'hit',
+      category_tree_cache_age_ms: now - cached.cachedAt,
+      degraded: false,
+    });
+  }
+
+  const buildPromise = buildCreatorCategoryTreeUncached(creatorId, options).then((tree) => {
+    if (cacheEnabled && tree && typeof tree === 'object' && !Array.isArray(tree)) {
+      CREATOR_CATEGORY_TREE_CACHE.set(cacheKey, {
+        cachedAt: Date.now(),
+        value: cloneJson(tree),
+      });
+    }
+    return tree;
+  });
+
+  try {
+    const tree = await withTimeout(buildPromise, timeoutMs, 'CREATOR_CATEGORY_TREE_TIMEOUT');
+    return markCategoryTreeCacheMeta(tree, {
+      category_tree_cache: cached ? 'refresh' : 'miss',
+      degraded: false,
+    });
+  } catch (err) {
+    const errorCode = err?.code || 'CREATOR_CATEGORY_TREE_BUILD_FAILED';
+    if (errorCode !== 'CREATOR_CATEGORY_TREE_TIMEOUT') {
+      throw err;
+    }
+    const staleAllowed = cached && now - cached.cachedAt <= staleTtlMs;
+    if (staleAllowed) {
+      logger.warn(
+        {
+          err: err?.message || String(err),
+          creatorId,
+          viewId: options.viewId || null,
+          cacheAgeMs: now - cached.cachedAt,
+        },
+        'Creator category tree build timed out; serving stale cached tree',
+      );
+      return markCategoryTreeCacheMeta(cloneJson(cached.value), {
+        category_tree_cache: 'stale',
+        category_tree_cache_age_ms: now - cached.cachedAt,
+        degraded: true,
+        degraded_reason: errorCode,
+      });
+    }
+    logger.warn(
+      {
+        err: err?.message || String(err),
+        creatorId,
+        viewId: options.viewId || null,
+      },
+      'Creator category tree build timed out with no cache; serving minimal taxonomy tree',
+    );
+    return buildMinimalCreatorCategoryTree(creatorId, options, errorCode);
+  }
 }
 
 async function getCreatorCategoryProducts(creatorId, categorySlug, options = {}) {
