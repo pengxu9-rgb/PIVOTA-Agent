@@ -48,6 +48,12 @@ function withTimeout(promise, timeoutMs, code) {
   });
 }
 
+function resolveCreatorCategoryBuildTimeoutMs() {
+  const configured = parsePositiveInt(process.env.CREATOR_CATEGORIES_BUILD_TIMEOUT_MS, 8000);
+  const max = parsePositiveInt(process.env.CREATOR_CATEGORIES_BUILD_TIMEOUT_MAX_MS, 8000);
+  return Math.max(250, Math.min(configured, max));
+}
+
 function slugify(str) {
   return String(str || '')
     .toLowerCase()
@@ -1262,14 +1268,209 @@ function stripCounts(nodes) {
   }
 }
 
+const BEAUTY_CATEGORY_PRODUCT_TERMS_BY_SLUG = Object.freeze({
+  beauty: [
+    'skincare',
+    'skin care',
+    'skin-care',
+    'facial care',
+    'sunscreen',
+    'cleanser',
+    'moisturizer',
+    'serum',
+  ],
+  'skin-care': [
+    'skincare',
+    'skin care',
+    'skin-care',
+    'facial care',
+    'sunscreen',
+    'cleanser',
+    'moisturizer',
+    'cream',
+    'serum',
+  ],
+  'facial-care': [
+    'facial care',
+    'skincare',
+    'skin care',
+    'sunscreen',
+    'cleanser',
+    'moisturizer',
+    'cream',
+    'serum',
+  ],
+  sunscreen: ['sunscreen', 'sun care', 'sun protection', 'spf', 'face sunscreen'],
+  cleanser: ['cleanser', 'face cleanser', 'facial cleanser', 'face wash', 'cleansing gel'],
+  moisturizer: ['moisturizer', 'moisturiser', 'cream', 'face cream', 'gel cream', 'barrier cream'],
+  serum: ['serum', 'essence', 'ampoule', 'treatment', 'brightening serum'],
+  makeup: ['makeup', 'cosmetics', 'foundation', 'blush', 'bronzer', 'highlighter'],
+  haircare: ['haircare', 'hair care', 'shampoo', 'conditioner', 'hair oil', 'hair mask'],
+});
+
+function buildBeautyCategoryProductTerms(categorySlug, taxonomy, targetId) {
+  const out = [];
+  const seen = new Set();
+  const push = (value) => {
+    const normalized = normalizeTextForMatch(value);
+    if (!normalized || seen.has(normalized)) return;
+    seen.add(normalized);
+    out.push(normalized);
+  };
+  const slug = String(categorySlug || '').trim().toLowerCase();
+  (BEAUTY_CATEGORY_PRODUCT_TERMS_BY_SLUG[slug] || []).forEach(push);
+  const target = taxonomy?.byId?.get(targetId);
+  push(target?.slug);
+  push(target?.name);
+  if (Array.isArray(target?.path)) target.path.forEach(push);
+  if (out.length === 0) push(slug);
+  return out.slice(0, 24);
+}
+
+async function queryExternalSeedProductsForBeautyCategory({ categorySlug, taxonomy, targetId, limit }) {
+  if (!process.env.DATABASE_URL) return [];
+  const market =
+    String(process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET || 'US').trim().toUpperCase() || 'US';
+  const terms = buildBeautyCategoryProductTerms(categorySlug, taxonomy, targetId);
+  if (!terms.length) return [];
+  const patterns = terms.map((term) => `%${term}%`);
+  const safeLimit = Math.max(1, Math.min(Number(limit || 20) || 20, 80));
+  const res = await query(
+    `
+      SELECT
+        id,
+        external_product_id,
+        market,
+        tool,
+        destination_url,
+        canonical_url,
+        domain,
+        title,
+        image_url,
+        price_amount,
+        price_currency,
+        availability,
+        seed_data,
+        status,
+        attached_product_key,
+        created_at,
+        updated_at
+      FROM external_product_seeds
+      WHERE status = 'active'
+        AND attached_product_key IS NULL
+        AND market = $1
+        AND (tool = '*' OR tool IS NULL OR tool = '' OR tool = $4)
+        AND coalesce(lower(availability), '') NOT IN ('out of stock', 'out_of_stock', 'outofstock', 'oos')
+        AND (
+          lower(coalesce(
+            seed_data->'derived'->'recall'->>'category',
+            seed_data->>'category',
+            seed_data->'product'->>'category',
+            seed_data->'snapshot'->>'category',
+            seed_data->>'product_type',
+            seed_data->'product'->>'product_type',
+            seed_data->'snapshot'->>'product_type',
+            ''
+          )) = ANY($2::text[])
+          OR lower(coalesce(seed_data->'derived'->'recall'->>'retrieval_title', '')) LIKE ANY($3::text[])
+          OR lower(coalesce(seed_data->'derived'->'recall'->>'retrieval_summary', '')) LIKE ANY($3::text[])
+          OR lower(coalesce(title, '')) LIKE ANY($3::text[])
+        )
+      ORDER BY
+        CASE
+          WHEN tool = $4 THEN 0
+          WHEN tool = '*' OR tool IS NULL OR tool = '' THEN 1
+          ELSE 2
+        END,
+        updated_at DESC NULLS LAST,
+        created_at DESC NULLS LAST
+      LIMIT $5
+    `,
+    [market, terms, patterns, CHANNEL_CREATOR, safeLimit],
+  );
+  const seen = new Set();
+  const products = [];
+  for (const row of Array.isArray(res?.rows) ? res.rows : []) {
+    const product = buildExternalSeedProduct(row);
+    if (!product) continue;
+    const key = `${product.merchant_id || product.merchantId || ''}::${product.product_id || product.id || ''}`;
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    products.push(product);
+  }
+  return products;
+}
+
+function buildStaticCanonicalCategoryTree(taxonomy) {
+  if (!taxonomy) return [];
+  function toNode(id) {
+    const base = taxonomy.byId.get(id);
+    if (!base) return null;
+    const childrenIds = taxonomy.childrenById.get(id) || [];
+    const children = childrenIds
+      .map((cid) => toNode(cid))
+      .filter(Boolean)
+      .sort((a, b) => (b.category.priority ?? 0) - (a.category.priority ?? 0));
+    return {
+      category: {
+        id,
+        slug: base.slug,
+        name: base.name,
+        parentId: base.parentId,
+        level: base.level,
+        imageUrl: base.imageUrl || undefined,
+        productCount: 0,
+        path: base.path || [base.name],
+        priority: (base.pinned ? 1000 : 0) + Number(base.priorityBase || 0),
+      },
+      children,
+      _hidden: Boolean(base.hidden),
+      _pinned: Boolean(base.pinned),
+    };
+  }
+
+  function filterAndLift(nodes) {
+    const out = [];
+    for (const node of nodes) {
+      const liftedChildren = filterAndLift(node.children || []);
+      if (!node._hidden) {
+        out.push({
+          category: node.category,
+          children: liftedChildren,
+        });
+      } else {
+        out.push(...liftedChildren);
+      }
+    }
+    return out;
+  }
+
+  return filterAndLift(taxonomy.roots.map((rid) => toNode(rid)).filter(Boolean)).sort(
+    (a, b) => (b.category.priority ?? 0) - (a.category.priority ?? 0),
+  );
+}
+
 async function buildCreatorCategoryTreeUncached(creatorId, options = {}) {
   const { dealsOnly = false, includeCounts = true, includeEmpty = false } = options;
-  const { indexedProducts } = await loadCreatorProducts(creatorId);
-
   const taxonomy = await getTaxonomyView({
     viewId: options.viewId,
     locale: options.locale,
   });
+
+  if (taxonomy && includeCounts === false && dealsOnly === false) {
+    return {
+      creatorId,
+      taxonomyVersion: taxonomy.version,
+      market: taxonomy.market,
+      locale: taxonomy.locale,
+      viewId: taxonomy.viewId,
+      source: 'canonical',
+      roots: buildStaticCanonicalCategoryTree(taxonomy),
+      hotDeals: [],
+    };
+  }
+
+  const { indexedProducts } = await loadCreatorProducts(creatorId);
 
   if (taxonomy) {
     const creatorOverrides = await loadCreatorOverrides(creatorId);
@@ -1518,24 +1719,6 @@ async function buildMinimalCreatorCategoryTree(creatorId, options = {}, reason =
       },
     };
   }
-  const roots = taxonomy.roots
-    .map((id) => taxonomy.byId.get(id))
-    .filter(Boolean)
-    .filter((cat) => !cat.hidden)
-    .map((cat) => ({
-      category: {
-        id: cat.id,
-        slug: cat.slug,
-        name: cat.name,
-        parentId: cat.parentId,
-        level: cat.level,
-        imageUrl: cat.imageUrl || undefined,
-        productCount: 0,
-        path: cat.path || [cat.name],
-        priority: cat.priorityBase || 0,
-      },
-      children: [],
-    }));
   return {
     creatorId,
     taxonomyVersion: taxonomy.version,
@@ -1543,7 +1726,7 @@ async function buildMinimalCreatorCategoryTree(creatorId, options = {}, reason =
     locale: taxonomy.locale,
     viewId: taxonomy.viewId,
     source: 'canonical',
-    roots,
+    roots: buildStaticCanonicalCategoryTree(taxonomy),
     hotDeals: [],
     meta: {
       degraded: true,
@@ -1555,7 +1738,7 @@ async function buildMinimalCreatorCategoryTree(creatorId, options = {}, reason =
 
 async function buildCreatorCategoryTree(creatorId, options = {}) {
   const cacheEnabled = process.env.CREATOR_CATEGORIES_CACHE_ENABLED !== 'false';
-  const timeoutMs = parsePositiveInt(process.env.CREATOR_CATEGORIES_BUILD_TIMEOUT_MS, 8000);
+  const timeoutMs = resolveCreatorCategoryBuildTimeoutMs();
   const ttlMs = parsePositiveInt(process.env.CREATOR_CATEGORIES_CACHE_TTL_MS, 5 * 60 * 1000);
   const staleTtlMs = parsePositiveInt(process.env.CREATOR_CATEGORIES_STALE_TTL_MS, 60 * 60 * 1000);
   const cacheKey = buildCreatorCategoryTreeCacheKey(creatorId, options);
@@ -1623,8 +1806,12 @@ async function buildCreatorCategoryTree(creatorId, options = {}) {
 async function getCreatorCategoryProducts(creatorId, categorySlug, options = {}) {
   const page = Number(options.page) > 0 ? Number(options.page) : 1;
   const limit = Number(options.limit) > 0 ? Number(options.limit) : 20;
-
-  const { indexedProducts } = await loadCreatorProducts(creatorId);
+  const config = getCreatorConfig(creatorId);
+  if (!config) {
+    const err = new Error('Unknown creator');
+    err.code = 'UNKNOWN_CREATOR';
+    throw err;
+  }
   const taxonomy = await getTaxonomyView({
     viewId: options.viewId,
     locale: options.locale,
@@ -1643,6 +1830,40 @@ async function getCreatorCategoryProducts(creatorId, categorySlug, options = {})
       err.code = 'UNKNOWN_CATEGORY';
       throw err;
     }
+
+    if (String(options.viewId || '').trim().toUpperCase() === 'GLOBAL_BEAUTY') {
+      const fastProducts = await queryExternalSeedProductsForBeautyCategory({
+        categorySlug,
+        taxonomy,
+        targetId,
+        limit: page * limit,
+      }).catch((err) => {
+        logger.warn(
+          { err: err?.message || String(err), creatorId, categorySlug },
+          'Failed to load fast external seed products for beauty category',
+        );
+        return [];
+      });
+      if (fastProducts.length > 0) {
+        const startIdx = (page - 1) * limit;
+        const endIdx = startIdx + limit;
+        return {
+          creatorId,
+          categorySlug,
+          products: fastProducts.slice(startIdx, endIdx),
+          pagination: {
+            page,
+            limit,
+            total: fastProducts.length,
+          },
+          metadata: {
+            query_source: 'creator_category_beauty_external_seed_mainline',
+          },
+        };
+      }
+    }
+
+    const { indexedProducts } = await loadCreatorProducts(creatorId);
 
     if (!indexedProducts.length) {
       return {
@@ -1692,6 +1913,8 @@ async function getCreatorCategoryProducts(creatorId, categorySlug, options = {})
       },
     };
   }
+
+  const { indexedProducts } = await loadCreatorProducts(creatorId);
 
   if (!indexedProducts.length) {
     const err = new Error('Unknown category');
