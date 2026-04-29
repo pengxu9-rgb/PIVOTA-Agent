@@ -8891,7 +8891,12 @@ test('__internal: beauty local handoff support external stage uses local authori
 
   __internal.__setRouteDependencyOverridesForTest({
     searchLocalExternalSeedProducts: async (args = {}) => {
-      calls.push({ kind: 'local_external_seed', query: args.query, preferredStep: args.preferredStep });
+      calls.push({
+        kind: 'local_external_seed',
+        query: args.query,
+        preferredStep: args.preferredStep,
+        queryTimeoutMs: Number(args.queryTimeoutMs || 0),
+      });
       const query = String(args.query || '').trim().toLowerCase();
       if (query === 'spf fluid oily skin') {
         return {
@@ -9068,6 +9073,10 @@ test('__internal: beauty local handoff support external stage uses local authori
     const localSunscreenIndex = calls.findIndex((call) =>
       call.kind === 'local_external_seed' && call.query === 'spf fluid oily skin');
     assert.notEqual(localSunscreenIndex, -1, JSON.stringify(calls));
+    assert.ok(
+      Number(calls[localSunscreenIndex]?.queryTimeoutMs || 0) >= 1800,
+      JSON.stringify(calls),
+    );
     assert.equal(
       calls.some((call) => call.kind === 'backend_external_seed' && call.query === 'spf fluid oily skin'),
       false,
