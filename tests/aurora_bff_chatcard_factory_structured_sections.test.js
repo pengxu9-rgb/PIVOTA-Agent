@@ -1030,6 +1030,70 @@ describe('aurora chatCardFactory structured sections for adapter inputs', () => 
     expect(products[1].short_description).not.toMatch(/UVA, UVB, and blue light/i);
   });
 
+  test('recommendations card keeps Light Serum finish-fit reason serum-light, not matte', () => {
+    const cards = mapLegacyCardToSpecCards(
+      {
+        type: 'recommendations',
+        card_id: 'legacy_recommendations_finish_fit_light_serum_tradeoff',
+        payload: {
+          recommendation_meta: {
+            selected_target_ids: ['daily_sunscreen_finish_fit'],
+            ranked_targets: [
+              {
+                target_id: 'daily_sunscreen_finish_fit',
+                target_label: 'Daily sunscreen with finish fit',
+              },
+            ],
+          },
+          recommendations: [
+            {
+              product_id: 'prod_matte_fit',
+              merchant_id: 'external_seed',
+              brand: 'SKINTIFIC',
+              name: 'Matte Fit Serum Sunscreen SPF 50+ PA++++',
+              matched_role_id: 'daily_sunscreen_finish_fit',
+              matched_role_label: 'Daily sunscreen with finish fit',
+              why_this_one: 'it has more direct airy, non-greasy texture evidence for oily skin under makeup while staying in a dedicated SPF50+ sunscreen lane',
+              short_description: 'Matte SPF 50+ PA++++ sunscreen with shine control.',
+              description: 'This oil-controlling, non-greasy formula includes Zinc PCA and a fast-absorbing smooth finish with 8-hour shine control.',
+              key_features: ['Zinc PCA', 'Niacinamide'],
+            },
+            {
+              product_id: 'prod_light_serum',
+              merchant_id: 'external_seed',
+              brand: 'SKINTIFIC',
+              name: 'Light Serum Sunscreen SPF 50+ PA++++',
+              matched_role_id: 'daily_sunscreen_finish_fit',
+              matched_role_label: 'Daily sunscreen with finish fit',
+              why_this_one: 'it leans serum-light with skincare-support ingredients if you want SPF50+ without the stronger matte finish',
+              short_description: 'Lightweight SPF 50+ PA++++ serum sunscreen for daily wear.',
+              description: 'Sunscreen with watery texture, a smooth feeling after application without sticky or greasy feel, plus Vitamin C and antioxidant support.',
+              key_features: ['Ceramide NP', 'Niacinamide', 'Vitamin C (Ascorbic acid)', 'Hyaluronic acid'],
+            },
+            {
+              product_id: 'prod_unseen',
+              merchant_id: 'external_seed',
+              brand: 'Supergoop',
+              name: 'Unseen Sunscreen SPF 50',
+              matched_role_id: 'daily_sunscreen_finish_fit',
+              matched_role_label: 'Daily sunscreen with finish fit',
+              why_this_one: 'it is the clearer, more invisible-feeling option for smoother under-makeup wear',
+              short_description: 'Invisible, weightless, scentless sunscreen that doubles as a primer for makeup wear.',
+            },
+          ],
+        },
+      },
+      { requestId: 'req_card_factory_finish_fit_light_serum_tradeoff', language: 'EN', index: 0 },
+    );
+
+    const products = cards[0].payload.sections[0].products;
+    const lightSerum = products.find((product) => product.product_id === 'prod_light_serum');
+    expect(lightSerum.why_this_one).toMatch(/serum-light|skincare-support|without the stronger matte finish/i);
+    expect(lightSerum.why_this_one).not.toMatch(/leans more matte|shine-controlling|less slip under makeup/i);
+    expect(lightSerum.short_description).toMatch(/serum-light|skincare-support|without the stronger matte finish/i);
+    expect(lightSerum.short_description).not.toMatch(/more matte|shine-controlling|less slip under makeup/i);
+  });
+
   test('recommendations card rewrites Day Dew style finish-fit sunscreen into dewy hydration tradeoff copy', () => {
     const cards = mapLegacyCardToSpecCards(
       {
