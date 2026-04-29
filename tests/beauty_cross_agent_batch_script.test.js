@@ -127,8 +127,17 @@ describe('beauty cross-agent batch runner', () => {
         res.setHeader('X-Request-Id', 'aurora-local-request');
         res.end(
           JSON.stringify({
-            assistant_text: '旅行时先用温和修护，白天防晒并补涂，选择轻薄 sunscreen。',
-            cards: [{ type: 'routine', payload: { summary: 'travel repair and sunscreen' } }],
+            cards: [
+              {
+                card_type: 'text_response',
+                sections: [
+                  {
+                    type: 'text_answer',
+                    text_en: '旅行时先用温和修护，白天防晒并补涂，选择轻薄 sunscreen。',
+                  },
+                ],
+              },
+            ],
             follow_up_questions: [],
             suggested_quick_replies: [],
             ops: {},

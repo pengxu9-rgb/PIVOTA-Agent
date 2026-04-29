@@ -40,6 +40,12 @@ const {
 } = require('../visionMetrics');
 
 const TRAVEL_SKILLS_VERSION = 'travel_skills_dag_v1';
+function parseBoundedIntEnv(name, fallback, min, max) {
+  const n = Number(process.env[name] || fallback);
+  const v = Number.isFinite(n) ? Math.trunc(n) : fallback;
+  return Math.max(min, Math.min(max, v));
+}
+
 const TRAVEL_KB_ASYNC_BACKFILL_ENABLED = (() => {
   const raw = String(process.env.TRAVEL_KB_ASYNC_BACKFILL_ENABLED || 'true').trim().toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
@@ -56,10 +62,22 @@ const TRAVEL_LLM_CALIBRATION_ENABLED = (() => {
   const raw = String(process.env.AURORA_TRAVEL_LLM_CALIBRATION_ENABLED || 'true').trim().toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
+const TRAVEL_LLM_CALIBRATION_TIMEOUT_MS = parseBoundedIntEnv(
+  'AURORA_TRAVEL_LLM_CALIBRATION_TIMEOUT_MS',
+  3500,
+  1000,
+  6000,
+);
 const TRAVEL_FINAL_ASSISTANT_REWRITE_ENABLED = (() => {
-  const raw = String(process.env.AURORA_TRAVEL_FINAL_REWRITE_ENABLED || 'true').trim().toLowerCase();
+  const raw = String(process.env.AURORA_TRAVEL_FINAL_REWRITE_ENABLED || 'false').trim().toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
 })();
+const TRAVEL_FINAL_ASSISTANT_REWRITE_TIMEOUT_MS = parseBoundedIntEnv(
+  'AURORA_TRAVEL_FINAL_REWRITE_TIMEOUT_MS',
+  3000,
+  1000,
+  5000,
+);
 let travelKbWriteInFlight = 0;
 
 function isPlainObject(value) {
@@ -1839,7 +1857,7 @@ async function runTravelPipeline(input = {}) {
         language,
         travelLlmInput,
         baseTravelReadiness: travelReadiness,
-        timeoutMs: 12000,
+        timeoutMs: TRAVEL_LLM_CALIBRATION_TIMEOUT_MS,
         maxRetries: 0,
         logger,
       });
@@ -2130,7 +2148,7 @@ async function runTravelPipeline(input = {}) {
         structuredSections: followupReply && followupReply.structured_sections,
         deterministicBrief: assistantText,
         safetyDecision,
-        timeoutMs: 8000,
+        timeoutMs: TRAVEL_FINAL_ASSISTANT_REWRITE_TIMEOUT_MS,
         logger,
       });
       finalRewriteUsed = Boolean(finalRewrite && finalRewrite.used && finalRewrite.assistant_text);
