@@ -2717,4 +2717,197 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(String(resp.body.metadata?.proxy_search_fallback?.route || '').length).toBeGreaterThan(0);
     expect(resp.body.metadata?.route_health?.fallback_triggered).toBe(true);
   });
+
+  test('beauty sunscreen query uses external seed mainline and rejects cross-class products', async () => {
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total')) return { rows: [{ total: 0 }] };
+        if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
+          return { rows: [] };
+        }
+        if (text.includes('FROM external_product_seeds')) {
+          return {
+            rows: [
+              {
+                id: 'seed-spf-1',
+                external_product_id: 'ext_spf_1',
+                market: 'US',
+                tool: '*',
+                destination_url: 'https://shop.example.com/products/daily-sunscreen-spf-50',
+                canonical_url: 'https://shop.example.com/products/daily-sunscreen-spf-50',
+                domain: 'shop.example.com',
+                title: 'Daily Sunscreen SPF 50 Sensitive Skin',
+                image_url: 'https://cdn.example.com/spf.jpg',
+                price_amount: '18.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Test Beauty',
+                  category: 'sunscreen',
+                  description: 'Lightweight broad spectrum face sunscreen for sensitive skin.',
+                },
+                updated_at: new Date().toISOString(),
+                created_at: new Date().toISOString(),
+              },
+              {
+                id: 'seed-niacinamide-1',
+                external_product_id: 'ext_nia_1',
+                market: 'US',
+                tool: '*',
+                destination_url: 'https://shop.example.com/products/niacinamide-serum',
+                canonical_url: 'https://shop.example.com/products/niacinamide-serum',
+                domain: 'shop.example.com',
+                title: 'Niacinamide 10% + Zinc 1% Serum',
+                image_url: 'https://cdn.example.com/nia.jpg',
+                price_amount: '7.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Test Beauty',
+                  category: 'serum',
+                  description: 'Oil-control serum without SPF.',
+                },
+                updated_at: new Date().toISOString(),
+                created_at: new Date().toISOString(),
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      },
+    }));
+
+    const upstreamSearch = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'daily sunscreen sensitive skin',
+            page: 1,
+            limit: 6,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'beauty_cross_agent_batch',
+          market: 'US',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.metadata?.query_source).toBe('agent_products_beauty_external_seed_mainline');
+    expect(resp.body.products.map((product) => product.product_id)).toContain('ext_spf_1');
+    expect(resp.body.products.map((product) => product.product_id)).not.toContain('ext_nia_1');
+    expect(upstreamSearch.isDone()).toBe(false);
+  });
+
+  test('pregnancy-safe beauty mainline excludes retinoid external seeds', async () => {
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total')) return { rows: [{ total: 0 }] };
+        if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
+          return { rows: [] };
+        }
+        if (text.includes('FROM external_product_seeds')) {
+          return {
+            rows: [
+              {
+                id: 'seed-retinol-1',
+                external_product_id: 'ext_retinol_1',
+                market: 'US',
+                tool: '*',
+                destination_url: 'https://shop.example.com/products/retinol-firming-cream',
+                canonical_url: 'https://shop.example.com/products/retinol-firming-cream',
+                domain: 'shop.example.com',
+                title: 'Collagen Retinol Firming Cream',
+                image_url: 'https://cdn.example.com/retinol.jpg',
+                price_amount: '28.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Test Beauty',
+                  category: 'moisturizer',
+                  description: 'Anti-aging night cream with retinol.',
+                },
+                updated_at: new Date().toISOString(),
+                created_at: new Date().toISOString(),
+              },
+              {
+                id: 'seed-azelaic-1',
+                external_product_id: 'ext_azelaic_1',
+                market: 'US',
+                tool: '*',
+                destination_url: 'https://shop.example.com/products/azelaic-brightening-serum',
+                canonical_url: 'https://shop.example.com/products/azelaic-brightening-serum',
+                domain: 'shop.example.com',
+                title: 'Azelaic Brightening Serum Retinol-Free',
+                image_url: 'https://cdn.example.com/azelaic.jpg',
+                price_amount: '22.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Test Beauty',
+                  category: 'serum',
+                  description: 'Retinol-free brightening serum with azelaic acid.',
+                },
+                updated_at: new Date().toISOString(),
+                created_at: new Date().toISOString(),
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      },
+    }));
+
+    const upstreamSearch = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'pregnancy safe brightening serum',
+            page: 1,
+            limit: 6,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'beauty_cross_agent_batch',
+          market: 'US',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.metadata?.query_source).toBe('agent_products_beauty_external_seed_mainline');
+    expect(resp.body.products.map((product) => product.product_id)).toContain('ext_azelaic_1');
+    expect(resp.body.products.map((product) => product.product_id)).not.toContain('ext_retinol_1');
+    expect(resp.body.metadata?.beauty_mainline_filter?.safety_rules).toContain('avoid_retinoids');
+    expect(upstreamSearch.isDone()).toBe(false);
+  });
 });

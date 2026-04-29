@@ -1,0 +1,273 @@
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const http = require('http');
+const { execFile } = require('child_process');
+const { promisify } = require('util');
+
+const execFileAsync = promisify(execFile);
+
+function readJsonBody(req) {
+  return new Promise((resolve) => {
+    const chunks = [];
+    req.on('data', (chunk) => chunks.push(chunk));
+    req.on('end', () => {
+      try {
+        resolve(JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}'));
+      } catch (_err) {
+        resolve({});
+      }
+    });
+  });
+}
+
+describe('beauty cross-agent batch runner', () => {
+  test('default casepack has the required v1 schema fields', () => {
+    const repoRoot = path.join(__dirname, '..');
+    const datasetPath = path.join(repoRoot, 'datasets', 'beauty_cross_agent_multiturn_seed.json');
+    const { validateDataset } = require('../scripts/run_beauty_cross_agent_batch.cjs');
+    const dataset = JSON.parse(fs.readFileSync(datasetPath, 'utf8'));
+
+    expect(dataset.schema_version).toBe('beauty_cross_agent_multiturn.v1');
+    expect(dataset.cases).toHaveLength(12);
+    expect(validateDataset(dataset)).toEqual([]);
+    for (const testCase of dataset.cases) {
+      expect(testCase).toEqual(
+        expect.objectContaining({
+          case_id: expect.any(String),
+          persona: expect.any(Object),
+          profile: expect.any(Object),
+          turns: expect.any(Array),
+          agent_routes: expect.any(Object),
+          shopping_queries: expect.any(Array),
+          creator_queries: expect.any(Array),
+          expected_assertions: expect.any(Array),
+          risk_guards: expect.any(Object),
+        }),
+      );
+    }
+  });
+
+  test('writes JSON, markdown, raw responses, and human review CSV against a local fake service', async () => {
+    const repoRoot = path.join(__dirname, '..');
+    const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'beauty-cross-agent-out-'));
+    const datasetPath = path.join(outRoot, 'cases.json');
+    const scriptPath = path.join(repoRoot, 'scripts', 'run_beauty_cross_agent_batch.cjs');
+
+    const dataset = {
+      schema_version: 'beauty_cross_agent_multiturn.v1',
+      generated_at: '2026-04-29T00:00:00Z',
+      defaults: {
+        language: 'CN',
+        market: 'US',
+        creator_id: 'nina-studio',
+        creator_view: 'GLOBAL_BEAUTY',
+      },
+      thresholds: {
+        http_success_rate_min: 0.95,
+        schema_violation_max: 0,
+        high_risk_guard_pass_rate_min: 1,
+      },
+      cases: [
+        {
+          case_id: 'local_case',
+          persona: { language: 'CN', summary: 'local test' },
+          profile: { skinType: 'dry_sensitive' },
+          turns: [
+            {
+              turn_id: 't1',
+              route: 'aurora_chat',
+              message: '帮我做一个旅行修护防晒清单。',
+            },
+          ],
+          agent_routes: {
+            aurora: ['/v1/chat'],
+            shopping: '/agent/shop/v1/invoke',
+            creator: '/agent/creator/v1/invoke',
+            creator_categories: '/creator/nina-studio/categories?view=GLOBAL_BEAUTY',
+          },
+          shopping_queries: [
+            {
+              query: 'daily sunscreen sensitive skin',
+              target_terms: ['sunscreen', 'spf'],
+              blocked_terms: ['retinol'],
+              min_relevant_top6: 1,
+            },
+          ],
+          creator_queries: [
+            {
+              query: 'daily sunscreen sensitive skin',
+              target_terms: ['sunscreen', 'spf'],
+              blocked_terms: ['retinol'],
+              min_relevant_top6: 1,
+            },
+          ],
+          expected_assertions: ['sunscreen'],
+          risk_guards: {
+            severity: 'high',
+            assistant_must_include_any: [['旅行', 'travel'], ['防晒', 'sunscreen'], ['补涂', 'reapply']],
+            assistant_must_not_include_any: ['不需要防晒'],
+            product_must_not_include_any: ['retinol'],
+          },
+          creator_category_check: {
+            view: 'GLOBAL_BEAUTY',
+            must_have_category_terms: ['skin-care', 'sunscreen'],
+            require_products: true,
+          },
+        },
+      ],
+    };
+    fs.writeFileSync(datasetPath, JSON.stringify(dataset, null, 2));
+
+    const server = http.createServer(async (req, res) => {
+      const body = await readJsonBody(req);
+      res.setHeader('Content-Type', 'application/json');
+      if (req.method === 'POST' && req.url === '/v1/chat') {
+        res.statusCode = 200;
+        res.setHeader('X-Request-Id', 'aurora-local-request');
+        res.end(
+          JSON.stringify({
+            assistant_text: '旅行时先用温和修护，白天防晒并补涂，选择轻薄 sunscreen。',
+            cards: [{ type: 'routine', payload: { summary: 'travel repair and sunscreen' } }],
+            follow_up_questions: [],
+            suggested_quick_replies: [],
+            ops: {},
+            safety: {},
+            telemetry: {},
+            session_patch: { meta: { local: true } },
+          }),
+        );
+        return;
+      }
+      if (
+        req.method === 'POST' &&
+        (req.url === '/agent/shop/v1/invoke' || req.url === '/agent/creator/v1/invoke')
+      ) {
+        res.statusCode = 200;
+        res.setHeader('X-Request-Id', req.url.includes('/creator/') ? 'creator-local-request' : 'shop-local-request');
+        res.end(
+          JSON.stringify({
+            products: [
+              { product_id: 'spf_1', title: 'Daily Sunscreen SPF 50' },
+              { product_id: 'spf_2', title: 'Sensitive Skin Sunscreen Lotion' },
+            ],
+            metadata: {
+              query_source: req.url.includes('/creator/') ? 'cache_creator_search' : 'agent_products_search',
+              search_decision: {
+                decision_authority: req.url.includes('/creator/') ? 'cache_creator_search' : 'agent_products_search',
+              },
+              echo_query: body?.payload?.search?.query || '',
+            },
+          }),
+        );
+        return;
+      }
+      if (req.method === 'GET' && req.url.startsWith('/creator/nina-studio/categories')) {
+        res.statusCode = 200;
+        res.end(
+          JSON.stringify({
+            categories: [
+              {
+                name: 'Skin Care',
+                slug: 'skin-care',
+                product_count: 4,
+                children: [{ name: 'Sunscreen', slug: 'sunscreen', product_count: 2 }],
+              },
+            ],
+          }),
+        );
+        return;
+      }
+      res.statusCode = 404;
+      res.end(JSON.stringify({ error: 'NOT_FOUND' }));
+    });
+
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    const baseUrl = `http://127.0.0.1:${address.port}`;
+
+    try {
+      const { stdout } = await execFileAsync(
+        process.execPath,
+        [
+          scriptPath,
+          '--base-url',
+          baseUrl,
+          '--dataset',
+          datasetPath,
+          '--out-dir',
+          outRoot,
+          '--run-id',
+          'local_run',
+          '--delay-ms',
+          '0',
+          '--agent-api-key',
+          'ak_live_local',
+        ],
+        {
+          cwd: repoRoot,
+          encoding: 'utf8',
+        },
+      );
+      const payload = JSON.parse(String(stdout || '').trim());
+      expect(payload.ok).toBe(true);
+      expect(payload.summary.total_cases).toBe(1);
+      expect(payload.summary.product_relevance_pass_count).toBe(2);
+      expect(payload.summary.degraded_response_count).toBe(0);
+      expect(fs.existsSync(payload.json_path)).toBe(true);
+      expect(fs.existsSync(payload.markdown_path)).toBe(true);
+      expect(fs.existsSync(payload.human_review_csv)).toBe(true);
+
+      const report = JSON.parse(fs.readFileSync(payload.json_path, 'utf8'));
+      expect(report.results[0].assessment.pass).toBe(true);
+      expect(report.results[0].rows.map((row) => row.agent)).toEqual([
+        'aurora_chat',
+        'shopping',
+        'creator',
+        'creator_category',
+      ]);
+      expect(fs.readFileSync(payload.markdown_path, 'utf8')).toContain('Beauty Cross-Agent Batch Report');
+      expect(fs.readFileSync(payload.human_review_csv, 'utf8')).toContain('content_quality_1_5');
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+    }
+  });
+
+  test('marks error fallback 200 responses as failed degraded results', async () => {
+    const { computeSummary } = require('../scripts/run_beauty_cross_agent_batch.cjs');
+    const dataset = {
+      thresholds: {
+        http_success_rate_min: 0.95,
+        schema_violation_max: 0,
+        high_risk_guard_pass_rate_min: 1,
+        degraded_response_max: 0,
+      },
+    };
+    const results = [
+      {
+        case_id: 'fallback_case',
+        rows: [
+          {
+            ok: true,
+            schema_valid: true,
+            product_assessment: { pass: false },
+            degradation: {
+              degraded: true,
+              reasons: ['error_fallback', 'empty_fallback', 'timeout_or_abort'],
+            },
+          },
+        ],
+        assessment: {
+          pass: false,
+          risk_guard: { severity: 'high', pass: true },
+        },
+      },
+    ];
+    const summary = computeSummary(dataset, results);
+    expect(summary.http_success_rate).toBe(1);
+    expect(summary.degraded_response_count).toBe(1);
+    expect(summary.error_fallback_empty_count).toBe(1);
+    expect(summary.timeout_fallback_count).toBe(1);
+    expect(summary.ok).toBe(false);
+  });
+});
