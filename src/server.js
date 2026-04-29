@@ -13764,10 +13764,46 @@ function mergeSimilarCardEnrichment(candidate = {}, detail = {}) {
   return next;
 }
 
-function filterSimilarProductsWithCardHighlights(items = []) {
-  return (Array.isArray(items) ? items : []).filter(
+function normalizeSimilarCategoryForDisplay(value) {
+  return normalizeSearchTextForMatch(value);
+}
+
+function isLooseTokenOverlapSimilarFallback(item = {}) {
+  return String(item?.reason || item?.match_reason || '')
+    .toLowerCase()
+    .includes('l4:external:title_token_overlap');
+}
+
+function getSimilarItemDisplayCategory(item = {}) {
+  return normalizeSimilarCategoryForDisplay(
+    item.category ||
+      item.product_type ||
+      item.productType ||
+      item.card_subtitle ||
+      item.shopping_card?.subtitle ||
+      item.search_card?.compact_candidate,
+  );
+}
+
+function filterSimilarProductsWithCardHighlights(items = [], { baseProduct = null, minItems = 4 } = {}) {
+  const displayable = (Array.isArray(items) ? items : []).filter(
     (item) => item && typeof item === 'object',
   );
+  const baseCategory = normalizeSimilarCategoryForDisplay(
+    baseProduct?.category ||
+      baseProduct?.product_type ||
+      baseProduct?.productType ||
+      baseProduct?.leaf_category ||
+      baseProduct?.parent_category,
+  );
+  if (!baseCategory) return displayable;
+
+  const strict = displayable.filter((item) => {
+    if (!isLooseTokenOverlapSimilarFallback(item)) return true;
+    const itemCategory = getSimilarItemDisplayCategory(item);
+    return !itemCategory || itemCategory === baseCategory;
+  });
+  return strict.length >= Math.max(1, Number(minItems || 4) || 4) ? strict : displayable;
 }
 
 function attachSimilarCardEnrichmentMetadata(items, metadata = {}) {
@@ -24196,6 +24232,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         ).length;
         const displayableRelatedProducts = filterSimilarProductsWithCardHighlights(
           enrichedRelatedProducts,
+          { baseProduct: canonicalProductForPdp },
         ).slice(0, similarLimit);
         const filteredHighlightMissingCount = Math.max(
           0,
@@ -27892,7 +27929,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               maxItems: limit,
             });
             const cardEnrichmentMetadata = getSimilarCardEnrichmentMetadata(enrichedProducts);
-            const products = filterSimilarProductsWithCardHighlights(enrichedProducts).slice(0, limit);
+            const products = filterSimilarProductsWithCardHighlights(enrichedProducts, {
+              baseProduct,
+            }).slice(0, limit);
             const cardHighlightMissingCount = enrichedProducts.filter(
               (item) => String(item?.card_highlight_status || '').trim() === 'highlight_missing',
             ).length;
