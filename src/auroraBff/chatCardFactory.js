@@ -677,6 +677,13 @@ function appendRecommendationFinishFitPeerContrast(value, suffix) {
 function buildRecommendationFinishFitSpecificWhy(row, { sameRoleCandidates = [] } = {}) {
   const texts = collectRecommendationFinishFitSourceText(row);
   if (!texts) return '';
+  const titleAndEvidenceText = [
+    row?.display_name,
+    row?.displayName,
+    row?.name,
+    row?.title,
+    texts,
+  ].map((value) => asString(value)).filter(Boolean).join(' ');
 
   const hasSoftFocus = /\b(?:soft[-\s]?focus|blur(?:ring)?|primer[-\s]?like)\b/i.test(texts);
   const hasLayering = /\b(?:under makeup|makeup|layer(?:ing)?|non[-\s]?pilling|no pilling|pilling)\b/i.test(texts);
@@ -687,9 +694,20 @@ function buildRecommendationFinishFitSpecificWhy(row, { sameRoleCandidates = [] 
   const hasWhiteCastCue = /\b(?:no white cast|white cast[-\s]?free|lower white[-\s]?cast|invisible)\b/i.test(texts);
   const hasSensitiveCue = /\b(?:sensitive skin|scentless|fragrance[-\s]?free|bisabolol|ectoin)\b/i.test(texts);
   const hasCreamierCue = recommendationFinishFitHasCreamierCue(texts);
+  const hasSerumLightCue =
+    /\b(?:light\s+serum|serum[-\s]?light|serum[-\s]?format|lighter\s+serum|watery\s+texture)\b/i
+      .test(titleAndEvidenceText);
+  const hasSkincareSupportCue =
+    /\b(?:ceramide|niacinamide|hyaluronic|glycerin|panthenol|vitamin\s+c|ascorbic|ferulic|tocopherol|antioxidant)\b/i
+      .test(titleAndEvidenceText);
 
   if (hasDewyCue) {
     return 'it leans fresher and dewier if you want a bit more hydration without a heavier cream feel';
+  }
+  if (hasSerumLightCue && (hasSkincareSupportCue || hasWeightless)) {
+    return hasSkincareSupportCue
+      ? 'it leans serum-light with skincare-support ingredients if you want SPF50+ without the stronger matte finish'
+      : 'it leans serum-light if you want SPF50+ with a lighter feel rather than the stronger matte finish';
   }
   if (hasMatteCue) {
     return 'it leans more matte and shine-controlling if you want less slip under makeup';
@@ -719,6 +737,13 @@ function buildRecommendationFinishFitSpecificWhy(row, { sameRoleCandidates = [] 
 function buildRecommendationFinishFitSpecificShortDescription(row, { sameRoleCandidates = [] } = {}) {
   const texts = collectRecommendationFinishFitSourceText(row);
   if (!texts) return '';
+  const titleAndEvidenceText = [
+    row?.display_name,
+    row?.displayName,
+    row?.name,
+    row?.title,
+    texts,
+  ].map((value) => asString(value)).filter(Boolean).join(' ');
 
   const hasSoftFocus = /\b(?:soft[-\s]?focus|blur(?:ring)?|primer[-\s]?like)\b/i.test(texts);
   const hasLayering = /\b(?:under makeup|makeup|layer(?:ing)?|non[-\s]?pilling|no pilling|pilling)\b/i.test(texts);
@@ -729,9 +754,20 @@ function buildRecommendationFinishFitSpecificShortDescription(row, { sameRoleCan
   const hasWhiteCastCue = /\b(?:no white cast|white cast[-\s]?free|lower white[-\s]?cast|invisible)\b/i.test(texts);
   const hasSensitiveCue = /\b(?:sensitive skin|scentless|fragrance[-\s]?free|bisabolol|ectoin)\b/i.test(texts);
   const hasCreamierCue = recommendationFinishFitHasCreamierCue(texts);
+  const hasSerumLightCue =
+    /\b(?:light\s+serum|serum[-\s]?light|serum[-\s]?format|lighter\s+serum|watery\s+texture)\b/i
+      .test(titleAndEvidenceText);
+  const hasSkincareSupportCue =
+    /\b(?:ceramide|niacinamide|hyaluronic|glycerin|panthenol|vitamin\s+c|ascorbic|ferulic|tocopherol|antioxidant)\b/i
+      .test(titleAndEvidenceText);
 
   if (hasDewyCue) {
     return 'A fresher, dewier sunscreen feel when you want a bit more hydration without a heavy cream finish.';
+  }
+  if (hasSerumLightCue && (hasSkincareSupportCue || hasWeightless)) {
+    return hasSkincareSupportCue
+      ? 'A serum-light SPF50+ option with skincare-support ingredients, without the stronger matte finish.'
+      : 'A serum-light SPF50+ option with a lighter feel rather than the stronger matte finish.';
   }
   if (hasMatteCue) {
     return 'A more matte, shine-controlling sunscreen feel when you want less slip under makeup.';
