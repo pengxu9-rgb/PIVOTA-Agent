@@ -419,6 +419,62 @@ describe('externalSeedProducts helper', () => {
     expect(variants[0].option_value).toBeUndefined();
   });
 
+  test('preserves lip product color variants with visual evidence even when the title reads skincare-like', () => {
+    const row = {
+      id: 'eps_laneige_topper',
+      external_product_id: 'ext_laneige_topper',
+      canonical_url: 'https://us.laneige.com/products/lip-sleeping-mask-topper',
+      destination_url: 'https://us.laneige.com/products/lip-sleeping-mask-topper',
+      title: 'Lip Sleeping Mask Topper',
+      seed_data: {
+        brand: 'LANEIGE US',
+        snapshot: {
+          variants: [
+            {
+              id: 'v1',
+              sku: '272130114',
+              option_name: 'Color',
+              option_value: 'Pumpkin Pie',
+              image_url: 'https://example.com/pumpkin-pie.jpg',
+            },
+            {
+              id: 'v2',
+              sku: '272130115',
+              option_name: 'Color',
+              option_value: 'Hot Cocoa',
+              image_url: 'https://example.com/hot-cocoa.jpg',
+            },
+          ],
+        },
+      },
+    };
+
+    const variants = normalizeSeedVariants(row.seed_data, row);
+    expect(variants).toHaveLength(2);
+    expect(variants[0]).toEqual(
+      expect.objectContaining({
+        title: 'Pumpkin Pie',
+        option_name: 'Color',
+        option_value: 'Pumpkin Pie',
+        axis_kind: 'color',
+        options: [{ name: 'Color', value: 'Pumpkin Pie', axis_kind: 'color' }],
+        source_quality_status: 'captured',
+        label_image_url: 'https://example.com/pumpkin-pie.jpg',
+      }),
+    );
+    expect(variants[1]).toEqual(
+      expect.objectContaining({
+        title: 'Hot Cocoa',
+        option_name: 'Color',
+        option_value: 'Hot Cocoa',
+        axis_kind: 'color',
+        options: [{ name: 'Color', value: 'Hot Cocoa', axis_kind: 'color' }],
+        source_quality_status: 'captured',
+        label_image_url: 'https://example.com/hot-cocoa.jpg',
+      }),
+    );
+  });
+
   test('preserves tinted shade variants with visual evidence', () => {
     const row = {
       id: 'eps_boj_dn350',

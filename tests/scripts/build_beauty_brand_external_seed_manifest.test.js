@@ -1,10 +1,15 @@
 const {
   buildManifestFromExtract,
   buildManifestFromSourceAttempts,
+  productHasExplicitBrandSignal,
   computeExtractLimit,
+  hasTransactionReadySeedSignals,
   looksLikeBundleLikeProduct,
   looksLikeNonProductCatalogPage,
+  looksLikeSyntheticFallbackProduct,
   scorePreferredTitleMatch,
+  sourceLooksBrandScoped,
+  sourceHostLooksBrandOwned,
 } = require('../../scripts/build_beauty_brand_external_seed_manifest.cjs');
 
 describe('build_beauty_brand_external_seed_manifest', () => {
@@ -101,11 +106,261 @@ describe('build_beauty_brand_external_seed_manifest', () => {
     expect(looksLikeBundleLikeProduct({ title: '(Short-dated) Advanced Snail 96 Mucin Power Essence' })).toBe(true);
     expect(looksLikeBundleLikeProduct({ title: 'Round Lab Sheet Mask Sampler - 9pc' })).toBe(true);
     expect(looksLikeBundleLikeProduct({ title: 'SPF! Canvas Tote Bag ($15 value)' })).toBe(true);
+    expect(looksLikeBundleLikeProduct({ title: 'BOGO PDRN Hyaluronic Acid Capsule 100 Serum Mask 10+10' })).toBe(true);
+    expect(looksLikeBundleLikeProduct({ title: 'Daily Tinted Fluid Sunscreen Sachetbook (1g x 12 color) (100% off)', url: 'https://beautyofjoseon.com/products/daily-tinted-fluid-sunscreen-sachetbook-sca_clone_freegift' })).toBe(true);
+    expect(looksLikeBundleLikeProduct({ title: 'Dynasty Cream 10ml', url: 'https://beautyofjoseon.com/products/dynasty-cream-10ml', description: '*Gift with purchase only* Our best-selling creamy moisturizer.' })).toBe(true);
+    expect(looksLikeBundleLikeProduct({ title: 'Relief Sun Aqua-Fresh 10ml', url: 'https://nl.beautyofjoseon.com/products/relief-sun-aqua-fresh-10ml-trial-kit' })).toBe(true);
+    expect(looksLikeBundleLikeProduct({ title: 'Hanbok Scrunchie', url: 'https://beautyofjoseon.com/products/hanbok-scrunchie' })).toBe(true);
+    expect(looksLikeBundleLikeProduct({ title: 'Icons to Go' })).toBe(true);
+    expect(looksLikeBundleLikeProduct({ title: 'Cream Skin Mist Pump' })).toBe(true);
+    expect(looksLikeBundleLikeProduct({ title: 'LANEIGE Blue Ice Roller' })).toBe(true);
+    expect(looksLikeBundleLikeProduct({ title: 'Laneige x Lights Lacquer Dream Nail Polish' })).toBe(true);
+    expect(looksLikeBundleLikeProduct({ title: 'Laneige x Lights Lacquer Calling All Angels Nail Art' })).toBe(true);
+    expect(looksLikeBundleLikeProduct({ title: 'Silky Pillowcase' })).toBe(true);
+    expect(looksLikeBundleLikeProduct({ title: 'LANEIGE Scrunchie' })).toBe(true);
+    expect(looksLikeBundleLikeProduct({ title: 'Lip Sleeping Mask Topper' })).toBe(false);
+    expect(looksLikeBundleLikeProduct({ title: 'JuicePop Box Lip Tint' })).toBe(false);
+    expect(looksLikeBundleLikeProduct({ title: 'Matrixyl 10 Boosting Shot Ampoule', url: 'https://skin1004.com/products/matrixyl-10-boosting-shot-ampoule', description: 'With the power of Matrixyl and hyaluronic acid, the Boosting Shot helps provide intensive hydration.' })).toBe(false);
     expect(looksLikeBundleLikeProduct({ title: 'Niacinamide Serum' })).toBe(false);
     expect(manifest.extracted_product_count).toBe(2);
     expect(manifest.excluded_bundle_like_count).toBe(1);
     expect(manifest.item_count).toBe(1);
     expect(manifest.items[0].target_url).toBe('https://www.theinkeylist.com/products/niacinamide-serum');
+  });
+
+  test('filters simulation and synthetic fallback product rows before seed creation', () => {
+    const manifest = buildManifestFromExtract({
+      brand: 'LANEIGE US',
+      domain: 'https://us.laneige.com',
+      market: 'US',
+      limit: 3,
+      extractDoc: {
+        mode: 'simulation',
+        products: [
+          {
+            title: 'LANEIGE US Product 001',
+            url: 'https://us.laneige.com/products/laneige-us-product-001',
+            image_url: 'https://via.placeholder.com/1000x1000/e5e7eb/9ca3af?text=SIM-001',
+            price: '$20.00',
+            currency: 'USD',
+            availability: 'in stock',
+          },
+          {
+            title: 'Water Bank Aqua Facial',
+            url: 'https://us.laneige.com/products/water-bank-aqua-facial',
+            image_url: 'https://cdn.example.com/water-bank.jpg',
+            price: '$36.00',
+            currency: 'USD',
+            availability: 'in stock',
+          },
+        ],
+      },
+    });
+
+    expect(looksLikeSyntheticFallbackProduct(
+      {
+        title: 'LANEIGE US Product 001',
+        image_url: 'https://via.placeholder.com/1000x1000/e5e7eb/9ca3af?text=SIM-001',
+      },
+      'LANEIGE US',
+      {},
+    )).toBe(true);
+    expect(looksLikeSyntheticFallbackProduct({ title: 'Water Bank Aqua Facial' }, 'LANEIGE US', {})).toBe(false);
+    expect(manifest.extracted_product_count).toBe(2);
+    expect(manifest.excluded_low_quality_fallback_count).toBe(2);
+    expect(manifest.item_count).toBe(0);
+  });
+
+  test('filters rows missing transaction-ready price, availability, or image signals', () => {
+    const manifest = buildManifestFromExtract({
+      brand: 'LANEIGE US',
+      domain: 'https://us.laneige.com',
+      market: 'US',
+      limit: 3,
+      extractDoc: {
+        diagnostics: { source: 'catalog_extract' },
+        products: [
+          {
+            title: 'Bouncy Eye Mask',
+            url: 'https://us.laneige.com/products/bouncy-eye-mask',
+            image_url: 'https://cdn.example.com/bouncy-eye-mask.jpg',
+            price: '$0.00',
+            currency: 'USD',
+            availability: 'in stock',
+          },
+          {
+            title: 'Lip Sleeping Mask Topper',
+            url: 'https://us.laneige.com/products/lip-sleeping-mask-topper',
+            image_url: 'https://cdn.example.com/topper.jpg',
+            price: '$15.00',
+            currency: 'USD',
+            availability: 'in stock',
+          },
+          {
+            title: 'JuicePop Box Lip Tint',
+            url: 'https://us.laneige.com/products/juicepop-box-lip-tint',
+            image_url: 'https://cdn.example.com/juicepop.jpg',
+            price: '$23.00',
+            currency: 'USD',
+            availability: 'in stock',
+          },
+        ],
+      },
+    });
+
+    expect(hasTransactionReadySeedSignals({ price_amount: 0, price_currency: 'USD', availability: 'in_stock', image_url: 'x' })).toBe(false);
+    expect(hasTransactionReadySeedSignals({ price_amount: 15, price_currency: 'USD', availability: 'in_stock', image_url: 'x' })).toBe(true);
+    expect(manifest.excluded_incomplete_transaction_count).toBe(1);
+    expect(manifest.item_count).toBe(2);
+    expect(manifest.items.map((item) => item.seed_row.title)).toEqual([
+      'Lip Sleeping Mask Topper',
+      'JuicePop Box Lip Tint',
+    ]);
+  });
+
+  test('filters unscoped retailer rows that do not carry an explicit target brand signal', () => {
+    const manifest = buildManifestFromExtract({
+      brand: 'COSRX',
+      domain: 'https://sokoglam.com',
+      market: 'US',
+      limit: 3,
+      extractDoc: {
+        diagnostics: { source: 'catalog_extract' },
+        products: [
+          {
+            title: 'Heartleaf 77 Clearpad (70 ea)',
+            url: 'https://sokoglam.com/products/anua-heartleaf-77-clearpad-70ea',
+            image_url: 'https://cdn.example.com/anua.jpg',
+            price: '$25.00',
+            currency: 'USD',
+            availability: 'in stock',
+          },
+          {
+            title: 'Advanced Snail 96 Mucin Power Essence',
+            url: 'https://sokoglam.com/products/cosrx-advanced-snail-96-mucin-power-essence',
+            image_url: 'https://cdn.example.com/cosrx.jpg',
+            price: '$25.00',
+            currency: 'USD',
+            availability: 'in stock',
+          },
+        ],
+      },
+    });
+
+    expect(sourceLooksBrandScoped({ brand: 'COSRX', sourceUrl: 'https://sokoglam.com' })).toBe(false);
+    expect(sourceHostLooksBrandOwned({ brand: 'COSRX', sourceUrl: 'https://sokoglam.com/collections/cosrx' })).toBe(false);
+    expect(productHasExplicitBrandSignal(
+      { title: 'Advanced Snail 96 Mucin Power Essence', url: 'https://sokoglam.com/products/cosrx-advanced-snail-96-mucin-power-essence' },
+      'COSRX',
+    )).toBe(true);
+    expect(manifest.excluded_brand_scope_mismatch_count).toBe(1);
+    expect(manifest.item_count).toBe(1);
+    expect(manifest.items[0].seed_row.title).toBe('Advanced Snail 96 Mucin Power Essence');
+  });
+
+  test('keeps retailer collection rows when the source URL itself is brand scoped', () => {
+    const manifest = buildManifestFromExtract({
+      brand: 'Klairs',
+      domain: 'https://wishtrend.com/collections/dear-klairs',
+      market: 'US',
+      limit: 2,
+      extractDoc: {
+        diagnostics: { source: 'catalog_extract' },
+        products: [
+          {
+            title: 'Supple Preparation Unscented Toner',
+            url: 'https://wishtrend.com/products/supple-preparation-unscented-toner',
+            image_url: 'https://cdn.example.com/klairs-toner.jpg',
+            price: '$22.00',
+            currency: 'USD',
+            availability: 'in stock',
+          },
+        ],
+      },
+    });
+
+    expect(sourceLooksBrandScoped({ brand: 'Klairs', sourceUrl: 'https://wishtrend.com/collections/dear-klairs' })).toBe(true);
+    expect(productHasExplicitBrandSignal(
+      { title: 'Supple Preparation Unscented Toner', url: 'https://wishtrend.com/products/supple-preparation-unscented-toner' },
+      'Klairs',
+    )).toBe(false);
+    expect(manifest.excluded_brand_scope_mismatch_count).toBe(0);
+    expect(manifest.item_count).toBe(1);
+    expect(manifest.items[0].seed_row.title).toBe('Supple Preparation Unscented Toner');
+    expect(manifest.items[0].seed_row.seed_data.source_validation).toEqual(
+      expect.objectContaining({
+        source_type: 'channel_or_retailer',
+        requires_multi_offer_merge_validation: true,
+      }),
+    );
+    expect(manifest.items[0].seed_row.seed_data.commerce_facts_gate.problems).toContain(
+      'missing_multi_offer_merge_candidate',
+    );
+  });
+
+  test('attaches CommerceFactsV1 from extract-v2 matches and holds currency mismatches', () => {
+    const manifest = buildManifestFromExtract({
+      brand: 'Beauty of Joseon',
+      domain: 'https://beautyofjoseon.com',
+      market: 'US',
+      limit: 1,
+      extractDoc: {
+        products: [
+          {
+            title: 'Calming Serum',
+            url: 'https://beautyofjoseon.com/products/calming-serum',
+            image_url: 'https://cdn.example.com/calming.jpg',
+            price: '17.00',
+            currency: 'EUR',
+            availability: 'in stock',
+          },
+        ],
+      },
+      extractV2Doc: {
+        offers_v2: [
+          {
+            url_canonical: 'https://beautyofjoseon.com/products/calming-serum',
+            product_title: 'Calming Serum',
+            commerce_facts_v1: {
+              contract_version: 'commerce_facts.v1',
+              market_id: 'US',
+              country: 'US',
+              currency_target: 'USD',
+              source_authority: 'catalog_extract_v2',
+              captured_at: '2026-04-29T00:00:00.000Z',
+              evidence_url: 'https://beautyofjoseon.com/products/calming-serum',
+              sellable_region: {
+                status: 'unknown',
+                countries: [],
+                confidence: 'low',
+                reason_codes: ['shipping_destination_not_verified'],
+              },
+              regional_price: {
+                amount: 17,
+                currency: 'EUR',
+                observed_currency: 'EUR',
+                price_type: 'list',
+                confidence: 'medium',
+                market_switch_status: 'mismatch',
+              },
+              availability: { status: 'in_stock', confidence: 'medium' },
+              shipping: { status: 'unknown', confidence: 'unknown' },
+              promotions: [],
+              returns: { status: 'unknown', confidence: 'unknown' },
+            },
+          },
+        ],
+      },
+    });
+
+    expect(manifest.items[0].seed_row.seed_data.commerce_facts_v1.regional_price.currency).toBe('EUR');
+    expect(manifest.items[0].seed_row.seed_data.commerce_facts_gate).toEqual(
+      expect.objectContaining({
+        status: 'hold',
+        expected_currency: 'USD',
+        observed_currency: 'EUR',
+      }),
+    );
   });
 
   test('filters category/list pages from catalog extractor output', () => {

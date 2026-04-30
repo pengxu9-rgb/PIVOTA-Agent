@@ -1914,9 +1914,13 @@ function overlaySelectedCommerceFields(product, selectedListing, fallbackProduct
     'shipping',
     'shipping_cost',
     'returns',
+    'promotions',
     'inventory',
     'availability',
     'in_stock',
+    'commerce_facts',
+    'commerce_facts_v1',
+    'agent_safe_commerce_facts',
     'fulfillment_type',
     'purchase_route',
     'commerce_mode',
@@ -2197,6 +2201,8 @@ function buildIdentitySearchOffer(listing, groupId) {
     merchantId && merchantId !== EXTERNAL_SEED_MERCHANT_ID
       ? pickSavingsPresentationFields(payload)
       : {};
+  const commerceFacts = asPlainObject(payload.commerce_facts_v1) || asPlainObject(payload.commerce_facts);
+  const agentSafeCommerceFacts = asPlainObject(payload.agent_safe_commerce_facts);
   return {
     offer_id: stableHash('of_identity', [groupId, merchantId, productId]),
     product_group_id: groupId,
@@ -2206,7 +2212,19 @@ function buildIdentitySearchOffer(listing, groupId) {
     ...(merchantName ? { merchant_name: merchantName } : {}),
     ...(price ? { price } : {}),
     ...(payload.inventory ? { inventory: payload.inventory } : {}),
+    ...(payload.availability ? { availability: payload.availability } : {}),
     ...(payload.shipping ? { shipping: payload.shipping } : {}),
+    ...(payload.returns ? { returns: payload.returns } : {}),
+    ...(Array.isArray(payload.promotions) && payload.promotions.length ? { promotions: payload.promotions } : {}),
+    ...(commerceFacts ? { commerce_facts_v1: commerceFacts, commerce_facts: commerceFacts } : {}),
+    ...(agentSafeCommerceFacts ? { agent_safe_commerce_facts: agentSafeCommerceFacts } : {}),
+    ...(payload.purchase_route ? { purchase_route: payload.purchase_route } : {}),
+    ...(payload.commerce_mode ? { commerce_mode: payload.commerce_mode } : {}),
+    ...(payload.checkout_handoff ? { checkout_handoff: payload.checkout_handoff } : {}),
+    ...(payload.merchant_checkout_url ? { merchant_checkout_url: payload.merchant_checkout_url } : {}),
+    ...(payload.external_redirect_url ? { external_redirect_url: payload.external_redirect_url } : {}),
+    ...(payload.destination_url ? { destination_url: payload.destination_url } : {}),
+    ...(payload.url ? { url: payload.url } : {}),
     ...savingsFields,
     offer_source: 'group_fused',
     commerce_source: 'selected_seller_store',
@@ -4017,6 +4035,9 @@ module.exports = {
     buildReviewScopeMetadata,
     aggregateReviewSummary,
     applyIdentityOverrides,
+    buildIdentitySearchOffer,
+    buildIdentitySearchProduct,
+    pickDefaultCommerceListing,
     clusterIdentityListings,
     fetchBackfillProducts,
   },

@@ -23,6 +23,10 @@ const {
   deriveReviewContractFromSourceMeta,
 } = require('../src/services/pivotaProductIntelReviewPolicy');
 const { buildPdpImageDedupeKey, normalizePdpImageUrl } = require('../src/utils/pdpImageUrls');
+const {
+  attachCommerceFactsToSeedRow,
+  validateCommerceFactsGateForSeedRow,
+} = require('../src/commerce/commerceFacts');
 
 const DEFAULT_CATALOG_BASE_URL =
   process.env.CATALOG_INTELLIGENCE_BASE_URL ||
@@ -198,6 +202,8 @@ function normalizeComparableUrlKey(value) {
 }
 
 const SHOPIFY_MARKET_HANDLE_SUFFIX_RE = /-(?:eu|europe|ca|canada|us|usa|uk|gb|au|australia)$/i;
+const SHOPIFY_DUPLICATE_COPY_SUFFIX_RE = /-copy(?:-\d+)?$/i;
+const SHOPIFY_DUPLICATE_COUNTER_SUFFIX_RE = /-(\d{1,2})$/;
 
 function normalizeProductHandleToken(value) {
   return normalizeVariantHintToken(value)
@@ -226,6 +232,77 @@ function stripShopifyMarketHandleSuffix(handle) {
     normalized = stripped;
   }
   return normalized;
+}
+
+function buildReferenceTitleTokenSet(...values) {
+  return new Set(
+    values
+      .flatMap((value) => normalizeTitleKey(value).split(/\s+/))
+      .map((token) => token.trim())
+      .filter(Boolean),
+  );
+}
+
+function stripShopifyDuplicateHandleSuffix(handle, ...referenceValues) {
+  let normalized = normalizeProductHandleToken(handle);
+  if (!normalized) return normalized;
+
+  let changed = false;
+  const strippedCopy = normalized.replace(SHOPIFY_DUPLICATE_COPY_SUFFIX_RE, '');
+  if (strippedCopy !== normalized) {
+    normalized = strippedCopy;
+    changed = true;
+  }
+
+  const duplicateCounterMatch = normalized.match(SHOPIFY_DUPLICATE_COUNTER_SUFFIX_RE);
+  if (duplicateCounterMatch) {
+    const counter = duplicateCounterMatch[1];
+    const referenceTokens = buildReferenceTitleTokenSet(...referenceValues);
+    if (!referenceTokens.has(counter)) {
+      normalized = normalized.slice(0, -duplicateCounterMatch[0].length);
+      changed = true;
+    }
+  }
+
+  return changed ? normalized.replace(/-+$/g, '') : normalizeProductHandleToken(handle);
+}
+
+function normalizeShopifyDuplicateProductUrl(value, ...referenceValues) {
+  const normalized = normalizeUrlLike(value);
+  if (!normalized) return normalized;
+
+  try {
+    const parsed = new URL(normalized);
+    const segments = parsed.pathname.split('/').filter(Boolean);
+    const productIndex = segments.findIndex((segment) => /^(?:products?|product)$/i.test(segment));
+    if (productIndex === -1 || !segments[productIndex + 1]) return parsed.toString();
+
+    const currentHandle = normalizeProductHandleToken(segments[productIndex + 1]);
+    const strippedHandle = stripShopifyDuplicateHandleSuffix(currentHandle, ...referenceValues);
+    if (!strippedHandle || strippedHandle === currentHandle) return parsed.toString();
+
+    segments[productIndex + 1] = strippedHandle;
+    parsed.pathname = `/${segments.join('/')}${parsed.pathname.endsWith('/') ? '/' : ''}`;
+    return parsed.toString();
+  } catch {
+    return normalized;
+  }
+}
+
+function expandComparableUrlKeys(values, referenceValues = []) {
+  const out = new Set();
+  for (const value of values) {
+    const normalized = normalizeUrlLike(value);
+    if (!normalized) continue;
+    const key = normalizeComparableUrlKey(normalized);
+    if (key) out.add(key);
+    const duplicateNormalized = normalizeShopifyDuplicateProductUrl(normalized, ...referenceValues);
+    if (duplicateNormalized && duplicateNormalized !== normalized) {
+      const duplicateKey = normalizeComparableUrlKey(duplicateNormalized);
+      if (duplicateKey) out.add(duplicateKey);
+    }
+  }
+  return out;
 }
 
 function isVerifiedShopifyMarketReplacement(targetUrl, productUrl) {
@@ -1571,9 +1648,19 @@ function deriveCatalogExtractBrand(targetUrl, row) {
 }
 
 function buildExtractRequestBody(targetUrl, row) {
+  const seedData = ensureJsonObject(row?.seed_data);
+  const snapshot = ensureJsonObject(seedData.snapshot);
+  const normalizedTargetUrl = normalizeShopifyDuplicateProductUrl(
+    targetUrl,
+    row?.title,
+    row?.name,
+    seedData.title,
+    snapshot.title,
+    snapshot.name,
+  );
   const requestBody = {
-    brand: deriveCatalogExtractBrand(targetUrl, row) || row?.id,
-    domain: targetUrl,
+    brand: deriveCatalogExtractBrand(normalizedTargetUrl, row) || row?.id,
+    domain: normalizedTargetUrl,
     limit: 50,
   };
 
@@ -1688,19 +1775,23 @@ function chooseRepresentativeProduct(response, targetUrl, row) {
     seedData.canonical_url,
     snapshot.canonical_url,
   ].filter(Boolean);
+  const referenceValues = [
+    row?.title,
+    row?.name,
+    seedData.title,
+    seedData.name,
+    seedData.product_title,
+    snapshot.title,
+    snapshot.name,
+    snapshot.product_title,
+  ];
 
   const candidateKeys = new Set(
     rawCandidates
       .map(normalizeUrlKey)
       .filter(Boolean),
   );
-  const comparableKeys = new Set(
-    [
-      ...rawCandidates,
-    ]
-      .map(normalizeComparableUrlKey)
-      .filter(Boolean),
-  );
+  const comparableKeys = expandComparableUrlKeys(rawCandidates, referenceValues);
 
   for (const product of products) {
     const productKey = normalizeUrlKey(product?.url);
@@ -2988,6 +3079,97 @@ async function extractSeed(targetUrl, row, baseUrl) {
   return response.data || {};
 }
 
+async function extractSeedCommerceFacts(targetUrl, row, baseUrl) {
+  const requestBody = {
+    ...buildExtractRequestBody(targetUrl, row),
+    limit: 10,
+  };
+  const response = await axios.post(`${baseUrl.replace(/\/$/, '')}/api/extract-v2`, requestBody, {
+    timeout: Number(process.env.CATALOG_INTELLIGENCE_TIMEOUT_MS || 90000),
+    headers: { 'Content-Type': 'application/json' },
+  });
+  return response.data || {};
+}
+
+function findCommerceFactsForBackfill(row, nextRow, responseV2 = {}) {
+  const offers = Array.isArray(responseV2?.offers_v2) ? responseV2.offers_v2 : [];
+  if (!offers.length) return null;
+  const seedData = ensureJsonObject(nextRow?.seed_data || row?.seed_data);
+  const snapshot = ensureJsonObject(seedData.snapshot);
+  const targetUrlKeys = expandComparableUrlKeys(
+    [
+      nextRow?.canonical_url,
+      nextRow?.destination_url,
+      row?.canonical_url,
+      row?.destination_url,
+      seedData.canonical_url,
+      seedData.destination_url,
+      snapshot.canonical_url,
+      snapshot.destination_url,
+    ],
+    [
+      nextRow?.title,
+      row?.title,
+      seedData.title,
+      snapshot.title,
+    ],
+  );
+  const titleKey = normalizeTitleKey(nextRow?.title || row?.title || seedData.title || snapshot.title);
+  const variantSkus = new Set(
+    normalizeSeedVariants(seedData, row)
+      .flatMap((variant) => [variant?.sku, variant?.variant_sku, variant?.id, variant?.variant_id])
+      .map((item) => normalizeNonEmptyString(item).toLowerCase())
+      .filter(Boolean),
+  );
+  const offer = offers.find((candidate) => {
+    const offerUrlKey = normalizeComparableUrlKey(candidate?.url_canonical);
+    if (offerUrlKey && targetUrlKeys.has(offerUrlKey)) return true;
+    const offerSku = normalizeNonEmptyString(candidate?.variant_sku).toLowerCase();
+    if (offerSku && variantSkus.has(offerSku)) return true;
+    return Boolean(titleKey && normalizeTitleKey(candidate?.product_title) === titleKey);
+  });
+  return offer?.commerce_facts_v1 || null;
+}
+
+function attachCommerceFactsGateToRow(nextRow, gate) {
+  const seedData = ensureJsonObject(nextRow?.seed_data);
+  const snapshot = ensureJsonObject(seedData.snapshot);
+  return {
+    ...nextRow,
+    seed_data: {
+      ...seedData,
+      commerce_facts_gate: gate,
+      snapshot: {
+        ...snapshot,
+        commerce_facts_gate: gate,
+      },
+    },
+  };
+}
+
+function enrichPayloadWithCommerceFacts({ row, payload, responseV2, market }) {
+  const nextRow = payload?.nextRow && typeof payload.nextRow === 'object' ? payload.nextRow : {};
+  const rawFacts = findCommerceFactsForBackfill(row, nextRow, responseV2);
+  const withFacts = attachCommerceFactsToSeedRow(nextRow, rawFacts, { market: market || row?.market });
+  const gate = validateCommerceFactsGateForSeedRow(withFacts);
+  const gatedRow = attachCommerceFactsGateToRow(withFacts, gate);
+  return {
+    ...payload,
+    nextRow: gatedRow,
+    commerce_facts_v2: {
+      requested: Boolean(responseV2),
+      matched: Boolean(rawFacts),
+      gate,
+      counters_by_site_market: Array.isArray(responseV2?.counters_by_site_market)
+        ? responseV2.counters_by_site_market
+        : [],
+    },
+    changed:
+      payload.changed ||
+      JSON.stringify(comparableSeedData(payload.nextRow?.seed_data)) !== JSON.stringify(comparableSeedData(gatedRow.seed_data)),
+  };
+}
+
 async function processRow(row, options) {
   const targetUrl = normalizeTargetUrlForMarket(
     resolveTargetUrlOverride(row, options?.targetUrlOverrides) || pickSeedTargetUrl(row),
@@ -2999,6 +3181,9 @@ async function processRow(row, options) {
 
   try {
     const response = await extractSeed(targetUrl, row, options.baseUrl);
+    const responseV2 = options.includeCommerceFacts
+      ? await extractSeedCommerceFacts(targetUrl, row, options.baseUrl)
+      : null;
     const products = Array.isArray(response?.products) ? response.products : [];
     const representativeProduct = chooseRepresentativeProduct(response, targetUrl, row);
     if (looksLikeDirectProductTargetUrl(targetUrl) && products.length === 0) {
@@ -3047,7 +3232,15 @@ async function processRow(row, options) {
         },
       };
     }
-    const payload = buildSeedUpdatePayload(row, response, targetUrl);
+    let payload = buildSeedUpdatePayload(row, response, targetUrl);
+    if (options.includeCommerceFacts) {
+      payload = enrichPayloadWithCommerceFacts({
+        row,
+        payload,
+        responseV2,
+        market: options.market,
+      });
+    }
     const enrichment = await enrichExternalSeedRowIngredients({
       row: {
         ...row,
@@ -3422,6 +3615,7 @@ async function main() {
     concurrency,
     dryRun: hasFlag('dry-run') || hasFlag('dryRun'),
     expandVariants: hasFlag('expand-variants') || hasFlag('expandVariants'),
+    includeCommerceFacts: hasFlag('include-commerce-facts') || hasFlag('includeCommerceFacts'),
     skipInsights: hasFlag('skip-insights') || hasFlag('skipInsights'),
     insightsOutDir: argValue('insights-out-dir') || argValue('insightsOutDir') || '',
     insightsSkipGemini: hasFlag('insights-skip-gemini') || hasFlag('insightsSkipGemini'),
@@ -3453,6 +3647,7 @@ async function main() {
       (sum, result) => sum + (Array.isArray(result.payload?.variant_seed_rows) ? result.payload.variant_seed_rows.length : 0),
       0,
     ),
+    commerce_facts_hold: results.filter((result) => result.payload?.commerce_facts_v2?.gate?.status === 'hold').length,
   };
   console.log(JSON.stringify(summary, null, 2));
 
@@ -3490,6 +3685,9 @@ module.exports = {
   readTargetUrlOverridesFile,
   resolveTargetUrlOverride,
   buildExtractRequestBody,
+  extractSeedCommerceFacts,
+  findCommerceFactsForBackfill,
+  enrichPayloadWithCommerceFacts,
   chooseRepresentativeProduct,
   buildSeedUpdatePayload,
   buildVariantSeedRows,

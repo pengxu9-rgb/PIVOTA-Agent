@@ -126,4 +126,87 @@ describe('apply_aurora_external_seed_creation_manifest', () => {
       }),
     );
   });
+
+  test('holds US seed rows when commerce facts show non-USD market mismatch', () => {
+    const {
+      validateRow,
+      buildCommerceFactsGateSummary,
+    } = require('../../scripts/apply_aurora_external_seed_creation_manifest.cjs');
+    const row = {
+      seed_id: 'eps_boj_eur',
+      external_product_id: 'ext_boj_eur',
+      market: 'US',
+      destination_url: 'https://beautyofjoseon.com/products/calming-serum',
+      canonical_url: 'https://beautyofjoseon.com/products/calming-serum',
+      title: 'Calming Serum',
+      image_url: 'https://cdn.example.com/calming.jpg',
+      price_amount: 17,
+      price_currency: 'EUR',
+      availability: 'in_stock',
+      seed_data: {
+        commerce_facts_v1: {
+          contract_version: 'commerce_facts.v1',
+          market_id: 'US',
+          currency_target: 'USD',
+          regional_price: {
+            amount: 17,
+            currency: 'EUR',
+            observed_currency: 'EUR',
+            confidence: 'medium',
+            market_switch_status: 'mismatch',
+          },
+          availability: { status: 'in_stock', confidence: 'medium' },
+        },
+        snapshot: {},
+      },
+    };
+
+    expect(validateRow(row)).toEqual(
+      expect.arrayContaining([
+        'market_currency_mismatch',
+        'commerce_facts_currency_mismatch',
+        'commerce_facts_market_switch_not_ok',
+      ]),
+    );
+    expect(buildCommerceFactsGateSummary(row)).toEqual(
+      expect.objectContaining({
+        status: 'hold',
+        expected_currency: 'USD',
+        observed_currency: 'EUR',
+        market_switch_status: 'mismatch',
+      }),
+    );
+  });
+
+  test('requires multi-offer merge validation for channel rows before apply', () => {
+    const { validateRow } = require('../../scripts/apply_aurora_external_seed_creation_manifest.cjs');
+    const row = {
+      seed_id: 'eps_sokoglam_cosrx',
+      external_product_id: 'ext_sokoglam_cosrx',
+      market: 'US',
+      destination_url: 'https://sokoglam.com/products/cosrx-advanced-snail-96-mucin-power-essence',
+      canonical_url: 'https://sokoglam.com/products/cosrx-advanced-snail-96-mucin-power-essence',
+      title: 'Advanced Snail 96 Mucin Power Essence',
+      image_url: 'https://cdn.example.com/snail.jpg',
+      price_amount: 25,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      seed_data: {
+        source_validation: {
+          source_type: 'channel_or_retailer',
+          requires_multi_offer_merge_validation: true,
+        },
+        snapshot: {},
+      },
+    };
+
+    expect(validateRow(row)).toContain('missing_multi_offer_merge_candidate');
+    expect(validateRow({
+      ...row,
+      seed_data: {
+        ...row.seed_data,
+        multi_offer_merge_candidate: { status: 'candidate', sellable_item_group_id: 'sig_cosrx_snail' },
+      },
+    })).not.toContain('missing_multi_offer_merge_candidate');
+  });
 });

@@ -273,6 +273,141 @@ describe('PDP grouped offers', () => {
     );
   });
 
+  test('preserves commerce facts across merged internal and external offers with checkout modes', async () => {
+    const app = require('../src/server');
+    const externalCommerceFacts = {
+      contract_version: 'commerce_facts.v1',
+      market_id: 'US',
+      country: 'US',
+      currency_target: 'USD',
+      source_authority: 'catalog_extract_v2',
+      captured_at: '2026-04-29T00:00:00.000Z',
+      evidence_url: 'https://sokoglam.com/products/cosrx-ceramide-skin-barrier-moisturizer',
+      sellable_region: {
+        status: 'unknown',
+        countries: [],
+        evidence_source: 'catalog_extract_v2',
+        confidence: 'unknown',
+        checked_at: '2026-04-29T00:00:00.000Z',
+        reason_codes: ['shipping_destination_not_verified'],
+      },
+      regional_price: {
+        amount: 22,
+        currency: 'USD',
+        observed_currency: 'USD',
+        price_type: 'list',
+        confidence: 'medium',
+        market_switch_status: 'ok',
+        source_url: 'https://sokoglam.com/products/cosrx-ceramide-skin-barrier-moisturizer',
+        captured_at: '2026-04-29T00:00:00.000Z',
+      },
+      availability: {
+        status: 'in_stock',
+        source: 'catalog_extract_v2',
+        confidence: 'medium',
+        captured_at: '2026-04-29T00:00:00.000Z',
+      },
+      shipping: {
+        status: 'unknown',
+        source: 'catalog_extract_v2',
+        confidence: 'unknown',
+        reason_codes: ['external_checkout_not_queried'],
+        checked_at: '2026-04-29T00:00:00.000Z',
+      },
+      promotions: [],
+      returns: {
+        status: 'unknown',
+        source: 'catalog_extract_v2',
+        confidence: 'unknown',
+        reason_codes: ['external_returns_not_extracted'],
+        checked_at: '2026-04-29T00:00:00.000Z',
+      },
+    };
+
+    const offersData = await app._debug.buildOffersFromGroupMembers({
+      productGroupId: 'sig_cosrx_ceramide_moisturizer',
+      debug: true,
+      members: [
+        {
+          merchant_id: 'merch_cosrx_sandbox',
+          product_id: 'cosrx_internal_1',
+          merchant_name: 'COSRX Sandbox',
+        },
+        {
+          merchant_id: 'external_seed',
+          product_id: 'ext_soko_cosrx_ceramide',
+          source_kind: 'external_seed',
+          source_tier: 'merchant',
+          source_payload: {
+            title: 'COSRX Ceramide Skin Barrier Moisturizer',
+            brand: 'COSRX',
+            merchant_name: 'Soko Glam',
+            price: 22,
+            currency: 'USD',
+            in_stock: true,
+            destination_url: 'https://sokoglam.com/products/cosrx-ceramide-skin-barrier-moisturizer',
+            commerce_facts_v1: externalCommerceFacts,
+          },
+        },
+      ],
+      prefetchedProducts: [
+        {
+          merchant_id: 'merch_cosrx_sandbox',
+          product_id: 'cosrx_internal_1',
+          title: 'COSRX Ceramide Skin Barrier Moisturizer',
+          brand: 'COSRX',
+          merchant_name: 'COSRX Sandbox',
+          price: 26,
+          currency: 'USD',
+          in_stock: true,
+          shipping: {
+            method_label: 'Standard',
+            cost: { amount: 4.95, currency: 'USD' },
+          },
+          returns: { policy_label: '30-day returns' },
+        },
+      ],
+    });
+
+    expect(offersData.offers_count).toBe(2);
+    const internalOffer = offersData.offers.find((offer) => offer.merchant_id === 'merch_cosrx_sandbox');
+    const externalOffer = offersData.offers.find((offer) => offer.merchant_id === 'external_seed');
+
+    expect(internalOffer).toEqual(
+      expect.objectContaining({
+        purchase_route: 'internal_checkout',
+        commerce_mode: 'merchant_embedded_checkout',
+        checkout_handoff: 'embedded',
+      }),
+    );
+    expect(externalOffer).toEqual(
+      expect.objectContaining({
+        purchase_route: 'affiliate_outbound',
+        commerce_mode: 'links_out',
+        checkout_handoff: 'redirect',
+        merchant_checkout_url: 'https://sokoglam.com/products/cosrx-ceramide-skin-barrier-moisturizer',
+        commerce_facts_v1: expect.objectContaining({
+          market_id: 'US',
+          regional_price: expect.objectContaining({
+            currency: 'USD',
+            market_switch_status: 'ok',
+          }),
+          shipping: expect.objectContaining({
+            status: 'unknown',
+          }),
+        }),
+        agent_safe_commerce_facts: expect.objectContaining({
+          shipping: expect.objectContaining({
+            status: 'unknown',
+            reason: 'verify_at_checkout',
+          }),
+        }),
+      }),
+    );
+    expect(offersData.default_offer_id).toBe(internalOffer.offer_id);
+    expect(offersData.best_price_offer_id).toBe(externalOffer.offer_id);
+  });
+
   test('defers slow similar results at the PDP module budget boundary', async () => {
     const app = require('../src/server');
     const startedAt = Date.now();

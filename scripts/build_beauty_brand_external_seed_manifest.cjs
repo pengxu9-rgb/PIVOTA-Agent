@@ -7,6 +7,10 @@ const axios = require('axios');
 const {
   buildSeedRow,
 } = require('./build_aurora_external_seed_creation_manifest.cjs');
+const {
+  attachCommerceFactsToSeedRow,
+  validateCommerceFactsGateForSeedRow,
+} = require('../src/commerce/commerceFacts');
 
 const DEFAULT_CATALOG_BASE_URL =
   process.env.CATALOG_INTELLIGENCE_BASE_URL ||
@@ -26,6 +30,8 @@ const BUNDLE_LIKE_TITLE_PATTERNS = [
   /\bvalue\s+set\b/i,
   /\bvalue\s+pack\b/i,
   /\b(?:hydration\s+)?heroe?s\b/i,
+  /\bbogo\b/i,
+  /\b\d+\s*\+\s*\d+\b/i,
   /\btravel\b/i,
   /\bon\s+the\s+go\b/i,
   /\bcollection\b/i,
@@ -54,6 +60,13 @@ const BUNDLE_LIKE_TITLE_PATTERNS = [
   /\bblanket\b/i,
   /\bbag\b/i,
   /\btumbler\b/i,
+  /\bicons?\s+to\s+go\b/i,
+  /\bmist\s+pump\b/i,
+  /\bice\s+roller\b/i,
+  /\bnail\s+polish\b/i,
+  /\bnail\s+art\b/i,
+  /\bpillowcase\b/i,
+  /\bscrunchie\b/i,
   /\bcrewneck\b/i,
   /\bphone\s+grip\b/i,
   /\bholder\b/i,
@@ -72,6 +85,11 @@ const BUNDLE_LIKE_TITLE_PATTERNS = [
   /\bpin\b/i,
   /\bshort-?dated\b/i,
 ];
+const BUNDLE_LIKE_DESCRIPTION_PATTERNS = [
+  /\bgift\s+with\s+purchase\s+only\b/i,
+  /\bnot\s+for\s+sale\b/i,
+  /\bcomplimentary\s+gift\b/i,
+];
 
 function parseArgs(argv) {
   const out = {
@@ -83,6 +101,7 @@ function parseArgs(argv) {
     outPath: '',
     catalogBaseUrl: DEFAULT_CATALOG_BASE_URL,
     preferredTitles: [],
+    includeCommerceFacts: false,
   };
   for (let idx = 2; idx < argv.length; idx += 1) {
     const token = String(argv[idx] || '').trim();
@@ -117,6 +136,8 @@ function parseArgs(argv) {
         .map((item) => item.trim())
         .filter(Boolean);
       idx += 1;
+    } else if (token === '--include-commerce-facts' || token === '--includeCommerceFacts') {
+      out.includeCommerceFacts = true;
     }
   }
   return out;
@@ -134,6 +155,10 @@ function normalizeSearchText(value) {
     .trim();
 }
 
+function compactSearchText(value) {
+  return normalizeSearchText(value).replace(/\s+/g, '');
+}
+
 function dedupeStrings(values, maxItems = 24) {
   const out = [];
   const seen = new Set();
@@ -146,6 +171,97 @@ function dedupeStrings(values, maxItems = 24) {
     if (out.length >= maxItems) break;
   }
   return out;
+}
+
+function buildBrandScopeTokens(brand) {
+  const normalized = normalizeSearchText(brand);
+  const compact = compactSearchText(brand);
+  const wordTokens = normalized
+    .split(/\s+/g)
+    .map((token) => compactSearchText(token))
+    .filter(
+      (token) =>
+        token.length >= 4 &&
+        ![
+          'beauty',
+          'skin',
+          'skincare',
+          'official',
+          'global',
+          'from',
+          'with',
+          'the',
+          'and',
+          'cosmetics',
+        ].includes(token),
+    );
+  return dedupeStrings([compact, wordTokens.join(''), ...wordTokens], 16).filter((token) => token.length >= 4);
+}
+
+function sourceLooksBrandScoped({ brand, sourceUrl }) {
+  const tokens = buildBrandScopeTokens(brand);
+  if (!tokens.length) return false;
+  const sourceCompact = compactSearchText(sourceUrl);
+  return tokens.some((token) => sourceCompact.includes(token));
+}
+
+function productHasExplicitBrandSignal(product = {}, brand) {
+  const tokens = buildBrandScopeTokens(brand);
+  if (!tokens.length) return false;
+  const productCompact = compactSearchText(
+    [
+      product?.brand,
+      product?.brand_name,
+      product?.vendor,
+      product?.vendor_name,
+      product?.manufacturer,
+      product?.title,
+      product?.name,
+      product?.url,
+      product?.canonical_url,
+      product?.product_url,
+    ]
+      .filter(Boolean)
+      .join(' '),
+  );
+  return tokens.some((token) => productCompact.includes(token));
+}
+
+function getUrlHost(value) {
+  try {
+    return new URL(normalizeNonEmptyString(value)).hostname.toLowerCase().replace(/^www\./, '');
+  } catch {
+    return '';
+  }
+}
+
+function sourceHostLooksBrandOwned({ brand, sourceUrl }) {
+  const tokens = buildBrandScopeTokens(brand);
+  const hostCompact = compactSearchText(getUrlHost(sourceUrl));
+  return Boolean(hostCompact && tokens.some((token) => hostCompact.includes(token)));
+}
+
+function normalizeComparableUrl(value) {
+  const raw = normalizeNonEmptyString(value);
+  if (!/^https?:\/\//i.test(raw)) return '';
+  try {
+    const parsed = new URL(raw);
+    parsed.hash = '';
+    parsed.search = '';
+    parsed.hostname = parsed.hostname.toLowerCase().replace(/^www\./, '');
+    parsed.pathname = parsed.pathname.replace(/\/+$/g, '').toLowerCase();
+    return parsed.toString();
+  } catch {
+    return raw.toLowerCase();
+  }
+}
+
+function normalizeTitleKey(value) {
+  return normalizeSearchText(value)
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .replace(/\s+/g, ' ');
 }
 
 function computeExtractLimit(limit, preferredTitles = []) {
@@ -165,8 +281,12 @@ function resolvePathMaybeRelative(targetPath) {
 function looksLikeBundleLikeProduct(product = {}) {
   const title = normalizeNonEmptyString(product?.title || product?.name);
   const targetUrl = normalizeNonEmptyString(product?.url || product?.canonical_url || product?.product_url);
+  const description = normalizeNonEmptyString(product?.description || product?.description_raw || product?.body_html);
   const combined = `${title} ${targetUrl}`;
-  return BUNDLE_LIKE_TITLE_PATTERNS.some((pattern) => pattern.test(combined));
+  return (
+    BUNDLE_LIKE_TITLE_PATTERNS.some((pattern) => pattern.test(combined)) ||
+    BUNDLE_LIKE_DESCRIPTION_PATTERNS.some((pattern) => pattern.test(description))
+  );
 }
 
 function looksLikeNonProductCatalogPage(product = {}) {
@@ -189,6 +309,30 @@ function looksLikeNonProductCatalogPage(product = {}) {
   if (/\bcolor correctors\s*&\s*tinted moisturizers\b/i.test(title)) return true;
   if (/\b(?:privacy|policy|statement|gift guide|mothers? day|online shop|wholesale)\b/i.test(title)) return true;
   return false;
+}
+
+function looksLikeSyntheticFallbackProduct(product = {}, brand = '', extractDoc = {}) {
+  const mode = normalizeNonEmptyString(extractDoc?.mode).toLowerCase();
+  if (mode === 'simulation') return true;
+  const title = normalizeNonEmptyString(product?.title || product?.name);
+  const normalizedTitle = normalizeSearchText(title);
+  const normalizedBrand = normalizeSearchText(brand);
+  if (!normalizedTitle) return false;
+  if (/^product\s+\d{3}$/.test(normalizedTitle)) return true;
+  if (normalizedBrand) {
+    const escapedBrand = normalizedBrand.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (new RegExp(`^${escapedBrand}\\s+product\\s+\\d{3}$`).test(normalizedTitle)) {
+      return true;
+    }
+  }
+  const imageUrls = [
+    product?.image_url,
+    ...(Array.isArray(product?.image_urls) ? product.image_urls : []),
+    ...(Array.isArray(product?.images) ? product.images : []),
+  ]
+    .map((item) => normalizeNonEmptyString(typeof item === 'string' ? item : item?.url || item?.src))
+    .filter(Boolean);
+  return imageUrls.some((url) => /(?:^|\/\/)via\.placeholder\.com|placeholder/i.test(url));
 }
 
 function scorePreferredTitleMatch(product = {}, preferredTitles = []) {
@@ -231,9 +375,35 @@ function collectPreferredTitleHits(product = {}, preferredTitles = [], { minScor
   return dedupeStrings(hits, 12);
 }
 
+function hasTransactionReadySeedSignals(seedRow = {}) {
+  return (
+    Number(seedRow.price_amount) > 0 &&
+    Boolean(normalizeNonEmptyString(seedRow.price_currency)) &&
+    Boolean(normalizeNonEmptyString(seedRow.availability)) &&
+    Boolean(normalizeNonEmptyString(seedRow.image_url))
+  );
+}
+
 async function fetchBrandCatalog({ brand, domain, market, limit, catalogBaseUrl }) {
   const response = await axios.post(
     `${String(catalogBaseUrl || DEFAULT_CATALOG_BASE_URL).replace(/\/+$/, '')}/api/extract`,
+    {
+      brand,
+      domain,
+      market,
+      limit,
+    },
+    {
+      timeout: Number(process.env.CATALOG_INTELLIGENCE_TIMEOUT_MS || 90000),
+      headers: { 'Content-Type': 'application/json' },
+    },
+  );
+  return response.data || {};
+}
+
+async function fetchBrandCatalogV2({ brand, domain, market, limit, catalogBaseUrl }) {
+  const response = await axios.post(
+    `${String(catalogBaseUrl || DEFAULT_CATALOG_BASE_URL).replace(/\/+$/, '')}/api/extract-v2`,
     {
       brand,
       domain,
@@ -291,6 +461,67 @@ function annotateSeedRowAuthoritySource(seedRow = {}, authorityContext = {}) {
   };
 }
 
+function findCommerceFactsForProduct(product = {}, extractV2Doc = {}) {
+  const offers = Array.isArray(extractV2Doc?.offers_v2) ? extractV2Doc.offers_v2 : [];
+  if (!offers.length) return null;
+  const productUrlKey = normalizeComparableUrl(product?.url || product?.canonical_url || product?.product_url);
+  const productTitleKey = normalizeTitleKey(product?.title || product?.name);
+  const variantSkus = new Set(
+    (Array.isArray(product?.variants) ? product.variants : [])
+      .flatMap((variant) => [variant?.sku, variant?.variant_sku, variant?.id, variant?.variant_id])
+      .map((item) => normalizeNonEmptyString(item).toLowerCase())
+      .filter(Boolean),
+  );
+  const match = offers.find((offer) => {
+    const offerUrlKey = normalizeComparableUrl(offer?.url_canonical);
+    if (productUrlKey && offerUrlKey === productUrlKey) return true;
+    const offerSku = normalizeNonEmptyString(offer?.variant_sku).toLowerCase();
+    if (offerSku && variantSkus.has(offerSku)) return true;
+    const offerTitleKey = normalizeTitleKey(offer?.product_title);
+    return Boolean(productTitleKey && offerTitleKey && productTitleKey === offerTitleKey);
+  });
+  return match?.commerce_facts_v1 || null;
+}
+
+function annotateSeedRowSourceValidation(seedRow = {}, { brand, sourceUrl }) {
+  const sourceType = sourceHostLooksBrandOwned({ brand, sourceUrl }) ? 'brand_owned' : 'channel_or_retailer';
+  const sourceValidation = {
+    source_type: sourceType,
+    requires_multi_offer_merge_validation: sourceType === 'channel_or_retailer',
+    source_host: getUrlHost(sourceUrl) || null,
+  };
+  return {
+    ...seedRow,
+    seed_data: {
+      ...(seedRow.seed_data || {}),
+      source_validation: sourceValidation,
+      ...(sourceType === 'channel_or_retailer' ? { requires_multi_offer_merge_validation: true } : {}),
+      snapshot: {
+        ...(seedRow.seed_data?.snapshot || {}),
+        source_validation: sourceValidation,
+        ...(sourceType === 'channel_or_retailer' ? { requires_multi_offer_merge_validation: true } : {}),
+      },
+    },
+  };
+}
+
+function annotateSeedRowCommerceFacts(seedRow = {}, { product, extractV2Doc, market }) {
+  const rawFacts = findCommerceFactsForProduct(product, extractV2Doc);
+  const withFacts = attachCommerceFactsToSeedRow(seedRow, rawFacts, { market });
+  const gate = validateCommerceFactsGateForSeedRow(withFacts);
+  return {
+    ...withFacts,
+    seed_data: {
+      ...(withFacts.seed_data || {}),
+      commerce_facts_gate: gate,
+      snapshot: {
+        ...(withFacts.seed_data?.snapshot || {}),
+        commerce_facts_gate: gate,
+      },
+    },
+  };
+}
+
 function buildManifestFromExtract({
   brand,
   domain,
@@ -298,6 +529,7 @@ function buildManifestFromExtract({
   limit,
   preferredTitles,
   extractDoc,
+  extractV2Doc,
   sourceRole = 'primary',
 }) {
   const products = Array.isArray(extractDoc?.products) ? extractDoc.products : [];
@@ -316,9 +548,21 @@ function buildManifestFromExtract({
   const items = [];
   let excludedBundleLikeCount = 0;
   let excludedNonProductPageCount = 0;
+  let excludedIncompleteTransactionCount = 0;
+  let excludedBrandScopeMismatchCount = 0;
+  let excludedLowQualityFallbackCount = 0;
   let matchedPreferredTitleCount = 0;
   const matchedPreferredTitles = [];
+  const sourceBrandScoped = sourceLooksBrandScoped({ brand, sourceUrl: domain });
   for (const { product, priority } of prioritizedProducts) {
+    if (looksLikeSyntheticFallbackProduct(product, brand, extractDoc)) {
+      excludedLowQualityFallbackCount += 1;
+      continue;
+    }
+    if (!sourceBrandScoped && !productHasExplicitBrandSignal(product, brand) && priority < 80) {
+      excludedBrandScopeMismatchCount += 1;
+      continue;
+    }
     if (looksLikeBundleLikeProduct(product)) {
       excludedBundleLikeCount += 1;
       continue;
@@ -344,6 +588,10 @@ function buildManifestFromExtract({
       },
     );
     if (!seedRow) continue;
+    if (!hasTransactionReadySeedSignals(seedRow)) {
+      excludedIncompleteTransactionCount += 1;
+      continue;
+    }
     const preferredHits = collectPreferredTitleHits(product, preferred, { minScore: 80 });
     const preferredAliases = collectPreferredTitleHits(product, preferred, { minScore: 60 });
     items.push({
@@ -357,11 +605,17 @@ function buildManifestFromExtract({
       source_role: sourceRole,
       matched_preferred_titles: preferredHits,
       alias_preferred_titles: preferredAliases,
-      seed_row: annotateSeedRowAuthoritySource(seedRow, {
-        sourceUrl: domain,
-        sourceRole,
-        matchedPreferredTitles: dedupeStrings([...preferredAliases, ...preferredHits], 12),
-      }),
+      seed_row: annotateSeedRowCommerceFacts(
+        annotateSeedRowSourceValidation(
+          annotateSeedRowAuthoritySource(seedRow, {
+            sourceUrl: domain,
+            sourceRole,
+            matchedPreferredTitles: dedupeStrings([...preferredAliases, ...preferredHits], 12),
+          }),
+          { brand, sourceUrl: domain },
+        ),
+        { product, extractV2Doc, market },
+      ),
     });
     if (priority >= 80) matchedPreferredTitleCount += 1;
     matchedPreferredTitles.push(...preferredHits);
@@ -379,8 +633,18 @@ function buildManifestFromExtract({
     extracted_product_count: products.length,
     excluded_bundle_like_count: excludedBundleLikeCount,
     excluded_non_product_page_count: excludedNonProductPageCount,
+    excluded_incomplete_transaction_count: excludedIncompleteTransactionCount,
+    excluded_brand_scope_mismatch_count: excludedBrandScopeMismatchCount,
+    excluded_low_quality_fallback_count: excludedLowQualityFallbackCount,
     matched_preferred_title_count: matchedPreferredTitleCount,
     diagnostics_summary: summarizeDiagnostics(extractDoc),
+    commerce_facts_summary: {
+      requested: Boolean(extractV2Doc),
+      offers_v2_count: Array.isArray(extractV2Doc?.offers_v2) ? extractV2Doc.offers_v2.length : 0,
+      counters_by_site_market: Array.isArray(extractV2Doc?.counters_by_site_market)
+        ? extractV2Doc.counters_by_site_market
+        : [],
+    },
     item_count: items.length,
     items,
   };
@@ -461,6 +725,18 @@ function buildManifestFromSourceAttempts({ brand, domain, fallbackDomains, marke
       (sum, attempt) => sum + Math.max(0, Number(attempt?.excluded_bundle_like_count || 0) || 0),
       0,
     ),
+    excluded_non_product_page_count: attempts.reduce(
+      (sum, attempt) => sum + Math.max(0, Number(attempt?.excluded_non_product_page_count || 0) || 0),
+      0,
+    ),
+    excluded_incomplete_transaction_count: attempts.reduce(
+      (sum, attempt) => sum + Math.max(0, Number(attempt?.excluded_incomplete_transaction_count || 0) || 0),
+      0,
+    ),
+    excluded_brand_scope_mismatch_count: attempts.reduce(
+      (sum, attempt) => sum + Math.max(0, Number(attempt?.excluded_brand_scope_mismatch_count || 0) || 0),
+      0,
+    ),
     matched_preferred_title_count: dedupeStrings(matchedPreferredTitles, 24).length,
     item_count: mergedItems.length,
     fallback_used: sourceAttempts.some((attempt, index) => index > 0 && attempt.used_in_manifest),
@@ -492,6 +768,16 @@ async function main() {
       limit: computeExtractLimit(args.limit, args.preferredTitles),
       catalogBaseUrl: args.catalogBaseUrl,
     });
+    // eslint-disable-next-line no-await-in-loop
+    const extractV2Doc = args.includeCommerceFacts
+      ? await fetchBrandCatalogV2({
+          brand: args.brand,
+          domain: sourceSpec.domain,
+          market,
+          limit: computeExtractLimit(args.limit, args.preferredTitles),
+          catalogBaseUrl: args.catalogBaseUrl,
+        })
+      : null;
     sourceManifests.push(
       buildManifestFromExtract({
         brand: args.brand,
@@ -500,6 +786,7 @@ async function main() {
         limit: args.limit,
         preferredTitles: args.preferredTitles,
         extractDoc,
+        extractV2Doc,
         sourceRole: sourceSpec.sourceRole,
       }),
     );
@@ -533,8 +820,18 @@ module.exports = {
   parseArgs,
   looksLikeBundleLikeProduct,
   looksLikeNonProductCatalogPage,
+  looksLikeSyntheticFallbackProduct,
   scorePreferredTitleMatch,
   collectPreferredTitleHits,
+  hasTransactionReadySeedSignals,
+  buildBrandScopeTokens,
+  sourceLooksBrandScoped,
+  sourceHostLooksBrandOwned,
+  productHasExplicitBrandSignal,
+  fetchBrandCatalogV2,
+  findCommerceFactsForProduct,
+  annotateSeedRowSourceValidation,
+  annotateSeedRowCommerceFacts,
   computeExtractLimit,
   summarizeDiagnostics,
   annotateSeedRowAuthoritySource,

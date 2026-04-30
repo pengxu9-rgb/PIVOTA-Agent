@@ -44,6 +44,9 @@ const {
   resolveProductExternalRedirectUrl,
 } = require('./pdpBuilder');
 const {
+  buildAgentSafeCommerceFacts,
+} = require('./commerce/commerceFacts');
+const {
   resolvePdpSchemaProfile,
   isBeautyFormulaPdpProfile,
 } = require('./pdpSchemaProfile');
@@ -4207,6 +4210,15 @@ function projectExternalSeedOfferVariant(variant) {
 
 function projectExternalSeedOfferPayload(payload, merchantId, productId) {
   const normalizedProductId = String(payload?.product_id || payload?.id || productId).trim() || productId;
+  const commerceFacts =
+    payload?.commerce_facts_v1 ||
+    payload?.commerce_facts ||
+    payload?.seed_data?.commerce_facts_v1 ||
+    payload?.snapshot?.commerce_facts_v1 ||
+    null;
+  const agentSafeCommerceFacts =
+    payload?.agent_safe_commerce_facts ||
+    (commerceFacts ? buildAgentSafeCommerceFacts(commerceFacts) : null);
   const variantsSource = Array.isArray(payload?.variants)
     ? payload.variants
     : Array.isArray(payload?.snapshot?.variants)
@@ -4232,6 +4244,7 @@ function projectExternalSeedOfferPayload(payload, merchantId, productId) {
     shipping: payload?.shipping,
     shipping_cost: payload?.shipping_cost || payload?.shippingCost,
     returns: payload?.returns,
+    promotions: Array.isArray(payload?.promotions) ? payload.promotions : undefined,
     in_stock: payload?.in_stock,
     fulfillment_type: payload?.fulfillment_type || payload?.fulfillmentType,
     destination_url:
@@ -4245,6 +4258,8 @@ function projectExternalSeedOfferPayload(payload, merchantId, productId) {
     url: payload?.url,
     image_url: payload?.image_url || payload?.imageUrl,
     images: Array.isArray(payload?.images) ? payload.images.slice(0, 8) : undefined,
+    ...(commerceFacts ? { commerce_facts_v1: commerceFacts, commerce_facts: commerceFacts } : {}),
+    ...(agentSafeCommerceFacts ? { agent_safe_commerce_facts: agentSafeCommerceFacts } : {}),
     ...(variants.length ? { variants } : {}),
   });
 }
@@ -4861,6 +4876,46 @@ function computeOfferTotal(offer) {
   return Number(offer?.price?.amount || 0) + Number(offer?.shipping?.cost?.amount || 0);
 }
 
+function readOfferCurrency(offer) {
+  return String(
+    offer?.price?.currency ||
+      offer?.price?.current?.currency ||
+      offer?.currency ||
+      '',
+  ).trim().toUpperCase();
+}
+
+function offerIsInternalCheckoutCandidate(offer) {
+  const route = String(offer?.purchase_route || offer?.purchaseRoute || '').trim().toLowerCase();
+  if (route === 'internal_checkout') return true;
+  const merchantId = String(offer?.merchant_id || offer?.merchantId || '').trim();
+  return Boolean(merchantId && merchantId !== EXTERNAL_SEED_MERCHANT_ID);
+}
+
+function offerHasAvailableInventory(offer) {
+  const inStock = offer?.inventory?.in_stock ?? offer?.inventory?.inStock ?? offer?.in_stock ?? offer?.inStock;
+  return inStock !== false;
+}
+
+function compareOffersForDefaultSelection(a, b) {
+  const aInternal = offerIsInternalCheckoutCandidate(a) ? 1 : 0;
+  const bInternal = offerIsInternalCheckoutCandidate(b) ? 1 : 0;
+  if (aInternal !== bInternal) return bInternal - aInternal;
+
+  const aInStock = offerHasAvailableInventory(a) ? 1 : 0;
+  const bInStock = offerHasAvailableInventory(b) ? 1 : 0;
+  if (aInStock !== bInStock) return bInStock - aInStock;
+
+  const aCurrency = readOfferCurrency(a);
+  const bCurrency = readOfferCurrency(b);
+  if (aCurrency && bCurrency && aCurrency === bCurrency) {
+    const totalDelta = computeOfferTotal(a) - computeOfferTotal(b);
+    if (totalDelta !== 0) return totalDelta;
+  }
+
+  return 0;
+}
+
 function buildOfferPurchaseMetadataFromProduct(product) {
   const redirectUrl = resolveProductExternalRedirectUrl(product);
   const externalLike = isExternalSeedLikeProduct(product);
@@ -5321,6 +5376,10 @@ async function buildOffersFromGroupMembers(args) {
       },
       generatedStoreDiscountEvidence,
     );
+    const commerceFacts = p.commerce_facts_v1 || p.commerce_facts || null;
+    const agentSafeCommerceFacts =
+      p.agent_safe_commerce_facts ||
+      (commerceFacts ? buildAgentSafeCommerceFacts(commerceFacts) : null);
 
     return {
       offer_id:
@@ -5375,6 +5434,14 @@ async function buildOffersFromGroupMembers(args) {
       ...(selectedVariant?.title ? { variant_title: String(selectedVariant.title).trim() } : {}),
       ...(offerVariants.length ? { variants: offerVariants } : {}),
       ...savingsPresentationFields,
+      ...(p.source ? { source: p.source } : {}),
+      ...(p.source_url || p.canonical_url || p.destination_url || p.url
+        ? { source_url: p.source_url || p.canonical_url || p.destination_url || p.url }
+        : {}),
+      ...(p.availability ? { availability: p.availability } : {}),
+      ...(Array.isArray(p.promotions) && p.promotions.length ? { promotions: p.promotions } : {}),
+      ...(commerceFacts ? { commerce_facts_v1: commerceFacts, commerce_facts: commerceFacts } : {}),
+      ...(agentSafeCommerceFacts ? { agent_safe_commerce_facts: agentSafeCommerceFacts } : {}),
       ...(member?.source_kind ? { source_kind: member.source_kind } : {}),
       ...(member?.source_tier ? { source_tier: member.source_tier } : {}),
       ...buildOfferPurchaseMetadataFromProduct(p),
@@ -5384,12 +5451,14 @@ async function buildOffersFromGroupMembers(args) {
   timings.build_offer_rows = Date.now() - buildOfferRowsStartedAt;
 
   const sortStartedAt = Date.now();
-  const sortedByTotal = [...offers].sort((a, b) => computeOfferTotal(a) - computeOfferTotal(b));
+  const annotatedOffers = annotateOffersWithCommerceMetadata(offers);
+  const sortedByTotal = [...annotatedOffers].sort((a, b) => computeOfferTotal(a) - computeOfferTotal(b));
   const bestPriceOfferId = sortedByTotal[0]?.offer_id || null;
   const preferredOfferId = preferredMerchantId
-    ? offers.find((o) => o.merchant_id === preferredMerchantId)?.offer_id || null
+    ? annotatedOffers.find((o) => o.merchant_id === preferredMerchantId)?.offer_id || null
     : null;
-  const defaultOfferId = preferredOfferId || bestPriceOfferId;
+  const defaultCandidateId = [...annotatedOffers].sort(compareOffersForDefaultSelection)[0]?.offer_id || null;
+  const defaultOfferId = preferredOfferId || defaultCandidateId || bestPriceOfferId;
   timings.sort = Date.now() - sortStartedAt;
   timings.total = Date.now() - totalStartedAt;
 
@@ -5398,7 +5467,7 @@ async function buildOffersFromGroupMembers(args) {
     product_group_id: resolvedProductGroupId,
     canonical_product_ref: canonicalProductRef,
     offers_count: offers.length,
-    offers,
+    offers: annotatedOffers,
     default_offer_id: defaultOfferId,
     best_price_offer_id: bestPriceOfferId,
     ...(debug

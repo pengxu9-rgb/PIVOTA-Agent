@@ -3,6 +3,8 @@ const axios = require('axios');
 const {
   pickSeedTargetUrl,
   buildExtractRequestBody,
+  findCommerceFactsForBackfill,
+  enrichPayloadWithCommerceFacts,
   chooseRepresentativeProduct,
   processRow,
   buildSeedUpdatePayload,
@@ -460,6 +462,154 @@ describe('backfill-external-product-seeds-catalog', () => {
     });
   });
 
+  test('normalizes duplicate Shopify direct PDP suffixes in extract request targets without stripping semantic numbers', () => {
+    const row = {
+      brand: 'Anua',
+      market: 'US',
+      title: 'PDRN 100 Hyaluronic Acid Glow Pad',
+      canonical_url: 'https://anua.com/products/pdrn-100-hyaluronic-acid-glow-pad-1',
+      destination_url: 'https://anua.com/products/pdrn-100-hyaluronic-acid-glow-pad-1',
+      seed_data: {
+        snapshot: {
+          canonical_url: 'https://anua.com/products/pdrn-100-hyaluronic-acid-glow-pad-1',
+          title: 'PDRN 100 Hyaluronic Acid Glow Pad',
+        },
+      },
+    };
+
+    expect(
+      buildExtractRequestBody(
+        'https://anua.com/products/pdrn-100-hyaluronic-acid-glow-pad-1',
+        row,
+      ),
+    ).toEqual({
+      brand: 'Anua',
+      domain: 'https://anua.com/products/pdrn-100-hyaluronic-acid-glow-pad',
+      limit: 50,
+      market: 'US',
+    });
+
+    expect(
+      buildExtractRequestBody(
+        'https://anua.com/products/zero-cast-moisturizing-sunscreen-spf-50',
+        {
+          ...row,
+          title: 'Zero-Cast Moisturizing Sunscreen SPF 50',
+        },
+      ).domain,
+    ).toBe('https://anua.com/products/zero-cast-moisturizing-sunscreen-spf-50');
+  });
+
+  test('matches extract-v2 commerce facts and gates US currency mismatches during dry-run enrichment', () => {
+    const row = {
+      id: 'eps_boj_calming',
+      external_product_id: 'ext_boj_calming',
+      market: 'US',
+      title: 'Calming Serum',
+      canonical_url: 'https://beautyofjoseon.com/products/calming-serum',
+      destination_url: 'https://beautyofjoseon.com/products/calming-serum',
+      image_url: 'https://cdn.example.com/calming.jpg',
+      price_amount: 17,
+      price_currency: 'EUR',
+      availability: 'in_stock',
+      seed_data: {
+        title: 'Calming Serum',
+        snapshot: {
+          canonical_url: 'https://beautyofjoseon.com/products/calming-serum',
+        },
+      },
+    };
+    const rawFacts = {
+      contract_version: 'commerce_facts.v1',
+      market_id: 'US',
+      currency_target: 'USD',
+      regional_price: {
+        amount: 17,
+        currency: 'EUR',
+        observed_currency: 'EUR',
+        confidence: 'medium',
+        market_switch_status: 'mismatch',
+      },
+      availability: { status: 'in_stock', confidence: 'medium' },
+      shipping: { status: 'unknown', confidence: 'unknown' },
+      promotions: [],
+      returns: { status: 'unknown', confidence: 'unknown' },
+    };
+    const responseV2 = {
+      offers_v2: [
+        {
+          url_canonical: 'https://beautyofjoseon.com/products/calming-serum',
+          product_title: 'Calming Serum',
+          commerce_facts_v1: rawFacts,
+        },
+      ],
+    };
+
+    expect(findCommerceFactsForBackfill(row, row, responseV2)).toBe(rawFacts);
+    const payload = enrichPayloadWithCommerceFacts({
+      row,
+      payload: { changed: false, nextRow: row },
+      responseV2,
+      market: 'US',
+    });
+
+    expect(payload.changed).toBe(true);
+    expect(payload.nextRow.seed_data.commerce_facts_v1.regional_price.currency).toBe('EUR');
+    expect(payload.commerce_facts_v2.gate).toEqual(
+      expect.objectContaining({
+        status: 'hold',
+        expected_currency: 'USD',
+        observed_currency: 'EUR',
+      }),
+    );
+    expect(payload.commerce_facts_v2.gate.problems).toEqual(
+      expect.arrayContaining(['market_currency_mismatch', 'commerce_facts_currency_mismatch']),
+    );
+  });
+
+  test('matches commerce facts offers when stored Shopify canonical uses a duplicate suffix', () => {
+    const row = {
+      title: 'PDRN 100 Hyaluronic Acid Glow Pad',
+      canonical_url: 'https://anua.com/products/pdrn-100-hyaluronic-acid-glow-pad-1',
+      destination_url: 'https://anua.com/products/pdrn-100-hyaluronic-acid-glow-pad-1',
+      seed_data: {
+        title: 'PDRN 100 Hyaluronic Acid Glow Pad',
+        snapshot: {
+          title: 'PDRN 100 Hyaluronic Acid Glow Pad',
+          canonical_url: 'https://anua.com/products/pdrn-100-hyaluronic-acid-glow-pad-1',
+        },
+      },
+    };
+    const rawFacts = {
+      contract_version: 'commerce_facts.v1',
+      market_id: 'US',
+      currency_target: 'USD',
+      regional_price: {
+        amount: 23,
+        currency: 'USD',
+        observed_currency: 'USD',
+        confidence: 'medium',
+        market_switch_status: 'ok',
+      },
+      availability: { status: 'in_stock', confidence: 'medium' },
+      shipping: { status: 'unknown', confidence: 'unknown' },
+      promotions: [],
+      returns: { status: 'unknown', confidence: 'unknown' },
+    };
+
+    expect(
+      findCommerceFactsForBackfill(row, row, {
+        offers_v2: [
+          {
+            url_canonical: 'https://anua.com/products/pdrn-100-hyaluronic-acid-glow-pad',
+            product_title: 'PDRN 100 Hyaluronic Acid Glow Pad',
+            commerce_facts_v1: rawFacts,
+          },
+        ],
+      }),
+    ).toBe(rawFacts);
+  });
+
   test('keeps explicit seed brand when building catalog extract requests', () => {
     const row = {
       id: 'eps_rarebeauty_1',
@@ -577,6 +727,39 @@ describe('backfill-external-product-seeds-catalog', () => {
     expect(normalizeComparableUrlKey(product.url)).toBe(
       normalizeComparableUrlKey('https://www.tomfordbeauty.com/product/gel-eyeliner?shade=02_Cocoa'),
     );
+  });
+
+  test('matches duplicate Shopify PDP handles when choosing the representative product among multiple candidates', () => {
+    const row = {
+      title: 'Heartleaf Centella Red Spot Cream',
+      canonical_url: 'https://anua.com/products/heartleaf-centella-red-spot-cream-1',
+      destination_url: 'https://anua.com/products/heartleaf-centella-red-spot-cream-1',
+      seed_data: {
+        snapshot: {
+          canonical_url: 'https://anua.com/products/heartleaf-centella-red-spot-cream-1',
+          title: 'Heartleaf Centella Red Spot Cream',
+        },
+      },
+    };
+
+    const product = chooseRepresentativeProduct(
+      {
+        products: [
+          {
+            title: 'Heartleaf Centella Red Spot Cream US',
+            url: 'https://anua.com/products/heartleaf-centella-red-spot-cream',
+          },
+          {
+            title: 'Heartleaf 70 Daily Lotion',
+            url: 'https://anua.com/products/heartleaf-70-daily-lotion',
+          },
+        ],
+      },
+      'https://anua.com/products/heartleaf-centella-red-spot-cream-1',
+      row,
+    );
+
+    expect(product.url).toBe('https://anua.com/products/heartleaf-centella-red-spot-cream');
   });
 
   test('normalizes locale-prefixed seed targets to the requested market locale', () => {

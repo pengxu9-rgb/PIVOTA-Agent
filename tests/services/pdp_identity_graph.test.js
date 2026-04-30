@@ -1287,6 +1287,111 @@ describe('pdpIdentityGraph', () => {
     });
   });
 
+  test('identity search product keeps per-offer commerce facts and selects internal commerce by default', () => {
+    const { _internals } = require('../../src/services/pdpIdentityGraph');
+    const commerceFacts = {
+      contract_version: 'commerce_facts.v1',
+      market_id: 'US',
+      country: 'US',
+      currency_target: 'USD',
+      regional_price: {
+        amount: 22,
+        currency: 'USD',
+        observed_currency: 'USD',
+        confidence: 'medium',
+        market_switch_status: 'ok',
+      },
+      shipping: {
+        status: 'unknown',
+        confidence: 'unknown',
+        reason_codes: ['external_checkout_not_queried'],
+      },
+    };
+    const agentSafeCommerceFacts = {
+      contract_version: 'commerce_facts.v1',
+      market_id: 'US',
+      shipping: { status: 'unknown', reason: 'verify_at_checkout' },
+      promotions: [],
+    };
+
+    const product = _internals.buildIdentitySearchProduct('sig_cosrx_ceramide', [
+      {
+        source_listing_ref: 'external_seed:ext_soko_cosrx_ceramide',
+        merchant_id: 'external_seed',
+        product_id: 'ext_soko_cosrx_ceramide',
+        source_kind: 'external_seed',
+        source_tier: 'merchant',
+        sellable_item_group_id: 'sig_cosrx_ceramide',
+        identity_status: 'approved',
+        review_required: false,
+        identity_confidence: 0.93,
+        match_basis: ['official_url:https://sokoglam.com/products/cosrx-ceramide-skin-barrier-moisturizer'],
+        source_payload: {
+          title: 'COSRX Ceramide Skin Barrier Moisturizer',
+          brand: 'COSRX',
+          merchant_name: 'Soko Glam',
+          description: 'Reviewed retailer product detail.',
+          price: { amount: 22, currency: 'USD' },
+          availability: 'in_stock',
+          destination_url: 'https://sokoglam.com/products/cosrx-ceramide-skin-barrier-moisturizer',
+          commerce_facts_v1: commerceFacts,
+          agent_safe_commerce_facts: agentSafeCommerceFacts,
+        },
+      },
+      {
+        source_listing_ref: 'merch_cosrx_sandbox:cosrx_internal_1',
+        merchant_id: 'merch_cosrx_sandbox',
+        product_id: 'cosrx_internal_1',
+        source_kind: 'internal',
+        source_tier: 'merchant',
+        sellable_item_group_id: 'sig_cosrx_ceramide',
+        identity_status: 'approved',
+        review_required: false,
+        identity_confidence: 0.98,
+        match_basis: ['shopify_product_match'],
+        source_payload: {
+          title: 'COSRX Ceramide Skin Barrier Moisturizer',
+          vendor: 'COSRX',
+          price: { amount: 26, currency: 'USD' },
+          in_stock: true,
+          purchase_route: 'internal_checkout',
+          commerce_mode: 'merchant_embedded_checkout',
+          shipping: { cost: { amount: 4.95, currency: 'USD' } },
+        },
+      },
+    ]);
+
+    expect(product.selected_commerce_ref).toEqual({
+      merchant_id: 'merch_cosrx_sandbox',
+      product_id: 'cosrx_internal_1',
+    });
+    expect(product.price).toEqual({ amount: 26, currency: 'USD' });
+    expect(product.offers_count).toBe(2);
+    const externalOffer = product.offers.find((offer) => offer.merchant_id === 'external_seed');
+    const internalOffer = product.offers.find((offer) => offer.merchant_id === 'merch_cosrx_sandbox');
+    expect(externalOffer).toEqual(
+      expect.objectContaining({
+        commerce_facts_v1: expect.objectContaining({
+          market_id: 'US',
+          shipping: expect.objectContaining({ status: 'unknown' }),
+        }),
+        agent_safe_commerce_facts: expect.objectContaining({
+          shipping: expect.objectContaining({ reason: 'verify_at_checkout' }),
+        }),
+        destination_url: 'https://sokoglam.com/products/cosrx-ceramide-skin-barrier-moisturizer',
+      }),
+    );
+    expect(internalOffer).toEqual(
+      expect.objectContaining({
+        purchase_route: 'internal_checkout',
+        commerce_mode: 'merchant_embedded_checkout',
+        shipping: expect.objectContaining({
+          cost: { amount: 4.95, currency: 'USD' },
+        }),
+      }),
+    );
+  });
+
   test('backfill product fetch does not depend on products_cache created_at column', async () => {
     const { _internals } = require('../../src/services/pdpIdentityGraph');
     const queries = [];

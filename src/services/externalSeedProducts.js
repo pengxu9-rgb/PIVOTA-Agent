@@ -18,6 +18,10 @@ const {
   classifyExternalSeedProductKind,
   isIngredientAuthorityEligibleExternalSeed,
 } = require('./externalSeedProductKind');
+const {
+  buildAgentSafeCommerceFacts,
+  readCommerceFactsV1,
+} = require('../commerce/commerceFacts');
 
 const EXTERNAL_SEED_MERCHANT_ID = 'external_seed';
 const SUNSCREEN_CATEGORY_RE =
@@ -1162,10 +1166,13 @@ function buildVariantContext(seedData, row) {
     /\b(serum|essence|ampoule|moisturi[sz]er|cream|cleanser|toner|lotion|balm|mask|treatment|sunscreen|spf|sun protection|skin care|skincare|barrier|retinol|niacinamide|vitamin c|acid)\b/i.test(
       text,
     );
+  const lipSurfaceLike =
+    /\b(lip|lips|gloss|lipstick|topper|tinted)\b/i.test(text);
   return {
     text,
     allowsShadeAxis,
     skincareLike,
+    lipSurfaceLike,
   };
 }
 
@@ -1245,7 +1252,7 @@ function inferVariantAxisKind(option, context = {}) {
     if (!context.allowsShadeAxis || localeLike) {
       if (volume) return { axis_kind: 'volume', display_label: VARIANT_AXIS_LABELS.volume, normalized_value: optionValue };
       if (format) return { axis_kind: 'format', display_label: VARIANT_AXIS_LABELS.format, normalized_value: format };
-      if (localeLike || context.skincareLike) {
+      if (localeLike || (context.skincareLike && !context.lipSurfaceLike)) {
         return { axis_kind: 'non_displayable', display_label: '', normalized_value: '' };
       }
     }
@@ -1973,6 +1980,8 @@ function buildExternalSeedProduct(row, options = {}) {
 
   const seedData = canonicalizeExternalSeedSnapshot(row.seed_data, row, { stripLegacy: false });
   const snapshot = ensureJsonObject(seedData.snapshot);
+  const commerceFacts = readCommerceFactsV1({ ...row, seed_data: seedData });
+  const agentSafeCommerceFacts = commerceFacts ? buildAgentSafeCommerceFacts(commerceFacts) : null;
   const ingredientIntel = ensureJsonObject(seedData.ingredient_intel);
   const snapshotIngredientIntel = ensureJsonObject(snapshot.ingredient_intel);
   const science = ensureJsonObject(seedData.science);
@@ -2375,6 +2384,8 @@ function buildExternalSeedProduct(row, options = {}) {
     external_seed_quality_state: protection.quality_state,
     external_seed_suppression_flags: protection.suppression_flags,
     external_seed_quality_signals: recall.quality_signals || undefined,
+    ...(commerceFacts ? { commerce_facts_v1: commerceFacts, commerce_facts: commerceFacts } : {}),
+    ...(agentSafeCommerceFacts ? { agent_safe_commerce_facts: agentSafeCommerceFacts } : {}),
     ...(options.matchSource ? { external_seed_match_source: String(options.matchSource).trim() } : {}),
     variants,
     ...(selectedVariant?.variant_id ? { selected_variant_id: selectedVariant.variant_id } : {}),
@@ -2422,6 +2433,8 @@ function buildExternalSeedBrandSearchProduct(row) {
             recall: rowSeedRecall,
           },
         };
+  const commerceFacts = readCommerceFactsV1({ ...row, seed_data: effectiveSeedData });
+  const agentSafeCommerceFacts = commerceFacts ? buildAgentSafeCommerceFacts(commerceFacts) : null;
   const snapshot = ensureJsonObject(effectiveSeedData.snapshot);
   const recall = resolveExternalSeedRecallDoc({ row, seedData: effectiveSeedData, snapshot });
   const protection = resolveExternalSeedProtectionContract({
@@ -2563,6 +2576,8 @@ function buildExternalSeedBrandSearchProduct(row) {
     external_seed_recall: recall,
     external_seed_quality_state: protection.quality_state,
     external_seed_suppression_flags: protection.suppression_flags,
+    ...(commerceFacts ? { commerce_facts_v1: commerceFacts, commerce_facts: commerceFacts } : {}),
+    ...(agentSafeCommerceFacts ? { agent_safe_commerce_facts: agentSafeCommerceFacts } : {}),
     ...(brand ? { vendor: brand, brand } : {}),
     ...(normalizedCategory ? { category: normalizedCategory } : {}),
   };

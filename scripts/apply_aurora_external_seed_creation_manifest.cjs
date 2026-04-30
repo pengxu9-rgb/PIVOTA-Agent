@@ -5,6 +5,9 @@ const path = require('node:path');
 
 const { withClient, getPool } = require('../src/db');
 const { enrichExternalSeedRowIngredients } = require('../src/services/externalSeedIngredientEnrichment');
+const {
+  validateCommerceFactsGateForSeedRow,
+} = require('../src/commerce/commerceFacts');
 
 function parseArgs(argv) {
   const out = { inputPath: '', outPath: '', dryRun: false, apply: false };
@@ -172,7 +175,15 @@ function validateRow(row) {
   if (!row.canonical_url) problems.push('missing_canonical_url');
   if (!row.title) problems.push('missing_title');
   if (!row.seed_data || !Object.keys(row.seed_data).length) problems.push('missing_seed_data');
+  const commerceGate = validateCommerceFactsGateForSeedRow(row);
+  for (const problem of commerceGate.problems || []) {
+    if (!problems.includes(problem)) problems.push(problem);
+  }
   return problems;
+}
+
+function buildCommerceFactsGateSummary(row) {
+  return validateCommerceFactsGateForSeedRow(row);
 }
 
 async function findExistingRows(client, row) {
@@ -280,6 +291,7 @@ async function processManifestWithDb(manifest, mode) {
       for (const item of manifest.items || []) {
         const row = await prepareRow(item);
         const validationProblems = validateRow(row);
+        const commerceFactsGate = buildCommerceFactsGateSummary(row);
         if (validationProblems.length) {
           results.push({
             ingredient_id: row.ingredient_id || null,
@@ -288,6 +300,7 @@ async function processManifestWithDb(manifest, mode) {
             external_product_id: row.external_product_id || null,
             status: 'invalid',
             validation_problems: validationProblems,
+            commerce_facts_gate: commerceFactsGate,
             requires_seed_correction: row.requires_seed_correction,
             ingredient_writeback_source: row.ingredient_writeback_source,
             seed_structured_ingredient_status: row.seed_structured_ingredient_status,
@@ -315,6 +328,7 @@ async function processManifestWithDb(manifest, mode) {
               destination_url: normalizeNonEmptyString(match.destination_url),
               title: normalizeNonEmptyString(match.title),
             })),
+            commerce_facts_gate: commerceFactsGate,
             requires_seed_correction: row.requires_seed_correction,
             ingredient_writeback_source: row.ingredient_writeback_source,
             seed_structured_ingredient_status: row.seed_structured_ingredient_status,
@@ -331,6 +345,7 @@ async function processManifestWithDb(manifest, mode) {
             seed_id: row.seed_id,
             external_product_id: row.external_product_id,
             status: 'would_insert',
+            commerce_facts_gate: commerceFactsGate,
             requires_seed_correction: row.requires_seed_correction,
             ingredient_writeback_source: row.ingredient_writeback_source,
             seed_structured_ingredient_status: row.seed_structured_ingredient_status,
@@ -347,6 +362,7 @@ async function processManifestWithDb(manifest, mode) {
           seed_id: row.seed_id,
           external_product_id: row.external_product_id,
           status: 'inserted',
+          commerce_facts_gate: commerceFactsGate,
           requires_seed_correction: row.requires_seed_correction,
           ingredient_writeback_source: row.ingredient_writeback_source,
           seed_structured_ingredient_status: row.seed_structured_ingredient_status,
@@ -373,6 +389,7 @@ async function processManifestWithoutDb(manifest) {
   for (const item of manifest.items || []) {
     const row = await prepareRow(item);
     const validationProblems = validateRow(row);
+    const commerceFactsGate = buildCommerceFactsGateSummary(row);
     if (validationProblems.length) {
       results.push({
         ingredient_id: row.ingredient_id || null,
@@ -381,6 +398,7 @@ async function processManifestWithoutDb(manifest) {
         external_product_id: row.external_product_id || null,
         status: 'invalid',
         validation_problems: validationProblems,
+        commerce_facts_gate: commerceFactsGate,
         requires_seed_correction: row.requires_seed_correction,
         ingredient_writeback_source: row.ingredient_writeback_source,
         seed_structured_ingredient_status: row.seed_structured_ingredient_status,
@@ -395,6 +413,7 @@ async function processManifestWithoutDb(manifest) {
       seed_id: row.seed_id,
       external_product_id: row.external_product_id,
       status: 'would_insert_unverified',
+      commerce_facts_gate: commerceFactsGate,
       requires_seed_correction: row.requires_seed_correction,
       ingredient_writeback_source: row.ingredient_writeback_source,
       seed_structured_ingredient_status: row.seed_structured_ingredient_status,
@@ -497,6 +516,7 @@ module.exports = {
   buildRow,
   prepareRow,
   validateRow,
+  buildCommerceFactsGateSummary,
   findExistingRows,
   insertRow,
   processManifestWithDb,
