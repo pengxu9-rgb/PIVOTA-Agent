@@ -3412,6 +3412,27 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
                 created_at: now,
               },
               {
+                id: 'seed-nonk-cleanser-1',
+                external_product_id: 'ext_nonk_cleanser_1',
+                market: 'US',
+                tool: '*',
+                destination_url: 'https://shop.example.com/products/generic-gentle-cleanser',
+                canonical_url: 'https://shop.example.com/products/generic-gentle-cleanser',
+                domain: 'shop.example.com',
+                title: 'Generic Gentle Cleanser',
+                image_url: 'https://cdn.example.com/generic-cleanser.jpg',
+                price_amount: '14.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Test Beauty',
+                  category: 'cleanser',
+                  description: 'Gentle face cleanser for sensitive skin.',
+                },
+                updated_at: now,
+                created_at: now,
+              },
+              {
                 id: 'seed-spf-1',
                 external_product_id: 'ext_spf_1',
                 market: 'US',
@@ -3470,13 +3491,14 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       });
 
     expect(resp.status).toBe(200);
-    expect(resp.body.metadata?.query_source).toBe('agent_products_beauty_external_seed_mainline');
-    expect(resp.body.metadata?.beauty_mainline_filter?.target_families).toContain('cleanser');
-    expect(resp.body.products.map((product) => product.product_id)).toContain('ext_k_cleanser_1');
-    expect(resp.body.products.map((product) => product.product_id)).not.toContain('ext_mint_cleanser_1');
-    expect(resp.body.products.map((product) => product.product_id)).not.toContain('ext_spf_1');
-    expect(upstreamSearch.isDone()).toBe(false);
-  });
+	    expect(resp.body.metadata?.query_source).toBe('agent_products_beauty_external_seed_mainline');
+	    expect(resp.body.metadata?.beauty_mainline_filter?.target_families).toContain('cleanser');
+	    expect(resp.body.products[0]?.product_id).toBe('ext_k_cleanser_1');
+	    expect(resp.body.products.map((product) => product.product_id)).toContain('ext_k_cleanser_1');
+	    expect(resp.body.products.map((product) => product.product_id)).not.toContain('ext_mint_cleanser_1');
+	    expect(resp.body.products.map((product) => product.product_id)).not.toContain('ext_spf_1');
+	    expect(upstreamSearch.isDone()).toBe(false);
+	  });
 
   test('creator Seoul local skincare bundle query keeps beauty family coverage on mainline', async () => {
     jest.doMock('../../src/db', () => ({
@@ -3623,6 +3645,104 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(titles).toMatch(/Cleanser/i);
     expect(titles).toMatch(/Moisturizer|Barrier|Repair|Cream/i);
     expect(resp.body.products.map((product) => product.product_id)).not.toContain('ext_serum_1');
+    expect(upstreamSearch.isDone()).toBe(false);
+  });
+
+  test('barrier repair moisturizer query filters active suspension treatments from beauty mainline', async () => {
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total')) return { rows: [{ total: 0 }] };
+        if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
+          return { rows: [] };
+        }
+        if (text.includes('FROM external_product_seeds')) {
+          const now = new Date().toISOString();
+          return {
+            rows: [
+              {
+                id: 'seed-barrier-1',
+                external_product_id: 'ext_barrier_1',
+                market: 'US',
+                tool: '*',
+                destination_url: 'https://shop.example.com/products/cica-barrier-moisturizer',
+                canonical_url: 'https://shop.example.com/products/cica-barrier-moisturizer',
+                domain: 'shop.example.com',
+                title: 'Cica Barrier Repair Moisturizer',
+                image_url: 'https://cdn.example.com/barrier.jpg',
+                price_amount: '24.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Test Beauty',
+                  category: 'moisturizer',
+                  description: 'Barrier repair cream with ceramide, cica, and panthenol.',
+                },
+                updated_at: now,
+                created_at: now,
+              },
+              {
+                id: 'seed-active-1',
+                external_product_id: 'ext_active_1',
+                market: 'US',
+                tool: '*',
+                destination_url: 'https://shop.example.com/products/azelaic-acid-suspension',
+                canonical_url: 'https://shop.example.com/products/azelaic-acid-suspension',
+                domain: 'shop.example.com',
+                title: 'Azelaic Acid Suspension 10%',
+                image_url: 'https://cdn.example.com/azelaic.jpg',
+                price_amount: '11.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'The Ordinary',
+                  category: 'moisturizer',
+                  description: 'Active treatment suspension for blemish-prone skin.',
+                },
+                updated_at: now,
+                created_at: now,
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      },
+    }));
+
+    const upstreamSearch = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'barrier repair moisturizer sensitive skin travel flight',
+            page: 1,
+            limit: 6,
+            in_stock_only: true,
+            market: 'US',
+          },
+        },
+        metadata: {
+          source: 'manual_quality_probe',
+          market: 'US',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.metadata?.query_source).toBe('agent_products_beauty_external_seed_mainline');
+    expect(resp.body.products.map((product) => product.product_id)).toContain('ext_barrier_1');
+    expect(resp.body.products.map((product) => product.product_id)).not.toContain('ext_active_1');
     expect(upstreamSearch.isDone()).toBe(false);
   });
 });
