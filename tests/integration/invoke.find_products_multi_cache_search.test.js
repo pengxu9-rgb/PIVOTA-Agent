@@ -3717,6 +3717,27 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
                 created_at: now,
               },
               {
+                id: 'seed-sleeping-pack-1',
+                external_product_id: 'ext_sleeping_pack_1',
+                market: 'US',
+                tool: '*',
+                destination_url: 'https://shop.example.com/products/1025-dokdo-sleeping-pack',
+                canonical_url: 'https://shop.example.com/products/1025-dokdo-sleeping-pack',
+                domain: 'shop.example.com',
+                title: '1025 Dokdo Sleeping Pack',
+                image_url: 'https://cdn.example.com/sleeping-pack.jpg',
+                price_amount: '18.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Test Beauty',
+                  category: 'cleanser',
+                  description: 'Overnight sleeping pack.',
+                },
+                updated_at: now,
+                created_at: now,
+              },
+              {
                 id: 'seed-routine-cleanser-1',
                 external_product_id: 'ext_routine_cleanser_1',
                 market: 'US',
@@ -3841,6 +3862,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     const ids = resp.body.products.map((product) => product.product_id);
     expect(ids).toContain('ext_cleanser_1');
     expect(ids).not.toContain('ext_mud_pack_1');
+    expect(ids).not.toContain('ext_sleeping_pack_1');
     expect(ids).not.toContain('ext_routine_cleanser_1');
     expect(ids).not.toContain('ext_kit_cleanser_1');
     expect(ids).not.toContain('ext_brush_cleanser_1');
