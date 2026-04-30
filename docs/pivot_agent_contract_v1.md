@@ -144,6 +144,30 @@ Product recommendation output must include enough structure for automated and hu
       "product_class": "sunscreen|cleanser|moisturizer|serum|repair|travel_kit|other",
       "relevance_reasons": [],
       "safety_flags": [],
+      "local_authority": {
+        "brand_origin_country": "string|null",
+        "brand_home_market": "string|null",
+        "available_markets": [],
+        "local_purchase_markets": [],
+        "retailer_region": "string|null",
+        "authority_source": "pdp|merchant|seed|manual_override|null"
+      },
+      "fit_attributes": {
+        "spf_rating": "string|null",
+        "pa_rating": "string|null",
+        "texture": "gel|cream|fluid|stick|cushion|lotion|null",
+        "finish": "matte|dewy|natural|null",
+        "fragrance_free": "boolean|null",
+        "alcohol_denat": "boolean|null",
+        "non_comedogenic": "boolean|null",
+        "travel_size": "boolean|null"
+      },
+      "creator_rank": {
+        "creator_inventory_match": "boolean|null",
+        "creator_boost_applied": "boolean|null",
+        "commercial_boost_applied": "boolean|null",
+        "rank_reasons": []
+      },
       "source": {
         "query_source": "string",
         "tool_scope": "creator_agents|shopping_agents|*|",
@@ -161,6 +185,36 @@ Top results must be filtered before ranking:
 - barrier/moisturizer/repair queries require `product_class=moisturizer|repair`;
 - travel repair kit queries require travel-compatible size or portable/repair intent;
 - creator scoped queries require `creator_id` and creator/source metadata to survive response shaping.
+
+### Travel And Local Product Authority
+
+Travel-local product claims must come from catalog/PDP authority fields, not from LLM inference. The LLM may explain why a product fits a trip, but it must not invent brand origin or local availability.
+
+Required product-intel fields for strict travel/local ranking:
+
+- `brand_origin_country`, `brand_home_market`, `merchant_market`, `retailer_region`, `retailer_country`;
+- `available_markets`, `local_purchase_markets`, `ship_to_market`, `offline_availability_region`;
+- `authority_source` and `authority_confidence` so PDP extraction, merchant config, external seed, and manual override can be distinguished;
+- beauty fit fields such as `spf_rating`, `pa_rating`, `texture`, `finish`, `fragrance_free`, `alcohol_denat`, `non_comedogenic`, `travel_size`, and `sensitive_safe`.
+
+For a Seattle -> Seoul sunscreen request, a product can be described as "good to buy in Seoul" only when `local_purchase_markets` or equivalent authority includes Korea/KR/Seoul, or the brand home market is Korea with a known Korea retail path. Title tokens like `Birch`, `Dokdo`, or `Mugwort` may be used as weak ranking hints, but they are not sufficient authority for a local-purchase claim.
+
+### Creator Ranking Overlay
+
+Shopping and Creator share the same recall, product class gate, and safety exclusion gate. Creator may then apply an additional bounded ranking overlay, but only after a candidate has already passed relevance and safety.
+
+Creator overlay inputs:
+
+- creator-carried inventory or storefront membership;
+- creator preference tags, audience tags, and creator-specific exclusions;
+- approved affiliate or commission fields;
+- creator locale/market and historical performance signals.
+
+Contract rules:
+
+- commercial boost is feature-flagged and capped; it cannot promote a class-mismatch or contraindicated product;
+- creator-carried and creator-pick boosts can reorder equally relevant safe products, but cannot replace the shared beauty gate;
+- responses expose `creator_rank_overlay`, `creator_boost_applied`, `commercial_boost_enabled`, and rank reasons so audits can explain why Creator differs from Shopping.
 
 ## Safety Contract
 
@@ -255,15 +309,18 @@ The shared beauty casepack must exercise the contract across all three internal 
 ## Rollout Order
 
 1. Apply the production recall index from `docs/runbooks/pivot_beauty_contract_prod_index.md`; it is intentionally not an app auto-migration because it must use `CREATE INDEX CONCURRENTLY`.
-2. Enable `PIVOT_BEAUTY_CONTRACT_V1_ENABLED=true`, `PIVOT_BEAUTY_LEGACY_FALLBACK_ISOLATION_ENABLED=true`, and `PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED=true`.
-3. Validate deterministic contract tests locally.
-4. Deploy to production canary, verify the deployed commit, then run the full beauty casepack with production keys injected only through environment variables.
-5. Compare request-level telemetry by contract fields, not by free-form text only.
+2. Enable `PIVOT_BEAUTY_CONTRACT_V1_ENABLED=true`, `PIVOT_BEAUTY_LEGACY_FALLBACK_ISOLATION_ENABLED=true`, `PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED=true`, and `PIVOT_BEAUTY_STRICT_RECO_QUALITY_ENABLED=true`.
+3. For Creator ranking differentiation, enable `PIVOT_BEAUTY_CREATOR_CURATION_RANKING_ENABLED=true`; keep `PIVOT_BEAUTY_CREATOR_COMMERCIAL_RANKING_ENABLED=false` until affiliate/commission fields are audited.
+4. Validate deterministic contract tests locally.
+5. Deploy to production canary, verify the deployed commit, then run the full beauty casepack with production keys injected only through environment variables.
+6. Compare request-level telemetry by contract fields, not by free-form text only.
 
 Emergency off:
 
 - set `PIVOT_BEAUTY_CONTRACT_V1_ENABLED=false` to disable contract stamping and fallback isolation;
 - set `PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED=false` to bypass the direct indexed beauty recall path;
+- set `PIVOT_BEAUTY_STRICT_RECO_QUALITY_ENABLED=false` to disable the strict product-quality rank overlay without changing recall;
+- set `PIVOT_BEAUTY_CREATOR_CURATION_RANKING_ENABLED=false` to make Creator use the shared Shopping order after safety/class gates;
 - set `PIVOT_BEAUTY_LEGACY_FALLBACK_ISOLATION_ENABLED=false` only if fallback adoption must be temporarily restored during incident response.
 
 ## Validation Gates
