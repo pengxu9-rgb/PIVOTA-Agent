@@ -127,6 +127,78 @@ describe('externalSeedProducts helper', () => {
     });
   });
 
+  test('normalizes merchant review preview items and q&a into external seed runtime product', () => {
+    const product = buildExternalSeedProduct({
+      id: 'eps_review_preview_seed',
+      external_product_id: 'ext_review_preview_seed',
+      canonical_url: 'https://beautyofjoseon.com/products/glow-replenishing-rice-milk',
+      destination_url: 'https://beautyofjoseon.com/products/glow-replenishing-rice-milk',
+      title: 'Glow Replenishing Rice Milk',
+      seed_data: {
+        brand: 'Beauty of Joseon',
+        snapshot: {
+          review_summary: {
+            reviewCount: '1,404',
+            reviewAverageValue: '4.9',
+            brand_card: { name: 'Beauty of Joseon' },
+            preview_items: [
+              {
+                review_id: 'r_1',
+                rating: 5,
+                author_label: 'buyer_1',
+                title: 'Hydrating and calm',
+                text_snippet: 'Leaves skin soft and comfortable.',
+                media: [
+                  {
+                    type: 'image',
+                    url: 'https://cdn.example.com/review-1.jpg',
+                    thumbnail_url: 'https://cdn.example.com/review-1-thumb.jpg',
+                  },
+                ],
+              },
+            ],
+            questions: [
+              {
+                question: 'Does it layer well under sunscreen?',
+                answer: 'Yes, it sits comfortably under SPF.',
+                source: 'merchant_q_and_a',
+              },
+            ],
+          },
+        },
+      },
+    });
+
+    expect(product.review_summary).toEqual(
+      expect.objectContaining({
+        rating: 4.9,
+        review_count: 1404,
+        brand_card: { name: 'Beauty of Joseon' },
+        preview_items: [
+          expect.objectContaining({
+            review_id: 'r_1',
+            title: 'Hydrating and calm',
+            text_snippet: 'Leaves skin soft and comfortable.',
+            media: [
+              expect.objectContaining({
+                type: 'image',
+                url: 'https://cdn.example.com/review-1.jpg',
+                thumbnail_url: 'https://cdn.example.com/review-1-thumb.jpg',
+              }),
+            ],
+          }),
+        ],
+        questions: [
+          expect.objectContaining({
+            question: 'Does it layer well under sunscreen?',
+            answer: 'Yes, it sits comfortably under SPF.',
+            source: 'merchant_q_and_a',
+          }),
+        ],
+      }),
+    );
+  });
+
   test('normalizes nested product variants and tuple option fields into named options', () => {
     const row = {
       id: 'eps_nested_variant_1',

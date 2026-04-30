@@ -3721,4 +3721,93 @@ describe('backfill-external-product-seeds-catalog', () => {
       'assistant_reviewed',
     );
   });
+
+  test('persists merchant review preview content during catalog backfill refresh', () => {
+    const canonicalUrl = 'https://example.com/products/rice-milk';
+    const row = {
+      id: 'eps_review_refresh_1',
+      external_product_id: 'ext_review_refresh_1',
+      title: 'Rice Milk',
+      canonical_url: canonicalUrl,
+      destination_url: canonicalUrl,
+      price_amount: 24,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      seed_data: {
+        title: 'Rice Milk',
+        snapshot: {
+          canonical_url: canonicalUrl,
+        },
+      },
+    };
+
+    const payload = buildSeedUpdatePayload(
+      row,
+      {
+        mode: 'puppeteer',
+        products: [
+          {
+            title: 'Rice Milk',
+            url: canonicalUrl,
+            review_summary: {
+              rating: 4.8,
+              review_count: 182,
+              preview_items: [
+                {
+                  review_id: 'merchant_review_1',
+                  rating: 5,
+                  title: 'Hydrating layer',
+                  text_snippet: 'Leaves skin calm and comfortable.',
+                },
+              ],
+              questions: [
+                {
+                  question: 'Does it layer under sunscreen?',
+                  answer: 'Yes.',
+                  source: 'merchant_q_and_a',
+                },
+              ],
+            },
+            variants: [
+              {
+                id: 'rm-default',
+                sku: 'RM-DEFAULT',
+                price: '24.00',
+                currency: 'USD',
+                stock: 'In Stock',
+              },
+            ],
+          },
+        ],
+        variants: [],
+        diagnostics: {},
+      },
+      canonicalUrl,
+    );
+
+    expect(payload.nextRow.seed_data.review_summary).toEqual(
+      expect.objectContaining({
+        rating: 4.8,
+        review_count: 182,
+        preview_items: [
+          expect.objectContaining({
+            review_id: 'merchant_review_1',
+            title: 'Hydrating layer',
+          }),
+        ],
+        questions: [
+          expect.objectContaining({
+            question: 'Does it layer under sunscreen?',
+            answer: 'Yes.',
+          }),
+        ],
+      }),
+    );
+    expect(payload.nextRow.seed_data.snapshot.review_summary).toEqual(
+      expect.objectContaining({
+        rating: 4.8,
+        review_count: 182,
+      }),
+    );
+  });
 });

@@ -452,6 +452,119 @@ function asNonEmptyString(value) {
   return normalized;
 }
 
+const PDP_PUBLIC_CONTRIBUTION_APPROVED_STATES = new Set([
+  'approved',
+  'published',
+  'public',
+  'visible',
+  'live',
+  'pass',
+  'completed',
+]);
+const PDP_PUBLIC_CONTRIBUTION_BLOCKED_STATES = new Set([
+  'pending',
+  'queued',
+  'queue',
+  'draft',
+  'review_required',
+  'employee_review_required',
+  'rejected',
+  'reject',
+  'blocked',
+  'hidden',
+  'private',
+  'removed',
+]);
+const PIVOTA_USER_CONTRIBUTION_SOURCE_RE =
+  /\b(?:pivota|buyer)_(?:user_)?(?:review|question|gallery|media|photo|video|submission)\b|\buser_submission\b|\bcommunity_submission\b/i;
+
+function asPlainObject(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  return value;
+}
+
+function normalizeContributionReviewState(...values) {
+  for (const value of values) {
+    const normalized = asNonEmptyString(value).toLowerCase();
+    if (!normalized) continue;
+    if (PDP_PUBLIC_CONTRIBUTION_APPROVED_STATES.has(normalized)) return 'approved';
+    if (PDP_PUBLIC_CONTRIBUTION_BLOCKED_STATES.has(normalized)) return normalized === 'review_required' ? 'pending' : normalized;
+    return normalized;
+  }
+  return '';
+}
+
+function isPivotaUserContribution(item) {
+  const sourceSignals = [
+    item?.source,
+    item?.source_kind,
+    item?.sourceKind,
+    item?.source_scope,
+    item?.sourceScope,
+    item?.contribution_origin,
+    item?.contributionOrigin,
+    item?.submission_origin,
+    item?.submissionOrigin,
+  ]
+    .map((value) => asNonEmptyString(value))
+    .filter(Boolean)
+    .join(' ');
+  return PIVOTA_USER_CONTRIBUTION_SOURCE_RE.test(sourceSignals);
+}
+
+function isPublicContributionVisible(item) {
+  const source = asPlainObject(item) || {};
+  if (typeof source.public_visible === 'boolean') return source.public_visible;
+  const reviewState = normalizeContributionReviewState(
+    source.content_review_state,
+    source.contentReviewState,
+    source.moderation_status,
+    source.moderationStatus,
+    source.approval_status,
+    source.approvalStatus,
+    source.review_status,
+    source.reviewStatus,
+    source.status,
+  );
+  if (reviewState && PDP_PUBLIC_CONTRIBUTION_APPROVED_STATES.has(reviewState)) return true;
+  if (reviewState && PDP_PUBLIC_CONTRIBUTION_BLOCKED_STATES.has(reviewState)) return false;
+  return !isPivotaUserContribution(source);
+}
+
+function buildContributionPolicy(moduleType) {
+  const acceptedContentTypes =
+    moduleType === 'media_gallery'
+      ? ['photo', 'video']
+      : moduleType === 'reviews_preview'
+        ? ['review', 'question', 'photo', 'video']
+        : ['review'];
+  return {
+    submissions_open: true,
+    publish_visibility: 'employee_approved_only',
+    employee_review_required: true,
+    moderation_owner: 'pivota_employee',
+    accepted_content_types: acceptedContentTypes,
+  };
+}
+
+function buildContributionEntryPoint(product, { label, embedIntentType, contentType } = {}) {
+  const productId = product.product_id || product.id;
+  const merchantId = product.merchant_id || product.merchant?.id || '';
+  if (!productId) return {};
+  return {
+    action_type: 'open_embed',
+    label,
+    target: {
+      embed_intent_type: embedIntentType,
+      resolve_params: {
+        product_id: productId,
+        merchant_id: merchantId,
+        ...(contentType ? { content_type: contentType } : {}),
+      },
+    },
+  };
+}
+
 function uniqueNonEmptyStrings(values) {
   const seen = new Set();
   const out = [];
@@ -1180,6 +1293,7 @@ function buildMediaItems(product, variants) {
     !shouldKeepProductGalleryForSharedVariantImage;
 
   media.forEach((m) => {
+    if (typeof m === 'object' && m && !isPublicContributionVisible(m)) return;
     const url = normalizePdpImageUrl(m.url || m.image_url || m.src);
     if (!url) return;
     const mediaType = m.type || m.media_type || 'image';
@@ -1219,6 +1333,7 @@ function buildMediaItems(product, variants) {
   }
 
   images.forEach((img) => {
+    if (typeof img === 'object' && img && !isPublicContributionVisible(img)) return;
     const url = normalizePdpImageUrl(typeof img === 'string' ? img : img.url || img.image_url);
     if (!url) return;
     pushImageItem(url, {
@@ -2195,6 +2310,7 @@ function normalizeReviewSummaryQuestions(items) {
   const out = [];
   const seen = new Set();
   for (const item of Array.isArray(items) ? items : []) {
+    if (!isPublicContributionVisible(item)) continue;
     const question = normalizeQuestionText(item?.question || item?.title);
     const answer = normalizeAnswerText(item?.answer);
     const replies = item?.replies ?? item?.reply_count;
@@ -2334,11 +2450,12 @@ function buildReviewsPreview(product, options = {}) {
   const scale = Number(summary?.scale || summary?.rating_scale || 5) || 5;
   const rating = Number(summary?.rating || summary?.average_rating || summary?.avg_rating || 0) || 0;
   const reviewCount = Number(summary?.review_count || summary?.count || summary?.total || 0) || 0;
-  const previewItems = Array.isArray(summary?.preview_items)
+  const rawPreviewItems = Array.isArray(summary?.preview_items)
     ? summary.preview_items
     : Array.isArray(summary?.snippets)
       ? summary.snippets
       : [];
+  const previewItems = rawPreviewItems.filter((item) => isPublicContributionVisible(item));
   const explicitQuestions = normalizeReviewSummaryQuestions(summary?.questions);
   const derivedQuestions = deriveReviewQuestionsFromPreviewItems(previewItems);
   const questions = mergeQuestionItems([merchantFaqQuestions, explicitQuestions, derivedQuestions]);
@@ -2516,7 +2633,7 @@ function buildReviewsPreview(product, options = {}) {
             rating_distribution: nestedRatingDistribution,
           }
         : {}),
-      preview_items: nestedPreviewItems.slice(0, 6).map((item, idx) => ({
+      preview_items: nestedPreviewItems.filter((item) => isPublicContributionVisible(item)).slice(0, 6).map((item, idx) => ({
         review_id: String(item.review_id || item.id || idx),
         rating: Number(item.rating || item.score || nestedScale) || nestedScale,
         author_label: item.author_label || item.author || item.user,
@@ -2616,28 +2733,34 @@ function buildReviewsPreview(product, options = {}) {
       scopedSummaries && Object.keys(scopedSummaries).length > 0 ? scopedSummaries : undefined,
     entry_points: {
       open_reviews: {
-        action_type: 'open_embed',
-        label: 'See all reviews',
-        target: {
-          embed_intent_type: 'reviews_read',
-          resolve_params: {
-            product_id: product.product_id || product.id,
-            merchant_id: product.merchant_id || product.merchant?.id || '',
-          },
-        },
+        ...buildContributionEntryPoint(product, {
+          label: 'See all reviews',
+          embedIntentType: 'reviews_read',
+        }),
       },
       write_review: {
-        action_type: 'open_embed',
-        label: 'Write a review',
-        target: {
-          embed_intent_type: 'buyer_review_submission',
-          resolve_params: {
-            product_id: product.product_id || product.id,
-            merchant_id: product.merchant_id || product.merchant?.id || '',
-          },
-        },
+        ...buildContributionEntryPoint(product, {
+          label: 'Write a review',
+          embedIntentType: 'buyer_review_submission',
+          contentType: 'review',
+        }),
+      },
+      ask_question: {
+        ...buildContributionEntryPoint(product, {
+          label: 'Ask a question',
+          embedIntentType: 'buyer_question_submission',
+          contentType: 'question',
+        }),
+      },
+      submit_photo: {
+        ...buildContributionEntryPoint(product, {
+          label: 'Add a photo',
+          embedIntentType: 'buyer_media_submission',
+          contentType: 'photo',
+        }),
       },
     },
+    contribution_policy: buildContributionPolicy('reviews_preview'),
   };
 }
 
@@ -2813,6 +2936,7 @@ function buildPdpPayload(args) {
   const previewItems = Array.isArray(product.line_preview_images)
     ? product.line_preview_images
         .map((item) => {
+          if (typeof item === 'object' && item && !isPublicContributionVisible(item)) return null;
           const url = normalizePdpImageUrl(
             typeof item === 'string' ? item : item?.url || item?.image_url || item?.src,
           );
@@ -2881,6 +3005,19 @@ function buildPdpPayload(args) {
         gallery_scope: typeof product.gallery_scope === 'string' ? product.gallery_scope : undefined,
         preview_scope: typeof product.preview_scope === 'string' ? product.preview_scope : undefined,
         preview_items: previewItems.length ? previewItems : undefined,
+        entry_points: {
+          submit_photo: buildContributionEntryPoint(product, {
+            label: 'Add a photo',
+            embedIntentType: 'buyer_media_submission',
+            contentType: 'photo',
+          }),
+          submit_video: buildContributionEntryPoint(product, {
+            label: 'Add a video',
+            embedIntentType: 'buyer_media_submission',
+            contentType: 'video',
+          }),
+        },
+        contribution_policy: buildContributionPolicy('media_gallery'),
       },
     });
   }

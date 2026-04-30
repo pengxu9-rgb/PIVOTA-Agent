@@ -250,7 +250,203 @@ function normalizeAmount(value) {
   return 0;
 }
 
+function normalizeReviewModerationState(value) {
+  const normalized = normalizeNonEmptyString(value).toLowerCase();
+  if (!normalized) return '';
+  if (['approved', 'approve', 'published', 'public', 'visible', 'live', 'pass'].includes(normalized)) {
+    return 'approved';
+  }
+  if (['pending', 'queued', 'queue', 'draft', 'review_required', 'employee_review_required'].includes(normalized)) {
+    return 'pending';
+  }
+  if (['rejected', 'reject', 'blocked', 'hidden', 'private', 'removed'].includes(normalized)) {
+    return 'rejected';
+  }
+  return normalized;
+}
+
+function normalizeReviewMediaItems(items, limit = 6) {
+  const safeItems = Array.isArray(items) ? items : [];
+  const out = [];
+  const seen = new Set();
+  for (const item of safeItems) {
+    if (!item || typeof item !== 'object') continue;
+    const type = normalizeNonEmptyString(item.type || item.media_type).toLowerCase() || 'image';
+    const url = type === 'image'
+      ? normalizePdpImageUrl(item.url || item.image_url || item.src)
+      : normalizeHttpUrl(item.url || item.src || item.media_url || item.video_url);
+    if (!url) continue;
+    const key = buildPdpImageDedupeKey(url) || `${type}:${url.toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      type,
+      url,
+      ...(normalizePdpImageUrl(item.thumbnail_url || item.thumbnail || item.thumb_url)
+        ? { thumbnail_url: normalizePdpImageUrl(item.thumbnail_url || item.thumbnail || item.thumb_url) }
+        : {}),
+      ...(normalizeNonEmptyString(item.source) ? { source: normalizeNonEmptyString(item.source) } : {}),
+      ...(normalizeNonEmptyString(item.source_kind || item.sourceKind)
+        ? { source_kind: normalizeNonEmptyString(item.source_kind || item.sourceKind) }
+        : {}),
+      ...(normalizeNonEmptyString(item.source_scope || item.sourceScope)
+        ? { source_scope: normalizeNonEmptyString(item.source_scope || item.sourceScope) }
+        : {}),
+      ...(normalizeReviewModerationState(
+        item.content_review_state || item.contentReviewState || item.moderation_status || item.moderationStatus,
+      )
+        ? {
+            content_review_state: normalizeReviewModerationState(
+              item.content_review_state || item.contentReviewState || item.moderation_status || item.moderationStatus,
+            ),
+          }
+        : {}),
+      ...(typeof item.public_visible === 'boolean' ? { public_visible: item.public_visible } : {}),
+    });
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+function normalizeReviewPreviewItems(items, limit = 6) {
+  const safeItems = Array.isArray(items) ? items : [];
+  const out = [];
+  const seen = new Set();
+  for (const [index, item] of safeItems.entries()) {
+    if (!item || typeof item !== 'object') continue;
+    const reviewId = normalizeNonEmptyString(item.review_id || item.id || `review_${index + 1}`);
+    const textSnippet = normalizeNonEmptyString(
+      item.text_snippet || item.textSnippet || item.text || item.body,
+    );
+    const title = normalizeNonEmptyString(item.title || item.headline);
+    const media = normalizeReviewMediaItems(item.media || item.images, 4);
+    if (!reviewId || (!textSnippet && !title && media.length === 0)) continue;
+    const key = reviewId.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const normalized = {
+      review_id: reviewId,
+      ...(Number.isFinite(Number(item.rating || item.score))
+        ? { rating: normalizeAmount(item.rating || item.score) }
+        : {}),
+      ...(normalizeNonEmptyString(item.author_label || item.authorLabel || item.author || item.user)
+        ? { author_label: normalizeNonEmptyString(item.author_label || item.authorLabel || item.author || item.user) }
+        : {}),
+      ...(title ? { title } : {}),
+      ...(textSnippet ? { text_snippet: textSnippet } : {}),
+      ...(media.length ? { media } : {}),
+      ...(normalizeNonEmptyString(item.source) ? { source: normalizeNonEmptyString(item.source) } : {}),
+      ...(normalizeNonEmptyString(item.source_kind || item.sourceKind)
+        ? { source_kind: normalizeNonEmptyString(item.source_kind || item.sourceKind) }
+        : {}),
+      ...(normalizeNonEmptyString(item.source_scope || item.sourceScope)
+        ? { source_scope: normalizeNonEmptyString(item.source_scope || item.sourceScope) }
+        : {}),
+      ...(normalizeReviewModerationState(
+        item.content_review_state ||
+          item.contentReviewState ||
+          item.moderation_status ||
+          item.moderationStatus ||
+          item.approval_status ||
+          item.approvalStatus,
+      )
+        ? {
+            content_review_state: normalizeReviewModerationState(
+              item.content_review_state ||
+                item.contentReviewState ||
+                item.moderation_status ||
+                item.moderationStatus ||
+                item.approval_status ||
+                item.approvalStatus,
+            ),
+          }
+        : {}),
+      ...(typeof item.public_visible === 'boolean' ? { public_visible: item.public_visible } : {}),
+      ...(item.verified_buyer === true ? { verified_buyer: true } : {}),
+    };
+    out.push(normalized);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+function normalizeReviewSummaryQuestions(items, limit = 12) {
+  const safeItems = Array.isArray(items) ? items : [];
+  const out = [];
+  const seen = new Set();
+  for (const item of safeItems) {
+    if (!item || typeof item !== 'object') continue;
+    const question = normalizeNonEmptyString(item.question || item.title);
+    const answer = normalizeNonEmptyString(item.answer || item.body);
+    if (!question) continue;
+    const key = question.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      question,
+      ...(answer ? { answer } : {}),
+      ...(normalizeNonEmptyString(item.source) ? { source: normalizeNonEmptyString(item.source) } : {}),
+      ...(normalizeNonEmptyString(item.source_label || item.sourceLabel)
+        ? { source_label: normalizeNonEmptyString(item.source_label || item.sourceLabel) }
+        : {}),
+      ...(item.support_count != null ? { support_count: normalizeAmount(item.support_count) } : {}),
+      ...(item.replies != null ? { replies: normalizeAmount(item.replies) } : {}),
+      ...(normalizeReviewModerationState(
+        item.content_review_state ||
+          item.contentReviewState ||
+          item.moderation_status ||
+          item.moderationStatus ||
+          item.approval_status ||
+          item.approvalStatus,
+      )
+        ? {
+            content_review_state: normalizeReviewModerationState(
+              item.content_review_state ||
+                item.contentReviewState ||
+                item.moderation_status ||
+                item.moderationStatus ||
+                item.approval_status ||
+                item.approvalStatus,
+            ),
+          }
+        : {}),
+      ...(typeof item.public_visible === 'boolean' ? { public_visible: item.public_visible } : {}),
+    });
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+function normalizeReviewDistributionRows(value) {
+  const rows = Array.isArray(value) ? value : [];
+  const out = [];
+  for (const row of rows) {
+    const stars = normalizeAmount(row?.stars || row?.star || row?.rating || row?.score);
+    if (!Number.isFinite(stars) || stars < 1 || stars > 5) continue;
+    const count = row?.count != null ? normalizeAmount(row.count) : undefined;
+    const percent = row?.percent != null ? Number(row.percent) : row?.ratio != null ? Number(row.ratio) : undefined;
+    out.push({
+      stars,
+      ...(Number.isFinite(count) && count >= 0 ? { count } : {}),
+      ...(Number.isFinite(percent) ? { percent } : {}),
+    });
+  }
+  return out;
+}
+
+function normalizeReviewBrandCard(value) {
+  const source = ensureJsonObject(value);
+  const name = normalizeNonEmptyString(source.name);
+  const subtitle = normalizeNonEmptyString(source.subtitle);
+  if (!name && !subtitle) return null;
+  return {
+    ...(name ? { name } : {}),
+    ...(subtitle ? { subtitle } : {}),
+  };
+}
+
 function normalizeSeedReviewSummary(...values) {
+  const out = {};
   for (const value of values) {
     const source = ensureJsonObject(value);
     const rating = normalizeAmount(
@@ -268,14 +464,38 @@ function normalizeSeedReviewSummary(...values) {
         source.total_reviews ??
         source.review_count_total,
     );
-    if (rating > 0 || reviewCount > 0) {
-      return {
-        ...(rating > 0 ? { rating } : {}),
-        ...(reviewCount > 0 ? { review_count: reviewCount } : {}),
-      };
+    const scale = normalizeAmount(source.scale ?? source.rating_scale);
+    const previewItems = normalizeReviewPreviewItems(source.preview_items || source.snippets);
+    const questions = normalizeReviewSummaryQuestions(source.questions);
+    const brandCard = normalizeReviewBrandCard(source.brand_card);
+    const starDistribution = normalizeReviewDistributionRows(
+      source.star_distribution || source.rating_distribution,
+    );
+
+    if (rating > 0 && out.rating == null) out.rating = rating;
+    if (reviewCount > 0 && out.review_count == null) out.review_count = reviewCount;
+    if (scale > 0 && out.scale == null) out.scale = scale;
+    if (previewItems.length > 0 && !Array.isArray(out.preview_items)) out.preview_items = previewItems;
+    if (questions.length > 0 && !Array.isArray(out.questions)) out.questions = questions;
+    if (brandCard && !out.brand_card) out.brand_card = brandCard;
+    if (starDistribution.length > 0 && !Array.isArray(out.star_distribution)) {
+      out.star_distribution = starDistribution;
+      out.rating_distribution = starDistribution;
+    }
+    if (normalizeNonEmptyString(source.aggregation_scope) && !out.aggregation_scope) {
+      out.aggregation_scope = normalizeNonEmptyString(source.aggregation_scope);
+    }
+    if (normalizeAmount(source.exact_item_review_count) > 0 && out.exact_item_review_count == null) {
+      out.exact_item_review_count = normalizeAmount(source.exact_item_review_count);
+    }
+    if (normalizeAmount(source.product_line_review_count) > 0 && out.product_line_review_count == null) {
+      out.product_line_review_count = normalizeAmount(source.product_line_review_count);
+    }
+    if (normalizeNonEmptyString(source.scope_label) && !out.scope_label) {
+      out.scope_label = normalizeNonEmptyString(source.scope_label);
     }
   }
-  return null;
+  return Object.keys(out).length > 0 ? out : null;
 }
 
 function shouldTreatAsMinorUnitPrice(rawValue, amount, context = {}) {
@@ -2678,6 +2898,7 @@ module.exports = {
   stableExternalProductId,
   ensureJsonObject,
   normalizeSeedAvailability,
+  normalizeSeedReviewSummary,
   availabilityToInStock,
   inferExternalSeedBeautyCategory,
   inferExternalSeedSkincareCategory: inferExternalSeedBeautyCategory,

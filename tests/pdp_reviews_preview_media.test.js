@@ -161,4 +161,117 @@ describe('pdpBuilder reviews preview media', () => {
       }),
     );
   });
+
+  test('filters pending user contributions but keeps approved ones and exposes contribution gates', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'p_contrib_1',
+        merchant_id: 'external_seed',
+        title: 'Contribution Product',
+        vendor: 'Anua',
+        images: [
+          {
+            url: 'https://cdn.example.com/merchant-main.jpg',
+            source_kind: 'external_seed',
+          },
+          {
+            url: 'https://cdn.example.com/pending-user-photo.jpg',
+            source_kind: 'pivota_user_gallery',
+            content_review_state: 'pending',
+          },
+          {
+            url: 'https://cdn.example.com/approved-user-photo.jpg',
+            source_kind: 'pivota_user_gallery',
+            content_review_state: 'approved',
+          },
+        ],
+        review_summary: {
+          scale: 5,
+          rating: 4.8,
+          review_count: 18,
+          preview_items: [
+            {
+              review_id: 'merchant_1',
+              rating: 5,
+              title: 'Merchant review',
+              text_snippet: 'Public merchant review.',
+              source_kind: 'merchant_public_review',
+            },
+            {
+              review_id: 'pending_user_1',
+              rating: 5,
+              title: 'Pending user review',
+              text_snippet: 'Should stay hidden.',
+              source_kind: 'pivota_user_review',
+              content_review_state: 'pending',
+            },
+            {
+              review_id: 'approved_user_1',
+              rating: 5,
+              title: 'Approved user review',
+              text_snippet: 'Approved for public display.',
+              source_kind: 'pivota_user_review',
+              content_review_state: 'approved',
+            },
+          ],
+          questions: [
+            {
+              question: 'Can I use this every day?',
+              answer: 'Yes.',
+              source: 'community',
+              content_review_state: 'approved',
+            },
+            {
+              question: 'Pending question?',
+              answer: 'This should be hidden.',
+              source: 'community',
+              content_review_state: 'pending',
+            },
+          ],
+        },
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+      includeEmptyReviews: true,
+    });
+
+    const mediaModule = payload.modules.find((m) => m?.type === 'media_gallery');
+    const reviewsModule = payload.modules.find((m) => m?.type === 'reviews_preview');
+
+    expect((mediaModule?.data?.items || []).map((item) => item.url)).toEqual([
+      'https://cdn.example.com/merchant-main.jpg',
+      'https://cdn.example.com/approved-user-photo.jpg',
+    ]);
+    expect((reviewsModule?.data?.preview_items || []).map((item) => item.review_id)).toEqual([
+      'merchant_1',
+      'approved_user_1',
+    ]);
+    expect((reviewsModule?.data?.questions || []).map((item) => item.question)).toEqual([
+      'Can I use this every day?',
+    ]);
+    expect(mediaModule?.data?.contribution_policy).toEqual(
+      expect.objectContaining({
+        employee_review_required: true,
+        publish_visibility: 'employee_approved_only',
+      }),
+    );
+    expect(reviewsModule?.data?.contribution_policy).toEqual(
+      expect.objectContaining({
+        employee_review_required: true,
+        publish_visibility: 'employee_approved_only',
+      }),
+    );
+    expect(reviewsModule?.data?.entry_points?.ask_question).toEqual(
+      expect.objectContaining({
+        action_type: 'open_embed',
+        label: 'Ask a question',
+      }),
+    );
+    expect(mediaModule?.data?.entry_points?.submit_photo).toEqual(
+      expect.objectContaining({
+        action_type: 'open_embed',
+        label: 'Add a photo',
+      }),
+    );
+  });
 });

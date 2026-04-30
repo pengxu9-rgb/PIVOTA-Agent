@@ -14,6 +14,7 @@ const {
   normalizeSeedVariants,
   sanitizeSeedVariantDisplayFields,
   normalizeSeedAvailability,
+  normalizeSeedReviewSummary,
   buildExternalSeedProduct,
 } = require('../src/services/externalSeedProducts');
 const { buildExternalSeedRecallDoc } = require('../src/services/externalSeedRecall');
@@ -2993,6 +2994,18 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     },
     fieldQualitySummary: pdpFieldQualitySummary,
   });
+  const nextReviewSummary = normalizeSeedReviewSummary(
+    representativeProduct?.review_summary,
+    representativeProduct?.reviewSummary,
+    representativeProduct?.reviews_summary,
+    representativeProduct?.reviewsSummary,
+    seedData.review_summary,
+    seedData.reviewSummary,
+    snapshot.review_summary,
+    snapshot.reviewSummary,
+    seedData.reviews_summary,
+    snapshot.reviews_summary,
+  );
 
   const nextSnapshot = {
     ...snapshot,
@@ -3022,6 +3035,7 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     ...(nextDescriptionOrigin ? { seed_description_origin: nextDescriptionOrigin } : {}),
     ...(pdpFieldCaptureStatus ? { pdp_field_capture_status: pdpFieldCaptureStatus } : {}),
     ...(pdpFieldQualitySummary ? { pdp_field_quality_summary: pdpFieldQualitySummary } : {}),
+    ...(nextReviewSummary ? { review_summary: nextReviewSummary } : {}),
     pdp_content_asset_v1: nextPdpContentAsset || undefined,
     ...(snapshotQuarantine ? { snapshot_quarantine: snapshotQuarantine } : {}),
     image_url: imageUrl || normalizeNonEmptyString(snapshot.image_url),
@@ -3061,6 +3075,7 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     ...(nextDescriptionOrigin ? { seed_description_origin: nextDescriptionOrigin } : {}),
     ...(pdpFieldCaptureStatus ? { pdp_field_capture_status: pdpFieldCaptureStatus } : {}),
     ...(pdpFieldQualitySummary ? { pdp_field_quality_summary: pdpFieldQualitySummary } : {}),
+    ...(nextReviewSummary ? { review_summary: nextReviewSummary } : {}),
     pdp_content_asset_v1: nextPdpContentAsset || undefined,
     ...(snapshotQuarantine ? { snapshot_quarantine: snapshotQuarantine } : {}),
     ...(imageUrl ? { image_url: imageUrl } : {}),
