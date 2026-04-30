@@ -288,6 +288,15 @@ function extractAssistantText(body) {
   return Array.from(new Set(chunks)).join('\n');
 }
 
+function extractPrimaryAssistantSurfaceText(body) {
+  return firstNonEmpty(
+    getPath(body, 'assistant_message.content'),
+    body && body.assistant_text,
+    body && body.answer,
+    body && body.message,
+  );
+}
+
 function extractCardTypes(body) {
   return Array.isArray(body && body.cards)
     ? body.cards.map((card) => String(card && (card.type || card.card_type) || '').trim()).filter(Boolean)
@@ -451,6 +460,21 @@ function validateResponseSchema(agent, body, parseError) {
   if (!isPlainObject(body)) return { valid: false, reason: 'body_not_object' };
   if (agent === 'aurora_chat') {
     if (!Array.isArray(body.cards)) return { valid: false, reason: 'aurora_cards_missing' };
+    const pivotContractVersion = firstNonEmpty(
+      getPath(body, 'session_patch.meta.pivot_contract_version'),
+      getPath(body, 'meta.pivot_contract_version'),
+      getPath(body, 'metadata.pivot_contract_version'),
+    );
+    const reply = firstNonEmpty(body.reply);
+    const assistantSurface = extractPrimaryAssistantSurfaceText(body);
+    if (
+      pivotContractVersion === 'pivot.agent.v1' &&
+      reply &&
+      assistantSurface &&
+      normalizeText(reply) !== normalizeText(assistantSurface)
+    ) {
+      return { valid: false, reason: 'aurora_reply_surface_mismatch' };
+    }
   }
   if (agent === 'shopping' || agent === 'creator') {
     if (!Array.isArray(body.products) && !Array.isArray(body.items) && !Array.isArray(body.groups)) {
@@ -622,6 +646,7 @@ function summarizeRow({ caseId, stepId, agent, route, query, response, rawFile, 
     schema_error: schema.reason,
     transport_error: response.transport_error,
     assistant_text: extractAssistantText(body),
+    reply: firstNonEmpty(body.reply),
     card_types: extractCardTypes(body),
     follow_up_questions: extractFollowUps(body),
     products,
@@ -1181,6 +1206,7 @@ function compactResults(results) {
       query_source: row.query_source,
       decision_authority: row.decision_authority,
       request_id: row.request_id,
+      reply: row.reply,
       raw_file: row.raw_file,
       product_assessment: row.product_assessment,
       category_check: row.category_check,
@@ -1290,6 +1316,7 @@ async function runBatch(args = parseArgs(process.argv)) {
       ok: row.ok,
       schema_valid: row.schema_valid,
       query: row.query,
+      reply: row.reply,
       product_titles: row.product_titles,
       request_id: row.request_id,
       raw_file: row.raw_file,
@@ -1326,6 +1353,7 @@ module.exports = {
   validateDataset,
   evaluateProductRelevance,
   evaluateRiskGuards,
+  validateResponseSchema,
   computeSummary,
   runBatch,
 };

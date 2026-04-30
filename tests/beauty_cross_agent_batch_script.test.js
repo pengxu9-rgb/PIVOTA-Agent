@@ -48,6 +48,29 @@ describe('beauty cross-agent batch runner', () => {
     }
   });
 
+  test('flags pivot beauty aurora reply surface drift as a schema violation', () => {
+    const { validateResponseSchema } = require('../scripts/run_beauty_cross_agent_batch.cjs');
+    const body = {
+      assistant_text: 'Seattle -> Seoul travel skincare plan: prepare SPF and barrier repair.',
+      assistant_message: {
+        role: 'assistant',
+        content: 'Seattle -> Seoul travel skincare plan: prepare SPF and barrier repair.',
+      },
+      reply: 'I need a bit more context before narrowing products: skin_type.',
+      cards: [{ type: 'travel', payload: { status: 'success' } }],
+      session_patch: {
+        meta: {
+          pivot_contract_version: 'pivot.agent.v1',
+        },
+      },
+    };
+
+    expect(validateResponseSchema('aurora_chat', body, null)).toEqual({
+      valid: false,
+      reason: 'aurora_reply_surface_mismatch',
+    });
+  });
+
   test('writes JSON, markdown, raw responses, and human review CSV against a local fake service', async () => {
     const repoRoot = path.join(__dirname, '..');
     const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'beauty-cross-agent-out-'));
