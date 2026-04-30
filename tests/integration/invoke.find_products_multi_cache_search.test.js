@@ -3738,6 +3738,48 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
                 created_at: now,
               },
               {
+                id: 'seed-kit-cleanser-1',
+                external_product_id: 'ext_kit_cleanser_1',
+                market: 'US',
+                tool: '*',
+                destination_url: 'https://shop.example.com/products/skin-essentials-kit',
+                canonical_url: 'https://shop.example.com/products/skin-essentials-kit',
+                domain: 'shop.example.com',
+                title: 'Skin Essentials Kit',
+                image_url: 'https://cdn.example.com/kit.jpg',
+                price_amount: '44.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Test Beauty',
+                  category: 'cleanser',
+                  description: 'Multi-product skincare kit with a cleanser.',
+                },
+                updated_at: now,
+                created_at: now,
+              },
+              {
+                id: 'seed-brush-cleanser-1',
+                external_product_id: 'ext_brush_cleanser_1',
+                market: 'US',
+                tool: '*',
+                destination_url: 'https://shop.example.com/products/brush-cleanser-trio',
+                canonical_url: 'https://shop.example.com/products/brush-cleanser-trio',
+                domain: 'shop.example.com',
+                title: 'Brush Cleanser Trio',
+                image_url: 'https://cdn.example.com/brush-cleanser.jpg',
+                price_amount: '24.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Test Beauty',
+                  category: 'cleanser',
+                  description: 'Brush cleanser for cleaning makeup brushes.',
+                },
+                updated_at: now,
+                created_at: now,
+              },
+              {
                 id: 'seed-hyaluronic-serum-1',
                 external_product_id: 'ext_hyaluronic_serum_1',
                 market: 'US',
@@ -3800,6 +3842,8 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(ids).toContain('ext_cleanser_1');
     expect(ids).not.toContain('ext_mud_pack_1');
     expect(ids).not.toContain('ext_routine_cleanser_1');
+    expect(ids).not.toContain('ext_kit_cleanser_1');
+    expect(ids).not.toContain('ext_brush_cleanser_1');
     expect(ids).not.toContain('ext_hyaluronic_serum_1');
     expect(upstreamSearch.isDone()).toBe(false);
   });
