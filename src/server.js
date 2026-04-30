@@ -370,6 +370,10 @@ const PIVOT_BEAUTY_PARALLEL_SCOPE_RECALL_ENABLED = parseBooleanEnv(
   process.env.PIVOT_BEAUTY_PARALLEL_SCOPE_RECALL_ENABLED,
   true,
 );
+const PIVOT_BEAUTY_LEGACY_TOOL_SCOPE_RECALL_ENABLED = parseBooleanEnv(
+  process.env.PIVOT_BEAUTY_LEGACY_TOOL_SCOPE_RECALL_ENABLED,
+  false,
+);
 const REVIEWS_API_BASE = (
   process.env.REVIEWS_API_BASE ||
   process.env.REVIEWS_BACKEND_URL ||
@@ -9890,9 +9894,11 @@ async function queryBeautyExternalSeedRowsFast({
   const categoryTerms = buildBeautyExternalSeedCategoryTerms(intent);
   const perCategoryRowLimit = Math.max(3, Math.min(8, Math.ceil(perScopeRowLimit / Math.max(1, categoryTerms.length))));
   const recallPatterns = buildBeautyExternalSeedRecallPatterns({ queryText, intent });
-  const toolScopes = toolScope === 'creator_preferred'
-    ? ['creator_agents', '*', '']
-    : ['creator_agents', '*', 'shopping_agents', ''];
+  const primaryToolScopes = ['creator_agents', '*'];
+  const legacyToolScopes = toolScope === 'creator_preferred' ? [''] : ['shopping_agents', ''];
+  const toolScopes = PIVOT_BEAUTY_LEGACY_TOOL_SCOPE_RECALL_ENABLED
+    ? primaryToolScopes.concat(legacyToolScopes)
+    : primaryToolScopes;
 
   const seen = new Set();
   const rawProducts = [];
@@ -9917,8 +9923,38 @@ async function queryBeautyExternalSeedRowsFast({
   }
   const runScopeQuery = async (tool) => {
     try {
-      const result = await queryBeautyExternalSeedRowsWithTimeout(
-        `
+      const isSingleCategory = categoryTerms.length === 1;
+      const sql = isSingleCategory
+        ? `
+        SELECT
+          id,
+          external_product_id,
+          market,
+          tool,
+          destination_url,
+          canonical_url,
+          domain,
+          title,
+          image_url,
+          price_amount,
+          price_currency,
+          availability,
+          seed_data,
+          updated_at,
+          created_at
+        FROM external_product_seeds
+        WHERE status = 'active'
+          AND attached_product_key IS NULL
+          AND market = $1
+          AND tool = $2
+          AND ${categoryAuthoritySql} = $3
+          ${inStockOnly ? `AND coalesce(lower(availability), '') NOT IN ('out of stock', 'out_of_stock', 'outofstock', 'oos')` : ''}
+        ORDER BY
+          updated_at DESC NULLS LAST,
+          created_at DESC NULLS LAST
+        LIMIT $4
+      `
+        : `
         WITH ranked AS (
         SELECT
           id,
@@ -9972,8 +10008,13 @@ async function queryBeautyExternalSeedRowsFast({
           updated_at DESC NULLS LAST,
           created_at DESC NULLS LAST
         LIMIT $5
-      `,
-        [safeMarket, categoryTerms, tool, perCategoryRowLimit, perScopeRowLimit],
+      `;
+      const params = isSingleCategory
+        ? [safeMarket, tool, categoryTerms[0], perScopeRowLimit]
+        : [safeMarket, categoryTerms, tool, perCategoryRowLimit, perScopeRowLimit];
+      const result = await queryBeautyExternalSeedRowsWithTimeout(
+        sql,
+        params,
         1200,
       );
       const rows = Array.isArray(result?.rows) ? result.rows : [];
@@ -9987,6 +10028,8 @@ async function queryBeautyExternalSeedRowsFast({
           recall_pattern_count: recallPatterns.length,
           per_category_row_limit: perCategoryRowLimit,
           tool_scope: tool || '(empty)',
+          legacy_tool_scope_recall: PIVOT_BEAUTY_LEGACY_TOOL_SCOPE_RECALL_ENABLED,
+          single_category_indexed_query: isSingleCategory,
           parallel_scope_recall: PIVOT_BEAUTY_PARALLEL_SCOPE_RECALL_ENABLED,
         },
       };
@@ -10000,6 +10043,8 @@ async function queryBeautyExternalSeedRowsFast({
           category_terms: categoryTerms,
           recall_pattern_count: recallPatterns.length,
           tool_scope: tool || '(empty)',
+          legacy_tool_scope_recall: PIVOT_BEAUTY_LEGACY_TOOL_SCOPE_RECALL_ENABLED,
+          single_category_indexed_query: categoryTerms.length === 1,
           parallel_scope_recall: PIVOT_BEAUTY_PARALLEL_SCOPE_RECALL_ENABLED,
           error_code: String(err?.code || err?.name || 'query_failed').slice(0, 80),
           timeout: String(err?.code || '').trim() === '57014' || /timeout|cancel/i.test(String(err?.message || '')),
