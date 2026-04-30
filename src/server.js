@@ -10533,6 +10533,14 @@ function isBeautyProductContraindicatedForQuery(product, queryText = '', intent 
   const families = new Set(Array.isArray(profile.families) ? profile.families : []);
   const displayText = buildBeautyProductDisplayText(product);
   const primarySurfaceText = buildBeautyProductPrimarySurfaceText(product);
+  const titleSurfaceText = normalizeSearchTextForMatch([
+    product?.title,
+    product?.name,
+    product?.product_name,
+    product?.display_name,
+    product?.category,
+    product?.product_type,
+  ].filter(Boolean).join(' '));
   const safetyText = buildBeautyProductSafetyText(product, text);
   const normalizedQuery = normalizeSearchTextForMatch(queryText);
   const calmFaceSkincareQuery =
@@ -10550,9 +10558,18 @@ function isBeautyProductContraindicatedForQuery(product, queryText = '', intent 
   const queryRequestsBody = /\b(body|hand|hands|hair|scalp|lip|lips)\b|身体|身體|护手|護手|头发|頭髮|头皮|頭皮|唇/i.test(normalizedQuery);
   const queryRequestsOil = /\b(face\s*oil|facial\s*oil|dry\s*oil|beauty\s*oil|huile|oil)\b|面油|护肤油|護膚油|美容油/i.test(normalizedQuery);
   const queryRequestsAntiAging = /\b(anti[-\s]?aging|anti[-\s]?ageing|firming|wrinkle|lift|lifting|mature\s*skin)\b|抗老|抗皱|抗皺|紧致|緊緻|提拉/i.test(normalizedQuery);
-  const productLooksLikeOilSurface = /\b(huile|face\s*oil|facial\s*oil|dry\s*oil|beauty\s*oil)\b|面油|护肤油|護膚油|美容油/i.test(displayText);
+  const queryRequestsMask = /\b(mask|mud\s*pack|clay\s*pack|wash[-\s]?off\s*pack)\b|面膜|泥膜/i.test(normalizedQuery);
+  const queryRequestsRoutineSet = /\b(routine|regimen|set|kit|bundle|capsule|starter\s*kit)\b|套装|套組|套組|套组|组合|組合|护理包|護理包/i.test(normalizedQuery);
+  const queryRequestsTreatmentSerum =
+    families.has('serum') ||
+    /\b(serum|essence|ampoule|suspension|treatment|azelaic|hyaluronic\s+acid|niacinamide|tranexamic|vitamin\s*c)\b|精华|精華|安瓶|壬二酸|玻尿酸|透明质酸|煙酰胺|烟酰胺|传明酸|傳明酸/i.test(normalizedQuery);
+  const productLooksLikeOilSurface = /\b(huile|face\s*oil|facial\s*oil|dry\s*oil|beauty\s*oil)\b|面油|护肤油|護膚油|美容油/i.test(titleSurfaceText);
   const productLooksLikeAntiAging =
     /\b(anti[-\s]?aging|anti[-\s]?ageing|firming|wrinkle|wrinkles|lift|lifting|merveillance|nuxuriance|global\s+anti[-\s]?aging|exceptional\s+day\s*&?\s*night)\b|抗老|抗皱|抗皺|紧致|緊緻|提拉/i.test(safetyText);
+  const productLooksLikeMaskPack = /\b(mud\s*pack|clay\s*pack|wash[-\s]?off\s*pack|sleeping\s*mask|sheet\s*mask|mask)\b|面膜|泥膜/i.test(titleSurfaceText);
+  const productLooksLikeRoutineSet = /\b(am\/pm\s+routine|cult\s+skincare\s+routine|routine|regimen|starter\s*kit|set|bundle|collection|capsule)\b|套装|套組|套组|组合|組合|护理包|護理包/i.test(titleSurfaceText);
+  const productLooksLikeTreatmentSerum =
+    /\b(serum|essence|ampoule|suspension|treatment|azelaic\s+acid|hyaluronic\s+acid(?:\s+\d+%?)?|niacinamide|tranexamic\s+acid)\b|精华|精華|安瓶|壬二酸|玻尿酸|透明质酸|煙酰胺|烟酰胺|传明酸|傳明酸/i.test(titleSurfaceText);
   const fragranceFreeClaim = /\b(fragrance[-\s]?free|unscented|no\s+fragrance|without\s+fragrance)\b|无香精|無香精|不含香精/i.test(safetyText);
   const fragranceHit =
     /\b(parfum\/fragrance|parfum|perfume|fragrance|scented|linalool|limonene|citronellol|geraniol|coumarin|hydroxycitronellal|alpha[-\s]?isomethyl\s+ionone|rose\s+ketones)\b|香精|香料/i.test(safetyText);
@@ -10616,6 +10633,20 @@ function isBeautyProductContraindicatedForQuery(product, queryText = '', intent 
     return true;
   }
   if (barrierFirstQuery && productLooksLikeAntiAging && !queryRequestsAntiAging) {
+    return true;
+  }
+  if (calmFaceSkincareQuery && productLooksLikeRoutineSet && !queryRequestsRoutineSet) {
+    return true;
+  }
+  if (calmFaceSkincareQuery && productLooksLikeMaskPack && !queryRequestsMask) {
+    return true;
+  }
+  if (
+    calmFaceSkincareQuery &&
+    (families.has('cleanser') || families.has('moisturizer') || families.has('sunscreen')) &&
+    productLooksLikeTreatmentSerum &&
+    !queryRequestsTreatmentSerum
+  ) {
     return true;
   }
   if (
