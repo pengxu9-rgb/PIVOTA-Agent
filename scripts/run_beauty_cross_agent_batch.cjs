@@ -140,6 +140,13 @@ function containsTerm(text, term, { blocked = false } = {}) {
   if (!rawTerm) return false;
   let source = String(text || '');
   if (blocked) source = removeFreePhrase(source, rawTerm);
+  if (blocked && normalizeText(rawTerm) === 'acid') {
+    const normalized = normalizeText(source);
+    return (
+      /\b(aha|bha|pha|glycolic acid|lactic acid|mandelic acid|salicylic acid|azelaic acid|peeling solution|acid toner|acid serum|acid pads?|exfoliating acid)\b/i.test(normalized) ||
+      /果酸|水杨酸|水楊酸|杏仁酸|刷酸|酸类焕肤|酸類煥膚/.test(source)
+    );
+  }
   return normalizeText(source).includes(normalizeText(rawTerm));
 }
 

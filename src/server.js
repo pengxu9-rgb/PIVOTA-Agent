@@ -15,7 +15,7 @@ const { AsyncLocalStorage } = require('async_hooks');
 const { InvokeRequestSchema, OperationEnum } = require('./schema');
 const logger = require('./logger');
 const { runMigrations } = require('./db/migrate');
-const { query } = require('./db');
+const { query, withClient } = require('./db');
 const {
   parseBooleanEnv,
   parseSecretList,
@@ -9752,6 +9752,19 @@ function buildBeautyExternalSeedRecallPatterns({ queryText = '', intent = null }
   return patterns.slice(0, 14);
 }
 
+async function queryBeautyExternalSeedRowsWithTimeout(sql, params, timeoutMs = 1200) {
+  const boundedTimeoutMs = Math.max(250, Math.min(3000, Math.trunc(Number(timeoutMs) || 1200)));
+  if (typeof withClient !== 'function') return query(sql, params);
+  return withClient(async (client) => {
+    try {
+      await client.query(`SET statement_timeout = ${boundedTimeoutMs}`);
+      return await client.query(sql, params);
+    } finally {
+      await client.query('SET statement_timeout = 0').catch(() => {});
+    }
+  });
+}
+
 async function queryBeautyExternalSeedRowsFast({
   market,
   queryText,
@@ -9770,14 +9783,16 @@ async function queryBeautyExternalSeedRowsFast({
   }
 
   const safeMarket = String(market || 'US').trim().toUpperCase() || 'US';
-  const safeLimit = Math.max(1, Math.min(240, Number(limit || 80) || 80));
+  const safeLimit = Math.max(1, Math.min(60, Number(limit || 24) || 24));
+  const perScopeRowLimit = Math.max(12, Math.min(48, safeLimit * 4));
   const categoryTerms = buildBeautyExternalSeedCategoryTerms(intent);
   const recallPatterns = buildBeautyExternalSeedRecallPatterns({ queryText, intent });
   const toolScopes = toolScope === 'creator_preferred'
     ? ['creator_agents', '*', '']
     : ['creator_agents', '*', 'shopping_agents', ''];
 
-  const rows = [];
+  const seen = new Set();
+  const rawProducts = [];
   const variantResults = [];
   const categoryAuthoritySql = `lower(coalesce(
     seed_data->'derived'->'recall'->>'category',
@@ -9790,8 +9805,7 @@ async function queryBeautyExternalSeedRowsFast({
     ''
   ))`;
   for (const tool of toolScopes) {
-    if (rows.length >= safeLimit) break;
-    const remainingLimit = Math.max(1, safeLimit - rows.length);
+    if (rawProducts.length >= safeLimit) break;
     const filters = [
       `${categoryAuthoritySql} = ANY($2::text[])`,
     ];
@@ -9800,8 +9814,10 @@ async function queryBeautyExternalSeedRowsFast({
         `coalesce(lower(availability), '') NOT IN ('out of stock', 'out_of_stock', 'outofstock', 'oos')`,
       );
     }
-    const result = await query(
-      `
+    let result;
+    try {
+      result = await queryBeautyExternalSeedRowsWithTimeout(
+        `
         SELECT
           id,
           external_product_id,
@@ -9827,10 +9843,22 @@ async function queryBeautyExternalSeedRowsFast({
         ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
         LIMIT $4
       `,
-      [safeMarket, categoryTerms, tool, remainingLimit],
-    );
+        [safeMarket, categoryTerms, tool, perScopeRowLimit],
+        1200,
+      );
+    } catch (err) {
+      variantResults.push({
+        query: String(queryText || '').trim(),
+        row_count: 0,
+        category_terms: categoryTerms,
+        recall_pattern_count: recallPatterns.length,
+        tool_scope: tool || '(empty)',
+        error_code: String(err?.code || err?.name || 'query_failed').slice(0, 80),
+        timeout: String(err?.code || '').trim() === '57014' || /timeout|cancel/i.test(String(err?.message || '')),
+      });
+      continue;
+    }
     const nextRows = Array.isArray(result?.rows) ? result.rows : [];
-    rows.push(...nextRows);
     variantResults.push({
       query: String(queryText || '').trim(),
       row_count: nextRows.length,
@@ -9838,20 +9866,26 @@ async function queryBeautyExternalSeedRowsFast({
       recall_pattern_count: recallPatterns.length,
       tool_scope: tool || '(empty)',
     });
-  }
-
-  const seen = new Set();
-  const rawProducts = [];
-  for (const row of rows) {
-    const product = buildExternalSeedProduct(row);
-    if (!product) continue;
-    product.market = row.market || safeMarket;
-    product.tool = row.tool || null;
-    product.external_seed_id = product.external_seed_id || row.id || null;
-    const key = buildSearchProductKey(product);
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
-    rawProducts.push(product);
+    for (const row of nextRows) {
+      if (rawProducts.length >= safeLimit) break;
+      const product = buildExternalSeedProduct(row);
+      if (!product) continue;
+      product.market = row.market || safeMarket;
+      product.tool = row.tool || null;
+      product.external_seed_id = product.external_seed_id || row.id || null;
+      if (isBeautyProductContraindicatedForQuery(product, queryText, intent)) continue;
+      const intentFamilies = Array.isArray(intent?.families) ? intent.families : [];
+      if (
+        intentFamilies.length > 0 &&
+        !intentFamilies.some((family) => beautyProductMatchesFamily(product, family))
+      ) {
+        continue;
+      }
+      const key = buildSearchProductKey(product);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      rawProducts.push(product);
+    }
   }
 
   return {
@@ -10150,9 +10184,20 @@ function beautyProductMatchesFamily(product, family) {
   if (!text) return false;
   const normalizedFamily = String(family || '').trim().toLowerCase();
   if (normalizedFamily === 'sunscreen') {
-    const sunscreenText = text.replace(/\b(without|no|not|non)\s+(spf|sunscreen|sunblock)\b/gi, ' ');
-    return /\b(spf|sunscreen|sunblock|broad\s*spectrum|uv|uva|uvb|pa\+{1,4}|anthelios|mineral\s*screen)\b/i.test(sunscreenText) ||
-      /防晒|防曬|日焼け止め/.test(text);
+    const visibleText = normalizeSearchTextForMatch([
+      product?.title,
+      product?.name,
+      product?.product_name,
+      product?.display_name,
+      product?.description,
+      product?.summary,
+      product?.canonical_url,
+      product?.destination_url,
+      product?.url,
+    ].filter(Boolean).join(' '));
+    const sunscreenText = visibleText.replace(/\b(without|no|not|non)\s+(spf|sunscreen|sunblock)\b/gi, ' ');
+    return /\b(spf|sunscreen|sunblock|broad\s*spectrum|uva|uvb|pa\+{1,4}|anthelios|mineral\s*screen)\b/i.test(sunscreenText) ||
+      /防晒|防曬|日焼け止め/.test(visibleText);
   }
   if (normalizedFamily === 'cleanser') {
     return /\b(cleanser|cleansing|face\s*wash|facial\s*wash|foaming\s*wash|wash\s*gel|cleansing\s*gel|cleansing\s*milk)\b/i.test(text) ||
@@ -10174,14 +10219,22 @@ function isBeautyProductContraindicatedForQuery(product, queryText = '', intent 
   if (!text) return false;
   const profile = intent || inferBeautyMainlineIntent(queryText);
   const safety = new Set(Array.isArray(profile.safety) ? profile.safety : []);
+  const families = new Set(Array.isArray(profile.families) ? profile.families : []);
+  const retinoidHit =
+    /\b(bio[-\s]?retinol|retinol|retinal|retinoid|retinyl|tretinoin|adapalene|hydroxypinacolone|hpr)\b/i.test(text) ||
+    /视黄醇|視黃醇|维a醇|維a醇|维甲酸|維甲酸|a醇/.test(text);
 
   if (safety.has('avoid_retinoids')) {
-    const retinoidHit =
-      /\b(retinol|retinal|retinoid|retinyl|tretinoin|adapalene|hydroxypinacolone|hpr)\b/i.test(text) ||
-      /视黄醇|視黃醇|维a醇|維a醇|维甲酸|維甲酸|a醇/.test(text);
     if (retinoidHit && !/\b(retinol[-\s]?free|retinoid[-\s]?free|no\s+retinol|without\s+retinol)\b/i.test(text)) {
       return true;
     }
+  }
+  if (
+    retinoidHit &&
+    (families.has('sunscreen') || families.has('cleanser') || families.has('moisturizer')) &&
+    !/\b(retinol[-\s]?free|retinoid[-\s]?free|no\s+retinol|without\s+retinol)\b/i.test(text)
+  ) {
+    return true;
   }
   if (safety.has('avoid_cooling_strong_cleanser')) {
     if (
@@ -10200,6 +10253,28 @@ function isBeautyProductContraindicatedForQuery(product, queryText = '', intent 
     }
   }
   return false;
+}
+
+function compactBeautyMainlineProductForResponse(product, intent = null) {
+  if (!product || typeof product !== 'object' || Array.isArray(product)) return product;
+  const {
+    seed_data: _seedData,
+    external_seed_recall: _externalSeedRecall,
+    extraction_debug: _extractionDebug,
+    debug: _debug,
+    raw: _raw,
+    ...rest
+  } = product;
+  const next = { ...rest };
+  if (Array.isArray(next.images) && next.images.length > 4) next.images = next.images.slice(0, 4);
+  if (Array.isArray(next.image_urls) && next.image_urls.length > 4) next.image_urls = next.image_urls.slice(0, 4);
+  if (typeof next.description === 'string' && next.description.length > 520) {
+    next.description = `${next.description.slice(0, 517).trimEnd()}...`;
+  }
+  if (intent && Array.isArray(intent.families) && intent.families.length === 1) {
+    next.product_class = intent.families[0];
+  }
+  return next;
 }
 
 function filterBeautyMainlineProductsByQuery(products = [], queryText = '', options = {}) {
@@ -10362,7 +10437,7 @@ async function searchBeautyExternalSeedProductsMainline({
       .trim()
       .toUpperCase() || 'US';
   const retrievalQueries = buildBeautyMainlineRetrievalQueries(queryText, beautyIntent);
-  const perQueryLimit = Math.max(36, Math.min(160, safeLimit * 8));
+  const perQueryLimit = Math.max(18, Math.min(48, safeLimit * 4));
   const creatorScopedRows = await queryBeautyExternalSeedRowsFast({
     market,
     queryText,
@@ -10413,7 +10488,7 @@ async function searchBeautyExternalSeedProductsMainline({
       if (right.score !== left.score) return right.score - left.score;
       return String(left.product?.title || '').localeCompare(String(right.product?.title || ''));
     });
-  const rankedProducts = scored.map((row) => row.product);
+  const rankedProducts = scored.map((row) => compactBeautyMainlineProductForResponse(row.product, beautyIntent));
   const pagedProducts = rankedProducts.slice(safeOffset, safeOffset + safeLimit);
   const querySource = creatorScoped
     ? 'agent_products_creator_beauty_external_seed_mainline'
@@ -22326,6 +22401,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     if (operation !== 'find_products_multi') return body;
     if (!body || typeof body !== 'object' || Array.isArray(body)) return body;
     if (body.beauty_expert_v1 && typeof body.beauty_expert_v1 === 'object') return body;
+    const querySource = String(body.metadata?.query_source || body.meta?.query_source || '').trim().toLowerCase();
+    if (
+      PIVOT_BEAUTY_CONTRACT_V1_ENABLED &&
+      /beauty_external_seed_mainline|beauty_discovery_mainline/.test(querySource)
+    ) {
+      return body;
+    }
     try {
       const { attachBeautyExpertV1ToResponse } = require('./modules/orchestration/aurora_beauty/beautyExpertV1');
       return attachBeautyExpertV1ToResponse(body, buildInvokeBeautyExpertAttachOptions());
@@ -26235,6 +26317,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         !strictCommerceFindProductsMulti &&
         queryText.length > 0 &&
         process.env.DATABASE_URL &&
+        isPivotBeautyContractInvokeRequest({ operation, req }) &&
         beautyMainlineIntentForDirect.beautyLike &&
         !hasMerchantScope;
       if (creatorBeautyMainlineDirectEligible) {
