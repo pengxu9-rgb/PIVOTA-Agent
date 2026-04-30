@@ -10725,6 +10725,42 @@ function hasBeautyIngredientIntentSignal(queryText) {
   );
 }
 
+function shouldPreserveIngredientDirectForPivotBeautyContract(queryText, ingredientIntentIds = []) {
+  const normalized = normalizeSearchTextForMatch(queryText);
+  const raw = String(queryText || '');
+  const intents = new Set(
+    (Array.isArray(ingredientIntentIds) ? ingredientIntentIds : [])
+      .map((value) => String(value || '').trim().toLowerCase())
+      .filter(Boolean),
+  );
+  if (!normalized || intents.size === 0) return false;
+
+  const hasRetinoidIntent = ['retinol', 'retinal', 'retinoid'].some((value) => intents.has(value));
+  if (
+    hasRetinoidIntent &&
+    (
+      /\b(pregnan\w*|ttc|trying\s*to\s*conceive|retinol[-\s]?free|retinoid[-\s]?free|no\s+retinol|without\s+retinol|avoid\s+retinol|avoid\s+retinoids?)\b/i.test(raw) ||
+      /备孕|備孕|怀孕|懷孕|孕期|不用视黄醇|不用視黃醇|避开视黄醇|避開視黃醇/.test(raw)
+    )
+  ) {
+    return false;
+  }
+
+  const acidIntents = new Set(['salicylic_acid', 'glycolic_acid', 'lactic_acid', 'mandelic_acid']);
+  const hasAcidIntent = Array.from(intents).some((value) => acidIntents.has(value));
+  if (
+    hasAcidIntent &&
+    (
+      /\b(barrier|damaged\s+barrier|barrier\s+damage|over[-\s]?exfoliat|sensiti[sz]ed|stinging|redness|peeling|avoid\s+acid|no\s+acid|acid[-\s]?free)\b/i.test(raw) ||
+      /屏障|刺痛|泛红|泛紅|脱皮|脫皮|刷酸过度|刷酸過度|不用酸|避开酸|避開酸/.test(raw)
+    )
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
 function buildBeautyIngredientIntentTokens(queryText, queryTokens = []) {
   const normalized = normalizeSearchTextForMatch(queryText);
   const out = new Set();
@@ -26078,7 +26114,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             .filter(Boolean)
         : [];
       const pivotBeautyContractInvoke = isPivotBeautyContractInvokeRequest({ operation, req });
-      if (strictCommerceFindProductsMulti && ingredientIntentIds.length > 0 && !pivotBeautyContractInvoke) {
+      const preserveIngredientDirectForPivotBeautyContract =
+        pivotBeautyContractInvoke &&
+        shouldPreserveIngredientDirectForPivotBeautyContract(queryText, ingredientIntentIds);
+      if (
+        strictCommerceFindProductsMulti &&
+        ingredientIntentIds.length > 0 &&
+        (!pivotBeautyContractInvoke || preserveIngredientDirectForPivotBeautyContract)
+      ) {
         const safePage = Math.max(1, Number(search.page || 1) || 1);
         const safeLimit = Math.min(
           Math.max(1, Number(search.limit || search.page_size || 20) || 20),
