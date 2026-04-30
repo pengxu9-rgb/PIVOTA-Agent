@@ -3427,7 +3427,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
                 destination_url: 'https://shop.example.com/products/niacinamide-5-brightening-serum',
                 canonical_url: 'https://shop.example.com/products/niacinamide-5-brightening-serum',
                 domain: 'shop.example.com',
-                title: 'Niacinamide 5% Brightening Serum',
+                title: 'Niacinamide 5% Face and Body Emulsion',
                 image_url: 'https://cdn.example.com/niacinamide-5.jpg',
                 price_amount: '14.00',
                 price_currency: 'USD',
@@ -3435,7 +3435,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
                 seed_data: {
                   brand: 'Test Beauty',
                   category: 'serum',
-                  description: 'Gentle brightening serum for sensitive skin.',
+                  description: 'Niacinamide emulsion for face and body.',
                 },
                 updated_at: now,
                 created_at: now,
