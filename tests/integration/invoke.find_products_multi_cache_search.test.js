@@ -3441,6 +3441,27 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
                 created_at: now,
               },
               {
+                id: 'seed-niacinamide-10-1',
+                external_product_id: 'ext_niacinamide_10_1',
+                market: 'US',
+                tool: '*',
+                destination_url: 'https://shop.example.com/products/niacinamide-10-zinc-serum',
+                canonical_url: 'https://shop.example.com/products/niacinamide-10-zinc-serum',
+                domain: 'shop.example.com',
+                title: 'Niacinamide 10% + Zinc 1%',
+                image_url: 'https://cdn.example.com/niacinamide-10.jpg',
+                price_amount: '8.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Test Beauty',
+                  category: 'serum',
+                  description: 'High-strength niacinamide serum.',
+                },
+                updated_at: now,
+                created_at: now,
+              },
+              {
                 id: 'seed-azelaic-1',
                 external_product_id: 'ext_azelaic_brightening_1',
                 market: 'US',
@@ -3543,7 +3564,9 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(resp.body.metadata?.query_source).toBe('agent_products_beauty_external_seed_mainline');
     const ids = resp.body.products.map((product) => product.product_id);
     expect(ids).toContain('ext_niacinamide_5_1');
+    expect(ids).toContain('ext_niacinamide_10_1');
     expect(ids).toContain('ext_azelaic_brightening_1');
+    expect(ids.indexOf('ext_niacinamide_5_1')).toBeLessThan(ids.indexOf('ext_niacinamide_10_1'));
     expect(ids).not.toContain('ext_rose_trio_1');
     expect(ids).not.toContain('ext_volufiline_1');
     expect(upstreamSearch.isDone()).toBe(false);
