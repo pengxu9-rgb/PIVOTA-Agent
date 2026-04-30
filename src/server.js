@@ -10236,6 +10236,13 @@ function isBeautyProductContraindicatedForQuery(product, queryText = '', intent 
   ) {
     return true;
   }
+  if (
+    retinoidHit &&
+    /\b(sensitive|sensiti[sz]ed|gentle|brightening|fragrance[-\s]?free|pregnan\w*|trying\s*to\s*conceive|ttc)\b|敏感|温和|溫和|提亮|备孕|備孕|怀孕|懷孕/i.test(String(queryText || '')) &&
+    !/\b(retinol[-\s]?free|retinoid[-\s]?free|no\s+retinol|without\s+retinol)\b/i.test(text)
+  ) {
+    return true;
+  }
   if (safety.has('avoid_cooling_strong_cleanser')) {
     if (
       /\b(menthol|mint|peppermint|eucalyptus|cooling|scrub|polish|deep\s*clean|deep\s*cleansing|purifying\s*scrub|exfoliating\s*cleanser)\b/i.test(text) ||
@@ -25929,7 +25936,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             .map((value) => String(value || '').trim().toLowerCase())
             .filter(Boolean)
         : [];
-      if (strictCommerceFindProductsMulti && ingredientIntentIds.length > 0) {
+      const pivotBeautyContractInvoke = isPivotBeautyContractInvokeRequest({ operation, req });
+      if (strictCommerceFindProductsMulti && ingredientIntentIds.length > 0 && !pivotBeautyContractInvoke) {
         const safePage = Math.max(1, Number(search.page || 1) || 1);
         const safeLimit = Math.min(
           Math.max(1, Number(search.limit || search.page_size || 20) || 20),
