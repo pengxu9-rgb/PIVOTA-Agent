@@ -147,3 +147,52 @@ test('/v1/product/analyze: main-path exception returns diagnosable degraded prod
   assert.equal(card.payload?.assessment?.verdict_level, 'high_risk');
   assert.ok((card.payload?.evidence?.science?.risk_notes || []).includes('sensitive_vitamin_c_irritation_risk'));
 });
+
+test('/v1/product/analyze: dry_sensitive vitamin C payload returns explicit high-risk fit verdict', async () => {
+  const app = express();
+  app.use(express.json({ limit: '1mb' }));
+  const logger = {
+    info() {},
+    warn() {},
+    error() {},
+    debug() {},
+  };
+  mountAuroraBffRoutes(app, { logger });
+
+  const resp = await invokeRoute(app, 'POST', '/v1/product/analyze', {
+    headers: { 'X-Aurora-UID': 'test_uid_pa_vitc_sensitive', 'X-Trace-ID': 't', 'X-Brief-ID': 'b', 'X-Lang': 'CN' },
+    body: {
+      name: '15% L-AA Vitamin C Serum with Alcohol and Fragrance',
+      product: {
+        name: '15% L-AA Vitamin C Serum with Alcohol and Fragrance',
+        category: 'serum',
+        ingredients: ['L-Ascorbic Acid 15%', 'Alcohol Denat.', 'Fragrance'],
+      },
+      session: {
+        profile: {
+          skinType: 'dry_sensitive',
+          sensitivity: 'high',
+          barrierStatus: 'fragile',
+        },
+      },
+      profile_context: {
+        skinType: 'dry_sensitive',
+        sensitivity: 'high',
+        barrierStatus: 'fragile',
+      },
+    },
+  });
+
+  assert.equal(resp.status, 200);
+  const assistant = String(resp.body?.assistant_message?.content || '');
+  assert.match(assistant, /15% L-AA|酒精|香精/);
+  assert.match(assistant, /刺激|刺痛|泛红/);
+  assert.match(assistant, /低浓度|温和|局部测试/);
+
+  const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+  const card = cards.find((item) => item && item.type === 'product_analysis');
+  assert.ok(card);
+  assert.equal(card.payload?.assessment?.verdict_level, 'high_risk');
+  assert.ok((card.payload?.evidence?.science?.risk_notes || []).includes('sensitive_vitamin_c_irritation_risk'));
+  assert.ok((resp.body?.session_patch?.meta?.pivot_product_fit_context?.safety_flags || []).includes('sensitive_vitamin_c_irritation'));
+});
