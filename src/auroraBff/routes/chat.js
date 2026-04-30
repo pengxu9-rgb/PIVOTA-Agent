@@ -1637,7 +1637,9 @@ function buildBeautyLowBudgetRoutineSkillResponse(req) {
   if (!isLowBudgetBeginner) return null;
 
   const lang = String(body.language || body.lang || body.locale || req?.headers?.['x-lang'] || '').trim().toUpperCase();
-  const isCn = lang === 'CN' || lang.startsWith('ZH');
+  const messageHasCjk = /[\u3400-\u9fff]/.test(message);
+  const messageHasLatinWords = /[A-Za-z]{3,}/.test(message);
+  const isCn = messageHasCjk ? true : messageHasLatinWords ? false : lang === 'CN' || lang.startsWith('ZH');
   const asksHeatingOrder = /(暖气|暖氣|冬天|起皮|早晚|步骤|步驟|heating|winter|flake|flaking|am|pm|morning|night|order)/i.test(message);
   const asksBudgetSkip = /(平价|平價|不用买|不用買|不用|别买|別買|哪些产品|哪些產品|skip|do not need|don't need|budget|cheap|affordable)/i.test(message);
 
@@ -1709,7 +1711,9 @@ function buildBeautyProductFitFollowupSkillResponse(req) {
   if (!message) return null;
 
   const lang = String(body.language || body.lang || body.locale || req?.headers?.['x-lang'] || '').trim().toUpperCase();
-  const isCn = lang === 'CN' || lang.startsWith('ZH');
+  const messageHasCjk = /[\u3400-\u9fff]/.test(message);
+  const messageHasLatinWords = /[A-Za-z]{3,}/.test(message);
+  const isCn = messageHasCjk ? true : messageHasLatinWords ? false : lang === 'CN' || lang.startsWith('ZH');
   const flags = new Set(Array.isArray(productFitContext.safety_flags) ? productFitContext.safety_flags : []);
   const productName = pickFirstTrimmed(
     productFitContext.product_name,
@@ -1787,6 +1791,80 @@ function buildBeautyProductFitFollowupSkillResponse(req) {
               safety_flag: 'sensitive_vitamin_c_irritation',
               product_name: productName || null,
               primary_direction: asksAlternative ? 'gentle_brightening_alternatives' : 'concentration_not_alone',
+            },
+          ],
+          metadata: {
+            pivot_contract_version: 'beauty.pivot_contract.v1',
+            status: 'success',
+            route_authority: 'aurora_product_fit_followup',
+          },
+        },
+      ],
+      next_actions: [],
+      ops: { thread_ops: [], profile_patch: {}, routine_patch: {} },
+      telemetry: { skill_id: 'beauty.product_fit_followup', skill_version: '1.0.0', elapsed_ms: 0, llm_calls: 0 },
+      quality: { quality_ok: true },
+    };
+  }
+
+  const alcoholSunscreenContext =
+    flags.has('alcohol_sunscreen_caution') ||
+    (
+      /(sunscreen|spf|sun\s*screen|防晒|防曬)/i.test(`${productName} ${contextBlob}`) &&
+      /(alcohol|ethanol|酒精|刺激|sensitive|oily|acne|闷痘|悶痘|油皮)/i.test(`${productName} ${contextBlob} ${message}`)
+    );
+  if (alcoholSunscreenContext) {
+    const answerZh = '酒精不一定不好，它常用于清爽成膜；但怕刺激或闷痘时，先局部测试，不要只看“高酒精=一定适合油皮”。清爽防晒筛选看 SPF50/广谱或 PA++++、稳定成膜、低香精、适合面部/油皮或 acne-prone skin；白天足量使用并补涂，晚上温和清洁。';
+    const answerEn = 'Alcohol is not automatically bad in sunscreen; it can help a lighter film. If you sting or clog easily, patch test first and do not assume “high alcohol” always means oily-skin friendly. Filter for SPF50 or broad-spectrum/PA++++, stable film-forming, low fragrance, face/oily or acne-prone positioning, daytime reapplication, and gentle cleansing at night.';
+    return {
+      answer_en: isCn ? answerZh : answerEn,
+      answer_zh: isCn ? answerZh : null,
+      cards: [
+        {
+          card_type: 'product_fit_followup',
+          sections: [
+            {
+              type: 'product_fit_safety',
+              safety_flag: 'alcohol_sunscreen_caution',
+              product_name: productName || null,
+              primary_direction: 'lightweight_sunscreen_filter_criteria',
+            },
+          ],
+          metadata: {
+            pivot_contract_version: 'beauty.pivot_contract.v1',
+            status: 'success',
+            route_authority: 'aurora_product_fit_followup',
+          },
+        },
+      ],
+      next_actions: [],
+      ops: { thread_ops: [], profile_patch: {}, routine_patch: {} },
+      telemetry: { skill_id: 'beauty.product_fit_followup', skill_version: '1.0.0', elapsed_ms: 0, llm_calls: 0 },
+      quality: { quality_ok: true },
+    };
+  }
+
+  const rosaceaCleanserContext =
+    flags.has('rosacea_avoid_cooling_strong_cleanser') ||
+    (
+      /(rosacea|redness|泛红|泛紅|玫瑰痤疮|玫瑰痤瘡|sensitive)/i.test(`${contextBlob} ${message}`) &&
+      /(cleanser|cleansing|face\s*wash|洁面|潔面|洗面奶|mint|menthol|cooling|薄荷|清凉|清涼|强清洁|強清潔|磨砂)/i.test(`${productName} ${contextBlob} ${message}`)
+    );
+  if (rosaceaCleanserContext) {
+    const answerZh = '洗完凉凉的不等于舒缓。长期泛红或玫瑰痤疮倾向要避开薄荷、清凉感、磨砂和强清洁，避免把刺激当成“干净”。洁面购买方向选无香精、低刺激、非磨砂、温和表活，洗后不紧绷；如果泛红持续加重、灼热或伴随丘疹，要找皮肤科确认。';
+    const answerEn = 'A cooling feel is not the same as soothing. With persistent redness or rosacea tendency, avoid menthol/mint, cooling claims, scrubs, and strong cleansers. Choose fragrance-free, low-irritation, non-scrub gentle surfactant cleansers that do not leave tightness; see a dermatologist if redness, burning, or bumps persist or worsen.';
+    return {
+      answer_en: isCn ? answerZh : answerEn,
+      answer_zh: isCn ? answerZh : null,
+      cards: [
+        {
+          card_type: 'product_fit_followup',
+          sections: [
+            {
+              type: 'product_fit_safety',
+              safety_flag: 'rosacea_avoid_cooling_strong_cleanser',
+              product_name: productName || null,
+              primary_direction: 'gentle_cleanser_no_cooling_irritants',
             },
           ],
           metadata: {

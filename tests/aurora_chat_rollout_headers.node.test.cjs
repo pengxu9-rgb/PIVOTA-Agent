@@ -455,6 +455,124 @@ test('handleChat answers pregnancy retinol low-dose follow-up without freeform r
   );
 });
 
+test('handleChat answers alcohol sunscreen fit follow-up without freeform router', async () => {
+  await withEnv(
+    {
+      AURORA_CHAT_SKILL_ROUTER_V2: 'true',
+      AURORA_CHAT_RESPONSE_META_ENABLED: 'false',
+    },
+    async () => {
+      const { handleChat, __setRouterForTests, __resetRouterForTests } = loadChatRoutesFresh();
+      const req = makeRequest({
+        headers: {
+          'x-aurora-uid': 'alcohol-sunscreen-followup-user',
+          'x-lang': 'CN',
+        },
+        body: {
+          message: '那我怎么筛选清爽防晒？',
+          language: 'CN',
+          session: {
+            meta: {
+              product_fit_context: {
+                product_name: 'High Alcohol Shake-Shake Fluid Sunscreen SPF50',
+                safety_flags: ['alcohol_sunscreen_caution'],
+              },
+              pivot_product_fit_context: {
+                product_name: 'High Alcohol Shake-Shake Fluid Sunscreen SPF50',
+                safety_flags: ['alcohol_sunscreen_caution'],
+              },
+            },
+            profile: {
+              skinType: 'oily',
+              sensitivity: 'medium',
+              goals: ['sun_protection', 'oil_control', 'acne_prevention'],
+            },
+          },
+        },
+      });
+      const res = makeResponseCapture();
+
+      __setRouterForTests({
+        async route() {
+          throw new Error('alcohol sunscreen follow-up should not reach freeform router');
+        },
+      });
+
+      try {
+        await handleChat(req, res);
+      } finally {
+        __resetRouterForTests();
+      }
+
+      assert.equal(res.statusCode, 200);
+      const text = JSON.stringify(res.body?.cards || []);
+      assert.match(text, /酒精不一定不好/);
+      assert.match(text, /SPF50|广谱|PA\+\+\+\+/);
+      assert.match(text, /补涂/);
+      assert.doesNotMatch(text, /Travel mode active|Please share a product link/);
+    },
+  );
+});
+
+test('handleChat answers rosacea cooling cleanser follow-up without freeform router', async () => {
+  await withEnv(
+    {
+      AURORA_CHAT_SKILL_ROUTER_V2: 'true',
+      AURORA_CHAT_RESPONSE_META_ENABLED: 'false',
+    },
+    async () => {
+      const { handleChat, __setRouterForTests, __resetRouterForTests } = loadChatRoutesFresh();
+      const req = makeRequest({
+        headers: {
+          'x-aurora-uid': 'rosacea-cleanser-followup-user',
+          'x-lang': 'CN',
+        },
+        body: {
+          message: '洗完凉凉的不是舒缓吗？',
+          language: 'CN',
+          session: {
+            meta: {
+              product_fit_context: {
+                product_name: 'Strong Mint Cooling Cleanser',
+                safety_flags: ['rosacea_avoid_cooling_strong_cleanser'],
+              },
+              pivot_product_fit_context: {
+                product_name: 'Strong Mint Cooling Cleanser',
+                safety_flags: ['rosacea_avoid_cooling_strong_cleanser'],
+              },
+            },
+            profile: {
+              skinType: 'sensitive',
+              sensitivity: 'high',
+              concerns: ['persistent_redness', 'heat_flushing'],
+            },
+          },
+        },
+      });
+      const res = makeResponseCapture();
+
+      __setRouterForTests({
+        async route() {
+          throw new Error('rosacea cleanser follow-up should not reach freeform router');
+        },
+      });
+
+      try {
+        await handleChat(req, res);
+      } finally {
+        __resetRouterForTests();
+      }
+
+      assert.equal(res.statusCode, 200);
+      const text = JSON.stringify(res.body?.cards || []);
+      assert.match(text, /凉凉的不等于舒缓/);
+      assert.match(text, /薄荷|清凉|强清洁/);
+      assert.match(text, /温和表活|无香精/);
+      assert.doesNotMatch(text, /Travel mode active|Please share a product link/);
+    },
+  );
+});
+
 test('handleChat appends orchestration prompt meta for new shopping requests', async () => {
   await withEnv(
     {
