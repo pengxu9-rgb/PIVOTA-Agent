@@ -347,6 +347,8 @@ function extractProducts(body) {
     if (isPlainObject(value.product)) add(value.product);
     if (Array.isArray(value.cards)) {
       for (const card of value.cards) {
+        const cardType = String(card && (card.type || card.card_type) || '').trim().toLowerCase();
+        if (cardType === 'product_analysis') continue;
         if (isPlainObject(card && card.payload)) visit(card.payload, depth + 1);
       }
     }
@@ -562,17 +564,18 @@ function collectCategoryNodes(value, out = []) {
     return out;
   }
   if (!isPlainObject(value)) return out;
+  if (isPlainObject(value.category)) collectCategoryNodes(value.category, out);
   const name = firstNonEmpty(value.name, value.title, value.label, value.display_name);
   const slug = firstNonEmpty(value.slug, value.id, value.category_slug, value.category_id);
   if (name || slug) {
     out.push({
       name,
       slug,
-      count: Number(value.count ?? value.product_count ?? value.products_count ?? value.total ?? 0) || 0,
+      count: Number(value.count ?? value.product_count ?? value.productCount ?? value.products_count ?? value.total ?? 0) || 0,
       raw: value,
     });
   }
-  for (const key of ['children', 'categories', 'items', 'nodes']) {
+  for (const key of ['children', 'categories', 'items', 'nodes', 'roots']) {
     if (Array.isArray(value[key])) collectCategoryNodes(value[key], out);
   }
   return out;

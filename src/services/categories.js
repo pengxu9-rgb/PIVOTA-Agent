@@ -1732,6 +1732,43 @@ async function buildMinimalCreatorCategoryTree(creatorId, options = {}, reason =
   };
 }
 
+async function buildStaticBeautyCreatorCategoryTree(creatorId, options = {}, meta = {}) {
+  const taxonomy = await getTaxonomyView({
+    viewId: options.viewId,
+    locale: options.locale,
+  });
+  return {
+    creatorId,
+    taxonomyVersion: taxonomy.version,
+    market: taxonomy.market,
+    locale: taxonomy.locale,
+    viewId: taxonomy.viewId,
+    source: 'canonical',
+    roots: buildStaticCanonicalCategoryTree(taxonomy),
+    hotDeals: [],
+    ...(isPivotBeautyContractEnabled()
+      ? {
+          pivot_contract_version: PIVOT_BEAUTY_CONTRACT_VERSION,
+          status: 'success',
+          route_authority: 'creator_agent',
+        }
+      : {}),
+    meta: {
+      category_tree_cache: 'static_fast_path',
+      degraded: false,
+      ...(isPivotBeautyContractEnabled()
+        ? {
+            pivot_contract_version: PIVOT_BEAUTY_CONTRACT_VERSION,
+            route_authority: 'creator_agent',
+            status: 'success',
+            creator_id: creatorId,
+          }
+        : {}),
+      ...meta,
+    },
+  };
+}
+
 async function buildCreatorCategoryTree(creatorId, options = {}) {
   const cacheEnabled = process.env.CREATOR_CATEGORIES_CACHE_ENABLED !== 'false';
   const timeoutMs = resolveCreatorCategoryBuildTimeoutMs();
@@ -1746,6 +1783,23 @@ async function buildCreatorCategoryTree(creatorId, options = {}) {
       category_tree_cache_age_ms: now - cached.cachedAt,
       degraded: false,
     });
+  }
+
+  if (
+    isPivotBeautyContractEnabled() &&
+    String(options.viewId || '').trim().toUpperCase() === 'GLOBAL_BEAUTY' &&
+    options.includeEmpty !== true
+  ) {
+    const tree = await buildStaticBeautyCreatorCategoryTree(creatorId, options, {
+      category_tree_cache: cached ? 'refresh_static_fast_path' : 'static_fast_path',
+    });
+    if (cacheEnabled && tree && typeof tree === 'object' && !Array.isArray(tree)) {
+      CREATOR_CATEGORY_TREE_CACHE.set(cacheKey, {
+        cachedAt: Date.now(),
+        value: cloneJson(tree),
+      });
+    }
+    return tree;
   }
 
   const buildPromise = buildCreatorCategoryTreeUncached(creatorId, options).then((tree) => {
