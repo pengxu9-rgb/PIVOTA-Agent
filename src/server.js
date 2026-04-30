@@ -23699,6 +23699,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         search: earlySearch,
         metadata,
       });
+      const earlyIngredientIntentIds = Array.isArray(earlyStrictDecision?.ingredientIntents)
+        ? earlyStrictDecision.ingredientIntents
+            .map((value) => String(value || '').trim().toLowerCase())
+            .filter(Boolean)
+        : [];
       const earlyMerchantIdsRaw = earlySearch.merchant_ids || earlySearch.merchantIds;
       const earlyMerchantIds = Array.isArray(earlyMerchantIdsRaw)
         ? earlyMerchantIdsRaw.map((value) => String(value || '').trim()).filter(Boolean)
@@ -23713,12 +23718,15 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         operation,
         req,
       });
+      const earlyPreserveIngredientDirectForPivotBeautyContract =
+        earlyPivotBeautyContractRequest &&
+        shouldPreserveIngredientDirectForPivotBeautyContract(earlyQueryText, earlyIngredientIntentIds);
       if (
         PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED &&
         earlyPivotBeautyContractRequest &&
         earlyQueryText &&
         earlyBeautyIntent.beautyLike &&
-        !earlyStrictDecision.enabled &&
+        (!earlyStrictDecision.enabled || !earlyPreserveIngredientDirectForPivotBeautyContract) &&
         !earlyHasMerchantScope
       ) {
         const earlyGuardrails = applyGatewayGuardrails({
