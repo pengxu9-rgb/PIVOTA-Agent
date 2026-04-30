@@ -11143,7 +11143,7 @@ function scoreBeautyExternalSeedProduct({ product, queryText, intent, normalized
     /\b(sensitive|sensiti[sz]ed|gentle|fragrance[-\s]?free|dry\s*sensitive)\b|敏感|温和|溫和|无香精|無香精|干敏|乾敏/i.test(String(queryText || '')) &&
     /\b(?:niacinamide|azelaic|ascorbic|vitamin\s*c|glycolic|salicylic|lactic|mandelic)\b.{0,24}\b(?:1[0-9]|[2-9][0-9])(?:\.\d+)?\s*%|\b(?:1[0-9]|[2-9][0-9])(?:\.\d+)?\s*%\s*(?:niacinamide|azelaic|ascorbic|vitamin\s*c|glycolic|salicylic|lactic|mandelic)\b/i.test(candidateText)
   ) {
-    score -= 10;
+    score -= 24;
   }
   if (
     /\b(brighten|brightening|dark\s*spot|uneven\s*tone|vitamin\s*c|azelaic|niacinamide|tranexamic)\b|提亮|淡斑|烟酰胺|煙酰胺|壬二酸|传明酸|傳明酸/i.test(String(queryText || '')) &&
