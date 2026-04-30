@@ -10456,6 +10456,49 @@ function buildBeautyProductPrimarySurfaceText(product) {
   ].filter(Boolean).join(' '));
 }
 
+function buildBeautyProductSafetyText(product, baseText = '') {
+  if (!product || typeof product !== 'object') return String(baseText || '');
+  const parts = [baseText];
+  const append = (value) => {
+    if (Array.isArray(value)) {
+      for (const item of value) append(item);
+      return;
+    }
+    if (value && typeof value === 'object') return;
+    const text = String(value || '').trim();
+    if (text) parts.push(text);
+  };
+  const seedData = product.seed_data && typeof product.seed_data === 'object' ? product.seed_data : {};
+  const ingredientIntel =
+    product.ingredient_intel && typeof product.ingredient_intel === 'object'
+      ? product.ingredient_intel
+      : seedData.ingredient_intel && typeof seedData.ingredient_intel === 'object'
+        ? seedData.ingredient_intel
+        : {};
+  append(product.raw_ingredient_text_clean);
+  append(product.pdp_ingredients_raw);
+  append(product.pdp_active_ingredients_raw);
+  append(product.pdp_description_raw);
+  append(product.inci_list);
+  append(product.ingredients_inci);
+  append(product.active_ingredients);
+  append(product.key_ingredients);
+  append(product.ingredient_tokens);
+  append(seedData.raw_ingredient_text_clean);
+  append(seedData.pdp_ingredients_raw);
+  append(seedData.pdp_active_ingredients_raw);
+  append(seedData.inci_list);
+  append(seedData.ingredients_inci);
+  append(seedData.active_ingredients);
+  append(seedData.key_ingredients);
+  append(ingredientIntel.raw_ingredient_text_clean);
+  append(ingredientIntel.inci_list);
+  append(ingredientIntel.inci_normalized);
+  append(ingredientIntel.active_ingredients);
+  append(ingredientIntel.key_ingredients);
+  return normalizeSearchTextForMatch(parts.join(' '));
+}
+
 function hasKBeautyLocalIntent(queryText = '') {
   return /\b(k[-\s]?beauty|korean|korea|seoul)\b|韩国|韓國|韩妆|韓妝|首尔|首爾/i.test(String(queryText || ''));
 }
@@ -10490,19 +10533,32 @@ function isBeautyProductContraindicatedForQuery(product, queryText = '', intent 
   const families = new Set(Array.isArray(profile.families) ? profile.families : []);
   const displayText = buildBeautyProductDisplayText(product);
   const primarySurfaceText = buildBeautyProductPrimarySurfaceText(product);
+  const safetyText = buildBeautyProductSafetyText(product, text);
   const normalizedQuery = normalizeSearchTextForMatch(queryText);
   const calmFaceSkincareQuery =
     families.size > 0 &&
     /\b(face|facial|skin|skincare|sensitive|sensiti[sz]ed|redness|rosacea|dry|barrier|repair|gentle|fragrance[-\s]?free|travel|flight|moisturi[sz]er|cream|cleanser|serum|sunscreen)\b|面部|脸|臉|护肤|護膚|敏感|泛红|泛紅|干皮|乾皮|屏障|修护|修護|温和|溫和|无香精|無香精|旅行|飞行|飛行|保湿|保濕|洁面|潔面|精华|精華|防晒|防曬/i.test(normalizedQuery);
+  const barrierFirstQuery =
+    /\b(sensitive|sensiti[sz]ed|redness|rosacea|dry|barrier|repair|gentle|fragrance[-\s]?free|travel|flight|acne|peeling|stinging|burning)\b|敏感|泛红|泛紅|干皮|乾皮|屏障|修护|修護|温和|溫和|无香精|無香精|旅行|飞行|飛行|痘|脱皮|脫皮|刺痛/i.test(normalizedQuery);
+  const fragranceAverseQuery =
+    barrierFirstQuery || safety.has('avoid_cooling_irritants') || safety.has('avoid_cooling_strong_cleanser');
   const queryRequestsExfoliatingAcid =
     /\b(aha|bha|pha|salicylic|glycolic|lactic|mandelic|exfoliat|peel|peeling|resurfacing|p50)\b|刷酸|去角质|去角質|水杨酸|水楊酸|果酸|杏仁酸|焕肤|煥膚/i.test(normalizedQuery);
   const productLooksLikeExfoliatingAcid =
-    /\b(lotion\s*p50\w*|p50\w*|aha|bha|pha|glycolic|lactic|mandelic|salicylic|resurfacing|peel|peeling|exfoliating|acid\s*(?:toner|lotion|peel|exfoliant)|toner\s*pads?)\b|刷酸|去角质|去角質|水杨酸|水楊酸|果酸|杏仁酸|焕肤|煥膚/i.test(text);
+    /\b(lotion\s*p50\w*|p50\w*|aha|bha|pha|glycolic|lactic|mandelic|salicylic|resurfacing|peel|peeling|exfoliating|acid\s*(?:toner|lotion|peel|exfoliant)|toner\s*pads?)\b|刷酸|去角质|去角質|水杨酸|水楊酸|果酸|杏仁酸|焕肤|煥膚/i.test(safetyText);
   const queryRequestsEye = /\b(eye|eyes|undereye|under[-\s]?eye)\b|眼霜|眼部/i.test(normalizedQuery);
   const queryRequestsBody = /\b(body|hand|hands|hair|scalp|lip|lips)\b|身体|身體|护手|護手|头发|頭髮|头皮|頭皮|唇/i.test(normalizedQuery);
+  const queryRequestsOil = /\b(face\s*oil|facial\s*oil|dry\s*oil|beauty\s*oil|huile|oil)\b|面油|护肤油|護膚油|美容油/i.test(normalizedQuery);
+  const queryRequestsAntiAging = /\b(anti[-\s]?aging|anti[-\s]?ageing|firming|wrinkle|lift|lifting|mature\s*skin)\b|抗老|抗皱|抗皺|紧致|緊緻|提拉/i.test(normalizedQuery);
+  const productLooksLikeOilSurface = /\b(huile|face\s*oil|facial\s*oil|dry\s*oil|beauty\s*oil)\b|面油|护肤油|護膚油|美容油/i.test(displayText);
+  const productLooksLikeAntiAging =
+    /\b(anti[-\s]?aging|anti[-\s]?ageing|firming|wrinkle|wrinkles|lift|lifting|merveillance|nuxuriance|global\s+anti[-\s]?aging|exceptional\s+day\s*&?\s*night)\b|抗老|抗皱|抗皺|紧致|緊緻|提拉/i.test(safetyText);
+  const fragranceFreeClaim = /\b(fragrance[-\s]?free|unscented|no\s+fragrance|without\s+fragrance)\b|无香精|無香精|不含香精/i.test(safetyText);
+  const fragranceHit =
+    /\b(parfum\/fragrance|parfum|perfume|fragrance|scented|linalool|limonene|citronellol|geraniol|coumarin|hydroxycitronellal|alpha[-\s]?isomethyl\s+ionone|rose\s+ketones)\b|香精|香料/i.test(safetyText);
   const retinoidHit =
-    /\b(bio[-\s]?retinol|retinol|retinal|retinoid|retinyl|tretinoin|adapalene|hydroxypinacolone|hpr)\b/i.test(text) ||
-    /视黄醇|視黃醇|维a醇|維a醇|维甲酸|維甲酸|a醇/.test(text);
+    /\b(bio[-\s]?retinol|retinol|retinal|retinoid|retinyl|tretinoin|adapalene|hydroxypinacolone|hpr)\b/i.test(safetyText) ||
+    /视黄醇|視黃醇|维a醇|維a醇|维甲酸|維甲酸|a醇/.test(safetyText);
 
   if (safety.has('avoid_retinoids')) {
     if (retinoidHit && !/\b(retinol[-\s]?free|retinoid[-\s]?free|no\s+retinol|without\s+retinol)\b/i.test(text)) {
@@ -10551,6 +10607,15 @@ function isBeautyProductContraindicatedForQuery(product, queryText = '', intent 
     }
   }
   if (calmFaceSkincareQuery && productLooksLikeExfoliatingAcid && !queryRequestsExfoliatingAcid) {
+    return true;
+  }
+  if (fragranceAverseQuery && fragranceHit && !fragranceFreeClaim) {
+    return true;
+  }
+  if (calmFaceSkincareQuery && families.has('moisturizer') && productLooksLikeOilSurface && !queryRequestsOil) {
+    return true;
+  }
+  if (barrierFirstQuery && productLooksLikeAntiAging && !queryRequestsAntiAging) {
     return true;
   }
   if (
