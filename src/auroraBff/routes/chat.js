@@ -1484,6 +1484,24 @@ async function handleChat(req, res) {
     } catch (_error) {
       promptMeta = null;
     }
+    const productFitFollowup = buildBeautyProductFitFollowupSkillResponse(req);
+    if (productFitFollowup) {
+      const responsePayload = mergePromptMeta(
+        applyRolloutMeta(
+          mergeResponseMeta(mapSkillResponseToChatCardsV1(productFitFollowup), auth.ctx.auth_meta),
+          {
+            req,
+            ctx: auth.ctx,
+            body: req.body || {},
+            identity: req._identity || null,
+            res,
+          },
+        ),
+        promptMeta,
+      );
+      res.json(responsePayload);
+      return;
+    }
     const routineAnalysisFollowup = buildRoutineAnalysisPriorityFollowupSkillResponse(req);
     if (routineAnalysisFollowup) {
       const responsePayload = mergePromptMeta(
@@ -1567,6 +1585,125 @@ function safeJsonForDetection(value) {
   } catch {
     return '';
   }
+}
+
+function buildBeautyProductFitFollowupSkillResponse(req) {
+  const body = isPlainObject(req && req.body) ? req.body : {};
+  const session = isPlainObject(body.session) ? body.session : {};
+  const sessionMeta = isPlainObject(session.meta) ? session.meta : {};
+  const profile = isPlainObject(session.profile) ? session.profile : {};
+  const productFitContext =
+    isPlainObject(sessionMeta.pivot_product_fit_context)
+      ? sessionMeta.pivot_product_fit_context
+      : isPlainObject(sessionMeta.product_fit_context)
+        ? sessionMeta.product_fit_context
+        : null;
+  if (!productFitContext) return null;
+
+  const message = pickFirstTrimmed(
+    body.message,
+    body.query,
+    body.text,
+    extractLastUserMessageFromMessages(body.messages),
+  ) || '';
+  if (!message) return null;
+
+  const lang = String(body.language || body.lang || body.locale || req?.headers?.['x-lang'] || '').trim().toUpperCase();
+  const isCn = lang === 'CN' || lang.startsWith('ZH');
+  const flags = new Set(Array.isArray(productFitContext.safety_flags) ? productFitContext.safety_flags : []);
+  const productName = pickFirstTrimmed(
+    productFitContext.product_name,
+    productFitContext.name,
+    productFitContext.product,
+  );
+  const contextBlob = safeJsonForDetection({ productFitContext, profile }).toLowerCase();
+  const asksAlternative = /(替代|买什么|買什麼|该买|該買|推荐|推薦|方向|alternative|replace|what should i buy|recommend)/i.test(message);
+  const asksLowDose = /(低浓度|低濃度|低剂量|低劑量|low\s*(?:dose|strength|concentration)|也不行|也不可以|still|even low)/i.test(message);
+  const asksConcentration = /(浓度|濃度|越高|higher|stronger|concentration)/i.test(message);
+
+  const pregnancyRetinoidContext =
+    flags.has('pregnancy_avoid_retinoids') ||
+    (
+      /(pregnan|breastfeeding|ttc|trying\s*to\s*conceive|备孕|備孕|怀孕|懷孕|孕期)/i.test(contextBlob) &&
+      /(retinol|retinoid|retinal|retinyl|tretinoin|adapalene|hpr|视黄醇|視黃醇|维\s*a|維\s*a|a醇)/i.test(`${productName} ${contextBlob} ${message}`)
+    );
+  if (pregnancyRetinoidContext && (asksLowDose || asksAlternative || /(retinol|视黄醇|視黃醇)/i.test(message))) {
+    const answerZh = asksAlternative
+      ? '孕期/备孕更稳的抗老和提亮方向，不选视黄醇或其他维 A 类。优先每日广谱 SPF，搭配烟酰胺、壬二酸、肽类或屏障修护；如果有明确医疗顾虑，先让医生确认。一次只新增一个产品并做 24-48 小时局部测试。'
+      : '低浓度也先不要当作安全。备孕/可能怀孕场景下，视黄醇和其他维 A 类建议避免，是否使用要先问医生；不要用“低浓度”来绕过这个边界。更稳的方向是每日广谱 SPF、烟酰胺、壬二酸、肽类和屏障修护。';
+    const answerEn = asksAlternative
+      ? 'For TTC/pregnancy, choose anti-aging or brightening directions that do not rely on retinol or other retinoids. Prioritize daily broad-spectrum SPF, then niacinamide, azelaic acid, peptides, or barrier repair; confirm with your clinician for medical concerns. Add one product at a time and patch test for 24-48 hours.'
+      : 'Low strength does not make retinoids automatically safe in TTC/pregnancy context. Avoid retinol and other retinoids unless your clinician confirms otherwise; do not use “low dose” to bypass that boundary. Safer directions are daily broad-spectrum SPF, niacinamide, azelaic acid, peptides, and barrier repair.';
+    return {
+      answer_en: isCn ? answerZh : answerEn,
+      answer_zh: isCn ? answerZh : null,
+      cards: [
+        {
+          card_type: 'product_fit_followup',
+          sections: [
+            {
+              type: 'product_fit_safety',
+              safety_flag: 'pregnancy_avoid_retinoids',
+              product_name: productName || null,
+              primary_direction: asksAlternative ? 'retinoid_free_alternatives' : 'avoid_retinoids_even_low_strength',
+            },
+          ],
+          metadata: {
+            pivot_contract_version: 'beauty.pivot_contract.v1',
+            status: 'success',
+            route_authority: 'aurora_product_fit_followup',
+          },
+        },
+      ],
+      next_actions: [],
+      ops: { thread_ops: [], profile_patch: {}, routine_patch: {} },
+      telemetry: { skill_id: 'beauty.product_fit_followup', skill_version: '1.0.0', elapsed_ms: 0, llm_calls: 0 },
+      quality: { quality_ok: true },
+    };
+  }
+
+  const sensitiveVitaminCContext =
+    flags.has('sensitive_vitamin_c_irritation') ||
+    (
+      /(vitamin\s*c|l\s*aa|l\s*ascorbic|ascorbic|维\s*c|維\s*c)/i.test(`${productName} ${contextBlob}`) &&
+      /(alcohol|fragrance|ethanol|parfum|酒精|香精|香料|敏感|sensitive|dry_sensitive|barrier)/i.test(`${productName} ${contextBlob}`)
+    );
+  if (sensitiveVitaminCContext && (asksAlternative || asksConcentration)) {
+    const answerZh = asksAlternative
+      ? '替代方向不要继续追高浓度 L-AA。干敏皮更稳的是：低浓度维 C 衍生物、烟酰胺、传明酸或壬二酸这类温和提亮；优先选无香精、低酒精或无酒精、保湿基底清楚的精华。先局部测试 24-48 小时，和酸类/视黄醇错开。'
+      : '不是浓度越高越有效。干敏皮遇到高浓度 L-AA、酒精或香精时，刺痛和屏障波动风险会先上来；能长期耐受的低刺激配方，通常比短期追高浓度更稳。先局部测试，并和酸类/视黄醇错开。';
+    const answerEn = asksAlternative
+      ? 'For alternatives, do not chase stronger L-AA. With dry sensitive skin, choose gentler brightening such as low-strength vitamin C derivatives, niacinamide, tranexamic acid, or azelaic acid in a fragrance-light, low-alcohol, hydrating base. Patch test for 24-48 hours and avoid stacking with acids or retinoids.'
+      : 'Higher concentration is not automatically more effective. For dry sensitive skin, high-strength L-AA with alcohol or fragrance can raise stinging and barrier instability first. A lower-irritation formula you can tolerate consistently is usually the steadier path. Patch test and avoid stacking with acids or retinoids.';
+    return {
+      answer_en: isCn ? answerZh : answerEn,
+      answer_zh: isCn ? answerZh : null,
+      cards: [
+        {
+          card_type: 'product_fit_followup',
+          sections: [
+            {
+              type: 'product_fit_safety',
+              safety_flag: 'sensitive_vitamin_c_irritation',
+              product_name: productName || null,
+              primary_direction: asksAlternative ? 'gentle_brightening_alternatives' : 'concentration_not_alone',
+            },
+          ],
+          metadata: {
+            pivot_contract_version: 'beauty.pivot_contract.v1',
+            status: 'success',
+            route_authority: 'aurora_product_fit_followup',
+          },
+        },
+      ],
+      next_actions: [],
+      ops: { thread_ops: [], profile_patch: {}, routine_patch: {} },
+      telemetry: { skill_id: 'beauty.product_fit_followup', skill_version: '1.0.0', elapsed_ms: 0, llm_calls: 0 },
+      quality: { quality_ok: true },
+    };
+  }
+
+  return null;
 }
 
 function buildRoutineAnalysisPriorityFollowupSkillResponse(req) {

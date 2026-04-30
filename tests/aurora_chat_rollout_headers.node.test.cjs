@@ -220,6 +220,122 @@ test('handleChat answers routine-analysis priority follow-up without product-ana
   );
 });
 
+test('handleChat answers vitamin C product-fit alternative follow-up without dupe router', async () => {
+  await withEnv(
+    {
+      AURORA_CHAT_SKILL_ROUTER_V2: 'true',
+      AURORA_CHAT_RESPONSE_META_ENABLED: 'false',
+    },
+    async () => {
+      const { handleChat, __setRouterForTests, __resetRouterForTests } = loadChatRoutesFresh();
+      const req = makeRequest({
+        headers: {
+          'x-aurora-uid': 'vitc-fit-followup-user',
+          'x-lang': 'CN',
+        },
+        body: {
+          message: '那我该买什么替代？',
+          language: 'CN',
+          session: {
+            meta: {
+              product_fit_context: {
+                product_name: '15% L-AA Vitamin C Serum with Alcohol and Fragrance',
+                safety_flags: [],
+              },
+              pivot_product_fit_context: {
+                product_name: '15% L-AA Vitamin C Serum with Alcohol and Fragrance',
+                safety_flags: [],
+              },
+            },
+            profile: {
+              skinType: 'dry_sensitive',
+              sensitivity: 'high',
+              preferences: { fragrance_free: true },
+            },
+          },
+        },
+      });
+      const res = makeResponseCapture();
+
+      __setRouterForTests({
+        async route() {
+          throw new Error('product-fit alternative follow-up should not reach skill router');
+        },
+      });
+
+      try {
+        await handleChat(req, res);
+      } finally {
+        __resetRouterForTests();
+      }
+
+      assert.equal(res.statusCode, 200);
+      const text = JSON.stringify(res.body?.cards || []);
+      assert.match(text, /替代方向不要继续追高浓度 L-AA/);
+      assert.match(text, /烟酰胺|壬二酸|传明酸/);
+      assert.doesNotMatch(text, /请粘贴产品链接|Please share a product link/);
+    },
+  );
+});
+
+test('handleChat answers pregnancy retinol low-dose follow-up without freeform router', async () => {
+  await withEnv(
+    {
+      AURORA_CHAT_SKILL_ROUTER_V2: 'true',
+      AURORA_CHAT_RESPONSE_META_ENABLED: 'false',
+    },
+    async () => {
+      const { handleChat, __setRouterForTests, __resetRouterForTests } = loadChatRoutesFresh();
+      const req = makeRequest({
+        headers: {
+          'x-aurora-uid': 'pregnancy-retinol-followup-user',
+          'x-lang': 'CN',
+        },
+        body: {
+          message: '低浓度也不行吗？',
+          language: 'CN',
+          session: {
+            meta: {
+              product_fit_context: {
+                product_name: 'Retinol Anti-Aging Face Cream',
+                safety_flags: ['pregnancy_avoid_retinoids'],
+              },
+              pivot_product_fit_context: {
+                product_name: 'Retinol Anti-Aging Face Cream',
+                safety_flags: ['pregnancy_avoid_retinoids'],
+              },
+            },
+            profile: {
+              pregnant_or_breastfeeding: true,
+              skinType: 'combination_dry',
+              sensitivity: 'medium',
+            },
+          },
+        },
+      });
+      const res = makeResponseCapture();
+
+      __setRouterForTests({
+        async route() {
+          throw new Error('pregnancy retinol follow-up should not reach skill router');
+        },
+      });
+
+      try {
+        await handleChat(req, res);
+      } finally {
+        __resetRouterForTests();
+      }
+
+      assert.equal(res.statusCode, 200);
+      const text = JSON.stringify(res.body?.cards || []);
+      assert.match(text, /低浓度也先不要当作安全/);
+      assert.match(text, /备孕|怀孕|维 A 类|医生/);
+      assert.doesNotMatch(text, /建立耐受的良好开端/);
+    },
+  );
+});
+
 test('handleChat appends orchestration prompt meta for new shopping requests', async () => {
   await withEnv(
     {
