@@ -64,6 +64,7 @@ describe('pdpProductIntel KB hydration', () => {
         merchant_id: 'm_ext',
         product_id: 'ext_case_1',
       },
+      allowLegacyAnalysisFallback: true,
     });
 
     expect(hydrated.assessment.summary).toMatch(/daily sunscreen/i);
