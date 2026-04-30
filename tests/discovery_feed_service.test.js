@@ -2986,15 +2986,11 @@ describe('discovery feed service', () => {
         card_subtitle: 'Vitamin C + retinol serum',
         card_highlight: 'Creator-noted smooth finish',
         card_badge: '4.9★ (128)',
-        card_intro:
-          'Multi-active serum with vitamin C, retinol, niacinamide, hyaluronic and salicylic acids.',
         search_card: expect.objectContaining({
           title_candidate: 'Naturium Vitamin C Super Serum Plus - Jumbo',
           compact_candidate: 'Vitamin C + retinol serum',
           highlight_candidate: 'Creator-noted smooth finish',
           proof_badge_candidate: '4.9★ (128)',
-          intro_candidate:
-            'Multi-active serum with vitamin C, retinol, niacinamide, hyaluronic and salicylic acids.',
         }),
         shopping_card: expect.objectContaining({
           contract_version: 'pivota.shopping_card.v1',
@@ -3002,8 +2998,6 @@ describe('discovery feed service', () => {
           subtitle: 'Vitamin C + retinol serum',
           highlight: 'Creator-noted smooth finish',
           proof_badge: '4.9★ (128)',
-          intro:
-            'Multi-active serum with vitamin C, retinol, niacinamide, hyaluronic and salicylic acids.',
         }),
         market_signal_badges: [
           {
@@ -3013,6 +3007,9 @@ describe('discovery feed service', () => {
         ],
       }),
     );
+    expect(response.products[0].card_intro).toBeUndefined();
+    expect(response.products[0].search_card.intro_candidate).toBeUndefined();
+    expect(response.products[0].shopping_card.intro).toBeUndefined();
   });
 
   test('browse_products card response detail batches product intel KB hydration when the store supports bulk reads', async () => {
@@ -3172,7 +3169,7 @@ describe('discovery feed service', () => {
         card_subtitle: 'Vitamin C + retinol serum',
         card_highlight: 'Five actives in one serum step',
         card_intro:
-          'Multi-active serum with vitamin C, retinol, niacinamide, hyaluronic and salicylic acids.',
+          'A multi-active treatment serum that combines vitamin C, retinol, niacinamide, hyaluronic acid, and salicylic acid.',
         search_card: expect.objectContaining({
           compact_candidate: 'Vitamin C + retinol serum',
           highlight_candidate: 'Five actives in one serum step',
@@ -3387,17 +3384,17 @@ describe('discovery feed service', () => {
       expect.objectContaining({
         product_id: 'ext_uncovered_card_gap',
         card_title: 'Vitamin-C Serum',
-        card_intro: 'Vitamin C + ferulic serum for antioxidant brightening.',
         search_card: expect.objectContaining({
           title_candidate: 'Vitamin-C Serum',
-          intro_candidate: 'Vitamin C + ferulic serum for antioxidant brightening.',
         }),
       }),
     );
+    expect(response.products[0].card_intro).toBeUndefined();
     expect(response.products[0].card_subtitle).toBeUndefined();
     expect(response.products[0].card_highlight).toBeUndefined();
     expect(response.products[0].search_card.compact_candidate).toBeUndefined();
     expect(response.products[0].search_card.highlight_candidate).toBeUndefined();
+    expect(response.products[0].search_card.intro_candidate).toBeUndefined();
   });
 
   test('card response detail suppresses generic subtitle-like compact highlights', async () => {

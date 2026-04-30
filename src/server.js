@@ -10469,6 +10469,19 @@ function beautyProductHasKBeautySignal(product) {
   );
 }
 
+function beautyQueryRequestsLipCare(queryText = '') {
+  return /\b(lip|lips|lip\s*balm|lip\s*shield|chapstick)\b|唇膏|润唇|潤唇|护唇|護唇/i.test(String(queryText || ''));
+}
+
+function beautyProductIsLipCareSurface(product) {
+  const text = buildBeautyProductPrimarySurfaceText(product);
+  if (!text) return false;
+  return (
+    /\b(lip|lips|lip\s*balm|lip\s*shield|lip\s*sunscreen|chapstick)\b/i.test(text) ||
+    /唇膏|润唇|潤唇|护唇|護唇/.test(text)
+  );
+}
+
 function isBeautyProductContraindicatedForQuery(product, queryText = '', intent = null) {
   const text = buildFallbackCandidateText(product);
   if (!text) return false;
@@ -10528,6 +10541,16 @@ function isBeautyProductContraindicatedForQuery(product, queryText = '', intent 
     }
   }
   const normalizedQuery = normalizeSearchTextForMatch(queryText);
+  if (
+    beautyProductIsLipCareSurface(product) &&
+    !beautyQueryRequestsLipCare(queryText) &&
+    (
+      /\b(face|facial|skin|skincare|sensitive|sensiti[sz]ed|redness|rosacea|oily|dry|acne|pregnan\w*|ttc|brighten|brightening|moisturi[sz]er|serum|barrier|repair|daily\s+sunscreen)\b|面部|脸|臉|护肤|護膚|敏感|泛红|泛紅|油皮|干皮|乾皮|痘|孕|提亮|保湿|保濕|屏障|修护|修護/.test(normalizedQuery) ||
+      profile.families.length > 1
+    )
+  ) {
+    return true;
+  }
   if (
     families.has('cleanser') &&
     /\b(cleansing\s*pads?|cleanse\s*pads?|peel\s*pads?|toner\s*pads?|exfoliating\s*pads?|clarifying\s*pads?)\b/i.test(text) &&

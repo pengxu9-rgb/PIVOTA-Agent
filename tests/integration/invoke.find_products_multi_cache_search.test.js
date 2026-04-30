@@ -3273,6 +3273,27 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
                 created_at: new Date().toISOString(),
               },
               {
+                id: 'seed-lip-spf-1',
+                external_product_id: 'ext_lip_spf_1',
+                market: 'US',
+                tool: '*',
+                destination_url: 'https://shop.example.com/products/play-lip-shield-spf-30-mint',
+                canonical_url: 'https://shop.example.com/products/play-lip-shield-spf-30-mint',
+                domain: 'shop.example.com',
+                title: 'PLAY Lip Shield SPF 30 Mint',
+                image_url: 'https://cdn.example.com/lip-spf.jpg',
+                price_amount: '12.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Test Beauty',
+                  category: 'sunscreen',
+                  description: 'Mint SPF lip balm.',
+                },
+                updated_at: new Date().toISOString(),
+                created_at: new Date().toISOString(),
+              },
+              {
                 id: 'seed-barrier-1',
                 external_product_id: 'ext_barrier_1',
                 market: 'US',
@@ -3379,6 +3400,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(resp.body.products.map((product) => product.product_id)).toContain('ext_barrier_1');
     expect(resp.body.products.map((product) => product.product_id)).not.toContain('ext_retinol_1');
     expect(resp.body.products.map((product) => product.product_id)).not.toContain('ext_resurfacing_1');
+    expect(resp.body.products.map((product) => product.product_id)).not.toContain('ext_lip_spf_1');
     expect(resp.body.products.map((product) => product.product_id)).not.toContain('ext_mini_1');
     expect(resp.body.products.map((product) => product.product_id)).not.toContain('ext_mini_oz_1');
     expect(resp.body.metadata?.beauty_mainline_filter?.safety_rules).toContain('avoid_retinoids');
