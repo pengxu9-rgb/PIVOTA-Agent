@@ -26021,7 +26021,50 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         const promotions = await getActivePromotions(now, creatorId);
         return res.json(applyDealsToResponse(directResponse, promotions, now, creatorId));
       }
-	      const isCreatorUiColdStart = isCreatorUiSource(source) && queryText.length === 0;
+      const earlyMerchantIdForBeauty = String(search.merchant_id || search.merchantId || '').trim();
+      const earlyMerchantIdsRawForBeauty = search.merchant_ids || search.merchantIds;
+      const earlyMerchantIdsForBeauty =
+        Array.isArray(earlyMerchantIdsRawForBeauty)
+          ? earlyMerchantIdsRawForBeauty.map((v) => String(v || '').trim()).filter(Boolean)
+          : typeof earlyMerchantIdsRawForBeauty === 'string'
+            ? earlyMerchantIdsRawForBeauty
+                .split(',')
+                .map((v) => String(v || '').trim())
+                .filter(Boolean)
+            : [];
+      const earlyHasMerchantScopeForBeauty = Boolean(earlyMerchantIdForBeauty) || earlyMerchantIdsForBeauty.length > 0;
+      const earlyBeautyMainlineIntentForDirect = inferBeautyMainlineIntent(queryText);
+      if (
+        pivotBeautyContractInvoke &&
+        queryText.length > 0 &&
+        process.env.DATABASE_URL &&
+        earlyBeautyMainlineIntentForDirect.beautyLike &&
+        !earlyHasMerchantScopeForBeauty
+      ) {
+        try {
+          const earlySourceNormalized = normalizeAgentSource(source);
+          const earlyCreatorScoped = isCreatorUiSource(source) || earlySourceNormalized === 'creator-agent';
+          const directResponse = await searchBeautyExternalSeedProductsMainline({
+            search,
+            metadata,
+            intent: effectiveIntent,
+            creatorScoped: earlyCreatorScoped,
+          });
+          const directProducts = Array.isArray(directResponse?.products)
+            ? directResponse.products
+            : [];
+          if (directProducts.length > 0 || String(directResponse?.status || '').toLowerCase() === 'failed') {
+            const promotions = await getActivePromotions(now, creatorId);
+            return res.json(applyDealsToResponse(directResponse, promotions, now, creatorId));
+          }
+        } catch (err) {
+          logger.warn(
+            { err: err?.message || String(err), creatorId, source, queryText },
+            'Beauty contract external seed mainline direct search failed; falling back to guarded invoke flow',
+          );
+        }
+      }
+      const isCreatorUiColdStart = isCreatorUiSource(source) && queryText.length === 0;
       const inStockOnly = search.in_stock_only !== false;
 
       const isCreatorUi = isCreatorUiSource(source);
