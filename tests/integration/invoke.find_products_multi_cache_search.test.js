@@ -3569,6 +3569,48 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
                 updated_at: now,
                 created_at: now,
               },
+              {
+                id: 'seed-routine-1',
+                external_product_id: 'ext_routine_1',
+                market: 'US',
+                tool: '*',
+                destination_url: 'https://shop.example.com/products/am-pm-routine',
+                canonical_url: 'https://shop.example.com/products/am-pm-routine',
+                domain: 'shop.example.com',
+                title: 'AM/PM routine',
+                image_url: 'https://cdn.example.com/routine.jpg',
+                price_amount: '68.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Test Beauty',
+                  category: 'moisturizer',
+                  description: 'A multi-product skincare regimen.',
+                },
+                updated_at: now,
+                created_at: now,
+              },
+              {
+                id: 'seed-active-suspension-1',
+                external_product_id: 'ext_active_suspension_1',
+                market: 'US',
+                tool: '*',
+                destination_url: 'https://shop.example.com/products/azelaic-acid-suspension',
+                canonical_url: 'https://shop.example.com/products/azelaic-acid-suspension',
+                domain: 'shop.example.com',
+                title: 'Azelaic Acid Suspension 10%',
+                image_url: 'https://cdn.example.com/azelaic.jpg',
+                price_amount: '12.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Test Beauty',
+                  category: 'moisturizer',
+                  description: 'Active treatment suspension.',
+                },
+                updated_at: now,
+                created_at: now,
+              },
             ],
           };
         }
@@ -3615,6 +3657,150 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(ids).not.toContain('ext_face_oil_1');
     expect(ids).not.toContain('ext_firming_cream_1');
     expect(ids).not.toContain('ext_scented_face_1');
+    expect(ids).not.toContain('ext_routine_1');
+    expect(ids).not.toContain('ext_active_suspension_1');
+    expect(upstreamSearch.isDone()).toBe(false);
+  });
+
+  test('sensitive cleanser query excludes mask packs, routines, and treatment serums', async () => {
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total')) return { rows: [{ total: 0 }] };
+        if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
+          return { rows: [] };
+        }
+        if (text.includes('FROM external_product_seeds')) {
+          const now = new Date().toISOString();
+          return {
+            rows: [
+              {
+                id: 'seed-cleanser-1',
+                external_product_id: 'ext_cleanser_1',
+                market: 'US',
+                tool: '*',
+                destination_url: 'https://shop.example.com/products/gentle-cream-cleanser',
+                canonical_url: 'https://shop.example.com/products/gentle-cream-cleanser',
+                domain: 'shop.example.com',
+                title: 'Gentle Cream Cleanser',
+                image_url: 'https://cdn.example.com/cleanser.jpg',
+                price_amount: '16.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Test Beauty',
+                  category: 'cleanser',
+                  description: 'Fragrance-free gentle cleanser for sensitive skin.',
+                },
+                updated_at: now,
+                created_at: now,
+              },
+              {
+                id: 'seed-mud-pack-1',
+                external_product_id: 'ext_mud_pack_1',
+                market: 'US',
+                tool: '*',
+                destination_url: 'https://shop.example.com/products/1025-dokdo-mud-pack',
+                canonical_url: 'https://shop.example.com/products/1025-dokdo-mud-pack',
+                domain: 'shop.example.com',
+                title: '1025 Dokdo Mud Pack',
+                image_url: 'https://cdn.example.com/mud-pack.jpg',
+                price_amount: '18.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Test Beauty',
+                  category: 'cleanser',
+                  description: 'Wash-off mud pack.',
+                },
+                updated_at: now,
+                created_at: now,
+              },
+              {
+                id: 'seed-routine-cleanser-1',
+                external_product_id: 'ext_routine_cleanser_1',
+                market: 'US',
+                tool: '*',
+                destination_url: 'https://shop.example.com/products/cult-skincare-routine',
+                canonical_url: 'https://shop.example.com/products/cult-skincare-routine',
+                domain: 'shop.example.com',
+                title: 'Cult Skincare Routine',
+                image_url: 'https://cdn.example.com/routine-cleanser.jpg',
+                price_amount: '44.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Test Beauty',
+                  category: 'cleanser',
+                  description: 'Routine collection with cleanser.',
+                },
+                updated_at: now,
+                created_at: now,
+              },
+              {
+                id: 'seed-hyaluronic-serum-1',
+                external_product_id: 'ext_hyaluronic_serum_1',
+                market: 'US',
+                tool: '*',
+                destination_url: 'https://shop.example.com/products/hyaluronic-acid-b5',
+                canonical_url: 'https://shop.example.com/products/hyaluronic-acid-b5',
+                domain: 'shop.example.com',
+                title: 'Hyaluronic Acid 2% + B5 (with Ceramides)',
+                image_url: 'https://cdn.example.com/hyaluronic.jpg',
+                price_amount: '12.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Test Beauty',
+                  category: 'cleanser',
+                  description: 'Hydrating serum treatment.',
+                },
+                updated_at: now,
+                created_at: now,
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      },
+    }));
+
+    const upstreamSearch = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'gentle cleanser sensitive skin fragrance free',
+            page: 1,
+            limit: 6,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'beauty_cross_agent_batch',
+          market: 'US',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.metadata?.query_source).toBe('agent_products_beauty_external_seed_mainline');
+    const ids = resp.body.products.map((product) => product.product_id);
+    expect(ids).toContain('ext_cleanser_1');
+    expect(ids).not.toContain('ext_mud_pack_1');
+    expect(ids).not.toContain('ext_routine_cleanser_1');
+    expect(ids).not.toContain('ext_hyaluronic_serum_1');
     expect(upstreamSearch.isDone()).toBe(false);
   });
 
