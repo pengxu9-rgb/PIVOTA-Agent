@@ -3407,6 +3407,148 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(upstreamSearch.isDone()).toBe(false);
   });
 
+  test('sensitive brightening serum query excludes set and volume-plumping surfaces', async () => {
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total')) return { rows: [{ total: 0 }] };
+        if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
+          return { rows: [] };
+        }
+        if (text.includes('FROM external_product_seeds')) {
+          const now = new Date().toISOString();
+          return {
+            rows: [
+              {
+                id: 'seed-niacinamide-5-1',
+                external_product_id: 'ext_niacinamide_5_1',
+                market: 'US',
+                tool: '*',
+                destination_url: 'https://shop.example.com/products/niacinamide-5-brightening-serum',
+                canonical_url: 'https://shop.example.com/products/niacinamide-5-brightening-serum',
+                domain: 'shop.example.com',
+                title: 'Niacinamide 5% Brightening Serum',
+                image_url: 'https://cdn.example.com/niacinamide-5.jpg',
+                price_amount: '14.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Test Beauty',
+                  category: 'serum',
+                  description: 'Gentle brightening serum for sensitive skin.',
+                },
+                updated_at: now,
+                created_at: now,
+              },
+              {
+                id: 'seed-azelaic-1',
+                external_product_id: 'ext_azelaic_brightening_1',
+                market: 'US',
+                tool: '*',
+                destination_url: 'https://shop.example.com/products/azelaic-brightening-serum',
+                canonical_url: 'https://shop.example.com/products/azelaic-brightening-serum',
+                domain: 'shop.example.com',
+                title: 'Azelaic Brightening Serum',
+                image_url: 'https://cdn.example.com/azelaic.jpg',
+                price_amount: '18.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Test Beauty',
+                  category: 'serum',
+                  description: 'Brightening serum with azelaic acid.',
+                },
+                updated_at: now,
+                created_at: now,
+              },
+              {
+                id: 'seed-rose-trio-1',
+                external_product_id: 'ext_rose_trio_1',
+                market: 'US',
+                tool: '*',
+                destination_url: 'https://shop.example.com/products/rose-favourite-trio',
+                canonical_url: 'https://shop.example.com/products/rose-favourite-trio',
+                domain: 'shop.example.com',
+                title: '+Rose Favourite Trio',
+                image_url: 'https://cdn.example.com/rose-trio.jpg',
+                price_amount: '38.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Test Beauty',
+                  category: 'serum',
+                  description: 'Fragranced rose serum trio set.',
+                },
+                updated_at: now,
+                created_at: now,
+              },
+              {
+                id: 'seed-volufiline-1',
+                external_product_id: 'ext_volufiline_1',
+                market: 'US',
+                tool: '*',
+                destination_url: 'https://shop.example.com/products/volufiline-pal-isoleucine',
+                canonical_url: 'https://shop.example.com/products/volufiline-pal-isoleucine',
+                domain: 'shop.example.com',
+                title: 'Volufiline 92% + Pal-Isoleucine 1%',
+                image_url: 'https://cdn.example.com/volufiline.jpg',
+                price_amount: '24.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Test Beauty',
+                  category: 'serum',
+                  description: 'Volume-plumping serum.',
+                },
+                updated_at: now,
+                created_at: now,
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      },
+    }));
+
+    const upstreamSearch = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'gentle brightening serum sensitive skin fragrance free',
+            page: 1,
+            limit: 6,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'beauty_cross_agent_batch',
+          market: 'US',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.metadata?.query_source).toBe('agent_products_beauty_external_seed_mainline');
+    const ids = resp.body.products.map((product) => product.product_id);
+    expect(ids).toContain('ext_niacinamide_5_1');
+    expect(ids).toContain('ext_azelaic_brightening_1');
+    expect(ids).not.toContain('ext_rose_trio_1');
+    expect(ids).not.toContain('ext_volufiline_1');
+    expect(upstreamSearch.isDone()).toBe(false);
+  });
+
   test('sensitive barrier moisturizer query excludes exfoliating, body, scented, and eye-surface products', async () => {
     jest.doMock('../../src/db', () => ({
       query: async (sql) => {
