@@ -10560,6 +10560,7 @@ function isBeautyProductContraindicatedForQuery(product, queryText = '', intent 
   const queryRequestsAntiAging = /\b(anti[-\s]?aging|anti[-\s]?ageing|firming|wrinkle|lift|lifting|mature\s*skin)\b|抗老|抗皱|抗皺|紧致|緊緻|提拉/i.test(normalizedQuery);
   const queryRequestsMask = /\b(mask|mud\s*pack|clay\s*pack|wash[-\s]?off\s*pack)\b|面膜|泥膜/i.test(normalizedQuery);
   const queryRequestsRoutineSet = /\b(routine|regimen|set|kit|bundle|capsule|starter\s*kit)\b|套装|套組|套組|套组|组合|組合|护理包|護理包/i.test(normalizedQuery);
+  const queryRequestsBrushTool = /\b(brush|brushes|makeup\s*brush|tool|tools)\b|刷具|化妆刷|化妝刷|工具/i.test(normalizedQuery);
   const queryRequestsTreatmentSerum =
     families.has('serum') ||
     /\b(serum|essence|ampoule|suspension|treatment|azelaic|hyaluronic\s+acid|niacinamide|tranexamic|vitamin\s*c)\b|精华|精華|安瓶|壬二酸|玻尿酸|透明质酸|煙酰胺|烟酰胺|传明酸|傳明酸/i.test(normalizedQuery);
@@ -10567,7 +10568,8 @@ function isBeautyProductContraindicatedForQuery(product, queryText = '', intent 
   const productLooksLikeAntiAging =
     /\b(anti[-\s]?aging|anti[-\s]?ageing|firming|wrinkle|wrinkles|lift|lifting|merveillance|nuxuriance|global\s+anti[-\s]?aging|exceptional\s+day\s*&?\s*night)\b|抗老|抗皱|抗皺|紧致|緊緻|提拉/i.test(safetyText);
   const productLooksLikeMaskPack = /\b(mud\s*pack|clay\s*pack|wash[-\s]?off\s*pack|sleeping\s*mask|sheet\s*mask|mask)\b|面膜|泥膜/i.test(titleSurfaceText);
-  const productLooksLikeRoutineSet = /\b(am\/pm\s+routine|cult\s+skincare\s+routine|routine|regimen|starter\s*kit|set|bundle|collection|capsule)\b|套装|套組|套组|组合|組合|护理包|護理包/i.test(titleSurfaceText);
+  const productLooksLikeRoutineSet = /\b(am\/pm\s+routine|cult\s+skincare\s+routine|routine|regimen|starter\s*kit|kit|set|bundle|collection|capsule)\b|套装|套組|套组|组合|組合|护理包|護理包/i.test(titleSurfaceText);
+  const productLooksLikeBrushTool = /\b(brush\s*cleanser|brushes?|makeup\s*brush|brush\s*cleaning|tool\s*cleanser)\b|刷具|化妆刷|化妝刷|工具/i.test(safetyText);
   const productLooksLikeTreatmentSerum =
     /\b(serum|essence|ampoule|suspension|treatment|azelaic\s+acid|hyaluronic\s+acid(?:\s+\d+%?)?|niacinamide|tranexamic\s+acid)\b|精华|精華|安瓶|壬二酸|玻尿酸|透明质酸|煙酰胺|烟酰胺|传明酸|傳明酸/i.test(titleSurfaceText);
   const fragranceFreeClaim = /\b(fragrance[-\s]?free|unscented|no\s+fragrance|without\s+fragrance)\b|无香精|無香精|不含香精/i.test(safetyText);
@@ -10639,6 +10641,9 @@ function isBeautyProductContraindicatedForQuery(product, queryText = '', intent 
     return true;
   }
   if (calmFaceSkincareQuery && productLooksLikeMaskPack && !queryRequestsMask) {
+    return true;
+  }
+  if (calmFaceSkincareQuery && families.has('cleanser') && productLooksLikeBrushTool && !queryRequestsBrushTool) {
     return true;
   }
   if (
