@@ -29,7 +29,7 @@ describe('beauty cross-agent batch runner', () => {
     const dataset = JSON.parse(fs.readFileSync(datasetPath, 'utf8'));
 
     expect(dataset.schema_version).toBe('beauty_cross_agent_multiturn.v1');
-    expect(dataset.cases).toHaveLength(12);
+    expect(dataset.cases).toHaveLength(13);
     expect(validateDataset(dataset)).toEqual([]);
     for (const testCase of dataset.cases) {
       expect(testCase).toEqual(

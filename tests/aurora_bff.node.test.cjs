@@ -1433,6 +1433,128 @@ test('/v1/chat: beauty travel contract keeps explicit non-Bangkok destination', 
   );
 });
 
+test('/v1/chat: Seoul travel follow-up returns phase-aware Chinese guidance', async () => {
+  await withEnv(
+    {
+      AURORA_QA_PLANNER_V1_ENABLED: 'true',
+      AURORA_TRAVEL_WEATHER_LIVE_ENABLED: 'false',
+      PIVOT_BEAUTY_CONTRACT_V1_ENABLED: 'true',
+      OPENAI_API_KEY: '',
+    },
+    async () => {
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+      const app = express();
+      app.use(express.json({ limit: '1mb' }));
+      mountAuroraBffRoutes(app, { logger: null });
+
+      const resp = await supertest(app)
+        .post('/v1/chat')
+        .set({
+          'X-Aurora-UID': 'test_uid_seattle_seoul_travel_contract',
+          'X-Trace-ID': 'test_trace',
+          'X-Brief-ID': 'test_brief',
+          'X-Lang': 'CN',
+        })
+        .send({
+          message: '请按出发前、飞行中、落地前 48 小时、在 Seoul 当地购买，整理一个最小行动清单。',
+          session: {
+            state: 'idle',
+            case_id: 'travel_seattle_seoul_local_purchase',
+            profile: {
+              skinType: 'combination_oily',
+              sensitivity: 'medium_high',
+              barrierStatus: 'reactive',
+              current_actives: ['salicylic_acid_2_percent', 'vitamin_c_low_strength'],
+              travel_plan: {
+                destination: 'Seoul, South Korea',
+                start_date: '2026-05-20',
+                end_date: '2026-05-27',
+                origin: 'Seattle, WA',
+              },
+            },
+          },
+          language: 'CN',
+        })
+        .expect(200);
+
+      const assistant = String(resp.body?.assistant_message?.content || '');
+      assert.match(assistant, /Seattle/);
+      assert.match(assistant, /Seoul/);
+      assert.match(assistant, /出发前|飞行中|落地前 48 小时|当地购买/);
+      assert.match(assistant, /机舱|低湿|飞行/);
+      assert.match(assistant, /水杨酸/);
+      assert.match(assistant, /维 C/);
+      assert.match(assistant, /防晒|SPF/);
+      assert.match(assistant, /屏障|修护/);
+      assert.doesNotMatch(assistant, /Bangkok|Reykjavik|Which scenario should I optimize for/i);
+
+      delete require.cache[moduleId];
+    },
+  );
+});
+
+test('/v1/chat: English Seoul travel question stays in English', async () => {
+  await withEnv(
+    {
+      AURORA_QA_PLANNER_V1_ENABLED: 'true',
+      AURORA_TRAVEL_WEATHER_LIVE_ENABLED: 'false',
+      PIVOT_BEAUTY_CONTRACT_V1_ENABLED: 'true',
+      OPENAI_API_KEY: '',
+    },
+    async () => {
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+      const app = express();
+      app.use(express.json({ limit: '1mb' }));
+      mountAuroraBffRoutes(app, { logger: null });
+
+      const resp = await supertest(app)
+        .post('/v1/chat')
+        .set({
+          'X-Aurora-UID': 'test_uid_seattle_seoul_travel_contract_en',
+          'X-Trace-ID': 'test_trace',
+          'X-Brief-ID': 'test_brief',
+          'X-Lang': 'CN',
+        })
+        .send({
+          message: 'From Seattle to Seoul, what skincare should I prepare before travel? I use salicylic acid and low-strength vitamin C.',
+          session: {
+            state: 'idle',
+            profile: {
+              skinType: 'combination_oily',
+              sensitivity: 'medium_high',
+              barrierStatus: 'reactive',
+              current_actives: ['salicylic_acid_2_percent', 'vitamin_c_low_strength'],
+              travel_plan: {
+                destination: 'Seoul, South Korea',
+                start_date: '2026-05-20',
+                end_date: '2026-05-27',
+                origin: 'Seattle, WA',
+              },
+            },
+          },
+          language: 'CN',
+        })
+        .expect(200);
+
+      const assistant = String(resp.body?.assistant_message?.content || '');
+      assert.match(assistant, /Seattle/);
+      assert.match(assistant, /Seoul/);
+      assert.match(assistant, /SPF|sunscreen/i);
+      assert.match(assistant, /salicylic acid/i);
+      assert.match(assistant, /vitamin C/i);
+      assert.doesNotMatch(assistant, /[\u3400-\u9fff]/);
+
+      delete require.cache[moduleId];
+    },
+  );
+});
+
 test('/v1/chat: retinoid with unknown pregnancy requires info before availability/catalog short-circuit', async () => {
   await withEnv(
     {

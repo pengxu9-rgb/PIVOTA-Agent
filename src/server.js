@@ -8009,6 +8009,33 @@ function hasBeautyProfileContractSignal(value) {
   return /\b(skin|sensitive|barrier|dry|oily|acne|rosacea|product[_\s-]?fit|analysis)\b/i.test(signal);
 }
 
+function hasBeautyMainlineQueryContractSignal(queryText = '', intent = null) {
+  const raw = String(queryText || '').trim();
+  if (!raw) return false;
+  const normalized = normalizeSearchTextForMatch(raw);
+  const profile = intent || inferBeautyMainlineIntent(raw);
+  const families = Array.isArray(profile?.families) ? profile.families : [];
+  if (!profile?.beautyLike || families.length === 0) return false;
+
+  const householdCleanerOnly =
+    families.length === 1 &&
+    families[0] === 'cleanser' &&
+    /\b(kitchen|bathroom|toilet|floor|dish|laundry|car|household|surface|oven|drain)\b/i.test(raw);
+  if (householdCleanerOnly) return false;
+
+  if (families.includes('sunscreen')) return true;
+  if (
+    /\b(skin|skincare|face|facial|beauty|k[-\s]?beauty|seoul|travel|flight|sensitive|sensiti[sz]ed|redness|rosacea|oily|dry|acne|barrier|spf)\b/i.test(raw) ||
+    /护肤|護膚|皮肤|皮膚|面部|敏感|泛红|泛紅|玫瑰痤疮|油皮|干皮|乾皮|痘|屏障|修护|修護|旅行|飞行|飛行|防晒|防曬/.test(raw)
+  ) {
+    return true;
+  }
+  if (families.includes('moisturizer') && /\b(barrier|repair|cica|ceramide|panthenol|sensiti[sz]ed)\b/i.test(normalized)) {
+    return true;
+  }
+  return false;
+}
+
 function getPivotBeautyContractQueryText({ req = null, responseBody = null } = {}) {
   const search = getInvokeSearchPayload(req);
   return firstNonEmptyString(
@@ -8056,6 +8083,7 @@ function getPivotBeautyContractSignals({ req = null, responseBody = null } = {})
     hasNormalizedNeed: hasBeautyContractNormalizedNeed(context),
     hasProfileSignal: hasBeautyProfileContractSignal(context),
     beautyIntent,
+    hasQueryContractSignal: hasBeautyMainlineQueryContractSignal(queryText, beautyIntent),
     responseAlreadyBeautyMainline: /beauty_external_seed_mainline|beauty_discovery_mainline/i.test(querySource),
     explicitBeautyBatch:
       /beauty_cross_agent/i.test(source) ||
@@ -8074,6 +8102,7 @@ function isPivotBeautyContractInvokeRequest({ operation = '', req = null, respon
   if (signals.hasNormalizedNeed) return true;
   if (String(signals.creatorView || '').trim().toUpperCase() === 'GLOBAL_BEAUTY') return true;
   if (signals.hasProfileSignal && signals.beautyIntent.beautyLike) return true;
+  if (signals.hasQueryContractSignal) return true;
   return false;
 }
 
@@ -9855,6 +9884,7 @@ async function queryBeautyExternalSeedRowsFast({
   const safeLimit = Math.max(1, Math.min(60, Number(limit || 24) || 24));
   const perScopeRowLimit = Math.max(12, Math.min(48, safeLimit * 4));
   const categoryTerms = buildBeautyExternalSeedCategoryTerms(intent);
+  const perCategoryRowLimit = Math.max(4, Math.min(16, Math.ceil(perScopeRowLimit / Math.max(1, categoryTerms.length))));
   const recallPatterns = buildBeautyExternalSeedRecallPatterns({ queryText, intent });
   const toolScopes = toolScope === 'creator_preferred'
     ? ['creator_agents', '*', '']
@@ -9887,6 +9917,35 @@ async function queryBeautyExternalSeedRowsFast({
     try {
       result = await queryBeautyExternalSeedRowsWithTimeout(
         `
+        WITH ranked AS (
+        SELECT
+          id,
+          external_product_id,
+          market,
+          tool,
+          destination_url,
+          canonical_url,
+          domain,
+          title,
+          image_url,
+          price_amount,
+          price_currency,
+          availability,
+          seed_data,
+          updated_at,
+          created_at,
+          ${categoryAuthoritySql} AS category_authority,
+          row_number() OVER (
+            PARTITION BY ${categoryAuthoritySql}
+            ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+          ) AS category_rank
+        FROM external_product_seeds
+        WHERE status = 'active'
+          AND attached_product_key IS NULL
+          AND market = $1
+          AND tool = $3
+          AND ${filters.join('\n          AND ')}
+        )
         SELECT
           id,
           external_product_id,
@@ -9903,19 +9962,16 @@ async function queryBeautyExternalSeedRowsFast({
           seed_data,
           updated_at,
           created_at
-        FROM external_product_seeds
-        WHERE status = 'active'
-          AND attached_product_key IS NULL
-          AND market = $1
-          AND tool = $3
-          AND ${filters.join('\n          AND ')}
+        FROM ranked
+        WHERE category_rank <= $4
         ORDER BY
-          coalesce(array_position($2::text[], ${categoryAuthoritySql}), 999),
+          coalesce(array_position($2::text[], category_authority), 999),
+          category_rank ASC,
           updated_at DESC NULLS LAST,
           created_at DESC NULLS LAST
-        LIMIT $4
+        LIMIT $5
       `,
-        [safeMarket, categoryTerms, tool, perScopeRowLimit],
+        [safeMarket, categoryTerms, tool, perCategoryRowLimit, perScopeRowLimit],
         1200,
       );
     } catch (err) {
@@ -9936,6 +9992,7 @@ async function queryBeautyExternalSeedRowsFast({
       row_count: nextRows.length,
       category_terms: categoryTerms,
       recall_pattern_count: recallPatterns.length,
+      per_category_row_limit: perCategoryRowLimit,
       tool_scope: tool || '(empty)',
     });
     for (const row of nextRows) {
