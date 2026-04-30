@@ -11,6 +11,7 @@
       "beauty_discovery_mainline"
     ],
     "allowed_contract_paths": [
+      "pivot.agent.v1",
       "agent_v1_search_beauty_mainline"
     ],
     "allow_zero_results": false,
@@ -32,6 +33,7 @@
     "require_primary_path": true,
     "allow_strict_empty": false,
     "allowed_contract_paths": [
+      "pivot.agent.v1",
       "shop_invoke_strict",
       "agent_v1_search_beauty_mainline"
     ],
@@ -65,6 +67,7 @@
     "require_primary_path": true,
     "allow_strict_empty": false,
     "allowed_contract_paths": [
+      "pivot.agent.v1",
       "shop_invoke_strict",
       "agent_v1_search_beauty_mainline"
     ],
@@ -92,6 +95,7 @@
     "query": "vitamin c serum under €30",
     "source": "search",
     "allowed_contract_paths": [
+      "pivot.agent.v1",
       "shop_invoke_strict",
       "agent_v1_search_beauty_mainline"
     ],
@@ -125,6 +129,7 @@
     "query": "vitamin c serum under $30",
     "source": "search",
     "allowed_contract_paths": [
+      "pivot.agent.v1",
       "shop_invoke_strict",
       "agent_v1_search_beauty_mainline"
     ],
