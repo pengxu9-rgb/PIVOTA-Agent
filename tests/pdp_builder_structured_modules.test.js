@@ -183,6 +183,47 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     );
   });
 
+  test('promotes shopping-card fallback fields onto recommendation cards for older PDP clients', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_anchor_two',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'Anchor Product',
+        image_url: 'https://example.com/anchor.png',
+        price: { amount: 18, currency: 'USD' },
+      },
+      relatedProducts: [
+        {
+          product_id: 'ext_related_two',
+          merchant_id: 'external_seed',
+          title: 'Related Product',
+          image_url: 'https://example.com/related.png',
+          price: { amount: 16, currency: 'USD' },
+          shopping_card: {
+            title: 'Related Product',
+            subtitle: 'Spot Patch',
+            intro: 'Hydrocolloid patch for overnight blemish care.',
+          },
+          search_card: {
+            compact_candidate: 'Spot Patch',
+            intro_candidate: 'Hydrocolloid patch for overnight blemish care.',
+          },
+        },
+      ],
+      entryPoint: 'agent',
+    });
+
+    expect(payload.modules.find((module) => module.type === 'recommendations')?.data?.items?.[0]).toEqual(
+      expect.objectContaining({
+        card_subtitle: 'Spot Patch',
+        card_highlight: 'Hydrocolloid patch for overnight blemish care.',
+        card_intro: 'Hydrocolloid patch for overnight blemish care.',
+        description: 'Hydrocolloid patch for overnight blemish care.',
+      }),
+    );
+  });
+
   test('does not let legacy generic how-to fields surface for external seeds', () => {
     const payload = buildPdpPayload({
       product: {
@@ -365,6 +406,34 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
       ]),
     );
     expect(payload.product.product_line_options).toEqual(variantSelector.data.product_line_options);
+  });
+
+  test('suppresses single blocked default-only external variants from the PDP product payload', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_pixi_spot',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'Overnight Spot Stickers',
+        category: 'Treatment',
+        image_url: 'https://example.com/spot.png',
+        price: { amount: 12, currency: 'USD' },
+        variants: [
+          {
+            id: 'v_default',
+            title: 'Default Title',
+            source_quality_status: 'blocked',
+            price: { amount: 12, currency: 'USD' },
+          },
+        ],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    expect(payload.product.variants).toEqual([]);
+    expect(payload.product.default_variant_id).toBeUndefined();
+    expect(payload.modules.find((module) => module.type === 'variant_selector')).toBeFalsy();
   });
 
   test('preserves structured ingredient items without re-splitting numeric INCI commas', () => {

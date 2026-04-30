@@ -899,6 +899,21 @@ function shouldRenderVariantSelector(product, variants, productLineOptions) {
   return displayableCount > 1;
 }
 
+function shouldExposeProductVariants(product, variants, productLineOptions) {
+  if (!Array.isArray(variants) || variants.length === 0) return false;
+  if (!isExternalSeedLikeProduct(product)) return true;
+  if (Array.isArray(productLineOptions) && productLineOptions.length > 1) return true;
+  const hasDisplayableChoice = variants.some((variant) => variantHasDisplayableChoice(variant));
+  if (hasDisplayableChoice) return true;
+  return variants.some((variant) => {
+    const title = asNonEmptyString(variant?.title).toLowerCase();
+    const sourceQualityStatus = asNonEmptyString(
+      variant?.source_quality_status || variant?.sourceQualityStatus,
+    ).toLowerCase();
+    return title && !/^(default|default title|variant \d+)$/i.test(title) && sourceQualityStatus !== 'blocked';
+  });
+}
+
 function toVariantPrice(input, currency) {
   if (!input) return undefined;
   const amount =
@@ -2602,37 +2617,63 @@ function buildReviewsPreview(product, options = {}) {
 function buildRecommendations(items, currencyFallback) {
   return {
     strategy: 'related_products',
-    items: (items || []).map((p) => ({
-      product_id: p.product_id || p.id,
-      merchant_id: p.merchant_id || p.merchant?.id || p.merchant_uuid,
-      title: p.title || p.name,
-      description: asNonEmptyString(p.description) || undefined,
-      category: asNonEmptyString(p.category) || undefined,
-      product_type: asNonEmptyString(p.product_type || p.productType) || undefined,
-      image_url:
-        normalizePdpImageUrl(p.image_url || p.image || (Array.isArray(p.images) ? p.images[0] : undefined)) ||
-        undefined,
-      price: {
-        amount: normalizeAmount(p.price),
-        currency: normalizeCurrency(p, currencyFallback),
-      },
-      card_title: asNonEmptyString(p.card_title || p.cardTitle) || undefined,
-      card_subtitle: asNonEmptyString(p.card_subtitle || p.cardSubtitle) || undefined,
-      card_highlight: asNonEmptyString(p.card_highlight || p.cardHighlight) || undefined,
-      card_badge: asNonEmptyString(p.card_badge || p.cardBadge) || undefined,
-      shopping_card: p.shopping_card && typeof p.shopping_card === 'object' ? p.shopping_card : undefined,
-      search_card: p.search_card && typeof p.search_card === 'object' ? p.search_card : undefined,
-      external_highlight_signals: Array.isArray(p.external_highlight_signals)
-        ? p.external_highlight_signals
-        : undefined,
-      card_highlight_status: asNonEmptyString(p.card_highlight_status || p.cardHighlightStatus) || undefined,
-      // Additive fields (safe for older clients to ignore).
-      source: p.source || p.recommendation_source || undefined,
-      reason: p.reason || p.recommendation_reason || undefined,
-      x_score: typeof p.x_score === 'number' ? p.x_score : undefined,
-      rating: p.rating || p.review_rating || undefined,
-      review_count: p.review_count || p.reviews_count || undefined,
-    })),
+    items: (items || []).map((p) => {
+      const shoppingCard =
+        p.shopping_card && typeof p.shopping_card === 'object' ? p.shopping_card : undefined;
+      const searchCard =
+        p.search_card && typeof p.search_card === 'object' ? p.search_card : undefined;
+      const cardIntro =
+        asNonEmptyString(p.card_intro || p.cardIntro || shoppingCard?.intro || searchCard?.intro_candidate) ||
+        undefined;
+      return {
+        product_id: p.product_id || p.id,
+        merchant_id: p.merchant_id || p.merchant?.id || p.merchant_uuid,
+        title: p.title || p.name,
+        description: asNonEmptyString(p.description || cardIntro) || undefined,
+        category: asNonEmptyString(p.category) || undefined,
+        product_type: asNonEmptyString(p.product_type || p.productType) || undefined,
+        image_url:
+          normalizePdpImageUrl(p.image_url || p.image || (Array.isArray(p.images) ? p.images[0] : undefined)) ||
+          undefined,
+        price: {
+          amount: normalizeAmount(p.price),
+          currency: normalizeCurrency(p, currencyFallback),
+        },
+        card_title:
+          asNonEmptyString(
+            p.card_title || p.cardTitle || shoppingCard?.title || searchCard?.title_candidate,
+          ) || undefined,
+        card_subtitle:
+          asNonEmptyString(
+            p.card_subtitle || p.cardSubtitle || shoppingCard?.subtitle || searchCard?.compact_candidate,
+          ) || undefined,
+        card_highlight:
+          asNonEmptyString(
+            p.card_highlight ||
+              p.cardHighlight ||
+              shoppingCard?.highlight ||
+              searchCard?.highlight_candidate ||
+              cardIntro,
+          ) || undefined,
+        card_badge:
+          asNonEmptyString(
+            p.card_badge || p.cardBadge || shoppingCard?.proof_badge || searchCard?.proof_badge_candidate,
+          ) || undefined,
+        ...(cardIntro ? { card_intro: cardIntro } : {}),
+        shopping_card: shoppingCard,
+        search_card: searchCard,
+        external_highlight_signals: Array.isArray(p.external_highlight_signals)
+          ? p.external_highlight_signals
+          : undefined,
+        card_highlight_status: asNonEmptyString(p.card_highlight_status || p.cardHighlightStatus) || undefined,
+        // Additive fields (safe for older clients to ignore).
+        source: p.source || p.recommendation_source || undefined,
+        reason: p.reason || p.recommendation_reason || undefined,
+        x_score: typeof p.x_score === 'number' ? p.x_score : undefined,
+        rating: p.rating || p.review_rating || undefined,
+        review_count: p.review_count || p.reviews_count || undefined,
+      };
+    }),
   };
 }
 
@@ -2703,6 +2744,7 @@ function buildPdpPayload(args) {
   const variants = buildVariants(product);
   const defaultVariant = variants[0];
   const productLineOptions = normalizeProductLineOptions(product);
+  const visibleVariants = shouldExposeProductVariants(product, variants, productLineOptions) ? variants : [];
   const productLineOptionName =
     stripHtml(product.product_line_option_name || product.productLineOptionName) ||
     productLineOptions.find((item) => item.selected)?.option_name ||
@@ -2967,8 +3009,8 @@ function buildPdpPayload(args) {
       canonical_url: canonicalUrl || undefined,
       destination_url: destinationUrl || undefined,
       source_url: sourceUrl || undefined,
-      default_variant_id: defaultVariant.variant_id,
-      variants,
+      default_variant_id: visibleVariants.length ? defaultVariant.variant_id : undefined,
+      variants: visibleVariants,
       ...(productLineOptions.length > 1 ? { product_line_options: productLineOptions } : {}),
       ...(productLineOptions.length > 1 && productLineOptionName
         ? { product_line_option_name: productLineOptionName }

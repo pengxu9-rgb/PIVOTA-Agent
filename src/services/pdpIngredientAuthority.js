@@ -53,8 +53,12 @@ const STOP_MARKERS = [
   /\bcaution\s*:/i,
   /\bfor external use only\b/i,
 ];
+const ACTIVE_STOP_MARKERS = [
+  ...STOP_MARKERS,
+  /\bfull ingredient(?:s| list)?\b/i,
+];
 const MARKETING_SIGNAL_RE =
-  /\b(soothes?|supports?|fades?|helps?|comforts?|improves?|hydrates?|nourishes?|good for|best for|works? well|pair with|apply|massage|barrier|redness|discoloration|irritation)\b/i;
+  /\b(soothes?|supports?|fades?|helps?|comforts?|improves?|hydrates?|nourishes?|clarifies?|brightens?|renews?|refines?|conditions?|antibacterial|good for|best for|works? well|pair with|apply|massage|barrier|redness|discoloration|irritation|suitable for|not tested on animals|cruelty[-\s]?free|paraben[-\s]?free|biodegradable|translucent)\b/i;
 const SECTION_HEADING_RE = /^(full ingredients?|ingredients(?:\s*\(inci\))?|inci(?: list)?|active ingredients?)$/i;
 const INGREDIENT_FUNCTION_LABEL_RE =
   /^(?:carrier|antioxidant|chelating agent|emollient|emulsifier|emulsion stabilizer|film former|humectant|thickener|skin conditioner|preservative|surfactant|solvent|stabilizer|ph adjuster|buffering agent|colorant|opacifier|viscosity controlling|viscosity controller|absorbent|abrasive|binder|cleansing agent)$/i;
@@ -104,6 +108,12 @@ const LOW_SIGNAL_ACTIVE_ITEMS = new Set([
 ]);
 const INVALID_ACTIVE_FRAGMENT_RE =
   /^(?:see|learn more|tab on|restores damaged|chapped|none|n\/a|select shade|choose shade)$/i;
+const INCI_STRUCTURE_RE =
+  /\b(aqua|water|extract|oil|acid|glycol|glycerin|alcohol|amide|amine|ceramide|panthenol|niacinamide|tocopherol|hyaluronate|triglyceride|dimethicone|siloxane|ferment|butter|wax|seed|leaf|root|flower|fruit|sodium|potassium|chloride|oxide|dioxide|hydroxide|carbomer|cellulose|poly|capry|propanediol|butylene|ethylene|hexanediol|ethanol|glucoside|benzoate|sorbate|retinal|retinol|caffeine|bisabolol|arginine|ergothioneine)\b|peptide/i;
+const INCI_MARKETING_ONLY_RE =
+  /\b(translucent|biodegradable|not tested on animals|cruelty[-\s]?free|paraben[-\s]?free|suitable for all skin types|all skin types|barely noticeable)\b/i;
+const ACTIVE_TRAILING_MARKETING_RE =
+  /^\s*(?:[-–—:]\s*)?(?:clarifies?|brightens?|helps?|supports?|soothes?|hydrates?|nourishes?|renews?|refines?|conditions?|is\b|for\b|good\b|best\b|full ingredient(?:s| list)?)\b/i;
 const TITLE_DECLARED_ACTIVE_DEFS = [
   { display: 'Beta-Glucan', titleRe: /\bbeta[-\s]?glucan\b/i, evidenceKeys: ['betaglucan'] },
   { display: 'Inulin', titleRe: /\binulin\b/i, evidenceKeys: ['inulin'] },
@@ -214,7 +224,8 @@ function sanitizeIngredientRawText(rawText, { activeOnly = false } = {}) {
   }
 
   let cutoff = text.length;
-  for (const marker of STOP_MARKERS) {
+  const stopMarkers = activeOnly ? ACTIVE_STOP_MARKERS : STOP_MARKERS;
+  for (const marker of stopMarkers) {
     const found = marker.exec(text);
     marker.lastIndex = 0;
     if (found && typeof found.index === 'number') {
@@ -290,6 +301,25 @@ function isLikelyIngredientItem(value) {
   const words = text.split(/\s+/g).filter(Boolean);
   if (words.length > 10) return false;
   return true;
+}
+
+function isLikelyInciStructuredItem(value) {
+  const text = asString(value);
+  if (!text) return false;
+  if (INCI_MARKETING_ONLY_RE.test(text)) return false;
+  if (INGREDIENT_FUNCTION_LABEL_RE.test(text)) return false;
+  if (/[()]/.test(text)) return true;
+  if (/^[A-Z0-9 ,/+-]{5,}$/.test(text)) return true;
+  return INCI_STRUCTURE_RE.test(text);
+}
+
+function isLikelyAuthoritativeIngredientSet(items) {
+  const list = Array.isArray(items) ? items.map((item) => asString(item)).filter(Boolean) : [];
+  if (list.length < 3) return false;
+  const inciStructuredCount = list.filter((item) => isLikelyInciStructuredItem(item)).length;
+  const marketingCount = list.filter((item) => INCI_MARKETING_ONLY_RE.test(item) || MARKETING_SIGNAL_RE.test(item)).length;
+  if (inciStructuredCount < Math.min(3, list.length)) return false;
+  return inciStructuredCount > marketingCount;
 }
 
 function normalizeIngredientItems(values, { max = 160 } = {}) {
@@ -694,6 +724,7 @@ function readStructuredArrayAuthority(product) {
     ? normalizeIngredientItems(splitIngredientText(sanitizeIngredientRawText(rawText)), { max: 180 })
     : [];
   const finalItems = directItems.length >= 3 ? directItems : parsedRawItems;
+  if (!isLikelyAuthoritativeIngredientSet(finalItems)) return null;
   if (finalItems.length < 3) return null;
   const activeItems = normalizeIngredientItems(
     readItems(product?.active_ingredients, product?.activeIngredients),
@@ -711,6 +742,7 @@ function parseCandidateRawText(rawText, sourceOrigin) {
   const sanitized = sanitizeIngredientRawText(rawText);
   if (!sanitized) return null;
   const items = normalizeIngredientItems(splitIngredientText(sanitized), { max: 180 });
+  if (!isLikelyAuthoritativeIngredientSet(items)) return null;
   if (items.length < 3) return null;
   return buildAuthorityRecord({
     rawText: sanitized,
@@ -784,6 +816,15 @@ function canonicalizeActiveCandidateLabel(value) {
   if (percentMatch) {
     const label = asString(percentMatch[1]);
     if (label && (HERO_ACTIVE_RE.test(label) || REGULATORY_ACTIVE_RE.test(label))) return label;
+  }
+  const heroPrefixMatch = text.match(
+    /^(niacinamide|hyaluronic acid|ceramide|peptides?|retinol|retinal|retinaldehyde|bakuchiol|vitamin c|ascorbic acid|ethyl ascorbic acid|tetrahexyldecyl ascorbate|glycolic acid|lactic acid|mandelic acid|salicylic acid|azelaic acid|tranexamic acid|pha|gluconolactone|panthenol|centella|madecassoside|snail mucin|rice|rice lipids?|propolis|alpha arbutin|caffeine|squalane|urea|colloidal oatmeal|ectoin|zinc pca|tamanu oil|aloe|n-?acetyl glucosamine|acetyl glucosamine|beta-?glucan|inulin|glycolipids?|behentrimonium chloride|palmitoyl isoleucine|volufiline|phyto ?ceramides?)\b/i,
+  );
+  if (heroPrefixMatch) {
+    const trailing = text.slice(heroPrefixMatch[0].length);
+    if (trailing && ACTIVE_TRAILING_MARKETING_RE.test(trailing)) {
+      return asString(heroPrefixMatch[0]);
+    }
   }
   return text;
 }
@@ -1049,12 +1090,12 @@ function buildStructuredPdpIngredientModules(product, options = {}) {
         }
       : null;
   const activeIngredientsData =
-    Array.isArray(authority.active_items) && authority.active_items.length
+    Array.isArray(authority.active_items) && filterDisplayableActiveItems(product, authority.active_items).length
       ? {
           title: 'Active Ingredients',
-          items: authority.active_items,
+          items: filterDisplayableActiveItems(product, authority.active_items),
           source_origin: authority.source_origin || 'active_block',
-          source_quality_status: authority.active_items.some((item) => REGULATORY_ACTIVE_RE.test(item))
+          source_quality_status: filterDisplayableActiveItems(product, authority.active_items).some((item) => REGULATORY_ACTIVE_RE.test(item))
             ? 'regulatory_active'
             : authority.purity_status === 'suppressed'
               ? 'captured'

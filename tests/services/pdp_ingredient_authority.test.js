@@ -404,6 +404,24 @@ describe('pdpIngredientAuthority', () => {
     expect(authority.items).not.toEqual(expect.arrayContaining(['1', '2-Hexanediol']));
   });
 
+  test('rejects marketing bullet lists masquerading as ingredients and trims active marketing suffixes', () => {
+    const modules = buildStructuredPdpIngredientModules({
+      title: 'Overnight Spot Stickers',
+      category: 'Treatment',
+      pdp_ingredients_raw:
+        'Translucent, barely noticeable biodegradable stickers, Suitable for all skin types, Paraben-free, Not tested on animals.',
+      pdp_active_ingredients_raw:
+        'Active Ingredients: Salicylic Acid clarifies, Tea Tree Leaf Oil is antibacterial Full Ingredient List',
+    });
+
+    expect(modules.ingredientsInciData).toBeNull();
+    expect(modules.activeIngredientsData).toEqual(
+      expect.objectContaining({
+        items: ['Salicylic Acid'],
+      }),
+    );
+  });
+
   test('filters ingredient function labels from role-annotated ingredient lists', () => {
     const authority = buildAuthoritativeIngredientView({
       pdp_ingredients_raw:

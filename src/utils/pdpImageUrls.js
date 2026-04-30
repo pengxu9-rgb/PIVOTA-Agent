@@ -21,6 +21,7 @@ const KNOWN_SDCND_FILENAME_ALIASES = {
   'tf_sku_t2ss02_3000x3000_0.png': 'tf_sku_T2SS02_3000x3000_1.png',
 };
 const TOM_FORD_SHOPIFY_FILES_PREFIX = '/s/files/1/0761/9690/5173/files/';
+const PIXI_SHOPIFY_FILES_PREFIX = '/s/files/1/1463/5858/files/';
 const DEFAULT_SHOPIFY_WIDTH_PLACEHOLDER = '1024';
 
 function isAbsoluteHttpUrl(value) {
@@ -67,6 +68,21 @@ function rewriteTomFordAssetToOfficialShopify(parsed) {
   return next;
 }
 
+function rewritePixiAssetToOfficialShopify(parsed) {
+  const pathname = String(parsed?.pathname || '').trim();
+  if (!isKnownHost(parsed?.hostname, ['pixibeauty.com'])) {
+    return parsed;
+  }
+  if (!/^\/files\/.+/i.test(pathname)) {
+    return parsed;
+  }
+  const relativePath = pathname.replace(/^\/files\//i, '');
+  if (!relativePath) return parsed;
+  const rewritten = new URL(`https://cdn.shopify.com${PIXI_SHOPIFY_FILES_PREFIX}${relativePath}`);
+  rewritten.search = parsed.search;
+  return rewritten;
+}
+
 function normalizeShopifyLikeFilename(filename, options = {}) {
   const stripHash = options.stripHash === true;
   const trimmed = String(filename || '').trim();
@@ -107,6 +123,10 @@ function normalizePdpImageUrl(value) {
 
   try {
     let parsed = new URL(raw);
+    if (String(parsed.hostname || '').trim().toLowerCase() === 'files') {
+      return '';
+    }
+    parsed = rewritePixiAssetToOfficialShopify(parsed);
     if (isShopifyLikeAsset(parsed)) {
       stripImageTransformQueryParams(parsed);
       const segments = parsed.pathname.split('/');

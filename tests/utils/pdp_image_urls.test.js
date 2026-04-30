@@ -45,4 +45,18 @@ describe('pdp image URL normalization', () => {
       'https://www.rarebeauty.com/cdn/shop/files/PDP-USAGE-FIND-COMFORT-BODY-HAIR-FRAGRANCE-MIST-MINI-1268x1268_1024x.jpg?v=1740424675',
     );
   });
+
+  test('rewrites Pixi storefront /files assets to the official Shopify CDN path', () => {
+    expect(
+      normalizePdpImageUrl(
+        'https://pixibeauty.com/files/Pixi_Skintreats_OvernightSpot-Stickers_July_2025_01.jpg',
+      ),
+    ).toBe(
+      'https://cdn.shopify.com/s/files/1/1463/5858/files/Pixi_Skintreats_OvernightSpot-Stickers_July_2025_01.jpg',
+    );
+  });
+
+  test('drops bogus bare-host files image URLs', () => {
+    expect(normalizePdpImageUrl('http://files/Pixi_Skintreats_OvernightSpot-Stickers_July_2025_01.jpg')).toBe('');
+  });
 });
