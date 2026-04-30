@@ -10291,8 +10291,7 @@ function canonicalizeBeautyProductTitleForDedupe(rawTitle = '') {
 }
 
 function detectBeautyProductPackVariant(product = {}) {
-  const title = normalizeSearchTextForMatch(
-    [
+  const rawTitle = [
       product.title,
       product.name,
       product.product_name,
@@ -10303,8 +10302,9 @@ function detectBeautyProductPackVariant(product = {}) {
     ]
       .map((value) => String(value || '').trim())
       .filter(Boolean)
-      .join(' '),
-  );
+      .join(' ')
+      .toLowerCase();
+  const title = normalizeSearchTextForMatch(rawTitle);
   if (!title) {
     return {
       travel_size: false,
@@ -10313,11 +10313,13 @@ function detectBeautyProductPackVariant(product = {}) {
       any: false,
     };
   }
-  const volumeMlMatch = title.match(/\b(\d+(?:\.\d+)?)\s*(?:ml|m l)\b/);
+  const volumeMlMatch = rawTitle.match(/\b(\d+(?:\.\d+)?)\s*(?:ml|m l)\b/);
   const smallMlSize = volumeMlMatch ? Number(volumeMlMatch[1]) > 0 && Number(volumeMlMatch[1]) <= 15 : false;
-  const travelSize = /\b(?:travel\s*size|mini|trial\s*size|sample|portable)\b/.test(title) || smallMlSize;
-  const jumboOrValue = /\b(?:jumbo|supersize|super\s*size|value\s*size|value\s*pack|refill|full\s*size)\b/.test(title);
-  const multiPack = /\b(?:double\s*pack|duo|bundle|set|pack\s*of\s*\d+|\d+\s*(?:pack|pc|pcs|piece|pieces|count|ct))\b/.test(title);
+  const volumeOzMatch = rawTitle.match(/(?:^|\s)(?:fl\.?\s*)?(\d+(?:\.\d+)?|\.\d+)\s*(?:fl\.?\s*)?oz\b/);
+  const smallOzSize = volumeOzMatch ? Number(volumeOzMatch[1]) > 0 && Number(volumeOzMatch[1]) <= 1 : false;
+  const travelSize = /\b(?:travel\s*size|mini|trial\s*size|sample|portable)\b/.test(title) || /\b(?:travel\s*size|mini|trial\s*size|sample|portable)\b/.test(rawTitle) || smallMlSize || smallOzSize;
+  const jumboOrValue = /\b(?:jumbo|supersize|super\s*size|value\s*size|value\s*pack|refill|full\s*size)\b/.test(title) || /\b(?:jumbo|supersize|super\s*size|value\s*size|value\s*pack|refill|full\s*size)\b/.test(rawTitle);
+  const multiPack = /\b(?:double\s*pack|duo|bundle|set|pack\s*of\s*\d+|\d+\s*(?:pack|pc|pcs|piece|pieces|count|ct))\b/.test(title) || /\b(?:double\s*pack|duo|bundle|set|pack\s*of\s*\d+|\d+\s*(?:pack|pc|pcs|piece|pieces|count|ct))\b/.test(rawTitle);
   return {
     travel_size: travelSize,
     jumbo_or_value: jumboOrValue,
