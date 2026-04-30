@@ -2977,6 +2977,111 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
                 updated_at: new Date().toISOString(),
                 created_at: new Date().toISOString(),
               },
+              {
+                id: 'seed-resurfacing-1',
+                external_product_id: 'ext_resurfacing_1',
+                market: 'US',
+                tool: '*',
+                destination_url: 'https://shop.example.com/products/daily-resurfacing-lotion',
+                canonical_url: 'https://shop.example.com/products/daily-resurfacing-lotion',
+                domain: 'shop.example.com',
+                title: 'Daily Resurfacing Lotion with 2% Niacinamide',
+                image_url: 'https://cdn.example.com/resurfacing.jpg',
+                price_amount: '18.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Test Beauty',
+                  category: 'serum',
+                  description: 'Resurfacing brightening lotion.',
+                },
+                updated_at: new Date().toISOString(),
+                created_at: new Date().toISOString(),
+              },
+              {
+                id: 'seed-peptide-1',
+                external_product_id: 'ext_peptide_1',
+                market: 'US',
+                tool: '*',
+                destination_url: 'https://shop.example.com/products/peptide-brightening-serum',
+                canonical_url: 'https://shop.example.com/products/peptide-brightening-serum',
+                domain: 'shop.example.com',
+                title: 'Peptide Brightening Serum Retinol-Free',
+                image_url: 'https://cdn.example.com/peptide.jpg',
+                price_amount: '24.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Test Beauty',
+                  category: 'serum',
+                  description: 'Retinol-free peptide serum for glow.',
+                },
+                updated_at: new Date().toISOString(),
+                created_at: new Date().toISOString(),
+              },
+              {
+                id: 'seed-sunscreen-1',
+                external_product_id: 'ext_sunscreen_1',
+                market: 'US',
+                tool: '*',
+                destination_url: 'https://shop.example.com/products/mineral-sunscreen-spf-50',
+                canonical_url: 'https://shop.example.com/products/mineral-sunscreen-spf-50',
+                domain: 'shop.example.com',
+                title: 'Daily Mineral Sunscreen SPF 50',
+                image_url: 'https://cdn.example.com/spf.jpg',
+                price_amount: '20.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Test Beauty',
+                  category: 'sunscreen',
+                  description: 'Daily broad spectrum sunscreen.',
+                },
+                updated_at: new Date().toISOString(),
+                created_at: new Date().toISOString(),
+              },
+              {
+                id: 'seed-barrier-1',
+                external_product_id: 'ext_barrier_1',
+                market: 'US',
+                tool: '*',
+                destination_url: 'https://shop.example.com/products/barrier-peptide-moisturizer',
+                canonical_url: 'https://shop.example.com/products/barrier-peptide-moisturizer',
+                domain: 'shop.example.com',
+                title: 'Barrier Peptide Moisturizer Retinol-Free',
+                image_url: 'https://cdn.example.com/barrier.jpg',
+                price_amount: '26.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Test Beauty',
+                  category: 'moisturizer',
+                  description: 'Retinol-free moisturizer with peptides and ceramides.',
+                },
+                updated_at: new Date().toISOString(),
+                created_at: new Date().toISOString(),
+              },
+              {
+                id: 'seed-mini-1',
+                external_product_id: 'ext_mini_1',
+                market: 'US',
+                tool: '*',
+                destination_url: 'https://shop.example.com/products/watermelon-pink-juice-moisturizer-10ml',
+                canonical_url: 'https://shop.example.com/products/watermelon-pink-juice-moisturizer-10ml',
+                domain: 'shop.example.com',
+                title: 'Watermelon Pink Juice Moisturizer 10ml',
+                image_url: 'https://cdn.example.com/mini.jpg',
+                price_amount: '8.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Test Beauty',
+                  category: 'moisturizer',
+                  description: 'Small size moisturizer.',
+                },
+                updated_at: new Date().toISOString(),
+                created_at: new Date().toISOString(),
+              },
             ],
           };
         }
@@ -3001,7 +3106,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
         operation: 'find_products_multi',
         payload: {
           search: {
-            query: 'pregnancy safe brightening serum',
+            query: 'pregnancy safe brightening serum sunscreen peptide moisturizer',
             page: 1,
             limit: 6,
             in_stock_only: true,
@@ -3016,7 +3121,12 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(resp.status).toBe(200);
     expect(resp.body.metadata?.query_source).toBe('agent_products_beauty_external_seed_mainline');
     expect(resp.body.products.map((product) => product.product_id)).toContain('ext_azelaic_1');
+    expect(resp.body.products.map((product) => product.product_id)).toContain('ext_peptide_1');
+    expect(resp.body.products.map((product) => product.product_id)).toContain('ext_sunscreen_1');
+    expect(resp.body.products.map((product) => product.product_id)).toContain('ext_barrier_1');
     expect(resp.body.products.map((product) => product.product_id)).not.toContain('ext_retinol_1');
+    expect(resp.body.products.map((product) => product.product_id)).not.toContain('ext_resurfacing_1');
+    expect(resp.body.products.map((product) => product.product_id)).not.toContain('ext_mini_1');
     expect(resp.body.metadata?.beauty_mainline_filter?.safety_rules).toContain('avoid_retinoids');
     expect(upstreamSearch.isDone()).toBe(false);
   });

@@ -10228,6 +10228,9 @@ function isBeautyProductContraindicatedForQuery(product, queryText = '', intent 
     if (retinoidHit && !/\b(retinol[-\s]?free|retinoid[-\s]?free|no\s+retinol|without\s+retinol)\b/i.test(text)) {
       return true;
     }
+    if (/\b(resurfacing|pore\s*refine|clarifying|peel|peeling|exfoliating|aha|bha|salicylic|glycolic|lactic|mandelic)\b|刷酸|去角质|去角質|水杨酸|水楊酸|果酸/i.test(text)) {
+      return true;
+    }
   }
   if (
     retinoidHit &&
@@ -10310,7 +10313,9 @@ function detectBeautyProductPackVariant(product = {}) {
       any: false,
     };
   }
-  const travelSize = /\b(?:travel\s*size|mini|trial\s*size|sample|portable)\b/.test(title);
+  const volumeMlMatch = title.match(/\b(\d+(?:\.\d+)?)\s*(?:ml|m l)\b/);
+  const smallMlSize = volumeMlMatch ? Number(volumeMlMatch[1]) > 0 && Number(volumeMlMatch[1]) <= 15 : false;
+  const travelSize = /\b(?:travel\s*size|mini|trial\s*size|sample|portable)\b/.test(title) || smallMlSize;
   const jumboOrValue = /\b(?:jumbo|supersize|super\s*size|value\s*size|value\s*pack|refill|full\s*size)\b/.test(title);
   const multiPack = /\b(?:double\s*pack|duo|bundle|set|pack\s*of\s*\d+|\d+\s*(?:pack|pc|pcs|piece|pieces|count|ct))\b/.test(title);
   return {
