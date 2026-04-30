@@ -146,6 +146,27 @@ function deriveTargetStep(request, classification) {
   return extractRecoTargetStepFromText(userMessage);
 }
 
+function hasExplicitProductAnalysisSignal(request, classification) {
+  const params = request && request.params && typeof request.params === 'object' ? request.params : {};
+  const entrySource = String(params.entry_source || '').trim().toLowerCase();
+  if (entrySource === 'chip.action.analyze_product') return true;
+  if (String(request?.skill_id || '').trim() === 'product.analyze') return true;
+  if (['evaluate_product', 'product_analysis'].includes(String(request?.intent || '').trim())) return true;
+  if (params.anchor_product_id || params.anchor_product_url) return true;
+
+  const productAnchor = params.product_anchor && typeof params.product_anchor === 'object' && !Array.isArray(params.product_anchor)
+    ? params.product_anchor
+    : null;
+  if (productAnchor && params._product_anchor_from_classifier !== true) return true;
+
+  const message = extractRecoUserMessage(request);
+  const hasProductTerm = /(产品|商品|品名|成分表|成分|配方|防晒|洁面|面霜|乳霜|精华|乳液|爽肤水|水杨酸|视黄醇|維?C|vitamin\s*c|product|ingredient|formula|serum|cleanser|sunscreen|spf|moisturi[sz]er|retinol|cream|lotion)/i.test(String(message || ''));
+  const extractedProducts = Array.isArray(classification?.entities?.products)
+    ? classification.entities.products.map((value) => String(value || '').trim()).filter(Boolean)
+    : [];
+  return hasProductTerm && extractedProducts.length > 0;
+}
+
 class SkillRouter {
   constructor(llmGateway) {
     this._llmGateway = llmGateway;
@@ -280,6 +301,9 @@ class SkillRouter {
 
     const baseSkillId = INTENT_TO_SKILL[intent] || null;
     if (!baseSkillId) return null;
+    if (baseSkillId === 'product.analyze' && !hasExplicitProductAnalysisSignal(request, classification)) {
+      return null;
+    }
     if (shouldKeepFrameworkRecoOffLegacySkill({ request, classification, baseSkillId })) {
       return null;
     }
@@ -313,6 +337,7 @@ class SkillRouter {
     }
     if (!request.params.product_anchor && normalizedProducts.length > 0) {
       request.params.product_anchor = { name: normalizedProducts[0] };
+      request.params._product_anchor_from_classifier = true;
     }
     if (
       classification?.intent === 'dupe_compare'
