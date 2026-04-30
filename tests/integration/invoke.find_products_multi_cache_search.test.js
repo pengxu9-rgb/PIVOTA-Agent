@@ -48,6 +48,8 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
         process.env.PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED,
       PIVOT_BEAUTY_PARALLEL_SCOPE_RECALL_ENABLED:
         process.env.PIVOT_BEAUTY_PARALLEL_SCOPE_RECALL_ENABLED,
+      PIVOT_BEAUTY_LEGACY_TOOL_SCOPE_RECALL_ENABLED:
+        process.env.PIVOT_BEAUTY_LEGACY_TOOL_SCOPE_RECALL_ENABLED,
     };
 
     process.env.PIVOTA_API_BASE = 'http://pivota.test';
@@ -173,6 +175,12 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     } else {
       process.env.PIVOT_BEAUTY_PARALLEL_SCOPE_RECALL_ENABLED =
         prevEnv.PIVOT_BEAUTY_PARALLEL_SCOPE_RECALL_ENABLED;
+    }
+    if (prevEnv.PIVOT_BEAUTY_LEGACY_TOOL_SCOPE_RECALL_ENABLED === undefined) {
+      delete process.env.PIVOT_BEAUTY_LEGACY_TOOL_SCOPE_RECALL_ENABLED;
+    } else {
+      process.env.PIVOT_BEAUTY_LEGACY_TOOL_SCOPE_RECALL_ENABLED =
+        prevEnv.PIVOT_BEAUTY_LEGACY_TOOL_SCOPE_RECALL_ENABLED;
     }
     if (prevEnv.CREATOR_CATALOG_CACHE_TTL_SECONDS === undefined) {
       delete process.env.CREATOR_CATALOG_CACHE_TTL_SECONDS;
@@ -1362,9 +1370,10 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(observedSql.join('\n')).not.toMatch(/LIKE ANY/i);
     expect(observedSql.join('\n')).not.toMatch(/recall'->>'vertical'/i);
     expect(observedSql.join('\n')).not.toMatch(/tool = ANY/i);
-    expect(observedSql.join('\n')).toMatch(/tool = \$3/i);
+    expect(observedSql.join('\n')).toMatch(/tool = \$2/i);
     expect(observedSql.join('\n')).toMatch(/seed_data->'derived'->'recall'->>'category'/i);
     expect(observedSql.join('\n')).toMatch(/seed_data->>'product_type'/i);
+    expect(observedSql.join('\n')).not.toMatch(/row_number\(\) OVER/i);
     expect(observedSql.join('\n')).not.toMatch(/CASE\s+WHEN\s+tool/i);
     expect(observedSql.join('\n')).not.toMatch(/FROM products_cache/i);
   });
@@ -1389,7 +1398,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
           maxActiveExternalQueries = Math.max(maxActiveExternalQueries, activeExternalQueries);
           await wait(35);
           activeExternalQueries -= 1;
-          const tool = String(params[2] || '');
+          const tool = String(params[1] || '');
           const suffix = tool || 'empty';
           const title =
             tool === '*'
@@ -1441,17 +1450,21 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
 
     expect(resp.status).toBe(200);
     expect(resp.body.metadata?.query_source).toBe('agent_products_beauty_external_seed_mainline');
-    expect(externalQueryCount).toBeGreaterThan(1);
+    expect(externalQueryCount).toBe(2);
     expect(maxActiveExternalQueries).toBeGreaterThan(1);
     expect(resp.body.metadata?.retrieval_query_debug || []).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           parallel_scope_recall: true,
+          legacy_tool_scope_recall: false,
+          single_category_indexed_query: true,
         }),
       ]),
     );
     expect(observedSql.join('\n')).not.toMatch(/tool = ANY/i);
-    expect(observedSql.join('\n')).toMatch(/tool = \$3/i);
+    expect(observedSql.join('\n')).toMatch(/tool = \$2/i);
+    expect(observedSql.join('\n')).not.toMatch(/tool = 'shopping_agents'/i);
+    expect(observedSql.join('\n')).not.toMatch(/row_number\(\) OVER/i);
     expect(observedSql.join('\n')).not.toMatch(/FROM products_cache/i);
   });
 
