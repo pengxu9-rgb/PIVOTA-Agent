@@ -3407,6 +3407,148 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(upstreamSearch.isDone()).toBe(false);
   });
 
+  test('retinol-free beauty contract query uses early indexed mainline despite strict ingredient signal', async () => {
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total')) return { rows: [{ total: 0 }] };
+        if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
+          return { rows: [] };
+        }
+        if (text.includes('FROM external_product_seeds')) {
+          const now = new Date().toISOString();
+          return {
+            rows: [
+              {
+                id: 'seed-retinol-cream-1',
+                external_product_id: 'ext_retinol_cream_1',
+                market: 'US',
+                tool: '*',
+                destination_url: 'https://shop.example.com/products/retinol-night-cream',
+                canonical_url: 'https://shop.example.com/products/retinol-night-cream',
+                domain: 'shop.example.com',
+                title: 'Retinol Night Cream',
+                image_url: 'https://cdn.example.com/retinol.jpg',
+                price_amount: '32.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Test Beauty',
+                  category: 'moisturizer',
+                  description: 'Night cream with retinol.',
+                },
+                updated_at: now,
+                created_at: now,
+              },
+              {
+                id: 'seed-peptide-serum-1',
+                external_product_id: 'ext_peptide_serum_1',
+                market: 'US',
+                tool: '*',
+                destination_url: 'https://shop.example.com/products/peptide-brightening-serum',
+                canonical_url: 'https://shop.example.com/products/peptide-brightening-serum',
+                domain: 'shop.example.com',
+                title: 'Peptide Brightening Serum Retinol-Free',
+                image_url: 'https://cdn.example.com/peptide.jpg',
+                price_amount: '24.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Test Beauty',
+                  category: 'serum',
+                  description: 'Retinol-free peptide serum for glow.',
+                },
+                updated_at: now,
+                created_at: now,
+              },
+              {
+                id: 'seed-barrier-cream-1',
+                external_product_id: 'ext_barrier_cream_1',
+                market: 'US',
+                tool: '*',
+                destination_url: 'https://shop.example.com/products/barrier-peptide-moisturizer',
+                canonical_url: 'https://shop.example.com/products/barrier-peptide-moisturizer',
+                domain: 'shop.example.com',
+                title: 'Barrier Peptide Moisturizer Retinol-Free',
+                image_url: 'https://cdn.example.com/barrier.jpg',
+                price_amount: '26.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Test Beauty',
+                  category: 'moisturizer',
+                  description: 'Retinol-free moisturizer with peptides and ceramides.',
+                },
+                updated_at: now,
+                created_at: now,
+              },
+              {
+                id: 'seed-sunscreen-1',
+                external_product_id: 'ext_sunscreen_1',
+                market: 'US',
+                tool: '*',
+                destination_url: 'https://shop.example.com/products/mineral-sunscreen-spf-50',
+                canonical_url: 'https://shop.example.com/products/mineral-sunscreen-spf-50',
+                domain: 'shop.example.com',
+                title: 'Daily Mineral Sunscreen SPF 50',
+                image_url: 'https://cdn.example.com/spf.jpg',
+                price_amount: '20.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Test Beauty',
+                  category: 'sunscreen',
+                  description: 'Daily broad spectrum sunscreen.',
+                },
+                updated_at: now,
+                created_at: now,
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      },
+    }));
+
+    const upstreamSearch = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'retinol free brightening moisturizer peptide sunscreen',
+            page: 1,
+            limit: 6,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'beauty_cross_agent_batch',
+          market: 'US',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.metadata?.query_source).toBe('agent_products_beauty_external_seed_mainline');
+    expect(resp.body.metadata?.search_trace?.final_decision).toBe('beauty_mainline_direct_returned');
+    expect(resp.body.products.map((product) => product.product_id)).toContain('ext_peptide_serum_1');
+    expect(resp.body.products.map((product) => product.product_id)).toContain('ext_barrier_cream_1');
+    expect(resp.body.products.map((product) => product.product_id)).toContain('ext_sunscreen_1');
+    expect(resp.body.products.map((product) => product.product_id)).not.toContain('ext_retinol_cream_1');
+    expect(upstreamSearch.isDone()).toBe(false);
+  });
+
   test('sensitive brightening serum query excludes set and volume-plumping surfaces', async () => {
     jest.doMock('../../src/db', () => ({
       query: async (sql) => {
