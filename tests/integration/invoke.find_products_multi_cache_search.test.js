@@ -1468,6 +1468,109 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(observedSql.join('\n')).not.toMatch(/FROM products_cache/i);
   });
 
+  test('beauty external seed mainline uses indexed union for multi-family query', async () => {
+    process.env.DATABASE_URL = 'postgres://beauty-mainline-union-test';
+
+    const observedSql = [];
+    const observedParams = [];
+    let externalQueryCount = 0;
+
+    jest.doMock('../../src/db', () => ({
+      query: async (sql, params = []) => {
+        const text = String(sql || '');
+        observedSql.push(text);
+        observedParams.push(params);
+        if (text.includes('FROM external_product_seeds')) {
+          externalQueryCount += 1;
+          const tool = String(params[1] || '');
+          const now = new Date().toISOString();
+          return {
+            rows: [
+              {
+                id: `seed_spf_${tool || 'empty'}`,
+                market: 'US',
+                tool,
+                title: 'Daily Mineral Sunscreen SPF 50',
+                canonical_url: `https://example.com/products/daily-mineral-sunscreen-${tool || 'empty'}`,
+                destination_url: `https://example.com/products/daily-mineral-sunscreen-${tool || 'empty'}`,
+                availability: 'in stock',
+                seed_data: { brand: 'Test Skin', category: 'sunscreen' },
+                updated_at: now,
+                created_at: now,
+              },
+              {
+                id: `seed_peptide_${tool || 'empty'}`,
+                market: 'US',
+                tool,
+                title: 'Peptide Barrier Moisturizer',
+                canonical_url: `https://example.com/products/peptide-barrier-moisturizer-${tool || 'empty'}`,
+                destination_url: `https://example.com/products/peptide-barrier-moisturizer-${tool || 'empty'}`,
+                availability: 'in stock',
+                seed_data: { brand: 'Test Skin', category: 'moisturizer' },
+                updated_at: now,
+                created_at: now,
+              },
+              {
+                id: `seed_azelaic_${tool || 'empty'}`,
+                market: 'US',
+                tool,
+                title: 'Azelaic Acid Brightening Serum',
+                canonical_url: `https://example.com/products/azelaic-brightening-serum-${tool || 'empty'}`,
+                destination_url: `https://example.com/products/azelaic-brightening-serum-${tool || 'empty'}`,
+                availability: 'in stock',
+                seed_data: { brand: 'Test Skin', category: 'serum' },
+                updated_at: now,
+                created_at: now,
+              },
+            ],
+          };
+        }
+        if (text.includes('FROM products_cache')) {
+          throw new Error('products_cache should not be touched by beauty mainline direct path');
+        }
+        return { rows: [] };
+      },
+    }));
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'retinol free brightening moisturizer peptide sunscreen',
+            page: 1,
+            limit: 6,
+            in_stock_only: true,
+            market: 'US',
+          },
+        },
+        metadata: {
+          source: 'beauty_cross_agent_batch',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.metadata?.query_source).toBe('agent_products_beauty_external_seed_mainline');
+    expect(externalQueryCount).toBe(2);
+    expect(resp.body.metadata?.retrieval_query_debug || []).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          legacy_tool_scope_recall: false,
+          single_category_indexed_query: false,
+          multi_category_indexed_union_query: true,
+        }),
+      ]),
+    );
+    const sqlText = observedSql.join('\n');
+    expect(sqlText).toMatch(/UNION ALL/i);
+    expect(sqlText).not.toMatch(/row_number\(\) OVER/i);
+    expect(sqlText).not.toMatch(/tool = ANY/i);
+    expect(sqlText).not.toMatch(/FROM products_cache/i);
+    expect(observedParams.some((params) => params.includes('sunscreen') && params.includes('moisturizer'))).toBe(true);
+  });
+
   test('public source=search serum bridges cache contributors through unified discovery recall', async () => {
     process.env.SEARCH_EXTERNAL_HARD_RULE_PRUNE = 'true';
     let discoveryPayload = null;
