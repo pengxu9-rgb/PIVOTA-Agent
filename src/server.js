@@ -9913,17 +9913,72 @@ async function queryBeautyExternalSeedRowsFast({
     seed_data->'snapshot'->>'product_type',
     ''
   ))`;
-  const filters = [
-    `${categoryAuthoritySql} = ANY($2::text[])`,
-  ];
-  if (inStockOnly) {
-    filters.push(
-      `coalesce(lower(availability), '') NOT IN ('out of stock', 'out_of_stock', 'outofstock', 'oos')`,
-    );
-  }
   const runScopeQuery = async (tool) => {
     try {
       const isSingleCategory = categoryTerms.length === 1;
+      const categoryLimitBind = `$${categoryTerms.length + 3}`;
+      const scopeLimitBind = `$${categoryTerms.length + 4}`;
+      const multiCategorySql = `
+        SELECT
+          id,
+          external_product_id,
+          market,
+          tool,
+          destination_url,
+          canonical_url,
+          domain,
+          title,
+          image_url,
+          price_amount,
+          price_currency,
+          availability,
+          seed_data,
+          updated_at,
+          created_at
+        FROM (
+          ${categoryTerms
+            .map((categoryTerm, index) => {
+              const categoryBind = `$${index + 3}`;
+              return `
+          (
+            SELECT
+              id,
+              external_product_id,
+              market,
+              tool,
+              destination_url,
+              canonical_url,
+              domain,
+              title,
+              image_url,
+              price_amount,
+              price_currency,
+              availability,
+              seed_data,
+              updated_at,
+              created_at,
+              ${index} AS category_order
+            FROM external_product_seeds
+            WHERE status = 'active'
+              AND attached_product_key IS NULL
+              AND market = $1
+              AND tool = $2
+              AND ${categoryAuthoritySql} = ${categoryBind}
+              ${inStockOnly ? `AND coalesce(lower(availability), '') NOT IN ('out of stock', 'out_of_stock', 'outofstock', 'oos')` : ''}
+            ORDER BY
+              updated_at DESC NULLS LAST,
+              created_at DESC NULLS LAST
+            LIMIT ${categoryLimitBind}
+          )`;
+            })
+            .join('\n          UNION ALL\n')}
+        ) scoped
+        ORDER BY
+          category_order ASC,
+          updated_at DESC NULLS LAST,
+          created_at DESC NULLS LAST
+        LIMIT ${scopeLimitBind}
+      `;
       const sql = isSingleCategory
         ? `
         SELECT
@@ -9954,69 +10009,17 @@ async function queryBeautyExternalSeedRowsFast({
           created_at DESC NULLS LAST
         LIMIT $4
       `
-        : `
-        WITH ranked AS (
-        SELECT
-          id,
-          external_product_id,
-          market,
-          tool,
-          destination_url,
-          canonical_url,
-          domain,
-          title,
-          image_url,
-          price_amount,
-          price_currency,
-          availability,
-          seed_data,
-          updated_at,
-          created_at,
-          ${categoryAuthoritySql} AS category_authority,
-          row_number() OVER (
-            PARTITION BY ${categoryAuthoritySql}
-            ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
-          ) AS category_rank
-        FROM external_product_seeds
-        WHERE status = 'active'
-          AND attached_product_key IS NULL
-          AND market = $1
-          AND tool = $3
-          AND ${filters.join('\n          AND ')}
-        )
-        SELECT
-          id,
-          external_product_id,
-          market,
-          tool,
-          destination_url,
-          canonical_url,
-          domain,
-          title,
-          image_url,
-          price_amount,
-          price_currency,
-          availability,
-          seed_data,
-          updated_at,
-          created_at
-        FROM ranked
-        WHERE category_rank <= $4
-        ORDER BY
-          coalesce(array_position($2::text[], category_authority), 999),
-          category_rank ASC,
-          updated_at DESC NULLS LAST,
-          created_at DESC NULLS LAST
-        LIMIT $5
-      `;
+        : multiCategorySql;
       const params = isSingleCategory
         ? [safeMarket, tool, categoryTerms[0], perScopeRowLimit]
-        : [safeMarket, categoryTerms, tool, perCategoryRowLimit, perScopeRowLimit];
+        : [safeMarket, tool, ...categoryTerms, perCategoryRowLimit, perScopeRowLimit];
+      const queryStartedAt = Date.now();
       const result = await queryBeautyExternalSeedRowsWithTimeout(
         sql,
         params,
         1200,
       );
+      const queryDurationMs = Math.max(0, Date.now() - queryStartedAt);
       const rows = Array.isArray(result?.rows) ? result.rows : [];
       return {
         tool,
@@ -10030,6 +10033,8 @@ async function queryBeautyExternalSeedRowsFast({
           tool_scope: tool || '(empty)',
           legacy_tool_scope_recall: PIVOT_BEAUTY_LEGACY_TOOL_SCOPE_RECALL_ENABLED,
           single_category_indexed_query: isSingleCategory,
+          multi_category_indexed_union_query: !isSingleCategory,
+          query_duration_ms: queryDurationMs,
           parallel_scope_recall: PIVOT_BEAUTY_PARALLEL_SCOPE_RECALL_ENABLED,
         },
       };
@@ -10045,6 +10050,7 @@ async function queryBeautyExternalSeedRowsFast({
           tool_scope: tool || '(empty)',
           legacy_tool_scope_recall: PIVOT_BEAUTY_LEGACY_TOOL_SCOPE_RECALL_ENABLED,
           single_category_indexed_query: categoryTerms.length === 1,
+          multi_category_indexed_union_query: categoryTerms.length !== 1,
           parallel_scope_recall: PIVOT_BEAUTY_PARALLEL_SCOPE_RECALL_ENABLED,
           error_code: String(err?.code || err?.name || 'query_failed').slice(0, 80),
           timeout: String(err?.code || '').trim() === '57014' || /timeout|cancel/i.test(String(err?.message || '')),
