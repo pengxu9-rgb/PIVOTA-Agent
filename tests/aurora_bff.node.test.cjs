@@ -1375,6 +1375,64 @@ test('/v1/chat: active trip skincare follow-up stays on travel path instead of i
   );
 });
 
+test('/v1/chat: beauty travel contract keeps explicit non-Bangkok destination', async () => {
+  await withEnv(
+    {
+      AURORA_QA_PLANNER_V1_ENABLED: 'true',
+      AURORA_TRAVEL_WEATHER_LIVE_ENABLED: 'false',
+      PIVOT_BEAUTY_CONTRACT_V1_ENABLED: 'true',
+      OPENAI_API_KEY: '',
+    },
+    async () => {
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+      const app = express();
+      app.use(express.json({ limit: '1mb' }));
+      mountAuroraBffRoutes(app, { logger: null });
+
+      const resp = await supertest(app)
+        .post('/v1/chat')
+        .set({
+          'X-Aurora-UID': 'test_uid_mexico_city_travel_contract',
+          'X-Trace-ID': 'test_trace',
+          'X-Brief-ID': 'test_brief',
+          'X-Lang': 'EN',
+        })
+        .send({
+          message: 'Build me a compact travel skincare repair kit for a week in Mexico City. I have dry sensitive skin.',
+          session: {
+            state: 'idle',
+            case_id: 'creator_travel_kit_crosssell',
+            profile: {
+              skinType: 'dry_sensitive',
+              sensitivity: 'high',
+              barrierStatus: 'fragile',
+              goals: ['travel_kit', 'barrier_support', 'sun_protection'],
+              travel_plan: {
+                destination: 'Mexico City',
+                start_date: '2026-06-02',
+                end_date: '2026-06-08',
+                origin: 'Los Angeles, CA',
+              },
+            },
+          },
+          language: 'EN',
+        })
+        .expect(200);
+
+      const assistant = String(resp.body?.assistant_message?.content || '');
+      assert.match(assistant, /Mexico City/i);
+      assert.match(assistant, /repair|barrier/i);
+      assert.match(assistant, /sunscreen|SPF/i);
+      assert.doesNotMatch(assistant, /Bangkok/i);
+
+      delete require.cache[moduleId];
+    },
+  );
+});
+
 test('/v1/chat: retinoid with unknown pregnancy requires info before availability/catalog short-circuit', async () => {
   await withEnv(
     {

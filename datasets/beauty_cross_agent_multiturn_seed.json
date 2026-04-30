@@ -1009,7 +1009,8 @@
       "risk_guards": {
         "severity": "medium",
         "assistant_must_include_any": [
-          ["travel", "trip", "Mexico City"],
+          ["Mexico City"],
+          ["travel", "trip"],
           ["repair", "barrier"],
           ["sunscreen", "SPF"]
         ],
