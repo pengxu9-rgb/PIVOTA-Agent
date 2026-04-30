@@ -318,7 +318,8 @@ function isLikelyAuthoritativeIngredientSet(items) {
   if (list.length < 3) return false;
   const inciStructuredCount = list.filter((item) => isLikelyInciStructuredItem(item)).length;
   const marketingCount = list.filter((item) => INCI_MARKETING_ONLY_RE.test(item) || MARKETING_SIGNAL_RE.test(item)).length;
-  if (inciStructuredCount < Math.min(3, list.length)) return false;
+  const requiredStructuredCount = Math.max(2, Math.min(4, Math.ceil(list.length * 0.45)));
+  if (inciStructuredCount < requiredStructuredCount) return false;
   return inciStructuredCount > marketingCount;
 }
 
