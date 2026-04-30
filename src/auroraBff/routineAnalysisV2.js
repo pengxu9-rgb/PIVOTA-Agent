@@ -197,6 +197,16 @@ function isStrongActiveType(type, text = '') {
     || /retinol|retinal|retinoid|aha|bha|salicylic|glycolic|mandelic|lactic|benzoyl peroxide|tretinoin|adapalene/i.test(lower);
 }
 
+function isAcidExfoliantProduct(product = {}) {
+  const type = asString(product && product.inferred_product_type).toLowerCase();
+  const text = [
+    product && product.input_label,
+    product && product.original_step_label,
+    product && product.concise_reasoning_en,
+  ].map(asString).join(' ').toLowerCase();
+  return type.includes('exfoliant') || /aha|bha|salicylic|glycolic|mandelic|lactic|exfoliat|peel|刷酸|水杨酸|水楊酸|果酸/.test(text);
+}
+
 function looksHeavyForDaytime(type, text = '') {
   const token = String(type || '').toLowerCase();
   const lower = String(text || '').toLowerCase();
@@ -995,9 +1005,14 @@ function buildDeterministicSynthesis(auditOutput, context = {}) {
   const adjustments = [];
   const amProducts = products.filter((product) => product.slot === 'am');
   const pmProducts = products.filter((product) => product.slot === 'pm');
+  const barrierFirst = isBarrierImpaired(context) || hasElevatedSensitivity(context);
 
   for (const product of products) {
-    const action = asString(product.suggested_action);
+    let action = asString(product.suggested_action);
+    const forcePauseAcid = barrierFirst && isAcidExfoliantProduct(product);
+    if (forcePauseAcid && ['keep', 'unknown', 'move_to_am', 'move_to_pm', 'reduce_frequency', 'replace'].includes(action)) {
+      action = 'remove';
+    }
     if (action === 'keep' || action === 'unknown') continue;
     adjustments.push({
       adjustment_id: `adj_${asString(product.product_ref) || crypto.randomUUID().slice(0, 8)}`,
@@ -1013,9 +1028,13 @@ function buildDeterministicSynthesis(auditOutput, context = {}) {
               : `Replace ${product.input_label}`,
       action_type: action === 'move_to_am' || action === 'move_to_pm' ? 'move' : action,
       affected_products: [product.product_ref],
-      why_this_first: product.concise_reasoning_en,
+      why_this_first: forcePauseAcid
+        ? 'Barrier or sensitivity context is elevated, so exfoliating acids should be paused before timing optimizations.'
+        : product.concise_reasoning_en,
       expected_outcome: action === 'reduce_frequency'
         ? 'Lower irritation or routine overload risk.'
+        : forcePauseAcid
+          ? 'Lower stinging, peeling, and barrier-stress risk before any active reintroduction.'
         : action === 'replace'
           ? 'Better goal fit with less friction in the current routine.'
           : 'A cleaner AM/PM split with less routine mismatch.',

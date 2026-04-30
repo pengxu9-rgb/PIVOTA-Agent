@@ -1389,6 +1389,62 @@ test('runRoutineAnalysisV2: routine audit v1 localizes CN first action titles', 
   assert.ok(verdictCard.payload.top_3_actions.some((row) => row.title === '补上白天防晒 SPF'));
 });
 
+test('runRoutineAnalysisV2: barrier-impaired acid timing changes become pause-first actions', async () => {
+  const { runRoutineAnalysisV2 } = require('../src/auroraBff/routineAnalysisV2');
+  const llmGateway = {
+    async callWithSchemaDiagnostics(args = {}) {
+      if (args.templateId !== 'routine_product_audit_v1') {
+        throw new Error(`unexpected template ${args.templateId}`);
+      }
+      return {
+        parsed: buildStageAResult([
+          buildAuditProduct('prod_aha_toner', {
+            slot: 'am',
+            original_step_label: 'exfoliant',
+            input_label: '10% AHA Toner',
+            inferred_product_type: 'exfoliant treatment',
+            likely_role: 'exfoliation',
+            suggested_action: 'move_to_pm',
+            concise_reasoning_en: 'This exfoliant looks better in PM than AM.',
+          }),
+        ]),
+        parsedCandidate: null,
+        raw: '{}',
+        provider: 'stub',
+        schemaValid: true,
+        validationErrors: [],
+        attemptCount: 1,
+        retried: false,
+      };
+    },
+  };
+
+  const result = await runRoutineAnalysisV2({
+    requestId: 'req_routine_barrier_pause_acid',
+    language: 'CN',
+    profileSummary: {
+      skinType: 'dry_sensitive',
+      sensitivity: 'high',
+      barrierStatus: 'impaired',
+      goals: ['barrier_repair'],
+    },
+    routineProductCandidates: [
+      { product_ref: 'prod_aha_toner', slot: 'am', step: 'exfoliant', product_text: '10% AHA Toner' },
+    ],
+    llmGateway,
+    surfaceMode: 'routine_audit_v1',
+    recommendationResolverDeps: {
+      resolveProduct: async () => null,
+      searchProducts: async () => ({ ok: true, transient: false, products: [], queryCount: 0 }),
+    },
+  });
+
+  assert.match(result.assistant_text, /先停用 10% AHA Toner/);
+  assert.doesNotMatch(result.assistant_text, /调到晚间使用/);
+  const verdictCard = result.cards.find((card) => card && card.type === 'routine_verdict_v1');
+  assert.ok(verdictCard.payload.top_3_actions.some((row) => row.title === '先停用 10% AHA Toner'));
+});
+
 test('runRoutineAnalysisV2: routine audit v1 deterministic synthesis keeps support-step redundancies actionable', async () => {
   const { runRoutineAnalysisV2 } = require('../src/auroraBff/routineAnalysisV2');
   const llmGateway = {
