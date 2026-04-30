@@ -3503,6 +3503,72 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
                 updated_at: now,
                 created_at: now,
               },
+              {
+                id: 'seed-face-oil-1',
+                external_product_id: 'ext_face_oil_1',
+                market: 'US',
+                tool: '*',
+                destination_url: 'https://shop.example.com/products/huile-prodigieuse-riche',
+                canonical_url: 'https://shop.example.com/products/huile-prodigieuse-riche',
+                domain: 'shop.example.com',
+                title: 'Huile Prodigieuse Riche',
+                image_url: 'https://cdn.example.com/huile.jpg',
+                price_amount: '54.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Test Beauty',
+                  category: 'moisturizer',
+                  description: 'Rich botanical oil for dry skin.',
+                },
+                updated_at: now,
+                created_at: now,
+              },
+              {
+                id: 'seed-firming-cream-1',
+                external_product_id: 'ext_firming_cream_1',
+                market: 'US',
+                tool: '*',
+                destination_url: 'https://shop.example.com/products/firming-velvet-cream',
+                canonical_url: 'https://shop.example.com/products/firming-velvet-cream',
+                domain: 'shop.example.com',
+                title: 'Firming Velvet Cream',
+                image_url: 'https://cdn.example.com/firming.jpg',
+                price_amount: '68.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Test Beauty',
+                  category: 'moisturizer',
+                  description: 'Firming anti-aging moisturizer for wrinkles and lifting.',
+                },
+                updated_at: now,
+                created_at: now,
+              },
+              {
+                id: 'seed-scented-face-1',
+                external_product_id: 'ext_scented_face_1',
+                market: 'US',
+                tool: '*',
+                destination_url: 'https://shop.example.com/products/sensitive-barrier-face-cream',
+                canonical_url: 'https://shop.example.com/products/sensitive-barrier-face-cream',
+                domain: 'shop.example.com',
+                title: 'Sensitive Barrier Face Cream',
+                image_url: 'https://cdn.example.com/scented-face.jpg',
+                price_amount: '32.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Test Beauty',
+                  category: 'moisturizer',
+                  description: 'Face moisturizer for barrier care.',
+                  ingredient_intel: {
+                    inci_list: ['AQUA/WATER', 'GLYCERIN', 'PARFUM/FRAGRANCE', 'LINALOOL'],
+                  },
+                },
+                updated_at: now,
+                created_at: now,
+              },
             ],
           };
         }
@@ -3546,6 +3612,9 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(ids).not.toContain('ext_p50_1');
     expect(ids).not.toContain('ext_body_scented_1');
     expect(ids).not.toContain('ext_eye_cream_1');
+    expect(ids).not.toContain('ext_face_oil_1');
+    expect(ids).not.toContain('ext_firming_cream_1');
+    expect(ids).not.toContain('ext_scented_face_1');
     expect(upstreamSearch.isDone()).toBe(false);
   });
 
