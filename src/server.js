@@ -10277,6 +10277,50 @@ function isBeautyProductContraindicatedForQuery(product, queryText = '', intent 
   return false;
 }
 
+function canonicalizeBeautyProductTitleForDedupe(rawTitle = '') {
+  return normalizeSearchTextForMatch(rawTitle)
+    .replace(/\b(?:jumbo|supersize|super\s*size|value\s*size|value\s*pack|double\s*pack|duo|bundle|set|refill|mini|trial\s*size|travel\s*size|full\s*size)\b/g, ' ')
+    .replace(/\b\d+(?:\.\d+)?\s*(?:ml|m l|oz|fl\s*oz|g|gram|grams)\b/g, ' ')
+    .replace(/\b(?:pack\s*of\s*)?\d+\s*(?:pack|pc|pcs|piece|pieces|count|ct)\b/g, ' ')
+    .replace(/\b(?:two|three|four)\s*pack\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function detectBeautyProductPackVariant(product = {}) {
+  const title = normalizeSearchTextForMatch(
+    [
+      product.title,
+      product.name,
+      product.product_name,
+      product.display_name,
+      product.variant_title,
+      product.option_title,
+      product.options && JSON.stringify(product.options),
+    ]
+      .map((value) => String(value || '').trim())
+      .filter(Boolean)
+      .join(' '),
+  );
+  if (!title) {
+    return {
+      travel_size: false,
+      jumbo_or_value: false,
+      multi_pack: false,
+      any: false,
+    };
+  }
+  const travelSize = /\b(?:travel\s*size|mini|trial\s*size|sample|portable)\b/.test(title);
+  const jumboOrValue = /\b(?:jumbo|supersize|super\s*size|value\s*size|value\s*pack|refill|full\s*size)\b/.test(title);
+  const multiPack = /\b(?:double\s*pack|duo|bundle|set|pack\s*of\s*\d+|\d+\s*(?:pack|pc|pcs|piece|pieces|count|ct))\b/.test(title);
+  return {
+    travel_size: travelSize,
+    jumbo_or_value: jumboOrValue,
+    multi_pack: multiPack,
+    any: travelSize || jumboOrValue || multiPack,
+  };
+}
+
 function dedupeBeautyProductsByDisplayKey(products = []) {
   const out = [];
   const seen = new Set();
@@ -10289,6 +10333,7 @@ function dedupeBeautyProductsByDisplayKey(products = []) {
     const title = normalizeSearchTextForMatch(
       pick(product.title, product.name, product.product_name, product.display_name),
     );
+    const canonicalTitle = canonicalizeBeautyProductTitleForDedupe(title);
     const brand = normalizeSearchTextForMatch(pick(product.brand, product.vendor));
     const url = normalizeSearchTextForMatch(
       pick(product.canonical_url, product.destination_url, product.external_url, product.url),
@@ -10296,8 +10341,8 @@ function dedupeBeautyProductsByDisplayKey(products = []) {
     const id = normalizeSearchTextForMatch(
       pick(product.product_id, product.id, product.external_seed_id, product.sku),
     );
-    const key = title
-      ? `title:${brand || 'unbranded'}:${title}`
+    const key = (canonicalTitle || title)
+      ? `title:${brand || 'unbranded'}:${canonicalTitle || title}`
       : url
         ? `url:${url}`
         : id
@@ -10308,6 +10353,24 @@ function dedupeBeautyProductsByDisplayKey(products = []) {
     out.push(product);
   }
   return out;
+}
+
+function polishBeautyProductRankingForDisplay(products = [], queryText = '', safeLimit = 20) {
+  const list = Array.isArray(products) ? products : [];
+  if (list.length <= 1) return list;
+  const limit = Math.max(1, Math.floor(Number(safeLimit) || 20));
+  const queryHasTravelSizeNeed =
+    /\b(travel|portable|carry\s*on|carryon|flight|mini|travel\s*size)\b|旅行|便携|便攜|小样|小樣/.test(String(queryText || ''));
+  const polished = list.filter((product) => {
+    const packVariant = detectBeautyProductPackVariant(product);
+    if (queryHasTravelSizeNeed) {
+      return !packVariant.jumbo_or_value && !packVariant.multi_pack;
+    }
+    return !packVariant.any;
+  });
+  const minUsefulCount = Math.min(4, limit);
+  if (polished.length >= minUsefulCount) return polished;
+  return list;
 }
 
 function compactBeautyMainlineProductForResponse(product, intent = null) {
@@ -10459,6 +10522,30 @@ function scoreBeautyExternalSeedProduct({ product, queryText, intent, normalized
   if (intent?.safety?.includes('avoid_exfoliating_acids') && /\b(barrier|repair|ceramide|panthenol|cica|gentle|hydrating)\b/i.test(candidateText)) {
     score += 12;
   }
+  const queryHasTravelSizeNeed =
+    /\b(travel|portable|carry\s*on|carryon|flight|mini|travel\s*size)\b|旅行|便携|便攜|小样|小樣/.test(String(queryText || ''));
+  const packVariant = detectBeautyProductPackVariant(product);
+  if (packVariant.travel_size) score += queryHasTravelSizeNeed ? 12 : -7;
+  if (packVariant.jumbo_or_value) score += queryHasTravelSizeNeed ? -12 : -8;
+  if (packVariant.multi_pack) score += -8;
+  const pregnancyOrRetinolFreeContext =
+    intent?.safety?.includes('avoid_retinoids') ||
+    /\b(pregnan\w*|ttc|trying\s*to\s*conceive|retinol[-\s]?free)\b|备孕|備孕|怀孕|懷孕|孕期/i.test(String(queryText || ''));
+  if (pregnancyOrRetinolFreeContext) {
+    if (/\b(spf|sunscreen|azelaic|niacinamide|peptide|ceramide|panthenol|barrier|repair|moisturi[sz]er)\b/i.test(candidateText)) {
+      score += 10;
+    }
+    if (/\b(resurfacing|pore\s*refine|clarifying|peel|peeling|exfoliating|aha|bha|salicylic|glycolic|lactic|mandelic)\b/i.test(candidateText)) {
+      score -= 18;
+    }
+  }
+  if (
+    /\b(sensitive|sensiti[sz]ed|fragrance\s*free|gentle)\b|敏感|温和|溫和|无香精|無香精/i.test(String(queryText || '')) &&
+    /\b(fragrance|parfum|perfume|essential\s*oil|alcohol\s*denat|denatured\s*alcohol)\b|香精|香料|酒精/.test(candidateText) &&
+    !/\b(fragrance\s*free|unscented|no\s*fragrance|without\s*fragrance|alcohol\s*free|no\s*alcohol|without\s*alcohol)\b|无香精|無香精|无酒精|無酒精/.test(candidateText)
+  ) {
+    score -= 16;
+  }
   const overlap = (Array.isArray(queryTokens) ? queryTokens : []).filter(
     (token) => token.length >= 3 && candidateText.includes(token),
   ).length;
@@ -10543,8 +10630,12 @@ async function searchBeautyExternalSeedProductsMainline({
       if (right.score !== left.score) return right.score - left.score;
       return String(left.product?.title || '').localeCompare(String(right.product?.title || ''));
     });
-  const rankedProducts = dedupeBeautyProductsByDisplayKey(
-    scored.map((row) => compactBeautyMainlineProductForResponse(row.product, beautyIntent)),
+  const rankedProducts = polishBeautyProductRankingForDisplay(
+    dedupeBeautyProductsByDisplayKey(
+      scored.map((row) => compactBeautyMainlineProductForResponse(row.product, beautyIntent)),
+    ),
+    queryText,
+    safeLimit,
   );
   const pagedProducts = rankedProducts.slice(safeOffset, safeOffset + safeLimit);
   const querySource = creatorScoped

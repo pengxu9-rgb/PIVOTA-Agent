@@ -239,7 +239,6 @@ function extractAssistantText(body) {
   if (Array.isArray(body && body.cards)) {
     for (const card of body.cards) {
       if (!isPlainObject(card)) continue;
-      push(card.title);
       push(card.text);
       push(card.body);
       if (Array.isArray(card.sections)) {
@@ -248,7 +247,6 @@ function extractAssistantText(body) {
           push(section.text);
           push(section.text_en);
           push(section.text_zh);
-          push(section.title);
           push(section.body);
         }
       }

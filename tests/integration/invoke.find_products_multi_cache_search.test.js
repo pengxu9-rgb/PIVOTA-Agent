@@ -3021,6 +3021,148 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(upstreamSearch.isDone()).toBe(false);
   });
 
+  test('beauty mainline dedupes pack-size variants and prefers standard items when size is not requested', async () => {
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total')) return { rows: [{ total: 0 }] };
+        if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
+          return { rows: [] };
+        }
+        if (text.includes('FROM external_product_seeds')) {
+          const now = new Date().toISOString();
+          return {
+            rows: [
+              {
+                id: 'seed-cleanser-jumbo',
+                external_product_id: 'ext_cleanser_jumbo',
+                market: 'US',
+                tool: '*',
+                destination_url: 'https://shop.example.com/products/ultra-gentle-cleanser-jumbo',
+                canonical_url: 'https://shop.example.com/products/ultra-gentle-cleanser-jumbo',
+                domain: 'shop.example.com',
+                title: 'Ultra Gentle Cream-to-Foam Face Cleanser Jumbo',
+                image_url: 'https://cdn.example.com/cleanser-jumbo.jpg',
+                price_amount: '28.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Test Beauty',
+                  category: 'cleanser',
+                  description: 'Gentle cream-to-foam face cleanser for sensitive skin.',
+                },
+                updated_at: now,
+                created_at: now,
+              },
+              {
+                id: 'seed-cleanser-standard',
+                external_product_id: 'ext_cleanser_standard',
+                market: 'US',
+                tool: '*',
+                destination_url: 'https://shop.example.com/products/ultra-gentle-cleanser',
+                canonical_url: 'https://shop.example.com/products/ultra-gentle-cleanser',
+                domain: 'shop.example.com',
+                title: 'Ultra Gentle Cream-to-Foam Face Cleanser',
+                image_url: 'https://cdn.example.com/cleanser.jpg',
+                price_amount: '14.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Test Beauty',
+                  category: 'cleanser',
+                  description: 'Gentle cream-to-foam face cleanser for sensitive skin.',
+                },
+                updated_at: now,
+                created_at: now,
+              },
+              {
+                id: 'seed-cleanser-travel',
+                external_product_id: 'ext_cleanser_travel',
+                market: 'US',
+                tool: '*',
+                destination_url: 'https://shop.example.com/products/ultra-gentle-cleanser-travel-size',
+                canonical_url: 'https://shop.example.com/products/ultra-gentle-cleanser-travel-size',
+                domain: 'shop.example.com',
+                title: 'Ultra Gentle Cream-to-Foam Face Cleanser Travel Size',
+                image_url: 'https://cdn.example.com/cleanser-travel.jpg',
+                price_amount: '6.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Test Beauty',
+                  category: 'cleanser',
+                  description: 'Gentle cream-to-foam face cleanser for sensitive skin.',
+                },
+                updated_at: now,
+                created_at: now,
+              },
+              {
+                id: 'seed-cleanser-other',
+                external_product_id: 'ext_cleanser_other',
+                market: 'US',
+                tool: '*',
+                destination_url: 'https://shop.example.com/products/multi-calm-cream-cleanser',
+                canonical_url: 'https://shop.example.com/products/multi-calm-cream-cleanser',
+                domain: 'shop.example.com',
+                title: 'Multi-Calm Cream Cleanser',
+                image_url: 'https://cdn.example.com/multi-calm.jpg',
+                price_amount: '16.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Test Beauty',
+                  category: 'cleanser',
+                  description: 'Gentle cleanser for sensitive redness-prone skin.',
+                },
+                updated_at: now,
+                created_at: now,
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      },
+    }));
+
+    const upstreamSearch = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'gentle cleanser sensitive skin',
+            page: 1,
+            limit: 6,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'beauty_cross_agent_batch',
+          market: 'US',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.metadata?.query_source).toBe('agent_products_beauty_external_seed_mainline');
+    const titles = resp.body.products.map((product) => product.title);
+    expect(titles).toContain('Ultra Gentle Cream-to-Foam Face Cleanser');
+    expect(titles).toContain('Multi-Calm Cream Cleanser');
+    expect(titles).not.toContain('Ultra Gentle Cream-to-Foam Face Cleanser Jumbo');
+    expect(titles).not.toContain('Ultra Gentle Cream-to-Foam Face Cleanser Travel Size');
+    expect(upstreamSearch.isDone()).toBe(false);
+  });
+
   test('beauty pivot contract returns failed mainline empty instead of falling through to legacy fallback', async () => {
     const observedSql = [];
     jest.doMock('../../src/db', () => ({

@@ -1895,6 +1895,22 @@ function buildNudgeCard({ card, requestId, index, language = 'EN' }) {
   };
 }
 
+const BEAUTY_PLAN_CARD_TITLES = {
+  pivot_beauty_contract: { CN: '护肤建议', EN: 'Skincare guidance' },
+  routine_minimal_plan: { CN: '极简 routine', EN: 'Minimal routine' },
+  beauty_capsule_plan: { CN: '通勤 capsule', EN: 'Commute capsule' },
+  travel_repair_kit_plan: { CN: '旅行修护包', EN: 'Travel repair kit' },
+  routine_audit_plan: { CN: 'Routine 优先级', EN: 'Routine priority' },
+  barrier_safety_plan: { CN: '屏障修护优先', EN: 'Barrier first' },
+  routine_safety_plan: { CN: '活性分频建议', EN: 'Active schedule' },
+};
+
+function getBeautyPlanCardTitle(type, language = 'EN') {
+  const row = BEAUTY_PLAN_CARD_TITLES[String(type || '').trim().toLowerCase()];
+  if (!row) return '';
+  return language === 'CN' ? row.CN : row.EN;
+}
+
 function normalizeLegacyActionRows(rawActions, language) {
   const rows = asRecordArray(rawActions, 6);
   return rows
@@ -2100,6 +2116,10 @@ function mapLegacyCardToSpecCards(card, { requestId, language = 'EN', index = 0 
   }
   if (type === 'routine_recommendation_v1') {
     return [buildPassthroughCard({ card, requestId, index, language, fallbackTitle: language === 'CN' ? '补充推荐' : 'Routine recommendations' })];
+  }
+  const beautyPlanTitle = getBeautyPlanCardTitle(type, language);
+  if (beautyPlanTitle) {
+    return [buildPassthroughCard({ card, requestId, index, language, fallbackTitle: beautyPlanTitle })];
   }
   if (type === 'returning_triage') {
     return [buildPassthroughCard({ card, requestId, index, language, fallbackTitle: language === 'CN' ? '继续你的诊断' : 'Continue your diagnosis' })];
