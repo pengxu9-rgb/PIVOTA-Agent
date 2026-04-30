@@ -1029,6 +1029,130 @@
         "must_have_category_terms": ["skin", "skincare", "skin-care", "beauty", "sunscreen", "moisturizer"],
         "require_products": true
       }
+    },
+    {
+      "case_id": "travel_seattle_seoul_local_purchase",
+      "persona": {
+        "language": "CN",
+        "summary": "从 Seattle 飞 Seoul 的混合偏油易泛红用户，关注出发前准备、飞行风险、落地后当地购买和最小行动清单。"
+      },
+      "profile": {
+        "skinType": "combination_oily",
+        "sensitivity": "medium_high",
+        "barrierStatus": "reactive",
+        "goals": ["travel_kit", "oil_control", "redness_control", "sun_protection"],
+        "current_actives": ["salicylic_acid_2_percent", "vitamin_c_low_strength"],
+        "budget": "mid",
+        "region": "Seattle, WA",
+        "travel_plan": {
+          "destination": "Seoul, South Korea",
+          "start_date": "2026-05-20",
+          "end_date": "2026-05-27",
+          "origin": "Seattle, WA"
+        }
+      },
+      "turns": [
+        {
+          "turn_id": "t1",
+          "route": "aurora_chat",
+          "message": "我从 Seattle 出发，2026-05-20 到 2026-05-27 去 Seoul。混合偏油、容易泛红，去之前护肤要准备什么？"
+        },
+        {
+          "turn_id": "t2",
+          "route": "aurora_chat",
+          "message": "从 Seattle 飞过去到 Seoul，飞行和当地环境有哪些风险因素？我现在有 2% 水杨酸和低浓度维 C，出发前后要停什么或降频什么？"
+        },
+        {
+          "turn_id": "t3",
+          "route": "aurora_chat",
+          "message": "到 Seoul 之后，如果我想在当地买护肤品，优先买什么？哪些类型不要买？"
+        },
+        {
+          "turn_id": "t4",
+          "route": "aurora_chat",
+          "message": "请按出发前、飞行中、落地前 48 小时、在 Seoul 当地购买，整理一个最小行动清单。"
+        }
+      ],
+      "agent_routes": {
+        "aurora": ["/v1/chat"],
+        "shopping": "/agent/shop/v1/invoke",
+        "creator": "/agent/creator/v1/invoke",
+        "creator_categories": "/creator/nina-studio/categories?view=GLOBAL_BEAUTY"
+      },
+      "shopping_queries": [
+        {
+          "query": "K beauty gentle cleanser sensitive redness Seoul travel",
+          "target_terms": ["cleanser", "cleansing", "洁面"],
+          "blocked_terms": ["mint", "menthol", "scrub", "retinol", "peel", "dress", "shoe"],
+          "min_relevant_top6": 4
+        },
+        {
+          "query": "lightweight sunscreen SPF sensitive oily skin Seoul travel",
+          "target_terms": ["sunscreen", "spf"],
+          "blocked_terms": ["retinol", "peel", "dress", "shoe"],
+          "min_relevant_top6": 4
+        },
+        {
+          "query": "barrier repair moisturizer sensitive skin travel flight",
+          "target_terms": ["barrier", "repair", "moisturizer", "cream", "lotion"],
+          "blocked_terms": ["retinol", "peel", "dress", "shoe"],
+          "min_relevant_top6": 4
+        },
+        {
+          "query": "Seoul local skincare sunscreen moisturizer gentle cleanser",
+          "target_terms": ["sunscreen", "spf", "moisturizer", "cream", "cleanser"],
+          "blocked_terms": ["retinol", "peel", "dress", "shoe"],
+          "min_relevant_top6": 4
+        }
+      ],
+      "creator_queries": [
+        {
+          "query": "K beauty gentle cleanser sensitive redness Seoul travel",
+          "target_terms": ["cleanser", "cleansing"],
+          "blocked_terms": ["mint", "menthol", "scrub", "retinol", "peel", "dress", "shoe"],
+          "min_relevant_top6": 4
+        },
+        {
+          "query": "lightweight sunscreen SPF sensitive oily skin Seoul travel",
+          "target_terms": ["sunscreen", "spf"],
+          "blocked_terms": ["retinol", "peel", "dress", "shoe"],
+          "min_relevant_top6": 4
+        },
+        {
+          "query": "Seoul local skincare sunscreen moisturizer gentle cleanser",
+          "target_terms": ["sunscreen", "spf", "moisturizer", "cream", "cleanser"],
+          "blocked_terms": ["retinol", "peel", "dress", "shoe"],
+          "min_relevant_top6": 4
+        }
+      ],
+      "expected_assertions": [
+        "seattle_to_seoul_context",
+        "flight_low_humidity",
+        "seoul_local_purchase_guidance",
+        "salicylic_and_vitamin_c_de_frequency",
+        "phase_based_minimal_checklist",
+        "cross_agent_beauty_relevance"
+      ],
+      "risk_guards": {
+        "severity": "high",
+        "assistant_must_include_any": [
+          ["Seattle"],
+          ["Seoul"],
+          ["飞行", "飞机", "机舱", "flight", "cabin"],
+          ["防晒", "SPF", "sunscreen"],
+          ["屏障", "修护", "barrier", "repair"],
+          ["水杨酸", "salicylic"],
+          ["维 C", "Vitamin C", "vitamin c"],
+          ["当地", "本地", "local"]
+        ],
+        "assistant_must_not_include_any": ["Bangkok", "Reykjavik", "继续每天刷酸", "retinol first", "Which scenario should I optimize for?"],
+        "product_must_not_include_any": ["retinol", "retinal", "peel", "apparel", "dress", "shoe"]
+      },
+      "creator_category_check": {
+        "view": "GLOBAL_BEAUTY",
+        "must_have_category_terms": ["skin", "skincare", "skin-care", "beauty", "sunscreen", "cleanser", "moisturizer"],
+        "require_products": true
+      }
     }
   ]
 }

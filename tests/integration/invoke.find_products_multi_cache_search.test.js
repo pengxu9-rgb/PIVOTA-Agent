@@ -3356,4 +3356,273 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(observedSql.some((sql) => sql.includes('FROM external_product_seeds'))).toBe(true);
     expect(upstreamSearch.isDone()).toBe(false);
   });
+
+  test('manual Seoul K-beauty cleanser query enters beauty mainline without batch metadata', async () => {
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total')) return { rows: [{ total: 0 }] };
+        if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
+          return { rows: [] };
+        }
+        if (text.includes('FROM external_product_seeds')) {
+          const now = new Date().toISOString();
+          return {
+            rows: [
+              {
+                id: 'seed-k-cleanser-1',
+                external_product_id: 'ext_k_cleanser_1',
+                market: 'US',
+                tool: '*',
+                destination_url: 'https://shop.example.com/products/dokdo-cleanser',
+                canonical_url: 'https://shop.example.com/products/dokdo-cleanser',
+                domain: 'shop.example.com',
+                title: '1025 Dokdo Gentle Cleanser',
+                image_url: 'https://cdn.example.com/dokdo.jpg',
+                price_amount: '16.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Round Lab',
+                  category: 'cleanser',
+                  description: 'Gentle face cleanser for sensitive redness-prone skin.',
+                },
+                updated_at: now,
+                created_at: now,
+              },
+              {
+                id: 'seed-mint-cleanser-1',
+                external_product_id: 'ext_mint_cleanser_1',
+                market: 'US',
+                tool: '*',
+                destination_url: 'https://shop.example.com/products/mint-deep-cleanser',
+                canonical_url: 'https://shop.example.com/products/mint-deep-cleanser',
+                domain: 'shop.example.com',
+                title: 'Cooling Mint Deep Cleansing Scrub',
+                image_url: 'https://cdn.example.com/mint.jpg',
+                price_amount: '12.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Test Beauty',
+                  category: 'cleanser',
+                  description: 'Menthol cooling scrub cleanser.',
+                },
+                updated_at: now,
+                created_at: now,
+              },
+              {
+                id: 'seed-spf-1',
+                external_product_id: 'ext_spf_1',
+                market: 'US',
+                tool: '*',
+                destination_url: 'https://shop.example.com/products/sunscreen-spf-50',
+                canonical_url: 'https://shop.example.com/products/sunscreen-spf-50',
+                domain: 'shop.example.com',
+                title: 'Daily Sunscreen SPF 50',
+                image_url: 'https://cdn.example.com/spf.jpg',
+                price_amount: '20.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Test Beauty',
+                  category: 'sunscreen',
+                  description: 'Broad spectrum sunscreen.',
+                },
+                updated_at: now,
+                created_at: now,
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      },
+    }));
+
+    const upstreamSearch = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'K beauty gentle cleanser sensitive redness Seoul travel',
+            page: 1,
+            limit: 6,
+            in_stock_only: true,
+            market: 'US',
+          },
+        },
+        metadata: {
+          source: 'manual_quality_probe',
+          market: 'US',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.metadata?.query_source).toBe('agent_products_beauty_external_seed_mainline');
+    expect(resp.body.metadata?.beauty_mainline_filter?.target_families).toContain('cleanser');
+    expect(resp.body.products.map((product) => product.product_id)).toContain('ext_k_cleanser_1');
+    expect(resp.body.products.map((product) => product.product_id)).not.toContain('ext_mint_cleanser_1');
+    expect(resp.body.products.map((product) => product.product_id)).not.toContain('ext_spf_1');
+    expect(upstreamSearch.isDone()).toBe(false);
+  });
+
+  test('creator Seoul local skincare bundle query keeps beauty family coverage on mainline', async () => {
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total')) return { rows: [{ total: 0 }] };
+        if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
+          return { rows: [] };
+        }
+        if (text.includes('FROM external_product_seeds')) {
+          const now = new Date().toISOString();
+          return {
+            rows: [
+              {
+                id: 'seed-spf-1',
+                external_product_id: 'ext_spf_1',
+                market: 'US',
+                tool: 'creator_agents',
+                destination_url: 'https://shop.example.com/products/airy-sunscreen-spf-50',
+                canonical_url: 'https://shop.example.com/products/airy-sunscreen-spf-50',
+                domain: 'shop.example.com',
+                title: 'Airy Sunscreen SPF 50 PA++++',
+                image_url: 'https://cdn.example.com/spf.jpg',
+                price_amount: '22.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Test Beauty',
+                  category: 'sunscreen',
+                  description: 'Lightweight broad spectrum face sunscreen.',
+                },
+                updated_at: now,
+                created_at: now,
+              },
+              {
+                id: 'seed-cleanser-1',
+                external_product_id: 'ext_cleanser_1',
+                market: 'US',
+                tool: 'creator_agents',
+                destination_url: 'https://shop.example.com/products/gentle-cream-cleanser',
+                canonical_url: 'https://shop.example.com/products/gentle-cream-cleanser',
+                domain: 'shop.example.com',
+                title: 'Gentle Cream Cleanser',
+                image_url: 'https://cdn.example.com/cleanser.jpg',
+                price_amount: '15.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Test Beauty',
+                  category: 'cleanser',
+                  description: 'Gentle cleanser for sensitive skin and redness.',
+                },
+                updated_at: now,
+                created_at: now,
+              },
+              {
+                id: 'seed-moisturizer-1',
+                external_product_id: 'ext_moisturizer_1',
+                market: 'US',
+                tool: 'creator_agents',
+                destination_url: 'https://shop.example.com/products/cica-barrier-cream',
+                canonical_url: 'https://shop.example.com/products/cica-barrier-cream',
+                domain: 'shop.example.com',
+                title: 'Cica Barrier Repair Moisturizer',
+                image_url: 'https://cdn.example.com/moisturizer.jpg',
+                price_amount: '24.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Test Beauty',
+                  category: 'moisturizer',
+                  description: 'Barrier repair cream with cica and ceramide.',
+                },
+                updated_at: now,
+                created_at: now,
+              },
+              {
+                id: 'seed-serum-1',
+                external_product_id: 'ext_serum_1',
+                market: 'US',
+                tool: 'creator_agents',
+                destination_url: 'https://shop.example.com/products/niacinamide-serum',
+                canonical_url: 'https://shop.example.com/products/niacinamide-serum',
+                domain: 'shop.example.com',
+                title: 'Niacinamide Serum',
+                image_url: 'https://cdn.example.com/serum.jpg',
+                price_amount: '12.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Test Beauty',
+                  category: 'serum',
+                  description: 'Oil control serum.',
+                },
+                updated_at: now,
+                created_at: now,
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      },
+    }));
+
+    const upstreamSearch = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/creator/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'Seoul local skincare sunscreen moisturizer gentle cleanser',
+            page: 1,
+            limit: 6,
+            in_stock_only: true,
+            market: 'US',
+          },
+        },
+        metadata: {
+          source: 'creator_agent',
+          creator_id: 'nina-studio',
+          market: 'US',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.metadata?.query_source).toBe('agent_products_creator_beauty_external_seed_mainline');
+    expect(resp.body.metadata?.creator_id).toBe('nina-studio');
+    expect(resp.body.metadata?.beauty_mainline_filter?.target_families).toEqual(
+      expect.arrayContaining(['sunscreen', 'cleanser', 'moisturizer']),
+    );
+    const titles = resp.body.products.map((product) => String(product.title || '')).join(' | ');
+    expect(titles).toMatch(/SPF|Sunscreen/i);
+    expect(titles).toMatch(/Cleanser/i);
+    expect(titles).toMatch(/Moisturizer|Barrier|Repair|Cream/i);
+    expect(resp.body.products.map((product) => product.product_id)).not.toContain('ext_serum_1');
+    expect(upstreamSearch.isDone()).toBe(false);
+  });
 });
