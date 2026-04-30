@@ -10664,6 +10664,11 @@ function isBeautyProductContraindicatedForQuery(product, queryText = '', intent 
   const queryRequestsMask = /\b(mask|mud\s*pack|clay\s*pack|sleeping\s*pack|wash[-\s]?off\s*pack)\b|面膜|泥膜/i.test(normalizedQuery);
   const queryRequestsRoutineSet = /\b(routine|regimen|set|kit|bundle|capsule|starter\s*kit)\b|套装|套組|套組|套组|组合|組合|护理包|護理包/i.test(normalizedQuery);
   const queryRequestsBrushTool = /\b(brush|brushes|makeup\s*brush|tool|tools)\b|刷具|化妆刷|化妝刷|工具/i.test(normalizedQuery);
+  const gentleSensitiveQuery =
+    /\b(sensitive|sensiti[sz]ed|gentle|fragrance[-\s]?free|dry\s*sensitive)\b|敏感|温和|溫和|无香精|無香精|干敏|乾敏/i.test(normalizedQuery);
+  const brighteningSerumQuery =
+    families.has('serum') &&
+    /\b(brighten|brightening|dark\s*spot|uneven\s*tone|tone|vitamin\s*c|ascorbic|azelaic|niacinamide|tranexamic)\b|提亮|淡斑|肤色不均|膚色不均|维\s*c|維\s*c|烟酰胺|煙酰胺|壬二酸|传明酸|傳明酸/i.test(normalizedQuery);
   const queryRequestsTreatmentSerum =
     families.has('serum') ||
     /\b(serum|essence|ampoule|suspension|treatment|azelaic|hyaluronic\s+acid|niacinamide|tranexamic|vitamin\s*c)\b|精华|精華|安瓶|壬二酸|玻尿酸|透明质酸|煙酰胺|烟酰胺|传明酸|傳明酸/i.test(normalizedQuery);
@@ -10671,10 +10676,12 @@ function isBeautyProductContraindicatedForQuery(product, queryText = '', intent 
   const productLooksLikeAntiAging =
     /\b(anti[-\s]?aging|anti[-\s]?ageing|firming|wrinkle|wrinkles|lift|lifting|merveillance|nuxuriance|global\s+anti[-\s]?aging|exceptional\s+day\s*&?\s*night)\b|抗老|抗皱|抗皺|紧致|緊緻|提拉/i.test(safetyText);
   const productLooksLikeMaskPack = /\b(mud\s*pack|clay\s*pack|sleeping\s*pack|wash[-\s]?off\s*pack|sleeping\s*mask|sheet\s*mask|mask)\b|面膜|泥膜/i.test(titleSurfaceText);
-  const productLooksLikeRoutineSet = /\b(am\/pm\s+routine|cult\s+skincare\s+routine|routine|regimen|starter\s*kit|kit|set|bundle|collection|capsule)\b|套装|套組|套组|组合|組合|护理包|護理包/i.test(titleSurfaceText);
+  const productLooksLikeRoutineSet = /\b(am\/pm\s+routine|cult\s+skincare\s+routine|routine|regimen|starter\s*kit|kit|set|duo|trio|bundle|collection|capsule)\b|套装|套組|套组|组合|組合|护理包|護理包/i.test(titleSurfaceText);
   const productLooksLikeBrushTool = /\b(brush\s*cleanser|brushes?|makeup\s*brush|brush\s*cleaning|tool\s*cleanser)\b|刷具|化妆刷|化妝刷|工具/i.test(safetyText);
   const productLooksLikeTreatmentSerum =
     /\b(serum|essence|ampoule|suspension|treatment|azelaic\s+acid|hyaluronic\s+acid(?:\s+\d+%?)?|niacinamide|tranexamic\s+acid)\b|精华|精華|安瓶|壬二酸|玻尿酸|透明质酸|煙酰胺|烟酰胺|传明酸|傳明酸/i.test(titleSurfaceText);
+  const productLooksLikeVolumePlumpingSerum =
+    /\b(volufiline|pal[-\s]?isoleucine|adipofil(?:l)?in|volume\s*boost|plumping\s*serum)\b/i.test(safetyText);
   const fragranceFreeClaim = /\b(fragrance[-\s]?free|unscented|no\s+fragrance|without\s+fragrance)\b|无香精|無香精|不含香精/i.test(safetyText);
   const fragranceHit =
     /\b(parfum\/fragrance|parfum|perfume|fragrance|scented|linalool|limonene|citronellol|geraniol|coumarin|hydroxycitronellal|alpha[-\s]?isomethyl\s+ionone|rose\s+ketones)\b|香精|香料/i.test(safetyText);
@@ -10741,6 +10748,9 @@ function isBeautyProductContraindicatedForQuery(product, queryText = '', intent 
     return true;
   }
   if (calmFaceSkincareQuery && productLooksLikeRoutineSet && !queryRequestsRoutineSet) {
+    return true;
+  }
+  if ((brighteningSerumQuery || gentleSensitiveQuery) && productLooksLikeVolumePlumpingSerum) {
     return true;
   }
   if (calmFaceSkincareQuery && productLooksLikeMaskPack && !queryRequestsMask) {
@@ -11128,6 +11138,18 @@ function scoreBeautyExternalSeedProduct({ product, queryText, intent, normalized
     !/\b(fragrance\s*free|unscented|no\s*fragrance|without\s*fragrance|alcohol\s*free|no\s*alcohol|without\s*alcohol)\b|无香精|無香精|无酒精|無酒精/.test(candidateText)
   ) {
     score -= 16;
+  }
+  if (
+    /\b(sensitive|sensiti[sz]ed|gentle|fragrance[-\s]?free|dry\s*sensitive)\b|敏感|温和|溫和|无香精|無香精|干敏|乾敏/i.test(String(queryText || '')) &&
+    /\b(?:niacinamide|azelaic|ascorbic|vitamin\s*c|glycolic|salicylic|lactic|mandelic)\b.{0,24}\b(?:1[0-9]|[2-9][0-9])(?:\.\d+)?\s*%|\b(?:1[0-9]|[2-9][0-9])(?:\.\d+)?\s*%\s*(?:niacinamide|azelaic|ascorbic|vitamin\s*c|glycolic|salicylic|lactic|mandelic)\b/i.test(candidateText)
+  ) {
+    score -= 10;
+  }
+  if (
+    /\b(brighten|brightening|dark\s*spot|uneven\s*tone|vitamin\s*c|azelaic|niacinamide|tranexamic)\b|提亮|淡斑|烟酰胺|煙酰胺|壬二酸|传明酸|傳明酸/i.test(String(queryText || '')) &&
+    /\b(niacinamide|azelaic|tranexamic|ascorbyl|vitamin\s*c|brighten|brightening|dark\s*spot)\b|烟酰胺|煙酰胺|壬二酸|传明酸|傳明酸|提亮/i.test(candidateText)
+  ) {
+    score += 8;
   }
   const overlap = (Array.isArray(queryTokens) ? queryTokens : []).filter(
     (token) => token.length >= 3 && candidateText.includes(token),
