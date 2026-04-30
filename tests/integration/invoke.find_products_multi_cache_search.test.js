@@ -3407,6 +3407,148 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(upstreamSearch.isDone()).toBe(false);
   });
 
+  test('sensitive barrier moisturizer query excludes exfoliating, body, scented, and eye-surface products', async () => {
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total')) return { rows: [{ total: 0 }] };
+        if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
+          return { rows: [] };
+        }
+        if (text.includes('FROM external_product_seeds')) {
+          const now = new Date().toISOString();
+          return {
+            rows: [
+              {
+                id: 'seed-barrier-face-1',
+                external_product_id: 'ext_barrier_face_1',
+                market: 'US',
+                tool: '*',
+                destination_url: 'https://shop.example.com/products/barrier-repair-face-moisturizer',
+                canonical_url: 'https://shop.example.com/products/barrier-repair-face-moisturizer',
+                domain: 'shop.example.com',
+                title: 'Barrier Repair Face Moisturizer',
+                image_url: 'https://cdn.example.com/barrier-face.jpg',
+                price_amount: '26.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Test Beauty',
+                  category: 'moisturizer',
+                  description: 'Fragrance-free ceramide and panthenol face moisturizer for sensitive barrier repair.',
+                },
+                updated_at: now,
+                created_at: now,
+              },
+              {
+                id: 'seed-p50-1',
+                external_product_id: 'ext_p50_1',
+                market: 'US',
+                tool: '*',
+                destination_url: 'https://shop.example.com/products/lotion-p50w',
+                canonical_url: 'https://shop.example.com/products/lotion-p50w',
+                domain: 'shop.example.com',
+                title: 'Lotion P50W',
+                image_url: 'https://cdn.example.com/p50.jpg',
+                price_amount: '35.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Test Beauty',
+                  category: 'lotion',
+                  description: 'Exfoliating acid lotion for resurfacing.',
+                },
+                updated_at: now,
+                created_at: now,
+              },
+              {
+                id: 'seed-body-scented-1',
+                external_product_id: 'ext_body_scented_1',
+                market: 'US',
+                tool: '*',
+                destination_url: 'https://shop.example.com/products/prodigieux-scented-body-lotion',
+                canonical_url: 'https://shop.example.com/products/prodigieux-scented-body-lotion',
+                domain: 'shop.example.com',
+                title: 'Prodigieux Beautifying Scented Body Lotion',
+                image_url: 'https://cdn.example.com/body-lotion.jpg',
+                price_amount: '28.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Test Beauty',
+                  category: 'body lotion',
+                  description: 'Scented body lotion.',
+                },
+                updated_at: now,
+                created_at: now,
+              },
+              {
+                id: 'seed-eye-cream-1',
+                external_product_id: 'ext_eye_cream_1',
+                market: 'US',
+                tool: '*',
+                destination_url: 'https://shop.example.com/products/extreme-cream-eye',
+                canonical_url: 'https://shop.example.com/products/extreme-cream-eye',
+                domain: 'shop.example.com',
+                title: 'Extreme Cream Eye',
+                image_url: 'https://cdn.example.com/eye-cream.jpg',
+                price_amount: '42.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Test Beauty',
+                  category: 'eye cream',
+                  description: 'Rich eye cream.',
+                },
+                updated_at: now,
+                created_at: now,
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      },
+    }));
+
+    const upstreamSearch = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'fragrance-free barrier repair moisturizer sensitive skin travel flight',
+            page: 1,
+            limit: 6,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'beauty_cross_agent_batch',
+          market: 'US',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.metadata?.query_source).toBe('agent_products_beauty_external_seed_mainline');
+    const ids = resp.body.products.map((product) => product.product_id);
+    expect(ids).toContain('ext_barrier_face_1');
+    expect(ids).not.toContain('ext_p50_1');
+    expect(ids).not.toContain('ext_body_scented_1');
+    expect(ids).not.toContain('ext_eye_cream_1');
+    expect(upstreamSearch.isDone()).toBe(false);
+  });
+
   test('beauty mainline dedupes pack-size variants and prefers standard items when size is not requested', async () => {
     jest.doMock('../../src/db', () => ({
       query: async (sql) => {

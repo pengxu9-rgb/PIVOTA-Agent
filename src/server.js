@@ -10490,6 +10490,16 @@ function isBeautyProductContraindicatedForQuery(product, queryText = '', intent 
   const families = new Set(Array.isArray(profile.families) ? profile.families : []);
   const displayText = buildBeautyProductDisplayText(product);
   const primarySurfaceText = buildBeautyProductPrimarySurfaceText(product);
+  const normalizedQuery = normalizeSearchTextForMatch(queryText);
+  const calmFaceSkincareQuery =
+    families.size > 0 &&
+    /\b(face|facial|skin|skincare|sensitive|sensiti[sz]ed|redness|rosacea|dry|barrier|repair|gentle|fragrance[-\s]?free|travel|flight|moisturi[sz]er|cream|cleanser|serum|sunscreen)\b|面部|脸|臉|护肤|護膚|敏感|泛红|泛紅|干皮|乾皮|屏障|修护|修護|温和|溫和|无香精|無香精|旅行|飞行|飛行|保湿|保濕|洁面|潔面|精华|精華|防晒|防曬/i.test(normalizedQuery);
+  const queryRequestsExfoliatingAcid =
+    /\b(aha|bha|pha|salicylic|glycolic|lactic|mandelic|exfoliat|peel|peeling|resurfacing|p50)\b|刷酸|去角质|去角質|水杨酸|水楊酸|果酸|杏仁酸|焕肤|煥膚/i.test(normalizedQuery);
+  const productLooksLikeExfoliatingAcid =
+    /\b(lotion\s*p50\w*|p50\w*|aha|bha|pha|glycolic|lactic|mandelic|salicylic|resurfacing|peel|peeling|exfoliating|acid\s*(?:toner|lotion|peel|exfoliant)|toner\s*pads?)\b|刷酸|去角质|去角質|水杨酸|水楊酸|果酸|杏仁酸|焕肤|煥膚/i.test(text);
+  const queryRequestsEye = /\b(eye|eyes|undereye|under[-\s]?eye)\b|眼霜|眼部/i.test(normalizedQuery);
+  const queryRequestsBody = /\b(body|hand|hands|hair|scalp|lip|lips)\b|身体|身體|护手|護手|头发|頭髮|头皮|頭皮|唇/i.test(normalizedQuery);
   const retinoidHit =
     /\b(bio[-\s]?retinol|retinol|retinal|retinoid|retinyl|tretinoin|adapalene|hydroxypinacolone|hpr)\b/i.test(text) ||
     /视黄醇|視黃醇|维a醇|維a醇|维甲酸|維甲酸|a醇/.test(text);
@@ -10534,13 +10544,42 @@ function isBeautyProductContraindicatedForQuery(product, queryText = '', intent 
   }
   if (safety.has('avoid_exfoliating_acids')) {
     if (
-      /\b(aha|bha|pha|glycolic|lactic|mandelic|salicylic|peeling\s*solution|exfoliating\s*(acid|toner|pads?))\b/i.test(text) ||
+      productLooksLikeExfoliatingAcid ||
       /果酸|水杨酸|水楊酸|杏仁酸|乳酸|刷酸|去角质酸|去角質酸/.test(text)
     ) {
       return true;
     }
   }
-  const normalizedQuery = normalizeSearchTextForMatch(queryText);
+  if (calmFaceSkincareQuery && productLooksLikeExfoliatingAcid && !queryRequestsExfoliatingAcid) {
+    return true;
+  }
+  if (
+    calmFaceSkincareQuery &&
+    !queryRequestsEye &&
+    /\b(?:(?:eye|eyes)\b.{0,16}\b(?:cream|balm|serum|treatment)|(?:cream|balm|serum|treatment)\b.{0,16}\b(?:eye|eyes)|under[-\s]?eye)\b|眼霜|眼部/i.test(primarySurfaceText)
+  ) {
+    return true;
+  }
+  if (
+    calmFaceSkincareQuery &&
+    !queryRequestsBody &&
+    (
+      (
+        /\b(body\s*(?:lotion|cream|oil|gel|wash|cleanser|sunscreen|milk)|hand\s*(?:cream|lotion)|scalp|hair|capillaire)\b|身体|身體|护手|護手|头发|頭髮|头皮|頭皮/i.test(primarySurfaceText) &&
+        !/\bface|facial\b|面部|脸|臉/i.test(primarySurfaceText)
+      ) ||
+      /\b(?:sulphate|sulfate)\s*\d+%?\s*cleanser\s+for\s+body\s+and\s+hair\b/i.test(text)
+    )
+  ) {
+    return true;
+  }
+  if (
+    calmFaceSkincareQuery &&
+    /\b(scented|fragrance|parfum|perfume)\b|香精|香料/i.test(primarySurfaceText) &&
+    !/\b(fragrance[-\s]?free|unscented|no\s+fragrance)\b|无香精|無香精/i.test(text)
+  ) {
+    return true;
+  }
   if (
     beautyProductIsLipCareSurface(product) &&
     !beautyQueryRequestsLipCare(queryText) &&
