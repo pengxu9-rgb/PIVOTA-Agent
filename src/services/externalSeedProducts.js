@@ -184,6 +184,17 @@ function buildApprovedRuntimeSeedData(seedData, pdpFieldQualitySummary) {
     delete snapshot.pdp_details_sections;
   }
 
+  if (Array.isArray(nextSeedData.pdp_details_sections) && nextSeedData.pdp_details_sections.length > 0) {
+    nextSeedData.details_sections = cloneJsonValue(nextSeedData.pdp_details_sections);
+  } else {
+    delete nextSeedData.details_sections;
+  }
+  if (Array.isArray(snapshot.pdp_details_sections) && snapshot.pdp_details_sections.length > 0) {
+    snapshot.details_sections = cloneJsonValue(snapshot.pdp_details_sections);
+  } else {
+    delete snapshot.details_sections;
+  }
+
   nextSeedData.snapshot = snapshot;
   return nextSeedData;
 }
@@ -2097,37 +2108,35 @@ function buildExternalSeedProduct(row, options = {}) {
     externalProductId;
   const description = firstNonEmptyString(
     prefersStoredRecallSummary ? recall.retrieval_summary : '',
-    snapshot.description,
-    row.description,
-    row.seed_description,
-    seedData.description,
+    runtimeSnapshot.description,
+    runtimeSeedData.description,
     !prefersStoredRecallSummary ? recall.retrieval_summary : '',
   );
   const categoryDescription = firstNonEmptyString(
-    snapshot.description,
-    row.description,
-    seedData.description,
+    runtimeSnapshot.description,
+    runtimeSeedData.description,
+    description,
   );
   const pdpDescriptionRaw = firstNonEmptyString(
-    seedData.pdp_description_raw,
-    snapshot.pdp_description_raw,
+    runtimeSnapshot.pdp_description_raw,
+    runtimeSeedData.pdp_description_raw,
   );
   const pdpIngredientsRaw = firstNonEmptyString(
-    seedData.pdp_ingredients_raw,
-    snapshot.pdp_ingredients_raw,
+    runtimeSnapshot.pdp_ingredients_raw,
+    runtimeSeedData.pdp_ingredients_raw,
   );
   const pdpActiveIngredientsRaw = firstNonEmptyString(
-    seedData.pdp_active_ingredients_raw,
-    snapshot.pdp_active_ingredients_raw,
+    runtimeSnapshot.pdp_active_ingredients_raw,
+    runtimeSeedData.pdp_active_ingredients_raw,
   );
   const pdpHowToUseRaw = firstNonEmptyString(
-    seedData.pdp_how_to_use_raw,
-    snapshot.pdp_how_to_use_raw,
+    runtimeSnapshot.pdp_how_to_use_raw,
+    runtimeSeedData.pdp_how_to_use_raw,
   );
   const pdpFaqItems = normalizeFaqItems(
-    Array.isArray(seedData.pdp_faq_items) && seedData.pdp_faq_items.length > 0
-      ? seedData.pdp_faq_items
-      : snapshot.pdp_faq_items,
+    Array.isArray(runtimeSnapshot.pdp_faq_items) && runtimeSnapshot.pdp_faq_items.length > 0
+      ? runtimeSnapshot.pdp_faq_items
+      : runtimeSeedData.pdp_faq_items,
   );
   const rawIngredientTextClean = firstNonEmptyString(
     ingredientIntel.raw_ingredient_text_clean,
@@ -2143,10 +2152,10 @@ function buildExternalSeedProduct(row, options = {}) {
   );
   const activeIngredients = [];
   const keyIngredients = normalizeStringList(
-    seedData.key_ingredients ||
-      seedData.keyIngredients ||
-      snapshot.key_ingredients ||
-      snapshot.keyIngredients ||
+    runtimeSnapshot.key_ingredients ||
+      runtimeSnapshot.keyIngredients ||
+      runtimeSeedData.key_ingredients ||
+      runtimeSeedData.keyIngredients ||
       science.key_ingredients ||
       science.keyIngredients ||
       snapshotScience.key_ingredients ||
@@ -2154,46 +2163,46 @@ function buildExternalSeedProduct(row, options = {}) {
     24,
   );
   const pdpDetailsSections = isSurfaceablePdpField(pdpFieldQualitySummary, 'details_sections')
-    ? Array.isArray(seedData.pdp_details_sections)
-      ? seedData.pdp_details_sections
-      : Array.isArray(snapshot.pdp_details_sections)
-        ? snapshot.pdp_details_sections
+    ? Array.isArray(runtimeSnapshot.pdp_details_sections)
+      ? runtimeSnapshot.pdp_details_sections
+      : Array.isArray(runtimeSeedData.pdp_details_sections)
+        ? runtimeSeedData.pdp_details_sections
         : []
     : [];
   const pdpFieldCaptureStatus =
-    (seedData.pdp_field_capture_status && typeof seedData.pdp_field_capture_status === 'object')
-      ? seedData.pdp_field_capture_status
-      : (snapshot.pdp_field_capture_status && typeof snapshot.pdp_field_capture_status === 'object')
-        ? snapshot.pdp_field_capture_status
+    (runtimeSnapshot.pdp_field_capture_status && typeof runtimeSnapshot.pdp_field_capture_status === 'object')
+      ? runtimeSnapshot.pdp_field_capture_status
+      : (runtimeSeedData.pdp_field_capture_status && typeof runtimeSeedData.pdp_field_capture_status === 'object')
+        ? runtimeSeedData.pdp_field_capture_status
         : undefined;
   const seedDescriptionOrigin = firstNonEmptyString(
-    seedData.seed_description_origin,
-    snapshot.seed_description_origin,
+    runtimeSnapshot.seed_description_origin,
+    runtimeSeedData.seed_description_origin,
   );
   const sourcePageType = firstNonEmptyString(
-    seedData.source_page_type,
-    snapshot.source_page_type,
+    runtimeSnapshot.source_page_type,
+    runtimeSeedData.source_page_type,
     row.source_page_type,
   );
   const contentQuality = firstNonEmptyString(
-    seedData.content_quality,
-    snapshot.content_quality,
+    runtimeSnapshot.content_quality,
+    runtimeSeedData.content_quality,
     row.content_quality,
   );
   const sourceUrl = firstNonEmptyString(
-    seedData.source_url,
-    snapshot.source_url,
+    runtimeSnapshot.source_url,
+    runtimeSeedData.source_url,
     row.source_url,
     canonicalUrl,
     destinationUrl,
   );
   const reviewSummary = normalizeSeedReviewSummary(
-    seedData.review_summary,
-    seedData.reviewSummary,
-    snapshot.review_summary,
-    snapshot.reviewSummary,
-    seedData.reviews_summary,
-    snapshot.reviews_summary,
+    runtimeSnapshot.review_summary,
+    runtimeSnapshot.reviewSummary,
+    runtimeSeedData.review_summary,
+    runtimeSeedData.reviewSummary,
+    runtimeSnapshot.reviews_summary,
+    runtimeSeedData.reviews_summary,
   );
   const brand = firstNonEmptyString(
     recall.brand,
@@ -2405,12 +2414,7 @@ function buildExternalSeedProduct(row, options = {}) {
     pdp_active_ingredients_raw: isSurfaceablePdpField(pdpFieldQualitySummary, 'active_ingredients_raw')
       ? runtimeSeedData.pdp_active_ingredients_raw || runtimeSnapshot.pdp_active_ingredients_raw
       : undefined,
-    details_sections:
-      Array.isArray(runtimeSeedData.details_sections) && runtimeSeedData.details_sections.length
-        ? runtimeSeedData.details_sections
-        : Array.isArray(runtimeSnapshot.details_sections)
-          ? runtimeSnapshot.details_sections
-          : undefined,
+    details_sections: pdpDetailsSections.length > 0 ? pdpDetailsSections : undefined,
     ingredient_intel: ingredientIntel,
   };
   const authority = isIngredientAuthorityEligibleExternalSeed(authorityInput)

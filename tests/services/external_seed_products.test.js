@@ -2015,4 +2015,57 @@ describe('externalSeedProducts helper', () => {
     expect(product.active_ingredients).toBeUndefined();
     expect(product.pdp_field_quality_summary.description_raw.source_quality_status).toBe('quarantined');
   });
+
+  test('prefers approved snapshot PDP content over thinner root seed shadow fields', () => {
+    const canonicalUrl = 'https://example.com/products/barrier-cream';
+    const reviewedDescription =
+      'Reviewed canonical overview with ceramides and panthenol for daily barrier support.';
+    const product = buildExternalSeedProduct({
+      id: 'eps_snapshot_priority',
+      external_product_id: 'ext_snapshot_priority',
+      canonical_url: canonicalUrl,
+      destination_url: canonicalUrl,
+      title: 'Barrier Cream',
+      seed_data: {
+        description: 'Thin shadow description.',
+        pdp_description_raw: 'Thin shadow description.',
+        pdp_details_sections: [{ heading: 'Overview', body: 'Thin shadow section.' }],
+        key_ingredients: ['Marketing copy'],
+        seed_description_origin: 'shadow_seed',
+        source_url: 'https://shadow.example.com/products/barrier-cream',
+        pdp_field_quality_summary: {
+          description_raw: {
+            source_origin: 'shopify_json',
+            source_quality_status: 'high',
+          },
+          details_sections: {
+            source_origin: 'shopify_json',
+            source_quality_status: 'high',
+          },
+        },
+        snapshot: {
+          title: 'Barrier Cream',
+          description: reviewedDescription,
+          pdp_description_raw: reviewedDescription,
+          pdp_details_sections: [
+            { heading: 'Overview', body: reviewedDescription },
+            { heading: 'How to Use', body: 'Apply after toner.' },
+          ],
+          key_ingredients: ['Ceramide NP', 'Panthenol'],
+          seed_description_origin: 'assistant_reviewed_asset',
+          source_url: canonicalUrl,
+        },
+      },
+    });
+
+    expect(product.description).toBe(reviewedDescription);
+    expect(product.pdp_description_raw).toBe(reviewedDescription);
+    expect(product.pdp_details_sections).toEqual([
+      { heading: 'Overview', body: reviewedDescription },
+      { heading: 'How to Use', body: 'Apply after toner.' },
+    ]);
+    expect(product.key_ingredients).toEqual(['Ceramide NP', 'Panthenol']);
+    expect(product.seed_description_origin).toBe('assistant_reviewed_asset');
+    expect(product.source_url).toBe(canonicalUrl);
+  });
 });

@@ -1440,6 +1440,20 @@ const PDP_FIELD_QUALITY_KEYS = [
   'how_to_use_raw',
   'faq_items',
 ];
+const PDP_CONTENT_ASSET_CONTRACT_VERSION = 'pivota.pdp_content_asset.v1';
+const PDP_CONTENT_ASSET_KEYS = [
+  'description',
+  ...PDP_FIELD_QUALITY_KEYS,
+];
+const PROTECTED_PDP_CONTENT_REVIEW_STATES = new Set([
+  'assistant_reviewed',
+  'human_reviewed',
+  'locked',
+]);
+const MANUAL_ONLY_PDP_CONTENT_POLICIES = new Set([
+  'manual_only',
+  'locked',
+]);
 
 function normalizeFieldQualitySummary(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
@@ -1471,6 +1485,245 @@ function isSurfaceablePdpField(summary, key) {
   const status = readFieldQualityStatus(summary, key);
   if (!status) return true;
   return status === 'high' || status === 'medium';
+}
+
+function mergeFieldQualitySummaries(existing, incoming) {
+  const next = {};
+  const existingSummary = normalizeFieldQualitySummary(existing);
+  const incomingSummary = normalizeFieldQualitySummary(incoming);
+  for (const key of PDP_FIELD_QUALITY_KEYS) {
+    const row = incomingSummary?.[key] || existingSummary?.[key];
+    if (!row || typeof row !== 'object' || Array.isArray(row)) continue;
+    next[key] = {
+      ...row,
+      source_kinds: Array.isArray(row.source_kinds) ? [...row.source_kinds] : [],
+      reason_codes: Array.isArray(row.reason_codes) ? [...row.reason_codes] : [],
+    };
+  }
+  return Object.keys(next).length > 0 ? next : null;
+}
+
+function normalizePdpContentAssetContract(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const rawFields = ensureJsonObject(value.fields);
+  const fields = {};
+  for (const key of PDP_CONTENT_ASSET_KEYS) {
+    const raw = ensureJsonObject(rawFields[key] || value[key]);
+    if (!Object.keys(raw).length) continue;
+    const reviewState = normalizeNonEmptyString(raw.review_state || raw.reviewState).toLowerCase();
+    const overwritePolicy = normalizeNonEmptyString(raw.overwrite_policy || raw.overwritePolicy).toLowerCase();
+    const sourceQualityStatus = normalizeNonEmptyString(raw.source_quality_status || raw.sourceQualityStatus).toLowerCase();
+    const sourceOrigin = normalizeNonEmptyString(raw.source_origin || raw.sourceOrigin).toLowerCase();
+    const contentHash = normalizeNonEmptyString(raw.content_hash || raw.contentHash);
+    const updatedAt = normalizeNonEmptyString(raw.updated_at || raw.updatedAt);
+    fields[key] = {
+      ...(reviewState ? { review_state: reviewState } : {}),
+      ...(overwritePolicy ? { overwrite_policy: overwritePolicy } : {}),
+      ...(sourceQualityStatus ? { source_quality_status: sourceQualityStatus } : {}),
+      ...(sourceOrigin ? { source_origin: sourceOrigin } : {}),
+      ...(contentHash ? { content_hash: contentHash } : {}),
+      ...(updatedAt ? { updated_at: updatedAt } : {}),
+    };
+  }
+  if (!Object.keys(fields).length) return null;
+  return {
+    contract_version: normalizeNonEmptyString(value.contract_version || value.contractVersion) || PDP_CONTENT_ASSET_CONTRACT_VERSION,
+    owner: normalizeNonEmptyString(value.owner) || 'pivota',
+    fields,
+  };
+}
+
+function canonicalizePdpContentAssetValue(fieldKey, value) {
+  if (fieldKey === 'details_sections') return normalizeDetailsSections(value);
+  if (fieldKey === 'faq_items') return normalizeFaqItems(value);
+  return normalizeNonEmptyString(value);
+}
+
+function hasPdpContentAssetValue(fieldKey, value) {
+  const normalized = canonicalizePdpContentAssetValue(fieldKey, value);
+  if (Array.isArray(normalized)) return normalized.length > 0;
+  return Boolean(normalized);
+}
+
+function hashPdpContentAssetValue(fieldKey, value) {
+  if (!hasPdpContentAssetValue(fieldKey, value)) return '';
+  return crypto
+    .createHash('sha1')
+    .update(JSON.stringify(canonicalizePdpContentAssetValue(fieldKey, value)))
+    .digest('hex')
+    .slice(0, 16);
+}
+
+function measurePdpContentAssetValue(fieldKey, value) {
+  const normalized = canonicalizePdpContentAssetValue(fieldKey, value);
+  if (Array.isArray(normalized)) {
+    const bodies = normalized.map((item) => {
+      if (fieldKey === 'faq_items') {
+        return `${normalizeNonEmptyString(item?.question)} ${normalizeNonEmptyString(item?.answer)}`.trim();
+      }
+      return `${normalizeNonEmptyString(item?.heading)} ${normalizeNonEmptyString(item?.body || item?.content || item?.text)}`.trim();
+    });
+    const charCount = bodies.reduce((sum, body) => sum + body.length, 0);
+    return {
+      item_count: normalized.length,
+      char_count: charCount,
+      score: normalized.length * 120 + charCount,
+    };
+  }
+  const text = String(normalized || '');
+  return {
+    item_count: text ? 1 : 0,
+    char_count: text.length,
+    score: text.length,
+  };
+}
+
+function normalizePdpContentAssetSummaryKey(fieldKey) {
+  return fieldKey === 'description' ? 'description_raw' : fieldKey;
+}
+
+function shouldPreserveExistingPdpContent({
+  fieldKey,
+  incomingValue,
+  existingValue,
+  incomingSummary,
+  existingSummary,
+  assetField,
+}) {
+  const hasExisting = hasPdpContentAssetValue(fieldKey, existingValue);
+  const hasIncoming = hasPdpContentAssetValue(fieldKey, incomingValue);
+  if (!hasExisting) return { preserve: false, reason: '', existingApproved: false };
+
+  const summaryKey = normalizePdpContentAssetSummaryKey(fieldKey);
+  const incomingSurfaceable = isSurfaceablePdpField(incomingSummary, summaryKey);
+  const existingSurfaceable = isSurfaceablePdpField(existingSummary, summaryKey);
+  const reviewState = normalizeNonEmptyString(assetField?.review_state).toLowerCase();
+  const overwritePolicy = normalizeNonEmptyString(assetField?.overwrite_policy).toLowerCase();
+  const hasExistingQualityEvidence = Boolean(
+    existingSummary?.[summaryKey] &&
+      typeof existingSummary[summaryKey] === 'object' &&
+      !Array.isArray(existingSummary[summaryKey]),
+  );
+  const hasExistingAssetField = Boolean(
+    assetField &&
+      typeof assetField === 'object' &&
+      !Array.isArray(assetField) &&
+      Object.keys(assetField).length > 0,
+  );
+  const existingApproved =
+    PROTECTED_PDP_CONTENT_REVIEW_STATES.has(reviewState) ||
+    MANUAL_ONLY_PDP_CONTENT_POLICIES.has(overwritePolicy) ||
+    ((hasExistingQualityEvidence || hasExistingAssetField) && existingSurfaceable);
+  if (!hasIncoming) {
+    return existingApproved
+      ? { preserve: true, reason: 'preserve_existing_when_incoming_empty', existingApproved }
+      : { preserve: false, reason: '', existingApproved };
+  }
+
+  const incomingHash = hashPdpContentAssetValue(fieldKey, incomingValue);
+  const existingHash = hashPdpContentAssetValue(fieldKey, existingValue);
+  if (incomingHash && existingHash && incomingHash === existingHash) {
+    return { preserve: false, reason: 'same_content', existingApproved };
+  }
+  if (
+    PROTECTED_PDP_CONTENT_REVIEW_STATES.has(reviewState) ||
+    MANUAL_ONLY_PDP_CONTENT_POLICIES.has(overwritePolicy)
+  ) {
+    return { preserve: true, reason: 'preserve_reviewed_pivota_asset', existingApproved };
+  }
+  if (!hasExistingQualityEvidence && !hasExistingAssetField) {
+    return { preserve: false, reason: '', existingApproved };
+  }
+  if (existingSurfaceable && !incomingSurfaceable) {
+    return { preserve: true, reason: 'preserve_surfaceable_existing_over_unsurfaceable_incoming', existingApproved };
+  }
+  if (!existingSurfaceable || !incomingSurfaceable) {
+    return { preserve: false, reason: '', existingApproved };
+  }
+
+  const existingRichness = measurePdpContentAssetValue(fieldKey, existingValue);
+  const incomingRichness = measurePdpContentAssetValue(fieldKey, incomingValue);
+  const scoreGap = existingRichness.score - incomingRichness.score;
+  const charGap = existingRichness.char_count - incomingRichness.char_count;
+  const itemGap = existingRichness.item_count - incomingRichness.item_count;
+  const materiallyRicher =
+    scoreGap >= (Array.isArray(canonicalizePdpContentAssetValue(fieldKey, existingValue)) ? 90 : 50) &&
+    charGap >= 40;
+  const structurallyRicher =
+    itemGap > 0 &&
+    scoreGap >= 40;
+  if (materiallyRicher || structurallyRicher) {
+    return { preserve: true, reason: 'preserve_richer_existing_content_asset', existingApproved };
+  }
+  return { preserve: false, reason: '', existingApproved };
+}
+
+function appendPreservedContentCandidateToSnapshotQuarantine(snapshotQuarantine, {
+  fieldKey,
+  candidateValue,
+  reasonCode,
+  incomingSummary,
+  extractorMode,
+}) {
+  if (!hasPdpContentAssetValue(fieldKey, candidateValue)) return snapshotQuarantine;
+  const next = snapshotQuarantine && typeof snapshotQuarantine === 'object'
+    ? cloneJsonValue(snapshotQuarantine)
+    : {
+        contract_version: 'external_seed.snapshot_quarantine.v1',
+        source: 'catalog_intelligence',
+      };
+  if (normalizeNonEmptyString(extractorMode)) next.extractor_mode = normalizeNonEmptyString(extractorMode);
+  next.updated_at = new Date().toISOString();
+  const preservedCandidates = ensureJsonObject(next.preserved_candidates);
+  const summaryKey = normalizePdpContentAssetSummaryKey(fieldKey);
+  preservedCandidates[fieldKey] = {
+    value: cloneJsonValue(canonicalizePdpContentAssetValue(fieldKey, candidateValue)),
+    ...(reasonCode ? { reason_code: reasonCode, reason_codes: [reasonCode] } : {}),
+    ...(normalizeNonEmptyString(incomingSummary?.[summaryKey]?.source_quality_status)
+      ? { source_quality_status: normalizeNonEmptyString(incomingSummary[summaryKey].source_quality_status).toLowerCase() }
+      : {}),
+    ...(normalizeNonEmptyString(incomingSummary?.[summaryKey]?.source_origin)
+      ? { source_origin: normalizeNonEmptyString(incomingSummary[summaryKey].source_origin).toLowerCase() }
+      : {}),
+  };
+  next.preserved_candidates = preservedCandidates;
+  return next;
+}
+
+function buildNextPdpContentAssetContract({
+  existing,
+  fieldValues,
+  fieldQualitySummary,
+}) {
+  const existingContract = normalizePdpContentAssetContract(existing);
+  const nextFields = {};
+  for (const fieldKey of PDP_CONTENT_ASSET_KEYS) {
+    const value = fieldValues?.[fieldKey];
+    if (!hasPdpContentAssetValue(fieldKey, value)) continue;
+    const existingField = ensureJsonObject(existingContract?.fields?.[fieldKey]);
+    const summaryKey = normalizePdpContentAssetSummaryKey(fieldKey);
+    const contentHash = hashPdpContentAssetValue(fieldKey, value);
+    const reviewState = normalizeNonEmptyString(existingField.review_state).toLowerCase() || 'unreviewed';
+    const overwritePolicy = normalizeNonEmptyString(existingField.overwrite_policy).toLowerCase() || 'preserve_best_available';
+    const sourceQualityStatus = normalizeNonEmptyString(fieldQualitySummary?.[summaryKey]?.source_quality_status).toLowerCase()
+      || normalizeNonEmptyString(existingField.source_quality_status).toLowerCase();
+    const sourceOrigin = normalizeNonEmptyString(fieldQualitySummary?.[summaryKey]?.source_origin).toLowerCase()
+      || normalizeNonEmptyString(existingField.source_origin).toLowerCase();
+    nextFields[fieldKey] = {
+      review_state: reviewState,
+      overwrite_policy: overwritePolicy,
+      ...(sourceQualityStatus ? { source_quality_status: sourceQualityStatus } : {}),
+      ...(sourceOrigin ? { source_origin: sourceOrigin } : {}),
+      ...(contentHash ? { content_hash: contentHash } : {}),
+      updated_at: new Date().toISOString(),
+    };
+  }
+  if (!Object.keys(nextFields).length) return null;
+  return {
+    contract_version: PDP_CONTENT_ASSET_CONTRACT_VERSION,
+    owner: normalizeNonEmptyString(existingContract?.owner) || 'pivota',
+    fields: nextFields,
+  };
 }
 
 function buildSnapshotQuarantine({
@@ -2295,34 +2548,43 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     representativeProduct?.faq_items ||
       representativeProduct?.pdp_faq_items,
   );
-  const pdpFieldQualitySummary = normalizeFieldQualitySummary(
+  const incomingPdpFieldQualitySummary = normalizeFieldQualitySummary(
     representativeProduct?.field_quality_summary ||
-      representativeProduct?.pdp_field_quality_summary ||
-      seedData.pdp_field_quality_summary ||
+      representativeProduct?.pdp_field_quality_summary,
+  );
+  const existingPdpFieldQualitySummary = normalizeFieldQualitySummary(
+    seedData.pdp_field_quality_summary ||
       snapshot.pdp_field_quality_summary,
   );
-  const surfaceableProductDescriptionRaw = isSurfaceablePdpField(pdpFieldQualitySummary, 'description_raw')
+  const pdpFieldQualitySummary = mergeFieldQualitySummaries(
+    existingPdpFieldQualitySummary,
+    incomingPdpFieldQualitySummary,
+  );
+  const existingPdpContentAsset = normalizePdpContentAssetContract(
+    seedData.pdp_content_asset_v1 || snapshot.pdp_content_asset_v1,
+  );
+  const surfaceableProductDescriptionRaw = isSurfaceablePdpField(incomingPdpFieldQualitySummary, 'description_raw')
     ? productDescriptionRaw
     : '';
-  const surfaceablePdpDetailsSections = isSurfaceablePdpField(pdpFieldQualitySummary, 'details_sections')
+  const surfaceablePdpDetailsSections = isSurfaceablePdpField(incomingPdpFieldQualitySummary, 'details_sections')
     ? pdpDetailsSections
     : [];
-  const surfaceablePdpIngredientsRaw = isSurfaceablePdpField(pdpFieldQualitySummary, 'ingredients_raw')
+  const surfaceablePdpIngredientsRaw = isSurfaceablePdpField(incomingPdpFieldQualitySummary, 'ingredients_raw')
     ? pdpIngredientsRaw
     : '';
-  const surfaceablePdpActiveIngredientsRaw = isSurfaceablePdpField(pdpFieldQualitySummary, 'active_ingredients_raw')
+  const surfaceablePdpActiveIngredientsRaw = isSurfaceablePdpField(incomingPdpFieldQualitySummary, 'active_ingredients_raw')
     ? pdpActiveIngredientsRaw
     : '';
-  const surfaceablePdpHowToUseRaw = isSurfaceablePdpField(pdpFieldQualitySummary, 'how_to_use_raw')
+  const surfaceablePdpHowToUseRaw = isSurfaceablePdpField(incomingPdpFieldQualitySummary, 'how_to_use_raw')
     ? pdpHowToUseRaw
     : '';
-  const surfaceablePdpFaqItems = isSurfaceablePdpField(pdpFieldQualitySummary, 'faq_items')
+  const surfaceablePdpFaqItems = isSurfaceablePdpField(incomingPdpFieldQualitySummary, 'faq_items')
     ? pdpFaqItems
     : [];
-  const snapshotQuarantine = buildSnapshotQuarantine({
+  let snapshotQuarantine = buildSnapshotQuarantine({
     existing: seedData.snapshot_quarantine || snapshot.snapshot_quarantine,
     representativeProduct,
-    fieldQualitySummary: pdpFieldQualitySummary,
+    fieldQualitySummary: incomingPdpFieldQualitySummary,
     extractorMode: response?.mode,
     rawFieldValues: {
       description_raw: productDescriptionRaw,
@@ -2359,21 +2621,63 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
       : seedData.pdp_description_raw || snapshot.pdp_description_raw,
     pdpDetailsSections,
   );
+  const descriptionRawDecision = shouldPreserveExistingPdpContent({
+    fieldKey: 'description_raw',
+    incomingValue: surfaceableProductDescriptionRaw,
+    existingValue: existingPdpDescriptionRaw,
+    incomingSummary: incomingPdpFieldQualitySummary,
+    existingSummary: existingPdpFieldQualitySummary,
+    assetField: existingPdpContentAsset?.fields?.description_raw,
+  });
+  if (descriptionRawDecision.preserve && hasPdpContentAssetValue('description_raw', surfaceableProductDescriptionRaw)) {
+    snapshotQuarantine = appendPreservedContentCandidateToSnapshotQuarantine(snapshotQuarantine, {
+      fieldKey: 'description_raw',
+      candidateValue: surfaceableProductDescriptionRaw,
+      reasonCode: descriptionRawDecision.reason,
+      incomingSummary: incomingPdpFieldQualitySummary,
+      extractorMode: response?.mode,
+    });
+  }
   const nextPdpDescriptionRaw =
-    surfaceableProductDescriptionRaw ||
-    existingPdpDescriptionRaw;
+    descriptionRawDecision.preserve
+      ? existingPdpDescriptionRaw
+      : (surfaceableProductDescriptionRaw || (descriptionRawDecision.existingApproved ? existingPdpDescriptionRaw : ''));
+  const existingPdpDetailsSections = identityRepairBackfill
+    ? []
+    : !isSurfaceablePdpField(existingPdpFieldQualitySummary, 'details_sections')
+      ? []
+      : normalizeDetailsSections(
+        Array.isArray(seedData.pdp_details_sections) && seedData.pdp_details_sections.length > 0
+          ? seedData.pdp_details_sections
+          : snapshot.pdp_details_sections,
+      );
+  const detailsDecision = shouldPreserveExistingPdpContent({
+    fieldKey: 'details_sections',
+    incomingValue: surfaceablePdpDetailsSections,
+    existingValue: existingPdpDetailsSections,
+    incomingSummary: incomingPdpFieldQualitySummary,
+    existingSummary: existingPdpFieldQualitySummary,
+    assetField: existingPdpContentAsset?.fields?.details_sections,
+  });
+  if (detailsDecision.preserve && hasPdpContentAssetValue('details_sections', surfaceablePdpDetailsSections)) {
+    snapshotQuarantine = appendPreservedContentCandidateToSnapshotQuarantine(snapshotQuarantine, {
+      fieldKey: 'details_sections',
+      candidateValue: surfaceablePdpDetailsSections,
+      reasonCode: detailsDecision.reason,
+      incomingSummary: incomingPdpFieldQualitySummary,
+      extractorMode: response?.mode,
+    });
+  }
   let nextPdpDetailsSections =
-    surfaceablePdpDetailsSections.length > 0
+    detailsDecision.preserve
+      ? existingPdpDetailsSections
+      : surfaceablePdpDetailsSections.length > 0
       ? surfaceablePdpDetailsSections
       : identityRepairBackfill
         ? []
-        : !isSurfaceablePdpField(pdpFieldQualitySummary, 'details_sections')
+        : !detailsDecision.existingApproved
           ? []
-        : normalizeDetailsSections(
-          Array.isArray(seedData.pdp_details_sections) && seedData.pdp_details_sections.length > 0
-            ? seedData.pdp_details_sections
-            : snapshot.pdp_details_sections,
-        );
+        : existingPdpDetailsSections;
   const hasKnownProductKind = Boolean(nextProductKind);
   const supportsFormulaPdpFields = !hasKnownProductKind || nextProductKind === 'single_formula';
   const supportsHowToUsePdpField = supportsFormulaPdpFields || nextProductKind === 'bundle';
@@ -2387,21 +2691,70 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
       (section) => !/^How to Use$/i.test(section.heading),
     );
   }
-  const nextPdpIngredientsRaw = supportsFormulaPdpFields
+  const existingPdpIngredientsRaw = identityRepairBackfill || !isSurfaceablePdpField(existingPdpFieldQualitySummary, 'ingredients_raw')
+    ? ''
+    : normalizeNonEmptyString(seedData.pdp_ingredients_raw || snapshot.pdp_ingredients_raw);
+  const candidatePdpIngredientsRaw = supportsFormulaPdpFields
     ? pickPdpIngredientsRaw(
         surfaceablePdpIngredientsRaw,
         nextPdpDetailsSections,
-        identityRepairBackfill || !isSurfaceablePdpField(pdpFieldQualitySummary, 'ingredients_raw')
-          ? ''
-          : normalizeNonEmptyString(seedData.pdp_ingredients_raw || snapshot.pdp_ingredients_raw),
+        '',
       )
     : '';
+  const ingredientsDecision = shouldPreserveExistingPdpContent({
+    fieldKey: 'ingredients_raw',
+    incomingValue: candidatePdpIngredientsRaw,
+    existingValue: existingPdpIngredientsRaw,
+    incomingSummary: incomingPdpFieldQualitySummary,
+    existingSummary: existingPdpFieldQualitySummary,
+    assetField: existingPdpContentAsset?.fields?.ingredients_raw,
+  });
+  if (ingredientsDecision.preserve && hasPdpContentAssetValue('ingredients_raw', candidatePdpIngredientsRaw)) {
+    snapshotQuarantine = appendPreservedContentCandidateToSnapshotQuarantine(snapshotQuarantine, {
+      fieldKey: 'ingredients_raw',
+      candidateValue: candidatePdpIngredientsRaw,
+      reasonCode: ingredientsDecision.reason,
+      incomingSummary: incomingPdpFieldQualitySummary,
+      extractorMode: response?.mode,
+    });
+  }
+  const nextPdpIngredientsRaw = supportsFormulaPdpFields
+    ? (ingredientsDecision.preserve
+      ? existingPdpIngredientsRaw
+      : pickPdpIngredientsRaw(
+          candidatePdpIngredientsRaw,
+          nextPdpDetailsSections,
+          ingredientsDecision.existingApproved ? existingPdpIngredientsRaw : '',
+        ))
+    : '';
+  const existingPdpActiveIngredientsRaw = identityRepairBackfill || !isSurfaceablePdpField(existingPdpFieldQualitySummary, 'active_ingredients_raw')
+    ? ''
+    : normalizeNonEmptyString(seedData.pdp_active_ingredients_raw || snapshot.pdp_active_ingredients_raw);
+  const candidatePdpActiveIngredientsRaw = supportsFormulaPdpFields
+    ? cleanPdpActiveIngredientsRaw(surfaceablePdpActiveIngredientsRaw)
+    : '';
+  const activeIngredientsDecision = shouldPreserveExistingPdpContent({
+    fieldKey: 'active_ingredients_raw',
+    incomingValue: candidatePdpActiveIngredientsRaw,
+    existingValue: existingPdpActiveIngredientsRaw,
+    incomingSummary: incomingPdpFieldQualitySummary,
+    existingSummary: existingPdpFieldQualitySummary,
+    assetField: existingPdpContentAsset?.fields?.active_ingredients_raw,
+  });
+  if (activeIngredientsDecision.preserve && hasPdpContentAssetValue('active_ingredients_raw', candidatePdpActiveIngredientsRaw)) {
+    snapshotQuarantine = appendPreservedContentCandidateToSnapshotQuarantine(snapshotQuarantine, {
+      fieldKey: 'active_ingredients_raw',
+      candidateValue: candidatePdpActiveIngredientsRaw,
+      reasonCode: activeIngredientsDecision.reason,
+      incomingSummary: incomingPdpFieldQualitySummary,
+      extractorMode: response?.mode,
+    });
+  }
   const nextPdpActiveIngredientsRaw = supportsFormulaPdpFields
     ? cleanPdpActiveIngredientsRaw(
-        surfaceablePdpActiveIngredientsRaw ||
-          (identityRepairBackfill || !isSurfaceablePdpField(pdpFieldQualitySummary, 'active_ingredients_raw')
-            ? ''
-            : normalizeNonEmptyString(seedData.pdp_active_ingredients_raw || snapshot.pdp_active_ingredients_raw)),
+        activeIngredientsDecision.preserve
+          ? existingPdpActiveIngredientsRaw
+          : (candidatePdpActiveIngredientsRaw || (activeIngredientsDecision.existingApproved ? existingPdpActiveIngredientsRaw : '')),
       )
     : '';
   const pdpHowToUseContext = [
@@ -2415,29 +2768,79 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     surfaceableProductDescriptionRaw,
     nextPdpActiveIngredientsRaw,
   ].join(' ');
-  const nextPdpHowToUseRaw = supportsHowToUsePdpField
+  const existingPdpHowToUseRaw = identityRepairBackfill || !isSurfaceablePdpField(existingPdpFieldQualitySummary, 'how_to_use_raw')
+    ? ''
+    : normalizeNonEmptyString(seedData.pdp_how_to_use_raw || snapshot.pdp_how_to_use_raw);
+  const candidatePdpHowToUseRaw = supportsHowToUsePdpField
     ? pickPdpHowToUseRaw(
         surfaceablePdpHowToUseRaw,
         nextPdpDetailsSections,
-        identityRepairBackfill || !isSurfaceablePdpField(pdpFieldQualitySummary, 'how_to_use_raw')
-          ? ''
-          : normalizeNonEmptyString(seedData.pdp_how_to_use_raw || snapshot.pdp_how_to_use_raw),
+        '',
+        pdpHowToUseContext,
+      )
+    : '';
+  const howToDecision = shouldPreserveExistingPdpContent({
+    fieldKey: 'how_to_use_raw',
+    incomingValue: candidatePdpHowToUseRaw,
+    existingValue: existingPdpHowToUseRaw,
+    incomingSummary: incomingPdpFieldQualitySummary,
+    existingSummary: existingPdpFieldQualitySummary,
+    assetField: existingPdpContentAsset?.fields?.how_to_use_raw,
+  });
+  if (howToDecision.preserve && hasPdpContentAssetValue('how_to_use_raw', candidatePdpHowToUseRaw)) {
+    snapshotQuarantine = appendPreservedContentCandidateToSnapshotQuarantine(snapshotQuarantine, {
+      fieldKey: 'how_to_use_raw',
+      candidateValue: candidatePdpHowToUseRaw,
+      reasonCode: howToDecision.reason,
+      incomingSummary: incomingPdpFieldQualitySummary,
+      extractorMode: response?.mode,
+    });
+  }
+  const nextPdpHowToUseRaw = supportsHowToUsePdpField
+    ? pickPdpHowToUseRaw(
+        howToDecision.preserve ? '' : candidatePdpHowToUseRaw,
+        nextPdpDetailsSections,
+        howToDecision.existingApproved ? existingPdpHowToUseRaw : '',
         pdpHowToUseContext,
       )
     : '';
   nextPdpDetailsSections = filterDuplicateHowToSections(nextPdpDetailsSections, nextPdpHowToUseRaw);
+  const existingPdpFaqItems = identityRepairBackfill
+    ? []
+    : !isSurfaceablePdpField(existingPdpFieldQualitySummary, 'faq_items')
+      ? []
+      : normalizeFaqItems(
+        Array.isArray(seedData.pdp_faq_items) && seedData.pdp_faq_items.length > 0
+          ? seedData.pdp_faq_items
+          : snapshot.pdp_faq_items,
+      );
+  const faqDecision = shouldPreserveExistingPdpContent({
+    fieldKey: 'faq_items',
+    incomingValue: surfaceablePdpFaqItems,
+    existingValue: existingPdpFaqItems,
+    incomingSummary: incomingPdpFieldQualitySummary,
+    existingSummary: existingPdpFieldQualitySummary,
+    assetField: existingPdpContentAsset?.fields?.faq_items,
+  });
+  if (faqDecision.preserve && hasPdpContentAssetValue('faq_items', surfaceablePdpFaqItems)) {
+    snapshotQuarantine = appendPreservedContentCandidateToSnapshotQuarantine(snapshotQuarantine, {
+      fieldKey: 'faq_items',
+      candidateValue: surfaceablePdpFaqItems,
+      reasonCode: faqDecision.reason,
+      incomingSummary: incomingPdpFieldQualitySummary,
+      extractorMode: response?.mode,
+    });
+  }
   const nextPdpFaqItems =
-    surfaceablePdpFaqItems.length > 0
+    faqDecision.preserve
+      ? existingPdpFaqItems
+      : surfaceablePdpFaqItems.length > 0
       ? surfaceablePdpFaqItems
       : identityRepairBackfill
         ? []
-        : !isSurfaceablePdpField(pdpFieldQualitySummary, 'faq_items')
+        : !faqDecision.existingApproved
           ? []
-        : normalizeFaqItems(
-          Array.isArray(seedData.pdp_faq_items) && seedData.pdp_faq_items.length > 0
-            ? seedData.pdp_faq_items
-            : snapshot.pdp_faq_items,
-        );
+        : existingPdpFaqItems;
   const pdpFieldCaptureStatus = deriveFieldCaptureStatus(
     normalizeFieldCaptureStatus(representativeProduct?.field_capture_status) ||
       normalizeFieldCaptureStatus(representativeProduct?.pdp_field_capture_status) ||
@@ -2484,14 +2887,34 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
       looksLikeSyntheticSummaryText(seedData.description) ||
       looksLikeSyntheticSummaryText(snapshot.description)
     );
+  const displayDescriptionDecision = shouldPreserveExistingPdpContent({
+    fieldKey: 'description',
+    incomingValue: normalizeNonEmptyString(liveExtractedDescription || nextPdpDescriptionRaw || surfaceableProductDescriptionRaw),
+    existingValue: clearSyntheticLegacyDescription ? '' : fallbackSeedDescription,
+    incomingSummary: incomingPdpFieldQualitySummary,
+    existingSummary: existingPdpFieldQualitySummary,
+    assetField: existingPdpContentAsset?.fields?.description,
+  });
+  if (displayDescriptionDecision.preserve && hasPdpContentAssetValue('description', normalizeNonEmptyString(liveExtractedDescription || nextPdpDescriptionRaw || surfaceableProductDescriptionRaw))) {
+    snapshotQuarantine = appendPreservedContentCandidateToSnapshotQuarantine(snapshotQuarantine, {
+      fieldKey: 'description',
+      candidateValue: normalizeNonEmptyString(liveExtractedDescription || nextPdpDescriptionRaw || surfaceableProductDescriptionRaw),
+      reasonCode: displayDescriptionDecision.reason,
+      incomingSummary: incomingPdpFieldQualitySummary,
+      extractorMode: response?.mode,
+    });
+  }
   const description = manualDescription ||
     (
       clearSyntheticLegacyDescription
         ? ''
         : normalizeNonEmptyString(
-            liveExtractedDescription ||
-              surfaceableProductDescriptionRaw ||
-              (!suppressStaleDescriptionFallback
+            (
+              displayDescriptionDecision.preserve
+                ? fallbackSeedDescription
+                : (liveExtractedDescription || nextPdpDescriptionRaw || surfaceableProductDescriptionRaw)
+            ) ||
+              (!suppressStaleDescriptionFallback && displayDescriptionDecision.existingApproved
                 ? fallbackSeedDescription
                 : ''),
           )
@@ -2557,6 +2980,20 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     };
   }
 
+  const nextPdpContentAsset = buildNextPdpContentAssetContract({
+    existing: existingPdpContentAsset,
+    fieldValues: {
+      description,
+      description_raw: nextPdpDescriptionRaw,
+      details_sections: nextPdpDetailsSections,
+      ingredients_raw: nextPdpIngredientsRaw,
+      active_ingredients_raw: nextPdpActiveIngredientsRaw,
+      how_to_use_raw: nextPdpHowToUseRaw,
+      faq_items: nextPdpFaqItems,
+    },
+    fieldQualitySummary: pdpFieldQualitySummary,
+  });
+
   const nextSnapshot = {
     ...snapshot,
     source: 'catalog_intelligence',
@@ -2585,6 +3022,7 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     ...(nextDescriptionOrigin ? { seed_description_origin: nextDescriptionOrigin } : {}),
     ...(pdpFieldCaptureStatus ? { pdp_field_capture_status: pdpFieldCaptureStatus } : {}),
     ...(pdpFieldQualitySummary ? { pdp_field_quality_summary: pdpFieldQualitySummary } : {}),
+    pdp_content_asset_v1: nextPdpContentAsset || undefined,
     ...(snapshotQuarantine ? { snapshot_quarantine: snapshotQuarantine } : {}),
     image_url: imageUrl || normalizeNonEmptyString(snapshot.image_url),
     image_urls: mergedImageUrls,
@@ -2623,6 +3061,7 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     ...(nextDescriptionOrigin ? { seed_description_origin: nextDescriptionOrigin } : {}),
     ...(pdpFieldCaptureStatus ? { pdp_field_capture_status: pdpFieldCaptureStatus } : {}),
     ...(pdpFieldQualitySummary ? { pdp_field_quality_summary: pdpFieldQualitySummary } : {}),
+    pdp_content_asset_v1: nextPdpContentAsset || undefined,
     ...(snapshotQuarantine ? { snapshot_quarantine: snapshotQuarantine } : {}),
     ...(imageUrl ? { image_url: imageUrl } : {}),
     ...(mergedImageUrls.length > 0 ? { image_urls: mergedImageUrls, images: mergedImageUrls } : {}),

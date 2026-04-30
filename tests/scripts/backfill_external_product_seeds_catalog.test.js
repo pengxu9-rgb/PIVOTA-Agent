@@ -3600,4 +3600,125 @@ describe('backfill-external-product-seeds-catalog', () => {
     expect(payload.nextRow.seed_data.snapshot.image_urls).toEqual(payload.nextRow.seed_data.image_urls);
     expect(payload.nextRow.seed_data.snapshot.variants[0].image_urls).toEqual(payload.nextRow.seed_data.image_urls);
   });
+
+  test('preserves reviewed PDP content assets over thinner incoming extractor content', () => {
+    const canonicalUrl = 'https://example.com/products/barrier-cream';
+    const reviewedDescription =
+      'A reviewed barrier cream with ceramides, panthenol, and ectoin that supports daily moisture recovery.';
+    const reviewedSections = [
+      { heading: 'Overview', body: reviewedDescription },
+      { heading: 'How to Use', body: 'Apply after toner and before SPF.' },
+    ];
+    const reviewedQuality = {
+      description_raw: {
+        source_origin: 'shopify_json',
+        source_quality_status: 'high',
+      },
+      details_sections: {
+        source_origin: 'shopify_json',
+        source_quality_status: 'high',
+      },
+    };
+    const reviewedAsset = {
+      contract_version: 'pivota.pdp_content_asset.v1',
+      owner: 'pivota',
+      fields: {
+        description: {
+          review_state: 'assistant_reviewed',
+          overwrite_policy: 'preserve_best_available',
+          source_origin: 'shopify_json',
+          source_quality_status: 'high',
+        },
+        description_raw: {
+          review_state: 'human_reviewed',
+          overwrite_policy: 'preserve_best_available',
+          source_origin: 'shopify_json',
+          source_quality_status: 'high',
+        },
+        details_sections: {
+          review_state: 'assistant_reviewed',
+          overwrite_policy: 'preserve_best_available',
+          source_origin: 'shopify_json',
+          source_quality_status: 'high',
+        },
+      },
+    };
+    const row = {
+      id: 'eps_asset_lock',
+      external_product_id: 'ext_asset_lock',
+      title: 'Barrier Cream',
+      canonical_url: canonicalUrl,
+      destination_url: canonicalUrl,
+      price_amount: 24,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      seed_data: {
+        title: 'Barrier Cream',
+        description: reviewedDescription,
+        pdp_description_raw: reviewedDescription,
+        pdp_details_sections: reviewedSections,
+        pdp_field_quality_summary: reviewedQuality,
+        pdp_content_asset_v1: reviewedAsset,
+        snapshot: {
+          canonical_url: canonicalUrl,
+          title: 'Barrier Cream',
+          description: reviewedDescription,
+          pdp_description_raw: reviewedDescription,
+          pdp_details_sections: reviewedSections,
+          pdp_field_quality_summary: reviewedQuality,
+          pdp_content_asset_v1: reviewedAsset,
+        },
+      },
+    };
+
+    const payload = buildSeedUpdatePayload(
+      row,
+      {
+        mode: 'puppeteer',
+        products: [
+          {
+            title: 'Barrier Cream',
+            url: canonicalUrl,
+            description_raw: 'Barrier cream.',
+            details_sections: [{ heading: 'Overview', body: 'Barrier cream.' }],
+            field_quality_summary: reviewedQuality,
+            variants: [
+              {
+                id: 'bc-default',
+                sku: 'BC-DEFAULT',
+                description: 'Barrier cream.',
+                price: '24.00',
+                currency: 'USD',
+                stock: 'In Stock',
+              },
+            ],
+          },
+        ],
+        variants: [],
+        diagnostics: {},
+      },
+      canonicalUrl,
+    );
+
+    expect(payload.nextRow.seed_data.description).toBe(reviewedDescription);
+    expect(payload.nextRow.seed_data.pdp_description_raw).toBe(reviewedDescription);
+    expect(payload.nextRow.seed_data.pdp_details_sections).toEqual([
+      expect.objectContaining(reviewedSections[0]),
+      expect.objectContaining(reviewedSections[1]),
+    ]);
+    expect(
+      payload.nextRow.seed_data.snapshot_quarantine.preserved_candidates.description_raw,
+    ).toEqual(
+      expect.objectContaining({
+        value: 'Barrier cream.',
+        reason_code: 'preserve_reviewed_pivota_asset',
+      }),
+    );
+    expect(payload.nextRow.seed_data.pdp_content_asset_v1.fields.description_raw.review_state).toBe(
+      'human_reviewed',
+    );
+    expect(payload.nextRow.seed_data.snapshot.pdp_content_asset_v1.fields.details_sections.review_state).toBe(
+      'assistant_reviewed',
+    );
+  });
 });
