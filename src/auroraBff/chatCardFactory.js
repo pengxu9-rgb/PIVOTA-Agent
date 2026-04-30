@@ -1868,12 +1868,12 @@ function buildNudgeCard({ card, requestId, index, language = 'EN' }) {
     id: normalizeCardId(card && card.card_id, 'nudge', requestId, index),
     type: 'nudge',
     priority: 3,
-    title: language === 'CN' ? '可选加分项' : 'Optional nudge',
-    tags: [language === 'CN' ? '可选' : 'Optional'],
+    title: language === 'CN' ? '建议' : 'Next step',
+    tags: [language === 'CN' ? '建议' : 'Recommended'],
     sections: [
       {
         kind: 'bullets',
-        title: language === 'CN' ? '提示' : 'Tip',
+        title: language === 'CN' ? '重点' : 'Key point',
         items: [message || (language === 'CN' ? '先把核心步骤做稳定，再加额外动作。' : 'Stabilize core routine first, then add extras.')],
       },
       ...(hints.length ? [{ kind: 'bullets', title: language === 'CN' ? '为什么有帮助' : 'Why this helps', items: hints }] : []),
@@ -1890,7 +1890,7 @@ function buildNudgeCard({ card, requestId, index, language = 'EN' }) {
     ],
     actions: [
       { type: 'dismiss', label: language === 'CN' ? '暂时不需要' : 'Dismiss' },
-      { type: 'save_tip', label: language === 'CN' ? '加入提醒' : 'Save tip' },
+      { type: 'save_tip', label: language === 'CN' ? '保存' : 'Save' },
     ],
   };
 }
