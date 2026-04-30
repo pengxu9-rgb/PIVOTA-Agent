@@ -331,6 +331,72 @@ test('handleChat answers low-budget beginner routine follow-up without freeform 
   );
 });
 
+test('handleChat keeps missing-SPF routine analysis out of low-budget routine shortcut', async () => {
+  await withEnv(
+    {
+      AURORA_CHAT_SKILL_ROUTER_V2: 'true',
+      AURORA_CHAT_RESPONSE_META_ENABLED: 'false',
+    },
+    async () => {
+      const { handleChat, __setRouterForTests, __resetRouterForTests } = loadChatRoutesFresh();
+      const req = makeRequest({
+        headers: {
+          'x-aurora-uid': 'missing-spf-routine-user',
+          'x-lang': 'CN',
+        },
+        body: {
+          message: '这个分析里最该先改哪一步？',
+          language: 'CN',
+          session: {
+            case_id: 'skin_analysis_routine_only_missing_spf',
+            next_state: 'ROUTINE_REVIEW',
+            meta: {
+              routine_analysis_v2: { enabled: true },
+              routine_analysis_legacy_compat: {
+                concerns: ['Add a clear AM sunscreen step'],
+              },
+            },
+            profile: {
+              skinType: 'combination_oily',
+              sensitivity: 'medium',
+              budget: 'mid',
+              currentRoutine: JSON.stringify({
+                am: [
+                  { name: 'Gentle Gel Cleanser', step: 'cleanser' },
+                  { name: 'Lightweight Moisturizer', step: 'moisturizer' },
+                ],
+                pm: [
+                  { name: 'Gentle Gel Cleanser', step: 'cleanser' },
+                  { name: '2% Salicylic Acid Serum', step: 'treatment' },
+                ],
+              }),
+            },
+          },
+        },
+      });
+      const res = makeResponseCapture();
+
+      __setRouterForTests({
+        async route() {
+          throw new Error('missing-SPF routine follow-up should be handled before freeform router');
+        },
+      });
+
+      try {
+        await handleChat(req, res);
+      } finally {
+        __resetRouterForTests();
+      }
+
+      assert.equal(res.statusCode, 200);
+      const text = JSON.stringify(res.body?.cards || []);
+      assert.match(text, /防晒|SPF/);
+      assert.match(text, /缺|加|补/);
+      assert.doesNotMatch(text, /从 0 开始先做最小 routine|预算低时先不买/);
+    },
+  );
+});
+
 test('handleChat answers pregnancy retinol low-dose follow-up without freeform router', async () => {
   await withEnv(
     {

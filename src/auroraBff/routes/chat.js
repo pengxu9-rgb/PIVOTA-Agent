@@ -1620,10 +1620,18 @@ function buildBeautyLowBudgetRoutineSkillResponse(req) {
   if (!message) return null;
 
   const blob = safeJsonForDetection({ caseId, profile, sessionMeta, message }).toLowerCase();
+  const budgetText = pickFirstTrimmed(profile.budget, profile.budgetTier, profile.budget_tier, sessionMeta.budget);
+  const explicitLowBudgetCase = /routine_beginner_dry_low_budget/i.test(caseId || '');
+  const hasLowBudgetProfile = /^(?:low|budget_low|low_budget|cheap|affordable|低|低预算|平价)$/i.test(String(budgetText || '').trim()) ||
+    /(low_budget|budget_sensitive|预算低|低预算|平价基础)/i.test(blob);
+  const hasBeginnerRoutineSignal =
+    /(beginner|newbie|from\s*0|basic_routine|新手|从\s*0|基础\s*routine|基础护肤|基礎護膚)/i.test(blob) ||
+    (hasLowBudgetProfile && /(起皮|暖气|暖氣|干皮|乾皮|早晚|步骤|步驟)/i.test(message));
   const isLowBudgetBeginner =
-    /routine_beginner_dry_low_budget/i.test(caseId || '') ||
+    explicitLowBudgetCase ||
     (
-      /(beginner|newbie|from\s*0|low\s*budget|budget|dry skin|dry|新手|从\s*0|低预算|预算低|干皮|乾皮|起皮|暖气|暖氣)/i.test(blob) &&
+      hasLowBudgetProfile &&
+      hasBeginnerRoutineSignal &&
       /(cleanser|moisturi[sz]er|sunscreen|spf|routine|洁面|潔面|保湿|保濕|防晒|防曬|步骤|步驟)/i.test(blob)
     );
   if (!isLowBudgetBeginner) return null;
