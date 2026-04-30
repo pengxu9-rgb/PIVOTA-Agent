@@ -224,6 +224,52 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     );
   });
 
+  test('falls back to product intel what-it-is when related cards lack explicit highlight copy', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_anchor_three',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'Anchor Product',
+        image_url: 'https://example.com/anchor.png',
+        price: { amount: 18, currency: 'USD' },
+      },
+      relatedProducts: [
+        {
+          product_id: 'ext_related_three',
+          merchant_id: 'external_seed',
+          title: 'Bright-C Stickers',
+          image_url: 'https://example.com/related.png',
+          price: { amount: 16, currency: 'USD' },
+          product_intel: {
+            product_intel_core: {
+              what_it_is: {
+                body: 'Designed to target the look of post-breakout marks overnight.',
+              },
+            },
+          },
+          shopping_card: {
+            title: 'Bright-C Stickers',
+            subtitle: 'Spot Patches',
+          },
+          search_card: {
+            compact_candidate: 'Spot Patches',
+          },
+        },
+      ],
+      entryPoint: 'agent',
+    });
+
+    expect(payload.modules.find((module) => module.type === 'recommendations')?.data?.items?.[0]).toEqual(
+      expect.objectContaining({
+        card_subtitle: 'Spot Patches',
+        card_highlight: 'Designed to target the look of post-breakout marks overnight.',
+        card_intro: 'Designed to target the look of post-breakout marks overnight.',
+        description: 'Designed to target the look of post-breakout marks overnight.',
+      }),
+    );
+  });
+
   test('does not let legacy generic how-to fields surface for external seeds', () => {
     const payload = buildPdpPayload({
       product: {
@@ -408,7 +454,7 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     expect(payload.product.product_line_options).toEqual(variantSelector.data.product_line_options);
   });
 
-  test('suppresses single blocked default-only external variants from the PDP product payload', () => {
+  test('keeps a hidden implicit single external variant contract for blocked default-only rows', () => {
     const payload = buildPdpPayload({
       product: {
         product_id: 'ext_pixi_spot',
@@ -431,8 +477,16 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
       entryPoint: 'agent',
     });
 
-    expect(payload.product.variants).toEqual([]);
-    expect(payload.product.default_variant_id).toBeUndefined();
+    expect(payload.product.default_variant_id).toBe('v_default');
+    expect(payload.product.variants).toEqual([
+      expect.objectContaining({
+        variant_id: 'v_default',
+        title: '',
+        options: [],
+        hidden_from_selector: true,
+        source_quality_status: 'blocked',
+      }),
+    ]);
     expect(payload.modules.find((module) => module.type === 'variant_selector')).toBeFalsy();
   });
 

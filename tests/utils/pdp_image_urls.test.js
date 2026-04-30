@@ -56,6 +56,16 @@ describe('pdp image URL normalization', () => {
     );
   });
 
+  test('upgrades Shopify-like asset URLs to https', () => {
+    expect(
+      normalizePdpImageUrl(
+        'http://www.pixibeauty.com/cdn/shop/files/Pixi_Skintreats_OvernightSpot-Stickers_July_2025_01_1200x600.jpg?v=1752780704',
+      ),
+    ).toBe(
+      'https://www.pixibeauty.com/cdn/shop/files/Pixi_Skintreats_OvernightSpot-Stickers_July_2025_01_1200x600.jpg?v=1752780704',
+    );
+  });
+
   test('drops bogus bare-host files image URLs', () => {
     expect(normalizePdpImageUrl('http://files/Pixi_Skintreats_OvernightSpot-Stickers_July_2025_01.jpg')).toBe('');
   });

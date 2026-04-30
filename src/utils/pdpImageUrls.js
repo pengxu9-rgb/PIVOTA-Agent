@@ -126,6 +126,9 @@ function normalizePdpImageUrl(value) {
     if (String(parsed.hostname || '').trim().toLowerCase() === 'files') {
       return '';
     }
+    if (parsed.protocol === 'http:' && isShopifyLikeAsset(parsed)) {
+      parsed.protocol = 'https:';
+    }
     parsed = rewritePixiAssetToOfficialShopify(parsed);
     if (isShopifyLikeAsset(parsed)) {
       stripImageTransformQueryParams(parsed);

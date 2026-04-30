@@ -1,6 +1,7 @@
 const { buildPdpImageDedupeKey, normalizePdpImageUrl, normalizePdpImageUrls } = require('./utils/pdpImageUrls');
 const { isDisplayablePdpFaqItem } = require('./services/pdpFaqQuality');
 const { buildStructuredPdpIngredientModules } = require('./services/pdpIngredientAuthority');
+const { normalizeCardIntroCandidate } = require('./services/pivotaShoppingCard');
 const {
   resolvePdpSchemaProfile,
   isBeautyFormulaPdpProfile,
@@ -912,6 +913,32 @@ function shouldExposeProductVariants(product, variants, productLineOptions) {
     ).toLowerCase();
     return title && !/^(default|default title|variant \d+)$/i.test(title) && sourceQualityStatus !== 'blocked';
   });
+}
+
+function shouldPreserveImplicitSingleVariant(product, variants, productLineOptions) {
+  if (!isExternalSeedLikeProduct(product)) return false;
+  if (!Array.isArray(variants) || variants.length !== 1) return false;
+  if (Array.isArray(productLineOptions) && productLineOptions.length > 1) return false;
+  const variant = variants[0];
+  if (variantHasDisplayableChoice(variant)) return false;
+  const title = asNonEmptyString(variant?.title);
+  if (!/^(default|default title|variant \d+)$/i.test(title)) return false;
+  const sourceQualityStatus = asNonEmptyString(
+    variant?.source_quality_status || variant?.sourceQualityStatus,
+  ).toLowerCase();
+  return sourceQualityStatus === 'blocked' || sourceQualityStatus === '';
+}
+
+function buildImplicitSingleVariant(variant) {
+  return {
+    ...variant,
+    title: '',
+    options: [],
+    display_label: '',
+    hidden_from_selector: true,
+    source_quality_status:
+      asNonEmptyString(variant?.source_quality_status || variant?.sourceQualityStatus) || 'blocked',
+  };
 }
 
 function toVariantPrice(input, currency) {
@@ -2622,14 +2649,34 @@ function buildRecommendations(items, currencyFallback) {
         p.shopping_card && typeof p.shopping_card === 'object' ? p.shopping_card : undefined;
       const searchCard =
         p.search_card && typeof p.search_card === 'object' ? p.search_card : undefined;
+      const productIntel =
+        p.product_intel && typeof p.product_intel === 'object'
+          ? p.product_intel
+          : p.productIntel && typeof p.productIntel === 'object'
+            ? p.productIntel
+            : undefined;
+      const productIntelWhatItIs = asNonEmptyString(
+        productIntel?.product_intel_core?.what_it_is?.body || productIntel?.core?.what_it_is?.body,
+      );
       const cardIntro =
-        asNonEmptyString(p.card_intro || p.cardIntro || shoppingCard?.intro || searchCard?.intro_candidate) ||
-        undefined;
+        normalizeCardIntroCandidate(
+          asNonEmptyString(
+            p.card_intro ||
+              p.cardIntro ||
+              shoppingCard?.intro ||
+              searchCard?.intro_candidate ||
+              productIntelWhatItIs,
+          ),
+          {
+            fallback: asNonEmptyString(p.description || p.summary || productIntelWhatItIs),
+            maxChars: 110,
+          },
+        ) || undefined;
       return {
         product_id: p.product_id || p.id,
         merchant_id: p.merchant_id || p.merchant?.id || p.merchant_uuid,
         title: p.title || p.name,
-        description: asNonEmptyString(p.description || cardIntro) || undefined,
+        description: asNonEmptyString(p.description || cardIntro || productIntelWhatItIs) || undefined,
         category: asNonEmptyString(p.category) || undefined,
         product_type: asNonEmptyString(p.product_type || p.productType) || undefined,
         image_url:
@@ -2744,7 +2791,11 @@ function buildPdpPayload(args) {
   const variants = buildVariants(product);
   const defaultVariant = variants[0];
   const productLineOptions = normalizeProductLineOptions(product);
-  const visibleVariants = shouldExposeProductVariants(product, variants, productLineOptions) ? variants : [];
+  const visibleVariants = shouldExposeProductVariants(product, variants, productLineOptions)
+    ? variants
+    : shouldPreserveImplicitSingleVariant(product, variants, productLineOptions)
+      ? [buildImplicitSingleVariant(defaultVariant)]
+      : [];
   const productLineOptionName =
     stripHtml(product.product_line_option_name || product.productLineOptionName) ||
     productLineOptions.find((item) => item.selected)?.option_name ||
