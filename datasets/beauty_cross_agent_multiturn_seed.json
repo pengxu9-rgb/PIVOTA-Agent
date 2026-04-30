@@ -265,7 +265,14 @@
           ["保湿", "moisturizer", "cream"],
           ["防晒", "SPF", "sunscreen"]
         ],
-        "assistant_must_not_include_any": ["必须买全套", "越贵越好", "不需要防晒"],
+        "assistant_must_not_include_any": [
+          "必须买全套",
+          "越贵越好",
+          "不需要防晒",
+          "增加预算的是精华",
+          "补水喷雾最适合买平价",
+          "必须使用补水精华"
+        ],
         "product_must_not_include_any": []
       }
     },

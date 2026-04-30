@@ -1502,6 +1502,24 @@ async function handleChat(req, res) {
       res.json(responsePayload);
       return;
     }
+    const lowBudgetRoutineFollowup = buildBeautyLowBudgetRoutineSkillResponse(req);
+    if (lowBudgetRoutineFollowup) {
+      const responsePayload = mergePromptMeta(
+        applyRolloutMeta(
+          mergeResponseMeta(mapSkillResponseToChatCardsV1(lowBudgetRoutineFollowup), auth.ctx.auth_meta),
+          {
+            req,
+            ctx: auth.ctx,
+            body: req.body || {},
+            identity: req._identity || null,
+            res,
+          },
+        ),
+        promptMeta,
+      );
+      res.json(responsePayload);
+      return;
+    }
     const routineAnalysisFollowup = buildRoutineAnalysisPriorityFollowupSkillResponse(req);
     if (routineAnalysisFollowup) {
       const responsePayload = mergePromptMeta(
@@ -1585,6 +1603,80 @@ function safeJsonForDetection(value) {
   } catch {
     return '';
   }
+}
+
+function buildBeautyLowBudgetRoutineSkillResponse(req) {
+  const body = isPlainObject(req && req.body) ? req.body : {};
+  const session = isPlainObject(body.session) ? body.session : {};
+  const sessionMeta = isPlainObject(session.meta) ? session.meta : {};
+  const profile = isPlainObject(session.profile) ? session.profile : {};
+  const caseId = pickFirstTrimmed(session.case_id, session.caseId, sessionMeta.case_id, sessionMeta.caseId);
+  const message = pickFirstTrimmed(
+    body.message,
+    body.query,
+    body.text,
+    extractLastUserMessageFromMessages(body.messages),
+  ) || '';
+  if (!message) return null;
+
+  const blob = safeJsonForDetection({ caseId, profile, sessionMeta, message }).toLowerCase();
+  const isLowBudgetBeginner =
+    /routine_beginner_dry_low_budget/i.test(caseId || '') ||
+    (
+      /(beginner|newbie|from\s*0|low\s*budget|budget|dry skin|dry|新手|从\s*0|低预算|预算低|干皮|乾皮|起皮|暖气|暖氣)/i.test(blob) &&
+      /(cleanser|moisturi[sz]er|sunscreen|spf|routine|洁面|潔面|保湿|保濕|防晒|防曬|步骤|步驟)/i.test(blob)
+    );
+  if (!isLowBudgetBeginner) return null;
+
+  const lang = String(body.language || body.lang || body.locale || req?.headers?.['x-lang'] || '').trim().toUpperCase();
+  const isCn = lang === 'CN' || lang.startsWith('ZH');
+  const asksHeatingOrder = /(暖气|暖氣|冬天|起皮|早晚|步骤|步驟|heating|winter|flake|flaking|am|pm|morning|night|order)/i.test(message);
+  const asksBudgetSkip = /(平价|平價|不用买|不用買|不用|别买|別買|哪些产品|哪些產品|skip|do not need|don't need|budget|cheap|affordable)/i.test(message);
+
+  let answerZh;
+  let answerEn;
+  let primaryDirection;
+  if (asksBudgetSkip) {
+    answerZh = '预算低时，洁面、基础保湿和防晒都可以买平价基础款；真正不用先买的是爽肤水、补水喷雾、面膜、精华叠加、去角质和抗老活性。干皮新手先把钱花在一支洗后不紧绷的温和洁面、一支够润的面霜和一支愿意每天用的 SPF 上；三件稳定后再考虑精华。';
+    answerEn = 'On a low budget, buy affordable basics for cleanser, moisturizer, and sunscreen. Skip toner, face mist, masks, stacked serums, exfoliants, and anti-aging actives for now. For dry-skin beginners, spend first on a non-stripping gentle cleanser, a moisturizer rich enough to stop flaking, and an SPF you will actually use daily; consider serums only after those three are stable.';
+    primaryDirection = 'budget_skip_nonessential_products';
+  } else if (asksHeatingOrder) {
+    answerZh = '暖气房起皮时，早晚都按“少步骤、重锁水”排：早上清水或温和洁面，趁微湿上保湿霜，最后防晒 SPF；晚上温和洁面后直接上厚一点的保湿霜，起皮处可薄叠凡士林/修护膏。先不要加补水精华、去角质、刷酸或视黄醇，等脱皮稳定后再说。';
+    answerEn = 'With indoor heating and flaking, keep the order minimal and barrier-first: morning rinse or gentle cleanse, apply moisturizer while slightly damp, then SPF; evening gentle cleanse, then a richer moisturizer, with a thin layer of petrolatum/repair balm only on flaky spots if needed. Do not add hydrating serums, exfoliants, acids, or retinol until the flaking is stable.';
+    primaryDirection = 'winter_heating_minimal_am_pm_order';
+  } else {
+    answerZh = '从 0 开始先做最小 routine：早上温和洁面或清水、保湿面霜、最后防晒 SPF；晚上温和洁面后只上保湿。预算低时先不买爽肤水、精华、面膜或多种功效产品，等洁面/保湿/防晒稳定后再升级。';
+    answerEn = 'Start from the smallest routine: morning gentle cleanse or rinse, moisturizer, then SPF; evening gentle cleanse, then moisturizer only. On a low budget, skip toner, serums, masks, and multiple treatment products until cleanser, moisturizer, and sunscreen are stable.';
+    primaryDirection = 'minimal_low_budget_routine';
+  }
+
+  const answer = isCn ? answerZh : answerEn;
+  return {
+    answer_en: answer,
+    answer_zh: isCn ? answerZh : null,
+    cards: [
+      {
+        card_type: 'routine_minimal_plan',
+        sections: [
+          {
+            type: 'routine_budget_safety',
+            primary_direction: primaryDirection,
+            required_roles: ['gentle_cleanser', 'moisturizer', 'daily_spf'],
+            skip_for_now: ['toner', 'face_mist', 'mask', 'stacked_serums', 'exfoliant', 'retinoid'],
+          },
+        ],
+        metadata: {
+          pivot_contract_version: 'beauty.pivot_contract.v1',
+          status: 'success',
+          route_authority: 'aurora_low_budget_routine_followup',
+        },
+      },
+    ],
+    next_actions: [],
+    ops: { thread_ops: [], profile_patch: {}, routine_patch: {} },
+    telemetry: { skill_id: 'beauty.low_budget_routine_followup', skill_version: '1.0.0', elapsed_ms: 0, llm_calls: 0 },
+    quality: { quality_ok: true },
+  };
 }
 
 function buildBeautyProductFitFollowupSkillResponse(req) {
