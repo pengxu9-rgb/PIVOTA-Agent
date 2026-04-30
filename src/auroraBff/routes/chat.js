@@ -1484,6 +1484,24 @@ async function handleChat(req, res) {
     } catch (_error) {
       promptMeta = null;
     }
+    const routineAnalysisFollowup = buildRoutineAnalysisPriorityFollowupSkillResponse(req);
+    if (routineAnalysisFollowup) {
+      const responsePayload = mergePromptMeta(
+        applyRolloutMeta(
+          mergeResponseMeta(mapSkillResponseToChatCardsV1(routineAnalysisFollowup), auth.ctx.auth_meta),
+          {
+            req,
+            ctx: auth.ctx,
+            body: req.body || {},
+            identity: req._identity || null,
+            res,
+          },
+        ),
+        promptMeta,
+      );
+      res.json(responsePayload);
+      return;
+    }
     const skillResponse = await getRouter().route(skillRequest);
     const responsePayload = mergePromptMeta(
       applyRolloutMeta(
@@ -1541,6 +1559,129 @@ function resolveAnalysisFollowupActionId(req, internal = {}) {
     }
   }
   return { actionId: null, routingMode: null };
+}
+
+function safeJsonForDetection(value) {
+  try {
+    return JSON.stringify(value || {});
+  } catch {
+    return '';
+  }
+}
+
+function buildRoutineAnalysisPriorityFollowupSkillResponse(req) {
+  const body = isPlainObject(req && req.body) ? req.body : {};
+  const session = isPlainObject(body.session) ? body.session : {};
+  const sessionMeta = isPlainObject(session.meta) ? session.meta : {};
+  const profile = isPlainObject(session.profile) ? session.profile : {};
+  const message = pickFirstTrimmed(
+    body.message,
+    body.query,
+    body.text,
+    extractLastUserMessageFromMessages(body.messages),
+  ) || '';
+  if (!/(这个分析|分析里|最该|先改|哪一步|優先|优先|priority|first\s+(?:change|fix|step)|change\s+first)/i.test(message)) {
+    return null;
+  }
+
+  const hasRoutineAnalysisContext = Boolean(
+    sessionMeta.routine_analysis_v2 ||
+    sessionMeta.routine_expert ||
+    sessionMeta.routine_lifecycle_context ||
+    sessionMeta.routine_analysis_legacy_compat ||
+    session.next_state === 'ROUTINE_REVIEW' ||
+    session.state === 'ROUTINE_REVIEW' ||
+    sessionMeta.analysis_contract?.analysis_mode === 'routine_audit_v1'
+  );
+  if (!hasRoutineAnalysisContext) return null;
+
+  const routineBlob = safeJsonForDetection({
+    meta: sessionMeta,
+    profileRoutine: profile.currentRoutine || profile.current_routine || null,
+  });
+  const missingSpf = (
+    /(missing_spf|缺防晒|缺少防晒|AM protection looks missing|Add a clear AM sunscreen|sunscreen step|SPF\/防晒|防晒步骤)/i.test(routineBlob) ||
+    (
+      /(currentRoutine|current_routine|\"am\"|am_steps)/i.test(routineBlob) &&
+      !/(spf|sunscreen|防晒)/i.test(String(profile.currentRoutine || profile.current_routine || ''))
+    )
+  );
+  if (!missingSpf) return null;
+
+  const lang = String(body.language || body.lang || body.locale || req?.headers?.['x-lang'] || '').trim().toUpperCase();
+  const isCn = lang === 'CN' || lang.startsWith('ZH');
+  const answerZh = '这个分析里最该先补的是白天防晒 SPF：AM routine 缺防晒会让酸类、痘印和屏障恢复都更不稳定。先加一个不闷痘、轻薄、广谱 SPF30-50 的日常防晒，PM 不要虚构额外产品，继续按你已有清洁和酸类频率做保守调整。';
+  const answerEn = 'The first fix in this analysis is daytime SPF. Without sunscreen in the AM routine, acids, post-acne marks, and barrier recovery are less stable. Add a lightweight, non-comedogenic broad-spectrum SPF30-50 first, and keep PM conservative around your existing cleanser and acid frequency.';
+
+  return {
+    answer_en: answerEn,
+    answer_zh: isCn ? answerZh : null,
+    cards: [
+      {
+        card_type: 'routine_audit_plan',
+        sections: [
+          {
+            type: 'routine_priority',
+            priority_step: 'sunscreen',
+            severity: 'high',
+            reasons: [
+              isCn ? 'AM routine 未检测到明确 SPF。' : 'The AM routine does not include clear SPF.',
+              isCn ? '防晒缺口会放大色沉和刺激后的恢复不稳定。' : 'The SPF gap can worsen discoloration and instability after irritation.',
+            ],
+            actions: [
+              isCn ? '先选轻薄、不闷痘、广谱 SPF30-50。' : 'Choose lightweight, non-comedogenic broad-spectrum SPF30-50 first.',
+              isCn ? 'PM 保持已有洁面和酸类频率，不虚构新增产品。' : 'Keep PM grounded in the existing cleanser and acid frequency; do not invent extra products.',
+            ],
+          },
+        ],
+        metadata: {
+          pivot_contract_version: 'beauty.pivot_contract.v1',
+          status: 'success',
+          route_authority: 'aurora_routine_analysis_followup',
+          safety: {
+            medical_boundary: true,
+            avoids_overstacking: true,
+          },
+        },
+      },
+    ],
+    ops: {
+      thread_ops: [],
+      profile_patch: {},
+      routine_patch: {},
+      experiment_events: [
+        {
+          event: 'beauty_routine_analysis_followup_routed',
+          route_authority: 'aurora_routine_analysis_followup',
+        },
+      ],
+    },
+    quality: {
+      schema_valid: true,
+      quality_ok: true,
+      issues: [],
+      preconditions_met: true,
+      precondition_failures: [],
+    },
+    telemetry: {
+      call_id: `routine_analysis_followup_${Date.now()}`,
+      skill_id: 'routine.analysis_followup',
+      skill_version: '1.0.0',
+      prompt_hash: null,
+      task_mode: 'routine_analysis_followup',
+      elapsed_ms: 0,
+      llm_calls: 0,
+    },
+    next_actions: [
+      {
+        action_type: 'show_chip',
+        label: {
+          en: 'Find lightweight SPF',
+          zh: '找轻薄防晒',
+        },
+      },
+    ],
+  };
 }
 
 async function handleChatStream(req, res) {

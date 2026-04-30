@@ -156,6 +156,70 @@ test('handleChat adds rollout meta and headers for skill-router responses', asyn
   );
 });
 
+test('handleChat answers routine-analysis priority follow-up without product-analyze router', async () => {
+  await withEnv(
+    {
+      AURORA_CHAT_SKILL_ROUTER_V2: 'true',
+      AURORA_CHAT_RESPONSE_META_ENABLED: 'false',
+    },
+    async () => {
+      const { handleChat, __setRouterForTests, __resetRouterForTests } = loadChatRoutesFresh();
+      const req = makeRequest({
+        headers: {
+          'x-aurora-uid': 'routine-followup-user',
+          'x-lang': 'CN',
+        },
+        body: {
+          message: '这个分析里最该先改哪一步？',
+          language: 'CN',
+          session: {
+            next_state: 'ROUTINE_REVIEW',
+            profile: {
+              currentRoutine: JSON.stringify({
+                am: [
+                  { name: 'Gentle Gel Cleanser', step: 'cleanser' },
+                  { name: 'Niacinamide Serum', step: 'serum' },
+                  { name: 'Lightweight Moisturizer', step: 'moisturizer' },
+                ],
+                pm: [
+                  { name: 'Gentle Gel Cleanser', step: 'cleanser' },
+                  { name: '2% Salicylic Acid Serum', step: 'treatment' },
+                ],
+              }),
+            },
+            meta: {
+              analysis_contract: { analysis_mode: 'routine_audit_v1' },
+              routine_expert: {
+                snapshot: { risk_flags: ['缺防晒'] },
+                key_issues: [{ id: 'missing_spf', title: 'AM 缺少防晒步骤' }],
+              },
+            },
+          },
+        },
+      });
+      const res = makeResponseCapture();
+
+      __setRouterForTests({
+        async route() {
+          throw new Error('routine analysis follow-up should not reach skill router');
+        },
+      });
+
+      try {
+        await handleChat(req, res);
+      } finally {
+        __resetRouterForTests();
+      }
+
+      assert.equal(res.statusCode, 200);
+      const cards = Array.isArray(res.body?.cards) ? res.body.cards : [];
+      assert.equal(cards.some((card) => card.card_type === 'routine_audit_plan'), true);
+      assert.match(JSON.stringify(cards), /防晒 SPF|SPF30-50/);
+      assert.equal(res.body?.meta?.flags_effective?.skill_router_v2, true);
+    },
+  );
+});
+
 test('handleChat appends orchestration prompt meta for new shopping requests', async () => {
   await withEnv(
     {
