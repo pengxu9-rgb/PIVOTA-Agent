@@ -1327,6 +1327,68 @@ test('runRoutineAnalysisV2: routine audit v1 skips stage B LLM and recommendatio
   assert.equal(result.debug_meta.stage_b.attempt_count, 0);
 });
 
+test('runRoutineAnalysisV2: routine audit v1 localizes CN first action titles', async () => {
+  const { runRoutineAnalysisV2 } = require('../src/auroraBff/routineAnalysisV2');
+  const llmGateway = {
+    async callWithSchemaDiagnostics(args = {}) {
+      if (args.templateId !== 'routine_product_audit_v1') {
+        throw new Error(`unexpected template ${args.templateId}`);
+      }
+      return {
+        parsed: buildStageAResult([
+          buildAuditProduct('prod_cleanser_am', {
+            slot: 'am',
+            original_step_label: 'cleanser',
+            input_label: 'Gentle cleanser',
+            inferred_product_type: 'cleanser',
+            likely_role: 'cleaning',
+          }),
+          buildAuditProduct('prod_moisturizer_am', {
+            slot: 'am',
+            original_step_label: 'moisturizer',
+            input_label: 'Light moisturizer',
+            inferred_product_type: 'moisturizer',
+            likely_role: 'hydration',
+          }),
+        ]),
+        parsedCandidate: null,
+        raw: '{}',
+        provider: 'stub',
+        schemaValid: true,
+        validationErrors: [],
+        attemptCount: 1,
+        retried: false,
+      };
+    },
+  };
+
+  const result = await runRoutineAnalysisV2({
+    requestId: 'req_routine_audit_v1_cn_localized',
+    language: 'CN',
+    profileSummary: {
+      skinType: 'combination',
+      sensitivity: 'medium',
+      barrierStatus: 'stable',
+      goals: ['acne_marks'],
+    },
+    routineProductCandidates: [
+      { product_ref: 'prod_cleanser_am', slot: 'am', step: 'cleanser', product_text: 'Gentle cleanser' },
+      { product_ref: 'prod_moisturizer_am', slot: 'am', step: 'moisturizer', product_text: 'Light moisturizer' },
+    ],
+    llmGateway,
+    surfaceMode: 'routine_audit_v1',
+    recommendationResolverDeps: {
+      resolveProduct: async () => null,
+      searchProducts: async () => ({ ok: true, transient: false, products: [], queryCount: 0 }),
+    },
+  });
+
+  assert.match(result.assistant_text, /补上白天防晒 SPF/);
+  assert.doesNotMatch(result.assistant_text, /Add a clear AM sunscreen step/);
+  const verdictCard = result.cards.find((card) => card && card.type === 'routine_verdict_v1');
+  assert.ok(verdictCard.payload.top_3_actions.some((row) => row.title === '补上白天防晒 SPF'));
+});
+
 test('runRoutineAnalysisV2: routine audit v1 deterministic synthesis keeps support-step redundancies actionable', async () => {
   const { runRoutineAnalysisV2 } = require('../src/auroraBff/routineAnalysisV2');
   const llmGateway = {

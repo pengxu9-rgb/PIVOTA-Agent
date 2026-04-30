@@ -130,9 +130,11 @@ describe('beauty cross-agent batch runner', () => {
             cards: [
               {
                 card_type: 'text_response',
+                title: 'UI chrome should not be scored',
                 sections: [
                   {
                     type: 'text_answer',
+                    title: 'Section chrome should not be scored',
                     text_en: '旅行时先用温和修护，白天防晒并补涂，选择轻薄 sunscreen。',
                   },
                 ],
@@ -229,6 +231,9 @@ describe('beauty cross-agent batch runner', () => {
 
       const report = JSON.parse(fs.readFileSync(payload.json_path, 'utf8'));
       expect(report.results[0].assessment.pass).toBe(true);
+      expect(report.results[0].rows[0].assistant_text).toContain('旅行时先用温和修护');
+      expect(report.results[0].rows[0].assistant_text).not.toContain('UI chrome should not be scored');
+      expect(report.results[0].rows[0].assistant_text).not.toContain('Section chrome should not be scored');
       expect(report.results[0].rows.map((row) => row.agent)).toEqual([
         'aurora_chat',
         'shopping',

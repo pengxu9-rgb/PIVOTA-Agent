@@ -1822,7 +1822,7 @@ function buildAssistantText(synthesis, language) {
   const summary = asString(synthesis && synthesis.current_routine_assessment && synthesis.current_routine_assessment.summary);
   if (isCn) {
     if (top && asString(top.title)) {
-      return `我先按你当前产品逐个看过了。现在最该先改的是「${asString(top.title)}」，因为它最直接影响这套 routine 的适配度。`;
+      return `我先按你当前产品逐个看过了。现在最该先改的是「${localizeRoutineAdjustmentTitle(top.title, language)}」，因为它最直接影响这套 routine 的适配度。`;
     }
     return summary || '我已经先按你当前产品做了逐个审视，再给出组合级调整建议。';
   }
@@ -2497,7 +2497,7 @@ function buildAdjustmentPlanPayload({
     const rationale = rationaleById.get(asString(item && item.adjustment_id)) || {};
     const row = {
       adjustment_id: asString(item && item.adjustment_id),
-      title: asString(item && item.title),
+      title: localizeRoutineAdjustmentTitle(item && item.title, language),
       change_type: mapAdjustmentActionType(item && item.action_type),
       priority: Number.isFinite(Number(item && item.priority_rank)) ? Number(item.priority_rank) : null,
       target_steps: uniqStrings(item && item.affected_products, 4),
@@ -2632,6 +2632,28 @@ function buildVerdictPayload({ auditPayload, userFitPayload, adjustmentPayload, 
         : 'Strong inference is enabled, but any non-exact judgment is still labeled as name- or step-inferred.',
     },
   };
+}
+
+function localizeRoutineAdjustmentTitle(rawTitle, language) {
+  const title = asString(rawTitle);
+  if (!title || normalizeLanguage(language) !== 'CN') return title;
+  if (/^Add a clear AM sunscreen step$/i.test(title)) return '补上白天防晒 SPF';
+  let match = title.match(/^Move\s+(.+?)\s+to\s+(AM|PM)$/i);
+  if (match) return `把 ${match[1]} 调到${match[2].toUpperCase() === 'AM' ? '早间' : '晚间'}使用`;
+  match = title.match(/^Reduce\s+(.+?)\s+frequency$/i);
+  if (match) return `降低 ${match[1]} 的使用频率`;
+  match = title.match(/^Remove\s+(.+)$/i);
+  if (match) return `先停用 ${match[1]}`;
+  match = title.match(/^Replace\s+(.+)$/i);
+  if (match) return `替换 ${match[1]}`;
+  match = title.match(/^Stop same-window stacking of\s+(.+)$/i);
+  if (match) return `停止同一晚叠加 ${match[1]}`;
+  match = title.match(/^Consider a different\s+(.+?)\s+for PM$/i);
+  if (match) {
+    const stepLabel = /cleanser/i.test(match[1]) ? '洁面' : /moisturi|cream|lotion/i.test(match[1]) ? '保湿产品' : match[1];
+    return `晚间换成更适合的${stepLabel}`;
+  }
+  return title;
 }
 
 function buildRoutineAuditV1Cards({
