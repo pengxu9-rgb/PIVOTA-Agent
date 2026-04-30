@@ -10259,7 +10259,55 @@ function isBeautyProductContraindicatedForQuery(product, queryText = '', intent 
       return true;
     }
   }
+  const normalizedQuery = normalizeSearchTextForMatch(queryText);
+  if (
+    families.has('cleanser') &&
+    /\b(cleansing\s*pads?|cleanse\s*pads?|peel\s*pads?|toner\s*pads?|exfoliating\s*pads?|clarifying\s*pads?)\b/i.test(text) &&
+    !/\b(?:pad|pads)\b|棉片|片/i.test(normalizedQuery)
+  ) {
+    return true;
+  }
+  if (
+    families.has('moisturizer') &&
+    /\b(barrier|repair|sensitive|sensiti[sz]ed|fragrance\s*free|ceramide|panthenol|cica)\b|屏障|修护|修護|敏感|无香精|無香精|神经酰胺|神經醯胺|泛醇/i.test(normalizedQuery) &&
+    /\b(resurfacing|exfoliating|peel|peeling|retinol|retinoid|acid\s*toner|clarifying|aha|bha|salicylic|glycolic|lactic|mandelic)\b|刷酸|去角质|去角質|水杨酸|水楊酸|果酸|视黄醇|視黃醇/i.test(text)
+  ) {
+    return true;
+  }
   return false;
+}
+
+function dedupeBeautyProductsByDisplayKey(products = []) {
+  const out = [];
+  const seen = new Set();
+  for (const product of Array.isArray(products) ? products : []) {
+    if (!product || typeof product !== 'object') continue;
+    const pick = (...values) =>
+      values
+        .map((value) => String(value || '').trim())
+        .find(Boolean) || '';
+    const title = normalizeSearchTextForMatch(
+      pick(product.title, product.name, product.product_name, product.display_name),
+    );
+    const brand = normalizeSearchTextForMatch(pick(product.brand, product.vendor));
+    const url = normalizeSearchTextForMatch(
+      pick(product.canonical_url, product.destination_url, product.external_url, product.url),
+    );
+    const id = normalizeSearchTextForMatch(
+      pick(product.product_id, product.id, product.external_seed_id, product.sku),
+    );
+    const key = title
+      ? `title:${brand || 'unbranded'}:${title}`
+      : url
+        ? `url:${url}`
+        : id
+          ? `id:${id}`
+          : '';
+    if (key && seen.has(key)) continue;
+    if (key) seen.add(key);
+    out.push(product);
+  }
+  return out;
 }
 
 function compactBeautyMainlineProductForResponse(product, intent = null) {
@@ -10495,7 +10543,9 @@ async function searchBeautyExternalSeedProductsMainline({
       if (right.score !== left.score) return right.score - left.score;
       return String(left.product?.title || '').localeCompare(String(right.product?.title || ''));
     });
-  const rankedProducts = scored.map((row) => compactBeautyMainlineProductForResponse(row.product, beautyIntent));
+  const rankedProducts = dedupeBeautyProductsByDisplayKey(
+    scored.map((row) => compactBeautyMainlineProductForResponse(row.product, beautyIntent)),
+  );
   const pagedProducts = rankedProducts.slice(safeOffset, safeOffset + safeLimit);
   const querySource = creatorScoped
     ? 'agent_products_creator_beauty_external_seed_mainline'

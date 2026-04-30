@@ -1614,7 +1614,7 @@ function buildRoutineAnalysisPriorityFollowupSkillResponse(req) {
   const answerEn = 'The first fix in this analysis is daytime SPF. Without sunscreen in the AM routine, acids, post-acne marks, and barrier recovery are less stable. Add a lightweight, non-comedogenic broad-spectrum SPF30-50 first, and keep PM conservative around your existing cleanser and acid frequency.';
 
   return {
-    answer_en: answerEn,
+    answer_en: isCn ? answerZh : answerEn,
     answer_zh: isCn ? answerZh : null,
     cards: [
       {

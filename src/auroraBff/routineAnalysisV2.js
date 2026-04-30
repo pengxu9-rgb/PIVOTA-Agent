@@ -1043,6 +1043,18 @@ function buildDeterministicSynthesis(auditOutput, context = {}) {
     }
   }
 
+  if (adjustments.length < 3 && overlapOrGaps.some((issue) => issue.issue_type === 'gap') && !inventoryHasStep(context && context.routine_inventory, 'sunscreen', 'am')) {
+    adjustments.push({
+      adjustment_id: 'adj_add_spf_gap',
+      priority_rank: adjustments.length + 1,
+      title: 'Add a clear AM sunscreen step',
+      action_type: 'add_step',
+      affected_products: [],
+      why_this_first: 'AM protection looks missing, so the routine is exposed before any higher-order optimization matters.',
+      expected_outcome: 'Better daytime protection and a more complete AM routine.',
+    });
+  }
+
   const duplicateSupportPairs = findDuplicateSupportPairs(amProducts, pmProducts);
   for (const pair of duplicateSupportPairs) {
     const alreadyCovered = adjustments.some((item) =>
@@ -1060,18 +1072,6 @@ function buildDeterministicSynthesis(auditOutput, context = {}) {
         : 'Better overnight barrier support without changing the daytime routine.',
     });
     if (adjustments.length >= 3) break;
-  }
-
-  if (adjustments.length < 3 && overlapOrGaps.some((issue) => issue.issue_type === 'gap') && !inventoryHasStep(context && context.routine_inventory, 'sunscreen', 'am')) {
-    adjustments.push({
-      adjustment_id: 'adj_add_spf_gap',
-      priority_rank: adjustments.length + 1,
-      title: 'Add a clear AM sunscreen step',
-      action_type: 'add_step',
-      affected_products: [],
-      why_this_first: 'AM protection looks missing, so the routine is exposed before any higher-order optimization matters.',
-      expected_outcome: 'Better daytime protection and a more complete AM routine.',
-    });
   }
 
   const prioritizedAdjustments = adjustments
