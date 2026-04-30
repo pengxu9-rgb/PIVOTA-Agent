@@ -9840,7 +9840,10 @@ async function queryBeautyExternalSeedRowsFast({
           AND market = $1
           AND tool = $3
           AND ${filters.join('\n          AND ')}
-        ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+        ORDER BY
+          coalesce(array_position($2::text[], ${categoryAuthoritySql}), 999),
+          updated_at DESC NULLS LAST,
+          created_at DESC NULLS LAST
         LIMIT $4
       `,
         [safeMarket, categoryTerms, tool, perScopeRowLimit],
@@ -10380,6 +10383,38 @@ function polishBeautyProductRankingForDisplay(products = [], queryText = '', saf
   return list;
 }
 
+function balanceBeautyMainlineFamilyCoverage(products = [], intent = null, safeLimit = 20) {
+  const list = Array.isArray(products) ? products.slice() : [];
+  const limit = Math.max(1, Math.floor(Number(safeLimit) || 20));
+  const families = Array.isArray(intent?.families)
+    ? intent.families.map((family) => String(family || '').trim()).filter(Boolean)
+    : [];
+  if (list.length <= 1 || families.length <= 1 || limit <= 1) return list;
+
+  const head = list.slice(0, limit);
+  const tail = list.slice(limit);
+  for (const family of families) {
+    if (head.some((product) => beautyProductMatchesFamily(product, family))) continue;
+    const candidateIndex = tail.findIndex((product) => beautyProductMatchesFamily(product, family));
+    if (candidateIndex < 0) continue;
+    const candidate = tail.splice(candidateIndex, 1)[0];
+    let replacementIndex = -1;
+    for (let i = head.length - 1; i >= 0; i -= 1) {
+      const matchedFamilies = families.filter((item) => beautyProductMatchesFamily(head[i], item));
+      if (matchedFamilies.length !== 1) continue;
+      const onlyFamily = matchedFamilies[0];
+      const familyCount = head.filter((product) => beautyProductMatchesFamily(product, onlyFamily)).length;
+      if (familyCount <= 1) continue;
+      replacementIndex = i;
+      break;
+    }
+    if (replacementIndex < 0) replacementIndex = Math.max(0, head.length - 1);
+    const [removed] = head.splice(replacementIndex, 1, candidate);
+    if (removed) tail.unshift(removed);
+  }
+  return [...head, ...tail];
+}
+
 function compactBeautyMainlineProductForResponse(product, intent = null) {
   if (!product || typeof product !== 'object' || Array.isArray(product)) return product;
   const {
@@ -10644,7 +10679,8 @@ async function searchBeautyExternalSeedProductsMainline({
     queryText,
     safeLimit,
   );
-  const pagedProducts = rankedProducts.slice(safeOffset, safeOffset + safeLimit);
+  const balancedProducts = balanceBeautyMainlineFamilyCoverage(rankedProducts, beautyIntent, safeLimit);
+  const pagedProducts = balancedProducts.slice(safeOffset, safeOffset + safeLimit);
   const querySource = creatorScoped
     ? 'agent_products_creator_beauty_external_seed_mainline'
     : 'agent_products_beauty_external_seed_mainline';
@@ -10653,7 +10689,7 @@ async function searchBeautyExternalSeedProductsMainline({
     status: 'success',
     success: true,
     products: pagedProducts,
-    total: rankedProducts.length,
+    total: balancedProducts.length,
     page: safePage,
     page_size: pagedProducts.length,
     reply: pagedProducts.length > 0 ? null : 'No matching beauty products found on the mainline catalog path.',
