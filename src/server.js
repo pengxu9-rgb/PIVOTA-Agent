@@ -10661,7 +10661,7 @@ function isBeautyProductContraindicatedForQuery(product, queryText = '', intent 
   const queryRequestsBody = /\b(body|hand|hands|hair|scalp|lip|lips)\b|身体|身體|护手|護手|头发|頭髮|头皮|頭皮|唇/i.test(normalizedQuery);
   const queryRequestsOil = /\b(face\s*oil|facial\s*oil|dry\s*oil|beauty\s*oil|huile|oil)\b|面油|护肤油|護膚油|美容油/i.test(normalizedQuery);
   const queryRequestsAntiAging = /\b(anti[-\s]?aging|anti[-\s]?ageing|firming|wrinkle|lift|lifting|mature\s*skin)\b|抗老|抗皱|抗皺|紧致|緊緻|提拉/i.test(normalizedQuery);
-  const queryRequestsMask = /\b(mask|mud\s*pack|clay\s*pack|wash[-\s]?off\s*pack)\b|面膜|泥膜/i.test(normalizedQuery);
+  const queryRequestsMask = /\b(mask|mud\s*pack|clay\s*pack|sleeping\s*pack|wash[-\s]?off\s*pack)\b|面膜|泥膜/i.test(normalizedQuery);
   const queryRequestsRoutineSet = /\b(routine|regimen|set|kit|bundle|capsule|starter\s*kit)\b|套装|套組|套組|套组|组合|組合|护理包|護理包/i.test(normalizedQuery);
   const queryRequestsBrushTool = /\b(brush|brushes|makeup\s*brush|tool|tools)\b|刷具|化妆刷|化妝刷|工具/i.test(normalizedQuery);
   const queryRequestsTreatmentSerum =
@@ -10670,7 +10670,7 @@ function isBeautyProductContraindicatedForQuery(product, queryText = '', intent 
   const productLooksLikeOilSurface = /\b(huile|face\s*oil|facial\s*oil|dry\s*oil|beauty\s*oil)\b|面油|护肤油|護膚油|美容油/i.test(titleSurfaceText);
   const productLooksLikeAntiAging =
     /\b(anti[-\s]?aging|anti[-\s]?ageing|firming|wrinkle|wrinkles|lift|lifting|merveillance|nuxuriance|global\s+anti[-\s]?aging|exceptional\s+day\s*&?\s*night)\b|抗老|抗皱|抗皺|紧致|緊緻|提拉/i.test(safetyText);
-  const productLooksLikeMaskPack = /\b(mud\s*pack|clay\s*pack|wash[-\s]?off\s*pack|sleeping\s*mask|sheet\s*mask|mask)\b|面膜|泥膜/i.test(titleSurfaceText);
+  const productLooksLikeMaskPack = /\b(mud\s*pack|clay\s*pack|sleeping\s*pack|wash[-\s]?off\s*pack|sleeping\s*mask|sheet\s*mask|mask)\b|面膜|泥膜/i.test(titleSurfaceText);
   const productLooksLikeRoutineSet = /\b(am\/pm\s+routine|cult\s+skincare\s+routine|routine|regimen|starter\s*kit|kit|set|bundle|collection|capsule)\b|套装|套組|套组|组合|組合|护理包|護理包/i.test(titleSurfaceText);
   const productLooksLikeBrushTool = /\b(brush\s*cleanser|brushes?|makeup\s*brush|brush\s*cleaning|tool\s*cleanser)\b|刷具|化妆刷|化妝刷|工具/i.test(safetyText);
   const productLooksLikeTreatmentSerum =
