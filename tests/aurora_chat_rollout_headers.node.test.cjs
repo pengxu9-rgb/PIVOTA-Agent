@@ -278,6 +278,59 @@ test('handleChat answers vitamin C product-fit alternative follow-up without dup
   );
 });
 
+test('handleChat answers low-budget beginner routine follow-up without freeform router', async () => {
+  await withEnv(
+    {
+      AURORA_CHAT_SKILL_ROUTER_V2: 'true',
+      AURORA_CHAT_RESPONSE_META_ENABLED: 'false',
+    },
+    async () => {
+      const { handleChat, __setRouterForTests, __resetRouterForTests } = loadChatRoutesFresh();
+      const req = makeRequest({
+        headers: {
+          'x-aurora-uid': 'low-budget-routine-user',
+          'x-lang': 'CN',
+        },
+        body: {
+          message: '哪些产品可以买平价，哪些不用买？',
+          language: 'CN',
+          session: {
+            case_id: 'routine_beginner_dry_low_budget',
+            profile: {
+              skinType: 'dry',
+              sensitivity: 'medium',
+              barrierStatus: 'slightly_impaired',
+              budget: 'low',
+              goals: ['hydration', 'basic_routine'],
+            },
+          },
+        },
+      });
+      const res = makeResponseCapture();
+
+      __setRouterForTests({
+        async route() {
+          throw new Error('low-budget routine follow-up should not reach freeform router');
+        },
+      });
+
+      try {
+        await handleChat(req, res);
+      } finally {
+        __resetRouterForTests();
+      }
+
+      assert.equal(res.statusCode, 200);
+      const text = JSON.stringify(res.body?.cards || []);
+      assert.match(text, /洁面/);
+      assert.match(text, /保湿/);
+      assert.match(text, /防晒|SPF/);
+      assert.match(text, /不用先买|Skip|skip|爽肤水|精华叠加/);
+      assert.doesNotMatch(text, /增加预算的是精华|补水喷雾最适合买平价|必须使用补水精华/);
+    },
+  );
+});
+
 test('handleChat answers pregnancy retinol low-dose follow-up without freeform router', async () => {
   await withEnv(
     {
