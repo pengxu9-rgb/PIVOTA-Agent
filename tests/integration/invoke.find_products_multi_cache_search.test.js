@@ -2881,6 +2881,27 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
                 updated_at: new Date().toISOString(),
                 created_at: new Date().toISOString(),
               },
+              {
+                id: 'seed-mint-spf-1',
+                external_product_id: 'ext_mint_spf_1',
+                market: 'US',
+                tool: '*',
+                destination_url: 'https://shop.example.com/products/play-lip-shield-spf-30-mint',
+                canonical_url: 'https://shop.example.com/products/play-lip-shield-spf-30-mint',
+                domain: 'shop.example.com',
+                title: 'PLAY Lip Shield SPF 30 Mint',
+                image_url: 'https://cdn.example.com/mint-spf.jpg',
+                price_amount: '12.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Test Beauty',
+                  category: 'sunscreen',
+                  description: 'Mint flavored SPF lip sunscreen.',
+                },
+                updated_at: new Date().toISOString(),
+                created_at: new Date().toISOString(),
+              },
             ],
           };
         }
@@ -2921,6 +2942,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(resp.body.metadata?.query_source).toBe('agent_products_beauty_external_seed_mainline');
     expect(resp.body.products.map((product) => product.product_id)).toContain('ext_spf_1');
     expect(resp.body.products.map((product) => product.product_id)).not.toContain('ext_nia_1');
+    expect(resp.body.products.map((product) => product.product_id)).not.toContain('ext_mint_spf_1');
     expect(upstreamSearch.isDone()).toBe(false);
   });
 

@@ -890,7 +890,7 @@
         {
           "query": "daily sunscreen sensitive skin",
           "target_terms": ["sunscreen", "spf"],
-          "blocked_terms": [],
+          "blocked_terms": ["mint", "menthol", "peppermint"],
           "min_relevant_top6": 4
         }
       ],
@@ -910,7 +910,7 @@
         {
           "query": "daily sunscreen sensitive skin",
           "target_terms": ["sunscreen", "spf"],
-          "blocked_terms": [],
+          "blocked_terms": ["mint", "menthol", "peppermint"],
           "min_relevant_top6": 4
         }
       ],

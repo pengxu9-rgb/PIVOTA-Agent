@@ -10281,6 +10281,12 @@ function inferBeautyMainlineIntent(queryText = '') {
     safety.add('avoid_retinoids');
   }
   if (
+    /\b(rosacea|redness|sensitive|sensiti[sz]ed|stinging|burning|gentle|fragrance[-\s]?free|dry\s*sensitive)\b/i.test(raw) ||
+    /玫瑰痤疮|酒糟|泛红|泛紅|敏感|刺痛|温和|溫和|无香精|無香精|干敏|乾敏/.test(raw)
+  ) {
+    safety.add('avoid_cooling_irritants');
+  }
+  if (
     (
       /\b(rosacea|redness|sensitive|sensiti[sz]ed|stinging|burning)\b/i.test(raw) ||
       /玫瑰痤疮|酒糟|泛红|泛紅|敏感|刺痛/.test(raw)
@@ -10424,6 +10430,14 @@ function isBeautyProductContraindicatedForQuery(product, queryText = '', intent 
     if (
       /\b(menthol|mint|peppermint|eucalyptus|cooling|scrub|polish|deep\s*clean|deep\s*cleansing|purifying\s*scrub|exfoliating\s*cleanser)\b/i.test(text) ||
       /薄荷|清凉|清涼|磨砂|去角质洁面|去角質潔面|强清洁|強清潔/.test(text)
+    ) {
+      return true;
+    }
+  }
+  if (safety.has('avoid_cooling_irritants')) {
+    if (
+      /\b(menthol|mint|peppermint|eucalyptus|camphor|cooling)\b/i.test(text) ||
+      /薄荷|清凉|清涼|樟脑|樟腦/.test(text)
     ) {
       return true;
     }
