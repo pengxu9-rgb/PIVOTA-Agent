@@ -1424,7 +1424,7 @@ test('runRoutineAnalysisV2: barrier-impaired acid timing changes become pause-fi
     language: 'CN',
     profileSummary: {
       skinType: 'dry_sensitive',
-      sensitivity: 'high',
+      sensitivity: 'low',
       barrierStatus: 'impaired',
       goals: ['barrier_repair'],
     },

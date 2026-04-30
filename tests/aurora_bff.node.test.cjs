@@ -215,6 +215,28 @@ test('extractProfilePatchFromRequestContextPayload reads nested quick-profile si
   }
 });
 
+test('extractProfilePatchFromRequestContextPayload reads root profile_context overlay', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const patch = __internal.extractProfilePatchFromRequestContextPayload({
+      profile_context: {
+        skinType: 'dry_sensitive',
+        sensitivity: 'low',
+        barrierStatus: 'impaired',
+        goals: ['barrier_repair', 'redness'],
+      },
+    });
+    assert.deepEqual(patch, {
+      skinType: 'dry_sensitive',
+      sensitivity: 'low',
+      barrierStatus: 'impaired',
+      goals: ['barrier_repair', 'redness'],
+    });
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('__internal: filterRecoContextProductCandidates drops wrong-family and query-shaped synthetic candidates', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {

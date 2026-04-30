@@ -207,6 +207,30 @@ function isAcidExfoliantProduct(product = {}) {
   return type.includes('exfoliant') || /aha|bha|salicylic|glycolic|mandelic|lactic|exfoliat|peel|刷酸|水杨酸|水楊酸|果酸/.test(text);
 }
 
+function shouldBarrierFirstPauseAcid(product = {}, context = {}) {
+  return (isBarrierImpaired(context) || hasElevatedSensitivity(context)) && isAcidExfoliantProduct(product);
+}
+
+function getBarrierFirstPauseAcidReason(context = {}) {
+  return normalizeLanguage(context && context.language) === 'CN'
+    ? '当前屏障或敏感风险偏高，酸类去角质应先暂停，不要只做早晚时间调整。'
+    : 'Barrier or sensitivity context is elevated, so exfoliating acids should be paused before timing optimizations.';
+}
+
+function applyBarrierFirstAuditOverride(product = {}, context = {}) {
+  if (!shouldBarrierFirstPauseAcid(product, context)) return product;
+  const reason = getBarrierFirstPauseAcidReason(context);
+  return {
+    ...product,
+    suggested_action: 'remove',
+    potential_concerns: uniqStrings([
+      ...(Array.isArray(product.potential_concerns) ? product.potential_concerns : []),
+      reason,
+    ], 6),
+    concise_reasoning_en: reason,
+  };
+}
+
 function looksHeavyForDaytime(type, text = '') {
   const token = String(type || '').toLowerCase();
   const lower = String(text || '').toLowerCase();
@@ -514,8 +538,16 @@ function buildFallbackProductAudit(candidate, context = {}) {
   const hydratingSupport = isHydrationSupportType(inferredProductType, productText);
   const potentialConcerns = [];
   let suggestedAction = 'keep';
+  const barrierFirstAcid = shouldBarrierFirstPauseAcid({
+    inferred_product_type: inferredProductType,
+    input_label: productText,
+    original_step_label: step,
+  }, context);
 
-  if ((inferredProductType === 'sunscreen' || inferredProductType === 'spf moisturizer') && slot === 'pm') {
+  if (barrierFirstAcid) {
+    suggestedAction = 'remove';
+    potentialConcerns.push(getBarrierFirstPauseAcidReason(context));
+  } else if ((inferredProductType === 'sunscreen' || inferredProductType === 'spf moisturizer') && slot === 'pm') {
     suggestedAction = 'move_to_am';
     potentialConcerns.push('This looks like an AM protection step rather than a PM step.');
   } else if (isStrongActiveType(inferredProductType, productText) && slot === 'am') {
@@ -651,6 +683,9 @@ function buildFallbackProductAudit(candidate, context = {}) {
     if (suggestedAction === 'unknown') {
       return 'The product label is still too vague to make a precise slot recommendation, so this is a tentative category-level read.';
     }
+    if (suggestedAction === 'remove') {
+      return getBarrierFirstPauseAcidReason(context);
+    }
     if (inferredProductType === 'cleanser') {
       return 'This reads as a cleansing step, so the practical question is whether it clears oil and residue without feeling too stripping for the current skin and barrier context.';
     }
@@ -769,7 +804,7 @@ function normalizeFallbackAuditOutput(auditedCandidates, rawOutput, context = {}
   const productReasonSources = [];
   let qualityGateAppliedCount = 0;
   const products = auditedCandidates.map((candidate) => {
-    const fallback = buildFallbackProductAudit(candidate, context);
+    const fallback = applyBarrierFirstAuditOverride(buildFallbackProductAudit(candidate, context), context);
     const raw = productsByRef.get(fallback.product_ref);
     if (!isPlainObject(raw)) {
       productReasonSources.push({
@@ -792,7 +827,7 @@ function normalizeFallbackAuditOutput(auditedCandidates, rawOutput, context = {}
     const normalizedGoals = normalizeGoalRowsWithQualityGate(raw.fit_for_goals, fallback.fit_for_goals);
     if (normalizedGoals.replaced) qualityGateApplied = true;
 
-    const normalized = {
+    let normalized = {
       ...fallback,
       slot: ['am', 'pm', 'unknown'].includes(asString(raw.slot)) ? asString(raw.slot) : fallback.slot,
       original_step_label: raw.original_step_label == null ? fallback.original_step_label : asString(raw.original_step_label) || null,
@@ -821,6 +856,9 @@ function normalizeFallbackAuditOutput(auditedCandidates, rawOutput, context = {}
       missing_info: uniqStrings(raw.missing_info, 6).length ? uniqStrings(raw.missing_info, 6) : fallback.missing_info,
       concise_reasoning_en: conciseReasoning.reason || fallback.concise_reasoning_en,
     };
+    const beforeBarrierAction = asString(normalized.suggested_action);
+    normalized = applyBarrierFirstAuditOverride(normalized, context);
+    if (asString(normalized.suggested_action) !== beforeBarrierAction) qualityGateApplied = true;
     if (qualityGateApplied) qualityGateAppliedCount += 1;
     productReasonSources.push({
       product_ref: normalized.product_ref,
@@ -905,6 +943,24 @@ function buildDeterministicOverlapOrGaps(auditOutput, context = {}) {
   const inventory = isPlainObject(context && context.routine_inventory)
     ? context.routine_inventory
     : buildRoutineInventory(products);
+  const barrierFirst = isBarrierImpaired(context) || hasElevatedSensitivity(context);
+  const barrierUnsafeAcids = barrierFirst
+    ? products.filter((product) => isAcidExfoliantProduct(product))
+    : [];
+  if (barrierUnsafeAcids.length) {
+    const reason = getBarrierFirstPauseAcidReason(context);
+    const isCn = normalizeLanguage(context && context.language) === 'CN';
+    issues.push({
+      issue_type: 'conflict',
+      title: isCn ? '屏障受压时应先暂停酸类去角质' : 'Barrier-stressed skin should pause exfoliating acids first',
+      evidence: barrierUnsafeAcids.map((product) => (
+        isCn
+          ? `${product.input_label} 会继续增加酸类刺激负荷。`
+          : `${product.input_label} adds exfoliating acid load while barrier/sensitivity context is elevated.`
+      )).concat(reason).slice(0, 4),
+      affected_products: barrierUnsafeAcids.map((product) => product.product_ref),
+    });
+  }
   const amHasSpf = inventoryHasStep(inventory, 'sunscreen', 'am')
     || amProducts.some((product) => String(product.inferred_product_type || '').toLowerCase().includes('sunscreen') || String(product.inferred_product_type || '').toLowerCase() === 'spf moisturizer');
   if (!amHasSpf) {
@@ -938,6 +994,7 @@ function buildDeterministicOverlapOrGaps(auditOutput, context = {}) {
 
   const moveIssues = products
     .filter((product) => ['move_to_am', 'move_to_pm'].includes(asString(product.suggested_action)))
+    .filter((product) => !(barrierFirst && isAcidExfoliantProduct(product)))
     .slice(0, 3);
   for (const product of moveIssues) {
     issues.push({
@@ -1005,12 +1062,11 @@ function buildDeterministicSynthesis(auditOutput, context = {}) {
   const adjustments = [];
   const amProducts = products.filter((product) => product.slot === 'am');
   const pmProducts = products.filter((product) => product.slot === 'pm');
-  const barrierFirst = isBarrierImpaired(context) || hasElevatedSensitivity(context);
 
   for (const product of products) {
     let action = asString(product.suggested_action);
-    const forcePauseAcid = barrierFirst && isAcidExfoliantProduct(product);
-    if (forcePauseAcid && ['keep', 'unknown', 'move_to_am', 'move_to_pm', 'reduce_frequency', 'replace'].includes(action)) {
+    const forcePauseAcid = shouldBarrierFirstPauseAcid(product, context);
+    if (forcePauseAcid && action !== 'remove') {
       action = 'remove';
     }
     if (action === 'keep' || action === 'unknown') continue;
@@ -1028,13 +1084,13 @@ function buildDeterministicSynthesis(auditOutput, context = {}) {
               : `Replace ${product.input_label}`,
       action_type: action === 'move_to_am' || action === 'move_to_pm' ? 'move' : action,
       affected_products: [product.product_ref],
-      why_this_first: forcePauseAcid
-        ? 'Barrier or sensitivity context is elevated, so exfoliating acids should be paused before timing optimizations.'
-        : product.concise_reasoning_en,
+      why_this_first: forcePauseAcid ? getBarrierFirstPauseAcidReason(context) : product.concise_reasoning_en,
       expected_outcome: action === 'reduce_frequency'
         ? 'Lower irritation or routine overload risk.'
         : forcePauseAcid
-          ? 'Lower stinging, peeling, and barrier-stress risk before any active reintroduction.'
+          ? (normalizeLanguage(context && context.language) === 'CN'
+              ? '先降低刺痛、脱皮和屏障压力，再评估是否需要重启活性。'
+              : 'Lower stinging, peeling, and barrier-stress risk before any active reintroduction.')
         : action === 'replace'
           ? 'Better goal fit with less friction in the current routine.'
           : 'A cleaner AM/PM split with less routine mismatch.',
@@ -3092,8 +3148,10 @@ async function runRoutineAnalysisV2({
     }
   }
   const synthesis = coerceSynthesisOutput(stageBRaw, audit, {
+    language: normalizedLanguage,
     skinType: profileContext.skin_type,
     sensitivity: profileContext.sensitivity,
+    barrierStatus: profileContext.barrier_status,
     goals: goalContext.goals,
     routine_inventory: routineInventory,
   });

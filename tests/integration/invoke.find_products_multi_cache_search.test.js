@@ -3082,6 +3082,27 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
                 updated_at: new Date().toISOString(),
                 created_at: new Date().toISOString(),
               },
+              {
+                id: 'seed-mini-oz-1',
+                external_product_id: 'ext_mini_oz_1',
+                market: 'US',
+                tool: '*',
+                destination_url: 'https://shop.example.com/products/glowscreen-68oz',
+                canonical_url: 'https://shop.example.com/products/glowscreen-68oz',
+                domain: 'shop.example.com',
+                title: 'Glowscreen .68oz Golden Hour',
+                image_url: 'https://cdn.example.com/mini-oz.jpg',
+                price_amount: '22.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Test Beauty',
+                  category: 'sunscreen',
+                  description: 'Mini sunscreen size.',
+                },
+                updated_at: new Date().toISOString(),
+                created_at: new Date().toISOString(),
+              },
             ],
           };
         }
@@ -3127,6 +3148,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(resp.body.products.map((product) => product.product_id)).not.toContain('ext_retinol_1');
     expect(resp.body.products.map((product) => product.product_id)).not.toContain('ext_resurfacing_1');
     expect(resp.body.products.map((product) => product.product_id)).not.toContain('ext_mini_1');
+    expect(resp.body.products.map((product) => product.product_id)).not.toContain('ext_mini_oz_1');
     expect(resp.body.metadata?.beauty_mainline_filter?.safety_rules).toContain('avoid_retinoids');
     expect(upstreamSearch.isDone()).toBe(false);
   });
