@@ -37,6 +37,8 @@ const {
 const {
   prioritizeOffersResolveResponse,
   annotateOffersWithCommerceMetadata,
+  prioritizeOffers,
+  pickDefaultOfferId,
 } = require('./offers/offersPriority');
 const {
   buildPdpPayload,
@@ -5460,13 +5462,10 @@ async function buildOffersFromGroupMembers(args) {
 
   const sortStartedAt = Date.now();
   const annotatedOffers = annotateOffersWithCommerceMetadata(offers);
+  const prioritizedOffers = prioritizeOffers(annotatedOffers);
   const sortedByTotal = [...annotatedOffers].sort((a, b) => computeOfferTotal(a) - computeOfferTotal(b));
   const bestPriceOfferId = sortedByTotal[0]?.offer_id || null;
-  const preferredOfferId = preferredMerchantId
-    ? annotatedOffers.find((o) => o.merchant_id === preferredMerchantId)?.offer_id || null
-    : null;
-  const defaultCandidateId = [...annotatedOffers].sort(compareOffersForDefaultSelection)[0]?.offer_id || null;
-  const defaultOfferId = preferredOfferId || defaultCandidateId || bestPriceOfferId;
+  const defaultOfferId = pickDefaultOfferId(prioritizedOffers) || bestPriceOfferId;
   timings.sort = Date.now() - sortStartedAt;
   timings.total = Date.now() - totalStartedAt;
 
@@ -5475,7 +5474,7 @@ async function buildOffersFromGroupMembers(args) {
     product_group_id: resolvedProductGroupId,
     canonical_product_ref: canonicalProductRef,
     offers_count: offers.length,
-    offers: annotatedOffers,
+    offers: prioritizedOffers,
     default_offer_id: defaultOfferId,
     best_price_offer_id: bestPriceOfferId,
     ...(debug
@@ -21093,12 +21092,13 @@ async function buildProductIntelTopLevelModuleData({
   productGroupId = null,
   requireReviewedBundle = true,
 }) {
+  const productSource = String(product?.source || '').trim().toLowerCase();
   const productWithIntel = await hydrateProductWithPublishedIntel({
     product,
     canonicalProductRef,
     alternateCanonicalProductRefs,
     requireReviewedBundle,
-    allowLegacyAnalysisFallback: !requireReviewedBundle,
+    allowLegacyAnalysisFallback: !requireReviewedBundle && productSource !== 'external_seed',
   });
   return buildProductIntelBundle({
     product: productWithIntel,

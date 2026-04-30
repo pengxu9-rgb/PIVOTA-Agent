@@ -122,6 +122,86 @@ function ensureJsonObject(val) {
   }
 }
 
+function normalizePdpFieldQualitySummary(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const next = {};
+  for (const key of [
+    'description_raw',
+    'details_sections',
+    'ingredients_raw',
+    'active_ingredients_raw',
+    'how_to_use_raw',
+    'faq_items',
+  ]) {
+    const row = value?.[key];
+    if (!row || typeof row !== 'object' || Array.isArray(row)) continue;
+    const sourceQualityStatus = normalizeNonEmptyString(row.source_quality_status || row.sourceQualityStatus).toLowerCase();
+    const sourceOrigin = normalizeNonEmptyString(row.source_origin || row.sourceOrigin).toLowerCase();
+    next[key] = {
+      ...(sourceQualityStatus ? { source_quality_status: sourceQualityStatus } : {}),
+      ...(sourceOrigin ? { source_origin: sourceOrigin } : {}),
+    };
+  }
+  return Object.keys(next).length > 0 ? next : null;
+}
+
+function readPdpFieldQualityStatus(summary, key) {
+  return normalizeNonEmptyString(summary?.[key]?.source_quality_status).toLowerCase();
+}
+
+function isSurfaceablePdpField(summary, key) {
+  const status = readPdpFieldQualityStatus(summary, key);
+  if (!status) return true;
+  return status === 'high' || status === 'medium';
+}
+
+function buildApprovedRuntimeSeedData(seedData, pdpFieldQualitySummary) {
+  const nextSeedData = cloneJsonValue(ensureJsonObject(seedData));
+  const snapshot = ensureJsonObject(nextSeedData.snapshot);
+
+  delete nextSeedData.snapshot_quarantine;
+  delete nextSeedData.active_ingredients;
+  delete snapshot.active_ingredients;
+
+  const gatedScalarFields = [
+    ['pdp_description_raw', 'description_raw'],
+    ['pdp_ingredients_raw', 'ingredients_raw'],
+    ['pdp_active_ingredients_raw', 'active_ingredients_raw'],
+    ['pdp_how_to_use_raw', 'how_to_use_raw'],
+  ];
+  for (const [fieldName, qualityKey] of gatedScalarFields) {
+    if (isSurfaceablePdpField(pdpFieldQualitySummary, qualityKey)) continue;
+    delete nextSeedData[fieldName];
+    delete snapshot[fieldName];
+  }
+
+  if (!isSurfaceablePdpField(pdpFieldQualitySummary, 'faq_items')) {
+    delete nextSeedData.pdp_faq_items;
+    delete snapshot.pdp_faq_items;
+  }
+  if (!isSurfaceablePdpField(pdpFieldQualitySummary, 'details_sections')) {
+    delete nextSeedData.pdp_details_sections;
+    delete snapshot.pdp_details_sections;
+  }
+
+  nextSeedData.snapshot = snapshot;
+  return nextSeedData;
+}
+
+function shouldExposeAuthorityActiveItems(authority) {
+  if (!authority || !Array.isArray(authority.active_items) || authority.active_items.length === 0) return false;
+  const sourceOrigin = normalizeNonEmptyString(authority.source_origin).toLowerCase();
+  return [
+    'ingredients_inci',
+    'pdp_section',
+    'active_block',
+    'active_section',
+    'existing_authority',
+    'otc_drug_facts',
+    'drug_facts',
+  ].includes(sourceOrigin);
+}
+
 function normalizeSeedAvailability(raw) {
   const v = String(raw || '').trim().toLowerCase();
   if (!v) return null;
@@ -2004,6 +2084,11 @@ function buildExternalSeedProduct(row, options = {}) {
   const prefersStoredRecallSummary =
     normalizeNonEmptyString(storedRecall.retrieval_summary) ||
     normalizeNonEmptyString(storedRecall.retrieval_body);
+  const pdpFieldQualitySummary = normalizePdpFieldQualitySummary(
+    seedData.pdp_field_quality_summary || snapshot.pdp_field_quality_summary,
+  );
+  const runtimeSeedData = buildApprovedRuntimeSeedData(seedData, pdpFieldQualitySummary);
+  const runtimeSnapshot = ensureJsonObject(runtimeSeedData.snapshot);
 
   const title =
     String(
@@ -2056,17 +2141,7 @@ function buildExternalSeedProduct(row, options = {}) {
       ingredientIntel.inci_normalized ||
       snapshotIngredientIntel.inci_normalized,
   );
-  const activeIngredients = normalizeStringList(
-    seedData.active_ingredients ||
-      seedData.activeIngredients ||
-      snapshot.active_ingredients ||
-      snapshot.activeIngredients ||
-      science.key_ingredients ||
-      science.keyIngredients ||
-      snapshotScience.key_ingredients ||
-      snapshotScience.keyIngredients,
-    24,
-  );
+  const activeIngredients = [];
   const keyIngredients = normalizeStringList(
     seedData.key_ingredients ||
       seedData.keyIngredients ||
@@ -2078,11 +2153,13 @@ function buildExternalSeedProduct(row, options = {}) {
       snapshotScience.keyIngredients,
     24,
   );
-  const pdpDetailsSections = Array.isArray(seedData.pdp_details_sections)
-    ? seedData.pdp_details_sections
-    : Array.isArray(snapshot.pdp_details_sections)
-      ? snapshot.pdp_details_sections
-      : [];
+  const pdpDetailsSections = isSurfaceablePdpField(pdpFieldQualitySummary, 'details_sections')
+    ? Array.isArray(seedData.pdp_details_sections)
+      ? seedData.pdp_details_sections
+      : Array.isArray(snapshot.pdp_details_sections)
+        ? snapshot.pdp_details_sections
+        : []
+    : [];
   const pdpFieldCaptureStatus =
     (seedData.pdp_field_capture_status && typeof seedData.pdp_field_capture_status === 'object')
       ? seedData.pdp_field_capture_status
@@ -2310,31 +2387,29 @@ function buildExternalSeedProduct(row, options = {}) {
     product_type: normalizedCategory || explicitCategory || '',
     canonical_url: canonicalUrl,
     destination_url: destinationUrl,
-    seed_data: seedData,
+    seed_data: runtimeSeedData,
     raw_ingredient_text_clean:
-      seedData.raw_ingredient_text_clean ||
-      snapshot.raw_ingredient_text_clean ||
+      runtimeSeedData.raw_ingredient_text_clean ||
+      runtimeSnapshot.raw_ingredient_text_clean ||
       ingredientIntel.raw_ingredient_text_clean ||
       snapshotIngredientIntel.raw_ingredient_text_clean,
     inci_list:
-      seedData.inci_list ||
-      snapshot.inci_list ||
+      runtimeSeedData.inci_list ||
+      runtimeSnapshot.inci_list ||
       ingredientIntel.inci_list ||
       snapshotIngredientIntel.inci_list,
-    ingredients_inci: Array.isArray(seedData.ingredients_inci) ? seedData.ingredients_inci : undefined,
-    active_ingredients: Array.isArray(seedData.active_ingredients)
-      ? seedData.active_ingredients
-      : Array.isArray(snapshot.active_ingredients)
-        ? snapshot.active_ingredients
-        : undefined,
-    pdp_ingredients_raw: seedData.pdp_ingredients_raw || snapshot.pdp_ingredients_raw,
-    pdp_active_ingredients_raw:
-      seedData.pdp_active_ingredients_raw || snapshot.pdp_active_ingredients_raw,
+    ingredients_inci: Array.isArray(runtimeSeedData.ingredients_inci) ? runtimeSeedData.ingredients_inci : undefined,
+    pdp_ingredients_raw: isSurfaceablePdpField(pdpFieldQualitySummary, 'ingredients_raw')
+      ? runtimeSeedData.pdp_ingredients_raw || runtimeSnapshot.pdp_ingredients_raw
+      : undefined,
+    pdp_active_ingredients_raw: isSurfaceablePdpField(pdpFieldQualitySummary, 'active_ingredients_raw')
+      ? runtimeSeedData.pdp_active_ingredients_raw || runtimeSnapshot.pdp_active_ingredients_raw
+      : undefined,
     details_sections:
-      Array.isArray(seedData.details_sections) && seedData.details_sections.length
-        ? seedData.details_sections
-        : Array.isArray(snapshot.details_sections)
-          ? snapshot.details_sections
+      Array.isArray(runtimeSeedData.details_sections) && runtimeSeedData.details_sections.length
+        ? runtimeSeedData.details_sections
+        : Array.isArray(runtimeSnapshot.details_sections)
+          ? runtimeSnapshot.details_sections
           : undefined,
     ingredient_intel: ingredientIntel,
   };
@@ -2379,7 +2454,7 @@ function buildExternalSeedProduct(row, options = {}) {
     canonical_url: canonicalUrl || undefined,
     destination_url: destinationUrl || undefined,
     external_seed_id: row.id ? String(row.id) : undefined,
-    seed_data: seedData,
+    seed_data: runtimeSeedData,
     external_seed_recall: recall,
     external_seed_quality_state: protection.quality_state,
     external_seed_suppression_flags: protection.suppression_flags,
@@ -2395,22 +2470,33 @@ function buildExternalSeedProduct(row, options = {}) {
     ...(inciList.length ? { inci_list: inciList } : {}),
     ...(activeIngredients.length ? { active_ingredients: activeIngredients } : {}),
     ...(keyIngredients.length ? { key_ingredients: keyIngredients } : {}),
-    ...(pdpDescriptionRaw ? { pdp_description_raw: pdpDescriptionRaw } : {}),
+    ...(isSurfaceablePdpField(pdpFieldQualitySummary, 'description_raw') && pdpDescriptionRaw
+      ? { pdp_description_raw: pdpDescriptionRaw }
+      : {}),
     ...(pdpDetailsSections.length ? { pdp_details_sections: pdpDetailsSections } : {}),
-    ...(pdpIngredientsRaw ? { pdp_ingredients_raw: pdpIngredientsRaw } : {}),
-    ...(pdpActiveIngredientsRaw ? { pdp_active_ingredients_raw: pdpActiveIngredientsRaw } : {}),
-    ...(pdpHowToUseRaw ? { pdp_how_to_use_raw: pdpHowToUseRaw } : {}),
-    ...(pdpFaqItems.length ? { pdp_faq_items: pdpFaqItems } : {}),
+    ...(isSurfaceablePdpField(pdpFieldQualitySummary, 'ingredients_raw') && pdpIngredientsRaw
+      ? { pdp_ingredients_raw: pdpIngredientsRaw }
+      : {}),
+    ...(isSurfaceablePdpField(pdpFieldQualitySummary, 'active_ingredients_raw') && pdpActiveIngredientsRaw
+      ? { pdp_active_ingredients_raw: pdpActiveIngredientsRaw }
+      : {}),
+    ...(isSurfaceablePdpField(pdpFieldQualitySummary, 'how_to_use_raw') && pdpHowToUseRaw
+      ? { pdp_how_to_use_raw: pdpHowToUseRaw }
+      : {}),
+    ...(isSurfaceablePdpField(pdpFieldQualitySummary, 'faq_items') && pdpFaqItems.length
+      ? { pdp_faq_items: pdpFaqItems }
+      : {}),
     ...(seedDescriptionOrigin ? { seed_description_origin: seedDescriptionOrigin } : {}),
     ...(sourcePageType ? { source_page_type: sourcePageType } : {}),
     ...(contentQuality ? { content_quality: contentQuality } : {}),
     ...(sourceUrl ? { source_url: sourceUrl } : {}),
     ...(reviewSummary ? { review_summary: reviewSummary } : {}),
     ...(pdpFieldCaptureStatus ? { pdp_field_capture_status: pdpFieldCaptureStatus } : {}),
+    ...(pdpFieldQualitySummary ? { pdp_field_quality_summary: pdpFieldQualitySummary } : {}),
     ...(Object.keys(ingredientIntel).length ? { ingredient_intel: ingredientIntel } : {}),
     ...(ingredientTokens.length ? { ingredient_tokens: ingredientTokens } : {}),
     ...(authority.items.length ? { ingredients_inci: authority.items } : {}),
-    ...(authority.active_items.length ? { active_ingredients: authority.active_items } : {}),
+    ...(shouldExposeAuthorityActiveItems(authority) ? { active_ingredients: authority.active_items } : {}),
     ...(Object.keys(mergedIngredientIntel).length ? { ingredient_intel: mergedIngredientIntel } : {}),
     ...(brand ? { vendor: brand, brand } : {}),
     ...(normalizedCategory ? { category: normalizedCategory } : {}),

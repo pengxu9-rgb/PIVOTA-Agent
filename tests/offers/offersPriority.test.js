@@ -1,5 +1,6 @@
 const {
   annotateOffersWithCommerceMetadata,
+  pickDefaultOfferId,
   prioritizeOffers,
   prioritizeOffersResolveResponse,
 } = require('../../src/offers/offersPriority');
@@ -74,5 +75,34 @@ describe('offers priority', () => {
     expect(outbound.commerce_mode).toBe('links_out');
     expect(outbound.checkout_handoff).toBe('redirect');
     expect(outbound.merchant_checkout_url).toBe('https://merchant.example.com/p/1');
+  });
+
+  test('pickDefaultOfferId: prefers internal, in-stock, expected-currency offers before lower-confidence cheaper links-out', () => {
+    const offers = annotateOffersWithCommerceMetadata([
+      {
+        offer_id: 'offer_external_eur',
+        purchase_route: 'affiliate_outbound',
+        affiliate_url: 'https://merchant.example.com/eu',
+        price: { amount: 18, currency: 'EUR' },
+        inventory: { in_stock: true },
+        commerce_facts_v1: { currency_target: 'USD', availability: { status: 'in_stock' } },
+      },
+      {
+        offer_id: 'offer_internal_usd',
+        purchase_route: 'internal_checkout',
+        checkout_url: 'https://merchant.example.com/checkout',
+        price: { amount: 22, currency: 'USD' },
+        inventory: { in_stock: true },
+        commerce_facts_v1: {
+          currency_target: 'USD',
+          availability: { status: 'in_stock' },
+          shipping: { status: 'known' },
+          returns: { status: 'known' },
+        },
+      },
+    ]);
+
+    expect(pickDefaultOfferId(offers)).toBe('offer_internal_usd');
+    expect(prioritizeOffers(offers)[0].offer_id).toBe('offer_internal_usd');
   });
 });

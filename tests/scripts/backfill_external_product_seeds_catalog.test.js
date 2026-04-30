@@ -610,6 +610,129 @@ describe('backfill-external-product-seeds-catalog', () => {
     ).toBe(rawFacts);
   });
 
+  test('buildSeedUpdatePayload quarantines low-quality PDP fields instead of persisting them to snapshot', () => {
+    const row = {
+      id: 'eps_quarantine_1',
+      title: 'Glow Pad',
+      canonical_url: 'https://example.com/products/glow-pad',
+      destination_url: 'https://example.com/products/glow-pad',
+      image_url: '',
+      price_amount: 23,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      seed_data: {
+        brand: 'Example',
+        pdp_description_raw: 'Legacy fallback description',
+        pdp_ingredients_raw: 'Legacy ingredients',
+        snapshot: {
+          title: 'Glow Pad',
+          canonical_url: 'https://example.com/products/glow-pad',
+          pdp_description_raw: 'Legacy fallback description',
+          pdp_ingredients_raw: 'Legacy ingredients',
+        },
+      },
+    };
+
+    const response = {
+      mode: 'puppeteer',
+      diagnostics: {},
+      products: [
+        {
+          title: 'Glow Pad',
+          url: 'https://example.com/products/glow-pad',
+          image_url: 'https://cdn.example.com/glow-pad.jpg',
+          image_urls: ['https://cdn.example.com/glow-pad.jpg'],
+          variant_skus: ['GP-001'],
+          variants: [
+            {
+              id: 'v1',
+              sku: 'GP-001',
+              url: 'https://example.com/products/glow-pad',
+              option_name: 'Title',
+              option_value: 'Default Title',
+              price: '23.00',
+              currency: 'USD',
+              stock: 'In Stock',
+              image_url: 'https://cdn.example.com/glow-pad.jpg',
+              image_urls: ['https://cdn.example.com/glow-pad.jpg'],
+            },
+          ],
+          field_quality_summary: {
+            description_raw: {
+              source_origin: 'browser_fallback',
+              source_quality_status: 'quarantined',
+              source_kinds: ['browser_fallback:description_raw'],
+              reason_codes: ['quarantined_source_kind'],
+            },
+            details_sections: {
+              source_origin: 'browser_fallback',
+              source_quality_status: 'quarantined',
+              source_kinds: ['browser_fallback:details_sections'],
+              reason_codes: ['quarantined_source_kind'],
+            },
+            ingredients_raw: {
+              source_origin: 'image_vision',
+              source_quality_status: 'quarantined',
+              source_kinds: ['product_image_vision'],
+              reason_codes: ['quarantined_source_kind'],
+            },
+            active_ingredients_raw: {
+              source_origin: 'image_vision',
+              source_quality_status: 'quarantined',
+              source_kinds: ['product_image_vision'],
+              reason_codes: ['quarantined_source_kind'],
+            },
+            how_to_use_raw: {
+              source_origin: 'browser_fallback',
+              source_quality_status: 'quarantined',
+              source_kinds: ['browser_fallback:how_to_use_raw'],
+              reason_codes: ['quarantined_source_kind'],
+            },
+            faq_items: {
+              source_origin: 'browser_fallback',
+              source_quality_status: 'quarantined',
+              source_kinds: ['browser_fallback:faq_items'],
+              reason_codes: ['quarantined_source_kind'],
+            },
+          },
+          quarantined_pdp_fields: {
+            description_raw: 'Fallback description from browser scrape.',
+            details_sections: [
+              { heading: 'Benefits', body: 'Recovered from browser fallback.' },
+            ],
+            ingredients_raw: 'Water, Glycerin, Niacinamide',
+            active_ingredients_raw: 'Niacinamide',
+            how_to_use_raw: 'Apply after cleansing.',
+            faq_items: [
+              { question: 'Can I use this daily?', answer: 'Yes.' },
+            ],
+          },
+        },
+      ],
+      variants: [],
+    };
+
+    const payload = buildSeedUpdatePayload(row, response, row.destination_url);
+
+    expect(payload.nextRow.seed_data.pdp_description_raw).toBeUndefined();
+    expect(payload.nextRow.seed_data.pdp_ingredients_raw).toBeUndefined();
+    expect(payload.nextRow.seed_data.snapshot.pdp_description_raw).toBeUndefined();
+    expect(payload.nextRow.seed_data.snapshot.pdp_ingredients_raw).toBeUndefined();
+    expect(payload.nextRow.seed_data.pdp_field_quality_summary.description_raw.source_quality_status).toBe('quarantined');
+    expect(payload.nextRow.seed_data.snapshot_quarantine).toEqual(
+      expect.objectContaining({
+        contract_version: 'external_seed.snapshot_quarantine.v1',
+        extractor_mode: 'puppeteer',
+      }),
+    );
+    expect(payload.nextRow.seed_data.snapshot_quarantine.fields.description_raw).toBe(
+      'Fallback description from browser scrape.',
+    );
+    expect(payload.nextRow.seed_data.snapshot_quarantine.fields.ingredients_raw).toBe(
+      'Water, Glycerin, Niacinamide',
+    );
+  });
+
   test('keeps explicit seed brand when building catalog extract requests', () => {
     const row = {
       id: 'eps_rarebeauty_1',

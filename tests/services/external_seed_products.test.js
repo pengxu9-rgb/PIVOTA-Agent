@@ -1965,4 +1965,54 @@ describe('externalSeedProducts helper', () => {
 
     expect(product).toBeNull();
   });
+
+  test('suppresses quarantined PDP fields and non-authoritative active ingredients on external seed runtime products', () => {
+    const product = buildExternalSeedProduct({
+      id: 'eps_quarantine_runtime',
+      external_product_id: 'ext_quarantine_runtime',
+      canonical_url: 'https://example.com/products/glow-pad',
+      destination_url: 'https://example.com/products/glow-pad',
+      title: 'Glow Pad',
+      seed_data: {
+        active_ingredients: ['Niacinamide', 'Panthenol benefits'],
+        pdp_description_raw: 'Fallback description from browser scrape.',
+        pdp_how_to_use_raw: 'Apply after cleansing.',
+        pdp_faq_items: [
+          { question: 'Can I use this daily?', answer: 'Yes.' },
+        ],
+        pdp_field_quality_summary: {
+          description_raw: {
+            source_origin: 'browser_fallback',
+            source_quality_status: 'quarantined',
+          },
+          how_to_use_raw: {
+            source_origin: 'browser_fallback',
+            source_quality_status: 'quarantined',
+          },
+          faq_items: {
+            source_origin: 'browser_fallback',
+            source_quality_status: 'quarantined',
+          },
+          details_sections: {
+            source_origin: 'shopify_json',
+            source_quality_status: 'high',
+          },
+        },
+        snapshot: {
+          title: 'Glow Pad',
+          pdp_description_raw: 'Fallback description from browser scrape.',
+          pdp_how_to_use_raw: 'Apply after cleansing.',
+          pdp_faq_items: [{ question: 'Can I use this daily?', answer: 'Yes.' }],
+          pdp_details_sections: [{ heading: 'Product Type', body: 'Pad' }],
+        },
+      },
+    });
+
+    expect(product.pdp_description_raw).toBeUndefined();
+    expect(product.pdp_how_to_use_raw).toBeUndefined();
+    expect(product.pdp_faq_items).toBeUndefined();
+    expect(product.pdp_details_sections).toEqual([{ heading: 'Product Type', body: 'Pad' }]);
+    expect(product.active_ingredients).toBeUndefined();
+    expect(product.pdp_field_quality_summary.description_raw.source_quality_status).toBe('quarantined');
+  });
 });

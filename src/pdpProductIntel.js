@@ -740,7 +740,7 @@ async function hydrateProductWithPublishedIntel({
   canonicalProductRef = null,
   alternateCanonicalProductRefs = [],
   requireReviewedBundle = false,
-  allowLegacyAnalysisFallback = true,
+  allowLegacyAnalysisFallback = false,
 } = {}) {
   const sourceProduct = asPlainObject(product) || {};
   const embeddedBundle = readPublishedProductIntelBundle(sourceProduct, { canonicalProductRef });

@@ -134,6 +134,61 @@ function summarizeOfferCommerceMetadata(offers) {
   };
 }
 
+function readOfferCurrency(offer) {
+  const o = offer && typeof offer === 'object' && !Array.isArray(offer) ? offer : null;
+  if (!o) return '';
+  return asString(
+    o?.price?.currency ??
+      o?.price?.current?.currency ??
+      o?.currency,
+  ).toUpperCase();
+}
+
+function offerHasAvailableInventory(offer) {
+  const o = offer && typeof offer === 'object' && !Array.isArray(offer) ? offer : null;
+  if (!o) return false;
+  const inStock = o?.inventory?.in_stock ?? o?.inventory?.inStock ?? o?.in_stock ?? o?.inStock;
+  return inStock !== false;
+}
+
+function computeOfferTotal(offer) {
+  const o = offer && typeof offer === 'object' && !Array.isArray(offer) ? offer : null;
+  if (!o) return Number.POSITIVE_INFINITY;
+  const price = Number(o?.price?.amount ?? o?.price?.current?.amount ?? 0) || 0;
+  const shipping = Number(o?.shipping?.cost?.amount ?? 0) || 0;
+  return price + shipping;
+}
+
+function readExpectedCurrency(offer) {
+  const o = offer && typeof offer === 'object' && !Array.isArray(offer) ? offer : null;
+  if (!o) return '';
+  return asString(
+    o?.agent_safe_commerce_facts?.currency_target ??
+      o?.commerce_facts_v1?.currency_target ??
+      o?.commerce_facts?.currency_target,
+  ).toUpperCase();
+}
+
+function offerMatchesExpectedCurrency(offer) {
+  const expected = readExpectedCurrency(offer);
+  const observed = readOfferCurrency(offer);
+  if (!expected || !observed) return false;
+  return expected === observed;
+}
+
+function scoreCommerceFactsCompleteness(offer) {
+  const o = offer && typeof offer === 'object' && !Array.isArray(offer) ? offer : null;
+  if (!o) return 0;
+  const facts = o.agent_safe_commerce_facts || o.commerce_facts_v1 || o.commerce_facts || {};
+  let score = 0;
+  if (facts?.regional_price?.amount != null && readOfferCurrency(offer)) score += 1;
+  if (asString(facts?.availability?.status)) score += 1;
+  if (asString(facts?.shipping?.status) && asString(facts?.shipping?.status).toLowerCase() !== 'unknown') score += 1;
+  if (asString(facts?.returns?.status) && asString(facts?.returns?.status).toLowerCase() !== 'unknown') score += 1;
+  if (Array.isArray(facts?.promotions) && facts.promotions.length > 0) score += 1;
+  return score;
+}
+
 function scoreOfferForPriority(offer) {
   if (!offer || typeof offer !== 'object') return 99;
   if (isInternalOffer(offer)) return 0;
@@ -142,13 +197,40 @@ function scoreOfferForPriority(offer) {
   return 50;
 }
 
+function compareOffersForPresentation(a, b) {
+  const aInternal = isInternalOffer(a) ? 1 : 0;
+  const bInternal = isInternalOffer(b) ? 1 : 0;
+  if (aInternal !== bInternal) return bInternal - aInternal;
+
+  const aInStock = offerHasAvailableInventory(a) ? 1 : 0;
+  const bInStock = offerHasAvailableInventory(b) ? 1 : 0;
+  if (aInStock !== bInStock) return bInStock - aInStock;
+
+  const aCurrencyMatch = offerMatchesExpectedCurrency(a) ? 1 : 0;
+  const bCurrencyMatch = offerMatchesExpectedCurrency(b) ? 1 : 0;
+  if (aCurrencyMatch !== bCurrencyMatch) return bCurrencyMatch - aCurrencyMatch;
+
+  const totalDelta = computeOfferTotal(a) - computeOfferTotal(b);
+  if (totalDelta !== 0) return totalDelta;
+
+  const completenessDelta = scoreCommerceFactsCompleteness(b) - scoreCommerceFactsCompleteness(a);
+  if (completenessDelta !== 0) return completenessDelta;
+
+  return scoreOfferForPriority(a) - scoreOfferForPriority(b);
+}
+
 function prioritizeOffers(offers) {
   const arr = Array.isArray(offers) ? offers.slice() : [];
   if (arr.length <= 1) return arr;
 
-  const scored = arr.map((o, idx) => ({ o, idx, score: scoreOfferForPriority(o) }));
-  scored.sort((a, b) => a.score - b.score || a.idx - b.idx);
+  const scored = arr.map((o, idx) => ({ o, idx }));
+  scored.sort((a, b) => compareOffersForPresentation(a.o, b.o) || a.idx - b.idx);
   return scored.map((x) => x.o);
+}
+
+function pickDefaultOfferId(offers) {
+  const prioritized = prioritizeOffers(offers);
+  return prioritized[0]?.offer_id || null;
 }
 
 function prioritizeOffersResolveResponse(upstreamData) {
@@ -156,10 +238,12 @@ function prioritizeOffersResolveResponse(upstreamData) {
   if (!data) return upstreamData;
 
   if (Array.isArray(data.offers)) {
-    const summary = summarizeOfferCommerceMetadata(prioritizeOffers(data.offers));
+    const prioritized = prioritizeOffers(data.offers);
+    const summary = summarizeOfferCommerceMetadata(prioritized);
     return {
       ...data,
       offers: summary.offers,
+      ...(pickDefaultOfferId(summary.offers) ? { default_offer_id: pickDefaultOfferId(summary.offers) } : {}),
       metadata: {
         ...(data.metadata && typeof data.metadata === 'object' ? data.metadata : {}),
         commerce_modes: summary.commerce_modes,
@@ -172,10 +256,15 @@ function prioritizeOffersResolveResponse(upstreamData) {
   }
 
   if (data.data && typeof data.data === 'object' && !Array.isArray(data.data) && Array.isArray(data.data.offers)) {
-    const summary = summarizeOfferCommerceMetadata(prioritizeOffers(data.data.offers));
+    const prioritized = prioritizeOffers(data.data.offers);
+    const summary = summarizeOfferCommerceMetadata(prioritized);
     return {
       ...data,
-      data: { ...data.data, offers: summary.offers },
+      data: {
+        ...data.data,
+        offers: summary.offers,
+        ...(pickDefaultOfferId(summary.offers) ? { default_offer_id: pickDefaultOfferId(summary.offers) } : {}),
+      },
       metadata: {
         ...(data.metadata && typeof data.metadata === 'object' ? data.metadata : {}),
         commerce_modes: summary.commerce_modes,
@@ -193,6 +282,9 @@ function prioritizeOffersResolveResponse(upstreamData) {
 module.exports = {
   annotateOffersWithCommerceMetadata,
   enrichOfferCommerceMetadata,
+  compareOffersForPresentation,
+  computeOfferTotal,
+  pickDefaultOfferId,
   prioritizeOffers,
   prioritizeOffersResolveResponse,
   summarizeOfferCommerceMetadata,

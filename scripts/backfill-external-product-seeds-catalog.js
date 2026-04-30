@@ -1432,6 +1432,103 @@ function deriveFieldCaptureStatus(reportedStatus, fields) {
   return Object.keys(next).length > 0 ? next : null;
 }
 
+const PDP_FIELD_QUALITY_KEYS = [
+  'description_raw',
+  'details_sections',
+  'ingredients_raw',
+  'active_ingredients_raw',
+  'how_to_use_raw',
+  'faq_items',
+];
+
+function normalizeFieldQualitySummary(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const next = {};
+  for (const key of PDP_FIELD_QUALITY_KEYS) {
+    const raw = value?.[key];
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) continue;
+    const sourceQualityStatus = normalizeNonEmptyString(raw.source_quality_status || raw.sourceQualityStatus).toLowerCase();
+    const sourceOrigin = normalizeNonEmptyString(raw.source_origin || raw.sourceOrigin).toLowerCase();
+    next[key] = {
+      ...(sourceOrigin ? { source_origin: sourceOrigin } : {}),
+      ...(sourceQualityStatus ? { source_quality_status: sourceQualityStatus } : {}),
+      source_kinds: Array.isArray(raw.source_kinds)
+        ? raw.source_kinds.map((item) => normalizeNonEmptyString(item)).filter(Boolean)
+        : [],
+      reason_codes: Array.isArray(raw.reason_codes)
+        ? raw.reason_codes.map((item) => normalizeNonEmptyString(item)).filter(Boolean)
+        : [],
+    };
+  }
+  return Object.keys(next).length > 0 ? next : null;
+}
+
+function readFieldQualityStatus(summary, key) {
+  return normalizeNonEmptyString(summary?.[key]?.source_quality_status).toLowerCase();
+}
+
+function isSurfaceablePdpField(summary, key) {
+  const status = readFieldQualityStatus(summary, key);
+  if (!status) return true;
+  return status === 'high' || status === 'medium';
+}
+
+function buildSnapshotQuarantine({
+  existing,
+  representativeProduct,
+  fieldQualitySummary,
+  extractorMode,
+  rawFieldValues,
+}) {
+  const existingQuarantine = ensureJsonObject(existing);
+  const quarantinedFieldsFromExtractor = ensureJsonObject(representativeProduct?.quarantined_pdp_fields);
+  const fields = {};
+  const reasonCodes = {};
+  const sourceStatus = {};
+  const sourceOrigin = {};
+
+  for (const key of PDP_FIELD_QUALITY_KEYS) {
+    const status = readFieldQualityStatus(fieldQualitySummary, key);
+    const valueFromExtractor = quarantinedFieldsFromExtractor[key];
+    const fallbackValue = rawFieldValues?.[key];
+    const hasFallbackValue =
+      Array.isArray(fallbackValue) ? fallbackValue.length > 0 : Boolean(normalizeNonEmptyString(fallbackValue));
+    const candidateValue = valueFromExtractor !== undefined ? valueFromExtractor : hasFallbackValue ? fallbackValue : undefined;
+    if (candidateValue === undefined) continue;
+    if (status !== 'quarantined' && status !== 'low') continue;
+    fields[key] = cloneJsonValue(candidateValue);
+    if (Array.isArray(fieldQualitySummary?.[key]?.reason_codes) && fieldQualitySummary[key].reason_codes.length > 0) {
+      reasonCodes[key] = [...fieldQualitySummary[key].reason_codes];
+    }
+    if (status) sourceStatus[key] = status;
+    if (normalizeNonEmptyString(fieldQualitySummary?.[key]?.source_origin)) {
+      sourceOrigin[key] = normalizeNonEmptyString(fieldQualitySummary[key].source_origin);
+    }
+  }
+
+  if (!Object.keys(fields).length) {
+    if (!Object.keys(existingQuarantine).length) return null;
+    return existingQuarantine;
+  }
+
+  return {
+    ...existingQuarantine,
+    contract_version: 'external_seed.snapshot_quarantine.v1',
+    source: 'catalog_intelligence',
+    ...(normalizeNonEmptyString(extractorMode) ? { extractor_mode: normalizeNonEmptyString(extractorMode) } : {}),
+    updated_at: new Date().toISOString(),
+    fields,
+    ...(Object.keys(reasonCodes).length ? { reason_codes_by_field: reasonCodes } : {}),
+    ...(Object.keys(sourceStatus).length ? { source_quality_status_by_field: sourceStatus } : {}),
+    ...(Object.keys(sourceOrigin).length ? { source_origin_by_field: sourceOrigin } : {}),
+  };
+}
+
+function countSnapshotQuarantineFields(snapshotQuarantine) {
+  const fields = ensureJsonObject(snapshotQuarantine?.fields);
+  return Object.keys(fields).length;
+}
+
 function findPdpDetailsSection(sections, headingPattern) {
   const normalizedSections = normalizeDetailsSections(sections);
   return normalizedSections.find((section) => headingPattern.test(section.heading)) || null;
@@ -2163,6 +2260,44 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     representativeProduct?.faq_items ||
       representativeProduct?.pdp_faq_items,
   );
+  const pdpFieldQualitySummary = normalizeFieldQualitySummary(
+    representativeProduct?.field_quality_summary ||
+      representativeProduct?.pdp_field_quality_summary ||
+      seedData.pdp_field_quality_summary ||
+      snapshot.pdp_field_quality_summary,
+  );
+  const surfaceableProductDescriptionRaw = isSurfaceablePdpField(pdpFieldQualitySummary, 'description_raw')
+    ? productDescriptionRaw
+    : '';
+  const surfaceablePdpDetailsSections = isSurfaceablePdpField(pdpFieldQualitySummary, 'details_sections')
+    ? pdpDetailsSections
+    : [];
+  const surfaceablePdpIngredientsRaw = isSurfaceablePdpField(pdpFieldQualitySummary, 'ingredients_raw')
+    ? pdpIngredientsRaw
+    : '';
+  const surfaceablePdpActiveIngredientsRaw = isSurfaceablePdpField(pdpFieldQualitySummary, 'active_ingredients_raw')
+    ? pdpActiveIngredientsRaw
+    : '';
+  const surfaceablePdpHowToUseRaw = isSurfaceablePdpField(pdpFieldQualitySummary, 'how_to_use_raw')
+    ? pdpHowToUseRaw
+    : '';
+  const surfaceablePdpFaqItems = isSurfaceablePdpField(pdpFieldQualitySummary, 'faq_items')
+    ? pdpFaqItems
+    : [];
+  const snapshotQuarantine = buildSnapshotQuarantine({
+    existing: seedData.snapshot_quarantine || snapshot.snapshot_quarantine,
+    representativeProduct,
+    fieldQualitySummary: pdpFieldQualitySummary,
+    extractorMode: response?.mode,
+    rawFieldValues: {
+      description_raw: productDescriptionRaw,
+      details_sections: pdpDetailsSections,
+      ingredients_raw: pdpIngredientsRaw,
+      active_ingredients_raw: pdpActiveIngredientsRaw,
+      how_to_use_raw: pdpHowToUseRaw,
+      faq_items: pdpFaqItems,
+    },
+  });
   const extractedProductKind = normalizeProductKind(
     representativeProduct?.product_kind ||
       representativeProduct?.productKind,
@@ -2184,17 +2319,21 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
       ? (extractedBundleComponents.length > 0 ? extractedBundleComponents : existingBundleComponents)
       : [];
   const existingPdpDescriptionRaw = cleanPdpDescriptionCandidate(
-    identityRepairBackfill ? '' : seedData.pdp_description_raw || snapshot.pdp_description_raw,
+    identityRepairBackfill || !isSurfaceablePdpField(pdpFieldQualitySummary, 'description_raw')
+      ? ''
+      : seedData.pdp_description_raw || snapshot.pdp_description_raw,
     pdpDetailsSections,
   );
   const nextPdpDescriptionRaw =
-    productDescriptionRaw ||
+    surfaceableProductDescriptionRaw ||
     existingPdpDescriptionRaw;
   let nextPdpDetailsSections =
-    pdpDetailsSections.length > 0
-      ? pdpDetailsSections
+    surfaceablePdpDetailsSections.length > 0
+      ? surfaceablePdpDetailsSections
       : identityRepairBackfill
         ? []
+        : !isSurfaceablePdpField(pdpFieldQualitySummary, 'details_sections')
+          ? []
         : normalizeDetailsSections(
           Array.isArray(seedData.pdp_details_sections) && seedData.pdp_details_sections.length > 0
             ? seedData.pdp_details_sections
@@ -2215,15 +2354,19 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
   }
   const nextPdpIngredientsRaw = supportsFormulaPdpFields
     ? pickPdpIngredientsRaw(
-        pdpIngredientsRaw,
+        surfaceablePdpIngredientsRaw,
         nextPdpDetailsSections,
-        identityRepairBackfill ? '' : normalizeNonEmptyString(seedData.pdp_ingredients_raw || snapshot.pdp_ingredients_raw),
+        identityRepairBackfill || !isSurfaceablePdpField(pdpFieldQualitySummary, 'ingredients_raw')
+          ? ''
+          : normalizeNonEmptyString(seedData.pdp_ingredients_raw || snapshot.pdp_ingredients_raw),
       )
     : '';
   const nextPdpActiveIngredientsRaw = supportsFormulaPdpFields
     ? cleanPdpActiveIngredientsRaw(
-        pdpActiveIngredientsRaw ||
-          (identityRepairBackfill ? '' : normalizeNonEmptyString(seedData.pdp_active_ingredients_raw || snapshot.pdp_active_ingredients_raw)),
+        surfaceablePdpActiveIngredientsRaw ||
+          (identityRepairBackfill || !isSurfaceablePdpField(pdpFieldQualitySummary, 'active_ingredients_raw')
+            ? ''
+            : normalizeNonEmptyString(seedData.pdp_active_ingredients_raw || snapshot.pdp_active_ingredients_raw)),
       )
     : '';
   const pdpHowToUseContext = [
@@ -2234,23 +2377,27 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     representativeProduct?.category,
     seedData.category,
     snapshot.category,
-    productDescriptionRaw,
+    surfaceableProductDescriptionRaw,
     nextPdpActiveIngredientsRaw,
   ].join(' ');
   const nextPdpHowToUseRaw = supportsHowToUsePdpField
     ? pickPdpHowToUseRaw(
-        pdpHowToUseRaw,
+        surfaceablePdpHowToUseRaw,
         nextPdpDetailsSections,
-        identityRepairBackfill ? '' : normalizeNonEmptyString(seedData.pdp_how_to_use_raw || snapshot.pdp_how_to_use_raw),
+        identityRepairBackfill || !isSurfaceablePdpField(pdpFieldQualitySummary, 'how_to_use_raw')
+          ? ''
+          : normalizeNonEmptyString(seedData.pdp_how_to_use_raw || snapshot.pdp_how_to_use_raw),
         pdpHowToUseContext,
       )
     : '';
   nextPdpDetailsSections = filterDuplicateHowToSections(nextPdpDetailsSections, nextPdpHowToUseRaw);
   const nextPdpFaqItems =
-    pdpFaqItems.length > 0
-      ? pdpFaqItems
+    surfaceablePdpFaqItems.length > 0
+      ? surfaceablePdpFaqItems
       : identityRepairBackfill
         ? []
+        : !isSurfaceablePdpField(pdpFieldQualitySummary, 'faq_items')
+          ? []
         : normalizeFaqItems(
           Array.isArray(seedData.pdp_faq_items) && seedData.pdp_faq_items.length > 0
             ? seedData.pdp_faq_items
@@ -2278,7 +2425,7 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
   const nextDescriptionOrigin = (() => {
     if (manualDescription) return existingDescriptionOrigin || 'legacy_unknown';
     if (liveExtractedDescription) return 'pdp_variant_description';
-    if (productDescriptionRaw) return 'pdp_product_description';
+    if (surfaceableProductDescriptionRaw) return 'pdp_product_description';
     if (existingDescriptionOrigin) return existingDescriptionOrigin;
     const legacyDescription =
       cleanPdpDescriptionCandidate(snapshot.description, nextPdpDetailsSections) ||
@@ -2295,7 +2442,7 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
   const description = manualDescription ||
     normalizeNonEmptyString(
       liveExtractedDescription ||
-        productDescriptionRaw ||
+        surfaceableProductDescriptionRaw ||
         (!suppressStaleDescriptionFallback
           ? fallbackSeedDescription
           : ''),
@@ -2368,9 +2515,9 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     canonical_url: representativeProductUrl || normalizeUrlLike(snapshot.canonical_url) || normalizeUrlLike(targetUrl),
     title,
     description:
-      manualDescription || liveExtractedDescription || productDescriptionRaw
+      manualDescription || liveExtractedDescription || surfaceableProductDescriptionRaw
         ? liveExtractedDescription ||
-          productDescriptionRaw ||
+          surfaceableProductDescriptionRaw ||
           cleanPdpDescriptionCandidate(snapshot.description, nextPdpDetailsSections)
         : suppressStaleDescriptionFallback
           ? ''
@@ -2387,6 +2534,8 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     ...(nextBundleComponents.length > 0 ? { bundle_components: nextBundleComponents } : {}),
     ...(nextDescriptionOrigin ? { seed_description_origin: nextDescriptionOrigin } : {}),
     ...(pdpFieldCaptureStatus ? { pdp_field_capture_status: pdpFieldCaptureStatus } : {}),
+    ...(pdpFieldQualitySummary ? { pdp_field_quality_summary: pdpFieldQualitySummary } : {}),
+    ...(snapshotQuarantine ? { snapshot_quarantine: snapshotQuarantine } : {}),
     image_url: imageUrl || normalizeNonEmptyString(snapshot.image_url),
     image_urls: mergedImageUrls,
     images: mergedImageUrls,
@@ -2423,6 +2572,8 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     ...(nextBundleComponents.length > 0 ? { bundle_components: nextBundleComponents } : {}),
     ...(nextDescriptionOrigin ? { seed_description_origin: nextDescriptionOrigin } : {}),
     ...(pdpFieldCaptureStatus ? { pdp_field_capture_status: pdpFieldCaptureStatus } : {}),
+    ...(pdpFieldQualitySummary ? { pdp_field_quality_summary: pdpFieldQualitySummary } : {}),
+    ...(snapshotQuarantine ? { snapshot_quarantine: snapshotQuarantine } : {}),
     ...(imageUrl ? { image_url: imageUrl } : {}),
     ...(mergedImageUrls.length > 0 ? { image_urls: mergedImageUrls, images: mergedImageUrls } : {}),
     ...(effectiveSnapshotVariants.length > 0 ? { variants: effectiveSnapshotVariants } : {}),

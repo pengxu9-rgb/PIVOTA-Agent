@@ -194,13 +194,14 @@ function buildHeuristicIntroCandidate(value, maxChars) {
   return '';
 }
 
-function normalizeCardIntroCandidate(value, { fallback = '', maxChars = 90 } = {}) {
+function normalizeCardIntroCandidate(value, { fallback = '', maxChars = 90, allowHeuristic = false } = {}) {
   const direct = firstCompleteShortSentence(value, maxChars);
   if (direct) return direct;
-  const heuristic = buildHeuristicIntroCandidate(value, maxChars);
-  if (heuristic) return heuristic;
   const fallbackDirect = firstCompleteShortSentence(fallback, maxChars);
   if (fallbackDirect) return fallbackDirect;
+  if (!allowHeuristic) return '';
+  const heuristic = buildHeuristicIntroCandidate(value, maxChars);
+  if (heuristic) return heuristic;
   return buildHeuristicIntroCandidate(fallback, maxChars);
 }
 

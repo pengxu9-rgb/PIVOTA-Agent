@@ -655,13 +655,8 @@ describe('pdp product intel bundle shaping', () => {
     ]);
     expect(bundle.shopping_card.highlight).toBe('Creators often point to the lightweight');
     expect(bundle.search_card.highlight_candidate).toBe('Creators often point to the lightweight');
-    expect(bundle.shopping_card.intro).toBe(
-      'Multi-active serum with vitamin C, retinol, niacinamide, hyaluronic and salicylic acids.',
-    );
-    expect(bundle.search_card.intro_candidate).toBe(
-      'Multi-active serum with vitamin C, retinol, niacinamide, hyaluronic and salicylic acids.',
-    );
-    expect(bundle.search_card.intro_candidate.length).toBeLessThanOrEqual(90);
+    expect(bundle.shopping_card.intro).toBeUndefined();
+    expect(bundle.search_card.intro_candidate).toBeUndefined();
   });
 
   test('published bundles expose reviewed shopping and search card metadata', () => {
