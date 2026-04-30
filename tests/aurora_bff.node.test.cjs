@@ -1490,6 +1490,14 @@ test('/v1/chat: Seoul travel follow-up returns phase-aware Chinese guidance', as
       assert.match(assistant, /防晒|SPF/);
       assert.match(assistant, /屏障|修护/);
       assert.doesNotMatch(assistant, /Bangkok|Reykjavik|Which scenario should I optimize for/i);
+      const chipLabels = (Array.isArray(resp.body?.suggested_chips) ? resp.body.suggested_chips : [])
+        .map((chip) => String(chip?.label || ''))
+        .join(' | ');
+      assert.match(chipLabels, /出发前/);
+      assert.match(chipLabels, /飞行中/);
+      assert.match(chipLabels, /落地前 48 小时/);
+      assert.match(chipLabels, /Seoul.*当地买/);
+      assert.doesNotMatch(chipLabels, /偏油|混油|混干|干皮/);
 
       delete require.cache[moduleId];
     },
@@ -1549,6 +1557,14 @@ test('/v1/chat: English Seoul travel question stays in English', async () => {
       assert.match(assistant, /salicylic acid/i);
       assert.match(assistant, /vitamin C/i);
       assert.doesNotMatch(assistant, /[\u3400-\u9fff]/);
+      const chipLabels = (Array.isArray(resp.body?.suggested_chips) ? resp.body.suggested_chips : [])
+        .map((chip) => String(chip?.label || ''))
+        .join(' | ');
+      assert.match(chipLabels, /before departure/i);
+      assert.match(chipLabels, /in flight/i);
+      assert.match(chipLabels, /first 48 hours/i);
+      assert.match(chipLabels, /buy in Seoul/i);
+      assert.doesNotMatch(chipLabels, /[\u3400-\u9fff]/);
 
       delete require.cache[moduleId];
     },

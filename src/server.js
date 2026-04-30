@@ -9882,9 +9882,9 @@ async function queryBeautyExternalSeedRowsFast({
 
   const safeMarket = String(market || 'US').trim().toUpperCase() || 'US';
   const safeLimit = Math.max(1, Math.min(60, Number(limit || 24) || 24));
-  const perScopeRowLimit = Math.max(12, Math.min(48, safeLimit * 4));
+  const perScopeRowLimit = Math.max(8, Math.min(24, safeLimit * 2));
   const categoryTerms = buildBeautyExternalSeedCategoryTerms(intent);
-  const perCategoryRowLimit = Math.max(4, Math.min(16, Math.ceil(perScopeRowLimit / Math.max(1, categoryTerms.length))));
+  const perCategoryRowLimit = Math.max(3, Math.min(8, Math.ceil(perScopeRowLimit / Math.max(1, categoryTerms.length))));
   const recallPatterns = buildBeautyExternalSeedRecallPatterns({ queryText, intent });
   const toolScopes = toolScope === 'creator_preferred'
     ? ['creator_agents', '*', '']
@@ -10343,12 +10343,57 @@ function beautyProductMatchesFamily(product, family) {
   return false;
 }
 
+function buildBeautyProductDisplayText(product) {
+  return normalizeSearchTextForMatch([
+    product?.title,
+    product?.name,
+    product?.product_name,
+    product?.display_name,
+    product?.brand,
+    product?.vendor,
+    product?.category,
+    product?.product_type,
+    product?.canonical_url,
+    product?.destination_url,
+    product?.url,
+  ].filter(Boolean).join(' '));
+}
+
+function buildBeautyProductPrimarySurfaceText(product) {
+  return normalizeSearchTextForMatch([
+    product?.title,
+    product?.name,
+    product?.product_name,
+    product?.display_name,
+    product?.brand,
+    product?.vendor,
+    product?.canonical_url,
+    product?.destination_url,
+    product?.url,
+  ].filter(Boolean).join(' '));
+}
+
+function hasKBeautyLocalIntent(queryText = '') {
+  return /\b(k[-\s]?beauty|korean|korea|seoul)\b|韩国|韓國|韩妆|韓妝|首尔|首爾/i.test(String(queryText || ''));
+}
+
+function beautyProductHasKBeautySignal(product) {
+  const text = buildFallbackCandidateText(product);
+  if (!text) return false;
+  return (
+    /\b(k[-\s]?beauty|korean|korea|seoul|round\s*lab|dokdo|beauty\s+of\s+joseon|joseon|cosrx|anua|skin1004|skin\s*1004|torriden|dr\.?\s*jart|etude|innisfree|isntree|purito|haruharu|numbuzin|abib|laneige|rovectin|mediheal|mixsoon|axis[-\s]?y|ma:nyo|manyo|pyunkang|illiyoon|iunik|skinfood|skin\s*food|celimax|needly|d'?alba|romand|mugwort|birch\s+moisturi[sz]ing\s+sun)\b/i.test(text) ||
+    /韩国|韓國|韩妆|韓妝|首尔|首爾/.test(text)
+  );
+}
+
 function isBeautyProductContraindicatedForQuery(product, queryText = '', intent = null) {
   const text = buildFallbackCandidateText(product);
   if (!text) return false;
   const profile = intent || inferBeautyMainlineIntent(queryText);
   const safety = new Set(Array.isArray(profile.safety) ? profile.safety : []);
   const families = new Set(Array.isArray(profile.families) ? profile.families : []);
+  const displayText = buildBeautyProductDisplayText(product);
+  const primarySurfaceText = buildBeautyProductPrimarySurfaceText(product);
   const retinoidHit =
     /\b(bio[-\s]?retinol|retinol|retinal|retinoid|retinyl|tretinoin|adapalene|hydroxypinacolone|hpr)\b/i.test(text) ||
     /视黄醇|視黃醇|维a醇|維a醇|维甲酸|維甲酸|a醇/.test(text);
@@ -10403,6 +10448,15 @@ function isBeautyProductContraindicatedForQuery(product, queryText = '', intent 
     families.has('moisturizer') &&
     /\b(barrier|repair|sensitive|sensiti[sz]ed|fragrance\s*free|ceramide|panthenol|cica)\b|屏障|修护|修護|敏感|无香精|無香精|神经酰胺|神經醯胺|泛醇/i.test(normalizedQuery) &&
     /\b(resurfacing|exfoliating|peel|peeling|retinol|retinoid|acid\s*toner|clarifying|aha|bha|salicylic|glycolic|lactic|mandelic)\b|刷酸|去角质|去角質|水杨酸|水楊酸|果酸|视黄醇|視黃醇/i.test(text)
+  ) {
+    return true;
+  }
+  if (
+    families.has('moisturizer') &&
+    /\b(barrier|repair|sensitive|sensiti[sz]ed|fragrance\s*free|ceramide|panthenol|cica)\b|屏障|修护|修護|敏感|无香精|無香精|神经酰胺|神經醯胺|泛醇/i.test(normalizedQuery) &&
+    /\b(azelaic|salicylic|glycolic|lactic|mandelic|ascorbic|vitamin\s*c|retinol|retinal|aha|bha|pha)\b/i.test(displayText) &&
+    /\b(serum|suspension|solution|treatment|toner|peel|exfoliating|acid)\b/i.test(displayText) &&
+    !/\b(moisturi[sz]er|barrier|repair|ceramide|cica|panthenol|b5)\b/i.test(primarySurfaceText)
   ) {
     return true;
   }
@@ -10690,6 +10744,10 @@ function scoreBeautyExternalSeedProduct({ product, queryText, intent, normalized
   if (intent?.safety?.includes('avoid_exfoliating_acids') && /\b(barrier|repair|ceramide|panthenol|cica|gentle|hydrating)\b/i.test(candidateText)) {
     score += 12;
   }
+  if (hasKBeautyLocalIntent(queryText)) {
+    if (beautyProductHasKBeautySignal(product)) score += 18;
+    else score -= 6;
+  }
   const queryHasTravelSizeNeed =
     /\b(travel|portable|carry\s*on|carryon|flight|mini|travel\s*size)\b|旅行|便携|便攜|小样|小樣/.test(String(queryText || ''));
   const packVariant = detectBeautyProductPackVariant(product);
@@ -10747,7 +10805,7 @@ async function searchBeautyExternalSeedProductsMainline({
       .trim()
       .toUpperCase() || 'US';
   const retrievalQueries = buildBeautyMainlineRetrievalQueries(queryText, beautyIntent);
-  const perQueryLimit = Math.max(18, Math.min(48, safeLimit * 4));
+  const perQueryLimit = Math.max(safeLimit, Math.min(24, safeLimit * 2));
   const creatorScopedRows = await queryBeautyExternalSeedRowsFast({
     market,
     queryText,

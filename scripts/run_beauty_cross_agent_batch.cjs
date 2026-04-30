@@ -135,6 +135,30 @@ function removeFreePhrase(text, term) {
     .replace(new RegExp(`free\\s+of\\s+${escaped}`, 'gi'), ' ');
 }
 
+function isBlockedTermNegatedAt(normalizedSource, index) {
+  const before = normalizedSource.slice(Math.max(0, index - 96), index).trimEnd();
+  if (!before) return false;
+  if (
+    /\b(?:do\s+not|don'?t|dont|avoid|skip|never|not|no|without)\b(?:\s+[a-z0-9%+.-]+){0,8}$/.test(before) ||
+    /(?:不要|别|別|避免|不建议|不建議|先别|先別|不要为了|不要為了)[\u4e00-\u9fff a-z0-9%+.-]{0,32}$/.test(before)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function containsUnnegatedBlockedTerm(text, term) {
+  const source = normalizeText(text);
+  const needle = normalizeText(term);
+  if (!source || !needle) return false;
+  let cursor = source.indexOf(needle);
+  while (cursor >= 0) {
+    if (!isBlockedTermNegatedAt(source, cursor)) return true;
+    cursor = source.indexOf(needle, cursor + needle.length);
+  }
+  return false;
+}
+
 function containsTerm(text, term, { blocked = false } = {}) {
   const rawTerm = String(term || '').trim();
   if (!rawTerm) return false;
@@ -147,6 +171,7 @@ function containsTerm(text, term, { blocked = false } = {}) {
       /果酸|水杨酸|水楊酸|杏仁酸|刷酸|酸类焕肤|酸類煥膚/.test(source)
     );
   }
+  if (blocked) return containsUnnegatedBlockedTerm(source, rawTerm);
   return normalizeText(source).includes(normalizeText(rawTerm));
 }
 

@@ -284,4 +284,30 @@ describe('beauty cross-agent batch runner', () => {
     expect(summary.timeout_fallback_count).toBe(1);
     expect(summary.ok).toBe(false);
   });
+
+  test('assistant must-not guard ignores explicit avoidance wording', () => {
+    const { evaluateRiskGuards } = require('../scripts/run_beauty_cross_agent_batch.cjs');
+    const guardedCase = {
+      risk_guards: {
+        severity: 'medium',
+        assistant_must_not_include_any: ['large routine'],
+      },
+    };
+
+    const safe = evaluateRiskGuards(guardedCase, [
+      {
+        agent: 'aurora_chat',
+        assistant_text: 'Do not expand local shopping into a large routine; keep sunscreen and repair cream first.',
+      },
+    ]);
+    const unsafe = evaluateRiskGuards(guardedCase, [
+      {
+        agent: 'aurora_chat',
+        assistant_text: 'Build a large routine with many new steps before travel.',
+      },
+    ]);
+
+    expect(safe.pass).toBe(true);
+    expect(unsafe.pass).toBe(false);
+  });
 });
