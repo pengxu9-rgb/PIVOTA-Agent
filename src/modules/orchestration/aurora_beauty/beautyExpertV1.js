@@ -1790,6 +1790,21 @@ function projectBeautyExpertVisibleReply(response = {}, beautyExpertV1 = null) {
   if (!isPlainObject(response) || !isPlainObject(beautyExpertV1)) return response;
   const existingReply = pickFirstTrimmed(response.reply);
   const assistantSurfaceText = pickFirstTrimmed(response.assistant_message?.content, response.assistant_text);
+  const pivotContractVersion = pickFirstTrimmed(
+    response.session_patch?.meta?.pivot_contract_version,
+    response.meta?.pivot_contract_version,
+    response.metadata?.pivot_contract_version,
+  );
+  if (
+    pivotContractVersion === 'pivot.agent.v1' &&
+    assistantSurfaceText &&
+    existingReply !== assistantSurfaceText
+  ) {
+    return {
+      ...response,
+      reply: assistantSurfaceText,
+    };
+  }
   const projectionType = normalizeSourceToken(beautyExpertV1?.delegation_trace?.projection_type);
   const hasFinalSelectionAuthority = Boolean(
     extractFinalSelectionContractFromValue(response) ||
