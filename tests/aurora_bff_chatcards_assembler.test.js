@@ -360,4 +360,44 @@ describe('chatCardsAssembler safety mapping', () => {
     expect(out.assistant_text).toBe('');
     expect(out.assistant_message).toBeNull();
   });
+
+  test('beauty internal safety plan cards map to schema-safe routine cards with safety-first fallback text', () => {
+    const out = buildChatCardsResponse({
+      envelope: makeEnvelope({
+        assistant_message: null,
+        beauty_expert_v1: {
+          beauty_intent: {
+            domain: 'beauty',
+            user_goal: '昨晚用了酸今天刺痛泛红，今晚还能上视黄醇吗？',
+          },
+        },
+        cards: [
+          {
+            card_id: 'routine_safety_plan_test',
+            type: 'routine_safety_plan',
+            payload: {
+              sections: [
+                {
+                  kind: 'bullets',
+                  items: ['今晚先停酸和视黄醇。'],
+                },
+              ],
+            },
+          },
+        ],
+      }),
+      ctx: makeCtx({ lang: 'CN', ui_lang: 'CN', match_lang: 'CN', language_resolution_source: 'header' }),
+      intent: 'routine',
+      intentConfidence: 0.9,
+    });
+
+    expect(out.cards[0].type).toBe('routine');
+    expect(out.cards[0].title).toBe('活性分频建议');
+    expect(out.assistant_text).toContain('先不要');
+    expect(out.assistant_text).toContain('刺痛');
+    expect(out.assistant_text).toContain('防晒 SPF');
+    expect(out.safety.risk_level).toBe('high');
+    expect(out.safety.red_flags).toContain('beauty_safety_fallback');
+    expect(out.assistant_text).not.toContain('系统暂时无法生成完整结构化回复');
+  });
 });
