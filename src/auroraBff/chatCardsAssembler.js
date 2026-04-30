@@ -255,6 +255,79 @@ function buildSafetyDisclaimer({ riskLevel, language }) {
   return '';
 }
 
+function extractBeautyFallbackGoal(envelope) {
+  const base = isPlainObject(envelope) ? envelope : {};
+  const expert = isPlainObject(base.beauty_expert_v1) ? base.beauty_expert_v1 : {};
+  const beautyIntent = isPlainObject(expert.beauty_intent) ? expert.beauty_intent : {};
+  const analysisSummary = isPlainObject(expert.analysis_summary) ? expert.analysis_summary : {};
+  return (
+    asString(beautyIntent.user_goal) ||
+    asString(analysisSummary.user_goal) ||
+    asString(base.reply)
+  );
+}
+
+function extractBeautyFallbackContextText(envelope) {
+  const base = isPlainObject(envelope) ? envelope : {};
+  const sessionPatch = isPlainObject(base.session_patch) ? base.session_patch : {};
+  const parts = [
+    extractBeautyFallbackGoal(base),
+    asString(base.reply),
+    asString(base.assistant_message && base.assistant_message.content),
+  ];
+  const profile = isPlainObject(sessionPatch.profile) ? sessionPatch.profile : null;
+  const routinePatch = isPlainObject(sessionPatch.routine_patch) ? sessionPatch.routine_patch : null;
+  const state = isPlainObject(sessionPatch.state) ? sessionPatch.state : null;
+  for (const value of [profile, routinePatch, state]) {
+    if (!value) continue;
+    try {
+      parts.push(JSON.stringify(value));
+    } catch (_) {
+      // Ignore non-serializable defensive context.
+    }
+  }
+  return parts.filter(Boolean).join(' ');
+}
+
+function buildBeautySafetyFallbackText({ envelope, language = 'EN' } = {}) {
+  const contextText = extractBeautyFallbackContextText(envelope);
+  if (!contextText) return '';
+  const isBeautyContext =
+    isPlainObject(envelope && envelope.beauty_expert_v1) ||
+    /护肤|护膚|美妆|美妝|routine|skin|acne|retinol|sunscreen|cleanser|moisturi[sz]er|barrier|spf|刷酸|水杨酸|水楊酸|视黄醇|視黃醇/i.test(contextText);
+  if (!isBeautyContext) return '';
+
+  const hasIrritationSignal =
+    /刺痛|泛红|泛紅|脱皮|脫皮|屏障|修护|修護|stinging|redness|peeling|barrier|sensiti[sz]ed/i.test(contextText);
+  const hasAcidSignal =
+    /刷酸|水杨酸|水楊酸|果酸|AHA|BHA|glycolic|salicylic|lactic|mandelic|acid/i.test(contextText);
+  const hasActiveStackSignal =
+    /BPO|过氧化苯甲酰|過氧化苯甲醯|视黄醇|視黃醇|retinol|维\s*C|維\s*C|vitamin\s*C|都用|叠加|疊加|排班|active/i.test(contextText);
+
+  if (language === 'CN') {
+    if (hasActiveStackSignal) {
+      return '先不要把 BPO、水杨酸、维 C 和视黄醇叠在同一晚。现在有刺痛或泛红时，今晚先停酸和视黄醇，只做温和洁面、保湿修护、屏障支持；白天必须防晒 SPF，稳定 48-72 小时后再按一周分频恢复。';
+    }
+    if (hasAcidSignal || hasIrritationSignal) {
+      return '不建议继续刷酸加速代谢。脱皮、刺痛或泛红说明屏障可能受损，先暂停 AHA/BHA、磨砂和视黄醇，改成温和洁面、修护保湿和白天防晒 SPF；等屏障稳定后再低频恢复。';
+    }
+    return '';
+  }
+
+  if (hasActiveStackSignal) {
+    return 'Do not stack BPO, salicylic acid, vitamin C, and retinol in the same night. With stinging or redness, pause acids and retinol tonight, use a gentle cleanser plus barrier-support moisturizer, and keep daily SPF; restart later on a spaced weekly schedule.';
+  }
+  if (hasAcidSignal || hasIrritationSignal) {
+    return 'Do not keep exfoliating to speed turnover while peeling, stinging, or redness is present. Pause AHA/BHA, scrubs, and retinoids, switch to gentle cleansing and barrier repair, and keep daily SPF until the barrier is stable.';
+  }
+  return '';
+}
+
+function resolveFallbackRiskLevel({ riskLevel, beautySafetyFallbackText }) {
+  if (asString(beautySafetyFallbackText)) return 'high';
+  return riskLevel;
+}
+
 function extractEnvelopeMeta(envelope) {
   const base = isPlainObject(envelope) ? envelope : {};
   const sessionPatch = isPlainObject(base.session_patch) ? base.session_patch : {};
@@ -618,11 +691,13 @@ function buildChatCardsResponse({
     languageMismatch ? 'mixed_override' : 'text_detected',
   );
   const preserveNullAssistant = shouldPreserveNullAssistantForBeautyMainlineReco(base);
+  const beautySafetyFallbackText = buildBeautySafetyFallbackText({ envelope: base, language: uiLanguage });
 
   const assistantText =
     preserveNullAssistant
       ? ''
       : asString(base?.assistant_message?.content) ||
+        beautySafetyFallbackText ||
         (uiLanguage === 'CN'
           ? '我先给你一个低风险可执行建议，再按你的补充逐步细化。'
           : 'I will start with a low-risk actionable suggestion, then refine with your context.');
@@ -644,8 +719,13 @@ function buildChatCardsResponse({
   });
 
   const riskLevel = normalizeRiskLevel({ safetyDecision, envelope: base });
+  const effectiveRiskLevel = resolveFallbackRiskLevel({ riskLevel, beautySafetyFallbackText });
   const redFlags = normalizeSafetyRedFlags({ safetyDecision, envelope: base });
-  const disclaimer = buildSafetyDisclaimer({ riskLevel, language: uiLanguage });
+  const effectiveRedFlags =
+    asString(beautySafetyFallbackText) && !redFlags.includes('beauty_safety_fallback')
+      ? [...redFlags, 'beauty_safety_fallback'].slice(0, 8)
+      : redFlags;
+  const disclaimer = buildSafetyDisclaimer({ riskLevel: effectiveRiskLevel, language: uiLanguage });
 
   const ops = normalizeOps({ envelope: base, threadOps });
   const compatTelemetry = buildCompatTelemetry({ envelope: base });
@@ -665,8 +745,8 @@ function buildChatCardsResponse({
     session_patch: isPlainObject(base.session_patch) ? base.session_patch : {},
     ops,
     safety: {
-      risk_level: riskLevel,
-      red_flags: redFlags,
+      risk_level: effectiveRiskLevel,
+      red_flags: effectiveRedFlags,
       disclaimer,
     },
     telemetry: {
@@ -712,14 +792,25 @@ function buildChatCardsResponse({
     };
   }
 
+  const parseFailureAssistantText =
+    assistantText ||
+    (uiLanguage === 'CN'
+      ? '系统暂时无法生成完整结构化回复，我先给你保守建议。'
+      : 'Failed to generate a full structured response, returning a conservative fallback.');
+  const parseFailureRiskLevel = resolveFallbackRiskLevel({
+    riskLevel: effectiveRiskLevel,
+    beautySafetyFallbackText: parseFailureAssistantText === assistantText ? beautySafetyFallbackText : '',
+  });
+  const parseFailureRedFlags =
+    parseFailureRiskLevel === 'high' && !effectiveRedFlags.includes('beauty_safety_fallback')
+      ? [...effectiveRedFlags, 'beauty_safety_fallback'].slice(0, 8)
+      : effectiveRedFlags;
+
   return {
     version: '1.0',
     request_id: requestId,
     trace_id: traceId,
-    assistant_text:
-      uiLanguage === 'CN'
-        ? '系统暂时无法生成完整结构化回复，我先给你保守建议。'
-        : 'Failed to generate a full structured response, returning a conservative fallback.',
+    assistant_text: parseFailureAssistantText,
     cards: [],
     follow_up_questions: [],
     suggested_quick_replies: [],
@@ -730,13 +821,15 @@ function buildChatCardsResponse({
       experiment_events: [],
     },
     safety: {
-      risk_level: 'none',
-      red_flags: [],
-      disclaimer: '',
+      risk_level: parseFailureRiskLevel,
+      red_flags: parseFailureRedFlags,
+      disclaimer: buildSafetyDisclaimer({ riskLevel: parseFailureRiskLevel, language: uiLanguage }),
     },
     telemetry: {
-      intent: 'unknown',
-      intent_confidence: 0,
+      intent: asString(intent) || 'unknown',
+      intent_confidence: Number.isFinite(Number(intentConfidence))
+        ? Math.max(0, Math.min(1, Number(intentConfidence)))
+        : 0,
       entities: [],
       ui_language: uiLanguage,
       matching_language: matchingLanguage,
