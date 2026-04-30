@@ -366,6 +366,10 @@ const PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED = parseBooleanEnv(
   process.env.PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED,
   true,
 );
+const PIVOT_BEAUTY_PARALLEL_SCOPE_RECALL_ENABLED = parseBooleanEnv(
+  process.env.PIVOT_BEAUTY_PARALLEL_SCOPE_RECALL_ENABLED,
+  true,
+);
 const REVIEWS_API_BASE = (
   process.env.REVIEWS_API_BASE ||
   process.env.REVIEWS_BACKEND_URL ||
@@ -9903,19 +9907,17 @@ async function queryBeautyExternalSeedRowsFast({
     seed_data->'snapshot'->>'product_type',
     ''
   ))`;
-  for (const tool of toolScopes) {
-    if (rawProducts.length >= safeLimit) break;
-    const filters = [
-      `${categoryAuthoritySql} = ANY($2::text[])`,
-    ];
-    if (inStockOnly) {
-      filters.push(
-        `coalesce(lower(availability), '') NOT IN ('out of stock', 'out_of_stock', 'outofstock', 'oos')`,
-      );
-    }
-    let result;
+  const filters = [
+    `${categoryAuthoritySql} = ANY($2::text[])`,
+  ];
+  if (inStockOnly) {
+    filters.push(
+      `coalesce(lower(availability), '') NOT IN ('out of stock', 'out_of_stock', 'outofstock', 'oos')`,
+    );
+  }
+  const runScopeQuery = async (tool) => {
     try {
-      result = await queryBeautyExternalSeedRowsWithTimeout(
+      const result = await queryBeautyExternalSeedRowsWithTimeout(
         `
         WITH ranked AS (
         SELECT
@@ -9974,28 +9976,41 @@ async function queryBeautyExternalSeedRowsFast({
         [safeMarket, categoryTerms, tool, perCategoryRowLimit, perScopeRowLimit],
         1200,
       );
+      const rows = Array.isArray(result?.rows) ? result.rows : [];
+      return {
+        tool,
+        rows,
+        variant: {
+          query: String(queryText || '').trim(),
+          row_count: rows.length,
+          category_terms: categoryTerms,
+          recall_pattern_count: recallPatterns.length,
+          per_category_row_limit: perCategoryRowLimit,
+          tool_scope: tool || '(empty)',
+          parallel_scope_recall: PIVOT_BEAUTY_PARALLEL_SCOPE_RECALL_ENABLED,
+        },
+      };
     } catch (err) {
-      variantResults.push({
-        query: String(queryText || '').trim(),
-        row_count: 0,
-        category_terms: categoryTerms,
-        recall_pattern_count: recallPatterns.length,
-        tool_scope: tool || '(empty)',
-        error_code: String(err?.code || err?.name || 'query_failed').slice(0, 80),
-        timeout: String(err?.code || '').trim() === '57014' || /timeout|cancel/i.test(String(err?.message || '')),
-      });
-      continue;
+      return {
+        tool,
+        rows: [],
+        variant: {
+          query: String(queryText || '').trim(),
+          row_count: 0,
+          category_terms: categoryTerms,
+          recall_pattern_count: recallPatterns.length,
+          tool_scope: tool || '(empty)',
+          parallel_scope_recall: PIVOT_BEAUTY_PARALLEL_SCOPE_RECALL_ENABLED,
+          error_code: String(err?.code || err?.name || 'query_failed').slice(0, 80),
+          timeout: String(err?.code || '').trim() === '57014' || /timeout|cancel/i.test(String(err?.message || '')),
+        },
+      };
     }
-    const nextRows = Array.isArray(result?.rows) ? result.rows : [];
-    variantResults.push({
-      query: String(queryText || '').trim(),
-      row_count: nextRows.length,
-      category_terms: categoryTerms,
-      recall_pattern_count: recallPatterns.length,
-      per_category_row_limit: perCategoryRowLimit,
-      tool_scope: tool || '(empty)',
-    });
-    for (const row of nextRows) {
+  };
+  const appendScopeRows = (scopeResult) => {
+    if (!scopeResult || typeof scopeResult !== 'object') return;
+    if (scopeResult.variant) variantResults.push(scopeResult.variant);
+    for (const row of Array.isArray(scopeResult.rows) ? scopeResult.rows : []) {
       if (rawProducts.length >= safeLimit) break;
       const product = buildExternalSeedProduct(row);
       if (!product) continue;
@@ -10014,6 +10029,18 @@ async function queryBeautyExternalSeedRowsFast({
       if (!key || seen.has(key)) continue;
       seen.add(key);
       rawProducts.push(product);
+    }
+  };
+
+  if (PIVOT_BEAUTY_PARALLEL_SCOPE_RECALL_ENABLED) {
+    const scopeResults = await Promise.all(toolScopes.map((tool) => runScopeQuery(tool)));
+    for (const scopeResult of scopeResults) {
+      appendScopeRows(scopeResult);
+    }
+  } else {
+    for (const tool of toolScopes) {
+      if (rawProducts.length >= safeLimit) break;
+      appendScopeRows(await runScopeQuery(tool));
     }
   }
 

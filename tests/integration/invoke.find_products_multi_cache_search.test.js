@@ -46,6 +46,8 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
         process.env.PIVOT_BEAUTY_LEGACY_FALLBACK_ISOLATION_ENABLED,
       PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED:
         process.env.PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED,
+      PIVOT_BEAUTY_PARALLEL_SCOPE_RECALL_ENABLED:
+        process.env.PIVOT_BEAUTY_PARALLEL_SCOPE_RECALL_ENABLED,
     };
 
     process.env.PIVOTA_API_BASE = 'http://pivota.test';
@@ -165,6 +167,12 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     } else {
       process.env.PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED =
         prevEnv.PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED;
+    }
+    if (prevEnv.PIVOT_BEAUTY_PARALLEL_SCOPE_RECALL_ENABLED === undefined) {
+      delete process.env.PIVOT_BEAUTY_PARALLEL_SCOPE_RECALL_ENABLED;
+    } else {
+      process.env.PIVOT_BEAUTY_PARALLEL_SCOPE_RECALL_ENABLED =
+        prevEnv.PIVOT_BEAUTY_PARALLEL_SCOPE_RECALL_ENABLED;
     }
     if (prevEnv.CREATOR_CATALOG_CACHE_TTL_SECONDS === undefined) {
       delete process.env.CREATOR_CATALOG_CACHE_TTL_SECONDS;
@@ -1358,6 +1366,92 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(observedSql.join('\n')).toMatch(/seed_data->'derived'->'recall'->>'category'/i);
     expect(observedSql.join('\n')).toMatch(/seed_data->>'product_type'/i);
     expect(observedSql.join('\n')).not.toMatch(/CASE\s+WHEN\s+tool/i);
+    expect(observedSql.join('\n')).not.toMatch(/FROM products_cache/i);
+  });
+
+  test('beauty external seed mainline runs exact tool scopes in parallel', async () => {
+    process.env.DATABASE_URL = 'postgres://beauty-mainline-parallel-test';
+    process.env.PIVOT_BEAUTY_PARALLEL_SCOPE_RECALL_ENABLED = 'true';
+
+    const observedSql = [];
+    let activeExternalQueries = 0;
+    let maxActiveExternalQueries = 0;
+    let externalQueryCount = 0;
+    const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+    jest.doMock('../../src/db', () => ({
+      query: async (sql, params = []) => {
+        const text = String(sql || '');
+        observedSql.push(text);
+        if (text.includes('FROM external_product_seeds')) {
+          externalQueryCount += 1;
+          activeExternalQueries += 1;
+          maxActiveExternalQueries = Math.max(maxActiveExternalQueries, activeExternalQueries);
+          await wait(35);
+          activeExternalQueries -= 1;
+          const tool = String(params[2] || '');
+          const suffix = tool || 'empty';
+          const title =
+            tool === '*'
+              ? 'Daily Mineral Sunscreen SPF 50'
+              : `Daily Mineral Sunscreen SPF 50 ${suffix}`;
+          const now = new Date().toISOString();
+          return {
+            rows: [
+              {
+                id: `seed_spf_${suffix}`,
+                market: 'US',
+                tool,
+                title,
+                canonical_url: `https://example.com/products/daily-mineral-sunscreen-${suffix || 'empty'}`,
+                destination_url: `https://example.com/products/daily-mineral-sunscreen-${suffix || 'empty'}`,
+                availability: 'in stock',
+                seed_data: { brand: 'Test Skin', category: 'sunscreen' },
+                updated_at: now,
+                created_at: now,
+              },
+            ],
+          };
+        }
+        if (text.includes('FROM products_cache')) {
+          throw new Error('products_cache should not be touched by beauty mainline direct path');
+        }
+        return { rows: [] };
+      },
+    }));
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'daily sunscreen sensitive skin',
+            page: 1,
+            limit: 6,
+            in_stock_only: true,
+            market: 'US',
+          },
+        },
+        metadata: {
+          source: 'beauty_cross_agent_batch',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.metadata?.query_source).toBe('agent_products_beauty_external_seed_mainline');
+    expect(externalQueryCount).toBeGreaterThan(1);
+    expect(maxActiveExternalQueries).toBeGreaterThan(1);
+    expect(resp.body.metadata?.retrieval_query_debug || []).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          parallel_scope_recall: true,
+        }),
+      ]),
+    );
+    expect(observedSql.join('\n')).not.toMatch(/tool = ANY/i);
+    expect(observedSql.join('\n')).toMatch(/tool = \$3/i);
     expect(observedSql.join('\n')).not.toMatch(/FROM products_cache/i);
   });
 
