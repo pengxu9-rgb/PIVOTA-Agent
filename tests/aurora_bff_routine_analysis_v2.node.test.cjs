@@ -512,6 +512,11 @@ test('/v1/analysis/skin: profile-backed no-photo routine request uses routine au
         assert.equal(analysisMeta.artifact_gate?.reason, 'eligible_strong');
         assert.equal(Object.prototype.hasOwnProperty.call(analysisMeta, 'routine_payload_shape'), false);
         assert.equal(Object.prototype.hasOwnProperty.call(analysisMeta, 'routine_product_enrichment_deferred'), false);
+        assert.equal(
+          Object.prototype.hasOwnProperty.call(analysisMeta.stage_timings_ms || {}, 'routine_analysis'),
+          true,
+        );
+        assert.equal(Number(analysisMeta.server_stage_sum_ms) > 0, true);
 
         const sessionPatch = resp.body && resp.body.session_patch && typeof resp.body.session_patch === 'object'
           ? resp.body.session_patch
@@ -735,7 +740,7 @@ test('/v1/analysis/skin: legacy string currentRoutine with persisted profile sti
           : {};
         assert.equal(analysisMeta.analysis_mode, 'routine_audit_v1');
         assert.equal(analysisMeta.execution_path, 'routine_audit_fast_path');
-        assert.equal(analysisMeta.profile_context_source, 'db_only_profile');
+        assert.equal(analysisMeta.profile_context_source, 'request_overlay_applied');
       } finally {
         harness.restore();
       }
@@ -1317,11 +1322,11 @@ test('runRoutineAnalysisV2: routine audit v1 skips stage B LLM and recommendatio
   assert.equal(searchCallCount, 0);
   assert.deepEqual(
     stageCalls.map((row) => [row.templateId, row.retryStructuredFailure]),
-    [
-      ['routine_product_audit_v1', true],
-    ],
+    [],
   );
   assert.deepEqual(result.recommendation_groups, []);
+  assert.equal(result.debug_meta.stage_a.llm_status, 'skipped');
+  assert.equal(result.debug_meta.stage_a.attempt_count, 0);
   assert.equal(result.debug_meta.stage_b.llm_status, 'skipped');
   assert.equal(result.debug_meta.stage_b.retry_count, 0);
   assert.equal(result.debug_meta.stage_b.attempt_count, 0);
@@ -1387,6 +1392,49 @@ test('runRoutineAnalysisV2: routine audit v1 localizes CN first action titles', 
   assert.doesNotMatch(result.assistant_text, /Add a clear AM sunscreen step/);
   const verdictCard = result.cards.find((card) => card && card.type === 'routine_verdict_v1');
   assert.ok(verdictCard.payload.top_3_actions.some((row) => row.title === '补上白天防晒 SPF'));
+});
+
+test('runRoutineAnalysisV2: routine audit v1 prioritizes missing SPF over moderate stable acid use', async () => {
+  const { runRoutineAnalysisV2 } = require('../src/auroraBff/routineAnalysisV2');
+  let stageACallCount = 0;
+  const llmGateway = {
+    async callWithSchemaDiagnostics() {
+      stageACallCount += 1;
+      throw new Error('routine audit v1 should not call Stage A LLM');
+    },
+  };
+
+  const result = await runRoutineAnalysisV2({
+    requestId: 'req_routine_audit_v1_spf_before_stable_acid',
+    language: 'CN',
+    profileSummary: {
+      skinType: 'combination_oily',
+      sensitivity: 'medium',
+      barrierStatus: 'stable',
+      goals: ['oil_control', 'post_acne_marks'],
+    },
+    routineProductCandidates: [
+      { product_ref: 'routine_am_01', slot: 'am', step: 'cleanser', product_text: 'Gentle Gel Cleanser' },
+      { product_ref: 'routine_am_02', slot: 'am', step: 'serum', product_text: 'Niacinamide Serum' },
+      { product_ref: 'routine_am_03', slot: 'am', step: 'moisturizer', product_text: 'Lightweight Moisturizer' },
+      { product_ref: 'routine_pm_04', slot: 'pm', step: 'cleanser', product_text: 'Gentle Gel Cleanser' },
+      { product_ref: 'routine_pm_05', slot: 'pm', step: 'treatment', product_text: '2% Salicylic Acid Serum' },
+    ],
+    llmGateway,
+    surfaceMode: 'routine_audit_v1',
+    recommendationResolverDeps: {
+      resolveProduct: async () => null,
+      searchProducts: async () => ({ ok: true, transient: false, products: [], queryCount: 0 }),
+    },
+  });
+
+  assert.equal(stageACallCount, 0);
+  assert.match(result.assistant_text, /补上白天防晒 SPF/);
+  assert.doesNotMatch(result.assistant_text, /先停用 2% Salicylic Acid Serum/);
+  assert.equal(result.debug_meta.stage_a.llm_status, 'skipped');
+  assert.equal(result.debug_meta.stage_a.deterministic_product_count, 5);
+  const verdictCard = result.cards.find((card) => card && card.type === 'routine_verdict_v1');
+  assert.equal(verdictCard.payload.top_3_actions[0].title, '补上白天防晒 SPF');
 });
 
 test('runRoutineAnalysisV2: barrier-impaired acid timing changes become pause-first actions', async () => {
@@ -2137,7 +2185,7 @@ test('runRoutineAnalysisV2: stage A chunk calls run in parallel when routine exc
   assert.equal(maxInFlightStageA >= 2, true);
 });
 
-test('runRoutineAnalysisV2: routine audit v1 bypasses deterministic support steps and keeps active steps on stage A LLM', async () => {
+test('runRoutineAnalysisV2: routine audit v1 uses deterministic stage A without LLM calls', async () => {
   const { runRoutineAnalysisV2 } = require('../src/auroraBff/routineAnalysisV2');
   const llmStageAInputs = [];
   const llmGateway = {
@@ -2209,10 +2257,11 @@ test('runRoutineAnalysisV2: routine audit v1 bypasses deterministic support step
     surfaceMode: 'routine_audit_v1',
   });
 
-  assert.deepEqual(llmStageAInputs, [['Vitamin C serum', 'Retinol serum']]);
-  assert.equal(result.debug_meta.stage_a.chunk_count, 1);
-  assert.equal(result.debug_meta.stage_a.attempt_count, 1);
-  assert.equal(result.debug_meta.stage_a.deterministic_product_count, 5);
+  assert.deepEqual(llmStageAInputs, []);
+  assert.equal(result.debug_meta.stage_a.llm_status, 'skipped');
+  assert.equal(result.debug_meta.stage_a.chunk_count, 0);
+  assert.equal(result.debug_meta.stage_a.attempt_count, 0);
+  assert.equal(result.debug_meta.stage_a.deterministic_product_count, 7);
   assert.deepEqual(
     result.cards.map((card) => card.type),
     ['routine_verdict_v1', 'routine_product_audit_v1', 'routine_user_fit_v1', 'routine_adjustment_plan_v1'],
@@ -2222,11 +2271,11 @@ test('runRoutineAnalysisV2: routine audit v1 bypasses deterministic support step
     result.debug_meta.stage_a.product_reason_sources.map((row) => row.reason_source),
     [
       'fallback_substituted',
-      'raw_llm_verbatim',
       'fallback_substituted',
       'fallback_substituted',
       'fallback_substituted',
-      'raw_llm_verbatim',
+      'fallback_substituted',
+      'fallback_substituted',
       'fallback_substituted',
     ],
   );

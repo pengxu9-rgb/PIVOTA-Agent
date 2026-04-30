@@ -150,6 +150,15 @@ function hasElevatedSensitivity(context = {}) {
   return token === 'medium' || token === 'high' || token === 'sensitive';
 }
 
+function hasHighSensitivity(context = {}) {
+  const token = asString(context.sensitivity).toLowerCase().replace(/[\s_-]+/g, '_');
+  return token === 'high'
+    || token === 'sensitive'
+    || token === 'very_sensitive'
+    || token === 'medium_high'
+    || token === 'high_sensitivity';
+}
+
 function isBarrierImpaired(context = {}) {
   return /(impaired|compromised|damaged|weak|fragile|sensitized)/i.test(asString(context.barrierStatus));
 }
@@ -207,18 +216,31 @@ function isAcidExfoliantProduct(product = {}) {
   return type.includes('exfoliant') || /aha|bha|salicylic|glycolic|mandelic|lactic|exfoliat|peel|刷酸|水杨酸|水楊酸|果酸/.test(text);
 }
 
-function shouldBarrierFirstPauseAcid(product = {}, context = {}) {
-  return (isBarrierImpaired(context) || hasElevatedSensitivity(context)) && isAcidExfoliantProduct(product);
+function isBarrierStressActiveProduct(product = {}) {
+  const type = asString(product && product.inferred_product_type).toLowerCase();
+  const text = [
+    product && product.input_label,
+    product && product.original_step_label,
+    product && product.concise_reasoning_en,
+  ].map(asString).join(' ').toLowerCase();
+  return isAcidExfoliantProduct(product)
+    || type.includes('retinoid')
+    || type.includes('benzoyl')
+    || /retinol|retinal|retinoid|tretinoin|adapalene|benzoyl peroxide|过氧化苯甲酰|维a|維a/.test(text);
+}
+
+function shouldBarrierFirstPauseActive(product = {}, context = {}) {
+  return (isBarrierImpaired(context) || hasHighSensitivity(context)) && isBarrierStressActiveProduct(product);
 }
 
 function getBarrierFirstPauseAcidReason(context = {}) {
   return normalizeLanguage(context && context.language) === 'CN'
-    ? '当前屏障或敏感风险偏高，酸类去角质应先暂停，不要只做早晚时间调整。'
-    : 'Barrier or sensitivity context is elevated, so exfoliating acids should be paused before timing optimizations.';
+    ? '当前屏障或敏感风险偏高，酸类/视黄醇等刺激活性应先暂停，不要只做早晚时间调整。'
+    : 'Barrier or sensitivity context is elevated, so exfoliating acids, retinoids, and similar irritation-prone actives should be paused before timing optimizations.';
 }
 
 function applyBarrierFirstAuditOverride(product = {}, context = {}) {
-  if (!shouldBarrierFirstPauseAcid(product, context)) return product;
+  if (!shouldBarrierFirstPauseActive(product, context)) return product;
   const reason = getBarrierFirstPauseAcidReason(context);
   return {
     ...product,
@@ -538,7 +560,7 @@ function buildFallbackProductAudit(candidate, context = {}) {
   const hydratingSupport = isHydrationSupportType(inferredProductType, productText);
   const potentialConcerns = [];
   let suggestedAction = 'keep';
-  const barrierFirstAcid = shouldBarrierFirstPauseAcid({
+  const barrierFirstAcid = shouldBarrierFirstPauseActive({
     inferred_product_type: inferredProductType,
     input_label: productText,
     original_step_label: step,
@@ -943,20 +965,20 @@ function buildDeterministicOverlapOrGaps(auditOutput, context = {}) {
   const inventory = isPlainObject(context && context.routine_inventory)
     ? context.routine_inventory
     : buildRoutineInventory(products);
-  const barrierFirst = isBarrierImpaired(context) || hasElevatedSensitivity(context);
+  const barrierFirst = isBarrierImpaired(context) || hasHighSensitivity(context);
   const barrierUnsafeAcids = barrierFirst
-    ? products.filter((product) => isAcidExfoliantProduct(product))
+    ? products.filter((product) => shouldBarrierFirstPauseActive(product, context))
     : [];
   if (barrierUnsafeAcids.length) {
     const reason = getBarrierFirstPauseAcidReason(context);
     const isCn = normalizeLanguage(context && context.language) === 'CN';
     issues.push({
       issue_type: 'conflict',
-      title: isCn ? '屏障受压时应先暂停酸类去角质' : 'Barrier-stressed skin should pause exfoliating acids first',
+      title: isCn ? '屏障受压时应先暂停刺激活性' : 'Barrier-stressed skin should pause irritation-prone actives first',
       evidence: barrierUnsafeAcids.map((product) => (
         isCn
-          ? `${product.input_label} 会继续增加酸类刺激负荷。`
-          : `${product.input_label} adds exfoliating acid load while barrier/sensitivity context is elevated.`
+          ? `${product.input_label} 会继续增加活性刺激负荷。`
+          : `${product.input_label} adds active-treatment irritation load while barrier/sensitivity context is elevated.`
       )).concat(reason).slice(0, 4),
       affected_products: barrierUnsafeAcids.map((product) => product.product_ref),
     });
@@ -994,7 +1016,7 @@ function buildDeterministicOverlapOrGaps(auditOutput, context = {}) {
 
   const moveIssues = products
     .filter((product) => ['move_to_am', 'move_to_pm'].includes(asString(product.suggested_action)))
-    .filter((product) => !(barrierFirst && isAcidExfoliantProduct(product)))
+    .filter((product) => !(barrierFirst && shouldBarrierFirstPauseActive(product, context)))
     .slice(0, 3);
   for (const product of moveIssues) {
     issues.push({
@@ -1062,10 +1084,24 @@ function buildDeterministicSynthesis(auditOutput, context = {}) {
   const adjustments = [];
   const amProducts = products.filter((product) => product.slot === 'am');
   const pmProducts = products.filter((product) => product.slot === 'pm');
+  const hasMissingAmSpf = overlapOrGaps.some((issue) => issue.issue_type === 'gap')
+    && !inventoryHasStep(context && context.routine_inventory, 'sunscreen', 'am');
+  const hasBarrierFirstAcidPause = products.some((product) => shouldBarrierFirstPauseActive(product, context));
+  if (hasMissingAmSpf && !hasBarrierFirstAcidPause) {
+    adjustments.push({
+      adjustment_id: 'adj_add_spf_gap',
+      priority_rank: adjustments.length + 1,
+      title: 'Add a clear AM sunscreen step',
+      action_type: 'add_step',
+      affected_products: [],
+      why_this_first: 'AM protection looks missing, so the routine is exposed before any higher-order optimization matters.',
+      expected_outcome: 'Better daytime protection and a more complete AM routine.',
+    });
+  }
 
   for (const product of products) {
     let action = asString(product.suggested_action);
-    const forcePauseAcid = shouldBarrierFirstPauseAcid(product, context);
+    const forcePauseAcid = shouldBarrierFirstPauseActive(product, context);
     if (forcePauseAcid && action !== 'remove') {
       action = 'remove';
     }
@@ -1118,7 +1154,11 @@ function buildDeterministicSynthesis(auditOutput, context = {}) {
     }
   }
 
-  if (adjustments.length < 3 && overlapOrGaps.some((issue) => issue.issue_type === 'gap') && !inventoryHasStep(context && context.routine_inventory, 'sunscreen', 'am')) {
+  if (
+    adjustments.length < 3
+    && hasMissingAmSpf
+    && !adjustments.some((item) => asString(item && item.adjustment_id) === 'adj_add_spf_gap')
+  ) {
     adjustments.push({
       adjustment_id: 'adj_add_spf_gap',
       priority_rank: adjustments.length + 1,
@@ -1645,6 +1685,8 @@ function aggregateStageChunkMeta(chunkMetas, chunkBudgets) {
     llmStatus = 'success';
   } else if (statuses.some((status) => status === 'success' || status === 'partial')) {
     llmStatus = 'partial';
+  } else if (!metas.length) {
+    llmStatus = 'skipped';
   }
 
   const validationRows = [];
@@ -1654,7 +1696,7 @@ function aggregateStageChunkMeta(chunkMetas, chunkBudgets) {
 
   return {
     llm_status: llmStatus,
-    fallback_reason: llmStatus === 'success'
+    fallback_reason: llmStatus === 'success' || llmStatus === 'skipped'
       ? null
       : metas.map((meta) => asString(meta && meta.fallback_reason)).find(Boolean) || 'unknown',
     error_name: metas.map((meta) => asString(meta && meta.error_name)).find(Boolean) || null,
@@ -2956,12 +2998,8 @@ async function runRoutineAnalysisV2({
   let stageADeterministicPairs = [];
   let stageALlmPairs = stageAAuditPairs;
   if (surfaceMode === 'routine_audit_v1') {
-    stageADeterministicPairs = stageAAuditPairs.filter(({ candidate }) => isDeterministicStageABypassEligible(candidate, auditContext));
-    stageALlmPairs = stageAAuditPairs.filter(({ candidate }) => !isDeterministicStageABypassEligible(candidate, auditContext));
-    if (!stageALlmPairs.length && stageADeterministicPairs.length) {
-      stageALlmPairs = [stageADeterministicPairs[0]];
-      stageADeterministicPairs = stageADeterministicPairs.slice(1);
-    }
+    stageADeterministicPairs = stageAAuditPairs;
+    stageALlmPairs = [];
   }
   const stageAChunkSize = stageALlmPairs.length > 4 ? 4 : Math.max(1, stageALlmPairs.length || 1);
   const stageAChunks = chunkArray(stageALlmPairs, stageAChunkSize);
