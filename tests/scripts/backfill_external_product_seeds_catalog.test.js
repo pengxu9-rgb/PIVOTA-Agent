@@ -733,6 +733,166 @@ describe('backfill-external-product-seeds-catalog', () => {
     );
   });
 
+  test('buildSeedUpdatePayload strips legacy variant shadow containers while preserving approved variants', () => {
+    const row = {
+      id: 'eps_variant_shadow_cleanup',
+      title: 'Cream Skin Toner & Moisturizer',
+      canonical_url: 'https://us.laneige.com/products/cream-skin-toner-moisturizer',
+      destination_url: 'https://us.laneige.com/products/cream-skin-toner-moisturizer',
+      image_url: 'https://cdn.example.com/cream-skin.jpg',
+      price_amount: 36,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      seed_data: {
+        variants: [{ sku: 'legacy-root-1', option_name: 'Title', option_value: 'Default Title' }],
+        skus: [{ sku: 'legacy-root-sku' }],
+        variantOptions: [{ name: 'Title', values: ['Default Title'] }],
+        product: {
+          variants: [{ sku: 'legacy-root-product-variant' }],
+          choices: [{ name: 'Title', values: ['Default Title'] }],
+        },
+        snapshot_quarantine: {
+          contract_version: 'external_seed.snapshot_quarantine.v1',
+          fields: { description_raw: 'old fallback' },
+        },
+        snapshot: {
+          canonical_url: 'https://us.laneige.com/products/cream-skin-toner-moisturizer',
+          skus: [{ sku: 'legacy-snapshot-sku' }],
+          variant_options: [{ name: 'Title', values: ['Default Title'] }],
+          product: {
+            variants: [{ sku: 'legacy-snapshot-product-variant' }],
+            skus: [{ sku: 'legacy-snapshot-product-sku' }],
+          },
+          snapshot_quarantine: {
+            contract_version: 'external_seed.snapshot_quarantine.v1',
+            fields: { faq_items: [{ question: 'Help', answer: 'Fallback' }] },
+          },
+        },
+      },
+    };
+
+    const payload = buildSeedUpdatePayload(
+      row,
+      {
+        mode: 'puppeteer',
+        diagnostics: {},
+        products: [
+          {
+            title: 'Cream Skin Toner & Moisturizer',
+            url: 'https://us.laneige.com/products/cream-skin-toner-moisturizer',
+            image_url: 'https://cdn.example.com/cream-skin.jpg',
+            image_urls: ['https://cdn.example.com/cream-skin.jpg'],
+            variants: [
+              {
+                id: 'v170',
+                sku: '170ML',
+                url: 'https://us.laneige.com/products/cream-skin-toner-moisturizer',
+                option_name: 'Size',
+                option_value: '170mL',
+                price: '36.00',
+                currency: 'USD',
+                stock: 'In Stock',
+                image_url: 'https://cdn.example.com/cream-skin.jpg',
+                image_urls: ['https://cdn.example.com/cream-skin.jpg'],
+              },
+              {
+                id: 'v320',
+                sku: '320ML',
+                url: 'https://us.laneige.com/products/cream-skin-toner-moisturizer',
+                option_name: 'Size',
+                option_value: '320mL',
+                price: '48.00',
+                currency: 'USD',
+                stock: 'In Stock',
+                image_url: 'https://cdn.example.com/cream-skin.jpg',
+                image_urls: ['https://cdn.example.com/cream-skin.jpg'],
+              },
+            ],
+          },
+        ],
+        variants: [],
+      },
+      row.destination_url,
+    );
+
+    expect(payload.nextRow.seed_data.variants).toHaveLength(2);
+    expect(payload.nextRow.seed_data.snapshot.variants).toHaveLength(2);
+    expect(payload.nextRow.seed_data.skus).toBeUndefined();
+    expect(payload.nextRow.seed_data.variantOptions).toBeUndefined();
+    expect(payload.nextRow.seed_data.product?.variants).toBeUndefined();
+    expect(payload.nextRow.seed_data.product?.choices).toBeUndefined();
+    expect(payload.nextRow.seed_data.snapshot.skus).toBeUndefined();
+    expect(payload.nextRow.seed_data.snapshot.variant_options).toBeUndefined();
+    expect(payload.nextRow.seed_data.snapshot.product?.variants).toBeUndefined();
+    expect(payload.nextRow.seed_data.snapshot.product?.skus).toBeUndefined();
+    expect(payload.nextRow.seed_data.snapshot.snapshot_quarantine).toBeUndefined();
+    expect(payload.nextRow.seed_data.snapshot_quarantine).toEqual(
+      expect.objectContaining({
+        contract_version: 'external_seed.snapshot_quarantine.v1',
+      }),
+    );
+  });
+
+  test('buildSeedUpdatePayload clears stale synthetic legacy descriptions when extractor cannot recover approved copy', () => {
+    const row = {
+      id: 'eps_synthetic_cleanup',
+      title: 'Fallback Serum',
+      canonical_url: 'https://example.com/products/fallback-serum',
+      destination_url: 'https://example.com/products/fallback-serum',
+      image_url: 'https://cdn.example.com/fallback-serum.jpg',
+      price_amount: 29,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      seed_data: {
+        description: 'OFFICIAL: Hydrating serum. /// SOCIAL HIGHLIGHTS: customer service.',
+        seed_description_origin: 'synthetic_summary',
+        snapshot: {
+          canonical_url: 'https://example.com/products/fallback-serum',
+          description: 'OFFICIAL: Hydrating serum. /// SOCIAL HIGHLIGHTS: customer service.',
+          seed_description_origin: 'synthetic_summary',
+        },
+      },
+    };
+
+    const payload = buildSeedUpdatePayload(
+      row,
+      {
+        mode: 'puppeteer',
+        diagnostics: {},
+        products: [
+          {
+            title: 'Fallback Serum',
+            url: 'https://example.com/products/fallback-serum',
+            image_url: 'https://cdn.example.com/fallback-serum.jpg',
+            image_urls: ['https://cdn.example.com/fallback-serum.jpg'],
+            variants: [
+              {
+                id: 'v1',
+                sku: 'SERUM-1',
+                url: 'https://example.com/products/fallback-serum',
+                option_name: 'Title',
+                option_value: 'Default Title',
+                price: '29.00',
+                currency: 'USD',
+                stock: 'In Stock',
+                image_url: 'https://cdn.example.com/fallback-serum.jpg',
+                image_urls: ['https://cdn.example.com/fallback-serum.jpg'],
+              },
+            ],
+          },
+        ],
+        variants: [],
+      },
+      row.destination_url,
+    );
+
+    expect(payload.nextRow.seed_data.description).toBeUndefined();
+    expect(payload.nextRow.seed_data.seed_description_origin).toBeUndefined();
+    expect(payload.nextRow.seed_data.snapshot.description).toBeUndefined();
+    expect(payload.nextRow.seed_data.snapshot.seed_description_origin).toBeUndefined();
+    expect(payload.nextRow.seed_data.derived.recall.retrieval_body || '').not.toMatch(/SOCIAL HIGHLIGHTS/i);
+  });
+
   test('keeps explicit seed brand when building catalog extract requests', () => {
     const row = {
       id: 'eps_rarebeauty_1',

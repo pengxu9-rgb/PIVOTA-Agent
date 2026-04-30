@@ -2114,6 +2114,41 @@ function clearStructuredIngredientFieldsForIdentityRepair(seedData) {
   }
 }
 
+function deleteLegacyVariantShadowContainers(target) {
+  if (!target || typeof target !== 'object') return;
+  delete target.skus;
+  delete target.variantOptions;
+  delete target.variant_options;
+  delete target.choices;
+  if (target.product && typeof target.product === 'object') {
+    delete target.product.variants;
+    delete target.product.skus;
+    delete target.product.variantOptions;
+    delete target.product.variant_options;
+    delete target.product.choices;
+    if (Object.keys(target.product).length === 0) delete target.product;
+  }
+}
+
+function cleanupPersistedSeedData(seedData, { clearSyntheticDescription = false } = {}) {
+  if (!seedData || typeof seedData !== 'object') return seedData;
+  const snapshot = ensureJsonObject(seedData.snapshot);
+
+  deleteLegacyVariantShadowContainers(seedData);
+  deleteLegacyVariantShadowContainers(snapshot);
+  delete snapshot.snapshot_quarantine;
+
+  if (clearSyntheticDescription) {
+    delete seedData.description;
+    delete snapshot.description;
+    delete seedData.seed_description_origin;
+    delete snapshot.seed_description_origin;
+  }
+
+  seedData.snapshot = snapshot;
+  return seedData;
+}
+
 function buildSeedUpdatePayload(row, response, targetUrl) {
   const seedData = ensureJsonObject(row?.seed_data);
   const snapshot = ensureJsonObject(seedData.snapshot);
@@ -2439,13 +2474,27 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     (fallbackPollutedRow ? seedData.description : snapshot.description) || seedData.description,
     nextPdpDetailsSections,
   );
+  const clearSyntheticLegacyDescription =
+    !manualDescription &&
+    !liveExtractedDescription &&
+    !surfaceableProductDescriptionRaw &&
+    (
+      nextDescriptionOrigin === 'synthetic_summary' ||
+      looksLikeSyntheticSummaryText(fallbackSeedDescription) ||
+      looksLikeSyntheticSummaryText(seedData.description) ||
+      looksLikeSyntheticSummaryText(snapshot.description)
+    );
   const description = manualDescription ||
-    normalizeNonEmptyString(
-      liveExtractedDescription ||
-        surfaceableProductDescriptionRaw ||
-        (!suppressStaleDescriptionFallback
-          ? fallbackSeedDescription
-          : ''),
+    (
+      clearSyntheticLegacyDescription
+        ? ''
+        : normalizeNonEmptyString(
+            liveExtractedDescription ||
+              surfaceableProductDescriptionRaw ||
+              (!suppressStaleDescriptionFallback
+                ? fallbackSeedDescription
+                : ''),
+          )
     ) ||
     '';
   const title =
@@ -2514,8 +2563,9 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     extracted_at: new Date().toISOString(),
     canonical_url: representativeProductUrl || normalizeUrlLike(snapshot.canonical_url) || normalizeUrlLike(targetUrl),
     title,
-    description:
-      manualDescription || liveExtractedDescription || surfaceableProductDescriptionRaw
+    description: clearSyntheticLegacyDescription
+      ? ''
+      : manualDescription || liveExtractedDescription || surfaceableProductDescriptionRaw
         ? liveExtractedDescription ||
           surfaceableProductDescriptionRaw ||
           cleanPdpDescriptionCandidate(snapshot.description, nextPdpDetailsSections)
@@ -2630,21 +2680,22 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
   if (identityRepairBackfill) {
     clearStructuredIngredientFieldsForIdentityRepair(nextSeedData);
   }
-  const nextDerived = ensureJsonObject(nextSeedData.derived);
-  nextSeedData.derived = {
-    ...nextDerived,
-    recall: buildExternalSeedRecallDoc({
-      row: { ...row, ...row, title, description, canonical_url: representativeProductUrl || row?.canonical_url, destination_url: destinationUrl || row?.destination_url },
-      seedData: nextSeedData,
-      snapshot: nextSnapshot,
-    }),
-  };
   if (shouldClearStaleSeedActiveIngredients(nextSeedData, nextPdpActiveIngredientsRaw)) {
     delete nextSeedData.active_ingredients;
     delete nextSeedData.activeIngredients;
     delete nextSeedData.snapshot.active_ingredients;
     delete nextSeedData.snapshot.activeIngredients;
   }
+  cleanupPersistedSeedData(nextSeedData, { clearSyntheticDescription: clearSyntheticLegacyDescription });
+  const nextDerived = ensureJsonObject(nextSeedData.derived);
+  nextSeedData.derived = {
+    ...nextDerived,
+    recall: buildExternalSeedRecallDoc({
+      row: { ...row, ...row, title, description, canonical_url: representativeProductUrl || row?.canonical_url, destination_url: destinationUrl || row?.destination_url },
+      seedData: nextSeedData,
+      snapshot: ensureJsonObject(nextSeedData.snapshot),
+    }),
+  };
   if (!description && suppressStaleDescriptionFallback) {
     delete nextSeedData.description;
   }
