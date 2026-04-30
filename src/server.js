@@ -9870,6 +9870,109 @@ async function queryBeautyExternalSeedRowsWithTimeout(sql, params, timeoutMs = 1
   });
 }
 
+function buildBeautyExternalSeedMainlineProduct(row) {
+  if (!row || typeof row !== 'object') return null;
+  const seedData = isPlainObject(row.seed_data) ? row.seed_data : {};
+  const snapshot = isPlainObject(seedData.snapshot) ? seedData.snapshot : {};
+  const derived = isPlainObject(seedData.derived) ? seedData.derived : {};
+  const recall = isPlainObject(derived.recall) ? derived.recall : {};
+  const ingredientIntel = isPlainObject(seedData.ingredient_intel) ? seedData.ingredient_intel : {};
+  const externalProductId = firstNonEmptyString(
+    row.external_product_id,
+    seedData.external_product_id,
+    seedData.product_id,
+    snapshot.product_id,
+    row.id,
+  );
+  if (!externalProductId) return null;
+  const canonicalUrl = firstNonEmptyString(snapshot.canonical_url, row.canonical_url, seedData.canonical_url);
+  const destinationUrl = firstNonEmptyString(snapshot.destination_url, row.destination_url, seedData.destination_url);
+  const title = firstNonEmptyString(
+    recall.retrieval_title,
+    snapshot.title,
+    row.title,
+    seedData.title,
+    canonicalUrl,
+    destinationUrl,
+    externalProductId,
+  );
+  if (!title) return null;
+  const description = firstNonEmptyString(
+    recall.retrieval_summary,
+    recall.retrieval_body,
+    snapshot.description,
+    row.description,
+    row.seed_description,
+    seedData.description,
+  );
+  const category = firstNonEmptyString(
+    recall.category,
+    seedData.category,
+    seedData.product_type,
+    snapshot.category,
+    snapshot.product_type,
+    row.category,
+    row.product_type,
+  );
+  const brand = firstNonEmptyString(
+    recall.brand_name,
+    recall.brand,
+    seedData.brand,
+    seedData.brand_name,
+    seedData.vendor,
+    snapshot.brand,
+    snapshot.brand_name,
+    row.brand,
+    row.vendor,
+  );
+  const priceAmount = firstNonEmptyString(row.price_amount, seedData.price_amount, snapshot.price_amount);
+  const price = Number(priceAmount);
+  const availability = firstNonEmptyString(row.availability, seedData.availability, snapshot.availability);
+  const availabilityKey = String(availability || '').trim().toLowerCase();
+  const inStock = availabilityKey
+    ? !['out of stock', 'out_of_stock', 'outofstock', 'oos', 'sold out', 'sold_out'].includes(availabilityKey)
+    : undefined;
+  const product = {
+    id: externalProductId,
+    product_id: externalProductId,
+    merchant_id: EXTERNAL_SEED_MERCHANT_ID,
+    merchant_name: brand || row.domain || 'External',
+    platform: 'external',
+    platform_product_id: externalProductId,
+    title,
+    ...(description ? { description } : {}),
+    ...(Number.isFinite(price) && price > 0 ? { price } : {}),
+    currency: firstNonEmptyString(row.price_currency, seedData.price_currency, snapshot.price_currency, 'USD'),
+    image_url: firstNonEmptyString(snapshot.image_url, row.image_url, seedData.image_url),
+    availability: availability || undefined,
+    in_stock: typeof inStock === 'boolean' ? inStock : undefined,
+    product_type: category || 'external',
+    category: category || undefined,
+    source: 'external_seed',
+    source_listing_scope: firstNonEmptyString(seedData.source_listing_scope),
+    url: canonicalUrl || destinationUrl || undefined,
+    canonical_url: canonicalUrl || undefined,
+    destination_url: destinationUrl || undefined,
+    external_seed_id: row.id ? String(row.id) : undefined,
+    seed_data: seedData,
+    external_seed_recall: recall,
+    raw_ingredient_text_clean: firstNonEmptyString(
+      seedData.raw_ingredient_text_clean,
+      snapshot.raw_ingredient_text_clean,
+      ingredientIntel.raw_ingredient_text_clean,
+    ),
+    pdp_ingredients_raw: firstNonEmptyString(seedData.pdp_ingredients_raw, snapshot.pdp_ingredients_raw),
+    pdp_active_ingredients_raw: firstNonEmptyString(seedData.pdp_active_ingredients_raw, snapshot.pdp_active_ingredients_raw),
+    ingredient_intel: ingredientIntel,
+    ingredient_tokens: Array.isArray(recall.ingredient_tokens) ? recall.ingredient_tokens : undefined,
+  };
+  if (brand) {
+    product.brand = brand;
+    product.vendor = brand;
+  }
+  return product;
+}
+
 async function queryBeautyExternalSeedRowsFast({
   market,
   queryText,
@@ -10062,7 +10165,7 @@ async function queryBeautyExternalSeedRowsFast({
     if (scopeResult.variant) variantResults.push(scopeResult.variant);
     for (const row of Array.isArray(scopeResult.rows) ? scopeResult.rows : []) {
       if (rawProducts.length >= safeLimit) break;
-      const product = buildExternalSeedProduct(row);
+      const product = buildBeautyExternalSeedMainlineProduct(row);
       if (!product) continue;
       product.market = row.market || safeMarket;
       product.tool = row.tool || null;
