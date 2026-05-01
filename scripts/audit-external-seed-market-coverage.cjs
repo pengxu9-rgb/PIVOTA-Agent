@@ -75,6 +75,8 @@ function bindParam(params, value) {
 }
 
 function buildSelectSql(options = {}) {
+  const brandSql = `coalesce(eps.seed_data->>'brand', eps.seed_data#>>'{snapshot,brand}', '')`;
+  const titleSql = `coalesce(eps.title, eps.seed_data->>'title', eps.seed_data#>>'{snapshot,title}', '')`;
   const where = [
     `eps.status = 'active'`,
     `eps.external_product_id LIKE 'ext_%'`,
@@ -85,7 +87,7 @@ function buildSelectSql(options = {}) {
     where.push(`eps.market = ${bindParam(params, normalizeMarket(options.market || 'US'))}`);
   }
   if (options.brand) {
-    where.push(`lower(coalesce(eps.brand, eps.seed_data->>'brand', eps.seed_data#>>'{snapshot,brand}', '')) = ${bindParam(params, normalizeText(options.brand))}`);
+    where.push(`lower(${brandSql}) = ${bindParam(params, normalizeText(options.brand))}`);
   }
   if (options.domain) {
     where.push(`lower(coalesce(eps.domain, '')) = ${bindParam(params, normalizeHost(options.domain))}`);
@@ -94,7 +96,7 @@ function buildSelectSql(options = {}) {
     where.push(`eps.external_product_id = ${bindParam(params, asString(options.externalProductId))}`);
   }
   if (options.titleLike) {
-    where.push(`lower(coalesce(eps.title, eps.seed_data->>'title', eps.seed_data#>>'{snapshot,title}', '')) LIKE ${bindParam(params, `%${normalizeText(options.titleLike)}%`)}`);
+    where.push(`lower(${titleSql}) LIKE ${bindParam(params, `%${normalizeText(options.titleLike)}%`)}`);
   }
 
   params.push(Math.max(1, Math.min(Number(options.limit || 1000), 20000)));
@@ -109,7 +111,7 @@ function buildSelectSql(options = {}) {
         eps.external_product_id,
         eps.market,
         eps.tool,
-        eps.brand,
+        ${brandSql} AS brand,
         eps.domain,
         eps.title,
         eps.canonical_url,
@@ -120,7 +122,7 @@ function buildSelectSql(options = {}) {
         coalesce(eps.seed_data, '{}'::jsonb) AS seed_data
       FROM external_product_seeds eps
       WHERE ${where.join('\n        AND ')}
-      ORDER BY lower(coalesce(eps.brand, eps.seed_data->>'brand', '')), lower(coalesce(eps.title, eps.seed_data->>'title', '')), eps.market, eps.id
+      ORDER BY lower(${brandSql}), lower(${titleSql}), eps.market, eps.id
       LIMIT ${limitBind}
       OFFSET ${offsetBind}
     `,

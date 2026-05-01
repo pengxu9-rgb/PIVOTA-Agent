@@ -15,7 +15,7 @@ describe('audit-external-seed-market-coverage', () => {
     expect(sql).toContain("eps.status = 'active'");
     expect(sql).toContain("eps.external_product_id LIKE 'ext_%'");
     expect(sql).toContain('eps.market = $1');
-    expect(sql).toContain('lower(coalesce(eps.brand');
+    expect(sql).toContain("coalesce(eps.seed_data->>'brand', eps.seed_data#>>'{snapshot,brand}', '')");
     expect(sql).toContain('LIMIT $3');
     expect(params).toEqual(['US', 'beauty of joseon', 25, 0]);
   });
