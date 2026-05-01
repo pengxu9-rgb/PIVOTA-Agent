@@ -4349,6 +4349,74 @@ test('reco assistant structured renderer treats product texture as product evide
   }
 });
 
+test('reco assistant structured renderer localizes Chinese product reasons instead of splicing English PDP copy', () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const payload = {
+      recommendation_meta: {
+        primary_target_id: 'hydrating_barrier_moisturizer',
+        selected_target_ids: ['hydrating_barrier_moisturizer'],
+        ranked_targets: [
+          {
+            target_id: 'hydrating_barrier_moisturizer',
+            ingredient_query: 'Hydrating barrier moisturizer',
+            resolved_target_step: 'moisturizer',
+          },
+        ],
+      },
+      recommendations: [
+        {
+          display_name: 'Centella Soothing Cream',
+          matched_role_id: 'hydrating_barrier_moisturizer',
+          matched_role_label: 'Hydrating barrier moisturizer',
+          preferred_step: 'moisturizer',
+          short_description: 'Product Benefits: Soothing, Hydrating Skin Type: Normal, Sensitive Key.',
+          why_this_one: 'Uses panthenol and ceramide-lipid support plus humectants such as glycerin for daily moisturizer comfort.',
+        },
+        {
+          display_name: 'Renewing Rich Beauty Cream',
+          matched_role_id: 'hydrating_barrier_moisturizer',
+          matched_role_label: 'Hydrating barrier moisturizer',
+          preferred_step: 'moisturizer',
+          short_description: 'It is a richer cream format built around ginseng, baobab, squalane, and hyaluronic acid.',
+          why_this_one: 'Rich cream format with squalane and hyaluronic acid for lasting moisture.',
+        },
+      ],
+    };
+
+    const text = __internal.renderRecoAssistantStructuredReasonRewrite({
+      structuredReason: {
+        lead_reason: 'Product Benefits: Soothing, Hydrating Skin Type: Normal, Sensitive Key.',
+        support_reasons: [
+          'it is a richer cream format built around ginseng, baobab, squalane, and hyaluronic acid',
+        ],
+      },
+      payload,
+      language: 'CN',
+      profile: { skinType: '混合皮', goals: ['屏障修护'] },
+      userRequestText: '我洗完脸后皮肤很干很紧，第一步应该先用什么？',
+      primaryTarget: {
+        target_id: 'hydrating_barrier_moisturizer',
+        ingredient_query: 'Hydrating barrier moisturizer',
+        resolved_target_step: 'moisturizer',
+      },
+      names: ['Centella Soothing Cream', 'Renewing Rich Beauty Cream'],
+      requestMode: 'use_first',
+      selectedProductRoleMix: 'same_role_comparison',
+    });
+
+    assert.match(text, /适合作为起步选择/);
+    assert.match(text, /保湿\/屏障步骤/);
+    assert.match(text, /泛醇|神经酰胺|透明质酸|角鲨烷|甘油/);
+    assert.doesNotMatch(text, /Product Benefits/i);
+    assert.doesNotMatch(text, /\bit is\b/i);
+    assert.doesNotMatch(text, /\bbecause\b/i);
+    assert.doesNotMatch(text, /\bHydrating Skin Type\b/i);
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('reco assistant structured renderer converts full SPF card rationale into a because fragment', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
