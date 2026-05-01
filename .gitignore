@@ -90,6 +90,7 @@ reports/travel-expert-multiturn/gemini_scores.json
 reports/beauty-cross-agent/
 reports/locality-backfill/
 reports/photo-skin-accuracy/
+reports/product-seed-fit-accuracy/
 
 # Pivota specific - ensure no real API keys
 pivota-credentials.json

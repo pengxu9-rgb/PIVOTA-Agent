@@ -46,6 +46,14 @@ Artifacts:
 
 Run only when the image URL env vars are populated. Inject API keys through env only; do not write keys into commands, reports, or fixtures.
 
+For internal local photos, use a manifest:
+
+```bash
+datasets/photo_skin_analysis_assets.local.example.json
+```
+
+The manifest supports per-case `image_url`, `image_url_env`, `photo_id`, `photo_id_env`, or `file_path`. When `file_path` is used with `--run-live`, the runner uploads the local file through `/v1/photos/upload`, then sends the returned `photo_id` into `/v1/analysis/skin`.
+
 ```bash
 BASE_URL=https://pivota-agent-production.up.railway.app \
 AGENT_API_KEY="$AGENT_API_KEY" \
@@ -60,6 +68,7 @@ PHOTO_BENCH_PRODUCT_BOTTLE_URL="https://..." \
 node scripts/eval_photo_skin_analysis_accuracy.cjs \
   --run-live \
   --dataset datasets/photo_skin_analysis_accuracy_seed.json \
+  --photo-manifest datasets/photo_skin_analysis_assets.local.example.json \
   --out-dir reports/photo-skin-accuracy/prod_YYYYMMDD \
   --fail-on-threshold
 ```
@@ -86,4 +95,3 @@ Manual reviewers should check:
 - Whether low-quality photos got a retake/quality caveat instead of confident findings.
 - Whether Chinese input produced Chinese output and English input produced English output.
 - Whether product bottle images avoided OCR/SKU guessing.
-
