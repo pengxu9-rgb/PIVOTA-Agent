@@ -541,7 +541,17 @@ function hasDeterministicReportMainlineSignals(reportDto) {
   const visionCues = Array.isArray(reportDto.vision_cues)
     ? reportDto.vision_cues.filter((row) => row && typeof row === 'object' && row.cue && row.region)
     : [];
-  return visionCues.length > 0;
+  if (visionCues.length > 0) return true;
+  const concernRank = Array.isArray(reportDto.concern_rank)
+    ? reportDto.concern_rank.filter((item) => typeof item === 'string' && item.trim())
+    : [];
+  if (concernRank.length > 0) return true;
+  return Boolean(
+    reportDto.deterministic_signals &&
+      typeof reportDto.deterministic_signals === 'object' &&
+      !Array.isArray(reportDto.deterministic_signals) &&
+      Object.keys(reportDto.deterministic_signals).length > 0
+  );
 }
 
 function buildDeterministicReportMainlineResult({
