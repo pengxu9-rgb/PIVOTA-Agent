@@ -33,6 +33,7 @@
     "probe:frontend:winona-ipsa:fixed": "WARMUP_ROUNDS=1 FORMAL_ROUNDS=100 node scripts/run_frontend_live_regression_winona_ipsa.js",
     "probe:search:stability": "node scripts/search_stability_matrix.js",
     "probe:commerce-core:prod-canary": "bash scripts/probe_celestial_commerce_core_prod_canary.sh",
+    "probe:photo-contract:prod": "node scripts/photo_backend_contract_canary.cjs",
     "probe:commerce-core:prompt-live": "bash scripts/probe_celestial_commerce_core_prompt_live_smoke.sh",
     "probe:commerce-core:rollout-smoke20": "bash scripts/probe_celestial_commerce_core_rollout_smoke_20.sh",
     "probe:commerce-core:aurora-rollout-smoke20": "bash scripts/probe_celestial_commerce_core_aurora_rollout_smoke_20.sh",
