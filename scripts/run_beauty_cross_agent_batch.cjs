@@ -720,6 +720,18 @@ function classifyResponseDegradation(body, response) {
   const contractStatus = String(body && body.status || '').trim().toLowerCase();
   if (contractStatus === 'failed') reasons.push('contract_failed');
   if (contractStatus === 'degraded') reasons.push('contract_degraded');
+  const fallbackAttempted =
+    body?.fallback_attempted === true ||
+    getPath(body, 'metadata.fallback_attempted') === true ||
+    getPath(body, 'metadata.route_health.fallback_triggered') === true ||
+    getPath(body, 'session_patch.meta.fallback_attempted') === true;
+  const fallbackAdopted =
+    body?.fallback_adopted === true ||
+    getPath(body, 'metadata.fallback_adopted') === true ||
+    getPath(body, 'metadata.route_health.fallback_adopted') === true ||
+    getPath(body, 'session_patch.meta.fallback_adopted') === true;
+  if (fallbackAttempted && !fallbackAdopted) reasons.push('fallback_attempted_not_adopted');
+  if (fallbackAdopted) reasons.push('fallback_adopted');
   const lowerDiag = diagnostics.toLowerCase();
   if (source === 'agent_products_error_fallback') reasons.push('error_fallback');
   if (source.includes('fallback') && products.length === 0) reasons.push('empty_fallback');
