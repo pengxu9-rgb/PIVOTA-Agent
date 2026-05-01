@@ -302,6 +302,8 @@ describe('pdpIdentityGraph', () => {
         title: 'Great Barrier Relief Jumbo',
         brand: 'KraveBeauty',
         pdp_how_to_use_raw: 'Apply one to two pumps after toner.',
+        how_to_use: 'Massage one to two pumps into clean skin.',
+        ingredients_inci: ['Water', 'Tamanu Oil', 'Niacinamide'],
         pdp_details_sections: [
           {
             heading: 'How to Use',
@@ -347,6 +349,8 @@ describe('pdpIdentityGraph', () => {
 
     expect(composed.product.description).toBe('Reviewed canonical overview.');
     expect(composed.product.pdp_how_to_use_raw).toBe('Apply one to two pumps after toner.');
+    expect(composed.product.how_to_use).toBe('Massage one to two pumps into clean skin.');
+    expect(composed.product.ingredients_inci).toEqual(['Water', 'Tamanu Oil', 'Niacinamide']);
     expect(composed.product.pdp_details_sections).toEqual([
       expect.objectContaining({
         heading: 'How to Use',
