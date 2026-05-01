@@ -4,6 +4,7 @@ const { z } = require('zod');
 const { getAxiosKeepAliveConfig } = require('../http/axiosKeepAlive');
 const {
   NON_IMAGE_GEMINI_FLOOR_MODEL,
+  resolveGeminiRuntimeModelName,
   resolveNonImageGeminiModel,
 } = require('../lib/geminiModelFloor');
 
@@ -553,7 +554,7 @@ function createProviderFromEnv(purpose = 'generic') {
       );
       const candidateModels = uniqueStrings([
         requestedModel,
-        NON_IMAGE_GEMINI_FLOOR_MODEL,
+        resolveGeminiRuntimeModelName(NON_IMAGE_GEMINI_FLOOR_MODEL),
       ]);
       const apiVersions = ['v1beta', 'v1'];
       if (!apiKey) throw new LlmError('LLM_CONFIG_MISSING', 'Missing required env var: GEMINI_API_KEY');

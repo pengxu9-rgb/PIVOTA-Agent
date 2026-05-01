@@ -10738,8 +10738,8 @@ test('/v1/reco/alternatives: hybrid supplements thin grounded pool with Gemini o
         assert.equal(resp.body?.source_mode, 'pool_open_world_mixed');
         assert.equal(resp.body?.failure_class, null);
         assert.equal(resp.body?.compare_meta?.open_world_status, 'success');
-        assert.equal(resp.body?.llm_trace?.provider_model, 'gemini-2.5-flash-preview');
-        assert.equal(geminiRequest?.model, 'gemini-2.5-flash-preview');
+        assert.equal(resp.body?.llm_trace?.provider_model, 'gemini-2.5-flash-preview-09-2025');
+        assert.equal(geminiRequest?.model, 'gemini-2.5-flash-preview-09-2025');
         const geminiPayload = JSON.parse(geminiRequest?.userPrompt || '{}');
         assert.equal(geminiPayload?.task?.max_alternatives, 3);
         assert.equal(Array.isArray(geminiPayload?.excluded_pool_products), true);
@@ -11331,11 +11331,11 @@ test('/v1/reco/alternatives: external_seed product-card rows use mixed compare p
         assert.equal(resp.body?.source_mode, 'pool_open_world_mixed');
         assert.equal(resp.body?.compare_meta?.open_world_status, 'provider_error');
         assert.equal(resp.body?.llm_trace?.source_mode, 'local_gemini_open_world');
-        assert.equal(resp.body?.llm_trace?.provider_model, 'gemini-2.5-flash-preview');
+        assert.equal(resp.body?.llm_trace?.provider_model, 'gemini-2.5-flash-preview-09-2025');
         assert.equal(resp.body?.llm_trace?.provider_route, 'aurora_reco_alternatives_open_world');
         assert.equal(resp.body?.llm_trace?.provider_reason, 'provider_error');
         assert.equal(resp.body?.llm_trace?.provider_result_reason, 'gemini_call_exception');
-        assert.equal(geminiRequest?.model, 'gemini-2.5-flash-preview');
+        assert.equal(geminiRequest?.model, 'gemini-2.5-flash-preview-09-2025');
         assert.equal(geminiRequest?.maxOutputTokens, 3072);
         assert.equal(geminiRequest?.timeoutMs, 12000);
         assert.equal(geminiRequest?.queueTimeoutMs, 3000);

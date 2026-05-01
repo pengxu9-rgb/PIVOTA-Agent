@@ -225,7 +225,7 @@ test('runtime QA story review upgrades legacy Gemini env to the temporary floor'
           userPrompt: 'StoryDigest={\"ui_card_v1\":{\"headline\":\"Generic headline\"}}',
         });
         assert.equal(result.ok, true);
-        assert.equal(captured.model, 'gemini-2.5-flash-preview');
+        assert.equal(captured.model, 'gemini-2.5-flash-preview-09-2025');
         assert.equal(captured.route, 'aurora_qa_story_review');
       } finally {
         __internal.__resetCallGeminiJsonObjectForTest();

@@ -58,7 +58,7 @@ test('Aurora chat v2 llm_gateway uses temporary unified Gemini model for product
       try {
         const result = await gateway._callGemini([{ role: 'user', content: 'hello' }], { mode: 'structured' });
         assert.equal(result.text, '{"ok":true}');
-        assert.match(String(capturedUrl || ''), /models\/gemini-2\.5-flash-preview:generateContent/);
+        assert.match(String(capturedUrl || ''), /models\/gemini-2\.5-flash-preview-09-2025:generateContent/);
         assert.doesNotMatch(String(capturedUrl || ''), /gemini-2\.0-flash/);
       } finally {
         global.fetch = originalFetch;

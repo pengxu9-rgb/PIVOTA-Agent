@@ -203,7 +203,7 @@ describe("geminiClient.generateLookSpecFromImage hardening", () => {
 
       expect(out.ok).toBe(true);
       const call = generateContent.mock.calls[0][0];
-      expect(call.model).toBe("gemini-2.5-flash-preview");
+      expect(call.model).toBe("gemini-2.5-flash-preview-09-2025");
     } finally {
       fs.rmSync(imgPath, { force: true });
     }
