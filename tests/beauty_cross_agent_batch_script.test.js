@@ -363,6 +363,27 @@ describe('beauty cross-agent batch runner', () => {
     expect(degradation).toEqual({ degraded: true, reasons: ['timeout_or_abort'] });
   });
 
+  test('flags explicit fallback attempted metadata even when HTTP response is 200', () => {
+    const { classifyResponseDegradation } = require('../scripts/run_beauty_cross_agent_batch.cjs');
+    const degradation = classifyResponseDegradation(
+      {
+        status: 'success',
+        products: [{ product_id: 'spf_1', title: 'Daily Sunscreen SPF 50' }],
+        metadata: {
+          query_source: 'agent_products_beauty_external_seed_mainline',
+          fallback_attempted: true,
+          fallback_adopted: false,
+        },
+      },
+      {
+        status: 200,
+        transport_error: '',
+      },
+    );
+
+    expect(degradation).toEqual({ degraded: true, reasons: ['fallback_attempted_not_adopted'] });
+  });
+
   test('assistant must-not guard ignores explicit avoidance wording', () => {
     const { evaluateRiskGuards } = require('../scripts/run_beauty_cross_agent_batch.cjs');
     const guardedCase = {

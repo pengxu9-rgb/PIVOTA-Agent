@@ -310,3 +310,54 @@ test('/v1/analysis/skin: photo download timeout fails fast before report model',
     },
   );
 });
+
+test('/v1/analysis/skin: degraded photo QC is not counted as successful photo analysis', async () => {
+  await withEnv(
+    {
+      PIVOT_BEAUTY_CONTRACT_V1_ENABLED: 'true',
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_DECISION_BASE_URL: '',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'agent_test_key',
+      AURORA_SKIN_FORCE_VISION_CALL: 'true',
+    },
+    async () => {
+      const axios = require('axios');
+      const originalGet = axios.get;
+      const originalPost = axios.post;
+      const { moduleId, mountAuroraBffRoutes } = loadRoutes();
+      axios.get = async (url) => {
+        throw new Error(`Unexpected axios.get for degraded QC contract test: ${String(url)}`);
+      };
+      axios.post = async (url) => {
+        throw new Error(`Unexpected axios.post for degraded QC contract test: ${String(url)}`);
+      };
+      try {
+        const app = makeApp(mountAuroraBffRoutes);
+        const resp = await invokeRoute(app, 'POST', '/v1/analysis/skin', {
+          headers: { 'X-Aurora-UID': 'uid_photo_analysis_qc_degraded', 'X-Lang': 'CN' },
+          body: {
+            use_photo: true,
+            photos: [{ slot_id: 'daylight', photo_id: 'photo_qc_degraded_contract', qc_status: 'degraded' }],
+            currentRoutine: {
+              am: { cleanser: '温和洁面', spf: 'SPF50' },
+              pm: { cleanser: '温和洁面', moisturizer: '修护霜' },
+            },
+          },
+        });
+        assert.equal(resp.status, 200);
+        assert.equal(resp.body?.status, 'failed');
+        assert.equal(resp.body?.analysis_meta?.failure_class, 'PHOTO_QC_DEGRADED');
+        assert.equal(resp.body?.session_patch?.meta?.fallback_attempted, true);
+        assert.equal(resp.body?.session_patch?.meta?.fallback_adopted, false);
+        const summaryCard = (Array.isArray(resp.body?.cards) ? resp.body.cards : []).find((card) => card && card.type === 'analysis_summary');
+        assert.equal(summaryCard?.payload?.used_photos, false);
+        assert.match(resp.body?.assistant_message?.content || '', /PHOTO_QC_DEGRADED|不会把这次照片分析包装成成功/);
+      } finally {
+        axios.get = originalGet;
+        axios.post = originalPost;
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
