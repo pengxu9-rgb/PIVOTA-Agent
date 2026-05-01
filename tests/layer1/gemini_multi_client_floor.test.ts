@@ -20,12 +20,14 @@ describe("geminiMultiClient model flooring", () => {
     delete process.env.GEMINI_ONE_CLICK_MODEL;
     delete process.env.PIVOTA_ONE_CLICK_MODEL_GEMINI;
     delete process.env.GEMINI_TRYON_IMAGE_MODEL;
+    delete process.env.PIVOTA_GEMINI_UNIFIED_MODEL_ENABLED;
     jest.resetModules();
   });
 
-  test("one-click JSON auto-upgrades legacy Gemini defaults to gemini-3-flash-preview", async () => {
+  test("one-click JSON uses the temporary unified Gemini production model", async () => {
     process.env.GEMINI_API_KEY = "test_key";
     process.env.GEMINI_MODEL = "gemini-2.5-flash";
+    process.env.PIVOTA_GEMINI_UNIFIED_MODEL_ENABLED = "true";
 
     const genai = require("@google/genai");
     const imagePath = writeTempImage();
@@ -43,7 +45,7 @@ describe("geminiMultiClient model flooring", () => {
 
       expect(out.ok).toBe(true);
       const call = generateContent.mock.calls[0][0];
-      expect(call.model).toBe("gemini-3-flash-preview");
+      expect(call.model).toBe("gemini-2.5-flash-preview");
     } finally {
       fs.rmSync(imagePath, { force: true });
     }

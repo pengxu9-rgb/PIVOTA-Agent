@@ -49,7 +49,7 @@ describe("LLM provider (env selection)", () => {
 
   test("openai provider ignores Gemini-only model list", async () => {
     process.env.PIVOTA_LAYER2_LLM_PROVIDER = "openai";
-    process.env.OPENAI_API_KEY = "test-openai-key";
+    process.env.OPENAI_API_KEY = "sk-live-realish-openai-key";
     process.env.OPENAI_BASE_URL = "http://openai.local";
     process.env.PIVOTA_LAYER2_MODEL = "gemini-2.5-flash-image-preview,gemini-3-pro-image-preview";
     delete process.env.PIVOTA_LAYER2_MODEL_OPENAI;
@@ -72,7 +72,7 @@ describe("LLM provider (env selection)", () => {
 
   test("openai provider can use Gemini models via OpenAI-compatible relay when enabled", async () => {
     process.env.PIVOTA_LAYER2_LLM_PROVIDER = "openai";
-    process.env.OPENAI_API_KEY = "test-openai-key";
+    process.env.OPENAI_API_KEY = "sk-live-realish-openai-key";
     process.env.OPENAI_BASE_URL = "http://openai.local";
     process.env.PIVOTA_OPENAI_COMPAT_ALLOW_GEMINI_MODELS = "1";
     process.env.PIVOTA_LAYER2_MODEL = "gemini-3-pro-image-preview";
@@ -101,7 +101,7 @@ describe("LLM provider (env selection)", () => {
 
   test("openai provider preprocesses image bytes for Gemini models", async () => {
     process.env.PIVOTA_LAYER2_LLM_PROVIDER = "openai";
-    process.env.OPENAI_API_KEY = "test-openai-key";
+    process.env.OPENAI_API_KEY = "sk-live-realish-openai-key";
     process.env.OPENAI_BASE_URL = "http://openai.local";
     process.env.PIVOTA_OPENAI_COMPAT_ALLOW_GEMINI_MODELS = "1";
     process.env.PIVOTA_LAYER2_MODEL = "gemini-2.5-flash-image-preview";
@@ -143,9 +143,10 @@ describe("LLM provider (env selection)", () => {
     process.env.GEMINI_API_KEY = "test-gemini-key";
     process.env.GEMINI_BASE_URL = "http://gemini.local";
     process.env.PIVOTA_LAYER2_MODEL_GEMINI = "gemini-1.5-flash";
+    process.env.PIVOTA_GEMINI_UNIFIED_MODEL_ENABLED = "true";
 
     nock("http://gemini.local")
-      .post("/v1beta/models/gemini-3-flash-preview:generateContent")
+      .post("/v1beta/models/gemini-2.5-flash-preview:generateContent")
       .query(true)
       .reply(200, {
         candidates: [

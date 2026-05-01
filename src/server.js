@@ -103,7 +103,12 @@ const {
 } = require('./services/discoveryFeed');
 const { backfillCatalogServingIndex } = require('./services/catalogServingIndex');
 const { searchCatalogServingGateway } = require('./services/catalogServingGateway');
-const { resolveNonImageGeminiModel } = require('./lib/geminiModelFloor');
+const {
+  NON_IMAGE_GEMINI_FLOOR_MODEL,
+  isTemporaryUnifiedGeminiModelEnabled,
+  resolveNonImageGeminiModel,
+  resolveTemporaryUnifiedGeminiModel,
+} = require('./lib/geminiModelFloor');
 const { recommendHandler } = require('./recommend/index');
 const {
   buildFindProductsMultiContext,
@@ -20715,6 +20720,11 @@ app.get('/healthz/gemini', (req, res) => {
       concurrency_max: snap.gate.concurrencyMax,
       rate_per_min: snap.gate.ratePerMin,
       key_count: snap.gate.keyCount,
+      model_policy: {
+        temporary_unified_model_enabled: isTemporaryUnifiedGeminiModelEnabled(),
+        temporary_unified_model: resolveTemporaryUnifiedGeminiModel(),
+        non_image_default_model: NON_IMAGE_GEMINI_FLOOR_MODEL,
+      },
       metrics: snap.metrics,
       circuit: snap._debug.circuit,
       semaphore: snap._debug.semaphore,

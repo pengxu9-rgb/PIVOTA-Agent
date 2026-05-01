@@ -553,8 +553,7 @@ function createProviderFromEnv(purpose = 'generic') {
       );
       const candidateModels = uniqueStrings([
         requestedModel,
-        'gemini-3-flash-preview',
-        'gemini-3-pro-preview',
+        NON_IMAGE_GEMINI_FLOOR_MODEL,
       ]);
       const apiVersions = ['v1beta', 'v1'];
       if (!apiKey) throw new LlmError('LLM_CONFIG_MISSING', 'Missing required env var: GEMINI_API_KEY');
