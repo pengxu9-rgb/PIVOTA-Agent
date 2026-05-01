@@ -33954,25 +33954,37 @@ async function runAgentWithTools(messages) {
     let completion;
     let lastCompletionError = null;
     const candidates = Array.isArray(modelCandidates) && modelCandidates.length ? modelCandidates : [llmModel];
-    for (const modelCandidate of candidates) {
-      try {
-        completion = await llmClient.chat.completions.create({
-          model: modelCandidate || llmModel,
-          messages,
-          tools: [
-            {
-              type: 'function',
-              function: uiChatToolSchema,
-            },
-          ],
-          tool_choice: 'auto',
-        });
-        break;
-      } catch (err) {
-        lastCompletionError = err;
-        const status = Number(err?.status || err?.statusCode || err?.response?.status || 0);
-        if (![400, 403, 404].includes(status)) throw err;
+    const latestShoppingIntent = uiChatFindLatestShoppingIntent(messages);
+    const tryCompletion = async ({ toolsEnabled }) => {
+      for (const modelCandidate of candidates) {
+        try {
+          return await llmClient.chat.completions.create({
+            model: modelCandidate || llmModel,
+            messages,
+            ...(toolsEnabled
+              ? {
+                  tools: [
+                    {
+                      type: 'function',
+                      function: uiChatToolSchema,
+                    },
+                  ],
+                  tool_choice: 'auto',
+                }
+              : {}),
+          });
+        } catch (err) {
+          lastCompletionError = err;
+          const status = Number(err?.status || err?.statusCode || err?.response?.status || 0);
+          if (![400, 403, 404].includes(status)) throw err;
+        }
       }
+      return null;
+    };
+
+    completion = await tryCompletion({ toolsEnabled: true });
+    if (!completion && !latestShoppingIntent) {
+      completion = await tryCompletion({ toolsEnabled: false });
     }
     if (!completion) throw lastCompletionError || new Error('UI chat LLM completion failed');
 
