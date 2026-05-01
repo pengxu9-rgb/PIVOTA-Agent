@@ -536,6 +536,76 @@ function buildDeterministicReportFallbackResult({
   };
 }
 
+function hasDeterministicReportMainlineSignals(reportDto) {
+  if (!reportDto || typeof reportDto !== 'object' || Array.isArray(reportDto)) return false;
+  const visionCues = Array.isArray(reportDto.vision_cues)
+    ? reportDto.vision_cues.filter((row) => row && typeof row === 'object' && row.cue && row.region)
+    : [];
+  return visionCues.length > 0;
+}
+
+function buildDeterministicReportMainlineResult({
+  reportDto,
+  language,
+  bundle,
+  retryAttempted,
+  canonical,
+  rawResponseText,
+  parseStatus,
+  schemaSanitized,
+  upstreamStatusCode,
+  latencyMs,
+} = {}) {
+  if (!hasDeterministicReportMainlineSignals(reportDto)) return null;
+  const seedCanonical =
+    canonical && typeof canonical === 'object' && !Array.isArray(canonical)
+      ? canonical
+      : {
+          needs_risk_check: Boolean(reportDto && reportDto.needs_risk_check),
+          summary_focus: { priority: 'mixed', primary_cues: [] },
+          insights: [],
+          routine_steps: [],
+          watchouts: [],
+          follow_up: {},
+          two_week_focus: [],
+          risk_flags: [],
+        };
+  const adjudicated = adjudicateReportCanonicalLayer(seedCanonical, { reportContext: reportDto });
+  const validation = validateReportCanonicalLayer(adjudicated);
+  if (!validation.ok) return null;
+  const semantic = evaluateReportCanonicalSemantic(adjudicated, {
+    reportContext: reportDto,
+    parseStatus: 'parsed',
+  });
+  if (!semantic.ok) return null;
+  const layer = renderReportCanonicalLayer(adjudicated, {
+    lang: language,
+    quality: reportDto && reportDto.quality,
+    reportContext: reportDto,
+  });
+  const safety = validateSkinAnalysisContent(layer, { lang: language });
+  if (!safety.ok) return null;
+  return {
+    ok: true,
+    provider: 'deterministic_signal_compiler',
+    reason: null,
+    schema_violation: false,
+    safety_violation: false,
+    semantic_violation: false,
+    layer,
+    canonical: adjudicated,
+    semantic,
+    raw_response_text: rawResponseText,
+    parse_status: parseStatus,
+    schema_sanitized: Boolean(schemaSanitized),
+    retry: { attempted: retryAttempted, final: 'success', last_reason: null },
+    upstream_status_code: upstreamStatusCode,
+    latency_ms: latencyMs,
+    prompt_version: bundle && bundle.promptVersion ? bundle.promptVersion : null,
+    input_hash: reportDto && reportDto.input_hash ? String(reportDto.input_hash) : null,
+  };
+}
+
 function buildSemanticRevisionHint({ stage, issues } = {}) {
   const list = Array.isArray(issues) ? issues.map((item) => String(item || '').trim()).filter(Boolean) : [];
   if (stage === 'vision') {
@@ -1144,26 +1214,19 @@ async function runGeminiReportStrategy({
       firstAttemptLatencyMs: first.latency_ms,
     })) {
       if (first.ok && firstValidation.ok && !firstSemantic.ok && isCanonical) {
-        return {
-          ok: true,
-          provider: 'gemini',
-          reason: null,
-          schema_violation: false,
-          safety_violation: false,
-          semantic_violation: false,
-          layer: buildConservativeReportFallbackLayer(reportDto, { lang: language }),
+        const deterministicMainline = buildDeterministicReportMainlineResult({
+          reportDto,
+          language,
+          bundle,
+          retryAttempted,
           canonical: firstAdjudicatedCanonical,
-          semantic: firstSemantic,
-          raw_response_text: first.response_text,
-          parse_status: first.parse_status,
-          schema_sanitized: Boolean(first.schema_sanitized),
-          retry: { attempted: retryAttempted, final: 'success', last_reason: 'semantic_fallback' },
-          upstream_status_code: first.upstream_status_code,
-          latency_ms: first.latency_ms,
-          prompt_version: bundle.promptVersion,
-          input_hash: reportDto && reportDto.input_hash ? String(reportDto.input_hash) : null,
-          __semantic_fallback: true,
-        };
+          rawResponseText: first.response_text,
+          parseStatus: first.parse_status,
+          schemaSanitized: first.schema_sanitized,
+          upstreamStatusCode: first.upstream_status_code,
+          latencyMs: first.latency_ms,
+        });
+        if (deterministicMainline) return deterministicMainline;
       }
       return buildDeterministicReportFallbackResult({
         reportDto,
@@ -1239,26 +1302,19 @@ async function runGeminiReportStrategy({
     }
 
     if (second.ok && secondValidation.ok && !secondSemantic.ok && isCanonical) {
-      return {
-        ok: true,
-        provider: 'gemini',
-        reason: null,
-        schema_violation: false,
-        safety_violation: false,
-        semantic_violation: false,
-        layer: buildConservativeReportFallbackLayer(reportDto, { lang: language }),
+      const deterministicMainline = buildDeterministicReportMainlineResult({
+        reportDto,
+        language,
+        bundle,
+        retryAttempted,
         canonical: secondAdjudicatedCanonical,
-        semantic: secondSemantic,
-        raw_response_text: second.response_text,
-        parse_status: second.parse_status,
-        schema_sanitized: Boolean(second.schema_sanitized),
-        retry: { attempted: retryAttempted, final: 'success', last_reason: 'semantic_fallback' },
-        upstream_status_code: second.upstream_status_code,
-        latency_ms: second.latency_ms,
-        prompt_version: bundle.promptVersion,
-        input_hash: reportDto && reportDto.input_hash ? String(reportDto.input_hash) : null,
-        __semantic_fallback: true,
-      };
+        rawResponseText: second.response_text,
+        parseStatus: second.parse_status,
+        schemaSanitized: second.schema_sanitized,
+        upstreamStatusCode: second.upstream_status_code,
+        latencyMs: second.latency_ms,
+      });
+      if (deterministicMainline) return deterministicMainline;
     }
 
     const secondFailureReason = normalizeReportGatewayReason(second, secondValidation, secondSemantic, secondSafety);
