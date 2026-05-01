@@ -22,6 +22,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+
       - name: Detect production deploy owner
         shell: bash
         run: |
@@ -56,3 +61,14 @@ jobs:
           MAX_ATTEMPTS=72 \
           SLEEP_SECONDS=10 \
           bash scripts/verify_deployed_commit_matches.sh
+
+      - name: Photo backend contract canary
+        shell: bash
+        env:
+          BASE: ${{ env.PROD_SMOKE_BASE_URL }}
+          BACKEND_BASE: ${{ vars.PIVOTA_BACKEND_PUBLIC_BASE_URL || 'https://web-production-fedb.up.railway.app' }}
+          AGENT_API_KEY: ${{ secrets.COMMERCE_CORE_PROD_AGENT_API_KEY || secrets.PIVOTA_AGENT_PROD_AGENT_API_KEY || '' }}
+          LANG_HEADER: CN
+        run: |
+          set -euo pipefail
+          npm run probe:photo-contract:prod -- --timeout-ms 180000
