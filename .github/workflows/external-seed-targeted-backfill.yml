@@ -1,0 +1,76 @@
+name: External Seed Targeted Backfill
+
+on:
+  workflow_dispatch:
+    inputs:
+      external_product_ids:
+        description: "Comma-separated external_product_id list"
+        required: true
+      market:
+        description: "Market code"
+        required: true
+        default: "US"
+      dry_run:
+        description: "Run dry-run only"
+        required: true
+        type: boolean
+        default: true
+      include_commerce_facts:
+        description: "Also refresh commerce facts"
+        required: true
+        type: boolean
+        default: false
+      skip_insights:
+        description: "Skip insights coverage sidecar"
+        required: true
+        type: boolean
+        default: true
+
+jobs:
+  targeted-backfill:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run targeted external seed backfill
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          if [ -z "${DATABASE_URL}" ]; then
+            echo "DATABASE_URL secret is required" >&2
+            exit 1
+          fi
+          mkdir -p reports/workflow_ops/external-seed-targeted-backfill/${{ github.run_id }}
+          ARGS=(
+            --market "${{ inputs.market }}"
+            --external-product-ids "${{ inputs.external_product_ids }}"
+            --limit 200
+            --concurrency 1
+          )
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            ARGS+=(--dry-run)
+          fi
+          if [ "${{ inputs.include_commerce_facts }}" = "true" ]; then
+            ARGS+=(--include-commerce-facts)
+          fi
+          if [ "${{ inputs.skip_insights }}" = "true" ]; then
+            ARGS+=(--skip-insights)
+          fi
+          node scripts/backfill-external-product-seeds-catalog.js "${ARGS[@]}" \
+            | tee reports/workflow_ops/external-seed-targeted-backfill/${{ github.run_id }}/backfill.log
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: external-seed-targeted-backfill-${{ github.run_id }}
+          path: reports/workflow_ops/external-seed-targeted-backfill/${{ github.run_id }}
