@@ -199,6 +199,16 @@ Required product-intel fields for strict travel/local ranking:
 
 For a Seattle -> Seoul sunscreen request, a product can be described as "good to buy in Seoul" only when `local_purchase_markets` or equivalent authority includes Korea/KR/Seoul, or the brand home market is Korea with a known Korea retail path. Title tokens like `Birch`, `Dokdo`, or `Mugwort` may be used as weak ranking hints, but they are not sufficient authority for a local-purchase claim.
 
+### Strict Display Quality Gates
+
+Strict ranking is not enough when weak candidates can still leak into the visible top results. Beauty contract display shaping must apply deterministic quality gates after recall, class filtering, safety exclusion, and dedupe:
+
+- sensitive brightening/serum requests should suppress high-strength actives such as `Niacinamide 10% + Zinc`, high-percentage L-AA, or fragranced/alcohol-heavy active serums when at least four gentler alternatives remain;
+- pregnancy/trying-to-conceive requests should suppress vague anti-aging or firming products unless the product has explicit pregnancy-safe, retinol-free, or ingredient-level safe evidence such as SPF, azelaic acid, low-strength niacinamide, peptides, ceramides, or panthenol;
+- barrier/moisturizer results should cap repeated near-identical repair cream signatures in the top display when distinct safe alternatives exist, so the top set is not dominated by duplicate ceramide/panthenol creams.
+
+These gates do not rescue an unsafe result. They only decide whether a weak but otherwise class-matching candidate is allowed into the visible recommendation set. If enough better candidates do not exist, the system may keep the weaker candidate but must not label it with unsupported safety or local-authority claims.
+
 ### Creator Ranking Overlay
 
 Shopping and Creator share the same recall, product class gate, and safety exclusion gate. Creator may then apply an additional bounded ranking overlay, but only after a candidate has already passed relevance and safety.
@@ -319,7 +329,7 @@ Emergency off:
 
 - set `PIVOT_BEAUTY_CONTRACT_V1_ENABLED=false` to disable contract stamping and fallback isolation;
 - set `PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED=false` to bypass the direct indexed beauty recall path;
-- set `PIVOT_BEAUTY_STRICT_RECO_QUALITY_ENABLED=false` to disable the strict product-quality rank overlay without changing recall;
+- set `PIVOT_BEAUTY_STRICT_RECO_QUALITY_ENABLED=false` to disable the strict product-quality rank/display overlay without changing recall;
 - set `PIVOT_BEAUTY_CREATOR_CURATION_RANKING_ENABLED=false` to make Creator use the shared Shopping order after safety/class gates;
 - set `PIVOT_BEAUTY_LEGACY_FALLBACK_ISOLATION_ENABLED=false` only if fallback adoption must be temporarily restored during incident response.
 

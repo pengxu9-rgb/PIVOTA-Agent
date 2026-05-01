@@ -3276,6 +3276,27 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
                 created_at: new Date().toISOString(),
               },
               {
+                id: 'seed-bouncy-firm-1',
+                external_product_id: 'ext_bouncy_firm_1',
+                market: 'US',
+                tool: '*',
+                destination_url: 'https://shop.example.com/products/bouncy-firm-serum',
+                canonical_url: 'https://shop.example.com/products/bouncy-firm-serum',
+                domain: 'shop.example.com',
+                title: 'Bouncy & Firm Anti-Aging Serum',
+                image_url: 'https://cdn.example.com/bouncy-firm.jpg',
+                price_amount: '34.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Test Beauty',
+                  category: 'serum',
+                  description: 'Firming anti-aging serum for elasticity.',
+                },
+                updated_at: new Date().toISOString(),
+                created_at: new Date().toISOString(),
+              },
+              {
                 id: 'seed-sunscreen-1',
                 external_product_id: 'ext_sunscreen_1',
                 market: 'US',
@@ -3424,6 +3445,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(resp.body.products.map((product) => product.product_id)).toContain('ext_barrier_1');
     expect(resp.body.products.map((product) => product.product_id)).not.toContain('ext_retinol_1');
     expect(resp.body.products.map((product) => product.product_id)).not.toContain('ext_resurfacing_1');
+    expect(resp.body.products.map((product) => product.product_id)).not.toContain('ext_bouncy_firm_1');
     expect(resp.body.products.map((product) => product.product_id)).not.toContain('ext_lip_spf_1');
     expect(resp.body.products.map((product) => product.product_id)).not.toContain('ext_mini_1');
     expect(resp.body.products.map((product) => product.product_id)).not.toContain('ext_mini_oz_1');
@@ -3649,6 +3671,48 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
                 created_at: now,
               },
               {
+                id: 'seed-tranexamic-1',
+                external_product_id: 'ext_tranexamic_1',
+                market: 'US',
+                tool: '*',
+                destination_url: 'https://shop.example.com/products/tranexamic-brightening-serum',
+                canonical_url: 'https://shop.example.com/products/tranexamic-brightening-serum',
+                domain: 'shop.example.com',
+                title: 'Tranexamic Brightening Serum',
+                image_url: 'https://cdn.example.com/tranexamic.jpg',
+                price_amount: '20.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Test Beauty',
+                  category: 'serum',
+                  description: 'Gentle fragrance-free brightening serum with tranexamic acid.',
+                },
+                updated_at: now,
+                created_at: now,
+              },
+              {
+                id: 'seed-barrier-essence-1',
+                external_product_id: 'ext_barrier_essence_1',
+                market: 'US',
+                tool: '*',
+                destination_url: 'https://shop.example.com/products/barrier-brightening-essence',
+                canonical_url: 'https://shop.example.com/products/barrier-brightening-essence',
+                domain: 'shop.example.com',
+                title: 'Barrier Brightening Essence',
+                image_url: 'https://cdn.example.com/barrier-essence.jpg',
+                price_amount: '19.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Test Beauty',
+                  category: 'serum',
+                  description: 'Fragrance-free barrier essence for sensitive uneven tone.',
+                },
+                updated_at: now,
+                created_at: now,
+              },
+              {
                 id: 'seed-rose-trio-1',
                 external_product_id: 'ext_rose_trio_1',
                 market: 'US',
@@ -3730,9 +3794,10 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(resp.body.metadata?.query_source).toBe('agent_products_beauty_external_seed_mainline');
     const ids = resp.body.products.map((product) => product.product_id);
     expect(ids).toContain('ext_niacinamide_5_1');
-    expect(ids).toContain('ext_niacinamide_10_1');
     expect(ids).toContain('ext_azelaic_brightening_1');
-    expect(ids.indexOf('ext_niacinamide_5_1')).toBeLessThan(ids.indexOf('ext_niacinamide_10_1'));
+    expect(ids).toContain('ext_tranexamic_1');
+    expect(ids).toContain('ext_barrier_essence_1');
+    expect(ids).not.toContain('ext_niacinamide_10_1');
     expect(ids).not.toContain('ext_rose_trio_1');
     expect(ids).not.toContain('ext_volufiline_1');
     expect(upstreamSearch.isDone()).toBe(false);
@@ -3990,6 +4055,167 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(ids).not.toContain('ext_scented_face_1');
     expect(ids).not.toContain('ext_routine_1');
     expect(ids).not.toContain('ext_active_suspension_1');
+    expect(upstreamSearch.isDone()).toBe(false);
+  });
+
+  test('barrier moisturizer display reranks repeated repair creams behind distinct options', async () => {
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total')) return { rows: [{ total: 0 }] };
+        if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
+          return { rows: [] };
+        }
+        if (text.includes('FROM external_product_seeds')) {
+          const now = new Date().toISOString();
+          return {
+            rows: [
+              {
+                id: 'seed-ceramide-panthenol-a',
+                external_product_id: 'ext_ceramide_panthenol_a',
+                market: 'US',
+                tool: '*',
+                destination_url: 'https://shop.example.com/products/ceramide-panthenol-a',
+                canonical_url: 'https://shop.example.com/products/ceramide-panthenol-a',
+                domain: 'shop.example.com',
+                title: 'Ceramide Panthenol Barrier Cream A',
+                image_url: 'https://cdn.example.com/a.jpg',
+                price_amount: '22.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Test Beauty',
+                  category: 'moisturizer',
+                  description: 'Fragrance-free ceramide and panthenol barrier repair face cream.',
+                },
+                updated_at: now,
+                created_at: now,
+              },
+              {
+                id: 'seed-ceramide-panthenol-b',
+                external_product_id: 'ext_ceramide_panthenol_b',
+                market: 'US',
+                tool: '*',
+                destination_url: 'https://shop.example.com/products/ceramide-panthenol-b',
+                canonical_url: 'https://shop.example.com/products/ceramide-panthenol-b',
+                domain: 'shop.example.com',
+                title: 'Ceramide Panthenol Barrier Cream B',
+                image_url: 'https://cdn.example.com/b.jpg',
+                price_amount: '23.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Test Beauty',
+                  category: 'moisturizer',
+                  description: 'Fragrance-free ceramide and panthenol barrier repair face cream.',
+                },
+                updated_at: now,
+                created_at: now,
+              },
+              {
+                id: 'seed-ceramide-panthenol-c',
+                external_product_id: 'ext_ceramide_panthenol_c',
+                market: 'US',
+                tool: '*',
+                destination_url: 'https://shop.example.com/products/ceramide-panthenol-c',
+                canonical_url: 'https://shop.example.com/products/ceramide-panthenol-c',
+                domain: 'shop.example.com',
+                title: 'Ceramide Panthenol Barrier Cream C',
+                image_url: 'https://cdn.example.com/c.jpg',
+                price_amount: '24.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Test Beauty',
+                  category: 'moisturizer',
+                  description: 'Fragrance-free ceramide and panthenol barrier repair face cream.',
+                },
+                updated_at: now,
+                created_at: now,
+              },
+              {
+                id: 'seed-cica-1',
+                external_product_id: 'ext_cica_1',
+                market: 'US',
+                tool: '*',
+                destination_url: 'https://shop.example.com/products/cica-centella-gel-cream',
+                canonical_url: 'https://shop.example.com/products/cica-centella-gel-cream',
+                domain: 'shop.example.com',
+                title: 'Cica Centella Gel Cream',
+                image_url: 'https://cdn.example.com/cica.jpg',
+                price_amount: '21.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Test Beauty',
+                  category: 'moisturizer',
+                  description: 'Lightweight fragrance-free cica centella repair gel cream.',
+                },
+                updated_at: now,
+                created_at: now,
+              },
+              {
+                id: 'seed-oat-1',
+                external_product_id: 'ext_oat_1',
+                market: 'US',
+                tool: '*',
+                destination_url: 'https://shop.example.com/products/oat-barrier-lotion',
+                canonical_url: 'https://shop.example.com/products/oat-barrier-lotion',
+                domain: 'shop.example.com',
+                title: 'Colloidal Oat Barrier Lotion',
+                image_url: 'https://cdn.example.com/oat.jpg',
+                price_amount: '20.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Test Beauty',
+                  category: 'moisturizer',
+                  description: 'Fragrance-free colloidal oat sensitive barrier lotion.',
+                },
+                updated_at: now,
+                created_at: now,
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      },
+    }));
+
+    const upstreamSearch = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'fragrance-free barrier repair moisturizer sensitive skin travel flight',
+            page: 1,
+            limit: 4,
+            in_stock_only: true,
+          },
+        },
+        metadata: {
+          source: 'beauty_cross_agent_batch',
+          market: 'US',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    const ids = resp.body.products.map((product) => product.product_id);
+    expect(ids).toHaveLength(4);
+    expect(ids.filter((id) => String(id).startsWith('ext_ceramide_panthenol_'))).toHaveLength(2);
+    expect(ids).toEqual(expect.arrayContaining(['ext_cica_1', 'ext_oat_1']));
     expect(upstreamSearch.isDone()).toBe(false);
   });
 
