@@ -1960,6 +1960,27 @@ function attachBeautyExpertV1ToResponse(response = {}, options = {}) {
     };
   }
 
+  const visibleReply = pickFirstTrimmed(next.reply);
+  const assistantSuppressedReason = pickFirstTrimmed(
+    next.meta?.assistant_visible_suppressed_reason,
+    next.metadata?.assistant_visible_suppressed_reason,
+  );
+  const existingAssistantText = pickFirstTrimmed(
+    next.assistant_message?.content,
+    next.assistant_text,
+  );
+  const canonicalVisibleText = existingAssistantText || visibleReply;
+  if (canonicalVisibleText && !assistantSuppressedReason) {
+    if (!pickFirstTrimmed(next.assistant_text)) next.assistant_text = canonicalVisibleText;
+    if (!pickFirstTrimmed(next.assistant_message?.content)) {
+      next.assistant_message = {
+        role: 'assistant',
+        content: canonicalVisibleText,
+        format: 'text',
+      };
+    }
+  }
+
   return next;
 }
 
