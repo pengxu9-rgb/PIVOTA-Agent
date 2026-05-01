@@ -50,6 +50,12 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
         process.env.PIVOT_BEAUTY_PARALLEL_SCOPE_RECALL_ENABLED,
       PIVOT_BEAUTY_LEGACY_TOOL_SCOPE_RECALL_ENABLED:
         process.env.PIVOT_BEAUTY_LEGACY_TOOL_SCOPE_RECALL_ENABLED,
+      PIVOT_BEAUTY_STRICT_RECO_QUALITY_ENABLED:
+        process.env.PIVOT_BEAUTY_STRICT_RECO_QUALITY_ENABLED,
+      PIVOT_BEAUTY_CREATOR_CURATION_RANKING_ENABLED:
+        process.env.PIVOT_BEAUTY_CREATOR_CURATION_RANKING_ENABLED,
+      PIVOT_BEAUTY_CREATOR_COMMERCIAL_RANKING_ENABLED:
+        process.env.PIVOT_BEAUTY_CREATOR_COMMERCIAL_RANKING_ENABLED,
     };
 
     process.env.PIVOTA_API_BASE = 'http://pivota.test';
@@ -181,6 +187,24 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     } else {
       process.env.PIVOT_BEAUTY_LEGACY_TOOL_SCOPE_RECALL_ENABLED =
         prevEnv.PIVOT_BEAUTY_LEGACY_TOOL_SCOPE_RECALL_ENABLED;
+    }
+    if (prevEnv.PIVOT_BEAUTY_STRICT_RECO_QUALITY_ENABLED === undefined) {
+      delete process.env.PIVOT_BEAUTY_STRICT_RECO_QUALITY_ENABLED;
+    } else {
+      process.env.PIVOT_BEAUTY_STRICT_RECO_QUALITY_ENABLED =
+        prevEnv.PIVOT_BEAUTY_STRICT_RECO_QUALITY_ENABLED;
+    }
+    if (prevEnv.PIVOT_BEAUTY_CREATOR_CURATION_RANKING_ENABLED === undefined) {
+      delete process.env.PIVOT_BEAUTY_CREATOR_CURATION_RANKING_ENABLED;
+    } else {
+      process.env.PIVOT_BEAUTY_CREATOR_CURATION_RANKING_ENABLED =
+        prevEnv.PIVOT_BEAUTY_CREATOR_CURATION_RANKING_ENABLED;
+    }
+    if (prevEnv.PIVOT_BEAUTY_CREATOR_COMMERCIAL_RANKING_ENABLED === undefined) {
+      delete process.env.PIVOT_BEAUTY_CREATOR_COMMERCIAL_RANKING_ENABLED;
+    } else {
+      process.env.PIVOT_BEAUTY_CREATOR_COMMERCIAL_RANKING_ENABLED =
+        prevEnv.PIVOT_BEAUTY_CREATOR_COMMERCIAL_RANKING_ENABLED;
     }
     if (prevEnv.CREATOR_CATALOG_CACHE_TTL_SECONDS === undefined) {
       delete process.env.CREATOR_CATALOG_CACHE_TTL_SECONDS;
@@ -4524,6 +4548,166 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
 	    expect(upstreamSearch.isDone()).toBe(false);
 	  });
 
+  test('Seoul travel sunscreen ranking prefers local SPF50 PA++++ authority over generic US SPF', async () => {
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total')) return { rows: [{ total: 0 }] };
+        if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
+          return { rows: [] };
+        }
+        if (text.includes('FROM external_product_seeds')) {
+          const now = new Date().toISOString();
+          return {
+            rows: [
+              {
+                id: 'seed-olay-spf',
+                external_product_id: 'ext_olay_spf',
+                market: 'US',
+                tool: '*',
+                destination_url: 'https://shop.example.com/products/olay-super-cream-spf-30',
+                canonical_url: 'https://shop.example.com/products/olay-super-cream-spf-30',
+                domain: 'shop.example.com',
+                title: 'Olay Super Cream with Sunscreen SPF 30',
+                image_url: 'https://cdn.example.com/olay.jpg',
+                price_amount: '29.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Olay',
+                  category: 'sunscreen',
+                  description: 'Daily facial moisturizer with sunscreen.',
+                },
+                updated_at: now,
+                created_at: now,
+              },
+              {
+                id: 'seed-glowscreen',
+                external_product_id: 'ext_glowscreen',
+                market: 'US',
+                tool: '*',
+                destination_url: 'https://shop.example.com/products/glowscreen-golden-hour',
+                canonical_url: 'https://shop.example.com/products/glowscreen-golden-hour',
+                domain: 'shop.example.com',
+                title: 'Glowscreen Golden Hour SPF 40',
+                image_url: 'https://cdn.example.com/glow.jpg',
+                price_amount: '38.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Supergoop',
+                  category: 'sunscreen',
+                  description: 'Dewy glowing sunscreen.',
+                },
+                updated_at: now,
+                created_at: now,
+              },
+              {
+                id: 'seed-birch-stick',
+                external_product_id: 'ext_birch_stick',
+                market: 'US',
+                tool: '*',
+                destination_url: 'https://shop.example.com/products/birch-sun-stick',
+                canonical_url: 'https://shop.example.com/products/birch-sun-stick',
+                domain: 'shop.example.com',
+                title: 'Birch Moisturizing Sun Stick SPF 50+ PA++++',
+                image_url: 'https://cdn.example.com/birch-stick.jpg',
+                price_amount: '22.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Round Lab',
+                  category: 'sunscreen',
+                  brand_origin_country: 'KR',
+                  local_purchase_markets: ['KR', 'US'],
+                  description: 'Portable Korean sunscreen stick for reapplication.',
+                },
+                updated_at: now,
+                created_at: now,
+              },
+              {
+                id: 'seed-airy-spf',
+                external_product_id: 'ext_airy_spf',
+                market: 'US',
+                tool: '*',
+                destination_url: 'https://shop.example.com/products/airy-sunscreen-fluid-spf50-pa',
+                canonical_url: 'https://shop.example.com/products/airy-sunscreen-fluid-spf50-pa',
+                domain: 'shop.example.com',
+                title: 'Airy Watery Sunscreen Fluid SPF 50+ PA++++',
+                image_url: 'https://cdn.example.com/airy.jpg',
+                price_amount: '18.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Test K Beauty',
+                  category: 'sunscreen',
+                  brand_home_market: 'South Korea',
+                  local_purchase_markets: ['KR'],
+                  description: 'Lightweight watery K-beauty face sunscreen.',
+                },
+                updated_at: now,
+                created_at: now,
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      },
+    }));
+
+    const upstreamSearch = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'Seattle to Seoul travel local sunscreen SPF50 PA++++ oily acne lightweight',
+            page: 1,
+            limit: 4,
+            in_stock_only: true,
+            market: 'US',
+          },
+        },
+        metadata: {
+          source: 'manual_quality_probe',
+          market: 'US',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.metadata?.query_source).toBe('agent_products_beauty_external_seed_mainline');
+    expect(resp.body.metadata?.beauty_strict_quality_ranker).toMatchObject({
+      applied: true,
+      local_authority_fields_supported: true,
+    });
+    const ids = resp.body.products.map((product) => product.product_id);
+    expect(ids.slice(0, 2)).toEqual(['ext_airy_spf', 'ext_birch_stick']);
+    expect(ids.indexOf('ext_olay_spf')).toBeGreaterThan(ids.indexOf('ext_birch_stick'));
+    expect(ids.indexOf('ext_glowscreen')).toBeGreaterThan(ids.indexOf('ext_birch_stick'));
+    expect(resp.body.products[0]?.local_authority).toMatchObject({
+      brand_home_market: 'South Korea',
+      local_purchase_markets: ['KR'],
+      authority_source: 'seed',
+    });
+    expect(resp.body.products[0]?.fit_attributes).toMatchObject({
+      spf_rating: 'SPF 50',
+      pa_rating: 'PA++++',
+      texture: 'fluid',
+    });
+    expect(upstreamSearch.isDone()).toBe(false);
+  });
+
   test('creator Seoul local skincare bundle query keeps beauty family coverage on mainline', async () => {
     jest.doMock('../../src/db', () => ({
       query: async (sql) => {
@@ -4669,6 +4853,142 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(titles).toMatch(/Cleanser/i);
     expect(titles).toMatch(/Moisturizer|Barrier|Repair|Cream/i);
     expect(resp.body.products.map((product) => product.product_id)).not.toContain('ext_serum_1');
+    expect(upstreamSearch.isDone()).toBe(false);
+  });
+
+  test('creator beauty ranking applies curation overlay after shared safety and class gates', async () => {
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('COUNT(*)::int AS total')) return { rows: [{ total: 0 }] };
+        if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
+          return { rows: [] };
+        }
+        if (text.includes('FROM external_product_seeds')) {
+          const now = new Date().toISOString();
+          return {
+            rows: [
+              {
+                id: 'seed-generic-barrier',
+                external_product_id: 'ext_generic_barrier',
+                market: 'US',
+                tool: '*',
+                destination_url: 'https://shop.example.com/products/generic-barrier-cream',
+                canonical_url: 'https://shop.example.com/products/generic-barrier-cream',
+                domain: 'shop.example.com',
+                title: 'Barrier Repair Moisturizer',
+                image_url: 'https://cdn.example.com/generic-barrier.jpg',
+                price_amount: '22.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Generic Skin',
+                  category: 'moisturizer',
+                  description: 'Fragrance-free barrier cream with ceramide and panthenol.',
+                },
+                updated_at: now,
+                created_at: now,
+              },
+              {
+                id: 'seed-creator-barrier',
+                external_product_id: 'ext_creator_barrier',
+                market: 'US',
+                tool: 'creator_agents',
+                destination_url: 'https://shop.example.com/products/creator-barrier-cream',
+                canonical_url: 'https://shop.example.com/products/creator-barrier-cream',
+                domain: 'shop.example.com',
+                title: 'Barrier Repair Moisturizer Creator Pick',
+                image_url: 'https://cdn.example.com/creator-barrier.jpg',
+                price_amount: '24.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Nina Skin',
+                  category: 'moisturizer',
+                  description: 'Fragrance-free barrier cream with ceramide and panthenol.',
+                  creator_id: 'nina-studio',
+                  creator_tags: ['creator_pick', 'barrier', 'sensitive'],
+                  source_listing_scope: 'creator_preferred',
+                },
+                updated_at: now,
+                created_at: now,
+              },
+              {
+                id: 'seed-retinol-cream',
+                external_product_id: 'ext_retinol_cream',
+                market: 'US',
+                tool: 'creator_agents',
+                destination_url: 'https://shop.example.com/products/retinol-cream',
+                canonical_url: 'https://shop.example.com/products/retinol-cream',
+                domain: 'shop.example.com',
+                title: 'Retinol Barrier Cream Creator Pick',
+                image_url: 'https://cdn.example.com/retinol.jpg',
+                price_amount: '28.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Nina Skin',
+                  category: 'moisturizer',
+                  description: 'Night cream with retinol.',
+                  creator_id: 'nina-studio',
+                  creator_tags: ['creator_pick'],
+                },
+                updated_at: now,
+                created_at: now,
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      },
+    }));
+
+    const upstreamSearch = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/creator/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'pregnancy safe fragrance free barrier moisturizer for sensitive skin',
+            page: 1,
+            limit: 4,
+            in_stock_only: true,
+            market: 'US',
+          },
+        },
+        metadata: {
+          source: 'creator_agent',
+          creator_id: 'nina-studio',
+          market: 'US',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.metadata?.query_source).toBe('agent_products_creator_beauty_external_seed_mainline');
+    expect(resp.body.metadata?.creator_rank_overlay).toMatchObject({
+      applied: true,
+      commercial_boost_enabled: false,
+      safety_and_class_gate_precedes_overlay: true,
+    });
+    expect(resp.body.products[0]?.product_id).toBe('ext_creator_barrier');
+    expect(resp.body.products[0]?.creator_rank).toMatchObject({
+      creator_inventory_match: true,
+      creator_boost_applied: true,
+      commercial_boost_applied: false,
+    });
+    expect(resp.body.products.map((product) => product.product_id)).toContain('ext_generic_barrier');
+    expect(resp.body.products.map((product) => product.product_id)).not.toContain('ext_retinol_cream');
     expect(upstreamSearch.isDone()).toBe(false);
   });
 
