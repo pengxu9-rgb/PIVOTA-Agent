@@ -10679,10 +10679,20 @@ function normalizeStringArrayForContract(value) {
     new Set(
       values
         .flatMap((item) => (Array.isArray(item) ? item : [item]))
+        .filter((item) => item == null || ['string', 'number', 'boolean'].includes(typeof item))
         .map((item) => String(item || '').trim())
         .filter(Boolean),
     ),
   );
+}
+
+function firstNonEmptyScalarString(...values) {
+  for (const value of values) {
+    if (value == null || !['string', 'number', 'boolean'].includes(typeof value)) continue;
+    const text = String(value).trim();
+    if (text) return text;
+  }
+  return '';
 }
 
 function buildBeautyProductLocalAuthorityForResponse(product = {}) {
@@ -10692,14 +10702,14 @@ function buildBeautyProductLocalAuthorityForResponse(product = {}) {
   const derived = isPlainObject(seedData.derived) ? seedData.derived : {};
   const commerce = isPlainObject(seedData.commerce) ? seedData.commerce : {};
   const recall = isPlainObject(derived.recall) ? derived.recall : {};
-  const brandOriginCountry = firstNonEmptyString(
+  const brandOriginCountry = firstNonEmptyScalarString(
     product.brand_origin_country,
     seedData.brand_origin_country,
     snapshot.brand_origin_country,
     commerce.brand_origin_country,
     recall.brand_origin_country,
   );
-  const brandHomeMarket = firstNonEmptyString(
+  const brandHomeMarket = firstNonEmptyScalarString(
     product.brand_home_market,
     seedData.brand_home_market,
     snapshot.brand_home_market,
@@ -10720,7 +10730,7 @@ function buildBeautyProductLocalAuthorityForResponse(product = {}) {
       commerce.local_purchase_markets ||
       recall.local_purchase_markets,
   );
-  const retailerRegion = firstNonEmptyString(
+  const retailerRegion = firstNonEmptyScalarString(
     product.retailer_region,
     product.retailer_country,
     seedData.retailer_region,
@@ -10728,7 +10738,7 @@ function buildBeautyProductLocalAuthorityForResponse(product = {}) {
     snapshot.retailer_region,
     snapshot.retailer_country,
   );
-  const authoritySource = firstNonEmptyString(
+  const authoritySource = firstNonEmptyScalarString(
     product.authority_source,
     product.local_authority_source,
     seedData.authority_source,
@@ -11334,6 +11344,19 @@ function dedupeBeautyProductsByDisplayKey(products = []) {
   return out;
 }
 
+function isWeakSeoulLocalSunscreenDisplayCandidate(product = {}, queryText = '') {
+  if (!hasKBeautyLocalIntent(queryText)) return false;
+  if (!beautyProductMatchesFamily(product, 'sunscreen')) return false;
+  if (beautyProductHasKBeautySignal(product)) return false;
+  const text = buildFallbackCandidateText(product);
+  if (!text) return false;
+  const spfValue = extractBeautySpfValue(product);
+  return (
+    (spfValue && spfValue < 50) ||
+    /\b(olay|glowscreen|supergoop|golden\s*hour|daily\s*facial\s*moisturi[sz]er|moisturi[sz]er\s+with\s+sunscreen|super\s*cream)\b/i.test(text)
+  );
+}
+
 function polishBeautyProductRankingForDisplay(products = [], queryText = '', safeLimit = 20) {
   const list = Array.isArray(products) ? products : [];
   if (list.length <= 1) return list;
@@ -11348,7 +11371,15 @@ function polishBeautyProductRankingForDisplay(products = [], queryText = '', saf
     return !packVariant.any;
   });
   const minUsefulCount = Math.min(4, limit);
+  if (hasKBeautyLocalIntent(queryText)) {
+    const localPolished = polished.filter((product) => !isWeakSeoulLocalSunscreenDisplayCandidate(product, queryText));
+    if (localPolished.length >= minUsefulCount) return localPolished;
+  }
   if (polished.length >= minUsefulCount) return polished;
+  if (hasKBeautyLocalIntent(queryText)) {
+    const localList = list.filter((product) => !isWeakSeoulLocalSunscreenDisplayCandidate(product, queryText));
+    if (localList.length >= minUsefulCount) return localList;
+  }
   return list;
 }
 
