@@ -308,6 +308,61 @@ describe('beauty cross-agent batch runner', () => {
     expect(summary.ok).toBe(false);
   });
 
+  test('does not flag successful responses with timeout false telemetry as degraded', () => {
+    const { classifyResponseDegradation } = require('../scripts/run_beauty_cross_agent_batch.cjs');
+    const degradation = classifyResponseDegradation(
+      {
+        status: 'success',
+        products: [{ product_id: 'spf_1', title: 'Daily Sunscreen SPF 50' }],
+        metadata: {
+          query_source: 'agent_products_beauty_external_seed_mainline',
+          search_trace: {
+            upstream_stage: {
+              called: false,
+              timeout: false,
+              status: null,
+            },
+          },
+          route_health: {
+            fallback_triggered: false,
+            fallback_adopted: false,
+          },
+        },
+      },
+      {
+        status: 200,
+        transport_error: '',
+      },
+    );
+
+    expect(degradation).toEqual({ degraded: false, reasons: [] });
+  });
+
+  test('flags explicit timeout true telemetry as degraded', () => {
+    const { classifyResponseDegradation } = require('../scripts/run_beauty_cross_agent_batch.cjs');
+    const degradation = classifyResponseDegradation(
+      {
+        status: 'success',
+        products: [{ product_id: 'spf_1', title: 'Daily Sunscreen SPF 50' }],
+        metadata: {
+          query_source: 'agent_products_beauty_external_seed_mainline',
+          search_trace: {
+            upstream_stage: {
+              called: true,
+              timeout: true,
+            },
+          },
+        },
+      },
+      {
+        status: 200,
+        transport_error: '',
+      },
+    );
+
+    expect(degradation).toEqual({ degraded: true, reasons: ['timeout_or_abort'] });
+  });
+
   test('assistant must-not guard ignores explicit avoidance wording', () => {
     const { evaluateRiskGuards } = require('../scripts/run_beauty_cross_agent_batch.cjs');
     const guardedCase = {
