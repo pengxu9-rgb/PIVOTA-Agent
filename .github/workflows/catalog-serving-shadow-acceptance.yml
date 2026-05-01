@@ -39,7 +39,7 @@ on:
         required: false
         default: "red"
       operation:
-        description: "K-beauty seed op: commerce_facts_backfill | market_coverage_audit | identity_lift | promote_live_read"
+        description: "K-beauty seed op: commerce_facts_backfill | market_coverage_audit | identity_lift | promote_live_read | channel_seed_manifest"
         required: false
         default: "commerce_facts_backfill"
       external_product_ids:
@@ -80,6 +80,10 @@ on:
         default: true
       source_listing_refs:
         description: "K-beauty seed op: comma or newline-delimited source_listing_refs for targeted promote-live-read"
+        required: false
+        default: ""
+      manifest_path:
+        description: "K-beauty seed op: manifest path for channel_seed_manifest"
         required: false
         default: ""
       artifact_prefix:
@@ -182,6 +186,7 @@ jobs:
           promote_live_read="${{ inputs.promote_live_read }}"
           require_brand_source="${{ inputs.require_brand_source }}"
           all_markets="${{ inputs.all_markets }}"
+          manifest_path="${{ inputs.manifest_path }}"
 
           normalize_multiline_csv() {
             printf '%s\n' "$1" | tr ',' '\n' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | sed '/^$/d' | sort -u
@@ -287,6 +292,23 @@ jobs:
               fi
               printf '%s\n' "${cmd[@]}" > "reports/workflow_ops/${artifact_prefix}_command.txt"
               "${cmd[@]}" | tee "reports/workflow_ops/${artifact_prefix}_result.json"
+              ;;
+
+            channel_seed_manifest)
+              if [[ -z "${manifest_path}" ]]; then
+                echo "manifest_path is required for channel_seed_manifest" >&2
+                exit 1
+              fi
+              cmd=(
+                node scripts/apply_aurora_external_seed_creation_manifest.cjs
+                --input "${manifest_path}"
+                --out "reports/workflow_ops/${artifact_prefix}_result.json"
+              )
+              if [[ "${dry_run}" == "true" ]]; then
+                cmd+=(--dry-run)
+              fi
+              printf '%s\n' "${cmd[@]}" > "reports/workflow_ops/${artifact_prefix}_command.txt"
+              "${cmd[@]}" | tee "reports/workflow_ops/${artifact_prefix}_stdout.json"
               ;;
 
             *)
