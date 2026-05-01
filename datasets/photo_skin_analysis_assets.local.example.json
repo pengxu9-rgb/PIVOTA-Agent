@@ -1,0 +1,23 @@
+{
+  "schema_version": "photo_skin_analysis_assets.v1",
+  "notes": "Example only. Use consent-safe internal assets. For production live runs, prefer short-lived HTTPS image_url or local file_path uploaded through /v1/photos/upload.",
+  "assets": [
+    {
+      "case_id": "photo_redness_cheeks_cn",
+      "slot_id": "front",
+      "file_path": "../tests/fixtures/photo/real_face_probe.jpg",
+      "content_type": "image/jpeg"
+    },
+    {
+      "case_id": "photo_low_quality_blurry_en",
+      "slot_id": "front",
+      "file_path": "../tests/fixtures/photo/degraded_face_boundary.png",
+      "content_type": "image/png"
+    },
+    {
+      "case_id": "photo_acne_oily_en",
+      "slot_id": "front",
+      "image_url_env": "PHOTO_BENCH_ACNE_OILY_URL"
+    }
+  ]
+}

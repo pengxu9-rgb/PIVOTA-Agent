@@ -3,6 +3,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { Blob } = require('node:buffer');
 
 const ROOT = path.resolve(__dirname, '..');
 const DEFAULT_DATASET = path.join(ROOT, 'datasets', 'photo_skin_analysis_accuracy_seed.json');
@@ -39,6 +40,7 @@ function parseArgs(argv = process.argv) {
   const out = {
     dataset: DEFAULT_DATASET,
     responsesDir: '',
+    photoManifest: '',
     baseUrl: process.env.BASE_URL || '',
     outDir: '',
     runLive: false,
@@ -54,6 +56,9 @@ function parseArgs(argv = process.argv) {
       i += 1;
     } else if (token === '--responses-dir' && next) {
       out.responsesDir = next;
+      i += 1;
+    } else if (token === '--photo-manifest' && next) {
+      out.photoManifest = next;
       i += 1;
     } else if (token === '--base-url' && next) {
       out.baseUrl = next;
@@ -428,6 +433,70 @@ function validateDataset(dataset) {
   return errors;
 }
 
+function validatePhotoManifest(manifest) {
+  const errors = [];
+  if (!isPlainObject(manifest)) return ['manifest_not_object'];
+  if (manifest.schema_version !== 'photo_skin_analysis_assets.v1') errors.push('schema_version_invalid');
+  const assets = Array.isArray(manifest.assets)
+    ? manifest.assets
+    : Object.entries(isPlainObject(manifest.assets) ? manifest.assets : {}).map(([caseId, value]) => ({
+        ...(isPlainObject(value) ? value : {}),
+        case_id: value?.case_id || caseId,
+      }));
+  if (!assets.length) errors.push('assets_empty');
+  const seen = new Set();
+  for (const [idx, asset] of assets.entries()) {
+    const prefix = `assets[${idx}]`;
+    const caseId = pickFirstString(asset.case_id, asset.caseId);
+    if (!caseId) errors.push(`${prefix}.case_id_missing`);
+    if (seen.has(caseId)) errors.push(`${prefix}.case_id_duplicate`);
+    seen.add(caseId);
+    const hasSource = Boolean(
+      pickFirstString(asset.image_url, asset.imageUrl, asset.image_url_env, asset.imageUrlEnv)
+        || pickFirstString(asset.photo_id, asset.photoId, asset.photo_id_env, asset.photoIdEnv)
+        || pickFirstString(asset.file_path, asset.filePath)
+    );
+    if (!hasSource) errors.push(`${prefix}.source_missing`);
+  }
+  return errors;
+}
+
+function normalizePhotoManifest(manifest, manifestPath = '') {
+  const manifestDir = manifestPath ? path.dirname(path.resolve(manifestPath)) : ROOT;
+  const assets = Array.isArray(manifest?.assets)
+    ? manifest.assets
+    : Object.entries(isPlainObject(manifest?.assets) ? manifest.assets : {}).map(([caseId, value]) => ({
+        ...(isPlainObject(value) ? value : {}),
+        case_id: value?.case_id || caseId,
+      }));
+  const out = new Map();
+  for (const asset of assets) {
+    const caseId = pickFirstString(asset.case_id, asset.caseId);
+    if (!caseId) continue;
+    const filePath = pickFirstString(asset.file_path, asset.filePath);
+    out.set(caseId, {
+      case_id: caseId,
+      slot_id: pickFirstString(asset.slot_id, asset.slotId, 'front'),
+      image_url: pickFirstString(asset.image_url, asset.imageUrl, process.env[pickFirstString(asset.image_url_env, asset.imageUrlEnv)]),
+      photo_id: pickFirstString(asset.photo_id, asset.photoId, process.env[pickFirstString(asset.photo_id_env, asset.photoIdEnv)]),
+      qc_status: pickFirstString(asset.qc_status, asset.qcStatus),
+      source_agent: pickFirstString(asset.source_agent, asset.sourceAgent, 'photo_skin_accuracy_manifest'),
+      file_path: filePath
+        ? path.resolve(path.isAbsolute(filePath) ? filePath : path.join(manifestDir, filePath))
+        : '',
+      content_type: pickFirstString(asset.content_type, asset.contentType) || inferContentType(filePath),
+    });
+  }
+  return out;
+}
+
+function inferContentType(filePath = '') {
+  const ext = path.extname(String(filePath || '')).toLowerCase();
+  if (ext === '.png') return 'image/png';
+  if (ext === '.webp') return 'image/webp';
+  return 'image/jpeg';
+}
+
 function resolveResponsePath(responsesDir, caseId) {
   const direct = path.join(responsesDir, `${caseId}.json`);
   if (fs.existsSync(direct)) return direct;
@@ -436,11 +505,70 @@ function resolveResponsePath(responsesDir, caseId) {
   return '';
 }
 
-function buildLiveBody(testCase) {
+async function uploadLocalPhotoAsset(testCase, asset, { baseUrl, timeoutMs }) {
+  const filePath = pickFirstString(asset?.file_path);
+  if (!filePath) return null;
+  const buffer = fs.readFileSync(filePath);
+  const form = new FormData();
+  form.append('slot_id', pickFirstString(asset.slot_id, testCase.input?.slot_id, 'front'));
+  form.append('consent', 'true');
+  form.append('photo', new Blob([buffer], { type: pickFirstString(asset.content_type, inferContentType(filePath)) }), path.basename(filePath));
+  const res = await fetchWithTimeout(`${String(baseUrl || '').replace(/\/+$/, '')}/v1/photos/upload`, {
+    method: 'POST',
+    headers: {
+      'X-Lang': String(testCase.language || 'EN').toUpperCase() === 'CN' ? 'CN' : 'EN',
+      'X-Aurora-UID': `photo-accuracy-upload-${testCase.case_id}`,
+      ...buildAuthHeaders()
+    },
+    body: form
+  }, timeoutMs);
+  let body = null;
+  try {
+    body = await res.json();
+  } catch (_err) {
+    body = {};
+  }
+  const cards = asArray(body?.cards);
+  const confirm = cards.find((card) => card && card.type === 'photo_confirm') || null;
+  const payload = confirm?.payload || {};
+  const photoId = pickFirstString(payload.photo_id, payload.photoId, body?.photo_id, body?.photoId);
+  if (res.status < 200 || res.status >= 300 || !photoId) {
+    throw new Error(`${testCase.case_id}: local photo upload failed status=${res.status}`);
+  }
+  return {
+    photo_id: photoId,
+    qc_status: pickFirstString(payload.qc_status, payload.qcStatus, asset.qc_status, 'passed'),
+    slot_id: pickFirstString(payload.slot_id, payload.slotId, asset.slot_id, testCase.input?.slot_id, 'front')
+  };
+}
+
+async function buildLiveBody(testCase, { photoAssets = null, baseUrl = '', timeoutMs = 45000 } = {}) {
   const body = JSON.parse(JSON.stringify(testCase.request || {}));
   body.use_photo = true;
   const input = isPlainObject(testCase.input) ? testCase.input : {};
   const slotId = pickFirstString(input.slot_id, 'front');
+  const asset = photoAssets instanceof Map ? photoAssets.get(testCase.case_id) : null;
+  if (asset?.file_path) {
+    const uploaded = await uploadLocalPhotoAsset(testCase, asset, { baseUrl, timeoutMs });
+    body.photos = [uploaded];
+    return body;
+  }
+  if (asset?.photo_id) {
+    body.photos = [{
+      slot_id: pickFirstString(asset.slot_id, slotId),
+      photo_id: asset.photo_id,
+      qc_status: pickFirstString(asset.qc_status) || undefined
+    }];
+    return body;
+  }
+  if (asset?.image_url) {
+    body.photos = [{
+      slot_id: pickFirstString(asset.slot_id, slotId),
+      image_url: asset.image_url,
+      source_agent: pickFirstString(asset.source_agent, 'photo_skin_accuracy_manifest')
+    }];
+    return body;
+  }
   if (testCase.source_kind === 'image_url') {
     const imageUrl = pickFirstString(input.image_url, process.env[input.image_url_env || '']);
     if (!imageUrl) throw new Error(`${testCase.case_id}: missing image_url or env ${input.image_url_env || ''}`);
@@ -475,10 +603,10 @@ function buildAuthHeaders() {
   };
 }
 
-async function runLiveCase(testCase, { baseUrl, timeoutMs }) {
+async function runLiveCase(testCase, { baseUrl, timeoutMs, photoAssets = null }) {
   const route = pickFirstString(testCase.route) || '/v1/analysis/skin';
   const url = `${String(baseUrl || '').replace(/\/+$/, '')}${route.startsWith('/') ? route : `/${route}`}`;
-  const body = buildLiveBody(testCase);
+  const body = await buildLiveBody(testCase, { photoAssets, baseUrl, timeoutMs });
   const res = await fetchWithTimeout(url, {
     method: 'POST',
     headers: {
@@ -557,6 +685,14 @@ async function runBenchmark(args = parseArgs()) {
   const dataset = readJson(datasetPath);
   const validationErrors = validateDataset(dataset);
   if (validationErrors.length) throw new Error(`dataset validation failed: ${validationErrors.join(', ')}`);
+  let photoAssets = null;
+  if (args.photoManifest) {
+    const manifestPath = path.resolve(args.photoManifest);
+    const manifest = readJson(manifestPath);
+    const manifestErrors = validatePhotoManifest(manifest);
+    if (manifestErrors.length) throw new Error(`photo manifest validation failed: ${manifestErrors.join(', ')}`);
+    photoAssets = normalizePhotoManifest(manifest, manifestPath);
+  }
   const outDir = args.outDir
     ? path.resolve(args.outDir)
     : path.join(DEFAULT_OUT_ROOT, nowStamp());
@@ -569,7 +705,11 @@ async function runBenchmark(args = parseArgs()) {
     let raw = null;
     if (args.runLive) {
       if (!args.baseUrl) throw new Error('missing --base-url or BASE_URL for --run-live');
-      raw = await runLiveCase(testCase, { baseUrl: args.baseUrl, timeoutMs: args.timeoutMs || dataset.defaults?.timeout_ms || 45000 });
+      raw = await runLiveCase(testCase, {
+        baseUrl: args.baseUrl,
+        timeoutMs: args.timeoutMs || dataset.defaults?.timeout_ms || 45000,
+        photoAssets,
+      });
     } else {
       if (!args.responsesDir) throw new Error('missing --responses-dir when not using --run-live');
       const responsePath = resolveResponsePath(path.resolve(args.responsesDir), testCase.case_id);
@@ -605,6 +745,8 @@ if (require.main === module) {
 module.exports = {
   parseArgs,
   validateDataset,
+  validatePhotoManifest,
+  normalizePhotoManifest,
   scoreCase,
   summarizeResults,
   runBenchmark,

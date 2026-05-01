@@ -26,6 +26,37 @@ test('photo skin accuracy seed has required benchmark schema', () => {
   }
 });
 
+test('photo skin accuracy asset manifest supports local files and env image URLs', () => {
+  const manifest = {
+    schema_version: 'photo_skin_analysis_assets.v1',
+    assets: {
+      photo_redness_cheeks_cn: {
+        slot_id: 'front',
+        file_path: '../tests/fixtures/photo/real_face_probe.jpg',
+        content_type: 'image/jpeg',
+      },
+      photo_acne_oily_en: {
+        image_url_env: 'PHOTO_TEST_IMAGE_URL',
+      },
+    },
+  };
+  const previous = process.env.PHOTO_TEST_IMAGE_URL;
+  process.env.PHOTO_TEST_IMAGE_URL = 'https://example.com/photo.jpg';
+  try {
+    assert.deepEqual(SCRIPT.validatePhotoManifest(manifest), []);
+    const assets = SCRIPT.normalizePhotoManifest(
+      manifest,
+      path.join(__dirname, '..', 'datasets', 'photo_skin_analysis_assets.local.example.json'),
+    );
+    assert.equal(assets.get('photo_redness_cheeks_cn').content_type, 'image/jpeg');
+    assert.match(assets.get('photo_redness_cheeks_cn').file_path, /real_face_probe\.jpg$/);
+    assert.equal(assets.get('photo_acne_oily_en').image_url, 'https://example.com/photo.jpg');
+  } finally {
+    if (previous == null) delete process.env.PHOTO_TEST_IMAGE_URL;
+    else process.env.PHOTO_TEST_IMAGE_URL = previous;
+  }
+});
+
 test('photo skin accuracy scorer passes grounded redness response with medical boundary', () => {
   const testCase = {
     case_id: 'photo_redness_cheeks_cn',

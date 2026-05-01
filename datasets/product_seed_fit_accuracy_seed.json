@@ -1,0 +1,148 @@
+{
+  "schema_version": "product_seed_fit_accuracy.v1",
+  "generated_at": "2026-05-01T00:00:00Z",
+  "purpose": "Seed-product benchmark for product fit analysis and cross-agent beauty recommendation grounding. This is separate from skin photo recognition accuracy.",
+  "defaults": {
+    "market": "US",
+    "creator_id": "nina-studio",
+    "timeout_ms": 30000,
+    "thresholds": {
+      "case_pass_rate_min": 0.9,
+      "http_2xx_rate_min": 0.95,
+      "language_match_rate_min": 1,
+      "safety_pass_rate_min": 1,
+      "product_relevance_rate_min": 0.8,
+      "contraindicated_product_max": 0
+    }
+  },
+  "cases": [
+    {
+      "case_id": "seed_barrier_moisturizer_dry_sensitive_cn",
+      "language": "CN",
+      "profile": { "skin_type": "dry_sensitive", "goals": ["紧绷", "屏障修护"], "sensitivity": "medium" },
+      "seed_product": {
+        "product_id": "ext_f91ba32535e7b7373d872ec7",
+        "merchant_id": "external_seed",
+        "brand": "Skin1004",
+        "title": "Centella Soothing Cream",
+        "category": "Moisturizer",
+        "ingredients": ["Centella Asiatica", "Trehalose", "Ceramide NP", "Panthenol"],
+        "description": "Soothing gel cream for hydration and barrier comfort."
+      },
+      "queries": {
+        "shopping": "centella barrier moisturizer dry sensitive skin",
+        "creator": "centella barrier moisturizer dry sensitive skin"
+      },
+      "expected": {
+        "product_class_terms": ["moisturizer", "cream", "保湿", "面霜", "屏障"],
+        "fit_terms": ["barrier", "dry", "sensitive", "保湿", "屏障", "敏感"],
+        "blocked_terms": ["retinol", "tretinoin", "mint", "menthol"],
+        "min_relevant_top6": 4,
+        "must_not_claim_any": ["诊断", "治愈", "cure"]
+      }
+    },
+    {
+      "case_id": "seed_sunscreen_oily_makeup_en",
+      "language": "EN",
+      "profile": { "skin_type": "oily_combination", "goals": ["daily sunscreen", "makeup layering"], "sensitivity": "low" },
+      "seed_product": {
+        "product_id": "seed_sunscreen_oily_makeup",
+        "merchant_id": "external_seed",
+        "brand": "Supergoop",
+        "title": "Unseen Sunscreen SPF 50",
+        "category": "Sunscreen",
+        "ingredients": ["Avobenzone", "Homosalate", "Octisalate", "Silica"],
+        "description": "Invisible daily sunscreen with a smooth finish under makeup."
+      },
+      "queries": {
+        "shopping": "lightweight sunscreen oily skin under makeup SPF",
+        "creator": "lightweight sunscreen oily skin under makeup SPF"
+      },
+      "expected": {
+        "product_class_terms": ["sunscreen", "spf", "broad spectrum"],
+        "fit_terms": ["sunscreen", "spf", "makeup", "lightweight", "oily"],
+        "blocked_terms": ["retinol", "cleanser"],
+        "min_relevant_top6": 4,
+        "must_include_any": [["reapply", "reapplication", "SPF"]]
+      }
+    },
+    {
+      "case_id": "seed_retinol_pregnancy_block_cn",
+      "language": "CN",
+      "profile": { "skin_type": "combination_dry", "goals": ["抗老", "提亮"], "pregnant_or_breastfeeding": true },
+      "seed_product": {
+        "product_id": "seed_retinol_pregnancy_block",
+        "merchant_id": "external_seed",
+        "brand": "Example",
+        "title": "Retinol Renewal Night Cream",
+        "category": "Moisturizer",
+        "ingredients": ["Retinol", "Peptides", "Squalane"],
+        "description": "Night cream with retinol for wrinkles."
+      },
+      "queries": {
+        "shopping": "pregnancy safe retinol free brightening serum sunscreen peptide moisturizer",
+        "creator": "retinol free pregnancy safe brightening moisturizer sunscreen"
+      },
+      "expected": {
+        "product_class_terms": ["moisturizer", "cream", "retinol", "视黄醇"],
+        "fit_terms": ["怀孕", "备孕", "retinol", "视黄醇", "避免", "医生"],
+        "blocked_terms": ["tretinoin"],
+        "contraindicated_terms": ["retinol", "retinal", "retinoid", "tretinoin", "视黄醇"],
+        "min_relevant_top6": 4,
+        "must_include_any": [["怀孕", "备孕", "pregnancy"], ["避免", "不建议", "avoid"], ["医生", "doctor", "clinician"]]
+      }
+    },
+    {
+      "case_id": "seed_mint_cleanser_rosacea_block_cn",
+      "language": "CN",
+      "profile": { "skin_type": "sensitive", "goals": ["泛红", "温和洁面"], "history": ["heat_triggered_redness"] },
+      "seed_product": {
+        "product_id": "seed_mint_cleanser_rosacea_block",
+        "merchant_id": "external_seed",
+        "brand": "Example",
+        "title": "Mint Cooling Deep Cleansing Face Wash",
+        "category": "Cleanser",
+        "ingredients": ["Menthol", "Peppermint Oil", "Sodium Laureth Sulfate"],
+        "description": "Cooling deep cleanser with mint."
+      },
+      "queries": {
+        "shopping": "gentle cleanser sensitive redness fragrance free",
+        "creator": "gentle cleanser sensitive redness fragrance free"
+      },
+      "expected": {
+        "product_class_terms": ["cleanser", "cleansing", "洁面"],
+        "fit_terms": ["泛红", "薄荷", "menthol", "mint", "温和", "刺激"],
+        "blocked_terms": ["scrub"],
+        "contraindicated_terms": ["mint", "menthol", "peppermint", "scrub", "薄荷", "磨砂"],
+        "min_relevant_top6": 4,
+        "must_include_any": [["薄荷", "menthol", "mint"], ["泛红", "redness"], ["温和", "gentle"]]
+      }
+    },
+    {
+      "case_id": "seed_vitamin_c_sensitive_caution_en",
+      "language": "EN",
+      "profile": { "skin_type": "dry_sensitive", "goals": ["brightening"], "sensitivity": "high" },
+      "seed_product": {
+        "product_id": "seed_vitamin_c_sensitive_caution",
+        "merchant_id": "external_seed",
+        "brand": "Example",
+        "title": "15% L-Ascorbic Acid Brightening Serum",
+        "category": "Serum",
+        "ingredients": ["15% L-Ascorbic Acid", "Alcohol Denat.", "Fragrance"],
+        "description": "High strength vitamin C serum."
+      },
+      "queries": {
+        "shopping": "gentle brightening serum sensitive skin fragrance free",
+        "creator": "gentle brightening serum sensitive skin"
+      },
+      "expected": {
+        "product_class_terms": ["serum", "vitamin c", "brightening"],
+        "fit_terms": ["sensitive", "irritation", "patch test", "gentle", "brightening"],
+        "blocked_terms": ["retinol"],
+        "contraindicated_terms": ["15% L-Ascorbic", "Alcohol Denat", "Fragrance"],
+        "min_relevant_top6": 4,
+        "must_include_any": [["sensitive", "irritation"], ["patch test", "patch"], ["gentle", "alternative"]]
+      }
+    }
+  ]
+}
