@@ -39,7 +39,7 @@ on:
         required: false
         default: "red"
       operation:
-        description: "K-beauty seed op: commerce_facts_backfill | market_coverage_audit | identity_lift | promote_live_read | channel_seed_manifest"
+        description: "K-beauty seed op: commerce_facts_backfill | market_coverage_audit | identity_lift | promote_live_read | channel_seed_manifest | gallery_bloat_audit"
         required: false
         default: "commerce_facts_backfill"
       external_product_ids:
@@ -306,6 +306,29 @@ jobs:
               )
               if [[ "${dry_run}" == "true" ]]; then
                 cmd+=(--dry-run)
+              fi
+              printf '%s\n' "${cmd[@]}" > "reports/workflow_ops/${artifact_prefix}_command.txt"
+              "${cmd[@]}" | tee "reports/workflow_ops/${artifact_prefix}_stdout.json"
+              ;;
+
+            gallery_bloat_audit)
+              ids_input="$(cat <<'EOF'
+          ${{ inputs.external_product_ids }}
+          EOF
+          )"
+              ids_file="reports/workflow_ops/${artifact_prefix}_external_product_ids.txt"
+              normalize_multiline_csv "${ids_input}" > "${ids_file}"
+              cmd=(
+                node scripts/audit-external-seed-gallery-bloat.cjs
+                --market "${market}"
+                --limit "${limit}"
+                --out "reports/workflow_ops/${artifact_prefix}_report.json"
+              )
+              if [[ -n "${brand}" ]]; then
+                cmd+=(--brand "${brand}")
+              fi
+              if [[ -s "${ids_file}" ]]; then
+                cmd+=(--external-product-ids-file "${ids_file}")
               fi
               printf '%s\n' "${cmd[@]}" > "reports/workflow_ops/${artifact_prefix}_command.txt"
               "${cmd[@]}" | tee "reports/workflow_ops/${artifact_prefix}_stdout.json"
