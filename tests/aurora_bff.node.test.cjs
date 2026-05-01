@@ -1484,8 +1484,15 @@ test('/v1/chat: Seoul travel follow-up returns phase-aware Chinese guidance', as
       const reply = String(resp.body?.reply || '');
       assert.match(assistant, /Seattle/);
       assert.match(assistant, /Seoul/);
+      assert.match(assistant, /2026-05-20/);
+      assert.match(assistant, /2026-05-27/);
       assert.match(assistant, /出发前|飞行中|落地前 48 小时|当地购买/);
       assert.match(assistant, /机舱|低湿|飞行/);
+      assert.match(assistant, /湿度|潮湿/);
+      assert.match(assistant, /fine dust|城市污染/);
+      assert.match(assistant, /步行|暴晒/);
+      assert.match(assistant, /应急修护/);
+      assert.match(assistant, /先避开|Skip or avoid/);
       assert.match(assistant, /水杨酸/);
       assert.match(assistant, /维 C/);
       assert.match(assistant, /防晒|SPF/);
@@ -1559,7 +1566,10 @@ test('/v1/chat: English Seoul travel question stays in English', async () => {
       const reply = String(resp.body?.reply || '');
       assert.match(assistant, /Seattle/);
       assert.match(assistant, /Seoul/);
+      assert.match(assistant, /2026-05-20/);
+      assert.match(assistant, /2026-05-27/);
       assert.match(assistant, /SPF|sunscreen/i);
+      assert.match(assistant, /humidity|fine dust|city pollution|walking sun exposure|mask friction/i);
       assert.match(assistant, /salicylic acid/i);
       assert.match(assistant, /vitamin C/i);
       assert.doesNotMatch(assistant, /[\u3400-\u9fff]/);
