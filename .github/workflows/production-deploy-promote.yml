@@ -67,7 +67,7 @@ jobs:
         env:
           BASE: ${{ env.PROD_SMOKE_BASE_URL }}
           BACKEND_BASE: ${{ vars.PIVOTA_BACKEND_PUBLIC_BASE_URL || 'https://web-production-fedb.up.railway.app' }}
-          AGENT_API_KEY: ${{ secrets.COMMERCE_CORE_PROD_AGENT_API_KEY || secrets.PIVOTA_AGENT_PROD_AGENT_API_KEY || '' }}
+          AGENT_API_KEY: ${{ secrets.COMMERCE_CORE_PROD_AGENT_API_KEY || secrets.PIVOTA_AGENT_PROD_AGENT_API_KEY || secrets.PIVOTA_PRODUCTION_AGENT_API_KEY || secrets.PROD_AGENT_API_KEY || secrets.AGENT_API_KEY || '' }}
           LANG_HEADER: CN
         run: |
           set -euo pipefail
