@@ -298,6 +298,10 @@ test('/v1/analysis/skin: external image_url input can drive photo analysis witho
 
         assert.equal(resp.status, 200);
         assert.notEqual(resp.body?.status, 'failed');
+        assert.equal(resp.body?.pivot_contract_version, 'pivot.agent.v1');
+        assert.equal(resp.body?.status, 'degraded');
+        assert.equal(resp.body?.route_authority, 'aurora_chat');
+        assert.equal(resp.body?.session_patch?.meta?.status, 'degraded');
         const modules = getCard(resp.body, 'photo_modules_v1');
         assert.ok(modules);
         assert.equal(modules.payload?.used_photos, true);
