@@ -45,7 +45,7 @@ describe("geminiMultiClient model flooring", () => {
 
       expect(out.ok).toBe(true);
       const call = generateContent.mock.calls[0][0];
-      expect(call.model).toBe("gemini-2.5-flash-preview-09-2025");
+      expect(call.model).toBe("gemini-2.5-flash");
     } finally {
       fs.rmSync(imagePath, { force: true });
     }

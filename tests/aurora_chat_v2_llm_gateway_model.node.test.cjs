@@ -25,7 +25,7 @@ function withEnv(patch, fn) {
   }
 }
 
-test('Aurora chat v2 llm_gateway uses temporary unified Gemini model for production consistency', async () => {
+test('Aurora chat v2 llm_gateway uses stable Gemini 2.5 Flash for production consistency', async () => {
   await withEnv(
     {
       PIVOTA_UI_CHAT_LLM_MODEL_GEMINI: 'gemini-3-flash-preview',
@@ -58,8 +58,9 @@ test('Aurora chat v2 llm_gateway uses temporary unified Gemini model for product
       try {
         const result = await gateway._callGemini([{ role: 'user', content: 'hello' }], { mode: 'structured' });
         assert.equal(result.text, '{"ok":true}');
-        assert.match(String(capturedUrl || ''), /models\/gemini-2\.5-flash-preview-09-2025:generateContent/);
+        assert.match(String(capturedUrl || ''), /models\/gemini-2\.5-flash:generateContent/);
         assert.doesNotMatch(String(capturedUrl || ''), /gemini-2\.0-flash/);
+        assert.doesNotMatch(String(capturedUrl || ''), /gemini-2\.5-flash-preview/);
       } finally {
         global.fetch = originalFetch;
         delete require.cache[moduleId];

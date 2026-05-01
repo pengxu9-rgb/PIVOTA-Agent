@@ -263,7 +263,7 @@ test('aurora strict semantic contract locks intent llm to a single provider and 
       assert.equal(plan.fallbackProvider, null);
       assert.deepEqual(plan.providerChain, ['gemini']);
       assert.equal(plan.singleProviderLocked, true);
-      assert.equal(plan.primaryModel, 'gemini-2.5-flash-preview-09-2025');
+      assert.equal(plan.primaryModel, 'gemini-2.5-flash');
       assert.equal(plan.primaryModelOwner, 'FIND_PRODUCTS_MULTI_SEMANTIC_REWRITE_MODEL_GEMINI');
     },
   );
@@ -286,7 +286,7 @@ test('semantic rewrite ignores legacy shared model envs and keeps explicit model
       const geminiModel = _debug.resolveIntentGeminiModel();
       const openaiModel = _debug.resolveIntentOpenAiModel();
 
-      assert.equal(geminiModel.model, 'gemini-2.5-flash-preview-09-2025');
+      assert.equal(geminiModel.model, 'gemini-2.5-flash');
       assert.equal(geminiModel.model_owner, 'default_semantic_rewrite_gemini_model');
       assert.equal(openaiModel.model, 'gpt-5.1-mini');
       assert.equal(openaiModel.model_owner, 'default_semantic_rewrite_openai_model');
@@ -385,7 +385,7 @@ test('semantic rewrite llm failure preserves planned model metadata and exposes 
         assert.equal(result.meta.fallback_reason, 'llm_failed');
         assert.deepEqual(result.meta.llm_provider_chain, ['gemini']);
         assert.equal(result.meta.llm_primary_provider, 'gemini');
-        assert.equal(result.meta.llm_model, 'gemini-2.5-flash-preview-09-2025');
+        assert.equal(result.meta.llm_model, 'gemini-2.5-flash');
         assert.equal(
           result.meta.llm_model_owner,
           'FIND_PRODUCTS_MULTI_SEMANTIC_REWRITE_MODEL_GEMINI',
