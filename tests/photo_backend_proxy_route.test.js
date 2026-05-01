@@ -107,3 +107,38 @@ test('/photos/download-url proxy supports GET and POST through the same backend 
     },
   );
 });
+
+test('/photos/presign proxy maps backend transport timeout to HTTP 504', async () => {
+  await withEnv(
+    {
+      PIVOTA_BACKEND_BASE_URL: 'https://photo-backend.example.com/',
+      PIVOTA_API_BASE: 'https://wrong-service.example.com',
+      PIVOTA_API_KEY: 'agent_key_for_photo_proxy',
+    },
+    async () => {
+      const app = loadServerFresh();
+      const originalProxy = photoBackendClient.proxyPhotoBackendRequest;
+      photoBackendClient.proxyPhotoBackendRequest = async () => ({
+        ok: false,
+        failure_code: 'PHOTO_BACKEND_PROXY_TIMEOUT',
+        status: null,
+        detail: 'ECONNABORTED',
+        base_url_fingerprint: 'backendfingerprint',
+      });
+
+      try {
+        const resp = await request(app)
+          .post('/photos/presign')
+          .send({ content_type: 'image/png', bytes: 1234 })
+          .expect(504);
+
+        assert.equal(resp.body.error, 'PHOTO_BACKEND_PROXY_TIMEOUT');
+        assert.equal(resp.body.details.detail, 'ECONNABORTED');
+        assert.equal(resp.body.details.base_url_fingerprint, 'backendfingerprint');
+      } finally {
+        photoBackendClient.proxyPhotoBackendRequest = originalProxy;
+        delete require.cache[require.resolve('../src/server')];
+      }
+    },
+  );
+});
