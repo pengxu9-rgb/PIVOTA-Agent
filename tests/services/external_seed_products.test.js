@@ -1565,6 +1565,26 @@ describe('externalSeedProducts helper', () => {
     expect(product.product_type).toBe('Cleanser');
   });
 
+  test('overrides polluted cleanser category when title/url are not cleanser-like and description is serum-like', () => {
+    const row = {
+      id: 'eps_krave_oil_lala_like',
+      external_product_id: 'ext_krave_oil_lala_like',
+      canonical_url: 'https://kravebeauty.com/products/oil-la-la',
+      destination_url: 'https://kravebeauty.com/products/oil-la-la',
+      domain: 'kravebeauty.com',
+      title: 'Oil La La',
+      seed_brand: 'KraveBeauty',
+      seed_category: 'Cleanser',
+      seed_product_type: 'Cleanser',
+      seed_description:
+        'This serum helps balance breakout-prone skin and layers well with other skincare products. Apply before using your moisturizer.',
+    };
+
+    const product = buildExternalSeedProduct(row);
+    expect(product.category).toBe('Serum');
+    expect(product.product_type).toBe('Serum');
+  });
+
   test('does not infer serum from fragrance marketing copy on lean recommendation candidates', () => {
     const row = {
       id: 'eps_lean_grey_vetiver',

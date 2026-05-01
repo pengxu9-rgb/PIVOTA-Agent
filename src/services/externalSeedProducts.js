@@ -689,12 +689,21 @@ function inferExternalSeedBeautyCategory({
     .filter(Boolean)
     .join(' ');
   const primaryMakeupFormFactor = inferPrimaryMakeupFormFactor(primarySurfaceText);
+  const descriptionText = String(description || '').trim();
   if (explicit) {
     if (explicit === 'Sunscreen' && primaryMakeupFormFactor) return primaryMakeupFormFactor;
     if (explicit === 'Fragrance' && SUNSCREEN_CATEGORY_RE.test(primarySurfaceText)) return 'Sunscreen';
+    if (
+      explicit === 'Cleanser' &&
+      !/\b(cleanser|cleansing|face wash|facial wash|wash|makeup remover|oil cleanser|cleansing oil)\b/i.test(primarySurfaceText) &&
+      /\b(serum|ampoule|essence|before using your moisturizer|layered well with other skincare|breakout-prone skin)\b/i.test(
+        descriptionText,
+      )
+    ) {
+      return 'Serum';
+    }
     return explicit;
   }
-  const descriptionText = String(description || '').trim();
   const surfaceText = [primarySurfaceText, descriptionText].filter(Boolean).join(' ');
   if (!surfaceText) return '';
 
