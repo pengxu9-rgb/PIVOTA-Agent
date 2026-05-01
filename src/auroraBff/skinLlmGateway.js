@@ -68,6 +68,13 @@ function readOutputTokenBudget(envName, fallback) {
   return Math.max(256, Math.min(8192, Math.trunc(raw)));
 }
 
+function normalizeOutputTokenBudget(value, fallback) {
+  const raw = Number(value);
+  const resolved = Number.isFinite(raw) && raw > 0 ? raw : Number(fallback);
+  if (!Number.isFinite(resolved) || resolved <= 0) return 700;
+  return Math.max(256, Math.min(8192, Math.trunc(resolved)));
+}
+
 function readSamplingFloat(envName, fallback, { min = 0, max = 1 } = {}) {
   const raw = Number(process.env[envName]);
   if (!Number.isFinite(raw)) return fallback;
@@ -90,7 +97,7 @@ const AURORA_SKIN_REPORT_RESPONSE_SCHEMA_ENABLED = (() => {
 })();
 
 function inferStructuredTimeoutMs(maxOutputTokens) {
-  const budget = readOutputTokenBudget('AURORA_SKIN_MAX_OUTPUT_TOKENS', Number(maxOutputTokens) || 700);
+  const budget = normalizeOutputTokenBudget(maxOutputTokens, 700);
   if (budget >= 4000) return Math.max(SKIN_LLM_TIMEOUT_MS, 30000);
   if (budget >= 3000) return Math.max(SKIN_LLM_TIMEOUT_MS, 25000);
   if (budget >= 1400) return Math.max(SKIN_LLM_TIMEOUT_MS, 15000);
@@ -661,7 +668,7 @@ async function callGeminiJson({
       temperature: SKIN_JSON_TEMPERATURE,
       topP: SKIN_JSON_TOP_P,
       candidateCount: 1,
-      maxOutputTokens: readOutputTokenBudget('AURORA_SKIN_MAX_OUTPUT_TOKENS', Number.isFinite(Number(maxOutputTokens)) ? Number(maxOutputTokens) : 700),
+      maxOutputTokens: normalizeOutputTokenBudget(maxOutputTokens, 700),
     },
   };
   if (sanitizedResponseSchema) request.config.responseSchema = sanitizedResponseSchema;

@@ -133,6 +133,18 @@ function assertCondition(condition, message) {
   }
 }
 
+function assertStrictPhotoAnalysis(summary, label) {
+  assertCondition(summary.top_status === 'success', `${label} analysis top status must be success`);
+  assertCondition(summary.meta_status === 'success', `${label} analysis meta status must be success`);
+  assertCondition(summary.meta_used_photos === true, `${label} analysis meta.used_photos must be true`);
+  assertCondition(summary.photo_modules_used === true, `${label} analysis must use photo_modules_v1`);
+  assertCondition(summary.has_story === true, `${label} analysis must return analysis_story_v2`);
+  assertCondition(summary.has_error === false, `${label} analysis must not return error card`);
+  assertCondition(summary.llm_enrichment_status !== 'degraded', `${label} analysis must not use degraded LLM enrichment`);
+  assertCondition(summary.vision_enrichment_status !== 'degraded', `${label} analysis must not use degraded vision enrichment`);
+  assertCondition(summary.report_stage_outcome === 'success', `${label} report stage must be success`);
+}
+
 function redactedStep(name, result, extra = {}) {
   return {
     name,
@@ -286,11 +298,7 @@ async function run() {
   const uploadedSummary = summarizeEnvelope(uploadedAnalysis.body);
   steps.push(redactedStep('v1_analysis_skin_uploaded_photo', uploadedAnalysis, uploadedSummary));
   assertCondition(uploadedAnalysis.http === 200, 'uploaded-photo analysis must return 200');
-  assertCondition(uploadedSummary.top_status === 'success', 'uploaded-photo analysis top status must be success');
-  assertCondition(uploadedSummary.meta_status === 'success', 'uploaded-photo analysis meta status must be success');
-  assertCondition(uploadedSummary.meta_used_photos === true, 'uploaded-photo analysis meta.used_photos must be true');
-  assertCondition(uploadedSummary.photo_modules_used === true, 'uploaded-photo analysis must use photo_modules_v1');
-  assertCondition(uploadedSummary.has_story === true, 'uploaded-photo analysis must return analysis_story_v2');
+  assertStrictPhotoAnalysis(uploadedSummary, 'uploaded-photo');
 
   const imageUrlAnalysis = await requestJson(
     'v1_analysis_skin_external_image_url',
@@ -318,11 +326,7 @@ async function run() {
   const imageUrlSummary = summarizeEnvelope(imageUrlAnalysis.body);
   steps.push(redactedStep('v1_analysis_skin_external_image_url', imageUrlAnalysis, imageUrlSummary));
   assertCondition(imageUrlAnalysis.http === 200, 'external image_url analysis must return 200');
-  assertCondition(imageUrlSummary.top_status === 'success', 'external image_url analysis top status must be success');
-  assertCondition(imageUrlSummary.meta_status === 'success', 'external image_url analysis meta status must be success');
-  assertCondition(imageUrlSummary.meta_used_photos === true, 'external image_url analysis meta.used_photos must be true');
-  assertCondition(imageUrlSummary.photo_modules_used === true, 'external image_url analysis must use photo_modules_v1');
-  assertCondition(imageUrlSummary.has_story === true, 'external image_url analysis must return analysis_story_v2');
+  assertStrictPhotoAnalysis(imageUrlSummary, 'external image_url');
 
   return {
     ok: true,
