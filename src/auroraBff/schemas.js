@@ -259,6 +259,8 @@ const V1ChatRequestSchema = z
       .optional(),
     anchor_product_id: z.string().min(1).optional(),
     anchor_product_url: z.string().min(1).optional(),
+    photos: z.array(z.record(z.string(), z.any())).max(12).optional(),
+    attachments: z.array(z.record(z.string(), z.any())).max(12).optional(),
     messages: z.array(AuroraUpstreamMessageSchema).max(50).optional(),
     action: z
       .union([
