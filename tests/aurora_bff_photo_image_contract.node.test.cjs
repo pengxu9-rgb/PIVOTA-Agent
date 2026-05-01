@@ -261,6 +261,7 @@ test('/v1/analysis/skin: photo download timeout fails fast before report model',
       AURORA_PHOTO_FETCH_RETRIES: '0',
       AURORA_PHOTO_FETCH_TOTAL_TIMEOUT_MS: '200',
       AURORA_PHOTO_FETCH_TIMEOUT_MS: '80',
+      AURORA_PHOTO_ANALYSIS_READ_FAIL_FAST_MS: '80',
     },
     async () => {
       const axios = require('axios');
@@ -270,9 +271,7 @@ test('/v1/analysis/skin: photo download timeout fails fast before report model',
       axios.get = async (...args) => {
         const [url] = args;
         if (String(url).endsWith('/photos/download-url')) {
-          const err = new Error('timeout of 80ms exceeded');
-          err.code = 'ECONNABORTED';
-          throw err;
+          return new Promise(() => {});
         }
         return originalGet.apply(axios, args);
       };
