@@ -661,8 +661,11 @@ const SkinAnalysisRequestSchema = z
         z
           .object({
             photo_id: z.string().min(1).optional(),
+            image_url: z.string().url().optional(),
             slot_id: z.string().min(1),
             qc_status: z.string().min(1).optional(),
+            expires_at: z.string().min(1).optional(),
+            source_agent: z.string().min(1).optional(),
           })
           .passthrough(),
       )
