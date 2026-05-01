@@ -2088,6 +2088,37 @@ describe('externalSeedProducts helper', () => {
     expect(product.pdp_field_quality_summary.description_raw.source_quality_status).toBe('quarantined');
   });
 
+  test('preserves stored ingredient candidates for single-formula external seeds when authority view is unavailable', () => {
+    const product = buildExternalSeedProduct({
+      id: 'eps_oil_lala_like',
+      external_product_id: 'ext_oil_lala_like',
+      canonical_url: 'https://example.com/products/oil-lala-like',
+      destination_url: 'https://example.com/products/oil-lala-like',
+      title: 'Oil La La Like',
+      seed_data: {
+        category: 'Serum',
+        ingredients_inci: [
+          '10% Upcycled Rosehip Oil: Packed with fatty acids',
+          'Helianthus Annuus (Sunflower) Seed Oil',
+          'Rosa Canina (Rosehip) Fruit Oil',
+          'PETA-certified vegan and cruelty-free',
+        ],
+        snapshot: {
+          title: 'Oil La La Like',
+          variants: [],
+        },
+      },
+    });
+
+    expect(product.product_family).toBe('single_formula');
+    expect(product.ingredients_inci).toEqual([
+      '10% Upcycled Rosehip Oil: Packed with fatty acids',
+      'Helianthus Annuus (Sunflower) Seed Oil',
+      'Rosa Canina (Rosehip) Fruit Oil',
+      'PETA-certified vegan and cruelty-free',
+    ]);
+  });
+
   test('prefers approved snapshot PDP content over thinner root seed shadow fields', () => {
     const canonicalUrl = 'https://example.com/products/barrier-cream';
     const reviewedDescription =

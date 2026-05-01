@@ -713,6 +713,7 @@ function readStructuredArrayAuthority(product) {
       product?.inci,
     ),
   );
+  const directStructuredItems = directItems.filter((item) => isLikelyInciStructuredItem(item));
   const rawText = asString(
     product?.ingredients_inci?.raw_text ||
       product?.ingredientsInci?.raw_text ||
@@ -724,7 +725,15 @@ function readStructuredArrayAuthority(product) {
   const parsedRawItems = directItems.length < 3 && rawText
     ? normalizeIngredientItems(splitIngredientText(sanitizeIngredientRawText(rawText)), { max: 180 })
     : [];
-  const finalItems = directItems.length >= 3 ? directItems : parsedRawItems;
+  const parsedStructuredItems = parsedRawItems.filter((item) => isLikelyInciStructuredItem(item));
+  const finalItems =
+    directStructuredItems.length >= 3
+      ? directStructuredItems
+      : directItems.length >= 3
+        ? directItems
+        : parsedStructuredItems.length >= 3
+          ? parsedStructuredItems
+          : parsedRawItems;
   if (!isLikelyAuthoritativeIngredientSet(finalItems)) return null;
   if (finalItems.length < 3) return null;
   const activeItems = normalizeIngredientItems(

@@ -821,6 +821,35 @@ function isFaqOrCrossSellDetailSection(section) {
 }
 
 function buildIngredientsModuleData(candidates, fallbackTitle) {
+  const likelyInciItem = (value) => {
+    const text = asNonEmptyString(value);
+    if (!text) return false;
+    if (text.length < 3) return false;
+    if (/^(and|or|with|without|for|the|a|an|c)$/i.test(text)) return false;
+    if (
+      /\b(packed with|help improve|come together|provide hydration|without clogging|blend of|powerful antioxidant|barrier repair properties|vegan|cruelty-free|normal occurrence|impact the efficacy|results may vary|bonus:|made for:|helps with:|clinically proven|consumer trial)\b/i.test(
+        text,
+      )
+    ) {
+      return false;
+    }
+    if (/[:!?]/.test(text) && !/\([^)]+\)/.test(text)) return false;
+    if (/\./.test(text)) return false;
+    return (
+      /\b(aqua|water|oil|extract|acid|amide|oligopeptide|polypeptide|peptide|glycol|glycerin|triglyceride|ferment|glucoside|cellulose|edta|hyaluronate|lecithin|stearate|behenate|pelargonate|taurate|fruit|leaf|seed|root|flower|stem|capry|hexanediol|sodium|potassium|disodium|hydrogenated|madecassoside|asiatic|jojoba|rosehip|sunflower|grape|pear|melon|iris|ivy|tea|bacillus)\b/i.test(
+        text,
+      ) ||
+      /\([A-Za-z/ -]+\)/.test(text)
+    );
+  };
+
+  const sanitizeIngredientsItems = (items) => {
+    const cleaned = uniqueNonEmptyStrings((items || []).filter((item) => likelyInciItem(item)));
+    if (!cleaned.length) return items;
+    const minimumRetained = Math.max(6, Math.ceil((items || []).length * 0.4));
+    return cleaned.length >= minimumRetained ? cleaned : items;
+  };
+
   const collectAtomicItems = (candidate) => {
     const directLists = [];
     if (Array.isArray(candidate)) directLists.push(candidate);
@@ -843,10 +872,11 @@ function buildIngredientsModuleData(candidates, fallbackTitle) {
       ...(atomicItems.length ? [] : splitIngredientsItemsFromText(rawText)),
     ]));
     if (!items.length && !rawText) continue;
+    const displayItems = sanitizeIngredientsItems(items);
     return {
       title: pickStructuredTitle(candidate, fallbackTitle),
       ...(rawText ? { raw_text: rawText } : {}),
-      items,
+      items: displayItems,
       ...extractStructuredSourceMeta(candidate),
     };
   }

@@ -2367,6 +2367,8 @@ function buildExternalSeedProduct(row, options = {}) {
   const rawIngredientTextClean = firstNonEmptyString(
     ingredientIntel.raw_ingredient_text_clean,
     snapshotIngredientIntel.raw_ingredient_text_clean,
+    runtimeSeedData.raw_ingredient_text_clean,
+    runtimeSnapshot.raw_ingredient_text_clean,
     seedData.raw_ingredient_text_clean,
     snapshot.raw_ingredient_text_clean,
   );
@@ -2374,7 +2376,22 @@ function buildExternalSeedProduct(row, options = {}) {
     ingredientIntel.inci_list ||
       snapshotIngredientIntel.inci_list ||
       ingredientIntel.inci_normalized ||
-      snapshotIngredientIntel.inci_normalized,
+      snapshotIngredientIntel.inci_normalized ||
+      runtimeSeedData.inci_list ||
+      runtimeSnapshot.inci_list ||
+      seedData.inci_list ||
+      snapshot.inci_list,
+  );
+  const fallbackIngredientsInci = normalizeStringList(
+    runtimeSeedData.ingredients_inci ||
+      runtimeSnapshot.ingredients_inci ||
+      seedData.ingredients_inci ||
+      snapshot.ingredients_inci ||
+      runtimeSeedData.ingredientsInci ||
+      runtimeSnapshot.ingredientsInci ||
+      seedData.ingredientsInci ||
+      snapshot.ingredientsInci,
+    256,
   );
   const activeIngredients = [];
   const keyIngredients = normalizeStringList(
@@ -2631,9 +2648,20 @@ function buildExternalSeedProduct(row, options = {}) {
     inci_list:
       runtimeSeedData.inci_list ||
       runtimeSnapshot.inci_list ||
+      seedData.inci_list ||
+      snapshot.inci_list ||
       ingredientIntel.inci_list ||
       snapshotIngredientIntel.inci_list,
-    ingredients_inci: Array.isArray(runtimeSeedData.ingredients_inci) ? runtimeSeedData.ingredients_inci : undefined,
+    ingredients_inci:
+      Array.isArray(runtimeSeedData.ingredients_inci) && runtimeSeedData.ingredients_inci.length > 0
+        ? runtimeSeedData.ingredients_inci
+        : Array.isArray(runtimeSnapshot.ingredients_inci) && runtimeSnapshot.ingredients_inci.length > 0
+          ? runtimeSnapshot.ingredients_inci
+          : Array.isArray(seedData.ingredients_inci) && seedData.ingredients_inci.length > 0
+            ? seedData.ingredients_inci
+            : Array.isArray(snapshot.ingredients_inci) && snapshot.ingredients_inci.length > 0
+              ? snapshot.ingredients_inci
+              : undefined,
     pdp_ingredients_raw: isSurfaceablePdpField(pdpFieldQualitySummary, 'ingredients_raw')
       ? runtimeSeedData.pdp_ingredients_raw || runtimeSnapshot.pdp_ingredients_raw
       : undefined,
@@ -2744,7 +2772,11 @@ function buildExternalSeedProduct(row, options = {}) {
     ...(pdpFieldQualitySummary ? { pdp_field_quality_summary: pdpFieldQualitySummary } : {}),
     ...(Object.keys(ingredientIntel).length ? { ingredient_intel: ingredientIntel } : {}),
     ...(ingredientTokens.length ? { ingredient_tokens: ingredientTokens } : {}),
-    ...(authority.items.length ? { ingredients_inci: authority.items } : {}),
+    ...(authority.items.length
+      ? { ingredients_inci: authority.items }
+      : fallbackIngredientsInci.length && productFamily !== 'set_or_collection'
+        ? { ingredients_inci: fallbackIngredientsInci }
+        : {}),
     ...(shouldExposeAuthorityActiveItems(authority) ? { active_ingredients: authority.active_items } : {}),
     ...(Object.keys(mergedIngredientIntel).length ? { ingredient_intel: mergedIngredientIntel } : {}),
     ...(brand ? { vendor: brand, brand } : {}),

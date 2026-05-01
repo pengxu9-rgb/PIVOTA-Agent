@@ -233,6 +233,51 @@ describe('pdpBuilder structured PDP modules', () => {
     expect(findModule(payload, 'product_details')).toBeFalsy();
   });
 
+  test('filters marketing fragments out of ingredient arrays when enough INCI evidence remains', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'p_structured_oil_lala',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'Oil La La',
+        category: 'Serum',
+        image_url: 'https://cdn.example.com/oil.jpg',
+        price: { amount: 28, currency: 'USD' },
+        ingredients_inci: [
+          '10% Upcycled Rosehip Oil: Packed with fatty acids',
+          'antioxidants',
+          'and vitamins A',
+          'C',
+          'Blend of Non-Comedogenic',
+          'Helianthus Annuus (Sunflower) Seed Oil',
+          'Rosa Canina (Rosehip) Fruit Oil',
+          'Vitis Vinifera (Grape) Seed Oil',
+          'Butylene Glycol',
+          '1,2-Hexanediol',
+          'Sodium Hyaluronate',
+          'PETA-certified vegan and cruelty-free',
+          'Water (Aqua/Eau)',
+        ],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    expect(findModule(payload, 'ingredients_inci')?.data).toEqual(
+      expect.objectContaining({
+        items: [
+          'Helianthus Annuus (Sunflower) Seed Oil',
+          'Rosa Canina (Rosehip) Fruit Oil',
+          'Vitis Vinifera (Grape) Seed Oil',
+          'Butylene Glycol',
+          '1,2-Hexanediol',
+          'Sodium Hyaluronate',
+          'Water (Aqua/Eau)',
+        ],
+      }),
+    );
+  });
+
   test('keeps structured PDP sections when raw captured description is narrative soup', () => {
     const payload = buildPdpPayload({
       product: {
