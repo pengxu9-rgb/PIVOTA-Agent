@@ -3291,7 +3291,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
                 seed_data: {
                   brand: 'Test Beauty',
                   category: 'serum',
-                  description: 'Firming anti-aging serum for elasticity.',
+                  description: 'Firming anti-aging serum with peptide water, collagen complex, and vitamin C capsules.',
                 },
                 updated_at: new Date().toISOString(),
                 created_at: new Date().toISOString(),
