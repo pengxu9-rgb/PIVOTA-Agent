@@ -15588,7 +15588,6 @@ let uiChatLlmProvider;
 
 function resolveUiChatProvider() {
   const explicit = String(process.env.PIVOTA_UI_CHAT_LLM_PROVIDER || '').trim().toLowerCase();
-  if (explicit === 'openai' || explicit === 'gemini') return explicit;
 
   const hasOpenAI = Boolean(String(process.env.OPENAI_API_KEY || '').trim());
   const hasGemini = Boolean(
@@ -15601,6 +15600,7 @@ function resolveUiChatProvider() {
   );
 
   if (hasGemini && isTemporaryUnifiedGeminiModelEnabled()) return 'gemini';
+  if (explicit === 'openai' || explicit === 'gemini') return explicit;
   if (hasGemini && !hasOpenAI) return 'gemini';
   if (hasOpenAI) return 'openai';
   if (hasGemini) return 'gemini';
