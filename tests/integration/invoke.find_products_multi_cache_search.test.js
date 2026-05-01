@@ -1436,6 +1436,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     process.env.PIVOT_BEAUTY_PARALLEL_SCOPE_RECALL_ENABLED = 'true';
 
     const observedSql = [];
+    const observedParams = [];
     let activeExternalQueries = 0;
     let maxActiveExternalQueries = 0;
     let externalQueryCount = 0;
@@ -1445,6 +1446,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       query: async (sql, params = []) => {
         const text = String(sql || '');
         observedSql.push(text);
+        observedParams.push(params);
         if (text.includes('FROM external_product_seeds')) {
           externalQueryCount += 1;
           activeExternalQueries += 1;
@@ -1503,7 +1505,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
 
     expect(resp.status).toBe(200);
     expect(resp.body.metadata?.query_source).toBe('agent_products_beauty_external_seed_mainline');
-    expect(externalQueryCount).toBe(2);
+    expect(externalQueryCount).toBe(3);
     expect(maxActiveExternalQueries).toBeGreaterThan(1);
     expect(resp.body.metadata?.retrieval_query_debug || []).toEqual(
       expect.arrayContaining([
@@ -1516,7 +1518,8 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     );
     expect(observedSql.join('\n')).not.toMatch(/tool = ANY/i);
     expect(observedSql.join('\n')).toMatch(/tool = \$2/i);
-    expect(observedSql.join('\n')).not.toMatch(/tool = 'shopping_agents'/i);
+    expect(observedParams.some((params) => params[1] === 'shopping_agents')).toBe(true);
+    expect(observedParams.some((params) => params[1] === '')).toBe(false);
     expect(observedSql.join('\n')).not.toMatch(/row_number\(\) OVER/i);
     expect(observedSql.join('\n')).not.toMatch(/FROM products_cache/i);
   });
@@ -1606,7 +1609,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
 
     expect(resp.status).toBe(200);
     expect(resp.body.metadata?.query_source).toBe('agent_products_beauty_external_seed_mainline');
-    expect(externalQueryCount).toBe(2);
+    expect(externalQueryCount).toBe(3);
     expect(resp.body.metadata?.retrieval_query_debug || []).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

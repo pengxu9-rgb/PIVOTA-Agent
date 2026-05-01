@@ -10017,11 +10017,14 @@ async function queryBeautyExternalSeedRowsFast({
   const categoryTerms = buildBeautyExternalSeedCategoryTerms(intent);
   const perCategoryRowLimit = Math.max(3, Math.min(8, Math.ceil(perScopeRowLimit / Math.max(1, categoryTerms.length))));
   const recallPatterns = buildBeautyExternalSeedRecallPatterns({ queryText, intent });
-  const primaryToolScopes = ['creator_agents', '*'];
-  const legacyToolScopes = toolScope === 'creator_preferred' ? [''] : ['shopping_agents', ''];
+  const primaryToolScopes = toolScope === 'creator_preferred'
+    ? ['creator_agents', '*']
+    : ['shopping_agents', 'creator_agents', '*'];
+  const legacyToolScopes = [''];
   const toolScopes = PIVOT_BEAUTY_LEGACY_TOOL_SCOPE_RECALL_ENABLED
     ? primaryToolScopes.concat(legacyToolScopes)
     : primaryToolScopes;
+  const rawProductCap = Math.max(safeLimit, Math.min(60, safeLimit * Math.max(1, toolScopes.length)));
 
   const seen = new Set();
   const rawProducts = [];
@@ -10185,7 +10188,7 @@ async function queryBeautyExternalSeedRowsFast({
     if (!scopeResult || typeof scopeResult !== 'object') return;
     if (scopeResult.variant) variantResults.push(scopeResult.variant);
     for (const row of Array.isArray(scopeResult.rows) ? scopeResult.rows : []) {
-      if (rawProducts.length >= safeLimit) break;
+      if (rawProducts.length >= rawProductCap) break;
       const product = buildBeautyExternalSeedMainlineProduct(row);
       if (!product) continue;
       product.market = row.market || safeMarket;
@@ -10213,7 +10216,7 @@ async function queryBeautyExternalSeedRowsFast({
     }
   } else {
     for (const tool of toolScopes) {
-      if (rawProducts.length >= safeLimit) break;
+      if (rawProducts.length >= rawProductCap) break;
       appendScopeRows(await runScopeQuery(tool));
     }
   }
@@ -10525,6 +10528,8 @@ function beautyProductMatchesFamily(product, family) {
       product?.name,
       product?.product_name,
       product?.display_name,
+      product?.category,
+      product?.product_type,
       product?.description,
       product?.summary,
       product?.canonical_url,
@@ -11627,7 +11632,7 @@ function buildBeautyTripContextReasonForResponse({ product, queryText, localAuth
       String(product?.market || product?.merchant_market || '').trim().toUpperCase() === targetMarket
     );
   const hasTravelSize = fitAttributes && fitAttributes.travel_size === true;
-  const family = families[0] || '';
+  const family = families.find((candidate) => beautyProductMatchesFamily(product, candidate)) || families[0] || '';
 
   if (lang === 'CN') {
     if (isLocalAuthority && targetMarket === 'KR') {
