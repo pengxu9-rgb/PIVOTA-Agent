@@ -844,6 +844,78 @@ describe('beauty_expert_v1 contract', () => {
     );
   });
 
+  test('localizes Chinese visible reply instead of splicing English PDP copy', () => {
+    const result = attachBeautyExpertV1ToResponse(
+      {
+        reply: null,
+        products: [
+          {
+            product_id: 'centella_cream',
+            merchant_id: 'external_seed',
+            title: 'Centella Soothing Cream',
+            brand: 'Skin1004',
+            category: 'Moisturizer',
+            why_this_one: 'Product Benefits: Soothing, Hydrating Skin Type: Normal, Sensitive Key.',
+          },
+          {
+            product_id: 'renewing_cream',
+            merchant_id: 'external_seed',
+            title: 'Renewing Rich Beauty Cream',
+            brand: 'Then I Met You',
+            category: 'Moisturizer',
+            why_this_one: 'It is a richer cream format built around ginseng, baobab, squalane, and hyaluronic acid.',
+          },
+        ],
+        metadata: {
+          mainline_status: 'grounded_success',
+          decision_owner: 'shopping_agent_beauty_mainline',
+          semantic_owner: 'shopping_agent_beauty_mainline',
+        },
+      },
+      {
+        source: 'shopping_agent',
+        entryLayer: 'orchestration',
+        delegatedLayer: 'decisioning',
+        taskType: 'discovery',
+        context: {
+          vertical: 'beauty',
+          category: 'skincare',
+          normalized_need: {
+            beauty_request: {
+              domain: 'beauty',
+              user_goal: '我洗完脸后皮肤很干很紧，第一步应该先用什么？',
+              skin_context: {
+                skin_type: 'combination',
+                sensitivity: 'medium',
+                goals: ['barrier support'],
+              },
+            },
+          },
+          profile: {
+            skin_type: 'combination',
+            sensitivity: 'medium',
+            goals: ['barrier support'],
+          },
+          raw_user_goal: '我洗完脸后皮肤很干很紧，第一步应该先用什么？',
+        },
+        metadata: {
+          source: 'shopping_agent',
+          catalog_surface: 'beauty',
+        },
+        payload: {
+          search: {
+            query: '我洗完脸后皮肤很干很紧，第一步应该先用什么？',
+          },
+        },
+      },
+    );
+
+    expect(result.reply).toContain('Centella Soothing Cream是当前优先项');
+    expect(result.reply).toContain('同类对比看');
+    expect(result.reply).toContain('保湿/屏障步骤');
+    expect(result.reply).not.toMatch(/Product Benefits|Hydrating Skin Type|\bit is\b|\bbecause\b|Compared with it/i);
+  });
+
   test('context-rich beauty follow-up with products exits guided mode even without repeating category words', () => {
     const result = buildBeautyExpertV1Response({
       source: 'shopping_agent',

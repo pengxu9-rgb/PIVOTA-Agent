@@ -1581,6 +1581,10 @@ function getBeautyIntentContextText(beautyIntent = {}) {
   ].filter(Boolean).join(' '));
 }
 
+function isBeautyIntentChinese(beautyIntent = {}) {
+  return /[\u4e00-\u9fff]/.test(flattenText(beautyIntent));
+}
+
 function buildBeautyContextFrame(beautyIntent = {}) {
   const text = getBeautyIntentContextText(beautyIntent);
   if (/\b(sunscreen|spf)\b/.test(text) && /\b(humid|houston|makeup|shiny|shine|under makeup)\b/.test(text)) {
@@ -1669,6 +1673,63 @@ function describeProductForVisibleCopy(product = {}, beautyIntent = {}) {
   const price = formatPrice(product);
   if (price) parts.push(`it is listed around ${price}`);
   return parts.join(' and ') || 'it is a grounded catalog option for this request';
+}
+
+function describeProductForVisibleCopyCn(product = {}, beautyIntent = {}) {
+  const evidenceText = [
+    product.why_this_one,
+    product.short_description,
+    product.description,
+    product.name,
+    product.title,
+    product.canonical_title,
+    product.brand,
+    getBeautyIntentContextText(beautyIntent),
+  ].filter(Boolean).join(' ');
+  const roleText = normalizeText([
+    product.category,
+    product.product_type,
+    product.matched_role_label,
+    product.matched_role_id,
+    product.name,
+    product.title,
+  ].filter(Boolean).join(' '));
+  const ingredients = [];
+  const addIngredient = (label, pattern) => {
+    if (!pattern.test(evidenceText)) return;
+    if (!ingredients.includes(label)) ingredients.push(label);
+  };
+  addIngredient('泛醇', /panthenol|泛醇/i);
+  addIngredient('神经酰胺/屏障脂质', /ceramide|神经酰胺|barrier[-\s]?lipid/i);
+  addIngredient('透明质酸', /hyaluronic|透明质酸|玻尿酸/i);
+  addIngredient('甘油', /glycerin|甘油/i);
+  addIngredient('角鲨烷', /squalane|角鲨烷/i);
+  addIngredient('积雪草', /centella|积雪草/i);
+  addIngredient('大豆相关成分', /soybean|大豆/i);
+  addIngredient('烟酰胺', /niacinamide|烟酰胺/i);
+  const ingredientPhrase = ingredients.slice(0, 3).join('、');
+  const isSunscreen = /\b(sunscreen|spf|sun|uv)\b|防晒/i.test(roleText);
+  const isCleanser = /\b(cleanser|wash)\b|洁面|洗面奶/i.test(roleText);
+  const isTreatment = /\b(serum|essence|treatment|retinol|acid)\b|精华|功效|刷酸/i.test(roleText);
+  const lightweight = /\b(gel[-\s]?cream|gel|non[-\s]?sticky|non[-\s]?greasy|oil[-\s]?free|lightweight|weightless)\b|清爽|轻薄|不黏|啫喱/i.test(evidenceText);
+  const richer = /\b(rich|richer|cream|cushion|dewy|lasting moisture|nourishing)\b|滋润|丰润|保湿霜/i.test(evidenceText);
+  if (isSunscreen) {
+    return ingredientPhrase
+      ? `它属于日间防晒步骤，并带有${ingredientPhrase}等配方线索，适合放在早上最后一步`
+      : '它属于日间防晒步骤，适合放在早上最后一步';
+  }
+  if (isCleanser) return '它属于洁面步骤，重点是减少洗后紧绷和过度清洁负担';
+  if (isTreatment) {
+    return ingredientPhrase
+      ? `它提供${ingredientPhrase}等支持，但洗后紧绷时仍要搭配保湿/屏障步骤`
+      : '它更像补充型步骤，洗后紧绷时不应替代保湿/屏障步骤';
+  }
+  if (ingredientPhrase && lightweight) return `它属于保湿/屏障步骤，配方线索包含${ingredientPhrase}，质地偏轻，不容易给混合皮增加厚重感`;
+  if (ingredientPhrase && richer) return `它属于保湿/屏障步骤，配方线索包含${ingredientPhrase}，保湿感更充足，适合紧绷明显时加强舒缓`;
+  if (ingredientPhrase) return `它属于保湿/屏障步骤，配方线索包含${ingredientPhrase}，适合洗后先做舒缓和保湿打底`;
+  if (lightweight) return '它属于保湿/屏障步骤，质地偏轻，不容易给混合皮增加厚重感';
+  if (richer) return '它属于保湿/屏障步骤，保湿感更充足，适合紧绷明显时加强舒缓';
+  return '它和这次的保湿/屏障目标更接近，适合作为起步选择';
 }
 
 function buildBeautyExpertBulletReply(products = [], beautyIntent = {}, { creatorFacing = false } = {}) {
@@ -1760,6 +1821,7 @@ function buildBeautyExpertVisibleReply(beautyExpertV1 = {}) {
   const support = products.slice(1, 3);
   const leadName = getProductDisplayName(lead) || 'the lead option';
   const intentText = getBeautyIntentContextText(beautyIntent);
+  const isCn = isBeautyIntentChinese(beautyIntent);
   if (/\b(three bullets|three slot reasons|why each|not just product names|slot versus|explain why each)\b/.test(intentText)) {
     const bulletReply = buildBeautyExpertBulletReply(products, beautyIntent, { creatorFacing });
     if (bulletReply) return bulletReply;
@@ -1769,7 +1831,9 @@ function buildBeautyExpertVisibleReply(beautyExpertV1 = {}) {
     if (routineReply) return routineReply;
   }
   const contextFrame = buildBeautyContextFrame(beautyIntent);
-  const leadReason = describeProductForVisibleCopy(lead, beautyIntent);
+  const leadReason = isCn
+    ? describeProductForVisibleCopyCn(lead, beautyIntent)
+    : describeProductForVisibleCopy(lead, beautyIntent);
   const prefix = creatorFacing
     ? 'For a creator-facing shortlist, '
     : '';
@@ -1777,12 +1841,20 @@ function buildBeautyExpertVisibleReply(beautyExpertV1 = {}) {
     .map((product) => {
       const name = getProductDisplayName(product);
       if (!name) return '';
-      return `${name} is the comparison option because ${describeProductForVisibleCopy(product, beautyIntent)}`;
+      const reason = isCn
+        ? describeProductForVisibleCopyCn(product, beautyIntent)
+        : describeProductForVisibleCopy(product, beautyIntent);
+      return isCn
+        ? `${name}作为同类对比项，因为${reason}`
+        : `${name} is the comparison option because ${reason}`;
     })
     .filter(Boolean);
   const compareSentence = supportCopy.length > 0
-    ? `Compared with it, ${supportCopy.join('; ')}.`
-    : 'I would still compare price, texture, and routine fit before making it the only pick.';
+    ? (isCn ? `同类对比看，${supportCopy.join('；')}。` : `Compared with it, ${supportCopy.join('; ')}.`)
+    : (isCn ? '如果只先买一个，仍建议先看质地、耐受度和现有 routine 是否匹配。' : 'I would still compare price, texture, and routine fit before making it the only pick.');
+  if (isCn) {
+    return `${leadName}是当前优先项，因为${leadReason}。${compareSentence}`;
+  }
   return `${contextFrame ? `${contextFrame} ` : ''}${prefix}${leadName} is the current lead because ${leadReason}. ${compareSentence}`;
 }
 
