@@ -1,8 +1,9 @@
 'use strict';
 
-const TEMPORARY_UNIFIED_GEMINI_MODEL = 'gemini-2.5-flash-preview';
-const TEMPORARY_UNIFIED_GEMINI_RUNTIME_MODEL = 'gemini-2.5-flash-preview-09-2025';
-const TEMPORARY_UNIFIED_GEMINI_STABLE_FALLBACK_MODEL = 'gemini-2.5-flash';
+const TEMPORARY_UNIFIED_GEMINI_MODEL = 'gemini-2.5-flash';
+const TEMPORARY_UNIFIED_GEMINI_RUNTIME_MODEL = 'gemini-2.5-flash';
+const LEGACY_GEMINI_FLASH_PREVIEW_ALIAS = 'gemini-2.5-flash-preview';
+const LEGACY_GEMINI_FLASH_PREVIEW_RUNTIME_MODEL = 'gemini-2.5-flash-preview-09-2025';
 const NON_IMAGE_GEMINI_FLOOR_MODEL = TEMPORARY_UNIFIED_GEMINI_MODEL;
 const warnedAdjustments = new Set();
 
@@ -14,6 +15,12 @@ function normalizeGeminiModelName(model) {
 
 function resolveGeminiRuntimeModelName(model) {
   const normalized = normalizeGeminiModelName(model);
+  if (
+    normalized === LEGACY_GEMINI_FLASH_PREVIEW_ALIAS ||
+    normalized === LEGACY_GEMINI_FLASH_PREVIEW_RUNTIME_MODEL
+  ) {
+    return TEMPORARY_UNIFIED_GEMINI_RUNTIME_MODEL;
+  }
   if (normalized === TEMPORARY_UNIFIED_GEMINI_MODEL) return TEMPORARY_UNIFIED_GEMINI_RUNTIME_MODEL;
   return normalized;
 }
@@ -31,15 +38,7 @@ function uniqueNonEmptyStrings(values) {
 }
 
 function resolveGeminiRuntimeModelCandidates(model) {
-  const primary = resolveGeminiRuntimeModelName(model);
-  const candidates = [primary];
-  if (
-    primary === TEMPORARY_UNIFIED_GEMINI_RUNTIME_MODEL ||
-    normalizeGeminiModelName(model) === TEMPORARY_UNIFIED_GEMINI_MODEL
-  ) {
-    candidates.push(TEMPORARY_UNIFIED_GEMINI_STABLE_FALLBACK_MODEL);
-  }
-  return uniqueNonEmptyStrings(candidates);
+  return uniqueNonEmptyStrings([resolveGeminiRuntimeModelName(model)]);
 }
 
 function isGeminiModelName(model) {
@@ -182,7 +181,6 @@ function resetGeminiModelFloorWarningsForTest() {
 module.exports = {
   TEMPORARY_UNIFIED_GEMINI_MODEL,
   TEMPORARY_UNIFIED_GEMINI_RUNTIME_MODEL,
-  TEMPORARY_UNIFIED_GEMINI_STABLE_FALLBACK_MODEL,
   NON_IMAGE_GEMINI_FLOOR_MODEL,
   normalizeGeminiModelName,
   resolveGeminiRuntimeModelName,

@@ -318,22 +318,6 @@ const CanonicalObservationItemSchema = {
   required: ['cue', 'region', 'severity', 'confidence', 'evidence'],
 };
 
-const CanonicalReportLlmObservationItemSchema = {
-  type: 'object',
-  properties: {
-    cue: CanonicalObservationItemSchema.properties.cue,
-    region: CanonicalObservationItemSchema.properties.region,
-    severity: CanonicalObservationItemSchema.properties.severity,
-    confidence: CanonicalObservationItemSchema.properties.confidence,
-    evidence: {
-      type: 'string',
-      maxLength: 120,
-      description: 'Very short English evidence phrase. No paragraph.',
-    },
-  },
-  required: ['cue', 'region', 'severity', 'confidence', 'evidence'],
-};
-
 const SkinVisionCanonicalSchema = {
   type: 'object',
   properties: {
@@ -506,13 +490,7 @@ const SkinReportCanonicalLlmSchema = {
   properties: {
     needs_risk_check: SkinReportCanonicalSchema.properties.needs_risk_check,
     summary_focus: CanonicalSummaryFocusTransportSchema,
-    insights: {
-      type: 'array',
-      minItems: 1,
-      maxItems: 2,
-      items: CanonicalReportLlmObservationItemSchema,
-      description: 'Only the 1-2 strongest grounded cues needed to choose the plan focus.',
-    },
+    insights: SkinReportCanonicalSchema.properties.insights,
   },
   required: ['needs_risk_check', 'summary_focus', 'insights'],
 };

@@ -108,7 +108,7 @@ function resolveAuroraPublicLlmRoute({
   const llmModel = llmProvider === 'gemini'
     ? resolveNonImageGeminiModel({
       model: rawLlmModel,
-      fallbackModel: 'gemini-2.5-flash-preview',
+      fallbackModel: 'gemini-2.5-flash',
       envSource: 'aurora_public_llm_route',
       callPath: 'aurora_public_llm_route',
     }).effectiveModel

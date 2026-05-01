@@ -20,8 +20,8 @@ test('aurora model policy unifies explicit Gemini models to the temporary produc
   if (previous === undefined) delete process.env.PIVOTA_GEMINI_UNIFIED_MODEL_ENABLED;
   else process.env.PIVOTA_GEMINI_UNIFIED_MODEL_ENABLED = previous;
 
-  assert.equal(resolved.requested_model, 'gemini-2.5-flash-preview-09-2025');
-  assert.equal(resolved.effective_model, 'gemini-2.5-flash-preview-09-2025');
+  assert.equal(resolved.requested_model, 'gemini-2.5-flash');
+  assert.equal(resolved.effective_model, 'gemini-2.5-flash');
   assert.equal(resolved.configured_model, 'gemini-2.0-flash');
   assert.equal(resolved.selection_source, 'temporary_unified_gemini_model');
   assert.equal(resolved.policy_version, AURORA_MODEL_POLICY_VERSION);
@@ -44,7 +44,7 @@ test('aurora model policy blocks public llm override in production-like mode', (
 
   assert.equal(resolved.override_allowed, false);
   assert.equal(resolved.llm_provider, 'gemini');
-  assert.equal(resolved.llm_model, 'gemini-2.5-flash-preview-09-2025');
+  assert.equal(resolved.llm_model, 'gemini-2.5-flash');
   assert.equal(resolved.selection_source, 'configured_default');
 });
 

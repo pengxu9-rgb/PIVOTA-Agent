@@ -8,6 +8,7 @@ const {
   isGeminiImageGenerationModel,
   isTemporaryUnifiedGeminiModelEnabled,
   resolveNonImageGeminiModel,
+  resolveGeminiRuntimeModelCandidates,
   resolveGeminiRuntimeModelName,
   resetGeminiModelFloorWarningsForTest,
 } = require('../src/lib/geminiModelFloor');
@@ -54,7 +55,7 @@ test('resolveNonImageGeminiModel also unifies Gemini 3+ models while the tempora
   assert.equal(resolved.effectiveModel, TEMPORARY_UNIFIED_GEMINI_RUNTIME_MODEL);
 });
 
-test('bare temporary Gemini preview alias is canonicalized to the API runtime model', () => {
+test('temporary Gemini model is canonicalized to stable Gemini 2.5 Flash', () => {
   assert.equal(resolveGeminiRuntimeModelName(TEMPORARY_UNIFIED_GEMINI_MODEL), TEMPORARY_UNIFIED_GEMINI_RUNTIME_MODEL);
   const resolved = withTemporaryUnifiedModelEnabled(() => {
     resetGeminiModelFloorWarningsForTest();
@@ -67,6 +68,17 @@ test('bare temporary Gemini preview alias is canonicalized to the API runtime mo
   });
   assert.equal(resolved.configuredModel, TEMPORARY_UNIFIED_GEMINI_MODEL);
   assert.equal(resolved.effectiveModel, TEMPORARY_UNIFIED_GEMINI_RUNTIME_MODEL);
+});
+
+test('legacy Gemini preview aliases map directly to stable Gemini 2.5 Flash without candidate fallback', () => {
+  assert.equal(resolveGeminiRuntimeModelName('gemini-2.5-flash-preview'), TEMPORARY_UNIFIED_GEMINI_RUNTIME_MODEL);
+  assert.equal(resolveGeminiRuntimeModelName('gemini-2.5-flash-preview-09-2025'), TEMPORARY_UNIFIED_GEMINI_RUNTIME_MODEL);
+  assert.deepEqual(resolveGeminiRuntimeModelCandidates('gemini-2.5-flash-preview'), [
+    TEMPORARY_UNIFIED_GEMINI_RUNTIME_MODEL,
+  ]);
+  assert.deepEqual(resolveGeminiRuntimeModelCandidates('gemini-2.5-flash-preview-09-2025'), [
+    TEMPORARY_UNIFIED_GEMINI_RUNTIME_MODEL,
+  ]);
 });
 
 test('temporary unified Gemini model policy is enabled by explicit env', () => {
