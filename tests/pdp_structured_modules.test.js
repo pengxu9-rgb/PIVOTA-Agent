@@ -523,4 +523,74 @@ describe('pdpBuilder structured PDP modules', () => {
       }),
     ]);
   });
+
+  test('splits generic FAQ detail sections instead of exposing the whole FAQ as one question', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'p_reviews_faq_section',
+        merchant_id: 'external_seed',
+        title: 'Dynasty Cream',
+        image_url: 'https://cdn.example.com/dynasty-cream.jpg',
+        price: { amount: 24, currency: 'USD' },
+        details_sections: [
+          {
+            heading: 'FAQ',
+            content:
+              'What skin types can use this product? We formulated Dynasty Cream for all skin types, especially normal to dry skin. Is Dynasty Cream safe for blemish-prone skin? Yes. Niacinamide and squalane help balance sebum levels. Can I use this moisturizer both day and night? Yes. Use it in the morning for glow or at night for nourishment.',
+          },
+        ],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    const questions = findModule(payload, 'reviews_preview')?.data?.questions || [];
+    expect(questions.map((item) => item.question)).toEqual([
+      'What skin types can use this product?',
+      'Is Dynasty Cream safe for blemish-prone skin?',
+      'Can I use this moisturizer both day and night?',
+    ]);
+    expect(questions.map((item) => item.question)).not.toContain('FAQ');
+    expect(questions[0]).toEqual(
+      expect.objectContaining({
+        answer: 'We formulated Dynasty Cream for all skin types, especially normal to dry skin.',
+        source: 'merchant_faq',
+        source_label: 'Official FAQ',
+      }),
+    );
+  });
+
+  test('does not duplicate explicit FAQ items with a generic FAQ detail section', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'p_reviews_faq_section_dedupe',
+        merchant_id: 'external_seed',
+        title: 'Dynasty Cream',
+        image_url: 'https://cdn.example.com/dynasty-cream.jpg',
+        price: { amount: 24, currency: 'USD' },
+        pdp_faq_items: [
+          {
+            question: 'What skin types can use this product?',
+            answer: 'We formulated Dynasty Cream for all skin types, especially normal to dry skin.',
+            source_kind: 'merchant_faq',
+          },
+        ],
+        details_sections: [
+          {
+            heading: 'FAQ',
+            content:
+              'What skin types can use this product? We formulated Dynasty Cream for all skin types, especially normal to dry skin. Does this moisturizer contain silicones? No. Dynasty Cream is silicone-free.',
+          },
+        ],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    const questions = findModule(payload, 'reviews_preview')?.data?.questions || [];
+    expect(questions.map((item) => item.question)).toEqual([
+      'What skin types can use this product?',
+      'Does this moisturizer contain silicones?',
+    ]);
+  });
 });

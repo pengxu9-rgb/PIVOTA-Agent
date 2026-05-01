@@ -2255,6 +2255,50 @@ function normalizeAnswerText(value) {
     .trim();
 }
 
+function isGenericFaqHeading(value) {
+  return /^(?:faq|faqs|frequently asked questions?|q(?:uestions)?\s*&\s*a|questions?)$/i.test(
+    asNonEmptyString(value),
+  );
+}
+
+const FAQ_QUESTION_START_PATTERN =
+  /(?:^|[\s([{'"“‘])((?:(?:q(?:uestion)?\s*[:.-]\s*)?(?:who|what|when|where|why|how|can|could|should|would|will|is|are|do|does|did|may|which|what's|isn't|doesn't|i\s+have|i'm)\b)[^?？]{3,220}[?？])/gi;
+
+function extractFaqPairsFromText(value) {
+  const text = asNonEmptyString(value).replace(/\s+/g, ' ').trim();
+  if (!text) return [];
+
+  const matches = [];
+  let match;
+  FAQ_QUESTION_START_PATTERN.lastIndex = 0;
+  while ((match = FAQ_QUESTION_START_PATTERN.exec(text)) !== null) {
+    const question = normalizeQuestionText(match[1]);
+    const localOffset = match[0].indexOf(match[1]);
+    const start = match.index + Math.max(0, localOffset);
+    const end = start + match[1].length;
+    const key = normalizeQuestionKey(question);
+    if (!question || !key) continue;
+    matches.push({ question, start, end });
+    if (matches.length >= 12) break;
+  }
+
+  if (!matches.length) return [];
+
+  const pairs = [];
+  for (let index = 0; index < matches.length; index += 1) {
+    const current = matches[index];
+    const next = matches[index + 1];
+    const answer = normalizeAnswerText(
+      text
+        .slice(current.end, next ? next.start : text.length)
+        .replace(/^[\s:;.,\-–—]+/, ''),
+    );
+    if (!answer) continue;
+    pairs.push({ question: current.question, answer });
+  }
+  return pairs;
+}
+
 function normalizeFaqItemsForQuestions(product) {
   const rawItems = Array.isArray(product.pdp_faq_items)
     ? product.pdp_faq_items
@@ -2271,7 +2315,7 @@ function normalizeFaqItemsForQuestions(product) {
     const question = normalizeQuestionText(rawQuestion);
     const answer = normalizeAnswerText(rawAnswer);
     const key = normalizeQuestionKey(question);
-    if (!question || !answer || !key || seen.has(`${key}::${answer.toLowerCase()}`)) return;
+    if (!question || !answer || !key || seen.has(key)) return;
     if (
       !isDisplayablePdpFaqItem({
         question,
@@ -2282,7 +2326,7 @@ function normalizeFaqItemsForQuestions(product) {
     ) {
       return;
     }
-    seen.add(`${key}::${answer.toLowerCase()}`);
+    seen.add(key);
     out.push({
       question,
       answer,
@@ -2299,7 +2343,13 @@ function normalizeFaqItemsForQuestions(product) {
     const heading = asNonEmptyString(section?.heading);
     const content = asNonEmptyString(section?.content);
     if (!heading || !content) continue;
-    if (/[?？]$/.test(heading) || /^(?:faq|frequently asked questions?|questions?)$/i.test(heading)) {
+    if (isGenericFaqHeading(heading)) {
+      for (const pair of extractFaqPairsFromText(content)) {
+        pushQuestion(pair.question, pair.answer, section);
+      }
+      continue;
+    }
+    if (/[?？]$/.test(heading)) {
       pushQuestion(heading, content);
     }
   }
