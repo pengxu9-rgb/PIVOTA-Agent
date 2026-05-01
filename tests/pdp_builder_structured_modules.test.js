@@ -112,6 +112,47 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     expect(payload.product.canonical_url).toBe('https://merchant.example/products/barrier-cream');
   });
 
+  test('emits variant selector for a single displayable size variant', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_single_size',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'Heartleaf Calming Cream',
+        description: 'Barrier-supporting cream.',
+        canonical_url: 'https://merchant.example/products/heartleaf-calming-cream',
+        image_url: 'https://example.com/heartleaf-calming-cream.png',
+        product_options: [{ name: 'Size' }],
+        variants: [
+          {
+            id: 'sku_50ml',
+            title: '50ml',
+            price: { amount: 19, currency: 'USD' },
+            variant_attributes: {
+              option1: '50ml',
+              selected_options: [{ name: 'Size', value: '50ml' }],
+            },
+          },
+        ],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    const variantSelector = payload.modules.find((module) => module.type === 'variant_selector');
+
+    expect(variantSelector).toBeTruthy();
+    expect(variantSelector?.data?.selected_variant_id).toBe('sku_50ml');
+    expect(payload.product.default_variant_id).toBe('sku_50ml');
+    expect(payload.product.variants).toEqual([
+      expect.objectContaining({
+        variant_id: 'sku_50ml',
+        title: '50ml',
+        options: [expect.objectContaining({ name: 'Size', value: '50ml' })],
+      }),
+    ]);
+  });
+
   test('repairs sunscreen actives from INCI when seed actives drift', () => {
     const payload = buildPdpPayload({
       product: {

@@ -1008,9 +1008,9 @@ function variantHasDisplayableChoice(variant) {
 
 function shouldRenderVariantSelector(product, variants, productLineOptions) {
   if (Array.isArray(productLineOptions) && productLineOptions.length > 1) return true;
-  if (!Array.isArray(variants) || variants.length <= 1) return false;
+  if (!Array.isArray(variants) || variants.length === 0) return false;
   const displayableCount = variants.filter((variant) => variantHasDisplayableChoice(variant)).length;
-  return displayableCount > 1;
+  return displayableCount >= 1;
 }
 
 function shouldExposeProductVariants(product, variants, productLineOptions) {
