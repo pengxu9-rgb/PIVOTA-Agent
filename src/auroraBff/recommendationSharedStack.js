@@ -322,8 +322,8 @@ function collectConcernFrameworkSignals({ text = '', focus = '', profileSummary 
   return {
     oily: /\boily\b|oil control|oil[-\s]?balance|mattify|mattifying|anti-shine|出油|油皮|控油|sebum|shine|greasy/.test(haystack),
     acne: /\bacne\b|\bbreakout\b|blemish|spot|pore|痘|闭口|粉刺|毛孔/.test(haystack),
-    dry: /\bdry\b|dehydrat|干燥|缺水|起皮|脱皮/.test(haystack),
-    dehydrated: /dehydrat|缺水|tight|thirsty skin|water[-\s]?light|水润/.test(haystack),
+    dry: /\bdry\b|dehydrat|干燥|干皮|很干|发干|缺水|紧绷|起皮|脱皮/.test(haystack),
+    dehydrated: /dehydrat|缺水|tight|tightness|紧绷|thirsty skin|water[-\s]?light|水润/.test(haystack),
     dull: /\bdull\b|brightness|brighten|radiance|glow|uneven tone|暗沉|提亮|透亮/.test(haystack),
     tone_marks: /post[-\s]?(?:breakout|acne)|acne mark|breakout mark|dark spot|hyperpigmentation|uneven tone|tone mark|marks?|痘印|色沉|斑/.test(haystack),
     redness: /redness|flush|泛红|发红|红血丝/.test(haystack),
