@@ -343,16 +343,16 @@ function inferConcernPlannerRequestNarrowing({
     [requestText, focus, primaryConcern].filter(Boolean).join(' '),
   );
   if (!contextText) return null;
-  const explicitOneProduct = /\b(one product|single product|just one|only one|one thing)\b/.test(contextText);
-  const useFirstAsk = /\b(use first|start with|what should i use first|what product should i use first)\b/.test(contextText);
-  const buyNextAsk = /\b(buy next|use next|what should i buy next|what product should i buy next)\b/.test(contextText);
-  const moisturizerAsk = /\b(moisturizer|moisturiser|gel cream|barrier cream|face cream|lotion)\b/.test(contextText);
-  const sunscreenAsk = /\b(sunscreen|sun screen|spf|sunblock)\b/.test(contextText);
-  const serumAsk = /\b(serum|essence|ampoule)\b/.test(contextText);
-  const cleanserAsk = /\b(cleanser|face wash|face cleanser|wash)\b/.test(contextText);
-  const treatmentAsk = /\b(treatment|retinoid|retinol|acid)\b/.test(contextText);
-  const layeringIntent = /\b(makeup|under makeup|pilling|pill|balls up|rolls off|layering)\b/.test(contextText);
-  const broadProductAsk = /\b(what should i buy|what product should i buy|what skincare product should i buy|what should i use|what product should i use|what skincare product should i use|use instead|buy instead)\b/.test(contextText);
+  const explicitOneProduct = /\b(one product|single product|just one|only one|one thing)\b/.test(contextText) || /(只要一个|只要一种|一个产品|单品)/.test(contextText);
+  const useFirstAsk = /\b(use first|start with|what should i use first|what product should i use first)\b/.test(contextText) || /(第一步|先用什么|先用|先上什么|先买什么|洗完脸.*用什么|洗脸后.*用什么)/.test(contextText);
+  const buyNextAsk = /\b(buy next|use next|what should i buy next|what product should i buy next)\b/.test(contextText) || /(下一步|下一个买|接下来买|接下来用)/.test(contextText);
+  const moisturizerAsk = /\b(moisturizer|moisturiser|gel cream|barrier cream|face cream|lotion)\b/.test(contextText) || /(保湿|面霜|乳液|修护霜|屏障霜)/.test(contextText);
+  const sunscreenAsk = /\b(sunscreen|sun screen|spf|sunblock)\b/.test(contextText) || /(防晒|spf|紫外线)/i.test(contextText);
+  const serumAsk = /\b(serum|essence|ampoule)\b/.test(contextText) || /(精华|精华液|安瓶|爽肤水|化妆水|水)/.test(contextText);
+  const cleanserAsk = /\b(cleanser|face wash|face cleanser|wash)\b/.test(contextText) || /(洁面|洗面奶|洗脸|清洁)/.test(contextText);
+  const treatmentAsk = /\b(treatment|retinoid|retinol|acid)\b/.test(contextText) || /(刷酸|酸类|视黄醇|维a|a醇|功效)/i.test(contextText);
+  const layeringIntent = /\b(makeup|under makeup|pilling|pill|balls up|rolls off|layering)\b/.test(contextText) || /(妆前|底妆|搓泥|卡粉|叠加)/.test(contextText);
+  const broadProductAsk = /\b(what should i buy|what product should i buy|what skincare product should i buy|what should i use|what product should i use|what skincare product should i use|use instead|buy instead)\b/.test(contextText) || /(应该用什么|该用什么|用什么|买什么|推荐什么|护肤品|产品)/.test(contextText);
   const explicitDaytimeLayeringAsk = broadProductAsk
     && layeringIntent
     && /\b(daytime|day time|morning|am|under makeup|makeup)\b/.test(contextText);
@@ -373,11 +373,12 @@ function inferConcernPlannerRequestNarrowing({
   if (!directSlotAsk && !useFirstAsk && !buyNextAsk && !explicitDaytimeLayeringAsk) return null;
 
   const barrierStress =
-    /\b(dry|tight|after washing|flaky|barrier|sensitive|reactive|irritat|redness|retinoid|retinol|another active|dont want another active|don t want another active|no another active|no more actives?)\b/.test(contextText);
-  const oilyOrHumid = /\b(oily|oil|greasy|shine|humid|humidity|non greasy|lightweight)\b/.test(contextText);
-  const toneOrMarks = /\b(post breakout|post acne|dark spot|marks|uneven tone|hyperpigmentation)\b/.test(contextText);
-  const acneOrClogged = /\b(acne|breakout|clogged|pore|blemish)\b/.test(contextText);
-  const sunscreenFinishIntent = layeringIntent || /\b(spf|sunscreen|commute|humidity|white cast|matte|invisible)\b/.test(contextText);
+    /\b(dry|tight|after washing|flaky|barrier|sensitive|reactive|irritat|redness|retinoid|retinol|another active|dont want another active|don t want another active|no another active|no more actives?)\b/.test(contextText) ||
+    /(干|紧绷|洗完脸|洗脸后|起皮|脱皮|屏障|敏感|泛红|刺痛|刺激|修护)/.test(contextText);
+  const oilyOrHumid = /\b(oily|oil|greasy|shine|humid|humidity|non greasy|lightweight)\b/.test(contextText) || /(油|出油|油皮|闷热|潮湿|清爽|轻薄)/.test(contextText);
+  const toneOrMarks = /\b(post breakout|post acne|dark spot|marks|uneven tone|hyperpigmentation)\b/.test(contextText) || /(痘印|色沉|斑|肤色不均|暗沉)/.test(contextText);
+  const acneOrClogged = /\b(acne|breakout|clogged|pore|blemish)\b/.test(contextText) || /(痘|闭口|粉刺|毛孔|堵塞)/.test(contextText);
+  const sunscreenFinishIntent = layeringIntent || /\b(spf|sunscreen|commute|humidity|white cast|matte|invisible)\b/.test(contextText) || /(防晒|通勤|泛白|哑光|隐形|清爽)/.test(contextText);
 
   let primaryRoleId = '';
   if (explicitDaytimeLayeringAsk) {

@@ -3365,6 +3365,45 @@ test('runConcernSemanticPlanner uses deterministic mainline when Gemini JSON enr
   }
 });
 
+test('runConcernSemanticPlanner narrows Chinese dry-tight use-first asks into moisturizer-led comparison', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    __internal.__setCallGeminiJsonObjectForTest(async () => ({
+      ok: false,
+      reason: 'PARSE_TRUNCATED_JSON',
+      raw_text: '{ "primary_concern": "洗完脸后干和紧绷"',
+      parse_status: 'parse_truncated',
+      provider: 'gemini',
+      requested_model: 'gemini-2.5-flash',
+      effective_model: 'gemini-2.5-flash',
+      selection_source: 'local_gemini_direct',
+    }));
+
+    const out = await __internal.runConcernSemanticPlanner({
+      ctx: { lang: 'CN', request_id: 'req_structured_planner_cn_deterministic_mainline_test' },
+      requestText: '我洗完脸后皮肤很干很紧，第一步应该先用什么？',
+      focus: '',
+      profileSummary: {
+        skinType: '混合皮',
+        sensitivity: '中等',
+        goals: ['屏障修护'],
+      },
+      deadlineAtMs: Date.now() + 5000,
+    });
+
+    assert.equal(out.trace?.planner_failure_class, null);
+    assert.equal(out.trace?.planner_deterministic_mainline_used, true);
+    assert.equal(out.semanticPlan?.selection_owner_state, 'trusted');
+    assert.equal(out.semanticPlan?.selection_owner_source, 'rule_concern_planner_mainline');
+    assert.deepEqual(out.semanticPlan?.core_roles?.map((role) => role?.role_id), ['hydrating_barrier_moisturizer']);
+    assert.equal(out.semanticPlan?.routine_mode, 'same_role_comparison');
+    assert.equal(out.semanticPlan?.comparison_mode, 'same_role_comparison');
+  } finally {
+    __internal.__resetCallGeminiJsonObjectForTest();
+    delete require.cache[moduleId];
+  }
+});
+
 test('runConcernSemanticPlanner forwards analysis handoff targets into prompt and keeps explicit moisturizer follow-up narrowed', async () => {
   const { moduleId, __internal } = loadRouteInternals();
   let capturedArgs = null;

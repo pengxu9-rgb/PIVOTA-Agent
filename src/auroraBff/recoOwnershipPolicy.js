@@ -4,7 +4,7 @@ const { resolveRecommendationTargetContext } = require('./recommendationSharedSt
 const BEAUTY_EXACT_BRAND_PATTERN =
   /\b(beauty of joseon|ultra repair|first aid beauty|round lab|skin1004|paula'?s choice|glossier|supergoop|haruharu|byoma|dieux|the ordinary|good molecules|la roche-posay|la roche posay)\b/i;
 const BEAUTY_EXACT_CATEGORY_PATTERN =
-  /\b(beauty|skin|skincare|sunscreen|spf|moisturizer|moisturiser|cleanser|serum|toner|essence|retinol|retinoid|barrier|acne|pore|oily|dry|sensitive|hydration|dewy|matte|makeup|under makeup|tretinoin|ceramide|colloidal oatmeal)\b/i;
+  /\b(beauty|skin|skincare|sunscreen|spf|moisturizer|moisturiser|cleanser|serum|toner|essence|retinol|retinoid|barrier|acne|pore|oily|dry|sensitive|hydration|dewy|matte|makeup|under makeup|tretinoin|ceramide|colloidal oatmeal)\b|护肤|防晒|洁面|洗面奶|精华|爽肤水|面霜|乳液|屏障|修护|痘|毛孔|油皮|干皮|干燥|敏感|补水|保湿|紧绷|刺痛/i;
 const BEAUTY_EXACT_ASSIST_PATTERN =
   /\b(is|would|should)\b[^.?!]{0,140}\b(good|better|right|fit|suit|work|use)\b|\bbetter than\b|\bvs\.?\b|\bversus\b/i;
 
@@ -107,8 +107,12 @@ function looksLikeFrameworkRecoConcernAsk(input) {
   if (!message) return false;
   const normalized = String(message).trim().toLowerCase();
   if (!normalized) return false;
-  const hasConcernSignal = /\b(oily|dry|dehydrat(?:ed|ion)?|sensitive|combination|combo|acne|breakout|redness|pores?|blackheads?|clogged|dark spots?|dull(?:ness)?|tight(?:ness)?|stinging|peeling|barrier|irritat(?:ed|ion)?)\b/.test(normalized);
-  const hasProductAskSignal = /\b(product|products|routine|use|add|recommend|should i use|what should i use|what should i add)\b/.test(normalized);
+  const hasConcernSignal =
+    /\b(oily|dry|dehydrat(?:ed|ion)?|sensitive|combination|combo|acne|breakout|redness|pores?|blackheads?|clogged|dark spots?|dull(?:ness)?|tight(?:ness)?|stinging|peeling|barrier|irritat(?:ed|ion)?)\b/.test(normalized) ||
+    /(油皮|出油|控油|干皮|干燥|很干|发干|缺水|紧绷|起皮|脱皮|敏感|混合皮|痘|闭口|粉刺|毛孔|黑头|泛红|刺痛|刺激|屏障|修护|暗沉|痘印|色沉)/.test(normalized);
+  const hasProductAskSignal =
+    /\b(product|products|routine|use|add|recommend|should i use|what should i use|what should i add)\b/.test(normalized) ||
+    /(用什么|买什么|推荐|护肤品|产品|步骤|第一步|先用|先买|怎么护肤|怎么搭)/.test(normalized);
   return hasConcernSignal && hasProductAskSignal;
 }
 

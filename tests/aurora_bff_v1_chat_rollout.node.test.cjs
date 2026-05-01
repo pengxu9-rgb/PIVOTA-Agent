@@ -960,6 +960,38 @@ test('buildChatIntentContract locks greasy-by-noon product asks onto the beauty 
   assert.equal(contract.should_search, true);
 });
 
+test('buildChatIntentContract locks Chinese dry-tight use-first asks onto the beauty mainline', async () => {
+  resetAuroraModules();
+  const { __internal } = require('../src/auroraBff/routes');
+
+  const contract = await __internal.buildChatIntentContract({
+    message: '我洗完脸后皮肤很干很紧，第一步应该先用什么？',
+    language: 'CN',
+    session: {
+      state: 'idle',
+      profile: {
+        skinType: '混合皮',
+        sensitivity: '中等',
+        goals: ['屏障修护'],
+      },
+    },
+    context: {
+      locale: 'zh-CN',
+      profile: {
+        skinType: '混合皮',
+        sensitivity: '中等',
+        goals: ['屏障修护'],
+      },
+    },
+  });
+
+  assert.equal(contract.contract_version, 'chat_intent_v1');
+  assert.equal(contract.ownership_domain, 'beauty_mainline');
+  assert.equal(contract.request_class, 'beauty_discovery');
+  assert.equal(contract.delegate_target, 'beauty_mainline');
+  assert.equal(contract.should_search, true);
+});
+
 test('buildChatIntentContract keeps buy-wording beauty reco asks on the beauty mainline', async () => {
   resetAuroraModules();
   const { __internal } = require('../src/auroraBff/routes');
