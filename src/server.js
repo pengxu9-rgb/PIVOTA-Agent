@@ -11410,7 +11410,7 @@ function isWeakPregnancyAntiAgingDisplayCandidate(product = {}, queryText = '') 
   if (!antiAgingSurface) return false;
   const pregnancyEvidence =
     /\b(pregnancy[-\s]?safe|pregnancy[-\s]?friendly|retinol[-\s]?free|retinoid[-\s]?free|no\s+retinol|without\s+retinol)\b/i.test(text) ||
-    /\b(spf|sunscreen|azelaic|niacinamide\s*(?:2|3|4|5)(?:\s*%|\b)|peptide|ceramide|panthenol|barrier|repair|mineral\s+sunscreen)\b/i.test(text);
+    /\b(spf|sunscreen|mineral\s+sunscreen|azelaic)\b/i.test(text);
   return !pregnancyEvidence;
 }
 
