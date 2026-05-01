@@ -4643,7 +4643,50 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
                   category: 'sunscreen',
                   brand_home_market: 'South Korea',
                   local_purchase_markets: ['KR'],
+                  authority_source: { extractor: 'pdp' },
                   description: 'Lightweight watery K-beauty face sunscreen.',
+                },
+                updated_at: now,
+                created_at: now,
+              },
+              {
+                id: 'seed-hydro-spf',
+                external_product_id: 'ext_hydro_spf',
+                market: 'US',
+                tool: '*',
+                destination_url: 'https://shop.example.com/products/hydro-uv-defense-spf50',
+                canonical_url: 'https://shop.example.com/products/hydro-uv-defense-spf50',
+                domain: 'shop.example.com',
+                title: 'Hydro UV Defense Sunscreen Broad Spectrum SPF 50+',
+                image_url: 'https://cdn.example.com/hydro.jpg',
+                price_amount: '21.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Hydro Skin',
+                  category: 'sunscreen',
+                  description: 'Lightweight broad spectrum face sunscreen SPF 50+.',
+                },
+                updated_at: now,
+                created_at: now,
+              },
+              {
+                id: 'seed-shield-stick',
+                external_product_id: 'ext_shield_stick',
+                market: 'US',
+                tool: '*',
+                destination_url: 'https://shop.example.com/products/on-the-go-shield-spf50',
+                canonical_url: 'https://shop.example.com/products/on-the-go-shield-spf50',
+                domain: 'shop.example.com',
+                title: 'On-the-Go SHIELD SPF 50 Stick',
+                image_url: 'https://cdn.example.com/shield.jpg',
+                price_amount: '20.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Shield Skin',
+                  category: 'sunscreen',
+                  description: 'Portable SPF 50 stick for reapplication.',
                 },
                 updated_at: now,
                 created_at: now,
@@ -4674,7 +4717,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
           search: {
             query: 'Seattle to Seoul travel local sunscreen SPF50 PA++++ oily acne lightweight',
             page: 1,
-            limit: 4,
+            limit: 6,
             in_stock_only: true,
             market: 'US',
           },
@@ -4693,8 +4736,8 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     });
     const ids = resp.body.products.map((product) => product.product_id);
     expect(ids.slice(0, 2)).toEqual(['ext_airy_spf', 'ext_birch_stick']);
-    expect(ids.indexOf('ext_olay_spf')).toBeGreaterThan(ids.indexOf('ext_birch_stick'));
-    expect(ids.indexOf('ext_glowscreen')).toBeGreaterThan(ids.indexOf('ext_birch_stick'));
+    expect(ids).not.toContain('ext_olay_spf');
+    expect(ids).not.toContain('ext_glowscreen');
     expect(resp.body.products[0]?.local_authority).toMatchObject({
       brand_home_market: 'South Korea',
       local_purchase_markets: ['KR'],
