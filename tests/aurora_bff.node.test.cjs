@@ -20747,9 +20747,10 @@ test('/v1/analysis/skin: mixed routine+photo keeps photo-led analysis_story_v2 e
   );
 });
 
-test('/v1/analysis/skin: photo fetch timeout exposes DOWNLOAD_URL_TIMEOUT notice', async () => {
+test('/v1/analysis/skin: photo fetch timeout returns failed photo contract without story success', async () => {
   await withEnv(
     {
+      PIVOT_BEAUTY_CONTRACT_V1_ENABLED: 'true',
       AURORA_BFF_USE_MOCK: 'false',
       AURORA_DECISION_BASE_URL: '',
       PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
@@ -20814,19 +20815,20 @@ test('/v1/analysis/skin: photo fetch timeout exposes DOWNLOAD_URL_TIMEOUT notice
 
         const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
         const storyCard = findCardByType(cards, 'analysis_story_v2');
-        assert.ok(storyCard);
+        assert.equal(storyCard, null);
         const analysisMeta = resp.body?.analysis_meta || {};
-        assert.equal(String(analysisMeta.detector_source || ''), 'rule_based_with_photo_qc');
-        assert.equal(
-          ['photo_download_url_timeout', 'photo_download_url_fetch_5xx'].includes(String(analysisMeta.degrade_reason || '')),
-          true,
-        );
+        assert.equal(resp.body?.status, 'failed');
+        assert.equal(String(analysisMeta.detector_source || ''), 'failed_photo_contract');
+        assert.equal(String(analysisMeta.degrade_reason || ''), 'photo_read_failed_fast_fail');
+        assert.equal(String(analysisMeta.photo_failure_code || ''), 'DOWNLOAD_URL_TIMEOUT');
+        assert.equal(analysisMeta.llm_report_called, false);
+        assert.ok(findCardByType(cards, 'analysis_summary'));
         const confidenceCard = findCardByType(cards, 'confidence_notice');
         assert.ok(confidenceCard);
         const rationale = Array.isArray(confidenceCard?.payload?.confidence?.rationale)
           ? confidenceCard.payload.confidence.rationale
           : [];
-        assert.equal(rationale.includes('photo_requested_but_not_used'), true);
+        assert.equal(rationale.includes('photo_read_failed_fast_fail'), true);
       } finally {
         axios.get = originalGet;
         axios.post = originalPost;
@@ -20884,6 +20886,145 @@ test('fetchPhotoBytesFromPivotaBackend: signed URL expired maps to DOWNLOAD_URL_
         assert.ok(['DOWNLOAD_URL_EXPIRED', 'DOWNLOAD_URL_FETCH_5XX'].includes(String(out?.failure_code || '')));
       } finally {
         axios.get = originalGet;
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
+test('fetchPhotoBytesFromPivotaBackend: download-url POST is attempted after backend GET 405', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'false',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'agent_test_key',
+      AURORA_PHOTO_DOWNLOAD_URL_RETRIES: '0',
+      AURORA_PHOTO_FETCH_RETRIES: '0',
+    },
+    async () => {
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      const { __internal } = require('../src/auroraBff/routes');
+      const axios = require('axios');
+      const originalGet = axios.get;
+      const originalPost = axios.post;
+      const calls = [];
+
+      axios.get = async (url, config = {}) => {
+        const u = String(url || '');
+        if (u.endsWith('/photos/download-url')) {
+          calls.push({ method: 'get', params: config.params || null });
+          return { status: 405, data: { detail: 'Method Not Allowed' } };
+        }
+        if (u === 'https://signed-download.test/post-method-photo') {
+          calls.push({ method: 'signed_get' });
+          return {
+            status: 200,
+            data: Buffer.from([1, 2, 3, 4]),
+            headers: { 'content-type': 'image/png' },
+          };
+        }
+        throw new Error(`Unexpected axios.get url: ${u}`);
+      };
+      axios.post = async (url, body = {}, config = {}) => {
+        const u = String(url || '');
+        if (u.endsWith('/photos/download-url')) {
+          calls.push({ method: 'post', body, params: config.params || null });
+          return {
+            status: 200,
+            data: {
+              download: {
+                url: 'https://signed-download.test/post-method-photo',
+                expires_at: new Date(Date.now() + 60 * 1000).toISOString(),
+              },
+              content_type: 'image/png',
+            },
+          };
+        }
+        throw new Error(`Unexpected axios.post url: ${u}`);
+      };
+
+      try {
+        const req = {
+          get(name) {
+            const key = String(name || '').toLowerCase();
+            if (key === 'x-aurora-uid') return 'uid_download_post_fallback';
+            return '';
+          },
+        };
+        const out = await __internal.fetchPhotoBytesFromPivotaBackend({ req, photoId: 'photo_post_method' });
+        assert.equal(out?.ok, true);
+        assert.equal(out?.source, 'signed_url');
+        assert.equal(out?.contentType, 'image/png');
+        assert.deepEqual(
+          calls.map((c) => c.method),
+          ['get', 'post', 'signed_get'],
+        );
+        assert.equal(calls[0]?.params?.upload_id, 'photo_post_method');
+        assert.equal(calls[1]?.body?.upload_id, 'photo_post_method');
+        assert.equal(calls[1]?.params?.upload_id, 'photo_post_method');
+      } finally {
+        axios.get = originalGet;
+        axios.post = originalPost;
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
+test('fetchPhotoBytesFromPivotaBackend: double method-not-allowed remains a failed photo contract signal', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'false',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'agent_test_key',
+      AURORA_PHOTO_DOWNLOAD_URL_RETRIES: '0',
+      AURORA_PHOTO_FETCH_RETRIES: '0',
+    },
+    async () => {
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      const { __internal } = require('../src/auroraBff/routes');
+      const axios = require('axios');
+      const originalGet = axios.get;
+      const originalPost = axios.post;
+      const calls = [];
+
+      axios.get = async (url) => {
+        const u = String(url || '');
+        if (u.endsWith('/photos/download-url')) {
+          calls.push('get');
+          return { status: 405, data: { detail: 'Method Not Allowed' } };
+        }
+        throw new Error(`Unexpected axios.get url: ${u}`);
+      };
+      axios.post = async (url) => {
+        const u = String(url || '');
+        if (u.endsWith('/photos/download-url')) {
+          calls.push('post');
+          return { status: 405, data: { detail: 'Method Not Allowed' } };
+        }
+        throw new Error(`Unexpected axios.post url: ${u}`);
+      };
+
+      try {
+        const req = {
+          get(name) {
+            const key = String(name || '').toLowerCase();
+            if (key === 'x-aurora-uid') return 'uid_download_double_405';
+            return '';
+          },
+        };
+        const out = await __internal.fetchPhotoBytesFromPivotaBackend({ req, photoId: 'photo_double_405' });
+        assert.equal(out?.ok, false);
+        assert.equal(out?.failure_code, 'DOWNLOAD_URL_GENERATE_FAILED');
+        assert.equal(out?.status, 405);
+        assert.equal(out?.method, 'post');
+        assert.deepEqual(out?.attempted_methods, ['get', 'post']);
+        assert.deepEqual(calls, ['get', 'post']);
+      } finally {
+        axios.get = originalGet;
+        axios.post = originalPost;
         delete require.cache[moduleId];
       }
     },
