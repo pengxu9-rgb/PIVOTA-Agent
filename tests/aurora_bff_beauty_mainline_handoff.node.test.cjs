@@ -3307,7 +3307,7 @@ test('runConcernSemanticPlanner narrows dry use-first asks into moisturizer-led 
     });
 
     assert.equal(capturedArgs?.route, 'aurora_concern_semantic_plan_json');
-    assert.equal(capturedArgs?.thinkingLevel, 'minimal');
+    assert.equal(capturedArgs?.thinkingLevel, undefined);
     assert.equal(capturedArgs?.maxOutputTokens, 700);
     assert.equal(capturedArgs?.responseSchema?.type, 'object');
     assert.equal(out.trace?.planner_failure_class, null);
