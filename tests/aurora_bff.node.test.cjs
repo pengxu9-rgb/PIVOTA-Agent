@@ -19167,7 +19167,7 @@ test('/v1/analysis/skin: photo upload does not force report LLM when detector is
   );
 });
 
-test('/v1/analysis/skin: photo fetch 4xx exposes photo_notice + failure_code', async () => {
+test('/v1/analysis/skin: photo fetch 4xx fails fast with explicit failure contract', async () => {
   await withEnv(
     {
       AURORA_BFF_USE_MOCK: 'false',
@@ -19232,20 +19232,20 @@ test('/v1/analysis/skin: photo fetch 4xx exposes photo_notice + failure_code', a
           .expect(200);
 
         const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
-        const storyCard = findCardByType(cards, 'analysis_story_v2');
-        assert.ok(storyCard);
+        const summaryCard = findCardByType(cards, 'analysis_summary');
+        assert.ok(summaryCard);
+        assert.equal(resp.body?.status, 'failed');
         const analysisMeta = resp.body?.analysis_meta || {};
-        assert.equal(String(analysisMeta.detector_source || ''), 'rule_based_with_photo_qc');
-        assert.equal(
-          ['photo_download_url_fetch_4xx', 'photo_download_url_fetch_5xx'].includes(String(analysisMeta.degrade_reason || '')),
-          true,
-        );
+        assert.equal(String(analysisMeta.detector_source || ''), 'failed_photo_contract');
+        assert.equal(String(analysisMeta.degrade_reason || ''), 'photo_read_failed_fast_fail');
+        assert.equal(String(analysisMeta.photo_failure_code || ''), 'DOWNLOAD_URL_FETCH_4XX');
+        assert.equal(Boolean(analysisMeta.llm_report_called), false);
         const confidenceCard = findCardByType(cards, 'confidence_notice');
         assert.ok(confidenceCard);
         const rationale = Array.isArray(confidenceCard?.payload?.confidence?.rationale)
           ? confidenceCard.payload.confidence.rationale
           : [];
-        assert.equal(rationale.includes('photo_requested_but_not_used'), true);
+        assert.equal(rationale.includes('download_url_fetch_4xx'), true);
       } finally {
         axios.get = originalGet;
         axios.post = originalPost;
