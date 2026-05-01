@@ -39,7 +39,7 @@ on:
         required: false
         default: "red"
       operation:
-        description: "K-beauty seed op: commerce_facts_backfill | seed_content_backfill | seed_content_backfill_with_insights | market_coverage_audit | kbeauty_seed_baseline_coverage_audit | pdp_coverage_gaps_audit | pdp_readiness_audit | identity_lift | promote_live_read | channel_seed_manifest | gallery_bloat_audit"
+        description: "K-beauty seed op: commerce_facts_backfill | seed_content_backfill | seed_content_backfill_with_insights | pivota_insights_coverage | market_coverage_audit | kbeauty_seed_baseline_coverage_audit | pdp_coverage_gaps_audit | pdp_readiness_audit | identity_lift | promote_live_read | channel_seed_manifest | gallery_bloat_audit"
         required: false
         default: "commerce_facts_backfill"
       insights_skip_gemini:
@@ -272,6 +272,34 @@ jobs:
               fi
               if [[ "${insights_skip_gemini}" == "true" ]]; then
                 cmd+=(--insights-skip-gemini)
+              fi
+              printf '%s\n' "${cmd[@]}" > "reports/workflow_ops/${artifact_prefix}_command.txt"
+              "${cmd[@]}" | tee "reports/workflow_ops/${artifact_prefix}_result.json"
+              ;;
+
+            pivota_insights_coverage)
+              ids_input="$(cat <<'EOF'
+          ${{ inputs.external_product_ids }}
+          EOF
+          )"
+              ids_file="reports/workflow_ops/${artifact_prefix}_external_product_ids.txt"
+              normalize_multiline_csv "${ids_input}" > "${ids_file}"
+              if [[ ! -s "${ids_file}" ]]; then
+                echo "external_product_ids is required for pivota_insights_coverage" >&2
+                exit 1
+              fi
+              ids_csv="$(paste -sd, "${ids_file}")"
+              insights_out_dir="reports/workflow_ops/${artifact_prefix}_insights"
+              cmd=(
+                node scripts/pivota_insights_coverage_batch.js
+                --product-ids "${ids_csv}"
+                --out-dir "${insights_out_dir}"
+                --include-covered
+                --fetch-source-reviews
+                --fetch-source-facts
+              )
+              if [[ "${insights_skip_gemini}" == "true" ]]; then
+                cmd+=(--skip-gemini)
               fi
               printf '%s\n' "${cmd[@]}" > "reports/workflow_ops/${artifact_prefix}_command.txt"
               "${cmd[@]}" | tee "reports/workflow_ops/${artifact_prefix}_result.json"
