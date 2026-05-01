@@ -525,6 +525,28 @@ function stringifyForDiagnostics(value, max = 12000) {
   }
 }
 
+function hasTimeoutOrAbortSignal(value, key = '', depth = 0) {
+  if (depth > 8 || value == null) return false;
+  const normalizedKey = String(key || '').toLowerCase();
+  if (typeof value === 'boolean') {
+    return value === true && /\b(timeout|timed_out|aborted|abort)\b/i.test(normalizedKey);
+  }
+  if (typeof value === 'number') return false;
+  if (typeof value === 'string') {
+    const text = value.toLowerCase();
+    return /econnaborted|operation was aborted|stage_timeout|budget_exhausted|timed out|request timeout|upstream timeout/.test(text);
+  }
+  if (Array.isArray(value)) {
+    return value.some((item) => hasTimeoutOrAbortSignal(item, key, depth + 1));
+  }
+  if (typeof value === 'object') {
+    return Object.entries(value).some(([childKey, childValue]) =>
+      hasTimeoutOrAbortSignal(childValue, childKey, depth + 1),
+    );
+  }
+  return false;
+}
+
 function classifyResponseDegradation(body, response) {
   const querySource = extractQuerySource(body);
   const products = extractProducts(body);
@@ -542,9 +564,8 @@ function classifyResponseDegradation(body, response) {
   }
   if (
     response.status === 0 ||
-    /timeout|econnaborted|operation was aborted|stage_timeout|budget_exhausted/i.test(
-      `${response.transport_error || ''} ${diagnostics}`,
-    )
+    hasTimeoutOrAbortSignal(response.transport_error, 'transport_error') ||
+    hasTimeoutOrAbortSignal(body)
   ) {
     reasons.push('timeout_or_abort');
   }
@@ -1354,6 +1375,7 @@ module.exports = {
   evaluateProductRelevance,
   evaluateRiskGuards,
   validateResponseSchema,
+  classifyResponseDegradation,
   computeSummary,
   runBatch,
 };
