@@ -914,6 +914,8 @@ describe('beauty_expert_v1 contract', () => {
     expect(result.reply).toContain('同类对比看');
     expect(result.reply).toContain('保湿/屏障步骤');
     expect(result.reply).not.toMatch(/Product Benefits|Hydrating Skin Type|\bit is\b|\bbecause\b|Compared with it/i);
+    expect(result.assistant_text).toBe(result.reply);
+    expect(result.assistant_message.content).toBe(result.reply);
   });
 
   test('context-rich beauty follow-up with products exits guided mode even without repeating category words', () => {
