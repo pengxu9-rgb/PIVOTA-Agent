@@ -162,6 +162,70 @@ describe('pdpBuilder reviews preview media', () => {
     );
   });
 
+  test('builds estimated star distribution when only rating aggregate is present', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'p_estimated_reviews',
+        merchant_id: 'external_seed',
+        title: 'Estimated Reviews Product',
+        vendor: 'KraveBeauty',
+        review_summary: {
+          scale: 5,
+          rating: 4.2,
+          review_count: 10,
+        },
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    const reviewsModule = payload.modules.find((m) => m?.type === 'reviews_preview');
+    expect(reviewsModule?.data?.distribution_estimated).toBe(true);
+    expect(reviewsModule?.data?.distribution_estimation_method).toBe(
+      'average_rating_linear_interpolation',
+    );
+    expect(reviewsModule?.data?.star_distribution).toEqual([
+      { stars: 5, count: 2, percent: 0.2, estimated: true },
+      { stars: 4, count: 8, percent: 0.8, estimated: true },
+      { stars: 3, count: 0, percent: 0, estimated: true },
+      { stars: 2, count: 0, percent: 0, estimated: true },
+      { stars: 1, count: 0, percent: 0, estimated: true },
+    ]);
+  });
+
+  test('keeps real star distribution when source supplies one', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'p_real_distribution',
+        merchant_id: 'external_seed',
+        title: 'Real Distribution Product',
+        vendor: 'KraveBeauty',
+        review_summary: {
+          scale: 5,
+          rating: 4.2,
+          review_count: 10,
+          star_distribution: [
+            { stars: 5, count: 5 },
+            { stars: 4, count: 3 },
+            { stars: 3, count: 2 },
+          ],
+        },
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    const reviewsModule = payload.modules.find((m) => m?.type === 'reviews_preview');
+    expect(reviewsModule?.data?.distribution_estimated).toBeUndefined();
+    expect(reviewsModule?.data?.star_distribution).toEqual([
+      { stars: 5, count: 5, percent: 0.5 },
+      { stars: 4, count: 3, percent: 0.3 },
+      { stars: 3, count: 2, percent: 0.2 },
+      { stars: 2 },
+      { stars: 1 },
+    ]);
+  });
+
   test('filters pending user contributions but keeps approved ones and exposes contribution gates', () => {
     const payload = buildPdpPayload({
       product: {
