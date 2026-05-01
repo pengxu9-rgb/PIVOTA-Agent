@@ -5,6 +5,14 @@ on:
     - cron: "*/30 * * * *"
   workflow_dispatch:
     inputs:
+      mode:
+        description: "Run the default catalog-serving shadow acceptance or the manual K-beauty seed ops shim"
+        required: false
+        type: choice
+        default: "shadow_acceptance"
+        options:
+          - shadow_acceptance
+          - k_beauty_seed_ops
       limit:
         description: "Backfill sample size"
         required: false
@@ -30,6 +38,54 @@ on:
         description: "Fail workflow on status threshold"
         required: false
         default: "red"
+      operation:
+        description: "K-beauty seed op: commerce_facts_backfill | market_coverage_audit | identity_lift | promote_live_read"
+        required: false
+        default: "commerce_facts_backfill"
+      external_product_ids:
+        description: "K-beauty seed op: comma or newline-delimited external_product_ids"
+        required: false
+        default: ""
+      dry_run:
+        description: "K-beauty seed op: run in dry-run mode when supported"
+        type: boolean
+        required: false
+        default: true
+      all_markets:
+        description: "K-beauty seed op: include all markets for market coverage audit"
+        type: boolean
+        required: false
+        default: true
+      source_limit_per_brand:
+        description: "K-beauty seed op: identity-lift source rows per brand"
+        required: false
+        default: "300"
+      min_source_rows:
+        description: "K-beauty seed op: identity-lift minimum source rows"
+        required: false
+        default: "10"
+      max_review_ratio:
+        description: "K-beauty seed op: identity-lift maximum review ratio"
+        required: false
+        default: "0.65"
+      promote_live_read:
+        description: "K-beauty seed op: identity-lift also promotes live-read"
+        type: boolean
+        required: false
+        default: false
+      require_brand_source:
+        description: "K-beauty seed op: require a brand-source anchor for identity operations"
+        type: boolean
+        required: false
+        default: true
+      source_listing_refs:
+        description: "K-beauty seed op: comma or newline-delimited source_listing_refs for targeted promote-live-read"
+        required: false
+        default: ""
+      artifact_prefix:
+        description: "K-beauty seed op: optional artifact prefix override"
+        required: false
+        default: ""
 
 concurrency:
   group: catalog-serving-shadow-acceptance
@@ -61,6 +117,7 @@ jobs:
         run: npm ci
 
       - name: Run catalog-serving shadow acceptance
+        if: ${{ github.event_name != 'workflow_dispatch' || (inputs.mode || 'shadow_acceptance') == 'shadow_acceptance' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -92,6 +149,152 @@ jobs:
           fi
           node scripts/catalog_serving_shadow_acceptance.js "${args[@]}"
 
+      - name: Run K-beauty seed op
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'k_beauty_seed_ops' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${DATABASE_URL:-}" ]]; then
+            echo "DATABASE_URL secret is not configured" >&2
+            exit 1
+          fi
+
+          mkdir -p reports/workflow_ops
+          timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
+          raw_prefix="${{ inputs.artifact_prefix }}"
+          if [[ -z "${raw_prefix}" ]]; then
+            raw_prefix="${{ inputs.operation }}_${{ inputs.brand || 'all' }}_${{ inputs.market || 'all' }}_${timestamp}"
+          fi
+          artifact_prefix="$(printf '%s' "${raw_prefix}" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9._-]+/-/g; s/^-+|-+$//g')"
+          if [[ -z "${artifact_prefix}" ]]; then
+            artifact_prefix="k-beauty-seed-op-${timestamp}"
+          fi
+
+          op="${{ inputs.operation }}"
+          dry_run="${{ inputs.dry_run }}"
+          brand="${{ inputs.brand }}"
+          market="${{ inputs.market }}"
+          limit="${{ inputs.limit }}"
+          source_limit_per_brand="${{ inputs.source_limit_per_brand }}"
+          min_source_rows="${{ inputs.min_source_rows }}"
+          max_review_ratio="${{ inputs.max_review_ratio }}"
+          promote_live_read="${{ inputs.promote_live_read }}"
+          require_brand_source="${{ inputs.require_brand_source }}"
+          all_markets="${{ inputs.all_markets }}"
+
+          normalize_multiline_csv() {
+            printf '%s\n' "$1" | tr ',' '\n' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | sed '/^$/d' | sort -u
+          }
+
+          case "${op}" in
+            commerce_facts_backfill)
+              ids_input="$(cat <<'EOF'
+          ${{ inputs.external_product_ids }}
+          EOF
+          )"
+              ids_file="reports/workflow_ops/${artifact_prefix}_external_product_ids.txt"
+              normalize_multiline_csv "${ids_input}" > "${ids_file}"
+              if [[ ! -s "${ids_file}" ]]; then
+                echo "external_product_ids is required for commerce_facts_backfill" >&2
+                exit 1
+              fi
+              cmd=(
+                node scripts/backfill-external-product-seeds-catalog.js
+                --market "${market}"
+                --external-product-ids-file "${ids_file}"
+                --include-commerce-facts
+                --skip-insights
+                --concurrency 1
+              )
+              if [[ "${dry_run}" == "true" ]]; then
+                cmd+=(--dry-run)
+              fi
+              printf '%s\n' "${cmd[@]}" > "reports/workflow_ops/${artifact_prefix}_command.txt"
+              "${cmd[@]}" | tee "reports/workflow_ops/${artifact_prefix}_result.json"
+              ;;
+
+            market_coverage_audit)
+              if [[ -z "${brand}" ]]; then
+                echo "brand is required for market_coverage_audit" >&2
+                exit 1
+              fi
+              cmd=(
+                node scripts/audit-external-seed-market-coverage.cjs
+                --brand "${brand}"
+                --limit "${limit}"
+                --out "reports/workflow_ops/${artifact_prefix}_report.json"
+              )
+              if [[ "${all_markets}" == "true" ]]; then
+                cmd+=(--all-markets)
+              else
+                cmd+=(--market "${market}")
+              fi
+              printf '%s\n' "${cmd[@]}" > "reports/workflow_ops/${artifact_prefix}_command.txt"
+              "${cmd[@]}" | tee "reports/workflow_ops/${artifact_prefix}_stdout.json"
+              ;;
+
+            identity_lift)
+              if [[ -z "${brand}" ]]; then
+                echo "brand is required for identity_lift" >&2
+                exit 1
+              fi
+              cmd=(
+                node scripts/pdp-identity-coverage-lift.js
+                --brand "${brand}"
+                --source-limit-per-brand "${source_limit_per_brand}"
+                --min-source-rows "${min_source_rows}"
+                --max-review-ratio "${max_review_ratio}"
+              )
+              if [[ "${dry_run}" != "true" ]]; then
+                cmd+=(--write)
+              fi
+              if [[ "${promote_live_read}" != "true" ]]; then
+                cmd+=(--no-promote)
+              fi
+              if [[ "${require_brand_source}" != "true" ]]; then
+                cmd+=(--allow-merchant-only-groups)
+              fi
+              printf '%s\n' "${cmd[@]}" > "reports/workflow_ops/${artifact_prefix}_command.txt"
+              "${cmd[@]}" | tee "reports/workflow_ops/${artifact_prefix}_result.json"
+              ;;
+
+            promote_live_read)
+              refs_input="$(cat <<'EOF'
+          ${{ inputs.source_listing_refs }}
+          EOF
+          )"
+              refs_csv="$(normalize_multiline_csv "${refs_input}" | paste -sd, -)"
+              if [[ -z "${brand}" && -z "${refs_csv}" ]]; then
+                echo "brand or source_listing_refs is required for promote_live_read" >&2
+                exit 1
+              fi
+              cmd=(
+                node scripts/promote-pdp-identity-live-read.js
+                --limit "${limit}"
+              )
+              if [[ -n "${brand}" ]]; then
+                cmd+=(--brand "${brand}")
+              fi
+              if [[ -n "${refs_csv}" ]]; then
+                cmd+=(--source-listing-refs "${refs_csv}")
+              fi
+              if [[ "${dry_run}" != "true" ]]; then
+                cmd+=(--write)
+              fi
+              if [[ "${require_brand_source}" != "true" ]]; then
+                cmd+=(--allow-merchant-only-groups)
+              fi
+              printf '%s\n' "${cmd[@]}" > "reports/workflow_ops/${artifact_prefix}_command.txt"
+              "${cmd[@]}" | tee "reports/workflow_ops/${artifact_prefix}_result.json"
+              ;;
+
+            *)
+              echo "Unsupported operation: ${op}" >&2
+              exit 1
+              ;;
+          esac
+
       - name: Upload report artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -100,4 +303,5 @@ jobs:
           path: |
             reports/catalog_serving_shadow_acceptance_*.json
             reports/catalog_serving_shadow_acceptance_*.md
+            reports/workflow_ops/**
           retention-days: 7
