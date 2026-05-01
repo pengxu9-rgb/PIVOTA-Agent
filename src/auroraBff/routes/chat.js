@@ -9,6 +9,7 @@ const { computeAuroraChatRolloutContext } = require('../rollout');
 const { GATE_POLICY_VERSION: AURORA_GATE_POLICY_META_VERSION } = require('../gatePolicyRegistry');
 const { shouldProxyFrameworkRecoToV1Mainline } = require('../recoOwnershipPolicy');
 const { attachBeautyExpertV1ToResponse } = require('../../modules/orchestration/aurora_beauty/beautyExpertV1');
+const { getProfileForIdentity } = require('../memoryStore');
 
 const ANALYSIS_FOLLOWUP_ACTION_IDS_V2 = new Set([
   'chip.aurora.next_action.deep_dive_skin',
@@ -423,8 +424,8 @@ function buildChatSkillFailurePayload({ ctx, body, error, status } = {}) {
 async function resolveRequestIdentity(req, internal = null) {
   const body = isPlainObject(req.body) ? req.body : {};
   const ctx = buildRequestContext(req, body);
-  const helpers = internal || (hasAuthorizationHeader(req) ? getRoutesInternal() : {});
-  if (!hasAuthorizationHeader(req) || typeof helpers.resolveIdentity !== 'function') {
+  const helpers = internal || getRoutesInternal();
+  if (typeof helpers.resolveIdentity !== 'function') {
     return { ctx, internal: helpers };
   }
   try {
@@ -439,7 +440,46 @@ async function resolveRequestIdentity(req, internal = null) {
     }
     // Ignore auth resolution failures here and let the route continue as guest.
   }
-  return { ctx, internal: helpers };
+  return { ctx, internal: helpers, identity: req._identity || null };
+}
+
+function isRoutineAnalysisPriorityFollowupMessage(message) {
+  return /(这个分析|分析里|最该|先改|哪一步|優先|优先|priority|first\s+(?:change|fix|step)|change\s+first)/i.test(
+    String(message || ''),
+  );
+}
+
+async function loadPersistedProfileForRoutineAnalysisFollowup({ auth, body } = {}) {
+  const message = pickFirstTrimmed(
+    body && body.message,
+    body && body.query,
+    body && body.text,
+    extractLastUserMessageFromMessages(body && body.messages),
+  ) || '';
+  if (!isRoutineAnalysisPriorityFollowupMessage(message)) return null;
+  const identity = auth && auth.identity
+    ? {
+      auroraUid: auth.identity.auroraUid || (auth.ctx && auth.ctx.aurora_uid) || null,
+      userId: auth.identity.userId || null,
+    }
+    : auth && auth.ctx && auth.ctx.aurora_uid
+      ? {
+        auroraUid: auth.ctx.aurora_uid,
+        userId: null,
+      }
+      : null;
+  const auroraUid = pickFirstTrimmed(identity && identity.auroraUid);
+  const userId = pickFirstTrimmed(identity && identity.userId);
+  if (!auroraUid && !userId) return null;
+  try {
+    return await withTimeoutCode(
+      getProfileForIdentity({ auroraUid, userId }),
+      getAuroraChatRequestIdentityTimeoutMs(),
+      'AURORA_CHAT_PROFILE_CONTEXT_TIMEOUT',
+    );
+  } catch {
+    return null;
+  }
 }
 
 function normalizeLocaleToken(value) {
@@ -1570,6 +1610,7 @@ async function handleChat(req, res) {
     } catch (_error) {
       promptMeta = null;
     }
+    const persistedRoutineFollowupProfile = await loadPersistedProfileForRoutineAnalysisFollowup({ auth, body });
     const productFitFollowup = buildBeautyProductFitFollowupSkillResponse(req);
     if (productFitFollowup) {
       const responsePayload = mergePromptMeta(
@@ -1606,7 +1647,9 @@ async function handleChat(req, res) {
       res.json(responsePayload);
       return;
     }
-    const routineAnalysisFollowup = buildRoutineAnalysisPriorityFollowupSkillResponse(req);
+    const routineAnalysisFollowup = buildRoutineAnalysisPriorityFollowupSkillResponse(req, {
+      persistedProfile: persistedRoutineFollowupProfile,
+    });
     if (routineAnalysisFollowup) {
       const responsePayload = mergePromptMeta(
         applyRolloutMeta(
@@ -1982,18 +2025,23 @@ function buildBeautyProductFitFollowupSkillResponse(req) {
   return null;
 }
 
-function buildRoutineAnalysisPriorityFollowupSkillResponse(req) {
+function buildRoutineAnalysisPriorityFollowupSkillResponse(req, { persistedProfile = null } = {}) {
   const body = isPlainObject(req && req.body) ? req.body : {};
   const session = isPlainObject(body.session) ? body.session : {};
   const sessionMeta = isPlainObject(session.meta) ? session.meta : {};
-  const profile = isPlainObject(session.profile) ? session.profile : {};
+  const storedProfile = isPlainObject(persistedProfile) ? persistedProfile : {};
+  const profile = {
+    ...storedProfile,
+    ...(isPlainObject(session.profile) ? session.profile : {}),
+  };
+  const storedLastAnalysis = isPlainObject(storedProfile.lastAnalysis) ? storedProfile.lastAnalysis : null;
   const message = pickFirstTrimmed(
     body.message,
     body.query,
     body.text,
     extractLastUserMessageFromMessages(body.messages),
   ) || '';
-  if (!/(这个分析|分析里|最该|先改|哪一步|優先|优先|priority|first\s+(?:change|fix|step)|change\s+first)/i.test(message)) {
+  if (!isRoutineAnalysisPriorityFollowupMessage(message)) {
     return null;
   }
 
@@ -2004,19 +2052,22 @@ function buildRoutineAnalysisPriorityFollowupSkillResponse(req) {
     sessionMeta.routine_analysis_legacy_compat ||
     session.next_state === 'ROUTINE_REVIEW' ||
     session.state === 'ROUTINE_REVIEW' ||
-    sessionMeta.analysis_contract?.analysis_mode === 'routine_audit_v1'
+    sessionMeta.analysis_contract?.analysis_mode === 'routine_audit_v1' ||
+    (storedLastAnalysis && (storedLastAnalysis.routine_fit || storedLastAnalysis.routine_audit || storedLastAnalysis.routine_analysis_v2))
   );
   if (!hasRoutineAnalysisContext) return null;
 
+  const profileRoutineBlob = safeJsonForDetection(profile.currentRoutine || profile.current_routine || null);
   const routineBlob = safeJsonForDetection({
     meta: sessionMeta,
+    storedLastAnalysis,
     profileRoutine: profile.currentRoutine || profile.current_routine || null,
   });
   const missingSpf = (
     /(missing_spf|缺防晒|缺少防晒|AM protection looks missing|Add a clear AM sunscreen|sunscreen step|SPF\/防晒|防晒步骤)/i.test(routineBlob) ||
     (
       /(currentRoutine|current_routine|\"am\"|am_steps)/i.test(routineBlob) &&
-      !/(spf|sunscreen|防晒)/i.test(String(profile.currentRoutine || profile.current_routine || ''))
+      !/(spf|sunscreen|防晒)/i.test(profileRoutineBlob)
     )
   );
   if (!missingSpf) return null;

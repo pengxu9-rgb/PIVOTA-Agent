@@ -265,6 +265,85 @@ test('handleChat returns failed contract instead of 500 when skill router schema
   );
 });
 
+test('handleChat answers persisted routine-analysis free-text follow-up without session payload', async () => {
+  await withEnv(
+    {
+      DATABASE_URL: undefined,
+      AURORA_BFF_RETENTION_DAYS: '0',
+      AURORA_CHAT_SKILL_ROUTER_V2: 'true',
+      AURORA_CHAT_RESPONSE_META_ENABLED: 'false',
+    },
+    async () => {
+      delete require.cache[require.resolve('../src/auroraBff/memoryStore')];
+      const memoryStore = require('../src/auroraBff/memoryStore');
+      const { handleChat, __setRouterForTests, __resetRouterForTests } = loadChatRoutesFresh();
+      const uid = 'persisted-routine-followup-user';
+      await memoryStore.deleteIdentityData({ auroraUid: uid, userId: null });
+      await memoryStore.upsertProfileForIdentity(
+        { auroraUid: uid, userId: null },
+        {
+          currentRoutine: {
+            am: {
+              cleanser: 'Gentle cleanser',
+              serum: 'Niacinamide serum',
+              moisturizer: 'Light lotion',
+            },
+            pm: {
+              cleanser: 'Gentle cleanser',
+              treatment: 'Salicylic acid',
+              moisturizer: 'Barrier cream',
+            },
+          },
+        },
+      );
+      await memoryStore.saveLastAnalysisForIdentity(
+        { auroraUid: uid, userId: null },
+        {
+          analysis: {
+            routine_fit: {
+              overall_fit: 'needs_adjustment',
+              summary: 'AM routine is missing sunscreen.',
+              concerns: ['AM routine is missing SPF'],
+            },
+          },
+          lang: 'CN',
+        },
+      );
+
+      const req = makeRequest({
+        headers: {
+          'x-aurora-uid': uid,
+          'x-lang': 'CN',
+        },
+        body: {
+          message: '这个分析里最该先改哪一步？请用中文回答。',
+          language: 'CN',
+        },
+      });
+      const res = makeResponseCapture();
+
+      __setRouterForTests({
+        async route() {
+          throw new Error('persisted routine follow-up should not reach skill router');
+        },
+      });
+
+      try {
+        await handleChat(req, res);
+      } finally {
+        __resetRouterForTests();
+        await memoryStore.deleteIdentityData({ auroraUid: uid, userId: null });
+      }
+
+      assert.equal(res.statusCode, 200);
+      assert.notEqual(res.body?.status, 'failed');
+      const cards = Array.isArray(res.body?.cards) ? res.body.cards : [];
+      assert.equal(cards.some((card) => card.card_type === 'routine_audit_plan'), true);
+      assert.match(String(res.body?.cards?.[0]?.sections?.[0]?.text_zh || res.body?.cards?.[0]?.sections?.[0]?.text_en || JSON.stringify(res.body)), /防晒 SPF|SPF30-50/);
+    },
+  );
+});
+
 test('handleChat answers vitamin C product-fit alternative follow-up without dupe router', async () => {
   await withEnv(
     {
