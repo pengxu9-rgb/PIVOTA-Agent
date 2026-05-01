@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const axios = require('axios');
+const dns = require('dns');
 const sharp = require('sharp');
 const ROUTES_MODULE_PATH = require.resolve('../src/auroraBff/routes');
 
@@ -236,6 +237,83 @@ function buildRecoChatBody(latestRecoContext = null) {
     language: 'EN',
   };
 }
+
+test('/v1/analysis/skin: external image_url input can drive photo analysis without upload_id', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_DECISION_BASE_URL: '',
+      AURORA_SKIN_VISION_ENABLED: 'false',
+      AURORA_ANALYSIS_STORY_V2_ENABLED: 'true',
+      DIAG_PHOTO_MODULES_CARD: 'true',
+      DIAG_OVERLAY_MODE: 'client',
+      DIAG_PRODUCT_REC: 'false',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'test_key',
+    },
+    async () => {
+      const originalGet = axios.get;
+      const originalPost = axios.post;
+      const originalLookup = dns.promises.lookup;
+      const photoBuffer = await buildQualityPassPhotoBuffer();
+
+      dns.promises.lookup = async (hostname) => {
+        assert.equal(hostname, 'cdn.example.com');
+        return [{ address: '93.184.216.34', family: 4 }];
+      };
+      axios.get = async (url) => {
+        if (String(url) === 'https://cdn.example.com/face.png') {
+          return {
+            status: 200,
+            data: photoBuffer,
+            headers: { 'content-type': 'image/png' },
+          };
+        }
+        throw new Error(`Unexpected axios.get: ${url}`);
+      };
+      axios.post = async (url) => {
+        throw new Error(`Unexpected axios.post: ${url}`);
+      };
+
+      try {
+        const express = require('express');
+        const routes = loadRoutesFresh();
+        const app = express();
+        app.use(express.json({ limit: '1mb' }));
+        routes.mountAuroraBffRoutes(app, { logger: null });
+
+        const resp = await invokeRoute(app, 'POST', '/v1/analysis/skin', {
+          headers: {
+            'X-Aurora-UID': 'photo_image_url_uid',
+            'X-Trace-ID': 'photo_image_url_trace',
+            'X-Brief-ID': 'photo_image_url_brief',
+            'X-Lang': 'EN',
+          },
+          body: {
+            use_photo: true,
+            currentRoutine: 'AM gentle cleanser + sunscreen; PM cleanser + moisturizer',
+            photos: [{ slot_id: 'daylight', image_url: 'https://cdn.example.com/face.png', source_agent: 'external_test' }],
+          },
+        });
+
+        assert.equal(resp.status, 200);
+        assert.notEqual(resp.body?.status, 'failed');
+        const modules = getCard(resp.body, 'photo_modules_v1');
+        assert.ok(modules);
+        assert.equal(modules.payload?.used_photos, true);
+        assert.equal(modules.payload?.image_url, 'https://cdn.example.com/face.png');
+        assert.equal(modules.payload?.face_crop?.image_url, 'https://cdn.example.com/face.png');
+        assert.ok(getCard(resp.body, 'analysis_story_v2'));
+        assert.notEqual(resp.body?.analysis_meta?.detector_source, 'failed_photo_contract');
+      } finally {
+        axios.get = originalGet;
+        axios.post = originalPost;
+        dns.promises.lookup = originalLookup;
+        delete require.cache[ROUTES_MODULE_PATH];
+      }
+    },
+  );
+});
 
 test('photo full chain e2e: presign -> confirm -> analysis -> chat recommendation contract', async () => {
   await withEnv(

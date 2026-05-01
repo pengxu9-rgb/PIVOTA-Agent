@@ -21,6 +21,7 @@ const {
   parseSecretList,
   resolveInvokeEmergencyAuthFallback,
 } = require('./api/gateway/access/invokeAuthEmergencyFallback');
+const photoBackendClient = require('./photoBackendClient');
 const {
   applyNonBeautyDomainIsolation,
 } = require('./modules/policy/nonBeautyDomainIsolation');
@@ -21192,25 +21193,31 @@ async function proxyPhotosToBackend(req, res) {
   const checkoutToken =
     String(req.header('X-Checkout-Token') || req.header('x-checkout-token') || '').trim() || null;
 
-  const url = `${PIVOTA_API_BASE}${req.path}`;
   const method = String(req.method || 'GET').toUpperCase();
+  const photoBackendBaseUrl = photoBackendClient.resolvePhotoBackendBaseUrl(process.env) || PIVOTA_API_BASE;
+  const authHeaders = photoBackendClient.augmentPhotoBackendAuthHeaders(
+    buildInvokeUpstreamAuthHeaders({ checkoutToken }),
+  );
 
   try {
-    const resp = await axios({
+    const resp = await photoBackendClient.proxyPhotoBackendRequest({
       method,
-      url,
-      headers: {
-        ...(method !== 'GET' && method !== 'HEAD' && method !== 'DELETE'
-          ? { 'Content-Type': 'application/json' }
-          : {}),
-        ...buildInvokeUpstreamAuthHeaders({ checkoutToken }),
-      },
-      timeout: UPSTREAM_TIMEOUT_ADMIN_MS,
+      baseUrl: photoBackendBaseUrl,
+      path: req.path,
+      authHeaders,
+      timeoutMs: UPSTREAM_TIMEOUT_ADMIN_MS,
       ...(method === 'GET' || method === 'DELETE' ? { params: req.query } : { data: req.body }),
-      validateStatus: () => true,
     });
 
-    return res.status(resp.status).json(resp.data);
+    if (resp.status) return res.status(resp.status).json(resp.data);
+    return res.status(500).json({
+      error: resp.failure_code || 'FAILED_TO_PROXY_PHOTOS',
+      message: 'Failed to proxy photo upload request',
+      details: {
+        detail: resp.detail || null,
+        base_url_fingerprint: resp.base_url_fingerprint || photoBackendClient.fingerprintBaseUrl(photoBackendBaseUrl),
+      },
+    });
   } catch (err) {
     const { code, message, data } = extractUpstreamErrorCode(err);
     const statusCode = err?.response?.status || err?.status || 500;
@@ -21225,6 +21232,8 @@ async function proxyPhotosToBackend(req, res) {
 app.post('/photos/presign', proxyPhotosToBackend);
 app.post('/photos/confirm', proxyPhotosToBackend);
 app.get('/photos/qc', proxyPhotosToBackend);
+app.get('/photos/download-url', proxyPhotosToBackend);
+app.post('/photos/download-url', proxyPhotosToBackend);
 app.delete('/photos', proxyPhotosToBackend);
 
 async function handleAgentProductsSearchViaInvoke(req, res) {

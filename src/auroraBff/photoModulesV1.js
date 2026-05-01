@@ -4462,6 +4462,7 @@ function buildPhotoModulesCard({
 
   const sourceSlotId = sourcePhoto && typeof sourcePhoto.slot_id === 'string' ? sourcePhoto.slot_id.trim() : '';
   const sourcePhotoId = sourcePhoto && typeof sourcePhoto.photo_id === 'string' ? sourcePhoto.photo_id.trim() : '';
+  const sourceImageUrl = sourcePhoto && typeof sourcePhoto.image_url === 'string' ? sourcePhoto.image_url.trim() : '';
   const regionsAvailableCount = regions.filter((region) => String(region && region.status || 'available').toLowerCase() === 'available').length;
   const regionsUnavailableCount = regions.filter((region) => String(region && region.status || '').toLowerCase() === 'unavailable').length;
   const skinmaskSource = normalizeSkinmaskSource(
@@ -4514,10 +4515,12 @@ function buildPhotoModulesCard({
     ...(typeof photoNotice === 'string' && photoNotice.trim() ? { photo_notice: photoNotice.trim() } : {}),
     ...(sourceSlotId ? { slot_id: sourceSlotId } : {}),
     ...(sourcePhotoId ? { photo_id: sourcePhotoId } : {}),
+    ...(sourceImageUrl ? { image_url: sourceImageUrl } : {}),
     face_crop: {
       ...faceCrop,
       ...(sourceSlotId ? { slot_id: sourceSlotId } : {}),
       ...(sourcePhotoId ? { photo_id: sourcePhotoId } : {}),
+      ...(sourceImageUrl ? { original_image_url: sourceImageUrl, source_image_url: sourceImageUrl, image_url: sourceImageUrl } : {}),
     },
     regions,
     regions_available_count: regionsAvailableCount,
