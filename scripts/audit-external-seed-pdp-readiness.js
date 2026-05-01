@@ -56,6 +56,11 @@ async function fetchSeedRows(options = {}) {
     where.push(`eps.market = ${bindParam(params, options.market || 'US')}`);
   }
   if (!options.includeAttached) where.push(`eps.attached_product_key IS NULL`);
+  if (options.brand) {
+    where.push(
+      `lower(coalesce(eps.seed_data->>'brand', eps.seed_data->'snapshot'->>'brand', '')) = lower(${bindParam(params, options.brand)})`,
+    );
+  }
   if (options.domain) where.push(`eps.domain = ${bindParam(params, options.domain)}`);
   if (options.externalProductId) {
     where.push(`eps.external_product_id = ${bindParam(params, options.externalProductId)}`);
@@ -100,6 +105,11 @@ async function fetchSeedRowsPage(options = {}) {
     where.push(`eps.market = ${bindParam(params, options.market || 'US')}`);
   }
   if (!options.includeAttached) where.push(`eps.attached_product_key IS NULL`);
+  if (options.brand) {
+    where.push(
+      `lower(coalesce(eps.seed_data->>'brand', eps.seed_data->'snapshot'->>'brand', '')) = lower(${bindParam(params, options.brand)})`,
+    );
+  }
   if (options.cursor) where.push(`eps.id > ${bindParam(params, options.cursor)}`);
   params.push(Math.max(1, Math.min(Number(options.pageSize || options.limit || 250), 1000)));
   const limitBind = `$${params.length}`;
@@ -138,6 +148,11 @@ async function fetchSeedDomains(options = {}) {
     where.push(`eps.market = ${bindParam(params, options.market || 'US')}`);
   }
   if (!options.includeAttached) where.push(`eps.attached_product_key IS NULL`);
+  if (options.brand) {
+    where.push(
+      `lower(coalesce(eps.seed_data->>'brand', eps.seed_data->'snapshot'->>'brand', '')) = lower(${bindParam(params, options.brand)})`,
+    );
+  }
 
   const res = await query(
     `
@@ -516,6 +531,7 @@ async function buildPageCheckpointedReadinessAudit(options = {}) {
 function renderSummary(payload) {
   const summary = payload.summary || {};
   const intel = summary.pivota_insights || {};
+  const reviews = summary.reviews || {};
   const active = summary.active_ingredients || {};
   const variants = summary.variants || {};
   const lines = [];
@@ -528,6 +544,10 @@ function renderSummary(payload) {
   lines.push(`pivota_insights.effective=${JSON.stringify(intel.effective || {})}`);
   lines.push(`pivota_insights.effective_issues=${JSON.stringify((intel.effective_issues || []).slice(0, 12))}`);
   lines.push(`pivota_insights.issue_domains=${JSON.stringify((intel.effective_issue_domains || []).slice(0, 12))}`);
+  lines.push(`reviews.status=${JSON.stringify(reviews.status || [])}`);
+  lines.push(`reviews.issues=${JSON.stringify(reviews.issues || [])}`);
+  lines.push(`reviews.sources=${JSON.stringify(reviews.sources || [])}`);
+  lines.push(`reviews.issue_domains=${JSON.stringify((reviews.issue_domains || []).slice(0, 12))}`);
   lines.push(`active_ingredients.status=${JSON.stringify(active.status || [])}`);
   lines.push(`active_ingredients.issues=${JSON.stringify(active.issues || [])}`);
   lines.push(`active_ingredients.issue_domains=${JSON.stringify((active.issue_domains || []).slice(0, 12))}`);
@@ -545,6 +565,7 @@ async function main() {
     market: normalizeString(argValue('market') || 'US').toUpperCase(),
     allMarkets: hasFlag('all-markets') || hasFlag('allMarkets'),
     includeAttached: hasFlag('include-attached') || hasFlag('includeAttached'),
+    brand: argValue('brand') || null,
     domain: argValue('domain') || null,
     externalProductId: argValue('external-product-id') || argValue('externalProductId') || null,
     limit: Math.max(1, Math.min(Number(argValue('limit') || 5000), 20000)),

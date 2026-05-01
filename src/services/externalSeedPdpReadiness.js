@@ -3,7 +3,7 @@ const {
   normalizePublishedProductIntelBundle,
 } = require('../pdpProductIntel');
 const { buildAuthoritativeIngredientView } = require('./pdpIngredientAuthority');
-const { normalizeSeedVariants } = require('./externalSeedProducts');
+const { normalizeSeedVariants, normalizeSeedReviewSummary } = require('./externalSeedProducts');
 const { classifyExternalSeedProductKind } = require('./externalSeedProductKind');
 
 function asString(value) {
@@ -178,6 +178,8 @@ const GENERIC_VARIANT_AXIS_NAMES = new Set(['option', 'variant', 'selection']);
 const VARIANT_SIZE_EVIDENCE_RE = /\b\d+(?:\.\d+)?\s*(ml|m l|g|kg|oz|fl\.?\s*oz\.?|fluid\s*ounces?|l|lb|lbs|mm|cm)\b/i;
 const SHADE_AXIS_NAMES = new Set(['shade', 'color', 'colour', 'tone', 'hue']);
 const LOCALE_LIKE_VARIANT_VALUES = new Set(['us', 'usa', 'uk', 'eu', 'fr', 'de', 'es', 'it', 'ca', 'au', 'jp', 'kr', 'cn']);
+const REVIEW_PUBLIC_STATES = new Set(['approved', 'published', 'public', 'visible', 'live', 'pass']);
+const REVIEW_BLOCKED_STATES = new Set(['pending', 'queued', 'draft', 'rejected', 'hidden', 'private', 'internal']);
 
 function normalizedTerm(value) {
   return lowerText(value).replace(/[^a-z0-9]+/g, ' ').trim();
@@ -446,6 +448,125 @@ function readSeedCoverage(row) {
     how_to_chars: howTo.length,
     inci_chars: inci.length,
     active_ingredients_chars: active.length,
+  };
+}
+
+function normalizeReviewModerationState(value) {
+  return lowerText(value).replace(/[^a-z]+/g, '_').replace(/^_+|_+$/g, '');
+}
+
+function readReviewSummary(row) {
+  const seedData = ensureObject(row?.seed_data);
+  const snapshot = ensureObject(seedData.snapshot);
+  return (
+    normalizeSeedReviewSummary(
+      seedData.review_summary,
+      seedData.reviewSummary,
+      snapshot.review_summary,
+      snapshot.reviewSummary,
+      seedData.reviews_summary,
+      snapshot.reviews_summary,
+    ) || {}
+  );
+}
+
+function isPublicReviewPreviewItem(item) {
+  const source = ensureObject(item);
+  const state = normalizeReviewModerationState(
+    source.content_review_state ||
+      source.contentReviewState ||
+      source.moderation_status ||
+      source.moderationStatus ||
+      source.approval_status ||
+      source.approvalStatus,
+  );
+  if (state && REVIEW_BLOCKED_STATES.has(state)) return false;
+  if (typeof source.public_visible === 'boolean' && source.public_visible === false) return false;
+  return !state || REVIEW_PUBLIC_STATES.has(state);
+}
+
+function isMerchantPublicReviewPreviewItem(item) {
+  const source = ensureObject(item);
+  if (!isPublicReviewPreviewItem(source)) return false;
+  const previewSource = lowerText(source.source);
+  const sourceKind = lowerText(source.source_kind || source.sourceKind);
+  const sourceScope = lowerText(source.source_scope || source.sourceScope);
+  return (
+    previewSource === 'merchant_public' ||
+    source.public_visible === true ||
+    sourceKind.includes('reviews_api') ||
+    sourceKind.includes('merchant_review') ||
+    sourceKind.includes('merchant_public') ||
+    sourceScope === 'exact_item' ||
+    sourceScope === 'product_line'
+  );
+}
+
+function isHighSignalReviewPreviewItem(item) {
+  const source = ensureObject(item);
+  if (!isMerchantPublicReviewPreviewItem(source)) return false;
+  const textSnippet = stripHtml(source.text_snippet || source.textSnippet || source.text || source.body);
+  const title = stripHtml(source.title || source.headline);
+  const media = asArray(source.media);
+  return (
+    textSnippet.length >= 40 ||
+    title.length >= 12 ||
+    media.length > 0 ||
+    source.verified_buyer === true
+  );
+}
+
+function classifyReviewPreviewReadiness(row) {
+  const reviewSummary = readReviewSummary(row);
+  const previewItems = asArray(reviewSummary.preview_items);
+  const publicPreviewItems = previewItems.filter(isPublicReviewPreviewItem);
+  const merchantPublicPreviewItems = publicPreviewItems.filter(isMerchantPublicReviewPreviewItem);
+  const highSignalPreviewItems = merchantPublicPreviewItems.filter(isHighSignalReviewPreviewItem);
+  const rating = Number(reviewSummary.rating || 0);
+  const reviewCount = Number(reviewSummary.review_count || 0);
+  const questionsCount = asArray(reviewSummary.questions).length;
+  const hasAggregate = rating > 0 || reviewCount > 0 || asArray(reviewSummary.star_distribution).length > 0;
+  const issues = [];
+  let status = 'missing_review_summary';
+
+  if (highSignalPreviewItems.length > 0) {
+    status = 'preview_ready';
+  } else if (merchantPublicPreviewItems.length > 0) {
+    status = 'preview_low_signal';
+    issues.push('preview_low_signal');
+  } else if (publicPreviewItems.length > 0) {
+    status = 'preview_needs_source_review';
+    issues.push('preview_needs_source_review');
+  } else if (previewItems.length > 0) {
+    status = 'preview_not_public';
+    issues.push('preview_not_public');
+  } else if (hasAggregate) {
+    status = 'aggregate_only';
+    issues.push('missing_preview_items');
+  } else if (questionsCount > 0) {
+    status = 'questions_only';
+    issues.push('questions_without_reviews');
+  } else {
+    issues.push('missing_review_summary');
+  }
+
+  return {
+    status,
+    issues,
+    rating: Number.isFinite(rating) && rating > 0 ? rating : null,
+    review_count: Number.isFinite(reviewCount) && reviewCount > 0 ? reviewCount : 0,
+    questions_count: questionsCount,
+    preview_items_count: previewItems.length,
+    public_preview_items_count: publicPreviewItems.length,
+    merchant_public_preview_items_count: merchantPublicPreviewItems.length,
+    high_signal_preview_items_count: highSignalPreviewItems.length,
+    sources: Array.from(
+      new Set(
+        previewItems
+          .map((item) => lowerText(item.source || item.source_kind || item.sourceKind))
+          .filter(Boolean),
+      ),
+    ).slice(0, 12),
   };
 }
 
@@ -815,6 +936,7 @@ function buildReadinessRow(row, context = {}) {
   const productIntel = classifyEffectiveProductIntel(row, context);
   const activeIngredients = classifyActiveIngredientReadiness(row);
   const variantReadiness = classifyVariantReadiness(row);
+  const reviewReadiness = classifyReviewPreviewReadiness(row);
   return {
     seed_id: asString(row?.id),
     external_product_id: productId,
@@ -825,6 +947,7 @@ function buildReadinessRow(row, context = {}) {
     product_family: classifyProductFamily(row),
     product_line_id: productIntel.product_line_id,
     pivota_insights: productIntel,
+    reviews: reviewReadiness,
     active_ingredients: activeIngredients,
     variants: variantReadiness,
     coverage: activeIngredients.coverage,
@@ -874,6 +997,17 @@ function summarizeReadinessRows(rows, options = {}) {
       effective_issue_domains: {},
       quality_state: {},
       evidence_profile: {},
+      samples: {},
+    },
+    reviews: {
+      aggregate_present: 0,
+      preview_ready: 0,
+      aggregate_only: 0,
+      missing_review_summary: 0,
+      status: {},
+      issues: {},
+      issue_domains: {},
+      sources: {},
       samples: {},
     },
     active_ingredients: {
@@ -951,6 +1085,33 @@ function summarizeReadinessRows(rows, options = {}) {
       }
     }
 
+    const reviews = row.reviews || {};
+    if (reviews.review_count > 0 || reviews.rating) summary.reviews.aggregate_present += 1;
+    if (reviews.status === 'preview_ready') summary.reviews.preview_ready += 1;
+    if (reviews.status === 'aggregate_only') summary.reviews.aggregate_only += 1;
+    if (reviews.status === 'missing_review_summary') summary.reviews.missing_review_summary += 1;
+    increment(summary.reviews.status, reviews.status || 'unknown');
+    for (const source of asArray(reviews.sources)) {
+      increment(summary.reviews.sources, source);
+    }
+    for (const issue of asArray(reviews.issues)) {
+      increment(summary.reviews.issues, issue);
+      increment(summary.reviews.issue_domains, `${row.domain}::${issue}`);
+      addSample(
+        summary.reviews.samples,
+        issue,
+        row,
+        {
+          status: reviews.status,
+          review_count: reviews.review_count,
+          rating: reviews.rating,
+          merchant_public_preview_items_count: reviews.merchant_public_preview_items_count,
+          high_signal_preview_items_count: reviews.high_signal_preview_items_count,
+        },
+        sampleLimit,
+      );
+    }
+
     const active = row.active_ingredients || {};
     if (active.regulatory_expected) summary.active_ingredients.regulatory_expected += 1;
     if (active.hero_expected) summary.active_ingredients.hero_expected += 1;
@@ -1002,6 +1163,13 @@ function summarizeReadinessRows(rows, options = {}) {
       quality_state: topEntries(summary.pivota_insights.quality_state, 20),
       evidence_profile: topEntries(summary.pivota_insights.evidence_profile, 20),
     },
+    reviews: {
+      ...summary.reviews,
+      status: topEntries(summary.reviews.status, 20),
+      issues: topEntries(summary.reviews.issues, 25),
+      issue_domains: topEntries(summary.reviews.issue_domains, 30),
+      sources: topEntries(summary.reviews.sources, 20),
+    },
     active_ingredients: {
       ...summary.active_ingredients,
       status: topEntries(summary.active_ingredients.status, 20),
@@ -1025,6 +1193,7 @@ module.exports = {
   LOW_SIGNAL_ACTIVE_ITEMS,
   classifyProductIntelKbRow,
   classifyEffectiveProductIntel,
+  classifyReviewPreviewReadiness,
   classifyActiveIngredientReadiness,
   classifyVariantReadiness,
   classifyProductFamily,

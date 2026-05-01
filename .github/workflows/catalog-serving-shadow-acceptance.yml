@@ -39,9 +39,14 @@ on:
         required: false
         default: "red"
       operation:
-        description: "K-beauty seed op: commerce_facts_backfill | seed_content_backfill | market_coverage_audit | kbeauty_seed_baseline_coverage_audit | pdp_coverage_gaps_audit | identity_lift | promote_live_read | channel_seed_manifest | gallery_bloat_audit"
+        description: "K-beauty seed op: commerce_facts_backfill | seed_content_backfill | seed_content_backfill_with_insights | market_coverage_audit | kbeauty_seed_baseline_coverage_audit | pdp_coverage_gaps_audit | pdp_readiness_audit | identity_lift | promote_live_read | channel_seed_manifest | gallery_bloat_audit"
         required: false
         default: "commerce_facts_backfill"
+      insights_skip_gemini:
+        description: "K-beauty seed op: skip Gemini-backed Pivota Insights generation when supported"
+        type: boolean
+        required: false
+        default: false
       external_product_ids:
         description: "K-beauty seed op: comma or newline-delimited external_product_ids"
         required: false
@@ -177,6 +182,7 @@ jobs:
 
           op="${{ inputs.operation }}"
           dry_run="${{ inputs.dry_run }}"
+          insights_skip_gemini="${{ inputs.insights_skip_gemini }}"
           brand="${{ inputs.brand }}"
           market="${{ inputs.market }}"
           limit="${{ inputs.limit }}"
@@ -244,6 +250,33 @@ jobs:
               "${cmd[@]}" | tee "reports/workflow_ops/${artifact_prefix}_result.json"
               ;;
 
+            seed_content_backfill_with_insights)
+              ids_input="$(cat <<'EOF'
+          ${{ inputs.external_product_ids }}
+          EOF
+          )"
+              ids_file="reports/workflow_ops/${artifact_prefix}_external_product_ids.txt"
+              normalize_multiline_csv "${ids_input}" > "${ids_file}"
+              if [[ ! -s "${ids_file}" ]]; then
+                echo "external_product_ids is required for seed_content_backfill_with_insights" >&2
+                exit 1
+              fi
+              cmd=(
+                node scripts/backfill-external-product-seeds-catalog.js
+                --market "${market}"
+                --external-product-ids-file "${ids_file}"
+                --concurrency 1
+              )
+              if [[ "${dry_run}" == "true" ]]; then
+                cmd+=(--dry-run)
+              fi
+              if [[ "${insights_skip_gemini}" == "true" ]]; then
+                cmd+=(--insights-skip-gemini)
+              fi
+              printf '%s\n' "${cmd[@]}" > "reports/workflow_ops/${artifact_prefix}_command.txt"
+              "${cmd[@]}" | tee "reports/workflow_ops/${artifact_prefix}_result.json"
+              ;;
+
             market_coverage_audit)
               if [[ -z "${brand}" ]]; then
                 echo "brand is required for market_coverage_audit" >&2
@@ -280,6 +313,21 @@ jobs:
             pdp_coverage_gaps_audit)
               cmd=(
                 node scripts/audit-external-seed-pdp-coverage-gaps.js
+                --market "${market}"
+                --format json
+                --sample-limit 100
+                --out "reports/workflow_ops/${artifact_prefix}_report.json"
+              )
+              if [[ -n "${brand}" ]]; then
+                cmd+=(--brand "${brand}")
+              fi
+              printf '%s\n' "${cmd[@]}" > "reports/workflow_ops/${artifact_prefix}_command.txt"
+              "${cmd[@]}" | tee "reports/workflow_ops/${artifact_prefix}_stdout.json"
+              ;;
+
+            pdp_readiness_audit)
+              cmd=(
+                node scripts/audit-external-seed-pdp-readiness.js
                 --market "${market}"
                 --format json
                 --sample-limit 100

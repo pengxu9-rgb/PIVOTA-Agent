@@ -3,6 +3,7 @@ const {
   classifyEffectiveProductIntel,
   classifyProductFamily,
   classifyProductIntelKbRow,
+  classifyReviewPreviewReadiness,
   classifyVariantReadiness,
   summarizeReadinessRows,
   buildReadinessRow,
@@ -253,6 +254,54 @@ describe('external seed PDP readiness audit helpers', () => {
     expect(result.issues).not.toContain('default_option_size_evidence_missing_axis');
   });
 
+  test('classifies merchant-public review preview as ready when high-signal snippets are present', () => {
+    const result = classifyReviewPreviewReadiness(
+      seedRow({
+        seed_data: {
+          review_summary: {
+            rating: 4.8,
+            review_count: 128,
+            preview_items: [
+              {
+                review_id: 'review_1',
+                source: 'merchant_public',
+                source_kind: 'okendo_reviews_api',
+                public_visible: true,
+                verified_buyer: true,
+                title: 'Excellent daily sunscreen',
+                text_snippet:
+                  'Wears comfortably under makeup and never pills, while still feeling hydrating enough for daily use.',
+              },
+            ],
+            snapshot: {},
+          },
+          snapshot: {},
+        },
+      }),
+    );
+
+    expect(result.status).toBe('preview_ready');
+    expect(result.high_signal_preview_items_count).toBe(1);
+    expect(result.review_count).toBe(128);
+  });
+
+  test('classifies aggregate-only review coverage as actionable preview gap', () => {
+    const result = classifyReviewPreviewReadiness(
+      seedRow({
+        seed_data: {
+          review_summary: {
+            rating: 4.6,
+            review_count: 42,
+          },
+          snapshot: {},
+        },
+      }),
+    );
+
+    expect(result.status).toBe('aggregate_only');
+    expect(result.issues).toContain('missing_preview_items');
+  });
+
   test('still flags multi-variant rows when product-level size evidence would mask mixed-product pollution', () => {
     const result = classifyVariantReadiness(
       seedRow({
@@ -396,6 +445,54 @@ describe('external seed PDP readiness audit helpers', () => {
     expect(summary.pivota_insights.direct.not_displayable).toBe(1);
     expect(summary.pivota_insights.effective.high_quality_ready).toBe(1);
     expect(summary.pivota_insights.effective.borrowed_from_sibling).toBe(1);
+  });
+
+  test('summarizes review preview coverage separately from aggregate-only rows', () => {
+    const rows = [
+      buildReadinessRow(
+        seedRow({
+          external_product_id: 'ext_reviews_ready',
+          seed_data: {
+            snapshot: {},
+            review_summary: {
+              rating: 4.9,
+              review_count: 320,
+              preview_items: [
+                {
+                  review_id: 'review_1',
+                  source: 'merchant_public',
+                  source_kind: 'okendo_reviews_api',
+                  public_visible: true,
+                  title: 'Worth repurchasing',
+                  text_snippet:
+                    'Helped calm redness quickly and stayed comfortable both morning and night without pilling.',
+                },
+              ],
+            },
+          },
+        }),
+        { kbByProductId: new Map(), productLineIdByProductId: new Map(), productIdsByLineId: new Map() },
+      ),
+      buildReadinessRow(
+        seedRow({
+          external_product_id: 'ext_reviews_aggregate_only',
+          seed_data: {
+            snapshot: {},
+            review_summary: {
+              rating: 4.4,
+              review_count: 28,
+            },
+          },
+        }),
+        { kbByProductId: new Map(), productLineIdByProductId: new Map(), productIdsByLineId: new Map() },
+      ),
+    ];
+    const summary = summarizeReadinessRows(rows);
+
+    expect(summary.reviews.preview_ready).toBe(1);
+    expect(summary.reviews.aggregate_only).toBe(1);
+    expect(summary.reviews.aggregate_present).toBe(2);
+    expect(summary.reviews.status[0]).toEqual(expect.objectContaining({ key: 'aggregate_only', count: 1 }));
   });
 });
 
