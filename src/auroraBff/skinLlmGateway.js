@@ -76,6 +76,10 @@ function readSamplingFloat(envName, fallback, { min = 0, max = 1 } = {}) {
 
 const SKIN_VISION_MAX_OUTPUT_TOKENS = readOutputTokenBudget('AURORA_SKIN_VISION_MAX_OUTPUT_TOKENS', 1800);
 const SKIN_REPORT_MAX_OUTPUT_TOKENS = readOutputTokenBudget('AURORA_SKIN_REPORT_MAX_OUTPUT_TOKENS', 1800);
+const SKIN_REPORT_CANONICAL_MAX_OUTPUT_TOKENS = readOutputTokenBudget(
+  'AURORA_SKIN_REPORT_CANONICAL_MAX_OUTPUT_TOKENS',
+  Math.min(SKIN_REPORT_MAX_OUTPUT_TOKENS, 900),
+);
 const SKIN_JSON_TEMPERATURE = readSamplingFloat('AURORA_SKIN_JSON_TEMPERATURE', 0, { min: 0, max: 1 });
 const SKIN_JSON_TOP_P = readSamplingFloat('AURORA_SKIN_JSON_TOP_P', 0.1, { min: 0.01, max: 1 });
 const AURORA_SKIN_REPORT_RESPONSE_SCHEMA_ENABLED = (() => {
@@ -1017,10 +1021,11 @@ async function runGeminiReportStrategy({
       : 'skin_report_v3_canonical';
   const bundle = buildSkinReportPromptBundle({ language, dto: reportDto, promptVersion: effectivePromptVersion });
   const isCanonical = isSkinPromptV3(effectivePromptVersion);
+  const reportMaxOutputTokens = isCanonical ? SKIN_REPORT_CANONICAL_MAX_OUTPUT_TOKENS : SKIN_REPORT_MAX_OUTPUT_TOKENS;
   let retryAttempted = 0;
   const totalReportTimeoutMs = resolveGeminiEffectiveTimeoutMs({
     timeoutMs,
-    maxOutputTokens: SKIN_REPORT_MAX_OUTPUT_TOKENS,
+    maxOutputTokens: reportMaxOutputTokens,
   });
 
   const normalizeReportGatewayReason = (response, validation, semantic, safety) => {
@@ -1068,7 +1073,7 @@ async function runGeminiReportStrategy({
         isCanonical
           ? (AURORA_SKIN_REPORT_RESPONSE_SCHEMA_ENABLED ? SkinReportCanonicalLlmSchema : null)
           : SkinReportStrategySchema,
-      maxOutputTokens: SKIN_REPORT_MAX_OUTPUT_TOKENS,
+      maxOutputTokens: reportMaxOutputTokens,
       timeoutMs: attemptTimeoutMs || totalReportTimeoutMs,
       profiler,
       kind: 'skin_report_mainline',
