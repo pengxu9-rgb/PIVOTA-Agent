@@ -8616,7 +8616,7 @@ test('fetchRecoAlternativesForProduct: open_world_only bypasses auroraChat and u
           geminiRequest = args;
           assert.equal(args.route, 'aurora_reco_alternatives_open_world');
           assert.equal(args.ignoreForceModel, true);
-          assert.equal(args.model, 'gemini-3-flash-preview');
+          assert.equal(args.model, 'gemini-2.5-flash');
           assert.match(String(args.systemPrompt || ''), /generic same-step products/i);
           assert.match(String(args.systemPrompt || ''), /share a named active/i);
           assert.match(String(args.systemPrompt || ''), /name-only open-world products/i);
@@ -8680,7 +8680,7 @@ test('fetchRecoAlternativesForProduct: open_world_only bypasses auroraChat and u
         assert.equal(out?.template_id, 'reco_alternatives_open_world_v1');
         assert.equal(out?.source_mode, 'open_world_only');
         assert.equal(out?.llm_trace?.source_mode, 'local_gemini_open_world');
-        assert.equal(out?.llm_trace?.provider_model, 'gemini-3-flash-preview');
+        assert.equal(out?.llm_trace?.provider_model, 'gemini-2.5-flash');
         assert.equal(Array.isArray(out?.alternatives), true);
         assert.equal(out.alternatives.length, 1);
         assert.equal(out.alternatives[0]?.candidate_origin, 'open_world');
@@ -10046,7 +10046,7 @@ test('fetchRecoAlternativesForProduct: open_world_only surfaces local Gemini fai
         assert.equal(out?.llm_trace?.provider_reason, 'gemini_client_unavailable');
         assert.equal(out?.llm_trace?.provider_detail, 'missing api key');
         assert.equal(out?.llm_trace?.provider_route, 'aurora_reco_alternatives_open_world');
-        assert.equal(out?.llm_trace?.provider_model, 'gemini-3-flash-preview');
+        assert.equal(out?.llm_trace?.provider_model, 'gemini-2.5-flash');
         assert.equal(out?.llm_trace?.provider_timeout_stage, 'queue');
         assert.equal(out?.llm_trace?.provider_total_ms, 321);
         assert.equal(out?.llm_trace?.provider_upstream_ms, 0);
@@ -10617,7 +10617,7 @@ test('/v1/reco/alternatives: catalog product-card hybrid uses grounded search po
   );
 });
 
-test('/v1/reco/alternatives: hybrid supplements thin grounded pool with Gemini 3 open-world', async () => {
+test('/v1/reco/alternatives: hybrid supplements thin grounded pool with Gemini open-world', async () => {
   return withEnv(
     {
       AURORA_BFF_RETENTION_DAYS: '0',
@@ -10738,8 +10738,8 @@ test('/v1/reco/alternatives: hybrid supplements thin grounded pool with Gemini 3
         assert.equal(resp.body?.source_mode, 'pool_open_world_mixed');
         assert.equal(resp.body?.failure_class, null);
         assert.equal(resp.body?.compare_meta?.open_world_status, 'success');
-        assert.equal(resp.body?.llm_trace?.provider_model, 'gemini-3-flash-preview');
-        assert.equal(geminiRequest?.model, 'gemini-3-flash-preview');
+        assert.equal(resp.body?.llm_trace?.provider_model, 'gemini-2.5-flash-preview');
+        assert.equal(geminiRequest?.model, 'gemini-2.5-flash-preview');
         const geminiPayload = JSON.parse(geminiRequest?.userPrompt || '{}');
         assert.equal(geminiPayload?.task?.max_alternatives, 3);
         assert.equal(Array.isArray(geminiPayload?.excluded_pool_products), true);
@@ -11331,11 +11331,11 @@ test('/v1/reco/alternatives: external_seed product-card rows use mixed compare p
         assert.equal(resp.body?.source_mode, 'pool_open_world_mixed');
         assert.equal(resp.body?.compare_meta?.open_world_status, 'provider_error');
         assert.equal(resp.body?.llm_trace?.source_mode, 'local_gemini_open_world');
-        assert.equal(resp.body?.llm_trace?.provider_model, 'gemini-3-flash-preview');
+        assert.equal(resp.body?.llm_trace?.provider_model, 'gemini-2.5-flash-preview');
         assert.equal(resp.body?.llm_trace?.provider_route, 'aurora_reco_alternatives_open_world');
         assert.equal(resp.body?.llm_trace?.provider_reason, 'provider_error');
         assert.equal(resp.body?.llm_trace?.provider_result_reason, 'gemini_call_exception');
-        assert.equal(geminiRequest?.model, 'gemini-3-flash-preview');
+        assert.equal(geminiRequest?.model, 'gemini-2.5-flash-preview');
         assert.equal(geminiRequest?.maxOutputTokens, 3072);
         assert.equal(geminiRequest?.timeoutMs, 12000);
         assert.equal(geminiRequest?.queueTimeoutMs, 3000);

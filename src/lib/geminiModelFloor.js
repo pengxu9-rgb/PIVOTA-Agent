@@ -1,6 +1,7 @@
 'use strict';
 
-const NON_IMAGE_GEMINI_FLOOR_MODEL = 'gemini-3-flash-preview';
+const TEMPORARY_UNIFIED_GEMINI_MODEL = 'gemini-2.5-flash-preview';
+const NON_IMAGE_GEMINI_FLOOR_MODEL = TEMPORARY_UNIFIED_GEMINI_MODEL;
 const warnedAdjustments = new Set();
 
 function normalizeGeminiModelName(model) {
@@ -28,7 +29,48 @@ function isGeminiAtOrAboveNonImageFloor(model) {
   const match = normalized.match(/^gemini-(\d+)(?:\.(\d+))?/);
   if (!match) return false;
   const major = Number(match[1] || 0);
-  return Number.isFinite(major) && major >= 3;
+  const minor = Number(match[2] || 0);
+  if (!Number.isFinite(major) || !Number.isFinite(minor)) return false;
+  return major > 2 || (major === 2 && minor >= 5);
+}
+
+function isExplicitFalse(value) {
+  return ['0', 'false', 'no', 'off'].includes(String(value || '').trim().toLowerCase());
+}
+
+function isExplicitTrue(value) {
+  return ['1', 'true', 'yes', 'on'].includes(String(value || '').trim().toLowerCase());
+}
+
+function isProductionLikeRuntime() {
+  const values = [
+    process.env.NODE_ENV,
+    process.env.PIVOTA_ENV,
+    process.env.APP_ENV,
+    process.env.RAILWAY_ENVIRONMENT,
+    process.env.RAILWAY_ENVIRONMENT_NAME,
+  ];
+  return values.some((value) => {
+    const token = String(value || '').trim().toLowerCase();
+    return token === 'production' || token === 'prod';
+  });
+}
+
+function isTemporaryUnifiedGeminiModelEnabled() {
+  const raw = process.env.PIVOTA_GEMINI_UNIFIED_MODEL_ENABLED || process.env.PIVOTA_TEMP_GEMINI_25_FLASH_ENABLED;
+  if (isExplicitFalse(raw)) return false;
+  if (isExplicitTrue(raw)) return true;
+  return isProductionLikeRuntime();
+}
+
+function resolveTemporaryUnifiedGeminiModel() {
+  const configured = normalizeGeminiModelName(
+    process.env.PIVOTA_GEMINI_UNIFIED_MODEL || process.env.PIVOTA_TEMP_GEMINI_MODEL || TEMPORARY_UNIFIED_GEMINI_MODEL,
+  );
+  if (configured && isGeminiModelName(configured) && !isGeminiImageGenerationModel(configured)) {
+    return configured;
+  }
+  return TEMPORARY_UNIFIED_GEMINI_MODEL;
 }
 
 function emitFloorWarning(detail) {
@@ -47,13 +89,15 @@ function resolveNonImageGeminiModel(options) {
   const envSource = String(opts.envSource || '').trim() || null;
   const callPath = String(opts.callPath || '').trim() || null;
 
-  const isGemini = isGeminiModelName(effectiveModel);
-  const isImageGeneration = isGeminiImageGenerationModel(effectiveModel);
+  let isGemini = isGeminiModelName(effectiveModel);
+  let isImageGeneration = isGeminiImageGenerationModel(effectiveModel);
   let adjusted = false;
 
   if (configuredModel && !isGeminiModelName(configuredModel)) {
     adjusted = true;
     effectiveModel = fallbackModel;
+    isGemini = isGeminiModelName(effectiveModel);
+    isImageGeneration = isGeminiImageGenerationModel(effectiveModel);
     emitFloorWarning({
       event: 'gemini_model_non_gemini_fallback',
       configured_model: configuredModel || null,
@@ -61,6 +105,21 @@ function resolveNonImageGeminiModel(options) {
       env_source: envSource,
       call_path: callPath,
     });
+  }
+
+  if (isGemini && !isImageGeneration && isTemporaryUnifiedGeminiModelEnabled()) {
+    const unifiedModel = resolveTemporaryUnifiedGeminiModel();
+    if (effectiveModel !== unifiedModel) {
+      adjusted = true;
+      effectiveModel = unifiedModel;
+      emitFloorWarning({
+        event: 'gemini_temporary_unified_model_override',
+        configured_model: configuredModel || null,
+        effective_model: effectiveModel,
+        env_source: envSource,
+        call_path: callPath,
+      });
+    }
   } else if (isGemini && !isImageGeneration && !isGeminiAtOrAboveNonImageFloor(effectiveModel)) {
     adjusted = true;
     effectiveModel = NON_IMAGE_GEMINI_FLOOR_MODEL;
@@ -79,8 +138,8 @@ function resolveNonImageGeminiModel(options) {
     adjusted,
     envSource,
     callPath,
-    isGemini,
-    isImageGeneration,
+    isGemini: isGeminiModelName(effectiveModel),
+    isImageGeneration: isGeminiImageGenerationModel(effectiveModel),
   };
 }
 
@@ -89,11 +148,15 @@ function resetGeminiModelFloorWarningsForTest() {
 }
 
 module.exports = {
+  TEMPORARY_UNIFIED_GEMINI_MODEL,
   NON_IMAGE_GEMINI_FLOOR_MODEL,
   normalizeGeminiModelName,
   isGeminiModelName,
   isGeminiImageGenerationModel,
   isGeminiAtOrAboveNonImageFloor,
+  isTemporaryUnifiedGeminiModelEnabled,
+  isProductionLikeRuntime,
+  resolveTemporaryUnifiedGeminiModel,
   resolveNonImageGeminiModel,
   resetGeminiModelFloorWarningsForTest,
 };

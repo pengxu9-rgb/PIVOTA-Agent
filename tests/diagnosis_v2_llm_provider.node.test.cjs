@@ -26,11 +26,12 @@ function withEnv(patch, fn) {
   }
 }
 
-test('diagnosis v2 Gemini provider auto-upgrades legacy Gemini env to the 3.x floor', async () => {
+test('diagnosis v2 Gemini provider uses the temporary unified Gemini production model', async () => {
   await withEnv(
     {
       GEMINI_API_KEY: 'test_gemini_key',
       DIAGNOSIS_V2_GEMINI_MODEL: 'gemini-2.0-flash',
+      PIVOTA_GEMINI_UNIFIED_MODEL_ENABLED: 'true',
       OPENAI_API_KEY: undefined,
     },
     async () => {
@@ -61,7 +62,7 @@ test('diagnosis v2 Gemini provider auto-upgrades legacy Gemini env to the 3.x fl
         const provider = createDiagnosisV2LlmProvider();
         const out = await provider.generate({ system: 'Return JSON only.', user: 'Test', maxTokens: 128 });
         assert.equal(out.provider, 'gemini');
-        assert.equal(capturedModel, 'gemini-3-flash-preview');
+        assert.equal(capturedModel, 'gemini-2.5-flash-preview');
       } finally {
         delete require.cache[moduleId];
         Module._load = originalLoad;

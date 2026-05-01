@@ -202,7 +202,7 @@ test('runtime QA uses configured preview model without implicit stable rewrite',
   );
 });
 
-test('runtime QA story review auto-upgrades legacy Gemini env to the 3.x floor', async () => {
+test('runtime QA story review upgrades legacy Gemini env to the temporary floor', async () => {
   await withEnv(
     {
       GEMINI_API_KEY: 'test_gemini_key',
@@ -225,7 +225,7 @@ test('runtime QA story review auto-upgrades legacy Gemini env to the 3.x floor',
           userPrompt: 'StoryDigest={\"ui_card_v1\":{\"headline\":\"Generic headline\"}}',
         });
         assert.equal(result.ok, true);
-        assert.equal(captured.model, 'gemini-3-flash-preview');
+        assert.equal(captured.model, 'gemini-2.5-flash-preview');
         assert.equal(captured.route, 'aurora_qa_story_review');
       } finally {
         __internal.__resetCallGeminiJsonObjectForTest();

@@ -3,36 +3,72 @@ const assert = require('node:assert/strict');
 
 const {
   NON_IMAGE_GEMINI_FLOOR_MODEL,
+  TEMPORARY_UNIFIED_GEMINI_MODEL,
   isGeminiImageGenerationModel,
+  isTemporaryUnifiedGeminiModelEnabled,
   resolveNonImageGeminiModel,
   resetGeminiModelFloorWarningsForTest,
 } = require('../src/lib/geminiModelFloor');
 
-test('resolveNonImageGeminiModel auto-upgrades legacy non-image Gemini models to the 3.x floor', () => {
-  resetGeminiModelFloorWarningsForTest();
-  const resolved = resolveNonImageGeminiModel({
-    model: 'gemini-2.0-flash',
-    fallbackModel: 'gemini-3-pro-preview',
-    envSource: 'TEST_MODEL',
-    callPath: 'unit_test',
+function withTemporaryUnifiedModelEnabled(fn) {
+  const previous = process.env.PIVOTA_GEMINI_UNIFIED_MODEL_ENABLED;
+  process.env.PIVOTA_GEMINI_UNIFIED_MODEL_ENABLED = 'true';
+  try {
+    return fn();
+  } finally {
+    if (previous === undefined) delete process.env.PIVOTA_GEMINI_UNIFIED_MODEL_ENABLED;
+    else process.env.PIVOTA_GEMINI_UNIFIED_MODEL_ENABLED = previous;
+  }
+}
+
+test('resolveNonImageGeminiModel unifies legacy non-image Gemini models to the temporary production model', () => {
+  const resolved = withTemporaryUnifiedModelEnabled(() => {
+    resetGeminiModelFloorWarningsForTest();
+    return resolveNonImageGeminiModel({
+      model: 'gemini-2.0-flash',
+      fallbackModel: 'gemini-3-pro-preview',
+      envSource: 'TEST_MODEL',
+      callPath: 'unit_test',
+    });
   });
 
   assert.equal(resolved.adjusted, true);
-  assert.equal(resolved.effectiveModel, NON_IMAGE_GEMINI_FLOOR_MODEL);
+  assert.equal(resolved.effectiveModel, TEMPORARY_UNIFIED_GEMINI_MODEL);
   assert.equal(resolved.configuredModel, 'gemini-2.0-flash');
 });
 
-test('resolveNonImageGeminiModel keeps Gemini 3+ models unchanged', () => {
-  resetGeminiModelFloorWarningsForTest();
-  const resolved = resolveNonImageGeminiModel({
-    model: 'gemini-3-pro-preview',
-    fallbackModel: NON_IMAGE_GEMINI_FLOOR_MODEL,
-    envSource: 'TEST_MODEL',
-    callPath: 'unit_test',
+test('resolveNonImageGeminiModel also unifies Gemini 3+ models while the temporary policy is enabled', () => {
+  const resolved = withTemporaryUnifiedModelEnabled(() => {
+    resetGeminiModelFloorWarningsForTest();
+    return resolveNonImageGeminiModel({
+      model: 'gemini-3-pro-preview',
+      fallbackModel: NON_IMAGE_GEMINI_FLOOR_MODEL,
+      envSource: 'TEST_MODEL',
+      callPath: 'unit_test',
+    });
   });
 
-  assert.equal(resolved.adjusted, false);
-  assert.equal(resolved.effectiveModel, 'gemini-3-pro-preview');
+  assert.equal(resolved.adjusted, true);
+  assert.equal(resolved.effectiveModel, TEMPORARY_UNIFIED_GEMINI_MODEL);
+});
+
+test('temporary unified Gemini model policy is enabled by explicit env', () => {
+  withTemporaryUnifiedModelEnabled(() => {
+    assert.equal(isTemporaryUnifiedGeminiModelEnabled(), true);
+  });
+});
+
+test('temporary unified Gemini model policy is enabled by production-like runtime env', () => {
+  const previous = process.env.NODE_ENV;
+  delete process.env.PIVOTA_GEMINI_UNIFIED_MODEL_ENABLED;
+  delete process.env.PIVOTA_TEMP_GEMINI_25_FLASH_ENABLED;
+  process.env.NODE_ENV = 'production';
+  try {
+    assert.equal(isTemporaryUnifiedGeminiModelEnabled(), true);
+  } finally {
+    if (previous === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = previous;
+  }
 });
 
 test('resolveNonImageGeminiModel falls back when shared model config points at a non-Gemini model', () => {
@@ -47,6 +83,25 @@ test('resolveNonImageGeminiModel falls back when shared model config points at a
   assert.equal(resolved.adjusted, true);
   assert.equal(resolved.configuredModel, 'gpt-5.1-mini');
   assert.equal(resolved.effectiveModel, NON_IMAGE_GEMINI_FLOOR_MODEL);
+});
+
+test('resolveNonImageGeminiModel can disable the temporary unified model policy via env', () => {
+  resetGeminiModelFloorWarningsForTest();
+  const previous = process.env.PIVOTA_GEMINI_UNIFIED_MODEL_ENABLED;
+  process.env.PIVOTA_GEMINI_UNIFIED_MODEL_ENABLED = 'false';
+  try {
+    const resolved = resolveNonImageGeminiModel({
+      model: 'gemini-3-pro-preview',
+      fallbackModel: NON_IMAGE_GEMINI_FLOOR_MODEL,
+      envSource: 'TEST_MODEL',
+      callPath: 'unit_test',
+    });
+    assert.equal(resolved.adjusted, false);
+    assert.equal(resolved.effectiveModel, 'gemini-3-pro-preview');
+  } finally {
+    if (previous === undefined) delete process.env.PIVOTA_GEMINI_UNIFIED_MODEL_ENABLED;
+    else process.env.PIVOTA_GEMINI_UNIFIED_MODEL_ENABLED = previous;
+  }
 });
 
 test('image-generation Gemini models are excluded from the non-image floor logic', () => {

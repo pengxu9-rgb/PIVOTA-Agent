@@ -25,12 +25,14 @@ describe("extractSelfieLookSpecGemini", () => {
     delete process.env.GEMINI_MAX_RETRIES;
     delete process.env.GEMINI_RETRY_BASE_DELAY_MS;
     delete process.env.GEMINI_DEBUG;
+    delete process.env.PIVOTA_GEMINI_UNIFIED_MODEL_ENABLED;
     jest.resetModules();
   });
 
   test("requests structured JSON and parses into LookSpecV0", async () => {
     process.env.GEMINI_API_KEY = "test_key";
     process.env.GEMINI_MODEL = "gemini-2.5-flash";
+    process.env.PIVOTA_GEMINI_UNIFIED_MODEL_ENABLED = "true";
 
     const genai = require("@google/genai");
     const imgPath = writeTempImage();
@@ -180,9 +182,10 @@ describe("geminiClient.generateLookSpecFromImage hardening", () => {
     }
   });
 
-  test("layer1 Gemini client auto-upgrades legacy shared model env to gemini-3-flash-preview", async () => {
+  test("layer1 Gemini client uses the temporary unified Gemini production model", async () => {
     process.env.GEMINI_API_KEY = "test_key";
     process.env.GEMINI_MODEL = "gemini-2.5-flash";
+    process.env.PIVOTA_GEMINI_UNIFIED_MODEL_ENABLED = "true";
 
     const genai = require("@google/genai");
     const imgPath = writeTempImage();
@@ -200,7 +203,7 @@ describe("geminiClient.generateLookSpecFromImage hardening", () => {
 
       expect(out.ok).toBe(true);
       const call = generateContent.mock.calls[0][0];
-      expect(call.model).toBe("gemini-3-flash-preview");
+      expect(call.model).toBe("gemini-2.5-flash-preview");
     } finally {
       fs.rmSync(imgPath, { force: true });
     }

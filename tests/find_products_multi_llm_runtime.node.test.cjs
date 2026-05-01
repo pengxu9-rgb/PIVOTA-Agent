@@ -240,6 +240,7 @@ test('aurora strict semantic contract locks intent llm to a single provider and 
       FIND_PRODUCTS_MULTI_LLM_FALLBACK_PROVIDER: undefined,
       OPENAI_API_KEY: 'sk-live-realish-openai-key',
       GEMINI_API_KEY: 'test-gemini-key',
+      PIVOTA_GEMINI_UNIFIED_MODEL_ENABLED: 'true',
       FIND_PRODUCTS_MULTI_SEMANTIC_REWRITE_MODEL_OPENAI: 'gpt-5.1-mini',
       FIND_PRODUCTS_MULTI_SEMANTIC_REWRITE_MODEL_GEMINI: 'gemini-3-flash-preview',
     },
@@ -262,7 +263,7 @@ test('aurora strict semantic contract locks intent llm to a single provider and 
       assert.equal(plan.fallbackProvider, null);
       assert.deepEqual(plan.providerChain, ['gemini']);
       assert.equal(plan.singleProviderLocked, true);
-      assert.equal(plan.primaryModel, 'gemini-3-flash-preview');
+      assert.equal(plan.primaryModel, 'gemini-2.5-flash-preview');
       assert.equal(plan.primaryModelOwner, 'FIND_PRODUCTS_MULTI_SEMANTIC_REWRITE_MODEL_GEMINI');
     },
   );
@@ -274,6 +275,7 @@ test('semantic rewrite ignores legacy shared model envs and keeps explicit model
       FIND_PRODUCTS_MULTI_LLM_ENABLED: undefined,
       OPENAI_API_KEY: 'sk-live-realish-openai-key',
       GEMINI_API_KEY: 'test-gemini-key',
+      PIVOTA_GEMINI_UNIFIED_MODEL_ENABLED: 'true',
       PIVOTA_INTENT_MODEL: 'gpt-5.1-mini',
       PIVOTA_INTENT_MODEL_GEMINI: 'gemini-1.5-flash',
       FIND_PRODUCTS_MULTI_SEMANTIC_REWRITE_MODEL_GEMINI: undefined,
@@ -284,7 +286,7 @@ test('semantic rewrite ignores legacy shared model envs and keeps explicit model
       const geminiModel = _debug.resolveIntentGeminiModel();
       const openaiModel = _debug.resolveIntentOpenAiModel();
 
-      assert.equal(geminiModel.model, 'gemini-3-flash-preview');
+      assert.equal(geminiModel.model, 'gemini-2.5-flash-preview');
       assert.equal(geminiModel.model_owner, 'default_semantic_rewrite_gemini_model');
       assert.equal(openaiModel.model, 'gpt-5.1-mini');
       assert.equal(openaiModel.model_owner, 'default_semantic_rewrite_openai_model');
@@ -337,6 +339,7 @@ test('semantic rewrite llm failure preserves planned model metadata and exposes 
       FIND_PRODUCTS_MULTI_SEMANTIC_REWRITE_PROVIDER: 'gemini',
       FIND_PRODUCTS_MULTI_SEMANTIC_REWRITE_FALLBACK_PROVIDER: undefined,
       FIND_PRODUCTS_MULTI_SEMANTIC_REWRITE_MODEL_GEMINI: 'gemini-3-flash-preview',
+      PIVOTA_GEMINI_UNIFIED_MODEL_ENABLED: 'true',
       OPENAI_API_KEY: undefined,
       LLM_API_KEY: undefined,
       GEMINI_API_KEY: 'test-gemini-key',
@@ -382,7 +385,7 @@ test('semantic rewrite llm failure preserves planned model metadata and exposes 
         assert.equal(result.meta.fallback_reason, 'llm_failed');
         assert.deepEqual(result.meta.llm_provider_chain, ['gemini']);
         assert.equal(result.meta.llm_primary_provider, 'gemini');
-        assert.equal(result.meta.llm_model, 'gemini-3-flash-preview');
+        assert.equal(result.meta.llm_model, 'gemini-2.5-flash-preview');
         assert.equal(
           result.meta.llm_model_owner,
           'FIND_PRODUCTS_MULTI_SEMANTIC_REWRITE_MODEL_GEMINI',

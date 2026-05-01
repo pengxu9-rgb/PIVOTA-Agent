@@ -1,5 +1,12 @@
 'use strict';
 
+const {
+  isGeminiAtOrAboveNonImageFloor,
+  isGeminiImageGenerationModel,
+  isGeminiModelName,
+  resolveNonImageGeminiModel,
+} = require('../lib/geminiModelFloor');
+
 const AURORA_MODEL_POLICY_VERSION = 'aurora_model_policy_v1';
 
 function pickFirstTrimmed(...values) {
@@ -26,7 +33,9 @@ function normalizeAuroraLlmModel(value) {
 function isAuroraBlockedMainlineModel(value) {
   const token = String(value || '').trim().toLowerCase();
   if (!token) return false;
-  return /^gemini[-_. ]?2(\b|[-_. ])/i.test(token);
+  if (!isGeminiModelName(token)) return false;
+  if (isGeminiImageGenerationModel(token)) return true;
+  return !isGeminiAtOrAboveNonImageFloor(token);
 }
 
 function classifyAuroraGeminiRouteGroup(route = '') {
@@ -55,11 +64,21 @@ function resolveAuroraGeminiMainlineModel({
   envSource = 'aurora_mainline_default',
   callPath = 'aurora_mainline',
 } = {}) {
-  const requestedModel = normalizeAuroraLlmModel(configuredModel) || normalizeAuroraLlmModel(fallbackModel);
+  const rawRequestedModel = normalizeAuroraLlmModel(configuredModel) || normalizeAuroraLlmModel(fallbackModel);
+  const resolvedModel = resolveNonImageGeminiModel({
+    model: rawRequestedModel,
+    fallbackModel,
+    envSource,
+    callPath,
+  });
+  const effectiveModel = normalizeAuroraLlmModel(resolvedModel.effectiveModel) || rawRequestedModel;
   return {
-    requested_model: requestedModel,
-    effective_model: requestedModel,
-    selection_source: normalizeAuroraLlmModel(configuredModel) ? 'explicit_config' : 'default_fallback',
+    requested_model: effectiveModel,
+    effective_model: effectiveModel,
+    configured_model: rawRequestedModel || null,
+    selection_source: resolvedModel.adjusted
+      ? 'temporary_unified_gemini_model'
+      : normalizeAuroraLlmModel(configuredModel) ? 'explicit_config' : 'default_fallback',
     env_source: String(envSource || '').trim() || 'aurora_mainline_default',
     call_path: String(callPath || '').trim() || 'aurora_mainline',
     policy_version: AURORA_MODEL_POLICY_VERSION,
@@ -81,11 +100,19 @@ function resolveAuroraPublicLlmRoute({
     (allowExternalOverride ? normalizeAuroraLlmProvider(headerProvider) : null) ||
     normalizeAuroraLlmProvider(defaultProvider) ||
     null;
-  const llmModel =
+  const rawLlmModel =
     (allowExternalOverride ? normalizeAuroraLlmModel(requestedModel) : null) ||
     (allowExternalOverride ? normalizeAuroraLlmModel(headerModel) : null) ||
     normalizeAuroraLlmModel(defaultModel) ||
     null;
+  const llmModel = llmProvider === 'gemini'
+    ? resolveNonImageGeminiModel({
+      model: rawLlmModel,
+      fallbackModel: 'gemini-2.5-flash-preview',
+      envSource: 'aurora_public_llm_route',
+      callPath: 'aurora_public_llm_route',
+    }).effectiveModel
+    : rawLlmModel;
   return {
     llm_provider: llmProvider,
     llm_model: llmModel,

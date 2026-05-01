@@ -25,10 +25,11 @@ function withEnv(patch, fn) {
   }
 }
 
-test('Aurora chat v2 llm_gateway uses configured Gemini 3 model instead of legacy hardcoded Gemini 2', async () => {
+test('Aurora chat v2 llm_gateway uses temporary unified Gemini model for production consistency', async () => {
   await withEnv(
     {
       PIVOTA_UI_CHAT_LLM_MODEL_GEMINI: 'gemini-3-flash-preview',
+      PIVOTA_GEMINI_UNIFIED_MODEL_ENABLED: 'true',
       AURORA_QA_MODEL_GEMINI: undefined,
       AURORA_ANALYSIS_STORY_MODEL_GEMINI: undefined,
       GEMINI_MODEL: undefined,
@@ -57,7 +58,7 @@ test('Aurora chat v2 llm_gateway uses configured Gemini 3 model instead of legac
       try {
         const result = await gateway._callGemini([{ role: 'user', content: 'hello' }], { mode: 'structured' });
         assert.equal(result.text, '{"ok":true}');
-        assert.match(String(capturedUrl || ''), /models\/gemini-3-flash-preview:generateContent/);
+        assert.match(String(capturedUrl || ''), /models\/gemini-2\.5-flash-preview:generateContent/);
         assert.doesNotMatch(String(capturedUrl || ''), /gemini-2\.0-flash/);
       } finally {
         global.fetch = originalFetch;

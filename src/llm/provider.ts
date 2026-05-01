@@ -777,8 +777,7 @@ export function createProviderFromEnv(purpose: "layer2_lookspec" | "generic" = "
       );
       const candidateModels = uniqueStrings([
         requestedModel,
-        "gemini-3-flash-preview",
-        "gemini-3-pro-preview",
+        NON_IMAGE_GEMINI_FLOOR_MODEL,
       ]);
 
       const apiVersions = ["v1beta", "v1"] as const;
