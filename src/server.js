@@ -11357,6 +11357,135 @@ function isWeakSeoulLocalSunscreenDisplayCandidate(product = {}, queryText = '')
   );
 }
 
+function beautyQueryNeedsGentleSensitiveSerum(queryText = '') {
+  const raw = String(queryText || '');
+  return (
+    (
+      /\b(sensitive|sensiti[sz]ed|reactive|stinging|burning|dry\s*sensitive|fragrance[-\s]?free|gentle|vitamin\s*c|l[-\s]?aa|brighten|brightening|dark\s*spot|alternative)\b/i.test(raw) ||
+      /敏感|刺痛|干敏|乾敏|无香精|無香精|温和|溫和|维\s*c|維\s*c|提亮|替代/.test(raw)
+    ) &&
+    (
+      /\b(serum|essence|ampoule|niacinamide|azelaic|tranexamic|vitamin\s*c|ascorbic|brighten|brightening)\b/i.test(raw) ||
+      /精华|精華|煙酰胺|烟酰胺|壬二酸|传明酸|傳明酸|提亮/.test(raw)
+    )
+  );
+}
+
+function isWeakSensitiveHighStrengthSerumDisplayCandidate(product = {}, queryText = '') {
+  if (!beautyQueryNeedsGentleSensitiveSerum(queryText)) return false;
+  const text = buildBeautyProductSafetyText(product, buildFallbackCandidateText(product));
+  if (!text) return false;
+  if (
+    !beautyProductMatchesFamily(product, 'serum') &&
+    !/\b(serum|essence|ampoule|niacinamide|azelaic|tranexamic|ascorbic|vitamin\s*c|brightening)\b/i.test(text)
+  ) {
+    return false;
+  }
+  const explicitFreeClaims = /\b(fragrance\s*free|unscented|no\s+fragrance|without\s+fragrance|alcohol\s*free|no\s+alcohol|without\s+alcohol)\b|无香精|無香精|无酒精|無酒精/i.test(text);
+  return (
+    /\b(niacinamide\s*(?:10|15|20)(?:\s*%|\b)|(?:10|15|20)(?:\s*%|\b)\s*niacinamide|zinc\s*1\s*%)\b/i.test(text) ||
+    /\b((?:l[-\s]?ascorbic|ascorbic\s+acid|vitamin\s*c).{0,24}(?:15|20|25)(?:\s*%|\b)|(?:15|20|25)(?:\s*%|\b).{0,24}(?:l[-\s]?ascorbic|ascorbic\s+acid|vitamin\s*c))\b/i.test(text) ||
+    (
+      /\b(alcohol\s*denat|denatured\s*alcohol|sd\s*alcohol|parfum|fragrance|essential\s*oil)\b|香精|香料|酒精/i.test(text) &&
+      !explicitFreeClaims &&
+      /\b(vitamin\s*c|ascorbic|brightening|active\s*serum)\b/i.test(text)
+    )
+  );
+}
+
+function beautyQueryNeedsPregnancySafeProduct(queryText = '') {
+  return (
+    /\b(pregnan\w*|pregnancy|trying\s*to\s*conceive|ttc|retinol[-\s]?free|retinoid[-\s]?free|avoid\s+retinoid|no\s+retinol)\b/i.test(String(queryText || '')) ||
+    /怀孕|懷孕|备孕|備孕|孕期|不要视黄醇|不含视黄醇|避开视黄醇/i.test(String(queryText || ''))
+  );
+}
+
+function isWeakPregnancyAntiAgingDisplayCandidate(product = {}, queryText = '') {
+  if (!beautyQueryNeedsPregnancySafeProduct(queryText)) return false;
+  if (!beautyProductMatchesFamily(product, 'serum') && !beautyProductMatchesFamily(product, 'moisturizer')) return false;
+  const text = buildBeautyProductSafetyText(product, buildFallbackCandidateText(product));
+  if (!text) return false;
+  const antiAgingSurface =
+    /\b(bouncy|firm|firming|lift|lifting|wrinkle|anti[-\s]?aging|anti[-\s]?ageing|collagen|elasticity|plump|plumping)\b|抗老|抗皱|抗皺|紧致|緊緻|提拉|胶原|膠原/i.test(text);
+  if (!antiAgingSurface) return false;
+  const pregnancyEvidence =
+    /\b(pregnancy[-\s]?safe|pregnancy[-\s]?friendly|retinol[-\s]?free|retinoid[-\s]?free|no\s+retinol|without\s+retinol)\b/i.test(text) ||
+    /\b(spf|sunscreen|azelaic|niacinamide\s*(?:2|3|4|5)(?:\s*%|\b)|peptide|ceramide|panthenol|barrier|repair|mineral\s+sunscreen)\b/i.test(text);
+  return !pregnancyEvidence;
+}
+
+function filterWeakBeautyQualityDisplayCandidates(products = [], queryText = '', minUsefulCount = 4) {
+  const list = Array.isArray(products) ? products : [];
+  if (list.length <= minUsefulCount) return list;
+  const filtered = list.filter(
+    (product) =>
+      !isWeakSensitiveHighStrengthSerumDisplayCandidate(product, queryText) &&
+      !isWeakPregnancyAntiAgingDisplayCandidate(product, queryText),
+  );
+  return filtered.length >= minUsefulCount ? filtered : list;
+}
+
+function buildBeautyProductDiversitySignature(product = {}, queryText = '') {
+  const text = buildFallbackCandidateText(product);
+  if (!text) return '';
+  if (!beautyProductMatchesFamily(product, 'moisturizer')) return '';
+  const barrierOrRepairQuery =
+    /\b(barrier|repair|moisturi[sz]er|cream|sensitive|travel|flight|dry)\b|屏障|修护|修護|保湿|保濕|面霜|敏感|旅行|飞行|飛行/i.test(String(queryText || ''));
+  if (!barrierOrRepairQuery) return '';
+  const clusters = [];
+  if (/\bceramide|神经酰胺|神經醯胺/i.test(text)) clusters.push('ceramide');
+  if (/\bpanthenol|b5|泛醇/i.test(text)) clusters.push('panthenol');
+  if (/\bcica|centella|madecassoside|积雪草|積雪草/i.test(text)) clusters.push('cica');
+  if (/\boat|oatmeal|colloidal|燕麦|燕麥/i.test(text)) clusters.push('oat');
+  if (/\bpeptide\b|胜肽|勝肽|肽/i.test(text)) clusters.push('peptide');
+  if (/\bhyaluronic|透明质酸|玻尿酸/i.test(text)) clusters.push('hyaluronic');
+  if (/\bgel\s*cream|water\s*cream|lightweight|lotion\b/i.test(text)) clusters.push('light');
+  if (/\brich|intense|balm|butter|heavy|occlusive\b/i.test(text)) clusters.push('rich');
+  if (clusters.length >= 2) return `moisturizer:${clusters.slice(0, 3).join('+')}`;
+  const title = canonicalizeBeautyProductTitleForDedupe(
+    [
+      product?.title,
+      product?.name,
+      product?.product_name,
+      product?.display_name,
+    ]
+      .map((value) => String(value || '').trim())
+      .filter(Boolean)
+      .join(' '),
+  )
+    .replace(/\b(face|facial|skin|skincare|moisturi[sz]er|cream|barrier|repair|daily|with|for|the|a|an)\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return title ? `moisturizer:title:${title.split(/\s+/).slice(0, 5).join(' ')}` : '';
+}
+
+function diversifyBeautyProductDisplayList(products = [], queryText = '', safeLimit = 20) {
+  const list = Array.isArray(products) ? products : [];
+  if (list.length <= 3) return list;
+  const limit = Math.max(1, Math.floor(Number(safeLimit) || 20));
+  const minUsefulCount = Math.min(4, limit);
+  const out = [];
+  const overflow = [];
+  const counts = new Map();
+  for (const product of list) {
+    const signature = buildBeautyProductDiversitySignature(product, queryText);
+    if (!signature) {
+      out.push(product);
+      continue;
+    }
+    const count = counts.get(signature) || 0;
+    if (count < 2) {
+      counts.set(signature, count + 1);
+      out.push(product);
+    } else {
+      counts.set(signature, count + 1);
+      overflow.push(product);
+    }
+  }
+  if (overflow.length === 0 || out.length < minUsefulCount) return list;
+  return [...out, ...overflow];
+}
+
 function polishBeautyProductRankingForDisplay(products = [], queryText = '', safeLimit = 20) {
   const list = Array.isArray(products) ? products : [];
   if (list.length <= 1) return list;
@@ -11372,15 +11501,30 @@ function polishBeautyProductRankingForDisplay(products = [], queryText = '', saf
   });
   const minUsefulCount = Math.min(4, limit);
   if (hasKBeautyLocalIntent(queryText)) {
-    const localPolished = polished.filter((product) => !isWeakSeoulLocalSunscreenDisplayCandidate(product, queryText));
-    if (localPolished.length >= minUsefulCount) return localPolished;
+    const localPolished = filterWeakBeautyQualityDisplayCandidates(
+      polished.filter((product) => !isWeakSeoulLocalSunscreenDisplayCandidate(product, queryText)),
+      queryText,
+      minUsefulCount,
+    );
+    if (localPolished.length >= minUsefulCount) {
+      return diversifyBeautyProductDisplayList(localPolished, queryText, limit);
+    }
   }
-  if (polished.length >= minUsefulCount) return polished;
+  const qualityPolished = filterWeakBeautyQualityDisplayCandidates(polished, queryText, minUsefulCount);
+  if (qualityPolished.length >= minUsefulCount) {
+    return diversifyBeautyProductDisplayList(qualityPolished, queryText, limit);
+  }
   if (hasKBeautyLocalIntent(queryText)) {
-    const localList = list.filter((product) => !isWeakSeoulLocalSunscreenDisplayCandidate(product, queryText));
-    if (localList.length >= minUsefulCount) return localList;
+    const localList = filterWeakBeautyQualityDisplayCandidates(
+      list.filter((product) => !isWeakSeoulLocalSunscreenDisplayCandidate(product, queryText)),
+      queryText,
+      minUsefulCount,
+    );
+    if (localList.length >= minUsefulCount) {
+      return diversifyBeautyProductDisplayList(localList, queryText, limit);
+    }
   }
-  return list;
+  return diversifyBeautyProductDisplayList(list, queryText, limit);
 }
 
 function balanceBeautyMainlineFamilyCoverage(products = [], intent = null, safeLimit = 20) {
