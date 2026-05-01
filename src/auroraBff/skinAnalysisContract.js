@@ -1489,6 +1489,34 @@ function normalizeReportInsightSeverity(cue, rawSeverity, { resolvedPriority, re
   return normalizedSeverity === 'high' ? 'moderate' : 'mild';
 }
 
+function defaultRegionForCue(cue) {
+  const token = normalizeCanonicalCue(cue);
+  if (token === 'redness') return 'cheeks';
+  if (token === 'shine' || token === 'pores') return 't_zone';
+  if (token === 'bumps') return 'chin';
+  return 'full_face';
+}
+
+function buildDeterministicSignalInsights({ primaryCues, resolvedPriority, reportContext } = {}) {
+  const candidates = [];
+  const addCue = (cue) => {
+    const normalizedCue = normalizeCanonicalCueStrict(cue);
+    if (!normalizedCue || candidates.includes(normalizedCue)) return;
+    candidates.push(normalizedCue);
+  };
+  for (const cue of Array.isArray(primaryCues) ? primaryCues : []) addCue(cue);
+  addCue(priorityToCanonicalCue(resolvedPriority || 'mixed'));
+  const concernRank = Array.isArray(reportContext && reportContext.concern_rank) ? reportContext.concern_rank : [];
+  for (const concern of concernRank) addCue(priorityToCanonicalCue(mapConcernTokenToPriority(concern)));
+  return candidates.slice(0, 2).map((cue) => ({
+    cue,
+    region: defaultRegionForCue(cue),
+    severity: normalizeReportInsightSeverity(cue, 'moderate', { resolvedPriority, reportContext }),
+    confidence: 'med',
+    evidence: `${cue} cue from photo-derived deterministic signals`,
+  }));
+}
+
 function selectDeterministicReportInsights(insights, { primaryCues, resolvedPriority, reportContext } = {}) {
   const structuredVisionCues = Array.isArray(reportContext && reportContext.vision_cues)
     ? reportContext.vision_cues
@@ -1519,10 +1547,12 @@ function selectDeterministicReportInsights(insights, { primaryCues, resolvedPrio
     });
   }
   if (kept.length >= 2) return kept;
-  return ranked.slice(0, Math.min(2, ranked.length)).map((row) => ({
+  const fallbackRanked = ranked.slice(0, Math.min(2, ranked.length)).map((row) => ({
     ...row,
     severity: normalizeReportInsightSeverity(row.cue, row.severity, { resolvedPriority, reportContext }),
   }));
+  if (fallbackRanked.length) return fallbackRanked;
+  return buildDeterministicSignalInsights({ primaryCues, resolvedPriority, reportContext });
 }
 
 function resolveReportSummaryFocus(summaryFocus, insights, reportContext) {
