@@ -112,11 +112,25 @@ test('buildTravelReadiness returns actionable structure with deltas and shopping
   assert.equal(spfPreview.pdp_open.merchant_id, 'm_paris');
   assert.match(spfPreview.reasons.join(' '), /AM\/outdoor SPF step/);
   assert.match(spfPreview.reasons.join(' '), /reapply based on outdoor exposure time/);
+  assert.match(spfPreview.trip_context_reason, /Pack this from San Francisco/i);
+  assert.equal(spfPreview.travel_purchase_bucket, 'pack_before_flight');
   const lipPreview = payload.shopping_preview.products.find((item) => item && item.product_id === 'sku_4');
   assert.match(lipPreview.reasons.join(' '), /Use on lips/);
   assert.match(lipPreview.reasons.join(' '), /do not treat a lip product as hand or body care/);
   assert.equal(/AM\/outdoor SPF step/.test(lipPreview.reasons.join(' ')), false);
   assert.ok(Array.isArray(payload.phase_plan));
+  assert.ok(Array.isArray(payload.travel_local_sections));
+  assert.deepEqual(payload.travel_local_sections.map((section) => section.id), [
+    'pack_before_flight',
+    'buy_in_destination',
+    'skip_avoid_during_trip',
+    'emergency_repair',
+  ]);
+  assert.equal(payload.travel_local_sections.find((section) => section.id === 'pack_before_flight').product_ids.includes('sku_2'), true);
+  assert.match(
+    payload.travel_local_sections.find((section) => section.id === 'skip_avoid_during_trip').actions.join(' '),
+    /strong acids|retinoids/i,
+  );
   assert.deepEqual(payload.phase_plan.map((phase) => phase.id), [
     'pre_trip_prepare',
     'flight_cabin',
@@ -210,6 +224,8 @@ test('buildTravelReadiness keeps destination-local products in local shopping on
 
   const cream = payload.shopping_preview.products.find((item) => item.product_id === 'kr_cream_1');
   assert.equal(cream.travel_usage_scope, 'local_shopping');
+  assert.equal(cream.travel_purchase_bucket, 'buy_in_destination');
+  assert.match(cream.trip_context_reason, /Seoul local repair\/moisturizer purchase|Seoul 当地/i);
   assert.match(cream.reasons.join(' '), /after arrival/i);
   assert.equal(/before boarding/i.test(cream.reasons.join(' ')), false);
 
@@ -260,6 +276,10 @@ test('buildTravelReadiness keeps packable and destination-local product scopes s
   assert.equal(daily.product_ids.includes('kr_spf_1'), false);
   assert.ok(localShopping.product_ids.includes('kr_spf_1'));
   assert.equal(localShopping.product_ids.includes('us_spf_1'), false);
+  const localSection = payload.travel_local_sections.find((section) => section.id === 'buy_in_destination');
+  assert.ok(localSection.product_ids.includes('kr_spf_1'));
+  assert.equal(localSection.product_ids.includes('us_spf_1'), false);
+  assert.match(localSection.actions.join(' '), /Seoul/i);
 });
 
 test('buildTravelReadiness uses product name before generic body-lip-hand category', () => {

@@ -1,5 +1,10 @@
 const { stripExternalSeedMarketingBannerPrefix } = require('./externalSeedMarketingText');
 const { buildRecoAuthorityAliasTokens } = require('./recoAlternativesAuthority');
+const {
+  buildLocalityRecallTokens,
+  hasLocalityFactsValue,
+  resolveExternalSeedLocalityFacts,
+} = require('./externalSeedLocalityFacts');
 
 const SYNTHETIC_SUMMARY_RE = /\bOFFICIAL:[\s\S]*\/\/\/\s*SOCIAL HIGHLIGHTS:/i;
 const TEMPLATE_PREFIX_RE = /^experience the ultimate luxury with\s+/i;
@@ -772,6 +777,8 @@ function buildExternalSeedRecallDoc({ row = {}, seedData = {}, snapshot = {} } =
   const templatePolluted = rawTextCandidates.some((item) => TEMPLATE_PREFIX_RE.test(item) || looksLikeRecallNoise(item));
   const ingredientTokens = normalizeIngredientTokens(seedData, snapshot, row);
   const searchAliases = collectRecallAliasInputs(seedData, snapshot, row);
+  const localityFacts = resolveExternalSeedLocalityFacts({ row, seedData, snapshot });
+  const localityTokens = buildLocalityRecallTokens(localityFacts);
   const protection = resolveExternalSeedProtectionContract({
     row,
     seedData,
@@ -787,12 +794,14 @@ function buildExternalSeedRecallDoc({ row = {}, seedData = {}, snapshot = {} } =
     category: category || null,
     vertical: vertical || null,
     ingredient_tokens: ingredientTokens,
+    locality_tokens: localityTokens,
     alias_tokens: buildAliasTokens({
       retrievalTitle: retrievalTitle || titleSource,
       category,
       brand,
-      searchAliases,
+      searchAliases: [...searchAliases, ...localityTokens],
     }),
+    ...(hasLocalityFactsValue(localityFacts) ? { locality_facts_v1: localityFacts } : {}),
     exclusion_flags: exclusionFlags,
     quality_signals: {
       template_polluted: Boolean(templatePolluted),

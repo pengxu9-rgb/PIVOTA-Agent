@@ -28,6 +28,10 @@ const {
   attachCommerceFactsToSeedRow,
   validateCommerceFactsGateForSeedRow,
 } = require('../src/commerce/commerceFacts');
+const {
+  applyLocalityFactsToSeedData,
+  resolveExternalSeedLocalityFacts,
+} = require('../src/services/externalSeedLocalityFacts');
 
 const DEFAULT_CATALOG_BASE_URL =
   process.env.CATALOG_INTELLIGENCE_BASE_URL ||
@@ -3058,7 +3062,7 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
   if (!nextPdpIngredientsRaw) delete nextSnapshot.pdp_ingredients_raw;
   if (!nextPdpActiveIngredientsRaw) delete nextSnapshot.pdp_active_ingredients_raw;
 
-  const nextSeedData = {
+  let nextSeedData = {
     ...seedData,
     title,
     ...(description ? { description } : {}),
@@ -3141,6 +3145,22 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     delete nextSeedData.snapshot.activeIngredients;
   }
   cleanupPersistedSeedData(nextSeedData, { clearSyntheticDescription: clearSyntheticLegacyDescription });
+  nextSeedData = applyLocalityFactsToSeedData(
+    nextSeedData,
+    resolveExternalSeedLocalityFacts({
+      row: {
+        ...row,
+        title,
+        canonical_url: representativeProductUrl || row?.canonical_url,
+        destination_url: destinationUrl || row?.destination_url,
+        price_currency: currency,
+        price_amount: priceAmount,
+        availability,
+      },
+      seedData: nextSeedData,
+      snapshot: ensureJsonObject(nextSeedData.snapshot),
+    }),
+  );
   const nextDerived = ensureJsonObject(nextSeedData.derived);
   nextSeedData.derived = {
     ...nextDerived,

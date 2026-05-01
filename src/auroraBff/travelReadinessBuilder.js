@@ -611,6 +611,140 @@ function normalizeTravelProductUsageScope(value) {
   return 'phase_products';
 }
 
+function destinationCityLabel(value) {
+  const text = normalizeText(value, 120);
+  if (!text) return '';
+  return text.split(',')[0].trim() || text;
+}
+
+function buildDestinationRiskPhrase(destination, language) {
+  const lang = String(language || '').toUpperCase() === 'CN' ? 'CN' : 'EN';
+  const destinationText = normalizeText(destination, 140).toLowerCase();
+  if (/\b(seoul|korea|south korea|busan)\b|首尔|首爾|韩国|韓國/.test(destinationText)) {
+    return t(
+      lang,
+      'Seoul 行程常见变量包括 UV、湿度变化、fine dust/城市污染、步行暴晒和口罩摩擦。',
+      'Seoul trips often involve UV, humidity shifts, fine dust/city pollution, walking sun exposure, and mask friction.',
+    );
+  }
+  if (/\b(bangkok|thailand)\b|曼谷|泰国|泰國/.test(destinationText)) {
+    return t(
+      lang,
+      '当地湿热、强 UV、出汗和频繁补涂会增加闷痘与防晒残留压力。',
+      'Heat, humidity, strong UV, sweat, and frequent SPF reapplication can raise congestion and residue pressure.',
+    );
+  }
+  if (/\b(reykjavik|iceland)\b|雷克雅未克|冰岛|冰島/.test(destinationText)) {
+    return t(
+      lang,
+      '冷风、低湿和长途飞行会放大紧绷、起皮和屏障压力。',
+      'Cold wind, low humidity, and long-haul flight conditions can amplify tightness, flaking, and barrier stress.',
+    );
+  }
+  return t(
+    lang,
+    '这次旅行会同时叠加飞行、当地通勤、UV 和作息变化，产品只按真实缺口使用。',
+    'This trip combines flight conditions, local transit, UV, and schedule changes, so use products only against real gaps.',
+  );
+}
+
+function buildTripContextReason({
+  language,
+  roleId,
+  category,
+  name,
+  usageScope,
+  destination,
+  originLabel,
+} = {}) {
+  const lang = String(language || '').toUpperCase() === 'CN' ? 'CN' : 'EN';
+  const role = normalizeText(roleId, 80).toLowerCase();
+  const cat = normalizeText(category, 120).toLowerCase();
+  const productName = normalizeText(name, 160).toLowerCase();
+  const haystack = `${role} ${cat} ${productName}`;
+  const city = destinationCityLabel(destination) || (lang === 'CN' ? '当地' : 'the destination');
+  const origin = destinationCityLabel(originLabel) || (lang === 'CN' ? '出发地' : 'home/departure city');
+  const localShoppingOnly = normalizeTravelProductUsageScope(usageScope) === 'local_shopping';
+  const destinationRisk = buildDestinationRiskPhrase(destination, lang);
+
+  if (/sun|spf|uv|sunscreen|防晒/.test(haystack)) {
+    return localShoppingOnly
+      ? t(
+          lang,
+          `适合在 ${city} 当地补买防晒：用于步行/户外通勤和较高 UV 下补涂；出发前仍先带已耐受 SPF。${destinationRisk}`,
+          `Good to review as a ${city} local SPF purchase: use it for walking/outdoor transit and higher-UV reapplication; still pack a tolerated SPF before leaving. ${destinationRisk}`,
+        )
+      : t(
+          lang,
+          `建议从 ${origin} 出发前带上：飞行后和当地白天都需要稳定防晒，避免落地后第一天才临时试新 SPF。`,
+          `Pack this from ${origin}: flight recovery and daytime local transit both need stable SPF coverage, so avoid relying on a brand-new SPF on day one after landing.`,
+        );
+  }
+  if (/cleanser|clean|洁面|卸妆/.test(haystack)) {
+    return localShoppingOnly
+      ? t(
+          lang,
+          `适合在 ${city} 当地按需补买温和洁面：晚间清洁防晒、汗和 fine dust/城市污染残留；飞行前后不要临时换强清洁。`,
+          `Good to review as a ${city} local gentle-cleanser purchase: use it at night for SPF, sweat, and fine-dust/city-pollution residue; do not switch to a strong cleanser around the flight.`,
+        )
+      : t(
+          lang,
+          `建议出发前带已耐受洁面：飞行和落地前 48 小时不要把清洁力突然加重，晚上重点洗净防晒和汗。`,
+          `Pack a cleanser you already tolerate: avoid increasing cleansing strength around the flight and first 48 hours; focus on removing SPF and sweat at night.`,
+        );
+  }
+  if (/moistur|barrier|cream|lotion|lightweight|保湿|乳液|面霜/.test(haystack)) {
+    return localShoppingOnly
+      ? t(
+          lang,
+          `适合在 ${city} 当地按需补买修护/保湿：用于落地前 48 小时和口罩摩擦后的屏障舒适度；机舱内仍优先用已带产品。`,
+          `Good to review as a ${city} local repair/moisturizer purchase: use it in the first 48 hours after landing and after mask friction; rely on packed tolerated care in-cabin.`,
+        )
+      : t(
+          lang,
+          `建议随身带已耐受保湿/修护：长途飞行机舱低湿会放大紧绷，落地前 48 小时先稳屏障再试新品。`,
+          `Pack a tolerated moisturizer/repair product: low cabin humidity can amplify tightness, and the first 48 hours after landing should stabilize barrier before new trials.`,
+        );
+  }
+  if (/serum|essence|ampoule|hydrat|补水|精华|安瓶/.test(haystack)) {
+    return localShoppingOnly
+      ? t(
+          lang,
+          `适合在 ${city} 当地只按缺口补轻量补水：用于飞行后干燥或户外日晒后的舒缓，不替代防晒和修护。`,
+          `Good to review locally in ${city} only if there is a hydration gap: use after flight dryness or outdoor sun days; it does not replace SPF or barrier repair.`,
+        )
+      : t(
+          lang,
+          `适合出发前带小包装且已耐受的补水层：用于机舱后和落地前 48 小时，不在旅途中叠加刺激性精华。`,
+          `Pack a small, tolerated hydration layer: use it after the cabin and in the first 48 hours, without stacking irritating serums during the trip.`,
+        );
+  }
+  if (/recovery_mask|mask|recovery|soothing|修护|舒缓|面膜/.test(haystack)) {
+    return localShoppingOnly
+      ? t(
+          lang,
+          `适合在 ${city} 当地作为应急修护可选项：只在已耐受且飞行后/高 UV 日后使用，不作为每日必需。`,
+          `Good to review locally in ${city} as optional emergency repair: use only if already tolerated after the flight or high-UV days, not as a daily requirement.`,
+        )
+      : t(
+          lang,
+          `适合作为飞行后应急修护备用：只带已耐受单片/小包装，避免旅行中突然试全新面膜。`,
+          `Use as a post-flight emergency repair backup: pack only a tolerated single/mini format and avoid trying a brand-new mask during the trip.`,
+        );
+  }
+  return localShoppingOnly
+    ? t(
+        lang,
+        `适合在 ${city} 当地只按真实缺口补买；不要和出发前已经带好的产品重复。${destinationRisk}`,
+        `Review locally in ${city} only for a real gap; do not duplicate products already packed. ${destinationRisk}`,
+      )
+    : t(
+        lang,
+        `建议从 ${origin} 出发前只带已耐受的小件，服务飞行和落地前 48 小时，不把旅行变成试新品窗口。`,
+        `Pack only tolerated small-format care from ${origin}; use it for the flight and first 48 hours, not as a new-product trial window.`,
+      );
+}
+
 function buildTravelProductUseReasons({ language, roleId, category, name, usageScope } = {}) {
   const role = normalizeText(roleId, 80).toLowerCase();
   const cat = normalizeText(category, 120).toLowerCase();
@@ -709,7 +843,11 @@ function buildTravelProductUseReasons({ language, roleId, category, name, usageS
   return [];
 }
 
-function normalizePreviewProducts(recommendationCandidates, language, { usageScope } = {}) {
+function normalizePreviewProducts(recommendationCandidates, language, {
+  usageScope,
+  destination,
+  originLabel,
+} = {}) {
   const out = [];
   for (const row of Array.isArray(recommendationCandidates) ? recommendationCandidates : []) {
     if (!isPlainObject(row)) continue;
@@ -742,6 +880,15 @@ function normalizePreviewProducts(recommendationCandidates, language, { usageSco
       ],
       3,
     );
+    const tripContextReason = buildTripContextReason({
+      language,
+      roleId,
+      category,
+      name,
+      usageScope: travelUsageScope,
+      destination,
+      originLabel,
+    });
 
     out.push({
       rank: out.length + 1,
@@ -760,6 +907,8 @@ function normalizePreviewProducts(recommendationCandidates, language, { usageSco
       display_mode: 'product_card',
       role_id: roleId,
       travel_usage_scope: travelUsageScope,
+      travel_purchase_bucket: travelUsageScope === 'local_shopping' ? 'buy_in_destination' : 'pack_before_flight',
+      trip_context_reason: tripContextReason || null,
       pdp_open: isPlainObject(row.pdp_open)
         ? row.pdp_open
         : {
@@ -1286,6 +1435,156 @@ function buildLocalShoppingProductActions(products, language, max = 4) {
   return uniqTravelPhaseActions(actions, max, 320);
 }
 
+function productIdsForTravelUsageScope(products, scope, max = 6) {
+  const targetScope = normalizeTravelProductUsageScope(scope);
+  const out = [];
+  const seen = new Set();
+  for (const product of Array.isArray(products) ? products : []) {
+    if (!isPlainObject(product) || !isGroundedPreviewProduct(product)) continue;
+    const productScope = normalizeTravelProductUsageScope(product.travel_usage_scope || product.travelUsageScope);
+    if (productScope !== targetScope) continue;
+    const id = normalizeText(product.product_id || product.productId, 120);
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    out.push(id);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+function productsForRoleIds(products, roleIds, max = 4) {
+  const wanted = new Set(uniqTravelRoles(roleIds, 12));
+  const out = [];
+  const seen = new Set();
+  for (const product of Array.isArray(products) ? products : []) {
+    if (!isPlainObject(product) || !isGroundedPreviewProduct(product)) continue;
+    const roleId = resolvePreviewProductRoleId(product);
+    if (!wanted.has(roleId)) continue;
+    const id = normalizeText(product.product_id || product.productId, 120);
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    out.push(product);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+function profileHasActive(profile, pattern) {
+  const values = [
+    profile && profile.currentRoutine,
+    profile && profile.current_routine,
+    profile && profile.current_actives,
+    profile && profile.currentActives,
+    profile && profile.actives,
+  ];
+  const text = values
+    .flatMap((value) => (Array.isArray(value) ? value : [value]))
+    .map((value) => (isPlainObject(value) ? JSON.stringify(value) : String(value || '')))
+    .join(' ');
+  return pattern.test(text);
+}
+
+function buildTravelLocalActionSections({
+  language,
+  destination,
+  originLabel,
+  profile,
+  previewProducts,
+  deltaVsHome,
+  jetlagSleep,
+} = {}) {
+  const lang = String(language || '').toUpperCase() === 'CN' ? 'CN' : 'EN';
+  const products = Array.isArray(previewProducts) ? previewProducts : [];
+  const destinationCity = destinationCityLabel(destination) || (lang === 'CN' ? '当地' : 'the destination');
+  const originCity = destinationCityLabel(originLabel) || (lang === 'CN' ? '出发地' : 'home/departure city');
+  const summaryTags = Array.isArray(deltaVsHome && deltaVsHome.summary_tags) ? deltaVsHome.summary_tags : [];
+  const hasHumidity = summaryTags.some((tag) => /humid|wetter|warmer/i.test(String(tag || '')));
+  const hasUv = summaryTags.some((tag) => /uv/i.test(String(tag || '')));
+  const jetlagHours = toNumber(jetlagSleep && jetlagSleep.hours_diff);
+  const longFlight = jetlagHours != null && jetlagHours >= 5;
+  const hasSalicylic = profileHasActive(profile, /salicylic|水杨酸|水楊酸|bha/i);
+  const hasVitaminC = profileHasActive(profile, /vitamin\s*c|ascorbic|维\s*c|維\s*c/i);
+  const packableProducts = products.filter((product) => !isLocalShoppingOnlyPreviewProduct(product));
+  const localProducts = products.filter(isLocalShoppingOnlyPreviewProduct);
+  const emergencyProducts = productsForRoleIds(products, ['lightweight_moisturizer', 'hydration_serum', 'recovery_mask', 'body_lip_hand'], 4);
+
+  const activeAction = hasSalicylic || hasVitaminC
+    ? t(
+        lang,
+        `出发前后把${[hasSalicylic ? '水杨酸' : '', hasVitaminC ? '维 C' : ''].filter(Boolean).join('、')}降频；飞行日和落地前 48 小时不要叠加强刺激。`,
+        `Reduce ${[hasSalicylic ? 'salicylic acid' : '', hasVitaminC ? 'vitamin C' : ''].filter(Boolean).join(' and ')} around departure; do not stack strong actives on flight day or during the first 48 hours.`,
+      )
+    : t(
+        lang,
+        '飞行日和落地前 48 小时不要新增强酸、强维 A 或高刺激精华。',
+        'Do not start strong acids, strong retinoids, or irritating serums on flight day or during the first 48 hours.',
+      );
+
+  return [
+    {
+      id: 'pack_before_flight',
+      title: t(lang, '出发前带', 'Pack before flight'),
+      timing: t(lang, `从 ${originCity} 出发前`, `Before leaving ${originCity}`),
+      actions: uniqTravelPhaseActions([
+        t(
+          lang,
+          '先带已耐受洁面、保湿/修护和防晒，避免落地第一天才临时试新品。',
+          'Pack tolerated cleanser, moisturizer/repair, and SPF first, rather than relying on new products after landing.',
+        ),
+        longFlight
+          ? t(lang, '长途飞行会放大机舱低湿带来的紧绷，登机前先用舒适保湿层。', 'Long-haul cabin dryness can amplify tightness, so apply a comfortable moisturizing layer before boarding.')
+          : t(lang, '飞行途中以低刺激保湿为主，不把机舱当作试新品场景。', 'Keep in-cabin care low-irritation and moisturizing; do not use the cabin as a new-product trial window.'),
+      ], 4, 260),
+      product_ids: productIdsForTravelUsageScope(packableProducts, 'phase_products', 4),
+    },
+    {
+      id: 'buy_in_destination',
+      title: t(lang, `在 ${destinationCity} 当地买`, `Buy in ${destinationCity}`),
+      timing: t(lang, '落地后按真实缺口补充', 'After landing, fill only real gaps'),
+      actions: uniqTravelPhaseActions([
+        localProducts.length
+          ? t(
+              lang,
+              `优先按 ${destinationCity} 的 UV、湿度、fine dust/城市污染、步行暴晒和口罩摩擦来补防晒、温和洁面或轻修护。`,
+              `Prioritize SPF, gentle cleanser, or light repair against ${destinationCity} UV, humidity, fine dust/city pollution, walking sun exposure, and mask friction.`,
+            )
+          : t(
+              lang,
+              `当前如果没有本地商品 authority，只按防晒、温和洁面、轻修护这些品类补缺口，不伪装具体单品。`,
+              `If local product authority is unavailable, shop only by category gaps such as SPF, gentle cleanser, and light repair; do not present unverified items as picks.`,
+            ),
+        t(lang, '已经从出发地带好的核心产品不要重复购买。', 'Do not duplicate core products already packed from home.'),
+      ], 4, 300),
+      product_ids: productIdsForTravelUsageScope(localProducts, 'local_shopping', 6),
+    },
+    {
+      id: 'skip_avoid_during_trip',
+      title: t(lang, '旅途中先避开', 'Skip / avoid during trip'),
+      timing: t(lang, '飞行日到落地前 48 小时', 'Flight day through the first 48 hours'),
+      actions: uniqTravelPhaseActions([
+        activeAction,
+        hasHumidity
+          ? t(lang, '如果当地偏湿热，先避开厚重封闭叠层和强清洁，减少闷痘与刺痛风险。', 'If the destination is humid/hot, avoid heavy occlusive layering and harsh cleansing to reduce congestion and stinging risk.')
+          : t(lang, '先避开突然加量的焕肤、强清洁和多活性叠加。', 'Avoid sudden exfoliation increases, harsh cleansing, and multi-active stacking.'),
+        hasUv
+          ? t(lang, '不要用“刷酸加速代谢”替代防晒；高 UV 日先保证补涂和物理遮挡。', 'Do not replace SPF with more exfoliation; on higher-UV days, prioritize reapplication and physical cover.')
+          : null,
+      ], 4, 280),
+      product_ids: [],
+    },
+    {
+      id: 'emergency_repair',
+      title: t(lang, '应急修护', 'Emergency repair'),
+      timing: t(lang, '紧绷、泛红、晒后或摩擦后', 'For tightness, redness, sun exposure, or friction'),
+      actions: uniqTravelPhaseActions([
+        t(lang, '出现刺痛、脱皮或泛红时，先暂停刺激活性，回到洁面 + 保湿/修护 + 防晒。', 'If stinging, flaking, or redness appears, pause irritating actives and return to cleanser + moisturizer/repair + SPF.'),
+        t(lang, '修护霜、补水舒缓面膜、润唇/手部小件只作为应急，不扩成大 routine。', 'Use repair cream, hydrating/soothing mask, and lip/hand care as emergency support, not as a larger routine.'),
+      ], 4, 280),
+      product_ids: emergencyProducts.map((product) => normalizeText(product.product_id || product.productId, 120)).filter(Boolean).slice(0, 4),
+    },
+  ];
+}
+
 function buildPhaseActionsFromRecoBundle(recoBundle, roleIds, max = 2) {
   const wanted = new Set(uniqTravelRoles(roleIds, 12));
   const out = [];
@@ -1718,6 +2017,8 @@ function buildTravelReadiness({
   const storeExamples = buildStoreExamples({ language: lang, destination: destinationText });
   const previewProductsFromCatalog = normalizePreviewProducts(recommendationCandidates, lang, {
     usageScope: recommendationCandidateScope,
+    destination: destinationText,
+    originLabel,
   });
   const previewProducts = previewProductsFromCatalog.length
     ? previewProductsFromCatalog
@@ -1734,6 +2035,15 @@ function buildTravelReadiness({
   const phasePlan = buildTravelPhasePlan({
     language: lang,
     recoBundle,
+    previewProducts,
+    deltaVsHome: { temperature, humidity, uv, wind, precip, summary_tags: summaryTags },
+    jetlagSleep,
+  });
+  const travelLocalSections = buildTravelLocalActionSections({
+    language: lang,
+    destination: destinationText,
+    originLabel,
+    profile,
     previewProducts,
     deltaVsHome: { temperature, humidity, uv, wind, precip, summary_tags: summaryTags },
     jetlagSleep,
@@ -1781,6 +2091,7 @@ function buildTravelReadiness({
     jetlag_sleep: jetlagSleep,
     reco_bundle: recoBundle,
     phase_plan: phasePlan,
+    travel_local_sections: travelLocalSections,
     categorized_kit: categorizedKit,
     store_examples: storeExamples,
     shopping_preview: {
@@ -1815,6 +2126,8 @@ module.exports = {
     normalizeCategoryGuidancePreviewProductsFromRecoBundle,
     buildCategorizedKit,
     buildTravelPhasePlan,
+    buildTravelLocalActionSections,
+    buildTripContextReason,
     getTimezoneOffsetHours,
     resolveTimezoneFromHints,
   },

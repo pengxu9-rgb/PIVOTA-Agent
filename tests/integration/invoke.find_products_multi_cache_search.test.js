@@ -56,6 +56,12 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
         process.env.PIVOT_BEAUTY_CREATOR_CURATION_RANKING_ENABLED,
       PIVOT_BEAUTY_CREATOR_COMMERCIAL_RANKING_ENABLED:
         process.env.PIVOT_BEAUTY_CREATOR_COMMERCIAL_RANKING_ENABLED,
+      PIVOT_CREATOR_RANKING_OVERLAY_ENABLED:
+        process.env.PIVOT_CREATOR_RANKING_OVERLAY_ENABLED,
+      PIVOT_CREATOR_LOCAL_CURATION_ENABLED:
+        process.env.PIVOT_CREATOR_LOCAL_CURATION_ENABLED,
+      PIVOT_CREATOR_COMMERCIAL_BOOST_ENABLED:
+        process.env.PIVOT_CREATOR_COMMERCIAL_BOOST_ENABLED,
     };
 
     process.env.PIVOTA_API_BASE = 'http://pivota.test';
@@ -74,6 +80,11 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     delete process.env.SEARCH_EVAL_INTERNAL_ONLY_UPSTREAM_DISABLED;
     delete process.env.SEARCH_EVAL_INTERNAL_ONLY_HEADER;
     delete process.env.SEARCH_EVAL_INTERNAL_ONLY_FORCE_NO_EARLY_DECISION;
+    delete process.env.PIVOT_BEAUTY_CREATOR_CURATION_RANKING_ENABLED;
+    delete process.env.PIVOT_BEAUTY_CREATOR_COMMERCIAL_RANKING_ENABLED;
+    delete process.env.PIVOT_CREATOR_RANKING_OVERLAY_ENABLED;
+    delete process.env.PIVOT_CREATOR_LOCAL_CURATION_ENABLED;
+    delete process.env.PIVOT_CREATOR_COMMERCIAL_BOOST_ENABLED;
     process.env.AURORA_BFF_PDP_HOTSET_PREWARM_ENABLED = 'false';
   });
 
@@ -205,6 +216,24 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     } else {
       process.env.PIVOT_BEAUTY_CREATOR_COMMERCIAL_RANKING_ENABLED =
         prevEnv.PIVOT_BEAUTY_CREATOR_COMMERCIAL_RANKING_ENABLED;
+    }
+    if (prevEnv.PIVOT_CREATOR_RANKING_OVERLAY_ENABLED === undefined) {
+      delete process.env.PIVOT_CREATOR_RANKING_OVERLAY_ENABLED;
+    } else {
+      process.env.PIVOT_CREATOR_RANKING_OVERLAY_ENABLED =
+        prevEnv.PIVOT_CREATOR_RANKING_OVERLAY_ENABLED;
+    }
+    if (prevEnv.PIVOT_CREATOR_LOCAL_CURATION_ENABLED === undefined) {
+      delete process.env.PIVOT_CREATOR_LOCAL_CURATION_ENABLED;
+    } else {
+      process.env.PIVOT_CREATOR_LOCAL_CURATION_ENABLED =
+        prevEnv.PIVOT_CREATOR_LOCAL_CURATION_ENABLED;
+    }
+    if (prevEnv.PIVOT_CREATOR_COMMERCIAL_BOOST_ENABLED === undefined) {
+      delete process.env.PIVOT_CREATOR_COMMERCIAL_BOOST_ENABLED;
+    } else {
+      process.env.PIVOT_CREATOR_COMMERCIAL_BOOST_ENABLED =
+        prevEnv.PIVOT_CREATOR_COMMERCIAL_BOOST_ENABLED;
     }
     if (prevEnv.CREATOR_CATALOG_CACHE_TTL_SECONDS === undefined) {
       delete process.env.CREATOR_CATALOG_CACHE_TTL_SECONDS;
@@ -4974,6 +5003,9 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       pa_rating: 'PA++++',
       texture: 'fluid',
     });
+    expect(resp.body.products[0]?.travel_purchase_bucket).toBe('buy_in_destination');
+    expect(resp.body.products[0]?.trip_context_reason).toMatch(/Seoul local reason|Seoul 当地购买理由/);
+    expect(resp.body.products[0]?.trip_context_reason).toMatch(/UV|walking|步行|补涂|reapplication/i);
     expect(upstreamSearch.isDone()).toBe(false);
   });
 
@@ -5125,7 +5157,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(upstreamSearch.isDone()).toBe(false);
   });
 
-  test('creator beauty ranking applies curation overlay after shared safety and class gates', async () => {
+  function mockCreatorBeautyOverlaySeedRows() {
     jest.doMock('../../src/db', () => ({
       query: async (sql) => {
         const text = String(sql || '');
@@ -5211,19 +5243,10 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
         return { rows: [] };
       },
     }));
+  }
 
-    const upstreamSearch = nock('http://pivota.test')
-      .get('/agent/v1/products/search')
-      .query(true)
-      .reply(200, {
-        status: 'success',
-        success: true,
-        products: [],
-        total: 0,
-      });
-
-    const app = require('../../src/server');
-    const resp = await request(app)
+  async function postCreatorBeautyOverlayRequest(app) {
+    return request(app)
       .post('/agent/creator/v1/invoke')
       .send({
         operation: 'find_products_multi',
@@ -5242,11 +5265,77 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
           market: 'US',
         },
       });
+  }
+
+  test('creator beauty ranking defaults to no-op overlay after shared safety and class gates', async () => {
+    mockCreatorBeautyOverlaySeedRows();
+
+    const upstreamSearch = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+      });
+
+    const app = require('../../src/server');
+    const resp = await postCreatorBeautyOverlayRequest(app);
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.metadata?.query_source).toBe('agent_products_creator_beauty_external_seed_mainline');
+    expect(resp.body.metadata?.creator_rank_overlay).toMatchObject({
+      applied: false,
+      mode: 'no_op',
+      overlay_enabled: false,
+      local_curation_enabled: false,
+      commercial_boost_enabled: false,
+      safety_and_class_gate_precedes_overlay: true,
+      overlay_skipped_reason: 'overlay_disabled',
+    });
+    expect(resp.body.products[0]?.product_id).toBe('ext_generic_barrier');
+    expect(resp.body.products[0]?.creator_rank).toMatchObject({
+      creator_inventory_match: false,
+      creator_boost_applied: false,
+      commercial_boost_applied: false,
+      overlay_skipped_reason: 'overlay_disabled',
+    });
+    expect(resp.body.products.find((product) => product.product_id === 'ext_creator_barrier')?.creator_rank)
+      .toMatchObject({
+        creator_boost_applied: false,
+        overlay_skipped_reason: 'overlay_disabled',
+      });
+    expect(resp.body.products.map((product) => product.product_id)).toContain('ext_generic_barrier');
+    expect(resp.body.products.map((product) => product.product_id)).not.toContain('ext_retinol_cream');
+    expect(upstreamSearch.isDone()).toBe(false);
+  });
+
+  test('creator beauty ranking applies curation overlay only after explicit opt-in', async () => {
+    process.env.PIVOT_CREATOR_RANKING_OVERLAY_ENABLED = 'true';
+    process.env.PIVOT_CREATOR_LOCAL_CURATION_ENABLED = 'true';
+    mockCreatorBeautyOverlaySeedRows();
+
+    const upstreamSearch = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+      });
+
+    const app = require('../../src/server');
+    const resp = await postCreatorBeautyOverlayRequest(app);
 
     expect(resp.status).toBe(200);
     expect(resp.body.metadata?.query_source).toBe('agent_products_creator_beauty_external_seed_mainline');
     expect(resp.body.metadata?.creator_rank_overlay).toMatchObject({
       applied: true,
+      mode: 'curation_rank_overlay',
+      overlay_enabled: true,
+      local_curation_enabled: true,
       commercial_boost_enabled: false,
       safety_and_class_gate_precedes_overlay: true,
     });
@@ -5255,6 +5344,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       creator_inventory_match: true,
       creator_boost_applied: true,
       commercial_boost_applied: false,
+      overlay_skipped_reason: null,
     });
     expect(resp.body.products.map((product) => product.product_id)).toContain('ext_generic_barrier');
     expect(resp.body.products.map((product) => product.product_id)).not.toContain('ext_retinol_cream');

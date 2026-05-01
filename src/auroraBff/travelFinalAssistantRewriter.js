@@ -170,6 +170,8 @@ function compactGroundedShoppingProduct(product) {
     category: normalizeText(row.category, 80) || null,
     role_id: normalizeText(row.role_id || row.roleId, 80) || null,
     travel_usage_scope: normalizeText(row.travel_usage_scope || row.travelUsageScope, 80) || null,
+    travel_purchase_bucket: normalizeText(row.travel_purchase_bucket || row.travelPurchaseBucket, 80) || null,
+    trip_context_reason: normalizeText(row.trip_context_reason || row.tripContextReason, 260) || null,
     price: normalizeNumber(row.price),
     currency: normalizeText(row.currency, 12) || null,
     reasons,
@@ -229,6 +231,26 @@ function compactTravelActionContextForFinalRewrite(travelReadiness) {
         coverage_status: normalizeText(row.coverage_status || row.coverageStatus, 80) || null,
       };
     }, 5),
+    travel_local_sections: compactArrayRows(readiness.travel_local_sections, (raw) => {
+      const row = isPlainObject(raw) ? raw : {};
+      const productIds = Array.isArray(row.product_ids || row.productIds)
+        ? (row.product_ids || row.productIds).map((line) => normalizeText(line, 120)).filter(Boolean).slice(0, 8)
+        : [];
+      const products = productIds
+        .map((productId) => groundedProductsById.get(productId))
+        .filter(Boolean)
+        .map(stripPromptOnlyProductIdentity)
+        .slice(0, normalizeText(row.id, 80) === 'buy_in_destination' ? 5 : 2);
+      return {
+        id: normalizeText(row.id, 80) || null,
+        title: normalizeText(row.title, 120) || null,
+        timing: normalizeText(row.timing, 120) || null,
+        actions: Array.isArray(row.actions)
+          ? row.actions.map((line) => normalizePromptSentence(line, 280)).filter(Boolean).slice(0, 4)
+          : [],
+        ...(products.length ? { grounded_products: products } : {}),
+      };
+    }, 4),
     ...(!hasPhasePlan
       ? {
           travel_kit_plan: compactArrayRows(readiness.reco_bundle, (raw) => {
@@ -281,6 +303,8 @@ function compactShoppingForFinalRewrite(travelReadiness) {
         currency: normalizeText(product.currency, 12) || null,
         product_source: normalizeText(product.product_source || product.productSource, 80) || null,
         travel_usage_scope: normalizeText(product.travel_usage_scope || product.travelUsageScope, 80) || null,
+        travel_purchase_bucket: normalizeText(product.travel_purchase_bucket || product.travelPurchaseBucket, 80) || null,
+        trip_context_reason: normalizeText(product.trip_context_reason || product.tripContextReason, 260) || null,
         display_mode: normalizeText(product.display_mode || product.displayMode, 80) || null,
       };
     }).filter((row) => row.name),
@@ -327,6 +351,7 @@ function buildTravelFinalRewriteRequiredChecklist(promptInput) {
   }
   if (quality.hasFlightOrJetlagFacts) {
     push('travel_phases', 'Use the phased order when available: before departure, flight/cabin, first 48 hours after landing, daily while there, and local shopping.');
+    push('travel_local_split', 'If travel_local_sections exists, visibly include Pack before flight, Buy in destination, Skip / avoid during trip, and Emergency repair sections using the localized section titles.');
   }
   if (quality.needsUvCare) {
     push('uv_care', 'Mention sunscreen/SPF and reapplication logic for outdoor exposure.');

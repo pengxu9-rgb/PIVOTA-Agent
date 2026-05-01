@@ -145,6 +145,15 @@ function uniqStrings(values, max = 24) {
   return out;
 }
 
+function normalizeMarketList(values) {
+  return uniqStrings(
+    (Array.isArray(values) ? values : [])
+      .map((value) => normalizeMarket(value))
+      .filter(Boolean),
+    16,
+  );
+}
+
 function resolveTravelLocalMarket({ destination, destinationPlace } = {}) {
   const place = isPlainObject(destinationPlace) ? destinationPlace : {};
   const countryCode = normalizeMarket(place.country_code || place.countryCode);
@@ -294,6 +303,9 @@ function scoreProductForRole(product, roleId) {
   for (const pattern of ROLE_RANKING_PENALTY_MATCHERS[roleId] || []) {
     if (pattern.test(titleText)) score -= 8;
   }
+  const market = normalizeMarket(product?.market);
+  if (market && hasTravelLocalCatalogAuthority(product, market)) score += 14;
+  if (product?.travel_size === true) score += 3;
   if (product?.image_url) score += 1;
   if (Number(product?.price || 0) > 0) score += 1;
   return score;
@@ -301,10 +313,23 @@ function scoreProductForRole(product, roleId) {
 
 function productAuthorityText(product) {
   const recall = isPlainObject(product?.external_seed_recall) ? product.external_seed_recall : {};
+  const locality = isPlainObject(product?.locality_facts_v1)
+    ? product.locality_facts_v1
+    : isPlainObject(product?.locality_facts)
+      ? product.locality_facts
+      : isPlainObject(recall.locality_facts_v1)
+        ? recall.locality_facts_v1
+        : {};
   const aliases = Array.isArray(recall.alias_tokens)
     ? recall.alias_tokens
     : Array.isArray(recall.aliases)
       ? recall.aliases
+      : [];
+  const localityTokens = Array.isArray(recall.locality_tokens) ? recall.locality_tokens : [];
+  const retailChannels = Array.isArray(locality.local_retail_channels)
+    ? locality.local_retail_channels
+    : Array.isArray(product?.local_retail_channels)
+      ? product.local_retail_channels
       : [];
   return [
     product?.title,
@@ -317,6 +342,12 @@ function productAuthorityText(product) {
     recall.retrieval_summary,
     recall.category,
     recall.vertical,
+    product?.brand_origin_country,
+    product?.brand_home_market,
+    ...(Array.isArray(product?.available_markets) ? product.available_markets : []),
+    ...(Array.isArray(product?.local_purchase_markets) ? product.local_purchase_markets : []),
+    ...retailChannels.map((channel) => [channel?.channel, channel?.market].filter(Boolean).join(' ')),
+    ...localityTokens,
     ...aliases,
   ].map((value) => normalizeText(value, 260).toLowerCase()).filter(Boolean).join(' ');
 }
@@ -396,6 +427,33 @@ function isMarketCurrencyCompatibleProduct(product, market) {
   return !getMarketCurrencyMismatchReason(product, market);
 }
 
+function getLocalityFacts(product) {
+  const recall = isPlainObject(product?.external_seed_recall) ? product.external_seed_recall : {};
+  if (isPlainObject(product?.locality_facts_v1)) return product.locality_facts_v1;
+  if (isPlainObject(product?.locality_facts)) return product.locality_facts;
+  if (isPlainObject(recall.locality_facts_v1)) return recall.locality_facts_v1;
+  return {};
+}
+
+function hasTravelLocalCatalogAuthority(product, market) {
+  const targetMarket = normalizeMarket(market);
+  if (!targetMarket) return false;
+  const facts = getLocalityFacts(product);
+  const purchaseMarkets = normalizeMarketList([
+    ...(Array.isArray(product?.local_purchase_markets) ? product.local_purchase_markets : []),
+    ...(Array.isArray(facts.local_purchase_markets) ? facts.local_purchase_markets : []),
+  ]);
+  if (purchaseMarkets.includes(targetMarket)) return true;
+  const channels = [
+    ...(Array.isArray(product?.local_retail_channels) ? product.local_retail_channels : []),
+    ...(Array.isArray(facts.local_retail_channels) ? facts.local_retail_channels : []),
+  ];
+  if (channels.some((channel) => normalizeMarket(channel?.market) === targetMarket)) return true;
+  const productMarket = normalizeMarket(product?.market);
+  const brandHomeMarket = normalizeMarket(product?.brand_home_market || facts.brand_home_market);
+  return Boolean(productMarket && productMarket === targetMarket && brandHomeMarket === targetMarket);
+}
+
 function normalizeDropSample({ row, product, reason } = {}) {
   const seedData = isPlainObject(row?.seed_data) ? row.seed_data : {};
   const snapshot = isPlainObject(seedData.snapshot) ? seedData.snapshot : {};
@@ -444,6 +502,10 @@ function normalizeAuthorityCandidate(product, role) {
     reasons: uniqStrings([
       `Local catalog authority match for ${role.label.toLowerCase()}.`,
       category ? `Category: ${category}.` : null,
+      hasTravelLocalCatalogAuthority(product, product?.market)
+        ? (product.creator_local_reason || `Catalog has local purchase authority for ${normalizeMarket(product?.market)}.`)
+        : null,
+      product.travel_size === true ? 'Travel-size evidence is present in the catalog seed.' : null,
     ].filter(Boolean), 3),
     source: 'external_seed',
     product_source: 'catalog',
@@ -686,5 +748,6 @@ module.exports = {
     getMarketCurrencyMismatchReason,
     normalizeDropSample,
     scoreProductForRole,
+    hasTravelLocalCatalogAuthority,
   },
 };

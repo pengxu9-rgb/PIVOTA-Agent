@@ -758,7 +758,8 @@ function buildCompactDeterministicTravelAssistantText({ language = 'EN', followu
   );
 }
 
-function formatTravelDeltaBrief(travelReadiness) {
+function formatTravelDeltaBrief(travelReadiness, language = 'EN') {
+  const lang = normalizeLang(language);
   const readiness = isPlainObject(travelReadiness) ? travelReadiness : {};
   const delta = isPlainObject(readiness.delta_vs_home)
     ? readiness.delta_vs_home
@@ -778,7 +779,10 @@ function formatTravelDeltaBrief(travelReadiness) {
     const unit = normalizeText(row.unit, 12);
     parts.push(`${label}: ${home}${unit} -> ${destination}${unit}`);
   }
-  return parts.length ? `Climate shift: ${parts.join(' · ')}.` : '';
+  if (!parts.length) return '';
+  return lang === 'CN'
+    ? `气候差异：${parts.join(' · ')}。`
+    : `Climate shift: ${parts.join(' · ')}.`;
 }
 
 function buildCompactTravelPhaseAssistantText({ language = 'EN', travelReadiness = null } = {}) {
@@ -798,9 +802,66 @@ function buildCompactTravelPhaseAssistantText({ language = 'EN', travelReadiness
     productById.set(id, product);
   }
 
+  const formatProductLine = (product) => {
+    const row = isPlainObject(product) ? product : {};
+    const name = normalizeText(row.name || row.display_name || row.title, 120);
+    const brand = normalizeText(row.brand, 80);
+    if (!name) return '';
+    const head = brand && !name.toLowerCase().includes(brand.toLowerCase()) ? `${brand} ${name}` : name;
+    const reason =
+      normalizeText(row.trip_context_reason || row.travel_context_reason, 260) ||
+      (Array.isArray(row.reasons) ? normalizeText(row.reasons[0], 220) : '');
+    if (!reason) return head;
+    return `${head}: ${reason}`;
+  };
+
   const lines = [];
-  const climateBrief = formatTravelDeltaBrief(readiness);
+  const destinationContext = isPlainObject(readiness.destination_context) ? readiness.destination_context : {};
+  const originContext = isPlainObject(readiness.origin_context) ? readiness.origin_context : {};
+  const destinationLabel = normalizeText(destinationContext.destination, 120);
+  const originLabel = normalizeText(originContext.label, 120);
+  const startDate = normalizeText(destinationContext.start_date, 24);
+  const endDate = normalizeText(destinationContext.end_date, 24);
+  if (destinationLabel || originLabel || startDate || endDate) {
+    const route = [originLabel, destinationLabel].filter(Boolean).join(' -> ');
+    const dates = [startDate, endDate].filter(Boolean).join(' to ');
+    if (lang === 'CN') {
+      lines.push(`行程：${route || destinationLabel}${dates ? `（${dates}）` : ''}。`);
+    } else {
+      lines.push(`Trip: ${route || destinationLabel}${dates ? ` (${dates})` : ''}.`);
+    }
+  }
+  const climateBrief = formatTravelDeltaBrief(readiness, language);
   if (climateBrief) lines.push(climateBrief);
+
+  const localSections = Array.isArray(readiness.travel_local_sections)
+    ? readiness.travel_local_sections.filter(isPlainObject)
+    : [];
+  if (localSections.length) {
+    lines.push(lang === 'CN' ? '按旅行场景分栏：' : 'Use this travel-specific split:');
+    for (const rawSection of localSections.slice(0, 4)) {
+      const section = isPlainObject(rawSection) ? rawSection : {};
+      const title = normalizeText(section.title, 100) || normalizeText(section.id, 80);
+      const actions = Array.isArray(section.actions)
+        ? section.actions.map((value) => normalizeText(value, 260)).filter(Boolean).slice(0, 2)
+        : [];
+      const productsForSection = Array.isArray(section.product_ids)
+        ? section.product_ids
+            .map((id) => productById.get(normalizeText(id, 120)))
+            .filter(isPlainObject)
+            .slice(0, section.id === 'buy_in_destination' ? 3 : 2)
+        : [];
+      const bullets = [...actions];
+      for (const product of productsForSection) {
+        const productLine = formatProductLine(product);
+        if (productLine) bullets.push(productLine);
+      }
+      if (!bullets.length) continue;
+      lines.push(`${title}:\n${bullets.slice(0, 4).map((line) => `- ${line}`).join('\n')}`);
+    }
+    return normalizeText(lines.join('\n\n'), 3000);
+  }
+
   lines.push(lang === 'CN' ? '按阶段执行：' : 'Use this as a phased travel skincare plan:');
 
   const fallbackTitle = {
@@ -838,10 +899,17 @@ function buildCompactTravelPhaseAssistantText({ language = 'EN', travelReadiness
     if (why) bullets.push(why);
     if (actions[0]) bullets.push(actions[0]);
     if (productText) {
+      const productReason = phaseProducts
+        .map((product) => normalizeText(product.trip_context_reason || product.travel_context_reason, 220))
+        .find(Boolean);
       bullets.push(
         phase.id === 'local_shopping'
-          ? `Grounded local options: ${productText}.`
-          : `Relevant packable option(s): ${productText}.`,
+          ? (lang === 'CN'
+              ? `本地已验证候选：${productText}${productReason ? `；${productReason}` : ''}。`
+              : `Grounded local options: ${productText}${productReason ? `; ${productReason}` : ''}.`)
+          : (lang === 'CN'
+              ? `出发前/飞行相关候选：${productText}${productReason ? `；${productReason}` : ''}。`
+              : `Relevant packable option(s): ${productText}${productReason ? `; ${productReason}` : ''}.`),
       );
     }
     if (!bullets.length) continue;
@@ -2099,7 +2167,12 @@ async function runTravelPipeline(input = {}) {
     language === 'CN'
       ? '我先按当前可得信息给你旅行护肤建议。'
       : 'Here is a practical travel skincare plan based on currently available data.';
+  const travelPhaseAssistantText =
+    (packableProductAuthorityTriggered || localProductAuthorityTriggered || recoTriggeredByMessage || storeTriggeredByMessage)
+      ? buildCompactTravelPhaseAssistantText({ language, travelReadiness })
+      : '';
   let assistantText =
+    travelPhaseAssistantText ||
     buildCompactDeterministicTravelAssistantText({ language, followupReply }) ||
     defaultAssistantText;
   const appendAssistantBlockIfFits = (block, { visibleBudget = 2600 } = {}) => {

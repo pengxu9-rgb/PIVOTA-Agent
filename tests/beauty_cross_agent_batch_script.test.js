@@ -236,7 +236,7 @@ describe('beauty cross-agent batch runner', () => {
           '--delay-ms',
           '0',
           '--agent-api-key',
-          'ak_live_local',
+          'agent_key_local_test',
         ],
         {
           cwd: repoRoot,
@@ -387,5 +387,93 @@ describe('beauty cross-agent batch runner', () => {
 
     expect(safe.pass).toBe(true);
     expect(unsafe.pass).toBe(false);
+  });
+
+  test('checks response language against requested language', () => {
+    const { evaluateResponseLanguageMatch } = require('../scripts/run_beauty_cross_agent_batch.cjs');
+
+    expect(evaluateResponseLanguageMatch({
+      expectedLanguage: 'CN',
+      text: '行程：Seattle -> Seoul。出发前带已耐受洁面、防晒和修护，飞行中重点保湿。',
+    }).pass).toBe(true);
+
+    expect(evaluateResponseLanguageMatch({
+      expectedLanguage: 'CN',
+      text: 'Trip: Seattle to Seoul. Pack sunscreen and moisturizer before flight.',
+    }).pass).toBe(false);
+
+    expect(evaluateResponseLanguageMatch({
+      expectedLanguage: 'EN',
+      text: 'Trip: Seattle to Seoul. Pack sunscreen and moisturizer before the flight.',
+    }).pass).toBe(true);
+  });
+
+  test('scores travel-local quality across assistant text and product authority', () => {
+    const {
+      evaluateTravelLocalQuality,
+      evaluateProductRelevance,
+    } = require('../scripts/run_beauty_cross_agent_batch.cjs');
+    const queryDef = {
+      query: 'Seoul local skincare sunscreen',
+      target_terms: ['sunscreen', 'spf'],
+      min_relevant_top6: 2,
+      travel_local_quality: {
+        min_local_or_travel_authority_top6: 2,
+        require_trip_context_reason: true,
+      },
+    };
+    const products = [
+      {
+        title: 'Round Lab SPF 50 Sunscreen',
+        raw: {
+          product_class: 'sunscreen',
+          trip_context_reason: 'Seoul local reason: use for local UV and walking sun exposure.',
+          local_authority: { brand_home_market: 'KR', local_purchase_markets: ['KR'] },
+        },
+      },
+      {
+        title: 'Beauty of Joseon SPF 50 Sunscreen',
+        raw: {
+          product_class: 'sunscreen',
+          trip_context_reason: 'Seoul local reason: use for local UV and reapplication.',
+          local_authority: { brand_home_market: 'KR' },
+        },
+      },
+    ];
+    const assessment = evaluateProductRelevance(queryDef, products);
+    expect(assessment.pass).toBe(true);
+    expect(assessment.travel_local_quality.local_or_travel_authority_top6).toBe(2);
+
+    const caseAssessment = evaluateTravelLocalQuality(
+      {
+        travel_local_quality: {
+          origin_terms: ['Seattle'],
+          destination_terms: ['Seoul'],
+          date_terms: ['2026-05-20'],
+          flight_risk_groups: [['机舱', 'cabin'], ['干燥', 'dry']],
+          destination_risk_groups: [['UV'], ['fine dust', '城市污染'], ['步行', 'walking'], ['口罩', 'mask']],
+          section_groups: [['出发前'], ['在 Seoul 当地买'], ['避开'], ['应急修护']],
+        },
+      },
+      [
+        {
+          agent: 'aurora_chat',
+          assistant_text: [
+            '行程：Seattle -> Seoul（2026-05-20 到 2026-05-27）。',
+            '机舱干燥会放大紧绷，Seoul 的 UV、fine dust/城市污染、步行暴晒和口罩摩擦都要考虑。',
+            '出发前带：洁面、防晒、修护。',
+            '在 Seoul 当地买：按缺口补防晒。',
+            '旅途中先避开：不要叠加强刺激。',
+            '应急修护：刺痛泛红先停活性。',
+          ].join('\n'),
+        },
+        {
+          agent: 'shopping',
+          step_id: 'shopping_1',
+          product_assessment: assessment,
+        },
+      ],
+    );
+    expect(caseAssessment.pass).toBe(true);
   });
 });
