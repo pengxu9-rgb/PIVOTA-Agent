@@ -131,6 +131,10 @@ function summarizeEnvelope(body) {
       body && body.analysis_meta ? body.analysis_meta.ingredient_plan_product_recovery_skipped === true : false,
     ingredient_plan_product_recovery_skipped_reason:
       body && body.analysis_meta ? body.analysis_meta.ingredient_plan_product_recovery_skipped_reason || null : null,
+    photo_modules_product_enrichment_deferred:
+      body && body.analysis_meta ? body.analysis_meta.photo_modules_product_enrichment_deferred === true : false,
+    photo_modules_product_enrichment_deferred_reason:
+      body && body.analysis_meta ? body.analysis_meta.photo_modules_product_enrichment_deferred_reason || null : null,
   };
 }
 
@@ -154,6 +158,7 @@ function assertStrictPhotoAnalysis(summary, label) {
   assertCondition(summary.report_stage_outcome === 'success', `${label} report stage must be success`);
   assertCondition(summary.product_lookup_fallback_used !== true, `${label} analysis must not adopt product lookup fallback`);
   assertCondition(summary.ingredient_plan_products_recovery_used !== true, `${label} analysis must not adopt ingredient-plan product recovery as success`);
+  assertCondition(summary.photo_modules_product_enrichment_deferred === true, `${label} analysis must defer photo-module product enrichment`);
 }
 
 function redactedStep(name, result, extra = {}) {
