@@ -1581,6 +1581,144 @@ test('/v1/chat: English Seoul travel question stays in English', async () => {
   );
 });
 
+test('/v1/chat: beauty contract handles active overstacking before slow intent routing', async () => {
+  await withEnv(
+    {
+      PIVOT_BEAUTY_CONTRACT_V1_ENABLED: 'true',
+      OPENAI_API_KEY: '',
+    },
+    async () => {
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+      const app = express();
+      app.use(express.json({ limit: '1mb' }));
+      mountAuroraBffRoutes(app, { logger: null });
+
+      const first = await supertest(app)
+        .post('/v1/chat')
+        .set({
+          'X-Aurora-UID': 'test_uid_beauty_active_contract',
+          'X-Trace-ID': 'test_trace',
+          'X-Brief-ID': 'test_brief',
+          'X-Lang': 'CN',
+        })
+        .send({
+          message: '油痘肌，手里有 BPO、水杨酸、维 C、视黄醇，想都用上。',
+          language: 'CN',
+          session: {
+            case_id: 'routine_active_conflict_acne',
+            profile: {
+              skinType: 'oily_acne_prone',
+              sensitivity: 'medium',
+              barrierStatus: 'irritated',
+              current_actives: ['BPO', 'salicylic_acid', 'vitamin_c', 'retinol'],
+            },
+          },
+        })
+        .expect(200);
+
+      const firstAssistant = String(first.body?.assistant_message?.content || '');
+      assert.match(firstAssistant, /不要全部叠加|先不要全部叠加/);
+      assert.match(firstAssistant, /BPO/);
+      assert.match(firstAssistant, /水杨酸/);
+      assert.match(firstAssistant, /视黄醇/);
+      assert.match(firstAssistant, /防晒|SPF/);
+      assert.equal(first.body?.session_patch?.meta?.pivot_contract_version, 'pivot.agent.v1');
+      assert.equal(first.body?.session_patch?.meta?.route_authority, 'aurora_chat');
+
+      const second = await supertest(app)
+        .post('/v1/chat')
+        .set({
+          'X-Aurora-UID': 'test_uid_beauty_active_contract',
+          'X-Trace-ID': 'test_trace',
+          'X-Brief-ID': 'test_brief',
+          'X-Lang': 'CN',
+        })
+        .send({
+          message: '昨晚用了酸今天刺痛泛红，今晚还能上视黄醇吗？',
+          language: 'CN',
+          session: {
+            case_id: 'routine_active_conflict_acne',
+            profile: {
+              skinType: 'oily_acne_prone',
+              sensitivity: 'medium',
+              barrierStatus: 'irritated',
+              current_actives: ['BPO', 'salicylic_acid', 'vitamin_c', 'retinol'],
+            },
+          },
+        })
+        .expect(200);
+
+      const secondAssistant = String(second.body?.assistant_message?.content || '');
+      assert.match(secondAssistant, /今晚不要上视黄醇/);
+      assert.match(secondAssistant, /暂停|不要继续|先按屏障/);
+      assert.match(secondAssistant, /48-72 小时/);
+      assert.match(secondAssistant, /防晒|SPF/);
+      assert.doesNotMatch(secondAssistant, /继续上视黄醇|全部每天用|立刻消痘/);
+
+      delete require.cache[moduleId];
+    },
+  );
+});
+
+test('/v1/chat: beauty contract keeps barrier-damage acid follow-up on barrier safety path', async () => {
+  await withEnv(
+    {
+      PIVOT_BEAUTY_CONTRACT_V1_ENABLED: 'true',
+      OPENAI_API_KEY: '',
+    },
+    async () => {
+      const moduleId = require.resolve('../src/auroraBff/routes');
+      delete require.cache[moduleId];
+      const { mountAuroraBffRoutes } = require('../src/auroraBff/routes');
+
+      const app = express();
+      app.use(express.json({ limit: '1mb' }));
+      mountAuroraBffRoutes(app, { logger: null });
+
+      const resp = await supertest(app)
+        .post('/v1/chat')
+        .set({
+          'X-Aurora-UID': 'test_uid_beauty_barrier_contract',
+          'X-Trace-ID': 'test_trace',
+          'X-Brief-ID': 'test_brief',
+          'X-Lang': 'CN',
+        })
+        .send({
+          message: '我是不是需要继续刷酸加速代谢？',
+          language: 'CN',
+          session: {
+            case_id: 'skin_analysis_barrier_damage',
+            profile: {
+              skinType: 'dry_sensitive',
+              sensitivity: 'high',
+              barrierStatus: 'impaired',
+              currentRoutine: JSON.stringify({
+                am: [{ name: '10% AHA Toner', step: 'exfoliant', frequency: 'daily' }],
+                pm: [{ name: '2% BHA Serum', step: 'treatment', frequency: 'daily' }],
+              }),
+            },
+          },
+        })
+        .expect(200);
+
+      const assistant = String(resp.body?.assistant_message?.content || '');
+      assert.match(assistant, /不要再刷酸加速代谢/);
+      assert.match(assistant, /暂停 AHA\/BHA|暂停/);
+      assert.match(assistant, /温和洁面/);
+      assert.match(assistant, /屏障|修护/);
+      assert.match(assistant, /皮肤科/);
+      assert.doesNotMatch(assistant, /今晚不要上视黄醇/);
+      assert.equal(resp.body?.session_patch?.meta?.pivot_contract_version, 'pivot.agent.v1');
+      assert.equal(resp.body?.session_patch?.meta?.route_authority, 'aurora_chat');
+
+      delete require.cache[moduleId];
+    },
+  );
+});
+
 test('/v1/chat: retinoid with unknown pregnancy requires info before availability/catalog short-circuit', async () => {
   await withEnv(
     {
