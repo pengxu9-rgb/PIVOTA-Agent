@@ -352,6 +352,9 @@ test('skin prompt v3: report LLM transport schema is compact while internal cano
   assert.equal(Boolean(SkinReportCanonicalLlmSchema.properties.routine_steps), false);
   assert.equal(Boolean(SkinReportCanonicalSchema.properties.watchouts), true);
   assert.equal(Boolean(SkinReportCanonicalLlmSchema.properties.watchouts), false);
+  assert.equal(SkinReportCanonicalLlmSchema.properties.insights.minItems, 1);
+  assert.equal(SkinReportCanonicalLlmSchema.properties.insights.maxItems, 2);
+  assert.equal(SkinReportCanonicalLlmSchema.properties.insights.items.properties.evidence.maxLength, 120);
   assert.deepEqual(SkinReportCanonicalLlmSchema.required, ['needs_risk_check', 'summary_focus', 'insights']);
 });
 
