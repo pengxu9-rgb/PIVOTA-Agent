@@ -7393,6 +7393,62 @@ test('concern selector race prompt carries finish-fit tradeoff evidence and dive
   }
 });
 
+test('concern selector race skips LLM for simple same-role deterministic moisturizer ordering', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  let calls = 0;
+  try {
+    __internal.__setCallGeminiTextResponseForTest(async () => {
+      calls += 1;
+      throw new Error('selector should not call Gemini for deterministic same-role ordering');
+    });
+
+    const out = await __internal.runConcernSelectorRace({
+      ctx: { lang: 'EN' },
+      logger: null,
+      requestText: 'My face feels dry and tight after washing. What should I use first?',
+      semanticPlan: {
+        comparison_mode: 'same_role_comparison',
+        core_roles: [
+          {
+            role_id: 'hydrating_barrier_moisturizer',
+            label: 'Hydrating barrier moisturizer',
+            why_this_role: 'Ease tightness after cleansing.',
+            preferred_step: 'moisturizer',
+          },
+        ],
+        support_roles: [],
+      },
+      recommendations: [
+        {
+          product_id: 'barrier_1',
+          display_name: 'Centella Soothing Cream',
+          matched_role_id: 'hydrating_barrier_moisturizer',
+          matched_role_label: 'Hydrating barrier moisturizer',
+          short_description: 'Centella moisturizer for tight-feeling skin.',
+        },
+        {
+          product_id: 'barrier_2',
+          display_name: 'Soybean Nourishing Cream',
+          matched_role_id: 'hydrating_barrier_moisturizer',
+          matched_role_label: 'Hydrating barrier moisturizer',
+          short_description: 'Panthenol and ceramide moisturizer.',
+        },
+      ],
+      deadlineAtMs: Date.now() + 5000,
+    });
+
+    assert.equal(calls, 0);
+    assert.equal(out.trace.llm_selector_used, false);
+    assert.equal(out.trace.selector_enrichment_skipped, true);
+    assert.equal(out.trace.selector_skip_reason, 'same_role_deterministic_order_sufficient');
+    assert.equal(out.trace.selector_selection_source, 'deterministic_skip');
+    assert.deepEqual(out.result.ordered_product_ids, ['barrier_1', 'barrier_2']);
+  } finally {
+    __internal.__resetCallGeminiTextResponseForTest();
+    delete require.cache[moduleId];
+  }
+});
+
 test('concern selector ordering diversifies finish-fit same-role comparisons across lighter mineral and richer options', () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {
