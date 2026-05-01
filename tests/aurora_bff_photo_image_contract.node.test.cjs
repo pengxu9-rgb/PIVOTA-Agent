@@ -247,3 +247,66 @@ test('/v1/photos/upload: presign timeout exposes stage-specific timeout code', a
     },
   );
 });
+
+test('/v1/analysis/skin: photo download timeout fails fast before report model', async () => {
+  await withEnv(
+    {
+      PIVOT_BEAUTY_CONTRACT_V1_ENABLED: 'true',
+      AURORA_BFF_USE_MOCK: 'false',
+      AURORA_DECISION_BASE_URL: '',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'agent_test_key',
+      AURORA_PHOTO_DOWNLOAD_URL_RETRIES: '0',
+      AURORA_PHOTO_DOWNLOAD_URL_TIMEOUT_MS: '80',
+      AURORA_PHOTO_FETCH_RETRIES: '0',
+      AURORA_PHOTO_FETCH_TOTAL_TIMEOUT_MS: '200',
+      AURORA_PHOTO_FETCH_TIMEOUT_MS: '80',
+    },
+    async () => {
+      const axios = require('axios');
+      const originalGet = axios.get;
+      const originalPost = axios.post;
+      const { moduleId, mountAuroraBffRoutes } = loadRoutes();
+      axios.get = async (...args) => {
+        const [url] = args;
+        if (String(url).endsWith('/photos/download-url')) {
+          const err = new Error('timeout of 80ms exceeded');
+          err.code = 'ECONNABORTED';
+          throw err;
+        }
+        return originalGet.apply(axios, args);
+      };
+      axios.post = async (url) => {
+        throw new Error(`Unexpected axios.post in fail-fast test: ${String(url)}`);
+      };
+      try {
+        const app = makeApp(mountAuroraBffRoutes);
+        const started = Date.now();
+        const resp = await invokeRoute(app, 'POST', '/v1/analysis/skin', {
+          headers: { 'X-Aurora-UID': 'uid_photo_analysis_fast_fail', 'X-Lang': 'CN' },
+          body: {
+            use_photo: true,
+            photos: [{ slot_id: 'daylight', photo_id: 'photo_timeout_fast_fail', qc_status: 'passed' }],
+            currentRoutine: {
+              am: { cleanser: '温和洁面', spf: 'SPF50' },
+              pm: { cleanser: '温和洁面', moisturizer: '修护霜' },
+            },
+          },
+        });
+        const elapsedMs = Date.now() - started;
+        assert.equal(resp.status, 200);
+        assert.equal(resp.body?.status, 'failed');
+        assert.equal(resp.body?.analysis_meta?.degrade_reason, 'photo_read_failed_fast_fail');
+        assert.equal(resp.body?.analysis_meta?.llm_report_called, false);
+        assert.ok(elapsedMs < 1500, `expected fail-fast under 1500ms, got ${elapsedMs}ms`);
+        const cards = Array.isArray(resp.body?.cards) ? resp.body.cards : [];
+        assert.equal(cards.some((card) => card && card.type === 'analysis_summary'), true);
+        assert.equal(cards.some((card) => card && card.type === 'confidence_notice'), true);
+      } finally {
+        axios.get = originalGet;
+        axios.post = originalPost;
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
