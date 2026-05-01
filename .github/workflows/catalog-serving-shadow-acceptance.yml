@@ -39,7 +39,7 @@ on:
         required: false
         default: "red"
       operation:
-        description: "K-beauty seed op: commerce_facts_backfill | seed_content_backfill | market_coverage_audit | kbeauty_seed_baseline_coverage_audit | identity_lift | promote_live_read | channel_seed_manifest | gallery_bloat_audit"
+        description: "K-beauty seed op: commerce_facts_backfill | seed_content_backfill | market_coverage_audit | kbeauty_seed_baseline_coverage_audit | pdp_coverage_gaps_audit | identity_lift | promote_live_read | channel_seed_manifest | gallery_bloat_audit"
         required: false
         default: "commerce_facts_backfill"
       external_product_ids:
@@ -272,6 +272,21 @@ jobs:
               )
               if [[ "${all_markets}" == "true" ]]; then
                 cmd+=(--all-markets)
+              fi
+              printf '%s\n' "${cmd[@]}" > "reports/workflow_ops/${artifact_prefix}_command.txt"
+              "${cmd[@]}" | tee "reports/workflow_ops/${artifact_prefix}_stdout.json"
+              ;;
+
+            pdp_coverage_gaps_audit)
+              cmd=(
+                node scripts/audit-external-seed-pdp-coverage-gaps.js
+                --market "${market}"
+                --format json
+                --sample-limit 100
+                --out "reports/workflow_ops/${artifact_prefix}_report.json"
+              )
+              if [[ -n "${brand}" ]]; then
+                cmd+=(--brand "${brand}")
               fi
               printf '%s\n' "${cmd[@]}" > "reports/workflow_ops/${artifact_prefix}_command.txt"
               "${cmd[@]}" | tee "reports/workflow_ops/${artifact_prefix}_stdout.json"

@@ -43,6 +43,7 @@ describe('audit-kbeauty-seed-baseline-coverage', () => {
       [
         { brand_name: 'Beauty of Joseon', official_site: 'https://beautyofjoseon.com' },
         { brand_name: 'Anua', official_site: 'https://anua.com' },
+        { brand_name: 'Torriden', official_site: 'https://torriden.com' },
       ],
       [
         {
@@ -55,13 +56,33 @@ describe('audit-kbeauty-seed-baseline-coverage', () => {
           price_currency: 'USD',
           hosts: ['beautyofjoseon.com'],
         },
+        {
+          external_product_id: 'ext_torriden_1',
+          brand: 'Torriden',
+          brand_norm: 'torriden',
+          title: 'Dive-In Serum',
+          market: 'US',
+          availability: 'in_stock',
+          price_currency: 'USD',
+          hosts: ['torriden.us'],
+        },
       ],
     );
 
-    expect(dtc.baseline_brand_count).toBe(2);
+    expect(dtc.baseline_brand_count).toBe(3);
     expect(dtc.covered_brand_count).toBe(1);
     expect(dtc.active_seed_count).toBe(1);
-    expect(dtc.missing_brand_names).toEqual(['Anua']);
+    expect(dtc.shadow_only_brand_count).toBe(1);
+    expect(dtc.shadow_only_brand_names).toEqual(['Torriden']);
+    expect(dtc.strict_or_shadow_covered_brand_count).toBe(2);
+    expect(dtc.missing_brand_names).toEqual(['Anua', 'Torriden']);
+    expect(dtc.rows.find((row) => row.brand_name === 'Torriden')).toMatchObject({
+      covered: false,
+      shadow_covered: true,
+      coverage_mode: 'brand_shadow_only',
+      shadow_active_seed_count: 1,
+      shadow_hosts: ['torriden.us'],
+    });
   });
 
   test('computes channel coverage and matched known brands by retailer host', () => {

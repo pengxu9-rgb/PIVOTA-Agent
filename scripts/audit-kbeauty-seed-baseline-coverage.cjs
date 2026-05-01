@@ -190,28 +190,60 @@ function summarizeMatchedRows(rows = []) {
 function buildDtcCoverage(dtcBaselineRows = [], seedRows = []) {
   const results = dtcBaselineRows.map((entry) => {
     const officialHost = normalizeHost(entry.official_site);
+    const brandNorm = normalizeComparableText(entry.brand_name);
     const matchedRows = seedRows.filter((row) => row.hosts.includes(officialHost));
+    const shadowMatchedRows =
+      matchedRows.length > 0
+        ? []
+        : seedRows.filter((row) => row.brand_norm && row.brand_norm === brandNorm);
     const coverage = summarizeMatchedRows(matchedRows);
+    const shadowCoverage = summarizeMatchedRows(shadowMatchedRows);
+    const coverageMode =
+      coverage.active_seed_count > 0
+        ? 'strict_host'
+        : shadowCoverage.active_seed_count > 0
+          ? 'brand_shadow_only'
+          : 'missing';
     return {
       brand_name: asString(entry.brand_name),
       official_site: asString(entry.official_site),
       official_host: officialHost,
+      brand_norm: brandNorm,
       region_focus: asString(entry.region_focus),
       priority_tier: asString(entry.priority_tier),
       transaction_ready: asString(entry.transaction_ready),
       validation_status: asString(entry.validation_status),
       covered: coverage.active_seed_count > 0,
+      shadow_covered: shadowCoverage.active_seed_count > 0,
+      coverage_mode: coverageMode,
       ...coverage,
+      shadow_active_seed_count: shadowCoverage.active_seed_count,
+      shadow_in_stock_count: shadowCoverage.in_stock_count,
+      shadow_markets: shadowCoverage.markets,
+      shadow_currencies: shadowCoverage.currencies,
+      shadow_hosts: Array.from(new Set(shadowMatchedRows.flatMap((row) => row.hosts))).sort(),
+      shadow_sample_external_product_ids: shadowCoverage.sample_external_product_ids,
+      shadow_sample_titles: shadowCoverage.sample_titles,
     };
   });
 
   const covered = results.filter((row) => row.covered);
+  const shadowOnly = results.filter((row) => !row.covered && row.shadow_covered);
+  const strictOrShadowCovered = results.filter((row) => row.covered || row.shadow_covered);
   return {
     baseline_brand_count: results.length,
     covered_brand_count: covered.length,
     covered_brand_names: covered.map((row) => row.brand_name),
     missing_brand_names: results.filter((row) => !row.covered).map((row) => row.brand_name),
     active_seed_count: covered.reduce((sum, row) => sum + row.active_seed_count, 0),
+    shadow_only_brand_count: shadowOnly.length,
+    shadow_only_brand_names: shadowOnly.map((row) => row.brand_name),
+    strict_or_shadow_covered_brand_count: strictOrShadowCovered.length,
+    strict_or_shadow_covered_brand_names: strictOrShadowCovered.map((row) => row.brand_name),
+    strict_or_shadow_active_seed_count: strictOrShadowCovered.reduce(
+      (sum, row) => sum + Math.max(row.active_seed_count || 0, row.shadow_active_seed_count || 0),
+      0,
+    ),
     rows: results,
   };
 }
@@ -304,6 +336,9 @@ async function main() {
           baseline_brand_count: dtc.baseline_brand_count,
           covered_brand_count: dtc.covered_brand_count,
           active_seed_count: dtc.active_seed_count,
+          shadow_only_brand_count: dtc.shadow_only_brand_count,
+          shadow_only_brand_names: dtc.shadow_only_brand_names,
+          strict_or_shadow_covered_brand_count: dtc.strict_or_shadow_covered_brand_count,
           missing_brand_names: dtc.missing_brand_names,
         },
         channels: {
