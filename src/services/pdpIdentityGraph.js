@@ -2031,9 +2031,25 @@ function composeSyntheticCanonicalProduct({
       'product_url',
       'handle',
     ]);
+    if (!asString(product.how_to_use)) {
+      const nextHowToUse = firstNonEmptyString(payload.how_to_use, payload.howToUse);
+      if (nextHowToUse) product.how_to_use = nextHowToUse;
+    }
     if (!Array.isArray(product.inci_list) || product.inci_list.length === 0) {
       const nextInci = asArray(payload.inci_list);
       if (nextInci.length > 0) product.inci_list = nextInci;
+    }
+    if (!Array.isArray(product.ingredients_inci) || product.ingredients_inci.length === 0) {
+      const nextIngredientsInci = [
+        payload.ingredients_inci,
+        payload.ingredientsInci,
+        payload.inci_ingredients,
+        payload.inciIngredients,
+        payload.ingredients,
+      ]
+        .map((value) => asArray(value))
+        .find((items) => items.length > 0);
+      if (nextIngredientsInci?.length > 0) product.ingredients_inci = nextIngredientsInci;
     }
     if (!Array.isArray(product.active_ingredients) || product.active_ingredients.length === 0) {
       const nextActive = asArray(payload.active_ingredients);
