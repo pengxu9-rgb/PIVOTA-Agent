@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const { getGeminiGlobalGate } = require('../../lib/geminiGlobalGate');
 const { extractRecoTargetStepFromText } = require('../recoTargetStep');
 const { resolveAuroraGeminiMainlineModel } = require('../auroraModelPolicy');
+const { resolveGeminiRuntimeModelCandidates } = require('../../lib/geminiModelFloor');
 
 function firstConfiguredEnv(keys, fallback = '') {
   for (const key of Array.isArray(keys) ? keys : []) {
@@ -33,6 +34,10 @@ function resolveChatV2GeminiModel() {
 const GEMINI_MODELS = Object.freeze({
   structured: resolveChatV2GeminiModel(),
   chat: resolveChatV2GeminiModel(),
+});
+const GEMINI_MODEL_CANDIDATES = Object.freeze({
+  structured: resolveGeminiRuntimeModelCandidates(GEMINI_MODELS.structured),
+  chat: resolveGeminiRuntimeModelCandidates(GEMINI_MODELS.chat),
 });
 
 const FREEFORM_PROMPT_VERSION = 'inline_system_prompt_v3';
@@ -1784,30 +1789,37 @@ class LlmGateway {
       throw err;
     }
 
-    const model = options.mode === 'structured' ? GEMINI_MODELS.structured : GEMINI_MODELS.chat;
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
     return this._withGeminiGate('aurora_chat_v2_gemini_structured', async () => {
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(this._buildGeminiBody(messages, options)),
-        signal: AbortSignal.timeout(30000),
-      });
+      const mode = options.mode === 'structured' ? 'structured' : 'chat';
+      const body = JSON.stringify(this._buildGeminiBody(messages, options));
+      let lastErr = null;
+      for (const model of GEMINI_MODEL_CANDIDATES[mode].length ? GEMINI_MODEL_CANDIDATES[mode] : [GEMINI_MODELS[mode]]) {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body,
+          signal: AbortSignal.timeout(30000),
+        });
 
-      if (!response.ok) {
-        const err = new Error(`Gemini API error: ${response.status}`);
-        err.statusCode = response.status;
-        throw err;
-      }
+        if (!response.ok) {
+          const err = new Error(`Gemini API error: ${response.status}`);
+          err.statusCode = response.status;
+          lastErr = err;
+          if ([400, 403, 404].includes(Number(response.status))) continue;
+          throw err;
+        }
 
-      const data = await response.json();
-      const text = this._extractGeminiText(data);
-      if (!text) {
-        const err = new Error('empty_output from Gemini');
-        err.code = 'EMPTY_OUTPUT';
-        throw err;
+        const data = await response.json();
+        const text = this._extractGeminiText(data);
+        if (!text) {
+          const err = new Error('empty_output from Gemini');
+          err.code = 'EMPTY_OUTPUT';
+          throw err;
+        }
+        return { text };
       }
-      return { text };
+      throw lastErr || new Error('Gemini API error');
     });
   }
 

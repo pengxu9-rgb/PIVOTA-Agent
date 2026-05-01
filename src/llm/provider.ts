@@ -4,6 +4,7 @@ import sharp from "sharp";
 import { getAxiosKeepAliveConfig } from "../http/axiosKeepAlive";
 import {
   NON_IMAGE_GEMINI_FLOOR_MODEL,
+  resolveGeminiRuntimeModelCandidates,
   resolveGeminiRuntimeModelName,
   resolveNonImageGeminiModel,
 } from "../lib/geminiModelFloor";
@@ -777,8 +778,8 @@ export function createProviderFromEnv(purpose: "layer2_lookspec" | "generic" = "
         getEnv("PIVOTA_LAYER2_MODEL_GEMINI") ? "PIVOTA_LAYER2_MODEL_GEMINI" : "PIVOTA_LAYER2_MODEL"
       );
       const candidateModels = uniqueStrings([
-        requestedModel,
-        resolveGeminiRuntimeModelName(NON_IMAGE_GEMINI_FLOOR_MODEL),
+        ...resolveGeminiRuntimeModelCandidates(requestedModel),
+        ...resolveGeminiRuntimeModelCandidates(resolveGeminiRuntimeModelName(NON_IMAGE_GEMINI_FLOOR_MODEL)),
       ]);
 
       const apiVersions = ["v1beta", "v1"] as const;

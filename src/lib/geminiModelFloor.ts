@@ -1,5 +1,6 @@
 export const TEMPORARY_UNIFIED_GEMINI_MODEL = "gemini-2.5-flash-preview";
 export const TEMPORARY_UNIFIED_GEMINI_RUNTIME_MODEL = "gemini-2.5-flash-preview-09-2025";
+export const TEMPORARY_UNIFIED_GEMINI_STABLE_FALLBACK_MODEL = "gemini-2.5-flash";
 export const NON_IMAGE_GEMINI_FLOOR_MODEL = TEMPORARY_UNIFIED_GEMINI_MODEL;
 
 const warnedAdjustments = new Set<string>();
@@ -14,6 +15,30 @@ export function resolveGeminiRuntimeModelName(model: unknown): string {
   const normalized = normalizeGeminiModelName(model);
   if (normalized === TEMPORARY_UNIFIED_GEMINI_MODEL) return TEMPORARY_UNIFIED_GEMINI_RUNTIME_MODEL;
   return normalized;
+}
+
+function uniqueNonEmptyStrings(values: unknown[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const value of Array.isArray(values) ? values : []) {
+    const text = normalizeGeminiModelName(value);
+    if (!text || seen.has(text)) continue;
+    seen.add(text);
+    out.push(text);
+  }
+  return out;
+}
+
+export function resolveGeminiRuntimeModelCandidates(model: unknown): string[] {
+  const primary = resolveGeminiRuntimeModelName(model);
+  const candidates = [primary];
+  if (
+    primary === TEMPORARY_UNIFIED_GEMINI_RUNTIME_MODEL ||
+    normalizeGeminiModelName(model) === TEMPORARY_UNIFIED_GEMINI_MODEL
+  ) {
+    candidates.push(TEMPORARY_UNIFIED_GEMINI_STABLE_FALLBACK_MODEL);
+  }
+  return uniqueNonEmptyStrings(candidates);
 }
 
 export function isGeminiModelName(model: unknown): boolean {

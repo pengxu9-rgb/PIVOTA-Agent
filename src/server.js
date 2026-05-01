@@ -107,6 +107,7 @@ const {
   NON_IMAGE_GEMINI_FLOOR_MODEL,
   isTemporaryUnifiedGeminiModelEnabled,
   resolveNonImageGeminiModel,
+  resolveGeminiRuntimeModelCandidates,
   resolveGeminiRuntimeModelName,
   resolveTemporaryUnifiedGeminiModel,
   TEMPORARY_UNIFIED_GEMINI_MODEL,
@@ -15678,6 +15679,10 @@ function getUiChatLlmClient() {
     client: uiChatLlmClient,
     provider: uiChatLlmProvider,
     model: uiChatLlmModel,
+    modelCandidates:
+      uiChatLlmProvider === 'gemini'
+        ? resolveGeminiRuntimeModelCandidates(uiChatLlmModel)
+        : [uiChatLlmModel],
   };
 }
 
@@ -20727,6 +20732,7 @@ app.get('/healthz/gemini', (req, res) => {
         temporary_unified_model_enabled: isTemporaryUnifiedGeminiModelEnabled(),
         temporary_unified_model_alias: TEMPORARY_UNIFIED_GEMINI_MODEL,
         temporary_unified_model: resolveTemporaryUnifiedGeminiModel(),
+        temporary_unified_model_candidates: resolveGeminiRuntimeModelCandidates(resolveTemporaryUnifiedGeminiModel()),
         non_image_default_model: NON_IMAGE_GEMINI_FLOOR_MODEL,
         non_image_default_runtime_model: resolveGeminiRuntimeModelName(NON_IMAGE_GEMINI_FLOOR_MODEL),
       },
@@ -33901,7 +33907,7 @@ function uiChatShouldUseRetryResult(initialResult, retryResult) {
 
 async function runAgentWithTools(messages) {
   // messages already contain system message
-  const { client: llmClient, model: llmModel } = getUiChatLlmClient();
+  const { client: llmClient, model: llmModel, modelCandidates } = getUiChatLlmClient();
   const startTs = Date.now();
   let steps = 0;
   let totalToolCalls = 0;
@@ -33945,17 +33951,30 @@ async function runAgentWithTools(messages) {
       return budgetExceededMessage('steps');
     }
 
-    const completion = await llmClient.chat.completions.create({
-      model: llmModel,
-      messages,
-      tools: [
-        {
-          type: 'function',
-          function: uiChatToolSchema,
-        },
-      ],
-      tool_choice: 'auto',
-    });
+    let completion;
+    let lastCompletionError = null;
+    const candidates = Array.isArray(modelCandidates) && modelCandidates.length ? modelCandidates : [llmModel];
+    for (const modelCandidate of candidates) {
+      try {
+        completion = await llmClient.chat.completions.create({
+          model: modelCandidate || llmModel,
+          messages,
+          tools: [
+            {
+              type: 'function',
+              function: uiChatToolSchema,
+            },
+          ],
+          tool_choice: 'auto',
+        });
+        break;
+      } catch (err) {
+        lastCompletionError = err;
+        const status = Number(err?.status || err?.statusCode || err?.response?.status || 0);
+        if (![400, 403, 404].includes(status)) throw err;
+      }
+    }
+    if (!completion) throw lastCompletionError || new Error('UI chat LLM completion failed');
 
     const msg = completion.choices[0].message;
     steps += 1;
