@@ -34,12 +34,46 @@ function loadServerFresh() {
   return require('../src/server');
 }
 
+const TEST_AGENT_KEY = `ak_${'a'.repeat(64)}`;
+
+test('/photos/presign proxy rejects unauthenticated callers before backend proxy', async () => {
+  await withEnv(
+    {
+      PIVOTA_BACKEND_BASE_URL: 'https://photo-backend.example.com/',
+      PIVOTA_API_BASE: 'https://wrong-service.example.com',
+      PIVOTA_API_KEY: TEST_AGENT_KEY,
+    },
+    async () => {
+      const app = loadServerFresh();
+      const originalProxy = photoBackendClient.proxyPhotoBackendRequest;
+      let called = false;
+      photoBackendClient.proxyPhotoBackendRequest = async () => {
+        called = true;
+        return { status: 200, data: { proxied: true } };
+      };
+
+      try {
+        const resp = await request(app)
+          .post('/photos/presign')
+          .send({ content_type: 'image/png', bytes: 1234 })
+          .expect(401);
+
+        assert.equal(resp.body.error, 'UNAUTHORIZED');
+        assert.equal(called, false);
+      } finally {
+        photoBackendClient.proxyPhotoBackendRequest = originalProxy;
+        delete require.cache[require.resolve('../src/server')];
+      }
+    },
+  );
+});
+
 test('/photos/presign proxy uses photo backend base URL and agent-key auth contract', async () => {
   await withEnv(
     {
       PIVOTA_BACKEND_BASE_URL: 'https://photo-backend.example.com/',
       PIVOTA_API_BASE: 'https://wrong-service.example.com',
-      PIVOTA_API_KEY: 'agent_key_for_photo_proxy',
+      PIVOTA_API_KEY: TEST_AGENT_KEY,
     },
     async () => {
       const app = loadServerFresh();
@@ -53,6 +87,7 @@ test('/photos/presign proxy uses photo backend base URL and agent-key auth contr
       try {
         const resp = await request(app)
           .post('/photos/presign')
+          .set('X-Agent-API-Key', TEST_AGENT_KEY)
           .send({ content_type: 'image/png', bytes: 1234 })
           .expect(200);
 
@@ -61,9 +96,9 @@ test('/photos/presign proxy uses photo backend base URL and agent-key auth contr
         assert.equal(captured.path, '/photos/presign');
         assert.equal(captured.method, 'POST');
         assert.equal(captured.timeoutMs, 15000);
-        assert.equal(captured.authHeaders['X-Agent-API-Key'], 'agent_key_for_photo_proxy');
-        assert.equal(captured.authHeaders['X-API-Key'], 'agent_key_for_photo_proxy');
-        assert.equal(captured.authHeaders.Authorization, 'Bearer agent_key_for_photo_proxy');
+        assert.equal(captured.authHeaders['X-Agent-API-Key'], TEST_AGENT_KEY);
+        assert.equal(captured.authHeaders['X-API-Key'], TEST_AGENT_KEY);
+        assert.equal(captured.authHeaders.Authorization, `Bearer ${TEST_AGENT_KEY}`);
         assert.deepEqual(captured.data, { content_type: 'image/png', bytes: 1234 });
       } finally {
         photoBackendClient.proxyPhotoBackendRequest = originalProxy;
@@ -78,7 +113,7 @@ test('/photos/download-url proxy supports GET and POST through the same backend 
     {
       PIVOTA_BACKEND_BASE_URL: 'https://photo-backend.example.com/',
       PIVOTA_API_BASE: 'https://wrong-service.example.com',
-      PIVOTA_API_KEY: 'agent_key_for_photo_proxy',
+      PIVOTA_API_KEY: TEST_AGENT_KEY,
     },
     async () => {
       const app = loadServerFresh();
@@ -90,8 +125,8 @@ test('/photos/download-url proxy supports GET and POST through the same backend 
       };
 
       try {
-        await request(app).get('/photos/download-url?upload_id=upl_1').expect(200);
-        await request(app).post('/photos/download-url').send({ upload_id: 'upl_1' }).expect(200);
+        await request(app).get('/photos/download-url?upload_id=upl_1').set('X-Agent-API-Key', TEST_AGENT_KEY).expect(200);
+        await request(app).post('/photos/download-url').set('X-Agent-API-Key', TEST_AGENT_KEY).send({ upload_id: 'upl_1' }).expect(200);
 
         assert.equal(calls.length, 2);
         assert.equal(calls[0].method, 'GET');
@@ -113,7 +148,7 @@ test('/photos/presign proxy maps backend transport timeout to HTTP 504', async (
     {
       PIVOTA_BACKEND_BASE_URL: 'https://photo-backend.example.com/',
       PIVOTA_API_BASE: 'https://wrong-service.example.com',
-      PIVOTA_API_KEY: 'agent_key_for_photo_proxy',
+      PIVOTA_API_KEY: TEST_AGENT_KEY,
     },
     async () => {
       const app = loadServerFresh();
@@ -129,6 +164,7 @@ test('/photos/presign proxy maps backend transport timeout to HTTP 504', async (
       try {
         const resp = await request(app)
           .post('/photos/presign')
+          .set('X-Agent-API-Key', TEST_AGENT_KEY)
           .send({ content_type: 'image/png', bytes: 1234 })
           .expect(504);
 

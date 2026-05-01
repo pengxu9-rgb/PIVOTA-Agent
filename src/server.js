@@ -21231,12 +21231,35 @@ async function proxyPhotosToBackend(req, res) {
   }
 }
 
-app.post('/photos/presign', proxyPhotosToBackend);
-app.post('/photos/confirm', proxyPhotosToBackend);
-app.get('/photos/qc', proxyPhotosToBackend);
-app.get('/photos/download-url', proxyPhotosToBackend);
-app.post('/photos/download-url', proxyPhotosToBackend);
-app.delete('/photos', proxyPhotosToBackend);
+function proxyAuthenticatedPhotosToBackend(req, res) {
+  return INVOKE_AUTH_CONTEXT.run(
+    {
+      api_key: req?.invokeAuth?.raw_token || null,
+      agent_id: req?.invokeAuth?.agent_id || null,
+      auth_mode: req?.invokeAuth?.auth_mode || null,
+      auth_source: req?.invokeAuth?.auth_source || null,
+      auth_degraded: req?.invokeAuth?.auth_degraded === true,
+      auth_degraded_reason: req?.invokeAuth?.auth_degraded_reason || null,
+      introspect_auth_source: req?.invokeAuth?.introspect_auth_source || null,
+      agent_user_jwt: firstNonEmptyString(
+        req?.header('X-Agent-User-JWT'),
+        req?.header('x-agent-user-jwt'),
+      ),
+      buyer_ref: firstNonEmptyString(
+        req?.header('X-Buyer-Ref'),
+        req?.header('x-buyer-ref'),
+      ),
+    },
+    () => proxyPhotosToBackend(req, res),
+  );
+}
+
+app.post('/photos/presign', requireExternalInvokeAuth, proxyAuthenticatedPhotosToBackend);
+app.post('/photos/confirm', requireExternalInvokeAuth, proxyAuthenticatedPhotosToBackend);
+app.get('/photos/qc', requireExternalInvokeAuth, proxyAuthenticatedPhotosToBackend);
+app.get('/photos/download-url', requireExternalInvokeAuth, proxyAuthenticatedPhotosToBackend);
+app.post('/photos/download-url', requireExternalInvokeAuth, proxyAuthenticatedPhotosToBackend);
+app.delete('/photos', requireExternalInvokeAuth, proxyAuthenticatedPhotosToBackend);
 
 async function handleAgentProductsSearchViaInvoke(req, res) {
   const routePreparation = agentProductsSearchRouteEntryRuntime.prepareAgentProductsSearchRoute(req);
