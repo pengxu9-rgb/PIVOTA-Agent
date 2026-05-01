@@ -2262,7 +2262,7 @@ function isGenericFaqHeading(value) {
 }
 
 const FAQ_QUESTION_START_PATTERN =
-  /(?:^|[\s([{'"“‘])((?:(?:q(?:uestion)?\s*[:.-]\s*)?(?:who|what|when|where|why|how|can|could|should|would|will|is|are|do|does|did|may|which|what's|isn't|doesn't|i\s+have|i'm)\b)[^?？]{3,220}[?？])/gi;
+  /(?:^|[.!?？]\s+)((?:(?:Q(?:uestion)?\s*[:.-]\s*)?(?:Who|What|When|Where|Why|How|Can|Could|Should|Would|Will|Is|Are|Do|Does|Did|May|Which|What's|Isn't|Doesn't|I\s+have|I'm)\b)[^.!?？]{3,220}[?？])/g;
 
 function extractFaqPairsFromText(value) {
   const text = asNonEmptyString(value).replace(/\s+/g, ' ').trim();

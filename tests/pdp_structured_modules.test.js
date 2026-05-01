@@ -536,7 +536,7 @@ describe('pdpBuilder structured PDP modules', () => {
           {
             heading: 'FAQ',
             content:
-              'What skin types can use this product? We formulated Dynasty Cream for all skin types, especially normal to dry skin. Is Dynasty Cream safe for blemish-prone skin? Yes. Niacinamide and squalane help balance sebum levels. Can I use this moisturizer both day and night? Yes. Use it in the morning for glow or at night for nourishment.',
+              "What skin types can use this product? We formulated Dynasty Cream for all skin types, especially normal to dry skin. If you have oily, blemish-prone, or combination skin, reduce application to a small dot. All other skin types can apply a coin-sized amount. Is Dynasty Cream safe for blemish-prone skin? Yes. Niacinamide and squalane help balance sebum levels. Can I use this moisturizer both day and night? Yes. Use it in the morning for glow or at night for nourishment.",
           },
         ],
       },
@@ -553,7 +553,8 @@ describe('pdpBuilder structured PDP modules', () => {
     expect(questions.map((item) => item.question)).not.toContain('FAQ');
     expect(questions[0]).toEqual(
       expect.objectContaining({
-        answer: 'We formulated Dynasty Cream for all skin types, especially normal to dry skin.',
+        answer:
+          'We formulated Dynasty Cream for all skin types, especially normal to dry skin. If you have oily, blemish-prone, or combination skin, reduce application to a small dot. All other skin types can apply a coin-sized amount.',
         source: 'merchant_faq',
         source_label: 'Official FAQ',
       }),
