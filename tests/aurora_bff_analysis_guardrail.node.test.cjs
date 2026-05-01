@@ -105,6 +105,78 @@ test('applyProductIntelGuardrailsToEnvelope uses lightweight ingredient-plan gua
   }
 });
 
+test('applyProductIntelGuardrailsToEnvelope defers photo-mainline ingredient product recovery', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    const out = await __internal.applyProductIntelGuardrailsToEnvelope({
+      envelope: {
+        cards: [
+          {
+            card_id: 'plan_photo_mainline',
+            type: 'ingredient_plan_v2',
+            payload: {
+              schema_version: 'aurora.ingredient_plan.v2',
+              targets: [
+                {
+                  ingredient_id: 'ceramide_np',
+                  ingredient_name: 'Ceramide NP',
+                  products: {
+                    competitors: [],
+                    dupes: [],
+                  },
+                },
+              ],
+            },
+          },
+        ],
+        analysis_meta: {
+          analysis_mode: 'analysis_summary',
+          user_requested_photo: true,
+          photos_provided: true,
+          used_photos: true,
+          report_stage_outcome: 'success',
+        },
+      },
+      ctx: {
+        request_id: 'req_photo_guardrail',
+        trace_id: 'trace_photo_guardrail',
+      },
+      profile: null,
+      language: 'EN',
+    });
+
+    const envelope = out && out.envelope ? out.envelope : null;
+    assert.ok(envelope && envelope.analysis_meta);
+    assert.equal(envelope.analysis_meta.guardrail_stage_mode, 'lightweight');
+    assert.equal(envelope.analysis_meta.ingredient_plan_product_recovery_skipped, true);
+    assert.equal(
+      envelope.analysis_meta.ingredient_plan_product_recovery_skipped_reason,
+      'photo_mainline_product_recovery_deferred',
+    );
+    assert.equal(envelope.analysis_meta.ingredient_plan_products_recovery_used, false);
+
+    const planCard = Array.isArray(envelope.cards)
+      ? envelope.cards.find((card) => card && card.type === 'ingredient_plan_v2')
+      : null;
+    assert.ok(planCard);
+    const target = planCard.payload?.targets?.[0];
+    assert.equal(Array.isArray(target?.products?.competitors), true);
+    assert.equal(target.products.competitors.length, 0);
+    assert.equal(
+      Array.isArray(planCard.field_missing) &&
+        planCard.field_missing.some(
+          (row) =>
+            row &&
+            row.field === 'payload.targets[].products' &&
+            row.reason === 'photo_mainline_product_recovery_deferred',
+        ),
+      true,
+    );
+  } finally {
+    delete require.cache[moduleId];
+  }
+});
+
 test('resolveAnalysisStoryForcedSkipReason skips story LLM on routine-only summary fast path', async () => {
   const { moduleId, __internal } = loadRouteInternals();
   try {

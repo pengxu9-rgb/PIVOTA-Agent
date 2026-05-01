@@ -122,6 +122,15 @@ function summarizeEnvelope(body) {
     error_stage: error && error.payload ? error.payload.stage || null : null,
     detector_source: body && body.analysis_meta ? body.analysis_meta.detector_source || null : null,
     report_stage_outcome: body && body.analysis_meta ? body.analysis_meta.report_stage_outcome || null : null,
+    guardrail_stage_mode: body && body.analysis_meta ? body.analysis_meta.guardrail_stage_mode || null : null,
+    product_lookup_fallback_used:
+      body && body.analysis_meta ? body.analysis_meta.product_lookup_fallback_used === true : false,
+    ingredient_plan_products_recovery_used:
+      body && body.analysis_meta ? body.analysis_meta.ingredient_plan_products_recovery_used === true : false,
+    ingredient_plan_product_recovery_skipped:
+      body && body.analysis_meta ? body.analysis_meta.ingredient_plan_product_recovery_skipped === true : false,
+    ingredient_plan_product_recovery_skipped_reason:
+      body && body.analysis_meta ? body.analysis_meta.ingredient_plan_product_recovery_skipped_reason || null : null,
   };
 }
 
@@ -143,6 +152,8 @@ function assertStrictPhotoAnalysis(summary, label) {
   assertCondition(summary.llm_enrichment_status !== 'degraded', `${label} analysis must not use degraded LLM enrichment`);
   assertCondition(summary.vision_enrichment_status !== 'degraded', `${label} analysis must not use degraded vision enrichment`);
   assertCondition(summary.report_stage_outcome === 'success', `${label} report stage must be success`);
+  assertCondition(summary.product_lookup_fallback_used !== true, `${label} analysis must not adopt product lookup fallback`);
+  assertCondition(summary.ingredient_plan_products_recovery_used !== true, `${label} analysis must not adopt ingredient-plan product recovery as success`);
 }
 
 function redactedStep(name, result, extra = {}) {
