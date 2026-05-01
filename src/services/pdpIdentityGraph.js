@@ -2011,33 +2011,51 @@ function composeSyntheticCanonicalProduct({
 
   for (const listing of contentMergeListings) {
     const payload = asPlainObject(listing?.source_payload) || {};
-    product = fillMissingString(product, payload, [
-      'title',
-      'name',
-      'subtitle',
-      'brand',
-      'brand_name',
-      'vendor',
-      'description',
-      'pdp_description_raw',
-      'raw_ingredient_text_clean',
-      'pdp_ingredients_raw',
-      'pdp_active_ingredients_raw',
-      'pdp_how_to_use_raw',
-      'source_url',
-      'canonical_url',
-      'destination_url',
-      'url',
-      'product_url',
-      'handle',
-    ]);
+    const payloadSeedData = asPlainObject(payload.seed_data) || {};
+    const payloadSnapshot = asPlainObject(payloadSeedData.snapshot) || {};
+    const contentSources = [payload, payloadSeedData, payloadSnapshot];
+    for (const source of contentSources) {
+      product = fillMissingString(product, source, [
+        'title',
+        'name',
+        'subtitle',
+        'brand',
+        'brand_name',
+        'vendor',
+        'description',
+        'pdp_description_raw',
+        'raw_ingredient_text_clean',
+        'pdp_ingredients_raw',
+        'pdp_active_ingredients_raw',
+        'pdp_how_to_use_raw',
+        'source_url',
+        'canonical_url',
+        'destination_url',
+        'url',
+        'product_url',
+        'handle',
+      ]);
+    }
     if (!asString(product.how_to_use)) {
-      const nextHowToUse = firstNonEmptyString(payload.how_to_use, payload.howToUse);
+      const nextHowToUse = firstNonEmptyString(
+        payload.how_to_use,
+        payload.howToUse,
+        payloadSeedData.how_to_use,
+        payloadSeedData.howToUse,
+        payloadSnapshot.how_to_use,
+        payloadSnapshot.howToUse,
+      );
       if (nextHowToUse) product.how_to_use = nextHowToUse;
     }
     if (!Array.isArray(product.inci_list) || product.inci_list.length === 0) {
-      const nextInci = asArray(payload.inci_list);
-      if (nextInci.length > 0) product.inci_list = nextInci;
+      const nextInci = [
+        payload.inci_list,
+        payloadSeedData.inci_list,
+        payloadSnapshot.inci_list,
+      ]
+        .map((value) => asArray(value))
+        .find((items) => items.length > 0);
+      if (nextInci?.length > 0) product.inci_list = nextInci;
     }
     if (!Array.isArray(product.ingredients_inci) || product.ingredients_inci.length === 0) {
       const nextIngredientsInci = [
@@ -2046,18 +2064,37 @@ function composeSyntheticCanonicalProduct({
         payload.inci_ingredients,
         payload.inciIngredients,
         payload.ingredients,
+        payloadSeedData.ingredients_inci,
+        payloadSeedData.ingredientsInci,
+        payloadSnapshot.ingredients_inci,
+        payloadSnapshot.ingredientsInci,
       ]
         .map((value) => asArray(value))
         .find((items) => items.length > 0);
       if (nextIngredientsInci?.length > 0) product.ingredients_inci = nextIngredientsInci;
     }
     if (!Array.isArray(product.active_ingredients) || product.active_ingredients.length === 0) {
-      const nextActive = asArray(payload.active_ingredients);
-      if (nextActive.length > 0) product.active_ingredients = nextActive;
+      const nextActive = [
+        payload.active_ingredients,
+        payloadSeedData.active_ingredients,
+        payloadSnapshot.active_ingredients,
+      ]
+        .map((value) => asArray(value))
+        .find((items) => items.length > 0);
+      if (nextActive?.length > 0) product.active_ingredients = nextActive;
     }
     if (!Array.isArray(product.pdp_details_sections) || product.pdp_details_sections.length === 0) {
-      const nextSections = asArray(payload.pdp_details_sections || payload.details_sections);
-      if (nextSections.length > 0) product.pdp_details_sections = nextSections;
+      const nextSections = [
+        payload.pdp_details_sections,
+        payload.details_sections,
+        payloadSeedData.pdp_details_sections,
+        payloadSeedData.details_sections,
+        payloadSnapshot.pdp_details_sections,
+        payloadSnapshot.details_sections,
+      ]
+        .map((value) => asArray(value))
+        .find((items) => items.length > 0);
+      if (nextSections?.length > 0) product.pdp_details_sections = nextSections;
     }
   }
 

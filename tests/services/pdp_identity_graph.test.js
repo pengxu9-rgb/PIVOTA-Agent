@@ -365,6 +365,68 @@ describe('pdpIdentityGraph', () => {
     });
   });
 
+  test('composeSyntheticCanonicalProduct rehydrates structured PDP fields from nested external seed payload contract', () => {
+    const { composeSyntheticCanonicalProduct } = require('../../src/services/pdpIdentityGraph');
+
+    const externalListing = {
+      merchant_id: 'external_seed',
+      product_id: 'ext_krave_oil_lala',
+      source_kind: 'external_seed',
+      source_tier: 'brand',
+      sellable_item_group_id: 'sig_krave_oil_lala',
+      product_line_id: 'pl_krave_oil_lala',
+      review_family_id: 'rf_krave_oil_lala',
+      identity_confidence: 0.98,
+      source_payload: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_krave_oil_lala',
+        title: 'Oil La La',
+        description: 'Balanced facial oil for breakout-prone skin.',
+        seed_data: {
+          pdp_ingredients_raw:
+            'Helianthus Annuus (Sunflower) Seed Oil, Rosa Canina Fruit Oil, Vitis Vinifera Seed Oil, 1,2-Hexanediol',
+          pdp_how_to_use_raw: 'Apply 1-2 drops after toner and before moisturizer.',
+          pdp_details_sections: [
+            {
+              heading: 'How to Use',
+              content: 'Apply 1-2 drops after toner and before moisturizer.',
+            },
+          ],
+          ingredients_inci: [
+            'Helianthus Annuus (Sunflower) Seed Oil',
+            'Rosa Canina Fruit Oil',
+            'Vitis Vinifera Seed Oil',
+            '1,2-Hexanediol',
+          ],
+          snapshot: {
+            pdp_how_to_use_raw: 'Apply 1-2 drops after toner and before moisturizer.',
+          },
+        },
+      },
+    };
+
+    const composed = composeSyntheticCanonicalProduct({
+      requestedListing: externalListing,
+      exactListings: [externalListing],
+      lineListings: [externalListing],
+    });
+
+    expect(composed.product.pdp_ingredients_raw).toContain('Helianthus Annuus');
+    expect(composed.product.pdp_how_to_use_raw).toBe('Apply 1-2 drops after toner and before moisturizer.');
+    expect(composed.product.ingredients_inci).toEqual([
+      'Helianthus Annuus (Sunflower) Seed Oil',
+      'Rosa Canina Fruit Oil',
+      'Vitis Vinifera Seed Oil',
+      '1,2-Hexanediol',
+    ]);
+    expect(composed.product.pdp_details_sections).toEqual([
+      expect.objectContaining({
+        heading: 'How to Use',
+        content: 'Apply 1-2 drops after toner and before moisturizer.',
+      }),
+    ]);
+  });
+
   test('buildIdentityListingFromProduct groups multi-page shade siblings into one product line', () => {
     const {
       buildIdentityListingFromProduct,
