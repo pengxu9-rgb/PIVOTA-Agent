@@ -547,8 +547,9 @@ function buildSemanticRevisionHint({ stage, issues } = {}) {
       'Revise your previous output.',
       'Fix the following issues:',
       list.map((item) => `- ${item}`).join('\n'),
-      hasParseTruncated ? 'Return a smaller JSON object: at most 2 insights, at most 4 routine_steps, and omit optional arrays rather than leaving partial JSON.' : '',
-      'Every routine step must be grounded in linked_cues.',
+      hasParseTruncated ? 'Return the smallest valid JSON object: exactly 1 insight, short evidence phrase, and no optional fields.' : '',
+      'Allowed top-level fields only: needs_risk_check, summary_focus, insights.',
+      'Do not return routine_steps, watchouts, follow_up, two_week_focus, risk_flags, deepening, markdown, or prose.',
       'Keep the plan conservative, structured, and free of user-facing prose.',
     ].filter(Boolean).join('\n');
   }
