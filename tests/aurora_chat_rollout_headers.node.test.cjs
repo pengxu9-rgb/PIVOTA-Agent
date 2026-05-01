@@ -220,6 +220,51 @@ test('handleChat answers routine-analysis priority follow-up without product-ana
   );
 });
 
+test('handleChat returns failed contract instead of 500 when skill router schema validation throws', async () => {
+  await withEnv(
+    {
+      AURORA_CHAT_SKILL_ROUTER_V2: 'true',
+      AURORA_CHAT_RESPONSE_META_ENABLED: 'false',
+    },
+    async () => {
+      const { handleChat, __setRouterForTests, __resetRouterForTests } = loadChatRoutesFresh();
+      const req = makeRequest({
+        headers: {
+          'x-aurora-uid': 'skill-schema-failure-user',
+          'x-lang': 'CN',
+        },
+        body: {
+          message: '这个分析里最该先改哪一步？',
+          language: 'CN',
+          session: { state: 'idle' },
+        },
+      });
+      const res = makeResponseCapture();
+
+      __setRouterForTests({
+        async route() {
+          const err = new Error('LLM output failed schema validation: ProductAnalysisOutput');
+          err.name = 'LlmQualityError';
+          throw err;
+        },
+      });
+
+      try {
+        await handleChat(req, res);
+      } finally {
+        __resetRouterForTests();
+      }
+
+      assert.equal(res.statusCode, 200);
+      assert.equal(res.body?.status, 'failed');
+      assert.equal(res.body?.meta?.failure_class, 'llm_schema_validation_failed');
+      assert.match(String(res.body?.assistant_message?.content || ''), /不会把失败包装成成功/);
+      const cards = Array.isArray(res.body?.cards) ? res.body.cards : [];
+      assert.equal(cards.some((card) => card && card.type === 'confidence_notice'), true);
+    },
+  );
+});
+
 test('handleChat answers vitamin C product-fit alternative follow-up without dupe router', async () => {
   await withEnv(
     {

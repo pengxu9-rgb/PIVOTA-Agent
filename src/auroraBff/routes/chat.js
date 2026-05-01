@@ -75,6 +75,7 @@ const AURORA_TRAVEL_WEATHER_LIVE_ENABLED = toBool(process.env.AURORA_TRAVEL_WEAT
 const AURORA_LOOP_BREAKER_V2_ENABLED = toBool(process.env.AURORA_LOOP_BREAKER_V2_ENABLED, false);
 const AURORA_CHAT_RESPONSE_META_ENABLED = toBool(process.env.AURORA_CHAT_RESPONSE_META_ENABLED, false);
 const AURORA_CHAT_SKILL_ROUTER_V2_ENABLED = toBool(process.env.AURORA_CHAT_SKILL_ROUTER_V2, true);
+const PIVOT_BEAUTY_CONTRACT_VERSION = String(process.env.PIVOT_BEAUTY_CONTRACT_VERSION || 'beauty_pivot_contract_v1').trim();
 const AURORA_CHAT_GLOBAL_FLAGS = Object.freeze({
   profile_v2: AURORA_PROFILE_V2_ENABLED,
   qa_planner_v1: AURORA_QA_PLANNER_V1_ENABLED,
@@ -334,6 +335,89 @@ function applyRolloutMeta(payload, { req, ctx, body, identity, res } = {}) {
   }
 
   return out;
+}
+
+function resolveChatResponseLanguage(ctx, body) {
+  const raw = pickFirstTrimmed(
+    ctx && ctx.lang,
+    body && body.language,
+    body && body.lang,
+    body && body.locale,
+    body && body.context && body.context.locale,
+  ).toLowerCase();
+  return /^(zh|cn|chinese)/i.test(raw) || raw.includes('zh') || raw.includes('cn') ? 'CN' : 'EN';
+}
+
+function classifyChatSkillFailure(error, status) {
+  const statusNum = Number(status || 0);
+  if (statusNum === 504 || String(error && error.code || '').toUpperCase().includes('TIMEOUT')) return 'upstream_timeout';
+  const text = `${error && error.name ? error.name : ''} ${error && error.message ? error.message : ''} ${
+    error && error.constructor && error.constructor.name ? error.constructor.name : ''
+  }`;
+  if (/schema|validation|LlmQuality/i.test(text)) return 'llm_schema_validation_failed';
+  return 'chat_skill_execution_failed';
+}
+
+function buildChatSkillFailurePayload({ ctx, body, error, status } = {}) {
+  const language = resolveChatResponseLanguage(ctx, body);
+  const failureClass = classifyChatSkillFailure(error, status);
+  const isTimeout = failureClass === 'upstream_timeout';
+  const text =
+    language === 'CN'
+      ? isTimeout
+        ? '这轮 Aurora 主链路等待上游超时，我不会把超时包装成成功。请稍后重试，或直接补充你的肤质、routine 和目标，我会按低置信度继续。'
+        : '这轮 Aurora 主链路没有稳定完成，我不会把失败包装成成功。请稍后重试，或直接补充你的肤质、routine 和目标，我会按低置信度继续。'
+      : isTimeout
+        ? 'The Aurora main path timed out upstream, and I will not report it as a successful answer. Retry shortly, or share your skin type, routine, and goal so I can continue conservatively.'
+        : 'The Aurora main path did not complete reliably, and I will not report it as a successful answer. Retry shortly, or share your skin type, routine, and goal so I can continue conservatively.';
+  const requestId = pickFirstTrimmed(ctx && ctx.request_id, `chat_${Date.now()}`);
+  return {
+    pivot_contract_version: PIVOT_BEAUTY_CONTRACT_VERSION,
+    status: 'failed',
+    route_authority: 'aurora_chat',
+    assistant_message: { role: 'assistant', content: text },
+    assistant_text: text,
+    cards: [
+      {
+        card_id: `conf_${requestId}`,
+        type: 'confidence_notice',
+        payload: {
+          reason: failureClass,
+          confidence: { score: 0.2, level: 'low', rationale: [failureClass] },
+          details: [text],
+          actions: ['retry', 'provide_text_context'],
+        },
+      },
+    ],
+    suggested_chips: [],
+    session_patch: {
+      next_state: 'FAILED_RECOVERABLE',
+      meta: {
+        pivot_contract_version: PIVOT_BEAUTY_CONTRACT_VERSION,
+        status: 'failed',
+        failure_class: failureClass,
+        fallback_attempted: false,
+        fallback_adopted: false,
+      },
+    },
+    events: [
+      {
+        event_name: 'chat_skill_failed_contract',
+        data: {
+          failure_class: failureClass,
+          fallback_attempted: false,
+          fallback_adopted: false,
+        },
+      },
+    ],
+    meta: {
+      pivot_contract_version: PIVOT_BEAUTY_CONTRACT_VERSION,
+      status: 'failed',
+      failure_class: failureClass,
+      fallback_attempted: false,
+      fallback_adopted: false,
+    },
+  };
 }
 
 async function resolveRequestIdentity(req, internal = null) {
@@ -1399,9 +1483,12 @@ async function enrichSkillRequestForCompat(req, skillRequest, internal = {}) {
 }
 
 async function handleChat(req, res) {
+  let auth = null;
+  let body = isPlainObject(req && req.body) ? req.body : {};
+  let promptMeta = null;
   try {
-    const auth = await resolveRequestIdentity(req, getRoutesInternal());
-    const body = isPlainObject(req.body) ? req.body : {};
+    auth = await resolveRequestIdentity(req, getRoutesInternal());
+    body = isPlainObject(req.body) ? req.body : {};
     const proxyEligible = shouldProxyFrameworkRecoToV1Mainline(body, auth.internal);
     const proxyAvailable = canProxyRecoToV1Mainline();
     setResponseHeader(res, 'x-aurora-chat-handler', 'skill_router_v2');
@@ -1478,7 +1565,6 @@ async function handleChat(req, res) {
       });
     }
     const skillRequest = await enrichSkillRequestForCompat(req, buildSkillRequest(req), auth.internal);
-    let promptMeta = null;
     try {
       promptMeta = await buildPromptMetaForChatRequest(skillRequest);
     } catch (_error) {
@@ -1556,10 +1642,22 @@ async function handleChat(req, res) {
   } catch (error) {
     console.error('[chat] skill execution error:', error);
     const status = Number.isFinite(Number(error?.status)) ? Number(error.status) : 500;
-    res.status(status).json({
-      error: status === 504 ? 'upstream_timeout' : 'internal_error',
-      message: status === 504 ? 'The request timed out while waiting for the Aurora mainline.' : 'An error occurred processing your request.',
-    });
+    const ctx = auth && auth.ctx ? auth.ctx : buildRequestContext(req, {});
+    const failurePayload = buildChatSkillFailurePayload({ ctx, body, error, status });
+    const responsePayload = mergePromptMeta(
+      applyRolloutMeta(
+        mergeResponseMeta(failurePayload, auth && auth.ctx ? auth.ctx.auth_meta : null),
+        {
+          req,
+          ctx,
+          body,
+          identity: req && req._identity ? req._identity : null,
+          res,
+        },
+      ),
+      promptMeta,
+    );
+    res.status(status === 504 ? 504 : 200).json(responsePayload);
   }
 }
 
