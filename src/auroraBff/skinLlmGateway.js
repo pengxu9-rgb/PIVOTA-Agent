@@ -79,7 +79,7 @@ const SKIN_REPORT_MAX_OUTPUT_TOKENS = readOutputTokenBudget('AURORA_SKIN_REPORT_
 const SKIN_JSON_TEMPERATURE = readSamplingFloat('AURORA_SKIN_JSON_TEMPERATURE', 0, { min: 0, max: 1 });
 const SKIN_JSON_TOP_P = readSamplingFloat('AURORA_SKIN_JSON_TOP_P', 0.1, { min: 0.01, max: 1 });
 const AURORA_SKIN_REPORT_RESPONSE_SCHEMA_ENABLED = (() => {
-  const raw = String(process.env.AURORA_SKIN_REPORT_RESPONSE_SCHEMA_ENABLED || 'false')
+  const raw = String(process.env.AURORA_SKIN_REPORT_RESPONSE_SCHEMA_ENABLED || 'true')
     .trim()
     .toLowerCase();
   return raw === 'true' || raw === '1' || raw === 'yes' || raw === 'y' || raw === 'on';
@@ -471,7 +471,7 @@ function shouldRecoverReportFailureWithDeterministicFallback(reason) {
 
 function shouldRetryReportAttempt({ failureReason, totalTimeoutMs, firstAttemptLatencyMs } = {}) {
   const reason = String(failureReason || '').trim().toUpperCase();
-  if (shouldRecoverReportFailureWithDeterministicFallback(reason)) return false;
+  if (reason !== 'SCHEMA_INVALID' && shouldRecoverReportFailureWithDeterministicFallback(reason)) return false;
   const total = normalizeGatewayTimeoutMs(totalTimeoutMs, null, { min: 200, max: 45000 });
   if (!Number.isFinite(total) || total <= 0) return true;
   const remaining = Math.max(0, total - Math.max(0, Math.trunc(Number(firstAttemptLatencyMs) || 0)));
@@ -1011,8 +1011,12 @@ async function runGeminiReportStrategy({
   profiler,
   timeoutMs,
 } = {}) {
-  const bundle = buildSkinReportPromptBundle({ language, dto: reportDto, promptVersion });
-  const isCanonical = isSkinPromptV3(promptVersion);
+  const effectivePromptVersion =
+    typeof promptVersion === 'string' && promptVersion.trim()
+      ? promptVersion.trim()
+      : 'skin_report_v3_canonical';
+  const bundle = buildSkinReportPromptBundle({ language, dto: reportDto, promptVersion: effectivePromptVersion });
+  const isCanonical = isSkinPromptV3(effectivePromptVersion);
   let retryAttempted = 0;
   const totalReportTimeoutMs = resolveGeminiEffectiveTimeoutMs({
     timeoutMs,
@@ -1098,7 +1102,10 @@ async function runGeminiReportStrategy({
 
   if (!first.ok || !firstValidation.ok || !firstSemantic.ok || !firstSafety.ok) {
     const firstFailureReason = normalizeReportGatewayReason(first, firstValidation, firstSemantic, firstSafety);
-    if (shouldRecoverReportFailureWithDeterministicFallback(firstFailureReason)) {
+    if (
+      firstFailureReason !== 'SCHEMA_INVALID' &&
+      shouldRecoverReportFailureWithDeterministicFallback(firstFailureReason)
+    ) {
       return buildDeterministicReportFallbackResult({
         reportDto,
         language,
