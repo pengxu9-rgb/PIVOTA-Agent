@@ -4806,6 +4806,193 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
 	    expect(upstreamSearch.isDone()).toBe(false);
 	  });
 
+  test('Seoul KR market query bridges Korean-brand cleanser rows without fallback when exact KR seeds are sparse', async () => {
+    const observedParams = [];
+    jest.doMock('../../src/db', () => ({
+      query: async (sql, params = []) => {
+        const text = String(sql || '');
+        observedParams.push(params);
+        if (text.includes('COUNT(*)::int AS total')) return { rows: [{ total: 0 }] };
+        if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
+          return { rows: [] };
+        }
+        if (text.includes('FROM external_product_seeds')) {
+          const market = params[0];
+          const tool = params[1];
+          if (market !== 'US' || tool !== 'creator_agents') return { rows: [] };
+          const now = new Date().toISOString();
+          return {
+            rows: [
+              {
+                id: 'seed-laneige-cleanser-1',
+                external_product_id: 'ext_laneige_cleanser_1',
+                market: 'US',
+                tool: 'creator_agents',
+                destination_url: 'https://shop.example.com/products/laneige-water-bank-cleanser',
+                canonical_url: 'https://shop.example.com/products/laneige-water-bank-cleanser',
+                domain: 'shop.example.com',
+                title: 'Water Bank Blue Hyaluronic Cleansing Foam',
+                image_url: 'https://cdn.example.com/laneige-cleanser.jpg',
+                price_amount: '23.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Laneige',
+                  category: 'cleanser',
+                  description: 'Gentle cleansing foam for sensitive skin.',
+                },
+                updated_at: now,
+                created_at: now,
+              },
+              {
+                id: 'seed-anua-cleanser-1',
+                external_product_id: 'ext_anua_cleanser_1',
+                market: 'US',
+                tool: 'creator_agents',
+                destination_url: 'https://shop.example.com/products/anua-hyaluronic-gel-cleanser',
+                canonical_url: 'https://shop.example.com/products/anua-hyaluronic-gel-cleanser',
+                domain: 'shop.example.com',
+                title: '8 Hyaluronic Acid Moisturizing Gentle Gel Cleanser',
+                image_url: 'https://cdn.example.com/anua-gel.jpg',
+                price_amount: '18.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Anua',
+                  category: 'cleanser',
+                  description: 'Gentle gel cleanser for redness-prone skin.',
+                },
+                updated_at: now,
+                created_at: now,
+              },
+              {
+                id: 'seed-roundlab-cleanser-1',
+                external_product_id: 'ext_roundlab_cleanser_1',
+                market: 'US',
+                tool: 'creator_agents',
+                destination_url: 'https://shop.example.com/products/round-lab-dokdo-cleanser',
+                canonical_url: 'https://shop.example.com/products/round-lab-dokdo-cleanser',
+                domain: 'shop.example.com',
+                title: '1025 Dokdo Gentle Cleanser',
+                image_url: 'https://cdn.example.com/dokdo-cleanser.jpg',
+                price_amount: '17.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Round Lab',
+                  category: 'cleanser',
+                  description: 'Gentle cleanser for sensitive skin and sunscreen residue.',
+                },
+                updated_at: now,
+                created_at: now,
+              },
+              {
+                id: 'seed-boj-cleanser-1',
+                external_product_id: 'ext_boj_cleanser_1',
+                market: 'US',
+                tool: 'creator_agents',
+                destination_url: 'https://shop.example.com/products/boj-green-plum-cleanser',
+                canonical_url: 'https://shop.example.com/products/boj-green-plum-cleanser',
+                domain: 'shop.example.com',
+                title: 'Green Plum Refreshing Cleanser',
+                image_url: 'https://cdn.example.com/boj-cleanser.jpg',
+                price_amount: '16.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Anua',
+                  category: 'cleanser',
+                  description: 'Low pH gel cleanser for daily sunscreen cleansing.',
+                },
+                updated_at: now,
+                created_at: now,
+              },
+              {
+                id: 'seed-generic-cleanser-1',
+                external_product_id: 'ext_generic_cleanser_1',
+                market: 'US',
+                tool: 'creator_agents',
+                destination_url: 'https://shop.example.com/products/generic-gentle-cleanser',
+                canonical_url: 'https://shop.example.com/products/generic-gentle-cleanser',
+                domain: 'shop.example.com',
+                title: 'Generic Gentle Cleanser',
+                image_url: 'https://cdn.example.com/generic-cleanser.jpg',
+                price_amount: '14.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                seed_data: {
+                  brand: 'Test Beauty',
+                  category: 'cleanser',
+                  description: 'Gentle face cleanser.',
+                },
+                updated_at: now,
+                created_at: now,
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      },
+    }));
+
+    const upstreamSearch = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [],
+        total: 0,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'K beauty gentle cleanser sensitive redness Seoul travel',
+            page: 1,
+            limit: 6,
+            in_stock_only: true,
+            market: 'KR',
+          },
+        },
+        metadata: {
+          source: 'beauty_cross_agent_batch',
+          market: 'KR',
+        },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.status).toBe('success');
+    expect(resp.body.metadata?.query_source).toBe('agent_products_beauty_external_seed_mainline');
+    expect(resp.body.metadata?.destination_brand_market_bridge).toMatchObject({
+      attempted: true,
+      source_market: 'US',
+      target_market: 'KR',
+      returned_count: 4,
+    });
+    expect(observedParams.some((params) => params[0] === 'KR')).toBe(true);
+    expect(observedParams.some((params) => params[0] === 'US')).toBe(true);
+    const ids = resp.body.products.map((product) => product.product_id);
+    expect(ids).toEqual(expect.arrayContaining([
+      'ext_laneige_cleanser_1',
+      'ext_anua_cleanser_1',
+      'ext_roundlab_cleanser_1',
+      'ext_boj_cleanser_1',
+    ]));
+    expect(ids).not.toContain('ext_generic_cleanser_1');
+    expect(resp.body.products[0]?.local_authority).toMatchObject({
+      brand_home_market: 'KR',
+      brand_origin_country: 'KR',
+    });
+    expect(resp.body.products[0]?.travel_purchase_bucket).toBe('check_in_destination');
+    expect(resp.body.products[0]?.trip_context_reason).toMatch(/Seoul shortlist reason|not confirm KR local stock/i);
+    expect(upstreamSearch.isDone()).toBe(false);
+  });
+
   test('Seoul travel sunscreen ranking prefers local SPF50 PA++++ authority over generic US SPF', async () => {
     jest.doMock('../../src/db', () => ({
       query: async (sql) => {
@@ -4997,8 +5184,8 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(ids).not.toContain('ext_olay_spf');
     expect(ids).not.toContain('ext_glowscreen');
     expect(resp.body.products[0]?.local_authority).toMatchObject({
-      brand_home_market: 'South Korea',
-      local_purchase_markets: ['KR'],
+      brand_home_market: 'KR',
+      local_purchase_markets: expect.arrayContaining(['KR']),
       authority_source: 'seed',
     });
     expect(resp.body.products[0]?.fit_attributes).toMatchObject({

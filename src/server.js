@@ -159,6 +159,11 @@ const {
   EXTERNAL_SEED_RECALL_SQL_FIELDS,
 } = require('./services/externalSeedRecall');
 const {
+  resolveExternalSeedLocalityFacts,
+  applyLocalityFactsToSeedData,
+  hasLocalityFactsValue,
+} = require('./services/externalSeedLocalityFacts');
+const {
   runExternalSeedBrandMainlineFastpath,
 } = require('./findProductsExternalSeedBrandFastpath');
 const {
@@ -9991,7 +9996,52 @@ function buildBeautyExternalSeedMainlineProduct(row) {
     product.brand = brand;
     product.vendor = brand;
   }
+  const localityFacts = resolveExternalSeedLocalityFacts({ row, seedData, snapshot });
+  if (hasLocalityFactsValue(localityFacts)) {
+    product.seed_data = applyLocalityFactsToSeedData(seedData, localityFacts);
+    product.locality_facts_v1 = localityFacts;
+    product.locality_facts = localityFacts;
+    product.local_authority = localityFacts;
+    if (localityFacts.brand_origin) product.brand_origin = localityFacts.brand_origin;
+    if (localityFacts.brand_origin_country) product.brand_origin_country = localityFacts.brand_origin_country;
+    if (localityFacts.brand_home_market) product.brand_home_market = localityFacts.brand_home_market;
+    if (localityFacts.market_availability) product.market_availability = localityFacts.market_availability;
+    if (Array.isArray(localityFacts.available_markets) && localityFacts.available_markets.length) {
+      product.available_markets = localityFacts.available_markets;
+    }
+    if (Array.isArray(localityFacts.local_purchase_markets) && localityFacts.local_purchase_markets.length) {
+      product.local_purchase_markets = localityFacts.local_purchase_markets;
+    }
+    if (Array.isArray(localityFacts.local_retail_channels) && localityFacts.local_retail_channels.length) {
+      product.local_retail_channels = localityFacts.local_retail_channels;
+      product.local_retail_channel = localityFacts.local_retail_channels
+        .map((channel) => channel?.channel)
+        .filter(Boolean);
+    }
+    if (typeof localityFacts.travel_size === 'boolean') product.travel_size = localityFacts.travel_size;
+    if (localityFacts.creator_local_reason) product.creator_local_reason = localityFacts.creator_local_reason;
+  }
   return product;
+}
+
+function beautyProductHasTargetMarketAuthority(product = {}, targetMarket = '', { requirePurchase = false } = {}) {
+  const target = String(targetMarket || '').trim().toUpperCase();
+  if (!target || !product || typeof product !== 'object') return false;
+  const localAuthority = buildBeautyProductLocalAuthorityForResponse(product) || {};
+  const purchaseMarkets = [
+    product.market,
+    product.merchant_market,
+    localAuthority.retailer_region,
+    ...(Array.isArray(localAuthority.local_purchase_markets) ? localAuthority.local_purchase_markets : []),
+  ].map((value) => String(value || '').trim().toUpperCase()).filter(Boolean);
+  if (purchaseMarkets.includes(target)) return true;
+  if (requirePurchase) return false;
+  const authorityMarkets = [
+    localAuthority.brand_home_market,
+    localAuthority.brand_origin_country,
+    ...(Array.isArray(localAuthority.available_markets) ? localAuthority.available_markets : []),
+  ].map((value) => String(value || '').trim().toUpperCase()).filter(Boolean);
+  return authorityMarkets.includes(target);
 }
 
 async function queryBeautyExternalSeedRowsFast({
@@ -10029,6 +10079,12 @@ async function queryBeautyExternalSeedRowsFast({
   const seen = new Set();
   const rawProducts = [];
   const variantResults = [];
+  const destinationBrandMarketBridge = {
+    attempted: false,
+    source_market: null,
+    target_market: safeMarket,
+    returned_count: 0,
+  };
   const categoryAuthoritySql = `lower(coalesce(
     seed_data->'derived'->'recall'->>'category',
     seed_data->>'category',
@@ -10039,8 +10095,9 @@ async function queryBeautyExternalSeedRowsFast({
     seed_data->'snapshot'->>'product_type',
     ''
   ))`;
-  const runScopeQuery = async (tool) => {
+  const runScopeQuery = async (tool, queryMarket = safeMarket, marketScope = 'exact_market') => {
     try {
+      const safeQueryMarket = String(queryMarket || safeMarket).trim().toUpperCase() || safeMarket;
       const isSingleCategory = categoryTerms.length === 1;
       const categoryLimitBind = `$${categoryTerms.length + 3}`;
       const scopeLimitBind = `$${categoryTerms.length + 4}`;
@@ -10137,8 +10194,8 @@ async function queryBeautyExternalSeedRowsFast({
       `
         : multiCategorySql;
       const params = isSingleCategory
-        ? [safeMarket, tool, categoryTerms[0], perScopeRowLimit]
-        : [safeMarket, tool, ...categoryTerms, perCategoryRowLimit, perScopeRowLimit];
+        ? [safeQueryMarket, tool, categoryTerms[0], perScopeRowLimit]
+        : [safeQueryMarket, tool, ...categoryTerms, perCategoryRowLimit, perScopeRowLimit];
       const queryStartedAt = Date.now();
       const result = await queryBeautyExternalSeedRowsWithTimeout(
         sql,
@@ -10156,6 +10213,8 @@ async function queryBeautyExternalSeedRowsFast({
           category_terms: categoryTerms,
           recall_pattern_count: recallPatterns.length,
           per_category_row_limit: perCategoryRowLimit,
+          market: safeQueryMarket,
+          market_scope: marketScope,
           tool_scope: tool || '(empty)',
           legacy_tool_scope_recall: PIVOT_BEAUTY_LEGACY_TOOL_SCOPE_RECALL_ENABLED,
           single_category_indexed_query: isSingleCategory,
@@ -10173,6 +10232,8 @@ async function queryBeautyExternalSeedRowsFast({
           row_count: 0,
           category_terms: categoryTerms,
           recall_pattern_count: recallPatterns.length,
+          market: String(queryMarket || safeMarket).trim().toUpperCase() || safeMarket,
+          market_scope: marketScope,
           tool_scope: tool || '(empty)',
           legacy_tool_scope_recall: PIVOT_BEAUTY_LEGACY_TOOL_SCOPE_RECALL_ENABLED,
           single_category_indexed_query: categoryTerms.length === 1,
@@ -10184,13 +10245,19 @@ async function queryBeautyExternalSeedRowsFast({
       };
     }
   };
-  const appendScopeRows = (scopeResult) => {
+  const appendScopeRows = (scopeResult, { requireTargetMarketAuthority = false } = {}) => {
     if (!scopeResult || typeof scopeResult !== 'object') return;
     if (scopeResult.variant) variantResults.push(scopeResult.variant);
     for (const row of Array.isArray(scopeResult.rows) ? scopeResult.rows : []) {
       if (rawProducts.length >= rawProductCap) break;
       const product = buildBeautyExternalSeedMainlineProduct(row);
       if (!product) continue;
+      if (
+        requireTargetMarketAuthority &&
+        !beautyProductHasTargetMarketAuthority(product, safeMarket, { requirePurchase: false })
+      ) {
+        continue;
+      }
       product.market = row.market || safeMarket;
       product.tool = row.tool || null;
       product.external_seed_id = product.external_seed_id || row.id || null;
@@ -10206,6 +10273,7 @@ async function queryBeautyExternalSeedRowsFast({
       if (!key || seen.has(key)) continue;
       seen.add(key);
       rawProducts.push(product);
+      if (requireTargetMarketAuthority) destinationBrandMarketBridge.returned_count += 1;
     }
   };
 
@@ -10221,11 +10289,37 @@ async function queryBeautyExternalSeedRowsFast({
     }
   }
 
+  const shouldBridgeDestinationBrandMarket =
+    safeMarket !== 'US' &&
+    safeMarket === 'KR' &&
+    hasKBeautyLocalIntent(queryText) &&
+    rawProducts.length < safeLimit;
+  if (shouldBridgeDestinationBrandMarket) {
+    destinationBrandMarketBridge.attempted = true;
+    destinationBrandMarketBridge.source_market = 'US';
+    if (PIVOT_BEAUTY_PARALLEL_SCOPE_RECALL_ENABLED) {
+      const bridgeResults = await Promise.all(
+        toolScopes.map((tool) => runScopeQuery(tool, 'US', `${safeMarket.toLowerCase()}_brand_home_bridge`)),
+      );
+      for (const scopeResult of bridgeResults) {
+        appendScopeRows(scopeResult, { requireTargetMarketAuthority: true });
+      }
+    } else {
+      for (const tool of toolScopes) {
+        if (rawProducts.length >= rawProductCap) break;
+        appendScopeRows(await runScopeQuery(tool, 'US', `${safeMarket.toLowerCase()}_brand_home_bridge`), {
+          requireTargetMarketAuthority: true,
+        });
+      }
+    }
+  }
+
   return {
     rawProducts,
     variantResults,
     categoryTerms,
     recallPatterns,
+    destinationBrandMarketBridge,
   };
 }
 
@@ -11113,6 +11207,12 @@ function isBeautyProductContraindicatedForQuery(product, queryText = '', intent 
     product?.category,
     product?.product_type,
   ].filter(Boolean).join(' '));
+  const titleNameSurfaceText = normalizeSearchTextForMatch([
+    product?.title,
+    product?.name,
+    product?.product_name,
+    product?.display_name,
+  ].filter(Boolean).join(' '));
   const safetyText = buildBeautyProductSafetyText(product, text);
   const normalizedQuery = normalizeSearchTextForMatch(queryText);
   const calmFaceSkincareQuery =
@@ -11147,6 +11247,8 @@ function isBeautyProductContraindicatedForQuery(product, queryText = '', intent 
   const productLooksLikeMaskPack = /\b(mud\s*pack|clay\s*pack|sleeping\s*pack|wash[-\s]?off\s*pack|sleeping\s*mask|sheet\s*mask|mask)\b|面膜|泥膜/i.test(titleSurfaceText);
   const productLooksLikeRoutineSet = /\b(am\/pm\s+routine|cult\s+skincare\s+routine|routine|regimen|starter\s*kit|kit|set|duo|trio|bundle|collection|capsule)\b|套装|套組|套组|组合|組合|护理包|護理包/i.test(titleSurfaceText);
   const productLooksLikeBrushTool = /\b(brush\s*cleanser|brushes?|makeup\s*brush|brush\s*cleaning|tool\s*cleanser)\b|刷具|化妆刷|化妝刷|工具/i.test(safetyText);
+  const productLooksLikeCleanserSurface =
+    /\b(cleanser|cleansing|face\s*wash|facial\s*wash|foaming\s*wash|wash\s*gel|cleansing\s*gel|cleansing\s*foam|cleansing\s*milk)\b|洁面|潔面|洗面奶|洗面乳|洗顔料/i.test(titleNameSurfaceText);
   const productLooksLikeTreatmentSerum =
     /\b(serum|essence|ampoule|suspension|treatment|azelaic\s+acid|hyaluronic\s+acid(?:\s+\d+%?)?|niacinamide|tranexamic\s+acid)\b|精华|精華|安瓶|壬二酸|玻尿酸|透明质酸|煙酰胺|烟酰胺|传明酸|傳明酸/i.test(titleSurfaceText);
   const productLooksLikeVolumePlumpingSerum =
@@ -11232,7 +11334,8 @@ function isBeautyProductContraindicatedForQuery(product, queryText = '', intent 
     calmFaceSkincareQuery &&
     (families.has('cleanser') || families.has('moisturizer') || families.has('sunscreen')) &&
     productLooksLikeTreatmentSerum &&
-    !queryRequestsTreatmentSerum
+    !queryRequestsTreatmentSerum &&
+    !(families.has('cleanser') && productLooksLikeCleanserSurface)
   ) {
     return true;
   }
@@ -11624,37 +11727,77 @@ function buildBeautyTripContextReasonForResponse({ product, queryText, localAuth
   const targetMarket = String(destination.market || '').trim().toUpperCase();
   const city = destination.city || (lang === 'CN' ? '当地' : 'the destination');
   const families = inferBeautyMainlineIntent(queryText).families || [];
-  const isLocalAuthority =
+  const hasDestinationPurchaseAuthority =
     targetMarket &&
     (
       (Array.isArray(localAuthority?.local_purchase_markets) && localAuthority.local_purchase_markets.includes(targetMarket)) ||
-      String(localAuthority?.brand_home_market || '').trim().toUpperCase() === targetMarket ||
       String(product?.market || product?.merchant_market || '').trim().toUpperCase() === targetMarket
     );
+  const hasDestinationBrandAuthority =
+    targetMarket &&
+    (
+      String(localAuthority?.brand_home_market || '').trim().toUpperCase() === targetMarket ||
+      String(localAuthority?.brand_origin_country || '').trim().toUpperCase() === targetMarket
+    );
+  const isLocalAuthority = hasDestinationPurchaseAuthority || hasDestinationBrandAuthority;
   const hasTravelSize = fitAttributes && fitAttributes.travel_size === true;
   const family = families.find((candidate) => beautyProductMatchesFamily(product, candidate)) || families[0] || '';
 
   if (lang === 'CN') {
-    if (isLocalAuthority && targetMarket === 'KR') {
+    if (hasDestinationPurchaseAuthority && targetMarket === 'KR') {
       if (family === 'sunscreen') return `Seoul 当地购买理由：用于当地 UV、步行暴晒和补涂；商品带有 KR/韩国本地 authority 信号。`;
       if (family === 'cleanser') return `Seoul 当地购买理由：用于晚间清洁防晒、汗和 fine dust/城市污染残留；商品带有 KR/韩国本地 authority 信号。`;
       if (family === 'moisturizer') return `Seoul 当地购买理由：用于落地前 48 小时、口罩摩擦或泛红后的轻修护；商品带有 KR/韩国本地 authority 信号。`;
       return `Seoul 当地购买理由：只按真实缺口补买，商品带有 KR/韩国本地 authority 信号。`;
+    }
+    if (hasDestinationBrandAuthority && targetMarket === 'KR') {
+      if (family === 'sunscreen') return `Seoul 候选核验理由：韩国品牌/韩妆 authority 信号适合到 Olive Young 或当地渠道先核验；当前商品 row 未确认 KR 本地库存，不包装成落地必买。`;
+      if (family === 'cleanser') return `Seoul 候选核验理由：韩国品牌/韩妆 authority 信号适合晚间清洁防晒、汗和 fine dust 残留；当前商品 row 未确认 KR 本地库存，不包装成落地必买。`;
+      if (family === 'moisturizer') return `Seoul 候选核验理由：韩国品牌/韩妆 authority 信号适合落地前 48 小时轻修护；当前商品 row 未确认 KR 本地库存，不包装成落地必买。`;
+      return `Seoul 候选核验理由：韩国品牌/韩妆 authority 信号可作为当地柜台核验清单；当前商品 row 未确认 KR 本地库存。`;
     }
     if (isLocalAuthority) return `${city} 当地购买理由：商品带有目的地本地 authority 信号，只按旅行缺口补买。`;
     if (hasTravelSize) return `旅行携带理由：商品有 travel-size/便携证据，适合出发前带，避免落地前 48 小时临时试新品。`;
     return `旅行使用理由：按飞行、当地 UV/通勤和屏障稳定来筛选；若无本地 authority，不把它包装成 ${city} 当地必买。`;
   }
 
-  if (isLocalAuthority && targetMarket === 'KR') {
+  if (hasDestinationPurchaseAuthority && targetMarket === 'KR') {
     if (family === 'sunscreen') return 'Seoul local reason: use for local UV, walking sun exposure, and reapplication; the product carries KR/Korea local authority signals.';
     if (family === 'cleanser') return 'Seoul local reason: use at night for SPF, sweat, and fine-dust/city-pollution residue; the product carries KR/Korea local authority signals.';
     if (family === 'moisturizer') return 'Seoul local reason: use during the first 48 hours after landing or after mask-friction redness; the product carries KR/Korea local authority signals.';
     return 'Seoul local reason: buy only for a real gap; the product carries KR/Korea local authority signals.';
   }
+  if (hasDestinationBrandAuthority && targetMarket === 'KR') {
+    if (family === 'sunscreen') return 'Seoul shortlist reason: Korean-brand authority makes it worth checking at Olive Young or local retailers for UV and reapplication; this row does not confirm KR local stock.';
+    if (family === 'cleanser') return 'Seoul shortlist reason: Korean-brand authority fits evening SPF, sweat, and fine-dust residue cleansing; this row does not confirm KR local stock.';
+    if (family === 'moisturizer') return 'Seoul shortlist reason: Korean-brand authority fits first-48-hour light repair; this row does not confirm KR local stock.';
+    return 'Seoul shortlist reason: Korean-brand authority makes it a local-counter candidate to verify, not an automatic destination buy.';
+  }
   if (isLocalAuthority) return `${city} local reason: the product carries destination-local authority signals and should only fill a real travel gap.`;
   if (hasTravelSize) return 'Travel-pack reason: travel-size/portable evidence makes it better suited to pack before departure instead of testing something new after landing.';
   return `Travel reason: screened for flight, local UV/transit, and barrier stability; without local authority, it is not presented as a ${city} local must-buy.`;
+}
+
+function buildBeautyTravelPurchaseBucketForResponse({ product, localAuthority, fitAttributes, queryText } = {}) {
+  if (!hasTravelLocalQuerySignal(queryText)) return null;
+  const destination = inferTravelDestinationMarketFromQuery(queryText);
+  const targetMarket = String(destination.market || '').trim().toUpperCase();
+  const hasDestinationPurchaseAuthority =
+    targetMarket &&
+    (
+      (Array.isArray(localAuthority?.local_purchase_markets) && localAuthority.local_purchase_markets.includes(targetMarket)) ||
+      String(product?.market || product?.merchant_market || '').trim().toUpperCase() === targetMarket
+    );
+  if (hasDestinationPurchaseAuthority) return 'buy_in_destination';
+  const hasDestinationBrandAuthority =
+    targetMarket &&
+    (
+      String(localAuthority?.brand_home_market || '').trim().toUpperCase() === targetMarket ||
+      String(localAuthority?.brand_origin_country || '').trim().toUpperCase() === targetMarket
+    );
+  if (hasDestinationBrandAuthority) return 'check_in_destination';
+  if (fitAttributes && fitAttributes.travel_size === true) return 'pack_before_flight';
+  return 'pack_before_flight_or_travel_review';
 }
 
 function compactBeautyMainlineProductForResponse(product, intent = null, queryText = '') {
@@ -11692,10 +11835,12 @@ function compactBeautyMainlineProductForResponse(product, intent = null, queryTe
   });
   if (tripContextReason) {
     next.trip_context_reason = tripContextReason;
-    next.travel_purchase_bucket =
-      /local reason|当地购买理由|本地 authority|local authority/i.test(tripContextReason)
-        ? 'buy_in_destination'
-        : 'pack_before_flight_or_travel_review';
+    next.travel_purchase_bucket = buildBeautyTravelPurchaseBucketForResponse({
+      product,
+      localAuthority,
+      fitAttributes,
+      queryText,
+    }) || 'pack_before_flight_or_travel_review';
   }
   return next;
 }
@@ -12018,6 +12163,11 @@ async function searchBeautyExternalSeedProductsMainline({
         version: 'beauty_strict_quality_2026_04_30',
         local_authority_fields_supported: true,
       },
+      ...(selectedRows?.destinationBrandMarketBridge?.attempted
+        ? {
+            destination_brand_market_bridge: selectedRows.destinationBrandMarketBridge,
+          }
+        : {}),
       ...(creatorScoped
         ? {
             creator_rank_overlay: {
@@ -12054,6 +12204,7 @@ async function searchBeautyExternalSeedProductsMainline({
           safety_rules: beautyIntent.safety,
           creator_scoped: Boolean(creatorScoped),
           broadened_tool_scope: Boolean(broadenedRows),
+          destination_brand_market_bridge: selectedRows?.destinationBrandMarketBridge || null,
         },
       },
       ...(metadata?.creator_id ? { creator_id: metadata.creator_id } : {}),
