@@ -21210,8 +21210,10 @@ async function proxyPhotosToBackend(req, res) {
     });
 
     if (resp.status) return res.status(resp.status).json(resp.data);
-    return res.status(500).json({
-      error: resp.failure_code || 'FAILED_TO_PROXY_PHOTOS',
+    const failureCode = resp.failure_code || 'FAILED_TO_PROXY_PHOTOS';
+    const statusCode = String(failureCode || '').toUpperCase().endsWith('_TIMEOUT') ? 504 : 500;
+    return res.status(statusCode).json({
+      error: failureCode,
       message: 'Failed to proxy photo upload request',
       details: {
         detail: resp.detail || null,
