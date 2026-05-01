@@ -3325,6 +3325,46 @@ test('runConcernSemanticPlanner narrows dry use-first asks into moisturizer-led 
   }
 });
 
+test('runConcernSemanticPlanner uses deterministic mainline when Gemini JSON enrichment is untrusted', async () => {
+  const { moduleId, __internal } = loadRouteInternals();
+  try {
+    let callCount = 0;
+    __internal.__setCallGeminiJsonObjectForTest(async () => {
+      callCount += 1;
+      return {
+        ok: false,
+        reason: 'PARSE_TRUNCATED_JSON',
+        raw_text: '{ "primary_concern": "dry tight skin after washing", "primary_role_id": "hydrating_barrier_moisturizer"',
+        parse_status: 'parse_truncated',
+        provider: 'gemini',
+        requested_model: 'gemini-2.5-flash',
+        effective_model: 'gemini-2.5-flash',
+        selection_source: 'local_gemini_direct',
+      };
+    });
+
+    const out = await __internal.runConcernSemanticPlanner({
+      ctx: { lang: 'EN', request_id: 'req_structured_planner_deterministic_mainline_test' },
+      requestText: 'my skin feels dry and tight after washing, what should i use first?',
+      focus: '',
+      deadlineAtMs: Date.now() + 5000,
+    });
+
+    assert.equal(callCount, 1);
+    assert.equal(out.trace?.planner_failure_class, null);
+    assert.equal(out.trace?.planner_enrichment_failure_class, 'planner_untrusted');
+    assert.equal(out.trace?.planner_deterministic_mainline_used, true);
+    assert.equal(out.trace?.planner_fallback_used, false);
+    assert.equal(out.semanticPlan?.selection_owner_state, 'trusted');
+    assert.equal(out.semanticPlan?.selection_owner_source, 'rule_concern_planner_mainline');
+    assert.deepEqual(out.semanticPlan?.core_roles?.map((role) => role?.role_id), ['hydrating_barrier_moisturizer']);
+    assert.equal(out.semanticPlan?.comparison_mode, 'same_role_comparison');
+  } finally {
+    __internal.__resetCallGeminiJsonObjectForTest();
+    delete require.cache[moduleId];
+  }
+});
+
 test('runConcernSemanticPlanner forwards analysis handoff targets into prompt and keeps explicit moisturizer follow-up narrowed', async () => {
   const { moduleId, __internal } = loadRouteInternals();
   let capturedArgs = null;
