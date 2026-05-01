@@ -5424,6 +5424,9 @@ async function buildOffersFromGroupMembers(args) {
           product_group_id: resolvedProductGroupId,
           fulfillment_type: p.fulfillment_type || 'merchant',
           tier: 'default',
+          ...(mid === 'external_seed' && offerProductId
+            ? { offer_discriminator: offerProductId }
+            : {}),
         }) ||
         `of:v1:${mid}:${resolvedProductGroupId}:${p.fulfillment_type || 'merchant'}:default`,
       product_group_id: resolvedProductGroupId,
@@ -33483,6 +33486,7 @@ async function runPdpCorePrewarmPass() {
 
 module.exports = app;
 module.exports._debug = {
+  buildOffersFromGroupMembers,
   loadCreatorSellableFromCache,
   searchCreatorSellableFromCache,
   searchCrossMerchantFromCache,

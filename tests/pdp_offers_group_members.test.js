@@ -537,4 +537,50 @@ describe('PDP grouped offers', () => {
       }),
     );
   });
+
+  test('builds distinct offer ids for multiple external-seed offers in the same group', async () => {
+    const app = require('../src/server');
+
+    const offersData = await app._debug.buildOffersFromGroupMembers({
+      productGroupId: 'sig_boj_dynasty_cream',
+      members: [
+        {
+          merchant_id: 'external_seed',
+          product_id: 'ext_boj_official_dynasty',
+          source_kind: 'external_seed',
+          source_tier: 'brand',
+          source_payload: {
+            title: 'Dynasty Cream',
+            brand: 'Beauty of Joseon',
+            merchant_name: 'Beauty of Joseon',
+            price: 15,
+            currency: 'USD',
+            in_stock: true,
+            destination_url: 'https://beautyofjoseon.com/products/dynasty-cream',
+          },
+        },
+        {
+          merchant_id: 'external_seed',
+          product_id: 'ext_boj_ohlolly_dynasty',
+          source_kind: 'external_seed',
+          source_tier: 'merchant',
+          source_payload: {
+            title: 'Beauty of Joseon Dynasty Cream',
+            brand: 'Beauty of Joseon',
+            merchant_name: 'Ohlolly',
+            price: 24,
+            currency: 'USD',
+            in_stock: true,
+            destination_url: 'https://ohlolly.com/products/beauty-of-joseon-dynasty-cream',
+          },
+        },
+      ],
+    });
+
+    expect(offersData.offers_count).toBe(2);
+    expect(new Set(offersData.offers.map((offer) => offer.offer_id)).size).toBe(2);
+    expect(offersData.offers.map((offer) => offer.merchant_name)).toEqual(
+      expect.arrayContaining(['Beauty of Joseon', 'Ohlolly']),
+    );
+  });
 });

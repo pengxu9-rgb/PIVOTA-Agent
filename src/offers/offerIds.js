@@ -1,5 +1,15 @@
 const OFFER_ID_PREFIX = 'of:v1:';
 
+function normalizeOfferIdDiscriminator(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  return raw
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 80);
+}
+
 function buildProductGroupId(input) {
   const platform = String(input?.platform || '').trim();
   const platformProductId = String(
@@ -25,7 +35,11 @@ function buildOfferId(input) {
   const fulfillmentType = String(
     input?.fulfillment_type || input?.fulfillmentType || 'merchant',
   ).trim() || 'merchant';
-  const tier = String(input?.tier || 'default').trim() || 'default';
+  const baseTier = String(input?.tier || 'default').trim() || 'default';
+  const discriminator = normalizeOfferIdDiscriminator(
+    input?.offer_discriminator || input?.offerDiscriminator || input?.discriminator,
+  );
+  const tier = discriminator ? `${baseTier}__${discriminator}` : baseTier;
 
   // NOTE: product_group_id can contain ":"; offer ids must remain parseable for merchant_id.
   // The format guarantees merchant_id is always the first segment after the prefix.
@@ -71,4 +85,5 @@ module.exports = {
   buildOfferId,
   extractMerchantIdFromOfferId,
   parseOfferId,
+  normalizeOfferIdDiscriminator,
 };
