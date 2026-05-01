@@ -1,0 +1,419 @@
+{
+  "contract_version": "brand_locality_facts_seed.v1",
+  "review_status": "seed_reviewed",
+  "brands": [
+    {
+      "brand": "Anua",
+      "aliases": ["anua"],
+      "brand_origin_country": "KR",
+      "brand_home_market": "KR",
+      "creator_local_reason": "K-beauty brand; use as Seoul-local only when the product row also has KR market or KR retail-channel evidence."
+    },
+    {
+      "brand": "Beauty of Joseon",
+      "aliases": ["beauty of joseon", "beauty of joseon us", "boj"],
+      "brand_origin_country": "KR",
+      "brand_home_market": "KR",
+      "creator_local_reason": "K-beauty brand; use as Seoul-local only when the product row also has KR market or KR retail-channel evidence."
+    },
+    {
+      "brand": "By Wishtrend",
+      "aliases": ["by wishtrend", "bywishtrend"],
+      "brand_origin_country": "KR",
+      "brand_home_market": "KR",
+      "creator_local_reason": "K-beauty brand; use as Seoul-local only when the product row also has KR market or KR retail-channel evidence."
+    },
+    {
+      "brand": "COSRX",
+      "aliases": ["cosrx"],
+      "brand_origin_country": "KR",
+      "brand_home_market": "KR",
+      "creator_local_reason": "K-beauty brand; use as Seoul-local only when the product row also has KR market or KR retail-channel evidence."
+    },
+    {
+      "brand": "d'Alba",
+      "aliases": ["d'alba", "d alba", "dalba", "d'alba global"],
+      "brand_origin_country": "KR",
+      "brand_home_market": "KR",
+      "creator_local_reason": "K-beauty brand; use as Seoul-local only when the product row also has KR market or KR retail-channel evidence."
+    },
+    {
+      "brand": "Dr.Jart+",
+      "aliases": ["dr.jart+", "dr jart", "dr jart+", "dr. jart", "dr. jart+", "dr jart plus", "dr. jart plus"],
+      "brand_origin_country": "KR",
+      "brand_home_market": "KR",
+      "creator_local_reason": "K-beauty brand; use as Seoul-local only when the product row also has KR market or KR retail-channel evidence."
+    },
+    {
+      "brand": "Etude",
+      "aliases": ["etude", "etude house"],
+      "brand_origin_country": "KR",
+      "brand_home_market": "KR",
+      "creator_local_reason": "K-beauty brand; use as Seoul-local only when the product row also has KR market or KR retail-channel evidence."
+    },
+    {
+      "brand": "Haruharu Wonder",
+      "aliases": ["haruharu wonder"],
+      "brand_origin_country": "KR",
+      "brand_home_market": "KR",
+      "creator_local_reason": "K-beauty brand; use as Seoul-local only when the product row also has KR market or KR retail-channel evidence."
+    },
+    {
+      "brand": "Innisfree",
+      "aliases": ["innisfree", "innisfree us"],
+      "brand_origin_country": "KR",
+      "brand_home_market": "KR",
+      "creator_local_reason": "K-beauty brand; use as Seoul-local only when the product row also has KR market or KR retail-channel evidence."
+    },
+    {
+      "brand": "KraveBeauty",
+      "aliases": ["kravebeauty", "krave beauty"],
+      "brand_origin_country": "KR",
+      "brand_home_market": "KR",
+      "creator_local_reason": "K-beauty brand; use as Seoul-local only when the product row also has KR market or KR retail-channel evidence."
+    },
+    {
+      "brand": "Laneige",
+      "aliases": ["laneige", "laneige us"],
+      "brand_origin_country": "KR",
+      "brand_home_market": "KR",
+      "creator_local_reason": "K-beauty brand; use as Seoul-local only when the product row also has KR market or KR retail-channel evidence."
+    },
+    {
+      "brand": "Mary&May",
+      "aliases": ["mary&may", "mary and may"],
+      "brand_origin_country": "KR",
+      "brand_home_market": "KR",
+      "creator_local_reason": "K-beauty brand; use as Seoul-local only when the product row also has KR market or KR retail-channel evidence."
+    },
+    {
+      "brand": "Medicube",
+      "aliases": ["medicube"],
+      "brand_origin_country": "KR",
+      "brand_home_market": "KR",
+      "creator_local_reason": "K-beauty brand; use as Seoul-local only when the product row also has KR market or KR retail-channel evidence."
+    },
+    {
+      "brand": "Neogen",
+      "aliases": ["neogen", "neogen dermalogy"],
+      "brand_origin_country": "KR",
+      "brand_home_market": "KR",
+      "creator_local_reason": "K-beauty brand; use as Seoul-local only when the product row also has KR market or KR retail-channel evidence."
+    },
+    {
+      "brand": "Purito SEOUL",
+      "aliases": ["purito seoul", "purito"],
+      "brand_origin_country": "KR",
+      "brand_home_market": "KR",
+      "creator_local_reason": "K-beauty brand; use as Seoul-local only when the product row also has KR market or KR retail-channel evidence."
+    },
+    {
+      "brand": "Round Lab",
+      "aliases": ["round lab", "round lab us"],
+      "brand_origin_country": "KR",
+      "brand_home_market": "KR",
+      "creator_local_reason": "K-beauty brand; use as Seoul-local only when the product row also has KR market or KR retail-channel evidence."
+    },
+    {
+      "brand": "SKIN1004",
+      "aliases": ["skin1004", "skin 1004", "skin1004 us"],
+      "brand_origin_country": "KR",
+      "brand_home_market": "KR",
+      "creator_local_reason": "K-beauty brand; use as Seoul-local only when the product row also has KR market or KR retail-channel evidence."
+    },
+    {
+      "brand": "Some By Mi",
+      "aliases": ["some by mi", "somebymi"],
+      "brand_origin_country": "KR",
+      "brand_home_market": "KR",
+      "creator_local_reason": "K-beauty brand; use as Seoul-local only when the product row also has KR market or KR retail-channel evidence."
+    },
+    {
+      "brand": "Sulwhasoo",
+      "aliases": ["sulwhasoo", "sulwhasoo us"],
+      "brand_origin_country": "KR",
+      "brand_home_market": "KR",
+      "creator_local_reason": "K-beauty luxury skincare brand; use as Seoul-local only when the product row also has KR market or KR retail-channel evidence."
+    },
+    {
+      "brand": "TIRTIR",
+      "aliases": ["tirtir", "tirtir global"],
+      "brand_origin_country": "KR",
+      "brand_home_market": "KR",
+      "creator_local_reason": "K-beauty brand; use as Seoul-local only when the product row also has KR market or KR retail-channel evidence."
+    },
+    {
+      "brand": "Torriden",
+      "aliases": ["torriden"],
+      "brand_origin_country": "KR",
+      "brand_home_market": "KR",
+      "creator_local_reason": "K-beauty brand; use as Seoul-local only when the product row also has KR market or KR retail-channel evidence."
+    },
+    {
+      "brand": "Aveeno",
+      "aliases": ["aveeno"],
+      "brand_origin_country": "US",
+      "brand_home_market": "US",
+      "creator_local_reason": "US-origin skincare brand; local-purchase claims require market-specific retail evidence."
+    },
+    {
+      "brand": "Beekman 1802",
+      "aliases": ["beekman 1802"],
+      "brand_origin_country": "US",
+      "brand_home_market": "US",
+      "creator_local_reason": "US-origin skincare brand; local-purchase claims require market-specific retail evidence."
+    },
+    {
+      "brand": "Biossance",
+      "aliases": ["biossance"],
+      "brand_origin_country": "US",
+      "brand_home_market": "US",
+      "creator_local_reason": "US-origin skincare brand; local-purchase claims require market-specific retail evidence."
+    },
+    {
+      "brand": "Bubble",
+      "aliases": ["bubble"],
+      "brand_origin_country": "US",
+      "brand_home_market": "US",
+      "creator_local_reason": "US-origin skincare brand; local-purchase claims require market-specific retail evidence."
+    },
+    {
+      "brand": "CeraVe",
+      "aliases": ["cerave", "cera ve"],
+      "brand_origin_country": "US",
+      "brand_home_market": "US",
+      "creator_local_reason": "US-origin pharmacy skincare brand; local-purchase claims require market-specific retail evidence."
+    },
+    {
+      "brand": "cocokind",
+      "aliases": ["cocokind"],
+      "brand_origin_country": "US",
+      "brand_home_market": "US",
+      "creator_local_reason": "US-origin skincare brand; local-purchase claims require market-specific retail evidence."
+    },
+    {
+      "brand": "Dieux",
+      "aliases": ["dieux"],
+      "brand_origin_country": "US",
+      "brand_home_market": "US",
+      "creator_local_reason": "US-origin skincare brand; local-purchase claims require market-specific retail evidence."
+    },
+    {
+      "brand": "First Aid Beauty",
+      "aliases": ["first aid beauty", "fab"],
+      "brand_origin_country": "US",
+      "brand_home_market": "US",
+      "creator_local_reason": "US-origin barrier-care brand; do not label as Seoul-local without separate KR retail evidence."
+    },
+    {
+      "brand": "Glossier",
+      "aliases": ["glossier"],
+      "brand_origin_country": "US",
+      "brand_home_market": "US",
+      "creator_local_reason": "US-origin beauty brand; local-purchase claims require market-specific retail evidence."
+    },
+    {
+      "brand": "Glow Recipe",
+      "aliases": ["glow recipe"],
+      "brand_origin_country": "US",
+      "brand_home_market": "US",
+      "creator_local_reason": "US-origin skincare brand; local-purchase claims require market-specific retail evidence."
+    },
+    {
+      "brand": "Good Molecules",
+      "aliases": ["good molecules"],
+      "brand_origin_country": "US",
+      "brand_home_market": "US",
+      "creator_local_reason": "US-origin skincare brand; local-purchase claims require market-specific retail evidence."
+    },
+    {
+      "brand": "INNBEAUTY PROJECT",
+      "aliases": ["innbeauty project", "innbeauty"],
+      "brand_origin_country": "US",
+      "brand_home_market": "US",
+      "creator_local_reason": "US-origin skincare brand; local-purchase claims require market-specific retail evidence."
+    },
+    {
+      "brand": "Murad",
+      "aliases": ["murad"],
+      "brand_origin_country": "US",
+      "brand_home_market": "US",
+      "creator_local_reason": "US-origin skincare brand; local-purchase claims require market-specific retail evidence."
+    },
+    {
+      "brand": "Naturium",
+      "aliases": ["naturium"],
+      "brand_origin_country": "US",
+      "brand_home_market": "US",
+      "creator_local_reason": "US-origin skincare brand; local-purchase claims require market-specific retail evidence."
+    },
+    {
+      "brand": "Neutrogena",
+      "aliases": ["neutrogena"],
+      "brand_origin_country": "US",
+      "brand_home_market": "US",
+      "creator_local_reason": "US-origin skincare brand; local-purchase claims require market-specific retail evidence."
+    },
+    {
+      "brand": "Olay",
+      "aliases": ["olay"],
+      "brand_origin_country": "US",
+      "brand_home_market": "US",
+      "creator_local_reason": "US-origin mass skincare brand; do not label as Seoul-local without separate KR retail evidence."
+    },
+    {
+      "brand": "Paula's Choice",
+      "aliases": ["paula's choice", "paulas choice"],
+      "brand_origin_country": "US",
+      "brand_home_market": "US",
+      "creator_local_reason": "US-origin skincare brand; local-purchase claims require market-specific retail evidence."
+    },
+    {
+      "brand": "rhode",
+      "aliases": ["rhode"],
+      "brand_origin_country": "US",
+      "brand_home_market": "US",
+      "creator_local_reason": "US-origin skincare brand; local-purchase claims require market-specific retail evidence."
+    },
+    {
+      "brand": "Sofie Pavitt Face",
+      "aliases": ["sofie pavitt face"],
+      "brand_origin_country": "US",
+      "brand_home_market": "US",
+      "creator_local_reason": "US-origin skincare brand; local-purchase claims require market-specific retail evidence."
+    },
+    {
+      "brand": "Supergoop!",
+      "aliases": ["supergoop", "supergoop!"],
+      "brand_origin_country": "US",
+      "brand_home_market": "US",
+      "creator_local_reason": "US-origin sunscreen brand; do not label as Seoul-local without separate KR retail evidence."
+    },
+    {
+      "brand": "Vanicream",
+      "aliases": ["vanicream"],
+      "brand_origin_country": "US",
+      "brand_home_market": "US",
+      "creator_local_reason": "US-origin skincare brand; local-purchase claims require market-specific retail evidence."
+    },
+    {
+      "brand": "BYOMA",
+      "aliases": ["byoma"],
+      "brand_origin_country": "GB",
+      "brand_home_market": "GB",
+      "creator_local_reason": "UK-origin skincare brand; local-purchase claims require market-specific retail evidence."
+    },
+    {
+      "brand": "The INKEY List",
+      "aliases": ["the inkey list", "the inkey list us"],
+      "brand_origin_country": "GB",
+      "brand_home_market": "GB",
+      "creator_local_reason": "UK-origin skincare brand; local-purchase claims require market-specific retail evidence."
+    },
+    {
+      "brand": "Skinfix",
+      "aliases": ["skinfix"],
+      "brand_origin_country": "CA",
+      "brand_home_market": "CA",
+      "creator_local_reason": "Canada-origin skincare brand; local-purchase claims require market-specific retail evidence."
+    },
+    {
+      "brand": "The Ordinary",
+      "aliases": ["the ordinary", "deciem the ordinary"],
+      "brand_origin_country": "CA",
+      "brand_home_market": "CA",
+      "creator_local_reason": "Canada-origin ingredient-led brand; local-purchase claims require market-specific retail evidence."
+    },
+    {
+      "brand": "Avène",
+      "aliases": ["avène", "avene", "eau thermale avene"],
+      "brand_origin_country": "FR",
+      "brand_home_market": "FR",
+      "creator_local_reason": "French pharmacy skincare brand; local-purchase claims require market-specific retail evidence."
+    },
+    {
+      "brand": "Bioderma",
+      "aliases": ["bioderma"],
+      "brand_origin_country": "FR",
+      "brand_home_market": "FR",
+      "creator_local_reason": "French pharmacy skincare brand; local-purchase claims require market-specific retail evidence."
+    },
+    {
+      "brand": "Caudalie",
+      "aliases": ["caudalie"],
+      "brand_origin_country": "FR",
+      "brand_home_market": "FR",
+      "creator_local_reason": "French skincare brand; local-purchase claims require market-specific retail evidence."
+    },
+    {
+      "brand": "La Roche-Posay",
+      "aliases": ["la roche posay", "larocheposay", "lrp"],
+      "brand_origin_country": "FR",
+      "brand_home_market": "FR",
+      "creator_local_reason": "French pharmacy skincare brand; local-purchase claims require market-specific retail evidence."
+    },
+    {
+      "brand": "Vichy",
+      "aliases": ["vichy"],
+      "brand_origin_country": "FR",
+      "brand_home_market": "FR",
+      "creator_local_reason": "French skincare brand; local-purchase claims require market-specific retail evidence."
+    },
+    {
+      "brand": "Biore UV",
+      "aliases": ["biore uv", "biore", "bioré uv", "bioré"],
+      "brand_origin_country": "JP",
+      "brand_home_market": "JP",
+      "creator_local_reason": "Japan-origin sunscreen brand; local-purchase claims require market-specific retail evidence."
+    },
+    {
+      "brand": "Curél",
+      "aliases": ["curél", "curel", "kao curél", "kao curel"],
+      "brand_origin_country": "JP",
+      "brand_home_market": "JP",
+      "creator_local_reason": "Japan-origin skincare brand; local-purchase claims require market-specific retail evidence."
+    },
+    {
+      "brand": "Hada Labo",
+      "aliases": ["hada labo", "hadalabo"],
+      "brand_origin_country": "JP",
+      "brand_home_market": "JP",
+      "creator_local_reason": "Japan-origin skincare brand; local-purchase claims require market-specific retail evidence."
+    },
+    {
+      "brand": "CHANDO",
+      "aliases": ["chando"],
+      "brand_origin_country": "CN",
+      "brand_home_market": "CN",
+      "creator_local_reason": "China-origin skincare brand; local-purchase claims require market-specific retail evidence."
+    },
+    {
+      "brand": "PROYA",
+      "aliases": ["proya"],
+      "brand_origin_country": "CN",
+      "brand_home_market": "CN",
+      "creator_local_reason": "China-origin skincare brand; local-purchase claims require market-specific retail evidence."
+    },
+    {
+      "brand": "Winona",
+      "aliases": ["winona"],
+      "brand_origin_country": "CN",
+      "brand_home_market": "CN",
+      "creator_local_reason": "China-origin skincare brand; local-purchase claims require market-specific retail evidence."
+    }
+  ],
+  "unknown_review_brands": [
+    {
+      "brand": "Peach & Lily",
+      "reason": "Retailer plus house-brand structure needs explicit review before assigning brand home-market facts."
+    },
+    {
+      "brand": "Peace Out Skincare",
+      "reason": "Brand origin/home-market should be confirmed before adding to the reviewed seed map."
+    },
+    {
+      "brand": "Then I Met You",
+      "reason": "Cross-border founder/brand story needs explicit review before assigning brand home-market facts."
+    }
+  ]
+}

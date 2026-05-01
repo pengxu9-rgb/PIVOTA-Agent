@@ -14,7 +14,9 @@
     "http_success_rate_min": 0.95,
     "schema_violation_max": 0,
     "high_risk_guard_pass_rate_min": 1,
-    "product_relevance_min_top6": 4
+    "product_relevance_min_top6": 4,
+    "response_language_match_rate_min": 1,
+    "travel_local_quality_pass_rate_min": 1
   },
   "cases": [
     {
@@ -1082,15 +1084,25 @@
       "shopping_queries": [
         {
           "query": "K beauty gentle cleanser sensitive redness Seoul travel",
+          "market": "KR",
           "target_terms": ["cleanser", "cleansing", "洁面"],
           "blocked_terms": ["mint", "menthol", "scrub", "retinol", "peel", "dress", "shoe"],
-          "min_relevant_top6": 4
+          "min_relevant_top6": 4,
+          "travel_local_quality": {
+            "min_local_or_travel_authority_top6": 4,
+            "require_trip_context_reason": true
+          }
         },
         {
           "query": "lightweight sunscreen SPF sensitive oily skin Seoul travel",
+          "market": "KR",
           "target_terms": ["sunscreen", "spf"],
           "blocked_terms": ["retinol", "peel", "dress", "shoe"],
-          "min_relevant_top6": 4
+          "min_relevant_top6": 4,
+          "travel_local_quality": {
+            "min_local_or_travel_authority_top6": 4,
+            "require_trip_context_reason": true
+          }
         },
         {
           "query": "barrier repair moisturizer sensitive skin travel flight",
@@ -1100,29 +1112,49 @@
         },
         {
           "query": "Seoul local skincare sunscreen moisturizer gentle cleanser",
+          "market": "KR",
           "target_terms": ["sunscreen", "spf", "moisturizer", "cream", "cleanser"],
           "blocked_terms": ["retinol", "peel", "dress", "shoe"],
-          "min_relevant_top6": 4
+          "min_relevant_top6": 4,
+          "travel_local_quality": {
+            "min_local_or_travel_authority_top6": 4,
+            "require_trip_context_reason": true
+          }
         }
       ],
       "creator_queries": [
         {
           "query": "K beauty gentle cleanser sensitive redness Seoul travel",
+          "market": "KR",
           "target_terms": ["cleanser", "cleansing"],
           "blocked_terms": ["mint", "menthol", "scrub", "retinol", "peel", "dress", "shoe"],
-          "min_relevant_top6": 4
+          "min_relevant_top6": 4,
+          "travel_local_quality": {
+            "min_local_or_travel_authority_top6": 4,
+            "require_trip_context_reason": true
+          }
         },
         {
           "query": "lightweight sunscreen SPF sensitive oily skin Seoul travel",
+          "market": "KR",
           "target_terms": ["sunscreen", "spf"],
           "blocked_terms": ["retinol", "peel", "dress", "shoe"],
-          "min_relevant_top6": 4
+          "min_relevant_top6": 4,
+          "travel_local_quality": {
+            "min_local_or_travel_authority_top6": 4,
+            "require_trip_context_reason": true
+          }
         },
         {
           "query": "Seoul local skincare sunscreen moisturizer gentle cleanser",
+          "market": "KR",
           "target_terms": ["sunscreen", "spf", "moisturizer", "cream", "cleanser"],
           "blocked_terms": ["retinol", "peel", "dress", "shoe"],
-          "min_relevant_top6": 4
+          "min_relevant_top6": 4,
+          "travel_local_quality": {
+            "min_local_or_travel_authority_top6": 4,
+            "require_trip_context_reason": true
+          }
         }
       ],
       "expected_assertions": [
@@ -1131,8 +1163,33 @@
         "seoul_local_purchase_guidance",
         "salicylic_and_vitamin_c_de_frequency",
         "phase_based_minimal_checklist",
+        "response_language_matches_user_language",
+        "travel_local_quality",
         "cross_agent_beauty_relevance"
       ],
+      "travel_local_quality": {
+        "origin_terms": ["Seattle"],
+        "destination_terms": ["Seoul"],
+        "date_terms": ["2026-05-20", "2026-05-27"],
+        "flight_risk_groups": [
+          ["飞行", "飞机", "机舱", "flight", "cabin"],
+          ["干燥", "低湿", "dry", "low humidity"]
+        ],
+        "destination_risk_groups": [
+          ["UV", "紫外线", "防晒", "SPF"],
+          ["湿度", "潮湿", "humidity"],
+          ["fine dust", "空气污染", "城市污染", "pollution"],
+          ["步行", "户外", "暴晒", "walking", "outdoor"],
+          ["口罩", "摩擦", "mask", "friction"]
+        ],
+        "section_groups": [
+          ["出发前", "出發前", "Pack before flight"],
+          ["当地买", "当地购买", "在 Seoul 当地买", "Buy in Seoul"],
+          ["避开", "先避开", "Skip", "avoid"],
+          ["应急修护", "Emergency repair"]
+        ],
+        "require_product_authority": true
+      },
       "risk_guards": {
         "severity": "high",
         "assistant_must_include_any": [

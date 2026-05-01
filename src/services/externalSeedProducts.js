@@ -22,6 +22,10 @@ const {
   buildAgentSafeCommerceFacts,
   readCommerceFactsV1,
 } = require('../commerce/commerceFacts');
+const {
+  hasLocalityFactsValue,
+  resolveExternalSeedLocalityFacts,
+} = require('./externalSeedLocalityFacts');
 
 const EXTERNAL_SEED_MERCHANT_ID = 'external_seed';
 const SUNSCREEN_CATEGORY_RE =
@@ -2293,6 +2297,8 @@ function buildExternalSeedProduct(row, options = {}) {
   const snapshot = ensureJsonObject(seedData.snapshot);
   const commerceFacts = readCommerceFactsV1({ ...row, seed_data: seedData });
   const agentSafeCommerceFacts = commerceFacts ? buildAgentSafeCommerceFacts(commerceFacts) : null;
+  const localityFacts = resolveExternalSeedLocalityFacts({ row, seedData, snapshot });
+  const shouldExposeLocalityFacts = hasLocalityFactsValue(localityFacts);
   const ingredientIntel = ensureJsonObject(seedData.ingredient_intel);
   const snapshotIngredientIntel = ensureJsonObject(snapshot.ingredient_intel);
   const science = ensureJsonObject(seedData.science);
@@ -2685,6 +2691,25 @@ function buildExternalSeedProduct(row, options = {}) {
     external_seed_quality_signals: recall.quality_signals || undefined,
     ...(commerceFacts ? { commerce_facts_v1: commerceFacts, commerce_facts: commerceFacts } : {}),
     ...(agentSafeCommerceFacts ? { agent_safe_commerce_facts: agentSafeCommerceFacts } : {}),
+    ...(shouldExposeLocalityFacts
+      ? {
+          locality_facts_v1: localityFacts,
+          locality_facts: localityFacts,
+          local_authority: localityFacts,
+        }
+      : {}),
+    ...(localityFacts.brand_origin ? { brand_origin: localityFacts.brand_origin } : {}),
+    ...(localityFacts.brand_origin_country ? { brand_origin_country: localityFacts.brand_origin_country } : {}),
+    ...(localityFacts.brand_home_market ? { brand_home_market: localityFacts.brand_home_market } : {}),
+    ...(localityFacts.market_availability ? { market_availability: localityFacts.market_availability } : {}),
+    ...(localityFacts.available_markets?.length ? { available_markets: localityFacts.available_markets } : {}),
+    ...(localityFacts.local_purchase_markets?.length ? { local_purchase_markets: localityFacts.local_purchase_markets } : {}),
+    ...(localityFacts.local_retail_channels?.length ? { local_retail_channels: localityFacts.local_retail_channels } : {}),
+    ...(localityFacts.local_retail_channels?.length
+      ? { local_retail_channel: localityFacts.local_retail_channels.map((channel) => channel.channel).filter(Boolean) }
+      : {}),
+    ...(typeof localityFacts.travel_size === 'boolean' ? { travel_size: localityFacts.travel_size } : {}),
+    ...(localityFacts.creator_local_reason ? { creator_local_reason: localityFacts.creator_local_reason } : {}),
     ...(options.matchSource ? { external_seed_match_source: String(options.matchSource).trim() } : {}),
     variants,
     ...(selectedVariant?.variant_id ? { selected_variant_id: selectedVariant.variant_id } : {}),
@@ -2746,6 +2771,8 @@ function buildExternalSeedBrandSearchProduct(row) {
   const commerceFacts = readCommerceFactsV1({ ...row, seed_data: effectiveSeedData });
   const agentSafeCommerceFacts = commerceFacts ? buildAgentSafeCommerceFacts(commerceFacts) : null;
   const snapshot = ensureJsonObject(effectiveSeedData.snapshot);
+  const localityFacts = resolveExternalSeedLocalityFacts({ row, seedData: effectiveSeedData, snapshot });
+  const shouldExposeLocalityFacts = hasLocalityFactsValue(localityFacts);
   const recall = resolveExternalSeedRecallDoc({ row, seedData: effectiveSeedData, snapshot });
   const protection = resolveExternalSeedProtectionContract({
     row,
@@ -2878,6 +2905,7 @@ function buildExternalSeedBrandSearchProduct(row) {
     ...(availability ? { availability } : {}),
     product_type: normalizedCategory || explicitCategory || 'external',
     source: 'external_seed',
+    ...(row.market ? { market: String(row.market).trim().toUpperCase() } : {}),
     url: canonicalUrl || destinationUrl || undefined,
     ...(canonicalUrl ? { canonical_url: canonicalUrl } : {}),
     ...(destinationUrl ? { destination_url: destinationUrl } : {}),
@@ -2888,6 +2916,25 @@ function buildExternalSeedBrandSearchProduct(row) {
     external_seed_suppression_flags: protection.suppression_flags,
     ...(commerceFacts ? { commerce_facts_v1: commerceFacts, commerce_facts: commerceFacts } : {}),
     ...(agentSafeCommerceFacts ? { agent_safe_commerce_facts: agentSafeCommerceFacts } : {}),
+    ...(shouldExposeLocalityFacts
+      ? {
+          locality_facts_v1: localityFacts,
+          locality_facts: localityFacts,
+          local_authority: localityFacts,
+        }
+      : {}),
+    ...(localityFacts.brand_origin ? { brand_origin: localityFacts.brand_origin } : {}),
+    ...(localityFacts.brand_origin_country ? { brand_origin_country: localityFacts.brand_origin_country } : {}),
+    ...(localityFacts.brand_home_market ? { brand_home_market: localityFacts.brand_home_market } : {}),
+    ...(localityFacts.market_availability ? { market_availability: localityFacts.market_availability } : {}),
+    ...(localityFacts.available_markets?.length ? { available_markets: localityFacts.available_markets } : {}),
+    ...(localityFacts.local_purchase_markets?.length ? { local_purchase_markets: localityFacts.local_purchase_markets } : {}),
+    ...(localityFacts.local_retail_channels?.length ? { local_retail_channels: localityFacts.local_retail_channels } : {}),
+    ...(localityFacts.local_retail_channels?.length
+      ? { local_retail_channel: localityFacts.local_retail_channels.map((channel) => channel.channel).filter(Boolean) }
+      : {}),
+    ...(typeof localityFacts.travel_size === 'boolean' ? { travel_size: localityFacts.travel_size } : {}),
+    ...(localityFacts.creator_local_reason ? { creator_local_reason: localityFacts.creator_local_reason } : {}),
     ...(brand ? { vendor: brand, brand } : {}),
     ...(normalizedCategory ? { category: normalizedCategory } : {}),
   };

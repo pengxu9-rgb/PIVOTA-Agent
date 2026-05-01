@@ -295,9 +295,9 @@ test('travel skills pipeline: failed final rewrite uses phase-plan brief instead
 
       assert.equal(out.assistant_final_rewrite_used, false);
       assert.match(out.assistant_final_rewrite_reason, /^rewrite_/);
-      assert.match(out.assistant_text, /Before you leave|Before departure/i);
-      assert.match(out.assistant_text, /On the flight/i);
-      assert.match(out.assistant_text, /Local shopping|Shop locally/i);
+      assert.match(out.assistant_text, /Before you leave|Before departure|Pack before flight/i);
+      assert.match(out.assistant_text, /On the flight|cabin dryness|flight day/i);
+      assert.match(out.assistant_text, /Local shopping|Shop locally|Buy in Tokyo/i);
       assert.equal(/Travel product preview:|Key deltas:|Travel skincare kit:/i.test(out.assistant_text), false);
     },
   );
@@ -928,6 +928,14 @@ test('travel skills pipeline: Seoul local shopping wording reaches KR authority 
           .some((phase) => (phase.product_ids || []).includes('ext_kr_spf_1')),
         false,
       );
+      assert.match(out.assistant_text, /Trip: Seattle -> Seoul/i);
+      assert.match(out.assistant_text, /Pack before flight/i);
+      assert.match(out.assistant_text, /Buy in Seoul/i);
+      assert.match(out.assistant_text, /Skip \/ avoid during trip/i);
+      assert.match(out.assistant_text, /Emergency repair/i);
+      assert.match(out.assistant_text, /fine dust|city pollution|walking sun exposure|mask friction/i);
+      assert.match(out.assistant_text, /first 48 hours|cabin dryness/i);
+      assert.match(String(localProduct?.trip_context_reason || ''), /Seoul local reason|local SPF purchase/i);
     },
   );
 });

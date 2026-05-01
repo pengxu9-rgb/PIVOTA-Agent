@@ -179,6 +179,58 @@ function includesAny(text, terms = [], opts = {}) {
   return (Array.isArray(terms) ? terms : []).some((term) => containsTerm(text, term, opts));
 }
 
+function countCjkChars(text) {
+  const matches = String(text || '').match(/[\u4e00-\u9fff]/g);
+  return matches ? matches.length : 0;
+}
+
+function countLatinWords(text) {
+  const matches = String(text || '').match(/\b[A-Za-z][A-Za-z'-]{1,}\b/g);
+  return matches ? matches.length : 0;
+}
+
+function normalizeExpectedLanguage(value) {
+  const token = String(value || '').trim().toUpperCase();
+  return token === 'CN' ? 'CN' : token === 'EN' ? 'EN' : '';
+}
+
+function evaluateResponseLanguageMatch({ expectedLanguage, text }) {
+  const expected = normalizeExpectedLanguage(expectedLanguage);
+  const body = String(text || '').trim();
+  if (!expected || !body) {
+    return {
+      pass: false,
+      expected_language: expected || null,
+      detected_language: 'unknown',
+      cjk_chars: countCjkChars(body),
+      latin_words: countLatinWords(body),
+      reason: expected ? 'empty_text' : 'expected_language_missing',
+    };
+  }
+  const cjkChars = countCjkChars(body);
+  const latinWords = countLatinWords(body);
+  const detected =
+    cjkChars >= 12 && cjkChars >= Math.max(4, latinWords * 0.25)
+      ? 'CN'
+      : latinWords >= 8 && cjkChars < 8
+        ? 'EN'
+        : cjkChars > 0
+          ? 'mixed'
+          : 'unknown';
+  const pass =
+    expected === 'CN'
+      ? cjkChars >= 12
+      : cjkChars <= 6 && latinWords >= 8;
+  return {
+    pass,
+    expected_language: expected,
+    detected_language: detected,
+    cjk_chars: cjkChars,
+    latin_words: latinWords,
+    reason: pass ? '' : `expected_${expected}_detected_${detected}`,
+  };
+}
+
 function headerObject(headers) {
   const out = {};
   if (!headers || typeof headers.forEach !== 'function') return out;
@@ -408,6 +460,91 @@ function productText(product) {
     .join(' ');
 }
 
+function inferDestinationMarketFromText(text) {
+  const raw = String(text || '');
+  if (/\b(seoul|south korea|korea|korean)\b|首尔|首爾|韩国|韓國/i.test(raw)) return 'KR';
+  if (/\b(tokyo|osaka|kyoto|japan|japanese)\b|东京|東京|大阪|京都|日本/i.test(raw)) return 'JP';
+  if (/\b(bangkok|thailand|thai)\b|曼谷|泰国|泰國/i.test(raw)) return 'TH';
+  if (/\b(shanghai|beijing|china|chinese)\b|上海|北京|中国|中國/i.test(raw)) return 'CN';
+  if (/\b(reykjavik|iceland)\b|雷克雅未克|冰岛|冰島/i.test(raw)) return 'IS';
+  return '';
+}
+
+function productRawFieldText(product) {
+  if (!isPlainObject(product)) return '';
+  const raw = isPlainObject(product.raw) ? product.raw : {};
+  return [
+    raw.trip_context_reason,
+    raw.travel_context_reason,
+    raw.travel_purchase_bucket,
+    raw.local_authority,
+    raw.locality_facts_v1,
+    raw.locality_facts,
+    raw.fit_attributes,
+    raw.brand_origin,
+    raw.brand_origin_country,
+    raw.brand_home_market,
+    raw.market_availability,
+    raw.available_markets,
+    raw.local_purchase_markets,
+    raw.local_retail_channels,
+    raw.local_retail_channel,
+    raw.creator_local_reason,
+    raw.travel_size,
+    raw.reasons,
+  ]
+    .flatMap((value) => {
+      if (Array.isArray(value)) return value;
+      if (isPlainObject(value)) return [JSON.stringify(value)];
+      return [value];
+    })
+    .map((value) => String(value ?? '').trim())
+    .filter(Boolean)
+    .join(' ');
+}
+
+function productHasTripContextReason(product) {
+  const raw = isPlainObject(product?.raw) ? product.raw : {};
+  return Boolean(
+    String(raw.trip_context_reason || raw.travel_context_reason || '').trim() ||
+      includesAny(productRawFieldText(product), ['flight', 'cabin', 'local UV', 'fine dust', '机舱', '飞行', '当地', '本地', '步行', '城市污染']),
+  );
+}
+
+function productHasLocalOrTravelAuthority(product, queryDef = {}) {
+  const queryText = String(queryDef?.query || '');
+  const targetMarket = inferDestinationMarketFromText(queryText);
+  const raw = isPlainObject(product?.raw) ? product.raw : {};
+  const localAuthority = isPlainObject(raw.local_authority) ? raw.local_authority : {};
+  const facts = isPlainObject(raw.locality_facts_v1)
+    ? raw.locality_facts_v1
+    : isPlainObject(raw.locality_facts)
+      ? raw.locality_facts
+      : {};
+  const fieldText = `${productRawFieldText(product)} ${productText(product)}`;
+  const markets = [
+    raw.market,
+    raw.brand_home_market,
+    raw.brand_origin_country,
+    localAuthority.brand_home_market,
+    localAuthority.brand_origin_country,
+    ...(Array.isArray(localAuthority.local_purchase_markets) ? localAuthority.local_purchase_markets : []),
+    ...(Array.isArray(localAuthority.available_markets) ? localAuthority.available_markets : []),
+    facts.brand_home_market,
+    facts.brand_origin_country,
+    ...(Array.isArray(facts.local_purchase_markets) ? facts.local_purchase_markets : []),
+    ...(Array.isArray(facts.available_markets) ? facts.available_markets : []),
+  ].map((value) => String(value || '').trim().toUpperCase()).filter(Boolean);
+  if (targetMarket && markets.includes(targetMarket)) return true;
+  if (targetMarket === 'KR' && /\b(korea|korean|k[-\s]?beauty|seoul|kr|olive young)\b|韩国|韓國|首尔|首爾/i.test(fieldText)) {
+    return true;
+  }
+  if (/\b(travel[-\s]?size|portable|mini|carry[-\s]?on|flight|cabin)\b|旅行装|旅行裝|便携|便攜|小样|小樣|机舱|機艙/.test(fieldText)) {
+    return true;
+  }
+  return false;
+}
+
 function inferProductFamiliesFromText(text) {
   const raw = String(text || '');
   const out = new Set();
@@ -506,7 +643,12 @@ function evaluateProductRelevance(queryDef, products) {
       }
     }
   }
-  const pass = top.length > 0 && relevant >= minRelevant && blockedHits.length === 0;
+  const travelLocalQuality = evaluateProductTravelLocalQuality(queryDef, top);
+  const pass =
+    top.length > 0 &&
+    relevant >= minRelevant &&
+    blockedHits.length === 0 &&
+    (!travelLocalQuality || travelLocalQuality.pass);
   return {
     pass,
     relevant_top6: relevant,
@@ -514,6 +656,28 @@ function evaluateProductRelevance(queryDef, products) {
     top6_count: top.length,
     blocked_hits: blockedHits,
     expected_families: expectedFamilies,
+    ...(travelLocalQuality ? { travel_local_quality: travelLocalQuality } : {}),
+  };
+}
+
+function evaluateProductTravelLocalQuality(queryDef, topProducts) {
+  const cfg = isPlainObject(queryDef?.travel_local_quality) ? queryDef.travel_local_quality : null;
+  if (!cfg) return null;
+  const top = (Array.isArray(topProducts) ? topProducts : []).slice(0, 6);
+  const minAuthority = Number(cfg.min_local_or_travel_authority_top6 ?? cfg.min_authority_top6 ?? 4);
+  const requireTripReason = cfg.require_trip_context_reason !== false;
+  const authorityCount = top.filter((product) => productHasLocalOrTravelAuthority(product, queryDef)).length;
+  const tripReasonCount = top.filter(productHasTripContextReason).length;
+  const pass =
+    top.length > 0 &&
+    authorityCount >= minAuthority &&
+    (!requireTripReason || tripReasonCount >= minAuthority);
+  return {
+    pass,
+    local_or_travel_authority_top6: authorityCount,
+    trip_context_reason_top6: tripReasonCount,
+    min_local_or_travel_authority_top6: minAuthority,
+    require_trip_context_reason: requireTripReason,
   };
 }
 
@@ -626,6 +790,55 @@ function evaluateRiskGuards(caseDef, rows) {
   };
 }
 
+function evaluateTravelLocalQuality(caseDef, rows) {
+  const cfg = isPlainObject(caseDef.travel_local_quality) ? caseDef.travel_local_quality : null;
+  if (!cfg) return { enabled: false, pass: true, checks: [] };
+  const assistantText = rows
+    .filter((row) => String(row.agent || '').startsWith('aurora'))
+    .map((row) => row.assistant_text || '')
+    .join('\n');
+  const checks = [];
+  const addCheck = (kind, pass, details = {}) => {
+    checks.push({ kind, pass: Boolean(pass), ...details });
+  };
+  const checkAny = (kind, terms) => {
+    const values = Array.isArray(terms) ? terms : [];
+    if (!values.length) return;
+    addCheck(kind, includesAny(assistantText, values), { terms: values });
+  };
+  const checkAllGroups = (kind, groups) => {
+    for (const [index, group] of (Array.isArray(groups) ? groups : []).entries()) {
+      const terms = Array.isArray(group) ? group : [group];
+      addCheck(`${kind}_${index + 1}`, includesAny(assistantText, terms), { terms });
+    }
+  };
+
+  checkAny('origin_detected', cfg.origin_terms);
+  checkAny('destination_detected', cfg.destination_terms);
+  for (const term of Array.isArray(cfg.date_terms) ? cfg.date_terms : []) {
+    addCheck('date_detected', containsTerm(assistantText, term), { terms: [term] });
+  }
+  checkAllGroups('flight_and_cabin_risk', cfg.flight_risk_groups);
+  checkAllGroups('destination_environment_risk', cfg.destination_risk_groups);
+  checkAllGroups('travel_section', cfg.section_groups);
+
+  const productRows = rows.filter((row) => row.product_assessment?.travel_local_quality);
+  if (cfg.require_product_authority !== false) {
+    const failedProductRows = productRows.filter((row) => !row.product_assessment.travel_local_quality.pass);
+    addCheck('product_local_or_travel_authority', productRows.length > 0 && failedProductRows.length === 0, {
+      product_rows_checked: productRows.length,
+      failed_rows: failedProductRows.map((row) => row.step_id),
+    });
+  }
+
+  const pass = checks.every((check) => check.pass);
+  return {
+    enabled: true,
+    pass,
+    checks,
+  };
+}
+
 function collectCategoryNodes(value, out = []) {
   if (Array.isArray(value)) {
     value.forEach((item) => collectCategoryNodes(item, out));
@@ -649,11 +862,26 @@ function collectCategoryNodes(value, out = []) {
   return out;
 }
 
-function summarizeRow({ caseId, stepId, agent, route, query, response, rawFile, productAssessment, categoryCheck }) {
+function summarizeRow({
+  caseId,
+  stepId,
+  agent,
+  route,
+  query,
+  response,
+  rawFile,
+  productAssessment,
+  categoryCheck,
+  expectedLanguage,
+}) {
   const body = response.body || {};
   const products = extractProducts(body);
   const schema = validateResponseSchema(agent, body, response.parse_error);
   const degradation = classifyResponseDegradation(body, response);
+  const assistantText = extractAssistantText(body);
+  const languageAssessment = String(agent || '').startsWith('aurora')
+    ? evaluateResponseLanguageMatch({ expectedLanguage, text: assistantText })
+    : null;
   return {
     case_id: caseId,
     step_id: stepId,
@@ -666,7 +894,7 @@ function summarizeRow({ caseId, stepId, agent, route, query, response, rawFile, 
     schema_valid: schema.valid,
     schema_error: schema.reason,
     transport_error: response.transport_error,
-    assistant_text: extractAssistantText(body),
+    assistant_text: assistantText,
     reply: firstNonEmpty(body.reply),
     card_types: extractCardTypes(body),
     follow_up_questions: extractFollowUps(body),
@@ -680,6 +908,7 @@ function summarizeRow({ caseId, stepId, agent, route, query, response, rawFile, 
     product_assessment: productAssessment || null,
     category_check: categoryCheck || null,
     degradation,
+    language_assessment: languageAssessment,
   };
 }
 
@@ -747,6 +976,7 @@ async function runAuroraTurn({ baseUrl, caseDef, turn, turnIndex, runId, rawDir,
       query: turn.message || turn.payload?.name || '',
       response,
       rawFile: relativeToRoot(rawFile),
+      expectedLanguage: language,
     }),
     session_patch: isPlainObject(response.body && response.body.session_patch) ? response.body.session_patch : {},
   };
@@ -754,6 +984,7 @@ async function runAuroraTurn({ baseUrl, caseDef, turn, turnIndex, runId, rawDir,
 
 function buildInvokeBody({ caseDef, queryDef, agent, market, creatorId }) {
   const source = agent === 'creator' ? 'creator_agent' : 'beauty_cross_agent_batch';
+  const effectiveMarket = firstNonEmpty(queryDef && queryDef.market, market, 'US').toUpperCase();
   return {
     operation: 'find_products_multi',
     payload: {
@@ -761,7 +992,7 @@ function buildInvokeBody({ caseDef, queryDef, agent, market, creatorId }) {
         query: String(queryDef.query || ''),
         limit: Number(queryDef.limit || queryDef.max_results || 6),
         in_stock_only: queryDef.in_stock_only !== false,
-        market,
+        market: effectiveMarket,
         ui_surface: 'beauty_cross_agent_batch',
         ...(agent === 'creator' ? { creator_id: creatorId } : {}),
       },
@@ -771,7 +1002,7 @@ function buildInvokeBody({ caseDef, queryDef, agent, market, creatorId }) {
       case_id: caseDef.case_id,
       test_suite: 'beauty_cross_agent_multiturn',
       ui_surface: 'beauty_cross_agent_batch',
-      market,
+      market: effectiveMarket,
       ...(agent === 'creator' ? { creator_id: creatorId, creatorId } : {}),
     },
   };
@@ -895,21 +1126,34 @@ async function runCreatorCategoryCheck({ baseUrl, caseDef, rawDir, timeoutMs, cr
 
 function assessCase(caseDef, rows) {
   const risk = evaluateRiskGuards(caseDef, rows);
+  const travelLocalQuality = evaluateTravelLocalQuality(caseDef, rows);
   const productRows = rows.filter((row) => row.product_assessment);
   const productPass = productRows.every((row) => row.product_assessment && row.product_assessment.pass);
   const categoryRows = rows.filter((row) => row.category_check);
   const categoryPass = categoryRows.every((row) => row.category_check && row.category_check.pass);
   const degradationRows = rows.filter((row) => row.degradation && row.degradation.degraded);
   const degradationPass = degradationRows.length === 0;
+  const languageRows = rows.filter((row) => row.language_assessment);
+  const languagePass = languageRows.every((row) => row.language_assessment && row.language_assessment.pass);
   const httpPass = rows.every((row) => row.ok);
   const schemaPass = rows.every((row) => row.schema_valid);
-  const pass = httpPass && schemaPass && productPass && categoryPass && degradationPass && risk.pass;
+  const pass =
+    httpPass &&
+    schemaPass &&
+    productPass &&
+    categoryPass &&
+    degradationPass &&
+    languagePass &&
+    risk.pass &&
+    travelLocalQuality.pass;
   return {
     pass,
     http_pass: httpPass,
     schema_pass: schemaPass,
     product_pass: productPass,
     category_pass: categoryPass,
+    language_pass: languagePass,
+    travel_local_quality: travelLocalQuality,
     risk_guard: risk,
     failure_reasons: [
       ...(httpPass ? [] : ['http_failure']),
@@ -917,7 +1161,9 @@ function assessCase(caseDef, rows) {
       ...(productPass ? [] : ['product_relevance_or_blocked_term']),
       ...(categoryPass ? [] : ['creator_category_check_failed']),
       ...(degradationPass ? [] : ['degraded_or_fallback_response']),
+      ...(languagePass ? [] : ['response_language_mismatch']),
       ...(risk.pass ? [] : ['risk_guard_failed']),
+      ...(travelLocalQuality.pass ? [] : ['travel_local_quality_failed']),
     ],
   };
 }
@@ -1010,6 +1256,10 @@ function computeSummary(dataset, results) {
   const highRiskPass = highRisk.filter((result) => result.assessment.risk_guard.pass).length;
   const productRows = rows.filter((row) => row.product_assessment);
   const productPass = productRows.filter((row) => row.product_assessment.pass).length;
+  const languageRows = rows.filter((row) => row.language_assessment);
+  const languagePass = languageRows.filter((row) => row.language_assessment.pass).length;
+  const travelLocalCases = results.filter((result) => result.assessment.travel_local_quality?.enabled);
+  const travelLocalPass = travelLocalCases.filter((result) => result.assessment.travel_local_quality?.pass).length;
   const degradedRows = rows.filter((row) => row.degradation && row.degradation.degraded);
   const errorFallbackEmptyRows = rows.filter((row) => {
     const reasons = row.degradation && Array.isArray(row.degradation.reasons) ? row.degradation.reasons : [];
@@ -1023,6 +1273,8 @@ function computeSummary(dataset, results) {
   const httpSuccessRate = responseCount > 0 ? okCount / responseCount : 0;
   const highRiskPassRate = highRisk.length > 0 ? highRiskPass / highRisk.length : 1;
   const productPassRate = productRows.length > 0 ? productPass / productRows.length : 1;
+  const languagePassRate = languageRows.length > 0 ? languagePass / languageRows.length : 1;
+  const travelLocalPassRate = travelLocalCases.length > 0 ? travelLocalPass / travelLocalCases.length : 1;
   const casePassCount = results.filter((result) => result.assessment.pass).length;
   const thresholdResults = {
     http_success_rate: {
@@ -1045,6 +1297,16 @@ function computeSummary(dataset, results) {
       expected_min: 1,
       pass: productRows.length === 0 || productPass === productRows.length,
     },
+    response_language_match_rate: {
+      actual: languagePassRate,
+      expected_min: Number(thresholds.response_language_match_rate_min ?? 1),
+      pass: languagePassRate >= Number(thresholds.response_language_match_rate_min ?? 1),
+    },
+    travel_local_quality_pass_rate: {
+      actual: travelLocalPassRate,
+      expected_min: Number(thresholds.travel_local_quality_pass_rate_min ?? 1),
+      pass: travelLocalPassRate >= Number(thresholds.travel_local_quality_pass_rate_min ?? 1),
+    },
     degraded_response_count: {
       actual: degradedRows.length,
       expected_max: Number(thresholds.degraded_response_max ?? 0),
@@ -1065,6 +1327,12 @@ function computeSummary(dataset, results) {
     product_query_count: productRows.length,
     product_relevance_pass_count: productPass,
     product_relevance_pass_rate: productPassRate,
+    language_checked_count: languageRows.length,
+    language_match_count: languagePass,
+    response_language_match_rate: languagePassRate,
+    travel_local_quality_cases: travelLocalCases.length,
+    travel_local_quality_pass_count: travelLocalPass,
+    travel_local_quality_pass_rate: travelLocalPassRate,
     degraded_response_count: degradedRows.length,
     error_fallback_empty_count: errorFallbackEmptyRows.length,
     timeout_fallback_count: timeoutFallbackRows.length,
@@ -1097,6 +1365,8 @@ function renderHumanReviewCsv(results) {
     'decision_authority',
     'request_id',
     'raw_file',
+    'language_match',
+    'travel_local_quality',
     'content_quality_1_5',
     'personalization_1_5',
     'actionability_1_5',
@@ -1128,6 +1398,10 @@ function renderHumanReviewCsv(results) {
         row.decision_authority,
         row.request_id,
         row.raw_file,
+        row.language_assessment ? (row.language_assessment.pass ? 'pass' : `fail:${row.language_assessment.reason}`) : '',
+        row.product_assessment?.travel_local_quality
+          ? (row.product_assessment.travel_local_quality.pass ? 'pass' : JSON.stringify(row.product_assessment.travel_local_quality))
+          : '',
         '',
         '',
         '',
@@ -1157,17 +1431,19 @@ function renderMarkdown({ runId, baseUrl, datasetPath, summary, results }) {
   lines.push(`- schema violations: ${summary.schema_violation_count}`);
   lines.push(`- high-risk guards: ${summary.high_risk_pass_count}/${summary.high_risk_cases}`);
   lines.push(`- product relevance: ${summary.product_relevance_pass_count}/${summary.product_query_count}`);
+  lines.push(`- response language match: ${summary.language_match_count}/${summary.language_checked_count}`);
+  lines.push(`- travel-local quality: ${summary.travel_local_quality_pass_count}/${summary.travel_local_quality_cases}`);
   lines.push(`- degraded/fallback responses: ${summary.degraded_response_count} (error/empty fallback: ${summary.error_fallback_empty_count}, timeout/abort: ${summary.timeout_fallback_count})`);
   lines.push(`- threshold verdict: ${summary.ok ? 'PASS' : 'FAIL'}`);
   lines.push('');
   lines.push('## Cases');
   lines.push('');
-  lines.push('| Case | Verdict | HTTP | Product | Risk | Failures |');
-  lines.push('| --- | --- | --- | --- | --- | --- |');
+  lines.push('| Case | Verdict | HTTP | Product | Language | Travel Local | Risk | Failures |');
+  lines.push('| --- | --- | --- | --- | --- | --- | --- | --- |');
   for (const result of results) {
     const failures = result.assessment.failure_reasons.join(', ') || 'none';
     lines.push(
-      `| \`${result.case_id}\` | ${result.assessment.pass ? 'PASS' : 'FAIL'} | ${result.assessment.http_pass ? 'PASS' : 'FAIL'} | ${result.assessment.product_pass ? 'PASS' : 'FAIL'} | ${result.assessment.risk_guard.pass ? 'PASS' : 'FAIL'} | ${failures} |`,
+      `| \`${result.case_id}\` | ${result.assessment.pass ? 'PASS' : 'FAIL'} | ${result.assessment.http_pass ? 'PASS' : 'FAIL'} | ${result.assessment.product_pass ? 'PASS' : 'FAIL'} | ${result.assessment.language_pass ? 'PASS' : 'FAIL'} | ${result.assessment.travel_local_quality?.enabled ? (result.assessment.travel_local_quality.pass ? 'PASS' : 'FAIL') : 'n/a'} | ${result.assessment.risk_guard.pass ? 'PASS' : 'FAIL'} | ${failures} |`,
     );
   }
   lines.push('');
@@ -1188,9 +1464,18 @@ function renderMarkdown({ runId, baseUrl, datasetPath, summary, results }) {
       if (row.degradation && row.degradation.degraded) {
         rowFailures.push(`degraded ${row.degradation.reasons.join(',')}`);
       }
+      if (row.language_assessment && !row.language_assessment.pass) {
+        rowFailures.push(`language ${row.language_assessment.reason}`);
+      }
       if (rowFailures.length) {
         lines.push(`- ${row.step_id} (${row.agent}): ${rowFailures.join('; ')}; raw=${row.raw_file}`);
       }
+    }
+    const failedTravelLocal = result.assessment.travel_local_quality?.enabled
+      ? result.assessment.travel_local_quality.checks.filter((check) => !check.pass)
+      : [];
+    for (const check of failedTravelLocal) {
+      lines.push(`- travel-local ${check.kind}: ${JSON.stringify(check.terms || check.failed_rows || check)}`);
     }
     const failedRisk = result.assessment.risk_guard.checks.filter((check) => !check.pass);
     for (const check of failedRisk) {
@@ -1232,6 +1517,7 @@ function compactResults(results) {
       product_assessment: row.product_assessment,
       category_check: row.category_check,
       degradation: row.degradation,
+      language_assessment: row.language_assessment,
     })),
   }));
 }
@@ -1339,6 +1625,7 @@ async function runBatch(args = parseArgs(process.argv)) {
       query: row.query,
       reply: row.reply,
       product_titles: row.product_titles,
+      language_assessment: row.language_assessment,
       request_id: row.request_id,
       raw_file: row.raw_file,
     }))).join('\n')}\n`,
@@ -1374,6 +1661,8 @@ module.exports = {
   validateDataset,
   evaluateProductRelevance,
   evaluateRiskGuards,
+  evaluateResponseLanguageMatch,
+  evaluateTravelLocalQuality,
   validateResponseSchema,
   classifyResponseDegradation,
   computeSummary,

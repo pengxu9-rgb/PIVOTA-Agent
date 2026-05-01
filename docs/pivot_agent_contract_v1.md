@@ -197,6 +197,15 @@ Required product-intel fields for strict travel/local ranking:
 - `authority_source` and `authority_confidence` so PDP extraction, merchant config, external seed, and manual override can be distinguished;
 - beauty fit fields such as `spf_rating`, `pa_rating`, `texture`, `finish`, `fragrance_free`, `alcohol_denat`, `non_comedogenic`, `travel_size`, and `sensitive_safe`.
 
+External seed products carry the travel/local fields through `seed_data.locality_facts_v1` and `seed_data.snapshot.locality_facts_v1`. Runtime responses may also expose convenience fields such as `brand_origin`, `brand_origin_country`, `brand_home_market`, `market_availability`, `available_markets`, `local_purchase_markets`, `local_retail_channels`, `local_retail_channel`, `travel_size`, and `creator_local_reason`.
+
+Backfill must be reviewable and evidence-based:
+
+- brand-level facts come from the reviewed `data/beauty/brand_locality_facts_seed.json` seed map;
+- product-level `local_purchase_markets` comes from row market, retail channel, or PDP/merchant evidence, not from title tokens;
+- `travel_size=true` requires explicit mini/travel/trial-size text or existing reviewed fields;
+- `scripts/backfill-external-seed-locality-facts.cjs` is dry-run by default and requires `--apply` for writes.
+
 For a Seattle -> Seoul sunscreen request, a product can be described as "good to buy in Seoul" only when `local_purchase_markets` or equivalent authority includes Korea/KR/Seoul, or the brand home market is Korea with a known Korea retail path. Title tokens like `Birch`, `Dokdo`, or `Mugwort` may be used as weak ranking hints, but they are not sufficient authority for a local-purchase claim.
 
 ### Strict Display Quality Gates
@@ -320,7 +329,8 @@ The shared beauty casepack must exercise the contract across all three internal 
 
 1. Apply the production recall index from `docs/runbooks/pivot_beauty_contract_prod_index.md`; it is intentionally not an app auto-migration because it must use `CREATE INDEX CONCURRENTLY`.
 2. Enable `PIVOT_BEAUTY_CONTRACT_V1_ENABLED=true`, `PIVOT_BEAUTY_LEGACY_FALLBACK_ISOLATION_ENABLED=true`, `PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED=true`, and `PIVOT_BEAUTY_STRICT_RECO_QUALITY_ENABLED=true`.
-3. For Creator ranking differentiation, enable `PIVOT_BEAUTY_CREATOR_CURATION_RANKING_ENABLED=true`; keep `PIVOT_BEAUTY_CREATOR_COMMERCIAL_RANKING_ENABLED=false` until affiliate/commission fields are audited.
+3. Keep Creator ranking differentiation as a no-op by default: `PIVOT_CREATOR_RANKING_OVERLAY_ENABLED=false`, `PIVOT_CREATOR_LOCAL_CURATION_ENABLED=false`, and `PIVOT_CREATOR_COMMERCIAL_BOOST_ENABLED=false`. Only enable `PIVOT_CREATOR_RANKING_OVERLAY_ENABLED=true` plus `PIVOT_CREATOR_LOCAL_CURATION_ENABLED=true` after creator-owned inventory/tag evidence is audited. Keep commercial boost disabled until affiliate/commission fields and policy are audited.
+   Deprecated `PIVOT_BEAUTY_CREATOR_*` flags are no longer the Creator overlay control plane.
 4. Validate deterministic contract tests locally.
 5. Deploy to production canary, verify the deployed commit, then run the full beauty casepack with production keys injected only through environment variables.
 6. Compare request-level telemetry by contract fields, not by free-form text only.
@@ -330,7 +340,9 @@ Emergency off:
 - set `PIVOT_BEAUTY_CONTRACT_V1_ENABLED=false` to disable contract stamping and fallback isolation;
 - set `PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED=false` to bypass the direct indexed beauty recall path;
 - set `PIVOT_BEAUTY_STRICT_RECO_QUALITY_ENABLED=false` to disable the strict product-quality rank/display overlay without changing recall;
-- set `PIVOT_BEAUTY_CREATOR_CURATION_RANKING_ENABLED=false` to make Creator use the shared Shopping order after safety/class gates;
+- set `PIVOT_CREATOR_RANKING_OVERLAY_ENABLED=false` to make Creator use the shared Shopping order after safety/class gates;
+- set `PIVOT_CREATOR_LOCAL_CURATION_ENABLED=false` to keep Creator overlay telemetry but prevent creator-owned curation from changing rank;
+- set `PIVOT_CREATOR_COMMERCIAL_BOOST_ENABLED=false` to prevent affiliate, margin, or commission signals from changing rank;
 - set `PIVOT_BEAUTY_LEGACY_FALLBACK_ISOLATION_ENABLED=false` only if fallback adoption must be temporarily restored during incident response.
 
 ## Validation Gates
