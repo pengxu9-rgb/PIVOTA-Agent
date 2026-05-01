@@ -37,7 +37,10 @@ const {
 } = require('./skinLlmPrompts');
 const { resolveAuroraGeminiKey } = require('./auroraGeminiKeys');
 const { getGeminiGlobalGate, GeminiGateError } = require('../lib/geminiGlobalGate');
-const { resolveNonImageGeminiModel } = require('../lib/geminiModelFloor');
+const {
+  resolveGeminiRuntimeModelCandidates,
+  resolveNonImageGeminiModel,
+} = require('../lib/geminiModelFloor');
 const { containsImageInvalidHint } = require('./visionPolicy');
 
 const FALLBACK_GEMINI_API_KEY = resolveAuroraGeminiKey('AURORA_VISION_GEMINI_API_KEY');
@@ -49,6 +52,7 @@ const SKIN_MODEL_GEMINI =
     envSource: process.env.AURORA_SKIN_VISION_MODEL_GEMINI ? 'AURORA_SKIN_VISION_MODEL_GEMINI' : 'GEMINI_MODEL',
     callPath: 'aurora_skin_vision_gateway',
   }).effectiveModel;
+const SKIN_MODEL_GEMINI_CANDIDATES = resolveGeminiRuntimeModelCandidates(SKIN_MODEL_GEMINI);
 
 function readTimeoutMs(raw, fallback, { min = 2000, max = 45000 } = {}) {
   const value = Number(raw);
@@ -262,6 +266,18 @@ function classifyGeminiError(err) {
     return { reason: 'IMAGE_INVALID', upstream_status_code: status };
   }
   return { reason: 'UNKNOWN', upstream_status_code: status };
+}
+
+function shouldRetryGeminiModelCandidate(err) {
+  if (!err) return false;
+  const status = Number(err.status || err.statusCode || 0);
+  const message = String(err.message || '').toLowerCase();
+  return (
+    status === 400 ||
+    status === 403 ||
+    status === 404 ||
+    /model|not found|not supported|permission|access|api key|invalid argument|bad request/i.test(message)
+  );
 }
 
 function summarizeFailureDetail(detail) {
@@ -613,7 +629,7 @@ async function callGeminiJson({
 
   const startedAt = Date.now();
   const request = {
-    model: SKIN_MODEL_GEMINI,
+    model: SKIN_MODEL_GEMINI_CANDIDATES[0] || SKIN_MODEL_GEMINI,
     systemInstruction: {
       parts: [{ text: String(systemInstruction || '').trim() }],
     },
@@ -653,7 +669,18 @@ async function callGeminiJson({
     });
     const invoke = () =>
       withTimeout(
-        globalGate.withGate(kind || 'aurora_skin_llm', async () => client.models.generateContent(request)),
+        globalGate.withGate(kind || 'aurora_skin_llm', async () => {
+          let lastErr = null;
+          for (const model of SKIN_MODEL_GEMINI_CANDIDATES.length ? SKIN_MODEL_GEMINI_CANDIDATES : [SKIN_MODEL_GEMINI]) {
+            try {
+              return await client.models.generateContent({ ...request, model });
+            } catch (err) {
+              lastErr = err;
+              if (!shouldRetryGeminiModelCandidate(err)) break;
+            }
+          }
+          throw lastErr;
+        }),
         effectiveTimeoutMs,
       );
     const resp =

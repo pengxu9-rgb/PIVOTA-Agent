@@ -2,6 +2,7 @@
 
 const { resolveAuroraGeminiKey } = require('./auroraGeminiKeys');
 const { getGeminiGlobalGate } = require('../lib/geminiGlobalGate');
+const { resolveGeminiRuntimeModelCandidates } = require('../lib/geminiModelFloor');
 
 const clientsByKey = new Map();
 let geminiInitFailed = false;
@@ -99,6 +100,18 @@ function extractGeminiRestErrorDetail(responseBody, response) {
   return String(detail || '').trim();
 }
 
+function shouldRetryGeminiModelCandidate(err) {
+  if (!err) return false;
+  const status = Number(err.status || err.statusCode || 0);
+  const message = String(err.message || '').toLowerCase();
+  return (
+    status === 400 ||
+    status === 403 ||
+    status === 404 ||
+    /model|not found|not supported|permission|access|api key|invalid argument|bad request/i.test(message)
+  );
+}
+
 function hasAuroraGeminiApiKey(featureEnvVar) {
   try {
     const gate = getGeminiGlobalGate();
@@ -156,7 +169,19 @@ async function callAuroraGeminiGenerateContent({
     throw err;
   }
   const gate = getGeminiGlobalGate();
-  return await gate.withGate(route, async () => resolved.client.models.generateContent(request));
+  return await gate.withGate(route, async () => {
+    let lastErr = null;
+    const candidates = resolveGeminiRuntimeModelCandidates(request && request.model);
+    for (const model of candidates.length ? candidates : [request && request.model]) {
+      try {
+        return await resolved.client.models.generateContent({ ...request, model });
+      } catch (err) {
+        lastErr = err;
+        if (!shouldRetryGeminiModelCandidate(err)) break;
+      }
+    }
+    throw lastErr;
+  });
 }
 
 async function postGeminiRestGenerateContent({ apiKey, request, upstreamTimeoutMs = 0 } = {}) {
@@ -172,7 +197,7 @@ async function postGeminiRestGenerateContent({ apiKey, request, upstreamTimeoutM
     throw err;
   }
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelName)}:generateContent`;
+  const modelCandidates = resolveGeminiRuntimeModelCandidates(modelName);
   const controller =
     typeof AbortController === 'function' && Number(upstreamTimeoutMs) > 0
       ? new AbortController()
@@ -183,33 +208,40 @@ async function postGeminiRestGenerateContent({ apiKey, request, upstreamTimeoutM
   if (timer && typeof timer.unref === 'function') timer.unref();
 
   try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        accept: 'application/json',
-        'content-type': 'application/json',
-        'x-goog-api-key': apiKey,
-      },
-      body: JSON.stringify(buildGeminiRestBodyFromSdkRequest(request)),
-      signal: controller ? controller.signal : undefined,
-    });
-    const responseText = await response.text();
-    let responseBody = null;
-    if (responseText) {
-      try {
-        responseBody = JSON.parse(responseText);
-      } catch {
-        responseBody = null;
+    let lastErr = null;
+    for (const model of modelCandidates.length ? modelCandidates : [modelName]) {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          accept: 'application/json',
+          'content-type': 'application/json',
+          'x-goog-api-key': apiKey,
+        },
+        body: JSON.stringify(buildGeminiRestBodyFromSdkRequest({ ...request, model })),
+        signal: controller ? controller.signal : undefined,
+      });
+      const responseText = await response.text();
+      let responseBody = null;
+      if (responseText) {
+        try {
+          responseBody = JSON.parse(responseText);
+        } catch {
+          responseBody = null;
+        }
       }
+      if (!response.ok) {
+        const err = new Error(extractGeminiRestErrorDetail(responseBody, response) || `GEMINI_REST_HTTP_${response.status}`);
+        err.code = 'GEMINI_REST_HTTP_ERROR';
+        err.status = Number(response.status) || 0;
+        err.response_body = responseBody;
+        lastErr = err;
+        if (shouldRetryGeminiModelCandidate(err)) continue;
+        throw err;
+      }
+      return responseBody || {};
     }
-    if (!response.ok) {
-      const err = new Error(extractGeminiRestErrorDetail(responseBody, response) || `GEMINI_REST_HTTP_${response.status}`);
-      err.code = 'GEMINI_REST_HTTP_ERROR';
-      err.status = Number(response.status) || 0;
-      err.response_body = responseBody;
-      throw err;
-    }
-    return responseBody || {};
+    throw lastErr || new Error('GEMINI_REST_HTTP_ERROR');
   } catch (err) {
     throw buildGeminiRestTransportError(err);
   } finally {
@@ -307,10 +339,20 @@ async function callAuroraGeminiGenerateContentWithMeta({
     route,
     async () => {
       upstreamStartedAt = Date.now();
-      const upstreamPromise = resolved.client.models.generateContent(
-        withGeminiSdkHttpTimeout(request, upstreamTimeoutMs),
-      );
-      return await withTimeoutCode(upstreamPromise, upstreamTimeoutMs, 'GEMINI_UPSTREAM_TIMEOUT');
+      const candidates = resolveGeminiRuntimeModelCandidates(request && request.model);
+      let lastErr = null;
+      for (const model of candidates.length ? candidates : [request && request.model]) {
+        try {
+          const upstreamPromise = resolved.client.models.generateContent(
+            withGeminiSdkHttpTimeout({ ...request, model }, upstreamTimeoutMs),
+          );
+          return await withTimeoutCode(upstreamPromise, upstreamTimeoutMs, 'GEMINI_UPSTREAM_TIMEOUT');
+        } catch (err) {
+          lastErr = err;
+          if (!shouldRetryGeminiModelCandidate(err)) break;
+        }
+      }
+      throw lastErr;
     },
     { bypassCircuit, queueTimeoutMs: normalizedTotalTimeoutMs || queueTimeoutMs },
   );
