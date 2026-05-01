@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const express = require('express');
+const supertest = require('supertest');
 
 function withEnv(patch, fn) {
   const prev = {};
@@ -193,6 +194,49 @@ test('/v1/photos/presign: backend timeout exposes stage-specific timeout code', 
           body: { slot_id: 'daylight', content_type: 'image/jpeg', bytes: 1024 },
         });
         assert.equal(resp.status, 504);
+        const errorCard = (Array.isArray(resp.body?.cards) ? resp.body.cards : []).find((card) => card && card.type === 'error');
+        assert.equal(errorCard?.payload?.error, 'PHOTO_PRESIGN_REQUEST_TIMEOUT');
+        assert.equal(errorCard?.payload?.stage, 'presign_request');
+      } finally {
+        axios.post = originalPost;
+        delete require.cache[moduleId];
+      }
+    },
+  );
+});
+
+test('/v1/photos/upload: presign timeout exposes stage-specific timeout code', async () => {
+  await withEnv(
+    {
+      AURORA_BFF_USE_MOCK: 'false',
+      PIVOTA_BACKEND_BASE_URL: 'https://pivota-backend.test',
+      PIVOTA_BACKEND_AGENT_API_KEY: 'agent_test_key',
+    },
+    async () => {
+      const axios = require('axios');
+      const originalPost = axios.post;
+      const { moduleId, mountAuroraBffRoutes } = loadRoutes();
+      axios.post = async (...args) => {
+        const [url] = args;
+        if (String(url).endsWith('/photos/presign')) {
+          const err = new Error('timeout of 12000ms exceeded');
+          err.code = 'ECONNABORTED';
+          throw err;
+        }
+        return originalPost.apply(axios, args);
+      };
+      try {
+        const app = makeApp(mountAuroraBffRoutes);
+        const resp = await supertest(app)
+          .post('/v1/photos/upload')
+          .set({ 'X-Aurora-UID': 'uid_photo_upload_timeout', 'X-Lang': 'EN' })
+          .field('slot_id', 'daylight')
+          .field('consent', 'true')
+          .attach('photo', Buffer.from('not-real-image-but-valid-upload-body'), {
+            filename: 'face.jpg',
+            contentType: 'image/jpeg',
+          })
+          .expect(504);
         const errorCard = (Array.isArray(resp.body?.cards) ? resp.body.cards : []).find((card) => card && card.type === 'error');
         assert.equal(errorCard?.payload?.error, 'PHOTO_PRESIGN_REQUEST_TIMEOUT');
         assert.equal(errorCard?.payload?.stage, 'presign_request');
