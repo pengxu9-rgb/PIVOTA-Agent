@@ -107,7 +107,9 @@ const {
   NON_IMAGE_GEMINI_FLOOR_MODEL,
   isTemporaryUnifiedGeminiModelEnabled,
   resolveNonImageGeminiModel,
+  resolveGeminiRuntimeModelName,
   resolveTemporaryUnifiedGeminiModel,
+  TEMPORARY_UNIFIED_GEMINI_MODEL,
 } = require('./lib/geminiModelFloor');
 const { recommendHandler } = require('./recommend/index');
 const {
@@ -15597,6 +15599,7 @@ function resolveUiChatProvider() {
     ).trim(),
   );
 
+  if (hasGemini && isTemporaryUnifiedGeminiModelEnabled()) return 'gemini';
   if (hasGemini && !hasOpenAI) return 'gemini';
   if (hasOpenAI) return 'openai';
   if (hasGemini) return 'gemini';
@@ -20722,8 +20725,10 @@ app.get('/healthz/gemini', (req, res) => {
       key_count: snap.gate.keyCount,
       model_policy: {
         temporary_unified_model_enabled: isTemporaryUnifiedGeminiModelEnabled(),
+        temporary_unified_model_alias: TEMPORARY_UNIFIED_GEMINI_MODEL,
         temporary_unified_model: resolveTemporaryUnifiedGeminiModel(),
         non_image_default_model: NON_IMAGE_GEMINI_FLOOR_MODEL,
+        non_image_default_runtime_model: resolveGeminiRuntimeModelName(NON_IMAGE_GEMINI_FLOOR_MODEL),
       },
       metrics: snap.metrics,
       circuit: snap._debug.circuit,

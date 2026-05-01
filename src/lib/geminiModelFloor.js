@@ -1,6 +1,7 @@
 'use strict';
 
 const TEMPORARY_UNIFIED_GEMINI_MODEL = 'gemini-2.5-flash-preview';
+const TEMPORARY_UNIFIED_GEMINI_RUNTIME_MODEL = 'gemini-2.5-flash-preview-09-2025';
 const NON_IMAGE_GEMINI_FLOOR_MODEL = TEMPORARY_UNIFIED_GEMINI_MODEL;
 const warnedAdjustments = new Set();
 
@@ -8,6 +9,12 @@ function normalizeGeminiModelName(model) {
   const raw = String(model || '').trim();
   if (!raw) return '';
   return raw.startsWith('models/') ? raw.slice('models/'.length) : raw;
+}
+
+function resolveGeminiRuntimeModelName(model) {
+  const normalized = normalizeGeminiModelName(model);
+  if (normalized === TEMPORARY_UNIFIED_GEMINI_MODEL) return TEMPORARY_UNIFIED_GEMINI_RUNTIME_MODEL;
+  return normalized;
 }
 
 function isGeminiModelName(model) {
@@ -68,9 +75,9 @@ function resolveTemporaryUnifiedGeminiModel() {
     process.env.PIVOTA_GEMINI_UNIFIED_MODEL || process.env.PIVOTA_TEMP_GEMINI_MODEL || TEMPORARY_UNIFIED_GEMINI_MODEL,
   );
   if (configured && isGeminiModelName(configured) && !isGeminiImageGenerationModel(configured)) {
-    return configured;
+    return resolveGeminiRuntimeModelName(configured);
   }
-  return TEMPORARY_UNIFIED_GEMINI_MODEL;
+  return TEMPORARY_UNIFIED_GEMINI_RUNTIME_MODEL;
 }
 
 function emitFloorWarning(detail) {
@@ -85,7 +92,7 @@ function resolveNonImageGeminiModel(options) {
   const opts = options && typeof options === 'object' ? options : {};
   const configuredModel = normalizeGeminiModelName(opts.model);
   const fallbackModel = normalizeGeminiModelName(opts.fallbackModel) || NON_IMAGE_GEMINI_FLOOR_MODEL;
-  let effectiveModel = configuredModel || fallbackModel;
+  let effectiveModel = resolveGeminiRuntimeModelName(configuredModel || fallbackModel);
   const envSource = String(opts.envSource || '').trim() || null;
   const callPath = String(opts.callPath || '').trim() || null;
 
@@ -95,7 +102,7 @@ function resolveNonImageGeminiModel(options) {
 
   if (configuredModel && !isGeminiModelName(configuredModel)) {
     adjusted = true;
-    effectiveModel = fallbackModel;
+    effectiveModel = resolveGeminiRuntimeModelName(fallbackModel);
     isGemini = isGeminiModelName(effectiveModel);
     isImageGeneration = isGeminiImageGenerationModel(effectiveModel);
     emitFloorWarning({
@@ -122,7 +129,7 @@ function resolveNonImageGeminiModel(options) {
     }
   } else if (isGemini && !isImageGeneration && !isGeminiAtOrAboveNonImageFloor(effectiveModel)) {
     adjusted = true;
-    effectiveModel = NON_IMAGE_GEMINI_FLOOR_MODEL;
+    effectiveModel = resolveGeminiRuntimeModelName(NON_IMAGE_GEMINI_FLOOR_MODEL);
     emitFloorWarning({
       event: 'gemini_model_floor_autoupgrade',
       configured_model: configuredModel || null,
@@ -149,8 +156,10 @@ function resetGeminiModelFloorWarningsForTest() {
 
 module.exports = {
   TEMPORARY_UNIFIED_GEMINI_MODEL,
+  TEMPORARY_UNIFIED_GEMINI_RUNTIME_MODEL,
   NON_IMAGE_GEMINI_FLOOR_MODEL,
   normalizeGeminiModelName,
+  resolveGeminiRuntimeModelName,
   isGeminiModelName,
   isGeminiImageGenerationModel,
   isGeminiAtOrAboveNonImageFloor,

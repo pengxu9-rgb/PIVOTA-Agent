@@ -4,9 +4,11 @@ const assert = require('node:assert/strict');
 const {
   NON_IMAGE_GEMINI_FLOOR_MODEL,
   TEMPORARY_UNIFIED_GEMINI_MODEL,
+  TEMPORARY_UNIFIED_GEMINI_RUNTIME_MODEL,
   isGeminiImageGenerationModel,
   isTemporaryUnifiedGeminiModelEnabled,
   resolveNonImageGeminiModel,
+  resolveGeminiRuntimeModelName,
   resetGeminiModelFloorWarningsForTest,
 } = require('../src/lib/geminiModelFloor');
 
@@ -33,7 +35,7 @@ test('resolveNonImageGeminiModel unifies legacy non-image Gemini models to the t
   });
 
   assert.equal(resolved.adjusted, true);
-  assert.equal(resolved.effectiveModel, TEMPORARY_UNIFIED_GEMINI_MODEL);
+  assert.equal(resolved.effectiveModel, TEMPORARY_UNIFIED_GEMINI_RUNTIME_MODEL);
   assert.equal(resolved.configuredModel, 'gemini-2.0-flash');
 });
 
@@ -49,7 +51,22 @@ test('resolveNonImageGeminiModel also unifies Gemini 3+ models while the tempora
   });
 
   assert.equal(resolved.adjusted, true);
-  assert.equal(resolved.effectiveModel, TEMPORARY_UNIFIED_GEMINI_MODEL);
+  assert.equal(resolved.effectiveModel, TEMPORARY_UNIFIED_GEMINI_RUNTIME_MODEL);
+});
+
+test('bare temporary Gemini preview alias is canonicalized to the API runtime model', () => {
+  assert.equal(resolveGeminiRuntimeModelName(TEMPORARY_UNIFIED_GEMINI_MODEL), TEMPORARY_UNIFIED_GEMINI_RUNTIME_MODEL);
+  const resolved = withTemporaryUnifiedModelEnabled(() => {
+    resetGeminiModelFloorWarningsForTest();
+    return resolveNonImageGeminiModel({
+      model: TEMPORARY_UNIFIED_GEMINI_MODEL,
+      fallbackModel: NON_IMAGE_GEMINI_FLOOR_MODEL,
+      envSource: 'TEST_MODEL',
+      callPath: 'unit_test',
+    });
+  });
+  assert.equal(resolved.configuredModel, TEMPORARY_UNIFIED_GEMINI_MODEL);
+  assert.equal(resolved.effectiveModel, TEMPORARY_UNIFIED_GEMINI_RUNTIME_MODEL);
 });
 
 test('temporary unified Gemini model policy is enabled by explicit env', () => {
@@ -82,7 +99,7 @@ test('resolveNonImageGeminiModel falls back when shared model config points at a
 
   assert.equal(resolved.adjusted, true);
   assert.equal(resolved.configuredModel, 'gpt-5.1-mini');
-  assert.equal(resolved.effectiveModel, NON_IMAGE_GEMINI_FLOOR_MODEL);
+  assert.equal(resolved.effectiveModel, TEMPORARY_UNIFIED_GEMINI_RUNTIME_MODEL);
 });
 
 test('resolveNonImageGeminiModel can disable the temporary unified model policy via env', () => {

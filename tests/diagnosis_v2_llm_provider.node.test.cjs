@@ -62,7 +62,7 @@ test('diagnosis v2 Gemini provider uses the temporary unified Gemini production 
         const provider = createDiagnosisV2LlmProvider();
         const out = await provider.generate({ system: 'Return JSON only.', user: 'Test', maxTokens: 128 });
         assert.equal(out.provider, 'gemini');
-        assert.equal(capturedModel, 'gemini-2.5-flash-preview');
+        assert.equal(capturedModel, 'gemini-2.5-flash-preview-09-2025');
       } finally {
         delete require.cache[moduleId];
         Module._load = originalLoad;
