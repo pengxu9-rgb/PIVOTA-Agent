@@ -3224,6 +3224,155 @@ describe('backfill-external-product-seeds-catalog', () => {
     expect(buildVariantSeedRows(row, payload)).toEqual([]);
   });
 
+  test('strips bundle-like merch variants when a single base variant exists on the same PDP', () => {
+    const row = {
+      id: 'eps_medicube_capsule_cream',
+      external_product_id: 'ext_medicube_capsule_cream',
+      market: 'US',
+      tool: 'creator_agents',
+      title: 'AGE-R Glutathione Glow Capsule Cream',
+      canonical_url: 'https://medicube.us/products/age-r-glutathione-glow-capsule-cream',
+      destination_url: 'https://medicube.us/products/age-r-glutathione-glow-capsule-cream',
+      image_url: 'https://cdn.example.com/capsule-cream.jpg',
+      price_amount: 31.3,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      seed_data: {
+        brand: 'Medicube',
+        snapshot: {
+          canonical_url: 'https://medicube.us/products/age-r-glutathione-glow-capsule-cream',
+        },
+      },
+    };
+
+    const payload = buildSeedUpdatePayload(
+      row,
+      {
+        products: [
+          {
+            title: 'AGE-R Glutathione Glow Capsule Cream',
+            url: 'https://medicube.us/products/age-r-glutathione-glow-capsule-cream',
+            image_url: 'https://cdn.example.com/capsule-cream.jpg',
+            variants: [
+              {
+                id: 'single',
+                sku: 'MC-SINGLE',
+                option_name: 'Set',
+                option_value: 'SINGLE',
+                price: '31.30',
+                currency: 'USD',
+                stock: 'In Stock',
+                url: 'https://medicube.us/products/age-r-glutathione-glow-capsule-cream?variant=single',
+                image_url: 'https://cdn.example.com/capsule-cream.jpg',
+              },
+              {
+                id: 'duo',
+                sku: 'MC-DUO',
+                option_name: 'Set',
+                option_value: 'DUO SET',
+                price: '56.34',
+                currency: 'USD',
+                stock: 'In Stock',
+                url: 'https://medicube.us/products/age-r-glutathione-glow-capsule-cream?variant=duo',
+                image_url: 'https://cdn.example.com/capsule-cream-duo.jpg',
+              },
+            ],
+          },
+        ],
+        variants: [],
+        diagnostics: {},
+      },
+      'https://medicube.us/products/age-r-glutathione-glow-capsule-cream',
+    );
+
+    expect(payload.nextRow.seed_data.snapshot.variants).toHaveLength(1);
+    expect(payload.nextRow.seed_data.snapshot.variants[0]).toEqual(
+      expect.objectContaining({
+        variant_id: 'single',
+        price: '31.30',
+        currency: 'USD',
+      }),
+    );
+    expect(payload.nextRow.seed_data.snapshot.variants[0].option_name).toBeUndefined();
+    expect(payload.nextRow.seed_data.snapshot.variants[0].option_value).toBeUndefined();
+  });
+
+  test('keeps real size variants while dropping bundle-like pack variants', () => {
+    const row = {
+      id: 'eps_medicube_jelly_cream',
+      external_product_id: 'ext_medicube_jelly_cream',
+      market: 'US',
+      tool: 'creator_agents',
+      title: 'Collagen Niacinamide Jelly Cream',
+      canonical_url: 'https://medicube.us/products/collagen-niacinamide-jelly-cream',
+      destination_url: 'https://medicube.us/products/collagen-niacinamide-jelly-cream',
+      image_url: 'https://cdn.example.com/jelly-cream.jpg',
+      price_amount: 27.3,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      seed_data: {
+        brand: 'Medicube',
+        snapshot: {
+          canonical_url: 'https://medicube.us/products/collagen-niacinamide-jelly-cream',
+        },
+      },
+    };
+
+    const payload = buildSeedUpdatePayload(
+      row,
+      {
+        products: [
+          {
+            title: 'Collagen Niacinamide Jelly Cream',
+            url: 'https://medicube.us/products/collagen-niacinamide-jelly-cream',
+            image_url: 'https://cdn.example.com/jelly-cream.jpg',
+            variants: [
+              {
+                id: 'size-110',
+                sku: 'MC-110',
+                option_name: 'Option',
+                option_value: '110ml',
+                price: '27.30',
+                currency: 'USD',
+                stock: 'In Stock',
+                url: 'https://medicube.us/products/collagen-niacinamide-jelly-cream?variant=110',
+              },
+              {
+                id: 'size-50',
+                sku: 'MC-50',
+                option_name: 'Option',
+                option_value: '50ml',
+                price: '17.00',
+                currency: 'USD',
+                stock: 'Out of Stock',
+                url: 'https://medicube.us/products/collagen-niacinamide-jelly-cream?variant=50',
+              },
+              {
+                id: 'size-110-pack',
+                sku: 'MC-110-2P',
+                option_name: 'Option',
+                option_value: '110ml 2 PACK(+GIFT)',
+                price: '50.70',
+                currency: 'USD',
+                stock: 'In Stock',
+                url: 'https://medicube.us/products/collagen-niacinamide-jelly-cream?variant=110-2p',
+              },
+            ],
+          },
+        ],
+        variants: [],
+        diagnostics: {},
+      },
+      'https://medicube.us/products/collagen-niacinamide-jelly-cream',
+    );
+
+    expect(payload.nextRow.seed_data.snapshot.variants).toHaveLength(2);
+    expect(payload.nextRow.seed_data.snapshot.variants.map((variant) => variant.option_value)).toEqual([
+      '110ml',
+      '50ml',
+    ]);
+  });
+
   test('merges product gallery when selected variant only repeats the product thumbnail', () => {
     const row = {
       id: 'eps_boj_daily_tinted_dn350',

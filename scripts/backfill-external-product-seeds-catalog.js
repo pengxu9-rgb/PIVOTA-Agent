@@ -544,6 +544,52 @@ function isDefaultVariantTitle(value) {
   return /^(?:default|default title|title)$/i.test(normalizeNonEmptyString(value));
 }
 
+function isSingleLikeVariantOptionValue(value) {
+  return /^(?:single|default|default title|one)$/i.test(normalizeNonEmptyString(value));
+}
+
+function isBundleLikeMerchVariantOptionValue(value) {
+  const normalized = normalizeNonEmptyString(value);
+  if (!normalized || isSingleLikeVariantOptionValue(normalized)) return false;
+  return (
+    /\b(?:duo|bundle|gift|set|pack)\b/i.test(normalized) ||
+    /\b\d+\s*\+\s*\d+\b/.test(normalized)
+  );
+}
+
+function isGenericBundleAxisName(value) {
+  return /^(?:option|options?|set|title|variant)$/i.test(normalizeNonEmptyString(value));
+}
+
+function stripBundleLikeMerchVariants(variants) {
+  const safeVariants = Array.isArray(variants) ? variants.filter(Boolean) : [];
+  if (safeVariants.length === 0) return [];
+
+  const hasBundleLike = safeVariants.some((variant) =>
+    isBundleLikeMerchVariantOptionValue(variant?.option_value || variant?.title),
+  );
+  const nonBundleVariants = safeVariants.filter(
+    (variant) => !isBundleLikeMerchVariantOptionValue(variant?.option_value || variant?.title),
+  );
+  const filtered = hasBundleLike && nonBundleVariants.length > 0 ? nonBundleVariants : safeVariants;
+  if (filtered.length !== 1) return filtered;
+
+  const [onlyVariant] = filtered;
+  const optionName = normalizeNonEmptyString(onlyVariant?.option_name);
+  const optionValue = normalizeNonEmptyString(onlyVariant?.option_value || onlyVariant?.title);
+  if (!isSingleLikeVariantOptionValue(optionValue) || !isGenericBundleAxisName(optionName || 'Option')) {
+    return filtered;
+  }
+
+  const sanitizedVariant = { ...onlyVariant };
+  delete sanitizedVariant.option_name;
+  delete sanitizedVariant.option_value;
+  if (isSingleLikeVariantOptionValue(sanitizedVariant.title)) {
+    delete sanitizedVariant.title;
+  }
+  return [sanitizedVariant];
+}
+
 function collectVariantImageUrls(variant, options = {}) {
   return sanitizeSeedImageUrls(
     [
@@ -2280,8 +2326,10 @@ function mapSnapshotVariants(product, response, existingSeedData) {
     })
     .filter(Boolean);
 
-  if (mapped.length > 0) {
-    return mapped.map((variant) => ({
+  const filteredMapped = stripBundleLikeMerchVariants(mapped);
+
+  if (filteredMapped.length > 0) {
+    return filteredMapped.map((variant) => ({
       ...variant,
       ...sanitizeSeedVariantDisplayFields(variant),
     }));
