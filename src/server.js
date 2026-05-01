@@ -33982,10 +33982,9 @@ async function runAgentWithTools(messages) {
       return null;
     };
 
-    completion = await tryCompletion({ toolsEnabled: true });
-    if (!completion && !latestShoppingIntent) {
-      completion = await tryCompletion({ toolsEnabled: false });
-    }
+    completion = latestShoppingIntent
+      ? await tryCompletion({ toolsEnabled: true })
+      : await tryCompletion({ toolsEnabled: false });
     if (!completion) throw lastCompletionError || new Error('UI chat LLM completion failed');
 
     const msg = completion.choices[0].message;
