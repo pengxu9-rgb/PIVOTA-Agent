@@ -1835,10 +1835,17 @@ function cleanPdpIngredientsRaw(value) {
     .replace(/\r/g, '');
   if (!next) return '';
 
-  const ingredientHeadings = Array.from(next.matchAll(/\bIngredients\b\s*[:\n]*/gi));
-  if (ingredientHeadings.length > 0) {
-    const lastHeading = ingredientHeadings[ingredientHeadings.length - 1];
+  const explicitIngredientHeadings = Array.from(
+    next.matchAll(/(?:^|[\n\r])(?:Full\s+)?Ingredients\b\s*:?\s*/gi),
+  );
+  if (explicitIngredientHeadings.length > 0) {
+    const lastHeading = explicitIngredientHeadings[explicitIngredientHeadings.length - 1];
     next = next.slice(lastHeading.index + lastHeading[0].length).trim();
+  } else {
+    const inlineFullIngredients = next.match(/\bFull Ingredients\b\s*:?\s*/i);
+    if (inlineFullIngredients) {
+      next = next.slice(inlineFullIngredients.index + inlineFullIngredients[0].length).trim();
+    }
   }
 
   const stopPatterns = [/\bHow to Use\b/i, /\bDirections?\b/i, /\bDetails\b/i, /\bBenefits\b/i, /\bWhat it is\b/i];

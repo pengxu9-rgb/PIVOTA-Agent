@@ -281,6 +281,29 @@ describe('backfill-external-product-seeds-catalog', () => {
     );
   });
 
+  test('cleans Krave full ingredients without matching trailing prose mentions of ingredients', () => {
+    const cleaned = cleanPdpIngredientsRaw(
+      'Oat extract: Soothes irritation and rebalances stressed skin.\nTrehalose: Helps bind water to skin to retain moisture.\nSqualane: Improves skin hydration and reduces moisture loss.\n\nFull Ingredients: Water (Aqua/Eau), Butylene Glycol, Caprylic/Capric Triglyceride, Squalane, 1,2-Hexanediol, Trehalose, Behenyl Alcohol, Ammonium Acryloyldimethyltaurate/VP Copolymer, Avena Sativa (Oat) Meal Extract\n\nPETA-certified vegan and cruelty-free.\n\nThe color and texture of Oat So Simple Water Cream may naturally vary slightly from batch to batch. No worries! This is a normal occurrence when using naturally-derived ingredients and does not impact the efficacy of the formula.',
+    );
+
+    expect(cleaned).toBe(
+      'Water (Aqua/Eau), Butylene Glycol, Caprylic/Capric Triglyceride, Squalane, 1,2-Hexanediol, Trehalose, Behenyl Alcohol, Ammonium Acryloyldimethyltaurate/VP Copolymer, Avena Sativa (Oat) Meal Extract',
+    );
+  });
+
+  test('picks Krave Oil La La ingredients from real accordion copy', () => {
+    const raw = pickPdpIngredientsRaw('', [
+      {
+        heading: 'Ingredients',
+        body:
+          '10% Upcycled Rosehip Oil: Packed with fatty acids, antioxidants, and vitamins A, C, & E to help improve overall skin texture for an even complexion.\nBlend of Non-Comedogenic, Nourishing Omega Fatty Oils: A mix of jojoba, sunflower, and grapeseed oil come together to provide hydration without clogging your pores.\nCicatide Complex: A blend of five skin-soothing peptides and madecassoside to help soothe redness and irritation commonly caused by acne.\nPurple Gromwell Root Extract: A powerful antioxidant with barrier repair properties.\n\nFull Ingredients: Water (Aqua/Eau), Helianthus Annuus (Sunflower) Seed Oil, Rosa Canina (Rosehip) Fruit Oil, Vitis Vinifera (Grape) Seed Oil, Butylene Glycol, 1,2-Hexanediol, Caprylic/Capric Triglyceride, Polyglyceryl-6 Stearate, Ethylhexyl Pelargonate, Simmondsia Chinensis (Jojoba) Seed Oil, Microcrystalline Cellulose, Sodium Stearoyl Glutamate, Polyglyceryl-6 Behenate, Sphingomonas Ferment Extract, Sodium Polyacryloyldimethyl Taurate, Pyrus Communis (Pear) Fruit Extract, Lecithin, Rosa Damascena (Bulgarian Rose) Flower Water, Hydrogenated Polydecene, Cellulose Gum, Ethylhexylglycerin, Iris Florentina (Florentine Iris) Root Extract, Cucumis Melo (Melon) Seed Extract, Hedera Helix (Ivy) Leaf/Stem Extract, Disodium EDTA, Acetyl Glutamine, Lithospermum Erythrorhizon (Purple Gromwell) Root Extract, Caprylyl/Capryl Glucoside, Camellia Sinensis (Green Tea) Leaf Water, Hydrolyzed Gardenia Florida Extract, Rosa Centifolia Flower Water, Madecassoside, sh-Polypeptide-9\n\nPETA-certified vegan and cruelty-free.',
+      },
+    ]);
+
+    expect(raw.startsWith('Water (Aqua/Eau), Helianthus Annuus (Sunflower) Seed Oil')).toBe(true);
+    expect(raw.includes('Madecassoside, sh-Polypeptide-9')).toBe(true);
+  });
+
   test('filters broken image URLs before seed writes while preserving Shopify asset identity', async () => {
     jest
       .spyOn(axios, 'head')
