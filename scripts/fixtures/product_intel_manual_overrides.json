@@ -204,7 +204,7 @@
     "search_card": {
       "highlight_candidate": "Non-comedogenic oil blend for breakout-prone skin"
     },
-    "review_status": "approved",
+    "review_status": "completed",
     "review_decision": "approved",
     "reviewer": "codex_manual_override",
     "reviewer_kind": "employee",
@@ -279,7 +279,7 @@
     "search_card": {
       "highlight_candidate": "Non-comedogenic oil blend for breakout-prone skin"
     },
-    "review_status": "approved",
+    "review_status": "completed",
     "review_decision": "approved",
     "reviewer": "codex_manual_override",
     "reviewer_kind": "employee",

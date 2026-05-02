@@ -49,7 +49,7 @@ describe('build_manual_product_intel_publish_report', () => {
     const row = report.rows[0];
 
     expect(report.rows).toHaveLength(1);
-    expect(row.review_status).toBe('approved');
+    expect(row.review_status).toBe('completed');
     expect(row.review_decision).toBe('approved');
     expect(row.selected.selected_mode).toBe('manual_override');
     expect(row.selected.bundle.product_intel_core.what_it_is.headline).toBe('Facial oil-serum');
