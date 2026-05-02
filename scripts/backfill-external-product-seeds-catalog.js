@@ -4208,6 +4208,126 @@ async function mapWithConcurrency(items, concurrency, fn) {
   return results;
 }
 
+function ensureDirectory(dirPath) {
+  const normalized = normalizeNonEmptyString(dirPath);
+  if (!normalized) return '';
+  fs.mkdirSync(normalized, { recursive: true });
+  return normalized;
+}
+
+function safeReportFileStem(value, fallback = 'row') {
+  const normalized = normalizeNonEmptyString(value).replace(/[^a-z0-9._-]+/gi, '-');
+  return normalized || fallback;
+}
+
+function serializeBackfillResult(result) {
+  const row = result?.row && typeof result.row === 'object' ? result.row : {};
+  const payload = result?.payload && typeof result.payload === 'object' ? result.payload : {};
+  const nextRow = payload?.nextRow && typeof payload.nextRow === 'object' ? payload.nextRow : null;
+  const seedData = ensureJsonObject(nextRow?.seed_data);
+  return {
+    status: normalizeNonEmptyString(result?.status),
+    reason: normalizeNonEmptyString(result?.reason),
+    target_url: normalizeUrlLike(result?.targetUrl),
+    row: {
+      id: normalizeNonEmptyString(row?.id),
+      external_product_id: normalizeNonEmptyString(row?.external_product_id),
+      title: normalizeNonEmptyString(row?.title),
+      brand: normalizeNonEmptyString(row?.brand),
+      domain: normalizeNonEmptyString(row?.domain),
+      canonical_url: normalizeUrlLike(row?.canonical_url),
+      destination_url: normalizeUrlLike(row?.destination_url),
+      seed_snapshot_contract: ensureJsonObject(ensureJsonObject(row?.seed_data).external_seed_snapshot_contract),
+    },
+    payload: {
+      changed: Boolean(payload?.changed),
+      next_row: nextRow,
+      next_row_summary: nextRow
+        ? {
+            external_product_id: normalizeNonEmptyString(nextRow?.external_product_id),
+            title: normalizeNonEmptyString(nextRow?.title),
+            canonical_url: normalizeUrlLike(nextRow?.canonical_url),
+            destination_url: normalizeUrlLike(nextRow?.destination_url),
+            image_url: normalizeUrlLike(nextRow?.image_url),
+            image_count: collectSeedImageUrls(seedData).length,
+            variant_count: normalizeSeedVariants(seedData.variants).length,
+            details_section_count: Array.isArray(seedData.pdp_details_sections) ? seedData.pdp_details_sections.length : 0,
+            faq_count: Array.isArray(seedData.pdp_faq_items) ? seedData.pdp_faq_items.length : 0,
+            how_to_use_present: Boolean(normalizeNonEmptyString(seedData.pdp_how_to_use_raw)),
+            ingredients_present: Boolean(normalizeNonEmptyString(seedData.pdp_ingredients_raw)),
+            active_ingredients_present: Boolean(normalizeNonEmptyString(seedData.pdp_active_ingredients_raw)),
+            seed_snapshot_contract: ensureJsonObject(seedData.external_seed_snapshot_contract),
+          }
+        : null,
+      variant_seed_rows: Array.isArray(payload?.variant_seed_rows) ? payload.variant_seed_rows : [],
+      identity_listing_refresh: payload?.identity_listing_refresh || null,
+      image_health_validation: payload?.image_health_validation || null,
+      diagnostics: payload?.diagnostics || null,
+      commerce_facts_v2: payload?.commerce_facts_v2 || null,
+    },
+    error: result?.error
+      ? {
+          message: normalizeNonEmptyString(result.error?.message || result.error),
+          stack: normalizeNonEmptyString(result.error?.stack),
+        }
+      : null,
+  };
+}
+
+function writeBackfillReport({ outDir, options, rows, summary, results, insightsCoverage }) {
+  const reportDir = ensureDirectory(outDir);
+  if (!reportDir) return null;
+
+  const serializedResults = Array.isArray(results) ? results.map((result) => serializeBackfillResult(result)) : [];
+  const metadata = {
+    generated_at: new Date().toISOString(),
+    options: {
+      market: normalizeNonEmptyString(options?.market),
+      dry_run: Boolean(options?.dryRun),
+      include_commerce_facts: Boolean(options?.includeCommerceFacts),
+      skip_insights: Boolean(options?.skipInsights),
+      expand_variants: Boolean(options?.expandVariants),
+      limit: Number(options?.limit || 0),
+      offset: Number(options?.offset || 0),
+      concurrency: Number(options?.concurrency || 0),
+      external_product_ids: Array.isArray(options?.externalProductIds) ? options.externalProductIds : [],
+      external_product_id: normalizeNonEmptyString(options?.externalProductId),
+      seed_id: normalizeNonEmptyString(options?.seedId),
+      domain: normalizeNonEmptyString(options?.domain),
+      brand: normalizeNonEmptyString(options?.brand),
+    },
+    rows_fetched: Array.isArray(rows) ? rows.length : 0,
+  };
+
+  fs.writeFileSync(
+    path.join(reportDir, 'backfill-summary.json'),
+    JSON.stringify(
+      {
+        ...metadata,
+        summary,
+        pivota_insights: insightsCoverage,
+      },
+      null,
+      2,
+    ),
+  );
+  fs.writeFileSync(path.join(reportDir, 'backfill-results.json'), JSON.stringify(serializedResults, null, 2));
+
+  const rowsDir = ensureDirectory(path.join(reportDir, 'rows'));
+  for (const result of serializedResults) {
+    const stem = safeReportFileStem(
+      result?.row?.external_product_id || result?.row?.id || result?.target_url,
+      'row',
+    );
+    fs.writeFileSync(path.join(rowsDir, `${stem}.json`), JSON.stringify(result, null, 2));
+  }
+
+  return {
+    out_dir: reportDir,
+    result_count: serializedResults.length,
+  };
+}
+
 function collectBackfilledExternalProductIds(results, { includeDryRun = false } = {}) {
   const allowStatuses = includeDryRun ? new Set(['updated', 'dry_run']) : new Set(['updated']);
   return uniqueStrings(
@@ -4400,6 +4520,7 @@ async function main() {
     skipInsights: hasFlag('skip-insights') || hasFlag('skipInsights'),
     insightsOutDir: argValue('insights-out-dir') || argValue('insightsOutDir') || '',
     insightsSkipGemini: hasFlag('insights-skip-gemini') || hasFlag('insightsSkipGemini'),
+    outDir: argValue('out-dir') || argValue('outDir') || '',
     targetUrlOverrides,
     validateImageHealth:
       !(hasFlag('dry-run') || hasFlag('dryRun')) &&
@@ -4434,6 +4555,17 @@ async function main() {
 
   const insightsCoverage = await preparePivotaInsightsForBackfill(results, options);
   console.log(JSON.stringify({ pivota_insights: insightsCoverage }, null, 2));
+  const report = writeBackfillReport({
+    outDir: options.outDir,
+    options,
+    rows,
+    summary,
+    results,
+    insightsCoverage,
+  });
+  if (report?.out_dir) {
+    console.log(JSON.stringify({ report }, null, 2));
+  }
   if (insightsCoverage.status === 'failed') {
     process.exitCode = 1;
   }
@@ -4491,4 +4623,6 @@ module.exports = {
   pickPdpIngredientsRaw,
   preparePivotaInsightsForBackfill,
   runPivotaInsightsCoverageForProductIds,
+  serializeBackfillResult,
+  writeBackfillReport,
 };

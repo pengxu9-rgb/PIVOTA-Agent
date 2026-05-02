@@ -1,3 +1,6 @@
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 const axios = require('axios');
 
 const {
@@ -25,6 +28,8 @@ const {
   isDisplayableProductIntelKbRow,
   cleanPdpIngredientsRaw,
   pickPdpIngredientsRaw,
+  serializeBackfillResult,
+  writeBackfillReport,
 } = require('../../scripts/backfill-external-product-seeds-catalog');
 
 describe('backfill-external-product-seeds-catalog', () => {
@@ -81,6 +86,98 @@ describe('backfill-external-product-seeds-catalog', () => {
         },
       ]),
     ).toEqual(['ext_parent', 'ext_child_a', 'ext_child_b']);
+  });
+
+  test('serializes dry-run results with authoritative snapshot summary', () => {
+    const serialized = serializeBackfillResult({
+      status: 'dry_run',
+      row: {
+        id: 'seed_1',
+        external_product_id: 'ext_1',
+        title: 'Ceramidin Cream',
+        brand: 'Dr.Jart+',
+        domain: 'drjart.com',
+        canonical_url: 'https://www.drjart.com/product',
+        seed_data: {
+          external_seed_snapshot_contract: {
+            authoritative: true,
+            legacy_fields_quarantined: true,
+          },
+        },
+      },
+      payload: {
+        changed: true,
+        nextRow: {
+          external_product_id: 'ext_1',
+          title: 'Ceramidin Cream',
+          image_url: 'https://www.drjart.com/image.png',
+          canonical_url: 'https://www.drjart.com/product',
+          seed_data: {
+            image_urls: ['https://www.drjart.com/image.png'],
+            pdp_details_sections: [{ heading: 'Overview', body: 'Barrier cream' }],
+            pdp_faq_items: [{ question: 'Q1', answer: 'A1' }],
+            pdp_how_to_use_raw: 'Apply morning and night.',
+            pdp_ingredients_raw: 'Water, Glycerin',
+            pdp_active_ingredients_raw: 'Ceramide NP',
+            external_seed_snapshot_contract: {
+              authoritative: true,
+              legacy_fields_quarantined: true,
+            },
+          },
+        },
+      },
+    });
+
+    expect(serialized.payload.next_row_summary).toMatchObject({
+      image_count: 1,
+      details_section_count: 1,
+      faq_count: 1,
+      how_to_use_present: true,
+      ingredients_present: true,
+      active_ingredients_present: true,
+    });
+    expect(serialized.payload.next_row_summary.seed_snapshot_contract).toMatchObject({
+      authoritative: true,
+      legacy_fields_quarantined: true,
+    });
+  });
+
+  test('writes backfill summary and per-row report artifacts', () => {
+    const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'external-seed-backfill-report-'));
+    const report = writeBackfillReport({
+      outDir,
+      options: {
+        market: 'US',
+        dryRun: true,
+        externalProductIds: ['ext_1'],
+        concurrency: 1,
+      },
+      rows: [{ id: 'seed_1' }],
+      summary: { scanned: 1, dry_run: 1, updated: 0, skipped: 0, failed: 0 },
+      results: [
+        {
+          status: 'dry_run',
+          row: {
+            id: 'seed_1',
+            external_product_id: 'ext_1',
+          },
+          payload: {
+            nextRow: {
+              external_product_id: 'ext_1',
+              seed_data: {
+                image_urls: ['https://example.com/image.png'],
+              },
+            },
+          },
+        },
+      ],
+      insightsCoverage: { status: 'skipped', reason: 'dry_run' },
+    });
+
+    expect(report).toMatchObject({ result_count: 1 });
+    expect(fs.existsSync(path.join(outDir, 'backfill-summary.json'))).toBe(true);
+    expect(fs.existsSync(path.join(outDir, 'backfill-results.json'))).toBe(true);
+    expect(fs.existsSync(path.join(outDir, 'rows', 'ext_1.json'))).toBe(true);
   });
 
   test('detects nested variant image pollution even when canonical gallery is already clean', () => {

@@ -67,6 +67,7 @@ jobs:
             ARGS+=(--skip-insights)
           fi
           node scripts/backfill-external-product-seeds-catalog.js "${ARGS[@]}" \
+            --out-dir reports/workflow_ops/external-seed-targeted-backfill/${{ github.run_id }}/results \
             | tee reports/workflow_ops/external-seed-targeted-backfill/${{ github.run_id }}/backfill.log
 
       - name: Upload artifact
