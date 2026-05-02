@@ -2568,6 +2568,11 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     representativeProduct?.details_sections ||
       representativeProduct?.pdp_details_sections,
   );
+  const rawRepresentativePdpDetailsSections = Array.isArray(representativeProduct?.details_sections)
+    ? representativeProduct.details_sections
+    : Array.isArray(representativeProduct?.pdp_details_sections)
+      ? representativeProduct.pdp_details_sections
+      : [];
   const productDescriptionRaw = cleanPdpDescriptionCandidate(
     representativeProduct?.description_raw ||
       representativeProduct?.pdp_description_raw,
@@ -2739,7 +2744,9 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
   const candidatePdpIngredientsRaw = supportsFormulaPdpFields
     ? pickPdpIngredientsRaw(
         surfaceablePdpIngredientsRaw,
-        nextPdpDetailsSections,
+        rawRepresentativePdpDetailsSections.length > 0
+          ? rawRepresentativePdpDetailsSections
+          : nextPdpDetailsSections,
         '',
       )
     : '';
@@ -2765,7 +2772,9 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
       ? existingPdpIngredientsRaw
       : pickPdpIngredientsRaw(
           candidatePdpIngredientsRaw,
-          nextPdpDetailsSections,
+          rawRepresentativePdpDetailsSections.length > 0
+            ? rawRepresentativePdpDetailsSections
+            : nextPdpDetailsSections,
           ingredientsDecision.existingApproved ? existingPdpIngredientsRaw : '',
         ))
     : '';
