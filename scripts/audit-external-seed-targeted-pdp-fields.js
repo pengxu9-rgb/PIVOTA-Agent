@@ -49,6 +49,8 @@ function sectionTitles(value) {
 
 function summarizeSeed(seedData) {
   const snapshot = ensureJsonObject(seedData?.snapshot);
+  const contentAsset = ensureJsonObject(seedData?.pdp_content_asset_v1 || snapshot?.pdp_content_asset_v1);
+  const contentAssetFields = ensureJsonObject(contentAsset.fields);
   return {
     description: normalizeText(seedData?.description || snapshot?.description),
     pdp_description_raw: normalizeText(seedData?.pdp_description_raw || snapshot?.pdp_description_raw),
@@ -60,6 +62,13 @@ function summarizeSeed(seedData) {
       : Array.isArray(snapshot?.ingredients_inci)
         ? snapshot.ingredients_inci.length
         : 0,
+    product_kind: normalizeText(seedData?.product_kind || snapshot?.product_kind),
+    pdp_field_capture_status:
+      seedData?.pdp_field_capture_status ||
+      snapshot?.pdp_field_capture_status ||
+      null,
+    pdp_content_asset_fields: Object.keys(contentAssetFields),
+    pdp_content_asset_ingredients_raw: contentAssetFields.ingredients_raw || null,
     review_count:
       seedData?.review_summary?.review_count ||
       snapshot?.review_summary?.review_count ||
