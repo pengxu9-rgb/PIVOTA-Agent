@@ -104,6 +104,17 @@ const ZERO_DECIMAL_PRICE_CURRENCIES = new Set([
   'XOF',
   'XPF',
 ]);
+const EXTERNAL_SEED_SNAPSHOT_CONTRACT_VERSION = 'external_seed.snapshot_contract.v1';
+const LEGACY_EXTERNAL_SEED_PDP_SHADOW_FIELDS = [
+  'details_sections',
+  'detail_sections',
+  'details',
+  'faq_items',
+  'faq',
+  'questions',
+  'how_to_use',
+  'howToUse',
+];
 
 function stableExternalProductId(url) {
   const u = String(url || '').trim();
@@ -149,6 +160,30 @@ function normalizePdpFieldQualitySummary(value) {
   return Object.keys(next).length > 0 ? next : null;
 }
 
+function normalizeExternalSeedSnapshotContract(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const contractVersion = normalizeNonEmptyString(value.contract_version || value.contractVersion);
+  return {
+    contract_version: contractVersion || EXTERNAL_SEED_SNAPSHOT_CONTRACT_VERSION,
+    authoritative: value.authoritative === true || value.structured_fields_authoritative === true,
+    legacy_fields_quarantined: value.legacy_fields_quarantined === true || value.legacyFieldsQuarantined === true,
+  };
+}
+
+function hasAuthoritativeExternalSeedSnapshotContract(seedData, snapshot) {
+  const contract =
+    normalizeExternalSeedSnapshotContract(seedData?.external_seed_snapshot_contract) ||
+    normalizeExternalSeedSnapshotContract(snapshot?.external_seed_snapshot_contract);
+  return contract?.authoritative === true && contract?.legacy_fields_quarantined === true;
+}
+
+function deleteLegacyExternalSeedPdpShadowFields(target) {
+  if (!target || typeof target !== 'object' || Array.isArray(target)) return;
+  for (const fieldName of LEGACY_EXTERNAL_SEED_PDP_SHADOW_FIELDS) {
+    delete target[fieldName];
+  }
+}
+
 function readPdpFieldQualityStatus(summary, key) {
   return normalizeNonEmptyString(summary?.[key]?.source_quality_status).toLowerCase();
 }
@@ -162,6 +197,7 @@ function isSurfaceablePdpField(summary, key) {
 function buildApprovedRuntimeSeedData(seedData, pdpFieldQualitySummary) {
   const nextSeedData = cloneJsonValue(ensureJsonObject(seedData));
   const snapshot = ensureJsonObject(nextSeedData.snapshot);
+  const authoritativeSnapshotContract = hasAuthoritativeExternalSeedSnapshotContract(nextSeedData, snapshot);
 
   delete nextSeedData.snapshot_quarantine;
   delete nextSeedData.active_ingredients;
@@ -188,12 +224,15 @@ function buildApprovedRuntimeSeedData(seedData, pdpFieldQualitySummary) {
     delete snapshot.pdp_details_sections;
   }
 
-  if (Array.isArray(nextSeedData.pdp_details_sections) && nextSeedData.pdp_details_sections.length > 0) {
+  if (authoritativeSnapshotContract) {
+    deleteLegacyExternalSeedPdpShadowFields(nextSeedData);
+    deleteLegacyExternalSeedPdpShadowFields(snapshot);
+  } else if (Array.isArray(nextSeedData.pdp_details_sections) && nextSeedData.pdp_details_sections.length > 0) {
     nextSeedData.details_sections = cloneJsonValue(nextSeedData.pdp_details_sections);
   } else {
     delete nextSeedData.details_sections;
   }
-  if (Array.isArray(snapshot.pdp_details_sections) && snapshot.pdp_details_sections.length > 0) {
+  if (!authoritativeSnapshotContract && Array.isArray(snapshot.pdp_details_sections) && snapshot.pdp_details_sections.length > 0) {
     snapshot.details_sections = cloneJsonValue(snapshot.pdp_details_sections);
   } else {
     delete snapshot.details_sections;

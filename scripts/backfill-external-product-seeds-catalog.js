@@ -1446,6 +1446,7 @@ const PDP_FIELD_QUALITY_KEYS = [
   'faq_items',
 ];
 const PDP_CONTENT_ASSET_CONTRACT_VERSION = 'pivota.pdp_content_asset.v1';
+const EXTERNAL_SEED_SNAPSHOT_CONTRACT_VERSION = 'external_seed.snapshot_contract.v1';
 const PDP_CONTENT_ASSET_KEYS = [
   'description',
   ...PDP_FIELD_QUALITY_KEYS,
@@ -1459,6 +1460,35 @@ const MANUAL_ONLY_PDP_CONTENT_POLICIES = new Set([
   'manual_only',
   'locked',
 ]);
+const LEGACY_EXTERNAL_SEED_PDP_SHADOW_FIELDS = [
+  'details_sections',
+  'detail_sections',
+  'details',
+  'faq_items',
+  'faq',
+  'questions',
+  'how_to_use',
+  'howToUse',
+];
+
+function buildExternalSeedSnapshotContract() {
+  return {
+    contract_version: EXTERNAL_SEED_SNAPSHOT_CONTRACT_VERSION,
+    source: 'catalog_intelligence',
+    authoritative: true,
+    structured_fields_authoritative: true,
+    legacy_fields_quarantined: true,
+    replace_strategy: 'replace_not_merge',
+    updated_at: new Date().toISOString(),
+  };
+}
+
+function deleteLegacyExternalSeedPdpShadowFields(target) {
+  if (!target || typeof target !== 'object') return;
+  for (const fieldName of LEGACY_EXTERNAL_SEED_PDP_SHADOW_FIELDS) {
+    delete target[fieldName];
+  }
+}
 
 function normalizeFieldQualitySummary(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
@@ -2425,13 +2455,20 @@ function deleteLegacyVariantShadowContainers(target) {
   }
 }
 
-function cleanupPersistedSeedData(seedData, { clearSyntheticDescription = false } = {}) {
+function cleanupPersistedSeedData(seedData, { clearSyntheticDescription = false, authoritativeSnapshot = false } = {}) {
   if (!seedData || typeof seedData !== 'object') return seedData;
   const snapshot = ensureJsonObject(seedData.snapshot);
 
   deleteLegacyVariantShadowContainers(seedData);
   deleteLegacyVariantShadowContainers(snapshot);
   delete snapshot.snapshot_quarantine;
+
+  if (authoritativeSnapshot) {
+    deleteLegacyExternalSeedPdpShadowFields(seedData);
+    deleteLegacyExternalSeedPdpShadowFields(snapshot);
+    seedData.external_seed_snapshot_contract = buildExternalSeedSnapshotContract();
+    snapshot.external_seed_snapshot_contract = buildExternalSeedSnapshotContract();
+  }
 
   if (clearSyntheticDescription) {
     delete seedData.description;
@@ -3190,7 +3227,17 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     delete nextSeedData.snapshot.active_ingredients;
     delete nextSeedData.snapshot.activeIngredients;
   }
-  cleanupPersistedSeedData(nextSeedData, { clearSyntheticDescription: clearSyntheticLegacyDescription });
+  const authoritativeSnapshot =
+    Boolean(nextPdpDescriptionRaw) ||
+    nextPdpDetailsSections.length > 0 ||
+    Boolean(nextPdpIngredientsRaw) ||
+    Boolean(nextPdpActiveIngredientsRaw) ||
+    Boolean(nextPdpHowToUseRaw) ||
+    nextPdpFaqItems.length > 0;
+  cleanupPersistedSeedData(nextSeedData, {
+    clearSyntheticDescription: clearSyntheticLegacyDescription,
+    authoritativeSnapshot,
+  });
   nextSeedData = applyLocalityFactsToSeedData(
     nextSeedData,
     resolveExternalSeedLocalityFacts({

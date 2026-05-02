@@ -1874,6 +1874,89 @@ describe('backfill-external-product-seeds-catalog', () => {
     );
   });
 
+  test('marks refreshed snapshots authoritative and clears legacy PDP shadow fields on writeback', () => {
+    const row = {
+      id: 'eps_refresh_authoritative',
+      title: 'Barrier Serum',
+      canonical_url: 'https://example.com/products/barrier-serum',
+      destination_url: 'https://example.com/products/barrier-serum',
+      image_url: 'https://cdn.example.com/legacy.jpg',
+      price_amount: 38,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      seed_data: {
+        description: 'Legacy soup description',
+        details_sections: [{ heading: 'Legacy', body: 'Legacy details' }],
+        faq_items: [{ question: 'Legacy Q?', answer: 'Legacy A.' }],
+        how_to_use: 'Legacy how to use',
+        snapshot: {
+          description: 'Legacy soup description',
+          details_sections: [{ heading: 'Legacy', body: 'Legacy details' }],
+          faq_items: [{ question: 'Legacy Q?', answer: 'Legacy A.' }],
+          how_to_use: 'Legacy how to use',
+        },
+      },
+    };
+
+    const payload = buildSeedUpdatePayload(
+      row,
+      {
+        products: [
+          {
+            url: 'https://example.com/products/barrier-serum',
+            canonical_url: 'https://example.com/products/barrier-serum',
+            title: 'Barrier Serum',
+            description: 'Daily barrier support serum.',
+            image_urls: ['https://cdn.example.com/barrier-serum.jpg'],
+            variants: [],
+            details_sections: [
+              { heading: 'Overview', body: 'Daily barrier support serum.' },
+              { heading: 'How to Use', body: 'Apply after cleansing.' },
+            ],
+            faq_items: [
+              { question: 'Can I layer this under cream?', answer: 'Yes, use before moisturizer.', source_kind: 'merchant_faq' },
+            ],
+            pdp_how_to_use_raw: 'Apply after cleansing.',
+            diagnostics: { failure_category: null },
+          },
+        ],
+      },
+      'https://example.com/products/barrier-serum',
+    );
+
+    expect(payload.nextRow.seed_data.external_seed_snapshot_contract).toEqual(
+      expect.objectContaining({
+        contract_version: 'external_seed.snapshot_contract.v1',
+        authoritative: true,
+        structured_fields_authoritative: true,
+        legacy_fields_quarantined: true,
+        replace_strategy: 'replace_not_merge',
+      }),
+    );
+    expect(payload.nextRow.seed_data.snapshot.external_seed_snapshot_contract).toEqual(
+      expect.objectContaining({
+        contract_version: 'external_seed.snapshot_contract.v1',
+        authoritative: true,
+        structured_fields_authoritative: true,
+        legacy_fields_quarantined: true,
+        replace_strategy: 'replace_not_merge',
+      }),
+    );
+    expect(payload.nextRow.seed_data.details_sections).toBeUndefined();
+    expect(payload.nextRow.seed_data.faq_items).toBeUndefined();
+    expect(payload.nextRow.seed_data.how_to_use).toBeUndefined();
+    expect(payload.nextRow.seed_data.snapshot.details_sections).toBeUndefined();
+    expect(payload.nextRow.seed_data.snapshot.faq_items).toBeUndefined();
+    expect(payload.nextRow.seed_data.snapshot.how_to_use).toBeUndefined();
+    expect(payload.nextRow.seed_data.snapshot.pdp_details_sections).toEqual([
+      { heading: 'Overview', body: 'Daily barrier support serum.', source_kind: 'unknown' },
+      { heading: 'How to Use', body: 'Apply after cleansing.', source_kind: 'unknown' },
+    ]);
+    expect(payload.nextRow.seed_data.snapshot.pdp_faq_items).toEqual([
+      { question: 'Can I layer this under cream?', answer: 'Yes, use before moisturizer.', source_kind: 'merchant_faq' },
+    ]);
+  });
+
   test('splits encoded Fenty accordion copy into structured PDP sections', () => {
     const fentyAccordion =
       'RECHARGEABLE MIRROR WITH 5X MAGNIFICATION\n\n' +

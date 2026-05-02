@@ -2139,6 +2139,60 @@ describe('externalSeedProducts helper', () => {
     ]);
   });
 
+  test('authoritative external seed snapshots quarantine legacy PDP shadow fields at runtime', () => {
+    const product = buildExternalSeedProduct({
+      id: 'eps_authoritative_runtime',
+      external_product_id: 'ext_authoritative_runtime',
+      canonical_url: 'https://example.com/products/barrier-cream',
+      destination_url: 'https://example.com/products/barrier-cream',
+      title: 'Barrier Cream',
+      seed_data: {
+        details_sections: [{ heading: 'Legacy', body: 'Legacy shadow details.' }],
+        faq_items: [{ question: 'Legacy?', answer: 'Legacy answer.' }],
+        how_to_use: 'Legacy directions.',
+        external_seed_snapshot_contract: {
+          contract_version: 'external_seed.snapshot_contract.v1',
+          authoritative: true,
+          structured_fields_authoritative: true,
+          legacy_fields_quarantined: true,
+        },
+        pdp_details_sections: [{ heading: 'Overview', body: 'Reviewed barrier overview.' }],
+        pdp_faq_items: [{ question: 'Can I use it daily?', answer: 'Yes.' }],
+        snapshot: {
+          details_sections: [{ heading: 'Legacy', body: 'Legacy snapshot details.' }],
+          faq_items: [{ question: 'Legacy?', answer: 'Legacy snapshot answer.' }],
+          how_to_use: 'Legacy snapshot directions.',
+          external_seed_snapshot_contract: {
+            contract_version: 'external_seed.snapshot_contract.v1',
+            authoritative: true,
+            structured_fields_authoritative: true,
+            legacy_fields_quarantined: true,
+          },
+          pdp_details_sections: [{ heading: 'Overview', body: 'Reviewed barrier overview.' }],
+          pdp_faq_items: [{ question: 'Can I use it daily?', answer: 'Yes.' }],
+          description: 'Reviewed barrier overview.',
+        },
+      },
+    });
+
+    expect(product.pdp_details_sections).toEqual([{ heading: 'Overview', body: 'Reviewed barrier overview.' }]);
+    expect(product.pdp_faq_items).toEqual([
+      { question: 'Can I use it daily?', answer: 'Yes.', source_kind: 'merchant_faq' },
+    ]);
+    expect(product.seed_data.details_sections).toBeUndefined();
+    expect(product.seed_data.faq_items).toBeUndefined();
+    expect(product.seed_data.how_to_use).toBeUndefined();
+    expect(product.seed_data.snapshot.details_sections).toBeUndefined();
+    expect(product.seed_data.snapshot.faq_items).toBeUndefined();
+    expect(product.seed_data.snapshot.how_to_use).toBeUndefined();
+    expect(product.seed_data.snapshot.external_seed_snapshot_contract).toEqual(
+      expect.objectContaining({
+        authoritative: true,
+        legacy_fields_quarantined: true,
+      }),
+    );
+  });
+
   test('prefers approved snapshot PDP content over thinner root seed shadow fields', () => {
     const canonicalUrl = 'https://example.com/products/barrier-cream';
     const reviewedDescription =
