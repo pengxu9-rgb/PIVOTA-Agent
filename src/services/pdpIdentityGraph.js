@@ -1479,6 +1479,9 @@ function parseIdentityRow(row) {
 
 function buildImageEntriesForListing(listing, kind = 'exact_item') {
   const payload = asPlainObject(listing?.source_payload) || {};
+  const payloadSeedData = asPlainObject(payload.seed_data) || {};
+  const payloadSnapshot = asPlainObject(payloadSeedData.snapshot) || {};
+  const payloadSources = [payload, payloadSeedData, payloadSnapshot];
   const candidates = [];
   const push = (value, overrides = {}) => {
     const url = normalizePdpImageUrl(
@@ -1498,9 +1501,12 @@ function buildImageEntriesForListing(listing, kind = 'exact_item') {
       ...overrides,
     });
   };
-  push(payload.image_url);
-  asArray(payload.images).forEach((item) => push(item));
-  asArray(payload.image_urls).forEach((item) => push(item));
+  for (const source of payloadSources) {
+    push(source.image_url);
+    asArray(source.images).forEach((item) => push(item));
+    asArray(source.image_urls).forEach((item) => push(item));
+    asArray(source.content_image_urls).forEach((item) => push(item));
+  }
   const seen = new Set();
   return candidates.filter((item) => {
     const key = buildPdpImageDedupeKey(item.url) || item.url;

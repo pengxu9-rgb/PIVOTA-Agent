@@ -800,7 +800,7 @@ function looksLikeCrossSellPairingText(value) {
   if (!text) return false;
   const hasPairingFrame = /\b(how to pair|pair with|pairs? well with)\b/i.test(text);
   const hasCommerceCta = /\b(shop now|add to cart|buy now)\b/i.test(text);
-  return (hasPairingFrame && hasCommerceCta) || /^how to pair\b/i.test(text);
+  return hasPairingFrame && hasCommerceCta;
 }
 
 function looksLikeActiveCompatibilityFaqText(value) {
@@ -818,6 +818,45 @@ function isFaqOrCrossSellDetailSection(section) {
   const content = asNonEmptyString(section?.content);
   if (!heading && !content) return false;
   return /[?？]$/.test(heading) || looksLikeCrossSellPairingText(`${heading} ${content}`);
+}
+
+function isPairingGuidanceDetailSection(section) {
+  const heading = asNonEmptyString(section?.heading);
+  const content = asNonEmptyString(section?.content);
+  return /^how to pair$/i.test(heading) || /\bpairs? with\b/i.test(`${heading} ${content}`);
+}
+
+function sanitizeDetailSectionContent(heading, content) {
+  const normalizedHeading = normalizeDetailSectionHeading(heading);
+  const normalizedContent = stripHtml(content || '');
+  if (!normalizedHeading || !normalizedContent) return normalizedContent;
+  if (!/^how to pair$/i.test(normalizedHeading)) return normalizedContent;
+  const withoutCommerceCtas = normalizedContent
+    .replace(/\bshop now\b/gi, '')
+    .replace(/\badd to cart\b/gi, '')
+    .replace(/\bbuy now\b/gi, '');
+  const cleaned = withoutCommerceCtas
+    .split(/\n+/)
+    .map((line) => cleanStructuredToken(line))
+    .filter(Boolean)
+    .join('\n\n')
+    .trim();
+  return cleaned || normalizedContent;
+}
+
+function shouldPreserveOverviewDetailAsSupplemental(section, desc, descKey) {
+  if (!OVERVIEW_DETAIL_SECTION_RE.test(section?.heading)) return false;
+  const content = asNonEmptyString(section?.content);
+  if (!content) return false;
+  const contentKey = normalizeTextKey(content);
+  if (desc && content === desc) return false;
+  if (descKey && contentKey === descKey) return false;
+  if (!/^(details|product details)$/i.test(section.heading)) return false;
+  const descLength = asNonEmptyString(desc)?.length || 0;
+  const richDetailSignal =
+    /\b(why is it different|helps with|made for|clinically proven|consumer trial|bonus)\b/i.test(content) ||
+    content.split(/\n+/).filter(Boolean).length >= 4;
+  return content.length >= Math.max(220, descLength + 120) || richDetailSignal;
 }
 
 function buildIngredientsModuleData(candidates, fallbackTitle) {
@@ -1609,7 +1648,8 @@ function collectStructuredDetailSections(product) {
   const seen = new Set();
   for (const section of rawSections) {
     const heading = normalizeDetailSectionHeading(section?.heading || section?.title || section?.name);
-    const content = stripHtml(
+    const content = sanitizeDetailSectionContent(
+      heading,
       section?.content ||
         section?.value ||
         section?.text ||
@@ -1636,6 +1676,7 @@ function isFreeformOverviewDetailSection(section) {
     STRUCTURED_DETAIL_SECTION_RE.test(section.heading) ||
     FACT_DETAIL_SECTION_RE.test(section.heading) ||
     BRAND_STORY_SECTION_RE.test(section.heading) ||
+    isPairingGuidanceDetailSection(section) ||
     isFaqOrCrossSellDetailSection(section)
   );
 }
@@ -1723,7 +1764,12 @@ function buildSupplementalDetailSections(product, detailSections = collectStruct
       if (STRUCTURED_DETAIL_SECTION_RE.test(section.heading)) return false;
       if (FACT_DETAIL_SECTION_RE.test(section.heading)) return false;
       if (BRAND_STORY_SECTION_RE.test(section.heading)) return false;
-      if (OVERVIEW_DETAIL_SECTION_RE.test(section.heading)) return false;
+      if (
+        OVERVIEW_DETAIL_SECTION_RE.test(section.heading) &&
+        !shouldPreserveOverviewDetailAsSupplemental(section, desc, descKey)
+      ) {
+        return false;
+      }
       if (isFaqOrCrossSellDetailSection(section)) return false;
       if (desc && section.content === desc) return false;
       if (descKey && normalizeTextKey(section.content) === descKey) return false;

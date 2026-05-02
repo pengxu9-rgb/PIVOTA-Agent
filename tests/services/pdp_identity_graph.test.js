@@ -382,7 +382,15 @@ describe('pdpIdentityGraph', () => {
         product_id: 'ext_krave_oil_lala',
         title: 'Oil La La',
         description: 'Balanced facial oil for breakout-prone skin.',
+        image_url: 'https://cdn.example.com/oil-lala-main.png',
         seed_data: {
+          images: [
+            'https://cdn.example.com/oil-lala-main.png',
+            'https://cdn.example.com/oil-lala-closeup.png',
+          ],
+          content_image_urls: [
+            'https://cdn.example.com/oil-lala-routine.png',
+          ],
           pdp_ingredients_raw:
             'Helianthus Annuus (Sunflower) Seed Oil, Rosa Canina Fruit Oil, Vitis Vinifera Seed Oil, 1,2-Hexanediol',
           pdp_how_to_use_raw: 'Apply 1-2 drops after toner and before moisturizer.',
@@ -418,6 +426,11 @@ describe('pdpIdentityGraph', () => {
       'Rosa Canina Fruit Oil',
       'Vitis Vinifera Seed Oil',
       '1,2-Hexanediol',
+    ]);
+    expect(composed.product.images).toEqual([
+      expect.objectContaining({ url: 'https://cdn.example.com/oil-lala-main.png' }),
+      expect.objectContaining({ url: 'https://cdn.example.com/oil-lala-closeup.png' }),
+      expect.objectContaining({ url: 'https://cdn.example.com/oil-lala-routine.png' }),
     ]);
     expect(composed.product.pdp_details_sections).toEqual([
       expect.objectContaining({

@@ -380,11 +380,19 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     expect(ingredientsInci?.data?.items).toEqual(['Water', 'Propanediol', 'Niacinamide', 'Ceramide NP']);
     expect(howToUse).toBeFalsy();
     expect(overview?.data?.sections?.[0]?.content).toBe('A barrier-support serum for irritated skin.');
-    expect(supplemental?.data?.sections || []).not.toEqual(
+    expect(supplemental?.data?.sections || []).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ heading: 'How to Pair' }),
-        expect.objectContaining({ heading: 'Can I use this with an active ingredient?' }),
+        expect.objectContaining({
+          heading: 'How to Pair',
+          content: expect.stringContaining('Oat So Simple Water Cream Pair with a water-based moisturizer.'),
+        }),
       ]),
+    );
+    expect(supplemental?.data?.sections?.find((section) => section.heading === 'How to Pair')?.content).not.toMatch(
+      /shop now/i,
+    );
+    expect(supplemental?.data?.sections || []).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ heading: 'Can I use this with an active ingredient?' })]),
     );
     expect(reviews?.data?.questions).toEqual([
       expect.objectContaining({
@@ -392,6 +400,63 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
         source: 'merchant_faq',
       }),
     ]);
+  });
+
+  test('preserves rich official details and cleaned pairing guidance for external-seed PDPs', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_krave_oil_lala',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'Oil La La',
+        category: 'Serum',
+        image_url: 'https://example.com/oil-lala-main.png',
+        pdp_description_raw:
+          "Treat your skin like something you love. Don't believe the rumors. Oils aren't the enemy of oily, breakout-prone skin.",
+        pdp_details_sections: [
+          {
+            heading: 'Details',
+            body:
+              "Treat your skin like something you love.\n\nDon't believe the rumors. Oils aren't the enemy of oily, breakout-prone skin.\n\nWhy is it different: Targets the root cause of breakouts by transforming acne-causing sebum.\n\nHelps with: Balancing sebum production.\n\nMade for: All skin types, especially oily, breakout-prone skin.",
+          },
+          {
+            heading: 'How to Pair',
+            body:
+              'Matcha Hemp Hydrating Cleanser\n\nPair with this gentle cleanser that restores hydration and antioxidants to the skin.\n\nShop Now\nOat So Simple Water Cream\n\nPair with this lightweight moisturizer for extra hydration and soothe sensitized skin.\n\nShop Now',
+          },
+          {
+            heading: 'Clinical Results',
+            body: '98% noticed an overall clearer complexion after using this serum.',
+          },
+        ],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    expect(payload.modules.find((module) => module.type === 'supplemental_details')?.data?.sections).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          heading: 'Details',
+          content: expect.stringContaining('Why is it different: Targets the root cause of breakouts'),
+        }),
+        expect.objectContaining({
+          heading: 'How to Pair',
+          content: expect.stringContaining('Matcha Hemp Hydrating Cleanser'),
+        }),
+      ]),
+    );
+    expect(payload.modules.find((module) => module.type === 'supplemental_details')?.data?.sections).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ content: expect.stringContaining('Shop Now') })]),
+    );
+    expect(payload.modules.find((module) => module.type === 'product_facts')?.data?.sections).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          heading: 'Clinical Results',
+          content: '98% noticed an overall clearer complexion after using this serum.',
+        }),
+      ]),
+    );
   });
 
   test('uses ingredient authority instead of legacy active block fragments for external seeds', () => {
