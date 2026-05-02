@@ -6,6 +6,7 @@ const axios = require('axios');
 const {
   pickSeedTargetUrl,
   buildExtractRequestBody,
+  findCommerceFactsOfferForBackfill,
   findCommerceFactsForBackfill,
   enrichPayloadWithCommerceFacts,
   chooseRepresentativeProduct,
@@ -754,6 +755,156 @@ describe('backfill-external-product-seeds-catalog', () => {
         ],
       }),
     ).toBe(rawFacts);
+  });
+
+  test('prefers matching parent PDP offer over alternate pack sku when commerce facts contain multiple same-title offers', () => {
+    const row = {
+      id: 'eps_oil_lala',
+      external_product_id: 'ext_oil_lala',
+      market: 'US',
+      title: 'Oil La La',
+      canonical_url: 'https://kravebeauty.com/products/oil-la-la',
+      destination_url: 'https://kravebeauty.com/products/oil-la-la',
+      image_url: 'https://cdn.example.com/oil-la-la.png',
+      price_amount: 28,
+      price_currency: 'EUR',
+      availability: 'in_stock',
+      seed_data: {
+        title: 'Oil La La',
+        variants: [
+          {
+            sku: 'K105-01-0000-EU',
+            variant_id: '40070946979915',
+            option_value: '1 Pack - 45 mL',
+            price: '28.00',
+            currency: 'EUR',
+            stock: 'In Stock',
+          },
+          {
+            sku: 'K250-00-0000',
+            variant_id: '40070946979916',
+            option_value: '2 Pack - 2x45 mL',
+            price: '50.00',
+            currency: 'EUR',
+            stock: 'In Stock',
+          },
+        ],
+        snapshot: {
+          title: 'Oil La La',
+          canonical_url: 'https://kravebeauty.com/products/oil-la-la',
+          price_amount: 28,
+          price_currency: 'EUR',
+          variants: [
+            {
+              sku: 'K105-01-0000-EU',
+              variant_id: '40070946979915',
+              option_value: '1 Pack - 45 mL',
+              price: '28.00',
+              currency: 'EUR',
+              stock: 'In Stock',
+            },
+            {
+              sku: 'K250-00-0000',
+              variant_id: '40070946979916',
+              option_value: '2 Pack - 2x45 mL',
+              price: '50.00',
+              currency: 'EUR',
+              stock: 'In Stock',
+            },
+          ],
+        },
+      },
+    };
+    const onePackFacts = {
+      contract_version: 'commerce_facts.v1',
+      market_id: 'US',
+      currency_target: 'USD',
+      regional_price: {
+        amount: 28,
+        currency: 'USD',
+        observed_currency: 'USD',
+        display_raw: '28.00',
+        confidence: 'medium',
+        market_switch_status: 'ok',
+      },
+      availability: { status: 'in_stock', confidence: 'medium' },
+      shipping: { status: 'unknown', confidence: 'unknown' },
+      promotions: [],
+      returns: { status: 'unknown', confidence: 'unknown' },
+    };
+    const twoPackFacts = {
+      contract_version: 'commerce_facts.v1',
+      market_id: 'US',
+      currency_target: 'USD',
+      regional_price: {
+        amount: 50,
+        currency: 'USD',
+        observed_currency: 'USD',
+        display_raw: '50.00',
+        compare_at_amount: 56,
+        compare_at_currency: 'USD',
+        confidence: 'medium',
+        market_switch_status: 'ok',
+      },
+      availability: { status: 'in_stock', confidence: 'medium' },
+      shipping: { status: 'unknown', confidence: 'unknown' },
+      promotions: [],
+      returns: { status: 'unknown', confidence: 'unknown' },
+    };
+    const responseV2 = {
+      offers_v2: [
+        {
+          url_canonical: 'https://kravebeauty.com/products/duo-oil-la-la',
+          product_title: 'Duo Oil La La',
+          variant_sku: 'K250-00-0000',
+          commerce_facts_v1: twoPackFacts,
+        },
+        {
+          url_canonical: 'https://kravebeauty.com/products/oil-la-la',
+          product_title: 'Oil La La',
+          variant_sku: 'K105-01-0000-EU',
+          commerce_facts_v1: onePackFacts,
+        },
+        {
+          url_canonical: 'https://kravebeauty.com/products/oil-la-la',
+          product_title: 'Oil La La',
+          variant_sku: 'K250-00-0000',
+          commerce_facts_v1: twoPackFacts,
+        },
+      ],
+    };
+
+    expect(findCommerceFactsOfferForBackfill(row, row, responseV2)).toMatchObject({
+      url_canonical: 'https://kravebeauty.com/products/oil-la-la',
+      variant_sku: 'K105-01-0000-EU',
+      commerce_facts_v1: onePackFacts,
+    });
+    expect(findCommerceFactsForBackfill(row, row, responseV2)).toBe(onePackFacts);
+
+    const payload = enrichPayloadWithCommerceFacts({
+      row,
+      payload: { changed: false, nextRow: row },
+      responseV2,
+      market: 'US',
+    });
+
+    expect(payload.commerce_facts_v2.gate.status).toBe('pass');
+    expect(payload.nextRow.price_amount).toBe(28);
+    expect(payload.nextRow.price_currency).toBe('USD');
+    expect(payload.nextRow.seed_data.snapshot.variants).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          sku: 'K105-01-0000-EU',
+          price: '28.00',
+          currency: 'USD',
+        }),
+        expect.objectContaining({
+          sku: 'K250-00-0000',
+          price: '50.00',
+          currency: 'USD',
+        }),
+      ]),
+    );
   });
 
   test('buildSeedUpdatePayload quarantines low-quality PDP fields instead of persisting them to snapshot', () => {

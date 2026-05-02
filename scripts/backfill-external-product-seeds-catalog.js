@@ -3907,7 +3907,92 @@ async function extractSeedCommerceFacts(targetUrl, row, baseUrl) {
   return response.data || {};
 }
 
-function findCommerceFactsForBackfill(row, nextRow, responseV2 = {}) {
+function collectSeedVariantMatchKeys(variant) {
+  return uniqueStrings(
+    [
+      variant?.sku,
+      variant?.variant_sku,
+      variant?.id,
+      variant?.variant_id,
+    ]
+      .map((item) => normalizeNonEmptyString(item).toLowerCase())
+      .filter(Boolean),
+  );
+}
+
+function collectPrimaryVariantSkuKeys(seedData, snapshot, row, nextRow) {
+  const variants = normalizeSeedVariants(seedData, row);
+  if (!variants.length) return new Set();
+
+  const selectedVariantId = normalizeNonEmptyString(
+    seedData.selected_variant_id ||
+    snapshot.selected_variant_id ||
+    seedData.default_variant_id ||
+    snapshot.default_variant_id,
+  ).toLowerCase();
+  const topLevelPriceAmount = parsePrice(
+    nextRow?.price_amount ??
+    row?.price_amount ??
+    seedData.price_amount ??
+    snapshot.price_amount,
+  );
+
+  const selectedVariants = variants.filter((variant) => {
+    const variantId = normalizeNonEmptyString(variant?.id || variant?.variant_id).toLowerCase();
+    return Boolean(selectedVariantId && variantId && variantId === selectedVariantId);
+  });
+  if (selectedVariants.length) {
+    return new Set(selectedVariants.flatMap((variant) => collectSeedVariantMatchKeys(variant)));
+  }
+
+  const priceMatchedVariants = variants.filter((variant) => {
+    const variantPrice = parsePrice(variant?.price);
+    return topLevelPriceAmount != null && variantPrice != null && topLevelPriceAmount === variantPrice;
+  });
+  if (priceMatchedVariants.length) {
+    return new Set(priceMatchedVariants.flatMap((variant) => collectSeedVariantMatchKeys(variant)));
+  }
+
+  return new Set(collectSeedVariantMatchKeys(variants[0]));
+}
+
+function scoreCommerceFactsOfferCandidate({
+  candidate,
+  targetUrlKeys,
+  titleKey,
+  variantSkus,
+  primaryVariantSkus,
+  topLevelPriceAmount,
+}) {
+  if (!candidate || typeof candidate !== 'object') return Number.NEGATIVE_INFINITY;
+  const offerUrlKey = normalizeComparableUrlKey(candidate?.url_canonical);
+  const offerTitleKey = normalizeTitleKey(candidate?.product_title);
+  const offerSku = normalizeNonEmptyString(candidate?.variant_sku).toLowerCase();
+  const offerAmount = parsePrice(candidate?.commerce_facts_v1?.regional_price?.amount);
+
+  let score = 0;
+
+  if (offerUrlKey && targetUrlKeys.has(offerUrlKey)) score += 100;
+  if (titleKey && offerTitleKey === titleKey) {
+    score += 40;
+  } else if (titleKey && offerTitleKey) {
+    score -= 100;
+  }
+
+  if (offerSku && primaryVariantSkus.has(offerSku)) {
+    score += 60;
+  } else if (offerSku && variantSkus.has(offerSku)) {
+    score += 15;
+  }
+
+  if (topLevelPriceAmount != null && offerAmount != null && topLevelPriceAmount === offerAmount) {
+    score += 30;
+  }
+
+  return score;
+}
+
+function findCommerceFactsOfferForBackfill(row, nextRow, responseV2 = {}) {
   const offers = Array.isArray(responseV2?.offers_v2) ? responseV2.offers_v2 : [];
   if (!offers.length) return null;
   const seedData = ensureJsonObject(nextRow?.seed_data || row?.seed_data);
@@ -3933,18 +4018,136 @@ function findCommerceFactsForBackfill(row, nextRow, responseV2 = {}) {
   const titleKey = normalizeTitleKey(nextRow?.title || row?.title || seedData.title || snapshot.title);
   const variantSkus = new Set(
     normalizeSeedVariants(seedData, row)
-      .flatMap((variant) => [variant?.sku, variant?.variant_sku, variant?.id, variant?.variant_id])
-      .map((item) => normalizeNonEmptyString(item).toLowerCase())
+      .flatMap((variant) => collectSeedVariantMatchKeys(variant))
       .filter(Boolean),
   );
-  const offer = offers.find((candidate) => {
-    const offerUrlKey = normalizeComparableUrlKey(candidate?.url_canonical);
-    if (offerUrlKey && targetUrlKeys.has(offerUrlKey)) return true;
-    const offerSku = normalizeNonEmptyString(candidate?.variant_sku).toLowerCase();
-    if (offerSku && variantSkus.has(offerSku)) return true;
-    return Boolean(titleKey && normalizeTitleKey(candidate?.product_title) === titleKey);
-  });
+  const primaryVariantSkus = collectPrimaryVariantSkuKeys(seedData, snapshot, row, nextRow);
+  const topLevelPriceAmount = parsePrice(
+    nextRow?.price_amount ??
+    row?.price_amount ??
+    seedData.price_amount ??
+    snapshot.price_amount,
+  );
+
+  let bestOffer = null;
+  let bestScore = Number.NEGATIVE_INFINITY;
+  for (const candidate of offers) {
+    const score = scoreCommerceFactsOfferCandidate({
+      candidate,
+      targetUrlKeys,
+      titleKey,
+      variantSkus,
+      primaryVariantSkus,
+      topLevelPriceAmount,
+    });
+    if (score > bestScore) {
+      bestScore = score;
+      bestOffer = candidate;
+    }
+  }
+
+  return bestScore > 0 ? bestOffer : null;
+}
+
+function findCommerceFactsForBackfill(row, nextRow, responseV2 = {}) {
+  const offer = findCommerceFactsOfferForBackfill(row, nextRow, responseV2);
   return offer?.commerce_facts_v1 || null;
+}
+
+function applyOfferCommerceFactsToVariants(nextRow, responseV2 = {}) {
+  const offers = Array.isArray(responseV2?.offers_v2) ? responseV2.offers_v2 : [];
+  if (!offers.length || !nextRow || typeof nextRow !== 'object') return nextRow;
+
+  const seedData = ensureJsonObject(nextRow.seed_data);
+  const snapshot = ensureJsonObject(seedData.snapshot);
+  const parentUrlKeys = expandComparableUrlKeys(
+    [nextRow.canonical_url, nextRow.destination_url, seedData.canonical_url, seedData.destination_url, snapshot.canonical_url, snapshot.destination_url],
+    [nextRow.title, seedData.title, snapshot.title],
+  );
+  const titleKey = normalizeTitleKey(nextRow.title || seedData.title || snapshot.title);
+
+  const patchVariantList = (variants) => {
+    if (!Array.isArray(variants) || !variants.length) return variants;
+    return variants.map((variant) => {
+      const variantSkuKeys = collectSeedVariantMatchKeys(variant);
+      if (!variantSkuKeys.length) return variant;
+      const currentPriceAmount = parsePrice(variant?.price);
+      let bestOffer = null;
+      let bestScore = Number.NEGATIVE_INFINITY;
+      for (const offer of offers) {
+        const offerSku = normalizeNonEmptyString(offer?.variant_sku).toLowerCase();
+        if (!offerSku || !variantSkuKeys.includes(offerSku)) continue;
+        let score = 0;
+        const offerUrlKey = normalizeComparableUrlKey(offer?.url_canonical);
+        if (offerUrlKey && parentUrlKeys.has(offerUrlKey)) score += 80;
+        const offerTitleKey = normalizeTitleKey(offer?.product_title);
+        if (titleKey && offerTitleKey === titleKey) score += 30;
+        const offerAmount = parsePrice(offer?.commerce_facts_v1?.regional_price?.amount);
+        if (currentPriceAmount != null && offerAmount != null && currentPriceAmount === offerAmount) score += 40;
+        if (score > bestScore) {
+          bestScore = score;
+          bestOffer = offer;
+        }
+      }
+      const facts = bestOffer?.commerce_facts_v1;
+      const regionalPrice = ensureJsonObject(facts?.regional_price);
+      const availability = ensureJsonObject(facts?.availability);
+      if (!facts || bestScore <= 0) return variant;
+      const patched = { ...cloneJsonValue(variant) };
+      if (regionalPrice.amount != null) {
+        patched.price = normalizeNonEmptyString(regionalPrice.display_raw) || String(regionalPrice.amount);
+      }
+      if (normalizeNonEmptyString(regionalPrice.currency)) {
+        patched.currency = normalizeNonEmptyString(regionalPrice.currency).toUpperCase();
+      }
+      if (normalizeNonEmptyString(availability.status) === 'in_stock') patched.stock = 'In Stock';
+      if (normalizeNonEmptyString(availability.status) === 'out_of_stock') patched.stock = 'Out of Stock';
+      return patched;
+    });
+  };
+
+  const patchedSeedVariants = patchVariantList(Array.isArray(seedData.variants) ? seedData.variants : []);
+  const patchedSnapshotVariants = patchVariantList(Array.isArray(snapshot.variants) ? snapshot.variants : []);
+
+  return {
+    ...nextRow,
+    seed_data: {
+      ...seedData,
+      ...(patchedSeedVariants.length ? { variants: patchedSeedVariants } : {}),
+      snapshot: {
+        ...snapshot,
+        ...(patchedSnapshotVariants.length ? { variants: patchedSnapshotVariants } : {}),
+      },
+    },
+  };
+}
+
+function applyMatchedCommerceFactsToTopLevel(nextRow, matchedOffer) {
+  const facts = matchedOffer?.commerce_facts_v1;
+  const regionalPrice = ensureJsonObject(facts?.regional_price);
+  const availability = ensureJsonObject(facts?.availability);
+  if (!facts || regionalPrice.amount == null) return nextRow;
+  const seedData = ensureJsonObject(nextRow?.seed_data);
+  const snapshot = ensureJsonObject(seedData.snapshot);
+  const nextAvailability = normalizeNonEmptyString(availability.status || nextRow?.availability || seedData.availability);
+  return {
+    ...nextRow,
+    price_amount: regionalPrice.amount,
+    price_currency: normalizeNonEmptyString(regionalPrice.currency).toUpperCase() || nextRow?.price_currency,
+    availability: nextAvailability || nextRow?.availability,
+    seed_data: {
+      ...seedData,
+      price_amount: regionalPrice.amount,
+      price_currency: normalizeNonEmptyString(regionalPrice.currency).toUpperCase() || seedData.price_currency,
+      ...(nextAvailability ? { availability: nextAvailability } : {}),
+      snapshot: {
+        ...snapshot,
+        price_amount: regionalPrice.amount,
+        price_currency: normalizeNonEmptyString(regionalPrice.currency).toUpperCase() || snapshot.price_currency,
+        ...(nextAvailability ? { availability: nextAvailability } : {}),
+      },
+    },
+  };
 }
 
 function attachCommerceFactsGateToRow(nextRow, gate) {
@@ -3965,8 +4168,11 @@ function attachCommerceFactsGateToRow(nextRow, gate) {
 
 function enrichPayloadWithCommerceFacts({ row, payload, responseV2, market }) {
   const nextRow = payload?.nextRow && typeof payload.nextRow === 'object' ? payload.nextRow : {};
-  const rawFacts = findCommerceFactsForBackfill(row, nextRow, responseV2);
-  const withFacts = attachCommerceFactsToSeedRow(nextRow, rawFacts, { market: market || row?.market });
+  const matchedOffer = findCommerceFactsOfferForBackfill(row, nextRow, responseV2);
+  const rawFacts = matchedOffer?.commerce_facts_v1 || null;
+  const patchedTopLevel = applyMatchedCommerceFactsToTopLevel(nextRow, matchedOffer);
+  const patchedVariants = applyOfferCommerceFactsToVariants(patchedTopLevel, responseV2);
+  const withFacts = attachCommerceFactsToSeedRow(patchedVariants, rawFacts, { market: market || row?.market });
   const gate = validateCommerceFactsGateForSeedRow(withFacts);
   const gatedRow = attachCommerceFactsGateToRow(withFacts, gate);
   return {
@@ -4647,6 +4853,7 @@ module.exports = {
   resolveTargetUrlOverride,
   buildExtractRequestBody,
   extractSeedCommerceFacts,
+  findCommerceFactsOfferForBackfill,
   findCommerceFactsForBackfill,
   enrichPayloadWithCommerceFacts,
   chooseRepresentativeProduct,
