@@ -1,0 +1,49 @@
+name: External Seed Targeted Audit
+
+on:
+  workflow_dispatch:
+    inputs:
+      external_product_ids:
+        description: 'Comma-separated external product ids'
+        required: true
+        type: string
+      market:
+        description: 'Market'
+        required: true
+        default: 'US'
+        type: string
+
+jobs:
+  targeted-audit:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run targeted external seed audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT_DIR="reports/workflow_ops/external-seed-targeted-audit/${{ github.run_id }}"
+          mkdir -p "$OUT_DIR"
+          node scripts/audit-external-seed-targeted-pdp-fields.js \
+            --external-product-ids "${{ inputs.external_product_ids }}" \
+            --market "${{ inputs.market }}" \
+            --out "$OUT_DIR/audit.json" | tee "$OUT_DIR/stdout.json"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: external-seed-targeted-audit-${{ github.run_id }}
+          path: reports/workflow_ops/external-seed-targeted-audit/${{ github.run_id }}
