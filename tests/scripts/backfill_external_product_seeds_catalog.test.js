@@ -23,6 +23,8 @@ const {
   buildIdentityListingSourcePayload,
   collectBackfilledExternalProductIds,
   isDisplayableProductIntelKbRow,
+  cleanPdpIngredientsRaw,
+  pickPdpIngredientsRaw,
 } = require('../../scripts/backfill-external-product-seeds-catalog');
 
 describe('backfill-external-product-seeds-catalog', () => {
@@ -156,6 +158,30 @@ describe('backfill-external-product-seeds-catalog', () => {
         },
       }),
     ).toBe(true);
+  });
+
+  test('extracts full ingredients from mixed PDP detail section bodies', () => {
+    const raw = pickPdpIngredientsRaw('', [
+      {
+        heading: 'Product Details',
+        body:
+          'A mix of jojoba, sunflower, and grapeseed oil come together to provide hydration without clogging pores. Full Ingredients: Water (Aqua/Eau), Helianthus Annuus (Sunflower) Seed Oil, Rosa Canina (Rosehip) Fruit Oil, Vitis Vinifera (Grape) Seed Oil, Butylene Glycol, 1,2-Hexanediol, Madecassoside. PETA-certified vegan and cruelty-free.',
+      },
+    ]);
+
+    expect(raw).toBe(
+      'Water (Aqua/Eau), Helianthus Annuus (Sunflower) Seed Oil, Rosa Canina (Rosehip) Fruit Oil, Vitis Vinifera (Grape) Seed Oil, Butylene Glycol, 1,2-Hexanediol, Madecassoside.',
+    );
+  });
+
+  test('cleans HTML-wrapped full ingredients snippets before persistence', () => {
+    const cleaned = cleanPdpIngredientsRaw(
+      '<p><strong>Full Ingredients:</strong> Water (Aqua/Eau), Butylene Glycol, Caprylic/Capric Triglyceride, Squalane, 1,2-Hexanediol, Trehalose, Behenyl Alcohol, Avena Sativa (Oat) Meal Extract</p><p>PETA-certified vegan and cruelty-free.</p>',
+    );
+
+    expect(cleaned).toBe(
+      'Water (Aqua/Eau), Butylene Glycol, Caprylic/Capric Triglyceride, Squalane, 1,2-Hexanediol, Trehalose, Behenyl Alcohol, Avena Sativa (Oat) Meal Extract',
+    );
   });
 
   test('filters broken image URLs before seed writes while preserving Shopify asset identity', async () => {

@@ -1798,7 +1798,11 @@ function findPdpDetailsSections(sections, headingPattern) {
 }
 
 function cleanPdpIngredientsRaw(value) {
-  let next = normalizeNonEmptyString(value).replace(/\r/g, '');
+  let next = normalizePdpCopy(value)
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\r/g, '');
   if (!next) return '';
 
   const ingredientHeadings = Array.from(next.matchAll(/\bIngredients\b\s*[:\n]*/gi));
@@ -1812,10 +1816,25 @@ function cleanPdpIngredientsRaw(value) {
     const match = next.match(pattern);
     if (match && match.index > 20) next = next.slice(0, match.index).trim();
   }
+  const tailStopPatterns = [
+    /\bPETA-certified\b/i,
+    /\bcruelty-free\b/i,
+    /\bThe color and texture\b/i,
+    /\bHow to Pair\b/i,
+    /\bClinically Proven\b/i,
+    /\bConsumer Trial Test\b/i,
+    /\bMade for:\b/i,
+  ];
+  for (const pattern of tailStopPatterns) {
+    const match = next.match(pattern);
+    if (match && match.index > 20) next = next.slice(0, match.index).trim();
+  }
 
   next = next
     .replace(/\bFull Ingredients\b\s*$/i, '')
+    .replace(/\s*:\s*$/g, '')
     .replace(/\n{3,}/g, '\n\n')
+    .replace(/\s{2,}/g, ' ')
     .trim();
 
   if (!next) return '';
@@ -1840,6 +1859,18 @@ function cleanPdpIngredientsRaw(value) {
   if (sentenceCount > 0 && commaCount < 4) return '';
   if (next.length < 20 || commaCount < 1) return '';
   return next;
+}
+
+function extractFullIngredientsFromText(value) {
+  const normalized = normalizePdpCopy(value)
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ')
+    .trim();
+  if (!normalized) return '';
+  const match = normalized.match(/\bFull Ingredients\b\s*:?\s*([\s\S]+)$/i);
+  if (!match) return '';
+  return cleanPdpIngredientsRaw(match[1]);
 }
 
 function cleanPdpActiveIngredientsRaw(value) {
@@ -1938,6 +1969,12 @@ function pickPdpHowToUseRaw(rawValue, detailsSections, fallbackValue = '', conte
 function pickPdpIngredientsRaw(rawValue, detailsSections, fallbackValue = '') {
   const cleanedRaw = cleanPdpIngredientsRaw(rawValue);
   if (cleanedRaw) return cleanedRaw;
+
+  const rawSections = Array.isArray(detailsSections) ? detailsSections : [];
+  for (const section of rawSections) {
+    const extracted = extractFullIngredientsFromText(section?.body || section?.content || section?.text || '');
+    if (extracted) return extracted;
+  }
 
   const sectionBody = findPdpDetailsSection(detailsSections, /^Ingredients$/i)?.body;
   const cleanedSection = cleanPdpIngredientsRaw(sectionBody);
@@ -4382,6 +4419,8 @@ module.exports = {
   collectBackfilledExternalProductIds,
   filterProductIdsMissingPivotaInsights,
   isDisplayableProductIntelKbRow,
+  cleanPdpIngredientsRaw,
+  pickPdpIngredientsRaw,
   preparePivotaInsightsForBackfill,
   runPivotaInsightsCoverageForProductIds,
 };
