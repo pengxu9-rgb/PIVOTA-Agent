@@ -41149,5 +41149,413 @@
     },
     "external_highlight_review_status": "rewrite",
     "external_review_batch": "manual_card_highlight_2026_04_12"
+  },
+  "live_ext_169a110da5dc593de5887a37": {
+    "notes": "Manual correction: classify as lightweight moisturizer for sensitive or reactive skin. Preserve merchant review preview and publish concise product intel.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Lightweight oat moisturizer",
+        "body": "A lightweight water cream built for sensitive or easily overwhelmed skin, using a short ingredient list and oat-led soothing support to hydrate without a heavy finish."
+      },
+      "best_for": [
+        {
+          "tag": "sensitive_skin",
+          "label": "Sensitive or reactive skin",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "lightweight_moisture",
+          "label": "Lightweight daily moisture",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Minimalist formula direction",
+          "body": "The formula is positioned around a short ingredient list, which can appeal to routines trying to stay simple during irritation or barrier resets.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Oat-centered calming profile",
+          "body": "Oat extract is framed as the soothing anchor, while the texture stays light enough for users who do not want a rich cream feel.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "moisturizer",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use as your moisturizer after serums; pair with sunscreen in the morning.",
+          "If your skin runs very dry, layer a richer cream or oil on top when you need more occlusion."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "richness",
+          "label": "The light texture may feel insufficient on very dry skin unless you layer something more occlusive over it.",
+          "severity": "medium"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "Lightweight water cream",
+      "finish": "Fresh, low-residue finish",
+      "layering_notes": [
+        "Works best as the moisturizer step rather than a heavy sealing cream."
+      ]
+    },
+    "shopping_card": {
+      "highlight": "Minimalist oat moisturizer for sensitive skin."
+    },
+    "search_card": {
+      "highlight_candidate": "Minimalist oat moisturizer for sensitive skin"
+    },
+    "review_status": "completed",
+    "review_decision": "approved",
+    "reviewer": "codex_manual_override",
+    "reviewer_kind": "employee",
+    "reviewed_at": "2026-05-02T08:00:00Z",
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "non_merge_manual_review_2026_05_02"
+  },
+  "product:ext_169a110da5dc593de5887a37": {
+    "notes": "Manual correction: classify as lightweight moisturizer for sensitive or reactive skin. Preserve merchant review preview and publish concise product intel.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Lightweight oat moisturizer",
+        "body": "A lightweight water cream built for sensitive or easily overwhelmed skin, using a short ingredient list and oat-led soothing support to hydrate without a heavy finish."
+      },
+      "best_for": [
+        {
+          "tag": "sensitive_skin",
+          "label": "Sensitive or reactive skin",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "lightweight_moisture",
+          "label": "Lightweight daily moisture",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Minimalist formula direction",
+          "body": "The formula is positioned around a short ingredient list, which can appeal to routines trying to stay simple during irritation or barrier resets.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Oat-centered calming profile",
+          "body": "Oat extract is framed as the soothing anchor, while the texture stays light enough for users who do not want a rich cream feel.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "moisturizer",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use as your moisturizer after serums; pair with sunscreen in the morning.",
+          "If your skin runs very dry, layer a richer cream or oil on top when you need more occlusion."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "richness",
+          "label": "The light texture may feel insufficient on very dry skin unless you layer something more occlusive over it.",
+          "severity": "medium"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "Lightweight water cream",
+      "finish": "Fresh, low-residue finish",
+      "layering_notes": [
+        "Works best as the moisturizer step rather than a heavy sealing cream."
+      ]
+    },
+    "shopping_card": {
+      "highlight": "Minimalist oat moisturizer for sensitive skin."
+    },
+    "search_card": {
+      "highlight_candidate": "Minimalist oat moisturizer for sensitive skin"
+    },
+    "review_status": "completed",
+    "review_decision": "approved",
+    "reviewer": "codex_manual_override",
+    "reviewer_kind": "employee",
+    "reviewed_at": "2026-05-02T08:00:00Z",
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "non_merge_manual_review_2026_05_02"
+  },
+  "live_ext_670fd3f47ecd319d143f8c65": {
+    "notes": "Manual correction: classify as a barrier-support serum, not cleanser. Preserve merchant review preview and publish concise product intel.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Barrier support serum",
+        "body": "A reparative serum aimed at calming irritation, supporting a stressed skin barrier, and adding light moisture without leaning into a heavy cream texture."
+      },
+      "best_for": [
+        {
+          "tag": "barrier_support",
+          "label": "Compromised barrier routines",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "visible_redness",
+          "label": "Visible redness or post-irritation recovery",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Repair-first positioning",
+          "body": "The formula is framed as a reset product for irritated or over-exfoliated skin rather than a general hydration serum.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Tamanu-led calming story",
+          "body": "Tamanu oil is the main differentiator in the merchant story, giving the serum a more barrier-focused profile than standard water-light hydrators.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "serum",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use after toner and before moisturizer when your skin feels sensitized or overworked."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "oil_content",
+          "label": "The richer, oil-supported texture may feel more emollient than very lightweight serum users expect.",
+          "severity": "medium"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "Milky barrier serum",
+      "finish": "Comforting, lightly cushioned finish"
+    },
+    "shopping_card": {
+      "highlight": "Barrier-support serum for irritation and redness."
+    },
+    "search_card": {
+      "highlight_candidate": "Barrier-support serum for irritation and redness"
+    },
+    "review_status": "completed",
+    "review_decision": "approved",
+    "reviewer": "codex_manual_override",
+    "reviewer_kind": "employee",
+    "reviewed_at": "2026-05-02T08:00:00Z",
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "non_merge_manual_review_2026_05_02"
+  },
+  "product:ext_670fd3f47ecd319d143f8c65": {
+    "notes": "Manual correction: classify as a barrier-support serum, not cleanser. Preserve merchant review preview and publish concise product intel.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Barrier support serum",
+        "body": "A reparative serum aimed at calming irritation, supporting a stressed skin barrier, and adding light moisture without leaning into a heavy cream texture."
+      },
+      "best_for": [
+        {
+          "tag": "barrier_support",
+          "label": "Compromised barrier routines",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "visible_redness",
+          "label": "Visible redness or post-irritation recovery",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Repair-first positioning",
+          "body": "The formula is framed as a reset product for irritated or over-exfoliated skin rather than a general hydration serum.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Tamanu-led calming story",
+          "body": "Tamanu oil is the main differentiator in the merchant story, giving the serum a more barrier-focused profile than standard water-light hydrators.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "serum",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use after toner and before moisturizer when your skin feels sensitized or overworked."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "oil_content",
+          "label": "The richer, oil-supported texture may feel more emollient than very lightweight serum users expect.",
+          "severity": "medium"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "Milky barrier serum",
+      "finish": "Comforting, lightly cushioned finish"
+    },
+    "shopping_card": {
+      "highlight": "Barrier-support serum for irritation and redness."
+    },
+    "search_card": {
+      "highlight_candidate": "Barrier-support serum for irritation and redness"
+    },
+    "review_status": "completed",
+    "review_decision": "approved",
+    "reviewer": "codex_manual_override",
+    "reviewer_kind": "employee",
+    "reviewed_at": "2026-05-02T08:00:00Z",
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "non_merge_manual_review_2026_05_02"
+  },
+  "live_ext_62f7f0e601b4a7076878dcc2": {
+    "notes": "Manual correction: classify as glow primer, not serum. Publish concise prep-step intel and keep seller-grounded claims conservative.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Glow makeup primer",
+        "body": "A glow-focused makeup primer that aims to add grip and a more radiant base before complexion products, while leaning on a skincare-infused positioning."
+      },
+      "best_for": [
+        {
+          "tag": "makeup_prep",
+          "label": "Makeup prep with grip",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "radiant_finish",
+          "label": "Radiant or glass-skin makeup finishes",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Primer-first, not treatment-serum",
+          "body": "The product is designed to sit in the prep step before makeup, which makes it meaningfully different from leave-on treatment serums.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Glow plus grip positioning",
+          "body": "It combines a luminous finish story with makeup adhesion claims, rather than focusing only on hydration.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "primer",
+        "am_pm": [
+          "am"
+        ],
+        "pairing_notes": [
+          "Use after skincare and sunscreen, then apply makeup on top once the primer sets."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "finish",
+          "label": "The glow finish may feel too radiant for users who prefer a matte or shine-minimizing base.",
+          "severity": "medium"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "Serum-like primer",
+      "finish": "Glowy, gripping finish"
+    },
+    "shopping_card": {
+      "highlight": "Glow primer with grip for makeup prep."
+    },
+    "search_card": {
+      "highlight_candidate": "Glow primer with grip for makeup prep"
+    },
+    "review_status": "completed",
+    "review_decision": "approved",
+    "reviewer": "codex_manual_override",
+    "reviewer_kind": "employee",
+    "reviewed_at": "2026-05-02T08:00:00Z",
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "non_merge_manual_review_2026_05_02"
+  },
+  "product:ext_62f7f0e601b4a7076878dcc2": {
+    "notes": "Manual correction: classify as glow primer, not serum. Publish concise prep-step intel and keep seller-grounded claims conservative.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Glow makeup primer",
+        "body": "A glow-focused makeup primer that aims to add grip and a more radiant base before complexion products, while leaning on a skincare-infused positioning."
+      },
+      "best_for": [
+        {
+          "tag": "makeup_prep",
+          "label": "Makeup prep with grip",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "radiant_finish",
+          "label": "Radiant or glass-skin makeup finishes",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Primer-first, not treatment-serum",
+          "body": "The product is designed to sit in the prep step before makeup, which makes it meaningfully different from leave-on treatment serums.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Glow plus grip positioning",
+          "body": "It combines a luminous finish story with makeup adhesion claims, rather than focusing only on hydration.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "primer",
+        "am_pm": [
+          "am"
+        ],
+        "pairing_notes": [
+          "Use after skincare and sunscreen, then apply makeup on top once the primer sets."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "finish",
+          "label": "The glow finish may feel too radiant for users who prefer a matte or shine-minimizing base.",
+          "severity": "medium"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "Serum-like primer",
+      "finish": "Glowy, gripping finish"
+    },
+    "shopping_card": {
+      "highlight": "Glow primer with grip for makeup prep."
+    },
+    "search_card": {
+      "highlight_candidate": "Glow primer with grip for makeup prep"
+    },
+    "review_status": "completed",
+    "review_decision": "approved",
+    "reviewer": "codex_manual_override",
+    "reviewer_kind": "employee",
+    "reviewed_at": "2026-05-02T08:00:00Z",
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "non_merge_manual_review_2026_05_02"
   }
 }
