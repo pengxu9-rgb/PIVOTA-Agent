@@ -111,6 +111,53 @@ describe('pdpBuilder structured PDP modules', () => {
     expect(payload.product.images).toEqual(urls);
   });
 
+  test('media_gallery keeps external seed product gallery for pack variants when product gallery is richer', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_krave_oil_lala',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'Oil La La',
+        image_url: 'https://kravebeauty.com/cdn/shop/files/Oil_La_La_main.png?v=1',
+        image_urls: [
+          'https://kravebeauty.com/cdn/shop/files/Oil_La_La_main.png?v=1',
+          'https://kravebeauty.com/cdn/shop/files/Oil_La_La_texture.png?v=1',
+          'https://kravebeauty.com/cdn/shop/files/Oil_La_La_routine.png?v=1',
+        ],
+        variants: [
+          {
+            variant_id: 'v_single',
+            title: '1 Pack - 45 mL',
+            image_url: 'https://kravebeauty.com/cdn/shop/files/Oil_La_La_main.png?v=1',
+            image_urls: ['https://kravebeauty.com/cdn/shop/files/Oil_La_La_main.png?v=1'],
+            options: [{ name: 'Size', value: '1 Pack - 45 mL' }],
+          },
+          {
+            variant_id: 'v_bundle',
+            title: '2 Pack - 2x45 mL',
+            image_url: 'https://kravebeauty.com/cdn/shop/files/Oil_La_La_bundle.png?v=1',
+            image_urls: ['https://kravebeauty.com/cdn/shop/files/Oil_La_La_bundle.png?v=1'],
+            options: [{ name: 'Size', value: '2 Pack - 2x45 mL' }],
+          },
+        ],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    const mediaGallery = findModule(payload, 'media_gallery');
+    const urls = Array.isArray(mediaGallery?.data?.items)
+      ? mediaGallery.data.items.map((item) => item.url)
+      : [];
+
+    expect(urls).toEqual([
+      'https://kravebeauty.com/cdn/shop/files/Oil_La_La_main.png?v=1',
+      'https://kravebeauty.com/cdn/shop/files/Oil_La_La_texture.png?v=1',
+      'https://kravebeauty.com/cdn/shop/files/Oil_La_La_routine.png?v=1',
+      'https://kravebeauty.com/cdn/shop/files/Oil_La_La_bundle.png?v=1',
+    ]);
+  });
+
   test('emits additive beauty modules from structured ingredient fields and carries brand story separately', () => {
     const payload = buildPdpPayload({
       product: {

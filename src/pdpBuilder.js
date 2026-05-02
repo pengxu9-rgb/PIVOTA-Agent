@@ -1346,6 +1346,16 @@ function buildMediaItems(product, variants) {
       .filter(Boolean)
       .forEach((key) => variantImageKeys.add(key));
   });
+  const looksLikePackOrBundleVariant = (variant) => {
+    if (!variant || typeof variant !== 'object') return false;
+    const title = asNonEmptyString(variant.title);
+    const optionText = Array.isArray(variant.options)
+      ? variant.options.map((option) => `${option?.name || ''} ${option?.value || ''}`).join(' ')
+      : '';
+    const combined = `${title || ''} ${optionText}`.trim();
+    if (!combined) return false;
+    return /\b(?:\d+\s*pack|pack|duo|trio|set|bundle|kit|x\s*\d+|\d+x\d+)\b/i.test(combined);
+  };
   const allVariantImagesMatchPrimary =
     primaryVariantImageKeys.size > 0 &&
     variantImageKeys.size > 0 &&
@@ -1355,11 +1365,19 @@ function buildMediaItems(product, variants) {
     primaryVariantImageKeys.size <= 1 &&
     productImageKeys.size > primaryVariantImageKeys.size &&
     allVariantImagesMatchPrimary;
+  const shouldKeepProductGalleryForPackVariants =
+    isExternalSeedLikeProduct(product) &&
+    primaryVariantImageKeys.size <= 1 &&
+    productImageKeys.size > primaryVariantImageKeys.size &&
+    Array.isArray(variants) &&
+    variants.length > 1 &&
+    variants.some((variant) => looksLikePackOrBundleVariant(variant));
   const hasAuthoritativeVariantGallery =
     Array.isArray(variants) &&
     variants.length > 1 &&
     primaryVariantImages.some((value) => buildPdpImageDedupeKey(value)) &&
-    !shouldKeepProductGalleryForSharedVariantImage;
+    !shouldKeepProductGalleryForSharedVariantImage &&
+    !shouldKeepProductGalleryForPackVariants;
 
   media.forEach((m) => {
     if (typeof m === 'object' && m && !isPublicContributionVisible(m)) return;
