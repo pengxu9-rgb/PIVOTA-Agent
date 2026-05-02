@@ -1,0 +1,91 @@
+name: Catalog Serving Index Backfill
+
+on:
+  workflow_dispatch:
+    inputs:
+      brand:
+        description: "Optional brand filter"
+        required: false
+        default: ""
+        type: string
+      market:
+        description: "Market"
+        required: true
+        default: "US"
+        type: string
+      limit:
+        description: "Row limit"
+        required: true
+        default: "500"
+        type: string
+      dry_run:
+        description: "Dry-run only"
+        required: true
+        default: true
+        type: boolean
+      refresh:
+        description: "Refresh existing docs"
+        required: true
+        default: true
+        type: boolean
+      public_only:
+        description: "Only public docs"
+        required: true
+        default: true
+        type: boolean
+
+jobs:
+  backfill-catalog-serving-index:
+    runs-on: ubuntu-latest
+    environment:
+      name: Pivota Agent / production
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      CATALOG_SERVING_BASE_URL: ${{ secrets.CATALOG_SERVING_BASE_URL }}
+      CATALOG_SERVING_INDEX_NAME: ${{ secrets.CATALOG_SERVING_INDEX_NAME }}
+      CATALOG_SERVING_API_KEY: ${{ secrets.CATALOG_SERVING_API_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install
+        run: npm ci
+
+      - name: Backfill catalog serving index
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports/workflow_ops/catalog-serving-index-backfill/${{ github.run_id }}
+          args=(
+            --market "${{ inputs.market }}"
+            --limit "${{ inputs.limit }}"
+          )
+          brand='${{ inputs.brand }}'
+          if [[ -n "${brand}" ]]; then
+            args+=(--brand "${brand}")
+          fi
+          if [[ '${{ inputs.dry_run }}' == 'true' ]]; then
+            args+=(--dry-run)
+          fi
+          if [[ '${{ inputs.refresh }}' == 'true' ]]; then
+            args+=(--refresh)
+          fi
+          if [[ '${{ inputs.public_only }}' == 'true' ]]; then
+            args+=(--public-only)
+          fi
+          node scripts/backfill-catalog-serving-index.js "${args[@]}" \
+            | tee reports/workflow_ops/catalog-serving-index-backfill/${{ github.run_id }}/result.json
+
+      - name: Upload artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: catalog-serving-index-backfill-${{ github.run_id }}
+          path: reports/workflow_ops/catalog-serving-index-backfill/${{ github.run_id }}
+          retention-days: 7
