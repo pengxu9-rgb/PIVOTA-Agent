@@ -1,0 +1,84 @@
+name: PDP Identity Live Read Promote
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_listing_refs:
+        description: "Comma-separated source listing refs (e.g. external_seed:ext_123)"
+        required: false
+        default: ""
+        type: string
+      brand:
+        description: "Optional brand filter"
+        required: false
+        default: ""
+        type: string
+      limit:
+        description: "Row limit"
+        required: false
+        default: "500"
+        type: string
+      dry_run:
+        description: "Dry-run only"
+        required: true
+        default: true
+        type: boolean
+      allow_merchant_only_groups:
+        description: "Allow groups without brand source"
+        required: true
+        default: false
+        type: boolean
+
+jobs:
+  promote-live-read:
+    runs-on: ubuntu-latest
+    environment:
+      name: Pivota Agent / production
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install
+        run: npm ci
+
+      - name: Promote PDP identity live read
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports/workflow_ops/pdp-identity-live-read-promote/${{ github.run_id }}
+          args=(
+            --limit "${{ inputs.limit || '500' }}"
+            --created-by "github_actions"
+          )
+          refs='${{ inputs.source_listing_refs }}'
+          brand='${{ inputs.brand }}'
+          if [[ -n "${refs}" ]]; then
+            args+=(--source-listing-refs "${refs}")
+          fi
+          if [[ -n "${brand}" ]]; then
+            args+=(--brand "${brand}")
+          fi
+          if [[ '${{ inputs.dry_run }}' != 'true' ]]; then
+            args+=(--write)
+          fi
+          if [[ '${{ inputs.allow_merchant_only_groups }}' == 'true' ]]; then
+            args+=(--allow-merchant-only-groups)
+          fi
+          node scripts/promote-pdp-identity-live-read.js "${args[@]}" \
+            | tee reports/workflow_ops/pdp-identity-live-read-promote/${{ github.run_id }}/result.json
+
+      - name: Upload artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pdp-identity-live-read-promote-${{ github.run_id }}
+          path: reports/workflow_ops/pdp-identity-live-read-promote/${{ github.run_id }}
+          retention-days: 7
