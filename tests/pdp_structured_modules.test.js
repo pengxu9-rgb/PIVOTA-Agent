@@ -615,7 +615,49 @@ describe('pdpBuilder structured PDP modules', () => {
       }),
     ]);
   });
+  test('attaches PDP and landing display excerpts for long FAQ content', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'p_reviews_faq_display_contract',
+        merchant_id: 'external_seed',
+        title: 'Daily Tinted Fluid Sunscreen',
+        image_url: 'https://cdn.example.com/daily-tinted.jpg',
+        price: { amount: 18, currency: 'USD' },
+        pdp_faq_items: [
+          {
+            question:
+              'Does this sunscreen wear well under makeup when I already use moisturizer and prefer a lightweight finish through the morning?',
+            answer:
+              'This fluid sunscreen wears comfortably under makeup and helps even tone. It also layers well with moisturizer and keeps the finish lightweight through the morning. Users with combination skin usually do well with a thin final layer. If you prefer extra grip under long-wear makeup, let it set for one minute before foundation. For very dry skin, add a lighter moisturizer underneath and keep the sunscreen layer thin. Reapply before extended midday sun exposure or after sweating.',
+            source_kind: 'merchant_faq',
+          },
+        ],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
 
+    const question = findModule(payload, 'reviews_preview')?.data?.questions?.[0];
+    expect(question).toBeTruthy();
+    expect(question).toEqual(
+      expect.objectContaining({
+        source: 'merchant_faq',
+        source_label: 'Official FAQ',
+        display: expect.objectContaining({
+          pdp: expect.objectContaining({
+            question_truncated: true,
+            answer_truncated: true,
+          }),
+          landing: expect.objectContaining({
+            question: question.question,
+            answer_truncated: true,
+          }),
+        }),
+      }),
+    );
+    expect(question.display.pdp.answer.length).toBeLessThan(question.answer.length);
+    expect(question.display.landing.answer.length).toBeLessThan(question.answer.length);
+  });
   test('splits generic FAQ detail sections instead of exposing the whole FAQ as one question', () => {
     const payload = buildPdpPayload({
       product: {

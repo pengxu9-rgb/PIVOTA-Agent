@@ -2349,6 +2349,109 @@ function normalizeAnswerText(value) {
     .trim();
 }
 
+const QUESTION_DISPLAY_LIMITS = Object.freeze({
+  pdp: Object.freeze({
+    question: 110,
+    answer: 220,
+  }),
+  landing: Object.freeze({
+    question: 180,
+    answer: 420,
+  }),
+});
+
+function normalizeQuestionDisplayWhitespace(value) {
+  return asNonEmptyString(value).replace(/\s+/g, ' ').trim();
+}
+
+function splitQuestionDisplaySentences(value) {
+  const text = normalizeQuestionDisplayWhitespace(value);
+  if (!text) return [];
+  const parts = text.match(/[^.!?。！？]+[.!?。！？]*/g) || [];
+  return parts.map((part) => normalizeQuestionDisplayWhitespace(part)).filter(Boolean);
+}
+
+function truncateQuestionDisplayText(value, maxChars) {
+  const text = normalizeQuestionDisplayWhitespace(value);
+  if (!text || text.length <= maxChars) {
+    return { text, truncated: false };
+  }
+  const slice = text.slice(0, maxChars + 1);
+  const boundary = Math.max(
+    slice.lastIndexOf('. '),
+    slice.lastIndexOf('? '),
+    slice.lastIndexOf('! '),
+    slice.lastIndexOf('; '),
+    slice.lastIndexOf(': '),
+    slice.lastIndexOf(', '),
+    slice.lastIndexOf(' '),
+  );
+  const clipped = normalizeQuestionDisplayWhitespace(
+    slice.slice(0, boundary > 24 ? boundary : maxChars),
+  );
+  return { text: `${clipped}…`, truncated: true };
+}
+
+function buildQuestionDisplayExcerpt(value, maxChars, { mode = 'text' } = {}) {
+  const text = normalizeQuestionDisplayWhitespace(value);
+  if (!text) return { text: '', truncated: false };
+  if (text.length <= maxChars) return { text, truncated: false };
+
+  if (mode === 'sentence') {
+    const sentences = splitQuestionDisplaySentences(text);
+    if (sentences.length > 1) {
+      const picked = [];
+      let used = 0;
+      for (const sentence of sentences) {
+        const next = picked.length ? `${picked.join(' ')} ${sentence}` : sentence;
+        if (next.length > maxChars) break;
+        picked.push(sentence);
+        used = next.length;
+      }
+      if (picked.length > 0) {
+        return {
+          text: `${picked.join(' ')}…`,
+          truncated: used < text.length,
+        };
+      }
+    }
+  }
+
+  return truncateQuestionDisplayText(text, maxChars);
+}
+
+function buildQuestionDisplayContract(question, answer) {
+  const questionText = normalizeQuestionText(question);
+  const answerText = normalizeAnswerText(answer);
+  const contract = {};
+
+  for (const [surface, limits] of Object.entries(QUESTION_DISPLAY_LIMITS)) {
+    const questionExcerpt = buildQuestionDisplayExcerpt(questionText, limits.question, { mode: 'text' });
+    const answerExcerpt = answerText
+      ? buildQuestionDisplayExcerpt(answerText, limits.answer, { mode: 'sentence' })
+      : { text: '', truncated: false };
+    contract[surface] = {
+      question: questionExcerpt.text,
+      ...(answerExcerpt.text ? { answer: answerExcerpt.text } : {}),
+      ...(questionExcerpt.truncated ? { question_truncated: true } : {}),
+      ...(answerExcerpt.truncated ? { answer_truncated: true } : {}),
+    };
+  }
+
+  return contract;
+}
+
+function attachQuestionDisplayContract(item) {
+  const question = normalizeQuestionText(item?.question);
+  if (!question) return item;
+  const answer = normalizeAnswerText(item?.answer);
+  return {
+    ...item,
+    question,
+    ...(answer ? { answer } : {}),
+    display: buildQuestionDisplayContract(question, answer),
+  };
+}
 function isGenericFaqHeading(value) {
   return /^(?:faq|faqs|frequently asked questions?|q(?:uestions)?\s*&\s*a|questions?)$/i.test(
     asNonEmptyString(value),
@@ -2576,7 +2679,7 @@ function mergeQuestionItems(groups) {
       }
     }
   }
-  return Array.from(merged.values());
+  return Array.from(merged.values()).map((item) => attachQuestionDisplayContract(item));
 }
 
 function normalizeReviewDistributionRows(distributionRaw, reviewCount) {
