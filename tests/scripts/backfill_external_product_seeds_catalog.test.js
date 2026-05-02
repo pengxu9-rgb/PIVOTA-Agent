@@ -1856,7 +1856,14 @@ describe('backfill-external-product-seeds-catalog', () => {
                 body: 'Titanium Dioxide 3.4%, Zinc Oxide 14.37%',
                 source_kind: 'accordion_ingredients',
               },
+              {
+                heading: 'How to Use',
+                body: 'Apply before sun exposure.',
+                source_kind: 'accordion_how_to_use',
+                media_urls: ['https://cdn.example.com/spf-routine-step.jpg'],
+              },
             ],
+            content_image_urls: ['https://cdn.example.com/spf-routine-step.jpg'],
             ingredients_raw: 'Titanium Dioxide 3.4%, Zinc Oxide 14.37%',
             active_ingredients_raw: 'Titanium Dioxide, Zinc Oxide',
             how_to_use_raw: 'Apply before sun exposure.',
@@ -1901,6 +1908,9 @@ describe('backfill-external-product-seeds-catalog', () => {
       },
     ]);
     expect(payload.nextRow.seed_data.seed_description_origin).toBe('pdp_product_description');
+    expect(payload.nextRow.seed_data.content_image_urls).toEqual([
+      'https://cdn.example.com/spf-routine-step.jpg',
+    ]);
     expect(payload.nextRow.seed_data.pdp_field_capture_status).toEqual({
       description_raw: 'present',
       details_sections: 'present',
@@ -1915,6 +1925,11 @@ describe('backfill-external-product-seeds-catalog', () => {
         body: 'Titanium Dioxide 3.4%, Zinc Oxide 14.37%',
         source_kind: 'accordion_ingredients',
       },
+      {
+        heading: 'How to Use',
+        body: 'Apply before sun exposure.',
+        source_kind: 'accordion_how_to_use',
+      },
     ]);
     expect(payload.nextRow.seed_data.snapshot.pdp_faq_items).toEqual([
       {
@@ -1922,6 +1937,9 @@ describe('backfill-external-product-seeds-catalog', () => {
         answer: 'Yes, apply before sun exposure as part of your daytime routine.',
         source_kind: 'merchant_faq',
       },
+    ]);
+    expect(payload.nextRow.seed_data.snapshot.content_image_urls).toEqual([
+      'https://cdn.example.com/spf-routine-step.jpg',
     ]);
   });
 

@@ -2647,6 +2647,14 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     representativeProduct?.faq_items ||
       representativeProduct?.pdp_faq_items,
   );
+  const extractedContentImageUrls = sanitizeSeedImageUrls(
+    Array.isArray(representativeProduct?.content_image_urls)
+      ? representativeProduct.content_image_urls
+      : Array.isArray(representativeProduct?.contentImageUrls)
+        ? representativeProduct.contentImageUrls
+        : [],
+    { relevanceContext: imageRelevanceContext },
+  );
   const incomingPdpFieldQualitySummary = normalizeFieldQualitySummary(
     representativeProduct?.field_quality_summary ||
       representativeProduct?.pdp_field_quality_summary,
@@ -2948,6 +2956,20 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
         : !faqDecision.existingApproved
           ? []
         : existingPdpFaqItems;
+  const existingContentImageUrls = identityRepairBackfill
+    ? []
+    : sanitizeSeedImageUrls(
+        Array.isArray(seedData.content_image_urls) && seedData.content_image_urls.length > 0
+          ? seedData.content_image_urls
+          : snapshot.content_image_urls,
+        { relevanceContext: imageRelevanceContext },
+      );
+  const nextContentImageUrls =
+    extractedContentImageUrls.length > 0
+      ? extractedContentImageUrls
+      : identityRepairBackfill
+        ? []
+        : existingContentImageUrls;
   const pdpFieldCaptureStatus = deriveFieldCaptureStatus(
     normalizeFieldCaptureStatus(representativeProduct?.field_capture_status) ||
       normalizeFieldCaptureStatus(representativeProduct?.pdp_field_capture_status) ||
@@ -3134,6 +3156,7 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     ...(nextPdpActiveIngredientsRaw ? { pdp_active_ingredients_raw: nextPdpActiveIngredientsRaw } : {}),
     ...(nextPdpHowToUseRaw ? { pdp_how_to_use_raw: nextPdpHowToUseRaw } : {}),
     ...(nextPdpFaqItems.length > 0 ? { pdp_faq_items: nextPdpFaqItems } : {}),
+    ...(nextContentImageUrls.length > 0 ? { content_image_urls: nextContentImageUrls } : {}),
     ...(selectedVariantId ? { selected_variant_id: selectedVariantId, default_variant_id: selectedVariantId } : {}),
     ...(selectedVariantTitle && !isDefaultVariantTitle(selectedVariantTitle) ? { variant_title: selectedVariantTitle } : {}),
     ...(nextProductKind ? { product_kind: nextProductKind } : {}),
@@ -3174,6 +3197,7 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     ...(nextPdpActiveIngredientsRaw ? { pdp_active_ingredients_raw: nextPdpActiveIngredientsRaw } : {}),
     ...(nextPdpHowToUseRaw ? { pdp_how_to_use_raw: nextPdpHowToUseRaw } : {}),
     ...(nextPdpFaqItems.length > 0 ? { pdp_faq_items: nextPdpFaqItems } : {}),
+    ...(nextContentImageUrls.length > 0 ? { content_image_urls: nextContentImageUrls } : {}),
     ...(selectedVariantId ? { selected_variant_id: selectedVariantId, default_variant_id: selectedVariantId } : {}),
     ...(selectedVariantTitle && !isDefaultVariantTitle(selectedVariantTitle) ? { variant_title: selectedVariantTitle } : {}),
     ...(nextProductKind ? { product_kind: nextProductKind } : {}),
@@ -3216,6 +3240,10 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
   if (nextPdpFaqItems.length === 0) {
     delete nextSeedData.pdp_faq_items;
     if (nextSeedData.snapshot && typeof nextSeedData.snapshot === 'object') delete nextSeedData.snapshot.pdp_faq_items;
+  }
+  if (nextContentImageUrls.length === 0) {
+    delete nextSeedData.content_image_urls;
+    if (nextSeedData.snapshot && typeof nextSeedData.snapshot === 'object') delete nextSeedData.snapshot.content_image_urls;
   }
   if (!nextProductKind) {
     delete nextSeedData.product_kind;
@@ -4232,6 +4260,17 @@ function serializeBackfillResult(result) {
   const payload = result?.payload && typeof result.payload === 'object' ? result.payload : {};
   const nextRow = payload?.nextRow && typeof payload.nextRow === 'object' ? payload.nextRow : null;
   const seedData = ensureJsonObject(nextRow?.seed_data);
+  const snapshot = ensureJsonObject(seedData.snapshot);
+  const contentImageUrls = sanitizeSeedImageUrls(
+    Array.isArray(seedData.content_image_urls) && seedData.content_image_urls.length > 0
+      ? seedData.content_image_urls
+      : snapshot.content_image_urls,
+  );
+  const sectionMediaCount = normalizeDetailsSections(
+    Array.isArray(seedData.pdp_details_sections) && seedData.pdp_details_sections.length > 0
+      ? seedData.pdp_details_sections
+      : snapshot.pdp_details_sections,
+  ).reduce((sum, section) => sum + sanitizeSeedImageUrls(section?.media_urls).length, 0);
   return {
     status: normalizeNonEmptyString(result?.status),
     reason: normalizeNonEmptyString(result?.reason),
@@ -4264,6 +4303,8 @@ function serializeBackfillResult(result) {
             ingredients_present: Boolean(normalizeNonEmptyString(seedData.pdp_ingredients_raw)),
             active_ingredients_present: Boolean(normalizeNonEmptyString(seedData.pdp_active_ingredients_raw)),
             seed_snapshot_contract: ensureJsonObject(seedData.external_seed_snapshot_contract),
+            content_image_count: contentImageUrls.length,
+            section_media_count: sectionMediaCount,
           }
         : null,
       variant_seed_rows: Array.isArray(payload?.variant_seed_rows) ? payload.variant_seed_rows : [],

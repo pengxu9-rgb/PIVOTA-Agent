@@ -2460,6 +2460,9 @@ function buildExternalSeedProduct(row, options = {}) {
         ? runtimeSeedData.pdp_details_sections
         : []
     : [];
+  const contentImageUrls = [];
+  appendImageUrls(contentImageUrls, runtimeSnapshot.content_image_urls);
+  appendImageUrls(contentImageUrls, runtimeSeedData.content_image_urls);
   const pdpFieldCaptureStatus =
     (runtimeSnapshot.pdp_field_capture_status && typeof runtimeSnapshot.pdp_field_capture_status === 'object')
       ? runtimeSnapshot.pdp_field_capture_status
@@ -2799,6 +2802,7 @@ function buildExternalSeedProduct(row, options = {}) {
       ? { pdp_description_raw: pdpDescriptionRaw }
       : {}),
     ...(pdpDetailsSections.length ? { pdp_details_sections: pdpDetailsSections } : {}),
+    ...(contentImageUrls.length ? { content_image_urls: contentImageUrls } : {}),
     ...(isSurfaceablePdpField(pdpFieldQualitySummary, 'ingredients_raw') && pdpIngredientsRaw
       ? { pdp_ingredients_raw: pdpIngredientsRaw }
       : {}),

@@ -2096,6 +2096,7 @@ describe('externalSeedProducts helper', () => {
           pdp_how_to_use_raw: 'Apply after cleansing.',
           pdp_faq_items: [{ question: 'Can I use this daily?', answer: 'Yes.' }],
           pdp_details_sections: [{ heading: 'Product Type', body: 'Pad' }],
+          content_image_urls: ['https://cdn.example.com/glow-pad-overview.jpg'],
         },
       },
     });
@@ -2104,6 +2105,7 @@ describe('externalSeedProducts helper', () => {
     expect(product.pdp_how_to_use_raw).toBeUndefined();
     expect(product.pdp_faq_items).toBeUndefined();
     expect(product.pdp_details_sections).toEqual([{ heading: 'Product Type', body: 'Pad' }]);
+    expect(product.content_image_urls).toEqual(['https://cdn.example.com/glow-pad-overview.jpg']);
     expect(product.active_ingredients).toBeUndefined();
     expect(product.pdp_field_quality_summary.description_raw.source_quality_status).toBe('quarantined');
   });
