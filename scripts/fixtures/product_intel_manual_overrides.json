@@ -137,6 +137,156 @@
     "external_highlight_review_status": "rewrite",
     "external_review_batch": "manual_card_highlight_2026_04_10"
   },
+  "live_ext_5ffe1c0b5195b36d2bdcffa9": {
+    "notes": "Manual correction: classify as facial oil-serum, not cleanser. Preserve merchant review preview; publish concise product intel only.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Facial oil-serum",
+        "body": "A lightweight facial oil-serum for breakout-prone or unbalanced skin, built around non-comedogenic oils that aim to nourish without leaving a heavy finish."
+      },
+      "best_for": [
+        {
+          "tag": "breakout_prone",
+          "label": "Breakout-prone skin",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "dehydrated_oily_skin",
+          "label": "Skin that feels dehydrated despite oiliness",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Oil step aimed at breakout-prone skin",
+          "body": "It positions a non-comedogenic oil blend as a treatment step for oily or breakout-prone skin rather than a heavy occlusive finish.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Leave-on nourishment, not a cleansing oil",
+          "body": "The formula fits a treatment layer or moisturizer-adjacent step, which separates it from rinse-off oil cleansing products.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "serum",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use after toner and before moisturizer, or mix a small amount into a cream when extra nourishment is needed."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "texture",
+          "label": "Facial oils can still feel too rich for users who prefer fully oil-free textures.",
+          "severity": "medium"
+        },
+        {
+          "type": "sensitivity",
+          "label": "Patch test if you are highly reactive to botanical oils.",
+          "severity": "medium"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "Lightweight oil-serum",
+      "finish": "Nourishing finish",
+      "layering_notes": [
+        "Works best as a leave-on treatment layer rather than a cleansing step."
+      ]
+    },
+    "shopping_card": {
+      "highlight": "Non-comedogenic oil blend for breakout-prone skin."
+    },
+    "search_card": {
+      "highlight_candidate": "Non-comedogenic oil blend for breakout-prone skin"
+    },
+    "review_status": "approved",
+    "review_decision": "approved",
+    "reviewer": "codex_manual_override",
+    "reviewer_kind": "employee",
+    "reviewed_at": "2026-05-01T23:59:00Z",
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "non_merge_manual_review_2026_05_01"
+  },
+  "product:ext_5ffe1c0b5195b36d2bdcffa9": {
+    "notes": "Manual correction: classify as facial oil-serum, not cleanser. Preserve merchant review preview; publish concise product intel only.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Facial oil-serum",
+        "body": "A lightweight facial oil-serum for breakout-prone or unbalanced skin, built around non-comedogenic oils that aim to nourish without leaving a heavy finish."
+      },
+      "best_for": [
+        {
+          "tag": "breakout_prone",
+          "label": "Breakout-prone skin",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "dehydrated_oily_skin",
+          "label": "Skin that feels dehydrated despite oiliness",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Oil step aimed at breakout-prone skin",
+          "body": "It positions a non-comedogenic oil blend as a treatment step for oily or breakout-prone skin rather than a heavy occlusive finish.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Leave-on nourishment, not a cleansing oil",
+          "body": "The formula fits a treatment layer or moisturizer-adjacent step, which separates it from rinse-off oil cleansing products.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "serum",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use after toner and before moisturizer, or mix a small amount into a cream when extra nourishment is needed."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "texture",
+          "label": "Facial oils can still feel too rich for users who prefer fully oil-free textures.",
+          "severity": "medium"
+        },
+        {
+          "type": "sensitivity",
+          "label": "Patch test if you are highly reactive to botanical oils.",
+          "severity": "medium"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "Lightweight oil-serum",
+      "finish": "Nourishing finish",
+      "layering_notes": [
+        "Works best as a leave-on treatment layer rather than a cleansing step."
+      ]
+    },
+    "shopping_card": {
+      "highlight": "Non-comedogenic oil blend for breakout-prone skin."
+    },
+    "search_card": {
+      "highlight_candidate": "Non-comedogenic oil blend for breakout-prone skin"
+    },
+    "review_status": "approved",
+    "review_decision": "approved",
+    "reviewer": "codex_manual_override",
+    "reviewer_kind": "employee",
+    "reviewed_at": "2026-05-01T23:59:00Z",
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "non_merge_manual_review_2026_05_01"
+  },
   "live_ext_8d735b108c0f01151b80797b": {
     "notes": "Curated seller-only rewrite to keep the brightening reason specific and formula-led.",
     "product_intel_core": {
@@ -15739,7 +15889,7 @@
       "why_it_stands_out": [
         {
           "headline": "Niacinamide-first discoloration focus",
-          "body": "The seller record centers niacinamide for dark spots, sun spots, hyperpigmentation and post-acne marks, making the role match direct for a mark-fading routine.",
+          "body": "The seller record centers niacinamide for dark spots, sun spots, hyperpigmentation and post-acne marks, making the fit direct for a mark-fading routine.",
           "evidence_strength": "seller_grounded"
         },
         {

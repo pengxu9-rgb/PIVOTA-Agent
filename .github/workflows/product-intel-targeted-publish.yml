@@ -1,0 +1,66 @@
+name: Product Intel Targeted Publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      report_json_base64:
+        description: "Base64-encoded publish report JSON"
+        required: true
+        type: string
+      case_ids:
+        description: "Optional comma-separated case ids"
+        required: false
+        default: ""
+        type: string
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: Pivota Agent / production
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install
+        run: npm ci
+
+      - name: Decode publish report
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p reports/product_intel_targeted_publish
+          printf '%s' '${{ inputs.report_json_base64 }}' | base64 --decode > reports/product_intel_targeted_publish/report.json
+          jq '.meta' reports/product_intel_targeted_publish/report.json > reports/product_intel_targeted_publish/report_meta.json
+
+      - name: Publish product intel to KB
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=(--report reports/product_intel_targeted_publish/report.json --write)
+          case_ids='${{ inputs.case_ids }}'
+          if [[ -n "${case_ids}" ]]; then
+            args+=(--case-ids "${case_ids}")
+          fi
+          node scripts/publish_product_intel_pilot_to_kb.js "${args[@]}" \
+            | tee reports/product_intel_targeted_publish/publish_result.json
+
+      - name: Upload publish artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: product-intel-targeted-publish
+          path: |
+            reports/product_intel_targeted_publish/report.json
+            reports/product_intel_targeted_publish/report_meta.json
+            reports/product_intel_targeted_publish/publish_result.json
+          retention-days: 7
