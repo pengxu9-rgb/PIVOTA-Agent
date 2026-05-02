@@ -2605,6 +2605,12 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     representativeProduct?.details_sections ||
       representativeProduct?.pdp_details_sections,
   );
+  const normalizedRepresentativeIngredientsSectionBody = normalizeNonEmptyString(
+    pdpDetailsSections.find((section) => section?.heading === 'Ingredients')?.body,
+  );
+  const normalizedRepresentativeHowToSectionBody = normalizeNonEmptyString(
+    pdpDetailsSections.find((section) => section?.heading === 'How to Use')?.body,
+  );
   const rawRepresentativePdpDetailsSections = Array.isArray(representativeProduct?.details_sections)
     ? representativeProduct.details_sections
     : Array.isArray(representativeProduct?.pdp_details_sections)
@@ -2618,7 +2624,8 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
   const liveExtractedDescription = cleanPdpDescriptionCandidate(rawLiveExtractedDescription, pdpDetailsSections);
   const pdpIngredientsRaw = normalizeNonEmptyString(
     representativeProduct?.ingredients_raw ||
-      representativeProduct?.pdp_ingredients_raw,
+      representativeProduct?.pdp_ingredients_raw ||
+      normalizedRepresentativeIngredientsSectionBody,
   );
   const pdpActiveIngredientsRaw = normalizeNonEmptyString(
     representativeProduct?.active_ingredients_raw ||
@@ -2626,7 +2633,8 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
   );
   const pdpHowToUseRaw = normalizeNonEmptyString(
     representativeProduct?.how_to_use_raw ||
-      representativeProduct?.pdp_how_to_use_raw,
+      representativeProduct?.pdp_how_to_use_raw ||
+      normalizedRepresentativeHowToSectionBody,
   );
   const pdpFaqItems = normalizeFaqItems(
     representativeProduct?.faq_items ||
@@ -2780,10 +2788,12 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     : normalizeNonEmptyString(seedData.pdp_ingredients_raw || snapshot.pdp_ingredients_raw);
   const candidatePdpIngredientsRaw = supportsFormulaPdpFields
     ? pickPdpIngredientsRaw(
-        surfaceablePdpIngredientsRaw,
+        surfaceablePdpIngredientsRaw || normalizedRepresentativeIngredientsSectionBody,
         rawRepresentativePdpDetailsSections.length > 0
           ? rawRepresentativePdpDetailsSections
-          : nextPdpDetailsSections,
+          : pdpDetailsSections.length > 0
+            ? pdpDetailsSections
+            : nextPdpDetailsSections,
         '',
       )
     : '';
@@ -2811,7 +2821,9 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
           candidatePdpIngredientsRaw,
           rawRepresentativePdpDetailsSections.length > 0
             ? rawRepresentativePdpDetailsSections
-            : nextPdpDetailsSections,
+            : pdpDetailsSections.length > 0
+              ? pdpDetailsSections
+              : nextPdpDetailsSections,
           ingredientsDecision.existingApproved ? existingPdpIngredientsRaw : '',
         ))
     : '';
@@ -2861,8 +2873,8 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     : normalizeNonEmptyString(seedData.pdp_how_to_use_raw || snapshot.pdp_how_to_use_raw);
   const candidatePdpHowToUseRaw = supportsHowToUsePdpField
     ? pickPdpHowToUseRaw(
-        surfaceablePdpHowToUseRaw,
-        nextPdpDetailsSections,
+        surfaceablePdpHowToUseRaw || normalizedRepresentativeHowToSectionBody,
+        pdpDetailsSections.length > 0 ? pdpDetailsSections : nextPdpDetailsSections,
         '',
         pdpHowToUseContext,
       )

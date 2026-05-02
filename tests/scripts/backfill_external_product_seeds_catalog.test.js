@@ -3831,6 +3831,126 @@ describe('backfill-external-product-seeds-catalog', () => {
     );
   });
 
+  test('keeps reviewed details while still recovering incoming ingredients raw', () => {
+    const canonicalUrl = 'https://example.com/products/oat-cream';
+    const reviewedDescription = 'A reviewed moisturizer overview.';
+    const reviewedSections = [
+      { heading: 'Details', body: reviewedDescription },
+      { heading: 'Benefits', body: 'Calms visible redness.' },
+    ];
+    const reviewedQuality = {
+      description_raw: {
+        source_origin: 'shopify_json',
+        source_quality_status: 'high',
+      },
+      details_sections: {
+        source_origin: 'shopify_json',
+        source_quality_status: 'high',
+      },
+    };
+    const reviewedAsset = {
+      contract_version: 'pivota.pdp_content_asset.v1',
+      owner: 'pivota',
+      fields: {
+        details_sections: {
+          review_state: 'assistant_reviewed',
+          overwrite_policy: 'preserve_best_available',
+          source_origin: 'shopify_json',
+          source_quality_status: 'high',
+        },
+      },
+    };
+    const row = {
+      id: 'eps_reviewed_details_incoming_ingredients',
+      external_product_id: 'ext_reviewed_details_incoming_ingredients',
+      title: 'Oat Cream',
+      canonical_url: canonicalUrl,
+      destination_url: canonicalUrl,
+      price_amount: 28,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      seed_data: {
+        title: 'Oat Cream',
+        description: reviewedDescription,
+        pdp_description_raw: reviewedDescription,
+        pdp_details_sections: reviewedSections,
+        pdp_field_quality_summary: reviewedQuality,
+        pdp_content_asset_v1: reviewedAsset,
+        snapshot: {
+          canonical_url: canonicalUrl,
+          title: 'Oat Cream',
+          description: reviewedDescription,
+          pdp_description_raw: reviewedDescription,
+          pdp_details_sections: reviewedSections,
+          pdp_field_quality_summary: reviewedQuality,
+          pdp_content_asset_v1: reviewedAsset,
+        },
+      },
+    };
+
+    const payload = buildSeedUpdatePayload(
+      row,
+      {
+        mode: 'puppeteer',
+        products: [
+          {
+            title: 'Oat Cream',
+            url: canonicalUrl,
+            description_raw: reviewedDescription,
+            ingredients_raw:
+              'Oat extract: Soothes irritation. Full Ingredients: Water (Aqua/Eau), Butylene Glycol, Squalane, Avena Sativa (Oat) Meal Extract. PETA-certified vegan and cruelty-free.',
+            details_sections: [
+              {
+                heading: 'Ingredients',
+                body:
+                  'Oat extract: Soothes irritation and rebalances stressed skin. Trehalose: Helps bind water to skin to retain moisture. Squalane: Improves skin hydration and reduces moisture loss. Full Ingredients: Water (Aqua/Eau), Butylene Glycol, Caprylic/Capric Triglyceride, Squalane, 1,2-Hexanediol, Trehalose, Behenyl Alcohol, Ammonium Acryloyldimethyltaurate/VP Copolymer, Avena Sativa (Oat) Meal Extract. PETA-certified vegan and cruelty-free.',
+                source_kind: 'accordion_ingredients',
+              },
+              {
+                heading: 'Details',
+                body: 'A thinner incoming overview that should not replace the reviewed details.',
+                source_kind: 'accordion_control',
+              },
+            ],
+            field_quality_summary: {
+              ...reviewedQuality,
+              ingredients_raw: {
+                source_origin: 'retail_pdp',
+                source_quality_status: 'medium',
+                source_kinds: ['page_ingredients_section'],
+                reason_codes: [],
+              },
+            },
+            variants: [
+              {
+                id: 'oc-default',
+                sku: 'OC-DEFAULT',
+                description: reviewedDescription,
+                price: '28.00',
+                currency: 'USD',
+                stock: 'In Stock',
+              },
+            ],
+          },
+        ],
+        variants: [],
+        diagnostics: {},
+      },
+      canonicalUrl,
+    );
+
+    expect(payload.nextRow.seed_data.pdp_details_sections).toEqual([
+      expect.objectContaining(reviewedSections[0]),
+      expect.objectContaining(reviewedSections[1]),
+    ]);
+    expect(payload.nextRow.seed_data.pdp_ingredients_raw).toBe(
+      'Water (Aqua/Eau), Butylene Glycol, Caprylic/Capric Triglyceride, Squalane, 1,2-Hexanediol, Trehalose, Behenyl Alcohol, Ammonium Acryloyldimethyltaurate/VP Copolymer, Avena Sativa (Oat) Meal Extract.',
+    );
+    expect(payload.nextRow.seed_data.snapshot.pdp_ingredients_raw).toBe(
+      'Water (Aqua/Eau), Butylene Glycol, Caprylic/Capric Triglyceride, Squalane, 1,2-Hexanediol, Trehalose, Behenyl Alcohol, Ammonium Acryloyldimethyltaurate/VP Copolymer, Avena Sativa (Oat) Meal Extract.',
+    );
+  });
+
   test('persists merchant review preview content during catalog backfill refresh', () => {
     const canonicalUrl = 'https://example.com/products/rice-milk';
     const row = {

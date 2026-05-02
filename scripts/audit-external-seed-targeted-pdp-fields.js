@@ -158,7 +158,7 @@ async function main() {
     });
     const representativeProduct = chooseRepresentativeProduct(response.data, targetUrl, row);
     const payload = representativeProduct
-      ? buildSeedUpdatePayload(row, response.data, representativeProduct, targetUrl)
+      ? buildSeedUpdatePayload(row, response.data, targetUrl)
       : null;
     const identityListing = await fetchIdentityListing(`external_seed:${row.external_product_id}`);
     audit.push({
