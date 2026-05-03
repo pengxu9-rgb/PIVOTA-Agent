@@ -2540,6 +2540,52 @@ function buildExternalSeedProduct(row, options = {}) {
     canonicalUrl,
     destinationUrl,
   );
+  const volume = firstNonEmptyString(
+    runtimeSnapshot.volume,
+    runtimeSeedData.volume,
+    seedData.volume,
+    snapshot.volume,
+  );
+  const productVolume = firstNonEmptyString(
+    runtimeSnapshot.product_volume,
+    runtimeSnapshot.productVolume,
+    runtimeSeedData.product_volume,
+    runtimeSeedData.productVolume,
+    seedData.product_volume,
+    seedData.productVolume,
+    snapshot.product_volume,
+    snapshot.productVolume,
+  );
+  const netContent = firstNonEmptyString(
+    runtimeSnapshot.net_content,
+    runtimeSnapshot.netContent,
+    runtimeSeedData.net_content,
+    runtimeSeedData.netContent,
+    seedData.net_content,
+    seedData.netContent,
+    snapshot.net_content,
+    snapshot.netContent,
+  );
+  const netSize = firstNonEmptyString(
+    runtimeSnapshot.net_size,
+    runtimeSnapshot.netSize,
+    runtimeSeedData.net_size,
+    runtimeSeedData.netSize,
+    seedData.net_size,
+    seedData.netSize,
+    snapshot.net_size,
+    snapshot.netSize,
+  );
+  const sizeDetailLabel = firstNonEmptyString(
+    runtimeSnapshot.size_detail_label,
+    runtimeSnapshot.sizeDetailLabel,
+    runtimeSeedData.size_detail_label,
+    runtimeSeedData.sizeDetailLabel,
+    seedData.size_detail_label,
+    seedData.sizeDetailLabel,
+    snapshot.size_detail_label,
+    snapshot.sizeDetailLabel,
+  );
   const reviewSummary = normalizeSeedReviewSummary(
     runtimeSnapshot.review_summary,
     runtimeSnapshot.reviewSummary,
@@ -2860,6 +2906,11 @@ function buildExternalSeedProduct(row, options = {}) {
     ...(selectedVariant?.variant_id ? { selected_variant_id: selectedVariant.variant_id } : {}),
     ...(selectedVariant?.variant_id ? { default_variant_id: selectedVariant.variant_id } : {}),
     ...(selectedVariant?.title ? { variant_title: String(selectedVariant.title).trim() } : {}),
+    ...(volume ? { volume } : {}),
+    ...(productVolume ? { product_volume: productVolume } : {}),
+    ...(netContent ? { net_content: netContent } : {}),
+    ...(netSize ? { net_size: netSize } : {}),
+    ...(sizeDetailLabel ? { size_detail_label: sizeDetailLabel } : {}),
     ...(rawIngredientTextClean ? { raw_ingredient_text_clean: rawIngredientTextClean } : {}),
     ...(inciList.length ? { inci_list: inciList } : {}),
     ...(activeIngredients.length ? { active_ingredients: activeIngredients } : {}),
