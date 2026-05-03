@@ -3145,6 +3145,26 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     seedData.reviews_summary,
     snapshot.reviews_summary,
   );
+  const extractedVolume = normalizeNonEmptyString(
+    representativeProduct?.volume ||
+      (
+        normalizeNonEmptyString(selectedSnapshotVariant?.option_name).toLowerCase() === 'size'
+          ? selectedSnapshotVariant?.option_value
+          : ''
+      ),
+  );
+  const extractedProductVolume = normalizeNonEmptyString(
+    representativeProduct?.product_volume || representativeProduct?.productVolume,
+  );
+  const extractedSizeDetailLabel = normalizeNonEmptyString(
+    representativeProduct?.size_detail_label || representativeProduct?.sizeDetailLabel,
+  );
+  const existingVolume = normalizeNonEmptyString(seedData.volume || snapshot.volume);
+  const existingProductVolume = normalizeNonEmptyString(seedData.product_volume || snapshot.product_volume);
+  const existingSizeDetailLabel = normalizeNonEmptyString(seedData.size_detail_label || snapshot.size_detail_label);
+  const nextVolume = extractedVolume || (identityRepairBackfill ? '' : existingVolume);
+  const nextProductVolume = extractedProductVolume || (identityRepairBackfill ? '' : existingProductVolume);
+  const nextSizeDetailLabel = extractedSizeDetailLabel || (identityRepairBackfill ? '' : existingSizeDetailLabel);
 
   const nextSnapshot = {
     ...snapshot,
@@ -3172,6 +3192,9 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     ...(selectedVariantTitle && !isDefaultVariantTitle(selectedVariantTitle) ? { variant_title: selectedVariantTitle } : {}),
     ...(nextProductKind ? { product_kind: nextProductKind } : {}),
     ...(nextBundleComponents.length > 0 ? { bundle_components: nextBundleComponents } : {}),
+    ...(nextVolume ? { volume: nextVolume } : {}),
+    ...(nextProductVolume ? { product_volume: nextProductVolume } : {}),
+    ...(nextSizeDetailLabel ? { size_detail_label: nextSizeDetailLabel } : {}),
     ...(nextDescriptionOrigin ? { seed_description_origin: nextDescriptionOrigin } : {}),
     ...(pdpFieldCaptureStatus ? { pdp_field_capture_status: pdpFieldCaptureStatus } : {}),
     ...(pdpFieldQualitySummary ? { pdp_field_quality_summary: pdpFieldQualitySummary } : {}),
@@ -3197,6 +3220,9 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
   };
   if (!nextPdpIngredientsRaw) delete nextSnapshot.pdp_ingredients_raw;
   if (!nextPdpActiveIngredientsRaw) delete nextSnapshot.pdp_active_ingredients_raw;
+  if (!nextVolume) delete nextSnapshot.volume;
+  if (!nextProductVolume) delete nextSnapshot.product_volume;
+  if (!nextSizeDetailLabel) delete nextSnapshot.size_detail_label;
 
   let nextSeedData = {
     ...seedData,
@@ -3213,6 +3239,9 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     ...(selectedVariantTitle && !isDefaultVariantTitle(selectedVariantTitle) ? { variant_title: selectedVariantTitle } : {}),
     ...(nextProductKind ? { product_kind: nextProductKind } : {}),
     ...(nextBundleComponents.length > 0 ? { bundle_components: nextBundleComponents } : {}),
+    ...(nextVolume ? { volume: nextVolume } : {}),
+    ...(nextProductVolume ? { product_volume: nextProductVolume } : {}),
+    ...(nextSizeDetailLabel ? { size_detail_label: nextSizeDetailLabel } : {}),
     ...(nextDescriptionOrigin ? { seed_description_origin: nextDescriptionOrigin } : {}),
     ...(pdpFieldCaptureStatus ? { pdp_field_capture_status: pdpFieldCaptureStatus } : {}),
     ...(pdpFieldQualitySummary ? { pdp_field_quality_summary: pdpFieldQualitySummary } : {}),
@@ -3231,6 +3260,18 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
   if (!nextPdpActiveIngredientsRaw) {
     delete nextSeedData.pdp_active_ingredients_raw;
     if (nextSeedData.snapshot && typeof nextSeedData.snapshot === 'object') delete nextSeedData.snapshot.pdp_active_ingredients_raw;
+  }
+  if (!nextVolume) {
+    delete nextSeedData.volume;
+    if (nextSeedData.snapshot && typeof nextSeedData.snapshot === 'object') delete nextSeedData.snapshot.volume;
+  }
+  if (!nextProductVolume) {
+    delete nextSeedData.product_volume;
+    if (nextSeedData.snapshot && typeof nextSeedData.snapshot === 'object') delete nextSeedData.snapshot.product_volume;
+  }
+  if (!nextSizeDetailLabel) {
+    delete nextSeedData.size_detail_label;
+    if (nextSeedData.snapshot && typeof nextSeedData.snapshot === 'object') delete nextSeedData.snapshot.size_detail_label;
   }
   if (!nextPdpHowToUseRaw) {
     delete nextSeedData.pdp_how_to_use_raw;

@@ -710,6 +710,38 @@ describe('externalSeedProducts helper', () => {
     expect(variant.option_value).toBe('5ml');
   });
 
+  test('prefers one primary product-level size value when metric and imperial evidence both exist', () => {
+    const [variant] = normalizeSeedVariants(
+      {
+        snapshot: {
+          volume: '15ml',
+          product_volume: '0.50 fl oz',
+        },
+        variants: [
+          {
+            variant_id: 'rare-mini-default',
+            sku: 'FGPAOP0002M4',
+            title: 'Default Title',
+            option_name: 'Title',
+            option_value: 'Default Title',
+            price: '17.00',
+            currency: 'USD',
+          },
+        ],
+      },
+      {
+        title: 'Always an Optimist Pore Diffusing Primer Mini',
+        canonical_url: 'https://rarebeauty.com/products/always-an-optimist-pore-diffusing-primer-mini',
+      },
+    );
+
+    expect(variant.options).toEqual([
+      expect.objectContaining({ name: 'Size', value: '15ml', axis_kind: 'volume' }),
+    ]);
+    expect(variant.option_name).toBe('Size');
+    expect(variant.option_value).toBe('15ml');
+  });
+
   test('infers single default variant size from seed-level product URL', () => {
     const [variant] = normalizeSeedVariants(
       {

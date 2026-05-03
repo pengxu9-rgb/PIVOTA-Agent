@@ -949,8 +949,8 @@ function extractVariantAxes(product) {
   );
   const joined = texts.join(' ');
   const namedSize = parseNamedAxisFromOptions(product, ['size']);
-  const size =
-    (isValidSizeAxisValue(namedSize) ? namedSize : '') ||
+  const normalizedNamedSize = isValidSizeAxisValue(namedSize) ? namedSize : '';
+  const titleOrContextSize =
     inferredGenericAxis.size ||
     (/\btravel size\b/i.test(joined)
       ? 'travel size'
@@ -959,8 +959,17 @@ function extractVariantAxes(product) {
         : /\bmini\b/i.test(joined)
           ? 'mini'
           : '');
+  const namedGenericSize = parseGenericSizeToken(normalizedNamedSize);
+  const namedVolume = parseQuantityToken(normalizedNamedSize, ['ml', 'm l', 'g', 'kg', 'oz', 'fl oz']);
+  const size =
+    (variants.length > 1 && normalizedNamedSize ? normalizedNamedSize : '') ||
+    titleOrContextSize ||
+    (namedGenericSize && namedVolume ? normalizedNamedSize : '') ||
+    namedGenericSize;
   const volume =
-    inferredGenericAxis.volume || parseQuantityToken(joined, ['ml', 'm l', 'g', 'kg', 'oz', 'fl oz']);
+    inferredGenericAxis.volume ||
+    namedVolume ||
+    parseQuantityToken(joined, ['ml', 'm l', 'g', 'kg', 'oz', 'fl oz']);
   const pack = inferredGenericAxis.pack || parsePackToken(joined);
   const shadeFamily = extractMultiPageShadeFamilyCandidate(product);
   const rawColor = parseNamedAxisFromOptions(product, ['color', 'colour']) || inferredGenericAxis.color;
@@ -1698,9 +1707,6 @@ function resolveProductLineOptionAxis(listings) {
       if (value) valuesByAxis.get(key)?.add(value);
     }
   }
-  for (const key of PRODUCT_LINE_OPTION_AXIS_KEYS) {
-    if ((valuesByAxis.get(key)?.size || 0) > 1) return key;
-  }
   const explicitSizeValues = Array.from(valuesByAxis.get('size') || []);
   if (
     explicitSizeValues.length >= 1 &&
@@ -1712,6 +1718,9 @@ function resolveProductLineOptionAxis(listings) {
       Boolean(inferImplicitProductLineSizeValue(listing, explicitSizeValues)),
     );
     if (hasImplicitBaselineSize) return 'size';
+  }
+  for (const key of ['shade', 'color', 'size', 'volume', 'pack']) {
+    if ((valuesByAxis.get(key)?.size || 0) > 1) return key;
   }
   return '';
 }
@@ -1731,6 +1740,67 @@ function formatProductLineOptionLabel(value, axis = '') {
         : part,
     )
     .join(' ');
+}
+
+function formatProductLineSizeDetailValue(value) {
+  const raw = normalizeResolverText(value);
+  if (!raw) return '';
+  const match = raw.match(/\b(\d+(?:\.\d+)?)\s*(ml|m l|g|kg|oz|fl\.?\s*oz\.?|fluid\s*ounces?|l|lb|lbs|mm|cm)\b/i);
+  if (!match) return '';
+  const amount = asString(match[1]);
+  const normalizedUnit = asString(match[2])
+    .toLowerCase()
+    .replace(/fluid\s*ounces?/g, 'fl oz')
+    .replace(/fl\.?\s*oz\.?/g, 'fl oz')
+    .replace(/m\s*l/g, 'mL')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!amount || !normalizedUnit) return '';
+  const displayUnit =
+    normalizedUnit === 'ml'
+      ? 'mL'
+      : normalizedUnit === 'l'
+        ? 'L'
+        : normalizedUnit;
+  return `${amount} ${displayUnit}`.trim();
+}
+
+function getProductLineSizeDetailPriority(value) {
+  const normalized = normalizeResolverText(value).toLowerCase();
+  if (!normalized) return 99;
+  if (/\b(?:fl\.?\s*oz|oz|lb|lbs)\b/.test(normalized)) return 1;
+  if (/\b(?:ml|m l|g|kg|l|mm|cm)\b/.test(normalized)) return 2;
+  return 3;
+}
+
+function readListingSizeDetailLabel(listing, axis, value) {
+  if (!['size', 'volume'].includes(axis)) return '';
+  const payload = asPlainObject(listing?.source_payload) || {};
+  const explicit = firstNonEmptyString(payload.size_detail_label, payload.sizeDetailLabel);
+  if (explicit) return explicit;
+  const variant = pickIdentityVariant(payload);
+  const variantOptionValues = collectIdentityVariantOptionEntries(variant)
+    .filter((option) => /(?:size|volume|capacity|amount|net weight|net wt)/i.test(asString(option?.name)))
+    .map((option) => option?.value);
+  const detailValues = uniqueStrings(
+    [
+      payload.product_volume,
+      payload.productVolume,
+      payload.volume,
+      payload.net_content,
+      payload.netContent,
+      payload.net_size,
+      payload.netSize,
+      readListingVariantAxes(listing)?.volume,
+      ...variantOptionValues,
+    ]
+      .map((candidate) => formatProductLineSizeDetailValue(candidate))
+      .filter(Boolean),
+    4,
+  )
+    .filter((candidate) => normalizeAxisValue(candidate) !== normalizeAxisValue(value))
+    .sort((left, right) => getProductLineSizeDetailPriority(left) - getProductLineSizeDetailPriority(right));
+  return detailValues.slice(0, 2).join(' / ');
 }
 
 function isSameListingIdentity(left, right) {
@@ -1764,6 +1834,7 @@ function buildProductLineOptions({ lineListings, baseListing } = {}) {
     const payload = asPlainObject(listing?.source_payload) || {};
     const firstImage = buildImageEntriesForListing(listing, 'product_line_option')[0];
     const { swatchImageUrl, swatchColor, sourceQualityStatus } = readListingSwatchData(listing, axis, value);
+    const secondaryLabel = readListingSizeDetailLabel(listing, axis, value);
     const selected = isSameListingIdentity(listing, baseListing);
     const hasVisualEvidence = Boolean(swatchImageUrl || swatchColor || firstImage?.url);
     if (['shade', 'color'].includes(axis) && !hasVisualEvidence) continue;
@@ -1778,6 +1849,7 @@ function buildProductLineOptions({ lineListings, baseListing } = {}) {
       title: firstNonEmptyString(payload.title, payload.name, listing?.title) || undefined,
       image_url: firstImage?.url,
       source_quality_status: sourceQualityStatus,
+      ...(secondaryLabel ? { secondary_label: secondaryLabel } : {}),
       ...(swatchImageUrl ? { swatch_image_url: swatchImageUrl, label_image_url: swatchImageUrl } : {}),
       ...(swatchColor ? { swatch_color: swatchColor, color_hex: swatchColor, swatch: { hex: swatchColor } } : {}),
       selected,

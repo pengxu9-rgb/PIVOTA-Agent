@@ -397,7 +397,10 @@ describe('pdpIdentityGraph', () => {
         brand: 'Rare Beauty',
         source_url: 'https://rarebeauty.com/products/always-an-optimist-pore-diffusing-primer',
         canonical_url: 'https://rarebeauty.com/products/always-an-optimist-pore-diffusing-primer',
-        variants: [{ variant_id: 'full-default', title: 'Default' }],
+        volume: '28ml',
+        product_volume: '0.94 fl oz',
+        size_detail_label: '0.94 fl oz / 28 mL',
+        variants: [{ variant_id: 'full-default', title: 'Default', option_name: 'Size', option_value: '28ml' }],
       },
     });
     const mini = buildIdentityListingFromProduct({
@@ -410,13 +413,17 @@ describe('pdpIdentityGraph', () => {
         brand: 'Rare Beauty',
         source_url: 'https://rarebeauty.com/products/always-an-optimist-pore-diffusing-primer-mini',
         canonical_url: 'https://rarebeauty.com/products/always-an-optimist-pore-diffusing-primer-mini',
-        variants: [{ variant_id: 'mini-default', title: 'Default' }],
+        volume: '15ml',
+        product_volume: '0.50 fl oz',
+        size_detail_label: '0.50 fl oz / 15 mL',
+        variants: [{ variant_id: 'mini-default', title: 'Default', option_name: 'Size', option_value: '15ml' }],
       },
     });
 
     expect(fullSize.product_line_id).toBe(mini.product_line_id);
     expect(mini.variant_axes).toEqual({
       size: 'mini',
+      volume: '15ml',
       multi_variant: false,
     });
 
@@ -433,17 +440,18 @@ describe('pdpIdentityGraph', () => {
         value: 'full size',
         axis: 'size',
         product_id: 'ext_rare_primer_full',
+        secondary_label: '0.94 fl oz / 28 mL',
       }),
       expect.objectContaining({
         label: 'Mini',
         value: 'mini',
         axis: 'size',
         product_id: 'ext_rare_primer_mini',
+        secondary_label: '0.50 fl oz / 15 mL',
         selected: true,
       }),
     ]);
   });
-
   test('composeSyntheticCanonicalProduct rehydrates structured PDP fields from nested external seed payload contract', () => {
     const { composeSyntheticCanonicalProduct } = require('../../src/services/pdpIdentityGraph');
 

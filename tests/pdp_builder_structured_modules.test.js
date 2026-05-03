@@ -689,6 +689,59 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     expect(payload.product.product_line_options).toEqual(variantSelector.data.product_line_options);
   });
 
+  test('preserves product-line size detail labels for mini and full-size options', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_rare_primer_mini',
+        merchant_id: 'external_seed',
+        title: 'Always an Optimist Pore Diffusing Primer Mini',
+        image_url: 'https://example.com/primer-mini.png',
+        product_line_option_name: 'Size',
+        product_line_options: [
+          {
+            option_id: 'external_seed:ext_rare_primer_full',
+            option_name: 'Size',
+            axis: 'size',
+            value: 'full size',
+            label: 'Full Size',
+            secondary_label: '0.94 fl oz / 28 mL',
+            product_id: 'ext_rare_primer_full',
+            merchant_id: 'external_seed',
+            selected: false,
+          },
+          {
+            option_id: 'external_seed:ext_rare_primer_mini',
+            option_name: 'Size',
+            axis: 'size',
+            value: 'mini',
+            label: 'Mini',
+            secondary_label: '0.50 fl oz / 15 mL',
+            product_id: 'ext_rare_primer_mini',
+            merchant_id: 'external_seed',
+            selected: true,
+          },
+        ],
+        variants: [
+          {
+            id: 'v-mini',
+            title: 'Default Title',
+            price: { amount: 17, currency: 'USD' },
+          },
+        ],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    const variantSelector = payload.modules.find((module) => module.type === 'variant_selector');
+    expect(variantSelector?.data?.product_line_options).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ label: 'Full Size', secondary_label: '0.94 fl oz / 28 mL' }),
+        expect.objectContaining({ label: 'Mini', secondary_label: '0.50 fl oz / 15 mL', selected: true }),
+      ]),
+    );
+  });
+
   test('keeps a hidden implicit single external variant contract for blocked default-only rows', () => {
     const payload = buildPdpPayload({
       product: {

@@ -3307,6 +3307,77 @@ describe('backfill-external-product-seeds-catalog', () => {
     expect(payload.nextRow.seed_data.snapshot.active_ingredients).toBeUndefined();
   });
 
+  test('persists extracted size evidence and size detail labels during backfill refresh', () => {
+    const row = {
+      id: 'eps_rare_primer_mini',
+      title: 'Always an Optimist Pore Diffusing Primer Mini',
+      canonical_url: 'https://rarebeauty.com/products/always-an-optimist-pore-diffusing-primer-mini',
+      destination_url: 'https://rarebeauty.com/products/always-an-optimist-pore-diffusing-primer-mini',
+      price_amount: 17,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      seed_data: {
+        brand: 'Rare Beauty',
+        snapshot: {
+          canonical_url: 'https://rarebeauty.com/products/always-an-optimist-pore-diffusing-primer-mini',
+          variants: [],
+        },
+      },
+    };
+
+    const payload = buildSeedUpdatePayload(
+      row,
+      {
+        products: [
+          {
+            title: 'Always an Optimist Pore Diffusing Primer Mini',
+            url: 'https://rarebeauty.com/products/always-an-optimist-pore-diffusing-primer-mini',
+            image_url: 'https://cdn.shopify.com/s/files/1/0314/1143/7703/products/Pore-Primer-Travel-SKU.jpg?v=1762270689',
+            image_urls: [
+              'https://cdn.shopify.com/s/files/1/0314/1143/7703/products/Pore-Primer-Travel-SKU.jpg?v=1762270689',
+            ],
+            volume: '15ml',
+            product_volume: '0.50 fl oz',
+            size_detail_label: '0.50 fl oz / 15 mL',
+            variants: [
+              {
+                id: '39265890762887',
+                sku: 'FGPAOP0002M4',
+                url: 'https://rarebeauty.com/products/always-an-optimist-pore-diffusing-primer-mini?variant=39265890762887',
+                option_name: 'Size',
+                option_value: '15ml',
+                price: '17.00',
+                currency: 'USD',
+                stock: 'In Stock',
+                image_url: 'https://cdn.shopify.com/s/files/1/0314/1143/7703/products/Pore-Primer-Travel-SKU.jpg?v=1762270689',
+                image_urls: [
+                  'https://cdn.shopify.com/s/files/1/0314/1143/7703/products/Pore-Primer-Travel-SKU.jpg?v=1762270689',
+                ],
+                ad_copy: '',
+              },
+            ],
+          },
+        ],
+        variants: [],
+        diagnostics: {},
+      },
+      'https://rarebeauty.com/products/always-an-optimist-pore-diffusing-primer-mini',
+    );
+
+    expect(payload.nextRow.seed_data.volume).toBe('15ml');
+    expect(payload.nextRow.seed_data.product_volume).toBe('0.50 fl oz');
+    expect(payload.nextRow.seed_data.size_detail_label).toBe('0.50 fl oz / 15 mL');
+    expect(payload.nextRow.seed_data.snapshot.volume).toBe('15ml');
+    expect(payload.nextRow.seed_data.snapshot.product_volume).toBe('0.50 fl oz');
+    expect(payload.nextRow.seed_data.snapshot.size_detail_label).toBe('0.50 fl oz / 15 mL');
+    expect(payload.nextRow.seed_data.variants[0]).toEqual(
+      expect.objectContaining({
+        option_name: 'Size',
+        option_value: '15ml',
+      }),
+    );
+  });
+
   test('writes a cleaned derived recall document during catalog backfill', () => {
     const row = {
       id: 'eps_recall_doc_1',

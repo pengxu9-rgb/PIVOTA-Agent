@@ -3193,6 +3193,7 @@ function normalizeProductLineOptions(product) {
     options.push({
       option_id: stripHtml(item.option_id || item.id) || `${productId}:${value}`,
       label,
+      secondary_label: stripHtml(item.secondary_label || item.secondaryLabel) || undefined,
       value,
       option_name: stripHtml(item.option_name || item.optionName || product.product_line_option_name) || undefined,
       axis: axis || undefined,

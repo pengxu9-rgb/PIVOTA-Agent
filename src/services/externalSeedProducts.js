@@ -1349,6 +1349,31 @@ function collectInferredProductLevelVariantOptions(seedData, row) {
   return [];
 }
 
+function scoreProductLevelVariantOptionCandidate(option) {
+  const value = normalizeOptionText(option?.value);
+  if (!value) return -1;
+  if (extractVariantQuantityDisplayValue(value)) {
+    const compact = value.toLowerCase().replace(/\s+/g, '');
+    if (/(?:ml|g|kg|mm|cm|l)\b/.test(value.toLowerCase()) || compact.endsWith('ml')) return 40;
+    if (/(?:fl\s*oz|oz|lb|lbs)\b/.test(value.toLowerCase()) || compact.includes('floz')) return 30;
+    return 20;
+  }
+  if (/\b(full size|travel size|jumbo|mini|refill|regular|standard|one size)\b/i.test(value)) return 10;
+  return 0;
+}
+
+function pickPrimaryProductLevelVariantOption(candidates = []) {
+  const normalized = normalizeOptionEntries(candidates).filter((option) => normalizeOptionText(option?.value));
+  if (!normalized.length) return [];
+  const ranked = normalized
+    .map((option, index) => ({ option, index, score: scoreProductLevelVariantOptionCandidate(option) }))
+    .sort((left, right) => {
+      if (right.score !== left.score) return right.score - left.score;
+      return left.index - right.index;
+    });
+  return ranked[0]?.option ? [ranked[0].option] : [];
+}
+
 function shouldInferProductLevelVariantOptions(seedData, row) {
   const parsed = ensureJsonObject(seedData);
   const snapshot = ensureJsonObject(parsed.snapshot);
@@ -1403,7 +1428,7 @@ function collectProductLevelVariantOptions(seedData, row = null, options = {}) {
       candidates.push([item.name, item.value]);
     }
   }
-  return normalizeOptionEntries(
+  return pickPrimaryProductLevelVariantOption(
     candidates
       .map(([name, value]) => ({ name, value }))
       .filter((item) => normalizeOptionText(item.value)),
