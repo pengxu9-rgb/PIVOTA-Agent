@@ -781,6 +781,36 @@ describe('externalSeedProducts helper', () => {
     expect(product.size_detail_label).toBe('0.50 fl oz / 15 mL');
   });
 
+  test('infers product-level size detail labels from quantitative selected variant evidence', () => {
+    const product = buildExternalSeedProduct({
+      id: 'seed_rare_kit_mini',
+      external_product_id: 'ext_rare_kit_mini',
+      title: 'Find Comfort Mini Body Essentials - Awaken Confidence',
+      canonical_url: 'https://rarebeauty.com/products/find-comfort-mini-body-essentials-awaken-confidence',
+      destination_url: 'https://rarebeauty.com/products/find-comfort-mini-body-essentials-awaken-confidence',
+      seed_data: {
+        brand: 'Rare Beauty',
+        snapshot: {
+          title: 'Find Comfort Mini Body Essentials - Awaken Confidence',
+          canonical_url: 'https://rarebeauty.com/products/find-comfort-mini-body-essentials-awaken-confidence',
+          destination_url: 'https://rarebeauty.com/products/find-comfort-mini-body-essentials-awaken-confidence',
+          variants: [
+            {
+              variant_id: 'rare-kit-mini-default',
+              title: '75ml',
+              option_name: 'Size',
+              option_value: '75ml',
+              price: '28.00',
+              currency: 'USD',
+            },
+          ],
+        },
+      },
+    });
+
+    expect(product.size_detail_label).toBe('75 mL');
+  });
+
   test('infers single default variant size from seed-level product URL', () => {
     const [variant] = normalizeSeedVariants(
       {

@@ -2499,6 +2499,53 @@ function cleanupPersistedSeedData(seedData, { clearSyntheticDescription = false,
   return seedData;
 }
 
+function formatExtractedSizeDetailValue(value) {
+  const normalized = normalizeNonEmptyString(value);
+  if (!normalized) return '';
+  const match = normalized.match(/\b(\d+(?:\.\d+)?)\s*(ml|m l|g|kg|oz|fl\.?\s*oz\.?|fluid\s*ounces?|l|lb|lbs|mm|cm)\b/i);
+  if (!match) return '';
+  const amount = normalizeNonEmptyString(match[1]);
+  const normalizedUnit = normalizeNonEmptyString(match[2])
+    .toLowerCase()
+    .replace(/fluid\s*ounces?/g, 'fl oz')
+    .replace(/fl\.?\s*oz\.?/g, 'fl oz')
+    .replace(/m\s*l/g, 'ml')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!amount || !normalizedUnit) return '';
+  const displayUnit =
+    normalizedUnit === 'ml'
+      ? 'mL'
+      : normalizedUnit === 'l'
+        ? 'L'
+        : normalizedUnit;
+  return `${amount} ${displayUnit}`.trim();
+}
+
+function getExtractedSizeDetailPriority(value) {
+  const normalized = normalizeNonEmptyString(value).toLowerCase();
+  if (!normalized) return 99;
+  if (/\b(?:fl\.?\s*oz|oz|lb|lbs)\b/.test(normalized)) return 1;
+  if (/\b(?:ml|m l|g|kg|l|mm|cm)\b/.test(normalized)) return 2;
+  return 3;
+}
+
+function buildExtractedSizeDetailLabel(...values) {
+  const unique = [];
+  const seen = new Set();
+  for (const value of values) {
+    const formatted = formatExtractedSizeDetailValue(value);
+    if (!formatted) continue;
+    const key = formatted.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(formatted);
+  }
+  if (!unique.length) return '';
+  unique.sort((left, right) => getExtractedSizeDetailPriority(left) - getExtractedSizeDetailPriority(right));
+  return unique.slice(0, 2).join(' / ');
+}
+
 function buildSeedUpdatePayload(row, response, targetUrl) {
   const seedData = ensureJsonObject(row?.seed_data);
   const snapshot = ensureJsonObject(seedData.snapshot);
@@ -3156,8 +3203,21 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
   const extractedProductVolume = normalizeNonEmptyString(
     representativeProduct?.product_volume || representativeProduct?.productVolume,
   );
+  const representativeProductVariant = Array.isArray(representativeProduct?.variants)
+    ? representativeProduct.variants.find((variant) => variant && typeof variant === 'object') || representativeProduct.variants[0]
+    : null;
   const extractedSizeDetailLabel = normalizeNonEmptyString(
-    representativeProduct?.size_detail_label || representativeProduct?.sizeDetailLabel,
+    representativeProduct?.size_detail_label ||
+      representativeProduct?.sizeDetailLabel ||
+      buildExtractedSizeDetailLabel(
+        representativeProduct?.product_volume,
+        representativeProduct?.productVolume,
+        representativeProduct?.volume,
+        representativeProductVariant?.option_value,
+        representativeProductVariant?.title,
+        selectedSnapshotVariant?.option_value,
+        selectedSnapshotVariant?.title,
+      ),
   );
   const existingVolume = normalizeNonEmptyString(seedData.volume || snapshot.volume);
   const existingProductVolume = normalizeNonEmptyString(seedData.product_volume || snapshot.product_volume);

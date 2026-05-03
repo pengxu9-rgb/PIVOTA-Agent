@@ -1604,6 +1604,53 @@ function parseVariantQuantityValue(value) {
   return `${amount}${unit}`;
 }
 
+function formatSeedSizeDetailValue(value) {
+  const normalized = normalizeOptionText(value);
+  if (!normalized) return '';
+  const match = normalized.match(/\b(\d+(?:\.\d+)?)\s*(ml|m l|g|kg|oz|fl\.?\s*oz\.?|fluid\s*ounces?|l|lb|lbs|mm|cm)\b/i);
+  if (!match) return '';
+  const amount = String(match[1] || '').trim();
+  const normalizedUnit = String(match[2] || '')
+    .toLowerCase()
+    .replace(/fluid\s*ounces?/g, 'fl oz')
+    .replace(/fl\.?\s*oz\.?/g, 'fl oz')
+    .replace(/m\s*l/g, 'ml')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!amount || !normalizedUnit) return '';
+  const displayUnit =
+    normalizedUnit === 'ml'
+      ? 'mL'
+      : normalizedUnit === 'l'
+        ? 'L'
+        : normalizedUnit;
+  return `${amount} ${displayUnit}`.trim();
+}
+
+function getSeedSizeDetailPriority(value) {
+  const normalized = normalizeOptionText(value).toLowerCase();
+  if (!normalized) return 99;
+  if (/\b(?:fl\.?\s*oz|oz|lb|lbs)\b/.test(normalized)) return 1;
+  if (/\b(?:ml|m l|g|kg|l|mm|cm)\b/.test(normalized)) return 2;
+  return 3;
+}
+
+function buildSeedSizeDetailLabel(...values) {
+  const unique = [];
+  const seen = new Set();
+  for (const value of values) {
+    const formatted = formatSeedSizeDetailValue(value);
+    if (!formatted) continue;
+    const key = formatted.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(formatted);
+  }
+  if (!unique.length) return '';
+  unique.sort((left, right) => getSeedSizeDetailPriority(left) - getSeedSizeDetailPriority(right));
+  return unique.slice(0, 2).join(' / ');
+}
+
 function parseVariantPackValue(value) {
   const normalized = normalizeOptionText(value);
   if (!normalized) return '';
@@ -2576,7 +2623,7 @@ function buildExternalSeedProduct(row, options = {}) {
     snapshot.net_size,
     snapshot.netSize,
   );
-  const sizeDetailLabel = firstNonEmptyString(
+  const explicitSizeDetailLabel = firstNonEmptyString(
     runtimeSnapshot.size_detail_label,
     runtimeSnapshot.sizeDetailLabel,
     runtimeSeedData.size_detail_label,
@@ -2697,6 +2744,18 @@ function buildExternalSeedProduct(row, options = {}) {
   if (selectedVariant?.variant_id) {
     variants = moveVariantToFront(variants, selectedVariant.variant_id);
   }
+  const sizeDetailLabel =
+    explicitSizeDetailLabel ||
+    buildSeedSizeDetailLabel(
+      productVolume,
+      volume,
+      netContent,
+      netSize,
+      selectedVariant?.option_value,
+      selectedVariant?.title,
+      variants[0]?.option_value,
+      variants[0]?.title,
+    );
   const primaryVariantImageUrls = collectPrimaryVariantImageUrls(variants);
   if (primaryVariantImageUrls.length > 0) {
     imageUrls = Array.from(new Set([...primaryVariantImageUrls, ...imageUrls]));

@@ -3378,6 +3378,75 @@ describe('backfill-external-product-seeds-catalog', () => {
     );
   });
 
+  test('infers size detail labels from extracted quantitative variant evidence when explicit label is absent', () => {
+    const row = {
+      id: 'seed-find-comfort-mini',
+      market: 'US',
+      tool: '*',
+      destination_url: 'https://rarebeauty.com/products/find-comfort-mini-body-essentials-awaken-confidence',
+      canonical_url: 'https://rarebeauty.com/products/find-comfort-mini-body-essentials-awaken-confidence',
+      domain: 'rarebeauty.com',
+      title: 'Find Comfort Mini Body Essentials - Awaken Confidence',
+      image_url: 'https://cdn.shopify.com/s/files/1/0314/1143/7703/products/find-comfort-kit.jpg?v=1',
+      price_amount: 28,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      status: 'active',
+      external_product_id: 'ext_rare_kit_mini',
+      seed_data: {
+        brand: 'Rare Beauty',
+        snapshot: {
+          title: 'Find Comfort Mini Body Essentials - Awaken Confidence',
+          canonical_url: 'https://rarebeauty.com/products/find-comfort-mini-body-essentials-awaken-confidence',
+          destination_url: 'https://rarebeauty.com/products/find-comfort-mini-body-essentials-awaken-confidence',
+          variants: [
+            {
+              variant_id: 'rare-kit-mini-default',
+              title: '75ml',
+              option_name: 'Size',
+              option_value: '75ml',
+              price: '28.00',
+              currency: 'USD',
+            },
+          ],
+        },
+      },
+    };
+
+    const payload = buildSeedUpdatePayload(
+      row,
+      {
+        products: [
+          {
+            title: 'Find Comfort Mini Body Essentials - Awaken Confidence',
+            url: 'https://rarebeauty.com/products/find-comfort-mini-body-essentials-awaken-confidence',
+            image_url: 'https://cdn.shopify.com/s/files/1/0314/1143/7703/products/find-comfort-kit.jpg?v=1',
+            image_urls: ['https://cdn.shopify.com/s/files/1/0314/1143/7703/products/find-comfort-kit.jpg?v=1'],
+            variants: [
+              {
+                id: 'rare-kit-mini-default',
+                sku: 'FIND-COMFORT-MINI',
+                url: 'https://rarebeauty.com/products/find-comfort-mini-body-essentials-awaken-confidence?variant=1',
+                option_name: 'Size',
+                option_value: '75ml',
+                title: '75ml',
+                price: '28.00',
+                currency: 'USD',
+                stock: 'In Stock',
+              },
+            ],
+          },
+        ],
+        variants: [],
+        diagnostics: {},
+      },
+      'https://rarebeauty.com/products/find-comfort-mini-body-essentials-awaken-confidence',
+    );
+
+    expect(payload.nextRow.seed_data.size_detail_label).toBe('75 mL');
+    expect(payload.nextRow.seed_data.snapshot.size_detail_label).toBe('75 mL');
+  });
+
   test('writes a cleaned derived recall document during catalog backfill', () => {
     const row = {
       id: 'eps_recall_doc_1',
