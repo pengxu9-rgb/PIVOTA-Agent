@@ -517,7 +517,9 @@ describe('pdpIdentityGraph', () => {
     expect(composed.product.images).toEqual([
       expect.objectContaining({ url: 'https://cdn.example.com/oil-lala-main.png' }),
       expect.objectContaining({ url: 'https://cdn.example.com/oil-lala-closeup.png' }),
-      expect.objectContaining({ url: 'https://cdn.example.com/oil-lala-routine.png' }),
+    ]);
+    expect(composed.product.content_image_urls).toEqual([
+      'https://cdn.example.com/oil-lala-routine.png',
     ]);
     expect(composed.product.pdp_details_sections).toEqual([
       expect.objectContaining({

@@ -1560,7 +1560,6 @@ function buildImageEntriesForListing(listing, kind = 'exact_item') {
     push(source.image_url);
     asArray(source.images).forEach((item) => push(item));
     asArray(source.image_urls).forEach((item) => push(item));
-    asArray(source.content_image_urls).forEach((item) => push(item));
   }
   const seen = new Set();
   return candidates.filter((item) => {
@@ -2260,6 +2259,20 @@ function composeSyntheticCanonicalProduct({
         .map((value) => asArray(value))
         .find((items) => items.length > 0);
       if (nextIngredientsInci?.length > 0) product.ingredients_inci = nextIngredientsInci;
+    }
+    if (!Array.isArray(product.content_image_urls) || product.content_image_urls.length === 0) {
+      const nextContentImageUrls = [
+        payload.content_image_urls,
+        payloadSeedData.content_image_urls,
+        payloadSnapshot.content_image_urls,
+      ]
+        .map((value) =>
+          asArray(value)
+            .map((item) => normalizePdpImageUrl(typeof item === 'string' ? item : item?.url || item?.image_url))
+            .filter(Boolean),
+        )
+        .find((items) => items.length > 0);
+      if (nextContentImageUrls?.length > 0) product.content_image_urls = nextContentImageUrls;
     }
     if (!Array.isArray(product.active_ingredients) || product.active_ingredients.length === 0) {
       const nextActive = [
