@@ -384,6 +384,66 @@ describe('pdpIdentityGraph', () => {
     });
   });
 
+  test('composeSyntheticCanonicalProduct emits size product-line options when mini sibling is explicit and full-size sibling is baseline-only', () => {
+    const { buildIdentityListingFromProduct, composeSyntheticCanonicalProduct } = require('../../src/services/pdpIdentityGraph');
+
+    const fullSize = buildIdentityListingFromProduct({
+      merchantId: 'external_seed',
+      productId: 'ext_rare_primer_full',
+      sourceKind: 'external_seed',
+      sourceTier: 'brand',
+      product: {
+        title: 'Always an Optimist Pore Diffusing Primer',
+        brand: 'Rare Beauty',
+        source_url: 'https://rarebeauty.com/products/always-an-optimist-pore-diffusing-primer',
+        canonical_url: 'https://rarebeauty.com/products/always-an-optimist-pore-diffusing-primer',
+        variants: [{ variant_id: 'full-default', title: 'Default' }],
+      },
+    });
+    const mini = buildIdentityListingFromProduct({
+      merchantId: 'external_seed',
+      productId: 'ext_rare_primer_mini',
+      sourceKind: 'external_seed',
+      sourceTier: 'brand',
+      product: {
+        title: 'Always an Optimist Pore Diffusing Primer Mini',
+        brand: 'Rare Beauty',
+        source_url: 'https://rarebeauty.com/products/always-an-optimist-pore-diffusing-primer-mini',
+        canonical_url: 'https://rarebeauty.com/products/always-an-optimist-pore-diffusing-primer-mini',
+        variants: [{ variant_id: 'mini-default', title: 'Default' }],
+      },
+    });
+
+    expect(fullSize.product_line_id).toBe(mini.product_line_id);
+    expect(mini.variant_axes).toEqual({
+      size: 'mini',
+      multi_variant: false,
+    });
+
+    const composed = composeSyntheticCanonicalProduct({
+      requestedListing: mini,
+      exactListings: [mini],
+      lineListings: [fullSize, mini],
+    });
+
+    expect(composed.product.product_line_option_name).toBe('Size');
+    expect(composed.product.product_line_options).toEqual([
+      expect.objectContaining({
+        label: 'Full Size',
+        value: 'full size',
+        axis: 'size',
+        product_id: 'ext_rare_primer_full',
+      }),
+      expect.objectContaining({
+        label: 'Mini',
+        value: 'mini',
+        axis: 'size',
+        product_id: 'ext_rare_primer_mini',
+        selected: true,
+      }),
+    ]);
+  });
+
   test('composeSyntheticCanonicalProduct rehydrates structured PDP fields from nested external seed payload contract', () => {
     const { composeSyntheticCanonicalProduct } = require('../../src/services/pdpIdentityGraph');
 

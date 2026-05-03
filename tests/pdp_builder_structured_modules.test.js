@@ -224,6 +224,49 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     );
   });
 
+  test('recomputes recommendation highlight status from fallback excerpt when highlight fields are missing', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_anchor_three',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'Anchor Product',
+        image_url: 'https://example.com/anchor.png',
+        price: { amount: 18, currency: 'USD' },
+      },
+      relatedProducts: [
+        {
+          product_id: 'ext_related_three',
+          merchant_id: 'external_seed',
+          title: 'Flawless Pore Prep Primer',
+          description:
+            'A pore-focused makeup primer meant to smooth the look of texture before complexion products and create a more even, makeup-ready base.',
+          category: 'Primer',
+          image_url: 'https://example.com/primer.png',
+          search_card: {
+            title_candidate: 'TIRTIR Global Flawless Pore Prep Primer',
+            compact_candidate: 'Primer',
+          },
+          shopping_card: {
+            title: 'TIRTIR Global Flawless Pore Prep Primer',
+            subtitle: 'Primer',
+          },
+          card_highlight_status: 'highlight_missing',
+        },
+      ],
+      entryPoint: 'agent',
+    });
+
+    expect(payload.modules.find((module) => module.type === 'recommendations')?.data?.items?.[0]).toEqual(
+      expect.objectContaining({
+        product_id: 'ext_related_three',
+        card_highlight_status: 'ready',
+        card_image_status: 'ready',
+        card_highlight: expect.any(String),
+      }),
+    );
+  });
+
   test('promotes shopping-card fallback fields onto recommendation cards for older PDP clients', () => {
     const payload = buildPdpPayload({
       product: {

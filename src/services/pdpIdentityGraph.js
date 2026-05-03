@@ -1630,6 +1630,9 @@ const PRODUCT_LINE_OPTION_AXIS_LABELS = Object.freeze({
   pack: 'Pack',
 });
 
+const IMPLICIT_FULL_SIZE_TRIGGER_VALUES = new Set(['mini', 'travel size', 'sample']);
+const IMPLICIT_STANDARD_SIZE_TRIGGER_VALUES = new Set(['jumbo', 'refill']);
+
 function readListingVariantAxes(listing) {
   const direct = asPlainObject(listing?.variant_axes) || {};
   if (PRODUCT_LINE_OPTION_AXIS_KEYS.some((key) => normalizeAxisValue(direct[key]))) {
@@ -1637,6 +1640,53 @@ function readListingVariantAxes(listing) {
   }
   const payload = asPlainObject(listing?.source_payload) || {};
   return extractVariantAxes(payload);
+}
+
+function inferImplicitProductLineSizeValue(listing, explicitValues = []) {
+  const payload = asPlainObject(listing?.source_payload) || {};
+  const explicitTextCandidates = [
+    payload.title,
+    payload.name,
+    payload.variant_title,
+    payload.variantTitle,
+    listing?.title_norm,
+  ];
+  for (const candidate of explicitTextCandidates) {
+    const parsed = parseGenericSizeToken(candidate);
+    if (parsed) return parsed;
+  }
+
+  const title = firstNonEmptyString(payload.title, payload.name, listing?.title_norm);
+  const titleCoreNorm = firstNonEmptyString(
+    listing?.title_core_norm,
+    asPlainObject(listing?.soft_identity)?.title_core_norm,
+  );
+  const looksLikeBaselineListing = Boolean(title && titleCoreNorm && normalizeTitleCore(title) === titleCoreNorm);
+  if (!looksLikeBaselineListing) return '';
+
+  const normalizedExplicit = new Set(
+    asArray(explicitValues)
+      .map((value) => normalizeAxisValue(value).toLowerCase())
+      .filter(Boolean),
+  );
+  if (!normalizedExplicit.size) return '';
+  if ([...normalizedExplicit].some((value) => IMPLICIT_FULL_SIZE_TRIGGER_VALUES.has(value))) {
+    return 'full size';
+  }
+  if ([...normalizedExplicit].some((value) => IMPLICIT_STANDARD_SIZE_TRIGGER_VALUES.has(value))) {
+    return 'standard';
+  }
+  return 'standard';
+}
+
+function readResolvedProductLineAxisValue(listing, axis, context = {}) {
+  const axes = readListingVariantAxes(listing);
+  const directValue = normalizeAxisValue(axes?.[axis]);
+  if (directValue) return directValue;
+  if (axis === 'size') {
+    return inferImplicitProductLineSizeValue(listing, context.explicitSizeValues);
+  }
+  return '';
 }
 
 function resolveProductLineOptionAxis(listings) {
@@ -1650,6 +1700,18 @@ function resolveProductLineOptionAxis(listings) {
   }
   for (const key of PRODUCT_LINE_OPTION_AXIS_KEYS) {
     if ((valuesByAxis.get(key)?.size || 0) > 1) return key;
+  }
+  const explicitSizeValues = Array.from(valuesByAxis.get('size') || []);
+  if (
+    explicitSizeValues.length >= 1 &&
+    (Array.isArray(listings) ? listings : []).some(
+      (listing) => !normalizeAxisValue(readListingVariantAxes(listing)?.size),
+    )
+  ) {
+    const hasImplicitBaselineSize = (Array.isArray(listings) ? listings : []).some((listing) =>
+      Boolean(inferImplicitProductLineSizeValue(listing, explicitSizeValues)),
+    );
+    if (hasImplicitBaselineSize) return 'size';
   }
   return '';
 }
@@ -1689,10 +1751,12 @@ function buildProductLineOptions({ lineListings, baseListing } = {}) {
   if (!axis) return [];
   const optionName = PRODUCT_LINE_OPTION_AXIS_LABELS[axis] || 'Option';
   const byValue = new Map();
+  const explicitSizeValues = sortedLine
+    .map((listing) => normalizeAxisValue(readListingVariantAxes(listing)?.size))
+    .filter(Boolean);
 
   for (const listing of sortedLine) {
-    const axes = readListingVariantAxes(listing);
-    const value = normalizeAxisValue(axes?.[axis]);
+    const value = readResolvedProductLineAxisValue(listing, axis, { explicitSizeValues });
     if (!value) continue;
     const merchantId = asString(listing?.merchant_id);
     const productId = asString(listing?.product_id);

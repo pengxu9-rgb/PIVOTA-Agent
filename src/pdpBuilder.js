@@ -3048,18 +3048,30 @@ function buildRecommendations(items, currencyFallback) {
           {
             fallback: asNonEmptyString(p.description || p.summary || productIntelWhatItIs),
             maxChars: 110,
+            allowHeuristic: true,
           },
         ) || undefined;
+      const description = asNonEmptyString(p.description || cardIntro || productIntelWhatItIs) || undefined;
+      const cardHighlight =
+        asNonEmptyString(
+          p.card_highlight ||
+            p.cardHighlight ||
+            shoppingCard?.highlight ||
+            searchCard?.highlight_candidate ||
+            cardIntro ||
+            description,
+        ) || undefined;
+      const imageUrl =
+        normalizePdpImageUrl(p.image_url || p.image || (Array.isArray(p.images) ? p.images[0] : undefined)) ||
+        undefined;
       return {
         product_id: p.product_id || p.id,
         merchant_id: p.merchant_id || p.merchant?.id || p.merchant_uuid,
         title: p.title || p.name,
-        description: asNonEmptyString(p.description || cardIntro || productIntelWhatItIs) || undefined,
+        description,
         category: asNonEmptyString(p.category) || undefined,
         product_type: asNonEmptyString(p.product_type || p.productType) || undefined,
-        image_url:
-          normalizePdpImageUrl(p.image_url || p.image || (Array.isArray(p.images) ? p.images[0] : undefined)) ||
-          undefined,
+        image_url: imageUrl,
         price: {
           amount: normalizeAmount(p.price),
           currency: normalizeCurrency(p, currencyFallback),
@@ -3072,14 +3084,7 @@ function buildRecommendations(items, currencyFallback) {
           asNonEmptyString(
             p.card_subtitle || p.cardSubtitle || shoppingCard?.subtitle || searchCard?.compact_candidate,
           ) || undefined,
-        card_highlight:
-          asNonEmptyString(
-            p.card_highlight ||
-              p.cardHighlight ||
-              shoppingCard?.highlight ||
-              searchCard?.highlight_candidate ||
-              cardIntro,
-          ) || undefined,
+        card_highlight: cardHighlight,
         card_badge:
           asNonEmptyString(
             p.card_badge || p.cardBadge || shoppingCard?.proof_badge || searchCard?.proof_badge_candidate,
@@ -3090,7 +3095,8 @@ function buildRecommendations(items, currencyFallback) {
         external_highlight_signals: Array.isArray(p.external_highlight_signals)
           ? p.external_highlight_signals
           : undefined,
-        card_highlight_status: asNonEmptyString(p.card_highlight_status || p.cardHighlightStatus) || undefined,
+        card_highlight_status: cardHighlight || description ? 'ready' : 'highlight_missing',
+        card_image_status: imageUrl ? 'ready' : 'image_missing',
         // Additive fields (safe for older clients to ignore).
         source: p.source || p.recommendation_source || undefined,
         reason: p.reason || p.recommendation_reason || undefined,

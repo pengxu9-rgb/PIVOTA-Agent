@@ -108,6 +108,13 @@ describe('externalSeedPdpQuality', () => {
         description_raw: 'Vitamin C serum.',
         variants: [{ price: '64.00' }],
       },
+      seedData: {
+        external_seed_snapshot_contract: {
+          authoritative: true,
+          legacy_fields_quarantined: true,
+          replace_strategy: 'replace_not_merge',
+        },
+      },
       livePayload: {
         modules: [
           {
