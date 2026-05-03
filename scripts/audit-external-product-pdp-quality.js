@@ -39,6 +39,7 @@ const AUTHORITATIVE_PDP_CORE_AUDIT_INCLUDE = [
   'canonical',
   'product_intel',
   'reviews_preview',
+  'similar',
   'variant_selector',
   'offers',
 ];

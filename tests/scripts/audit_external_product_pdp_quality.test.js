@@ -58,6 +58,7 @@ describe('audit-external-product-pdp-quality helpers', () => {
           'canonical',
           'product_intel',
           'reviews_preview',
+          'similar',
           'variant_selector',
           'offers',
         ],
