@@ -1023,6 +1023,260 @@ function filterMixedShopifyContentFromGallery(urls) {
   return filtered.length > 0 ? filtered : normalizedUrls;
 }
 
+const SEED_IMAGE_RELEVANCE_PRODUCT_TYPE_ALIASES = {
+  balm: 'balm',
+  blush: 'blush',
+  bronzer: 'bronzer',
+  brush: 'brush',
+  brushes: 'brush',
+  cleanser: 'cleanser',
+  concealer: 'concealer',
+  cream: 'cream',
+  essence: 'essence',
+  eyeshadow: 'eyeshadow',
+  foundation: 'foundation',
+  gloss: 'gloss',
+  highlighter: 'highlighter',
+  lipstick: 'lipstick',
+  lotion: 'lotion',
+  lotions: 'lotion',
+  mascara: 'mascara',
+  mask: 'mask',
+  mist: 'mist',
+  mists: 'mist',
+  moisturizer: 'moisturizer',
+  powder: 'powder',
+  powders: 'powder',
+  primer: 'primer',
+  primers: 'primer',
+  serum: 'serum',
+  spray: 'mist',
+  sprays: 'mist',
+  stick: 'stick',
+  toner: 'toner',
+  wash: 'wash',
+};
+
+const SEED_IMAGE_RELEVANCE_NOISE_TOKENS = new Set([
+  '0',
+  '1',
+  '2',
+  '3',
+  '4',
+  '5',
+  '6',
+  '7',
+  '8',
+  '9',
+  'alt',
+  'beauty',
+  'closed',
+  'ecomm',
+  'file',
+  'files',
+  'hero',
+  'image',
+  'images',
+  'img',
+  'mini',
+  'model',
+  'open',
+  'pdp',
+  'product',
+  'products',
+  'rare',
+  'shop',
+  'swatch',
+  'thumb',
+  'thumbnail',
+  'travel',
+]);
+
+const SEED_IMAGE_RELEVANCE_FAMILY_STOP_TOKENS = new Set([
+  ...SEED_IMAGE_RELEVANCE_NOISE_TOKENS,
+  'all',
+  'always',
+  'and',
+  'best',
+  'bestsellers',
+  'body',
+  'care',
+  'closed',
+  'closelid',
+  'comfort',
+  'find',
+  'for',
+  'full',
+  'hair',
+  'new',
+  'of',
+  'openlid',
+  'online',
+  'only',
+  'optimist',
+  'or',
+  'primary',
+  'pump',
+  'regular',
+  'secondary',
+  'set',
+  'size',
+  'skin',
+  'sku',
+  'the',
+  'to',
+  'tools',
+  'web',
+]);
+
+function tokenizeSeedImageRelevanceValue(value) {
+  return normalizeNonEmptyString(value)
+    .toLowerCase()
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter(Boolean)
+    .filter((token) => !SEED_IMAGE_RELEVANCE_NOISE_TOKENS.has(token));
+}
+
+function extractSeedImageFilenameTokens(value) {
+  const normalized = normalizePdpImageUrl(value);
+  if (!normalized) return [];
+  try {
+    const parsed = new URL(normalized);
+    const filename = decodeURIComponent(parsed.pathname.split('/').pop() || '')
+      .replace(/\.[a-z0-9]+$/i, '')
+      .replace(/([a-z])([A-Z])/g, '$1 $2')
+      .replace(/([A-Za-z])(\d)/g, '$1 $2')
+      .replace(/(\d)([A-Za-z])/g, '$1 $2')
+      .trim();
+    return tokenizeSeedImageRelevanceValue(filename);
+  } catch {
+    return tokenizeSeedImageRelevanceValue(normalized);
+  }
+}
+
+function extractSeedImageFilenameText(value) {
+  const normalized = normalizePdpImageUrl(value);
+  if (!normalized) return '';
+  try {
+    const parsed = new URL(normalized);
+    return decodeURIComponent(parsed.pathname.split('/').pop() || '')
+      .replace(/\.[a-z0-9]+$/i, '')
+      .trim()
+      .toLowerCase();
+  } catch {
+    return normalizeNonEmptyString(normalized).toLowerCase();
+  }
+}
+
+function extractSeedImageCanonicalProductTypes(tokens) {
+  const out = [];
+  for (const token of Array.isArray(tokens) ? tokens : []) {
+    const canonical = SEED_IMAGE_RELEVANCE_PRODUCT_TYPE_ALIASES[token];
+    if (!canonical || out.includes(canonical)) continue;
+    out.push(canonical);
+  }
+  return out;
+}
+
+function extractSeedImageFamilyTokens(tokens, productTypes = []) {
+  const out = [];
+  for (const token of Array.isArray(tokens) ? tokens : []) {
+    if (!token || token.length < 4) continue;
+    if (!/[a-z]/i.test(token) || /^\d+x\d+$/i.test(token)) continue;
+    if (SEED_IMAGE_RELEVANCE_FAMILY_STOP_TOKENS.has(token)) continue;
+    const canonical = SEED_IMAGE_RELEVANCE_PRODUCT_TYPE_ALIASES[token];
+    if (canonical && productTypes.includes(canonical)) continue;
+    if (out.includes(token)) continue;
+    out.push(token);
+  }
+  return out;
+}
+
+function buildSeedGalleryRelevanceContext(seedData, row) {
+  const parsedSeedData = ensureJsonObject(seedData);
+  const snapshot = ensureJsonObject(parsedSeedData.snapshot);
+  const values = [
+    row?.title,
+    row?.canonical_url,
+    row?.destination_url,
+    parsedSeedData.brand,
+    parsedSeedData.variant_title,
+    snapshot.variant_title,
+  ].filter(Boolean);
+  const tokens = values.flatMap((value) => tokenizeSeedImageRelevanceValue(value));
+  const productTypes = extractSeedImageCanonicalProductTypes(tokens);
+  const productUrl = normalizeNonEmptyString(row?.canonical_url || row?.destination_url);
+  let productHostname = '';
+  try {
+    productHostname = new URL(productUrl).hostname.toLowerCase();
+  } catch {}
+  return {
+    productTypes,
+    familyTokens: extractSeedImageFamilyTokens(tokens, productTypes),
+    strictFamilyFiltering: /rarebeauty\.com$/i.test(productHostname),
+  };
+}
+
+function isContentLikeSeedImageUrl(value) {
+  const filename = extractSeedImageFilenameText(value);
+  if (!filename) return false;
+  return (
+    /(?:^|[-_ ])pdp[-_ ]usage(?:[-_ ]|$)/i.test(filename) ||
+    /(?:^|[-_ ])pdp[-_ ]details?[-_ ]image(?:[-_ ]|$)/i.test(filename) ||
+    /(?:^|[-_ ])imperfect[-_ ]circle(?:[-_ ]|$)/i.test(filename)
+  );
+}
+
+function isRelevantSeedGalleryImageUrl(value, relevanceContext) {
+  if (!relevanceContext) return true;
+  if (isContentLikeSeedImageUrl(value)) return false;
+  const imageTokens = extractSeedImageFilenameTokens(value);
+  const imageProductTypes = extractSeedImageCanonicalProductTypes(imageTokens);
+  if (relevanceContext.productTypes.length === 1 && imageProductTypes.length > 0) {
+    if (!imageProductTypes.includes(relevanceContext.productTypes[0])) return false;
+  }
+  if (!relevanceContext.strictFamilyFiltering || !relevanceContext.familyTokens.length) return true;
+  if (
+    imageTokens.some((token) =>
+      token.length >= 4 &&
+      relevanceContext.familyTokens.some(
+        (familyToken) =>
+          familyToken.length >= 4 &&
+          (token === familyToken || token.includes(familyToken) || familyToken.includes(token)),
+      ),
+    )
+  ) {
+    return true;
+  }
+  const imageFamilyTokens = extractSeedImageFamilyTokens(imageTokens, relevanceContext.productTypes || []);
+  return imageFamilyTokens.length === 0;
+}
+
+function filterSeedGalleryByRelevance(urls, relevanceContext) {
+  const normalizedUrls = Array.isArray(urls) ? urls.filter(Boolean) : [];
+  if (!normalizedUrls.length) return normalizedUrls;
+  const filtered = normalizedUrls.filter((url) => isRelevantSeedGalleryImageUrl(url, relevanceContext));
+  return filtered.length > 0 ? filtered : normalizedUrls;
+}
+
+function extractSeparatedContentImageUrls(urls) {
+  const normalizedUrls = Array.isArray(urls) ? urls.filter(Boolean) : [];
+  const out = [];
+  const seen = new Set();
+  for (const url of normalizedUrls) {
+    const normalized = normalizePdpImageUrl(url);
+    if (!normalized || isNonProductSeedImageUrl(normalized) || !isContentLikeSeedImageUrl(normalized)) continue;
+    const dedupeKey = buildPdpImageDedupeKey(normalized) || normalized.toLowerCase();
+    if (seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
+    out.push(normalized);
+  }
+  return out;
+}
+
 function decodeUrlPathnameForImageFilter(value) {
   try {
     return decodeURIComponent(new URL(value).pathname || '').toLowerCase();
@@ -1065,7 +1319,8 @@ function isNonProductSeedImageUrl(value) {
     pathname.includes('/flyout') ||
     pathname.includes('/slot-a') ||
     pathname.includes('/slota/') ||
-    pathname.includes('/heroes-slot')
+    pathname.includes('/heroes-slot') ||
+    /(?:^|\/)gnav[-_]/i.test(pathname)
   ) {
     return true;
   }
@@ -1855,7 +2110,11 @@ function resolveSeedImageOverride(seedData, row) {
 }
 
 function normalizeSeedImageUrls(seedData, row) {
-  const out = filterMixedShopifyContentFromGallery(collectSeedImageUrls(seedData, row));
+  const relevanceContext = buildSeedGalleryRelevanceContext(seedData, row);
+  const out = filterSeedGalleryByRelevance(
+    filterMixedShopifyContentFromGallery(collectSeedImageUrls(seedData, row)),
+    relevanceContext,
+  );
   if (out.length > 0) return out;
 
   const override = resolveSeedImageOverride(seedData, row);
@@ -1863,7 +2122,7 @@ function normalizeSeedImageUrls(seedData, row) {
 
   appendImageUrls(out, override.image_urls);
   appendImageUrls(out, override.image_url);
-  return filterMixedShopifyContentFromGallery(out);
+  return filterSeedGalleryByRelevance(filterMixedShopifyContentFromGallery(out), relevanceContext);
 }
 
 function collectPrimaryVariantImageUrls(variants) {
@@ -2557,9 +2816,11 @@ function buildExternalSeedProduct(row, options = {}) {
         ? runtimeSeedData.pdp_details_sections
         : []
     : [];
+  const derivedSeparatedContentImageUrls = extractSeparatedContentImageUrls(collectSeedImageUrls(runtimeSeedData, row));
   const contentImageUrls = [];
   appendImageUrls(contentImageUrls, runtimeSnapshot.content_image_urls);
   appendImageUrls(contentImageUrls, runtimeSeedData.content_image_urls);
+  appendImageUrls(contentImageUrls, derivedSeparatedContentImageUrls);
   const pdpFieldCaptureStatus =
     (runtimeSnapshot.pdp_field_capture_status && typeof runtimeSnapshot.pdp_field_capture_status === 'object')
       ? runtimeSnapshot.pdp_field_capture_status

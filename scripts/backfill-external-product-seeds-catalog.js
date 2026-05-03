@@ -626,6 +626,16 @@ function collectProductImageUrls(product, options = {}) {
   );
 }
 
+function collectRawProductImageUrls(product) {
+  const out = [];
+  if (!product || typeof product !== 'object') return out;
+  if (product.image_url) out.push(product.image_url);
+  if (product.image) out.push(product.image);
+  if (Array.isArray(product.image_urls)) out.push(...product.image_urls);
+  if (Array.isArray(product.images)) out.push(...product.images);
+  return out.map(normalizeNonEmptyString).filter(Boolean);
+}
+
 function isDecorativeSeedImageUrl(value) {
   const normalized = normalizeUrlLike(value).toLowerCase();
   if (!normalized) return false;
@@ -667,6 +677,7 @@ function isDecorativeSeedImageUrl(value) {
     pathname.includes('/slot-a') ||
     pathname.includes('/slota/') ||
     pathname.includes('/heroes-slot') ||
+    /(?:^|\/)gnav[-_]/i.test(pathname) ||
     /[_-]\d{2,3}x\d{2,3}_crop_center(?:[._-]|$)/i.test(normalized) ||
     normalized.includes('gnav-shop-') ||
     normalized.includes('shade-finder-hero-')
@@ -709,22 +720,30 @@ const IMAGE_RELEVANCE_PRODUCT_TYPE_ALIASES = {
   gel: 'gel',
   gloss: 'gloss',
   highlighter: 'highlighter',
+  primer: 'primer',
+  primers: 'primer',
   liner: 'liner',
   lipstick: 'lipstick',
   lotion: 'lotion',
+  lotions: 'lotion',
   mascara: 'mascara',
   mask: 'mask',
   mist: 'mist',
+  mists: 'mist',
   moisturizer: 'moisturizer',
   oil: 'oil',
   patch: 'patch',
   patches: 'patch',
   pen: 'pen',
   powder: 'powder',
+  powders: 'powder',
+  brush: 'brush',
+  brushes: 'brush',
   scrub: 'scrub',
   serum: 'serum',
   shampoo: 'shampoo',
   spray: 'mist',
+  sprays: 'mist',
   toner: 'toner',
   wash: 'wash',
 };
@@ -768,6 +787,49 @@ const IMAGE_RELEVANCE_NOISE_TOKENS = new Set([
   'travel',
   'usage',
 ]);
+const IMAGE_RELEVANCE_FAMILY_STOP_TOKENS = new Set([
+  ...IMAGE_RELEVANCE_NOISE_TOKENS,
+  'all',
+  'always',
+  'and',
+  'best',
+  'bestsellers',
+  'body',
+  'care',
+  'closed',
+  'closelid',
+  'comfort',
+  'day',
+  'face',
+  'find',
+  'for',
+  'full',
+  'hair',
+  'in',
+  'it',
+  'new',
+  'of',
+  'openlid',
+  'online',
+  'only',
+  'optimist',
+  'or',
+  'primary',
+  'pump',
+  'out',
+  'pore',
+  'regular',
+  'secondary',
+  'set',
+  'shop',
+  'size',
+  'skin',
+  'sku',
+  'the',
+  'to',
+  'tools',
+  'web',
+]);
 
 function tokenizeImageRelevanceValue(value) {
   return normalizeNonEmptyString(value)
@@ -797,6 +859,9 @@ function extractImageFilenameTokens(value) {
     const parsed = new URL(normalized);
     const filename = decodeBasicHtmlEntities(decodeURIComponent(parsed.pathname.split('/').pop() || ''))
       .replace(/\.[a-z0-9]+$/i, '')
+      .replace(/([a-z])([A-Z])/g, '$1 $2')
+      .replace(/([A-Za-z])(\d)/g, '$1 $2')
+      .replace(/(\d)([A-Za-z])/g, '$1 $2')
       .trim();
     return tokenizeImageRelevanceValue(filename);
   } catch {
@@ -818,6 +883,30 @@ function extractImageFilenameText(value) {
   }
 }
 
+function isContentLikeSeedImageUrl(value) {
+  const filename = extractImageFilenameText(value);
+  if (!filename) return false;
+  return (
+    /(?:^|[-_ ])pdp[-_ ]usage(?:[-_ ]|$)/i.test(filename) ||
+    /(?:^|[-_ ])pdp[-_ ]details?[-_ ]image(?:[-_ ]|$)/i.test(filename) ||
+    /(?:^|[-_ ])imperfect[-_ ]circle(?:[-_ ]|$)/i.test(filename)
+  );
+}
+
+function extractImageFamilyTokens(values, productTypes = []) {
+  const out = [];
+  for (const token of Array.isArray(values) ? values : []) {
+    if (!token || token.length < 4) continue;
+    if (!/[a-z]/i.test(token) || /^\d+x\d+$/i.test(token)) continue;
+    if (IMAGE_RELEVANCE_FAMILY_STOP_TOKENS.has(token)) continue;
+    const canonicalType = IMAGE_RELEVANCE_PRODUCT_TYPE_ALIASES[token];
+    if (canonicalType && productTypes.includes(canonicalType)) continue;
+    if (out.includes(token)) continue;
+    out.push(token);
+  }
+  return out;
+}
+
 function buildSeedImageRelevanceContext(options = {}) {
   const values = uniqueStrings([
     options.productTitle,
@@ -826,9 +915,12 @@ function buildSeedImageRelevanceContext(options = {}) {
     ...(Array.isArray(options.additionalValues) ? options.additionalValues : []),
   ]);
   const tokens = values.flatMap((value) => tokenizeImageRelevanceValue(value));
+  const productTypes = extractCanonicalImageProductTypes(tokens);
   return {
     bundleLike: tokens.some((token) => IMAGE_RELEVANCE_BUNDLE_TOKENS.has(token)),
-    productTypes: extractCanonicalImageProductTypes(tokens),
+    productTypes,
+    familyTokens: extractImageFamilyTokens(tokens, productTypes),
+    strictFamilyFiltering: /rarebeauty\.com$/i.test(imageAssetHostname(options.productUrl)),
   };
 }
 
@@ -861,11 +953,27 @@ function isProductRelevantSeedImageUrl(value, relevanceContext) {
   if (!relevanceContext) {
     return true;
   }
+  if (isContentLikeSeedImageUrl(value)) return false;
   if (!relevanceContext.bundleLike && isCollectionStyleSeedImageUrl(value)) return false;
-  if (relevanceContext.bundleLike || relevanceContext.productTypes.length !== 1) return true;
-  const imageProductTypes = extractCanonicalImageProductTypes(extractImageFilenameTokens(value));
-  if (imageProductTypes.length === 0) return true;
-  return imageProductTypes.includes(relevanceContext.productTypes[0]);
+  const imageTokens = extractImageFilenameTokens(value);
+  const imageProductTypes = extractCanonicalImageProductTypes(imageTokens);
+  if (!relevanceContext.bundleLike && relevanceContext.productTypes.length === 1 && imageProductTypes.length > 0) {
+    if (!imageProductTypes.includes(relevanceContext.productTypes[0])) return false;
+  }
+  if (relevanceContext.bundleLike || !relevanceContext.strictFamilyFiltering || relevanceContext.familyTokens.length === 0) {
+    return true;
+  }
+  const overlapsFamily = imageTokens.some((token) =>
+    token.length >= 4 &&
+    relevanceContext.familyTokens.some(
+      (familyToken) =>
+        familyToken.length >= 4 &&
+        (token === familyToken || token.includes(familyToken) || familyToken.includes(token)),
+    ),
+  );
+  if (overlapsFamily) return true;
+  const imageFamilyTokens = extractImageFamilyTokens(imageTokens, relevanceContext.productTypes || []);
+  return imageFamilyTokens.length === 0;
 }
 
 function normalizeComparableImageKey(value) {
@@ -887,12 +995,30 @@ function sanitizeSeedImageUrls(values, options = {}) {
     options && typeof options === 'object' && options.relevanceContext
       ? options.relevanceContext
       : buildSeedImageRelevanceContext(options);
+  const mode =
+    options && typeof options === 'object' && normalizeNonEmptyString(options.mode)
+      ? normalizeNonEmptyString(options.mode).toLowerCase()
+      : 'gallery';
   const out = [];
   const seen = new Set();
   for (const value of Array.isArray(values) ? values : []) {
     const normalized = normalizePdpImageUrl(value) || normalizeUrlLike(value);
     if (!normalized || isDecorativeSeedImageUrl(normalized)) continue;
-    if (!isProductRelevantSeedImageUrl(normalized, relevanceContext)) continue;
+    if (mode !== 'content' && !isProductRelevantSeedImageUrl(normalized, relevanceContext)) continue;
+    const comparableKey = normalizeComparableImageKey(normalized);
+    if (!comparableKey || seen.has(comparableKey)) continue;
+    seen.add(comparableKey);
+    out.push(normalized);
+  }
+  return out;
+}
+
+function extractContentLikeSeedImageUrls(values) {
+  const out = [];
+  const seen = new Set();
+  for (const value of Array.isArray(values) ? values : []) {
+    const normalized = normalizePdpImageUrl(value) || normalizeUrlLike(value);
+    if (!normalized || isDecorativeSeedImageUrl(normalized) || !isContentLikeSeedImageUrl(normalized)) continue;
     const comparableKey = normalizeComparableImageKey(normalized);
     if (!comparableKey || seen.has(comparableKey)) continue;
     seen.add(comparableKey);
@@ -2606,7 +2732,8 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     selectedVariantImageUrls,
     representativeProductImageUrls,
   );
-  const extractedImageUrls = sanitizeSeedImageUrls([
+  const rawRepresentativeProductImageUrls = collectRawProductImageUrls(representativeProduct);
+  const extractedGalleryCandidates = [
     ...(selectedVariantImageUrls.length > 0 ? selectedVariantImageUrls : []),
     ...(selectedVariantImageUrls.length > 0 && selectedVariantUsesProductGallery
       ? representativeProductImageUrls
@@ -2617,10 +2744,26 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
           ...representativeProductImageUrls,
           ...(hasLiveVariantImages ? effectiveSnapshotVariants.flatMap((variant) => variant.image_urls || []) : []),
         ]),
-  ], { relevanceContext: imageRelevanceContext });
+  ];
+  const extractedImageUrls = sanitizeSeedImageUrls(extractedGalleryCandidates, {
+    relevanceContext: imageRelevanceContext,
+    mode: 'gallery',
+  });
+  const extractedGalleryContentImageUrls = extractContentLikeSeedImageUrls([
+    ...rawRepresentativeProductImageUrls,
+    ...(Array.isArray(representativeProduct?.variants)
+      ? representativeProduct.variants.flatMap((variant) => collectRawVariantImageUrls(variant))
+      : []),
+    ...(Array.isArray(response?.variants)
+      ? response.variants.flatMap((variant) => collectRawVariantImageUrls(variant))
+      : []),
+  ]);
   const existingImageUrls = fallbackPollutedRow
     ? []
-    : sanitizeSeedImageUrls(collectSeedImageUrls(seedData, row), { relevanceContext: imageRelevanceContext });
+    : sanitizeSeedImageUrls(collectSeedImageUrls(seedData, row), {
+        relevanceContext: imageRelevanceContext,
+        mode: 'gallery',
+      });
   const imageOverride = lookupExternalSeedImageOverride(
     representativeProductUrl,
     targetUrl,
@@ -2634,16 +2777,19 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
   const overrideImageUrls = sanitizeSeedImageUrls([
     ...(Array.isArray(imageOverride?.image_urls) ? imageOverride.image_urls : []),
     imageOverride?.image_url,
-  ]);
+  ], { mode: 'gallery' });
   let mergedImageUrls = extractedImageUrls.length > 0 ? extractedImageUrls : existingImageUrls;
   const manualImageOverrideApplied = mergedImageUrls.length === 0 && overrideImageUrls.length > 0;
   if (manualImageOverrideApplied) mergedImageUrls = overrideImageUrls;
   const richestVariantImageUrls = sanitizeSeedImageUrls([
     ...(selectedVariantImageUrls.length > 0 ? selectedVariantImageUrls : []),
     ...(effectiveSnapshotVariants.length === 1 ? effectiveSnapshotVariants[0]?.image_urls || [] : []),
-  ], { relevanceContext: imageRelevanceContext });
+  ], { relevanceContext: imageRelevanceContext, mode: 'gallery' });
   if (richestVariantImageUrls.length > mergedImageUrls.length) {
-    mergedImageUrls = sanitizeSeedImageUrls([...richestVariantImageUrls, ...mergedImageUrls]);
+    mergedImageUrls = sanitizeSeedImageUrls([...richestVariantImageUrls, ...mergedImageUrls], {
+      relevanceContext: imageRelevanceContext,
+      mode: 'gallery',
+    });
   }
   const imageUrl = mergedImageUrls[0] || '';
   const variantSkus = uniqueStrings(effectiveSnapshotVariants.map((variant) => variant.sku));
@@ -2706,12 +2852,15 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
       representativeProduct?.pdp_faq_items,
   );
   const extractedContentImageUrls = sanitizeSeedImageUrls(
-    Array.isArray(representativeProduct?.content_image_urls)
-      ? representativeProduct.content_image_urls
-      : Array.isArray(representativeProduct?.contentImageUrls)
-        ? representativeProduct.contentImageUrls
-        : [],
-    { relevanceContext: imageRelevanceContext },
+    [
+      ...(Array.isArray(representativeProduct?.content_image_urls)
+        ? representativeProduct.content_image_urls
+        : Array.isArray(representativeProduct?.contentImageUrls)
+          ? representativeProduct.contentImageUrls
+          : []),
+      ...extractedGalleryContentImageUrls,
+    ],
+    { relevanceContext: imageRelevanceContext, mode: 'content' },
   );
   const incomingPdpFieldQualitySummary = normalizeFieldQualitySummary(
     representativeProduct?.field_quality_summary ||
@@ -3020,7 +3169,7 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
         Array.isArray(seedData.content_image_urls) && seedData.content_image_urls.length > 0
           ? seedData.content_image_urls
           : snapshot.content_image_urls,
-        { relevanceContext: imageRelevanceContext },
+        { relevanceContext: imageRelevanceContext, mode: 'content' },
       );
   const nextContentImageUrls =
     extractedContentImageUrls.length > 0
@@ -4643,12 +4792,13 @@ function serializeBackfillResult(result) {
     Array.isArray(seedData.content_image_urls) && seedData.content_image_urls.length > 0
       ? seedData.content_image_urls
       : snapshot.content_image_urls,
+    { mode: 'content' },
   );
   const sectionMediaCount = normalizeDetailsSections(
     Array.isArray(seedData.pdp_details_sections) && seedData.pdp_details_sections.length > 0
       ? seedData.pdp_details_sections
       : snapshot.pdp_details_sections,
-  ).reduce((sum, section) => sum + sanitizeSeedImageUrls(section?.media_urls).length, 0);
+  ).reduce((sum, section) => sum + sanitizeSeedImageUrls(section?.media_urls, { mode: 'content' }).length, 0);
   return {
     status: normalizeNonEmptyString(result?.status),
     reason: normalizeNonEmptyString(result?.reason),

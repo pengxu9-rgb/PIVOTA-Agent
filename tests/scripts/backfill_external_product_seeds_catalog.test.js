@@ -425,7 +425,6 @@ describe('backfill-external-product-seeds-catalog', () => {
       ),
     ).toEqual([
       'https://cdn.shopify.com/s/files/1/0314/1143/7703/files/ECOMM-FIND-COMFORT-BODY-HAIR-FRAGRANCE-MIST-MINI-CLOSED.jpg?v=1762301243',
-      'https://www.rarebeauty.com/cdn/shop/files/PDP-USAGE-FIND-COMFORT-BODY-HAIR-FRAGRANCE-MIST-MINI-1268x1268_1024x.jpg?v=1740424675',
     ]);
   });
 
@@ -3985,11 +3984,13 @@ describe('backfill-external-product-seeds-catalog', () => {
     expect(payload.nextRow.seed_data.image_urls).toEqual([
       'https://cdn.shopify.com/s/files/1/0314/1143/7703/files/ECOMM-FIND-COMFORT-BODY-HAIR-FRAGRANCE-MIST-MINI-CLOSED.jpg?v=1762301243',
       'https://cdn.shopify.com/s/files/1/0314/1143/7703/files/ECOMM-FIND-COMFORT-BODY-HAIR-FRAGRANCE-MIST-MINI.jpg?v=1740424689',
-      'https://www.rarebeauty.com/cdn/shop/files/PDP-USAGE-FIND-COMFORT-BODY-HAIR-FRAGRANCE-MIST-MINI-1268x1268_1024x.jpg?v=1740424675',
-      'https://www.rarebeauty.com/cdn/shop/files/IMPERFECT-CIRCLE-FC-BODY-HAIR-FRAGRANCE-MIST-MINI-800x864_1024x.png?v=1740424658',
     ]);
     expect(payload.nextRow.seed_data.snapshot.image_urls).toEqual(payload.nextRow.seed_data.image_urls);
     expect(payload.nextRow.seed_data.snapshot.variants[0].image_urls).toEqual(payload.nextRow.seed_data.image_urls);
+    expect(payload.nextRow.seed_data.content_image_urls).toEqual([
+      'https://www.rarebeauty.com/cdn/shop/files/PDP-USAGE-FIND-COMFORT-BODY-HAIR-FRAGRANCE-MIST-MINI-1268x1268_1024x.jpg?v=1740424675',
+      'https://www.rarebeauty.com/cdn/shop/files/IMPERFECT-CIRCLE-FC-BODY-HAIR-FRAGRANCE-MIST-MINI-800x864_1024x.png?v=1740424658',
+    ]);
   });
 
   test('filters sibling mini product images when promoting a single-product Rare gallery', () => {
@@ -4061,11 +4062,13 @@ describe('backfill-external-product-seeds-catalog', () => {
     expect(payload.nextRow.seed_data.image_urls).toEqual([
       'https://cdn.shopify.com/s/files/1/0314/1143/7703/files/ECOMM-FIND-COMFORT-BODY-HAIR-FRAGRANCE-MIST-MINI-CLOSED.jpg?v=1762301243',
       'https://cdn.shopify.com/s/files/1/0314/1143/7703/files/ECOMM-FIND-COMFORT-BODY-HAIR-FRAGRANCE-MIST-MINI.jpg?v=1740424689',
-      'https://www.rarebeauty.com/cdn/shop/files/PDP-USAGE-FIND-COMFORT-BODY-HAIR-FRAGRANCE-MIST-MINI-1268x1268_1024x.jpg?v=1740424675',
-      'https://www.rarebeauty.com/cdn/shop/files/IMPERFECT-CIRCLE-FC-BODY-HAIR-FRAGRANCE-MIST-MINI-800x864_1024x.png?v=1740424658',
     ]);
     expect(payload.nextRow.seed_data.snapshot.image_urls).toEqual(payload.nextRow.seed_data.image_urls);
     expect(payload.nextRow.seed_data.snapshot.variants[0].image_urls).toEqual(payload.nextRow.seed_data.image_urls);
+    expect(payload.nextRow.seed_data.content_image_urls).toEqual([
+      'https://www.rarebeauty.com/cdn/shop/files/PDP-USAGE-FIND-COMFORT-BODY-HAIR-FRAGRANCE-MIST-MINI-1268x1268_1024x.jpg?v=1740424675',
+      'https://www.rarebeauty.com/cdn/shop/files/IMPERFECT-CIRCLE-FC-BODY-HAIR-FRAGRANCE-MIST-MINI-800x864_1024x.png?v=1740424658',
+    ]);
   });
 
   test('filters collection and thumbnail group shots from single-product Rare body lotion galleries', () => {
@@ -4140,6 +4143,93 @@ describe('backfill-external-product-seeds-catalog', () => {
     ]);
     expect(payload.nextRow.seed_data.snapshot.image_urls).toEqual(payload.nextRow.seed_data.image_urls);
     expect(payload.nextRow.seed_data.snapshot.variants[0].image_urls).toEqual(payload.nextRow.seed_data.image_urls);
+  });
+
+  test('filters Rare navigation, sibling sku, and details assets from single-product primer galleries', () => {
+    const row = {
+      id: 'eps_rare_primer_fullsize',
+      external_product_id: 'ext_rare_primer_fullsize',
+      market: 'US',
+      tool: 'creator_agents',
+      title: 'Always an Optimist Pore Diffusing Primer',
+      canonical_url: 'https://rarebeauty.com/products/always-an-optimist-pore-diffusing-primer',
+      destination_url: 'https://rarebeauty.com/products/always-an-optimist-pore-diffusing-primer',
+      image_url: 'https://cdn.shopify.com/s/files/1/0314/1143/7703/products/Pore-Primer-SKU.jpg?v=1762270689',
+      price_amount: 28,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      seed_data: {
+        brand: 'Rare Beauty',
+        snapshot: {
+          canonical_url: 'https://rarebeauty.com/products/always-an-optimist-pore-diffusing-primer',
+        },
+      },
+    };
+
+    const payload = buildSeedUpdatePayload(
+      row,
+      {
+        products: [
+          {
+            title: 'Always an Optimist Pore Diffusing Primer',
+            url: 'https://rarebeauty.com/products/always-an-optimist-pore-diffusing-primer',
+            image_url: 'https://cdn.shopify.com/s/files/1/0314/1143/7703/products/Pore-Primer-SKU.jpg?v=1762270689',
+            image_urls: [
+              'https://cdn.shopify.com/s/files/1/0314/1143/7703/products/Pore-Primer-SKU.jpg?v=1762270689',
+              'https://cdn.shopify.com/s/files/1/0314/1143/7703/products/Pore-Primer-Open-SKU.jpg?v=1617149124',
+              'https://cdn.shopify.com/s/files/1/0314/1143/7703/products/diffusing-primer-swatch-1440x1952_490e7974-aa56-4c60-8643-38edfc1538a9.jpg?v=1617149024',
+              'https://www.rarebeauty.com/cdn/shop/files/GNAV-SU26-SHOP-ALL.png?v=1774669137',
+              'https://www.rarebeauty.com/cdn/shop/products/ILLUMINATING-PRIMER-28ML-SKU-1_6ffb264a-d678-4a6d-85a8-fa2924d6fd0f.jpg?v=1762201378',
+              'https://www.rarebeauty.com/cdn/shop/products/4-IN-1-MIST-SKU-1_c9988cd0-b4d3-4fb7-b9e2-5e3a36bf5d05.jpg?v=1762200384',
+              'https://www.rarebeauty.com/cdn/shop/products/Setting-Powder-Light-SKU.jpg?v=1762276083',
+              'https://www.rarebeauty.com/cdn/shop/products/Powder-Brush-SKU.jpg?v=1762276046',
+              'https://www.rarebeauty.com/cdn/shop/products/Eyeshadow-Primer-SKU.jpg?v=1762270691',
+              'https://www.rarebeauty.com/cdn/shop/files/PDP-imperfect-circle-primers.png?v=1616543294',
+              'https://www.rarebeauty.com/cdn/shop/files/PDP-details-image-1268x1268-pore-primer.jpg?v=1617041406',
+            ],
+            variants: [
+              {
+                id: 'rb-primer-default',
+                sku: 'RB-PRIMER-FULL',
+                option_name: 'Title',
+                option_value: 'Default Title',
+                price: '28.00',
+                currency: 'USD',
+                stock: 'In Stock',
+                product_url: 'https://rarebeauty.com/products/always-an-optimist-pore-diffusing-primer',
+                image_url: 'https://cdn.shopify.com/s/files/1/0314/1143/7703/products/Pore-Primer-SKU.jpg?v=1762270689',
+                image_urls: [
+                  'https://cdn.shopify.com/s/files/1/0314/1143/7703/products/Pore-Primer-SKU.jpg?v=1762270689',
+                  'https://cdn.shopify.com/s/files/1/0314/1143/7703/products/Pore-Primer-Open-SKU.jpg?v=1617149124',
+                  'https://cdn.shopify.com/s/files/1/0314/1143/7703/products/diffusing-primer-swatch-1440x1952_490e7974-aa56-4c60-8643-38edfc1538a9.jpg?v=1617149024',
+                  'https://www.rarebeauty.com/cdn/shop/files/GNAV-SU26-SHOP-ALL.png?v=1774669137',
+                  'https://www.rarebeauty.com/cdn/shop/products/ILLUMINATING-PRIMER-28ML-SKU-1_6ffb264a-d678-4a6d-85a8-fa2924d6fd0f.jpg?v=1762201378',
+                  'https://www.rarebeauty.com/cdn/shop/products/4-IN-1-MIST-SKU-1_c9988cd0-b4d3-4fb7-b9e2-5e3a36bf5d05.jpg?v=1762200384',
+                  'https://www.rarebeauty.com/cdn/shop/products/Setting-Powder-Light-SKU.jpg?v=1762276083',
+                  'https://www.rarebeauty.com/cdn/shop/products/Powder-Brush-SKU.jpg?v=1762276046',
+                  'https://www.rarebeauty.com/cdn/shop/products/Eyeshadow-Primer-SKU.jpg?v=1762270691',
+                  'https://www.rarebeauty.com/cdn/shop/files/PDP-imperfect-circle-primers.png?v=1616543294',
+                  'https://www.rarebeauty.com/cdn/shop/files/PDP-details-image-1268x1268-pore-primer.jpg?v=1617041406',
+                ],
+              },
+            ],
+          },
+        ],
+        variants: [],
+        diagnostics: {},
+      },
+      'https://rarebeauty.com/products/always-an-optimist-pore-diffusing-primer',
+    );
+
+    expect(payload.nextRow.seed_data.image_urls).toEqual([
+      'https://cdn.shopify.com/s/files/1/0314/1143/7703/products/Pore-Primer-SKU.jpg?v=1762270689',
+      'https://cdn.shopify.com/s/files/1/0314/1143/7703/products/Pore-Primer-Open-SKU.jpg?v=1617149124',
+      'https://cdn.shopify.com/s/files/1/0314/1143/7703/products/diffusing-primer-swatch-1440x1952_490e7974-aa56-4c60-8643-38edfc1538a9.jpg?v=1617149024',
+    ]);
+    expect(payload.nextRow.seed_data.content_image_urls).toEqual([
+      'https://www.rarebeauty.com/cdn/shop/files/PDP-imperfect-circle-primers.png?v=1616543294',
+      'https://www.rarebeauty.com/cdn/shop/files/PDP-details-image-1268x1268-pore-primer.jpg?v=1617041406',
+    ]);
   });
 
   test('preserves reviewed PDP content assets over thinner incoming extractor content', () => {

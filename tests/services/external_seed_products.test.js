@@ -149,6 +149,12 @@ describe('externalSeedProducts helper', () => {
             'https://cdn.shopify.com/s/files/1/0314/1143/7703/products/Pore-Primer-Travel-SKU.jpg?v=1762270689',
             'https://cdn.shopify.com/s/files/1/0314/1143/7703/products/Pore-Primer-Travel-Open-SKU.jpg?v=1617149001',
             'https://cdn.shopify.com/s/files/1/0314/1143/7703/products/diffusing-primer-swatch-1440x1952_490e7974-aa56-4c60-8643-38edfc1538a9.jpg?v=1617149024',
+            'https://www.rarebeauty.com/cdn/shop/files/GNAV-SU26-SHOP-ALL.png?v=1774669137',
+            'https://www.rarebeauty.com/cdn/shop/products/ILLUMINATING-PRIMER-28ML-SKU-1_6ffb264a-d678-4a6d-85a8-fa2924d6fd0f.jpg?v=1762201378',
+            'https://www.rarebeauty.com/cdn/shop/products/4-IN-1-MIST-SKU-1_c9988cd0-b4d3-4fb7-b9e2-5e3a36bf5d05.jpg?v=1762200384',
+            'https://www.rarebeauty.com/cdn/shop/products/Setting-Powder-Light-SKU.jpg?v=1762276083',
+            'https://www.rarebeauty.com/cdn/shop/products/Powder-Brush-SKU.jpg?v=1762276046',
+            'https://www.rarebeauty.com/cdn/shop/products/Eyeshadow-Primer-SKU.jpg?v=1762270691',
             'https://www.rarebeauty.com/cdn/shop/files/PDP-details-image-1268x1268-pore-primer_1024x.jpg?v=1617041406',
             'https://www.rarebeauty.com/cdn/shop/files/PDP-imperfect-circle-primers_1024x.png?v=1616543294',
           ],
@@ -169,6 +175,10 @@ describe('externalSeedProducts helper', () => {
       'https://cdn.shopify.com/s/files/1/0314/1143/7703/products/Pore-Primer-Travel-SKU.jpg?v=1762270689',
       'https://cdn.shopify.com/s/files/1/0314/1143/7703/products/Pore-Primer-Travel-Open-SKU.jpg?v=1617149001',
       'https://cdn.shopify.com/s/files/1/0314/1143/7703/products/diffusing-primer-swatch-1440x1952_490e7974-aa56-4c60-8643-38edfc1538a9.jpg?v=1617149024',
+    ]);
+    expect(product.content_image_urls).toEqual([
+      'https://www.rarebeauty.com/cdn/shop/files/PDP-details-image-1268x1268-pore-primer_1024x.jpg?v=1617041406',
+      'https://www.rarebeauty.com/cdn/shop/files/PDP-imperfect-circle-primers_1024x.png?v=1616543294',
     ]);
   });
 
