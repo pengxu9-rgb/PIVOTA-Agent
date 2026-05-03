@@ -3537,120 +3537,30 @@
     "external_review_batch": "manual_card_highlight_2026_04_11"
   },
   "live_ext_9439e878d2aeee1253d58349": {
-    "notes": "Curated seller-only rewrite to keep the vitamin C complex serum definition specific.",
-    "product_intel_core": {
-      "what_it_is": {
-        "headline": "Vitamin C complex serum",
-        "body": "A vitamin C complex serum with stabilized L-ascorbic acid, sodium ascorbyl phosphate, gold, and a bioactive fruit blend to defend against environmental stressors."
-      },
-      "best_for": [
-        {
-          "tag": "dullness",
-          "label": "Dullness and brightness routines",
-          "confidence": "moderate"
-        },
-        {
-          "tag": "antioxidant",
-          "label": "Antioxidant support",
-          "confidence": "moderate"
-        }
-      ],
-      "why_it_stands_out": [
-        {
-          "headline": "Multi-form vitamin C blend",
-          "body": "Pairs L-ascorbic acid with sodium ascorbyl phosphate for a layered vitamin C approach.",
-          "evidence_strength": "seller_grounded"
-        },
-        {
-          "headline": "Antioxidant defense focus",
-          "body": "Built around environmental stress defense rather than hydration-only benefits.",
-          "evidence_strength": "seller_grounded"
-        }
-      ],
-      "routine_fit": {
-        "step": "serum",
-        "am_pm": [
-          "am",
-          "pm"
-        ],
-        "pairing_notes": [
-          "Apply before moisturizer; use SPF in the morning."
-        ]
-      },
-      "watchouts": [
-        {
-          "type": "sensitivity",
-          "label": "Vitamin C can tingle on sensitive skin; introduce gradually.",
-          "severity": "medium"
-        }
-      ]
-    },
+    "notes": "Manual card rewrite to mirror the reviewed vitamin C complex serum claim on the jumbo size.",
     "shopping_card": {
-      "highlight": "Vitamin C complex + gold"
+      "subtitle": "Vitamin C serum",
+      "highlight": "Hydrates + helps smooth fine lines"
     },
     "search_card": {
-      "highlight_candidate": "Vitamin C complex + gold"
+      "compact_candidate": "Vitamin C serum",
+      "highlight_candidate": "Hydrates + helps smooth fine lines"
     },
     "external_highlight_review_status": "rewrite",
-    "external_review_batch": "manual_card_highlight_2026_04_11"
+    "external_review_batch": "manual_card_highlight_2026_04_12"
   },
   "product:ext_9439e878d2aeee1253d58349": {
-    "notes": "Curated seller-only rewrite to keep the vitamin C complex serum definition specific.",
-    "product_intel_core": {
-      "what_it_is": {
-        "headline": "Vitamin C complex serum",
-        "body": "A vitamin C complex serum with stabilized L-ascorbic acid, sodium ascorbyl phosphate, gold, and a bioactive fruit blend to defend against environmental stressors."
-      },
-      "best_for": [
-        {
-          "tag": "dullness",
-          "label": "Dullness and brightness routines",
-          "confidence": "moderate"
-        },
-        {
-          "tag": "antioxidant",
-          "label": "Antioxidant support",
-          "confidence": "moderate"
-        }
-      ],
-      "why_it_stands_out": [
-        {
-          "headline": "Multi-form vitamin C blend",
-          "body": "Pairs L-ascorbic acid with sodium ascorbyl phosphate for a layered vitamin C approach.",
-          "evidence_strength": "seller_grounded"
-        },
-        {
-          "headline": "Antioxidant defense focus",
-          "body": "Built around environmental stress defense rather than hydration-only benefits.",
-          "evidence_strength": "seller_grounded"
-        }
-      ],
-      "routine_fit": {
-        "step": "serum",
-        "am_pm": [
-          "am",
-          "pm"
-        ],
-        "pairing_notes": [
-          "Apply before moisturizer; use SPF in the morning."
-        ]
-      },
-      "watchouts": [
-        {
-          "type": "sensitivity",
-          "label": "Vitamin C can tingle on sensitive skin; introduce gradually.",
-          "severity": "medium"
-        }
-      ]
-    },
+    "notes": "Manual card rewrite to mirror the reviewed vitamin C complex serum claim on the jumbo size.",
     "shopping_card": {
-      "highlight": "Vitamin C complex + gold"
+      "subtitle": "Vitamin C serum",
+      "highlight": "Hydrates + helps smooth fine lines"
     },
     "search_card": {
-      "highlight_candidate": "Vitamin C complex + gold"
+      "compact_candidate": "Vitamin C serum",
+      "highlight_candidate": "Hydrates + helps smooth fine lines"
     },
     "external_highlight_review_status": "rewrite",
-    "external_review_batch": "manual_card_highlight_2026_04_11"
+    "external_review_batch": "manual_card_highlight_2026_04_12"
   },
   "live_ext_52c7476656e90582b822057d": {
     "notes": "Curated seller-only rewrite to keep the clear lip balm definition concise.",
@@ -4243,122 +4153,30 @@
     "external_review_batch": "manual_card_highlight_2026_04_11"
   },
   "live_ext_cce83890a7e09f4db0506e43": {
-    "notes": "Curated seller-only rewrite for travel-size vitamin C complex serum.",
-    "product_intel_core": {
-      "what_it_is": {
-        "headline": "Travel vitamin C serum",
-        "body": "Travel-size serum with stabilized l-ascorbic acid, sodium ascorbyl phosphate, and a bioactive fruit blend."
-      },
-      "best_for": [
-        {
-          "tag": "dullness",
-          "label": "Dullness-focused routines",
-          "confidence": "moderate"
-        },
-        {
-          "tag": "environmental_stress",
-          "label": "Exposure to environmental stressors",
-          "confidence": "moderate"
-        },
-        {
-          "tag": "travel_routines",
-          "label": "Travel-size routines",
-          "confidence": "moderate"
-        }
-      ],
-      "why_it_stands_out": [
-        {
-          "headline": "Stabilized vitamin C complex",
-          "body": "Uses a stabilized l-ascorbic acid complex plus sodium ascorbyl phosphate.",
-          "evidence_strength": "seller_grounded"
-        },
-        {
-          "headline": "Small size for travel",
-          "body": "Small size keeps the vitamin C step easy to pack.",
-          "evidence_strength": "seller_grounded"
-        }
-      ],
-      "routine_fit": {
-        "step": "serum",
-        "am_pm": [
-          "am",
-          "pm"
-        ],
-        "pairing_notes": [
-          "Apply before moisturizer in the serum step."
-        ]
-      },
-      "watchouts": []
-    },
+    "notes": "Manual card rewrite to mirror the reviewed vitamin C complex serum claim on the travel size.",
     "shopping_card": {
-      "highlight": "Travel vitamin C complex",
-      "intro": "Travel-size vitamin C complex serum for antioxidant tone care."
+      "subtitle": "Vitamin C serum",
+      "highlight": "Hydrates + helps smooth fine lines"
     },
     "search_card": {
-      "highlight_candidate": "Travel vitamin C complex",
-      "intro_candidate": "Travel-size vitamin C complex serum for antioxidant tone care."
+      "compact_candidate": "Vitamin C serum",
+      "highlight_candidate": "Hydrates + helps smooth fine lines"
     },
     "external_highlight_review_status": "rewrite",
-    "external_review_batch": "manual_card_highlight_2026_04_11"
+    "external_review_batch": "manual_card_highlight_2026_04_12"
   },
   "product:ext_cce83890a7e09f4db0506e43": {
-    "notes": "Curated seller-only rewrite for travel-size vitamin C complex serum.",
-    "product_intel_core": {
-      "what_it_is": {
-        "headline": "Travel vitamin C serum",
-        "body": "Travel-size serum with stabilized l-ascorbic acid, sodium ascorbyl phosphate, and a bioactive fruit blend."
-      },
-      "best_for": [
-        {
-          "tag": "dullness",
-          "label": "Dullness-focused routines",
-          "confidence": "moderate"
-        },
-        {
-          "tag": "environmental_stress",
-          "label": "Exposure to environmental stressors",
-          "confidence": "moderate"
-        },
-        {
-          "tag": "travel_routines",
-          "label": "Travel-size routines",
-          "confidence": "moderate"
-        }
-      ],
-      "why_it_stands_out": [
-        {
-          "headline": "Stabilized vitamin C complex",
-          "body": "Uses a stabilized l-ascorbic acid complex plus sodium ascorbyl phosphate.",
-          "evidence_strength": "seller_grounded"
-        },
-        {
-          "headline": "Small size for travel",
-          "body": "Small size keeps the vitamin C step easy to pack.",
-          "evidence_strength": "seller_grounded"
-        }
-      ],
-      "routine_fit": {
-        "step": "serum",
-        "am_pm": [
-          "am",
-          "pm"
-        ],
-        "pairing_notes": [
-          "Apply before moisturizer in the serum step."
-        ]
-      },
-      "watchouts": []
-    },
+    "notes": "Manual card rewrite to mirror the reviewed vitamin C complex serum claim on the travel size.",
     "shopping_card": {
-      "highlight": "Travel vitamin C complex",
-      "intro": "Travel-size vitamin C complex serum for antioxidant tone care."
+      "subtitle": "Vitamin C serum",
+      "highlight": "Hydrates + helps smooth fine lines"
     },
     "search_card": {
-      "highlight_candidate": "Travel vitamin C complex",
-      "intro_candidate": "Travel-size vitamin C complex serum for antioxidant tone care."
+      "compact_candidate": "Vitamin C serum",
+      "highlight_candidate": "Hydrates + helps smooth fine lines"
     },
     "external_highlight_review_status": "rewrite",
-    "external_review_batch": "manual_card_highlight_2026_04_11"
+    "external_review_batch": "manual_card_highlight_2026_04_12"
   },
   "live_ext_31ad3a5f171d07a9c239b0b3": {
     "notes": "Curated seller-only rewrite for iridescent shimmer lip balm definition.",
@@ -6253,102 +6071,30 @@
     "external_review_batch": "manual_expand13_placeholder_fix_2026_04_11"
   },
   "live_ext_f05ee8486a8bbfb21950629a": {
-    "notes": "Curated seller-only rewrite to replace placeholder copy for vitamin C body wash.",
-    "product_intel_core": {
-      "what_it_is": {
-        "headline": "Vitamin C body wash",
-        "body": "A body wash built around vitamin C for a brighter-leaning body cleanse."
-      },
-      "best_for": [
-        {
-          "tag": "body_cleansing",
-          "label": "Daily body cleansing",
-          "confidence": "moderate"
-        },
-        {
-          "tag": "brightening_bodycare",
-          "label": "Brightening body-care routines",
-          "confidence": "moderate"
-        }
-      ],
-      "why_it_stands_out": [
-        {
-          "headline": "Vitamin C body-care angle",
-          "body": "Pushes vitamin C as the main reason to choose this wash over a basic body cleanser.",
-          "evidence_strength": "seller_grounded"
-        }
-      ],
-      "routine_fit": {
-        "step": "cleanser",
-        "am_pm": [
-          "am",
-          "pm"
-        ],
-        "pairing_notes": [
-          "Use in shower, then follow with body moisturizer."
-        ]
-      },
-      "watchouts": []
-    },
+    "notes": "Manual card rewrite to replace the generic body-wash wording with the seller-grounded dullness and smoother-skin brightening claim.",
     "shopping_card": {
-      "highlight": "Vitamin C body cleanse",
-      "intro": "Body wash with a vitamin C brightening angle."
+      "subtitle": "Vitamin C body wash",
+      "highlight": "Dullness + smoother body skin"
     },
     "search_card": {
-      "highlight_candidate": "Vitamin C body cleanse",
-      "intro_candidate": "Body wash with a vitamin C brightening angle."
+      "compact_candidate": "Vitamin C body wash",
+      "highlight_candidate": "Dullness + smoother body skin"
     },
     "external_highlight_review_status": "rewrite",
-    "external_review_batch": "manual_expand14_placeholder_fix_2026_04_11"
+    "external_review_batch": "manual_card_highlight_2026_04_12"
   },
   "product:ext_f05ee8486a8bbfb21950629a": {
-    "notes": "Curated seller-only rewrite to replace placeholder copy for vitamin C body wash.",
-    "product_intel_core": {
-      "what_it_is": {
-        "headline": "Vitamin C body wash",
-        "body": "A body wash built around vitamin C for a brighter-leaning body cleanse."
-      },
-      "best_for": [
-        {
-          "tag": "body_cleansing",
-          "label": "Daily body cleansing",
-          "confidence": "moderate"
-        },
-        {
-          "tag": "brightening_bodycare",
-          "label": "Brightening body-care routines",
-          "confidence": "moderate"
-        }
-      ],
-      "why_it_stands_out": [
-        {
-          "headline": "Vitamin C body-care angle",
-          "body": "Pushes vitamin C as the main reason to choose this wash over a basic body cleanser.",
-          "evidence_strength": "seller_grounded"
-        }
-      ],
-      "routine_fit": {
-        "step": "cleanser",
-        "am_pm": [
-          "am",
-          "pm"
-        ],
-        "pairing_notes": [
-          "Use in shower, then follow with body moisturizer."
-        ]
-      },
-      "watchouts": []
-    },
+    "notes": "Manual card rewrite to replace the generic body-wash wording with the seller-grounded dullness and smoother-skin brightening claim.",
     "shopping_card": {
-      "highlight": "Vitamin C body cleanse",
-      "intro": "Body wash with a vitamin C brightening angle."
+      "subtitle": "Vitamin C body wash",
+      "highlight": "Dullness + smoother body skin"
     },
     "search_card": {
-      "highlight_candidate": "Vitamin C body cleanse",
-      "intro_candidate": "Body wash with a vitamin C brightening angle."
+      "compact_candidate": "Vitamin C body wash",
+      "highlight_candidate": "Dullness + smoother body skin"
     },
     "external_highlight_review_status": "rewrite",
-    "external_review_batch": "manual_expand14_placeholder_fix_2026_04_11"
+    "external_review_batch": "manual_card_highlight_2026_04_12"
   },
   "live_ext_81cf6a2606e28e7359c11c79": {
     "notes": "Curated seller-only rewrite to replace placeholder copy for glycolic acid body lotion.",
@@ -40968,32 +40714,6 @@
     "external_highlight_review_status": "rewrite",
     "external_review_batch": "manual_card_highlight_2026_04_12"
   },
-  "live_ext_f05ee8486a8bbfb21950629a": {
-    "notes": "Manual card rewrite to replace the generic body-wash wording with the seller-grounded dullness and smoother-skin brightening claim.",
-    "shopping_card": {
-      "subtitle": "Vitamin C body wash",
-      "highlight": "Dullness + smoother body skin"
-    },
-    "search_card": {
-      "compact_candidate": "Vitamin C body wash",
-      "highlight_candidate": "Dullness + smoother body skin"
-    },
-    "external_highlight_review_status": "rewrite",
-    "external_review_batch": "manual_card_highlight_2026_04_12"
-  },
-  "product:ext_f05ee8486a8bbfb21950629a": {
-    "notes": "Manual card rewrite to replace the generic body-wash wording with the seller-grounded dullness and smoother-skin brightening claim.",
-    "shopping_card": {
-      "subtitle": "Vitamin C body wash",
-      "highlight": "Dullness + smoother body skin"
-    },
-    "search_card": {
-      "compact_candidate": "Vitamin C body wash",
-      "highlight_candidate": "Dullness + smoother body skin"
-    },
-    "external_highlight_review_status": "rewrite",
-    "external_review_batch": "manual_card_highlight_2026_04_12"
-  },
   "live_ext_6b285dcba0956c44365121ae": {
     "notes": "Manual card rewrite to replace the generic vitamin C complex label with the seller-grounded hydration and fine-line support claim.",
     "shopping_card": {
@@ -41009,58 +40729,6 @@
   },
   "product:ext_6b285dcba0956c44365121ae": {
     "notes": "Manual card rewrite to replace the generic vitamin C complex label with the seller-grounded hydration and fine-line support claim.",
-    "shopping_card": {
-      "subtitle": "Vitamin C serum",
-      "highlight": "Hydrates + helps smooth fine lines"
-    },
-    "search_card": {
-      "compact_candidate": "Vitamin C serum",
-      "highlight_candidate": "Hydrates + helps smooth fine lines"
-    },
-    "external_highlight_review_status": "rewrite",
-    "external_review_batch": "manual_card_highlight_2026_04_12"
-  },
-  "live_ext_9439e878d2aeee1253d58349": {
-    "notes": "Manual card rewrite to mirror the reviewed vitamin C complex serum claim on the jumbo size.",
-    "shopping_card": {
-      "subtitle": "Vitamin C serum",
-      "highlight": "Hydrates + helps smooth fine lines"
-    },
-    "search_card": {
-      "compact_candidate": "Vitamin C serum",
-      "highlight_candidate": "Hydrates + helps smooth fine lines"
-    },
-    "external_highlight_review_status": "rewrite",
-    "external_review_batch": "manual_card_highlight_2026_04_12"
-  },
-  "product:ext_9439e878d2aeee1253d58349": {
-    "notes": "Manual card rewrite to mirror the reviewed vitamin C complex serum claim on the jumbo size.",
-    "shopping_card": {
-      "subtitle": "Vitamin C serum",
-      "highlight": "Hydrates + helps smooth fine lines"
-    },
-    "search_card": {
-      "compact_candidate": "Vitamin C serum",
-      "highlight_candidate": "Hydrates + helps smooth fine lines"
-    },
-    "external_highlight_review_status": "rewrite",
-    "external_review_batch": "manual_card_highlight_2026_04_12"
-  },
-  "live_ext_cce83890a7e09f4db0506e43": {
-    "notes": "Manual card rewrite to mirror the reviewed vitamin C complex serum claim on the travel size.",
-    "shopping_card": {
-      "subtitle": "Vitamin C serum",
-      "highlight": "Hydrates + helps smooth fine lines"
-    },
-    "search_card": {
-      "compact_candidate": "Vitamin C serum",
-      "highlight_candidate": "Hydrates + helps smooth fine lines"
-    },
-    "external_highlight_review_status": "rewrite",
-    "external_review_batch": "manual_card_highlight_2026_04_12"
-  },
-  "product:ext_cce83890a7e09f4db0506e43": {
-    "notes": "Manual card rewrite to mirror the reviewed vitamin C complex serum claim on the travel size.",
     "shopping_card": {
       "subtitle": "Vitamin C serum",
       "highlight": "Hydrates + helps smooth fine lines"
@@ -41959,5 +41627,409 @@
     "reviewed_at": "2026-05-03T06:10:00Z",
     "external_highlight_review_status": "rewrite",
     "external_review_batch": "non_merge_manual_review_2026_05_03"
+  },
+  "live_ext_79bca27423e4840cc4cc4e93": {
+    "notes": "Manual addition: classify as a brightening capsule serum centered on vitamin C and niacinamide. Keep claims conservative and routine-grounded.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Brightening capsule serum",
+        "body": "A brightening serum built around vitamin C and niacinamide, positioned for daily tone-evening support in a lighter serum step rather than a cream or mask format."
+      },
+      "best_for": [
+        {
+          "tag": "uneven_tone",
+          "label": "Uneven tone",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "daily_brightening_serum",
+          "label": "Daily brightening serum step",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Vitamin C plus niacinamide direction",
+          "body": "The product is framed around a familiar brightening pairing, which makes it easier to slot into tone-focused routines than a generic hydrating serum.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Serum-first format",
+          "body": "Its capsule-serum positioning keeps it in the treatment layer of a routine rather than behaving like a richer moisturizer step.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "serum",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Apply after toner and before moisturizer.",
+          "Use sunscreen in the morning when pairing with tone-evening actives."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "sensitivity",
+          "label": "If your skin is reactive to vitamin C or multiple active layers, start slowly and buffer with a simpler routine.",
+          "severity": "medium"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "Light serum",
+      "finish": "Fresh finish"
+    },
+    "shopping_card": {
+      "highlight": "Brightening vitamin C + niacinamide serum for uneven tone."
+    },
+    "search_card": {
+      "highlight_candidate": "Brightening vitamin C + niacinamide serum for uneven tone"
+    },
+    "review_status": "completed",
+    "review_decision": "approved",
+    "reviewer": "codex_manual_override",
+    "reviewer_kind": "employee",
+    "reviewed_at": "2026-05-03T22:00:00Z",
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "non_merge_manual_review_2026_05_03_medicube"
+  },
+  "product:ext_79bca27423e4840cc4cc4e93": {
+    "notes": "Manual addition: classify as a brightening capsule serum centered on vitamin C and niacinamide. Keep claims conservative and routine-grounded.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Brightening capsule serum",
+        "body": "A brightening serum built around vitamin C and niacinamide, positioned for daily tone-evening support in a lighter serum step rather than a cream or mask format."
+      },
+      "best_for": [
+        {
+          "tag": "uneven_tone",
+          "label": "Uneven tone",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "daily_brightening_serum",
+          "label": "Daily brightening serum step",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Vitamin C plus niacinamide direction",
+          "body": "The product is framed around a familiar brightening pairing, which makes it easier to slot into tone-focused routines than a generic hydrating serum.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Serum-first format",
+          "body": "Its capsule-serum positioning keeps it in the treatment layer of a routine rather than behaving like a richer moisturizer step.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "serum",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Apply after toner and before moisturizer.",
+          "Use sunscreen in the morning when pairing with tone-evening actives."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "sensitivity",
+          "label": "If your skin is reactive to vitamin C or multiple active layers, start slowly and buffer with a simpler routine.",
+          "severity": "medium"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "Light serum",
+      "finish": "Fresh finish"
+    },
+    "shopping_card": {
+      "highlight": "Brightening vitamin C + niacinamide serum for uneven tone."
+    },
+    "search_card": {
+      "highlight_candidate": "Brightening vitamin C + niacinamide serum for uneven tone"
+    },
+    "review_status": "completed",
+    "review_decision": "approved",
+    "reviewer": "codex_manual_override",
+    "reviewer_kind": "employee",
+    "reviewed_at": "2026-05-03T22:00:00Z",
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "non_merge_manual_review_2026_05_03_medicube"
+  },
+  "live_ext_9d97b1e55b4bfb6c13e71289": {
+    "notes": "Manual addition: classify as a peptide radiance mask and keep it as a short-wear treatment step, not a leave-on cream.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Radiance treatment mask",
+        "body": "A peptide-led treatment mask positioned for short-wear conditioning and glow support, sitting closer to a targeted mask step than an everyday leave-on moisturizer."
+      },
+      "best_for": [
+        {
+          "tag": "quick_radiance_boost",
+          "label": "Quick radiance boost",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "mask_step",
+          "label": "Dedicated mask step",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Mask-first positioning",
+          "body": "The format is best understood as an intermittent treatment layer for extra conditioning rather than something that replaces a daily serum or cream.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Peptide and glow framing",
+          "body": "Its value is tied to a smoother, more radiant post-mask finish instead of a long list of aggressive treatment claims.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "mask",
+        "am_pm": [
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use after cleansing and toner, then follow with the rest of your routine if needed.",
+          "Best used as an occasional treatment step rather than a daily replacement for core hydration."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "usage_pattern",
+          "label": "Mask benefits tend to be more situational and short-term than a consistent daily leave-on product.",
+          "severity": "medium"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "Essence-soaked mask",
+      "finish": "Conditioned glow"
+    },
+    "shopping_card": {
+      "highlight": "Peptide-led radiance mask for a quick conditioning boost."
+    },
+    "search_card": {
+      "highlight_candidate": "Peptide-led radiance mask for a quick conditioning boost"
+    },
+    "review_status": "completed",
+    "review_decision": "approved",
+    "reviewer": "codex_manual_override",
+    "reviewer_kind": "employee",
+    "reviewed_at": "2026-05-03T22:00:00Z",
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "non_merge_manual_review_2026_05_03_medicube"
+  },
+  "product:ext_9d97b1e55b4bfb6c13e71289": {
+    "notes": "Manual addition: classify as a peptide radiance mask and keep it as a short-wear treatment step, not a leave-on cream.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Radiance treatment mask",
+        "body": "A peptide-led treatment mask positioned for short-wear conditioning and glow support, sitting closer to a targeted mask step than an everyday leave-on moisturizer."
+      },
+      "best_for": [
+        {
+          "tag": "quick_radiance_boost",
+          "label": "Quick radiance boost",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "mask_step",
+          "label": "Dedicated mask step",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Mask-first positioning",
+          "body": "The format is best understood as an intermittent treatment layer for extra conditioning rather than something that replaces a daily serum or cream.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Peptide and glow framing",
+          "body": "Its value is tied to a smoother, more radiant post-mask finish instead of a long list of aggressive treatment claims.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "mask",
+        "am_pm": [
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use after cleansing and toner, then follow with the rest of your routine if needed.",
+          "Best used as an occasional treatment step rather than a daily replacement for core hydration."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "usage_pattern",
+          "label": "Mask benefits tend to be more situational and short-term than a consistent daily leave-on product.",
+          "severity": "medium"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "Essence-soaked mask",
+      "finish": "Conditioned glow"
+    },
+    "shopping_card": {
+      "highlight": "Peptide-led radiance mask for a quick conditioning boost."
+    },
+    "search_card": {
+      "highlight_candidate": "Peptide-led radiance mask for a quick conditioning boost"
+    },
+    "review_status": "completed",
+    "review_decision": "approved",
+    "reviewer": "codex_manual_override",
+    "reviewer_kind": "employee",
+    "reviewed_at": "2026-05-03T22:00:00Z",
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "non_merge_manual_review_2026_05_03_medicube"
+  },
+  "live_ext_59522af9624198656cc8881b": {
+    "notes": "Manual addition: classify as an exfoliating cleansing treatment and avoid presenting it as a leave-on serum.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Exfoliating cleansing treatment",
+        "body": "A succinic-acid-led cleansing treatment positioned for congestion-prone routines, sitting closer to an exfoliating wash step than a leave-on serum despite the booster-serum naming."
+      },
+      "best_for": [
+        {
+          "tag": "congestion_prone",
+          "label": "Congestion-prone skin",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "periodic_exfoliating_cleanse",
+          "label": "Periodic exfoliating cleanse",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Cleansing-first format",
+          "body": "The product reads as a stronger reset step within cleansing rather than a lightweight treatment serum you would leave on under moisturizer.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Acid-forward positioning",
+          "body": "Its appeal is tied to a more targeted resurfacing and pore-reset story than to a comfort-first daily cleanser.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "cleanser",
+        "am_pm": [
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use as directed in place of a regular cleanse when you want a stronger reset step.",
+          "Follow with calmer hydrating layers and avoid stacking with multiple exfoliating products in the same routine."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "sensitivity",
+          "label": "This style of acid-led cleansing treatment can feel too strong for reactive or already-compromised skin.",
+          "severity": "high"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "Treatment cleanser",
+      "finish": "Rinse-off reset finish"
+    },
+    "shopping_card": {
+      "highlight": "Succinic-acid cleansing treatment for congestion-prone routines."
+    },
+    "search_card": {
+      "highlight_candidate": "Succinic-acid cleansing treatment for congestion-prone routines"
+    },
+    "review_status": "completed",
+    "review_decision": "approved",
+    "reviewer": "codex_manual_override",
+    "reviewer_kind": "employee",
+    "reviewed_at": "2026-05-03T22:00:00Z",
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "non_merge_manual_review_2026_05_03_medicube"
+  },
+  "product:ext_59522af9624198656cc8881b": {
+    "notes": "Manual addition: classify as an exfoliating cleansing treatment and avoid presenting it as a leave-on serum.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Exfoliating cleansing treatment",
+        "body": "A succinic-acid-led cleansing treatment positioned for congestion-prone routines, sitting closer to an exfoliating wash step than a leave-on serum despite the booster-serum naming."
+      },
+      "best_for": [
+        {
+          "tag": "congestion_prone",
+          "label": "Congestion-prone skin",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "periodic_exfoliating_cleanse",
+          "label": "Periodic exfoliating cleanse",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Cleansing-first format",
+          "body": "The product reads as a stronger reset step within cleansing rather than a lightweight treatment serum you would leave on under moisturizer.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Acid-forward positioning",
+          "body": "Its appeal is tied to a more targeted resurfacing and pore-reset story than to a comfort-first daily cleanser.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "cleanser",
+        "am_pm": [
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use as directed in place of a regular cleanse when you want a stronger reset step.",
+          "Follow with calmer hydrating layers and avoid stacking with multiple exfoliating products in the same routine."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "sensitivity",
+          "label": "This style of acid-led cleansing treatment can feel too strong for reactive or already-compromised skin.",
+          "severity": "high"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "Treatment cleanser",
+      "finish": "Rinse-off reset finish"
+    },
+    "shopping_card": {
+      "highlight": "Succinic-acid cleansing treatment for congestion-prone routines."
+    },
+    "search_card": {
+      "highlight_candidate": "Succinic-acid cleansing treatment for congestion-prone routines"
+    },
+    "review_status": "completed",
+    "review_decision": "approved",
+    "reviewer": "codex_manual_override",
+    "reviewer_kind": "employee",
+    "reviewed_at": "2026-05-03T22:00:00Z",
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "non_merge_manual_review_2026_05_03_medicube"
   }
 }
