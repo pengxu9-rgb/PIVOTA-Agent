@@ -41557,5 +41557,407 @@
     "reviewed_at": "2026-05-02T08:00:00Z",
     "external_highlight_review_status": "rewrite",
     "external_review_batch": "non_merge_manual_review_2026_05_02"
+  },
+  "live_ext_0804bdeeca7fbf3f983c79f8": {
+    "notes": "Manual correction: classify as a balancing toner for oily or blemish-prone routines, not a generic hydrating toner. Keep claims conservative and grounded in seller/formula evidence.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Balancing toner",
+        "body": "A balancing toner positioned for oily or blemish-prone skin, combining light humectant hydration with a tea-tree-led calming profile for post-cleanse prep without a heavy feel."
+      },
+      "best_for": [
+        {
+          "tag": "blemish_prone_skin",
+          "label": "Oily or blemish-prone skin",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "lightweight_toner_prep",
+          "label": "Lightweight post-cleanse prep",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Tea-tree balancing direction",
+          "body": "The seller positioning leans into tea-tree and calming botanical support rather than presenting the toner as a purely cushioning hydration step.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Lighter layering step",
+          "body": "It is designed to slot in after cleansing and before serums or moisturizers when you want a fresher, less emollient prep layer.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "toner",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Apply after cleansing and follow with serum or moisturizer.",
+          "If your skin feels very dry, layer a more cushioning hydrating step on top."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "hydration_level",
+          "label": "The lighter watery texture may feel too minimal if your skin needs a more cushioning toner step.",
+          "severity": "medium"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "Watery toner",
+      "finish": "Fresh, low-residue finish"
+    },
+    "shopping_card": {
+      "highlight": "Balancing toner for oily or blemish-prone skin."
+    },
+    "search_card": {
+      "highlight_candidate": "Balancing toner for oily or blemish-prone skin"
+    },
+    "review_status": "completed",
+    "review_decision": "approved",
+    "reviewer": "codex_manual_override",
+    "reviewer_kind": "employee",
+    "reviewed_at": "2026-05-03T06:10:00Z",
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "non_merge_manual_review_2026_05_03"
+  },
+  "product:ext_0804bdeeca7fbf3f983c79f8": {
+    "notes": "Manual correction: classify as a balancing toner for oily or blemish-prone routines, not a generic hydrating toner. Keep claims conservative and grounded in seller/formula evidence.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Balancing toner",
+        "body": "A balancing toner positioned for oily or blemish-prone skin, combining light humectant hydration with a tea-tree-led calming profile for post-cleanse prep without a heavy feel."
+      },
+      "best_for": [
+        {
+          "tag": "blemish_prone_skin",
+          "label": "Oily or blemish-prone skin",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "lightweight_toner_prep",
+          "label": "Lightweight post-cleanse prep",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Tea-tree balancing direction",
+          "body": "The seller positioning leans into tea-tree and calming botanical support rather than presenting the toner as a purely cushioning hydration step.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Lighter layering step",
+          "body": "It is designed to slot in after cleansing and before serums or moisturizers when you want a fresher, less emollient prep layer.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "toner",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Apply after cleansing and follow with serum or moisturizer.",
+          "If your skin feels very dry, layer a more cushioning hydrating step on top."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "hydration_level",
+          "label": "The lighter watery texture may feel too minimal if your skin needs a more cushioning toner step.",
+          "severity": "medium"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "Watery toner",
+      "finish": "Fresh, low-residue finish"
+    },
+    "shopping_card": {
+      "highlight": "Balancing toner for oily or blemish-prone skin."
+    },
+    "search_card": {
+      "highlight_candidate": "Balancing toner for oily or blemish-prone skin"
+    },
+    "review_status": "completed",
+    "review_decision": "approved",
+    "reviewer": "codex_manual_override",
+    "reviewer_kind": "employee",
+    "reviewed_at": "2026-05-03T06:10:00Z",
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "non_merge_manual_review_2026_05_03"
+  },
+  "live_ext_0c0b60135d1adb8132ecc62a": {
+    "notes": "Manual correction: classify as a barrier-support cream, not a generic daily moisturizer. Keep the claim set conservative because source support is seller-plus-formula only.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Barrier-support cream",
+        "body": "A calming face cream built around centella-derived soothing support plus niacinamide and panthenol to help replenish comfort and support a stressed skin barrier."
+      },
+      "best_for": [
+        {
+          "tag": "barrier_support",
+          "label": "Sensitized or redness-prone skin",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "daily_barrier_moisture",
+          "label": "Daily barrier-support moisture",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Centella/TECA calming emphasis",
+          "body": "The formula story is built around calming, post-irritation support rather than only basic hydration, which gives it a more recovery-oriented position.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Cream step for comfort",
+          "body": "It is positioned as the sealing cream step after serums or treatments when you want a more supportive finish than a light gel.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "moisturizer",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Apply after serum or treatment steps; use sunscreen afterward in the morning."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "finish",
+          "label": "The more supportive cream finish may feel richer than users who prefer a very light gel moisturizer expect.",
+          "severity": "medium"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "Comforting cream",
+      "finish": "Soft, cushioned finish"
+    },
+    "shopping_card": {
+      "highlight": "Barrier-support cream for sensitive, redness-prone skin."
+    },
+    "search_card": {
+      "highlight_candidate": "Barrier-support cream for sensitive, redness-prone skin"
+    },
+    "review_status": "completed",
+    "review_decision": "approved",
+    "reviewer": "codex_manual_override",
+    "reviewer_kind": "employee",
+    "reviewed_at": "2026-05-03T06:10:00Z",
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "non_merge_manual_review_2026_05_03"
+  },
+  "product:ext_0c0b60135d1adb8132ecc62a": {
+    "notes": "Manual correction: classify as a barrier-support cream, not a generic daily moisturizer. Keep the claim set conservative because source support is seller-plus-formula only.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Barrier-support cream",
+        "body": "A calming face cream built around centella-derived soothing support plus niacinamide and panthenol to help replenish comfort and support a stressed skin barrier."
+      },
+      "best_for": [
+        {
+          "tag": "barrier_support",
+          "label": "Sensitized or redness-prone skin",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "daily_barrier_moisture",
+          "label": "Daily barrier-support moisture",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Centella/TECA calming emphasis",
+          "body": "The formula story is built around calming, post-irritation support rather than only basic hydration, which gives it a more recovery-oriented position.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Cream step for comfort",
+          "body": "It is positioned as the sealing cream step after serums or treatments when you want a more supportive finish than a light gel.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "moisturizer",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Apply after serum or treatment steps; use sunscreen afterward in the morning."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "finish",
+          "label": "The more supportive cream finish may feel richer than users who prefer a very light gel moisturizer expect.",
+          "severity": "medium"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "Comforting cream",
+      "finish": "Soft, cushioned finish"
+    },
+    "shopping_card": {
+      "highlight": "Barrier-support cream for sensitive, redness-prone skin."
+    },
+    "search_card": {
+      "highlight_candidate": "Barrier-support cream for sensitive, redness-prone skin"
+    },
+    "review_status": "completed",
+    "review_decision": "approved",
+    "reviewer": "codex_manual_override",
+    "reviewer_kind": "employee",
+    "reviewed_at": "2026-05-03T06:10:00Z",
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "non_merge_manual_review_2026_05_03"
+  },
+  "live_ext_4e8c76f135dacc76b2653045": {
+    "notes": "Manual correction: classify as a pore-smoothing primer and keep the positioning firmly in makeup prep rather than skincare treatment.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Pore-smoothing primer",
+        "body": "A pore-focused makeup primer meant to smooth the look of texture before complexion products and create a more even, makeup-ready base."
+      },
+      "best_for": [
+        {
+          "tag": "makeup_prep",
+          "label": "Makeup prep",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "soft_focus_finish",
+          "label": "Smoother-looking texture under makeup",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Prep-first positioning",
+          "body": "The product is designed to sit immediately before makeup rather than behaving like a leave-on treatment step.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Texture-smoothing focus",
+          "body": "Its value is tied more to a softer-focus, more even base for complexion products than to long-term skin treatment claims.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "primer",
+        "am_pm": [
+          "am"
+        ],
+        "pairing_notes": [
+          "Apply after skincare and sunscreen, then layer complexion makeup on top."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "finish",
+          "label": "If you want a more radiant primer finish, this reads as more smoothing and soft-focus than glowy.",
+          "severity": "medium"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "Silky primer",
+      "finish": "Soft-focus finish"
+    },
+    "shopping_card": {
+      "highlight": "Pore-smoothing primer for a softer-focus makeup base."
+    },
+    "search_card": {
+      "highlight_candidate": "Pore-smoothing primer for a softer-focus makeup base"
+    },
+    "review_status": "completed",
+    "review_decision": "approved",
+    "reviewer": "codex_manual_override",
+    "reviewer_kind": "employee",
+    "reviewed_at": "2026-05-03T06:10:00Z",
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "non_merge_manual_review_2026_05_03"
+  },
+  "product:ext_4e8c76f135dacc76b2653045": {
+    "notes": "Manual correction: classify as a pore-smoothing primer and keep the positioning firmly in makeup prep rather than skincare treatment.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Pore-smoothing primer",
+        "body": "A pore-focused makeup primer meant to smooth the look of texture before complexion products and create a more even, makeup-ready base."
+      },
+      "best_for": [
+        {
+          "tag": "makeup_prep",
+          "label": "Makeup prep",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "soft_focus_finish",
+          "label": "Smoother-looking texture under makeup",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Prep-first positioning",
+          "body": "The product is designed to sit immediately before makeup rather than behaving like a leave-on treatment step.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Texture-smoothing focus",
+          "body": "Its value is tied more to a softer-focus, more even base for complexion products than to long-term skin treatment claims.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "primer",
+        "am_pm": [
+          "am"
+        ],
+        "pairing_notes": [
+          "Apply after skincare and sunscreen, then layer complexion makeup on top."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "finish",
+          "label": "If you want a more radiant primer finish, this reads as more smoothing and soft-focus than glowy.",
+          "severity": "medium"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "Silky primer",
+      "finish": "Soft-focus finish"
+    },
+    "shopping_card": {
+      "highlight": "Pore-smoothing primer for a softer-focus makeup base."
+    },
+    "search_card": {
+      "highlight_candidate": "Pore-smoothing primer for a softer-focus makeup base"
+    },
+    "review_status": "completed",
+    "review_decision": "approved",
+    "reviewer": "codex_manual_override",
+    "reviewer_kind": "employee",
+    "reviewed_at": "2026-05-03T06:10:00Z",
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "non_merge_manual_review_2026_05_03"
   }
 }
