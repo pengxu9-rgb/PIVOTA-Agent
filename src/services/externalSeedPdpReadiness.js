@@ -176,8 +176,10 @@ const VARIANT_IDENTITY_OPTION_NAMES = new Set([
 ]);
 const GENERIC_VARIANT_AXIS_NAMES = new Set(['option', 'variant', 'selection']);
 const VARIANT_SIZE_EVIDENCE_RE = /\b\d+(?:\.\d+)?\s*(ml|m l|g|kg|oz|fl\.?\s*oz\.?|fluid\s*ounces?|l|lb|lbs|mm|cm)\b/i;
+const NAMED_VARIANT_SIZE_EVIDENCE_RE = /\b(full size|travel size|jumbo|mini|refill|regular|standard|one size)\b/i;
 const SHADE_AXIS_NAMES = new Set(['shade', 'color', 'colour', 'tone', 'hue']);
 const LOCALE_LIKE_VARIANT_VALUES = new Set(['us', 'usa', 'uk', 'eu', 'fr', 'de', 'es', 'it', 'ca', 'au', 'jp', 'kr', 'cn']);
+const DEFAULT_TITLE_AXIS_VALUES = new Set(['default', 'default title']);
 
 function normalizedTerm(value) {
   return lowerText(value).replace(/[^a-z0-9]+/g, ' ').trim();
@@ -590,15 +592,24 @@ function collectVariantSizeEvidence(row) {
     .map(stripHtml)
     .filter(Boolean);
   const evidence = parts.find((part) => VARIANT_SIZE_EVIDENCE_RE.test(part)) || '';
+  const namedEvidence =
+    evidence ||
+    parts.find((part) => NAMED_VARIANT_SIZE_EVIDENCE_RE.test(part)) ||
+    '';
   return {
     raw_variant_count: rawVariants.length,
-    evidence,
+    evidence: namedEvidence,
   };
 }
 
-function classifyVariantReadiness(row) {
+function classifyVariantReadiness(row, context = {}) {
+  const productId = asString(row?.external_product_id || row?.product_id || row?.id);
   const variants = normalizeSeedVariants(row?.seed_data, row);
   const contextText = lowerText(collectContextText(row));
+  const identityVariantAxes =
+    asPlainObject(context.variantAxesByProductId?.get?.(productId)) ||
+    asPlainObject(row?.identity_variant_axes) ||
+    {};
   const rows = [];
   for (const variant of variants) {
     for (const option of asArray(variant?.options)) {
@@ -634,12 +645,20 @@ function classifyVariantReadiness(row) {
     shouldRequireDefaultVariantSizeAxis(row)
       ? [{ axis_name: 'default', axis_kind: 'volume', value: sizeEvidence.evidence, visual: false }]
       : [];
+  const identityDefaultTitleAxis =
+    ['shade', 'color']
+      .map((key) => lowerText(identityVariantAxes[key]))
+      .filter(Boolean)
+      .some((value) => DEFAULT_TITLE_AXIS_VALUES.has(value))
+      ? [{ axis_name: 'identity', axis_kind: 'shade', value: 'default title', visual: false }]
+      : [];
   const issues = [];
   if (identityOptionVisible.length) issues.push('identity_option_visible');
   if (wrongAxisForCategory.length) issues.push('wrong_axis_for_category');
   if (makeupShadeMissingVisual.length) issues.push('makeup_shade_missing_visual');
   if (sizeValueGenericAxis.length) issues.push('size_value_generic_axis');
   if (defaultOptionSizeEvidenceMissingAxis.length) issues.push('default_option_size_evidence_missing_axis');
+  if (identityDefaultTitleAxis.length) issues.push('identity_default_title_axis');
   return {
     status: issues.length ? 'flagged' : visibleRows.length ? 'ready' : 'no_visible_variant_axis',
     issues,
@@ -650,6 +669,7 @@ function classifyVariantReadiness(row) {
       makeup_shade_missing_visual: makeupShadeMissingVisual.slice(0, 4),
       size_value_generic_axis: sizeValueGenericAxis.slice(0, 4),
       default_option_size_evidence_missing_axis: defaultOptionSizeEvidenceMissingAxis.slice(0, 4),
+      identity_default_title_axis: identityDefaultTitleAxis.slice(0, 4),
     },
   };
 }
@@ -814,7 +834,7 @@ function buildReadinessRow(row, context = {}) {
   const domain = asString(row?.domain) || 'unknown';
   const productIntel = classifyEffectiveProductIntel(row, context);
   const activeIngredients = classifyActiveIngredientReadiness(row);
-  const variantReadiness = classifyVariantReadiness(row);
+  const variantReadiness = classifyVariantReadiness(row, context);
   return {
     seed_id: asString(row?.id),
     external_product_id: productId,
@@ -824,6 +844,8 @@ function buildReadinessRow(row, context = {}) {
     canonical_url: asString(row?.canonical_url),
     product_family: classifyProductFamily(row),
     product_line_id: productIntel.product_line_id,
+    identity_variant_axes:
+      asPlainObject(context.variantAxesByProductId?.get?.(productId)) || undefined,
     pivota_insights: productIntel,
     active_ingredients: activeIngredients,
     variants: variantReadiness,

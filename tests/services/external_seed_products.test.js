@@ -103,6 +103,75 @@ describe('externalSeedProducts helper', () => {
     expect(product.image_url).toBe(productImage);
   });
 
+  test('filters mixed Shopify content assets out of runtime gallery while preserving section media separately', () => {
+    const product = buildExternalSeedProduct({
+      id: 'eps_rare_primer_mini',
+      external_product_id: 'ext_rare_primer_mini',
+      canonical_url: 'https://rarebeauty.com/products/always-an-optimist-pore-diffusing-primer-mini',
+      destination_url: 'https://rarebeauty.com/products/always-an-optimist-pore-diffusing-primer-mini',
+      title: 'Always An Optimist Pore Diffusing Primer Mini',
+      seed_data: {
+        image_urls: [
+          'http://www.rarebeauty.com/cdn/shop/products/AlwaysAnOptimistPrimerMini_Primary_1024x1024.jpg?v=1720000000&width=1200',
+          'https://cdn.shopify.com/s/files/1/0317/8349/5241/products/AlwaysAnOptimistPrimerMini_Primary_1024x1024.jpg?v=1720000000',
+          'https://www.rarebeauty.com/cdn/shop/files/PDP-USAGE-PRIMER-MINI.jpg?v=1720000001',
+        ],
+        content_image_urls: ['https://www.rarebeauty.com/cdn/shop/files/PDP-USAGE-PRIMER-MINI.jpg?v=1720000001'],
+        snapshot: {
+          pdp_details_sections: [{ heading: 'Overview', body: 'Primer overview.' }],
+          image_urls: [
+            'https://www.rarebeauty.com/cdn/shop/products/AlwaysAnOptimistPrimerMini_Primary_1024x1024.jpg?v=1720000000',
+            'https://www.rarebeauty.com/cdn/shop/files/PDP-USAGE-PRIMER-MINI.jpg?v=1720000001',
+          ],
+          content_image_urls: ['https://www.rarebeauty.com/cdn/shop/files/PDP-USAGE-PRIMER-MINI.jpg?v=1720000001'],
+        },
+      },
+    });
+
+    expect(product.images).toEqual([
+      'https://www.rarebeauty.com/cdn/shop/products/AlwaysAnOptimistPrimerMini_Primary_1024x1024.jpg?v=1720000000',
+    ]);
+    expect(product.content_image_urls).toEqual([
+      'https://www.rarebeauty.com/cdn/shop/files/PDP-USAGE-PRIMER-MINI.jpg?v=1720000001',
+    ]);
+  });
+
+  test('filters legacy Shopify content files out of gallery even when product images come from cdn.shopify.com', () => {
+    const product = buildExternalSeedProduct({
+      id: 'eps_rare_primer_live_shape',
+      external_product_id: 'ext_rare_primer_live_shape',
+      canonical_url: 'https://rarebeauty.com/products/always-an-optimist-pore-diffusing-primer-mini',
+      destination_url: 'https://rarebeauty.com/products/always-an-optimist-pore-diffusing-primer-mini',
+      title: 'Always An Optimist Pore Diffusing Primer Mini',
+      seed_data: {
+        snapshot: {
+          image_urls: [
+            'https://cdn.shopify.com/s/files/1/0314/1143/7703/products/Pore-Primer-Travel-SKU.jpg?v=1762270689',
+            'https://cdn.shopify.com/s/files/1/0314/1143/7703/products/Pore-Primer-Travel-Open-SKU.jpg?v=1617149001',
+            'https://cdn.shopify.com/s/files/1/0314/1143/7703/products/diffusing-primer-swatch-1440x1952_490e7974-aa56-4c60-8643-38edfc1538a9.jpg?v=1617149024',
+            'https://www.rarebeauty.com/cdn/shop/files/PDP-details-image-1268x1268-pore-primer_1024x.jpg?v=1617041406',
+            'https://www.rarebeauty.com/cdn/shop/files/PDP-imperfect-circle-primers_1024x.png?v=1616543294',
+          ],
+          variants: [
+            {
+              variant_id: 'mini',
+              sku: 'mini',
+              option_name: 'Variant',
+              option_value: 'Mini',
+              image_urls: ['https://cdn.shopify.com/s/files/1/0314/1143/7703/products/Pore-Primer-Travel-SKU.jpg?v=1762270689'],
+            },
+          ],
+        },
+      },
+    });
+
+    expect(product.images).toEqual([
+      'https://cdn.shopify.com/s/files/1/0314/1143/7703/products/Pore-Primer-Travel-SKU.jpg?v=1762270689',
+      'https://cdn.shopify.com/s/files/1/0314/1143/7703/products/Pore-Primer-Travel-Open-SKU.jpg?v=1617149001',
+      'https://cdn.shopify.com/s/files/1/0314/1143/7703/products/diffusing-primer-swatch-1440x1952_490e7974-aa56-4c60-8643-38edfc1538a9.jpg?v=1617149024',
+    ]);
+  });
+
   test('carries seed review summary into external seed runtime product', () => {
     const product = buildExternalSeedProduct({
       id: 'eps_reviewed_seed',

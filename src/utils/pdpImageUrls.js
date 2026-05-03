@@ -23,6 +23,15 @@ const KNOWN_SDCND_FILENAME_ALIASES = {
 const TOM_FORD_SHOPIFY_FILES_PREFIX = '/s/files/1/0761/9690/5173/files/';
 const PIXI_SHOPIFY_FILES_PREFIX = '/s/files/1/1463/5858/files/';
 const DEFAULT_SHOPIFY_WIDTH_PLACEHOLDER = '1024';
+const SHOPIFY_CONTENT_PATH_RE = /(?:\/cdn\/shop\/files\/|\/s\/files\/)/i;
+const SHOPIFY_PRODUCT_PATH_RE = /\/cdn\/shop\/products\//i;
+
+function pathnameHasSegment(pathname, segment) {
+  const normalized = String(pathname || '').trim().toLowerCase();
+  const target = String(segment || '').trim().toLowerCase();
+  if (!normalized || !target) return false;
+  return normalized.split('/').includes(target);
+}
 
 function isAbsoluteHttpUrl(value) {
   return ABSOLUTE_HTTP_URL_RE.test(String(value || '').trim());
@@ -39,12 +48,25 @@ function isSdcdnHost(hostname) {
 }
 
 function isShopifyLikeAsset(parsed) {
-  const pathname = String(parsed?.pathname || '').toLowerCase();
-  return (
-    isKnownHost(parsed?.hostname, ['cdn.shopify.com', 'shopifycdn.com', 'sdcdn.io']) ||
-    pathname.includes('/cdn/shop/files/') ||
-    pathname.includes('/s/files/')
-  );
+  const assetKind = classifyShopifyLikeAsset(parsed);
+  if (assetKind) return true;
+  return isKnownHost(parsed?.hostname, ['cdn.shopify.com', 'shopifycdn.com', 'sdcdn.io']);
+}
+
+function classifyShopifyLikeAsset(parsed) {
+  const pathname = String(parsed?.pathname || '').trim();
+  if (!pathname) return '';
+  const isShopifyHost = isKnownHost(parsed?.hostname, ['cdn.shopify.com', 'shopifycdn.com', 'sdcdn.io']);
+  if (SHOPIFY_PRODUCT_PATH_RE.test(pathname) || (isShopifyHost && pathnameHasSegment(pathname, 'products'))) {
+    return 'product';
+  }
+  if (
+    (isShopifyHost && pathnameHasSegment(pathname, 'files')) ||
+    SHOPIFY_CONTENT_PATH_RE.test(pathname)
+  ) {
+    return 'content';
+  }
+  return '';
 }
 
 function rewriteTomFordAssetToOfficialShopify(parsed) {
@@ -210,6 +232,7 @@ function buildPdpImageDedupeKey(value) {
 
 module.exports = {
   buildPdpImageDedupeKey,
+  classifyShopifyLikeAsset,
   normalizePdpImageUrl,
   normalizePdpImageUrls,
 };

@@ -268,6 +268,7 @@ describe('audit-external-product-pdp-quality helpers', () => {
         'product_intel_module_empty_or_blocked',
         'product_details_section_soup',
         'legacy_overview_render_risk',
+        'legacy_snapshot_not_quarantined',
         'image_url_identity_stripped',
         'broken_gallery_image',
       ]),
@@ -362,5 +363,109 @@ describe('audit-external-product-pdp-quality helpers', () => {
     );
     expect(gate.wrong_axis_for_category_count).toBeGreaterThan(0);
     expect(gate.size_value_generic_axis_count).toBeGreaterThan(0);
+  });
+
+  test('flags duplicate gallery images, mixed content media, and non-quarantined snapshots', () => {
+    const livePayload = {
+      product: {
+        product_id: 'ext_rare_primer_mini',
+        merchant_id: 'external_seed',
+      },
+      modules: [
+        {
+          type: 'media_gallery',
+          data: {
+            items: [
+              {
+                type: 'image',
+                url: 'http://www.rarebeauty.com/cdn/shop/products/AlwaysAnOptimistPrimerMini_Primary_1024x1024.jpg?v=1720000000&width=1200',
+              },
+              {
+                type: 'image',
+                url: 'https://cdn.shopify.com/s/files/1/0317/8349/5241/products/AlwaysAnOptimistPrimerMini_Primary_1024x1024.jpg?v=1720000000',
+              },
+              {
+                type: 'image',
+                url: 'https://www.rarebeauty.com/cdn/shop/files/PDP-USAGE-PRIMER-MINI.jpg?v=1720000001',
+              },
+            ],
+          },
+        },
+        {
+          type: 'product_overview',
+          data: {
+            sections: [{ heading: 'Overview', content: 'Primer overview.' }],
+          },
+        },
+      ],
+    };
+
+    const gate = buildLivePdpGate({
+      livePayload,
+      liveResponse: { status: 'success', modules: [{ type: 'canonical', data: { pdp_payload: livePayload } }] },
+      seedData: {
+        snapshot: {
+          content_image_urls: ['https://www.rarebeauty.com/cdn/shop/files/PDP-USAGE-PRIMER-MINI.jpg?v=1720000001'],
+        },
+      },
+    });
+
+    expect(gate.failure_reasons).toEqual(
+      expect.arrayContaining([
+        'duplicate_gallery_images',
+        'content_media_leaked_into_gallery',
+        'legacy_snapshot_not_quarantined',
+      ]),
+    );
+    expect(gate.gallery_status.duplicate_count).toBeGreaterThan(0);
+    expect(gate.gallery_status.content_leak_count).toBeGreaterThan(0);
+  });
+
+  test('flags missing variant selector when named size evidence is trapped behind default-title identity pollution', () => {
+    const livePayload = {
+      product: {
+        product_id: 'ext_rare_primer_mini',
+        merchant_id: 'external_seed',
+        title: 'Always An Optimist Pore Diffusing Primer Mini',
+      },
+      modules: [],
+    };
+
+    const gate = buildVariantGate({
+      seedData: {
+        title: 'Always An Optimist Pore Diffusing Primer Mini',
+        snapshot: {
+          variants: [
+            {
+              variant_id: 'v-mini',
+              option_name: 'Title',
+              option_value: 'Default Title',
+            },
+          ],
+        },
+      },
+      livePayload,
+      liveResponse: {
+        status: 'success',
+        modules: [
+          {
+            type: 'canonical',
+            data: {
+              pdp_payload: livePayload,
+              variant_axes: { size: 'mini', shade: 'default title' },
+              match_basis: ['brand:rare beauty', 'title_core:always an optimist pore diffusing primer', 'variant_axes:size:mini|shade:default title'],
+            },
+          },
+        ],
+      },
+    });
+
+    expect(gate.failure_reasons).toEqual(
+      expect.arrayContaining([
+        'missing_variant_selector_from_size_evidence',
+        'identity_default_title_axis',
+        'size_siblings_split_product_line',
+      ]),
+    );
   });
 });

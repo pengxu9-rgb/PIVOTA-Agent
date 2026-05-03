@@ -182,7 +182,7 @@ async function fetchIdentityRowsBy(columnName, values, warnings, chunkSize = 500
     try {
       const res = await query(
         `
-          SELECT product_id, product_line_id
+          SELECT product_id, product_line_id, variant_axes
           FROM pdp_identity_listing
           WHERE merchant_id = 'external_seed'
             AND coalesce(live_read_enabled, true) = true
@@ -219,6 +219,7 @@ async function fetchIdentityContext(productIds) {
   if (!ids.length) {
     return {
       productLineIdByProductId: new Map(),
+      variantAxesByProductId: new Map(),
       productIdsByLineId: new Map(),
       allProductIds: [],
       warnings,
@@ -227,12 +228,16 @@ async function fetchIdentityContext(productIds) {
 
   const directRows = await fetchIdentityRowsBy('product_id', ids, warnings);
   const productLineIdByProductId = new Map();
+  const variantAxesByProductId = new Map();
   const lineIds = [];
   for (const row of directRows) {
     const productId = normalizeString(row.product_id);
     const lineId = normalizeString(row.product_line_id);
     if (!productId || !lineId) continue;
     productLineIdByProductId.set(productId, lineId);
+    if (row.variant_axes && typeof row.variant_axes === 'object' && !Array.isArray(row.variant_axes)) {
+      variantAxesByProductId.set(productId, row.variant_axes);
+    }
     lineIds.push(lineId);
   }
 
@@ -246,6 +251,9 @@ async function fetchIdentityContext(productIds) {
       const lineId = normalizeString(row.product_line_id);
       if (!productId || !lineId) continue;
       productLineIdByProductId.set(productId, lineId);
+      if (!variantAxesByProductId.has(productId) && row.variant_axes && typeof row.variant_axes === 'object' && !Array.isArray(row.variant_axes)) {
+        variantAxesByProductId.set(productId, row.variant_axes);
+      }
       if (!productIdsByLineId.has(lineId)) productIdsByLineId.set(lineId, []);
       productIdsByLineId.get(lineId).push(productId);
       allProductIds.add(productId);
@@ -258,6 +266,7 @@ async function fetchIdentityContext(productIds) {
 
   return {
     productLineIdByProductId,
+    variantAxesByProductId,
     productIdsByLineId,
     allProductIds: Array.from(allProductIds),
     warnings,
@@ -300,6 +309,7 @@ async function buildReadinessAuditForSeedRows(seedRows, options = {}) {
       ? await fetchIdentityContext(seedProductIds)
       : {
           productLineIdByProductId: new Map(),
+          variantAxesByProductId: new Map(),
           productIdsByLineId: new Map(),
           allProductIds: seedProductIds,
           warnings: [],

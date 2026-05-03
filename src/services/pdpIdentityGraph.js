@@ -627,6 +627,8 @@ function isSkincareLikeProduct(product) {
 function shouldSuppressColorAxisValue(product, value) {
   const normalized = normalizeAxisValue(value).toLowerCase();
   if (!normalized) return true;
+  if (/^(?:default|default title|title|option|standard default)$/i.test(normalized)) return true;
+  if (isLikelyVariantIdentityToken(normalized)) return true;
   if (LOCALE_LIKE_AXIS_VALUES.has(normalized)) return true;
   return false;
 }
@@ -864,6 +866,8 @@ function parseNamedAxisFromOptions(product, names) {
     const value =
       parseCompoundNamedAxisValue(option?.name, option?.value, names) ||
       normalizeAxisValue(option?.value);
+    if (/^(?:default|default title|title|option|standard default)$/i.test(value)) continue;
+    if (isLikelyVariantIdentityToken(value)) continue;
     if (value) return value;
   }
   const flatCandidates = [
@@ -880,6 +884,8 @@ function parseNamedAxisFromOptions(product, names) {
   for (const candidate of flatCandidates) {
     const value = normalizeAxisValue(candidate);
     if (!value) continue;
+    if (/^(?:default|default title|title|option|standard default)$/i.test(value)) continue;
+    if (isLikelyVariantIdentityToken(value)) continue;
     return value;
   }
   return '';
@@ -1100,9 +1106,16 @@ function buildProductLineKey({
   softIdentity,
   sourceListingRef,
   variantFamily,
+  axes,
 } = {}) {
   if (variantFamily?.title_core_norm && softIdentity?.brand_norm) {
     return `variant_family:${softIdentity.brand_norm}:${variantFamily.title_core_norm}`;
+  }
+  const hasColorAxis = Boolean(
+    normalizeAxisValue(axes?.shade) || normalizeAxisValue(axes?.color),
+  );
+  if (softIdentity?.brand_norm && softIdentity?.title_core_norm && !hasColorAxis) {
+    return `soft_line:${softIdentity.brand_norm}:${softIdentity.title_core_norm}`;
   }
   return (
     (strongIdentity?.official_domain && strongIdentity?.official_handle
@@ -1277,6 +1290,7 @@ function buildIdentityListingFromProduct({
     softIdentity,
     sourceListingRef,
     variantFamily,
+    axes,
   });
   let matchedByRule = 'singleton_source_ref';
   let matchBasis = [];

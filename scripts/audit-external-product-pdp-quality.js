@@ -2,7 +2,7 @@
 
 const axios = require('axios');
 
-const { query } = require('../src/db');
+const { closePool, query } = require('../src/db');
 const { auditExternalSeedRow } = require('../src/services/externalSeedContentAudit');
 const { ensureJsonObject } = require('../src/services/externalSeedProducts');
 const { resolveExternalSeedRecallDoc } = require('../src/services/externalSeedRecall');
@@ -69,6 +69,18 @@ function normalizeNonEmptyString(value) {
 function normalizeUrlLike(value) {
   const normalized = normalizeNonEmptyString(value);
   return /^https?:\/\//i.test(normalized) ? normalized : '';
+}
+
+function increment(map, key, amount = 1) {
+  const normalized = normalizeNonEmptyString(key) || 'unknown';
+  map[normalized] = (map[normalized] || 0) + amount;
+}
+
+function topEntries(map, limit = 25) {
+  return Object.entries(map || {})
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+    .slice(0, Math.max(1, limit))
+    .map(([key, count]) => ({ key, count }));
 }
 
 function parsePositiveInt(value, fallback, min = 1, max = Number.MAX_SAFE_INTEGER) {
@@ -633,22 +645,46 @@ async function main() {
   const summary = {
     scanned: results.length,
     failed: results.filter((item) => item.failure_reasons.length > 0).length,
+    failed_by_domain: {},
     failure_reason_counts: results.reduce((acc, item) => {
       item.failure_reasons.forEach((reason) => {
         acc[reason] = (acc[reason] || 0) + 1;
       });
       return acc;
     }, {}),
+    failure_reason_domain_counts: {},
+    root_cause_domain_counts: {},
     results,
   };
+  results.forEach((item) => {
+    const domain = normalizeNonEmptyString(item.domain) || 'unknown';
+    if (item.failure_reasons.length > 0) {
+      increment(summary.failed_by_domain, domain);
+    }
+    item.failure_reasons.forEach((reason) => {
+      increment(summary.failure_reason_domain_counts, `${domain}::${reason}`);
+    });
+    (Array.isArray(item.root_cause_classification) ? item.root_cause_classification : []).forEach((reason) => {
+      increment(summary.root_cause_domain_counts, `${domain}::${reason}`);
+    });
+  });
+  summary.failed_by_domain = topEntries(summary.failed_by_domain, 25);
+  summary.failure_reason_domain_counts = topEntries(summary.failure_reason_domain_counts, 50);
+  summary.root_cause_domain_counts = topEntries(summary.root_cause_domain_counts, 50);
   process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
 }
 
 if (require.main === module) {
-  main().catch((error) => {
-    process.stderr.write(`${error?.stack || error?.message || String(error)}\n`);
-    process.exit(1);
-  });
+  main()
+    .catch((error) => {
+      process.stderr.write(`${error?.stack || error?.message || String(error)}\n`);
+      process.exitCode = 1;
+    })
+    .finally(async () => {
+      try {
+        await closePool();
+      } catch {}
+    });
 }
 
 module.exports = {

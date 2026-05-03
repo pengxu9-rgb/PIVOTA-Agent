@@ -286,6 +286,58 @@ describe('external seed PDP readiness audit helpers', () => {
     expect(result.examples.default_option_size_evidence_missing_axis[0].value).toContain('30ml');
   });
 
+  test('flags named-size default variants when mini/full-size evidence is present but no axis is visible', () => {
+    const result = classifyVariantReadiness(
+      seedRow({
+        title: 'Always An Optimist Pore Diffusing Primer Mini',
+        canonical_url: 'https://rarebeauty.com/products/always-an-optimist-pore-diffusing-primer-mini',
+        seed_data: {
+          snapshot: {
+            variants: [
+              {
+                variant_id: 'mini-default',
+                option_name: 'Title',
+                option_value: 'Default Title',
+              },
+            ],
+          },
+        },
+      }),
+    );
+
+    expect(result.status).toBe('flagged');
+    expect(result.issues).toContain('default_option_size_evidence_missing_axis');
+    expect(result.examples.default_option_size_evidence_missing_axis[0].value).toMatch(/mini/i);
+  });
+
+  test('flags identity default-title shade pollution from live identity context', () => {
+    const row = seedRow({
+      external_product_id: 'ext_rare_primer_mini',
+      title: 'Always An Optimist Pore Diffusing Primer Mini',
+      canonical_url: 'https://rarebeauty.com/products/always-an-optimist-pore-diffusing-primer-mini',
+      seed_data: {
+        snapshot: {
+          variants: [
+            {
+              variant_id: 'mini-default',
+              option_name: 'Title',
+              option_value: 'Default Title',
+            },
+          ],
+        },
+      },
+    });
+    const result = classifyVariantReadiness(row, {
+      variantAxesByProductId: new Map([
+        ['ext_rare_primer_mini', { size: 'mini', shade: 'default title', multi_variant: false }],
+      ]),
+    });
+
+    expect(result.status).toBe('flagged');
+    expect(result.issues).toContain('identity_default_title_axis');
+    expect(result.examples.identity_default_title_axis[0].value).toBe('default title');
+  });
+
   test('does not flag tint balm shade variants as skincare axis drift', () => {
     const result = classifyVariantReadiness(
       seedRow({
@@ -415,14 +467,14 @@ describe('external seed PDP readiness audit script DB resilience', () => {
       if (isLineLookup) {
         return {
           rows: [
-            { product_id: 'ext_good', product_line_id: 'pl_1' },
-            { product_id: 'ext_sibling', product_line_id: 'pl_1' },
+            { product_id: 'ext_good', product_line_id: 'pl_1', variant_axes: { size: 'mini' } },
+            { product_id: 'ext_sibling', product_line_id: 'pl_1', variant_axes: { size: 'full size' } },
           ],
         };
       }
       return {
         rows: values.includes('ext_good')
-          ? [{ product_id: 'ext_good', product_line_id: 'pl_1' }]
+          ? [{ product_id: 'ext_good', product_line_id: 'pl_1', variant_axes: { size: 'mini' } }]
           : [],
       };
     });
@@ -435,6 +487,7 @@ describe('external seed PDP readiness audit script DB resilience', () => {
     const context = await fetchIdentityContext(['ext_good', 'ext_bad']);
 
     expect(context.productLineIdByProductId.get('ext_good')).toBe('pl_1');
+    expect(context.variantAxesByProductId.get('ext_good')).toEqual({ size: 'mini' });
     expect(context.productIdsByLineId.get('pl_1')).toEqual(['ext_good', 'ext_sibling']);
     expect(context.allProductIds).toEqual(expect.arrayContaining(['ext_good', 'ext_bad', 'ext_sibling']));
     expect(context.warnings).toEqual([

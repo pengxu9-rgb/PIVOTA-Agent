@@ -1,5 +1,6 @@
 const {
   buildPdpImageDedupeKey,
+  classifyShopifyLikeAsset,
   normalizePdpImageUrl,
   normalizePdpImageUrls,
 } = require('../../src/utils/pdpImageUrls');
@@ -68,5 +69,45 @@ describe('pdp image URL normalization', () => {
 
   test('drops bogus bare-host files image URLs', () => {
     expect(normalizePdpImageUrl('http://files/Pixi_Skintreats_OvernightSpot-Stickers_July_2025_01.jpg')).toBe('');
+  });
+
+  test('dedupes merchant-host Shopify product assets against canonical Shopify CDN aliases', () => {
+    const merchantProduct =
+      'http://www.rarebeauty.com/cdn/shop/products/AlwaysAnOptimistPrimerMini_Primary_1024x1024.jpg?v=1720000000&width=1200';
+    const cdnAlias =
+      'https://cdn.shopify.com/s/files/1/0317/8349/5241/products/AlwaysAnOptimistPrimerMini_Primary_1024x1024.jpg?v=1720000000';
+
+    expect(buildPdpImageDedupeKey(merchantProduct)).toBe(buildPdpImageDedupeKey(cdnAlias));
+    expect(
+      normalizePdpImageUrls([
+        merchantProduct,
+        cdnAlias,
+      ]),
+    ).toEqual([
+      'https://www.rarebeauty.com/cdn/shop/products/AlwaysAnOptimistPrimerMini_Primary_1024x1024.jpg?v=1720000000',
+    ]);
+  });
+
+  test('classifies Shopify product and content asset paths separately', () => {
+    expect(
+      classifyShopifyLikeAsset(
+        new URL('https://www.rarebeauty.com/cdn/shop/products/primer-main.jpg?v=1720000000'),
+      ),
+    ).toBe('product');
+    expect(
+      classifyShopifyLikeAsset(
+        new URL('https://www.rarebeauty.com/cdn/shop/files/PDP-USAGE-PRIMER.jpg?v=1720000000'),
+      ),
+    ).toBe('content');
+    expect(
+      classifyShopifyLikeAsset(
+        new URL('https://cdn.shopify.com/s/files/1/0314/1143/7703/products/Pore-Primer-SKU.jpg?v=1762270689'),
+      ),
+    ).toBe('product');
+    expect(
+      classifyShopifyLikeAsset(
+        new URL('https://cdn.shopify.com/s/files/1/0314/1143/7703/files/PDP-details-image-1268x1268-pore-primer_1024x.jpg?v=1617041406'),
+      ),
+    ).toBe('content');
   });
 });

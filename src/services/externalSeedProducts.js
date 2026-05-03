@@ -6,7 +6,11 @@ const {
   resolveExternalSeedProtectionContract,
 } = require('./externalSeedRecall');
 const { isDisplayablePdpFaqItem } = require('./pdpFaqQuality');
-const { buildPdpImageDedupeKey, normalizePdpImageUrl } = require('../utils/pdpImageUrls');
+const {
+  buildPdpImageDedupeKey,
+  classifyShopifyLikeAsset,
+  normalizePdpImageUrl,
+} = require('../utils/pdpImageUrls');
 
 const SHOPIFY_ASSET_HASH_SUFFIX_RE =
   /^(.*?_[0-9a-z]+(?:[a-z])?)_(?:[0-9a-f]{8,}(?:-[0-9a-f]{4,}){2,}|[0-9a-f-]{16,})(\.[a-z0-9]+)$/i;
@@ -998,6 +1002,27 @@ function appendImageUrls(out, value) {
   appendImageUrls(out, value.contentUrl);
 }
 
+function classifySeedGalleryAsset(url) {
+  const normalized = normalizePdpImageUrl(url);
+  if (!normalized) return '';
+  try {
+    return classifyShopifyLikeAsset(new URL(normalized));
+  } catch {
+    return '';
+  }
+}
+
+function filterMixedShopifyContentFromGallery(urls) {
+  const normalizedUrls = Array.isArray(urls) ? urls.filter(Boolean) : [];
+  if (normalizedUrls.length < 2) return normalizedUrls;
+  const assetKinds = normalizedUrls.map((url) => classifySeedGalleryAsset(url));
+  const hasProductAssets = assetKinds.includes('product');
+  const hasContentAssets = assetKinds.includes('content');
+  if (!hasProductAssets || !hasContentAssets) return normalizedUrls;
+  const filtered = normalizedUrls.filter((url) => classifySeedGalleryAsset(url) !== 'content');
+  return filtered.length > 0 ? filtered : normalizedUrls;
+}
+
 function decodeUrlPathnameForImageFilter(value) {
   try {
     return decodeURIComponent(new URL(value).pathname || '').toLowerCase();
@@ -1758,7 +1783,7 @@ function resolveSeedImageOverride(seedData, row) {
 }
 
 function normalizeSeedImageUrls(seedData, row) {
-  const out = collectSeedImageUrls(seedData, row);
+  const out = filterMixedShopifyContentFromGallery(collectSeedImageUrls(seedData, row));
   if (out.length > 0) return out;
 
   const override = resolveSeedImageOverride(seedData, row);
@@ -1766,7 +1791,7 @@ function normalizeSeedImageUrls(seedData, row) {
 
   appendImageUrls(out, override.image_urls);
   appendImageUrls(out, override.image_url);
-  return out;
+  return filterMixedShopifyContentFromGallery(out);
 }
 
 function collectPrimaryVariantImageUrls(variants) {
@@ -2605,6 +2630,21 @@ function buildExternalSeedProduct(row, options = {}) {
   if (primaryVariantImageUrls.length > 0) {
     imageUrls = Array.from(new Set([...primaryVariantImageUrls, ...imageUrls]));
   }
+  if (contentImageUrls.length > 0 && imageUrls.length > 0) {
+    const contentKeys = new Set(
+      contentImageUrls
+        .map((url) => buildPdpImageDedupeKey(url) || normalizePdpImageUrl(url))
+        .filter(Boolean),
+    );
+    const nonContentImageUrls = imageUrls.filter((url) => {
+      const key = buildPdpImageDedupeKey(url) || normalizePdpImageUrl(url);
+      return key && !contentKeys.has(key);
+    });
+    if (nonContentImageUrls.length > 0) {
+      imageUrls = nonContentImageUrls;
+    }
+  }
+  imageUrls = filterMixedShopifyContentFromGallery(imageUrls);
   if (!imageUrls.length && variants.length) {
     imageUrls = Array.from(
       new Set(
@@ -2617,6 +2657,7 @@ function buildExternalSeedProduct(row, options = {}) {
         }),
       ),
     );
+    imageUrls = filterMixedShopifyContentFromGallery(imageUrls);
   }
   const imageUrl = imageUrls[0] || undefined;
 

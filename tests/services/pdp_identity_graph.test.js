@@ -561,6 +561,42 @@ describe('pdpIdentityGraph', () => {
     ]);
   });
 
+  test('buildIdentityListingFromProduct groups size siblings into one product line without default-title shade pollution', () => {
+    const { buildIdentityListingFromProduct } = require('../../src/services/pdpIdentityGraph');
+
+    const miniListing = buildIdentityListingFromProduct({
+      merchantId: 'external_seed',
+      productId: 'ext_rare_primer_mini',
+      sourceKind: 'external_seed',
+      product: {
+        title: 'Always An Optimist Pore Diffusing Primer Mini',
+        brand: 'Rare Beauty',
+        source_url: 'https://rarebeauty.com/products/always-an-optimist-pore-diffusing-primer-mini',
+        variants: [{ variant_id: 'v-mini', title: 'Default Title', option_name: 'Title', option_value: 'Default Title' }],
+      },
+    });
+    const fullListing = buildIdentityListingFromProduct({
+      merchantId: 'external_seed',
+      productId: 'ext_rare_primer_full',
+      sourceKind: 'external_seed',
+      product: {
+        title: 'Always An Optimist Pore Diffusing Primer',
+        brand: 'Rare Beauty',
+        source_url: 'https://rarebeauty.com/products/always-an-optimist-pore-diffusing-primer',
+        variants: [{ variant_id: 'v-full', title: 'Default Title', option_name: 'Title', option_value: 'Default Title' }],
+      },
+    });
+
+    expect(miniListing.variant_axes).toEqual({
+      size: 'mini',
+      multi_variant: false,
+    });
+    expect(fullListing.variant_axes).toEqual({ multi_variant: false });
+    expect(miniListing.product_line_id).toBe(fullListing.product_line_id);
+    expect(miniListing.match_basis).not.toContain('variant_axes:shade:default title');
+    expect(fullListing.match_basis).not.toContain('variant_axes:shade:default title');
+  });
+
   test('composeSyntheticCanonicalProduct preserves fresh external seed normalized variants over stale identity payload', () => {
     const { composeSyntheticCanonicalProduct } = require('../../src/services/pdpIdentityGraph');
 
