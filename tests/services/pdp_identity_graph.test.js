@@ -13,6 +13,25 @@ describe('pdpIdentityGraph', () => {
     process.env = ORIGINAL_ENV;
   });
 
+  test('postgres sanitizers remove null bytes from identity payload writes', () => {
+    const { _internals } = require('../../src/services/pdpIdentityGraph');
+    const sanitized = _internals.sanitizeJsonForPostgres({
+      'bad\u0000key': 'Glow\u0000 bomb',
+      nested: {
+        body: new String('Rare\u0000 Beauty'),
+      },
+    });
+
+    expect(sanitized).toEqual({
+      badkey: 'Glow bomb',
+      nested: {
+        body: 'Rare Beauty',
+      },
+    });
+    expect(_internals.stringifyPostgresJsonb(sanitized)).not.toContain('\\u0000');
+    expect(_internals.stringifyPostgresJsonb(sanitized)).not.toContain('\u0000');
+  });
+
   test('buildIdentityListingFromProduct groups exact items by strong evidence and separates sibling sizes into product lines', () => {
     const { buildIdentityListingFromProduct } = require('../../src/services/pdpIdentityGraph');
 

@@ -86,6 +86,38 @@ function asString(value) {
   return String(value).trim();
 }
 
+function stripNullBytesFromString(value) {
+  return String(value || '').replace(/\u0000/g, '').replace(/\\u0000/gi, '');
+}
+
+function stripNullBytesFromUtf8String(value) {
+  const cleaned = stripNullBytesFromString(value);
+  const bytes = Buffer.from(cleaned, 'utf8');
+  if (!bytes.includes(0)) return cleaned;
+  return Buffer.from(bytes.filter((byte) => byte !== 0)).toString('utf8');
+}
+
+function sanitizeTextForPostgres(value) {
+  if (value === null || value === undefined) return value;
+  return stripNullBytesFromUtf8String(value);
+}
+
+function sanitizeJsonForPostgres(value) {
+  if (typeof value === 'string' || value instanceof String) return stripNullBytesFromUtf8String(value);
+  if (Array.isArray(value)) return value.map((item) => sanitizeJsonForPostgres(item));
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(
+    Object.entries(value).map(([key, candidate]) => [
+      stripNullBytesFromUtf8String(key),
+      sanitizeJsonForPostgres(candidate),
+    ]),
+  );
+}
+
+function stringifyPostgresJsonb(value) {
+  return stripNullBytesFromUtf8String(JSON.stringify(sanitizeJsonForPostgres(value || {})));
+}
+
 function cloneJsonSafe(value) {
   if (value == null) return value;
   try {
@@ -3085,10 +3117,10 @@ async function promotePdpIdentityLiveRead({
                 updated_at = now()
             `,
             [
-              overrideId,
-              sourceRef,
-              JSON.stringify(payload),
-              asString(createdBy) || 'admin',
+              sanitizeTextForPostgres(overrideId),
+              sanitizeTextForPostgres(sourceRef),
+              stringifyPostgresJsonb(payload),
+              sanitizeTextForPostgres(asString(createdBy) || 'admin'),
             ],
           );
         }
@@ -3796,31 +3828,31 @@ async function writeIdentityRows({ listings, reviewQueueEntries, dryRun = false,
               updated_at = now()
           `,
           [
-            listing.source_listing_ref,
-            listing.merchant_id,
-            listing.product_id,
-            listing.source_kind,
-            listing.source_tier,
+            sanitizeTextForPostgres(listing.source_listing_ref),
+            sanitizeTextForPostgres(listing.merchant_id),
+            sanitizeTextForPostgres(listing.product_id),
+            sanitizeTextForPostgres(listing.source_kind),
+            sanitizeTextForPostgres(listing.source_tier),
             listing.live_read_enabled === true,
-            listing.sellable_item_group_id,
-            listing.product_line_id,
-            listing.review_family_id,
-            listing.identity_status,
+            sanitizeTextForPostgres(listing.sellable_item_group_id),
+            sanitizeTextForPostgres(listing.product_line_id),
+            sanitizeTextForPostgres(listing.review_family_id),
+            sanitizeTextForPostgres(listing.identity_status),
             listing.identity_confidence,
-            listing.matched_by_rule,
-            JSON.stringify(asArray(listing.match_basis)),
-            JSON.stringify(asPlainObject(listing.strong_identity) || {}),
-            JSON.stringify(asPlainObject(listing.soft_identity) || {}),
-            JSON.stringify(asPlainObject(listing.variant_axes) || {}),
-            JSON.stringify(asPlainObject(listing.source_payload) || {}),
-            JSON.stringify(asPlainObject(listing.review_summary) || {}),
-            listing.official_url,
-            listing.official_domain,
-            listing.brand_norm,
-            listing.title_norm,
-            listing.title_core_norm,
+            sanitizeTextForPostgres(listing.matched_by_rule),
+            stringifyPostgresJsonb(asArray(listing.match_basis)),
+            stringifyPostgresJsonb(asPlainObject(listing.strong_identity) || {}),
+            stringifyPostgresJsonb(asPlainObject(listing.soft_identity) || {}),
+            stringifyPostgresJsonb(asPlainObject(listing.variant_axes) || {}),
+            stringifyPostgresJsonb(asPlainObject(listing.source_payload) || {}),
+            stringifyPostgresJsonb(asPlainObject(listing.review_summary) || {}),
+            sanitizeTextForPostgres(listing.official_url),
+            sanitizeTextForPostgres(listing.official_domain),
+            sanitizeTextForPostgres(listing.brand_norm),
+            sanitizeTextForPostgres(listing.title_norm),
+            sanitizeTextForPostgres(listing.title_core_norm),
             listing.review_required === true,
-            JSON.stringify(asArray(listing.review_reason_codes)),
+            stringifyPostgresJsonb(asArray(listing.review_reason_codes)),
           ],
         );
       }
@@ -3849,15 +3881,15 @@ async function writeIdentityRows({ listings, reviewQueueEntries, dryRun = false,
               updated_at = now()
           `,
           [
-            entry.id,
-            entry.source_listing_ref,
-            entry.candidate_listing_ref,
-            entry.queue_type,
-            entry.status,
-            JSON.stringify(asArray(entry.reason_codes)),
-            JSON.stringify(asPlainObject(entry.evidence) || {}),
-            entry.proposed_sellable_item_group_id,
-            entry.proposed_product_line_id,
+            sanitizeTextForPostgres(entry.id),
+            sanitizeTextForPostgres(entry.source_listing_ref),
+            sanitizeTextForPostgres(entry.candidate_listing_ref),
+            sanitizeTextForPostgres(entry.queue_type),
+            sanitizeTextForPostgres(entry.status),
+            stringifyPostgresJsonb(asArray(entry.reason_codes)),
+            stringifyPostgresJsonb(asPlainObject(entry.evidence) || {}),
+            sanitizeTextForPostgres(entry.proposed_sellable_item_group_id),
+            sanitizeTextForPostgres(entry.proposed_product_line_id),
           ],
         );
       }
@@ -4043,11 +4075,11 @@ async function applyPdpIdentityOverride({
         RETURNING *
       `,
       [
-        overrideId,
-        sourceRef,
-        action,
-        JSON.stringify(overridePayload),
-        asString(createdBy) || 'admin',
+        sanitizeTextForPostgres(overrideId),
+        sanitizeTextForPostgres(sourceRef),
+        sanitizeTextForPostgres(action),
+        stringifyPostgresJsonb(overridePayload),
+        sanitizeTextForPostgres(asString(createdBy) || 'admin'),
         active !== false,
       ],
     );
@@ -4113,5 +4145,7 @@ module.exports = {
     pickDefaultCommerceListing,
     clusterIdentityListings,
     fetchBackfillProducts,
+    sanitizeJsonForPostgres,
+    stringifyPostgresJsonb,
   },
 };
