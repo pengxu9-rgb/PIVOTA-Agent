@@ -46,6 +46,7 @@ describe('backfill-external-product-seeds-catalog', () => {
     const sanitized = sanitizeJsonForPostgres({
       title: 'Shade\u0000and Illuminate',
       'bad\u0000key': 'value',
+      wrapped: new String('Wrapped\u0000 value'),
       nested: {
         body: 'Clean\u0000 copy and literal \\u0000 escape',
         items: ['One\u0000', 'Two\\u0000'],
@@ -55,12 +56,14 @@ describe('backfill-external-product-seeds-catalog', () => {
     expect(sanitized).toEqual({
       title: 'Shadeand Illuminate',
       badkey: 'value',
+      wrapped: 'Wrapped value',
       nested: {
         body: 'Clean copy and literal  escape',
         items: ['One', 'Two'],
       },
     });
     expect(stringifyPostgresJsonb(sanitized)).not.toContain('\\u0000');
+    expect(stringifyPostgresJsonb(sanitized)).not.toContain('\u0000');
   });
 
   test('removes null bytes from postgres text column values', () => {

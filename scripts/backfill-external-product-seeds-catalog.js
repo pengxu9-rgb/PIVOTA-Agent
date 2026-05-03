@@ -415,13 +415,24 @@ function cloneJsonValue(value) {
   return JSON.parse(JSON.stringify(value || {}));
 }
 
+function stripNullBytesFromString(value) {
+  return String(value || '').replace(/\u0000/g, '').replace(/\\u0000/gi, '');
+}
+
+function stripNullBytesFromUtf8String(value) {
+  const cleaned = stripNullBytesFromString(value);
+  const bytes = Buffer.from(cleaned, 'utf8');
+  if (!bytes.includes(0)) return cleaned;
+  return Buffer.from(bytes.filter((byte) => byte !== 0)).toString('utf8');
+}
+
 function sanitizeJsonForPostgres(value) {
-  if (typeof value === 'string') return value.replace(/\u0000/g, '').replace(/\\u0000/gi, '');
+  if (typeof value === 'string' || value instanceof String) return stripNullBytesFromUtf8String(value);
   if (Array.isArray(value)) return value.map((item) => sanitizeJsonForPostgres(item));
   if (!value || typeof value !== 'object') return value;
   return Object.fromEntries(
     Object.entries(value).map(([key, candidate]) => [
-      String(key).replace(/\u0000/g, '').replace(/\\u0000/gi, ''),
+      stripNullBytesFromUtf8String(key),
       sanitizeJsonForPostgres(candidate),
     ]),
   );
@@ -429,11 +440,11 @@ function sanitizeJsonForPostgres(value) {
 
 function sanitizeTextForPostgres(value) {
   if (value === null || value === undefined) return value;
-  return String(value).replace(/\u0000/g, '').replace(/\\u0000/gi, '');
+  return stripNullBytesFromUtf8String(value);
 }
 
 function stringifyPostgresJsonb(value) {
-  return JSON.stringify(sanitizeJsonForPostgres(value || {}));
+  return stripNullBytesFromUtf8String(JSON.stringify(sanitizeJsonForPostgres(value || {})));
 }
 
 function stableHash(value, length = 24) {
@@ -3808,6 +3819,72 @@ function buildFailureSeedData(row, targetUrl, error) {
   return nextSeedData;
 }
 
+function buildMinimalFailureSeedData(row, targetUrl, error) {
+  const seedData = ensureJsonObject(row?.seed_data);
+  const snapshot = ensureJsonObject(seedData.snapshot);
+  const imageUrls = sanitizeSeedImageUrls(collectSeedImageUrls(seedData, row));
+  const normalizedTargetUrl = normalizeUrlLike(targetUrl);
+  const variants = normalizeSeedVariants(seedData, row);
+  return {
+    brand: sanitizeTextForPostgres(seedData.brand || snapshot.brand || row?.brand || ''),
+    title: sanitizeTextForPostgres(seedData.title || snapshot.title || row?.title || ''),
+    canonical_url:
+      normalizedTargetUrl ||
+      normalizeUrlLike(seedData.canonical_url) ||
+      normalizeUrlLike(snapshot.canonical_url) ||
+      normalizeUrlLike(row?.canonical_url),
+    destination_url:
+      normalizedTargetUrl ||
+      normalizeUrlLike(seedData.destination_url) ||
+      normalizeUrlLike(snapshot.destination_url) ||
+      normalizeUrlLike(row?.destination_url),
+    image_url: imageUrls[0] || sanitizeTextForPostgres(row?.image_url || ''),
+    image_urls: imageUrls,
+    images: imageUrls,
+    snapshot: {
+      source: 'catalog_intelligence',
+      extracted_at: new Date().toISOString(),
+      canonical_url:
+        normalizedTargetUrl ||
+        normalizeUrlLike(snapshot.canonical_url) ||
+        normalizeUrlLike(row?.canonical_url),
+      diagnostics: {
+        failure_category: 'unknown',
+        error: sanitizeTextForPostgres(error?.message || error || 'unknown_error'),
+      },
+      image_url: imageUrls[0] || sanitizeTextForPostgres(row?.image_url || ''),
+      image_urls: imageUrls,
+      images: imageUrls,
+      variants,
+    },
+  };
+}
+
+async function persistFailureSeedData(row, candidates = []) {
+  let lastError = null;
+  for (const candidate of Array.isArray(candidates) ? candidates : [candidates]) {
+    if (!candidate || typeof candidate !== 'object') continue;
+    try {
+      await query(
+        `
+          UPDATE external_product_seeds
+          SET seed_data = $2::jsonb, updated_at = now()
+          WHERE id = $1
+        `,
+        [row.id, stringifyPostgresJsonb(candidate)],
+      );
+      return { persisted: true };
+    } catch (error) {
+      lastError = error;
+      if (String(error?.code || '').trim() !== '22021') {
+        throw error;
+      }
+    }
+  }
+  if (lastError) throw lastError;
+  return { persisted: false };
+}
+
 async function fetchRows(options) {
   const where = [
     `status = 'active'`,
@@ -4403,6 +4480,7 @@ async function processRow(row, options) {
     };
   } catch (error) {
     const nextSeedData = buildFailureSeedData(row, targetUrl, error);
+    const minimalFailureSeedData = buildMinimalFailureSeedData(row, targetUrl, error);
     const failureEnrichment = await enrichExternalSeedRowIngredients({
       row: {
         ...row,
@@ -4420,14 +4498,7 @@ async function processRow(row, options) {
         ? ensureJsonObject(failureEnrichment.row.seed_data)
         : nextSeedData;
     if (!options.dryRun) {
-      await query(
-        `
-          UPDATE external_product_seeds
-          SET seed_data = $2::jsonb, updated_at = now()
-          WHERE id = $1
-        `,
-        [row.id, stringifyPostgresJsonb(persistedSeedData)],
-      );
+      await persistFailureSeedData(row, [persistedSeedData, minimalFailureSeedData]);
     }
     return { status: 'failed', row, targetUrl, error };
   }
