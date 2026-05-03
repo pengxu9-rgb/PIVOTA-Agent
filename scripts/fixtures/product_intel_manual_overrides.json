@@ -42031,5 +42031,413 @@
     "reviewed_at": "2026-05-03T22:00:00Z",
     "external_highlight_review_status": "rewrite",
     "external_review_batch": "non_merge_manual_review_2026_05_03_medicube"
+  },
+  "live_ext_fae9859695d085768798b7f8": {
+    "notes": "Manual refresh: keep this as a peptide-support ampoule and add clearer card/search highlights grounded in seller-plus-formula evidence.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Peptide-support ampoule",
+        "body": "A hydrating treatment ampoule positioned around Matrixyl-style peptide support, with a lighter serum texture meant to slot into routines that want bounce and cushioning without moving into cream territory."
+      },
+      "best_for": [
+        {
+          "tag": "hydration_plus_bounce",
+          "label": "Hydration plus bouncier-looking skin",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "daily_treatment_ampoule",
+          "label": "Daily treatment ampoule step",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Peptide-led support",
+          "body": "The product is framed more around a peptide-support story for smoother, more elastic-feeling skin than around harsher resurfacing or brightening claims.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Ampoule texture over cream weight",
+          "body": "Its role stays in the treatment layer of the routine, giving more cushioning than a watery toner but staying lighter than a face cream.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "serum",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Apply after toner and before moisturizer.",
+          "Works best when followed by a cream that seals in hydration if your skin runs dry."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "expectation_setting",
+          "label": "This reads as a cushioning peptide-support step, so it may feel too subtle if you want a stronger resurfacing or pigment-focused treatment.",
+          "severity": "medium"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "Cushioning ampoule",
+      "finish": "Hydrated finish"
+    },
+    "shopping_card": {
+      "highlight": "Peptide-support ampoule for hydration and bounce."
+    },
+    "search_card": {
+      "highlight_candidate": "Peptide-support ampoule for hydration and bounce"
+    },
+    "review_status": "completed",
+    "review_decision": "approved",
+    "reviewer": "codex_manual_override",
+    "reviewer_kind": "employee",
+    "reviewed_at": "2026-05-03T22:20:00Z",
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "non_merge_manual_review_2026_05_03_skin1004"
+  },
+  "product:ext_fae9859695d085768798b7f8": {
+    "notes": "Manual refresh: keep this as a peptide-support ampoule and add clearer card/search highlights grounded in seller-plus-formula evidence.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Peptide-support ampoule",
+        "body": "A hydrating treatment ampoule positioned around Matrixyl-style peptide support, with a lighter serum texture meant to slot into routines that want bounce and cushioning without moving into cream territory."
+      },
+      "best_for": [
+        {
+          "tag": "hydration_plus_bounce",
+          "label": "Hydration plus bouncier-looking skin",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "daily_treatment_ampoule",
+          "label": "Daily treatment ampoule step",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Peptide-led support",
+          "body": "The product is framed more around a peptide-support story for smoother, more elastic-feeling skin than around harsher resurfacing or brightening claims.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Ampoule texture over cream weight",
+          "body": "Its role stays in the treatment layer of the routine, giving more cushioning than a watery toner but staying lighter than a face cream.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "serum",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Apply after toner and before moisturizer.",
+          "Works best when followed by a cream that seals in hydration if your skin runs dry."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "expectation_setting",
+          "label": "This reads as a cushioning peptide-support step, so it may feel too subtle if you want a stronger resurfacing or pigment-focused treatment.",
+          "severity": "medium"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "Cushioning ampoule",
+      "finish": "Hydrated finish"
+    },
+    "shopping_card": {
+      "highlight": "Peptide-support ampoule for hydration and bounce."
+    },
+    "search_card": {
+      "highlight_candidate": "Peptide-support ampoule for hydration and bounce"
+    },
+    "review_status": "completed",
+    "review_decision": "approved",
+    "reviewer": "codex_manual_override",
+    "reviewer_kind": "employee",
+    "reviewed_at": "2026-05-03T22:20:00Z",
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "non_merge_manual_review_2026_05_03_skin1004"
+  },
+  "live_ext_61fd2d096b614e518670aefc": {
+    "notes": "Manual refresh: keep this as a calming centella ampoule and add clearer card/search highlights without overclaiming.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Calming centella ampoule",
+        "body": "A calming treatment ampoule built around centella support, positioned as a minimalist serum step for routines that want extra hydration and comfort without a heavy finish."
+      },
+      "best_for": [
+        {
+          "tag": "sensitive_skin_support",
+          "label": "Sensitive or easily stressed skin",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "minimalist_serum_step",
+          "label": "Minimalist calming serum step",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Centella-first simplicity",
+          "body": "Its strength is a simpler centella-led calming profile instead of a crowded active mix, which makes it easier to fit into recovery-oriented routines.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Light ampoule finish",
+          "body": "The texture is meant to sit between toner and cream, giving extra comfort without the weight of a richer moisturizer.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "serum",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Apply after toner and before moisturizer.",
+          "A good fit for simpler routines when your skin feels reactive and you want fewer moving parts."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "treatment_strength",
+          "label": "If you want a strongly active brightening or resurfacing serum, this calmer support profile may feel too gentle.",
+          "severity": "medium"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "Light ampoule",
+      "finish": "Comforted, low-residue finish"
+    },
+    "shopping_card": {
+      "highlight": "Centella ampoule for calming support and light hydration."
+    },
+    "search_card": {
+      "highlight_candidate": "Centella ampoule for calming support and light hydration"
+    },
+    "review_status": "completed",
+    "review_decision": "approved",
+    "reviewer": "codex_manual_override",
+    "reviewer_kind": "employee",
+    "reviewed_at": "2026-05-03T22:20:00Z",
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "non_merge_manual_review_2026_05_03_skin1004"
+  },
+  "product:ext_61fd2d096b614e518670aefc": {
+    "notes": "Manual refresh: keep this as a calming centella ampoule and add clearer card/search highlights without overclaiming.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Calming centella ampoule",
+        "body": "A calming treatment ampoule built around centella support, positioned as a minimalist serum step for routines that want extra hydration and comfort without a heavy finish."
+      },
+      "best_for": [
+        {
+          "tag": "sensitive_skin_support",
+          "label": "Sensitive or easily stressed skin",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "minimalist_serum_step",
+          "label": "Minimalist calming serum step",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Centella-first simplicity",
+          "body": "Its strength is a simpler centella-led calming profile instead of a crowded active mix, which makes it easier to fit into recovery-oriented routines.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Light ampoule finish",
+          "body": "The texture is meant to sit between toner and cream, giving extra comfort without the weight of a richer moisturizer.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "serum",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Apply after toner and before moisturizer.",
+          "A good fit for simpler routines when your skin feels reactive and you want fewer moving parts."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "treatment_strength",
+          "label": "If you want a strongly active brightening or resurfacing serum, this calmer support profile may feel too gentle.",
+          "severity": "medium"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "Light ampoule",
+      "finish": "Comforted, low-residue finish"
+    },
+    "shopping_card": {
+      "highlight": "Centella ampoule for calming support and light hydration."
+    },
+    "search_card": {
+      "highlight_candidate": "Centella ampoule for calming support and light hydration"
+    },
+    "review_status": "completed",
+    "review_decision": "approved",
+    "reviewer": "codex_manual_override",
+    "reviewer_kind": "employee",
+    "reviewed_at": "2026-05-03T22:20:00Z",
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "non_merge_manual_review_2026_05_03_skin1004"
+  },
+  "live_ext_a79d441fe9884a554f2948c9": {
+    "notes": "Manual refresh: keep this as a barrier-support centella cream and add clearer card/search highlights grounded in seller-plus-formula evidence.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Barrier-support centella cream",
+        "body": "A centella-led face cream positioned for daily barrier support and calmer-feeling skin, with enough cushion to finish the routine without reading as an overly rich occlusive cream."
+      },
+      "best_for": [
+        {
+          "tag": "barrier_support",
+          "label": "Barrier support",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "sensitive_redness_prone",
+          "label": "Sensitive or redness-prone skin",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Cream step with centella support",
+          "body": "It is best understood as the sealing cream step for comfort-first routines rather than a treatment-heavy active layer.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Balanced finish",
+          "body": "The profile lands between a very light gel and a richer barrier balm, which makes it easier to use day or night for users who want steady comfort.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "moisturizer",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Apply after serum steps and follow with sunscreen in the morning.",
+          "Useful as the finishing comfort layer when your skin feels more reactive than usual."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "finish",
+          "label": "If you strongly prefer a weightless gel finish, this more supportive cream texture may feel a bit richer than expected.",
+          "severity": "medium"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "Comforting cream",
+      "finish": "Soft cushioned finish"
+    },
+    "shopping_card": {
+      "highlight": "Centella cream for barrier support and calmer-feeling skin."
+    },
+    "search_card": {
+      "highlight_candidate": "Centella cream for barrier support and calmer-feeling skin"
+    },
+    "review_status": "completed",
+    "review_decision": "approved",
+    "reviewer": "codex_manual_override",
+    "reviewer_kind": "employee",
+    "reviewed_at": "2026-05-03T22:20:00Z",
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "non_merge_manual_review_2026_05_03_skin1004"
+  },
+  "product:ext_a79d441fe9884a554f2948c9": {
+    "notes": "Manual refresh: keep this as a barrier-support centella cream and add clearer card/search highlights grounded in seller-plus-formula evidence.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Barrier-support centella cream",
+        "body": "A centella-led face cream positioned for daily barrier support and calmer-feeling skin, with enough cushion to finish the routine without reading as an overly rich occlusive cream."
+      },
+      "best_for": [
+        {
+          "tag": "barrier_support",
+          "label": "Barrier support",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "sensitive_redness_prone",
+          "label": "Sensitive or redness-prone skin",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Cream step with centella support",
+          "body": "It is best understood as the sealing cream step for comfort-first routines rather than a treatment-heavy active layer.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Balanced finish",
+          "body": "The profile lands between a very light gel and a richer barrier balm, which makes it easier to use day or night for users who want steady comfort.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "moisturizer",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Apply after serum steps and follow with sunscreen in the morning.",
+          "Useful as the finishing comfort layer when your skin feels more reactive than usual."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "finish",
+          "label": "If you strongly prefer a weightless gel finish, this more supportive cream texture may feel a bit richer than expected.",
+          "severity": "medium"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "Comforting cream",
+      "finish": "Soft cushioned finish"
+    },
+    "shopping_card": {
+      "highlight": "Centella cream for barrier support and calmer-feeling skin."
+    },
+    "search_card": {
+      "highlight_candidate": "Centella cream for barrier support and calmer-feeling skin"
+    },
+    "review_status": "completed",
+    "review_decision": "approved",
+    "reviewer": "codex_manual_override",
+    "reviewer_kind": "employee",
+    "reviewed_at": "2026-05-03T22:20:00Z",
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "non_merge_manual_review_2026_05_03_skin1004"
   }
 }
