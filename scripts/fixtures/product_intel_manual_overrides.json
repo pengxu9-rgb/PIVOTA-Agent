@@ -42439,5 +42439,411 @@
     "reviewed_at": "2026-05-03T22:20:00Z",
     "external_highlight_review_status": "rewrite",
     "external_review_batch": "non_merge_manual_review_2026_05_03_skin1004"
+  },
+  "live_ext_bdeaac19241ab0f35520a3a0": {
+    "notes": "Manual addition: classify as a conductive gel serum built for Age-R device use, not a generic hydrating serum.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Conductive gel serum",
+        "body": "A conductive gel serum designed to pair with Medicube's Age-R device, giving the device the slip and moisture-support layer it needs rather than acting like a standard daily face serum."
+      },
+      "best_for": [
+        {
+          "tag": "device_assisted_routine",
+          "label": "Age-R device routines",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "hydrating_gel_step",
+          "label": "Hydrating gel-prep step",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Built around device compatibility",
+          "body": "The product is positioned first as the working gel for the Age-R device, which makes it more specialized than a generic water-gel serum.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Slip plus hydration support",
+          "body": "Its formula story leans on hyaluronic acid, electrolytes, and vegan collagen to keep the gel comfortable and workable while the device is in use.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "serum",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Apply a generous layer where you plan to use the Age-R device.",
+          "Most useful as a device-assist step rather than a stand-alone everyday treatment serum."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "use_case",
+          "label": "If you do not use the Age-R device, the gel's main reason to exist is much less compelling than a standard treatment serum.",
+          "severity": "medium"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "Conductive gel",
+      "finish": "Hydrated slip"
+    },
+    "shopping_card": {
+      "highlight": "Conductive gel serum built for Age-R device use."
+    },
+    "search_card": {
+      "highlight_candidate": "Conductive gel serum built for Age-R device use"
+    },
+    "review_status": "completed",
+    "review_decision": "approved",
+    "reviewer": "codex_manual_override",
+    "reviewer_kind": "employee",
+    "reviewed_at": "2026-05-03T19:50:00Z",
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "non_merge_manual_review_2026_05_03_priority"
+  },
+  "product:ext_bdeaac19241ab0f35520a3a0": {
+    "notes": "Manual addition: classify as a conductive gel serum built for Age-R device use, not a generic hydrating serum.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Conductive gel serum",
+        "body": "A conductive gel serum designed to pair with Medicube's Age-R device, giving the device the slip and moisture-support layer it needs rather than acting like a standard daily face serum."
+      },
+      "best_for": [
+        {
+          "tag": "device_assisted_routine",
+          "label": "Age-R device routines",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "hydrating_gel_step",
+          "label": "Hydrating gel-prep step",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Built around device compatibility",
+          "body": "The product is positioned first as the working gel for the Age-R device, which makes it more specialized than a generic water-gel serum.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Slip plus hydration support",
+          "body": "Its formula story leans on hyaluronic acid, electrolytes, and vegan collagen to keep the gel comfortable and workable while the device is in use.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "serum",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Apply a generous layer where you plan to use the Age-R device.",
+          "Most useful as a device-assist step rather than a stand-alone everyday treatment serum."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "use_case",
+          "label": "If you do not use the Age-R device, the gel's main reason to exist is much less compelling than a standard treatment serum.",
+          "severity": "medium"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "Conductive gel",
+      "finish": "Hydrated slip"
+    },
+    "shopping_card": {
+      "highlight": "Conductive gel serum built for Age-R device use."
+    },
+    "search_card": {
+      "highlight_candidate": "Conductive gel serum built for Age-R device use"
+    },
+    "review_status": "completed",
+    "review_decision": "approved",
+    "reviewer": "codex_manual_override",
+    "reviewer_kind": "employee",
+    "reviewed_at": "2026-05-03T19:50:00Z",
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "non_merge_manual_review_2026_05_03_priority"
+  },
+  "live_ext_93b709b2dac377f6c1653b65": {
+    "notes": "Manual addition: keep this as an azelaic ampoule for redness, marks, and blemish-prone routines; do not flatten it into a generic brightening serum.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Azelaic ampoule",
+        "body": "A concentrated ampoule built around an azelaic-acid-led complex to help manage visible redness, post-breakout marks, and blemish-prone texture in a lighter treatment step."
+      },
+      "best_for": [
+        {
+          "tag": "blemish_prone_skin",
+          "label": "Blemish-prone skin",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "redness_marks",
+          "label": "Visible redness and post-breakout marks",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Azelaic complex plus calming support",
+          "body": "The formula combines an azelaic-acid-centered treatment profile with centella, panthenol, and humectant support so it reads less like a harsh peel-style treatment.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Focused treatment step",
+          "body": "It is easier to slot into redness- and marks-focused routines as a dedicated ampoule step than as an all-purpose brightening serum.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "serum",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Apply after toner and before moisturizer.",
+          "Introduce gradually if your routine already includes several strong exfoliating or treatment serums."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "sensitivity",
+          "label": "Even with its calming support, the azelaic-centered treatment profile may still be too active for very reactive or over-exfoliated skin.",
+          "severity": "medium"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "Light ampoule",
+      "finish": "Fresh, treatment-serum finish"
+    },
+    "shopping_card": {
+      "highlight": "Azelaic ampoule for redness, marks, and blemish-prone skin."
+    },
+    "search_card": {
+      "highlight_candidate": "Azelaic ampoule for redness, marks, and blemish-prone skin"
+    },
+    "review_status": "completed",
+    "review_decision": "approved",
+    "reviewer": "codex_manual_override",
+    "reviewer_kind": "employee",
+    "reviewed_at": "2026-05-03T19:50:00Z",
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "non_merge_manual_review_2026_05_03_priority"
+  },
+  "product:ext_93b709b2dac377f6c1653b65": {
+    "notes": "Manual addition: keep this as an azelaic ampoule for redness, marks, and blemish-prone routines; do not flatten it into a generic brightening serum.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Azelaic ampoule",
+        "body": "A concentrated ampoule built around an azelaic-acid-led complex to help manage visible redness, post-breakout marks, and blemish-prone texture in a lighter treatment step."
+      },
+      "best_for": [
+        {
+          "tag": "blemish_prone_skin",
+          "label": "Blemish-prone skin",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "redness_marks",
+          "label": "Visible redness and post-breakout marks",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Azelaic complex plus calming support",
+          "body": "The formula combines an azelaic-acid-centered treatment profile with centella, panthenol, and humectant support so it reads less like a harsh peel-style treatment.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Focused treatment step",
+          "body": "It is easier to slot into redness- and marks-focused routines as a dedicated ampoule step than as an all-purpose brightening serum.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "serum",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Apply after toner and before moisturizer.",
+          "Introduce gradually if your routine already includes several strong exfoliating or treatment serums."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "sensitivity",
+          "label": "Even with its calming support, the azelaic-centered treatment profile may still be too active for very reactive or over-exfoliated skin.",
+          "severity": "medium"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "Light ampoule",
+      "finish": "Fresh, treatment-serum finish"
+    },
+    "shopping_card": {
+      "highlight": "Azelaic ampoule for redness, marks, and blemish-prone skin."
+    },
+    "search_card": {
+      "highlight_candidate": "Azelaic ampoule for redness, marks, and blemish-prone skin"
+    },
+    "review_status": "completed",
+    "review_decision": "approved",
+    "reviewer": "codex_manual_override",
+    "reviewer_kind": "employee",
+    "reviewed_at": "2026-05-03T19:50:00Z",
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "non_merge_manual_review_2026_05_03_priority"
+  },
+  "live_ext_cab1810f4fae3a388fd00c9b": {
+    "notes": "Manual addition: classify as a dual-ended blurring concealer and keep the positioning in complexion coverage, not skincare treatment.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Dual-ended blurring concealer",
+        "body": "A 2-in-1 concealer that pairs a liquid coverage end with a balm-style blurring end, aimed at brightening, spot-concealing, and softening the look of texture in one complexion tool."
+      },
+      "best_for": [
+        {
+          "tag": "spot_concealing",
+          "label": "Spot concealing and under-eye touchups",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "soft_focus_base",
+          "label": "Soft-focus complexion finish",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Coverage plus blur in one format",
+          "body": "The liquid-and-balm pairing makes it more versatile than a standard single-texture concealer when you want both targeted coverage and quick pore-blurring.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Shade-led complexion tool",
+          "body": "Its value depends on finding the right shade and using it like a complexion product, not treating it like a skincare hybrid with long-term treatment claims.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "concealer",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Apply after skincare and primer; use the liquid end for coverage and the balm end where you want a softer-focus finish."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "shade_match",
+          "label": "Because this is a complexion color product, shade selection matters more than with a neutral skincare item.",
+          "severity": "medium"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "Liquid-plus-balm concealer",
+      "finish": "Soft-focus complexion finish"
+    },
+    "shopping_card": {
+      "highlight": "Dual-ended concealer for coverage plus blur."
+    },
+    "search_card": {
+      "highlight_candidate": "Dual-ended concealer for coverage plus blur"
+    },
+    "review_status": "completed",
+    "review_decision": "approved",
+    "reviewer": "codex_manual_override",
+    "reviewer_kind": "employee",
+    "reviewed_at": "2026-05-03T19:50:00Z",
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "non_merge_manual_review_2026_05_03_priority"
+  },
+  "product:ext_cab1810f4fae3a388fd00c9b": {
+    "notes": "Manual addition: classify as a dual-ended blurring concealer and keep the positioning in complexion coverage, not skincare treatment.",
+    "product_intel_core": {
+      "what_it_is": {
+        "headline": "Dual-ended blurring concealer",
+        "body": "A 2-in-1 concealer that pairs a liquid coverage end with a balm-style blurring end, aimed at brightening, spot-concealing, and softening the look of texture in one complexion tool."
+      },
+      "best_for": [
+        {
+          "tag": "spot_concealing",
+          "label": "Spot concealing and under-eye touchups",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "soft_focus_base",
+          "label": "Soft-focus complexion finish",
+          "confidence": "moderate"
+        }
+      ],
+      "why_it_stands_out": [
+        {
+          "headline": "Coverage plus blur in one format",
+          "body": "The liquid-and-balm pairing makes it more versatile than a standard single-texture concealer when you want both targeted coverage and quick pore-blurring.",
+          "evidence_strength": "seller_grounded"
+        },
+        {
+          "headline": "Shade-led complexion tool",
+          "body": "Its value depends on finding the right shade and using it like a complexion product, not treating it like a skincare hybrid with long-term treatment claims.",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "routine_fit": {
+        "step": "concealer",
+        "am_pm": [
+          "am",
+          "pm"
+        ],
+        "pairing_notes": [
+          "Apply after skincare and primer; use the liquid end for coverage and the balm end where you want a softer-focus finish."
+        ]
+      },
+      "watchouts": [
+        {
+          "type": "shade_match",
+          "label": "Because this is a complexion color product, shade selection matters more than with a neutral skincare item.",
+          "severity": "medium"
+        }
+      ]
+    },
+    "texture_finish": {
+      "texture": "Liquid-plus-balm concealer",
+      "finish": "Soft-focus complexion finish"
+    },
+    "shopping_card": {
+      "highlight": "Dual-ended concealer for coverage plus blur."
+    },
+    "search_card": {
+      "highlight_candidate": "Dual-ended concealer for coverage plus blur"
+    },
+    "review_status": "completed",
+    "review_decision": "approved",
+    "reviewer": "codex_manual_override",
+    "reviewer_kind": "employee",
+    "reviewed_at": "2026-05-03T19:50:00Z",
+    "external_highlight_review_status": "rewrite",
+    "external_review_batch": "non_merge_manual_review_2026_05_03_priority"
   }
 }
