@@ -803,6 +803,25 @@ function looksLikeCrossSellPairingText(value) {
   return hasPairingFrame && hasCommerceCta;
 }
 
+function looksLikeTransactionalNoiseText(value) {
+  const text = asNonEmptyString(value);
+  if (!text) return false;
+  return (
+    /\bnotify me\b/i.test(text) ||
+    /\bproduct notification\b/i.test(text) ||
+    /\byour email\b/i.test(text) ||
+    /\bregular price\b/i.test(text) ||
+    /\bsale price\b/i.test(text)
+  );
+}
+
+function looksLikeMarketingBlendName(value) {
+  const text = asNonEmptyString(value);
+  if (!text) return false;
+  if (!/^[A-Z0-9][A-Z0-9&+\- ]{5,}$/.test(text)) return false;
+  return /\b(RELIEF|COMPLEX|GRIP|PREP|SMOOTH|DEFENSE|ENERGY)\b/.test(text);
+}
+
 function looksLikeActiveCompatibilityFaqText(value) {
   const text = asNonEmptyString(value);
   if (!text) return false;
@@ -824,6 +843,17 @@ function isPairingGuidanceDetailSection(section) {
   const heading = asNonEmptyString(section?.heading);
   const content = asNonEmptyString(section?.content);
   return /^how to pair$/i.test(heading) || /\bpairs? with\b/i.test(`${heading} ${content}`);
+}
+
+function isIgnorableExternalSeedDetailSection(product, section) {
+  if (!isExternalSeedLikeProduct(product)) return false;
+  const heading = asNonEmptyString(section?.heading);
+  const content = asNonEmptyString(section?.content);
+  const titleKey = normalizeTextKey(product?.title);
+  const headingKey = normalizeTextKey(heading);
+  if (looksLikeTransactionalNoiseText(`${heading} ${content}`)) return true;
+  if (titleKey && headingKey && titleKey === headingKey && looksLikeTransactionalNoiseText(content)) return true;
+  return looksLikeMarketingBlendName(heading);
 }
 
 function sanitizeDetailSectionContent(heading, content) {
@@ -883,7 +913,9 @@ function buildIngredientsModuleData(candidates, fallbackTitle) {
   };
 
   const sanitizeIngredientsItems = (items) => {
-    const cleaned = uniqueNonEmptyStrings((items || []).filter((item) => likelyInciItem(item)));
+    const cleaned = uniqueNonEmptyStrings(
+      (items || []).filter((item) => likelyInciItem(item) && !looksLikeMarketingBlendName(item)),
+    );
     if (!cleaned.length) return items;
     const minimumRetained = Math.max(6, Math.ceil((items || []).length * 0.4));
     return cleaned.length >= minimumRetained ? cleaned : items;
@@ -1518,6 +1550,7 @@ function normalizeDetailSectionHeading(value) {
   if (/^(?:key ingredients?|highlight(?:ed)? ingredients?|ingredients story)$/i.test(heading)) {
     return 'Key Ingredients';
   }
+  if (/^clinically tested\b/i.test(heading)) return 'Clinical Results';
   if (/^(?:clinical(?: results?| claims?)?|results?|proven results?)$/i.test(heading)) {
     return 'Clinical Results';
   }
@@ -1676,6 +1709,7 @@ function collectStructuredDetailSections(product) {
         '',
     );
     if (!heading || !content) continue;
+    if (isIgnorableExternalSeedDetailSection(product, { heading, content })) continue;
     const key = `${heading.toLowerCase()}::${content.toLowerCase()}`;
     if (seen.has(key)) continue;
     seen.add(key);
@@ -1871,7 +1905,15 @@ function buildIngredientsInci(product) {
     ],
     'Ingredients',
   );
-  if (structured) return structured;
+  if (structured) {
+    const items = Array.isArray(structured.items) ? structured.items : [];
+    const filteredItems = uniqueNonEmptyStrings(items.filter((item) => !looksLikeMarketingBlendName(item)));
+    const minimumRetained = Math.max(6, Math.ceil(items.length * 0.4));
+    if (filteredItems.length >= minimumRetained && filteredItems.length < items.length) {
+      structured.items = filteredItems;
+    }
+    return structured;
+  }
 
   const items = uniqueNonEmptyStrings([
     ...(Array.isArray(product.inci_list) ? product.inci_list : []),
@@ -3369,6 +3411,15 @@ function buildPdpPayload(args) {
       priority: 73,
       data: genericAttributeModules.usageSafety,
     });
+  }
+  if (ingredientsInci && Array.isArray(ingredientsInci.items) && ingredientsInci.items.length) {
+    const filteredItems = uniqueNonEmptyStrings(
+      ingredientsInci.items.filter((item) => !looksLikeMarketingBlendName(item)),
+    );
+    const minimumRetained = Math.max(6, Math.ceil(ingredientsInci.items.length * 0.4));
+    if (filteredItems.length >= minimumRetained && filteredItems.length < ingredientsInci.items.length) {
+      ingredientsInci.items = filteredItems;
+    }
   }
   if (activeIngredients) {
     modules.push({

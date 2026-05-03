@@ -502,6 +502,92 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     );
   });
 
+  test('filters transactional and marketing callout detail sections from external-seed primer PDPs', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_tirtir_primer',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'Flawless Pore Prep Primer',
+        category: 'Primer',
+        image_url: 'https://example.com/flawless-primer.png',
+        pdp_description_raw: 'COOL THE HEAT. KEEP IT BLUR. For calm skin and a flawless, soft-focus canvas',
+        details_sections: [
+          {
+            heading: 'Flawless Pore Prep Primer',
+            body: 'Flawless Pore Prep PrimerYour email Product notification for Notify Me',
+          },
+          {
+            heading: 'Flawless Pore Prep Primer',
+            body: '$17.60 Regular price $22.00',
+          },
+          {
+            heading: 'BLUE BOTANICAL RELIEF',
+            body: 'Helps calm and comfort stressed skin',
+          },
+          {
+            heading: 'PORE DEFENSE COMPLEX',
+            body: 'Helps refine the look of pores and excess oil',
+          },
+          {
+            heading: 'FRESH HERBAL COMPLEX',
+            body: 'Helps refresh skin and support balanced skin temperature',
+          },
+          {
+            heading: 'Clinically Tested for Visible Pore Reduction',
+            body:
+              '69.11% reduction in pore size immediately after use. 50.73% maintained after 24 hours.',
+          },
+        ],
+        ingredients_inci: {
+          items: [
+            'Guai azulene',
+            'Chamomilla Recutita (Matricaria) Flower Water',
+            'Rosa Damascena Flower Water',
+            'Butylene Glycol',
+            '1,2-Hexanediol',
+            'Enantia Chlorantha Bark Extract',
+            'Oleanolic Acid',
+            'Glycerin',
+            'Silybum Marianum Extract',
+            'Water',
+            'Zingiber Officinale (Ginger) Root Extract',
+            'Mentha Piperita (Peppermint) Leaf Extract',
+            'Leuconostoc/Radish Root Ferment Filtrate',
+            'BLUE BOTANICAL RELIEF',
+            'PORE DEFENSE COMPLEX',
+            'FRESH HERBAL COMPLEX',
+          ],
+          source_origin: 'pdp_section',
+          source_quality_status: 'authoritative',
+        },
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    const supplemental = payload.modules.find((module) => module.type === 'supplemental_details');
+    const productFacts = payload.modules.find((module) => module.type === 'product_facts');
+    const ingredientsInci = payload.modules.find((module) => module.type === 'ingredients_inci');
+
+    expect(supplemental).toBeFalsy();
+    expect(productFacts?.data?.sections).toEqual([
+      expect.objectContaining({
+        heading: 'Clinical Results',
+        content: expect.stringContaining('69.11% reduction in pore size'),
+      }),
+    ]);
+    expect(ingredientsInci?.data?.items).toEqual(
+      expect.not.arrayContaining(['BLUE BOTANICAL RELIEF', 'PORE DEFENSE COMPLEX', 'FRESH HERBAL COMPLEX']),
+    );
+    expect(ingredientsInci?.data?.items).toEqual(
+      expect.arrayContaining([
+        'Chamomilla Recutita (Matricaria) Flower Water',
+        'Leuconostoc/Radish Root Ferment Filtrate',
+      ]),
+    );
+  });
+
   test('uses ingredient authority instead of legacy active block fragments for external seeds', () => {
     const payload = buildPdpPayload({
       product: {
