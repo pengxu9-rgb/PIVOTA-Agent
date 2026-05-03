@@ -26,6 +26,15 @@ function hasSiteSupportUrl(value) {
 const SUPPORT_NAVIGATION_PATTERN =
   /\b(?:track my order|order status|shipping(?:\s*&\s*returns)?|returns?|exchanges?|refunds?|store locator|contact us|customer service|customer care|services|my account|sign in|privacy policy|terms of (?:use|service)|accessibility|gift cards?|delivery|payment methods?)\b/i;
 
+const TRANSACTIONAL_FAQ_PATTERN =
+  /\b(?:are you sure you want to quit|booking request will be made|your current selections will be lost|continue booking|resume booking|confirm your booking|cancel your booking)\b/i;
+
+const GUIDE_FRAGMENT_QUESTION_PATTERN =
+  /^(?:how to build a skincare|regimen guide|learn more about each stage)\b/i;
+
+const GUIDE_FRAGMENT_ANSWER_PATTERN =
+  /^(?:regimen guide\.?|guide\.?|learn more\.?)$/i;
+
 const PRODUCT_USAGE_PATTERN =
   /\b(?:use|apply|wear|layer|pair|mix|shade|color|tone|finish|coverage|texture|scent|fragrance|formula|ingredient|inci|active|spf|sunscreen|retinol|vitamin|niacinamide|hyaluronic|sensitive|oily|dry|acne|blemish|skin|hair|lash|lip|eye|face|body|waterproof|non[-\s]?comedogenic|vegan|cruelty[-\s]?free|pregnan|breastfeed|morning|night|daily|often|long does it last)\b/i;
 
@@ -42,6 +51,15 @@ function isDisplayablePdpFaqItem(item = {}) {
   const sourceTitle = item.source_title || item.sourceTitle;
 
   if (hasSiteSupportUrl(sourceUrl) || hasSiteSupportUrl(sourceTitle)) return false;
+  if (TRANSACTIONAL_FAQ_PATTERN.test(questionSurface) || TRANSACTIONAL_FAQ_PATTERN.test(answerSurface)) {
+    return false;
+  }
+  if (
+    GUIDE_FRAGMENT_QUESTION_PATTERN.test(questionSurface) &&
+    GUIDE_FRAGMENT_ANSWER_PATTERN.test(answerSurface)
+  ) {
+    return false;
+  }
 
   const supportSignals = [
     SUPPORT_NAVIGATION_PATTERN.test(questionSurface),
