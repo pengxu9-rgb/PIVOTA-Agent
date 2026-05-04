@@ -2236,6 +2236,14 @@ const PDP_EXTERNAL_SEED_STATUS_PRECHECK_BUDGET_MS = Math.max(
   50,
   parseTimeoutMs(process.env.PDP_EXTERNAL_SEED_STATUS_PRECHECK_BUDGET_MS, 250),
 );
+const PDP_EXTERNAL_SEED_DETAIL_CACHE_ENABLED = parseBooleanEnv(
+  process.env.PDP_EXTERNAL_SEED_DETAIL_CACHE_ENABLED,
+  false,
+);
+const PDP_EXTERNAL_SEED_LEGACY_DETAIL_FALLBACK_ENABLED = parseBooleanEnv(
+  process.env.PDP_EXTERNAL_SEED_LEGACY_DETAIL_FALLBACK_ENABLED,
+  false,
+);
 const PDP_CORE_PREWARM_TIMEOUT_MS = Math.max(
   1000,
   parseTimeoutMs(process.env.PDP_CORE_PREWARM_TIMEOUT_MS, 6500),
@@ -3416,6 +3424,120 @@ async function fetchExternalSeedProductDetailFromDb(args) {
   const productId = String(args?.productId || '').trim();
   if (!productId) return null;
 
+  const limitedSeedImagesSql = (pathSql) => `
+    CASE
+      WHEN jsonb_typeof(${pathSql}) = 'array'
+      THEN (
+        SELECT coalesce(jsonb_agg(value), '[]'::jsonb)
+        FROM (
+          SELECT value
+          FROM jsonb_array_elements(${pathSql}) WITH ORDINALITY AS image(value, ord)
+          WHERE ord <= 24
+        ) limited_images
+      )
+      ELSE NULL
+    END
+  `;
+  const limitedVariantImagesSql = (pathSql) => `
+    CASE
+      WHEN jsonb_typeof(${pathSql}) = 'array'
+      THEN (
+        SELECT coalesce(jsonb_agg(value), '[]'::jsonb)
+        FROM (
+          SELECT value
+          FROM jsonb_array_elements(${pathSql}) WITH ORDINALITY AS image(value, ord)
+          WHERE ord <= 3
+        ) limited_variant_images
+      )
+      ELSE NULL
+    END
+  `;
+  const limitedVariantsSql = (pathSql) => `
+    CASE
+      WHEN jsonb_typeof(${pathSql}) = 'array'
+      THEN (
+        SELECT coalesce(
+          jsonb_agg(
+            jsonb_strip_nulls(
+              jsonb_build_object(
+                'id', variant.value->>'id',
+                'variant_id', coalesce(variant.value->>'variant_id', variant.value->>'id'),
+                'sku', coalesce(variant.value->>'sku', variant.value->>'sku_id', variant.value->>'variant_sku'),
+                'sku_id', coalesce(variant.value->>'sku_id', variant.value->>'sku'),
+                'title', variant.value->>'title',
+                'name', variant.value->>'name',
+                'option_name', variant.value->>'option_name',
+                'option_value', variant.value->>'option_value',
+                'option1', variant.value->>'option1',
+                'option2', variant.value->>'option2',
+                'option3', variant.value->>'option3',
+                'options', variant.value->'options',
+                'price', coalesce(variant.value->'price', variant.value->'price_amount', variant.value->'pricing'->'current'->'amount'),
+                'price_amount', coalesce(variant.value->'price_amount', variant.value->'price'),
+                'currency', coalesce(variant.value->>'currency', variant.value->>'price_currency', variant.value->'pricing'->'current'->>'currency'),
+                'price_currency', coalesce(variant.value->>'price_currency', variant.value->>'currency'),
+                'availability', variant.value->>'availability',
+                'available', variant.value->'available',
+                'in_stock', variant.value->'in_stock',
+                'inventory_quantity', coalesce(variant.value->'inventory_quantity', variant.value->'available_quantity'),
+                'available_quantity', coalesce(variant.value->'available_quantity', variant.value->'inventory_quantity'),
+                'image_url', coalesce(variant.value->>'image_url', variant.value->>'image', variant.value->'featured_image'->>'src'),
+                'image', coalesce(variant.value->>'image', variant.value->>'image_url', variant.value->'featured_image'->>'src'),
+                'image_urls', ${limitedVariantImagesSql("variant.value->'image_urls'")},
+                'images', ${limitedVariantImagesSql("variant.value->'images'")},
+                'beauty_meta', variant.value->'beauty_meta',
+                'color_hex', coalesce(variant.value->>'color_hex', variant.value->>'shade_hex', variant.value->>'hex'),
+                'swatch', variant.value->'swatch',
+                'url', coalesce(variant.value->>'url', variant.value->>'deep_link', variant.value->>'product_url'),
+                'deep_link', variant.value->>'deep_link',
+                'product_url', variant.value->>'product_url'
+              )
+            )
+          ),
+          '[]'::jsonb
+        )
+        FROM jsonb_array_elements(${pathSql}) WITH ORDINALITY AS variant(value, ord)
+        WHERE ord <= 80
+      )
+      ELSE NULL
+    END
+  `;
+  const prunedSeedDataSql = `
+    (
+      coalesce(seed_data, '{}'::jsonb)
+      - 'variants'
+      - 'images'
+      - 'image_urls'
+      - 'snapshot'
+      || jsonb_strip_nulls(jsonb_build_object(
+        'variants', ${limitedVariantsSql("seed_data->'variants'")},
+        'images', ${limitedSeedImagesSql("seed_data->'images'")},
+        'image_urls', ${limitedSeedImagesSql("seed_data->'image_urls'")},
+        'snapshot',
+          (
+            coalesce(seed_data->'snapshot', '{}'::jsonb)
+            - 'variants'
+            - 'images'
+            - 'image_urls'
+            || jsonb_strip_nulls(jsonb_build_object(
+              'variants', coalesce(
+                ${limitedVariantsSql("seed_data->'snapshot'->'variants'")},
+                ${limitedVariantsSql("seed_data->'variants'")}
+              ),
+              'images', coalesce(
+                ${limitedSeedImagesSql("seed_data->'snapshot'->'images'")},
+                ${limitedSeedImagesSql("seed_data->'images'")}
+              ),
+              'image_urls', coalesce(
+                ${limitedSeedImagesSql("seed_data->'snapshot'->'image_urls'")},
+                ${limitedSeedImagesSql("seed_data->'image_urls'")}
+              )
+            ))
+          )
+      ))
+    ) AS seed_data
+  `;
+
   const selectColumns = `
     SELECT
       id,
@@ -3428,7 +3550,7 @@ async function fetchExternalSeedProductDetailFromDb(args) {
       price_amount,
       price_currency,
       availability,
-      seed_data,
+      ${prunedSeedDataSql},
       updated_at,
       created_at,
       status
@@ -3473,6 +3595,7 @@ async function fetchExternalSeedProductDetailFromDb(args) {
     }
 
     if (!row) return null;
+    if (String(row.status || 'active').trim().toLowerCase() !== 'active') return null;
     const hydratedProduct = buildExternalSeedProduct(row);
     if (!hydratedProduct) return null;
 
@@ -4608,7 +4731,11 @@ async function fetchProductDetailForOffers(args) {
   if (!merchantId || !productId) return null;
   const useMemoryCache =
     PRODUCT_DETAIL_CACHE_ENABLED &&
-    !bypassCache;
+    !bypassCache &&
+    (
+      merchantId !== EXTERNAL_SEED_MERCHANT_ID ||
+      PDP_EXTERNAL_SEED_DETAIL_CACHE_ENABLED
+    );
 
   const cacheKey = buildProductDetailCacheKey({ merchantId, productId, checkoutToken });
 
@@ -4662,23 +4789,25 @@ async function fetchProductDetailForOffers(args) {
         }
         return seedDetail.product;
       }
-      const fromExternalSeeds = await findExternalSeedProductById({ productId }).catch(() => null);
-      if (fromExternalSeeds) {
-        const normalizedExternalSeed = attachProductDetailSource(
-          normalizeProductDetailPrice(fromExternalSeeds),
-          'external_seed_db',
-        );
-        if (useMemoryCache) {
-          setProductDetailCache(cacheKey, {
-            status: 'success',
-            success: true,
-            product: normalizedExternalSeed,
-            metadata: {
-              query_source: 'external_product_seeds',
-            },
-          });
+      if (PDP_EXTERNAL_SEED_LEGACY_DETAIL_FALLBACK_ENABLED) {
+        const fromExternalSeeds = await findExternalSeedProductById({ productId }).catch(() => null);
+        if (fromExternalSeeds) {
+          const normalizedExternalSeed = attachProductDetailSource(
+            normalizeProductDetailPrice(fromExternalSeeds),
+            'external_seed_db',
+          );
+          if (useMemoryCache) {
+            setProductDetailCache(cacheKey, {
+              status: 'success',
+              success: true,
+              product: normalizedExternalSeed,
+              metadata: {
+                query_source: 'external_product_seeds_legacy_fallback',
+              },
+            });
+          }
+          return normalizedExternalSeed;
         }
-        return normalizedExternalSeed;
       }
 
       return null;
@@ -25454,30 +25583,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	        const externalSeedStatusStartedAt = Date.now();
 	        let externalSeedRouteStatus = null;
 	        try {
-	          const externalSeedDetail = await withStageBudget(
-	            fetchExternalSeedProductDetailFromDb({
+	          externalSeedRouteStatus = await withStageBudget(
+	            fetchExternalSeedRouteStatusFromDb({
 	              productId: entryProductId,
 	            }),
 	            PDP_EXTERNAL_SEED_STATUS_PRECHECK_BUDGET_MS,
 	            'pdp_external_seed_status_precheck',
 	          );
-	          if (externalSeedDetail?.product) {
-	            externalSeedDirectPrecheckProduct = externalSeedDetail.product;
-	            externalSeedRouteStatus = {
-	              external_seed_id: externalSeedDetail.external_seed_id || null,
-	              external_product_id: entryProductId,
-	              status: 'active',
-	              updated_at: externalSeedDetail.updated_at || null,
-	            };
-	          } else {
-	            externalSeedRouteStatus = await withStageBudget(
-	              fetchExternalSeedRouteStatusFromDb({
-	                productId: entryProductId,
-	              }),
-	              PDP_EXTERNAL_SEED_STATUS_PRECHECK_BUDGET_MS,
-	              'pdp_external_seed_status_precheck_status_only',
-	            );
-	          }
 	        } catch (err) {
 	          if (err?.code === 'STAGE_TIMEOUT') {
 	            logger.warn(

@@ -116,6 +116,7 @@ describe('external seed product detail hydration', () => {
 
     db.query
       .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({
         rows: [
           {
@@ -143,9 +144,10 @@ describe('external seed product detail hydration', () => {
       productId: 'legacy_snapshot_id',
     });
 
-    expect(db.query).toHaveBeenCalledTimes(2);
+    expect(db.query).toHaveBeenCalledTimes(3);
     expect(String(db.query.mock.calls[0][0] || '')).not.toContain("seed_data->>'external_product_id'");
-    expect(String(db.query.mock.calls[1][0] || '')).toContain("seed_data->>'external_product_id'");
+    expect(String(db.query.mock.calls[1][0] || '')).not.toContain("seed_data->>'external_product_id'");
+    expect(String(db.query.mock.calls[2][0] || '')).toContain("seed_data->>'external_product_id'");
     expect(product).toMatchObject({
       merchant_id: 'external_seed',
       product_id: 'legacy_snapshot_id',
@@ -366,6 +368,7 @@ describe('external seed product detail hydration', () => {
           {
             id: 'eps_seed_db_1',
             external_product_id: 'ext_seed_db_1',
+            status: 'active',
             canonical_url: 'https://www.tomfordbeauty.com/products/noir-ext-seed-db-1',
             destination_url: 'https://www.tomfordbeauty.com/products/noir-ext-seed-db-1',
             title: 'Tom Ford Noir Extreme Parfum',
@@ -447,15 +450,12 @@ describe('external seed product detail hydration', () => {
       PIVOTA_API_KEY: 'test-token',
     });
 
-    db.query.mockResolvedValueOnce({
-      rows: [
-        {
-          id: 'eps_old_1',
-          external_product_id: 'ext_deadbeefdeadbeefdeadbeef',
-          status: 'inactive',
-        },
-      ],
-    });
+    const inactiveSeedRow = {
+      id: 'eps_old_1',
+      external_product_id: 'ext_deadbeefdeadbeefdeadbeef',
+      status: 'inactive',
+    };
+    db.query.mockResolvedValueOnce({ rows: [inactiveSeedRow] });
 
     const res = await request(app)
       .post('/agent/shop/v1/invoke')
