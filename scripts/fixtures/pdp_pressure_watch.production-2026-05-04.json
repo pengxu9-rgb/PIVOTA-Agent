@@ -1,0 +1,47 @@
+{
+  "cases": [
+    {
+      "id": "watch_skin1004_azelaic_ampoule",
+      "bucket": "pressure_watch_ext",
+      "product_id": "ext_93b709b2dac377f6c1653b65",
+      "notes": "Current SKIN1004 PDP that reproduced a public timeout shell on 2026-05-04 before recovering on retry."
+    },
+    {
+      "id": "watch_krave_oat_so_simple",
+      "bucket": "pressure_watch_ext",
+      "product_id": "ext_169a110da5dc593de5887a37",
+      "notes": "High-signal KraveBeauty PDP used during the same timeout incident to separate shared rail pressure from single-product content issues."
+    },
+    {
+      "id": "watch_ordinary_amino_acids",
+      "bucket": "pressure_watch_ext",
+      "product_id": "ext_8dd07c804d6613a542a5bfdc",
+      "notes": "The Ordinary PDP with recent FAQ/reviews repair; keep in the watch set because it shares the same public PDP rail."
+    },
+    {
+      "id": "watch_boj_glow_deep_merged_offer",
+      "bucket": "pressure_watch_merged_offer",
+      "product_id": "ext_9c38d62652cbb1cc23efc065",
+      "notes": "Merged-offer BOJ x Ohlolly PDP to catch latency regressions that only show up once multi-offer hydration kicks in."
+    },
+    {
+      "id": "control_tirtir_reflect_glow_primer",
+      "bucket": "pressure_control_ext",
+      "product_id": "ext_62f7f0e601b4a7076878dcc2",
+      "notes": "Single-SKU external PDP with reviewed size override. Serves as a healthy external-seed control."
+    },
+    {
+      "id": "control_not_found_ext5a",
+      "bucket": "pressure_control_not_found",
+      "product_id": "ext_5a3f0ba2f0e0394b72018937",
+      "notes": "Stable true not-found control. This should stay PRODUCT_NOT_FOUND rather than drifting into transport failures."
+    },
+    {
+      "id": "control_shopify_9886500749640",
+      "bucket": "pressure_control_shopify",
+      "product_id": "9886500749640",
+      "merchant_id": "merch_efbc46b4619cfbdf",
+      "notes": "Stable shopify-backed PDP control."
+    }
+  ]
+}

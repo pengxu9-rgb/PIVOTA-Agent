@@ -2600,6 +2600,16 @@ function normalizeOptions(rawVariant, optionName, optionValue, productOptionName
       { name: optionName || 'Variant', value: optionValue || 'Default' },
     ]);
     if (direct.length > 0) {
+      if (
+        fallbackOptions.length > 0 &&
+        direct.length === 1 &&
+        GENERIC_VARIANT_OPTION_NAMES.has(normalizeOptionNameKey(direct[0]?.name)) &&
+        ['single', 'default', 'default title', 'title', 'variant'].includes(
+          normalizeOptionText(direct[0]?.value).toLowerCase(),
+        )
+      ) {
+        return fallbackOptions;
+      }
       if (shouldPreferUrlVariantOptions(direct, urlOptions, rawVariant)) return urlOptions;
       const displayable = filterDisplayableVariantOptions(direct, rawVariant);
       if (displayable.length > 0) return displayable;

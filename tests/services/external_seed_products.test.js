@@ -851,6 +851,51 @@ describe('externalSeedProducts helper', () => {
     expect(product.size_detail_label).toBe('0.50 fl oz / 15 mL');
   });
 
+  test('uses net weight evidence to surface a displayable single-SKU size variant', () => {
+    const product = buildExternalSeedProduct({
+      id: 'seed_medicube_red_succinic',
+      external_product_id: 'ext_59522af9624198656cc8881b',
+      title: '21% Red Succinic Acid Cleansing Booster Serum',
+      canonical_url: 'https://medicube.us/products/red-succinic-acid-peel',
+      destination_url: 'https://medicube.us/products/red-succinic-acid-peel',
+      seed_data: {
+        brand: 'Medicube',
+        net_content: '40 g',
+        net_size: '1.41 oz',
+        size_detail_label: '1.41 oz / 40 g',
+        snapshot: {
+          title: '21% Red Succinic Acid Cleansing Booster Serum',
+          canonical_url: 'https://medicube.us/products/red-succinic-acid-peel',
+          destination_url: 'https://medicube.us/products/red-succinic-acid-peel',
+          net_content: '40 g',
+          net_size: '1.41 oz',
+          size_detail_label: '1.41 oz / 40 g',
+          variants: [
+            {
+              variant_id: '40118361587760',
+              sku: 'PMEUS55003R00',
+              title: 'SINGLE',
+              option_name: 'Option',
+              option_value: 'SINGLE',
+              price: '20.50',
+              currency: 'USD',
+            },
+          ],
+        },
+      },
+    });
+
+    expect(product.size_detail_label).toBe('1.41 oz / 40 g');
+    expect(product.variants[0]).toEqual(
+      expect.objectContaining({
+        option_name: 'Size',
+        option_value: '40 g',
+        display_label: 'Size: 40 g',
+      }),
+    );
+    expect(product.variants[0].hidden_from_selector).toBeUndefined();
+  });
+
   test('infers product-level size detail labels from quantitative selected variant evidence', () => {
     const product = buildExternalSeedProduct({
       id: 'seed_rare_kit_mini',

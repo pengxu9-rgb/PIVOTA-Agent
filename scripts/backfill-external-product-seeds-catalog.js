@@ -2807,6 +2807,78 @@ function buildExtractedSizeDetailLabel(...values) {
   return unique.slice(0, 2).join(' / ');
 }
 
+function extractAnchoredQuantitativeSizeValues(value) {
+  const normalized = normalizeNonEmptyString(value);
+  if (!normalized) return [];
+  const flattened = normalized
+    .replace(/<br\s*\/?>/gi, ' ')
+    .replace(/<\/(?:p|li|div|ul|ol|section|article|h[1-6])>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!flattened) return [];
+
+  const segments = [];
+  const anchoredRe = /\b(?:net\s*(?:weight|wt|content|contents)|size)\s*[:\-]\s*([^\n\r<]{1,120})/gi;
+  let match;
+  while ((match = anchoredRe.exec(flattened))) {
+    const segment = normalizeNonEmptyString(match[1]);
+    if (segment) segments.push(segment);
+  }
+
+  const out = [];
+  const seen = new Set();
+  const quantityRe = /\b(\d+(?:\.\d+)?)\s*(ml|m l|g|kg|oz|fl\.?\s*oz\.?|fluid\s*ounces?|l|lb|lbs|mm|cm)\b/gi;
+  for (const segment of segments) {
+    let quantityMatch;
+    while ((quantityMatch = quantityRe.exec(segment))) {
+      const formatted = formatExtractedSizeDetailValue(`${quantityMatch[1]} ${quantityMatch[2]}`);
+      if (!formatted) continue;
+      const key = formatted.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(formatted);
+    }
+  }
+  return out;
+}
+
+function splitAnchoredQuantitativeSizeEvidence(...values) {
+  const unique = [];
+  const seen = new Set();
+  for (const value of values) {
+    for (const extracted of extractAnchoredQuantitativeSizeValues(value)) {
+      const key = extracted.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      unique.push(extracted);
+    }
+  }
+
+  if (!unique.length) {
+    return { netContent: '', netSize: '' };
+  }
+
+  let metric = '';
+  let imperial = '';
+  for (const value of unique) {
+    const normalized = value.toLowerCase();
+    if (!metric && /\b(?:ml|m l|g|kg|l|mm|cm)\b/.test(normalized)) {
+      metric = value;
+      continue;
+    }
+    if (!imperial && /\b(?:fl\.?\s*oz|oz|lb|lbs)\b/.test(normalized)) {
+      imperial = value;
+    }
+  }
+
+  return {
+    netContent: metric || unique[0] || '',
+    netSize: imperial || unique.find((item) => item !== (metric || unique[0])) || '',
+  };
+}
+
 function buildSeedUpdatePayload(row, response, targetUrl) {
   const seedData = ensureJsonObject(row?.seed_data);
   const snapshot = ensureJsonObject(seedData.snapshot);
@@ -3486,6 +3558,23 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
   const extractedProductVolume = normalizeNonEmptyString(
     representativeProduct?.product_volume || representativeProduct?.productVolume,
   );
+  const anchoredSizeEvidence = splitAnchoredQuantitativeSizeEvidence(
+    representativeProduct?.description,
+    representativeProduct?.description_html,
+    nextPdpDescriptionRaw,
+    nextPdpHowToUseRaw,
+    ...nextPdpDetailsSections.map((section) => section?.body),
+  );
+  const extractedNetContent = normalizeNonEmptyString(
+    representativeProduct?.net_content ||
+      representativeProduct?.netContent ||
+      anchoredSizeEvidence.netContent,
+  );
+  const extractedNetSize = normalizeNonEmptyString(
+    representativeProduct?.net_size ||
+      representativeProduct?.netSize ||
+      anchoredSizeEvidence.netSize,
+  );
   const representativeProductVariant = Array.isArray(representativeProduct?.variants)
     ? representativeProduct.variants.find((variant) => variant && typeof variant === 'object') || representativeProduct.variants[0]
     : null;
@@ -3496,6 +3585,12 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
         representativeProduct?.product_volume,
         representativeProduct?.productVolume,
         representativeProduct?.volume,
+        representativeProduct?.net_content,
+        representativeProduct?.netContent,
+        representativeProduct?.net_size,
+        representativeProduct?.netSize,
+        anchoredSizeEvidence.netContent,
+        anchoredSizeEvidence.netSize,
         representativeProductVariant?.option_value,
         representativeProductVariant?.title,
         selectedSnapshotVariant?.option_value,
@@ -3504,9 +3599,13 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
   );
   const existingVolume = normalizeNonEmptyString(seedData.volume || snapshot.volume);
   const existingProductVolume = normalizeNonEmptyString(seedData.product_volume || snapshot.product_volume);
+  const existingNetContent = normalizeNonEmptyString(seedData.net_content || snapshot.net_content);
+  const existingNetSize = normalizeNonEmptyString(seedData.net_size || snapshot.net_size);
   const existingSizeDetailLabel = normalizeNonEmptyString(seedData.size_detail_label || snapshot.size_detail_label);
   const nextVolume = extractedVolume || (identityRepairBackfill ? '' : existingVolume);
   const nextProductVolume = extractedProductVolume || (identityRepairBackfill ? '' : existingProductVolume);
+  const nextNetContent = extractedNetContent || (identityRepairBackfill ? '' : existingNetContent);
+  const nextNetSize = extractedNetSize || (identityRepairBackfill ? '' : existingNetSize);
   const nextSizeDetailLabel = extractedSizeDetailLabel || (identityRepairBackfill ? '' : existingSizeDetailLabel);
 
   const nextSnapshot = {
@@ -3537,6 +3636,8 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     ...(nextBundleComponents.length > 0 ? { bundle_components: nextBundleComponents } : {}),
     ...(nextVolume ? { volume: nextVolume } : {}),
     ...(nextProductVolume ? { product_volume: nextProductVolume } : {}),
+    ...(nextNetContent ? { net_content: nextNetContent } : {}),
+    ...(nextNetSize ? { net_size: nextNetSize } : {}),
     ...(nextSizeDetailLabel ? { size_detail_label: nextSizeDetailLabel } : {}),
     ...(nextDescriptionOrigin ? { seed_description_origin: nextDescriptionOrigin } : {}),
     ...(pdpFieldCaptureStatus ? { pdp_field_capture_status: pdpFieldCaptureStatus } : {}),
@@ -3565,6 +3666,8 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
   if (!nextPdpActiveIngredientsRaw) delete nextSnapshot.pdp_active_ingredients_raw;
   if (!nextVolume) delete nextSnapshot.volume;
   if (!nextProductVolume) delete nextSnapshot.product_volume;
+  if (!nextNetContent) delete nextSnapshot.net_content;
+  if (!nextNetSize) delete nextSnapshot.net_size;
   if (!nextSizeDetailLabel) delete nextSnapshot.size_detail_label;
 
   let nextSeedData = {
@@ -3584,6 +3687,8 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     ...(nextBundleComponents.length > 0 ? { bundle_components: nextBundleComponents } : {}),
     ...(nextVolume ? { volume: nextVolume } : {}),
     ...(nextProductVolume ? { product_volume: nextProductVolume } : {}),
+    ...(nextNetContent ? { net_content: nextNetContent } : {}),
+    ...(nextNetSize ? { net_size: nextNetSize } : {}),
     ...(nextSizeDetailLabel ? { size_detail_label: nextSizeDetailLabel } : {}),
     ...(nextDescriptionOrigin ? { seed_description_origin: nextDescriptionOrigin } : {}),
     ...(pdpFieldCaptureStatus ? { pdp_field_capture_status: pdpFieldCaptureStatus } : {}),
@@ -3611,6 +3716,14 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
   if (!nextProductVolume) {
     delete nextSeedData.product_volume;
     if (nextSeedData.snapshot && typeof nextSeedData.snapshot === 'object') delete nextSeedData.snapshot.product_volume;
+  }
+  if (!nextNetContent) {
+    delete nextSeedData.net_content;
+    if (nextSeedData.snapshot && typeof nextSeedData.snapshot === 'object') delete nextSeedData.snapshot.net_content;
+  }
+  if (!nextNetSize) {
+    delete nextSeedData.net_size;
+    if (nextSeedData.snapshot && typeof nextSeedData.snapshot === 'object') delete nextSeedData.snapshot.net_size;
   }
   if (!nextSizeDetailLabel) {
     delete nextSeedData.size_detail_label;

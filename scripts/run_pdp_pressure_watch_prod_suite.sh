@@ -10,7 +10,7 @@ OUT_DIR="${PDP_PRESSURE_OUT_DIR:-$ROOT_DIR/reports}"
 ROUNDS="${PDP_PRESSURE_ROUNDS:-3}"
 TIMEOUT_MS="${PDP_PRESSURE_TIMEOUT_MS:-8000}"
 CONCURRENCY="${PDP_PRESSURE_CONCURRENCY:-4}"
-CASE_FILE="${PDP_PRESSURE_CASE_FILE:-$ROOT_DIR/scripts/fixtures/pdp_pressure_watch.production-2026-04-09.json}"
+CASE_FILE="${PDP_PRESSURE_CASE_FILE:-$ROOT_DIR/scripts/fixtures/pdp_pressure_watch.production-2026-05-04.json}"
 
 echo "[pdp-pressure-watch] case_file=${CASE_FILE}"
 echo "[pdp-pressure-watch] rounds=${ROUNDS} concurrency=${CONCURRENCY} timeout_ms=${TIMEOUT_MS}"

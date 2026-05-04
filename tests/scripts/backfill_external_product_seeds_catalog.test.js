@@ -3486,6 +3486,82 @@ describe('backfill-external-product-seeds-catalog', () => {
     expect(payload.nextRow.seed_data.snapshot.size_detail_label).toBe('75 mL');
   });
 
+  test('extracts anchored net weight evidence for single-SKU placeholder variants', () => {
+    const row = {
+      id: 'seed_medicube_red_succinic',
+      market: 'US',
+      tool: '*',
+      destination_url: 'https://medicube.us/products/red-succinic-acid-peel',
+      canonical_url: 'https://medicube.us/products/red-succinic-acid-peel',
+      domain: 'medicube.us',
+      title: '21% Red Succinic Acid Cleansing Booster Serum',
+      image_url: 'https://cdn.shopify.com/s/files/1/0156/3905/2336/files/red-succinic.jpg?v=1',
+      price_amount: 20.5,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      status: 'active',
+      external_product_id: 'ext_59522af9624198656cc8881b',
+      seed_data: {
+        brand: 'Medicube',
+        snapshot: {
+          title: '21% Red Succinic Acid Cleansing Booster Serum',
+          canonical_url: 'https://medicube.us/products/red-succinic-acid-peel',
+          destination_url: 'https://medicube.us/products/red-succinic-acid-peel',
+          variants: [
+            {
+              variant_id: '40118361587760',
+              title: 'SINGLE',
+              option_name: 'Option',
+              option_value: 'SINGLE',
+              price: '20.50',
+              currency: 'USD',
+            },
+          ],
+        },
+      },
+    };
+
+    const payload = buildSeedUpdatePayload(
+      row,
+      {
+        products: [
+          {
+            title: '21% Red Succinic Acid Cleansing Booster Serum',
+            url: 'https://medicube.us/products/red-succinic-acid-peel',
+            image_url: 'https://cdn.shopify.com/s/files/1/0156/3905/2336/files/red-succinic.jpg?v=1',
+            image_urls: ['https://cdn.shopify.com/s/files/1/0156/3905/2336/files/red-succinic.jpg?v=1'],
+            description:
+              '<p style=\"color: #c8002f\">An Acne Cleansing Booster Serum.<br />Net weight: 40 g | 1.41 oz.</p>' +
+              '<p>Tip! Pour 700ml of lukewarm water in the sink and apply a drop.</p>',
+            variants: [
+              {
+                id: '40118361587760',
+                sku: 'PMEUS55003R00',
+                url: 'https://medicube.us/products/red-succinic-acid-peel',
+                option_name: 'Option',
+                option_value: 'SINGLE',
+                title: 'SINGLE',
+                price: '20.50',
+                currency: 'USD',
+                stock: 'In Stock',
+              },
+            ],
+          },
+        ],
+        variants: [],
+        diagnostics: {},
+      },
+      'https://medicube.us/products/red-succinic-acid-peel',
+    );
+
+    expect(payload.nextRow.seed_data.net_content).toBe('40 g');
+    expect(payload.nextRow.seed_data.net_size).toBe('1.41 oz');
+    expect(payload.nextRow.seed_data.size_detail_label).toBe('1.41 oz / 40 g');
+    expect(payload.nextRow.seed_data.snapshot.net_content).toBe('40 g');
+    expect(payload.nextRow.seed_data.snapshot.net_size).toBe('1.41 oz');
+    expect(payload.nextRow.seed_data.snapshot.size_detail_label).toBe('1.41 oz / 40 g');
+  });
+
   test('writes a cleaned derived recall document during catalog backfill', () => {
     const row = {
       id: 'eps_recall_doc_1',
