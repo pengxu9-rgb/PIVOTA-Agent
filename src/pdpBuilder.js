@@ -1672,7 +1672,7 @@ function dedupeRepeatedOverviewNarrative(value) {
 }
 
 function normalizeDetailSectionHeading(value) {
-  const heading = asNonEmptyString(value);
+  const heading = collapseRepeatedDetailSectionHeading(value);
   if (!heading) return '';
   if (/^(?:product details?|details?|about(?: the product)?|description)$/i.test(heading)) return 'Details';
   if (/^(?:benefits?|why it works|what it does|why we love it)$/i.test(heading)) return 'Benefits';
@@ -1688,7 +1688,7 @@ function normalizeDetailSectionHeading(value) {
   if (/^texture$/i.test(heading)) return 'Texture';
   if (/^free of$/i.test(heading)) return 'Free Of';
   if (/^set includes$/i.test(heading)) return 'Set Includes';
-  if (/^(?:how to use|how to apply|directions?|usage)\b/i.test(heading)) return 'How to Use';
+  if (isHowToDetailHeading(heading)) return 'How to Use';
   if (/^(?:ingredients?|ingredients and safety|ingredient list|full ingredients?|full ingredient list|inci)\b/i.test(heading)) {
     return 'Ingredients';
   }
@@ -1696,6 +1696,120 @@ function normalizeDetailSectionHeading(value) {
     return 'FAQ';
   }
   return heading;
+}
+
+function collapseRepeatedDetailSectionHeading(value) {
+  if (typeof value !== 'string') return '';
+  const heading = String(value);
+  if (!heading) return '';
+  const parts = heading
+    .split(/\n+/)
+    .map((part) => cleanStructuredToken(stripHtml(part)))
+    .filter(Boolean);
+  if (!parts.length) return heading;
+
+  const deduped = [];
+  for (const part of parts) {
+    const normalized = normalizeTextKey(part);
+    const previous = deduped.length ? normalizeTextKey(deduped[deduped.length - 1]) : '';
+    if (normalized && normalized === previous) continue;
+    deduped.push(part);
+  }
+  if (deduped.length === 1) return deduped[0];
+  if (deduped.length % 2 === 0) {
+    const midpoint = deduped.length / 2;
+    const firstHalf = deduped.slice(0, midpoint).map((part) => normalizeTextKey(part));
+    const secondHalf = deduped.slice(midpoint).map((part) => normalizeTextKey(part));
+    if (firstHalf.every((part, index) => part && part === secondHalf[index])) {
+      return deduped.slice(0, midpoint).join(' ');
+    }
+  }
+  return deduped.join(' ');
+}
+
+function isHowToDetailHeading(value) {
+  const heading = collapseRepeatedDetailSectionHeading(value);
+  if (!heading) return false;
+  if (/^how to pair\b/i.test(heading)) return false;
+  return /^(?:how to(?: use| apply)?|directions?|usage)\b/i.test(heading);
+}
+
+const CONTENT_IMAGE_HOW_TO_RE =
+  /\b(application|apply|applying|how[-_ ]?to|usage|routine|regimen|step(?:s)?|tutorial)\b/i;
+const CONTENT_IMAGE_FACT_RE =
+  /\b(ingredients?|comparison|consumer[_ -]?perception|clinical|results?|benefits?|before|after|proof|claim(?:s)?|testing|efficacy)\b/i;
+const CONTENT_IMAGE_OVERVIEW_RE = /\b(texture|finish|feel|lifestyle|hero)\b/i;
+
+function collectStructuredContentImageUrls(product) {
+  return uniqueNonEmptyStrings([
+    ...(Array.isArray(product?.content_image_urls) ? product.content_image_urls : []),
+    ...(Array.isArray(product?.contentImageUrls) ? product.contentImageUrls : []),
+  ])
+    .map((value) => normalizePdpImageUrl(value))
+    .filter(Boolean);
+}
+
+function buildStructuredContentImagePlan(product) {
+  const queues = {
+    overview: [],
+    facts: [],
+    ingredients: [],
+    howToUse: [],
+    other: [],
+  };
+  collectStructuredContentImageUrls(product).forEach((url) => {
+    const haystack = String(url || '').toLowerCase();
+    if (!haystack) return;
+    if (CONTENT_IMAGE_HOW_TO_RE.test(haystack)) {
+      queues.howToUse.push(url);
+      return;
+    }
+    if (/\bingredients?\b/i.test(haystack)) {
+      queues.ingredients.push(url);
+      return;
+    }
+    if (CONTENT_IMAGE_FACT_RE.test(haystack)) {
+      queues.facts.push(url);
+      return;
+    }
+    if (CONTENT_IMAGE_OVERVIEW_RE.test(haystack)) {
+      queues.overview.push(url);
+      return;
+    }
+    queues.other.push(url);
+  });
+
+  const used = new Set();
+  const takeFromQueues = (...queueNames) => {
+    for (const queueName of queueNames) {
+      const queue = queues[queueName];
+      if (!Array.isArray(queue)) continue;
+      while (queue.length) {
+        const next = queue.shift();
+        if (!next || used.has(next)) continue;
+        used.add(next);
+        return next;
+      }
+    }
+    return '';
+  };
+
+  return {
+    takeOverviewImage() {
+      return takeFromQueues('overview', 'other', 'facts', 'ingredients', 'howToUse');
+    },
+    takeFactImage(sectionHeading = '') {
+      const heading = normalizeDetailSectionHeading(sectionHeading);
+      if (/ingredients?/i.test(heading)) return takeFromQueues('ingredients', 'facts', 'other', 'overview');
+      if (/clinical|results?|benefits?|why it works|good to know|free of|comparison|texture|finish|coverage/i.test(heading)) {
+        return takeFromQueues('facts', 'other', 'overview', 'ingredients');
+      }
+      return takeFromQueues('other', 'facts', 'ingredients', 'overview');
+    },
+    takeHowToUseImage() {
+      return takeFromQueues('howToUse', 'overview', 'other', 'facts');
+    },
+  };
 }
 
 function extractSectionSoupSegments(value) {
@@ -1929,15 +2043,21 @@ function resolveBrandStoryText(product, detailSections = collectStructuredDetail
   return detailSections.find((section) => BRAND_STORY_SECTION_RE.test(section.heading))?.content || '';
 }
 
-function buildProductOverviewSections(product, detailSections = collectStructuredDetailSections(product)) {
+function buildProductOverviewSections(
+  product,
+  detailSections = collectStructuredDetailSections(product),
+  contentImagePlan = buildStructuredContentImagePlan(product),
+) {
   const sections = [];
   const desc = dedupeRepeatedOverviewNarrative(resolveProductDescriptionText(product, detailSections));
   if (desc) {
+    const overviewImageUrl = contentImagePlan?.takeOverviewImage?.();
     sections.push({
       heading: 'Description',
       content_type: 'text',
       content: desc,
       collapsed_by_default: false,
+      ...(overviewImageUrl ? { media_urls: [overviewImageUrl] } : {}),
     });
   }
   return sections;
@@ -1998,20 +2118,34 @@ function buildSupplementalDetailSections(product, detailSections = collectStruct
   return sections;
 }
 
-function buildProductFactsSections(product, detailSections = collectStructuredDetailSections(product)) {
+function buildProductFactsSections(
+  product,
+  detailSections = collectStructuredDetailSections(product),
+  contentImagePlan = buildStructuredContentImagePlan(product),
+) {
   const sections = detailSections
     .filter((section) => FACT_DETAIL_SECTION_RE.test(section.heading) && !BRAND_STORY_SECTION_RE.test(section.heading))
-    .map((section) => ({
-      heading: section.heading,
-      content_type: 'text',
-      content: section.content,
-      collapsed_by_default: section.collapsed_by_default ?? true,
-    }));
+    .map((section) => {
+      const factImageUrl = contentImagePlan?.takeFactImage?.(section.heading);
+      return {
+        heading: section.heading,
+        content_type: 'text',
+        content: section.content,
+        collapsed_by_default: section.collapsed_by_default ?? true,
+        ...(factImageUrl ? { media_urls: [factImageUrl] } : {}),
+      };
+    });
 
   detailSections
     .filter((section) => OVERVIEW_DETAIL_SECTION_RE.test(section.heading))
     .flatMap((section) => extractFactSectionsFromSection(section))
-    .forEach((section) => sections.push(section));
+    .forEach((section) => {
+      const factImageUrl = contentImagePlan?.takeFactImage?.(section.heading);
+      sections.push({
+        ...section,
+        ...(factImageUrl ? { media_urls: [factImageUrl] } : {}),
+      });
+    });
 
   const seen = new Set();
   return sections.filter((section) => {
@@ -2291,11 +2425,9 @@ function buildActiveIngredients(product, ingredientsInci) {
   return null;
 }
 
-function buildHowToUse(product) {
+function buildHowToUse(product, contentImagePlan = buildStructuredContentImagePlan(product)) {
   const detailSections = collectStructuredDetailSections(product);
-  const detailSectionHowToUse =
-    detailSections.find((section) => /^(how to use|how to apply|directions?|usage)$/i.test(section.heading))
-      ?.content || '';
+  const detailSectionHowToUse = detailSections.find((section) => isHowToDetailHeading(section.heading))?.content || '';
   const candidates = [
     product.pdp_how_to_use_raw,
     detailSectionHowToUse,
@@ -2309,10 +2441,14 @@ function buildHowToUse(product) {
       product.usage,
     );
   }
-  return buildHowToUseModuleData(
+  const howToUse = buildHowToUseModuleData(
     candidates,
     'How to use',
   );
+  if (!howToUse) return null;
+  const howToUseImageUrl = contentImagePlan?.takeHowToUseImage?.();
+  if (howToUseImageUrl) howToUse.image_urls = [howToUseImageUrl];
+  return howToUse;
 }
 
 function formatGenericKeyLabel(value) {
@@ -3378,6 +3514,7 @@ function buildPdpPayload(args) {
     productLineOptions[0]?.option_name ||
     undefined;
   const detailSections = collectStructuredDetailSections(product);
+  const structuredContentImagePlan = buildStructuredContentImagePlan(product);
   const descriptionText = resolveProductDescriptionText(product, detailSections);
   const brandStoryText = resolveBrandStoryText(product, detailSections);
   const mediaItems = buildMediaItems(product, variants);
@@ -3412,9 +3549,9 @@ function buildPdpPayload(args) {
         })
         .filter(Boolean)
     : [];
-  const productOverview = buildProductOverviewSections(product, detailSections);
+  const productOverview = buildProductOverviewSections(product, detailSections, structuredContentImagePlan);
   const supplementalDetails = buildSupplementalDetailSections(product, detailSections);
-  const productFacts = buildProductFactsSections(product, detailSections);
+  const productFacts = buildProductFactsSections(product, detailSections, structuredContentImagePlan);
   const externalSeedIngredientAuthority =
     isBeautyFormulaProfile && isExternalSeedLikeProduct(product)
       ? buildStructuredPdpIngredientModules(product)
@@ -3429,7 +3566,7 @@ function buildPdpPayload(args) {
       ? externalSeedIngredientAuthority.activeIngredientsData
       : buildActiveIngredients(product, ingredientsInci)
     : null;
-  const howToUse = buildHowToUse(product);
+  const howToUse = buildHowToUse(product, structuredContentImagePlan);
   const genericAttributeModules = isBeautyFormulaProfile
     ? {}
     : buildGenericAttributeModules(product, pdpSchemaProfile, detailSections);

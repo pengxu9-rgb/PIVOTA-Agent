@@ -485,6 +485,88 @@ describe('pdpBuilder structured PDP modules', () => {
     ]);
   });
 
+  test('routes repeated external-seed headings and separated content images into overview, facts, ingredients, and how-to modules', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_fenty_hydra_content_media',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'Hydra Vizor Mini Broad Spectrum Mineral SPF 30 Sunscreen Moisturizer',
+        category: 'Sunscreen',
+        image_url: 'https://cdn.example.com/hydra-hero.jpg',
+        price: { amount: 26, currency: 'USD' },
+        pdp_description_raw:
+          'Boosts skin hydration and the moisture barrier with niacinamide, hyaluronic acid, and mineral SPF.',
+        pdp_details_sections: [
+          {
+            heading: 'Details\n\nDetails',
+            body:
+              'Boosts skin hydration and the moisture barrier with niacinamide, hyaluronic acid, and mineral SPF.',
+            source_kind: 'heading_sibling',
+          },
+          {
+            heading: 'Key Ingredients\n\nKey Ingredients',
+            body: 'Niacinamide helps visibly even tone. Hyaluronic Acid helps hydrate.',
+            source_kind: 'heading_sibling',
+          },
+          {
+            heading: 'Clinical Results\n\nClinical Results',
+            body: 'Instantly boosts hydration by 52%.',
+            source_kind: 'heading_sibling',
+          },
+          {
+            heading: 'Ingredients\n\nIngredients',
+            body: 'Zinc Oxide, Niacinamide, Hyaluronic Acid, Aloe Barbadensis Leaf Juice',
+            source_kind: 'heading_sibling',
+          },
+          {
+            heading: 'How To\n\nHow To',
+            body: 'Apply every morning on clean, dry skin. Reapply every two hours in direct sun.',
+            source_kind: 'heading_sibling',
+          },
+        ],
+        content_image_urls: [
+          'https://cdn.example.com/HYDRA_TEXTURE.jpg',
+          'https://cdn.example.com/HYDRA_INGREDIENTS.jpg',
+          'https://cdn.example.com/HYDRA_COMPARISON.jpg',
+          'https://cdn.example.com/HYDRA_APPLICATION.jpg',
+        ],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    expect(findModule(payload, 'product_overview')?.data?.sections).toEqual([
+      expect.objectContaining({
+        heading: 'Description',
+        content:
+          'Boosts skin hydration and the moisture barrier with niacinamide, hyaluronic acid, and mineral SPF.',
+        media_urls: ['https://cdn.example.com/HYDRA_TEXTURE.jpg'],
+      }),
+    ]);
+    expect(findModule(payload, 'product_facts')?.data?.sections).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          heading: 'Key Ingredients',
+          media_urls: ['https://cdn.example.com/HYDRA_INGREDIENTS.jpg'],
+        }),
+        expect.objectContaining({
+          heading: 'Clinical Results',
+          media_urls: ['https://cdn.example.com/HYDRA_COMPARISON.jpg'],
+        }),
+      ]),
+    );
+    expect(findModule(payload, 'ingredients_inci')?.data?.items).toEqual(
+      expect.arrayContaining(['Zinc Oxide', 'Niacinamide', 'Hyaluronic Acid']),
+    );
+    expect(findModule(payload, 'how_to_use')?.data).toEqual(
+      expect.objectContaining({
+        raw_text: 'Apply every morning on clean, dry skin. Reapply every two hours in direct sun.',
+        image_urls: ['https://cdn.example.com/HYDRA_APPLICATION.jpg'],
+      }),
+    );
+  });
+
   test('renders a clean captured external seed PDP description as overview details', () => {
     const payload = buildPdpPayload({
       product: {
