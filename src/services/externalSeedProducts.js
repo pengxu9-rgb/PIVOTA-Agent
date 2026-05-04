@@ -1128,6 +1128,26 @@ const SEED_IMAGE_RELEVANCE_FAMILY_STOP_TOKENS = new Set([
   'tools',
   'web',
 ]);
+const STRICT_GALLERY_FAMILY_FILTER_HOSTS = new Set([
+  'rarebeauty.com',
+  'fentybeauty.com',
+  'fentyskin.com',
+  'naturium.com',
+  'pixibeauty.com',
+  'murad.com',
+  'sigmabeauty.com',
+  'kyliecosmetics.com',
+  'beekman1802.com',
+]);
+
+function requiresStrictGalleryFamilyFiltering(hostname) {
+  const normalized = normalizeNonEmptyString(hostname).toLowerCase();
+  if (!normalized) return false;
+  for (const rootHost of STRICT_GALLERY_FAMILY_FILTER_HOSTS) {
+    if (normalized === rootHost || normalized.endsWith(`.${rootHost}`)) return true;
+  }
+  return false;
+}
 
 function tokenizeSeedImageRelevanceValue(value) {
   return normalizeNonEmptyString(value)
@@ -1216,7 +1236,7 @@ function buildSeedGalleryRelevanceContext(seedData, row) {
   return {
     productTypes,
     familyTokens: extractSeedImageFamilyTokens(tokens, productTypes),
-    strictFamilyFiltering: /rarebeauty\.com$/i.test(productHostname),
+    strictFamilyFiltering: requiresStrictGalleryFamilyFiltering(productHostname),
   };
 }
 
@@ -1229,6 +1249,7 @@ function isContentLikeSeedImageUrl(value) {
     /(?:^|[-_ ])imperfect[-_ ]circle(?:[-_ ]|$)/i.test(filename) ||
     /(?:^|[-_ ])infographics?(?:[-_ ]|$)/i.test(filename) ||
     /(?:^|[-_ ])ingredients?(?:[-_ ]|$)/i.test(filename) ||
+    /(?:^|[-_ ])overview(?:[-_ ]|$)/i.test(filename) ||
     /(?:^|[-_ ])scent[-_ ]?(?:profile|note|notes|vibe)(?:[-_ ]|$)/i.test(filename) ||
     /(?:^|[-_ ])before[-_ ]after(?:[-_ ]|$)/i.test(filename) ||
     /(?:^|[-_ ])badge(?:[-_ ]|$)/i.test(filename) ||
@@ -1327,7 +1348,17 @@ function isNonProductSeedImageUrl(value) {
     pathname.includes('/slot-a') ||
     pathname.includes('/slota/') ||
     pathname.includes('/heroes-slot') ||
-    /(?:^|\/)gnav[-_]/i.test(pathname)
+    /(?:^|\/)gnav[-_]/i.test(pathname) ||
+    pathname.includes('/cdn/shop/t/') ||
+    /(?:^|[-_ ])find[-_ ]shade(?:[-_ ]|$)/i.test(filename) ||
+    /(?:^|[-_ ])try[-_ ]shade(?:[-_ ]|$)/i.test(filename) ||
+    /(?:^|[-_ ])get[-_ ]the[-_ ]look(?:[-_ ]|$)/i.test(filename) ||
+    /(?:^|[-_ ])best[-_ ]of[-_ ]beauty(?:[-_ ]|$)/i.test(filename) ||
+    /(?:^|[-_ ])best[-_ ]new[-_ ]brand(?:[-_ ]|$)/i.test(filename) ||
+    /(?:^|[-_ ])badge(?:[-_ ]|$)/i.test(filename) ||
+    /(?:^|[-_ ])(?:allure|award|awards|seal)(?:[-_ ]|$)/i.test(filename) ||
+    /(?:^|[-_ ])readers?[-_ ]/i.test(filename) ||
+    /(?:^|[-_ ])allure[-_ ]/i.test(filename)
   ) {
     return true;
   }
@@ -2825,8 +2856,8 @@ function buildExternalSeedProduct(row, options = {}) {
     : [];
   const derivedSeparatedContentImageUrls = extractSeparatedContentImageUrls(collectSeedImageUrls(runtimeSeedData, row));
   const contentImageUrls = [];
-  appendImageUrls(contentImageUrls, runtimeSnapshot.content_image_urls);
-  appendImageUrls(contentImageUrls, runtimeSeedData.content_image_urls);
+  appendImageUrls(contentImageUrls, extractSeparatedContentImageUrls(runtimeSnapshot.content_image_urls));
+  appendImageUrls(contentImageUrls, extractSeparatedContentImageUrls(runtimeSeedData.content_image_urls));
   appendImageUrls(contentImageUrls, derivedSeparatedContentImageUrls);
   const pdpFieldCaptureStatus =
     (runtimeSnapshot.pdp_field_capture_status && typeof runtimeSnapshot.pdp_field_capture_status === 'object')

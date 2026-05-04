@@ -182,7 +182,7 @@ describe('externalSeedProducts helper', () => {
     ]);
   });
 
-  test('treats Fenty infographic, award, and badge assets as separated content media at runtime', () => {
+  test('keeps only real Fenty product gallery assets and filters shade-finder and award media at runtime', () => {
     const product = buildExternalSeedProduct({
       id: 'eps_fenty_refill_runtime',
       external_product_id: 'ext_fenty_refill_runtime',
@@ -194,6 +194,9 @@ describe('externalSeedProducts helper', () => {
           image_urls: [
             'https://fentybeauty.com/cdn/shop/files/FS_S23_T2PRODUCT_SILO_HYDRAVIZOR_REFILL_MINERAL_1200x1500_FENTYVERSEI.jpg?v=1762272037',
             'https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FS_S23_T2PRODUCT_SILO_HYDRAVIZOR_REFILL_MINERAL_1200x1500_FENTYVERSEI_600x.jpg?v=1762272037',
+            'https://fentybeauty.com/cdn/shop/t/12/assets/find-shade.png?v=111',
+            'https://fentybeauty.com/cdn/shop/t/12/assets/try-shade.png?v=111',
+            'https://fentybeauty.com/cdn/shop/t/12/assets/get-the-look.jpg?v=111',
             'https://fentybeauty.com/cdn/shop/files/FS844250_GLOBAL_HYDRA_VIZOR_INFOGRAPHICS_1200x1500_Ingredients.jpg?v=1762272037',
             'https://cdn.shopify.com/s/files/1/0341/3458/9485/files/HYDRA-VIZOR-BADGE-AWARD.jpg?v=1762272037',
             'https://cdn.accentuate.io/8445381804077/1774977845944/allure_2025_3000x3000-(2).png?v=1774977845944&width=100',
@@ -207,8 +210,35 @@ describe('externalSeedProducts helper', () => {
     ]);
     expect(product.content_image_urls).toEqual([
       'https://fentybeauty.com/cdn/shop/files/FS844250_GLOBAL_HYDRA_VIZOR_INFOGRAPHICS_1200x1500_Ingredients.jpg?v=1762272037',
-      'https://cdn.shopify.com/s/files/1/0341/3458/9485/files/HYDRA-VIZOR-BADGE-AWARD.jpg?v=1762272037',
-      'https://cdn.accentuate.io/8445381804077/1774977845944/allure_2025_3000x3000-(2).png?v=1774977845944&width=100',
+    ]);
+  });
+
+  test('re-filters legacy runtime content_image_urls instead of trusting polluted snapshot content', () => {
+    const product = buildExternalSeedProduct({
+      id: 'eps_fenty_refill_runtime_legacy_content',
+      external_product_id: 'ext_fenty_refill_runtime_legacy_content',
+      canonical_url: 'https://fentybeauty.com/products/hydra-vizor-broad-spectrum-mineral-spf-30-sunscreen-moisturizer-refill-eu',
+      destination_url: 'https://fentybeauty.com/products/hydra-vizor-broad-spectrum-mineral-spf-30-sunscreen-moisturizer-refill-eu',
+      title: 'Hydra Vizor Broad Spectrum Mineral SPF 30 Sunscreen Moisturizer Refill - EU',
+      seed_data: {
+        snapshot: {
+          image_urls: [
+            'https://fentybeauty.com/cdn/shop/files/FS_S23_T2PRODUCT_SILO_HYDRAVIZOR_REFILL_MINERAL_1200x1500_FENTYVERSEI.jpg?v=1762272037',
+          ],
+          content_image_urls: [
+            'https://fentybeauty.com/cdn/shop/files/FS844250_GLOBAL_HYDRA_VIZOR_INFOGRAPHICS_1200x1500_Ingredients.jpg?v=1762272037',
+            'https://cdn.shopify.com/s/files/1/0341/3458/9485/files/HYDRA-VIZOR-BADGE-AWARD.jpg?v=1762272037',
+            'https://fentybeauty.com/cdn/shop/t/12/assets/find-shade.png?v=111',
+          ],
+        },
+      },
+    });
+
+    expect(product.images).toEqual([
+      'https://fentybeauty.com/cdn/shop/files/FS_S23_T2PRODUCT_SILO_HYDRAVIZOR_REFILL_MINERAL_1200x1500_FENTYVERSEI.jpg?v=1762272037',
+    ]);
+    expect(product.content_image_urls).toEqual([
+      'https://fentybeauty.com/cdn/shop/files/FS844250_GLOBAL_HYDRA_VIZOR_INFOGRAPHICS_1200x1500_Ingredients.jpg?v=1762272037',
     ]);
   });
 

@@ -680,7 +680,17 @@ function isDecorativeSeedImageUrl(value) {
     /(?:^|\/)gnav[-_]/i.test(pathname) ||
     /[_-]\d{2,3}x\d{2,3}_crop_center(?:[._-]|$)/i.test(normalized) ||
     normalized.includes('gnav-shop-') ||
-    normalized.includes('shade-finder-hero-')
+    normalized.includes('shade-finder-hero-') ||
+    pathname.includes('/cdn/shop/t/') ||
+    /(?:^|[-_ ])find[-_ ]shade(?:[-_ ]|$)/i.test(filename) ||
+    /(?:^|[-_ ])try[-_ ]shade(?:[-_ ]|$)/i.test(filename) ||
+    /(?:^|[-_ ])get[-_ ]the[-_ ]look(?:[-_ ]|$)/i.test(filename) ||
+    /(?:^|[-_ ])best[-_ ]of[-_ ]beauty(?:[-_ ]|$)/i.test(filename) ||
+    /(?:^|[-_ ])best[-_ ]new[-_ ]brand(?:[-_ ]|$)/i.test(filename) ||
+    /(?:^|[-_ ])badge(?:[-_ ]|$)/i.test(filename) ||
+    /(?:^|[-_ ])(?:allure|award|awards|seal)(?:[-_ ]|$)/i.test(filename) ||
+    /(?:^|[-_ ])readers?[-_ ]/i.test(filename) ||
+    /(?:^|[-_ ])allure[-_ ]/i.test(filename)
   );
 }
 
@@ -830,6 +840,26 @@ const IMAGE_RELEVANCE_FAMILY_STOP_TOKENS = new Set([
   'tools',
   'web',
 ]);
+const STRICT_GALLERY_FAMILY_FILTER_HOSTS = new Set([
+  'rarebeauty.com',
+  'fentybeauty.com',
+  'fentyskin.com',
+  'naturium.com',
+  'pixibeauty.com',
+  'murad.com',
+  'sigmabeauty.com',
+  'kyliecosmetics.com',
+  'beekman1802.com',
+]);
+
+function requiresStrictGalleryFamilyFiltering(hostname) {
+  const normalized = normalizeNonEmptyString(hostname).toLowerCase();
+  if (!normalized) return false;
+  for (const rootHost of STRICT_GALLERY_FAMILY_FILTER_HOSTS) {
+    if (normalized === rootHost || normalized.endsWith(`.${rootHost}`)) return true;
+  }
+  return false;
+}
 
 function tokenizeImageRelevanceValue(value) {
   return normalizeNonEmptyString(value)
@@ -892,6 +922,7 @@ function isContentLikeSeedImageUrl(value) {
     /(?:^|[-_ ])imperfect[-_ ]circle(?:[-_ ]|$)/i.test(filename) ||
     /(?:^|[-_ ])infographics?(?:[-_ ]|$)/i.test(filename) ||
     /(?:^|[-_ ])ingredients?(?:[-_ ]|$)/i.test(filename) ||
+    /(?:^|[-_ ])overview(?:[-_ ]|$)/i.test(filename) ||
     /(?:^|[-_ ])scent[-_ ]?(?:profile|note|notes|vibe)(?:[-_ ]|$)/i.test(filename) ||
     /(?:^|[-_ ])before[-_ ]after(?:[-_ ]|$)/i.test(filename) ||
     /(?:^|[-_ ])badge(?:[-_ ]|$)/i.test(filename) ||
@@ -927,7 +958,7 @@ function buildSeedImageRelevanceContext(options = {}) {
     bundleLike: tokens.some((token) => IMAGE_RELEVANCE_BUNDLE_TOKENS.has(token)),
     productTypes,
     familyTokens: extractImageFamilyTokens(tokens, productTypes),
-    strictFamilyFiltering: /rarebeauty\.com$/i.test(imageAssetHostname(options.productUrl)),
+    strictFamilyFiltering: requiresStrictGalleryFamilyFiltering(imageAssetHostname(options.productUrl)),
   };
 }
 
@@ -3172,11 +3203,10 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
         : existingPdpFaqItems;
   const existingContentImageUrls = identityRepairBackfill
     ? []
-    : sanitizeSeedImageUrls(
+    : extractContentLikeSeedImageUrls(
         Array.isArray(seedData.content_image_urls) && seedData.content_image_urls.length > 0
           ? seedData.content_image_urls
           : snapshot.content_image_urls,
-        { relevanceContext: imageRelevanceContext, mode: 'content' },
       );
   const nextContentImageUrls =
     extractedContentImageUrls.length > 0
