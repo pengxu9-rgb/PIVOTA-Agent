@@ -1181,6 +1181,189 @@ describe('pdpIdentityGraph', () => {
     expect(result?.product_line_id).toBe('pl_ordinary_serum');
   });
 
+  test('maybeBuildLiveSyntheticPdp ignores inactive stale external-seed rows on exact live reads', async () => {
+    jest.resetModules();
+    process.env = {
+      ...ORIGINAL_ENV,
+      NODE_ENV: 'test',
+      DATABASE_URL: 'postgres://test',
+      PDP_IDENTITY_GRAPH_ENABLED: 'true',
+      PDP_IDENTITY_GRAPH_BRAND_ALLOWLIST: 'Fenty Skin',
+    };
+    const {
+      maybeBuildLiveSyntheticPdp,
+      buildIdentityListingFromProduct,
+    } = require('../../src/services/pdpIdentityGraph');
+
+    const buildHydraListing = ({ productId, title, sizeValue, sizeDetailLabel, optionValue }) =>
+      ({
+        ...buildIdentityListingFromProduct({
+          merchantId: 'external_seed',
+          productId,
+          sourceKind: 'external_seed',
+          sourceTier: 'brand',
+          product: {
+            title,
+            brand: 'Fenty Skin',
+            source_url: `https://fentybeauty.com/products/${productId}`,
+            canonical_url: `https://fentybeauty.com/products/${productId}`,
+            size_detail_label: sizeDetailLabel,
+            product_volume: sizeDetailLabel,
+            variants: [
+              {
+                variant_id: `${productId}-default`,
+                title: 'Default Title',
+                option_name: 'Size',
+                option_value: optionValue,
+              },
+            ],
+          },
+        }),
+        live_read_enabled: false,
+        review_required: false,
+        identity_status: 'approved',
+        source_payload: {
+          title,
+          brand: 'Fenty Skin',
+          size_detail_label: sizeDetailLabel,
+          images: [{ url: `https://cdn.example.com/${productId}.jpg` }],
+        },
+        variant_axes: sizeValue
+          ? {
+              ...buildIdentityListingFromProduct({
+                merchantId: 'external_seed',
+                productId,
+                sourceKind: 'external_seed',
+                product: {
+                  title,
+                  brand: 'Fenty Skin',
+                  source_url: `https://fentybeauty.com/products/${productId}`,
+                  variants: [
+                    {
+                      variant_id: `${productId}-default`,
+                      title: 'Default Title',
+                      option_name: 'Size',
+                      option_value: optionValue,
+                    },
+                  ],
+                },
+              }).variant_axes,
+            }
+          : { multi_variant: false },
+      });
+
+    const fullSize = buildHydraListing({
+      productId: 'ext_hydra_full',
+      title: 'Hydra Vizor Broad Spectrum Mineral SPF 30 Sunscreen Moisturizer',
+      sizeValue: 'full size',
+      sizeDetailLabel: '1.7 fl oz / 50 mL',
+      optionValue: 'Full Size',
+    });
+    const mini = buildHydraListing({
+      productId: 'ext_hydra_mini',
+      title: 'Hydra Vizor Mini Broad Spectrum Mineral SPF 30 Sunscreen Moisturizer',
+      sizeValue: 'mini',
+      sizeDetailLabel: '0.5 fl oz / 15 mL',
+      optionValue: 'Mini',
+    });
+    const refill = buildHydraListing({
+      productId: 'ext_hydra_refill',
+      title: 'Hydra Vizor Broad Spectrum Mineral SPF 30 Sunscreen Moisturizer Refill',
+      sizeValue: 'refill',
+      sizeDetailLabel: '1.7 fl oz / 50 mL refill',
+      optionValue: 'Refill',
+    });
+    const inactiveStale = {
+      ...fullSize,
+      source_listing_ref: 'external_seed:ext_hydra_full_stale',
+      product_id: 'ext_hydra_full_stale',
+      live_read_enabled: true,
+      variant_axes: { size: 'us standard', color: 'us standard', multi_variant: false },
+      source_payload: {
+        title: 'Hydra Vizor Broad Spectrum Mineral SPF 30 Sunscreen Moisturizer',
+        brand: 'Fenty Skin',
+        images: [{ url: 'https://cdn.example.com/ext_hydra_full_stale.jpg' }],
+      },
+    };
+
+    const queryFn = jest.fn(async (sql) => {
+      const normalizedSql = String(sql || '').replace(/\s+/g, ' ').trim();
+      const enforcesActiveSeed = normalizedSql.includes('FROM external_product_seeds eps');
+
+      if (normalizedSql.includes('merchant_id = $1') && normalizedSql.includes('product_id = $2')) {
+        return { rows: enforcesActiveSeed ? [fullSize] : [inactiveStale] };
+      }
+      if (normalizedSql.includes('sellable_item_group_id = $1')) {
+        return { rows: enforcesActiveSeed ? [fullSize] : [inactiveStale, fullSize] };
+      }
+      if (normalizedSql.includes('product_line_id = $1')) {
+        return { rows: enforcesActiveSeed ? [fullSize, mini, refill] : [inactiveStale, fullSize, mini, refill] };
+      }
+      return { rows: [] };
+    });
+
+    const result = await maybeBuildLiveSyntheticPdp({
+      merchantId: 'external_seed',
+      productId: 'ext_hydra_full',
+      canonicalProduct: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_hydra_full',
+        title: 'Hydra Vizor Broad Spectrum Mineral SPF 30 Sunscreen Moisturizer',
+        brand: 'Fenty Skin',
+      },
+      queryFn,
+    });
+
+    expect(result?.canonical_scope).toBe('synthetic');
+    expect(result?.sellable_item_group_id).toBe(fullSize.sellable_item_group_id);
+    expect(result?.synthetic_product.product_line_option_name).toBe('Size');
+    expect(result?.synthetic_product.product_line_options).toEqual([
+      expect.objectContaining({ label: 'Full Size', selected: true, product_id: 'ext_hydra_full' }),
+      expect.objectContaining({ label: 'Mini', product_id: 'ext_hydra_mini' }),
+      expect.objectContaining({ label: 'Refill', product_id: 'ext_hydra_refill' }),
+    ]);
+    expect(result?.synthetic_product.product_line_options.map((option) => option.label)).not.toEqual(
+      expect.arrayContaining(['Standard', 'Us Standard']),
+    );
+  });
+
+  test('maybeBuildLiveSyntheticPdp applies active-seed guard to fallback brand-title identity matches', async () => {
+    jest.resetModules();
+    process.env = {
+      ...ORIGINAL_ENV,
+      NODE_ENV: 'test',
+      DATABASE_URL: 'postgres://test',
+      PDP_IDENTITY_GRAPH_ENABLED: 'true',
+      PDP_IDENTITY_GRAPH_BRAND_ALLOWLIST: 'Fenty Skin',
+    };
+    const { maybeBuildLiveSyntheticPdp } = require('../../src/services/pdpIdentityGraph');
+    const seenSql = [];
+    const queryFn = jest.fn(async (sql) => {
+      const normalizedSql = String(sql || '').replace(/\s+/g, ' ').trim();
+      seenSql.push(normalizedSql);
+      return { rows: [] };
+    });
+
+    const result = await maybeBuildLiveSyntheticPdp({
+      merchantId: 'external_seed',
+      productId: 'ext_hydra_requested',
+      canonicalProduct: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_hydra_requested',
+        title: 'Hydra Vizor Broad Spectrum Mineral SPF 30 Sunscreen Moisturizer',
+        brand: 'Fenty Skin',
+      },
+      queryFn,
+    });
+
+    expect(result).toBeNull();
+    const fallbackQuery = seenSql.find(
+      (sql) => sql.includes('brand_norm = $1') && sql.includes('title_core_norm = $2'),
+    );
+    expect(fallbackQuery).toContain('FROM external_product_seeds eps');
+    expect(fallbackQuery).toContain("eps.status = 'active'");
+  });
+
   test('buildIdentityListingFromProduct canonicalizes official URL host before conflict checks', () => {
     const { buildIdentityListingFromProduct, _internals } = require('../../src/services/pdpIdentityGraph');
 
@@ -1918,6 +2101,60 @@ describe('pdpIdentityGraph', () => {
     );
   });
 
+  test('listLivePdpIdentityRowsForRefs ignores inactive external-seed identity rows', async () => {
+    process.env = {
+      ...ORIGINAL_ENV,
+      NODE_ENV: 'test',
+      DATABASE_URL: 'postgresql://example.test/pivota',
+      PDP_IDENTITY_GRAPH_ENABLED: 'false',
+    };
+    jest.resetModules();
+    const { listLivePdpIdentityRowsForRefs } = require('../../src/services/pdpIdentityGraph');
+    const activeRow = {
+      source_listing_ref: 'external_seed:ext_active',
+      merchant_id: 'external_seed',
+      product_id: 'ext_active',
+      source_kind: 'external_seed',
+      source_tier: 'brand',
+      live_read_enabled: true,
+      sellable_item_group_id: 'sig_active',
+      product_line_id: 'pl_active',
+      review_family_id: 'rf_active',
+      identity_status: 'approved',
+      identity_confidence: 0.98,
+      match_basis: ['official_url:https://brand.example/products/ext-active'],
+      review_required: false,
+      review_reason_codes: [],
+    };
+    const inactiveRow = {
+      ...activeRow,
+      source_listing_ref: 'external_seed:ext_inactive',
+      product_id: 'ext_inactive',
+      sellable_item_group_id: 'sig_inactive',
+    };
+    const queryFn = jest.fn(async (sql) => {
+      const normalizedSql = String(sql || '').replace(/\s+/g, ' ').trim();
+      return {
+        rows: normalizedSql.includes('FROM external_product_seeds eps')
+          ? [activeRow]
+          : [activeRow, inactiveRow],
+      };
+    });
+
+    const rows = await listLivePdpIdentityRowsForRefs({
+      sourceListingRefs: ['external_seed:ext_active', 'external_seed:ext_inactive'],
+      queryFn,
+    });
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toEqual(
+      expect.objectContaining({
+        source_listing_ref: 'external_seed:ext_active',
+        sellable_item_group_id: 'sig_active',
+      }),
+    );
+  });
+
   test('promotePdpIdentityLiveRead dry-run enables whole exact-item groups backed by brand source', async () => {
     process.env = {
       ...ORIGINAL_ENV,
@@ -1987,6 +2224,88 @@ describe('pdpIdentityGraph', () => {
     expect(result.sample_refs).toEqual(
       expect.arrayContaining(['external_seed:ext_1', 'merch_1:prod_1']),
     );
+  });
+
+  test('promotePdpIdentityLiveRead ignores inactive external-seed rows during candidate and group selection', async () => {
+    process.env = {
+      ...ORIGINAL_ENV,
+      NODE_ENV: 'test',
+      DATABASE_URL: 'postgresql://example.test/pivota',
+      PDP_IDENTITY_GRAPH_ENABLED: 'false',
+    };
+    jest.resetModules();
+    const { promotePdpIdentityLiveRead } = require('../../src/services/pdpIdentityGraph');
+    const activeCandidate = {
+      source_listing_ref: 'external_seed:ext_active',
+      merchant_id: 'external_seed',
+      product_id: 'ext_active',
+      source_kind: 'external_seed',
+      source_tier: 'brand',
+      live_read_enabled: false,
+      sellable_item_group_id: 'sig_active',
+      product_line_id: 'pl_active',
+      review_family_id: 'rf_active',
+      identity_status: 'approved',
+      identity_confidence: 0.98,
+      match_basis: [],
+      strong_identity: {},
+      soft_identity: {},
+      variant_axes: { size: 'mini', multi_variant: false },
+      source_payload: { title: 'Hydra Vizor Mini' },
+      review_summary: {},
+      official_domain: 'fentybeauty.com',
+      brand_norm: 'fenty skin',
+      title_norm: 'hydra vizor mini',
+      title_core_norm: 'hydra vizor',
+      review_required: false,
+      review_reason_codes: [],
+    };
+    const inactiveCandidate = {
+      ...activeCandidate,
+      source_listing_ref: 'external_seed:ext_inactive',
+      product_id: 'ext_inactive',
+      sellable_item_group_id: 'sig_inactive',
+      variant_axes: { size: 'us standard', color: 'us standard', multi_variant: false },
+      source_payload: { title: 'Hydra Vizor Standard US' },
+    };
+    const queryFn = jest.fn(async (sql) => {
+      const normalizedSql = String(sql || '').replace(/\s+/g, ' ').trim();
+      if (normalizedSql.includes('WHERE identity_status = \'approved\'')) {
+        return {
+          rows: normalizedSql.includes('FROM external_product_seeds eps')
+            ? [activeCandidate]
+            : [activeCandidate, inactiveCandidate],
+        };
+      }
+      if (normalizedSql.includes('WHERE sellable_item_group_id = ANY($1::text[])')) {
+        return {
+          rows: normalizedSql.includes('FROM external_product_seeds eps')
+            ? [activeCandidate]
+            : [activeCandidate, inactiveCandidate],
+        };
+      }
+      throw new Error(`unexpected query: ${normalizedSql}`);
+    });
+
+    const result = await promotePdpIdentityLiveRead({
+      brand: 'Fenty Skin',
+      dryRun: true,
+      limit: 50,
+      queryFn,
+    });
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        dry_run: true,
+        candidate_rows_scanned: 1,
+        groups_considered: 1,
+        groups_eligible: 1,
+        rows_to_enable: 1,
+        overrides_to_write: 1,
+        updated_rows: 0,
+      }),
+    );
+    expect(result.sample_refs).toEqual(['external_seed:ext_active']);
   });
 
   test('promotePdpIdentityLiveRead writes approve_live_read overrides and updates rows', async () => {

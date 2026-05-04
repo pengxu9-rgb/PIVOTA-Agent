@@ -164,6 +164,19 @@ function writeLiveSyntheticPdpCache(cacheKey, value) {
   return value;
 }
 
+function buildActiveExternalSeedIdentityPredicate(alias = 'pdp_identity_listing') {
+  const tableAlias = asString(alias) || 'pdp_identity_listing';
+  return `(
+    ${tableAlias}.source_kind <> 'external_seed'
+    OR EXISTS (
+      SELECT 1
+      FROM external_product_seeds eps
+      WHERE eps.external_product_id = ${tableAlias}.product_id
+        AND eps.status = 'active'
+    )
+  )`;
+}
+
 function asPlainObject(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   return value;
@@ -2796,6 +2809,7 @@ async function findApprovedIdentityMatchForLiveProduct({
           AND title_core_norm = $2
           AND identity_status = 'approved'
           AND review_required = false
+          AND ${buildActiveExternalSeedIdentityPredicate('pdp_identity_listing')}
         ORDER BY
           CASE WHEN source_tier = 'brand' THEN 0 ELSE 1 END,
           identity_confidence DESC NULLS LAST,
@@ -2922,6 +2936,7 @@ async function maybeBuildLiveSyntheticPdp({
           AND identity_status = 'approved'
           AND live_read_enabled = true
           AND review_required = false
+          AND ${buildActiveExternalSeedIdentityPredicate('pdp_identity_listing')}
         LIMIT 1
       `,
       [merchantId, productId],
@@ -2951,6 +2966,7 @@ async function maybeBuildLiveSyntheticPdp({
             AND identity_status = 'approved'
             AND ($2::boolean = true OR live_read_enabled = true)
             AND review_required = false
+            AND ${buildActiveExternalSeedIdentityPredicate('pdp_identity_listing')}
           ORDER BY
             CASE WHEN source_tier = 'brand' THEN 0 ELSE 1 END,
             identity_confidence DESC NULLS LAST,
@@ -2967,6 +2983,7 @@ async function maybeBuildLiveSyntheticPdp({
             AND identity_status = 'approved'
             AND ($2::boolean = true OR live_read_enabled = true)
             AND review_required = false
+            AND ${buildActiveExternalSeedIdentityPredicate('pdp_identity_listing')}
           ORDER BY
             CASE WHEN source_tier = 'brand' THEN 0 ELSE 1 END,
             identity_confidence DESC NULLS LAST,
@@ -3080,6 +3097,7 @@ async function listLivePdpIdentityRowsForRefs({
         WHERE source_listing_ref = ANY($1::text[])
           AND identity_status = 'approved'
           AND live_read_enabled = true
+          AND ${buildActiveExternalSeedIdentityPredicate('pdp_identity_listing')}
       `,
       [refs],
     );
@@ -3133,6 +3151,7 @@ async function promotePdpIdentityLiveRead({
       `identity_status = 'approved'`,
       `review_required = false`,
       `live_read_enabled = false`,
+      buildActiveExternalSeedIdentityPredicate('pdp_identity_listing'),
     ];
     if (refs.length) {
       params.push(refs);
@@ -3177,6 +3196,7 @@ async function promotePdpIdentityLiveRead({
         SELECT *
         FROM pdp_identity_listing
         WHERE sellable_item_group_id = ANY($1::text[])
+          AND ${buildActiveExternalSeedIdentityPredicate('pdp_identity_listing')}
         ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
       `,
       [candidateGroupIds],
