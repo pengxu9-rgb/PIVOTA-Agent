@@ -588,6 +588,94 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     );
   });
 
+  test('extracts concise overview and suppresses faq and cross-sell noise for refreshed Fenty sunscreen seeds', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_fenty_hydra_mini',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'Hydra Vizor Mini Broad Spectrum Mineral SPF 30 Sunscreen Moisturizer',
+        category: 'Sunscreen',
+        image_url: 'https://example.com/hydra-mini.png',
+        pdp_description_raw: [
+          'YOUR DONE-IN-ONE MOISTURIZER:',
+          'HYDRATES, BRIGHTENS, SMOOTHS + PROTECTS WITH MINERAL SPF',
+          '',
+          'STRAIGHT UP:',
+          "A mini moisturizer that works hard, so you don't have to, instantly boosting skin's hydration and moisture barrier. It improves skin's texture, tone, elasticity and the look of dark spots.",
+          'THE LOWDOWN:',
+          'Instantly boosts hydration by 52%',
+          'Improves texture, tone + elasticity and the look of dark spots',
+          'What else?!',
+          "Noncomedogenic (won't clog pores). For all skin types, especially sensitive.",
+          "The #'s don't lie:",
+          'After one week:',
+          "98% users agree it doesn't feel greasy on skin",
+          'Tap into our blog: Mastering Moisturizer with SPF.',
+          'Fill Weight: 30 mL / 1 fl. oz.',
+        ].join('\n'),
+        pdp_details_sections: [
+          { heading: 'Concerns', body: 'Dryness, Pores', source_kind: 'embedded_product_json_tags' },
+          { heading: 'Format', body: 'Lotion', source_kind: 'embedded_product_json_tags' },
+          {
+            heading: 'Details',
+            body: [
+              'YOUR DONE-IN-ONE MOISTURIZER:',
+              'HYDRATES, BRIGHTENS, SMOOTHS + PROTECTS WITH MINERAL SPF',
+              '',
+              'STRAIGHT UP:',
+              "A mini moisturizer that works hard, so you don't have to, instantly boosting skin's hydration and moisture barrier.",
+              'THE LOWDOWN:',
+              'Instantly boosts hydration by 52%',
+              'Read more',
+            ].join('\n'),
+            source_kind: 'accordion_control',
+          },
+          {
+            heading: 'SPF FAQ',
+            body: 'What does SPF 30 mean?\n\nLets break it down.',
+            source_kind: 'accordion_control',
+          },
+          {
+            heading: 'Earth-conscious details',
+            body: 'Its protective outer box is made of FSC material and is recyclable.',
+            source_kind: 'accordion_control',
+          },
+          {
+            heading: 'Fat Water Niacinamide Pore-Refining Toner Serum with Barbados Cherry',
+            body: '4.6 star rating\n\n(10963)\n\n€34 €27,20\n\nMaximum of 5 allowed',
+            source_kind: 'heading_sibling',
+          },
+        ],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    const overview = payload.modules.find((module) => module.type === 'product_overview');
+    const supplemental = payload.modules.find((module) => module.type === 'supplemental_details');
+
+    expect(overview?.data?.sections).toEqual([
+      expect.objectContaining({
+        heading: 'Description',
+        content: expect.stringContaining('A mini moisturizer that works hard'),
+      }),
+    ]);
+    expect(overview?.data?.sections?.[0]?.content).not.toMatch(/THE LOWDOWN|What else|Tap into our blog|Fill Weight/i);
+    expect((overview?.data?.sections?.[0]?.content || '').length).toBeLessThan(420);
+
+    const supplementalHeadings = (supplemental?.data?.sections || []).map((section) => section.heading);
+    expect(supplementalHeadings).toEqual(expect.arrayContaining(['Concerns', 'Format', 'Category']));
+    expect(supplementalHeadings).not.toEqual(
+      expect.arrayContaining([
+        'Details',
+        'SPF FAQ',
+        'Earth-conscious details',
+        'Fat Water Niacinamide Pore-Refining Toner Serum with Barbados Cherry',
+      ]),
+    );
+  });
+
   test('uses ingredient authority instead of legacy active block fragments for external seeds', () => {
     const payload = buildPdpPayload({
       product: {

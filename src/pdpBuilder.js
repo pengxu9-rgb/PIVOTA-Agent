@@ -845,6 +845,34 @@ function isPairingGuidanceDetailSection(section) {
   return /^how to pair$/i.test(heading) || /\bpairs? with\b/i.test(`${heading} ${content}`);
 }
 
+function detailSectionSourceKind(section) {
+  return asNonEmptyString(section?.source_kind || section?.sourceKind).toLowerCase();
+}
+
+function looksLikeCrossSellCardDetailSection(section) {
+  const heading = asNonEmptyString(section?.heading);
+  const content = asNonEmptyString(section?.content);
+  const sourceKind = detailSectionSourceKind(section);
+  if (/heading_sibling/.test(sourceKind)) return true;
+  return (
+    /\bstar rating\b/i.test(content) &&
+    /\bmaximum of \d+ allowed\b/i.test(content) &&
+    (/\b€\s*\d|\$\s*\d/i.test(content) || /\bregular price\b/i.test(content) || /\bsale price\b/i.test(content)) &&
+    heading.length >= 8
+  );
+}
+
+function isAncillaryFaqOrPolicySection(section) {
+  const heading = asNonEmptyString(section?.heading);
+  if (!heading) return false;
+  return (
+    /\bf(?:requently asked questions?|aq)\b/i.test(heading) ||
+    /\bearth[- ]?conscious details\b/i.test(heading) ||
+    /\bsustainability\b/i.test(heading) ||
+    /\brecycl(?:e|ing|able)\b/i.test(heading)
+  );
+}
+
 function isIgnorableExternalSeedDetailSection(product, section) {
   if (!isExternalSeedLikeProduct(product)) return false;
   const heading = asNonEmptyString(section?.heading);
@@ -853,6 +881,7 @@ function isIgnorableExternalSeedDetailSection(product, section) {
   const headingKey = normalizeTextKey(heading);
   if (looksLikeTransactionalNoiseText(`${heading} ${content}`)) return true;
   if (titleKey && headingKey && titleKey === headingKey && looksLikeTransactionalNoiseText(content)) return true;
+  if (looksLikeCrossSellCardDetailSection(section)) return true;
   return looksLikeMarketingBlendName(heading);
 }
 
@@ -1542,6 +1571,53 @@ function looksLikeCapturedExternalSeedNarrativeSoup(product, text, detailSection
   return normalized.length > 420 && headingHits.length >= 2;
 }
 
+function looksLikeOverlongPromotionalOverviewText(value) {
+  const text = stripHtmlPreserveBreaks(value);
+  if (!text || text.length < 180) return false;
+  const lines = text
+    .split(/\n+/)
+    .map((line) => asNonEmptyString(line))
+    .filter(Boolean);
+  const allCapsHeadlineCount = lines.filter(
+    (line) => line.length >= 8 && /^[A-Z0-9][A-Z0-9 '&+,:;!?.#/-]+$/.test(line),
+  ).length;
+  const signalCount = [
+    /\bthe lowdown\b/i,
+    /\bwhat else\?!?\b/i,
+    /\bread more\b/i,
+    /\btap into our blog\b/i,
+    /\bover time\b/i,
+    /\bafter one week\b/i,
+    /\bthe #'?s don'?t lie\b/i,
+    /\b\d{1,3}%\b/,
+  ].filter((pattern) => pattern.test(text)).length;
+  if (allCapsHeadlineCount >= 2 && signalCount >= 1) return true;
+  if (text.length < 500) return false;
+  return allCapsHeadlineCount >= 2 && signalCount >= 2;
+}
+
+function hasPromotionalOverviewMarkers(value) {
+  const text = stripHtmlPreserveBreaks(value);
+  if (!text) return false;
+  return /\b(?:straight up|the lowdown|what else|read more|fill weight|tap into our blog|after one week|the #'?s don'?t lie)\b/i.test(
+    text,
+  );
+}
+
+function extractPromotionalOverviewNarrative(value) {
+  let text = stripHtmlPreserveBreaks(value);
+  if (!text) return '';
+  if (/straight up:/i.test(text)) {
+    text = text.replace(/^.*?straight up:\s*/i, '');
+  }
+  text = text
+    .split(
+      /(?:the lowdown:|what else\?!?|the #'?s don'?t lie:|after one week:|over time:|read more\b|fill weight:|tap into our blog:)/i,
+    )[0]
+    .trim();
+  return extractNarrativeOverviewParagraph(text) || cleanStructuredToken(text) || '';
+}
+
 function normalizeDetailSectionHeading(value) {
   const heading = asNonEmptyString(value);
   if (!heading) return '';
@@ -1656,7 +1732,12 @@ function cleanOverviewDescriptionText(value) {
   const text = asNonEmptyString(value);
   if (!text) return '';
   const segments = extractSectionSoupSegments(text);
-  if (!segments.length) return text;
+  if (!segments.length) {
+    if (hasPromotionalOverviewMarkers(text) || looksLikeOverlongPromotionalOverviewText(text)) {
+      return extractPromotionalOverviewNarrative(text) || '';
+    }
+    return text;
+  }
   const preferred =
     segments.find((section) => OVERVIEW_DETAIL_SECTION_RE.test(section.heading)) ||
     segments.find((section) => !STRUCTURED_DETAIL_SECTION_RE.test(section.heading) && !FACT_DETAIL_SECTION_RE.test(section.heading));
@@ -1718,6 +1799,7 @@ function collectStructuredDetailSections(product) {
       content_type: 'text',
       content,
       collapsed_by_default: section?.collapsed_by_default ?? true,
+      source_kind: section?.source_kind || section?.sourceKind,
     });
   }
   return out;
@@ -1742,11 +1824,15 @@ function resolveProductDescriptionText(product, detailSections = collectStructur
     explicitPdpDescription,
     detailSections,
   );
+  const overlongPromotionalOverview =
+    hasPromotionalOverviewMarkers(explicitPdpDescriptionRaw || explicitPdpDescription) ||
+    looksLikeOverlongPromotionalOverviewText(explicitPdpDescriptionRaw || explicitPdpDescription);
   if (
     explicitPdpDescription &&
     !looksLikeSectionSoupText(explicitPdpDescription) &&
     !capturedNarrativeSoup &&
-    !looksLikeCrossSellPairingText(explicitPdpDescription)
+    !looksLikeCrossSellPairingText(explicitPdpDescription) &&
+    !overlongPromotionalOverview
   ) {
     const overviewContentSection = detailSections.find(
       (section) =>
@@ -1768,7 +1854,9 @@ function resolveProductDescriptionText(product, detailSections = collectStructur
   if (cleanedOverview) return cleanedOverview;
   const cleanedPdpDescription = capturedNarrativeSoup
     ? ''
-    : cleanOverviewDescriptionText(explicitPdpDescriptionRaw || explicitPdpDescription);
+    : overlongPromotionalOverview
+      ? extractPromotionalOverviewNarrative(explicitPdpDescriptionRaw || explicitPdpDescription)
+      : cleanOverviewDescriptionText(explicitPdpDescriptionRaw || explicitPdpDescription);
   if (cleanedPdpDescription) return cleanedPdpDescription;
 
   const structuredDescription =
@@ -1816,6 +1904,7 @@ function buildSupplementalDetailSections(product, detailSections = collectStruct
       if (STRUCTURED_DETAIL_SECTION_RE.test(section.heading)) return false;
       if (FACT_DETAIL_SECTION_RE.test(section.heading)) return false;
       if (BRAND_STORY_SECTION_RE.test(section.heading)) return false;
+      if (isAncillaryFaqOrPolicySection(section)) return false;
       if (
         OVERVIEW_DETAIL_SECTION_RE.test(section.heading) &&
         !shouldPreserveOverviewDetailAsSupplemental(section, desc, descKey)
@@ -1823,9 +1912,16 @@ function buildSupplementalDetailSections(product, detailSections = collectStruct
         return false;
       }
       if (isFaqOrCrossSellDetailSection(section)) return false;
+      if (looksLikeCrossSellCardDetailSection(section)) return false;
       if (desc && section.content === desc) return false;
       if (descKey && normalizeTextKey(section.content) === descKey) return false;
       if (capturedNarrativeSoup && looksLikeSectionSoupText(section.content)) return false;
+      if (
+        /^(details|product details)$/i.test(section.heading) &&
+        (hasPromotionalOverviewMarkers(section.content) || looksLikeOverlongPromotionalOverviewText(section.content))
+      ) {
+        return false;
+      }
       return true;
     })
     .forEach((section) => {
