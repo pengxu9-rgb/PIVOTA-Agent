@@ -1312,6 +1312,10 @@ function isContentLikeSeedImageUrl(value) {
     /(?:^|[-_ ])infographics?(?:[-_ ]|$)/i.test(filename) ||
     /(?:^|[-_ ])ingredients?(?:[-_ ]|$)/i.test(filename) ||
     /(?:^|[-_ ])overview(?:[-_ ]|$)/i.test(filename) ||
+    /(?:^|[-_ ])texture(?:[-_ ]|$)/i.test(filename) ||
+    /(?:^|[-_ ])application(?:[-_ ]|$)/i.test(filename) ||
+    /(?:^|[-_ ])comparison(?:[-_ ]|$)/i.test(filename) ||
+    /(?:^|[-_ ])consumer[-_ ]perception(?:[-_ ]|$)/i.test(filename) ||
     /(?:^|[-_ ])(?:how[-_ ]to|directions?|routine|step)(?:[-_ ]|$)/i.test(filename) ||
     /(?:^|[-_ ])scent[-_ ]?(?:profile|note|notes|vibe)(?:[-_ ]|$)/i.test(filename) ||
     /(?:^|[-_ ])before[-_ ]after(?:[-_ ]|$)/i.test(filename) ||

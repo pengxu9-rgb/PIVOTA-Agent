@@ -213,6 +213,39 @@ describe('externalSeedProducts helper', () => {
     ]);
   });
 
+  test('separates Fenty texture and application assets from product gallery at runtime', () => {
+    const product = buildExternalSeedProduct({
+      id: 'eps_fenty_hydra_mini_runtime',
+      external_product_id: 'ext_fenty_hydra_mini_runtime',
+      canonical_url: 'https://fentybeauty.com/products/hydra-vizor-mini-broad-spectrum-mineral-spf-30-sunscreen-moisturizer',
+      destination_url: 'https://fentybeauty.com/products/hydra-vizor-mini-broad-spectrum-mineral-spf-30-sunscreen-moisturizer',
+      title: 'Hydra Vizor Mini Broad Spectrum Mineral SPF 30 Sunscreen Moisturizer',
+      seed_data: {
+        snapshot: {
+          image_urls: [
+            'https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FS_POSTHOL2021_T2PRODUCT_ECOMM_MINI_HYDRA_VIZOR_US_1200x1500_FENTYVERSE.jpg?v=1762272039',
+            'https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FS391353_Global_Hydra_Vizor_Mineral_Face_TEXTURE_1200x1500_72DPI_0b694f77-059c-4f40-8c98-140fd70040a9.jpg?v=1760652647',
+            'https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FB_SUM25_MVP_T2BEAUTY_HYDRAVIZOR_APPLICATION_LIGHT_TAYLOR_108_1200X1500_72DPI.jpg?v=1760652808',
+            'https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FS391353_Global_Hydra_Vizor_Mineral_Face_CONSUMER_PERCEPTION_1200x1500_72DPI_9d18259c-a31f-4ee6-80fc-c7fed71283ea.jpg?v=1760652647',
+            'https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FS391353_Global_Hydra_Vizor_Mineral_Face_COMPARISON_1200x1500_72DPI_05e22d61-95ab-4f2d-b3a7-8df248edb9be.jpg?v=1760652647',
+            'https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FS391353_Global_Hydra_Vizor_Mineral_Face_INGREDIENTS_1200x1500_72DPI_05c296d8-b761-4b8f-8d45-f861f5acf324.jpg?v=1760652647',
+          ],
+        },
+      },
+    });
+
+    expect(product.images).toEqual([
+      'https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FS_POSTHOL2021_T2PRODUCT_ECOMM_MINI_HYDRA_VIZOR_US_1200x1500_FENTYVERSE.jpg?v=1762272039',
+    ]);
+    expect(product.content_image_urls).toEqual([
+      'https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FS391353_Global_Hydra_Vizor_Mineral_Face_TEXTURE_1200x1500_72DPI_0b694f77-059c-4f40-8c98-140fd70040a9.jpg?v=1760652647',
+      'https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FB_SUM25_MVP_T2BEAUTY_HYDRAVIZOR_APPLICATION_LIGHT_TAYLOR_108_1200X1500_72DPI.jpg?v=1760652808',
+      'https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FS391353_Global_Hydra_Vizor_Mineral_Face_CONSUMER_PERCEPTION_1200x1500_72DPI_9d18259c-a31f-4ee6-80fc-c7fed71283ea.jpg?v=1760652647',
+      'https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FS391353_Global_Hydra_Vizor_Mineral_Face_COMPARISON_1200x1500_72DPI_05e22d61-95ab-4f2d-b3a7-8df248edb9be.jpg?v=1760652647',
+      'https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FS391353_Global_Hydra_Vizor_Mineral_Face_INGREDIENTS_1200x1500_72DPI_05c296d8-b761-4b8f-8d45-f861f5acf324.jpg?v=1760652647',
+    ]);
+  });
+
   test('re-filters legacy runtime content_image_urls instead of trusting polluted snapshot content', () => {
     const product = buildExternalSeedProduct({
       id: 'eps_fenty_refill_runtime_legacy_content',
