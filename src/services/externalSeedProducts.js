@@ -2539,6 +2539,14 @@ function stripLegacyVariantContainers(seedData) {
 
 function normalizeOptions(rawVariant, optionName, optionValue, productOptionNames = [], fallbackOptions = []) {
   const urlOptions = collectVariantOptionsFromRawVariantUrl(rawVariant);
+  const shouldUseFallbackOptions = (options) =>
+    fallbackOptions.length > 0 &&
+    Array.isArray(options) &&
+    options.length === 1 &&
+    GENERIC_VARIANT_OPTION_NAMES.has(normalizeOptionNameKey(options[0]?.name)) &&
+    ['single', 'default', 'default title', 'title', 'variant'].includes(
+      normalizeOptionText(options[0]?.value).toLowerCase(),
+    );
   const directOptionSources = [
     rawVariant?.options,
     rawVariant?.choices,
@@ -2552,6 +2560,7 @@ function normalizeOptions(rawVariant, optionName, optionValue, productOptionName
     if (Array.isArray(source)) {
       const normalized = normalizeOptionEntries(source);
       if (normalized.length > 0) {
+        if (shouldUseFallbackOptions(normalized)) return fallbackOptions;
         if (shouldPreferUrlVariantOptions(normalized, urlOptions, rawVariant)) return urlOptions;
         const displayable = filterDisplayableVariantOptions(normalized, rawVariant);
         if (displayable.length > 0) return displayable;
@@ -2563,6 +2572,7 @@ function normalizeOptions(rawVariant, optionName, optionValue, productOptionName
         Object.entries(source).map(([name, value]) => ({ name, value })),
       );
       if (normalized.length > 0) {
+        if (shouldUseFallbackOptions(normalized)) return fallbackOptions;
         if (shouldPreferUrlVariantOptions(normalized, urlOptions, rawVariant)) return urlOptions;
         const displayable = filterDisplayableVariantOptions(normalized, rawVariant);
         if (displayable.length > 0) return displayable;
@@ -2573,6 +2583,7 @@ function normalizeOptions(rawVariant, optionName, optionValue, productOptionName
   if (Array.isArray(rawVariant?.options)) {
     const normalized = normalizeOptionEntries(rawVariant.options);
     if (normalized.length > 0) {
+      if (shouldUseFallbackOptions(normalized)) return fallbackOptions;
       if (shouldPreferUrlVariantOptions(normalized, urlOptions, rawVariant)) return urlOptions;
       const displayable = filterDisplayableVariantOptions(normalized, rawVariant);
       if (displayable.length > 0) return displayable;
@@ -2591,6 +2602,7 @@ function normalizeOptions(rawVariant, optionName, optionValue, productOptionName
       .filter(Boolean),
   );
   if (tupleOptions.length > 0) {
+    if (shouldUseFallbackOptions(tupleOptions)) return fallbackOptions;
     const displayable = filterDisplayableVariantOptions(tupleOptions, rawVariant);
     if (displayable.length > 0) return displayable;
   }
@@ -2600,16 +2612,7 @@ function normalizeOptions(rawVariant, optionName, optionValue, productOptionName
       { name: optionName || 'Variant', value: optionValue || 'Default' },
     ]);
     if (direct.length > 0) {
-      if (
-        fallbackOptions.length > 0 &&
-        direct.length === 1 &&
-        GENERIC_VARIANT_OPTION_NAMES.has(normalizeOptionNameKey(direct[0]?.name)) &&
-        ['single', 'default', 'default title', 'title', 'variant'].includes(
-          normalizeOptionText(direct[0]?.value).toLowerCase(),
-        )
-      ) {
-        return fallbackOptions;
-      }
+      if (shouldUseFallbackOptions(direct)) return fallbackOptions;
       if (shouldPreferUrlVariantOptions(direct, urlOptions, rawVariant)) return urlOptions;
       const displayable = filterDisplayableVariantOptions(direct, rawVariant);
       if (displayable.length > 0) return displayable;

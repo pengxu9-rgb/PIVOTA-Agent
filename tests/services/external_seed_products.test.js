@@ -875,6 +875,7 @@ describe('externalSeedProducts helper', () => {
               variant_id: '40118361587760',
               sku: 'PMEUS55003R00',
               title: 'SINGLE',
+              options: [{ name: 'Option', value: 'SINGLE' }],
               option_name: 'Option',
               option_value: 'SINGLE',
               price: '20.50',
