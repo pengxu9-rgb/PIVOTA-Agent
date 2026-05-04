@@ -641,14 +641,17 @@ function isDecorativeSeedImageUrl(value) {
   if (!normalized) return false;
   let pathname = normalized;
   let filename = '';
+  let hostname = '';
   try {
     const parsed = new URL(normalized);
+    hostname = String(parsed.hostname || '').toLowerCase();
     pathname = decodeURIComponent(parsed.pathname || '').toLowerCase();
     filename = String(pathname.split('/').pop() || '').trim();
   } catch {
     pathname = normalized;
     filename = normalized.split('/').pop() || '';
   }
+  const explicitFamilyHost = requiresExplicitGalleryFamilyMatch(hostname);
   return (
     normalized.endsWith('.svg') ||
     normalized.includes('.svg?') ||
@@ -687,8 +690,9 @@ function isDecorativeSeedImageUrl(value) {
     /(?:^|[-_ ])get[-_ ]the[-_ ]look(?:[-_ ]|$)/i.test(filename) ||
     /(?:^|[-_ ])best[-_ ]of[-_ ]beauty(?:[-_ ]|$)/i.test(filename) ||
     /(?:^|[-_ ])best[-_ ]new[-_ ]brand(?:[-_ ]|$)/i.test(filename) ||
-    /(?:^|[-_ ])badge(?:[-_ ]|$)/i.test(filename) ||
+    (filename.includes('badge') && !/safety-badge|recycling-badge/i.test(filename)) ||
     /(?:^|[-_ ])(?:allure|award|awards|seal)(?:[-_ ]|$)/i.test(filename) ||
+    (explicitFamilyHost && /(?:message|benefits?)/i.test(filename)) ||
     /(?:^|[-_ ])readers?[-_ ]/i.test(filename) ||
     /(?:^|[-_ ])allure[-_ ]/i.test(filename)
   );
@@ -816,6 +820,8 @@ const IMAGE_RELEVANCE_FAMILY_STOP_TOKENS = new Set([
   'full',
   'hair',
   'in',
+  'http',
+  'https',
   'it',
   'new',
   'of',
@@ -838,6 +844,7 @@ const IMAGE_RELEVANCE_FAMILY_STOP_TOKENS = new Set([
   'the',
   'to',
   'tools',
+  'www',
   'web',
 ]);
 const STRICT_GALLERY_FAMILY_FILTER_HOSTS = new Set([
@@ -851,11 +858,57 @@ const STRICT_GALLERY_FAMILY_FILTER_HOSTS = new Set([
   'kyliecosmetics.com',
   'beekman1802.com',
 ]);
+const STRICT_GALLERY_EXPLICIT_FAMILY_MATCH_HOSTS = new Set([
+  'fentybeauty.com',
+  'fentyskin.com',
+]);
+const CONTENT_IMAGE_GENERIC_FAMILY_TOKENS = new Set([
+  'after',
+  'arm',
+  'badge',
+  'before',
+  'benefit',
+  'benefits',
+  'circle',
+  'claims',
+  'details',
+  'directions',
+  'focus',
+  'how',
+  'image',
+  'images',
+  'imperfect',
+  'ingredient',
+  'ingredients',
+  'infographic',
+  'infographics',
+  'message',
+  'note',
+  'notes',
+  'overview',
+  'pdp',
+  'profile',
+  'routine',
+  'scent',
+  'step',
+  'to',
+  'usage',
+  'vibe',
+]);
 
 function requiresStrictGalleryFamilyFiltering(hostname) {
   const normalized = normalizeNonEmptyString(hostname).toLowerCase();
   if (!normalized) return false;
   for (const rootHost of STRICT_GALLERY_FAMILY_FILTER_HOSTS) {
+    if (normalized === rootHost || normalized.endsWith(`.${rootHost}`)) return true;
+  }
+  return false;
+}
+
+function requiresExplicitGalleryFamilyMatch(hostname) {
+  const normalized = normalizeNonEmptyString(hostname).toLowerCase();
+  if (!normalized) return false;
+  for (const rootHost of STRICT_GALLERY_EXPLICIT_FAMILY_MATCH_HOSTS) {
     if (normalized === rootHost || normalized.endsWith(`.${rootHost}`)) return true;
   }
   return false;
@@ -870,6 +923,19 @@ function tokenizeImageRelevanceValue(value) {
     .map((token) => token.trim())
     .filter(Boolean)
     .filter((token) => !IMAGE_RELEVANCE_NOISE_TOKENS.has(token));
+}
+
+function extractImageRelevanceUrlText(value) {
+  const normalized = normalizePdpImageUrl(value) || normalizeUrlLike(value);
+  if (!normalized) return '';
+  try {
+    const parsed = new URL(normalized);
+    return decodeBasicHtmlEntities(decodeURIComponent(parsed.pathname || ''))
+      .replace(/\/+/g, ' ')
+      .trim();
+  } catch {
+    return normalizeNonEmptyString(normalized);
+  }
 }
 
 function extractCanonicalImageProductTypes(values) {
@@ -923,6 +989,7 @@ function isContentLikeSeedImageUrl(value) {
     /(?:^|[-_ ])infographics?(?:[-_ ]|$)/i.test(filename) ||
     /(?:^|[-_ ])ingredients?(?:[-_ ]|$)/i.test(filename) ||
     /(?:^|[-_ ])overview(?:[-_ ]|$)/i.test(filename) ||
+    /(?:^|[-_ ])(?:how[-_ ]to|directions?|routine|step)(?:[-_ ]|$)/i.test(filename) ||
     /(?:^|[-_ ])scent[-_ ]?(?:profile|note|notes|vibe)(?:[-_ ]|$)/i.test(filename) ||
     /(?:^|[-_ ])before[-_ ]after(?:[-_ ]|$)/i.test(filename) ||
     /(?:^|[-_ ])badge(?:[-_ ]|$)/i.test(filename) ||
@@ -948,9 +1015,9 @@ function extractImageFamilyTokens(values, productTypes = []) {
 function buildSeedImageRelevanceContext(options = {}) {
   const values = uniqueStrings([
     options.productTitle,
-    options.productUrl,
+    extractImageRelevanceUrlText(options.productUrl),
     options.variantTitle && !isDefaultVariantTitle(options.variantTitle) ? options.variantTitle : '',
-    ...(Array.isArray(options.additionalValues) ? options.additionalValues : []),
+    ...(Array.isArray(options.additionalValues) ? options.additionalValues.filter(Boolean) : []),
   ]);
   const tokens = values.flatMap((value) => tokenizeImageRelevanceValue(value));
   const productTypes = extractCanonicalImageProductTypes(tokens);
@@ -959,6 +1026,7 @@ function buildSeedImageRelevanceContext(options = {}) {
     productTypes,
     familyTokens: extractImageFamilyTokens(tokens, productTypes),
     strictFamilyFiltering: requiresStrictGalleryFamilyFiltering(imageAssetHostname(options.productUrl)),
+    requireExplicitFamilyMatch: requiresExplicitGalleryFamilyMatch(imageAssetHostname(options.productUrl)),
   };
 }
 
@@ -987,6 +1055,17 @@ function isCollectionStyleSeedImageUrl(value) {
   );
 }
 
+function hasSeedImageFamilyOverlap(imageTokens, familyTokens) {
+  return imageTokens.some((token) =>
+    token.length >= 4 &&
+    familyTokens.some(
+      (familyToken) =>
+        familyToken.length >= 4 &&
+        (token === familyToken || token.includes(familyToken) || familyToken.includes(token)),
+    ),
+  );
+}
+
 function isProductRelevantSeedImageUrl(value, relevanceContext) {
   if (!relevanceContext) {
     return true;
@@ -1001,17 +1080,24 @@ function isProductRelevantSeedImageUrl(value, relevanceContext) {
   if (relevanceContext.bundleLike || !relevanceContext.strictFamilyFiltering || relevanceContext.familyTokens.length === 0) {
     return true;
   }
-  const overlapsFamily = imageTokens.some((token) =>
-    token.length >= 4 &&
-    relevanceContext.familyTokens.some(
-      (familyToken) =>
-        familyToken.length >= 4 &&
-        (token === familyToken || token.includes(familyToken) || familyToken.includes(token)),
-    ),
-  );
+  const overlapsFamily = hasSeedImageFamilyOverlap(imageTokens, relevanceContext.familyTokens);
   if (overlapsFamily) return true;
   const imageFamilyTokens = extractImageFamilyTokens(imageTokens, relevanceContext.productTypes || []);
-  return imageFamilyTokens.length === 0;
+  if (imageFamilyTokens.length === 0) return !relevanceContext.requireExplicitFamilyMatch;
+  return false;
+}
+
+function isRelevantSeedContentImageUrl(value, relevanceContext) {
+  if (!relevanceContext || !relevanceContext.strictFamilyFiltering || relevanceContext.familyTokens.length === 0) {
+    return true;
+  }
+  const imageTokens = extractImageFilenameTokens(value);
+  const overlapsFamily = hasSeedImageFamilyOverlap(imageTokens, relevanceContext.familyTokens);
+  if (overlapsFamily) return true;
+  const imageFamilyTokens = extractImageFamilyTokens(imageTokens, relevanceContext.productTypes || []);
+  const specificFamilyTokens = imageFamilyTokens.filter((token) => !CONTENT_IMAGE_GENERIC_FAMILY_TOKENS.has(token));
+  if (specificFamilyTokens.length === 0) return !relevanceContext.requireExplicitFamilyMatch;
+  return false;
 }
 
 function normalizeComparableImageKey(value) {
@@ -1051,12 +1137,23 @@ function sanitizeSeedImageUrls(values, options = {}) {
   return out;
 }
 
-function extractContentLikeSeedImageUrls(values) {
+function extractContentLikeSeedImageUrls(values, options = {}) {
+  const relevanceContext =
+    options && typeof options === 'object' && options.relevanceContext
+      ? options.relevanceContext
+      : buildSeedImageRelevanceContext(options);
   const out = [];
   const seen = new Set();
   for (const value of Array.isArray(values) ? values : []) {
     const normalized = normalizePdpImageUrl(value) || normalizeUrlLike(value);
-    if (!normalized || isDecorativeSeedImageUrl(normalized) || !isContentLikeSeedImageUrl(normalized)) continue;
+    if (
+      !normalized ||
+      isDecorativeSeedImageUrl(normalized) ||
+      !isContentLikeSeedImageUrl(normalized) ||
+      !isRelevantSeedContentImageUrl(normalized, relevanceContext)
+    ) {
+      continue;
+    }
     const comparableKey = normalizeComparableImageKey(normalized);
     if (!comparableKey || seen.has(comparableKey)) continue;
     seen.add(comparableKey);
@@ -2755,7 +2852,6 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
       row?.title,
       seedData.variant_title,
       snapshot.variant_title,
-      seedData.brand,
     ],
   });
   const selectedVariantImageUrls = collectVariantImageUrls(selectedSnapshotVariant, { relevanceContext: imageRelevanceContext });
@@ -2889,7 +2985,7 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     representativeProduct?.faq_items ||
       representativeProduct?.pdp_faq_items,
   );
-  const extractedContentImageUrls = sanitizeSeedImageUrls(
+  const extractedContentImageUrls = extractContentLikeSeedImageUrls(
     [
       ...(Array.isArray(representativeProduct?.content_image_urls)
         ? representativeProduct.content_image_urls
@@ -2898,7 +2994,7 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
           : []),
       ...extractedGalleryContentImageUrls,
     ],
-    { relevanceContext: imageRelevanceContext, mode: 'content' },
+    { relevanceContext: imageRelevanceContext },
   );
   const incomingPdpFieldQualitySummary = normalizeFieldQualitySummary(
     representativeProduct?.field_quality_summary ||
@@ -3207,6 +3303,7 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
         Array.isArray(seedData.content_image_urls) && seedData.content_image_urls.length > 0
           ? seedData.content_image_urls
           : snapshot.content_image_urls,
+        { relevanceContext: imageRelevanceContext },
       );
   const nextContentImageUrls =
     extractedContentImageUrls.length > 0

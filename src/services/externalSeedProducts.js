@@ -1108,6 +1108,8 @@ const SEED_IMAGE_RELEVANCE_FAMILY_STOP_TOKENS = new Set([
   'for',
   'full',
   'hair',
+  'http',
+  'https',
   'new',
   'of',
   'openlid',
@@ -1126,6 +1128,7 @@ const SEED_IMAGE_RELEVANCE_FAMILY_STOP_TOKENS = new Set([
   'the',
   'to',
   'tools',
+  'www',
   'web',
 ]);
 const STRICT_GALLERY_FAMILY_FILTER_HOSTS = new Set([
@@ -1139,11 +1142,57 @@ const STRICT_GALLERY_FAMILY_FILTER_HOSTS = new Set([
   'kyliecosmetics.com',
   'beekman1802.com',
 ]);
+const STRICT_GALLERY_EXPLICIT_FAMILY_MATCH_HOSTS = new Set([
+  'fentybeauty.com',
+  'fentyskin.com',
+]);
+const CONTENT_IMAGE_GENERIC_FAMILY_TOKENS = new Set([
+  'after',
+  'arm',
+  'badge',
+  'before',
+  'benefit',
+  'benefits',
+  'circle',
+  'claims',
+  'details',
+  'directions',
+  'focus',
+  'how',
+  'image',
+  'images',
+  'imperfect',
+  'ingredient',
+  'ingredients',
+  'infographic',
+  'infographics',
+  'message',
+  'note',
+  'notes',
+  'overview',
+  'pdp',
+  'profile',
+  'routine',
+  'scent',
+  'step',
+  'to',
+  'usage',
+  'vibe',
+]);
 
 function requiresStrictGalleryFamilyFiltering(hostname) {
   const normalized = normalizeNonEmptyString(hostname).toLowerCase();
   if (!normalized) return false;
   for (const rootHost of STRICT_GALLERY_FAMILY_FILTER_HOSTS) {
+    if (normalized === rootHost || normalized.endsWith(`.${rootHost}`)) return true;
+  }
+  return false;
+}
+
+function requiresExplicitGalleryFamilyMatch(hostname) {
+  const normalized = normalizeNonEmptyString(hostname).toLowerCase();
+  if (!normalized) return false;
+  for (const rootHost of STRICT_GALLERY_EXPLICIT_FAMILY_MATCH_HOSTS) {
     if (normalized === rootHost || normalized.endsWith(`.${rootHost}`)) return true;
   }
   return false;
@@ -1158,6 +1207,19 @@ function tokenizeSeedImageRelevanceValue(value) {
     .map((token) => token.trim())
     .filter(Boolean)
     .filter((token) => !SEED_IMAGE_RELEVANCE_NOISE_TOKENS.has(token));
+}
+
+function extractSeedImageRelevanceUrlText(value) {
+  const normalized = normalizePdpImageUrl(value);
+  if (!normalized) return '';
+  try {
+    const parsed = new URL(normalized);
+    return decodeURIComponent(parsed.pathname || '')
+      .replace(/\/+/g, ' ')
+      .trim();
+  } catch {
+    return normalizeNonEmptyString(normalized);
+  }
 }
 
 function extractSeedImageFilenameTokens(value) {
@@ -1220,9 +1282,8 @@ function buildSeedGalleryRelevanceContext(seedData, row) {
   const snapshot = ensureJsonObject(parsedSeedData.snapshot);
   const values = [
     row?.title,
-    row?.canonical_url,
-    row?.destination_url,
-    parsedSeedData.brand,
+    extractSeedImageRelevanceUrlText(row?.canonical_url),
+    extractSeedImageRelevanceUrlText(row?.destination_url),
     parsedSeedData.variant_title,
     snapshot.variant_title,
   ].filter(Boolean);
@@ -1237,6 +1298,7 @@ function buildSeedGalleryRelevanceContext(seedData, row) {
     productTypes,
     familyTokens: extractSeedImageFamilyTokens(tokens, productTypes),
     strictFamilyFiltering: requiresStrictGalleryFamilyFiltering(productHostname),
+    requireExplicitFamilyMatch: requiresExplicitGalleryFamilyMatch(productHostname),
   };
 }
 
@@ -1250,11 +1312,23 @@ function isContentLikeSeedImageUrl(value) {
     /(?:^|[-_ ])infographics?(?:[-_ ]|$)/i.test(filename) ||
     /(?:^|[-_ ])ingredients?(?:[-_ ]|$)/i.test(filename) ||
     /(?:^|[-_ ])overview(?:[-_ ]|$)/i.test(filename) ||
+    /(?:^|[-_ ])(?:how[-_ ]to|directions?|routine|step)(?:[-_ ]|$)/i.test(filename) ||
     /(?:^|[-_ ])scent[-_ ]?(?:profile|note|notes|vibe)(?:[-_ ]|$)/i.test(filename) ||
     /(?:^|[-_ ])before[-_ ]after(?:[-_ ]|$)/i.test(filename) ||
     /(?:^|[-_ ])badge(?:[-_ ]|$)/i.test(filename) ||
     /(?:^|[-_ ])arm[-_ ]focus(?:[-_ ]|$)/i.test(filename) ||
     /(?:^|[-_ ])(?:allure|award|awards|seal)(?:[-_ ]|$)/i.test(filename)
+  );
+}
+
+function hasSeedImageFamilyOverlap(imageTokens, familyTokens) {
+  return imageTokens.some((token) =>
+    token.length >= 4 &&
+    familyTokens.some(
+      (familyToken) =>
+        familyToken.length >= 4 &&
+        (token === familyToken || token.includes(familyToken) || familyToken.includes(token)),
+    ),
   );
 }
 
@@ -1267,20 +1341,20 @@ function isRelevantSeedGalleryImageUrl(value, relevanceContext) {
     if (!imageProductTypes.includes(relevanceContext.productTypes[0])) return false;
   }
   if (!relevanceContext.strictFamilyFiltering || !relevanceContext.familyTokens.length) return true;
-  if (
-    imageTokens.some((token) =>
-      token.length >= 4 &&
-      relevanceContext.familyTokens.some(
-        (familyToken) =>
-          familyToken.length >= 4 &&
-          (token === familyToken || token.includes(familyToken) || familyToken.includes(token)),
-      ),
-    )
-  ) {
-    return true;
-  }
+  if (hasSeedImageFamilyOverlap(imageTokens, relevanceContext.familyTokens)) return true;
   const imageFamilyTokens = extractSeedImageFamilyTokens(imageTokens, relevanceContext.productTypes || []);
-  return imageFamilyTokens.length === 0;
+  if (imageFamilyTokens.length === 0) return !relevanceContext.requireExplicitFamilyMatch;
+  return false;
+}
+
+function isRelevantSeedContentImageUrl(value, relevanceContext) {
+  if (!relevanceContext || !relevanceContext.strictFamilyFiltering || !relevanceContext.familyTokens.length) return true;
+  const imageTokens = extractSeedImageFilenameTokens(value);
+  if (hasSeedImageFamilyOverlap(imageTokens, relevanceContext.familyTokens)) return true;
+  const imageFamilyTokens = extractSeedImageFamilyTokens(imageTokens, relevanceContext.productTypes || []);
+  const specificFamilyTokens = imageFamilyTokens.filter((token) => !CONTENT_IMAGE_GENERIC_FAMILY_TOKENS.has(token));
+  if (specificFamilyTokens.length === 0) return !relevanceContext.requireExplicitFamilyMatch;
+  return false;
 }
 
 function filterSeedGalleryByRelevance(urls, relevanceContext) {
@@ -1290,13 +1364,20 @@ function filterSeedGalleryByRelevance(urls, relevanceContext) {
   return filtered.length > 0 ? filtered : normalizedUrls;
 }
 
-function extractSeparatedContentImageUrls(urls) {
+function extractSeparatedContentImageUrls(urls, relevanceContext = null) {
   const normalizedUrls = Array.isArray(urls) ? urls.filter(Boolean) : [];
   const out = [];
   const seen = new Set();
   for (const url of normalizedUrls) {
     const normalized = normalizePdpImageUrl(url);
-    if (!normalized || isNonProductSeedImageUrl(normalized) || !isContentLikeSeedImageUrl(normalized)) continue;
+    if (
+      !normalized ||
+      isNonProductSeedImageUrl(normalized) ||
+      !isContentLikeSeedImageUrl(normalized) ||
+      !isRelevantSeedContentImageUrl(normalized, relevanceContext)
+    ) {
+      continue;
+    }
     const dedupeKey = buildPdpImageDedupeKey(normalized) || normalized.toLowerCase();
     if (seen.has(dedupeKey)) continue;
     seen.add(dedupeKey);
@@ -1319,6 +1400,11 @@ function isNonProductSeedImageUrl(value) {
   const lower = normalized.toLowerCase();
   const pathname = decodeUrlPathnameForImageFilter(normalized);
   const filename = String(pathname.split('/').pop() || '').trim();
+  let hostname = '';
+  try {
+    hostname = String(new URL(normalized).hostname || '').toLowerCase();
+  } catch {}
+  const explicitFamilyHost = requiresExplicitGalleryFamilyMatch(hostname);
   if (!filename) return true;
   if (
     lower.endsWith('.svg') ||
@@ -1355,8 +1441,9 @@ function isNonProductSeedImageUrl(value) {
     /(?:^|[-_ ])get[-_ ]the[-_ ]look(?:[-_ ]|$)/i.test(filename) ||
     /(?:^|[-_ ])best[-_ ]of[-_ ]beauty(?:[-_ ]|$)/i.test(filename) ||
     /(?:^|[-_ ])best[-_ ]new[-_ ]brand(?:[-_ ]|$)/i.test(filename) ||
-    /(?:^|[-_ ])badge(?:[-_ ]|$)/i.test(filename) ||
+    (filename.includes('badge') && !/safety-badge|recycling-badge/i.test(filename)) ||
     /(?:^|[-_ ])(?:allure|award|awards|seal)(?:[-_ ]|$)/i.test(filename) ||
+    (explicitFamilyHost && /(?:message|benefits?)/i.test(filename)) ||
     /(?:^|[-_ ])readers?[-_ ]/i.test(filename) ||
     /(?:^|[-_ ])allure[-_ ]/i.test(filename)
   ) {
@@ -2768,6 +2855,7 @@ function buildExternalSeedProduct(row, options = {}) {
   );
   const runtimeSeedData = buildApprovedRuntimeSeedData(seedData, pdpFieldQualitySummary);
   const runtimeSnapshot = ensureJsonObject(runtimeSeedData.snapshot);
+  const galleryRelevanceContext = buildSeedGalleryRelevanceContext(runtimeSeedData, row);
 
   const title =
     String(
@@ -2854,10 +2942,13 @@ function buildExternalSeedProduct(row, options = {}) {
         ? runtimeSeedData.pdp_details_sections
         : []
     : [];
-  const derivedSeparatedContentImageUrls = extractSeparatedContentImageUrls(collectSeedImageUrls(runtimeSeedData, row));
+  const derivedSeparatedContentImageUrls = extractSeparatedContentImageUrls(
+    collectSeedImageUrls(runtimeSeedData, row),
+    galleryRelevanceContext,
+  );
   const contentImageUrls = [];
-  appendImageUrls(contentImageUrls, extractSeparatedContentImageUrls(runtimeSnapshot.content_image_urls));
-  appendImageUrls(contentImageUrls, extractSeparatedContentImageUrls(runtimeSeedData.content_image_urls));
+  appendImageUrls(contentImageUrls, extractSeparatedContentImageUrls(runtimeSnapshot.content_image_urls, galleryRelevanceContext));
+  appendImageUrls(contentImageUrls, extractSeparatedContentImageUrls(runtimeSeedData.content_image_urls, galleryRelevanceContext));
   appendImageUrls(contentImageUrls, derivedSeparatedContentImageUrls);
   const pdpFieldCaptureStatus =
     (runtimeSnapshot.pdp_field_capture_status && typeof runtimeSnapshot.pdp_field_capture_status === 'object')
