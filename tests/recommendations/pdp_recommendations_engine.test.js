@@ -356,7 +356,8 @@ describe('RecommendationEngine (PDP)', () => {
       },
     });
 
-    expect(result.items.map((item) => item.product_id)).toEqual(['ext_lip_color']);
+    expect(result.items.map((item) => item.product_id)).toEqual([]);
+    expect(result.metadata.fallback_policy.blocked_visible_fallbacks).toContain('title_token_overlap');
   });
 
   test('dedupes same-title similar candidates without relying on identity rows', () => {
@@ -407,7 +408,8 @@ describe('RecommendationEngine (PDP)', () => {
       k: 6,
     });
 
-    expect(out.items.map((item) => item.product_id)).toEqual(['ext_foundation_a', 'ext_lip_color']);
+    expect(out.items.map((item) => item.product_id)).toEqual(['ext_foundation_a']);
+    expect(out.metadata.fallback_policy.blocked_visible_fallbacks).toContain('title_token_overlap');
   });
 
   test('dedupes similar candidates by live identity exact group and product line', async () => {
@@ -611,7 +613,7 @@ describe('RecommendationEngine (PDP)', () => {
     expect(out.items.length).toBe(0);
   });
 
-  test('e) recent views fallback activates only after direct recommendations run out', async () => {
+  test('e) recent views fallback stays out of visible recommendations by default', async () => {
     const base = makeProduct({
       merchant_id: 'merch_store',
       product_id: 'BASE_NO_MATCH',
@@ -659,18 +661,23 @@ describe('RecommendationEngine (PDP)', () => {
       },
     });
 
-    expect(result.items.map((item) => item.product_id)).toEqual(['SERUM_1', 'SERUM_2']);
+    expect(result.items.map((item) => item.product_id)).toEqual([]);
     expect(result.metadata).toEqual(
       expect.objectContaining({
         low_confidence: true,
-        low_confidence_reason_codes: expect.arrayContaining(['RECENT_VIEWS_FALLBACK_USED']),
+        similar_status: 'empty',
+        fallback_policy: expect.objectContaining({
+          visible_fallbacks_enabled: false,
+          blocked_visible_fallbacks: expect.arrayContaining(['recent_views_history_fallback']),
+        }),
       }),
     );
     expect(result.debug?.history_fallback).toEqual(
       expect.objectContaining({
-        used: true,
+        used: false,
+        disabled: true,
         anchors_considered: 1,
-        added_count: 2,
+        added_count: 0,
       }),
     );
   });
@@ -782,6 +789,7 @@ describe('RecommendationEngine (PDP)', () => {
   });
 
   test('i) cache key includes recent view context for explicit fallback results', async () => {
+    process.env.PDP_RECS_VISIBLE_FALLBACKS_ENABLED = 'true';
     const base = makeProduct({
       merchant_id: 'merch_store',
       product_id: 'BASE_CACHE_RECENT',
@@ -810,47 +818,51 @@ describe('RecommendationEngine (PDP)', () => {
       }),
     ];
 
-    const serumFirst = await recommend({
-      pdp_product: base,
-      k: 1,
-      options: {
-        debug: true,
-        internal_candidates: internal,
-        external_candidates: [],
-        recent_views: [
-          {
-            product_id: 'HISTORY_SERUM',
-            merchant_id: 'm_history',
-            title: 'Acme Recovery Serum',
-            brand: 'Acme',
-            category: 'Serum',
-          },
-        ],
-      },
-    });
-    expect(serumFirst.cache).toEqual(expect.objectContaining({ hit: false }));
-    expect(serumFirst.items[0].product_id).toBe('SERUM_1');
+    try {
+      const serumFirst = await recommend({
+        pdp_product: base,
+        k: 1,
+        options: {
+          debug: true,
+          internal_candidates: internal,
+          external_candidates: [],
+          recent_views: [
+            {
+              product_id: 'HISTORY_SERUM',
+              merchant_id: 'm_history',
+              title: 'Acme Recovery Serum',
+              brand: 'Acme',
+              category: 'Serum',
+            },
+          ],
+        },
+      });
+      expect(serumFirst.cache).toEqual(expect.objectContaining({ hit: false }));
+      expect(serumFirst.items[0].product_id).toBe('SERUM_1');
 
-    const fragranceSecond = await recommend({
-      pdp_product: base,
-      k: 1,
-      options: {
-        debug: true,
-        internal_candidates: internal,
-        external_candidates: [],
-        recent_views: [
-          {
-            product_id: 'HISTORY_SCENT',
-            merchant_id: 'm_fragrance',
-            title: 'Tom Ford Oud',
-            brand: 'Tom Ford',
-            category: 'Fragrance',
-          },
-        ],
-      },
-    });
-    expect(fragranceSecond.cache).toEqual(expect.objectContaining({ hit: false }));
-    expect(fragranceSecond.items[0].product_id).toBe('SCENT_1');
+      const fragranceSecond = await recommend({
+        pdp_product: base,
+        k: 1,
+        options: {
+          debug: true,
+          internal_candidates: internal,
+          external_candidates: [],
+          recent_views: [
+            {
+              product_id: 'HISTORY_SCENT',
+              merchant_id: 'm_fragrance',
+              title: 'Tom Ford Oud',
+              brand: 'Tom Ford',
+              category: 'Fragrance',
+            },
+          ],
+        },
+      });
+      expect(fragranceSecond.cache).toEqual(expect.objectContaining({ hit: false }));
+      expect(fragranceSecond.items[0].product_id).toBe('SCENT_1');
+    } finally {
+      delete process.env.PDP_RECS_VISIBLE_FALLBACKS_ENABLED;
+    }
   });
 
   test('j) fragrance base blocks obvious tools drift', () => {

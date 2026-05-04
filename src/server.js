@@ -2194,6 +2194,20 @@ const PDP_SIMILAR_SYNC_BUDGET_MS = Math.max(
   250,
   parseTimeoutMs(process.env.PDP_SIMILAR_SYNC_BUDGET_MS, 8000),
 );
+const PDP_SIMILAR_DEFAULT_DISPLAY_LIMIT = Math.max(
+  6,
+  Math.min(24, Number(process.env.PDP_SIMILAR_DEFAULT_DISPLAY_LIMIT || 12) || 12),
+);
+const PDP_SIMILAR_MAX_DISPLAY_LIMIT = Math.max(
+  PDP_SIMILAR_DEFAULT_DISPLAY_LIMIT,
+  Math.min(60, Number(process.env.PDP_SIMILAR_MAX_DISPLAY_LIMIT || 24) || 24),
+);
+const PDP_SIMILAR_MAX_CANDIDATE_LIMIT = Math.max(
+  PDP_SIMILAR_MAX_DISPLAY_LIMIT,
+  Math.min(120, Number(process.env.PDP_SIMILAR_MAX_CANDIDATE_LIMIT || 60) || 60),
+);
+const PDP_SIMILAR_CARD_DETAIL_ENRICH_ENABLED =
+  String(process.env.PDP_SIMILAR_CARD_DETAIL_ENRICH_ENABLED || '').trim().toLowerCase() === 'true';
 const PDP_SIMILAR_CARD_ENRICH_BUDGET_MS = Math.max(
   100,
   parseTimeoutMs(process.env.PDP_SIMILAR_CARD_ENRICH_BUDGET_MS, 900),
@@ -3126,15 +3140,19 @@ function buildPdpSimilarInflightKey(args = {}) {
 }
 
 function resolvePdpSimilarDisplayLimit(payload = {}) {
-  const rawLimit = payload?.similar?.limit || payload?.recommendations?.limit || 6;
+  const rawLimit =
+    payload?.similar?.limit ||
+    payload?.recommendations?.limit ||
+    PDP_SIMILAR_DEFAULT_DISPLAY_LIMIT;
   const numericLimit = Number(rawLimit);
-  const limit = Number.isFinite(numericLimit) ? Math.trunc(numericLimit) : 6;
-  return Math.max(6, Math.min(24, limit || 6));
+  const limit = Number.isFinite(numericLimit) ? Math.trunc(numericLimit) : PDP_SIMILAR_DEFAULT_DISPLAY_LIMIT;
+  return Math.max(1, Math.min(PDP_SIMILAR_MAX_DISPLAY_LIMIT, limit || PDP_SIMILAR_DEFAULT_DISPLAY_LIMIT));
 }
 
 function resolvePdpSimilarCandidateLimit(displayLimit) {
-  const limit = Math.max(6, Math.min(24, Number(displayLimit) || 6));
-  return Math.max(limit, Math.min(30, limit + 2));
+  const limit = Math.max(1, Math.min(PDP_SIMILAR_MAX_DISPLAY_LIMIT, Number(displayLimit) || PDP_SIMILAR_DEFAULT_DISPLAY_LIMIT));
+  const expanded = Math.max(limit + 12, limit * 3);
+  return Math.max(limit, Math.min(PDP_SIMILAR_MAX_CANDIDATE_LIMIT, expanded));
 }
 
 function isTruthyCacheBypassFlag(value) {
@@ -3241,7 +3259,7 @@ function buildPdpSimilarFetchArgs({
     similarBaseProduct,
     fetchArgs: {
       pdp_product: similarBaseProduct,
-      k: resolvedCandidateLimit,
+      k: limit,
       locale:
         payload?.context?.locale ||
         payload?.context?.language ||
@@ -3254,6 +3272,7 @@ function buildPdpSimilarFetchArgs({
         'USD',
       options: {
         debug,
+        candidate_limit: resolvedCandidateLimit,
         no_cache: bypassCache,
         cache_bypass: bypassCache,
         bypass_cache: bypassCache,
@@ -4586,8 +4605,7 @@ async function fetchProductDetailForOffers(args) {
   if (!merchantId || !productId) return null;
   const useMemoryCache =
     PRODUCT_DETAIL_CACHE_ENABLED &&
-    !bypassCache &&
-    merchantId !== EXTERNAL_SEED_MERCHANT_ID;
+    !bypassCache;
 
   const cacheKey = buildProductDetailCacheKey({ merchantId, productId, checkoutToken });
 
@@ -16430,8 +16448,8 @@ function annotateSimilarCardStatus(item = {}) {
 }
 
 function shouldEnrichSimilarCard(item = {}) {
-  // Missing highlight no longer blocks card rendering; only pay detail latency to fill images.
-  return !hasSimilarCardImage(item);
+  // Detail hydration is offline/opt-in only; public similar cards must be ready from the recall doc.
+  return PDP_SIMILAR_CARD_DETAIL_ENRICH_ENABLED && !hasSimilarCardImage(item);
 }
 
 function mergeSimilarCardEnrichment(candidate = {}, detail = {}) {
@@ -16495,7 +16513,7 @@ function getSimilarItemDisplayCategory(item = {}) {
 
 function filterSimilarProductsWithCardHighlights(items = [], { baseProduct = null, minItems = 4 } = {}) {
   const displayable = (Array.isArray(items) ? items : []).filter(
-    (item) => item && typeof item === 'object',
+    (item) => item && typeof item === 'object' && hasSimilarCardImage(item),
   );
   const baseCategory = normalizeSimilarCategoryForDisplay(
     baseProduct?.category ||
@@ -16583,6 +16601,13 @@ function calibrateSimilarMetadataForVisibleProducts({
       : withoutReasonCode(originalReasonCodes, 'UNDERFILL_FOR_QUALITY');
   const similarConfidence = String(metadata?.similar_confidence || '').trim() || (visibleProducts.length > 0 ? 'medium' : 'low');
   const lowConfidence = lowConfidenceReasonCodes.length > 0 || similarConfidence === 'low';
+  const rawStatus = String(metadata?.similar_status || '').trim();
+  const similarStatus =
+    visibleProducts.length > 0
+      ? visibleUnderfill > 0
+        ? 'underfilled'
+        : 'ready'
+      : rawStatus || 'empty';
 
   return {
     ...metadata,
@@ -16594,7 +16619,7 @@ function calibrateSimilarMetadataForVisibleProducts({
     low_confidence: lowConfidence,
     low_confidence_reason_codes: lowConfidenceReasonCodes,
     retrieval_mix: visibleRetrievalMix,
-    similar_status: visibleProducts.length > 0 ? 'ready' : metadata?.similar_status || 'empty',
+    similar_status: similarStatus,
   };
 }
 
@@ -25418,6 +25443,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 
 	      const entryProductId = productId;
 	      const entryProductIsExternalSeed = isExternalSeedProductId(entryProductId);
+	      let externalSeedDirectPrecheckProduct = null;
 	      if (
 	        entryProductIsExternalSeed &&
 	        (!requestedMerchantId || requestedMerchantId === EXTERNAL_SEED_MERCHANT_ID)
@@ -25425,13 +25451,30 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	        const externalSeedStatusStartedAt = Date.now();
 	        let externalSeedRouteStatus = null;
 	        try {
-	          externalSeedRouteStatus = await withStageBudget(
-	            fetchExternalSeedRouteStatusFromDb({
+	          const externalSeedDetail = await withStageBudget(
+	            fetchExternalSeedProductDetailFromDb({
 	              productId: entryProductId,
 	            }),
 	            PDP_EXTERNAL_SEED_STATUS_PRECHECK_BUDGET_MS,
 	            'pdp_external_seed_status_precheck',
 	          );
+	          if (externalSeedDetail?.product) {
+	            externalSeedDirectPrecheckProduct = externalSeedDetail.product;
+	            externalSeedRouteStatus = {
+	              external_seed_id: externalSeedDetail.external_seed_id || null,
+	              external_product_id: entryProductId,
+	              status: 'active',
+	              updated_at: externalSeedDetail.updated_at || null,
+	            };
+	          } else {
+	            externalSeedRouteStatus = await withStageBudget(
+	              fetchExternalSeedRouteStatusFromDb({
+	                productId: entryProductId,
+	              }),
+	              PDP_EXTERNAL_SEED_STATUS_PRECHECK_BUDGET_MS,
+	              'pdp_external_seed_status_precheck_status_only',
+	            );
+	          }
 	        } catch (err) {
 	          if (err?.code === 'STAGE_TIMEOUT') {
 	            logger.warn(
@@ -25651,12 +25694,16 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	        !hasExplicitProductGroup;
 	      const precheckEntryProductStartedAt = Date.now();
 	      const precheckEntryProductPromise = shouldPrecheckMerchantScoped
-	        ? fetchProductDetailForOffers({
-	            merchantId: precheckMerchantId,
-	            productId,
-	            checkoutToken,
-	            bypassCache,
-	          }).catch(() => null)
+	        ? externalSeedDirectPrecheckProduct &&
+	          precheckMerchantId === EXTERNAL_SEED_MERCHANT_ID &&
+	          productId === entryProductId
+	          ? Promise.resolve(externalSeedDirectPrecheckProduct)
+	          : fetchProductDetailForOffers({
+	              merchantId: precheckMerchantId,
+	              productId,
+	              checkoutToken,
+	              bypassCache,
+	            }).catch(() => null)
 	        : Promise.resolve(null);
 
 	      const canSkipExternalSeedUpstreamGroupResolve =
@@ -25667,7 +25714,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	        externalSeedRouteProductId &&
 	        (!requestedMerchantId || requestedMerchantId === EXTERNAL_SEED_MERCHANT_ID) &&
 	        !canSkipExternalSeedUpstreamGroupResolve;
-	      let resolveGroupCachedStartedAt = Date.now();
+	      let resolveGroupCachedStartedAt = null;
 	      let resolveGroupCachedPromise = null;
 	      const startResolveGroupCached = (attemptUnscopedExternalSeedResolve) => {
 	        resolveGroupCachedStartedAt = Date.now();
@@ -25793,7 +25840,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	          ? 'skipped_external_seed_upstream_disabled'
 	          : canonicalProductRef ? 'not_needed' : 'skipped';
 	      }
-	      markPdpV2Phase('resolve_group_cached', resolveGroupCachedStartedAt);
+	      markPdpV2Phase('resolve_group_cached', resolveGroupCachedStartedAt || Date.now());
 
 	      if (!canonicalProductRef) {
 	        const shouldFallbackToExternalSeedProductRef = externalSeedRouteProductId;
@@ -29836,7 +29883,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           const sim = payload.similar || {};
           const productId = String(sim.product_id || payload.product_id || '').trim();
           const merchantId = String(sim.merchant_id || payload.merchant_id || '').trim();
-          const limit = Math.max(1, Math.min(Number(sim.limit || payload.limit || 6) || 6, 30));
+          const limit = Math.max(
+            1,
+            Math.min(
+              Number(sim.limit || payload.limit || PDP_SIMILAR_DEFAULT_DISPLAY_LIMIT) ||
+                PDP_SIMILAR_DEFAULT_DISPLAY_LIMIT,
+              PDP_SIMILAR_MAX_DISPLAY_LIMIT,
+            ),
+          );
           const payloadContext =
             payload?.context && typeof payload.context === 'object' ? payload.context : null;
           const simContext = sim?.context && typeof sim.context === 'object' ? sim.context : null;
@@ -29864,7 +29918,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             sim?.options?.debug === true;
 
           if (productId) {
-            const directCandidateLimit = Math.max(limit, Math.min(30, limit + 4));
+            const directCandidateLimit = Math.max(
+              limit,
+              Math.min(PDP_SIMILAR_MAX_CANDIDATE_LIMIT, Math.max(limit + 12, limit * 3)),
+            );
             const isExternalSeedDirectBase =
               isExternalSeedProductId(productId) &&
               (!merchantId || merchantId === EXTERNAL_SEED_MERCHANT_ID);
@@ -29901,11 +29958,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 
             const rec = await fetchSimilarProductsDeduped({
               pdp_product: baseProduct,
-              k: directCandidateLimit,
+              k: limit,
               locale: payload?.context?.locale || payload?.context?.language || payload?.locale || 'en-US',
               currency: baseProduct.currency || baseProduct.price?.currency || 'USD',
               options: {
                 debug: debugEnabled,
+                candidate_limit: directCandidateLimit,
                 no_cache: bypassCache,
                 cache_bypass: bypassCache,
                 bypass_cache: bypassCache,

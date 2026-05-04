@@ -39,6 +39,7 @@ describe('RecommendationEngine external candidate fetch', () => {
     delete process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET;
     delete process.env.PDP_RECS_EXTERNAL_UNDERFILL_QUERY_TIMEOUT_MS;
     delete process.env.PDP_RECS_EXTERNAL_RECALL_QUERY_TIMEOUT_MS;
+    delete process.env.PDP_RECS_VISIBLE_FALLBACKS_ENABLED;
   });
 
   test('matches normalized brand fastpath and dedupes overlapping brand/category rows', async () => {
@@ -688,6 +689,7 @@ describe('RecommendationEngine external candidate fetch', () => {
 
   test('uses title category tokens when structured category rows underfill target', async () => {
     process.env.DATABASE_URL = 'postgres://example.test/pivota';
+    process.env.PDP_RECS_VISIBLE_FALLBACKS_ENABLED = 'true';
 
     const queryMock = jest.fn(async (sql, params) => {
       const sqlText = String(sql);
@@ -763,10 +765,63 @@ describe('RecommendationEngine external candidate fetch', () => {
     ).toBe(true);
   });
 
+  test('keeps category-title and recent fallbacks out of visible external recall by default', async () => {
+    process.env.DATABASE_URL = 'postgres://example.test/pivota';
+
+    const queryMock = jest.fn(async (sql, params) => {
+      const sqlText = String(sql);
+      const brandAliases = params?.[3];
+      if (Array.isArray(brandAliases) && brandAliases.includes('goodmolecules')) {
+        return {
+          rows: [
+            makeExternalRow({
+              id: 'eps_good_molecules_base_only',
+              external_product_id: 'ext_good_molecules_base_only',
+              title: 'Good Molecules Niacinamide Serum',
+              brand: 'Good Molecules',
+              category: 'Serum',
+              domain: 'goodmolecules.com',
+            }),
+          ],
+        };
+      }
+      if (sqlText.includes("lower(coalesce(seed_data->'derived'->'recall'->>'category',''))")) {
+        return { rows: [] };
+      }
+      if (sqlText.includes("seed_data->'derived'->'recall'->>'retrieval_title'")) {
+        throw new Error('category-title fallback should not run');
+      }
+      if (params?.length === 3) {
+        throw new Error('external_recent fallback should not run');
+      }
+      return { rows: [] };
+    });
+
+    jest.doMock('../../src/db', () => ({ query: queryMock }));
+    jest.doMock('../../src/logger', () => ({ warn: jest.fn(), info: jest.fn() }));
+
+    const { _internals } = require('../../src/services/RecommendationEngine');
+    const products = await _internals.fetchExternalCandidates({
+      brandHint: 'Good Molecules',
+      categoryHint: 'Serum',
+      limit: 12,
+      minFocusedCandidates: 6,
+    });
+
+    expect(products.map((product) => product.product_id)).toEqual(['ext_good_molecules_base_only']);
+    expect(
+      queryMock.mock.calls.some(([sql]) =>
+        String(sql).includes("seed_data->'derived'->'recall'->>'retrieval_title'"),
+      ),
+    ).toBe(false);
+    expect(queryMock.mock.calls.some(([, params]) => params?.length === 3)).toBe(false);
+  });
+
   test('keeps focused candidates when category-token underfill query times out', async () => {
     process.env.DATABASE_URL = 'postgres://example.test/pivota';
     process.env.PDP_RECS_EXTERNAL_UNDERFILL_QUERY_TIMEOUT_MS = '50';
     process.env.PDP_RECS_EXTERNAL_RECALL_QUERY_TIMEOUT_MS = '50';
+    process.env.PDP_RECS_VISIBLE_FALLBACKS_ENABLED = 'true';
 
     const queryMock = jest.fn(async (sql, params) => {
       const sqlText = String(sql);
@@ -1246,7 +1301,10 @@ describe('RecommendationEngine external candidate fetch', () => {
       options: { debug: true, no_cache: true },
     });
 
-    expect(result.metadata.similar_status).toBe('ready');
+    expect(result.metadata.similar_status).toBe('underfilled');
+    expect(result.metadata.low_confidence_reason_codes).toEqual(
+      expect.arrayContaining(['UNDERFILL_MAINLINE_RECALL']),
+    );
     expect(result.items.length).toBeGreaterThan(0);
     expect(result.items.every((item) => item.merchant_id === 'external_seed')).toBe(true);
     expect(result.debug?.fetch_strategy?.external_timed_out).toBe(false);

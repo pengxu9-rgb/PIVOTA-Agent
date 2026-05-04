@@ -30,6 +30,14 @@ const PDP_RECS_CACHE_ENABLED = process.env.PDP_RECS_CACHE_ENABLED !== 'false';
 const PDP_RECS_CACHE_TTL_MS = parseTimeoutMs(process.env.PDP_RECS_CACHE_TTL_MS, 10 * 60 * 1000);
 const PDP_RECS_CACHE_MAX_ENTRIES = Math.max(0, Number(process.env.PDP_RECS_CACHE_MAX_ENTRIES || 2000) || 2000);
 const PDP_RECS_CARD_KB_CONTRACT_VERSION = 'pdp_recs_kb_card_v1';
+const PDP_RECS_DEFAULT_K = Math.max(
+  6,
+  Math.min(60, Number(process.env.PDP_RECS_DEFAULT_K || 12) || 12),
+);
+const PDP_RECS_MAX_K = Math.max(
+  PDP_RECS_DEFAULT_K,
+  Math.min(60, Number(process.env.PDP_RECS_MAX_K || 60) || 60),
+);
 const PDP_RECS_INTERNAL_FETCH_TIMEOUT_MS = Math.max(
   300,
   parseTimeoutMs(process.env.PDP_RECS_INTERNAL_FETCH_TIMEOUT_MS, 2200),
@@ -77,6 +85,34 @@ const PDP_RECS_CACHE_METRICS = {
   bypasses: 0,
   evictions: 0,
 };
+
+function visibleFallbacksEnabled() {
+  return String(process.env.PDP_RECS_VISIBLE_FALLBACKS_ENABLED || '').trim().toLowerCase() === 'true';
+}
+
+function visibleBroadTitleLayerEnabled() {
+  return (
+    visibleFallbacksEnabled() ||
+    String(process.env.PDP_RECS_VISIBLE_BROAD_TITLE_LAYER_ENABLED || '').trim().toLowerCase() === 'true'
+  );
+}
+
+function recommendationFallbackPolicy() {
+  const visibleFallbacks = visibleFallbacksEnabled();
+  return {
+    visible_fallbacks_enabled: visibleFallbacks,
+    broad_title_layer_enabled: visibleBroadTitleLayerEnabled(),
+    blocked_visible_fallbacks: visibleFallbacks
+      ? []
+      : [
+          'external_recent',
+          'recent_views_history_fallback',
+          'title_token_overlap',
+          'category_title_like',
+          'global_recent_internal',
+        ],
+  };
+}
 const STORED_SEMANTIC_VERTICALS = new Set([
   'fragrance',
   'skincare',
@@ -1474,8 +1510,9 @@ function pickLayeredRecommendations({
   k,
   baseSemantic = null,
 }) {
-  const K = Math.max(1, Math.min(Number(k || 6) || 6, 30));
+  const K = Math.max(1, Math.min(Number(k || PDP_RECS_DEFAULT_K) || PDP_RECS_DEFAULT_K, PDP_RECS_MAX_K));
   const base = buildBaseFeatures(baseProduct, baseSemantic);
+  const allowBroadTitleLayer = visibleBroadTitleLayerEnabled();
 
   const nearPriceTight = (relDiff) => relDiff != null && relDiff <= 0.25;
   const nearPriceLoose = (relDiff) => relDiff != null && relDiff <= 0.6;
@@ -1531,6 +1568,7 @@ function pickLayeredRecommendations({
       name: 'title_token_overlap',
       priority: 4,
       predicate: (c) => c.tokenOverlap >= 0.18,
+      fallback: true,
     },
     {
       id: 'L5',
@@ -1542,7 +1580,7 @@ function pickLayeredRecommendations({
         baseFeatures.vertical === features.vertical &&
         c.tokenOverlap >= 0.12,
     },
-  ];
+  ].filter((layer) => !layer.fallback || allowBroadTitleLayer);
 
   const layerById = Object.fromEntries(layers.map((layer) => [layer.id, layer]));
 
@@ -1729,10 +1767,16 @@ function pickLayeredRecommendations({
       similar_confidence: similarConfidence,
       low_confidence: lowConfidence,
       low_confidence_reason_codes: lowConfidenceReasonCodes,
+      similar_status: selected.length
+        ? selected.length < K
+          ? 'underfilled'
+          : 'ready'
+        : 'empty',
       retrieval_mix: {
         internal: sourceCounts.internal,
         external: sourceCounts.external,
       },
+      fallback_policy: recommendationFallbackPolicy(),
       base_semantic: {
         brand: base.brand || null,
         vertical: base.vertical || UNKNOWN_VERTICAL,
@@ -1761,6 +1805,7 @@ function pickLayeredRecommendations({
         by_confidence: filteredByConfidence,
         by_external_brand_authority: filteredByExternalBrandAuthority,
       },
+      fallback_policy: recommendationFallbackPolicy(),
     },
   };
 }
@@ -1769,6 +1814,7 @@ async function fetchInternalCandidates({ merchantId, limit, excludeMerchantId, c
   const mid = String(merchantId || '').trim();
   const safeLimit = Math.min(Math.max(1, Number(limit || 120)), 400);
   const categoryAliases = buildNormalizedAliases(categoryHint);
+  const allowVisibleFallbacks = visibleFallbacksEnabled();
 
   if (!process.env.DATABASE_URL) {
     throw buildDatabaseNotConfiguredError('pdp_recommendations_internal_candidates');
@@ -1830,32 +1876,34 @@ async function fetchInternalCandidates({ merchantId, limit, excludeMerchantId, c
     logger.warn({ err: err?.message || String(err), merchantId: mid }, 'recommendations internal merchant query failed');
   }
 
-  try {
+  if (allowVisibleFallbacks) {
+    try {
     // Global recent internal fallback (keeps cold-start non-empty).
-    const res = await query(
-      `
-        SELECT merchant_id, product_data
-        FROM products_cache
-        WHERE (expires_at IS NULL OR expires_at > now())
-          AND COALESCE(lower(product_data->>'status'), 'active') = 'active'
-          AND merchant_id <> $1
-          ${excludeMerchantId ? 'AND merchant_id <> $2' : ''}
-        ORDER BY cached_at DESC NULLS LAST, id DESC
-        LIMIT $3
-      `,
-      excludeMerchantId
-        ? [EXTERNAL_SEED_MERCHANT_ID, String(excludeMerchantId || '').trim(), Math.min(safeLimit * 3, 600)]
-        : [EXTERNAL_SEED_MERCHANT_ID, Math.min(safeLimit * 3, 600), Math.min(safeLimit * 3, 600)],
-    );
+      const res = await query(
+        `
+          SELECT merchant_id, product_data
+          FROM products_cache
+          WHERE (expires_at IS NULL OR expires_at > now())
+            AND COALESCE(lower(product_data->>'status'), 'active') = 'active'
+            AND merchant_id <> $1
+            ${excludeMerchantId ? 'AND merchant_id <> $2' : ''}
+          ORDER BY cached_at DESC NULLS LAST, id DESC
+          LIMIT $3
+        `,
+        excludeMerchantId
+          ? [EXTERNAL_SEED_MERCHANT_ID, String(excludeMerchantId || '').trim(), Math.min(safeLimit * 3, 600)]
+          : [EXTERNAL_SEED_MERCHANT_ID, Math.min(safeLimit * 3, 600), Math.min(safeLimit * 3, 600)],
+      );
 
-    for (const row of res.rows || []) {
-      const p = row?.product_data;
-      const merchant_id = String(row?.merchant_id || '').trim();
-      if (!p || !merchant_id) continue;
-      out.push(toCandidate(p, { merchant_id }));
+      for (const row of res.rows || []) {
+        const p = row?.product_data;
+        const merchant_id = String(row?.merchant_id || '').trim();
+        if (!p || !merchant_id) continue;
+        out.push(toCandidate(p, { merchant_id }));
+      }
+    } catch (err) {
+      logger.warn({ err: err?.message || String(err) }, 'recommendations internal global query failed');
     }
-  } catch (err) {
-    logger.warn({ err: err?.message || String(err) }, 'recommendations internal global query failed');
   }
 
   return uniqueByKey(out.filter(Boolean), (p) => `${getMerchantId(p)}::${getProductId(p)}`).slice(0, safeLimit * 4);
@@ -1882,6 +1930,7 @@ async function fetchExternalCandidates({
 
   const brand = normalizeText(brandHint);
   const category = normalizeText(categoryHint);
+  const allowVisibleFallbacks = visibleFallbacksEnabled();
   const normalizedDomainHints = uniqueByKey(
     (Array.isArray(domainHints) ? domainHints : [domainHints])
       .flatMap((value) => buildDomainLookupAliases(value))
@@ -2107,7 +2156,7 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
 
   out.push(...categoryMatches);
   let focusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
-  if (category && focusedCandidates.length < safeMinFocusedCandidates) {
+  if (allowVisibleFallbacks && category && focusedCandidates.length < safeMinFocusedCandidates) {
     const categoryLikePatterns = categoryAliases
       .filter((value) => String(value || '').trim().length >= 3)
       .map((value) => `%${value}%`);
@@ -2130,7 +2179,7 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
     focusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
   }
   const hasFocusedCandidates = focusedCandidates.length >= safeMinFocusedCandidates;
-  if (!hasFocusedCandidates) {
+  if (allowVisibleFallbacks && !hasFocusedCandidates) {
     const recent = await runTimedExternalQuery(
       'external_recent',
       () => runQuery('', [], Math.min(240, safeLimit), 'external_recent'),
@@ -2379,7 +2428,7 @@ async function enrichExternalBaseProduct(baseProduct) {
 
 async function recommend({
   pdp_product,
-  k = 6,
+  k = PDP_RECS_DEFAULT_K,
   locale = 'en-US',
   currency = null,
   options = {},
@@ -2389,11 +2438,21 @@ async function recommend({
   if (!baseProductId) {
     return { items: [], debug: { error: 'missing_product_id' } };
   }
-  if (!process.env.DATABASE_URL) {
+  const providedInternal = Array.isArray(options?.internal_candidates) ? options.internal_candidates : null;
+  const providedExternal = Array.isArray(options?.external_candidates) ? options.external_candidates : null;
+  if (!process.env.DATABASE_URL && !providedInternal && !providedExternal) {
     throw buildDatabaseNotConfiguredError('pdp_recommendations');
   }
   const baseMerchantId = getMerchantId(rawBaseProduct);
-  const safeK = Math.max(1, Math.min(Number(k || 6) || 6, 30));
+  const safeK = Math.max(1, Math.min(Number(k || PDP_RECS_DEFAULT_K) || PDP_RECS_DEFAULT_K, PDP_RECS_MAX_K));
+  const candidateK = Math.max(
+    safeK,
+    Math.min(
+      PDP_RECS_MAX_K,
+      Number(options?.candidate_limit || options?.candidateLimit || safeK) || safeK,
+    ),
+  );
+  const fallbackPolicy = recommendationFallbackPolicy();
   const normalizedRecentViews = normalizeRecentViews(
     options?.recent_views || options?.recentViews,
     {
@@ -2414,6 +2473,7 @@ async function recommend({
     merchant_id: baseMerchantId || null,
     product_id: baseProductId,
     k: safeK,
+    candidate_k: candidateK,
     locale: String(locale || 'en-US'),
     currency: baseCurrency,
     recent_view_keys: normalizedRecentViews.map((item) => buildCandidateKey(item)),
@@ -2451,8 +2511,6 @@ async function recommend({
     ? PDP_RECS_EXTERNAL_BASE_FETCH_TIMEOUT_MS
     : PDP_RECS_EXTERNAL_FETCH_TIMEOUT_MS;
 
-  const providedInternal = Array.isArray(options?.internal_candidates) ? options.internal_candidates : null;
-  const providedExternal = Array.isArray(options?.external_candidates) ? options.external_candidates : null;
   const shouldFetchInternalCandidates = Boolean(providedInternal) || !baseProductIsExternal;
 
   let internalTimedOut = false;
@@ -2463,7 +2521,7 @@ async function recommend({
       : shouldFetchInternalCandidates
         ? fetchInternalCandidates({
             merchantId: getMerchantId(baseProduct),
-            limit: Math.max(60, safeK * 10),
+            limit: Math.max(60, candidateK * 10),
             excludeMerchantId: getMerchantId(baseProduct),
             categoryHint: baseLeaf,
           })
@@ -2488,8 +2546,8 @@ async function recommend({
           brandHint: baseBrand,
           categoryHint: baseLeaf,
           domainHints: baseDomains,
-          limit: Math.max(120, safeK * 15),
-          minFocusedCandidates: safeK,
+          limit: Math.max(120, candidateK * 15),
+          minFocusedCandidates: candidateK,
           deepDomainRecall: baseProductIsExternal,
         }),
     effectiveExternalFetchTimeoutMs,
@@ -2520,7 +2578,7 @@ async function recommend({
   );
   const skipExternalMin = Math.max(
     PDP_RECS_EXTERNAL_SKIP_INTERNAL_MIN_ABS,
-    Math.ceil(safeK * PDP_RECS_EXTERNAL_SKIP_INTERNAL_MIN_MULTIPLIER),
+    Math.ceil(candidateK * PDP_RECS_EXTERNAL_SKIP_INTERNAL_MIN_MULTIPLIER),
   );
   const shouldSkipExternal =
     !providedExternal &&
@@ -2548,7 +2606,7 @@ async function recommend({
     baseProduct,
     internalCandidates: filteredInternalCandidates,
     externalCandidates: filteredExternalCandidates,
-    k: safeK,
+    k: candidateK,
     baseSemantic,
   });
 
@@ -2560,7 +2618,7 @@ async function recommend({
     added_count: 0,
   };
 
-  if (finalItems.length === 0 && normalizedRecentViews.length > 0) {
+  if (finalItems.length === 0 && normalizedRecentViews.length > 0 && visibleFallbacksEnabled()) {
     const historyExcludedCandidates = mergeExcludedCandidateStates(
       excludedCandidates,
       buildExcludedCandidateState(
@@ -2645,6 +2703,22 @@ async function recommend({
       'RECENT_VIEWS_FALLBACK_USED',
     );
   }
+  if (!historyFallbackDebug.used && normalizedRecentViews.length > 0 && !visibleFallbacksEnabled()) {
+    historyFallbackDebug.disabled = true;
+  }
+
+  const finalUnderfill = Math.max(0, safeK - finalItems.length);
+  if (finalItems.length > 0 && finalUnderfill > 0) {
+    finalMetadata.similar_status = 'underfilled';
+    finalMetadata.low_confidence_reason_codes = appendReasonCode(
+      finalMetadata.low_confidence_reason_codes,
+      'UNDERFILL_MAINLINE_RECALL',
+    );
+  }
+  if (finalItems.length === 0 && !internalTimedOut && !externalTimedOut) {
+    finalMetadata.similar_status = 'empty';
+  }
+  finalMetadata.fallback_policy = fallbackPolicy;
 
   const result = {
     items: finalItems,
@@ -2662,11 +2736,14 @@ async function recommend({
         external_skip_internal_quality_count: externalSkipEligibleInternalCount,
         base_semantic_strong: baseSemanticStrong,
         base_product_is_external: baseProductIsExternal,
+        requested_count: safeK,
+        candidate_count: candidateK,
       },
       sources: finalSourceCounts,
       history_fallback: historyFallbackDebug,
       product_intel_card_hydration: productIntelCardHydration.stats,
       base_semantic: baseSemantic || null,
+      fallback_policy: fallbackPolicy,
       cache_key_hash: debugEnabled ? stableHashShort(cacheKey) : undefined,
     },
   };
@@ -2728,5 +2805,6 @@ module.exports = {
     enrichExternalBaseProduct,
     extractProductDomains,
     normalizeHostname,
+    recommendationFallbackPolicy,
   },
 };

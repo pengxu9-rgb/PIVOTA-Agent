@@ -23,6 +23,7 @@ describe('find_similar_products mainline wrapper', () => {
           product_id: 'sim_1',
           merchant_id: 'external_seed',
           title: 'Similar Product 1',
+          image_url: 'https://cdn.example.test/sim-1.jpg',
           description: 'A verified similar product highlight for PDP card presentation.',
           card_highlight_status: 'ready',
           card_highlight: 'Same routine fit with a stronger finish.',
@@ -65,7 +66,10 @@ describe('find_similar_products mainline wrapper', () => {
           product_id: 'ext_demo_1',
           source: 'external_seed',
         }),
-        k: 8,
+        k: 4,
+        options: expect.objectContaining({
+          candidate_limit: 16,
+        }),
       }),
     );
     expect(res.body.products).toEqual([
