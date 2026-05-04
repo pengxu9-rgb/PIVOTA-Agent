@@ -1226,7 +1226,14 @@ function isContentLikeSeedImageUrl(value) {
   return (
     /(?:^|[-_ ])pdp[-_ ]usage(?:[-_ ]|$)/i.test(filename) ||
     /(?:^|[-_ ])pdp[-_ ]details?[-_ ]image(?:[-_ ]|$)/i.test(filename) ||
-    /(?:^|[-_ ])imperfect[-_ ]circle(?:[-_ ]|$)/i.test(filename)
+    /(?:^|[-_ ])imperfect[-_ ]circle(?:[-_ ]|$)/i.test(filename) ||
+    /(?:^|[-_ ])infographics?(?:[-_ ]|$)/i.test(filename) ||
+    /(?:^|[-_ ])ingredients?(?:[-_ ]|$)/i.test(filename) ||
+    /(?:^|[-_ ])scent[-_ ]?(?:profile|note|notes|vibe)(?:[-_ ]|$)/i.test(filename) ||
+    /(?:^|[-_ ])before[-_ ]after(?:[-_ ]|$)/i.test(filename) ||
+    /(?:^|[-_ ])badge(?:[-_ ]|$)/i.test(filename) ||
+    /(?:^|[-_ ])arm[-_ ]focus(?:[-_ ]|$)/i.test(filename) ||
+    /(?:^|[-_ ])(?:allure|award|awards|seal)(?:[-_ ]|$)/i.test(filename)
   );
 }
 

@@ -88,6 +88,16 @@ describe('pdp image URL normalization', () => {
     ]);
   });
 
+  test('dedupes merchant-host Shopify file assets against transformed width variants', () => {
+    const merchantFile =
+      'https://fentybeauty.com/cdn/shop/files/FS_S23_T2PRODUCT_SILO_HYDRAVIZOR_REFILL_MINERAL_1200x1500_FENTYVERSEI.jpg?v=1762272037';
+    const transformedAlias =
+      'https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FS_S23_T2PRODUCT_SILO_HYDRAVIZOR_REFILL_MINERAL_1200x1500_FENTYVERSEI_600x.jpg?v=1762272037';
+
+    expect(buildPdpImageDedupeKey(merchantFile)).toBe(buildPdpImageDedupeKey(transformedAlias));
+    expect(normalizePdpImageUrls([merchantFile, transformedAlias])).toEqual([merchantFile]);
+  });
+
   test('classifies Shopify product and content asset paths separately', () => {
     expect(
       classifyShopifyLikeAsset(

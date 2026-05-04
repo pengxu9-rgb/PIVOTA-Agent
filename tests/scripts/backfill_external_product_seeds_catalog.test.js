@@ -507,7 +507,7 @@ describe('backfill-external-product-seeds-catalog', () => {
     ]);
   });
 
-  test('preserves Ole Henriksen collection-labeled product infographics', () => {
+  test('filters Ole Henriksen ingredient infographic assets out of gallery candidates', () => {
     expect(
       sanitizeSeedImageUrls(
         [
@@ -521,7 +521,6 @@ describe('backfill-external-product-seeds-catalog', () => {
       ),
     ).toEqual([
       'https://cdn.shopify.com/s/files/1/0615/7785/5148/files/OH_SILO_PEACH_GLAZE_MIST_1500x1500_72DPI.jpg?v=1747952076',
-      'https://cdn.shopify.com/s/files/1/0615/7785/5148/files/OH869600_PEACH_PeachGlazePlumpingTrio_PPageInfographics_Collection_INGREDIENT_1500x1500_72DPI_128a3f5a-2e86-4159-a54e-0b62de3b6fb9.jpg?v=1763962328',
     ]);
   });
 
@@ -1485,11 +1484,9 @@ describe('backfill-external-product-seeds-catalog', () => {
   test('blocks cross-product PDP writes when preserved seed title conflicts with extracted product', () => {
     const row = {
       id: 'eps_fenty_dry_brush',
-      title: 'Jumbo Butta Drop Whipped Oil Body Cream with Tropical Oils + Shea Butter',
-      canonical_url:
-        'https://fentybeauty.com/products/jumbo-butta-drop-whipped-oil-body-cream-with-tropical-oils-shea-butter-vanilla-dream',
-      destination_url:
-        'https://fentybeauty.com/products/jumbo-butta-drop-whipped-oil-body-cream-with-tropical-oils-shea-butter-vanilla-dream',
+      title: 'Dry Brush-Cleaning Sponge',
+      canonical_url: 'https://fentybeauty.com/products/dry-brush-cleaning-sponge',
+      destination_url: 'https://fentybeauty.com/products/dry-brush-cleaning-sponge',
       image_url: 'https://cdn.example.com/dry-brush.jpg',
       price_amount: 18,
       price_currency: 'USD',
@@ -1529,13 +1526,56 @@ describe('backfill-external-product-seeds-catalog', () => {
         extracted_title: 'Jumbo Butta Drop Whipped Oil Body Cream with Tropical Oils + Shea Butter',
       }),
     );
-    expect(payload.nextRow.title).toBe('Jumbo Butta Drop Whipped Oil Body Cream with Tropical Oils + Shea Butter');
-    expect(payload.nextRow.canonical_url).toBe(
-      'https://fentybeauty.com/products/jumbo-butta-drop-whipped-oil-body-cream-with-tropical-oils-shea-butter-vanilla-dream',
-    );
+    expect(payload.nextRow.title).toBe('Dry Brush-Cleaning Sponge');
+    expect(payload.nextRow.canonical_url).toBe('https://fentybeauty.com/products/dry-brush-cleaning-sponge');
     expect(payload.nextRow.seed_data.snapshot.diagnostics.catalog_backfill_blocked.reason).toBe(
       'cross_product_title_drift',
     );
+  });
+
+  test('repairs nested stale seed titles when the current row already matches the extracted PDP', () => {
+    const row = {
+      id: 'eps_fenty_nested_stale_title',
+      title: 'Jumbo Butta Drop Whipped Oil Body Cream with Tropical Oils + Shea Butter',
+      canonical_url: 'https://fentybeauty.com/products/jumbo-butta-drop-whipped-oil-body-cream',
+      destination_url: 'https://fentybeauty.com/products/jumbo-butta-drop-whipped-oil-body-cream',
+      price_amount: 36,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      seed_data: {
+        title: "Fenty Skin Travel-Size Start'r Set with Mineral SPF",
+        snapshot: {
+          title: "Fenty Skin Travel-Size Start'r Set with Mineral SPF",
+          canonical_url: 'https://fentybeauty.com/products/jumbo-butta-drop-whipped-oil-body-cream',
+        },
+      },
+    };
+
+    const payload = buildSeedUpdatePayload(
+      row,
+      {
+        products: [
+          {
+            title: 'Jumbo Butta Drop Whipped Oil Body Cream with Tropical Oils + Shea Butter',
+            url: 'https://fentybeauty.com/products/jumbo-butta-drop-whipped-oil-body-cream',
+            description_raw: 'A whipped body cream.',
+            image_urls: ['https://cdn.shopify.com/s/files/example/fenty-body-cream.jpg?v=1'],
+            variants: [],
+          },
+        ],
+        variants: [],
+        diagnostics: {
+          discovery_strategy: 'shopify_json',
+        },
+      },
+      'https://fentybeauty.com/products/jumbo-butta-drop-whipped-oil-body-cream',
+    );
+
+    expect(payload.blocked).toBeUndefined();
+    expect(payload.nextRow.title).toBe('Jumbo Butta Drop Whipped Oil Body Cream with Tropical Oils + Shea Butter');
+    expect(payload.nextRow.seed_data.title).toBe('Jumbo Butta Drop Whipped Oil Body Cream with Tropical Oils + Shea Butter');
+    expect(payload.nextRow.seed_data.snapshot.title).toBe('Jumbo Butta Drop Whipped Oil Body Cream with Tropical Oils + Shea Butter');
+    expect(payload.nextRow.seed_data.snapshot.diagnostics?.catalog_backfill_blocked).toBeUndefined();
   });
 
   test('syncs seed_data title when a refreshed PDP passes identity checks', () => {
@@ -4229,6 +4269,61 @@ describe('backfill-external-product-seeds-catalog', () => {
     expect(payload.nextRow.seed_data.content_image_urls).toEqual([
       'https://www.rarebeauty.com/cdn/shop/files/PDP-imperfect-circle-primers.png?v=1616543294',
       'https://www.rarebeauty.com/cdn/shop/files/PDP-details-image-1268x1268-pore-primer.jpg?v=1617041406',
+    ]);
+  });
+
+  test('reclassifies Fenty infographic and badge assets as content media instead of gallery images', () => {
+    const row = {
+      id: 'eps_fenty_refill_clean',
+      external_product_id: 'ext_fenty_refill_clean',
+      market: 'US',
+      tool: 'creator_agents',
+      title: 'Hydra Vizor Broad Spectrum Mineral SPF 30 Sunscreen Moisturizer Refill - EU',
+      canonical_url: 'https://fentybeauty.com/products/hydra-vizor-broad-spectrum-mineral-spf-30-sunscreen-moisturizer-refill-eu',
+      destination_url: 'https://fentybeauty.com/products/hydra-vizor-broad-spectrum-mineral-spf-30-sunscreen-moisturizer-refill-eu',
+      image_url: 'https://fentybeauty.com/cdn/shop/files/FS_S23_T2PRODUCT_SILO_HYDRAVIZOR_REFILL_MINERAL_1200x1500_FENTYVERSEI.jpg?v=1762272037',
+      price_amount: 44,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      seed_data: {
+        brand: 'Fenty Beauty',
+        snapshot: {
+          canonical_url: 'https://fentybeauty.com/products/hydra-vizor-broad-spectrum-mineral-spf-30-sunscreen-moisturizer-refill-eu',
+        },
+      },
+    };
+
+    const payload = buildSeedUpdatePayload(
+      row,
+      {
+        products: [
+          {
+            title: 'Hydra Vizor Broad Spectrum Mineral SPF 30 Sunscreen Moisturizer Refill - EU',
+            url: 'https://fentybeauty.com/products/hydra-vizor-broad-spectrum-mineral-spf-30-sunscreen-moisturizer-refill-eu',
+            image_url: 'https://fentybeauty.com/cdn/shop/files/FS_S23_T2PRODUCT_SILO_HYDRAVIZOR_REFILL_MINERAL_1200x1500_FENTYVERSEI.jpg?v=1762272037',
+            image_urls: [
+              'https://fentybeauty.com/cdn/shop/files/FS_S23_T2PRODUCT_SILO_HYDRAVIZOR_REFILL_MINERAL_1200x1500_FENTYVERSEI.jpg?v=1762272037',
+              'https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FS_S23_T2PRODUCT_SILO_HYDRAVIZOR_REFILL_MINERAL_1200x1500_FENTYVERSEI_600x.jpg?v=1762272037',
+              'https://fentybeauty.com/cdn/shop/files/FS844250_GLOBAL_HYDRA_VIZOR_INFOGRAPHICS_1200x1500_Ingredients.jpg?v=1762272037',
+              'https://cdn.shopify.com/s/files/1/0341/3458/9485/files/HYDRA-VIZOR-BADGE-AWARD.jpg?v=1762272037',
+              'https://cdn.accentuate.io/8445381804077/1774977845944/allure_2025_3000x3000-(2).png?v=1774977845944&width=100',
+            ],
+            variants: [],
+          },
+        ],
+        variants: [],
+        diagnostics: {},
+      },
+      'https://fentybeauty.com/products/hydra-vizor-broad-spectrum-mineral-spf-30-sunscreen-moisturizer-refill-eu',
+    );
+
+    expect(payload.nextRow.seed_data.image_urls).toEqual([
+      'https://fentybeauty.com/cdn/shop/files/FS_S23_T2PRODUCT_SILO_HYDRAVIZOR_REFILL_MINERAL_1200x1500_FENTYVERSEI.jpg?v=1762272037',
+    ]);
+    expect(payload.nextRow.seed_data.content_image_urls).toEqual([
+      'https://fentybeauty.com/cdn/shop/files/FS844250_GLOBAL_HYDRA_VIZOR_INFOGRAPHICS_1200x1500_Ingredients.jpg?v=1762272037',
+      'https://cdn.shopify.com/s/files/1/0341/3458/9485/files/HYDRA-VIZOR-BADGE-AWARD.jpg?v=1762272037',
+      'https://cdn.accentuate.io/8445381804077/1774977845944/allure_2025_3000x3000-(2).png?v=1774977845944&width=100',
     ]);
   });
 

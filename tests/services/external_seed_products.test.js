@@ -182,6 +182,36 @@ describe('externalSeedProducts helper', () => {
     ]);
   });
 
+  test('treats Fenty infographic, award, and badge assets as separated content media at runtime', () => {
+    const product = buildExternalSeedProduct({
+      id: 'eps_fenty_refill_runtime',
+      external_product_id: 'ext_fenty_refill_runtime',
+      canonical_url: 'https://fentybeauty.com/products/hydra-vizor-broad-spectrum-mineral-spf-30-sunscreen-moisturizer-refill-eu',
+      destination_url: 'https://fentybeauty.com/products/hydra-vizor-broad-spectrum-mineral-spf-30-sunscreen-moisturizer-refill-eu',
+      title: 'Hydra Vizor Broad Spectrum Mineral SPF 30 Sunscreen Moisturizer Refill - EU',
+      seed_data: {
+        snapshot: {
+          image_urls: [
+            'https://fentybeauty.com/cdn/shop/files/FS_S23_T2PRODUCT_SILO_HYDRAVIZOR_REFILL_MINERAL_1200x1500_FENTYVERSEI.jpg?v=1762272037',
+            'https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FS_S23_T2PRODUCT_SILO_HYDRAVIZOR_REFILL_MINERAL_1200x1500_FENTYVERSEI_600x.jpg?v=1762272037',
+            'https://fentybeauty.com/cdn/shop/files/FS844250_GLOBAL_HYDRA_VIZOR_INFOGRAPHICS_1200x1500_Ingredients.jpg?v=1762272037',
+            'https://cdn.shopify.com/s/files/1/0341/3458/9485/files/HYDRA-VIZOR-BADGE-AWARD.jpg?v=1762272037',
+            'https://cdn.accentuate.io/8445381804077/1774977845944/allure_2025_3000x3000-(2).png?v=1774977845944&width=100',
+          ],
+        },
+      },
+    });
+
+    expect(product.images).toEqual([
+      'https://fentybeauty.com/cdn/shop/files/FS_S23_T2PRODUCT_SILO_HYDRAVIZOR_REFILL_MINERAL_1200x1500_FENTYVERSEI.jpg?v=1762272037',
+    ]);
+    expect(product.content_image_urls).toEqual([
+      'https://fentybeauty.com/cdn/shop/files/FS844250_GLOBAL_HYDRA_VIZOR_INFOGRAPHICS_1200x1500_Ingredients.jpg?v=1762272037',
+      'https://cdn.shopify.com/s/files/1/0341/3458/9485/files/HYDRA-VIZOR-BADGE-AWARD.jpg?v=1762272037',
+      'https://cdn.accentuate.io/8445381804077/1774977845944/allure_2025_3000x3000-(2).png?v=1774977845944&width=100',
+    ]);
+  });
+
   test('carries seed review summary into external seed runtime product', () => {
     const product = buildExternalSeedProduct({
       id: 'eps_reviewed_seed',

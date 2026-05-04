@@ -1,6 +1,8 @@
 const ABSOLUTE_HTTP_URL_RE = /^https?:\/\//i;
 const SHOPIFY_FILE_HASH_SUFFIX_RE =
   /^(.*?_[0-9]+)_(?:[0-9a-f]{8,}(?:-[0-9a-f]{4,}){2,}|[0-9a-f-]{16,})\.(avif|gif|jpe?g|png|webp)$/i;
+const SHOPIFY_FILE_TRANSFORM_SUFFIX_RE =
+  /^(.*?)(?:_[0-9]{2,4}x(?:[0-9]{2,4})?)\.(avif|gif|jpe?g|png|webp)$/i;
 const IMAGE_DEDUPE_IGNORED_QUERY_KEYS = new Set([
   'w',
   'width',
@@ -131,6 +133,19 @@ function normalizeShopifyLikeFilename(filename, options = {}) {
   return aliased;
 }
 
+function collapseShopifyTransformSuffixForDedupe(filename) {
+  const trimmed = String(filename || '').trim();
+  if (!trimmed) return trimmed;
+  const matched = trimmed.match(SHOPIFY_FILE_TRANSFORM_SUFFIX_RE);
+  if (!matched) return trimmed;
+  const base = matched[1];
+  const ext = matched[2];
+  if (!/(?:^|[_-])[0-9]{2,4}x[0-9]{2,4}(?:[_-]|$)/i.test(base)) {
+    return trimmed;
+  }
+  return `${base}.${ext}`;
+}
+
 function stripImageTransformQueryParams(parsed) {
   Array.from(parsed.searchParams.keys()).forEach((key) => {
     if (IMAGE_DEDUPE_IGNORED_QUERY_KEYS.has(String(key || '').toLowerCase())) {
@@ -192,9 +207,11 @@ function buildPdpImageDedupeKey(value) {
   try {
     const parsed = new URL(normalized);
     if (isShopifyLikeAsset(parsed)) {
-      const filename = normalizeShopifyLikeFilename(parsed.pathname.split('/').pop() || '', {
-        stripHash: false,
-      });
+      const filename = collapseShopifyTransformSuffixForDedupe(
+        normalizeShopifyLikeFilename(parsed.pathname.split('/').pop() || '', {
+          stripHash: false,
+        }),
+      );
       if (filename) {
         const normalizedSearch = new URLSearchParams();
         Array.from(parsed.searchParams.entries())
