@@ -676,6 +676,32 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     );
   });
 
+  test('dedupes repeated overview summary text for refreshed external-seed PDPs', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_fenty_hydra_full',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'Hydra Vizor Broad Spectrum Mineral SPF 30 Sunscreen Moisturizer',
+        category: 'Sunscreen',
+        image_url: 'https://example.com/hydra-full.png',
+        pdp_description_raw:
+          "Boosts skin's hydration and moisture barrier. Improves texture, tone + elasticity. Powered by Hyaluronic Acid, Niacinamide + mineral SPF - great for sensitive skin.\n\nBoosts skin's hydration and moisture barrier. Improves texture, tone + elasticity. Powered by Hyaluronic Acid, Niacinamide + mineral SPF - great for sensitive skin.",
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    const overview = payload.modules.find((module) => module.type === 'product_overview');
+    expect(overview?.data?.sections).toEqual([
+      expect.objectContaining({
+        heading: 'Description',
+        content:
+          "Boosts skin's hydration and moisture barrier. Improves texture, tone + elasticity. Powered by Hyaluronic Acid, Niacinamide + mineral SPF - great for sensitive skin.",
+      }),
+    ]);
+  });
+
   test('uses ingredient authority instead of legacy active block fragments for external seeds', () => {
     const payload = buildPdpPayload({
       product: {

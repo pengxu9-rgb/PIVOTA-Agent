@@ -1618,6 +1618,59 @@ function extractPromotionalOverviewNarrative(value) {
   return extractNarrativeOverviewParagraph(text) || cleanStructuredToken(text) || '';
 }
 
+function dedupeRepeatedOverviewNarrative(value) {
+  const text = asNonEmptyString(value);
+  if (!text) return '';
+  const paragraphParts = text
+    .split(/\n+/)
+    .map((part) => cleanStructuredToken(part))
+    .filter(Boolean);
+  if (paragraphParts.length >= 2) {
+    const dedupedParagraphs = [];
+    for (const part of paragraphParts) {
+      const normalized = normalizeTextKey(part);
+      const previous = dedupedParagraphs.length
+        ? normalizeTextKey(dedupedParagraphs[dedupedParagraphs.length - 1])
+        : '';
+      if (normalized && normalized === previous) continue;
+      dedupedParagraphs.push(part);
+    }
+    if (dedupedParagraphs.length && dedupedParagraphs.length !== paragraphParts.length) {
+      return dedupedParagraphs.join('\n\n');
+    }
+  }
+
+  const sentenceParts = text
+    .split(/(?<=[.!?])\s+/)
+    .map((part) => cleanStructuredToken(part))
+    .filter(Boolean);
+  if (sentenceParts.length >= 2) {
+    const normalizedSentences = sentenceParts.map((part) => normalizeTextKey(part));
+    const midpoint = sentenceParts.length / 2;
+    if (
+      Number.isInteger(midpoint) &&
+      midpoint >= 1 &&
+      normalizedSentences.slice(0, midpoint).join('||') === normalizedSentences.slice(midpoint).join('||')
+    ) {
+      return sentenceParts.slice(0, midpoint).join(' ');
+    }
+
+    const dedupedSentences = [];
+    for (const part of sentenceParts) {
+      const normalized = normalizeTextKey(part);
+      const previous = dedupedSentences.length
+        ? normalizeTextKey(dedupedSentences[dedupedSentences.length - 1])
+        : '';
+      if (normalized && normalized === previous) continue;
+      dedupedSentences.push(part);
+    }
+    if (dedupedSentences.length && dedupedSentences.length !== sentenceParts.length) {
+      return dedupedSentences.join(' ');
+    }
+  }
+  return text;
+}
+
 function normalizeDetailSectionHeading(value) {
   const heading = asNonEmptyString(value);
   if (!heading) return '';
@@ -1878,7 +1931,7 @@ function resolveBrandStoryText(product, detailSections = collectStructuredDetail
 
 function buildProductOverviewSections(product, detailSections = collectStructuredDetailSections(product)) {
   const sections = [];
-  const desc = resolveProductDescriptionText(product, detailSections);
+  const desc = dedupeRepeatedOverviewNarrative(resolveProductDescriptionText(product, detailSections));
   if (desc) {
     sections.push({
       heading: 'Description',
