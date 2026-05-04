@@ -895,6 +895,35 @@ const CONTENT_IMAGE_GENERIC_FAMILY_TOKENS = new Set([
   'usage',
   'vibe',
 ]);
+const EXPLICIT_SIBLING_GALLERY_TOKENS = new Set(['mini', 'refill', 'travel', 'jumbo', 'huez']);
+const EXPLICIT_SIBLING_GALLERY_GROUPS = [['mini', 'travel']];
+
+function extractExplicitSiblingGalleryTokensFromText(value) {
+  const text = normalizeNonEmptyString(value).toLowerCase();
+  if (!text) return [];
+  const out = [];
+  for (const token of EXPLICIT_SIBLING_GALLERY_TOKENS) {
+    const re = new RegExp(`(?:^|[^a-z0-9])${token}(?:[^a-z0-9]|$)`, 'i');
+    if (re.test(text)) out.push(token);
+  }
+  return out;
+}
+
+function extractExplicitSiblingGalleryTokens(values) {
+  const out = [];
+  for (const value of Array.isArray(values) ? values : [values]) {
+    for (const token of extractExplicitSiblingGalleryTokensFromText(value)) {
+      if (!out.includes(token)) out.push(token);
+    }
+  }
+  for (const group of EXPLICIT_SIBLING_GALLERY_GROUPS) {
+    if (!group.some((token) => out.includes(token))) continue;
+    for (const token of group) {
+      if (!out.includes(token)) out.push(token);
+    }
+  }
+  return out;
+}
 
 function requiresStrictGalleryFamilyFiltering(hostname) {
   const normalized = normalizeNonEmptyString(hostname).toLowerCase();
@@ -1025,10 +1054,14 @@ function buildSeedImageRelevanceContext(options = {}) {
   ]);
   const tokens = values.flatMap((value) => tokenizeImageRelevanceValue(value));
   const productTypes = extractCanonicalImageProductTypes(tokens);
+  const explicitSiblingTokens = extractExplicitSiblingGalleryTokens(values);
   return {
     bundleLike: tokens.some((token) => IMAGE_RELEVANCE_BUNDLE_TOKENS.has(token)),
     productTypes,
     familyTokens: extractImageFamilyTokens(tokens, productTypes),
+    disallowedSiblingTokens: Array.from(EXPLICIT_SIBLING_GALLERY_TOKENS).filter(
+      (token) => !explicitSiblingTokens.includes(token),
+    ),
     strictFamilyFiltering: requiresStrictGalleryFamilyFiltering(imageAssetHostname(options.productUrl)),
     requireExplicitFamilyMatch: requiresExplicitGalleryFamilyMatch(imageAssetHostname(options.productUrl)),
   };
@@ -1077,6 +1110,14 @@ function isProductRelevantSeedImageUrl(value, relevanceContext) {
   if (isContentLikeSeedImageUrl(value)) return false;
   if (!relevanceContext.bundleLike && isCollectionStyleSeedImageUrl(value)) return false;
   const imageTokens = extractImageFilenameTokens(value);
+  const explicitSiblingTokens = extractExplicitSiblingGalleryTokens([extractImageFilenameText(value)]);
+  if (
+    Array.isArray(relevanceContext.disallowedSiblingTokens) &&
+    relevanceContext.disallowedSiblingTokens.length > 0 &&
+    explicitSiblingTokens.some((token) => relevanceContext.disallowedSiblingTokens.includes(token))
+  ) {
+    return false;
+  }
   const imageProductTypes = extractCanonicalImageProductTypes(imageTokens);
   if (!relevanceContext.bundleLike && relevanceContext.productTypes.length === 1 && imageProductTypes.length > 0) {
     if (!imageProductTypes.includes(relevanceContext.productTypes[0])) return false;
@@ -1096,6 +1137,14 @@ function isRelevantSeedContentImageUrl(value, relevanceContext) {
     return true;
   }
   const imageTokens = extractImageFilenameTokens(value);
+  const explicitSiblingTokens = extractExplicitSiblingGalleryTokens([extractImageFilenameText(value)]);
+  if (
+    Array.isArray(relevanceContext.disallowedSiblingTokens) &&
+    relevanceContext.disallowedSiblingTokens.length > 0 &&
+    explicitSiblingTokens.some((token) => relevanceContext.disallowedSiblingTokens.includes(token))
+  ) {
+    return false;
+  }
   const overlapsFamily = hasSeedImageFamilyOverlap(imageTokens, relevanceContext.familyTokens);
   if (overlapsFamily) return true;
   const imageFamilyTokens = extractImageFamilyTokens(imageTokens, relevanceContext.productTypes || []);

@@ -1179,6 +1179,35 @@ const CONTENT_IMAGE_GENERIC_FAMILY_TOKENS = new Set([
   'usage',
   'vibe',
 ]);
+const EXPLICIT_SIBLING_GALLERY_TOKENS = new Set(['mini', 'refill', 'travel', 'jumbo', 'huez']);
+const EXPLICIT_SIBLING_GALLERY_GROUPS = [['mini', 'travel']];
+
+function extractExplicitSiblingGalleryTokensFromText(value) {
+  const text = normalizeNonEmptyString(value).toLowerCase();
+  if (!text) return [];
+  const out = [];
+  for (const token of EXPLICIT_SIBLING_GALLERY_TOKENS) {
+    const re = new RegExp(`(?:^|[^a-z0-9])${token}(?:[^a-z0-9]|$)`, 'i');
+    if (re.test(text)) out.push(token);
+  }
+  return out;
+}
+
+function extractExplicitSiblingGalleryTokens(values) {
+  const out = [];
+  for (const value of Array.isArray(values) ? values : [values]) {
+    for (const token of extractExplicitSiblingGalleryTokensFromText(value)) {
+      if (!out.includes(token)) out.push(token);
+    }
+  }
+  for (const group of EXPLICIT_SIBLING_GALLERY_GROUPS) {
+    if (!group.some((token) => out.includes(token))) continue;
+    for (const token of group) {
+      if (!out.includes(token)) out.push(token);
+    }
+  }
+  return out;
+}
 
 function requiresStrictGalleryFamilyFiltering(hostname) {
   const normalized = normalizeNonEmptyString(hostname).toLowerCase();
@@ -1289,6 +1318,7 @@ function buildSeedGalleryRelevanceContext(seedData, row) {
   ].filter(Boolean);
   const tokens = values.flatMap((value) => tokenizeSeedImageRelevanceValue(value));
   const productTypes = extractSeedImageCanonicalProductTypes(tokens);
+  const explicitSiblingTokens = extractExplicitSiblingGalleryTokens(values);
   const productUrl = normalizeNonEmptyString(row?.canonical_url || row?.destination_url);
   let productHostname = '';
   try {
@@ -1297,6 +1327,9 @@ function buildSeedGalleryRelevanceContext(seedData, row) {
   return {
     productTypes,
     familyTokens: extractSeedImageFamilyTokens(tokens, productTypes),
+    disallowedSiblingTokens: Array.from(EXPLICIT_SIBLING_GALLERY_TOKENS).filter(
+      (token) => !explicitSiblingTokens.includes(token),
+    ),
     strictFamilyFiltering: requiresStrictGalleryFamilyFiltering(productHostname),
     requireExplicitFamilyMatch: requiresExplicitGalleryFamilyMatch(productHostname),
   };
@@ -1340,6 +1373,14 @@ function isRelevantSeedGalleryImageUrl(value, relevanceContext) {
   if (!relevanceContext) return true;
   if (isContentLikeSeedImageUrl(value)) return false;
   const imageTokens = extractSeedImageFilenameTokens(value);
+  const explicitSiblingTokens = extractExplicitSiblingGalleryTokens([extractSeedImageFilenameText(value)]);
+  if (
+    Array.isArray(relevanceContext.disallowedSiblingTokens) &&
+    relevanceContext.disallowedSiblingTokens.length > 0 &&
+    explicitSiblingTokens.some((token) => relevanceContext.disallowedSiblingTokens.includes(token))
+  ) {
+    return false;
+  }
   const imageProductTypes = extractSeedImageCanonicalProductTypes(imageTokens);
   if (relevanceContext.productTypes.length === 1 && imageProductTypes.length > 0) {
     if (!imageProductTypes.includes(relevanceContext.productTypes[0])) return false;
@@ -1354,6 +1395,14 @@ function isRelevantSeedGalleryImageUrl(value, relevanceContext) {
 function isRelevantSeedContentImageUrl(value, relevanceContext) {
   if (!relevanceContext || !relevanceContext.strictFamilyFiltering || !relevanceContext.familyTokens.length) return true;
   const imageTokens = extractSeedImageFilenameTokens(value);
+  const explicitSiblingTokens = extractExplicitSiblingGalleryTokens([extractSeedImageFilenameText(value)]);
+  if (
+    Array.isArray(relevanceContext.disallowedSiblingTokens) &&
+    relevanceContext.disallowedSiblingTokens.length > 0 &&
+    explicitSiblingTokens.some((token) => relevanceContext.disallowedSiblingTokens.includes(token))
+  ) {
+    return false;
+  }
   if (hasSeedImageFamilyOverlap(imageTokens, relevanceContext.familyTokens)) return true;
   const imageFamilyTokens = extractSeedImageFamilyTokens(imageTokens, relevanceContext.productTypes || []);
   const specificFamilyTokens = imageFamilyTokens.filter((token) => !CONTENT_IMAGE_GENERIC_FAMILY_TOKENS.has(token));

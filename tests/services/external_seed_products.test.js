@@ -246,6 +246,34 @@ describe('externalSeedProducts helper', () => {
     ]);
   });
 
+  test('filters mini and refill sibling packshots out of Fenty full-size runtime gallery', () => {
+    const product = buildExternalSeedProduct({
+      id: 'eps_fenty_hydra_full_runtime',
+      external_product_id: 'ext_fenty_hydra_full_runtime',
+      canonical_url: 'https://fentybeauty.com/products/hydra-vizor-broad-spectrum-mineral-spf-30-sunscreen-moisturizer',
+      destination_url: 'https://fentybeauty.com/products/hydra-vizor-broad-spectrum-mineral-spf-30-sunscreen-moisturizer',
+      title: 'Hydra Vizor Broad Spectrum Mineral SPF 30 Sunscreen Moisturizer',
+      seed_data: {
+        snapshot: {
+          image_urls: [
+            'https://fentybeauty.com/cdn/shop/files/FS22_REFRESH_HYDRAVIZOR_PDP_FENTYVERSE_1200x.jpg?v=1762272034',
+            'https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FS746400---HYDRA-VIZOR-FRANCHISE-UPDATE-081524_RIH_1200x1500_05.jpg?v=1767728388',
+            'https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FS_S23_T2PRODUCT_SILO_HYDRAVIZOR_REFILL_MINERAL_1200x1500_FENTYVERSEI.jpg?v=1762272036',
+            'https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FS_POSTHOL2021_T2PRODUCT_ECOMM_MINI_HYDRA_VIZOR_US_1200x1500_FENTYVERSE.jpg?v=1762272039',
+            'https://fentybeauty.com/cdn/shop/files/FS746400---HYDRA-VIZOR-FRANCHISE-UPDATE-081524_RIH_1200x1500_03_1350x1650.jpg?v=1760568262',
+            'https://fentybeauty.com/cdn/shop/files/FS_SPR24_T2PRODUCT_ECOMM_HYDRAVIZOR_HUEZ_HOLDER_HOLDER_REFILL_SHADE_4_1200x1500_72_DPI_US_1350x1650.jpg?v=1762286285',
+          ],
+        },
+      },
+    });
+
+    expect(product.images).toEqual([
+      'https://fentybeauty.com/cdn/shop/files/FS22_REFRESH_HYDRAVIZOR_PDP_FENTYVERSE_1200x.jpg?v=1762272034',
+      'https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FS746400---HYDRA-VIZOR-FRANCHISE-UPDATE-081524_RIH_1200x1500_05.jpg?v=1767728388',
+      'https://fentybeauty.com/cdn/shop/files/FS746400---HYDRA-VIZOR-FRANCHISE-UPDATE-081524_RIH_1200x1500_03_1350x1650.jpg?v=1760568262',
+    ]);
+  });
+
   test('re-filters legacy runtime content_image_urls instead of trusting polluted snapshot content', () => {
     const product = buildExternalSeedProduct({
       id: 'eps_fenty_refill_runtime_legacy_content',
