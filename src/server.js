@@ -3440,22 +3440,25 @@ async function fetchExternalSeedProductDetailFromDb(args) {
   `;
 
   try {
-    let matchedVia = 'exact_key';
-    let res = await query(
-      selectColumns.replace(
-        '%%MATCH_CLAUSE%%',
-        `(
-          external_product_id = $1
-          OR id::text = $1
-        )`,
-      ),
-      [productId],
-    );
-    let row = Array.isArray(res?.rows) ? res.rows[0] : null;
+    let matchedVia = 'external_product_id';
+    let row = null;
+    const exactMatches = [
+      ['external_product_id', 'external_product_id = $1'],
+      ['seed_id', 'id::text = $1'],
+    ];
+
+    for (const [label, matchClause] of exactMatches) {
+      const res = await query(selectColumns.replace('%%MATCH_CLAUSE%%', matchClause), [productId]);
+      row = Array.isArray(res?.rows) ? res.rows[0] : null;
+      if (row) {
+        matchedVia = label;
+        break;
+      }
+    }
 
     if (!row) {
       matchedVia = 'seed_json_product_id';
-      res = await query(
+      const res = await query(
         selectColumns.replace(
           '%%MATCH_CLAUSE%%',
           `(
