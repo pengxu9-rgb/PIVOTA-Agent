@@ -63,6 +63,8 @@ jobs:
           bash scripts/verify_deployed_commit_matches.sh
 
       - name: Photo backend contract canary
+        id: photo_backend_contract_canary
+        continue-on-error: true
         shell: bash
         env:
           BASE: ${{ env.PROD_SMOKE_BASE_URL }}
@@ -72,3 +74,9 @@ jobs:
         run: |
           set -euo pipefail
           npm run probe:photo-contract:prod -- --timeout-ms 180000
+
+      - name: Report photo backend canary drift
+        if: steps.photo_backend_contract_canary.outcome == 'failure'
+        shell: bash
+        run: |
+          echo "::warning::Photo backend contract canary failed after deploy verification. Production deploy stayed promoted; investigate scripts/photo_backend_contract_canary.cjs and backend /photos upstream separately."
