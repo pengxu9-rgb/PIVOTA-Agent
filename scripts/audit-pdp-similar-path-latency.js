@@ -27,6 +27,7 @@ function parseArgs(argv) {
     products: [],
     brands: DEFAULT_BRANDS,
     timeoutMs: 15000,
+    noCache: false,
   };
   for (let i = 2; i < argv.length; i += 1) {
     const token = argv[i];
@@ -73,6 +74,8 @@ function parseArgs(argv) {
     } else if (token === '--timeout-ms' && next) {
       args.timeoutMs = Math.max(1000, Number(next) || args.timeoutMs);
       i += 1;
+    } else if (token === '--no-cache' || token === '--no_cache') {
+      args.noCache = true;
     }
   }
   args.products = Array.from(new Set(args.products));
@@ -115,7 +118,7 @@ function summarizeResponse(label, productId, status, elapsedMs, body) {
   };
 }
 
-async function invokeGateway({ gatewayUrl, productId, include, timeoutMs }) {
+async function invokeGateway({ gatewayUrl, productId, include, timeoutMs, noCache = false }) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   const startedAt = Date.now();
@@ -131,7 +134,7 @@ async function invokeGateway({ gatewayUrl, productId, include, timeoutMs }) {
             product_id: productId,
           },
           include,
-          options: { debug: true },
+          options: { debug: true, ...(noCache ? { no_cache: true } : {}) },
         },
       }),
       signal: controller.signal,
@@ -214,6 +217,7 @@ async function main() {
         productId,
         include,
         timeoutMs: args.timeoutMs,
+        noCache: args.noCache,
       });
       results.push(summarizeResponse(label, productId, response.status, response.elapsedMs, response.body));
     }
@@ -237,6 +241,7 @@ async function main() {
   const report = {
     generated_at: new Date().toISOString(),
     gateway_url: args.gatewayUrl,
+    no_cache: args.noCache,
     product_count: productIds.length,
     products: productIds,
     summary: byLabel,

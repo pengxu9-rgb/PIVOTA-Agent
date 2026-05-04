@@ -977,7 +977,7 @@ describe('RecommendationEngine external candidate fetch', () => {
     expect(queryMock.mock.calls.some(([sql]) => String(sql).includes('domain = ANY($4)'))).toBe(true);
   });
 
-  test('deep-domain recall prefers category scans before same-domain fallback when a category hint is available', async () => {
+  test('deep-domain recall uses same-domain fast path before category expansion', async () => {
     process.env.DATABASE_URL = 'postgres://example.test/pivota';
 
     const queryMock = jest.fn(async (sql, params) => {
@@ -1024,13 +1024,13 @@ describe('RecommendationEngine external candidate fetch', () => {
       categoryHint: 'Concealer',
       domainHints: ['https://www.tomfordbeauty.com/products/shade-and-illuminate-concealer'],
       limit: 12,
-      minFocusedCandidates: 6,
+      minFocusedCandidates: 12,
       deepDomainRecall: true,
     });
 
     expect(products).toHaveLength(12);
-    expect(products.slice(0, 6).every((product) => product.category === 'Concealer')).toBe(true);
-    expect(products.slice(6).every((product) => product.domain === 'www.tomfordbeauty.com')).toBe(true);
+    expect(products.slice(0, 6).every((product) => product.domain === 'www.tomfordbeauty.com')).toBe(true);
+    expect(products.slice(6).every((product) => product.category === 'Concealer')).toBe(true);
     expect(queryMock.mock.calls.some(([sql]) => String(sql).includes('domain = ANY($4)'))).toBe(true);
     expect(
       queryMock.mock.calls.some(([sql]) =>

@@ -77,6 +77,10 @@ const PDP_RECS_EXTERNAL_SKIP_INTERNAL_MIN_ABS = Math.max(
   4,
   Math.min(120, Number(process.env.PDP_RECS_EXTERNAL_SKIP_INTERNAL_MIN_ABS || 14) || 14),
 );
+const PDP_RECS_EXTERNAL_RECALL_QUERY_CAP_MAX = Math.max(
+  48,
+  Math.min(240, Number(process.env.PDP_RECS_EXTERNAL_RECALL_QUERY_CAP_MAX || 144) || 144),
+);
 const PDP_RECS_CACHE = new Map(); // cacheKey -> { value, storedAtMs, expiresAtMs }
 const PDP_RECS_CACHE_METRICS = {
   hits: 0,
@@ -966,16 +970,22 @@ function buildExternalSeedRecommendationCandidate(row, options = {}) {
   const fallbackCategory = firstNonEmptyText(options.fallbackCategory);
   const destinationUrl = firstNonEmptyText(
     row.destination_url,
+    row.seed_destination_url,
+    row.snapshot_destination_url,
     snapshot.destination_url,
     seedData.destination_url,
   );
   const canonicalUrl = firstNonEmptyText(
     row.canonical_url,
+    row.seed_canonical_url,
+    row.snapshot_canonical_url,
     snapshot.canonical_url,
     seedData.canonical_url,
   );
   const sourceUrl = firstNonEmptyText(
     row.source_url,
+    row.seed_source_url,
+    row.snapshot_source_url,
     seedData.source_url,
     snapshot.source_url,
     canonicalUrl,
@@ -983,22 +993,38 @@ function buildExternalSeedRecommendationCandidate(row, options = {}) {
   );
   const externalProductId = firstNonEmptyText(
     row.external_product_id,
+    row.seed_external_product_id,
     seedData.external_product_id,
     seedData.product_id,
+    row.snapshot_product_id,
     snapshot.product_id,
   );
   const parentExternalProductId = firstNonEmptyText(
+    row.seed_parent_external_product_id,
+    row.snapshot_parent_external_product_id,
     seedData.parent_external_product_id,
     snapshot.parent_external_product_id,
   );
-  const sourceListingScope = firstNonEmptyText(seedData.source_listing_scope, snapshot.source_listing_scope);
-  const variantTitle = firstNonEmptyText(seedData.variant_title, snapshot.variant_title);
+  const sourceListingScope = firstNonEmptyText(
+    row.seed_source_listing_scope,
+    row.snapshot_source_listing_scope,
+    seedData.source_listing_scope,
+    snapshot.source_listing_scope,
+  );
+  const variantTitle = firstNonEmptyText(
+    row.seed_variant_title,
+    row.snapshot_variant_title,
+    seedData.variant_title,
+    snapshot.variant_title,
+  );
   const recallCategory = firstNonEmptyText(
+    row.recall_category,
     seedData.recall_category,
     seedData.derived?.recall?.category,
   );
   const recallVertical = normalizeStoredSemanticVertical(
     firstNonEmptyText(
+      row.recall_vertical,
       seedData.recall_vertical,
       seedData.semantic_vertical,
       seedData.derived?.recall?.vertical,
@@ -1008,6 +1034,8 @@ function buildExternalSeedRecommendationCandidate(row, options = {}) {
   if (!externalProductId) return null;
 
   const title = firstNonEmptyText(
+    row.seed_title,
+    row.snapshot_title,
     seedData.title,
     snapshot.title,
     row.title,
@@ -1023,7 +1051,13 @@ function buildExternalSeedRecommendationCandidate(row, options = {}) {
   );
   const brand = firstNonEmptyText(
     row.seed_brand,
+    row.seed_brand_name,
     row.seed_vendor,
+    row.seed_vendor_name,
+    row.snapshot_brand,
+    row.snapshot_brand_name,
+    row.snapshot_vendor,
+    row.snapshot_vendor_name,
     seedData.brand,
     seedData.brand_name,
     seedData.vendor,
@@ -1036,6 +1070,9 @@ function buildExternalSeedRecommendationCandidate(row, options = {}) {
   );
   const productType = firstNonEmptyText(
     row.seed_product_type,
+    row.seed_product_type_camel,
+    row.snapshot_product_type,
+    row.snapshot_product_type_camel,
     recallCategory,
     seedData.product_type,
     seedData.productType,
@@ -1044,6 +1081,7 @@ function buildExternalSeedRecommendationCandidate(row, options = {}) {
   );
   const category = firstNonEmptyText(
     row.seed_category,
+    row.snapshot_category,
     recallCategory,
     seedData.category,
     seedData.product?.category,
@@ -1053,6 +1091,11 @@ function buildExternalSeedRecommendationCandidate(row, options = {}) {
   );
   const imageUrl = firstImageUrl(
     row.image_url,
+    row.seed_image_url,
+    row.snapshot_image_url,
+    row.snapshot_image,
+    row.snapshot_first_image,
+    row.seed_first_image,
     snapshot.image_url,
     snapshot.image,
     seedData.image_url,
@@ -1062,6 +1105,10 @@ function buildExternalSeedRecommendationCandidate(row, options = {}) {
   );
   const rawPriceAmount =
     row.price_amount ??
+    row.seed_price_amount ??
+    row.seed_price ??
+    row.snapshot_price_amount ??
+    row.snapshot_price ??
     seedData.price_amount ??
     seedData.price ??
     snapshot.price_amount ??
@@ -1071,12 +1118,16 @@ function buildExternalSeedRecommendationCandidate(row, options = {}) {
     rawPriceAmount == null || rawPriceAmount === '' ? null : normalizeAmount(rawPriceAmount);
   const priceCurrency = firstNonEmptyText(
     row.price_currency,
+    row.seed_price_currency,
+    row.snapshot_price_currency,
     seedData.price_currency,
     snapshot.price_currency,
     'USD',
   ).toUpperCase();
   const availability = firstNonEmptyText(
     row.availability,
+    row.seed_availability,
+    row.snapshot_availability,
     seedData.availability,
     snapshot.availability,
   );
@@ -1128,59 +1179,59 @@ const EXTERNAL_SEED_RECOMMENDATION_SELECT = `
             availability,
             updated_at,
             created_at,
-            jsonb_strip_nulls(jsonb_build_object(
-              'title', seed_data->>'title',
-              'brand', coalesce(seed_data->>'brand', seed_data->'derived'->'recall'->>'brand'),
-              'brand_name', seed_data->>'brand_name',
-              'vendor', seed_data->>'vendor',
-              'vendor_name', seed_data->>'vendor_name',
-              'category', coalesce(seed_data->>'category', seed_data->'derived'->'recall'->>'category'),
-              'product_type', coalesce(seed_data->>'product_type', seed_data->'derived'->'recall'->>'category'),
-              'productType', seed_data->>'productType',
-              'recall_category', seed_data->'derived'->'recall'->>'category',
-              'recall_vertical', seed_data->'derived'->'recall'->>'vertical',
-              'image_url', seed_data->>'image_url',
-              'price_amount', seed_data->>'price_amount',
-              'price', seed_data->>'price',
-              'price_currency', seed_data->>'price_currency',
-              'availability', seed_data->>'availability',
-              'canonical_url', seed_data->>'canonical_url',
-              'destination_url', seed_data->>'destination_url',
-              'source_url', seed_data->>'source_url',
-              'external_product_id', seed_data->>'external_product_id',
-              'parent_external_product_id', seed_data->>'parent_external_product_id',
-              'source_listing_scope', seed_data->>'source_listing_scope',
-              'variant_title', seed_data->>'variant_title',
-              'snapshot', jsonb_strip_nulls(jsonb_build_object(
-                'title', seed_data->'snapshot'->>'title',
-                'brand', seed_data->'snapshot'->>'brand',
-                'brand_name', seed_data->'snapshot'->>'brand_name',
-                'vendor', seed_data->'snapshot'->>'vendor',
-                'vendor_name', seed_data->'snapshot'->>'vendor_name',
-                'category', seed_data->'snapshot'->>'category',
-                'product_type', seed_data->'snapshot'->>'product_type',
-                'productType', seed_data->'snapshot'->>'productType',
-                'image_url', seed_data->'snapshot'->>'image_url',
-                'image', seed_data->'snapshot'->'image',
-                'images',
-                  CASE
-                    WHEN jsonb_typeof(seed_data->'snapshot'->'images') = 'array'
-                    THEN jsonb_build_array(seed_data->'snapshot'->'images'->0)
-                    ELSE NULL
-                  END,
-                'price_amount', seed_data->'snapshot'->>'price_amount',
-                'price', seed_data->'snapshot'->>'price',
-                'price_currency', seed_data->'snapshot'->>'price_currency',
-                'availability', seed_data->'snapshot'->>'availability',
-                'canonical_url', seed_data->'snapshot'->>'canonical_url',
-                'destination_url', seed_data->'snapshot'->>'destination_url',
-                'source_url', seed_data->'snapshot'->>'source_url',
-                'product_id', seed_data->'snapshot'->>'product_id',
-                'parent_external_product_id', seed_data->'snapshot'->>'parent_external_product_id',
-                'source_listing_scope', seed_data->'snapshot'->>'source_listing_scope',
-                'variant_title', seed_data->'snapshot'->>'variant_title'
-              ))
-            )) AS seed_data
+            seed_data->>'title' AS seed_title,
+            coalesce(seed_data->>'brand', seed_data->'derived'->'recall'->>'brand') AS seed_brand,
+            seed_data->>'brand_name' AS seed_brand_name,
+            seed_data->>'vendor' AS seed_vendor,
+            seed_data->>'vendor_name' AS seed_vendor_name,
+            coalesce(seed_data->>'category', seed_data->'derived'->'recall'->>'category') AS seed_category,
+            coalesce(seed_data->>'product_type', seed_data->'derived'->'recall'->>'category') AS seed_product_type,
+            seed_data->>'productType' AS seed_product_type_camel,
+            seed_data->'derived'->'recall'->>'category' AS recall_category,
+            seed_data->'derived'->'recall'->>'vertical' AS recall_vertical,
+            seed_data->>'image_url' AS seed_image_url,
+            seed_data->>'price_amount' AS seed_price_amount,
+            seed_data->>'price' AS seed_price,
+            seed_data->>'price_currency' AS seed_price_currency,
+            seed_data->>'availability' AS seed_availability,
+            seed_data->>'canonical_url' AS seed_canonical_url,
+            seed_data->>'destination_url' AS seed_destination_url,
+            seed_data->>'source_url' AS seed_source_url,
+            seed_data->>'external_product_id' AS seed_external_product_id,
+            seed_data->>'parent_external_product_id' AS seed_parent_external_product_id,
+            seed_data->>'source_listing_scope' AS seed_source_listing_scope,
+            seed_data->>'variant_title' AS seed_variant_title,
+            seed_data->'snapshot'->>'title' AS snapshot_title,
+            seed_data->'snapshot'->>'brand' AS snapshot_brand,
+            seed_data->'snapshot'->>'brand_name' AS snapshot_brand_name,
+            seed_data->'snapshot'->>'vendor' AS snapshot_vendor,
+            seed_data->'snapshot'->>'vendor_name' AS snapshot_vendor_name,
+            seed_data->'snapshot'->>'category' AS snapshot_category,
+            seed_data->'snapshot'->>'product_type' AS snapshot_product_type,
+            seed_data->'snapshot'->>'productType' AS snapshot_product_type_camel,
+            seed_data->'snapshot'->>'image_url' AS snapshot_image_url,
+            seed_data->'snapshot'->>'image' AS snapshot_image,
+            CASE
+              WHEN jsonb_typeof(seed_data->'snapshot'->'images') = 'array'
+              THEN seed_data->'snapshot'->'images'->>0
+              ELSE NULL
+            END AS snapshot_first_image,
+            CASE
+              WHEN jsonb_typeof(seed_data->'images') = 'array'
+              THEN seed_data->'images'->>0
+              ELSE NULL
+            END AS seed_first_image,
+            seed_data->'snapshot'->>'price_amount' AS snapshot_price_amount,
+            seed_data->'snapshot'->>'price' AS snapshot_price,
+            seed_data->'snapshot'->>'price_currency' AS snapshot_price_currency,
+            seed_data->'snapshot'->>'availability' AS snapshot_availability,
+            seed_data->'snapshot'->>'canonical_url' AS snapshot_canonical_url,
+            seed_data->'snapshot'->>'destination_url' AS snapshot_destination_url,
+            seed_data->'snapshot'->>'source_url' AS snapshot_source_url,
+            seed_data->'snapshot'->>'product_id' AS snapshot_product_id,
+            seed_data->'snapshot'->>'parent_external_product_id' AS snapshot_parent_external_product_id,
+            seed_data->'snapshot'->>'source_listing_scope' AS snapshot_source_listing_scope,
+            seed_data->'snapshot'->>'variant_title' AS snapshot_variant_title
 `;
 
 const EXTERNAL_SEED_SEMANTIC_SELECT = `
@@ -1941,20 +1992,34 @@ async function fetchExternalCandidates({
   const compactBrand = brandAliases.find((value) => !/\s/.test(value)) || brand.replace(/\s+/g, '');
   const categoryAliases = buildNormalizedAliases(categoryHint);
 
+  function boundedRecallCap(multiplier, floor = 24) {
+    return Math.min(
+      safeLimit,
+      PDP_RECS_EXTERNAL_RECALL_QUERY_CAP_MAX,
+      Math.max(floor, Math.ceil(safeMinFocusedCandidates * multiplier)),
+    );
+  }
+
   async function runQuery(whereSql, params, cap, queryName) {
     try {
       const res = await query(
         `
+          WITH recall_ids AS (
+            SELECT id
+            FROM external_product_seeds
+            WHERE status = 'active'
+              AND market = $1
+              AND (tool = '*' OR tool = $2)
+              AND attached_product_key IS NULL
+              ${whereSql}
+            ORDER BY updated_at DESC, created_at DESC
+            LIMIT $3
+          )
           SELECT
 ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
           FROM external_product_seeds
-          WHERE status = 'active'
-            AND market = $1
-            AND (tool = '*' OR tool = $2)
-            AND attached_product_key IS NULL
-            ${whereSql}
+          WHERE id IN (SELECT id FROM recall_ids)
           ORDER BY updated_at DESC, created_at DESC
-          LIMIT $3
         `,
         [market, tool, cap, ...params],
       );
@@ -1978,16 +2043,22 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
     try {
       const res = await query(
         `
+          WITH recall_ids AS (
+            SELECT id
+            FROM external_product_seeds
+            WHERE status = 'active'
+              AND market = $1
+              AND (tool = '*' OR tool = $2)
+              AND attached_product_key IS NULL
+              AND domain = ANY($4)
+            ORDER BY updated_at DESC, created_at DESC
+            LIMIT $3
+          )
           SELECT
 ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
           FROM external_product_seeds
-          WHERE status = 'active'
-            AND market = $1
-            AND (tool = '*' OR tool = $2)
-            AND attached_product_key IS NULL
-            AND domain = ANY($4)
+          WHERE id IN (SELECT id FROM recall_ids)
           ORDER BY updated_at DESC, created_at DESC
-          LIMIT $3
         `,
         [market, tool, cap, normalizedDomainHints],
       );
@@ -2040,7 +2111,7 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
             )`,
         [categoryAliases],
         deepDomainRecall
-          ? Math.min(safeLimit, Math.max(60, safeMinFocusedCandidates * 8))
+          ? boundedRecallCap(2, 48)
           : Math.min(120, safeLimit),
         'external_category',
       ),
@@ -2050,26 +2121,8 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
   const out = [];
   let preloadedCategoryMatches = null;
   let preloadedDomainMatches = null;
-  if (deepDomainRecall && category && normalizedDomainHints.length) {
-    const deepRecallDomainCap = Math.min(safeLimit, Math.max(60, safeMinFocusedCandidates * 10));
-    [preloadedCategoryMatches, preloadedDomainMatches] = await Promise.all([
-      loadCategoryMatches(),
-      runTimedExternalQuery(
-        'external_domain',
-        () => runDomainQuery(deepRecallDomainCap),
-        PDP_RECS_EXTERNAL_RECALL_QUERY_TIMEOUT_MS,
-      ),
-    ]);
-    out.push(...preloadedCategoryMatches);
-    out.push(...preloadedDomainMatches);
-    const categoryFocusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
-    if (categoryFocusedCandidates.length >= safeMinFocusedCandidates) {
-      return categoryFocusedCandidates.slice(0, safeLimit * 3);
-    }
-  }
-
-  if (deepDomainRecall && normalizedDomainHints.length && !preloadedDomainMatches) {
-    const deepRecallDomainCap = Math.min(safeLimit, Math.max(60, safeMinFocusedCandidates * 10));
+  if (deepDomainRecall && normalizedDomainHints.length) {
+    const deepRecallDomainCap = boundedRecallCap(2, 48);
     preloadedDomainMatches = await runTimedExternalQuery(
       'external_domain',
       () => runDomainQuery(deepRecallDomainCap),
@@ -2077,7 +2130,7 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
     );
     out.push(...preloadedDomainMatches);
     const domainFocusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
-    if (!category && domainFocusedCandidates.length >= safeMinFocusedCandidates) {
+    if (domainFocusedCandidates.length >= safeMinFocusedCandidates) {
       return domainFocusedCandidates.slice(0, safeLimit * 3);
     }
   }
@@ -2092,7 +2145,7 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
   }
 
   const domainCap = deepDomainRecall
-    ? Math.min(safeLimit, Math.max(60, safeMinFocusedCandidates * 10))
+    ? boundedRecallCap(2, 48)
     : Math.min(safeLimit, Math.max(12, safeMinFocusedCandidates * 2));
   const domainMatches =
     preloadedDomainMatches ||
@@ -2211,25 +2264,47 @@ async function loadExternalSeedSemanticRecord(baseProduct) {
   const { externalSeedId, externalProductIds } = collectExternalLookupKeys(baseProduct);
   if (!externalSeedId && !externalProductIds.length) return null;
 
-  const clauses = [];
-  const params = [];
-
-  if (externalSeedId) {
-    params.push(externalSeedId);
-    clauses.push(`id::text = $${params.length}`);
-  }
-
-  for (const externalProductId of externalProductIds) {
-    params.push(externalProductId);
-    const bind = `$${params.length}`;
-    clauses.push(
-      `(external_product_id = ${bind} OR seed_data->>'external_product_id' = ${bind} OR seed_data->>'product_id' = ${bind})`,
-    );
-  }
-
-  if (!clauses.length) return null;
-
   try {
+    if (externalSeedId) {
+      const res = await query(
+        `
+          SELECT
+${EXTERNAL_SEED_SEMANTIC_SELECT}
+          FROM external_product_seeds
+          WHERE status = 'active'
+            AND id::text = $1
+          LIMIT 1
+        `,
+        [externalSeedId],
+      );
+      if (res.rows?.[0]) return res.rows[0];
+    }
+
+    if (externalProductIds.length) {
+      const res = await query(
+        `
+          SELECT
+${EXTERNAL_SEED_SEMANTIC_SELECT}
+          FROM external_product_seeds
+          WHERE status = 'active'
+            AND external_product_id = ANY($1::text[])
+          ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+          LIMIT 1
+        `,
+        [externalProductIds],
+      );
+      if (res.rows?.[0]) return res.rows[0];
+    }
+
+    const clauses = [];
+    const params = [];
+    for (const externalProductId of externalProductIds) {
+      params.push(externalProductId);
+      const bind = `$${params.length}`;
+      clauses.push(`(seed_data->>'external_product_id' = ${bind} OR seed_data->>'product_id' = ${bind})`);
+    }
+    if (!clauses.length) return null;
+
     const res = await query(
       `
         SELECT
