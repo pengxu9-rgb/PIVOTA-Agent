@@ -3470,7 +3470,12 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     : extractContentLikeSeedImageUrls(
         Array.isArray(seedData.content_image_urls) && seedData.content_image_urls.length > 0
           ? seedData.content_image_urls
-          : snapshot.content_image_urls,
+          : Array.isArray(snapshot.content_image_urls) && snapshot.content_image_urls.length > 0
+            ? snapshot.content_image_urls
+            : [
+                ...(Array.isArray(seedData.image_urls) ? seedData.image_urls : []),
+                ...(Array.isArray(snapshot.image_urls) ? snapshot.image_urls : []),
+              ],
         { relevanceContext: imageRelevanceContext },
       );
   const nextContentImageUrls =

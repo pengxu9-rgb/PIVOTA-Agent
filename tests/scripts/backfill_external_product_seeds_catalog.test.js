@@ -4602,6 +4602,57 @@ describe('backfill-external-product-seeds-catalog', () => {
     ]);
   });
 
+  test('migrates legacy content-like Fenty gallery assets into content_image_urls when extractor returns only clean hero images', () => {
+    const row = {
+      id: 'eps_fenty_hydra_mini_legacy_gallery',
+      external_product_id: 'ext_fenty_hydra_mini_legacy_gallery',
+      market: 'US',
+      tool: 'creator_agents',
+      title: 'Hydra Vizor Mini Broad Spectrum Mineral SPF 30 Sunscreen Moisturizer',
+      canonical_url: 'https://fentybeauty.com/products/hydra-vizor-mini-broad-spectrum-mineral-spf-30-sunscreen-moisturizer',
+      destination_url: 'https://fentybeauty.com/products/hydra-vizor-mini-broad-spectrum-mineral-spf-30-sunscreen-moisturizer',
+      seed_data: {
+        brand: 'Fenty Beauty',
+        image_urls: [
+          'https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FS_POSTHOL2021_T2PRODUCT_ECOMM_MINI_HYDRA_VIZOR_US_1200x1500_FENTYVERSE.jpg?v=1762272039',
+          'https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FS391353_Global_Hydra_Vizor_Mineral_Face_TEXTURE_1200x1500_72DPI_0b694f77-059c-4f40-8c98-140fd70040a9.jpg?v=1760652647',
+          'https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FB_SUM25_MVP_T2BEAUTY_HYDRAVIZOR_APPLICATION_LIGHT_TAYLOR_108_1200X1500_72DPI.jpg?v=1760652808',
+        ],
+        snapshot: {
+          canonical_url: 'https://fentybeauty.com/products/hydra-vizor-mini-broad-spectrum-mineral-spf-30-sunscreen-moisturizer',
+        },
+      },
+    };
+
+    const payload = buildSeedUpdatePayload(
+      row,
+      {
+        products: [
+          {
+            title: 'Hydra Vizor Mini Broad Spectrum Mineral SPF 30 Sunscreen Moisturizer',
+            url: 'https://fentybeauty.com/products/hydra-vizor-mini-broad-spectrum-mineral-spf-30-sunscreen-moisturizer',
+            image_url: 'https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FS_POSTHOL2021_T2PRODUCT_ECOMM_MINI_HYDRA_VIZOR_US_1200x1500_FENTYVERSE.jpg?v=1762272039',
+            image_urls: [
+              'https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FS_POSTHOL2021_T2PRODUCT_ECOMM_MINI_HYDRA_VIZOR_US_1200x1500_FENTYVERSE.jpg?v=1762272039',
+            ],
+            variants: [],
+          },
+        ],
+        variants: [],
+        diagnostics: {},
+      },
+      'https://fentybeauty.com/products/hydra-vizor-mini-broad-spectrum-mineral-spf-30-sunscreen-moisturizer',
+    );
+
+    expect(payload.nextRow.seed_data.image_urls).toEqual([
+      'https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FS_POSTHOL2021_T2PRODUCT_ECOMM_MINI_HYDRA_VIZOR_US_1200x1500_FENTYVERSE.jpg?v=1762272039',
+    ]);
+    expect(payload.nextRow.seed_data.content_image_urls).toEqual([
+      'https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FS391353_Global_Hydra_Vizor_Mineral_Face_TEXTURE_1200x1500_72DPI_0b694f77-059c-4f40-8c98-140fd70040a9.jpg?v=1760652647',
+      'https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FB_SUM25_MVP_T2BEAUTY_HYDRAVIZOR_APPLICATION_LIGHT_TAYLOR_108_1200X1500_72DPI.jpg?v=1760652808',
+    ]);
+  });
+
   test('preserves reviewed PDP content assets over thinner incoming extractor content', () => {
     const canonicalUrl = 'https://example.com/products/barrier-cream';
     const reviewedDescription =
