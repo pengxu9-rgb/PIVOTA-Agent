@@ -228,14 +228,26 @@ describe('Celestial commerce core source contracts', () => {
     const { filterSimilarProductsWithCardHighlights } = app._debug;
 
     const out = filterSimilarProductsWithCardHighlights([
-      { product_id: 'ext_category_only', title: 'Category only', category: 'Toner' },
-      { product_id: 'ext_missing', title: 'Missing highlight', card_highlight_status: 'highlight_missing' },
+      {
+        product_id: 'ext_category_only',
+        title: 'Category only',
+        category: 'Toner',
+        image_url: 'https://cdn.example.test/category-only.jpg',
+      },
+      {
+        product_id: 'ext_missing',
+        title: 'Missing highlight',
+        card_highlight_status: 'highlight_missing',
+        image_url: 'https://cdn.example.test/missing-highlight.jpg',
+      },
       {
         product_id: 'ext_ready',
         title: 'Ready card',
         category: 'Toner',
         description: 'A softening toner with rice extract and barrier support.',
+        image_url: 'https://cdn.example.test/ready-card.jpg',
       },
+      { product_id: 'ext_no_image', title: 'No image', category: 'Toner' },
     ]);
 
     expect(out.map((item) => item.product_id)).toEqual([
