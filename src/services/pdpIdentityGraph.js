@@ -499,10 +499,6 @@ const SHADE_FAMILY_CONTEXT_TOKENS = Object.freeze([
   'base',
   'bb cream',
   'blush',
-  'body butter',
-  'body cream',
-  'body lotion',
-  'bodycare',
   'bronzer',
   'brightener',
   'brow',
@@ -527,8 +523,6 @@ const SHADE_FAMILY_CONTEXT_TOKENS = Object.freeze([
   'mascara',
   'makeup',
   'powder',
-  'scent',
-  'scented',
   'shade',
   'skin stick',
   'skinstick',
@@ -643,7 +637,7 @@ function collectVariantCategoryContext(product) {
 function allowsColorAxisForProduct(product) {
   const haystack = collectVariantCategoryContext(product);
   if (!haystack) return false;
-  return /\b(tinted?|skin tint|shade|color correct|colour correct|tone up|tone correct|lip tint|lipstick|lip gloss|lip oil|lip balm|foundation|concealer|bronzer|blush|highlighter|powder|eyeshadow|eyeliner|brow|mascara|makeup|cosmetic)\b/i.test(
+  return /\b(tinted?|skin tint|shade|color correct|colour correct|tone up|tone correct|lip tint|lipstick|lip gloss|lip oil|lip balm|lip liner|lip pencil|foundation|concealer|bronzer|blush|highlighter|diamond veil|powder|eyeshadow|eyeliner|brow|mascara|makeup|cosmetic)\b/i.test(
     haystack,
   );
 }
@@ -659,6 +653,7 @@ function isSkincareLikeProduct(product) {
 function shouldSuppressColorAxisValue(product, value) {
   const normalized = normalizeAxisValue(value).toLowerCase();
   if (!normalized) return true;
+  if (!allowsColorAxisForProduct(product)) return true;
   if (/^(?:default|default title|title|option|standard default)$/i.test(normalized)) return true;
   if (isLikelyVariantIdentityToken(normalized)) return true;
   if (LOCALE_LIKE_AXIS_VALUES.has(normalized)) return true;
@@ -666,6 +661,7 @@ function shouldSuppressColorAxisValue(product, value) {
 }
 
 function extractMultiPageShadeFamilyCandidate(product) {
+  if (!allowsColorAxisForProduct(product)) return null;
   if (!hasShadeFamilyContext(product)) return null;
   const title = firstNonEmptyString(product?.title, product?.name, product?.display_name);
   const titleCode = extractTrailingShadeCodeToken(title);
@@ -999,6 +995,17 @@ function serializeVariantAxes(axes) {
   return pairs.map(([key, value]) => `${key}:${value}`).join('|');
 }
 
+function buildAxisValuePattern(value) {
+  const normalized = normalizeResolverText(value);
+  if (!normalized) return '';
+  return normalized
+    .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    .replace(/floz/g, 'fl\\s*oz')
+    .replace(/([0-9])([a-z])/gi, '$1\\s*$2')
+    .replace(/([a-z])([0-9])/gi, '$1\\s*$2')
+    .replace(/\s+/g, '\\s+');
+}
+
 function stripAxisTokensFromTitle(title, axes) {
   let normalized = normalizeTitleToken(title);
   const values = ['size', 'volume', 'pack', 'shade', 'color']
@@ -1007,8 +1014,9 @@ function stripAxisTokensFromTitle(title, axes) {
     .sort((a, b) => b.length - a.length);
   for (const value of values) {
     if (!value) continue;
-    const escaped = value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    normalized = normalized.replace(new RegExp(`\\b${escaped}\\b`, 'g'), ' ');
+    const pattern = buildAxisValuePattern(value);
+    if (!pattern) continue;
+    normalized = normalized.replace(new RegExp(`\\b${pattern}\\b`, 'g'), ' ');
   }
   return normalized.replace(/\s+/g, ' ').trim();
 }

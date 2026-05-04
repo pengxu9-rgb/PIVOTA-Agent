@@ -819,16 +819,23 @@ describe('pdpIdentityGraph', () => {
     expect(bored.sellable_item_group_id).not.toBe(whiskey.sellable_item_group_id);
   });
 
-  test('buildIdentityListingFromProduct groups scented body cream PDP siblings into one product line', () => {
+  test('buildIdentityListingFromProduct keeps scented body cream size siblings together without inferring shade axes', () => {
     const { buildIdentityListingFromProduct } = require('../../src/services/pdpIdentityGraph');
 
-    const buildBodyCream = (scent, productIdSuffix, optionName = 'Size / Color') =>
+    const buildBodyCream = ({
+      scent,
+      productIdSuffix,
+      sizeLabel = 'Regular',
+      optionName = 'Size',
+      optionValue = sizeLabel,
+      titlePrefix = 'Butta Drop',
+    }) =>
       buildIdentityListingFromProduct({
         merchantId: 'external_seed',
         productId: `ext_fenty_butta_${productIdSuffix}`,
         sourceKind: 'external_seed',
         product: {
-          title: `Butta Drop Whipped Oil Body Cream with Tropical Oils + Shea Butter — ${scent}`,
+          title: `${titlePrefix} Whipped Oil Body Cream with Tropical Oils + Shea Butter — ${scent}`,
           brand: 'Fenty Beauty',
           source_url: `https://fentybeauty.com/products/butta-drop-whipped-oil-body-cream-with-tropical-oils-shea-butter-${scent
             .toLowerCase()
@@ -836,47 +843,65 @@ describe('pdpIdentityGraph', () => {
           variants: [
             {
               variant_id: `v_${productIdSuffix}`,
-              title: `Regular / ${scent}`,
+              title: `${sizeLabel} / ${scent}`,
               options: [
-                { name: 'Variant', value: `Regular / ${scent}` },
+                { name: 'Variant', value: `${sizeLabel} / ${scent}` },
               ],
               option_name: optionName,
-              option_value:
-                optionName === 'Color / Size'
-                  ? `${scent} / ${scent}`
-                  : `Regular / ${scent}`,
+              option_value: optionValue,
             },
           ],
         },
       });
 
-    const saltedCaramel = buildBodyCream('Salted Caramel', 'salted_caramel');
-    const vanillaDream = buildBodyCream('Vanilla Dream', 'vanilla_dream', 'Color / Size');
-    const fentyFreshShimmering = buildBodyCream('Fenty Fresh Shimmering', 'fenty_fresh_shimmering');
+    const vanillaDreamMini = buildBodyCream({
+      scent: 'Vanilla Dream',
+      productIdSuffix: 'vanilla_dream_mini',
+      sizeLabel: 'Mini',
+      optionValue: 'Mini / Vanilla Dream',
+      titlePrefix: 'Mini Butta Drop',
+    });
+    const vanillaDreamJumbo = buildBodyCream({
+      scent: 'Vanilla Dream',
+      productIdSuffix: 'vanilla_dream_jumbo',
+      sizeLabel: 'Jumbo',
+      optionValue: 'Jumbo / Vanilla Dream',
+      titlePrefix: 'Jumbo Butta Drop',
+    });
+    const saltedCaramel = buildBodyCream({
+      scent: 'Salted Caramel',
+      productIdSuffix: 'salted_caramel_regular',
+      sizeLabel: 'Regular',
+      optionName: 'Color / Size',
+      optionValue: 'Salted Caramel / Regular',
+    });
 
+    expect(vanillaDreamMini.variant_axes).toEqual({
+      size: 'mini',
+      multi_variant: false,
+    });
+    expect(vanillaDreamJumbo.variant_axes).toEqual({
+      size: 'jumbo',
+      multi_variant: false,
+    });
     expect(saltedCaramel.variant_axes).toEqual({
       size: 'regular',
-      color: 'salted caramel',
       multi_variant: false,
     });
-    expect(vanillaDream.variant_axes).toEqual({
-      color: 'vanilla dream',
-      multi_variant: false,
-    });
-    expect(fentyFreshShimmering.variant_axes.color).toBe('fenty fresh shimmering');
+    expect(vanillaDreamMini.title_core_norm).toBe(
+      'butta drop whipped oil body cream tropical oils shea butter vanilla dream',
+    );
+    expect(vanillaDreamJumbo.title_core_norm).toBe(
+      'butta drop whipped oil body cream tropical oils shea butter vanilla dream',
+    );
     expect(saltedCaramel.title_core_norm).toBe(
-      'butta drop whipped oil body cream tropical oils shea butter',
+      'butta drop whipped oil body cream tropical oils shea butter salted caramel',
     );
-    expect(vanillaDream.title_core_norm).toBe(
-      'butta drop whipped oil body cream tropical oils shea butter',
-    );
-    expect(fentyFreshShimmering.title_core_norm).toBe(
-      'butta drop whipped oil body cream tropical oils shea butter',
-    );
-    expect(saltedCaramel.product_line_id).toBe(vanillaDream.product_line_id);
-    expect(saltedCaramel.product_line_id).toBe(fentyFreshShimmering.product_line_id);
-    expect(saltedCaramel.sellable_item_group_id).not.toBe(vanillaDream.sellable_item_group_id);
-    expect(saltedCaramel.sellable_item_group_id).not.toBe(fentyFreshShimmering.sellable_item_group_id);
+    expect(vanillaDreamMini.product_line_id).toBe(vanillaDreamJumbo.product_line_id);
+    expect(vanillaDreamMini.sellable_item_group_id).not.toBe(vanillaDreamJumbo.sellable_item_group_id);
+    expect(vanillaDreamMini.product_line_id).not.toBe(saltedCaramel.product_line_id);
+    expect(vanillaDreamMini.match_basis).not.toContain('variant_axes:shade:vanilla dream');
+    expect(saltedCaramel.match_basis).not.toContain('variant_axes:color:salted caramel');
   });
 
   test('buildIdentityListingFromProduct suppresses locale-like color axes for skincare refill PDPs', () => {
