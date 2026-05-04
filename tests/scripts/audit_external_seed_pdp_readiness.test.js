@@ -310,6 +310,30 @@ describe('external seed PDP readiness audit helpers', () => {
     expect(result.examples.default_option_size_evidence_missing_axis[0].value).toMatch(/mini/i);
   });
 
+  test('does not require a size axis for single-SKU lip color rows that only carry fixed net content', () => {
+    const result = classifyVariantReadiness(
+      seedRow({
+        title: 'Stunna Lip Paint Longwear Fluid Lip Color — Uninterested',
+        canonical_url: 'https://fentybeauty.com/products/stunna-lip-paint-uninterested',
+        destination_url: 'https://fentybeauty.com/products/stunna-lip-paint-uninterested',
+        seed_data: {
+          snapshot: {
+            product_volume: '4 mL',
+            variants: [
+              {
+                variant_id: 'stunna-default',
+                option_name: 'Title',
+                option_value: 'Default Title',
+              },
+            ],
+          },
+        },
+      }),
+    );
+
+    expect(result.issues).not.toContain('default_option_size_evidence_missing_axis');
+  });
+
   test('flags identity default-title shade pollution from live identity context', () => {
     const row = seedRow({
       external_product_id: 'ext_rare_primer_mini',
@@ -360,6 +384,50 @@ describe('external seed PDP readiness audit helpers', () => {
 
     expect(result.status).toBe('ready');
     expect(result.issues).not.toContain('wrong_axis_for_category');
+  });
+
+  test('does not flag lip cream or lip mask shade rows as wrong axis for category', () => {
+    const glossBomb = classifyVariantReadiness(
+      seedRow({
+        title: 'Gloss Bomb Cream Color Drip Lip Cream — Fruit Snackz',
+        canonical_url: 'https://fentybeauty.com/products/gloss-bomb-cream-fruit-snackz',
+        destination_url: 'https://fentybeauty.com/products/gloss-bomb-cream-fruit-snackz',
+        seed_data: {
+          snapshot: {
+            variants: [
+              {
+                variant_id: 'fruit-snackz',
+                option_name: 'Shade',
+                option_value: 'Fruit Snackz',
+                image_url: 'https://fentybeauty.com/shades/fruit-snackz.jpg',
+              },
+            ],
+          },
+        },
+      }),
+    );
+    const plushPuddin = classifyVariantReadiness(
+      seedRow({
+        title: "Plush Puddin' Intensive Recovery Lip Mask — Vanilla",
+        canonical_url: 'https://fentybeauty.com/products/plush-puddin-vanilla',
+        destination_url: 'https://fentybeauty.com/products/plush-puddin-vanilla',
+        seed_data: {
+          snapshot: {
+            variants: [
+              {
+                variant_id: 'vanilla',
+                option_name: 'Color',
+                option_value: 'Vanilla',
+                image_url: 'https://fentybeauty.com/shades/vanilla.jpg',
+              },
+            ],
+          },
+        },
+      }),
+    );
+
+    expect(glossBomb.issues).not.toContain('wrong_axis_for_category');
+    expect(plushPuddin.issues).not.toContain('wrong_axis_for_category');
   });
 
   test('does not require single variant size axes for sets that mention component sizes', () => {

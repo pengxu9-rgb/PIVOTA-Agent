@@ -177,6 +177,8 @@ const VARIANT_IDENTITY_OPTION_NAMES = new Set([
 const GENERIC_VARIANT_AXIS_NAMES = new Set(['option', 'variant', 'selection']);
 const VARIANT_SIZE_EVIDENCE_RE = /\b\d+(?:\.\d+)?\s*(ml|m l|g|kg|oz|fl\.?\s*oz\.?|fluid\s*ounces?|l|lb|lbs|mm|cm)\b/i;
 const NAMED_VARIANT_SIZE_EVIDENCE_RE = /\b(full size|travel size|jumbo|mini|refill|regular|standard|one size)\b/i;
+const STRONG_NAMED_VARIANT_SIZE_EVIDENCE_RE = /\b(full size|travel size|jumbo|mini|refill|one size)\b/i;
+const BASELINE_NAMED_VARIANT_SIZE_EVIDENCE_RE = /\b(regular|standard)\b/i;
 const SHADE_AXIS_NAMES = new Set(['shade', 'color', 'colour', 'tone', 'hue']);
 const LOCALE_LIKE_VARIANT_VALUES = new Set(['us', 'usa', 'uk', 'eu', 'fr', 'de', 'es', 'it', 'ca', 'au', 'jp', 'kr', 'cn']);
 const DEFAULT_TITLE_AXIS_VALUES = new Set(['default', 'default title']);
@@ -506,7 +508,7 @@ function collectDescriptiveText(row) {
 }
 
 function allowsShadeAxis(text) {
-  return /\b(tinted?|skin tint|shade|color[-\s]?correct|colour[-\s]?correct|tone[-\s]?up|tone[-\s]?correct|lip tint|tint balm|honey tint|lipstick|lip gloss|lip oil|lip balm|foundation|concealer|bronzer|blush|highlighter|powder|eyeshadow|eyeliner|brow|mascara|makeup|cosmetic)\b/i.test(
+  return /\b(tinted?|skin tint|shade|color[-\s]?correct|colour[-\s]?correct|tone[-\s]?up|tone[-\s]?correct|lip tint|tint balm|honey tint|lipstick|lip gloss|lip oil|lip balm|lip cream|lip mask|lip color|lip paint|foundation|concealer|bronzer|blush|highlighter|powder|eyeshadow|eyeliner|brow|mascara|makeup|cosmetic)\b/i.test(
     text,
   );
 }
@@ -606,6 +608,11 @@ function classifyVariantReadiness(row, context = {}) {
   const productId = asString(row?.external_product_id || row?.product_id || row?.id);
   const variants = normalizeSeedVariants(row?.seed_data, row);
   const contextText = lowerText(collectContextText(row));
+  const productLineId =
+    asString(row?.identity_product_line_id || context.productLineIdByProductId?.get?.(productId)) || '';
+  const siblingIds = productLineId
+    ? asArray(context.productIdsByLineId?.get?.(productLineId)).filter((id) => asString(id) && asString(id) !== productId)
+    : [];
   const identityVariantAxes =
     asPlainObject(context.variantAxesByProductId?.get?.(productId)) ||
     asPlainObject(row?.identity_variant_axes) ||
@@ -638,11 +645,23 @@ function classifyVariantReadiness(row, context = {}) {
     return GENERIC_VARIANT_AXIS_NAMES.has(axisName) && looksLikeSizeValue(item.value);
   });
   const sizeEvidence = collectVariantSizeEvidence(row);
+  const siblingHasDisplayableSizeAxis = siblingIds.some((id) => {
+    const axes = asPlainObject(context.variantAxesByProductId?.get?.(id)) || {};
+    return Boolean(asString(axes.size) || asString(axes.volume) || asString(axes.pack));
+  });
+  const strongNamedSizeEvidence = STRONG_NAMED_VARIANT_SIZE_EVIDENCE_RE.test(sizeEvidence.evidence || '');
+  const baselineNamedSizeEvidence = BASELINE_NAMED_VARIANT_SIZE_EVIDENCE_RE.test(sizeEvidence.evidence || '');
   const defaultOptionSizeEvidenceMissingAxis =
     visibleRows.length === 0 &&
     sizeEvidence.raw_variant_count > 0 &&
     sizeEvidence.evidence &&
-    shouldRequireDefaultVariantSizeAxis(row)
+    shouldRequireDefaultVariantSizeAxis(row) &&
+    (
+      sizeEvidence.raw_variant_count > 1 ||
+      strongNamedSizeEvidence ||
+      (siblingHasDisplayableSizeAxis && NAMED_VARIANT_SIZE_EVIDENCE_RE.test(sizeEvidence.evidence || '')) ||
+      (siblingHasDisplayableSizeAxis && baselineNamedSizeEvidence)
+    )
       ? [{ axis_name: 'default', axis_kind: 'volume', value: sizeEvidence.evidence, visual: false }]
       : [];
   const identityDefaultTitleAxis =
