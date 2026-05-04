@@ -2879,6 +2879,98 @@ function splitAnchoredQuantitativeSizeEvidence(...values) {
   };
 }
 
+function isPlaceholderSingleSkuValue(value) {
+  return /^(?:default(?:\s+title)?|title|single)$/i.test(normalizeNonEmptyString(value));
+}
+
+function shouldHydrateDirectPdpSizeEvidence(row, representativeProduct, targetUrl) {
+  if (!representativeProduct || typeof representativeProduct !== 'object') return false;
+  if (!looksLikeDirectProductTargetUrl(targetUrl)) return false;
+
+  const explicitEvidence = [
+    representativeProduct?.volume,
+    representativeProduct?.product_volume,
+    representativeProduct?.productVolume,
+    representativeProduct?.net_content,
+    representativeProduct?.netContent,
+    representativeProduct?.net_size,
+    representativeProduct?.netSize,
+    representativeProduct?.size_detail_label,
+    representativeProduct?.sizeDetailLabel,
+  ]
+    .map((item) => normalizeNonEmptyString(item))
+    .filter(Boolean);
+  if (explicitEvidence.length > 0) return false;
+
+  const representativeVariants = Array.isArray(representativeProduct?.variants)
+    ? representativeProduct.variants.filter((variant) => variant && typeof variant === 'object')
+    : [];
+  const seedVariants = normalizeSeedVariants(ensureJsonObject(row?.seed_data), row);
+  const candidateVariant = representativeVariants[0] || seedVariants[0] || null;
+  if (!candidateVariant) return false;
+
+  const optionName = normalizeNonEmptyString(candidateVariant?.option_name || candidateVariant?.optionName);
+  const optionValue = normalizeNonEmptyString(candidateVariant?.option_value || candidateVariant?.optionValue || candidateVariant?.title);
+  if (!optionName && !optionValue) return false;
+
+  return (
+    /^(?:option|title)$/i.test(optionName || 'Option') &&
+    isPlaceholderSingleSkuValue(optionValue)
+  );
+}
+
+async function fetchDirectPdpAnchoredSizeEvidence(targetUrl) {
+  const normalizedTargetUrl = normalizeUrlLike(targetUrl);
+  if (!normalizedTargetUrl) return null;
+
+  let response;
+  try {
+    response = await axios.get(normalizedTargetUrl, {
+      timeout: Number(process.env.EXTERNAL_SEED_BACKFILL_DIRECT_PDP_TIMEOUT_MS || 15000),
+      headers: {
+        Accept: 'text/html,application/xhtml+xml',
+        'User-Agent': 'Pivota external seed backfill/1.0',
+      },
+      responseType: 'text',
+      validateStatus: () => true,
+      maxContentLength: 1024 * 1024 * 2,
+    });
+  } catch {
+    return null;
+  }
+
+  const status = Number(response?.status || 0);
+  const body = typeof response?.data === 'string' ? response.data : '';
+  if (!(status >= 200 && status < 400) || !normalizeNonEmptyString(body)) return null;
+
+  const anchored = splitAnchoredQuantitativeSizeEvidence(body);
+  const netContent = normalizeNonEmptyString(anchored.netContent);
+  const netSize = normalizeNonEmptyString(anchored.netSize);
+  if (!netContent && !netSize) return null;
+
+  return {
+    html: body,
+    netContent,
+    netSize,
+    sizeDetailLabel: buildExtractedSizeDetailLabel('', '', '', netContent, netSize),
+  };
+}
+
+async function maybeHydrateRepresentativeProductSizeEvidence(row, representativeProduct, targetUrl) {
+  if (!shouldHydrateDirectPdpSizeEvidence(row, representativeProduct, targetUrl)) return representativeProduct;
+  const extracted = await fetchDirectPdpAnchoredSizeEvidence(
+    normalizeRepresentativeProductUrlForSeedTarget(representativeProduct?.url, targetUrl) || targetUrl,
+  );
+  if (!extracted) return representativeProduct;
+  return {
+    ...representativeProduct,
+    ...(extracted.netContent ? { net_content: extracted.netContent } : {}),
+    ...(extracted.netSize ? { net_size: extracted.netSize } : {}),
+    ...(extracted.sizeDetailLabel ? { size_detail_label: extracted.sizeDetailLabel } : {}),
+    pivota_backfill_direct_html: extracted.html,
+  };
+}
+
 function buildSeedUpdatePayload(row, response, targetUrl) {
   const seedData = ensureJsonObject(row?.seed_data);
   const snapshot = ensureJsonObject(seedData.snapshot);
@@ -3559,6 +3651,7 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     representativeProduct?.product_volume || representativeProduct?.productVolume,
   );
   const anchoredSizeEvidence = splitAnchoredQuantitativeSizeEvidence(
+    representativeProduct?.pivota_backfill_direct_html,
     representativeProduct?.description,
     representativeProduct?.description_html,
     nextPdpDescriptionRaw,
@@ -4789,7 +4882,7 @@ async function processRow(row, options) {
       ? await extractSeedCommerceFacts(targetUrl, row, options.baseUrl)
       : null;
     const products = Array.isArray(response?.products) ? response.products : [];
-    const representativeProduct = chooseRepresentativeProduct(response, targetUrl, row);
+    let representativeProduct = chooseRepresentativeProduct(response, targetUrl, row);
     if (looksLikeDirectProductTargetUrl(targetUrl) && products.length === 0) {
       const preservedImageHealth = await maybePersistPreservedImageHealth(
         row,
@@ -4835,6 +4928,11 @@ async function processRow(row, options) {
           candidate_product_urls: candidateProductUrls,
         },
       };
+    }
+    representativeProduct = await maybeHydrateRepresentativeProductSizeEvidence(row, representativeProduct, targetUrl);
+    if (representativeProduct && Array.isArray(response?.products)) {
+      const matchedIndex = response.products.findIndex((product) => product === chooseRepresentativeProduct(response, targetUrl, row));
+      if (matchedIndex >= 0) response.products[matchedIndex] = representativeProduct;
     }
     let payload = buildSeedUpdatePayload(row, response, targetUrl);
     if (options.includeCommerceFacts) {
