@@ -2355,6 +2355,49 @@ async function enrichExternalBaseProduct(baseProduct) {
 
   const enriched = { ...baseProduct };
   const rescueFields = [];
+  const existingRecall = ensureJsonObject(
+    baseProduct?.external_seed_recall ||
+      baseProduct?.externalSeedRecall ||
+      baseProduct?.recall_doc ||
+      baseProduct?.recall,
+  );
+  const existingStoredVertical = normalizeStoredSemanticVertical(
+    baseProduct?.semantic_vertical ||
+      baseProduct?.recall_vertical ||
+      existingRecall?.vertical,
+  );
+  const existingInferred = inferVerticalFromProduct(enriched);
+  const existingEffectiveVertical = existingStoredVertical || existingInferred.vertical;
+  const existingBrand = getBrandName(enriched);
+  const existingLeafCategory = getLeafCategory(enriched);
+  const existingSignalStrength = computeSemanticSignalStrength({
+    brand: existingBrand,
+    leafCategory: existingLeafCategory,
+    vertical: existingEffectiveVertical,
+  });
+  if (
+    existingBrand &&
+    !isWeakExternalSeedCategory(existingLeafCategory) &&
+    String(enriched.title || enriched.name || '').trim() &&
+    existingEffectiveVertical !== UNKNOWN_VERTICAL &&
+    existingSignalStrength >= 2
+  ) {
+    if (existingStoredVertical) {
+      enriched.semantic_vertical = existingStoredVertical;
+      enriched.recall_vertical = existingStoredVertical;
+    }
+    return {
+      product: enriched,
+      semantic: {
+        vertical: existingEffectiveVertical,
+        vertical_inferred: existingStoredVertical ? false : existingInferred.inferred,
+        signal_strength: existingSignalStrength,
+        rescue_applied: false,
+        rescue_fields: [],
+      },
+    };
+  }
+
   const seedRecord = await loadExternalSeedSemanticRecord(baseProduct);
   const seedData = ensureJsonObject(seedRecord?.seed_data);
   const snapshot = ensureJsonObject(seedData?.snapshot);
@@ -2622,7 +2665,7 @@ async function recommend({
           categoryHint: baseLeaf,
           domainHints: baseDomains,
           limit: Math.max(120, candidateK * 15),
-          minFocusedCandidates: candidateK,
+            minFocusedCandidates: candidateK,
           deepDomainRecall: baseProductIsExternal,
         }),
     effectiveExternalFetchTimeoutMs,
