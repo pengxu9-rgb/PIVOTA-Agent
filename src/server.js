@@ -147,6 +147,9 @@ const {
   EXTERNAL_SEED_RECALL_SQL_FIELDS,
 } = require('./services/externalSeedRecall');
 const {
+  getProductEntityIndexFeed,
+} = require('./services/productEntityIndexFeed');
+const {
   runExternalSeedBrandMainlineFastpath,
 } = require('./findProductsExternalSeedBrandFastpath');
 const {
@@ -19303,6 +19306,53 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       return res.status(502).json({
         error: err?.code || 'GET_DISCOVERY_FEED_FAILED',
         message: err?.message || 'Failed to build discovery feed',
+      });
+    }
+  }
+
+  if (operation === 'get_product_entity_index_feed') {
+    try {
+      const indexFeedResponse = await getProductEntityIndexFeed(effectivePayload);
+      return res.status(200).json(indexFeedResponse);
+    } catch (err) {
+      const message = String(err?.message || err || '');
+      if (
+        err?.code === '42P01' ||
+        /external_product_seeds/i.test(message) ||
+        /pdp_identity_listing/i.test(message)
+      ) {
+        return res.status(200).json({
+          status: 'unavailable',
+          success: false,
+          products: [],
+          total: 0,
+          page: 1,
+          page_size: 0,
+          pagination: {
+            limit: Number(effectivePayload?.limit || 100) || 100,
+            offset: 0,
+            total_count: 0,
+            has_more: false,
+          },
+          cursor_info: {
+            next_cursor: null,
+            has_next_page: false,
+            serving_mode: 'product_entity_index_feed',
+          },
+          metadata: {
+            query_source: 'product_entity_index_feed',
+            source: 'backend_external_seeds',
+            unavailable_reason: 'schema_missing',
+          },
+        });
+      }
+      logger.error(
+        { err: err?.message || String(err), operation },
+        'get_product_entity_index_feed failed unexpectedly',
+      );
+      return res.status(502).json({
+        error: err?.code || 'GET_PRODUCT_ENTITY_INDEX_FEED_FAILED',
+        message: err?.message || 'Failed to build ProductEntity index feed',
       });
     }
   }

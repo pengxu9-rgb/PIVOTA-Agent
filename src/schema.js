@@ -5,6 +5,7 @@ const OperationEnum = z.enum([
   // Cross-merchant search (backend gateway)
   'find_products_multi',
   'get_discovery_feed',
+  'get_product_entity_index_feed',
   // Lightweight product->offer candidates resolver (multi-offer Phase 2)
   'resolve_product_candidates',
   // Resolve product group membership (canonical PDP)
