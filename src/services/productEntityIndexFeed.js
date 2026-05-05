@@ -150,88 +150,86 @@ async function getProductEntityIndexFeed(payload = {}, deps = {}) {
 
   const result = await query(
     `
-      WITH source_rows AS (
+      WITH mapped AS (
         SELECT
+          pil.sellable_item_group_id AS product_entity_id,
+          pil.product_id AS source_product_id,
           eps.id::text AS external_seed_row_id,
           eps.external_product_id,
           eps.destination_url,
           eps.canonical_url,
           eps.domain,
-          eps.title,
+          coalesce(
+            eps.title,
+            pil.source_payload->>'title',
+            pil.source_payload->>'name',
+            pil.title_norm
+          ) AS product_name,
           eps.image_url,
           eps.price_amount,
           eps.price_currency,
           eps.availability,
-          eps.seed_data,
-          eps.updated_at,
-          eps.created_at,
           coalesce(
-            nullif(eps.external_product_id, ''),
-            nullif(eps.seed_data->>'external_product_id', ''),
-            nullif(eps.seed_data->>'product_id', ''),
-            nullif(eps.seed_data->'snapshot'->>'product_id', ''),
-            nullif(eps.canonical_url, ''),
-            nullif(eps.destination_url, ''),
-            concat('row:', eps.id::text)
-          ) AS source_product_id
-        FROM external_product_seeds eps
-        WHERE eps.status = 'active'
-          AND ($1::boolean = true OR eps.attached_product_key IS NULL)
-          AND eps.market = $2
-          AND ($3 = '*' OR eps.tool = $3 OR eps.tool = '*' OR eps.tool IS NULL OR eps.tool = '')
-          AND coalesce(lower(eps.seed_data#>>'{suppression_flags,exclude_from_recall}'), 'false') <> 'true'
-          AND coalesce(lower(eps.seed_data#>>'{derived,recall,suppression_flags,exclude_from_recall}'), 'false') <> 'true'
-      ),
-      mapped AS (
-        SELECT DISTINCT ON (pil.sellable_item_group_id, source_rows.source_product_id)
-          pil.sellable_item_group_id AS product_entity_id,
-          source_rows.source_product_id,
-          source_rows.external_seed_row_id,
-          source_rows.external_product_id,
-          source_rows.destination_url,
-          source_rows.canonical_url,
-          source_rows.domain,
-          source_rows.title AS product_name,
-          source_rows.image_url,
-          source_rows.price_amount,
-          source_rows.price_currency,
-          source_rows.availability,
-          coalesce(
-            source_rows.seed_data->>'brand',
-            source_rows.seed_data->'snapshot'->>'brand',
-            source_rows.seed_data->>'vendor',
-            source_rows.seed_data->'snapshot'->>'vendor',
+            eps.seed_data->>'brand',
+            eps.seed_data->'snapshot'->>'brand',
+            eps.seed_data->>'vendor',
+            eps.seed_data->'snapshot'->>'vendor',
+            pil.source_payload->>'brand',
+            pil.source_payload->>'vendor',
+            pil.brand_norm,
             ''
           ) AS brand,
           coalesce(
-            source_rows.seed_data->>'category',
-            source_rows.seed_data->'snapshot'->>'category',
-            source_rows.seed_data->>'product_type',
-            source_rows.seed_data->'snapshot'->>'product_type',
+            eps.seed_data->>'category',
+            eps.seed_data->'snapshot'->>'category',
+            eps.seed_data->>'product_type',
+            eps.seed_data->'snapshot'->>'product_type',
+            pil.source_payload->>'category',
+            pil.source_payload->>'product_type',
             ''
           ) AS category,
-          source_rows.seed_data,
-          source_rows.updated_at AS source_updated_at,
+          coalesce(eps.seed_data, pil.source_payload, '{}'::jsonb) AS seed_data,
+          eps.updated_at AS source_updated_at,
           coalesce(
             pil.updated_at,
-            source_rows.updated_at,
-            source_rows.created_at,
+            eps.updated_at,
+            eps.created_at,
             '1970-01-01T00:00:00Z'::timestamptz
           ) AS sort_updated_at,
           pil.updated_at AS identity_updated_at,
           pil.identity_confidence
-        FROM source_rows
-        JOIN pdp_identity_listing pil
-          ON pil.source_listing_ref = 'external_seed:' || source_rows.source_product_id
-         AND pil.identity_status = 'approved'
-         AND pil.live_read_enabled = true
+        FROM pdp_identity_listing pil
+        JOIN LATERAL (
+          SELECT
+            eps.id,
+            eps.external_product_id,
+            eps.destination_url,
+            eps.canonical_url,
+            eps.domain,
+            eps.title,
+            eps.image_url,
+            eps.price_amount,
+            eps.price_currency,
+            eps.availability,
+            eps.seed_data,
+            eps.updated_at,
+            eps.created_at
+          FROM external_product_seeds eps
+          WHERE eps.status = 'active'
+            AND ($1::boolean = true OR eps.attached_product_key IS NULL)
+            AND eps.external_product_id = pil.product_id
+            AND eps.market = $2
+            AND ($3 = '*' OR eps.tool = $3 OR eps.tool = '*' OR eps.tool IS NULL OR eps.tool = '')
+            AND coalesce(lower(eps.seed_data#>>'{suppression_flags,exclude_from_recall}'), 'false') <> 'true'
+            AND coalesce(lower(eps.seed_data#>>'{derived,recall,suppression_flags,exclude_from_recall}'), 'false') <> 'true'
+          ORDER BY eps.updated_at DESC NULLS LAST, eps.id DESC
+          LIMIT 1
+        ) eps ON true
         WHERE pil.sellable_item_group_id LIKE 'sig\\_%' ESCAPE '\\'
-        ORDER BY
-          pil.sellable_item_group_id,
-          source_rows.source_product_id,
-          pil.identity_confidence DESC NULLS LAST,
-          pil.updated_at DESC NULLS LAST,
-          source_rows.updated_at DESC NULLS LAST
+          AND pil.source_listing_ref LIKE 'external_seed:%'
+          AND pil.product_id IS NOT NULL
+          AND pil.identity_status = 'approved'
+          AND pil.live_read_enabled = true
       )
       SELECT *
       FROM mapped
