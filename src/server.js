@@ -2216,6 +2216,10 @@ const PDP_SIMILAR_CARD_ENRICH_BUDGET_MS = Math.max(
   100,
   parseTimeoutMs(process.env.PDP_SIMILAR_CARD_ENRICH_BUDGET_MS, 900),
 );
+const PDP_SIMILAR_CARD_PRODUCT_INTEL_BUDGET_MS = Math.max(
+  50,
+  parseTimeoutMs(process.env.PDP_SIMILAR_CARD_PRODUCT_INTEL_BUDGET_MS, 250),
+);
 const PDP_SIMILAR_CARD_DETAIL_BUDGET_MS = Math.max(
   50,
   parseTimeoutMs(process.env.PDP_SIMILAR_CARD_DETAIL_BUDGET_MS, 250),
@@ -16583,9 +16587,13 @@ function annotateSimilarCardStatus(item = {}) {
   };
 }
 
-function shouldEnrichSimilarCard(item = {}) {
+function isSimilarCardDetailHydrationAllowed({ allowDetailHydration = false } = {}) {
+  return allowDetailHydration === true && PDP_SIMILAR_CARD_DETAIL_ENRICH_ENABLED;
+}
+
+function shouldEnrichSimilarCard(item = {}, options = {}) {
   // Detail hydration is offline/opt-in only; public similar cards must be ready from the recall doc.
-  return PDP_SIMILAR_CARD_DETAIL_ENRICH_ENABLED && !hasSimilarCardImage(item);
+  return isSimilarCardDetailHydrationAllowed(options) && !hasSimilarCardImage(item);
 }
 
 function mergeSimilarCardEnrichment(candidate = {}, detail = {}) {
@@ -16765,31 +16773,49 @@ async function enrichSimilarProductsForPdpCards({
   bypassCache = false,
   maxItems = 6,
   budgetMs = PDP_SIMILAR_CARD_ENRICH_BUDGET_MS,
+  productIntelBudgetMs = PDP_SIMILAR_CARD_PRODUCT_INTEL_BUDGET_MS,
   detailBudgetMs = PDP_SIMILAR_CARD_DETAIL_BUDGET_MS,
+  allowDetailHydration = false,
 } = {}) {
   const list = Array.isArray(items) ? items : [];
   let head = list.slice(0, Math.max(0, Number(maxItems) || 0));
   const tail = list.slice(head.length);
+  const normalizedProductIntelBudgetMs = Math.max(1, Number(productIntelBudgetMs || 0) || 0);
+  const detailHydrationEnabled = isSimilarCardDetailHydrationAllowed({ allowDetailHydration });
   let productIntelCardHydrationMetadata = {
     attempted_count: 0,
     hydrated_count: 0,
     skipped_unreviewed_count: 0,
     failed: false,
+    timeout_count: 0,
+    budget_ms: normalizedProductIntelBudgetMs,
   };
   try {
     if (typeof hydrateRecommendationItemsWithReviewedProductIntel === 'function') {
-      const productIntelCardHydration = await hydrateRecommendationItemsWithReviewedProductIntel(head);
+      const productIntelCardHydration = await withStageBudget(
+        hydrateRecommendationItemsWithReviewedProductIntel(head),
+        normalizedProductIntelBudgetMs,
+        'pdp_similar_product_intel_card_hydration',
+      );
       if (Array.isArray(productIntelCardHydration?.items)) {
         head = productIntelCardHydration.items;
       }
       if (productIntelCardHydration?.stats && typeof productIntelCardHydration.stats === 'object') {
-        productIntelCardHydrationMetadata = productIntelCardHydration.stats;
+        productIntelCardHydrationMetadata = {
+          ...productIntelCardHydration.stats,
+          budget_ms: normalizedProductIntelBudgetMs,
+          timeout_count: Number(productIntelCardHydration.stats.timeout_count || 0) || 0,
+        };
       }
     }
   } catch (err) {
+    const timedOut = err?.code === 'STAGE_TIMEOUT';
     productIntelCardHydrationMetadata = {
       ...productIntelCardHydrationMetadata,
       failed: true,
+      timeout_count: timedOut
+        ? productIntelCardHydrationMetadata.timeout_count + 1
+        : productIntelCardHydrationMetadata.timeout_count,
     };
     logger.warn(
       { err: err?.message || String(err), items: head.length },
@@ -16808,17 +16834,21 @@ async function enrichSimilarProductsForPdpCards({
     card_enrichment_attempted_count: 0,
     card_enrichment_timeout_count: 0,
     card_enrichment_failed_count: 0,
+    card_enrichment_detail_hydration_enabled: detailHydrationEnabled,
+    card_enrichment_detail_hydration_skipped_count: detailHydrationEnabled
+      ? 0
+      : head.filter((item) => item && typeof item === 'object' && !hasSimilarCardImage(item)).length,
     card_enrichment_status: 'ready',
     product_intel_card_hydration: productIntelCardHydrationMetadata,
   };
-  if (!head.some((item) => shouldEnrichSimilarCard(item))) {
+  if (!head.some((item) => shouldEnrichSimilarCard(item, { allowDetailHydration }))) {
     return attachSimilarCardEnrichmentMetadata(fallback, metadata);
   }
 
   const enrichmentTask = Promise.all(
     head.map(async (item) => {
       if (!item || typeof item !== 'object') return item;
-      if (!shouldEnrichSimilarCard(item)) {
+      if (!shouldEnrichSimilarCard(item, { allowDetailHydration })) {
         return annotateSimilarCardStatus(item);
       }
       const merchantId = String(item.merchant_id || item.merchant?.id || item.merchant_uuid || '').trim();

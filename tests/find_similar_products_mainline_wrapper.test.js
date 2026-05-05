@@ -10,6 +10,7 @@ describe('find_similar_products mainline wrapper', () => {
     process.env.API_MODE = 'REAL';
     process.env.PIVOTA_API_BASE = apiBase;
     process.env.PIVOTA_API_KEY = 'test-token';
+    delete process.env.PDP_SIMILAR_CARD_DETAIL_ENRICH_ENABLED;
   });
 
   afterEach(() => {
@@ -117,6 +118,41 @@ describe('find_similar_products mainline wrapper', () => {
         card_enrichment_attempted_count: 0,
         card_enrichment_budget_ms: 100,
         card_enrichment_detail_budget_ms: 50,
+      }),
+    );
+  });
+
+  it('keeps public similar card detail hydration isolated even when the env flag is enabled', async () => {
+    process.env.PDP_SIMILAR_CARD_DETAIL_ENRICH_ENABLED = 'true';
+    const app = require('../src/server');
+
+    const items = await app._debug.enrichSimilarProductsForPdpCards({
+      items: [
+        {
+          product_id: 'sim_image_gap',
+          merchant_id: 'external_seed',
+          title: 'Image Missing Candidate',
+          card_highlight: 'Reviewed card copy is already present.',
+        },
+      ],
+      maxItems: 1,
+      budgetMs: 100,
+      detailBudgetMs: 50,
+    });
+    const metadata = app._debug.getSimilarCardEnrichmentMetadata(items);
+
+    expect(app._debug.shouldEnrichSimilarCard(items[0])).toBe(false);
+    expect(items[0]).toEqual(
+      expect.objectContaining({
+        card_highlight_status: 'ready',
+        card_image_status: 'image_missing',
+      }),
+    );
+    expect(metadata).toEqual(
+      expect.objectContaining({
+        card_enrichment_detail_hydration_enabled: false,
+        card_enrichment_attempted_count: 0,
+        card_enrichment_detail_hydration_skipped_count: 1,
       }),
     );
   });
