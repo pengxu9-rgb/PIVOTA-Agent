@@ -14,7 +14,6 @@ test('ProductEntity index feed pages approved canonical sig mappings only', asyn
     {
       query: async (sql, params) => {
         calls.push({ sql, params });
-        assert.match(sql, /external_product_seeds/);
         assert.match(sql, /pdp_identity_listing/);
         return {
           rows: [
@@ -79,7 +78,7 @@ test('ProductEntity index feed pages approved canonical sig mappings only', asyn
   );
 
   assert.equal(calls.length, 1);
-  assert.deepEqual(calls[0].params, [false, 'US', 'creator_agents', 3]);
+  assert.deepEqual(calls[0].params, [3]);
   assert.equal(result.status, 'success');
   assert.equal(result.products.length, 2);
   assert.equal(result.products[0].product_entity_id, 'sig_alpha');
@@ -120,7 +119,7 @@ test('ProductEntity index feed cursor advances with keyset values', async () => 
     { limit: 1, cursor: first.cursor_info.next_cursor },
     {
       query: async (_sql, params) => {
-        keysetParams.push(params.slice(3, 6));
+        keysetParams.push(params.slice(0, 3));
         return { rows: [] };
       },
     },
