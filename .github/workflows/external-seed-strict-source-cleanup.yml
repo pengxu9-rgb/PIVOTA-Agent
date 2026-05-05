@@ -76,6 +76,17 @@ jobs:
           fi
           node scripts/mark-kbeauty-strict-pdp-source-blockers.cjs "${args[@]}" \
             | tee "${out_dir}/summary.json"
+          sync_args=(
+            --market "${{ inputs.market }}"
+            --external-product-ids-file "${ids_file}"
+            --out "${out_dir}/identity-source-payload-sync-${report_name}"
+            --created-by "github_actions_strict_source_cleanup"
+          )
+          if [[ "${{ inputs.dry_run }}" != "true" ]]; then
+            sync_args+=(--write)
+          fi
+          node scripts/sync-external-seed-identity-source-payloads.cjs "${sync_args[@]}" \
+            | tee "${out_dir}/identity-source-payload-sync-summary.json"
 
       - name: Upload artifact
         if: always()
