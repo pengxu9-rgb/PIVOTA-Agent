@@ -939,6 +939,42 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     expect(payload.modules.find((module) => module.type === 'variant_selector')).toBeFalsy();
   });
 
+  test('renders a single external-seed size variant when authoritative size detail exists', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_skin1004_toner',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'Tea-Trica Purifying Toner',
+        category: 'Toner',
+        image_url: 'https://example.com/toner.png',
+        price: { amount: 17, currency: 'USD' },
+        size_detail_label: '210ml',
+        in_stock: true,
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    const variantSelector = payload.modules.find((module) => module.type === 'variant_selector');
+    expect(variantSelector).toBeTruthy();
+    expect(variantSelector?.data?.variants).toEqual([
+      expect.objectContaining({
+        variant_id: 'ext_skin1004_toner',
+        display_label: 'Size: 210ml',
+        options: [expect.objectContaining({ name: 'Size', value: '210ml', axis_kind: 'size' })],
+      }),
+    ]);
+    expect(payload.product.default_variant_id).toBe('ext_skin1004_toner');
+    expect(payload.product.variants).toEqual([
+      expect.objectContaining({
+        variant_id: 'ext_skin1004_toner',
+        title: '210ml',
+        options: [expect.objectContaining({ name: 'Size', value: '210ml', axis_kind: 'size' })],
+      }),
+    ]);
+  });
+
   test('preserves structured ingredient items without re-splitting numeric INCI commas', () => {
     const payload = buildPdpPayload({
       product: {

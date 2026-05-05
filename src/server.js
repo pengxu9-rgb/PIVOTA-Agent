@@ -22716,6 +22716,34 @@ function findPdpPayloadModuleData(pdpPayload, type) {
   return match?.data || null;
 }
 
+function buildLegacyProductDetailsData(...moduleDataList) {
+  const sections = [];
+  const seen = new Set();
+  for (const moduleData of moduleDataList) {
+    const rawSections = Array.isArray(moduleData?.sections) ? moduleData.sections : [];
+    for (const section of rawSections) {
+      if (!section || typeof section !== 'object') continue;
+      const heading = String(section.heading || section.title || '').trim();
+      const content = String(section.content || section.body || section.text || '').trim();
+      if (!heading || !content) continue;
+      const key = `${heading.toLowerCase()}::${content.slice(0, 160).toLowerCase()}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      sections.push({
+        ...section,
+        heading,
+        content,
+        content_type: section.content_type || section.contentType || 'text',
+      });
+    }
+  }
+  if (!sections.length) return null;
+  return {
+    sections: sections.slice(0, 12),
+    source: 'pdp_v2_structured_details_alias',
+  };
+}
+
 function mergeRecommendationModuleWithEnvelope(moduleData, envelope) {
   if (!moduleData || typeof moduleData !== 'object') return null;
   const envelopeMetadata = envelope?.metadata && typeof envelope.metadata === 'object' ? envelope.metadata : {};
@@ -25619,13 +25647,17 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	        includeAll ||
 	        includeList.includes('similar') ||
 	        includeList.includes('recommendations');
-		      const wantsProductIntel = includeAll || includeList.includes('product_intel');
-		      const wantsActiveIngredients = includeAll || includeList.includes('active_ingredients');
-		      const wantsIngredientsInci = includeAll || includeList.includes('ingredients_inci');
-		      const wantsHowToUse = includeAll || includeList.includes('how_to_use');
-		      const wantsProductOverview = includeAll || includeList.includes('product_overview');
-		      const wantsSupplementalDetails = includeAll || includeList.includes('supplemental_details');
-		      markPdpV2Phase('parse_request', parseRequestStartedAt);
+	      const wantsProductIntel = includeAll || includeList.includes('product_intel');
+	      const wantsActiveIngredients = includeAll || includeList.includes('active_ingredients');
+	      const wantsIngredientsInci = includeAll || includeList.includes('ingredients_inci');
+	      const wantsHowToUse = includeAll || includeList.includes('how_to_use');
+	      const wantsProductDetails = includeAll || includeList.includes('product_details');
+	      const wantsProductOverview =
+	        includeAll || includeList.includes('product_overview') || wantsProductDetails;
+	      const wantsSupplementalDetails =
+	        includeAll || includeList.includes('supplemental_details') || wantsProductDetails;
+	      const wantsProductFacts = includeAll || includeList.includes('product_facts');
+	      markPdpV2Phase('parse_request', parseRequestStartedAt);
 
 	      // Resolve the canonical product group first so every client sees the same details.
 		      let productGroupId = null;
@@ -26502,6 +26534,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       const howToUseData = findPdpPayloadModuleData(pdpPayload, 'how_to_use') || null;
       const productOverviewData = findPdpPayloadModuleData(pdpPayload, 'product_overview') || null;
       const supplementalDetailsData = findPdpPayloadModuleData(pdpPayload, 'supplemental_details') || null;
+      const productFactsData = findPdpPayloadModuleData(pdpPayload, 'product_facts') || null;
+      const productDetailsData = buildLegacyProductDetailsData(
+        productOverviewData,
+        productFactsData,
+        supplementalDetailsData,
+      );
       const variantSelectorData = findPdpPayloadModuleData(pdpPayload, 'variant_selector') || null;
 
       const canonicalPayload = stripResponseOwnedPdpModulesFromCanonicalPayload(pdpPayload);
@@ -26832,6 +26870,16 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         if (!productOverviewData) missing.push({ type: 'product_overview', reason: 'unavailable' });
       }
 
+      if (wantsProductFacts) {
+        modules.push({
+          type: 'product_facts',
+          required: false,
+          data: productFactsData,
+          ...(productFactsData ? {} : { reason: 'unavailable' }),
+        });
+        if (!productFactsData) missing.push({ type: 'product_facts', reason: 'unavailable' });
+      }
+
       if (wantsSupplementalDetails) {
         modules.push({
           type: 'supplemental_details',
@@ -26840,6 +26888,16 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           ...(supplementalDetailsData ? {} : { reason: 'unavailable' }),
         });
         if (!supplementalDetailsData) missing.push({ type: 'supplemental_details', reason: 'unavailable' });
+      }
+
+      if (wantsProductDetails) {
+        modules.push({
+          type: 'product_details',
+          required: false,
+          data: productDetailsData,
+          ...(productDetailsData ? {} : { reason: 'unavailable' }),
+        });
+        if (!productDetailsData) missing.push({ type: 'product_details', reason: 'unavailable' });
       }
 
       if (wantsReviewsPreview) {

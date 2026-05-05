@@ -258,6 +258,63 @@ describe('get_pdp_v2 stability semantics', () => {
     expect(canonicalModule?.data?.pdp_payload?.product?.payment_offer_evidence).toBeUndefined();
   });
 
+  it('honors legacy product_details include as an alias for structured PDP details', async () => {
+    const product = {
+      merchant_id: 'external_seed',
+      product_id: 'ext_alias_details_1',
+      source: 'external_seed',
+      title: 'Alias Details Toner',
+      brand: 'SKIN1004',
+      category: 'Toner',
+      image_url: 'https://example.com/alias-toner.png',
+      currency: 'USD',
+      price: {
+        amount: 18,
+        currency: 'USD',
+      },
+      pdp_description_raw: 'A balancing toner with centella for daily use.',
+      pdp_details_sections: [
+        {
+          heading: 'Clinical Results',
+          body: 'Consumer testing showed improved comfort after use.',
+        },
+      ],
+    };
+
+    const productDetailScope = mockProductDetailInvoke('external_seed', 'ext_alias_details_1', 200, {
+      product,
+    });
+
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'get_pdp_v2',
+        payload: {
+          include: ['product_details'],
+          product_ref: {
+            merchant_id: 'external_seed',
+            product_id: 'ext_alias_details_1',
+          },
+        },
+      })
+      .expect(200);
+
+    expect(productDetailScope.isDone()).toBe(true);
+    const productDetails = res.body.modules.find((module) => module.type === 'product_details');
+    expect(productDetails?.data?.sections).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          heading: 'Description',
+          content: expect.stringContaining('balancing toner'),
+        }),
+        expect.objectContaining({
+          heading: 'Clinical Results',
+          content: expect.stringContaining('improved comfort'),
+        }),
+      ]),
+    );
+  });
+
   it('keeps canonical not-found responses on 404 after mismatch correction fails', async () => {
     mockProductDetailInvoke('merch_wrong', 'ext_missing_1', 404, {
       error: 'PRODUCT_NOT_FOUND',

@@ -1282,6 +1282,39 @@ function buildImplicitSingleVariant(variant) {
   };
 }
 
+function pickSingleSkuSizeLabel(product) {
+  const candidates = [
+    product?.size_detail_label,
+    product?.sizeDetailLabel,
+    product?.net_size,
+    product?.netSize,
+    product?.net_content,
+    product?.netContent,
+    product?.product_volume,
+    product?.productVolume,
+    product?.volume,
+  ];
+  for (const candidate of candidates) {
+    const value = asNonEmptyString(candidate);
+    if (!value) continue;
+    if (/^(default|default title|single|one size|n\/a)$/i.test(value)) continue;
+    if (/(?:\d+\s*(?:m\s*l|ml|fl\.?\s*oz|oz|g|kg|pads?|ea|count|ct|pack|sheets?))\b/i.test(value)) {
+      return value;
+    }
+  }
+  return '';
+}
+
+function buildSingleSkuSizeOption(product) {
+  const sizeLabel = pickSingleSkuSizeLabel(product);
+  if (!sizeLabel) return null;
+  return {
+    name: 'Size',
+    value: sizeLabel,
+    axis_kind: 'size',
+  };
+}
+
 function toVariantPrice(input, currency) {
   if (!input) return undefined;
   const amount =
@@ -1314,6 +1347,7 @@ function buildVariants(product) {
   const currency = product.currency || 'USD';
   const rawVariants = Array.isArray(product.variants) ? product.variants : [];
   if (!rawVariants.length) {
+    const singleSkuSizeOption = buildSingleSkuSizeOption(product);
     const availabilityInStock = normalizeInStock(product.in_stock);
     const rawQty =
       product.available_quantity ?? product.inventory_quantity ?? product.quantity ?? product.stock;
@@ -1331,8 +1365,15 @@ function buildVariants(product) {
       {
         variant_id: product.product_id || product.id,
         sku_id: product.sku || product.product_id || product.id,
-        title: 'Default',
-        options: [],
+        title: singleSkuSizeOption?.value || 'Default',
+        options: singleSkuSizeOption ? [singleSkuSizeOption] : [],
+        ...(singleSkuSizeOption
+          ? {
+              display_label: `${singleSkuSizeOption.name}: ${singleSkuSizeOption.value}`,
+              axis_kind: singleSkuSizeOption.axis_kind,
+              source_quality_status: 'captured',
+            }
+          : {}),
         price: { current: { amount: normalizeAmount(product.price), currency } },
         availability,
         image_url: normalizePdpImageUrl(product.image_url) || undefined,

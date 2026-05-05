@@ -579,9 +579,13 @@ async function extractOfficialHtmlFields(host, html) {
   else if (host === 'tirtir.global') fields = await extractTirtirFields(html);
   else return {};
 
-  if (!fields.review_summary) {
-    const stampedReview = await fetchStampedReviewSummary(host, html);
-    if (stampedReview) fields.review_summary = stampedReview;
+  const stampedReview = await fetchStampedReviewSummary(host, html);
+  if (stampedReview) {
+    fields.review_summary = {
+      ...ensureObject(fields.review_summary),
+      ...stampedReview,
+      source_origin: stampedReview.source_origin || fields.review_summary?.source_origin,
+    };
   }
   return fields;
 }
