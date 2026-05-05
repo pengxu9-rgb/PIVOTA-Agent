@@ -62,9 +62,15 @@ function decodeBase64UrlJson(raw) {
 }
 
 function getCatalogServingIndexConfig(env = process.env) {
-  const baseUrl = asString(env.CATALOG_SERVING_INDEX_BASE_URL).replace(/\/+$/g, '');
+  const baseUrl = firstNonEmptyString(
+    env.CATALOG_SERVING_INDEX_BASE_URL,
+    env.CATALOG_SERVING_BASE_URL,
+  ).replace(/\/+$/g, '');
   const indexName = asString(env.CATALOG_SERVING_INDEX_NAME) || 'catalog_public_v1';
-  const apiKey = asString(env.CATALOG_SERVING_INDEX_API_KEY);
+  const apiKey = firstNonEmptyString(
+    env.CATALOG_SERVING_INDEX_API_KEY,
+    env.CATALOG_SERVING_API_KEY,
+  );
   const shadowReadEnabled =
     asString(env.CATALOG_SERVING_INDEX_SHADOW_READ_ENABLED).toLowerCase() === 'true';
   return {

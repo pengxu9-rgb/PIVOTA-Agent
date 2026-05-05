@@ -42,8 +42,10 @@ jobs:
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       CATALOG_SERVING_BASE_URL: ${{ secrets.CATALOG_SERVING_BASE_URL }}
+      CATALOG_SERVING_INDEX_BASE_URL: ${{ secrets.CATALOG_SERVING_INDEX_BASE_URL || secrets.CATALOG_SERVING_BASE_URL }}
       CATALOG_SERVING_INDEX_NAME: ${{ secrets.CATALOG_SERVING_INDEX_NAME }}
       CATALOG_SERVING_API_KEY: ${{ secrets.CATALOG_SERVING_API_KEY }}
+      CATALOG_SERVING_INDEX_API_KEY: ${{ secrets.CATALOG_SERVING_INDEX_API_KEY || secrets.CATALOG_SERVING_API_KEY }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4

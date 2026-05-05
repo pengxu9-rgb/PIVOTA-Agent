@@ -506,4 +506,20 @@ describe('catalog serving index', () => {
       ),
     ).toBe(true);
   });
+
+  test('index config accepts legacy workflow env aliases', () => {
+    expect(
+      getCatalogServingIndexConfig({
+        CATALOG_SERVING_BASE_URL: 'https://search-alias.example/',
+        CATALOG_SERVING_API_KEY: 'alias-secret',
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        enabled: true,
+        base_url: 'https://search-alias.example',
+        index_name: 'catalog_public_v1',
+        api_key: 'alias-secret',
+      }),
+    );
+  });
 });
