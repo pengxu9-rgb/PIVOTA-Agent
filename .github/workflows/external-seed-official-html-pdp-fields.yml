@@ -1,0 +1,86 @@
+name: External Seed Official HTML PDP Fields
+
+on:
+  workflow_dispatch:
+    inputs:
+      external_product_ids:
+        description: "Comma-separated external_product_id list"
+        required: true
+        type: string
+      market:
+        description: "Market code"
+        required: true
+        default: "US"
+        type: string
+      dry_run:
+        description: "Run dry-run only"
+        required: true
+        default: true
+        type: boolean
+
+jobs:
+  official-html-pdp-fields:
+    runs-on: ubuntu-latest
+    environment:
+      name: Pivota Agent / production
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Backfill official HTML PDP fields
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${DATABASE_URL:-}" ]]; then
+            echo "DATABASE_URL secret is required" >&2
+            exit 1
+          fi
+          out_dir="reports/workflow_ops/external-seed-official-html-pdp-fields/${{ github.run_id }}"
+          mkdir -p "${out_dir}"
+          ids_file="${out_dir}/external_product_ids.txt"
+          printf '%s\n' "${{ inputs.external_product_ids }}" \
+            | tr ',' '\n' \
+            | sed 's/^ *//;s/ *$//' \
+            | awk 'NF' > "${ids_file}"
+
+          args=(
+            --market "${{ inputs.market }}"
+            --external-product-ids-file "${ids_file}"
+            --out-dir "${out_dir}"
+          )
+          if [[ "${{ inputs.dry_run }}" == "true" ]]; then
+            args+=(--dry-run)
+          fi
+          node scripts/backfill-external-seed-official-html-pdp-fields.cjs "${args[@]}" \
+            | tee "${out_dir}/official-html-summary.json"
+
+          sync_args=(
+            --market "${{ inputs.market }}"
+            --external-product-ids-file "${ids_file}"
+            --out "${out_dir}/identity-source-payload-sync.json"
+            --created-by "github_actions_official_html_pdp_fields"
+          )
+          if [[ "${{ inputs.dry_run }}" != "true" ]]; then
+            sync_args+=(--write)
+          fi
+          node scripts/sync-external-seed-identity-source-payloads.cjs "${sync_args[@]}" \
+            | tee "${out_dir}/identity-source-payload-sync-summary.json"
+
+      - name: Upload artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: external-seed-official-html-pdp-fields-${{ github.run_id }}
+          path: reports/workflow_ops/external-seed-official-html-pdp-fields/${{ github.run_id }}
+          retention-days: 7
