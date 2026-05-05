@@ -2211,6 +2211,13 @@ const PDP_SIMILAR_MAX_CANDIDATE_LIMIT = Math.max(
   PDP_SIMILAR_MAX_DISPLAY_LIMIT,
   Math.min(120, Number(process.env.PDP_SIMILAR_MAX_CANDIDATE_LIMIT || 60) || 60),
 );
+const PDP_SIMILAR_READY_MIN_VISIBLE_COUNT = Math.max(
+  1,
+  Math.min(
+    PDP_SIMILAR_DEFAULT_DISPLAY_LIMIT,
+    Number(process.env.PDP_SIMILAR_READY_MIN_VISIBLE_COUNT || 6) || 6,
+  ),
+);
 const PDP_SIMILAR_CARD_DETAIL_ENRICH_ENABLED =
   String(process.env.PDP_SIMILAR_CARD_DETAIL_ENRICH_ENABLED || '').trim().toLowerCase() === 'true';
 const PDP_SIMILAR_CARD_ENRICH_BUDGET_MS = Math.max(
@@ -16749,19 +16756,26 @@ function calibrateSimilarMetadataForVisibleProducts({
       ? metadata.retrieval_mix
       : null;
   const visibleRetrievalMix = countVisibleSimilarSources(visibleProducts);
+  const readyMinVisibleCount = Math.min(safeRequestedLimit, PDP_SIMILAR_READY_MIN_VISIBLE_COUNT);
+  const severeUnderfill = visibleProducts.length > 0 && visibleProducts.length < readyMinVisibleCount;
+  const nonBlockingUnderfill = visibleProducts.length >= readyMinVisibleCount && visibleUnderfill > 0;
   const originalReasonCodes = Array.isArray(metadata?.low_confidence_reason_codes)
     ? metadata.low_confidence_reason_codes
     : [];
+  const nonBlockingReasonCodes = withoutReasonCode(
+    withoutReasonCode(originalReasonCodes, 'UNDERFILL_FOR_QUALITY'),
+    'UNDERFILL_MAINLINE_RECALL',
+  );
   const lowConfidenceReasonCodes =
-    visibleUnderfill > 0
-      ? appendReasonCode(originalReasonCodes, 'UNDERFILL_FOR_QUALITY')
-      : withoutReasonCode(originalReasonCodes, 'UNDERFILL_FOR_QUALITY');
+    severeUnderfill
+      ? appendReasonCode(nonBlockingReasonCodes, 'UNDERFILL_FOR_QUALITY')
+      : nonBlockingReasonCodes;
   const similarConfidence = String(metadata?.similar_confidence || '').trim() || (visibleProducts.length > 0 ? 'medium' : 'low');
   const lowConfidence = lowConfidenceReasonCodes.length > 0 || similarConfidence === 'low';
   const rawStatus = String(metadata?.similar_status || '').trim();
   const similarStatus =
     visibleProducts.length > 0
-      ? visibleUnderfill > 0
+      ? severeUnderfill
         ? 'underfilled'
         : 'ready'
       : rawStatus || 'empty';
@@ -16773,6 +16787,8 @@ function calibrateSimilarMetadataForVisibleProducts({
     requested_count: safeRequestedLimit,
     visible_count: visibleProducts.length,
     underfill: visibleUnderfill,
+    ready_min_visible_count: readyMinVisibleCount,
+    ...(nonBlockingUnderfill ? { underfill_nonblocking: true } : {}),
     low_confidence: lowConfidence,
     low_confidence_reason_codes: lowConfidenceReasonCodes,
     retrieval_mix: visibleRetrievalMix,
@@ -26482,9 +26498,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             ...relatedProductsEnvelope,
             items: relatedProducts,
             metadata: {
-              ...(relatedProductsEnvelope.metadata && typeof relatedProductsEnvelope.metadata === 'object'
-                ? relatedProductsEnvelope.metadata
-                : {}),
+              ...calibrateSimilarMetadataForVisibleProducts({
+                metadata:
+                  relatedProductsEnvelope.metadata && typeof relatedProductsEnvelope.metadata === 'object'
+                    ? relatedProductsEnvelope.metadata
+                    : {},
+                products: relatedProducts,
+                requestedLimit: similarLimit,
+              }),
               ...cardEnrichmentMetadata,
               card_enrichment_status:
                 cardEnrichmentMetadata.card_enrichment_status ||
