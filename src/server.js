@@ -6432,8 +6432,20 @@ const USE_HYBRID = API_MODE === 'HYBRID';
 const REAL_API_ENABLED = API_MODE === 'REAL' && Boolean(PIVOTA_API_KEY);
 
 // Load tool schema once for chat endpoint.
+// This runs at module-load time, so an unreadable / malformed file would
+// crash the worker before the HTTP server binds — and the default stack
+// trace ("Unexpected token ...") doesn't make the cause obvious. Rethrow
+// with the path included so it shows up clearly in deploy logs.
 const toolSchemaPath = path.join(__dirname, '..', 'docs', 'tool-schema.json');
-const toolSchema = JSON.parse(fs.readFileSync(toolSchemaPath, 'utf-8'));
+let toolSchema;
+try {
+  toolSchema = JSON.parse(fs.readFileSync(toolSchemaPath, 'utf-8'));
+} catch (err) {
+  throw new Error(
+    `Failed to load tool schema from ${toolSchemaPath}: ${err.message}. ` +
+    'Verify the file exists in the deployed image and contains valid JSON.'
+  );
+}
 const uiChatToolSchema = {
   name: toolSchema.name,
   description: toolSchema.description,
