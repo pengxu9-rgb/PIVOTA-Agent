@@ -1,0 +1,86 @@
+name: External Seed Strict Source Cleanup
+
+on:
+  workflow_dispatch:
+    inputs:
+      external_product_ids:
+        description: "Comma-separated external_product_id list"
+        required: true
+        type: string
+      market:
+        description: "Market code"
+        required: true
+        default: "US"
+        type: string
+      force_unsafe:
+        description: "Treat listed rows as unsafe source blockers"
+        required: true
+        default: true
+        type: boolean
+      dry_run:
+        description: "Run dry-run only"
+        required: true
+        default: true
+        type: boolean
+
+jobs:
+  strict-source-cleanup:
+    runs-on: ubuntu-latest
+    environment:
+      name: Pivota Agent / production
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run strict source cleanup
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${DATABASE_URL:-}" ]]; then
+            echo "DATABASE_URL secret is required" >&2
+            exit 1
+          fi
+          out_dir="reports/workflow_ops/external-seed-strict-source-cleanup/${{ github.run_id }}"
+          mkdir -p "${out_dir}"
+          ids_file="${out_dir}/external_product_ids.txt"
+          printf '%s\n' "${{ inputs.external_product_ids }}" \
+            | tr ',' '\n' \
+            | sed 's/^ *//;s/ *$//' \
+            | awk 'NF' > "${ids_file}"
+          report_name="dry-run.json"
+          if [[ "${{ inputs.dry_run }}" != "true" ]]; then
+            report_name="apply.json"
+          fi
+          args=(
+            --market "${{ inputs.market }}"
+            --ids-file "${ids_file}"
+            --fetch-chunk-size 2
+            --out "${out_dir}/${report_name}"
+          )
+          if [[ "${{ inputs.force_unsafe }}" == "true" ]]; then
+            args+=(--force-unsafe-ids-file "${ids_file}")
+          fi
+          if [[ "${{ inputs.dry_run }}" != "true" ]]; then
+            args+=(--write)
+          fi
+          node scripts/mark-kbeauty-strict-pdp-source-blockers.cjs "${args[@]}" \
+            | tee "${out_dir}/summary.json"
+
+      - name: Upload artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: external-seed-strict-source-cleanup-${{ github.run_id }}
+          path: reports/workflow_ops/external-seed-strict-source-cleanup/${{ github.run_id }}
+          retention-days: 7
