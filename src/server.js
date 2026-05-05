@@ -160,6 +160,7 @@ const {
   normalizeBrandText,
 } = require('./findProductsMulti/brandLexicon');
 const { buildClarification } = require('./findProductsMulti/clarification');
+const { mountAgentCenterLlmProbe } = require('./internal/agentCenterLlmProbe');
 const {
   EXTERNAL_SEED_MERCHANT_ID,
   buildExternalSeedProduct,
@@ -21161,6 +21162,12 @@ app.get('/debug/promotions-config', (req, res) => {
     promoAdminKeyPresent,
   });
 });
+
+// Internal endpoint for the pivota-backend Agent Center. Auth is its own
+// X-Pivota-Internal-Key header (distinct from X-ADMIN-KEY) so service auth and
+// human-ops admin auth can rotate independently. See
+// src/internal/agentCenterLlmProbe.js for the full V1 contract.
+mountAgentCenterLlmProbe(app);
 
 // Debug endpoint: inspect the raw promotions as seen by the gateway.
 // Protected by the same admin key as /api/merchant/promotions.
