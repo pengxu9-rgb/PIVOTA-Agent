@@ -109,7 +109,7 @@ const LOW_SIGNAL_ACTIVE_ITEMS = new Set([
 const INVALID_ACTIVE_FRAGMENT_RE =
   /^(?:see|learn more|tab on|restores damaged|chapped|none|n\/a|select shade|choose shade)$/i;
 const INCI_STRUCTURE_RE =
-  /\b(aqua|water|extract|oil|acid|glycol|glycerin|alcohol|amide|amine|ceramide|panthenol|niacinamide|tocopherol|hyaluronate|triglyceride|dimethicone|siloxane|ferment|butter|wax|seed|leaf|root|flower|fruit|sodium|potassium|chloride|oxide|dioxide|hydroxide|carbomer|cellulose|poly|capry|propanediol|butylene|ethylene|hexanediol|ethanol|glucoside|benzoate|sorbate|retinal|retinol|caffeine|bisabolol|arginine|ergothioneine)\b|peptide/i;
+  /\b(aqua|water|extract|oil|acid|glycol|glycerin|alcohol|amide|amine|ceramide|panthenol|niacinamide|tocopherol|hyaluronate|triglyceride|dimethicone|siloxane|ferment|butter|wax|seed|leaf|root|flower|fruit|sodium|potassium|chloride|oxide|dioxide|hydroxide|carbomer|cellulose|poly|polyisobutene|copolymer|pectin|capry|propanediol|butylene|ethylene|hexanediol|ethanol|glucoside|benzoate|sorbate|retinal|retinol|caffeine|bisabolol|arginine|ergothioneine)\b|peptide/i;
 const INCI_MARKETING_ONLY_RE =
   /\b(translucent|biodegradable|not tested on animals|cruelty[-\s]?free|paraben[-\s]?free|suitable for all skin types|all skin types|barely noticeable)\b/i;
 const ACTIVE_TRAILING_MARKETING_RE =

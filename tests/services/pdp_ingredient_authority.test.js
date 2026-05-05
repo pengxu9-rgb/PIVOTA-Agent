@@ -422,6 +422,31 @@ describe('pdpIngredientAuthority', () => {
     );
   });
 
+  test('keeps short official patch INCI lists with polymer and gum ingredients', () => {
+    const modules = buildStructuredPdpIngredientModules({
+      merchant_id: 'external_seed',
+      source: 'external_seed',
+      title: 'Tea-Trica Spot Cover Patch',
+      category: 'Treatment',
+      product_type: 'Mask/Pad',
+      canonical_url: 'https://www.skin1004.com/products/tea-trica-spot-cover-patch',
+      pdp_ingredients_raw:
+        'Polyisobutene, Cellulose gum, Hydrogenated Styrene/Methylstyrene/Indene copolymer, Pectin',
+    });
+
+    expect(modules.authority.purity_status).toBe('authoritative');
+    expect(modules.ingredientsInciData).toEqual(
+      expect.objectContaining({
+        items: [
+          'Polyisobutene',
+          'Cellulose gum',
+          'Hydrogenated Styrene/Methylstyrene/Indene copolymer',
+          'Pectin',
+        ],
+      }),
+    );
+  });
+
   test('filters ingredient function labels from role-annotated ingredient lists', () => {
     const authority = buildAuthoritativeIngredientView({
       pdp_ingredients_raw:
