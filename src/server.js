@@ -20895,6 +20895,24 @@ const healthRouteHandler = (req, res) => {
           warning: 'healthz_cache_stats_failed',
         }),
       );
+    })
+    .catch((finalErr) => {
+      // Safety net: if anything in the .then or the .catch above throws
+      // (e.g. discoveryHealthPromise unexpectedly rejecting, res.json()
+      // serialization failure, sync error in response construction) we
+      // must still send *some* response — otherwise the LB probe hangs
+      // and the worker silently looks unhealthy.
+      logger.error(
+        { err: finalErr && finalErr.message ? finalErr.message : String(finalErr) },
+        'healthz handler failed before sending a response',
+      );
+      if (!res.headersSent) {
+        res.status(503).json({
+          ok: false,
+          error: 'healthz_handler_failed',
+          detail: finalErr && finalErr.message ? finalErr.message : String(finalErr),
+        });
+      }
     });
 };
 
