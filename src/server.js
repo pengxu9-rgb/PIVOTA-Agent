@@ -70,6 +70,7 @@ const {
 } = require('./services/pdpReviewedIngredientAuthority');
 const {
   maybeBuildLiveSyntheticPdp,
+  resolveLivePdpIdentityGroupForPdp,
   searchPdpIdentityGroupsForQuery,
   backfillPdpIdentityGraph,
   promotePdpIdentityLiveRead,
@@ -25575,7 +25576,41 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 
 	      const entryProductId = productId;
 	      const entryProductIsExternalSeed = isExternalSeedProductId(entryProductId);
+        let productGroupAliasId = null;
 	      let externalSeedDirectPrecheckProduct = null;
+        if (
+          !canonicalProductRef &&
+          entryProductId &&
+          String(entryProductId).trim().toLowerCase().startsWith('sig_') &&
+          !variantId &&
+          !offerProductGroupId &&
+          !hasExplicitProductGroup
+        ) {
+          const resolveIdentityGroupAliasStartedAt = Date.now();
+          const identityGroupAlias = await resolveLivePdpIdentityGroupForPdp({
+            productGroupId: entryProductId,
+          }).catch((err) => {
+            logger.warn(
+              {
+                err: err?.message || String(err),
+                product_group_id: entryProductId,
+              },
+              'get_pdp_v2 identity product-group alias resolution failed',
+            );
+            return null;
+          });
+          markPdpV2Phase('resolve_identity_group_alias', resolveIdentityGroupAliasStartedAt);
+          if (identityGroupAlias?.canonical_product_ref?.product_id) {
+            productGroupAliasId = identityGroupAlias.product_group_id || entryProductId;
+            productGroupId = identityGroupAlias.product_group_id || entryProductId;
+            groupMembers = Array.isArray(identityGroupAlias.group_members)
+              ? identityGroupAlias.group_members
+              : groupMembers;
+            canonicalProductRef = identityGroupAlias.canonical_product_ref;
+            productId = String(canonicalProductRef.product_id || '').trim() || productId;
+            identityResolutionSource = 'identity_graph_product_group_alias';
+          }
+        }
 	      if (
 	        entryProductIsExternalSeed &&
 	        (!requestedMerchantId || requestedMerchantId === EXTERNAL_SEED_MERCHANT_ID)
@@ -26040,9 +26075,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	        fallbackProduct: canonicalProduct,
 	      });
 	      const identityGraphLiveStartedAt = Date.now();
+        const identityGraphLookupProductId =
+          productGroupAliasId && canonicalProductRef?.product_id
+            ? canonicalProductRef.product_id
+            : entryProductId || productId || canonicalProductRef?.product_id;
 	      identityGraphLive = await maybeBuildLiveSyntheticPdp({
           merchantId: requestedMerchantId || canonicalProductRef?.merchant_id,
-          productId: entryProductId || productId || canonicalProductRef?.product_id,
+          productId: identityGraphLookupProductId,
           canonicalProduct,
           bypassCache,
         }).catch(() => null);

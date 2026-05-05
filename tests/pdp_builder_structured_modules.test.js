@@ -76,6 +76,40 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
 
     expect(variantSelector).toBeTruthy();
     expect(variantSelector.data.selected_variant_id).toBe('sku_red_s');
+    expect(variantSelector.data.variants).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          variant_id: 'sku_red_s',
+          display_label: 'Color: Red / Size: Small',
+          options: expect.arrayContaining([
+            expect.objectContaining({ name: 'Color', value: 'Red' }),
+            expect.objectContaining({ name: 'Size', value: 'Small' }),
+          ]),
+        }),
+        expect.objectContaining({
+          variant_id: 'sku_blue_m',
+          display_label: 'Color: Blue / Size: Medium',
+        }),
+      ]),
+    );
+    expect(variantSelector.data.options).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'Color',
+          values: expect.arrayContaining([
+            expect.objectContaining({ value: 'Red', selected: true }),
+            expect.objectContaining({ value: 'Blue', selected: false }),
+          ]),
+        }),
+        expect.objectContaining({
+          name: 'Size',
+          values: expect.arrayContaining([
+            expect.objectContaining({ value: 'Small', selected: true }),
+            expect.objectContaining({ value: 'Medium', selected: false }),
+          ]),
+        }),
+      ]),
+    );
     expect(payload.product.variants).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -143,6 +177,19 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
 
     expect(variantSelector).toBeTruthy();
     expect(variantSelector?.data?.selected_variant_id).toBe('sku_50ml');
+    expect(variantSelector?.data?.variants).toEqual([
+      expect.objectContaining({
+        variant_id: 'sku_50ml',
+        display_label: 'Size: 50ml',
+        options: [expect.objectContaining({ name: 'Size', value: '50ml' })],
+      }),
+    ]);
+    expect(variantSelector?.data?.options).toEqual([
+      expect.objectContaining({
+        name: 'Size',
+        values: [expect.objectContaining({ value: '50ml', selected: true })],
+      }),
+    ]);
     expect(payload.product.default_variant_id).toBe('sku_50ml');
     expect(payload.product.variants).toEqual([
       expect.objectContaining({

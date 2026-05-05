@@ -86,6 +86,30 @@ function asString(value) {
   return String(value).trim();
 }
 
+function readTimeoutMsEnv(name, fallback, { min = 0, max = 300000 } = {}) {
+  const parsed = Number(process.env[name]);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(min, Math.min(max, Math.trunc(parsed)));
+}
+
+async function setIdentityWriteTransactionTimeouts(client) {
+  if (!client || typeof client.query !== 'function') return;
+  const lockTimeoutMs = readTimeoutMsEnv('PDP_IDENTITY_WRITE_LOCK_TIMEOUT_MS', 10000, {
+    min: 0,
+    max: 120000,
+  });
+  const statementTimeoutMs = readTimeoutMsEnv('PDP_IDENTITY_WRITE_STATEMENT_TIMEOUT_MS', 60000, {
+    min: 0,
+    max: 300000,
+  });
+  if (lockTimeoutMs > 0) {
+    await client.query(`SET LOCAL lock_timeout = '${lockTimeoutMs}ms'`);
+  }
+  if (statementTimeoutMs > 0) {
+    await client.query(`SET LOCAL statement_timeout = '${statementTimeoutMs}ms'`);
+  }
+}
+
 function stripNullBytesFromString(value) {
   return String(value || '').replace(/\u0000/g, '').replace(/\\u0000/gi, '');
 }
@@ -3067,6 +3091,68 @@ async function maybeBuildLiveSyntheticPdp({
   }
 }
 
+async function resolveLivePdpIdentityGroupForPdp({
+  productGroupId,
+  queryFn = query,
+} = {}) {
+  const groupId = asString(productGroupId);
+  if (!groupId || !PDP_IDENTITY_GRAPH_ENABLED || !process.env.DATABASE_URL || typeof queryFn !== 'function') {
+    return null;
+  }
+
+  try {
+    const rowsRes = await queryFn(
+      `
+        SELECT *
+        FROM pdp_identity_listing
+        WHERE sellable_item_group_id = $1
+          AND identity_status = 'approved'
+          AND live_read_enabled = true
+          AND review_required = false
+          AND ${buildActiveExternalSeedIdentityPredicate('pdp_identity_listing')}
+        ORDER BY
+          CASE WHEN source_tier = 'brand' THEN 0 ELSE 1 END,
+          identity_confidence DESC NULLS LAST,
+          updated_at DESC NULLS LAST,
+          created_at DESC NULLS LAST
+      `,
+      [groupId],
+    );
+    const rows = normalizeIdentityRows(rowsRes?.rows);
+    if (!rows.length) return null;
+
+    const commerceListing = pickDefaultCommerceListing(rows) || rows[0];
+    const composed = composeSyntheticCanonicalProduct({
+      requestedListing: commerceListing,
+      exactListings: rows,
+      lineListings: rows,
+    });
+    const canonicalProductRef =
+      composed?.canonical_product_ref ||
+      buildListingProductRef(rows.find((row) => asString(row.source_tier).toLowerCase() === 'brand')) ||
+      buildListingProductRef(rows[0]);
+    const selectedCommerceRef =
+      composed?.selected_commerce_ref ||
+      buildListingProductRef(commerceListing) ||
+      canonicalProductRef;
+    if (!canonicalProductRef?.merchant_id || !canonicalProductRef?.product_id) return null;
+
+    return {
+      product_group_id: groupId,
+      sellable_item_group_id: groupId,
+      canonical_product_ref: canonicalProductRef,
+      selected_commerce_ref: selectedCommerceRef || null,
+      group_members: rows.map((row) => ({
+        ...buildGroupMember(row),
+        is_primary: sameListingRef(row, canonicalProductRef),
+      })),
+    };
+  } catch (err) {
+    if (looksLikeRelationMissing(err)) return null;
+    throw err;
+  }
+}
+
 async function listLivePdpIdentityRowsForRefs({
   sourceListingRefs = [],
   queryFn = query,
@@ -3265,6 +3351,7 @@ async function promotePdpIdentityLiveRead({
     const written = await withClientFn(async (client) => {
       await client.query('BEGIN');
       try {
+        await setIdentityWriteTransactionTimeouts(client);
         for (const row of rowsToEnable) {
           const sourceRef = asString(row?.source_listing_ref);
           const payload = {
@@ -3943,6 +4030,7 @@ async function writeIdentityRows({ listings, reviewQueueEntries, dryRun = false,
   return withClientFn(async (client) => {
     await client.query('BEGIN');
     try {
+      await setIdentityWriteTransactionTimeouts(client);
       for (const listing of safeListings) {
         await client.query(
           `
@@ -4297,6 +4385,7 @@ module.exports = {
   buildIdentityListingFromProduct,
   composeSyntheticCanonicalProduct,
   maybeBuildLiveSyntheticPdp,
+  resolveLivePdpIdentityGroupForPdp,
   searchPdpIdentityGroupsForQuery,
   listLivePdpIdentityRowsForRefs,
   promotePdpIdentityLiveRead,

@@ -224,6 +224,12 @@ const MODULE_REQUIREMENTS = {
   },
   variant_selector: {
     requiredPaths: ['data.selected_variant_id'],
+    validate: (module) => {
+      const data = module?.data || {};
+      const variants = Array.isArray(data.variants) ? data.variants : [];
+      const options = Array.isArray(data.product_line_options) ? data.product_line_options : [];
+      return variants.length > 0 || options.length > 1;
+    },
   },
   product_overview: {
     requiredPaths: ['data.sections'],
@@ -1170,6 +1176,98 @@ function shouldPreserveImplicitSingleVariant(product, variants, productLineOptio
     variant?.source_quality_status || variant?.sourceQualityStatus,
   ).toLowerCase();
   return sourceQualityStatus === 'blocked' || sourceQualityStatus === '';
+}
+
+function buildVariantSelectorDisplayLabel(variant) {
+  const explicit = asNonEmptyString(variant?.display_label || variant?.displayLabel);
+  if (explicit) return explicit;
+  const options = filterBuilderDisplayableVariantOptions(variant?.options);
+  if (options.length === 1) {
+    return `${asNonEmptyString(options[0]?.name) || 'Option'}: ${asNonEmptyString(options[0]?.value)}`;
+  }
+  if (options.length > 1) {
+    return options
+      .map((option) => {
+        const name = asNonEmptyString(option?.name);
+        const value = asNonEmptyString(option?.value);
+        return name && value ? `${name}: ${value}` : value;
+      })
+      .filter(Boolean)
+      .join(' / ');
+  }
+  const title = asNonEmptyString(variant?.title);
+  return /^(default|default title|variant \d+)$/i.test(title) ? '' : title;
+}
+
+function buildVariantSelectorVariants(variants) {
+  return (Array.isArray(variants) ? variants : [])
+    .filter((variant) => variant && typeof variant === 'object' && !variant.hidden_from_selector)
+    .map((variant) => {
+      const options = filterBuilderDisplayableVariantOptions(variant.options).map((option) => ({
+        name: asNonEmptyString(option?.name),
+        value: asNonEmptyString(option?.value),
+        axis_kind: asNonEmptyString(option?.axis_kind || option?.axisKind) || undefined,
+      }));
+      const displayLabel = buildVariantSelectorDisplayLabel({ ...variant, options });
+      if (!displayLabel && !options.length) return null;
+      return {
+        variant_id: asNonEmptyString(variant.variant_id || variant.id),
+        sku_id: asNonEmptyString(variant.sku_id || variant.sku) || undefined,
+        title: asNonEmptyString(variant.title) || undefined,
+        display_label: displayLabel || undefined,
+        options,
+        price: variant.price,
+        availability: variant.availability,
+        image_url: normalizePdpImageUrl(variant.image_url || variant.image) || undefined,
+        label_image_url:
+          normalizePdpImageUrl(variant.label_image_url || variant.swatch_image_url || variant.thumbnail_url) ||
+          undefined,
+        swatch: variant.swatch,
+        axis_kind: asNonEmptyString(variant.axis_kind || variant.axisKind) || undefined,
+        source_quality_status:
+          asNonEmptyString(variant.source_quality_status || variant.sourceQualityStatus) || undefined,
+      };
+    })
+    .filter((variant) => variant && variant.variant_id);
+}
+
+function buildVariantSelectorOptions(selectorVariants, defaultVariant) {
+  const grouped = new Map();
+  const selectedVariantId = asNonEmptyString(defaultVariant?.variant_id || defaultVariant?.id);
+  for (const variant of Array.isArray(selectorVariants) ? selectorVariants : []) {
+    const variantId = asNonEmptyString(variant?.variant_id || variant?.id);
+    for (const option of filterBuilderDisplayableVariantOptions(variant?.options)) {
+      const name = asNonEmptyString(option?.name);
+      const value = asNonEmptyString(option?.value);
+      if (!name || !value) continue;
+      const axisKey = normalizeBuilderOptionName(name);
+      const valueKey = `${axisKey}:${value.toLowerCase()}`;
+      if (!grouped.has(axisKey)) {
+        grouped.set(axisKey, {
+          name,
+          axis_kind: asNonEmptyString(option?.axis_kind || option?.axisKind) || undefined,
+          values: new Map(),
+        });
+      }
+      const group = grouped.get(axisKey);
+      if (!group.values.has(valueKey)) {
+        group.values.set(valueKey, {
+          value,
+          label: value,
+          variant_ids: [],
+          selected: false,
+        });
+      }
+      const row = group.values.get(valueKey);
+      if (variantId && !row.variant_ids.includes(variantId)) row.variant_ids.push(variantId);
+      if (variantId && selectedVariantId && variantId === selectedVariantId) row.selected = true;
+    }
+  }
+  return Array.from(grouped.values()).map((group) => ({
+    name: group.name,
+    axis_kind: group.axis_kind,
+    values: Array.from(group.values.values()),
+  }));
 }
 
 function buildImplicitSingleVariant(variant) {
@@ -3612,12 +3710,16 @@ function buildPdpPayload(args) {
     });
   }
   if (shouldRenderVariantSelector(product, variants, productLineOptions)) {
+    const selectorVariants = buildVariantSelectorVariants(visibleVariants);
+    const selectorOptions = buildVariantSelectorOptions(selectorVariants, defaultVariant);
     modules.push({
       module_id: 'm_variant',
       type: 'variant_selector',
       priority: 95,
       data: {
         selected_variant_id: defaultVariant.variant_id,
+        ...(selectorVariants.length ? { variants: selectorVariants } : {}),
+        ...(selectorOptions.length ? { options: selectorOptions } : {}),
         ...(productLineOptions.length > 1 ? { product_line_options: productLineOptions } : {}),
         ...(productLineOptions.length > 1 && productLineOptionName
           ? { product_line_option_name: productLineOptionName }

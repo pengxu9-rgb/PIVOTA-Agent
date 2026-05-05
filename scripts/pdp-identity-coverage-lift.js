@@ -3,6 +3,7 @@
 const {
   runPdpIdentityCoverageLift,
 } = require('../src/services/pdpIdentityGraph');
+const { closePool } = require('../src/db');
 
 function argValue(name) {
   const idx = process.argv.indexOf(`--${name}`);
@@ -52,17 +53,23 @@ async function main() {
   process.stdout.write(`${JSON.stringify({ ok: true, result }, null, 2)}\n`);
 }
 
-main().catch((err) => {
-  process.stderr.write(
-    `${JSON.stringify(
-      {
-        ok: false,
-        error: 'PDP_IDENTITY_COVERAGE_LIFT_FAILED',
-        message: err?.message || String(err),
-      },
-      null,
-      2,
-    )}\n`,
-  );
-  process.exitCode = 1;
-});
+main()
+  .catch((err) => {
+    process.stderr.write(
+      `${JSON.stringify(
+        {
+          ok: false,
+          error: 'PDP_IDENTITY_COVERAGE_LIFT_FAILED',
+          message: err?.message || String(err),
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    process.exitCode = 1;
+  })
+  .finally(async () => {
+    try {
+      await closePool();
+    } catch {}
+  });

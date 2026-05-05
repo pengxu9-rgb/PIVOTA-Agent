@@ -1181,6 +1181,61 @@ describe('pdpIdentityGraph', () => {
     expect(result?.product_line_id).toBe('pl_ordinary_serum');
   });
 
+  test('resolveLivePdpIdentityGroupForPdp maps a public sellable group id to its live canonical ref', async () => {
+    jest.resetModules();
+    process.env = {
+      ...ORIGINAL_ENV,
+      NODE_ENV: 'test',
+      DATABASE_URL: 'postgres://test',
+      PDP_IDENTITY_GRAPH_ENABLED: 'true',
+    };
+    const { resolveLivePdpIdentityGroupForPdp } = require('../../src/services/pdpIdentityGraph');
+    const sourceRow = {
+      source_listing_ref: 'external_seed:ext_ordinary_lash_brow',
+      merchant_id: 'external_seed',
+      product_id: 'ext_ordinary_lash_brow',
+      source_kind: 'external_seed',
+      source_tier: 'brand',
+      live_read_enabled: true,
+      sellable_item_group_id: 'sig_ordinary_lash_brow',
+      product_line_id: 'pl_ordinary_lash_brow',
+      review_family_id: 'rf_ordinary_lash_brow',
+      identity_status: 'approved',
+      identity_confidence: 0.92,
+      review_required: false,
+      brand_norm: 'the ordinary',
+      match_basis: ['official_url:https://theordinary.com/products/lash-brow'],
+      variant_axes: { volume: '5ml' },
+      source_payload: {
+        title: 'Multi-Peptide Lash and Brow Serum',
+        brand: 'The Ordinary',
+      },
+    };
+    const queryFn = jest.fn(async (sql, params) => {
+      expect(String(sql)).toContain('sellable_item_group_id = $1');
+      expect(params).toEqual(['sig_ordinary_lash_brow']);
+      return { rows: [sourceRow] };
+    });
+
+    const result = await resolveLivePdpIdentityGroupForPdp({
+      productGroupId: 'sig_ordinary_lash_brow',
+      queryFn,
+    });
+
+    expect(result?.product_group_id).toBe('sig_ordinary_lash_brow');
+    expect(result?.canonical_product_ref).toEqual({
+      merchant_id: 'external_seed',
+      product_id: 'ext_ordinary_lash_brow',
+    });
+    expect(result?.group_members).toEqual([
+      expect.objectContaining({
+        merchant_id: 'external_seed',
+        product_id: 'ext_ordinary_lash_brow',
+        is_primary: true,
+      }),
+    ]);
+  });
+
   test('maybeBuildLiveSyntheticPdp ignores inactive stale external-seed rows on exact live reads', async () => {
     jest.resetModules();
     process.env = {
@@ -2354,13 +2409,12 @@ describe('pdpIdentityGraph', () => {
       .mockResolvedValueOnce({ rows: [candidateRow] })
       .mockResolvedValueOnce({ rows: [candidateRow, merchantRow] });
     const client = {
-      query: jest
-        .fn()
-        .mockResolvedValueOnce({})
-        .mockResolvedValueOnce({})
-        .mockResolvedValueOnce({})
-        .mockResolvedValueOnce({ rowCount: 2 })
-        .mockResolvedValueOnce({}),
+      query: jest.fn(async (sql) => {
+        if (String(sql || '').includes('UPDATE pdp_identity_listing')) {
+          return { rowCount: 2 };
+        }
+        return {};
+      }),
     };
     const withClientFn = jest.fn(async (work) => work(client));
 
@@ -2375,6 +2429,8 @@ describe('pdpIdentityGraph', () => {
 
     expect(withClientFn).toHaveBeenCalledTimes(1);
     expect(client.query).toHaveBeenCalledWith('BEGIN');
+    expect(client.query).toHaveBeenCalledWith("SET LOCAL lock_timeout = '10000ms'");
+    expect(client.query).toHaveBeenCalledWith("SET LOCAL statement_timeout = '60000ms'");
     expect(client.query).toHaveBeenCalledWith('COMMIT');
     const insertCalls = client.query.mock.calls.filter((call) =>
       String(call[0]).includes('INSERT INTO pdp_identity_override'),
