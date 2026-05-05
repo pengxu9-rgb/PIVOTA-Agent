@@ -25493,6 +25493,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           : [];
 	      const includeAll = includeList.includes('all');
 	      const wantsOffers = includeAll || includeList.includes('offers');
+        const wantsVariantSelector =
+          includeAll ||
+          includeList.includes('variant_selector') ||
+          includeList.includes('variants');
 	      const wantsReviewsPreview = includeAll || includeList.includes('reviews_preview');
 	      const wantsSimilar =
 	        includeAll ||
@@ -26381,6 +26385,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       const howToUseData = findPdpPayloadModuleData(pdpPayload, 'how_to_use') || null;
       const productOverviewData = findPdpPayloadModuleData(pdpPayload, 'product_overview') || null;
       const supplementalDetailsData = findPdpPayloadModuleData(pdpPayload, 'supplemental_details') || null;
+      const variantSelectorData = findPdpPayloadModuleData(pdpPayload, 'variant_selector') || null;
 
       const canonicalPayload = stripResponseOwnedPdpModulesFromCanonicalPayload(pdpPayload);
       const canonicalPayloadProductRef = {
@@ -26444,6 +26449,15 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       ];
 
       const missing = [];
+      if (wantsVariantSelector) {
+        modules.push({
+          type: 'variant_selector',
+          required: false,
+          data: variantSelectorData,
+          ...(variantSelectorData ? {} : { reason: 'unavailable' }),
+        });
+        if (!variantSelectorData) missing.push({ type: 'variant_selector', reason: 'unavailable' });
+      }
       const reviewsMissingReason =
         wantsReviewsPreview && !reviewsModule?.data ? 'no_results' : null;
       const similarDeferred =
