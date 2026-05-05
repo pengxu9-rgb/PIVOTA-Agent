@@ -290,6 +290,73 @@ describe('pdpIdentityGraph', () => {
     expect(composed.product.pdp_content_source).toBe('canonical_inherited');
   });
 
+  test('composeSyntheticCanonicalProduct does not inherit sibling content for strict unsafe external seed rows', () => {
+    const { composeSyntheticCanonicalProduct } = require('../../src/services/pdpIdentityGraph');
+
+    const requestedUnsafe = {
+      merchant_id: 'external_seed',
+      product_id: 'ext_skin1004_unavailable',
+      source_kind: 'external_seed',
+      source_tier: 'brand',
+      sellable_item_group_id: 'sig_skin1004_foam',
+      product_line_id: 'pl_skin1004_foam',
+      identity_status: 'approved',
+      identity_confidence: 0.98,
+      source_payload: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_skin1004_unavailable',
+        title: 'Poremizing Deep Cleansing Foam',
+        brand: 'SKIN1004',
+        price: { amount: 12.6, currency: 'USD' },
+        strict_pdp_source_blocker_v1: {
+          unsafe_source: true,
+          reason_codes: ['candidate_not_active_sellable_public_pdp'],
+        },
+      },
+    };
+    const siblingContentBase = {
+      merchant_id: 'external_seed',
+      product_id: 'ext_skin1004_sibling_content',
+      source_kind: 'external_seed',
+      source_tier: 'brand',
+      sellable_item_group_id: 'sig_skin1004_foam',
+      product_line_id: 'pl_skin1004_foam',
+      identity_status: 'approved',
+      identity_confidence: 0.98,
+      source_payload: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_skin1004_sibling_content',
+        title: 'Poremizing Deep Cleansing Foam',
+        brand: 'SKIN1004',
+        pdp_ingredients_raw: 'Water, Glycerin, Centella Asiatica Extract',
+        pdp_how_to_use_raw: 'Apply to wet skin and rinse.',
+        ingredients_inci: ['Water', 'Glycerin', 'Centella Asiatica Extract'],
+        active_ingredients: ['Centella Asiatica Extract'],
+      },
+    };
+
+    const composed = composeSyntheticCanonicalProduct({
+      requestedListing: requestedUnsafe,
+      exactListings: [requestedUnsafe, siblingContentBase],
+      lineListings: [requestedUnsafe, siblingContentBase],
+    });
+
+    expect(composed.canonical_product_ref).toEqual({
+      merchant_id: 'external_seed',
+      product_id: 'ext_skin1004_unavailable',
+    });
+    expect(composed.selected_commerce_ref).toEqual({
+      merchant_id: 'external_seed',
+      product_id: 'ext_skin1004_unavailable',
+    });
+    expect(composed.product.pdp_content_source).toBe('self');
+    expect(composed.product.strict_pdp_source_inheritance_blocked).toBe(true);
+    expect(composed.product.pdp_ingredients_raw).toBeUndefined();
+    expect(composed.product.pdp_how_to_use_raw).toBeUndefined();
+    expect(composed.product.ingredients_inci).toBeUndefined();
+    expect(composed.product.active_ingredients).toBeUndefined();
+  });
+
   test('composeSyntheticCanonicalProduct fills missing canonical content from product-line authority without changing commerce', () => {
     const { buildIdentityListingFromProduct, composeSyntheticCanonicalProduct } = require('../../src/services/pdpIdentityGraph');
 

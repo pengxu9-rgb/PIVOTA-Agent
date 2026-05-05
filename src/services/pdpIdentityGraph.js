@@ -2190,6 +2190,63 @@ function overlaySelectedCommerceFields(product, selectedListing, fallbackProduct
   return next;
 }
 
+function isTruthyStrictSourceFlag(value) {
+  return value === true || asString(value).toLowerCase() === 'true';
+}
+
+function readStrictPdpSourceBlockerMarker(payload) {
+  const source = asPlainObject(payload) || {};
+  const seedData = asPlainObject(source.seed_data) || {};
+  const snapshot = asPlainObject(seedData.snapshot) || {};
+  return (
+    asPlainObject(source.strict_pdp_source_blocker_v1) ||
+    asPlainObject(seedData.strict_pdp_source_blocker_v1) ||
+    asPlainObject(snapshot.strict_pdp_source_blocker_v1) ||
+    null
+  );
+}
+
+function isStrictUnsafePdpSourceListing(listing) {
+  const marker = readStrictPdpSourceBlockerMarker(asPlainObject(listing?.source_payload));
+  return isTruthyStrictSourceFlag(marker?.unsafe_source);
+}
+
+function stripStrictUnsafePdpContentFields(product) {
+  const next = {
+    ...(product && typeof product === 'object' ? product : {}),
+  };
+  for (const key of [
+    'description',
+    'pdp_description_raw',
+    'raw_ingredient_text_clean',
+    'pdp_ingredients_raw',
+    'pdp_active_ingredients_raw',
+    'pdp_how_to_use_raw',
+    'how_to_use',
+    'howToUse',
+    'usage',
+    'directions',
+    'ingredients_inci',
+    'ingredientsInci',
+    'inci_list',
+    'inci_normalized',
+    'active_ingredients',
+    'key_ingredients',
+    'hero_ingredients',
+    'ingredient_intel',
+    'ingredient_tokens',
+    'ingredient_names',
+    'ingredientNames',
+    'pdp_details_sections',
+    'details_sections',
+    'pdp_faq_items',
+    'content_image_urls',
+  ]) {
+    delete next[key];
+  }
+  return next;
+}
+
 function composeSyntheticCanonicalProduct({
   requestedListing,
   exactListings,
@@ -2200,11 +2257,22 @@ function composeSyntheticCanonicalProduct({
   const sortedLine = sortListingsForAuthority(lineListings);
   const isInternalListing = (listing) =>
     asString(listing?.source_kind).toLowerCase() === 'internal';
-  const contentExact = sortListingsForAuthority(sortedExact.filter((listing) => !isInternalListing(listing)));
-  const contentLine = sortListingsForAuthority(sortedLine.filter((listing) => !isInternalListing(listing)));
+  const requestedListingIsStrictUnsafe = isStrictUnsafePdpSourceListing(requestedListing);
+  const canUseListingAsContent = (listing) => {
+    if (!listing || typeof listing !== 'object') return false;
+    if (isInternalListing(listing)) return false;
+    if (isStrictUnsafePdpSourceListing(listing)) return false;
+    if (requestedListingIsStrictUnsafe && !sameListingRef(listing, requestedListing)) return false;
+    return true;
+  };
+  const contentExact = sortListingsForAuthority(sortedExact.filter(canUseListingAsContent));
+  const contentLine = requestedListingIsStrictUnsafe
+    ? []
+    : sortListingsForAuthority(sortedLine.filter(canUseListingAsContent));
   const contentListing =
     contentExact[0] ||
     contentLine[0] ||
+    (requestedListingIsStrictUnsafe ? requestedListing : null) ||
     sortedExact[0] ||
     sortedLine[0] ||
     requestedListing ||
@@ -2227,7 +2295,10 @@ function composeSyntheticCanonicalProduct({
 
   const contentMergeListings = [];
   const seenContentListingKeys = new Set();
-  for (const listing of [...contentExact, ...contentLine, ...sortedExact, ...sortedLine]) {
+  const mergeListingCandidates = requestedListingIsStrictUnsafe
+    ? [requestedListing]
+    : [...contentExact, ...contentLine, ...sortedExact, ...sortedLine];
+  for (const listing of mergeListingCandidates) {
     if (!listing || typeof listing !== 'object') continue;
     const listingKey = [
       asString(listing?.merchant_id),
@@ -2342,6 +2413,11 @@ function composeSyntheticCanonicalProduct({
         .find((items) => items.length > 0);
       if (nextSections?.length > 0) product.pdp_details_sections = nextSections;
     }
+  }
+
+  if (requestedListingIsStrictUnsafe) {
+    product = stripStrictUnsafePdpContentFields(product);
+    product.strict_pdp_source_inheritance_blocked = true;
   }
 
   const exactImages = [];
