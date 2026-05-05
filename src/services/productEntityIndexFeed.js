@@ -111,10 +111,12 @@ async function getProductEntityIndexFeed(payload = {}, deps = {}) {
   const offset = cursor && Number.isFinite(Number(cursor.offset))
     ? Math.max(0, Math.floor(Number(cursor.offset)))
     : Math.max(0, (page - 1) * limit);
+  const cursorSourceListingRef = nonEmptyString(cursor?.source_listing_ref);
   const cursorSortUpdatedAt = nonEmptyString(cursor?.sort_updated_at);
   const cursorProductEntityId = nonEmptyString(cursor?.product_entity_id);
   const cursorSourceProductId = nonEmptyString(cursor?.source_product_id);
-  const useKeysetCursor = Boolean(
+  const useSourceRefCursor = Boolean(cursorSourceListingRef);
+  const useSortKeysetCursor = !useSourceRefCursor && Boolean(
     cursorSortUpdatedAt && cursorProductEntityId && cursorSourceProductId,
   );
   const market = nonEmptyString(payload.market, process.env.EXTERNAL_SEED_MARKET, 'US');
@@ -122,8 +124,12 @@ async function getProductEntityIndexFeed(payload = {}, deps = {}) {
   const includeAttached = payload.include_attached === true || payload.includeAttached === true;
   const fetchLimit = limit + 1;
   const params = [];
+  let identityPaginationWhere = '';
   let paginationWhere = '';
-  if (useKeysetCursor) {
+  if (useSourceRefCursor) {
+    const sourceRefParam = params.push(cursorSourceListingRef);
+    identityPaginationWhere = `AND pil.source_listing_ref > $${sourceRefParam}`;
+  } else if (useSortKeysetCursor) {
     const sortParam = params.push(cursorSortUpdatedAt);
     const productParam = params.push(cursorProductEntityId);
     const sourceParam = params.push(cursorSourceProductId);
@@ -145,7 +151,7 @@ async function getProductEntityIndexFeed(payload = {}, deps = {}) {
   params.push(fetchLimit);
   const limitParam = params.length;
   let offsetClause = '';
-  if (!useKeysetCursor && offset > 0) {
+  if (!useSourceRefCursor && !useSortKeysetCursor && offset > 0) {
     params.push(offset);
     offsetClause = `OFFSET $${params.length}`;
   }
@@ -154,6 +160,7 @@ async function getProductEntityIndexFeed(payload = {}, deps = {}) {
     `
       WITH mapped AS (
         SELECT
+          pil.source_listing_ref,
           pil.sellable_item_group_id AS product_entity_id,
           coalesce(
             nullif(pil.product_id, ''),
@@ -208,14 +215,13 @@ async function getProductEntityIndexFeed(payload = {}, deps = {}) {
           AND pil.source_listing_ref LIKE 'external_seed:%'
           AND pil.identity_status = 'approved'
           AND pil.live_read_enabled = true
+          ${identityPaginationWhere}
       )
       SELECT *
       FROM mapped
       ${paginationWhere}
       ORDER BY
-        sort_updated_at DESC,
-        product_entity_id ASC,
-        source_product_id ASC
+        source_listing_ref ASC
       LIMIT $${limitParam}
       ${offsetClause}
     `,
@@ -231,9 +237,7 @@ async function getProductEntityIndexFeed(payload = {}, deps = {}) {
   const lastRow = pageRows[pageRows.length - 1];
   const nextCursor = hasNextPage && lastRow
     ? encodeCursor({
-      sort_updated_at: lastRow.sort_updated_at,
-      product_entity_id: lastRow.product_entity_id,
-      source_product_id: lastRow.source_product_id,
+      source_listing_ref: lastRow.source_listing_ref,
       market,
       tool,
       include_attached: includeAttached,
@@ -245,11 +249,11 @@ async function getProductEntityIndexFeed(payload = {}, deps = {}) {
     success: true,
     products,
     total,
-    page: useKeysetCursor ? page : Math.floor(offset / limit) + 1,
+    page: useSourceRefCursor || useSortKeysetCursor ? page : Math.floor(offset / limit) + 1,
     page_size: products.length,
     pagination: {
       limit,
-      offset: useKeysetCursor ? null : offset,
+      offset: useSourceRefCursor || useSortKeysetCursor ? null : offset,
       total_count: total || null,
       has_more: hasNextPage,
     },
@@ -264,10 +268,14 @@ async function getProductEntityIndexFeed(payload = {}, deps = {}) {
       market,
       tool,
       include_attached: includeAttached,
-      cursor_mode: useKeysetCursor ? 'keyset' : 'initial_or_offset',
+      cursor_mode: useSourceRefCursor
+        ? 'source_listing_ref'
+        : useSortKeysetCursor
+          ? 'keyset'
+          : 'initial_or_offset',
       rows_returned: pageRows.length,
       products_returned_count: products.length,
-      next_offset: useKeysetCursor ? null : nextOffset,
+      next_offset: useSourceRefCursor || useSortKeysetCursor ? null : nextOffset,
     },
   };
 }

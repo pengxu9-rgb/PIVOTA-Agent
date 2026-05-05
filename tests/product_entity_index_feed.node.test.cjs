@@ -18,6 +18,7 @@ test('ProductEntity index feed pages approved canonical sig mappings only', asyn
         return {
           rows: [
             {
+              source_listing_ref: 'external_seed:ext_alpha',
               product_entity_id: 'sig_alpha',
               source_product_id: 'ext_alpha',
               external_product_id: 'ext_alpha',
@@ -36,6 +37,7 @@ test('ProductEntity index feed pages approved canonical sig mappings only', asyn
               total_rows: 3,
             },
             {
+              source_listing_ref: 'external_seed:ext_beta',
               product_entity_id: 'sig_beta',
               source_product_id: 'ext_beta',
               external_product_id: 'ext_beta',
@@ -54,6 +56,7 @@ test('ProductEntity index feed pages approved canonical sig mappings only', asyn
               total_rows: 3,
             },
             {
+              source_listing_ref: 'external_seed:ext_gamma',
               product_entity_id: 'sig_gamma',
               source_product_id: 'ext_gamma',
               external_product_id: 'ext_gamma',
@@ -88,13 +91,14 @@ test('ProductEntity index feed pages approved canonical sig mappings only', asyn
   assert.ok(result.cursor_info.next_cursor);
 });
 
-test('ProductEntity index feed cursor advances with keyset values', async () => {
+test('ProductEntity index feed cursor advances with source listing ref', async () => {
   const first = await getProductEntityIndexFeed(
     { limit: 1 },
     {
       query: async () => ({
         rows: [
           {
+            source_listing_ref: 'external_seed:ext_alpha',
             product_entity_id: 'sig_alpha',
             source_product_id: 'ext_alpha',
             title: 'Alpha Serum',
@@ -103,6 +107,7 @@ test('ProductEntity index feed cursor advances with keyset values', async () => 
             total_rows: 2,
           },
           {
+            source_listing_ref: 'external_seed:ext_beta',
             product_entity_id: 'sig_beta',
             source_product_id: 'ext_beta',
             title: 'Beta Serum',
@@ -119,12 +124,12 @@ test('ProductEntity index feed cursor advances with keyset values', async () => 
     { limit: 1, cursor: first.cursor_info.next_cursor },
     {
       query: async (_sql, params) => {
-        keysetParams.push(params.slice(0, 3));
+        keysetParams.push(params);
         return { rows: [] };
       },
     },
   );
   assert.deepEqual(keysetParams, [
-    ['2026-05-01T00:00:00.000Z', 'sig_alpha', 'ext_alpha'],
+    ['external_seed:ext_alpha', 2],
   ]);
 });
