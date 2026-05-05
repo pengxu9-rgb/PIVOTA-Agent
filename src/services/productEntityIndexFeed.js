@@ -232,7 +232,7 @@ async function getProductEntityIndexFeed(payload = {}, deps = {}) {
           pil.identity_confidence DESC NULLS LAST,
           pil.updated_at DESC NULLS LAST,
           source_rows.updated_at DESC NULLS LAST
-      ),
+      )
       SELECT *
       FROM mapped
       ${paginationWhere}
