@@ -43,8 +43,14 @@ const PRIMARY_ISSUE_TYPE_BY_SCAN_MODE = {
   search_grounded_product_discovery_test: 'ai_visibility_loss',
 };
 
-const DEFAULT_MAX_RUNS = 3;
-const HARD_MAX_RUNS = 8;
+// V1.5: bumped from 3/8 → 10/20. With temperature=0 the V1 default of 3
+// runs produced essentially three identical answers; the score had only
+// four discrete values (0/33/66/100) regardless of true variance. 10 runs
+// at temperature 0.3 (see Gemini config below) gives meaningful samples
+// while staying within token budgets that don't break Gemini's grounding
+// cap. Hard limit raised to 20 to give ops headroom for tighter probes.
+const DEFAULT_MAX_RUNS = 10;
+const HARD_MAX_RUNS = 20;
 
 const DEFAULT_GEMINI_TIMEOUT_MS = 25_000;
 const GEMINI_MODEL = process.env.PIVOTA_AGENT_CENTER_GEMINI_MODEL || 'gemini-2.5-flash';
@@ -590,8 +596,14 @@ async function buildGeminiProbe(input) {
   // grounding (Gemini interleaves tool calls with text), so we drop strict
   // JSON mode and rely on `unwrapJson`'s prose-fallback to extract the
   // structured fields from the response.
+  // V1.5: temperature=0.3 (was 0). At 0 every run produced ~identical
+  // answers, defeating the point of running multiple queries. 0.3 gives
+  // Gemini room to surface different sources/phrasings across runs while
+  // staying low enough that the score reflects the product's real
+  // visibility (not random noise). Determinism for tests is preserved by
+  // monkey-patching the client, not by the temperature.
   const generationConfig = {
-    temperature: 0,
+    temperature: 0.3,
     tools: [{ googleSearch: {} }],
   };
 
