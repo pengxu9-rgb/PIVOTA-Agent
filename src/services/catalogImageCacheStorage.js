@@ -86,7 +86,7 @@ function getCatalogImageCacheRuntimePublicBaseUrl() {
     process.env.CATALOG_IMAGE_CACHE_PROXY_PUBLIC_BASE_URL ||
       process.env.CATALOG_IMAGE_CACHE_RUNTIME_PUBLIC_BASE_URL ||
       process.env.PIVOTA_AGENT_PUBLIC_BASE_URL ||
-      (process.env.NODE_ENV === 'production' ? 'https://pivota-agent-production.up.railway.app' : ''),
+      'https://pivota-agent-production.up.railway.app',
   );
 }
 
