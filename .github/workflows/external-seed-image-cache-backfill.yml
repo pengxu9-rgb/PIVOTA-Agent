@@ -83,6 +83,7 @@ jobs:
             exit 1
           fi
           if [[ "${{ inputs.dry_run }}" != "true" ]]; then
+            missing_storage=false
             for key in \
               CATALOG_IMAGE_CACHE_S3_ENDPOINT \
               CATALOG_IMAGE_CACHE_S3_BUCKET \
@@ -91,10 +92,36 @@ jobs:
               CATALOG_IMAGE_CACHE_PUBLIC_BASE_URL
             do
               if [[ -z "${!key:-}" ]]; then
-                echo "${key} secret is required for apply" >&2
-                exit 1
+                missing_storage=true
               fi
             done
+            if [[ "${missing_storage}" == "true" ]]; then
+              echo "Catalog image cache storage secrets are not available to GitHub; enqueueing production runner job instead."
+              out_dir="reports/workflow_ops/external-seed-image-cache-backfill/${{ github.run_id }}"
+              mkdir -p "${out_dir}"
+              enqueue_args=(
+                --market "${{ inputs.market }}"
+                --limit "${{ inputs.limit }}"
+                --fetch-mode "${{ inputs.fetch_mode }}"
+                --requested-by "github-actions:${{ github.run_id }}"
+                --out "${out_dir}/enqueue.json"
+              )
+              if [[ -n "${{ inputs.product_id }}" ]]; then
+                enqueue_args+=(--product-id "${{ inputs.product_id }}")
+              fi
+              if [[ -n "${{ inputs.brand }}" ]]; then
+                enqueue_args+=(--brand "${{ inputs.brand }}")
+              fi
+              if [[ -n "${{ inputs.host }}" ]]; then
+                enqueue_args+=(--host "${{ inputs.host }}")
+              fi
+              if [[ "${{ inputs.force_cache }}" == "true" ]]; then
+                enqueue_args+=(--force-cache)
+              fi
+              node scripts/enqueue-external-seed-image-cache-job.cjs "${enqueue_args[@]}" \
+                | tee "${out_dir}/summary.json"
+              exit 0
+            fi
           fi
 
           out_dir="reports/workflow_ops/external-seed-image-cache-backfill/${{ github.run_id }}"

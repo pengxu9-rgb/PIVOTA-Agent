@@ -21,6 +21,10 @@ const {
   scheduleExternalSeedImageCacheBootstrap,
 } = require('./services/externalSeedImageCacheBootstrap');
 const {
+  getExternalSeedImageCacheJobRunnerStatus,
+  scheduleExternalSeedImageCacheJobRunner,
+} = require('./services/externalSeedImageCacheJobRunner');
+const {
   getCatalogImageCacheObject,
   normalizeCatalogImageCacheKey,
 } = require('./services/catalogImageCacheStorage');
@@ -20878,6 +20882,7 @@ const healthRouteHandler = (req, res) => {
     pdp_v2_core_hot_cache: snapshotPdpV2CoreHotCacheStats(),
     pdp_recommendations_cache: getPdpRecsCacheStats(),
     external_seed_image_cache_bootstrap: getExternalSeedImageCacheBootstrapStatus(),
+    external_seed_image_cache_job_runner: getExternalSeedImageCacheJobRunnerStatus(),
     products_available: discoveryHealth?.discovery_ready === true,
     catalog_cache: includeCacheStats
       ? {
@@ -20970,6 +20975,7 @@ const healthRouteHandler = (req, res) => {
           pdp_v2_core_hot_cache: snapshotPdpV2CoreHotCacheStats(),
           pdp_recommendations_cache: getPdpRecsCacheStats(),
           external_seed_image_cache_bootstrap: getExternalSeedImageCacheBootstrapStatus(),
+          external_seed_image_cache_job_runner: getExternalSeedImageCacheJobRunnerStatus(),
           products_available: discoveryHealth?.discovery_ready === true,
           startup_guards: {
             aurora_routes_critical: auroraStartupCritical,
@@ -34183,6 +34189,23 @@ if (require.main === module) {
         logger.warn(
           { reason: imageCacheBootstrap.reason },
           'Catalog image cache bootstrap was enabled but not scheduled',
+        );
+      }
+
+      const imageCacheJobRunner = scheduleExternalSeedImageCacheJobRunner();
+      if (imageCacheJobRunner.scheduled) {
+        logger.info(
+          {
+            interval_ms: imageCacheJobRunner.config.intervalMs,
+            initial_delay_ms: imageCacheJobRunner.config.initialDelayMs,
+            max_jobs_per_tick: imageCacheJobRunner.config.maxJobsPerTick,
+          },
+          'External seed image cache job runner scheduled',
+        );
+      } else if (imageCacheJobRunner.reason !== 'disabled') {
+        logger.warn(
+          { reason: imageCacheJobRunner.reason },
+          'External seed image cache job runner was enabled but not scheduled',
         );
       }
     });
