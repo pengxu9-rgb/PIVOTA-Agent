@@ -358,7 +358,64 @@ function extractTirtirSheetRef(html) {
   };
 }
 
-async function fetchTirtirSheetIngredient(sheetRef) {
+const TIRTIR_TITLE_STOPWORDS = new Set([
+  'tirtir',
+  'global',
+  'the',
+  'and',
+  'with',
+  'for',
+  'set',
+  'pack',
+]);
+
+function normalizeTirtirTitleTokens(value) {
+  return Array.from(
+    new Set(
+      normalizeText(value)
+        .toLowerCase()
+        .replace(/&/g, ' and ')
+        .replace(/[^a-z0-9]+/g, ' ')
+        .split(/\s+/)
+        .map((token) => token.trim())
+        .filter((token) => token.length >= 2 && !TIRTIR_TITLE_STOPWORDS.has(token)),
+    ),
+  );
+}
+
+function normalizeTirtirTitleKey(value) {
+  return normalizeTirtirTitleTokens(value).join(' ');
+}
+
+function scoreTirtirSheetProductName(productTitle, sheetProductName) {
+  const titleKey = normalizeTirtirTitleKey(productTitle);
+  const sheetKey = normalizeTirtirTitleKey(sheetProductName);
+  if (!titleKey || !sheetKey) return 0;
+  if (sheetKey === titleKey) return 1;
+  if (sheetKey.startsWith(`${titleKey} `) || sheetKey.includes(` ${titleKey} `)) return 0.95;
+  const titleTokens = normalizeTirtirTitleTokens(productTitle);
+  const sheetTokens = new Set(normalizeTirtirTitleTokens(sheetProductName));
+  if (!titleTokens.length || !sheetTokens.size) return 0;
+  const shared = titleTokens.filter((token) => sheetTokens.has(token)).length;
+  return shared / Math.max(1, titleTokens.length);
+}
+
+function findTirtirSheetIngredientRow(rows, productTitle) {
+  const title = normalizeText(productTitle);
+  if (!title) return null;
+  let best = null;
+  for (const row of rows) {
+    const productName = normalizeText(row[1]);
+    const ingredients = normalizeText(row[2]);
+    if (!productName || !looksLikeFullInci(ingredients)) continue;
+    const score = scoreTirtirSheetProductName(title, productName);
+    if (score < 0.8) continue;
+    if (!best || score > best.score) best = { productName, ingredients, score };
+  }
+  return best;
+}
+
+async function fetchTirtirSheetIngredient(sheetRef, productTitle) {
   if (!sheetRef?.url) return null;
   const response = await fetch(sheetRef.url, {
     redirect: 'follow',
@@ -367,17 +424,11 @@ async function fetchTirtirSheetIngredient(sheetRef) {
   });
   if (!response.ok) return null;
   const rows = parseCsvRows(await response.text());
-  for (const row of rows) {
-    const productName = normalizeText(row[1]);
-    const ingredients = normalizeText(row[2]);
-    if (productName && looksLikeFullInci(ingredients)) {
-      return { productName, ingredients, sourceUrl: sheetRef.url };
-    }
-  }
-  return null;
+  const match = findTirtirSheetIngredientRow(rows, productTitle);
+  return match ? { ...match, sourceUrl: sheetRef.url } : null;
 }
 
-async function extractTirtirFields(html) {
+async function extractTirtirFields(html, options = {}) {
   const fields = {};
 
   const descriptionText = cleanSectionText(extractHtmlClassBlock(html, 'tab-content-0'));
@@ -393,12 +444,15 @@ async function extractTirtirFields(html) {
     .replace(/\bRead more\b/gi, '')
     .trim();
   const sheetRef = extractTirtirSheetRef(html);
-  const sheetIngredient = !looksLikeFullInci(ingredientsText) ? await fetchTirtirSheetIngredient(sheetRef) : null;
+  const sheetIngredient =
+    !looksLikeFullInci(ingredientsText)
+      ? await fetchTirtirSheetIngredient(sheetRef, options.productTitle)
+      : null;
   if (sheetIngredient?.ingredients) {
     ingredientsText = sheetIngredient.ingredients;
     detailSections.push({
       heading: 'Variant ingredient source',
-      body: `Official TIRTIR ingredient sheet is variant-level. This PDP stores the listed default variant ingredient row; shade-specific pigments may vary by variant. Stored variant: ${sheetIngredient.productName}.`,
+      body: `Official TIRTIR ingredient sheet is variant-level and product-name matched before storage. This PDP stores the listed default variant ingredient row; shade-specific pigments may vary by variant. Stored variant: ${sheetIngredient.productName}.`,
     });
   }
   if (looksLikeFullInci(ingredientsText)) fields.pdp_ingredients_raw = ingredientsText;
@@ -572,11 +626,11 @@ async function fetchStampedReviewSummary(host, html) {
   };
 }
 
-async function extractOfficialHtmlFields(host, html) {
+async function extractOfficialHtmlFields(host, html, options = {}) {
   let fields = {};
   if (host === 'skin1004.com') fields = extractSkin1004Fields(html);
   else if (host === 'medicube.us') fields = extractMedicubeFields(html);
-  else if (host === 'tirtir.global') fields = await extractTirtirFields(html);
+  else if (host === 'tirtir.global') fields = await extractTirtirFields(html, options);
   else return {};
 
   const stampedReview = await fetchStampedReviewSummary(host, html);
@@ -821,7 +875,7 @@ async function main() {
       const fetched = await fetchHtml(url);
       result.http_status = fetched.status;
       result.final_url = fetched.final_url;
-      const extracted = await extractOfficialHtmlFields(host, fetched.html);
+      const extracted = await extractOfficialHtmlFields(host, fetched.html, { productTitle: row.title });
       const { seedData, patchKeys } = buildSeedDataPatch(row, extracted);
       result.patch_keys = patchKeys;
       result.extracted_summary = {
@@ -881,12 +935,22 @@ async function main() {
   console.log(JSON.stringify(summary, null, 2));
 }
 
-main()
-  .catch((error) => {
-    console.error(error?.stack || error);
-    process.exitCode = 1;
-  })
-  .finally(async () => {
-    await closePool().catch(() => {});
-    if (process.exitCode) process.exit(process.exitCode);
-  });
+if (require.main === module) {
+  main()
+    .catch((error) => {
+      console.error(error?.stack || error);
+      process.exitCode = 1;
+    })
+    .finally(async () => {
+      await closePool().catch(() => {});
+      if (process.exitCode) process.exit(process.exitCode);
+    });
+}
+
+module.exports = {
+  _internals: {
+    findTirtirSheetIngredientRow,
+    normalizeTirtirTitleKey,
+    scoreTirtirSheetProductName,
+  },
+};
