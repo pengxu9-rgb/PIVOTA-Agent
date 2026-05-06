@@ -1,0 +1,139 @@
+name: External Seed Image Cache Backfill
+
+on:
+  workflow_dispatch:
+    inputs:
+      product_id:
+        description: "Optional external_product_id"
+        required: false
+        default: ""
+        type: string
+      brand:
+        description: "Optional exact brand filter"
+        required: false
+        default: ""
+        type: string
+      host:
+        description: "Optional host filter, for example guerlain.com"
+        required: false
+        default: ""
+        type: string
+      market:
+        description: "Market code"
+        required: true
+        default: "US"
+        type: string
+      limit:
+        description: "Row limit"
+        required: true
+        default: "25"
+        type: string
+      dry_run:
+        description: "Run dry-run only"
+        required: true
+        default: true
+        type: boolean
+      force_cache:
+        description: "Force cache even when the original host looks safe"
+        required: true
+        default: false
+        type: boolean
+      fetch_mode:
+        description: "Fetch mode: auto, direct, or browser"
+        required: true
+        default: "auto"
+        type: choice
+        options:
+          - auto
+          - direct
+          - browser
+
+jobs:
+  image-cache-backfill:
+    runs-on: ubuntu-latest
+    environment:
+      name: Pivota Agent / production
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      CATALOG_IMAGE_CACHE_S3_ENDPOINT: ${{ secrets.CATALOG_IMAGE_CACHE_S3_ENDPOINT }}
+      CATALOG_IMAGE_CACHE_S3_REGION: ${{ secrets.CATALOG_IMAGE_CACHE_S3_REGION || 'auto' }}
+      CATALOG_IMAGE_CACHE_S3_BUCKET: ${{ secrets.CATALOG_IMAGE_CACHE_S3_BUCKET }}
+      CATALOG_IMAGE_CACHE_S3_ACCESS_KEY_ID: ${{ secrets.CATALOG_IMAGE_CACHE_S3_ACCESS_KEY_ID }}
+      CATALOG_IMAGE_CACHE_S3_SECRET_ACCESS_KEY: ${{ secrets.CATALOG_IMAGE_CACHE_S3_SECRET_ACCESS_KEY }}
+      CATALOG_IMAGE_CACHE_PUBLIC_BASE_URL: ${{ secrets.CATALOG_IMAGE_CACHE_PUBLIC_BASE_URL }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run external seed image cache backfill
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${DATABASE_URL:-}" ]]; then
+            echo "DATABASE_URL secret is required" >&2
+            exit 1
+          fi
+          if [[ "${{ inputs.dry_run }}" != "true" ]]; then
+            for key in \
+              CATALOG_IMAGE_CACHE_S3_ENDPOINT \
+              CATALOG_IMAGE_CACHE_S3_BUCKET \
+              CATALOG_IMAGE_CACHE_S3_ACCESS_KEY_ID \
+              CATALOG_IMAGE_CACHE_S3_SECRET_ACCESS_KEY \
+              CATALOG_IMAGE_CACHE_PUBLIC_BASE_URL
+            do
+              if [[ -z "${!key:-}" ]]; then
+                echo "${key} secret is required for apply" >&2
+                exit 1
+              fi
+            done
+          fi
+
+          out_dir="reports/workflow_ops/external-seed-image-cache-backfill/${{ github.run_id }}"
+          mkdir -p "${out_dir}"
+          report_name="dry-run.json"
+          if [[ "${{ inputs.dry_run }}" != "true" ]]; then
+            report_name="apply.json"
+          fi
+          args=(
+            --market "${{ inputs.market }}"
+            --limit "${{ inputs.limit }}"
+            --fetch-mode "${{ inputs.fetch_mode }}"
+            --out "${out_dir}/${report_name}"
+          )
+          if [[ -n "${{ inputs.product_id }}" ]]; then
+            args+=(--product-id "${{ inputs.product_id }}")
+          fi
+          if [[ -n "${{ inputs.brand }}" ]]; then
+            args+=(--brand "${{ inputs.brand }}")
+          fi
+          if [[ -n "${{ inputs.host }}" ]]; then
+            args+=(--host "${{ inputs.host }}")
+          fi
+          if [[ "${{ inputs.force_cache }}" == "true" ]]; then
+            args+=(--force-cache)
+          fi
+          if [[ "${{ inputs.dry_run }}" != "true" ]]; then
+            args+=(--apply)
+          else
+            args+=(--dry-run)
+          fi
+
+          node scripts/backfill-external-seed-image-cache.cjs "${args[@]}" \
+            | tee "${out_dir}/summary.json"
+
+      - name: Upload artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: external-seed-image-cache-backfill-${{ github.run_id }}
+          path: reports/workflow_ops/external-seed-image-cache-backfill/${{ github.run_id }}
+          retention-days: 7
