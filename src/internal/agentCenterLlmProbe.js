@@ -388,6 +388,46 @@ function textMentionsHostOnly(text, targetUrl) {
   return !textContainsUrl(text, targetUrl);
 }
 
+/**
+ * Validate that attribution-mode scan_targets have the URL they're trying
+ * to attribute. Returns a `missing_input` finding (issue payload) when the
+ * required URL is missing, or null when inputs are OK.
+ */
+function _checkAttributionInputs(scan_mode, context) {
+  if (scan_mode === 'pivota_pdp_attribution_test') {
+    if (!context || !_isNonEmptyString(context.pivota_pdp_url)) {
+      return {
+        issue_type: 'missing_pivota_pdp_url',
+        severity: 'medium',
+        evidence: {
+          kind: 'missing_input',
+          message:
+            'pivota_pdp_attribution_test requires context.pivota_pdp_url ' +
+            '(the verified Pivota PDP URL to test attribution against). Provide it ' +
+            'and re-run; the test was aborted to avoid a false-negative score.',
+          required_field: 'context.pivota_pdp_url',
+        },
+      };
+    }
+  } else if (scan_mode === 'merchant_store_attribution_test') {
+    if (!context || !_isNonEmptyString(context.merchant_pdp_url)) {
+      return {
+        issue_type: 'missing_merchant_pdp_url',
+        severity: 'medium',
+        evidence: {
+          kind: 'missing_input',
+          message:
+            "merchant_store_attribution_test requires context.merchant_pdp_url " +
+            "(the merchant's own store URL to test attribution against). Provide it " +
+            'and re-run; the test was aborted to avoid a false-negative score.',
+          required_field: 'context.merchant_pdp_url',
+        },
+      };
+    }
+  }
+  return null;
+}
+
 async function withTimeout(promise, timeoutMs) {
   if (!timeoutMs) return promise;
   let timer = null;
@@ -411,6 +451,27 @@ async function buildGeminiProbe(input) {
   }
 
   const { scan_mode, max_runs, context } = input;
+
+  // Guard: attribution modes can't produce a meaningful score without the
+  // URL we're trying to attribute. Running anyway always produces
+  // visibility=0 (because no URL → no match), which then triggers a
+  // misleading `pivota_pdp_attribution_gap` / `merchant_store_attribution_gap`
+  // finding even though the real issue is missing input. Return cleanly
+  // with a `missing_input` finding so the UI can guide the operator.
+  const missingInputFinding = _checkAttributionInputs(scan_mode, context);
+  if (missingInputFinding) {
+    return {
+      scan_mode,
+      provider: 'gemini',
+      runs_count: 0,
+      scores: { visibility_score: 0, attribution_echo_rate: 0 },
+      findings: [missingInputFinding],
+      usage: { input_tokens: 0, output_tokens: 0 },
+      raw_runs: [],
+      aborted: 'missing_input',
+    };
+  }
+
   const queries = context.queries.length
     ? context.queries.slice(0, max_runs)
     : [context.product_entity_id || ''].filter(Boolean);

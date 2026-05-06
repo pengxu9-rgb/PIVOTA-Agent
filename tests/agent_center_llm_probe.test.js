@@ -487,4 +487,68 @@ describe('agentCenterLlmProbe — buildGeminiProbe with mocked client + groundin
     // Bare unparseable returns null
     expect(unwrapJson('not json at all')).toBeNull();
   });
+
+  test('pivota_pdp_attribution aborts cleanly when pivota_pdp_url missing', async () => {
+    // Critical: V1 ran the test anyway, scored 0%, and produced a
+    // misleading `pivota_pdp_attribution_gap` finding — when the real
+    // problem was the operator forgot to provide the URL.
+    let calls = 0;
+    const fake = async () => {
+      calls += 1;
+      return { text: '{}', candidates: [{ content: { parts: [{ text: '{}' }] } }] };
+    };
+    const probe = installFakeClient(fake);
+    const out = await probe._internals.buildGeminiProbe({
+      scan_mode: 'pivota_pdp_attribution_test',
+      max_runs: 3,
+      context: { queries: ['where to buy'], pivota_pdp_url: '' },
+    });
+    expect(calls).toBe(0); // No Gemini call burned
+    expect(out.aborted).toBe('missing_input');
+    expect(out.findings).toEqual([
+      expect.objectContaining({
+        issue_type: 'missing_pivota_pdp_url',
+        evidence: expect.objectContaining({ kind: 'missing_input' }),
+      }),
+    ]);
+    // Score is 0 but that's because the test didn't run, not because the
+    // PDP wasn't found. The `aborted` field is what the UI keys off of.
+  });
+
+  test('merchant_store_attribution aborts cleanly when merchant_pdp_url missing', async () => {
+    let calls = 0;
+    const fake = async () => {
+      calls += 1;
+      return { text: '{}', candidates: [{ content: { parts: [{ text: '{}' }] } }] };
+    };
+    const probe = installFakeClient(fake);
+    const out = await probe._internals.buildGeminiProbe({
+      scan_mode: 'merchant_store_attribution_test',
+      max_runs: 3,
+      context: { queries: ['where to buy'], merchant_pdp_url: '   ' }, // whitespace-only
+    });
+    expect(calls).toBe(0);
+    expect(out.aborted).toBe('missing_input');
+    expect(out.findings[0].issue_type).toBe('missing_merchant_pdp_url');
+  });
+
+  test('open_visibility tests do NOT require a URL — runs as normal', async () => {
+    // Regression guard: the URL guard must not affect non-attribution modes.
+    let called = 0;
+    const fake = async () => {
+      called += 1;
+      return {
+        text: '{"product_visible": true}',
+        candidates: [{ content: { parts: [{ text: '{"product_visible": true}' }] } }],
+      };
+    };
+    const probe = installFakeClient(fake);
+    const out = await probe._internals.buildGeminiProbe({
+      scan_mode: 'open_product_visibility_test',
+      max_runs: 1,
+      context: { queries: ['test'], product_entity_id: 'p1' },
+    });
+    expect(called).toBe(1);
+    expect(out.aborted).toBeUndefined();
+  });
 });
