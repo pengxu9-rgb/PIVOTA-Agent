@@ -5609,6 +5609,12 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
           anchorTokens: postAnchorBasis.tokens,
         });
   const domainEntropyPost = computeDomainEntropy(filtered);
+  // PR-06: when the pool is empty, domain entropy is meaningless (any value
+  // computeDomainEntropy returns is an artifact of the empty input, not a
+  // signal). Treat entropy_ok as true on empty so downstream gating uses
+  // candidates_ok alone — which already encodes "we have nothing".
+  const entropyOkPost =
+    postCandidateCount === 0 ? true : domainEntropyPost <= effectiveMaxDomainEntropy;
   const postQuality = {
     candidates: postCandidateCount,
     anchor_ratio: anchorRatioPost,
@@ -5623,7 +5629,7 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
     anchor_ok:
       anchorRatioPost >= effectiveMinAnchorRatio ||
       (clamp01(intent?.confidence?.domain) >= 0.75 && domainEntropyPost <= effectiveMaxDomainEntropy),
-    entropy_ok: domainEntropyPost <= effectiveMaxDomainEntropy,
+    entropy_ok: entropyOkPost,
   };
   const postQualityOk =
     postQuality.candidates_ok && postQuality.anchor_ok && postQuality.entropy_ok;
@@ -5681,9 +5687,14 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
       clarifyBudgetMaxRounds >= 0 &&
       clarifyBudgetUsedRounds >= clarifyBudgetMaxRounds;
     const resolvedScenarioFromContext = String(slotState.resolved_slots?.scenario || '').trim();
+    // PR-06: previously gated on `postCandidateCount > 0 || preDomainFilterCandidates.length > 0 || before > 0`
+    // which prevented fail-open from firing when the pool was fully empty.
+    // That blocked downstream supplement paths from seeing context_fail_open_applied=true
+    // and pushed the request into clarify-clear instead of recovery.
+    // Now: allow fail-open on empty pools as long as scenario context resolved
+    // and queryClass is in the allowlist.
     const canApplyContextFailOpen =
       resolvedScenarioFromContext.length > 0 &&
-      (postCandidateCount > 0 || preDomainFilterCandidates.length > 0 || before > 0) &&
       !clarifyBudgetExhausted &&
       ['mission', 'scenario', 'category'].includes(String(queryClass || ''));
     if (canApplyContextFailOpen) {
