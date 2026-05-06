@@ -1,0 +1,131 @@
+{
+  "contract_version": "external_seed.reviewed_product_specs_seed.v1",
+  "reviewed_at": "2026-05-06",
+  "review_policy": {
+    "authority": "reviewed_product_level_spec_evidence",
+    "fallback_allowed": false,
+    "notes": "Only write product-level size/count evidence from official PDP text or reviewed retailer product specifications. Do not infer from title tokens or product category."
+  },
+  "entries": [
+    {
+      "external_product_id": "ext_de52f233645e757f2fcf89b0",
+      "brand": "TIRTIR",
+      "title": "Waterism Lip Plumper",
+      "canonical_url": "https://tirtir.global/products/waterism-lip-plumper",
+      "size_detail_label": "3.3 g",
+      "net_content": "3.3 g",
+      "review_state": "assistant_reviewed",
+      "sources": [
+        {
+          "source_kind": "recognized_retailer_product_spec",
+          "source_url": "https://www.tirabeauty.com/product/tirtir-waterism-lip-plumper-3-3-g-8681971",
+          "evidence": "Retailer product title lists Waterism Lip Plumper (3.3 g)."
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_78264a19fce5cc3d40f69737",
+      "brand": "TIRTIR",
+      "title": "Niacinamide 20% Serum",
+      "canonical_url": "https://tirtir.global/products/niacinamide-20-serum",
+      "size_detail_label": "1.01 fl oz / 30 mL",
+      "net_content": "30 mL",
+      "net_size": "1.01 fl oz",
+      "review_state": "assistant_reviewed",
+      "sources": [
+        {
+          "source_kind": "recognized_retailer_product_spec",
+          "source_url": "https://www.iherb.com/pr/tirtir-niacinamide-20-serum-1-01-fl-oz-30-ml/140613",
+          "evidence": "Retailer product title lists 1.01 fl oz (30 ml)."
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_263b61b2d374b255d121c928",
+      "brand": "TIRTIR",
+      "title": "Mask Fit Makeup Fixer",
+      "canonical_url": "https://tirtir.global/products/mask-fit-makeup-fixer",
+      "size_detail_label": "80 mL",
+      "net_content": "80 mL",
+      "review_state": "assistant_reviewed",
+      "sources": [
+        {
+          "source_kind": "recognized_retailer_product_spec",
+          "source_url": "https://www.boots.com/tirtir-mask-fit-make-up-fixer-80ml-10368501",
+          "evidence": "Retailer product title and size line list 80 mL."
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_e2e6c1d3f3d55314bd0a3702",
+      "brand": "TIRTIR",
+      "title": "Pure Vitamin C24 Serum",
+      "canonical_url": "https://tirtir.global/products/pure-vitamin-c24-serum",
+      "size_detail_label": "1.01 fl oz / 30 mL",
+      "net_content": "30 mL",
+      "net_size": "1.01 fl oz",
+      "review_state": "assistant_reviewed",
+      "sources": [
+        {
+          "source_kind": "recognized_retailer_product_spec",
+          "source_url": "https://www.iherb.com/pr/tirtir-pure-vitamin-c24-serum-1-01-fl-oz-30-ml/140612",
+          "evidence": "Retailer product title lists 1.01 fl oz (30 ml)."
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_c989d8297287ad108ef57250",
+      "brand": "TIRTIR",
+      "title": "Matcha Dual Serum",
+      "canonical_url": "https://tirtir.global/products/matcha-dual-serum",
+      "size_detail_label": "1.69 oz",
+      "net_size": "1.69 oz",
+      "review_state": "assistant_reviewed",
+      "sources": [
+        {
+          "source_kind": "recognized_retailer_product_spec",
+          "source_url": "https://www.ulta.com/p/matcha-dual-serum-pimprod2058172?sku=2656921",
+          "evidence": "Retailer product page lists Size: 1.69 oz."
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_6df19f2224fec208ca6eeea7",
+      "brand": "TIRTIR",
+      "title": "Matcha Bubble Tea Scrub",
+      "canonical_url": "https://tirtir.global/products/matcha-bubble-tea-scrub",
+      "size_detail_label": "95 g",
+      "net_content": "95 g",
+      "review_state": "assistant_reviewed",
+      "sources": [
+        {
+          "source_kind": "recognized_retailer_product_spec",
+          "source_url": "https://www.yesstyle.com/en/tirtir-matcha-bubble-tea-scrub-95g/info.html/pid.1137403231",
+          "evidence": "Retailer product title lists Matcha Bubble Tea Scrub 95g."
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_2ed925c42fe7f2dfd73f98db",
+      "brand": "TIRTIR",
+      "title": "Matcha Tea Pads",
+      "canonical_url": "https://tirtir.global/products/matcha-tea-pad",
+      "size_detail_label": "70 pads / 160 mL",
+      "net_content": "70 pads",
+      "net_size": "160 mL",
+      "review_state": "assistant_reviewed",
+      "sources": [
+        {
+          "source_kind": "official_pdp_description",
+          "source_url": "https://tirtir.global/products/matcha-tea-pad",
+          "evidence": "Official PDP description says the jar has 70 soaked dual-sided pads."
+        },
+        {
+          "source_kind": "recognized_retailer_product_spec",
+          "source_url": "https://www.yesstyle.com/en/tirtir-matcha-tea-pads-70-pads/info.html/pid.1137403229",
+          "evidence": "Retailer product page lists 70 pads and Size: 160ml."
+        }
+      ]
+    }
+  ]
+}
