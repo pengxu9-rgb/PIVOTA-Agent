@@ -239,6 +239,49 @@ function buildStepAwareCriticalQueryPack(queryPack = [], semanticContract = null
   return ranked.slice(0, 2);
 }
 
+// PR-Inner-Clamp: caps below were the ceiling that pinned external_seed
+// effective timeout to 4800ms (framework_generic) or 2400ms (other) — recall
+// probe v4 (pivota-agent-ui#141) showed 12 queries (~22pp of pass-rate)
+// still timing out even after PR-01 raised the seed-direct cap to 8000ms,
+// because this clamp is computed FIRST and shrinks the budget the
+// caller passes in. Env-overridable defaults raised; min still defended
+// at 120ms via Math.max so degraded states are unchanged.
+function _envIntCap(name, defaultValue, minValue) {
+  const raw = Number(process.env[name]);
+  if (!Number.isFinite(raw) || raw <= 0) return defaultValue;
+  return Math.max(minValue, Math.round(raw));
+}
+const LOCAL_BEAUTY_CLAMP_EXT_SEED_FRAMEWORK_MS = _envIntCap(
+  'LOCAL_BEAUTY_CLAMP_EXT_SEED_FRAMEWORK_MS',
+  8000,
+  1000,
+);
+const LOCAL_BEAUTY_CLAMP_EXT_SEED_DEFAULT_MS = _envIntCap(
+  'LOCAL_BEAUTY_CLAMP_EXT_SEED_DEFAULT_MS',
+  4000,
+  1000,
+);
+const LOCAL_BEAUTY_CLAMP_INTERNAL_FANOUT_HIGH_MS = _envIntCap(
+  'LOCAL_BEAUTY_CLAMP_INTERNAL_FANOUT_HIGH_MS',
+  1800,
+  500,
+);
+const LOCAL_BEAUTY_CLAMP_INTERNAL_FANOUT_LOW_MS = _envIntCap(
+  'LOCAL_BEAUTY_CLAMP_INTERNAL_FANOUT_LOW_MS',
+  2400,
+  500,
+);
+const LOCAL_BEAUTY_CLAMP_INTERNAL_ANCHOR_MS = _envIntCap(
+  'LOCAL_BEAUTY_CLAMP_INTERNAL_ANCHOR_MS',
+  4800,
+  1000,
+);
+const LOCAL_BEAUTY_CLAMP_STEP_AWARE_MS = _envIntCap(
+  'LOCAL_BEAUTY_CLAMP_STEP_AWARE_MS',
+  3000,
+  500,
+);
+
 function clampLocalBeautyRecallAttemptTimeoutMs({
   primaryTimeoutMs = 0,
   remainingBudgetMs = 0,
@@ -258,7 +301,7 @@ function clampLocalBeautyRecallAttemptTimeoutMs({
       : remaining;
   const normalizedPlannerMode = String(plannerMode || '').trim().toLowerCase();
   if (normalizedPlannerMode === 'step_aware') {
-    return Math.min(remaining, Math.max(120, Math.min(primary, 3000)));
+    return Math.min(remaining, Math.max(120, Math.min(primary, LOCAL_BEAUTY_CLAMP_STEP_AWARE_MS)));
   }
   const normalizedQueryTotal =
     Number.isFinite(Number(queryTotal)) && Number(queryTotal) > 0
@@ -271,14 +314,17 @@ function clampLocalBeautyRecallAttemptTimeoutMs({
     isPrimaryInternalAnchor === true &&
     normalizedQueryTotal > 6
   ) {
-    return Math.min(remaining, Math.max(120, Math.min(primary, 4800)));
+    return Math.min(remaining, Math.max(120, Math.min(primary, LOCAL_BEAUTY_CLAMP_INTERNAL_ANCHOR_MS)));
   }
-  const capByFanout = normalizedQueryTotal > 6 ? 1800 : 2400;
+  const capByFanout =
+    normalizedQueryTotal > 6
+      ? LOCAL_BEAUTY_CLAMP_INTERNAL_FANOUT_HIGH_MS
+      : LOCAL_BEAUTY_CLAMP_INTERNAL_FANOUT_LOW_MS;
   const capBySource =
     normalizedSourceScope === 'external_seed' && normalizedPlannerMode === 'framework_generic'
-      ? 4800
+      ? LOCAL_BEAUTY_CLAMP_EXT_SEED_FRAMEWORK_MS
       : normalizedSourceScope === 'external_seed'
-        ? 2400
+        ? LOCAL_BEAUTY_CLAMP_EXT_SEED_DEFAULT_MS
         : capByFanout;
   return Math.min(remaining, Math.max(120, Math.min(primary, capBySource)));
 }
