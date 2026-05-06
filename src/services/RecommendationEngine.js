@@ -1406,6 +1406,12 @@ function titleSupportsLeafCategory(features) {
   return true;
 }
 
+function requiresStrictExternalSameBrandIntent(features) {
+  const title = String(features?.normalizedTitle || '').trim();
+  if (!title) return false;
+  return /\b(sunscreen|spf|sun\s*(?:milk|cream|lotion|fluid|stick|serum|gel|screen)?|uv)\b/i.test(title);
+}
+
 function titleIntentMatches(baseFeatures, candidateFeatures) {
   const baseTitle = String(baseFeatures?.normalizedTitle || '').trim();
   const candidateTitle = String(candidateFeatures?.normalizedTitle || '').trim();
@@ -1484,6 +1490,13 @@ function classifyConfidenceLevel(base, candidate, layerId) {
       return base.vertical === candidate.features.vertical ? 'medium' : 'low';
     }
     return candidate.features.isExternal ? 'medium' : 'low';
+  }
+
+  if (layerId === 'L3B' && base.isExternal && candidate.features.isExternal && candidate.brandMatch) {
+    if (base.vertical !== UNKNOWN_VERTICAL && candidate.features.vertical !== UNKNOWN_VERTICAL) {
+      return base.vertical === candidate.features.vertical ? 'medium' : 'low';
+    }
+    return 'low';
   }
 
   if (layerId === 'L4' && candidate.tokenOverlap >= 0.24) return 'medium';
@@ -1615,6 +1628,19 @@ function pickLayeredRecommendations({
         ),
     },
     {
+      id: 'L3B',
+      name: 'same_brand_external_same_vertical',
+      priority: 3.4,
+      predicate: (c, features, baseFeatures) =>
+        baseFeatures.isExternal &&
+        features.isExternal &&
+        c.brandMatch &&
+        baseFeatures.vertical !== UNKNOWN_VERTICAL &&
+        features.vertical !== UNKNOWN_VERTICAL &&
+        baseFeatures.vertical === features.vertical &&
+        !requiresStrictExternalSameBrandIntent(baseFeatures),
+    },
+    {
       id: 'L4',
       name: 'title_token_overlap',
       priority: 4,
@@ -1689,7 +1715,13 @@ function pickLayeredRecommendations({
         scoreDetail.brandMatch &&
         !scoreDetail.leafMatch &&
         !scoreDetail.parentMatch &&
-        !titleIntentMatches(base, features)
+        !titleIntentMatches(base, features) &&
+        !(
+          source === 'external' &&
+          features.vertical !== UNKNOWN_VERTICAL &&
+          base.vertical === features.vertical &&
+          !requiresStrictExternalSameBrandIntent(base)
+        )
       ) {
         filteredByConfidence += 1;
         return null;

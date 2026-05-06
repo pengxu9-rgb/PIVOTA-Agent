@@ -1301,8 +1301,8 @@ describe('RecommendationEngine external candidate fetch', () => {
       options: { debug: true, no_cache: true },
     });
 
-    expect(result.metadata.similar_status).toBe('underfilled');
-    expect(result.metadata.low_confidence_reason_codes).toEqual(
+    expect(result.metadata.similar_status).toBe('ready');
+    expect(result.metadata.low_confidence_reason_codes || []).not.toEqual(
       expect.arrayContaining(['UNDERFILL_MAINLINE_RECALL']),
     );
     expect(result.items.length).toBeGreaterThan(0);

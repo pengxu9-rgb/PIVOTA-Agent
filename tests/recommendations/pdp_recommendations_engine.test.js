@@ -94,6 +94,74 @@ describe('RecommendationEngine (PDP)', () => {
     expect(top5SigmaExternal).toBeGreaterThanOrEqual(2);
   });
 
+  test('uses same-brand same-vertical external seeds when strict category fields are missing', () => {
+    const base = {
+      merchant_id: 'external_seed',
+      product_id: 'ext_skin1004_pad',
+      title: 'SKIN1004 Centella Quick Calming Pad',
+      brand: 'SKIN1004',
+      semantic_vertical: 'skincare',
+      source: 'external_seed',
+      price: 16,
+      currency: 'USD',
+      inventory_quantity: 10,
+      status: 'active',
+    };
+    const external = [
+      {
+        merchant_id: 'external_seed',
+        product_id: 'ext_skin1004_eye',
+        title: 'SKIN1004 Probio-Cica Bakuchiol Eye Cream',
+        brand: 'SKIN1004',
+        semantic_vertical: 'skincare',
+        source: 'external_seed',
+        price: 22,
+        currency: 'USD',
+        inventory_quantity: 10,
+        status: 'active',
+      },
+      {
+        merchant_id: 'external_seed',
+        product_id: 'ext_skin1004_cleanser',
+        title: 'SKIN1004 Centella Ampoule Foam',
+        brand: 'SKIN1004',
+        semantic_vertical: 'skincare',
+        source: 'external_seed',
+        price: 12,
+        currency: 'USD',
+        inventory_quantity: 10,
+        status: 'active',
+      },
+      {
+        merchant_id: 'external_seed',
+        product_id: 'ext_other_skincare',
+        title: 'Other Brand Water Cream',
+        brand: 'Other Brand',
+        semantic_vertical: 'skincare',
+        source: 'external_seed',
+        price: 18,
+        currency: 'USD',
+        inventory_quantity: 10,
+        status: 'active',
+      },
+    ];
+
+    const out = pickLayeredRecommendations({
+      baseProduct: base,
+      internalCandidates: [],
+      externalCandidates: external,
+      k: 4,
+    });
+
+    expect(out.items.map((item) => item.product_id)).toEqual(
+      expect.arrayContaining(['ext_skin1004_eye', 'ext_skin1004_cleanser']),
+    );
+    expect(out.items).toHaveLength(2);
+    expect(out.items.some((item) => item.reason.startsWith('L3B:external'))).toBe(true);
+    expect(out.items.every((item) => /^L(?:2E|3B):external/.test(item.reason))).toBe(true);
+    expect(out.metadata.retrieval_mix.external).toBe(2);
+  });
+
   test('excludes same external product line parent and sibling variants from similar', async () => {
     const result = await recommend({
       pdp_product: {
