@@ -57,13 +57,33 @@ let geminiInitFailed = false;
 // ---------------------------------------------------------------------------
 
 function requireInternalKey(req, res, next) {
-  const expected = String(process.env.PIVOTA_INTERNAL_API_KEY || '').trim();
+  // Accept any of three env var names so we ride existing production
+  // shared-secret conventions instead of asking ops to provision yet
+  // another secret. Priority:
+  //
+  //   1. PROMOTIONS_ADMIN_KEY  — already set on both pivota-backend
+  //      and PIVOTA-Agent in production for admin/ops routes
+  //      (utils/auth.py + admin migration scripts). Same shared-secret
+  //      pattern, same value on both ends; zero operational change to
+  //      enable internal-probe auth.
+  //   2. AGENT_API_KEY         — gateway-proxy + agent-commerce convention
+  //      (pivota-agent-ui /api/gateway already reads this).
+  //   3. PIVOTA_INTERNAL_API_KEY — V1 dedicated name; kept as final fallback.
+  const expected = String(
+    process.env.PROMOTIONS_ADMIN_KEY ||
+      process.env.AGENT_API_KEY ||
+      process.env.PIVOTA_INTERNAL_API_KEY ||
+      '',
+  ).trim();
   if (!expected) {
-    // Refusing to serve the route at all is safer than letting it run
-    // unauthenticated when ops forgot to configure the secret.
     return res.status(503).json({
       ok: false,
-      error: 'pivota_internal_api_key_not_configured',
+      // Error code names the canonical env var so ops sees the right
+      // thing to fix in Railway logs.
+      error: 'internal_probe_key_not_configured',
+      detail:
+        'Set PROMOTIONS_ADMIN_KEY (preferred — already shared with admin routes) ' +
+        'or AGENT_API_KEY or PIVOTA_INTERNAL_API_KEY on this service.',
     });
   }
   const provided = String(
