@@ -30,6 +30,9 @@ const {
   hasLocalityFactsValue,
   resolveExternalSeedLocalityFacts,
 } = require('./externalSeedLocalityFacts');
+const {
+  buildCatalogImageCacheVisibleUrl,
+} = require('./catalogImageCacheStorage');
 
 const EXTERNAL_SEED_MERCHANT_ID = 'external_seed';
 const SUNSCREEN_CATEGORY_RE =
@@ -1048,17 +1051,27 @@ function appendImageUrls(out, value) {
   appendImageUrls(out, value.contentUrl);
 }
 
+function normalizeCatalogImageCacheVisibleUrl(value) {
+  const normalized = normalizePdpImageUrl(value);
+  if (!normalized) return '';
+  return buildCatalogImageCacheVisibleUrl({ cachedUrl: normalized }) || normalized;
+}
+
+function normalizeCatalogImageCacheVisibleUrls(values) {
+  if (!Array.isArray(values)) return normalizeCatalogImageCacheVisibleUrl(values);
+  return values.map((value) => normalizeCatalogImageCacheVisibleUrl(value)).filter(Boolean);
+}
+
 function collectCachedSeedImageUrls(seedData) {
   const parsedSeedData = ensureJsonObject(seedData);
   const snapshot = ensureJsonObject(parsedSeedData.snapshot);
   const out = [];
   const appendCacheContract = (contract) => {
     const normalized = ensureJsonObject(contract);
-    appendImageUrls(out, normalized.visible_image_urls);
+    appendImageUrls(out, normalizeCatalogImageCacheVisibleUrls(normalized.visible_image_urls));
     if (Array.isArray(normalized.assets)) {
       normalized.assets.forEach((asset) => {
-        appendImageUrls(out, asset?.visible_url);
-        appendImageUrls(out, asset?.cached_url);
+        appendImageUrls(out, normalizeCatalogImageCacheVisibleUrl(asset?.visible_url || asset?.cached_url));
       });
     }
   };
@@ -1076,7 +1089,7 @@ function collectSeedImageCacheAssetEntries(seedData) {
     if (!Array.isArray(normalized.assets)) return;
     normalized.assets.forEach((asset) => {
       const originalUrl = normalizePdpImageUrl(asset?.original_url || asset?.source_url);
-      const cachedUrl = normalizePdpImageUrl(asset?.visible_url || asset?.cached_url);
+      const cachedUrl = normalizeCatalogImageCacheVisibleUrl(asset?.visible_url || asset?.cached_url);
       if (!originalUrl || !cachedUrl) return;
       out.push({ original_url: originalUrl, cached_url: cachedUrl });
     });

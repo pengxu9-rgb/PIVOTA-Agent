@@ -21,6 +21,10 @@ const {
   scheduleExternalSeedImageCacheBootstrap,
 } = require('./services/externalSeedImageCacheBootstrap');
 const {
+  getCatalogImageCacheObject,
+  normalizeCatalogImageCacheKey,
+} = require('./services/catalogImageCacheStorage');
+const {
   parseBooleanEnv,
   parseSecretList,
   resolveInvokeEmergencyAuthFallback,
@@ -20536,6 +20540,48 @@ app.use((req, res, next) => {
   res.setHeader('X-Service-Name', SERVICE_NAME);
   return next();
 });
+
+async function handleCatalogImageCacheAsset(req, res) {
+  const key = normalizeCatalogImageCacheKey(`catalog-image-cache/${req.params[0] || ''}`);
+  if (!key) {
+    return res.status(404).json({ error: 'IMAGE_NOT_FOUND', reason: 'invalid_cache_key' });
+  }
+  try {
+    const object = await getCatalogImageCacheObject(key);
+    const contentType = object.ContentType || 'application/octet-stream';
+    const cacheControl = object.CacheControl || 'public, max-age=31536000, immutable';
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', cacheControl);
+    res.setHeader('X-Catalog-Image-Cache', 's3');
+    if (object.ContentLength != null) {
+      res.setHeader('Content-Length', String(object.ContentLength));
+    }
+    if (req.method === 'HEAD') return res.status(200).end();
+    const body = object.Body;
+    if (body && typeof body.pipe === 'function') {
+      return body.pipe(res);
+    }
+    if (body && typeof body.transformToByteArray === 'function') {
+      const bytes = await body.transformToByteArray();
+      return res.status(200).send(Buffer.from(bytes));
+    }
+    if (body && typeof body.transformToString === 'function') {
+      return res.status(200).send(await body.transformToString());
+    }
+    return res.status(502).json({ error: 'IMAGE_CACHE_READ_FAILED', reason: 'empty_body' });
+  } catch (error) {
+    const code = String(error?.name || error?.Code || error?.code || '').toLowerCase();
+    const status = code.includes('nosuchkey') || code.includes('notfound') || code.includes('invalid_cache_key') ? 404 : 502;
+    logger.warn({ err: error?.message || String(error), key }, 'Catalog image cache asset read failed');
+    return res.status(status).json({
+      error: status === 404 ? 'IMAGE_NOT_FOUND' : 'IMAGE_CACHE_READ_FAILED',
+      reason: status === 404 ? 'cache_object_missing' : 'cache_read_failed',
+    });
+  }
+}
+
+app.get('/catalog-image-cache/*', handleCatalogImageCacheAsset);
+app.head('/catalog-image-cache/*', handleCatalogImageCacheAsset);
 
 app.use(express.static(path.join(__dirname, '..', 'public')));
 

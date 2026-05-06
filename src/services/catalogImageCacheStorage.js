@@ -4,8 +4,8 @@ function loadAwsSdk() {
   try {
     // Lazy-load so dry-runs and tests can use the planner without storage config.
     // eslint-disable-next-line global-require
-    const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
-    return { S3Client, PutObjectCommand };
+    const { S3Client, GetObjectCommand, PutObjectCommand } = require('@aws-sdk/client-s3');
+    return { S3Client, GetObjectCommand, PutObjectCommand };
   } catch (err) {
     const e = new Error('AWS SDK not installed (need @aws-sdk/client-s3)');
     e.code = 'CONFIG_MISSING';
@@ -52,6 +52,75 @@ function buildCatalogImageCacheKey({ sha256, contentType }) {
   return `catalog-image-cache/${digest.slice(0, 2)}/${digest}.${ext}`;
 }
 
+function parseBooleanEnv(name, fallback = false) {
+  const raw = String(process.env[name] || '').trim().toLowerCase();
+  if (!raw) return fallback;
+  if (['1', 'true', 'yes', 'on'].includes(raw)) return true;
+  if (['0', 'false', 'no', 'off'].includes(raw)) return false;
+  return fallback;
+}
+
+function normalizeCatalogImageCacheKey(value) {
+  const normalized = String(value || '').trim().replace(/^\/+/, '');
+  if (!/^catalog-image-cache\/[a-f0-9]{2}\/[a-f0-9]{64}\.(avif|webp|png|jpe?g|gif|bin)$/i.test(normalized)) {
+    return '';
+  }
+  return normalized;
+}
+
+function extractCatalogImageCacheKeyFromUrl(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  const direct = normalizeCatalogImageCacheKey(raw);
+  if (direct) return direct;
+  try {
+    const parsed = new URL(raw);
+    return normalizeCatalogImageCacheKey(parsed.pathname);
+  } catch {
+    return '';
+  }
+}
+
+function getCatalogImageCacheRuntimePublicBaseUrl() {
+  return trimTrailingSlashes(
+    process.env.CATALOG_IMAGE_CACHE_PROXY_PUBLIC_BASE_URL ||
+      process.env.CATALOG_IMAGE_CACHE_RUNTIME_PUBLIC_BASE_URL ||
+      process.env.PIVOTA_AGENT_PUBLIC_BASE_URL ||
+      (process.env.NODE_ENV === 'production' ? 'https://pivota-agent-production.up.railway.app' : ''),
+  );
+}
+
+function shouldUseCatalogImageCacheRuntimeProxy(cachedUrl = '') {
+  if (parseBooleanEnv('CATALOG_IMAGE_CACHE_DISABLE_RUNTIME_PROXY', false)) return false;
+  if (parseBooleanEnv('CATALOG_IMAGE_CACHE_USE_RUNTIME_PROXY', false)) return true;
+  const publicBase = trimTrailingSlashes(process.env.CATALOG_IMAGE_CACHE_PUBLIC_BASE_URL || '');
+  if (!publicBase) return false;
+  try {
+    const host = new URL(publicBase).hostname.toLowerCase();
+    if (host.endsWith('.r2.dev')) return true;
+  } catch {
+    // Ignore malformed optional public bases.
+  }
+  try {
+    const host = new URL(cachedUrl).hostname.toLowerCase();
+    return host.endsWith('.r2.dev');
+  } catch {
+    return false;
+  }
+}
+
+function buildCatalogImageCacheVisibleUrl({ key, cachedUrl } = {}) {
+  const normalizedKey = normalizeCatalogImageCacheKey(key) || extractCatalogImageCacheKeyFromUrl(cachedUrl);
+  if (!normalizedKey) return cachedUrl || '';
+  const proxyBase = getCatalogImageCacheRuntimePublicBaseUrl();
+  if (proxyBase && shouldUseCatalogImageCacheRuntimeProxy(cachedUrl)) {
+    return `${proxyBase}/${normalizedKey}`;
+  }
+  if (cachedUrl) return cachedUrl;
+  const publicBase = trimTrailingSlashes(process.env.CATALOG_IMAGE_CACHE_PUBLIC_BASE_URL || '');
+  return publicBase ? `${publicBase}/${normalizedKey}` : '';
+}
+
 let cachedClient = null;
 
 function getClient() {
@@ -91,16 +160,34 @@ async function putCatalogImageCacheObject({ body, contentType, sha256, cacheCont
     CacheControl: cacheControl || 'public, max-age=31536000, immutable',
   });
   await getClient().send(cmd);
+  const publicCachedUrl = `${trimTrailingSlashes(publicBase)}/${key}`;
   return {
     key,
-    cached_url: `${trimTrailingSlashes(publicBase)}/${key}`,
+    cached_url: buildCatalogImageCacheVisibleUrl({ key, cachedUrl: publicCachedUrl }),
+    storage_url: publicCachedUrl,
   };
+}
+
+async function getCatalogImageCacheObject(key) {
+  const normalizedKey = normalizeCatalogImageCacheKey(key);
+  if (!normalizedKey) {
+    const err = new Error('Invalid catalog image cache key');
+    err.code = 'INVALID_CACHE_KEY';
+    throw err;
+  }
+  const { GetObjectCommand } = loadAwsSdk();
+  const bucket = requiredEnv('CATALOG_IMAGE_CACHE_S3_BUCKET');
+  return getClient().send(new GetObjectCommand({ Bucket: bucket, Key: normalizedKey }));
 }
 
 module.exports = {
   buildCatalogImageCacheKey,
+  buildCatalogImageCacheVisibleUrl,
   extFromContentType,
+  extractCatalogImageCacheKeyFromUrl,
+  getCatalogImageCacheObject,
   hasCatalogImageCacheConfig,
+  normalizeCatalogImageCacheKey,
   putCatalogImageCacheObject,
   sha256Buffer,
 };

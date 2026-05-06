@@ -12,6 +12,7 @@ const {
   sourceHostFromUrl,
 } = require('../src/services/externalSeedImageCache');
 const {
+  buildCatalogImageCacheVisibleUrl,
   hasCatalogImageCacheConfig,
   putCatalogImageCacheObject,
 } = require('../src/services/catalogImageCacheStorage');
@@ -135,7 +136,8 @@ async function findExistingCachedUrlBySha(sha256) {
     `,
     [digest],
   );
-  return normalizeUrlLike(res.rows?.[0]?.cached_url);
+  const cachedUrl = normalizeUrlLike(res.rows?.[0]?.cached_url);
+  return buildCatalogImageCacheVisibleUrl({ cachedUrl }) || cachedUrl;
 }
 
 async function upsertImageAssetRecord({ row, candidate, check }) {
