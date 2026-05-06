@@ -207,6 +207,7 @@ describe('backfill-external-seed-official-html-pdp-fields TIRTIR sheet matching'
     expect(fields.pdp_how_to_use_raw).toContain('Apply a quarter amount');
     expect(fields.pdp_active_ingredients_raw).toContain('Niacinamide');
     expect(fields.pdp_active_ingredients_raw).toContain('Hyaluronic Acid');
+    expect(fields.pdp_active_ingredients_raw).not.toContain('Supports barrier');
     expect(fields.pdp_details_sections).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ heading: 'Overview', body: expect.stringContaining('transparent collagen jelly cream') }),

@@ -281,6 +281,23 @@ function extractKnownHeroIngredients(value) {
   return known.filter((item) => new RegExp(`\\b${item.replace(/\s+/g, '\\s+')}\\b`, 'i').test(text));
 }
 
+function looksLikeMedicubeIngredientName(value) {
+  const text = normalizeText(value)
+    .replace(/^\*+/, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (text.length < 3 || text.length > 120) return false;
+  if (/[.!?]/.test(text)) return false;
+  if (/\b(?:helps?|boosts?|supports?|improves?|enhances?|provides?|protects?|targets?|soothes?|hydrates?)\b/i.test(text)) return false;
+  return /\b(?:acid|extract|collagen|niacinamide|glutathione|vitamin|ceramide|panthenol|peptide|retinol|retinal|bakuchiol|hyaluronate|hyaluronic|cica|centella|pantothenic|buckthorn|exosome|salmon|pdrn)\b/i.test(text);
+}
+
+function extractMedicubeIngredientNameItems(htmlBlock) {
+  return Array.from(String(htmlBlock || '').matchAll(/<div[^>]*class="[^"]*\bdesc_tit\b[^"]*"[^>]*>([\s\S]*?)<\/div>/gi))
+    .map((match) => cleanSectionText(match[1]).replace(/\bcheck button\b/gi, '').trim())
+    .filter(looksLikeMedicubeIngredientName);
+}
+
 function cleanSectionText(value) {
   return normalizeText(stripHtml(value))
     .replace(/\bSee All\b/gi, '')
@@ -453,10 +470,8 @@ function extractMedicubeFields(html) {
   const fullIngredients = fullIngredientCandidates.find((candidate) => looksLikeFullInci(candidate)) || '';
   if (looksLikeFullInci(fullIngredients)) fields.pdp_ingredients_raw = fullIngredients;
 
-  const keyIngredientsToggle = cleanMedicubeToggleText(
-    extractMedicubeLabeledBlock(html, 'KEY INGREDIENTS'),
-    'KEY INGREDIENTS',
-  );
+  const keyIngredientsHtml = extractMedicubeLabeledBlock(html, 'KEY INGREDIENTS');
+  const keyIngredientsToggle = cleanMedicubeToggleText(keyIngredientsHtml, 'KEY INGREDIENTS');
   const keyIngredientBlock = extractInlineTextAfterMarker(
     html,
     /\b(?:Key|Main) Ingredients?\b/i,
@@ -467,10 +482,13 @@ function extractMedicubeFields(html) {
     new Set(
       [
         ...extractKnownHeroIngredients(activeIngredientSource),
-        ...activeIngredientSource
-          .split(/\n|>|•|\u2022|,/)
-          .map((item) => normalizeText(item).replace(/\s+(?:improve|brightening|spot|targeting|red|dark).*/i, '').trim())
-          .filter((item) => looksLikeActiveIngredientList(item)),
+        ...extractMedicubeIngredientNameItems(keyIngredientsHtml),
+        ...(keyIngredientsHtml
+          ? []
+          : activeIngredientSource
+              .split(/\n|>|•|\u2022|,/)
+              .map((item) => normalizeText(item).replace(/\s+(?:improve|brightening|spot|targeting|red|dark).*/i, '').trim())
+              .filter((item) => looksLikeActiveIngredientList(item))),
       ],
     ),
   );
