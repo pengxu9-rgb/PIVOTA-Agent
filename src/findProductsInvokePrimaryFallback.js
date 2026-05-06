@@ -215,11 +215,33 @@ function createFindProductsInvokePrimaryFallbackRuntime(deps = {}) {
         semanticRetryApplied: Boolean(nextSecondaryFallbackMeta?.semantic_retry_applied),
         fallbackNotBetterReason: fallbackReason,
       });
+      // PR-03: bare-noun category queries (e.g. "lipstick", "口红 lipstick",
+      // "running shoes") were getting force-strict-empty'd here when primary
+      // returned irrelevant — but with no brand anchor in the query the
+      // upstream's "irrelevance" verdict is unreliable. Probe v1 showed
+      // 6/6 makeup_lip + 4/5 home + 4/5 electronics queries returning 0
+      // products via this path. For category queries without a detected
+      // brand, downgrade the force to a regular fallback decision so the
+      // supplement / external_seed paths still have a chance to fill in.
+      const upstreamMetaForGate =
+        upstreamData &&
+        typeof upstreamData === 'object' &&
+        !Array.isArray(upstreamData) &&
+        upstreamData.metadata &&
+        typeof upstreamData.metadata === 'object' &&
+        !Array.isArray(upstreamData.metadata)
+          ? upstreamData.metadata
+          : {};
+      const brandDetectedFromUpstream = upstreamMetaForGate.brand_query_detected === true;
+      const queryClassNormalized = String(traceQueryClass || '').trim().toLowerCase();
+      const forceClassesByDefault = ['scenario', 'mission', 'gift'];
+      const forceClassesIncludingCategoryWithBrand =
+        brandDetectedFromUpstream
+          ? [...forceClassesByDefault, 'category']
+          : forceClassesByDefault;
       const forceStrictEmptyControlledRecall =
         SEARCH_FORCE_CONTROLLED_RECALL_FOR_SCENARIO &&
-        ['scenario', 'mission', 'gift', 'category'].includes(
-          String(traceQueryClass || '').trim().toLowerCase(),
-        ) &&
+        forceClassesIncludingCategoryWithBrand.includes(queryClassNormalized) &&
         primaryIrrelevant &&
         shouldFallback;
       const effectivePrimaryOutcomeDecision = forceStrictEmptyControlledRecall
