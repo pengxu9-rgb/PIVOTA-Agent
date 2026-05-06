@@ -143,7 +143,7 @@ function looksLikeHowToUse(value) {
   const text = normalizeText(value);
   if (text.length < 45 || text.length > 1600) return false;
   if (/\b(?:checkout|shop all|ambassador|find your routine|mega menu|header menu)\b/i.test(text)) return false;
-  return /\b(?:apply|use|massage|rinse|after cleansing|before|daily|morning|evening|night|leave on|pat)\b/i.test(text);
+  return /\b(?:apply|use|massage|rinse|spray|sweep|wipe|shake|dispense|after cleansing|after completing|before|daily|morning|evening|night|leave on|pat)\b/i.test(text);
 }
 
 function looksLikeActiveIngredientList(value) {
@@ -290,15 +290,53 @@ function extractHtmlClassBlock(html, classToken, maxChars = 45000) {
   return next >= 0 ? rest.slice(0, match[0].length + next) : rest;
 }
 
-function extractTirtirFaqHowToUse(tabText) {
-  const normalized = normalizeText(tabText).replace(/\bRead more\b/gi, '').trim();
-  if (!normalized) return '';
-  const qaMatches = Array.from(
-    normalized.matchAll(/Q:\s*([\s\S]*?)\s*A:\s*([\s\S]*?)(?=\s*Q:\s*|$)/gi),
-  );
-  for (const match of qaMatches) {
+function normalizeTirtirFaqText(tabText) {
+  return normalizeText(tabText)
+    .replace(/\bRead more\b/gi, '')
+    .replace(/(?:^|\n)\s*>\s*/g, '\n')
+    .replace(/[ \t]*>[ \t]*/g, '\n')
+    .replace(/\n{2,}/g, '\n')
+    .trim();
+}
+
+function collectTirtirFaqEntries(tabText) {
+  const normalized = normalizeTirtirFaqText(tabText);
+  if (!normalized) return [];
+
+  const entries = [];
+  for (const match of normalized.matchAll(/Q:\s*([\s\S]*?)\s*A:\s*([\s\S]*?)(?=\s*Q:\s*|$)/gi)) {
     const question = normalizeText(match[1]);
     const answer = normalizeText(match[2]);
+    if (question && answer) entries.push({ question, answer });
+  }
+
+  const numberedMatches = Array.from(normalized.matchAll(/(?:^|\n)\s*Q(?:uestion)?\s*\d*\s*[\.:]\s*/gi));
+  for (let index = 0; index < numberedMatches.length; index += 1) {
+    const start = numberedMatches[index].index + numberedMatches[index][0].length;
+    const end = index + 1 < numberedMatches.length ? numberedMatches[index + 1].index : normalized.length;
+    const block = normalizeText(normalized.slice(start, end));
+    if (!block) continue;
+    const questionEnd = block.indexOf('?');
+    let question = '';
+    let answer = '';
+    if (questionEnd >= 0) {
+      question = normalizeText(block.slice(0, questionEnd + 1));
+      answer = normalizeText(block.slice(questionEnd + 1));
+    } else {
+      const [firstLine, ...rest] = block.split('\n');
+      question = normalizeText(firstLine);
+      answer = normalizeText(rest.join('\n'));
+    }
+    answer = answer.replace(/^A\s*[:.]?\s*/i, '').trim();
+    if (question && answer) entries.push({ question, answer });
+  }
+
+  return entries;
+}
+
+function extractTirtirFaqHowToUse(tabText) {
+  const entries = collectTirtirFaqEntries(tabText);
+  for (const { question, answer } of entries) {
     if (!/\b(?:how|use|apply|wear|layer|routine)\b/i.test(question)) continue;
     if (looksLikeHowToUse(answer)) return answer;
   }
@@ -950,6 +988,7 @@ if (require.main === module) {
 module.exports = {
   _internals: {
     findTirtirSheetIngredientRow,
+    extractTirtirFaqHowToUse,
     normalizeTirtirTitleKey,
     scoreTirtirSheetProductName,
   },

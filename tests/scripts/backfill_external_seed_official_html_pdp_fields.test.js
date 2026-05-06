@@ -5,6 +5,7 @@ jest.mock('../../src/db', () => ({
 
 const {
   _internals: {
+    extractTirtirFaqHowToUse,
     findTirtirSheetIngredientRow,
     normalizeTirtirTitleKey,
     scoreTirtirSheetProductName,
@@ -55,5 +56,29 @@ describe('backfill-external-seed-official-html-pdp-fields TIRTIR sheet matching'
     ];
 
     expect(findTirtirSheetIngredientRow(rows, 'Mask Fit Makeup Fixer')).toBeNull();
+  });
+
+  test('extracts how-to copy from current numbered TIRTIR FAQ blocks', () => {
+    const faq = `
+      Q1. What is the difference between the two sides of the pad, and how should I use each?
+      >
+      The gauze-textured side provides gentle physical exfoliation - use this side first to sweep across the skin, removing dead skin cells and residual sebum. The soft, smooth side is for essence delivery - use this side after to pat the remaining formula onto areas of redness or sensitivity.
+      >
+      Q2. Are these pads suitable for sensitive skin?
+      >
+      Yes, they are formulated for sensitive-looking skin.
+    `;
+
+    expect(extractTirtirFaqHowToUse(faq)).toContain('use this side first to sweep');
+  });
+
+  test('extracts setting spray directions from numbered FAQ blocks without an A label', () => {
+    const faq = `
+      Q1. How do I use the Mask Fit Makeup Fixer?
+      >
+      Hold the bottle about 20-30 cm from your face and spray evenly after completing your makeup. Allow it to dry naturally for a flawless, long-lasting finish.
+    `;
+
+    expect(extractTirtirFaqHowToUse(faq)).toContain('spray evenly');
   });
 });
