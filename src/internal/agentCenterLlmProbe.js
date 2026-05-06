@@ -399,22 +399,83 @@ function textContainsUrl(text, targetUrl) {
 }
 
 /**
- * Returns true if `targetUrl` appears in any cited source URL inside the
- * Gemini groundingMetadata. Cited sources are the gold-standard signal that
- * the model actually retrieved the URL from a live search — much stronger
- * than a URL appearing in prose.
+ * Returns the chunks normalized to `{ uri, title, host }` shape. The raw
+ * Gemini grounding payload exposes `web.uri` (a vertexaisearch.cloud.google.com
+ * REDIRECTOR — NOT the actual destination) and `web.title` (the human-readable
+ * source name like "Sephora", "Olive Young Global", "Beauty of Joseon Official
+ * Store"). Title is the canonical signal for "what site did the model cite";
+ * URI is useful for de-duplication but rarely matches a real merchant URL
+ * because of the redirector wrapper.
+ *
+ * We surface both so callers can pick the right one for their use case
+ * (host-based comparison, brand-based competitor extraction, etc).
  */
-function groundingContainsUrl(groundingMetadata, targetUrl) {
+function normalizeGroundingChunks(groundingMetadata) {
+  if (!groundingMetadata) return [];
+  const raw = groundingMetadata.groundingChunks || groundingMetadata.grounding_chunks || [];
+  const out = [];
+  for (const ch of raw) {
+    const uri = ch?.web?.uri || ch?.web?.url || ch?.uri || ch?.url || '';
+    const title = ch?.web?.title || ch?.title || '';
+    const norm = normalizeUrl(uri);
+    out.push({
+      uri: typeof uri === 'string' ? uri : '',
+      title: typeof title === 'string' ? title : '',
+      host: norm?.host || null,
+    });
+  }
+  return out;
+}
+
+const _VERTEX_REDIRECTOR_HOSTS = new Set([
+  'vertexaisearch.cloud.google.com',
+  'vertex-ai-search.cloud.google.com',
+]);
+
+function _chunkIsRedirector(chunk) {
+  return !!chunk.host && _VERTEX_REDIRECTOR_HOSTS.has(chunk.host);
+}
+
+/**
+ * Returns true if `targetUrl` matches any cited source. Tries:
+ *   1. Direct URI match (when Gemini happens to cite a non-redirected URL)
+ *   2. Title contains the merchant brand or host — captures the common case
+ *      where the redirector hides the real destination but the title says
+ *      "Beauty of Joseon Official Store".
+ *
+ * `merchantBrand` is optional — when provided we also accept title matches
+ * against the brand string (case-insensitive). For the typical BD path we
+ * pass product.vendor as the brand.
+ */
+function groundingContainsUrl(groundingMetadata, targetUrl, merchantBrand) {
   const target = normalizeUrl(targetUrl);
-  if (!target || !groundingMetadata) return false;
-  const chunks = groundingMetadata.groundingChunks || groundingMetadata.grounding_chunks || [];
+  if (!target && !merchantBrand) return false;
+  if (!groundingMetadata) return false;
+  const chunks = normalizeGroundingChunks(groundingMetadata);
+  const brandLower = typeof merchantBrand === 'string' && merchantBrand.trim()
+    ? merchantBrand.trim().toLowerCase()
+    : null;
   for (const ch of chunks) {
-    const u = ch?.web?.uri || ch?.web?.url || ch?.uri || ch?.url;
-    if (!u) continue;
-    const n = normalizeUrl(u);
-    if (!n) continue;
-    if (n.full === target.full) return true;
-    if (target.path !== '/' && n.host === target.host && n.path === target.path) return true;
+    if (target && ch.host && !_chunkIsRedirector(ch)) {
+      // Direct URL match (rare with grounding redirectors, but still
+      // possible when Gemini cites a non-redirector URL).
+      if (ch.host === target.host) {
+        if (target.path === '/' || target.path === ch.path?.path) return true;
+        // Path-aware via re-normalizing the chunk's URI.
+        const n = normalizeUrl(ch.uri);
+        if (n && n.host === target.host && n.path === target.path) return true;
+      }
+    }
+    // Title match — works through the redirector wrapper.
+    if (ch.title && target?.host) {
+      const titleLower = ch.title.toLowerCase();
+      // The merchant's host (e.g. "beautyofjoseon.com") often appears in
+      // the page title for the merchant's own store.
+      if (titleLower.includes(target.host)) return true;
+    }
+    if (ch.title && brandLower && ch.title.toLowerCase().includes(brandLower)) {
+      return true;
+    }
   }
   return false;
 }
@@ -655,31 +716,53 @@ async function buildGeminiProbe(input) {
     } catch (err) {
       rawText = `__error__:${err && err.message ? err.message : String(err)}`;
     }
-    // Per-mode scoring — derived from EVIDENCE (raw text + cited sources)
-    // rather than the LLM's self-reported parsed fields. The model still
-    // produces self-reports; we keep them in raw_runs for debugging but
-    // don't trust them for the score.
+    // Pre-parse the chunks once per run — used by scoring + raw_runs.
+    const chunks = normalizeGroundingChunks(groundingMetadata);
+    const hasAnyGrounding = chunks.length > 0;
+    const merchantBrand = context.product?.vendor || context.product?.title || null;
+
+    // Per-mode scoring — derived from EVIDENCE (cited sources via grounding
+    // metadata) rather than the LLM's self-reported parsed fields. The
+    // model still produces self-reports; we keep them in raw_runs for
+    // debugging but don't trust them for the score.
     let urlMatch = null;
     if (scan_mode === 'open_product_visibility_test') {
-      if (parsed && parsed.product_visible === true) positives += 1;
+      // FIX (post-BoJ-run audit): self-report-only scoring is tautological —
+      // the model sees a query mentioning the product and answers "yes"
+      // even with empty grounding_chunks. Real visibility requires Gemini
+      // to actually retrieve grounded sources from live web search.
+      // Positive ONLY when self-report is true AND grounding has chunks.
+      if (parsed && parsed.product_visible === true && hasAnyGrounding) {
+        positives += 1;
+      }
     } else if (scan_mode === 'merchant_store_attribution_test') {
       const target = context.merchant_pdp_url || '';
-      const hit = Boolean(target) && (
-        groundingContainsUrl(groundingMetadata, target) || textContainsUrl(rawText, target)
+      // FIX (post-BoJ-run audit): drop textContainsUrl from positive
+      // scoring. The model's prose often references the verified URL while
+      // EXPLAINING THAT IT'S NOT IN THE SEARCH RESULTS — that's a false
+      // positive. Only trust the structured grounding metadata.
+      const inGrounding = Boolean(target) && groundingContainsUrl(
+        groundingMetadata, target, merchantBrand,
       );
       urlMatch = {
         target_url: target,
-        in_grounding: Boolean(target) && groundingContainsUrl(groundingMetadata, target),
+        in_grounding: inGrounding,
+        // Keep `in_text` in the audit trail for debugging but it does NOT
+        // count toward the score anymore.
         in_text: Boolean(target) && textContainsUrl(rawText, target),
         llm_self_report: parsed && parsed.merchant_url_found === true,
       };
-      if (hit) positives += 1;
+      if (inGrounding) positives += 1;
     } else if (scan_mode === 'pivota_pdp_attribution_test') {
       const target = context.pivota_pdp_url || '';
-      const inGrounding = Boolean(target) && groundingContainsUrl(groundingMetadata, target);
+      const inGrounding = Boolean(target) && groundingContainsUrl(
+        groundingMetadata, target, merchantBrand,
+      );
       const inText = Boolean(target) && textContainsUrl(rawText, target);
-      const hit = inGrounding || inText;
-      const echoOnly = !hit && Boolean(target) && textMentionsHostOnly(rawText, target);
+      // Echo: model mentions the host in prose but no grounding evidence.
+      // Drop `inText` from positive scoring (same reason as merchant
+      // attribution) — only `inGrounding` counts as real attribution.
+      const echoOnly = !inGrounding && Boolean(target) && textMentionsHostOnly(rawText, target);
       urlMatch = {
         target_url: target,
         in_grounding: inGrounding,
@@ -690,23 +773,21 @@ async function buildGeminiProbe(input) {
           pivota_echo_only: parsed && parsed.pivota_echo_only === true,
         },
       };
-      if (hit) positives += 1;
+      if (inGrounding) positives += 1;
       if (echoOnly) echoes += 1;
     } else if (scan_mode === 'search_grounded_product_discovery_test') {
-      // Use LLM self-report as a fallback signal but require grounding
-      // evidence when context.pivota_pdp_url or merchant_pdp_url is given.
-      // If neither is given, fall back to the LLM's `product_visible` field.
       const target = context.pivota_pdp_url || context.merchant_pdp_url || '';
       if (target) {
-        const hit = groundingContainsUrl(groundingMetadata, target) || textContainsUrl(rawText, target);
+        const inGrounding = groundingContainsUrl(groundingMetadata, target, merchantBrand);
         urlMatch = {
           target_url: target,
-          in_grounding: groundingContainsUrl(groundingMetadata, target),
+          in_grounding: inGrounding,
           in_text: textContainsUrl(rawText, target),
           llm_self_report: parsed && parsed.product_visible === true,
         };
-        if (hit) positives += 1;
-      } else if (parsed && parsed.product_visible === true) {
+        if (inGrounding) positives += 1;
+      } else if (parsed && parsed.product_visible === true && hasAnyGrounding) {
+        // Same anti-tautology guard as open_visibility.
         positives += 1;
       }
     }
@@ -714,13 +795,13 @@ async function buildGeminiProbe(input) {
       query: q,
       raw: rawText,
       parsed,
-      // Trim grounding chunks to URI-only to keep the payload small while
-      // preserving the audit trail of which sources Gemini actually cited.
-      grounding_chunks: groundingMetadata
-        ? (groundingMetadata.groundingChunks || groundingMetadata.grounding_chunks || [])
-            .map((ch) => ch?.web?.uri || ch?.web?.url || ch?.uri || ch?.url)
-            .filter(Boolean)
-        : [],
+      // Surface BOTH uri AND title per chunk. Title is the canonical
+      // "what site did Gemini cite" signal — uri is usually a Vertex AI
+      // redirector (vertexaisearch.cloud.google.com) that doesn't reveal
+      // the destination. Backend uses title to extract real competitor
+      // hosts ("Sephora", "Olive Young Global", etc.).
+      grounding_chunks: chunks.map((c) => c.uri).filter(Boolean),
+      grounding_sources: chunks.map((c) => ({ uri: c.uri, title: c.title })),
       url_match: urlMatch,
     });
   }
@@ -836,6 +917,7 @@ module.exports = {
     normalizeUrl,
     textContainsUrl,
     groundingContainsUrl,
+    normalizeGroundingChunks,
     textMentionsHostOnly,
     unwrapJson,
     buildAutoQueries,
