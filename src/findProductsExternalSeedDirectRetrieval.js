@@ -143,9 +143,17 @@ async function retrieveExternalSeedDirectCandidates({
               created_at
             FROM external_product_seeds
             WHERE status = 'active'
-              AND attached_product_key IS NULL
               AND market = $1
-              AND (tool = '*' OR tool = $2)
+              AND (
+                -- Standard recall: unattached seeds matching the requested tool.
+                ((tool = '*' OR tool = $2) AND attached_product_key IS NULL)
+                -- Phase 7a bridge: agent-authored canonical seeds remain
+                -- visible in DirectRetrieval even when attached_product_key
+                -- is set, since the gateway does not yet JOIN catalog_offers
+                -- (Phase 7b). Without this, every seed Phase 4 attaches to
+                -- a canonical PDP would disappear from generic recall.
+                OR tool = 'catalog_enrichment_agent_v1'
+              )
               ${filters.length > 0 ? `AND ${filters.join('\n              AND ')}` : ''}
             ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
             LIMIT ${limitBind}
