@@ -384,6 +384,224 @@ describe('agentCenterLlmProbe — buildAutoQueries', () => {
 });
 
 
+describe('agentCenterLlmProbe — buildCategoryQueries', () => {
+  const { _internals } = require('../src/internal/agentCenterLlmProbe');
+  const { buildCategoryQueries } = _internals;
+
+  it('returns [] when product_type is missing', () => {
+    expect(buildCategoryQueries({ title: 'X' })).toEqual([]);
+    expect(buildCategoryQueries({})).toEqual([]);
+    expect(buildCategoryQueries(null)).toEqual([]);
+  });
+
+  it('emits open category queries that DO NOT name the product title', () => {
+    // Critical anti-tautology: if the test query says "best Multi-Peptide
+    // Lash and Brow Serum", we're back to the V1 problem (model sees
+    // product, says yes). Category queries must not include the title.
+    const qs = buildCategoryQueries({
+      title: 'Multi-Peptide Lash and Brow Serum',
+      product_type: 'serum',
+    });
+    expect(qs.length).toBeGreaterThanOrEqual(4);
+    for (const q of qs) {
+      expect(q).not.toContain('Multi-Peptide Lash and Brow Serum');
+    }
+    // Standard category-buyer patterns
+    expect(qs.some((q) => /best serums/i.test(q))).toBe(true);
+    expect(qs.some((q) => /under \$/i.test(q))).toBe(true);
+    expect(qs.some((q) => /dermatologists/i.test(q))).toBe(true);
+  });
+
+  it('pluralizes product_type for natural-sounding queries', () => {
+    // "best serum 2026" reads weird; "best serums 2026" reads natural.
+    const qs = buildCategoryQueries({ title: 'X', product_type: 'serum' });
+    expect(qs[0]).toBe('best serums 2026');
+    const qs2 = buildCategoryQueries({ title: 'X', product_type: 'eye patch' });
+    expect(qs2[0]).toBe('best eye patches 2026');
+    // -sh pluralizes with -es
+    const qs3 = buildCategoryQueries({ title: 'X', product_type: 'brush' });
+    expect(qs3[0]).toBe('best brushes 2026');
+    // Already plural — don't double-pluralize
+    const qs4 = buildCategoryQueries({ title: 'X', product_type: 'sneakers' });
+    expect(qs4[0]).toBe('best sneakers 2026');
+  });
+
+  it('includes vendor-anchored peer-set query when vendor is given', () => {
+    const qs = buildCategoryQueries({
+      title: 'X',
+      vendor: 'Beauty of Joseon',
+      product_type: 'eye patch',
+    });
+    // Vendor-soft-constraint query: "top eye patches like Beauty of Joseon"
+    expect(qs.some((q) => /like Beauty of Joseon/i.test(q))).toBe(true);
+  });
+});
+
+
+describe('agentCenterLlmProbe — category_visibility_test scoring', () => {
+  function loadModule() {
+    jest.resetModules();
+    return require('../src/internal/agentCenterLlmProbe');
+  }
+  function installFakeClient(generateContentImpl) {
+    const probe = loadModule();
+    process.env.GEMINI_API_KEY = 'fake-key-for-tests';
+    jest.doMock('@google/genai', () => ({
+      GoogleGenAI: function GoogleGenAI() {
+        return { models: { generateContent: generateContentImpl } };
+      },
+    }));
+    return probe;
+  }
+
+  afterEach(() => {
+    jest.resetModules();
+    jest.dontMock('@google/genai');
+    delete process.env.GEMINI_API_KEY;
+  });
+
+  test('scores positive when grounding chunk title matches merchant brand', async () => {
+    const fake = async () => ({
+      text: '{"brand_appears": true, "evidence_excerpt": "Beauty of Joseon ranked #2 in our list"}',
+      candidates: [
+        {
+          content: { parts: [{ text: '{"brand_appears": true}' }] },
+          groundingMetadata: {
+            groundingChunks: [
+              { web: { uri: 'https://vertexaisearch.cloud.google.com/x', title: 'Allure: Best K-beauty eye patches' } },
+              { web: { uri: 'https://vertexaisearch.cloud.google.com/y', title: 'Beauty of Joseon Official Store' } },
+            ],
+          },
+        },
+      ],
+    });
+    const probe = installFakeClient(fake);
+    const out = await probe._internals.buildGeminiProbe({
+      scan_mode: 'category_visibility_test',
+      max_runs: 1,
+      context: {
+        queries: ['best Korean eye patches 2026'],
+        merchant_pdp_url: 'https://beautyofjoseon.com/products/under-eye-patch',
+        product: { title: 'Under Eye Patch', vendor: 'Beauty of Joseon', product_type: 'eye patch' },
+      },
+    });
+    // Grounding title "Beauty of Joseon Official Store" matches brand.
+    expect(out.scores.visibility_score).toBe(100);
+    expect(out.raw_runs[0].url_match.in_grounding).toBe(true);
+  });
+
+  test('scores zero when grounding cites only competitors, not the merchant brand', async () => {
+    const fake = async () => ({
+      text: '{"brand_appears": false, "competitors_appearing": ["Sephora", "Olive Young"]}',
+      candidates: [
+        {
+          content: { parts: [{ text: '{"brand_appears": false}' }] },
+          groundingMetadata: {
+            groundingChunks: [
+              { web: { uri: 'https://vertexaisearch.cloud.google.com/a', title: 'Sephora Top 10 Picks' } },
+              { web: { uri: 'https://vertexaisearch.cloud.google.com/b', title: 'Olive Young Best Sellers' } },
+            ],
+          },
+        },
+      ],
+    });
+    const probe = installFakeClient(fake);
+    const out = await probe._internals.buildGeminiProbe({
+      scan_mode: 'category_visibility_test',
+      max_runs: 1,
+      context: {
+        queries: ['best Korean eye patches 2026'],
+        merchant_pdp_url: 'https://beautyofjoseon.com/products/under-eye-patch',
+        product: { title: 'Under Eye Patch', vendor: 'Beauty of Joseon', product_type: 'eye patch' },
+      },
+    });
+    expect(out.scores.visibility_score).toBe(0);
+    expect(out.raw_runs[0].url_match.in_grounding).toBe(false);
+    expect(out.raw_runs[0].url_match.in_text).toBe(false); // category mode never trusts text match
+  });
+
+  test('emits category_discoverability_gap finding when score < 50', async () => {
+    const fake = async () => ({
+      text: '{"brand_appears": false}',
+      candidates: [
+        {
+          content: { parts: [{ text: '{"brand_appears": false}' }] },
+          groundingMetadata: {
+            groundingChunks: [{ web: { uri: 'https://x.com', title: 'Some Other Brand' } }],
+          },
+        },
+      ],
+    });
+    const probe = installFakeClient(fake);
+    const out = await probe._internals.buildGeminiProbe({
+      scan_mode: 'category_visibility_test',
+      max_runs: 1,
+      context: {
+        queries: ['best K-beauty eye patches'],
+        merchant_pdp_url: 'https://beautyofjoseon.com/p/x',
+        product: { title: 'X', vendor: 'Beauty of Joseon', product_type: 'eye patch' },
+      },
+    });
+    expect(out.findings.length).toBeGreaterThanOrEqual(1);
+    const types = out.findings.map((f) => f.issue_type);
+    expect(types).toContain('category_discoverability_gap');
+  });
+
+  test('uses category-open queries (NOT product-named) when context.queries is empty', async () => {
+    const observedPrompts = [];
+    const fake = async (args) => {
+      const text = args.contents?.[0]?.parts?.[0]?.text || '';
+      observedPrompts.push(text);
+      return {
+        text: '{"brand_appears": false}',
+        candidates: [{ content: { parts: [{ text: '{"brand_appears": false}' }] } }],
+      };
+    };
+    const probe = installFakeClient(fake);
+    await probe._internals.buildGeminiProbe({
+      scan_mode: 'category_visibility_test',
+      max_runs: 4,
+      context: {
+        queries: [],
+        merchant_pdp_url: 'https://x.com',
+        product: { title: 'My Specific Product Name', vendor: 'BrandX', product_type: 'serum' },
+      },
+    });
+    // Anti-tautology: queries must NOT include the product title.
+    for (const p of observedPrompts) {
+      expect(p).not.toContain('My Specific Product Name');
+    }
+    // Category-open queries should fire.
+    expect(observedPrompts.some((p) => /best serums/i.test(p))).toBe(true);
+  });
+
+  test('mock provider supports category_visibility_test with conservative score', async () => {
+    const probe = require('../src/internal/agentCenterLlmProbe');
+    const out = probe._internals.buildMockProbe({
+      scan_mode: 'category_visibility_test',
+      max_runs: 3,
+    });
+    // Mock score is 25 — finding fires (< 50 threshold).
+    expect(out.scores.visibility_score).toBe(25);
+    expect(out.findings.length).toBe(1);
+    expect(out.findings[0].issue_type).toBe('category_discoverability_gap');
+  });
+
+  test('validateRequest accepts category_visibility_test scan_mode', () => {
+    const probe = require('../src/internal/agentCenterLlmProbe');
+    const r = probe._internals.validateRequest({
+      scan_mode: 'category_visibility_test',
+      scan_target_id: 'acst_1',
+      merchant_id: 'm1',
+      store_id: 's1',
+      context: {},
+    });
+    expect(r.ok).toBe(true);
+    expect(r.normalized.scan_mode).toBe('category_visibility_test');
+  });
+});
+
+
 // ---------------------------------------------------------------------------
 // buildGeminiProbe — full path with a mocked @google/genai client. We mock
 // `client.models.generateContent` directly so we can construct realistic

@@ -29,6 +29,14 @@ const ALLOWED_SCAN_MODES = new Set([
   'merchant_store_attribution_test',
   'pivota_pdp_attribution_test',
   'search_grounded_product_discovery_test',
+  // V1.6 — category-level discoverability. Asks open category queries
+  // ("best Korean eye patches 2026") instead of product-named queries
+  // ("where can I buy Revive Under Eye Patch"). The product-named test
+  // is a tautology: the model sees the product in the query and answers
+  // yes. Category queries test whether the merchant brand/URL appears
+  // in grounded sources for a query that doesn't already name the
+  // product — the honest BD-pitch baseline of "AI-channel discoverability".
+  'category_visibility_test',
 ]);
 
 const ALLOWED_PROVIDERS = new Set(['mock', 'gemini']);
@@ -41,6 +49,7 @@ const PRIMARY_ISSUE_TYPE_BY_SCAN_MODE = {
   merchant_store_attribution_test: 'merchant_store_attribution_gap',
   pivota_pdp_attribution_test: 'pivota_pdp_attribution_gap',
   search_grounded_product_discovery_test: 'ai_visibility_loss',
+  category_visibility_test: 'category_discoverability_gap',
 };
 
 const DEFAULT_MAX_RUNS = 3;
@@ -215,6 +224,11 @@ function buildMockProbe(input) {
     merchant_store_attribution_test: { visibility_score: 66, attribution_echo_rate: 33 },
     pivota_pdp_attribution_test: { visibility_score: 66, attribution_echo_rate: 50 },
     search_grounded_product_discovery_test: { visibility_score: 33, attribution_echo_rate: 0 },
+    // Category visibility is the harshest test by design — most merchants
+    // start invisible to category queries (they only show up when the
+    // query already names them). Mock at 25 to make findings always fire
+    // in dev, matching the production-tendency-toward-low.
+    category_visibility_test: { visibility_score: 25, attribution_echo_rate: 0 },
   };
   const scores = scoresByMode[scan_mode] || { visibility_score: 50, attribution_echo_rate: 0 };
 
@@ -297,6 +311,29 @@ function buildPromptForScanMode(input) {
       userPerQuery: (q) =>
         `Query: ${JSON.stringify(q)}\nVerified Pivota PDP URL: ${JSON.stringify(context.pivota_pdp_url || '')}\n` +
         'Reply JSON: {"pivota_url_found": true|false, "pivota_echo_only": true|false, "evidence_excerpt": "..."}',
+    };
+  }
+  if (scan_mode === 'category_visibility_test') {
+    // The product is intentionally NOT named in the query — that's the
+    // whole point. The query is a category-open buyer query the typical
+    // consumer would ask. We check whether the merchant brand or URL
+    // appears in grounded sources. Scoring uses post-hoc grounding match
+    // (in `buildGeminiProbe`'s scoring branch); the self-report fields
+    // here are diagnostic only.
+    const brand = (context.product && context.product.vendor) || '(merchant brand)';
+    const merchantUrl = context.merchant_pdp_url || '';
+    return {
+      system:
+        'You are a shopping-research analyst with live web search. For each ' +
+        'category query a consumer might ask, decide whether the specified ' +
+        'merchant brand surfaces in your grounded answer at all. Reply with ' +
+        'strict JSON; the canonical signal is the cited sources, not your ' +
+        'own assertion.',
+      userPerQuery: (q) =>
+        `Category query: ${JSON.stringify(q)}\n` +
+        `Merchant brand: ${JSON.stringify(brand)}\n` +
+        `Merchant store URL (optional): ${JSON.stringify(merchantUrl)}\n` +
+        'Reply JSON: {"brand_appears": true|false, "competitors_appearing": [...], "evidence_excerpt": "..."}',
     };
   }
   // search_grounded_product_discovery_test — same shape as visibility but with grounding hint
@@ -546,6 +583,59 @@ function buildAutoQueries(product) {
 }
 
 /**
+ * Build category-open buyer queries that DO NOT name the product. These
+ * are the honest test of AI-channel discoverability: if a consumer asks
+ * "best Korean eye patches" without naming the brand, does the merchant
+ * surface in grounded sources at all?
+ *
+ * Requires `product.product_type`. Returns [] when product_type is
+ * missing — caller falls back to the standard product-named queries
+ * (which is a tautology, but better than nothing for V1.6 transition).
+ */
+function buildCategoryQueries(product) {
+  if (!product || !_isNonEmptyString(product.product_type)) return [];
+  const productType = product.product_type.trim();
+  // Use the singular product_type form. Pluralization heuristic for
+  // common English categories — "best Korean eye patches", not "best
+  // Korean eye patch". Conservative: only pluralizes the obvious cases;
+  // when unsure we keep the singular (still parseable by the LLM).
+  const plural = _pluralize(productType);
+
+  const queries = [];
+  // Generic best-of — the most-likely category query a real consumer asks.
+  queries.push(`best ${plural} 2026`);
+  queries.push(`top ${plural} this year`);
+  // Comparative — under-$N is a high-intent buyer pattern.
+  queries.push(`best ${plural} under $50`);
+  // Authority signal — what reviewers/experts recommend.
+  queries.push(`what ${plural} do dermatologists recommend`);
+  // Niche / regional anchor — picks up brands with cultural or regional
+  // relevance ("Korean", "Japanese", "Italian", etc.). When vendor name
+  // hints regional origin we use that as a hint; otherwise omit.
+  const vendor = _isNonEmptyString(product.vendor) ? product.vendor.trim() : null;
+  if (vendor) {
+    // Just include the vendor as a soft constraint — Gemini grounded
+    // search will surface comparable brands (so this is closer to a
+    // peer-set query than a brand-specific one).
+    queries.push(`top ${plural} like ${vendor}`);
+  }
+  return queries;
+}
+
+function _pluralize(word) {
+  const w = word.toLowerCase();
+  if (w.endsWith('s')) return word; // already plural-ish
+  if (w.endsWith('y') && !/[aeiou]y$/.test(w)) {
+    return word.slice(0, -1) + 'ies'; // serum doesn't apply, but candy → candies
+  }
+  if (w.endsWith('sh') || w.endsWith('ch') || w.endsWith('x') || w.endsWith('z')) {
+    return word + 'es';
+  }
+  return word + 's';
+}
+
+
+/**
  * Validate that attribution-mode scan_targets have the URL they're trying
  * to attribute. Returns a `missing_input` finding (issue payload) when the
  * required URL is missing, or null when inputs are OK.
@@ -631,13 +721,20 @@ async function buildGeminiProbe(input) {
 
   // Query precedence:
   //   1. Operator-written queries (`context.queries`) — always wins
-  //   2. Auto-generated from `context.product` attributes — V1.5 default
-  //      when product info is available (real buyer-style phrasing)
-  //   3. `context.product_entity_id` as a last resort — V1 behavior, kept
-  //      so existing scan_targets don't suddenly produce empty results
+  //   2. For category_visibility_test, auto-generate CATEGORY-OPEN
+  //      queries from product.product_type (don't name the product —
+  //      that defeats the test)
+  //   3. For all other modes, auto-generate from product attributes
+  //      (real buyer-style phrasing including the product title)
+  //   4. `context.product_entity_id` last resort — V1 fallback
   let queries;
   if (context.queries.length) {
     queries = context.queries.slice(0, max_runs);
+  } else if (scan_mode === 'category_visibility_test') {
+    const cat = buildCategoryQueries(context.product);
+    queries = cat.length
+      ? cat.slice(0, max_runs)
+      : [context.product_entity_id || ''].filter(Boolean);
   } else {
     const auto = buildAutoQueries(context.product);
     queries = auto.length
@@ -790,6 +887,27 @@ async function buildGeminiProbe(input) {
         // Same anti-tautology guard as open_visibility.
         positives += 1;
       }
+    } else if (scan_mode === 'category_visibility_test') {
+      // Category visibility: positive when the merchant's brand or URL
+      // appears in any grounded source for a query that DOES NOT name
+      // the product. Self-report (`brand_appears`) is diagnostic only —
+      // grounding is the authoritative signal (same anti-hallucination
+      // discipline as the other modes).
+      const target = context.merchant_pdp_url || '';
+      const brandHit = Boolean(merchantBrand) && groundingContainsUrl(
+        groundingMetadata, target || '', merchantBrand,
+      );
+      urlMatch = {
+        target_brand: merchantBrand || null,
+        target_url: target || null,
+        in_grounding: brandHit,
+        // For category mode, we don't trust prose URL match at all
+        // (the category query never names the product, so URLs in
+        // prose are even-more-likely model fabrications).
+        in_text: false,
+        llm_self_report: parsed && parsed.brand_appears === true,
+      };
+      if (brandHit) positives += 1;
     }
     rawRuns.push({
       query: q,
@@ -845,6 +963,19 @@ async function buildGeminiProbe(input) {
   if (scan_mode === 'search_grounded_product_discovery_test' && visibilityScore < 50) {
     findings.push({
       issue_type: 'ai_visibility_loss',
+      severity: visibilityScore < 25 ? 'high' : 'medium',
+      evidence: { visibility_score: visibilityScore, runs: rawRuns },
+    });
+  }
+  if (scan_mode === 'category_visibility_test' && visibilityScore < 50) {
+    // Category visibility is the strictest signal — most merchants
+    // start invisible at the category level. We surface this as
+    // `category_discoverability_gap` separately from the product-named
+    // `ai_visibility_loss` so BD can distinguish "Gemini knows your
+    // product when named" from "Gemini doesn't surface you in category
+    // queries".
+    findings.push({
+      issue_type: 'category_discoverability_gap',
       severity: visibilityScore < 25 ? 'high' : 'medium',
       evidence: { visibility_score: visibilityScore, runs: rawRuns },
     });
@@ -921,6 +1052,7 @@ module.exports = {
     textMentionsHostOnly,
     unwrapJson,
     buildAutoQueries,
+    buildCategoryQueries,
     PRIMARY_ISSUE_TYPE_BY_SCAN_MODE,
     ALLOWED_SCAN_MODES,
   },
