@@ -503,15 +503,24 @@ describe('agentCenterLlmProbe — buildGeminiProbe with mocked client + groundin
     expect(types).toContain('unverified_pivota_attribution');
   });
 
-  test('merchant_store_attribution: text URL match counts as positive', async () => {
-    // No grounding chunks here — just a URL inlined in the prose.
+  test('merchant_store_attribution: text URL match alone does NOT count as positive', async () => {
+    // POST-AUDIT FIX: real Beauty of Joseon run had the model writing
+    // its own merchant URL in prose while explaining "this URL is NOT
+    // in the search results" — counted as a false positive under the
+    // V1 in_text logic. Only grounding chunks (real search citations)
+    // count toward the score now. in_text is preserved in audit only.
     const fake = async () => ({
-      text: 'Buy it at https://merchant.com/p/123 for fastest shipping.',
+      text:
+        "The merchant URL 'https://merchant.com/p/123' is NOT directly " +
+        "mentioned in the search results, but Sephora and Ulta both list it.",
       candidates: [
         {
           content: {
-            parts: [{ text: 'Buy it at https://merchant.com/p/123 for fastest shipping.' }],
+            parts: [{ text:
+              "The merchant URL 'https://merchant.com/p/123' is NOT directly " +
+              "mentioned in the search results, but Sephora and Ulta both list it." }],
           },
+          // NO groundingMetadata → in_grounding=false
         },
       ],
     });
@@ -521,11 +530,125 @@ describe('agentCenterLlmProbe — buildGeminiProbe with mocked client + groundin
       max_runs: 1,
       context: { queries: ['where to buy'], merchant_pdp_url: 'https://merchant.com/p/123' },
     });
-    expect(out.scores.visibility_score).toBe(100);
-    expect(out.findings).toEqual([]);
+    // Visibility score = 0 because no grounding evidence.
+    expect(out.scores.visibility_score).toBe(0);
     const um = out.raw_runs[0].url_match;
     expect(um.in_grounding).toBe(false);
+    // Text DID match (prose contains the URL) — preserved for audit.
     expect(um.in_text).toBe(true);
+    // BUT the score didn't include it as positive — that's the fix.
+  });
+
+  test('merchant_store_attribution: positive when grounding title contains brand', async () => {
+    // Real Beauty of Joseon run: chunk URI is a vertexaisearch redirector,
+    // but title is "Beauty of Joseon Official Store". Title-based match
+    // catches this case (host-via-redirector match would fail).
+    const fake = async () => ({
+      text: '{"merchant_url_found": true, "evidence_excerpt": "Beauty of Joseon Official Store"}',
+      candidates: [
+        {
+          content: { parts: [{ text: '{"merchant_url_found": true}' }] },
+          groundingMetadata: {
+            groundingChunks: [
+              {
+                web: {
+                  uri: 'https://vertexaisearch.cloud.google.com/grounding-api-redirect/abc',
+                  title: 'Beauty of Joseon Official Store',
+                },
+              },
+            ],
+          },
+        },
+      ],
+    });
+    const probe = installFakeClient(fake);
+    const out = await probe._internals.buildGeminiProbe({
+      scan_mode: 'merchant_store_attribution_test',
+      max_runs: 1,
+      context: {
+        queries: ['where to buy'],
+        merchant_pdp_url: 'https://beautyofjoseon.com/products/under-eye-patch',
+        product: { vendor: 'Beauty of Joseon', title: 'Under Eye Patch' },
+      },
+    });
+    expect(out.scores.visibility_score).toBe(100);
+    expect(out.raw_runs[0].url_match.in_grounding).toBe(true);
+  });
+
+  test('open_visibility: self-report=true with NO grounding does NOT score positive (anti-tautology)', async () => {
+    // POST-AUDIT FIX: real Beauty of Joseon run had visibility=100% from
+    // 3 self-reports with empty grounding_chunks — the model just echoed
+    // "yes" because the query mentioned the product. No real signal.
+    // Now requires hasAnyGrounding for positive scoring.
+    const fake = async () => ({
+      text: '{"product_visible": true, "evidence_excerpt": "the query"}',
+      candidates: [
+        {
+          content: { parts: [{ text: '{"product_visible": true}' }] },
+          // NO groundingMetadata
+        },
+      ],
+    });
+    const probe = installFakeClient(fake);
+    const out = await probe._internals.buildGeminiProbe({
+      scan_mode: 'open_product_visibility_test',
+      max_runs: 3,
+      context: { queries: ['where to buy X', 'shop X online', 'X for sale'],
+                 product: { title: 'X' } },
+    });
+    expect(out.scores.visibility_score).toBe(0);
+  });
+
+  test('open_visibility: self-report=true WITH grounding scores positive', async () => {
+    const fake = async () => ({
+      text: '{"product_visible": true}',
+      candidates: [
+        {
+          content: { parts: [{ text: '{"product_visible": true}' }] },
+          groundingMetadata: {
+            groundingChunks: [
+              { web: { uri: 'https://vertexaisearch.cloud.google.com/x', title: 'Sephora' } },
+            ],
+          },
+        },
+      ],
+    });
+    const probe = installFakeClient(fake);
+    const out = await probe._internals.buildGeminiProbe({
+      scan_mode: 'open_product_visibility_test',
+      max_runs: 1,
+      context: { queries: ['where to buy X'], product: { title: 'X' } },
+    });
+    expect(out.scores.visibility_score).toBe(100);
+  });
+
+  test('raw_runs include grounding_sources with both uri AND title', async () => {
+    // Title is the canonical signal for "what site did Gemini cite";
+    // backend uses it to extract real competitor hosts.
+    const fake = async () => ({
+      text: '{"product_visible": true}',
+      candidates: [
+        {
+          content: { parts: [{ text: '{"product_visible": true}' }] },
+          groundingMetadata: {
+            groundingChunks: [
+              { web: { uri: 'https://vertexaisearch.cloud.google.com/abc', title: 'Sephora' } },
+              { web: { uri: 'https://vertexaisearch.cloud.google.com/def', title: 'Olive Young Global' } },
+            ],
+          },
+        },
+      ],
+    });
+    const probe = installFakeClient(fake);
+    const out = await probe._internals.buildGeminiProbe({
+      scan_mode: 'open_product_visibility_test',
+      max_runs: 1,
+      context: { queries: ['X'], product: { title: 'X' } },
+    });
+    expect(out.raw_runs[0].grounding_sources).toEqual([
+      { uri: 'https://vertexaisearch.cloud.google.com/abc', title: 'Sephora' },
+      { uri: 'https://vertexaisearch.cloud.google.com/def', title: 'Olive Young Global' },
+    ]);
   });
 
   test('grounding chunks are surfaced in raw_runs for evidence', async () => {
