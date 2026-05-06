@@ -126,6 +126,9 @@ const {
   extractHumanApparelCategories,
 } = require('./findProductsMulti/intent');
 const {
+  expandQueryWithZhAlias,
+} = require('./findProductsMulti/zhEnQueryAliases');
+const {
   buildFindProductsSearchRequestContract,
   resolveFindProductsSearchExecutionPlan,
 } = require('./findProductsSearchContracts');
@@ -30118,6 +30121,17 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           !searchAllMerchantsExplicit &&
           creatorMerchantIds.length > 0;
 
+        // PR-04: ZH→EN alias expansion. CJK bare-noun queries (e.g. 口红, 卫衣)
+        // do not match the EN-tokenized catalog/Aurora index — probe v1 showed
+        // 12/13 ZH queries returned EMPTY. Append curated EN aliases as
+        // additional tokens so retrieval picks up matches without losing the
+        // user's original phrasing. Telemetry is exposed in response metadata
+        // so probes can verify expansion fired.
+        const zhAliasExpansion =
+          search.query != null
+            ? expandQueryWithZhAlias(String(search.query || ''))
+            : { query: '', aliases_applied: false, alias_terms: [] };
+
         queryParams = {
           ...(merchantId ? { merchant_id: merchantId } : {}),
           ...(!merchantId && merchantIds.length > 0 ? { merchant_ids: merchantIds } : {}),
@@ -30127,7 +30141,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           ...(!merchantId && merchantIds.length === 0 && !shouldScopeToCreatorCatalog
             ? { search_all_merchants: true }
             : {}),
-          ...(search.query != null ? { query: String(search.query || '') } : {}),
+          ...(search.query != null ? { query: zhAliasExpansion.query } : {}),
           ...(search.category ? { category: search.category } : {}),
           ...(priceMin != null ? { min_price: priceMin } : {}),
           ...(priceMax != null ? { max_price: priceMax } : {}),
