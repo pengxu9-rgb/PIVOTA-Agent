@@ -304,6 +304,46 @@ describe('agentCenterLlmProbe — URL helpers', () => {
 });
 
 
+describe('agentCenterLlmProbe — buildAutoQueries', () => {
+  const { _internals } = require('../src/internal/agentCenterLlmProbe');
+  const { buildAutoQueries } = _internals;
+
+  test('returns empty array when product.title is missing', () => {
+    expect(buildAutoQueries(null)).toEqual([]);
+    expect(buildAutoQueries({})).toEqual([]);
+    expect(buildAutoQueries({ title: '' })).toEqual([]);
+    expect(buildAutoQueries({ title: '   ' })).toEqual([]);
+  });
+
+  test('builds buyer-style queries from title alone', () => {
+    const qs = buildAutoQueries({ title: 'Vitamin C Tonic 50ml' });
+    expect(qs.length).toBeGreaterThanOrEqual(8);
+    // Must include the title (real signal) — this is the whole point.
+    expect(qs.every((q) => q.includes('Vitamin C Tonic 50ml'))).toBe(true);
+    // Must include direct buying intent.
+    expect(qs.some((q) => /where can I buy/i.test(q))).toBe(true);
+    // Must include comparative.
+    expect(qs.some((q) => /reviews/i.test(q))).toBe(true);
+  });
+
+  test('adds vendor-anchored variants when vendor is present', () => {
+    const qs = buildAutoQueries({ title: 'Vitamin C Tonic', vendor: 'Acme' });
+    expect(qs.some((q) => q.includes('Acme Vitamin C Tonic'))).toBe(true);
+  });
+
+  test('adds category-anchored "best X" when product_type is present', () => {
+    const qs = buildAutoQueries({ title: 'Vitamin C Tonic', product_type: 'serum' });
+    expect(qs.some((q) => /best serum/i.test(q))).toBe(true);
+  });
+
+  test('order is deterministic (snapshot-friendly)', () => {
+    const a = buildAutoQueries({ title: 'X', vendor: 'V', product_type: 't' });
+    const b = buildAutoQueries({ title: 'X', vendor: 'V', product_type: 't' });
+    expect(a).toEqual(b);
+  });
+});
+
+
 // ---------------------------------------------------------------------------
 // buildGeminiProbe — full path with a mocked @google/genai client. We mock
 // `client.models.generateContent` directly so we can construct realistic
@@ -530,6 +570,89 @@ describe('agentCenterLlmProbe — buildGeminiProbe with mocked client + groundin
     expect(calls).toBe(0);
     expect(out.aborted).toBe('missing_input');
     expect(out.findings[0].issue_type).toBe('missing_merchant_pdp_url');
+  });
+
+  test('auto query generator runs when context.queries is empty and product.title is set', async () => {
+    // Critical: V1 fallback was `[product_entity_id]` which is meaningless
+    // garbage to an LLM. PR 15 generates real buyer-style queries from
+    // product.title — this test asserts the generator is wired in.
+    const calls = [];
+    const fake = async (args) => {
+      const part = args.contents?.[0]?.parts?.[0]?.text || '';
+      calls.push(part);
+      return {
+        text: '{"product_visible": true}',
+        candidates: [{ content: { parts: [{ text: '{"product_visible": true}' }] } }],
+      };
+    };
+    const probe = installFakeClient(fake);
+    const out = await probe._internals.buildGeminiProbe({
+      scan_mode: 'open_product_visibility_test',
+      max_runs: 4,
+      context: {
+        queries: [],
+        product_entity_id: 'm1|shopify|P1',
+        product: { title: 'Vitamin C Tonic 50ml', vendor: 'Acme', product_type: 'serum' },
+      },
+    });
+    expect(out.runs_count).toBe(4);
+    // None of the prompts should contain the meaningless product_entity_id.
+    for (const p of calls) {
+      expect(p).not.toContain('m1|shopify|P1');
+    }
+    // At least one query should reference the product title.
+    expect(calls.some((p) => p.includes('Vitamin C Tonic 50ml'))).toBe(true);
+  });
+
+  test('auto query generator falls back to product_entity_id when product.title is missing', async () => {
+    // Backward-compat: existing scan_targets without product info still
+    // work (just less well, as before).
+    const calls = [];
+    const fake = async (args) => {
+      calls.push(args.contents?.[0]?.parts?.[0]?.text || '');
+      return {
+        text: '{"product_visible": true}',
+        candidates: [{ content: { parts: [{ text: '{"product_visible": true}' }] } }],
+      };
+    };
+    const probe = installFakeClient(fake);
+    const out = await probe._internals.buildGeminiProbe({
+      scan_mode: 'open_product_visibility_test',
+      max_runs: 1,
+      context: {
+        queries: [],
+        product_entity_id: 'm1|shopify|P1',
+        product: null,
+      },
+    });
+    expect(out.runs_count).toBe(1);
+    expect(calls[0]).toContain('m1|shopify|P1');
+  });
+
+  test('auto query generator is bypassed when operator wrote queries manually', async () => {
+    const calls = [];
+    const fake = async (args) => {
+      calls.push(args.contents?.[0]?.parts?.[0]?.text || '');
+      return {
+        text: '{"product_visible": true}',
+        candidates: [{ content: { parts: [{ text: '{"product_visible": true}' }] } }],
+      };
+    };
+    const probe = installFakeClient(fake);
+    await probe._internals.buildGeminiProbe({
+      scan_mode: 'open_product_visibility_test',
+      max_runs: 1,
+      context: {
+        queries: ['my custom query'],
+        product: { title: 'Vitamin C Tonic 50ml' },
+      },
+    });
+    // Operator's query wins.
+    expect(calls[0]).toContain('my custom query');
+    // Auto-generated buyer-intent phrasing must NOT appear when operator
+    // provided their own queries (the auto generator is bypassed).
+    expect(calls[0]).not.toContain('where can I buy');
+    expect(calls[0]).not.toContain('shop Vitamin C Tonic 50ml online');
   });
 
   test('open_visibility tests do NOT require a URL — runs as normal', async () => {
