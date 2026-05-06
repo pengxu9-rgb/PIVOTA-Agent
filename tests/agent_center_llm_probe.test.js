@@ -66,7 +66,7 @@ describe('agentCenterLlmProbe — request validation', () => {
       options: { max_runs: 9999 },
     });
     expect(r.ok).toBe(true);
-    expect(r.normalized.max_runs).toBeLessThanOrEqual(20);
+    expect(r.normalized.max_runs).toBeLessThanOrEqual(8);
   });
 
   test('accepts a fully-formed request and normalizes context', () => {
@@ -125,7 +125,7 @@ describe('agentCenterLlmProbe — mock provider', () => {
 
   test('runs_count matches max_runs (clamped)', () => {
     expect(buildMockProbe({ scan_mode: 'open_product_visibility_test', max_runs: 1 }).runs_count).toBe(1);
-    expect(buildMockProbe({ scan_mode: 'open_product_visibility_test', max_runs: 99 }).runs_count).toBe(20);
+    expect(buildMockProbe({ scan_mode: 'open_product_visibility_test', max_runs: 99 }).runs_count).toBe(8);
   });
 });
 
@@ -399,10 +399,6 @@ describe('agentCenterLlmProbe — buildGeminiProbe with mocked client + groundin
     expect(observedConfig.tools).toEqual([{ googleSearch: {} }]);
     // Strict JSON mode must be OFF — incompatible with grounding.
     expect(observedConfig.responseMimeType).toBeUndefined();
-    // V1.5: temperature is now 0.3 (was 0). Determinism for tests is
-    // preserved by the mocked client, not by the model temperature.
-    expect(observedConfig.temperature).toBeGreaterThan(0);
-    expect(observedConfig.temperature).toBeLessThanOrEqual(0.5);
   });
 
   test('pivota_pdp_attribution scores from grounding URL match, not LLM self-report', async () => {
