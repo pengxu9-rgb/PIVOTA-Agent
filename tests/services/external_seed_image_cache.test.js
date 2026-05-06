@@ -148,7 +148,13 @@ describe('externalSeedImageCache', () => {
       seed_data: {
         image_urls: ['https://example.com/root.jpg', 'https://example.com/root-2.jpg'],
         snapshot: {
-          variants: [{ image_url: 'https://example.com/variant.jpg' }],
+          variants: [
+            {
+              image_url: 'https://example.com/variant.jpg',
+              label_image_url: 'https://example.com/variant-label.jpg',
+              swatch_image_url: 'https://example.com/variant-swatch.jpg',
+            },
+          ],
           media: [{ url: 'https://example.com/media.jpg' }],
         },
       },
@@ -159,6 +165,8 @@ describe('externalSeedImageCache', () => {
       'https://example.com/root-2.jpg',
       'https://example.com/media.jpg',
       'https://example.com/variant.jpg',
+      'https://example.com/variant-label.jpg',
+      'https://example.com/variant-swatch.jpg',
     ]);
   });
 });

@@ -37,6 +37,8 @@ describe('externalSeedProducts helper', () => {
               image_url: blockedOriginal,
               image_urls: [blockedOriginal],
               images: [blockedOriginal],
+              label_image_url: blockedOriginal,
+              swatch_image_url: blockedOriginal,
             },
           ],
         },
@@ -49,6 +51,8 @@ describe('externalSeedProducts helper', () => {
     expect(product.images[0]).toBe(cachedUrl);
     expect(product.images).not.toContain(blockedOriginal);
     expect(product.variants[0].image_url).toBe(cachedUrl);
+    expect(product.variants[0].label_image_url).toBe(cachedUrl);
+    expect(product.variants[0].swatch_image_url).toBe(cachedUrl);
     expect(product.variants[0].image_urls).toEqual([cachedUrl]);
 
     const searchProduct = buildExternalSeedBrandSearchProduct(row);

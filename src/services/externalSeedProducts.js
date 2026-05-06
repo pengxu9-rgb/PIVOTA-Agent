@@ -2317,8 +2317,13 @@ function inferVariantAxisKind(option, context = {}) {
   return { axis_kind: 'non_displayable', display_label: '', normalized_value: '' };
 }
 
-function normalizeVariantVisualFields(rawVariant, fallbackImageUrl) {
-  const swatchImageUrl = normalizeHttpUrl(
+function rewriteSeedImageUrlThroughCache(url, cacheUrlMap) {
+  const rewritten = rewriteSeedImageUrlsThroughCache([url], cacheUrlMap);
+  return rewritten[0] || normalizePdpImageUrl(url) || '';
+}
+
+function normalizeVariantVisualFields(rawVariant, fallbackImageUrl, cacheUrlMap) {
+  const rawSwatchImageUrl = normalizeHttpUrl(
     rawVariant?.swatch_image_url ||
       rawVariant?.label_image_url ||
       rawVariant?.thumbnail_url ||
@@ -2327,6 +2332,9 @@ function normalizeVariantVisualFields(rawVariant, fallbackImageUrl) {
       rawVariant?.swatch?.imageUrl ||
       rawVariant?.swatch?.url,
   );
+  const rawImageUrl = normalizeHttpUrl(rawVariant?.image_url || rawVariant?.image) || fallbackImageUrl || '';
+  const swatchImageUrl = rewriteSeedImageUrlThroughCache(rawSwatchImageUrl, cacheUrlMap);
+  const imageUrl = rewriteSeedImageUrlThroughCache(rawImageUrl, cacheUrlMap);
   const swatchHex = firstNonEmptyString(
     rawVariant?.color_hex,
     rawVariant?.swatch?.hex,
@@ -2335,14 +2343,14 @@ function normalizeVariantVisualFields(rawVariant, fallbackImageUrl) {
     rawVariant?.hex,
   );
   return {
-    image_url: normalizeHttpUrl(rawVariant?.image_url || rawVariant?.image) || fallbackImageUrl || '',
+    image_url: imageUrl,
     swatch_image_url: swatchImageUrl || '',
     swatch_hex: swatchHex || '',
   };
 }
 
-function applySeedVariantDisplayContract({ options, rawVariant, context, imageUrl }) {
-  const visual = normalizeVariantVisualFields(rawVariant, imageUrl);
+function applySeedVariantDisplayContract({ options, rawVariant, context, imageUrl, imageCacheUrlMap }) {
+  const visual = normalizeVariantVisualFields(rawVariant, imageUrl, imageCacheUrlMap);
   const normalizedOptions = [];
   const seen = new Set();
   for (const option of Array.isArray(options) ? options : []) {
@@ -2942,6 +2950,7 @@ function normalizeSeedVariants(seedData, row) {
         rawVariant,
         context: variantContext,
         imageUrl,
+        imageCacheUrlMap,
       });
       const contractedTitle =
         contractedDisplay.options.map((option) => option.value).filter(Boolean).join(' / ') ||

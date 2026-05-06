@@ -102,8 +102,15 @@ function collectImageUrlsFromValue(value, out, fieldPath) {
     ['src', typed.src],
     ['image', typed.image],
     ['image_url', typed.image_url],
+    ['imageUrl', typed.imageUrl],
+    ['label_image_url', typed.label_image_url],
+    ['labelImageUrl', typed.labelImageUrl],
+    ['swatch_image_url', typed.swatch_image_url],
+    ['swatchImageUrl', typed.swatchImageUrl],
     ['thumbnail_url', typed.thumbnail_url],
+    ['thumbnailUrl', typed.thumbnailUrl],
     ['primary_image_url', typed.primary_image_url],
+    ['primaryImageUrl', typed.primaryImageUrl],
   ].forEach(([key, candidate]) => collectImageUrlsFromValue(candidate, out, `${fieldPath}.${key}`));
   [
     ['images', typed.images],
