@@ -1048,6 +1048,25 @@ function appendImageUrls(out, value) {
   appendImageUrls(out, value.contentUrl);
 }
 
+function collectCachedSeedImageUrls(seedData) {
+  const parsedSeedData = ensureJsonObject(seedData);
+  const snapshot = ensureJsonObject(parsedSeedData.snapshot);
+  const out = [];
+  const appendCacheContract = (contract) => {
+    const normalized = ensureJsonObject(contract);
+    appendImageUrls(out, normalized.visible_image_urls);
+    if (Array.isArray(normalized.assets)) {
+      normalized.assets.forEach((asset) => {
+        appendImageUrls(out, asset?.visible_url);
+        appendImageUrls(out, asset?.cached_url);
+      });
+    }
+  };
+  appendCacheContract(parsedSeedData.image_asset_cache_v1);
+  appendCacheContract(snapshot.image_asset_cache_v1);
+  return out;
+}
+
 function classifySeedGalleryAsset(url) {
   const normalized = normalizePdpImageUrl(url);
   if (!normalized) return '';
@@ -2312,6 +2331,7 @@ function shouldPreferUrlVariantOptions(options, urlOptions, rawVariant) {
 function collectSeedImageUrls(seedData, row) {
   const parsedSeedData = ensureJsonObject(seedData);
   const out = [];
+  appendImageUrls(out, collectCachedSeedImageUrls(parsedSeedData));
   appendImageUrls(out, parsedSeedData.snapshot?.image_url);
   appendImageUrls(out, parsedSeedData.snapshot?.image_urls);
   appendImageUrls(out, parsedSeedData.snapshot?.images);
@@ -3625,7 +3645,9 @@ function buildExternalSeedBrandSearchProduct(row) {
     destinationUrl,
     ingredientIds: [],
   });
+  const cachedImageUrls = collectCachedSeedImageUrls(effectiveSeedData);
   const imageUrl = firstNonEmptyString(
+    cachedImageUrls[0],
     row.image_url,
     snapshot.image_url,
     effectiveSeedData.image_url,
@@ -3723,6 +3745,7 @@ module.exports = {
   inferExternalSeedBeautyCategory,
   inferExternalSeedSkincareCategory: inferExternalSeedBeautyCategory,
   collectSeedImageUrls,
+  collectCachedSeedImageUrls,
   normalizeSeedImageUrls,
   normalizeSeedVariants,
   sanitizeSeedVariantDisplayFields,

@@ -3,10 +3,43 @@ const {
   buildExternalSeedProduct,
   canonicalizeExternalSeedSnapshot,
   buildExternalSeedBrandSearchProduct,
+  collectCachedSeedImageUrls,
   normalizeSeedVariants,
 } = require('../../src/services/externalSeedProducts');
 
 describe('externalSeedProducts helper', () => {
+  test('prefers cached image asset contract URLs over blocked merchant originals', () => {
+    const cachedUrl = 'https://assets.pivota.cc/catalog-image-cache/ab/abcdef.png';
+    const blockedOriginal = 'https://www.guerlain.com/dw/image/v2/BDCZ_PRD/blocked.png?sw=655&sh=655';
+    const row = {
+      id: 'eps_guerlain_eye',
+      external_product_id: 'ext_guerlain_eye',
+      canonical_url: 'https://www.guerlain.com/us/en-us/p/abeille-royale-youth-repair-eye-care-P062209.html',
+      destination_url: 'https://www.guerlain.com/us/en-us/p/abeille-royale-youth-repair-eye-care-P062209.html',
+      title: 'Abeille Royale Youth Repair Eye Care',
+      image_url: blockedOriginal,
+      seed_data: {
+        brand: 'Guerlain',
+        image_asset_cache_v1: {
+          visible_image_urls: [cachedUrl],
+          assets: [{ original_url: blockedOriginal, cached_url: cachedUrl, visible_url: cachedUrl }],
+        },
+        snapshot: {
+          image_url: blockedOriginal,
+          image_urls: [blockedOriginal],
+        },
+      },
+    };
+
+    expect(collectCachedSeedImageUrls(row.seed_data)).toEqual([cachedUrl]);
+    const product = buildExternalSeedProduct(row);
+    expect(product.image_url).toBe(cachedUrl);
+    expect(product.images[0]).toBe(cachedUrl);
+
+    const searchProduct = buildExternalSeedBrandSearchProduct(row);
+    expect(searchProduct.image_url).toBe(cachedUrl);
+  });
+
   test('normalizes snapshot variants and carries multi-image fields forward', () => {
     const row = {
       id: 'eps_1',
