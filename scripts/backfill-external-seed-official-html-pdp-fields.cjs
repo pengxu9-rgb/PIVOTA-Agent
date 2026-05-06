@@ -288,6 +288,113 @@ function cleanSectionText(value) {
     .trim();
 }
 
+function escapeRegExp(value) {
+  return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function decodeJsonStringFragment(value) {
+  const raw = String(value || '');
+  if (!raw) return '';
+  try {
+    return JSON.parse(`"${raw}"`);
+  } catch {
+    return raw
+      .replace(/\\u003c/gi, '<')
+      .replace(/\\u003e/gi, '>')
+      .replace(/\\u0026/gi, '&')
+      .replace(/\\"/g, '"')
+      .replace(/\\n/g, '\n');
+  }
+}
+
+function extractShopifyProductDescriptionHtml(html) {
+  const matches = String(html || '').matchAll(/"description"\s*:\s*"((?:\\.|[^"\\])*)"/g);
+  for (const match of matches) {
+    const decoded = decodeJsonStringFragment(match[1]);
+    if (/\b(?:product__description|What It Is|Skin Concern|Product Benefits|Key Ingredients)\b/i.test(decoded)) {
+      return decoded;
+    }
+  }
+  return '';
+}
+
+function extractStrongLabeledParagraphSections(htmlFragment, allowedHeadings = []) {
+  const allowed = new Set(allowedHeadings.map((item) => normalizeText(item).toLowerCase()));
+  const sections = [];
+  for (const match of String(htmlFragment || '').matchAll(/<p\b[^>]*>\s*<strong\b[^>]*>([\s\S]*?)<\/strong>([\s\S]*?)<\/p>/gi)) {
+    const heading = cleanSectionText(match[1]).replace(/:$/, '').trim();
+    const body = cleanSectionText(match[2]);
+    if (!heading || body.length < 8) continue;
+    if (allowed.size && !allowed.has(heading.toLowerCase())) continue;
+    sections.push({ heading, body });
+  }
+  return sections;
+}
+
+const MEDICUBE_TOGGLE_LABELS = [
+  'OVERVIEW',
+  'STUDY RESULTS',
+  'KEY INGREDIENTS',
+  'FULL INGREDIENTS',
+  'FORMULATED WITHOUT',
+  'HOW TO APPLY',
+  'HOW TO USE',
+  'CLINICAL TEST',
+  'WHY IS IT SPECIAL',
+  'FAQ',
+  'RECOMMENDED FOR',
+];
+
+function extractMedicubeLabeledBlock(html, label) {
+  const source = String(html || '');
+  const normalizedLabel = normalizeText(label).toUpperCase();
+  const comments = Array.from(source.matchAll(/<!--\s*([A-Z][A-Z\s]+)\s*-->/gi))
+    .map((match) => ({
+      index: match.index,
+      label: normalizeText(match[1]).toUpperCase(),
+    }))
+    .filter((match) => MEDICUBE_TOGGLE_LABELS.includes(match.label));
+  const start = comments.find((match) => match.label === normalizedLabel);
+  if (start) {
+    const next = comments.find((match) => match.index > start.index && match.label !== normalizedLabel);
+    return next ? source.slice(start.index, next.index) : source.slice(start.index, start.index + 7000);
+  }
+
+  const labelPattern = escapeRegExp(label).replace(/\s+/g, '\\s+');
+  const anchorRe = new RegExp(
+    `<a\\b[^>]*class="[^"]*\\bplus-minus-toggle\\b[^"]*"[^>]*>\\s*${labelPattern}\\s*<\\/a>`,
+    'i',
+  );
+  const anchor = anchorRe.exec(source);
+  if (!anchor) return '';
+  const divStart = source.lastIndexOf('<div', anchor.index);
+  const startIndex = divStart >= 0 && /class="[^"]*\btoggle_box\b/i.test(source.slice(divStart, anchor.index + anchor[0].length))
+    ? divStart
+    : anchor.index;
+  const afterAnchor = anchor.index + anchor[0].length;
+  const nextToggle = source.slice(afterAnchor).search(/<div\b[^>]*class="[^"]*\btoggle_box\b/i);
+  const endIndex = nextToggle >= 0 ? afterAnchor + nextToggle : startIndex + 7000;
+  return source.slice(startIndex, endIndex);
+}
+
+function cleanMedicubeToggleText(value, label = '') {
+  const labelRe = label ? new RegExp(`^\\s*${escapeRegExp(label).replace(/\s+/g, '\\s+')}\\s*`, 'i') : null;
+  let text = cleanSectionText(value)
+    .replace(/\bplus-minus-toggle\b/gi, ' ')
+    .replace(/\bFull Ingredients\b/gi, ' ')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim();
+  if (labelRe) text = text.replace(labelRe, '').trim();
+  return text;
+}
+
+function normalizeHowToUseCandidate(value) {
+  const text = normalizeText(value);
+  if (!text) return '';
+  if (text.length <= 1500) return text;
+  return `${text.slice(0, 1490).replace(/\s+\S*$/, '')}...`;
+}
+
 function extractFirstParagraphAfter(html, markerRe) {
   const match = markerRe.exec(html);
   if (!match) return '';
@@ -307,6 +414,18 @@ function extractInlineTextAfterMarker(html, markerRe, stopRe = /<section\b|<scri
 
 function extractSkin1004Fields(html) {
   const fields = {};
+  const descriptionSections = extractStrongLabeledParagraphSections(
+    extractShopifyProductDescriptionHtml(html),
+    ['What It Is', 'Skin Concern', 'Product Benefits', 'Key Ingredients'],
+  );
+  if (descriptionSections.length) {
+    fields.pdp_details_sections = descriptionSections;
+    const keyIngredients = descriptionSections.find((section) => /^key ingredients$/i.test(section.heading));
+    if (keyIngredients?.body && looksLikeActiveIngredientList(keyIngredients.body)) {
+      fields.pdp_active_ingredients_raw = keyIngredients.body;
+    }
+  }
+
   const fullIngredients =
     extractFirstParagraphAfter(html, /FULL INGREDIENTS/i) ||
     extractInlineTextAfterMarker(html, /FULL INGREDIENTS/i);
@@ -314,7 +433,7 @@ function extractSkin1004Fields(html) {
     fields.pdp_ingredients_raw = fullIngredients;
   }
 
-  const howMatch = html.match(/<h2[^>]*>\s*HOW TO USE\s*<\/h2>[\s\S]{0,3000}?<div[^>]*class="[^"]*prhow-txt[^"]*"[^>]*>([\s\S]*?)<\/div>\s*<\/div>/i);
+  const howMatch = html.match(/\bHOW TO USE\b[\s\S]{0,5000}?<div[^>]*class="[^"]*prhow-txt[^"]*"[^>]*>([\s\S]*?)<\/div>/i);
   const howTo = howMatch ? cleanSectionText(howMatch[1]) : '';
   if (looksLikeHowToUse(howTo)) fields.pdp_how_to_use_raw = howTo;
 
@@ -325,20 +444,30 @@ function extractSkin1004Fields(html) {
 
 function extractMedicubeFields(html) {
   const fields = {};
+  const fullIngredientsBlock = extractMedicubeLabeledBlock(html, 'FULL INGREDIENTS');
   const ingredientMatch = html.match(/<div[^>]*class="[^"]*\bwrite\b[^"]*"[^>]*id="test"[\s\S]*?<p[^>]*class="[^"]*\bdesc\b[^"]*"[^>]*>([\s\S]*?)<\/p>/i);
-  const fullIngredients = ingredientMatch ? cleanSectionText(ingredientMatch[1]) : '';
+  const fullIngredientCandidates = [
+    cleanMedicubeToggleText(fullIngredientsBlock, 'FULL INGREDIENTS'),
+    ingredientMatch ? cleanSectionText(ingredientMatch[1]) : '',
+  ];
+  const fullIngredients = fullIngredientCandidates.find((candidate) => looksLikeFullInci(candidate)) || '';
   if (looksLikeFullInci(fullIngredients)) fields.pdp_ingredients_raw = fullIngredients;
 
+  const keyIngredientsToggle = cleanMedicubeToggleText(
+    extractMedicubeLabeledBlock(html, 'KEY INGREDIENTS'),
+    'KEY INGREDIENTS',
+  );
   const keyIngredientBlock = extractInlineTextAfterMarker(
     html,
     /\b(?:Key|Main) Ingredients?\b/i,
     /\bBenefits\b|\bHow to use\b|<section\b|<script\b|<\/section>/i,
   );
+  const activeIngredientSource = keyIngredientsToggle || keyIngredientBlock;
   const activeItems = Array.from(
     new Set(
       [
-        ...extractKnownHeroIngredients(keyIngredientBlock),
-        ...keyIngredientBlock
+        ...extractKnownHeroIngredients(activeIngredientSource),
+        ...activeIngredientSource
           .split(/\n|>|•|\u2022|,/)
           .map((item) => normalizeText(item).replace(/\s+(?:improve|brightening|spot|targeting|red|dark).*/i, '').trim())
           .filter((item) => looksLikeActiveIngredientList(item)),
@@ -349,23 +478,52 @@ function extractMedicubeFields(html) {
     fields.pdp_active_ingredients_raw = activeItems.join(', ');
   }
 
+  const labeledHowTo = normalizeHowToUseCandidate(
+    cleanMedicubeToggleText(
+      extractMedicubeLabeledBlock(html, 'HOW TO APPLY') || extractMedicubeLabeledBlock(html, 'HOW TO USE'),
+      extractMedicubeLabeledBlock(html, 'HOW TO APPLY') ? 'HOW TO APPLY' : 'HOW TO USE',
+    ),
+  );
+  if (looksLikeHowToUse(labeledHowTo)) fields.pdp_how_to_use_raw = labeledHowTo;
+
   const stripped = stripHtml(html);
-  const howMatches = Array.from(stripped.matchAll(/\bHOW TO USE\b/gi));
-  for (const howMatch of howMatches) {
-    if (howMatch.index < 2500) continue;
-    const howSlice = stripped
-      .slice(howMatch.index, howMatch.index + 1900)
-      .replace(/^HOW TO USE\s*/i, '')
-      .split(/\b(?:FAQ|KEY INGREDIENTS|MAIN INGREDIENTS|FULL INGREDIENTS|CLINICAL TEST|REVIEW|WHAT'S IN IT|WHAT IS IT|FOR MAXIMUM|MEDICUBE DELIVERS)\b|✔/i)[0];
-    const howTo = normalizeText(howSlice);
-    if (looksLikeHowToUse(howTo)) {
-      fields.pdp_how_to_use_raw = howTo;
-      break;
+  if (!fields.pdp_how_to_use_raw) {
+    const howMatches = Array.from(stripped.matchAll(/\bHOW TO (?:USE|APPLY)\b/gi));
+    for (const howMatch of howMatches) {
+      if (howMatch.index < 2500) continue;
+      const howSlice = stripped
+        .slice(howMatch.index, howMatch.index + 1900)
+        .replace(/^HOW TO (?:USE|APPLY)\s*/i, '')
+        .split(/\b(?:FAQ|KEY INGREDIENTS|MAIN INGREDIENTS|FULL INGREDIENTS|CLINICAL TEST|STUDY RESULTS|REVIEW|WHAT'S IN IT|WHAT IS IT|FOR MAXIMUM|MEDICUBE DELIVERS)\b|✔/i)[0];
+      const howTo = normalizeHowToUseCandidate(howSlice);
+      if (looksLikeHowToUse(howTo)) {
+        fields.pdp_how_to_use_raw = howTo;
+        break;
+      }
     }
   }
 
   const details = [];
-  const keyIngredientsBlock = extractMedicubeCommentBlock(html, 'KEY INGREDIENTS', 'CLINICAL TEST');
+  const overviewBlock = cleanMedicubeToggleText(extractMedicubeLabeledBlock(html, 'OVERVIEW'), 'OVERVIEW');
+  if (overviewBlock) {
+    const body = overviewBlock.length > 1400 ? truncateOfficialDetailText(overviewBlock) : overviewBlock;
+    if (body.length >= 60) details.push({ heading: 'Overview', body });
+  }
+  const studyResultsBlock = cleanMedicubeToggleText(
+    extractMedicubeLabeledBlock(html, 'STUDY RESULTS'),
+    'STUDY RESULTS',
+  );
+  if (studyResultsBlock) {
+    const body = studyResultsBlock.length > 1400 ? truncateOfficialDetailText(studyResultsBlock) : studyResultsBlock;
+    if (body.length >= 60 && /\b(?:result|study|test|improvement|hydration|texture|tone|glow|elasticity)\b/i.test(body)) {
+      details.push({ heading: 'Study Results', body });
+    }
+  }
+  if (keyIngredientsToggle) {
+    const body = keyIngredientsToggle.length > 1400 ? truncateOfficialDetailText(keyIngredientsToggle) : keyIngredientsToggle;
+    if (body.length >= 40) details.push({ heading: 'Key Ingredients', body });
+  }
+  const keyIngredientsBlock = keyIngredientsToggle ? '' : extractMedicubeCommentBlock(html, 'KEY INGREDIENTS', 'CLINICAL TEST');
   if (keyIngredientsBlock) {
     const body = cleanSectionText(keyIngredientsBlock).replace(/\bFull Ingredients\b/gi, '').trim();
     if (body.length >= 60) details.push({ heading: 'Key Ingredients', body });
@@ -1124,6 +1282,8 @@ module.exports = {
   _internals: {
     findTirtirSheetIngredientRow,
     extractTirtirFaqHowToUse,
+    extractSkin1004Fields,
+    extractMedicubeFields,
     extractOfficialShopifyVariants,
     buildShopifyProductJsonUrl,
     normalizeTirtirTitleKey,
