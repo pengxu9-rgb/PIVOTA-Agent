@@ -831,9 +831,19 @@ function createFindProductsBeautyDiscoveryLocalMainlineRuntime(deps = {}) {
         },
       };
     }
+    // PR-01: bump the seed-direct timeout ceiling from 4800ms to 8000ms.
+    // Probe v1 (pivota-agent-ui#135) showed electronics + home + fragrance
+    // queries timing out at this stage with `external_seed_skip_reason:
+    // query_timeout`. The 4800ms cap was too tight for first-fetch external
+    // seed queries that have to round-trip + render. Cap is overridable via
+    // EXTERNAL_SEED_DIRECT_TIMEOUT_MAX_MS env for canary tuning.
+    const seedDirectTimeoutCap = Math.max(
+      1000,
+      Number(process.env.EXTERNAL_SEED_DIRECT_TIMEOUT_MAX_MS) || 8000,
+    );
     const externalSeedDirectTimeoutMs = Math.min(
       Math.max(120, Number(timeoutMs || 0) || 4800),
-      4800,
+      seedDirectTimeoutCap,
     );
     let externalSeedDirectTimer = null;
     const supplementPromise = fetchExternalSeedSupplementFromBackend({
