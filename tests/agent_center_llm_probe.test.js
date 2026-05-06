@@ -148,20 +148,23 @@ describe('agentCenterLlmProbe — auth middleware', () => {
   }
 
   beforeEach(() => {
+    delete process.env.PROMOTIONS_ADMIN_KEY;
+    delete process.env.AGENT_API_KEY;
     delete process.env.PIVOTA_INTERNAL_API_KEY;
   });
 
-  test('returns 503 when PIVOTA_INTERNAL_API_KEY is unset', () => {
+  test('returns 503 when no probe-auth env var is set', () => {
     const req = makeReq({});
     const res = makeRes();
     let nextCalled = false;
     requireInternalKey(req, res, () => { nextCalled = true; });
     expect(nextCalled).toBe(false);
     expect(res._status).toBe(503);
-    expect(res._body.error).toBe('pivota_internal_api_key_not_configured');
+    expect(res._body.error).toBe('internal_probe_key_not_configured');
+    expect(res._body.detail).toContain('PROMOTIONS_ADMIN_KEY');
   });
 
-  test('returns 401 when header is missing', () => {
+  test('returns 401 when header is missing (PIVOTA_INTERNAL_API_KEY backward compat)', () => {
     process.env.PIVOTA_INTERNAL_API_KEY = 'secret_xyz';
     const req = makeReq({});
     const res = makeRes();
@@ -172,7 +175,7 @@ describe('agentCenterLlmProbe — auth middleware', () => {
   });
 
   test('returns 401 when header value is wrong', () => {
-    process.env.PIVOTA_INTERNAL_API_KEY = 'secret_xyz';
+    process.env.AGENT_API_KEY = 'secret_xyz';
     const req = makeReq({ 'X-Pivota-Internal-Key': 'wrong_key' });
     const res = makeRes();
     let nextCalled = false;
@@ -181,14 +184,51 @@ describe('agentCenterLlmProbe — auth middleware', () => {
     expect(res._status).toBe(401);
   });
 
-  test('passes through when header matches (case-insensitive lookup)', () => {
-    process.env.PIVOTA_INTERNAL_API_KEY = 'secret_xyz';
-    const req = makeReq({ 'x-pivota-internal-key': 'secret_xyz' });
+  test('passes through when header matches PROMOTIONS_ADMIN_KEY (production preference)', () => {
+    process.env.PROMOTIONS_ADMIN_KEY = 'promo_admin_secret';
+    const req = makeReq({ 'x-pivota-internal-key': 'promo_admin_secret' });
     const res = makeRes();
     let nextCalled = false;
     requireInternalKey(req, res, () => { nextCalled = true; });
     expect(nextCalled).toBe(true);
     expect(res._status).toBe(null);
+  });
+
+  test('passes through when header matches AGENT_API_KEY (gateway convention)', () => {
+    process.env.AGENT_API_KEY = 'agent_secret';
+    const req = makeReq({ 'x-pivota-internal-key': 'agent_secret' });
+    const res = makeRes();
+    let nextCalled = false;
+    requireInternalKey(req, res, () => { nextCalled = true; });
+    expect(nextCalled).toBe(true);
+  });
+
+  test('passes through when header matches PIVOTA_INTERNAL_API_KEY (V1 fallback)', () => {
+    process.env.PIVOTA_INTERNAL_API_KEY = 'v1_secret';
+    const req = makeReq({ 'X-Pivota-Internal-Key': 'v1_secret' });
+    const res = makeRes();
+    let nextCalled = false;
+    requireInternalKey(req, res, () => { nextCalled = true; });
+    expect(nextCalled).toBe(true);
+  });
+
+  test('PROMOTIONS_ADMIN_KEY wins priority when multiple are set', () => {
+    // Production already has PROMOTIONS_ADMIN_KEY set on both services.
+    // If ops also sets one of the others later, the priority must keep
+    // matching the existing live shared-secret to avoid silently breaking auth.
+    process.env.PROMOTIONS_ADMIN_KEY = 'promo';
+    process.env.AGENT_API_KEY = 'agent';
+    process.env.PIVOTA_INTERNAL_API_KEY = 'v1';
+    const req = makeReq({ 'X-Pivota-Internal-Key': 'promo' });
+    const res = makeRes();
+    let nextCalled = false;
+    requireInternalKey(req, res, () => { nextCalled = true; });
+    expect(nextCalled).toBe(true);
+    // Sending one of the lower-priority values must fail.
+    const req2 = makeReq({ 'X-Pivota-Internal-Key': 'agent' });
+    const res2 = makeRes();
+    requireInternalKey(req2, res2, () => { });
+    expect(res2._status).toBe(401);
   });
 });
 
