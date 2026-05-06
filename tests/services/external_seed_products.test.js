@@ -1110,6 +1110,55 @@ describe('externalSeedProducts helper', () => {
     expect(variant.option_value).toBe('12 oz');
   });
 
+  test('normalizes mask count variants as displayable pack options', () => {
+    const variants = normalizeSeedVariants(
+      {
+        variants: [
+          {
+            variant_id: '40999586234416',
+            sku: 'KUSMEA1208',
+            title: '2 MASKS',
+            option_name: 'Option',
+            option_value: '2 MASKS',
+            price: 6,
+            currency: 'USD',
+          },
+          {
+            variant_id: '40659691601968',
+            sku: 'KUSMEA1205',
+            title: '10+10 MASKS',
+            option_name: 'Option',
+            option_value: '10+10 MASKS',
+            price: 60,
+            currency: 'USD',
+          },
+        ],
+      },
+      {
+        title: 'Deep Peptide Radiance Mask',
+        canonical_url: 'https://medicube.us/products/medicube-deep-peptide-radiance-mask-2ea',
+      },
+    );
+
+    expect(variants).toHaveLength(2);
+    expect(variants[0]).toEqual(
+      expect.objectContaining({
+        title: '2 MASKS',
+        axis_kind: 'pack',
+        display_label: 'Pack: 2 MASKS',
+        options: [expect.objectContaining({ name: 'Pack', value: '2 MASKS', axis_kind: 'pack' })],
+      }),
+    );
+    expect(variants[1]).toEqual(
+      expect.objectContaining({
+        title: '10+10 MASKS',
+        axis_kind: 'pack',
+        display_label: 'Pack: 10+10 MASKS',
+        options: [expect.objectContaining({ name: 'Pack', value: '10+10 MASKS', axis_kind: 'pack' })],
+      }),
+    );
+  });
+
   test('splits merchant shade-size axes and suppresses non-tinted skincare shade noise', () => {
     const [variant] = normalizeSeedVariants(
       {

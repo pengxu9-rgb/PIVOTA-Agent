@@ -6,6 +6,8 @@ jest.mock('../../src/db', () => ({
 const {
   _internals: {
     extractTirtirFaqHowToUse,
+    extractOfficialShopifyVariants,
+    buildShopifyProductJsonUrl,
     findTirtirSheetIngredientRow,
     normalizeTirtirTitleKey,
     scoreTirtirSheetProductName,
@@ -80,5 +82,61 @@ describe('backfill-external-seed-official-html-pdp-fields TIRTIR sheet matching'
     `;
 
     expect(extractTirtirFaqHowToUse(faq)).toContain('spray evenly');
+  });
+
+  test('builds Shopify product JSON URLs without variant query strings', () => {
+    expect(buildShopifyProductJsonUrl('https://medicube.us/products/deep-mask?variant=123')).toBe(
+      'https://medicube.us/products/deep-mask.js',
+    );
+  });
+
+  test('extracts displayable official Shopify pack variants', () => {
+    const variants = extractOfficialShopifyVariants(
+      {
+        title: 'Deep Peptide Radiance Mask',
+        options: [{ name: 'Option' }],
+        images: ['https://medicube.us/mask.jpg'],
+        variants: [
+          { id: 1, title: '2 MASKS', option1: '2 MASKS', sku: 'KUSMEA1208', price: 600, available: true },
+          { id: 2, title: '10+10 MASKS', option1: '10+10 MASKS', sku: 'KUSMEA1205', price: 6000, available: true },
+          { id: 3, title: '20+20 MASKS', option1: '20+20 MASKS', sku: 'KUSMEA1206', price: 12000, available: true },
+        ],
+      },
+      {
+        productTitle: 'Deep Peptide Radiance Mask',
+        currency: 'USD',
+        productUrl: 'https://medicube.us/products/medicube-deep-peptide-radiance-mask-2ea',
+      },
+    );
+
+    expect(variants).toHaveLength(3);
+    expect(variants[0]).toEqual(
+      expect.objectContaining({
+        variant_id: '1',
+        sku: 'KUSMEA1208',
+        option_name: 'Option',
+        option_value: '2 MASKS',
+        price: 6,
+        currency: 'USD',
+        source_origin: 'official_shopify_product_json',
+      }),
+    );
+    expect(variants[1].deep_link).toContain('variant=2');
+  });
+
+  test('does not extract official Shopify variants for a mismatched product title', () => {
+    expect(
+      extractOfficialShopifyVariants(
+        {
+          title: 'Unrelated Product',
+          options: [{ name: 'Option' }],
+          variants: [
+            { id: 1, title: '2 MASKS', option1: '2 MASKS', price: 600, available: true },
+            { id: 2, title: '10+10 MASKS', option1: '10+10 MASKS', price: 6000, available: true },
+          ],
+        },
+        { productTitle: 'Deep Peptide Radiance Mask' },
+      ),
+    ).toEqual([]);
   });
 });

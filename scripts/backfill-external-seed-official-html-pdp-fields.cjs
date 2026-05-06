@@ -9,6 +9,7 @@ const { query, closePool } = require('../src/db');
 const CONTRACT_VERSION = 'external_seed.official_html_pdp_fields.v1';
 const PDP_CONTENT_ASSET_VERSION = 'pivota.pdp_content_asset.v1';
 const SNAPSHOT_CONTRACT_VERSION = 'external_seed.snapshot_contract.v1';
+const SHOPIFY_PRODUCT_JSON_VARIANT_HOSTS = new Set(['medicube.us', 'skin1004.com', 'tirtir.global']);
 
 function argValue(name) {
   const idx = process.argv.indexOf(`--${name}`);
@@ -116,6 +117,113 @@ function pickRowUrl(row) {
     if (/^https?:\/\//i.test(text)) return text;
   }
   return '';
+}
+
+function normalizeTitleTokens(value) {
+  return Array.from(
+    new Set(
+      normalizeText(value)
+        .toLowerCase()
+        .replace(/&/g, ' and ')
+        .replace(/[^a-z0-9]+/g, ' ')
+        .split(/\s+/)
+        .map((token) => token.trim())
+        .filter((token) => token.length >= 2 && !['the', 'and', 'with', 'for'].includes(token)),
+    ),
+  );
+}
+
+function scoreProductTitleMatch(sourceTitle, productTitle) {
+  const sourceTokens = normalizeTitleTokens(sourceTitle);
+  const productTokens = new Set(normalizeTitleTokens(productTitle));
+  if (!sourceTokens.length || !productTokens.size) return 0;
+  const shared = sourceTokens.filter((token) => productTokens.has(token)).length;
+  return shared / Math.max(1, sourceTokens.length);
+}
+
+function buildShopifyProductJsonUrl(value) {
+  try {
+    const url = new URL(String(value || ''));
+    url.search = '';
+    url.hash = '';
+    if (!url.pathname.endsWith('.js')) url.pathname = `${url.pathname.replace(/\/+$/, '')}.js`;
+    return url.toString();
+  } catch {
+    return '';
+  }
+}
+
+function normalizeShopifyProductJsonPrice(value) {
+  const raw = normalizeText(value);
+  if (!raw) return null;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed < 0) return null;
+  if (raw.includes('.')) return parsed;
+  return Math.round((parsed / 100) * 100) / 100;
+}
+
+function isDisplayableShopifyVariantOption(option) {
+  const name = normalizeText(option?.name);
+  const value = normalizeText(option?.value);
+  if (!name || !value) return false;
+  if (/^(?:default|default title|title|single|n\/a)$/i.test(value)) return false;
+  if (/^(?:default|default title|title)$/i.test(name) && /^(?:default|default title|title)$/i.test(value)) return false;
+  return true;
+}
+
+function extractOfficialShopifyVariants(productJson, options = {}) {
+  const product = ensureObject(productJson);
+  const rawVariants = asArray(product.variants);
+  if (rawVariants.length <= 1) return [];
+  const productTitle = normalizeText(options.productTitle);
+  if (productTitle && scoreProductTitleMatch(productTitle, product.title) < 0.75) return [];
+
+  const productOptions = asArray(product.options);
+  const imageUrls = asArray(product.images)
+    .map((image) => (typeof image === 'string' ? image : image?.src || image?.url))
+    .map((image) => normalizeText(image))
+    .filter(Boolean);
+  const currency = normalizeText(options.currency || 'USD').toUpperCase();
+  const productUrl = normalizeText(options.productUrl);
+
+  const variants = rawVariants
+    .map((variant) => {
+      if (!variant || typeof variant !== 'object') return null;
+      const variantId = normalizeText(variant.id || variant.variant_id);
+      if (!variantId) return null;
+      const optionEntries = [variant.option1, variant.option2, variant.option3]
+        .map((value, index) => ({
+          name: normalizeText(productOptions[index]?.name || `Option ${index + 1}`),
+          value: normalizeText(value),
+        }))
+        .filter(isDisplayableShopifyVariantOption);
+      if (!optionEntries.length) return null;
+
+      const imageUrl =
+        normalizeText(variant.featured_image?.src || variant.featured_image?.url || variant.image || '') ||
+        imageUrls[0] ||
+        '';
+      const price = normalizeShopifyProductJsonPrice(variant.price);
+      return {
+        id: variantId,
+        variant_id: variantId,
+        sku: normalizeText(variant.sku) || variantId,
+        title: normalizeText(variant.title) || optionEntries.map((entry) => entry.value).join(' / '),
+        options: optionEntries,
+        option_name: optionEntries.length === 1 ? optionEntries[0].name : undefined,
+        option_value: optionEntries.length === 1 ? optionEntries[0].value : undefined,
+        ...(price != null ? { price, price_amount: price, currency } : {}),
+        ...(typeof variant.available === 'boolean' ? { available: variant.available, in_stock: variant.available } : {}),
+        ...(variant.inventory_quantity != null ? { inventory_quantity: variant.inventory_quantity } : {}),
+        ...(imageUrl ? { image_url: imageUrl, image_urls: [imageUrl], images: [imageUrl] } : {}),
+        ...(productUrl ? { product_url: productUrl, deep_link: `${productUrl}${productUrl.includes('?') ? '&' : '?'}variant=${variantId}` } : {}),
+        source_origin: 'official_shopify_product_json',
+        source_quality_status: 'high',
+      };
+    })
+    .filter(Boolean);
+
+  return variants.length > 1 ? variants : [];
 }
 
 function hashContent(value) {
@@ -749,6 +857,7 @@ function mergeQualitySummary(existing, patchKeys) {
   if (patchKeys.includes('pdp_active_ingredients_raw')) set('active_ingredients_raw', 'official_pdp_key_ingredients');
   if (patchKeys.includes('pdp_how_to_use_raw')) set('how_to_use_raw', 'official_pdp_how_to_use');
   if (patchKeys.includes('pdp_details_sections')) set('details_sections', 'official_pdp_details_section');
+  if (patchKeys.includes('variants')) set('variants', 'official_shopify_product_json');
   return next;
 }
 
@@ -824,6 +933,16 @@ function buildSeedDataPatch(row, extracted) {
     snapshot.review_summary = incoming;
     patchKeys.push('review_summary');
   }
+  if (asArray(extracted.variants).length > 0) {
+    seedData.variants = extracted.variants;
+    snapshot.variants = extracted.variants;
+    const variantSkus = extracted.variants.map((variant) => normalizeText(variant.sku || variant.sku_id)).filter(Boolean);
+    if (variantSkus.length > 0) {
+      seedData.variant_skus = Array.from(new Set(variantSkus));
+      snapshot.variant_skus = seedData.variant_skus;
+    }
+    patchKeys.push('variants');
+  }
 
   if (patchKeys.some((key) => key !== 'review_summary')) {
     const quality = mergeQualitySummary(seedData.pdp_field_quality_summary || snapshot.pdp_field_quality_summary, patchKeys);
@@ -866,10 +985,23 @@ async function fetchHtml(url) {
   };
 }
 
+async function fetchOfficialShopifyVariants(url, row) {
+  const host = hostFromUrl(url);
+  if (!SHOPIFY_PRODUCT_JSON_VARIANT_HOSTS.has(host)) return [];
+  const jsonUrl = buildShopifyProductJsonUrl(url);
+  if (!jsonUrl) return [];
+  const productJson = await fetchJson(jsonUrl, Number(process.env.OFFICIAL_SHOPIFY_JSON_TIMEOUT_MS || 15000));
+  return extractOfficialShopifyVariants(productJson, {
+    productTitle: row.title,
+    currency: row.price_currency || row.seed_data?.price_currency || row.seed_data?.snapshot?.price_currency || 'USD',
+    productUrl: url,
+  });
+}
+
 async function fetchRows(ids, market) {
   const res = await query(
     `
-      SELECT id, external_product_id, title, domain, market, canonical_url, destination_url, seed_data
+      SELECT id, external_product_id, title, domain, market, canonical_url, destination_url, price_currency, seed_data
       FROM external_product_seeds
       WHERE external_product_id = ANY($1::text[])
         AND ($2::text = '' OR market = $2::text)
@@ -914,12 +1046,15 @@ async function main() {
       result.http_status = fetched.status;
       result.final_url = fetched.final_url;
       const extracted = await extractOfficialHtmlFields(host, fetched.html, { productTitle: row.title });
+      const officialVariants = await fetchOfficialShopifyVariants(fetched.final_url || url, row);
+      if (officialVariants.length > 0) extracted.variants = officialVariants;
       const { seedData, patchKeys } = buildSeedDataPatch(row, extracted);
       result.patch_keys = patchKeys;
       result.extracted_summary = {
         ingredients_chars: normalizeText(extracted.pdp_ingredients_raw).length,
         how_to_chars: normalizeText(extracted.pdp_how_to_use_raw).length,
         details_sections_count: asArray(extracted.pdp_details_sections).length,
+        variant_count: asArray(extracted.variants).length,
         review_count: extracted.review_summary?.review_count || 0,
         rating: extracted.review_summary?.rating || 0,
       };
@@ -989,6 +1124,8 @@ module.exports = {
   _internals: {
     findTirtirSheetIngredientRow,
     extractTirtirFaqHowToUse,
+    extractOfficialShopifyVariants,
+    buildShopifyProductJsonUrl,
     normalizeTirtirTitleKey,
     scoreTirtirSheetProductName,
   },
