@@ -206,8 +206,6 @@ describe('find_similar_products mainline wrapper', () => {
         { product_id: 'ext_3', merchant_id: 'external_seed', source: 'external' },
         { product_id: 'ext_4', merchant_id: 'external_seed', source: 'external' },
         { product_id: 'ext_5', merchant_id: 'external_seed', source: 'external' },
-        { product_id: 'ext_6', merchant_id: 'external_seed', source: 'external' },
-        { product_id: 'ext_7', merchant_id: 'external_seed', source: 'external' },
       ],
       metadata: {
         similar_confidence: 'high',
@@ -221,13 +219,46 @@ describe('find_similar_products mainline wrapper', () => {
     expect(metadata).toEqual(
       expect.objectContaining({
         requested_count: 12,
-        visible_count: 7,
-        ready_min_visible_count: 6,
-        underfill: 5,
+        visible_count: 5,
+        ready_min_visible_count: 5,
+        underfill: 7,
         underfill_nonblocking: true,
         low_confidence: false,
         low_confidence_reason_codes: [],
         similar_status: 'ready',
+      }),
+    );
+  });
+
+  it('keeps very thin mainline recommendation sets underfilled', async () => {
+    const app = require('../src/server');
+
+    const metadata = app._debug.calibrateSimilarMetadataForVisibleProducts({
+      requestedLimit: 12,
+      products: [
+        { product_id: 'ext_1', merchant_id: 'external_seed', source: 'external' },
+        { product_id: 'ext_2', merchant_id: 'external_seed', source: 'external' },
+        { product_id: 'ext_3', merchant_id: 'external_seed', source: 'external' },
+        { product_id: 'ext_4', merchant_id: 'external_seed', source: 'external' },
+      ],
+      metadata: {
+        similar_confidence: 'high',
+        low_confidence: true,
+        low_confidence_reason_codes: ['UNDERFILL_FOR_QUALITY', 'UNDERFILL_MAINLINE_RECALL'],
+        underfill: 8,
+        similar_status: 'underfilled',
+      },
+    });
+
+    expect(metadata).toEqual(
+      expect.objectContaining({
+        requested_count: 12,
+        visible_count: 4,
+        ready_min_visible_count: 5,
+        underfill: 8,
+        low_confidence: true,
+        low_confidence_reason_codes: ['UNDERFILL_FOR_QUALITY'],
+        similar_status: 'underfilled',
       }),
     );
   });
