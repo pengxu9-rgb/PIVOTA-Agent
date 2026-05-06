@@ -1,0 +1,103 @@
+name: External Seed URL Repair
+
+on:
+  workflow_dispatch:
+    inputs:
+      mapping_json_base64:
+        description: "Base64-encoded repair mapping JSON"
+        required: true
+        type: string
+      market:
+        description: "Market code"
+        required: true
+        default: "US"
+        type: string
+      dry_run:
+        description: "Run dry-run only"
+        required: true
+        default: true
+        type: boolean
+      require_public_200:
+        description: "Require the next URL to verify as a public product PDP"
+        required: true
+        default: true
+        type: boolean
+
+jobs:
+  external-seed-url-repair:
+    runs-on: ubuntu-latest
+    environment:
+      name: Pivota Agent / production
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run external seed URL repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${DATABASE_URL:-}" ]]; then
+            echo "DATABASE_URL secret is required" >&2
+            exit 1
+          fi
+          out_dir="reports/workflow_ops/external-seed-url-repair/${{ github.run_id }}"
+          mkdir -p "${out_dir}"
+          mapping_file="${out_dir}/mapping.json"
+          ids_file="${out_dir}/external_product_ids.txt"
+          printf '%s' "${{ inputs.mapping_json_base64 }}" | base64 --decode > "${mapping_file}"
+          node -e "const fs=require('fs'); const j=JSON.parse(fs.readFileSync(process.argv[1],'utf8')); const rows=Array.isArray(j)?j:j.mappings; for (const row of rows||[]) if (row.external_product_id) console.log(row.external_product_id)" "${mapping_file}" > "${ids_file}"
+          report_name="dry-run.json"
+          args=(
+            --market "${{ inputs.market }}"
+            --mapping-file "${mapping_file}"
+            --out "${out_dir}/${report_name}"
+          )
+          if [[ "${{ inputs.require_public_200 }}" == "true" ]]; then
+            args+=(--require-public-200)
+          fi
+          if [[ "${{ inputs.dry_run }}" == "true" ]]; then
+            args+=(--dry-run)
+          else
+            report_name="apply.json"
+            args=(
+              --market "${{ inputs.market }}"
+              --mapping-file "${mapping_file}"
+              --out "${out_dir}/${report_name}"
+            )
+            if [[ "${{ inputs.require_public_200 }}" == "true" ]]; then
+              args+=(--require-public-200)
+            fi
+          fi
+          node scripts/repair-external-seed-url-fields.cjs "${args[@]}" \
+            | tee "${out_dir}/summary.json"
+          sync_args=(
+            --market "${{ inputs.market }}"
+            --external-product-ids-file "${ids_file}"
+            --out "${out_dir}/identity-source-payload-sync-${report_name}"
+            --created-by "github_actions_external_seed_url_repair"
+          )
+          if [[ "${{ inputs.dry_run }}" != "true" ]]; then
+            sync_args+=(--write)
+          fi
+          node scripts/sync-external-seed-identity-source-payloads.cjs \
+            "${sync_args[@]}" \
+            | tee "${out_dir}/identity-source-payload-sync-summary.json"
+
+      - name: Upload artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: external-seed-url-repair-${{ github.run_id }}
+          path: reports/workflow_ops/external-seed-url-repair/${{ github.run_id }}
+          retention-days: 7
