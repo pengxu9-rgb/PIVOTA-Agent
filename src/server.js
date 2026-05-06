@@ -668,11 +668,21 @@ const UPSTREAM_TIMEOUT_FIND_PRODUCTS_MS = Math.max(
     6000,
   ),
 );
+// Recall probe v2 (pivota-agent-ui#139) attributed 13/41 (32%) of shopping
+// recall failures to Layer-C external_seed timeouts at ~6–7s. The seed step
+// runs after primary, so its effective budget = total_request_budget − primary.
+// With the previous 10s hard cap on UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS,
+// after primary spends ~3–5s seed often had <2s, hitting query_timeout.
+// Bump the ceiling to 15000ms (env-overridable) so seed gets headroom.
+const FIND_PRODUCTS_MULTI_TIMEOUT_HARD_CEILING_MS = Math.max(
+  6000,
+  parseTimeoutMs(process.env.FIND_PRODUCTS_MULTI_TIMEOUT_HARD_CEILING_MS, 15000),
+);
 const FIND_PRODUCTS_MULTI_TIMEOUT_SAFE_MIN_MS = Math.max(
   1500,
   Math.min(
-    parseTimeoutMs(process.env.FIND_PRODUCTS_MULTI_TIMEOUT_SAFE_MIN_MS, 6500),
-    10000,
+    parseTimeoutMs(process.env.FIND_PRODUCTS_MULTI_TIMEOUT_SAFE_MIN_MS, 8000),
+    FIND_PRODUCTS_MULTI_TIMEOUT_HARD_CEILING_MS,
   ),
 );
 const FIND_PRODUCTS_MULTI_TIMEOUT_ALLOW_UNSAFE_LOWER =
@@ -684,7 +694,7 @@ const configuredFindProductsMultiTimeoutMs = parseTimeoutMs(
 );
 let UPSTREAM_TIMEOUT_FIND_PRODUCTS_MULTI_MS = Math.max(
   1500,
-  Math.min(configuredFindProductsMultiTimeoutMs, 10000),
+  Math.min(configuredFindProductsMultiTimeoutMs, FIND_PRODUCTS_MULTI_TIMEOUT_HARD_CEILING_MS),
 );
 if (
   !FIND_PRODUCTS_MULTI_TIMEOUT_ALLOW_UNSAFE_LOWER &&
