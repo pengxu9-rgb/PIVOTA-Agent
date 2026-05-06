@@ -2138,7 +2138,7 @@ function buildVariantContext(seedData, row) {
     .filter(Boolean)
     .join(' ');
   const allowsShadeAxis =
-    /\b(tinted?|skin tint|shade|color[-\s]?correct|tone[-\s]?up|tone[-\s]?correct|lip tint|tint balm|honey tint|lipstick|lip gloss|lip oil|lip balm|foundation|concealer|bronzer|blush|highlighter|powder|eyeshadow|eyeliner|brow|mascara|makeup|cosmetic)\b/i.test(
+    /\b(tinted?|skin tint|shade|color[-\s]?correct|tone[-\s]?up|tone[-\s]?correct|lip tint|tint balm|honey tint|lipstick|lip gloss|lip oil|lip balm|foundation|concealer|bronzer|blush|highlighter|powder|eyeshadow|eyeliner|brow|mascara|makeup|cosmetic|cushion|compact|bb cream|cc cream|complexion|base makeup)\b/i.test(
       text,
     );
   const skincareLike =
@@ -2267,7 +2267,7 @@ function inferVariantAxisKind(option, context = {}) {
   const strength = parseVariantStrengthValue(optionValue);
   const localeLike = LOCALE_LIKE_VARIANT_VALUES.has(optionValue.toLowerCase());
 
-  if (['shade', 'tone', 'hue'].includes(optionName)) {
+  if (['shade', 'shades', 'tone', 'tones', 'hue', 'hues'].includes(optionName)) {
     if (!context.allowsShadeAxis) {
       if (volume) return { axis_kind: 'volume', display_label: VARIANT_AXIS_LABELS.volume, normalized_value: optionValue };
       if (format) return { axis_kind: 'format', display_label: VARIANT_AXIS_LABELS.format, normalized_value: format };
@@ -2276,7 +2276,7 @@ function inferVariantAxisKind(option, context = {}) {
     }
     return { axis_kind: 'shade', display_label: VARIANT_AXIS_LABELS.shade, normalized_value: optionValue };
   }
-  if (['color', 'colour'].includes(optionName)) {
+  if (['color', 'colors', 'colour', 'colours'].includes(optionName)) {
     if (!context.allowsShadeAxis || localeLike) {
       if (volume) return { axis_kind: 'volume', display_label: VARIANT_AXIS_LABELS.volume, normalized_value: optionValue };
       if (format) return { axis_kind: 'format', display_label: VARIANT_AXIS_LABELS.format, normalized_value: format };

@@ -1010,6 +1010,130 @@ describe('externalSeedProducts helper', () => {
     expect(product.variants[0].hidden_from_selector).toBeUndefined();
   });
 
+  test('keeps official cushion makeup shade variants displayable when variant images exist', () => {
+    const product = buildExternalSeedProduct({
+      id: 'seed_tirtir_ai_filter_cushion',
+      external_product_id: 'ext_tirtir_ai_filter_cushion',
+      title: 'Mask Fit AI Filter Cushion',
+      canonical_url: 'https://tirtir.global/products/mask-fit-ai-filter-cushion',
+      destination_url: 'https://tirtir.global/products/mask-fit-ai-filter-cushion',
+      price_currency: 'USD',
+      seed_data: {
+        brand: 'TIRTIR',
+        snapshot: {
+          title: 'Mask Fit AI Filter Cushion',
+          canonical_url: 'https://tirtir.global/products/mask-fit-ai-filter-cushion',
+          variants: [
+            {
+              variant_id: '47265818738907',
+              sku: '01TTF0513',
+              title: '10C Shell',
+              option_name: 'Color',
+              option_value: '10C Shell',
+              options: [{ name: 'Color', value: '10C Shell' }],
+              price: 17.5,
+              currency: 'USD',
+              image_url:
+                'https://cdn.shopify.com/s/files/1/0663/2757/6795/files/10c_83f91c40-e7ea-46f7-91b8-24397b84f87c.png?v=1770792602',
+              image_urls: [
+                'https://cdn.shopify.com/s/files/1/0663/2757/6795/files/10c_83f91c40-e7ea-46f7-91b8-24397b84f87c.png?v=1770792602',
+              ],
+            },
+            {
+              variant_id: '47265818771675',
+              sku: '01TTF0514',
+              title: '11C Cool Rosy',
+              option_name: 'Color',
+              option_value: '11C Cool Rosy',
+              options: [{ name: 'Color', value: '11C Cool Rosy' }],
+              price: 17.5,
+              currency: 'USD',
+              image_url:
+                'https://cdn.shopify.com/s/files/1/0663/2757/6795/files/11c_ee18b7e5-3aba-4ff4-a87a-093d6351282c.png?v=1770792602',
+              image_urls: [
+                'https://cdn.shopify.com/s/files/1/0663/2757/6795/files/11c_ee18b7e5-3aba-4ff4-a87a-093d6351282c.png?v=1770792602',
+              ],
+            },
+          ],
+        },
+      },
+    });
+
+    expect(product.variants).toHaveLength(2);
+    expect(product.variants[0]).toEqual(
+      expect.objectContaining({
+        title: '10C Shell',
+        option_name: 'Color',
+        option_value: '10C Shell',
+        axis_kind: 'color',
+        display_label: 'Color: 10C Shell',
+        source_quality_status: 'captured',
+      }),
+    );
+  });
+
+  test('keeps official cushion shade-range variants displayable for plural color option names', () => {
+    const product = buildExternalSeedProduct({
+      id: 'seed_tirtir_red_cushion_sachet',
+      external_product_id: 'ext_tirtir_red_cushion_sachet',
+      title: 'Mask Fit Red Cushion Sachet',
+      canonical_url: 'https://tirtir.global/products/mask-fit-red-cushion-sachet',
+      destination_url: 'https://tirtir.global/products/mask-fit-red-cushion-sachet',
+      price_currency: 'USD',
+      seed_data: {
+        brand: 'TIRTIR',
+        snapshot: {
+          title: 'Mask Fit Red Cushion Sachet',
+          canonical_url: 'https://tirtir.global/products/mask-fit-red-cushion-sachet',
+          variants: [
+            {
+              variant_id: '47807976276187',
+              sku: '99TTX0001',
+              title: '10C - 17C',
+              option_name: 'Colors',
+              option_value: '10C - 17C',
+              options: [{ name: 'Colors', value: '10C - 17C' }],
+              price: 1.5,
+              currency: 'USD',
+              image_url:
+                'https://cdn.shopify.com/s/files/1/0663/2757/6795/files/Artboard_1_copy_2x_24faeaca-162c-4ba1-9677-c20fdcb6648a.jpg?v=1760662695',
+              image_urls: [
+                'https://cdn.shopify.com/s/files/1/0663/2757/6795/files/Artboard_1_copy_2x_24faeaca-162c-4ba1-9677-c20fdcb6648a.jpg?v=1760662695',
+              ],
+            },
+            {
+              variant_id: '47807976308955',
+              sku: '99TTX0002',
+              title: '17N - 22C',
+              option_name: 'Colors',
+              option_value: '17N - 22C',
+              options: [{ name: 'Colors', value: '17N - 22C' }],
+              price: 1.5,
+              currency: 'USD',
+              image_url:
+                'https://cdn.shopify.com/s/files/1/0663/2757/6795/files/Artboard_1_copy_2_2x_5607f8f3-6e44-49a2-b344-937b616584ee.jpg?v=1760662695',
+              image_urls: [
+                'https://cdn.shopify.com/s/files/1/0663/2757/6795/files/Artboard_1_copy_2_2x_5607f8f3-6e44-49a2-b344-937b616584ee.jpg?v=1760662695',
+              ],
+            },
+          ],
+        },
+      },
+    });
+
+    expect(product.variants).toHaveLength(2);
+    expect(product.variants[0]).toEqual(
+      expect.objectContaining({
+        title: '10C - 17C',
+        option_name: 'Color',
+        option_value: '10C - 17C',
+        axis_kind: 'color',
+        display_label: 'Color: 10C - 17C',
+        source_quality_status: 'captured',
+      }),
+    );
+  });
+
   test('infers product-level size detail labels from quantitative selected variant evidence', () => {
     const product = buildExternalSeedProduct({
       id: 'seed_rare_kit_mini',
