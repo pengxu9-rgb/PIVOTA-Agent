@@ -27,6 +27,18 @@ describe('externalSeedProducts helper', () => {
         snapshot: {
           image_url: blockedOriginal,
           image_urls: [blockedOriginal],
+          variants: [
+            {
+              variant_id: 'P062209',
+              sku: 'P062209',
+              title: '15 ml',
+              option_name: 'Size',
+              option_value: '15 ml',
+              image_url: blockedOriginal,
+              image_urls: [blockedOriginal],
+              images: [blockedOriginal],
+            },
+          ],
         },
       },
     };
@@ -35,6 +47,9 @@ describe('externalSeedProducts helper', () => {
     const product = buildExternalSeedProduct(row);
     expect(product.image_url).toBe(cachedUrl);
     expect(product.images[0]).toBe(cachedUrl);
+    expect(product.images).not.toContain(blockedOriginal);
+    expect(product.variants[0].image_url).toBe(cachedUrl);
+    expect(product.variants[0].image_urls).toEqual([cachedUrl]);
 
     const searchProduct = buildExternalSeedBrandSearchProduct(row);
     expect(searchProduct.image_url).toBe(cachedUrl);

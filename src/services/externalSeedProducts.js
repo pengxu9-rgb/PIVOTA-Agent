@@ -1067,6 +1067,61 @@ function collectCachedSeedImageUrls(seedData) {
   return out;
 }
 
+function collectSeedImageCacheAssetEntries(seedData) {
+  const parsedSeedData = ensureJsonObject(seedData);
+  const snapshot = ensureJsonObject(parsedSeedData.snapshot);
+  const out = [];
+  const appendCacheContract = (contract) => {
+    const normalized = ensureJsonObject(contract);
+    if (!Array.isArray(normalized.assets)) return;
+    normalized.assets.forEach((asset) => {
+      const originalUrl = normalizePdpImageUrl(asset?.original_url || asset?.source_url);
+      const cachedUrl = normalizePdpImageUrl(asset?.visible_url || asset?.cached_url);
+      if (!originalUrl || !cachedUrl) return;
+      out.push({ original_url: originalUrl, cached_url: cachedUrl });
+    });
+  };
+  appendCacheContract(parsedSeedData.image_asset_cache_v1);
+  appendCacheContract(snapshot.image_asset_cache_v1);
+  return out;
+}
+
+function buildSeedImageCacheUrlMap(seedData) {
+  const out = new Map();
+  collectSeedImageCacheAssetEntries(seedData).forEach((asset) => {
+    const originalUrl = normalizePdpImageUrl(asset.original_url);
+    const cachedUrl = normalizePdpImageUrl(asset.cached_url);
+    if (!originalUrl || !cachedUrl) return;
+    const keys = [
+      buildPdpImageDedupeKey(originalUrl),
+      originalUrl,
+      originalUrl.toLowerCase(),
+    ].filter(Boolean);
+    keys.forEach((key) => {
+      if (!out.has(key)) out.set(key, cachedUrl);
+    });
+  });
+  return out;
+}
+
+function rewriteSeedImageUrlsThroughCache(urls, cacheUrlMap) {
+  if (!Array.isArray(urls) || urls.length === 0 || !(cacheUrlMap instanceof Map) || cacheUrlMap.size === 0) {
+    return Array.isArray(urls) ? urls : [];
+  }
+  const out = [];
+  urls.forEach((url) => {
+    const normalized = normalizePdpImageUrl(url);
+    if (!normalized) return;
+    const cachedUrl =
+      cacheUrlMap.get(buildPdpImageDedupeKey(normalized)) ||
+      cacheUrlMap.get(normalized) ||
+      cacheUrlMap.get(normalized.toLowerCase()) ||
+      normalized;
+    appendImageUrls(out, cachedUrl);
+  });
+  return out;
+}
+
 function classifySeedGalleryAsset(url) {
   const normalized = normalizePdpImageUrl(url);
   if (!normalized) return '';
@@ -2785,6 +2840,7 @@ function normalizeSeedVariants(seedData, row) {
   if (!rawVariants.length) return [];
 
   const productImageUrls = normalizeSeedImageUrls(parsedSeedData, row);
+  const imageCacheUrlMap = buildSeedImageCacheUrlMap(parsedSeedData);
   const fallbackCurrency = normalizeCurrency(
     row?.price_currency || parsedSeedData.price_currency || parsedSeedData.snapshot?.price_currency,
     'USD',
@@ -2851,7 +2907,8 @@ function normalizeSeedVariants(seedData, row) {
         },
         null,
       );
-      const narrowedImageUrls = narrowVariantImageUrls(imageUrls, rawVariant);
+      const cachedImageUrls = rewriteSeedImageUrlsThroughCache(imageUrls, imageCacheUrlMap);
+      const narrowedImageUrls = narrowVariantImageUrls(cachedImageUrls, rawVariant);
       const normalizedImageUrls = narrowedImageUrls.length > 0 ? narrowedImageUrls : productImageUrls;
       const imageUrl = normalizedImageUrls[0];
       const displayFields = sanitizeSeedVariantDisplayFields(rawVariant, productOptionNames, productLevelOptions);
@@ -3255,7 +3312,8 @@ function buildExternalSeedProduct(row, options = {}) {
       },
     };
   });
-  let imageUrls = normalizeSeedImageUrls(seedData, row);
+  const cachedSeedImageUrls = collectCachedSeedImageUrls(seedData);
+  let imageUrls = cachedSeedImageUrls.length > 0 ? cachedSeedImageUrls : normalizeSeedImageUrls(seedData, row);
   const selectedVariant = resolveSelectedSeedVariant({
     variants,
     row,
@@ -3281,7 +3339,7 @@ function buildExternalSeedProduct(row, options = {}) {
       variants[0]?.title,
     );
   const primaryVariantImageUrls = collectPrimaryVariantImageUrls(variants);
-  if (primaryVariantImageUrls.length > 0) {
+  if (!cachedSeedImageUrls.length && primaryVariantImageUrls.length > 0) {
     imageUrls = Array.from(new Set([...primaryVariantImageUrls, ...imageUrls]));
   }
   if (contentImageUrls.length > 0 && imageUrls.length > 0) {

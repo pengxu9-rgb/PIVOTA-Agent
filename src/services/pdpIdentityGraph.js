@@ -4,6 +4,7 @@ const { query, withClient } = require('../db');
 const {
   EXTERNAL_SEED_MERCHANT_ID,
   buildExternalSeedProduct,
+  collectCachedSeedImageUrls,
 } = require('./externalSeedProducts');
 const {
   _internals: productGroundingResolverInternals = {},
@@ -1579,9 +1580,14 @@ function parseIdentityRow(row) {
 
 function buildImageEntriesForListing(listing, kind = 'exact_item') {
   const payload = asPlainObject(listing?.source_payload) || {};
-  const payloadSeedData = asPlainObject(payload.seed_data) || {};
+  return buildImageEntriesForPayload(payload, listing, kind);
+}
+
+function buildImageEntriesForPayload(payload, listing, kind = 'exact_item') {
+  const normalizedPayload = asPlainObject(payload) || {};
+  const payloadSeedData = asPlainObject(normalizedPayload.seed_data) || {};
   const payloadSnapshot = asPlainObject(payloadSeedData.snapshot) || {};
-  const payloadSources = [payload, payloadSeedData, payloadSnapshot];
+  const payloadSources = [normalizedPayload, payloadSeedData, payloadSnapshot];
   const candidates = [];
   const push = (value, overrides = {}) => {
     const url = normalizePdpImageUrl(
@@ -1591,7 +1597,7 @@ function buildImageEntriesForListing(listing, kind = 'exact_item') {
     candidates.push({
       type: 'image',
       url,
-      alt_text: firstNonEmptyString(value?.alt_text, payload.title, payload.name),
+      alt_text: firstNonEmptyString(value?.alt_text, normalizedPayload.title, normalizedPayload.name),
       source: kind,
       source_scope: kind,
       source_tier: asString(listing?.source_tier) || undefined,
@@ -1601,10 +1607,17 @@ function buildImageEntriesForListing(listing, kind = 'exact_item') {
       ...overrides,
     });
   };
-  for (const source of payloadSources) {
-    push(source.image_url);
-    asArray(source.images).forEach((item) => push(item));
-    asArray(source.image_urls).forEach((item) => push(item));
+  const cachedImageUrls = collectCachedSeedImageUrls(payloadSeedData);
+  if (cachedImageUrls.length > 0) {
+    cachedImageUrls.forEach((url) => {
+      push(url, { source_contract: 'image_asset_cache_v1' });
+    });
+  } else {
+    for (const source of payloadSources) {
+      push(source.image_url);
+      asArray(source.images).forEach((item) => push(item));
+      asArray(source.image_urls).forEach((item) => push(item));
+    }
   }
   const seen = new Set();
   return candidates.filter((item) => {
@@ -2464,17 +2477,26 @@ function composeSyntheticCanonicalProduct({
   const previewImages = [];
   const exactSeen = new Set();
   const previewSeen = new Set();
+  const fallbackHasCachedImageContract =
+    fallbackProduct && collectCachedSeedImageUrls(fallbackProduct.seed_data).length > 0;
+  const appendExactImage = (item) => {
+    const key = buildPdpImageDedupeKey(item?.url) || item?.url;
+    if (!key || exactSeen.has(key)) return;
+    exactSeen.add(key);
+    exactImages.push(item);
+  };
   const productLineOptions = buildProductLineOptions({ lineListings: sortedLine, baseListing: commerceListing });
   const productLineOptionName = firstNonEmptyString(
     productLineOptions.find((item) => item?.selected)?.option_name,
     productLineOptions[0]?.option_name,
   );
+  if (fallbackHasCachedImageContract && sameListingRef(commerceListing || contentListing, fallbackProduct)) {
+    buildImageEntriesForPayload(fallbackProduct, commerceListing || contentListing, 'exact_item').forEach(appendExactImage);
+  }
   for (const listing of sortedExact) {
+    if (fallbackHasCachedImageContract && sameListingRef(listing, fallbackProduct)) continue;
     for (const item of buildImageEntriesForListing(listing, 'exact_item')) {
-      const key = buildPdpImageDedupeKey(item.url) || item.url;
-      if (!key || exactSeen.has(key)) continue;
-      exactSeen.add(key);
-      exactImages.push(item);
+      appendExactImage(item);
     }
   }
   for (const listing of sortedLine) {
