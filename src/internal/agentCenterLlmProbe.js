@@ -141,6 +141,24 @@ function validateRequest(body) {
   const pivotaPdpUrl = _isNonEmptyString(context.pivota_pdp_url) ? context.pivota_pdp_url : null;
   const productEntityId = _isNonEmptyString(context.product_entity_id) ? context.product_entity_id : null;
 
+  // Optional product attributes — used by the auto-query generator when
+  // `queries` is empty. All fields are optional; if `title` is present we
+  // can derive ~10 realistic buyer-style queries instead of falling back
+  // to product_entity_id (which is meaningless to an LLM).
+  let product = null;
+  if (_isPlainObject(context.product)) {
+    const title = _isNonEmptyString(context.product.title) ? context.product.title.trim() : null;
+    if (title) {
+      product = {
+        title,
+        vendor: _isNonEmptyString(context.product.vendor) ? context.product.vendor.trim() : null,
+        product_type: _isNonEmptyString(context.product.product_type)
+          ? context.product.product_type.trim()
+          : null,
+      };
+    }
+  }
+
   return {
     ok: true,
     normalized: {
@@ -155,6 +173,7 @@ function validateRequest(body) {
         merchant_pdp_url: merchantPdpUrl,
         pivota_pdp_url: pivotaPdpUrl,
         product_entity_id: productEntityId,
+        product,
       },
     },
   };
@@ -225,7 +244,12 @@ function getGeminiClient() {
 
 function buildPromptForScanMode(input) {
   const { scan_mode, context } = input;
-  const product = context.product_entity_id || '(product)';
+  // Prompt's "Product:" field: prefer the product title (real, meaningful
+  // to the LLM) over the entity_id (meaningless string like "m1|shopify|P1").
+  const product =
+    (context.product && context.product.title) ||
+    context.product_entity_id ||
+    '(product)';
   const queries = context.queries.length ? context.queries : [product];
 
   if (scan_mode === 'open_product_visibility_test') {
@@ -388,6 +412,58 @@ function textMentionsHostOnly(text, targetUrl) {
   return !textContainsUrl(text, targetUrl);
 }
 
+// ---------------------------------------------------------------------------
+// Auto query generator — V1 fell back to `product_entity_id` (e.g.
+// "m1|shopify|P123") which is meaningless to an LLM. When the operator
+// hasn't written queries manually but the product has a title, we derive
+// realistic buyer-style queries from the product attributes. This is the
+// difference between asking "do you know about m1|shopify|P123?" (always
+// no) and asking "where can I buy Vitamin C Tonic 50ml?" (real signal).
+// ---------------------------------------------------------------------------
+
+/**
+ * Build ~10 buyer-style queries from product attributes. Returns an empty
+ * array if `product.title` is missing — caller decides what to do.
+ *
+ * Templates fall into three buckets:
+ *   - direct buying intent ("where can I buy X", "shop X online")
+ *   - comparative ("X reviews", "X alternatives", "is X worth it")
+ *   - category-anchored ("best <product_type> for <vendor>")
+ *
+ * Order is deterministic — useful for snapshot tests and reproducible runs.
+ */
+function buildAutoQueries(product) {
+  if (!product || !_isNonEmptyString(product.title)) return [];
+  const title = product.title.trim();
+  const vendor = _isNonEmptyString(product.vendor) ? product.vendor.trim() : null;
+  const productType = _isNonEmptyString(product.product_type) ? product.product_type.trim() : null;
+
+  const queries = [];
+  // Direct buying intent — what an LLM-using shopper actually asks.
+  queries.push(`where can I buy ${title}`);
+  queries.push(`shop ${title} online`);
+  queries.push(`${title} for sale`);
+  // Reviews / comparison — surfaces when LLMs cite review pages, which
+  // often leads them to merchant PDPs.
+  queries.push(`${title} reviews`);
+  queries.push(`is ${title} worth it`);
+  queries.push(`${title} alternatives`);
+  // Pricing — common comparison pattern for shoppers.
+  queries.push(`best price for ${title}`);
+  queries.push(`${title} discount`);
+  // Vendor-anchored — improves recall when the vendor brand is searchable
+  // even if the exact product title isn't a household name.
+  if (vendor) {
+    queries.push(`${vendor} ${title}`);
+    queries.push(`buy ${vendor} ${productType || title} online`);
+  }
+  // Category-anchored — picks up "best X" listicles the LLM might cite.
+  if (productType) {
+    queries.push(`best ${productType}${vendor ? ` from ${vendor}` : ''}`);
+  }
+  return queries;
+}
+
 /**
  * Validate that attribution-mode scan_targets have the URL they're trying
  * to attribute. Returns a `missing_input` finding (issue payload) when the
@@ -472,9 +548,21 @@ async function buildGeminiProbe(input) {
     };
   }
 
-  const queries = context.queries.length
-    ? context.queries.slice(0, max_runs)
-    : [context.product_entity_id || ''].filter(Boolean);
+  // Query precedence:
+  //   1. Operator-written queries (`context.queries`) — always wins
+  //   2. Auto-generated from `context.product` attributes — V1.5 default
+  //      when product info is available (real buyer-style phrasing)
+  //   3. `context.product_entity_id` as a last resort — V1 behavior, kept
+  //      so existing scan_targets don't suddenly produce empty results
+  let queries;
+  if (context.queries.length) {
+    queries = context.queries.slice(0, max_runs);
+  } else {
+    const auto = buildAutoQueries(context.product);
+    queries = auto.length
+      ? auto.slice(0, max_runs)
+      : [context.product_entity_id || ''].filter(Boolean);
+  }
   if (!queries.length) {
     return {
       scan_mode,
@@ -730,6 +818,7 @@ module.exports = {
     groundingContainsUrl,
     textMentionsHostOnly,
     unwrapJson,
+    buildAutoQueries,
     PRIMARY_ISSUE_TYPE_BY_SCAN_MODE,
     ALLOWED_SCAN_MODES,
   },
