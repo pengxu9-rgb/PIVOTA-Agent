@@ -16,7 +16,10 @@ const { InvokeRequestSchema, OperationEnum } = require('./schema');
 const logger = require('./logger');
 const { runMigrations } = require('./db/migrate');
 const { query, withClient } = require('./db');
-const { scheduleExternalSeedImageCacheBootstrap } = require('./services/externalSeedImageCacheBootstrap');
+const {
+  getExternalSeedImageCacheBootstrapStatus,
+  scheduleExternalSeedImageCacheBootstrap,
+} = require('./services/externalSeedImageCacheBootstrap');
 const {
   parseBooleanEnv,
   parseSecretList,
@@ -20815,6 +20818,7 @@ const healthRouteHandler = (req, res) => {
     product_detail_cache: snapshotProductDetailCacheStats(),
     pdp_v2_core_hot_cache: snapshotPdpV2CoreHotCacheStats(),
     pdp_recommendations_cache: getPdpRecsCacheStats(),
+    external_seed_image_cache_bootstrap: getExternalSeedImageCacheBootstrapStatus(),
     products_available: discoveryHealth?.discovery_ready === true,
     catalog_cache: includeCacheStats
       ? {
@@ -20906,6 +20910,7 @@ const healthRouteHandler = (req, res) => {
           product_detail_cache: snapshotProductDetailCacheStats(),
           pdp_v2_core_hot_cache: snapshotPdpV2CoreHotCacheStats(),
           pdp_recommendations_cache: getPdpRecsCacheStats(),
+          external_seed_image_cache_bootstrap: getExternalSeedImageCacheBootstrapStatus(),
           products_available: discoveryHealth?.discovery_ready === true,
           startup_guards: {
             aurora_routes_critical: auroraStartupCritical,

@@ -1,6 +1,19 @@
 const path = require('path');
 
 const logger = require('../logger');
+const { hasCatalogImageCacheConfig } = require('./catalogImageCacheStorage');
+
+const bootstrapState = {
+  scheduled: false,
+  schedule_reason: 'not_initialized',
+  scheduled_at: null,
+  started_at: null,
+  completed_at: null,
+  last_error: null,
+  last_mode: null,
+  last_summary: null,
+  last_filters: null,
+};
 
 function parseBoolean(value, fallback = false) {
   if (value == null || value === '') return fallback;
@@ -83,9 +96,11 @@ function buildReportPath(config, env = process.env) {
 async function runExternalSeedImageCacheBootstrap(env = process.env) {
   const config = buildBootstrapConfig(env);
   if (!config.enabled) {
+    bootstrapState.schedule_reason = 'disabled';
     return { skipped: true, reason: 'disabled', config };
   }
   if (!hasRunnableFilter(config)) {
+    bootstrapState.schedule_reason = 'missing_filter';
     logger.warn(
       {
         env: [
@@ -99,6 +114,7 @@ async function runExternalSeedImageCacheBootstrap(env = process.env) {
     return { skipped: true, reason: 'missing_filter', config };
   }
   if (!env.DATABASE_URL) {
+    bootstrapState.schedule_reason = 'missing_database_url';
     logger.warn('Catalog image cache bootstrap skipped because DATABASE_URL is not configured');
     return { skipped: true, reason: 'missing_database_url', config };
   }
@@ -129,6 +145,19 @@ async function runExternalSeedImageCacheBootstrap(env = process.env) {
 
   const productIds = config.productIds.length ? config.productIds : [''];
   const reports = [];
+  bootstrapState.started_at = new Date().toISOString();
+  bootstrapState.completed_at = null;
+  bootstrapState.last_error = null;
+  bootstrapState.last_mode = config.apply ? 'apply' : 'dry_run';
+  bootstrapState.last_filters = {
+    product_ids_count: config.productIds.length,
+    brand: config.brand || null,
+    host: config.host || null,
+    market: config.market,
+    limit: config.limit,
+    fetch_mode: config.fetchMode,
+    force_cache: config.forceCache,
+  };
   for (const productId of productIds) {
     const args = {
       ...commonArgs,
@@ -163,24 +192,64 @@ async function runExternalSeedImageCacheBootstrap(env = process.env) {
     );
     reports.push(report);
   }
+  bootstrapState.completed_at = new Date().toISOString();
+  bootstrapState.last_summary =
+    reports.length === 1
+      ? reports[0]?.summary || null
+      : reports.map((report) => report?.summary || null);
   return { skipped: false, config, reports };
 }
 
 function scheduleExternalSeedImageCacheBootstrap(env = process.env) {
   const config = buildBootstrapConfig(env);
-  if (!config.enabled) return { scheduled: false, reason: 'disabled', config };
-  if (!hasRunnableFilter(config)) return { scheduled: false, reason: 'missing_filter', config };
+  if (!config.enabled) {
+    bootstrapState.scheduled = false;
+    bootstrapState.schedule_reason = 'disabled';
+    return { scheduled: false, reason: 'disabled', config };
+  }
+  if (!hasRunnableFilter(config)) {
+    bootstrapState.scheduled = false;
+    bootstrapState.schedule_reason = 'missing_filter';
+    return { scheduled: false, reason: 'missing_filter', config };
+  }
+  bootstrapState.scheduled = true;
+  bootstrapState.schedule_reason = 'scheduled';
+  bootstrapState.scheduled_at = new Date().toISOString();
   setTimeout(() => {
     runExternalSeedImageCacheBootstrap(env).catch((err) => {
+      bootstrapState.completed_at = new Date().toISOString();
+      bootstrapState.last_error = err?.message || String(err);
       logger.error({ err: err?.message || String(err) }, 'Catalog image cache bootstrap backfill failed');
     });
   }, config.delayMs);
   return { scheduled: true, config };
 }
 
+function getExternalSeedImageCacheBootstrapStatus(env = process.env) {
+  const config = buildBootstrapConfig(env);
+  return {
+    enabled: config.enabled,
+    runnable: config.runnable,
+    apply: config.apply,
+    force_cache: config.forceCache,
+    filters: {
+      product_ids_count: config.productIds.length,
+      brand: config.brand || null,
+      host: config.host || null,
+      market: config.market,
+      limit: config.limit,
+      fetch_mode: config.fetchMode,
+    },
+    storage_configured: hasCatalogImageCacheConfig(),
+    database_configured: Boolean(env.DATABASE_URL),
+    state: { ...bootstrapState },
+  };
+}
+
 module.exports = {
   buildBootstrapConfig,
   buildReportPath,
+  getExternalSeedImageCacheBootstrapStatus,
   runExternalSeedImageCacheBootstrap,
   scheduleExternalSeedImageCacheBootstrap,
   _internals: {

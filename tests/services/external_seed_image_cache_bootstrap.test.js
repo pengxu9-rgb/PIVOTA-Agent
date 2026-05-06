@@ -1,6 +1,7 @@
 const {
   buildBootstrapConfig,
   buildReportPath,
+  getExternalSeedImageCacheBootstrapStatus,
   _internals,
 } = require('../../src/services/externalSeedImageCacheBootstrap');
 
@@ -45,6 +46,26 @@ describe('externalSeedImageCacheBootstrap', () => {
     });
     const reportPath = buildReportPath(config, { RAILWAY_DEPLOYMENT_ID: 'dep_123' });
     expect(reportPath).toContain('dep_123-ext_foo_bar-dry-run.json');
+  });
+
+  test('reports sanitized status without secret values', () => {
+    const status = getExternalSeedImageCacheBootstrapStatus({
+      CATALOG_IMAGE_CACHE_BOOTSTRAP_ENABLED: 'true',
+      CATALOG_IMAGE_CACHE_BOOTSTRAP_PRODUCT_IDS: 'ext_a',
+      CATALOG_IMAGE_CACHE_BOOTSTRAP_APPLY: 'true',
+      DATABASE_URL: 'postgres://user:secret@example/db',
+      CATALOG_IMAGE_CACHE_S3_SECRET_ACCESS_KEY: 'secret',
+    });
+    expect(status.enabled).toBe(true);
+    expect(status.runnable).toBe(true);
+    expect(status.database_configured).toBe(true);
+    expect(status.filters).toEqual(
+      expect.objectContaining({
+        product_ids_count: 1,
+        market: 'US',
+      }),
+    );
+    expect(JSON.stringify(status)).not.toContain('secret');
   });
 
   test('boolean parser accepts common truthy and falsy values', () => {
