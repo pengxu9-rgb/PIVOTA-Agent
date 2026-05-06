@@ -239,3 +239,252 @@ describe('agentCenterLlmProbe — handleProbeRequest end-to-end (mock)', () => {
     expect(res._body.ok).toBe(false);
   });
 });
+
+
+// ---------------------------------------------------------------------------
+// URL helpers — replace LLM self-reporting in attribution scoring
+// ---------------------------------------------------------------------------
+
+describe('agentCenterLlmProbe — URL helpers', () => {
+  const { _internals } = require('../src/internal/agentCenterLlmProbe');
+  const { normalizeUrl, textContainsUrl, groundingContainsUrl, textMentionsHostOnly } =
+    _internals;
+
+  test('normalizeUrl strips utm + trailing slash + lowercases host + drops www', () => {
+    const a = normalizeUrl('https://www.Example.com/p/123/?utm_source=g&size=lg#section');
+    const b = normalizeUrl('https://example.com/p/123?size=lg');
+    expect(a.full).toBe(b.full);
+  });
+
+  test('normalizeUrl returns null for non-URL input', () => {
+    expect(normalizeUrl('')).toBeNull();
+    expect(normalizeUrl(null)).toBeNull();
+    // Whitespace in host throws inside `new URL`, so we return null —
+    // safer than producing a host-like field that could match by accident.
+    expect(normalizeUrl('not a url')).toBeNull();
+    // Bare host (no scheme) is OK — we prepend https://.
+    const bareHost = normalizeUrl('example.com/p/1');
+    expect(bareHost).toEqual(expect.objectContaining({ host: 'example.com', path: '/p/1' }));
+  });
+
+  test('textContainsUrl finds URL even with query-string drift', () => {
+    const text = 'You can buy it at https://example.com/p/123?variant=red';
+    expect(textContainsUrl(text, 'https://example.com/p/123')).toBe(true);
+    expect(textContainsUrl(text, 'https://other.com/p/123')).toBe(false);
+  });
+
+  test('textContainsUrl returns false when target URL is empty', () => {
+    expect(textContainsUrl('lots of text https://example.com/x', '')).toBe(false);
+    expect(textContainsUrl('lots of text https://example.com/x', null)).toBe(false);
+  });
+
+  test('groundingContainsUrl matches against cited sources from Gemini', () => {
+    const grounding = {
+      groundingChunks: [
+        { web: { uri: 'https://merchant.com/products/abc' } },
+        { web: { uri: 'https://other.io/' } },
+      ],
+    };
+    expect(groundingContainsUrl(grounding, 'https://merchant.com/products/abc?utm_source=x'))
+      .toBe(true);
+    expect(groundingContainsUrl(grounding, 'https://nope.com/products/abc')).toBe(false);
+  });
+
+  test('textMentionsHostOnly distinguishes echoes from real attribution', () => {
+    // Mentions pivota.io but not the verified PDP URL → echo
+    const echo = 'Pivota (pivota.io) is a service that helps shoppers.';
+    expect(textMentionsHostOnly(echo, 'https://pivota.io/p/123')).toBe(true);
+    // Mentions the verified URL → not just an echo
+    const real = 'See https://pivota.io/p/123 for details.';
+    expect(textMentionsHostOnly(real, 'https://pivota.io/p/123')).toBe(false);
+    // No mention at all → neither echo nor real
+    const none = 'Nothing relevant here.';
+    expect(textMentionsHostOnly(none, 'https://pivota.io/p/123')).toBe(false);
+  });
+});
+
+
+// ---------------------------------------------------------------------------
+// buildGeminiProbe — full path with a mocked @google/genai client. We mock
+// `client.models.generateContent` directly so we can construct realistic
+// response shapes (with groundingMetadata) without burning real API quota.
+// ---------------------------------------------------------------------------
+
+describe('agentCenterLlmProbe — buildGeminiProbe with mocked client + grounding', () => {
+  // Lazy-load the module fresh for each test so we can re-monkeypatch the
+  // cached client.
+  function loadModule() {
+    jest.resetModules();
+    return require('../src/internal/agentCenterLlmProbe');
+  }
+
+  function installFakeClient(generateContentImpl) {
+    const probe = loadModule();
+    // Replace getGeminiClient via require() cache. The module caches the
+    // client privately; we patch by setting GEMINI_API_KEY (so getGeminiClient
+    // tries to load @google/genai) and stubbing the constructor.
+    process.env.GEMINI_API_KEY = 'fake-key-for-tests';
+    jest.doMock('@google/genai', () => ({
+      GoogleGenAI: function GoogleGenAI() {
+        return {
+          models: { generateContent: generateContentImpl },
+        };
+      },
+    }));
+    return probe;
+  }
+
+  afterEach(() => {
+    jest.resetModules();
+    jest.dontMock('@google/genai');
+    delete process.env.GEMINI_API_KEY;
+  });
+
+  test('config passes Google Search grounding tool', async () => {
+    let observedConfig = null;
+    const fake = async (args) => {
+      observedConfig = args.config;
+      return {
+        text: '{"product_visible": true}',
+        candidates: [{ content: { parts: [{ text: '{"product_visible": true}' }] } }],
+      };
+    };
+    const probe = installFakeClient(fake);
+    await probe._internals.buildGeminiProbe({
+      scan_mode: 'open_product_visibility_test',
+      max_runs: 1,
+      context: { queries: ['test query'], product_entity_id: 'p1' },
+    });
+    expect(observedConfig).toBeTruthy();
+    expect(observedConfig.tools).toEqual([{ googleSearch: {} }]);
+    // Strict JSON mode must be OFF — incompatible with grounding.
+    expect(observedConfig.responseMimeType).toBeUndefined();
+  });
+
+  test('pivota_pdp_attribution scores from grounding URL match, not LLM self-report', async () => {
+    // Critical fix: the LLM hallucinates `pivota_url_found: false` (lying),
+    // but the grounding chunks PROVE the URL was cited. Score must reflect
+    // the evidence (positive), not the lie.
+    const fake = async () => ({
+      text: '{"pivota_url_found": false, "pivota_echo_only": false, "evidence_excerpt": "..."}',
+      candidates: [
+        {
+          content: { parts: [{ text: '{"pivota_url_found": false}' }] },
+          groundingMetadata: {
+            groundingChunks: [
+              { web: { uri: 'https://pivota.io/p/abc-123' } },
+              { web: { uri: 'https://other.com/whatever' } },
+            ],
+          },
+        },
+      ],
+    });
+    const probe = installFakeClient(fake);
+    const out = await probe._internals.buildGeminiProbe({
+      scan_mode: 'pivota_pdp_attribution_test',
+      max_runs: 1,
+      context: { queries: ['where to buy'], pivota_pdp_url: 'https://pivota.io/p/abc-123' },
+    });
+    expect(out.scores.visibility_score).toBe(100);
+    expect(out.findings).toEqual([]);
+    // Audit trail: url_match block must show in_grounding=true and the
+    // disagreement with the LLM self-report.
+    const um = out.raw_runs[0].url_match;
+    expect(um.in_grounding).toBe(true);
+    expect(um.llm_self_report.pivota_url_found).toBe(false);
+  });
+
+  test('pivota_pdp_attribution echo: host mentioned but URL not cited', async () => {
+    // The LLM says "Pivota helps you shop" but doesn't actually cite the
+    // verified PDP. Score = 0 (no real attribution), echo rate > 0.
+    const fake = async () => ({
+      text: 'Pivota (pivota.io) is a useful service.',
+      candidates: [
+        {
+          content: { parts: [{ text: 'Pivota (pivota.io) is a useful service.' }] },
+          groundingMetadata: {
+            groundingChunks: [{ web: { uri: 'https://unrelated.com/article' } }],
+          },
+        },
+      ],
+    });
+    const probe = installFakeClient(fake);
+    const out = await probe._internals.buildGeminiProbe({
+      scan_mode: 'pivota_pdp_attribution_test',
+      max_runs: 1,
+      context: { queries: ['where to buy'], pivota_pdp_url: 'https://pivota.io/p/abc-123' },
+    });
+    expect(out.scores.visibility_score).toBe(0);
+    expect(out.scores.attribution_echo_rate).toBe(100);
+    // Two findings: gap (because score < 50) AND unverified attribution
+    // (because echoRate>0 and positives==0).
+    const types = out.findings.map((f) => f.issue_type);
+    expect(types).toContain('pivota_pdp_attribution_gap');
+    expect(types).toContain('unverified_pivota_attribution');
+  });
+
+  test('merchant_store_attribution: text URL match counts as positive', async () => {
+    // No grounding chunks here — just a URL inlined in the prose.
+    const fake = async () => ({
+      text: 'Buy it at https://merchant.com/p/123 for fastest shipping.',
+      candidates: [
+        {
+          content: {
+            parts: [{ text: 'Buy it at https://merchant.com/p/123 for fastest shipping.' }],
+          },
+        },
+      ],
+    });
+    const probe = installFakeClient(fake);
+    const out = await probe._internals.buildGeminiProbe({
+      scan_mode: 'merchant_store_attribution_test',
+      max_runs: 1,
+      context: { queries: ['where to buy'], merchant_pdp_url: 'https://merchant.com/p/123' },
+    });
+    expect(out.scores.visibility_score).toBe(100);
+    expect(out.findings).toEqual([]);
+    const um = out.raw_runs[0].url_match;
+    expect(um.in_grounding).toBe(false);
+    expect(um.in_text).toBe(true);
+  });
+
+  test('grounding chunks are surfaced in raw_runs for evidence', async () => {
+    const fake = async () => ({
+      text: '{"product_visible": true}',
+      candidates: [
+        {
+          content: { parts: [{ text: '{"product_visible": true}' }] },
+          groundingMetadata: {
+            groundingChunks: [
+              { web: { uri: 'https://a.example/1' } },
+              { web: { uri: 'https://b.example/2' } },
+            ],
+          },
+        },
+      ],
+    });
+    const probe = installFakeClient(fake);
+    const out = await probe._internals.buildGeminiProbe({
+      scan_mode: 'open_product_visibility_test',
+      max_runs: 1,
+      context: { queries: ['test'], product_entity_id: 'p1' },
+    });
+    expect(out.raw_runs[0].grounding_chunks).toEqual([
+      'https://a.example/1',
+      'https://b.example/2',
+    ]);
+  });
+
+  test('unwrapJson recovers JSON wrapped in prose (grounding mode)', async () => {
+    const probe = loadModule();
+    const { unwrapJson } = probe._internals;
+    // Without strict JSON mode, Gemini sometimes prefaces the JSON with prose.
+    expect(
+      unwrapJson('Here is the result:\n{"product_visible": true, "evidence_excerpt": "..."}\n'),
+    ).toEqual({ product_visible: true, evidence_excerpt: '...' });
+    // ```json fences still work
+    expect(unwrapJson('```json\n{"x": 1}\n```')).toEqual({ x: 1 });
+    // Bare unparseable returns null
+    expect(unwrapJson('not json at all')).toBeNull();
+  });
+});

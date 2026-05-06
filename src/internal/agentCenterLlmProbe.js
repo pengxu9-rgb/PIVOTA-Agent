@@ -269,12 +269,123 @@ function unwrapJson(text) {
   if (typeof text !== 'string') return null;
   let s = text.trim();
   // Strip ```json ... ``` fences if present
-  s = s.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '');
+  s = s.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
   try {
     return JSON.parse(s);
   } catch (_err) {
+    // With Google Search grounding enabled we can't request strict JSON
+    // (responseMimeType: 'application/json' is incompatible with the
+    // grounding tool), so the model often interleaves prose around the
+    // JSON object. Fall back to extracting the first {...} block.
+    const objMatch = s.match(/\{[\s\S]*\}/);
+    if (objMatch) {
+      try {
+        return JSON.parse(objMatch[0]);
+      } catch (_err2) {
+        return null;
+      }
+    }
     return null;
   }
+}
+
+// ---------------------------------------------------------------------------
+// URL normalization + post-hoc match — replaces LLM self-reporting for
+// attribution scoring. The LLM (especially with grounding) routinely
+// hallucinates a `pivota_url_found: true` even when the URL never appears
+// in either its prose answer or the cited sources. We trust evidence from
+// (1) raw response text and (2) groundingMetadata.groundingChunks instead.
+// ---------------------------------------------------------------------------
+
+const _TRACKING_PARAMS = [
+  'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content',
+  'gclid', 'fbclid', 'mc_cid', 'mc_eid', 'ref', 'ref_src',
+];
+
+/**
+ * Strip protocol + tracking params + trailing slash; lowercase host.
+ * Returns `{ host, path, full }` shape or null if not a parseable URL.
+ *
+ * Two URLs are considered "the same" when their normalized form matches.
+ * Most useful for PDP comparison: a verified Pivota PDP URL vs a URL the
+ * model emits — same host + path + meaningful query = same destination.
+ */
+function normalizeUrl(url) {
+  if (!url || typeof url !== 'string') return null;
+  const raw = url.trim();
+  if (!raw) return null;
+  let parsed;
+  try {
+    // URL constructor requires a scheme; accept bare hosts like
+    // `merchant.com/p/123` by prepending https://.
+    parsed = /^https?:\/\//i.test(raw) ? new URL(raw) : new URL(`https://${raw}`);
+  } catch (_err) {
+    return null;
+  }
+  const host = parsed.host.toLowerCase().replace(/^www\./, '');
+  // Drop tracking params; keep the rest because product variants etc.
+  // depend on them.
+  for (const p of _TRACKING_PARAMS) parsed.searchParams.delete(p);
+  let path = parsed.pathname || '/';
+  if (path !== '/' && path.endsWith('/')) path = path.slice(0, -1);
+  const search = parsed.searchParams.toString();
+  const full = host + path + (search ? `?${search}` : '');
+  return { host, path, full };
+}
+
+/**
+ * Returns true if `targetUrl` appears in `text`. Extracts every URL token
+ * from `text`, normalizes each, and compares against the normalized target.
+ * Use the broader match (path-prefix host match) when the target has a
+ * meaningful path, so query-string drift doesn't cause false negatives.
+ */
+function textContainsUrl(text, targetUrl) {
+  const target = normalizeUrl(targetUrl);
+  if (!target || !text) return false;
+  const candidates = String(text).match(/https?:\/\/[^\s'"<>)\]]+/gi) || [];
+  for (const c of candidates) {
+    const n = normalizeUrl(c);
+    if (!n) continue;
+    if (n.full === target.full) return true;
+    // Path-aware match: same host + same canonical path is enough — query
+    // string drift (e.g. variant params) shouldn't count as different.
+    if (target.path !== '/' && n.host === target.host && n.path === target.path) return true;
+  }
+  return false;
+}
+
+/**
+ * Returns true if `targetUrl` appears in any cited source URL inside the
+ * Gemini groundingMetadata. Cited sources are the gold-standard signal that
+ * the model actually retrieved the URL from a live search — much stronger
+ * than a URL appearing in prose.
+ */
+function groundingContainsUrl(groundingMetadata, targetUrl) {
+  const target = normalizeUrl(targetUrl);
+  if (!target || !groundingMetadata) return false;
+  const chunks = groundingMetadata.groundingChunks || groundingMetadata.grounding_chunks || [];
+  for (const ch of chunks) {
+    const u = ch?.web?.uri || ch?.web?.url || ch?.uri || ch?.url;
+    if (!u) continue;
+    const n = normalizeUrl(u);
+    if (!n) continue;
+    if (n.full === target.full) return true;
+    if (target.path !== '/' && n.host === target.host && n.path === target.path) return true;
+  }
+  return false;
+}
+
+/**
+ * "Echo" = the response mentions Pivota's brand/host but NOT the verified
+ * PDP URL. This is the signal that the LLM has heard of Pivota but isn't
+ * actually citing the merchant's verified PDP — useless attribution.
+ */
+function textMentionsHostOnly(text, targetUrl) {
+  const target = normalizeUrl(targetUrl);
+  if (!target || !text) return false;
+  const t = String(text).toLowerCase();
+  if (!t.includes(target.host)) return false;
+  return !textContainsUrl(text, targetUrl);
 }
 
 async function withTimeout(promise, timeoutMs) {
@@ -322,10 +433,24 @@ async function buildGeminiProbe(input) {
   let positives = 0;
   let echoes = 0;
 
+  // Google Search grounding: lets Gemini retrieve live web pages instead of
+  // answering from training data — turns the visibility test from "did
+  // Gemini's training data include this product when phrased exactly like
+  // this" into "is this product currently surfaceable on the live web".
+  // Note: responseMimeType: 'application/json' is NOT compatible with
+  // grounding (Gemini interleaves tool calls with text), so we drop strict
+  // JSON mode and rely on `unwrapJson`'s prose-fallback to extract the
+  // structured fields from the response.
+  const generationConfig = {
+    temperature: 0,
+    tools: [{ googleSearch: {} }],
+  };
+
   for (const q of queries) {
     const userText = prompt.userPerQuery(q);
     let parsed = null;
     let rawText = '';
+    let groundingMetadata = null;
     try {
       const resp = await withTimeout(
         client.models.generateContent({
@@ -336,7 +461,7 @@ async function buildGeminiProbe(input) {
               parts: [{ text: `${prompt.system}\n\n${userText}` }],
             },
           ],
-          config: { temperature: 0, responseMimeType: 'application/json' },
+          config: generationConfig,
         }),
         DEFAULT_GEMINI_TIMEOUT_MS,
       );
@@ -348,6 +473,11 @@ async function buildGeminiProbe(input) {
         const parts = resp.candidates[0]?.content?.parts || [];
         rawText = parts.map((p) => p?.text || '').join('');
       }
+      // Gemini API returns groundingMetadata on the first candidate when
+      // the model used the search tool. Capture it — we both score
+      // against it and ship it back in raw_runs for evidence.
+      const cand0 = Array.isArray(resp?.candidates) ? resp.candidates[0] : null;
+      groundingMetadata = cand0?.groundingMetadata || cand0?.grounding_metadata || null;
       parsed = unwrapJson(rawText);
       if (resp?.usageMetadata) {
         inputTokens += Number(resp.usageMetadata.promptTokenCount || 0);
@@ -356,18 +486,74 @@ async function buildGeminiProbe(input) {
     } catch (err) {
       rawText = `__error__:${err && err.message ? err.message : String(err)}`;
     }
-    rawRuns.push({ query: q, raw: rawText, parsed });
-
-    // Per-mode scoring
-    if (parsed && typeof parsed === 'object') {
-      if (scan_mode === 'open_product_visibility_test' && parsed.product_visible === true) positives += 1;
-      if (scan_mode === 'merchant_store_attribution_test' && parsed.merchant_url_found === true) positives += 1;
-      if (scan_mode === 'pivota_pdp_attribution_test') {
-        if (parsed.pivota_url_found === true) positives += 1;
-        if (parsed.pivota_echo_only === true) echoes += 1;
+    // Per-mode scoring — derived from EVIDENCE (raw text + cited sources)
+    // rather than the LLM's self-reported parsed fields. The model still
+    // produces self-reports; we keep them in raw_runs for debugging but
+    // don't trust them for the score.
+    let urlMatch = null;
+    if (scan_mode === 'open_product_visibility_test') {
+      if (parsed && parsed.product_visible === true) positives += 1;
+    } else if (scan_mode === 'merchant_store_attribution_test') {
+      const target = context.merchant_pdp_url || '';
+      const hit = Boolean(target) && (
+        groundingContainsUrl(groundingMetadata, target) || textContainsUrl(rawText, target)
+      );
+      urlMatch = {
+        target_url: target,
+        in_grounding: Boolean(target) && groundingContainsUrl(groundingMetadata, target),
+        in_text: Boolean(target) && textContainsUrl(rawText, target),
+        llm_self_report: parsed && parsed.merchant_url_found === true,
+      };
+      if (hit) positives += 1;
+    } else if (scan_mode === 'pivota_pdp_attribution_test') {
+      const target = context.pivota_pdp_url || '';
+      const inGrounding = Boolean(target) && groundingContainsUrl(groundingMetadata, target);
+      const inText = Boolean(target) && textContainsUrl(rawText, target);
+      const hit = inGrounding || inText;
+      const echoOnly = !hit && Boolean(target) && textMentionsHostOnly(rawText, target);
+      urlMatch = {
+        target_url: target,
+        in_grounding: inGrounding,
+        in_text: inText,
+        echo_only: echoOnly,
+        llm_self_report: {
+          pivota_url_found: parsed && parsed.pivota_url_found === true,
+          pivota_echo_only: parsed && parsed.pivota_echo_only === true,
+        },
+      };
+      if (hit) positives += 1;
+      if (echoOnly) echoes += 1;
+    } else if (scan_mode === 'search_grounded_product_discovery_test') {
+      // Use LLM self-report as a fallback signal but require grounding
+      // evidence when context.pivota_pdp_url or merchant_pdp_url is given.
+      // If neither is given, fall back to the LLM's `product_visible` field.
+      const target = context.pivota_pdp_url || context.merchant_pdp_url || '';
+      if (target) {
+        const hit = groundingContainsUrl(groundingMetadata, target) || textContainsUrl(rawText, target);
+        urlMatch = {
+          target_url: target,
+          in_grounding: groundingContainsUrl(groundingMetadata, target),
+          in_text: textContainsUrl(rawText, target),
+          llm_self_report: parsed && parsed.product_visible === true,
+        };
+        if (hit) positives += 1;
+      } else if (parsed && parsed.product_visible === true) {
+        positives += 1;
       }
-      if (scan_mode === 'search_grounded_product_discovery_test' && parsed.product_visible === true) positives += 1;
     }
+    rawRuns.push({
+      query: q,
+      raw: rawText,
+      parsed,
+      // Trim grounding chunks to URI-only to keep the payload small while
+      // preserving the audit trail of which sources Gemini actually cited.
+      grounding_chunks: groundingMetadata
+        ? (groundingMetadata.groundingChunks || groundingMetadata.grounding_chunks || [])
+            .map((ch) => ch?.web?.uri || ch?.web?.url || ch?.uri || ch?.url)
+            .filter(Boolean)
+        : [],
+      url_match: urlMatch,
+    });
   }
 
   const runsCount = queries.length;
@@ -475,8 +661,14 @@ module.exports = {
   _internals: {
     validateRequest,
     buildMockProbe,
+    buildGeminiProbe,
     requireInternalKey,
     handleProbeRequest,
+    normalizeUrl,
+    textContainsUrl,
+    groundingContainsUrl,
+    textMentionsHostOnly,
+    unwrapJson,
     PRIMARY_ISSUE_TYPE_BY_SCAN_MODE,
     ALLOWED_SCAN_MODES,
   },
