@@ -803,6 +803,71 @@ describe('pdpIdentityGraph', () => {
     ]);
   });
 
+  test('composeSyntheticCanonicalProduct rehydrates fresh external seed PDP fields over stale identity payload', () => {
+    const { composeSyntheticCanonicalProduct } = require('../../src/services/pdpIdentityGraph');
+
+    const staleListing = {
+      merchant_id: 'external_seed',
+      product_id: 'ext_skin1004_gift_set',
+      source_kind: 'external_seed',
+      source_tier: 'brand',
+      sellable_item_group_id: 'sig_skin1004_gift_set',
+      product_line_id: 'pl_skin1004_gift_set',
+      review_family_id: 'rf_skin1004_gift_set',
+      identity_confidence: 0.98,
+      source_payload: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_skin1004_gift_set',
+        title: 'Every Love, Every Moment Gift Set',
+        description: 'A limited-edition 3-step pore care set.',
+      },
+    };
+
+    const composed = composeSyntheticCanonicalProduct({
+      requestedListing: staleListing,
+      exactListings: [staleListing],
+      lineListings: [staleListing],
+      fallbackProduct: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_skin1004_gift_set',
+        title: 'Every Love, Every Moment Gift Set',
+        pdp_how_to_use_raw: 'After cleansing, apply the clay mask while avoiding the eye and lip areas.',
+        pdp_details_sections: [
+          {
+            heading: 'Benefits',
+            content: 'Oil balance support and pore-refining care.',
+          },
+        ],
+        bundle_component_refs: [
+          {
+            merchant_id: 'external_seed',
+            product_id: 'ext_skin1004_clay_stick_mask',
+            title: 'Poremizing Quick Clay Stick Mask',
+            inheritance_scope: ['how_to_use'],
+            review_state: 'reviewed',
+          },
+        ],
+      },
+    });
+
+    expect(composed.product.pdp_how_to_use_raw).toBe(
+      'After cleansing, apply the clay mask while avoiding the eye and lip areas.',
+    );
+    expect(composed.product.pdp_details_sections).toEqual([
+      expect.objectContaining({
+        heading: 'Benefits',
+        content: 'Oil balance support and pore-refining care.',
+      }),
+    ]);
+    expect(composed.product.bundle_component_refs).toEqual([
+      expect.objectContaining({
+        product_id: 'ext_skin1004_clay_stick_mask',
+        inheritance_scope: ['how_to_use'],
+        review_state: 'reviewed',
+      }),
+    ]);
+  });
+
   test('buildIdentityListingFromProduct does not infer long numeric option identifiers as shade', () => {
     const { buildIdentityListingFromProduct } = require('../../src/services/pdpIdentityGraph');
 

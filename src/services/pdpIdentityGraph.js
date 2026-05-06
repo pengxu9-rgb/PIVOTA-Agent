@@ -2095,6 +2095,141 @@ function fillMissingString(target, source, keys) {
   return next;
 }
 
+function mergeMissingPdpContentFromPayload(product, payload) {
+  const payloadObject = asPlainObject(payload) || {};
+  const payloadSeedData = asPlainObject(payloadObject.seed_data) || {};
+  const payloadSnapshot = asPlainObject(payloadSeedData.snapshot) || {};
+  const contentSources = [payloadObject, payloadSeedData, payloadSnapshot];
+  let next = product || {};
+
+  for (const source of contentSources) {
+    next = fillMissingString(next, source, [
+      'title',
+      'name',
+      'subtitle',
+      'brand',
+      'brand_name',
+      'vendor',
+      'description',
+      'pdp_description_raw',
+      'raw_ingredient_text_clean',
+      'pdp_ingredients_raw',
+      'pdp_active_ingredients_raw',
+      'pdp_how_to_use_raw',
+      'source_url',
+      'canonical_url',
+      'destination_url',
+      'url',
+      'product_url',
+      'handle',
+    ]);
+  }
+
+  if (!asString(next.how_to_use)) {
+    const nextHowToUse = firstNonEmptyString(
+      payloadObject.how_to_use,
+      payloadObject.howToUse,
+      payloadSeedData.how_to_use,
+      payloadSeedData.howToUse,
+      payloadSnapshot.how_to_use,
+      payloadSnapshot.howToUse,
+    );
+    if (nextHowToUse) next = { ...next, how_to_use: nextHowToUse };
+  }
+
+  if (!Array.isArray(next.inci_list) || next.inci_list.length === 0) {
+    const nextInci = [
+      payloadObject.inci_list,
+      payloadSeedData.inci_list,
+      payloadSnapshot.inci_list,
+    ]
+      .map((value) => asArray(value))
+      .find((items) => items.length > 0);
+    if (nextInci?.length > 0) next = { ...next, inci_list: nextInci };
+  }
+
+  if (!Array.isArray(next.ingredients_inci) || next.ingredients_inci.length === 0) {
+    const nextIngredientsInci = [
+      payloadObject.ingredients_inci,
+      payloadObject.ingredientsInci,
+      payloadObject.inci_ingredients,
+      payloadObject.inciIngredients,
+      payloadObject.ingredients,
+      payloadSeedData.ingredients_inci,
+      payloadSeedData.ingredientsInci,
+      payloadSnapshot.ingredients_inci,
+      payloadSnapshot.ingredientsInci,
+    ]
+      .map((value) => asArray(value))
+      .find((items) => items.length > 0);
+    if (nextIngredientsInci?.length > 0) next = { ...next, ingredients_inci: nextIngredientsInci };
+  }
+
+  if (!Array.isArray(next.content_image_urls) || next.content_image_urls.length === 0) {
+    const nextContentImageUrls = [
+      payloadObject.content_image_urls,
+      payloadSeedData.content_image_urls,
+      payloadSnapshot.content_image_urls,
+    ]
+      .map((value) =>
+        asArray(value)
+          .map((item) => normalizePdpImageUrl(typeof item === 'string' ? item : item?.url || item?.image_url))
+          .filter(Boolean),
+      )
+      .find((items) => items.length > 0);
+    if (nextContentImageUrls?.length > 0) next = { ...next, content_image_urls: nextContentImageUrls };
+  }
+
+  if (!Array.isArray(next.active_ingredients) || next.active_ingredients.length === 0) {
+    const nextActive = [
+      payloadObject.active_ingredients,
+      payloadSeedData.active_ingredients,
+      payloadSnapshot.active_ingredients,
+    ]
+      .map((value) => asArray(value))
+      .find((items) => items.length > 0);
+    if (nextActive?.length > 0) next = { ...next, active_ingredients: nextActive };
+  }
+
+  if (!Array.isArray(next.pdp_details_sections) || next.pdp_details_sections.length === 0) {
+    const nextSections = [
+      payloadObject.pdp_details_sections,
+      payloadObject.details_sections,
+      payloadSeedData.pdp_details_sections,
+      payloadSeedData.details_sections,
+      payloadSnapshot.pdp_details_sections,
+      payloadSnapshot.details_sections,
+    ]
+      .map((value) => asArray(value))
+      .find((items) => items.length > 0);
+    if (nextSections?.length > 0) next = { ...next, pdp_details_sections: nextSections };
+  }
+
+  if (!Array.isArray(next.bundle_component_refs) || next.bundle_component_refs.length === 0) {
+    const nextComponentRefs = [
+      payloadObject.bundle_component_refs,
+      payloadSeedData.bundle_component_refs,
+      payloadSnapshot.bundle_component_refs,
+    ]
+      .map((value) => asArray(value))
+      .find((items) => items.length > 0);
+    if (nextComponentRefs?.length > 0) next = { ...next, bundle_component_refs: nextComponentRefs };
+  }
+
+  if (!Array.isArray(next.bundle_components) || next.bundle_components.length === 0) {
+    const nextComponents = [
+      payloadObject.bundle_components,
+      payloadSeedData.bundle_components,
+      payloadSnapshot.bundle_components,
+    ]
+      .map((value) => asArray(value))
+      .find((items) => items.length > 0);
+    if (nextComponents?.length > 0) next = { ...next, bundle_components: nextComponents };
+  }
+
+  return next;
+}
+
 function buildListingProductRef(listing) {
   if (!listing) return null;
   const merchantId = asString(listing?.merchant_id);
@@ -2314,105 +2449,10 @@ function composeSyntheticCanonicalProduct({
 
   for (const listing of contentMergeListings) {
     const payload = asPlainObject(listing?.source_payload) || {};
-    const payloadSeedData = asPlainObject(payload.seed_data) || {};
-    const payloadSnapshot = asPlainObject(payloadSeedData.snapshot) || {};
-    const contentSources = [payload, payloadSeedData, payloadSnapshot];
-    for (const source of contentSources) {
-      product = fillMissingString(product, source, [
-        'title',
-        'name',
-        'subtitle',
-        'brand',
-        'brand_name',
-        'vendor',
-        'description',
-        'pdp_description_raw',
-        'raw_ingredient_text_clean',
-        'pdp_ingredients_raw',
-        'pdp_active_ingredients_raw',
-        'pdp_how_to_use_raw',
-        'source_url',
-        'canonical_url',
-        'destination_url',
-        'url',
-        'product_url',
-        'handle',
-      ]);
-    }
-    if (!asString(product.how_to_use)) {
-      const nextHowToUse = firstNonEmptyString(
-        payload.how_to_use,
-        payload.howToUse,
-        payloadSeedData.how_to_use,
-        payloadSeedData.howToUse,
-        payloadSnapshot.how_to_use,
-        payloadSnapshot.howToUse,
-      );
-      if (nextHowToUse) product.how_to_use = nextHowToUse;
-    }
-    if (!Array.isArray(product.inci_list) || product.inci_list.length === 0) {
-      const nextInci = [
-        payload.inci_list,
-        payloadSeedData.inci_list,
-        payloadSnapshot.inci_list,
-      ]
-        .map((value) => asArray(value))
-        .find((items) => items.length > 0);
-      if (nextInci?.length > 0) product.inci_list = nextInci;
-    }
-    if (!Array.isArray(product.ingredients_inci) || product.ingredients_inci.length === 0) {
-      const nextIngredientsInci = [
-        payload.ingredients_inci,
-        payload.ingredientsInci,
-        payload.inci_ingredients,
-        payload.inciIngredients,
-        payload.ingredients,
-        payloadSeedData.ingredients_inci,
-        payloadSeedData.ingredientsInci,
-        payloadSnapshot.ingredients_inci,
-        payloadSnapshot.ingredientsInci,
-      ]
-        .map((value) => asArray(value))
-        .find((items) => items.length > 0);
-      if (nextIngredientsInci?.length > 0) product.ingredients_inci = nextIngredientsInci;
-    }
-    if (!Array.isArray(product.content_image_urls) || product.content_image_urls.length === 0) {
-      const nextContentImageUrls = [
-        payload.content_image_urls,
-        payloadSeedData.content_image_urls,
-        payloadSnapshot.content_image_urls,
-      ]
-        .map((value) =>
-          asArray(value)
-            .map((item) => normalizePdpImageUrl(typeof item === 'string' ? item : item?.url || item?.image_url))
-            .filter(Boolean),
-        )
-        .find((items) => items.length > 0);
-      if (nextContentImageUrls?.length > 0) product.content_image_urls = nextContentImageUrls;
-    }
-    if (!Array.isArray(product.active_ingredients) || product.active_ingredients.length === 0) {
-      const nextActive = [
-        payload.active_ingredients,
-        payloadSeedData.active_ingredients,
-        payloadSnapshot.active_ingredients,
-      ]
-        .map((value) => asArray(value))
-        .find((items) => items.length > 0);
-      if (nextActive?.length > 0) product.active_ingredients = nextActive;
-    }
-    if (!Array.isArray(product.pdp_details_sections) || product.pdp_details_sections.length === 0) {
-      const nextSections = [
-        payload.pdp_details_sections,
-        payload.details_sections,
-        payloadSeedData.pdp_details_sections,
-        payloadSeedData.details_sections,
-        payloadSnapshot.pdp_details_sections,
-        payloadSnapshot.details_sections,
-      ]
-        .map((value) => asArray(value))
-        .find((items) => items.length > 0);
-      if (nextSections?.length > 0) product.pdp_details_sections = nextSections;
-    }
+    product = mergeMissingPdpContentFromPayload(product, payload);
+  }
+  if (fallbackProduct && sameListingRef(commerceListing, fallbackProduct)) {
+    product = mergeMissingPdpContentFromPayload(product, fallbackProduct);
   }
 
   if (requestedListingIsStrictUnsafe) {
