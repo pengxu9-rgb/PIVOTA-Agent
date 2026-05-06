@@ -141,6 +141,52 @@ function ensureJsonObject(val) {
   }
 }
 
+function normalizeBundleComponentRefsForRuntime(value, maxItems = 12) {
+  const items = Array.isArray(value) ? value : [];
+  const out = [];
+  const seen = new Set();
+  for (const item of items) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
+    const productId = normalizeNonEmptyString(item.product_id || item.external_product_id);
+    const merchantId = normalizeNonEmptyString(item.merchant_id) || EXTERNAL_SEED_MERCHANT_ID;
+    const title = normalizeNonEmptyString(item.title || item.name);
+    if (!productId || !title) continue;
+    const key = `${merchantId}:${productId}`.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const inheritanceScope = Array.isArray(item.inheritance_scope)
+      ? item.inheritance_scope
+          .map((scope) => normalizeNonEmptyString(scope).toLowerCase())
+          .filter(Boolean)
+      : [];
+    out.push({
+      merchant_id: merchantId,
+      product_id: productId,
+      external_product_id: productId,
+      title,
+      ...(normalizeNonEmptyString(item.component_role || item.role)
+        ? { component_role: normalizeNonEmptyString(item.component_role || item.role) }
+        : {}),
+      ...(normalizeNonEmptyString(item.size_label || item.size)
+        ? { size_label: normalizeNonEmptyString(item.size_label || item.size) }
+        : {}),
+      ...(normalizeNonEmptyString(item.canonical_url || item.url)
+        ? { canonical_url: normalizeNonEmptyString(item.canonical_url || item.url) }
+        : {}),
+      ...(normalizeNonEmptyString(item.source_url) ? { source_url: normalizeNonEmptyString(item.source_url) } : {}),
+      ...(inheritanceScope.length ? { inheritance_scope: inheritanceScope } : {}),
+      ...(normalizeNonEmptyString(item.review_state)
+        ? { review_state: normalizeNonEmptyString(item.review_state).toLowerCase() }
+        : {}),
+      ...(normalizeNonEmptyString(item.source_kind || item.source)
+        ? { source_kind: normalizeNonEmptyString(item.source_kind || item.source) }
+        : {}),
+    });
+    if (out.length >= Math.max(1, Number(maxItems) || 12)) break;
+  }
+  return out;
+}
+
 function normalizePdpFieldQualitySummary(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const next = {};
@@ -3360,6 +3406,14 @@ function buildExternalSeedProduct(row, options = {}) {
         generated_at: new Date().toISOString(),
       };
   const mergedIngredientIntel = mergeIngredientIntelWithAuthority(ingredientIntel, authority);
+  const bundleComponentRefs =
+    normalizeBundleComponentRefsForRuntime(runtimeSeedData.bundle_component_refs).length > 0
+      ? normalizeBundleComponentRefsForRuntime(runtimeSeedData.bundle_component_refs)
+      : normalizeBundleComponentRefsForRuntime(runtimeSnapshot.bundle_component_refs).length > 0
+        ? normalizeBundleComponentRefsForRuntime(runtimeSnapshot.bundle_component_refs)
+        : normalizeBundleComponentRefsForRuntime(seedData.bundle_component_refs).length > 0
+          ? normalizeBundleComponentRefsForRuntime(seedData.bundle_component_refs)
+          : normalizeBundleComponentRefsForRuntime(snapshot.bundle_component_refs);
 
   return {
     id: externalProductId,
@@ -3435,6 +3489,7 @@ function buildExternalSeedProduct(row, options = {}) {
       : {}),
     ...(pdpDetailsSections.length ? { pdp_details_sections: pdpDetailsSections } : {}),
     ...(contentImageUrls.length ? { content_image_urls: contentImageUrls } : {}),
+    ...(bundleComponentRefs.length ? { bundle_component_refs: bundleComponentRefs } : {}),
     ...(isSurfaceablePdpField(pdpFieldQualitySummary, 'ingredients_raw') && pdpIngredientsRaw
       ? { pdp_ingredients_raw: pdpIngredientsRaw }
       : {}),

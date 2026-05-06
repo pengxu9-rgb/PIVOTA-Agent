@@ -146,6 +146,60 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     expect(payload.product.canonical_url).toBe('https://merchant.example/products/barrier-cream');
   });
 
+  test('surfaces reviewed bundle component refs in product facts without merging component ingredients', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_skin1004_gift_set',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'Every Love, Every Moment Gift Set',
+        description: 'A limited-edition 3-step pore care set.',
+        image_url: 'https://example.com/gift-set.png',
+        product_family: 'set_or_collection',
+        bundle_component_refs: [
+          {
+            merchant_id: 'external_seed',
+            product_id: 'ext_skin1004_clay_stick_mask',
+            title: 'Poremizing Quick Clay Stick Mask',
+            size_label: '27g',
+            inheritance_scope: ['how_to_use', 'ingredients_inci'],
+            review_state: 'reviewed',
+          },
+          {
+            merchant_id: 'external_seed',
+            product_id: 'ext_skin1004_fresh_ampoule',
+            title: 'Poremizing Fresh Ampoule',
+            size_label: '50ml',
+            inheritance_scope: ['how_to_use', 'ingredients_inci'],
+            review_state: 'reviewed',
+          },
+        ],
+        key_ingredients: ['Centella Asiatica Extract', 'Kaolin'],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    const productFacts = payload.modules.find((module) => module.type === 'product_facts');
+    const ingredientsInci = payload.modules.find((module) => module.type === 'ingredients_inci');
+
+    expect(productFacts?.data?.sections).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          heading: 'Set includes',
+          content: expect.stringContaining('Poremizing Quick Clay Stick Mask - 27g'),
+          component_refs: expect.arrayContaining([
+            expect.objectContaining({
+              product_id: 'ext_skin1004_clay_stick_mask',
+              inheritance_scope: ['how_to_use', 'ingredients_inci'],
+            }),
+          ]),
+        }),
+      ]),
+    );
+    expect(ingredientsInci).toBeFalsy();
+  });
+
   test('emits variant selector for a single displayable size variant', () => {
     const payload = buildPdpPayload({
       product: {

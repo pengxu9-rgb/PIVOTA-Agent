@@ -2257,6 +2257,48 @@ function buildSupplementalDetailSections(product, detailSections = collectStruct
   return sections;
 }
 
+function normalizeBundleComponentRefsForPdp(product) {
+  const candidates = [
+    product?.bundle_component_refs,
+    product?.bundleComponents,
+    product?.seed_data?.bundle_component_refs,
+    product?.seed_data?.snapshot?.bundle_component_refs,
+  ];
+  const out = [];
+  const seen = new Set();
+  for (const candidate of candidates) {
+    if (!Array.isArray(candidate)) continue;
+    for (const item of candidate) {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
+      const title = asNonEmptyString(item.title || item.name);
+      const productId = asNonEmptyString(item.product_id || item.external_product_id);
+      if (!title) continue;
+      const key = `${productId || title}`.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({
+        title,
+        ...(productId ? { product_id: productId, external_product_id: productId } : {}),
+        ...(asNonEmptyString(item.merchant_id) ? { merchant_id: asNonEmptyString(item.merchant_id) } : {}),
+        ...(asNonEmptyString(item.component_role || item.role)
+          ? { component_role: asNonEmptyString(item.component_role || item.role) }
+          : {}),
+        ...(asNonEmptyString(item.size_label || item.size)
+          ? { size_label: asNonEmptyString(item.size_label || item.size) }
+          : {}),
+        ...(asNonEmptyString(item.canonical_url || item.url)
+          ? { canonical_url: asNonEmptyString(item.canonical_url || item.url) }
+          : {}),
+        ...(Array.isArray(item.inheritance_scope)
+          ? { inheritance_scope: uniqueNonEmptyStrings(item.inheritance_scope.map((scope) => asNonEmptyString(scope))) }
+          : {}),
+        ...(asNonEmptyString(item.review_state) ? { review_state: asNonEmptyString(item.review_state) } : {}),
+      });
+    }
+  }
+  return out.slice(0, 12);
+}
+
 function buildProductFactsSections(
   product,
   detailSections = collectStructuredDetailSections(product),
@@ -2285,6 +2327,19 @@ function buildProductFactsSections(
         ...(factImageUrl ? { media_urls: [factImageUrl] } : {}),
       });
     });
+
+  const bundleComponentRefs = normalizeBundleComponentRefsForPdp(product);
+  if (bundleComponentRefs.length) {
+    sections.push({
+      heading: 'Set includes',
+      content_type: 'text',
+      content: bundleComponentRefs
+        .map((item) => uniqueNonEmptyStrings([item.title, item.size_label]).join(' - '))
+        .join('\n'),
+      collapsed_by_default: false,
+      component_refs: bundleComponentRefs,
+    });
+  }
 
   const seen = new Set();
   return sections.filter((section) => {

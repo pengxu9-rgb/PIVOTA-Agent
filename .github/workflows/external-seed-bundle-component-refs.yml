@@ -1,0 +1,91 @@
+name: External Seed Bundle Component Refs
+
+on:
+  workflow_dispatch:
+    inputs:
+      mapping_json:
+        description: "JSON mapping with reviewed bundle component refs"
+        required: true
+        type: string
+      market:
+        description: "Market code"
+        required: true
+        default: "US"
+        type: string
+      dry_run:
+        description: "Run dry-run only"
+        required: true
+        default: true
+        type: boolean
+
+jobs:
+  bundle-component-refs:
+    runs-on: ubuntu-latest
+    environment:
+      name: Pivota Agent / production
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Backfill bundle component refs
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${DATABASE_URL:-}" ]]; then
+            echo "DATABASE_URL secret is required" >&2
+            exit 1
+          fi
+          out_dir="reports/workflow_ops/external-seed-bundle-component-refs/${{ github.run_id }}"
+          mkdir -p "${out_dir}"
+          mapping_file="${out_dir}/mapping.json"
+          cat > "${mapping_file}" <<'JSON'
+          ${{ inputs.mapping_json }}
+          JSON
+
+          report_name="dry-run.json"
+          if [[ "${{ inputs.dry_run }}" != "true" ]]; then
+            report_name="apply.json"
+          fi
+          args=(
+            --market "${{ inputs.market }}"
+            --mapping-json "${mapping_file}"
+            --out "${out_dir}/${report_name}"
+          )
+          if [[ "${{ inputs.dry_run }}" != "true" ]]; then
+            args+=(--write)
+          fi
+          node scripts/backfill-external-seed-bundle-component-refs.cjs "${args[@]}" \
+            | tee "${out_dir}/bundle-component-refs-summary.json"
+
+          ids_file="${out_dir}/external_product_ids.txt"
+          node -e "const fs=require('fs'); const data=JSON.parse(fs.readFileSync(process.argv[1],'utf8')); for (const row of data.mappings||[]) if (row.external_product_id) console.log(row.external_product_id)" "${mapping_file}" > "${ids_file}"
+          sync_args=(
+            --market "${{ inputs.market }}"
+            --external-product-ids-file "${ids_file}"
+            --out "${out_dir}/identity-source-payload-sync.json"
+            --created-by "github_actions_bundle_component_refs"
+          )
+          if [[ "${{ inputs.dry_run }}" != "true" ]]; then
+            sync_args+=(--write)
+          fi
+          node scripts/sync-external-seed-identity-source-payloads.cjs "${sync_args[@]}" \
+            | tee "${out_dir}/identity-source-payload-sync-summary.json"
+
+      - name: Upload artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: external-seed-bundle-component-refs-${{ github.run_id }}
+          path: reports/workflow_ops/external-seed-bundle-component-refs/${{ github.run_id }}
+          retention-days: 7
