@@ -16,6 +16,7 @@ const { InvokeRequestSchema, OperationEnum } = require('./schema');
 const logger = require('./logger');
 const { runMigrations } = require('./db/migrate');
 const { query, withClient } = require('./db');
+const { scheduleExternalSeedImageCacheBootstrap } = require('./services/externalSeedImageCacheBootstrap');
 const {
   parseBooleanEnv,
   parseSecretList,
@@ -34086,6 +34087,28 @@ if (require.main === module) {
             }, PDP_CORE_PREWARM_INTERVAL_MS);
           }, PDP_CORE_PREWARM_INITIAL_DELAY_MS);
         }
+      }
+
+      const imageCacheBootstrap = scheduleExternalSeedImageCacheBootstrap();
+      if (imageCacheBootstrap.scheduled) {
+        logger.info(
+          {
+            mode: imageCacheBootstrap.config.apply ? 'apply' : 'dry_run',
+            product_ids_count: imageCacheBootstrap.config.productIds.length,
+            brand: imageCacheBootstrap.config.brand || null,
+            host: imageCacheBootstrap.config.host || null,
+            market: imageCacheBootstrap.config.market,
+            limit: imageCacheBootstrap.config.limit,
+            force_cache: imageCacheBootstrap.config.forceCache,
+            delay_ms: imageCacheBootstrap.config.delayMs,
+          },
+          'Catalog image cache bootstrap scheduled',
+        );
+      } else if (imageCacheBootstrap.reason !== 'disabled') {
+        logger.warn(
+          { reason: imageCacheBootstrap.reason },
+          'Catalog image cache bootstrap was enabled but not scheduled',
+        );
       }
     });
 
