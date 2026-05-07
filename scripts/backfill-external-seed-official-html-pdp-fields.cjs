@@ -171,10 +171,75 @@ function isDisplayableShopifyVariantOption(option) {
   return true;
 }
 
+function normalizeSpecLabel(value) {
+  return normalizeText(value)
+    .replace(/\b(\d+(?:\.\d+)?)\s*(ml|mL|ML)\b/g, '$1ml')
+    .replace(/\b(\d+(?:\.\d+)?)\s*(g|G)\b/g, '$1g')
+    .replace(/\bfl\.?\s*oz\.?\b/gi, 'fl oz')
+    .replace(/\bpcs?\b/gi, 'pcs')
+    .replace(/\bea\b/gi, 'ea')
+    .replace(/\bct\b/gi, 'ct')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
+function extractSpecLabelFromText(value, options = {}) {
+  const text = stripHtml(value);
+  if (!text) return '';
+  const requireLabel = Boolean(options.requireLabel);
+  const labelPattern = /\b(?:size|net\s*(?:wt|weight|contents?)|contents?|volume|capacity|amount|quantity|count|includes?|pack(?:age)?(?:\s+includes?)?)\b/i;
+  const lines = text
+    .split(/[\n\r]+|(?<=\.)\s+/)
+    .map((line) => normalizeText(line))
+    .filter(Boolean);
+  const patterns = [
+    /\b\d+(?:\.\d+)?\s*(?:ml|mL|ML|g|G|grams?|oz|fl\.?\s*oz\.?)\b/i,
+    /\b\d+\s*(?:\+|x|×)\s*\d+\s*(?:ea|pcs?|pieces?|pads?|sheets?|patches?|masks?|pairs?|count|ct)\b/i,
+    /\b\d+(?:\.\d+)?\s*(?:ea|pcs?|pieces?|pads?|sheets?|patches?|masks?|pairs?|count|ct)\b/i,
+  ];
+  for (const line of lines) {
+    if (requireLabel && !labelPattern.test(line)) continue;
+    for (const pattern of patterns) {
+      const match = line.match(pattern);
+      if (!match) continue;
+      const label = normalizeSpecLabel(match[0]);
+      if (label) return label;
+    }
+  }
+  return '';
+}
+
+function deriveOfficialSingletonVariantOption(product, variant, options = {}) {
+  const productOptions = asArray(product.options);
+  const optionName = normalizeText(productOptions[0]?.name);
+  const titleSpec = extractSpecLabelFromText(
+    [
+      variant?.title && !/^(?:default|default title|title)$/i.test(normalizeText(variant.title)) ? variant.title : '',
+      product.title,
+      options.productTitle,
+    ]
+      .filter(Boolean)
+      .join('\n'),
+  );
+  const descriptionSpec = extractSpecLabelFromText(product.description || product.body_html || '', {
+    requireLabel: true,
+  });
+  const value = titleSpec || descriptionSpec;
+  if (!value) return null;
+  return {
+    name: /(?:ea|pcs|piece|pad|sheet|patch|mask|pair|count|ct|\+|x|×)/i.test(value)
+      ? 'Pack'
+      : optionName && !/^(?:default|default title|title)$/i.test(optionName)
+        ? optionName
+        : 'Size',
+    value,
+  };
+}
+
 function extractOfficialShopifyVariants(productJson, options = {}) {
   const product = ensureObject(productJson);
   const rawVariants = asArray(product.variants);
-  if (rawVariants.length <= 1) return [];
+  if (rawVariants.length === 0) return [];
   const productTitle = normalizeText(options.productTitle);
   if (productTitle && scoreProductTitleMatch(productTitle, product.title) < 0.75) return [];
 
@@ -197,6 +262,14 @@ function extractOfficialShopifyVariants(productJson, options = {}) {
           value: normalizeText(value),
         }))
         .filter(isDisplayableShopifyVariantOption);
+      let sourceOrigin = 'official_shopify_product_json';
+      if (!optionEntries.length && rawVariants.length === 1) {
+        const derived = deriveOfficialSingletonVariantOption(product, variant, options);
+        if (derived) {
+          optionEntries.push(derived);
+          sourceOrigin = 'official_shopify_product_json_singleton_spec';
+        }
+      }
       if (!optionEntries.length) return null;
 
       const imageUrl =
@@ -217,12 +290,13 @@ function extractOfficialShopifyVariants(productJson, options = {}) {
         ...(variant.inventory_quantity != null ? { inventory_quantity: variant.inventory_quantity } : {}),
         ...(imageUrl ? { image_url: imageUrl, image_urls: [imageUrl], images: [imageUrl] } : {}),
         ...(productUrl ? { product_url: productUrl, deep_link: `${productUrl}${productUrl.includes('?') ? '&' : '?'}variant=${variantId}` } : {}),
-        source_origin: 'official_shopify_product_json',
+        source_origin: sourceOrigin,
         source_quality_status: 'high',
       };
     })
     .filter(Boolean);
 
+  if (rawVariants.length === 1) return variants.length === 1 ? variants : [];
   return variants.length > 1 ? variants : [];
 }
 

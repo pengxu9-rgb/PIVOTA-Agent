@@ -127,6 +127,74 @@ describe('backfill-external-seed-official-html-pdp-fields TIRTIR sheet matching'
     expect(variants[1].deep_link).toContain('variant=2');
   });
 
+  test('keeps single Default Title Shopify variants hidden when no official spec exists', () => {
+    expect(
+      extractOfficialShopifyVariants(
+        {
+          title: 'SOS Serum',
+          options: [{ name: 'Title' }],
+          variants: [
+            { id: 43394926969051, title: 'Default Title', option1: 'Default Title', sku: '01TTS0039', price: 2900, weight: 136 },
+          ],
+        },
+        {
+          productTitle: 'SOS Serum',
+          currency: 'USD',
+          productUrl: 'https://tirtir.global/products/sos-serum',
+        },
+      ),
+    ).toEqual([]);
+  });
+
+  test('extracts a single official Shopify variant when the title contains a concrete size', () => {
+    const variants = extractOfficialShopifyVariants(
+      {
+        title: 'Deep Vitamin C Capsule Serum 50ml',
+        options: [{ name: 'Title' }],
+        images: ['https://medicube.us/deep-vitamin-c.jpg'],
+        variants: [
+          { id: 1, title: 'Default Title', option1: 'Default Title', sku: 'KUSMEC001', price: 2500, available: true },
+        ],
+      },
+      {
+        productTitle: 'Deep Vitamin C Capsule Serum',
+        currency: 'USD',
+        productUrl: 'https://medicube.us/products/deep-vitamin-c-capsule-serum',
+      },
+    );
+
+    expect(variants).toHaveLength(1);
+    expect(variants[0]).toEqual(
+      expect.objectContaining({
+        variant_id: '1',
+        option_name: 'Size',
+        option_value: '50ml',
+        source_origin: 'official_shopify_product_json_singleton_spec',
+      }),
+    );
+  });
+
+  test('extracts a single official Shopify variant from labeled product-size description', () => {
+    const variants = extractOfficialShopifyVariants(
+      {
+        title: 'Red Succinic Acid Cleansing Booster Serum',
+        description: '<p>Product size: 40 g / 1.41 oz</p><p>Apply after cleansing.</p>',
+        options: [{ name: 'Title' }],
+        variants: [
+          { id: 1, title: 'Default Title', option1: 'Default Title', sku: 'KUSMEC002', price: 1900, available: true },
+        ],
+      },
+      {
+        productTitle: 'Red Succinic Acid Cleansing Booster Serum',
+        currency: 'USD',
+        productUrl: 'https://medicube.us/products/red-succinic-acid-cleansing-booster-serum',
+      },
+    );
+
+    expect(variants).toHaveLength(1);
+    expect(variants[0].option_value).toBe('40g');
+  });
+
   test('does not extract official Shopify variants for a mismatched product title', () => {
     expect(
       extractOfficialShopifyVariants(
