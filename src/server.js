@@ -2607,6 +2607,10 @@ const FIND_PRODUCTS_MULTI_UPSTREAM_DEFAULT_TIMEOUT_MS = Math.max(
   1800,
   parseTimeoutMs(process.env.FIND_PRODUCTS_MULTI_UPSTREAM_DEFAULT_TIMEOUT_MS, 4500),
 );
+const FIND_PRODUCTS_MULTI_NON_BEAUTY_PRIMARY_DEADLINE_MS = Math.max(
+  50,
+  parseTimeoutMs(process.env.FIND_PRODUCTS_MULTI_NON_BEAUTY_PRIMARY_DEADLINE_MS, 6000),
+);
 const FPM_GATE_SIMPLIFY_V1 =
   String(process.env.FPM_GATE_SIMPLIFY_V1 || 'true').toLowerCase() !== 'false';
 const FPM_LOOKUP_ONLY_RESOLVER =
@@ -31723,6 +31727,28 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       : FIND_PRODUCTS_MULTI_UPSTREAM_DEFAULT_TIMEOUT_MS;
     const singlePassPublicSearchPrimary =
       operation === 'find_products_multi' && invokeSearchRail === 'public_observability';
+    const primaryBeautyQueryProfile =
+      operation === 'find_products_multi' && primarySearchQueryText
+        ? buildBeautyQueryProfile({
+            rawQuery: primarySearchQueryText,
+            queryClass: queryClassForBudget || undefined,
+          })
+        : null;
+    const primaryHasMerchantScope =
+      Boolean(String(firstQueryParamValue(queryParams?.merchant_id || queryParams?.merchantId || '')).trim()) ||
+      (Array.isArray(queryParams?.merchant_ids) && queryParams.merchant_ids.length > 0);
+    const findProductsMultiNonBeautyPrimaryDeadlineMs =
+      operation === 'find_products_multi' &&
+      shoppingFreshMainlineSearch &&
+      !strictCommerceFindProductsMulti &&
+      !singlePassPublicSearchPrimary &&
+      !primaryHasMerchantScope &&
+      !Boolean(primaryBeautyQueryProfile?.isBeautyQuery)
+        ? Math.min(
+            FIND_PRODUCTS_MULTI_NON_BEAUTY_PRIMARY_DEADLINE_MS,
+            getUpstreamTimeoutMs(operation),
+          )
+        : 0;
     const axiosTimeout =
       operation === 'find_products_multi'
         ? singlePassPublicSearchPrimary
@@ -31862,8 +31888,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       const normalizedOp = String(op || '').trim().toLowerCase();
       const measureCheckout = CHECKOUT_TIMING_OPS.has(normalizedOp);
       const startedAt = measureCheckout ? Date.now() : 0;
+      const hardDeadlineMs = Math.max(0, Number(options?.hardDeadlineMs || 0) || 0);
+      let hardDeadlineTimer = null;
       try {
-        return await callUpstreamWithOptionalRetry(op, config, {
+        const upstreamPromise = callUpstreamWithOptionalRetry(op, config, {
           disableTimeoutRetry:
             singlePassPublicSearchPrimary && String(op || '').trim().toLowerCase() === 'find_products_multi',
           disableBusyRetry:
@@ -31873,7 +31901,29 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             if (measureCheckout) gatewayRetryCount += 1;
           },
         });
+        if (!hardDeadlineMs) {
+          return await upstreamPromise;
+        }
+        return await Promise.race([
+          upstreamPromise,
+          new Promise((_, reject) => {
+            hardDeadlineTimer = setTimeout(() => {
+              const deadlineErr = new Error(
+                options?.hardDeadlineMessage ||
+                  `${normalizedOp || 'upstream'} primary exceeded hard deadline`,
+              );
+              deadlineErr.code = options?.hardDeadlineCode || 'UPSTREAM_HARD_DEADLINE_EXCEEDED';
+              deadlineErr.deadline_ms = hardDeadlineMs;
+              deadlineErr.hard_deadline = true;
+              if (options?.hardDeadlineReason) {
+                deadlineErr.deadline_reason = String(options.hardDeadlineReason);
+              }
+              reject(deadlineErr);
+            }, hardDeadlineMs);
+          }),
+        ]);
       } finally {
+        if (hardDeadlineTimer) clearTimeout(hardDeadlineTimer);
         if (measureCheckout) {
           const elapsedMs = Math.max(0, Date.now() - startedAt);
           upstreamElapsedMs += elapsedMs;
@@ -32082,6 +32132,15 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         try {
           response = await callTrackedUpstream(operation, axiosConfig, {
             spanKey: 'upstream_primary_ms',
+            ...(findProductsMultiNonBeautyPrimaryDeadlineMs > 0
+              ? {
+                  hardDeadlineMs: findProductsMultiNonBeautyPrimaryDeadlineMs,
+                  hardDeadlineCode: 'FPM_NON_BEAUTY_PRIMARY_DEADLINE_EXCEEDED',
+                  hardDeadlineReason: 'non_beauty_primary_deadline',
+                  hardDeadlineMessage:
+                    'find_products_multi non-beauty primary exceeded hard deadline',
+                }
+              : {}),
           });
           if (operation === 'find_products' || operation === 'find_products_multi') {
             searchContractBridgeMeta =
@@ -32251,28 +32310,69 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         const queryText = resolverQueryText || searchQueryText;
         const upstreamStatus = err?.response?.status || null;
         const { code: upstreamCode, message: upstreamMessage } = extractUpstreamErrorCode(err);
+        const nonBeautyPrimaryDeadlineExceeded =
+          operation === 'find_products_multi' &&
+          err?.code === 'FPM_NON_BEAUTY_PRIMARY_DEADLINE_EXCEEDED';
         if (shoppingFreshMainlineSearch) {
           const shoppingMainlineReason =
-            err?.code === 'ECONNABORTED'
+            nonBeautyPrimaryDeadlineExceeded
+              ? 'shopping_mainline_non_beauty_primary_deadline'
+              : err?.code === 'ECONNABORTED'
               ? 'shopping_mainline_timeout'
               : 'shopping_mainline_exception';
+          const shoppingMainlineResponse = normalizeAuthoritativeSearchNoFallbackResponse(
+            withStrictEmptyFallback({
+              body: null,
+              queryParams,
+              reason: shoppingMainlineReason,
+              upstreamStatus,
+              upstreamCode: upstreamCode || err?.code || null,
+              upstreamMessage: upstreamMessage || err?.message || null,
+              route: nonBeautyPrimaryDeadlineExceeded
+                ? 'shopping_mainline_non_beauty_primary_deadline'
+                : 'shopping_mainline_primary_exception',
+            }),
+            {
+              reason: shoppingMainlineReason,
+              primaryPath: 'upstream_stage',
+              decisionLockReason: nonBeautyPrimaryDeadlineExceeded
+                ? 'non_beauty_latency_guard'
+                : 'authoritative_no_fallback',
+            },
+          );
+          if (nonBeautyPrimaryDeadlineExceeded) {
+            const deadlineMs = Math.max(
+              0,
+              Number(err?.deadline_ms || findProductsMultiNonBeautyPrimaryDeadlineMs || 0) || 0,
+            );
+            const deadlineMetadata =
+              shoppingMainlineResponse.metadata &&
+              typeof shoppingMainlineResponse.metadata === 'object' &&
+              !Array.isArray(shoppingMainlineResponse.metadata)
+                ? shoppingMainlineResponse.metadata
+                : {};
+            const deadlineRouteHealth =
+              deadlineMetadata.route_health &&
+              typeof deadlineMetadata.route_health === 'object' &&
+              !Array.isArray(deadlineMetadata.route_health)
+                ? deadlineMetadata.route_health
+                : {};
+            shoppingMainlineResponse.metadata = {
+              ...deadlineMetadata,
+              fpm_primary_deadline_applied: true,
+              fpm_primary_deadline_ms: deadlineMs,
+              fpm_primary_deadline_reason: 'non_beauty_primary_deadline',
+              route_health: {
+                ...deadlineRouteHealth,
+                fpm_primary_deadline_applied: true,
+                fpm_primary_deadline_ms: deadlineMs,
+                fpm_primary_deadline_reason: 'non_beauty_primary_deadline',
+              },
+            };
+          }
           response = {
             status: 200,
-            data: normalizeAuthoritativeSearchNoFallbackResponse(
-              withStrictEmptyFallback({
-                body: null,
-                queryParams,
-                reason: shoppingMainlineReason,
-                upstreamStatus,
-                upstreamCode: upstreamCode || err?.code || null,
-                upstreamMessage: upstreamMessage || err?.message || null,
-                route: 'shopping_mainline_primary_exception',
-              }),
-              {
-                reason: shoppingMainlineReason,
-                primaryPath: 'upstream_stage',
-              },
-            ),
+            data: shoppingMainlineResponse,
           };
         }
         if (

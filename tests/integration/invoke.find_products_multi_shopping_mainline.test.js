@@ -27,6 +27,8 @@ describe('/agent/shop/v1/invoke find_products_multi shopping mainline', () => {
       PROXY_SEARCH_INVOKE_FALLBACK_ENABLED: process.env.PROXY_SEARCH_INVOKE_FALLBACK_ENABLED,
       PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED:
         process.env.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED,
+      FIND_PRODUCTS_MULTI_NON_BEAUTY_PRIMARY_DEADLINE_MS:
+        process.env.FIND_PRODUCTS_MULTI_NON_BEAUTY_PRIMARY_DEADLINE_MS,
     };
 
     process.env.PIVOTA_API_BASE = 'http://pivota.test';
@@ -88,6 +90,12 @@ describe('/agent/shop/v1/invoke find_products_multi shopping mainline', () => {
     } else {
       process.env.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED =
         prevEnv.PROXY_SEARCH_SECONDARY_FALLBACK_MULTI_ENABLED;
+    }
+    if (prevEnv.FIND_PRODUCTS_MULTI_NON_BEAUTY_PRIMARY_DEADLINE_MS === undefined) {
+      delete process.env.FIND_PRODUCTS_MULTI_NON_BEAUTY_PRIMARY_DEADLINE_MS;
+    } else {
+      process.env.FIND_PRODUCTS_MULTI_NON_BEAUTY_PRIMARY_DEADLINE_MS =
+        prevEnv.FIND_PRODUCTS_MULTI_NON_BEAUTY_PRIMARY_DEADLINE_MS;
     }
   });
 
@@ -302,6 +310,94 @@ describe('/agent/shop/v1/invoke find_products_multi shopping mainline', () => {
       }),
     );
     expect(String(resp.body.metadata?.contract_bridge?.resolved_contract || '')).not.toBe('agent_v1');
+    expect(resp.body.metadata?.proxy_search_fallback?.applied).not.toBe(true);
+  });
+
+  test('cuts off slow non-beauty primary search without invoking fallback padding', async () => {
+    process.env.FIND_PRODUCTS_MULTI_NON_BEAUTY_PRIMARY_DEADLINE_MS = '80';
+
+    const upstreamSearch = nock('http://pivota.test')
+      .post('/agent/v2/products/search')
+      .query(true)
+      .delay(250)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            product_id: 'slow_running_shoe',
+            merchant_id: 'slow_merchant',
+            title: 'Slow Running Shoe',
+          },
+        ],
+        total: 1,
+      });
+
+    const legacySearch = nock('http://pivota.test')
+      .get('/agent/v1/products/search')
+      .query(true)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [
+          {
+            product_id: 'legacy_should_not_run',
+            merchant_id: 'legacy_merchant',
+            title: 'Legacy fallback should not run',
+          },
+        ],
+        total: 1,
+      });
+
+    const app = require('../../src/server');
+    const startedAt = Date.now();
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: {
+          search: {
+            query: 'running shoes',
+            limit: 10,
+            page: 1,
+            in_stock_only: true,
+            allow_external_seed: true,
+            allow_stale_cache: false,
+            external_seed_strategy: 'unified_relevance',
+          },
+        },
+        metadata: {
+          source: 'shopping_agent',
+        },
+      });
+    const elapsedMs = Date.now() - startedAt;
+
+    expect(resp.status).toBe(200);
+    expect(elapsedMs).toBeLessThan(800);
+    expect(upstreamSearch.isDone()).toBe(true);
+    expect(legacySearch.isDone()).toBe(false);
+    expect(resp.body.products).toEqual([]);
+    expect(resp.body.metadata).toEqual(
+      expect.objectContaining({
+        invoke_search_rail: 'authoritative_shopping',
+        legacy_contract: false,
+        query_source: 'agent_products_search',
+        strict_empty: true,
+        strict_empty_reason: 'shopping_mainline_non_beauty_primary_deadline',
+        fpm_primary_deadline_applied: true,
+        fpm_primary_deadline_ms: 80,
+        fpm_primary_deadline_reason: 'non_beauty_primary_deadline',
+        route_health: expect.objectContaining({
+          fallback_triggered: false,
+          fpm_primary_deadline_applied: true,
+          fpm_primary_deadline_ms: 80,
+          fpm_primary_deadline_reason: 'non_beauty_primary_deadline',
+        }),
+        search_decision: expect.objectContaining({
+          final_decision: 'strict_empty',
+        }),
+      }),
+    );
     expect(resp.body.metadata?.proxy_search_fallback?.applied).not.toBe(true);
   });
 });
