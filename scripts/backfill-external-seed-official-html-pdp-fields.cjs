@@ -1001,8 +1001,8 @@ async function fetchStampedReviewSummary(host, html) {
     widget = await fetchJson(buildStampedUrl('', context));
   }
 
-  const rating = Number(widget?.rating || reviews?.rating || reviews?.ratingAll || 0);
-  const reviewCount = Math.round(Number(widget?.count || reviews?.total || reviews?.totalAll || 0));
+  const rating = Number(widget?.rating || reviews?.rating || 0);
+  const reviewCount = Math.round(Number(widget?.count || reviews?.total || 0));
   if (!Number.isFinite(rating) || rating <= 0 || !Number.isFinite(reviewCount) || reviewCount <= 0) return null;
 
   const starDistribution = distributionFromStampedRows(reviewRows, reviews?.total);
@@ -1405,6 +1405,7 @@ module.exports = {
     extractSkin1004Fields,
     extractMedicubeFields,
     extractOfficialShopifyVariants,
+    fetchStampedReviewSummary,
     buildSeedDataPatch,
     clearRecoveredStrictPdpSourceBlocker,
     buildShopifyProductJsonUrl,

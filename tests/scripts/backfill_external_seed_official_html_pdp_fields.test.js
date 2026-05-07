@@ -9,6 +9,7 @@ const {
     extractSkin1004Fields,
     extractMedicubeFields,
     extractOfficialShopifyVariants,
+    fetchStampedReviewSummary,
     buildSeedDataPatch,
     buildShopifyProductJsonUrl,
     findTirtirSheetIngredientRow,
@@ -22,6 +23,10 @@ const inci =
   'Fragrance, Potassium Cetyl Phosphate, Citric Acid, Adenosine, Disodium EDTA';
 
 describe('backfill-external-seed-official-html-pdp-fields TIRTIR sheet matching', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
   test('normalizes TIRTIR title keys without brand or pack noise', () => {
     expect(normalizeTirtirTitleKey('TIRTIR GLOBAL Waterism Glow Tint Set')).toBe(
       'waterism glow tint',
@@ -333,5 +338,34 @@ describe('backfill-external-seed-official-html-pdp-fields TIRTIR sheet matching'
         source_quality_status: 'high',
       }),
     );
+  });
+
+  test('does not use Stamped site-wide totalAll as product review count', async () => {
+    jest.spyOn(global, 'fetch').mockImplementation(async (url) => {
+      if (String(url).includes('/api/widget/reviews?')) {
+        return {
+          ok: true,
+          json: async () => ({
+            ratingAll: 4.8,
+            totalAll: 5316,
+            data: [],
+          }),
+        };
+      }
+      return {
+        ok: true,
+        json: async () => ({
+          rating: 4.8,
+          count: 0,
+        }),
+      };
+    });
+
+    const review = await fetchStampedReviewSummary(
+      'skin1004.com',
+      '<div id="stamped-main-widget" data-product-id="123"></div>',
+    );
+
+    expect(review).toBeNull();
   });
 });
