@@ -38,13 +38,8 @@ on:
         required: true
         default: false
         type: boolean
-      skip_image_health:
-        description: "Skip live image health probe"
-        required: true
-        default: false
-        type: boolean
-      image_health_limit:
-        description: "Max images to health-probe per PDP"
+      concurrency:
+        description: "Live PDP probe concurrency"
         required: true
         default: "4"
         type: string
@@ -91,7 +86,8 @@ jobs:
             --market "${{ inputs.market }}"
             --limit "${{ inputs.limit }}"
             --offset "${{ inputs.offset }}"
-            --image-health-limit "${{ inputs.image_health_limit }}"
+            --concurrency "${{ inputs.concurrency }}"
+            --out "${out_dir}/report.json"
           )
           if [[ -n "${{ inputs.domain }}" ]]; then
             args+=(--domain "${{ inputs.domain }}")
@@ -105,49 +101,8 @@ jobs:
           if [[ "${{ inputs.skip_similar }}" == "true" ]]; then
             args+=(--skip-similar)
           fi
-          if [[ "${{ inputs.skip_image_health }}" == "true" ]]; then
-            args+=(--skip-image-health)
-          fi
-
-          node scripts/audit-external-product-pdp-quality.js "${args[@]}" \
-            --format json > "${out_dir}/rows.json"
-          node - "${out_dir}/rows.json" > "${out_dir}/summary.json" <<'NODE'
-          const fs = require('fs');
-          const rows = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
-          const inc = (obj, key) => {
-            const normalized = String(key || 'unknown');
-            obj[normalized] = (obj[normalized] || 0) + 1;
-          };
-          const sortCounts = (obj) => Object.entries(obj)
-            .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-            .map(([key, count]) => ({ key, count }));
-          const summary = {
-            scanned: rows.length,
-            failed: rows.filter((row) => Array.isArray(row.failure_reasons) && row.failure_reasons.length > 0).length,
-            failed_by_domain: {},
-            failure_reason_counts: {},
-            failure_reason_domain_counts: {},
-            root_cause_domain_counts: {},
-          };
-          for (const row of rows) {
-            const domain = row.domain || 'unknown';
-            const failureReasons = Array.isArray(row.failure_reasons) ? row.failure_reasons : [];
-            if (failureReasons.length > 0) inc(summary.failed_by_domain, domain);
-            for (const reason of failureReasons) {
-              inc(summary.failure_reason_counts, reason);
-              inc(summary.failure_reason_domain_counts, `${domain}::${reason}`);
-            }
-            for (const reason of Array.isArray(row.root_cause_classification) ? row.root_cause_classification : []) {
-              inc(summary.root_cause_domain_counts, `${domain}::${reason}`);
-            }
-          }
-          summary.failed_by_domain = sortCounts(summary.failed_by_domain);
-          summary.failure_reason_counts = sortCounts(summary.failure_reason_counts);
-          summary.failure_reason_domain_counts = sortCounts(summary.failure_reason_domain_counts);
-          summary.root_cause_domain_counts = sortCounts(summary.root_cause_domain_counts);
-          process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
-          NODE
-          cat "${out_dir}/summary.json"
+          node scripts/audit-external-seed-live-pdp-modules.cjs "${args[@]}" \
+            | tee "${out_dir}/summary.json"
 
       - name: Upload artifact
         if: always()
