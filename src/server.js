@@ -28959,15 +28959,74 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             : (safePage - 1) * safeLimit,
         );
         const strictIngredientPrefetchStartedAt = Date.now();
-        const directProducts = await prefetchStrictIngredientExternalSeedCandidates({
-          search,
-          strictInvokeDecision: strictFindProductsMultiDecision,
-          rawQueryText: rawUserQuery || queryText,
-        });
+        // Phase 7b ingredient_recall_direct extension: run canonical_chain in
+        // parallel with the existing seed-only prefetch. Mirrors the beauty
+        // mainline integration around line 12959. Without this, ingredient
+        // queries (which contain tokens like "salicylic acid", "hyaluronic
+        // acid") bypass the canonical chain entirely and return only the
+        // seeds the strict-ingredient prefetch finds — which is why probe
+        // v15 left skincare_serum at 0/2 PASS (2 THIN). Most skincare
+        // canonical PDPs (COSRX / Naturium / Anua / etc.) live in
+        // catalog_products and are unreachable without this path.
+        const canonicalIngredientCategoryPathPrefix =
+          resolveBeautyCategoryPathPrefixForQuery(rawUserQuery || queryText) || null;
+        const canonicalIngredientLimit = Math.max(6, Math.min(12, Math.ceil(safeLimit / 2)));
+        const canonicalIngredientStartedAt = Date.now();
+        const canonicalIngredientRowsPromise = fetchCanonicalChainRows({
+          query: rawUserQuery || queryText,
+          categoryPathPrefix: canonicalIngredientCategoryPathPrefix,
+          // Always true for the ingredient_recall_direct path: by definition
+          // the query carries an ingredient signal (strictFindProductsMultiDecision
+          // populated ingredientIntentIds), so SKU-level visible_option_labels
+          // and ingredient_ids should also be matched.
+          verticalSearch: true,
+          limit: canonicalIngredientLimit,
+          includeSkuOffers: false,
+          deps: { query },
+        })
+          .then((rows) => ({
+            rows: Array.isArray(rows) ? rows : [],
+            error: null,
+            duration_ms: Math.max(0, Date.now() - canonicalIngredientStartedAt),
+          }))
+          .catch((err) => ({
+            rows: [],
+            error: String(err?.code || err?.message || err || 'canonical_query_failed').slice(0, 160),
+            duration_ms: Math.max(0, Date.now() - canonicalIngredientStartedAt),
+          }));
+        const [directProducts, canonicalIngredientResult] = await Promise.all([
+          prefetchStrictIngredientExternalSeedCandidates({
+            search,
+            strictInvokeDecision: strictFindProductsMultiDecision,
+            rawQueryText: rawUserQuery || queryText,
+          }),
+          canonicalIngredientRowsPromise,
+        ]);
         const strictIngredientPrefetchMs = Math.max(0, Date.now() - strictIngredientPrefetchStartedAt);
+        const canonicalIngredientProducts = (Array.isArray(canonicalIngredientResult?.rows) ? canonicalIngredientResult.rows : [])
+          .map((row) => buildCanonicalChainMainlineProduct(row))
+          .filter(Boolean);
+        const mergedIngredientRecall = mergeCanonicalChainProductsWithSeedProducts(
+          Array.isArray(directProducts) ? directProducts : [],
+          canonicalIngredientProducts,
+        );
+        const mergedIngredientRecallProducts = Array.isArray(mergedIngredientRecall?.products)
+          ? mergedIngredientRecall.products
+          : [];
+        const canonicalIngredientTelemetry = {
+          canonical_path_executed: true,
+          canonical_raw_count: Array.isArray(canonicalIngredientResult?.rows) ? canonicalIngredientResult.rows.length : 0,
+          canonical_product_count: canonicalIngredientProducts.length,
+          canonical_category_path_prefix: canonicalIngredientCategoryPathPrefix,
+          canonical_duration_ms: Math.max(0, Number(canonicalIngredientResult?.duration_ms || 0) || 0),
+          canonical_dedupe_count: Number(mergedIngredientRecall?.canonical_dedupe_count || 0) || 0,
+          ...(canonicalIngredientResult?.error ? { canonical_error: canonicalIngredientResult.error } : {}),
+        };
+        // Apply budget + safety filters on the MERGED list — canonical rows
+        // are subject to the same hard constraints as seed rows.
         const directBudgetFilter = filterFindProductsMultiDirectProductsByBudget(
           effectiveIntent?.hard_constraints?.price || null,
-          directProducts,
+          mergedIngredientRecallProducts,
         );
         const safetyFilter = filterBeautyMainlineProductsByQuery(
           directBudgetFilter.products,
@@ -28991,16 +29050,18 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           legacy_contract: false,
           service_version: buildServiceVersionMetadata(),
           ingredient_direct_prefetch_ms: strictIngredientPrefetchMs,
-          ingredient_direct_prefetch_count: directProducts.length,
+          ingredient_direct_prefetch_count: Array.isArray(directProducts) ? directProducts.length : 0,
           ingredient_direct_budget_filter_applied: Boolean(directBudgetFxMetadata),
           ingredient_direct_budget_filtered_out_count: directBudgetFilter.filteredOut,
           ingredient_direct_budget_currency_filtered_out_count: directBudgetFilter.currencyFilteredOut || 0,
+          ...canonicalIngredientTelemetry,
           route_health: {
             primary_path_used: 'ingredient_recall_direct',
             primary_latency_ms: strictIngredientPrefetchMs,
             fallback_triggered: false,
             fallback_reason: null,
             final_returned_count: pagedDirectProducts.length,
+            ...canonicalIngredientTelemetry,
           },
           ...(safetyFilter.applied
             ? {
