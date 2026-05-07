@@ -6,6 +6,7 @@ const path = require('path');
 const axios = require('axios');
 
 const { closePool, query } = require('../src/db');
+const { classifyExternalSeedProductKind } = require('../src/services/externalSeedProductKind');
 
 const DEFAULT_GATEWAY_URL = 'https://agent.pivota.cc/api/gateway';
 
@@ -306,6 +307,39 @@ function analyzeSimilar(pdp) {
   };
 }
 
+function analyzeProductKind(row, pdp) {
+  const canonical = moduleData(pdp, 'canonical');
+  const payloadProduct = asObject(canonical.pdp_payload?.product);
+  const familyFromPayload = asString(
+    payloadProduct.external_seed_product_family ||
+      payloadProduct.product_family ||
+      payloadProduct.external_seed_product_kind?.family,
+  );
+  const classified = classifyExternalSeedProductKind({
+    ...row,
+    title: asString(payloadProduct.title || row.title),
+    category: asString(payloadProduct.category || row.category),
+    product_type: asString(payloadProduct.product_type || row.product_type),
+    canonical_url: asString(payloadProduct.canonical_url || row.canonical_url),
+    destination_url: asString(payloadProduct.destination_url || row.destination_url),
+    seed_data: row.seed_data,
+  });
+  const family = familyFromPayload || classified.family || 'unknown_product';
+  const pdpSchemaProfile = asString(
+    payloadProduct.pdp_schema_profile || canonical.pdp_payload?.pdp_schema_profile,
+  );
+  const formulaContentRequired = family === 'single_formula' || (
+    pdpSchemaProfile === 'beauty_formula' &&
+    !['accessory', 'non_merch', 'set_or_collection', 'unknown_product'].includes(family)
+  );
+  return {
+    family,
+    reasons: classified.reasons || [],
+    pdp_schema_profile: pdpSchemaProfile || null,
+    formula_content_required: formulaContentRequired,
+  };
+}
+
 function buildRowAudit(row, probe) {
   const pdp = probe.pdp || {};
   const seedData = asObject(row.seed_data);
@@ -316,13 +350,18 @@ function buildRowAudit(row, probe) {
   const content = analyzeContent(pdp);
   const gallery = analyzeGallery(pdp);
   const similar = analyzeSimilar(pdp);
+  const productKind = analyzeProductKind(row, pdp);
+  const requiresVariantClarity =
+    productKind.formula_content_required ||
+    variant.bad_labels.length > 0 ||
+    variant.variant_count > 1;
 
   const blockingReasons = [];
   if (!gallery.ok) blockingReasons.push('gallery_missing_or_bloated');
-  if (!variant.ok) blockingReasons.push('missing_variant_clarity');
+  if (requiresVariantClarity && !variant.ok) blockingReasons.push('missing_variant_clarity');
   if (!insights.ok) blockingReasons.push('missing_or_weak_insights');
   if (!reviews.ok) blockingReasons.push('missing_reviews_chart');
-  if (!content.ingredients_present) blockingReasons.push('missing_ingredients');
+  if (productKind.formula_content_required && !content.ingredients_present) blockingReasons.push('missing_ingredients');
   if (!content.how_to_present) blockingReasons.push('missing_how_to');
   if (!content.overview_present) blockingReasons.push('missing_overview');
   if (!content.details_present) blockingReasons.push('missing_details');
@@ -333,7 +372,7 @@ function buildRowAudit(row, probe) {
     variant.ok &&
     insights.ok &&
     reviews.ok &&
-    content.ingredients_present &&
+    (!productKind.formula_content_required || content.ingredients_present) &&
     content.how_to_present &&
     content.overview_present;
 
@@ -355,6 +394,7 @@ function buildRowAudit(row, probe) {
     insights,
     content,
     similar,
+    product_kind: productKind,
     blocking_reasons: uniqueStrings(blockingReasons),
     pdp_quality_bucket: coreReady ? 'ready' : blockingReasons.length <= 2 ? 'thin' : 'not_conversion_ready',
     conversion_ready: coreReady,

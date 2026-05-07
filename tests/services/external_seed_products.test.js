@@ -2355,6 +2355,46 @@ describe('externalSeedProducts helper', () => {
     expect(product.ingredient_intel?.authoritative?.suppressed_reason).toBe('product_family_set_or_collection');
   });
 
+  test('classifies merch stickers and keyrings as accessories instead of formula PDPs', () => {
+    const stickers = buildExternalSeedProduct({
+      id: 'eps_tirtir_stickers',
+      external_product_id: 'ext_tirtir_stickers',
+      canonical_url: 'https://tirtir.global/products/tirtir-stickers',
+      destination_url: 'https://tirtir.global/products/tirtir-stickers',
+      domain: 'tirtir.global',
+      title: 'TIRTIR Stickers',
+      seed_data: { brand: 'TIRTIR GLOBAL', snapshot: {} },
+    });
+    const keyring = buildExternalSeedProduct({
+      id: 'eps_tirtir_keyring',
+      external_product_id: 'ext_tirtir_keyring',
+      canonical_url: 'https://tirtir.global/products/waterism-glow-melting-balm-heart-keyring',
+      destination_url: 'https://tirtir.global/products/waterism-glow-melting-balm-heart-keyring',
+      domain: 'tirtir.global',
+      title: 'Waterism Glow Melting Balm Heart Keyring',
+      seed_data: { brand: 'TIRTIR GLOBAL', snapshot: {} },
+    });
+
+    expect(stickers.product_family).toBe('accessory');
+    expect(keyring.product_family).toBe('accessory');
+    expect(stickers.category).toBe('Accessory');
+    expect(keyring.category).toBe('Accessory');
+  });
+
+  test('keeps treatment patch stickers eligible as formula products', () => {
+    const product = buildExternalSeedProduct({
+      id: 'eps_blemish_patch',
+      external_product_id: 'ext_blemish_patch',
+      canonical_url: 'https://example.com/products/blemish-patch-stickers',
+      destination_url: 'https://example.com/products/blemish-patch-stickers',
+      domain: 'example.com',
+      title: 'Blemish Patch Stickers',
+      seed_data: { brand: 'Example', snapshot: {} },
+    });
+
+    expect(product.product_family).toBe('single_formula');
+  });
+
   test('classifies sunscreen authority rows from title even when seed category is polluted', () => {
     const rows = [
       {
