@@ -1,7 +1,7 @@
 /**
  * Phase 7b Step 1 — Canonical catalog search helper (data access only).
  *
- * Reads `catalog_products` JOIN `catalog_skus` JOIN `catalog_offers` from the
+ * Reads `catalog_products` with optional `catalog_skus` / `catalog_offers` from the
  * shared Pivota database, returning flattened canonical-chain rows. The SQL
  * is ported from pivota-backend's
  * `services/pivot_query_service.py:_fetch_canonical_search_rows` (Python
@@ -10,8 +10,8 @@
  * gateway helper.
  *
  * **Why this exists.** The gateway's existing `findProductsMulti` flow scans
- * `external_product_seeds` standalone and never reads `catalog_products` /
- * `catalog_skus` / `catalog_offers`. That made the entire pivota-backend
+ * `external_product_seeds` standalone and never reads `catalog_products`.
+ * That made the entire pivota-backend
  * canonical-chain work (Phases 1, 2, 2-redo, 6, 7a, 7c, 8, 9, C-1/C-2/C-3)
  * invisible to live recall. Probe v13 (post category_path backfill on 3442
  * rows) confirmed: the data is correct but the gateway's recall path doesn't
@@ -78,6 +78,10 @@ function clampLimit(value, fallback, min, max) {
  * @param {boolean} [args.verticalSearch]  When true, also search SKU
  *                                         visible_option_labels + ingredient_ids
  *                                         (mirrors the backend's vertical_where).
+ * @param {boolean} [args.includeSkuOffers] Optional. Join SKU/offer rows for
+ *                                          downstream offer-aware callers.
+ *                                          Default false keeps recall on the
+ *                                          product-level indexed path.
  * @param {number} [args.limit]            Final row cap (default 12).
  * @param {function} [args.deps.query]     pg-style query function. Required.
  * @returns {Promise<Array<object>>}
@@ -88,6 +92,7 @@ async function fetchCanonicalChainRows(args = {}) {
     merchantId = null,
     categoryPathPrefix = null,
     verticalSearch = false,
+    includeSkuOffers = false,
     limit = DEFAULT_LIMIT,
     deps = {},
   } = args;
@@ -118,121 +123,87 @@ async function fetchCanonicalChainRows(args = {}) {
     merchantClause = `AND p.merchant_id = $${params.length}`;
   }
 
-  let categoryWhere = '';
+  let categoryBind = '';
   let categoryScore = '';
   if (categoryPathPrefix) {
     params.push(`${String(categoryPathPrefix)}%`);
-    const bind = `$${params.length}`;
-    categoryWhere = `OR (p.category_path IS NOT NULL AND p.category_path LIKE ${bind})`;
-    categoryScore = `+ CASE WHEN p.category_path IS NOT NULL AND p.category_path LIKE ${bind} THEN 90 ELSE 0 END`;
+    categoryBind = `$${params.length}`;
+    categoryScore = `+ CASE WHEN p.category_path IS NOT NULL AND p.category_path LIKE ${categoryBind} THEN 90 ELSE 0 END`;
   }
 
   let verticalWhere = '';
   let verticalScore = '';
+  let skuIdentityScore = '';
+  let skuTextWhere = '';
   if (verticalSearch) {
+    skuTextWhere = `
+      OR EXISTS (
+        SELECT 1
+        FROM catalog_skus sw
+        WHERE sw.product_key = p.product_key
+          AND (
+            LOWER(COALESCE(sw.sku, '')) LIKE $2
+            OR LOWER(COALESCE(sw.title, '')) LIKE $2
+            OR LOWER(COALESCE(sw.source_variant_id, '')) LIKE $2
+          )
+      )`;
+    skuIdentityScore = `
+          CASE WHEN EXISTS (
+            SELECT 1 FROM catalog_skus sx
+            WHERE sx.product_key = p.product_key
+              AND LOWER(COALESCE(sx.sku, '')) = $1
+          ) THEN 120 ELSE 0 END +
+          CASE WHEN EXISTS (
+            SELECT 1 FROM catalog_skus sx
+            WHERE sx.product_key = p.product_key
+              AND LOWER(COALESCE(sx.source_variant_id, '')) = $1
+          ) THEN 110 ELSE 0 END +`;
     verticalWhere = `
-      OR LOWER(COALESCE(CAST(s.visible_option_labels AS TEXT), '')) LIKE $2
-      OR LOWER(COALESCE(CAST(s.ingredient_ids AS TEXT), '')) LIKE $2`;
+      OR EXISTS (
+        SELECT 1
+        FROM catalog_skus sv
+        WHERE sv.product_key = p.product_key
+          AND (
+            LOWER(COALESCE(CAST(sv.visible_option_labels AS TEXT), '')) LIKE $2
+            OR LOWER(COALESCE(CAST(sv.ingredient_ids AS TEXT), '')) LIKE $2
+          )
+      )`;
     verticalScore = `
-      + CASE WHEN LOWER(COALESCE(CAST(s.visible_option_labels AS TEXT), '')) LIKE $2 THEN 20 ELSE 0 END
-      + CASE WHEN LOWER(COALESCE(CAST(s.ingredient_ids AS TEXT), '')) LIKE $2 THEN 15 ELSE 0 END`;
+      + CASE WHEN EXISTS (
+          SELECT 1 FROM catalog_skus ss
+          WHERE ss.product_key = p.product_key
+            AND LOWER(COALESCE(CAST(ss.visible_option_labels AS TEXT), '')) LIKE $2
+        ) THEN 20 ELSE 0 END
+      + CASE WHEN EXISTS (
+          SELECT 1 FROM catalog_skus si
+          WHERE si.product_key = p.product_key
+            AND LOWER(COALESCE(CAST(si.ingredient_ids AS TEXT), '')) LIKE $2
+        ) THEN 15 ELSE 0 END`;
   }
 
-  // Rank score weights mirror pivot_query_service.py exactly so canonical
-  // recall ranks identically across the backend's HTTP API and this gateway
-  // helper. Drift here would surface as inconsistent top-N between the two.
-  // The +200 multi_merchant_canonical bonus is the dominant term.
-  const sql = `
-    WITH candidate_skus AS (
-      SELECT
-        m.merchant_id           AS merchant_id,
-        m.merchant_name         AS merchant_name,
-        m.primary_platform      AS merchant_primary_platform,
-        p.product_key,
-        p.source_product_id,
-        p.title                 AS product_title,
-        p.description           AS product_description,
-        p.brand,
-        p.product_type,
-        p.category,
-        p.category_path,
-        p.canonical_url,
-        p.image_url             AS product_image_url,
-        p.catalog_track,
-        p.truth_tier,
-        p.readiness_tier,
-        p.pdp_scope,
-        p.source_system,
-        p.freshness_json,
-        p.updated_at            AS product_updated_at,
-        s.sku_key,
-        s.source_variant_id,
-        s.sku,
-        s.barcode,
-        s.title                 AS sku_title,
-        s.visible_attributes,
-        s.visible_option_labels,
-        s.ingredient_ids,
-        s.image_url             AS sku_image_url,
-        (
-          CASE WHEN LOWER(COALESCE(s.sku, '')) = $1                       THEN 120 ELSE 0 END +
-          CASE WHEN LOWER(COALESCE(s.source_variant_id, '')) = $1         THEN 110 ELSE 0 END +
-          CASE WHEN LOWER(COALESCE(p.source_product_id, '')) = $1         THEN 105 ELSE 0 END +
-          CASE WHEN LOWER(COALESCE(p.title, '')) = $1                     THEN 100 ELSE 0 END +
-          CASE WHEN LOWER(COALESCE(m.merchant_name, '')) = $1             THEN  90 ELSE 0 END +
-          CASE WHEN LOWER(COALESCE(p.brand, '')) = $1                     THEN  80 ELSE 0 END +
-          CASE WHEN p.pdp_scope = 'multi_merchant_canonical'              THEN 200 ELSE 0 END
-          ${categoryScore}
-          ${verticalScore}
-        ) AS rank_score
-      FROM catalog_products p
-      JOIN catalog_skus s ON s.product_key = p.product_key
-      LEFT JOIN catalog_merchants m ON m.merchant_id = p.merchant_id
-      WHERE (
+  const textWhereClause = `
         LOWER(COALESCE(p.title, '')) LIKE $2
         OR LOWER(COALESCE(p.brand, '')) LIKE $2
         OR LOWER(COALESCE(m.merchant_name, '')) LIKE $2
-        OR LOWER(COALESCE(s.sku, '')) LIKE $2
-        OR LOWER(COALESCE(s.title, '')) LIKE $2
-        OR LOWER(COALESCE(s.source_variant_id, '')) LIKE $2
+        ${skuTextWhere}
         OR LOWER(COALESCE(p.source_product_id, '')) LIKE $2
-        ${categoryWhere}
         ${verticalWhere}
-      )
-      ${merchantClause}
-      ORDER BY rank_score DESC, p.updated_at DESC, s.updated_at DESC
-      LIMIT $3
-    )
-    SELECT
-      c.merchant_id,
-      c.merchant_name,
-      c.merchant_primary_platform,
-      c.product_key,
-      c.source_product_id,
-      c.product_title,
-      c.product_description,
-      c.brand,
-      c.product_type,
-      c.category,
-      c.category_path,
-      c.canonical_url,
-      c.product_image_url,
-      c.catalog_track,
-      c.truth_tier,
-      c.readiness_tier,
-      c.pdp_scope,
-      c.source_system,
-      c.freshness_json,
-      c.product_updated_at,
-      c.sku_key,
-      c.source_variant_id,
-      c.sku,
-      c.barcode,
-      c.sku_title,
-      c.visible_attributes,
-      c.visible_option_labels,
-      c.ingredient_ids,
-      c.sku_image_url,
+  `;
+  const whereClause = categoryBind
+    ? `(p.category_path IS NOT NULL AND p.category_path LIKE ${categoryBind} AND $2::text IS NOT NULL)`
+    : `(${textWhereClause})`;
+  const joinSkuOffers = Boolean(includeSkuOffers);
+  const skuOfferColumns = joinSkuOffers
+    ? `
+      s.sku_key,
+      s.source_variant_id,
+      s.sku,
+      s.barcode,
+      s.title                    AS sku_title,
+      s.visible_attributes,
+      s.visible_option_labels,
+      s.ingredient_ids,
+      s.image_url                AS sku_image_url,
       o.offer_id,
       o.catalog_track            AS offer_catalog_track,
       o.truth_tier               AS offer_truth_tier,
@@ -247,10 +218,116 @@ async function fetchCanonicalChainRows(args = {}) {
       o.price_confidence,
       o.source_system            AS offer_source_system,
       o.offer_payload,
-      c.rank_score + CASE WHEN o.catalog_track = 'internal_merchant' THEN 10 ELSE 0 END AS rank_score
-    FROM candidate_skus c
-    JOIN catalog_offers o ON o.sku_key = c.sku_key
-    ORDER BY rank_score DESC, c.product_updated_at DESC, o.updated_at DESC
+      c.rank_score + CASE WHEN o.catalog_track = 'internal_merchant' THEN 10 ELSE 0 END AS rank_score`
+    : `
+      NULL::text                 AS sku_key,
+      NULL::text                 AS source_variant_id,
+      NULL::text                 AS sku,
+      NULL::text                 AS barcode,
+      NULL::text                 AS sku_title,
+      NULL::jsonb                AS visible_attributes,
+      NULL::jsonb                AS visible_option_labels,
+      NULL::jsonb                AS ingredient_ids,
+      NULL::text                 AS sku_image_url,
+      NULL::text                 AS offer_id,
+      NULL::text                 AS offer_catalog_track,
+      NULL::text                 AS offer_truth_tier,
+      NULL::text                 AS offer_readiness_tier,
+      NULL::text                 AS offer_mode,
+      NULL::text                 AS availability,
+      NULL::integer              AS inventory_quantity,
+      NULL::text                 AS currency,
+      NULL::numeric              AS list_price,
+      NULL::numeric              AS merchant_effective_price,
+      NULL::numeric              AS estimated_best_price,
+      NULL::text                 AS price_confidence,
+      NULL::text                 AS offer_source_system,
+      NULL::jsonb                AS offer_payload,
+      c.rank_score               AS rank_score`;
+  const skuOfferJoinSql = joinSkuOffers
+    ? `
+    LEFT JOIN catalog_skus s ON s.product_key = c.product_key
+    LEFT JOIN catalog_offers o ON o.sku_key = s.sku_key`
+    : '';
+  const skuOfferOrderSql = joinSkuOffers ? ', s.updated_at DESC, o.updated_at DESC' : '';
+
+  // Rank score weights mirror pivot_query_service.py exactly so canonical
+  // recall ranks identically across the backend's HTTP API and this gateway
+  // helper. Drift here would surface as inconsistent top-N between the two.
+  // The +200 multi_merchant_canonical bonus is the dominant term.
+  const sql = `
+    WITH candidate_products AS (
+      SELECT
+        COALESCE(m.merchant_id, p.merchant_id) AS merchant_id,
+        m.merchant_name         AS merchant_name,
+        m.primary_platform      AS merchant_primary_platform,
+        p.product_key,
+        p.platform,
+        p.source_product_id,
+        p.title                 AS product_title,
+        p.description           AS product_description,
+        p.brand,
+        p.product_type,
+        p.category,
+        p.category_path,
+        p.canonical_url,
+        p.image_url             AS product_image_url,
+        p.catalog_track,
+        p.truth_tier,
+        p.readiness_tier,
+        p.pdp_scope,
+        p.source_system,
+        p.product_payload,
+        p.freshness_json,
+        p.pivota_signature_id,
+        p.pivota_canonical_url,
+        p.updated_at            AS product_updated_at,
+        (
+          ${skuIdentityScore}
+          CASE WHEN LOWER(COALESCE(p.source_product_id, '')) = $1         THEN 105 ELSE 0 END +
+          CASE WHEN LOWER(COALESCE(p.title, '')) = $1                     THEN 100 ELSE 0 END +
+          CASE WHEN LOWER(COALESCE(m.merchant_name, '')) = $1             THEN  90 ELSE 0 END +
+          CASE WHEN LOWER(COALESCE(p.brand, '')) = $1                     THEN  80 ELSE 0 END +
+          CASE WHEN p.pdp_scope = 'multi_merchant_canonical'              THEN 200 ELSE 0 END
+          ${categoryScore}
+          ${verticalScore}
+        ) AS rank_score
+      FROM catalog_products p
+      LEFT JOIN catalog_merchants m ON m.merchant_id = p.merchant_id
+      WHERE ${whereClause}
+      ${merchantClause}
+      ORDER BY rank_score DESC, p.updated_at DESC
+      LIMIT $3
+    )
+    SELECT
+      c.merchant_id,
+      c.merchant_name,
+      c.merchant_primary_platform,
+      c.product_key,
+      c.platform,
+      c.source_product_id,
+      c.product_title,
+      c.product_description,
+      c.brand,
+      c.product_type,
+      c.category,
+      c.category_path,
+      c.canonical_url,
+      c.product_image_url,
+      c.catalog_track,
+      c.truth_tier,
+      c.readiness_tier,
+      c.pdp_scope,
+      c.source_system,
+      c.product_payload,
+      c.freshness_json,
+      c.pivota_signature_id,
+      c.pivota_canonical_url,
+      c.product_updated_at,
+      ${skuOfferColumns}
+    FROM candidate_products c
+    ${skuOfferJoinSql}
+    ORDER BY rank_score DESC, c.product_updated_at DESC${skuOfferOrderSql}
     LIMIT $4
   `;
 

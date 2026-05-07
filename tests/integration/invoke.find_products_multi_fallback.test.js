@@ -306,9 +306,10 @@ describe('/agent/shop/v1/invoke find_products_multi legacy fallback isolation', 
     expect(typeof internalPrimitiveRequestBody?.trace_id).toBe('string');
     expect(resp.body.metadata).toEqual(
       expect.objectContaining({
-        invoke_search_rail: 'legacy_internal',
-        legacy_contract: true,
+        invoke_search_rail: 'authoritative_shopping',
+        legacy_contract: false,
         primary_lane: 'beauty_discovery_mainline',
+        transport_owner: 'internal_products_search_primitive',
       }),
     );
     expect(resp.body.metadata?.search_request_contract?.primary_lane).toBe('beauty_discovery_mainline');

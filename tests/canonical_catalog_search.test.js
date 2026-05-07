@@ -59,8 +59,10 @@ describe('canonicalCatalogSearch.fetchCanonicalChainRows', () => {
     expect(params[3]).toBeGreaterThanOrEqual(__internal.ROW_LIMIT_MIN);
     expect(params[3]).toBeLessThanOrEqual(__internal.ROW_LIMIT_MAX);
     expect(sql).toMatch(/FROM catalog_products p/);
-    expect(sql).toMatch(/JOIN catalog_skus s ON s\.product_key = p\.product_key/);
-    expect(sql).toMatch(/JOIN catalog_offers o ON o\.sku_key = c\.sku_key/);
+    expect(sql).not.toMatch(/LEFT JOIN catalog_skus s ON s\.product_key = c\.product_key/);
+    expect(sql).not.toMatch(/LEFT JOIN catalog_offers o ON o\.sku_key = s\.sku_key/);
+    expect(sql).toMatch(/p\.pivota_signature_id/);
+    expect(sql).toMatch(/p\.pivota_canonical_url/);
   });
 
   test('omits merchant clause when merchantId not provided', async () => {
@@ -152,9 +154,26 @@ describe('canonicalCatalogSearch.fetchCanonicalChainRows', () => {
 
   test('outer SELECT bumps rank by +10 for internal_merchant offers', async () => {
     const query = makeMockQuery([]);
-    await fetchCanonicalChainRows({ query: 'lipstick', deps: { query } });
+    await fetchCanonicalChainRows({ query: 'lipstick', includeSkuOffers: true, deps: { query } });
     const { sql } = query.calls[0];
     expect(sql).toMatch(/o\.catalog_track = 'internal_merchant'.+THEN 10 ELSE 0 END AS rank_score/s);
+  });
+
+  test('keeps product-level catalog rows on the default recall path', async () => {
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({ query: 'lipstick', deps: { query } });
+    const { sql } = query.calls[0];
+    expect(sql).toMatch(/NULL::text\s+AS sku_key/);
+    expect(sql).toMatch(/NULL::text\s+AS offer_id/);
+    expect(sql).toMatch(/COALESCE\(m\.merchant_id, p\.merchant_id\) AS merchant_id/);
+  });
+
+  test('can include SKU and offer rows for offer-aware callers', async () => {
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({ query: 'lipstick', includeSkuOffers: true, deps: { query } });
+    const { sql } = query.calls[0];
+    expect(sql).toMatch(/LEFT JOIN catalog_skus s ON s\.product_key = c\.product_key/);
+    expect(sql).toMatch(/LEFT JOIN catalog_offers o ON o\.sku_key = s\.sku_key/);
   });
 
   test('returns the rows array as-is from the underlying query', async () => {
