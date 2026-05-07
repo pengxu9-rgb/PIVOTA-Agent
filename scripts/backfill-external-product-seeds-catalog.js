@@ -416,7 +416,7 @@ function cloneJsonValue(value) {
 }
 
 function stripNullBytesFromString(value) {
-  return String(value || '').replace(/\u0000/g, '').replace(/\\u0000/gi, '');
+  return String(value || '').replace(/\u0000/g, '').replace(/\\+u0000/gi, '');
 }
 
 function stripNullBytesFromUtf8String(value) {
@@ -444,7 +444,9 @@ function sanitizeTextForPostgres(value) {
 }
 
 function stringifyPostgresJsonb(value) {
-  return stripNullBytesFromUtf8String(JSON.stringify(sanitizeJsonForPostgres(value || {})));
+  const json = stripNullBytesFromUtf8String(JSON.stringify(sanitizeJsonForPostgres(value || {})));
+  JSON.parse(json);
+  return json;
 }
 
 function stableHash(value, length = 24) {

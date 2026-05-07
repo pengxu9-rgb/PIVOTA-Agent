@@ -3661,6 +3661,47 @@ async function fetchExternalSeedProductDetailFromDb(args) {
   }
 }
 
+async function resolveCatalogProductRefFromPivotaSignature(productId) {
+  if (!process.env.DATABASE_URL) return null;
+  const normalizedProductId = String(productId || '').trim();
+  if (!/^sig_[a-z0-9]+$/i.test(normalizedProductId)) return null;
+
+  try {
+    const result = await query(
+      `
+        SELECT merchant_id, platform, source_product_id, product_key
+        FROM catalog_products
+        WHERE pivota_signature_id = $1
+        LIMIT 1
+      `,
+      [normalizedProductId],
+    );
+    const row = Array.isArray(result?.rows) ? result.rows[0] : null;
+    const merchantId = String(row?.merchant_id || '').trim();
+    const sourceProductId = String(row?.source_product_id || '').trim();
+    if (!merchantId || !sourceProductId) return null;
+    return {
+      merchant_id: merchantId,
+      product_id: sourceProductId,
+      ...(row?.platform ? { platform: String(row.platform).trim() } : {}),
+      ...(row?.product_key ? { product_key: String(row.product_key).trim() } : {}),
+    };
+  } catch (err) {
+    const message = String(err?.message || err || '');
+    if (
+      err?.code === 'NO_DATABASE' ||
+      (message.includes('catalog_products') && message.includes('does not exist'))
+    ) {
+      return null;
+    }
+    logger.warn(
+      { err: err?.message || String(err), product_id: normalizedProductId },
+      'Failed to resolve catalog product ref from pivota signature',
+    );
+    return null;
+  }
+}
+
 async function fetchExternalSeedRouteStatusFromDb(args) {
   if (!process.env.DATABASE_URL) return null;
   const productId = String(args?.productId || '').trim();
@@ -25693,66 +25734,79 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	        const inferred = extractMerchantIdFromOfferId(offerId);
 	        if (inferred) requestedMerchantId = inferred;
 	      }
-	      const platform = String(productRef.platform || payload.platform || '').trim() || null;
-	      const options = payload.options || payload.product?.options || {};
-	      const debug =
-        options.debug === true ||
-        String(options.debug || '').trim().toLowerCase() === 'true' ||
-        payload.debug === true;
-      const bypassCache =
-        options.no_cache === true ||
-        options.cache_bypass === true ||
-        options.bypass_cache === true ||
-        String(options.no_cache || '').trim().toLowerCase() === 'true' ||
-        String(options.cache_bypass || options.bypass_cache || '')
-          .trim()
-          .toLowerCase() === 'true';
+		      const platform = String(productRef.platform || payload.platform || '').trim() || null;
+		      const options = payload.options || payload.product?.options || {};
+		      const debug =
+		        options.debug === true ||
+		        String(options.debug || '').trim().toLowerCase() === 'true' ||
+		        payload.debug === true;
+		      const bypassCache =
+		        options.no_cache === true ||
+		        options.cache_bypass === true ||
+		        options.bypass_cache === true ||
+		        String(options.no_cache || '').trim().toLowerCase() === 'true' ||
+		        String(options.cache_bypass || options.bypass_cache || '')
+		          .trim()
+		          .toLowerCase() === 'true';
 
-      const includeRaw = payload.include;
-      const includeList = Array.isArray(includeRaw)
-        ? includeRaw.map((v) => String(v || '').trim().toLowerCase()).filter(Boolean)
-        : typeof includeRaw === 'string'
-          ? includeRaw
-              .split(',')
-              .map((v) => String(v || '').trim().toLowerCase())
-              .filter(Boolean)
-          : [];
-	      const includeAll = includeList.includes('all');
-	      const wantsOffers = includeAll || includeList.includes('offers');
-        const wantsVariantSelector =
-          includeAll ||
-          includeList.includes('variant_selector') ||
-          includeList.includes('variants');
-	      const wantsReviewsPreview = includeAll || includeList.includes('reviews_preview');
-	      const wantsSimilar =
-	        includeAll ||
-	        includeList.includes('similar') ||
-	        includeList.includes('recommendations');
-	      const wantsProductIntel = includeAll || includeList.includes('product_intel');
-	      const wantsActiveIngredients = includeAll || includeList.includes('active_ingredients');
-	      const wantsIngredientsInci = includeAll || includeList.includes('ingredients_inci');
-	      const wantsHowToUse = includeAll || includeList.includes('how_to_use');
-	      const wantsProductDetails = includeAll || includeList.includes('product_details');
-	      const wantsProductOverview =
-	        includeAll || includeList.includes('product_overview') || wantsProductDetails;
-	      const wantsSupplementalDetails =
-	        includeAll || includeList.includes('supplemental_details') || wantsProductDetails;
-	      const wantsProductFacts = includeAll || includeList.includes('product_facts');
-	      markPdpV2Phase('parse_request', parseRequestStartedAt);
+		      const includeRaw = payload.include;
+		      const includeList = Array.isArray(includeRaw)
+		        ? includeRaw.map((v) => String(v || '').trim().toLowerCase()).filter(Boolean)
+		        : typeof includeRaw === 'string'
+		          ? includeRaw
+		              .split(',')
+		              .map((v) => String(v || '').trim().toLowerCase())
+		              .filter(Boolean)
+		          : [];
+		      const includeAll = includeList.includes('all');
+		      const wantsOffers = includeAll || includeList.includes('offers');
+		      const wantsVariantSelector =
+		        includeAll ||
+		        includeList.includes('variant_selector') ||
+		        includeList.includes('variants');
+		      const wantsReviewsPreview = includeAll || includeList.includes('reviews_preview');
+		      const wantsSimilar =
+		        includeAll ||
+		        includeList.includes('similar') ||
+		        includeList.includes('recommendations');
+		      const wantsProductIntel = includeAll || includeList.includes('product_intel');
+		      const wantsActiveIngredients = includeAll || includeList.includes('active_ingredients');
+		      const wantsIngredientsInci = includeAll || includeList.includes('ingredients_inci');
+		      const wantsHowToUse = includeAll || includeList.includes('how_to_use');
+		      const wantsProductDetails = includeAll || includeList.includes('product_details');
+		      const wantsProductOverview =
+		        includeAll || includeList.includes('product_overview') || wantsProductDetails;
+		      const wantsSupplementalDetails =
+		        includeAll || includeList.includes('supplemental_details') || wantsProductDetails;
+		      const wantsProductFacts = includeAll || includeList.includes('product_facts');
+		      markPdpV2Phase('parse_request', parseRequestStartedAt);
 
-	      // Resolve the canonical product group first so every client sees the same details.
+		      // Resolve the canonical product group first so every client sees the same details.
 		      let productGroupId = null;
 		      let groupMembers = [];
 		      let canonicalProductRef = null;
-	        let canonicalizationApplied = false;
-	        let canonicalizationReasonCode = null;
-	        let identityResolutionSource = 'requested_route';
-	      const shouldPrewarmSimilarForCorePdp =
-	        !wantsSimilar &&
-	        !bypassCache &&
-	        wantsProductIntel &&
-	        !wantsOffers &&
-	        !wantsReviewsPreview;
+		      let canonicalizationApplied = false;
+		      let canonicalizationReasonCode = null;
+		      let identityResolutionSource = 'requested_route';
+		      const requestedProductIdForDiagnostics = productId || null;
+		      if (productId && String(productId).trim().toLowerCase().startsWith('sig_') && !requestedMerchantId) {
+		        const signatureResolveStartedAt = Date.now();
+		        const signatureProductRef = await resolveCatalogProductRefFromPivotaSignature(productId);
+		        markPdpV2Phase('resolve_catalog_signature', signatureResolveStartedAt);
+		        if (signatureProductRef?.product_id && signatureProductRef?.merchant_id) {
+		          productId = String(signatureProductRef.product_id || '').trim() || productId;
+		          requestedMerchantId = String(signatureProductRef.merchant_id || '').trim() || requestedMerchantId;
+		          canonicalizationApplied = productId !== requestedProductIdForDiagnostics;
+		          canonicalizationReasonCode = canonicalizationApplied ? 'PIVOTA_SIGNATURE_ID' : null;
+		          identityResolutionSource = 'catalog_products_signature';
+		        }
+		      }
+		      const shouldPrewarmSimilarForCorePdp =
+		        !wantsSimilar &&
+		        !bypassCache &&
+		        wantsProductIntel &&
+		        !wantsOffers &&
+		        !wantsReviewsPreview;
 	      let similarPrewarmStarted = false;
 	      const startPdpSimilarPrewarm = ({
 	        productForPdp = null,
@@ -25920,7 +25974,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	          },
 	        });
 	      }
-	        requestedProductIdCtx = entryProductId || null;
+		        requestedProductIdCtx = requestedProductIdForDiagnostics || entryProductId || null;
         requestedMerchantIdCtx = requestedMerchantId || null;
         identityResolutionSourceCtx = identityResolutionSource;
 
