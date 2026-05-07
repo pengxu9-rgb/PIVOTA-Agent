@@ -51,6 +51,9 @@ function summarizeSeed(seedData) {
   const snapshot = ensureJsonObject(seedData?.snapshot);
   const contentAsset = ensureJsonObject(seedData?.pdp_content_asset_v1 || snapshot?.pdp_content_asset_v1);
   const contentAssetFields = ensureJsonObject(contentAsset.fields);
+  const qualitySummary = ensureJsonObject(seedData?.pdp_field_quality_summary || snapshot?.pdp_field_quality_summary);
+  const strictBlocker = ensureJsonObject(seedData?.strict_pdp_source_blocker_v1 || snapshot?.strict_pdp_source_blocker_v1);
+  const urlRepair = ensureJsonObject(seedData?.external_seed_url_repair_v1 || snapshot?.external_seed_url_repair_v1);
   return {
     description: normalizeText(seedData?.description || snapshot?.description),
     pdp_description_raw: normalizeText(seedData?.pdp_description_raw || snapshot?.pdp_description_raw),
@@ -67,6 +70,9 @@ function summarizeSeed(seedData) {
       seedData?.pdp_field_capture_status ||
       snapshot?.pdp_field_capture_status ||
       null,
+    pdp_field_quality_summary: Object.keys(qualitySummary).length ? qualitySummary : null,
+    strict_pdp_source_blocker_v1: Object.keys(strictBlocker).length ? strictBlocker : null,
+    external_seed_url_repair_v1: Object.keys(urlRepair).length ? urlRepair : null,
     pdp_content_asset_fields: Object.keys(contentAssetFields),
     pdp_content_asset_ingredients_raw: contentAssetFields.ingredients_raw || null,
     review_count:
@@ -133,6 +139,76 @@ async function fetchIdentityListing(sourceListingRef) {
   };
 }
 
+function summarizeIdentityRow(row) {
+  const payload = ensureJsonObject(row?.source_payload);
+  const seedData = ensureJsonObject(payload.seed_data);
+  const snapshot = ensureJsonObject(seedData.snapshot);
+  return {
+    source_listing_ref: row.source_listing_ref,
+    merchant_id: row.merchant_id,
+    product_id: row.product_id,
+    source_kind: row.source_kind,
+    source_tier: row.source_tier,
+    live_read_enabled: row.live_read_enabled === true,
+    identity_status: row.identity_status,
+    review_required: row.review_required === true,
+    sellable_item_group_id: row.sellable_item_group_id,
+    product_line_id: row.product_line_id,
+    review_family_id: row.review_family_id,
+    identity_confidence: row.identity_confidence,
+    match_basis: Array.isArray(row.match_basis) ? row.match_basis : [],
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    payload_summary: {
+      title: normalizeText(payload.title || seedData.title || snapshot.title),
+      description_len: normalizeText(payload.description || seedData.description || snapshot.description).length,
+      pdp_description_len: normalizeText(
+        payload.pdp_description_raw || seedData.pdp_description_raw || snapshot.pdp_description_raw,
+      ).length,
+      ingredients_top_len: normalizeText(payload.pdp_ingredients_raw).length,
+      ingredients_seed_len: normalizeText(seedData.pdp_ingredients_raw).length,
+      ingredients_snapshot_len: normalizeText(snapshot.pdp_ingredients_raw).length,
+      how_to_top_len: normalizeText(payload.pdp_how_to_use_raw).length,
+      how_to_seed_len: normalizeText(seedData.pdp_how_to_use_raw).length,
+      how_to_snapshot_len: normalizeText(snapshot.pdp_how_to_use_raw).length,
+      details_top_titles: sectionTitles(payload.pdp_details_sections),
+      details_seed_titles: sectionTitles(seedData.pdp_details_sections),
+      details_snapshot_titles: sectionTitles(snapshot.pdp_details_sections),
+      review_count:
+        payload.review_summary?.review_count ||
+        seedData.review_summary?.review_count ||
+        snapshot.review_summary?.review_count ||
+        0,
+      canonical_url: normalizeText(payload.canonical_url || seedData.canonical_url || snapshot.canonical_url),
+      strict_blocker: Boolean(
+        payload.strict_pdp_source_blocker_v1 ||
+          seedData.strict_pdp_source_blocker_v1 ||
+          snapshot.strict_pdp_source_blocker_v1,
+      ),
+    },
+  };
+}
+
+async function fetchIdentityListingCandidates(externalProductId) {
+  const sourceListingRef = `external_seed:${externalProductId}`;
+  const result = await query(
+    `
+      SELECT *
+      FROM pdp_identity_listing
+      WHERE source_listing_ref = $1
+         OR (merchant_id = 'external_seed' AND product_id = $2)
+      ORDER BY
+        CASE WHEN source_listing_ref = $1 THEN 0 ELSE 1 END,
+        live_read_enabled DESC,
+        identity_confidence DESC NULLS LAST,
+        updated_at DESC NULLS LAST,
+        created_at DESC NULLS LAST
+    `,
+    [sourceListingRef, externalProductId],
+  );
+  return (result?.rows || []).map(summarizeIdentityRow);
+}
+
 async function main() {
   const externalProductIds = parseDelimitedIds(
     argValue('external-product-ids') || argValue('externalProductIds'),
@@ -170,6 +246,7 @@ async function main() {
       ? buildSeedUpdatePayload(row, response.data, targetUrl)
       : null;
     const identityListing = await fetchIdentityListing(`external_seed:${row.external_product_id}`);
+    const identityListingCandidates = await fetchIdentityListingCandidates(row.external_product_id);
     audit.push({
       external_product_id: row.external_product_id,
       title: normalizeText(row.title),
@@ -179,6 +256,7 @@ async function main() {
       next_seed: payload?.nextRow ? summarizeNextRow(payload.nextRow) : null,
       changed: payload?.changed === true,
       identity_listing: identityListing,
+      identity_listing_candidates: identityListingCandidates,
     });
   }
 
