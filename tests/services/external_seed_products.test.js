@@ -5,9 +5,18 @@ const {
   buildExternalSeedBrandSearchProduct,
   collectCachedSeedImageUrls,
   normalizeSeedVariants,
+  resolveBeautyCategoryPathPrefixForQuery,
 } = require('../../src/services/externalSeedProducts');
 
 describe('externalSeedProducts helper', () => {
+  test('resolves beauty query category path prefixes for canonical catalog recall', () => {
+    expect(resolveBeautyCategoryPathPrefixForQuery('lipstick')).toBe('beauty/makeup/lip/');
+    expect(resolveBeautyCategoryPathPrefixForQuery('best red 口红')).toBe('beauty/makeup/lip/');
+    expect(resolveBeautyCategoryPathPrefixForQuery('waterproof mascara')).toBe('beauty/makeup/eye/');
+    expect(resolveBeautyCategoryPathPrefixForQuery('woody perfume')).toBe('beauty/fragrance/');
+    expect(resolveBeautyCategoryPathPrefixForQuery('unknown beauty object')).toBe('');
+  });
+
   test('prefers cached image asset contract URLs over blocked merchant originals', () => {
     const cachedUrl = 'https://assets.pivota.cc/catalog-image-cache/ab/abcdef.png';
     const blockedOriginal = 'https://www.guerlain.com/dw/image/v2/BDCZ_PRD/blocked.png?sw=655&sh=655';

@@ -71,6 +71,36 @@ const BEAUTY_CATEGORY_DESCRIPTION_PATTERNS = BEAUTY_CATEGORY_PATTERNS.map(([labe
   }
   return [label, pattern];
 });
+const BEAUTY_CATEGORY_PATH_BY_LABEL = Object.freeze({
+  Brush: 'beauty/tools/brush',
+  Shampoo: 'beauty/hair/shampoo',
+  Conditioner: 'beauty/hair/conditioner',
+  'Hair Styling': 'beauty/hair/styling',
+  'Hair Care': 'beauty/hair',
+  Sunscreen: 'beauty/skincare/sun/sunscreen',
+  Fragrance: 'beauty/fragrance/perfume',
+  Cleanser: 'beauty/skincare/cleanse/cleanser',
+  Toner: 'beauty/skincare/tone/toner',
+  Treatment: 'beauty/skincare/treat/treatment',
+  Serum: 'beauty/skincare/treat/serum',
+  Concealer: 'beauty/makeup/face/concealer',
+  Foundation: 'beauty/makeup/face/foundation',
+  Powder: 'beauty/makeup/face/powder',
+  Highlighter: 'beauty/makeup/cheek/highlighter',
+  Blush: 'beauty/makeup/cheek/blush',
+  Bronzer: 'beauty/makeup/cheek/bronzer',
+  Eyeshadow: 'beauty/makeup/eye/eyeshadow',
+  Mascara: 'beauty/makeup/eye/mascara',
+  'Brow Pencil': 'beauty/makeup/eye/brow',
+  'Lip Balm': 'beauty/makeup/lip/balm',
+  Lipstick: 'beauty/makeup/lip/lipstick',
+  Moisturizer: 'beauty/skincare/moisturize/cream',
+});
+const BEAUTY_CATEGORY_PATH_ALIAS_PATTERNS = Object.freeze([
+  ['beauty/makeup/lip/lipstick', /\b(lipstick|lip\s*tint|lip\s*color|liquid\s*lip|lip\s*gloss)\b|口红|口紅|唇膏|唇釉|唇彩/i],
+  ['beauty/makeup/eye/mascara', /\bmascara\b|睫毛膏/i],
+  ['beauty/fragrance/perfume', /\b(perfume|fragrance|parfum|cologne)\b|香水|香氛/i],
+]);
 const MAKEUP_FORM_FACTOR_PATTERNS = [
   ['Concealer', /\b(concealer)\b/i],
   ['Foundation', /\b(foundation|skin tint|foundation stick|cushion foundation)\b/i],
@@ -640,6 +670,30 @@ function normalizeExplicitBeautyCategory(value) {
     if (pattern.test(text)) return label;
   }
   return text;
+}
+
+function categoryPathParentPrefix(categoryPath) {
+  const normalized = String(categoryPath || '')
+    .trim()
+    .replace(/^\/+|\/+$/g, '');
+  if (!normalized) return '';
+  const parts = normalized.split('/').filter(Boolean);
+  if (parts.length <= 1) return `${parts[0] || normalized}/`;
+  return `${parts.slice(0, -1).join('/')}/`;
+}
+
+function resolveBeautyCategoryPathPrefixForQuery(queryText) {
+  const text = String(queryText || '').trim();
+  if (!text) return '';
+  for (const [path, pattern] of BEAUTY_CATEGORY_PATH_ALIAS_PATTERNS) {
+    if (pattern.test(text)) return categoryPathParentPrefix(path);
+  }
+  for (const [label, pattern] of BEAUTY_CATEGORY_PATTERNS) {
+    if (!pattern.test(text)) continue;
+    const path = BEAUTY_CATEGORY_PATH_BY_LABEL[label];
+    if (path) return categoryPathParentPrefix(path);
+  }
+  return '';
 }
 
 function normalizeIngredientToken(value) {
@@ -3834,6 +3888,7 @@ module.exports = {
   normalizeSeedAvailability,
   normalizeSeedReviewSummary,
   availabilityToInStock,
+  resolveBeautyCategoryPathPrefixForQuery,
   inferExternalSeedBeautyCategory,
   inferExternalSeedSkincareCategory: inferExternalSeedBeautyCategory,
   collectSeedImageUrls,
