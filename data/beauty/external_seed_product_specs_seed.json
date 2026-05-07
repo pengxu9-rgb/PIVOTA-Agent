@@ -126,6 +126,200 @@
           "evidence": "Retailer product page lists 70 pads and Size: 160ml."
         }
       ]
+    },
+    {
+      "external_product_id": "ext_07509f4743c82d62b2f15231",
+      "brand": "TIRTIR",
+      "title": "Ice-Cooling Water Drop Serum",
+      "canonical_url": "https://tirtir.global/products/ice-cooling-water-drop-serum",
+      "size_detail_label": "30 mL",
+      "net_content": "30 mL",
+      "review_state": "assistant_reviewed",
+      "sources": [
+        {
+          "source_kind": "recognized_retailer_product_spec",
+          "source_url": "https://www.yesstyle.com/en/tirtir-ice-cooling-water-drop-serum-30ml/info.html/pid.1136483672",
+          "evidence": "Retailer product title lists Ice-Cooling Water Drop Serum 30ml."
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_21d2c4d0ecbfe8289a755991",
+      "brand": "TIRTIR",
+      "title": "Azelaic Acid 12% Serum",
+      "canonical_url": "https://tirtir.global/products/azelaic-acid-12-serum",
+      "size_detail_label": "30 mL",
+      "net_content": "30 mL",
+      "review_state": "assistant_reviewed",
+      "sources": [
+        {
+          "source_kind": "recognized_retailer_product_spec",
+          "source_url": "https://www.skincupid.us/products/tirtir-azelaic-acid-12-serum-30ml",
+          "evidence": "Retailer product title lists Azelaic Acid 12% Serum 30ml."
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_45d03a0e1d810da38e31c057",
+      "brand": "TIRTIR",
+      "title": "SOS Serum",
+      "canonical_url": "https://tirtir.global/products/sos-serum",
+      "size_detail_label": "50 mL",
+      "net_content": "50 mL",
+      "review_state": "assistant_reviewed",
+      "sources": [
+        {
+          "source_kind": "recognized_retailer_product_spec",
+          "source_url": "https://www.yesstyle.com/en/tirtir-sos-serum-50ml/info.html/pid.1137403226",
+          "evidence": "Retailer product title lists SOS Serum 50ml."
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_4741142a6d82d844c48e123b",
+      "brand": "TIRTIR",
+      "title": "Matcha Calming Cream",
+      "canonical_url": "https://tirtir.global/products/matcha-calming-cream",
+      "size_detail_label": "50 mL",
+      "net_content": "50 mL",
+      "review_state": "assistant_reviewed",
+      "sources": [
+        {
+          "source_kind": "recognized_retailer_product_spec",
+          "source_url": "https://www.asos.com/korean-skincare/tirtir-matcha-calming-cream-50ml/prd/210355927",
+          "evidence": "Retailer product title lists Matcha Calming Cream 50ml."
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_80fb8c6350ce460bd4ee4b43",
+      "brand": "TIRTIR",
+      "title": "Mask Fit Waterproof Setting Spray",
+      "canonical_url": "https://tirtir.global/products/mask-fit-waterproof-setting-spray",
+      "size_detail_label": "80 mL",
+      "net_content": "80 mL",
+      "review_state": "assistant_reviewed",
+      "sources": [
+        {
+          "source_kind": "recognized_retailer_product_spec",
+          "source_url": "https://www.yesstyle.com/en/tirtir-mask-fit-waterproof-setting-spray-80ml/info.html/pid.1137403227",
+          "evidence": "Retailer product title lists Mask Fit Waterproof Setting Spray 80ml."
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_93bc270bdddd0b29e2097dd9",
+      "brand": "TIRTIR",
+      "title": "Ceramic Cream Light",
+      "canonical_url": "https://tirtir.global/products/ceramic-cream-light",
+      "size_detail_label": "1.69 fl oz / 50 mL",
+      "net_content": "50 mL",
+      "net_size": "1.69 fl oz",
+      "review_state": "assistant_reviewed",
+      "sources": [
+        {
+          "source_kind": "recognized_retailer_product_spec",
+          "source_url": "https://www.yesstyle.com/en/tirtir-ceramic-cream-light-50ml/info.html/pid.1130387981",
+          "evidence": "Retailer product page lists Ceramic Cream Light as 50ml / 1.69 fl.oz."
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_93d8296b5b016b4a08540616",
+      "brand": "TIRTIR",
+      "title": "PHA 15% Serum",
+      "canonical_url": "https://tirtir.global/products/pha-15-serum",
+      "size_detail_label": "30 mL",
+      "net_content": "30 mL",
+      "review_state": "assistant_reviewed",
+      "sources": [
+        {
+          "source_kind": "recognized_retailer_product_spec",
+          "source_url": "https://www.yesstyle.com/en/tirtir-pha-15-serum-30ml/info.html/pid.1137403225",
+          "evidence": "Retailer product title lists PHA 15% Serum 30ml."
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_a931bd8cc0a35f9557bbc381",
+      "brand": "TIRTIR",
+      "title": "Banana BDRN Eye Serum",
+      "canonical_url": "https://tirtir.global/products/banana-bdrn-eye-serum",
+      "size_detail_label": "20 mL",
+      "net_content": "20 mL",
+      "review_state": "assistant_reviewed",
+      "sources": [
+        {
+          "source_kind": "recognized_retailer_product_spec",
+          "source_url": "https://www.yesstyle.com/en/tirtir-banana-bdrn-eye-serum-20ml/info.html/pid.1137403222",
+          "evidence": "Retailer product title lists Banana BDRN Eye Serum 20ml."
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_d368298110b2622b6aa73530",
+      "brand": "TIRTIR",
+      "title": "Milk Creamy Foam Cleanser",
+      "canonical_url": "https://tirtir.global/products/milk-creamy-foam-cleanser",
+      "size_detail_label": "90 g",
+      "net_content": "90 g",
+      "review_state": "assistant_reviewed",
+      "sources": [
+        {
+          "source_kind": "recognized_retailer_product_spec",
+          "source_url": "https://www.yesstyle.com/en/tirtir-milk-creamy-foam-cleanser-90g/info.html/pid.1137403221",
+          "evidence": "Retailer product title lists Milk Creamy Foam Cleanser 90g."
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_e8d326e50ab5deb747e099f6",
+      "brand": "TIRTIR",
+      "title": "Matcha Skin Toner",
+      "canonical_url": "https://tirtir.global/products/matcha-skin-toner",
+      "size_detail_label": "150 mL",
+      "net_content": "150 mL",
+      "review_state": "assistant_reviewed",
+      "sources": [
+        {
+          "source_kind": "recognized_retailer_product_spec",
+          "source_url": "https://olivekollection.com/products/tirtir-matcha-pdrn-skin-toner",
+          "evidence": "Retailer product title lists Matcha Skin Toner 150ml."
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_fa03729895112b24e3687e85",
+      "brand": "TIRTIR",
+      "title": "Matcha Pack Cleanser",
+      "canonical_url": "https://tirtir.global/products/matcha-pack-cleanser",
+      "size_detail_label": "120 mL",
+      "net_content": "120 mL",
+      "review_state": "assistant_reviewed",
+      "sources": [
+        {
+          "source_kind": "recognized_retailer_product_spec",
+          "source_url": "https://www.stylekorean.com/shop/tirtir-matcha-pack-cleanser-120ml/1754610875/",
+          "evidence": "Retailer product title lists Matcha Pack Cleanser 120ml."
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_e83fb7972a4563daec135c65",
+      "brand": "TIRTIR",
+      "title": "Vitachiol Aging Gel Mask",
+      "canonical_url": "https://tirtir.global/products/vitachiol-aging-gel-mask",
+      "size_detail_label": "4 sheets / 28 g each",
+      "net_content": "4 sheets",
+      "net_size": "28 g each",
+      "review_state": "assistant_reviewed",
+      "sources": [
+        {
+          "source_kind": "recognized_retailer_product_spec",
+          "source_url": "https://www.yesstyle.com/nl/tirtir-vitachiol-aging-gel-mask-set-28g-x-4-sheets/info.html/pid.1133567892",
+          "evidence": "Retailer listing describes a 4-sheet set with 28g sheet masks."
+        }
+      ]
     }
   ]
 }
