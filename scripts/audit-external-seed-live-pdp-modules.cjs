@@ -275,16 +275,11 @@ function analyzeContent(pdp) {
 function analyzeGallery(pdp) {
   const canonical = moduleData(pdp, 'canonical');
   const payloadProduct = asObject(canonical.pdp_payload?.product);
-  const urls = uniqueStrings([
-    ...asArray(payloadProduct.image_urls),
-    ...asArray(payloadProduct.images),
-    asString(payloadProduct.image_url),
-  ]);
-  const allUrls = [
-    ...asArray(payloadProduct.image_urls),
-    ...asArray(payloadProduct.images),
-    asString(payloadProduct.image_url),
-  ].filter(Boolean);
+  const visibleList = asArray(payloadProduct.image_urls).length > 0
+    ? asArray(payloadProduct.image_urls)
+    : asArray(payloadProduct.images);
+  const allUrls = [...visibleList, asString(payloadProduct.image_url)].filter(Boolean);
+  const urls = uniqueStrings(allUrls);
   return {
     image_count: urls.length,
     duplicate_url_count: Math.max(0, allUrls.length - urls.length),
