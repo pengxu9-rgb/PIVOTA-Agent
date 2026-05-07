@@ -12482,6 +12482,46 @@ function buildBeautyMainlineRetrievalQueries(queryText = '', intent = null) {
   return out.slice(0, 8);
 }
 
+function getBeautyProductCategoryPathText(product = {}) {
+  const raw = firstNonEmptyString(
+    product.catalog_category_path,
+    Array.isArray(product.category_path) ? product.category_path.join('/') : product.category_path,
+    product.categoryPath,
+    product.seed_data?.category_path,
+    product.snapshot?.category_path,
+  );
+  return String(raw || '').trim().toLowerCase().replace(/^\/+|\/+$/g, '');
+}
+
+function beautyProductMatchesCategoryPathPrefix(product = {}, categoryPathPrefix = '') {
+  const prefix = String(categoryPathPrefix || '').trim().toLowerCase().replace(/^\/+|\/+$/g, '');
+  if (!prefix) return false;
+  const path = getBeautyProductCategoryPathText(product);
+  if (!path) return false;
+  return path === prefix || path.startsWith(`${prefix}/`);
+}
+
+function beautyProductMatchesCategoryPathQuery(product = {}, queryText = '', categoryPathPrefix = '') {
+  if (!categoryPathPrefix) return true;
+  if (beautyProductMatchesCategoryPathPrefix(product, categoryPathPrefix)) return true;
+  const text = buildFallbackCandidateText(product);
+  if (!text) return false;
+  const prefix = String(categoryPathPrefix || '').trim().toLowerCase();
+  if (prefix.startsWith('beauty/makeup/lip')) {
+    return /\b(lipstick|lip\s*stick|lip\s*color|lip\s*colour|lip\s*tint|lip\s*gloss|lip\s*liner|lip\s*balm|rouge)\b|口红|口紅|唇膏|唇釉|唇彩|唇线|唇線/i.test(text);
+  }
+  if (prefix.startsWith('beauty/makeup/eye')) {
+    return /\b(mascara|eyeliner|eye\s*liner|eyeshadow|eye\s*shadow|brow|lash)\b|睫毛膏|眼线|眼線|眼影|眉笔|眉筆/i.test(text);
+  }
+  if (prefix.startsWith('beauty/makeup/face')) {
+    return /\b(foundation|concealer|primer|blush|bronzer|highlighter|setting\s*powder|powder|cushion)\b|粉底|遮瑕|妆前|妝前|腮红|腮紅|高光|修容|气垫|氣墊/i.test(text);
+  }
+  if (prefix.startsWith('beauty/fragrance')) {
+    return /\b(fragrance|perfume|parfum|eau\s+de\s+parfum|eau\s+de\s+toilette|edt|edp|cologne|scent)\b|香水|香氛/i.test(text);
+  }
+  return hasBeautyCatalogProductSignal(text);
+}
+
 function scoreBeautyExternalSeedProduct({ product, queryText, intent, normalizedQuery, queryTokens }) {
   const candidateText = buildFallbackCandidateText(product);
   if (!candidateText) return { product, relevant: false, score: -100 };
@@ -12491,8 +12531,17 @@ function scoreBeautyExternalSeedProduct({ product, queryText, intent, normalized
 
   const targetFamilies = Array.isArray(intent?.families) ? intent.families : [];
   const familyMatches = targetFamilies.filter((family) => beautyProductMatchesFamily(product, family));
+  const categoryPathPrefix = resolveBeautyCategoryPathPrefixForQuery(queryText) || '';
+  const explicitCategoryPathQuery = Boolean(categoryPathPrefix && targetFamilies.length === 0);
+  const categoryPathMatch = beautyProductMatchesCategoryPathPrefix(product, categoryPathPrefix);
+  const categoryLexicalMatch = explicitCategoryPathQuery
+    ? beautyProductMatchesCategoryPathQuery(product, queryText, categoryPathPrefix)
+    : false;
   if (targetFamilies.length > 0 && familyMatches.length === 0) {
     return { product, relevant: false, score: -40 };
+  }
+  if (explicitCategoryPathQuery && !categoryPathMatch && !categoryLexicalMatch) {
+    return { product, relevant: false, score: -45 };
   }
   if (targetFamilies.length === 0 && !hasBeautyCatalogProductSignal(candidateText)) {
     return { product, relevant: false, score: -30 };
@@ -12500,9 +12549,19 @@ function scoreBeautyExternalSeedProduct({ product, queryText, intent, normalized
 
   let score = 0;
   if (normalizedQuery && candidateText.includes(normalizedQuery)) score += 32;
+  const productBrand = normalizeSearchTextForMatch(
+    firstNonEmptyString(product?.brand, product?.vendor, product?.merchant_name),
+  );
+  if (productBrand && normalizedQuery && normalizedQuery.includes(productBrand)) score += 220;
+  if (categoryPathMatch) score += 140;
+  else if (categoryLexicalMatch) score += 64;
+  if (String(product?.source || product?.search_recall_source || product?.catalog_source || '') === 'canonical_chain') {
+    score += 24;
+  }
   score += familyMatches.length * 24;
   const bucket = classifyBeautyBucketFromText(candidateText);
-  if (bucket === 'skincare') score += 12;
+  if (bucket === 'skincare' && !explicitCategoryPathQuery) score += 12;
+  if ((bucket === 'makeup' || bucket === 'fragrance') && explicitCategoryPathQuery) score += 10;
   if (bucket === 'bodycare' && targetFamilies.includes('moisturizer')) score += 4;
   if (intent?.safety?.includes('avoid_retinoids') && /\b(retinol[-\s]?free|retinoid[-\s]?free|pregnancy[-\s]?safe)\b/i.test(candidateText)) {
     score += 16;
