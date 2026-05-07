@@ -2395,6 +2395,20 @@ describe('externalSeedProducts helper', () => {
     expect(product.product_family).toBe('single_formula');
   });
 
+  test('classifies cleansing PDP titles as formula products', () => {
+    const product = buildExternalSeedProduct({
+      id: 'eps_centella_foam_cleansing',
+      external_product_id: 'ext_centella_foam_cleansing',
+      canonical_url: 'https://example.com/products/centella-foam-cleansing',
+      destination_url: 'https://example.com/products/centella-foam-cleansing',
+      domain: 'example.com',
+      title: 'Centella Foam Cleansing',
+      seed_data: { brand: 'Example', snapshot: {} },
+    });
+
+    expect(product.product_family).toBe('single_formula');
+  });
+
   test('classifies sunscreen authority rows from title even when seed category is polluted', () => {
     const rows = [
       {
