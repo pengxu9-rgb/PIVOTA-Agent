@@ -14615,20 +14615,8 @@ async function hydrateSearchSavingsPresentationFromUpstream({
     const productHasMultipleOffers =
       (Array.isArray(product.offers) && product.offers.length > 1) ||
       Number(product.offers_count || product.offer_count || 0) > 1;
-    if (!productHasMultipleOffers) {
-      const productRefs = getProductRefCandidatesForSavings(product);
-      for (const ref of productRefs) {
-        // eslint-disable-next-line no-await-in-loop
-        const evidence = await fetchEvidenceForRef(ref);
-        if (hasSavingsPresentationFields(evidence)) {
-          nextProduct = mergeSavingsPresentationFields(nextProduct, evidence);
-          applied = true;
-          break;
-        }
-      }
-    }
 
-    if (Array.isArray(product.offers) && product.offers.length && offerBudget > 0) {
+    if (productHasMultipleOffers && Array.isArray(product.offers) && product.offers.length && offerBudget > 0) {
       const nextOffers = [];
       for (const offer of product.offers) {
         if (!offer || typeof offer !== 'object' || Array.isArray(offer)) {
