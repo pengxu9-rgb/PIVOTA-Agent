@@ -277,6 +277,7 @@ describe('backfill-external-seed-official-html-pdp-fields TIRTIR sheet matching'
 
     const fields = extractMedicubeFields(html);
 
+    expect(fields.pdp_description_raw).toContain('transparent collagen jelly cream');
     expect(fields.pdp_ingredients_raw).toBe(fullInci);
     expect(fields.pdp_how_to_use_raw).toContain('Apply a quarter amount');
     expect(fields.pdp_active_ingredients_raw).toContain('Niacinamide');
@@ -336,6 +337,41 @@ describe('backfill-external-seed-official-html-pdp-fields TIRTIR sheet matching'
       expect.objectContaining({
         source_origin: 'official_html',
         source_quality_status: 'high',
+      }),
+    );
+  });
+
+  test('writes official overview into description fields and reviewed content asset', () => {
+    const overview =
+      'A reviewed official overview for a vitamin C capsule cream that targets dull-looking skin and visible tone unevenness.';
+
+    const { seedData, patchKeys } = buildSeedDataPatch(
+      {
+        seed_data: {
+          snapshot: {},
+        },
+      },
+      {
+        pdp_description_raw: overview,
+        pdp_details_sections: [{ heading: 'Overview', body: overview }],
+      },
+    );
+
+    expect(patchKeys).toEqual(expect.arrayContaining(['pdp_description_raw', 'pdp_details_sections']));
+    expect(seedData.description).toBe(overview);
+    expect(seedData.pdp_description_raw).toBe(overview);
+    expect(seedData.snapshot.description).toBe(overview);
+    expect(seedData.snapshot.pdp_description_raw).toBe(overview);
+    expect(seedData.pdp_field_quality_summary.description_raw).toEqual(
+      expect.objectContaining({
+        source_origin: 'official_html',
+        source_quality_status: 'high',
+      }),
+    );
+    expect(seedData.pdp_content_asset_v1.fields.description_raw).toEqual(
+      expect.objectContaining({
+        review_state: 'assistant_reviewed',
+        source_kind: 'official_pdp_overview',
       }),
     );
   });

@@ -599,7 +599,10 @@ function extractMedicubeFields(html) {
   const overviewBlock = cleanMedicubeToggleText(extractMedicubeLabeledBlock(html, 'OVERVIEW'), 'OVERVIEW');
   if (overviewBlock) {
     const body = overviewBlock.length > 1400 ? truncateOfficialDetailText(overviewBlock) : overviewBlock;
-    if (body.length >= 60) details.push({ heading: 'Overview', body });
+    if (body.length >= 60) {
+      fields.pdp_description_raw = body;
+      details.push({ heading: 'Overview', body });
+    }
   }
   const studyResultsBlock = cleanMedicubeToggleText(
     extractMedicubeLabeledBlock(html, 'STUDY RESULTS'),
@@ -1103,6 +1106,7 @@ function mergeQualitySummary(existing, patchKeys) {
       updated_at: now,
     };
   };
+  if (patchKeys.includes('pdp_description_raw')) set('description_raw', 'official_pdp_overview');
   if (patchKeys.includes('pdp_ingredients_raw')) set('ingredients_raw', 'official_pdp_full_ingredients');
   if (patchKeys.includes('pdp_active_ingredients_raw')) set('active_ingredients_raw', 'official_pdp_key_ingredients');
   if (patchKeys.includes('pdp_how_to_use_raw')) set('how_to_use_raw', 'official_pdp_how_to_use');
@@ -1134,6 +1138,7 @@ function mergeContentAsset(existing, patch) {
   if (patch.pdp_ingredients_raw) set('ingredients_raw', patch.pdp_ingredients_raw, 'official_pdp_full_ingredients');
   if (patch.pdp_active_ingredients_raw) set('active_ingredients_raw', patch.pdp_active_ingredients_raw, 'official_pdp_key_ingredients');
   if (patch.pdp_how_to_use_raw) set('how_to_use_raw', patch.pdp_how_to_use_raw, 'official_pdp_how_to_use');
+  if (patch.pdp_description_raw) set('description_raw', patch.pdp_description_raw, 'official_pdp_overview');
   if (patch.pdp_details_sections?.length) set('details_sections', patch.pdp_details_sections, 'official_pdp_details_section');
   return next;
 }
@@ -1170,6 +1175,13 @@ function buildSeedDataPatch(row, extracted) {
   const snapshot = ensureObject(seedData.snapshot);
   const patchKeys = [];
 
+  if (extracted.pdp_description_raw) {
+    seedData.description = extracted.pdp_description_raw;
+    seedData.pdp_description_raw = extracted.pdp_description_raw;
+    snapshot.description = extracted.pdp_description_raw;
+    snapshot.pdp_description_raw = extracted.pdp_description_raw;
+    patchKeys.push('pdp_description_raw');
+  }
   if (extracted.pdp_ingredients_raw) {
     seedData.pdp_ingredients_raw = extracted.pdp_ingredients_raw;
     seedData.raw_ingredient_text_clean = extracted.pdp_ingredients_raw;
