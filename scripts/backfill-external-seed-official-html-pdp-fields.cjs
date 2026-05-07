@@ -1064,6 +1064,33 @@ function mergeContentAsset(existing, patch) {
   return next;
 }
 
+function clearRecoveredStrictPdpSourceBlocker(seedData, snapshot, patchKeys) {
+  const contentPatchKeys = patchKeys.filter((key) => key !== 'review_summary');
+  if (!contentPatchKeys.length) return false;
+  const existingRootMarker = ensureObject(seedData.strict_pdp_source_blocker_v1);
+  const existingSnapshotMarker = ensureObject(snapshot.strict_pdp_source_blocker_v1);
+  const existingMarker = Object.keys(existingRootMarker).length ? existingRootMarker : existingSnapshotMarker;
+  if (!Object.keys(existingMarker).length) return false;
+
+  const recoveredAt = new Date().toISOString();
+  const recoveryMarker = {
+    contract_version: 'external_seed.strict_pdp_source_recovery.v1',
+    recovered_at: recoveredAt,
+    recovery_source: 'official_html_public_pdp',
+    recovered_fields: contentPatchKeys,
+    previous_marker: existingMarker,
+    reason_codes: [
+      'official_public_pdp_recovered_after_strict_source_blocker',
+      'field_level_quality_gate_retained',
+    ],
+  };
+  seedData.strict_pdp_source_recovery_v1 = recoveryMarker;
+  snapshot.strict_pdp_source_recovery_v1 = recoveryMarker;
+  delete seedData.strict_pdp_source_blocker_v1;
+  delete snapshot.strict_pdp_source_blocker_v1;
+  return true;
+}
+
 function buildSeedDataPatch(row, extracted) {
   const seedData = JSON.parse(JSON.stringify(ensureObject(row.seed_data)));
   const snapshot = ensureObject(seedData.snapshot);
@@ -1128,6 +1155,7 @@ function buildSeedDataPatch(row, extracted) {
     snapshot.pdp_content_asset_v1 = seedData.pdp_content_asset_v1;
     seedData.external_seed_snapshot_contract = buildSnapshotContract(seedData.external_seed_snapshot_contract);
     snapshot.external_seed_snapshot_contract = buildSnapshotContract(snapshot.external_seed_snapshot_contract);
+    clearRecoveredStrictPdpSourceBlocker(seedData, snapshot, patchKeys);
   }
 
   if (patchKeys.length > 0) {
@@ -1303,6 +1331,8 @@ module.exports = {
     extractSkin1004Fields,
     extractMedicubeFields,
     extractOfficialShopifyVariants,
+    buildSeedDataPatch,
+    clearRecoveredStrictPdpSourceBlocker,
     buildShopifyProductJsonUrl,
     normalizeTirtirTitleKey,
     scoreTirtirSheetProductName,

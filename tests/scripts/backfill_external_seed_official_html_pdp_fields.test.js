@@ -9,6 +9,7 @@ const {
     extractSkin1004Fields,
     extractMedicubeFields,
     extractOfficialShopifyVariants,
+    buildSeedDataPatch,
     buildShopifyProductJsonUrl,
     findTirtirSheetIngredientRow,
     normalizeTirtirTitleKey,
@@ -214,6 +215,55 @@ describe('backfill-external-seed-official-html-pdp-fields TIRTIR sheet matching'
         expect.objectContaining({ heading: 'Study Results', body: expect.stringContaining('consumer use study') }),
         expect.objectContaining({ heading: 'Key Ingredients', body: expect.stringContaining('Niacinamide') }),
       ]),
+    );
+  });
+
+  test('clears stale strict source blocker after authoritative official fields recover', () => {
+    const { seedData, patchKeys } = buildSeedDataPatch(
+      {
+        seed_data: {
+          strict_pdp_source_blocker_v1: {
+            contract_version: 'external_seed.strict_pdp_source_blocker.v1',
+            unsafe_source: true,
+            reason_codes: ['public_pdp_404'],
+          },
+          pdp_field_quality_summary: {
+            how_to_use_raw: {
+              source_origin: 'unsafe_source_pdp',
+              source_quality_status: 'quarantined',
+              reason_codes: ['public_pdp_404'],
+            },
+          },
+          snapshot: {
+            strict_pdp_source_blocker_v1: {
+              contract_version: 'external_seed.strict_pdp_source_blocker.v1',
+              unsafe_source: true,
+              reason_codes: ['public_pdp_404'],
+            },
+          },
+        },
+      },
+      {
+        pdp_how_to_use_raw: 'Apply evenly as the final skincare step in the morning.',
+        pdp_details_sections: [{ heading: 'What it is', body: 'A lightweight daily sunscreen.' }],
+      },
+    );
+
+    expect(patchKeys).toEqual(expect.arrayContaining(['pdp_how_to_use_raw', 'pdp_details_sections']));
+    expect(seedData.strict_pdp_source_blocker_v1).toBeUndefined();
+    expect(seedData.snapshot.strict_pdp_source_blocker_v1).toBeUndefined();
+    expect(seedData.strict_pdp_source_recovery_v1).toEqual(
+      expect.objectContaining({
+        contract_version: 'external_seed.strict_pdp_source_recovery.v1',
+        recovered_fields: expect.arrayContaining(['pdp_how_to_use_raw', 'pdp_details_sections']),
+        previous_marker: expect.objectContaining({ unsafe_source: true }),
+      }),
+    );
+    expect(seedData.pdp_field_quality_summary.how_to_use_raw).toEqual(
+      expect.objectContaining({
+        source_origin: 'official_html',
+        source_quality_status: 'high',
+      }),
     );
   });
 });
