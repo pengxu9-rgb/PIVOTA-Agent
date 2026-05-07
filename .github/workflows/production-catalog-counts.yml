@@ -1,0 +1,57 @@
+name: Production Catalog Counts
+
+on:
+  workflow_dispatch:
+    inputs:
+      top_n:
+        description: "Top breakdown size"
+        required: true
+        default: "25"
+        type: string
+
+jobs:
+  production-catalog-counts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: Pivota Agent / production
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run production catalog count audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${DATABASE_URL:-}" ]]; then
+            echo "DATABASE_URL secret is required" >&2
+            exit 1
+          fi
+
+          out_dir="reports/workflow_ops/production-catalog-counts/${{ github.run_id }}"
+          mkdir -p "${out_dir}"
+
+          node scripts/audit-production-catalog-counts.cjs \
+            --top-n "${{ inputs.top_n }}" \
+            --out "${out_dir}/report.json" \
+            --markdown-out "${out_dir}/summary.md" \
+            | tee "${out_dir}/stdout.json"
+
+      - name: Upload artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-catalog-counts-${{ github.run_id }}
+          path: reports/workflow_ops/production-catalog-counts/${{ github.run_id }}
+          retention-days: 14
