@@ -1,0 +1,158 @@
+name: External Seed PDP Quality Audit
+
+on:
+  workflow_dispatch:
+    inputs:
+      market:
+        description: "Market code"
+        required: true
+        default: "US"
+        type: string
+      domain:
+        description: "Optional exact seed domain"
+        required: false
+        default: ""
+        type: string
+      brand:
+        description: "Optional exact seed brand"
+        required: false
+        default: ""
+        type: string
+      external_product_id:
+        description: "Optional single external_product_id"
+        required: false
+        default: ""
+        type: string
+      limit:
+        description: "Rows to scan"
+        required: true
+        default: "100"
+        type: string
+      offset:
+        description: "Row offset"
+        required: true
+        default: "0"
+        type: string
+      skip_similar:
+        description: "Skip similar probe"
+        required: true
+        default: false
+        type: boolean
+      skip_image_health:
+        description: "Skip live image health probe"
+        required: true
+        default: false
+        type: boolean
+      image_health_limit:
+        description: "Max images to health-probe per PDP"
+        required: true
+        default: "4"
+        type: string
+
+jobs:
+  pdp-quality-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment:
+      name: Pivota Agent / production
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      PIVOTA_BACKEND_AGENT_API_KEY: ${{ secrets.PIVOTA_BACKEND_AGENT_API_KEY }}
+      SHOP_GATEWAY_AGENT_API_KEY: ${{ secrets.SHOP_GATEWAY_AGENT_API_KEY }}
+      PIVOTA_AGENT_API_KEY: ${{ secrets.PIVOTA_AGENT_API_KEY }}
+      AGENT_API_KEY: ${{ secrets.AGENT_API_KEY }}
+      CATALOG_INTELLIGENCE_BASE_URL: ${{ secrets.CATALOG_INTELLIGENCE_BASE_URL }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run PDP quality audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${DATABASE_URL:-}" ]]; then
+            echo "DATABASE_URL secret is required" >&2
+            exit 1
+          fi
+
+          out_dir="reports/workflow_ops/external-seed-pdp-quality-audit/${{ github.run_id }}"
+          mkdir -p "${out_dir}"
+
+          args=(
+            --market "${{ inputs.market }}"
+            --limit "${{ inputs.limit }}"
+            --offset "${{ inputs.offset }}"
+            --image-health-limit "${{ inputs.image_health_limit }}"
+          )
+          if [[ -n "${{ inputs.domain }}" ]]; then
+            args+=(--domain "${{ inputs.domain }}")
+          fi
+          if [[ -n "${{ inputs.brand }}" ]]; then
+            args+=(--brand "${{ inputs.brand }}")
+          fi
+          if [[ -n "${{ inputs.external_product_id }}" ]]; then
+            args+=(--external-product-id "${{ inputs.external_product_id }}")
+          fi
+          if [[ "${{ inputs.skip_similar }}" == "true" ]]; then
+            args+=(--skip-similar)
+          fi
+          if [[ "${{ inputs.skip_image_health }}" == "true" ]]; then
+            args+=(--skip-image-health)
+          fi
+
+          node scripts/audit-external-product-pdp-quality.js "${args[@]}" \
+            --format json > "${out_dir}/rows.json"
+          node - "${out_dir}/rows.json" > "${out_dir}/summary.json" <<'NODE'
+          const fs = require('fs');
+          const rows = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+          const inc = (obj, key) => {
+            const normalized = String(key || 'unknown');
+            obj[normalized] = (obj[normalized] || 0) + 1;
+          };
+          const sortCounts = (obj) => Object.entries(obj)
+            .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+            .map(([key, count]) => ({ key, count }));
+          const summary = {
+            scanned: rows.length,
+            failed: rows.filter((row) => Array.isArray(row.failure_reasons) && row.failure_reasons.length > 0).length,
+            failed_by_domain: {},
+            failure_reason_counts: {},
+            failure_reason_domain_counts: {},
+            root_cause_domain_counts: {},
+          };
+          for (const row of rows) {
+            const domain = row.domain || 'unknown';
+            const failureReasons = Array.isArray(row.failure_reasons) ? row.failure_reasons : [];
+            if (failureReasons.length > 0) inc(summary.failed_by_domain, domain);
+            for (const reason of failureReasons) {
+              inc(summary.failure_reason_counts, reason);
+              inc(summary.failure_reason_domain_counts, `${domain}::${reason}`);
+            }
+            for (const reason of Array.isArray(row.root_cause_classification) ? row.root_cause_classification : []) {
+              inc(summary.root_cause_domain_counts, `${domain}::${reason}`);
+            }
+          }
+          summary.failed_by_domain = sortCounts(summary.failed_by_domain);
+          summary.failure_reason_counts = sortCounts(summary.failure_reason_counts);
+          summary.failure_reason_domain_counts = sortCounts(summary.failure_reason_domain_counts);
+          summary.root_cause_domain_counts = sortCounts(summary.root_cause_domain_counts);
+          process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
+          NODE
+          cat "${out_dir}/summary.json"
+
+      - name: Upload artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: external-seed-pdp-quality-audit-${{ github.run_id }}
+          path: reports/workflow_ops/external-seed-pdp-quality-audit/${{ github.run_id }}
+          retention-days: 7
