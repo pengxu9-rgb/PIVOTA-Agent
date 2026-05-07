@@ -2244,6 +2244,15 @@ function parseVariantFormatValue(value) {
   return '';
 }
 
+function looksLikeSkincareFormulaVariantValue(value) {
+  const normalized = normalizeOptionText(value).toLowerCase();
+  if (!normalized) return false;
+  if (LOCALE_LIKE_VARIANT_VALUES.has(normalized)) return false;
+  return /\b(?:ampoule|serum|toner|cream|cleanser|cleansing|essence|foam|mask(?:\s+pack)?|patch|pad|balm|lotion|primer|highlighter)\b/i.test(
+    normalized,
+  );
+}
+
 function parseVariantStrengthValue(value) {
   const normalized = normalizeOptionText(value);
   if (!normalized) return '';
@@ -2280,6 +2289,9 @@ function inferVariantAxisKind(option, context = {}) {
     if (!context.allowsShadeAxis || localeLike) {
       if (volume) return { axis_kind: 'volume', display_label: VARIANT_AXIS_LABELS.volume, normalized_value: optionValue };
       if (format) return { axis_kind: 'format', display_label: VARIANT_AXIS_LABELS.format, normalized_value: format };
+      if (context.skincareLike && looksLikeSkincareFormulaVariantValue(optionValue)) {
+        return { axis_kind: 'format', display_label: VARIANT_AXIS_LABELS.format, normalized_value: optionValue };
+      }
       if (localeLike || (context.skincareLike && !context.lipSurfaceLike)) {
         return { axis_kind: 'non_displayable', display_label: '', normalized_value: '' };
       }

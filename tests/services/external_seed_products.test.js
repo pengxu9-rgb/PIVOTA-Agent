@@ -743,6 +743,66 @@ describe('externalSeedProducts helper', () => {
     expect(variants[0].option_value).toBeUndefined();
   });
 
+  test('preserves skincare formula variants when Shopify mislabels the axis as Color', () => {
+    const row = {
+      id: 'eps_tirtir_ampoule_masks',
+      external_product_id: 'ext_tirtir_ampoule_masks',
+      canonical_url: 'https://tirtir.global/products/ampoule-mask-packs',
+      destination_url: 'https://tirtir.global/products/ampoule-mask-packs',
+      title: 'Ampoule Mask Packs',
+      seed_data: {
+        brand: 'TIRTIR GLOBAL',
+        category: 'Skincare',
+        snapshot: {
+          variants: [
+            {
+              id: '46531699048667',
+              title: 'Perfect-C Vita Ampoule Mask Pack',
+              option_name: 'Color',
+              option_value: 'Perfect-C Vita Ampoule Mask Pack',
+              image_url: 'https://example.com/vita-mask.jpg',
+            },
+            {
+              id: '45829626101979',
+              title: 'Galactomyces Softening Ampoule Mask Pack',
+              option_name: 'Color',
+              option_value: 'Galactomyces Softening Ampoule Mask Pack',
+              image_url: 'https://example.com/galactomyces-mask.jpg',
+            },
+          ],
+        },
+      },
+    };
+
+    const variants = normalizeSeedVariants(row.seed_data, row);
+    expect(variants).toHaveLength(2);
+    expect(variants[0]).toEqual(
+      expect.objectContaining({
+        title: 'Perfect-C Vita Ampoule Mask Pack',
+        option_name: 'Format',
+        option_value: 'Perfect-C Vita Ampoule Mask Pack',
+        axis_kind: 'format',
+        options: [
+          {
+            name: 'Format',
+            value: 'Perfect-C Vita Ampoule Mask Pack',
+            axis_kind: 'format',
+          },
+        ],
+        source_quality_status: 'captured',
+      }),
+    );
+
+    const product = buildExternalSeedProduct(row);
+    expect(product.variants).toHaveLength(2);
+    expect(product.variants[1]).toEqual(
+      expect.objectContaining({
+        option_name: 'Format',
+        option_value: 'Galactomyces Softening Ampoule Mask Pack',
+      }),
+    );
+  });
+
   test('preserves lip product color variants with visual evidence even when the title reads skincare-like', () => {
     const row = {
       id: 'eps_laneige_topper',
