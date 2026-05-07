@@ -75,7 +75,7 @@ describe('find_products_multi canonical lipstick recall', () => {
       .send({
         operation: 'find_products_multi',
         payload: { search: { query: 'lipstick', page: 1, limit: 20, market: 'US' } },
-        metadata: { source: 'beauty_cross_agent_batch', market: 'US' },
+        metadata: { source: 'shopping_agent', market: 'US' },
       });
 
     expect(resp.status).toBe(200);
@@ -89,6 +89,65 @@ describe('find_products_multi canonical lipstick recall', () => {
     expect(resp.body.metadata?.route_health).toEqual(expect.objectContaining({
       canonical_path_executed: true,
       canonical_raw_count: 18,
+      canonical_dedupe_count: 0,
+    }));
+    expect(observedSql.some((sql) => sql.includes('FROM catalog_products p'))).toBe(true);
+  });
+
+  test('shopping query keeps upstream result while exposing canonical telemetry', async () => {
+    const observedSql = [];
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        observedSql.push(String(sql || ''));
+        return { rows: [] };
+      },
+    }));
+    nock('http://pivota.test')
+      .post('/agent/v2/products/search')
+      .query(true)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [{
+          product_id: 'prod_airpods',
+          merchant_id: 'merch_audio',
+          platform: 'shopify',
+          title: 'Apple AirPods Pro',
+          brand: 'Apple',
+          product_type: 'Electronics',
+          category: 'Electronics',
+          image_url: 'https://cdn.example.com/airpods.jpg',
+          price: 199,
+          currency: 'USD',
+        }],
+        total: 1,
+      });
+    nock('http://pivota.test')
+      .post('/agent/shop/v1/invoke')
+      .reply(200, {
+        status: 'success',
+        product: {},
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: { search: { query: 'Apple AirPods', page: 1, limit: 12, market: 'US' } },
+        metadata: { source: 'shopping_agent', market: 'US' },
+      });
+
+    expect(resp.status).toBe(200);
+    expect((resp.body.products || []).map((item) => item.product_id)).toContain('prod_airpods');
+    expect(resp.body.metadata).toEqual(expect.objectContaining({
+      canonical_path_executed: true,
+      canonical_raw_count: 0,
+      canonical_dedupe_count: 0,
+    }));
+    expect(resp.body.metadata?.route_health).toEqual(expect.objectContaining({
+      canonical_path_executed: true,
+      canonical_raw_count: 0,
       canonical_dedupe_count: 0,
     }));
     expect(observedSql.some((sql) => sql.includes('FROM catalog_products p'))).toBe(true);

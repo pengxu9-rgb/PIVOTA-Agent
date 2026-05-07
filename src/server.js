@@ -10734,6 +10734,136 @@ function mergeCanonicalChainProductsWithSeedProducts(seedProducts = [], canonica
   };
 }
 
+async function fetchCanonicalChainRecallForFindProductsMulti({ search = {} } = {}) {
+  if (!PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED) return null;
+  if (!process.env.DATABASE_URL) return null;
+  const queryText = extractSearchQueryText(search);
+  if (!String(queryText || '').trim()) return null;
+  const safeLimit = Math.max(
+    1,
+    Math.min(SEARCH_LIMIT_MAX, Math.floor(Number(search.limit || search.page_size || 20) || 20)),
+  );
+  const canonicalLimit = Math.max(12, Math.min(32, safeLimit * 2));
+  const canonicalCategoryPathPrefix = resolveBeautyCategoryPathPrefixForQuery(queryText) || null;
+  const startedAt = Date.now();
+  try {
+    const rows = await fetchCanonicalChainRows({
+      query: queryText,
+      categoryPathPrefix: canonicalCategoryPathPrefix,
+      verticalSearch: hasBeautyIngredientIntentSignal(queryText),
+      limit: canonicalLimit,
+      includeSkuOffers: false,
+      deps: { query },
+    });
+    const products = (Array.isArray(rows) ? rows : [])
+      .map((row) => buildCanonicalChainMainlineProduct(row))
+      .filter(Boolean);
+    return {
+      products,
+      telemetry: {
+        canonical_path_executed: true,
+        canonical_raw_count: Array.isArray(rows) ? rows.length : 0,
+        canonical_product_count: products.length,
+        canonical_category_path_prefix: canonicalCategoryPathPrefix,
+        canonical_duration_ms: Math.max(0, Date.now() - startedAt),
+      },
+    };
+  } catch (err) {
+    return {
+      products: [],
+      telemetry: {
+        canonical_path_executed: true,
+        canonical_raw_count: 0,
+        canonical_product_count: 0,
+        canonical_category_path_prefix: canonicalCategoryPathPrefix,
+        canonical_duration_ms: Math.max(0, Date.now() - startedAt),
+        canonical_error: String(err?.code || err?.message || err || 'canonical_query_failed').slice(0, 160),
+      },
+    };
+  }
+}
+
+function attachCanonicalChainRecallTelemetry(body, canonicalResult) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return body;
+  const telemetry =
+    canonicalResult?.telemetry && typeof canonicalResult.telemetry === 'object'
+      ? canonicalResult.telemetry
+      : null;
+  if (!telemetry?.canonical_path_executed) return body;
+  const metadata =
+    body.metadata && typeof body.metadata === 'object' && !Array.isArray(body.metadata)
+      ? { ...body.metadata }
+      : {};
+  const routeHealth =
+    metadata.route_health && typeof metadata.route_health === 'object' && !Array.isArray(metadata.route_health)
+      ? { ...metadata.route_health }
+      : {};
+  const sourceBreakdown =
+    metadata.source_breakdown && typeof metadata.source_breakdown === 'object' && !Array.isArray(metadata.source_breakdown)
+      ? { ...metadata.source_breakdown }
+      : {};
+  const products = Array.isArray(body.products) ? body.products : [];
+  const responseCanonicalReturnedCount = products.filter((product) => (
+    String(product?.source || product?.search_recall_source || product?.catalog_source || '') === 'canonical_chain'
+  )).length;
+  const canonicalDedupeCount = Math.max(0, Number(metadata.canonical_dedupe_count || 0) || 0);
+  const canonicalRawCount = Math.max(0, Number(telemetry.canonical_raw_count || 0) || 0);
+  const canonicalProductCount = Math.max(0, Number(telemetry.canonical_product_count || 0) || 0);
+  const canonicalReturnedCount = Math.max(
+    responseCanonicalReturnedCount,
+    Number(metadata.canonical_returned_count || 0) || 0,
+  );
+
+  return {
+    ...body,
+    metadata: {
+      ...metadata,
+      canonical_path_executed: true,
+      canonical_raw_count: canonicalRawCount,
+      canonical_product_count: canonicalProductCount,
+      canonical_category_path_prefix: telemetry.canonical_category_path_prefix || null,
+      canonical_duration_ms: Math.max(0, Number(telemetry.canonical_duration_ms || 0) || 0),
+      canonical_dedupe_count: canonicalDedupeCount,
+      canonical_returned_count: canonicalReturnedCount,
+      ...(telemetry.canonical_error ? { canonical_error: telemetry.canonical_error } : {}),
+      source_breakdown: {
+        ...sourceBreakdown,
+        canonical_chain_count: Math.max(
+          Number(sourceBreakdown.canonical_chain_count || 0) || 0,
+          canonicalReturnedCount,
+        ),
+        canonical_chain_candidate_count: Math.max(
+          Number(sourceBreakdown.canonical_chain_candidate_count || 0) || 0,
+          canonicalProductCount,
+        ),
+      },
+      route_health: {
+        ...routeHealth,
+        canonical_path_executed: true,
+        canonical_raw_count: canonicalRawCount,
+        canonical_product_count: canonicalProductCount,
+        canonical_dedupe_count: canonicalDedupeCount,
+        canonical_returned_count: canonicalReturnedCount,
+        canonical_duration_ms: Math.max(0, Number(telemetry.canonical_duration_ms || 0) || 0),
+      },
+    },
+  };
+}
+
+async function attachCanonicalChainRecallTelemetryFromPromise(body, canonicalPromise) {
+  if (!canonicalPromise) return body;
+  try {
+    const canonicalResult = await canonicalPromise;
+    return attachCanonicalChainRecallTelemetry(body, canonicalResult);
+  } catch (err) {
+    logger.warn(
+      { err: err?.message || String(err) },
+      'find_products_multi canonical chain telemetry attachment failed',
+    );
+    return body;
+  }
+}
+
 function scoreCreatorHumanApparelExternalSeedProduct({
   product,
   normalizedQuery,
@@ -28407,6 +28537,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 
   let crossMerchantCacheProtectedResponse = null;
   let crossMerchantCacheRecallResponse = null;
+  let canonicalChainRecallPromise = null;
   let queryParams = {};
   let strictCommerceFindProductsMulti = false;
   let shoppingFreshMainlineSearch = false;
@@ -28782,6 +28913,25 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 .filter(Boolean)
             : [];
       const hasMerchantScope = Boolean(merchantId) || merchantIds.length > 0;
+      const beautyMainlineIntentForDirect = inferBeautyMainlineIntent(queryText);
+      const shoppingCanonicalMainlineDirectEligible =
+        !strictCommerceFindProductsMulti &&
+        queryText.length > 0 &&
+        process.env.DATABASE_URL &&
+        PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED &&
+        isShoppingSource(source) &&
+        beautyMainlineIntentForDirect.beautyLike &&
+        !hasMerchantScope;
+      if (
+        !shoppingCanonicalMainlineDirectEligible &&
+        !strictCommerceFindProductsMulti &&
+        queryText.length > 0 &&
+        process.env.DATABASE_URL &&
+        PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED &&
+        !hasMerchantScope
+      ) {
+        canonicalChainRecallPromise = fetchCanonicalChainRecallForFindProductsMulti({ search });
+      }
       const creatorHumanApparelScenarioName =
         String(effectiveIntent?.scenario?.name || '').trim().toLowerCase();
       const creatorHumanApparelDirectSignal =
@@ -28952,12 +29102,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         }
       }
 
-      const beautyMainlineIntentForDirect = inferBeautyMainlineIntent(queryText);
       const creatorBeautyMainlineDirectEligible =
         !strictCommerceFindProductsMulti &&
         queryText.length > 0 &&
         process.env.DATABASE_URL &&
-        isPivotBeautyContractInvokeRequest({ operation, req }) &&
+        (isPivotBeautyContractInvokeRequest({ operation, req }) || shoppingCanonicalMainlineDirectEligible) &&
         beautyMainlineIntentForDirect.beautyLike &&
         !hasMerchantScope;
       if (creatorBeautyMainlineDirectEligible) {
@@ -28975,6 +29124,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             const promotions = await getActivePromotions(now, creatorId);
             const enriched = applyDealsToResponse(directResponse, promotions, now, creatorId);
             return res.json(enriched);
+          }
+          if (directResponse?.metadata?.canonical_path_executed) {
+            canonicalChainRecallPromise = Promise.resolve({
+              products: [],
+              telemetry: directResponse.metadata,
+            });
           }
         } catch (err) {
           logger.warn(
@@ -29758,7 +29913,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 finalDecision: cacheClarification ? 'clarify' : 'cache_returned',
               }),
             });
-            return res.json(diagnosed);
+            const diagnosedWithCanonical = await attachCanonicalChainRecallTelemetryFromPromise(
+              diagnosed,
+              canonicalChainRecallPromise,
+            );
+            return res.json(diagnosedWithCanonical);
           }
           const queryClassForEarlyDecision = String(
             traceQueryClass || effectiveIntent?.query_class || '',
@@ -29989,7 +30148,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                   finalDecision: earlyDecisionClarification ? 'clarify' : 'strict_empty',
                 }),
               });
-              return res.json(earlyDiagnosed);
+              const earlyDiagnosedWithCanonical = await attachCanonicalChainRecallTelemetryFromPromise(
+                earlyDiagnosed,
+                canonicalChainRecallPromise,
+              );
+              return res.json(earlyDiagnosedWithCanonical);
             }
           }
           const allowCacheMissResolverFallback =
@@ -30095,7 +30258,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                     finalDecision: resolverClarification ? 'clarify' : 'resolver_returned',
                   }),
                 });
-                return res.json(resolverDiagnosed);
+                const resolverDiagnosedWithCanonical = await attachCanonicalChainRecallTelemetryFromPromise(
+                  resolverDiagnosed,
+                  canonicalChainRecallPromise,
+                );
+                return res.json(resolverDiagnosedWithCanonical);
               }
             } catch (resolverFallbackErr) {
               logger.warn(
@@ -30231,7 +30398,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                     strict_empty_reason: cacheStrictReason,
                   }),
             });
-            return res.json(strictEmptyDiagnosed);
+            const strictEmptyDiagnosedWithCanonical = await attachCanonicalChainRecallTelemetryFromPromise(
+              strictEmptyDiagnosed,
+              canonicalChainRecallPromise,
+            );
+            return res.json(strictEmptyDiagnosedWithCanonical);
           }
           if (
             isCatalogGuardSource(source) &&
@@ -33808,6 +33979,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         metadata,
         beautyRequest: effectiveInvokeContext.normalized_need.beauty_request,
       });
+      enriched = await attachCanonicalChainRecallTelemetryFromPromise(
+        enriched,
+        canonicalChainRecallPromise,
+      );
     }
 
       const { attachBeautyExpertV1ToResponse } = require('./modules/orchestration/aurora_beauty/beautyExpertV1');
