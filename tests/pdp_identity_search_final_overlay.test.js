@@ -200,4 +200,63 @@ describe('PDP identity search final overlay', () => {
     );
     expect(response.products[0].offers[1].store_discount_evidence).toBeUndefined();
   });
+
+  test('projects find_products_multi transport payload to search-card fields', () => {
+    const app = require('../src/server');
+    const { projectFindProductsMultiTransportResponse } = app._debug;
+    const heavySavings = { sections: Array.from({ length: 20 }, (_, index) => ({ index, text: 'x'.repeat(500) })) };
+
+    const response = projectFindProductsMultiTransportResponse(
+      {
+        products: [
+          {
+            merchant_id: 'merch_pet',
+            product_id: 'prod_1',
+            title: 'Warm Dog Jacket',
+            description: 'd'.repeat(1400),
+            price: 12,
+            currency: 'USD',
+            image_url: 'https://example.test/1.jpg',
+            details: { should_not_ship_on_search: true },
+            pdp: { should_not_ship_on_search: true },
+            offers: Array.from({ length: 8 }, (_, index) => ({
+              offer_id: `offer_${index}`,
+              merchant_id: 'merch_pet',
+              variant_id: `variant_${index}`,
+              price: 12 + index,
+              currency: 'USD',
+              savings_presentation: heavySavings,
+              payment_offer_summary: { available: true },
+            })),
+            variants: Array.from({ length: 12 }, (_, index) => ({
+              id: `variant_${index}`,
+              title: `Size ${index}`,
+              price: 12 + index,
+              inventory_quantity: 5,
+              admin_graphql_api_id: `gid://shopify/ProductVariant/${index}`,
+            })),
+          },
+        ],
+        metadata: {},
+      },
+      { operation: 'find_products_multi' },
+    );
+
+    expect(response.products[0].details).toBeUndefined();
+    expect(response.products[0].pdp).toBeUndefined();
+    expect(response.products[0].description.length).toBeLessThanOrEqual(900);
+    expect(response.products[0].offers).toHaveLength(3);
+    expect(response.products[0].offers[0].savings_presentation).toBeUndefined();
+    expect(response.products[0].variants).toHaveLength(8);
+    expect(response.products[0].variants[0].admin_graphql_api_id).toBeUndefined();
+    expect(response.products[0].offers_count).toBe(8);
+    expect(response.products[0].variants_count).toBe(12);
+    expect(response.metadata.search_transport_projection).toEqual(
+      expect.objectContaining({
+        applied: true,
+        trimmed_offers: 5,
+        trimmed_variants: 4,
+      }),
+    );
+  });
 });

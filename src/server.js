@@ -2537,6 +2537,21 @@ const SEARCH_LIMIT_MAX = parsePositiveInt(process.env.SEARCH_LIMIT_MAX, 200, {
   min: 1,
   max: 200,
 });
+const FIND_PRODUCTS_MULTI_TRANSPORT_MAX_OFFERS_PER_PRODUCT = parsePositiveInt(
+  process.env.FIND_PRODUCTS_MULTI_TRANSPORT_MAX_OFFERS_PER_PRODUCT,
+  3,
+  { min: 1, max: 12 },
+);
+const FIND_PRODUCTS_MULTI_TRANSPORT_MAX_VARIANTS_PER_PRODUCT = parsePositiveInt(
+  process.env.FIND_PRODUCTS_MULTI_TRANSPORT_MAX_VARIANTS_PER_PRODUCT,
+  8,
+  { min: 1, max: 24 },
+);
+const FIND_PRODUCTS_MULTI_TRANSPORT_MAX_IMAGES_PER_PRODUCT = parsePositiveInt(
+  process.env.FIND_PRODUCTS_MULTI_TRANSPORT_MAX_IMAGES_PER_PRODUCT,
+  6,
+  { min: 1, max: 12 },
+);
 const SEARCH_EXTERNAL_HARD_RULE_PRUNE =
   String(process.env.SEARCH_EXTERNAL_HARD_RULE_PRUNE || 'true').toLowerCase() !== 'false';
 const SEARCH_FRAGRANCE_SEMANTIC_RETRY =
@@ -6546,6 +6561,289 @@ function buildQueryString(params) {
   }
   const qs = sp.toString();
   return qs ? `?${qs}` : '';
+}
+
+function copyDefinedFields(target, source, fieldNames = []) {
+  if (!target || !source || typeof source !== 'object') return target;
+  for (const fieldName of fieldNames) {
+    if (source[fieldName] !== undefined) target[fieldName] = source[fieldName];
+  }
+  return target;
+}
+
+function slicePlainArray(value, maxItems) {
+  if (!Array.isArray(value)) return undefined;
+  return value.slice(0, Math.max(0, Number(maxItems || 0) || 0));
+}
+
+function truncateTransportText(value, maxLength = 900) {
+  if (typeof value !== 'string') return value;
+  if (value.length <= maxLength) return value;
+  return `${value.slice(0, Math.max(0, maxLength - 3)).trimEnd()}...`;
+}
+
+function projectSearchTransportDeal(deal) {
+  if (!deal || typeof deal !== 'object' || Array.isArray(deal)) return deal;
+  return copyDefinedFields({}, deal, [
+    'offer_id',
+    'merchant_id',
+    'merchant_name',
+    'store_name',
+    'seller_name',
+    'product_id',
+    'variant_id',
+    'sku_id',
+    'price',
+    'currency',
+    'compare_at_price',
+    'shipping_cost',
+    'shipping_summary',
+    'availability',
+    'in_stock',
+    'destination_url',
+    'canonical_url',
+    'url',
+  ]);
+}
+
+function projectSearchTransportOffer(offer) {
+  if (!offer || typeof offer !== 'object' || Array.isArray(offer)) return offer;
+  const projected = copyDefinedFields({}, offer, [
+    'offer_id',
+    'merchant_id',
+    'merchant_name',
+    'store_name',
+    'seller_name',
+    'seller_of_record',
+    'source_type',
+    'connector',
+    'product_id',
+    'variant_id',
+    'sku_id',
+    'merchant_sku',
+    'title',
+    'price',
+    'price_amount',
+    'currency',
+    'compare_at_price',
+    'sale_price',
+    'shipping_cost',
+    'shipping_summary',
+    'availability',
+    'in_stock',
+    'checkout_mode',
+    'checkout_handoff',
+    'commerce_mode',
+    'destination_url',
+    'canonical_url',
+    'url',
+    'image_url',
+    'confidence',
+    'freshness_ts',
+    'payment_offer_summary',
+    'payment_offer_evidence',
+    'payment_offer_badges',
+    'capability_flags',
+  ]);
+  if (Array.isArray(offer.promotions)) projected.promotions = offer.promotions.slice(0, 3);
+  return projected;
+}
+
+function projectSearchTransportVariant(variant) {
+  if (!variant || typeof variant !== 'object' || Array.isArray(variant)) return variant;
+  return copyDefinedFields({}, variant, [
+    'id',
+    'variant_id',
+    'sku',
+    'sku_id',
+    'title',
+    'name',
+    'option1',
+    'option2',
+    'option3',
+    'options',
+    'selected_options',
+    'price',
+    'price_amount',
+    'currency',
+    'compare_at_price',
+    'in_stock',
+    'available',
+    'available_quantity',
+    'inventory_quantity',
+    'image_url',
+  ]);
+}
+
+function projectSearchTransportProduct(product, stats = null) {
+  if (!product || typeof product !== 'object' || Array.isArray(product)) return product;
+  const projected = copyDefinedFields({}, product, [
+    'id',
+    'product_id',
+    'productId',
+    'platform_product_id',
+    'external_product_id',
+    'pivota_signature_id',
+    'signature_id',
+    'product_key',
+    'attached_product_key',
+    'title',
+    'name',
+    'canonical_title',
+    'brand',
+    'vendor',
+    'merchant_id',
+    'merchant_name',
+    'store_name',
+    'seller_name',
+    'source',
+    'source_kind',
+    'platform',
+    'category',
+    'canonical_category',
+    'category_path',
+    'product_type',
+    'price',
+    'price_amount',
+    'currency',
+    'in_stock',
+    'availability',
+    'inventory_quantity',
+    'image_url',
+    'canonical_url',
+    'destination_url',
+    'external_url',
+    'url',
+    'offer_id',
+    'default_offer_id',
+    'offers_count',
+    'offer_count',
+    'best_offer_id',
+    'canonical_scope',
+    'review_family_id',
+    'product_line_id',
+    'sellable_item_group_id',
+    'product_group_id',
+    'dedupe_group_id',
+    'pdp_scope',
+    'canonical_ref',
+    'canonical_product_ref',
+    'selected_commerce_ref',
+    'commerce_ref',
+    'score',
+    'confidence',
+    'ranking_features_summary',
+    'recommendation_reason',
+    'match_reason',
+    'why_this_one',
+    'rating',
+    'reviews_count',
+    'review_count',
+    'payment_offer_summary',
+    'payment_offer_evidence',
+  ]);
+
+  if (typeof product.description === 'string') {
+    projected.description = truncateTransportText(product.description);
+  }
+  if (typeof product.summary === 'string') {
+    projected.summary = truncateTransportText(product.summary);
+  }
+  if (typeof product.snippet === 'string') {
+    projected.snippet = truncateTransportText(product.snippet, 500);
+  }
+  if (product.attributes && typeof product.attributes === 'object' && !Array.isArray(product.attributes)) {
+    projected.attributes = safeCloneJson(product.attributes);
+  }
+  if (product.provenance && typeof product.provenance === 'object' && !Array.isArray(product.provenance)) {
+    projected.provenance = safeCloneJson(product.provenance);
+  }
+  if (product.commerce_facts_v1 && typeof product.commerce_facts_v1 === 'object' && !Array.isArray(product.commerce_facts_v1)) {
+    projected.commerce_facts_v1 = safeCloneJson(product.commerce_facts_v1);
+  }
+  if (product.agent_safe_commerce_facts && typeof product.agent_safe_commerce_facts === 'object' && !Array.isArray(product.agent_safe_commerce_facts)) {
+    projected.agent_safe_commerce_facts = safeCloneJson(product.agent_safe_commerce_facts);
+  }
+
+  const images = slicePlainArray(product.images, FIND_PRODUCTS_MULTI_TRANSPORT_MAX_IMAGES_PER_PRODUCT);
+  if (images) projected.images = images;
+  const imageRefs = slicePlainArray(product.image_refs, FIND_PRODUCTS_MULTI_TRANSPORT_MAX_IMAGES_PER_PRODUCT);
+  if (imageRefs) projected.image_refs = imageRefs;
+  for (const fieldName of ['tags', 'badges', 'highlights', 'key_ingredients', 'active_ingredients', 'ingredient_tags']) {
+    const items = slicePlainArray(product[fieldName], 12);
+    if (items) projected[fieldName] = items;
+  }
+
+  if (Array.isArray(product.best_deal)) {
+    projected.best_deal = product.best_deal.slice(0, 1).map(projectSearchTransportDeal);
+  } else if (product.best_deal && typeof product.best_deal === 'object') {
+    projected.best_deal = projectSearchTransportDeal(product.best_deal);
+  }
+  if (Array.isArray(product.all_deals)) {
+    projected.all_deals = product.all_deals.slice(0, 3).map(projectSearchTransportDeal);
+  }
+
+  if (Array.isArray(product.variants)) {
+    projected.variants = product.variants
+      .slice(0, FIND_PRODUCTS_MULTI_TRANSPORT_MAX_VARIANTS_PER_PRODUCT)
+      .map(projectSearchTransportVariant);
+    projected.variants_count = product.variants.length;
+    if (stats && product.variants.length > projected.variants.length) {
+      stats.trimmed_variants += product.variants.length - projected.variants.length;
+    }
+  }
+  if (Array.isArray(product.offers)) {
+    projected.offers = product.offers
+      .slice(0, FIND_PRODUCTS_MULTI_TRANSPORT_MAX_OFFERS_PER_PRODUCT)
+      .map(projectSearchTransportOffer);
+    projected.offers_count = Number(product.offers_count || product.offer_count || product.offers.length) || product.offers.length;
+    if (stats && product.offers.length > projected.offers.length) {
+      stats.trimmed_offers += product.offers.length - projected.offers.length;
+    }
+  }
+
+  return projected;
+}
+
+function projectFindProductsMultiTransportResponse(responseBody, { operation = null } = {}) {
+  if (
+    String(operation || '').trim() !== 'find_products_multi' ||
+    !responseBody ||
+    typeof responseBody !== 'object' ||
+    Array.isArray(responseBody) ||
+    !Array.isArray(responseBody.products)
+  ) {
+    return responseBody;
+  }
+  const stats = { trimmed_offers: 0, trimmed_variants: 0 };
+  const products = responseBody.products.map((product) => projectSearchTransportProduct(product, stats));
+  const metadata =
+    responseBody.metadata && typeof responseBody.metadata === 'object' && !Array.isArray(responseBody.metadata)
+      ? responseBody.metadata
+      : {};
+  return {
+    ...responseBody,
+    products,
+    results: Array.isArray(responseBody.results) ? products : responseBody.results,
+    data:
+      responseBody.data && typeof responseBody.data === 'object' && !Array.isArray(responseBody.data)
+        ? {
+            ...responseBody.data,
+            ...(Array.isArray(responseBody.data.products) ? { products } : {}),
+          }
+        : responseBody.data,
+    metadata: {
+      ...metadata,
+      search_transport_projection: {
+        applied: true,
+        max_offers_per_product: FIND_PRODUCTS_MULTI_TRANSPORT_MAX_OFFERS_PER_PRODUCT,
+        max_variants_per_product: FIND_PRODUCTS_MULTI_TRANSPORT_MAX_VARIANTS_PER_PRODUCT,
+        max_images_per_product: FIND_PRODUCTS_MULTI_TRANSPORT_MAX_IMAGES_PER_PRODUCT,
+        trimmed_offers: stats.trimmed_offers,
+        trimmed_variants: stats.trimmed_variants,
+      },
+    },
+  };
 }
 
 function normalizeAgentProductsListResponse(raw, ctx = {}) {
@@ -16331,6 +16629,7 @@ function getUiChatLlmClient() {
 // occasional slow product/search slowness.
 async function callUpstreamWithOptionalRetry(operation, axiosConfig, options = {}) {
   const disableTimeoutRetry = options?.disableTimeoutRetry === true;
+  const disableBusyRetry = options?.disableBusyRetry === true;
   const timeoutRetryableOps = [
     'find_products',
     'find_similar_products',
@@ -16490,6 +16789,7 @@ async function callUpstreamWithOptionalRetry(operation, axiosConfig, options = {
       // DB busy / temporary unavailable: retry with short exponential backoff.
       if (
         isTemporaryUnavailable(err) &&
+        !disableBusyRetry &&
         busyRetryableOps.includes(operation) &&
         attempt < maxBusyAttempts
       ) {
@@ -31566,6 +31866,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         return await callUpstreamWithOptionalRetry(op, config, {
           disableTimeoutRetry:
             singlePassPublicSearchPrimary && String(op || '').trim().toLowerCase() === 'find_products_multi',
+          disableBusyRetry:
+            options?.disableBusyRetry === true ||
+            String(op || '').trim().toLowerCase() === 'find_products_multi',
           onRetry: () => {
             if (measureCheckout) gatewayRetryCount += 1;
           },
@@ -34062,7 +34365,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           : [],
       });
 
-    return res.status(response.status).json(enrichedWithBeautyExpert);
+    return res.status(response.status).json(
+      projectFindProductsMultiTransportResponse(enrichedWithBeautyExpert, { operation }),
+    );
 
 	  } catch (err) {
 	    if (operation === 'find_products' || operation === 'find_products_multi') {
@@ -34137,8 +34442,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             ? postProcessTravelLookupProductsResponse(cacheGuardDiagnosed)
             : cacheGuardDiagnosed;
         const { attachBeautyExpertV1ToResponse } = require('./modules/orchestration/aurora_beauty/beautyExpertV1');
-        return res.status(200).json(
-          attachBeautyExpertV1ToResponse(finalCacheGuardBody, {
+        const finalCacheGuardWithBeautyExpert = attachBeautyExpertV1ToResponse(finalCacheGuardBody, {
             source: metadata?.source || 'shopping_agent',
             entryLayer: 'orchestration',
             taskType: 'discovery',
@@ -34169,7 +34473,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             messages: String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim()
               ? [{ role: 'user', content: String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim() }]
               : [],
-          }),
+          });
+        return res.status(200).json(
+          projectFindProductsMultiTransportResponse(finalCacheGuardWithBeautyExpert, { operation }),
         );
       }
 	      const { code, message } = extractUpstreamErrorCode(err);
@@ -34246,8 +34552,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	        ...(strictEmptyHasClarification ? {} : { strict_empty_reason: reason }),
 	      });
         const { attachBeautyExpertV1ToResponse } = require('./modules/orchestration/aurora_beauty/beautyExpertV1');
-	      return res.status(200).json(
-          attachBeautyExpertV1ToResponse(diagnosed, {
+          const diagnosedWithBeautyExpert = attachBeautyExpertV1ToResponse(diagnosed, {
             source: metadata?.source || 'shopping_agent',
             entryLayer: 'orchestration',
             taskType: 'discovery',
@@ -34278,7 +34583,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             messages: String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim()
               ? [{ role: 'user', content: String(rawUserQuery || extractSearchQueryText(queryParams) || '').trim() }]
               : [],
-          }),
+          });
+          return res.status(200).json(
+          projectFindProductsMultiTransportResponse(diagnosedWithBeautyExpert, { operation }),
         );
 	    }
 	    if (err.response) {
@@ -34561,6 +34868,7 @@ module.exports._debug = {
   findLiveIdentitySearchProductForRecall,
   maybeOverlayFinalIdentityRecallSearchProducts,
   hydrateSearchSavingsPresentationFromUpstream,
+  projectFindProductsMultiTransportResponse,
   backfillPdpIdentityGraph,
   listPdpIdentityShadowRows,
   listPdpIdentityReviewQueue,
