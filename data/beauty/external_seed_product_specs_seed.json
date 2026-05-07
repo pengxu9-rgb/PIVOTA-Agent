@@ -320,6 +320,70 @@
           "evidence": "Retailer listing describes a 4-sheet set with 28g sheet masks."
         }
       ]
+    },
+    {
+      "external_product_id": "ext_1c7d35c56b316e2dceae281d",
+      "brand": "Medicube",
+      "title": "Exosome Cica Calming Toner",
+      "canonical_url": "https://medicube.us/products/exosome-cica-calming-toner",
+      "size_detail_label": "210 mL",
+      "net_content": "210 mL",
+      "review_state": "assistant_reviewed",
+      "sources": [
+        {
+          "source_kind": "recognized_retailer_product_spec",
+          "source_url": "https://www.yesstyle.com/en/medicube-exosome-cica-toner-210ml/info.html/pid.1124066772",
+          "evidence": "Retailer product page lists Exosome Cica Toner as 210ml."
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_719f2cee39b26d4a7a8253af",
+      "brand": "Medicube",
+      "title": "AGE-R Glutathione Glow Milk Toner",
+      "canonical_url": "https://medicube.us/products/age-r-glutathione-glow-milk-toner",
+      "size_detail_label": "140 mL",
+      "net_content": "140 mL",
+      "review_state": "assistant_reviewed",
+      "sources": [
+        {
+          "source_kind": "recognized_retailer_product_spec",
+          "source_url": "https://www.yesstyle.com/en/medicube-age-r-glutathione-glow-toner-140ml/info.html/pid.1130931351",
+          "evidence": "Retailer product page lists AGE-R Glutathione Glow Toner as 140ml."
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_79bca27423e4840cc4cc4e93",
+      "brand": "Medicube",
+      "title": "Deep Vitamin C Capsule Serum",
+      "canonical_url": "https://medicube.us/products/deep-vitamin-c-capsule-serum",
+      "size_detail_label": "30 mL",
+      "net_content": "30 mL",
+      "review_state": "assistant_reviewed",
+      "sources": [
+        {
+          "source_kind": "recognized_retailer_product_spec",
+          "source_url": "https://moidaus.com/products/medicube-deep-vita-c-capsule-serum-30ml",
+          "evidence": "Retailer product title lists Deep Vita C Capsule Serum 30ml."
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_9cc158f25a88a454c30d449c",
+      "brand": "Medicube",
+      "title": "Azelaic Acid 16 Calming Serum",
+      "canonical_url": "https://medicube.us/products/azelaic-acid-16-calming-serum",
+      "size_detail_label": "30 mL",
+      "net_content": "30 mL",
+      "review_state": "assistant_reviewed",
+      "sources": [
+        {
+          "source_kind": "official_marketplace_product_spec",
+          "source_url": "https://shop.tiktok.com/us/pdp/azelaic-acid-16-calming-serum-by-medicube-with-niacinamide-pantothenic-acid/1730744521704968427",
+          "evidence": "Medicube Official marketplace listing exposes Net Weight as 30ml."
+        }
+      ]
     }
   ]
 }
