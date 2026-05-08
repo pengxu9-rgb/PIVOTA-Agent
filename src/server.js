@@ -11040,6 +11040,116 @@ function mergeCanonicalChainProductsWithSeedProducts(seedProducts = [], canonica
   };
 }
 
+function resolveCanonicalCategoryPathPrefixForQuery(queryText) {
+  const beautyPrefix = resolveBeautyCategoryPathPrefixForQuery(queryText);
+  if (beautyPrefix) return beautyPrefix;
+
+  const text = String(queryText || '').trim();
+  const normalized = normalizeSearchTextForMatch(text);
+  if (!normalized) return '';
+
+  if (
+    /\b(e\s*reader|ereader|e\s*book\s*reader|ebook\s*reader|kindle|kobo|boox)\b/i.test(normalized) ||
+    /电子阅读器|電子閱讀器|电纸书|電紙書|电子书阅读器|電子書閱讀器/.test(text)
+  ) {
+    return 'electronics/reading/';
+  }
+
+  if (
+    /\b(earbuds?|ear\s*buds?|earphones?|headphones?|airpods?|galaxy\s*buds?|studio\s*buds?|bluetooth\s*(?:earbuds?|headphones?|earphones?)|wireless\s*(?:earbuds?|headphones?|earphones?)|noise\s*cancell(?:ing|ation)|anc\s*headphones?)\b/i.test(normalized) ||
+    /蓝牙耳机|藍牙耳機|无线耳机|無線耳機|耳机|耳機|降噪/.test(text)
+  ) {
+    return 'electronics/audio/';
+  }
+
+  return '';
+}
+
+function isNonBeautyCanonicalCategoryPathPrefix(categoryPathPrefix) {
+  const normalized = String(categoryPathPrefix || '').trim().toLowerCase();
+  return Boolean(normalized && !normalized.startsWith('beauty/'));
+}
+
+function buildCanonicalChainRecallSearchResponse({
+  search = {},
+  products = [],
+  telemetry = {},
+  querySource = 'canonical_chain_catalog',
+} = {}) {
+  const safeProducts = Array.isArray(products) ? products.filter(Boolean) : [];
+  const safePage = Math.max(1, Math.floor(Number(search.page || 1) || 1));
+  const requestedLimit = Math.floor(Number(search.limit || search.page_size || 20) || 20);
+  const safeLimit = Math.max(1, Math.min(SEARCH_LIMIT_MAX, requestedLimit));
+  const returnedCount = safeProducts.length;
+  const canonicalRawCount = Math.max(0, Number(telemetry?.canonical_raw_count || 0) || 0);
+  const canonicalProductCount = Math.max(
+    returnedCount,
+    Number(telemetry?.canonical_product_count || 0) || 0,
+  );
+  const canonicalDurationMs = Math.max(0, Number(telemetry?.canonical_duration_ms || 0) || 0);
+  const canonicalCategoryPathPrefix = telemetry?.canonical_category_path_prefix || null;
+
+  return {
+    status: 'success',
+    success: true,
+    products: safeProducts,
+    total: returnedCount,
+    page: safePage,
+    page_size: Math.min(safeLimit, returnedCount),
+    reply: null,
+    metadata: {
+      ...buildInvokeSearchRailMetadata('authoritative_shopping'),
+      query_source: querySource,
+      fetched_at: new Date().toISOString(),
+      canonical_path_executed: true,
+      canonical_raw_count: canonicalRawCount,
+      canonical_product_count: canonicalProductCount,
+      canonical_returned_count: returnedCount,
+      canonical_dedupe_count: Math.max(0, Number(telemetry?.canonical_dedupe_count || 0) || 0),
+      canonical_category_path_prefix: canonicalCategoryPathPrefix,
+      canonical_duration_ms: canonicalDurationMs,
+      source_breakdown: {
+        internal_count: 0,
+        external_seed_count: 0,
+        canonical_chain_count: returnedCount,
+        canonical_chain_candidate_count: canonicalProductCount,
+        stale_cache_used: false,
+        strategy_applied: querySource,
+      },
+      route_health: {
+        fallback_triggered: false,
+        fallback_reason: null,
+        primary_path_used: 'canonical_chain_catalog',
+        canonical_path_executed: true,
+        canonical_raw_count: canonicalRawCount,
+        canonical_product_count: canonicalProductCount,
+        canonical_returned_count: returnedCount,
+        canonical_dedupe_count: Math.max(0, Number(telemetry?.canonical_dedupe_count || 0) || 0),
+        canonical_duration_ms: canonicalDurationMs,
+      },
+      search_trace: {
+        fallback_reason: null,
+        primary_path_used: 'canonical_chain_catalog',
+      },
+      search_decision: {
+        final_decision: returnedCount > 0 ? 'products_returned' : 'strict_empty',
+        fallback_reason: null,
+        primary_path_used: 'canonical_chain_catalog',
+        decision_authority: querySource,
+        decision_locked: true,
+        decision_lock_reason: 'canonical_chain_mainline',
+      },
+      proxy_search_fallback: {
+        applied: false,
+        reason: null,
+      },
+      contract_bridge: {
+        legacy_fallback: false,
+      },
+    },
+  };
+}
+
 async function fetchCanonicalChainRecallForFindProductsMulti({ search = {} } = {}) {
   if (!PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED) return null;
   if (!process.env.DATABASE_URL) return null;
@@ -11050,13 +11160,15 @@ async function fetchCanonicalChainRecallForFindProductsMulti({ search = {} } = {
     Math.min(SEARCH_LIMIT_MAX, Math.floor(Number(search.limit || search.page_size || 20) || 20)),
   );
   const canonicalLimit = Math.max(12, Math.min(32, safeLimit * 2));
-  const canonicalCategoryPathPrefix = resolveBeautyCategoryPathPrefixForQuery(queryText) || null;
+  const canonicalCategoryPathPrefix = resolveCanonicalCategoryPathPrefixForQuery(queryText) || null;
   const startedAt = Date.now();
   try {
     const rows = await fetchCanonicalChainRows({
       query: queryText,
       categoryPathPrefix: canonicalCategoryPathPrefix,
-      verticalSearch: hasBeautyIngredientIntentSignal(queryText),
+      verticalSearch:
+        Boolean(canonicalCategoryPathPrefix && String(canonicalCategoryPathPrefix).startsWith('beauty/')) &&
+        hasBeautyIngredientIntentSignal(queryText),
       limit: canonicalLimit,
       includeSkuOffers: false,
       deps: { query },
@@ -11119,24 +11231,86 @@ function attachCanonicalChainRecallTelemetry(body, canonicalResult) {
     responseCanonicalReturnedCount,
     Number(metadata.canonical_returned_count || 0) || 0,
   );
+  const canonicalProducts = Array.isArray(canonicalResult?.products)
+    ? canonicalResult.products.filter(Boolean)
+    : [];
+  const shouldApplyCanonicalProducts =
+    products.length === 0 &&
+    canonicalProducts.length > 0 &&
+    isNonBeautyCanonicalCategoryPathPrefix(telemetry.canonical_category_path_prefix);
+  const finalProducts = shouldApplyCanonicalProducts ? canonicalProducts : products;
+  const finalCanonicalReturnedCount = shouldApplyCanonicalProducts
+    ? canonicalProducts.length
+    : canonicalReturnedCount;
+  const searchDecision =
+    metadata.search_decision && typeof metadata.search_decision === 'object' && !Array.isArray(metadata.search_decision)
+      ? { ...metadata.search_decision }
+      : {};
+  const proxySearchFallback =
+    metadata.proxy_search_fallback && typeof metadata.proxy_search_fallback === 'object' && !Array.isArray(metadata.proxy_search_fallback)
+      ? { ...metadata.proxy_search_fallback }
+      : {};
+  const contractBridge =
+    metadata.contract_bridge && typeof metadata.contract_bridge === 'object' && !Array.isArray(metadata.contract_bridge)
+      ? { ...metadata.contract_bridge }
+      : {};
 
   return {
     ...body,
+    ...(shouldApplyCanonicalProducts
+      ? {
+          status: 'success',
+          success: true,
+          products: finalProducts,
+          results: Array.isArray(body.results) ? finalProducts : body.results,
+          total: Math.max(Number(body.total || 0) || 0, finalProducts.length),
+          page_size: finalProducts.length,
+        }
+      : {}),
     metadata: {
       ...metadata,
+      ...(shouldApplyCanonicalProducts
+        ? {
+            query_source: 'canonical_chain_catalog',
+            strict_empty: false,
+            strict_empty_reason: null,
+          }
+        : {}),
       canonical_path_executed: true,
       canonical_raw_count: canonicalRawCount,
       canonical_product_count: canonicalProductCount,
       canonical_category_path_prefix: telemetry.canonical_category_path_prefix || null,
       canonical_duration_ms: Math.max(0, Number(telemetry.canonical_duration_ms || 0) || 0),
       canonical_dedupe_count: canonicalDedupeCount,
-      canonical_returned_count: canonicalReturnedCount,
+      canonical_returned_count: finalCanonicalReturnedCount,
       ...(telemetry.canonical_error ? { canonical_error: telemetry.canonical_error } : {}),
+      ...(shouldApplyCanonicalProducts
+        ? {
+            contract_bridge: {
+              ...contractBridge,
+              legacy_fallback: false,
+            },
+            proxy_search_fallback: {
+              ...proxySearchFallback,
+              applied: false,
+              reason: null,
+            },
+            search_decision: {
+              ...searchDecision,
+              final_decision: 'products_returned',
+              fallback_reason: null,
+              primary_path_used: 'canonical_chain_catalog',
+              decision_authority: 'canonical_chain_catalog',
+              decision_locked: true,
+              decision_lock_reason: 'canonical_chain_mainline_after_primary_deadline',
+            },
+          }
+        : {}),
       source_breakdown: {
         ...sourceBreakdown,
         canonical_chain_count: Math.max(
           Number(sourceBreakdown.canonical_chain_count || 0) || 0,
-          canonicalReturnedCount,
+          finalCanonicalReturnedCount,
         ),
         canonical_chain_candidate_count: Math.max(
           Number(sourceBreakdown.canonical_chain_candidate_count || 0) || 0,
@@ -11149,8 +11323,16 @@ function attachCanonicalChainRecallTelemetry(body, canonicalResult) {
         canonical_raw_count: canonicalRawCount,
         canonical_product_count: canonicalProductCount,
         canonical_dedupe_count: canonicalDedupeCount,
-        canonical_returned_count: canonicalReturnedCount,
+        canonical_returned_count: finalCanonicalReturnedCount,
         canonical_duration_ms: Math.max(0, Number(telemetry.canonical_duration_ms || 0) || 0),
+        ...(shouldApplyCanonicalProducts
+          ? {
+              fallback_triggered: false,
+              fallback_reason: null,
+              primary_path_used: 'canonical_chain_catalog',
+              final_returned_count: finalProducts.length,
+            }
+          : {}),
       },
     },
   };
@@ -29332,6 +29514,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             : [];
       const hasMerchantScope = Boolean(merchantId) || merchantIds.length > 0;
       const beautyMainlineIntentForDirect = inferBeautyMainlineIntent(queryText);
+      const canonicalCategoryPathPrefixForDirect = resolveCanonicalCategoryPathPrefixForQuery(queryText);
       const shoppingCanonicalMainlineDirectEligible =
         !strictCommerceFindProductsMulti &&
         queryText.length > 0 &&
@@ -29339,6 +29522,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED &&
         isShoppingSource(source) &&
         beautyMainlineIntentForDirect.beautyLike &&
+        !hasMerchantScope;
+      const shoppingNonBeautyCanonicalMainlineDirectEligible =
+        !strictCommerceFindProductsMulti &&
+        queryText.length > 0 &&
+        process.env.DATABASE_URL &&
+        PIVOT_BEAUTY_DIRECT_INDEXED_RECALL_ENABLED &&
+        isShoppingSource(source) &&
+        isNonBeautyCanonicalCategoryPathPrefix(canonicalCategoryPathPrefixForDirect) &&
         !hasMerchantScope;
       if (
         !shoppingCanonicalMainlineDirectEligible &&
@@ -29553,6 +29744,32 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           logger.warn(
             { err: err?.message || String(err), creatorId, source, queryText },
             'Beauty external-seed mainline search failed; continuing to remaining primary search paths',
+          );
+        }
+      }
+
+      if (shoppingNonBeautyCanonicalMainlineDirectEligible) {
+        try {
+          const canonicalResult = await (canonicalChainRecallPromise ||
+            fetchCanonicalChainRecallForFindProductsMulti({ search }));
+          const canonicalProducts = Array.isArray(canonicalResult?.products)
+            ? canonicalResult.products.filter(Boolean)
+            : [];
+          if (canonicalProducts.length > 0) {
+            const directResponse = buildCanonicalChainRecallSearchResponse({
+              search,
+              products: canonicalProducts,
+              telemetry: canonicalResult?.telemetry || {},
+              querySource: 'canonical_chain_catalog_direct',
+            });
+            const promotions = await getActivePromotions(now, creatorId);
+            const enriched = applyDealsToResponse(directResponse, promotions, now, creatorId);
+            return res.json(enriched);
+          }
+        } catch (err) {
+          logger.warn(
+            { err: err?.message || String(err), creatorId, source, queryText },
+            'Non-beauty canonical-chain mainline direct search failed; continuing to upstream',
           );
         }
       }

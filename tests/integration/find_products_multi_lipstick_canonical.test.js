@@ -32,6 +32,50 @@ function canonicalLipstickRows(count = 18) {
   }));
 }
 
+function canonicalElectronicsRows(count = 10) {
+  const products = [
+    ['AirPods Pro', 'Apple', 'electronics/audio/earbuds_wireless'],
+    ['QuietComfort Earbuds II', 'Bose', 'electronics/audio/earbuds_wireless'],
+    ['WF-1000XM5', 'Sony', 'electronics/audio/earbuds_wireless'],
+    ['Galaxy Buds3 Pro', 'Samsung', 'electronics/audio/earbuds_wireless'],
+    ['Studio Buds +', 'Beats', 'electronics/audio/earbuds_wireless'],
+    ['WH-1000XM5', 'Sony', 'electronics/audio/headphones_noise_cancelling'],
+    ['QuietComfort Headphones', 'Bose', 'electronics/audio/headphones_noise_cancelling'],
+    ['MOMENTUM 4 Wireless', 'Sennheiser', 'electronics/audio/headphones_noise_cancelling'],
+    ['Live 770NC', 'JBL', 'electronics/audio/headphones_noise_cancelling'],
+    ['AirPods Max', 'Apple', 'electronics/audio/headphones_wireless'],
+  ];
+  return products.slice(0, count).map(([title, brand, categoryPath], index) => ({
+    merchant_id: 'catalog_enrichment_agent',
+    merchant_name: brand,
+    product_key: `prod::catalog::electronics::${index}`,
+    platform: 'catalog_enrichment',
+    source_product_id: `electronics_${index}`,
+    pivota_signature_id: `sig_electronics_${index}`,
+    pivota_canonical_url: `https://agent.pivota.cc/products/sig_electronics_${index}`,
+    product_title: title,
+    product_description: `${title} canonical electronics row.`,
+    brand,
+    product_type: categoryPath.includes('earbuds') ? 'Wireless Earbuds' : 'Headphones',
+    category: 'Electronics',
+    category_path: categoryPath,
+    canonical_url: `https://merchant.example/products/electronics-${index}`,
+    product_image_url: `https://cdn.example.com/electronics-${index}.jpg`,
+    catalog_track: 'external_referral',
+    truth_tier: 'observed',
+    readiness_tier: 'referral_only',
+    pdp_scope: 'unverified',
+    product_payload: {
+      seed_data: {
+        price_amount: index < 5 ? '199.99' : '299.99',
+        price_currency: 'USD',
+        availability: 'in stock',
+      },
+    },
+    rank_score: 90,
+  }));
+}
+
 describe('find_products_multi canonical lipstick recall', () => {
   let prevEnv;
 
@@ -91,6 +135,61 @@ describe('find_products_multi canonical lipstick recall', () => {
       canonical_raw_count: 18,
       canonical_dedupe_count: 0,
     }));
+    expect(observedSql.some((sql) => sql.includes('FROM catalog_products p'))).toBe(true);
+  });
+
+  test('electronics query can return canonical-chain catalog rows before slow upstream search', async () => {
+    const observedSql = [];
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        observedSql.push(text);
+        if (text.includes('FROM catalog_products p')) return { rows: canonicalElectronicsRows(10) };
+        return { rows: [] };
+      },
+    }));
+
+    const upstreamSearch = nock('http://pivota.test')
+      .post('/agent/v2/products/search')
+      .query(true)
+      .delay(250)
+      .reply(200, {
+        status: 'success',
+        success: true,
+        products: [{ product_id: 'upstream_should_not_win', merchant_id: 'slow_merchant' }],
+        total: 1,
+      });
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: { search: { query: 'bluetooth earbuds', page: 1, limit: 20, market: 'US' } },
+        metadata: { source: 'shopping_agent', market: 'US' },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.products.length).toBeGreaterThanOrEqual(6);
+    expect(resp.body.products.every((item) => item.source === 'canonical_chain')).toBe(true);
+    expect(resp.body.metadata).toEqual(expect.objectContaining({
+      query_source: 'canonical_chain_catalog_direct',
+      canonical_path_executed: true,
+      canonical_raw_count: 10,
+      canonical_returned_count: 10,
+      canonical_category_path_prefix: 'electronics/audio/',
+    }));
+    expect(resp.body.metadata?.search_decision).toEqual(expect.objectContaining({
+      final_decision: 'products_returned',
+      decision_authority: 'canonical_chain_catalog_direct',
+    }));
+    expect(resp.body.metadata?.route_health).toEqual(expect.objectContaining({
+      canonical_path_executed: true,
+      canonical_raw_count: 10,
+      canonical_returned_count: 10,
+      fallback_triggered: false,
+    }));
+    expect(upstreamSearch.isDone()).toBe(false);
     expect(observedSql.some((sql) => sql.includes('FROM catalog_products p'))).toBe(true);
   });
 
