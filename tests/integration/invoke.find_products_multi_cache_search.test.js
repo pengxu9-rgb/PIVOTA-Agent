@@ -1350,7 +1350,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
       query: async (sql) => {
         const text = String(sql || '');
         observedSql.push(text);
-        if (text.includes('FROM external_product_seeds')) {
+        if (text.includes('FROM external_product_seeds') && !text.includes('FROM external_product_seeds eps')) {
           const now = new Date().toISOString();
           return {
             rows: [
@@ -1418,7 +1418,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect((resp.body.products || []).map((item) => String(item?.title || ''))).toEqual(
       expect.arrayContaining(['Daily Mineral Sunscreen SPF 50', 'Lightweight Face Sunscreen SPF 45']),
     );
-    expect(observedSql.some((sql) => sql.includes('FROM external_product_seeds'))).toBe(true);
+    expect(observedSql.some((sql) => sql.includes('FROM external_product_seeds') && !sql.includes('FROM external_product_seeds eps'))).toBe(true);
     expect(observedSql.join('\n')).not.toMatch(/seed_data::text/i);
     expect(observedSql.join('\n')).not.toMatch(/LIKE ANY/i);
     expect(observedSql.join('\n')).not.toMatch(/recall'->>'vertical'/i);
@@ -1447,7 +1447,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
         const text = String(sql || '');
         observedSql.push(text);
         observedParams.push(params);
-        if (text.includes('FROM external_product_seeds')) {
+        if (text.includes('FROM external_product_seeds') && !text.includes('FROM external_product_seeds eps')) {
           externalQueryCount += 1;
           activeExternalQueries += 1;
           maxActiveExternalQueries = Math.max(maxActiveExternalQueries, activeExternalQueries);
@@ -1536,7 +1536,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
         const text = String(sql || '');
         observedSql.push(text);
         observedParams.push(params);
-        if (text.includes('FROM external_product_seeds')) {
+        if (text.includes('FROM external_product_seeds') && !text.includes('FROM external_product_seeds eps')) {
           externalQueryCount += 1;
           const tool = String(params[1] || '');
           const now = new Date().toISOString();
@@ -3102,7 +3102,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
         if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
           return { rows: [] };
         }
-        if (text.includes('FROM external_product_seeds')) {
+        if (text.includes('FROM external_product_seeds') && !text.includes('FROM external_product_seeds eps')) {
           return {
             rows: [
               {
@@ -3220,7 +3220,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
         if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
           return { rows: [] };
         }
-        if (text.includes('FROM external_product_seeds')) {
+        if (text.includes('FROM external_product_seeds') && !text.includes('FROM external_product_seeds eps')) {
           return {
             rows: [
               {
@@ -3493,7 +3493,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
         if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
           return { rows: [] };
         }
-        if (text.includes('FROM external_product_seeds')) {
+        if (text.includes('FROM external_product_seeds') && !text.includes('FROM external_product_seeds eps')) {
           const now = new Date().toISOString();
           return {
             rows: [
@@ -3635,7 +3635,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
         if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
           return { rows: [] };
         }
-        if (text.includes('FROM external_product_seeds')) {
+        if (text.includes('FROM external_product_seeds') && !text.includes('FROM external_product_seeds eps')) {
           const now = new Date().toISOString();
           return {
             rows: [
@@ -3843,7 +3843,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
         if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
           return { rows: [] };
         }
-        if (text.includes('FROM external_product_seeds')) {
+        if (text.includes('FROM external_product_seeds') && !text.includes('FROM external_product_seeds eps')) {
           const now = new Date().toISOString();
           return {
             rows: [
@@ -4098,7 +4098,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
         if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
           return { rows: [] };
         }
-        if (text.includes('FROM external_product_seeds')) {
+        if (text.includes('FROM external_product_seeds') && !text.includes('FROM external_product_seeds eps')) {
           const now = new Date().toISOString();
           return {
             rows: [
@@ -4259,7 +4259,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
         if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
           return { rows: [] };
         }
-        if (text.includes('FROM external_product_seeds')) {
+        if (text.includes('FROM external_product_seeds') && !text.includes('FROM external_product_seeds eps')) {
           const now = new Date().toISOString();
           return {
             rows: [
@@ -4467,7 +4467,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
         if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
           return { rows: [] };
         }
-        if (text.includes('FROM external_product_seeds')) {
+        if (text.includes('FROM external_product_seeds') && !text.includes('FROM external_product_seeds eps')) {
           const now = new Date().toISOString();
           return {
             rows: [
@@ -4610,7 +4610,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
         if (text.includes('FROM products_cache')) {
           throw new Error('products_cache should not be touched by beauty contract direct path');
         }
-        if (text.includes('FROM external_product_seeds')) {
+        if (text.includes('FROM external_product_seeds') && !text.includes('FROM external_product_seeds eps')) {
           return { rows: [] };
         }
         return { rows: [] };
@@ -4659,7 +4659,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
     expect(resp.body.metadata?.fallback_adopted).toBe(false);
     expect(resp.body.metadata?.contract_bridge?.legacy_fallback).toBe(false);
     expect(resp.body.metadata?.route_health?.primary_path_used).toBe('beauty_external_seed_mainline');
-    expect(observedSql.some((sql) => sql.includes('FROM external_product_seeds'))).toBe(true);
+    expect(observedSql.some((sql) => sql.includes('FROM external_product_seeds') && !sql.includes('FROM external_product_seeds eps'))).toBe(true);
     expect(upstreamSearch.isDone()).toBe(false);
   });
 
@@ -4671,7 +4671,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
         if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
           return { rows: [] };
         }
-        if (text.includes('FROM external_product_seeds')) {
+        if (text.includes('FROM external_product_seeds') && !text.includes('FROM external_product_seeds eps')) {
           const now = new Date().toISOString();
           return {
             rows: [
@@ -4816,7 +4816,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
         if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
           return { rows: [] };
         }
-        if (text.includes('FROM external_product_seeds')) {
+        if (text.includes('FROM external_product_seeds') && !text.includes('FROM external_product_seeds eps')) {
           const market = params[0];
           const tool = params[1];
           if (market !== 'US' || tool !== 'creator_agents') return { rows: [] };
@@ -5001,7 +5001,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
         if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
           return { rows: [] };
         }
-        if (text.includes('FROM external_product_seeds')) {
+        if (text.includes('FROM external_product_seeds') && !text.includes('FROM external_product_seeds eps')) {
           const now = new Date().toISOString();
           return {
             rows: [
@@ -5207,7 +5207,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
         if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
           return { rows: [] };
         }
-        if (text.includes('FROM external_product_seeds')) {
+        if (text.includes('FROM external_product_seeds') && !text.includes('FROM external_product_seeds eps')) {
           const now = new Date().toISOString();
           return {
             rows: [
@@ -5355,7 +5355,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
         if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
           return { rows: [] };
         }
-        if (text.includes('FROM external_product_seeds')) {
+        if (text.includes('FROM external_product_seeds') && !text.includes('FROM external_product_seeds eps')) {
           const now = new Date().toISOString();
           return {
             rows: [
@@ -5549,7 +5549,7 @@ describe('/agent/shop/v1/invoke find_products_multi cache-first search', () => {
         if (text.includes('FROM products_cache pc') && text.includes('JOIN merchant_onboarding mo')) {
           return { rows: [] };
         }
-        if (text.includes('FROM external_product_seeds')) {
+        if (text.includes('FROM external_product_seeds') && !text.includes('FROM external_product_seeds eps')) {
           const now = new Date().toISOString();
           return {
             rows: [
