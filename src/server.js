@@ -11058,7 +11058,14 @@ async function fetchCanonicalChainRecallForFindProductsMulti({ search = {} } = {
       categoryPathPrefix: canonicalCategoryPathPrefix,
       verticalSearch: hasBeautyIngredientIntentSignal(queryText),
       limit: canonicalLimit,
-      includeSkuOffers: false,
+      // Phase 7d backfill (pivota-backend #399 + #401, 2026-05-09)
+      // populated catalog_skus + catalog_offers for all 3,936 Path B
+      // mirrored products. Pre-7d this flag was false because the
+      // chain didn't exist for external_seed rows; surfacing it
+      // would return NULL price columns. With the chain now complete,
+      // JOIN them so canonical_chain response items carry price +
+      // currency + availability — without this, the chat shows $0.
+      includeSkuOffers: true,
       deps: { query },
     });
     const products = (Array.isArray(rows) ? rows : [])
@@ -12961,7 +12968,13 @@ async function searchBeautyExternalSeedProductsMainline({
     categoryPathPrefix: canonicalCategoryPathPrefix,
     verticalSearch: hasBeautyIngredientIntentSignal(queryText),
     limit: canonicalLimit,
-    includeSkuOffers: false,
+    // Phase 7d backfill (pivota-backend #399 + #401, 2026-05-09)
+    // populated the catalog_skus + catalog_offers chain for all 3,936
+    // Path B mirrored products. JOIN them so canonical_chain response
+    // items carry price + currency + availability — without this the
+    // chat shows $0 because the SQL returns NULL placeholders for
+    // those columns when joinSkuOffers is false.
+    includeSkuOffers: true,
     deps: { query },
   })
     .then((rows) => ({
