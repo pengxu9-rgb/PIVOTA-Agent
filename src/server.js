@@ -11161,6 +11161,13 @@ async function fetchCanonicalChainRecallForFindProductsMulti({ search = {} } = {
   );
   const canonicalLimit = Math.max(12, Math.min(32, safeLimit * 2));
   const canonicalCategoryPathPrefix = resolveCanonicalCategoryPathPrefixForQuery(queryText) || null;
+  // Market-aware recall: pass the user's market into canonicalCatalogSearch
+  // so non-matching Path B rows are filtered. Falls back to env / 'US' to
+  // preserve existing behaviour for callers that don't pass market.
+  const safeMarket =
+    String(search.market || process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET || 'US')
+      .trim()
+      .toUpperCase() || 'US';
   const startedAt = Date.now();
   try {
     const rows = await fetchCanonicalChainRows({
@@ -11178,6 +11185,13 @@ async function fetchCanonicalChainRecallForFindProductsMulti({ search = {} } = {
       // JOIN them so canonical_chain response items carry price +
       // currency + availability — without this, the chat shows $0.
       includeSkuOffers: true,
+      // Market-aware filtering — exclude Path B rows whose source seed
+      // has a non-matching market. Mirrors the filter on
+      // queryBeautyExternalSeedRowsFast which already enforces it on
+      // the external-seed-direct path. Without parity here, Round Lab
+      // (market=KR) products were leaking into US users' canonical_chain
+      // results.
+      marketId: safeMarket,
       deps: { query },
     });
     const products = (Array.isArray(rows) ? rows : [])
@@ -13150,6 +13164,13 @@ async function searchBeautyExternalSeedProductsMainline({
     categoryPathPrefix: canonicalCategoryPathPrefix,
     verticalSearch: hasBeautyIngredientIntentSignal(queryText),
     limit: canonicalLimit,
+    // Market-aware filtering — pass the user's market (already computed
+    // above for the external-seed-direct path's `safeQueryMarket`) so
+    // canonical_chain enforces the same market parity. Without this,
+    // Round Lab (market=KR) products were leaking into US users'
+    // canonical_chain results despite the external-seed-direct path
+    // already filtering correctly.
+    marketId: market,
     // Phase 7d backfill (pivota-backend #399 + #401, 2026-05-09)
     // populated the catalog_skus + catalog_offers chain for all 3,936
     // Path B mirrored products. JOIN them so canonical_chain response
@@ -29167,6 +29188,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           resolveBeautyCategoryPathPrefixForQuery(rawUserQuery || queryText) || null;
         const canonicalIngredientLimit = Math.max(6, Math.min(12, Math.ceil(safeLimit / 2)));
         const canonicalIngredientStartedAt = Date.now();
+        // Market-aware filtering on the ingredient path too — same
+        // rationale as the other call sites (Round Lab market=KR was
+        // leaking into US users' canonical chain). Falls back to env
+        // / 'US' when not set.
+        const ingredientPathMarket =
+          String(search.market || metadata.market || process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET || 'US')
+            .trim()
+            .toUpperCase() || 'US';
         const canonicalIngredientRowsPromise = fetchCanonicalChainRows({
           query: rawUserQuery || queryText,
           categoryPathPrefix: canonicalIngredientCategoryPathPrefix,
@@ -29177,6 +29206,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           verticalSearch: true,
           limit: canonicalIngredientLimit,
           includeSkuOffers: false,
+          marketId: ingredientPathMarket,
           deps: { query },
         })
           .then((rows) => ({

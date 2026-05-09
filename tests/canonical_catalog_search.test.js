@@ -202,6 +202,64 @@ describe('canonicalCatalogSearch.fetchCanonicalChainRows', () => {
     // DEFAULT_LIMIT * 6 = 72, clamped up to ROW_LIMIT_MIN (50 → 72 wins)
     expect(query.calls[0].params[3]).toBe(72);
   });
+
+  // ------------------------------------------------------------------------
+  // Market-aware recall (2026-05-09): the trigger was Round Lab market=KR
+  // products surfacing in US users' canonical_chain results despite the
+  // external-seed-direct path already filtering by market. This brings
+  // the canonical-chain helper to parity.
+  // ------------------------------------------------------------------------
+
+  test('marketId omitted: no market filter (legacy behaviour)', async () => {
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({ query: 'lipstick', deps: { query } });
+    const { sql } = query.calls[0];
+    // The canonical-scope override token only appears when marketWhere is built
+    expect(sql).not.toMatch(/eps\.market\s*=/);
+  });
+
+  test('marketId set: SQL filters Path B by eps.market while letting canonical scope + Path A through', async () => {
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({ query: 'lipstick', marketId: 'US', deps: { query } });
+    const { sql, params } = query.calls[0];
+    // Path A merchant rows pass through (merchant_id != 'external_seed')
+    expect(sql).toMatch(/p\.merchant_id != 'external_seed'/);
+    // Canonical-scope override (Phase 7a / Path C agent rows surface across markets)
+    expect(sql).toMatch(/p\.pdp_scope = 'multi_merchant_canonical'/);
+    // Path B filter via EXISTS subquery on external_product_seeds.market
+    expect(sql).toMatch(/EXISTS \(\s*SELECT 1 FROM external_product_seeds eps/);
+    expect(sql).toMatch(/eps\.market\s*=\s*\$\d+/);
+    // Last param is the uppercased market
+    expect(params[params.length - 1]).toBe('US');
+  });
+
+  test('marketId is uppercased before binding to SQL param', async () => {
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({ query: 'lipstick', marketId: 'kr', deps: { query } });
+    const { params } = query.calls[0];
+    expect(params[params.length - 1]).toBe('KR');
+  });
+
+  test('marketId composes with merchantId + categoryPathPrefix without param-index conflicts', async () => {
+    const query = makeMockQuery([]);
+    await fetchCanonicalChainRows({
+      query: 'lipstick',
+      merchantId: 'shop_42',
+      categoryPathPrefix: 'beauty/makeup/lip/',
+      marketId: 'US',
+      deps: { query },
+    });
+    const { sql, params } = query.calls[0];
+    // Order: $1 query, $2 query_like, $3 candidate_limit, $4 row_limit,
+    //        $5 merchant_id, $6 category_path_prefix, $7 market
+    expect(params[4]).toBe('shop_42');
+    expect(params[5]).toBe('beauty/makeup/lip/%');
+    expect(params[6]).toBe('US');
+    // SQL references all three in their respective binds
+    expect(sql).toMatch(/AND p\.merchant_id = \$5/);
+    expect(sql).toMatch(/p\.category_path LIKE \$6/);
+    expect(sql).toMatch(/eps\.market\s*=\s*\$7/);
+  });
 });
 
 describe('canonicalCatalogSearch.__internal helpers', () => {
