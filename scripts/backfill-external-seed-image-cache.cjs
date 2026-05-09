@@ -8,6 +8,7 @@ const {
   buildImageAssetBackfillPlanForRow,
   collectExternalSeedImageCandidates,
   fetchImageForCache,
+  recoverImageUrlsFromCanonicalPage,
   shouldCacheOriginalImageUrl,
   sourceHostFromUrl,
 } = require('../src/services/externalSeedImageCache');
@@ -220,39 +221,92 @@ function summarize(plans) {
   return summary;
 }
 
+async function fetchAndMaybeCacheCandidate(candidateUrl, row, args) {
+  const check = await fetchImageForCache(candidateUrl, {
+    fetchMode: args.fetchMode,
+    timeoutMs: args.timeoutMs,
+    sourceUrl: normalizeUrlLike(row.canonical_url) || normalizeUrlLike(row.destination_url) || '',
+  });
+  const needsCache = check.ok && shouldCacheOriginalImageUrl(candidateUrl, { forceCache: args.forceCache });
+  if (args.apply && needsCache) {
+    if (!hasCatalogImageCacheConfig()) {
+      throw new Error(
+        'Catalog image cache storage is not configured; refusing to rewrite visible images without cached_url',
+      );
+    } else if (check.body && check.sha256) {
+      const existing = await findExistingCachedUrlBySha(check.sha256);
+      if (existing) {
+        check.cached_url = existing;
+      } else {
+        const uploaded = await putCatalogImageCacheObject({
+          body: check.body,
+          contentType: check.content_type,
+          sha256: check.sha256,
+        });
+        check.cached_url = uploaded.cached_url;
+      }
+      check.status = 'cached';
+    }
+  }
+  const { body: _body, ...serializableCheck } = check;
+  return serializableCheck;
+}
+
+
 async function buildChecksForRow(row, args) {
   const candidates = collectExternalSeedImageCandidates(row);
   const checksByUrl = {};
   for (const candidate of candidates) {
-    const check = await fetchImageForCache(candidate.url, {
-      fetchMode: args.fetchMode,
-      timeoutMs: args.timeoutMs,
-      sourceUrl: normalizeUrlLike(row.canonical_url) || normalizeUrlLike(row.destination_url) || '',
-    });
-    const needsCache = check.ok && shouldCacheOriginalImageUrl(candidate.url, { forceCache: args.forceCache });
-    if (args.apply && needsCache) {
-      if (!hasCatalogImageCacheConfig()) {
-        throw new Error(
-          'Catalog image cache storage is not configured; refusing to rewrite visible images without cached_url',
-        );
-      } else if (check.body && check.sha256) {
-        const existing = await findExistingCachedUrlBySha(check.sha256);
-        if (existing) {
-          check.cached_url = existing;
-        } else {
-          const uploaded = await putCatalogImageCacheObject({
-            body: check.body,
-            contentType: check.content_type,
-            sha256: check.sha256,
-          });
-          check.cached_url = uploaded.cached_url;
+    checksByUrl[candidate.url] = await fetchAndMaybeCacheCandidate(candidate.url, row, args);
+  }
+
+  // 2026-05-09 — Tom Ford recovery. When every stored image candidate
+  // returns stale_404 (Tom Ford's CDN rotates SKU image URLs upstream
+  // without notice), fall back to the canonical product page and pull
+  // current image URLs from og:image / twitter:image / schema.org
+  // Product.image. Codex's image cache cycle had been re-running for
+  // weeks without recovering because the cache stage just quarantined
+  // dead URLs and never tried fresh ones.
+  const anyCandidateOk = candidates.some((c) => checksByUrl[c.url] && checksByUrl[c.url].ok);
+  if (!anyCandidateOk && candidates.length > 0) {
+    const canonicalUrl =
+      normalizeUrlLike(row.canonical_url) || normalizeUrlLike(row.destination_url) || '';
+    if (canonicalUrl) {
+      let recovered;
+      try {
+        recovered = await recoverImageUrlsFromCanonicalPage(canonicalUrl, {
+          timeoutMs: args.timeoutMs,
+        });
+      } catch {
+        recovered = [];
+      }
+      for (const recoveredUrl of recovered) {
+        if (recoveredUrl in checksByUrl) continue;
+        const recoveredCheck = await fetchAndMaybeCacheCandidate(recoveredUrl, row, args);
+        // Tag the check with its origin so audit trails can tell
+        // recovered URLs apart from originally-stored ones.
+        recoveredCheck.recovered_from = 'canonical_page_og_image';
+        checksByUrl[recoveredUrl] = recoveredCheck;
+      }
+      // Hint the recovered URLs onto the row so downstream
+      // collectExternalSeedImageCandidates / buildImageAssetBackfillPlanForRow
+      // see them as candidates and surface them in visible_image_urls.
+      // We only persist URLs that actually fetched OK to avoid bloating
+      // seed_data with another set of dead URLs.
+      const okRecovered = recovered.filter((u) => checksByUrl[u] && checksByUrl[u].ok);
+      if (okRecovered.length > 0) {
+        const seedData = row.seed_data || {};
+        const existingImageUrls = Array.isArray(seedData.image_urls) ? seedData.image_urls : [];
+        const merged = [...okRecovered, ...existingImageUrls];
+        const deduped = [];
+        for (const u of merged) {
+          if (typeof u === 'string' && !deduped.includes(u)) deduped.push(u);
         }
-        check.status = 'cached';
+        row.seed_data = { ...seedData, image_urls: deduped };
       }
     }
-    const { body: _body, ...serializableCheck } = check;
-    checksByUrl[candidate.url] = serializableCheck;
   }
+
   return checksByUrl;
 }
 

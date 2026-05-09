@@ -354,6 +354,88 @@ async function fetchImageWithBrowser(url, options = {}) {
   }
 }
 
+// Patterns for recovering current product image URLs from a canonical
+// page when the stored image_url candidates have all 404'd. Most beauty
+// retailers expose either Open Graph metadata, Twitter cards, or
+// schema.org Product.image — checking all three covers the main cases.
+const _RECOVERY_OG_IMAGE_RE = /<meta[^>]+(?:property|name)=["']og:image["'][^>]+content=["']([^"']+)["']/i;
+const _RECOVERY_OG_IMAGE_REVERSED_RE = /<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']og:image["']/i;
+const _RECOVERY_TWITTER_IMAGE_RE = /<meta[^>]+(?:property|name)=["']twitter:image(?::src)?["'][^>]+content=["']([^"']+)["']/i;
+const _RECOVERY_JSONLD_IMAGE_STRING_RE = /"image"\s*:\s*"([^"]+)"/g;
+const _RECOVERY_JSONLD_IMAGE_ARRAY_RE = /"image"\s*:\s*\[\s*"([^"]+)"/g;
+
+
+/**
+ * Recover current image URLs for a product by fetching its canonical
+ * page and parsing meta tags / JSON-LD. Used when every stored image
+ * URL on a row has 404'd (Tom Ford CDN rotation pattern).
+ *
+ * Returns a deduped list of HTTP(S) URL strings; never throws (fetch
+ * failures yield an empty list so the caller can degrade gracefully).
+ *
+ * @param {string} canonicalUrl - The merchant's canonical product URL.
+ * @param {object} [options]
+ * @param {number} [options.timeoutMs=8000]
+ * @param {string} [options.userAgent]
+ * @returns {Promise<string[]>}
+ */
+async function recoverImageUrlsFromCanonicalPage(canonicalUrl, options = {}) {
+  const url = normalizeUrlLike(canonicalUrl);
+  if (!url) return [];
+  const timeoutMs = Number(options.timeoutMs || 8000);
+  let html = '';
+  try {
+    const response = await axios.get(url, {
+      timeout: timeoutMs,
+      maxContentLength: 4 * 1024 * 1024,
+      validateStatus: () => true,
+      responseType: 'text',
+      headers: {
+        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'User-Agent':
+          options.userAgent ||
+          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      },
+    });
+    if (response.status >= 400) return [];
+    html = String(response.data || '');
+  } catch {
+    return [];
+  }
+  if (!html) return [];
+
+  const out = [];
+  const pushUnique = (raw) => {
+    const normalized = normalizeUrlLike(raw);
+    if (!normalized) return;
+    if (!out.includes(normalized)) out.push(normalized);
+  };
+
+  // og:image (and the reversed-attribute order some sites emit)
+  const ogMatch = html.match(_RECOVERY_OG_IMAGE_RE) || html.match(_RECOVERY_OG_IMAGE_REVERSED_RE);
+  if (ogMatch) pushUnique(ogMatch[1]);
+
+  // twitter:image / twitter:image:src
+  const twitterMatch = html.match(_RECOVERY_TWITTER_IMAGE_RE);
+  if (twitterMatch) pushUnique(twitterMatch[1]);
+
+  // schema.org Product.image — string OR first element of array.
+  // Use global regex iteration to handle multiple Product blocks.
+  let m;
+  _RECOVERY_JSONLD_IMAGE_ARRAY_RE.lastIndex = 0;
+  while ((m = _RECOVERY_JSONLD_IMAGE_ARRAY_RE.exec(html)) !== null) {
+    pushUnique(m[1]);
+  }
+  _RECOVERY_JSONLD_IMAGE_STRING_RE.lastIndex = 0;
+  while ((m = _RECOVERY_JSONLD_IMAGE_STRING_RE.exec(html)) !== null) {
+    pushUnique(m[1]);
+  }
+
+  return out;
+}
+
+
 async function fetchImageForCache(url, options = {}) {
   const normalized = normalizeUrlLike(url);
   if (!normalized) return classifyImageFetchResult({ url, error: 'invalid_url' });
@@ -494,6 +576,7 @@ module.exports = {
   collectExternalSeedImageCandidates,
   fetchImageForCache,
   isSafeOriginalImageUrl,
+  recoverImageUrlsFromCanonicalPage,
   shouldCacheOriginalImageUrl,
   sourceHostFromUrl,
 };
