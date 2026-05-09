@@ -15,7 +15,7 @@ function mockDbRows(rows = [], capturedSqlRef = null) {
         capturedSqlRef.value = text;
         capturedSqlRef.all = [...(capturedSqlRef.all || []), text];
       }
-      if (!text.includes('FROM external_product_seeds')) {
+      if (!text.includes('FROM external_product_seeds') && !text.includes('FROM external_product_seeds eps')) {
         return { rows: [] };
       }
       return { rows };
@@ -198,7 +198,7 @@ describe('/agent/shop/v1/invoke find_products_multi strict surfaces', () => {
       }),
     );
     const externalSeedSql = capturedSql.all.find((text) =>
-      text.includes('FROM external_product_seeds'),
+      text.includes('FROM external_product_seeds') && !text.includes('FROM external_product_seeds eps'),
     );
     expect(externalSeedSql).toContain('reviewed_ingredient_ids');
     expect(externalSeedSql).toContain("seed_data#>>'{derived,recall,ingredient_tokens}'");

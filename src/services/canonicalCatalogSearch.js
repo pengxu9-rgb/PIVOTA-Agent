@@ -82,6 +82,18 @@ function clampLimit(value, fallback, min, max) {
  *                                          downstream offer-aware callers.
  *                                          Default false keeps recall on the
  *                                          product-level indexed path.
+ * @param {string} [args.marketId]         Optional. The user's market (e.g.
+ *                                          'US', 'KR', 'JP'). When provided,
+ *                                          Path B mirrored rows whose source
+ *                                          seed has a non-matching market are
+ *                                          excluded. Path A merchant rows and
+ *                                          Path C canonical-scope rows pass
+ *                                          through regardless. When null/unset,
+ *                                          no market filter is applied (legacy
+ *                                          behaviour). Mirrors the market
+ *                                          filter on the external-seed-direct
+ *                                          path (queryBeautyExternalSeedRowsFast
+ *                                          in server.js: AND market = $1).
  * @param {number} [args.limit]            Final row cap (default 12).
  * @param {function} [args.deps.query]     pg-style query function. Required.
  * @returns {Promise<Array<object>>}
@@ -93,6 +105,7 @@ async function fetchCanonicalChainRows(args = {}) {
     categoryPathPrefix = null,
     verticalSearch = false,
     includeSkuOffers = false,
+    marketId = null,
     limit = DEFAULT_LIMIT,
     deps = {},
   } = args;
@@ -129,6 +142,32 @@ async function fetchCanonicalChainRows(args = {}) {
     params.push(`${String(categoryPathPrefix)}%`);
     categoryBind = `$${params.length}`;
     categoryScore = `+ CASE WHEN p.category_path IS NOT NULL AND p.category_path LIKE ${categoryBind} THEN 90 ELSE 0 END`;
+  }
+
+  // Market-aware recall. When the caller passes the user's market (e.g.
+  // 'US'), exclude Path B mirrored rows whose source seed has a
+  // non-matching market — mirrors the market filter on the
+  // external-seed-direct path (queryBeautyExternalSeedRowsFast in
+  // server.js: AND market = $1). Path A merchant rows
+  // (merchant_id != 'external_seed') and Path C canonical-scope rows
+  // (pdp_scope='multi_merchant_canonical') pass through regardless;
+  // they're either user-merchant inventory or cross-market canonical
+  // PDPs and should always be visible. Without this, market=KR Round
+  // Lab products were surfacing in US users' chat.
+  let marketWhere = '';
+  if (marketId) {
+    params.push(String(marketId).toUpperCase());
+    const marketBind = `$${params.length}`;
+    marketWhere = `
+      AND (
+        p.merchant_id != 'external_seed'
+        OR p.pdp_scope = 'multi_merchant_canonical'
+        OR EXISTS (
+          SELECT 1 FROM external_product_seeds eps
+          WHERE eps.external_product_id = p.source_product_id
+            AND eps.market = ${marketBind}
+        )
+      )`;
   }
 
   let verticalWhere = '';
@@ -296,6 +335,7 @@ async function fetchCanonicalChainRows(args = {}) {
       LEFT JOIN catalog_merchants m ON m.merchant_id = p.merchant_id
       WHERE ${whereClause}
       ${merchantClause}
+      ${marketWhere}
       ORDER BY rank_score DESC, p.updated_at DESC
       LIMIT $3
     )
