@@ -18025,6 +18025,43 @@ async function enrichSimilarProductsForPdpCards({
   return attachSimilarCardEnrichmentMetadata(result, metadata);
 }
 
+function promoteVisibleSimilarProductSigId(product) {
+  if (!product || typeof product !== 'object' || Array.isArray(product)) return product;
+  const sigId = firstNonEmptyString(
+    product.pivota_signature_id,
+    product.signature_id,
+    product.sellable_item_group_id,
+    product.product_group_id,
+  );
+  if (!/^sig[_:]/i.test(sigId)) return product;
+
+  const currentProductId = firstNonEmptyString(product.product_id, product.productId, product.id);
+  if (currentProductId === sigId) {
+    return {
+      ...product,
+      product_id: sigId,
+      id: sigId,
+      pivota_signature_id: product.pivota_signature_id || sigId,
+    };
+  }
+
+  return {
+    ...product,
+    product_id: sigId,
+    id: sigId,
+    pivota_signature_id: product.pivota_signature_id || sigId,
+    ...(currentProductId ? { source_product_id: product.source_product_id || currentProductId } : {}),
+    ...(currentProductId && isExternalSeedProductId(currentProductId)
+      ? { external_product_id: product.external_product_id || currentProductId }
+      : {}),
+    platform_product_id: product.platform_product_id || currentProductId || sigId,
+  };
+}
+
+function promoteVisibleSimilarProductSigIds(products) {
+  return Array.isArray(products) ? products.map((product) => promoteVisibleSimilarProductSigId(product)) : [];
+}
+
 async function prewarmPdpSimilarForProduct({
   payload = {},
   canonicalProductForPdp = {},
@@ -27626,10 +27663,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         const missingImageCount = enrichedRelatedProducts.filter(
           (item) => String(item?.card_image_status || '').trim() === 'image_missing',
         ).length;
-        const displayableRelatedProducts = filterSimilarProductsWithCardHighlights(
-          enrichedRelatedProducts,
-          { baseProduct: canonicalProductForPdp },
-        ).slice(0, similarLimit);
+        const displayableRelatedProducts = promoteVisibleSimilarProductSigIds(
+          filterSimilarProductsWithCardHighlights(
+            enrichedRelatedProducts,
+            { baseProduct: canonicalProductForPdp },
+          ).slice(0, similarLimit),
+        );
         const filteredHighlightMissingCount = Math.max(
           0,
           enrichedRelatedProducts.length - displayableRelatedProducts.length,
@@ -31643,9 +31682,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               maxItems: limit,
             });
             const cardEnrichmentMetadata = getSimilarCardEnrichmentMetadata(enrichedProducts);
-            const products = filterSimilarProductsWithCardHighlights(enrichedProducts, {
-              baseProduct,
-            }).slice(0, limit);
+            const products = promoteVisibleSimilarProductSigIds(
+              filterSimilarProductsWithCardHighlights(enrichedProducts, {
+                baseProduct,
+              }).slice(0, limit),
+            );
             const cardHighlightMissingCount = enrichedProducts.filter(
               (item) => String(item?.card_highlight_status || '').trim() === 'highlight_missing',
             ).length;
@@ -35343,6 +35384,8 @@ module.exports._debug = {
   resolvePublicBeautyCompoundIntent,
   shouldBridgePublicBeautySearchToDiscovery,
   filterSimilarProductsWithCardHighlights,
+  promoteVisibleSimilarProductSigId,
+  promoteVisibleSimilarProductSigIds,
   calibrateSimilarMetadataForVisibleProducts,
   enrichSimilarProductsForPdpCards,
   getSimilarCardEnrichmentMetadata,
