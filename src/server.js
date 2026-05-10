@@ -13115,7 +13115,16 @@ function hasStrictLipstickQueryIntent(queryText = '') {
 }
 
 function beautyProductMatchesStrictLipstickIntent(product = {}) {
-  const text = normalizeSearchTextForMatch(buildFallbackCandidateText(product));
+  const text = normalizeSearchTextForMatch([
+    product?.title,
+    product?.name,
+    product?.product_name,
+    product?.display_name,
+    product?.canonical_url,
+    product?.destination_url,
+    product?.url,
+    product?.merchant_canonical_url,
+  ].filter(Boolean).join(' '));
   if (!text) return false;
   if (/\b(lip\s*oil|lip\s*balm|lip\s*treatment|lip\s*mask)\b/i.test(text)) return false;
   return /\b(lipstick|lip\s*stick|liquid\s*lip|lip\s*color|lip\s*colour|rouge)\b/i.test(text);
