@@ -13105,6 +13105,22 @@ function beautyProductMatchesCategoryPathQuery(product = {}, queryText = '', cat
   return hasBeautyCatalogProductSignal(text);
 }
 
+function hasStrictLipstickQueryIntent(queryText = '') {
+  const raw = String(queryText || '');
+  if (!raw) return false;
+  if (/\b(lipsticks?|lip\s*sticks?)\b/i.test(raw) || /口红|口紅/.test(raw)) {
+    return !/\b(lip\s*gloss(?:es)?|lip\s*oils?|lip\s*balms?|lip\s*treatments?|lip\s*masks?)\b/i.test(raw);
+  }
+  return false;
+}
+
+function beautyProductMatchesStrictLipstickIntent(product = {}) {
+  const text = normalizeSearchTextForMatch(buildFallbackCandidateText(product));
+  if (!text) return false;
+  if (/\b(lip\s*oil|lip\s*balm|lip\s*treatment|lip\s*mask)\b/i.test(text)) return false;
+  return /\b(lipstick|lip\s*stick|liquid\s*lip|lip\s*color|lip\s*colour|rouge)\b/i.test(text);
+}
+
 function scoreBeautyExternalSeedProduct({ product, queryText, intent, normalizedQuery, queryTokens }) {
   const candidateText = buildFallbackCandidateText(product);
   if (!candidateText) return { product, relevant: false, score: -100 };
@@ -13125,6 +13141,9 @@ function scoreBeautyExternalSeedProduct({ product, queryText, intent, normalized
   }
   if (explicitCategoryPathQuery && !categoryPathMatch && !categoryLexicalMatch) {
     return { product, relevant: false, score: -45 };
+  }
+  if (hasStrictLipstickQueryIntent(queryText) && !beautyProductMatchesStrictLipstickIntent(product)) {
+    return { product, relevant: false, score: -55 };
   }
   if (targetFamilies.length === 0 && !hasBeautyCatalogProductSignal(candidateText)) {
     return { product, relevant: false, score: -30 };
