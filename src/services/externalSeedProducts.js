@@ -44,7 +44,7 @@ const BEAUTY_CATEGORY_PATTERNS = [
   ['Hair Styling', /\b(edge control|styling gel|hair-thickening|hair thickening|detangling spray|hair clip|hair clips|edge styling)\b/i],
   ['Hair Care', /\b(hair care|hair repair|repair bundle|maintenance crew|detangling|leave-in|leave in|hair)\b/i],
   ['Sunscreen', SUNSCREEN_CATEGORY_RE],
-  ['Fragrance', /\b(perfume|parfum|eau de parfum|eau de toilette|cologne|scent)\b|\bfragrance\b(?![-\s]?free)\b/i],
+  ['Fragrance', /\b(perfume|parfum|eau de parfum|eau de toilette|cologne|scent|fragarances?|fragances?|fragrences?|fragrancee)\b|\bfragrances?\b(?![-\s]?free)\b/i],
   ['Cleanser', /\b(cleanser|cleansing|face wash|facial wash|cleansing milk|cleansing foam|cleansing gel|wash)\b/i],
   ['Toner', /\b(toner|mist|pad)\b/i],
   [
@@ -99,7 +99,7 @@ const BEAUTY_CATEGORY_PATH_BY_LABEL = Object.freeze({
 const BEAUTY_CATEGORY_PATH_ALIAS_PATTERNS = Object.freeze([
   ['beauty/makeup/lip/lipstick', /\b(lipsticks?|lip\s*tints?|lip\s*colors?|liquid\s*lips?|lip\s*gloss(?:es)?)\b|口红|口紅|唇膏|唇釉|唇彩/i],
   ['beauty/makeup/eye/mascara', /\bmascara\b|睫毛膏/i],
-  ['beauty/fragrance/perfume', /\b(perfume|fragrance|parfum|cologne)\b|香水|香氛/i],
+  ['beauty/fragrance/perfume', /\b(perfume|fragrances?|fragarances?|fragances?|fragrences?|fragrancee|parfum|cologne)\b|香水|香氛/i],
 ]);
 const MAKEUP_FORM_FACTOR_PATTERNS = [
   ['Concealer', /\b(concealer)\b/i],

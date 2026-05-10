@@ -10026,7 +10026,7 @@ const FRAGRANCE_SEMANTIC_TERMS = [
   '香氛',
 ];
 const FRAGRANCE_QUERY_REGEX =
-  /\b(perfume|fragrance|parfum|cologne|body mist|eau de parfum|eau de toilette)\b|香水|香氛|古龙|古龍|香體|香体/i;
+  /\b(perfume|perfumes|fragrance|fragrances|fragarance|fragarances|fragance|fragances|fragrence|fragrences|fragrancee|parfum|cologne|body mist|eau de parfum|eau de toilette)\b|香水|香氛|古龙|古龍|香體|香体/i;
 
 function hasFragranceQuerySignal(queryText = '') {
   return FRAGRANCE_QUERY_REGEX.test(String(queryText || ''));
@@ -13780,7 +13780,7 @@ function isProxySearchFallbackRelevant(normalized, queryText) {
 }
 
 function hasFragranceSearchSignal(queryText) {
-  return /\b(perfume|fragrance|parfum|cologne|body mist|eau de parfum|eau de toilette)\b|香水|香氛|古龙|古龍|香體|香体/i.test(
+  return /\b(perfume|perfumes|fragrance|fragrances|fragarance|fragarances|fragance|fragances|fragrence|fragrences|fragrancee|parfum|cologne|body mist|eau de parfum|eau de toilette)\b|香水|香氛|古龙|古龍|香體|香体/i.test(
     String(queryText || ''),
   );
 }
@@ -13793,7 +13793,7 @@ function isSupplementCandidateRelevant(product, queryText, options = {}) {
   const hasFragranceSearch = hasFragranceSearchSignal(queryText);
   const candidateBeautyBucket = hasFragranceSearch ? classifyBeautyBucketFromText(candidateText) : null;
   const hasFragranceCandidateSignal =
-    /\b(perfume|fragrance|parfum|cologne|body mist|eau de parfum|eau de toilette|scent|aroma)\b/i.test(
+    /\b(perfume|perfumes|fragrance|fragrances|fragarance|fragarances|fragance|fragances|fragrence|fragrences|fragrancee|parfum|cologne|body mist|eau de parfum|eau de toilette|scent|aroma)\b/i.test(
       candidateText,
     ) || candidateBeautyBucket === 'fragrance';
   const isBeautyToolLikeCandidate = /\b(brush|brushes|blender|sponge|powder puff|puff|applicator|eyelash curler|tool kit|makeup tool)\b/i.test(

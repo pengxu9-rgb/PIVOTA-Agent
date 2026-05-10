@@ -385,7 +385,7 @@ const LINGERIE_PATTERNS = [
 ];
 
 const FRAGRANCE_QUERY_REGEX =
-  /\b(perfume|fragrance|parfum|cologne|eau de parfum|eau de toilette|body mist)\b|香水|香氛|古龙|古龍|香體|香体/i;
+  /\b(perfume|perfumes|fragrance|fragrances|fragarance|fragarances|fragance|fragances|fragrence|fragrences|fragrancee|parfum|cologne|eau de parfum|eau de toilette|body mist)\b|香水|香氛|古龙|古龍|香體|香体/i;
 const BRAND_TERM_SUFFIXES = new Set([
   'beauty',
   'cosmetic',
@@ -3185,6 +3185,64 @@ function looksLikeRealQuery(text) {
   return /[a-z0-9\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]/i.test(t);
 }
 
+function normalizeContextQueryText(text) {
+  return String(text || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\u4e00-\u9fff\s]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function isGenericFragranceQuery(text) {
+  const normalized = normalizeContextQueryText(text)
+    .replace(/\b(show|find|get|recommend|recommendations|products|items|some|me|for|please|all)\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return /^(perfume|perfumes|fragrance|fragrances|fragarance|fragarances|fragance|fragances|fragrence|fragrences|fragrancee|parfum|cologne|scent|scents)$/.test(
+    normalized,
+  );
+}
+
+function extractFragranceBrandContext(recentQuery) {
+  const normalized = normalizeContextQueryText(recentQuery);
+  if (!normalized || !FRAGRANCE_QUERY_REGEX.test(normalized)) return '';
+  const brandCandidate = normalized
+    .replace(/\b(perfume|perfumes|fragrance|fragrances|fragarance|fragarances|fragance|fragances|fragrence|fragrences|fragrancee|parfum|cologne|eau de parfum|eau de toilette|body mist|scent|scents)\b/g, ' ')
+    .replace(/\b(show|find|get|recommend|recommendations|products|items|some|me|for|please|all|under|over|below|above|less|than|best|popular|picks)\b/g, ' ')
+    .replace(/\b\d+(?:\.\d+)?\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!brandCandidate) return '';
+  const tokens = brandCandidate.split(/\s+/).filter(Boolean);
+  if (tokens.length > 5) return '';
+  if (BRAND_TERM_SUFFIXES.has(tokens[tokens.length - 1])) tokens.pop();
+  const cleaned = tokens.join(' ').trim();
+  if (!cleaned || cleaned.length < 3 || cleaned.length > 48) return '';
+  if (/^(beauty|cosmetics?|makeup|shopping|catalog)$/.test(cleaned)) return '';
+  return cleaned;
+}
+
+function deriveContextualQueryFromRecentQueries(latestQuery, recentQueries = []) {
+  if (!isGenericFragranceQuery(latestQuery)) return null;
+  const history = Array.isArray(recentQueries) ? recentQueries : [];
+  for (let i = history.length - 1; i >= 0; i -= 1) {
+    const recent = String(history[i] || '').trim();
+    if (!recent || recent === latestQuery) continue;
+    const brandContext = extractFragranceBrandContext(recent);
+    if (!brandContext) continue;
+    return {
+      query: `${brandContext} fragrance`,
+      source_query: recent,
+      brand_context: brandContext,
+      reason: 'generic_fragrance_followup_recent_brand',
+    };
+  }
+  return null;
+}
+
 function shouldDropHistoryByIntent(intent) {
   // Default: only use history when explicitly requested by user (intent.history_usage.used=true)
   return !intent?.history_usage?.used;
@@ -4427,13 +4485,15 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
   const queryFromSearch = String(search.query || '').trim();
   const queryFromPayload = String(payload?.query || '').trim();
   const queryFromMessages = extractLatestUserTextFromMessages(recentMessages);
-  const latestUserQuery = looksLikeRealQuery(queryFromSearch)
+  const rawLatestUserQuery = looksLikeRealQuery(queryFromSearch)
     ? queryFromSearch
     : looksLikeRealQuery(queryFromPayload)
       ? queryFromPayload
     : looksLikeRealQuery(queryFromMessages)
       ? queryFromMessages
       : queryFromSearch;
+  const recentQueryContext = deriveContextualQueryFromRecentQueries(rawLatestUserQuery, recentQueries);
+  const latestUserQuery = recentQueryContext?.query || rawLatestUserQuery;
   const payloadBeautyRequest = getPayloadBeautyRequest(payload);
   const normalizedSearchInput = {
     ...topLevelSearchCompat,
@@ -5128,6 +5188,10 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
     mode: rewriteGate.mode,
     strategy_version: STRATEGY_VERSION,
     raw_query: latestUserQuery,
+    original_raw_query: recentQueryContext ? rawLatestUserQuery : null,
+    contextual_query_source: recentQueryContext?.reason || null,
+    contextual_source_query: recentQueryContext?.source_query || null,
+    contextual_brand: recentQueryContext?.brand_context || null,
     expanded_query: beautyContextRetrievalQuery || effectiveExpandedQuery,
     applied: Boolean(
       (beautyContextRetrievalQuery || effectiveExpandedQuery) &&
