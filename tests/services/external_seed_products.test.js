@@ -11,6 +11,7 @@ const {
 describe('externalSeedProducts helper', () => {
   test('resolves beauty query category path prefixes for canonical catalog recall', () => {
     expect(resolveBeautyCategoryPathPrefixForQuery('lipstick')).toBe('beauty/makeup/lip/');
+    expect(resolveBeautyCategoryPathPrefixForQuery('fenty beauty lipsticks')).toBe('beauty/makeup/lip/');
     expect(resolveBeautyCategoryPathPrefixForQuery('best red 口红')).toBe('beauty/makeup/lip/');
     expect(resolveBeautyCategoryPathPrefixForQuery('waterproof mascara')).toBe('beauty/makeup/eye/');
     expect(resolveBeautyCategoryPathPrefixForQuery('woody perfume')).toBe('beauty/fragrance/');

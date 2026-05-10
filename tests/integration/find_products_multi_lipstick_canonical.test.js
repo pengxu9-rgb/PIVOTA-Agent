@@ -251,4 +251,86 @@ describe('find_products_multi canonical lipstick recall', () => {
     }));
     expect(observedSql.some((sql) => sql.includes('FROM catalog_products p'))).toBe(true);
   });
+
+  test('brand lipstick plural query uses lipstick seed category and canonicalizes mirrored seed URLs to sig PDPs', async () => {
+    const observed = [];
+    jest.doMock('../../src/db', () => ({
+      query: async (sql, params = []) => {
+        const text = String(sql || '');
+        observed.push({ sql: text, params });
+        if (text.includes('FROM catalog_products p')) return { rows: [] };
+        if (text.includes('FROM external_product_seeds')) {
+          if (!params.includes('lipstick')) return { rows: [] };
+          return {
+            rows: [{
+              id: 'eps_fenty_lipstick',
+              external_product_id: 'ext_fenty_lipstick',
+              market: 'US',
+              tool: 'shopping_agents',
+              destination_url: 'https://fentybeauty.com/products/fenty-icon-lipstick',
+              canonical_url: 'https://fentybeauty.com/products/fenty-icon-lipstick',
+              domain: 'fentybeauty.com',
+              title: 'Fenty Icon Velvet Liquid Lipstick',
+              image_url: 'https://cdn.example.com/fenty-lipstick.jpg',
+              price_amount: '29.00',
+              price_currency: 'USD',
+              availability: 'in stock',
+              catalog_product_key: 'prod::external_seed::external_seed::ext_fenty_lipstick',
+              pivota_signature_id: 'sig_fenty_lipstick',
+              pivota_canonical_url: 'https://agent.pivota.cc/products/sig_fenty_lipstick',
+              catalog_category_path: 'beauty/makeup/lip/lipstick',
+              seed_data: {
+                brand: 'Fenty Beauty',
+                category: 'lipstick',
+                price_amount: '29.00',
+                price_currency: 'USD',
+                availability: 'in stock',
+                derived: {
+                  recall: {
+                    brand: 'Fenty Beauty',
+                    category: 'lipstick',
+                    retrieval_title: 'Fenty Icon Velvet Liquid Lipstick',
+                    retrieval_summary: 'A soft-matte lipstick with rich color.',
+                  },
+                },
+                snapshot: {
+                  title: 'Fenty Icon Velvet Liquid Lipstick',
+                  brand: 'Fenty Beauty',
+                  category: 'lipstick',
+                  canonical_url: 'https://fentybeauty.com/products/fenty-icon-lipstick',
+                  destination_url: 'https://fentybeauty.com/products/fenty-icon-lipstick',
+                  image_url: 'https://cdn.example.com/fenty-lipstick.jpg',
+                },
+              },
+              updated_at: new Date().toISOString(),
+              created_at: new Date().toISOString(),
+            }],
+          };
+        }
+        return { rows: [] };
+      },
+    }));
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: { search: { query: 'fenty beauty lipsticks', page: 1, limit: 12, market: 'US' } },
+        metadata: { source: 'shopping_agent', market: 'US' },
+      });
+
+    expect(resp.status).toBe(200);
+    expect(resp.body.products.length).toBeGreaterThanOrEqual(1);
+    expect(resp.body.products[0]).toEqual(expect.objectContaining({
+      product_id: 'sig_fenty_lipstick',
+      pivota_signature_id: 'sig_fenty_lipstick',
+      external_product_id: 'ext_fenty_lipstick',
+      canonical_url: 'https://agent.pivota.cc/products/sig_fenty_lipstick',
+      url: 'https://agent.pivota.cc/products/sig_fenty_lipstick',
+      destination_url: 'https://fentybeauty.com/products/fenty-icon-lipstick',
+    }));
+    expect(resp.body.products[0].title).toMatch(/Lipstick/i);
+    expect(observed.some(({ sql, params }) => sql.includes('FROM external_product_seeds') && params.includes('lipstick'))).toBe(true);
+  });
 });

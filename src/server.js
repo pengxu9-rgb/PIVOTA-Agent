@@ -10407,6 +10407,8 @@ const BEAUTY_EXTERNAL_SEED_CATEGORY_TERMS_BY_FAMILY = Object.freeze({
 
 function buildBeautyExternalSeedCategoryTerms(intent = null) {
   const families = Array.isArray(intent?.families) ? intent.families : [];
+  const rawQuery = String(intent?.raw || intent?.query || intent?.queryText || '').trim();
+  const categoryPathPrefix = resolveBeautyCategoryPathPrefixForQuery(rawQuery);
   const terms = [];
   const seen = new Set();
   const push = (value) => {
@@ -10418,6 +10420,17 @@ function buildBeautyExternalSeedCategoryTerms(intent = null) {
   for (const family of families) {
     const familyTerms = BEAUTY_EXTERNAL_SEED_CATEGORY_TERMS_BY_FAMILY[family] || [];
     familyTerms.forEach(push);
+  }
+  if (terms.length === 0 && categoryPathPrefix) {
+    if (categoryPathPrefix.startsWith('beauty/makeup/lip/')) {
+      push('lipstick');
+    } else if (categoryPathPrefix.startsWith('beauty/makeup/eye/')) {
+      push('mascara');
+      push('eyeshadow');
+      push('brow pencil');
+    } else if (categoryPathPrefix.startsWith('beauty/fragrance/')) {
+      push('fragrance');
+    }
   }
   if (terms.length === 0) {
     [
@@ -10474,6 +10487,18 @@ function buildBeautyExternalSeedMainlineProduct(row) {
   if (!externalProductId) return null;
   const canonicalUrl = firstNonEmptyString(snapshot.canonical_url, row.canonical_url, seedData.canonical_url);
   const destinationUrl = firstNonEmptyString(snapshot.destination_url, row.destination_url, seedData.destination_url);
+  const pivotaSignatureId = firstNonEmptyString(
+    row.pivota_signature_id,
+    seedData.pivota_signature_id,
+    snapshot.pivota_signature_id,
+  );
+  const pivotaCanonicalUrl = firstNonEmptyString(
+    row.pivota_canonical_url,
+    seedData.pivota_canonical_url,
+    snapshot.pivota_canonical_url,
+    pivotaSignatureId ? `https://agent.pivota.cc/products/${pivotaSignatureId}` : '',
+  );
+  const responseProductId = pivotaSignatureId || externalProductId;
   const title = firstNonEmptyString(
     recall.retrieval_title,
     snapshot.title,
@@ -10520,12 +10545,15 @@ function buildBeautyExternalSeedMainlineProduct(row) {
     ? !['out of stock', 'out_of_stock', 'outofstock', 'oos', 'sold out', 'sold_out'].includes(availabilityKey)
     : undefined;
   const product = {
-    id: externalProductId,
-    product_id: externalProductId,
+    id: responseProductId,
+    product_id: responseProductId,
     merchant_id: EXTERNAL_SEED_MERCHANT_ID,
     merchant_name: brand || row.domain || 'External',
     platform: 'external',
     platform_product_id: externalProductId,
+    external_product_id: externalProductId,
+    external_seed_product_id: externalProductId,
+    source_product_id: externalProductId,
     market: firstNonEmptyString(row.market, seedData.market, snapshot.market),
     title,
     ...(description ? { description } : {}),
@@ -10537,9 +10565,24 @@ function buildBeautyExternalSeedMainlineProduct(row) {
     product_type: category || 'external',
     category: category || undefined,
     source: 'external_seed',
+    ...(firstNonEmptyString(row.catalog_product_key)
+      ? {
+          catalog_product_key: firstNonEmptyString(row.catalog_product_key),
+          product_key: firstNonEmptyString(row.catalog_product_key),
+        }
+      : {}),
+    ...(firstNonEmptyString(row.catalog_category_path)
+      ? {
+          catalog_category_path: firstNonEmptyString(row.catalog_category_path),
+          category_path: firstNonEmptyString(row.catalog_category_path),
+        }
+      : {}),
+    ...(pivotaSignatureId ? { pivota_signature_id: pivotaSignatureId, signature_id: pivotaSignatureId } : {}),
+    ...(pivotaCanonicalUrl ? { pivota_canonical_url: pivotaCanonicalUrl } : {}),
     source_listing_scope: firstNonEmptyString(seedData.source_listing_scope),
-    url: canonicalUrl || destinationUrl || undefined,
-    canonical_url: canonicalUrl || undefined,
+    url: pivotaCanonicalUrl || canonicalUrl || destinationUrl || undefined,
+    canonical_url: pivotaCanonicalUrl || canonicalUrl || undefined,
+    ...(canonicalUrl ? { merchant_canonical_url: canonicalUrl } : {}),
     destination_url: destinationUrl || undefined,
     external_seed_id: row.id ? String(row.id) : undefined,
     seed_data: seedData,
@@ -10657,6 +10700,31 @@ async function queryBeautyExternalSeedRowsFast({
     seed_data->'snapshot'->>'product_type',
     ''
   ))`;
+  const catalogMirrorProjectionSql = `
+          (SELECT cp.product_key
+             FROM catalog_products cp
+            WHERE cp.merchant_id = 'external_seed'
+              AND cp.platform = 'external_seed'
+              AND cp.source_product_id = external_product_seeds.external_product_id
+            LIMIT 1) AS catalog_product_key,
+          (SELECT cp.pivota_signature_id
+             FROM catalog_products cp
+            WHERE cp.merchant_id = 'external_seed'
+              AND cp.platform = 'external_seed'
+              AND cp.source_product_id = external_product_seeds.external_product_id
+            LIMIT 1) AS pivota_signature_id,
+          (SELECT cp.pivota_canonical_url
+             FROM catalog_products cp
+            WHERE cp.merchant_id = 'external_seed'
+              AND cp.platform = 'external_seed'
+              AND cp.source_product_id = external_product_seeds.external_product_id
+            LIMIT 1) AS pivota_canonical_url,
+          (SELECT cp.category_path
+             FROM catalog_products cp
+            WHERE cp.merchant_id = 'external_seed'
+              AND cp.platform = 'external_seed'
+              AND cp.source_product_id = external_product_seeds.external_product_id
+            LIMIT 1) AS catalog_category_path`;
   const runScopeQuery = async (tool, queryMarket = safeMarket, marketScope = 'exact_market') => {
     try {
       const safeQueryMarket = String(queryMarket || safeMarket).trim().toUpperCase() || safeMarket;
@@ -10679,7 +10747,11 @@ async function queryBeautyExternalSeedRowsFast({
           availability,
           seed_data,
           updated_at,
-          created_at
+          created_at,
+          catalog_product_key,
+          pivota_signature_id,
+          pivota_canonical_url,
+          catalog_category_path
         FROM (
           ${categoryTerms
             .map((categoryTerm, index) => {
@@ -10702,6 +10774,7 @@ async function queryBeautyExternalSeedRowsFast({
               seed_data,
               updated_at,
               created_at,
+              ${catalogMirrorProjectionSql},
               ${index} AS category_order
             FROM external_product_seeds
             WHERE status = 'active'
@@ -10741,7 +10814,8 @@ async function queryBeautyExternalSeedRowsFast({
           availability,
           seed_data,
           updated_at,
-          created_at
+          created_at,
+          ${catalogMirrorProjectionSql}
         FROM external_product_seeds
         WHERE status = 'active'
           AND attached_product_key IS NULL
@@ -13017,7 +13091,7 @@ function beautyProductMatchesCategoryPathQuery(product = {}, queryText = '', cat
   if (!text) return false;
   const prefix = String(categoryPathPrefix || '').trim().toLowerCase();
   if (prefix.startsWith('beauty/makeup/lip')) {
-    return /\b(lipstick|lip\s*stick|lip\s*color|lip\s*colour|lip\s*tint|lip\s*gloss|lip\s*liner|lip\s*balm|rouge)\b|口红|口紅|唇膏|唇釉|唇彩|唇线|唇線/i.test(text);
+    return /\b(lipsticks?|lip\s*sticks?|lip\s*colors?|lip\s*colours?|lip\s*tints?|lip\s*gloss(?:es)?|lip\s*liners?|lip\s*balms?|rouge)\b|口红|口紅|唇膏|唇釉|唇彩|唇线|唇線/i.test(text);
   }
   if (prefix.startsWith('beauty/makeup/eye')) {
     return /\b(mascara|eyeliner|eye\s*liner|eyeshadow|eye\s*shadow|brow|lash)\b|睫毛膏|眼线|眼線|眼影|眉笔|眉筆/i.test(text);

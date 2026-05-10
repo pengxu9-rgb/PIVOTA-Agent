@@ -62,7 +62,7 @@ const BEAUTY_CATEGORY_PATTERNS = [
   ['Mascara', /\b(mascara)\b/i],
   ['Brow Pencil', /\b(brow pencil|eyebrow pencil|brow definer|brow sculptor|brow styler)\b/i],
   ['Lip Balm', /\b(lip balm|lip treatment)\b/i],
-  ['Lipstick', /\b(lipstick|lip color|lip colour|liquid lip|lip luxe|lip lacquer|lip gloss)\b/i],
+  ['Lipstick', /\b(lipsticks?|lip colors?|lip colours?|liquid lips?|lip luxe|lip lacquers?|lip gloss(?:es)?)\b/i],
   ['Moisturizer', /\b(moisturizer|moisturiser|cream|lotion|gel cream|gel-cream|barrier cream)\b/i],
 ];
 const BEAUTY_CATEGORY_DESCRIPTION_PATTERNS = BEAUTY_CATEGORY_PATTERNS.map(([label, pattern]) => {
@@ -97,7 +97,7 @@ const BEAUTY_CATEGORY_PATH_BY_LABEL = Object.freeze({
   Moisturizer: 'beauty/skincare/moisturize/cream',
 });
 const BEAUTY_CATEGORY_PATH_ALIAS_PATTERNS = Object.freeze([
-  ['beauty/makeup/lip/lipstick', /\b(lipstick|lip\s*tint|lip\s*color|liquid\s*lip|lip\s*gloss)\b|口红|口紅|唇膏|唇釉|唇彩/i],
+  ['beauty/makeup/lip/lipstick', /\b(lipsticks?|lip\s*tints?|lip\s*colors?|liquid\s*lips?|lip\s*gloss(?:es)?)\b|口红|口紅|唇膏|唇釉|唇彩/i],
   ['beauty/makeup/eye/mascara', /\bmascara\b|睫毛膏/i],
   ['beauty/fragrance/perfume', /\b(perfume|fragrance|parfum|cologne)\b|香水|香氛/i],
 ]);
@@ -112,7 +112,7 @@ const MAKEUP_FORM_FACTOR_PATTERNS = [
   ['Mascara', /\b(mascara)\b/i],
   ['Brow Pencil', /\b(brow pencil|eyebrow pencil|brow definer|brow sculptor|brow styler)\b/i],
   ['Lip Balm', /\b(lip balm|lip treatment)\b/i],
-  ['Lipstick', /\b(lipstick|lip color|lip colour|liquid lip|lip luxe|lip lacquer|lip gloss)\b/i],
+  ['Lipstick', /\b(lipsticks?|lip colors?|lip colours?|liquid lips?|lip luxe|lip lacquers?|lip gloss(?:es)?)\b/i],
 ];
 const STRONG_ACTIVE_SOLUTION_INGREDIENT_IDS = new Set([
   'salicylic_acid',
