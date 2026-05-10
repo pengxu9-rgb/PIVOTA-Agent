@@ -333,4 +333,53 @@ describe('find_products_multi canonical lipstick recall', () => {
     expect(resp.body.products[0].title).toMatch(/Lipstick/i);
     expect(observed.some(({ sql, params }) => sql.includes('FROM external_product_seeds') && params.includes('lipstick'))).toBe(true);
   });
+
+  test('strict lipstick query does not keep lip oil or balm rows from broad lip category paths', async () => {
+    jest.doMock('../../src/db', () => ({
+      query: async (sql) => {
+        const text = String(sql || '');
+        if (text.includes('FROM catalog_products p')) {
+          return {
+            rows: [
+              {
+                ...canonicalLipstickRows(1)[0],
+                product_key: 'prod::external_seed::external_seed::ext_fenty_true_lipstick',
+                source_product_id: 'ext_fenty_true_lipstick',
+                pivota_signature_id: 'sig_fenty_true_lipstick',
+                pivota_canonical_url: 'https://agent.pivota.cc/products/sig_fenty_true_lipstick',
+                product_title: 'Fenty Icon Velvet Liquid Lipstick — The MVP',
+                brand: 'Fenty Beauty',
+              },
+              {
+                ...canonicalLipstickRows(1)[0],
+                product_key: 'prod::external_seed::external_seed::ext_fenty_lip_oil',
+                source_product_id: 'ext_fenty_lip_oil',
+                pivota_signature_id: 'sig_fenty_lip_oil',
+                pivota_canonical_url: 'https://agent.pivota.cc/products/sig_fenty_lip_oil',
+                product_title: 'Fenty Treatz Hydrating Lip Oil — Barbados Cherry',
+                brand: 'Fenty Beauty',
+                category_path: 'beauty/makeup/lip/lipstick',
+              },
+            ],
+          };
+        }
+        if (text.includes('FROM external_product_seeds')) return { rows: [] };
+        return { rows: [] };
+      },
+    }));
+
+    const app = require('../../src/server');
+    const resp = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_products_multi',
+        payload: { search: { query: 'fenty beauty lipsticks', page: 1, limit: 12, market: 'US' } },
+        metadata: { source: 'shopping_agent', market: 'US' },
+      });
+
+    expect(resp.status).toBe(200);
+    const titles = (resp.body.products || []).map((item) => item.title);
+    expect(titles).toEqual(expect.arrayContaining(['Fenty Icon Velvet Liquid Lipstick — The MVP']));
+    expect(titles.some((title) => /lip oil/i.test(title))).toBe(false);
+  });
 });
