@@ -18062,6 +18062,62 @@ function promoteVisibleSimilarProductSigIds(products) {
   return Array.isArray(products) ? products.map((product) => promoteVisibleSimilarProductSigId(product)) : [];
 }
 
+async function hydrateVisibleSimilarProductSigIdsFromCatalog(products) {
+  const promoted = promoteVisibleSimilarProductSigIds(products);
+  if (!process.env.DATABASE_URL || !promoted.length) return promoted;
+
+  const unresolvedExternalIds = Array.from(
+    new Set(
+      promoted
+        .map((product) => firstNonEmptyString(product?.product_id, product?.id, product?.source_product_id))
+        .filter((productId) => isExternalSeedProductId(productId)),
+    ),
+  );
+  if (!unresolvedExternalIds.length) return promoted;
+
+  try {
+    const result = await query(
+      `
+        SELECT source_product_id, pivota_signature_id
+        FROM catalog_products
+        WHERE merchant_id = $1
+          AND platform = $1
+          AND source_product_id = ANY($2::text[])
+          AND pivota_signature_id LIKE 'sig\\_%' ESCAPE '\\'
+      `,
+      [EXTERNAL_SEED_MERCHANT_ID, unresolvedExternalIds],
+    );
+    const sigBySourceProductId = new Map(
+      (result?.rows || [])
+        .map((row) => [
+          firstNonEmptyString(row.source_product_id),
+          firstNonEmptyString(row.pivota_signature_id),
+        ])
+        .filter(([sourceProductId, sigId]) => sourceProductId && /^sig[_:]/i.test(sigId)),
+    );
+    if (!sigBySourceProductId.size) return promoted;
+    return promoted.map((product) => {
+      const productId = firstNonEmptyString(product?.product_id, product?.id, product?.source_product_id);
+      const sigId = sigBySourceProductId.get(productId);
+      return sigId
+        ? promoteVisibleSimilarProductSigId({
+            ...product,
+            pivota_signature_id: product.pivota_signature_id || sigId,
+          })
+        : product;
+    });
+  } catch (err) {
+    logger.warn(
+      {
+        err: err?.message || String(err),
+        count: unresolvedExternalIds.length,
+      },
+      'similar visible sig id catalog hydration failed',
+    );
+    return promoted;
+  }
+}
+
 async function prewarmPdpSimilarForProduct({
   payload = {},
   canonicalProductForPdp = {},
@@ -27663,7 +27719,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         const missingImageCount = enrichedRelatedProducts.filter(
           (item) => String(item?.card_image_status || '').trim() === 'image_missing',
         ).length;
-        const displayableRelatedProducts = promoteVisibleSimilarProductSigIds(
+        const displayableRelatedProducts = await hydrateVisibleSimilarProductSigIdsFromCatalog(
           filterSimilarProductsWithCardHighlights(
             enrichedRelatedProducts,
             { baseProduct: canonicalProductForPdp },
@@ -31682,7 +31738,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               maxItems: limit,
             });
             const cardEnrichmentMetadata = getSimilarCardEnrichmentMetadata(enrichedProducts);
-            const products = promoteVisibleSimilarProductSigIds(
+            const products = await hydrateVisibleSimilarProductSigIdsFromCatalog(
               filterSimilarProductsWithCardHighlights(enrichedProducts, {
                 baseProduct,
               }).slice(0, limit),
@@ -35386,6 +35442,7 @@ module.exports._debug = {
   filterSimilarProductsWithCardHighlights,
   promoteVisibleSimilarProductSigId,
   promoteVisibleSimilarProductSigIds,
+  hydrateVisibleSimilarProductSigIdsFromCatalog,
   calibrateSimilarMetadataForVisibleProducts,
   enrichSimilarProductsForPdpCards,
   getSimilarCardEnrichmentMetadata,
