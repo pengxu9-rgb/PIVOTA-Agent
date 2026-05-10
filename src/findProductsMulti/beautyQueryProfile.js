@@ -154,7 +154,7 @@ function classifyBeautyBucketFromText(text) {
     return 'lip_care';
   }
   if (
-    /\b(lipstick|lip\s*tint|lip\s*gloss|lip\s*liner|lip)\b/i.test(q) ||
+    /\b(lipsticks?|lip\s*tints?|lip\s*gloss(?:es)?|lip\s*liners?|lip)\b/i.test(q) ||
     /口红|口紅|唇膏|唇彩|唇釉/.test(q)
   ) {
     return 'lip_makeup';
