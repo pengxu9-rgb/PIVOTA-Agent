@@ -11162,6 +11162,10 @@ function buildCanonicalChainRecallSearchResponse({
   );
   const canonicalDurationMs = Math.max(0, Number(telemetry?.canonical_duration_ms || 0) || 0);
   const canonicalCategoryPathPrefix = telemetry?.canonical_category_path_prefix || null;
+  const queryUnderstanding =
+    search?.query_understanding && typeof search.query_understanding === 'object'
+      ? search.query_understanding
+      : null;
 
   return {
     status: 'success',
@@ -11182,6 +11186,13 @@ function buildCanonicalChainRecallSearchResponse({
       canonical_dedupe_count: Math.max(0, Number(telemetry?.canonical_dedupe_count || 0) || 0),
       canonical_category_path_prefix: canonicalCategoryPathPrefix,
       canonical_duration_ms: canonicalDurationMs,
+      ...(queryUnderstanding
+        ? {
+            query_understanding: queryUnderstanding,
+            query_understanding_executed: true,
+            query_understanding_decision: queryUnderstanding.decision || null,
+          }
+        : {}),
       source_breakdown: {
         internal_count: 0,
         external_seed_count: 0,
@@ -11200,6 +11211,12 @@ function buildCanonicalChainRecallSearchResponse({
         canonical_returned_count: returnedCount,
         canonical_dedupe_count: Math.max(0, Number(telemetry?.canonical_dedupe_count || 0) || 0),
         canonical_duration_ms: canonicalDurationMs,
+        ...(queryUnderstanding
+          ? {
+              query_understanding_executed: true,
+              query_understanding_decision: queryUnderstanding.decision || null,
+            }
+          : {}),
       },
       search_trace: {
         fallback_reason: null,
@@ -13242,6 +13259,12 @@ async function searchBeautyExternalSeedProductsMainline({
   const queryText = extractSearchQueryText(search);
   const beautyIntent = inferBeautyMainlineIntent(queryText);
   if (!beautyIntent.beautyLike || !String(queryText || '').trim()) return null;
+  const queryUnderstanding =
+    search?.query_understanding && typeof search.query_understanding === 'object'
+      ? search.query_understanding
+      : metadata?.query_understanding && typeof metadata.query_understanding === 'object'
+        ? metadata.query_understanding
+        : null;
 
   const safeLimit = Math.max(1, Math.min(SEARCH_LIMIT_MAX, Math.floor(Number(search.limit || 20) || 20)));
   const safePage = Math.max(1, Math.floor(Number(search.page || 1) || 1));
@@ -13418,6 +13441,13 @@ async function searchBeautyExternalSeedProductsMainline({
       external_seed_rows_fetched: Array.isArray(selectedRows?.rawProducts) ? selectedRows.rawProducts.length : 0,
       external_seed_rows_built: rankedProducts.length,
       external_seed_returned_count: pagedExternalSeedCount,
+      ...(queryUnderstanding
+        ? {
+            query_understanding: queryUnderstanding,
+            query_understanding_executed: true,
+            query_understanding_decision: queryUnderstanding.decision || null,
+          }
+        : {}),
       ...canonicalTelemetry,
       canonical_returned_count: pagedCanonicalCount,
       creator_external_seed_tool_scope: broadenedRows ? 'all_tools' : (creatorScoped ? 'creator_preferred' : 'all_tools'),
@@ -13488,6 +13518,12 @@ async function searchBeautyExternalSeedProductsMainline({
         canonical_path_executed: canonicalTelemetry.canonical_path_executed,
         canonical_raw_count: canonicalTelemetry.canonical_raw_count,
         canonical_dedupe_count: canonicalTelemetry.canonical_dedupe_count,
+        ...(queryUnderstanding
+          ? {
+              query_understanding_executed: true,
+              query_understanding_decision: queryUnderstanding.decision || null,
+            }
+          : {}),
         final_returned_count: pagedProducts.length,
       },
       ...(metadata?.creator_id ? { creator_id: metadata.creator_id } : {}),
@@ -26355,6 +26391,15 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             typeof findProductsExpansionMeta.association_plan === 'object'
               ? { association_plan: findProductsExpansionMeta.association_plan }
               : {}),
+            ...(findProductsExpansionMeta?.query_understanding &&
+            typeof findProductsExpansionMeta.query_understanding === 'object'
+              ? {
+                  query_understanding: findProductsExpansionMeta.query_understanding,
+                  query_understanding_executed: true,
+                  query_understanding_decision:
+                    findProductsExpansionMeta.query_understanding_decision || null,
+                }
+              : {}),
           }
         : metadata;
     const traceQueryClass =
@@ -26369,6 +26414,18 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       typeof findProductsExpansionMeta.association_plan === 'object'
         ? findProductsExpansionMeta.association_plan
         : null;
+    if (
+      operation === 'find_products_multi' &&
+      findProductsExpansionMeta?.query_understanding &&
+      typeof findProductsExpansionMeta.query_understanding === 'object'
+    ) {
+      metadata = {
+        ...(metadata || {}),
+        query_understanding: findProductsExpansionMeta.query_understanding,
+        query_understanding_executed: true,
+        query_understanding_decision: findProductsExpansionMeta.query_understanding_decision || null,
+      };
+    }
     metadata = attachInvokeSearchRequestContractMetadata({
       operation,
       payload: effectivePayload,

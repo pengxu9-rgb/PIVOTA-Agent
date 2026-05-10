@@ -1,3 +1,8 @@
+const {
+  hasFragranceFreeSkincareSignal,
+  hasFragranceProductQuerySignal,
+} = require('./queryUnderstanding');
+
 function normalizeBeautyQueryClass(queryClass) {
   return String(queryClass || '').trim().toLowerCase() || null;
 }
@@ -66,15 +71,6 @@ function inferBeautyConcernClass(queryText, bucket = null) {
   return null;
 }
 
-function hasFragranceFreeSkincareSignal(text) {
-  return /\b(fragrance(?:\s|-)?free|fragranceless|unscented|without fragrance|no fragrance|sans parfum)\b/i.test(
-    String(text || ''),
-  );
-}
-
-const FRAGRANCE_PRODUCT_QUERY_RE =
-  /\b(perfume|perfumes|fragrance|fragrances|fragarance|fragarances|fragance|fragances|fragrence|fragrences|fragrancee|parfum|cologne|body mist|eau de parfum|eau de toilette)\b/i;
-
 function classifyBeautyBucketFromText(text) {
   const q = String(text || '');
   if (!q) return 'other';
@@ -109,7 +105,7 @@ function classifyBeautyBucketFromText(text) {
     return 'skincare';
   }
   if (
-    FRAGRANCE_PRODUCT_QUERY_RE.test(q) ||
+    hasFragranceProductQuerySignal(q) ||
     /香水|香氛|古龙|古龍|フレグランス|コロン/.test(q)
   ) {
     return 'fragrance';
