@@ -663,15 +663,17 @@ describe('find_products_multi intent + filtering', () => {
     expect(expansion_meta?.query_semantic_class).toBe('fragrance');
   });
 
-  test('generic fragrance follow-up inherits recent brand context from the same category', async () => {
+  test('generic fragrance follow-up inherits brand context from current conversation only', async () => {
     const { adjustedPayload, expansion_meta } = await buildFindProductsMultiContext({
       payload: {
         search: {
           query: 'fragrance',
         },
-        user: {
-          recent_queries: ['tom ford fragarance'],
-        },
+        messages: [
+          { role: 'user', content: 'tom ford fragarance' },
+          { role: 'assistant', content: 'I found Tom Ford fragrance options.' },
+          { role: 'user', content: 'fragrance' },
+        ],
       },
       metadata: {
         source: 'shopping_agent',
@@ -684,9 +686,94 @@ describe('find_products_multi intent + filtering', () => {
       expect.objectContaining({
         original_raw_query: 'fragrance',
         contextual_brand: 'tom ford',
-        contextual_query_source: 'generic_fragrance_followup_recent_brand',
+        contextual_query_source: 'generic_category_followup_conversation_brand',
       }),
     );
+    expect(expansion_meta?.query_understanding?.context_scope).toBe('conversation');
+  });
+
+  test('acne clarification follow-up fills skin and environment slots without losing the acne goal', async () => {
+    const { adjustedPayload, expansion_meta } = await buildFindProductsMultiContext({
+      payload: {
+        search: {
+          query: 'i think i am aoily skin, and i live in SF.',
+        },
+        messages: [
+          { role: 'user', content: 'i have acne issue, recommend some products to take care of it' },
+          {
+            role: 'assistant',
+            content:
+              'I need a bit more context before narrowing products: skin_type, environment. A skin analysis can help if you want a more precise routine, but it is not required to continue.',
+          },
+          { role: 'user', content: 'i think i am aoily skin, and i live in SF.' },
+        ],
+      },
+      metadata: {
+        source: 'shopping_agent',
+      },
+    });
+
+    const query = String(adjustedPayload?.search?.query || '');
+    expect(query).toMatch(/acne/i);
+    expect(query).toMatch(/treatment|salicylic|niacinamide|oil control/i);
+    expect(query).toMatch(/oily skin/i);
+    expect(query).not.toMatch(/aoily/i);
+    expect(expansion_meta).toEqual(
+      expect.objectContaining({
+        original_raw_query: 'i think i am aoily skin, and i live in SF.',
+        contextual_query_source: 'beauty_slot_followup_conversation_context',
+      }),
+    );
+    expect(expansion_meta?.query_understanding?.context_scope).toBe('conversation');
+    expect(expansion_meta?.query_understanding?.beauty_context?.bound).toEqual(
+      expect.objectContaining({
+        concern: 'acne',
+        skin_type: 'oily',
+        location: 'San Francisco',
+      }),
+    );
+  });
+
+  test('generic fragrance does not inherit cross-session recent query context', async () => {
+    const { adjustedPayload, expansion_meta } = await buildFindProductsMultiContext({
+      payload: {
+        search: {
+          query: 'fragrance',
+        },
+        user: {
+          session_recent_queries: ['tom ford fragarance'],
+        },
+      },
+      metadata: {
+        source: 'shopping_agent',
+      },
+    });
+
+    expect(String(adjustedPayload?.search?.query || '')).not.toMatch(/tom ford/i);
+    expect(expansion_meta?.query_understanding?.context_scope).toBe('none');
+    expect(expansion_meta?.query_understanding?.risk_flags).toEqual(
+      expect.arrayContaining(['session_recent_queries_ignored_for_context']),
+    );
+  });
+
+  test('explicit continuation may use session recent query context', async () => {
+    const { adjustedPayload, expansion_meta } = await buildFindProductsMultiContext({
+      payload: {
+        search: {
+          query: 'continue previous search',
+        },
+        user: {
+          session_recent_queries: ['tom ford fragarance'],
+        },
+      },
+      metadata: {
+        source: 'shopping_agent',
+      },
+    });
+
+    expect(String(adjustedPayload?.search?.query || '')).toMatch(/tom ford/i);
+    expect(expansion_meta?.query_understanding?.context_scope).toBe('session_explicit');
+    expect(expansion_meta?.contextual_query_source).toBe('explicit_session_previous_query');
   });
 
   test('dog leash query expansion stays leash-focused', async () => {

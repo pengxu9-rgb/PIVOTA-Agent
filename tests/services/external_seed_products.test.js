@@ -15,6 +15,10 @@ describe('externalSeedProducts helper', () => {
     expect(resolveBeautyCategoryPathPrefixForQuery('best red 口红')).toBe('beauty/makeup/lip/');
     expect(resolveBeautyCategoryPathPrefixForQuery('waterproof mascara')).toBe('beauty/makeup/eye/');
     expect(resolveBeautyCategoryPathPrefixForQuery('woody perfume')).toBe('beauty/fragrance/');
+    expect(resolveBeautyCategoryPathPrefixForQuery('tom ford fragarance')).toBe('beauty/fragrance/');
+    expect(resolveBeautyCategoryPathPrefixForQuery('fragrance-free barrier moisturizer')).toBe(
+      'beauty/skincare/moisturize/',
+    );
     expect(resolveBeautyCategoryPathPrefixForQuery('unknown beauty object')).toBe('');
   });
 

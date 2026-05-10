@@ -129,6 +129,7 @@ describe('find_products_multi canonical lipstick recall', () => {
       canonical_path_executed: true,
       canonical_raw_count: 18,
       canonical_dedupe_count: 0,
+      query_understanding_executed: true,
     }));
     expect(resp.body.metadata?.route_health).toEqual(expect.objectContaining({
       canonical_path_executed: true,
@@ -331,6 +332,12 @@ describe('find_products_multi canonical lipstick recall', () => {
       destination_url: 'https://fentybeauty.com/products/fenty-icon-lipstick',
     }));
     expect(resp.body.products[0].title).toMatch(/Lipstick/i);
+    expect(resp.body.metadata?.query_understanding).toEqual(
+      expect.objectContaining({
+        category_path_prefix: 'beauty/makeup/lip/',
+        decision: 'apply_raw',
+      }),
+    );
     expect(observed.some(({ sql, params }) => sql.includes('FROM external_product_seeds') && params.includes('lipstick'))).toBe(true);
   });
 

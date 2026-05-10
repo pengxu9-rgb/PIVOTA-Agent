@@ -33,6 +33,9 @@ const {
 const {
   buildCatalogImageCacheVisibleUrl,
 } = require('./catalogImageCacheStorage');
+const {
+  resolveBeautyCategoryPathPrefixFromText,
+} = require('../findProductsMulti/queryUnderstanding');
 
 const EXTERNAL_SEED_MERCHANT_ID = 'external_seed';
 const SUNSCREEN_CATEGORY_RE =
@@ -685,6 +688,8 @@ function categoryPathParentPrefix(categoryPath) {
 function resolveBeautyCategoryPathPrefixForQuery(queryText) {
   const text = String(queryText || '').trim();
   if (!text) return '';
+  const understoodPrefix = resolveBeautyCategoryPathPrefixFromText(text);
+  if (understoodPrefix) return understoodPrefix;
   for (const [path, pattern] of BEAUTY_CATEGORY_PATH_ALIAS_PATTERNS) {
     if (pattern.test(text)) return categoryPathParentPrefix(path);
   }

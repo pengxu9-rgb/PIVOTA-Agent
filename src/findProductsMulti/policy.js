@@ -20,6 +20,11 @@ const {
   isBeautyBucketCompatibleForQuery,
 } = require('./beautyQueryProfile');
 const {
+  understandShoppingQuery,
+  hasFragranceFreeSkincareSignal,
+  hasFragranceProductQuerySignal,
+} = require('./queryUnderstanding');
+const {
   createStrictFindProductsMultiRuntime,
 } = require('../modules/decisioning/shopping_agent/strictFindProductsMulti');
 const {
@@ -384,8 +389,6 @@ const LINGERIE_PATTERNS = [
   /下着|ブラ|パンティ|ランジェリー/,
 ];
 
-const FRAGRANCE_QUERY_REGEX =
-  /\b(perfume|perfumes|fragrance|fragrances|fragarance|fragarances|fragance|fragances|fragrence|fragrences|fragrancee|parfum|cologne|eau de parfum|eau de toilette|body mist)\b|香水|香氛|古龙|古龍|香體|香体/i;
 const BRAND_TERM_SUFFIXES = new Set([
   'beauty',
   'cosmetic',
@@ -396,15 +399,9 @@ const BRAND_TERM_SUFFIXES = new Set([
   'makeup',
 ]);
 
-function hasFragranceFreeSkincareSignal(rawQuery = '') {
-  return /\b(fragrance(?:\s|-)?free|fragranceless|unscented|without fragrance|no fragrance|sans parfum)\b/i.test(
-    String(rawQuery || ''),
-  );
-}
-
 function inferFragranceSemanticClass(rawQuery = '') {
   if (hasFragranceFreeSkincareSignal(rawQuery)) return 'fragrance_free_skincare';
-  return FRAGRANCE_QUERY_REGEX.test(String(rawQuery || '')) ? 'fragrance' : '';
+  return hasFragranceProductQuerySignal(rawQuery) ? 'fragrance' : '';
 }
 
 function hasFragranceQuerySignal(rawQuery) {
@@ -3185,64 +3182,6 @@ function looksLikeRealQuery(text) {
   return /[a-z0-9\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]/i.test(t);
 }
 
-function normalizeContextQueryText(text) {
-  return String(text || '')
-    .trim()
-    .toLowerCase()
-    .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9\u4e00-\u9fff\s]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function isGenericFragranceQuery(text) {
-  const normalized = normalizeContextQueryText(text)
-    .replace(/\b(show|find|get|recommend|recommendations|products|items|some|me|for|please|all)\b/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  return /^(perfume|perfumes|fragrance|fragrances|fragarance|fragarances|fragance|fragances|fragrence|fragrences|fragrancee|parfum|cologne|scent|scents)$/.test(
-    normalized,
-  );
-}
-
-function extractFragranceBrandContext(recentQuery) {
-  const normalized = normalizeContextQueryText(recentQuery);
-  if (!normalized || !FRAGRANCE_QUERY_REGEX.test(normalized)) return '';
-  const brandCandidate = normalized
-    .replace(/\b(perfume|perfumes|fragrance|fragrances|fragarance|fragarances|fragance|fragances|fragrence|fragrences|fragrancee|parfum|cologne|eau de parfum|eau de toilette|body mist|scent|scents)\b/g, ' ')
-    .replace(/\b(show|find|get|recommend|recommendations|products|items|some|me|for|please|all|under|over|below|above|less|than|best|popular|picks)\b/g, ' ')
-    .replace(/\b\d+(?:\.\d+)?\b/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  if (!brandCandidate) return '';
-  const tokens = brandCandidate.split(/\s+/).filter(Boolean);
-  if (tokens.length > 5) return '';
-  if (BRAND_TERM_SUFFIXES.has(tokens[tokens.length - 1])) tokens.pop();
-  const cleaned = tokens.join(' ').trim();
-  if (!cleaned || cleaned.length < 3 || cleaned.length > 48) return '';
-  if (/^(beauty|cosmetics?|makeup|shopping|catalog)$/.test(cleaned)) return '';
-  return cleaned;
-}
-
-function deriveContextualQueryFromRecentQueries(latestQuery, recentQueries = []) {
-  if (!isGenericFragranceQuery(latestQuery)) return null;
-  const history = Array.isArray(recentQueries) ? recentQueries : [];
-  for (let i = history.length - 1; i >= 0; i -= 1) {
-    const recent = String(history[i] || '').trim();
-    if (!recent || recent === latestQuery) continue;
-    const brandContext = extractFragranceBrandContext(recent);
-    if (!brandContext) continue;
-    return {
-      query: `${brandContext} fragrance`,
-      source_query: recent,
-      brand_context: brandContext,
-      reason: 'generic_fragrance_followup_recent_brand',
-    };
-  }
-  return null;
-}
-
 function shouldDropHistoryByIntent(intent) {
   // Default: only use history when explicitly requested by user (intent.history_usage.used=true)
   return !intent?.history_usage?.used;
@@ -4477,8 +4416,9 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
     ...(payload?.min_price != null ? { min_price: payload.min_price } : {}),
     ...(payload?.max_price != null ? { max_price: payload.max_price } : {}),
   };
-  const recentQueries = payload?.user?.recent_queries || [];
-  const recentMessages = payload?.messages || [];
+  const legacyRecentQueries = payload?.user?.recent_queries || [];
+  const sessionRecentQueries = payload?.user?.session_recent_queries || legacyRecentQueries;
+  const recentMessages = payload?.messages || payload?.user?.conversation_messages || [];
 
   // Some clients (chat-style UIs) may send the user utterance only in `messages`
   // and leave `search.query` empty. If so, derive query from the last user message.
@@ -4492,8 +4432,18 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
     : looksLikeRealQuery(queryFromMessages)
       ? queryFromMessages
       : queryFromSearch;
-  const recentQueryContext = deriveContextualQueryFromRecentQueries(rawLatestUserQuery, recentQueries);
-  const latestUserQuery = recentQueryContext?.query || rawLatestUserQuery;
+  const queryUnderstanding = understandShoppingQuery({
+    rawQuery: rawLatestUserQuery,
+    conversationMessages: recentMessages,
+    sessionRecentQueries,
+    market: search?.market || payload?.market || metadata?.market,
+    source: metadata?.source || search?.source || payload?.source,
+  });
+  const latestUserQuery = queryUnderstanding?.effective_query || rawLatestUserQuery;
+  const recentQueries =
+    queryUnderstanding?.context_scope === 'session_explicit'
+      ? normalizeStringArray(sessionRecentQueries, 5, 80)
+      : [];
   const payloadBeautyRequest = getPayloadBeautyRequest(payload);
   const normalizedSearchInput = {
     ...topLevelSearchCompat,
@@ -5152,18 +5102,21 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
     semanticFamily: effectiveSemanticFamily,
   });
   const beautyBudgetMax = getBeautyBudgetMax(payloadBeautyRequest);
+  const normalizedSessionRecentQueries = normalizeStringArray(sessionRecentQueries, 5, 80);
 
   const adjustedPayload = {
     ...(payload || {}),
     user: {
       ...(payload?.user || {}),
-      ...(pruned ? { recent_queries: pruned } : {}),
+      recent_queries: pruned,
+      ...(normalizedSessionRecentQueries.length ? { session_recent_queries: normalizedSessionRecentQueries } : {}),
     },
     search: {
       ...topLevelSearchCompat,
       ...(payload?.search || {}),
       ...(effectiveExpandedQuery ? { query: effectiveExpandedQuery } : {}),
       ...(beautyContextRetrievalQuery ? { query: beautyContextRetrievalQuery } : {}),
+      ...(queryUnderstanding ? { query_understanding: queryUnderstanding } : {}),
       ...(effectiveCatalogSurface ? { catalog_surface: effectiveCatalogSurface } : {}),
       ...(effectiveCommerceSurface ? { commerce_surface: effectiveCommerceSurface } : {}),
       ...(effectiveTargetStepFamily ? { target_step_family: effectiveTargetStepFamily } : {}),
@@ -5188,10 +5141,20 @@ async function buildFindProductsMultiContext({ payload, metadata }) {
     mode: rewriteGate.mode,
     strategy_version: STRATEGY_VERSION,
     raw_query: latestUserQuery,
-    original_raw_query: recentQueryContext ? rawLatestUserQuery : null,
-    contextual_query_source: recentQueryContext?.reason || null,
-    contextual_source_query: recentQueryContext?.source_query || null,
-    contextual_brand: recentQueryContext?.brand_context || null,
+    original_raw_query:
+      queryUnderstanding && String(queryUnderstanding.effective_query || '') !== String(rawLatestUserQuery || '')
+        ? rawLatestUserQuery
+        : null,
+    contextual_query_source: queryUnderstanding?.context_binding?.reason || null,
+    contextual_source_query: queryUnderstanding?.context_binding?.source_query || null,
+    contextual_brand: queryUnderstanding?.context_binding?.brand || null,
+    query_understanding_executed: Boolean(queryUnderstanding?.query_understanding_executed),
+    query_understanding: queryUnderstanding || null,
+    query_understanding_decision: queryUnderstanding?.decision || null,
+    corrected_query:
+      queryUnderstanding && String(queryUnderstanding.corrected_query || '') !== String(rawLatestUserQuery || '')
+        ? queryUnderstanding.corrected_query
+        : null,
     expanded_query: beautyContextRetrievalQuery || effectiveExpandedQuery,
     applied: Boolean(
       (beautyContextRetrievalQuery || effectiveExpandedQuery) &&
@@ -6153,6 +6116,19 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
       : hasSlotState
         ? slotState
         : null;
+  const policyQueryUnderstanding =
+    metadata?.query_understanding && typeof metadata.query_understanding === 'object'
+      ? metadata.query_understanding
+      : requestPayload?.search?.query_understanding && typeof requestPayload.search.query_understanding === 'object'
+        ? requestPayload.search.query_understanding
+        : null;
+  const policyQueryUnderstandingMetadata = policyQueryUnderstanding
+    ? {
+        query_understanding: policyQueryUnderstanding,
+        query_understanding_executed: true,
+        query_understanding_decision: policyQueryUnderstanding.decision || null,
+      }
+    : {};
 
   const responsePayload = {
     ...augmented,
@@ -6163,6 +6139,7 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
             ...fashionConstraintMetadata,
             strategy_version: STRATEGY_VERSION,
             brand_query_bypass_ambiguity: Boolean(brandQueryBypassAmbiguity),
+            ...policyQueryUnderstandingMetadata,
             search_decision: {
               query_class: queryClass,
               query_semantic_class: querySemanticClass,
@@ -6175,6 +6152,7 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
               clarify_triggered: Boolean(clarification),
               strict_empty_triggered: Boolean(strictEmptyByAmbiguity),
               final_decision: finalDecision,
+              query_understanding_decision: policyQueryUnderstanding?.decision || null,
               domain_condenser: domainCondenserResult?.debug || null,
               post_quality: postQuality,
               low_confidence: lowConfidenceReasons.length > 0,
@@ -6202,6 +6180,7 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
             ...fashionConstraintMetadata,
             strategy_version: STRATEGY_VERSION,
             brand_query_bypass_ambiguity: Boolean(brandQueryBypassAmbiguity),
+            ...policyQueryUnderstandingMetadata,
             search_decision: {
               query_class: queryClass,
               query_semantic_class: querySemanticClass,
@@ -6214,6 +6193,7 @@ function applyFindProductsMultiPolicy({ response, intent, requestPayload, metada
               clarify_triggered: Boolean(clarification),
               strict_empty_triggered: Boolean(strictEmptyByAmbiguity),
               final_decision: finalDecision,
+              query_understanding_decision: policyQueryUnderstanding?.decision || null,
               domain_condenser: domainCondenserResult?.debug || null,
               post_quality: postQuality,
               low_confidence: lowConfidenceReasons.length > 0,
