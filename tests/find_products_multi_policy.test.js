@@ -1,5 +1,6 @@
 const { extractIntentRuleBased } = require('../src/findProductsMulti/intent');
 const { applyFindProductsMultiPolicy, buildFindProductsMultiContext } = require('../src/findProductsMulti/policy');
+const { classifyBeautyBucketFromText } = require('../src/findProductsMulti/beautyQueryProfile');
 const { injectPivotaAttributes } = require('../src/findProductsMulti/productTagger');
 
 function withPolicyEnv(envOverrides, fn) {
@@ -642,6 +643,50 @@ describe('find_products_multi intent + filtering', () => {
     expect(intent.primary_domain).toBe('beauty');
     expect(intent.target_object.type).toBe('human');
     expect(intent.scenario.name).toBe('general');
+  });
+
+  test('common fragrance typo still routes to fragrance search', async () => {
+    expect(classifyBeautyBucketFromText('tom ford fragarance')).toBe('fragrance');
+
+    const { adjustedPayload, expansion_meta } = await buildFindProductsMultiContext({
+      payload: {
+        search: {
+          query: 'tom ford fragarance',
+        },
+      },
+      metadata: {
+        source: 'shopping_agent',
+      },
+    });
+
+    expect(String(adjustedPayload?.search?.query || '')).toMatch(/tom ford/i);
+    expect(expansion_meta?.query_semantic_class).toBe('fragrance');
+  });
+
+  test('generic fragrance follow-up inherits recent brand context from the same category', async () => {
+    const { adjustedPayload, expansion_meta } = await buildFindProductsMultiContext({
+      payload: {
+        search: {
+          query: 'fragrance',
+        },
+        user: {
+          recent_queries: ['tom ford fragarance'],
+        },
+      },
+      metadata: {
+        source: 'shopping_agent',
+      },
+    });
+
+    expect(String(adjustedPayload?.search?.query || '')).toMatch(/tom ford/i);
+    expect(String(adjustedPayload?.search?.query || '')).toMatch(/fragrance/i);
+    expect(expansion_meta).toEqual(
+      expect.objectContaining({
+        original_raw_query: 'fragrance',
+        contextual_brand: 'tom ford',
+        contextual_query_source: 'generic_fragrance_followup_recent_brand',
+      }),
+    );
   });
 
   test('dog leash query expansion stays leash-focused', async () => {

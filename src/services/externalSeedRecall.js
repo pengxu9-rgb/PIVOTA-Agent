@@ -16,7 +16,7 @@ const NON_MERCH_PAGE_RE =
   /(?:^|\/)(?:collections?|collection|category|catalogsearch|search|cart|account|customer|blog|blogs|pages?|faq|privacy|terms|wishlist|gift(?:ing)?|store-locator|customer-service|all-products|appointments?|booking|online-booking|locations?|contact-us)(?:\/|$)/i;
 const BEAUTY_VERTICAL_PATTERNS = Object.freeze([
   ['gift_card', GIFT_CARD_RE],
-  ['fragrance', /\b(fragrance|perfume|parfum|cologne|eau de parfum|eau de toilette|scent)\b/i],
+  ['fragrance', /\b(fragrance|fragrances|fragarance|fragarances|fragance|fragances|fragrence|fragrences|fragrancee|perfume|parfum|cologne|eau de parfum|eau de toilette|scent)\b/i],
   ['haircare', /\b(shampoo|conditioner|hair|leave-in|leave in|detangling|repair mask|hair mask|scalp|curl|edge control|styling gel)\b/i],
   ['beauty_tools', /\b(brush|makeup brush|kabuki|tool|tools|applicator|sponge|detangling brush)\b/i],
   ['makeup', /\b(primer|concealer|foundation|powder|mascara|lip|lipstick|gloss|blush|bronzer|eyeshadow|eye shadow|brow|liner|highlighter)\b/i],
@@ -103,7 +103,7 @@ const RECALL_LEAF_CATEGORY_PATTERNS = Object.freeze([
   ['Essence', /\b(essence|essences|ampoule|ampoules)\b/i],
   ['Moisturizer', /\b(moisturizer|moisturizers|moisturiser|moisturisers|gel[-\s]?cream|cream|creams|lotion|lotions)\b/i],
   ['Treatment', /\b(treatment|treatments|mask|masks|peel|peels|exfoliant|exfoliants)\b/i],
-  ['Fragrance', /\b(fragrance|fragrances|perfume|perfumes|parfum|parfums|cologne|colognes|eau\s+de\s+(?:parfum|toilette))\b/i],
+  ['Fragrance', /\b(fragrance|fragrances|fragarance|fragarances|fragance|fragances|fragrence|fragrences|fragrancee|perfume|perfumes|parfum|parfums|cologne|colognes|eau\s+de\s+(?:parfum|toilette))\b/i],
 ]);
 const RECALL_SKINCARE_TEXT_CATEGORY_PATTERNS = Object.freeze([
   ['Sunscreen', /\b(sunscreen|sunscreens|spf)\b/i],

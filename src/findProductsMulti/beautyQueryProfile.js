@@ -72,6 +72,9 @@ function hasFragranceFreeSkincareSignal(text) {
   );
 }
 
+const FRAGRANCE_PRODUCT_QUERY_RE =
+  /\b(perfume|perfumes|fragrance|fragrances|fragarance|fragarances|fragance|fragances|fragrence|fragrences|fragrancee|parfum|cologne|body mist|eau de parfum|eau de toilette)\b/i;
+
 function classifyBeautyBucketFromText(text) {
   const q = String(text || '');
   if (!q) return 'other';
@@ -106,7 +109,7 @@ function classifyBeautyBucketFromText(text) {
     return 'skincare';
   }
   if (
-    /\b(perfume|fragrance|parfum|cologne|body mist|eau de parfum|eau de toilette)\b/i.test(q) ||
+    FRAGRANCE_PRODUCT_QUERY_RE.test(q) ||
     /香水|香氛|古龙|古龍|フレグランス|コロン/.test(q)
   ) {
     return 'fragrance';

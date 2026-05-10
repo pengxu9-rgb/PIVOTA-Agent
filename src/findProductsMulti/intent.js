@@ -1100,7 +1100,7 @@ function classifyQueryClass({
     (hasBeautyGenericProductSignalLocal &&
       !hasBeautyAttributeModifierLocal &&
       !hasBeautyStrongLookupSignalLocal) ||
-    /香水|香氛|古龙|古龍|个护|個護|perfume|fragrance|cologne|body\s*mist|personal\s*care/i.test(
+    /香水|香氛|古龙|古龍|个护|個護|perfume|fragrance|fragarance|fragance|fragrence|fragrancee|cologne|body\s*mist|personal\s*care/i.test(
       lower,
     );
   const hasExploratorySignal =

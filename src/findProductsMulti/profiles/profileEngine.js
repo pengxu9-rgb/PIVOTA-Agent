@@ -1,7 +1,7 @@
 const { SEARCH_PROFILE_IDS, SEARCH_PROFILE_MAP } = require('./index');
 
 const FRAGRANCE_HINT_REGEX =
-  /\b(perfume|fragrance|parfum|cologne|body\s*mist|eau\s+de\s+parfum|eau\s+de\s+toilette)\b|香水|香氛|古龙|古龍|フレグランス|コロン/i;
+  /\b(perfume|perfumes|fragrance|fragrances|fragarance|fragarances|fragance|fragances|fragrence|fragrences|fragrancee|parfum|cologne|body\s*mist|eau\s+de\s+parfum|eau\s+de\s+toilette)\b|香水|香氛|古龙|古龍|フレグランス|コロン/i;
 const BRAND_HINT_REGEX =
   /\b(tom ford|jo malone|diptyque|byredo|le labo|chanel|dior|ysl|yves saint laurent|armani|hermes|gucci|creed|kilian|amouage|estee lauder|la mer|fenty|rare beauty|charlotte tilbury|nars|clinique|shiseido|laneige|innisfree|the ordinary|cerave|la roche posay|kiehl's|tatcha|drunk elephant|victoria's secret|calvin klein|hugo boss|prada|valentino|givenchy|chloe|dolce gabbana)\b/i;
 const LINGERIE_HINT_REGEX =
