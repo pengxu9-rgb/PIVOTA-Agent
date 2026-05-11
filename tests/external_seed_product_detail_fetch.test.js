@@ -557,6 +557,47 @@ describe('external seed product detail hydration', () => {
     );
   });
 
+  test('preserves rich external seed PDP content when identity graph synthetic product is thinner', () => {
+    const { debug } = loadServerWithDb();
+    const richProduct = {
+      product_id: 'ext_seed_db_sig_1',
+      merchant_id: 'external_seed',
+      title: 'Spicule Shot Boosting Mask',
+      variants: [{ variant_id: 'default', title: '4 ct', display_label: 'Size: 4 ct' }],
+      pdp_how_to_use_raw: 'Apply after cleansing and remove after the suggested wear time.',
+      ingredient_intel: {
+        force_fill_contract: {
+          contract_version: 'pivota.pdp.force_fill.v1',
+          display_note: 'Ingredient details are pending approved source capture.',
+        },
+      },
+    };
+    const syntheticProduct = {
+      product_id: 'sig_thin_identity',
+      merchant_id: 'external_seed',
+      title: 'Spicule Shot Boosting Mask',
+      selected_commerce_ref: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_seed_db_sig_1',
+      },
+      product_line_id: 'line_spicule_mask',
+    };
+
+    const merged = debug.mergeIdentitySyntheticWithRichExternalSeedProduct(syntheticProduct, richProduct);
+
+    expect(debug.hasExternalSeedRichPdpContent(richProduct)).toBe(true);
+    expect(merged).toEqual(
+      expect.objectContaining({
+        product_id: 'ext_seed_db_sig_1',
+        variants: [{ variant_id: 'default', title: '4 ct', display_label: 'Size: 4 ct' }],
+        pdp_how_to_use_raw: 'Apply after cleansing and remove after the suggested wear time.',
+        ingredient_intel: richProduct.ingredient_intel,
+        selected_commerce_ref: syntheticProduct.selected_commerce_ref,
+        product_line_id: 'line_spicule_mask',
+      }),
+    );
+  });
+
   test('get_pdp_v2 fails fast for inactive external seed routes before legacy detail fallback', async () => {
     const { app, db } = loadServerWithDb({
       PIVOTA_API_BASE: 'https://backend.test',
