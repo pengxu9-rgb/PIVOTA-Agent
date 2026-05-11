@@ -230,6 +230,7 @@ function normalizePdpFieldQualitySummary(value) {
     'description_raw',
     'details_sections',
     'ingredients_raw',
+    'ingredients_inci',
     'active_ingredients_raw',
     'how_to_use_raw',
     'faq_items',
@@ -277,7 +278,10 @@ function readPdpFieldQualityStatus(summary, key) {
 function isSurfaceablePdpField(summary, key) {
   const status = readPdpFieldQualityStatus(summary, key);
   if (!status) return true;
-  return status === 'high' || status === 'medium';
+  if (status === 'high' || status === 'medium') return true;
+  if (key === 'how_to_use_raw' && status === 'force_filled_reviewed_pattern') return true;
+  if (key === 'ingredients_inci' && status === 'force_filled_pending_source') return true;
+  return false;
 }
 
 function buildApprovedRuntimeSeedData(seedData, pdpFieldQualitySummary) {
