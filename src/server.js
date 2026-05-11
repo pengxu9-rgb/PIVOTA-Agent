@@ -13180,27 +13180,62 @@ function beautyProductHasAcneOilControlEvidence(product = {}, candidateText = ''
 function buildBeautyMainlineRecommendationReason(product = {}, queryText = '', intent = null) {
   const text = buildFallbackCandidateText(product);
   if (!text) return '';
-  const reasons = [];
+  const evidenceReasons = [];
+  const matchReasons = [];
   const families = Array.isArray(intent?.families) ? intent.families : [];
+  const normalizedQuery = normalizeSearchTextForMatch(queryText);
+  const productBrand = firstNonEmptyString(product?.brand, product?.vendor, product?.merchant_name);
+  const normalizedBrand = normalizeSearchTextForMatch(productBrand);
+  const brandWasRequested = Boolean(
+    normalizedBrand &&
+      normalizedQuery &&
+      normalizedQuery.includes(normalizedBrand),
+  );
   if (beautyQueryHasAcneOilControlIntent(queryText) && beautyProductHasAcneOilControlEvidence(product, text)) {
-    if (/\bazelaic\b/i.test(text)) reasons.push('azelaic-acid support for blemish-prone skin');
-    else if (/\bsalicylic|bha\b/i.test(text)) reasons.push('BHA/salicylic support for clogged pores');
-    else if (/\bniacinamide|zinc\s*pca|sebum|oil[-\s]?control|shine[-\s]?control|pore[-\s]?refin/i.test(text)) reasons.push('oil-control and pore-refining signals');
-    else if (/\bcentella|cica|madecassoside|heartleaf|mugwort|tea\s*tree/i.test(text)) reasons.push('calming signals for breakout-prone skin');
-    else reasons.push('acne or blemish-care match');
+    if (/\bazelaic\b/i.test(text)) evidenceReasons.push('azelaic-acid support for blemish-prone skin');
+    else if (/\bsalicylic|bha\b/i.test(text)) evidenceReasons.push('BHA/salicylic support for clogged pores');
+    else if (/\bniacinamide|zinc\s*pca|sebum|oil[-\s]?control|shine[-\s]?control|pore[-\s]?refin/i.test(text)) evidenceReasons.push('oil-control and pore-refining signals');
+    else if (/\bcentella|cica|madecassoside|heartleaf|mugwort|tea\s*tree/i.test(text)) evidenceReasons.push('calming signals for breakout-prone skin');
+    else evidenceReasons.push('acne or blemish-care match');
   }
   if (families.includes('sunscreen') && /\b(spf|sunscreen|broad\s*spectrum)\b/i.test(text)) {
-    reasons.push('matches the SPF lane');
+    matchReasons.push('the SPF lane');
   } else if (families.includes('serum') && /\b(serum|essence|ampoule|solution|treatment)\b/i.test(text)) {
-    reasons.push('matches the treatment step');
+    matchReasons.push('the treatment step');
   } else if (families.includes('cleanser') && /\b(cleanser|cleansing|face\s*wash)\b/i.test(text)) {
-    reasons.push('matches the cleanser step');
+    matchReasons.push('the cleanser step');
   } else if (families.includes('moisturizer') && /\b(moisturi[sz]er|cream|gel\s*cream|barrier|repair)\b/i.test(text)) {
-    reasons.push('matches the moisturizer step');
+    matchReasons.push('the moisturizer step');
   }
-  if (reasons.length === 0) return '';
-  const unique = Array.from(new Set(reasons));
-  return `Recommended because it has ${unique.slice(0, 2).join(' and ')}.`;
+  if (hasStrictLipstickQueryIntent(queryText) && beautyProductMatchesStrictLipstickIntent(product)) {
+    matchReasons.push(brandWasRequested && productBrand ? `${productBrand} lipstick request` : 'the lipstick request');
+  } else {
+    const categoryPathPrefix = resolveBeautyCategoryPathPrefixForQuery(queryText) || '';
+    if (categoryPathPrefix && beautyProductMatchesCategoryPathPrefix(product, categoryPathPrefix)) {
+      let categoryLabel = 'requested category';
+      if (/fragrance/i.test(categoryPathPrefix)) categoryLabel = 'fragrance category';
+      else if (/sunscreen|sun/i.test(categoryPathPrefix)) categoryLabel = 'SPF category';
+      else if (/cleanser/i.test(categoryPathPrefix)) categoryLabel = 'cleanser category';
+      else if (/moisturi[sz]er|cream/i.test(categoryPathPrefix)) categoryLabel = 'moisturizer category';
+      else if (/makeup\/lip/i.test(categoryPathPrefix)) categoryLabel = 'lip category';
+      matchReasons.push(`the ${categoryLabel}`);
+    }
+    if (brandWasRequested && productBrand) {
+      matchReasons.push(`${productBrand} brand request`);
+    }
+  }
+  const uniqueEvidence = Array.from(new Set(evidenceReasons)).slice(0, 2);
+  const uniqueMatches = Array.from(new Set(matchReasons)).slice(0, 2);
+  if (uniqueEvidence.length > 0 && uniqueMatches.length > 0) {
+    return `Recommended because it has ${uniqueEvidence.join(' and ')} and matches ${uniqueMatches.join(' and ')}.`;
+  }
+  if (uniqueEvidence.length > 0) {
+    return `Recommended because it has ${uniqueEvidence.join(' and ')}.`;
+  }
+  if (uniqueMatches.length > 0) {
+    return `Recommended because it matches ${uniqueMatches.join(' and ')}.`;
+  }
+  return '';
 }
 
 function scoreBeautyExternalSeedProduct({ product, queryText, intent, normalizedQuery, queryTokens }) {
