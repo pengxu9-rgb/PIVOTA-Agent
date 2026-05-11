@@ -262,8 +262,10 @@ const MODULE_REQUIREMENTS = {
     },
   },
   ingredients_inci: {
-    requiredPaths: ['data.title', 'data.items'],
-    validate: (module) => Array.isArray(module?.data?.items) && module.data.items.length > 0,
+    requiredPaths: ['data.title'],
+    validate: (module) =>
+      (Array.isArray(module?.data?.items) && module.data.items.length > 0) ||
+      (module?.data?.force_filled === true && Boolean(asNonEmptyString(module?.data?.raw_text))),
   },
   active_ingredients: {
     requiredPaths: ['data.title', 'data.items'],

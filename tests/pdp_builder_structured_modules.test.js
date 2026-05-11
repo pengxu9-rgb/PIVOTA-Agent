@@ -476,6 +476,44 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     expect(payload.modules.find((module) => module.type === 'how_to_use')).toBeFalsy();
   });
 
+  test('surfaces force-filled ingredient status as a reviewed note without fake INCI items', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_force_filled_ingredients',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'Hydrating Sunscreen Milk SPF 45',
+        category: 'Sunscreen',
+        image_url: 'https://example.com/spf.png',
+        price: { amount: 36, currency: 'USD' },
+        ingredient_intel: {
+          force_fill_contract: {
+            contract_version: 'pivota.pdp.force_fill.v1',
+            source_origin: 'pivota_force_fill',
+            source_quality_status: 'force_filled_pending_source',
+            content_review_state: 'assistant_reviewed',
+            display_note:
+              'Full INCI has not been captured from an approved source yet. Check the merchant page before purchase if you avoid specific ingredients.',
+          },
+        },
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    const ingredientsInci = payload.modules.find((module) => module.type === 'ingredients_inci');
+    expect(ingredientsInci?.data).toEqual(
+      expect.objectContaining({
+        title: 'Ingredients',
+        items: [],
+        force_filled: true,
+        source_quality_status: 'force_filled_pending_source',
+        raw_text: expect.stringContaining('Full INCI has not been captured'),
+      }),
+    );
+    expect(ingredientsInci).toBeTruthy();
+  });
+
   test('keeps active-compatibility FAQ out of actives/how-to and exposes it as a question', () => {
     const payload = buildPdpPayload({
       product: {
