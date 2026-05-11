@@ -97,4 +97,31 @@ describe('beauty external-seed mainline relevance', () => {
     expect(compact.recommendation_reason).toMatch(/azelaic-acid support/i);
     expect(compact.shopping_card.highlight).toBe(compact.recommendation_reason);
   });
+
+  test('canonical lipstick rows emit a deterministic recommendation reason', () => {
+    const query = 'fenty beauty lipsticks';
+    const lipstickIntent = {
+      raw: query,
+      normalized: query,
+      beautyLike: true,
+      families: [],
+      safety: [],
+    };
+    const canonicalLipstick = {
+      product_id: 'sig_lipstick',
+      source: 'canonical_chain',
+      search_recall_source: 'canonical_chain',
+      catalog_source: 'canonical_chain',
+      title: 'Fenty Icon Velvet Liquid Lipstick — Noodz & Dudez',
+      brand: 'Fenty Beauty',
+      category_path: ['beauty', 'makeup', 'lip', 'lipstick'],
+      catalog_category_path: 'beauty/makeup/lip/lipstick',
+    };
+
+    const compact = compactBeautyMainlineProductForResponse(canonicalLipstick, lipstickIntent, query);
+
+    expect(compact.recommendation_reason).toMatch(/Fenty Beauty lipstick request/i);
+    expect(compact.search_card.highlight_candidate).toBe(compact.recommendation_reason);
+    expect(compact.shopping_card.highlight).toBe(compact.recommendation_reason);
+  });
 });
