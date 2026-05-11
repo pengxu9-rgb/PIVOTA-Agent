@@ -444,7 +444,7 @@ describe('external seed product detail hydration', () => {
     );
   });
 
-  test('get_pdp_v2 resolves sig_* routes through the external seed rich PDP path while preserving the public sig id', async () => {
+  test('get_pdp_v2 resolves sig_* external_seed routes through the rich PDP path while preserving the public sig id', async () => {
     const { app, db } = loadServerWithDb({
       PIVOTA_API_BASE: 'https://backend.test',
       PIVOTA_API_KEY: 'test-token',
@@ -515,6 +515,7 @@ describe('external seed product detail hydration', () => {
         operation: 'get_pdp_v2',
         payload: {
           product_ref: {
+            merchant_id: 'external_seed',
             product_id: 'sig_fentygloss1',
           },
         },
@@ -531,6 +532,7 @@ describe('external seed product detail hydration', () => {
     expect(res.body.metadata.identity_resolution).toEqual(
       expect.objectContaining({
         requested_product_id: 'sig_fentygloss1',
+        requested_merchant_id: 'external_seed',
         resolved_product_id: 'ext_seed_db_sig_1',
         resolved_merchant_id: 'external_seed',
         canonicalization_applied: true,

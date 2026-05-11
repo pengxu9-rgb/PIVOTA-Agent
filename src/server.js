@@ -27141,7 +27141,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 		      const requestedProductIdForDiagnostics = productId || null;
           const requestedMerchantIdForDiagnostics = requestedMerchantId || null;
           let requestedPivotaSignatureId = null;
-		      if (productId && String(productId).trim().toLowerCase().startsWith('sig_') && !requestedMerchantId) {
+			      if (
+			        productId &&
+			        String(productId).trim().toLowerCase().startsWith('sig_') &&
+			        (!requestedMerchantId || requestedMerchantId === EXTERNAL_SEED_MERCHANT_ID)
+			      ) {
 		        const signatureResolveStartedAt = Date.now();
 		        const signatureProductRef = await resolveCatalogProductRefFromPivotaSignature(productId);
 		        markPdpV2Phase('resolve_catalog_signature', signatureResolveStartedAt);
