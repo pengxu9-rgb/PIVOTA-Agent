@@ -3269,6 +3269,12 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
   const existingProductKind = normalizeProductKind(seedData.product_kind || snapshot.product_kind);
   const identityRepairBackfill = isIdentityRepairBackfill(row, seedData, snapshot, targetUrl, representativeProduct);
   const nextProductKind = extractedProductKind || (identityRepairBackfill ? '' : existingProductKind);
+  const existingSnapshotContract = ensureJsonObject(
+    seedData.external_seed_snapshot_contract || snapshot.external_seed_snapshot_contract,
+  );
+  const hasApprovedSnapshotContract =
+    existingSnapshotContract.authoritative === true &&
+    existingSnapshotContract.legacy_fields_quarantined === true;
   const extractedBundleComponents = normalizeBundleComponents(
     representativeProduct?.bundle_components ||
       representativeProduct?.bundleComponents,
@@ -3283,7 +3289,8 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
       ? (extractedBundleComponents.length > 0 ? extractedBundleComponents : existingBundleComponents)
       : [];
   const existingPdpDescriptionRaw = cleanPdpDescriptionCandidate(
-    identityRepairBackfill || !isSurfaceablePdpField(pdpFieldQualitySummary, 'description_raw')
+    identityRepairBackfill ||
+      (!hasApprovedSnapshotContract && !isSurfaceablePdpField(existingPdpFieldQualitySummary, 'description_raw'))
       ? ''
       : seedData.pdp_description_raw || snapshot.pdp_description_raw,
     pdpDetailsSections,
@@ -3294,7 +3301,9 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     existingValue: existingPdpDescriptionRaw,
     incomingSummary: incomingPdpFieldQualitySummary,
     existingSummary: existingPdpFieldQualitySummary,
-    assetField: existingPdpContentAsset?.fields?.description_raw,
+    assetField:
+      existingPdpContentAsset?.fields?.description_raw ||
+      (hasApprovedSnapshotContract ? { review_state: 'assistant_reviewed' } : undefined),
   });
   if (descriptionRawDecision.preserve && hasPdpContentAssetValue('description_raw', surfaceableProductDescriptionRaw)) {
     snapshotQuarantine = appendPreservedContentCandidateToSnapshotQuarantine(snapshotQuarantine, {
@@ -3311,7 +3320,7 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
       : (surfaceableProductDescriptionRaw || (descriptionRawDecision.existingApproved ? existingPdpDescriptionRaw : ''));
   const existingPdpDetailsSections = identityRepairBackfill
     ? []
-    : !isSurfaceablePdpField(existingPdpFieldQualitySummary, 'details_sections')
+    : !hasApprovedSnapshotContract && !isSurfaceablePdpField(existingPdpFieldQualitySummary, 'details_sections')
       ? []
       : normalizeDetailsSections(
         Array.isArray(seedData.pdp_details_sections) && seedData.pdp_details_sections.length > 0
@@ -3324,7 +3333,9 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     existingValue: existingPdpDetailsSections,
     incomingSummary: incomingPdpFieldQualitySummary,
     existingSummary: existingPdpFieldQualitySummary,
-    assetField: existingPdpContentAsset?.fields?.details_sections,
+    assetField:
+      existingPdpContentAsset?.fields?.details_sections ||
+      (hasApprovedSnapshotContract ? { review_state: 'assistant_reviewed' } : undefined),
   });
   if (detailsDecision.preserve && hasPdpContentAssetValue('details_sections', surfaceablePdpDetailsSections)) {
     snapshotQuarantine = appendPreservedContentCandidateToSnapshotQuarantine(snapshotQuarantine, {
@@ -3358,7 +3369,8 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
       (section) => !/^How to Use$/i.test(section.heading),
     );
   }
-  const existingPdpIngredientsRaw = identityRepairBackfill || !isSurfaceablePdpField(existingPdpFieldQualitySummary, 'ingredients_raw')
+  const existingPdpIngredientsRaw = identityRepairBackfill ||
+    (!hasApprovedSnapshotContract && !isSurfaceablePdpField(existingPdpFieldQualitySummary, 'ingredients_raw'))
     ? ''
     : normalizeNonEmptyString(seedData.pdp_ingredients_raw || snapshot.pdp_ingredients_raw);
   const candidatePdpIngredientsRaw = supportsFormulaPdpFields
@@ -3378,7 +3390,9 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     existingValue: existingPdpIngredientsRaw,
     incomingSummary: incomingPdpFieldQualitySummary,
     existingSummary: existingPdpFieldQualitySummary,
-    assetField: existingPdpContentAsset?.fields?.ingredients_raw,
+    assetField:
+      existingPdpContentAsset?.fields?.ingredients_raw ||
+      (hasApprovedSnapshotContract ? { review_state: 'assistant_reviewed' } : undefined),
   });
   if (ingredientsDecision.preserve && hasPdpContentAssetValue('ingredients_raw', candidatePdpIngredientsRaw)) {
     snapshotQuarantine = appendPreservedContentCandidateToSnapshotQuarantine(snapshotQuarantine, {
@@ -3402,7 +3416,8 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
           ingredientsDecision.existingApproved ? existingPdpIngredientsRaw : '',
         ))
     : '';
-  const existingPdpActiveIngredientsRaw = identityRepairBackfill || !isSurfaceablePdpField(existingPdpFieldQualitySummary, 'active_ingredients_raw')
+  const existingPdpActiveIngredientsRaw = identityRepairBackfill ||
+    (!hasApprovedSnapshotContract && !isSurfaceablePdpField(existingPdpFieldQualitySummary, 'active_ingredients_raw'))
     ? ''
     : normalizeNonEmptyString(seedData.pdp_active_ingredients_raw || snapshot.pdp_active_ingredients_raw);
   const candidatePdpActiveIngredientsRaw = supportsFormulaPdpFields
@@ -3414,7 +3429,9 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     existingValue: existingPdpActiveIngredientsRaw,
     incomingSummary: incomingPdpFieldQualitySummary,
     existingSummary: existingPdpFieldQualitySummary,
-    assetField: existingPdpContentAsset?.fields?.active_ingredients_raw,
+    assetField:
+      existingPdpContentAsset?.fields?.active_ingredients_raw ||
+      (hasApprovedSnapshotContract ? { review_state: 'assistant_reviewed' } : undefined),
   });
   if (activeIngredientsDecision.preserve && hasPdpContentAssetValue('active_ingredients_raw', candidatePdpActiveIngredientsRaw)) {
     snapshotQuarantine = appendPreservedContentCandidateToSnapshotQuarantine(snapshotQuarantine, {
@@ -3443,7 +3460,8 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     surfaceableProductDescriptionRaw,
     nextPdpActiveIngredientsRaw,
   ].join(' ');
-  const existingPdpHowToUseRaw = identityRepairBackfill || !isSurfaceablePdpField(existingPdpFieldQualitySummary, 'how_to_use_raw')
+  const existingPdpHowToUseRaw = identityRepairBackfill ||
+    (!hasApprovedSnapshotContract && !isSurfaceablePdpField(existingPdpFieldQualitySummary, 'how_to_use_raw'))
     ? ''
     : normalizeNonEmptyString(seedData.pdp_how_to_use_raw || snapshot.pdp_how_to_use_raw);
   const candidatePdpHowToUseRaw = supportsHowToUsePdpField
@@ -3460,7 +3478,9 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     existingValue: existingPdpHowToUseRaw,
     incomingSummary: incomingPdpFieldQualitySummary,
     existingSummary: existingPdpFieldQualitySummary,
-    assetField: existingPdpContentAsset?.fields?.how_to_use_raw,
+    assetField:
+      existingPdpContentAsset?.fields?.how_to_use_raw ||
+      (hasApprovedSnapshotContract ? { review_state: 'assistant_reviewed' } : undefined),
   });
   if (howToDecision.preserve && hasPdpContentAssetValue('how_to_use_raw', candidatePdpHowToUseRaw)) {
     snapshotQuarantine = appendPreservedContentCandidateToSnapshotQuarantine(snapshotQuarantine, {
@@ -3482,7 +3502,7 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
   nextPdpDetailsSections = filterDuplicateHowToSections(nextPdpDetailsSections, nextPdpHowToUseRaw);
   const existingPdpFaqItems = identityRepairBackfill
     ? []
-    : !isSurfaceablePdpField(existingPdpFieldQualitySummary, 'faq_items')
+    : !hasApprovedSnapshotContract && !isSurfaceablePdpField(existingPdpFieldQualitySummary, 'faq_items')
       ? []
       : normalizeFaqItems(
         Array.isArray(seedData.pdp_faq_items) && seedData.pdp_faq_items.length > 0
@@ -3495,7 +3515,9 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     existingValue: existingPdpFaqItems,
     incomingSummary: incomingPdpFieldQualitySummary,
     existingSummary: existingPdpFieldQualitySummary,
-    assetField: existingPdpContentAsset?.fields?.faq_items,
+    assetField:
+      existingPdpContentAsset?.fields?.faq_items ||
+      (hasApprovedSnapshotContract ? { review_state: 'assistant_reviewed' } : undefined),
   });
   if (faqDecision.preserve && hasPdpContentAssetValue('faq_items', surfaceablePdpFaqItems)) {
     snapshotQuarantine = appendPreservedContentCandidateToSnapshotQuarantine(snapshotQuarantine, {

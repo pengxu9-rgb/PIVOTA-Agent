@@ -393,6 +393,43 @@ describe('externalSeedProducts helper', () => {
     });
   });
 
+  test('carries force-filled PDP review absence without consuming seed audit summaries', () => {
+    const product = buildExternalSeedProduct({
+      id: 'eps_review_absence_seed',
+      external_product_id: 'ext_review_absence_seed',
+      canonical_url: 'https://fentybeauty.com/products/example',
+      destination_url: 'https://fentybeauty.com/products/example',
+      title: 'Example Product',
+      seed_data: {
+        brand: 'Fenty Beauty',
+        review_summary: {
+          auditor: 'seed_content_audit_v1',
+          review_status: 'auto_corrected',
+          issues_detected: ['html_entities_in_description'],
+        },
+        snapshot: {
+          pdp_review_summary: {
+            status: 'unavailable',
+            unavailable_reason: 'no_approved_merchant_review_source_captured',
+            source: 'pivota_force_fill_v1',
+            content_review_state: 'approved_absence',
+            force_filled: true,
+          },
+        },
+      },
+    });
+
+    expect(product.review_summary).toEqual({
+      status: 'unavailable',
+      review_count: 0,
+      scale: 5,
+      unavailable_reason: 'no_approved_merchant_review_source_captured',
+      source: 'pivota_force_fill_v1',
+      content_review_state: 'approved_absence',
+      force_filled: true,
+    });
+  });
+
   test('normalizes merchant review preview items and q&a into external seed runtime product', () => {
     const product = buildExternalSeedProduct({
       id: 'eps_review_preview_seed',

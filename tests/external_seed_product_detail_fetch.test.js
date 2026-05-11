@@ -444,6 +444,117 @@ describe('external seed product detail hydration', () => {
     );
   });
 
+  test('get_pdp_v2 resolves sig_* routes through the external seed rich PDP path while preserving the public sig id', async () => {
+    const { app, db } = loadServerWithDb({
+      PIVOTA_API_BASE: 'https://backend.test',
+      PIVOTA_API_KEY: 'test-token',
+    });
+
+    db.query
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            merchant_id: 'external_seed',
+            platform: 'external_seed',
+            source_product_id: 'ext_seed_db_sig_1',
+            product_key: 'prod::external_seed::external_seed::ext_seed_db_sig_1',
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'eps_seed_db_sig_1',
+            external_product_id: 'ext_seed_db_sig_1',
+            status: 'active',
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'eps_seed_db_sig_1',
+            external_product_id: 'ext_seed_db_sig_1',
+            status: 'active',
+            canonical_url: 'https://www.fentybeauty.com/products/gloss-bomb',
+            destination_url: 'https://www.fentybeauty.com/products/gloss-bomb',
+            title: 'Fenty Beauty Gloss Bomb Universal Lip Luminizer',
+            image_url: 'https://cdn.example.com/fenty-gloss.jpg',
+            price_amount: '22.00',
+            price_currency: 'USD',
+            availability: 'In Stock',
+            seed_data: {
+              brand: 'Fenty Beauty',
+              description: 'A high-shine lip luminizer.',
+              snapshot: {
+                canonical_url: 'https://www.fentybeauty.com/products/gloss-bomb',
+                product_id: 'ext_seed_db_sig_1',
+                variants: [
+                  {
+                    variant_id: 'fenty-gloss-default',
+                    title: 'Full Size',
+                    price: '22.00',
+                    currency: 'USD',
+                    stock: 'In Stock',
+                  },
+                ],
+              },
+            },
+          },
+        ],
+      });
+
+    nock('https://backend.test')
+      .get('/agent/v1/product-groups/resolve-by-product-id')
+      .query((query) => query && query.product_id === 'ext_seed_db_sig_1')
+      .reply(404, { error: 'PRODUCT_NOT_FOUND', message: 'No product group' });
+
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'get_pdp_v2',
+        payload: {
+          product_ref: {
+            product_id: 'sig_fentygloss1',
+          },
+        },
+      })
+      .expect(200);
+
+    expect(db.query).toHaveBeenCalledTimes(3);
+    expect(res.body.subject).toEqual(
+      expect.objectContaining({
+        type: 'product',
+        id: 'sig_fentygloss1',
+      }),
+    );
+    expect(res.body.metadata.identity_resolution).toEqual(
+      expect.objectContaining({
+        requested_product_id: 'sig_fentygloss1',
+        resolved_product_id: 'ext_seed_db_sig_1',
+        resolved_merchant_id: 'external_seed',
+        canonicalization_applied: true,
+        canonicalization_reason_code: 'PIVOTA_SIGNATURE_ID',
+        resolution_source: 'external_seed_product_id',
+      }),
+    );
+    const canonicalModule = res.body.modules?.find((module) => module?.type === 'canonical');
+    expect(canonicalModule?.data?.canonical_product_ref).toEqual(
+      expect.objectContaining({
+        merchant_id: 'external_seed',
+        product_id: 'ext_seed_db_sig_1',
+      }),
+    );
+    expect(canonicalModule?.data?.pdp_payload?.product).toEqual(
+      expect.objectContaining({
+        product_id: 'sig_fentygloss1',
+        canonical_url: 'https://agent.pivota.cc/products/sig_fentygloss1',
+        source_url: 'https://www.fentybeauty.com/products/gloss-bomb',
+        title: 'Fenty Beauty Gloss Bomb Universal Lip Luminizer',
+      }),
+    );
+  });
+
   test('get_pdp_v2 fails fast for inactive external seed routes before legacy detail fallback', async () => {
     const { app, db } = loadServerWithDb({
       PIVOTA_API_BASE: 'https://backend.test',

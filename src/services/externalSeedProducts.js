@@ -578,6 +578,25 @@ function normalizeSeedReviewSummary(...values) {
   const out = {};
   for (const value of values) {
     const source = ensureJsonObject(value);
+    const status = normalizeNonEmptyString(source.status || source.review_status);
+    const unavailableReason = normalizeNonEmptyString(
+      source.unavailable_reason || source.reason || source.review_unavailable_reason,
+    );
+    if (
+      status &&
+      ['none', 'no_reviews', 'unavailable', 'no_review_source_captured'].includes(status.toLowerCase()) &&
+      out.status == null
+    ) {
+      out.status = status.toLowerCase();
+      out.review_count = 0;
+      out.scale = normalizeAmount(source.scale ?? source.rating_scale) || 5;
+      if (unavailableReason) out.unavailable_reason = unavailableReason;
+      const sourceLabel = normalizeNonEmptyString(source.source || source.source_type);
+      if (sourceLabel) out.source = sourceLabel;
+      const contentReviewState = normalizeNonEmptyString(source.content_review_state);
+      if (contentReviewState) out.content_review_state = contentReviewState;
+      if (source.force_filled === true) out.force_filled = true;
+    }
     const rating = normalizeAmount(
       source.rating ??
         source.rating_value ??
@@ -3308,10 +3327,16 @@ function buildExternalSeedProduct(row, options = {}) {
     snapshot.sizeDetailLabel,
   );
   const reviewSummary = normalizeSeedReviewSummary(
+    runtimeSnapshot.pdp_review_summary,
+    runtimeSnapshot.pdpReviewSummary,
     runtimeSnapshot.review_summary,
     runtimeSnapshot.reviewSummary,
+    runtimeSeedData.pdp_review_summary,
+    runtimeSeedData.pdpReviewSummary,
     runtimeSeedData.review_summary,
     runtimeSeedData.reviewSummary,
+    runtimeSnapshot.pdp_reviews_summary,
+    runtimeSeedData.pdp_reviews_summary,
     runtimeSnapshot.reviews_summary,
     runtimeSeedData.reviews_summary,
   );
@@ -3837,10 +3862,16 @@ function buildExternalSeedBrandSearchProduct(row) {
       ) || 'External',
     ).trim() || 'External';
   const reviewSummary = normalizeSeedReviewSummary(
+    effectiveSeedData.pdp_review_summary,
+    effectiveSeedData.pdpReviewSummary,
+    snapshot.pdp_review_summary,
+    snapshot.pdpReviewSummary,
     effectiveSeedData.review_summary,
     effectiveSeedData.reviewSummary,
     snapshot.review_summary,
     snapshot.reviewSummary,
+    effectiveSeedData.pdp_reviews_summary,
+    snapshot.pdp_reviews_summary,
     effectiveSeedData.reviews_summary,
     snapshot.reviews_summary,
   );

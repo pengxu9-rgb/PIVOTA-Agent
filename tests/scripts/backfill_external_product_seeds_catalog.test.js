@@ -2371,6 +2371,68 @@ describe('backfill-external-product-seeds-catalog', () => {
     ]);
   });
 
+  test('preserves existing PDP content when a later authoritative extract returns empty fields', () => {
+    const row = {
+      id: 'eps_preserve_existing_content',
+      external_product_id: 'ext_preserve_existing_content',
+      title: 'Preserve Serum',
+      canonical_url: 'https://example.com/products/preserve-serum',
+      destination_url: 'https://example.com/products/preserve-serum',
+      seed_data: {
+        pdp_description_raw: 'Existing approved description with enough detail for the product page.',
+        pdp_how_to_use_raw: 'Apply two drops after cleansing and before moisturizer.',
+        pdp_ingredients_raw: 'Water, Glycerin, Niacinamide',
+        snapshot: {
+          pdp_description_raw: 'Existing approved description with enough detail for the product page.',
+          pdp_how_to_use_raw: 'Apply two drops after cleansing and before moisturizer.',
+          pdp_ingredients_raw: 'Water, Glycerin, Niacinamide',
+          product_kind: 'single_formula',
+          pdp_field_quality_summary: {
+            description_raw: { source_quality_status: 'low', reason_codes: ['missing_source_kind'] },
+            ingredients_raw: { source_quality_status: 'low', reason_codes: ['missing_source_kind'] },
+            how_to_use_raw: { source_quality_status: 'low', reason_codes: ['missing_source_kind'] },
+          },
+          external_seed_snapshot_contract: {
+            contract_version: 'external_seed.snapshot_contract.v1',
+            authoritative: true,
+            legacy_fields_quarantined: true,
+          },
+        },
+      },
+    };
+
+    const payload = buildSeedUpdatePayload(
+      row,
+      {
+        products: [
+          {
+            title: 'Preserve Serum',
+            url: 'https://example.com/products/preserve-serum',
+            product_kind: 'single_formula',
+            description_raw: '',
+            details_sections: [],
+            ingredients_raw: '',
+            pdp_how_to_use_raw: '',
+          },
+        ],
+        variants: [],
+        diagnostics: {},
+      },
+      'https://example.com/products/preserve-serum',
+    );
+
+    expect(payload.nextRow.seed_data.pdp_description_raw).toBe(
+      'Existing approved description with enough detail for the product page.',
+    );
+    expect(payload.nextRow.seed_data.pdp_how_to_use_raw).toBe(
+      'Apply two drops after cleansing and before moisturizer.',
+    );
+    expect(payload.nextRow.seed_data.pdp_ingredients_raw).toBe('Water, Glycerin, Niacinamide');
+    expect(payload.nextRow.seed_data.snapshot.pdp_how_to_use_raw).toBe(
+      'Apply two drops after cleansing and before moisturizer.',
+    );
+  });
+
   test('splits encoded Fenty accordion copy into structured PDP sections', () => {
     const fentyAccordion =
       'RECHARGEABLE MIRROR WITH 5X MAGNIFICATION\n\n' +

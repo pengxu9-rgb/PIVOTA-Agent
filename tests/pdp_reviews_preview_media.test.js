@@ -60,6 +60,44 @@ describe('pdpBuilder reviews preview media', () => {
     expect(previewItems[5].review_id).toBe('r_6');
   });
 
+  test('renders force-filled review absence as explicit reviewed status', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'p_review_absence',
+        merchant_id: 'external_seed',
+        title: 'Review Absence Product',
+        vendor: 'Fenty Beauty',
+        image_url: 'https://cdn.example.com/hero.jpg',
+        price: { amount: 24, currency: 'USD' },
+        review_summary: {
+          status: 'unavailable',
+          review_count: 0,
+          scale: 5,
+          unavailable_reason: 'no_approved_merchant_review_source_captured',
+          source: 'pivota_force_fill_v1',
+          content_review_state: 'approved_absence',
+          force_filled: true,
+        },
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+      includeEmptyReviews: true,
+    });
+
+    const reviewsModule = payload.modules.find((m) => m?.type === 'reviews_preview');
+
+    expect(reviewsModule?.data).toEqual(
+      expect.objectContaining({
+        status: 'unavailable',
+        unavailable_reason: 'no_approved_merchant_review_source_captured',
+        source: 'pivota_force_fill_v1',
+        content_review_state: 'approved_absence',
+        force_filled: true,
+        review_count: 0,
+      }),
+    );
+  });
+
   test('preserves review scope metadata and product-line preview media', () => {
     const payload = buildPdpPayload({
       product: {
