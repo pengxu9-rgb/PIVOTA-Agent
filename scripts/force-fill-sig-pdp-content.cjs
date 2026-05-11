@@ -117,7 +117,7 @@ function extractSize(value) {
     .replace(/[_-]+/g, ' ')
     .replace(/%20/g, ' ');
   if (!raw) return '';
-  const match = raw.match(/\b(\d+(?:\.\d+)?)\s*(ml|m\s*l|g|kg|oz|fl\.?\s*oz\.?|fluid\s*ounces?|l|lb|lbs|ct|count|pads?|sheets?|masks?|pcs?|pieces?)\b/i);
+  const match = raw.match(/\b(\d+(?:\.\d+)?)\s*(ml|m\s*l|g|oz|fl\.?\s*oz\.?|fluid\s*ounces?|ct|count|pads?|sheets?|masks?|pcs?|pieces?)\b/i);
   if (!match) return '';
   return formatSize(match[1], match[2]);
 }
@@ -413,20 +413,23 @@ async function fetchSourceEvidence(row) {
     });
     if (!res.ok) return [];
     const html = await res.text();
-    const out = [html.slice(0, 250000)];
-    for (const match of html.matchAll(/<meta\s+[^>]*(?:property|name)=["'](?:og:image|twitter:image)["'][^>]*content=["']([^"']+)["'][^>]*>/gi)) {
-      out.push(match[1]);
+    if (isLikelyNonProductSourceHtml(html)) return [];
+    const out = [];
+    for (const attrs of html.matchAll(/<meta\b([^>]*)>/gi)) {
+      const attrText = attrs[1] || '';
+      const key =
+        attrText.match(/\b(?:property|name)=["']([^"']+)["']/i)?.[1]?.toLowerCase() ||
+        '';
+      if (!['og:title', 'twitter:title', 'og:description', 'twitter:description', 'description', 'og:image', 'twitter:image'].includes(key)) {
+        continue;
+      }
+      const content = attrText.match(/\bcontent=["']([^"']+)["']/i)?.[1];
+      if (content) out.push(content);
     }
     for (const match of html.matchAll(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)) {
       try {
         const parsed = JSON.parse(match[1].trim());
-        const list = Array.isArray(parsed) ? parsed : [parsed];
-        for (const item of list) {
-          if (item?.['@type'] === 'Product') {
-            out.push(item.name, item.description);
-            out.push(...asArray(item.image));
-          }
-        }
+        collectProductJsonLdEvidence(parsed, out);
       } catch {
         // Ignore malformed embedded JSON-LD.
       }
@@ -439,6 +442,49 @@ async function fetchSourceEvidence(row) {
   }
 }
 
+function isLikelyNonProductSourceHtml(html) {
+  const raw = text(html).slice(0, 100000);
+  if (!raw) return true;
+  return /"template"\s*:\s*"404"/i.test(raw) ||
+    /["']?page_type["']?\s*:\s*["']404["']/i.test(raw) ||
+    /<title>[^<]*(?:404|not found)[^<]*<\/title>/i.test(raw) ||
+    /<body[^>]+(?:template|class)=["'][^"']*404/i.test(raw);
+}
+
+function collectProductJsonLdEvidence(value, out, depth = 0) {
+  if (depth > 4 || !value) return;
+  if (Array.isArray(value)) {
+    for (const item of value) collectProductJsonLdEvidence(item, out, depth + 1);
+    return;
+  }
+  if (typeof value !== 'object') return;
+  const type = value['@type'];
+  const types = Array.isArray(type) ? type.map((item) => text(item).toLowerCase()) : [text(type).toLowerCase()];
+  if (types.includes('product')) {
+    out.push(value.name, value.description);
+    out.push(...asArray(value.image));
+    out.push(...asArray(value.offers).map((offer) => offer?.name || offer?.sku));
+  }
+  collectProductJsonLdEvidence(value['@graph'], out, depth + 1);
+  collectProductJsonLdEvidence(value.mainEntity, out, depth + 1);
+  collectProductJsonLdEvidence(value.itemListElement, out, depth + 1);
+}
+
+function inferSingleSkuSpecFromTitle(row, seedData, snapshot) {
+  const title = firstText(row.title, snapshot.title, seedData.title);
+  if (!title) return null;
+  const lower = title.toLowerCase();
+  const setLike = /\b(set|kit|bundle|duo|trio|pack of|value pack|collection)\b/.test(lower);
+  if (!setLike && /\b(mask|sheet mask)\b/.test(lower)) {
+    return {
+      size: 'Single mask',
+      source: 'reviewed_title_pattern',
+      evidence: title,
+    };
+  }
+  return null;
+}
+
 async function inferSize(row, seedData, snapshot, { fetchSource = false } = {}) {
   for (const candidate of collectCandidateStrings(row, seedData, snapshot)) {
     const size = extractSize(candidate);
@@ -449,7 +495,7 @@ async function inferSize(row, seedData, snapshot, { fetchSource = false } = {}) 
     const size = extractSize(candidate);
     if (size) return { size, source: 'official_source_page', evidence: text(candidate).slice(0, 240) };
   }
-  return null;
+  return inferSingleSkuSpecFromTitle(row, seedData, snapshot);
 }
 
 function mergeQuality(seedData, snapshot, key, sourceQualityStatus, reasonCode) {
@@ -770,6 +816,9 @@ if (require.main === module) {
 module.exports = {
   _internals: {
     extractSize,
+    fetchSourceEvidence,
+    inferSingleSkuSpecFromTitle,
+    isLikelyNonProductSourceHtml,
     buildHowTo,
     buildIngredientForceFill,
     buildProductIntelBundle,
