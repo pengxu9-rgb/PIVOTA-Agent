@@ -7,9 +7,11 @@ describe('find_similar_products mainline wrapper', () => {
   beforeEach(() => {
     nock.cleanAll();
     jest.resetModules();
+    jest.dontMock('../src/db');
     process.env.API_MODE = 'REAL';
     process.env.PIVOTA_API_BASE = apiBase;
     process.env.PIVOTA_API_KEY = 'test-token';
+    delete process.env.DATABASE_URL;
     delete process.env.PDP_SIMILAR_CARD_DETAIL_ENRICH_ENABLED;
   });
 
@@ -86,6 +88,90 @@ describe('find_similar_products mainline wrapper', () => {
       }),
     );
     expect(upstreamScope.isDone()).toBe(false);
+  });
+
+  it('resolves sig external-seed bases before mainline similar recall', async () => {
+    process.env.DATABASE_URL = 'postgres://test';
+    const dbQueryMock = jest.fn().mockResolvedValue({
+      rows: [
+        {
+          merchant_id: 'external_seed',
+          platform: 'external_seed',
+          source_product_id: 'ext_source_1',
+          product_key: 'prod::external_seed::external_seed::ext_source_1',
+        },
+      ],
+    });
+    jest.doMock('../src/db', () => ({
+      query: dbQueryMock,
+    }));
+
+    const recommendMock = jest.fn().mockResolvedValue({
+      items: [
+        {
+          product_id: 'ext_sim_1',
+          merchant_id: 'external_seed',
+          pivota_signature_id: 'sig_sim_1',
+          title: 'Similar Product 1',
+          image_url: 'https://cdn.example.test/sim-1.jpg',
+          card_highlight: 'Same category with a comparable finish.',
+        },
+      ],
+      metadata: {
+        low_confidence: false,
+        retrieval_mix: { internal: 0, external: 1 },
+      },
+    });
+    jest.doMock('../src/services/RecommendationEngine', () => ({
+      ...jest.requireActual('../src/services/RecommendationEngine'),
+      recommend: recommendMock,
+      getCacheStats: jest.fn(() => ({})),
+    }));
+
+    const app = require('../src/server');
+
+    const res = await request(app)
+      .post('/agent/shop/v1/invoke')
+      .send({
+        operation: 'find_similar_products',
+        payload: {
+          product_id: 'sig_source1',
+          merchant_id: 'external_seed',
+          limit: 4,
+          options: { debug: true },
+        },
+      })
+      .expect(200);
+
+    expect(dbQueryMock).toHaveBeenCalledWith(expect.stringContaining('WHERE pivota_signature_id = $1'), ['sig_source1']);
+    expect(recommendMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pdp_product: expect.objectContaining({
+          merchant_id: 'external_seed',
+          product_id: 'ext_source_1',
+          external_product_id: 'ext_source_1',
+          pivota_signature_id: 'sig_source1',
+          requested_product_id: 'sig_source1',
+          source: 'external_seed',
+        }),
+      }),
+    );
+    expect(res.body.products[0]).toEqual(
+      expect.objectContaining({
+        product_id: 'sig_sim_1',
+        source_product_id: 'ext_sim_1',
+      }),
+    );
+    expect(res.body.metadata).toEqual(
+      expect.objectContaining({
+        direct_base_detail_mode: 'external_seed_minimal',
+        similar_base_ref_resolution: expect.objectContaining({
+          requested_product_id: 'sig_source1',
+          resolved_product_id: 'ext_source_1',
+          resolved: true,
+        }),
+      }),
+    );
   });
 
   it('does not spend card detail budget on highlight-only gaps', async () => {

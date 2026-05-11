@@ -3287,12 +3287,35 @@ function buildPdpSimilarBaseProduct({
     canonicalProductForPdp && typeof canonicalProductForPdp === 'object'
       ? canonicalProductForPdp
       : {};
+  const sourceExternalProductId = firstNonEmptyString(
+    sourceProduct.external_product_id,
+    sourceProduct.external_seed_product_id,
+    sourceProduct.source_product_id,
+    sourceProduct.platform_product_id,
+    canonicalProduct?.external_product_id,
+    canonicalProduct?.source_product_id,
+  );
   if (canonicalRefMerchantId === EXTERNAL_SEED_MERCHANT_ID && canonicalRefProductId) {
+    const baseProductId =
+      isPivotaSignatureProductId(canonicalRefProductId) && isExternalSeedProductId(sourceExternalProductId)
+        ? sourceExternalProductId
+        : canonicalRefProductId;
     return {
       merchant_id: EXTERNAL_SEED_MERCHANT_ID,
-      product_id: canonicalRefProductId,
-      external_product_id: canonicalRefProductId,
+      product_id: baseProductId,
+      external_product_id: isExternalSeedProductId(baseProductId)
+        ? baseProductId
+        : sourceExternalProductId || baseProductId,
       source: 'external_seed',
+      ...(isPivotaSignatureProductId(canonicalRefProductId)
+        ? {
+            pivota_signature_id: canonicalRefProductId,
+            signature_id: canonicalRefProductId,
+          }
+        : {}),
+      ...(baseProductId !== canonicalRefProductId
+        ? { requested_product_id: canonicalRefProductId }
+        : {}),
       ...(sourceProduct.currency ? { currency: sourceProduct.currency } : {}),
       ...(sourceProduct.market ? { market: sourceProduct.market } : {}),
     };
@@ -3695,7 +3718,7 @@ async function fetchExternalSeedProductDetailFromDb(args) {
 async function resolveCatalogProductRefFromPivotaSignature(productId) {
   if (!process.env.DATABASE_URL) return null;
   const normalizedProductId = String(productId || '').trim();
-  if (!/^sig_[a-z0-9]+$/i.test(normalizedProductId)) return null;
+  if (!isPivotaSignatureProductId(normalizedProductId)) return null;
 
   try {
     const result = await query(
@@ -3731,6 +3754,10 @@ async function resolveCatalogProductRefFromPivotaSignature(productId) {
     );
     return null;
   }
+}
+
+function isPivotaSignatureProductId(value) {
+  return /^sig_[a-z0-9]+$/i.test(String(value || '').trim());
 }
 
 function applyRequestedPivotaSignatureToPdpProduct(product, sigId, sourceProductId = '') {
@@ -32004,26 +32031,50 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             sim?.options?.debug === true;
 
           if (productId) {
+            let effectiveProductId = productId;
+            let effectiveMerchantId = merchantId;
+            let resolvedSignatureRef = null;
+            if (
+              isPivotaSignatureProductId(productId) &&
+              (!merchantId || merchantId === EXTERNAL_SEED_MERCHANT_ID)
+            ) {
+              resolvedSignatureRef = await resolveCatalogProductRefFromPivotaSignature(productId).catch(() => null);
+              if (
+                resolvedSignatureRef?.merchant_id === EXTERNAL_SEED_MERCHANT_ID &&
+                isExternalSeedProductId(resolvedSignatureRef.product_id)
+              ) {
+                effectiveProductId = resolvedSignatureRef.product_id;
+                effectiveMerchantId = EXTERNAL_SEED_MERCHANT_ID;
+              }
+            }
             const directCandidateLimit = Math.max(
               limit,
               Math.min(PDP_SIMILAR_MAX_CANDIDATE_LIMIT, Math.max(limit + 12, limit * 3)),
             );
             const isExternalSeedDirectBase =
-              isExternalSeedProductId(productId) &&
-              (!merchantId || merchantId === EXTERNAL_SEED_MERCHANT_ID);
+              isExternalSeedProductId(effectiveProductId) &&
+              (!effectiveMerchantId || effectiveMerchantId === EXTERNAL_SEED_MERCHANT_ID);
             const baseProduct =
               (isExternalSeedDirectBase
                 ? {
                     merchant_id: EXTERNAL_SEED_MERCHANT_ID,
-                    product_id: productId,
-                    external_product_id: productId,
+                    product_id: effectiveProductId,
+                    external_product_id: effectiveProductId,
                     source: 'external_seed',
+                    ...(isPivotaSignatureProductId(productId)
+                      ? {
+                          pivota_signature_id: productId,
+                          signature_id: productId,
+                          requested_product_id: productId,
+                        }
+                      : {}),
+                    ...(resolvedSignatureRef?.product_key ? { product_key: resolvedSignatureRef.product_key } : {}),
                   }
-                : merchantId
+                : effectiveMerchantId
                 ? await withStageBudget(
                     fetchProductDetailForOffers({
-                      merchantId,
-                      productId,
+                      merchantId: effectiveMerchantId,
+                      productId: effectiveProductId,
                       checkoutToken,
                       bypassCache,
                       totalTimeoutMs: PDP_SIMILAR_BASE_DETAIL_BUDGET_MS,
@@ -32033,14 +32084,21 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                     'find_similar_base_detail',
                   ).catch(() => null)
                 : null) ||
-              (isExternalSeedDirectBase || isExternalSeedProductId(productId)
+              (isExternalSeedDirectBase || isExternalSeedProductId(effectiveProductId)
                 ? {
                     merchant_id: EXTERNAL_SEED_MERCHANT_ID,
-                    product_id: productId,
-                    external_product_id: productId,
+                    product_id: effectiveProductId,
+                    external_product_id: effectiveProductId,
                     source: 'external_seed',
+                    ...(isPivotaSignatureProductId(productId)
+                      ? {
+                          pivota_signature_id: productId,
+                          signature_id: productId,
+                          requested_product_id: productId,
+                        }
+                      : {}),
                   }
-                : { merchant_id: merchantId || null, product_id: productId });
+                : { merchant_id: effectiveMerchantId || null, product_id: effectiveProductId });
 
             const rec = await fetchSimilarProductsDeduped({
               pdp_product: baseProduct,
@@ -32091,6 +32149,16 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                   requestedLimit: limit,
                 }),
                 direct_base_detail_mode: isExternalSeedDirectBase ? 'external_seed_minimal' : 'bounded_detail',
+                ...(resolvedSignatureRef
+                  ? {
+                      similar_base_ref_resolution: {
+                        requested_product_id: productId,
+                        resolved_product_id: effectiveProductId,
+                        merchant_id: effectiveMerchantId || null,
+                        resolved: effectiveProductId !== productId,
+                      },
+                    }
+                  : {}),
                 direct_base_detail_budget_ms: PDP_SIMILAR_BASE_DETAIL_BUDGET_MS,
                 ...cardEnrichmentMetadata,
                 card_enrichment_status:
