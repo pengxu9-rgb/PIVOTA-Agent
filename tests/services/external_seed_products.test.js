@@ -430,6 +430,55 @@ describe('externalSeedProducts helper', () => {
     });
   });
 
+  test('carries force-filled estimated reviews and reviewed questions', () => {
+    const product = buildExternalSeedProduct({
+      id: 'eps_review_estimate_seed',
+      external_product_id: 'ext_review_estimate_seed',
+      canonical_url: 'https://fentybeauty.com/products/example',
+      destination_url: 'https://fentybeauty.com/products/example',
+      title: 'Example Product',
+      seed_data: {
+        brand: 'Fenty Beauty',
+        snapshot: {
+          pdp_review_summary: {
+            status: 'estimated',
+            rating: 4.4,
+            review_count: 36,
+            scale: 5,
+            source: 'pivota_force_fill_v1',
+            content_review_state: 'approved_estimate',
+            force_filled: true,
+            questions: [
+              {
+                question: 'How should I use this product?',
+                answer: 'Use it according to the product directions and adjust frequency to your routine.',
+                source: 'pivota_force_fill_v1',
+              },
+            ],
+          },
+        },
+      },
+    });
+
+    expect(product.review_summary).toEqual(
+      expect.objectContaining({
+        status: 'estimated',
+        rating: 4.4,
+        review_count: 36,
+        scale: 5,
+        source: 'pivota_force_fill_v1',
+        content_review_state: 'approved_estimate',
+        force_filled: true,
+        questions: [
+          expect.objectContaining({
+            question: 'How should I use this product?',
+            answer: expect.stringContaining('product directions'),
+          }),
+        ],
+      }),
+    );
+  });
+
   test('normalizes merchant review preview items and q&a into external seed runtime product', () => {
     const product = buildExternalSeedProduct({
       id: 'eps_review_preview_seed',
