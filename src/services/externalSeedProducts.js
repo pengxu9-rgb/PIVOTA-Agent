@@ -3741,6 +3741,18 @@ function buildExternalSeedBrandSearchProduct(row) {
         '',
     ).trim() || stableExternalProductId(canonicalUrl || destinationUrl);
   if (!externalProductId) return null;
+  const pivotaSignatureId = firstNonEmptyString(
+    row.pivota_signature_id,
+    effectiveSeedData.pivota_signature_id,
+    snapshot.pivota_signature_id,
+  );
+  const pivotaCanonicalUrl = firstNonEmptyString(
+    row.pivota_canonical_url,
+    effectiveSeedData.pivota_canonical_url,
+    snapshot.pivota_canonical_url,
+    pivotaSignatureId ? `https://agent.pivota.cc/products/${pivotaSignatureId}` : '',
+  );
+  const responseProductId = pivotaSignatureId || externalProductId;
 
   const title =
     firstNonEmptyString(
@@ -3834,12 +3846,16 @@ function buildExternalSeedBrandSearchProduct(row) {
   );
 
   return {
-    id: externalProductId,
-    product_id: externalProductId,
+    id: responseProductId,
+    product_id: responseProductId,
     merchant_id: EXTERNAL_SEED_MERCHANT_ID,
     merchant_name: merchantName,
     platform: 'external',
     platform_product_id: externalProductId,
+    external_product_id: externalProductId,
+    external_seed_product_id: externalProductId,
+    source_product_id: externalProductId,
+    ...(pivotaSignatureId ? { pivota_signature_id: pivotaSignatureId, signature_id: pivotaSignatureId } : {}),
     title,
     ...(description ? { description } : {}),
     price,
@@ -3852,8 +3868,10 @@ function buildExternalSeedBrandSearchProduct(row) {
     product_type: normalizedCategory || explicitCategory || 'external',
     source: 'external_seed',
     ...(row.market ? { market: String(row.market).trim().toUpperCase() } : {}),
-    url: canonicalUrl || destinationUrl || undefined,
-    ...(canonicalUrl ? { canonical_url: canonicalUrl } : {}),
+    url: pivotaCanonicalUrl || canonicalUrl || destinationUrl || undefined,
+    ...(pivotaCanonicalUrl ? { pivota_canonical_url: pivotaCanonicalUrl } : {}),
+    ...(pivotaCanonicalUrl || canonicalUrl ? { canonical_url: pivotaCanonicalUrl || canonicalUrl } : {}),
+    ...(canonicalUrl ? { merchant_canonical_url: canonicalUrl } : {}),
     ...(destinationUrl ? { destination_url: destinationUrl } : {}),
     ...(row.id ? { external_seed_id: String(row.id) } : {}),
     ...(reviewSummary ? { review_summary: reviewSummary } : {}),

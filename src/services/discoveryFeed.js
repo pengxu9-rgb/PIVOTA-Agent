@@ -5126,7 +5126,19 @@ function buildBeautyInterestSeedSelect() {
       seed_data->>'description',
       seed_data->'snapshot'->>'description',
       ''
-    ), 1200) AS seed_description
+    ), 1200) AS seed_description,
+    (SELECT cp.pivota_signature_id
+       FROM catalog_products cp
+      WHERE cp.merchant_id = 'external_seed'
+        AND cp.platform = 'external_seed'
+        AND cp.source_product_id = external_product_seeds.external_product_id
+      LIMIT 1) AS pivota_signature_id,
+    (SELECT cp.pivota_canonical_url
+       FROM catalog_products cp
+      WHERE cp.merchant_id = 'external_seed'
+        AND cp.platform = 'external_seed'
+        AND cp.source_product_id = external_product_seeds.external_product_id
+      LIMIT 1) AS pivota_canonical_url
   `;
 }
 
@@ -9392,6 +9404,13 @@ function formatDiscoveryResponseProduct(candidate, request = null) {
       ...(raw.disclosure_text ? { disclosure_text: raw.disclosure_text } : {}),
       ...(raw.platform ? { platform: raw.platform } : {}),
       ...(raw.platform_product_id ? { platform_product_id: raw.platform_product_id } : {}),
+      ...(raw.source_product_id ? { source_product_id: raw.source_product_id } : {}),
+      ...(raw.external_product_id ? { external_product_id: raw.external_product_id } : {}),
+      ...(raw.external_seed_product_id ? { external_seed_product_id: raw.external_seed_product_id } : {}),
+      ...(raw.pivota_signature_id ? { pivota_signature_id: raw.pivota_signature_id } : {}),
+      ...(raw.pivota_canonical_url ? { pivota_canonical_url: raw.pivota_canonical_url } : {}),
+      ...(raw.merchant_canonical_url ? { merchant_canonical_url: raw.merchant_canonical_url } : {}),
+      ...(raw.destination_url ? { destination_url: raw.destination_url } : {}),
       ...(raw.variant_id ? { variant_id: raw.variant_id } : {}),
       ...(raw.sku_id ? { sku_id: raw.sku_id } : {}),
       ...(raw.sku ? { sku: raw.sku } : {}),
