@@ -3729,6 +3729,52 @@ async function resolveCatalogProductRefFromPivotaSignature(productId) {
   }
 }
 
+function applyRequestedPivotaSignatureToPdpProduct(product, sigId, sourceProductId = '') {
+  if (!product || typeof product !== 'object' || Array.isArray(product)) return product;
+  const normalizedSigId = String(sigId || '').trim();
+  if (!/^sig_[a-z0-9]+$/i.test(normalizedSigId)) return product;
+
+  const resolvedSourceProductId = firstNonEmptyString(
+    sourceProductId,
+    product.source_product_id,
+    product.external_product_id,
+    product.external_seed_product_id,
+    product.platform_product_id,
+    product.product_id,
+    product.id,
+  );
+  const currentCanonicalUrl = firstNonEmptyString(product.canonical_url, product.url);
+  const merchantCanonicalUrl = firstNonEmptyString(
+    product.merchant_canonical_url,
+    product.destination_url,
+    currentCanonicalUrl && !/\/products\/sig_/i.test(currentCanonicalUrl) ? currentCanonicalUrl : '',
+  );
+  const pivotaCanonicalUrl = firstNonEmptyString(
+    product.pivota_canonical_url,
+    `https://agent.pivota.cc/products/${normalizedSigId}`,
+  );
+
+  return {
+    ...product,
+    id: normalizedSigId,
+    product_id: normalizedSigId,
+    pivota_signature_id: product.pivota_signature_id || normalizedSigId,
+    signature_id: product.signature_id || normalizedSigId,
+    pivota_canonical_url: pivotaCanonicalUrl,
+    canonical_url: pivotaCanonicalUrl,
+    url: pivotaCanonicalUrl,
+    ...(merchantCanonicalUrl ? { merchant_canonical_url: merchantCanonicalUrl } : {}),
+    ...(resolvedSourceProductId
+      ? {
+          source_product_id: product.source_product_id || resolvedSourceProductId,
+          external_product_id: product.external_product_id || resolvedSourceProductId,
+          external_seed_product_id: product.external_seed_product_id || resolvedSourceProductId,
+          platform_product_id: product.platform_product_id || resolvedSourceProductId,
+        }
+      : {}),
+  };
+}
+
 async function fetchExternalSeedRouteStatusFromDb(args) {
   if (!process.env.DATABASE_URL) return null;
   const productId = String(args?.productId || '').trim();
@@ -27040,11 +27086,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 		      let canonicalizationReasonCode = null;
 		      let identityResolutionSource = 'requested_route';
 		      const requestedProductIdForDiagnostics = productId || null;
+          const requestedMerchantIdForDiagnostics = requestedMerchantId || null;
+          let requestedPivotaSignatureId = null;
 		      if (productId && String(productId).trim().toLowerCase().startsWith('sig_') && !requestedMerchantId) {
 		        const signatureResolveStartedAt = Date.now();
 		        const signatureProductRef = await resolveCatalogProductRefFromPivotaSignature(productId);
 		        markPdpV2Phase('resolve_catalog_signature', signatureResolveStartedAt);
 		        if (signatureProductRef?.product_id && signatureProductRef?.merchant_id) {
+              requestedPivotaSignatureId = requestedProductIdForDiagnostics;
 		          productId = String(signatureProductRef.product_id || '').trim() || productId;
 		          requestedMerchantId = String(signatureProductRef.merchant_id || '').trim() || requestedMerchantId;
 		          canonicalizationApplied = productId !== requestedProductIdForDiagnostics;
@@ -27657,6 +27706,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           identityGraphLive = null;
           identityGraphPublishedIntel = null;
 	      }
+        if (requestedPivotaSignatureId) {
+          canonicalProductForPdp = applyRequestedPivotaSignatureToPdpProduct(
+            canonicalProductForPdp,
+            requestedPivotaSignatureId,
+            canonicalProductRef?.product_id || productId,
+          );
+        }
 	      const reviewSummaryPromise = wantsReviewsPreview
 	        ? (async () => {
 	            const moduleStartedAt = Date.now();
@@ -28351,7 +28407,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         generated_at: new Date().toISOString(),
         subject: productGroupId
           ? { type: 'product_group', id: productGroupId, canonical_product_ref: canonicalProductRef }
-          : { type: 'product', id: canonicalProductRef.product_id, canonical_product_ref: canonicalProductRef },
+          : {
+              type: 'product',
+              id: requestedPivotaSignatureId || canonicalProductRef.product_id,
+              canonical_product_ref: canonicalProductRef,
+            },
 	        capabilities,
 	        modules,
 	        warnings: debug ? [] : [],
@@ -28374,8 +28434,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             product_intel_status: productIntelStatus,
             ...(productIntelMissingReason ? { product_intel_missing_reason: productIntelMissingReason } : {}),
             identity_resolution: buildPdpV2IdentityResolution({
-              requestedProductId: entryProductId || productId || null,
-              requestedMerchantId: requestedMerchantId || null,
+              requestedProductId: requestedProductIdForDiagnostics || entryProductId || productId || null,
+              requestedMerchantId: requestedMerchantIdForDiagnostics,
               resolvedProductId: canonicalProductRef?.product_id || null,
               resolvedMerchantId: canonicalProductRef?.merchant_id || null,
               entryPrecheckMissing: precheckEntryProductMissing,
@@ -28420,8 +28480,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 : [],
             },
             route_health: buildPdpV2RouteHealth({
-              requestedProductId: entryProductId || productId || null,
-              requestedMerchantId: requestedMerchantId || null,
+              requestedProductId: requestedProductIdForDiagnostics || entryProductId || productId || null,
+              requestedMerchantId: requestedMerchantIdForDiagnostics,
               resolvedProductId: canonicalProductRef?.product_id || null,
               resolvedMerchantId: canonicalProductRef?.merchant_id || null,
               entryPrecheckMissing: precheckEntryProductMissing,

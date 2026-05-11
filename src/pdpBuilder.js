@@ -3435,6 +3435,13 @@ function buildReviewsPreview(product, options = {}) {
     scale,
     rating,
     review_count: reviewCount,
+    status: typeof summary?.status === 'string' ? summary.status : undefined,
+    unavailable_reason:
+      typeof summary?.unavailable_reason === 'string' ? summary.unavailable_reason : undefined,
+    source: typeof summary?.source === 'string' ? summary.source : undefined,
+    content_review_state:
+      typeof summary?.content_review_state === 'string' ? summary.content_review_state : undefined,
+    force_filled: summary?.force_filled === true ? true : undefined,
     aggregation_scope:
       typeof summary?.aggregation_scope === 'string' ? summary.aggregation_scope : undefined,
     exact_item_review_count:
