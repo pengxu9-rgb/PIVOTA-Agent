@@ -12356,9 +12356,10 @@ function isBeautyProductContraindicatedForQuery(product, queryText = '', intent 
   ].filter(Boolean).join(' '));
   const safetyText = buildBeautyProductSafetyText(product, text);
   const normalizedQuery = normalizeSearchTextForMatch(queryText);
+  const acneOilControlIntent = beautyQueryHasAcneOilControlIntent(queryText);
   const calmFaceSkincareQuery =
-    families.size > 0 &&
-    /\b(face|facial|skin|skincare|sensitive|sensiti[sz]ed|redness|rosacea|dry|barrier|repair|gentle|fragrance[-\s]?free|travel|flight|moisturi[sz]er|cream|cleanser|serum|sunscreen)\b|面部|脸|臉|护肤|護膚|敏感|泛红|泛紅|干皮|乾皮|屏障|修护|修護|温和|溫和|无香精|無香精|旅行|飞行|飛行|保湿|保濕|洁面|潔面|精华|精華|防晒|防曬/i.test(normalizedQuery);
+    (families.size > 0 || acneOilControlIntent) &&
+    /\b(face|facial|skin|skincare|sensitive|sensiti[sz]ed|redness|rosacea|dry|oily|acne|blemish|breakout|pore|barrier|repair|gentle|fragrance[-\s]?free|travel|flight|moisturi[sz]er|cream|cleanser|serum|sunscreen)\b|面部|脸|臉|护肤|護膚|敏感|泛红|泛紅|干皮|乾皮|油皮|痘|粉刺|毛孔|屏障|修护|修護|温和|溫和|无香精|無香精|旅行|飞行|飛行|保湿|保濕|洁面|潔面|精华|精華|防晒|防曬/i.test(normalizedQuery);
   const barrierFirstQuery =
     /\b(sensitive|sensiti[sz]ed|redness|rosacea|dry|barrier|repair|gentle|fragrance[-\s]?free|travel|flight|acne|peeling|stinging|burning)\b|敏感|泛红|泛紅|干皮|乾皮|屏障|修护|修護|温和|溫和|无香精|無香精|旅行|飞行|飛行|痘|脱皮|脫皮|刺痛/i.test(normalizedQuery);
   const fragranceAverseQuery =
@@ -12400,7 +12401,6 @@ function isBeautyProductContraindicatedForQuery(product, queryText = '', intent 
   const retinoidHit =
     /\b(bio[-\s]?retinol|retinol|retinal|retinoid|retinyl|tretinoin|adapalene|hydroxypinacolone|hpr)\b/i.test(safetyText) ||
     /视黄醇|視黃醇|维a醇|維a醇|维甲酸|維甲酸|a醇/.test(safetyText);
-
   if (safety.has('avoid_retinoids')) {
     if (retinoidHit && !/\b(retinol[-\s]?free|retinoid[-\s]?free|no\s+retinol|without\s+retinol)\b/i.test(text)) {
       return true;
@@ -12983,6 +12983,22 @@ function compactBeautyMainlineProductForResponse(product, intent = null, queryTe
       queryText,
     }) || 'pack_before_flight_or_travel_review';
   }
+  const recommendationReason = buildBeautyMainlineRecommendationReason(product, queryText, intent);
+  if (recommendationReason) {
+    next.recommendation_reason = recommendationReason;
+    next.match_reason = recommendationReason;
+    if (!next.card_highlight) next.card_highlight = recommendationReason;
+    next.shopping_card = {
+      ...(next.shopping_card && typeof next.shopping_card === 'object' ? next.shopping_card : {}),
+      highlight: next.shopping_card?.highlight || recommendationReason,
+      recommendation_reason: recommendationReason,
+    };
+    next.search_card = {
+      ...(next.search_card && typeof next.search_card === 'object' ? next.search_card : {}),
+      highlight_candidate: next.search_card?.highlight_candidate || recommendationReason,
+      recommendation_reason: recommendationReason,
+    };
+  }
   return next;
 }
 
@@ -13147,6 +13163,46 @@ function beautyProductMatchesStrictLipstickIntent(product = {}) {
   return /\b(lipstick|lip\s*stick|liquid\s*lip|lip\s*color|lip\s*colour|rouge)\b/i.test(text);
 }
 
+function beautyQueryHasAcneOilControlIntent(queryText = '') {
+  return /\b(acne|blemish(?:es)?|breakouts?|pimples?|spots?|clog(?:ged)?\s*pores?|comedones?|oily|oil[-\s]?control|oilier|sebum|shine[-\s]?control|acne[-\s]?prone|breakout[-\s]?prone)\b|痘|粉刺|闭口|閉口|油皮|控油/i.test(
+    String(queryText || ''),
+  );
+}
+
+function beautyProductHasAcneOilControlEvidence(product = {}, candidateText = '') {
+  const text = String(candidateText || buildFallbackCandidateText(product) || '');
+  if (!text) return false;
+  return /\b(acne|blemish(?:es)?|breakouts?|pimples?|spot[-\s]?treat(?:ment)?|clog(?:ged)?\s*pores?|comedones?|clarif(?:y|ying)|salicylic|azelaic|succinic|benzoyl\s*peroxide|adapalene|sulfur|bha\b|aha\b|niacinamide|zinc\s*pca|sebum|oil[-\s]?control|shine[-\s]?control|pore[-\s]?refin(?:e|ing)|non[-\s]?comedogenic|tea\s*tree|centella|cica|madecassoside|heartleaf|mugwort|clay)\b|痘|粉刺|闭口|閉口|控油|水杨酸|水楊酸|壬二酸|烟酰胺|煙酰胺|积雪草|積雪草/i.test(
+    text,
+  );
+}
+
+function buildBeautyMainlineRecommendationReason(product = {}, queryText = '', intent = null) {
+  const text = buildFallbackCandidateText(product);
+  if (!text) return '';
+  const reasons = [];
+  const families = Array.isArray(intent?.families) ? intent.families : [];
+  if (beautyQueryHasAcneOilControlIntent(queryText) && beautyProductHasAcneOilControlEvidence(product, text)) {
+    if (/\bazelaic\b/i.test(text)) reasons.push('azelaic-acid support for blemish-prone skin');
+    else if (/\bsalicylic|bha\b/i.test(text)) reasons.push('BHA/salicylic support for clogged pores');
+    else if (/\bniacinamide|zinc\s*pca|sebum|oil[-\s]?control|shine[-\s]?control|pore[-\s]?refin/i.test(text)) reasons.push('oil-control and pore-refining signals');
+    else if (/\bcentella|cica|madecassoside|heartleaf|mugwort|tea\s*tree/i.test(text)) reasons.push('calming signals for breakout-prone skin');
+    else reasons.push('acne or blemish-care match');
+  }
+  if (families.includes('sunscreen') && /\b(spf|sunscreen|broad\s*spectrum)\b/i.test(text)) {
+    reasons.push('matches the SPF lane');
+  } else if (families.includes('serum') && /\b(serum|essence|ampoule|solution|treatment)\b/i.test(text)) {
+    reasons.push('matches the treatment step');
+  } else if (families.includes('cleanser') && /\b(cleanser|cleansing|face\s*wash)\b/i.test(text)) {
+    reasons.push('matches the cleanser step');
+  } else if (families.includes('moisturizer') && /\b(moisturi[sz]er|cream|gel\s*cream|barrier|repair)\b/i.test(text)) {
+    reasons.push('matches the moisturizer step');
+  }
+  if (reasons.length === 0) return '';
+  const unique = Array.from(new Set(reasons));
+  return `Recommended because it has ${unique.slice(0, 2).join(' and ')}.`;
+}
+
 function scoreBeautyExternalSeedProduct({ product, queryText, intent, normalizedQuery, queryTokens }) {
   const candidateText = buildFallbackCandidateText(product);
   if (!candidateText) return { product, relevant: false, score: -100 };
@@ -13162,6 +13218,18 @@ function scoreBeautyExternalSeedProduct({ product, queryText, intent, normalized
   const categoryLexicalMatch = explicitCategoryPathQuery
     ? beautyProductMatchesCategoryPathQuery(product, queryText, categoryPathPrefix)
     : false;
+  const acneOilControlIntent = beautyQueryHasAcneOilControlIntent(queryText);
+  const acneOilControlEvidence = acneOilControlIntent
+    ? beautyProductHasAcneOilControlEvidence(product, candidateText)
+    : false;
+  const primarySurfaceText = buildBeautyProductPrimarySurfaceText(product);
+  if (
+    acneOilControlIntent &&
+    !acneOilControlEvidence &&
+    /\b(body\s*mist|fragrance|perfume|parfum|cologne|hair|scalp|hand\s*(?:cream|mask|lotion)|lip\s*(?:balm|oil|mask|treatment))\b/i.test(primarySurfaceText)
+  ) {
+    return { product, relevant: false, score: -48 };
+  }
   if (targetFamilies.length > 0 && familyMatches.length === 0) {
     return { product, relevant: false, score: -40 };
   }
@@ -13183,6 +13251,16 @@ function scoreBeautyExternalSeedProduct({ product, queryText, intent, normalized
   if (productBrand && normalizedQuery && normalizedQuery.includes(productBrand)) score += 220;
   if (categoryPathMatch) score += 140;
   else if (categoryLexicalMatch) score += 64;
+  if (acneOilControlIntent) {
+    if (acneOilControlEvidence) {
+      score += 72;
+      if (/\b(azelaic|salicylic|bha\b|benzoyl\s*peroxide|adapalene|succinic|sulfur)\b/i.test(candidateText)) score += 18;
+      if (/\b(niacinamide|zinc\s*pca|sebum|oil[-\s]?control|shine[-\s]?control|pore[-\s]?refin)\b/i.test(candidateText)) score += 14;
+      if (/\b(non[-\s]?comedogenic|lightweight|gel|fluid)\b/i.test(candidateText)) score += 8;
+    } else {
+      score -= categoryPathMatch || categoryLexicalMatch ? 110 : 50;
+    }
+  }
   if (String(product?.source || product?.search_recall_source || product?.catalog_source || '') === 'canonical_chain') {
     score += 24;
   }
@@ -35554,6 +35632,10 @@ module.exports._debug = {
   listPdpIdentityReviewQueue,
   listPdpIdentityOverrides,
   applyPdpIdentityOverride,
+  beautyQueryHasAcneOilControlIntent,
+  beautyProductHasAcneOilControlEvidence,
+  scoreBeautyExternalSeedProduct,
+  compactBeautyMainlineProductForResponse,
 };
 
 if (require.main === module) {
