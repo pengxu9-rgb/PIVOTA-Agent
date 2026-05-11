@@ -2896,6 +2896,59 @@ describe('externalSeedProducts helper', () => {
     expect(product.pdp_field_quality_summary.description_raw.source_quality_status).toBe('quarantined');
   });
 
+  test('preserves reviewed force-filled PDP content while keeping quarantined fields blocked', () => {
+    const forceFillContract = {
+      contract_version: 'pivota.pdp.force_fill.v1',
+      display_note: 'Ingredient details are pending approved source capture.',
+      source_origin: 'pivota_force_fill',
+      source_quality_status: 'force_filled_pending_source',
+      content_review_state: 'assistant_reviewed',
+      reason: 'missing_ingredients',
+    };
+    const product = buildExternalSeedProduct({
+      id: 'eps_force_fill_runtime',
+      external_product_id: 'ext_force_fill_runtime',
+      canonical_url: 'https://example.com/products/tone-up-sunscreen',
+      destination_url: 'https://example.com/products/tone-up-sunscreen',
+      title: 'Tone-Up Sunscreen',
+      seed_data: {
+        pdp_description_raw: 'Browser fallback copy should stay quarantined.',
+        pdp_how_to_use_raw: 'Apply generously as the last step in your morning routine.',
+        ingredient_intel: {
+          force_fill_contract: forceFillContract,
+        },
+        pdp_field_quality_summary: {
+          description_raw: {
+            source_origin: 'browser_fallback',
+            source_quality_status: 'quarantined',
+          },
+          how_to_use_raw: {
+            source_origin: 'pivota_force_fill',
+            source_quality_status: 'force_filled_reviewed_pattern',
+          },
+          ingredients_inci: {
+            source_origin: 'pivota_force_fill',
+            source_quality_status: 'force_filled_pending_source',
+          },
+        },
+        snapshot: {
+          title: 'Tone-Up Sunscreen',
+          pdp_description_raw: 'Browser fallback copy should stay quarantined.',
+          pdp_how_to_use_raw: 'Apply generously as the last step in your morning routine.',
+          ingredient_intel: {
+            force_fill_contract: forceFillContract,
+          },
+        },
+      },
+    });
+
+    expect(product.pdp_description_raw).toBeUndefined();
+    expect(product.pdp_how_to_use_raw).toBe('Apply generously as the last step in your morning routine.');
+    expect(product.seed_data.pdp_how_to_use_raw).toBe('Apply generously as the last step in your morning routine.');
+    expect(product.ingredient_intel.force_fill_contract).toEqual(forceFillContract);
+    expect(product.pdp_field_quality_summary.ingredients_inci.source_quality_status).toBe('force_filled_pending_source');
+  });
+
   test('preserves stored ingredient candidates for single-formula external seeds when authority view is unavailable', () => {
     const product = buildExternalSeedProduct({
       id: 'eps_oil_lala_like',
