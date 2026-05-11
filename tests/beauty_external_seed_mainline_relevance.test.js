@@ -40,6 +40,39 @@ describe('beauty external-seed mainline relevance', () => {
     ).toBe(false);
   });
 
+  test('acne/oily face intent rejects body scrub and routine-set lane drift', () => {
+    const driftRows = [
+      {
+        product_id: 'sig_body_scrub',
+        title: 'Cherry Dub Triple Action AHA Body Scrub',
+        brand: 'Fenty Beauty',
+        category_path: ['beauty', 'skincare', 'treat', 'body_treatment'],
+        catalog_category_path: 'beauty/skincare/treat/body_treatment',
+        description: 'AHA body scrub for smoother body skin.',
+      },
+      {
+        product_id: 'sig_routine',
+        title: 'Day + Night Hydrating Routine: Dew N Plump Serum + Slushie Mask',
+        brand: 'Fenty Beauty',
+        category_path: ['beauty', 'skincare', 'treat', 'serum'],
+        catalog_category_path: 'beauty/skincare/treat/serum',
+        description: 'A routine set with niacinamide and pore-refining support.',
+      },
+    ];
+
+    for (const product of driftRows) {
+      expect(
+        scoreBeautyExternalSeedProduct({
+          product,
+          queryText: acneQuery,
+          intent,
+          normalizedQuery: intent.normalized,
+          queryTokens: intent.normalized.split(/\s+/),
+        }).relevant,
+      ).toBe(false);
+    }
+  });
+
   test('acne/oily intent promotes evidence-backed treatment rows and emits a reason', () => {
     const azelaic = {
       product_id: 'sig_azelaic',
