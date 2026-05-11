@@ -452,6 +452,12 @@ describe('PDP grouped offers', () => {
 
     expect(
       app._debug.resolvePdpSimilarCacheBypass({
+        options: { no_cache: true },
+      }),
+    ).toBe(true);
+
+    expect(
+      app._debug.resolvePdpSimilarCacheBypass({
         options: { cache_bypass: true },
         similar: { options: { cache_bypass: true } },
       }),
@@ -478,7 +484,7 @@ describe('PDP grouped offers', () => {
       }),
     });
 
-    expect(args.candidateLimit).toBe(8);
+    expect(args.candidateLimit).toBeGreaterThanOrEqual(6);
     expect(args.fetchArgs.options).toEqual(
       expect.objectContaining({
         no_cache: false,

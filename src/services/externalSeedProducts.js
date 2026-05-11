@@ -597,6 +597,13 @@ function normalizeSeedReviewSummary(...values) {
       if (contentReviewState) out.content_review_state = contentReviewState;
       if (source.force_filled === true) out.force_filled = true;
     }
+    if (status && out.status == null) out.status = status.toLowerCase();
+    if (unavailableReason && out.unavailable_reason == null) out.unavailable_reason = unavailableReason;
+    const sourceLabel = normalizeNonEmptyString(source.source || source.source_type);
+    if (sourceLabel && out.source == null) out.source = sourceLabel;
+    const contentReviewState = normalizeNonEmptyString(source.content_review_state);
+    if (contentReviewState && out.content_review_state == null) out.content_review_state = contentReviewState;
+    if (source.force_filled === true && out.force_filled == null) out.force_filled = true;
     const rating = normalizeAmount(
       source.rating ??
         source.rating_value ??
