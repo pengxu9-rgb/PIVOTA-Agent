@@ -3287,6 +3287,16 @@ function buildPdpSimilarBaseProduct({
     canonicalProductForPdp && typeof canonicalProductForPdp === 'object'
       ? canonicalProductForPdp
       : {};
+  if (canonicalRefMerchantId === EXTERNAL_SEED_MERCHANT_ID && canonicalRefProductId) {
+    return {
+      merchant_id: EXTERNAL_SEED_MERCHANT_ID,
+      product_id: canonicalRefProductId,
+      external_product_id: canonicalRefProductId,
+      source: 'external_seed',
+      ...(sourceProduct.currency ? { currency: sourceProduct.currency } : {}),
+      ...(sourceProduct.market ? { market: sourceProduct.market } : {}),
+    };
+  }
   return {
     ...sourceProduct,
     merchant_id:
@@ -3294,18 +3304,11 @@ function buildPdpSimilarBaseProduct({
       sourceProduct.merchantId ||
       canonicalRefMerchantId,
     product_id:
-      (canonicalRefMerchantId === EXTERNAL_SEED_MERCHANT_ID ? canonicalRefProductId : '') ||
       sourceProduct.product_id ||
       sourceProduct.productId ||
       sourceProduct.id ||
       canonicalProduct?.product_id ||
       canonicalProduct?.id,
-    ...(canonicalRefMerchantId === EXTERNAL_SEED_MERCHANT_ID && canonicalRefProductId
-      ? {
-          source: sourceProduct.source || 'external_seed',
-          external_product_id: canonicalRefProductId,
-        }
-      : {}),
   };
 }
 

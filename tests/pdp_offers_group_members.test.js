@@ -494,6 +494,36 @@ describe('PDP grouped offers', () => {
     );
   });
 
+  test('uses a minimal external seed base for PDP similar recall', () => {
+    const app = require('../src/server');
+
+    const args = app._debug.buildPdpSimilarFetchArgs({
+      payload: { similar: { limit: 12 } },
+      canonicalProductForPdp: {
+        merchant_id: 'external_seed',
+        product_id: 'sig_public_should_not_drive_recall',
+        source_product_id: 'ext_bundle_source',
+        title: 'Bundle title that can over-constrain similar recall',
+        category: 'Bundles',
+        product_line_id: 'line_bundle',
+        sellable_item_group_id: 'sig_bundle',
+        currency: 'USD',
+      },
+      canonicalProductRef: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_bundle_source',
+      },
+    });
+
+    expect(args.fetchArgs.pdp_product).toEqual({
+      merchant_id: 'external_seed',
+      product_id: 'ext_bundle_source',
+      external_product_id: 'ext_bundle_source',
+      source: 'external_seed',
+      currency: 'USD',
+    });
+  });
+
   test('detects missing similar card images separately from highlight readiness', () => {
     const app = require('../src/server');
 
