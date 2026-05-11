@@ -3779,6 +3779,73 @@ function applyRequestedPivotaSignatureToPdpProduct(product, sigId, sourceProduct
   };
 }
 
+function hasExternalSeedRichPdpContent(product) {
+  if (!isPlainObject(product)) return false;
+  const seedData = isPlainObject(product.seed_data) ? product.seed_data : {};
+  const snapshot = isPlainObject(seedData.snapshot) ? seedData.snapshot : {};
+  const ingredientIntel =
+    isPlainObject(product.ingredient_intel) ? product.ingredient_intel
+      : isPlainObject(seedData.ingredient_intel) ? seedData.ingredient_intel
+        : isPlainObject(snapshot.ingredient_intel) ? snapshot.ingredient_intel
+          : {};
+  const forceFillContract =
+    isPlainObject(ingredientIntel.force_fill_contract) ? ingredientIntel.force_fill_contract
+      : isPlainObject(ingredientIntel.forceFillContract) ? ingredientIntel.forceFillContract
+        : null;
+  const variantSources = [product.variants, seedData.variants, snapshot.variants];
+  const hasVariantSignal = variantSources.some((variants) => Array.isArray(variants) && variants.length > 0);
+  const hasIngredientSignal = Boolean(
+    firstNonEmptyString(
+      product.pdp_ingredients_raw,
+      product.raw_ingredient_text_clean,
+      seedData.pdp_ingredients_raw,
+      seedData.raw_ingredient_text_clean,
+      snapshot.pdp_ingredients_raw,
+      snapshot.raw_ingredient_text_clean,
+    ) ||
+      (Array.isArray(product.ingredients_inci) && product.ingredients_inci.length > 0) ||
+      (Array.isArray(seedData.ingredients_inci) && seedData.ingredients_inci.length > 0) ||
+      (Array.isArray(snapshot.ingredients_inci) && snapshot.ingredients_inci.length > 0) ||
+      forceFillContract?.contract_version === 'pivota.pdp.force_fill.v1'
+  );
+  const hasHowToSignal = Boolean(
+    firstNonEmptyString(
+      product.pdp_how_to_use_raw,
+      seedData.pdp_how_to_use_raw,
+      snapshot.pdp_how_to_use_raw,
+    )
+  );
+  const hasDetailsSignal = [product.pdp_details_sections, seedData.pdp_details_sections, snapshot.pdp_details_sections]
+    .some((sections) => Array.isArray(sections) && sections.length > 0);
+  return hasVariantSignal || hasIngredientSignal || hasHowToSignal || hasDetailsSignal;
+}
+
+function mergeIdentitySyntheticWithRichExternalSeedProduct(syntheticProduct, richProduct) {
+  if (!isPlainObject(syntheticProduct) || !hasExternalSeedRichPdpContent(richProduct)) {
+    return syntheticProduct;
+  }
+  const identityFields = {};
+  for (const key of [
+    'selected_commerce_ref',
+    'canonical_content_ref',
+    'pdp_content_source',
+    'product_line_id',
+    'sellable_item_group_id',
+    'review_family_id',
+    'identity_confidence',
+    'match_basis',
+    'canonical_scope',
+    'content_review_state',
+  ]) {
+    if (syntheticProduct[key] != null) identityFields[key] = syntheticProduct[key];
+  }
+  return {
+    ...syntheticProduct,
+    ...richProduct,
+    ...identityFields,
+  };
+}
+
 async function fetchExternalSeedRouteStatusFromDb(args) {
   if (!process.env.DATABASE_URL) return null;
   const productId = String(args?.productId || '').trim();
@@ -27742,7 +27809,16 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	        markPdpV2Phase('identity_graph_product_intel_gate', identityGraphIntelGateStartedAt);
 	      }
 	      if (identityGraphLive?.synthetic_product) {
-	        canonicalProductForPdp = identityGraphLive.synthetic_product;
+	        const shouldPreserveExternalSeedPdpContent =
+	          canonicalProductRef?.merchant_id === EXTERNAL_SEED_MERCHANT_ID &&
+	          isExternalSeedProductId(canonicalProductRef?.product_id) &&
+	          hasExternalSeedRichPdpContent(canonicalProduct);
+	        canonicalProductForPdp = shouldPreserveExternalSeedPdpContent
+	          ? mergeIdentitySyntheticWithRichExternalSeedProduct(
+	              identityGraphLive.synthetic_product,
+	              canonicalProduct,
+	            )
+	          : identityGraphLive.synthetic_product;
 	        if (identityGraphLive.canonical_product_ref) {
 	          canonicalProductRef = {
               ...canonicalProductRef,
@@ -35702,6 +35778,8 @@ module.exports._debug = {
   buildFindProductsMultiDiscoveryBridgeResponse,
   fetchProductDetailForOffers,
   fetchExternalSeedProductDetailFromDb,
+  hasExternalSeedRichPdpContent,
+  mergeIdentitySyntheticWithRichExternalSeedProduct,
   stripResponseOwnedPdpModulesFromCanonicalPayload,
   resolveOfferSellerDisplayName,
   applyFindProductsMultiSourceContract,
