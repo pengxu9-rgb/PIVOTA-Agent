@@ -13230,6 +13230,20 @@ function scoreBeautyExternalSeedProduct({ product, queryText, intent, normalized
   ) {
     return { product, relevant: false, score: -48 };
   }
+  if (
+    acneOilControlIntent &&
+    !/\b(body|back\s*acne|chest\s*acne|body\s*acne|body\s*breakout)\b/i.test(String(queryText || '')) &&
+    /\bbody\s*(?:mist|scrub|wash|cleanser|cream|lotion|oil|milk|butter|polish)\b/i.test(primarySurfaceText)
+  ) {
+    return { product, relevant: false, score: -49 };
+  }
+  if (
+    acneOilControlIntent &&
+    !/\b(routine|regimen|set|kit|bundle|duo|trio)\b/i.test(String(queryText || '')) &&
+    /\b(routine|regimen|starter\s*kit|kit|set|bundle|duo|trio)\b/i.test(primarySurfaceText)
+  ) {
+    return { product, relevant: false, score: -49 };
+  }
   if (targetFamilies.length > 0 && familyMatches.length === 0) {
     return { product, relevant: false, score: -40 };
   }
