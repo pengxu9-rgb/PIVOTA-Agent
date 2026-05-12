@@ -158,6 +158,9 @@ describe('RecommendationEngine external candidate fetch', () => {
           id: 'eps_gbr',
           external_product_id: 'ext_gbr',
           title: 'Great Barrier Relief',
+          canonical_url: 'https://kravebeauty.com/products/great-barrier-relief',
+          destination_url: 'https://kravebeauty.com/products/great-barrier-relief',
+          domain: 'kravebeauty.com',
           seed_data: {
             snapshot: {
               brand: 'KraveBeauty',
@@ -185,9 +188,14 @@ describe('RecommendationEngine external candidate fetch', () => {
         category: 'Serum',
         description: 'A calming repairing serum.',
         external_product_id: 'ext_gbr',
+        canonical_url: 'https://kravebeauty.com/products/great-barrier-relief',
+        destination_url: 'https://kravebeauty.com/products/great-barrier-relief',
+        domain: 'kravebeauty.com',
       }),
     );
-    expect(out.semantic?.rescue_fields).toEqual(expect.arrayContaining(['brand', 'category', 'description']));
+    expect(out.semantic?.rescue_fields).toEqual(
+      expect.arrayContaining(['brand', 'category', 'description', 'canonical_url', 'destination_url', 'domain']),
+    );
   });
 
   test('enrichExternalBaseProduct upgrades weak synthetic categories from external seed recall category', async () => {

@@ -1238,6 +1238,9 @@ const EXTERNAL_SEED_SEMANTIC_SELECT = `
         id,
         external_product_id,
         title,
+        destination_url,
+        canonical_url,
+        domain,
         image_url,
         price_amount,
         price_currency,
@@ -1254,6 +1257,9 @@ const EXTERNAL_SEED_SEMANTIC_SELECT = `
           'recall_category', seed_data->'derived'->'recall'->>'category',
           'recall_vertical', seed_data->'derived'->'recall'->>'vertical',
           'description', seed_data->>'description',
+          'canonical_url', seed_data->>'canonical_url',
+          'destination_url', seed_data->>'destination_url',
+          'domain', seed_data->>'domain',
           'image_url', seed_data->>'image_url',
           'price_amount', seed_data->>'price_amount',
           'price', seed_data->>'price',
@@ -1269,6 +1275,9 @@ const EXTERNAL_SEED_SEMANTIC_SELECT = `
             'product_type', seed_data->'snapshot'->>'product_type',
             'productType', seed_data->'snapshot'->>'productType',
             'description', seed_data->'snapshot'->>'description',
+            'canonical_url', seed_data->'snapshot'->>'canonical_url',
+            'destination_url', seed_data->'snapshot'->>'destination_url',
+            'domain', seed_data->'snapshot'->>'domain',
             'image_url', seed_data->'snapshot'->>'image_url',
             'image', seed_data->'snapshot'->'image',
             'price_amount', seed_data->'snapshot'->>'price_amount',
@@ -2540,6 +2549,33 @@ async function enrichExternalBaseProduct(baseProduct) {
     enriched.image_url = seedImageUrl;
     enriched.image = seedImageUrl;
     rescueFields.push('image');
+  }
+
+  const seedCanonicalUrl = firstNonEmptyText(
+    seedRecord?.canonical_url,
+    seedData?.canonical_url,
+    snapshot?.canonical_url,
+  );
+  if (!String(enriched.canonical_url || enriched.canonicalUrl || '').trim() && seedCanonicalUrl) {
+    enriched.canonical_url = seedCanonicalUrl;
+    rescueFields.push('canonical_url');
+  }
+
+  const seedDestinationUrl = firstNonEmptyText(
+    seedRecord?.destination_url,
+    seedData?.destination_url,
+    snapshot?.destination_url,
+  );
+  if (!String(enriched.destination_url || enriched.destinationUrl || '').trim() && seedDestinationUrl) {
+    enriched.destination_url = seedDestinationUrl;
+    if (!String(enriched.url || '').trim()) enriched.url = seedDestinationUrl;
+    rescueFields.push('destination_url');
+  }
+
+  const seedDomain = firstNonEmptyText(seedRecord?.domain, seedData?.domain, snapshot?.domain);
+  if (!String(enriched.domain || '').trim() && seedDomain) {
+    enriched.domain = seedDomain;
+    rescueFields.push('domain');
   }
 
   if (!String(enriched.external_seed_id || '').trim() && seedRecord?.id) {
