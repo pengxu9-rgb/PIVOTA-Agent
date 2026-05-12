@@ -596,6 +596,55 @@ describe('pdpIdentityGraph', () => {
     ]);
   });
 
+  test('composeSyntheticCanonicalProduct rehydrates serialized external seed payload content', () => {
+    const { composeSyntheticCanonicalProduct } = require('../../src/services/pdpIdentityGraph');
+
+    const externalListing = {
+      merchant_id: 'external_seed',
+      product_id: 'mac:62c89320b830814c',
+      source_kind: 'external_seed',
+      source_tier: 'brand',
+      sellable_item_group_id: 'pg_ext_mac_russian_red',
+      identity_confidence: 0.98,
+      source_payload: {
+        merchant_id: 'external_seed',
+        product_id: 'mac:62c89320b830814c',
+        title: 'Russian Red Matte Lipstick',
+        brand: 'MAC',
+        seed_data: JSON.stringify({
+          pdp_description_raw: 'A matte blue-red lipstick with a silky finish.',
+          image_urls: ['https://cdn.example.com/mac-russian-red.jpg'],
+          pdp_details_sections: [
+            {
+              heading: 'Details',
+              content: 'Matte lipstick in Russian Red.',
+            },
+          ],
+        }),
+        external_seed: JSON.stringify({
+          merchant_name: 'MAC',
+          destination_url: 'https://www.maccosmetics.com/product/russian-red',
+        }),
+      },
+    };
+
+    const composed = composeSyntheticCanonicalProduct({
+      requestedListing: externalListing,
+      exactListings: [externalListing],
+      lineListings: [externalListing],
+    });
+
+    expect(composed.product.description).toBe('A matte blue-red lipstick with a silky finish.');
+    expect(composed.product.image_url).toBe('https://cdn.example.com/mac-russian-red.jpg');
+    expect(composed.product.pdp_details_sections).toEqual([
+      expect.objectContaining({
+        heading: 'Details',
+        content: 'Matte lipstick in Russian Red.',
+      }),
+    ]);
+    expect(composed.product.destination_url).toBe('https://www.maccosmetics.com/product/russian-red');
+  });
+
   test('buildIdentityListingFromProduct groups multi-page shade siblings into one product line', () => {
     const {
       buildIdentityListingFromProduct,

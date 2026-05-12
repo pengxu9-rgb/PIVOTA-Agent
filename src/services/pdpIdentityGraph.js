@@ -203,8 +203,15 @@ function buildActiveExternalSeedIdentityPredicate(alias = 'pdp_identity_listing'
 }
 
 function asPlainObject(value) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  return value;
+  if (!value) return null;
+  if (typeof value === 'object' && !Array.isArray(value)) return value;
+  if (typeof value !== 'string') return null;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
 }
 
 function asArray(value) {
@@ -1587,7 +1594,9 @@ function buildImageEntriesForPayload(payload, listing, kind = 'exact_item') {
   const normalizedPayload = asPlainObject(payload) || {};
   const payloadSeedData = asPlainObject(normalizedPayload.seed_data) || {};
   const payloadSnapshot = asPlainObject(payloadSeedData.snapshot) || {};
-  const payloadSources = [normalizedPayload, payloadSeedData, payloadSnapshot];
+  const externalSeed = asPlainObject(normalizedPayload.external_seed) || {};
+  const externalSnapshot = asPlainObject(externalSeed.snapshot) || {};
+  const payloadSources = [normalizedPayload, payloadSeedData, payloadSnapshot, externalSeed, externalSnapshot];
   const candidates = [];
   const push = (value, overrides = {}) => {
     const url = normalizePdpImageUrl(
@@ -2112,7 +2121,9 @@ function mergeMissingPdpContentFromPayload(product, payload) {
   const payloadObject = asPlainObject(payload) || {};
   const payloadSeedData = asPlainObject(payloadObject.seed_data) || {};
   const payloadSnapshot = asPlainObject(payloadSeedData.snapshot) || {};
-  const contentSources = [payloadObject, payloadSeedData, payloadSnapshot];
+  const externalSeed = asPlainObject(payloadObject.external_seed) || {};
+  const externalSnapshot = asPlainObject(externalSeed.snapshot) || {};
+  const contentSources = [payloadObject, payloadSeedData, payloadSnapshot, externalSeed, externalSnapshot];
   let next = product || {};
 
   for (const source of contentSources) {
@@ -2138,6 +2149,41 @@ function mergeMissingPdpContentFromPayload(product, payload) {
     ]);
   }
 
+  if (!asString(next.description)) {
+    const nextDescription = firstNonEmptyString(
+      payloadObject.description_text,
+      payloadObject.pdp_description,
+      payloadObject.pdp_description_raw,
+      payloadObject.overview,
+      payloadObject.summary,
+      payloadSeedData.description,
+      payloadSeedData.description_text,
+      payloadSeedData.pdp_description,
+      payloadSeedData.pdp_description_raw,
+      payloadSeedData.overview,
+      payloadSeedData.summary,
+      payloadSnapshot.description,
+      payloadSnapshot.description_text,
+      payloadSnapshot.pdp_description,
+      payloadSnapshot.pdp_description_raw,
+      payloadSnapshot.overview,
+      payloadSnapshot.summary,
+      externalSeed.description,
+      externalSeed.description_text,
+      externalSeed.pdp_description,
+      externalSeed.pdp_description_raw,
+      externalSeed.overview,
+      externalSeed.summary,
+      externalSnapshot.description,
+      externalSnapshot.description_text,
+      externalSnapshot.pdp_description,
+      externalSnapshot.pdp_description_raw,
+      externalSnapshot.overview,
+      externalSnapshot.summary,
+    );
+    if (nextDescription) next = { ...next, description: nextDescription };
+  }
+
   if (!asString(next.how_to_use)) {
     const nextHowToUse = firstNonEmptyString(
       payloadObject.how_to_use,
@@ -2155,6 +2201,8 @@ function mergeMissingPdpContentFromPayload(product, payload) {
       payloadObject.inci_list,
       payloadSeedData.inci_list,
       payloadSnapshot.inci_list,
+      externalSeed.inci_list,
+      externalSnapshot.inci_list,
     ]
       .map((value) => asArray(value))
       .find((items) => items.length > 0);
@@ -2172,6 +2220,10 @@ function mergeMissingPdpContentFromPayload(product, payload) {
       payloadSeedData.ingredientsInci,
       payloadSnapshot.ingredients_inci,
       payloadSnapshot.ingredientsInci,
+      externalSeed.ingredients_inci,
+      externalSeed.ingredientsInci,
+      externalSnapshot.ingredients_inci,
+      externalSnapshot.ingredientsInci,
     ]
       .map((value) => asArray(value))
       .find((items) => items.length > 0);
@@ -2183,6 +2235,8 @@ function mergeMissingPdpContentFromPayload(product, payload) {
       payloadObject.content_image_urls,
       payloadSeedData.content_image_urls,
       payloadSnapshot.content_image_urls,
+      externalSeed.content_image_urls,
+      externalSnapshot.content_image_urls,
     ]
       .map((value) =>
         asArray(value)
@@ -2198,6 +2252,8 @@ function mergeMissingPdpContentFromPayload(product, payload) {
       payloadObject.active_ingredients,
       payloadSeedData.active_ingredients,
       payloadSnapshot.active_ingredients,
+      externalSeed.active_ingredients,
+      externalSnapshot.active_ingredients,
     ]
       .map((value) => asArray(value))
       .find((items) => items.length > 0);
@@ -2212,6 +2268,10 @@ function mergeMissingPdpContentFromPayload(product, payload) {
       payloadSeedData.details_sections,
       payloadSnapshot.pdp_details_sections,
       payloadSnapshot.details_sections,
+      externalSeed.pdp_details_sections,
+      externalSeed.details_sections,
+      externalSnapshot.pdp_details_sections,
+      externalSnapshot.details_sections,
     ]
       .map((value) => asArray(value))
       .find((items) => items.length > 0);
@@ -2223,6 +2283,8 @@ function mergeMissingPdpContentFromPayload(product, payload) {
       payloadObject.bundle_component_refs,
       payloadSeedData.bundle_component_refs,
       payloadSnapshot.bundle_component_refs,
+      externalSeed.bundle_component_refs,
+      externalSnapshot.bundle_component_refs,
     ]
       .map((value) => asArray(value))
       .find((items) => items.length > 0);
@@ -2234,6 +2296,8 @@ function mergeMissingPdpContentFromPayload(product, payload) {
       payloadObject.bundle_components,
       payloadSeedData.bundle_components,
       payloadSnapshot.bundle_components,
+      externalSeed.bundle_components,
+      externalSnapshot.bundle_components,
     ]
       .map((value) => asArray(value))
       .find((items) => items.length > 0);
