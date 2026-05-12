@@ -413,6 +413,30 @@ function normalizeAxisKind(value) {
   return lower.replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || 'variant';
 }
 
+function isCompositeSizeOptionName(value) {
+  const lower = text(value).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  return /\b(color|colour|shade|tone|hue)\b/.test(lower) && /\b(size|volume|weight)\b/.test(lower);
+}
+
+function looksLikeVariantSizeDescriptor(value) {
+  return /\b(?:mini|standard|regular|full\s*size|travel\s*size|jumbo|refill|one\s*size)\b/i.test(text(value));
+}
+
+function splitCompositeSizeOption(name, value) {
+  if (!isCompositeSizeOptionName(name)) return null;
+  const parts = text(value).split(/\s*\/\s*/).map((part) => part.trim()).filter(Boolean);
+  if (parts.length !== 2) return null;
+  const [shade, size] = parts;
+  if (!shade || !size) return null;
+  if (!/\d/.test(size) && !/\b(size|fit|pack|count|ml|g|oz|lb|kg|cm|mm)\b/i.test(size) && !looksLikeVariantSizeDescriptor(size)) {
+    return null;
+  }
+  return [
+    { name: 'Shade', value: shade, axis_kind: 'shade' },
+    { name: 'Size', value: size, axis_kind: normalizeAxisKind('Size') },
+  ];
+}
+
 function isDisplayableVariant(variant) {
   return normalizeVariantOptionsList(variant?.options).some((option) => {
     const name = text(option?.name).toLowerCase();
@@ -436,22 +460,25 @@ function hydrateFlatVariantOptions(variants) {
   const next = asArray(variants).map((variant) => {
     if (isDisplayableVariant(variant) && Array.isArray(variant?.options)) return variant;
     const objectOption = normalizeVariantOptionsList(variant?.options)[0] || {};
-    const optionName = normalizeOptionName(variant?.option_name || variant?.optionName || objectOption.name);
+    const rawOptionName = variant?.option_name || variant?.optionName || objectOption.name;
+    const optionName = normalizeOptionName(rawOptionName);
     const optionValue = text(variant?.option_value || variant?.optionValue || objectOption.value);
     if (!optionName || !optionValue || /^(default|default title|single|variant \d*)$/i.test(optionValue)) {
       return variant;
     }
-    const axisKind = normalizeAxisKind(variant?.axis_kind || variant?.axisKind || optionName);
+    const compositeOptions = splitCompositeSizeOption(rawOptionName, optionValue);
+    const options = compositeOptions || [{ name: optionName, value: optionValue, axis_kind: normalizeAxisKind(variant?.axis_kind || variant?.axisKind || optionName) }];
+    const axisKind = options.length === 1 ? options[0].axis_kind : undefined;
     changed = true;
     return {
       ...asObject(variant),
       title: text(variant?.title) && !/^(default|default title|single|variant \d*)$/i.test(text(variant?.title))
         ? text(variant.title)
         : optionValue,
-      options: [{ name: optionName, value: optionValue, axis_kind: axisKind }],
-      option_name: optionName,
-      option_value: optionValue,
-      display_label: `${optionName}: ${optionValue}`,
+      options,
+      option_name: options.length === 1 ? options[0].name : undefined,
+      option_value: options.length === 1 ? options[0].value : undefined,
+      display_label: options.length === 1 ? `${options[0].name}: ${options[0].value}` : undefined,
       axis_kind: axisKind,
       source_quality_status: variant?.source_quality_status || 'captured',
     };

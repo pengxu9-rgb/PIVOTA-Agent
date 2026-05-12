@@ -1550,6 +1550,45 @@ describe('externalSeedProducts helper', () => {
     expect(variant.option_value).toBeUndefined();
   });
 
+  test('treats merchant mini and standard descriptors on color-size axes as size, not format', () => {
+    const variants = normalizeSeedVariants(
+      {
+        variants: [
+          {
+            variant_id: '39448095064109',
+            title: 'Hot Cherry / Standard',
+            option_name: 'Color / Size',
+            option_value: 'Hot Cherry / Standard',
+            image_url: 'https://example.com/fenty-hot-cherry-standard.jpg',
+          },
+          {
+            variant_id: '44008575860781',
+            title: 'Hot Cherry / Mini',
+            option_name: 'Color / Size',
+            option_value: 'Hot Cherry / Mini',
+            image_url: 'https://example.com/fenty-hot-cherry-mini.jpg',
+          },
+        ],
+      },
+      {
+        title: 'Gloss Bomb Heat Universal Lip Luminizer + Plumper - Hot Cherry',
+        canonical_url: 'https://fentybeauty.com/products/gloss-bomb-heat-universal-lip-luminizer-plumper',
+      },
+    );
+
+    expect(variants[1].title).toBe('Hot Cherry / Mini');
+    expect(variants[1].options).toEqual([
+      expect.objectContaining({ name: 'Color', value: 'Hot Cherry', axis_kind: 'color' }),
+      expect.objectContaining({ name: 'Size', value: 'Mini', axis_kind: 'size' }),
+    ]);
+    expect(variants[1].option_name).toBeUndefined();
+    expect(variants[1].option_value).toBeUndefined();
+    expect(variants[1].display_label).toBeUndefined();
+    expect(variants[1].options).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ name: 'Format', value: 'Mini' })]),
+    );
+  });
+
   test('keeps real generic option axes such as refill selectable', () => {
     const variants = normalizeSeedVariants(
       {
