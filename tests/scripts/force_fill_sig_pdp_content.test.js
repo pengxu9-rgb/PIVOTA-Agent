@@ -230,6 +230,26 @@ describe('force-fill SIG PDP content script', () => {
     expect(result.variants[0].display_label).toBe('Size: 40ml');
   });
 
+  test('splits color-size mini descriptors into shade and size options', () => {
+    const result = hydrateFlatVariantOptions([
+      {
+        title: 'Hot Cherry / Mini',
+        option_name: 'Color / Size',
+        option_value: 'Hot Cherry / Mini',
+      },
+    ]);
+
+    expect(result.changed).toBe(true);
+    expect(result.variants[0].options).toEqual([
+      { name: 'Shade', value: 'Hot Cherry', axis_kind: 'shade' },
+      { name: 'Size', value: 'Mini', axis_kind: 'size' },
+    ]);
+    expect(result.variants[0].option_name).toBeUndefined();
+    expect(result.variants[0].option_value).toBeUndefined();
+    expect(result.variants[0].display_label).toBeUndefined();
+    expect(result.variants[0].axis_kind).toBeUndefined();
+  });
+
   test('detects multi-variant lists that have no displayable options', () => {
     expect(
       hasOnlyNonDisplayableVariants(

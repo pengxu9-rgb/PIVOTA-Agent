@@ -1841,6 +1841,12 @@ function inferCombinedVariantPrimaryLabel(name) {
   return 'Color';
 }
 
+function looksLikeVariantSizeDescriptor(value) {
+  const normalized = normalizeOptionText(value);
+  if (!normalized) return false;
+  return /\b(?:mini|standard|regular|full\s*size|travel\s*size|jumbo|refill|one\s*size)\b/i.test(normalized);
+}
+
 function parseCombinedColorSizeValue(value) {
   const parts = normalizeOptionText(value)
     .split(/\s*\/\s*/)
@@ -1849,7 +1855,7 @@ function parseCombinedColorSizeValue(value) {
   if (parts.length !== 2) return null;
   const [color, size] = parts;
   if (!color || !size) return null;
-  if (!/\d/.test(size) && !/\b(size|fit|pack|count|ml|g|oz|lb|kg|cm|mm)\b/i.test(size)) {
+  if (!/\d/.test(size) && !/\b(size|fit|pack|count|ml|g|oz|lb|kg|cm|mm)\b/i.test(size) && !looksLikeVariantSizeDescriptor(size)) {
     return null;
   }
   return { color, size };
