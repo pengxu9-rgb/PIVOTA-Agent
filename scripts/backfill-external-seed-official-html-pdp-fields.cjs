@@ -94,6 +94,18 @@ function readIdsFile(filePath) {
   return parseDelimitedIds(fs.readFileSync(normalized, 'utf8'));
 }
 
+function stringifyPostgresJsonb(value) {
+  let text = JSON.stringify(value || {});
+  let previous = '';
+  while (text !== previous) {
+    previous = text;
+    text = text
+      .replace(/\\+u0000/gi, '')
+      .replace(/\u0000/g, '');
+  }
+  return text;
+}
+
 function hostFromUrl(value) {
   try {
     return new URL(String(value || '')).hostname.toLowerCase().replace(/^www\./, '');
@@ -1728,7 +1740,7 @@ async function main() {
                 updated_at = NOW()
             WHERE external_product_id = $1
           `,
-          [row.external_product_id, JSON.stringify(seedData)],
+          [row.external_product_id, stringifyPostgresJsonb(seedData)],
         );
       }
     } catch (error) {
@@ -1794,5 +1806,6 @@ module.exports = {
     buildShopifyProductJsonUrl,
     normalizeTirtirTitleKey,
     scoreTirtirSheetProductName,
+    stringifyPostgresJsonb,
   },
 };

@@ -20,6 +20,7 @@ const {
     findTirtirSheetIngredientRow,
     normalizeTirtirTitleKey,
     scoreTirtirSheetProductName,
+    stringifyPostgresJsonb,
   },
 } = require('../../scripts/backfill-external-seed-official-html-pdp-fields.cjs');
 
@@ -704,5 +705,25 @@ describe('backfill-external-seed-official-html-pdp-fields TIRTIR sheet matching'
     expect(patch.patchKeys).toEqual(['pdp_active_ingredients_raw']);
     expect(patch.seedData.pdp_ingredients_raw).toBe(existingInci);
     expect(patch.seedData.active_ingredients).toEqual(['Kakadu Plum Extract']);
+  });
+
+  test('JSONB writer strips null-byte escapes from historical payloads', () => {
+    const text = stringifyPostgresJsonb({
+      root: 'before\u0000after',
+      escaped: 'before\\u0000after',
+      nested: {
+        doubleEscaped: 'before\\\\u0000after',
+      },
+    });
+
+    expect(text).not.toContain('\u0000');
+    expect(text).not.toMatch(/\\+u0000/i);
+    expect(JSON.parse(text)).toEqual({
+      root: 'beforeafter',
+      escaped: 'beforeafter',
+      nested: {
+        doubleEscaped: 'beforeafter',
+      },
+    });
   });
 });
