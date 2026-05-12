@@ -15094,6 +15094,152 @@ async function maybeRescueBrandLikeSearchFromLocalExternalSeed({
   );
 }
 
+function readSearchProductMerchantId(product) {
+  return String(
+    product?.merchant_id ||
+      product?.merchantId ||
+      product?.product_ref?.merchant_id ||
+      product?.seller?.merchant_id ||
+      '',
+  ).trim();
+}
+
+function readSearchProductIdCandidates(product) {
+  return uniqueStrings([
+    product?.product_id,
+    product?.productId,
+    product?.id,
+    product?.platform_product_id,
+    product?.platformProductId,
+    product?.source_product_id,
+    product?.sourceProductId,
+    product?.product_ref?.product_id,
+    product?.product_ref?.platform_product_id,
+  ]);
+}
+
+async function hydrateFindProductsCatalogIdentityFields(responseBody) {
+  if (
+    !process.env.DATABASE_URL ||
+    !responseBody ||
+    typeof responseBody !== 'object' ||
+    Array.isArray(responseBody) ||
+    !Array.isArray(responseBody.products) ||
+    responseBody.products.length === 0
+  ) {
+    return responseBody;
+  }
+
+  const pairKeys = [];
+  for (const product of responseBody.products) {
+    if (!product || typeof product !== 'object' || Array.isArray(product)) continue;
+    const merchantId = readSearchProductMerchantId(product);
+    if (!merchantId) continue;
+    for (const productId of readSearchProductIdCandidates(product)) {
+      if (productId) pairKeys.push(`${merchantId}::${productId}`);
+    }
+  }
+
+  const uniquePairKeys = uniqueStrings(pairKeys).slice(0, 500);
+  if (!uniquePairKeys.length) return responseBody;
+
+  try {
+    const result = await query(
+      `
+        SELECT
+          cp.merchant_id,
+          cp.source_product_id,
+          cp.product_key,
+          cp.pivota_signature_id,
+          cp.pdp_scope,
+          pgm.product_group_id
+        FROM catalog_products cp
+        LEFT JOIN product_group_members pgm
+          ON pgm.product_key = cp.product_key
+        WHERE
+          (cp.merchant_id || '::' || coalesce(cp.source_product_id, '')) = ANY($1::text[])
+          OR (cp.merchant_id || '::' || coalesce(cp.product_key, '')) = ANY($1::text[])
+      `,
+      [uniquePairKeys],
+    );
+    const identityByPair = new Map();
+    for (const row of result?.rows || []) {
+      const merchantId = String(row?.merchant_id || '').trim();
+      if (!merchantId) continue;
+      const sourceProductId = String(row?.source_product_id || '').trim();
+      const productKey = String(row?.product_key || '').trim();
+      const sigId = String(row?.pivota_signature_id || '').trim();
+      const groupId = String(row?.product_group_id || '').trim();
+      const identity = {
+        ...(productKey ? { product_key: productKey } : {}),
+        ...(sourceProductId ? { source_product_id: sourceProductId } : {}),
+        ...(sigId ? { pivota_signature_id: sigId, signature_id: sigId } : {}),
+        ...(groupId ? { product_group_id: groupId } : {}),
+        ...(row?.pdp_scope ? { pdp_scope: String(row.pdp_scope).trim() } : {}),
+      };
+      if (sourceProductId) identityByPair.set(`${merchantId}::${sourceProductId}`, identity);
+      if (productKey) identityByPair.set(`${merchantId}::${productKey}`, identity);
+    }
+    if (!identityByPair.size) return responseBody;
+
+    let hydratedCount = 0;
+    const products = responseBody.products.map((product) => {
+      if (!product || typeof product !== 'object' || Array.isArray(product)) return product;
+      const merchantId = readSearchProductMerchantId(product);
+      if (!merchantId) return product;
+      let identity = null;
+      for (const productId of readSearchProductIdCandidates(product)) {
+        identity = identityByPair.get(`${merchantId}::${productId}`);
+        if (identity) break;
+      }
+      if (!identity) return product;
+      hydratedCount += 1;
+      return {
+        ...product,
+        ...identity,
+        pivota_signature_id: product.pivota_signature_id || identity.pivota_signature_id,
+        signature_id: product.signature_id || identity.signature_id,
+        product_group_id: product.product_group_id || identity.product_group_id,
+        sellable_item_group_id: product.sellable_item_group_id || identity.product_group_id,
+        product_key: product.product_key || identity.product_key,
+      };
+    });
+
+    const metadata =
+      responseBody.metadata && typeof responseBody.metadata === 'object' && !Array.isArray(responseBody.metadata)
+        ? responseBody.metadata
+        : {};
+    return {
+      ...responseBody,
+      products,
+      results: Array.isArray(responseBody.results) ? products : responseBody.results,
+      data:
+        responseBody.data && typeof responseBody.data === 'object' && !Array.isArray(responseBody.data)
+          ? {
+              ...responseBody.data,
+              ...(Array.isArray(responseBody.data.products) ? { products } : {}),
+            }
+          : responseBody.data,
+      metadata: {
+        ...metadata,
+        catalog_identity_hydration: {
+          attempted: true,
+          hydrated_count: hydratedCount,
+        },
+      },
+    };
+  } catch (err) {
+    logger.warn(
+      {
+        err: err?.message || String(err),
+        products_count: responseBody.products.length,
+      },
+      'find_products catalog identity hydration failed',
+    );
+    return responseBody;
+  }
+}
+
 function hasSearchProductIdentityMatch(product, queryText) {
   const normalizedQuery = normalizeSearchTextForMatch(queryText);
   if (!normalizedQuery) return false;
@@ -31738,8 +31884,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	            },
 	          };
 
+	          const identityHydratedData = await hydrateFindProductsCatalogIdentityFields(
+	            normalizeAgentProductsListResponse(upstreamData, {
+	              limit,
+	              offset: (page - 1) * limit,
+	            }),
+	          );
 	          const promotions = await getActivePromotions(now, creatorId);
-	          const enriched = applyDealsToResponse(upstreamData, promotions, now, creatorId);
+	          const enriched = applyDealsToResponse(identityHydratedData, promotions, now, creatorId);
 	          if (cacheHit) {
 	            return res.json(enriched);
 	          }
@@ -33615,6 +33767,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         limit: queryParams?.limit,
         offset: queryParams?.offset,
       });
+      upstreamData = await hydrateFindProductsCatalogIdentityFields(upstreamData);
       if (searchContractBridgeMeta) {
         upstreamData = {
           ...upstreamData,
@@ -35895,6 +36048,7 @@ module.exports._debug = {
   maybeBuildLiveSyntheticPdp,
   searchPdpIdentityGroupsForQuery,
   hasSearchProductIdentityMatch,
+  hydrateFindProductsCatalogIdentityFields,
   scoreIdentityFinalOverlayCandidate,
   findLiveIdentitySearchProductForRecall,
   maybeOverlayFinalIdentityRecallSearchProducts,
