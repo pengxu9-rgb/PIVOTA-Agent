@@ -966,6 +966,16 @@ function extractBazaarvoiceProductId(html) {
   return normalizeText(match?.[1]);
 }
 
+function decodeMaybeUriComponent(value) {
+  const raw = String(value || '');
+  if (!raw) return '';
+  try {
+    return decodeURIComponent(raw.replace(/\+/g, ' '));
+  } catch {
+    return raw;
+  }
+}
+
 function extractAttribute(value, attrName) {
   const re = new RegExp(`${attrName}="([^"]*)"`, 'i');
   const match = String(value || '').match(re);
@@ -1236,12 +1246,94 @@ async function fetchBazaarvoiceReviewSummary(host, html) {
   };
 }
 
+function extractFentyShadeTokens(productTitle) {
+  const title = normalizeText(productTitle);
+  const suffix = title.split(/\s+[—-]\s+/).pop() || '';
+  const values = [suffix, title];
+  return Array.from(
+    new Set(
+      values
+        .flatMap((value) => String(value || '').match(/#?\d{1,3}[a-z]?|[a-z][a-z0-9'$]+(?:\s+[a-z][a-z0-9'$]+){0,3}/gi) || [])
+        .map((value) => normalizeText(value).replace(/^#/, '').toLowerCase())
+        .filter(Boolean)
+        .filter((value) => !['soft matte longwear foundation', 'naturally luminous longwear foundation'].includes(value)),
+    ),
+  );
+}
+
+function extractFentyFullIngredientModalHtml(html) {
+  const source = String(html || '');
+  const modalMatch = source.match(/<modal\b[^>]*title=["']Full ingredients["'][\s\S]*?<\/modal>/i);
+  if (!modalMatch) return '';
+  const contentMatch = modalMatch[0].match(
+    /<div\b[^>]*class=["'][^"']*\bproduct-ingredients-modal__content\b[^"']*["'][^>]*>([\s\S]*?)<\/div>\s*<\/div>\s*<\/modal>/i,
+  );
+  return contentMatch?.[1] || modalMatch[0];
+}
+
+function labelContainsFentyShade(label, shadeTokens) {
+  const normalizedLabel = normalizeText(label).toLowerCase().replace(/#/g, '');
+  if (!normalizedLabel || !shadeTokens.length) return false;
+  const labelTokens = new Set(
+    (normalizedLabel.match(/\b\d{1,3}[a-z]?\b|[a-z][a-z0-9'$]+(?:\s+[a-z][a-z0-9'$]+){0,3}/g) || [])
+      .map((value) => normalizeText(value).toLowerCase()),
+  );
+  return shadeTokens.some((shade) => labelTokens.has(shade));
+}
+
+function extractFentyFullIngredients(html, productTitle = '') {
+  const modalHtml = extractFentyFullIngredientModalHtml(html);
+  if (!modalHtml) return '';
+  const paragraphs = Array.from(modalHtml.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi))
+    .map((match) => {
+      const text = cleanSectionText(match[1]);
+      const colonIndex = text.indexOf(':');
+      if (colonIndex > 0 && colonIndex < 180) {
+        return {
+          label: text.slice(0, colonIndex),
+          body: normalizeText(text.slice(colonIndex + 1)),
+          full: text,
+        };
+      }
+      return { label: '', body: text, full: text };
+    })
+    .filter((item) => looksLikeFullInci(item.body || item.full));
+  if (!paragraphs.length) return '';
+
+  const shadeTokens = extractFentyShadeTokens(productTitle);
+  const shadeMatch = paragraphs.find((item) => labelContainsFentyShade(item.label, shadeTokens));
+  if (shadeMatch) return shadeMatch.body;
+  if (paragraphs.length === 1) return paragraphs[0].body || paragraphs[0].full;
+  return '';
+}
+
+function extractFentyKeyIngredients(html) {
+  const items = Array.from(
+    String(html || '').matchAll(/class=["'][^"']*\bproduct-ingredients__item-title\b[^"']*["'][^>]*>([\s\S]*?)<\/div>/gi),
+  )
+    .map((match) => cleanSectionText(decodeMaybeUriComponent(match[1])))
+    .filter((item) => item.length >= 3 && item.length <= 120)
+    .filter((item) => !/\b(?:ingredients?|benefits?|claims?|how to)\b/i.test(item));
+  const text = Array.from(new Set(items)).join(', ');
+  return looksLikeActiveIngredientList(text) || /\b(?:extract|squalane|shea butter|vitamin|oil|peptide|acid|niacinamide)\b/i.test(text)
+    ? text
+    : '';
+}
+
+function extractFentyFields(html, options = {}) {
+  const fields = {};
+  const fullIngredients = extractFentyFullIngredients(html, options.productTitle);
+  if (looksLikeFullInci(fullIngredients)) fields.pdp_ingredients_raw = fullIngredients;
+  return fields;
+}
+
 async function extractOfficialHtmlFields(host, html, options = {}) {
   let fields = {};
   if (host === 'skin1004.com') fields = extractSkin1004Fields(html);
   else if (host === 'medicube.us') fields = extractMedicubeFields(html);
   else if (host === 'tirtir.global') fields = await extractTirtirFields(html, options);
   else if (host === 'theordinary.com') fields = {};
+  else if (host === 'fentybeauty.com') fields = extractFentyFields(html, options);
   else return {};
 
   const stampedReview = await fetchStampedReviewSummary(host, html);
@@ -1400,22 +1492,48 @@ function buildSeedDataPatch(row, extracted, options = {}) {
   const snapshot = ensureObject(seedData.snapshot);
   const patchKeys = [];
   const reviewSummaryOnly = options.reviewSummaryOnly === true;
+  const missingFieldsOnly = options.missingFieldsOnly === true;
+  const hasExisting = (fieldKey) => {
+    if (!missingFieldsOnly) return false;
+    if (fieldKey === 'pdp_description_raw') {
+      return normalizeText(seedData.pdp_description_raw || snapshot.pdp_description_raw || seedData.description || snapshot.description).length >= 80;
+    }
+    if (fieldKey === 'pdp_ingredients_raw') {
+      return looksLikeFullInci(seedData.pdp_ingredients_raw || snapshot.pdp_ingredients_raw);
+    }
+    if (fieldKey === 'pdp_active_ingredients_raw') {
+      return (
+        looksLikeActiveIngredientList(seedData.pdp_active_ingredients_raw || snapshot.pdp_active_ingredients_raw) ||
+        asArray(seedData.active_ingredients || snapshot.active_ingredients).length > 0
+      );
+    }
+    if (fieldKey === 'pdp_how_to_use_raw') {
+      return looksLikeHowToUse(seedData.pdp_how_to_use_raw || snapshot.pdp_how_to_use_raw);
+    }
+    if (fieldKey === 'pdp_details_sections') {
+      return asArray(seedData.pdp_details_sections || snapshot.pdp_details_sections).length > 0;
+    }
+    if (fieldKey === 'variants') {
+      return asArray(seedData.variants || snapshot.variants).length > 0;
+    }
+    return false;
+  };
 
-  if (!reviewSummaryOnly && extracted.pdp_description_raw) {
+  if (!reviewSummaryOnly && extracted.pdp_description_raw && !hasExisting('pdp_description_raw')) {
     seedData.description = extracted.pdp_description_raw;
     seedData.pdp_description_raw = extracted.pdp_description_raw;
     snapshot.description = extracted.pdp_description_raw;
     snapshot.pdp_description_raw = extracted.pdp_description_raw;
     patchKeys.push('pdp_description_raw');
   }
-  if (!reviewSummaryOnly && extracted.pdp_ingredients_raw) {
+  if (!reviewSummaryOnly && extracted.pdp_ingredients_raw && !hasExisting('pdp_ingredients_raw')) {
     seedData.pdp_ingredients_raw = extracted.pdp_ingredients_raw;
     seedData.raw_ingredient_text_clean = extracted.pdp_ingredients_raw;
     snapshot.pdp_ingredients_raw = extracted.pdp_ingredients_raw;
     snapshot.raw_ingredient_text_clean = extracted.pdp_ingredients_raw;
     patchKeys.push('pdp_ingredients_raw');
   }
-  if (!reviewSummaryOnly && extracted.pdp_active_ingredients_raw) {
+  if (!reviewSummaryOnly && extracted.pdp_active_ingredients_raw && !hasExisting('pdp_active_ingredients_raw')) {
     const activeItems = Array.from(
       new Set(
         extracted.pdp_active_ingredients_raw
@@ -1430,12 +1548,12 @@ function buildSeedDataPatch(row, extracted, options = {}) {
     snapshot.active_ingredients = activeItems;
     patchKeys.push('pdp_active_ingredients_raw');
   }
-  if (!reviewSummaryOnly && extracted.pdp_how_to_use_raw) {
+  if (!reviewSummaryOnly && extracted.pdp_how_to_use_raw && !hasExisting('pdp_how_to_use_raw')) {
     seedData.pdp_how_to_use_raw = extracted.pdp_how_to_use_raw;
     snapshot.pdp_how_to_use_raw = extracted.pdp_how_to_use_raw;
     patchKeys.push('pdp_how_to_use_raw');
   }
-  if (!reviewSummaryOnly && asArray(extracted.pdp_details_sections).length > 0) {
+  if (!reviewSummaryOnly && asArray(extracted.pdp_details_sections).length > 0 && !hasExisting('pdp_details_sections')) {
     const merged = mergeDetails(seedData.pdp_details_sections || snapshot.pdp_details_sections, extracted.pdp_details_sections);
     seedData.pdp_details_sections = merged;
     snapshot.pdp_details_sections = merged;
@@ -1462,7 +1580,7 @@ function buildSeedDataPatch(row, extracted, options = {}) {
     snapshot.review_summary = incoming;
     patchKeys.push('review_summary');
   }
-  if (!reviewSummaryOnly && asArray(extracted.variants).length > 0) {
+  if (!reviewSummaryOnly && asArray(extracted.variants).length > 0 && !hasExisting('variants')) {
     seedData.variants = extracted.variants;
     snapshot.variants = extracted.variants;
     const variantSkus = extracted.variants.map((variant) => normalizeText(variant.sku || variant.sku_id)).filter(Boolean);
@@ -1553,6 +1671,7 @@ async function main() {
   const dryRun = hasFlag('dry-run') || hasFlag('dryRun');
   const reviewSummaryOnly = hasFlag('review-summary-only') || hasFlag('reviewSummaryOnly');
   const refreshReviewPreview = hasFlag('refresh-review-preview') || hasFlag('refreshReviewPreview');
+  const missingFieldsOnly = hasFlag('missing-fields-only') || hasFlag('missingFieldsOnly');
   const rows = await fetchRows(Array.from(new Set(ids)), market);
   const results = [];
 
@@ -1580,7 +1699,11 @@ async function main() {
       const extracted = await extractOfficialHtmlFields(host, fetched.html, { productTitle: row.title });
       const officialVariants = await fetchOfficialShopifyVariants(fetched.final_url || url, row);
       if (officialVariants.length > 0) extracted.variants = officialVariants;
-      const { seedData, patchKeys } = buildSeedDataPatch(row, extracted, { reviewSummaryOnly, refreshReviewPreview });
+      const { seedData, patchKeys } = buildSeedDataPatch(row, extracted, {
+        reviewSummaryOnly,
+        refreshReviewPreview,
+        missingFieldsOnly,
+      });
       result.patch_keys = patchKeys;
       result.extracted_summary = {
         ingredients_chars: normalizeText(extracted.pdp_ingredients_raw).length,
@@ -1659,6 +1782,8 @@ module.exports = {
     extractTirtirFaqHowToUse,
     extractSkin1004Fields,
     extractMedicubeFields,
+    extractFentyFields,
+    extractFentyFullIngredients,
     extractOfficialShopifyVariants,
     fetchStampedReviewSummary,
     fetchBazaarvoiceReviewSummary,
