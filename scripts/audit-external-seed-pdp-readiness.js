@@ -321,6 +321,12 @@ async function buildReadinessAuditForSeedRows(seedRows, options = {}) {
   const context = {
     ...identityContext,
     kbByProductId,
+    seedRowByProductId: new Map(
+      seedRows
+        .map((row) => [normalizeString(row.external_product_id), row])
+        .filter(([productId]) => productId),
+    ),
+    directCoverageByProductId: new Map(),
   };
   const rows = seedRows.map((row) => buildReadinessRow(row, context));
   return {
