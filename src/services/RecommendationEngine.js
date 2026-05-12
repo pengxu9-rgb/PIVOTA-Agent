@@ -2289,7 +2289,7 @@ ${EXTERNAL_SEED_FAST_RECOMMENDATION_SELECT}
             )`,
         [categoryAliases],
         deepDomainRecall
-          ? boundedRecallCap(2, 48)
+          ? boundedRecallCap(6, 96)
           : Math.min(120, safeLimit),
         'external_category',
       ),
@@ -2308,9 +2308,6 @@ ${EXTERNAL_SEED_FAST_RECOMMENDATION_SELECT}
     );
     out.push(...preloadedDomainTitleCategoryMatches);
     let domainCategoryFocusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
-    if (domainCategoryFocusedCandidates.length >= safeMinFocusedCandidates) {
-      return domainCategoryFocusedCandidates.slice(0, safeLimit * 3);
-    }
 
     const preloadedDomainCategoryMatches = await runTimedExternalQuery(
       'external_domain_category',
@@ -2319,11 +2316,8 @@ ${EXTERNAL_SEED_FAST_RECOMMENDATION_SELECT}
     );
     out.push(...preloadedDomainCategoryMatches);
     domainCategoryFocusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
-    if (domainCategoryFocusedCandidates.length >= safeMinFocusedCandidates) {
-      return domainCategoryFocusedCandidates.slice(0, safeLimit * 3);
-    }
   }
-  if (deepDomainRecall && normalizedDomainHints.length) {
+  if (deepDomainRecall && normalizedDomainHints.length && !category) {
     const deepRecallDomainCap = boundedRecallCap(2, 48);
     preloadedDomainMatches = await runTimedExternalQuery(
       'external_domain',
@@ -2332,7 +2326,7 @@ ${EXTERNAL_SEED_FAST_RECOMMENDATION_SELECT}
     );
     out.push(...preloadedDomainMatches);
     const domainFocusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
-    if (domainFocusedCandidates.length >= safeMinFocusedCandidates) {
+    if (!category && domainFocusedCandidates.length >= safeMinFocusedCandidates) {
       return domainFocusedCandidates.slice(0, safeLimit * 3);
     }
   }
