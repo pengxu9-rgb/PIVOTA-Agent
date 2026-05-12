@@ -1310,12 +1310,19 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     });
 
     const facts = payload.modules.find((module) => module.type === 'product_facts');
+    const overview = payload.modules.find((module) => module.type === 'product_overview');
+    const supplemental = payload.modules.find((module) => module.type === 'supplemental_details');
 
     expect(facts?.data?.sections || []).toEqual(
       expect.not.arrayContaining([
         expect.objectContaining({ heading: 'Texture' }),
         expect.objectContaining({ heading: 'Free Of' }),
       ]),
+    );
+    expect(overview?.data?.sections?.[0]?.content).toMatch(/Dull is out, precision is in/i);
+    expect(overview?.data?.sections?.[0]?.content).not.toMatch(/STRAIGHT UP|THE LOWDOWN/i);
+    expect(supplemental?.data?.sections || []).toEqual(
+      expect.not.arrayContaining([expect.objectContaining({ heading: 'Details' })]),
     );
   });
 });
