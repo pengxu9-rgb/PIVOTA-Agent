@@ -1745,6 +1745,7 @@ function pickLayeredRecommendations({
       if (
         base.isExternal &&
         base.vertical !== UNKNOWN_VERTICAL &&
+        base.vertical !== 'tools' &&
         BEAUTY_ACCESSORY_TITLE_RE.test(features.normalizedTitle || '')
       ) {
         filteredByConfidence += 1;
