@@ -4722,55 +4722,162 @@ function projectExternalSeedOfferVariant(variant) {
 }
 
 function projectExternalSeedOfferPayload(payload, merchantId, productId) {
-  const normalizedProductId = String(payload?.product_id || payload?.id || productId).trim() || productId;
+  const normalizedPayload = parseCanonicalCatalogPayload(payload);
+  const seedData = isPlainObject(normalizedPayload.seed_data) ? normalizedPayload.seed_data : {};
+  const snapshot = isPlainObject(seedData.snapshot) ? seedData.snapshot : {};
+  const externalSeed = isPlainObject(normalizedPayload.external_seed) ? normalizedPayload.external_seed : {};
+  const externalSnapshot = isPlainObject(externalSeed.snapshot) ? externalSeed.snapshot : {};
+  const normalizedProductId =
+    firstNonEmptyString(
+      normalizedPayload.product_id,
+      normalizedPayload.id,
+      externalSeed.external_product_id,
+      externalSeed.product_id,
+      seedData.external_product_id,
+      seedData.product_id,
+      snapshot.product_id,
+      productId,
+    ) || productId;
   const commerceFacts =
-    payload?.commerce_facts_v1 ||
-    payload?.commerce_facts ||
-    payload?.seed_data?.commerce_facts_v1 ||
-    payload?.snapshot?.commerce_facts_v1 ||
+    normalizedPayload.commerce_facts_v1 ||
+    normalizedPayload.commerce_facts ||
+    externalSeed.commerce_facts_v1 ||
+    externalSeed.commerce_facts ||
+    seedData.commerce_facts_v1 ||
+    seedData.commerce_facts ||
+    snapshot.commerce_facts_v1 ||
     null;
   const agentSafeCommerceFacts =
-    payload?.agent_safe_commerce_facts ||
+    normalizedPayload.agent_safe_commerce_facts ||
+    externalSeed.agent_safe_commerce_facts ||
+    seedData.agent_safe_commerce_facts ||
     (commerceFacts ? buildAgentSafeCommerceFacts(commerceFacts) : null);
-  const variantsSource = Array.isArray(payload?.variants)
-    ? payload.variants
-    : Array.isArray(payload?.snapshot?.variants)
-      ? payload.snapshot.variants
+  const variantsSource = Array.isArray(normalizedPayload.variants)
+    ? normalizedPayload.variants
+    : Array.isArray(externalSeed.variants)
+      ? externalSeed.variants
+      : Array.isArray(seedData.variants)
+        ? seedData.variants
+        : Array.isArray(snapshot.variants)
+          ? snapshot.variants
+          : Array.isArray(externalSnapshot.variants)
+            ? externalSnapshot.variants
       : [];
   const variants = variantsSource.map(projectExternalSeedOfferVariant).filter(Boolean);
   return stripSavingsPresentationFields({
     merchant_id: merchantId,
     product_id: normalizedProductId,
-    id: String(payload?.id || payload?.product_id || productId).trim() || productId,
-    source: payload?.source || 'external_seed',
-    source_kind: payload?.source_kind || payload?.sourceKind || 'external_seed',
+    id:
+      firstNonEmptyString(normalizedPayload.id, normalizedPayload.product_id, externalSeed.id, seedData.id, productId) ||
+      productId,
+    source: normalizedPayload.source || externalSeed.source || seedData.source || 'external_seed',
+    source_kind:
+      normalizedPayload.source_kind ||
+      normalizedPayload.sourceKind ||
+      externalSeed.source_kind ||
+      externalSeed.sourceKind ||
+      seedData.source_kind ||
+      seedData.sourceKind ||
+      'external_seed',
     external_product_id:
-      String(payload?.external_product_id || payload?.externalProductId || productId).trim() || productId,
-    title: payload?.title || payload?.name,
-    brand: payload?.brand || payload?.vendor,
-    vendor: payload?.vendor,
-    merchant_name: payload?.merchant_name || payload?.merchantName,
-    store_name: payload?.store_name || payload?.storeName,
-    seller_name: payload?.seller_name || payload?.sellerName,
-    price: payload?.price,
-    currency: payload?.currency,
-    shipping: payload?.shipping,
-    shipping_cost: payload?.shipping_cost || payload?.shippingCost,
-    returns: payload?.returns,
-    promotions: Array.isArray(payload?.promotions) ? payload.promotions : undefined,
-    in_stock: payload?.in_stock,
-    fulfillment_type: payload?.fulfillment_type || payload?.fulfillmentType,
-    destination_url:
-      payload?.destination_url ||
-      payload?.destinationUrl ||
-      payload?.external_redirect_url ||
-      payload?.externalRedirectUrl ||
-      payload?.source_url ||
-      payload?.sourceUrl,
-    canonical_url: payload?.canonical_url || payload?.canonicalUrl,
-    url: payload?.url,
-    image_url: payload?.image_url || payload?.imageUrl,
-    images: Array.isArray(payload?.images) ? payload.images.slice(0, 8) : undefined,
+      firstNonEmptyString(
+        normalizedPayload.external_product_id,
+        normalizedPayload.externalProductId,
+        externalSeed.external_product_id,
+        seedData.external_product_id,
+        productId,
+      ) || productId,
+    title: firstNonEmptyString(
+      normalizedPayload.title,
+      normalizedPayload.name,
+      externalSeed.title,
+      seedData.title,
+      snapshot.title,
+    ),
+    brand: firstNonEmptyString(normalizedPayload.brand, normalizedPayload.vendor, externalSeed.brand, seedData.brand),
+    vendor: firstNonEmptyString(normalizedPayload.vendor, externalSeed.vendor, seedData.vendor),
+    merchant_name: firstNonEmptyString(
+      normalizedPayload.merchant_name,
+      normalizedPayload.merchantName,
+      externalSeed.merchant_name,
+      seedData.merchant_name,
+    ),
+    store_name: firstNonEmptyString(
+      normalizedPayload.store_name,
+      normalizedPayload.storeName,
+      externalSeed.store_name,
+      seedData.store_name,
+    ),
+    seller_name: firstNonEmptyString(
+      normalizedPayload.seller_name,
+      normalizedPayload.sellerName,
+      externalSeed.seller_name,
+      seedData.seller_name,
+    ),
+    price: firstNonEmptyString(normalizedPayload.price, externalSeed.price, seedData.price, seedData.price_amount),
+    currency: firstNonEmptyString(normalizedPayload.currency, externalSeed.currency, seedData.currency, seedData.price_currency),
+    shipping: normalizedPayload.shipping || externalSeed.shipping || seedData.shipping,
+    shipping_cost:
+      normalizedPayload.shipping_cost ||
+      normalizedPayload.shippingCost ||
+      externalSeed.shipping_cost ||
+      seedData.shipping_cost,
+    returns: normalizedPayload.returns || externalSeed.returns || seedData.returns,
+    promotions: Array.isArray(normalizedPayload.promotions)
+      ? normalizedPayload.promotions
+      : Array.isArray(externalSeed.promotions)
+        ? externalSeed.promotions
+        : Array.isArray(seedData.promotions)
+          ? seedData.promotions
+          : undefined,
+    in_stock: normalizedPayload.in_stock ?? externalSeed.in_stock ?? seedData.in_stock ?? snapshot.in_stock,
+    fulfillment_type:
+      normalizedPayload.fulfillment_type ||
+      normalizedPayload.fulfillmentType ||
+      externalSeed.fulfillment_type ||
+      seedData.fulfillment_type,
+    destination_url: firstCatalogPayloadString(
+      normalizedPayload.destination_url,
+      normalizedPayload.destinationUrl,
+      normalizedPayload.external_redirect_url,
+      normalizedPayload.externalRedirectUrl,
+      normalizedPayload.source_url,
+      normalizedPayload.sourceUrl,
+      externalSeed.destination_url,
+      externalSeed.canonical_url,
+      externalSeed.url,
+      seedData.destination_url,
+      seedData.canonical_url,
+      snapshot.destination_url,
+      snapshot.canonical_url,
+    ),
+    canonical_url: firstCatalogPayloadString(
+      normalizedPayload.canonical_url,
+      normalizedPayload.canonicalUrl,
+      externalSeed.canonical_url,
+      seedData.canonical_url,
+      snapshot.canonical_url,
+    ),
+    url: firstCatalogPayloadString(normalizedPayload.url, externalSeed.url, seedData.url),
+    image_url: firstCatalogPayloadString(
+      normalizedPayload.image_url,
+      normalizedPayload.imageUrl,
+      normalizedPayload.images,
+      normalizedPayload.image_urls,
+      externalSeed.image_url,
+      externalSeed.images,
+      seedData.image_url,
+      seedData.images,
+      snapshot.image_url,
+      snapshot.images,
+    ),
+    images: Array.isArray(normalizedPayload.images)
+      ? normalizedPayload.images.slice(0, 8)
+      : Array.isArray(externalSeed.images)
+        ? externalSeed.images.slice(0, 8)
+        : Array.isArray(seedData.images)
+          ? seedData.images.slice(0, 8)
+          : undefined,
     ...(commerceFacts ? { commerce_facts_v1: commerceFacts, commerce_facts: commerceFacts } : {}),
     ...(agentSafeCommerceFacts ? { agent_safe_commerce_facts: agentSafeCommerceFacts } : {}),
     ...(variants.length ? { variants } : {}),
@@ -11178,7 +11285,7 @@ async function queryBeautyExternalSeedRowsFast({
   };
 }
 
-function parseCanonicalCatalogPayload(value) {
+function parseCanonicalPayloadObject(value) {
   if (isPlainObject(value)) return value;
   if (typeof value !== 'string') return {};
   try {
@@ -11187,6 +11294,66 @@ function parseCanonicalCatalogPayload(value) {
   } catch {
     return {};
   }
+}
+
+function parseCanonicalCatalogPayload(value) {
+  const payload = parseCanonicalPayloadObject(value);
+  if (!Object.keys(payload).length) return {};
+  const seedData = parseCanonicalPayloadObject(payload.seed_data);
+  const externalSeed = parseCanonicalPayloadObject(payload.external_seed);
+  const seedSnapshot = parseCanonicalPayloadObject(seedData.snapshot);
+  const externalSnapshot = parseCanonicalPayloadObject(externalSeed.snapshot);
+  const normalizedSeedData = {
+    ...seedData,
+    ...(Object.keys(seedSnapshot).length ? { snapshot: seedSnapshot } : {}),
+  };
+  const normalizedExternalSeed = {
+    ...externalSeed,
+    ...(Object.keys(externalSnapshot).length ? { snapshot: externalSnapshot } : {}),
+  };
+
+  return {
+    ...payload,
+    ...(Object.keys(normalizedSeedData).length ? { seed_data: normalizedSeedData } : {}),
+    ...(Object.keys(normalizedExternalSeed).length ? { external_seed: normalizedExternalSeed } : {}),
+  };
+}
+
+function firstStringFromArray(value) {
+  if (!Array.isArray(value)) return null;
+  for (const item of value) {
+    if (typeof item === 'string') {
+      const trimmed = item.trim();
+      if (trimmed) return trimmed;
+      continue;
+    }
+    if (isPlainObject(item)) {
+      const candidate = firstNonEmptyString(
+        item.url,
+        item.src,
+        item.href,
+        item.image_url,
+        item.imageUrl,
+        item.canonical_url,
+        item.destination_url,
+      );
+      if (candidate) return candidate;
+    }
+  }
+  return null;
+}
+
+function firstCatalogPayloadString(...values) {
+  for (const value of values) {
+    if (Array.isArray(value)) {
+      const candidate = firstStringFromArray(value);
+      if (candidate) return candidate;
+      continue;
+    }
+    const candidate = firstNonEmptyString(value);
+    if (candidate) return candidate;
+  }
+  return null;
 }
 
 function normalizeCatalogCategoryPathArray(value) {
@@ -11200,37 +11367,164 @@ function buildCanonicalChainMainlineProduct(row) {
   const payload = parseCanonicalCatalogPayload(row.product_payload);
   const seedData = isPlainObject(payload.seed_data) ? payload.seed_data : {};
   const snapshot = isPlainObject(seedData.snapshot) ? seedData.snapshot : {};
+  const externalSeed = isPlainObject(payload.external_seed) ? payload.external_seed : {};
+  const externalSnapshot = isPlainObject(externalSeed.snapshot) ? externalSeed.snapshot : {};
   const sourceProductId = firstNonEmptyString(
     row.source_product_id,
+    externalSeed.external_product_id,
+    externalSeed.product_id,
     seedData.external_product_id,
     seedData.product_id,
+    externalSnapshot.product_id,
     snapshot.product_id,
   );
   const pivotaSignatureId = firstNonEmptyString(row.pivota_signature_id);
   const productId = firstNonEmptyString(pivotaSignatureId, sourceProductId, row.product_key);
-  const title = firstNonEmptyString(row.product_title, seedData.title, snapshot.title, productId);
+  const title = firstNonEmptyString(
+    row.product_title,
+    seedData.title,
+    seedData.name,
+    seedData.product_name,
+    snapshot.title,
+    snapshot.name,
+    externalSeed.title,
+    externalSeed.name,
+    externalSnapshot.title,
+    productId,
+  );
   if (!productId || !title) return null;
   const merchantId = firstNonEmptyString(row.merchant_id, EXTERNAL_SEED_MERCHANT_ID);
-  const brand = firstNonEmptyString(row.brand, seedData.brand, seedData.vendor, snapshot.brand);
-  const categoryPathText = firstNonEmptyString(row.category_path, seedData.category_path, snapshot.category_path);
+  const brand = firstNonEmptyString(
+    row.brand,
+    seedData.brand,
+    seedData.brand_name,
+    seedData.vendor,
+    snapshot.brand,
+    snapshot.vendor,
+    externalSeed.brand,
+    externalSeed.vendor,
+    externalSeed.merchant_name,
+    externalSnapshot.brand,
+  );
+  const categoryPathText = firstCatalogPayloadString(
+    row.category_path,
+    seedData.category_path,
+    seedData.catalog_category_path,
+    snapshot.category_path,
+    snapshot.catalog_category_path,
+    externalSeed.category_path,
+    externalSnapshot.category_path,
+  );
   const priceRaw = firstNonEmptyString(
     row.merchant_effective_price,
     row.estimated_best_price,
     row.list_price,
+    externalSeed.price_amount,
+    externalSeed.price,
+    externalSnapshot.price_amount,
     seedData.price_amount,
+    seedData.price,
     snapshot.price_amount,
   );
   const price = Number(priceRaw);
-  const currency = firstNonEmptyString(row.currency, seedData.price_currency, snapshot.price_currency, 'USD');
-  const availability = firstNonEmptyString(row.availability, seedData.availability, snapshot.availability);
+  const currency = firstNonEmptyString(
+    row.currency,
+    externalSeed.price_currency,
+    externalSeed.currency,
+    externalSnapshot.price_currency,
+    seedData.price_currency,
+    seedData.currency,
+    snapshot.price_currency,
+    'USD',
+  );
+  const availability = firstNonEmptyString(
+    row.availability,
+    externalSeed.availability,
+    externalSeed.in_stock,
+    externalSnapshot.availability,
+    seedData.availability,
+    seedData.in_stock,
+    snapshot.availability,
+  );
   const availabilityKey = String(availability || '').trim().toLowerCase();
   const inStock = availabilityKey
-    ? !['out of stock', 'out_of_stock', 'outofstock', 'oos', 'sold out', 'sold_out', 'unavailable'].includes(availabilityKey)
+    ? availabilityKey === 'true'
+      ? true
+      : availabilityKey === 'false'
+        ? false
+        : !['out of stock', 'out_of_stock', 'outofstock', 'oos', 'sold out', 'sold_out', 'unavailable'].includes(availabilityKey)
     : undefined;
-  const imageUrl = firstNonEmptyString(row.sku_image_url, row.product_image_url, seedData.image_url, snapshot.image_url);
-  const merchantCanonicalUrl = firstNonEmptyString(row.canonical_url, seedData.canonical_url, snapshot.canonical_url);
+  const imageUrl = firstCatalogPayloadString(
+    row.sku_image_url,
+    row.product_image_url,
+    externalSeed.image_url,
+    externalSeed.imageUrl,
+    externalSeed.images,
+    externalSeed.image_urls,
+    externalSnapshot.image_url,
+    externalSnapshot.images,
+    seedData.image_url,
+    seedData.imageUrl,
+    seedData.images,
+    seedData.image_urls,
+    snapshot.image_url,
+    snapshot.images,
+    snapshot.image_urls,
+  );
+  const merchantCanonicalUrl = firstCatalogPayloadString(
+    row.canonical_url,
+    row.destination_url,
+    externalSeed.destination_url,
+    externalSeed.destinationUrl,
+    externalSeed.canonical_url,
+    externalSeed.canonicalUrl,
+    externalSeed.url,
+    externalSnapshot.destination_url,
+    externalSnapshot.canonical_url,
+    seedData.destination_url,
+    seedData.destinationUrl,
+    seedData.canonical_url,
+    seedData.canonicalUrl,
+    seedData.url,
+    snapshot.destination_url,
+    snapshot.canonical_url,
+  );
   const pivotaCanonicalUrl = firstNonEmptyString(row.pivota_canonical_url);
-  const category = firstNonEmptyString(row.category, row.product_type, seedData.category, snapshot.category);
+  const category = firstNonEmptyString(
+    row.category,
+    row.product_type,
+    externalSeed.category,
+    externalSeed.product_type,
+    externalSeed.kind,
+    externalSnapshot.category,
+    seedData.category,
+    seedData.product_type,
+    seedData.kind,
+    snapshot.category,
+    snapshot.product_type,
+  );
+  const description = firstNonEmptyString(
+    row.product_description,
+    externalSeed.description,
+    externalSeed.description_text,
+    externalSeed.pdp_description,
+    externalSeed.pdp_description_raw,
+    externalSeed.overview,
+    externalSeed.summary,
+    externalSnapshot.description,
+    seedData.description,
+    seedData.description_text,
+    seedData.pdp_description,
+    seedData.pdp_description_raw,
+    seedData.overview,
+    seedData.summary,
+    snapshot.description,
+    snapshot.description_text,
+    snapshot.pdp_description,
+    snapshot.pdp_description_raw,
+    snapshot.overview,
+    snapshot.summary,
+  );
 
   return {
     id: productId,
@@ -11240,9 +11534,7 @@ function buildCanonicalChainMainlineProduct(row) {
     platform: firstNonEmptyString(row.platform, row.merchant_primary_platform, merchantId === EXTERNAL_SEED_MERCHANT_ID ? 'external_seed' : 'catalog'),
     platform_product_id: sourceProductId || productId,
     title,
-    ...(firstNonEmptyString(row.product_description, seedData.description, snapshot.description)
-      ? { description: firstNonEmptyString(row.product_description, seedData.description, snapshot.description) }
-      : {}),
+    ...(description ? { description } : {}),
     ...(Number.isFinite(price) && price > 0 ? { price } : {}),
     currency,
     ...(imageUrl ? { image_url: imageUrl, images: [imageUrl], image_urls: [imageUrl] } : {}),
@@ -11268,6 +11560,8 @@ function buildCanonicalChainMainlineProduct(row) {
     readiness_tier: firstNonEmptyString(row.readiness_tier),
     pdp_scope: firstNonEmptyString(row.pdp_scope),
     ...(sourceProductId && sourceProductId.startsWith('ext_') ? { external_seed_id: sourceProductId } : {}),
+    ...(Object.keys(seedData).length ? { seed_data: seedData } : {}),
+    ...(Object.keys(externalSeed).length ? { external_seed: externalSeed } : {}),
     ...(brand ? { brand, vendor: brand } : {}),
   };
 }

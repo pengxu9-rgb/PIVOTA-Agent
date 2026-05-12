@@ -619,4 +619,61 @@ describe('PDP grouped offers', () => {
       expect.arrayContaining(['Beauty of Joseon', 'Ohlolly']),
     );
   });
+
+  test('builds external-seed offers from serialized mirror source payloads', async () => {
+    const app = require('../src/server');
+
+    const offersData = await app._debug.buildOffersFromGroupMembers({
+      productGroupId: 'pg_ext_mac_russian_red',
+      members: [
+        {
+          merchant_id: 'external_seed',
+          product_id: 'ext_mac_russian_red_ulta',
+          source_kind: 'external_seed',
+          source_payload: {
+            seed_data: JSON.stringify({
+              title: 'MAC MACximal Silky Matte Lipstick',
+              brand: 'MAC',
+              merchant_name: 'Ulta Beauty',
+              price_amount: '25.00',
+              price_currency: 'USD',
+              in_stock: true,
+              destination_url: 'https://www.ulta.com/p/macximal-silky-matte-lipstick-pimprod2044115',
+              image_urls: ['https://images.ulta.com/mac-russian-red.jpg'],
+              variants: [
+                {
+                  variant_id: 'ulta-russian-red',
+                  title: 'Russian Red',
+                  price_amount: '25.00',
+                  currency: 'USD',
+                  in_stock: true,
+                },
+              ],
+            }),
+            external_seed: JSON.stringify({
+              external_product_id: 'ext_mac_russian_red_ulta',
+              merchant_name: 'Ulta Beauty',
+            }),
+          },
+        },
+      ],
+    });
+
+    expect(offersData.offers_count).toBe(1);
+    expect(offersData.offers[0]).toEqual(
+      expect.objectContaining({
+        merchant_id: 'external_seed',
+        product_id: 'ext_mac_russian_red_ulta',
+        merchant_name: 'Ulta Beauty',
+        source_url: 'https://www.ulta.com/p/macximal-silky-matte-lipstick-pimprod2044115',
+        inventory: { in_stock: true },
+      }),
+    );
+    expect(offersData.offers[0].variants[0]).toEqual(
+      expect.objectContaining({
+        variant_id: 'ulta-russian-red',
+        title: 'Russian Red',
+      }),
+    );
+  });
 });
