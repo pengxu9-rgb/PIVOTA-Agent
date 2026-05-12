@@ -370,6 +370,8 @@ describe('externalSeedRecall', () => {
       ['Cheeks Out Freestyle Cream Bronzer — Teddy', 'Bronzer', 'makeup'],
       ['Bright Fix Eye Brightener — Seashell', 'Concealer', 'makeup'],
       ['Triple Drip Gloss Bomb Trio', 'Lip Gloss', 'makeup'],
+      ['Gloss Bomb Heat Universal Lip Luminizer + Plumper — Hot Cherry', 'Lip Gloss', 'makeup'],
+      ['Brow MVP Ultra Fine Brow Pencil & Styler — Auburn', 'Brow Pencil', 'makeup'],
       ["Showstopp'r Football Sponge", 'Makeup Sponge', 'beauty_tools'],
     ];
 
@@ -390,6 +392,24 @@ describe('externalSeedRecall', () => {
       expect(doc.category).toBe(expectedCategory);
       expect(doc.vertical).toBe(expectedVertical);
     }
+  });
+
+  test('keeps face highlighters distinct after lip luminizer precedence', () => {
+    const doc = buildExternalSeedRecallDoc({
+      row: {
+        id: 'eps_fenty_killawatt',
+        title: 'Killawatt Freestyle Highlighter — Trophy Wife',
+      },
+      seedData: {
+        brand: 'Fenty Beauty',
+        category: 'Makeup',
+        description: 'A weightless longwear powder highlighter for face and eye glow.',
+      },
+      snapshot: {},
+    });
+
+    expect(doc.category).toBe('Highlighter');
+    expect(doc.vertical).toBe('makeup');
   });
 
   test('prefers specific body, hand, and eye cream leaves before generic moisturizer', () => {
