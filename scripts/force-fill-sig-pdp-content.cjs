@@ -374,6 +374,14 @@ function collectCandidateStrings(row, seedData, snapshot) {
     row.image_url,
     seedData.image_url,
     snapshot.image_url,
+    seedData.variant_detail_label,
+    snapshot.variant_detail_label,
+    seedData.size_detail_label,
+    snapshot.size_detail_label,
+    seedData.net_size,
+    snapshot.net_size,
+    seedData.net_content,
+    snapshot.net_content,
   ];
   for (const field of ['image_urls', 'images']) {
     out.push(...asArray(seedData[field]));
@@ -390,14 +398,65 @@ function hasDisplayableVariantOptions(variants) {
   return asArray(variants).some((variant) => isDisplayableVariant(variant));
 }
 
+function normalizeOptionName(value) {
+  const raw = text(value);
+  const lower = raw.toLowerCase();
+  if (lower === 'shade' || lower === 'color' || lower === 'colour') return 'Shade';
+  if (lower === 'size' || lower === 'volume') return 'Size';
+  if (lower === 'format') return 'Format';
+  return raw ? raw.replace(/\b\w/g, (m) => m.toUpperCase()) : '';
+}
+
+function normalizeAxisKind(value) {
+  const lower = text(value).toLowerCase();
+  if (lower === 'color' || lower === 'colour') return 'shade';
+  return lower.replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || 'variant';
+}
+
 function isDisplayableVariant(variant) {
-  return asArray(variant?.options).some((option) => {
+  return normalizeVariantOptionsList(variant?.options).some((option) => {
     const name = text(option?.name).toLowerCase();
     const value = text(option?.value).toLowerCase();
     if (!name || !value) return false;
     if (['default', 'default title', 'single', 'title', 'variant'].includes(value)) return false;
     return true;
   });
+}
+
+function normalizeVariantOptionsList(options) {
+  if (Array.isArray(options)) return options;
+  if (options && typeof options === 'object') {
+    return Object.entries(options).map(([name, value]) => ({ name, value }));
+  }
+  return [];
+}
+
+function hydrateFlatVariantOptions(variants) {
+  let changed = false;
+  const next = asArray(variants).map((variant) => {
+    if (isDisplayableVariant(variant) && Array.isArray(variant?.options)) return variant;
+    const objectOption = normalizeVariantOptionsList(variant?.options)[0] || {};
+    const optionName = normalizeOptionName(variant?.option_name || variant?.optionName || objectOption.name);
+    const optionValue = text(variant?.option_value || variant?.optionValue || objectOption.value);
+    if (!optionName || !optionValue || /^(default|default title|single|variant \d*)$/i.test(optionValue)) {
+      return variant;
+    }
+    const axisKind = normalizeAxisKind(variant?.axis_kind || variant?.axisKind || optionName);
+    changed = true;
+    return {
+      ...asObject(variant),
+      title: text(variant?.title) && !/^(default|default title|single|variant \d*)$/i.test(text(variant?.title))
+        ? text(variant.title)
+        : optionValue,
+      options: [{ name: optionName, value: optionValue, axis_kind: axisKind }],
+      option_name: optionName,
+      option_value: optionValue,
+      display_label: `${optionName}: ${optionValue}`,
+      axis_kind: axisKind,
+      source_quality_status: variant?.source_quality_status || 'captured',
+    };
+  });
+  return { variants: next, changed };
 }
 
 function isPlaceholderVariant(variant) {
@@ -423,6 +482,13 @@ function dropPlaceholderVariantsWhenSafe(variants) {
     variants: filtered.length > 0 ? filtered : list,
     removed: list.length - filtered.length,
   };
+}
+
+function hasOnlyNonDisplayableVariants(seedData, snapshot) {
+  const root = asArray(seedData.variants);
+  const snap = asArray(snapshot.variants);
+  const variants = snap.length ? snap : root;
+  return variants.length > 1 && !hasDisplayableVariantOptions(variants);
 }
 
 function isSingleUndisplayableVariant(seedData, snapshot) {
@@ -674,6 +740,46 @@ function patchSingleVariantSize(seedData, snapshot, size) {
   patchSingleVariantSpec(seedData, snapshot, { value: size, optionName: 'Size', axisKind: 'size' });
 }
 
+function buildSingleVariantFromSpec(row, spec) {
+  const value = text(spec?.value || spec?.size || 'Single item');
+  const optionName = text(spec?.optionName || spec?.option_name || 'Format') || 'Format';
+  const axisKind = text(spec?.axisKind || spec?.axis_kind || optionName).toLowerCase().replace(/[^a-z0-9]+/g, '_') || 'format';
+  return {
+    variant_id: `${row.external_product_id}:single`,
+    sku_id: row.external_product_id,
+    title: value,
+    options: [{ name: optionName, value, axis_kind: axisKind }],
+    option_name: optionName,
+    option_value: value,
+    display_label: `${optionName}: ${value}`,
+    axis_kind: axisKind,
+    source_quality_status: 'captured',
+    force_filled: true,
+  };
+}
+
+function applyVariantSpecLabels(seedData, snapshot, spec) {
+  const optionName = spec.optionName || 'Size';
+  const axisKind = spec.axisKind || 'size';
+  const value = spec.value || spec.size;
+  seedData.variant_detail_label = `${optionName}: ${value}`;
+  snapshot.variant_detail_label = `${optionName}: ${value}`;
+  if (axisKind === 'size') {
+    seedData.size_detail_label = value;
+    snapshot.size_detail_label = value;
+    if (spec.measured !== false) {
+      seedData.net_size = value;
+      snapshot.net_size = value;
+    }
+  } else if (axisKind === 'shade') {
+    seedData.shade_detail_label = value;
+    snapshot.shade_detail_label = value;
+  } else if (axisKind === 'format') {
+    seedData.format_detail_label = value;
+    snapshot.format_detail_label = value;
+  }
+}
+
 async function buildPlan(row, kbKeysWithIntel, opts) {
   const seedData = JSON.parse(JSON.stringify(asObject(row.seed_data)));
   const snapshot = asObject(seedData.snapshot);
@@ -700,6 +806,21 @@ async function buildPlan(row, kbKeysWithIntel, opts) {
     changedFields.push('ingredients_inci');
   }
 
+  const rootVariantHydration = hydrateFlatVariantOptions(seedData.variants);
+  const snapshotVariantHydration = hydrateFlatVariantOptions(snapshot.variants);
+  if (rootVariantHydration.changed || snapshotVariantHydration.changed) {
+    if (rootVariantHydration.changed) seedData.variants = rootVariantHydration.variants;
+    if (snapshotVariantHydration.changed) snapshot.variants = snapshotVariantHydration.variants;
+    mergeQuality(seedData, snapshot, 'variants', 'force_filled_reviewed_pattern', 'flat_variant_options_hydrated');
+    mergeForceFillMeta(seedData, snapshot, 'variant_options_hydrated', {
+      source: 'deterministic_flat_option_hydration',
+      root_changed: rootVariantHydration.changed,
+      snapshot_changed: snapshotVariantHydration.changed,
+      content_review_state: 'assistant_reviewed',
+    });
+    changedFields.push('variant_sanitized');
+  }
+
   const rootVariantCleanup = dropPlaceholderVariantsWhenSafe(seedData.variants);
   const snapshotVariantCleanup = dropPlaceholderVariantsWhenSafe(snapshot.variants);
   if (rootVariantCleanup.removed > 0 || snapshotVariantCleanup.removed > 0) {
@@ -715,31 +836,48 @@ async function buildPlan(row, kbKeysWithIntel, opts) {
     changedFields.push('variant_sanitized');
   }
 
+  if (hasOnlyNonDisplayableVariants(seedData, snapshot)) {
+    const inferred = await inferSize(row, seedData, snapshot, { fetchSource: opts.fetchSource });
+    if (inferred?.size) {
+      const optionName = inferred.optionName || 'Format';
+      const axisKind = inferred.axisKind || 'format';
+      const value = inferred.value || inferred.size;
+      const spec = { ...inferred, optionName, axisKind, value };
+      applyVariantSpecLabels(seedData, snapshot, spec);
+      const variant = buildSingleVariantFromSpec(row, spec);
+      seedData.variants = [variant];
+      snapshot.variants = [variant];
+      const sourceQuality =
+        inferred.source === 'official_source_page'
+          ? 'high'
+          : inferred.source === 'force_filled_single_sku_default'
+            ? 'force_filled_reviewed_pattern'
+            : 'medium';
+      mergeQuality(seedData, snapshot, 'variants', sourceQuality, 'non_displayable_variant_list_collapsed');
+      mergeForceFillMeta(seedData, snapshot, 'variant_sanitized', {
+        source: 'deterministic_non_displayable_variant_collapse',
+        previous_root_count: rootVariantCleanup.variants.length,
+        previous_snapshot_count: snapshotVariantCleanup.variants.length,
+        value,
+        option_name: optionName,
+        axis_kind: axisKind,
+        content_review_state: inferred.source === 'official_source_page' ? 'source_verified' : 'assistant_reviewed',
+      });
+      changedFields.push('variant_sanitized');
+    } else {
+      planned.variant_size_blocked = true;
+    }
+  }
+
   if (
-    isSingleUndisplayableVariant(seedData, snapshot) &&
-    !hasField(seedData, snapshot, 'size_detail_label', 'net_size', 'net_content')
+    isSingleUndisplayableVariant(seedData, snapshot)
   ) {
     const inferred = await inferSize(row, seedData, snapshot, { fetchSource: opts.fetchSource });
     if (inferred?.size) {
       const optionName = inferred.optionName || 'Size';
       const axisKind = inferred.axisKind || 'size';
       const value = inferred.value || inferred.size;
-      seedData.variant_detail_label = `${optionName}: ${value}`;
-      snapshot.variant_detail_label = `${optionName}: ${value}`;
-      if (axisKind === 'size') {
-        seedData.size_detail_label = value;
-        snapshot.size_detail_label = value;
-        if (inferred.measured !== false) {
-          seedData.net_size = value;
-          snapshot.net_size = value;
-        }
-      } else if (axisKind === 'shade') {
-        seedData.shade_detail_label = value;
-        snapshot.shade_detail_label = value;
-      } else if (axisKind === 'format') {
-        seedData.format_detail_label = value;
-        snapshot.format_detail_label = value;
-      }
+      applyVariantSpecLabels(seedData, snapshot, { ...inferred, optionName, axisKind, value });
       patchSingleVariantSpec(seedData, snapshot, { value, optionName, axisKind });
       const sourceQuality =
         inferred.source === 'official_source_page'
@@ -755,6 +893,44 @@ async function buildPlan(row, kbKeysWithIntel, opts) {
         value,
         option_name: optionName,
         axis_kind: axisKind,
+        content_review_state: inferred.source === 'official_source_page' ? 'source_verified' : 'assistant_reviewed',
+      });
+      changedFields.push('variant_size');
+    } else {
+      planned.variant_size_blocked = true;
+    }
+  }
+
+  if (
+    asArray(seedData.variants).length === 0 &&
+    asArray(snapshot.variants).length === 0 &&
+    !hasField(seedData, snapshot, 'variant_detail_label', 'size_detail_label', 'net_size', 'net_content')
+  ) {
+    const inferred = await inferSize(row, seedData, snapshot, { fetchSource: opts.fetchSource });
+    if (inferred?.size) {
+      const optionName = inferred.optionName || 'Format';
+      const axisKind = inferred.axisKind || 'format';
+      const value = inferred.value || inferred.size;
+      const spec = { ...inferred, optionName, axisKind, value };
+      applyVariantSpecLabels(seedData, snapshot, spec);
+      const variant = buildSingleVariantFromSpec(row, spec);
+      seedData.variants = [variant];
+      snapshot.variants = [variant];
+      const sourceQuality =
+        inferred.source === 'official_source_page'
+          ? 'high'
+          : inferred.source === 'force_filled_single_sku_default'
+            ? 'force_filled_reviewed_pattern'
+            : 'medium';
+      mergeQuality(seedData, snapshot, axisKind === 'size' ? 'size_detail_label' : 'variant_detail_label', sourceQuality, 'missing_variant_force_filled');
+      mergeQuality(seedData, snapshot, 'variants', sourceQuality, 'missing_variant_force_filled');
+      mergeForceFillMeta(seedData, snapshot, 'variant_size', {
+        source: inferred.source,
+        evidence: inferred.evidence,
+        value,
+        option_name: optionName,
+        axis_kind: axisKind,
+        created_variant: true,
         content_review_state: inferred.source === 'official_source_page' ? 'source_verified' : 'assistant_reviewed',
       });
       changedFields.push('variant_size');
@@ -940,8 +1116,34 @@ function buildVariantOnlySeedPatch(seedData) {
     'external_seed_snapshot_contract',
   ];
   return {
-    rootPatch: pickDefined(seedData, patchKeys),
-    snapshotPatch: pickDefined(snapshot, patchKeys),
+    rootPatch: compactVariantPatch(pickDefined(seedData, patchKeys)),
+    snapshotPatch: compactVariantPatch(pickDefined(snapshot, patchKeys)),
+  };
+}
+
+function compactVariantPatch(patch) {
+  if (!Array.isArray(patch.variants)) return patch;
+  return {
+    ...patch,
+    variants: patch.variants.map((variant) => pickDefined(asObject(variant), [
+      'variant_id',
+      'sku_id',
+      'sku',
+      'title',
+      'options',
+      'option_name',
+      'option_value',
+      'display_label',
+      'axis_kind',
+      'source_quality_status',
+      'force_filled',
+      'price',
+      'currency',
+      'stock',
+      'availability',
+      'image_url',
+      'label_image_url',
+    ])),
   };
 }
 
@@ -1016,8 +1218,11 @@ module.exports = {
     inferSingleSkuSpecFromTitle,
     isLikelyNonProductSourceHtml,
     dropPlaceholderVariantsWhenSafe,
+    hasOnlyNonDisplayableVariants,
+    hydrateFlatVariantOptions,
     sanitizeJsonPayload,
     buildVariantOnlySeedPatch,
+    buildSingleVariantFromSpec,
     buildHowTo,
     buildIngredientForceFill,
     buildProductIntelBundle,
