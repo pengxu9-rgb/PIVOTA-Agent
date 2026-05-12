@@ -1119,6 +1119,17 @@ describe('RecommendationEngine external candidate fetch', () => {
         },
         {
           merchant_id: 'external_seed',
+          product_id: 'ext_gloss_holder',
+          title: 'Fuzzy Gloss Bomb Holder',
+          brand: 'Fenty Beauty',
+          category: 'Lip Gloss',
+          product_type: 'Lip Gloss',
+          price: 10,
+          currency: 'USD',
+          source: 'external_seed',
+        },
+        {
+          merchant_id: 'external_seed',
           product_id: 'ext_foundation',
           title: "Pro Filt'r Soft Matte Foundation",
           brand: 'Fenty Beauty',
@@ -1145,7 +1156,7 @@ describe('RecommendationEngine external candidate fetch', () => {
     });
 
     expect(result.items.map((item) => item.product_id)).toEqual(['ext_brow_match']);
-    expect(result.debug?.filters?.by_confidence).toBeGreaterThanOrEqual(2);
+    expect(result.debug?.filters?.by_confidence).toBeGreaterThanOrEqual(3);
   });
 
   test('recommend fetches internal and external pools in parallel instead of serially stacking source latency', async () => {

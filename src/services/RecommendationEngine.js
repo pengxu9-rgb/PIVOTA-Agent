@@ -303,7 +303,7 @@ const STOPWORDS = new Set([
 ]);
 
 const BEAUTY_ACCESSORY_TITLE_RE =
-  /\b(pouch|bag|soap saver|gua sha|gwalsa|brush|tool|applicator|spatula|mirror|sharpener|headband)\b/i;
+  /\b(pouch|bag|holder|keychain|soap saver|gua sha|gwalsa|brush|tool|applicator|spatula|mirror|sharpener|headband)\b/i;
 const STRICT_EXTERNAL_SAME_BRAND_LEAF_CATEGORIES = new Set([
   'brow pencil',
   'brow gel',
