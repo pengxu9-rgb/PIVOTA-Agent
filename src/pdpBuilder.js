@@ -1748,12 +1748,13 @@ function hasPromotionalOverviewMarkers(value) {
 function extractPromotionalOverviewNarrative(value) {
   let text = stripHtmlPreserveBreaks(value);
   if (!text) return '';
-  if (/straight up:/i.test(text)) {
-    text = text.replace(/^.*?straight up:\s*/i, '');
+  const straightUpMatch = text.match(/\bstraight up\b\s*(?::|-)?\s*/i);
+  if (straightUpMatch) {
+    text = text.slice((straightUpMatch.index || 0) + straightUpMatch[0].length);
   }
   text = text
     .split(
-      /(?:the lowdown:|what else\?!?|the #'?s don'?t lie:|after one week:|over time:|read more\b|fill weight:|tap into our blog:)/i,
+      /(?:\bthe lowdown\b\s*(?::|-)?|\bwhat else\?!?|\bthe #'?s don'?t lie\b\s*(?::|-)?|\bafter one week\b\s*(?::|-)?|\bover time\b\s*(?::|-)?|\bread more\b|\bfill weight\b\s*:|\btap into our blog\b\s*:)/i,
     )[0]
     .trim();
   return extractNarrativeOverviewParagraph(text) || cleanStructuredToken(text) || '';
