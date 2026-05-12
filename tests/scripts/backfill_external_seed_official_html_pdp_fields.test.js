@@ -11,6 +11,7 @@ const {
     extractOfficialShopifyVariants,
     fetchStampedReviewSummary,
     buildSeedDataPatch,
+    hasUsefulReviewText,
     buildShopifyProductJsonUrl,
     findTirtirSheetIngredientRow,
     normalizeTirtirTitleKey,
@@ -214,6 +215,126 @@ describe('backfill-external-seed-official-html-pdp-fields TIRTIR sheet matching'
         { productTitle: 'Deep Peptide Radiance Mask' },
       ),
     ).toEqual([]);
+  });
+
+  test('review-summary-only patch preserves existing content and only fills missing review previews', () => {
+    const row = {
+      seed_data: {
+        pdp_ingredients_raw: 'Existing high quality INCI',
+        review_summary: {
+          rating: 4.8,
+          review_count: 10,
+        },
+        snapshot: {
+          pdp_ingredients_raw: 'Existing high quality INCI',
+        },
+      },
+    };
+
+    const { seedData, patchKeys } = buildSeedDataPatch(
+      row,
+      {
+        pdp_ingredients_raw: 'Incoming official INCI that should not be applied in review-only mode',
+        review_summary: {
+          rating: 5,
+          scale: 5,
+          review_count: 12,
+          source_origin: 'official_stamped_reviews_api',
+          preview_items: [
+            {
+              review_id: 'r1',
+              rating: 5,
+              author_label: 'A reviewer',
+              text_snippet: 'Lightweight and calming.',
+            },
+          ],
+        },
+      },
+      { reviewSummaryOnly: true },
+    );
+
+    expect(patchKeys).toEqual(['review_summary']);
+    expect(seedData.pdp_ingredients_raw).toBe('Existing high quality INCI');
+    expect(seedData.snapshot.pdp_ingredients_raw).toBe('Existing high quality INCI');
+    expect(seedData.review_summary.preview_items).toHaveLength(1);
+  });
+
+  test('review-summary-only patch does not replace existing review previews', () => {
+    const row = {
+      seed_data: {
+        review_summary: {
+          rating: 4.8,
+          review_count: 10,
+          preview_items: [{ review_id: 'existing', text_snippet: 'Keep this.' }],
+        },
+        snapshot: {},
+      },
+    };
+
+    const { seedData, patchKeys } = buildSeedDataPatch(
+      row,
+      {
+        review_summary: {
+          rating: 5,
+          scale: 5,
+          review_count: 12,
+          preview_items: [{ review_id: 'incoming', text_snippet: 'Do not overwrite.' }],
+        },
+      },
+      { reviewSummaryOnly: true },
+    );
+
+    expect(patchKeys).toEqual([]);
+    expect(seedData.review_summary.preview_items).toEqual([
+      { review_id: 'existing', text_snippet: 'Keep this.' },
+    ]);
+  });
+
+  test('review-summary-only patch can refresh previews from the same authoritative source', () => {
+    const row = {
+      seed_data: {
+        review_summary: {
+          source_origin: 'official_stamped_reviews_api',
+          rating: 4.8,
+          review_count: 10,
+          preview_items: [{ review_id: 'existing', text_snippet: 'Replace this low-quality pick.' }],
+        },
+        snapshot: {},
+      },
+    };
+
+    const { seedData, patchKeys } = buildSeedDataPatch(
+      row,
+      {
+        review_summary: {
+          source_origin: 'official_stamped_reviews_api',
+          rating: 5,
+          scale: 5,
+          review_count: 12,
+          preview_items: [{ review_id: 'incoming', text_snippet: 'This replacement has useful review detail.' }],
+        },
+      },
+      { reviewSummaryOnly: true, refreshReviewPreview: true },
+    );
+
+    expect(patchKeys).toEqual(['review_summary']);
+    expect(seedData.review_summary.preview_items).toEqual([
+      { review_id: 'incoming', text_snippet: 'This replacement has useful review detail.' },
+    ]);
+  });
+
+  test('filters non-English or generic review snippets from public preview candidates', () => {
+    expect(
+      hasUsefulReviewText(
+        'Soy fel Genero M, me encanto el producto mi cara tiende a ser grasosa y brillar, esto me ayudo a reducirla, muy ligero, nada de sensación aceitosa, 100%recomendado.',
+      ),
+    ).toBe(false);
+    expect(hasUsefulReviewText('Love this!')).toBe(false);
+    expect(
+      hasUsefulReviewText(
+        'This centella ampoule is really soothing on my acne-prone combination skin and absorbs quickly without feeling sticky.',
+      ),
+    ).toBe(true);
   });
 
   test('extracts SKIN1004 PDP description sections from escaped Shopify product JSON', () => {

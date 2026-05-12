@@ -946,6 +946,20 @@ function hasUsefulReviewText(value) {
   if (text.length < 35 || text.length > 700) return false;
   if (text.split(/\s+/).filter(Boolean).length < 7) return false;
   if (/^(?:great|good|love it|perfect|nice|bien)$/i.test(text)) return false;
+  if (!looksLikeEnglishReviewText(text)) return false;
+  return true;
+}
+
+function looksLikeEnglishReviewText(value) {
+  const text = normalizeText(value).toLowerCase();
+  if (!text) return false;
+  const englishMatches = text.match(
+    /\b(?:the|and|with|skin|this|that|my|it|is|was|for|to|in|of|on|after|before|help|helps|helped|feel|feels|use|using|love|great|really|very|lightweight|soothing|sticky|redness|irritation|sensitive|oily|dry|combo|acne|routine|absorb|absorbs|works|worked)\b/g,
+  ) || [];
+  const nonEnglishMatches = text.match(
+    /\b(?:soy|encanto|encantó|piel|cara|grasosa|recomendado|producto|sensacion|sensación|apenas|probando|luminosa|luminoso|maquillaje|duro|duró|intacto|corrio|corrió|indispensable|muy|nada|esto|ayudo|ayudó|tengo|uso|para|pero|como|bien|feliz)\b/g,
+  ) || [];
+  if (nonEnglishMatches.length >= 3 && englishMatches.length < 5) return false;
   return true;
 }
 
@@ -1066,6 +1080,11 @@ function mergeReviewSummary(existing, incoming) {
   return next;
 }
 
+function reviewPreviewCount(summary) {
+  const safe = ensureObject(summary);
+  return asArray(safe.preview_items).length || asArray(safe.snippets).length;
+}
+
 function mergeDetails(existing, incoming) {
   const out = [];
   const seen = new Set();
@@ -1170,26 +1189,27 @@ function clearRecoveredStrictPdpSourceBlocker(seedData, snapshot, patchKeys) {
   return true;
 }
 
-function buildSeedDataPatch(row, extracted) {
+function buildSeedDataPatch(row, extracted, options = {}) {
   const seedData = JSON.parse(JSON.stringify(ensureObject(row.seed_data)));
   const snapshot = ensureObject(seedData.snapshot);
   const patchKeys = [];
+  const reviewSummaryOnly = options.reviewSummaryOnly === true;
 
-  if (extracted.pdp_description_raw) {
+  if (!reviewSummaryOnly && extracted.pdp_description_raw) {
     seedData.description = extracted.pdp_description_raw;
     seedData.pdp_description_raw = extracted.pdp_description_raw;
     snapshot.description = extracted.pdp_description_raw;
     snapshot.pdp_description_raw = extracted.pdp_description_raw;
     patchKeys.push('pdp_description_raw');
   }
-  if (extracted.pdp_ingredients_raw) {
+  if (!reviewSummaryOnly && extracted.pdp_ingredients_raw) {
     seedData.pdp_ingredients_raw = extracted.pdp_ingredients_raw;
     seedData.raw_ingredient_text_clean = extracted.pdp_ingredients_raw;
     snapshot.pdp_ingredients_raw = extracted.pdp_ingredients_raw;
     snapshot.raw_ingredient_text_clean = extracted.pdp_ingredients_raw;
     patchKeys.push('pdp_ingredients_raw');
   }
-  if (extracted.pdp_active_ingredients_raw) {
+  if (!reviewSummaryOnly && extracted.pdp_active_ingredients_raw) {
     const activeItems = Array.from(
       new Set(
         extracted.pdp_active_ingredients_raw
@@ -1204,12 +1224,12 @@ function buildSeedDataPatch(row, extracted) {
     snapshot.active_ingredients = activeItems;
     patchKeys.push('pdp_active_ingredients_raw');
   }
-  if (extracted.pdp_how_to_use_raw) {
+  if (!reviewSummaryOnly && extracted.pdp_how_to_use_raw) {
     seedData.pdp_how_to_use_raw = extracted.pdp_how_to_use_raw;
     snapshot.pdp_how_to_use_raw = extracted.pdp_how_to_use_raw;
     patchKeys.push('pdp_how_to_use_raw');
   }
-  if (asArray(extracted.pdp_details_sections).length > 0) {
+  if (!reviewSummaryOnly && asArray(extracted.pdp_details_sections).length > 0) {
     const merged = mergeDetails(seedData.pdp_details_sections || snapshot.pdp_details_sections, extracted.pdp_details_sections);
     seedData.pdp_details_sections = merged;
     snapshot.pdp_details_sections = merged;
@@ -1217,12 +1237,26 @@ function buildSeedDataPatch(row, extracted) {
   }
   if (extracted.review_summary) {
     const existing = ensureObject(seedData.review_summary || snapshot.review_summary);
+    const incomingPreviewCount = reviewPreviewCount(extracted.review_summary);
+    if (reviewSummaryOnly && reviewPreviewCount(existing) > 0) {
+      const sameAuthoritativeSource =
+        normalizeText(existing.source_origin) &&
+        normalizeText(existing.source_origin) === normalizeText(extracted.review_summary.source_origin);
+      if (!options.refreshReviewPreview || !sameAuthoritativeSource) {
+        seedData.snapshot = snapshot;
+        return { seedData, patchKeys };
+      }
+    }
+    if (reviewSummaryOnly && incomingPreviewCount === 0) {
+      seedData.snapshot = snapshot;
+      return { seedData, patchKeys };
+    }
     const incoming = mergeReviewSummary(existing, extracted.review_summary);
     seedData.review_summary = incoming;
     snapshot.review_summary = incoming;
     patchKeys.push('review_summary');
   }
-  if (asArray(extracted.variants).length > 0) {
+  if (!reviewSummaryOnly && asArray(extracted.variants).length > 0) {
     seedData.variants = extracted.variants;
     snapshot.variants = extracted.variants;
     const variantSkus = extracted.variants.map((variant) => normalizeText(variant.sku || variant.sku_id)).filter(Boolean);
@@ -1311,6 +1345,8 @@ async function main() {
   const market = normalizeText(argValue('market') || 'US').toUpperCase();
   const outDir = normalizeText(argValue('out-dir') || argValue('outDir'));
   const dryRun = hasFlag('dry-run') || hasFlag('dryRun');
+  const reviewSummaryOnly = hasFlag('review-summary-only') || hasFlag('reviewSummaryOnly');
+  const refreshReviewPreview = hasFlag('refresh-review-preview') || hasFlag('refreshReviewPreview');
   const rows = await fetchRows(Array.from(new Set(ids)), market);
   const results = [];
 
@@ -1338,7 +1374,7 @@ async function main() {
       const extracted = await extractOfficialHtmlFields(host, fetched.html, { productTitle: row.title });
       const officialVariants = await fetchOfficialShopifyVariants(fetched.final_url || url, row);
       if (officialVariants.length > 0) extracted.variants = officialVariants;
-      const { seedData, patchKeys } = buildSeedDataPatch(row, extracted);
+      const { seedData, patchKeys } = buildSeedDataPatch(row, extracted, { reviewSummaryOnly, refreshReviewPreview });
       result.patch_keys = patchKeys;
       result.extracted_summary = {
         ingredients_chars: normalizeText(extracted.pdp_ingredients_raw).length,
@@ -1347,6 +1383,7 @@ async function main() {
         variant_count: asArray(extracted.variants).length,
         review_count: extracted.review_summary?.review_count || 0,
         rating: extracted.review_summary?.rating || 0,
+        review_preview_count: reviewPreviewCount(extracted.review_summary),
       };
       if (patchKeys.length === 0) {
         result.reason = 'no_official_html_fields';
@@ -1419,6 +1456,7 @@ module.exports = {
     extractOfficialShopifyVariants,
     fetchStampedReviewSummary,
     buildSeedDataPatch,
+    hasUsefulReviewText,
     clearRecoveredStrictPdpSourceBlocker,
     buildShopifyProductJsonUrl,
     normalizeTirtirTitleKey,
