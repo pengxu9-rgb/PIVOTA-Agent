@@ -2214,7 +2214,7 @@ const PDP_CORE_PREWARM_ENABLED =
   String(process.env.PDP_CORE_PREWARM_ENABLED || 'false').toLowerCase() === 'true';
 const PDP_SELF_OFFER_FALLBACK_ENABLED = parseBooleanEnv(
   process.env.PDP_SELF_OFFER_FALLBACK_ENABLED,
-  false,
+  true,
 );
 const PDP_SYNC_SAVINGS_PRESENTATION_HYDRATION_ENABLED = parseBooleanEnv(
   process.env.PDP_SYNC_SAVINGS_PRESENTATION_HYDRATION_ENABLED,
@@ -27688,9 +27688,16 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	        !shouldSkipExternalSeedUpstreamGroupResolve;
 
 	      if (!canonicalProductRef) {
+          const shouldAttemptScopedProductGroupResolve =
+            Boolean(requestedMerchantId) &&
+            Boolean(productId) &&
+            !externalSeedRouteProductId &&
+            !hasExplicitProductGroup &&
+            !offerProductGroupId;
 	        const shouldResolveGroupBeforeCanonical =
 	          !shouldSkipExternalSeedUpstreamGroupResolve &&
 	          (
+              shouldAttemptScopedProductGroupResolve ||
 	            !precheckedMerchantProduct ||
 	            shouldAttemptUnscopedExternalSeedResolve ||
 	            !shouldPrecheckMerchantScoped
@@ -27717,6 +27724,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	              canonicalizationApplied = true;
 	              canonicalizationReasonCode = 'PRODUCT_ROUTE_MERCHANT_MISMATCH';
 	            }
+	          } else if (pdpV2ProductGroupResolveMode.startsWith('started_')) {
+	            pdpV2ProductGroupResolveMode = shouldAttemptUnscopedExternalSeedResolve
+	              ? 'empty_unscoped'
+	              : 'empty_scoped';
 	          }
 	        } else {
 	          pdpV2ProductGroupResolveMode = shouldSkipExternalSeedUpstreamGroupResolve
@@ -28319,7 +28330,6 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                         variants: fallbackOfferVariants,
                       }
                     : {}),
-                  ...pickSavingsPresentationFields(canonicalProductForPdp),
                   ...buildOfferPurchaseMetadataFromProduct(canonicalProductForPdp),
                   risk_tier: 'standard',
                 },

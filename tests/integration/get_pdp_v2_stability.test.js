@@ -146,7 +146,7 @@ describe('get_pdp_v2 stability semantics', () => {
     );
   });
 
-  it('does not synthesize a self offer when product identity has no group members', async () => {
+  it('synthesizes a safe self offer when product identity has no group members', async () => {
     const product = {
       merchant_id: 'merch_solo',
       product_id: 'solo_1',
@@ -175,6 +175,14 @@ describe('get_pdp_v2 stability semantics', () => {
     const productDetailScope = mockProductDetailInvoke('merch_solo', 'solo_1', 200, {
       product,
     });
+    nock(process.env.PIVOTA_API_BASE)
+      .get('/agent/v1/product-groups/resolve')
+      .query((query) => query && query.merchant_id === 'merch_solo' && query.product_id === 'solo_1')
+      .reply(200, {
+        status: 'success',
+        product_group_id: null,
+        members: [],
+      });
 
     const res = await request(app)
       .post('/agent/shop/v1/invoke')
@@ -193,24 +201,26 @@ describe('get_pdp_v2 stability semantics', () => {
     expect(productDetailScope.isDone()).toBe(true);
     expect(res.body.metadata.route_health).toEqual(
       expect.objectContaining({
-        product_group_resolve_mode: 'skipped_prechecked_entry',
+        product_group_resolve_mode: 'empty_scoped',
       }),
     );
     const offersModule = res.body.modules.find((module) => module.type === 'offers');
     expect(offersModule).toEqual(
       expect.objectContaining({
-        data: null,
-        reason: 'no_product_group_members',
+        data: expect.objectContaining({
+          offer_source: 'self',
+          offers_count: 1,
+        }),
       }),
     );
-    expect(res.body.missing).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          type: 'offers',
-          reason: 'no_product_group_members',
-        }),
-      ]),
+    expect(offersModule?.data?.offers?.[0]).toEqual(
+      expect.objectContaining({
+        merchant_id: 'merch_solo',
+        product_id: 'solo_1',
+        commerce_mode: 'merchant_embedded_checkout',
+      }),
     );
+    expect(JSON.stringify(offersModule?.data)).not.toContain('SHOULD_NOT_LEAK_AS_SELF_OFFER');
   });
 
   it('does not synchronously refetch product detail only to hydrate savings presentation', async () => {
@@ -231,6 +241,14 @@ describe('get_pdp_v2 stability semantics', () => {
     const productDetailScope = mockProductDetailInvoke('merch_fast', 'prod_fast_1', 200, {
       product,
     });
+    nock(process.env.PIVOTA_API_BASE)
+      .get('/agent/v1/product-groups/resolve')
+      .query((query) => query && query.merchant_id === 'merch_fast' && query.product_id === 'prod_fast_1')
+      .reply(200, {
+        status: 'success',
+        product_group_id: null,
+        members: [],
+      });
 
     const res = await request(app)
       .post('/agent/shop/v1/invoke')
@@ -250,7 +268,7 @@ describe('get_pdp_v2 stability semantics', () => {
     expect(res.body.metadata.route_health).toEqual(
       expect.objectContaining({
         savings_presentation_hydration_mode: 'prefetched_only',
-        product_group_resolve_mode: 'skipped_prechecked_entry',
+        product_group_resolve_mode: 'empty_scoped',
       }),
     );
     const canonicalModule = res.body.modules.find((module) => module.type === 'canonical');
