@@ -706,6 +706,68 @@ describe('external seed PDP readiness audit script DB resilience', () => {
     ]);
   });
 
+  test('targeted audit loads product-line sibling seed rows for effective INCI coverage', async () => {
+    const target = seedRow({
+      external_product_id: 'ext_target',
+      title: "Pro Filt'r Instant Retouch Concealer — #120",
+      seed_data: {
+        ingredient_intel: {
+          source_review_queue: {
+            status: 'manual_source_review_required',
+            review_state: 'queued',
+          },
+        },
+      },
+    });
+    const sibling = seedRow({
+      external_product_id: 'ext_sibling',
+      title: "Pro Filt'r Instant Retouch Concealer — #130",
+      seed_data: {
+        pdp_ingredients_raw: 'Water, Dimethicone, Glycerin, Iron Oxides.',
+      },
+    });
+    const queryMock = jest.fn(async (sql, params) => {
+      if (/FROM aurora_product_intel_kb/i.test(sql)) return { rows: [] };
+      if (/FROM external_product_seeds/i.test(sql)) {
+        expect(params[0]).toEqual(['ext_sibling']);
+        return { rows: [sibling] };
+      }
+      if (/FROM pdp_identity_listing/i.test(sql) && /product_line_id = ANY/i.test(sql)) {
+        return {
+          rows: [
+            { product_id: 'ext_target', product_line_id: 'pl_concealer', variant_axes: { shade: '120' } },
+            { product_id: 'ext_sibling', product_line_id: 'pl_concealer', variant_axes: { shade: '130' } },
+          ],
+        };
+      }
+      if (/FROM pdp_identity_listing/i.test(sql)) {
+        return {
+          rows: [
+            { product_id: 'ext_target', product_line_id: 'pl_concealer', variant_axes: { shade: '120' } },
+          ],
+        };
+      }
+      return { rows: [] };
+    });
+    jest.doMock('../../src/db', () => ({
+      query: queryMock,
+      getPool: jest.fn(),
+    }));
+
+    const { buildReadinessAuditForSeedRows } = require('../../scripts/audit-external-seed-pdp-readiness');
+    const audit = await buildReadinessAuditForSeedRows([target], {
+      market: 'US',
+      intelContext: 'effective',
+      includeAttached: false,
+      sampleLimit: 2,
+    });
+
+    expect(audit.rows[0].coverage.inci_chars).toBe(0);
+    expect(audit.rows[0].coverage.effective_inci_chars).toBeGreaterThan(0);
+    expect(audit.rows[0].coverage.inci_borrowed_from_product_id).toBe('ext_sibling');
+    expect(audit.summary.coverage.missing_inci).toBe(0);
+  });
+
   test('checkpointed audit writes and resumes per-domain payloads', async () => {
     const fs = require('node:fs');
     const os = require('node:os');

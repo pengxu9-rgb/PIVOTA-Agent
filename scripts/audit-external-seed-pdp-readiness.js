@@ -128,6 +128,41 @@ async function fetchSeedRowsPage(options = {}) {
   return res.rows || [];
 }
 
+async function fetchSeedRowsByProductIds(productIds, options = {}) {
+  const ids = Array.from(new Set((productIds || []).map(normalizeString).filter(Boolean)));
+  if (!ids.length) return [];
+  const params = [ids];
+  const where = [
+    `eps.status = 'active'`,
+    `eps.external_product_id LIKE 'ext_%'`,
+    `eps.external_product_id = ANY($1::text[])`,
+  ];
+  if (!options.allMarkets) {
+    where.push(`eps.market = ${bindParam(params, options.market || 'US')}`);
+  }
+  if (!options.includeAttached) where.push(`eps.attached_product_key IS NULL`);
+  const res = await query(
+    `
+      SELECT
+        eps.id,
+        eps.external_product_id,
+        eps.market,
+        eps.tool,
+        eps.domain,
+        eps.title,
+        eps.canonical_url,
+        eps.destination_url,
+        eps.image_url,
+        eps.attached_product_key,
+        coalesce(eps.seed_data, '{}'::jsonb) AS seed_data
+      FROM external_product_seeds eps
+      WHERE ${where.join('\n        AND ')}
+    `,
+    params,
+  );
+  return res.rows || [];
+}
+
 async function fetchSeedDomains(options = {}) {
   const where = [
     `eps.status = 'active'`,
@@ -318,14 +353,24 @@ async function buildReadinessAuditForSeedRows(seedRows, options = {}) {
     intelContextMode === 'none'
       ? new Map()
       : await fetchKbContext(identityContext.allProductIds);
+  const seedRowByProductId = new Map(
+    seedRows
+      .map((row) => [normalizeString(row.external_product_id), row])
+      .filter(([productId]) => productId),
+  );
+  const missingContextSeedIds = identityContext.allProductIds.filter((productId) => !seedRowByProductId.has(productId));
+  const contextSeedRows =
+    intelContextMode === 'effective'
+      ? await fetchSeedRowsByProductIds(missingContextSeedIds, options)
+      : [];
+  for (const row of contextSeedRows) {
+    const productId = normalizeString(row.external_product_id);
+    if (productId && !seedRowByProductId.has(productId)) seedRowByProductId.set(productId, row);
+  }
   const context = {
     ...identityContext,
     kbByProductId,
-    seedRowByProductId: new Map(
-      seedRows
-        .map((row) => [normalizeString(row.external_product_id), row])
-        .filter(([productId]) => productId),
-    ),
+    seedRowByProductId,
     directCoverageByProductId: new Map(),
   };
   const rows = seedRows.map((row) => buildReadinessRow(row, context));
@@ -616,6 +661,7 @@ module.exports = {
   buildPageCheckpointedReadinessAudit,
   fetchSeedRows,
   fetchSeedRowsPage,
+  fetchSeedRowsByProductIds,
   fetchSeedDomains,
   fetchSeedRowsChunkedByDomain,
   fetchIdentityContext,
