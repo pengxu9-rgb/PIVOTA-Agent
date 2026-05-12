@@ -1287,4 +1287,35 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     expect(payload.product.variants[0].payment_offer_evidence).toEqual(paymentOfferEvidence);
     expect(payload.product.variants[0].payment_offer_badges).toEqual(['3% card benefit']);
   });
+
+  test('does not split uppercase product prose into fake Fenty facts', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_fenty_sharpener',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'Trace’d Out Dual Pencil Sharpener',
+        image_url: 'https://example.com/sharpener.png',
+        price: { amount: 8, currency: 'USD' },
+        details_sections: [
+          {
+            heading: 'Details',
+            body:
+              "MADE SPECIFICALLY FOR THE CREAMY TEXTURE OF TRACE'D OUT PENCIL LIP LINER.\n\nSTRAIGHT UP Dull is out, precision is in. The creamy texture you love about Trace'd Out stays that way thanks to its non-wooden casing. THE LOWDOWN - Made for Trace'd Out Pencil Lip Liner to sharpen without breaking - Go mess free with a protective cap.",
+          },
+        ],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    const facts = payload.modules.find((module) => module.type === 'product_facts');
+
+    expect(facts?.data?.sections || []).toEqual(
+      expect.not.arrayContaining([
+        expect.objectContaining({ heading: 'Texture' }),
+        expect.objectContaining({ heading: 'Free Of' }),
+      ]),
+    );
+  });
 });
