@@ -3,7 +3,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { closePool, query, withClient } = require('../src/db');
+const { closePool, query } = require('../src/db');
 const {
   buildIdentityListingSourcePayload,
   stringifyPostgresJsonb,
@@ -166,43 +166,47 @@ async function loadIdentityRows(sourceRefs) {
 }
 
 async function applyUpdates(updates, { createdBy }) {
-  if (!updates.length) return { updated_rows: 0 };
-  return withClient(async (client) => {
-    await client.query('BEGIN');
+  if (!updates.length) return { updated_rows: 0, failed_rows: 0, errors: [] };
+  let updatedRows = 0;
+  const errors = [];
+  for (const update of updates) {
+    const reviewSummary = ensureJsonObject(update.payload.review_summary);
+    const officialUrl = normalizeString(
+      update.payload.canonical_url || update.payload.url || update.payload.destination_url,
+    );
     try {
-      let updatedRows = 0;
-      for (const update of updates) {
-        const reviewSummary = ensureJsonObject(update.payload.review_summary);
-        const officialUrl = normalizeString(
-          update.payload.canonical_url || update.payload.url || update.payload.destination_url,
-        );
-        const res = await client.query(
-          `
-            UPDATE pdp_identity_listing
-            SET
-              source_payload = $2::jsonb,
-              review_summary = $3::jsonb,
-              official_url = COALESCE(NULLIF($4, ''), official_url),
-              updated_at = now()
-            WHERE source_listing_ref = $1
-              AND source_payload IS DISTINCT FROM $2::jsonb
-          `,
-          [
-            sanitizeTextForPostgres(update.source_listing_ref),
-            stringifyPostgresJsonb(update.payload),
-            stringifyPostgresJsonb(reviewSummary),
-            sanitizeTextForPostgres(officialUrl),
-          ],
-        );
-        updatedRows += Number(res.rowCount || 0);
-      }
-      await client.query('COMMIT');
-      return { updated_rows: updatedRows };
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
+      const res = await query(
+        `
+          UPDATE pdp_identity_listing
+          SET
+            source_payload = $2::jsonb,
+            review_summary = $3::jsonb,
+            official_url = COALESCE(NULLIF($4, ''), official_url),
+            updated_at = now()
+          WHERE source_listing_ref = $1
+            AND source_payload IS DISTINCT FROM $2::jsonb
+        `,
+        [
+          sanitizeTextForPostgres(update.source_listing_ref),
+          stringifyPostgresJsonb(update.payload),
+          stringifyPostgresJsonb(reviewSummary),
+          sanitizeTextForPostgres(officialUrl),
+        ],
+      );
+      updatedRows += Number(res.rowCount || 0);
+      if (res.rowCount > 0) update.result.status = 'updated';
+    } catch (error) {
+      update.result.status = 'apply_failed';
+      update.result.error = String(error?.message || error);
+      errors.push({
+        external_product_id: update.result.external_product_id,
+        source_listing_ref: update.source_listing_ref,
+        title: update.result.title,
+        error: update.result.error,
+      });
     }
-  });
+  }
+  return { updated_rows: updatedRows, failed_rows: errors.length, errors };
 }
 
 async function main() {
@@ -264,7 +268,7 @@ async function main() {
   if (!dryRun && updates.length) {
     applyResult = await applyUpdates(updates, { createdBy });
     for (const result of results) {
-      if (result.status === 'pending_apply') result.status = 'updated';
+      if (result.status === 'pending_apply') result.status = 'unchanged_after_apply';
     }
   }
 
@@ -274,6 +278,7 @@ async function main() {
     payloads_built: payloads.length,
     changed_rows: updates.length,
     updated_rows: applyResult.updated_rows,
+    failed_rows: applyResult.failed_rows || 0,
     skipped_missing_identity_listing: results.filter((item) => item.status === 'skipped_missing_identity_listing').length,
     gained_ingredients: results.filter((item) => item.diff?.gained_ingredients).length,
     gained_how_to: results.filter((item) => item.diff?.gained_how_to).length,
@@ -284,6 +289,7 @@ async function main() {
   const report = {
     generated_at: new Date().toISOString(),
     summary,
+    apply_errors: applyResult.errors || [],
     results,
   };
 

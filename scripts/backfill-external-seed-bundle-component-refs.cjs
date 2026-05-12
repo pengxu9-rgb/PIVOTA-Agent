@@ -3,7 +3,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { closePool, query, withClient } = require('../src/db');
+const { closePool, query } = require('../src/db');
 
 function argValue(name) {
   const index = process.argv.indexOf(`--${name}`);
@@ -26,6 +26,20 @@ function asArray(value) {
 
 function asObject(value) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+}
+
+function sanitizeJsonValue(value) {
+  if (typeof value === 'string') return value.replace(/\u0000/g, '').replace(/\\+u0000/gi, '');
+  if (Array.isArray(value)) return value.map(sanitizeJsonValue);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [
+        String(key).replace(/\u0000/g, '').replace(/\\+u0000/gi, ''),
+        sanitizeJsonValue(item),
+      ]),
+    );
+  }
+  return value;
 }
 
 function readJsonFile(filePath) {
@@ -117,7 +131,7 @@ function summarizeRefs(refs) {
 }
 
 function buildNextSeedData(parentRow, refs, mapping, generatedAt) {
-  const seedData = JSON.parse(JSON.stringify(asObject(parentRow.seed_data)));
+  const seedData = sanitizeJsonValue(JSON.parse(JSON.stringify(asObject(parentRow.seed_data))));
   const snapshot = asObject(seedData.snapshot);
   const contract = {
     contract_version: 'external_seed.bundle_component_refs.v1',
@@ -189,36 +203,39 @@ async function main() {
       before_component_ref_count: beforeRefs.length,
       after_component_ref_count: refs.length,
     });
-    if (changed) updates.push({ externalProductId, nextSeedData });
+    if (changed) updates.push({ externalProductId, nextSeedData, result: results[results.length - 1] });
   }
 
   let updatedRows = 0;
+  const applyErrors = [];
   if (write && updates.length) {
-    await withClient(async (client) => {
-      await client.query('BEGIN');
+    for (const update of updates) {
+      const payloadJson = JSON.stringify(update.nextSeedData).replace(/\u0000/g, '').replace(/\\+u0000/gi, '');
       try {
-        for (const update of updates) {
-          const res = await client.query(
-            `
-              UPDATE external_product_seeds
-              SET seed_data = $2::jsonb, updated_at = now()
-              WHERE external_product_id = $1
-                AND status = 'active'
-                AND ($3::text = '' OR upper(market) = upper($3))
-                AND seed_data IS DISTINCT FROM $2::jsonb
-            `,
-            [update.externalProductId, JSON.stringify(update.nextSeedData), market],
-          );
-          updatedRows += Number(res.rowCount || 0);
-        }
-        await client.query('COMMIT');
+        const res = await query(
+          `
+            UPDATE external_product_seeds
+            SET seed_data = $2::jsonb, updated_at = now()
+            WHERE external_product_id = $1
+              AND status = 'active'
+              AND ($3::text = '' OR upper(market) = upper($3))
+              AND seed_data IS DISTINCT FROM $2::jsonb
+          `,
+          [update.externalProductId, payloadJson, market],
+        );
+        updatedRows += Number(res.rowCount || 0);
+        if (res.rowCount > 0) update.result.status = 'updated';
       } catch (err) {
-        await client.query('ROLLBACK');
-        throw err;
+        update.result.status = 'apply_failed';
+        update.result.error = err?.message || String(err);
+        applyErrors.push({
+          external_product_id: update.externalProductId,
+          error: err?.message || String(err),
+        });
       }
-    });
+    }
     for (const result of results) {
-      if (result.status === 'pending_apply') result.status = 'updated';
+      if (result.status === 'pending_apply') result.status = 'unchanged_after_apply';
     }
   }
 
@@ -227,9 +244,10 @@ async function main() {
     mappings: mappings.length,
     changed_rows: updates.length,
     updated_rows: updatedRows,
+    failed_rows: applyErrors.length,
     blocked: results.filter((result) => String(result.status || '').startsWith('blocked')).length,
   };
-  const report = { generated_at: generatedAt, summary, results };
+  const report = { generated_at: generatedAt, summary, apply_errors: applyErrors, results };
   if (out) {
     fs.mkdirSync(path.dirname(out), { recursive: true });
     fs.writeFileSync(out, JSON.stringify(report, null, 2));

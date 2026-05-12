@@ -1,5 +1,5 @@
 const ACCESSORY_RE =
-  /\b(brush|sponge|puff|applicator|sharpener|tweezer|curler|scissors|comb|mirror|case|bag|pouch|holder|spatula|tool|tools|gua sha|roller|headband|scrunchie|scarf|hat|cap|tote|clip|clips|lash curler|refill case|keyring|key ring|keychain|key chain|charm)\b/i;
+  /\b(brush|sponge|puff|applicator|sharpener|tweezer|curler|scissors|comb|mirror|case|bag|pouch|holder|spatula|tool|tools|gua sha|roller|headband|scrunchie|scarf|hat|cap|tote|clip|clips|lash curler|refill case|soap dish|washcloth|blotting paper|keyring|key ring|keychain|key chain|charm)\b/i;
 const STICKER_ACCESSORY_RE = /\b(stickers?|decals?)\b/i;
 const TREATMENT_STICKER_RE = /\b(?:blemish|acne|pimple|spot|hydrocolloid|patch(?:es)?)\b/i;
 const NON_MERCH_RE =
@@ -11,7 +11,8 @@ const COLLECTION_BUNDLE_RE =
   /\b(?:collection\s+(?:set|kit|bundle)|(?:complete|holiday|starter|travel|mini|gift|routine|regimen|essentials?|most[-\s]?loved)\s+collection|the\s+[^\n]{2,80}\s+collection)\b/i;
 const COLLECTION_MEMBER_RE = /\bcollection\s*:\s*[^\n]+/i;
 const FORMULA_PRODUCT_RE =
-  /\b(skincare|skin care|makeup|cosmetic|haircare|hair care|fragrance|perfume|parfum|cologne|cleanser|cleansing|toner|essence|serum|ampoule|solution|suspension|emulsion|moisturi[sz]er|cream|lotion|balm|mask|patch(?:es)?|peel|exfoliant|exfoliator|treatment|oil|acid|acne control|sunscreen|spf|foundation|concealer|mascara|lash|lip(?:stick| gloss| balm| oil)?|blush|bronzer|powder|highlighter|eyeshadow|eyeliner|brow|primer|setting spray|shampoo|conditioner|body wash|body lotion)\b/i;
+  /\b(skincare|skin care|makeup|cosmetic|haircare|hair care|fragrance|perfume|parfum|cologne|cleanser|cleansing|toner|essence|serum|ampoule|solution|suspension|emulsion|moisturi[sz]er|cream|lotion|balm|mask|patch(?:es)?|peel|exfoliant|exfoliator|treatment|oil|acid|acne control|sunscreen|spf|foundation|concealer|mascara|lash|lip(?:stick| gloss| balm| oil)?|gloss stick|match stix|skinstick|contour|packette|blush|bronzer|powder|highlighter|eyeshadow|eyeliner|brow|primer|setting spray|shampoo|conditioner|body wash|body lotion)\b/i;
+const SET_PHRASE_FORMULA_RE = /\bset\s+it\s+down\b/i;
 
 function asPlainObject(value) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
@@ -67,6 +68,10 @@ function classifyExternalSeedProductKind(input = {}) {
     reasons.push('accessory_signal');
     return { family: 'accessory', reasons };
   }
+  if (SET_PHRASE_FORMULA_RE.test(text) && FORMULA_PRODUCT_RE.test(text)) {
+    reasons.push('set_phrase_formula_signal');
+    return { family: 'single_formula', reasons };
+  }
   if (STRONG_BUNDLE_RE.test(text)) {
     reasons.push('bundle_set_signal');
     return { family: 'set_or_collection', reasons };
@@ -98,6 +103,7 @@ module.exports = {
   COLLECTION_BUNDLE_RE,
   COLLECTION_MEMBER_RE,
   FORMULA_PRODUCT_RE,
+  SET_PHRASE_FORMULA_RE,
   STICKER_ACCESSORY_RE,
   TREATMENT_STICKER_RE,
   classifyExternalSeedProductKind,
