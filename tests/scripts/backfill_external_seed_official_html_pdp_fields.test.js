@@ -708,6 +708,34 @@ describe('backfill-external-seed-official-html-pdp-fields TIRTIR sheet matching'
     expect(full).not.toBe(shade380Inci);
   });
 
+  test('extracts Fenty shade INCI across stylized punctuation and reordered label words', () => {
+    const roseAmberInci =
+      'DIMETHICONE, SILICA, TRIMETHYLSILOXYSILICATE, POLYISOBUTENE, SYNTHETIC FLUORPHLOGOPITE, POLYETHYLENE, OZOKERITE, ACRYLATES/STEARYL ACRYLATE/DIMETHICONE METHACRYLATE COPOLYMER, TOCOPHEROL, IRON OXIDES (CI 77491, CI 77492, CI 77499), RED 7 LAKE (CI 15850).';
+    const ririInci =
+      'DIMETHICONE, DIMETHICONE/VINYL DIMETHICONE CROSSPOLYMER, ISODODECANE, POLYGLYCERYL-2 TRIISOSTEARATE, PEG-10 DIMETHICONE, TRIBEHENIN, TRIETHOXYCAPRYLYLSILANE, DISTEARDIMONIUM HECTORITE, PROPYLENE CARBONATE, TOCOPHEROL, IRON OXIDES (CI 77491).';
+    const champInci =
+      'TRISILOXANE, MICA, TRIMETHYLSILOXYSILICATE, DIMETHICONE, PHENYLPROPYLDIMETHYLSILOXYSILICATE, POLYETHYLENE, SYNTHETIC WAX, C20-24 ALKYL DIMETHICONE, DIISOSTEARYL MALATE, TOCOPHEROL, TITANIUM DIOXIDE (CI 77891).';
+    const html = `
+      <modal title="Full ingredients">
+        <div class="product-ingredients-modal__wrapper">
+          <div class="product-ingredients-modal__content OneLinkNoTx">
+            <p>AMBER ROSE: ${roseAmberInci}</p>
+            <p>RIRI, C&#39;SUITE-HEART: ${ririInci}</p>
+            <p>DIAMOND VEIL CHAMP&rsquo;ION: ${champInci}</p>
+          </div>
+        </div>
+      </modal>
+    `;
+
+    expect(extractFentyFullIngredients(html, "Trace'd Out Longwear Waterproof Pencil Lip Liner — Rose Amber")).toBe(
+      roseAmberInci,
+    );
+    expect(extractFentyFullIngredients(html, 'Fenty Icon Velvet Liquid Lipstick — RiRi')).toBe(ririInci);
+    expect(extractFentyFullIngredients(html, "Shadowstix Longwear Eyeshadow Stick — Diamond Veil Champ'ion")).toBe(
+      champInci,
+    );
+  });
+
   test('missing-fields-only seed patch preserves existing approved fields', () => {
     const existingInci = 'AQUA/WATER/EAU, GLYCERIN, DIMETHICONE, BUTYLENE GLYCOL, PHENOXYETHANOL, SODIUM CHLORIDE, TOCOPHEROL, XANTHAN GUM, CITRIC ACID, SODIUM HYDROXIDE, FRAGRANCE, MICA.';
     const row = {

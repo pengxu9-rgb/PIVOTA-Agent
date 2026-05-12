@@ -1258,15 +1258,29 @@ async function fetchBazaarvoiceReviewSummary(host, html) {
   };
 }
 
+function normalizeFentyShadeText(value) {
+  return decodeHtmlEntities(value)
+    .toLowerCase()
+    .replace(/[$]/g, 's')
+    .replace(/[’‘`´]/g, "'")
+    .replace(/&/g, ' and ')
+    .replace(/#/g, '')
+    .replace(/[^a-z0-9']+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function extractFentyShadeTokens(productTitle) {
   const title = normalizeText(productTitle);
   const suffix = title.split(/\s+[—-]\s+/).pop() || '';
-  const values = [suffix, title];
+  const normalizedSuffix = normalizeFentyShadeText(suffix);
+  const values = [suffix];
   return Array.from(
     new Set(
       values
         .flatMap((value) => String(value || '').match(/#?\d{1,3}[a-z]?|[a-z][a-z0-9'$]+(?:\s+[a-z][a-z0-9'$]+){0,3}/gi) || [])
-        .map((value) => normalizeText(value).replace(/^#/, '').toLowerCase())
+        .map((value) => normalizeFentyShadeText(value))
+        .concat(normalizedSuffix)
         .filter(Boolean)
         .filter((value) => !['soft matte longwear foundation', 'naturally luminous longwear foundation'].includes(value)),
     ),
@@ -1284,13 +1298,17 @@ function extractFentyFullIngredientModalHtml(html) {
 }
 
 function labelContainsFentyShade(label, shadeTokens) {
-  const normalizedLabel = normalizeText(label).toLowerCase().replace(/#/g, '');
+  const normalizedLabel = normalizeFentyShadeText(label);
   if (!normalizedLabel || !shadeTokens.length) return false;
-  const labelTokens = new Set(
-    (normalizedLabel.match(/\b\d{1,3}[a-z]?\b|[a-z][a-z0-9'$]+(?:\s+[a-z][a-z0-9'$]+){0,3}/g) || [])
-      .map((value) => normalizeText(value).toLowerCase()),
-  );
-  return shadeTokens.some((shade) => labelTokens.has(shade));
+  const labelWords = new Set(normalizedLabel.split(/\s+/).filter(Boolean));
+  return shadeTokens.some((shade) => {
+    const normalizedShade = normalizeFentyShadeText(shade);
+    if (!normalizedShade) return false;
+    if (labelWords.has(normalizedShade)) return true;
+    if (normalizedLabel.includes(normalizedShade)) return true;
+    const shadeWords = normalizedShade.split(/\s+/).filter(Boolean);
+    return shadeWords.length > 1 && shadeWords.length <= 4 && shadeWords.every((word) => labelWords.has(word));
+  });
 }
 
 function extractFentyFullIngredients(html, productTitle = '') {
