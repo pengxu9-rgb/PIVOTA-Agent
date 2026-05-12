@@ -2,10 +2,13 @@ const {
   _internals: {
     extractSize,
     dropPlaceholderVariantsWhenSafe,
+    hasOnlyNonDisplayableVariants,
+    hydrateFlatVariantOptions,
     inferSingleSkuSpecFromTitle,
     isLikelyNonProductSourceHtml,
     sanitizeJsonPayload,
     buildVariantOnlySeedPatch,
+    buildSingleVariantFromSpec,
   },
 } = require('../../scripts/force-fill-sig-pdp-content.cjs');
 
@@ -132,6 +135,24 @@ describe('force-fill SIG PDP content script', () => {
     });
   });
 
+  test('variant-only DB patch strips legacy long-form variant fields', () => {
+    const patch = buildVariantOnlySeedPatch({
+      variants: [{
+        title: 'Mini',
+        option_name: 'Format',
+        option_value: 'Mini',
+        image_urls: ['https://example.com/legacy.jpg'],
+        description: 'legacy long text',
+      }],
+      snapshot: {},
+    });
+    expect(patch.rootPatch.variants).toEqual([{
+      title: 'Mini',
+      option_name: 'Format',
+      option_value: 'Mini',
+    }]);
+  });
+
   test('drops blocked default variants only when real displayable variants exist', () => {
     const real = {
       title: 'Mini',
@@ -151,5 +172,76 @@ describe('force-fill SIG PDP content script', () => {
       variants: [placeholder],
       removed: 0,
     });
+  });
+
+  test('builds a force-filled single variant when a row has no variants', () => {
+    expect(
+      buildSingleVariantFromSpec(
+        { external_product_id: 'ext_missing_variants' },
+        { value: 'Single item', optionName: 'Format', axisKind: 'format' },
+      ),
+    ).toEqual({
+      variant_id: 'ext_missing_variants:single',
+      sku_id: 'ext_missing_variants',
+      title: 'Single item',
+      options: [{ name: 'Format', value: 'Single item', axis_kind: 'format' }],
+      option_name: 'Format',
+      option_value: 'Single item',
+      display_label: 'Format: Single item',
+      axis_kind: 'format',
+      source_quality_status: 'captured',
+      force_filled: true,
+    });
+  });
+
+  test('hydrates flat variant option fields into displayable options arrays', () => {
+    const result = hydrateFlatVariantOptions([
+      {
+        title: 'Risky Rose',
+        option_name: 'shade',
+        option_value: 'risky rose',
+      },
+    ]);
+    expect(result).toEqual({
+      changed: true,
+      variants: [
+        {
+          title: 'Risky Rose',
+          option_name: 'Shade',
+          option_value: 'risky rose',
+          options: [{ name: 'Shade', value: 'risky rose', axis_kind: 'shade' }],
+          display_label: 'Shade: risky rose',
+          axis_kind: 'shade',
+          source_quality_status: 'captured',
+        },
+      ],
+    });
+  });
+
+  test('hydrates object-shaped variant options into displayable options arrays', () => {
+    const result = hydrateFlatVariantOptions([
+      {
+        title: '40ml',
+        options: { Size: '40ml' },
+      },
+    ]);
+    expect(result.changed).toBe(true);
+    expect(result.variants[0].options).toEqual([{ name: 'Size', value: '40ml', axis_kind: 'size' }]);
+    expect(result.variants[0].display_label).toBe('Size: 40ml');
+  });
+
+  test('detects multi-variant lists that have no displayable options', () => {
+    expect(
+      hasOnlyNonDisplayableVariants(
+        { variants: [{ title: 'Default', options: [] }, { title: 'Default', options: [] }] },
+        {},
+      ),
+    ).toBe(true);
+    expect(
+      hasOnlyNonDisplayableVariants(
+        { variants: [{ title: 'Mini', options: [{ name: 'Format', value: 'Mini' }] }] },
+        {},
+      ),
+    ).toBe(false);
   });
 });
