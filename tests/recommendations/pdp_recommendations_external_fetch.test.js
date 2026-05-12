@@ -1091,6 +1091,70 @@ describe('RecommendationEngine external candidate fetch', () => {
     expect(products.every((product) => product.category === 'Brow Pencil')).toBe(true);
   });
 
+  test('deep-domain recall still loads global category rows when same-domain category rows may collapse by identity', async () => {
+    process.env.DATABASE_URL = 'postgres://example.test/pivota';
+
+    const queryMock = jest.fn(async (sql, params) => {
+      const sqlText = String(sql);
+      if (sqlText.includes('domain = ANY($4)') && Array.isArray(params?.[4])) {
+        return {
+          rows: Array.from({ length: 30 }).map((_, index) =>
+            makeExternalRow({
+              id: `eps_fenty_concealer_shade_${index}`,
+              external_product_id: `ext_fenty_concealer_shade_${index}`,
+              title: `Pro Filt'r Instant Retouch Concealer ${index}`,
+              brand: 'Fenty Beauty',
+              category: 'Concealer',
+              domain: 'fentybeauty.com',
+            }),
+          ),
+        };
+      }
+      if (sqlText.includes('domain = ANY($4)')) {
+        throw new Error('broad same-domain query should wait until exact category expansion underfills');
+      }
+      if (sqlText.includes("seed_data->'derived'->'recall'->>'category")) {
+        expect(params?.[3]).toContain('concealer');
+        return {
+          rows: Array.from({ length: 6 }).map((_, index) =>
+            makeExternalRow({
+              id: `eps_cross_brand_concealer_${index}`,
+              external_product_id: `ext_cross_brand_concealer_${index}`,
+              title: `Cross Brand Concealer ${index}`,
+              brand: `Concealer Brand ${index}`,
+              category: 'Concealer',
+              domain: `concealer-brand-${index}.example`,
+            }),
+          ),
+        };
+      }
+      return { rows: [] };
+    });
+
+    jest.doMock('../../src/db', () => ({ query: queryMock }));
+    jest.doMock('../../src/logger', () => ({ warn: jest.fn(), info: jest.fn() }));
+
+    const { _internals } = require('../../src/services/RecommendationEngine');
+    const products = await _internals.fetchExternalCandidates({
+      brandHint: 'Fenty Beauty',
+      categoryHint: 'Concealer',
+      domainHints: ['https://fentybeauty.com/products/pro-filtr-instant-retouch-concealer-120-concealer'],
+      limit: 48,
+      minFocusedCandidates: 24,
+      deepDomainRecall: true,
+    });
+
+    expect(products.some((product) => product.domain === 'fentybeauty.com')).toBe(true);
+    expect(products.some((product) => /^concealer-brand-/i.test(product.domain))).toBe(true);
+    expect(
+      queryMock.mock.calls.some(
+        ([sql]) =>
+          String(sql).includes("seed_data->'derived'->'recall'->>'category") &&
+          !String(sql).includes('domain = ANY($4)'),
+      ),
+    ).toBe(true);
+  });
+
   test('strict external leaf categories do not use same-brand same-vertical padding', () => {
     const { pickLayeredRecommendations } = require('../../src/services/RecommendationEngine');
     const result = pickLayeredRecommendations({
