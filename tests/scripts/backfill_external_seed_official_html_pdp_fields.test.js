@@ -13,8 +13,10 @@ const {
     extractOfficialShopifyVariants,
     fetchStampedReviewSummary,
     fetchBazaarvoiceReviewSummary,
+    fetchYotpoReviewSummary,
     parseOkendoReviewSummary,
     buildSeedDataPatch,
+    buildServingPayloadPatch,
     hasUsefulReviewText,
     buildShopifyProductJsonUrl,
     findTirtirSheetIngredientRow,
@@ -655,6 +657,70 @@ describe('backfill-external-seed-official-html-pdp-fields TIRTIR sheet matching'
     expect(review.star_distribution[0]).toEqual({ stars: 5, count: 169, percent: 169 / 226 });
   });
 
+  test('extracts Fenty Yotpo review previews from the official product id', async () => {
+    jest.spyOn(global, 'fetch').mockImplementation(async (url) => {
+      expect(String(url)).toContain('api.yotpo.com/v1/widget/fenty_app_key/products/7441247698989/reviews.json');
+      return {
+        ok: true,
+        json: async () => ({
+          status: { code: 200, message: 'OK' },
+          response: {
+            bottomline: {
+              total_review: 1278,
+              average_score: 4.5704226,
+              star_distribution: {
+                1: 66,
+                2: 24,
+                3: 50,
+                4: 113,
+                5: 1025,
+              },
+            },
+            reviews: [
+              {
+                id: 835244601,
+                score: 5,
+                content:
+                  "It's my first more expensive blush and I have bought another one because it stays on all day, blends very easily, and works perfectly for my skin tone.",
+                title: 'Best blush ever',
+                verified_buyer: true,
+                language: 'en',
+                user: { display_name: 'Noa D.' },
+              },
+              {
+                id: 2,
+                score: 5,
+                content: 'Love it!',
+                language: 'en',
+              },
+            ],
+          },
+        }),
+      };
+    });
+
+    const review = await fetchYotpoReviewSummary(
+      'fentybeauty.com',
+      '<script>window.theme = { yotpoKey: "fenty_app_key" };</script><script>resourceId: "7441247698989"</script>',
+    );
+
+    expect(review).toMatchObject({
+      rating: 4.5704226,
+      review_count: 1278,
+      source_origin: 'official_yotpo_reviews_api',
+    });
+    expect(review.preview_items).toHaveLength(1);
+    expect(review.preview_items[0]).toMatchObject({
+      review_id: 'yotpo_835244601',
+      rating: 5,
+      author_label: 'Noa D.',
+      title: 'Best blush ever',
+      source_kind: 'yotpo_reviews_api',
+      verified_buyer: true,
+    });
+    expect(review.star_distribution[0]).toEqual({ stars: 5, count: 1025, percent: 1025 / 1278 });
+  });
+
   test('extracts Fenty shade-specific full ingredients and key ingredient cards', () => {
     const html = `
       <modal title="Full ingredients">
@@ -777,5 +843,38 @@ describe('backfill-external-seed-official-html-pdp-fields TIRTIR sheet matching'
         doubleEscaped: 'beforeafter',
       },
     });
+  });
+
+  test('builds serving mirror patches from approved review and variant fields', () => {
+    const patch = buildServingPayloadPatch(
+      {
+        review_summary: {
+          rating: 4.47,
+          review_count: 355,
+          preview_items: [{ review_id: 'yotpo_1', text_snippet: 'Soft and easy to use.' }],
+        },
+        variants: [
+          {
+            variant_id: 'v-mini',
+            title: 'Mini',
+            options: [{ name: 'Format', value: 'Mini' }],
+          },
+        ],
+        snapshot: {
+          review_summary: { review_count: 12 },
+          variants: [],
+        },
+      },
+      ['review_summary', 'variants'],
+    );
+
+    expect(patch.review_summary.review_count).toBe(355);
+    expect(patch.review_summary.preview_items).toHaveLength(1);
+    expect(patch.variants).toEqual([
+      expect.objectContaining({
+        variant_id: 'v-mini',
+        options: [{ name: 'Format', value: 'Mini' }],
+      }),
+    ]);
   });
 });
