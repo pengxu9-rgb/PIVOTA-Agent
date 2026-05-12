@@ -3806,6 +3806,81 @@ function applyRequestedPivotaSignatureToPdpProduct(product, sigId, sourceProduct
   };
 }
 
+async function resolveCatalogIdentityForProductRef({ merchantId, productId, productKey } = {}) {
+  if (!process.env.DATABASE_URL) return null;
+  const normalizedMerchantId = String(merchantId || '').trim();
+  const normalizedProductId = String(productId || '').trim();
+  const normalizedProductKey = String(productKey || '').trim();
+  if (!normalizedMerchantId || (!normalizedProductId && !normalizedProductKey)) return null;
+
+  try {
+    const result = await query(
+      `
+        SELECT merchant_id, platform, source_product_id, product_key, pivota_signature_id
+        FROM catalog_products
+        WHERE merchant_id = $1
+          AND (
+            ($2::text <> '' AND source_product_id = $2)
+            OR ($3::text <> '' AND product_key = $3)
+          )
+        LIMIT 1
+      `,
+      [normalizedMerchantId, normalizedProductId, normalizedProductKey],
+    );
+    const row = Array.isArray(result?.rows) ? result.rows[0] : null;
+    const sigId = firstNonEmptyString(row?.pivota_signature_id);
+    if (!sigId || !isPivotaSignatureProductId(sigId)) return null;
+    return {
+      merchant_id: firstNonEmptyString(row?.merchant_id),
+      platform: firstNonEmptyString(row?.platform),
+      source_product_id: firstNonEmptyString(row?.source_product_id),
+      product_key: firstNonEmptyString(row?.product_key),
+      pivota_signature_id: sigId,
+      signature_id: sigId,
+    };
+  } catch (err) {
+    const message = String(err?.message || err || '');
+    if (
+      err?.code === 'NO_DATABASE' ||
+      (message.includes('catalog_products') && message.includes('does not exist'))
+    ) {
+      return null;
+    }
+    logger.warn(
+      {
+        err: err?.message || String(err),
+        merchant_id: normalizedMerchantId,
+        product_id: normalizedProductId || null,
+      },
+      'Failed to resolve catalog identity for PDP product ref',
+    );
+    return null;
+  }
+}
+
+function applyCatalogIdentityToPdpProduct(product, identity = {}) {
+  if (!product || typeof product !== 'object' || Array.isArray(product)) return product;
+  const sigId = firstNonEmptyString(identity.pivota_signature_id, identity.signature_id);
+  if (!isPivotaSignatureProductId(sigId)) return product;
+  const sourceProductId = firstNonEmptyString(
+    product.source_product_id,
+    identity.source_product_id,
+    product.platform_product_id,
+    product.product_id,
+    product.id,
+  );
+  const productKey = firstNonEmptyString(product.product_key, identity.product_key);
+  return {
+    ...product,
+    ...(sourceProductId ? { source_product_id: sourceProductId } : {}),
+    ...(productKey ? { product_key: productKey } : {}),
+    pivota_signature_id: product.pivota_signature_id || sigId,
+    signature_id: product.signature_id || sigId,
+    pivota_canonical_url:
+      product.pivota_canonical_url || `https://agent.pivota.cc/products/${sigId}`,
+  };
+}
+
 function hasExternalSeedRichPdpContent(product) {
   if (!isPlainObject(product)) return false;
   const seedData = isPlainObject(product.seed_data) ? product.seed_data : {};
@@ -28021,6 +28096,24 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             canonicalProductRef?.product_id || productId,
           );
         }
+        const catalogIdentityStartedAt = Date.now();
+        const catalogIdentity = await resolveCatalogIdentityForProductRef({
+          merchantId: canonicalProductRef?.merchant_id,
+          productId: canonicalProductRef?.product_id,
+          productKey: canonicalProductRef?.product_key,
+        });
+        markPdpV2Phase('catalog_identity_hydration', catalogIdentityStartedAt);
+        if (catalogIdentity?.pivota_signature_id) {
+          canonicalProductForPdp = applyCatalogIdentityToPdpProduct(
+            canonicalProductForPdp,
+            catalogIdentity,
+          );
+          canonicalProductRef = {
+            ...canonicalProductRef,
+            ...(catalogIdentity.product_key ? { product_key: catalogIdentity.product_key } : {}),
+            ...(catalogIdentity.platform ? { platform: catalogIdentity.platform } : {}),
+          };
+        }
 	      const reviewSummaryPromise = wantsReviewsPreview
 	        ? (async () => {
 	            const moduleStartedAt = Date.now();
@@ -36040,6 +36133,8 @@ module.exports._debug = {
   searchPdpIdentityGroupsForQuery,
   hasSearchProductIdentityMatch,
   hydrateFindProductsCatalogIdentityFields,
+  resolveCatalogIdentityForProductRef,
+  applyCatalogIdentityToPdpProduct,
   scoreIdentityFinalOverlayCandidate,
   findLiveIdentitySearchProductForRecall,
   maybeOverlayFinalIdentityRecallSearchProducts,

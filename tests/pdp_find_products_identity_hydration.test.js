@@ -61,4 +61,44 @@ describe('find_products catalog identity hydration', () => {
       hydrated_count: 1,
     });
   });
+
+  test('hydrates PDP products with catalog signature without rewriting source product id', async () => {
+    const { db, debug } = loadServerWithDb();
+    db.query.mockResolvedValueOnce({
+      rows: [
+        {
+          merchant_id: 'merch_1',
+          platform: 'shopify',
+          source_product_id: '10064558129449',
+          product_key: 'prod::merch_1::shopify::10064558129449',
+          pivota_signature_id: 'sig_174dca24d4ffc297db0c3865d54b712b',
+        },
+      ],
+    });
+
+    const identity = await debug.resolveCatalogIdentityForProductRef({
+      merchantId: 'merch_1',
+      productId: '10064558129449',
+    });
+    const hydrated = debug.applyCatalogIdentityToPdpProduct(
+      {
+        product_id: '10064558129449',
+        merchant_id: 'merch_1',
+        title: 'Winona Soothing Repair Serum',
+      },
+      identity,
+    );
+
+    expect(hydrated).toEqual(
+      expect.objectContaining({
+        product_id: '10064558129449',
+        merchant_id: 'merch_1',
+        source_product_id: '10064558129449',
+        product_key: 'prod::merch_1::shopify::10064558129449',
+        pivota_signature_id: 'sig_174dca24d4ffc297db0c3865d54b712b',
+        signature_id: 'sig_174dca24d4ffc297db0c3865d54b712b',
+        pivota_canonical_url: 'https://agent.pivota.cc/products/sig_174dca24d4ffc297db0c3865d54b712b',
+      }),
+    );
+  });
 });
