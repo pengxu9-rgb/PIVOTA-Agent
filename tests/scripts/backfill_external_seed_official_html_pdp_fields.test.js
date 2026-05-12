@@ -8,6 +8,8 @@ const {
     extractTirtirFaqHowToUse,
     extractSkin1004Fields,
     extractMedicubeFields,
+    extractFentyFields,
+    extractFentyFullIngredients,
     extractOfficialShopifyVariants,
     fetchStampedReviewSummary,
     fetchBazaarvoiceReviewSummary,
@@ -650,5 +652,57 @@ describe('backfill-external-seed-official-html-pdp-fields TIRTIR sheet matching'
       source_kind: 'bazaarvoice_reviews_api',
     });
     expect(review.star_distribution[0]).toEqual({ stars: 5, count: 169, percent: 169 / 226 });
+  });
+
+  test('extracts Fenty shade-specific full ingredients and key ingredient cards', () => {
+    const html = `
+      <modal title="Full ingredients">
+        <div class="product-ingredients-modal__wrapper">
+          <div class="product-ingredients-modal__content OneLinkNoTx">
+            <p><strong>100, 110, 120, 235:</strong> AQUA/WATER/EAU, DIMETHICONE, BUTYLENE GLYCOL DICAPRYLATE/DICAPRATE, DIPHENYLSILOXY PHENYL TRIMETHICONE, GLYCERIN, SYNTHETIC FLUORPHLOGOPITE, CETYL PEG/PPG-10/1 DIMETHICONE, TRISILOXANE, BUTYLENE GLYCOL, 1,2-HEXANEDIOL, PEG-10 DIMETHICONE, TERMINALIA FERDINANDIANA FRUIT EXTRACT, CYPERUS ROTUNDUS ROOT EXTRACT, TITANIUM DIOXIDE (CI 77891), IRON OXIDES (CI 77491, CI 77492, CI 77499).</p>
+            <p><strong>420:</strong> AQUA/WATER/EAU, DIMETHICONE, GLYCERIN, CAPRYLYL METHICONE, PEG-10 DIMETHICONE, MAGNESIUM SULFATE, LAUROYL LYSINE, POLYHYDROXYSTEARIC ACID, TERMINALIA FERDINANDIANA FRUIT EXTRACT, CYPERUS ROTUNDUS ROOT EXTRACT, TITANIUM DIOXIDE (CI 77891), IRON OXIDES (CI 77491, CI 77492, CI 77499).</p>
+          </div>
+        </div>
+      </modal>
+      <div class="product-ingredients__item-title">Kakadu Plum Extract</div>
+      <div class="product-ingredients__item-title">Cyperus Papyrus Leaf Cell Extract</div>
+    `;
+
+    const full = extractFentyFullIngredients(
+      html,
+      "Soft'lit Naturally Luminous Longwear Foundation — 235",
+    );
+    expect(full).toContain('SYNTHETIC FLUORPHLOGOPITE');
+    expect(full).toContain('TITANIUM DIOXIDE');
+    expect(full).not.toContain('CAPRYLYL METHICONE');
+
+    const fields = extractFentyFields(html, {
+      productTitle: "Soft'lit Naturally Luminous Longwear Foundation — 235",
+    });
+    expect(fields.pdp_ingredients_raw).toBe(full);
+    expect(fields.pdp_active_ingredients_raw).toBeUndefined();
+  });
+
+  test('missing-fields-only seed patch preserves existing approved fields', () => {
+    const existingInci = 'AQUA/WATER/EAU, GLYCERIN, DIMETHICONE, BUTYLENE GLYCOL, PHENOXYETHANOL, SODIUM CHLORIDE, TOCOPHEROL, XANTHAN GUM, CITRIC ACID, SODIUM HYDROXIDE, FRAGRANCE, MICA.';
+    const row = {
+      seed_data: {
+        snapshot: {},
+        pdp_ingredients_raw: existingInci,
+      },
+    };
+    const patch = buildSeedDataPatch(
+      row,
+      {
+        pdp_ingredients_raw:
+          'AQUA/WATER/EAU, DIMETHICONE, GLYCERIN, BUTYLENE GLYCOL, SODIUM CHLORIDE, TOCOPHEROL, XANTHAN GUM, CITRIC ACID, SODIUM HYDROXIDE, FRAGRANCE, MICA.',
+        pdp_active_ingredients_raw: 'Kakadu Plum Extract',
+      },
+      { missingFieldsOnly: true },
+    );
+
+    expect(patch.patchKeys).toEqual(['pdp_active_ingredients_raw']);
+    expect(patch.seedData.pdp_ingredients_raw).toBe(existingInci);
+    expect(patch.seedData.active_ingredients).toEqual(['Kakadu Plum Extract']);
   });
 });
