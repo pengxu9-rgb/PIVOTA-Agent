@@ -10,6 +10,7 @@ const {
     extractMedicubeFields,
     extractOfficialShopifyVariants,
     fetchStampedReviewSummary,
+    parseOkendoReviewSummary,
     buildSeedDataPatch,
     hasUsefulReviewText,
     buildShopifyProductJsonUrl,
@@ -330,11 +331,61 @@ describe('backfill-external-seed-official-html-pdp-fields TIRTIR sheet matching'
       ),
     ).toBe(false);
     expect(hasUsefulReviewText('Love this!')).toBe(false);
+    expect(hasUsefulReviewText('I love the way it makes my skin feel.')).toBe(false);
     expect(
       hasUsefulReviewText(
         'This centella ampoule is really soothing on my acne-prone combination skin and absorbs quickly without feeling sticky.',
       ),
     ).toBe(true);
+  });
+
+  test('extracts TIRTIR Okendo review previews from official rendered HTML', () => {
+    const html = `
+      <div data-oke-widget data-oke-reviews-product-id="shopify-8732621471963">
+        <div data-oke-container="" aria-label="Rated 4.9 out of 5 stars Based on 71 reviews">
+          <script type="application/json" data-oke-metafield-data="">{"averageRating":"4.9","reviewCount":71}</script>
+          <ul class="oke-w-reviews-list">
+            <li class="oke-w-reviews-list-item">
+              <div class="oke-w-review">
+                <strong class="oke-w-reviewer-name"> Savka S. </strong>
+                <div class="oke-w-reviewer-verified"> Verified Buyer </div>
+                <span class="oke-a11yText">Rated 5 out of 5 stars</span>
+                <div role="heading" aria-level="2" class="oke-reviewContent-title oke-title">Light enough for oily skin</div>
+                <div class="oke-reviewContent-body oke-bodyText">
+                  <p>This sunscreen is very light on my oily skin and layers well under makeup without feeling sticky.</p>
+                  <p>It feels comfortable enough to reapply during the day and the packaging is easy to carry.</p>
+                </div>
+              </div>
+            </li>
+            <li class="oke-w-reviews-list-item">
+              <div class="oke-w-review">
+                <strong class="oke-w-reviewer-name"> Short R. </strong>
+                <span class="oke-a11yText">Rated 5 out of 5 stars</span>
+                <div role="heading" aria-level="2" class="oke-reviewContent-title oke-title">Good</div>
+                <div class="oke-reviewContent-body oke-bodyText"><p>Good.</p></div>
+              </div>
+            </li>
+          </ul>
+        </div>
+      </div>
+    `;
+
+    const summary = parseOkendoReviewSummary(html);
+
+    expect(summary).toMatchObject({
+      rating: 4.9,
+      review_count: 71,
+      source_origin: 'official_okendo_reviews_html',
+    });
+    expect(summary.preview_items).toHaveLength(1);
+    expect(summary.preview_items[0]).toMatchObject({
+      rating: 5,
+      author_label: 'Savka S.',
+      title: 'Light enough for oily skin',
+      source_kind: 'okendo_rendered_html',
+      verified_buyer: true,
+    });
+    expect(summary.preview_items[0].text_snippet).toContain('very light on my oily skin');
   });
 
   test('extracts SKIN1004 PDP description sections from escaped Shopify product JSON', () => {
