@@ -2470,6 +2470,59 @@ describe('externalSeedProducts helper', () => {
     expect(product.product_type).toBe('Powder');
   });
 
+  test('keeps Set it Down powder as a single formula instead of a set PDP', () => {
+    const product = buildExternalSeedProduct({
+      id: 'eps_set_it_down_powder',
+      external_product_id: 'ext_set_it_down_powder',
+      canonical_url: 'https://fentybeauty.com/products/set-it-down-superfine-blurring-setting-powder-cinnamon',
+      destination_url: 'https://fentybeauty.com/products/set-it-down-superfine-blurring-setting-powder-cinnamon',
+      domain: 'fentybeauty.com',
+      title: 'Set it Down Superfine Blurring Setting Powder — Cinnamon',
+      seed_data: {
+        brand: 'Fenty Beauty',
+        snapshot: {},
+      },
+    });
+
+    expect(product.product_family).toBe('single_formula');
+    expect(product.category).toBe('Powder');
+    expect(product.product_type).toBe('Powder');
+  });
+
+  test('classifies stylized Fenty stick and packette formulas as single formula PDPs', () => {
+    const matchStix = buildExternalSeedProduct({
+      id: 'eps_match_stix',
+      external_product_id: 'ext_match_stix',
+      canonical_url: 'https://fentybeauty.com/products/match-stix-contour-skinstick-suedish',
+      destination_url: 'https://fentybeauty.com/products/match-stix-contour-skinstick-suedish',
+      domain: 'fentybeauty.com',
+      title: 'Match Stix Contour Skinstick — Suedish',
+      seed_data: { brand: 'Fenty Beauty', snapshot: {} },
+    });
+    const glossBombStix = buildExternalSeedProduct({
+      id: 'eps_gloss_bomb_stix',
+      external_product_id: 'ext_gloss_bomb_stix',
+      canonical_url: 'https://fentybeauty.com/products/gloss-bomb-stix-high-shine-gloss-stick-rose-amber',
+      destination_url: 'https://fentybeauty.com/products/gloss-bomb-stix-high-shine-gloss-stick-rose-amber',
+      domain: 'fentybeauty.com',
+      title: 'Gloss Bomb Stix High-Shine Gloss Stick — Rose Amber',
+      seed_data: { brand: 'Fenty Beauty', snapshot: {} },
+    });
+    const packette = buildExternalSeedProduct({
+      id: 'eps_butta_drop_packette',
+      external_product_id: 'ext_butta_drop_packette',
+      canonical_url: 'https://fentybeauty.com/products/butta-drop-packette',
+      destination_url: 'https://fentybeauty.com/products/butta-drop-packette',
+      domain: 'fentybeauty.com',
+      title: 'Butta Drop Packette',
+      seed_data: { brand: 'Fenty Skin', snapshot: {} },
+    });
+
+    expect(matchStix.product_family).toBe('single_formula');
+    expect(glossBombStix.product_family).toBe('single_formula');
+    expect(packette.product_family).toBe('single_formula');
+  });
+
   test('marks external seed sets as set PDPs and suppresses single-formula ingredient modules', () => {
     const product = buildExternalSeedProduct({
       id: 'eps_bundle',
@@ -2518,6 +2571,40 @@ describe('externalSeedProducts helper', () => {
     expect(keyring.product_family).toBe('accessory');
     expect(stickers.category).toBe('Accessory');
     expect(keyring.category).toBe('Accessory');
+  });
+
+  test('classifies non-formula beauty tools and consumables as accessories', () => {
+    const soapDish = buildExternalSeedProduct({
+      id: 'eps_soap_dish',
+      external_product_id: 'ext_soap_dish',
+      canonical_url: 'https://fentybeauty.com/products/the-fenty-skin-soap-dish',
+      destination_url: 'https://fentybeauty.com/products/the-fenty-skin-soap-dish',
+      domain: 'fentybeauty.com',
+      title: 'The Fenty Skin Soap Dish',
+      seed_data: { brand: 'Fenty Skin', snapshot: {} },
+    });
+    const blottingPaper = buildExternalSeedProduct({
+      id: 'eps_blotting_paper',
+      external_product_id: 'ext_blotting_paper',
+      canonical_url: 'https://fentybeauty.com/products/invisimatte-blotting-paper-refill',
+      destination_url: 'https://fentybeauty.com/products/invisimatte-blotting-paper-refill',
+      domain: 'fentybeauty.com',
+      title: 'Invisimatte Blotting Paper Refill',
+      seed_data: { brand: 'Fenty Beauty', snapshot: {} },
+    });
+    const washcloth = buildExternalSeedProduct({
+      id: 'eps_washcloth',
+      external_product_id: 'ext_washcloth',
+      canonical_url: 'https://fentybeauty.com/products/fenty-skin-washcloth',
+      destination_url: 'https://fentybeauty.com/products/fenty-skin-washcloth',
+      domain: 'fentybeauty.com',
+      title: 'Fenty Skin Washcloth',
+      seed_data: { brand: 'Fenty Skin', snapshot: {} },
+    });
+
+    expect(soapDish.product_family).toBe('accessory');
+    expect(blottingPaper.product_family).toBe('accessory');
+    expect(washcloth.product_family).toBe('accessory');
   });
 
   test('keeps treatment patch stickers eligible as formula products', () => {
