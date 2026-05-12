@@ -162,6 +162,51 @@ describe('RecommendationEngine (PDP)', () => {
     expect(out.metadata.retrieval_mix.external).toBe(2);
   });
 
+  test('allows same-brand beauty tools for a beauty-tool external base without visible fallback', () => {
+    const base = {
+      merchant_id: 'external_seed',
+      product_id: 'ext_fenty_sharpener',
+      title: "Trace'd Out Dual Pencil Sharpener",
+      brand: 'Fenty Beauty',
+      semantic_vertical: 'tools',
+      source: 'external_seed',
+      price: 8,
+      currency: 'USD',
+      inventory_quantity: 10,
+      status: 'active',
+    };
+    const external = [
+      'Precision Makeup Sponge 100',
+      'Face Shaping Brush 125',
+      'Cheek-Hugging Highlight Brush 120',
+      'Full-Bodied Foundation Brush 110',
+    ].map((title, index) => ({
+      merchant_id: 'external_seed',
+      product_id: `ext_fenty_tool_${index}`,
+      title,
+      brand: 'Fenty Beauty',
+      semantic_vertical: 'tools',
+      source: 'external_seed',
+      price: index === 0 ? 16 : 34,
+      currency: 'USD',
+      inventory_quantity: 10,
+      status: 'active',
+    }));
+
+    const out = pickLayeredRecommendations({
+      baseProduct: base,
+      internalCandidates: [],
+      externalCandidates: external,
+      k: 4,
+    });
+
+    expect(out.items).toHaveLength(4);
+    expect(out.items.every((item) => item.reason.startsWith('L3B:external'))).toBe(true);
+    expect(out.metadata.low_confidence_reason_codes || []).not.toEqual(
+      expect.arrayContaining(['UNDERFILL_FOR_QUALITY']),
+    );
+  });
+
   test('excludes same external product line parent and sibling variants from similar', async () => {
     const result = await recommend({
       pdp_product: {
