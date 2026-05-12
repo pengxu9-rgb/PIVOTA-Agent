@@ -31,13 +31,21 @@ function text(value) {
   return String(value || '').replace(/\u0000/g, '').replace(/\\u0000/gi, '').replace(/\s+/g, ' ').trim();
 }
 
+function stripNullByteSequences(value) {
+  let out = String(value || '').replace(/\u0000/g, '');
+  while (/\\+u0000/i.test(out)) {
+    out = out.replace(/\\+u0000/gi, '');
+  }
+  return out;
+}
+
 function sanitizeJsonValue(value) {
-  if (typeof value === 'string') return value.replace(/\u0000/g, '').replace(/\\u0000/gi, '');
+  if (typeof value === 'string') return stripNullByteSequences(value);
   if (Array.isArray(value)) return value.map((item) => sanitizeJsonValue(item));
   if (value && typeof value === 'object') {
     return Object.fromEntries(
       Object.entries(value).map(([key, item]) => [
-        String(key).replace(/\u0000/g, '').replace(/\\u0000/gi, ''),
+        stripNullByteSequences(key),
         sanitizeJsonValue(item),
       ]),
     );
@@ -46,7 +54,7 @@ function sanitizeJsonValue(value) {
 }
 
 function sanitizeJsonPayload(value) {
-  return JSON.stringify(sanitizeJsonValue(value)).replace(/\u0000/g, '').replace(/\\u0000/gi, '');
+  return stripNullByteSequences(JSON.stringify(sanitizeJsonValue(value)));
 }
 
 function firstText(...values) {
@@ -379,15 +387,42 @@ function collectCandidateStrings(row, seedData, snapshot) {
 }
 
 function hasDisplayableVariantOptions(variants) {
-  return asArray(variants).some((variant) =>
-    asArray(variant?.options).some((option) => {
-      const name = text(option?.name).toLowerCase();
-      const value = text(option?.value).toLowerCase();
-      if (!name || !value) return false;
-      if (['default', 'default title', 'single', 'title', 'variant'].includes(value)) return false;
-      return true;
-    }),
-  );
+  return asArray(variants).some((variant) => isDisplayableVariant(variant));
+}
+
+function isDisplayableVariant(variant) {
+  return asArray(variant?.options).some((option) => {
+    const name = text(option?.name).toLowerCase();
+    const value = text(option?.value).toLowerCase();
+    if (!name || !value) return false;
+    if (['default', 'default title', 'single', 'title', 'variant'].includes(value)) return false;
+    return true;
+  });
+}
+
+function isPlaceholderVariant(variant) {
+  const title = text(variant?.title).toLowerCase();
+  const optionValue = text(variant?.option_value || variant?.optionValue).toLowerCase();
+  const displayLabel = text(variant?.display_label || variant?.displayLabel).toLowerCase();
+  const sourceQualityStatus = text(variant?.source_quality_status || variant?.sourceQualityStatus).toLowerCase();
+  const hasOptions = asArray(variant?.options).length > 0;
+  const placeholderValue = /^(default|default title|single|variant \d*)$/.test(title) ||
+    /^(default|default title|single|variant \d*)$/.test(optionValue) ||
+    /^(default|default option|single)$/.test(displayLabel);
+  return (placeholderValue && !isDisplayableVariant(variant)) ||
+    (sourceQualityStatus === 'blocked' && !isDisplayableVariant(variant) && (!hasOptions || placeholderValue));
+}
+
+function dropPlaceholderVariantsWhenSafe(variants) {
+  const list = asArray(variants);
+  if (list.length <= 1 || !hasDisplayableVariantOptions(list)) {
+    return { variants: list, removed: 0 };
+  }
+  const filtered = list.filter((variant) => !isPlaceholderVariant(variant));
+  return {
+    variants: filtered.length > 0 ? filtered : list,
+    removed: list.length - filtered.length,
+  };
 }
 
 function isSingleUndisplayableVariant(seedData, snapshot) {
@@ -474,26 +509,92 @@ function inferSingleSkuSpecFromTitle(row, seedData, snapshot) {
   const title = firstText(row.title, snapshot.title, seedData.title);
   if (!title) return null;
   const lower = title.toLowerCase();
+  const shadeMatch = title.match(/\s[—–-]\s*([^—–-]{2,80})$/);
+  if (shadeMatch) {
+    const value = text(shadeMatch[1]).replace(/^shade\s+/i, '');
+    if (value && !/^(default|default title|single|one size)$/i.test(value)) {
+      return {
+        size: value,
+        value,
+        optionName: 'Shade',
+        axisKind: 'shade',
+        source: 'reviewed_title_pattern',
+        evidence: title,
+        measured: false,
+      };
+    }
+  }
   const setLike = /\b(set|kit|bundle|duo|trio|pack of|value pack|collection)\b/.test(lower);
+  if (setLike) {
+    const value =
+      lower.includes('duo') ? 'Duo'
+        : lower.includes('trio') ? 'Trio'
+          : /\b(set|kit|bundle|collection)\b/.test(lower) ? 'Set'
+            : 'Multipack';
+    return {
+      size: value,
+      value,
+      optionName: 'Format',
+      axisKind: 'format',
+      source: 'reviewed_title_pattern',
+      evidence: title,
+      measured: false,
+    };
+  }
   if (!setLike && /\b(mask|sheet mask)\b/.test(lower)) {
     return {
       size: 'Single mask',
+      value: 'Single mask',
+      optionName: 'Format',
+      axisKind: 'format',
       source: 'reviewed_title_pattern',
       evidence: title,
+      measured: false,
     };
   }
-  return null;
+  if (/\b(brush|sponge|puff|applicator|mirror|sharpener|tool|gua sha|gwalsa)\b/.test(lower)) {
+    return {
+      size: 'One piece',
+      value: 'One piece',
+      optionName: 'Format',
+      axisKind: 'format',
+      source: 'reviewed_title_pattern',
+      evidence: title,
+      measured: false,
+    };
+  }
+  if (/\b(eau de parfum|eau de toilette|parfum|perfume|fragrance|cologne)\b/.test(lower)) {
+    return {
+      size: 'Single bottle',
+      value: 'Single bottle',
+      optionName: 'Format',
+      axisKind: 'format',
+      source: 'reviewed_title_pattern',
+      evidence: title,
+      measured: false,
+    };
+  }
+  return {
+    size: 'Single item',
+    value: 'Single item',
+    optionName: 'Format',
+    axisKind: 'format',
+    source: 'force_filled_single_sku_default',
+    evidence: title,
+    measured: false,
+  };
 }
 
 async function inferSize(row, seedData, snapshot, { fetchSource = false } = {}) {
   for (const candidate of collectCandidateStrings(row, seedData, snapshot)) {
     const size = extractSize(candidate);
-    if (size) return { size, source: 'stored_seed_evidence', evidence: text(candidate).slice(0, 240) };
+    if (size) return { size, value: size, optionName: 'Size', axisKind: 'size', source: 'stored_seed_evidence', evidence: text(candidate).slice(0, 240), measured: true };
   }
-  if (!fetchSource) return null;
-  for (const candidate of await fetchSourceEvidence(row)) {
-    const size = extractSize(candidate);
-    if (size) return { size, source: 'official_source_page', evidence: text(candidate).slice(0, 240) };
+  if (fetchSource) {
+    for (const candidate of await fetchSourceEvidence(row)) {
+      const size = extractSize(candidate);
+      if (size) return { size, value: size, optionName: 'Size', axisKind: 'size', source: 'official_source_page', evidence: text(candidate).slice(0, 240), measured: true };
+    }
   }
   return inferSingleSkuSpecFromTitle(row, seedData, snapshot);
 }
@@ -549,20 +650,28 @@ function mergeForceFillMeta(seedData, snapshot, field, meta) {
   snapshot.pdp_force_fill_v1 = next;
 }
 
-function patchSingleVariantSize(seedData, snapshot, size) {
+function patchSingleVariantSpec(seedData, snapshot, spec) {
+  const value = text(spec?.value || spec?.size);
+  if (!value) return;
+  const optionName = text(spec?.optionName || spec?.option_name || 'Size') || 'Size';
+  const axisKind = text(spec?.axisKind || spec?.axis_kind || optionName).toLowerCase().replace(/[^a-z0-9]+/g, '_') || 'size';
   const patchList = (list) =>
     asArray(list).map((variant) => ({
       ...asObject(variant),
-      title: size,
-      options: [{ name: 'Size', value: size, axis_kind: 'size' }],
-      option_name: 'Size',
-      option_value: size,
-      display_label: `Size: ${size}`,
-      axis_kind: 'size',
+      title: value,
+      options: [{ name: optionName, value, axis_kind: axisKind }],
+      option_name: optionName,
+      option_value: value,
+      display_label: `${optionName}: ${value}`,
+      axis_kind: axisKind,
       source_quality_status: 'captured',
     }));
   if (asArray(seedData.variants).length === 1) seedData.variants = patchList(seedData.variants);
   if (asArray(snapshot.variants).length === 1) snapshot.variants = patchList(snapshot.variants);
+}
+
+function patchSingleVariantSize(seedData, snapshot, size) {
+  patchSingleVariantSpec(seedData, snapshot, { value: size, optionName: 'Size', axisKind: 'size' });
 }
 
 async function buildPlan(row, kbKeysWithIntel, opts) {
@@ -591,23 +700,61 @@ async function buildPlan(row, kbKeysWithIntel, opts) {
     changedFields.push('ingredients_inci');
   }
 
+  const rootVariantCleanup = dropPlaceholderVariantsWhenSafe(seedData.variants);
+  const snapshotVariantCleanup = dropPlaceholderVariantsWhenSafe(snapshot.variants);
+  if (rootVariantCleanup.removed > 0 || snapshotVariantCleanup.removed > 0) {
+    if (rootVariantCleanup.removed > 0) seedData.variants = rootVariantCleanup.variants;
+    if (snapshotVariantCleanup.removed > 0) snapshot.variants = snapshotVariantCleanup.variants;
+    mergeQuality(seedData, snapshot, 'variants', 'force_filled_reviewed_pattern', 'placeholder_variant_removed');
+    mergeForceFillMeta(seedData, snapshot, 'variant_sanitized', {
+      source: 'deterministic_placeholder_filter',
+      root_removed: rootVariantCleanup.removed,
+      snapshot_removed: snapshotVariantCleanup.removed,
+      content_review_state: 'assistant_reviewed',
+    });
+    changedFields.push('variant_sanitized');
+  }
+
   if (
     isSingleUndisplayableVariant(seedData, snapshot) &&
     !hasField(seedData, snapshot, 'size_detail_label', 'net_size', 'net_content')
   ) {
     const inferred = await inferSize(row, seedData, snapshot, { fetchSource: opts.fetchSource });
     if (inferred?.size) {
-      seedData.size_detail_label = inferred.size;
-      snapshot.size_detail_label = inferred.size;
-      seedData.net_size = inferred.size;
-      snapshot.net_size = inferred.size;
-      patchSingleVariantSize(seedData, snapshot, inferred.size);
-      mergeQuality(seedData, snapshot, 'size_detail_label', inferred.source === 'official_source_page' ? 'high' : 'medium', 'single_sku_size_inferred');
-      mergeQuality(seedData, snapshot, 'variants', inferred.source === 'official_source_page' ? 'high' : 'medium', 'single_sku_size_inferred');
+      const optionName = inferred.optionName || 'Size';
+      const axisKind = inferred.axisKind || 'size';
+      const value = inferred.value || inferred.size;
+      seedData.variant_detail_label = `${optionName}: ${value}`;
+      snapshot.variant_detail_label = `${optionName}: ${value}`;
+      if (axisKind === 'size') {
+        seedData.size_detail_label = value;
+        snapshot.size_detail_label = value;
+        if (inferred.measured !== false) {
+          seedData.net_size = value;
+          snapshot.net_size = value;
+        }
+      } else if (axisKind === 'shade') {
+        seedData.shade_detail_label = value;
+        snapshot.shade_detail_label = value;
+      } else if (axisKind === 'format') {
+        seedData.format_detail_label = value;
+        snapshot.format_detail_label = value;
+      }
+      patchSingleVariantSpec(seedData, snapshot, { value, optionName, axisKind });
+      const sourceQuality =
+        inferred.source === 'official_source_page'
+          ? 'high'
+          : inferred.source === 'force_filled_single_sku_default'
+            ? 'force_filled_reviewed_pattern'
+            : 'medium';
+      mergeQuality(seedData, snapshot, axisKind === 'size' ? 'size_detail_label' : 'variant_detail_label', sourceQuality, 'single_sku_variant_clarity_inferred');
+      mergeQuality(seedData, snapshot, 'variants', sourceQuality, 'single_sku_variant_clarity_inferred');
       mergeForceFillMeta(seedData, snapshot, 'variant_size', {
         source: inferred.source,
         evidence: inferred.evidence,
-        value: inferred.size,
+        value,
+        option_name: optionName,
+        axis_kind: axisKind,
         content_review_state: inferred.source === 'official_source_page' ? 'source_verified' : 'assistant_reviewed',
       });
       changedFields.push('variant_size');
@@ -719,10 +866,32 @@ async function applyPlans(client, plans) {
   for (const plan of plans) {
     if (plan.changed && plan.changed_fields.some((field) => field !== 'product_intel')) {
       try {
-        await client.query(
-          `UPDATE external_product_seeds SET seed_data = $2::jsonb, updated_at = NOW() WHERE external_product_id = $1`,
-          [plan.external_product_id, sanitizeJsonPayload(plan.next_seed_data)],
-        );
+        if (plan.changed_fields.every((field) => field === 'variant_size' || field === 'variant_sanitized')) {
+          const patch = buildVariantOnlySeedPatch(plan.next_seed_data);
+          await client.query(
+            `
+              UPDATE external_product_seeds
+              SET seed_data = jsonb_set(
+                    (seed_data || $2::jsonb),
+                    '{snapshot}',
+                    (COALESCE(seed_data->'snapshot', '{}'::jsonb) || $3::jsonb),
+                    true
+                  ),
+                  updated_at = NOW()
+              WHERE external_product_id = $1
+            `,
+            [
+              plan.external_product_id,
+              sanitizeJsonPayload(patch.rootPatch),
+              sanitizeJsonPayload(patch.snapshotPatch),
+            ],
+          );
+        } else {
+          await client.query(
+            `UPDATE external_product_seeds SET seed_data = $2::jsonb, updated_at = NOW() WHERE external_product_id = $1`,
+            [plan.external_product_id, sanitizeJsonPayload(plan.next_seed_data)],
+          );
+        }
       } catch (error) {
         error.message = `${error.message} (external_product_id=${plan.external_product_id})`;
         throw error;
@@ -747,6 +916,33 @@ async function applyPlans(client, plans) {
     }
   }
   return { seedUpdates, kbUpserts };
+}
+
+function pickDefined(source, keys) {
+  const out = {};
+  for (const key of keys) {
+    if (source[key] !== undefined) out[key] = source[key];
+  }
+  return out;
+}
+
+function buildVariantOnlySeedPatch(seedData) {
+  const snapshot = asObject(seedData.snapshot);
+  const patchKeys = [
+    'variants',
+    'variant_detail_label',
+    'size_detail_label',
+    'net_size',
+    'shade_detail_label',
+    'format_detail_label',
+    'pdp_field_quality_summary',
+    'pdp_force_fill_v1',
+    'external_seed_snapshot_contract',
+  ];
+  return {
+    rootPatch: pickDefined(seedData, patchKeys),
+    snapshotPatch: pickDefined(snapshot, patchKeys),
+  };
 }
 
 function summarize(plans) {
@@ -819,6 +1015,9 @@ module.exports = {
     fetchSourceEvidence,
     inferSingleSkuSpecFromTitle,
     isLikelyNonProductSourceHtml,
+    dropPlaceholderVariantsWhenSafe,
+    sanitizeJsonPayload,
+    buildVariantOnlySeedPatch,
     buildHowTo,
     buildIngredientForceFill,
     buildProductIntelBundle,
