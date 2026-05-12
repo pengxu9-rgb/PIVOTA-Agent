@@ -857,9 +857,86 @@ async function extractTirtirFields(html, options = {}) {
   if (looksLikeFullInci(ingredientsText)) fields.pdp_ingredients_raw = ingredientsText;
   if (detailSections.length > 0) fields.pdp_details_sections = detailSections;
 
-  const review = parseMetafieldReviews(html);
+  const review = parseOkendoReviewSummary(html) || parseMetafieldReviews(html);
   if (review) fields.review_summary = review;
   return fields;
+}
+
+function parseOkendoAggregate(html) {
+  const raw = String(html || '');
+  const scriptMatch = raw.match(/<script[^>]+data-oke-metafield-data[^>]*>([\s\S]*?)<\/script>/i);
+  if (scriptMatch) {
+    try {
+      const parsed = JSON.parse(decodeHtmlEntities(scriptMatch[1]));
+      const rating = Number(parsed?.averageRating || parsed?.rating || 0);
+      const reviewCount = Number(parsed?.reviewCount || parsed?.review_count || parsed?.count || 0);
+      if (Number.isFinite(rating) && rating > 0 && Number.isFinite(reviewCount) && reviewCount > 0) {
+        return { rating, review_count: Math.round(reviewCount) };
+      }
+    } catch {
+      // Fall through to the rendered aria-label/count parser.
+    }
+  }
+
+  const widgetMatch =
+    raw.match(/aria-label="Rated\s+([0-9.]+)\s+out of 5 stars Based on\s+([0-9,]+)\s+reviews"/i) ||
+    raw.match(/<div[^>]+class="[^"]*\boke-w-ratingAverageModule-count\b[^"]*"[^>]*>\s*Based on\s+([0-9,]+)\s+reviews/i);
+  if (!widgetMatch) return null;
+  const rating = widgetMatch.length >= 3 ? Number(widgetMatch[1]) : 0;
+  const reviewCountRaw = widgetMatch.length >= 3 ? widgetMatch[2] : widgetMatch[1];
+  const reviewCount = Number(String(reviewCountRaw || '').replace(/,/g, ''));
+  if (!Number.isFinite(reviewCount) || reviewCount <= 0) return null;
+  return {
+    rating: Number.isFinite(rating) && rating > 0 ? rating : 0,
+    review_count: Math.round(reviewCount),
+  };
+}
+
+function parseOkendoReviewSummary(html) {
+  const raw = String(html || '');
+  if (!/\bdata-oke-widget\b/i.test(raw) && !/\bokeReviews\b/i.test(raw)) return null;
+  const aggregate = parseOkendoAggregate(raw);
+  if (!aggregate || !aggregate.rating || !aggregate.review_count) return null;
+
+  const previewItems = [];
+  for (const match of raw.matchAll(/<li[^>]+class="[^"]*\boke-w-reviews-list-item\b[^"]*"[^>]*>([\s\S]*?)<\/li>/gi)) {
+    const block = match[1];
+    const body = cleanSectionText((block.match(/<div[^>]+class="[^"]*\boke-reviewContent-body\b[^"]*"[^>]*>([\s\S]*?)<\/div>/i) || [])[1]);
+    if (!hasUsefulReviewText(body)) continue;
+    const title = cleanSectionText((block.match(/<div[^>]+class="[^"]*\boke-reviewContent-title\b[^"]*"[^>]*>([\s\S]*?)<\/div>/i) || [])[1]);
+    const author = cleanSectionText((block.match(/<strong[^>]+class="[^"]*\boke-w-reviewer-name\b[^"]*"[^>]*>([\s\S]*?)<\/strong>/i) || [])[1]);
+    const ratingMatch = block.match(/Rated\s+([0-9.]+)\s+out of 5 stars/i);
+    const rating = Number(ratingMatch?.[1] || 5) || 5;
+    const idHash = crypto
+      .createHash('sha1')
+      .update(`okendo|${author}|${title}|${body}`)
+      .digest('hex')
+      .slice(0, 16);
+    previewItems.push({
+      review_id: `okendo_${idHash}`,
+      rating: Math.max(1, Math.min(5, Math.round(rating))),
+      author_label: author || 'Verified buyer',
+      ...(title ? { title } : {}),
+      text_snippet: body.slice(0, 360),
+      source: 'merchant_public',
+      source_kind: 'okendo_rendered_html',
+      source_scope: 'merchant_public',
+      public_visible: true,
+      verified_buyer: /\bVerified Buyer\b/i.test(block),
+      content_review_state: 'approved',
+    });
+    if (previewItems.length >= 6) break;
+  }
+
+  return {
+    rating: aggregate.rating,
+    scale: 5,
+    review_count: aggregate.review_count,
+    exact_item_review_count: aggregate.review_count,
+    aggregation_scope: 'product',
+    source_origin: 'official_okendo_reviews_html',
+    ...(previewItems.length > 0 ? { preview_items: previewItems } : {}),
+  };
 }
 
 function parseMetafieldReviews(html) {
@@ -943,8 +1020,8 @@ function buildStampedUrl(pathName, context, params = {}) {
 
 function hasUsefulReviewText(value) {
   const text = normalizeText(value);
-  if (text.length < 35 || text.length > 700) return false;
-  if (text.split(/\s+/).filter(Boolean).length < 7) return false;
+  if (text.length < 55 || text.length > 700) return false;
+  if (text.split(/\s+/).filter(Boolean).length < 10) return false;
   if (/^(?:great|good|love it|perfect|nice|bien)$/i.test(text)) return false;
   if (!looksLikeEnglishReviewText(text)) return false;
   return true;
@@ -1455,6 +1532,7 @@ module.exports = {
     extractMedicubeFields,
     extractOfficialShopifyVariants,
     fetchStampedReviewSummary,
+    parseOkendoReviewSummary,
     buildSeedDataPatch,
     hasUsefulReviewText,
     clearRecoveredStrictPdpSourceBlocker,
