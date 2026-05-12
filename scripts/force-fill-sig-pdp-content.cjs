@@ -455,10 +455,48 @@ function normalizeVariantOptionsList(options) {
   return [];
 }
 
+function splitCompositeVariantOptions(options) {
+  let changed = false;
+  const seen = new Set();
+  const out = [];
+  for (const option of normalizeVariantOptionsList(options)) {
+    const optionName = text(option?.name);
+    const optionValue = text(option?.value);
+    if (!optionName || !optionValue) continue;
+    const split = splitCompositeSizeOption(optionName, optionValue);
+    const entries = split || [{
+      name: normalizeOptionName(optionName),
+      value: optionValue,
+      axis_kind: normalizeAxisKind(option?.axis_kind || option?.axisKind || optionName),
+    }];
+    if (split) changed = true;
+    for (const entry of entries) {
+      const key = `${text(entry.name).toLowerCase()}|${text(entry.value).toLowerCase()}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(entry);
+    }
+  }
+  return { options: out, changed };
+}
+
 function hydrateFlatVariantOptions(variants) {
   let changed = false;
   const next = asArray(variants).map((variant) => {
-    if (isDisplayableVariant(variant) && Array.isArray(variant?.options)) return variant;
+    if (isDisplayableVariant(variant) && Array.isArray(variant?.options)) {
+      const splitExisting = splitCompositeVariantOptions(variant.options);
+      if (!splitExisting.changed) return variant;
+      changed = true;
+      return {
+        ...asObject(variant),
+        options: splitExisting.options,
+        option_name: splitExisting.options.length === 1 ? splitExisting.options[0].name : undefined,
+        option_value: splitExisting.options.length === 1 ? splitExisting.options[0].value : undefined,
+        display_label: splitExisting.options.length === 1 ? `${splitExisting.options[0].name}: ${splitExisting.options[0].value}` : undefined,
+        axis_kind: splitExisting.options.length === 1 ? splitExisting.options[0].axis_kind : undefined,
+        source_quality_status: variant?.source_quality_status || 'captured',
+      };
+    }
     const objectOption = normalizeVariantOptionsList(variant?.options)[0] || {};
     const rawOptionName = variant?.option_name || variant?.optionName || objectOption.name;
     const optionName = normalizeOptionName(rawOptionName);

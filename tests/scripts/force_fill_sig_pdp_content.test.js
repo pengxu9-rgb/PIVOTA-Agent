@@ -250,6 +250,27 @@ describe('force-fill SIG PDP content script', () => {
     expect(result.variants[0].axis_kind).toBeUndefined();
   });
 
+  test('splits already-array color-size mini options before DB patching', () => {
+    const result = hydrateFlatVariantOptions([
+      {
+        title: 'Hot Cherry / Mini',
+        options: [{ name: 'Color / Size', value: 'Hot Cherry / Mini', axis_kind: 'color_size' }],
+        display_label: 'Color / Size: Hot Cherry / Mini',
+        axis_kind: 'color_size',
+      },
+    ]);
+
+    expect(result.changed).toBe(true);
+    expect(result.variants[0].options).toEqual([
+      { name: 'Shade', value: 'Hot Cherry', axis_kind: 'shade' },
+      { name: 'Size', value: 'Mini', axis_kind: 'size' },
+    ]);
+    expect(result.variants[0].option_name).toBeUndefined();
+    expect(result.variants[0].option_value).toBeUndefined();
+    expect(result.variants[0].display_label).toBeUndefined();
+    expect(result.variants[0].axis_kind).toBeUndefined();
+  });
+
   test('detects multi-variant lists that have no displayable options', () => {
     expect(
       hasOnlyNonDisplayableVariants(
