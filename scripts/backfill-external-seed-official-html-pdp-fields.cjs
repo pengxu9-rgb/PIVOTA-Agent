@@ -958,6 +958,14 @@ function parseMetafieldReviews(html) {
   }
 }
 
+function extractBazaarvoiceProductId(html) {
+  const raw = String(html || '');
+  const match =
+    raw.match(/data-bv-productId=["']([^"']+)["']/i) ||
+    raw.match(/data-bv-product-id=["']([^"']+)["']/i);
+  return normalizeText(match?.[1]);
+}
+
 function extractAttribute(value, attrName) {
   const re = new RegExp(`${attrName}="([^"]*)"`, 'i');
   const match = String(value || '').match(re);
@@ -1116,11 +1124,124 @@ async function fetchStampedReviewSummary(host, html) {
   };
 }
 
+function normalizeBazaarvoicePreviewItems(rows) {
+  return asArray(rows)
+    .filter((row) => Number(row?.Rating || 0) >= 4)
+    .filter((row) => hasUsefulReviewText(row?.ReviewText))
+    .filter((row) => !looksLikeBazaarvoiceOperationalOrPriceReview(row))
+    .slice(0, 6)
+    .map((row) => {
+      const title = normalizeBazaarvoiceReviewTitle(row.Title);
+      return {
+        review_id: String(row.Id || ''),
+        rating: Number(row.Rating || 0) || 5,
+        author_label: normalizeText(row.UserNickname || row.UserLocation || 'Reviewer'),
+        ...(title ? { title } : {}),
+        text_snippet: normalizeText(row.ReviewText).slice(0, 360),
+        source: 'merchant_public',
+        source_kind: 'bazaarvoice_reviews_api',
+        source_scope: 'merchant_public',
+        public_visible: true,
+        content_review_state: 'approved',
+      };
+    })
+    .filter((row) => row.review_id && row.text_snippet);
+}
+
+function normalizeBazaarvoiceReviewTitle(value) {
+  const title = normalizeText(value);
+  if (!title) return '';
+  if (/^(?:\.{2,}|great|great product|amazing|perfect|love it|good product)$/i.test(title)) return '';
+  return title.slice(0, 90);
+}
+
+function looksLikeBazaarvoiceOperationalOrPriceReview(row) {
+  const text = normalizeText([row?.Title, row?.ReviewText].filter(Boolean).join(' ')).toLowerCase();
+  if (!text) return true;
+  if (/\b(?:price|pricing|pricey|expensive|cost|markup|est[ée]e lauder)\b/i.test(text)) return true;
+  if (/\b(?:administration|customer service|shipping|delivery|arrived|packaging)\b/i.test(text)) return true;
+  if (/^\s*i have a question\b/i.test(text)) return true;
+  return false;
+}
+
+function distributionFromBazaarvoiceStats(stats) {
+  const reviewCount = Math.round(Number(stats?.TotalReviewCount || 0));
+  const rows = asArray(stats?.RatingDistribution);
+  if (!reviewCount || rows.length === 0) return null;
+  const counts = new Map();
+  for (const row of rows) {
+    const stars = Math.max(1, Math.min(5, Math.round(Number(row?.RatingValue || 0))));
+    const count = Math.max(0, Math.round(Number(row?.Count || 0)));
+    if (stars && count >= 0) counts.set(stars, count);
+  }
+  if (!counts.size) return null;
+  return Array.from({ length: 5 }, (_, index) => {
+    const stars = 5 - index;
+    const count = counts.get(stars) || 0;
+    return {
+      stars,
+      count,
+      percent: reviewCount > 0 ? count / reviewCount : 0,
+    };
+  });
+}
+
+async function fetchBazaarvoiceReviewSummary(host, html) {
+  if (host !== 'theordinary.com') return null;
+  const productId = extractBazaarvoiceProductId(html);
+  if (!productId) return null;
+
+  const params = new URLSearchParams({
+    passkey: 'cazbSxrBRsuLsrg4jHS2ic5CfRDhxH7JCC4k93f4AGIT8',
+    apiversion: '5.5',
+    displaycode: '17731-en_us',
+    sort: 'totalpositivefeedbackcount:desc',
+    stats: 'reviews',
+    filteredstats: 'reviews',
+    include: 'authors,products,comments',
+    limit: '20',
+    offset: '0',
+    limit_comments: '3',
+  });
+  params.append('filter', 'isratingsonly:eq:false');
+  params.append('filter', `productid:eq:${productId}`);
+  params.append('filter', 'contentlocale:eq:en*');
+  params.append('filter', 'rating:gte:4');
+  params.append('filter_reviews', 'contentlocale:eq:en*');
+  params.append('filter_reviewcomments', 'contentlocale:eq:en*');
+  params.append('filter_comments', 'contentlocale:eq:en*');
+
+  const reviewsUrl = `https://api.bazaarvoice.com/data/reviews.json?${params.toString()}`;
+  const payload = await fetchJson(reviewsUrl, Number(process.env.OFFICIAL_BAZAARVOICE_TIMEOUT_MS || 15000));
+  const rows = asArray(payload?.Results);
+  const stats = ensureObject(payload?.Includes?.Products?.[productId]?.ReviewStatistics);
+  const rating = Number(stats.AverageOverallRating || 0);
+  const reviewCount = Math.round(Number(stats.TotalReviewCount || payload?.TotalResults || 0));
+  if (!Number.isFinite(rating) || rating <= 0 || !Number.isFinite(reviewCount) || reviewCount <= 0) return null;
+
+  const starDistribution = distributionFromBazaarvoiceStats(stats);
+  return {
+    rating,
+    scale: Number(stats.OverallRatingRange || 5) || 5,
+    review_count: reviewCount,
+    exact_item_review_count: reviewCount,
+    aggregation_scope: 'product',
+    source_origin: 'official_bazaarvoice_reviews_api',
+    source_url: reviewsUrl,
+    ...(starDistribution ? {
+      star_distribution: starDistribution,
+      rating_distribution: starDistribution,
+    } : {}),
+    preview_items: normalizeBazaarvoicePreviewItems(rows),
+  };
+}
+
 async function extractOfficialHtmlFields(host, html, options = {}) {
   let fields = {};
   if (host === 'skin1004.com') fields = extractSkin1004Fields(html);
   else if (host === 'medicube.us') fields = extractMedicubeFields(html);
   else if (host === 'tirtir.global') fields = await extractTirtirFields(html, options);
+  else if (host === 'theordinary.com') fields = {};
   else return {};
 
   const stampedReview = await fetchStampedReviewSummary(host, html);
@@ -1129,6 +1250,14 @@ async function extractOfficialHtmlFields(host, html, options = {}) {
       ...ensureObject(fields.review_summary),
       ...stampedReview,
       source_origin: stampedReview.source_origin || fields.review_summary?.source_origin,
+    };
+  }
+  const bazaarvoiceReview = await fetchBazaarvoiceReviewSummary(host, html);
+  if (bazaarvoiceReview) {
+    fields.review_summary = {
+      ...ensureObject(fields.review_summary),
+      ...bazaarvoiceReview,
+      source_origin: bazaarvoiceReview.source_origin || fields.review_summary?.source_origin,
     };
   }
   return fields;
@@ -1532,6 +1661,7 @@ module.exports = {
     extractMedicubeFields,
     extractOfficialShopifyVariants,
     fetchStampedReviewSummary,
+    fetchBazaarvoiceReviewSummary,
     parseOkendoReviewSummary,
     buildSeedDataPatch,
     hasUsefulReviewText,

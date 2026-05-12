@@ -10,6 +10,7 @@ const {
     extractMedicubeFields,
     extractOfficialShopifyVariants,
     fetchStampedReviewSummary,
+    fetchBazaarvoiceReviewSummary,
     parseOkendoReviewSummary,
     buildSeedDataPatch,
     hasUsefulReviewText,
@@ -575,5 +576,79 @@ describe('backfill-external-seed-official-html-pdp-fields TIRTIR sheet matching'
     );
 
     expect(review).toBeNull();
+  });
+
+  test('extracts The Ordinary Bazaarvoice review previews from the official product id', async () => {
+    jest.spyOn(global, 'fetch').mockImplementation(async (url) => {
+      expect(String(url)).toContain('api.bazaarvoice.com/data/reviews.json');
+      expect(String(url)).toContain('productid%3Aeq%3A100402');
+      return {
+        ok: true,
+        json: async () => ({
+          TotalResults: 2,
+          Includes: {
+            Products: {
+              100402: {
+                ReviewStatistics: {
+                  TotalReviewCount: 226,
+                  AverageOverallRating: 4.331858407079646,
+                  OverallRatingRange: 5,
+                  RatingDistribution: [
+                    { RatingValue: 5, Count: 169 },
+                    { RatingValue: 4, Count: 14 },
+                    { RatingValue: 3, Count: 11 },
+                    { RatingValue: 2, Count: 13 },
+                    { RatingValue: 1, Count: 19 },
+                  ],
+                },
+              },
+            },
+          },
+          Results: [
+            {
+              Id: '175571719',
+              Rating: 5,
+              Title: 'Worked for me',
+              UserNickname: 'Tzone',
+              ReviewText:
+                'For the longest time, I was using daily moisturizers with SPF; however, with oily skin this serum worked better under sunscreen and did not feel heavy.',
+            },
+            {
+              Id: 'price-only',
+              Rating: 5,
+              Title: 'Price increase',
+              UserNickname: 'Price',
+              ReviewText:
+                'The price increase is frustrating and the product now feels expensive compared with what this brand used to cost.',
+            },
+            {
+              Id: 'short',
+              Rating: 5,
+              UserNickname: 'Short',
+              ReviewText: 'Great',
+            },
+          ],
+        }),
+      };
+    });
+
+    const review = await fetchBazaarvoiceReviewSummary(
+      'theordinary.com',
+      '<div data-bv-show="reviews" data-bv-productId="100402"></div>',
+    );
+
+    expect(review).toMatchObject({
+      rating: 4.331858407079646,
+      review_count: 226,
+      source_origin: 'official_bazaarvoice_reviews_api',
+    });
+    expect(review.preview_items).toHaveLength(1);
+    expect(review.preview_items[0]).toMatchObject({
+      review_id: '175571719',
+      rating: 5,
+      author_label: 'Tzone',
+      source_kind: 'bazaarvoice_reviews_api',
+    });
+    expect(review.star_distribution[0]).toEqual({ stars: 5, count: 169, percent: 169 / 226 });
   });
 });
