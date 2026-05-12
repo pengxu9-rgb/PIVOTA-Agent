@@ -15150,12 +15150,8 @@ async function hydrateFindProductsCatalogIdentityFields(responseBody) {
           cp.merchant_id,
           cp.source_product_id,
           cp.product_key,
-          cp.pivota_signature_id,
-          cp.pdp_scope,
-          pgm.product_group_id
+          cp.pivota_signature_id
         FROM catalog_products cp
-        LEFT JOIN product_group_members pgm
-          ON pgm.product_key = cp.product_key
         WHERE
           (cp.merchant_id || '::' || coalesce(cp.source_product_id, '')) = ANY($1::text[])
           OR (cp.merchant_id || '::' || coalesce(cp.product_key, '')) = ANY($1::text[])
@@ -15169,13 +15165,10 @@ async function hydrateFindProductsCatalogIdentityFields(responseBody) {
       const sourceProductId = String(row?.source_product_id || '').trim();
       const productKey = String(row?.product_key || '').trim();
       const sigId = String(row?.pivota_signature_id || '').trim();
-      const groupId = String(row?.product_group_id || '').trim();
       const identity = {
         ...(productKey ? { product_key: productKey } : {}),
         ...(sourceProductId ? { source_product_id: sourceProductId } : {}),
         ...(sigId ? { pivota_signature_id: sigId, signature_id: sigId } : {}),
-        ...(groupId ? { product_group_id: groupId } : {}),
-        ...(row?.pdp_scope ? { pdp_scope: String(row.pdp_scope).trim() } : {}),
       };
       if (sourceProductId) identityByPair.set(`${merchantId}::${sourceProductId}`, identity);
       if (productKey) identityByPair.set(`${merchantId}::${productKey}`, identity);
@@ -15199,8 +15192,6 @@ async function hydrateFindProductsCatalogIdentityFields(responseBody) {
         ...identity,
         pivota_signature_id: product.pivota_signature_id || identity.pivota_signature_id,
         signature_id: product.signature_id || identity.signature_id,
-        product_group_id: product.product_group_id || identity.product_group_id,
-        sellable_item_group_id: product.sellable_item_group_id || identity.product_group_id,
         product_key: product.product_key || identity.product_key,
       };
     });

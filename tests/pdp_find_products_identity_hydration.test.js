@@ -32,8 +32,6 @@ describe('find_products catalog identity hydration', () => {
           source_product_id: '10064558129449',
           product_key: 'prod::merch_1::shopify::10064558129449',
           pivota_signature_id: 'sig_174dca24d4ffc297db0c3865d54b712b',
-          product_group_id: 'pg_catalog_9c6940e74e29bc16',
-          pdp_scope: 'multi_merchant_canonical',
         },
       ],
     });
@@ -55,8 +53,6 @@ describe('find_products catalog identity hydration', () => {
         merchant_id: 'merch_1',
         pivota_signature_id: 'sig_174dca24d4ffc297db0c3865d54b712b',
         signature_id: 'sig_174dca24d4ffc297db0c3865d54b712b',
-        product_group_id: 'pg_catalog_9c6940e74e29bc16',
-        sellable_item_group_id: 'pg_catalog_9c6940e74e29bc16',
         product_key: 'prod::merch_1::shopify::10064558129449',
       }),
     );
