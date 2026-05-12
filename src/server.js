@@ -28392,7 +28392,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       );
       const variantSelectorData = findPdpPayloadModuleData(pdpPayload, 'variant_selector') || null;
 
-      const canonicalPayload = stripResponseOwnedPdpModulesFromCanonicalPayload(pdpPayload);
+      let canonicalPayload = stripResponseOwnedPdpModulesFromCanonicalPayload(pdpPayload);
+      if (catalogIdentity?.pivota_signature_id && canonicalPayload?.product) {
+        canonicalPayload = {
+          ...canonicalPayload,
+          product: applyCatalogIdentityToPdpProduct(canonicalPayload.product, catalogIdentity),
+        };
+      }
       const canonicalPayloadProductRef = {
         merchant_id:
           String(canonicalPayload?.product?.merchant_id || canonicalProductForPdp?.merchant_id || '').trim() ||
