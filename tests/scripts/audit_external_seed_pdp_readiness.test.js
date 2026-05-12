@@ -517,6 +517,146 @@ describe('external seed PDP readiness audit helpers', () => {
     expect(summary.pivota_insights.effective.high_quality_ready).toBe(1);
     expect(summary.pivota_insights.effective.borrowed_from_sibling).toBe(1);
   });
+
+  test('does not count reviewed not-applicable accessories as missing INCI coverage', () => {
+    const readinessRow = buildReadinessRow(
+      seedRow({
+        title: 'Trace’d Out Dual Pencil Sharpener',
+        seed_data: {
+          snapshot: {},
+          ingredient_intel: {
+            inci_applicability: {
+              status: 'not_applicable',
+              reason: 'product_family_accessory',
+              review_state: 'reviewed',
+            },
+          },
+          ingredient_remediation_v1: {
+            field: 'ingredients_inci',
+            action: 'mark_inci_not_applicable',
+            source_origin: 'pivota_manual_component_repair',
+          },
+        },
+      }),
+    );
+    const summary = summarizeReadinessRows([readinessRow]);
+
+    expect(readinessRow.coverage.inci_applicability_status).toBe('not_applicable');
+    expect(summary.coverage.missing_inci).toBe(0);
+    expect(summary.coverage.missing_active_raw).toBe(0);
+  });
+
+  test('does not count reviewed component-linked gift sets as missing parent INCI coverage', () => {
+    const readinessRow = buildReadinessRow(
+      seedRow({
+        title: 'The Rich Curls 3-Piece Curl-Defining Routine',
+        seed_data: {
+          bundle_component_refs: [
+            { external_product_id: 'ext_shampoo', review_state: 'reviewed' },
+            { external_product_id: 'ext_conditioner', review_state: 'reviewed' },
+          ],
+          snapshot: {
+            bundle_component_refs: [
+              { external_product_id: 'ext_shampoo', review_state: 'reviewed' },
+              { external_product_id: 'ext_conditioner', review_state: 'reviewed' },
+            ],
+          },
+          ingredient_intel: {
+            source_review_queue: {
+              status: 'component_refs_linked',
+              review_state: 'queued',
+            },
+          },
+          ingredient_remediation_v1: {
+            field: 'ingredients_inci',
+            action: 'component_refs_linked',
+            source_origin: 'pivota_manual_component_repair',
+          },
+        },
+      }),
+    );
+    const summary = summarizeReadinessRows([readinessRow]);
+
+    expect(readinessRow.coverage.ingredient_review_status).toBe('component_refs_linked');
+    expect(readinessRow.coverage.bundle_component_refs_count).toBe(2);
+    expect(summary.coverage.missing_inci).toBe(0);
+    expect(summary.coverage.missing_active_raw).toBe(0);
+  });
+
+  test('still counts single formulas queued for manual source review as missing INCI coverage', () => {
+    const readinessRow = buildReadinessRow(
+      seedRow({
+        title: 'Match Stix Contour Skinstick — Suedish',
+        seed_data: {
+          snapshot: {},
+          ingredient_intel: {
+            source_review_queue: {
+              status: 'manual_source_review_required',
+              review_state: 'queued',
+            },
+          },
+          ingredient_remediation_v1: {
+            field: 'ingredients_inci',
+            action: 'manual_source_review_required',
+            source_origin: 'pivota_manual_component_repair',
+          },
+        },
+      }),
+    );
+    const summary = summarizeReadinessRows([readinessRow]);
+
+    expect(readinessRow.coverage.ingredient_review_status).toBe('manual_source_review_required');
+    expect(summary.coverage.missing_inci).toBe(1);
+  });
+
+  test('does not count product-line shade rows as missing INCI when a sibling has reviewed INCI', () => {
+    const sourceSibling = seedRow({
+      external_product_id: 'ext_concealer_sibling',
+      title: "Pro Filt'r Instant Retouch Concealer — #130",
+      seed_data: {
+        pdp_ingredients_raw: 'Water, Dimethicone, Glycerin, Iron Oxides.',
+      },
+    });
+    const targetRow = seedRow({
+      external_product_id: 'ext_concealer_target',
+      title: "Pro Filt'r Instant Retouch Concealer — #120",
+      seed_data: {
+        ingredient_intel: {
+          source_review_queue: {
+            status: 'manual_source_review_required',
+            review_state: 'queued',
+          },
+        },
+        ingredient_remediation_v1: {
+          field: 'ingredients_inci',
+          action: 'manual_source_review_required',
+          source_origin: 'pivota_manual_component_repair',
+        },
+      },
+    });
+    const context = {
+      productLineIdByProductId: new Map([
+        ['ext_concealer_target', 'pl_concealer'],
+        ['ext_concealer_sibling', 'pl_concealer'],
+      ]),
+      productIdsByLineId: new Map([
+        ['pl_concealer', ['ext_concealer_target', 'ext_concealer_sibling']],
+      ]),
+      seedRowByProductId: new Map([
+        ['ext_concealer_target', targetRow],
+        ['ext_concealer_sibling', sourceSibling],
+      ]),
+      directCoverageByProductId: new Map(),
+      kbByProductId: new Map(),
+    };
+    const readinessRow = buildReadinessRow(targetRow, context);
+    const summary = summarizeReadinessRows([readinessRow]);
+
+    expect(readinessRow.coverage.inci_chars).toBe(0);
+    expect(readinessRow.coverage.effective_inci_chars).toBeGreaterThan(0);
+    expect(readinessRow.coverage.inci_borrowed_from_product_id).toBe('ext_concealer_sibling');
+    expect(summary.coverage.missing_inci).toBe(0);
+  });
 });
 
 describe('external seed PDP readiness audit script DB resilience', () => {

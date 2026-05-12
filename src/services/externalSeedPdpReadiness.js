@@ -402,9 +402,26 @@ function classifyEffectiveProductIntel(row, context = {}) {
   };
 }
 
-function readSeedCoverage(row) {
+function readDirectSeedCoverage(row) {
   const seedData = ensureObject(row?.seed_data);
   const snapshot = ensureObject(seedData.snapshot);
+  const rootIntel = ensureObject(seedData.ingredient_intel);
+  const snapshotIntel = ensureObject(snapshot.ingredient_intel);
+  const inciApplicability = {
+    ...ensureObject(snapshotIntel.inci_applicability),
+    ...ensureObject(rootIntel.inci_applicability),
+  };
+  const sourceReviewQueue = {
+    ...ensureObject(snapshotIntel.source_review_queue),
+    ...ensureObject(rootIntel.source_review_queue),
+  };
+  const remediation = {
+    ...ensureObject(snapshot.ingredient_remediation_v1),
+    ...ensureObject(seedData.ingredient_remediation_v1),
+  };
+  const bundleRefs = asArray(seedData.bundle_component_refs).length
+    ? asArray(seedData.bundle_component_refs)
+    : asArray(snapshot.bundle_component_refs);
   const detailsSections = [
     ...asArray(seedData.pdp_details_sections),
     ...asArray(snapshot.pdp_details_sections),
@@ -450,7 +467,67 @@ function readSeedCoverage(row) {
     how_to_chars: howTo.length,
     inci_chars: inci.length,
     active_ingredients_chars: active.length,
+    inci_applicability_status: asString(inciApplicability.status),
+    ingredient_review_status: asString(sourceReviewQueue.status),
+    ingredient_remediation_action: asString(remediation.action),
+    bundle_component_refs_count: bundleRefs.length,
   };
+}
+
+function readSiblingDirectCoverage(productId, context = {}) {
+  const normalizedProductId = asString(productId);
+  if (!normalizedProductId) return null;
+  const cached = context.directCoverageByProductId?.get?.(normalizedProductId);
+  if (cached) return cached;
+  const siblingRow = context.seedRowByProductId?.get?.(normalizedProductId);
+  if (!siblingRow) return null;
+  const coverage = readDirectSeedCoverage(siblingRow);
+  if (context.directCoverageByProductId?.set) {
+    context.directCoverageByProductId.set(normalizedProductId, coverage);
+  }
+  return coverage;
+}
+
+function readSeedCoverage(row, context = {}) {
+  const direct = readDirectSeedCoverage(row);
+  const productId = asString(row?.external_product_id || row?.product_id || row?.id);
+  const productLineId =
+    asString(row?.identity_product_line_id || context.productLineIdByProductId?.get?.(productId)) || '';
+  const siblingIds = productLineId ? asArray(context.productIdsByLineId?.get?.(productLineId)) : [];
+  let effectiveInciChars = Number(direct.inci_chars || 0);
+  let inciBorrowedFromProductId = '';
+  if (!effectiveInciChars && siblingIds.length) {
+    for (const siblingId of siblingIds) {
+      const normalizedSiblingId = asString(siblingId);
+      if (!normalizedSiblingId || normalizedSiblingId === productId) continue;
+      const siblingCoverage = readSiblingDirectCoverage(normalizedSiblingId, context);
+      const siblingInciChars = Number(siblingCoverage?.inci_chars || 0);
+      if (siblingInciChars > 0) {
+        effectiveInciChars = siblingInciChars;
+        inciBorrowedFromProductId = normalizedSiblingId;
+        break;
+      }
+    }
+  }
+  return {
+    ...direct,
+    effective_inci_chars: effectiveInciChars,
+    inci_borrowed_from_product_id: inciBorrowedFromProductId,
+  };
+}
+
+function isInciMissingCoverageGap(row, coverage = row?.coverage || {}) {
+  if (Number(coverage.effective_inci_chars ?? coverage.inci_chars ?? 0) > 0) return false;
+  if (coverage.inci_applicability_status === 'not_applicable') return false;
+  if (coverage.ingredient_review_status === 'component_refs_linked') return false;
+  if (coverage.ingredient_remediation_action === 'component_refs_linked') return false;
+  return true;
+}
+
+function isActiveRawMissingCoverageGap(row, coverage = row?.coverage || {}) {
+  if (Number(coverage.active_ingredients_chars || 0) > 0) return false;
+  if (['set_or_collection', 'non_merch', 'accessory'].includes(asString(row?.product_family))) return false;
+  return true;
 }
 
 function collectContextText(row) {
@@ -748,8 +825,8 @@ function isInvalidActiveItem(value) {
   return false;
 }
 
-function classifyActiveIngredientReadiness(row) {
-  const coverage = readSeedCoverage(row);
+function classifyActiveIngredientReadiness(row, context = {}) {
+  const coverage = readSeedCoverage(row, context);
   const productFamily = classifyProductFamily(row);
   if (['set_or_collection', 'non_merch', 'accessory'].includes(productFamily)) {
     return {
@@ -852,7 +929,7 @@ function buildReadinessRow(row, context = {}) {
   const productId = asString(row?.external_product_id || row?.product_id || row?.id);
   const domain = asString(row?.domain) || 'unknown';
   const productIntel = classifyEffectiveProductIntel(row, context);
-  const activeIngredients = classifyActiveIngredientReadiness(row);
+  const activeIngredients = classifyActiveIngredientReadiness(row, context);
   const variantReadiness = classifyVariantReadiness(row, context);
   return {
     seed_id: asString(row?.id),
@@ -941,8 +1018,8 @@ function summarizeReadinessRows(rows, options = {}) {
     increment(summary.by_product_family, row.product_family);
 
     const coverage = row.coverage || {};
-    if (!coverage.inci_chars) summary.coverage.missing_inci += 1;
-    if (!coverage.active_ingredients_chars) summary.coverage.missing_active_raw += 1;
+    if (isInciMissingCoverageGap(row, coverage)) summary.coverage.missing_inci += 1;
+    if (isActiveRawMissingCoverageGap(row, coverage)) summary.coverage.missing_active_raw += 1;
     if (!coverage.details_sections_count) summary.coverage.missing_details += 1;
     if (!coverage.how_to_chars) summary.coverage.missing_how_to += 1;
     if (!coverage.faq_count) summary.coverage.missing_faq += 1;
@@ -1072,5 +1149,7 @@ module.exports = {
   buildReadinessRow,
   summarizeReadinessRows,
   readSeedCoverage,
+  isInciMissingCoverageGap,
+  isActiveRawMissingCoverageGap,
   readProductIntelBundleFromKbRow,
 };
