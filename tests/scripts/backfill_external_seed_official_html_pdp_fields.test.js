@@ -684,6 +684,30 @@ describe('backfill-external-seed-official-html-pdp-fields TIRTIR sheet matching'
     expect(fields.pdp_active_ingredients_raw).toBeUndefined();
   });
 
+  test('extracts Fenty shade-specific INCI from long shade-range labels', () => {
+    const sharedInci =
+      'AQUA/WATER/EAU, HYDROGENATED DIDECENE, HYDROGENATED POLYISOBUTENE, TRIMETHYLSILOXYSILICATE, CETYL PEG/PPG-10/1 DIMETHICONE, GLYCERIN, METHICONE, NYLON-12, DISTEARDIMONIUM HECTORITE, DIMETHICONE, SODIUM CHLORIDE, ACRYLATES/POLYTRIMETHYLSILOXYMETHACRYLATE COPOLYMER, POLYMETHYLSILSESQUIOXANE, TOCOPHERYL ACETATE, IRON OXIDES (CI 77491, CI 77492, CI 77499).';
+    const shade380Inci =
+      'AQUA/WATER/EAU, HYDROGENATED DIDECENE, GLYCERIN, NYLON-12, DIMETHICONE, MICA, TITANIUM DIOXIDE (CI 77891), RED 7 LAKE (CI 15850), TOCOPHEROL, SODIUM CHLORIDE, CITRIC ACID, IRON OXIDES (CI 77491).';
+    const html = `
+      <modal title="Full ingredients">
+        <div class="product-ingredients-modal__wrapper">
+          <div class="product-ingredients-modal__content OneLinkNoTx">
+            <p>All 50 shades of Pro Filt'r Instant Retouch Concealer are vegan.</p>
+            <p>SHADE 100: ${shade380Inci}</p>
+            <p>SHADES 105, 110, 130, 140, 145, 150, 160, 170, 180, 185, 190, 200, 210, 220, 230, 235, 240, 250, 260, 270, 280, 290, 300, 320, 330, 340, 345, 350, 360, 370, 385, 390, 400, 410, 420, 430, 440, 445, 450, 460, 470, 480, 490, 495, & 498: ${sharedInci}</p>
+            <p>SHADE 380: ${shade380Inci}</p>
+          </div>
+        </div>
+      </modal>
+    `;
+
+    const full = extractFentyFullIngredients(html, "Pro Filt'r Instant Retouch Concealer — #410");
+
+    expect(full).toBe(sharedInci);
+    expect(full).not.toBe(shade380Inci);
+  });
+
   test('missing-fields-only seed patch preserves existing approved fields', () => {
     const existingInci = 'AQUA/WATER/EAU, GLYCERIN, DIMETHICONE, BUTYLENE GLYCOL, PHENOXYETHANOL, SODIUM CHLORIDE, TOCOPHEROL, XANTHAN GUM, CITRIC ACID, SODIUM HYDROXIDE, FRAGRANCE, MICA.';
     const row = {

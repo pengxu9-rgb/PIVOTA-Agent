@@ -1300,9 +1300,11 @@ function extractFentyFullIngredients(html, productTitle = '') {
     .map((match) => {
       const text = cleanSectionText(match[1]);
       const colonIndex = text.indexOf(':');
-      if (colonIndex > 0 && colonIndex < 180) {
+      const label = colonIndex > 0 ? text.slice(0, colonIndex) : '';
+      const labelLimit = /^\s*shades?\b/i.test(label) ? 900 : 180;
+      if (colonIndex > 0 && colonIndex < labelLimit) {
         return {
-          label: text.slice(0, colonIndex),
+          label,
           body: normalizeText(text.slice(colonIndex + 1)),
           full: text,
         };
