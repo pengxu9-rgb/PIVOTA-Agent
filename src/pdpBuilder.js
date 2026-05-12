@@ -1966,6 +1966,14 @@ function extractSectionSoupSegments(value) {
       match = SECTION_SOUP_LABEL_RE.exec(text);
       continue;
     }
+    const matchedText = String(match[0] || '');
+    const hasExplicitLabelDelimiter = matchedText.includes(':');
+    const startsNewLine = match.index === 0 || /[\r\n]\s*$/.test(text.slice(0, match.index));
+    const titleCaseInlineLabel = /^[A-Z][a-z]/.test(rawLabel);
+    if (!hasExplicitLabelDelimiter && !startsNewLine && !titleCaseInlineLabel) {
+      match = SECTION_SOUP_LABEL_RE.exec(text);
+      continue;
+    }
     if (/^(coverage|finish|texture)$/i.test(rawLabel) && rawLabel[0] !== rawLabel[0].toUpperCase()) {
       match = SECTION_SOUP_LABEL_RE.exec(text);
       continue;
