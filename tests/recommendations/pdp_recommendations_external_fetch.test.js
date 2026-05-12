@@ -1047,6 +1047,107 @@ describe('RecommendationEngine external candidate fetch', () => {
     ).toBe(true);
   });
 
+  test('deep-domain recall prefers same-domain category rows before broad same-domain rows', async () => {
+    process.env.DATABASE_URL = 'postgres://example.test/pivota';
+
+    const queryMock = jest.fn(async (sql, params) => {
+      const sqlText = String(sql);
+      if (sqlText.includes('domain = ANY($4)') && Array.isArray(params?.[4])) {
+        expect(params[3]).toEqual(['fentybeauty.com', 'www.fentybeauty.com']);
+        expect(params[4]).toEqual(expect.arrayContaining(['%brow pencil%', '%brow%pencil%']));
+        return {
+          rows: Array.from({ length: 12 }).map((_, index) =>
+            makeExternalRow({
+              id: `eps_brow_${index}`,
+              external_product_id: `ext_brow_${index}`,
+              title: `Brow MVP Ultra Fine Brow Pencil ${index}`,
+              brand: 'Fenty Beauty',
+              category: 'Brow Pencil',
+              domain: 'fentybeauty.com',
+            }),
+          ),
+        };
+      }
+      if (sqlText.includes('domain = ANY($4)')) {
+        throw new Error('broad same-domain query should not run when same-domain category rows fill the target');
+      }
+      return { rows: [] };
+    });
+
+    jest.doMock('../../src/db', () => ({ query: queryMock }));
+    jest.doMock('../../src/logger', () => ({ warn: jest.fn(), info: jest.fn() }));
+
+    const { _internals } = require('../../src/services/RecommendationEngine');
+    const products = await _internals.fetchExternalCandidates({
+      brandHint: 'Fenty Beauty',
+      categoryHint: 'Brow Pencil',
+      domainHints: ['https://fentybeauty.com/products/brow-mvp-ultra-fine-brow-pencil-styler-auburn'],
+      limit: 12,
+      minFocusedCandidates: 12,
+      deepDomainRecall: true,
+    });
+
+    expect(products).toHaveLength(12);
+    expect(products.every((product) => product.category === 'Brow Pencil')).toBe(true);
+  });
+
+  test('strict external leaf categories do not use same-brand same-vertical padding', () => {
+    const { pickLayeredRecommendations } = require('../../src/services/RecommendationEngine');
+    const result = pickLayeredRecommendations({
+      baseProduct: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_brow_base',
+        title: 'Brow MVP Ultra Fine Brow Pencil & Styler — Auburn',
+        brand: 'Fenty Beauty',
+        category: 'Brow Pencil',
+        product_type: 'Brow Pencil',
+        price: 25,
+        currency: 'USD',
+        source: 'external_seed',
+      },
+      externalCandidates: [
+        {
+          merchant_id: 'external_seed',
+          product_id: 'ext_lip_gloss',
+          title: 'Gloss Bomb Heat Universal Lip Luminizer + Plumper — Lavender Savage',
+          brand: 'Fenty Beauty',
+          category: 'Lip Gloss',
+          product_type: 'Lip Gloss',
+          price: 17,
+          currency: 'USD',
+          source: 'external_seed',
+        },
+        {
+          merchant_id: 'external_seed',
+          product_id: 'ext_foundation',
+          title: "Pro Filt'r Soft Matte Foundation",
+          brand: 'Fenty Beauty',
+          category: 'Foundation',
+          product_type: 'Foundation',
+          price: 40,
+          currency: 'USD',
+          source: 'external_seed',
+        },
+        {
+          merchant_id: 'external_seed',
+          product_id: 'ext_brow_match',
+          title: 'Brow MVP Sculpting Wax Pencil & Styler',
+          brand: 'Fenty Beauty',
+          category: 'Brow Pencil',
+          product_type: 'Brow Pencil',
+          price: 24,
+          currency: 'USD',
+          source: 'external_seed',
+        },
+      ],
+      k: 6,
+      baseSemantic: { vertical: 'makeup', signal_strength: 3 },
+    });
+
+    expect(result.items.map((item) => item.product_id)).toEqual(['ext_brow_match']);
+    expect(result.debug?.filters?.by_confidence).toBeGreaterThanOrEqual(2);
+  });
+
   test('recommend fetches internal and external pools in parallel instead of serially stacking source latency', async () => {
     process.env.DATABASE_URL = 'postgres://example.test/pivota';
 

@@ -251,6 +251,18 @@ function buildNormalizedAliases(input) {
   );
 }
 
+function buildCategoryTitleLikePatterns(input) {
+  const aliases = buildNormalizedAliases(input);
+  const patterns = [];
+  for (const alias of aliases) {
+    if (!alias || alias.length < 3) continue;
+    patterns.push(`%${alias}%`);
+    const tokens = alias.split(/[\s-]+/g).filter((token) => token.length >= 2);
+    if (tokens.length > 1) patterns.push(`%${tokens.join('%')}%`);
+  }
+  return uniqueByKey(patterns, (value) => value);
+}
+
 function buildDomainLookupAliases(input) {
   const host = normalizeHostname(input);
   if (!host) return [];
@@ -292,6 +304,18 @@ const STOPWORDS = new Set([
 
 const BEAUTY_ACCESSORY_TITLE_RE =
   /\b(pouch|bag|soap saver|gua sha|gwalsa|brush|tool|applicator|spatula|mirror|sharpener|headband)\b/i;
+const STRICT_EXTERNAL_SAME_BRAND_LEAF_CATEGORIES = new Set([
+  'brow pencil',
+  'brow gel',
+  'concealer',
+  'foundation',
+  'highlighter',
+  'lip gloss',
+  'lip oil',
+  'lipstick',
+  'mascara',
+  'primer',
+]);
 
 function tokenize(text) {
   const s = normalizeText(text);
@@ -1234,6 +1258,21 @@ const EXTERNAL_SEED_RECOMMENDATION_SELECT = `
             seed_data->'snapshot'->>'variant_title' AS snapshot_variant_title
 `;
 
+const EXTERNAL_SEED_FAST_RECOMMENDATION_SELECT = `
+            id,
+            external_product_id,
+            destination_url,
+            canonical_url,
+            domain,
+            title,
+            image_url,
+            price_amount,
+            price_currency,
+            availability,
+            updated_at,
+            created_at
+`;
+
 const EXTERNAL_SEED_SEMANTIC_SELECT = `
         id,
         external_product_id,
@@ -1417,6 +1456,8 @@ function titleSupportsLeafCategory(features) {
 
 function requiresStrictExternalSameBrandIntent(features) {
   const title = String(features?.normalizedTitle || '').trim();
+  const leaf = normalizeText(features?.leafCategory || '');
+  if (leaf && STRICT_EXTERNAL_SAME_BRAND_LEAF_CATEGORIES.has(leaf)) return true;
   if (!title) return false;
   return /\b(sunscreen|spf|sun\s*(?:milk|cream|lotion|fluid|stick|serum|gel|screen)?|uv)\b/i.test(title);
 }
@@ -1735,6 +1776,17 @@ function pickLayeredRecommendations({
         filteredByConfidence += 1;
         return null;
       }
+      if (
+        base.isExternal &&
+        scoreDetail.brandMatch &&
+        requiresStrictExternalSameBrandIntent(base) &&
+        !scoreDetail.leafMatch &&
+        !scoreDetail.parentMatch &&
+        !titleIntentMatches(base, features)
+      ) {
+        filteredByConfidence += 1;
+        return null;
+      }
 
       const matchedLayer = layers.find((layer) => layer.predicate(scoreDetail, features, base)) || null;
 
@@ -2032,6 +2084,7 @@ async function fetchExternalCandidates({
   const brandAliases = buildNormalizedAliases(brandHint);
   const compactBrand = brandAliases.find((value) => !/\s/.test(value)) || brand.replace(/\s+/g, '');
   const categoryAliases = buildNormalizedAliases(categoryHint);
+  const categoryTitleLikePatterns = buildCategoryTitleLikePatterns(categoryHint);
 
   function boundedRecallCap(multiplier, floor = 24) {
     return Math.min(
@@ -2120,6 +2173,89 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
     }
   }
 
+  async function runDomainCategoryQuery(cap) {
+    if (!normalizedDomainHints.length || !categoryAliases.length) return [];
+    try {
+      const res = await query(
+        `
+          SELECT
+${EXTERNAL_SEED_RECOMMENDATION_SELECT}
+          FROM external_product_seeds
+          WHERE status = 'active'
+            AND market = $1
+            AND (tool = '*' OR tool = $2)
+            AND attached_product_key IS NULL
+            AND domain = ANY($4)
+            AND lower(coalesce(
+              seed_data->'derived'->'recall'->>'category',
+              seed_data->>'category',
+              seed_data->'product'->>'category',
+              seed_data->'snapshot'->>'category',
+              seed_data->>'product_type',
+              seed_data->'product'->>'product_type',
+              seed_data->'snapshot'->>'product_type',
+              ''
+            )) = ANY($5)
+          ORDER BY updated_at DESC, created_at DESC
+          LIMIT $3
+        `,
+        [market, tool, cap, normalizedDomainHints, categoryAliases],
+      );
+      const products = [];
+      for (const row of res.rows || []) {
+        const p = buildExternalSeedRecommendationCandidate(row, {
+          fallbackBrand: brandHint,
+          fallbackCategory: categoryHint,
+        });
+        if (p) products.push(p);
+      }
+      return products;
+    } catch (err) {
+      logger.warn(
+        { err: err?.message || String(err), query: 'external_domain_category' },
+        'recommendations external query failed',
+      );
+      return [];
+    }
+  }
+
+  async function runDomainTitleCategoryQuery(cap) {
+    if (!normalizedDomainHints.length || !categoryTitleLikePatterns.length) return [];
+    try {
+      const res = await query(
+        `
+          SELECT
+${EXTERNAL_SEED_FAST_RECOMMENDATION_SELECT}
+          FROM external_product_seeds
+          WHERE status = 'active'
+            AND market = $1
+            AND (tool = '*' OR tool = $2)
+            AND attached_product_key IS NULL
+            AND domain = ANY($4)
+            AND lower(coalesce(title, '')) LIKE ANY($5::text[])
+          ORDER BY updated_at DESC, created_at DESC
+          LIMIT $3
+        `,
+        [market, tool, cap, normalizedDomainHints, categoryTitleLikePatterns],
+      );
+      const products = [];
+      for (const row of res.rows || []) {
+        const p = buildExternalSeedRecommendationCandidate(row, {
+          fallbackBrand: brandHint,
+          fallbackCategory: categoryHint,
+        });
+        if (p) products.push(p);
+      }
+      return products;
+    } catch (err) {
+      logger.warn(
+        { err: err?.message || String(err), query: 'external_domain_title_category' },
+        'recommendations external query failed',
+      );
+      return [];
+    }
+  }
+
   async function runTimedExternalQuery(queryName, task, timeoutMs = PDP_RECS_EXTERNAL_UNDERFILL_QUERY_TIMEOUT_MS) {
     return withSoftTimeout(
       Promise.resolve().then(task),
@@ -2162,6 +2298,30 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
   const out = [];
   let preloadedCategoryMatches = null;
   let preloadedDomainMatches = null;
+  if (deepDomainRecall && normalizedDomainHints.length && category) {
+    const deepRecallDomainCategoryCap = boundedRecallCap(3, 48);
+    const preloadedDomainTitleCategoryMatches = await runTimedExternalQuery(
+      'external_domain_title_category',
+      () => runDomainTitleCategoryQuery(deepRecallDomainCategoryCap),
+      PDP_RECS_EXTERNAL_RECALL_QUERY_TIMEOUT_MS,
+    );
+    out.push(...preloadedDomainTitleCategoryMatches);
+    let domainCategoryFocusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
+    if (domainCategoryFocusedCandidates.length >= safeMinFocusedCandidates) {
+      return domainCategoryFocusedCandidates.slice(0, safeLimit * 3);
+    }
+
+    const preloadedDomainCategoryMatches = await runTimedExternalQuery(
+      'external_domain_category',
+      () => runDomainCategoryQuery(deepRecallDomainCategoryCap),
+      PDP_RECS_EXTERNAL_RECALL_QUERY_TIMEOUT_MS,
+    );
+    out.push(...preloadedDomainCategoryMatches);
+    domainCategoryFocusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
+    if (domainCategoryFocusedCandidates.length >= safeMinFocusedCandidates) {
+      return domainCategoryFocusedCandidates.slice(0, safeLimit * 3);
+    }
+  }
   if (deepDomainRecall && normalizedDomainHints.length) {
     const deepRecallDomainCap = boundedRecallCap(2, 48);
     preloadedDomainMatches = await runTimedExternalQuery(
