@@ -5768,6 +5768,49 @@ function buildOfferVariantsForPayload(product, fallbackCurrency) {
     .filter(Boolean);
 }
 
+function decoratePdpPayloadWithIdentity(pdpPayload, {
+  productGroupId = null,
+  sellableItemGroupId = null,
+  canonicalScope = null,
+  offersCount = null,
+} = {}) {
+  if (!pdpPayload || typeof pdpPayload !== 'object') return pdpPayload;
+  const groupId = String(productGroupId || '').trim();
+  const sellableId = String(sellableItemGroupId || groupId || '').trim();
+  const scope = String(canonicalScope || '').trim();
+  const count = Number(offersCount);
+  const hasOfferCount = Number.isFinite(count) && count >= 0;
+  const product = pdpPayload.product && typeof pdpPayload.product === 'object'
+    ? { ...pdpPayload.product }
+    : {};
+
+  if (groupId) {
+    product.product_group_id = groupId;
+    if (!product.sellable_item_group_id) product.sellable_item_group_id = sellableId || groupId;
+  }
+  if (scope) product.canonical_scope = scope;
+  if (hasOfferCount) {
+    product.offers_count = count;
+    product.offer_count = count;
+    product.has_multiple_offers = count > 1;
+  }
+
+  return {
+    ...pdpPayload,
+    ...(groupId ? { product_group_id: groupId } : {}),
+    ...(sellableId ? { sellable_item_group_id: sellableId } : {}),
+    ...(scope ? { canonical_scope: scope } : {}),
+    ...(hasOfferCount
+      ? {
+          offers_count: count,
+          offer_count: count,
+          has_multiple_offers: count > 1,
+        }
+      : {}),
+    product,
+  };
+}
+
 async function buildOffersFromGroupMembers(args) {
   const totalStartedAt = Date.now();
   const timings = {};
@@ -5784,23 +5827,31 @@ async function buildOffersFromGroupMembers(args) {
   timings.setup = Date.now() - totalStartedAt;
 
   const members = groupMembers
-    .map((m) => ({
-      merchant_id: String(m?.merchant_id || m?.merchantId || '').trim(),
-      merchant_name: m?.merchant_name || m?.merchantName || undefined,
-      product_id: String(m?.product_id || m?.productId || '').trim(),
-      platform: m?.platform ? String(m.platform).trim() : undefined,
-      source_listing_ref: m?.source_listing_ref || m?.sourceListingRef || undefined,
-      source_kind: m?.source_kind || m?.sourceKind || undefined,
-      source_tier: m?.source_tier || m?.sourceTier || undefined,
-      source_payload:
-        m?.source_payload && typeof m.source_payload === 'object'
-          ? m.source_payload
-          : m?.sourcePayload && typeof m.sourcePayload === 'object'
-            ? m.sourcePayload
-            : undefined,
-      variant_axes: m?.variant_axes && typeof m.variant_axes === 'object' ? m.variant_axes : undefined,
-      is_primary: Boolean(m?.is_primary || m?.isPrimary),
-    }))
+    .map((m) => {
+      const merchantId = String(m?.merchant_id || m?.merchantId || '').trim();
+      const sourceKind = firstNonEmptyString(
+        m?.source_kind,
+        m?.sourceKind,
+        merchantId === EXTERNAL_SEED_MERCHANT_ID ? EXTERNAL_SEED_MERCHANT_ID : '',
+      );
+      return {
+        merchant_id: merchantId,
+        merchant_name: m?.merchant_name || m?.merchantName || undefined,
+        product_id: String(m?.product_id || m?.productId || '').trim(),
+        platform: m?.platform ? String(m.platform).trim() : undefined,
+        source_listing_ref: m?.source_listing_ref || m?.sourceListingRef || undefined,
+        source_kind: sourceKind || undefined,
+        source_tier: m?.source_tier || m?.sourceTier || undefined,
+        source_payload:
+          m?.source_payload && typeof m.source_payload === 'object'
+            ? m.source_payload
+            : m?.sourcePayload && typeof m.sourcePayload === 'object'
+              ? m.sourcePayload
+              : undefined,
+        variant_axes: m?.variant_axes && typeof m.variant_axes === 'object' ? m.variant_axes : undefined,
+        is_primary: Boolean(m?.is_primary || m?.isPrimary),
+      };
+    })
     .filter((m) => Boolean(m.merchant_id) && Boolean(m.product_id))
     .slice(0, limit);
 
@@ -5959,6 +6010,12 @@ async function buildOffersFromGroupMembers(args) {
   const buildOfferRowsStartedAt = Date.now();
   const offers = fetched.map(({ member, product: p }) => {
     const mid = String(p.merchant_id || '').trim();
+    const offerSourceKind = firstNonEmptyString(
+      member?.source_kind,
+      p.source_kind,
+      p.sourceKind,
+      mid === EXTERNAL_SEED_MERCHANT_ID ? EXTERNAL_SEED_MERCHANT_ID : '',
+    );
     const offerProductId = String(p.product_id || '').trim() || undefined;
     const selectedVariant = findOfferVariantForAxes(p, member?.variant_axes);
     const selectedVariantId = selectedVariant ? getOfferVariantId(selectedVariant) : null;
@@ -6070,7 +6127,7 @@ async function buildOffersFromGroupMembers(args) {
       ...(Array.isArray(p.promotions) && p.promotions.length ? { promotions: p.promotions } : {}),
       ...(commerceFacts ? { commerce_facts_v1: commerceFacts, commerce_facts: commerceFacts } : {}),
       ...(agentSafeCommerceFacts ? { agent_safe_commerce_facts: agentSafeCommerceFacts } : {}),
-      ...(member?.source_kind ? { source_kind: member.source_kind } : {}),
+      ...(offerSourceKind ? { source_kind: offerSourceKind } : {}),
       ...(member?.source_tier ? { source_tier: member.source_tier } : {}),
       ...buildOfferPurchaseMetadataFromProduct(p),
       risk_tier: 'standard',
@@ -28721,6 +28778,15 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         (pdpContentSource === 'canonical_inherited' ? 'pending' : 'not_needed');
       const offerSource = groupMembers.length > 0 ? 'group_fused' : 'self';
       const commerceSource = requestedMerchantId ? 'selected_seller_store' : 'canonical_seller_store';
+      const effectiveCanonicalScope =
+        identityGraphLive?.canonical_scope ||
+        (productGroupId && groupMembers.length > 1 ? 'multi_merchant_canonical' : null);
+
+      canonicalPayload = decoratePdpPayloadWithIdentity(canonicalPayload, {
+        productGroupId,
+        sellableItemGroupId: identityGraphLive?.sellable_item_group_id || productGroupId,
+        canonicalScope: effectiveCanonicalScope,
+      });
 
       const modules = [
         {
@@ -28736,7 +28802,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                 ? Number(identityGraphLive.identity_confidence)
                 : null,
             match_basis: Array.isArray(identityGraphLive?.match_basis) ? identityGraphLive.match_basis : [],
-            canonical_scope: identityGraphLive?.canonical_scope || null,
+            canonical_scope: effectiveCanonicalScope || null,
             pdp_schema_profile: pdpSchemaProfile,
             pdp_content_source: pdpContentSource,
             offer_source: offerSource,
@@ -28873,6 +28939,24 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         }
 
         if (offersData) {
+          const offersCount = Number(offersData.offers_count);
+          const offersProductGroupId =
+            String(offersData.product_group_id || productGroupId || '').trim() || null;
+          const offersCanonicalScope =
+            effectiveCanonicalScope ||
+            (offersProductGroupId && Number.isFinite(offersCount) && offersCount > 1
+              ? 'multi_merchant_canonical'
+              : null);
+          canonicalPayload = decoratePdpPayloadWithIdentity(canonicalPayload, {
+            productGroupId: offersProductGroupId,
+            sellableItemGroupId:
+              identityGraphLive?.sellable_item_group_id || offersProductGroupId,
+            canonicalScope: offersCanonicalScope,
+            offersCount: Number.isFinite(offersCount) ? offersCount : null,
+          });
+          modules[0].data.pdp_payload = canonicalPayload;
+          modules[0].data.canonical_scope = offersCanonicalScope || modules[0].data.canonical_scope || null;
+          modules[0].data.product_group_id = offersProductGroupId || modules[0].data.product_group_id || null;
           offersData = {
             ...offersData,
             offer_source: Array.isArray(groupMembers) && groupMembers.length > 0 ? 'group_fused' : 'self',
@@ -29156,7 +29240,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                     match_basis: Array.isArray(identityGraphLive.match_basis)
                       ? identityGraphLive.match_basis
                       : [],
-                    canonical_scope: identityGraphLive.canonical_scope || null,
+                    canonical_scope: effectiveCanonicalScope || null,
                     pdp_content_source: pdpContentSource,
                     offer_source: offerSource,
                     commerce_source: commerceSource,
@@ -36376,6 +36460,7 @@ async function runPdpCorePrewarmPass() {
 module.exports = app;
 module.exports._debug = {
   buildOffersFromGroupMembers,
+  decoratePdpPayloadWithIdentity,
   loadCreatorSellableFromCache,
   searchCreatorSellableFromCache,
   searchCrossMerchantFromCache,

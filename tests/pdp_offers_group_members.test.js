@@ -620,6 +620,84 @@ describe('PDP grouped offers', () => {
     );
   });
 
+  test('marks external-seed offers even when group member rows do not carry source_kind', async () => {
+    const app = require('../src/server');
+
+    const offersData = await app._debug.buildOffersFromGroupMembers({
+      productGroupId: 'pg_ext_source_kind_contract',
+      members: [
+        {
+          merchant_id: 'external_seed',
+          product_id: 'ext_missing_source_kind',
+        },
+      ],
+      prefetchedProducts: [
+        {
+          merchant_id: 'external_seed',
+          product_id: 'ext_missing_source_kind',
+          title: 'Contract Lipstick',
+          price: 25,
+          currency: 'USD',
+          in_stock: true,
+          variants: [
+            {
+              variant_id: 'external-seller-default',
+              title: 'Default',
+              price: 25,
+              currency: 'USD',
+              in_stock: true,
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(offersData.offers[0]).toEqual(
+      expect.objectContaining({
+        merchant_id: 'external_seed',
+        product_id: 'ext_missing_source_kind',
+        source_kind: 'external_seed',
+      }),
+    );
+  });
+
+  test('decorates canonical PDP payloads with identity graph group and offer metadata', () => {
+    const app = require('../src/server');
+
+    const payload = app._debug.decoratePdpPayloadWithIdentity(
+      {
+        product: {
+          product_id: 'sig_contract_lipstick',
+          title: 'Contract Lipstick',
+        },
+      },
+      {
+        productGroupId: 'pg_ext_contract_lipstick',
+        canonicalScope: 'multi_merchant_canonical',
+        offersCount: 2,
+      },
+    );
+
+    expect(payload).toEqual(
+      expect.objectContaining({
+        product_group_id: 'pg_ext_contract_lipstick',
+        sellable_item_group_id: 'pg_ext_contract_lipstick',
+        canonical_scope: 'multi_merchant_canonical',
+        offers_count: 2,
+        has_multiple_offers: true,
+      }),
+    );
+    expect(payload.product).toEqual(
+      expect.objectContaining({
+        product_group_id: 'pg_ext_contract_lipstick',
+        sellable_item_group_id: 'pg_ext_contract_lipstick',
+        canonical_scope: 'multi_merchant_canonical',
+        offers_count: 2,
+        has_multiple_offers: true,
+      }),
+    );
+  });
+
   test('builds external-seed offers from serialized mirror source payloads', async () => {
     const app = require('../src/server');
 
