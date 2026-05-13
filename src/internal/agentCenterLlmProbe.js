@@ -2,7 +2,7 @@
  * Internal LLM probe endpoint for the pivota-backend Agent Center.
  *
  * pivota-backend's Agent Center calls this endpoint to run LLM-driven probes
- * on merchant products / Pivota PDPs. We expose two providers:
+ * on merchant products / Pivota PDPs. We expose four providers:
  *
  *   - `mock`: deterministic stub responses keyed by scan_mode. Used by
  *     default and in CI; lets the whole agent-center pipeline be tested
@@ -11,6 +11,10 @@
  *     GEMINI_API_KEY in env. Routes through the existing
  *     geminiGlobalGate semaphore + circuit breaker (no new rate-limit
  *     surface introduced).
+ *   - `chatgpt`: real OpenAI Responses API calls with web_search_preview.
+ *     Requires OPENAI_API_KEY in env and uses the same probe gate.
+ *   - `claude`: real Anthropic Messages API calls with web_search.
+ *     Requires ANTHROPIC_API_KEY in env and uses the same probe gate.
  *
  * Auth: shared-secret header `X-Pivota-Internal-Key` matched against
  * `process.env.PIVOTA_INTERNAL_API_KEY`. Distinct from the human-ops
@@ -23,6 +27,8 @@
  */
 
 'use strict';
+
+const { getGeminiGlobalGate } = require('../lib/geminiGlobalGate');
 
 const ALLOWED_SCAN_MODES = new Set([
   'open_product_visibility_test',
@@ -39,7 +45,7 @@ const ALLOWED_SCAN_MODES = new Set([
   'category_visibility_test',
 ]);
 
-const ALLOWED_PROVIDERS = new Set(['mock', 'gemini']);
+const ALLOWED_PROVIDERS = new Set(['mock', 'gemini', 'chatgpt', 'claude']);
 
 // Mapping from scan_mode → the dominant issue type the V1 spec assigns when a
 // gap is detected. Mirrors `ISSUE_TYPE_BY_SCAN_MODE` in
@@ -56,10 +62,33 @@ const DEFAULT_MAX_RUNS = 3;
 const HARD_MAX_RUNS = 8;
 
 const DEFAULT_GEMINI_TIMEOUT_MS = 25_000;
+const DEFAULT_OPENAI_TIMEOUT_MS = Number(process.env.PIVOTA_AGENT_CENTER_OPENAI_TIMEOUT_MS || 25_000);
+const DEFAULT_ANTHROPIC_TIMEOUT_MS = Number(process.env.PIVOTA_AGENT_CENTER_ANTHROPIC_TIMEOUT_MS || 25_000);
+const DEFAULT_PROBE_GATE_QUEUE_TIMEOUT_MS = Number(
+  process.env.PIVOTA_AGENT_CENTER_LLM_GATE_QUEUE_TIMEOUT_MS || 30_000,
+);
 const GEMINI_MODEL = process.env.PIVOTA_AGENT_CENTER_GEMINI_MODEL || 'gemini-2.5-flash';
+const OPENAI_MODEL = process.env.PIVOTA_AGENT_CENTER_OPENAI_MODEL || 'gpt-5';
+const ANTHROPIC_MODEL = process.env.PIVOTA_AGENT_CENTER_ANTHROPIC_MODEL || 'claude-sonnet-4-20250514';
+const ANTHROPIC_WEB_SEARCH_TOOL_VERSION =
+  process.env.PIVOTA_AGENT_CENTER_ANTHROPIC_WEB_SEARCH_TOOL_VERSION || 'web_search_20250305';
+
+// Cost estimates are placeholders for staging telemetry only. Verify against
+// each provider pricing page before flipping ChatGPT/Claude default-on.
+const GEMINI_PRICE_PER_1K_TOKENS = { input: 0.0003, output: 0.0025 };
+const OPENAI_PRICE_PER_1K_TOKENS = { input: 0.005, output: 0.02 };
+const ANTHROPIC_PRICE_PER_1K_TOKENS = {
+  input: 0.003,
+  output: 0.015,
+  web_search_request: 0.01,
+};
 
 let cachedGeminiClient = null;
 let geminiInitFailed = false;
+let cachedOpenAIClient = null;
+let openAIInitFailed = false;
+let cachedAnthropicClient = null;
+let anthropicInitFailed = false;
 
 // ---------------------------------------------------------------------------
 // Auth middleware
@@ -276,6 +305,38 @@ function getGeminiClient() {
   }
 }
 
+function getOpenAIClient() {
+  if (cachedOpenAIClient) return cachedOpenAIClient;
+  if (openAIInitFailed) return null;
+  const apiKey = String(process.env.OPENAI_API_KEY || '').trim();
+  if (!apiKey) return null;
+  try {
+    const OpenAI = require('openai');
+    const OpenAIClient = OpenAI.OpenAI || OpenAI.default || OpenAI;
+    cachedOpenAIClient = new OpenAIClient({ apiKey });
+    return cachedOpenAIClient;
+  } catch (_err) {
+    openAIInitFailed = true;
+    return null;
+  }
+}
+
+function getAnthropicClient() {
+  if (cachedAnthropicClient) return cachedAnthropicClient;
+  if (anthropicInitFailed) return null;
+  const apiKey = String(process.env.ANTHROPIC_API_KEY || '').trim();
+  if (!apiKey) return null;
+  try {
+    const Anthropic = require('@anthropic-ai/sdk');
+    const AnthropicClient = Anthropic.Anthropic || Anthropic.default || Anthropic;
+    cachedAnthropicClient = new AnthropicClient({ apiKey });
+    return cachedAnthropicClient;
+  } catch (_err) {
+    anthropicInitFailed = true;
+    return null;
+  }
+}
+
 function buildPromptForScanMode(input) {
   const { scan_mode, context } = input;
   // Prompt's "Product:" field: prefer the product title (real, meaningful
@@ -462,6 +523,41 @@ function normalizeGroundingChunks(groundingMetadata) {
     });
   }
   return out;
+}
+
+function normalizeGroundingSourcesFromItems(items) {
+  if (!Array.isArray(items)) return [];
+  const out = [];
+  const seen = new Set();
+  for (const item of items) {
+    const uri = item?.uri || item?.url || item?.source_url || item?.href || '';
+    const title = item?.title || item?.name || item?.source || '';
+    const normalizedUri = typeof uri === 'string' ? uri : '';
+    const normalizedTitle = typeof title === 'string' ? title : '';
+    const key = `${normalizedUri}||${normalizedTitle}`;
+    if (!normalizedUri && !normalizedTitle) continue;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const norm = normalizeUrl(normalizedUri);
+    out.push({
+      uri: normalizedUri,
+      title: normalizedTitle,
+      host: norm?.host || null,
+    });
+  }
+  return out;
+}
+
+function groundingMetadataFromNormalizedChunks(chunks) {
+  if (!Array.isArray(chunks) || !chunks.length) return null;
+  return {
+    groundingChunks: chunks.map((chunk) => ({
+      web: {
+        uri: chunk?.uri || '',
+        title: chunk?.title || '',
+      },
+    })),
+  };
 }
 
 const _VERTEX_REDIRECTOR_HOSTS = new Set([
@@ -688,6 +784,478 @@ async function withTimeout(promise, timeoutMs) {
   }
 }
 
+function createProbeSemaphore(max) {
+  const limit = Math.max(1, Number(max) || 1);
+  let inUse = 0;
+  const queue = [];
+
+  function release() {
+    inUse = Math.max(0, inUse - 1);
+    const next = queue.shift();
+    if (next) next();
+  }
+
+  async function acquire({ timeoutMs = 0 } = {}) {
+    if (inUse < limit) {
+      inUse += 1;
+      return release;
+    }
+    const normalizedTimeoutMs = Number.isFinite(Number(timeoutMs))
+      ? Math.max(0, Math.trunc(Number(timeoutMs)))
+      : 0;
+    return new Promise((resolve, reject) => {
+      let timer = null;
+      let settled = false;
+      const entry = () => {
+        if (settled) return;
+        settled = true;
+        if (timer) clearTimeout(timer);
+        inUse += 1;
+        resolve(release);
+      };
+      queue.push(entry);
+      if (normalizedTimeoutMs > 0) {
+        timer = setTimeout(() => {
+          if (settled) return;
+          settled = true;
+          const index = queue.indexOf(entry);
+          if (index >= 0) queue.splice(index, 1);
+          reject(new Error(`LLM_PROBE_TENANT_QUEUE_TIMEOUT after ${normalizedTimeoutMs}ms`));
+        }, normalizedTimeoutMs);
+      }
+    });
+  }
+
+  return { acquire, snapshot: () => ({ max: limit, inUse, queued: queue.length }) };
+}
+
+const _tenantProbeSemaphores = new Map();
+
+function getTenantProbeSemaphore(input) {
+  const tenantConcurrency = Math.max(
+    1,
+    Number(process.env.PIVOTA_AGENT_CENTER_LLM_TENANT_CONCURRENCY || 1) || 1,
+  );
+  const tenantKey = [
+    input?.merchant_id || 'unknown_merchant',
+    input?.store_id || 'unknown_store',
+  ].join(':');
+  const existing = _tenantProbeSemaphores.get(tenantKey);
+  if (existing && existing.snapshot().max === tenantConcurrency) return existing;
+  const next = createProbeSemaphore(tenantConcurrency);
+  _tenantProbeSemaphores.set(tenantKey, next);
+  return next;
+}
+
+async function withProbeCostGate(input, provider, fn) {
+  const tenantGate = getTenantProbeSemaphore(input);
+  const releaseTenant = await tenantGate.acquire({
+    timeoutMs: DEFAULT_PROBE_GATE_QUEUE_TIMEOUT_MS,
+  });
+  try {
+    const globalGate = getGeminiGlobalGate();
+    return await globalGate.withGate(
+      `agent_center_llm_probe_${provider}`,
+      fn,
+      { queueTimeoutMs: DEFAULT_PROBE_GATE_QUEUE_TIMEOUT_MS },
+    );
+  } finally {
+    releaseTenant();
+  }
+}
+
+function resolveProbeQueries(scan_mode, max_runs, context) {
+  if (context.queries.length) {
+    return context.queries.slice(0, max_runs);
+  }
+  if (scan_mode === 'category_visibility_test') {
+    const cat = buildCategoryQueries(context.product);
+    return cat.length
+      ? cat.slice(0, max_runs)
+      : [context.product_entity_id || ''].filter(Boolean);
+  }
+  const auto = buildAutoQueries(context.product);
+  return auto.length
+    ? auto.slice(0, max_runs)
+    : [context.product_entity_id || ''].filter(Boolean);
+}
+
+function normalizeProbeRunFields(scan_mode, parsed, urlMatch, positive) {
+  let competitors = [];
+  if (Array.isArray(parsed?.competitors_listed)) {
+    competitors = parsed.competitors_listed;
+  } else if (Array.isArray(parsed?.competitors_appearing)) {
+    competitors = parsed.competitors_appearing;
+  }
+  return {
+    product_visible: Boolean(positive),
+    competitors_listed: competitors.filter((x) => typeof x === 'string' && x.trim()).map((x) => x.trim()),
+    evidence_excerpt: typeof parsed?.evidence_excerpt === 'string' ? parsed.evidence_excerpt : '',
+    url_match: urlMatch,
+  };
+}
+
+function scoreProbeRunEvidence({ scan_mode, parsed, rawText, groundingMetadata, chunks, context }) {
+  const hasAnyGrounding = Array.isArray(chunks) && chunks.length > 0;
+  const merchantBrand = context.product?.vendor || context.product?.title || null;
+
+  let positive = false;
+  let echo = false;
+  let urlMatch = null;
+
+  if (scan_mode === 'open_product_visibility_test') {
+    positive = Boolean(parsed && parsed.product_visible === true && hasAnyGrounding);
+  } else if (scan_mode === 'merchant_store_attribution_test') {
+    const target = context.merchant_pdp_url || '';
+    const inGrounding = Boolean(target) && groundingContainsUrl(
+      groundingMetadata,
+      target,
+      merchantBrand,
+    );
+    urlMatch = {
+      target_url: target,
+      in_grounding: inGrounding,
+      in_text: Boolean(target) && textContainsUrl(rawText, target),
+      llm_self_report: parsed && parsed.merchant_url_found === true,
+    };
+    positive = inGrounding;
+  } else if (scan_mode === 'pivota_pdp_attribution_test') {
+    const target = context.pivota_pdp_url || '';
+    const inGrounding = Boolean(target) && groundingContainsUrl(
+      groundingMetadata,
+      target,
+      merchantBrand,
+    );
+    const inText = Boolean(target) && textContainsUrl(rawText, target);
+    const echoOnly = !inGrounding && Boolean(target) && textMentionsHostOnly(rawText, target);
+    urlMatch = {
+      target_url: target,
+      in_grounding: inGrounding,
+      in_text: inText,
+      echo_only: echoOnly,
+      llm_self_report: {
+        pivota_url_found: parsed && parsed.pivota_url_found === true,
+        pivota_echo_only: parsed && parsed.pivota_echo_only === true,
+      },
+    };
+    positive = inGrounding;
+    echo = echoOnly;
+  } else if (scan_mode === 'search_grounded_product_discovery_test') {
+    const target = context.pivota_pdp_url || context.merchant_pdp_url || '';
+    if (target) {
+      const inGrounding = groundingContainsUrl(groundingMetadata, target, merchantBrand);
+      urlMatch = {
+        target_url: target,
+        in_grounding: inGrounding,
+        in_text: textContainsUrl(rawText, target),
+        llm_self_report: parsed && parsed.product_visible === true,
+      };
+      positive = inGrounding;
+    } else {
+      positive = Boolean(parsed && parsed.product_visible === true && hasAnyGrounding);
+    }
+  } else if (scan_mode === 'category_visibility_test') {
+    const target = context.merchant_pdp_url || '';
+    const brandHit = Boolean(merchantBrand) && groundingContainsUrl(
+      groundingMetadata,
+      target || '',
+      merchantBrand,
+    );
+    urlMatch = {
+      target_brand: merchantBrand || null,
+      target_url: target || null,
+      in_grounding: brandHit,
+      in_text: false,
+      llm_self_report: parsed && parsed.brand_appears === true,
+    };
+    positive = brandHit;
+  }
+
+  return {
+    positive,
+    echo,
+    urlMatch,
+    normalizedFields: normalizeProbeRunFields(scan_mode, parsed, urlMatch, positive),
+  };
+}
+
+function buildFindingsForScores(scan_mode, visibilityScore, echoRate, positives, rawRuns) {
+  const findings = [];
+  if (scan_mode === 'pivota_pdp_attribution_test' && visibilityScore < 50) {
+    findings.push({
+      issue_type: 'pivota_pdp_attribution_gap',
+      severity: visibilityScore < 25 ? 'high' : 'medium',
+      evidence: { visibility_score: visibilityScore, runs: rawRuns },
+    });
+  }
+  if (scan_mode === 'pivota_pdp_attribution_test' && echoRate > 0 && positives === 0) {
+    findings.push({
+      issue_type: 'unverified_pivota_attribution',
+      severity: 'medium',
+      evidence: { attribution_echo_rate: echoRate, runs: rawRuns },
+    });
+  }
+  if (scan_mode === 'open_product_visibility_test' && visibilityScore < 50) {
+    findings.push({
+      issue_type: 'ai_visibility_loss',
+      severity: visibilityScore < 25 ? 'high' : 'medium',
+      evidence: { visibility_score: visibilityScore, runs: rawRuns },
+    });
+  }
+  if (scan_mode === 'merchant_store_attribution_test' && visibilityScore < 50) {
+    findings.push({
+      issue_type: 'merchant_store_attribution_gap',
+      severity: visibilityScore < 25 ? 'high' : 'medium',
+      evidence: { visibility_score: visibilityScore, runs: rawRuns },
+    });
+  }
+  if (scan_mode === 'search_grounded_product_discovery_test' && visibilityScore < 50) {
+    findings.push({
+      issue_type: 'ai_visibility_loss',
+      severity: visibilityScore < 25 ? 'high' : 'medium',
+      evidence: { visibility_score: visibilityScore, runs: rawRuns },
+    });
+  }
+  if (scan_mode === 'category_visibility_test' && visibilityScore < 50) {
+    findings.push({
+      issue_type: 'category_discoverability_gap',
+      severity: visibilityScore < 25 ? 'high' : 'medium',
+      evidence: { visibility_score: visibilityScore, runs: rawRuns },
+    });
+  }
+  return findings;
+}
+
+function buildProviderUsage({ inputTokens, outputTokens, latencyMs, pricing, webSearchRequests = 0 }) {
+  const tokensIn = Math.max(0, Number(inputTokens) || 0);
+  const tokensOut = Math.max(0, Number(outputTokens) || 0);
+  const searchRequests = Math.max(0, Number(webSearchRequests) || 0);
+  const estimatedCost =
+    (tokensIn / 1000) * (Number(pricing?.input) || 0) +
+    (tokensOut / 1000) * (Number(pricing?.output) || 0) +
+    searchRequests * (Number(pricing?.web_search_request) || 0);
+  return {
+    input_tokens: tokensIn,
+    output_tokens: tokensOut,
+    tokens_in: tokensIn,
+    tokens_out: tokensOut,
+    latency_ms: Math.max(0, Number(latencyMs) || 0),
+    cost_usd_estimate: Number(estimatedCost.toFixed(6)),
+  };
+}
+
+function extractOpenAIOutputText(resp) {
+  if (typeof resp?.output_text === 'string') return resp.output_text;
+  const parts = [];
+  for (const item of Array.isArray(resp?.output) ? resp.output : []) {
+    if (item?.type !== 'message') continue;
+    for (const content of Array.isArray(item.content) ? item.content : []) {
+      if (content?.type === 'output_text' && typeof content.text === 'string') {
+        parts.push(content.text);
+      }
+    }
+  }
+  return parts.join('');
+}
+
+function extractOpenAIGroundingChunks(resp) {
+  const sources = [];
+  for (const item of Array.isArray(resp?.output) ? resp.output : []) {
+    if (item?.type === 'web_search_call') {
+      const actionSources = item?.action?.sources;
+      if (Array.isArray(actionSources)) sources.push(...actionSources);
+      if (item?.action?.url || item?.action?.uri) {
+        sources.push({
+          uri: item.action.uri || item.action.url,
+          title: item.action.title || '',
+        });
+      }
+    }
+    if (item?.type !== 'message') continue;
+    for (const content of Array.isArray(item.content) ? item.content : []) {
+      for (const annotation of Array.isArray(content?.annotations) ? content.annotations : []) {
+        if (annotation?.type === 'url_citation' || annotation?.url || annotation?.uri) {
+          sources.push({
+            uri: annotation.uri || annotation.url,
+            title: annotation.title || '',
+          });
+        }
+      }
+    }
+  }
+  return normalizeGroundingSourcesFromItems(sources);
+}
+
+function countOpenAIWebSearchCalls(resp) {
+  let count = 0;
+  for (const item of Array.isArray(resp?.output) ? resp.output : []) {
+    if (item?.type === 'web_search_call') count += 1;
+  }
+  return count;
+}
+
+function extractAnthropicOutputText(resp) {
+  const parts = [];
+  for (const block of Array.isArray(resp?.content) ? resp.content : []) {
+    if (block?.type === 'text' && typeof block.text === 'string') parts.push(block.text);
+  }
+  return parts.join('');
+}
+
+function extractAnthropicGroundingChunks(resp) {
+  const sources = [];
+  for (const block of Array.isArray(resp?.content) ? resp.content : []) {
+    if (block?.type === 'web_search_tool_result') {
+      const content = Array.isArray(block.content) ? block.content : [block.content];
+      for (const result of content) {
+        if (result?.type === 'web_search_result' || result?.url || result?.uri) {
+          sources.push({
+            uri: result.uri || result.url,
+            title: result.title || '',
+          });
+        }
+      }
+    }
+    if (block?.type === 'text') {
+      for (const citation of Array.isArray(block.citations) ? block.citations : []) {
+        if (citation?.url || citation?.uri) {
+          sources.push({
+            uri: citation.uri || citation.url,
+            title: citation.title || '',
+          });
+        }
+      }
+    }
+  }
+  return normalizeGroundingSourcesFromItems(sources);
+}
+
+async function buildGroundedProviderProbe(input, providerSpec) {
+  const client = providerSpec.getClient();
+  if (!client) {
+    const mocked = buildMockProbe(input);
+    return { ...mocked, provider: providerSpec.noKeyFallbackProvider };
+  }
+
+  const { scan_mode, max_runs, context } = input;
+  const startedAt = Date.now();
+
+  const missingInputFinding = _checkAttributionInputs(scan_mode, context);
+  if (missingInputFinding) {
+    return {
+      scan_mode,
+      provider: providerSpec.provider,
+      runs_count: 0,
+      scores: { visibility_score: 0, attribution_echo_rate: 0 },
+      findings: [missingInputFinding],
+      usage: buildProviderUsage({
+        inputTokens: 0,
+        outputTokens: 0,
+        latencyMs: Date.now() - startedAt,
+        pricing: providerSpec.pricing,
+      }),
+      raw_runs: [],
+      aborted: 'missing_input',
+    };
+  }
+
+  const queries = resolveProbeQueries(scan_mode, max_runs, context);
+  if (!queries.length) {
+    return {
+      scan_mode,
+      provider: providerSpec.provider,
+      runs_count: 0,
+      scores: { visibility_score: 0, attribution_echo_rate: 0 },
+      findings: [],
+      usage: buildProviderUsage({
+        inputTokens: 0,
+        outputTokens: 0,
+        latencyMs: Date.now() - startedAt,
+        pricing: providerSpec.pricing,
+      }),
+      raw_runs: [],
+    };
+  }
+
+  const prompt = buildPromptForScanMode(input);
+  const rawRuns = [];
+  let inputTokens = 0;
+  let outputTokens = 0;
+  let webSearchRequests = 0;
+  let positives = 0;
+  let echoes = 0;
+
+  for (const q of queries) {
+    const userText = prompt.userPerQuery(q);
+    let parsed = null;
+    let rawText = '';
+    let chunks = [];
+    let groundingMetadata = null;
+    try {
+      const providerResult = await providerSpec.invoke({ client, input, prompt, userText, query: q });
+      rawText = providerResult.rawText || '';
+      parsed = unwrapJson(rawText);
+      chunks = Array.isArray(providerResult.chunks) ? providerResult.chunks : [];
+      groundingMetadata =
+        providerResult.groundingMetadata ||
+        groundingMetadataFromNormalizedChunks(chunks);
+      if (!chunks.length) chunks = normalizeGroundingChunks(groundingMetadata);
+      inputTokens += Number(providerResult.inputTokens || 0);
+      outputTokens += Number(providerResult.outputTokens || 0);
+      webSearchRequests += Number(providerResult.webSearchRequests || 0);
+    } catch (err) {
+      rawText = `__error__:${err && err.message ? err.message : String(err)}`;
+    }
+
+    const scoringGroundingMetadata =
+      groundingMetadata ||
+      groundingMetadataFromNormalizedChunks(chunks);
+    const scored = scoreProbeRunEvidence({
+      scan_mode,
+      parsed,
+      rawText,
+      groundingMetadata: scoringGroundingMetadata,
+      chunks,
+      context,
+    });
+    if (scored.positive) positives += 1;
+    if (scored.echo) echoes += 1;
+
+    rawRuns.push({
+      query: q,
+      raw: rawText,
+      parsed,
+      product_visible: scored.normalizedFields.product_visible,
+      competitors_listed: scored.normalizedFields.competitors_listed,
+      evidence_excerpt: scored.normalizedFields.evidence_excerpt,
+      grounding_chunks: chunks.map((c) => c.uri).filter(Boolean),
+      grounding_sources: chunks.map((c) => ({ uri: c.uri, title: c.title })),
+      url_match: scored.urlMatch,
+    });
+  }
+
+  const runsCount = queries.length;
+  const visibilityScore = runsCount > 0 ? Math.round((positives / runsCount) * 100) : 0;
+  const echoRate = runsCount > 0 ? Math.round((echoes / runsCount) * 100) : 0;
+  const findings = buildFindingsForScores(scan_mode, visibilityScore, echoRate, positives, rawRuns);
+
+  return {
+    scan_mode,
+    provider: providerSpec.provider,
+    runs_count: runsCount,
+    scores: { visibility_score: visibilityScore, attribution_echo_rate: echoRate },
+    findings,
+    usage: buildProviderUsage({
+      inputTokens,
+      outputTokens,
+      webSearchRequests,
+      latencyMs: Date.now() - startedAt,
+      pricing: providerSpec.pricing,
+    }),
+    raw_runs: rawRuns,
+  };
+}
+
 async function buildGeminiProbe(input) {
   const client = getGeminiClient();
   if (!client) {
@@ -698,6 +1266,7 @@ async function buildGeminiProbe(input) {
   }
 
   const { scan_mode, max_runs, context } = input;
+  const startedAt = Date.now();
 
   // Guard: attribution modes can't produce a meaningful score without the
   // URL we're trying to attribute. Running anyway always produces
@@ -713,7 +1282,12 @@ async function buildGeminiProbe(input) {
       runs_count: 0,
       scores: { visibility_score: 0, attribution_echo_rate: 0 },
       findings: [missingInputFinding],
-      usage: { input_tokens: 0, output_tokens: 0 },
+      usage: buildProviderUsage({
+        inputTokens: 0,
+        outputTokens: 0,
+        latencyMs: Date.now() - startedAt,
+        pricing: GEMINI_PRICE_PER_1K_TOKENS,
+      }),
       raw_runs: [],
       aborted: 'missing_input',
     };
@@ -748,7 +1322,12 @@ async function buildGeminiProbe(input) {
       runs_count: 0,
       scores: { visibility_score: 0, attribution_echo_rate: 0 },
       findings: [],
-      usage: { input_tokens: 0, output_tokens: 0 },
+      usage: buildProviderUsage({
+        inputTokens: 0,
+        outputTokens: 0,
+        latencyMs: Date.now() - startedAt,
+        pricing: GEMINI_PRICE_PER_1K_TOKENS,
+      }),
       raw_runs: [],
     };
   }
@@ -779,18 +1358,22 @@ async function buildGeminiProbe(input) {
     let rawText = '';
     let groundingMetadata = null;
     try {
-      const resp = await withTimeout(
-        client.models.generateContent({
-          model: GEMINI_MODEL,
-          contents: [
-            {
-              role: 'user',
-              parts: [{ text: `${prompt.system}\n\n${userText}` }],
-            },
-          ],
-          config: generationConfig,
-        }),
-        DEFAULT_GEMINI_TIMEOUT_MS,
+      const resp = await withProbeCostGate(
+        input,
+        'gemini',
+        () => withTimeout(
+          client.models.generateContent({
+            model: GEMINI_MODEL,
+            contents: [
+              {
+                role: 'user',
+                parts: [{ text: `${prompt.system}\n\n${userText}` }],
+              },
+            ],
+            config: generationConfig,
+          }),
+          DEFAULT_GEMINI_TIMEOUT_MS,
+        ),
       );
       if (typeof resp?.text === 'function') {
         rawText = await resp.text();
@@ -823,6 +1406,7 @@ async function buildGeminiProbe(input) {
     // model still produces self-reports; we keep them in raw_runs for
     // debugging but don't trust them for the score.
     let urlMatch = null;
+    let runPositive = false;
     if (scan_mode === 'open_product_visibility_test') {
       // FIX (post-BoJ-run audit): self-report-only scoring is tautological —
       // the model sees a query mentioning the product and answers "yes"
@@ -831,6 +1415,7 @@ async function buildGeminiProbe(input) {
       // Positive ONLY when self-report is true AND grounding has chunks.
       if (parsed && parsed.product_visible === true && hasAnyGrounding) {
         positives += 1;
+        runPositive = true;
       }
     } else if (scan_mode === 'merchant_store_attribution_test') {
       const target = context.merchant_pdp_url || '';
@@ -849,7 +1434,10 @@ async function buildGeminiProbe(input) {
         in_text: Boolean(target) && textContainsUrl(rawText, target),
         llm_self_report: parsed && parsed.merchant_url_found === true,
       };
-      if (inGrounding) positives += 1;
+      if (inGrounding) {
+        positives += 1;
+        runPositive = true;
+      }
     } else if (scan_mode === 'pivota_pdp_attribution_test') {
       const target = context.pivota_pdp_url || '';
       const inGrounding = Boolean(target) && groundingContainsUrl(
@@ -870,7 +1458,10 @@ async function buildGeminiProbe(input) {
           pivota_echo_only: parsed && parsed.pivota_echo_only === true,
         },
       };
-      if (inGrounding) positives += 1;
+      if (inGrounding) {
+        positives += 1;
+        runPositive = true;
+      }
       if (echoOnly) echoes += 1;
     } else if (scan_mode === 'search_grounded_product_discovery_test') {
       const target = context.pivota_pdp_url || context.merchant_pdp_url || '';
@@ -882,10 +1473,14 @@ async function buildGeminiProbe(input) {
           in_text: textContainsUrl(rawText, target),
           llm_self_report: parsed && parsed.product_visible === true,
         };
-        if (inGrounding) positives += 1;
+        if (inGrounding) {
+          positives += 1;
+          runPositive = true;
+        }
       } else if (parsed && parsed.product_visible === true && hasAnyGrounding) {
         // Same anti-tautology guard as open_visibility.
         positives += 1;
+        runPositive = true;
       }
     } else if (scan_mode === 'category_visibility_test') {
       // Category visibility: positive when the merchant's brand or URL
@@ -907,12 +1502,19 @@ async function buildGeminiProbe(input) {
         in_text: false,
         llm_self_report: parsed && parsed.brand_appears === true,
       };
-      if (brandHit) positives += 1;
+      if (brandHit) {
+        positives += 1;
+        runPositive = true;
+      }
     }
+    const normalizedFields = normalizeProbeRunFields(scan_mode, parsed, urlMatch, runPositive);
     rawRuns.push({
       query: q,
       raw: rawText,
       parsed,
+      product_visible: normalizedFields.product_visible,
+      competitors_listed: normalizedFields.competitors_listed,
+      evidence_excerpt: normalizedFields.evidence_excerpt,
       // Surface BOTH uri AND title per chunk. Title is the canonical
       // "what site did Gemini cite" signal — uri is usually a Vertex AI
       // redirector (vertexaisearch.cloud.google.com) that doesn't reveal
@@ -987,9 +1589,110 @@ async function buildGeminiProbe(input) {
     runs_count: runsCount,
     scores: { visibility_score: visibilityScore, attribution_echo_rate: echoRate },
     findings,
-    usage: { input_tokens: inputTokens, output_tokens: outputTokens },
+    usage: buildProviderUsage({
+      inputTokens,
+      outputTokens,
+      latencyMs: Date.now() - startedAt,
+      pricing: GEMINI_PRICE_PER_1K_TOKENS,
+    }),
     raw_runs: rawRuns,
   };
+}
+
+async function buildChatGptProbe(input) {
+  return buildGroundedProviderProbe(input, {
+    provider: 'chatgpt',
+    getClient: getOpenAIClient,
+    noKeyFallbackProvider: 'mock_fallback_no_openai_key',
+    pricing: OPENAI_PRICE_PER_1K_TOKENS,
+    invoke: async ({ client, input: probeInput, prompt, userText }) => {
+      const resp = await withProbeCostGate(
+        probeInput,
+        'chatgpt',
+        () => withTimeout(
+          client.responses.create({
+            model: OPENAI_MODEL,
+            instructions: prompt.system,
+            input: userText,
+            tools: [{ type: 'web_search_preview' }],
+            tool_choice: 'auto',
+            include: ['web_search_call.action.sources'],
+            max_output_tokens: 900,
+            store: false,
+          }),
+          DEFAULT_OPENAI_TIMEOUT_MS,
+        ),
+      );
+      const chunks = extractOpenAIGroundingChunks(resp);
+      return {
+        rawText: extractOpenAIOutputText(resp),
+        chunks,
+        groundingMetadata: groundingMetadataFromNormalizedChunks(chunks),
+        inputTokens: Number(resp?.usage?.input_tokens || 0),
+        outputTokens: Number(resp?.usage?.output_tokens || 0),
+        webSearchRequests: countOpenAIWebSearchCalls(resp),
+      };
+    },
+  });
+}
+
+async function buildClaudeProbe(input) {
+  return buildGroundedProviderProbe(input, {
+    provider: 'claude',
+    getClient: getAnthropicClient,
+    noKeyFallbackProvider: 'mock_fallback_no_anthropic_key',
+    pricing: ANTHROPIC_PRICE_PER_1K_TOKENS,
+    invoke: async ({ client, input: probeInput, prompt, userText }) => {
+      const resp = await withProbeCostGate(
+        probeInput,
+        'claude',
+        () => withTimeout(
+          client.messages.create({
+            model: ANTHROPIC_MODEL,
+            max_tokens: 900,
+            temperature: 0,
+            system: prompt.system,
+            messages: [{ role: 'user', content: userText }],
+            tools: [
+              {
+                type: ANTHROPIC_WEB_SEARCH_TOOL_VERSION,
+                name: 'web_search',
+                max_uses: 5,
+              },
+            ],
+          }),
+          DEFAULT_ANTHROPIC_TIMEOUT_MS,
+        ),
+      );
+      const chunks = extractAnthropicGroundingChunks(resp);
+      return {
+        rawText: extractAnthropicOutputText(resp),
+        chunks,
+        groundingMetadata: groundingMetadataFromNormalizedChunks(chunks),
+        inputTokens: Number(resp?.usage?.input_tokens || 0),
+        outputTokens: Number(resp?.usage?.output_tokens || 0),
+        webSearchRequests: Number(resp?.usage?.server_tool_use?.web_search_requests || 0),
+      };
+    },
+  });
+}
+
+async function dispatchProbe(normalized) {
+  if (normalized.provider === 'gemini') {
+    return buildGeminiProbe(normalized);
+  }
+  if (normalized.provider === 'chatgpt') {
+    return buildChatGptProbe(normalized);
+  }
+  if (normalized.provider === 'claude') {
+    return buildClaudeProbe(normalized);
+  }
+  if (normalized.provider === 'mock') {
+    return buildMockProbe(normalized);
+  }
+  throw new Error(
+    `unsupported provider: ${normalized.provider}. Allowed: ${[...ALLOWED_PROVIDERS].join(', ')}`,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -1010,11 +1713,7 @@ async function handleProbeRequest(req, res) {
 
   let result;
   try {
-    if (normalized.provider === 'gemini') {
-      result = await buildGeminiProbe(normalized);
-    } else {
-      result = buildMockProbe(normalized);
-    }
+    result = await dispatchProbe(normalized);
   } catch (err) {
     return res.status(502).json({
       ok: false,
@@ -1043,17 +1742,24 @@ module.exports = {
     validateRequest,
     buildMockProbe,
     buildGeminiProbe,
+    buildChatGptProbe,
+    buildClaudeProbe,
+    dispatchProbe,
+    getOpenAIClient,
+    getAnthropicClient,
     requireInternalKey,
     handleProbeRequest,
     normalizeUrl,
     textContainsUrl,
     groundingContainsUrl,
     normalizeGroundingChunks,
+    normalizeGroundingSourcesFromItems,
     textMentionsHostOnly,
     unwrapJson,
     buildAutoQueries,
     buildCategoryQueries,
     PRIMARY_ISSUE_TYPE_BY_SCAN_MODE,
     ALLOWED_SCAN_MODES,
+    ALLOWED_PROVIDERS,
   },
 };

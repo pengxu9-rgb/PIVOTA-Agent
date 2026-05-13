@@ -1056,3 +1056,328 @@ describe('agentCenterLlmProbe — buildGeminiProbe with mocked client + groundin
     expect(out.aborted).toBeUndefined();
   });
 });
+
+
+// ---------------------------------------------------------------------------
+// ChatGPT + Claude providers — mocked SDK clients, no real token spend.
+// ---------------------------------------------------------------------------
+
+describe('agentCenterLlmProbe — ChatGPT and Claude providers', () => {
+  function loadModule() {
+    jest.resetModules();
+    return require('../src/internal/agentCenterLlmProbe');
+  }
+
+  function installFakeOpenAI(createImpl) {
+    process.env.OPENAI_API_KEY = 'fake-openai-key-for-tests';
+    const OpenAI = jest.fn(function OpenAI() {
+      return {
+        responses: { create: createImpl },
+      };
+    });
+    jest.doMock('openai', () => OpenAI);
+    return { probe: loadModule(), OpenAI };
+  }
+
+  function installFakeAnthropic(createImpl) {
+    process.env.ANTHROPIC_API_KEY = 'fake-anthropic-key-for-tests';
+    const Anthropic = jest.fn(function Anthropic() {
+      return {
+        messages: { create: createImpl },
+      };
+    });
+    jest.doMock('@anthropic-ai/sdk', () => Anthropic, { virtual: true });
+    return { probe: loadModule(), Anthropic };
+  }
+
+  afterEach(() => {
+    jest.resetModules();
+    jest.dontMock('openai');
+    try {
+      jest.dontMock('@anthropic-ai/sdk');
+    } catch (_err) {
+      // The dependency may be absent from a reused local node_modules before
+      // npm install; virtual mocks still cover these unit tests.
+    }
+    jest.dontMock('@google/genai');
+    delete process.env.OPENAI_API_KEY;
+    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.GEMINI_API_KEY;
+  });
+
+  test('validateRequest accepts ChatGPT and Claude providers but keeps Perplexity out', () => {
+    const { _internals } = loadModule();
+    const base = {
+      scan_mode: 'open_product_visibility_test',
+      scan_target_id: 'acst_1',
+      merchant_id: 'm1',
+      store_id: 's1',
+      context: {},
+    };
+    expect(_internals.validateRequest({ ...base, options: { provider: 'chatgpt' } }).ok).toBe(true);
+    expect(_internals.validateRequest({ ...base, options: { provider: 'claude' } }).ok).toBe(true);
+    expect(_internals.ALLOWED_PROVIDERS.has('perplexity')).toBe(false);
+    const perplexity = _internals.validateRequest({ ...base, options: { provider: 'perplexity' } });
+    expect(perplexity.ok).toBe(false);
+    expect(perplexity.error).toMatch(/unsupported provider/);
+  });
+
+  test('ChatGPT probe uses Responses API web_search_preview and normalizes grounding output', async () => {
+    let observedArgs = null;
+    const create = jest.fn(async (args) => {
+      observedArgs = args;
+      return {
+        output_text:
+          '{"product_visible": true, "competitors_listed": ["Sephora"], "evidence_excerpt": "Merchant PDP was cited."}',
+        output: [
+          {
+            type: 'web_search_call',
+            action: {
+              type: 'search',
+              sources: [{ url: 'https://merchant.com/p/123', title: 'Merchant Product Page' }],
+            },
+          },
+          {
+            type: 'message',
+            content: [
+              {
+                type: 'output_text',
+                text:
+                  '{"product_visible": true, "competitors_listed": ["Sephora"], "evidence_excerpt": "Merchant PDP was cited."}',
+                annotations: [
+                  { type: 'url_citation', url: 'https://merchant.com/p/123', title: 'Merchant Product Page' },
+                ],
+              },
+            ],
+          },
+        ],
+        usage: { input_tokens: 120, output_tokens: 35 },
+      };
+    });
+    const { probe } = installFakeOpenAI(create);
+
+    const out = await probe._internals.buildChatGptProbe({
+      scan_mode: 'open_product_visibility_test',
+      merchant_id: 'm1',
+      store_id: 's1',
+      max_runs: 1,
+      context: {
+        queries: ['where can I buy Product X'],
+        product: { title: 'Product X' },
+      },
+    });
+
+    expect(observedArgs.tools).toEqual([{ type: 'web_search_preview' }]);
+    expect(out.provider).toBe('chatgpt');
+    expect(out.scores.visibility_score).toBe(100);
+    expect(out.usage).toEqual(expect.objectContaining({
+      input_tokens: 120,
+      output_tokens: 35,
+      tokens_in: 120,
+      tokens_out: 35,
+      latency_ms: expect.any(Number),
+      cost_usd_estimate: expect.any(Number),
+    }));
+    expect(out.raw_runs[0]).toEqual(expect.objectContaining({
+      product_visible: true,
+      competitors_listed: ['Sephora'],
+      evidence_excerpt: 'Merchant PDP was cited.',
+      grounding_chunks: ['https://merchant.com/p/123'],
+      grounding_sources: [{ uri: 'https://merchant.com/p/123', title: 'Merchant Product Page' }],
+      url_match: null,
+    }));
+  });
+
+  test('ChatGPT probe with empty output_text returns Gemini-compatible fallback run shape', async () => {
+    const create = jest.fn(async () => ({
+      output_text: '',
+      output: [],
+      usage: { input_tokens: 25, output_tokens: 0 },
+    }));
+    const { probe } = installFakeOpenAI(create);
+
+    const out = await probe._internals.buildChatGptProbe({
+      scan_mode: 'open_product_visibility_test',
+      merchant_id: 'm1',
+      store_id: 's1',
+      max_runs: 1,
+      context: {
+        queries: ['where can I buy Product X'],
+        product: { title: 'Product X' },
+      },
+    });
+
+    expect(out.provider).toBe('chatgpt');
+    expect(out.scores.visibility_score).toBe(0);
+    expect(out.findings.map((f) => f.issue_type)).toContain('ai_visibility_loss');
+    expect(out.raw_runs[0]).toEqual(expect.objectContaining({
+      raw: '',
+      parsed: null,
+      product_visible: false,
+      competitors_listed: [],
+      evidence_excerpt: '',
+      grounding_chunks: [],
+      grounding_sources: [],
+      url_match: null,
+    }));
+  });
+
+  test('Claude probe uses web_search tool result and normalizes grounding output', async () => {
+    let observedArgs = null;
+    const create = jest.fn(async (args) => {
+      observedArgs = args;
+      return {
+        content: [
+          {
+            type: 'server_tool_use',
+            name: 'web_search',
+            input: { query: 'where to buy Product X' },
+          },
+          {
+            type: 'web_search_tool_result',
+            content: [
+              {
+                type: 'web_search_result',
+                url: 'https://merchant.com/p/123',
+                title: 'Merchant Product Page',
+              },
+            ],
+          },
+          {
+            type: 'text',
+            text: '{"merchant_url_found": false, "evidence_excerpt": "Merchant page cited."}',
+            citations: [
+              {
+                type: 'web_search_result_location',
+                url: 'https://merchant.com/p/123',
+                title: 'Merchant Product Page',
+              },
+            ],
+          },
+        ],
+        usage: {
+          input_tokens: 95,
+          output_tokens: 21,
+          server_tool_use: { web_search_requests: 1 },
+        },
+      };
+    });
+    const { probe } = installFakeAnthropic(create);
+
+    const out = await probe._internals.buildClaudeProbe({
+      scan_mode: 'merchant_store_attribution_test',
+      merchant_id: 'm1',
+      store_id: 's1',
+      max_runs: 1,
+      context: {
+        queries: ['where to buy Product X'],
+        merchant_pdp_url: 'https://merchant.com/p/123',
+        product: { title: 'Product X', vendor: 'Merchant' },
+      },
+    });
+
+    expect(observedArgs.tools).toEqual([
+      { type: 'web_search_20250305', name: 'web_search', max_uses: 5 },
+    ]);
+    expect(out.provider).toBe('claude');
+    expect(out.scores.visibility_score).toBe(100);
+    expect(out.raw_runs[0]).toEqual(expect.objectContaining({
+      product_visible: true,
+      evidence_excerpt: 'Merchant page cited.',
+      grounding_chunks: ['https://merchant.com/p/123'],
+      grounding_sources: [{ uri: 'https://merchant.com/p/123', title: 'Merchant Product Page' }],
+      url_match: expect.objectContaining({
+        target_url: 'https://merchant.com/p/123',
+        in_grounding: true,
+        llm_self_report: false,
+      }),
+    }));
+    expect(out.usage.cost_usd_estimate).toBeGreaterThan(0);
+  });
+
+  test('Claude probe 5xx upstream error returns Gemini-compatible per-run error shape', async () => {
+    const err = new Error('upstream unavailable');
+    err.status = 503;
+    const create = jest.fn(async () => {
+      throw err;
+    });
+    const { probe } = installFakeAnthropic(create);
+
+    const out = await probe._internals.buildClaudeProbe({
+      scan_mode: 'open_product_visibility_test',
+      merchant_id: 'm1',
+      store_id: 's1',
+      max_runs: 1,
+      context: {
+        queries: ['where can I buy Product X'],
+        product: { title: 'Product X' },
+      },
+    });
+
+    expect(out.provider).toBe('claude');
+    expect(out.scores.visibility_score).toBe(0);
+    expect(out.raw_runs[0]).toEqual(expect.objectContaining({
+      raw: '__error__:upstream unavailable',
+      parsed: null,
+      product_visible: false,
+      grounding_chunks: [],
+      grounding_sources: [],
+      url_match: null,
+    }));
+    expect(out.findings.map((f) => f.issue_type)).toContain('ai_visibility_loss');
+  });
+
+  test('provider dispatch routes chatgpt to OpenAI client, not Gemini', async () => {
+    const create = jest.fn(async () => ({
+      output_text: '{"product_visible": true}',
+      output: [
+        {
+          type: 'message',
+          content: [
+            {
+              type: 'output_text',
+              text: '{"product_visible": true}',
+              annotations: [{ type: 'url_citation', url: 'https://merchant.com/p/123', title: 'Merchant' }],
+            },
+          ],
+        },
+      ],
+      usage: { input_tokens: 10, output_tokens: 5 },
+    }));
+    process.env.GEMINI_API_KEY = 'fake-gemini-key-for-tests';
+    jest.doMock('@google/genai', () => ({
+      GoogleGenAI: jest.fn(() => {
+        throw new Error('Gemini should not be constructed for chatgpt dispatch');
+      }),
+    }));
+    const { probe, OpenAI } = installFakeOpenAI(create);
+
+    const out = await probe._internals.dispatchProbe({
+      scan_mode: 'open_product_visibility_test',
+      provider: 'chatgpt',
+      merchant_id: 'm1',
+      store_id: 's1',
+      max_runs: 1,
+      context: {
+        queries: ['where can I buy Product X'],
+        product: { title: 'Product X' },
+      },
+    });
+
+    expect(out.provider).toBe('chatgpt');
+    expect(OpenAI).toHaveBeenCalledTimes(1);
+    expect(create).toHaveBeenCalledTimes(1);
+  });
+
+  test('provider dispatch rejects invalid provider with existing unsupported-provider message', async () => {
+    const { _internals } = loadModule();
+    await expect(_internals.dispatchProbe({
+      scan_mode: 'open_product_visibility_test',
+      provider: 'perplexity',
+      merchant_id: 'm1',
+      store_id: 's1',
+      max_runs: 1,
+      context: { queries: ['x'] },
+    })).rejects.toThrow(/unsupported provider: perplexity/);
+  });
+});
