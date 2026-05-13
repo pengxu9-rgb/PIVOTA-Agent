@@ -970,6 +970,23 @@ function parseMetafieldReviews(html) {
   }
 }
 
+function extractYotpoContext(host, html) {
+  if (host !== 'fentybeauty.com') return null;
+  const raw = String(html || '');
+  const appKey = normalizeText(
+    (raw.match(/\byotpoKey\s*:\s*["']([^"']+)["']/i) || [])[1] ||
+      (raw.match(/\byotpo-key=["']([^"']+)["']/i) || [])[1] ||
+      (raw.match(/"yotpoStoreId"\s*:\s*"([^"]+)"/i) || [])[1],
+  );
+  const productId = normalizeText(
+    (raw.match(/\bresourceId["']?\s*:\s*["']?(\d{6,})["']?/i) || [])[1] ||
+      (raw.match(/shopify_[A-Z]{2}_(\d{6,})_\d{6,}/i) || [])[1] ||
+      (raw.match(/"product"\s*:\s*\{[\s\S]{0,500}?"id"\s*:\s*"(\d{6,})"/i) || [])[1],
+  );
+  if (!appKey || !productId) return null;
+  return { appKey, productId };
+}
+
 function extractBazaarvoiceProductId(html) {
   const raw = String(html || '');
   const match =
@@ -1109,6 +1126,82 @@ function distributionFromStampedRows(rows, total) {
       percent: normalizedTotal > 0 ? count / normalizedTotal : 0,
     };
   });
+}
+
+function normalizeYotpoPreviewItems(rows) {
+  return asArray(rows)
+    .filter((row) => Number(row?.score || 0) >= 4)
+    .filter((row) => !row?.deleted)
+    .filter((row) => !row?.language || String(row.language).toLowerCase().startsWith('en'))
+    .filter((row) => hasUsefulReviewText(row?.content))
+    .slice(0, 6)
+    .map((row) => ({
+      review_id: `yotpo_${String(row.id || row.source_review_id || '')}`,
+      rating: Math.max(1, Math.min(5, Math.round(Number(row.score || 0) || 5))),
+      author_label: normalizeText(row?.user?.display_name || 'Verified buyer'),
+      ...(normalizeText(row.title) && !/^(?:great|good|love it|perfect|nice)$/i.test(normalizeText(row.title))
+        ? { title: normalizeText(row.title).slice(0, 90) }
+        : {}),
+      text_snippet: normalizeText(row.content).slice(0, 360),
+      source: 'merchant_public',
+      source_kind: 'yotpo_reviews_api',
+      source_scope: 'merchant_public',
+      public_visible: true,
+      verified_buyer: Boolean(row.verified_buyer),
+      content_review_state: 'approved',
+    }))
+    .filter((row) => row.review_id !== 'yotpo_' && row.text_snippet);
+}
+
+function distributionFromYotpoBottomline(bottomline) {
+  const reviewCount = Math.round(Number(bottomline?.total_review || 0));
+  const distribution = ensureObject(bottomline?.star_distribution);
+  if (!reviewCount || Object.keys(distribution).length === 0) return null;
+  return Array.from({ length: 5 }, (_, index) => {
+    const stars = 5 - index;
+    const count = Math.max(0, Math.round(Number(distribution[String(stars)] || 0)));
+    return {
+      stars,
+      count,
+      percent: reviewCount > 0 ? count / reviewCount : 0,
+    };
+  });
+}
+
+async function fetchYotpoReviewSummary(host, html) {
+  const context = extractYotpoContext(host, html);
+  if (!context) return null;
+  const params = new URLSearchParams({
+    page: '1',
+    per_page: '20',
+  });
+  const reviewsUrl = `https://api.yotpo.com/v1/widget/${encodeURIComponent(context.appKey)}/products/${encodeURIComponent(
+    context.productId,
+  )}/reviews.json?${params.toString()}`;
+  const payload = await fetchJson(reviewsUrl, Number(process.env.OFFICIAL_YOTPO_TIMEOUT_MS || 15000));
+  const bottomline = ensureObject(payload?.response?.bottomline);
+  const rows = asArray(payload?.response?.reviews);
+  const rating = Number(bottomline.average_score || 0);
+  const reviewCount = Math.round(Number(bottomline.total_review || 0));
+  const previewItems = normalizeYotpoPreviewItems(rows);
+  if (!Number.isFinite(rating) || rating <= 0 || !Number.isFinite(reviewCount) || reviewCount <= 0) return null;
+  if (previewItems.length === 0) return null;
+
+  const starDistribution = distributionFromYotpoBottomline(bottomline);
+  return {
+    rating,
+    scale: 5,
+    review_count: reviewCount,
+    exact_item_review_count: reviewCount,
+    aggregation_scope: 'product',
+    source_origin: 'official_yotpo_reviews_api',
+    source_url: reviewsUrl,
+    ...(starDistribution ? {
+      star_distribution: starDistribution,
+      rating_distribution: starDistribution,
+    } : {}),
+    preview_items: previewItems,
+  };
 }
 
 async function fetchStampedReviewSummary(host, html) {
@@ -1382,6 +1475,14 @@ async function extractOfficialHtmlFields(host, html, options = {}) {
       ...ensureObject(fields.review_summary),
       ...bazaarvoiceReview,
       source_origin: bazaarvoiceReview.source_origin || fields.review_summary?.source_origin,
+    };
+  }
+  const yotpoReview = await fetchYotpoReviewSummary(host, html);
+  if (yotpoReview) {
+    fields.review_summary = {
+      ...ensureObject(fields.review_summary),
+      ...yotpoReview,
+      source_origin: yotpoReview.source_origin || fields.review_summary?.source_origin,
     };
   }
   return fields;
@@ -1692,6 +1793,92 @@ async function fetchRows(ids, market) {
   return res.rows || [];
 }
 
+function buildServingPayloadPatch(seedData, patchKeys) {
+  const snapshot = ensureObject(seedData.snapshot);
+  const patch = {};
+  const copyFirst = (targetKey, ...sourceKeys) => {
+    for (const key of sourceKeys) {
+      if (seedData[key] !== undefined) {
+        patch[targetKey] = seedData[key];
+        return;
+      }
+      if (snapshot[key] !== undefined) {
+        patch[targetKey] = snapshot[key];
+        return;
+      }
+    }
+  };
+
+  if (patchKeys.includes('review_summary')) {
+    copyFirst('review_summary', 'review_summary');
+  }
+  if (patchKeys.includes('pdp_description_raw')) {
+    copyFirst('description', 'description', 'pdp_description_raw');
+    copyFirst('pdp_description_raw', 'pdp_description_raw', 'description');
+  }
+  if (patchKeys.includes('pdp_ingredients_raw')) {
+    copyFirst('pdp_ingredients_raw', 'pdp_ingredients_raw');
+    copyFirst('raw_ingredient_text_clean', 'raw_ingredient_text_clean', 'pdp_ingredients_raw');
+  }
+  if (patchKeys.includes('pdp_active_ingredients_raw')) {
+    copyFirst('pdp_active_ingredients_raw', 'pdp_active_ingredients_raw');
+    copyFirst('active_ingredients', 'active_ingredients');
+  }
+  if (patchKeys.includes('pdp_how_to_use_raw')) {
+    copyFirst('pdp_how_to_use_raw', 'pdp_how_to_use_raw');
+  }
+  if (patchKeys.includes('pdp_details_sections')) {
+    copyFirst('pdp_details_sections', 'pdp_details_sections');
+  }
+  if (patchKeys.includes('variants')) {
+    copyFirst('variants', 'variants');
+    copyFirst('variant_skus', 'variant_skus');
+  }
+  copyFirst('pdp_field_quality_summary', 'pdp_field_quality_summary');
+  copyFirst('official_html_pdp_fields_v1', 'official_html_pdp_fields_v1');
+  copyFirst('external_seed_snapshot_contract', 'external_seed_snapshot_contract');
+  return Object.fromEntries(Object.entries(patch).filter(([, value]) => value !== undefined));
+}
+
+async function syncServingMirrors(externalProductId, seedData, patchKeys) {
+  const payloadPatch = buildServingPayloadPatch(seedData, patchKeys);
+  if (Object.keys(payloadPatch).length === 0) {
+    return { catalog_products: 0, pdp_identity_listing: 0 };
+  }
+  const payloadJson = stringifyPostgresJsonb(payloadPatch);
+  const reviewSummaryJson = payloadPatch.review_summary
+    ? stringifyPostgresJsonb(payloadPatch.review_summary)
+    : null;
+  const catalogRes = await query(
+    `
+      UPDATE catalog_products
+      SET product_payload = COALESCE(product_payload, '{}'::jsonb) || $2::jsonb,
+          updated_at = NOW()
+      WHERE merchant_id = 'external_seed'
+        AND platform = 'external_seed'
+        AND source_product_id = $1
+    `,
+    [externalProductId, payloadJson],
+  );
+  const identityRes = await query(
+    `
+      UPDATE pdp_identity_listing
+      SET source_payload = COALESCE(source_payload, '{}'::jsonb) || $2::jsonb,
+          review_summary = CASE
+            WHEN $3::jsonb IS NULL THEN review_summary
+            ELSE $3::jsonb
+          END,
+          updated_at = NOW()
+      WHERE source_listing_ref = $1
+    `,
+    [`external_seed:${externalProductId}`, payloadJson, reviewSummaryJson],
+  );
+  return {
+    catalog_products: Number(catalogRes.rowCount || 0),
+    pdp_identity_listing: Number(identityRes.rowCount || 0),
+  };
+}
+
 async function main() {
   const ids = [
     ...parseDelimitedIds(argValue('external-product-ids') || argValue('externalProductIds')),
@@ -1762,6 +1949,9 @@ async function main() {
           `,
           [row.external_product_id, stringifyPostgresJsonb(seedData)],
         );
+        result.serving_mirror_sync = await syncServingMirrors(row.external_product_id, seedData, patchKeys);
+      } else {
+        result.serving_mirror_sync = { planned: true };
       }
     } catch (error) {
       result.status = 'failed';
@@ -1819,8 +2009,10 @@ module.exports = {
     extractOfficialShopifyVariants,
     fetchStampedReviewSummary,
     fetchBazaarvoiceReviewSummary,
+    fetchYotpoReviewSummary,
     parseOkendoReviewSummary,
     buildSeedDataPatch,
+    buildServingPayloadPatch,
     hasUsefulReviewText,
     clearRecoveredStrictPdpSourceBlocker,
     buildShopifyProductJsonUrl,

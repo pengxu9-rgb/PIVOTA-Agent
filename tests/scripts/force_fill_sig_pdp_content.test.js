@@ -3,11 +3,13 @@ const {
     extractSize,
     dropPlaceholderVariantsWhenSafe,
     hasOnlyNonDisplayableVariants,
+    shouldPatchSingleLocaleOrGenericVariant,
     hydrateFlatVariantOptions,
     inferSingleSkuSpecFromTitle,
     isLikelyNonProductSourceHtml,
     sanitizeJsonPayload,
     buildVariantOnlySeedPatch,
+    buildForceFillServingPayloadPatch,
     buildSingleVariantFromSpec,
   },
 } = require('../../scripts/force-fill-sig-pdp-content.cjs');
@@ -91,6 +93,39 @@ describe('force-fill SIG PDP content script', () => {
       axisKind: 'format',
       source: 'force_filled_single_sku_default',
       evidence: 'Tone Brightening Tone-Up Sunscreen',
+      measured: false,
+    });
+  });
+
+  test('uses title format descriptors for single SKU mini/refill selectors', () => {
+    expect(
+      inferSingleSkuSpecFromTitle(
+        { title: 'Hydra Vizor Mini Broad Spectrum Mineral SPF 30 Sunscreen Moisturizer' },
+        {},
+        {},
+      ),
+    ).toEqual({
+      size: 'Mini',
+      value: 'Mini',
+      optionName: 'Format',
+      axisKind: 'format',
+      source: 'reviewed_title_pattern',
+      evidence: 'Hydra Vizor Mini Broad Spectrum Mineral SPF 30 Sunscreen Moisturizer',
+      measured: false,
+    });
+    expect(
+      inferSingleSkuSpecFromTitle(
+        { title: 'Hydra Vizor Refill Invisible Moisturizer SPF 30 with Niacinamide + Kalahari Melon — EU' },
+        {},
+        {},
+      ),
+    ).toEqual({
+      size: 'Refill',
+      value: 'Refill',
+      optionName: 'Format',
+      axisKind: 'format',
+      source: 'reviewed_title_pattern',
+      evidence: 'Hydra Vizor Refill Invisible Moisturizer SPF 30 with Niacinamide + Kalahari Melon — EU',
       measured: false,
     });
   });
@@ -284,5 +319,69 @@ describe('force-fill SIG PDP content script', () => {
         {},
       ),
     ).toBe(false);
+  });
+
+  test('detects single locale/generic variant axes that need format correction', () => {
+    expect(
+      shouldPatchSingleLocaleOrGenericVariant(
+        {
+          title: 'Hydra Vizor Broad Spectrum Mineral SPF 30 Sunscreen Moisturizer',
+          variants: [
+            {
+              title: 'US / Standard',
+              option_name: 'Color / Size',
+              option_value: 'US / Standard',
+              options: [{ name: 'Variant', value: 'US / Standard' }],
+            },
+          ],
+        },
+        {},
+      ),
+    ).toBe(true);
+    expect(
+      shouldPatchSingleLocaleOrGenericVariant(
+        {
+          title: 'Gloss Bomb Cream Color Drip Lip Cream — Fruit Snackz',
+          variants: [
+            {
+              title: 'Fruit Snackz',
+              option_name: 'Shade',
+              option_value: 'Fruit Snackz',
+              options: [{ name: 'Shade', value: 'Fruit Snackz' }],
+            },
+          ],
+        },
+        {},
+      ),
+    ).toBe(false);
+  });
+
+  test('builds serving mirror patches for variant-only force-fill repairs', () => {
+    const patch = buildForceFillServingPayloadPatch(
+      {
+        variants: [
+          {
+            variant_id: 'v-refill',
+            title: 'Refill',
+            options: [{ name: 'Format', value: 'Refill', axis_kind: 'format' }],
+          },
+        ],
+        variant_detail_label: 'Format',
+        format_detail_label: 'Refill',
+        snapshot: {
+          variants: [],
+        },
+      },
+      ['variant_sanitized'],
+    );
+
+    expect(patch.variants).toEqual([
+      expect.objectContaining({
+        variant_id: 'v-refill',
+        options: [{ name: 'Format', value: 'Refill', axis_kind: 'format' }],
+      }),
+    ]);
+    expect(patch.variant_detail_label).toBe('Format');
+    expect(patch.format_detail_label).toBe('Refill');
   });
 });

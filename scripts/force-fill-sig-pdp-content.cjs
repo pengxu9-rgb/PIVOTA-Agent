@@ -130,6 +130,22 @@ function extractSize(value) {
   return formatSize(match[1], match[2]);
 }
 
+function extractFormatDescriptor(value) {
+  const raw = text(value)
+    .replace(/[_-]+/g, ' ')
+    .replace(/%20/g, ' ');
+  if (!raw) return '';
+  if (/\bmini\b/i.test(raw)) return 'Mini';
+  if (/\brefill\b/i.test(raw)) return 'Refill';
+  if (/\btravel\s*size\b/i.test(raw)) return 'Travel Size';
+  if (/\bfull\s*size\b/i.test(raw)) return 'Full Size';
+  if (/\bjumbo\b/i.test(raw)) return 'Jumbo';
+  if (/\bstandard\b/i.test(raw)) return 'Standard';
+  if (/\bregular\b/i.test(raw)) return 'Regular';
+  if (/\bone\s*size\b/i.test(raw)) return 'One Size';
+  return '';
+}
+
 function hasField(seedData, snapshot, ...keys) {
   return keys.some((key) => text(seedData[key] || snapshot[key]));
 }
@@ -418,6 +434,10 @@ function isCompositeSizeOptionName(value) {
   return /\b(color|colour|shade|tone|hue)\b/.test(lower) && /\b(size|volume|weight)\b/.test(lower);
 }
 
+function isLocaleLikeVariantValue(value) {
+  return /^(?:us|usa|eu|uk|fr|de|es|it|ca|au|jp|kr|cn)$/i.test(text(value));
+}
+
 function looksLikeVariantSizeDescriptor(value) {
   return /\b(?:mini|standard|regular|full\s*size|travel\s*size|jumbo|refill|one\s*size)\b/i.test(text(value));
 }
@@ -564,6 +584,30 @@ function isSingleUndisplayableVariant(seedData, snapshot) {
   return !title || /^(default|default title|single|variant \d+)$/.test(title) || asArray(variants[0]?.options).length === 0;
 }
 
+function shouldPatchSingleLocaleOrGenericVariant(seedData, snapshot) {
+  const variants = asArray(snapshot.variants).length ? asArray(snapshot.variants) : asArray(seedData.variants);
+  if (variants.length !== 1) return false;
+  const variant = variants[0] || {};
+  const entries = [
+    { name: variant.option_name || variant.optionName, value: variant.option_value || variant.optionValue },
+    ...normalizeVariantOptionsList(variant.options),
+  ]
+    .map((option) => ({ name: text(option?.name), value: text(option?.value) }))
+    .filter((option) => option.name || option.value);
+  if (!entries.length) return false;
+  return entries.some((option) => {
+    const name = option.name.toLowerCase();
+    const value = option.value;
+    if (isLocaleLikeVariantValue(value) && /\b(color|colour|shade|tone|hue)\b/i.test(name)) return true;
+    if (/\b(option|variant|selection|title)\b/i.test(name)) {
+      const parts = value.split(/\s*\/\s*/).map((part) => part.trim()).filter(Boolean);
+      if (parts.some(isLocaleLikeVariantValue) && parts.some((part) => extractFormatDescriptor(part))) return true;
+      if (isLocaleLikeVariantValue(value) && extractFormatDescriptor(firstText(seedData.title, snapshot.title))) return true;
+    }
+    return false;
+  });
+}
+
 async function fetchSourceEvidence(row) {
   const sourceUrl = firstText(row.destination_url, row.canonical_url, row.catalog_canonical_url);
   if (!sourceUrl) return [];
@@ -640,6 +684,18 @@ function inferSingleSkuSpecFromTitle(row, seedData, snapshot) {
   const title = firstText(row.title, snapshot.title, seedData.title);
   if (!title) return null;
   const lower = title.toLowerCase();
+  const format = extractFormatDescriptor(title);
+  if (format) {
+    return {
+      size: format,
+      value: format,
+      optionName: 'Format',
+      axisKind: 'format',
+      source: 'reviewed_title_pattern',
+      evidence: title,
+      measured: false,
+    };
+  }
   const shadeMatch = title.match(/\s[—–-]\s*([^—–-]{2,80})$/);
   if (shadeMatch) {
     const value = text(shadeMatch[1]).replace(/^shade\s+/i, '');
@@ -720,11 +776,15 @@ async function inferSize(row, seedData, snapshot, { fetchSource = false } = {}) 
   for (const candidate of collectCandidateStrings(row, seedData, snapshot)) {
     const size = extractSize(candidate);
     if (size) return { size, value: size, optionName: 'Size', axisKind: 'size', source: 'stored_seed_evidence', evidence: text(candidate).slice(0, 240), measured: true };
+    const format = extractFormatDescriptor(candidate);
+    if (format) return { size: format, value: format, optionName: 'Format', axisKind: 'format', source: 'stored_seed_evidence', evidence: text(candidate).slice(0, 240), measured: false };
   }
   if (fetchSource) {
     for (const candidate of await fetchSourceEvidence(row)) {
       const size = extractSize(candidate);
       if (size) return { size, value: size, optionName: 'Size', axisKind: 'size', source: 'official_source_page', evidence: text(candidate).slice(0, 240), measured: true };
+      const format = extractFormatDescriptor(candidate);
+      if (format) return { size: format, value: format, optionName: 'Format', axisKind: 'format', source: 'official_source_page', evidence: text(candidate).slice(0, 240), measured: false };
     }
   }
   return inferSingleSkuSpecFromTitle(row, seedData, snapshot);
@@ -934,6 +994,30 @@ async function buildPlan(row, kbKeysWithIntel, opts) {
     }
   }
 
+  if (shouldPatchSingleLocaleOrGenericVariant(seedData, snapshot)) {
+    const inferred = await inferSize(row, seedData, snapshot, { fetchSource: opts.fetchSource });
+    if (inferred?.size && inferred.source !== 'force_filled_single_sku_default') {
+      const optionName = inferred.optionName || 'Format';
+      const axisKind = inferred.axisKind || 'format';
+      const value = inferred.value || inferred.size;
+      applyVariantSpecLabels(seedData, snapshot, { ...inferred, optionName, axisKind, value });
+      patchSingleVariantSpec(seedData, snapshot, { value, optionName, axisKind });
+      const sourceQuality = inferred.source === 'official_source_page' ? 'high' : 'force_filled_reviewed_pattern';
+      mergeQuality(seedData, snapshot, 'variants', sourceQuality, 'single_locale_variant_axis_corrected');
+      mergeForceFillMeta(seedData, snapshot, 'variant_sanitized', {
+        source: 'deterministic_single_locale_variant_axis_correction',
+        evidence: inferred.evidence,
+        value,
+        option_name: optionName,
+        axis_kind: axisKind,
+        content_review_state: inferred.source === 'official_source_page' ? 'source_verified' : 'assistant_reviewed',
+      });
+      changedFields.push('variant_sanitized');
+    } else {
+      planned.variant_size_blocked = true;
+    }
+  }
+
   if (
     isSingleUndisplayableVariant(seedData, snapshot)
   ) {
@@ -1101,9 +1185,72 @@ async function fetchKbIntelKeys(client, rows) {
   return new Set((res.rows || []).map((row) => row.kb_key));
 }
 
+function buildForceFillServingPayloadPatch(seedData, changedFields) {
+  const changed = new Set(Array.isArray(changedFields) ? changedFields : []);
+  const patch = {};
+  const includeVariantPatch =
+    changed.has('variant_size') ||
+    changed.has('variant_sanitized');
+  if (includeVariantPatch) {
+    Object.assign(patch, buildVariantOnlySeedPatch(seedData).rootPatch);
+  }
+  if (changed.has('ingredients')) {
+    for (const key of ['pdp_ingredients_raw', 'raw_ingredient_text_clean', 'ingredients_inci']) {
+      if (seedData[key] !== undefined) patch[key] = seedData[key];
+    }
+  }
+  if (changed.has('how_to')) {
+    for (const key of ['pdp_how_to_use_raw', 'how_to_use']) {
+      if (seedData[key] !== undefined) patch[key] = seedData[key];
+    }
+  }
+  if (changed.has('details')) {
+    for (const key of ['pdp_details_sections', 'details_sections']) {
+      if (seedData[key] !== undefined) patch[key] = seedData[key];
+    }
+  }
+  return patch;
+}
+
+async function syncServingMirrors(client, externalProductId, seedData, changedFields) {
+  const payloadPatch = buildForceFillServingPayloadPatch(seedData, changedFields);
+  if (Object.keys(payloadPatch).length === 0) {
+    return { catalog_products: 0, pdp_identity_listing: 0 };
+  }
+  const payloadJson = sanitizeJsonPayload(payloadPatch);
+  const catalogRes = await client.query(
+    `
+      UPDATE catalog_products
+      SET product_payload = COALESCE(product_payload, '{}'::jsonb) || $2::jsonb,
+          updated_at = NOW()
+      WHERE merchant_id = 'external_seed'
+        AND platform = 'external_seed'
+        AND source_product_id = $1
+    `,
+    [externalProductId, payloadJson],
+  );
+  const identityRes = await client.query(
+    `
+      UPDATE pdp_identity_listing
+      SET source_payload = COALESCE(source_payload, '{}'::jsonb) || $2::jsonb,
+          updated_at = NOW()
+      WHERE source_listing_ref = $1
+    `,
+    [`external_seed:${externalProductId}`, payloadJson],
+  );
+  return {
+    catalog_products: Number(catalogRes.rowCount || 0),
+    pdp_identity_listing: Number(identityRes.rowCount || 0),
+  };
+}
+
 async function applyPlans(client, plans) {
   let seedUpdates = 0;
   let kbUpserts = 0;
+  const mirrorSync = {
+    catalog_products: 0,
+    pdp_identity_listing: 0,
+  };
   for (const plan of plans) {
     if (plan.changed && plan.changed_fields.some((field) => field !== 'product_intel')) {
       try {
@@ -1133,6 +1280,14 @@ async function applyPlans(client, plans) {
             [plan.external_product_id, sanitizeJsonPayload(plan.next_seed_data)],
           );
         }
+        const syncResult = await syncServingMirrors(
+          client,
+          plan.external_product_id,
+          plan.next_seed_data,
+          plan.changed_fields,
+        );
+        mirrorSync.catalog_products += syncResult.catalog_products;
+        mirrorSync.pdp_identity_listing += syncResult.pdp_identity_listing;
       } catch (error) {
         error.message = `${error.message} (external_product_id=${plan.external_product_id})`;
         throw error;
@@ -1156,7 +1311,7 @@ async function applyPlans(client, plans) {
       kbUpserts += 1;
     }
   }
-  return { seedUpdates, kbUpserts };
+  return { seedUpdates, kbUpserts, mirrorSync };
 }
 
 function pickDefined(source, keys) {
@@ -1284,9 +1439,11 @@ module.exports = {
     isLikelyNonProductSourceHtml,
     dropPlaceholderVariantsWhenSafe,
     hasOnlyNonDisplayableVariants,
+    shouldPatchSingleLocaleOrGenericVariant,
     hydrateFlatVariantOptions,
     sanitizeJsonPayload,
     buildVariantOnlySeedPatch,
+    buildForceFillServingPayloadPatch,
     buildSingleVariantFromSpec,
     buildHowTo,
     buildIngredientForceFill,
