@@ -1483,7 +1483,7 @@ function supportsSparseHaircareExpansion(features) {
     ].filter(Boolean).join(' '),
   );
   if (!text) return false;
-  if (/\b(?:clip|clips|claw|barrette|headband|scrunchie|fragrance|mist|body|beard|shower gel|ingrown)\b/.test(text)) {
+  if (/\b(?:clip|clips|claw|barrette|headband|scrunchie|fragrance|mist|body|beard|shower gel|ingrown|lash|eyelash|mascara|brow)\b/.test(text)) {
     return false;
   }
   return /\b(?:shampoo|conditioner|scalp|hair oil|hair mask|leave in|leave-in|detangling|edge control|styling|curl|bonding|hair treatment|haircare|hair care)\b/.test(text);

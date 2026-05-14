@@ -184,6 +184,7 @@ describe('RecommendationEngine (PDP)', () => {
       ['ext_hair_clip', 'Mushroom Clips 2-Piece Smurf Hair Clip Set', 'Smurf', 'Hair Accessories'],
       ['ext_body_hair_mist', 'Find Comfort Body & Hair Fragrance Mist Mini', 'Rare Beauty', 'Fragrance Mist'],
       ['ext_ingrown_hair_pad', 'Ingrown Hair Pads with BHA + AHA Travel Size', 'First Aid Beauty', 'Body Treatment'],
+      ['ext_lash_curl', 'Lash Curl Finisher', 'TIRTIR', 'Mascara'],
     ].map(([product_id, title, brand, category, semanticVertical]) => {
       const product = makeProduct({
         merchant_id: 'external_seed',
@@ -211,6 +212,7 @@ describe('RecommendationEngine (PDP)', () => {
     expect(out.items.map((item) => item.product_id)).not.toContain('ext_hair_clip');
     expect(out.items.map((item) => item.product_id)).not.toContain('ext_body_hair_mist');
     expect(out.items.map((item) => item.product_id)).not.toContain('ext_ingrown_hair_pad');
+    expect(out.items.map((item) => item.product_id)).not.toContain('ext_lash_curl');
     expect(out.items.some((item) => item.reason.startsWith('L3V:external'))).toBe(true);
     expect(out.metadata.low_confidence_reason_codes || []).not.toEqual(
       expect.arrayContaining(['UNDERFILL_FOR_QUALITY']),
