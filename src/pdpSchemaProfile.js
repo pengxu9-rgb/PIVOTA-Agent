@@ -153,6 +153,19 @@ function resolvePdpSchemaProfile(product) {
     .map((option) => (typeof option === 'string' ? option : option?.name || option?.title || option?.label))
     .join(' ');
   const classificationText = [categoryText, tagsText, titleText, optionText].join(' ');
+  const productFamily = normalizeText(product.product_family || product.external_seed_product_family);
+
+  if (productFamily === 'single formula' || productFamily === 'singleformula') {
+    return PDP_SCHEMA_PROFILES.BEAUTY_FORMULA;
+  }
+  if (productFamily === 'set or collection' || productFamily === 'setorcollection') {
+    return PDP_SCHEMA_PROFILES.GENERIC_PRODUCT;
+  }
+  if (productFamily === 'accessory') {
+    return hasKeyword(classificationText, BEAUTY_TOOL_KEYWORDS)
+      ? PDP_SCHEMA_PROFILES.BEAUTY_TOOL
+      : PDP_SCHEMA_PROFILES.GENERIC_MERCH;
+  }
 
   if (hasKeyword(classificationText, MERCH_KEYWORDS)) return PDP_SCHEMA_PROFILES.GENERIC_MERCH;
   if (hasKeyword(classificationText, BEAUTY_TOOL_KEYWORDS)) return PDP_SCHEMA_PROFILES.BEAUTY_TOOL;
