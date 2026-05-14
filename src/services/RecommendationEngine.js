@@ -2888,10 +2888,13 @@ ${EXTERNAL_SEED_FAST_RECOMMENDATION_SELECT}
     let domainCategoryFocusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
     out.push(...preloadedDomainCategoryMatches);
     domainCategoryFocusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
+    const exactDomainCategorySellableCount = domainCategoryFocusedCandidates
+      .filter((product) => isSellable(product, { inStockOnly: true }))
+      .length;
     exactDomainCategoryCandidateCount = displayUniqueCandidateCount(domainCategoryFocusedCandidates);
     if (
       intentFamilyPattern &&
-      exactDomainCategoryCandidateCount >= exactDomainCategoryGoodEnoughCount
+      Math.max(exactDomainCategoryCandidateCount, exactDomainCategorySellableCount) >= exactDomainCategoryGoodEnoughCount
     ) {
       return attachExternalFetchStats(domainCategoryFocusedCandidates.slice(0, returnCap));
     }
