@@ -2255,8 +2255,8 @@ const PDP_SIMILAR_CARD_ENRICH_BUDGET_MS = Math.max(
   parseTimeoutMs(process.env.PDP_SIMILAR_CARD_ENRICH_BUDGET_MS, 900),
 );
 const PDP_SIMILAR_CARD_PRODUCT_INTEL_BUDGET_MS = Math.max(
-  50,
-  parseTimeoutMs(process.env.PDP_SIMILAR_CARD_PRODUCT_INTEL_BUDGET_MS, 250),
+  2000,
+  parseTimeoutMs(process.env.PDP_SIMILAR_CARD_PRODUCT_INTEL_BUDGET_MS, 2000),
 );
 const PDP_SIMILAR_CARD_DETAIL_BUDGET_MS = Math.max(
   50,

@@ -573,6 +573,35 @@ function extractRecommendationProductIntelBundle(kbEntry) {
   );
 }
 
+function collectRecommendationProductIntelKbKeys(product) {
+  const keys = [];
+  const add = (value) => {
+    const id = recCardString(value);
+    if (!id) return;
+    const key = `product:${id}`;
+    if (!keys.includes(key)) keys.push(key);
+  };
+  add(getProductId(product));
+  add(product?.external_product_id);
+  add(product?.sellable_item_group_id);
+  add(product?.signature_id);
+  add(product?.pivota_signature_id);
+  add(product?.parent_external_product_id);
+  add(product?.parent_product_id);
+  return keys;
+}
+
+function pickReviewedRecommendationProductIntelEntry(product, entriesByKey) {
+  if (!entriesByKey || typeof entriesByKey.get !== 'function') return null;
+  for (const kbKey of collectRecommendationProductIntelKbKeys(product)) {
+    const kbEntry = entriesByKey.get(kbKey);
+    const bundle = extractRecommendationProductIntelBundle(kbEntry);
+    if (!bundle) continue;
+    return { kbEntry, bundle };
+  }
+  return null;
+}
+
 function isReviewedRecommendationProductIntel(kbEntry, bundle) {
   const sourceMeta = asPlainObject(kbEntry?.source_meta) || {};
   const provenance = asPlainObject(bundle?.provenance) || {};
@@ -593,6 +622,46 @@ function isReviewedRecommendationProductIntel(kbEntry, bundle) {
     reviewerKind === 'human' ||
     source.includes('pivota_product_intel_pilot_selected')
   );
+}
+
+async function readProductIntelKbEntriesDirect(kbKeys) {
+  const keys = Array.from(new Set((Array.isArray(kbKeys) ? kbKeys : []).map((key) => String(key || '').trim()).filter(Boolean)));
+  if (!keys.length || !process.env.DATABASE_URL || typeof query !== 'function') return new Map();
+  try {
+    const res = await query(
+      `
+        SELECT kb_key, analysis, source, source_meta, last_success_at, last_error, created_at, updated_at
+        FROM aurora_product_intel_kb
+        WHERE kb_key = ANY($1::text[])
+      `,
+      [keys],
+    );
+    const out = new Map();
+    for (const row of res?.rows || []) {
+      const kbKey = recCardString(row?.kb_key);
+      if (!kbKey) continue;
+      out.set(kbKey, {
+        kb_key: kbKey,
+        analysis: asPlainObject(row.analysis) || null,
+        source: recCardString(row.source) || null,
+        source_meta: asPlainObject(row.source_meta) || null,
+        last_success_at: row.last_success_at || null,
+        last_error: asPlainObject(row.last_error) || null,
+        created_at: row.created_at || null,
+        updated_at: row.updated_at || null,
+      });
+    }
+    return out;
+  } catch (err) {
+    const message = String(err?.message || err || '');
+    if (!message.includes('aurora_product_intel_kb') || !message.includes('does not exist')) {
+      logger.warn(
+        { err: err?.message || String(err), keys: keys.length },
+        'recommendations product intel direct KB fallback failed',
+      );
+    }
+    return new Map();
+  }
 }
 
 function applyRecommendationProductIntelBundle(product, bundle) {
@@ -624,9 +693,12 @@ async function hydrateRecommendationItemsWithReviewedProductIntel(items) {
     hydrated_count: 0,
     skipped_unreviewed_count: 0,
     failed: false,
+    db_fallback_attempted_count: 0,
+    db_fallback_hit_count: 0,
   };
-  const ids = Array.from(new Set(list.map((item) => getProductId(item)).filter(Boolean)));
-  if (!ids.length) return { items: list, stats };
+  const kbKeysByItem = list.map((item) => collectRecommendationProductIntelKbKeys(item));
+  const kbKeys = Array.from(new Set(kbKeysByItem.flat()));
+  if (!kbKeys.length) return { items: list, stats };
 
   let getProductIntelKbEntries = null;
   try {
@@ -638,22 +710,34 @@ async function hydrateRecommendationItemsWithReviewedProductIntel(items) {
 
   let entriesByKey = null;
   try {
-    entriesByKey = await getProductIntelKbEntries(ids.map((id) => `product:${id}`));
+    entriesByKey = await getProductIntelKbEntries(kbKeys);
   } catch (err) {
     logger.warn(
-      { err: err?.message || String(err), items: ids.length },
+      { err: err?.message || String(err), items: list.length },
       'recommendations product intel card hydration failed',
     );
     return { items: list, stats: { ...stats, failed: true } };
   }
   if (!entriesByKey || typeof entriesByKey.get !== 'function') return { items: list, stats };
 
-  stats.attempted_count = ids.length;
+  stats.attempted_count = kbKeysByItem.filter((keys) => keys.length > 0).length;
+  const missingKbKeys = kbKeys
+    .filter((kbKey) => !extractRecommendationProductIntelBundle(entriesByKey.get(kbKey)));
+  if (missingKbKeys.length) {
+    stats.db_fallback_attempted_count = missingKbKeys.length;
+    const directEntries = await readProductIntelKbEntriesDirect(missingKbKeys);
+    if (directEntries?.size) {
+      for (const [kbKey, entry] of directEntries.entries()) {
+        if (!extractRecommendationProductIntelBundle(entry)) continue;
+        entriesByKey.set(kbKey, entry);
+        stats.db_fallback_hit_count += 1;
+      }
+    }
+  }
   const hydrated = list.map((item) => {
-    const productId = getProductId(item);
-    const kbEntry = productId ? entriesByKey.get(`product:${productId}`) : null;
-    const bundle = extractRecommendationProductIntelBundle(kbEntry);
-    if (!bundle) return item;
+    const picked = pickReviewedRecommendationProductIntelEntry(item, entriesByKey);
+    if (!picked?.bundle) return item;
+    const { kbEntry, bundle } = picked;
     if (!isReviewedRecommendationProductIntel(kbEntry, bundle)) {
       stats.skipped_unreviewed_count += 1;
       return item;
