@@ -175,23 +175,24 @@ describe('RecommendationEngine (PDP)', () => {
     base.semantic_vertical = 'haircare';
 
     const external = [
-      ['ext_hair_oil', 'Complete Pre-Wash Scalp Oil', 'JVN', ['Beauty', 'Haircare', 'Scalp Treatment']],
-      ['ext_scalp_tonic', 'Pine Cica Calming Scalp Tonic', 'Round Lab', ['Beauty', 'Haircare', 'Scalp Treatment']],
-      ['ext_repair_mask', 'Intense Repair Hair Mask', 'K18', ['Beauty', 'Haircare', 'Hair Mask']],
-      ['ext_bond_serum', 'Bond Repair Oil Serum', 'COSRX', ['Beauty', 'Haircare', 'Hair Oil']],
-      ['ext_conditioner', 'Strengthening Conditioner', 'Briogeo', ['Beauty', 'Haircare', 'Conditioner']],
-      ['ext_skin_serum', 'Niacinamide 20% Serum', 'Anua', ['Beauty', 'Skincare', 'Serum'], 'skincare'],
-    ].map(([product_id, title, brand, category_path, semanticVertical]) => {
+      ['ext_hair_oil', 'Complete Pre-Wash Scalp Oil', 'JVN', 'Scalp Treatment'],
+      ['ext_scalp_tonic', 'Pine Cica Calming Scalp Tonic', 'Round Lab', 'Scalp Treatment'],
+      ['ext_repair_mask', 'Intense Repair Hair Mask', 'K18', 'Hair Mask'],
+      ['ext_bond_serum', 'Bond Repair Oil Serum', 'COSRX', 'Hair Oil'],
+      ['ext_conditioner', 'Strengthening Conditioner', 'Briogeo', 'Conditioner'],
+      ['ext_skin_serum', 'Niacinamide 20% Serum', 'Anua', 'Serum', 'skincare'],
+    ].map(([product_id, title, brand, category, semanticVertical]) => {
       const product = makeProduct({
         merchant_id: 'external_seed',
         product_id,
         title,
         brand,
-        category_path,
+        category,
+        product_type: category,
         source: 'external_seed',
         price: 28,
       });
-      product.semantic_vertical = semanticVertical || 'haircare';
+      if (semanticVertical) product.semantic_vertical = semanticVertical;
       return product;
     });
 
