@@ -1137,6 +1137,71 @@ describe('RecommendationEngine external candidate fetch', () => {
     expect(products.every((product) => product.domain === 'tirtir.global')).toBe(true);
   });
 
+  test('deep-domain recall expands through same-brand rows before cross-brand category recall when same-domain underfills', async () => {
+    process.env.DATABASE_URL = 'postgres://example.test/pivota';
+
+    const queryMock = jest.fn(async (sql, params) => {
+      const sqlText = String(sql);
+      if (sqlText.includes('domain = ANY($4)') && sqlText.includes('LIKE ANY($5')) {
+        return { rows: [] };
+      }
+      if (sqlText.includes('domain = ANY($4)') && Array.isArray(params?.[4])) {
+        return {
+          rows: Array.from({ length: 8 }).map((_, index) =>
+            makeExternalRow({
+              id: `eps_tirtir_cushion_${index}`,
+              external_product_id: `ext_tirtir_cushion_${index}`,
+              title: `Mask Fit Cushion ${index}`,
+              brand: 'TIRTIR Global',
+              category: 'Face Makeup/Cushion Foundation',
+              domain: 'tirtir.global',
+            }),
+          ),
+        };
+      }
+      if (sqlText.includes("seed_data->>'brand'")) {
+        expect(params?.[3]).toEqual(expect.arrayContaining(['tirtir global', 'tirtirglobal']));
+        return {
+          rows: Array.from({ length: 6 }).map((_, index) =>
+            makeExternalRow({
+              id: `eps_tirtir_brand_${index}`,
+              external_product_id: `ext_tirtir_brand_${index}`,
+              title: `TIRTIR Brand Face Product ${index}`,
+              brand: 'TIRTIR Global',
+              category: 'Face Makeup/Concealer',
+              domain: 'tirtir.global',
+            }),
+          ),
+        };
+      }
+      if (sqlText.includes("seed_data->'derived'->'recall'->>'category")) {
+        throw new Error('cross-brand category query should wait until same-brand expansion underfills');
+      }
+      return { rows: [] };
+    });
+
+    jest.doMock('../../src/db', () => ({ query: queryMock }));
+    jest.doMock('../../src/logger', () => ({ warn: jest.fn(), info: jest.fn() }));
+
+    const { _internals } = require('../../src/services/RecommendationEngine');
+    const products = await _internals.fetchExternalCandidates({
+      brandHint: 'TIRTIR Global',
+      categoryHint: 'Cushion Foundation',
+      verticalHint: 'makeup',
+      domainHints: ['https://tirtir.global/products/mask-fit-red-cushion-mini'],
+      limit: 36,
+      minFocusedCandidates: 12,
+      deepDomainRecall: true,
+    });
+
+    expect(products).toHaveLength(14);
+    expect(products.slice(0, 8).every((product) => product.domain === 'tirtir.global')).toBe(true);
+    expect(products.slice(8).every((product) => product.brand === 'TIRTIR Global')).toBe(true);
+    expect(products.__externalFetchStats?.stages.map((stage) => stage.name)).toEqual(
+      expect.arrayContaining(['external_brand_fields_deep']),
+    );
+  });
+
   test('deep-domain strict intent returns exact same-domain category rows before slow global scans', async () => {
     process.env.DATABASE_URL = 'postgres://example.test/pivota';
 

@@ -1765,7 +1765,10 @@ function getSimilarIntentFamilySqlLikePatterns(intentFamily) {
 function hasSharedSimilarIntentFamily(baseFeatures, candidateFeatures) {
   const baseFamily = getSimilarIntentFamilyFromFeatures(baseFeatures);
   if (!baseFamily) return false;
-  return getSimilarIntentFamilyFromFeatures(candidateFeatures, { titleOnly: true }) === baseFamily;
+  const candidateTitleFamily = getSimilarIntentFamilyFromFeatures(candidateFeatures, { titleOnly: true });
+  if (candidateTitleFamily) return candidateTitleFamily === baseFamily;
+  if (!titleSupportsLeafCategory(candidateFeatures)) return false;
+  return getSimilarIntentFamilyFromFeatures(candidateFeatures) === baseFamily;
 }
 
 function supportsSparseHaircareExpansion(features) {
@@ -1864,6 +1867,14 @@ function classifyConfidenceLevel(base, candidate, layerId) {
       return base.vertical === candidate.features.vertical ? 'medium' : 'low';
     }
     return candidate.features.isExternal ? 'medium' : 'low';
+  }
+
+  if (layerId === 'L2P' && base.isExternal && candidate.features.isExternal && candidate.brandMatch) {
+    if (requiresStrictExternalSameBrandIntent(base)) return 'low';
+    if (base.vertical !== UNKNOWN_VERTICAL && candidate.features.vertical !== UNKNOWN_VERTICAL) {
+      return base.vertical === candidate.features.vertical ? 'medium' : 'low';
+    }
+    return 'low';
   }
 
   if (layerId === 'L3B' && base.isExternal && candidate.features.isExternal && candidate.brandMatch) {
@@ -1983,6 +1994,20 @@ function pickLayeredRecommendations({
           c.parentMatch ||
           titleIntentMatches(baseFeatures, features)
         ),
+    },
+    {
+      id: 'L2P',
+      name: 'same_brand_external_parent_category',
+      priority: 3.3,
+      predicate: (c, features, baseFeatures) =>
+        baseFeatures.isExternal &&
+        features.isExternal &&
+        c.brandMatch &&
+        c.parentMatch &&
+        baseFeatures.vertical !== UNKNOWN_VERTICAL &&
+        features.vertical !== UNKNOWN_VERTICAL &&
+        baseFeatures.vertical === features.vertical &&
+        !requiresStrictExternalSameBrandIntent(baseFeatures),
     },
     {
       id: 'L3',
@@ -2496,6 +2521,56 @@ async function fetchExternalCandidates({
     );
   }
 
+  const fetchStats = {
+    market,
+    tool,
+    deep_domain_recall: Boolean(deepDomainRecall),
+    focused_target_count: focusedRecallTarget,
+    min_focused_candidates: safeMinFocusedCandidates,
+    safe_limit: safeLimit,
+    return_cap: returnCap,
+    brand_hint: brand || null,
+    category_hint: category || null,
+    vertical_hint: vertical || null,
+    intent_family_hint: intentFamily || null,
+    domain_hint_count: normalizedDomainHints.length,
+    stages: [],
+  };
+
+  function attachExternalFetchStats(products) {
+    const out = Array.isArray(products) ? products : [];
+    const stats = {
+      ...fetchStats,
+      total_returned_count: out.length,
+      total_elapsed_ms: fetchStats.stages.reduce((sum, stage) => sum + (Number(stage.elapsed_ms) || 0), 0),
+      timed_out_count: fetchStats.stages.filter((stage) => stage.timed_out).length,
+    };
+    try {
+      Object.defineProperty(out, '__externalFetchStats', {
+        value: stats,
+        enumerable: false,
+        configurable: true,
+      });
+    } catch {
+      // Non-critical debug attachment.
+    }
+    return out;
+  }
+
+  function displayUniqueCandidateCount(products) {
+    return uniqueByKey(
+      (Array.isArray(products) ? products : []).filter((product) => isSellable(product, { inStockOnly: true })),
+      (product) =>
+        buildVariantAgnosticTitleKey(product) ||
+        buildRecommendationTitleDedupeKey(product) ||
+        `${getMerchantId(product)}::${getProductId(product)}`,
+    ).length;
+  }
+
+  function hasDisplayCoverage(products, targetCount) {
+    return displayUniqueCandidateCount(products) >= targetCount;
+  }
+
   async function runQuery(whereSql, params, cap, queryName) {
     try {
       const res = await query(
@@ -2659,17 +2734,28 @@ ${EXTERNAL_SEED_FAST_RECOMMENDATION_SELECT}
   }
 
   async function runTimedExternalQuery(queryName, task, timeoutMs = PDP_RECS_EXTERNAL_UNDERFILL_QUERY_TIMEOUT_MS) {
-    return withSoftTimeout(
+    const startedAt = Date.now();
+    let timedOut = false;
+    const products = await withSoftTimeout(
       Promise.resolve().then(task),
       timeoutMs,
       [],
       (timeoutMs) => {
+        timedOut = true;
         logger.warn(
           { timeout_ms: timeoutMs, query: queryName, brand, category },
           'recommendations external query timed out',
         );
       },
     );
+    fetchStats.stages.push({
+      name: queryName,
+      elapsed_ms: Math.max(0, Date.now() - startedAt),
+      returned_count: Array.isArray(products) ? products.length : 0,
+      timed_out: timedOut,
+      timeout_ms: timeoutMs,
+    });
+    return products;
   }
 
   const loadCategoryMatches = () =>
@@ -2773,17 +2859,17 @@ ${EXTERNAL_SEED_FAST_RECOMMENDATION_SELECT}
     domainCategoryFocusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
     if (
       intentFamilyPattern &&
-      domainCategoryFocusedCandidates.length >= focusedRecallTarget
+      hasDisplayCoverage(domainCategoryFocusedCandidates, focusedRecallTarget)
     ) {
-      return domainCategoryFocusedCandidates.slice(0, returnCap);
+      return attachExternalFetchStats(domainCategoryFocusedCandidates.slice(0, returnCap));
     }
-    exactDomainCategoryFocusedEnough = domainCategoryFocusedCandidates.length >= safeMinFocusedCandidates;
+    exactDomainCategoryFocusedEnough = hasDisplayCoverage(domainCategoryFocusedCandidates, safeMinFocusedCandidates);
     if (
       exactDomainCategoryFocusedEnough &&
       !intentFamilyPattern &&
       !identityCollapseProtection
     ) {
-      return domainCategoryFocusedCandidates.slice(0, returnCap);
+      return attachExternalFetchStats(domainCategoryFocusedCandidates.slice(0, returnCap));
     }
   }
   if (deepDomainRecall && normalizedDomainHints.length && !category) {
@@ -2795,8 +2881,8 @@ ${EXTERNAL_SEED_FAST_RECOMMENDATION_SELECT}
     );
     out.push(...preloadedDomainMatches);
     const domainFocusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
-    if (!category && !intentFamilyPattern && domainFocusedCandidates.length >= safeMinFocusedCandidates) {
-      return domainFocusedCandidates.slice(0, returnCap);
+    if (!category && !intentFamilyPattern && hasDisplayCoverage(domainFocusedCandidates, safeMinFocusedCandidates)) {
+      return attachExternalFetchStats(domainFocusedCandidates.slice(0, returnCap));
     }
   }
 
@@ -2814,26 +2900,26 @@ ${EXTERNAL_SEED_FAST_RECOMMENDATION_SELECT}
           if (BEAUTY_ACCESSORY_TITLE_RE.test(normalizeText(product?.title || product?.name || ''))) return false;
           return getSimilarIntentFamilyFromProduct(product) === intentFamily;
       });
-      if (domainIntentCandidates.length >= focusedRecallTarget) {
-        return domainIntentCandidates.slice(0, returnCap);
+      if (hasDisplayCoverage(domainIntentCandidates, focusedRecallTarget)) {
+        return attachExternalFetchStats(domainIntentCandidates.slice(0, returnCap));
       }
     }
     if (intentFamilyPattern && !preloadedIntentFamilyMatches) {
       preloadedIntentFamilyMatches = await loadIntentFamilyMatches();
       out.push(...preloadedIntentFamilyMatches);
       const intentFocusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
-      if (intentFocusedCandidates.length >= focusedRecallTarget) {
-        return intentFocusedCandidates.slice(0, returnCap);
+      if (hasDisplayCoverage(intentFocusedCandidates, focusedRecallTarget)) {
+        return attachExternalFetchStats(intentFocusedCandidates.slice(0, returnCap));
       }
     }
     preloadedCategoryMatches = await loadCategoryMatches();
     out.push(...preloadedCategoryMatches);
     const categoryFocusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
     if (exactDomainCategoryFocusedEnough) {
-      return categoryFocusedCandidates.slice(0, returnCap);
+      return attachExternalFetchStats(categoryFocusedCandidates.slice(0, returnCap));
     }
-    if (categoryFocusedCandidates.length >= safeMinFocusedCandidates && !normalizedDomainHints.length) {
-      return categoryFocusedCandidates.slice(0, returnCap);
+    if (hasDisplayCoverage(categoryFocusedCandidates, safeMinFocusedCandidates) && !normalizedDomainHints.length) {
+      return attachExternalFetchStats(categoryFocusedCandidates.slice(0, returnCap));
     }
   }
 
@@ -2849,8 +2935,35 @@ ${EXTERNAL_SEED_FAST_RECOMMENDATION_SELECT}
     ));
   out.push(...domainMatches);
   const domainFocusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
-  if (!deepDomainRecall && domainFocusedCandidates.length >= safeMinFocusedCandidates) {
-    return domainFocusedCandidates.slice(0, returnCap);
+  if (!deepDomainRecall && hasDisplayCoverage(domainFocusedCandidates, safeMinFocusedCandidates)) {
+    return attachExternalFetchStats(domainFocusedCandidates.slice(0, returnCap));
+  }
+
+  if (brand && deepDomainRecall && !hasDisplayCoverage(domainFocusedCandidates, focusedRecallTarget)) {
+    const brandFieldMatches = await runTimedExternalQuery(
+      'external_brand_fields_deep',
+      () => runQuery(
+        `AND (
+              lower(coalesce(seed_data->>'brand','')) = ANY($4)
+              OR lower(coalesce(seed_data->>'brand_name','')) = ANY($4)
+              OR lower(coalesce(seed_data->>'vendor','')) = ANY($4)
+              OR lower(coalesce(seed_data->>'vendor_name','')) = ANY($4)
+              OR lower(coalesce(seed_data->'snapshot'->>'brand','')) = ANY($4)
+              OR lower(coalesce(seed_data->'snapshot'->>'vendor','')) = ANY($4)
+              OR regexp_replace(lower(coalesce(seed_data->>'brand','')), '[^a-z0-9]+', '', 'g') = ANY($4)
+              OR regexp_replace(lower(coalesce(seed_data->>'vendor','')), '[^a-z0-9]+', '', 'g') = ANY($4)
+            )`,
+        [brandAliases],
+        boundedRecallCap(3, 48),
+        'external_brand_fields_deep',
+      ),
+      PDP_RECS_EXTERNAL_RECALL_QUERY_TIMEOUT_MS,
+    );
+    out.push(...brandFieldMatches);
+    const brandFocusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
+    if (hasDisplayCoverage(brandFocusedCandidates, focusedRecallTarget)) {
+      return attachExternalFetchStats(brandFocusedCandidates.slice(0, returnCap));
+    }
   }
 
   if (brand && !deepDomainRecall) {
@@ -2874,8 +2987,8 @@ ${EXTERNAL_SEED_FAST_RECOMMENDATION_SELECT}
     );
     out.push(...brandFieldMatches);
     const brandFocusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
-    if (!deepDomainRecall && brandFocusedCandidates.length >= safeMinFocusedCandidates) {
-      return brandFocusedCandidates.slice(0, returnCap);
+    if (!deepDomainRecall && hasDisplayCoverage(brandFocusedCandidates, safeMinFocusedCandidates)) {
+      return attachExternalFetchStats(brandFocusedCandidates.slice(0, returnCap));
     }
 
     const brandTitleMatches = compactBrand
@@ -2891,8 +3004,8 @@ ${EXTERNAL_SEED_FAST_RECOMMENDATION_SELECT}
       : [];
     out.push(...brandTitleMatches);
     const titleFocusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
-    if (!deepDomainRecall && titleFocusedCandidates.length >= safeMinFocusedCandidates) {
-      return titleFocusedCandidates.slice(0, returnCap);
+    if (!deepDomainRecall && hasDisplayCoverage(titleFocusedCandidates, safeMinFocusedCandidates)) {
+      return attachExternalFetchStats(titleFocusedCandidates.slice(0, returnCap));
     }
   }
 
@@ -2930,7 +3043,7 @@ ${EXTERNAL_SEED_FAST_RECOMMENDATION_SELECT}
     out.push(...categoryTitleMatches);
     focusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
   }
-  const hasFocusedCandidates = focusedCandidates.length >= safeMinFocusedCandidates;
+  const hasFocusedCandidates = hasDisplayCoverage(focusedCandidates, safeMinFocusedCandidates);
   if (allowVisibleFallbacks && !hasFocusedCandidates) {
     const recent = await runTimedExternalQuery(
       'external_recent',
@@ -2939,7 +3052,9 @@ ${EXTERNAL_SEED_FAST_RECOMMENDATION_SELECT}
     out.push(...recent);
   }
 
-  return uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`).slice(0, returnCap);
+  return attachExternalFetchStats(
+    uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`).slice(0, returnCap),
+  );
 }
 
 function collectExternalLookupKeys(baseProduct) {
@@ -3440,6 +3555,10 @@ async function recommend({
   const externalCandidates = shouldSkipExternal
     ? []
     : await externalCandidatesTask;
+  const externalFetchStats =
+    externalCandidates && typeof externalCandidates === 'object'
+      ? externalCandidates.__externalFetchStats || null
+      : null;
 
   let filteredInternalCandidates = filterCandidateCollection(internalCandidates, effectiveExcludedCandidates);
   let filteredExternalCandidates = filterCandidateCollection(externalCandidates, effectiveExcludedCandidates);
@@ -3590,6 +3709,7 @@ async function recommend({
         base_product_is_external: baseProductIsExternal,
         base_intent_family: baseIntentFamily || null,
         external_fetch_limit: externalFetchLimit,
+        external_recall_debug: externalFetchStats,
         ready_min_count: finalReadyMinCount,
         requested_count: safeK,
         candidate_count: candidateK,
