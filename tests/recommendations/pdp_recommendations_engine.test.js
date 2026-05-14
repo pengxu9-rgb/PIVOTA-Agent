@@ -240,6 +240,7 @@ describe('RecommendationEngine (PDP)', () => {
       ['ext_tone_up', 'Tone Brightening Tone-Up Sunscreen', 'SKIN1004', 'Sunscreen'],
       ['ext_centella_spf', 'Centella Air-Fit Suncream Plus SPF50+ PA++++', 'SKIN1004', 'Sunscreen'],
       ['ext_unrelated_serum', 'Centella Ampoule Serum', 'SKIN1004', 'Serum'],
+      ['ext_bad_eye', 'Dream-yEYE', 'Generic Brand', 'Sunscreen'],
     ].map(([product_id, title, brand, category]) => {
       const product = makeProduct({
         merchant_id: 'external_seed',
@@ -264,6 +265,7 @@ describe('RecommendationEngine (PDP)', () => {
 
     expect(out.items).toHaveLength(6);
     expect(out.items.map((item) => item.product_id)).not.toContain('ext_unrelated_serum');
+    expect(out.items.map((item) => item.product_id)).not.toContain('ext_bad_eye');
     expect(out.items.some((item) => item.reason.startsWith('L3I:external'))).toBe(true);
     expect(out.metadata.low_confidence_reason_codes || []).not.toEqual(
       expect.arrayContaining(['UNDERFILL_FOR_QUALITY']),
@@ -286,6 +288,8 @@ describe('RecommendationEngine (PDP)', () => {
     const external = [
       ['ext_jurlique_rose', 'Rose Hand Cream', 'Jurlique', 'Hand Cream'],
       ['ext_beekman_pure', 'Pure Hand Cream', 'Beekman 1802', 'Hand Cream'],
+      ['ext_beekman_lavender', 'Lavender Goat Milk Hand Cream', 'Beekman 1802', 'Hand Cream'],
+      ['ext_rare_hand', 'Find Comfort Hydrating Hand Cream', 'Rare Beauty', 'Hand Cream'],
       ['ext_roundlab_oil', 'Birch Juice Moisturizing Peeling Cleansing Oil', 'Round Lab', 'Cleansing Oil'],
       ['ext_roundlab_cleanser', 'Birch Juice Moisturizing Cleanser', 'Round Lab', 'Cleanser'],
     ].map(([product_id, title, brand, category]) => {
@@ -310,11 +314,61 @@ describe('RecommendationEngine (PDP)', () => {
       k: 4,
     });
 
+    expect(out.items).toHaveLength(4);
     expect(out.items.map((item) => item.product_id)).toEqual(
-      expect.arrayContaining(['ext_jurlique_rose', 'ext_beekman_pure']),
+      expect.arrayContaining([
+        'ext_jurlique_rose',
+        'ext_beekman_pure',
+        'ext_beekman_lavender',
+        'ext_rare_hand',
+      ]),
     );
     expect(out.items.map((item) => item.product_id)).not.toContain('ext_roundlab_oil');
     expect(out.items.map((item) => item.product_id)).not.toContain('ext_roundlab_cleanser');
+  });
+
+  test('does not trust category-only intent matches for strict cosmetic families', () => {
+    const base = makeProduct({
+      merchant_id: 'external_seed',
+      product_id: 'ext_tirtir_highlighter',
+      title: 'My Glow Shimmer Highlighter',
+      brand: 'TIRTIR',
+      category: 'Highlighter',
+      product_type: 'Highlighter',
+      source: 'external_seed',
+      price: 24,
+    });
+    base.semantic_vertical = 'makeup';
+
+    const external = [
+      ['ext_powder_highlighter', 'Pressed Powder Highlighter', 'Kylie Cosmetics', 'Highlighter'],
+      ['ext_bundle_hidden', 'Glow Besties Bundle', 'Pixi', 'Highlighter'],
+      ['ext_gift_hidden', 'Holidays Giftset Pink Fever', 'Nuxe', 'Micellar Water'],
+    ].map(([product_id, title, brand, category]) => {
+      const product = makeProduct({
+        merchant_id: 'external_seed',
+        product_id,
+        title,
+        brand,
+        category,
+        product_type: category,
+        source: 'external_seed',
+        price: 24,
+      });
+      product.semantic_vertical = 'makeup';
+      return product;
+    });
+
+    const out = pickLayeredRecommendations({
+      baseProduct: base,
+      internalCandidates: [],
+      externalCandidates: external,
+      k: 3,
+    });
+
+    expect(out.items.map((item) => item.product_id)).toContain('ext_powder_highlighter');
+    expect(out.items.map((item) => item.product_id)).not.toContain('ext_bundle_hidden');
+    expect(out.items.map((item) => item.product_id)).not.toContain('ext_gift_hidden');
   });
 
   test('allows same-brand beauty tools for a beauty-tool external base without visible fallback', () => {

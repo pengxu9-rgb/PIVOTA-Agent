@@ -34,6 +34,13 @@ const PDP_RECS_DEFAULT_K = Math.max(
   6,
   Math.min(60, Number(process.env.PDP_RECS_DEFAULT_K || 12) || 12),
 );
+const PDP_RECS_READY_MIN_COUNT = Math.max(
+  1,
+  Math.min(
+    PDP_RECS_DEFAULT_K,
+    Number(process.env.PDP_RECS_READY_MIN_COUNT || 6) || 6,
+  ),
+);
 const PDP_RECS_MAX_K = Math.max(
   PDP_RECS_DEFAULT_K,
   Math.min(60, Number(process.env.PDP_RECS_MAX_K || 60) || 60),
@@ -1631,6 +1638,10 @@ function classifyConfidenceLevel(base, candidate, layerId) {
   if (candidate.brandMatch && candidate.parentMatch && candidate.relDiff != null && candidate.relDiff <= 0.6) return 'high';
   if (candidate.leafMatch && nearPriceTight) return 'high';
 
+  if (layerId === 'L3I' && base.isExternal && candidate.features.isExternal) {
+    return hasSharedSimilarIntentFamily(base, candidate.features) ? 'medium' : 'low';
+  }
+
   if (base.vertical !== UNKNOWN_VERTICAL && candidate.features.vertical !== UNKNOWN_VERTICAL) {
     if (base.vertical === candidate.features.vertical && candidate.tokenOverlap >= 0.12) return 'medium';
     if (base.vertical !== candidate.features.vertical) return 'low';
@@ -1648,10 +1659,6 @@ function classifyConfidenceLevel(base, candidate, layerId) {
       return base.vertical === candidate.features.vertical ? 'medium' : 'low';
     }
     return 'low';
-  }
-
-  if (layerId === 'L3I' && base.isExternal && candidate.features.isExternal) {
-    return hasSharedSimilarIntentFamily(base, candidate.features) ? 'medium' : 'low';
   }
 
   if (layerId === 'L3V' && base.isExternal && candidate.features.isExternal) {
@@ -1860,7 +1867,7 @@ function pickLayeredRecommendations({
       const scoreDetail = scoreCandidate(base, features);
       const baseIntentFamily = getSimilarIntentFamilyFromFeatures(base);
       const sharedIntentFamily = baseIntentFamily
-        ? getSimilarIntentFamilyFromFeatures(features) === baseIntentFamily
+        ? getSimilarIntentFamilyFromFeatures(features, { titleOnly: true }) === baseIntentFamily
         : false;
 
       if (
@@ -2038,6 +2045,7 @@ function pickLayeredRecommendations({
       vertical: base.vertical,
     });
   const baseSemanticStrong = signalStrength >= 2;
+  const readyMinCount = Math.min(K, PDP_RECS_READY_MIN_COUNT);
 
   const similarConfidence =
     !selected.length
@@ -2047,7 +2055,7 @@ function pickLayeredRecommendations({
         : confidenceCounts.high + confidenceCounts.medium >= Math.max(1, Math.ceil(selected.length * 0.8))
           ? 'medium'
           : 'low';
-  const lowConfidence = selected.length < K || similarConfidence === 'low';
+  const lowConfidence = selected.length < readyMinCount || similarConfidence === 'low';
 
   const lowConfidenceReasonCodes = [];
   if (!baseSemanticStrong) lowConfidenceReasonCodes.push('BASE_SEMANTIC_WEAK');
@@ -2055,7 +2063,7 @@ function pickLayeredRecommendations({
   if (filteredByExternalBrandAuthority > 0) {
     lowConfidenceReasonCodes.push('EXTERNAL_BASE_BLOCKED_OTHER_BRAND_INTERNAL');
   }
-  if (selected.length < K) lowConfidenceReasonCodes.push('UNDERFILL_FOR_QUALITY');
+  if (selected.length < readyMinCount) lowConfidenceReasonCodes.push('UNDERFILL_FOR_QUALITY');
   if (!lowConfidenceReasonCodes.length && lowConfidence) lowConfidenceReasonCodes.push('INSUFFICIENT_HIGH_CONFIDENCE');
 
   return {
@@ -2065,7 +2073,7 @@ function pickLayeredRecommendations({
       low_confidence: lowConfidence,
       low_confidence_reason_codes: lowConfidenceReasonCodes,
       similar_status: selected.length
-        ? selected.length < K
+        ? selected.length < readyMinCount
           ? 'underfilled'
           : 'ready'
         : 'empty',
@@ -2079,6 +2087,7 @@ function pickLayeredRecommendations({
         vertical: base.vertical || UNKNOWN_VERTICAL,
         inferred: Boolean(baseSemantic?.vertical_inferred ?? base.verticalInferred),
         signal_strength: signalStrength,
+        ready_min_count: readyMinCount,
       },
     },
     debug: {
@@ -3270,7 +3279,8 @@ async function recommend({
   }
 
   const finalUnderfill = Math.max(0, safeK - finalItems.length);
-  if (finalItems.length > 0 && finalUnderfill > 0) {
+  const finalReadyMinCount = Math.min(safeK, PDP_RECS_READY_MIN_COUNT);
+  if (finalItems.length > 0 && finalItems.length < finalReadyMinCount) {
     finalMetadata.similar_status = 'underfilled';
     finalMetadata.low_confidence_reason_codes = appendReasonCode(
       finalMetadata.low_confidence_reason_codes,
@@ -3299,6 +3309,7 @@ async function recommend({
         base_semantic_strong: baseSemanticStrong,
         base_product_is_external: baseProductIsExternal,
         base_intent_family: baseIntentFamily || null,
+        ready_min_count: finalReadyMinCount,
         requested_count: safeK,
         candidate_count: candidateK,
       },
@@ -3369,5 +3380,7 @@ module.exports = {
     extractProductDomains,
     normalizeHostname,
     recommendationFallbackPolicy,
+    getSimilarIntentFamilyFromText,
+    getSimilarIntentFamilyFromFeatures,
   },
 };
