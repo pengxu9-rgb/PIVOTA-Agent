@@ -797,8 +797,15 @@ function buildRecommendationSemanticDedupeKey(product) {
   return `${brand}::${title}`;
 }
 
+function normalizeRecommendationTitleForDedupe(title) {
+  return normalizeText(title)
+    .replace(/^(?:deal|sale|clearance)\s+/, '')
+    .replace(/\s+(?:deal|sale|clearance)$/, '')
+    .trim();
+}
+
 function buildRecommendationTitleDedupeKey(product) {
-  return normalizeText(product?.title || product?.name);
+  return normalizeRecommendationTitleForDedupe(product?.title || product?.name);
 }
 
 function stripTerminalVariantToken(title) {
@@ -2512,6 +2519,14 @@ async function fetchExternalCandidates({
     vertical === 'haircare'
       ? '\\m(hair\\s*care|haircare|shampoo|conditioner|hair\\s*oil|hair\\s*mask|scalp|scalp\\s*treatment|scalp\\s*tonic|scalp\\s*oil)\\M'
       : '';
+  const sellableExternalSeedSql = `
+              AND lower(coalesce(
+                availability,
+                seed_data->>'availability',
+                seed_data->'snapshot'->>'availability',
+                ''
+              )) NOT IN ('out_of_stock', 'sold_out', 'unavailable', 'discontinued')
+  `;
 
   function boundedRecallCap(multiplier, floor = 24) {
     return Math.min(
@@ -2582,6 +2597,7 @@ async function fetchExternalCandidates({
               AND market = $1
               AND (tool = '*' OR tool = $2)
               AND attached_product_key IS NULL
+              ${sellableExternalSeedSql}
               ${whereSql}
             ORDER BY updated_at DESC, created_at DESC
             LIMIT $3
@@ -2622,6 +2638,7 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
               AND (tool = '*' OR tool = $2)
               AND attached_product_key IS NULL
               AND domain = ANY($4)
+              ${sellableExternalSeedSql}
             ORDER BY updated_at DESC, created_at DESC
             LIMIT $3
           )
@@ -2663,6 +2680,7 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
             AND (tool = '*' OR tool = $2)
             AND attached_product_key IS NULL
             AND domain = ANY($4)
+            ${sellableExternalSeedSql}
             AND lower(coalesce(
               seed_data->'derived'->'recall'->>'category',
               seed_data->>'category',
@@ -2709,6 +2727,7 @@ ${EXTERNAL_SEED_FAST_RECOMMENDATION_SELECT}
             AND (tool = '*' OR tool = $2)
             AND attached_product_key IS NULL
             AND domain = ANY($4)
+            ${sellableExternalSeedSql}
             AND lower(coalesce(title, '')) LIKE ANY($5::text[])
           ORDER BY updated_at DESC, created_at DESC
           LIMIT $3
