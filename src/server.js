@@ -64,6 +64,7 @@ const {
 const {
   resolvePdpSchemaProfile,
   isBeautyFormulaPdpProfile,
+  isBeautyToolPdpProfile,
 } = require('./pdpSchemaProfile');
 const { buildPdpCorePrewarmRequestBody } = require('./pdpConfig');
 const {
@@ -18777,6 +18778,44 @@ function calibrateSimilarMetadataForVisibleProducts({
   };
 }
 
+const PDP_SIMILAR_ACCESSORY_TITLE_RE =
+  /\b(pouch|bag|holder|keychain|keyring|sticker|stickers|soap saver|gua sha|gwalsa|brush|tool|applicator|spatula|mirror|sharpener|headband|puff|sponge|sachet|trial\s*kit|sample)\b/i;
+
+function isAccessoryLikePdpForSimilarSuppression(product = {}, pdpSchemaProfile = '') {
+  if (isBeautyToolPdpProfile(pdpSchemaProfile)) return true;
+  const productFamily = normalizeSearchTextForMatch(
+    firstNonEmptyString(product.product_family, product.external_seed_product_family),
+  );
+  if (productFamily === 'accessory') return true;
+  const profile = String(pdpSchemaProfile || '').trim();
+  const text = [
+    product.title,
+    product.name,
+    product.category,
+    product.product_type,
+    product.productType,
+    product.category_path,
+    product.categoryPath,
+  ].filter(Boolean).join(' ');
+  return profile === 'generic_merch' && PDP_SIMILAR_ACCESSORY_TITLE_RE.test(text);
+}
+
+function shouldHideEmptySimilarModuleForPdp({
+  product = {},
+  pdpSchemaProfile = '',
+  relatedProductsEnvelope = null,
+  recommendationModuleData = null,
+} = {}) {
+  if (recommendationModuleData) return false;
+  const status = String(
+    relatedProductsEnvelope?.metadata?.similar_status ||
+      relatedProductsEnvelope?.status ||
+      '',
+  ).trim();
+  if (status !== 'empty') return false;
+  return isAccessoryLikePdpForSimilarSuppression(product, pdpSchemaProfile);
+}
+
 async function enrichSimilarProductsForPdpCards({
   items = [],
   checkoutToken = null,
@@ -29173,12 +29212,20 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       }
 
       if (wantsSimilar) {
+        const hideEmptySimilarModule = shouldHideEmptySimilarModuleForPdp({
+          product: canonicalProductForPdp,
+          pdpSchemaProfile,
+          relatedProductsEnvelope,
+          recommendationModuleData: recModule?.data || null,
+        });
         const data =
-          mergeRecommendationModuleWithEnvelope(recModule?.data, relatedProductsEnvelope) ||
+          hideEmptySimilarModule
+            ? null
+            : mergeRecommendationModuleWithEnvelope(recModule?.data, relatedProductsEnvelope) ||
           (relatedProductsEnvelope?.metadata?.similar_status === 'empty' ||
-          relatedProductsEnvelope?.metadata?.similar_status === 'deferred' ||
-          relatedProductsEnvelope?.status === 'empty' ||
-          relatedProductsEnvelope?.status === 'deferred'
+            relatedProductsEnvelope?.metadata?.similar_status === 'deferred' ||
+            relatedProductsEnvelope?.status === 'empty' ||
+            relatedProductsEnvelope?.status === 'deferred'
             ? {
                 status: relatedProductsEnvelope?.status === 'deferred' ? 'deferred' : 'empty',
                 strategy: relatedProductsEnvelope?.strategy || 'related_products',
@@ -29193,9 +29240,17 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           type: 'similar',
           required: false,
           data,
-          ...(data ? {} : { reason: similarMissingReason || 'unavailable' }),
+          ...(data
+            ? {}
+            : {
+                reason: hideEmptySimilarModule
+                  ? 'no_verified_accessory_matches'
+                  : similarMissingReason || 'unavailable',
+              }),
         });
-        if (!data) missing.push({ type: 'similar', reason: similarMissingReason || 'unavailable' });
+        if (!data && !hideEmptySimilarModule) {
+          missing.push({ type: 'similar', reason: similarMissingReason || 'unavailable' });
+        }
       }
 
 	      const buildId = SERVICE_GIT_SHA ? SERVICE_GIT_SHA.slice(0, 12) : null;
