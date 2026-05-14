@@ -5875,6 +5875,51 @@ function decoratePdpPayloadWithIdentity(pdpPayload, {
   };
 }
 
+// A group can carry several member rows that are really the *same* seller
+// listing — e.g. multiple external_seed scrape records of one merchant
+// product. Each becomes its own offer row, so the PDP seller picker shows
+// "N sellers" when there is genuinely one. Collapse offers that share a
+// strong identity: same merchant + same checkout URL + same price. Offers
+// missing any of those signals are never deduped (kept conservatively).
+function offerDedupeKey(offer) {
+  const merchantId = String(offer?.merchant_id || '').trim().toLowerCase();
+  const rawUrl = String(
+    offer?.merchant_checkout_url ||
+      offer?.external_redirect_url ||
+      offer?.source_url ||
+      offer?.destination_url ||
+      offer?.url ||
+      '',
+  ).trim();
+  const url = rawUrl
+    .toLowerCase()
+    .replace(/[?#].*$/, '')
+    .replace(/\/+$/, '');
+  const amount =
+    offer?.price && Number.isFinite(Number(offer.price.amount)) ? Number(offer.price.amount) : null;
+  const currency = String(offer?.price?.currency || '').trim().toUpperCase();
+  if (!merchantId || !url || amount == null || !currency) return null;
+  return `${merchantId}|${url}|${amount}|${currency}`;
+}
+
+function dedupeEquivalentOffers(offers) {
+  const list = Array.isArray(offers) ? offers : [];
+  if (list.length < 2) return { offers: list, removed: 0 };
+  const seen = new Set();
+  const result = [];
+  let removed = 0;
+  for (const offer of list) {
+    const key = offerDedupeKey(offer);
+    if (key && seen.has(key)) {
+      removed += 1;
+      continue;
+    }
+    if (key) seen.add(key);
+    result.push(offer);
+  }
+  return { offers: result, removed };
+}
+
 async function buildOffersFromGroupMembers(args) {
   const totalStartedAt = Date.now();
   const timings = {};
@@ -6199,8 +6244,10 @@ async function buildOffersFromGroupMembers(args) {
   });
   timings.build_offer_rows = Date.now() - buildOfferRowsStartedAt;
 
+  const { offers: dedupedOffers, removed: dedupedOfferCount } = dedupeEquivalentOffers(offers);
+
   const sortStartedAt = Date.now();
-  const annotatedOffers = annotateOffersWithCommerceMetadata(offers);
+  const annotatedOffers = annotateOffersWithCommerceMetadata(dedupedOffers);
   const prioritizedOffers = prioritizeOffers(annotatedOffers);
   const sortedByTotal = [...annotatedOffers].sort((a, b) => computeOfferTotal(a) - computeOfferTotal(b));
   const bestPriceOfferId = sortedByTotal[0]?.offer_id || null;
@@ -6212,7 +6259,7 @@ async function buildOffersFromGroupMembers(args) {
     status: 'success',
     product_group_id: resolvedProductGroupId,
     canonical_product_ref: canonicalProductRef,
-    offers_count: offers.length,
+    offers_count: dedupedOffers.length,
     offers: prioritizedOffers,
     default_offer_id: defaultOfferId,
     best_price_offer_id: bestPriceOfferId,
@@ -6225,6 +6272,7 @@ async function buildOffersFromGroupMembers(args) {
             member_fetches: memberFetchDiagnostics,
             merchant_name_lookup_enabled: merchantProfileNameLookupEnabled,
             store_discount_evidence: storeDiscountDiagnostics,
+            deduped_offer_count: dedupedOfferCount,
           },
         }
       : {}),

@@ -620,6 +620,54 @@ describe('PDP grouped offers', () => {
     );
   });
 
+  test('collapses duplicate offers that are the same merchant listing', async () => {
+    const app = require('../src/server');
+
+    // Three external_seed scrape records of the ONE merchant listing — same
+    // merchant, same checkout URL, same price, only the seed product_id
+    // differs. They must collapse to a single offer instead of rendering as
+    // three "sellers".
+    const dynastySeedPayload = () => ({
+      title: 'Dynasty Cream',
+      brand: 'Beauty of Joseon',
+      merchant_name: 'Beauty of Joseon',
+      price: 15,
+      currency: 'USD',
+      in_stock: true,
+      destination_url: 'https://beautyofjoseon.com/products/dynasty-cream',
+    });
+
+    const offersData = await app._debug.buildOffersFromGroupMembers({
+      productGroupId: 'sig_boj_dynasty_cream',
+      debug: true,
+      members: [
+        {
+          merchant_id: 'external_seed',
+          product_id: 'ext_boj_dynasty_scrape_a',
+          source_kind: 'external_seed',
+          source_payload: dynastySeedPayload(),
+        },
+        {
+          merchant_id: 'external_seed',
+          product_id: 'ext_boj_dynasty_scrape_b',
+          source_kind: 'external_seed',
+          source_payload: dynastySeedPayload(),
+        },
+        {
+          merchant_id: 'external_seed',
+          product_id: 'ext_boj_dynasty_scrape_c',
+          source_kind: 'external_seed',
+          source_payload: dynastySeedPayload(),
+        },
+      ],
+    });
+
+    expect(offersData.offers_count).toBe(1);
+    expect(offersData.offers).toHaveLength(1);
+    expect(offersData.diagnostics.deduped_offer_count).toBe(2);
+    expect(offersData.offers[0].merchant_name).toBe('Beauty of Joseon');
+  });
+
   test('marks external-seed offers even when group member rows do not carry source_kind', async () => {
     const app = require('../src/server');
 
