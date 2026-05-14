@@ -103,6 +103,8 @@ function parseArgs(argv) {
         .map((item) => item.trim())
         .filter(Boolean);
       i += 1;
+    } else if (token === '--no-frontend-paths') {
+      out.frontendPaths = [];
     } else if (token === '--covered-report' && next) {
       out.coveredReport = next;
       i += 1;

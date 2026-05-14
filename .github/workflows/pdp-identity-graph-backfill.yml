@@ -1,0 +1,72 @@
+name: PDP Identity Graph Backfill
+
+on:
+  workflow_dispatch:
+    inputs:
+      brand:
+        description: "Optional brand filter"
+        required: false
+        default: ""
+        type: string
+      limit:
+        description: "Rows to scan"
+        required: true
+        default: "500"
+        type: string
+      dry_run:
+        description: "Dry-run only"
+        required: true
+        default: true
+        type: boolean
+
+jobs:
+  identity-graph-backfill:
+    runs-on: ubuntu-latest
+    environment:
+      name: Pivota Agent / production
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Backfill identity graph
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${DATABASE_URL:-}" ]]; then
+            echo "DATABASE_URL secret is required" >&2
+            exit 1
+          fi
+
+          out_dir="reports/workflow_ops/pdp-identity-graph-backfill/${{ github.run_id }}"
+          mkdir -p "${out_dir}"
+          args=(
+            --limit "${{ inputs.limit }}"
+            --out "${out_dir}/result.json"
+          )
+          if [[ -n "${{ inputs.brand }}" ]]; then
+            args+=(--brand "${{ inputs.brand }}")
+          fi
+          if [[ "${{ inputs.dry_run }}" == "true" ]]; then
+            args+=(--dry-run)
+          fi
+          node scripts/backfill-pdp-identity-graph.js "${args[@]}" \
+            | tee "${out_dir}/stdout.json"
+
+      - name: Upload artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pdp-identity-graph-backfill-${{ github.run_id }}
+          path: reports/workflow_ops/pdp-identity-graph-backfill/${{ github.run_id }}
+          retention-days: 7

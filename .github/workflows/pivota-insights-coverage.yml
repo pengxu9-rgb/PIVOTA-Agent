@@ -1,0 +1,127 @@
+name: Pivota Insights Coverage
+
+on:
+  workflow_dispatch:
+    inputs:
+      product_ids:
+        description: "Comma-separated external product IDs or product refs"
+        required: true
+        type: string
+      limit:
+        description: "Case limit"
+        required: true
+        default: "20"
+        type: string
+      seed:
+        description: "Run seed label"
+        required: false
+        default: ""
+        type: string
+      model:
+        description: "Gemini model list"
+        required: false
+        default: "gemini-3-flash-preview"
+        type: string
+      skip_gemini:
+        description: "Skip Gemini generation"
+        required: true
+        default: false
+        type: boolean
+      allow_baseline_only:
+        description: "Allow baseline-only review packet rows"
+        required: true
+        default: false
+        type: boolean
+      fetch_source_facts:
+        description: "Fetch source facts"
+        required: true
+        default: true
+        type: boolean
+      fetch_source_reviews:
+        description: "Fetch source reviews"
+        required: true
+        default: false
+        type: boolean
+
+jobs:
+  coverage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment:
+      name: Pivota Agent / production
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      PIVOTA_BACKEND_AGENT_API_KEY: ${{ secrets.PIVOTA_BACKEND_AGENT_API_KEY }}
+      SHOP_GATEWAY_AGENT_API_KEY: ${{ secrets.SHOP_GATEWAY_AGENT_API_KEY }}
+      PIVOTA_AGENT_API_KEY: ${{ secrets.PIVOTA_AGENT_API_KEY }}
+      AGENT_API_KEY: ${{ secrets.AGENT_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      PIVOTA_GEMINI_API_KEY: ${{ secrets.PIVOTA_GEMINI_API_KEY }}
+      GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+      GEMINI_BASE_URL: ${{ secrets.GEMINI_BASE_URL }}
+      GOOGLE_GENAI_BASE_URL: ${{ secrets.GOOGLE_GENAI_BASE_URL }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build review packet
+        shell: bash
+        run: |
+          set -euo pipefail
+          out_dir="reports/workflow_ops/pivota-insights-coverage/${{ github.run_id }}"
+          mkdir -p "${out_dir}"
+          seed='${{ inputs.seed }}'
+          if [[ -z "${seed}" ]]; then
+            seed="workflow-${{ github.run_id }}"
+          fi
+
+          args=(
+            --product-ids "${{ inputs.product_ids }}"
+            --out-dir "${out_dir}/coverage"
+            --limit "${{ inputs.limit }}"
+            --per-query "12"
+            --seed "${seed}"
+            --model "${{ inputs.model }}"
+            --max-per-brand "50"
+            --max-per-category "50"
+            --covered-review-mode "strict_human"
+            --no-frontend-paths
+          )
+          if [[ "${{ inputs.skip_gemini }}" == "true" ]]; then
+            args+=(--skip-gemini)
+          fi
+          if [[ "${{ inputs.allow_baseline_only }}" == "true" ]]; then
+            args+=(--allow-baseline-only)
+          fi
+          if [[ "${{ inputs.fetch_source_facts }}" == "true" ]]; then
+            args+=(--fetch-source-facts)
+          else
+            args+=(--no-fetch-source-facts)
+          fi
+          if [[ "${{ inputs.fetch_source_reviews }}" == "true" ]]; then
+            args+=(--fetch-source-reviews)
+          else
+            args+=(--no-fetch-source-reviews)
+          fi
+
+          node scripts/pivota_insights_coverage_batch.js "${args[@]}" \
+            | tee "${out_dir}/stdout.json"
+
+          jq '.meta' "${out_dir}/coverage/review.json" > "${out_dir}/review-meta.json"
+
+      - name: Upload artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pivota-insights-coverage-${{ github.run_id }}
+          path: reports/workflow_ops/pivota-insights-coverage/${{ github.run_id }}
+          retention-days: 7
