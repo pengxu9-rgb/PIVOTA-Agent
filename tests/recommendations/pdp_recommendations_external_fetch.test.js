@@ -1572,6 +1572,77 @@ describe('RecommendationEngine external candidate fetch', () => {
     ).toBe(false);
   });
 
+  test('recommend includes explicit seed domain when canonical URL is a regional subdomain', async () => {
+    process.env.DATABASE_URL = 'postgres://example.test/pivota';
+
+    const queryMock = jest.fn((sql, params) => {
+      const sqlText = String(sql);
+      if (sqlText.includes('FROM products_cache')) {
+        return Promise.resolve({ rows: [] });
+      }
+      if (sqlText.includes('domain = ANY($4)')) {
+        expect(params?.[3]).toEqual(
+          expect.arrayContaining([
+            'nl.beautyofjoseon.com',
+            'www.nl.beautyofjoseon.com',
+            'beautyofjoseon.com',
+            'www.beautyofjoseon.com',
+          ]),
+        );
+        return Promise.resolve({
+          rows: [
+            makeExternalRow({
+              id: 'eps_lucky_pouch',
+              external_product_id: 'ext_lucky_pouch',
+              title: 'Lucky Pouch',
+              brand: 'Beauty of Joseon',
+              category: 'Accessories/Pouch',
+              domain: 'beautyofjoseon.com',
+            }),
+            makeExternalRow({
+              id: 'eps_soap_saver',
+              external_product_id: 'ext_soap_saver',
+              title: 'Nobang Soap Saver',
+              brand: 'Beauty of Joseon',
+              category: 'Accessories/Cleansing Tool',
+              domain: 'beautyofjoseon.com',
+            }),
+          ],
+        });
+      }
+      return Promise.resolve({ rows: [] });
+    });
+
+    jest.doMock('../../src/db', () => ({ query: queryMock }));
+    jest.doMock('../../src/logger', () => ({ warn: jest.fn(), info: jest.fn() }));
+
+    const { recommend, _internals } = require('../../src/services/RecommendationEngine');
+    _internals.resetCache();
+    const result = await recommend({
+      pdp_product: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_bojagi',
+        title: 'Bojagi',
+        brand: { name: 'Beauty of Joseon' },
+        category_path: ['Accessories', 'Gift Wrap'],
+        canonical_url: 'https://nl.beautyofjoseon.com/products/bojagi',
+        domain: 'beautyofjoseon.com',
+        semantic_vertical: 'tools',
+        source: 'external_seed',
+        price: { current: { amount: 14, currency: 'USD' } },
+        inventory_quantity: 10,
+        status: 'active',
+      },
+      k: 2,
+      options: { debug: true, no_cache: true },
+    });
+
+    expect(result.items.map((item) => item.product_id)).toEqual(
+      expect.arrayContaining(['ext_lucky_pouch', 'ext_soap_saver']),
+    );
+    expect(result.metadata.similar_status).toBe('ready');
+  });
+
   test('uses internal category-focused candidates before recent merchant rows', async () => {
     process.env.DATABASE_URL = 'postgres://example.test/pivota';
 

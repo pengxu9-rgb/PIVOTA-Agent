@@ -1340,6 +1340,9 @@ function extractProductDomains(product) {
       product?.url,
       product?.source_url,
       product?.sourceUrl,
+      product?.domain,
+      product?.source_domain,
+      product?.sourceDomain,
     ]
       .map((value) => normalizeHostname(value))
       .filter(Boolean),
