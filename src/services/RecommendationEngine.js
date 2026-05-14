@@ -1519,7 +1519,8 @@ function getSimilarIntentFamilyFromText(text) {
   return '';
 }
 
-function getSimilarIntentFamilyFromFeatures(features) {
+function getSimilarIntentFamilyFromFeatures(features, { titleOnly = false } = {}) {
+  if (titleOnly) return getSimilarIntentFamilyFromText(features?.normalizedTitle || '');
   return getSimilarIntentFamilyFromText(buildSimilarIntentFamilyTextFromFeatures(features));
 }
 
@@ -1545,7 +1546,7 @@ function getSimilarIntentFamilySqlPattern(intentFamily) {
 function hasSharedSimilarIntentFamily(baseFeatures, candidateFeatures) {
   const baseFamily = getSimilarIntentFamilyFromFeatures(baseFeatures);
   if (!baseFamily) return false;
-  return getSimilarIntentFamilyFromFeatures(candidateFeatures) === baseFamily;
+  return getSimilarIntentFamilyFromFeatures(candidateFeatures, { titleOnly: true }) === baseFamily;
 }
 
 function supportsSparseHaircareExpansion(features) {
@@ -1886,6 +1887,15 @@ function pickLayeredRecommendations({
         !scoreDetail.brandMatch &&
         scoreDetail.leafMatch &&
         !titleSupportsLeafCategory(features)
+      ) {
+        filteredByConfidence += 1;
+        return null;
+      }
+      if (
+        base.isExternal &&
+        baseIntentFamily &&
+        source === 'external' &&
+        !sharedIntentFamily
       ) {
         filteredByConfidence += 1;
         return null;
@@ -2482,14 +2492,6 @@ ${EXTERNAL_SEED_FAST_RECOMMENDATION_SELECT}
             `AND (
               lower(coalesce(title, '')) ~ $4
               OR lower(coalesce(seed_data->'snapshot'->>'title', '')) ~ $4
-              OR lower(coalesce(
-                seed_data->'derived'->'recall'->>'category',
-                seed_data->>'category',
-                seed_data->'snapshot'->>'category',
-                seed_data->>'product_type',
-                seed_data->'snapshot'->>'product_type',
-                ''
-              )) ~ $4
             )`,
             [intentFamilyPattern],
             deepDomainRecall
@@ -3296,6 +3298,7 @@ async function recommend({
         external_skip_internal_quality_count: externalSkipEligibleInternalCount,
         base_semantic_strong: baseSemanticStrong,
         base_product_is_external: baseProductIsExternal,
+        base_intent_family: baseIntentFamily || null,
         requested_count: safeK,
         candidate_count: candidateK,
       },
