@@ -1474,6 +1474,13 @@ function titleIntentMatches(baseFeatures, candidateFeatures) {
   return jaccard(tokenize(baseTitle), tokenize(candidateTitle)) >= 0.18;
 }
 
+function allowsSparseExternalVerticalExpansion(baseFeatures, candidateFeatures) {
+  if (!baseFeatures?.isExternal || !candidateFeatures?.isExternal) return false;
+  if (baseFeatures.vertical === UNKNOWN_VERTICAL || candidateFeatures.vertical === UNKNOWN_VERTICAL) return false;
+  if (baseFeatures.vertical !== candidateFeatures.vertical) return false;
+  return baseFeatures.vertical === 'haircare';
+}
+
 function isWeakExternalSeedCategory(value) {
   const normalized = normalizeText(value);
   return (
@@ -1550,6 +1557,10 @@ function classifyConfidenceLevel(base, candidate, layerId) {
       return base.vertical === candidate.features.vertical ? 'medium' : 'low';
     }
     return 'low';
+  }
+
+  if (layerId === 'L3V' && base.isExternal && candidate.features.isExternal) {
+    return allowsSparseExternalVerticalExpansion(base, candidate.features) ? 'medium' : 'low';
   }
 
   if (layerId === 'L4' && candidate.tokenOverlap >= 0.24) return 'medium';
@@ -1691,6 +1702,15 @@ function pickLayeredRecommendations({
         baseFeatures.vertical !== UNKNOWN_VERTICAL &&
         features.vertical !== UNKNOWN_VERTICAL &&
         baseFeatures.vertical === features.vertical &&
+        !requiresStrictExternalSameBrandIntent(baseFeatures),
+    },
+    {
+      id: 'L3V',
+      name: 'external_sparse_vertical_family',
+      priority: 3.45,
+      predicate: (c, features, baseFeatures) =>
+        !c.brandMatch &&
+        allowsSparseExternalVerticalExpansion(baseFeatures, features) &&
         !requiresStrictExternalSameBrandIntent(baseFeatures),
     },
     {

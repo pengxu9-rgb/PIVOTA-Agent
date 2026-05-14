@@ -162,6 +162,54 @@ describe('RecommendationEngine (PDP)', () => {
     expect(out.metadata.retrieval_mix.external).toBe(2);
   });
 
+  test('expands sparse external haircare recall across the same semantic vertical without visible fallback', () => {
+    const base = makeProduct({
+      merchant_id: 'external_seed',
+      product_id: 'ext_cosrx_hair_bonding_shampoo',
+      title: 'COSRX PEPTIDE-132 Ultra Perfect Hair Bonding Shampoo',
+      brand: 'COSRX',
+      category_path: ['Beauty', 'Haircare', 'Shampoo'],
+      source: 'external_seed',
+      price: 25,
+    });
+    base.semantic_vertical = 'haircare';
+
+    const external = [
+      ['ext_hair_oil', 'Complete Pre-Wash Scalp Oil', 'JVN', ['Beauty', 'Haircare', 'Scalp Treatment']],
+      ['ext_scalp_tonic', 'Pine Cica Calming Scalp Tonic', 'Round Lab', ['Beauty', 'Haircare', 'Scalp Treatment']],
+      ['ext_repair_mask', 'Intense Repair Hair Mask', 'K18', ['Beauty', 'Haircare', 'Hair Mask']],
+      ['ext_bond_serum', 'Bond Repair Oil Serum', 'COSRX', ['Beauty', 'Haircare', 'Hair Oil']],
+      ['ext_conditioner', 'Strengthening Conditioner', 'Briogeo', ['Beauty', 'Haircare', 'Conditioner']],
+      ['ext_skin_serum', 'Niacinamide 20% Serum', 'Anua', ['Beauty', 'Skincare', 'Serum'], 'skincare'],
+    ].map(([product_id, title, brand, category_path, semanticVertical]) => {
+      const product = makeProduct({
+        merchant_id: 'external_seed',
+        product_id,
+        title,
+        brand,
+        category_path,
+        source: 'external_seed',
+        price: 28,
+      });
+      product.semantic_vertical = semanticVertical || 'haircare';
+      return product;
+    });
+
+    const out = pickLayeredRecommendations({
+      baseProduct: base,
+      internalCandidates: [],
+      externalCandidates: external,
+      k: 5,
+    });
+
+    expect(out.items).toHaveLength(5);
+    expect(out.items.map((item) => item.product_id)).not.toContain('ext_skin_serum');
+    expect(out.items.some((item) => item.reason.startsWith('L3V:external'))).toBe(true);
+    expect(out.metadata.low_confidence_reason_codes || []).not.toEqual(
+      expect.arrayContaining(['UNDERFILL_FOR_QUALITY']),
+    );
+  });
+
   test('allows same-brand beauty tools for a beauty-tool external base without visible fallback', () => {
     const base = {
       merchant_id: 'external_seed',
