@@ -668,27 +668,27 @@ describe('externalSeedProducts helper', () => {
       expect.objectContaining({
         variant_id: '0d95bc75608b',
         sku: '62835',
-        title: '30ml / Single',
+        title: '30 mL / Single',
         options: [
-          expect.objectContaining({ name: 'Size', value: '30ml', axis_kind: 'volume' }),
+          expect.objectContaining({ name: 'Size', value: '30 mL', axis_kind: 'volume' }),
           expect.objectContaining({ name: 'Pack', value: 'Single', axis_kind: 'pack' }),
         ],
       }),
     );
     expect(product.variants[1]).toEqual(
       expect.objectContaining({
-        title: '30ml / 2-Pack',
+        title: '30 mL / 2-Pack',
         options: [
-          expect.objectContaining({ name: 'Size', value: '30ml', axis_kind: 'volume' }),
+          expect.objectContaining({ name: 'Size', value: '30 mL', axis_kind: 'volume' }),
           expect.objectContaining({ name: 'Pack', value: '2-Pack', axis_kind: 'pack' }),
         ],
       }),
     );
     expect(product.variants[2]).toEqual(
       expect.objectContaining({
-        title: '75ml / Single',
+        title: '75 mL / Single',
         options: [
-          expect.objectContaining({ name: 'Size', value: '75ml', axis_kind: 'volume' }),
+          expect.objectContaining({ name: 'Size', value: '75 mL', axis_kind: 'volume' }),
           expect.objectContaining({ name: 'Pack', value: 'Single', axis_kind: 'pack' }),
         ],
       }),
@@ -759,7 +759,7 @@ describe('externalSeedProducts helper', () => {
     expect(variants[0]).toEqual(
       expect.objectContaining({
         option_name: 'Size',
-        option_value: 'Full (1.7 FL OZ)',
+        option_value: '1.7 fl oz',
         axis_kind: 'volume',
       }),
     );
@@ -773,7 +773,7 @@ describe('externalSeedProducts helper', () => {
     expect(variants[2]).toEqual(
       expect.objectContaining({
         option_name: 'Size',
-        option_value: '80 ml',
+        option_value: '80 mL',
         axis_kind: 'volume',
       }),
     );
@@ -1045,12 +1045,12 @@ describe('externalSeedProducts helper', () => {
       },
     );
 
-    expect(variant.title).toBe('5ml');
+    expect(variant.title).toBe('5 mL');
     expect(variant.options).toEqual([
-      expect.objectContaining({ name: 'Size', value: '5ml', axis_kind: 'volume' }),
+      expect.objectContaining({ name: 'Size', value: '5 mL', axis_kind: 'volume' }),
     ]);
     expect(variant.option_name).toBe('Size');
-    expect(variant.option_value).toBe('5ml');
+    expect(variant.option_value).toBe('5 mL');
   });
 
   test('prefers one primary product-level size value when metric and imperial evidence both exist', () => {
@@ -1079,10 +1079,10 @@ describe('externalSeedProducts helper', () => {
     );
 
     expect(variant.options).toEqual([
-      expect.objectContaining({ name: 'Size', value: '15ml', axis_kind: 'volume' }),
+      expect.objectContaining({ name: 'Size', value: '15 mL', axis_kind: 'volume' }),
     ]);
     expect(variant.option_name).toBe('Size');
-    expect(variant.option_value).toBe('15ml');
+    expect(variant.option_value).toBe('15 mL');
   });
 
   test('surfaces product-level size detail fields for single-SKU exact-item pages', () => {
@@ -1345,12 +1345,12 @@ describe('externalSeedProducts helper', () => {
       },
     );
 
-    expect(variant.title).toBe('250ml');
+    expect(variant.title).toBe('250 mL');
     expect(variant.options).toEqual([
-      expect.objectContaining({ name: 'Size', value: '250ml', axis_kind: 'volume' }),
+      expect.objectContaining({ name: 'Size', value: '250 mL', axis_kind: 'volume' }),
     ]);
     expect(variant.option_name).toBe('Size');
-    expect(variant.option_value).toBe('250ml');
+    expect(variant.option_value).toBe('250 mL');
   });
 
   test('infers single default variant size from seed-level product image', () => {
@@ -1376,9 +1376,9 @@ describe('externalSeedProducts helper', () => {
       },
     );
 
-    expect(variant.title).toBe('400ml');
+    expect(variant.title).toBe('400 mL');
     expect(variant.options).toEqual([
-      expect.objectContaining({ name: 'Size', value: '400ml', axis_kind: 'volume' }),
+      expect.objectContaining({ name: 'Size', value: '400 mL', axis_kind: 'volume' }),
     ]);
   });
 
@@ -1541,10 +1541,10 @@ describe('externalSeedProducts helper', () => {
       },
     );
 
-    expect(variant.title).toBe('DN350 / 50ml');
+    expect(variant.title).toBe('DN350 / 50 mL');
     expect(variant.options).toEqual([
       expect.objectContaining({ name: 'Shade', value: 'DN350', axis_kind: 'shade' }),
-      expect.objectContaining({ name: 'Size', value: '50ml', axis_kind: 'volume' }),
+      expect.objectContaining({ name: 'Size', value: '50 mL', axis_kind: 'volume' }),
     ]);
     expect(variant.option_name).toBeUndefined();
     expect(variant.option_value).toBeUndefined();
@@ -1875,7 +1875,7 @@ describe('externalSeedProducts helper', () => {
     expect(out.snapshot.variants[0]).toEqual(
       expect.objectContaining({
         sku: 'SKU-WIX-1',
-        options: [expect.objectContaining({ name: 'Size', value: '30ml', axis_kind: 'volume' })],
+        options: [expect.objectContaining({ name: 'Size', value: '30 mL', axis_kind: 'volume' })],
       }),
     );
     expect(out.variants).toBeUndefined();
