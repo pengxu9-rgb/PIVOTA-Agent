@@ -1,5 +1,5 @@
 const ACCESSORY_RE =
-  /\b(brush|sponge|puff|applicator|sharpener|tweezer|curler|scissors|comb|mirror|case|bag|pouch|holder|spatula|tool|tools|gua sha|roller|headband|scrunchie|scarf|hat|cap|tote|clip|clips|lash curler|refill case|soap dish|washcloth|blotting paper|keyring|key ring|keychain|key chain|charm)\b/i;
+  /\b(accessor(?:y|ies)|brush|sponge|puff|applicator|sharpener|tweezer|curler|scissors|comb|mirror|case|bag|pouch|holder|spatula|tool|tools|gua sha|roller|headband|scrunchie|scarf|hat|cap|tote|clip|clips|lash curler|refill case|soap dish|soap saver|washcloth|cloth|gift wrap|wrapping cloth|blotting paper|keyring|key ring|keychain|key chain|charm)\b/i;
 const STICKER_ACCESSORY_RE = /\b(stickers?|decals?)\b/i;
 const TREATMENT_STICKER_RE = /\b(?:blemish|acne|pimple|spot|hydrocolloid|patch(?:es)?)\b/i;
 const NON_MERCH_RE =
@@ -13,6 +13,7 @@ const COLLECTION_MEMBER_RE = /\bcollection\s*:\s*[^\n]+/i;
 const FORMULA_PRODUCT_RE =
   /\b(skincare|skin care|makeup|cosmetic|haircare|hair care|fragrance|perfume|parfum|cologne|cleanser|cleansing|toner|essence|serum|ampoule|solution|suspension|emulsion|moisturi[sz]er|cream|lotion|balm|mask|patch(?:es)?|peel|exfoliant|exfoliator|treatment|oil|acid|acne control|sunscreen|spf|foundation|concealer|mascara|lash|lip(?:stick| gloss| balm| oil)?|gloss stick|match stix|skinstick|contour|packette|blush|bronzer|powder|highlighter|eyeshadow|eyeliner|brow|primer|setting spray|shampoo|conditioner|body wash|body lotion)\b/i;
 const SET_PHRASE_FORMULA_RE = /\bset\s+it\s+down\b/i;
+const FORMULA_REFILL_PACKAGING_RE = /\b(?:refill\s+pouch|refill\s+pack|refill\s+pod)\b/i;
 
 function asPlainObject(value) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
@@ -64,6 +65,10 @@ function classifyExternalSeedProductKind(input = {}) {
     reasons.push('sticker_accessory_signal');
     return { family: 'accessory', reasons };
   }
+  if (FORMULA_REFILL_PACKAGING_RE.test(text) && FORMULA_PRODUCT_RE.test(text)) {
+    reasons.push('formula_refill_packaging_signal');
+    return { family: 'single_formula', reasons };
+  }
   if (ACCESSORY_RE.test(text)) {
     reasons.push('accessory_signal');
     return { family: 'accessory', reasons };
@@ -103,6 +108,7 @@ module.exports = {
   COLLECTION_BUNDLE_RE,
   COLLECTION_MEMBER_RE,
   FORMULA_PRODUCT_RE,
+  FORMULA_REFILL_PACKAGING_RE,
   SET_PHRASE_FORMULA_RE,
   STICKER_ACCESSORY_RE,
   TREATMENT_STICKER_RE,
