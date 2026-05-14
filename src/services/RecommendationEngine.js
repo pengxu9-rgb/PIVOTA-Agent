@@ -1828,7 +1828,7 @@ function pickLayeredRecommendations({
     },
     {
       id: 'L2E',
-      name: 'same_brand_external_synthetic',
+      name: 'same_brand_external_intent_match',
       priority: 3.2,
       predicate: (c, features, baseFeatures) =>
         baseFeatures.isExternal &&
