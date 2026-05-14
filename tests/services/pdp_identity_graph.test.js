@@ -1840,6 +1840,81 @@ describe('pdpIdentityGraph', () => {
     );
   });
 
+  test('composeSyntheticCanonicalProduct does not double-count duplicated shade review summaries', () => {
+    const { composeSyntheticCanonicalProduct } = require('../../src/services/pdpIdentityGraph');
+
+    const sharedReviewSummary = {
+      rating: 4.5,
+      review_count: 2266,
+      exact_item_review_count: 2266,
+      source_origin: 'official_okendo_reviews_html',
+      preview_items: [
+        {
+          review_id: 'okendo_daily_tint_love',
+          rating: 5,
+          text_snippet: 'Perfectly tinted glow, goes on light without becoming dry.',
+          public_visible: true,
+          content_review_state: 'approved',
+        },
+        {
+          review_id: 'okendo_daily_tint_shade',
+          rating: 5,
+          text_snippet: 'It is a very nice shade for my skin tone.',
+          public_visible: true,
+          content_review_state: 'approved',
+        },
+      ],
+    };
+    const requestedListing = {
+      merchant_id: 'external_seed',
+      product_id: 'ext_daily_tint_my210',
+      source_kind: 'external_seed',
+      sellable_item_group_id: 'sig_daily_tint_my210',
+      product_line_id: 'pl_daily_tinted_fluid',
+      review_family_id: 'rf_daily_tinted_fluid',
+      variant_axes: { shade: 'MY210' },
+      source_payload: {
+        title: 'Daily Tinted Fluid Sunscreen MY210',
+        brand: 'Beauty of Joseon',
+      },
+      review_summary: sharedReviewSummary,
+    };
+    const siblingListing = {
+      ...requestedListing,
+      product_id: 'ext_daily_tint_dy300',
+      sellable_item_group_id: 'sig_daily_tint_dy300',
+      variant_axes: { shade: 'DY300' },
+      source_payload: {
+        title: 'Daily Tinted Fluid Sunscreen DY300',
+        brand: 'Beauty of Joseon',
+      },
+      review_summary: { ...sharedReviewSummary },
+    };
+
+    const composed = composeSyntheticCanonicalProduct({
+      requestedListing,
+      exactListings: [requestedListing],
+      lineListings: [requestedListing, siblingListing],
+    });
+
+    expect(composed.product.review_summary).toEqual(
+      expect.objectContaining({
+        aggregation_scope: 'exact_item',
+        review_count: 2266,
+        exact_item_review_count: 2266,
+        product_line_review_count: 2266,
+        scoped_summaries: expect.objectContaining({
+          product_line: expect.objectContaining({
+            review_count: 2266,
+            preview_items: expect.arrayContaining([
+              expect.objectContaining({ review_id: 'okendo_daily_tint_love' }),
+            ]),
+          }),
+        }),
+      }),
+    );
+  });
+
   test('searchPdpIdentityGroupsForQuery recalls grouped product offers for compact brand exact queries', async () => {
     process.env.DATABASE_URL = 'postgres://identity-test';
     const {

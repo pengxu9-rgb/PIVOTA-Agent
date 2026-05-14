@@ -1996,10 +1996,43 @@ function mergeStarDistributions(summaries) {
   });
 }
 
+function buildReviewSummaryAggregateKey(listing, summary) {
+  const src = asPlainObject(summary) || {};
+  const previewItems = Array.isArray(src.preview_items)
+    ? src.preview_items
+    : Array.isArray(src.snippets)
+      ? src.snippets
+      : [];
+  const previewIds = previewItems
+    .map((item) => firstNonEmptyString(item?.review_id, item?.id))
+    .filter(Boolean)
+    .sort();
+  if (previewIds.length > 0) return `preview:${previewIds.slice(0, 6).join('|')}`;
+
+  const sourceUrl = normalizeComparableUrl(firstNonEmptyString(src.source_url, src.url));
+  if (sourceUrl) return `source_url:${sourceUrl}`;
+
+  const sourceOrigin = asString(src.source_origin || src.source || src.source_kind);
+  const count = Number(src.review_count || src.count || src.total || 0) || 0;
+  const rating = Number(src.rating || src.average_rating || src.avg_rating || 0) || 0;
+  if (sourceOrigin && count > 0 && rating > 0) {
+    const familyId = asString(listing?.review_family_id || listing?.product_line_id);
+    return `origin_count_rating:${familyId}:${sourceOrigin}:${count}:${rating}`;
+  }
+  return '';
+}
+
 function aggregateReviewSummary(listings, fallbackSummary = null) {
-  const summaries = listings
-    .map((listing) => asPlainObject(listing?.review_summary) || {})
-    .filter((summary) => Number(summary.review_count || summary.count || summary.total || 0) > 0);
+  const summaries = [];
+  const seenSummaryKeys = new Set();
+  for (const listing of listings) {
+    const summary = asPlainObject(listing?.review_summary) || {};
+    if (Number(summary.review_count || summary.count || summary.total || 0) <= 0) continue;
+    const summaryKey = buildReviewSummaryAggregateKey(listing, summary);
+    if (summaryKey && seenSummaryKeys.has(summaryKey)) continue;
+    if (summaryKey) seenSummaryKeys.add(summaryKey);
+    summaries.push(summary);
+  }
   const fallback = asPlainObject(fallbackSummary);
   if (!summaries.length && fallback) {
     return {

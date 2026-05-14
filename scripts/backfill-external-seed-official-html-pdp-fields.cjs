@@ -10,6 +10,7 @@ const CONTRACT_VERSION = 'external_seed.official_html_pdp_fields.v1';
 const PDP_CONTENT_ASSET_VERSION = 'pivota.pdp_content_asset.v1';
 const SNAPSHOT_CONTRACT_VERSION = 'external_seed.snapshot_contract.v1';
 const SHOPIFY_PRODUCT_JSON_VARIANT_HOSTS = new Set(['medicube.us', 'skin1004.com', 'tirtir.global']);
+const REVIEW_SUMMARY_ONLY_OKENDO_HOSTS = new Set(['beautyofjoseon.com', 'kravebeauty.com']);
 
 function argValue(name) {
   const idx = process.argv.indexOf(`--${name}`);
@@ -1459,7 +1460,18 @@ async function extractOfficialHtmlFields(host, html, options = {}) {
   else if (host === 'tirtir.global') fields = await extractTirtirFields(html, options);
   else if (host === 'theordinary.com') fields = {};
   else if (host === 'fentybeauty.com') fields = extractFentyFields(html, options);
-  else return {};
+  else if (!options.reviewSummaryOnly || !REVIEW_SUMMARY_ONLY_OKENDO_HOSTS.has(host)) return {};
+
+  if (options.reviewSummaryOnly && REVIEW_SUMMARY_ONLY_OKENDO_HOSTS.has(host)) {
+    const okendoReview = parseOkendoReviewSummary(html) || parseMetafieldReviews(html);
+    if (okendoReview) {
+      fields.review_summary = {
+        ...ensureObject(fields.review_summary),
+        ...okendoReview,
+        source_origin: okendoReview.source_origin || fields.review_summary?.source_origin,
+      };
+    }
+  }
 
   const stampedReview = await fetchStampedReviewSummary(host, html);
   if (stampedReview) {
@@ -1915,7 +1927,7 @@ async function main() {
       const fetched = await fetchHtml(url);
       result.http_status = fetched.status;
       result.final_url = fetched.final_url;
-      const extracted = await extractOfficialHtmlFields(host, fetched.html, { productTitle: row.title });
+      const extracted = await extractOfficialHtmlFields(host, fetched.html, { productTitle: row.title, reviewSummaryOnly });
       const officialVariants = await fetchOfficialShopifyVariants(fetched.final_url || url, row);
       if (officialVariants.length > 0) extracted.variants = officialVariants;
       const { seedData, patchKeys } = buildSeedDataPatch(row, extracted, {
@@ -1932,6 +1944,14 @@ async function main() {
         review_count: extracted.review_summary?.review_count || 0,
         rating: extracted.review_summary?.rating || 0,
         review_preview_count: reviewPreviewCount(extracted.review_summary),
+        review_preview_samples: asArray(extracted.review_summary?.preview_items)
+          .slice(0, 3)
+          .map((item) => ({
+            rating: item.rating,
+            title: item.title,
+            text_snippet: item.text_snippet,
+            source_kind: item.source_kind,
+          })),
       };
       if (patchKeys.length === 0) {
         result.reason = 'no_official_html_fields';
