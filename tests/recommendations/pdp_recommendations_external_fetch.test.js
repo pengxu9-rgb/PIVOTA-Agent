@@ -1091,6 +1091,133 @@ describe('RecommendationEngine external candidate fetch', () => {
     expect(products.every((product) => product.category === 'Brow Pencil')).toBe(true);
   });
 
+  test('deep-domain strict intent returns exact same-domain category rows before slow global scans', async () => {
+    process.env.DATABASE_URL = 'postgres://example.test/pivota';
+
+    const queryMock = jest.fn(async (sql, params) => {
+      const sqlText = String(sql);
+      if (sqlText.includes('domain = ANY($4)') && sqlText.includes('LIKE ANY($5')) {
+        return { rows: [] };
+      }
+      if (sqlText.includes('domain = ANY($4)') && Array.isArray(params?.[4])) {
+        return {
+          rows: Array.from({ length: 6 }).map((_, index) =>
+            makeExternalRow({
+              id: `eps_tirtir_foundation_${index}`,
+              external_product_id: `ext_tirtir_foundation_${index}`,
+              title: `Mask Fit Cushion Foundation ${index}`,
+              brand: 'TIRTIR Global',
+              category: 'Foundation',
+              domain: 'tirtir.global',
+            }),
+          ),
+        };
+      }
+      if (String(params?.[3] || '').includes('foundation|cushion|skinveil|concealer')) {
+        throw new Error('global strict intent query should not run once exact same-domain category rows are ready');
+      }
+      if (sqlText.includes("seed_data->'derived'->'recall'->>'category")) {
+        throw new Error('global category query should not run once exact same-domain category rows are ready');
+      }
+      return { rows: [] };
+    });
+
+    jest.doMock('../../src/db', () => ({ query: queryMock }));
+    jest.doMock('../../src/logger', () => ({ warn: jest.fn(), info: jest.fn() }));
+
+    const { _internals } = require('../../src/services/RecommendationEngine');
+    const products = await _internals.fetchExternalCandidates({
+      brandHint: 'TIRTIR Global',
+      categoryHint: 'Foundation',
+      verticalHint: 'makeup',
+      intentFamilyHint: 'foundation',
+      domainHints: ['https://tirtir.global/products/mask-fit-red-foundation'],
+      limit: 36,
+      minFocusedCandidates: 36,
+      deepDomainRecall: true,
+    });
+
+    expect(products).toHaveLength(6);
+    expect(products.every((product) => product.domain === 'tirtir.global')).toBe(true);
+    expect(
+      queryMock.mock.calls.some(([_sql, params]) =>
+        String(params?.[3] || '').includes('foundation|cushion|skinveil|concealer'),
+      ),
+    ).toBe(false);
+  });
+
+  test('deep-domain foundation intent uses same-domain title intent before slow global scans', async () => {
+    process.env.DATABASE_URL = 'postgres://example.test/pivota';
+
+    const queryMock = jest.fn(async (sql, params) => {
+      const sqlText = String(sql);
+      if (sqlText.includes('domain = ANY($4)') && sqlText.includes('LIKE ANY($5')) {
+        return { rows: [] };
+      }
+      if (sqlText.includes('domain = ANY($4)') && Array.isArray(params?.[4])) {
+        return { rows: [] };
+      }
+      if (sqlText.includes('domain = ANY($4)') && Array.isArray(params?.[3])) {
+        return {
+          rows: [
+            ['ext_red_cushion', 'Mask Fit Red Cushion'],
+            ['ext_aura_cushion', 'Mask Fit Aura Cushion'],
+            ['ext_all_cover', 'Mask Fit All Cover Cushion'],
+            ['ext_ai_filter', 'Mask Fit AI Filter Cushion'],
+            ['ext_concealer', 'Glide & Hide Blurring Concealer'],
+            ['ext_skinveil', 'H2O SkinVeil'],
+            ['ext_puff', 'Soft Shell Cushion Puff'],
+            ['ext_sachet', 'Sachet - Mask Fit Red Cushion Trial Kits'],
+            ['ext_toner', 'Milk Skin Toner'],
+          ].map(([external_product_id, title], index) =>
+            makeExternalRow({
+              id: `eps_tirtir_domain_${index}`,
+              external_product_id,
+              title,
+              brand: 'TIRTIR Global',
+              category: 'Makeup',
+              domain: 'tirtir.global',
+            }),
+          ),
+        };
+      }
+      if (String(params?.[3] || '').includes('foundation|cushion|skinveil|concealer')) {
+        throw new Error('global foundation intent query should not run when same-domain title intent rows are ready');
+      }
+      if (sqlText.includes("seed_data->'derived'->'recall'->>'category")) {
+        throw new Error('global category query should not run when same-domain title intent rows are ready');
+      }
+      return { rows: [] };
+    });
+
+    jest.doMock('../../src/db', () => ({ query: queryMock }));
+    jest.doMock('../../src/logger', () => ({ warn: jest.fn(), info: jest.fn() }));
+
+    const { _internals } = require('../../src/services/RecommendationEngine');
+    const products = await _internals.fetchExternalCandidates({
+      brandHint: 'TIRTIR Global',
+      categoryHint: 'Foundation',
+      verticalHint: 'makeup',
+      intentFamilyHint: 'foundation',
+      domainHints: ['https://tirtir.global/products/mask-fit-red-foundation'],
+      limit: 36,
+      minFocusedCandidates: 36,
+      deepDomainRecall: true,
+    });
+
+    expect(products.map((product) => product.product_id)).toEqual([
+      'ext_red_cushion',
+      'ext_aura_cushion',
+      'ext_all_cover',
+      'ext_ai_filter',
+      'ext_concealer',
+      'ext_skinveil',
+    ]);
+    expect(products.map((product) => product.product_id)).not.toContain('ext_puff');
+    expect(products.map((product) => product.product_id)).not.toContain('ext_sachet');
+    expect(products.map((product) => product.product_id)).not.toContain('ext_toner');
+  });
+
   test('deep-domain recall adds sparse haircare vertical rows without visible fallback', async () => {
     process.env.DATABASE_URL = 'postgres://example.test/pivota';
 
