@@ -1555,6 +1555,34 @@ function getSimilarIntentFamilySqlPattern(intentFamily) {
   return SIMILAR_INTENT_FAMILY_RULES.find((rule) => rule.id === id)?.sql || '';
 }
 
+function getSimilarIntentFamilySqlLikePatterns(intentFamily) {
+  const id = String(intentFamily || '').trim();
+  if (id === 'sunscreen') {
+    return [
+      '%sunscreen%',
+      '%sun screen%',
+      '%suncream%',
+      '%sun cream%',
+      '%sun stick%',
+      '%spf%',
+      '%uv%',
+    ];
+  }
+  if (id === 'foundation') {
+    return [
+      '%foundation%',
+      '%cushion%',
+      '%skinveil%',
+      '%skin veil%',
+      '%concealer%',
+    ];
+  }
+  if (id === 'highlighter') return ['%highlighter%', '%illuminator%'];
+  if (id === 'hand_cream') return ['%hand cream%', '%hand balm%', '%hand lotion%'];
+  if (id === 'micellar_cleansing_water') return ['%micellar%', '%cleansing water%'];
+  return [];
+}
+
 function hasSharedSimilarIntentFamily(baseFeatures, candidateFeatures) {
   const baseFamily = getSimilarIntentFamilyFromFeatures(baseFeatures);
   if (!baseFamily) return false;
@@ -2257,6 +2285,7 @@ async function fetchExternalCandidates({
   const categoryTitleLikePatterns = buildCategoryTitleLikePatterns(categoryHint);
   const intentFamily = String(intentFamilyHint || '').trim();
   const intentFamilyPattern = getSimilarIntentFamilySqlPattern(intentFamily);
+  const intentFamilyLikePatterns = getSimilarIntentFamilySqlLikePatterns(intentFamily);
   const verticalTitleCategoryPattern =
     vertical === 'haircare'
       ? '\\m(hair\\s*care|haircare|shampoo|conditioner|hair\\s*oil|hair\\s*mask|scalp|scalp\\s*treatment|scalp\\s*tonic|scalp\\s*oil)\\M'
@@ -2504,14 +2533,19 @@ ${EXTERNAL_SEED_FAST_RECOMMENDATION_SELECT}
       ? runTimedExternalQuery(
           'external_intent_family',
           () => runQuery(
-            `AND (
-              lower(coalesce(title, '')) ~ $4
-              OR lower(coalesce(seed_data->'snapshot'->>'title', '')) ~ $4
-            )`,
-            [intentFamilyPattern],
+            intentFamilyLikePatterns.length
+              ? `AND (
+                  lower(coalesce(title, '')) LIKE ANY($4::text[])
+                  OR lower(coalesce(seed_data->'snapshot'->>'title', '')) LIKE ANY($4::text[])
+                )`
+              : `AND (
+                  lower(coalesce(title, '')) ~ $4
+                  OR lower(coalesce(seed_data->'snapshot'->>'title', '')) ~ $4
+                )`,
+            [intentFamilyLikePatterns.length ? intentFamilyLikePatterns : intentFamilyPattern],
             deepDomainRecall
-              ? boundedRecallCap(8, 96)
-              : Math.min(160, safeLimit),
+              ? Math.min(96, boundedRecallCap(2, 72))
+              : Math.min(120, safeLimit),
             'external_intent_family',
           ),
           deepDomainRecall ? PDP_RECS_EXTERNAL_RECALL_QUERY_TIMEOUT_MS : PDP_RECS_EXTERNAL_UNDERFILL_QUERY_TIMEOUT_MS,

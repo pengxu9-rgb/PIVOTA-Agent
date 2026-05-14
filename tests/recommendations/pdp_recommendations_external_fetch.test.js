@@ -1113,7 +1113,10 @@ describe('RecommendationEngine external candidate fetch', () => {
           ),
         };
       }
-      if (String(params?.[3] || '').includes('foundation|cushion|skinveil|concealer')) {
+      if (
+        String(params?.[3] || '').includes('foundation|cushion|skinveil|concealer') ||
+        (Array.isArray(params?.[3]) && params[3].includes('%foundation%'))
+      ) {
         throw new Error('global strict intent query should not run once exact same-domain category rows are ready');
       }
       if (sqlText.includes("seed_data->'derived'->'recall'->>'category")) {
@@ -1181,7 +1184,10 @@ describe('RecommendationEngine external candidate fetch', () => {
           ),
         };
       }
-      if (String(params?.[3] || '').includes('foundation|cushion|skinveil|concealer')) {
+      if (
+        String(params?.[3] || '').includes('foundation|cushion|skinveil|concealer') ||
+        (Array.isArray(params?.[3]) && params[3].includes('%foundation%'))
+      ) {
         throw new Error('global foundation intent query should not run when same-domain title intent rows are ready');
       }
       if (sqlText.includes("seed_data->'derived'->'recall'->>'category")) {
@@ -1273,7 +1279,7 @@ describe('RecommendationEngine external candidate fetch', () => {
     process.env.DATABASE_URL = 'postgres://example.test/pivota';
 
     const queryMock = jest.fn(async (_sql, params) => {
-      if (String(params?.[3] || '').includes('sunscreen|spf')) {
+      if (Array.isArray(params?.[3]) && params[3].includes('%spf%')) {
         return {
           rows: [
             makeExternalRow({
@@ -1317,7 +1323,7 @@ describe('RecommendationEngine external candidate fetch', () => {
       expect.arrayContaining(['ext_spf_1', 'ext_spf_2']),
     );
     expect(
-      queryMock.mock.calls.some(([_sql, params]) => String(params?.[3] || '').includes('sunscreen|spf')),
+      queryMock.mock.calls.some(([_sql, params]) => Array.isArray(params?.[3]) && params[3].includes('%spf%')),
     ).toBe(true);
   });
 
@@ -1325,7 +1331,8 @@ describe('RecommendationEngine external candidate fetch', () => {
     process.env.DATABASE_URL = 'postgres://example.test/pivota';
 
     const queryMock = jest.fn(async (sql, params) => {
-      if (Array.isArray(params?.[3])) {
+      const sqlText = String(sql);
+      if (sqlText.includes('domain = ANY($4)') && Array.isArray(params?.[3])) {
         return {
           rows: Array.from({ length: 14 }, (_, index) =>
             makeExternalRow({
@@ -1339,7 +1346,7 @@ describe('RecommendationEngine external candidate fetch', () => {
           ),
         };
       }
-      if (String(params?.[3] || '').includes('sunscreen|spf')) {
+      if (Array.isArray(params?.[3]) && params[3].includes('%spf%')) {
         return {
           rows: [
             makeExternalRow({
@@ -1373,7 +1380,7 @@ describe('RecommendationEngine external candidate fetch', () => {
 
     expect(products.map((product) => product.product_id)).toContain('ext_spf_global');
     expect(
-      queryMock.mock.calls.some(([_sql, params]) => String(params?.[3] || '').includes('sunscreen|spf')),
+      queryMock.mock.calls.some(([_sql, params]) => Array.isArray(params?.[3]) && params[3].includes('%spf%')),
     ).toBe(true);
   });
 
