@@ -1091,6 +1091,52 @@ describe('RecommendationEngine external candidate fetch', () => {
     expect(products.every((product) => product.category === 'Brow Pencil')).toBe(true);
   });
 
+  test('deep-domain non shade-dense recall stops at focused same-domain category rows', async () => {
+    process.env.DATABASE_URL = 'postgres://example.test/pivota';
+
+    const queryMock = jest.fn(async (sql, params) => {
+      const sqlText = String(sql);
+      if (sqlText.includes('domain = ANY($4)') && sqlText.includes('LIKE ANY($5')) {
+        return {
+          rows: Array.from({ length: 12 }).map((_, index) =>
+            makeExternalRow({
+              id: `eps_tirtir_toner_title_${index}`,
+              external_product_id: `ext_tirtir_toner_title_${index}`,
+              title: `TIRTIR Toner Pad ${index}`,
+              brand: 'TIRTIR Global',
+              category: 'Toner',
+              domain: 'tirtir.global',
+            }),
+          ),
+        };
+      }
+      if (sqlText.includes('domain = ANY($4)') && Array.isArray(params?.[4])) {
+        throw new Error('same-domain structured category query should not run after title rows fill the target');
+      }
+      if (sqlText.includes("seed_data->'derived'->'recall'->>'category")) {
+        throw new Error('global category query should not run once same-domain toner rows fill the target');
+      }
+      return { rows: [] };
+    });
+
+    jest.doMock('../../src/db', () => ({ query: queryMock }));
+    jest.doMock('../../src/logger', () => ({ warn: jest.fn(), info: jest.fn() }));
+
+    const { _internals } = require('../../src/services/RecommendationEngine');
+    const products = await _internals.fetchExternalCandidates({
+      brandHint: 'TIRTIR Global',
+      categoryHint: 'Toner',
+      verticalHint: 'skincare',
+      domainHints: ['https://tirtir.global/products/ice-cooling-toner-pack-pads'],
+      limit: 36,
+      minFocusedCandidates: 12,
+      deepDomainRecall: true,
+    });
+
+    expect(products).toHaveLength(12);
+    expect(products.every((product) => product.domain === 'tirtir.global')).toBe(true);
+  });
+
   test('deep-domain strict intent returns exact same-domain category rows before slow global scans', async () => {
     process.env.DATABASE_URL = 'postgres://example.test/pivota';
 
@@ -1101,7 +1147,7 @@ describe('RecommendationEngine external candidate fetch', () => {
       }
       if (sqlText.includes('domain = ANY($4)') && Array.isArray(params?.[4])) {
         return {
-          rows: Array.from({ length: 6 }).map((_, index) =>
+          rows: Array.from({ length: 12 }).map((_, index) =>
             makeExternalRow({
               id: `eps_tirtir_foundation_${index}`,
               external_product_id: `ext_tirtir_foundation_${index}`,
@@ -1140,7 +1186,7 @@ describe('RecommendationEngine external candidate fetch', () => {
       deepDomainRecall: true,
     });
 
-    expect(products).toHaveLength(6);
+    expect(products).toHaveLength(12);
     expect(products.every((product) => product.domain === 'tirtir.global')).toBe(true);
     expect(
       queryMock.mock.calls.some(([_sql, params]) =>
@@ -1169,6 +1215,12 @@ describe('RecommendationEngine external candidate fetch', () => {
             ['ext_ai_filter', 'Mask Fit AI Filter Cushion'],
             ['ext_concealer', 'Glide & Hide Blurring Concealer'],
             ['ext_skinveil', 'H2O SkinVeil'],
+            ['ext_red_foundation', 'Mask Fit Red Foundation'],
+            ['ext_mesh_foundation', 'Mask Fit Mesh Foundation'],
+            ['ext_cushion_mini', 'Mask Fit Red Cushion Mini'],
+            ['ext_skinveil_base', 'H2O SkinVeil Base'],
+            ['ext_blur_concealer', 'Glide & Hide Blurring Concealer Mini'],
+            ['ext_ai_cushion', 'Mask Fit AI Filter Cushion Mini'],
             ['ext_puff', 'Soft Shell Cushion Puff'],
             ['ext_sachet', 'Sachet - Mask Fit Red Cushion Trial Kits'],
             ['ext_toner', 'Milk Skin Toner'],
@@ -1218,6 +1270,12 @@ describe('RecommendationEngine external candidate fetch', () => {
       'ext_ai_filter',
       'ext_concealer',
       'ext_skinveil',
+      'ext_red_foundation',
+      'ext_mesh_foundation',
+      'ext_cushion_mini',
+      'ext_skinveil_base',
+      'ext_blur_concealer',
+      'ext_ai_cushion',
     ]);
     expect(products.map((product) => product.product_id)).not.toContain('ext_puff');
     expect(products.map((product) => product.product_id)).not.toContain('ext_sachet');

@@ -84,6 +84,14 @@ const PDP_RECS_EXTERNAL_SKIP_INTERNAL_MIN_ABS = Math.max(
   4,
   Math.min(120, Number(process.env.PDP_RECS_EXTERNAL_SKIP_INTERNAL_MIN_ABS || 14) || 14),
 );
+const PDP_RECS_EXTERNAL_FETCH_LIMIT_MIN = Math.max(
+  24,
+  Math.min(240, Number(process.env.PDP_RECS_EXTERNAL_FETCH_LIMIT_MIN || 48) || 48),
+);
+const PDP_RECS_EXTERNAL_FETCH_LIMIT_MULTIPLIER = Math.max(
+  2,
+  Math.min(15, Number(process.env.PDP_RECS_EXTERNAL_FETCH_LIMIT_MULTIPLIER || 4) || 4),
+);
 const PDP_RECS_EXTERNAL_RECALL_QUERY_CAP_MAX = Math.max(
   48,
   Math.min(240, Number(process.env.PDP_RECS_EXTERNAL_RECALL_QUERY_CAP_MAX || 144) || 144),
@@ -258,7 +266,18 @@ function buildNormalizedAliases(input) {
   );
 }
 
+const BROAD_RECALL_TITLE_SCAN_CATEGORIES = new Set([
+  'beauty',
+  'makeup',
+  'product',
+  'products',
+  'skin care',
+  'skincare',
+  'treatment',
+]);
+
 function buildCategoryTitleLikePatterns(input) {
+  if (BROAD_RECALL_TITLE_SCAN_CATEGORIES.has(normalizeText(input))) return [];
   const aliases = buildNormalizedAliases(input);
   const patterns = [];
   for (const alias of aliases) {
@@ -322,6 +341,17 @@ const STRICT_EXTERNAL_SAME_BRAND_LEAF_CATEGORIES = new Set([
   'lipstick',
   'mascara',
   'primer',
+]);
+const IDENTITY_COLLAPSE_PROTECTION_CATEGORIES = new Set([
+  ...STRICT_EXTERNAL_SAME_BRAND_LEAF_CATEGORIES,
+  'blush',
+  'bronzer',
+  'cushion',
+  'eyeliner',
+  'eyeshadow',
+  'lip liner',
+  'skin tint',
+  'tinted moisturizer',
 ]);
 
 const SIMILAR_INTENT_FAMILY_RULES = Object.freeze([
@@ -1622,6 +1652,25 @@ function requiresStrictExternalSameBrandIntent(features) {
   return /\b(sunscreen|spf|sun\s*(?:milk|cream|lotion|fluid|stick|serum|gel|screen)?|uv)\b/i.test(title);
 }
 
+function requiresIdentityCollapseProtectionForExternalRecall({ categoryHint = '', intentFamilyHint = '' } = {}) {
+  const category = normalizeText(categoryHint);
+  const intentFamily = normalizeText(intentFamilyHint);
+  return (
+    intentFamily === 'foundation' ||
+    (category && IDENTITY_COLLAPSE_PROTECTION_CATEGORIES.has(category))
+  );
+}
+
+function focusedRecallTargetCount(safeMinFocusedCandidates) {
+  return Math.max(
+    PDP_RECS_READY_MIN_COUNT,
+    Math.min(
+      PDP_RECS_DEFAULT_K,
+      Math.max(1, Number(safeMinFocusedCandidates || 0) || PDP_RECS_READY_MIN_COUNT),
+    ),
+  );
+}
+
 function titleIntentMatches(baseFeatures, candidateFeatures) {
   const baseTitle = String(baseFeatures?.normalizedTitle || '').trim();
   const candidateTitle = String(candidateFeatures?.normalizedTitle || '').trim();
@@ -1693,6 +1742,18 @@ function getSimilarIntentFamilySqlLikePatterns(intentFamily) {
       '%skinveil%',
       '%skin veil%',
       '%concealer%',
+    ];
+  }
+  if (id === 'mask') {
+    return [
+      '%mask%',
+      '%eye patch%',
+      '%eye patches%',
+      '%hydrogel%',
+      '%sheet mask%',
+      '%sleeping mask%',
+      '%wash off mask%',
+      '%wash-off mask%',
     ];
   }
   if (id === 'highlighter') return ['%highlighter%', '%illuminator%'];
@@ -2413,6 +2474,15 @@ async function fetchExternalCandidates({
   const intentFamily = String(intentFamilyHint || '').trim();
   const intentFamilyPattern = getSimilarIntentFamilySqlPattern(intentFamily);
   const intentFamilyLikePatterns = getSimilarIntentFamilySqlLikePatterns(intentFamily);
+  const identityCollapseProtection = requiresIdentityCollapseProtectionForExternalRecall({
+    categoryHint: category,
+    intentFamilyHint: intentFamily,
+  });
+  const focusedRecallTarget = focusedRecallTargetCount(safeMinFocusedCandidates);
+  const returnCap = Math.min(
+    safeLimit * 3,
+    Math.max(safeLimit, safeMinFocusedCandidates * 3),
+  );
   const verticalTitleCategoryPattern =
     vertical === 'haircare'
       ? '\\m(hair\\s*care|haircare|shampoo|conditioner|hair\\s*oil|hair\\s*mask|scalp|scalp\\s*treatment|scalp\\s*tonic|scalp\\s*oil)\\M'
@@ -2662,8 +2732,8 @@ ${EXTERNAL_SEED_FAST_RECOMMENDATION_SELECT}
           () => runQuery(
             intentFamilyLikePatterns.length
               ? `AND (
-                  lower(coalesce(title, '')) LIKE ANY($4::text[])
-                  OR lower(coalesce(seed_data->'snapshot'->>'title', '')) LIKE ANY($4::text[])
+                  lower(coalesce(seed_data->'derived'->'recall'->>'retrieval_title', '')) LIKE ANY($4::text[])
+                  OR lower(coalesce(seed_data#>>'{derived,recall,alias_tokens}', '')) LIKE ANY($4::text[])
                 )`
               : `AND (
                   lower(coalesce(title, '')) ~ $4
@@ -2703,11 +2773,18 @@ ${EXTERNAL_SEED_FAST_RECOMMENDATION_SELECT}
     domainCategoryFocusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
     if (
       intentFamilyPattern &&
-      domainCategoryFocusedCandidates.length >= Math.min(safeMinFocusedCandidates, PDP_RECS_READY_MIN_COUNT)
+      domainCategoryFocusedCandidates.length >= focusedRecallTarget
     ) {
-      return domainCategoryFocusedCandidates.slice(0, safeLimit * 3);
+      return domainCategoryFocusedCandidates.slice(0, returnCap);
     }
     exactDomainCategoryFocusedEnough = domainCategoryFocusedCandidates.length >= safeMinFocusedCandidates;
+    if (
+      exactDomainCategoryFocusedEnough &&
+      !intentFamilyPattern &&
+      !identityCollapseProtection
+    ) {
+      return domainCategoryFocusedCandidates.slice(0, returnCap);
+    }
   }
   if (deepDomainRecall && normalizedDomainHints.length && !category) {
     const deepRecallDomainCap = boundedRecallCap(2, 48);
@@ -2719,7 +2796,7 @@ ${EXTERNAL_SEED_FAST_RECOMMENDATION_SELECT}
     out.push(...preloadedDomainMatches);
     const domainFocusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
     if (!category && !intentFamilyPattern && domainFocusedCandidates.length >= safeMinFocusedCandidates) {
-      return domainFocusedCandidates.slice(0, safeLimit * 3);
+      return domainFocusedCandidates.slice(0, returnCap);
     }
   }
 
@@ -2736,27 +2813,27 @@ ${EXTERNAL_SEED_FAST_RECOMMENDATION_SELECT}
         .filter((product) => {
           if (BEAUTY_ACCESSORY_TITLE_RE.test(normalizeText(product?.title || product?.name || ''))) return false;
           return getSimilarIntentFamilyFromProduct(product) === intentFamily;
-        });
-      if (domainIntentCandidates.length >= Math.min(safeMinFocusedCandidates, PDP_RECS_READY_MIN_COUNT)) {
-        return domainIntentCandidates.slice(0, safeLimit * 3);
+      });
+      if (domainIntentCandidates.length >= focusedRecallTarget) {
+        return domainIntentCandidates.slice(0, returnCap);
       }
     }
     if (intentFamilyPattern && !preloadedIntentFamilyMatches) {
       preloadedIntentFamilyMatches = await loadIntentFamilyMatches();
       out.push(...preloadedIntentFamilyMatches);
       const intentFocusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
-      if (intentFocusedCandidates.length >= Math.min(safeMinFocusedCandidates, PDP_RECS_READY_MIN_COUNT)) {
-        return intentFocusedCandidates.slice(0, safeLimit * 3);
+      if (intentFocusedCandidates.length >= focusedRecallTarget) {
+        return intentFocusedCandidates.slice(0, returnCap);
       }
     }
     preloadedCategoryMatches = await loadCategoryMatches();
     out.push(...preloadedCategoryMatches);
     const categoryFocusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
     if (exactDomainCategoryFocusedEnough) {
-      return categoryFocusedCandidates.slice(0, safeLimit * 3);
+      return categoryFocusedCandidates.slice(0, returnCap);
     }
     if (categoryFocusedCandidates.length >= safeMinFocusedCandidates && !normalizedDomainHints.length) {
-      return categoryFocusedCandidates.slice(0, safeLimit * 3);
+      return categoryFocusedCandidates.slice(0, returnCap);
     }
   }
 
@@ -2773,7 +2850,7 @@ ${EXTERNAL_SEED_FAST_RECOMMENDATION_SELECT}
   out.push(...domainMatches);
   const domainFocusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
   if (!deepDomainRecall && domainFocusedCandidates.length >= safeMinFocusedCandidates) {
-    return domainFocusedCandidates.slice(0, safeLimit * 3);
+    return domainFocusedCandidates.slice(0, returnCap);
   }
 
   if (brand && !deepDomainRecall) {
@@ -2798,7 +2875,7 @@ ${EXTERNAL_SEED_FAST_RECOMMENDATION_SELECT}
     out.push(...brandFieldMatches);
     const brandFocusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
     if (!deepDomainRecall && brandFocusedCandidates.length >= safeMinFocusedCandidates) {
-      return brandFocusedCandidates.slice(0, safeLimit * 3);
+      return brandFocusedCandidates.slice(0, returnCap);
     }
 
     const brandTitleMatches = compactBrand
@@ -2815,7 +2892,7 @@ ${EXTERNAL_SEED_FAST_RECOMMENDATION_SELECT}
     out.push(...brandTitleMatches);
     const titleFocusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
     if (!deepDomainRecall && titleFocusedCandidates.length >= safeMinFocusedCandidates) {
-      return titleFocusedCandidates.slice(0, safeLimit * 3);
+      return titleFocusedCandidates.slice(0, returnCap);
     }
   }
 
@@ -2862,7 +2939,7 @@ ${EXTERNAL_SEED_FAST_RECOMMENDATION_SELECT}
     out.push(...recent);
   }
 
-  return uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`).slice(0, safeLimit * 3);
+  return uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`).slice(0, returnCap);
 }
 
 function collectExternalLookupKeys(baseProduct) {
@@ -3280,6 +3357,10 @@ async function recommend({
     : PDP_RECS_EXTERNAL_FETCH_TIMEOUT_MS;
 
   const shouldFetchInternalCandidates = Boolean(providedInternal) || !baseProductIsExternal;
+  const externalFetchLimit = Math.max(
+    PDP_RECS_EXTERNAL_FETCH_LIMIT_MIN,
+    Math.ceil(candidateK * PDP_RECS_EXTERNAL_FETCH_LIMIT_MULTIPLIER),
+  );
 
   let internalTimedOut = false;
   let externalTimedOut = false;
@@ -3316,7 +3397,7 @@ async function recommend({
           verticalHint: baseSemantic?.vertical || '',
           intentFamilyHint: baseIntentFamily,
           domainHints: baseDomains,
-          limit: Math.max(120, candidateK * 15),
+          limit: externalFetchLimit,
           minFocusedCandidates: candidateK,
           deepDomainRecall: baseProductIsExternal,
         }),
@@ -3508,6 +3589,7 @@ async function recommend({
         base_semantic_strong: baseSemanticStrong,
         base_product_is_external: baseProductIsExternal,
         base_intent_family: baseIntentFamily || null,
+        external_fetch_limit: externalFetchLimit,
         ready_min_count: finalReadyMinCount,
         requested_count: safeK,
         candidate_count: candidateK,
