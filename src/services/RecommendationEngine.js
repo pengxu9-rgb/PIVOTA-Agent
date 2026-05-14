@@ -2866,10 +2866,7 @@ ${EXTERNAL_SEED_FAST_RECOMMENDATION_SELECT}
   let preloadedIntentFamilyMatches = null;
   let exactDomainCategoryFocusedEnough = false;
   let exactDomainCategoryCandidateCount = 0;
-  const exactDomainCategoryGoodEnoughCount = Math.min(
-    focusedRecallTarget,
-    Math.max(9, safeMinFocusedCandidates - 3),
-  );
+  const exactDomainCategoryGoodEnoughCount = Math.min(focusedRecallTarget, 9);
   if (deepDomainRecall && normalizedDomainHints.length && category) {
     const deepRecallDomainCategoryCap = boundedRecallCap(3, 48);
     const [
