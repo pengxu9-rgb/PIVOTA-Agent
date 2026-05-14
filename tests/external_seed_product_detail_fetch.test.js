@@ -725,6 +725,67 @@ describe('external seed product detail hydration', () => {
     ]);
   });
 
+  test('normalizes mixed product-size option names into displayable size variants', async () => {
+    const { db, debug } = loadServerWithDb();
+
+    db.query.mockResolvedValueOnce({
+      rows: [
+        {
+          id: 'eps_brightening_boost',
+          external_product_id: 'ext_brightening_boost',
+          canonical_url: 'https://www.cosrx.com/products/brightening-boost',
+          destination_url: 'https://www.cosrx.com/products/brightening-boost',
+          domain: 'cosrx.com',
+          title: 'Brightening Boost',
+          image_url: 'https://www.cosrx.com/cdn/shop/files/brightening-boost.jpg',
+          price_amount: '42.50',
+          price_currency: 'USD',
+          availability: 'In Stock',
+          status: 'active',
+          seed_data: {
+            brand: 'COSRX',
+            snapshot: {
+              canonical_url: 'https://www.cosrx.com/products/brightening-boost',
+              variants: [
+                {
+                  variant_id: '51191889887448',
+                  sku: 'WGRPK31115',
+                  title: 'Brightening Boost / 150mL (5.07 fl.oz)',
+                  option_name: 'Skin Booster / Size',
+                  option_value: 'Brightening Boost / 150mL (5.07 fl.oz)',
+                  options: [
+                    {
+                      name: 'Skin Booster / Size',
+                      value: 'Brightening Boost / 150mL (5.07 fl.oz)',
+                    },
+                  ],
+                  price: '42.50',
+                  currency: 'USD',
+                  stock: 'In Stock',
+                  image_url: 'https://www.cosrx.com/cdn/shop/files/brightening-boost.jpg',
+                },
+              ],
+            },
+          },
+        },
+      ],
+    });
+
+    const detail = await debug.fetchExternalSeedProductDetailFromDb({ productId: 'ext_brightening_boost' });
+
+    expect(detail?.product?.variants).toEqual([
+      expect.objectContaining({
+        variant_id: '51191889887448',
+        title: '150 mL',
+        option_name: 'Size',
+        option_value: '150 mL',
+        axis_kind: 'volume',
+        display_label: 'Size: 150 mL',
+        source_quality_status: 'captured',
+      }),
+    ]);
+  });
+
   test('hydrates canonical catalog products from serialized external seed mirror payloads', () => {
     const { debug } = loadServerWithDb();
 

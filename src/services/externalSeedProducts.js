@@ -2408,11 +2408,19 @@ function inferVariantAxisKind(option, context = {}) {
     }
     return { axis_kind: 'color', display_label: VARIANT_AXIS_LABELS.color, normalized_value: optionValue };
   }
-  if (optionName === 'size') {
-    return { axis_kind: volume ? 'volume' : 'size', display_label: volume ? VARIANT_AXIS_LABELS.volume : VARIANT_AXIS_LABELS.size, normalized_value: optionValue };
+  if (
+    optionName === 'size' ||
+    /\b(?:size|volume|capacity|amount|weight|net weight|net wt|ml|m l)\b/.test(optionName)
+  ) {
+    const normalizedSizeValue = volume ? buildSeedSizeDetailLabel(optionValue) || optionValue : optionValue;
+    return {
+      axis_kind: volume ? 'volume' : 'size',
+      display_label: volume ? VARIANT_AXIS_LABELS.volume : VARIANT_AXIS_LABELS.size,
+      normalized_value: normalizedSizeValue,
+    };
   }
   if (['volume', 'voume', 'capacity', 'amount', 'weight', 'net weight', 'net wt', 'ml', 'm l'].includes(optionName)) {
-    return { axis_kind: 'volume', display_label: VARIANT_AXIS_LABELS.volume, normalized_value: optionValue };
+    return { axis_kind: 'volume', display_label: VARIANT_AXIS_LABELS.volume, normalized_value: buildSeedSizeDetailLabel(optionValue) || optionValue };
   }
   if (['pack', 'count', 'quantity', 'ct', 'ct.', 'sachet', 'unit', 'unité'].includes(optionName) || pack) {
     return { axis_kind: 'pack', display_label: VARIANT_AXIS_LABELS.pack, normalized_value: optionValue };
