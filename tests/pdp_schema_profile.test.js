@@ -32,4 +32,26 @@ describe('PDP schema profile resolution', () => {
       }),
     ).toBe(PDP_SCHEMA_PROFILES.GENERIC_PRODUCT);
   });
+
+  test('catalog formula category path overrides stale brush category text', () => {
+    expect(
+      resolvePdpSchemaProfile({
+        title: 'Eaze Drop Blur + Smooth Tint Stick - 10',
+        category: 'Brush',
+        catalog_category_path: 'beauty/makeup/face/foundation',
+        pdp_ingredients_raw: 'DIMETHICONE, OCTYLDODECANOL, SYNTHETIC WAX, SILICA.',
+      }),
+    ).toBe(PDP_SCHEMA_PROFILES.BEAUTY_FORMULA);
+  });
+
+  test('catalog tool category path stays beauty tool', () => {
+    expect(
+      resolvePdpSchemaProfile({
+        title: 'Reusable Makeup Sponge',
+        category: 'Beauty Tool',
+        catalog_category_path: 'beauty/tools/brush',
+        ingredients_inci: { items: ['Polyurethane'] },
+      }),
+    ).toBe(PDP_SCHEMA_PROFILES.BEAUTY_TOOL);
+  });
 });

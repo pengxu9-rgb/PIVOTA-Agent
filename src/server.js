@@ -3829,7 +3829,17 @@ async function resolveCatalogIdentityForProductRef({ merchantId, productId, prod
   try {
     const result = await query(
       `
-        SELECT merchant_id, platform, source_product_id, product_key, pivota_signature_id
+        SELECT
+          merchant_id,
+          platform,
+          source_product_id,
+          product_key,
+          pivota_signature_id,
+          category,
+          product_type,
+          category_path,
+          category_label_source,
+          category_confidence
         FROM catalog_products
         WHERE merchant_id = $1
           AND (
@@ -3850,6 +3860,13 @@ async function resolveCatalogIdentityForProductRef({ merchantId, productId, prod
       product_key: firstNonEmptyString(row?.product_key),
       pivota_signature_id: sigId,
       signature_id: sigId,
+      category: firstNonEmptyString(row?.category),
+      product_type: firstNonEmptyString(row?.product_type),
+      category_path: firstNonEmptyString(row?.category_path),
+      category_label_source: firstNonEmptyString(row?.category_label_source),
+      category_confidence: Number.isFinite(Number(row?.category_confidence))
+        ? Number(row.category_confidence)
+        : undefined,
     };
   } catch (err) {
     const message = String(err?.message || err || '');
@@ -3883,10 +3900,28 @@ function applyCatalogIdentityToPdpProduct(product, identity = {}) {
     product.id,
   );
   const productKey = firstNonEmptyString(product.product_key, identity.product_key);
+  const catalogCategoryPath = firstNonEmptyString(identity.category_path);
+  const catalogCategoryParts = catalogCategoryPath
+    ? catalogCategoryPath.split('/').map((part) => String(part || '').trim()).filter(Boolean)
+    : [];
+  const catalogCategoryPathLooksFormula =
+    /^beauty\/(?:skincare|skin-care|makeup\/(?:face|lip|eye|cheek|complexion|base)|fragrance|hair|haircare|body)(?:\/|$)/i
+      .test(catalogCategoryPath);
   return {
     ...product,
     ...(sourceProductId ? { source_product_id: sourceProductId } : {}),
     ...(productKey ? { product_key: productKey } : {}),
+    ...(catalogCategoryPath ? { catalog_category_path: catalogCategoryPath } : {}),
+    ...(catalogCategoryParts.length ? { category_path: catalogCategoryParts } : {}),
+    ...(identity.category && !firstNonEmptyString(product.category)
+      ? { category: identity.category }
+      : {}),
+    ...(identity.product_type && !firstNonEmptyString(product.product_type)
+      ? { product_type: identity.product_type }
+      : {}),
+    ...(catalogCategoryPathLooksFormula ? { pdp_schema_profile: 'beauty_formula' } : {}),
+    ...(identity.category_label_source ? { category_label_source: identity.category_label_source } : {}),
+    ...(identity.category_confidence !== undefined ? { category_confidence: identity.category_confidence } : {}),
     pivota_signature_id: product.pivota_signature_id || sigId,
     signature_id: product.signature_id || sigId,
     pivota_canonical_url:

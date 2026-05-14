@@ -14,6 +14,9 @@ const FORMULA_PRODUCT_RE =
   /\b(skincare|skin care|makeup|cosmetic|haircare|hair care|fragrance|perfume|parfum|cologne|cleanser|cleansing|toner|essence|serum|ampoule|solution|suspension|emulsion|moisturi[sz]er|cream|lotion|balm|mask|patch(?:es)?|peel|exfoliant|exfoliator|treatment|oil|acid|acne control|sunscreen|spf|foundation|concealer|mascara|lash|lip(?:stick| gloss| balm| oil)?|gloss stick|match stix|skinstick|contour|packette|blush|bronzer|powder|highlighter|eyeshadow|eyeliner|brow|primer|setting spray|shampoo|conditioner|body wash|body lotion)\b/i;
 const SET_PHRASE_FORMULA_RE = /\bset\s+it\s+down\b/i;
 const FORMULA_REFILL_PACKAGING_RE = /\b(?:refill\s+pouch|refill\s+pack|refill\s+pod)\b/i;
+const FORMULA_CATEGORY_PATH_RE =
+  /^beauty\/(?:skincare|skin-care|makeup\/(?:face|lip|eye|cheek|complexion|base)|fragrance|hair|haircare|body)(?:\/|$)/i;
+const TOOL_CATEGORY_PATH_RE = /^beauty\/(?:tools?|beauty-tools)(?:\/|$)/i;
 
 function asPlainObject(value) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
@@ -53,6 +56,53 @@ function collectExternalSeedProductKindText(input = {}) {
     .join(' ');
 }
 
+function collectCategoryPathCandidates(input = {}) {
+  const seedData = asPlainObject(input.seed_data);
+  const snapshot = asPlainObject(seedData.snapshot);
+  const values = [];
+  for (const value of [
+    input.catalog_category_path,
+    input.category_path,
+    input.categoryPath,
+    seedData.catalog_category_path,
+    seedData.category_path,
+    seedData.categoryPath,
+    snapshot.catalog_category_path,
+    snapshot.category_path,
+    snapshot.categoryPath,
+  ]) {
+    if (Array.isArray(value)) {
+      const joined = value.map((part) => asString(part)).filter(Boolean).join('/');
+      if (joined) values.push(joined);
+      continue;
+    }
+    const text = asString(value);
+    if (text) values.push(text);
+  }
+  return values;
+}
+
+function normalizeCategoryPath(value) {
+  return asString(value)
+    .toLowerCase()
+    .replace(/\\+/g, '/')
+    .replace(/[_\s-]+/g, '-')
+    .replace(/-?\/-?/g, '/')
+    .replace(/^\/+|\/+$/g, '');
+}
+
+function hasFormulaCategoryPath(input = {}) {
+  return collectCategoryPathCandidates(input).some((value) =>
+    FORMULA_CATEGORY_PATH_RE.test(normalizeCategoryPath(value)),
+  );
+}
+
+function hasToolCategoryPath(input = {}) {
+  return collectCategoryPathCandidates(input).some((value) =>
+    TOOL_CATEGORY_PATH_RE.test(normalizeCategoryPath(value)),
+  );
+}
+
 function classifyExternalSeedProductKind(input = {}) {
   const text = collectExternalSeedProductKindText(input);
   const reasons = [];
@@ -60,6 +110,14 @@ function classifyExternalSeedProductKind(input = {}) {
   if (NON_MERCH_RE.test(text)) {
     reasons.push('non_merch_signal');
     return { family: 'non_merch', reasons };
+  }
+  if (hasFormulaCategoryPath(input)) {
+    reasons.push('formula_category_path_signal');
+    return { family: 'single_formula', reasons };
+  }
+  if (hasToolCategoryPath(input)) {
+    reasons.push('tool_category_path_signal');
+    return { family: 'accessory', reasons };
   }
   if (STICKER_ACCESSORY_RE.test(text) && !TREATMENT_STICKER_RE.test(text)) {
     reasons.push('sticker_accessory_signal');

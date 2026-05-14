@@ -82,6 +82,10 @@ const BEAUTY_FORMULA_KEYWORDS = [
   'treatment',
 ];
 
+const BEAUTY_FORMULA_CATEGORY_PREFIX_RE =
+  /^beauty\/(?:skincare|skin-care|makeup\/(?:face|lip|eye|cheek|complexion|base)|fragrance|hair|haircare|body)(?:\/|$)/i;
+const BEAUTY_TOOL_CATEGORY_PREFIX_RE = /^beauty\/(?:tools?|beauty-tools)(?:\/|$)/i;
+
 function normalizeText(value) {
   return String(value || '')
     .toLowerCase()
@@ -101,6 +105,51 @@ function hasKeyword(haystack, keywords) {
   const normalized = ` ${normalizeText(haystack)} `;
   if (!normalized.trim()) return false;
   return keywords.some((keyword) => normalized.includes(` ${normalizeText(keyword)} `));
+}
+
+function collectCategoryPathCandidates(product) {
+  const values = [];
+  for (const value of [
+    product?.catalog_category_path,
+    product?.catalogCategoryPath,
+    product?.category_path,
+    product?.categoryPath,
+    product?.seed_data?.catalog_category_path,
+    product?.seed_data?.category_path,
+    product?.seed_data?.snapshot?.catalog_category_path,
+    product?.seed_data?.snapshot?.category_path,
+  ]) {
+    if (Array.isArray(value)) {
+      const joined = value.map((part) => String(part || '').trim()).filter(Boolean).join('/');
+      if (joined) values.push(joined);
+      continue;
+    }
+    const text = String(value || '').trim();
+    if (text) values.push(text);
+  }
+  return values;
+}
+
+function normalizeCategoryPath(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\\+/g, '/')
+    .replace(/[_\s-]+/g, '-')
+    .replace(/-?\/-?/g, '/')
+    .replace(/^\/+|\/+$/g, '');
+}
+
+function hasFormulaCategoryPath(product) {
+  return collectCategoryPathCandidates(product).some((value) =>
+    BEAUTY_FORMULA_CATEGORY_PREFIX_RE.test(normalizeCategoryPath(value)),
+  );
+}
+
+function hasToolCategoryPath(product) {
+  return collectCategoryPathCandidates(product).some((value) =>
+    BEAUTY_TOOL_CATEGORY_PREFIX_RE.test(normalizeCategoryPath(value)),
+  );
 }
 
 function explicitProfile(product) {
@@ -166,6 +215,9 @@ function resolvePdpSchemaProfile(product) {
       ? PDP_SCHEMA_PROFILES.BEAUTY_TOOL
       : PDP_SCHEMA_PROFILES.GENERIC_MERCH;
   }
+
+  if (hasFormulaCategoryPath(product)) return PDP_SCHEMA_PROFILES.BEAUTY_FORMULA;
+  if (hasToolCategoryPath(product)) return PDP_SCHEMA_PROFILES.BEAUTY_TOOL;
 
   if (hasKeyword(classificationText, MERCH_KEYWORDS)) return PDP_SCHEMA_PROFILES.GENERIC_MERCH;
   if (hasKeyword(classificationText, BEAUTY_TOOL_KEYWORDS)) return PDP_SCHEMA_PROFILES.BEAUTY_TOOL;

@@ -1121,6 +1121,30 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     expect(ingredientsInci?.data?.items).not.toEqual(expect.arrayContaining(['1', '2-Hexanediol']));
   });
 
+  test('renders formula ingredients when catalog path corrects stale brush category', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_fenty_tint_stick',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'Eaze Drop Blur + Smooth Tint Stick - 10',
+        category: 'Brush',
+        catalog_category_path: 'beauty/makeup/face/foundation',
+        category_path: ['beauty', 'makeup', 'face', 'foundation'],
+        image_url: 'https://example.com/eaze-drop-10.png',
+        pdp_ingredients_raw:
+          'DIMETHICONE, OCTYLDODECANOL, SYNTHETIC WAX, ALUMINUM STARCH OCTENYLSUCCINATE, SILICA, ETHYLENE/PROPYLENE COPOLYMER, RICINUS COMMUNIS (CASTOR) SEED OIL, SODIUM HYALURONATE',
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    expect(payload.pdp_schema_profile).toBe('beauty_formula');
+    expect(payload.modules.find((module) => module.type === 'ingredients_inci')?.data?.items).toEqual(
+      expect.arrayContaining(['DIMETHICONE', 'OCTYLDODECANOL', 'SYNTHETIC WAX']),
+    );
+  });
+
   test('classifies merch as generic and suppresses beauty ingredient modules', () => {
     const payload = buildPdpPayload({
       product: {

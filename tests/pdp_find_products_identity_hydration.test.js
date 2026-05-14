@@ -101,4 +101,53 @@ describe('find_products catalog identity hydration', () => {
       }),
     );
   });
+
+  test('hydrates PDP products with catalog category path to correct stale source payload categories', async () => {
+    const { db, debug } = loadServerWithDb();
+    db.query.mockResolvedValueOnce({
+      rows: [
+        {
+          merchant_id: 'external_seed',
+          platform: 'external_seed',
+          source_product_id: 'ext_eaze_drop_10',
+          product_key: 'prod::external_seed::external_seed::ext_eaze_drop_10',
+          pivota_signature_id: 'sig_eazedrop10',
+          category: null,
+          product_type: null,
+          category_path: 'beauty/makeup/face/foundation',
+          category_label_source: 'regex_backfill',
+          category_confidence: 0.85,
+        },
+      ],
+    });
+
+    const identity = await debug.resolveCatalogIdentityForProductRef({
+      merchantId: 'external_seed',
+      productId: 'ext_eaze_drop_10',
+    });
+    const hydrated = debug.applyCatalogIdentityToPdpProduct(
+      {
+        product_id: 'ext_eaze_drop_10',
+        merchant_id: 'external_seed',
+        title: 'Eaze Drop Blur + Smooth Tint Stick - 10',
+        category: 'Brush',
+        pdp_ingredients_raw: 'DIMETHICONE, OCTYLDODECANOL, SYNTHETIC WAX, SILICA.',
+      },
+      identity,
+    );
+
+    expect(hydrated).toEqual(
+      expect.objectContaining({
+        product_id: 'ext_eaze_drop_10',
+        source_product_id: 'ext_eaze_drop_10',
+        product_key: 'prod::external_seed::external_seed::ext_eaze_drop_10',
+        catalog_category_path: 'beauty/makeup/face/foundation',
+        category_path: ['beauty', 'makeup', 'face', 'foundation'],
+        category: 'Brush',
+        pdp_schema_profile: 'beauty_formula',
+        category_label_source: 'regex_backfill',
+        category_confidence: 0.85,
+      }),
+    );
+  });
 });
