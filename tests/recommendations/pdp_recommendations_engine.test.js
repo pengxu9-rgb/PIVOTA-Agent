@@ -371,6 +371,54 @@ describe('RecommendationEngine (PDP)', () => {
     expect(out.items.map((item) => item.product_id)).not.toContain('ext_gift_hidden');
   });
 
+  test('classifies Mask Fit foundation as foundation intent, not skincare mask', () => {
+    const base = makeProduct({
+      merchant_id: 'external_seed',
+      product_id: 'ext_tirtir_foundation',
+      title: 'Mask Fit Red Foundation',
+      brand: 'TIRTIR',
+      category: 'Foundation',
+      product_type: 'Foundation',
+      source: 'external_seed',
+      price: 25,
+    });
+    base.semantic_vertical = 'makeup';
+
+    const external = [
+      ['ext_red_cushion', 'Mask Fit Red Cushion', 'TIRTIR', 'Foundation'],
+      ['ext_aura_cushion', 'Mask Fit Aura Cushion', 'TIRTIR', 'Foundation'],
+      ['ext_concealer', 'Glide & Hide Blurring Concealer', 'TIRTIR', 'Concealer'],
+      ['ext_cushion_puff', 'Soft Shell Cushion Puff', 'TIRTIR', 'Foundation'],
+      ['ext_sheet_mask', 'Pure Fit Cica Calming True Sheet Mask', 'COSRX', 'Sheet Mask'],
+    ].map(([product_id, title, brand, category]) => {
+      const product = makeProduct({
+        merchant_id: 'external_seed',
+        product_id,
+        title,
+        brand,
+        category,
+        product_type: category,
+        source: 'external_seed',
+        price: 24,
+      });
+      product.semantic_vertical = brand === 'TIRTIR' ? 'makeup' : 'skincare';
+      return product;
+    });
+
+    const out = pickLayeredRecommendations({
+      baseProduct: base,
+      internalCandidates: [],
+      externalCandidates: external,
+      k: 3,
+    });
+
+    expect(out.items.map((item) => item.product_id)).toEqual(
+      expect.arrayContaining(['ext_red_cushion', 'ext_aura_cushion', 'ext_concealer']),
+    );
+    expect(out.items.map((item) => item.product_id)).not.toContain('ext_cushion_puff');
+    expect(out.items.map((item) => item.product_id)).not.toContain('ext_sheet_mask');
+  });
+
   test('allows same-brand beauty tools for a beauty-tool external base without visible fallback', () => {
     const base = {
       merchant_id: 'external_seed',

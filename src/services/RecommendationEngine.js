@@ -310,7 +310,7 @@ const STOPWORDS = new Set([
 ]);
 
 const BEAUTY_ACCESSORY_TITLE_RE =
-  /\b(pouch|bag|holder|keychain|soap saver|gua sha|gwalsa|brush|tool|applicator|spatula|mirror|sharpener|headband)\b/i;
+  /\b(pouch|bag|holder|keychain|soap saver|gua sha|gwalsa|brush|tool|applicator|spatula|mirror|sharpener|headband|puff|sponge)\b/i;
 const STRICT_EXTERNAL_SAME_BRAND_LEAF_CATEGORIES = new Set([
   'brow pencil',
   'brow gel',
@@ -339,6 +339,11 @@ const SIMILAR_INTENT_FAMILY_RULES = Object.freeze([
     id: 'highlighter',
     js: /\b(?:highlighter|illuminator)\b/i,
     sql: '\\m(highlighter|illuminator)\\M',
+  },
+  {
+    id: 'foundation',
+    js: /\b(?:foundation|cushion|skinveil|concealer)\b/i,
+    sql: '\\m(foundation|cushion|skinveil|concealer)\\M',
   },
   {
     id: 'mask',
@@ -2515,6 +2520,7 @@ ${EXTERNAL_SEED_FAST_RECOMMENDATION_SELECT}
   const out = [];
   let preloadedCategoryMatches = null;
   let preloadedDomainMatches = null;
+  let preloadedIntentFamilyMatches = null;
   let exactDomainCategoryFocusedEnough = false;
   if (deepDomainRecall && normalizedDomainHints.length && category) {
     const deepRecallDomainCategoryCap = boundedRecallCap(3, 48);
@@ -2544,12 +2550,20 @@ ${EXTERNAL_SEED_FAST_RECOMMENDATION_SELECT}
     );
     out.push(...preloadedDomainMatches);
     const domainFocusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
-    if (!category && domainFocusedCandidates.length >= safeMinFocusedCandidates) {
+    if (!category && !intentFamilyPattern && domainFocusedCandidates.length >= safeMinFocusedCandidates) {
       return domainFocusedCandidates.slice(0, safeLimit * 3);
     }
   }
 
   if (deepDomainRecall && category && !preloadedCategoryMatches) {
+    if (intentFamilyPattern && !preloadedIntentFamilyMatches) {
+      preloadedIntentFamilyMatches = await loadIntentFamilyMatches();
+      out.push(...preloadedIntentFamilyMatches);
+      const intentFocusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
+      if (intentFocusedCandidates.length >= Math.min(safeMinFocusedCandidates, PDP_RECS_READY_MIN_COUNT)) {
+        return intentFocusedCandidates.slice(0, safeLimit * 3);
+      }
+    }
     preloadedCategoryMatches = await loadCategoryMatches();
     out.push(...preloadedCategoryMatches);
     const categoryFocusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
@@ -2625,7 +2639,7 @@ ${EXTERNAL_SEED_FAST_RECOMMENDATION_SELECT}
     : [];
 
   out.push(...categoryMatches);
-  if (deepDomainRecall && intentFamilyPattern) {
+  if (deepDomainRecall && intentFamilyPattern && !preloadedIntentFamilyMatches) {
     out.push(...(await loadIntentFamilyMatches()));
   }
   if (deepDomainRecall && vertical) {

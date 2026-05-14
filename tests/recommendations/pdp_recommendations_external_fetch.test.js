@@ -1194,6 +1194,62 @@ describe('RecommendationEngine external candidate fetch', () => {
     ).toBe(true);
   });
 
+  test('deep-domain recall does not let domain-only rows short-circuit a strict intent family', async () => {
+    process.env.DATABASE_URL = 'postgres://example.test/pivota';
+
+    const queryMock = jest.fn(async (sql, params) => {
+      if (Array.isArray(params?.[3])) {
+        return {
+          rows: Array.from({ length: 14 }, (_, index) =>
+            makeExternalRow({
+              id: `eps_domain_${index}`,
+              external_product_id: `ext_domain_${index}`,
+              title: `Round Lab Domain Product ${index}`,
+              brand: 'Round Lab',
+              category: 'Skincare',
+              domain: 'roundlab.com',
+            }),
+          ),
+        };
+      }
+      if (String(params?.[3] || '').includes('sunscreen|spf')) {
+        return {
+          rows: [
+            makeExternalRow({
+              id: 'eps_spf_global',
+              external_product_id: 'ext_spf_global',
+              title: 'Beet The Sun SPF 40 PA+++',
+              brand: 'KraveBeauty',
+              category: 'Sunscreen',
+              domain: 'kravebeauty.com',
+            }),
+          ],
+        };
+      }
+      return { rows: [] };
+    });
+
+    jest.doMock('../../src/db', () => ({ query: queryMock }));
+    jest.doMock('../../src/logger', () => ({ warn: jest.fn(), info: jest.fn() }));
+
+    const { _internals } = require('../../src/services/RecommendationEngine');
+    const products = await _internals.fetchExternalCandidates({
+      brandHint: 'Round Lab',
+      categoryHint: '',
+      verticalHint: 'skincare',
+      intentFamilyHint: 'sunscreen',
+      domainHints: ['https://roundlab.com/products/deal-birch-sunscreen'],
+      limit: 12,
+      minFocusedCandidates: 12,
+      deepDomainRecall: true,
+    });
+
+    expect(products.map((product) => product.product_id)).toContain('ext_spf_global');
+    expect(
+      queryMock.mock.calls.some(([_sql, params]) => String(params?.[3] || '').includes('sunscreen|spf')),
+    ).toBe(true);
+  });
+
   test('deep-domain recall still loads global category rows when same-domain category rows may collapse by identity', async () => {
     process.env.DATABASE_URL = 'postgres://example.test/pivota';
 
