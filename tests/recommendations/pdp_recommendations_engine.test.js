@@ -219,6 +219,104 @@ describe('RecommendationEngine (PDP)', () => {
     );
   });
 
+  test('expands sparse external sunscreen recall by strict intent family without visible fallback', () => {
+    const base = makeProduct({
+      merchant_id: 'external_seed',
+      product_id: 'ext_roundlab_birch_mild_up',
+      title: 'Birch Mild-Up Sunscreen UVLock SPF 50+ Broad Spectrum',
+      brand: 'Round Lab',
+      category: 'Sunscreen',
+      product_type: 'Sunscreen',
+      source: 'external_seed',
+      price: 28,
+    });
+    base.semantic_vertical = 'skincare';
+
+    const external = [
+      ['ext_boj_tinted', 'Daily Tinted Fluid Sunscreen MY210', 'Beauty of Joseon', 'Sunscreen'],
+      ['ext_krave_spf', 'Beet The Sun SPF 40 PA+++', 'KraveBeauty', 'Sunscreen'],
+      ['ext_skin1004_stick', 'Hyalu-Cica Silky-Fit Sun Stick', 'SKIN1004', 'Sun Stick'],
+      ['ext_roundlab_stick', 'Birch Moisturizing Sun Stick SPF 50+', 'Round Lab', 'Sun Stick'],
+      ['ext_tone_up', 'Tone Brightening Tone-Up Sunscreen', 'SKIN1004', 'Sunscreen'],
+      ['ext_centella_spf', 'Centella Air-Fit Suncream Plus SPF50+ PA++++', 'SKIN1004', 'Sunscreen'],
+      ['ext_unrelated_serum', 'Centella Ampoule Serum', 'SKIN1004', 'Serum'],
+    ].map(([product_id, title, brand, category]) => {
+      const product = makeProduct({
+        merchant_id: 'external_seed',
+        product_id,
+        title,
+        brand,
+        category,
+        product_type: category,
+        source: 'external_seed',
+        price: 26,
+      });
+      product.semantic_vertical = 'skincare';
+      return product;
+    });
+
+    const out = pickLayeredRecommendations({
+      baseProduct: base,
+      internalCandidates: [],
+      externalCandidates: external,
+      k: 6,
+    });
+
+    expect(out.items).toHaveLength(6);
+    expect(out.items.map((item) => item.product_id)).not.toContain('ext_unrelated_serum');
+    expect(out.items.some((item) => item.reason.startsWith('L3I:external'))).toBe(true);
+    expect(out.metadata.low_confidence_reason_codes || []).not.toEqual(
+      expect.arrayContaining(['UNDERFILL_FOR_QUALITY']),
+    );
+  });
+
+  test('keeps strict hand-cream intent from admitting same-brand cleansing oil', () => {
+    const base = makeProduct({
+      merchant_id: 'external_seed',
+      product_id: 'ext_roundlab_hand_cream',
+      title: 'Birch Moisturizing Hand Cream',
+      brand: 'Round Lab',
+      category: 'Hand Cream',
+      product_type: 'Hand Cream',
+      source: 'external_seed',
+      price: 12,
+    });
+    base.semantic_vertical = 'skincare';
+
+    const external = [
+      ['ext_jurlique_rose', 'Rose Hand Cream', 'Jurlique', 'Hand Cream'],
+      ['ext_beekman_pure', 'Pure Hand Cream', 'Beekman 1802', 'Hand Cream'],
+      ['ext_roundlab_oil', 'Birch Juice Moisturizing Peeling Cleansing Oil', 'Round Lab', 'Cleansing Oil'],
+      ['ext_roundlab_cleanser', 'Birch Juice Moisturizing Cleanser', 'Round Lab', 'Cleanser'],
+    ].map(([product_id, title, brand, category]) => {
+      const product = makeProduct({
+        merchant_id: 'external_seed',
+        product_id,
+        title,
+        brand,
+        category,
+        product_type: category,
+        source: 'external_seed',
+        price: 14,
+      });
+      product.semantic_vertical = 'skincare';
+      return product;
+    });
+
+    const out = pickLayeredRecommendations({
+      baseProduct: base,
+      internalCandidates: [],
+      externalCandidates: external,
+      k: 4,
+    });
+
+    expect(out.items.map((item) => item.product_id)).toEqual(
+      expect.arrayContaining(['ext_jurlique_rose', 'ext_beekman_pure']),
+    );
+    expect(out.items.map((item) => item.product_id)).not.toContain('ext_roundlab_oil');
+    expect(out.items.map((item) => item.product_id)).not.toContain('ext_roundlab_cleanser');
+  });
+
   test('allows same-brand beauty tools for a beauty-tool external base without visible fallback', () => {
     const base = {
       merchant_id: 'external_seed',

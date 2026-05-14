@@ -1142,6 +1142,58 @@ describe('RecommendationEngine external candidate fetch', () => {
     ).toBe(true);
   });
 
+  test('deep-domain recall adds strict intent-family rows without visible fallback', async () => {
+    process.env.DATABASE_URL = 'postgres://example.test/pivota';
+
+    const queryMock = jest.fn(async (_sql, params) => {
+      if (String(params?.[3] || '').includes('sunscreen|spf')) {
+        return {
+          rows: [
+            makeExternalRow({
+              id: 'eps_spf_1',
+              external_product_id: 'ext_spf_1',
+              title: 'Beet The Sun SPF 40 PA+++',
+              brand: 'KraveBeauty',
+              category: 'Sunscreen',
+              domain: 'kravebeauty.com',
+            }),
+            makeExternalRow({
+              id: 'eps_spf_2',
+              external_product_id: 'ext_spf_2',
+              title: 'Daily Tinted Fluid Sunscreen MY210',
+              brand: 'Beauty of Joseon',
+              category: 'Sunscreen',
+              domain: 'beautyofjoseon.com',
+            }),
+          ],
+        };
+      }
+      return { rows: [] };
+    });
+
+    jest.doMock('../../src/db', () => ({ query: queryMock }));
+    jest.doMock('../../src/logger', () => ({ warn: jest.fn(), info: jest.fn() }));
+
+    const { _internals } = require('../../src/services/RecommendationEngine');
+    const products = await _internals.fetchExternalCandidates({
+      brandHint: 'Round Lab',
+      categoryHint: 'Sunscreen',
+      verticalHint: 'skincare',
+      intentFamilyHint: 'sunscreen',
+      domainHints: ['https://roundlab.com/products/birch-mild-up-sunscreen'],
+      limit: 12,
+      minFocusedCandidates: 12,
+      deepDomainRecall: true,
+    });
+
+    expect(products.map((product) => product.product_id)).toEqual(
+      expect.arrayContaining(['ext_spf_1', 'ext_spf_2']),
+    );
+    expect(
+      queryMock.mock.calls.some(([_sql, params]) => String(params?.[3] || '').includes('sunscreen|spf')),
+    ).toBe(true);
+  });
+
   test('deep-domain recall still loads global category rows when same-domain category rows may collapse by identity', async () => {
     process.env.DATABASE_URL = 'postgres://example.test/pivota';
 

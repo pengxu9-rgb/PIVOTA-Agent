@@ -317,6 +317,34 @@ const STRICT_EXTERNAL_SAME_BRAND_LEAF_CATEGORIES = new Set([
   'primer',
 ]);
 
+const SIMILAR_INTENT_FAMILY_RULES = Object.freeze([
+  {
+    id: 'sunscreen',
+    js: /\b(?:sunscreen|spf|sun\s*(?:cream|stick|milk|screen|fluid|lotion)?|uv)\b/i,
+    sql: '\\m(sunscreen|spf|sun\\s*(cream|stick|milk|screen|fluid|lotion)?|uv)\\M',
+  },
+  {
+    id: 'hand_cream',
+    js: /\b(?:hand\s*cream|handhero)\b/i,
+    sql: '\\m(hand\\s*cream|handhero)\\M',
+  },
+  {
+    id: 'highlighter',
+    js: /\b(?:highlighter|illuminator)\b/i,
+    sql: '\\m(highlighter|illuminator)\\M',
+  },
+  {
+    id: 'mask',
+    js: /\b(?:hydrogel\s*mask|sheet\s*mask|gel\s*mask|sleeping\s*mask|wash\s*off\s*mask|eye\s*patch|mask)\b/i,
+    sql: '\\m(hydrogel\\s*mask|sheet\\s*mask|gel\\s*mask|sleeping\\s*mask|wash\\s*off\\s*mask|eye\\s*patch|mask)\\M',
+  },
+  {
+    id: 'micellar_cleansing_water',
+    js: /\b(?:micellar|cleansing\s*water|make\s*up\s*remover|makeup\s*remover)\b/i,
+    sql: '\\m(micellar|cleansing\\s*water|make\\s*up\\s*remover|makeup\\s*remover)\\M',
+  },
+]);
+
 function tokenize(text) {
   const s = normalizeText(text);
   if (!s) return [];
@@ -1474,6 +1502,52 @@ function titleIntentMatches(baseFeatures, candidateFeatures) {
   return jaccard(tokenize(baseTitle), tokenize(candidateTitle)) >= 0.18;
 }
 
+function buildSimilarIntentFamilyTextFromFeatures(features) {
+  return [
+    features?.normalizedTitle,
+    features?.leafCategory,
+    features?.parentCategory,
+  ].filter(Boolean).join(' ');
+}
+
+function getSimilarIntentFamilyFromText(text) {
+  const normalized = normalizeText(text);
+  if (!normalized) return '';
+  for (const rule of SIMILAR_INTENT_FAMILY_RULES) {
+    if (rule.js.test(normalized)) return rule.id;
+  }
+  return '';
+}
+
+function getSimilarIntentFamilyFromFeatures(features) {
+  return getSimilarIntentFamilyFromText(buildSimilarIntentFamilyTextFromFeatures(features));
+}
+
+function getSimilarIntentFamilyFromProduct(product) {
+  return getSimilarIntentFamilyFromText(
+    [
+      product?.title,
+      product?.name,
+      product?.category,
+      product?.product_type,
+      product?.productType,
+      getLeafCategory(product),
+      getParentCategory(product),
+    ].filter(Boolean).join(' '),
+  );
+}
+
+function getSimilarIntentFamilySqlPattern(intentFamily) {
+  const id = String(intentFamily || '').trim();
+  return SIMILAR_INTENT_FAMILY_RULES.find((rule) => rule.id === id)?.sql || '';
+}
+
+function hasSharedSimilarIntentFamily(baseFeatures, candidateFeatures) {
+  const baseFamily = getSimilarIntentFamilyFromFeatures(baseFeatures);
+  if (!baseFamily) return false;
+  return getSimilarIntentFamilyFromFeatures(candidateFeatures) === baseFamily;
+}
+
 function supportsSparseHaircareExpansion(features) {
   const text = normalizeText(
     [
@@ -1573,6 +1647,10 @@ function classifyConfidenceLevel(base, candidate, layerId) {
       return base.vertical === candidate.features.vertical ? 'medium' : 'low';
     }
     return 'low';
+  }
+
+  if (layerId === 'L3I' && base.isExternal && candidate.features.isExternal) {
+    return hasSharedSimilarIntentFamily(base, candidate.features) ? 'medium' : 'low';
   }
 
   if (layerId === 'L3V' && base.isExternal && candidate.features.isExternal) {
@@ -1708,6 +1786,15 @@ function pickLayeredRecommendations({
         ),
     },
     {
+      id: 'L3I',
+      name: 'external_intent_family',
+      priority: 2.65,
+      predicate: (_c, features, baseFeatures) =>
+        baseFeatures.isExternal &&
+        features.isExternal &&
+        hasSharedSimilarIntentFamily(baseFeatures, features),
+    },
+    {
       id: 'L3B',
       name: 'same_brand_external_same_vertical',
       priority: 3.4,
@@ -1770,6 +1857,10 @@ function pickLayeredRecommendations({
       const features = buildCandidateFeatures(p, base.currency);
       const source = features.isExternal ? 'external' : 'internal';
       const scoreDetail = scoreCandidate(base, features);
+      const baseIntentFamily = getSimilarIntentFamilyFromFeatures(base);
+      const sharedIntentFamily = baseIntentFamily
+        ? getSimilarIntentFamilyFromFeatures(features) === baseIntentFamily
+        : false;
 
       if (
         base.isExternal &&
@@ -1801,6 +1892,17 @@ function pickLayeredRecommendations({
       }
       if (
         base.isExternal &&
+        baseIntentFamily &&
+        scoreDetail.brandMatch &&
+        !scoreDetail.leafMatch &&
+        !scoreDetail.parentMatch &&
+        !sharedIntentFamily
+      ) {
+        filteredByConfidence += 1;
+        return null;
+      }
+      if (
+        base.isExternal &&
         base.vertical === 'skincare' &&
         scoreDetail.brandMatch &&
         !scoreDetail.leafMatch &&
@@ -1822,7 +1924,8 @@ function pickLayeredRecommendations({
         requiresStrictExternalSameBrandIntent(base) &&
         !scoreDetail.leafMatch &&
         !scoreDetail.parentMatch &&
-        !titleIntentMatches(base, features)
+        !titleIntentMatches(base, features) &&
+        !sharedIntentFamily
       ) {
         filteredByConfidence += 1;
         return null;
@@ -2097,6 +2200,7 @@ async function fetchExternalCandidates({
   brandHint,
   categoryHint,
   verticalHint = '',
+  intentFamilyHint = '',
   domainHints = [],
   limit,
   minFocusedCandidates = 6,
@@ -2127,6 +2231,7 @@ async function fetchExternalCandidates({
   const compactBrand = brandAliases.find((value) => !/\s/.test(value)) || brand.replace(/\s+/g, '');
   const categoryAliases = buildNormalizedAliases(categoryHint);
   const categoryTitleLikePatterns = buildCategoryTitleLikePatterns(categoryHint);
+  const intentFamilyPattern = getSimilarIntentFamilySqlPattern(intentFamilyHint);
   const verticalTitleCategoryPattern =
     vertical === 'haircare'
       ? '\\m(hair\\s*care|haircare|shampoo|conditioner|hair\\s*oil|hair\\s*mask|scalp|scalp\\s*treatment|scalp\\s*tonic|scalp\\s*oil)\\M'
@@ -2369,6 +2474,33 @@ ${EXTERNAL_SEED_FAST_RECOMMENDATION_SELECT}
         )
       : Promise.resolve([]);
 
+  const loadIntentFamilyMatches = () =>
+    intentFamilyPattern
+      ? runTimedExternalQuery(
+          'external_intent_family',
+          () => runQuery(
+            `AND (
+              lower(coalesce(title, '')) ~ $4
+              OR lower(coalesce(seed_data->'snapshot'->>'title', '')) ~ $4
+              OR lower(coalesce(
+                seed_data->'derived'->'recall'->>'category',
+                seed_data->>'category',
+                seed_data->'snapshot'->>'category',
+                seed_data->>'product_type',
+                seed_data->'snapshot'->>'product_type',
+                ''
+              )) ~ $4
+            )`,
+            [intentFamilyPattern],
+            deepDomainRecall
+              ? boundedRecallCap(8, 96)
+              : Math.min(160, safeLimit),
+            'external_intent_family',
+          ),
+          deepDomainRecall ? PDP_RECS_EXTERNAL_RECALL_QUERY_TIMEOUT_MS : PDP_RECS_EXTERNAL_UNDERFILL_QUERY_TIMEOUT_MS,
+        )
+      : Promise.resolve([]);
+
   const out = [];
   let preloadedCategoryMatches = null;
   let preloadedDomainMatches = null;
@@ -2482,6 +2614,9 @@ ${EXTERNAL_SEED_FAST_RECOMMENDATION_SELECT}
     : [];
 
   out.push(...categoryMatches);
+  if (deepDomainRecall && intentFamilyPattern) {
+    out.push(...(await loadIntentFamilyMatches()));
+  }
   if (deepDomainRecall && vertical) {
     out.push(...(await loadVerticalMatches()));
   }
@@ -2927,6 +3062,7 @@ async function recommend({
   const baseBrand = getBrandName(baseProduct);
   const baseLeaf = getLeafCategory(baseProduct);
   const baseDomains = extractProductDomains(baseProduct);
+  const baseIntentFamily = getSimilarIntentFamilyFromProduct(baseProduct);
   const baseSemanticStrong = Number(baseSemantic?.signal_strength || 0) >= 2;
   const baseProductIsExternal = isExternalProduct(baseProduct);
   const effectiveExternalFetchTimeoutMs = baseProductIsExternal
@@ -2968,6 +3104,7 @@ async function recommend({
           brandHint: baseBrand,
           categoryHint: baseLeaf,
           verticalHint: baseSemantic?.vertical || '',
+          intentFamilyHint: baseIntentFamily,
           domainHints: baseDomains,
           limit: Math.max(120, candidateK * 15),
           minFocusedCandidates: candidateK,
