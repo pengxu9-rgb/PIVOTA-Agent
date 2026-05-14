@@ -411,6 +411,86 @@ function buildPlan(row, options = {}) {
   return { result, nextSeedData: seedData, changed };
 }
 
+function buildServingBlockPatch(seedData) {
+  const snapshot = asObject(seedData.snapshot);
+  const patch = {};
+  for (const key of [
+    'pdp_field_quality_summary',
+    'ingredient_intel',
+    'ingredient_remediation_v1',
+    'external_seed_snapshot_contract',
+    'strict_pdp_source_blocker_v1',
+  ]) {
+    if (seedData[key] !== undefined) patch[key] = seedData[key];
+    else if (snapshot[key] !== undefined) patch[key] = snapshot[key];
+  }
+  return patch;
+}
+
+async function syncIngredientBlockerServingMirrors(externalProductId, seedData) {
+  const payloadPatch = buildServingBlockPatch(seedData);
+  if (!Object.keys(payloadPatch).length) return { catalog_products: 0, pdp_identity_listing: 0 };
+  const payloadJson = JSON.stringify(payloadPatch).replace(/\u0000/g, '').replace(/\\+u0000/gi, '');
+  const removeKeys = [
+    'pdp_ingredients_raw',
+    'raw_ingredient_text_clean',
+    'ingredients_inci',
+    'ingredient_text',
+    'ingredient_intel_legacy',
+    'ingredient_names',
+    'ingredientNames',
+    'key_ingredients',
+    'keyIngredients',
+  ];
+  const catalogRes = await query(
+    `
+      UPDATE catalog_products
+      SET product_payload = (
+            COALESCE(product_payload, '{}'::jsonb)
+            - 'pdp_ingredients_raw'
+            - 'raw_ingredient_text_clean'
+            - 'ingredients_inci'
+            - 'ingredient_text'
+            - 'ingredient_intel_legacy'
+            - 'ingredient_names'
+            - 'ingredientNames'
+            - 'key_ingredients'
+            - 'keyIngredients'
+          ) || $2::jsonb,
+          updated_at = NOW()
+      WHERE merchant_id = 'external_seed'
+        AND platform = 'external_seed'
+        AND source_product_id = $1
+    `,
+    [externalProductId, payloadJson],
+  );
+  const identityRes = await query(
+    `
+      UPDATE pdp_identity_listing
+      SET source_payload = (
+            COALESCE(source_payload, '{}'::jsonb)
+            - 'pdp_ingredients_raw'
+            - 'raw_ingredient_text_clean'
+            - 'ingredients_inci'
+            - 'ingredient_text'
+            - 'ingredient_intel_legacy'
+            - 'ingredient_names'
+            - 'ingredientNames'
+            - 'key_ingredients'
+            - 'keyIngredients'
+          ) || $2::jsonb,
+          updated_at = NOW()
+      WHERE source_listing_ref = $3
+    `,
+    [externalProductId, payloadJson, `external_seed:${externalProductId}`],
+  );
+  return {
+    catalog_products: Number(catalogRes.rowCount || 0),
+    pdp_identity_listing: Number(identityRes.rowCount || 0),
+    remove_keys: removeKeys,
+  };
+}
+
 async function main() {
   const productIdFilter = argValue('product-ids');
   const readinessPayload = productIdFilter ? { rows: [] } : readJson(argValue('readiness-json'));
@@ -426,40 +506,58 @@ async function main() {
   const plans = rows.map((row) => buildPlan(row, options));
   let updatedRows = 0;
   const applyErrors = [];
+  const mirrorSync = [];
 
   if (options.apply) {
     for (const plan of plans) {
-      if (!plan.changed) continue;
-      const payloadJson = JSON.stringify(plan.nextSeedData).replace(/\u0000/g, '').replace(/\\+u0000/gi, '');
-      if (payloadJson.includes('\u0000') || /\\+u0000/i.test(payloadJson)) {
-        throw new Error(`payload still contains NUL marker (external_product_id=${plan.result.external_product_id})`);
+      if (plan.changed) {
+        const payloadJson = JSON.stringify(plan.nextSeedData).replace(/\u0000/g, '').replace(/\\+u0000/gi, '');
+        if (payloadJson.includes('\u0000') || /\\+u0000/i.test(payloadJson)) {
+          throw new Error(`payload still contains NUL marker (external_product_id=${plan.result.external_product_id})`);
+        }
+        let res;
+        try {
+          res = await query(
+            `
+              UPDATE external_product_seeds
+              SET seed_data = $2::jsonb,
+                  updated_at = NOW()
+              WHERE external_product_id = $1
+                AND status = 'active'
+                AND seed_data IS DISTINCT FROM $2::jsonb
+            `,
+            [plan.result.external_product_id, payloadJson],
+          );
+        } catch (error) {
+          plan.result.status = 'apply_failed';
+          plan.result.error = String(error?.message || error);
+          applyErrors.push({
+            external_product_id: plan.result.external_product_id,
+            title: plan.result.title,
+            action: plan.result.action,
+            error: plan.result.error,
+          });
+          continue;
+        }
+        updatedRows += Number(res.rowCount || 0);
+        if (res.rowCount > 0) plan.result.status = 'updated';
       }
-      let res;
-      try {
-        res = await query(
-          `
-            UPDATE external_product_seeds
-            SET seed_data = $2::jsonb,
-                updated_at = NOW()
-            WHERE external_product_id = $1
-              AND status = 'active'
-              AND seed_data IS DISTINCT FROM $2::jsonb
-          `,
-          [plan.result.external_product_id, payloadJson],
-        );
-      } catch (error) {
-        plan.result.status = 'apply_failed';
-        plan.result.error = String(error?.message || error);
-        applyErrors.push({
-          external_product_id: plan.result.external_product_id,
-          title: plan.result.title,
-          action: plan.result.action,
-          error: plan.result.error,
-        });
-        continue;
+      if (['manual_source_review_required', 'component_refs_linked', 'component_ref_review_required'].includes(plan.result.action)) {
+        try {
+          const sync = await syncIngredientBlockerServingMirrors(plan.result.external_product_id, plan.nextSeedData);
+          plan.result.serving_mirror_sync = sync;
+          mirrorSync.push({ external_product_id: plan.result.external_product_id, ...sync });
+        } catch (error) {
+          plan.result.status = 'apply_failed';
+          plan.result.error = String(error?.message || error);
+          applyErrors.push({
+            external_product_id: plan.result.external_product_id,
+            title: plan.result.title,
+            action: plan.result.action,
+            error: plan.result.error,
+          });
+        }
       }
-      updatedRows += Number(res.rowCount || 0);
-      if (res.rowCount > 0) plan.result.status = 'updated';
     }
   }
 
@@ -471,6 +569,8 @@ async function main() {
     changed_rows: plans.filter((plan) => plan.changed).length,
     updated_rows: updatedRows,
     failed_rows: applyErrors.length,
+    serving_mirror_catalog_updates: mirrorSync.reduce((sum, item) => sum + Number(item.catalog_products || 0), 0),
+    serving_mirror_identity_updates: mirrorSync.reduce((sum, item) => sum + Number(item.pdp_identity_listing || 0), 0),
     by_action: results.reduce((acc, item) => {
       const key = item.action || item.status || 'unknown';
       acc[key] = (acc[key] || 0) + 1;
