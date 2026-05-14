@@ -2607,6 +2607,11 @@ async function fetchExternalCandidates({
     return displayUniqueCandidateCount(products) >= targetCount;
   }
 
+  function timedOutStageCount(stageNames) {
+    const allowed = new Set(Array.isArray(stageNames) ? stageNames : []);
+    return fetchStats.stages.filter((stage) => allowed.has(stage.name) && stage.timed_out).length;
+  }
+
   async function runQuery(whereSql, params, cap, queryName) {
     try {
       const res = await query(
@@ -2861,6 +2866,10 @@ ${EXTERNAL_SEED_FAST_RECOMMENDATION_SELECT}
   let preloadedIntentFamilyMatches = null;
   let exactDomainCategoryFocusedEnough = false;
   let exactDomainCategoryCandidateCount = 0;
+  const exactDomainCategoryGoodEnoughCount = Math.min(
+    focusedRecallTarget,
+    Math.max(9, safeMinFocusedCandidates - 3),
+  );
   if (deepDomainRecall && normalizedDomainHints.length && category) {
     const deepRecallDomainCategoryCap = boundedRecallCap(3, 48);
     const [
@@ -2885,7 +2894,7 @@ ${EXTERNAL_SEED_FAST_RECOMMENDATION_SELECT}
     exactDomainCategoryCandidateCount = displayUniqueCandidateCount(domainCategoryFocusedCandidates);
     if (
       intentFamilyPattern &&
-      exactDomainCategoryCandidateCount >= focusedRecallTarget
+      exactDomainCategoryCandidateCount >= exactDomainCategoryGoodEnoughCount
     ) {
       return attachExternalFetchStats(domainCategoryFocusedCandidates.slice(0, returnCap));
     }
@@ -2896,6 +2905,12 @@ ${EXTERNAL_SEED_FAST_RECOMMENDATION_SELECT}
       !identityCollapseProtection
     ) {
       return attachExternalFetchStats(domainCategoryFocusedCandidates.slice(0, returnCap));
+    }
+    if (
+      domainCategoryFocusedCandidates.length === 0 &&
+      timedOutStageCount(['external_domain_title_category', 'external_domain_category']) >= 2
+    ) {
+      return attachExternalFetchStats([]);
     }
   }
   if (deepDomainRecall && normalizedDomainHints.length && !category) {
