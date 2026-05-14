@@ -825,6 +825,38 @@ describe('backfill-external-seed-official-html-pdp-fields TIRTIR sheet matching'
     expect(patch.seedData.active_ingredients).toEqual(['Kakadu Plum Extract']);
   });
 
+  test('missing-fields-only seed patch replaces force-filled ingredients with official source', () => {
+    const forceFilledInci =
+      'WATER, GLYCERIN, BUTYLENE GLYCOL, NIACINAMIDE, PHENOXYETHANOL, TOCOPHEROL, FRAGRANCE, IRON OXIDES.';
+    const officialInci =
+      'AQUA/WATER/EAU, CYCLOPENTASILOXANE, TITANIUM DIOXIDE, BUTYLENE GLYCOL, GLYCERIN, NIACINAMIDE, PHENOXYETHANOL, TOCOPHEROL, IRON OXIDES (CI 77491, CI 77492, CI 77499), FRAGRANCE.';
+    const row = {
+      seed_data: {
+        snapshot: {},
+        pdp_ingredients_raw: forceFilledInci,
+        pdp_field_quality_summary: {
+          ingredients_raw: {
+            source_origin: 'pivota_force_fill',
+            source_quality_status: 'force_filled_pending_source',
+          },
+        },
+      },
+    };
+
+    const patch = buildSeedDataPatch(
+      row,
+      {
+        pdp_ingredients_raw: officialInci,
+      },
+      { missingFieldsOnly: true },
+    );
+
+    expect(patch.patchKeys).toContain('pdp_ingredients_raw');
+    expect(patch.seedData.pdp_ingredients_raw).toBe(officialInci);
+    expect(patch.seedData.pdp_field_quality_summary.ingredients_raw.source_origin).toBe('official_html');
+    expect(patch.seedData.pdp_field_quality_summary.ingredients_raw.source_quality_status).toBe('high');
+  });
+
   test('JSONB writer strips null-byte escapes from historical payloads', () => {
     const text = stringifyPostgresJsonb({
       root: 'before\u0000after',

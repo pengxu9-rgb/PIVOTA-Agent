@@ -1702,21 +1702,44 @@ function buildSeedDataPatch(row, extracted, options = {}) {
   const patchKeys = [];
   const reviewSummaryOnly = options.reviewSummaryOnly === true;
   const missingFieldsOnly = options.missingFieldsOnly === true;
+  const readExistingQuality = (summaryKey, assetKey = summaryKey) => {
+    const summaries = [
+      ensureObject(seedData.pdp_field_quality_summary),
+      ensureObject(snapshot.pdp_field_quality_summary),
+      ensureObject(seedData.pdp_content_asset_v1).fields,
+      ensureObject(snapshot.pdp_content_asset_v1).fields,
+    ];
+    for (const summary of summaries) {
+      const item = ensureObject(summary?.[summaryKey] || summary?.[assetKey]);
+      const status = normalizeText(item.source_quality_status).toLowerCase();
+      const origin = normalizeText(item.source_origin).toLowerCase();
+      if (status || origin) return { status, origin };
+    }
+    return { status: '', origin: '' };
+  };
+  const isForceFilledExisting = (summaryKey, assetKey = summaryKey) => {
+    const quality = readExistingQuality(summaryKey, assetKey);
+    return quality.status.startsWith('force_filled') || quality.origin === 'pivota_force_fill';
+  };
   const hasExisting = (fieldKey) => {
     if (!missingFieldsOnly) return false;
     if (fieldKey === 'pdp_description_raw') {
+      if (isForceFilledExisting('description_raw')) return false;
       return normalizeText(seedData.pdp_description_raw || snapshot.pdp_description_raw || seedData.description || snapshot.description).length >= 80;
     }
     if (fieldKey === 'pdp_ingredients_raw') {
+      if (isForceFilledExisting('ingredients_raw')) return false;
       return looksLikeFullInci(seedData.pdp_ingredients_raw || snapshot.pdp_ingredients_raw);
     }
     if (fieldKey === 'pdp_active_ingredients_raw') {
+      if (isForceFilledExisting('active_ingredients_raw')) return false;
       return (
         looksLikeActiveIngredientList(seedData.pdp_active_ingredients_raw || snapshot.pdp_active_ingredients_raw) ||
         asArray(seedData.active_ingredients || snapshot.active_ingredients).length > 0
       );
     }
     if (fieldKey === 'pdp_how_to_use_raw') {
+      if (isForceFilledExisting('how_to_use_raw')) return false;
       return looksLikeHowToUse(seedData.pdp_how_to_use_raw || snapshot.pdp_how_to_use_raw);
     }
     if (fieldKey === 'pdp_details_sections') {
