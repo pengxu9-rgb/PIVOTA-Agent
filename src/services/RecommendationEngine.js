@@ -2080,6 +2080,7 @@ async function fetchInternalCandidates({ merchantId, limit, excludeMerchantId, c
 async function fetchExternalCandidates({
   brandHint,
   categoryHint,
+  verticalHint = '',
   domainHints = [],
   limit,
   minFocusedCandidates = 6,
@@ -2098,6 +2099,7 @@ async function fetchExternalCandidates({
 
   const brand = normalizeText(brandHint);
   const category = normalizeText(categoryHint);
+  const vertical = normalizeStoredSemanticVertical(verticalHint);
   const allowVisibleFallbacks = visibleFallbacksEnabled();
   const normalizedDomainHints = uniqueByKey(
     (Array.isArray(domainHints) ? domainHints : [domainHints])
@@ -2109,6 +2111,10 @@ async function fetchExternalCandidates({
   const compactBrand = brandAliases.find((value) => !/\s/.test(value)) || brand.replace(/\s+/g, '');
   const categoryAliases = buildNormalizedAliases(categoryHint);
   const categoryTitleLikePatterns = buildCategoryTitleLikePatterns(categoryHint);
+  const verticalTitleCategoryPattern =
+    vertical === 'haircare'
+      ? '\\m(hair\\s*care|haircare|shampoo|conditioner|hair\\s*oil|hair\\s*mask|scalp|scalp\\s*treatment|scalp\\s*tonic|scalp\\s*oil)\\M'
+      : '';
 
   function boundedRecallCap(multiplier, floor = 24) {
     return Math.min(
@@ -2319,6 +2325,34 @@ ${EXTERNAL_SEED_FAST_RECOMMENDATION_SELECT}
       deepDomainRecall ? PDP_RECS_EXTERNAL_RECALL_QUERY_TIMEOUT_MS : PDP_RECS_EXTERNAL_UNDERFILL_QUERY_TIMEOUT_MS,
     );
 
+  const loadVerticalMatches = () =>
+    vertical && verticalTitleCategoryPattern
+      ? runTimedExternalQuery(
+          'external_vertical',
+          () => runQuery(
+            `AND (
+              lower(coalesce(seed_data->'derived'->'recall'->>'vertical', seed_data->>'semantic_vertical', seed_data->>'recall_vertical', '')) = $4
+              OR lower(coalesce(
+                seed_data->'derived'->'recall'->>'category',
+                seed_data->>'category',
+                seed_data->'snapshot'->>'category',
+                seed_data->>'product_type',
+                seed_data->'snapshot'->>'product_type',
+                title,
+                ''
+              )) ~ $5
+              OR lower(coalesce(title, '')) ~ $5
+            )`,
+            [vertical, verticalTitleCategoryPattern],
+            deepDomainRecall
+              ? boundedRecallCap(6, 96)
+              : Math.min(120, safeLimit),
+            'external_vertical',
+          ),
+          deepDomainRecall ? PDP_RECS_EXTERNAL_RECALL_QUERY_TIMEOUT_MS : PDP_RECS_EXTERNAL_UNDERFILL_QUERY_TIMEOUT_MS,
+        )
+      : Promise.resolve([]);
+
   const out = [];
   let preloadedCategoryMatches = null;
   let preloadedDomainMatches = null;
@@ -2432,6 +2466,9 @@ ${EXTERNAL_SEED_FAST_RECOMMENDATION_SELECT}
     : [];
 
   out.push(...categoryMatches);
+  if (deepDomainRecall && vertical) {
+    out.push(...(await loadVerticalMatches()));
+  }
   let focusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
   if (allowVisibleFallbacks && category && focusedCandidates.length < safeMinFocusedCandidates) {
     const categoryLikePatterns = categoryAliases
@@ -2914,9 +2951,10 @@ async function recommend({
       : fetchExternalCandidates({
           brandHint: baseBrand,
           categoryHint: baseLeaf,
+          verticalHint: baseSemantic?.vertical || '',
           domainHints: baseDomains,
           limit: Math.max(120, candidateK * 15),
-            minFocusedCandidates: candidateK,
+          minFocusedCandidates: candidateK,
           deepDomainRecall: baseProductIsExternal,
         }),
     effectiveExternalFetchTimeoutMs,

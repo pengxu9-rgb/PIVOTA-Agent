@@ -1091,6 +1091,57 @@ describe('RecommendationEngine external candidate fetch', () => {
     expect(products.every((product) => product.category === 'Brow Pencil')).toBe(true);
   });
 
+  test('deep-domain recall adds sparse haircare vertical rows without visible fallback', async () => {
+    process.env.DATABASE_URL = 'postgres://example.test/pivota';
+
+    const queryMock = jest.fn(async (_sql, params) => {
+      if (params?.[3] === 'haircare' && String(params?.[4] || '').includes('scalp')) {
+        return {
+          rows: [
+            makeExternalRow({
+              id: 'eps_scalp_1',
+              external_product_id: 'ext_scalp_1',
+              title: 'Complete Pre-Wash Scalp Oil',
+              brand: 'JVN',
+              category: 'Scalp Treatment',
+              domain: 'jvn.com',
+            }),
+            makeExternalRow({
+              id: 'eps_hair_mask_1',
+              external_product_id: 'ext_hair_mask_1',
+              title: 'Intense Repair Hair Mask',
+              brand: 'K18',
+              category: 'Hair Mask',
+              domain: 'k18hair.com',
+            }),
+          ],
+        };
+      }
+      return { rows: [] };
+    });
+
+    jest.doMock('../../src/db', () => ({ query: queryMock }));
+    jest.doMock('../../src/logger', () => ({ warn: jest.fn(), info: jest.fn() }));
+
+    const { _internals } = require('../../src/services/RecommendationEngine');
+    const products = await _internals.fetchExternalCandidates({
+      brandHint: 'COSRX',
+      categoryHint: 'Shampoo',
+      verticalHint: 'haircare',
+      domainHints: ['https://cosrx.com/products/peptide-132-ultra-perfect-hair-bonding-shampoo'],
+      limit: 12,
+      minFocusedCandidates: 12,
+      deepDomainRecall: true,
+    });
+
+    expect(products.map((product) => product.product_id)).toEqual(
+      expect.arrayContaining(['ext_scalp_1', 'ext_hair_mask_1']),
+    );
+    expect(
+      queryMock.mock.calls.some(([_sql, params]) => params?.[3] === 'haircare'),
+    ).toBe(true);
+  });
+
   test('deep-domain recall still loads global category rows when same-domain category rows may collapse by identity', async () => {
     process.env.DATABASE_URL = 'postgres://example.test/pivota';
 
