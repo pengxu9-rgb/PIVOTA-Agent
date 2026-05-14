@@ -2299,6 +2299,7 @@ ${EXTERNAL_SEED_FAST_RECOMMENDATION_SELECT}
   const out = [];
   let preloadedCategoryMatches = null;
   let preloadedDomainMatches = null;
+  let exactDomainCategoryFocusedEnough = false;
   if (deepDomainRecall && normalizedDomainHints.length && category) {
     const deepRecallDomainCategoryCap = boundedRecallCap(3, 48);
     const preloadedDomainTitleCategoryMatches = await runTimedExternalQuery(
@@ -2316,6 +2317,7 @@ ${EXTERNAL_SEED_FAST_RECOMMENDATION_SELECT}
     );
     out.push(...preloadedDomainCategoryMatches);
     domainCategoryFocusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
+    exactDomainCategoryFocusedEnough = domainCategoryFocusedCandidates.length >= safeMinFocusedCandidates;
   }
   if (deepDomainRecall && normalizedDomainHints.length && !category) {
     const deepRecallDomainCap = boundedRecallCap(2, 48);
@@ -2335,7 +2337,10 @@ ${EXTERNAL_SEED_FAST_RECOMMENDATION_SELECT}
     preloadedCategoryMatches = await loadCategoryMatches();
     out.push(...preloadedCategoryMatches);
     const categoryFocusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
-    if (categoryFocusedCandidates.length >= safeMinFocusedCandidates) {
+    if (exactDomainCategoryFocusedEnough) {
+      return categoryFocusedCandidates.slice(0, safeLimit * 3);
+    }
+    if (categoryFocusedCandidates.length >= safeMinFocusedCandidates && !normalizedDomainHints.length) {
       return categoryFocusedCandidates.slice(0, safeLimit * 3);
     }
   }

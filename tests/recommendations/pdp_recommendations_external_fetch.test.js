@@ -1155,6 +1155,72 @@ describe('RecommendationEngine external candidate fetch', () => {
     ).toBe(true);
   });
 
+  test('deep-domain recall does not let global category rows starve same-domain sibling rows', async () => {
+    process.env.DATABASE_URL = 'postgres://example.test/pivota';
+
+    const queryMock = jest.fn(async (sql, params) => {
+      const sqlText = String(sql);
+      if (sqlText.includes('domain = ANY($4)') && Array.isArray(params?.[4])) {
+        return { rows: [] };
+      }
+      if (
+        sqlText.includes("seed_data->'derived'->'recall'->>'category") &&
+        !sqlText.includes('domain = ANY($4)')
+      ) {
+        return {
+          rows: Array.from({ length: 6 }).map((_, index) =>
+            makeExternalRow({
+              id: `eps_global_foundation_${index}`,
+              external_product_id: `ext_global_foundation_${index}`,
+              title: `Cross Brand Foundation ${index}`,
+              brand: `Foundation Brand ${index}`,
+              category: 'Foundation',
+              domain: `foundation-brand-${index}.example`,
+            }),
+          ),
+        };
+      }
+      if (sqlText.includes('domain = ANY($4)')) {
+        return {
+          rows: Array.from({ length: 4 }).map((_, index) =>
+            makeExternalRow({
+              id: `eps_tirtir_cushion_${index}`,
+              external_product_id: `ext_tirtir_cushion_${index}`,
+              title: `Mask Fit Cushion ${index}`,
+              brand: 'TIRTIR Global',
+              category: 'Face Makeup/Cushion Foundation',
+              domain: 'tirtir.global',
+            }),
+          ),
+        };
+      }
+      return { rows: [] };
+    });
+
+    jest.doMock('../../src/db', () => ({ query: queryMock }));
+    jest.doMock('../../src/logger', () => ({ warn: jest.fn(), info: jest.fn() }));
+
+    const { _internals } = require('../../src/services/RecommendationEngine');
+    const products = await _internals.fetchExternalCandidates({
+      brandHint: 'TIRTIR Global',
+      categoryHint: 'Foundation',
+      domainHints: ['https://tirtir.global/products/mask-fit-red-foundation'],
+      limit: 24,
+      minFocusedCandidates: 6,
+      deepDomainRecall: true,
+    });
+
+    expect(products.some((product) => product.domain === 'tirtir.global')).toBe(true);
+    expect(products.some((product) => /^foundation-brand-/i.test(product.domain))).toBe(true);
+    expect(
+      queryMock.mock.calls.some(
+        ([sql, params]) =>
+          String(sql).includes('domain = ANY($4)') &&
+          !Array.isArray(params?.[4]),
+      ),
+    ).toBe(true);
+  });
+
   test('strict external leaf categories do not use same-brand same-vertical padding', () => {
     const { pickLayeredRecommendations } = require('../../src/services/RecommendationEngine');
     const result = pickLayeredRecommendations({
