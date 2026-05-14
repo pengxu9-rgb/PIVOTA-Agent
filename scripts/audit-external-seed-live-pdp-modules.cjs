@@ -244,6 +244,7 @@ function analyzeInsights(pdp) {
     module_present: Boolean(moduleByType(pdp, 'product_intel')),
     quality_state: qualityState || null,
     evidence_profile: evidenceProfile || null,
+    seller_only_evidence: evidenceProfile === 'seller_only',
     headline: headline || null,
     why_count: whyCount,
     ok: Boolean(moduleByType(pdp, 'product_intel')) && verified && headline && !genericHeadline && whyCount > 0,
@@ -258,10 +259,26 @@ function analyzeContent(pdp) {
   const details = moduleData(pdp, 'product_details');
   const facts = moduleData(pdp, 'product_facts');
   const supplemental = moduleData(pdp, 'supplemental_details');
+  const ingredientsSourceQuality = asString(ingredients.source_quality_status);
+  const activeSourceQuality = asString(activeIngredients.source_quality_status);
+  const ingredientsForceFilled =
+    ingredients.force_filled === true ||
+    ingredientsSourceQuality === 'force_filled_pending_source' ||
+    asString(ingredients.source_origin) === 'pivota_force_fill';
+  const activeIngredientsForceFilled =
+    activeIngredients.force_filled === true ||
+    activeSourceQuality === 'force_filled_pending_source' ||
+    asString(activeIngredients.source_origin) === 'pivota_force_fill';
   return {
     ingredients_present: Boolean(moduleByType(pdp, 'ingredients_inci')) && countTextLeaves(ingredients) > 0,
     ingredients_text_count: countTextLeaves(ingredients),
+    ingredients_source_origin: asString(ingredients.source_origin) || null,
+    ingredients_source_quality_status: ingredientsSourceQuality || null,
+    ingredients_force_filled: ingredientsForceFilled,
     active_ingredients_present: Boolean(moduleByType(pdp, 'active_ingredients')) && countTextLeaves(activeIngredients) > 0,
+    active_ingredients_source_origin: asString(activeIngredients.source_origin) || null,
+    active_ingredients_source_quality_status: activeSourceQuality || null,
+    active_ingredients_force_filled: activeIngredientsForceFilled,
     how_to_present: Boolean(moduleByType(pdp, 'how_to_use')) && countTextLeaves(howTo) > 0,
     how_to_text_count: countTextLeaves(howTo),
     overview_present: Boolean(moduleByType(pdp, 'product_overview')) && countTextLeaves(overview) > 0,
@@ -360,8 +377,11 @@ function buildRowAudit(row, probe) {
   if (!gallery.ok) blockingReasons.push('gallery_missing_or_bloated');
   if (requiresVariantClarity && !variant.ok) blockingReasons.push('missing_variant_clarity');
   if (!insights.ok) blockingReasons.push('missing_or_weak_insights');
+  if (insights.seller_only_evidence) blockingReasons.push('seller_only_insights');
   if (!reviews.ok) blockingReasons.push('missing_reviews_chart');
   if (productKind.formula_content_required && !content.ingredients_present) blockingReasons.push('missing_ingredients');
+  if (productKind.formula_content_required && content.ingredients_force_filled) blockingReasons.push('force_filled_ingredients');
+  if (content.active_ingredients_force_filled) blockingReasons.push('force_filled_active_ingredients');
   if (!content.how_to_present) blockingReasons.push('missing_how_to');
   if (!content.overview_present) blockingReasons.push('missing_overview');
   if (!content.details_present) blockingReasons.push('missing_details');
@@ -371,8 +391,11 @@ function buildRowAudit(row, probe) {
     gallery.ok &&
     variant.ok &&
     insights.ok &&
+    !insights.seller_only_evidence &&
     reviews.ok &&
     (!productKind.formula_content_required || content.ingredients_present) &&
+    (!productKind.formula_content_required || !content.ingredients_force_filled) &&
+    !content.active_ingredients_force_filled &&
     content.how_to_present &&
     content.overview_present;
 
@@ -435,6 +458,16 @@ function summarize(rows) {
     blocker_counts: countBy(rows, (row) => row.blocking_reasons),
     weak_insights_ids: rows
       .filter((row) => row.blocking_reasons.includes('missing_or_weak_insights'))
+      .map((row) => row.external_product_id),
+    seller_only_insights_ids: rows
+      .filter((row) => row.blocking_reasons.includes('seller_only_insights'))
+      .map((row) => row.external_product_id),
+    force_filled_ids: rows
+      .filter((row) =>
+        row.blocking_reasons.some((reason) =>
+          ['force_filled_ingredients', 'force_filled_active_ingredients'].includes(reason),
+        ),
+      )
       .map((row) => row.external_product_id),
     content_gap_ids: rows
       .filter((row) =>
