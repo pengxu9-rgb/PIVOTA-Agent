@@ -1584,6 +1584,14 @@ function reviewPreviewCount(summary) {
   return asArray(safe.preview_items).length || asArray(safe.snippets).length;
 }
 
+function hasReviewAggregate(summary) {
+  const safe = ensureObject(summary);
+  return (
+    positiveNumber(safe.rating || safe.average_rating) > 0 &&
+    Math.round(positiveNumber(safe.review_count || safe.count || safe.total)) > 0
+  );
+}
+
 function mergeDetails(existing, incoming) {
   const out = [];
   const seen = new Set();
@@ -1763,6 +1771,7 @@ function buildSeedDataPatch(row, extracted, options = {}) {
   if (extracted.review_summary) {
     const existing = ensureObject(seedData.review_summary || snapshot.review_summary);
     const incomingPreviewCount = reviewPreviewCount(extracted.review_summary);
+    const existingPreviewCount = reviewPreviewCount(existing);
     if (reviewSummaryOnly && reviewPreviewCount(existing) > 0) {
       const sameAuthoritativeSource =
         normalizeText(existing.source_origin) &&
@@ -1772,11 +1781,20 @@ function buildSeedDataPatch(row, extracted, options = {}) {
         return { seedData, patchKeys };
       }
     }
+    if (
+      missingFieldsOnly &&
+      hasReviewAggregate(existing) &&
+      existingPreviewCount > 0 &&
+      incomingPreviewCount <= existingPreviewCount
+    ) {
+      seedData.snapshot = snapshot;
+      return { seedData, patchKeys };
+    }
     if (reviewSummaryOnly && incomingPreviewCount === 0) {
       seedData.snapshot = snapshot;
       return { seedData, patchKeys };
     }
-    const incoming = reviewSummaryOnly
+    const incoming = reviewSummaryOnly || missingFieldsOnly
       ? mergeReviewSummaryForPreviewOnly(existing, extracted.review_summary)
       : mergeReviewSummary(existing, extracted.review_summary);
     seedData.review_summary = incoming;
