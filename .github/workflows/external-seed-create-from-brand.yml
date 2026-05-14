@@ -1,0 +1,136 @@
+name: External Seed Create From Brand
+
+on:
+  workflow_dispatch:
+    inputs:
+      brand:
+        description: "Target brand name"
+        required: true
+        type: string
+      domain:
+        description: "Official or approved source URL/domain"
+        required: true
+        type: string
+      market:
+        description: "Market code"
+        required: true
+        default: "US"
+        type: string
+      limit:
+        description: "Extractor spot-check row limit"
+        required: true
+        default: "10"
+        type: string
+      dry_run:
+        description: "Run dry-run only"
+        required: true
+        default: true
+        type: boolean
+      include_commerce_facts:
+        description: "Attach commerce facts from extract-v2"
+        required: true
+        default: true
+        type: boolean
+      exclude_title_regex:
+        description: "Extra case-insensitive title/url exclusion regex"
+        required: false
+        default: ""
+        type: string
+      allow_block_provider:
+        description: "Allow manifests with anti-abuse block_provider diagnostics"
+        required: true
+        default: false
+        type: boolean
+
+jobs:
+  create-from-brand:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment:
+      name: Pivota Agent / production
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      CATALOG_INTELLIGENCE_BASE_URL: ${{ secrets.CATALOG_INTELLIGENCE_BASE_URL }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build, review, and create seeds
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${DATABASE_URL:-}" ]]; then
+            echo "DATABASE_URL secret is required" >&2
+            exit 1
+          fi
+
+          out_dir="reports/workflow_ops/external-seed-create-from-brand/${{ github.run_id }}"
+          mkdir -p "${out_dir}"
+          raw_manifest="${out_dir}/seed-creation-manifest.raw.json"
+          accepted_manifest="${out_dir}/seed-creation-manifest.reviewed-accepted.json"
+          review_json="${out_dir}/seed-creation-review.json"
+          review_csv="${out_dir}/seed-creation-review.csv"
+          mode_result="${out_dir}/seed-creation-dry-run.json"
+
+          build_args=(
+            --brand "${{ inputs.brand }}"
+            --domain "${{ inputs.domain }}"
+            --market "${{ inputs.market }}"
+            --limit "${{ inputs.limit }}"
+            --out "${raw_manifest}"
+          )
+          if [[ "${{ inputs.include_commerce_facts }}" == "true" ]]; then
+            build_args+=(--include-commerce-facts)
+          fi
+          node scripts/build_beauty_brand_external_seed_manifest.cjs "${build_args[@]}" \
+            > "${out_dir}/build-manifest.stdout.json"
+
+          review_args=(
+            --input "${raw_manifest}"
+            --out "${review_json}"
+            --out-csv "${review_csv}"
+            --accepted-manifest "${accepted_manifest}"
+            --min-coverage "0.9"
+          )
+          if [[ -n "${{ inputs.exclude_title_regex }}" ]]; then
+            review_args+=(--exclude-title-regex "${{ inputs.exclude_title_regex }}")
+          fi
+          if [[ "${{ inputs.allow_block_provider }}" == "true" ]]; then
+            review_args+=(--allow-block-provider)
+          fi
+          node scripts/review-external-seed-creation-manifest.cjs "${review_args[@]}" \
+            | tee "${out_dir}/review-summary.json"
+
+          if [[ "${{ inputs.dry_run }}" != "true" ]]; then
+            mode_result="${out_dir}/seed-creation-apply.json"
+          fi
+
+          create_args=(
+            --manifest "${accepted_manifest}"
+            --out "${mode_result}"
+          )
+          if [[ "${{ inputs.dry_run }}" != "true" ]]; then
+            create_args+=(--apply)
+          fi
+          node scripts/run_aurora_external_seed_creation_pipeline.cjs "${create_args[@]}" \
+            | tee "${out_dir}/seed-creation-summary.json"
+
+          node -e "const fs=require('fs'); const p=process.argv[1]; const j=JSON.parse(fs.readFileSync(p,'utf8')); if (!j.database_available) { console.error('database_available=false'); process.exit(1); } console.log(JSON.stringify({database_available:j.database_available, mode:j.mode, summary:j.apply_result&&j.apply_result.summary}, null, 2));" "${mode_result}" \
+            | tee "${out_dir}/database-gate.json"
+
+      - name: Upload artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: external-seed-create-from-brand-${{ github.run_id }}
+          path: reports/workflow_ops/external-seed-create-from-brand/${{ github.run_id }}
+          retention-days: 14
