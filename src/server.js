@@ -3922,6 +3922,16 @@ function hasExternalSeedRichPdpContent(product) {
   return hasVariantSignal || hasIngredientSignal || hasHowToSignal || hasDetailsSignal;
 }
 
+function readExternalSeedRichVariants(product) {
+  if (!isPlainObject(product)) return [];
+  const seedData = isPlainObject(product.seed_data) ? product.seed_data : {};
+  const snapshot = isPlainObject(seedData.snapshot) ? seedData.snapshot : {};
+  for (const variants of [product.variants, seedData.variants, snapshot.variants]) {
+    if (Array.isArray(variants) && variants.length > 0) return variants;
+  }
+  return [];
+}
+
 function mergeIdentitySyntheticWithRichExternalSeedProduct(syntheticProduct, richProduct) {
   if (!isPlainObject(syntheticProduct) || !hasExternalSeedRichPdpContent(richProduct)) {
     return syntheticProduct;
@@ -3941,9 +3951,15 @@ function mergeIdentitySyntheticWithRichExternalSeedProduct(syntheticProduct, ric
   ]) {
     if (syntheticProduct[key] != null) identityFields[key] = syntheticProduct[key];
   }
+  const richVariants = readExternalSeedRichVariants(richProduct);
+  const shouldPromoteRichVariants =
+    richVariants.length > 0 &&
+    (!Array.isArray(richProduct.variants) || richProduct.variants.length === 0) &&
+    (!Array.isArray(syntheticProduct.variants) || syntheticProduct.variants.length === 0);
   return {
     ...syntheticProduct,
     ...richProduct,
+    ...(shouldPromoteRichVariants ? { variants: richVariants } : {}),
     ...identityFields,
   };
 }

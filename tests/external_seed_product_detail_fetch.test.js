@@ -598,6 +598,52 @@ describe('external seed product detail hydration', () => {
     );
   });
 
+  test('promotes reviewed external seed snapshot variants when synthetic product has none', () => {
+    const { debug } = loadServerWithDb();
+    const richProduct = {
+      product_id: 'ext_lucky_pouch',
+      merchant_id: 'external_seed',
+      title: 'Lucky Pouch',
+      seed_data: {
+        snapshot: {
+          variants: [
+            {
+              variant_id: '40739135750309',
+              title: 'Maehwa Pink',
+              option_name: 'Shade',
+              option_value: 'Maehwa Pink',
+              options: [{ name: 'Shade', value: 'Maehwa Pink', axis_kind: 'shade' }],
+              image_url: 'https://cdn.shopify.com/lucky-pouch-maehwa.jpg',
+              display_label: 'Shade: Maehwa Pink',
+              source_quality_status: 'captured',
+            },
+          ],
+        },
+      },
+    };
+    const syntheticProduct = {
+      product_id: 'ext_lucky_pouch',
+      merchant_id: 'external_seed',
+      title: 'Lucky Pouch',
+      variants: [],
+      selected_commerce_ref: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_lucky_pouch',
+      },
+    };
+
+    const merged = debug.mergeIdentitySyntheticWithRichExternalSeedProduct(syntheticProduct, richProduct);
+
+    expect(merged.variants).toEqual([
+      expect.objectContaining({
+        variant_id: '40739135750309',
+        option_name: 'Shade',
+        option_value: 'Maehwa Pink',
+      }),
+    ]);
+    expect(merged.selected_commerce_ref).toEqual(syntheticProduct.selected_commerce_ref);
+  });
+
   test('hydrates canonical catalog products from serialized external seed mirror payloads', () => {
     const { debug } = loadServerWithDb();
 
