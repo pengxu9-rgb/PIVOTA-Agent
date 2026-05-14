@@ -310,7 +310,7 @@ const STOPWORDS = new Set([
 ]);
 
 const BEAUTY_ACCESSORY_TITLE_RE =
-  /\b(pouch|bag|holder|keychain|soap saver|gua sha|gwalsa|brush|tool|applicator|spatula|mirror|sharpener|headband|puff|sponge|sachet|trial\s*kit|sample)\b/i;
+  /\b(pouch|bag|holder|keychain|keyring|sticker|stickers|soap saver|gua sha|gwalsa|brush|tool|applicator|spatula|mirror|sharpener|headband|puff|sponge|sachet|trial\s*kit|sample)\b/i;
 const STRICT_EXTERNAL_SAME_BRAND_LEAF_CATEGORIES = new Set([
   'brow pencil',
   'brow gel',
@@ -356,6 +356,35 @@ const SIMILAR_INTENT_FAMILY_RULES = Object.freeze([
     sql: '\\m(micellar|cleansing\\s*water|make\\s*up\\s*remover|makeup\\s*remover)\\M',
   },
 ]);
+
+function getBeautyAccessoryKindFromText(text) {
+  const normalized = normalizeText(text);
+  if (!normalized || !BEAUTY_ACCESSORY_TITLE_RE.test(normalized)) return '';
+  if (/\b(?:puff|sponge|applicator)\b/.test(normalized)) return 'applicator';
+  if (/\b(?:brush|tool|spatula|mirror|sharpener|headband|gua sha|gwalsa)\b/.test(normalized)) return 'tool';
+  if (/\b(?:pouch|bag|holder|keychain|keyring|soap saver)\b/.test(normalized)) return 'storage';
+  if (/\b(?:sticker|stickers)\b/.test(normalized)) return 'sticker';
+  if (/\b(?:sachet|trial\s*kit|sample)\b/.test(normalized)) return 'sample';
+  return 'accessory';
+}
+
+function getBeautyAccessoryKindFromFeatures(features) {
+  return getBeautyAccessoryKindFromText(
+    [
+      features?.normalizedTitle,
+      features?.leafCategory,
+      features?.parentCategory,
+    ].filter(Boolean).join(' '),
+  );
+}
+
+function accessoryKindsAreCompatible(baseKind, candidateKind) {
+  if (!baseKind) return true;
+  if (!candidateKind) return false;
+  if (baseKind === candidateKind) return true;
+  if (baseKind === 'tool') return candidateKind === 'applicator';
+  return false;
+}
 
 function tokenize(text) {
   const s = normalizeText(text);
@@ -1442,6 +1471,7 @@ function buildBaseFeatures(baseProduct, semantic = null) {
     : inferVerticalFromProduct(baseProduct);
   const tokens = tokenize([baseProduct.title, baseProduct.name, brand, leafCategory, parentCategory].filter(Boolean).join(' '));
   const normalizedTitle = normalizeText(baseProduct.title || baseProduct.name);
+  const accessoryKind = getBeautyAccessoryKindFromFeatures({ normalizedTitle, leafCategory, parentCategory });
   return {
     productId: getProductId(baseProduct),
     merchantId: getMerchantId(baseProduct),
@@ -1456,6 +1486,7 @@ function buildBaseFeatures(baseProduct, semantic = null) {
     vertical: verticalSignal.vertical || UNKNOWN_VERTICAL,
     verticalInferred: Boolean(verticalSignal.inferred),
     verticalKeywords: verticalSignal.matched_keywords || [],
+    accessoryKind,
   };
 }
 
@@ -1471,6 +1502,7 @@ function buildCandidateFeatures(candidateProduct, baseCurrency) {
     : inferVerticalFromProduct(candidateProduct);
   const tokens = tokenize([candidateProduct.title, candidateProduct.name, brand, leafCategory, parentCategory].filter(Boolean).join(' '));
   const normalizedTitle = normalizeText(candidateProduct.title || candidateProduct.name);
+  const accessoryKind = getBeautyAccessoryKindFromFeatures({ normalizedTitle, leafCategory, parentCategory });
   return {
     productId: getProductId(candidateProduct),
     merchantId: getMerchantId(candidateProduct),
@@ -1484,6 +1516,7 @@ function buildCandidateFeatures(candidateProduct, baseCurrency) {
     isExternal: isExternalProduct(candidateProduct),
     vertical: verticalSignal.vertical || UNKNOWN_VERTICAL,
     verticalInferred: Boolean(verticalSignal.inferred),
+    accessoryKind,
   };
 }
 
@@ -1525,6 +1558,7 @@ function buildSimilarIntentFamilyTextFromFeatures(features) {
 function getSimilarIntentFamilyFromText(text) {
   const normalized = normalizeText(text);
   if (!normalized) return '';
+  if (BEAUTY_ACCESSORY_TITLE_RE.test(normalized)) return '';
   for (const rule of SIMILAR_INTENT_FAMILY_RULES) {
     if (rule.js.test(normalized)) return rule.id;
   }
@@ -1902,6 +1936,15 @@ function pickLayeredRecommendations({
       const sharedIntentFamily = baseIntentFamily
         ? getSimilarIntentFamilyFromFeatures(features, { titleOnly: true }) === baseIntentFamily
         : false;
+
+      if (
+        base.isExternal &&
+        base.accessoryKind &&
+        !accessoryKindsAreCompatible(base.accessoryKind, features.accessoryKind)
+      ) {
+        filteredByConfidence += 1;
+        return null;
+      }
 
       if (
         base.isExternal &&

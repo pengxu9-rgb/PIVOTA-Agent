@@ -419,6 +419,50 @@ describe('RecommendationEngine (PDP)', () => {
     expect(out.items.map((item) => item.product_id)).not.toContain('ext_sheet_mask');
   });
 
+  test('does not treat cushion puffs as foundation intent bases', () => {
+    const base = makeProduct({
+      merchant_id: 'external_seed',
+      product_id: 'ext_tirtir_puff',
+      title: 'Soft Shell Cushion Puff',
+      brand: 'TIRTIR',
+      category: 'Accessory',
+      product_type: 'Accessory',
+      source: 'external_seed',
+      price: 3,
+    });
+    base.semantic_vertical = 'tools';
+
+    const external = [
+      ['ext_red_cushion', 'Mask Fit Red Cushion', 'TIRTIR', 'Foundation'],
+      ['ext_aura_cushion', 'Mask Fit Aura Cushion', 'TIRTIR', 'Foundation'],
+      ['ext_concealer', 'Glide & Hide Blurring Concealer', 'TIRTIR', 'Concealer'],
+      ['ext_stickers', 'TIRTIR Stickers', 'TIRTIR', 'Accessory'],
+      ['ext_keyring', 'Waterism Glow Melting Balm Heart Keyring', 'TIRTIR', 'Accessory'],
+    ].map(([product_id, title, brand, category]) => {
+      const product = makeProduct({
+        merchant_id: 'external_seed',
+        product_id,
+        title,
+        brand,
+        category,
+        product_type: category,
+        source: 'external_seed',
+        price: 24,
+      });
+      product.semantic_vertical = 'makeup';
+      return product;
+    });
+
+    const out = pickLayeredRecommendations({
+      baseProduct: base,
+      internalCandidates: [],
+      externalCandidates: external,
+      k: 3,
+    });
+
+    expect(out.items).toHaveLength(0);
+  });
+
   test('allows same-brand beauty tools for a beauty-tool external base without visible fallback', () => {
     const base = {
       merchant_id: 'external_seed',
