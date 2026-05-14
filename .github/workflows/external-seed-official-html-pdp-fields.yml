@@ -17,6 +17,21 @@ on:
         required: true
         default: true
         type: boolean
+      missing_fields_only:
+        description: "Only fill fields that are missing or not already quality-gated"
+        required: true
+        default: true
+        type: boolean
+      refresh_review_preview:
+        description: "Refresh merchant review preview text while preserving existing aggregate ratings/counts"
+        required: true
+        default: true
+        type: boolean
+      review_summary_only:
+        description: "Only update review summary/preview fields"
+        required: true
+        default: false
+        type: boolean
 
 jobs:
   official-html-pdp-fields:
@@ -61,6 +76,15 @@ jobs:
           )
           if [[ "${{ inputs.dry_run }}" == "true" ]]; then
             args+=(--dry-run)
+          fi
+          if [[ "${{ inputs.missing_fields_only }}" == "true" ]]; then
+            args+=(--missing-fields-only)
+          fi
+          if [[ "${{ inputs.refresh_review_preview }}" == "true" ]]; then
+            args+=(--refresh-review-preview)
+          fi
+          if [[ "${{ inputs.review_summary_only }}" == "true" ]]; then
+            args+=(--review-summary-only)
           fi
           node scripts/backfill-external-seed-official-html-pdp-fields.cjs "${args[@]}" \
             | tee "${out_dir}/official-html-summary.json"
