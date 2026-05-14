@@ -98,6 +98,48 @@ describe('pdpBuilder reviews preview media', () => {
     );
   });
 
+  test('does not surface force-filled review questions as merchant Q&A', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'p_force_question',
+        merchant_id: 'external_seed',
+        title: 'Force Question Product',
+        vendor: 'TIRTIR Global',
+        image_url: 'https://cdn.example.com/hero.jpg',
+        price: { amount: 24, currency: 'USD' },
+        review_summary: {
+          status: 'estimated',
+          rating: 4.5,
+          review_count: 30,
+          source: 'pivota_force_fill_v1',
+          force_filled: true,
+          questions: [
+            {
+              question: 'How should I use Force Question Product?',
+              answer: 'Follow the product directions from the merchant page.',
+              source: 'pivota_force_fill_v1',
+            },
+          ],
+        },
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+      includeEmptyReviews: true,
+    });
+
+    const reviewsModule = payload.modules.find((m) => m?.type === 'reviews_preview');
+
+    expect(reviewsModule?.data).toEqual(
+      expect.objectContaining({
+        rating: 4.5,
+        review_count: 30,
+        source: 'pivota_force_fill_v1',
+        force_filled: true,
+      }),
+    );
+    expect(reviewsModule?.data?.questions).toBeUndefined();
+  });
+
   test('preserves review scope metadata and product-line preview media', () => {
     const payload = buildPdpPayload({
       product: {

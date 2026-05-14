@@ -539,6 +539,30 @@ function isPublicContributionVisible(item) {
   return !isPivotaUserContribution(source);
 }
 
+const PDP_SYNTHETIC_QUESTION_SOURCE_RE =
+  /(?:pivota_force_fill|force_filled|force_fill|synthetic|simulation|mock|browser_fallback|legacy_fallback)/i;
+
+function isSyntheticPdpQuestionSource(item) {
+  const source = asPlainObject(item) || {};
+  const sourceSignals = [
+    source.source,
+    source.source_kind,
+    source.sourceKind,
+    source.source_origin,
+    source.sourceOrigin,
+    source.source_type,
+    source.sourceType,
+    source.source_label,
+    source.sourceLabel,
+    source.content_review_state,
+    source.review_status,
+  ]
+    .map((value) => asNonEmptyString(value))
+    .filter(Boolean)
+    .join(' ');
+  return PDP_SYNTHETIC_QUESTION_SOURCE_RE.test(sourceSignals);
+}
+
 function buildContributionPolicy(moduleType) {
   const acceptedContentTypes =
     moduleType === 'media_gallery'
@@ -3041,6 +3065,7 @@ function normalizeFaqItemsForQuestions(product) {
   const out = [];
   const seen = new Set();
   const pushQuestion = (rawQuestion, rawAnswer, sourceMeta = {}) => {
+    if (isSyntheticPdpQuestionSource(sourceMeta)) return;
     const question = normalizeQuestionText(rawQuestion);
     const answer = normalizeAnswerText(rawAnswer);
     const key = normalizeQuestionKey(question);
@@ -3090,6 +3115,7 @@ function normalizeReviewSummaryQuestions(items) {
   const seen = new Set();
   for (const item of Array.isArray(items) ? items : []) {
     if (!isPublicContributionVisible(item)) continue;
+    if (isSyntheticPdpQuestionSource(item)) continue;
     const question = normalizeQuestionText(item?.question || item?.title);
     const answer = normalizeAnswerText(item?.answer);
     const replies = item?.replies ?? item?.reply_count;
