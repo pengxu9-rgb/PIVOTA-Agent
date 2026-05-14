@@ -11,6 +11,8 @@ const {
     buildVariantOnlySeedPatch,
     buildForceFillServingPayloadPatch,
     buildSingleVariantFromSpec,
+    buildHowTo,
+    buildProductIntelBundle,
   },
 } = require('../../scripts/force-fill-sig-pdp-content.cjs');
 
@@ -95,6 +97,42 @@ describe('force-fill SIG PDP content script', () => {
       evidence: 'Tone Brightening Tone-Up Sunscreen',
       measured: false,
     });
+  });
+
+  test('classifies Mask Fit cushion refills as makeup, not skincare masks', () => {
+    const row = {
+      external_product_id: 'ext_tirtir_cushion_refill',
+      title: 'Mask Fit Cushion Refill',
+      brand: 'TIRTIR Global',
+      category: 'beauty/skincare/treat/mask',
+      product_type: '',
+    };
+    const seedData = {};
+    const snapshot = {};
+
+    expect(buildHowTo(row, seedData, snapshot)).toBe(
+      'Apply to the target area and build as needed. Remove thoroughly at the end of the day.',
+    );
+
+    const bundle = buildProductIntelBundle(row, seedData, snapshot);
+    expect(bundle.product_intel_core.routine_fit.step).toBe('makeup');
+    expect(bundle.product_intel_core.what_it_is.body).not.toMatch(/rinse|masking|skin-care mask/i);
+  });
+
+  test('classifies cushion puffs as makeup tools, not cushion foundation formula', () => {
+    const row = {
+      external_product_id: 'ext_tirtir_cushion_puff',
+      title: 'Soft Shell Cushion Puff',
+      brand: 'TIRTIR Global',
+      category: 'Accessory',
+      product_type: '',
+    };
+    const howTo = buildHowTo(row, {}, {});
+    const bundle = buildProductIntelBundle(row, {}, {});
+
+    expect(howTo).toMatch(/compatible base makeup or cushion products/i);
+    expect(bundle.product_intel_core.routine_fit.step).toBe('makeup tool');
+    expect(bundle.product_intel_core.what_it_is.body).not.toMatch(/foundation formula|coverage/i);
   });
 
   test('uses title format descriptors for single SKU mini/refill selectors', () => {

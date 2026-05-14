@@ -263,12 +263,16 @@ function inferTitleSpecialtyCompactSubtitle(product) {
   if (/\b(?:satin scarf|hair scarf)\b/.test(text)) return 'Hair Scarf';
   if (/\b(?:baseball hat|bucket hat|hat|cap)\b/.test(text)) return 'Apparel Accessory';
   if (/\b(?:pencil sharpener|dual sharpener|makeup sharpener|sharpener)\b/.test(titleCategory)) return 'Makeup Sharpener';
+  if (/\b(?:cushion puff|makeup puff|puff)\b/.test(titleCategory)) return 'Makeup Puff';
   if (/\b(?:vanity mirror|led mirror|compact mirror|mirror)\b/.test(text)) return 'Vanity Mirror';
   if (/\bbag\b/.test(title) || /\b(?:beauty bag|makeup bag|travel bag|jelly(?:\s+\w+)?\s+bag|embossed bag|teddy travel bag|pouch|cosmetic case|makeup case|travel case|tote)\b/.test(text)) return 'Beauty Bag';
   if (/\b(?:bha toner|salicylic acid.*toner|toner.*salicylic acid)\b/.test(text)) return 'BHA Toner';
   if (/\b(?:toner|toning water)\b/.test(title) || category === 'toner') return 'Hydrating Toner';
   if (/\b(?:eye brightener|undereye brightener|under-eye brightener)\b/.test(text)) return 'Eye Brightener';
   if (/\bpowder foundation\b/.test(text)) return 'Powder Foundation';
+  if (/\b(?:cushion|cushion refill|foundation refill|compact refill)\b/.test(titleCategory)) {
+    return /\brefill\b/.test(text) ? 'Cushion Refill' : 'Cushion Foundation';
+  }
   if (/\b(?:body cr[eè]me|body cream|body butter|whipped oil body cream|butta drop)\b/.test(text)) return 'Body Cream';
   if (/\b(?:brush cup|brush holder|brush storage|makeup brush cup)\b/.test(text)) return 'Brush Storage';
   if (/\b(?:brush bundle|brush trio|brush duo|brush set)\b/.test(text)) return 'Brush Set';
@@ -473,6 +477,8 @@ function buildCompactSubtitle({ product, bundle }) {
       'Concealer',
       'Eye Brightener',
       'Powder Foundation',
+      'Cushion Foundation',
+      'Cushion Refill',
       'Fragrance Mist',
       'Makeup Set',
       'Setting Powder',
@@ -481,6 +487,7 @@ function buildCompactSubtitle({ product, bundle }) {
       'Hair Scarf',
       'Apparel Accessory',
       'Makeup Sharpener',
+      'Makeup Puff',
       'Vanity Mirror',
       'Beauty Bag',
       'BHA Toner',
@@ -564,6 +571,7 @@ function buildCardIntro({ bundle }) {
   }
   return normalizeCardIntroCandidate(bundle?.product_intel_core?.what_it_is?.body, {
     maxChars: 90,
+    allowHeuristic: humanStandardWhatItIs,
   });
 }
 

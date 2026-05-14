@@ -190,6 +190,10 @@ function classifyProduct(row, seedData, snapshot) {
     seedData.product_type,
     readDescription(row, seedData, snapshot),
   ].map(text).join(' ').toLowerCase();
+  if (/\b(?:cushion puff|makeup puff|puff)\b/.test(haystack)) return 'makeup_tool';
+  if (/\b(?:cushion|cushion refill|foundation refill|compact refill|foundation|concealer|skin tint|bb cream|cc cream|base makeup|makeup base)\b/.test(haystack)) {
+    return 'makeup';
+  }
   if (/\b(spf|sunscreen|sun screen|sunblock|uv protection|sun protection)\b/.test(haystack)) return 'sunscreen';
   if (/\b(cleanser|cleansing|face wash|foam wash)\b/.test(haystack)) return 'cleanser';
   if (/\b(serum|ampoule|essence|treatment|retinol|vitamin c|niacinamide|acid)\b/.test(haystack)) return 'serum';
@@ -214,6 +218,7 @@ function buildHowTo(row, seedData, snapshot) {
   if (type === 'mask') return 'Apply to clean skin as directed by the merchant, then rinse off or leave on according to the product format.';
   if (type === 'fragrance') return 'Apply lightly to pulse points such as wrists, neck, or behind the ears. Avoid rubbing after application.';
   if (type === 'makeup') return 'Apply to the target area and build as needed. Remove thoroughly at the end of the day.';
+  if (type === 'makeup_tool') return 'Use with compatible base makeup or cushion products, then clean or replace the tool according to the merchant directions.';
   if (type === 'hair') return 'Apply to hair or scalp as directed by the merchant, then rinse or style according to the product format.';
   return 'Use according to the merchant directions for this product. Patch test first if you have sensitivity concerns.';
 }
@@ -248,6 +253,7 @@ function inferInsightStep(type) {
   if (type === 'moisturizer') return 'moisturizer';
   if (type === 'fragrance') return 'fragrance';
   if (type === 'makeup') return 'makeup';
+  if (type === 'makeup_tool') return 'makeup tool';
   if (type === 'hair') return 'haircare';
   return 'product';
 }

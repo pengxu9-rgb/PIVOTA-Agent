@@ -16,6 +16,70 @@ function toText(value) {
 }
 
 describe('product_intel pilot compare selection', () => {
+  test('human-standard rewrite treats TIRTIR Mask Fit cushion refills as complexion makeup', () => {
+    const caseRow = {
+      case_id: 'live_ext_tirtir_mask_fit_cushion_refill',
+      canonical_product_ref: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_tirtir_mask_fit_cushion_refill',
+      },
+      product: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_tirtir_mask_fit_cushion_refill',
+        brand: 'TIRTIR Global',
+        title: 'Mask Fit Cushion Refill',
+        category: 'beauty/skincare/treat/mask',
+        description:
+          'A refill format for the matching cushion compact, selected by shade and finish rather than as a skin-care mask.',
+      },
+    };
+
+    expect(inferProductKindFromContext(caseRow.product)).toBe('complexion_makeup');
+
+    const baseline = buildProductIntelDraftBundle({
+      product: caseRow.product,
+      canonicalProductRef: caseRow.canonical_product_ref,
+    });
+    const selected = buildSelectedBundle(caseRow, baseline, null, null, 'gemini-test');
+    const coreText = `${selected.bundle.product_intel_core.what_it_is.headline} ${selected.bundle.product_intel_core.what_it_is.body} ${selected.bundle.product_intel_core.why_it_stands_out.map((item) => `${item.headline} ${item.body}`).join(' ')}`;
+
+    expect(selected.bundle.product_intel_core.what_it_is.headline).toBe('Cushion refill');
+    expect(selected.bundle.product_intel_core.routine_fit.step).toBe('makeup');
+    expect(selected.bundle.shopping_card.subtitle).toBe('Cushion Refill');
+    expect(coreText).not.toMatch(/treatment mask|focused masking|rinse/i);
+  });
+
+  test('human-standard rewrite treats TIRTIR cushion puffs as tools, not foundation formula', () => {
+    const caseRow = {
+      case_id: 'live_ext_tirtir_cushion_puff',
+      canonical_product_ref: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_tirtir_cushion_puff',
+      },
+      product: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_tirtir_cushion_puff',
+        brand: 'TIRTIR Global',
+        title: 'Soft Shell Cushion Puff',
+        category: 'Accessory',
+        description: 'A soft puff designed for applying cushion compact foundation.',
+      },
+    };
+
+    expect(inferProductKindFromContext(caseRow.product)).toBe('makeup_tool');
+
+    const baseline = buildProductIntelDraftBundle({
+      product: caseRow.product,
+      canonicalProductRef: caseRow.canonical_product_ref,
+    });
+    const selected = buildSelectedBundle(caseRow, baseline, null, null, 'gemini-test');
+    const text = `${selected.bundle.product_intel_core.what_it_is.headline} ${selected.bundle.product_intel_core.what_it_is.body}`;
+
+    expect(selected.bundle.product_intel_core.what_it_is.headline).toBe('Makeup puff');
+    expect(selected.bundle.shopping_card.subtitle).toBe('Makeup Puff');
+    expect(text).not.toMatch(/cushion foundation for complexion coverage/i);
+  });
+
   test('human-standard rewrite keeps Pixi mist patch oil and blush products out of stale fallback subtypes', () => {
     const cases = [
       {

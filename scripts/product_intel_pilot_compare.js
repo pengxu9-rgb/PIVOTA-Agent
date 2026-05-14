@@ -399,6 +399,7 @@ function inferProductKindFromContext(context) {
   if (/\b(?:scrunchie|hair scrunchie|satin scarf|hair scarf)\b/.test(titleCategoryDescription)) return 'hair_accessory';
   if (/\b(?:baseball hat|bucket hat|hat|cap)\b/.test(titleCategory)) return 'apparel_accessory';
   if (/\b(?:pencil sharpener|dual sharpener|makeup sharpener|sharpener)\b/.test(titleCategory)) return 'makeup_tool';
+  if (/\b(?:cushion puff|makeup puff|puff)\b/.test(titleCategory)) return 'makeup_tool';
   if (/\b(?:vanity mirror|led mirror|compact mirror|mirror)\b/.test(titleCategoryDescription)) return 'beauty_mirror';
   if (/\bbag\b/.test(titleCategory) || /\b(?:beauty bag|makeup bag|travel bag|jelly(?:\s+\w+)?\s+bag|embossed bag|teddy travel bag|pouch|cosmetic case|makeup case|travel case|tote)\b/.test(titleCategoryDescription)) return 'beauty_bag';
   if (/\b(?:glow trio|glow kit|routine bundle|full-size bundle|starter bundle)\b/.test(titleCategoryDescription)) {
@@ -406,6 +407,7 @@ function inferProductKindFromContext(context) {
   }
   if (/\b(?:bha toner|toner|toning water)\b/.test(titleCategory)) return 'toner';
   if (/\b(?:eye brightener|undereye brightener|under-eye brightener)\b/.test(titleCategoryDescription)) return 'complexion_makeup';
+  if (/\b(?:cushion|cushion refill|foundation refill|compact refill)\b/.test(titleCategory)) return 'complexion_makeup';
   if (/\b(?:body cr[eè]me|body cream|body butter|whipped oil body cream|butta drop)\b/.test(titleCategoryDescription)) return 'body_lotion';
   if (/\b(?:makeup fixing mist|fixing mist|setting spray|makeup setting spray|setting mist)\b/.test(titleCategoryDescription)) {
     return 'setting_spray';
@@ -511,6 +513,7 @@ function inferSpecificBeautySubtypeLabel(context) {
   if (/\b(?:satin scarf|hair scarf)\b/.test(text)) return 'Hair scarf';
   if (/\b(?:baseball hat|bucket hat|hat|cap)\b/.test(text)) return 'Apparel accessory';
   if (/\b(?:pencil sharpener|dual sharpener|makeup sharpener|sharpener)\b/.test(titleCategory)) return 'Makeup sharpener';
+  if (/\b(?:cushion puff|makeup puff|puff)\b/.test(titleCategory)) return 'Makeup puff';
   if (/\b(?:vanity mirror|led mirror|compact mirror|mirror)\b/.test(text)) return 'Vanity mirror';
   if (/\bbag\b/.test(title) || /\b(?:beauty bag|makeup bag|travel bag|jelly(?:\s+\w+)?\s+bag|embossed bag|teddy travel bag|pouch|cosmetic case|makeup case|travel case|tote)\b/.test(text)) return 'Beauty bag';
   if (/\b(?:makeup fixing mist|fixing mist|setting spray|makeup setting spray|setting mist)\b/.test(text)) return 'Setting spray';
@@ -543,6 +546,9 @@ function inferSpecificBeautySubtypeLabel(context) {
   if (/\b(?:eau de parfum|edp)\b/.test(text)) return 'Eau de parfum';
   if (/\b(?:fragrance|perfume|parfum|body mist)\b/.test(fragranceText)) return 'Fragrance';
   if (/\bskin tint\b/.test(text)) return 'Skin tint';
+  if (/\b(?:cushion|cushion refill|foundation refill|compact refill)\b/.test(titleCategory)) {
+    return /\brefill\b/.test(text) ? 'Cushion refill' : 'Cushion foundation';
+  }
   if (/\b(?:brightening\s+\+?\s*blurring powder|brightening blurring powder|blurring powder|setting powder|blotting powder|mattifying powder|invisimatte)\b/.test(text)) return 'Setting powder';
   if (/\b(?:lip glaze|lip gloss|gloss drip|plumping gloss|gloss bomb heat|gloss bomb universal|lip luminizer|plumper)\b/.test(text)) return 'Lip gloss';
   if (/\b(?:set|kit|duo|trio|bundle)\b/.test(titleCategory) && /\b(?:sunscreen|spf|foundation|concealer|skin tint|moisturi[sz]er|complexion)\b/.test(text)) return 'Routine set';
@@ -1499,6 +1505,9 @@ function buildHumanStandardBodyFromFacts(context, kind, formulaSignals) {
     return 'A brand accessory for outfit or sun-adjacent styling, not a skin-care or makeup formula.';
   }
   if (kind === 'makeup_tool') {
+    if (/\b(?:cushion puff|makeup puff|puff)\b/.test(titleText)) {
+      return 'A makeup puff for applying and blending cushion foundation or base makeup without treating the accessory as a formula product.';
+    }
     return 'A makeup tool for keeping pencils or application items ready for precise use.';
   }
   if (kind === 'beauty_mirror') {
@@ -1860,6 +1869,8 @@ function buildHumanStandardWhatItIs(context, baselineBundle) {
     const headline = subtypeLabel || 'Complexion makeup';
     const bodyBySubtype = {
       Foundation: 'A foundation for complexion coverage, shade matching, finish control, and longer-wear makeup routines.',
+      'Cushion foundation': 'A cushion foundation for complexion coverage, shade matching, finish control, and touch-up-friendly makeup wear.',
+      'Cushion refill': 'A refill for a matching cushion foundation compact, evaluated by formula match, shade, finish, and compatibility with the original case.',
       'Powder foundation': 'A powder foundation for complexion coverage, soft-matte finish control, and shade matching in a pressed-powder format.',
       Concealer: 'A concealer for targeted complexion coverage, shade matching, and flexible makeup wear.',
       'Eye brightener': 'An under-eye brightener for sheer-to-buildable coverage, brightening, and no-makeup makeup complexion correction.',
@@ -2039,6 +2050,9 @@ function buildHumanStandardBestFor(context, baselineBundle) {
     return [item('brand_accessory', 'Brand accessory'), item('non_formula_item', 'Non-formula item')];
   }
   if (kind === 'makeup_tool') {
+    if (/\b(?:cushion puff|makeup puff|puff)\b/.test(text)) {
+      return [item('makeup_application_tool', 'Makeup application tool'), item('cushion_base_application', 'Cushion/base application')];
+    }
     return [item('makeup_tool', 'Makeup tool'), item('precision_pencil_prep', 'Pencil prep')];
   }
   if (kind === 'beauty_mirror') {
@@ -2103,6 +2117,8 @@ function buildHumanStandardBestFor(context, baselineBundle) {
       item(
         subtypeLabel === 'Foundation'
           ? 'foundation_coverage'
+          : subtypeLabel === 'Cushion foundation' || subtypeLabel === 'Cushion refill'
+            ? 'cushion_foundation_coverage'
           : subtypeLabel === 'Powder foundation'
             ? 'powder_foundation_coverage'
           : subtypeLabel === 'Skin tint'
@@ -2118,6 +2134,8 @@ function buildHumanStandardBestFor(context, baselineBundle) {
               : 'complexion_finish',
         subtypeLabel === 'Foundation'
           ? 'Foundation coverage'
+          : subtypeLabel === 'Cushion foundation' || subtypeLabel === 'Cushion refill'
+            ? 'Cushion foundation coverage'
           : subtypeLabel === 'Powder foundation'
             ? 'Powder foundation coverage'
           : subtypeLabel === 'Skin tint'
@@ -2390,6 +2408,11 @@ function buildHumanStandardHighlights(context) {
     ];
   }
   if (kind === 'makeup_tool') {
+    if (/\b(?:cushion puff|makeup puff|puff)\b/.test(text)) {
+      return [
+        highlight('Cushion application tool', 'Frames the item as a puff for applying and blending cushion or base makeup instead of inventing formula claims.'),
+      ];
+    }
     return [
       highlight('Precision prep tool', 'Supports pencil or makeup-tool readiness for controlled application without adding formula claims.'),
     ];
@@ -2524,6 +2547,18 @@ function buildHumanStandardHighlights(context) {
     if (subtypeLabel === 'Powder foundation') {
       highlights.push(
         highlight('Powder foundation coverage', 'Keeps the evaluation on pressed-powder coverage, soft-matte finish, and shade match.'),
+      );
+      addReviewHighlight();
+      return highlights.slice(0, 2);
+    }
+    if (subtypeLabel === 'Cushion foundation' || subtypeLabel === 'Cushion refill') {
+      highlights.push(
+        highlight(
+          subtypeLabel === 'Cushion refill' ? 'Refill compatibility' : 'Cushion coverage format',
+          subtypeLabel === 'Cushion refill'
+            ? 'Keeps the evaluation on matching cushion formula, shade, finish, and case compatibility rather than treating “Mask Fit” as a skin-care mask.'
+            : 'Keeps the evaluation on cushion coverage, shade match, finish, and touch-up-friendly wear rather than treating “Mask Fit” as a skin-care mask.',
+        ),
       );
       addReviewHighlight();
       return highlights.slice(0, 2);
@@ -2948,6 +2983,7 @@ function inferTextureForHumanStandardKind(kind, context) {
   }
   if (kind === 'complexion_makeup') {
     if (subtypeLabel === 'Skin tint') return 'fluid tint';
+    if (subtypeLabel === 'Cushion foundation' || subtypeLabel === 'Cushion refill') return 'cushion compact';
     if (subtypeLabel === 'Foundation') return 'foundation';
     return 'complexion makeup';
   }
