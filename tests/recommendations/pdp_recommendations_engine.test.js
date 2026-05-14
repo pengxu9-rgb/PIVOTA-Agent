@@ -181,6 +181,9 @@ describe('RecommendationEngine (PDP)', () => {
       ['ext_bond_serum', 'Bond Repair Oil Serum', 'COSRX', 'Hair Oil'],
       ['ext_conditioner', 'Strengthening Conditioner', 'Briogeo', 'Conditioner'],
       ['ext_skin_serum', 'Niacinamide 20% Serum', 'Anua', 'Serum', 'skincare'],
+      ['ext_hair_clip', 'Mushroom Clips 2-Piece Smurf Hair Clip Set', 'Smurf', 'Hair Accessories'],
+      ['ext_body_hair_mist', 'Find Comfort Body & Hair Fragrance Mist Mini', 'Rare Beauty', 'Fragrance Mist'],
+      ['ext_ingrown_hair_pad', 'Ingrown Hair Pads with BHA + AHA Travel Size', 'First Aid Beauty', 'Body Treatment'],
     ].map(([product_id, title, brand, category, semanticVertical]) => {
       const product = makeProduct({
         merchant_id: 'external_seed',
@@ -205,6 +208,9 @@ describe('RecommendationEngine (PDP)', () => {
 
     expect(out.items).toHaveLength(5);
     expect(out.items.map((item) => item.product_id)).not.toContain('ext_skin_serum');
+    expect(out.items.map((item) => item.product_id)).not.toContain('ext_hair_clip');
+    expect(out.items.map((item) => item.product_id)).not.toContain('ext_body_hair_mist');
+    expect(out.items.map((item) => item.product_id)).not.toContain('ext_ingrown_hair_pad');
     expect(out.items.some((item) => item.reason.startsWith('L3V:external'))).toBe(true);
     expect(out.metadata.low_confidence_reason_codes || []).not.toEqual(
       expect.arrayContaining(['UNDERFILL_FOR_QUALITY']),

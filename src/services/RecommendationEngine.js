@@ -1474,11 +1474,27 @@ function titleIntentMatches(baseFeatures, candidateFeatures) {
   return jaccard(tokenize(baseTitle), tokenize(candidateTitle)) >= 0.18;
 }
 
+function supportsSparseHaircareExpansion(features) {
+  const text = normalizeText(
+    [
+      features?.normalizedTitle,
+      features?.leafCategory,
+      features?.parentCategory,
+    ].filter(Boolean).join(' '),
+  );
+  if (!text) return false;
+  if (/\b(?:clip|clips|claw|barrette|headband|scrunchie|fragrance|mist|body|beard|shower gel|ingrown)\b/.test(text)) {
+    return false;
+  }
+  return /\b(?:shampoo|conditioner|scalp|hair oil|hair mask|leave in|leave-in|detangling|edge control|styling|curl|bonding|hair treatment|haircare|hair care)\b/.test(text);
+}
+
 function allowsSparseExternalVerticalExpansion(baseFeatures, candidateFeatures) {
   if (!baseFeatures?.isExternal || !candidateFeatures?.isExternal) return false;
   if (baseFeatures.vertical === UNKNOWN_VERTICAL || candidateFeatures.vertical === UNKNOWN_VERTICAL) return false;
   if (baseFeatures.vertical !== candidateFeatures.vertical) return false;
-  return baseFeatures.vertical === 'haircare';
+  if (baseFeatures.vertical !== 'haircare') return false;
+  return supportsSparseHaircareExpansion(baseFeatures) && supportsSparseHaircareExpansion(candidateFeatures);
 }
 
 function isWeakExternalSeedCategory(value) {
