@@ -48,6 +48,32 @@ describe('pdpIngredientAuthority', () => {
     expect(modules.authority.suppressed_reason).toBe('full_inci_low_purity');
   });
 
+  test('suppresses force-filled ingredient note after manual source review blocker', () => {
+    const modules = buildStructuredPdpIngredientModules({
+      ingredient_intel: {
+        source_review_queue: {
+          status: 'manual_source_review_required',
+        },
+        force_fill_contract: {
+          contract_version: 'pivota.pdp.force_fill.v1',
+          source_origin: 'pivota_force_fill',
+          source_quality_status: 'force_filled_pending_source',
+          display_note:
+            'Full INCI has not been captured from an approved source yet. Check the merchant page before purchase.',
+        },
+      },
+      pdp_field_quality_summary: {
+        ingredients_raw: {
+          source_origin: 'manual_source_review_required',
+          source_quality_status: 'blocked',
+        },
+      },
+    });
+
+    expect(modules.ingredientsInciData).toBeNull();
+    expect(modules.authority.purity_status).toBe('suppressed');
+  });
+
   test('suppresses single-formula ingredient modules for external seed sets', () => {
     const modules = buildStructuredPdpIngredientModules({
       merchant_id: 'external_seed',

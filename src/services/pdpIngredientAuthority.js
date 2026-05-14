@@ -1087,8 +1087,23 @@ function mergeIngredientIntelWithAuthority(existingValue, authority) {
   };
 }
 
+function isForceFillIngredientDisplayBlocked(product) {
+  const ingredientIntel = asPlainObject(product?.ingredient_intel) || {};
+  const reviewQueue = asPlainObject(ingredientIntel.source_review_queue) || {};
+  const remediation = asPlainObject(product?.ingredient_remediation_v1) || {};
+  const quality = asPlainObject(product?.pdp_field_quality_summary) || {};
+  const ingredientQuality = asPlainObject(quality.ingredients_raw) || asPlainObject(quality.ingredients_inci) || {};
+  const status = asString(reviewQueue.status || remediation.action || ingredientQuality.source_quality_status).toLowerCase();
+  const origin = asString(ingredientQuality.source_origin).toLowerCase();
+  return (
+    ['manual_source_review_required', 'component_ref_review_required', 'component_refs_linked', 'blocked'].includes(status) ||
+    origin === 'manual_source_review_required'
+  );
+}
+
 function buildStructuredPdpIngredientModules(product, options = {}) {
   const authority = buildAuthoritativeIngredientView(product, options);
+  const forceFillBlocked = isForceFillIngredientDisplayBlocked(product);
   const forceFillContract =
     asPlainObject(product?.ingredient_intel?.force_fill_contract) ||
     asPlainObject(product?.ingredient_intel?.forceFillContract) ||
@@ -1110,6 +1125,7 @@ function buildStructuredPdpIngredientModules(product, options = {}) {
           source_quality_status: authority.purity_status,
         }
       : forceFillContract?.contract_version === 'pivota.pdp.force_fill.v1' && forceFillNote
+        && !forceFillBlocked
         ? {
             title: 'Ingredients',
             items: [],
