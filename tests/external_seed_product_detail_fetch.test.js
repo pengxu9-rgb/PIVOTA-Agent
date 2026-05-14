@@ -644,6 +644,87 @@ describe('external seed product detail hydration', () => {
     expect(merged.selected_commerce_ref).toEqual(syntheticProduct.selected_commerce_ref);
   });
 
+  test('preserves reviewed accessory shade variants through external seed DB hydration', async () => {
+    const { db, debug } = loadServerWithDb();
+
+    db.query.mockResolvedValueOnce({
+      rows: [
+        {
+          id: 'eps_lucky_pouch',
+          external_product_id: 'ext_lucky_pouch',
+          canonical_url: 'https://beautyofjoseon.com/products/lucky-pouch',
+          destination_url: 'https://beautyofjoseon.com/products/lucky-pouch',
+          domain: 'beautyofjoseon.com',
+          title: 'Lucky Pouch',
+          image_url: 'https://cdn.shopify.com/lucky-pouch.jpg',
+          price_amount: '12.00',
+          price_currency: 'USD',
+          availability: 'In Stock',
+          status: 'active',
+          seed_data: {
+            brand: 'Beauty of Joseon',
+            snapshot: {
+              canonical_url: 'https://beautyofjoseon.com/products/lucky-pouch',
+              variants: [
+                {
+                  variant_id: '40739135750309',
+                  sku_id: '82BL003',
+                  title: 'Maehwa Pink',
+                  option_name: 'Shade',
+                  option_value: 'Maehwa Pink',
+                  options: [{ name: 'Shade', value: 'Maehwa Pink', axis_kind: 'shade' }],
+                  display_label: 'Shade: Maehwa Pink',
+                  axis_kind: 'shade',
+                  source_quality_status: 'captured',
+                  image_url: 'https://cdn.shopify.com/lucky-pouch-maehwa.jpg',
+                },
+                {
+                  variant_id: '40739135783077',
+                  sku_id: '82BL004',
+                  title: 'Olive',
+                  option_name: 'Shade',
+                  option_value: 'Olive',
+                  options: [{ name: 'Shade', value: 'Olive', axis_kind: 'shade' }],
+                  display_label: 'Shade: Olive',
+                  axis_kind: 'shade',
+                  source_quality_status: 'captured',
+                  image_url: 'https://cdn.shopify.com/lucky-pouch-olive.jpg',
+                },
+              ],
+            },
+          },
+        },
+      ],
+    });
+
+    const detail = await debug.fetchExternalSeedProductDetailFromDb({ productId: 'ext_lucky_pouch' });
+    const sql = String(db.query.mock.calls[0][0] || '');
+
+    expect(sql).toContain("'display_label'");
+    expect(sql).toContain("'axis_kind'");
+    expect(sql).toContain("'source_quality_status'");
+    expect(detail?.product?.variants).toEqual([
+      expect.objectContaining({
+        variant_id: '40739135750309',
+        title: 'Maehwa Pink',
+        option_name: 'Shade',
+        option_value: 'Maehwa Pink',
+        axis_kind: 'shade',
+        display_label: 'Shade: Maehwa Pink',
+        source_quality_status: 'captured',
+      }),
+      expect.objectContaining({
+        variant_id: '40739135783077',
+        title: 'Olive',
+        option_name: 'Shade',
+        option_value: 'Olive',
+        axis_kind: 'shade',
+        display_label: 'Shade: Olive',
+        source_quality_status: 'captured',
+      }),
+    ]);
+  });
+
   test('hydrates canonical catalog products from serialized external seed mirror payloads', () => {
     const { debug } = loadServerWithDb();
 

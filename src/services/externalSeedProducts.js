@@ -2147,6 +2147,21 @@ const VARIANT_AXIS_LABELS = Object.freeze({
   strength: 'Strength',
 });
 
+const DISPLAYABLE_VARIANT_AXIS_KINDS = new Set(Object.keys(VARIANT_AXIS_LABELS));
+
+const BLOCKED_VARIANT_SOURCE_QUALITY_STATUSES = new Set([
+  'blocked',
+  'quarantined',
+  'quarantine',
+  'low',
+  'fallback',
+  'browser_fallback',
+  'image_vision',
+  'simulation',
+  'synthetic',
+  'mock',
+]);
+
 const NON_DISPLAYABLE_VARIANT_VALUES = new Set([
   'default',
   'default title',
@@ -2456,6 +2471,77 @@ function normalizeVariantVisualFields(rawVariant, fallbackImageUrl, cacheUrlMap)
   };
 }
 
+function normalizeVariantAxisKindValue(value) {
+  const normalized = normalizeOptionText(value).toLowerCase().replace(/[\s-]+/g, '_');
+  if (!normalized) return '';
+  if (normalized === 'colour') return 'color';
+  if (normalized === 'shades' || normalized === 'tone' || normalized === 'tones' || normalized === 'hue') return 'shade';
+  if (normalized === 'capacity' || normalized === 'amount' || normalized === 'weight' || normalized === 'net_weight') {
+    return 'volume';
+  }
+  if (normalized === 'count' || normalized === 'quantity' || normalized === 'ct') return 'pack';
+  if (DISPLAYABLE_VARIANT_AXIS_KINDS.has(normalized)) return normalized;
+  return '';
+}
+
+function normalizeVariantSourceQualityStatus(value) {
+  return normalizeOptionText(value).toLowerCase().replace(/[\s-]+/g, '_');
+}
+
+function findRawVariantOptionContract(option, rawVariant) {
+  const optionName = normalizeOptionText(option?.name).toLowerCase();
+  const optionValue = normalizeOptionText(option?.value).toLowerCase();
+  const sources = [
+    rawVariant?.options,
+    rawVariant?.choices,
+    rawVariant?.variantOptions,
+    rawVariant?.variant_options,
+    rawVariant?.selections,
+    rawVariant?.selected_options,
+  ];
+  for (const source of sources) {
+    if (!Array.isArray(source)) continue;
+    for (const candidate of source) {
+      if (!candidate || typeof candidate !== 'object') continue;
+      const candidateName = normalizeOptionText(
+        candidate.name || candidate.option_name || candidate.label || candidate.key || candidate.title,
+      ).toLowerCase();
+      const candidateValue = normalizeOptionText(
+        candidate.value ?? candidate.option_value ?? candidate.selected ?? candidate.label_value,
+      ).toLowerCase();
+      if (candidateName === optionName && candidateValue === optionValue) return candidate;
+    }
+  }
+  return null;
+}
+
+function getTrustedExplicitVariantDisplayContract(option, rawVariant) {
+  const status = normalizeVariantSourceQualityStatus(
+    rawVariant?.source_quality_status || rawVariant?.sourceQualityStatus || rawVariant?.quality_status,
+  );
+  if (status && BLOCKED_VARIANT_SOURCE_QUALITY_STATUSES.has(status)) return null;
+
+  const rawOption = findRawVariantOptionContract(option, rawVariant);
+  const axisKind = normalizeVariantAxisKindValue(
+    option?.axis_kind ||
+      option?.axisKind ||
+      rawOption?.axis_kind ||
+      rawOption?.axisKind ||
+      rawVariant?.axis_kind ||
+      rawVariant?.axisKind,
+  );
+  if (!axisKind) return null;
+
+  const normalizedValue = normalizeOptionText(option?.value);
+  if (!normalizedValue || NON_DISPLAYABLE_VARIANT_VALUES.has(normalizedValue.toLowerCase())) return null;
+
+  return {
+    axis_kind: axisKind,
+    display_label: VARIANT_AXIS_LABELS[axisKind] || normalizeOptionText(option?.name),
+    normalized_value: normalizedValue,
+  };
+}
+
 function applySeedVariantDisplayContract({ options, rawVariant, context, imageUrl, imageCacheUrlMap }) {
   const visual = normalizeVariantVisualFields(rawVariant, imageUrl, imageCacheUrlMap);
   const normalizedOptions = [];
@@ -2463,7 +2549,12 @@ function applySeedVariantDisplayContract({ options, rawVariant, context, imageUr
   for (const option of Array.isArray(options) ? options : []) {
     const normalizedValue = normalizeOptionText(option?.value);
     if (!normalizedValue) continue;
-    const contract = inferVariantAxisKind(option, context);
+    const inferredContract = inferVariantAxisKind(option, context);
+    const explicitContract = getTrustedExplicitVariantDisplayContract(option, rawVariant);
+    const contract =
+      inferredContract.axis_kind === 'non_displayable' && explicitContract
+        ? explicitContract
+        : inferredContract;
     if (contract.axis_kind === 'non_displayable') continue;
     const needsVisual = ['shade', 'color'].includes(contract.axis_kind);
     const hasVisual = Boolean(visual.swatch_image_url || visual.swatch_hex || visual.image_url);
