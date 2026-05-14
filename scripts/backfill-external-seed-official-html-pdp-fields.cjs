@@ -11,6 +11,7 @@ const PDP_CONTENT_ASSET_VERSION = 'pivota.pdp_content_asset.v1';
 const SNAPSHOT_CONTRACT_VERSION = 'external_seed.snapshot_contract.v1';
 const SHOPIFY_PRODUCT_JSON_VARIANT_HOSTS = new Set(['medicube.us', 'skin1004.com', 'tirtir.global']);
 const REVIEW_SUMMARY_ONLY_OKENDO_HOSTS = new Set(['beautyofjoseon.com', 'kravebeauty.com']);
+const REVIEW_SUMMARY_ONLY_GENERIC_HOSTS = new Set([...REVIEW_SUMMARY_ONLY_OKENDO_HOSTS, 'roundlab.com']);
 
 function argValue(name) {
   const idx = process.argv.indexOf(`--${name}`);
@@ -1072,7 +1073,21 @@ function hasUsefulReviewText(value) {
   if (text.split(/\s+/).filter(Boolean).length < 10) return false;
   if (/^(?:great|good|love it|perfect|nice|bien)$/i.test(text)) return false;
   if (!looksLikeEnglishReviewText(text)) return false;
+  if (looksLikeOperationalOrPriceReviewText(text)) return false;
   return true;
+}
+
+function looksLikeOperationalOrPriceReviewText(value) {
+  const text = normalizeText(value).toLowerCase();
+  if (!text) return true;
+  if (/\b(?:order|refund|return(?:ed|ing)?|customer service|ship(?:ped|ping)?|delivery|delivered|arrived|package|packaging|tracking)\b/i.test(text)) {
+    return true;
+  }
+  if (/\b(?:price|pricing|pricey|expensive|cost|markup|discount|sale)\b/i.test(text)) {
+    return true;
+  }
+  if (/^\s*i have a question\b/i.test(text)) return true;
+  return false;
 }
 
 function looksLikeEnglishReviewText(value) {
@@ -1089,8 +1104,15 @@ function looksLikeEnglishReviewText(value) {
 }
 
 function normalizeStampedPreviewItems(rows) {
+  const seenText = new Set();
   return asArray(rows)
     .filter((row) => hasUsefulReviewText(row?.reviewMessage))
+    .filter((row) => {
+      const key = normalizeText(row?.reviewMessage).toLowerCase().slice(0, 240);
+      if (!key || seenText.has(key)) return false;
+      seenText.add(key);
+      return true;
+    })
     .slice(0, 6)
     .map((row) => ({
       review_id: String(row.id || row.reviewId || ''),
@@ -1206,7 +1228,7 @@ async function fetchYotpoReviewSummary(host, html) {
 }
 
 async function fetchStampedReviewSummary(host, html) {
-  if (!['medicube.us', 'skin1004.com'].includes(host)) return null;
+  if (!['medicube.us', 'skin1004.com', 'roundlab.com'].includes(host)) return null;
   const context = extractStampedContext(host, html);
   if (!context) return null;
 
@@ -1273,11 +1295,7 @@ function normalizeBazaarvoiceReviewTitle(value) {
 
 function looksLikeBazaarvoiceOperationalOrPriceReview(row) {
   const text = normalizeText([row?.Title, row?.ReviewText].filter(Boolean).join(' ')).toLowerCase();
-  if (!text) return true;
-  if (/\b(?:price|pricing|pricey|expensive|cost|markup|est[ée]e lauder)\b/i.test(text)) return true;
-  if (/\b(?:administration|customer service|shipping|delivery|arrived|packaging)\b/i.test(text)) return true;
-  if (/^\s*i have a question\b/i.test(text)) return true;
-  return false;
+  return looksLikeOperationalOrPriceReviewText(text) || /\b(?:administration|est[ée]e lauder)\b/i.test(text);
 }
 
 function distributionFromBazaarvoiceStats(stats) {
@@ -1460,7 +1478,7 @@ async function extractOfficialHtmlFields(host, html, options = {}) {
   else if (host === 'tirtir.global') fields = await extractTirtirFields(html, options);
   else if (host === 'theordinary.com') fields = {};
   else if (host === 'fentybeauty.com') fields = extractFentyFields(html, options);
-  else if (!options.reviewSummaryOnly || !REVIEW_SUMMARY_ONLY_OKENDO_HOSTS.has(host)) return {};
+  else if (!options.reviewSummaryOnly || !REVIEW_SUMMARY_ONLY_GENERIC_HOSTS.has(host)) return {};
 
   if (options.reviewSummaryOnly && REVIEW_SUMMARY_ONLY_OKENDO_HOSTS.has(host)) {
     const okendoReview = parseOkendoReviewSummary(html) || parseMetafieldReviews(html);
@@ -1521,6 +1539,44 @@ function mergeReviewSummary(existing, incoming) {
     if (incoming[key] !== undefined) next[key] = incoming[key];
   }
   return next;
+}
+
+function positiveNumber(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric > 0 ? numeric : 0;
+}
+
+function mergeReviewSummaryForPreviewOnly(existing, incoming) {
+  const existingSummary = ensureObject(existing);
+  const incomingSummary = ensureObject(incoming);
+  const merged = mergeReviewSummary(existingSummary, incomingSummary);
+  const existingRating = positiveNumber(existingSummary.rating || existingSummary.average_rating);
+  const existingReviewCount = Math.round(
+    positiveNumber(existingSummary.review_count || existingSummary.count || existingSummary.total),
+  );
+  const incomingPreviewCount = reviewPreviewCount(incomingSummary);
+  if (!existingRating || !existingReviewCount || incomingPreviewCount === 0) return merged;
+
+  merged.rating = existingRating;
+  merged.review_count = existingReviewCount;
+  merged.exact_item_review_count = Math.round(
+    positiveNumber(existingSummary.exact_item_review_count) || existingReviewCount,
+  );
+  if (positiveNumber(existingSummary.scale)) merged.scale = positiveNumber(existingSummary.scale);
+  if (existingSummary.source_origin) merged.source_origin = existingSummary.source_origin;
+  if (existingSummary.source_url) merged.source_url = existingSummary.source_url;
+  else delete merged.source_url;
+  if (incomingSummary.source_origin) merged.preview_source_origin = incomingSummary.source_origin;
+  if (incomingSummary.source_url) merged.preview_source_url = incomingSummary.source_url;
+
+  if (Array.isArray(existingSummary.star_distribution)) merged.star_distribution = existingSummary.star_distribution;
+  else delete merged.star_distribution;
+  if (Array.isArray(existingSummary.rating_distribution)) merged.rating_distribution = existingSummary.rating_distribution;
+  else delete merged.rating_distribution;
+
+  merged.aggregate_preserved_from_existing = true;
+  merged.aggregate_preserved_at = new Date().toISOString();
+  return merged;
 }
 
 function reviewPreviewCount(summary) {
@@ -1720,7 +1776,9 @@ function buildSeedDataPatch(row, extracted, options = {}) {
       seedData.snapshot = snapshot;
       return { seedData, patchKeys };
     }
-    const incoming = mergeReviewSummary(existing, extracted.review_summary);
+    const incoming = reviewSummaryOnly
+      ? mergeReviewSummaryForPreviewOnly(existing, extracted.review_summary)
+      : mergeReviewSummary(existing, extracted.review_summary);
     seedData.review_summary = incoming;
     snapshot.review_summary = incoming;
     patchKeys.push('review_summary');
