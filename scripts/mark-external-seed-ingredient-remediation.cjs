@@ -478,11 +478,11 @@ async function syncIngredientBlockerServingMirrors(externalProductId, seedData) 
             - 'ingredientNames'
             - 'key_ingredients'
             - 'keyIngredients'
-          ) || $2::jsonb,
+          ) || $1::jsonb,
           updated_at = NOW()
-      WHERE source_listing_ref = $3
+      WHERE source_listing_ref = $2
     `,
-    [externalProductId, payloadJson, `external_seed:${externalProductId}`],
+    [payloadJson, `external_seed:${externalProductId}`],
   );
   return {
     catalog_products: Number(catalogRes.rowCount || 0),
