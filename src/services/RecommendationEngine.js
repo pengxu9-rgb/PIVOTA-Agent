@@ -1992,7 +1992,7 @@ function pickLayeredRecommendations({
     {
       id: 'L2E',
       name: 'same_brand_external_intent_match',
-      priority: 3.2,
+      priority: 2.55,
       predicate: (c, features, baseFeatures) =>
         baseFeatures.isExternal &&
         c.brandMatch &&
@@ -2005,7 +2005,7 @@ function pickLayeredRecommendations({
     {
       id: 'L2P',
       name: 'same_brand_external_parent_category',
-      priority: 3.3,
+      priority: 2.58,
       predicate: (c, features, baseFeatures) =>
         baseFeatures.isExternal &&
         features.isExternal &&
@@ -2536,6 +2536,27 @@ async function fetchExternalCandidates({
     );
   }
 
+  function externalSeedCategorySqlExpression() {
+    return `coalesce(
+      seed_data->'derived'->'recall'->>'category',
+      seed_data->>'category',
+      seed_data->'product'->>'category',
+      seed_data->'snapshot'->>'category',
+      seed_data->>'product_type',
+      seed_data->'product'->>'product_type',
+      seed_data->'snapshot'->>'product_type',
+      ''
+    )`;
+  }
+
+  function externalSeedCategoryAliasPredicate(paramIndex) {
+    const expression = externalSeedCategorySqlExpression();
+    return `(
+      lower(${expression}) = ANY($${paramIndex})
+      OR lower(regexp_replace(${expression}, '^.*/', '')) = ANY($${paramIndex})
+    )`;
+  }
+
   const fetchStats = {
     market,
     tool,
@@ -2681,16 +2702,7 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
             AND attached_product_key IS NULL
             AND domain = ANY($4)
             ${sellableExternalSeedSql}
-            AND lower(coalesce(
-              seed_data->'derived'->'recall'->>'category',
-              seed_data->>'category',
-              seed_data->'product'->>'category',
-              seed_data->'snapshot'->>'category',
-              seed_data->>'product_type',
-              seed_data->'product'->>'product_type',
-              seed_data->'snapshot'->>'product_type',
-              ''
-            )) = ANY($5)
+            AND ${externalSeedCategoryAliasPredicate(5)}
           ORDER BY updated_at DESC, created_at DESC
           LIMIT $3
         `,
@@ -2781,18 +2793,7 @@ ${EXTERNAL_SEED_FAST_RECOMMENDATION_SELECT}
     runTimedExternalQuery(
       'external_category',
       () => runQuery(
-        `AND (
-              lower(coalesce(
-                seed_data->'derived'->'recall'->>'category',
-                seed_data->>'category',
-                seed_data->'product'->>'category',
-                seed_data->'snapshot'->>'category',
-                seed_data->>'product_type',
-                seed_data->'product'->>'product_type',
-                seed_data->'snapshot'->>'product_type',
-                ''
-              )) = ANY($4)
-            )`,
+        `AND ${externalSeedCategoryAliasPredicate(4)}`,
         [categoryAliases],
         deepDomainRecall
           ? boundedRecallCap(6, 96)
@@ -2859,30 +2860,36 @@ ${EXTERNAL_SEED_FAST_RECOMMENDATION_SELECT}
   let preloadedDomainMatches = null;
   let preloadedIntentFamilyMatches = null;
   let exactDomainCategoryFocusedEnough = false;
+  let exactDomainCategoryCandidateCount = 0;
   if (deepDomainRecall && normalizedDomainHints.length && category) {
     const deepRecallDomainCategoryCap = boundedRecallCap(3, 48);
-    const preloadedDomainTitleCategoryMatches = await runTimedExternalQuery(
-      'external_domain_title_category',
-      () => runDomainTitleCategoryQuery(deepRecallDomainCategoryCap),
-      PDP_RECS_EXTERNAL_RECALL_QUERY_TIMEOUT_MS,
-    );
+    const [
+      preloadedDomainTitleCategoryMatches,
+      preloadedDomainCategoryMatches,
+    ] = await Promise.all([
+      runTimedExternalQuery(
+        'external_domain_title_category',
+        () => runDomainTitleCategoryQuery(deepRecallDomainCategoryCap),
+        PDP_RECS_EXTERNAL_RECALL_QUERY_TIMEOUT_MS,
+      ),
+      runTimedExternalQuery(
+        'external_domain_category',
+        () => runDomainCategoryQuery(deepRecallDomainCategoryCap),
+        PDP_RECS_EXTERNAL_RECALL_QUERY_TIMEOUT_MS,
+      ),
+    ]);
     out.push(...preloadedDomainTitleCategoryMatches);
     let domainCategoryFocusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
-
-    const preloadedDomainCategoryMatches = await runTimedExternalQuery(
-      'external_domain_category',
-      () => runDomainCategoryQuery(deepRecallDomainCategoryCap),
-      PDP_RECS_EXTERNAL_RECALL_QUERY_TIMEOUT_MS,
-    );
     out.push(...preloadedDomainCategoryMatches);
     domainCategoryFocusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
+    exactDomainCategoryCandidateCount = displayUniqueCandidateCount(domainCategoryFocusedCandidates);
     if (
       intentFamilyPattern &&
-      hasDisplayCoverage(domainCategoryFocusedCandidates, focusedRecallTarget)
+      exactDomainCategoryCandidateCount >= focusedRecallTarget
     ) {
       return attachExternalFetchStats(domainCategoryFocusedCandidates.slice(0, returnCap));
     }
-    exactDomainCategoryFocusedEnough = hasDisplayCoverage(domainCategoryFocusedCandidates, safeMinFocusedCandidates);
+    exactDomainCategoryFocusedEnough = exactDomainCategoryCandidateCount >= safeMinFocusedCandidates;
     if (
       exactDomainCategoryFocusedEnough &&
       !intentFamilyPattern &&
@@ -2908,19 +2915,38 @@ ${EXTERNAL_SEED_FAST_RECOMMENDATION_SELECT}
   if (deepDomainRecall && category && !preloadedCategoryMatches) {
     if (intentFamily === 'foundation' && !preloadedDomainMatches) {
       const foundationDomainCap = boundedRecallCap(2, 48);
-      preloadedDomainMatches = await runTimedExternalQuery(
+      const shouldPreloadIntentWithDomain =
+        intentFamilyPattern &&
+        !preloadedIntentFamilyMatches &&
+        exactDomainCategoryCandidateCount > 0 &&
+        exactDomainCategoryCandidateCount < focusedRecallTarget;
+      const domainMatchesTask = runTimedExternalQuery(
         'external_domain',
         () => runDomainQuery(foundationDomainCap),
         PDP_RECS_EXTERNAL_RECALL_QUERY_TIMEOUT_MS,
       );
+      const intentMatchesTask = shouldPreloadIntentWithDomain
+        ? loadIntentFamilyMatches()
+        : null;
+      preloadedDomainMatches = await domainMatchesTask;
       out.push(...preloadedDomainMatches);
       const domainIntentCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`)
         .filter((product) => {
           if (BEAUTY_ACCESSORY_TITLE_RE.test(normalizeText(product?.title || product?.name || ''))) return false;
           return getSimilarIntentFamilyFromProduct(product) === intentFamily;
       });
+      if (intentMatchesTask && !preloadedIntentFamilyMatches) {
+        preloadedIntentFamilyMatches = await intentMatchesTask;
+      }
       if (hasDisplayCoverage(domainIntentCandidates, focusedRecallTarget)) {
         return attachExternalFetchStats(domainIntentCandidates.slice(0, returnCap));
+      }
+      if (preloadedIntentFamilyMatches) {
+        out.push(...preloadedIntentFamilyMatches);
+        const intentFocusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
+        if (hasDisplayCoverage(intentFocusedCandidates, focusedRecallTarget)) {
+          return attachExternalFetchStats(intentFocusedCandidates.slice(0, returnCap));
+        }
       }
     }
     if (intentFamilyPattern && !preloadedIntentFamilyMatches) {
