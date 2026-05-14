@@ -103,6 +103,26 @@ function hasStructuredInci(seedData) {
   ].some((value) => asArray(value).length > 0);
 }
 
+function qualityStatus(seedData, key) {
+  const snapshot = asObject(seedData.snapshot);
+  const quality = {
+    ...asObject(snapshot.pdp_field_quality_summary),
+    ...asObject(seedData.pdp_field_quality_summary),
+  };
+  const item = asObject(quality[key]);
+  return {
+    status: asString(item.source_quality_status).toLowerCase(),
+    origin: asString(item.source_origin).toLowerCase(),
+  };
+}
+
+function hasForceFilledInci(seedData) {
+  return ['ingredients_raw', 'ingredients_inci'].some((key) => {
+    const quality = qualityStatus(seedData, key);
+    return quality.status.startsWith('force_filled') || quality.origin === 'pivota_force_fill';
+  });
+}
+
 function shouldIncludeReadinessRow(row) {
   return !Number(row?.coverage?.inci_chars || 0);
 }
@@ -283,6 +303,7 @@ function buildPlan(row, options = {}) {
   const before = JSON.stringify(seedData);
   const currentInci = readInciText(seedData);
   const currentStructuredInci = hasStructuredInci(seedData);
+  const forceFilledInci = hasForceFilledInci(seedData);
   const result = {
     external_product_id: row.external_product_id,
     title: row.title,
@@ -292,7 +313,7 @@ function buildPlan(row, options = {}) {
     reason_codes: [],
   };
 
-  if (currentInci || currentStructuredInci) {
+  if ((currentInci || currentStructuredInci) && !forceFilledInci) {
     result.status = 'skipped_current_has_inci';
     return { result, nextSeedData: seedData, changed: false };
   }
@@ -368,6 +389,18 @@ function buildPlan(row, options = {}) {
       seedData,
       buildRemediation(row, family, 'manual_source_review_required', reasonCodes, generatedAt),
     );
+    mergeQuality(seedData, 'ingredients_raw', {
+      source_origin: 'manual_source_review_required',
+      source_quality_status: 'blocked',
+      reason_codes: reasonCodes,
+      updated_at: generatedAt,
+    });
+    mergeQuality(seedData, 'ingredients_inci', {
+      source_origin: 'manual_source_review_required',
+      source_quality_status: 'blocked',
+      reason_codes: reasonCodes,
+      updated_at: generatedAt,
+    });
     result.action = 'manual_source_review_required';
     result.reason_codes = reasonCodes;
   }
@@ -379,8 +412,9 @@ function buildPlan(row, options = {}) {
 }
 
 async function main() {
-  const readinessPayload = readJson(argValue('readiness-json'));
-  const productIds = loadTargetIds(readinessPayload, argValue('product-ids'));
+  const productIdFilter = argValue('product-ids');
+  const readinessPayload = productIdFilter ? { rows: [] } : readJson(argValue('readiness-json'));
+  const productIds = loadTargetIds(readinessPayload, productIdFilter);
   const options = {
     apply: hasFlag('apply'),
     market: argValue('market') || 'US',

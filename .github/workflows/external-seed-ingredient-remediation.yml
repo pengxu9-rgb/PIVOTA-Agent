@@ -1,0 +1,97 @@
+name: External Seed Ingredient Remediation
+
+on:
+  workflow_dispatch:
+    inputs:
+      external_product_ids:
+        description: "Comma-separated external_product_id list"
+        required: true
+        type: string
+      market:
+        description: "Market code"
+        required: true
+        default: "US"
+        type: string
+      domain:
+        description: "Optional exact seed domain"
+        required: false
+        default: ""
+        type: string
+      dry_run:
+        description: "Run dry-run only"
+        required: true
+        default: true
+        type: boolean
+
+jobs:
+  ingredient-remediation:
+    runs-on: ubuntu-latest
+    environment:
+      name: Pivota Agent / production
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Mark ingredient remediation
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${DATABASE_URL:-}" ]]; then
+            echo "DATABASE_URL secret is required" >&2
+            exit 1
+          fi
+          out_dir="reports/workflow_ops/external-seed-ingredient-remediation/${{ github.run_id }}"
+          mkdir -p "${out_dir}"
+          ids_file="${out_dir}/external_product_ids.txt"
+          printf '%s\n' "${{ inputs.external_product_ids }}" \
+            | tr ',' '\n' \
+            | sed 's/^ *//;s/ *$//' \
+            | awk 'NF' > "${ids_file}"
+          ids_csv="$(paste -sd, "${ids_file}")"
+          report_name="apply.json"
+          if [[ "${{ inputs.dry_run }}" == "true" ]]; then
+            report_name="dry-run.json"
+          fi
+
+          args=(
+            --market "${{ inputs.market }}"
+            --domain "${{ inputs.domain }}"
+            --product-ids "${ids_csv}"
+            --out "${out_dir}/${report_name}"
+          )
+          if [[ "${{ inputs.dry_run }}" != "true" ]]; then
+            args+=(--apply)
+          fi
+          node scripts/mark-external-seed-ingredient-remediation.cjs "${args[@]}" \
+            | tee "${out_dir}/ingredient-remediation-summary.json"
+
+          sync_args=(
+            --market "${{ inputs.market }}"
+            --external-product-ids-file "${ids_file}"
+            --out "${out_dir}/identity-source-payload-sync.json"
+            --created-by "github_actions_ingredient_remediation"
+          )
+          if [[ "${{ inputs.dry_run }}" != "true" ]]; then
+            sync_args+=(--write)
+          fi
+          node scripts/sync-external-seed-identity-source-payloads.cjs "${sync_args[@]}" \
+            | tee "${out_dir}/identity-source-payload-sync-summary.json"
+
+      - name: Upload artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: external-seed-ingredient-remediation-${{ github.run_id }}
+          path: reports/workflow_ops/external-seed-ingredient-remediation/${{ github.run_id }}
+          retention-days: 7
