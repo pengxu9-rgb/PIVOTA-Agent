@@ -997,6 +997,225 @@ function firstNonEmptyString(...values) {
   return null;
 }
 
+function hasExternalSeedRowPdpText(row) {
+  if (!isPlainObject(row)) return false;
+  const seedData = isPlainObject(row.seed_data) ? row.seed_data : {};
+  const snapshot = isPlainObject(seedData.snapshot) ? seedData.snapshot : {};
+  if (
+    firstNonEmptyString(
+      seedData.description,
+      seedData.description_text,
+      seedData.pdp_description,
+      seedData.pdp_description_raw,
+      seedData.overview,
+      seedData.summary,
+      snapshot.description,
+      snapshot.description_text,
+      snapshot.pdp_description,
+      snapshot.pdp_description_raw,
+      snapshot.overview,
+      snapshot.summary,
+    )
+  ) {
+    return true;
+  }
+  return [seedData.pdp_details_sections, snapshot.pdp_details_sections]
+    .some((sections) => Array.isArray(sections) && sections.length > 0);
+}
+
+function collectAttachedCatalogContentFallbacks(attachedRow) {
+  const payload = parseCanonicalCatalogPayload(attachedRow?.product_payload);
+  const seedData = isPlainObject(payload.seed_data) ? payload.seed_data : {};
+  const snapshot = isPlainObject(seedData.snapshot) ? seedData.snapshot : {};
+  const externalSeed = isPlainObject(payload.external_seed) ? payload.external_seed : {};
+  const externalSnapshot = isPlainObject(externalSeed.snapshot) ? externalSeed.snapshot : {};
+  const enrichmentMeta = isPlainObject(payload.enrichment_meta) ? payload.enrichment_meta : {};
+
+  return {
+    description: firstNonEmptyString(
+      attachedRow?.product_description,
+      payload.description,
+      payload.description_text,
+      payload.pdp_description,
+      payload.pdp_description_raw,
+      payload.overview,
+      payload.summary,
+      externalSeed.description,
+      externalSeed.description_text,
+      externalSeed.pdp_description,
+      externalSeed.pdp_description_raw,
+      externalSeed.overview,
+      externalSeed.summary,
+      externalSnapshot.description,
+      externalSnapshot.description_text,
+      externalSnapshot.pdp_description,
+      externalSnapshot.pdp_description_raw,
+      seedData.description,
+      seedData.description_text,
+      seedData.pdp_description,
+      seedData.pdp_description_raw,
+      seedData.overview,
+      seedData.summary,
+      snapshot.description,
+      snapshot.description_text,
+      snapshot.pdp_description,
+      snapshot.pdp_description_raw,
+      snapshot.overview,
+      snapshot.summary,
+      enrichmentMeta.product_description,
+      enrichmentMeta.description,
+      enrichmentMeta.overview,
+      enrichmentMeta.summary,
+      enrichmentMeta.candidate_attribute_summary,
+    ),
+    imageUrl: firstCatalogPayloadString(
+      attachedRow?.product_image_url,
+      payload.image_url,
+      payload.imageUrl,
+      payload.images,
+      payload.image_urls,
+      externalSeed.image_url,
+      externalSeed.imageUrl,
+      externalSeed.images,
+      externalSeed.image_urls,
+      externalSnapshot.image_url,
+      externalSnapshot.images,
+      seedData.image_url,
+      seedData.imageUrl,
+      seedData.images,
+      seedData.image_urls,
+      snapshot.image_url,
+      snapshot.images,
+      snapshot.image_urls,
+    ),
+    brand: firstNonEmptyString(
+      attachedRow?.brand,
+      payload.brand,
+      payload.vendor,
+      externalSeed.brand,
+      externalSeed.vendor,
+      seedData.brand,
+      seedData.vendor,
+      snapshot.brand,
+      snapshot.vendor,
+    ),
+    category: firstNonEmptyString(
+      attachedRow?.category,
+      attachedRow?.product_type,
+      payload.category,
+      payload.product_type,
+      externalSeed.category,
+      externalSeed.product_type,
+      seedData.category,
+      seedData.product_type,
+      snapshot.category,
+      snapshot.product_type,
+    ),
+    categoryPath: firstCatalogPayloadString(
+      attachedRow?.category_path,
+      payload.category_path,
+      payload.catalog_category_path,
+      externalSeed.category_path,
+      seedData.category_path,
+      seedData.catalog_category_path,
+      snapshot.category_path,
+      snapshot.catalog_category_path,
+    ),
+    sourceProductId: firstNonEmptyString(attachedRow?.source_product_id, seedData.external_product_id, externalSeed.external_product_id),
+  };
+}
+
+function mergeAttachedCatalogContentIntoExternalSeedRow(row, attachedRow) {
+  if (!isPlainObject(row) || !isPlainObject(attachedRow)) return row;
+  const attachedProductKey = firstNonEmptyString(row.attached_product_key, attachedRow.product_key);
+  if (!attachedProductKey) return row;
+
+  const seedData = isPlainObject(row.seed_data) ? { ...row.seed_data } : {};
+  const snapshot = isPlainObject(seedData.snapshot) ? { ...seedData.snapshot } : {};
+  const fallbacks = collectAttachedCatalogContentFallbacks(attachedRow);
+  const nextRow = { ...row };
+  const inheritedFields = [];
+
+  if (!hasExternalSeedRowPdpText(row) && fallbacks.description) {
+    seedData.description = fallbacks.description;
+    snapshot.description = snapshot.description || fallbacks.description;
+    seedData.seed_description_origin = seedData.seed_description_origin || 'attached_catalog_product';
+    inheritedFields.push('description');
+  }
+
+  if (!firstNonEmptyString(nextRow.image_url, seedData.image_url, snapshot.image_url) && fallbacks.imageUrl) {
+    nextRow.image_url = fallbacks.imageUrl;
+    seedData.image_url = seedData.image_url || fallbacks.imageUrl;
+    inheritedFields.push('image_url');
+  }
+
+  if (!firstNonEmptyString(seedData.brand, seedData.vendor, snapshot.brand, snapshot.vendor) && fallbacks.brand) {
+    seedData.brand = fallbacks.brand;
+    inheritedFields.push('brand');
+  }
+
+  if (!firstNonEmptyString(seedData.category, seedData.product_type, snapshot.category, snapshot.product_type) && fallbacks.category) {
+    seedData.product_type = fallbacks.category;
+    seedData.category = seedData.category || fallbacks.category;
+    inheritedFields.push('category');
+  }
+
+  if (!firstCatalogPayloadString(seedData.category_path, seedData.catalog_category_path, snapshot.category_path) && fallbacks.categoryPath) {
+    seedData.category_path = fallbacks.categoryPath;
+    inheritedFields.push('category_path');
+  }
+
+  if (inheritedFields.length > 0) {
+    seedData.snapshot = snapshot;
+    seedData.attached_catalog_content_source = {
+      source: 'catalog_products',
+      product_key: attachedProductKey,
+      ...(fallbacks.sourceProductId ? { source_product_id: fallbacks.sourceProductId } : {}),
+      inherited_fields: inheritedFields,
+    };
+    nextRow.seed_data = seedData;
+  }
+
+  return nextRow;
+}
+
+async function maybeHydrateExternalSeedRowFromAttachedCatalogProduct(row) {
+  if (!isPlainObject(row)) return row;
+  const attachedProductKey = firstNonEmptyString(row.attached_product_key);
+  if (!attachedProductKey || hasExternalSeedRowPdpText(row)) return row;
+
+  try {
+    const res = await query(
+      `
+        SELECT
+          product_key,
+          source_product_id,
+          title AS product_title,
+          description AS product_description,
+          brand,
+          category,
+          product_type,
+          category_path,
+          image_url AS product_image_url,
+          product_payload
+        FROM catalog_products
+        WHERE product_key = $1
+        LIMIT 1
+      `,
+      [attachedProductKey],
+    );
+    const attachedRow = Array.isArray(res?.rows) ? res.rows[0] : null;
+    if (!attachedRow) return row;
+    return mergeAttachedCatalogContentIntoExternalSeedRow(row, attachedRow);
+  } catch (err) {
+    logger.warn(
+      { err: err?.message || String(err), attachedProductKey, externalSeedId: row.id || null },
+      'Failed to hydrate attached catalog content for external seed PDP',
+    );
+    return row;
+  }
+}
+
 const RESPONSE_OWNED_PDP_CANONICAL_MODULE_TYPES = new Set([
   'product_intel',
   'recommendations',
@@ -3820,6 +4039,7 @@ async function fetchExternalSeedProductDetailFromDb(args) {
       price_amount,
       price_currency,
       availability,
+      attached_product_key,
       ${prunedSeedDataSql},
       updated_at,
       created_at,
@@ -3866,6 +4086,7 @@ async function fetchExternalSeedProductDetailFromDb(args) {
 
     if (!row) return null;
     if (String(row.status || 'active').trim().toLowerCase() !== 'active') return null;
+    row = await maybeHydrateExternalSeedRowFromAttachedCatalogProduct(row);
     const hydratedProduct = buildExternalSeedProduct(row);
     if (!hydratedProduct) return null;
 

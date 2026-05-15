@@ -111,6 +111,92 @@ describe('external seed product detail hydration', () => {
     expect(product.pdp_details_sections).toHaveLength(2);
   });
 
+  test('hydrates sparse attached external seed details from the canonical catalog product', async () => {
+    const { db, debug } = loadServerWithDb();
+
+    db.query
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'eps_sony_wh1000xm5_amazon',
+            external_product_id: 'amazon:321de14a50113cdb',
+            canonical_url: 'https://amzn.to/3QKz2zA',
+            destination_url: 'https://amzn.to/3QKz2zA',
+            domain: 'amzn.to',
+            title: 'WH-1000XM5',
+            image_url: null,
+            price_amount: '249.00',
+            price_currency: 'USD',
+            availability: 'In Stock',
+            attached_product_key: 'ext:sony-wh-1000xm5::9485151e',
+            status: 'active',
+            seed_data: {
+              brand: 'Sony',
+              variants: [{ id: 'amazon:321de14a50113cdb', price: '249.00', currency: 'USD' }],
+            },
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            product_key: 'ext:sony-wh-1000xm5::9485151e',
+            source_product_id: 'sony-wh-1000xm5',
+            product_title: 'WH-1000XM5',
+            product_description: null,
+            brand: 'Sony',
+            category: 'headphones_noise_cancelling',
+            product_type: 'headphones_noise_cancelling',
+            category_path: 'electronics/audio/headphones_noise_cancelling',
+            product_image_url: 'https://www.sony.com/wh-1000xm5.jpg',
+            product_payload: {
+              enrichment_meta: {
+                candidate_attribute_summary:
+                  'Over-ear wireless noise cancelling headphones with a 30-hour battery.',
+              },
+            },
+          },
+        ],
+      });
+
+    const detail = await debug.fetchExternalSeedProductDetailFromDb({
+      productId: 'amazon:321de14a50113cdb',
+    });
+
+    expect(db.query).toHaveBeenCalledTimes(2);
+    expect(String(db.query.mock.calls[0][0] || '')).toContain('attached_product_key');
+    expect(String(db.query.mock.calls[1][0] || '')).toContain('FROM catalog_products');
+    expect(detail?.product).toMatchObject({
+      product_id: 'amazon:321de14a50113cdb',
+      description: 'Over-ear wireless noise cancelling headphones with a 30-hour battery.',
+      image_url: 'https://www.sony.com/wh-1000xm5.jpg',
+    });
+    expect(detail?.product?.seed_data?.attached_catalog_content_source).toMatchObject({
+      source: 'catalog_products',
+      product_key: 'ext:sony-wh-1000xm5::9485151e',
+      source_product_id: 'sony-wh-1000xm5',
+      inherited_fields: expect.arrayContaining(['description', 'image_url', 'category_path']),
+    });
+
+    const { buildPdpPayload } = require('../src/pdpBuilder');
+    const pdpPayload = buildPdpPayload({ product: detail.product });
+    expect(pdpPayload.modules).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'product_overview',
+          data: expect.objectContaining({
+            sections: expect.arrayContaining([
+              expect.objectContaining({
+                heading: 'Description',
+                content: 'Over-ear wireless noise cancelling headphones with a 30-hour battery.',
+              }),
+            ]),
+          }),
+        }),
+      ]),
+    );
+  });
+
   test('fetchProductDetailForOffers falls back to JSON product-id matches only after exact keys miss', async () => {
     const { db, debug } = loadServerWithDb();
 
@@ -353,48 +439,47 @@ describe('external seed product detail hydration', () => {
       PIVOTA_API_KEY: 'test-token',
     });
 
-    db.query
-      .mockResolvedValueOnce({
-        rows: [
-          {
-            id: 'eps_seed_db_1',
-            external_product_id: 'ext_seed_db_1',
-            status: 'active',
-          },
-        ],
-      })
-      .mockResolvedValueOnce({
-        rows: [
-          {
-            id: 'eps_seed_db_1',
-            external_product_id: 'ext_seed_db_1',
-            status: 'active',
-            canonical_url: 'https://www.tomfordbeauty.com/products/noir-ext-seed-db-1',
-            destination_url: 'https://www.tomfordbeauty.com/products/noir-ext-seed-db-1',
-            title: 'Tom Ford Noir Extreme Parfum',
-            image_url: 'https://cdn.example.com/tom-ford-noir.jpg',
-            price_amount: '240.00',
-            price_currency: 'USD',
-            availability: 'In Stock',
-            seed_data: {
-              brand: 'Tom Ford Beauty',
-              description: 'Warm amber fragrance.',
-              snapshot: {
-                canonical_url: 'https://www.tomfordbeauty.com/products/noir-ext-seed-db-1',
-                product_id: 'ext_seed_db_1',
-                variants: [
-                  {
-                    variant_id: 'tf-noir-default',
-                    price: '240.00',
-                    currency: 'USD',
-                    stock: 'In Stock',
-                  },
-                ],
-              },
+    const statusRow = {
+      id: 'eps_seed_db_1',
+      external_product_id: 'ext_seed_db_1',
+      status: 'active',
+    };
+    const detailRow = {
+      ...statusRow,
+      canonical_url: 'https://www.tomfordbeauty.com/products/noir-ext-seed-db-1',
+      destination_url: 'https://www.tomfordbeauty.com/products/noir-ext-seed-db-1',
+      title: 'Tom Ford Noir Extreme Parfum',
+      image_url: 'https://cdn.example.com/tom-ford-noir.jpg',
+      price_amount: '240.00',
+      price_currency: 'USD',
+      availability: 'In Stock',
+      seed_data: {
+        brand: 'Tom Ford Beauty',
+        description: 'Warm amber fragrance.',
+        snapshot: {
+          canonical_url: 'https://www.tomfordbeauty.com/products/noir-ext-seed-db-1',
+          product_id: 'ext_seed_db_1',
+          variants: [
+            {
+              variant_id: 'tf-noir-default',
+              price: '240.00',
+              currency: 'USD',
+              stock: 'In Stock',
             },
-          },
-        ],
-      });
+          ],
+        },
+      },
+    };
+    db.query.mockImplementation((sql) => {
+      const text = String(sql || '');
+      if (text.includes('FROM external_product_seeds') && text.includes('destination_url')) {
+        return Promise.resolve({ rows: [detailRow] });
+      }
+      if (text.includes('FROM external_product_seeds') && text.includes('status')) {
+        return Promise.resolve({ rows: [statusRow] });
+      }
+      return Promise.resolve({ rows: [] });
+    });
 
     nock('https://backend.test')
       .get('/agent/v1/product-groups/resolve-by-product-id')
@@ -450,59 +535,57 @@ describe('external seed product detail hydration', () => {
       PIVOTA_API_KEY: 'test-token',
     });
 
-    db.query
-      .mockResolvedValueOnce({
-        rows: [
-          {
-            merchant_id: 'external_seed',
-            platform: 'external_seed',
-            source_product_id: 'ext_seed_db_sig_1',
-            product_key: 'prod::external_seed::external_seed::ext_seed_db_sig_1',
-          },
-        ],
-      })
-      .mockResolvedValueOnce({
-        rows: [
-          {
-            id: 'eps_seed_db_sig_1',
-            external_product_id: 'ext_seed_db_sig_1',
-            status: 'active',
-          },
-        ],
-      })
-      .mockResolvedValueOnce({
-        rows: [
-          {
-            id: 'eps_seed_db_sig_1',
-            external_product_id: 'ext_seed_db_sig_1',
-            status: 'active',
-            canonical_url: 'https://www.fentybeauty.com/products/gloss-bomb',
-            destination_url: 'https://www.fentybeauty.com/products/gloss-bomb',
-            title: 'Fenty Beauty Gloss Bomb Universal Lip Luminizer',
-            image_url: 'https://cdn.example.com/fenty-gloss.jpg',
-            price_amount: '22.00',
-            price_currency: 'USD',
-            availability: 'In Stock',
-            seed_data: {
-              brand: 'Fenty Beauty',
-              description: 'A high-shine lip luminizer.',
-              snapshot: {
-                canonical_url: 'https://www.fentybeauty.com/products/gloss-bomb',
-                product_id: 'ext_seed_db_sig_1',
-                variants: [
-                  {
-                    variant_id: 'fenty-gloss-default',
-                    title: 'Full Size',
-                    price: '22.00',
-                    currency: 'USD',
-                    stock: 'In Stock',
-                  },
-                ],
-              },
+    const signatureRow = {
+      merchant_id: 'external_seed',
+      platform: 'external_seed',
+      source_product_id: 'ext_seed_db_sig_1',
+      product_key: 'prod::external_seed::external_seed::ext_seed_db_sig_1',
+    };
+    const statusRow = {
+      id: 'eps_seed_db_sig_1',
+      external_product_id: 'ext_seed_db_sig_1',
+      status: 'active',
+    };
+    const detailRow = {
+      ...statusRow,
+      canonical_url: 'https://www.fentybeauty.com/products/gloss-bomb',
+      destination_url: 'https://www.fentybeauty.com/products/gloss-bomb',
+      title: 'Fenty Beauty Gloss Bomb Universal Lip Luminizer',
+      image_url: 'https://cdn.example.com/fenty-gloss.jpg',
+      price_amount: '22.00',
+      price_currency: 'USD',
+      availability: 'In Stock',
+      seed_data: {
+        brand: 'Fenty Beauty',
+        description: 'A high-shine lip luminizer.',
+        snapshot: {
+          canonical_url: 'https://www.fentybeauty.com/products/gloss-bomb',
+          product_id: 'ext_seed_db_sig_1',
+          variants: [
+            {
+              variant_id: 'fenty-gloss-default',
+              title: 'Full Size',
+              price: '22.00',
+              currency: 'USD',
+              stock: 'In Stock',
             },
-          },
-        ],
-      });
+          ],
+        },
+      },
+    };
+    db.query.mockImplementation((sql) => {
+      const text = String(sql || '');
+      if (text.includes('FROM catalog_products') && text.includes('pivota_signature_id = $1')) {
+        return Promise.resolve({ rows: [signatureRow] });
+      }
+      if (text.includes('FROM external_product_seeds') && text.includes('destination_url')) {
+        return Promise.resolve({ rows: [detailRow] });
+      }
+      if (text.includes('FROM external_product_seeds') && text.includes('status')) {
+        return Promise.resolve({ rows: [statusRow] });
+      }
+      return Promise.resolve({ rows: [] });
+    });
 
     nock('https://backend.test')
       .get('/agent/v1/product-groups/resolve-by-product-id')
