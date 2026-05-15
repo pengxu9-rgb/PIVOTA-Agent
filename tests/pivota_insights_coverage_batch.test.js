@@ -278,6 +278,12 @@ describe('pivota_insights_coverage_batch', () => {
         subtitle: 'Routine Set',
       }),
     ).toBe('');
+    expect(
+      detectShoppingCardSubtypeMismatch({
+        title: 'TIRTIR Global Mask Fit Cushion Refill',
+        subtitle: 'Cushion Refill',
+      }),
+    ).toBe('');
   });
 
   test('rejects strict-review rows with compact subtitle type mismatch', () => {

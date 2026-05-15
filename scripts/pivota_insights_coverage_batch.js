@@ -270,6 +270,7 @@ function detectShoppingCardSubtypeMismatch({ title = '', subtitle = '' } = {}) {
   if (
     /\bmask\b/.test(normalizedTitle) &&
     !/\bcleanser\b/.test(normalizedTitle) &&
+    !/\b(?:cushion|foundation|compact|base makeup|makeup base)\b/.test(normalizedTitle) &&
     !/\bmask\b/.test(normalizedSubtitle)
   ) {
     return 'compact_subtitle_mismatch_mask';
