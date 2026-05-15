@@ -5704,6 +5704,34 @@ function normalizeOfferMoney(amount, currency) {
   };
 }
 
+function normalizeOfferMoneyForProduct(amount, currency, product = {}, variant = null) {
+  const productContext = buildProductDetailPriceContext(product, currency);
+  const context = {
+    ...productContext,
+    currency: firstNonEmptyString(
+      currency,
+      variant?.currency,
+      variant?.price_currency,
+      variant?.priceCurrency,
+      variant?.price?.currency,
+      variant?.price?.current?.currency,
+      productContext.currency,
+      'USD',
+    ),
+    title: [
+      productContext.title,
+      variant?.title,
+      variant?.name,
+      variant?.sku,
+    ]
+      .map((value) => String(value || '').trim())
+      .filter(Boolean)
+      .join(' '),
+    description: firstNonEmptyString(variant?.description, productContext.description),
+  };
+  return normalizeOfferMoney(normalizeExternalSeedPrice(amount, context), context.currency);
+}
+
 function computeOfferTotal(offer) {
   return Number(offer?.price?.amount || 0) + Number(offer?.shipping?.cost?.amount || 0);
 }
@@ -5962,7 +5990,7 @@ function buildOfferVariantsForPayload(product, fallbackCurrency) {
         ...(title ? { title } : {}),
         ...(options.length ? { options } : {}),
         price: {
-          current: normalizeOfferMoney(rawVariantPrice, currency),
+          current: normalizeOfferMoneyForProduct(rawVariantPrice, currency, product, variant),
         },
         availability: {
           ...(typeof inStock === 'boolean' ? { in_stock: inStock } : {}),
@@ -6342,7 +6370,7 @@ async function buildOffersFromGroupMembers(args) {
           },
           merchantId: mid,
         }) || undefined,
-      price: normalizeOfferMoney(selectedVariantPrice ?? p.price, currency),
+      price: normalizeOfferMoneyForProduct(selectedVariantPrice ?? p.price, currency, p, selectedVariant),
       shipping:
         p.shipping || etaRange || shipCostAmount != null
           ? {
