@@ -14,18 +14,29 @@ test('ProductEntity index feed pages approved canonical sig mappings only', asyn
     {
       query: async (sql, params) => {
         calls.push({ sql, params });
-        assert.match(sql, /pdp_identity_listing/);
+        assert.match(sql, /catalog_products/);
+        assert.match(sql, /product_group_members/);
         return {
           rows: [
             {
-              source_listing_ref: 'external_seed:ext_alpha',
+              source_listing_ref: 'catalog_content_key:ck_alpha',
               product_entity_id: 'sig_alpha',
               source_product_id: 'ext_alpha',
               external_product_id: 'ext_alpha',
+              merchant_id: 'merch_alpha',
+              merchant_name: 'Alpha Merchant',
               product_name: 'Alpha Serum',
               title: 'Alpha Serum',
               brand: 'Alpha Brand',
               category: 'Serum',
+              content_key: 'ck_alpha',
+              seller_count: 2,
+              member_count: 2,
+              offer_count: 2,
+              member_refs: [
+                { merchant_id: 'merch_alpha', product_id: 'ext_alpha', pivota_signature_id: 'sig_alpha', is_primary: true },
+                { merchant_id: 'merch_alt', product_id: 'ext_alpha_alt', pivota_signature_id: 'sig_alpha_alt', is_primary: false },
+              ],
               seed_data: {
                 title: 'Alpha Serum',
                 brand: 'Alpha Brand',
@@ -37,10 +48,11 @@ test('ProductEntity index feed pages approved canonical sig mappings only', asyn
               total_rows: 3,
             },
             {
-              source_listing_ref: 'external_seed:ext_beta',
+              source_listing_ref: 'catalog_content_key:ck_beta',
               product_entity_id: 'sig_beta',
               source_product_id: 'ext_beta',
               external_product_id: 'ext_beta',
+              merchant_id: 'merch_beta',
               product_name: 'Beta Cleanser',
               title: 'Beta Cleanser',
               brand: 'Beta Brand',
@@ -56,10 +68,11 @@ test('ProductEntity index feed pages approved canonical sig mappings only', asyn
               total_rows: 3,
             },
             {
-              source_listing_ref: 'external_seed:ext_gamma',
+              source_listing_ref: 'catalog_content_key:ck_gamma',
               product_entity_id: 'sig_gamma',
               source_product_id: 'ext_gamma',
               external_product_id: 'ext_gamma',
+              merchant_id: 'merch_gamma',
               product_name: 'Gamma Toner',
               title: 'Gamma Toner',
               brand: 'Gamma Brand',
@@ -87,6 +100,9 @@ test('ProductEntity index feed pages approved canonical sig mappings only', asyn
   assert.equal(result.products[0].product_entity_id, 'sig_alpha');
   assert.equal(result.products[0].sellable_item_group_id, 'sig_alpha');
   assert.equal(result.products[0].product_id, 'ext_alpha');
+  assert.equal(result.products[0].merchant_id, 'merch_alpha');
+  assert.equal(result.products[0].seller_count, 2);
+  assert.equal(result.products[0].offer_count, 2);
   assert.equal(result.cursor_info.has_next_page, true);
   assert.ok(result.cursor_info.next_cursor);
 });
@@ -98,7 +114,7 @@ test('ProductEntity index feed cursor advances with source listing ref', async (
       query: async () => ({
         rows: [
           {
-            source_listing_ref: 'external_seed:ext_alpha',
+            source_listing_ref: 'catalog_content_key:ck_alpha',
             product_entity_id: 'sig_alpha',
             source_product_id: 'ext_alpha',
             title: 'Alpha Serum',
@@ -107,7 +123,7 @@ test('ProductEntity index feed cursor advances with source listing ref', async (
             total_rows: 2,
           },
           {
-            source_listing_ref: 'external_seed:ext_beta',
+            source_listing_ref: 'catalog_content_key:ck_beta',
             product_entity_id: 'sig_beta',
             source_product_id: 'ext_beta',
             title: 'Beta Serum',
@@ -130,6 +146,6 @@ test('ProductEntity index feed cursor advances with source listing ref', async (
     },
   );
   assert.deepEqual(keysetParams, [
-    ['external_seed:ext_alpha', 2],
+    ['catalog_content_key:ck_alpha', 2],
   ]);
 });

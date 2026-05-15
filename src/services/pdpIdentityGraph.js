@@ -14,6 +14,9 @@ const {
   normalizePdpImageUrl,
   buildPdpImageDedupeKey,
 } = require('../utils/pdpImageUrls');
+const {
+  resolveCanonicalCatalogEntityGroup,
+} = require('./catalogEntityResolution');
 
 const normalizeResolverText =
   typeof productGroundingResolverInternals.normalizeTextForResolver === 'function'
@@ -1196,6 +1199,52 @@ function extractSoftIdentity(product, axes) {
   };
 }
 
+function extractCanonicalCatalogIdentity(product, sourceMeta = {}) {
+  const contentKey = firstNonEmptyString(
+    product?.content_key,
+    product?.contentKey,
+    product?.catalog_content_key,
+    product?.catalogContentKey,
+    product?.source_payload?.content_key,
+    sourceMeta?.content_key,
+  );
+  const canonicalSigId = firstNonEmptyString(
+    product?.canonical_sig_id,
+    product?.canonicalSigId,
+    product?.canonical_pivota_signature_id,
+    product?.canonicalPivotaSignatureId,
+    sourceMeta?.canonical_sig_id,
+    sourceMeta?.canonical_pivota_signature_id,
+  );
+  const pivotaSignatureId = firstNonEmptyString(
+    product?.pivota_signature_id,
+    product?.pivotaSignatureId,
+    sourceMeta?.pivota_signature_id,
+  );
+  const productGroupId = firstNonEmptyString(
+    product?.product_group_id,
+    product?.productGroupId,
+    sourceMeta?.product_group_id,
+  );
+  const internalProductGroupId = firstNonEmptyString(
+    product?.internal_product_group_id,
+    product?.internalProductGroupId,
+    sourceMeta?.internal_product_group_id,
+  );
+  const productGroupSigId = /^sig_[a-z0-9]+$/i.test(productGroupId) ? productGroupId : '';
+  const primaryPivotaSigId =
+    sourceMeta?.canonical_primary === true || sourceMeta?.is_primary === true ? pivotaSignatureId : '';
+  const publicSigId = firstNonEmptyString(canonicalSigId, productGroupSigId, primaryPivotaSigId);
+  return {
+    ...(contentKey ? { content_key: contentKey } : {}),
+    ...(canonicalSigId ? { canonical_sig_id: canonicalSigId } : {}),
+    ...(pivotaSignatureId ? { pivota_signature_id: pivotaSignatureId } : {}),
+    ...(productGroupId ? { product_group_id: productGroupId } : {}),
+    ...(internalProductGroupId ? { internal_product_group_id: internalProductGroupId } : {}),
+    ...(publicSigId && /^sig_[a-z0-9]+$/i.test(publicSigId) ? { public_sig_id: publicSigId } : {}),
+  };
+}
+
 function buildProductLineKey({
   strongIdentity,
   softIdentity,
@@ -1372,6 +1421,16 @@ function buildIdentityListingFromProduct({
   const axes = extractVariantAxes(normalizedProduct);
   const strongIdentity = extractStrongIdentity(normalizedProduct, axes);
   const softIdentity = extractSoftIdentity(normalizedProduct, axes);
+  const canonicalCatalogIdentity = extractCanonicalCatalogIdentity(normalizedProduct, sourceMeta);
+  if (canonicalCatalogIdentity.content_key) {
+    strongIdentity.content_key = canonicalCatalogIdentity.content_key;
+  }
+  if (canonicalCatalogIdentity.public_sig_id) {
+    strongIdentity.canonical_sig_id = canonicalCatalogIdentity.public_sig_id;
+  }
+  if (canonicalCatalogIdentity.internal_product_group_id) {
+    strongIdentity.internal_product_group_id = canonicalCatalogIdentity.internal_product_group_id;
+  }
   const variantFamily = extractMultiPageShadeFamilyCandidate(normalizedProduct);
   const sourceTier = chooseSourceTier(normalizedProduct, sourceKind);
   const identityConfidence = computeIdentityConfidence({
@@ -1398,7 +1457,24 @@ function buildIdentityListingFromProduct({
     reviewReasonCodes.push('multi_variant_exact_item_unresolved');
   }
 
-  if (Array.isArray(strongIdentity.gtins) && strongIdentity.gtins.length > 0) {
+  if (canonicalCatalogIdentity.public_sig_id && canonicalCatalogIdentity.content_key && !reviewRequired) {
+    matchedByRule = 'canonical_content_key';
+    matchBasis = [
+      `content_key:${canonicalCatalogIdentity.content_key}`,
+      `canonical_sig:${canonicalCatalogIdentity.public_sig_id}`,
+      ...(canonicalCatalogIdentity.internal_product_group_id
+        ? [`product_group:${canonicalCatalogIdentity.internal_product_group_id}`]
+        : []),
+    ];
+    sellableItemKey = canonicalCatalogIdentity.public_sig_id;
+  } else if (canonicalCatalogIdentity.content_key && !reviewRequired) {
+    matchedByRule = 'canonical_content_key';
+    matchBasis = [
+      `content_key:${canonicalCatalogIdentity.content_key}`,
+      ...(axisSignature ? [`variant_axes:${axisSignature}`] : []),
+    ];
+    sellableItemKey = `content_key:${canonicalCatalogIdentity.content_key}`;
+  } else if (Array.isArray(strongIdentity.gtins) && strongIdentity.gtins.length > 0) {
     matchedByRule = 'strong_gtin';
     matchBasis = strongIdentity.gtins.map((item) => `gtin:${item}`);
     sellableItemKey = `gtin:${strongIdentity.gtins.slice().sort().join('|')}`;
@@ -1429,7 +1505,10 @@ function buildIdentityListingFromProduct({
     sellableItemKey = sourceListingRef;
   }
 
-  const sellableItemGroupId = stableHash('sig', [sellableItemKey]);
+  const sellableItemGroupId =
+    matchedByRule === 'canonical_content_key' && /^sig_[a-z0-9]+$/i.test(sellableItemKey)
+      ? sellableItemKey
+      : stableHash('sig', [sellableItemKey]);
   const productLineId = stableHash('pl', [lineKey]);
   const reviewFamilyId = stableHash('rf', [lineKey]);
   const reviewSummary =
@@ -1487,28 +1566,15 @@ function buildSoftExactClusterKey(listing) {
   return `${brand}|${titleCore}|${axisSignature}`;
 }
 
-function isReviewedMultiOfferMergeListing(listing) {
-  if (asString(listing?.matched_by_rule) === 'reviewed_multi_offer_merge') return true;
-  return asArray(listing?.match_basis).some((item) =>
-    asString(item).startsWith('reviewed_multi_offer_target:'),
-  );
-}
-
 function findStrongIdentityConflict(listings) {
-  const officialUrls = new Set();
   const gtins = new Set();
   for (const listing of listings || []) {
     const strong = asPlainObject(listing?.strong_identity) || {};
-    const officialUrl = asString(strong.official_url);
-    if (officialUrl && !isReviewedMultiOfferMergeListing(listing)) {
-      officialUrls.add(officialUrl);
-    }
     asArray(strong.gtins).forEach((item) => {
       const gtin = asString(item).replace(/[^0-9]/g, '');
       if (gtin) gtins.add(gtin);
     });
   }
-  if (officialUrls.size > 1) return 'conflicting_official_url';
   if (gtins.size > 1) return 'conflicting_gtin';
   return '';
 }
@@ -3374,7 +3440,47 @@ async function maybeBuildLiveSyntheticPdp({
         product: canonicalProduct,
         queryFn,
       }));
-    if (!sourceRow) return writeLiveSyntheticPdpCache(cacheKey, null);
+    if (!sourceRow) {
+      const catalogGroup = await resolveCanonicalCatalogEntityGroup({
+        merchantId,
+        productId,
+        queryFn,
+      }).catch(() => null);
+      if (catalogGroup?.canonical_product_ref && Array.isArray(catalogGroup.group_members) && canonicalProduct) {
+        const product = {
+          ...canonicalProduct,
+          product_group_id: catalogGroup.product_group_id,
+          sellable_item_group_id: catalogGroup.sellable_item_group_id || catalogGroup.product_group_id,
+          canonical_sig_id: catalogGroup.canonical_sig_id || catalogGroup.product_group_id,
+          content_key: catalogGroup.content_key || canonicalProduct.content_key || null,
+          offer_source: 'group_fused',
+          search_recall_source: 'canonical_catalog',
+          offers_count: catalogGroup.offer_count || catalogGroup.group_members.length,
+          offer_count: catalogGroup.offer_count || catalogGroup.group_members.length,
+          has_multiple_offers: catalogGroup.has_multiple_offers === true || catalogGroup.group_members.length > 1,
+          grouped: catalogGroup.group_members.length > 1,
+        };
+        return writeLiveSyntheticPdpCache(cacheKey, {
+          synthetic_product: product,
+          canonical_product_ref: catalogGroup.canonical_product_ref,
+          sellable_item_group_id: catalogGroup.sellable_item_group_id || catalogGroup.product_group_id || null,
+          product_line_id: null,
+          review_family_id: null,
+          identity_confidence: 0.96,
+          match_basis: [
+            ...(catalogGroup.content_key ? [`content_key:${catalogGroup.content_key}`] : []),
+            ...(catalogGroup.canonical_sig_id ? [`canonical_sig:${catalogGroup.canonical_sig_id}`] : []),
+          ],
+          canonical_scope: 'canonical_catalog',
+          content_review_state: 'not_needed',
+          group_members: catalogGroup.group_members,
+          line_members: catalogGroup.group_members,
+          content_key: catalogGroup.content_key || null,
+          canonical_sig_id: catalogGroup.canonical_sig_id || catalogGroup.product_group_id || null,
+        });
+      }
+      return writeLiveSyntheticPdpCache(cacheKey, null);
+    }
     if (!isTrustedExactLiveIdentityRow(exactSourceRow) && !isBrandAllowedForLive(canonicalProduct, sourceRow)) {
       return writeLiveSyntheticPdpCache(cacheKey, null);
     }
@@ -3519,7 +3625,26 @@ async function resolveLivePdpIdentityGroupForPdp({
       [groupId],
     );
     const rows = normalizeIdentityRows(rowsRes?.rows);
-    if (!rows.length) return null;
+    if (!rows.length) {
+      const catalogGroup = await resolveCanonicalCatalogEntityGroup({
+        productId: groupId,
+        productGroupId: groupId,
+        queryFn,
+      }).catch(() => null);
+      if (catalogGroup?.canonical_product_ref && Array.isArray(catalogGroup.group_members)) {
+        return {
+          product_group_id: catalogGroup.product_group_id || groupId,
+          sellable_item_group_id: catalogGroup.sellable_item_group_id || catalogGroup.product_group_id || groupId,
+          canonical_product_ref: catalogGroup.canonical_product_ref,
+          selected_commerce_ref: catalogGroup.canonical_product_ref,
+          group_members: catalogGroup.group_members,
+          content_key: catalogGroup.content_key || null,
+          canonical_sig_id: catalogGroup.canonical_sig_id || catalogGroup.product_group_id || groupId,
+          source: 'canonical_catalog',
+        };
+      }
+      return null;
+    }
 
     const commerceListing = pickDefaultCommerceListing(rows) || rows[0];
     const composed = composeSyntheticCanonicalProduct({

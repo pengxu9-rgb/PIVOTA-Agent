@@ -22,6 +22,10 @@ function safeJsonObject(value) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
 }
 
+function safeJsonArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
 function encodeCursor(payload) {
   return Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
 }
@@ -87,11 +91,14 @@ function buildProductEntityIndexFeedItem(row) {
     product_id: sourceProductId,
     external_seed_id: /^ext_[a-z0-9_]+$/i.test(sourceProductId) ? sourceProductId : nonEmptyString(row.external_seed_id),
     source_product_id: sourceProductId,
-    merchant_id: EXTERNAL_SEED_MERCHANT_ID,
-    source: 'external_seed',
+    merchant_id: nonEmptyString(row.merchant_id, product.merchant_id, EXTERNAL_SEED_MERCHANT_ID),
+    merchant_name: nonEmptyString(row.merchant_name, product.merchant_name),
+    source: nonEmptyString(row.source, product.source, 'canonical_catalog'),
     product_entity_id: productEntityId,
     product_group_id: productEntityId,
     sellable_item_group_id: productEntityId,
+    canonical_sig_id: productEntityId,
+    content_key: nonEmptyString(row.content_key),
     title,
     name: title,
     brand: normalizeBrand(product, row, seedData, snapshot),
@@ -99,6 +106,10 @@ function buildProductEntityIndexFeedItem(row) {
     canonical_url: product.canonical_url || row.canonical_url || snapshot.canonical_url || '',
     destination_url: product.destination_url || row.destination_url || snapshot.destination_url || '',
     image_url: product.image_url || row.image_url || snapshot.image_url || '',
+    seller_count: Number(row.seller_count || 0) || undefined,
+    member_count: Number(row.member_count || 0) || undefined,
+    offer_count: Number(row.offer_count || 0) || undefined,
+    member_refs: safeJsonArray(row.member_refs),
     updated_at: row.source_updated_at || row.updated_at || row.identity_updated_at || null,
   };
 }
@@ -128,7 +139,7 @@ async function getProductEntityIndexFeed(payload = {}, deps = {}) {
   let paginationWhere = '';
   if (useSourceRefCursor) {
     const sourceRefParam = params.push(cursorSourceListingRef);
-    identityPaginationWhere = `AND pil.source_listing_ref > $${sourceRefParam}`;
+    identityPaginationWhere = `AND ('catalog_content_key:' || ranked.content_key) > $${sourceRefParam}`;
   } else if (useSortKeysetCursor) {
     const sortParam = params.push(cursorSortUpdatedAt);
     const productParam = params.push(cursorProductEntityId);
@@ -158,66 +169,129 @@ async function getProductEntityIndexFeed(payload = {}, deps = {}) {
 
   const result = await query(
     `
-      WITH mapped AS (
+      WITH offer_stats AS (
         SELECT
-          pil.source_listing_ref,
-          pil.sellable_item_group_id AS product_entity_id,
-          coalesce(
-            nullif(pil.product_id, ''),
-            nullif(regexp_replace(pil.source_listing_ref, '^external_seed:', ''), '')
-          ) AS source_product_id,
+          s.product_key,
+          COUNT(DISTINCT o.offer_id)::int AS offer_count
+        FROM catalog_skus s
+        LEFT JOIN catalog_offers o ON o.sku_key = s.sku_key
+        GROUP BY s.product_key
+      ),
+      canonical_rows AS (
+        SELECT
+          cp.content_key,
+          cp.product_key,
+          cp.merchant_id,
+          cm.merchant_name,
+          cp.platform,
+          cp.source_product_id,
+          cp.title AS product_name,
+          cp.description AS product_description,
+          cp.brand,
+          cp.category,
+          cp.product_type,
+          cp.canonical_url,
+          cp.pivota_canonical_url,
+          cp.image_url,
+          cp.product_payload,
+          cp.pivota_signature_id,
+          cp.pivota_signature_minted_at,
+          cp.pdp_lifecycle_stage,
+          cp.updated_at,
+          pgm.product_group_id AS internal_product_group_id,
+          COALESCE(pgm.is_primary, false) AS is_primary,
+          COALESCE(offer_stats.offer_count, 0)::int AS offer_count
+        FROM catalog_products cp
+        LEFT JOIN catalog_merchants cm ON cm.merchant_id = cp.merchant_id
+        LEFT JOIN product_group_members pgm
+          ON pgm.merchant_id = cp.merchant_id
+         AND pgm.platform = cp.platform
+         AND pgm.platform_product_id = cp.source_product_id
+        LEFT JOIN offer_stats ON offer_stats.product_key = cp.product_key
+        WHERE cp.content_key IS NOT NULL
+          AND cp.pivota_signature_id LIKE 'sig\\_%' ESCAPE '\\'
+      ),
+      ranked AS (
+        SELECT
+          cr.*,
+          ROW_NUMBER() OVER (
+            PARTITION BY cr.content_key
+            ORDER BY
+              CASE WHEN cr.is_primary = true THEN 0 ELSE 1 END,
+              CASE cr.pdp_lifecycle_stage
+                WHEN 'published' THEN 0
+                WHEN 'validated' THEN 1
+                WHEN 'candidate' THEN 2
+                WHEN 'draft' THEN 3
+                ELSE 9
+              END,
+              cr.pivota_signature_minted_at ASC NULLS LAST,
+              cr.updated_at DESC NULLS LAST,
+              cr.product_key ASC
+          ) AS row_rank
+        FROM canonical_rows cr
+      ),
+      stats AS (
+        SELECT
+          content_key,
+          COUNT(*)::int AS member_count,
+          COUNT(DISTINCT merchant_id)::int AS seller_count,
+          COALESCE(SUM(offer_count), 0)::int AS offer_count,
+          MAX(updated_at) AS sort_updated_at,
+          jsonb_agg(
+            jsonb_build_object(
+              'merchant_id', merchant_id,
+              'merchant_name', merchant_name,
+              'product_id', source_product_id,
+              'platform', platform,
+              'product_key', product_key,
+              'pivota_signature_id', pivota_signature_id,
+              'is_primary', is_primary
+            )
+            ORDER BY
+              CASE WHEN is_primary = true THEN 0 ELSE 1 END,
+              product_key ASC
+          ) AS member_refs
+        FROM canonical_rows
+        GROUP BY content_key
+      ),
+      mapped AS (
+        SELECT
+          'catalog_content_key:' || ranked.content_key AS source_listing_ref,
+          ranked.pivota_signature_id AS product_entity_id,
+          ranked.source_product_id AS source_product_id,
           null::text AS external_seed_row_id,
-          coalesce(
-            nullif(pil.product_id, ''),
-            nullif(regexp_replace(pil.source_listing_ref, '^external_seed:', ''), '')
-          ) AS external_product_id,
-          pil.official_url AS destination_url,
-          pil.official_url AS canonical_url,
-          pil.official_domain AS domain,
-          coalesce(
-            pil.source_payload->>'title',
-            pil.source_payload->>'name',
-            pil.title_norm
-          ) AS product_name,
-          coalesce(
-            pil.source_payload->>'image_url',
-            pil.source_payload->>'image',
-            pil.source_payload#>>'{snapshot,image_url}'
-          ) AS image_url,
+          ranked.source_product_id AS external_product_id,
+          ranked.canonical_url AS destination_url,
+          COALESCE(ranked.pivota_canonical_url, ranked.canonical_url) AS canonical_url,
+          regexp_replace(lower(coalesce(ranked.canonical_url, ranked.pivota_canonical_url, '')), '^https?://(?:www\\.)?([^/]+).*$','\\1') AS domain,
+          ranked.product_name,
+          ranked.image_url,
           null::numeric AS price_amount,
           null::text AS price_currency,
           null::text AS availability,
-          coalesce(
-            pil.source_payload->>'brand',
-            pil.source_payload->>'vendor',
-            pil.source_payload#>>'{snapshot,brand}',
-            pil.source_payload#>>'{snapshot,vendor}',
-            pil.brand_norm,
-            ''
-          ) AS brand,
-          coalesce(
-            pil.source_payload->>'category',
-            pil.source_payload->>'product_type',
-            pil.source_payload#>>'{snapshot,category}',
-            pil.source_payload#>>'{snapshot,product_type}',
-            ''
-          ) AS category,
-          coalesce(pil.source_payload, '{}'::jsonb) AS seed_data,
-          pil.updated_at AS source_updated_at,
-          coalesce(
-            pil.updated_at,
-            '1970-01-01T00:00:00Z'::timestamptz
-          ) AS sort_updated_at,
-          pil.updated_at AS identity_updated_at,
-          pil.identity_confidence
-        FROM pdp_identity_listing pil
-        WHERE pil.sellable_item_group_id LIKE 'sig\\_%' ESCAPE '\\'
-          AND pil.source_listing_ref LIKE 'external_seed:%'
-          AND pil.identity_status = 'approved'
-          AND pil.live_read_enabled = true
+          COALESCE(ranked.brand, '') AS brand,
+          COALESCE(ranked.category, ranked.product_type, '') AS category,
+          COALESCE(ranked.product_payload, '{}'::jsonb) AS seed_data,
+          ranked.updated_at AS source_updated_at,
+          COALESCE(stats.sort_updated_at, ranked.updated_at, '1970-01-01T00:00:00Z'::timestamptz) AS sort_updated_at,
+          ranked.updated_at AS identity_updated_at,
+          0.96::numeric AS identity_confidence,
+          ranked.merchant_id,
+          ranked.merchant_name,
+          ranked.content_key,
+          ranked.internal_product_group_id,
+          stats.seller_count,
+          stats.member_count,
+          stats.offer_count,
+          stats.member_refs,
+          'canonical_catalog'::text AS source
+        FROM ranked
+        JOIN stats ON stats.content_key = ranked.content_key
+        WHERE ranked.row_rank = 1
           ${identityPaginationWhere}
       )
-      SELECT *
+      SELECT *, COUNT(*) OVER() AS total_rows
       FROM mapped
       ${paginationWhere}
       ORDER BY

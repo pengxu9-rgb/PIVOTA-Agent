@@ -469,6 +469,71 @@ describe('pdpIdentityGraph', () => {
     );
   });
 
+  test('clusterIdentityListings does not treat different merchant PDP URLs as exact-item conflicts', () => {
+    const { buildIdentityListingFromProduct, _internals } = require('../../src/services/pdpIdentityGraph');
+
+    const official = buildIdentityListingFromProduct({
+      merchantId: 'external_seed',
+      productId: 'ext_brand_alpha',
+      sourceKind: 'external_seed',
+      product: {
+        title: 'Alpha Barrier Serum 30 mL',
+        brand: 'Alpha Beauty',
+        source_url: 'https://alphabeauty.com/products/barrier-serum',
+        variants: [{ variant_id: 'a', option_name: 'Size', option_value: '30 mL' }],
+      },
+    });
+    const retailer = buildIdentityListingFromProduct({
+      merchantId: 'merch_retail',
+      productId: 'sku_alpha_barrier',
+      sourceKind: 'internal',
+      product: {
+        title: 'Alpha Beauty Alpha Barrier Serum',
+        vendor: 'Alpha Beauty',
+        canonical_url: 'https://retailer.example/products/alpha-beauty-barrier-serum',
+        variants: [{ variant_id: 'b', option_name: 'Size', option_value: '30 mL' }],
+      },
+    });
+
+    const clustered = _internals.clusterIdentityListings([official, retailer]);
+
+    expect(clustered[0].sellable_item_group_id).toBe(clustered[1].sellable_item_group_id);
+    expect(clustered.every((listing) => listing.identity_status === 'approved')).toBe(true);
+    expect(clustered.flatMap((listing) => listing.review_reason_codes)).not.toContain(
+      'conflicting_official_url',
+    );
+  });
+
+  test('buildIdentityListingFromProduct uses canonical content key sig aliases when supplied', () => {
+    const { buildIdentityListingFromProduct } = require('../../src/services/pdpIdentityGraph');
+
+    const listing = buildIdentityListingFromProduct({
+      merchantId: 'merch_retail',
+      productId: 'alpha-30ml',
+      sourceKind: 'internal',
+      sourceMeta: {
+        content_key: 'ck_1234567890abcdef1234567890abcdef',
+        canonical_sig_id: 'sig_primaryalpha',
+        internal_product_group_id: 'pg_1234567890abcdef1234567890abcdef',
+      },
+      product: {
+        title: 'Alpha Barrier Serum 30 mL',
+        brand: 'Alpha Beauty',
+        canonical_url: 'https://retailer.example/products/alpha-barrier-serum',
+      },
+    });
+
+    expect(listing.sellable_item_group_id).toBe('sig_primaryalpha');
+    expect(listing.matched_by_rule).toBe('canonical_content_key');
+    expect(listing.match_basis).toEqual(
+      expect.arrayContaining([
+        'content_key:ck_1234567890abcdef1234567890abcdef',
+        'canonical_sig:sig_primaryalpha',
+        'product_group:pg_1234567890abcdef1234567890abcdef',
+      ]),
+    );
+  });
+
   test('composeSyntheticCanonicalProduct keeps reviewed external content while selecting internal commerce', () => {
     const { buildIdentityListingFromProduct, composeSyntheticCanonicalProduct } = require('../../src/services/pdpIdentityGraph');
 

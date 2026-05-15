@@ -191,6 +191,9 @@ const {
   fetchCanonicalChainRows,
 } = require('./services/canonicalCatalogSearch');
 const {
+  resolveCanonicalCatalogEntityGroup,
+} = require('./services/catalogEntityResolution');
+const {
   resolveExternalSeedLocalityFacts,
   applyLocalityFactsToSeedData,
   hasLocalityFactsValue,
@@ -3897,6 +3900,25 @@ async function resolveCatalogProductRefFromPivotaSignature(productId) {
   if (!isPivotaSignatureProductId(normalizedProductId)) return null;
 
   try {
+    const canonicalGroup = await resolveCanonicalCatalogEntityGroup({
+      productId: normalizedProductId,
+      queryFn: query,
+    });
+    if (canonicalGroup?.canonical_product_ref?.merchant_id && canonicalGroup?.canonical_product_ref?.product_id) {
+      return {
+        ...canonicalGroup.canonical_product_ref,
+        product_group_id: canonicalGroup.product_group_id || normalizedProductId,
+        sellable_item_group_id:
+          canonicalGroup.sellable_item_group_id || canonicalGroup.product_group_id || normalizedProductId,
+        canonical_sig_id: canonicalGroup.canonical_sig_id || canonicalGroup.product_group_id || normalizedProductId,
+        content_key: canonicalGroup.content_key || null,
+        members: Array.isArray(canonicalGroup.members) ? canonicalGroup.members : [],
+        group_members: Array.isArray(canonicalGroup.group_members) ? canonicalGroup.group_members : [],
+        member_sig_ids: Array.isArray(canonicalGroup.member_sig_ids) ? canonicalGroup.member_sig_ids : [],
+        source: 'canonical_catalog_signature',
+      };
+    }
+
     const result = await query(
       `
         SELECT merchant_id, platform, source_product_id, product_key
@@ -5644,6 +5666,48 @@ async function resolveProductGroupCached(args) {
           cache: { hit: true, age_ms: ageMs, ttl_ms: RESOLVE_PRODUCT_GROUP_CACHE_TTL_MS },
         }
       : cachedEntry.value;
+  }
+
+  const canonicalCatalogGroup = await resolveCanonicalCatalogEntityGroup({
+    productId,
+    merchantId,
+    queryFn: query,
+  }).catch((err) => {
+    logger.warn(
+      {
+        err: err?.message || String(err),
+        product_id: productId,
+        merchant_id: merchantId,
+      },
+      'Canonical catalog product group resolution failed; falling back to upstream',
+    );
+    return null;
+  });
+  if (
+    canonicalCatalogGroup?.canonical_product_ref &&
+    Array.isArray(canonicalCatalogGroup.members) &&
+    canonicalCatalogGroup.members.length > 0
+  ) {
+    const result = {
+      status: 'success',
+      product_group_id: canonicalCatalogGroup.product_group_id,
+      sellable_item_group_id:
+        canonicalCatalogGroup.sellable_item_group_id || canonicalCatalogGroup.product_group_id,
+      canonical_sig_id: canonicalCatalogGroup.canonical_sig_id || canonicalCatalogGroup.product_group_id,
+      content_key: canonicalCatalogGroup.content_key || null,
+      internal_product_group_id: canonicalCatalogGroup.internal_product_group_id || null,
+      canonical_product_ref: canonicalCatalogGroup.canonical_product_ref,
+      members: canonicalCatalogGroup.members,
+      member_sig_ids: canonicalCatalogGroup.member_sig_ids || [],
+      seller_count: canonicalCatalogGroup.seller_count || canonicalCatalogGroup.members.length,
+      member_count: canonicalCatalogGroup.member_count || canonicalCatalogGroup.members.length,
+      offer_count: canonicalCatalogGroup.offer_count || 0,
+      source: 'canonical_catalog',
+    };
+    if (cacheEnabled) setResolveProductGroupCache(cacheKey, result);
+    return debug
+      ? { ...result, cache: { hit: false, age_ms: 0, ttl_ms: RESOLVE_PRODUCT_GROUP_CACHE_TTL_MS } }
+      : result;
   }
 
   const resolvedGroup = merchantId
@@ -28191,9 +28255,20 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               requestedPivotaSignatureId = requestedProductIdForDiagnostics;
 		          productId = String(signatureProductRef.product_id || '').trim() || productId;
 		          requestedMerchantId = String(signatureProductRef.merchant_id || '').trim() || requestedMerchantId;
+		          if (signatureProductRef.product_group_id) {
+		            productGroupId = String(signatureProductRef.product_group_id || '').trim() || productGroupId;
+		          }
+		          if (Array.isArray(signatureProductRef.group_members) && signatureProductRef.group_members.length > 0) {
+		            groupMembers = signatureProductRef.group_members;
+		          } else if (Array.isArray(signatureProductRef.members) && signatureProductRef.members.length > 0) {
+		            groupMembers = signatureProductRef.members;
+		          }
 		          canonicalizationApplied = productId !== requestedProductIdForDiagnostics;
 		          canonicalizationReasonCode = canonicalizationApplied ? 'PIVOTA_SIGNATURE_ID' : null;
-		          identityResolutionSource = 'catalog_products_signature';
+		          identityResolutionSource =
+		            signatureProductRef.source === 'canonical_catalog_signature'
+		              ? 'canonical_catalog_signature'
+		              : 'catalog_products_signature';
 		        }
 		      }
 		      const shouldPrewarmSimilarForCorePdp =
@@ -28270,7 +28345,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           !hasExplicitProductGroup
         ) {
           const resolveIdentityGroupAliasStartedAt = Date.now();
-          const identityGroupAlias = await resolveLivePdpIdentityGroupForPdp({
+          let identityGroupAlias = await resolveLivePdpIdentityGroupForPdp({
             productGroupId: entryProductId,
           }).catch((err) => {
             logger.warn(
@@ -28282,6 +28357,21 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             );
             return null;
           });
+          if (!identityGroupAlias?.canonical_product_ref?.product_id) {
+            identityGroupAlias = await resolveCanonicalCatalogEntityGroup({
+              productId: entryProductId,
+              queryFn: query,
+            }).catch((err) => {
+              logger.warn(
+                {
+                  err: err?.message || String(err),
+                  product_group_id: entryProductId,
+                },
+                'get_pdp_v2 canonical catalog product-group alias resolution failed',
+              );
+              return null;
+            });
+          }
           markPdpV2Phase('resolve_identity_group_alias', resolveIdentityGroupAliasStartedAt);
           if (identityGroupAlias?.canonical_product_ref?.product_id) {
             productGroupAliasId = identityGroupAlias.product_group_id || entryProductId;
@@ -28430,10 +28520,25 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	      const resolveSubjectGroupStartedAt = Date.now();
 	      if (subjectType === 'product_group' && subjectId) {
 	        try {
-	          const fetchedGroup = await fetchProductGroupMembersFromUpstream({
+	          let fetchedGroup = await resolveCanonicalCatalogEntityGroup({
 	            productGroupId: subjectId,
-            checkoutToken,
-          }).catch(() => null);
+	            queryFn: query,
+	          }).catch((err) => {
+	            logger.warn(
+	              {
+	                err: err?.message || String(err),
+	                product_group_id: subjectId,
+	              },
+	              'get_pdp_v2 canonical catalog subject group resolution failed; falling back to upstream',
+	            );
+	            return null;
+	          });
+	          if (!fetchedGroup?.canonical_product_ref) {
+	            fetchedGroup = await fetchProductGroupMembersFromUpstream({
+	              productGroupId: subjectId,
+              checkoutToken,
+            }).catch(() => null);
+	          }
           const membersRaw = Array.isArray(fetchedGroup?.members)
             ? fetchedGroup.members
             : Array.isArray(fetchedGroup?.items)
@@ -28449,18 +28554,20 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             }))
             .filter((m) => Boolean(m.merchant_id) && Boolean(m.product_id));
           if (members.length) {
-            productGroupId = subjectId;
+            productGroupId = fetchedGroup?.product_group_id || subjectId;
             groupMembers = members;
             const canonicalMember =
               members.find((m) => m.is_primary) || members[0] || null;
-            canonicalProductRef = canonicalMember
+            canonicalProductRef = fetchedGroup?.canonical_product_ref || (canonicalMember
               ? {
                   merchant_id: canonicalMember.merchant_id,
                   product_id: canonicalMember.product_id,
                   ...(canonicalMember.platform ? { platform: canonicalMember.platform } : {}),
                 }
-              : null;
-            identityResolutionSource = 'subject_product_group';
+              : null);
+            identityResolutionSource = fetchedGroup?.source === 'canonical_catalog'
+              ? 'canonical_catalog_subject_group'
+              : 'subject_product_group';
           }
         } catch {
           // Ignore and fall back to resolve-by-product-id.
@@ -28508,6 +28615,45 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	        }
 	      }
 	      markPdpV2Phase('resolve_offer_group', resolveOfferGroupStartedAt);
+
+	      const resolveCanonicalCatalogGroupStartedAt = Date.now();
+	      if (!canonicalProductRef && productId) {
+	        const canonicalCatalogGroup = await resolveCanonicalCatalogEntityGroup({
+	          productId,
+	          merchantId: requestedMerchantId || null,
+	          queryFn: query,
+	        }).catch((err) => {
+	          logger.warn(
+	            {
+	              err: err?.message || String(err),
+	              product_id: productId,
+	              merchant_id: requestedMerchantId || null,
+	            },
+	            'get_pdp_v2 canonical catalog product resolution failed; continuing with legacy group resolution',
+	          );
+	          return null;
+	        });
+	        if (
+	          canonicalCatalogGroup?.canonical_product_ref?.product_id &&
+	          canonicalCatalogGroup?.canonical_product_ref?.merchant_id
+	        ) {
+	          productGroupId = canonicalCatalogGroup.product_group_id || productGroupId;
+	          groupMembers = Array.isArray(canonicalCatalogGroup.members)
+	            ? canonicalCatalogGroup.members
+	            : groupMembers;
+	          canonicalProductRef = canonicalCatalogGroup.canonical_product_ref;
+	          identityResolutionSource = 'canonical_catalog_product_group';
+	          if (
+	            requestedMerchantId &&
+	            String(canonicalProductRef?.merchant_id || '').trim() &&
+	            String(canonicalProductRef?.merchant_id || '').trim() !== requestedMerchantId
+	          ) {
+	            canonicalizationApplied = true;
+	            canonicalizationReasonCode = 'PRODUCT_ROUTE_MERCHANT_MISMATCH';
+	          }
+	        }
+	      }
+	      markPdpV2Phase('resolve_canonical_catalog_group', resolveCanonicalCatalogGroupStartedAt);
 
 		      if (!productId && canonicalProductRef?.product_id) {
 		        productId = String(canonicalProductRef.product_id || '').trim();
@@ -28717,6 +28863,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	      canonicalizationReasonCodeCtx = canonicalizationReasonCode;
 	      identityResolutionSourceCtx = identityResolutionSource;
 
+	      let identityGraphLive = null;
+	      let identityGraphPublishedIntel = null;
+
 	      // Fetch canonical detail (cached via products_cache + memory cache).
 	      const fetchCanonicalProductStartedAt = Date.now();
 	      let canonicalProduct =
@@ -28734,21 +28883,41 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	      markPdpV2Phase('fetch_canonical_product', fetchCanonicalProductStartedAt);
 
 	      if (!canonicalProduct) {
-	        return res.status(404).json({
-            ...buildPdpV2ErrorBody({
-              error: 'PRODUCT_NOT_FOUND',
-              message: 'Product not found',
-              reasonCode: 'PRODUCT_NOT_FOUND',
-              requestedProductId: entryProductId || productId || null,
-              requestedMerchantId: requestedMerchantId || null,
-              resolvedProductId: canonicalProductRef?.product_id || null,
-              resolvedMerchantId: canonicalProductRef?.merchant_id || null,
-              entryPrecheckMissing: precheckEntryProductMissing,
-              canonicalizationApplied,
-              canonicalizationReasonCode,
-              resolutionSource: identityResolutionSource,
-            }),
-	        });
+	        const identityRescueStartedAt = Date.now();
+	        identityGraphLive = await maybeBuildLiveSyntheticPdp({
+	          merchantId: requestedMerchantId || canonicalProductRef?.merchant_id,
+	          productId: entryProductId || productId || canonicalProductRef?.product_id,
+	          canonicalProduct: null,
+	          bypassCache,
+	        }).catch(() => null);
+	        markPdpV2Phase('identity_graph_rescue', identityRescueStartedAt);
+	        if (identityGraphLive?.synthetic_product) {
+	          canonicalProduct = identityGraphLive.synthetic_product;
+	          canonicalProductRef = identityGraphLive.canonical_product_ref || canonicalProductRef;
+	          if (identityGraphLive.sellable_item_group_id) {
+	            productGroupId = identityGraphLive.sellable_item_group_id;
+	          }
+	          if (Array.isArray(identityGraphLive.group_members) && identityGraphLive.group_members.length > 0) {
+	            groupMembers = identityGraphLive.group_members;
+	          }
+	          identityResolutionSource = 'identity_graph_live';
+	        } else {
+	          return res.status(404).json({
+              ...buildPdpV2ErrorBody({
+                error: 'PRODUCT_NOT_FOUND',
+                message: 'Product not found',
+                reasonCode: 'PRODUCT_NOT_FOUND',
+                requestedProductId: entryProductId || productId || null,
+                requestedMerchantId: requestedMerchantId || null,
+                resolvedProductId: canonicalProductRef?.product_id || null,
+                resolvedMerchantId: canonicalProductRef?.merchant_id || null,
+                entryPrecheckMissing: precheckEntryProductMissing,
+                canonicalizationApplied,
+                canonicalizationReasonCode,
+                resolutionSource: identityResolutionSource,
+              }),
+	          });
+	        }
 	      }
 
 	      const entryProductRef = {
@@ -28761,8 +28930,6 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 
 	      const pdpOptions = getPdpOptions(payload);
 	      let canonicalProductForPdp = canonicalProduct;
-	      let identityGraphLive = null;
-	      let identityGraphPublishedIntel = null;
 	      startPdpSimilarPrewarm({
 	        productForPdp: canonicalProductForPdp,
 	        productRef: canonicalProductRef,
@@ -28773,12 +28940,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           productGroupAliasId && canonicalProductRef?.product_id
             ? canonicalProductRef.product_id
             : entryProductId || productId || canonicalProductRef?.product_id;
-	      identityGraphLive = await maybeBuildLiveSyntheticPdp({
-          merchantId: requestedMerchantId || canonicalProductRef?.merchant_id,
-          productId: identityGraphLookupProductId,
-          canonicalProduct,
-          bypassCache,
-        }).catch(() => null);
+	      if (!identityGraphLive) {
+	        identityGraphLive = await maybeBuildLiveSyntheticPdp({
+            merchantId: requestedMerchantId || canonicalProductRef?.merchant_id,
+            productId: identityGraphLookupProductId,
+            canonicalProduct,
+            bypassCache,
+          }).catch(() => null);
+	      }
 	      markPdpV2Phase('identity_graph_live', identityGraphLiveStartedAt);
 	      if (identityGraphLive?.synthetic_product && wantsProductIntel) {
 	        const identityGraphIntelGateStartedAt = Date.now();
@@ -28807,11 +28976,17 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               ...identityGraphLive.canonical_product_ref,
             };
 	        }
-	        if (identityGraphLive.sellable_item_group_id) {
+	        const identityGraphGroupMembers = Array.isArray(identityGraphLive.group_members)
+	          ? identityGraphLive.group_members
+	          : [];
+	        if (
+	          identityGraphLive.sellable_item_group_id &&
+	          (!productGroupId || identityGraphGroupMembers.length >= groupMembers.length)
+	        ) {
 	          productGroupId = identityGraphLive.sellable_item_group_id;
 	        }
-	        if (Array.isArray(identityGraphLive.group_members) && identityGraphLive.group_members.length > 0) {
-	          groupMembers = identityGraphLive.group_members;
+	        if (identityGraphGroupMembers.length > 0 && identityGraphGroupMembers.length >= groupMembers.length) {
+	          groupMembers = identityGraphGroupMembers;
 	        }
           identityResolutionSource = 'identity_graph_live';
           resolvedProductIdCtx = canonicalProductRef?.product_id || null;

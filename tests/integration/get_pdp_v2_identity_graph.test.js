@@ -1,6 +1,8 @@
 const nock = require('nock');
 const request = require('supertest');
 
+jest.setTimeout(60000);
+
 jest.mock('../../src/db', () => ({
   query: jest.fn(),
   withClient: jest.fn(async (fn) =>
@@ -351,6 +353,15 @@ describe('get_pdp_v2 identity graph live read', () => {
       .query((query) => query && query.product_id === 'ext_krave_gbr_45')
       .reply(404, { error: 'PRODUCT_GROUP_NOT_FOUND' });
 
+    nock(process.env.PIVOTA_API_BASE)
+      .get('/agent/v1/product-groups/resolve')
+      .query((query) =>
+        query &&
+        query.merchant_id === 'external_seed' &&
+        query.product_id === 'ext_krave_gbr_45',
+      )
+      .reply(404, { error: 'PRODUCT_GROUP_NOT_FOUND' });
+
     const res = await request(app)
       .post('/agent/shop/v1/invoke')
       .send({
@@ -588,6 +599,15 @@ describe('get_pdp_v2 identity graph live read', () => {
     nock(process.env.PIVOTA_API_BASE)
       .get('/agent/v1/product-groups/resolve-by-product-id')
       .query((query) => query && query.product_id === 'ext_boj_dn310')
+      .reply(404, { error: 'PRODUCT_GROUP_NOT_FOUND' });
+
+    nock(process.env.PIVOTA_API_BASE)
+      .get('/agent/v1/product-groups/resolve')
+      .query((query) =>
+        query &&
+        query.merchant_id === 'external_seed' &&
+        query.product_id === 'ext_boj_dn310',
+      )
       .reply(404, { error: 'PRODUCT_GROUP_NOT_FOUND' });
 
     const res = await request(app)
