@@ -788,6 +788,63 @@ describe('PDP grouped offers', () => {
     );
   });
 
+  test('does not create zero-price external-seed offers from lightweight catalog member payloads', async () => {
+    const app = require('../src/server');
+
+    const offersData = await app._debug.buildOffersFromGroupMembers({
+      productGroupId: 'sig_ordinary_niacinamide',
+      debug: true,
+      members: [
+        {
+          merchant_id: 'merch_store',
+          product_id: 'internal_ordinary_niacinamide',
+        },
+        {
+          merchant_id: 'external_seed',
+          product_id: 'ext_minimal_catalog_alias',
+          source_kind: 'canonical_catalog',
+          source_payload: {
+            title: 'Niacinamide 10% + Zinc 1%',
+            brand: 'The Ordinary',
+            canonical_url: 'https://theordinary.com/en-us/niacinamide-10-zinc-1-serum-100436.html',
+            content_key: 'ck_ordinary_niacinamide',
+            pivota_signature_id: 'sig_member_alias',
+          },
+        },
+      ],
+      prefetchedProducts: [
+        {
+          merchant_id: 'merch_store',
+          product_id: 'internal_ordinary_niacinamide',
+          title: 'Niacinamide 10% + Zinc 1%',
+          brand: 'The Ordinary',
+          price: 12,
+          currency: 'USD',
+          in_stock: true,
+        },
+      ],
+    });
+
+    expect(offersData.offers_count).toBe(1);
+    expect(offersData.offers).toHaveLength(1);
+    expect(offersData.offers[0]).toEqual(
+      expect.objectContaining({
+        merchant_id: 'merch_store',
+        product_id: 'internal_ordinary_niacinamide',
+        price: { amount: 12, currency: 'USD' },
+      }),
+    );
+    expect(offersData.offers.some((offer) => offer.merchant_id === 'external_seed')).toBe(false);
+    expect(offersData.diagnostics.build_sources.identity_payload).toBe(0);
+    expect(offersData.diagnostics.unresolved_members).toEqual([
+      expect.objectContaining({
+        merchant_id: 'external_seed',
+        product_id: 'ext_minimal_catalog_alias',
+        reason: 'member_unavailable',
+      }),
+    ]);
+  });
+
   test('decorates canonical PDP payloads with identity graph group and offer metadata', () => {
     const app = require('../src/server');
 

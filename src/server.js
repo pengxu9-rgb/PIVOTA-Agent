@@ -5145,6 +5145,23 @@ function projectExternalSeedOfferPayload(payload, merchantId, productId) {
   });
 }
 
+function externalSeedOfferPayloadHasPriceSignal(product) {
+  if (!product || typeof product !== 'object') return false;
+  const productPrice = readPriceAmountForNormalization(
+    product.price ?? product.price_amount ?? product.priceAmount,
+  );
+  if (Number.isFinite(productPrice) && productPrice > 0) return true;
+
+  const variants = Array.isArray(product.variants) ? product.variants : [];
+  return variants.some((variant) => {
+    if (!variant || typeof variant !== 'object') return false;
+    const variantPrice = readPriceAmountForNormalization(
+      variant.price ?? variant.price_amount ?? variant.priceAmount,
+    );
+    return Number.isFinite(variantPrice) && variantPrice > 0;
+  });
+}
+
 function buildExternalSeedOfferProductFromMember(member) {
   if (!member || typeof member !== 'object') return null;
   const merchantId = String(member.merchant_id || member.merchantId || '').trim();
@@ -5157,8 +5174,10 @@ function buildExternalSeedOfferProductFromMember(member) {
         ? member.sourcePayload
         : null;
   if (!productId || !payload) return null;
+  const projected = projectExternalSeedOfferPayload(payload, merchantId, productId);
+  if (!externalSeedOfferPayloadHasPriceSignal(projected)) return null;
   return attachProductDetailSource(
-    normalizeProductDetailPrice(projectExternalSeedOfferPayload(payload, merchantId, productId)),
+    normalizeProductDetailPrice(projected),
     'identity_graph',
   );
 }
