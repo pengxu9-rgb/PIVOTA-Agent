@@ -138,6 +138,18 @@ function writeCsv(filePath, rows, columns) {
   fs.writeFileSync(filePath, `${lines.join('\n')}\n`);
 }
 
+function compareAuditRows(left, right) {
+  return (
+    String(left.product_id || '').localeCompare(String(right.product_id || '')) ||
+    String(left.merchant_id || '').localeCompare(String(right.merchant_id || '')) ||
+    String(left.axis_source || '').localeCompare(String(right.axis_source || '')) ||
+    String(left.variant_id || '').localeCompare(String(right.variant_id || '')) ||
+    String(left.shade_name || '').localeCompare(String(right.shade_name || '')) ||
+    String(left.visual_status || '').localeCompare(String(right.visual_status || '')) ||
+    String(left.source_query || '').localeCompare(String(right.source_query || ''))
+  );
+}
+
 function increment(map, key, amount = 1) {
   const normalized = normalizeString(key) || 'unknown';
   map[normalized] = (map[normalized] || 0) + amount;
@@ -546,7 +558,7 @@ function summarizeRows(rows, candidates, errors, discoveryMode) {
   const statuses = {};
   for (const row of rows) {
     increment(statuses, row.visual_status);
-    increment(brands, row.brand_name || 'unknown');
+    increment(brands, normalizeLower(row.brand_name || 'unknown') || 'unknown');
     const key = `${row.merchant_id}:${row.product_id}`;
     if (!productMap.has(key)) {
       productMap.set(key, {
@@ -663,6 +675,9 @@ async function main() {
       await sleep(20);
     }
   });
+
+  rows.sort(compareAuditRows);
+  pdpErrors.sort(compareAuditRows);
 
   const productRows = Object.values(
     rows.reduce((acc, row) => {
@@ -799,10 +814,12 @@ if (require.main === module) {
 
 module.exports = {
   classifyVisualEvidence,
+  compareAuditRows,
   collectShadeRowsFromPayload,
   deriveKnownSourceShadeSwatchUrl,
   likelyProductOnlyImageUrl,
   likelyShadeSwatchImageUrl,
+  summarizeRows,
   visualEvidenceFromProductLineOption,
   visualEvidenceFromVariant,
 };

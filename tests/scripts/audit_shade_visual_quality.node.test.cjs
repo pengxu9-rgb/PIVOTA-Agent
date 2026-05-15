@@ -3,10 +3,12 @@ const test = require('node:test');
 
 const {
   classifyVisualEvidence,
+  compareAuditRows,
   collectShadeRowsFromPayload,
   deriveKnownSourceShadeSwatchUrl,
   likelyProductOnlyImageUrl,
   likelyShadeSwatchImageUrl,
+  summarizeRows,
 } = require('../../scripts/audit-shade-visual-quality.cjs');
 
 test('classifies explicit shade visual fields without accepting product photos', () => {
@@ -74,6 +76,43 @@ test('derives only known source-backed RMS shade swatches', () => {
     }),
     '',
   );
+});
+
+test('sorts audit rows deterministically for reviewable report diffs', () => {
+  const rows = [
+    { product_id: 'sig_b', merchant_id: 'external_seed', shade_name: 'B' },
+    { product_id: 'sig_a', merchant_id: 'external_seed', shade_name: 'C' },
+    { product_id: 'sig_a', merchant_id: 'external_seed', shade_name: 'A' },
+  ].sort(compareAuditRows);
+
+  assert.deepEqual(
+    rows.map((row) => `${row.product_id}:${row.shade_name}`),
+    ['sig_a:A', 'sig_a:C', 'sig_b:B'],
+  );
+});
+
+test('summarizes brand coverage without case-split duplicate brands', () => {
+  const summary = summarizeRows(
+    [
+      {
+        product_id: 'sig_1',
+        merchant_id: 'external_seed',
+        brand_name: 'Fenty Beauty',
+        visual_status: 'blocked_product_image_source',
+      },
+      {
+        product_id: 'sig_2',
+        merchant_id: 'external_seed',
+        brand_name: 'fenty beauty',
+        visual_status: 'text_fallback_missing_swatch',
+      },
+    ],
+    [{ product_id: 'sig_1' }, { product_id: 'sig_2' }],
+    [],
+    'search',
+  );
+
+  assert.deepEqual(summary.top_brands_by_shade_options, [{ key: 'fenty beauty', count: 2 }]);
 });
 
 test('collects variant and product-line shade rows with strict visual classifications', () => {

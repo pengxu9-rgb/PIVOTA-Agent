@@ -1,35 +1,31 @@
 {
-  "generated_at": "2026-05-15T23:03:51.412Z",
+  "generated_at": "2026-05-15T23:33:34.934Z",
   "discovery_mode": "search",
   "candidate_count": 160,
   "pdp_error_count": 0,
   "shade_option_count": 1390,
   "shade_pdp_count": 86,
   "status_counts": {
-    "blocked_product_image_source": 1215,
-    "text_fallback_missing_swatch": 132,
+    "blocked_product_image_source": 1216,
+    "text_fallback_missing_swatch": 131,
     "real_swatch_or_hex": 43
   },
   "product_counts": {
     "all_real_swatch_or_hex": 0,
-    "has_text_fallback_missing_swatch": 20,
-    "has_blocked_product_image_source": 75
+    "has_text_fallback_missing_swatch": 19,
+    "has_blocked_product_image_source": 76
   },
   "top_brands_by_shade_options": [
     {
       "key": "fenty beauty",
-      "count": 666
+      "count": 1253
     },
     {
-      "key": "Fenty Beauty",
-      "count": 587
-    },
-    {
-      "key": "MAC",
+      "key": "mac",
       "count": 98
     },
     {
-      "key": "PIXI BEAUTY",
+      "key": "pixi beauty",
       "count": 18
     },
     {
@@ -37,11 +33,11 @@
       "count": 15
     },
     {
-      "key": "Olehenriksen",
+      "key": "olehenriksen",
       "count": 4
     },
     {
-      "key": "Tom Ford Beauty",
+      "key": "tom ford beauty",
       "count": 2
     }
   ],
