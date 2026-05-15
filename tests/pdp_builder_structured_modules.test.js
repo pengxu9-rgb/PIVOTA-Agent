@@ -285,6 +285,40 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     expect(ingredientsInci?.data?.items).not.toContain('2-Hexanediol');
   });
 
+  test('does not augment official sunscreen active block from incidental INCI colorants', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_ole_spf',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'Banana Bright Mineral Sunscreen SPF 30',
+        category: 'Sunscreen',
+        description: 'A 100% mineral sunscreen with SPF 30.',
+        image_url: 'https://example.com/ole-spf.png',
+        pdp_active_ingredients_raw:
+          'Zinc Oxide 16.3%\nEnhanced Vitamin C (Ascorbic Acid)\nBanana Powder-Inspired Pigments\nNiacinamide\nAloe Leaf Juice',
+        active_ingredients: [
+          'Zinc Oxide 16.3%',
+          'Enhanced Vitamin C (Ascorbic Acid)',
+          'Banana Powder-Inspired Pigments',
+          'Niacinamide',
+          'Aloe Leaf Juice',
+        ],
+        ingredients_inci: {
+          raw_text:
+            'Aqua/Water/Eau, Zinc Oxide, Niacinamide, Aloe Barbadensis Leaf Juice, Tetrahexyldecyl Ascorbate, Iron Oxides (Ci 77491, Ci 77492), Titanium Dioxide (Ci 77891).',
+        },
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    const activeIngredients = payload.modules.find((module) => module.type === 'active_ingredients');
+
+    expect(activeIngredients?.data?.items).toEqual(['Zinc Oxide']);
+    expect(activeIngredients?.data?.items).not.toContain('Titanium Dioxide');
+  });
+
   test('preserves enriched similar card presentation fields in recommendations', () => {
     const payload = buildPdpPayload({
       product: {

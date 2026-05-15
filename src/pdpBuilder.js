@@ -2573,8 +2573,9 @@ function ingredientAppearsInInci(item, ingredientsInci) {
   return inciText.includes(key);
 }
 
-function reconcileActiveIngredientsWithInci(product, candidate, data, ingredientsInci) {
-  const inferredSunscreenActives = inferSunscreenActiveIngredients(product, ingredientsInci);
+function reconcileActiveIngredientsWithInci(product, candidate, data, ingredientsInci, options = {}) {
+  const inferredSunscreenActives =
+    options.inferSunscreenActives === false ? [] : inferSunscreenActiveIngredients(product, ingredientsInci);
   const itemCount = Array.isArray(data?.items) ? data.items.length : 0;
   const ingredientsCount = Array.isArray(ingredientsInci?.items) ? ingredientsInci.items.length : 0;
   const shouldValidateAgainstInci =
@@ -2627,12 +2628,18 @@ function buildActiveIngredients(product, ingredientsInci) {
     if (looksLikeActiveCompatibilityFaqText(candidateText) && !isRegulatoryActiveIngredientSource(candidate)) {
       continue;
     }
+    const isExplicitPdpActiveBlock =
+      candidate === product.pdp_active_ingredients_raw ||
+      candidate === product.pdpActiveIngredientsRaw ||
+      isRegulatoryActiveIngredientSource(candidate);
     const data = reconcileActiveIngredientsWithInci(product, candidate, {
       title: pickStructuredTitle(candidate, 'Active ingredients'),
       ...(rawText ? { raw_text: rawText } : {}),
       items,
       ...extractStructuredSourceMeta(candidate),
-    }, ingredientsInci);
+    }, ingredientsInci, {
+      inferSunscreenActives: !isExplicitPdpActiveBlock,
+    });
     data.items = filterDisplayableActiveIngredients(product, data, ingredientsInci);
     if (!Array.isArray(data.items) || !data.items.length) continue;
     if (shouldSuppressLowConfidenceActiveIngredients(product, candidate, data, ingredientsInci)) {
