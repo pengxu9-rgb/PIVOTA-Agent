@@ -5,6 +5,7 @@ const {
   EXTERNAL_SEED_MERCHANT_ID,
   buildExternalSeedProduct,
   collectCachedSeedImageUrls,
+  normalizeExternalSeedPrice,
 } = require('./externalSeedProducts');
 const {
   _internals: productGroundingResolverInternals = {},
@@ -2788,7 +2789,7 @@ function normalizeIdentityRows(rows) {
   return out;
 }
 
-function normalizeListingMoney(value, fallbackCurrency = 'USD') {
+function normalizeListingMoney(value, fallbackCurrency = 'USD', context = {}) {
   const currency = firstNonEmptyString(
     value?.currency,
     value?.currencyCode,
@@ -2806,14 +2807,49 @@ function normalizeListingMoney(value, fallbackCurrency = 'USD') {
       ? rawAmount
       : Number(String(rawAmount ?? '').replace(/[^0-9.-]+/g, ''));
   if (!Number.isFinite(numeric)) return null;
-  return { amount: numeric, currency };
+  const normalizedAmount = normalizeExternalSeedPrice(rawAmount, {
+    ...context,
+    currency,
+  });
+  return {
+    amount: Number.isFinite(Number(normalizedAmount)) ? Number(normalizedAmount) : numeric,
+    currency,
+  };
 }
 
 function readListingPrice(listing) {
   const payload = asPlainObject(listing?.source_payload) || {};
+  const payloadSeedData = asPlainObject(payload.seed_data) || {};
+  const payloadSnapshot = asPlainObject(payloadSeedData.snapshot) || {};
   return normalizeListingMoney(
     payload.price ?? payload.pricing?.price ?? payload.current_price ?? payload.amount,
     payload.currency || payload.price_currency || payload.pricing?.currency || 'USD',
+    {
+      title: firstNonEmptyString(payload.title, payload.name, payloadSeedData.title, payloadSnapshot.title),
+      description: firstNonEmptyString(payload.description, payloadSeedData.description, payloadSnapshot.description),
+      category: firstNonEmptyString(
+        payload.category,
+        payload.product_type,
+        payloadSeedData.category,
+        payloadSeedData.product_type,
+        payloadSnapshot.category,
+        payloadSnapshot.product_type,
+      ),
+      canonicalUrl: firstNonEmptyString(
+        payload.canonical_url,
+        payload.canonicalUrl,
+        payloadSeedData.canonical_url,
+        payloadSnapshot.canonical_url,
+        payload.url,
+      ),
+      destinationUrl: firstNonEmptyString(
+        payload.destination_url,
+        payload.destinationUrl,
+        payload.external_redirect_url,
+        payloadSeedData.destination_url,
+        payloadSnapshot.destination_url,
+      ),
+    },
   );
 }
 

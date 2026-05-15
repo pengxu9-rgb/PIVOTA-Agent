@@ -15,7 +15,7 @@ const PRODUCT_PDP_PATH_RE = /^\/products\/[^/]+\/?$/i;
 const GENERIC_TEMPLATE_RE = /^experience the ultimate luxury with\s+/i;
 const SYNTHETIC_SUMMARY_RE = /\bOFFICIAL:\b[\s\S]*\/\/\/\s*SOCIAL HIGHLIGHTS:/i;
 const BEAUTY_PRICE_HINT_RE =
-  /\b(beauty|makeup|skincare|skin care|hair|haircare|shampoo|conditioner|treatment|serum|cleanser|toner|moisturizer|cream|lotion|mist|mask|concealer|foundation|powder|mascara|lip|brow|fragrance|perfume|parfum|cologne|bundle)\b/i;
+  /\b(beauty|makeup|skincare|skin care|hair|haircare|shampoo|conditioner|treatment|serum|cleanser|toner|moisturizer|cream|lotion|mist|mask|concealer|foundation|powder|mascara|lip|brow|fragrance|perfume|parfum|cologne|sunscreen|sun\s*screen|sunblock|spf|broad\s+spectrum|uv\s*(?:protection|shield|defen[cs]e)|bundle)\b/i;
 const WEAK_FALLBACK_COPY_RE =
   /\b(contact us|customer service|privacy policy|terms and conditions|promotional terms)\b/i;
 const STRONG_FALLBACK_COPY_RE =

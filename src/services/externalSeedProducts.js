@@ -663,7 +663,13 @@ function shouldTreatAsMinorUnitPrice(rawValue, amount, context = {}) {
   if (isZeroDecimalPriceCurrency(currency)) return false;
 
   const rawText = String(rawValue ?? '').trim();
+  const rawObjectLooksMinorUnit =
+    rawValue &&
+    typeof rawValue === 'object' &&
+    !Array.isArray(rawValue) &&
+    Number.isInteger(amount);
   const rawLooksMinorUnit =
+    rawObjectLooksMinorUnit ||
     (typeof rawValue === 'number' && Number.isInteger(rawValue)) ||
     (/^\d+(?:\.0+)?$/.test(rawText) && !/[^\d.]/.test(rawText));
   if (!rawLooksMinorUnit) return false;
@@ -4065,6 +4071,7 @@ module.exports = {
   collectCachedSeedImageUrls,
   normalizeSeedImageUrls,
   normalizeSeedVariants,
+  normalizeExternalSeedPrice,
   sanitizeSeedVariantDisplayFields,
   canonicalizeExternalSeedSnapshot,
   buildExternalSeedProduct,

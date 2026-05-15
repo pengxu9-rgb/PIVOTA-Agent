@@ -75,6 +75,47 @@ describe('PDP grouped offers', () => {
     ]);
   });
 
+  test('normalizes cents-style external seed offer prices for beauty identity payloads', async () => {
+    const app = require('../src/server');
+
+    const offersData = await app._debug.buildOffersFromGroupMembers({
+      productGroupId: 'sig_olehenriksen_sunscreen_eu',
+      debug: true,
+      members: [
+        {
+          merchant_id: 'external_seed',
+          product_id: 'ext_olehenriksen_sunscreen_eu',
+          source_kind: 'external_seed',
+          source_payload: {
+            title: 'Banana Bright Mineral Sunscreen SPF 30 - EU',
+            brand: 'Olehenriksen',
+            price: { amount: 2963, currency: 'USD' },
+            currency: 'USD',
+            canonical_url: 'https://olehenriksen.com/products/banana-bright-mineral-sunscreen-spf-31',
+            category: 'Sunscreen',
+            variants: [
+              {
+                variant_id: '42385365991596',
+                sku: '50915',
+                title: '1.7 oz',
+                options: [{ name: 'Size', value: '1.7 oz' }],
+                price: { current: { amount: 2963, currency: 'USD' } },
+                currency: 'USD',
+              },
+            ],
+          },
+        },
+      ],
+    });
+
+    expect(offersData.offers).toHaveLength(1);
+    expect(offersData.offers[0].price).toEqual({ amount: 29.63, currency: 'USD' });
+    expect(offersData.offers[0].variants[0].price.current).toEqual({
+      amount: 29.63,
+      currency: 'USD',
+    });
+  });
+
   test('builds display-safe Shopify store discount evidence from promotion metadata', () => {
     const app = require('../src/server');
 

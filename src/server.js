@@ -181,6 +181,7 @@ const {
   EXTERNAL_SEED_MERCHANT_ID,
   buildExternalSeedProduct,
   buildExternalSeedBrandSearchProduct,
+  normalizeExternalSeedPrice,
   resolveBeautyCategoryPathPrefixForQuery,
 } = require('./services/externalSeedProducts');
 const {
@@ -3389,26 +3390,168 @@ function trimOldestInflightEntries(map, maxEntries) {
   }
 }
 
-function parseNullableProductPrice(value) {
+function readPriceAmountForNormalization(value) {
   if (value === null || value === undefined) return null;
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) return null;
-  return parsed;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value === 'string') {
+    const parsed = Number(value.replace(/[^0-9.-]+/g, ''));
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return readPriceAmountForNormalization(
+      value.amount ??
+        value.current?.amount ??
+        value.price_amount ??
+        value.priceAmount ??
+        value.price ??
+        value.value,
+    );
+  }
+  return null;
+}
+
+function buildProductDetailPriceContext(product, currencyOverride = '') {
+  const productRecord = product && typeof product === 'object' ? product : {};
+  return {
+    currency: firstNonEmptyString(
+      currencyOverride,
+      productRecord.currency,
+      productRecord.price_currency,
+      productRecord.priceCurrency,
+      productRecord.price?.currency,
+      productRecord.price?.current?.currency,
+      'USD',
+    ),
+    title: firstNonEmptyString(productRecord.title, productRecord.name),
+    description: firstNonEmptyString(
+      productRecord.description,
+      productRecord.summary,
+      productRecord.body,
+    ),
+    category: firstNonEmptyString(
+      productRecord.category,
+      productRecord.product_type,
+      productRecord.productType,
+      Array.isArray(productRecord.category_path) ? productRecord.category_path.join(' ') : productRecord.category_path,
+      productRecord.catalog_category_path,
+    ),
+    canonicalUrl: firstNonEmptyString(
+      productRecord.canonical_url,
+      productRecord.canonicalUrl,
+      productRecord.url,
+      productRecord.product_url,
+    ),
+    destinationUrl: firstNonEmptyString(
+      productRecord.destination_url,
+      productRecord.destinationUrl,
+      productRecord.external_redirect_url,
+      productRecord.externalRedirectUrl,
+      productRecord.source_url,
+      productRecord.sourceUrl,
+    ),
+  };
+}
+
+function normalizeNullableProductDetailPrice(value, context = {}) {
+  if (value === null || value === undefined || value === '') return null;
+  const normalized = normalizeExternalSeedPrice(value, context);
+  return Number.isFinite(Number(normalized)) ? Number(normalized) : null;
+}
+
+function normalizeProductDetailVariantPrice(variant, productContext = {}) {
+  if (!variant || typeof variant !== 'object') return variant;
+  const currency = firstNonEmptyString(
+    variant.currency,
+    variant.price_currency,
+    variant.priceCurrency,
+    variant.price?.currency,
+    variant.price?.current?.currency,
+    productContext.currency,
+    'USD',
+  );
+  const context = {
+    ...productContext,
+    currency,
+    title: [productContext.title, variant.title, variant.name, variant.sku]
+      .map((value) => String(value || '').trim())
+      .filter(Boolean)
+      .join(' '),
+    description: firstNonEmptyString(variant.description, productContext.description),
+  };
+  const rawPrice = variant.price ?? variant.price_amount ?? variant.priceAmount ?? variant.amount ?? variant.value;
+  const rawAmount = readPriceAmountForNormalization(rawPrice);
+  const normalizedAmount = normalizeNullableProductDetailPrice(rawPrice, context);
+  if (
+    normalizedAmount === null ||
+    rawAmount === null ||
+    Math.abs(normalizedAmount - rawAmount) < 0.000001
+  ) {
+    return variant;
+  }
+
+  const next = { ...variant };
+  if (next.price && typeof next.price === 'object' && !Array.isArray(next.price)) {
+    next.price = {
+      ...next.price,
+      amount: next.price.amount !== undefined ? normalizedAmount : next.price.amount,
+      current:
+        next.price.current && typeof next.price.current === 'object'
+          ? { ...next.price.current, amount: normalizedAmount, currency }
+          : next.price.current,
+    };
+    if (next.price.amount === undefined && !next.price.current) {
+      next.price.amount = normalizedAmount;
+      next.price.currency = currency;
+    }
+  } else if (next.price !== undefined) {
+    next.price = normalizedAmount;
+  }
+  if (next.price_amount !== undefined) next.price_amount = normalizedAmount;
+  if (next.priceAmount !== undefined) next.priceAmount = normalizedAmount;
+  if (next.amount !== undefined) next.amount = normalizedAmount;
+  if (next.value !== undefined) next.value = normalizedAmount;
+  if (!next.currency) next.currency = currency;
+  return next;
 }
 
 function normalizeProductDetailPrice(product) {
   if (!product || typeof product !== 'object') return product;
   const normalized = { ...product };
+  const priceContext = buildProductDetailPriceContext(normalized);
 
-  let resolvedPrice = parseNullableProductPrice(normalized.price);
+  if (Array.isArray(normalized.variants)) {
+    normalized.variants = normalized.variants.map((variant) =>
+      normalizeProductDetailVariantPrice(variant, priceContext),
+    );
+  }
+
+  let resolvedPrice = normalizeNullableProductDetailPrice(normalized.price, priceContext);
   if (resolvedPrice === null && Array.isArray(normalized.variants)) {
     for (const variant of normalized.variants) {
       if (!variant || typeof variant !== 'object') continue;
+      const variantContext = buildProductDetailPriceContext(
+        {
+          ...normalized,
+          title: [priceContext.title, variant.title, variant.name, variant.sku]
+            .map((value) => String(value || '').trim())
+            .filter(Boolean)
+            .join(' '),
+          description: firstNonEmptyString(variant.description, priceContext.description),
+        },
+        firstNonEmptyString(
+          variant.currency,
+          variant.price_currency,
+          variant.priceCurrency,
+          variant.price?.currency,
+          variant.price?.current?.currency,
+          priceContext.currency,
+        ),
+      );
       const candidate =
-        parseNullableProductPrice(variant.price) ??
-        parseNullableProductPrice(variant.price_amount) ??
-        parseNullableProductPrice(variant.amount) ??
-        parseNullableProductPrice(variant.value);
+        normalizeNullableProductDetailPrice(variant.price, variantContext) ??
+        normalizeNullableProductDetailPrice(variant.price_amount, variantContext) ??
+        normalizeNullableProductDetailPrice(variant.amount, variantContext) ??
+        normalizeNullableProductDetailPrice(variant.value, variantContext);
       if (candidate !== null) {
         resolvedPrice = candidate;
         break;

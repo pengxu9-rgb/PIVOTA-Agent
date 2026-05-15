@@ -122,6 +122,48 @@ describe('externalSeedCorrection', () => {
     );
   });
 
+  test('detects sunscreen SPF minor-unit pricing for correction', () => {
+    const row = {
+      id: 'eps_olehenriksen_sunscreen_minor_unit',
+      market: 'US',
+      domain: 'olehenriksen.com',
+      canonical_url: 'https://olehenriksen.com/products/banana-bright-mineral-sunscreen-spf-31',
+      title: 'Banana Bright Mineral Sunscreen SPF 30 - EU',
+      price_amount: 2963,
+      price_currency: 'USD',
+      seed_data: {
+        snapshot: {
+          canonical_url: 'https://olehenriksen.com/products/banana-bright-mineral-sunscreen-spf-31',
+          description: 'A mineral SPF 30 sunscreen.',
+          variants: [
+            {
+              sku: '50915',
+              variant_id: '42385365991596',
+              currency: 'USD',
+              price: '2963.00',
+            },
+          ],
+        },
+      },
+    };
+
+    const plan = buildSeedCorrectionPlan(row);
+
+    expect(plan.findings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          anomaly_type: 'beauty_minor_unit_price_suspected',
+          evidence: expect.objectContaining({ suspected_major_unit_amount: 29.63 }),
+        }),
+      ]),
+    );
+    expect(plan.actions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ correction_type: SEED_CORRECTION_TYPE.normalizeBeautyMinorUnitPrice }),
+      ]),
+    );
+  });
+
   test('normalizes polluted variant axes without rerunning extraction', async () => {
     const row = {
       id: 'eps_fenty_color_us',
