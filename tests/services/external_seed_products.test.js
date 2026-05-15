@@ -22,6 +22,29 @@ describe('externalSeedProducts helper', () => {
     expect(resolveBeautyCategoryPathPrefixForQuery('unknown beauty object')).toBe('');
   });
 
+  test('uses source merchant labels before brand for external referral offers', () => {
+    const product = buildExternalSeedProduct({
+      id: 'eps_sony_best_buy',
+      external_product_id: 'best-buy:e7b8f47d4dc3621d',
+      canonical_url:
+        'https://www.bestbuy.com/site/sony-wh-1000xm5-wireless-noise-canceling-over-the-ear-headphones-black/6505726.p?skuId=6505726',
+      destination_url:
+        'https://www.bestbuy.com/site/sony-wh-1000xm5-wireless-noise-canceling-over-the-ear-headphones-black/6505726.p?skuId=6505726',
+      domain: 'bestbuy.com',
+      title: 'WH-1000XM5',
+      price_amount: '248.00',
+      price_currency: 'USD',
+      availability: 'In Stock',
+      seed_data: {
+        brand: 'Sony',
+        merchant_inferred: 'Best Buy',
+      },
+    });
+
+    expect(product.brand).toBe('Sony');
+    expect(product.merchant_name).toBe('Best Buy');
+  });
+
   test('prefers cached image asset contract URLs over blocked merchant originals', () => {
     const cachedUrl = 'https://assets.pivota.cc/catalog-image-cache/ab/abcdef.png';
     const blockedOriginal = 'https://www.guerlain.com/dw/image/v2/BDCZ_PRD/blocked.png?sw=655&sh=655';

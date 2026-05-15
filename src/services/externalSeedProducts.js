@@ -3664,8 +3664,25 @@ function buildExternalSeedProduct(row, options = {}) {
     ];
   }
 
-  const merchantName =
-    String(seedData.merchant_display_name || brand || row.domain || 'External').trim() || 'External';
+  const merchantName = firstNonEmptyString(
+    seedData.merchant_display_name,
+    seedData.merchant_name,
+    seedData.merchant_inferred,
+    seedData.retailer_name,
+    seedData.retailer,
+    snapshot.merchant_display_name,
+    snapshot.merchant_name,
+    snapshot.merchant_inferred,
+    snapshot.retailer_name,
+    snapshot.retailer,
+    row.seed_merchant_display_name,
+    row.merchant_name,
+    row.retailer_name,
+    row.retailer,
+    row.domain,
+    brand,
+    'External',
+  );
   const protection = resolveExternalSeedProtectionContract({
     row,
     seedData,
