@@ -60,6 +60,32 @@ function pickRows(report, caseIds) {
   return rows.filter((row) => allow.has(asString(row.case_id)));
 }
 
+function cloneJson(value) {
+  if (!value || typeof value !== 'object') return value;
+  return JSON.parse(JSON.stringify(value));
+}
+
+function stampReviewedBundle(bundle, reviewContract) {
+  const next = cloneJson(bundle) || {};
+  const originalQualityState = asString(next.quality_state || next.product_intel_core?.quality_state);
+  next.quality_state = 'reviewed';
+  next.product_intel_core = {
+    ...(next.product_intel_core || {}),
+    quality_state: 'reviewed',
+  };
+  next.provenance = {
+    ...(next.provenance || {}),
+    review_status: reviewContract.review_status,
+    review_decision: reviewContract.review_decision,
+    reviewer: reviewContract.reviewer,
+    reviewer_kind: reviewContract.reviewer_kind,
+    reviewed_at: reviewContract.reviewed_at,
+    review_tier: reviewContract.review_tier,
+    ...(originalQualityState ? { pre_review_quality_state: originalQualityState } : {}),
+  };
+  return next;
+}
+
 function buildKbEntriesForRow(row) {
   const selectedBundle = row?.selected?.bundle;
   const canonical = selectedBundle?.canonical_product_ref || row?.baseline?.canonical_product_ref || null;
@@ -69,25 +95,27 @@ function buildKbEntriesForRow(row) {
   if (!reviewContract.approved) return [];
   const selectedMode = asString(row?.selected?.selected_mode);
   if (selectedMode === 'baseline_only') return [];
+  const reviewedBundle = stampReviewedBundle(selectedBundle, reviewContract);
 
   const sourceMeta = {
     case_id: asString(row.case_id),
     selected_mode: asString(row?.selected?.selected_mode || 'baseline_only'),
     selected_field_count: Number(row?.selected?.selected_field_count || 0),
     field_sources: row?.selected?.field_sources || {},
-    evidence_profile: asString(selectedBundle?.evidence_profile || ''),
-    quality_state: asString(selectedBundle?.quality_state || ''),
+    evidence_profile: asString(reviewedBundle?.evidence_profile || ''),
+    quality_state: asString(reviewedBundle?.quality_state || ''),
+    pre_review_quality_state: asString(reviewedBundle?.provenance?.pre_review_quality_state || ''),
     external_highlight_review_status: asString(
-      selectedBundle?.provenance?.external_highlight_review_status ||
+      reviewedBundle?.provenance?.external_highlight_review_status ||
         row?.review_decision ||
         row?.decision ||
         '',
     ),
     external_evidence_generated_at: asString(
-      selectedBundle?.provenance?.external_evidence_generated_at || '',
+      reviewedBundle?.provenance?.external_evidence_generated_at || '',
     ),
-    external_evidence_model: asString(selectedBundle?.provenance?.external_evidence_model || ''),
-    external_review_batch: asString(selectedBundle?.provenance?.external_review_batch || ''),
+    external_evidence_model: asString(reviewedBundle?.provenance?.external_evidence_model || ''),
+    external_review_batch: asString(reviewedBundle?.provenance?.external_review_batch || ''),
     review_contract_version: reviewContract.review_contract_version,
     review_status: reviewContract.review_status,
     review_decision: reviewContract.review_decision,
@@ -99,7 +127,7 @@ function buildKbEntriesForRow(row) {
 
   const analysis = {
     contract_version: PRODUCT_INTEL_CONTRACT_VERSION,
-    product_intel_v1: selectedBundle,
+    product_intel_v1: reviewedBundle,
   };
 
   return [

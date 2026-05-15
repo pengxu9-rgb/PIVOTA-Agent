@@ -45,8 +45,13 @@ describe('publish_product_intel_pilot_to_kb', () => {
     expect(entries).toHaveLength(1);
     expect(entries[0].kb_key).toBe('product:pilot_fenty_instant_reset');
     expect(entries[0].analysis.product_intel_v1.contract_version).toBe('pivota.product_intel.v1');
+    expect(entries[0].analysis.product_intel_v1.quality_state).toBe('reviewed');
+    expect(entries[0].analysis.product_intel_v1.product_intel_core.quality_state).toBe('reviewed');
+    expect(entries[0].analysis.product_intel_v1.provenance.pre_review_quality_state).toBe('limited');
     expect(entries[0].source).toBe('pivota_product_intel_pilot_selected');
     expect(entries[0].source_meta.selected_mode).toBe('hybrid_gemini');
+    expect(entries[0].source_meta.quality_state).toBe('reviewed');
+    expect(entries[0].source_meta.pre_review_quality_state).toBe('limited');
     expect(entries[0].source_meta.external_highlight_review_status).toBe('rewrite');
     expect(entries[0].source_meta.external_review_batch).toBe('batch_demo');
     expect(entries[0].source_meta.review_status).toBe('completed');
