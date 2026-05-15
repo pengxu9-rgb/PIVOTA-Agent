@@ -86,7 +86,7 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Build, review, and create retailer offer seed
         shell: bash
