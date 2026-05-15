@@ -576,6 +576,24 @@ function buildCardIntro({ bundle }) {
 }
 
 function buildCardHighlight({ bundle }) {
+  if (
+    isApprovedExternalHighlightReviewStatus(
+      bundle?.provenance?.external_highlight_review_status ||
+        bundle?.external_highlight_review_status,
+    )
+  ) {
+    const reviewedSignal = toList(bundle?.external_highlight_signals)[0];
+    const reviewedHighlight = resolveDisplayableCompactHighlight(
+      normalizeSurfaceText(reviewedSignal?.surface_text) ||
+        normalizeSurfaceText(reviewedSignal?.claim_text),
+      {
+        title: bundle?.shopping_card?.title || bundle?.search_card?.title_candidate,
+        subtitle: bundle?.shopping_card?.subtitle || bundle?.search_card?.compact_candidate,
+      },
+    );
+    if (reviewedHighlight) return reviewedHighlight;
+  }
+
   const explicitHighlight = asString(
     bundle?.search_card?.highlight_candidate || bundle?.shopping_card?.highlight,
   );
@@ -590,7 +608,7 @@ function buildCardHighlight({ bundle }) {
   const signal = pickSurfaceableExternalHighlightSignal(bundle?.external_highlight_signals, {
     surfaceTarget: 'shopping_card_highlight',
   });
-  return resolveDisplayableCompactHighlight(
+  const signalHighlight = resolveDisplayableCompactHighlight(
     normalizeSurfaceText(signal?.surface_text) || normalizeSurfaceText(signal?.claim_text),
     {
       bundle,
@@ -598,6 +616,23 @@ function buildCardHighlight({ bundle }) {
       subtitle: bundle?.shopping_card?.subtitle || bundle?.search_card?.compact_candidate,
     },
   );
+  if (signalHighlight) return signalHighlight;
+
+  const humanStandardHighlight =
+    bundle?.provenance?.field_sources?.why_it_stands_out === 'human_standard' &&
+    bundle?.provenance?.generator === 'deterministic_human_standard_rewrite';
+  if (humanStandardHighlight) {
+    const firstWhy = toList(bundle?.product_intel_core?.why_it_stands_out)[0];
+    const candidate = normalizeSurfaceText(firstWhy?.headline || firstWhy?.body);
+    const resolved = resolveDisplayableCompactHighlight(candidate, {
+      bundle,
+      title: bundle?.shopping_card?.title || bundle?.search_card?.title_candidate,
+      subtitle: bundle?.shopping_card?.subtitle || bundle?.search_card?.compact_candidate,
+    });
+    if (resolved) return resolved;
+  }
+
+  return '';
 }
 
 function buildShoppingCardPayload({ product, bundle }) {

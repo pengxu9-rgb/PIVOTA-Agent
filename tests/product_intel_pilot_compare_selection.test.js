@@ -46,6 +46,7 @@ describe('product_intel pilot compare selection', () => {
     expect(selected.bundle.product_intel_core.what_it_is.headline).toBe('Cushion refill');
     expect(selected.bundle.product_intel_core.routine_fit.step).toBe('makeup');
     expect(selected.bundle.shopping_card.subtitle).toBe('Cushion Refill');
+    expect(selected.bundle.shopping_card.highlight).toBe('Refill compatibility');
     expect(coreText).not.toMatch(/treatment mask|focused masking|rinse/i);
   });
 
