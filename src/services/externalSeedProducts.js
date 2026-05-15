@@ -1369,6 +1369,7 @@ const STRICT_GALLERY_FAMILY_FILTER_HOSTS = new Set([
   'sigmabeauty.com',
   'kyliecosmetics.com',
   'beekman1802.com',
+  'olehenriksen.com',
 ]);
 const STRICT_GALLERY_EXPLICIT_FAMILY_MATCH_HOSTS = new Set([
   'fentybeauty.com',

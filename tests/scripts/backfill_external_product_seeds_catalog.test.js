@@ -29,6 +29,7 @@ const {
   isDisplayableProductIntelKbRow,
   cleanPdpIngredientsRaw,
   pickPdpIngredientsRaw,
+  reapplyApprovedPdpIngredientFieldsToRow,
   serializeBackfillResult,
   writeBackfillReport,
 } = require('../../scripts/backfill-external-product-seeds-catalog');
@@ -521,6 +522,28 @@ describe('backfill-external-product-seeds-catalog', () => {
       ),
     ).toEqual([
       'https://cdn.shopify.com/s/files/1/0615/7785/5148/files/OH_SILO_PEACH_GLAZE_MIST_1500x1500_72DPI.jpg?v=1747952076',
+    ]);
+  });
+
+  test('filters Ole Henriksen navigation and promo assets from recovered gallery candidates', () => {
+    expect(
+      sanitizeSeedImageUrls(
+        [
+          'https://olehenriksen.com/cdn/shop/files/BananaBrightSunscreen_Silo_1500x.jpg?v=1686956927',
+          'https://cdn.shopify.com/s/files/1/0615/7785/5148/products/S2677607-av-04.jpg?v=1721258800',
+          'https://cdn.shopify.com/s/files/1/0615/7785/5148/files/BBSPF_PPAGE_2000x2000_300DPI.jpg?v=1747671491',
+          'https://olehenriksen.com/cdn/shop/files/HEADER_MEGA_NAV_MOBILE_893050a5-ef11-4e5c-92a6-ff2141f7f524_750x.jpg?v=1773700179',
+          'https://olehenriksen.com/cdn/shop/files/PROMO_TILE_2_-_READ_THE_BLOG_750x.jpg?v=1659480894',
+          'https://olehenriksen.com/cdn/shop/files/GC_ICONS_MORNING-GLOW-BUNDLE_750x.jpg?v=1755816354',
+        ],
+        {
+          productTitle: 'Banana Bright Mineral Sunscreen SPF 30',
+          productUrl: 'https://olehenriksen.com/products/banana-bright-mineral-sunscreen-spf-30',
+        },
+      ),
+    ).toEqual([
+      'https://olehenriksen.com/cdn/shop/files/BananaBrightSunscreen_Silo_1500x.jpg?v=1686956927',
+      'https://cdn.shopify.com/s/files/1/0615/7785/5148/products/S2677607-av-04.jpg?v=1721258800',
     ]);
   });
 
@@ -2956,6 +2979,168 @@ describe('backfill-external-product-seeds-catalog', () => {
 
     expect(payload.nextRow.seed_data.pdp_how_to_use_raw).toContain('about 0.5cm');
     expect(payload.nextRow.seed_data.pdp_how_to_use_raw).toContain('Reapply every 2 hours');
+  });
+
+  test('uses full sunscreen How To section when extractor raw usage is only a heading placeholder', () => {
+    const row = {
+      id: 'eps_ole_spf',
+      title: 'Banana Bright Mineral Sunscreen SPF 30',
+      canonical_url: 'https://olehenriksen.com/products/banana-bright-mineral-sunscreen-spf-30',
+      destination_url: 'https://olehenriksen.com/products/banana-bright-mineral-sunscreen-spf-30',
+      image_url: '',
+      price_amount: 35,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      seed_data: { snapshot: {} },
+    };
+
+    const payload = buildSeedUpdatePayload(
+      row,
+      {
+        products: [
+          {
+            title: row.title,
+            url: row.canonical_url,
+            product_kind: 'single_formula',
+            description_raw: 'A daily broad spectrum mineral SPF 30 sunscreen.',
+            how_to_use_raw: 'HOW TO',
+            details_sections: [
+              {
+                heading: 'How to Use',
+                body: 'HOW TO',
+                source_kind: 'accordion_how_to_use',
+              },
+              {
+                heading: 'HOW TO',
+                body: 'After moisturizer, apply generously and evenly to your face and neck 15 minutes before sun exposure and reapply at least every two hours.',
+                source_kind: 'heading_sibling',
+              },
+            ],
+            variants: [],
+          },
+        ],
+        variants: [],
+        diagnostics: { failure_category: null },
+      },
+      row.canonical_url,
+    );
+
+    expect(payload.nextRow.seed_data.pdp_how_to_use_raw).toContain('apply generously');
+    expect(payload.nextRow.seed_data.pdp_how_to_use_raw).toContain('reapply at least every two hours');
+  });
+
+  test('derives sunscreen active ingredients from official key ingredients section', () => {
+    const row = {
+      id: 'eps_ole_spf_ingredients',
+      title: 'Banana Bright Mineral Sunscreen SPF 30',
+      canonical_url: 'https://olehenriksen.com/products/banana-bright-mineral-sunscreen-spf-30',
+      destination_url: 'https://olehenriksen.com/products/banana-bright-mineral-sunscreen-spf-30',
+      image_url: '',
+      price_amount: 35,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      seed_data: { snapshot: {} },
+    };
+
+    const payload = buildSeedUpdatePayload(
+      row,
+      {
+        products: [
+          {
+            title: row.title,
+            url: row.canonical_url,
+            product_kind: 'single_formula',
+            description_raw: 'A daily broad spectrum mineral SPF 30 sunscreen.',
+            ingredients_raw: 'List: Aqua/Water/Eau, Zinc Oxide, Niacinamide.',
+            details_sections: [
+              {
+                heading: 'Ingredients',
+                body: '16.3 Zinc Oxide\n\nCreates a physical barrier on your skin.\n\nEnhanced Vitamin C (Ascorbic Acid)\n\nBrightens.\n\nNiacinamide\n\nSupports clearer-looking skin.\n\nAloe Leaf Juice\n\nHydrates.\n\nFull Ingredients List: Aqua/Water/Eau, Zinc Oxide, Niacinamide.',
+                source_kind: 'heading_sibling',
+              },
+            ],
+            variants: [],
+          },
+        ],
+        variants: [],
+        diagnostics: { failure_category: null },
+      },
+      row.canonical_url,
+    );
+
+    expect(payload.nextRow.seed_data.pdp_active_ingredients_raw).toContain('Zinc Oxide 16.3%');
+    expect(payload.nextRow.seed_data.pdp_active_ingredients_raw).toContain('Enhanced Vitamin C (Ascorbic Acid)');
+    expect(payload.nextRow.seed_data.pdp_active_ingredients_raw).toContain('Niacinamide');
+    expect(payload.nextRow.seed_data.pdp_active_ingredients_raw).not.toContain('Creates a physical barrier');
+    expect(payload.nextRow.seed_data.active_ingredients).toEqual([
+      'Zinc Oxide 16.3%',
+      'Enhanced Vitamin C (Ascorbic Acid)',
+      'Niacinamide',
+      'Aloe Leaf Juice',
+    ]);
+    expect(payload.nextRow.seed_data.ingredient_tokens).toEqual([
+      'Zinc Oxide 16.3%',
+      'Enhanced Vitamin C (Ascorbic Acid)',
+      'Niacinamide',
+      'Aloe Leaf Juice',
+    ]);
+    expect(payload.nextRow.seed_data.ingredient_intel.inci_normalized).toBeUndefined();
+    expect(payload.nextRow.seed_data.ingredient_intel.authoritative).toBeUndefined();
+  });
+
+  test('reapplies approved PDP ingredient fields after legacy enrichment changes structured arrays', () => {
+    const row = reapplyApprovedPdpIngredientFieldsToRow({
+      seed_data: {
+        pdp_ingredients_raw: 'List: Aqua/Water/Eau, Zinc Oxide, Niacinamide.',
+        pdp_active_ingredients_raw:
+          'Zinc Oxide 16.3%\nEnhanced Vitamin C (Ascorbic Acid)\nNiacinamide',
+        active_ingredients: ['Panthenol (B5)', 'Zinc PCA'],
+        key_ingredients: ['Panthenol (B5)', 'Zinc PCA'],
+        ingredient_tokens: ['Panthenol (B5)', 'Zinc PCA'],
+        ingredient_intel: {
+          active_ingredients: ['Panthenol (B5)', 'Zinc PCA'],
+          key_ingredients: ['Panthenol (B5)', 'Zinc PCA'],
+          inci_normalized: ['Panthenol (B5)', 'Zinc PCA'],
+          authoritative: {
+            active_items: ['Zinc PCA'],
+          },
+        },
+        snapshot: {
+          pdp_ingredients_raw: 'List: Aqua/Water/Eau, Zinc Oxide, Niacinamide.',
+          pdp_active_ingredients_raw:
+            'Zinc Oxide 16.3%\nEnhanced Vitamin C (Ascorbic Acid)\nNiacinamide',
+          active_ingredients: ['Panthenol (B5)', 'Zinc PCA'],
+          key_ingredients: ['Panthenol (B5)', 'Zinc PCA'],
+          ingredient_tokens: ['Panthenol (B5)', 'Zinc PCA'],
+          ingredient_intel: {
+            active_ingredients: ['Panthenol (B5)', 'Zinc PCA'],
+            key_ingredients: ['Panthenol (B5)', 'Zinc PCA'],
+            inci_normalized: ['Panthenol (B5)', 'Zinc PCA'],
+            authoritative: {
+              active_items: ['Zinc PCA'],
+            },
+          },
+        },
+      },
+    });
+
+    const expectedActives = [
+      'Zinc Oxide 16.3%',
+      'Enhanced Vitamin C (Ascorbic Acid)',
+      'Niacinamide',
+    ];
+    expect(row.seed_data.active_ingredients).toEqual(expectedActives);
+    expect(row.seed_data.key_ingredients).toEqual(expectedActives);
+    expect(row.seed_data.ingredient_tokens).toEqual(expectedActives);
+    expect(row.seed_data.raw_ingredient_text_clean).toBe(
+      'List: Aqua/Water/Eau, Zinc Oxide, Niacinamide.',
+    );
+    expect(row.seed_data.inci_list).toBe('List: Aqua/Water/Eau, Zinc Oxide, Niacinamide.');
+    expect(row.seed_data.ingredient_intel.inci_normalized).toBeUndefined();
+    expect(row.seed_data.ingredient_intel.authoritative).toBeUndefined();
+    expect(row.seed_data.snapshot.active_ingredients).toEqual(expectedActives);
+    expect(row.seed_data.snapshot.ingredient_intel.inci_normalized).toBeUndefined();
+    expect(row.seed_data.snapshot.ingredient_intel.authoritative).toBeUndefined();
   });
 
   test('cleans polluted PDP ingredients and active ingredient tails before seed writes', () => {

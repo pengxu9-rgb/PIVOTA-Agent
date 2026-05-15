@@ -593,7 +593,8 @@ function classifySuppressedActiveItems(items) {
 function reconcileActiveItemsWithIngredients(product, activeItems, items, rawText, options = {}) {
   const normalizedItemsText = ingredientKey([rawText, ...(Array.isArray(items) ? items : [])].join(' '));
   const normalizedActiveItems = normalizeIngredientItems(activeItems, { max: 32 });
-  const inferredSunscreenActives = inferSunscreenActiveItems(product, items, rawText);
+  const inferredSunscreenActives =
+    options.inferSunscreenActives === false ? [] : inferSunscreenActiveItems(product, items, rawText);
   const shouldValidateAgainstIngredients =
     options.validateAgainstIngredients === true &&
     normalizedItemsText &&
@@ -983,6 +984,7 @@ function buildAuthoritativeIngredientView(product, options = {}) {
             validateAgainstIngredients: explicitActiveCandidate?.items?.length
               ? explicitActiveCandidate.validateAgainstIngredients
               : !isReviewedIngredientAuthoritySource(existingSourceOrigin) || titleDeclaredActiveItems.length > 0,
+            inferSunscreenActives: !explicitActiveCandidate?.items?.length,
           },
         ),
       };
@@ -1006,6 +1008,9 @@ function buildAuthoritativeIngredientView(product, options = {}) {
   const activeItems = activeCandidateResult.items;
   if (picked) {
     const titleDeclaredActiveItems = inferTitleDeclaredActiveItems(product, picked.items, picked.raw_text);
+    const activeSourceOrigin = asString(activeCandidateResult.source_origin);
+    const hasTrustedExplicitActiveBlock =
+      activeItems.length > 0 && ['active_block', 'active_section'].includes(activeSourceOrigin);
     const candidateActiveItems = uniqueStrings([
       ...(activeItems.length ? activeItems : picked.active_items),
       ...titleDeclaredActiveItems,
@@ -1019,6 +1024,7 @@ function buildAuthoritativeIngredientView(product, options = {}) {
         validateAgainstIngredients: activeItems.length
           ? activeCandidateResult.validateAgainstIngredients
           : titleDeclaredActiveItems.length > 0,
+        inferSunscreenActives: !hasTrustedExplicitActiveBlock,
       },
     );
     return buildAuthorityRecord({

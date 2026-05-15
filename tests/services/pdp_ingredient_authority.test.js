@@ -331,6 +331,22 @@ describe('pdpIngredientAuthority', () => {
     expect(authority.active_items).toEqual(['Avobenzone', 'Homosalate', 'Octisalate', 'Octocrylene']);
   });
 
+  test('does not augment explicit sunscreen active blocks with incidental INCI colorants', () => {
+    const modules = buildStructuredPdpIngredientModules({
+      merchant_id: 'external_seed',
+      source: 'external_seed',
+      title: 'Banana Bright Mineral Sunscreen SPF 30',
+      category: 'Sunscreen',
+      pdp_active_ingredients_raw:
+        'Zinc Oxide 16.3%\nEnhanced Vitamin C (Ascorbic Acid)\nBanana Powder-Inspired Pigments\nNiacinamide\nAloe Leaf Juice',
+      pdp_ingredients_raw:
+        'Aqua/Water/Eau, Zinc Oxide, Niacinamide, Aloe Barbadensis Leaf Juice, Tetrahexyldecyl Ascorbate, Iron Oxides (Ci 77491, Ci 77492), Titanium Dioxide (Ci 77891).',
+    });
+
+    expect(modules.activeIngredientsData.items).toEqual(['Zinc Oxide']);
+    expect(modules.activeIngredientsData.items).not.toEqual(expect.arrayContaining(['Titanium Dioxide']));
+  });
+
   test('augments existing non-reviewed authority with formula title evidence', () => {
     const authority = buildAuthoritativeIngredientView({
       title: 'Rice Lipids + Ectoin Microemulsion',
