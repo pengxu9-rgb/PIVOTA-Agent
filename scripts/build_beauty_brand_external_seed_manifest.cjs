@@ -466,21 +466,41 @@ function findCommerceFactsForProduct(product = {}, extractV2Doc = {}) {
   if (!offers.length) return null;
   const productUrlKey = normalizeComparableUrl(product?.url || product?.canonical_url || product?.product_url);
   const productTitleKey = normalizeTitleKey(product?.title || product?.name);
+  const primaryVariant = Array.isArray(product?.variants) ? product.variants[0] : null;
+  const primaryVariantSkus = new Set(
+    [primaryVariant?.sku, primaryVariant?.variant_sku, primaryVariant?.id, primaryVariant?.variant_id]
+      .map((item) => normalizeNonEmptyString(item).toLowerCase())
+      .filter(Boolean),
+  );
   const variantSkus = new Set(
     (Array.isArray(product?.variants) ? product.variants : [])
       .flatMap((variant) => [variant?.sku, variant?.variant_sku, variant?.id, variant?.variant_id])
       .map((item) => normalizeNonEmptyString(item).toLowerCase())
       .filter(Boolean),
   );
-  const match = offers.find((offer) => {
+  const exactUrlMatch = offers.find((offer) => {
     const offerUrlKey = normalizeComparableUrl(offer?.url_canonical);
-    if (productUrlKey && offerUrlKey === productUrlKey) return true;
+    return Boolean(productUrlKey && offerUrlKey === productUrlKey);
+  });
+  if (exactUrlMatch?.commerce_facts_v1) return exactUrlMatch.commerce_facts_v1;
+
+  const primaryVariantMatch = offers.find((offer) => {
     const offerSku = normalizeNonEmptyString(offer?.variant_sku).toLowerCase();
-    if (offerSku && variantSkus.has(offerSku)) return true;
+    return Boolean(offerSku && primaryVariantSkus.has(offerSku));
+  });
+  if (primaryVariantMatch?.commerce_facts_v1) return primaryVariantMatch.commerce_facts_v1;
+
+  const variantMatch = offers.find((offer) => {
+    const offerSku = normalizeNonEmptyString(offer?.variant_sku).toLowerCase();
+    return Boolean(offerSku && variantSkus.has(offerSku));
+  });
+  if (variantMatch?.commerce_facts_v1) return variantMatch.commerce_facts_v1;
+
+  const titleMatch = offers.find((offer) => {
     const offerTitleKey = normalizeTitleKey(offer?.product_title);
     return Boolean(productTitleKey && offerTitleKey && productTitleKey === offerTitleKey);
   });
-  return match?.commerce_facts_v1 || null;
+  return titleMatch?.commerce_facts_v1 || null;
 }
 
 function annotateSeedRowSourceValidation(seedRow = {}, { brand, sourceUrl }) {

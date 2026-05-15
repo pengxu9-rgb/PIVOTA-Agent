@@ -1567,6 +1567,122 @@ function clusterIdentityListings(listings) {
   });
 }
 
+function normalizeReviewedMergeCandidateStatus(value) {
+  const status = asString(value).toLowerCase();
+  return ['approved', 'matched', 'pass'].includes(status) ? status : '';
+}
+
+function readReviewedMultiOfferMergeCandidate(product) {
+  const payload = asPlainObject(product) || {};
+  const seedData = asPlainObject(payload.seed_data) || {};
+  const snapshot = asPlainObject(seedData.snapshot) || {};
+  const candidates = [
+    seedData.multi_offer_merge_candidate,
+    seedData.multi_offer_merge_validation,
+    snapshot.multi_offer_merge_candidate,
+    snapshot.multi_offer_merge_validation,
+  ];
+  for (const rawCandidate of candidates) {
+    const candidate = asPlainObject(rawCandidate) || {};
+    const status = normalizeReviewedMergeCandidateStatus(candidate.status);
+    if (!status) continue;
+    const targetExternalProductId = asString(
+      candidate.target_external_product_id ||
+        candidate.targetExternalProductId ||
+        candidate.canonical_external_product_id,
+    );
+    const targetSourceListingRef =
+      asString(
+        candidate.target_source_listing_ref ||
+          candidate.targetSourceListingRef ||
+          candidate.target_listing_ref ||
+          candidate.canonical_source_listing_ref,
+      ) || (targetExternalProductId ? `${EXTERNAL_SEED_MERCHANT_ID}:${targetExternalProductId}` : '');
+    const targetSellableItemGroupId = asString(
+      candidate.target_sellable_item_group_id ||
+        candidate.targetSellableItemGroupId ||
+        candidate.sellable_item_group_id,
+    );
+    if (!targetSourceListingRef && !targetSellableItemGroupId) continue;
+    return {
+      ...candidate,
+      status,
+      target_source_listing_ref: targetSourceListingRef || null,
+      target_sellable_item_group_id: targetSellableItemGroupId || null,
+      target_product_line_id: asString(candidate.target_product_line_id || candidate.targetProductLineId) || null,
+      target_review_family_id: asString(candidate.target_review_family_id || candidate.targetReviewFamilyId) || null,
+      match_basis: uniqueStrings(asArray(candidate.match_basis || candidate.matchBasis), 20),
+    };
+  }
+  return null;
+}
+
+function applyReviewedMultiOfferMergeCandidates(listings) {
+  const safeListings = Array.isArray(listings) ? listings.filter(Boolean) : [];
+  if (!safeListings.length) return [];
+  const bySourceRef = new Map();
+  for (const listing of safeListings) {
+    const sourceRef = asString(listing?.source_listing_ref);
+    if (sourceRef) bySourceRef.set(sourceRef, listing);
+  }
+
+  return safeListings.map((listing) => {
+    if (asString(listing?.source_tier).toLowerCase() === 'brand') return listing;
+    const candidate = readReviewedMultiOfferMergeCandidate(listing?.source_payload);
+    if (!candidate) return listing;
+
+    const targetListing = candidate.target_source_listing_ref
+      ? bySourceRef.get(candidate.target_source_listing_ref)
+      : null;
+    const targetGroupId = candidate.target_sellable_item_group_id || asString(targetListing?.sellable_item_group_id);
+    const targetMissing = Boolean(candidate.target_source_listing_ref && !targetListing);
+    const targetIsBrandSource =
+      !targetMissing && (!targetListing || asString(targetListing?.source_tier).toLowerCase() === 'brand');
+    const targetApproved =
+      !targetMissing &&
+      (!targetListing ||
+        (asString(targetListing?.identity_status) === 'approved' && targetListing?.review_required !== true));
+    const blockerReasons = [];
+    if (targetMissing || !targetGroupId) blockerReasons.push('reviewed_multi_offer_target_missing');
+    if (!targetIsBrandSource) blockerReasons.push('reviewed_multi_offer_target_not_brand_source');
+    if (!targetApproved) blockerReasons.push('reviewed_multi_offer_target_not_approved');
+    const pass = blockerReasons.length === 0;
+
+    return {
+      ...listing,
+      ...(targetGroupId ? { sellable_item_group_id: targetGroupId } : {}),
+      product_line_id:
+        candidate.target_product_line_id ||
+        asString(targetListing?.product_line_id) ||
+        listing.product_line_id,
+      review_family_id:
+        candidate.target_review_family_id ||
+        asString(targetListing?.review_family_id) ||
+        listing.review_family_id,
+      identity_status: pass ? 'approved' : 'review_required',
+      review_required: !pass,
+      live_read_enabled: false,
+      review_reason_codes: pass
+        ? []
+        : uniqueStrings([...asArray(listing.review_reason_codes), ...blockerReasons], 20),
+      matched_by_rule: pass ? 'reviewed_multi_offer_merge' : listing.matched_by_rule,
+      match_basis: uniqueStrings(
+        [
+          ...asArray(listing.match_basis),
+          ...(candidate.target_source_listing_ref
+            ? [`reviewed_multi_offer_target:${candidate.target_source_listing_ref}`]
+            : []),
+          ...(candidate.target_sellable_item_group_id
+            ? [`reviewed_multi_offer_group:${candidate.target_sellable_item_group_id}`]
+            : []),
+          ...candidate.match_basis.map((item) => `reviewed:${item}`),
+        ],
+        30,
+      ),
+    };
+  });
+}
+
 function parseIdentityRow(row) {
   if (!row || typeof row !== 'object') return null;
   return {
@@ -4422,19 +4538,18 @@ async function backfillPdpIdentityGraph({
     if (looksLikeRelationMissing(err)) return [];
     throw err;
   });
-  const listings = clusterIdentityListings(
-    sourceRows
-      .map((row) =>
-        buildIdentityListingFromProduct({
-          merchantId: row.merchant_id,
-          productId: row.product_id,
-          product: row.product,
-          sourceKind: row.source_kind,
-          sourceMeta: row.source_meta,
-        }),
-      )
-      .filter(Boolean),
-  )
+  const builtListings = sourceRows
+    .map((row) =>
+      buildIdentityListingFromProduct({
+        merchantId: row.merchant_id,
+        productId: row.product_id,
+        product: row.product,
+        sourceKind: row.source_kind,
+        sourceMeta: row.source_meta,
+      }),
+    )
+    .filter(Boolean);
+  const listings = clusterIdentityListings(applyReviewedMultiOfferMergeCandidates(builtListings))
     .map((listing) => applyIdentityOverrides(listing, overrides));
 
   const reviewQueueEntries = buildReviewQueueEntries(listings);
@@ -4641,6 +4756,8 @@ module.exports = {
     buildReviewScopeMetadata,
     aggregateReviewSummary,
     applyIdentityOverrides,
+    applyReviewedMultiOfferMergeCandidates,
+    readReviewedMultiOfferMergeCandidate,
     buildIdentitySearchOffer,
     buildIdentitySearchProduct,
     pickDefaultCommerceListing,

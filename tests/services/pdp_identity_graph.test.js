@@ -134,6 +134,110 @@ describe('pdpIdentityGraph', () => {
     expect(retailerListing.identity_confidence).toBeLessThan(officialListing.identity_confidence);
   });
 
+  test('reviewed multi-offer merge candidate pins retailer offer to official brand group', () => {
+    const {
+      buildIdentityListingFromProduct,
+      _internals,
+    } = require('../../src/services/pdpIdentityGraph');
+
+    const officialListing = buildIdentityListingFromProduct({
+      merchantId: 'external_seed',
+      productId: 'ext_rms_radiance_official',
+      sourceKind: 'external_seed',
+      product: {
+        title: 'Radiance Lock Setting Mist',
+        brand: 'RMS Beauty',
+        canonical_url: 'https://www.rmsbeauty.com/products/radiance-lock-setting-mist',
+        seed_data: {
+          authority_source: {
+            source_url: 'https://www.rmsbeauty.com/products/radiance-lock-setting-mist',
+            source_role: 'primary',
+          },
+        },
+      },
+    });
+    const retailerListing = buildIdentityListingFromProduct({
+      merchantId: 'external_seed',
+      productId: 'ext_dermstore_rms_radiance',
+      sourceKind: 'external_seed',
+      product: {
+        title: 'RMS Beauty Radiance Lock Setting Mist 100ml',
+        brand: 'RMS Beauty',
+        canonical_url: 'https://www.dermstore.com/p/rms-beauty-radiance-lock-setting-mist-100ml/15820047/',
+        seed_data: {
+          merchant_display_name: 'Dermstore',
+          authority_source: {
+            source_url: 'https://www.dermstore.com/p/rms-beauty-radiance-lock-setting-mist-100ml/15820047/',
+            source_role: 'retailer_offer',
+          },
+          multi_offer_merge_candidate: {
+            status: 'approved',
+            target_source_listing_ref: 'external_seed:ext_rms_radiance_official',
+            match_basis: [
+              'normalized_brand_match',
+              'title_core_match',
+              'size_axis_match',
+              'source_backed_price_availability',
+            ],
+          },
+        },
+      },
+    });
+
+    expect(officialListing.source_tier).toBe('brand');
+    expect(retailerListing.source_tier).toBe('merchant');
+    expect(retailerListing.sellable_item_group_id).not.toBe(officialListing.sellable_item_group_id);
+
+    const [, mergedRetailer] = _internals.applyReviewedMultiOfferMergeCandidates([
+      officialListing,
+      retailerListing,
+    ]);
+
+    expect(mergedRetailer.identity_status).toBe('approved');
+    expect(mergedRetailer.review_required).toBe(false);
+    expect(mergedRetailer.live_read_enabled).toBe(false);
+    expect(mergedRetailer.matched_by_rule).toBe('reviewed_multi_offer_merge');
+    expect(mergedRetailer.sellable_item_group_id).toBe(officialListing.sellable_item_group_id);
+    expect(mergedRetailer.product_line_id).toBe(officialListing.product_line_id);
+    expect(mergedRetailer.match_basis).toContain('reviewed_multi_offer_target:external_seed:ext_rms_radiance_official');
+  });
+
+  test('reviewed multi-offer merge candidate is held when target brand source is missing', () => {
+    const {
+      buildIdentityListingFromProduct,
+      _internals,
+    } = require('../../src/services/pdpIdentityGraph');
+
+    const retailerListing = buildIdentityListingFromProduct({
+      merchantId: 'external_seed',
+      productId: 'ext_dermstore_rms_missing_target',
+      sourceKind: 'external_seed',
+      product: {
+        title: 'RMS Beauty Revitalize Hydra Concealer 0.17fl oz (Various Shades)',
+        brand: 'RMS Beauty',
+        canonical_url: 'https://www.dermstore.com/p/rms-beauty-revitalize-hydra-concealer-0.17fl-oz-various-shades/16621199/',
+        seed_data: {
+          merchant_display_name: 'Dermstore',
+          authority_source: {
+            source_url: 'https://www.dermstore.com/p/rms-beauty-revitalize-hydra-concealer-0.17fl-oz-various-shades/16621199/',
+            source_role: 'retailer_offer',
+          },
+          multi_offer_merge_candidate: {
+            status: 'approved',
+            target_source_listing_ref: 'external_seed:ext_missing_official',
+          },
+        },
+      },
+    });
+
+    const [heldRetailer] = _internals.applyReviewedMultiOfferMergeCandidates([retailerListing]);
+
+    expect(heldRetailer.identity_status).toBe('review_required');
+    expect(heldRetailer.review_required).toBe(true);
+    expect(heldRetailer.live_read_enabled).toBe(false);
+    expect(heldRetailer.review_reason_codes).toContain('reviewed_multi_offer_target_missing');
+  });
+
   test('buildIdentityListingFromProduct prefers product PDP URL over collection source URL for exact identity', () => {
     const { buildIdentityListingFromProduct } = require('../../src/services/pdpIdentityGraph');
 
