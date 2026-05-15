@@ -306,6 +306,79 @@ describe('pdpIdentityGraph', () => {
     );
   });
 
+  test('reviewed multi-offer merge candidate does not create retailer URL conflict in soft cluster', () => {
+    const {
+      buildIdentityListingFromProduct,
+      _internals,
+    } = require('../../src/services/pdpIdentityGraph');
+
+    const officialListing = {
+      ...buildIdentityListingFromProduct({
+        merchantId: 'external_seed',
+        productId: 'ext_rms_radiance_official_100ml',
+        sourceKind: 'external_seed',
+        product: {
+          title: 'Radiance Lock Setting Mist',
+          brand: 'RMS Beauty',
+          canonical_url: 'https://www.rmsbeauty.com/products/radiance-lock-setting-mist',
+          seed_data: {
+            authority_source: {
+              source_url: 'https://www.rmsbeauty.com/products/radiance-lock-setting-mist',
+              source_role: 'primary',
+            },
+          },
+        },
+      }),
+      variant_axes: { size: '100 ml' },
+    };
+    const retailerListing = buildIdentityListingFromProduct({
+      merchantId: 'external_seed',
+      productId: 'ext_dermstore_rms_radiance_conflict',
+      sourceKind: 'external_seed',
+      product: {
+        title: 'RMS Beauty Radiance Lock Setting Mist 100ml',
+        brand: 'RMS Beauty',
+        canonical_url: 'https://www.dermstore.com/p/rms-beauty-radiance-lock-setting-mist-100ml/15820047/',
+        seed_data: {
+          merchant_display_name: 'Dermstore',
+          authority_source: {
+            source_url: 'https://www.dermstore.com/p/rms-beauty-radiance-lock-setting-mist-100ml/15820047/',
+            source_role: 'retailer_offer',
+          },
+          multi_offer_merge_candidate: {
+            status: 'approved',
+            target_source_listing_ref: 'external_seed:ext_rms_radiance_official_100ml',
+            match_basis: [
+              'normalized_brand_match',
+              'title_core_match',
+              'size_axis_match',
+              'source_backed_price_availability',
+            ],
+          },
+        },
+      },
+    });
+
+    const [, mergedRetailer] = _internals.applyReviewedMultiOfferMergeCandidates([
+      officialListing,
+      retailerListing,
+    ]);
+    const clustered = _internals.clusterIdentityListings([
+      officialListing,
+      {
+        ...mergedRetailer,
+        variant_axes: { size: '100 ml' },
+      },
+    ]);
+    const clusteredRetailer = clustered.find(
+      (item) => item.source_listing_ref === 'external_seed:ext_dermstore_rms_radiance_conflict',
+    );
+
+    expect(clusteredRetailer.identity_status).toBe('approved');
+    expect(clusteredRetailer.review_required).toBe(false);
+    expect(clusteredRetailer.review_reason_codes).not.toContain('conflicting_official_url');
+  });
+
   test('buildIdentityListingFromProduct prefers product PDP URL over collection source URL for exact identity', () => {
     const { buildIdentityListingFromProduct } = require('../../src/services/pdpIdentityGraph');
 

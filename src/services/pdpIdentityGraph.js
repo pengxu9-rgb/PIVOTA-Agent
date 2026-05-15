@@ -1486,13 +1486,22 @@ function buildSoftExactClusterKey(listing) {
   return `${brand}|${titleCore}|${axisSignature}`;
 }
 
+function isReviewedMultiOfferMergeListing(listing) {
+  if (asString(listing?.matched_by_rule) === 'reviewed_multi_offer_merge') return true;
+  return asArray(listing?.match_basis).some((item) =>
+    asString(item).startsWith('reviewed_multi_offer_target:'),
+  );
+}
+
 function findStrongIdentityConflict(listings) {
   const officialUrls = new Set();
   const gtins = new Set();
   for (const listing of listings || []) {
     const strong = asPlainObject(listing?.strong_identity) || {};
     const officialUrl = asString(strong.official_url);
-    if (officialUrl) officialUrls.add(officialUrl);
+    if (officialUrl && !isReviewedMultiOfferMergeListing(listing)) {
+      officialUrls.add(officialUrl);
+    }
     asArray(strong.gtins).forEach((item) => {
       const gtin = asString(item).replace(/[^0-9]/g, '');
       if (gtin) gtins.add(gtin);
