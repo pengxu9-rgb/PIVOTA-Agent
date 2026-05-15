@@ -3410,6 +3410,26 @@ function readPriceAmountForNormalization(value) {
   return null;
 }
 
+function firstCatalogPayloadMoney(...values) {
+  for (const value of values) {
+    if (value === null || value === undefined || value === '') continue;
+    if (typeof value === 'number') {
+      if (Number.isFinite(value)) return value;
+      continue;
+    }
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (trimmed) return trimmed;
+      continue;
+    }
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      const amount = readPriceAmountForNormalization(value);
+      if (amount !== null) return value;
+    }
+  }
+  return null;
+}
+
 function buildProductDetailPriceContext(product, currencyOverride = '') {
   const productRecord = product && typeof product === 'object' ? product : {};
   return {
@@ -4917,8 +4937,8 @@ function projectExternalSeedOfferVariant(variant) {
     option1: variant.option1,
     option2: variant.option2,
     option3: variant.option3,
-    price: variant.price,
-    price_amount: variant.price_amount || variant.priceAmount,
+    price: variant.price ?? variant.pricing ?? variant.current_price,
+    price_amount: variant.price_amount ?? variant.priceAmount,
     currency: variant.currency,
     in_stock: variant.in_stock,
     available: variant.available,
@@ -5021,7 +5041,19 @@ function projectExternalSeedOfferPayload(payload, merchantId, productId) {
       externalSeed.seller_name,
       seedData.seller_name,
     ),
-    price: firstNonEmptyString(normalizedPayload.price, externalSeed.price, seedData.price, seedData.price_amount),
+    price: firstCatalogPayloadMoney(
+      normalizedPayload.price,
+      normalizedPayload.price_amount,
+      normalizedPayload.priceAmount,
+      externalSeed.price,
+      externalSeed.price_amount,
+      externalSeed.priceAmount,
+      seedData.price,
+      seedData.price_amount,
+      seedData.priceAmount,
+      snapshot.price_amount,
+      snapshot.price,
+    ),
     currency: firstNonEmptyString(normalizedPayload.currency, externalSeed.currency, seedData.currency, seedData.price_currency),
     shipping: normalizedPayload.shipping || externalSeed.shipping || seedData.shipping,
     shipping_cost:
@@ -5729,7 +5761,23 @@ function normalizeOfferMoneyForProduct(amount, currency, product = {}, variant =
       .join(' '),
     description: firstNonEmptyString(variant?.description, productContext.description),
   };
-  return normalizeOfferMoney(normalizeExternalSeedPrice(amount, context), context.currency);
+  const rawAmount = readPriceAmountForNormalization(amount);
+  let normalizedAmount = normalizeExternalSeedPrice(amount, context);
+  const productAmount = readPriceAmountForNormalization(
+    product?.price ?? product?.price_amount ?? product?.priceAmount,
+  );
+  if (
+    Number.isFinite(rawAmount) &&
+    Number.isFinite(productAmount) &&
+    rawAmount >= 1000 &&
+    productAmount > 0 &&
+    productAmount < 1000 &&
+    rawAmount > productAmount * 20 &&
+    Math.abs(rawAmount / 100 - productAmount) < 0.01
+  ) {
+    normalizedAmount = productAmount;
+  }
+  return normalizeOfferMoney(normalizedAmount, context.currency);
 }
 
 function computeOfferTotal(offer) {
@@ -5957,6 +6005,9 @@ function buildOfferVariantsForPayload(product, fallbackCurrency) {
         variant?.price?.current?.amount ??
         variant?.price?.amount ??
         variant?.price_amount ??
+        variant?.priceAmount ??
+        variant?.pricing?.current?.amount ??
+        variant?.pricing?.amount ??
         variant?.price ??
         0;
       const availableQuantityRaw =
@@ -6302,7 +6353,12 @@ async function buildOffersFromGroupMembers(args) {
     const selectedVariantSku = selectedVariant ? getOfferVariantSku(selectedVariant) : null;
     const selectedOptions = selectedVariant ? extractVariantOptions(selectedVariant) : {};
     const selectedVariantPrice =
-      selectedVariant?.price ?? selectedVariant?.price_amount ?? selectedVariant?.priceAmount ?? null;
+      selectedVariant?.price ??
+      selectedVariant?.price_amount ??
+      selectedVariant?.priceAmount ??
+      selectedVariant?.pricing?.current?.amount ??
+      selectedVariant?.pricing?.amount ??
+      null;
     const currency =
       firstNonEmptyString(
         selectedVariant?.currency,
@@ -25110,7 +25166,11 @@ async function buildProductIntelOffersDataForContext({
           product_id: context.canonicalProductRef.product_id,
           merchant_id: context.canonicalProductRef.merchant_id,
           merchant_name: context.product.merchant_name || context.product.store_name || undefined,
-          price: normalizeOfferMoney(context.product.price, context.product.currency || 'USD'),
+          price: normalizeOfferMoneyForProduct(
+            context.product.price,
+            context.product.currency || 'USD',
+            context.product,
+          ),
           shipping: context.product.shipping || undefined,
           returns: context.product.returns || undefined,
           inventory: {
@@ -29229,9 +29289,10 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                       product: canonicalProductForPdp,
                       merchantId: canonicalProductRef.merchant_id,
                     }) || undefined,
-                  price: normalizeOfferMoney(
+                  price: normalizeOfferMoneyForProduct(
                     canonicalProductForPdp.price,
                     canonicalProductForPdp.currency || 'USD',
+                    canonicalProductForPdp,
                   ),
                   shipping: canonicalProductForPdp.shipping || undefined,
                   returns: canonicalProductForPdp.returns || undefined,

@@ -116,6 +116,44 @@ describe('PDP grouped offers', () => {
     });
   });
 
+  test('keeps offer variant price coherent with already-normalized external seed product price', async () => {
+    const app = require('../src/server');
+
+    const offersData = await app._debug.buildOffersFromGroupMembers({
+      productGroupId: 'sig_minor_unit_coherence',
+      debug: true,
+      members: [
+        {
+          merchant_id: 'external_seed',
+          product_id: 'ext_minor_unit_coherence',
+          source_kind: 'external_seed',
+          source_payload: {
+            title: '1.7 oz',
+            brand: 'Olehenriksen',
+            price: { current: { amount: 29.63, currency: 'USD' } },
+            currency: 'USD',
+            variants: [
+              {
+                variant_id: 'v_cents',
+                title: '1.7 oz',
+                options: [{ name: 'Size', value: '1.7 oz' }],
+                price: { current: { amount: 2963, currency: 'USD' } },
+                currency: 'USD',
+              },
+            ],
+          },
+        },
+      ],
+    });
+
+    expect(offersData.offers).toHaveLength(1);
+    expect(offersData.offers[0].price).toEqual({ amount: 29.63, currency: 'USD' });
+    expect(offersData.offers[0].variants[0].price.current).toEqual({
+      amount: 29.63,
+      currency: 'USD',
+    });
+  });
+
   test('builds display-safe Shopify store discount evidence from promotion metadata', () => {
     const app = require('../src/server');
 
