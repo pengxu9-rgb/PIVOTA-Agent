@@ -22,7 +22,7 @@ const DEFAULT_QUERIES = [
 
 const SHADE_AXIS_NAMES = new Set(['shade', 'color', 'colour', 'tone', 'hue']);
 const PRODUCT_IMAGE_PATTERN =
-  /(?:^|[^a-z0-9])(t\d+product|product|primary|hero|main|model|silo|ecomm|ecommerce|flat[-_\s]?lay|packaging|package|box|bottle|tube|compact|closed|open[-_\s]?box|with[-_\s]?cap|concrete[-_\s]?shot|pack[-_\s]?shot)(?:[^a-z0-9]|$)/i;
+  /(?:^|[^a-z0-9])(t\d+(?:product|beauty)|product|primary|hero|main|model|silo|ecomm|ecommerce|flat[-_\s]?lay|packaging|package|box|bottle|tube|compact|closed|open[-_\s]?box|with[-_\s]?cap|concrete[-_\s]?shot|pack[-_\s]?shot)(?:[^a-z0-9]|$)/i;
 const SWATCH_IMAGE_PATTERN =
   /(?:^|[^a-z0-9])(swatch|shade|color[-_\s]?chip|colour[-_\s]?chip|color[-_\s]?tile|colour[-_\s]?tile)(?:[^a-z0-9]|$)/i;
 const HEX_PATTERN = /^#?(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;

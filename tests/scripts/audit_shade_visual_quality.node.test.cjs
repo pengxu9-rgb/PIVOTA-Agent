@@ -18,6 +18,12 @@ test('classifies explicit shade visual fields without accepting product photos',
     ),
     true,
   );
+  assert.equal(
+    likelyProductOnlyImageUrl(
+      'https://cdn.shopify.com/files/FB789050_T2BEAUTY_MODEL_GLOBAL_KILLAWATT_PPAGE_WATTABRAT.jpg',
+    ),
+    true,
+  );
 
   assert.equal(
     classifyVisualEvidence({ shade_hex: '#bb785f' }, {}, 'W023').visual_status,
