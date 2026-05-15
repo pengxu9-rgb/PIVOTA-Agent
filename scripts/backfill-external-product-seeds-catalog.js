@@ -3333,10 +3333,31 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     ],
     { relevanceContext: imageRelevanceContext },
   );
-  const incomingPdpFieldQualitySummary = normalizeFieldQualitySummary(
+  let incomingPdpFieldQualitySummary = normalizeFieldQualitySummary(
     representativeProduct?.field_quality_summary ||
       representativeProduct?.pdp_field_quality_summary,
   );
+  if (
+    derivedPdpActiveIngredientsRaw &&
+    isSurfaceablePdpField(incomingPdpFieldQualitySummary, 'details_sections')
+  ) {
+    const detailsQuality = incomingPdpFieldQualitySummary?.details_sections || {};
+    incomingPdpFieldQualitySummary = {
+      ...(incomingPdpFieldQualitySummary || {}),
+      active_ingredients_raw: {
+        source_origin: normalizeNonEmptyString(detailsQuality.source_origin) || 'retail_pdp',
+        source_quality_status:
+          normalizeNonEmptyString(detailsQuality.source_quality_status).toLowerCase() === 'high'
+            ? 'high'
+            : 'medium',
+        source_kinds: uniqueStrings([
+          ...(Array.isArray(detailsQuality.source_kinds) ? detailsQuality.source_kinds : []),
+          'derived_details_section_ingredients',
+        ]),
+        reason_codes: [],
+      },
+    };
+  }
   const existingPdpFieldQualitySummary = normalizeFieldQualitySummary(
     seedData.pdp_field_quality_summary ||
       snapshot.pdp_field_quality_summary,

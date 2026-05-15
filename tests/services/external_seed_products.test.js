@@ -3212,4 +3212,63 @@ describe('externalSeedProducts helper', () => {
     expect(product.seed_description_origin).toBe('assistant_reviewed_asset');
     expect(product.source_url).toBe(canonicalUrl);
   });
+
+  test('projects approved sunscreen active block into external seed product payload', () => {
+    const canonicalUrl = 'https://olehenriksen.com/products/banana-bright-mineral-sunscreen-spf-30';
+    const activeBlock =
+      'Zinc Oxide 16.3%\nEnhanced Vitamin C (Ascorbic Acid)\nBanana Powder-Inspired Pigments\nNiacinamide\nAloe Leaf Juice';
+    const product = buildExternalSeedProduct({
+      id: 'eps_ole_spf',
+      external_product_id: 'ext_ole_spf',
+      canonical_url: canonicalUrl,
+      destination_url: canonicalUrl,
+      title: 'Banana Bright Mineral Sunscreen SPF 30',
+      seed_data: {
+        brand: 'Olehenriksen',
+        category: 'Sunscreen',
+        pdp_ingredients_raw:
+          'Aqua/Water/Eau, Zinc Oxide, Niacinamide, Aloe Barbadensis Leaf Juice, Tetrahexyldecyl Ascorbate, Iron Oxides (Ci 77491, Ci 77492), Titanium Dioxide (Ci 77891).',
+        pdp_active_ingredients_raw: activeBlock,
+        active_ingredients: [
+          'Zinc Oxide 16.3%',
+          'Enhanced Vitamin C (Ascorbic Acid)',
+          'Banana Powder-Inspired Pigments',
+          'Niacinamide',
+          'Aloe Leaf Juice',
+        ],
+        key_ingredients: [
+          'Zinc Oxide 16.3%',
+          'Enhanced Vitamin C (Ascorbic Acid)',
+          'Banana Powder-Inspired Pigments',
+          'Niacinamide',
+          'Aloe Leaf Juice',
+        ],
+        pdp_field_quality_summary: {
+          ingredients_raw: {
+            source_origin: 'retail_pdp',
+            source_quality_status: 'medium',
+          },
+          active_ingredients_raw: {
+            source_origin: 'shopify_json',
+            source_quality_status: 'high',
+            source_kinds: ['derived_details_section_ingredients'],
+            reason_codes: [],
+          },
+        },
+        snapshot: {
+          pdp_ingredients_raw:
+            'Aqua/Water/Eau, Zinc Oxide, Niacinamide, Aloe Barbadensis Leaf Juice, Tetrahexyldecyl Ascorbate, Iron Oxides (Ci 77491, Ci 77492), Titanium Dioxide (Ci 77891).',
+          pdp_active_ingredients_raw: activeBlock,
+        },
+      },
+    });
+
+    expect(product.pdp_active_ingredients_raw).toBe(activeBlock);
+    expect(product.key_ingredients).toEqual(
+      expect.arrayContaining(['Enhanced Vitamin C (Ascorbic Acid)', 'Aloe Leaf Juice']),
+    );
+    expect(product.active_ingredients).toEqual(['Zinc Oxide']);
+    expect(product.active_ingredients).not.toContain('Titanium Dioxide');
+    expect(product.seed_data.pdp_active_ingredients_raw).toBe(activeBlock);
+  });
 });

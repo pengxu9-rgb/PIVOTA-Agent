@@ -3060,6 +3060,20 @@ describe('backfill-external-product-seeds-catalog', () => {
               },
             ],
             variants: [],
+            field_quality_summary: {
+              details_sections: {
+                source_origin: 'shopify_json',
+                source_quality_status: 'high',
+                source_kinds: ['heading_sibling'],
+                reason_codes: [],
+              },
+              active_ingredients_raw: {
+                source_origin: 'unknown',
+                source_quality_status: 'low',
+                source_kinds: [],
+                reason_codes: ['missing_source_kind'],
+              },
+            },
           },
         ],
         variants: [],
@@ -3084,6 +3098,16 @@ describe('backfill-external-product-seeds-catalog', () => {
       'Niacinamide',
       'Aloe Leaf Juice',
     ]);
+    expect(
+      payload.nextRow.seed_data.pdp_field_quality_summary.active_ingredients_raw,
+    ).toEqual(
+      expect.objectContaining({
+        source_origin: 'shopify_json',
+        source_quality_status: 'high',
+        source_kinds: expect.arrayContaining(['derived_details_section_ingredients']),
+        reason_codes: [],
+      }),
+    );
     expect(payload.nextRow.seed_data.ingredient_intel.inci_normalized).toBeUndefined();
     expect(payload.nextRow.seed_data.ingredient_intel.authoritative).toBeUndefined();
   });
