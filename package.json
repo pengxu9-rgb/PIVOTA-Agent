@@ -146,6 +146,7 @@
     "external-seeds:audit:pdp-quality": "node scripts/audit-external-product-pdp-quality.js",
     "external-seeds:audit:pdp-readiness": "node scripts/audit-external-seed-pdp-readiness.js",
     "external-seeds:audit:image-health": "node scripts/audit-external-seed-image-health.js",
+    "external-seeds:audit:shade-visual-quality": "node scripts/audit-shade-visual-quality.cjs",
     "external-seeds:backfill:image-cache": "node scripts/backfill-external-seed-image-cache.cjs",
     "pdp-entity:audit": "node scripts/audit-pdp-entity-resolution.js",
     "pdp-entity:merge": "node scripts/map-and-merge-pdp-entity-resolution.js",

@@ -1,0 +1,63 @@
+{
+  "generated_at": "2026-05-15T23:03:51.412Z",
+  "discovery_mode": "search",
+  "candidate_count": 160,
+  "pdp_error_count": 0,
+  "shade_option_count": 1390,
+  "shade_pdp_count": 86,
+  "status_counts": {
+    "blocked_product_image_source": 1215,
+    "text_fallback_missing_swatch": 132,
+    "real_swatch_or_hex": 43
+  },
+  "product_counts": {
+    "all_real_swatch_or_hex": 0,
+    "has_text_fallback_missing_swatch": 20,
+    "has_blocked_product_image_source": 75
+  },
+  "top_brands_by_shade_options": [
+    {
+      "key": "fenty beauty",
+      "count": 666
+    },
+    {
+      "key": "Fenty Beauty",
+      "count": 587
+    },
+    {
+      "key": "MAC",
+      "count": 98
+    },
+    {
+      "key": "PIXI BEAUTY",
+      "count": 18
+    },
+    {
+      "key": "kylie cosmetics",
+      "count": 15
+    },
+    {
+      "key": "Olehenriksen",
+      "count": 4
+    },
+    {
+      "key": "Tom Ford Beauty",
+      "count": 2
+    }
+  ],
+  "discovery_errors": [
+    {
+      "mode": "db",
+      "error": "DATABASE_URL not configured",
+      "code": "NO_DATABASE"
+    }
+  ],
+  "report_files": {
+    "summary_json": "reports/shade_visual_quality_audit_20260516/summary.json",
+    "shade_visual_quality_audit_csv": "reports/shade_visual_quality_audit_20260516/shade_visual_quality_audit.csv",
+    "product_rollup_csv": "reports/shade_visual_quality_audit_20260516/shade_visual_product_rollup.csv",
+    "missing_swatch_backfill_candidates_csv": "reports/shade_visual_quality_audit_20260516/missing_swatch_backfill_candidates.csv",
+    "blocked_product_image_sources_csv": "reports/shade_visual_quality_audit_20260516/blocked_product_image_sources.csv",
+    "pdp_errors_csv": "reports/shade_visual_quality_audit_20260516/pdp_errors.csv"
+  }
+}
