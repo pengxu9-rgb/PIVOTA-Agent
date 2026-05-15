@@ -1642,10 +1642,14 @@ function applyReviewedMultiOfferMergeCandidates(listings) {
       !targetMissing &&
       (!targetListing ||
         (asString(targetListing?.identity_status) === 'approved' && targetListing?.review_required !== true));
+    const targetTrustedByManualReview =
+      normalizeReviewedMergeCandidateStatus(candidate.status) === 'approved' && targetIsBrandSource && Boolean(targetGroupId);
     const blockerReasons = [];
     if (targetMissing || !targetGroupId) blockerReasons.push('reviewed_multi_offer_target_missing');
     if (!targetIsBrandSource) blockerReasons.push('reviewed_multi_offer_target_not_brand_source');
-    if (!targetApproved) blockerReasons.push('reviewed_multi_offer_target_not_approved');
+    if (!targetApproved && !targetTrustedByManualReview) {
+      blockerReasons.push('reviewed_multi_offer_target_not_approved');
+    }
     const pass = blockerReasons.length === 0;
 
     return {
