@@ -59,6 +59,17 @@ test('classifies explicit shade visual fields without accepting product photos',
     ).visual_status,
     'blocked_product_image_source',
   );
+  assert.equal(
+    classifyVisualEvidence(
+      {
+        swatch_image_url:
+          'https://cdn.shopify.com/files/FB_FALL23_T2PRODUCT_SMEAR_EAZEDROP_STICK_SHADE_01_1200X1500_72DPI.png',
+      },
+      {},
+      '1',
+    ).visual_status,
+    'real_swatch_or_hex',
+  );
 });
 
 test('derives only known source-backed RMS shade swatches', () => {

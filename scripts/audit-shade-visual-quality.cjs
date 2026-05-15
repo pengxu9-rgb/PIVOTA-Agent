@@ -3,6 +3,8 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
+const { isTrustedSourceBackedShadeTextureUrl } = require('./backfill-source-backed-shade-swatches.cjs');
+
 const DEFAULT_GATEWAY = 'https://agent.pivota.cc/api/gateway';
 const DEFAULT_FRONTEND = 'https://agent.pivota.cc';
 const DEFAULT_QUERIES = [
@@ -305,11 +307,14 @@ function classifyVisualEvidence(evidence, product, shadeLabel) {
   }
 
   const explicitSwatch = normalizeString(evidence.swatch_image_url);
-  if (explicitSwatch && !likelyProductOnlyImageUrl(explicitSwatch)) {
+  const explicitTextureSwatch = isTrustedSourceBackedShadeTextureUrl(explicitSwatch, shadeLabel);
+  if (explicitSwatch && (explicitTextureSwatch || !likelyProductOnlyImageUrl(explicitSwatch))) {
     return {
       visual_status: 'real_swatch_or_hex',
       display_mode: 'image_swatch',
-      evidence_kind: likelyShadeSwatchImageUrl(explicitSwatch)
+      evidence_kind: explicitTextureSwatch
+        ? 'source_backed_texture_swatch'
+        : likelyShadeSwatchImageUrl(explicitSwatch)
         ? 'explicit_swatch_image'
         : 'explicit_swatch_field_unpatterned',
       chosen_visual_url: explicitSwatch,
@@ -318,11 +323,21 @@ function classifyVisualEvidence(evidence, product, shadeLabel) {
   }
 
   const labelOrImage = normalizeString(evidence.label_image_url || evidence.image_url);
+  const labelTextureSwatch = isTrustedSourceBackedShadeTextureUrl(labelOrImage, shadeLabel);
   if (labelOrImage && likelyShadeSwatchImageUrl(labelOrImage) && !likelyProductOnlyImageUrl(labelOrImage)) {
     return {
       visual_status: 'real_swatch_or_hex',
       display_mode: 'image_swatch',
       evidence_kind: 'trusted_label_image_swatch',
+      chosen_visual_url: labelOrImage,
+      blocker_reason: '',
+    };
+  }
+  if (labelTextureSwatch) {
+    return {
+      visual_status: 'real_swatch_or_hex',
+      display_mode: 'image_swatch',
+      evidence_kind: 'source_backed_texture_swatch',
       chosen_visual_url: labelOrImage,
       blocker_reason: '',
     };
@@ -341,6 +356,7 @@ function classifyVisualEvidence(evidence, product, shadeLabel) {
 
   const productOnly = [explicitSwatch, evidence.label_image_url, evidence.image_url]
     .filter(Boolean)
+    .filter((url) => !isTrustedSourceBackedShadeTextureUrl(url, shadeLabel))
     .find((url) => likelyProductOnlyImageUrl(url));
   if (productOnly) {
     return {
