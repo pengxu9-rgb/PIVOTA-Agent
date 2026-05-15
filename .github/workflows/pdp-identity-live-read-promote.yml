@@ -47,7 +47,7 @@ jobs:
           cache: "npm"
 
       - name: Install
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Promote PDP identity live read
         shell: bash
