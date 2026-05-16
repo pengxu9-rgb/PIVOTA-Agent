@@ -6329,6 +6329,41 @@ function dedupePdpImageUrls(urls) {
   return out;
 }
 
+function isCatalogImageCacheUrl(url) {
+  try {
+    return new URL(String(url || '')).pathname.startsWith('/catalog-image-cache/');
+  } catch {
+    return false;
+  }
+}
+
+function isTomFordOfficialShopifyFileUrl(url) {
+  try {
+    const parsed = new URL(String(url || ''));
+    const host = parsed.hostname.toLowerCase();
+    const pathName = parsed.pathname.toLowerCase();
+    return (
+      host === 'cdn.shopify.com' &&
+      pathName.includes('/s/files/1/0761/9690/5173/files/') &&
+      /\/tfb?_sku_/i.test(pathName)
+    );
+  } catch {
+    return false;
+  }
+}
+
+function preferReliableOfferImageUrls(urls) {
+  const deduped = dedupePdpImageUrls(urls);
+  const cached = deduped.filter(isCatalogImageCacheUrl);
+  if (!cached.length) return deduped;
+
+  const nonStaleDirect = deduped.filter((url) => {
+    if (isCatalogImageCacheUrl(url)) return false;
+    return !isTomFordOfficialShopifyFileUrl(url);
+  });
+  return [...cached, ...nonStaleDirect];
+}
+
 function collectOfferImageUrls(offer) {
   if (!offer || typeof offer !== 'object') return [];
   const rawUrls = [];
@@ -6346,7 +6381,7 @@ function collectOfferImageUrls(offer) {
       collectNormalizedImageUrlsFromValue(variant?.media, rawUrls);
     });
   }
-  return dedupePdpImageUrls(rawUrls).slice(0, 8);
+  return preferReliableOfferImageUrls(rawUrls).slice(0, 8);
 }
 
 function pdpPayloadHasMediaGallery(pdpPayload) {

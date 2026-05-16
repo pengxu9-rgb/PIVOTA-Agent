@@ -1104,28 +1104,34 @@ describe('PDP grouped offers', () => {
                 image_url:
                   'https://pivota-agent-production.up.railway.app/catalog-image-cache/cc/cc717e19f368e4114ca16966224f788e2566f5416ac913c1405898d86039e915.webp',
               },
+              {
+                variant_id: 'T8ML02',
+                image_url:
+                  'https://pivota-agent-production.up.railway.app/catalog-image-cache/a7/a7b2c6fc65f11cc3037c6ba5d180064a1d84e1ae77814d77ecc9ef742c47e9c4.webp',
+              },
             ],
           },
         ],
       },
     );
 
-    expect(payload.product.image_url).toContain('tf_sku_T81201_2000x2000_0');
+    expect(payload.product.image_url).toContain('/catalog-image-cache/cc/');
     expect(payload.product.images).toHaveLength(2);
     expect(payload.product.image_source).toBe('default_offer');
     const mediaGallery = payload.modules.find((module) => module.type === 'media_gallery');
     expect(mediaGallery?.data?.items).toEqual([
       expect.objectContaining({
         type: 'image',
-        url: expect.stringContaining('tf_sku_T81201_2000x2000_0'),
+        url: expect.stringContaining('/catalog-image-cache/cc/'),
         source: 'default_offer',
       }),
       expect.objectContaining({
         type: 'image',
-        url: expect.stringContaining('/catalog-image-cache/cc/'),
+        url: expect.stringContaining('/catalog-image-cache/a7/'),
         source: 'default_offer',
       }),
     ]);
+    expect(payload.product.images.some((url) => url.includes('tf_sku_T81201_2000x2000_0'))).toBe(false);
   });
 
   test('preserves existing canonical PDP media gallery when present', () => {
