@@ -393,6 +393,39 @@ describe('audit-external-product-pdp-quality helpers', () => {
     expect(gate.size_value_generic_axis_count).toBeGreaterThan(0);
   });
 
+  test('allows shade axis for tinted lip treatment products', () => {
+    const livePayload = {
+      product: {
+        product_id: 'ext_pout_preserve',
+        merchant_id: 'external_seed',
+        title: 'Pout Preserve Peptide Lip Treatment',
+        category: 'Skincare',
+        product_type: 'Lip Treatment',
+        variants: [
+          {
+            variant_id: 'v_grape',
+            title: 'Grape Fizz',
+            swatch_image_url: 'https://example.com/grape-swatch.png',
+            options: [{ name: 'Shade', value: 'Grape Fizz' }],
+          },
+        ],
+      },
+      modules: [{ type: 'variant_selector', data: { selected_variant_id: 'v_grape' } }],
+    };
+
+    const gate = buildVariantGate({
+      seedData: {
+        category: 'Skincare',
+        product_type: 'Lip Treatment',
+        snapshot: { title: 'Pout Preserve Peptide Lip Treatment' },
+      },
+      livePayload,
+      liveResponse: { modules: [{ type: 'canonical', data: { pdp_payload: livePayload } }] },
+    });
+
+    expect(gate.failure_reasons).not.toContain('wrong_axis_for_category');
+  });
+
   test('flags duplicate gallery images, mixed content media, and non-quarantined snapshots', () => {
     const livePayload = {
       product: {
