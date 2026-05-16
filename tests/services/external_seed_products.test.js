@@ -3137,6 +3137,7 @@ describe('externalSeedProducts helper', () => {
     });
 
     expect(product.active_ingredients).toEqual(['Salicylic acid']);
+    expect(product.pdp_active_ingredients_raw).toBe('Salicylic acid');
     expect(product.ingredient_intel?.authoritative?.active_items).toEqual(['Salicylic acid']);
   });
 

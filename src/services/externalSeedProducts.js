@@ -3443,6 +3443,9 @@ function buildExternalSeedProduct(row, options = {}) {
       snapshot.raw_ingredient_text_clean,
     ].join(' '),
   );
+  const sourceBackedActiveIngredientsRaw = authorityActiveIngredients.length
+    ? authorityActiveIngredients.join(', ')
+    : '';
   const authoritySeedData = authorityActiveIngredients.length
     ? {
         ...runtimeSeedData,
@@ -3450,14 +3453,14 @@ function buildExternalSeedProduct(row, options = {}) {
         pdp_active_ingredients_raw:
           runtimeSeedData.pdp_active_ingredients_raw ||
           runtimeSnapshot.pdp_active_ingredients_raw ||
-          authorityActiveIngredients.join('\n'),
+          sourceBackedActiveIngredientsRaw,
         snapshot: {
           ...runtimeSnapshot,
           active_ingredients: authorityActiveIngredients,
           pdp_active_ingredients_raw:
             runtimeSnapshot.pdp_active_ingredients_raw ||
             runtimeSeedData.pdp_active_ingredients_raw ||
-            authorityActiveIngredients.join('\n'),
+            sourceBackedActiveIngredientsRaw,
         },
       }
     : runtimeSeedData;
@@ -3945,6 +3948,8 @@ function buildExternalSeedProduct(row, options = {}) {
       : {}),
     ...(isSurfaceablePdpField(pdpFieldQualitySummary, 'active_ingredients_raw') && pdpActiveIngredientsRaw
       ? { pdp_active_ingredients_raw: pdpActiveIngredientsRaw }
+      : sourceBackedActiveIngredientsRaw
+        ? { pdp_active_ingredients_raw: sourceBackedActiveIngredientsRaw }
       : {}),
     ...(isSurfaceablePdpField(pdpFieldQualitySummary, 'how_to_use_raw') && pdpHowToUseRaw
       ? { pdp_how_to_use_raw: pdpHowToUseRaw }
