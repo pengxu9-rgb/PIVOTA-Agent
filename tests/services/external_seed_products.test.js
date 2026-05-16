@@ -3110,6 +3110,36 @@ describe('externalSeedProducts helper', () => {
     expect(product.pdp_field_quality_summary.description_raw.source_quality_status).toBe('quarantined');
   });
 
+  test('projects source-backed active arrays when ingredient evidence validates them', () => {
+    const product = buildExternalSeedProduct({
+      id: 'eps_ole_violet_mask',
+      external_product_id: 'ext_ole_violet_mask',
+      canonical_url: 'https://olehenriksen.com/products/violet-ice-cold-plunge-pore-mask',
+      destination_url: 'https://olehenriksen.com/products/violet-ice-cold-plunge-pore-mask',
+      title: 'Violet Ice Cold Plunge Pore Mask',
+      seed_data: {
+        brand: 'Olehenriksen',
+        pdp_ingredients_raw:
+          'KAOLIN & PURPLE CLAY extracts and clears dirt, oil and impurities. SALICYLIC ACID (BHA) clears blemishes and refines pores. BETAINE SALICYLATE boosts the benefits of salicylic acid.',
+        active_ingredients: ['Salicylic acid'],
+        pdp_field_quality_summary: {
+          ingredients_raw: {
+            source_origin: 'shopify_json',
+            source_quality_status: 'high',
+          },
+        },
+        snapshot: {
+          pdp_ingredients_raw:
+            'KAOLIN & PURPLE CLAY extracts and clears dirt, oil and impurities. SALICYLIC ACID (BHA) clears blemishes and refines pores. BETAINE SALICYLATE boosts the benefits of salicylic acid.',
+          active_ingredients: ['Salicylic acid'],
+        },
+      },
+    });
+
+    expect(product.active_ingredients).toEqual(['Salicylic acid']);
+    expect(product.ingredient_intel?.authoritative?.active_items).toEqual(['Salicylic acid']);
+  });
+
   test('preserves reviewed force-filled PDP content while keeping quarantined fields blocked', () => {
     const forceFillContract = {
       contract_version: 'pivota.pdp.force_fill.v1',

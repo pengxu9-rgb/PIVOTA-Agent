@@ -1010,6 +1010,27 @@ function normalizeStringList(value, maxItems = 64) {
   return out.slice(0, maxItems);
 }
 
+function normalizeIngredientEvidenceKey(value) {
+  return normalizeIngredientSignalToken(value).toLowerCase().replace(/[^a-z0-9]+/g, '');
+}
+
+function filterActiveIngredientsWithSourceEvidence(items, evidenceText) {
+  const evidence = normalizeNonEmptyString(evidenceText);
+  const evidenceKey = normalizeIngredientEvidenceKey(evidenceText);
+  if (!evidenceKey) return [];
+  if (
+    !/\b(active ingredients?|ahas?|bhas?|exfoliants?|exfoliat(?:e|es|ing|ion)|clears?|clarif(?:y|ies|ying)|refines?|brightens?|firm(?:s|ing)|hydrates?|plumps?|soothes?|nourish(?:es|ing)?|conditions?|dark spots?|fine lines?|wrinkles?|blemishes?|pores?|surface oil)\b/i.test(
+      evidence,
+    )
+  ) {
+    return [];
+  }
+  return normalizeStringList(items, 32).filter((item) => {
+    const itemKey = normalizeIngredientEvidenceKey(item);
+    return itemKey && evidenceKey.includes(itemKey);
+  });
+}
+
 function normalizeIngredientSignalToken(value) {
   const text = String(value || '')
     .replace(/\[more\]/gi, ' ')
@@ -3404,6 +3425,42 @@ function buildExternalSeedProduct(row, options = {}) {
       snapshot.ingredientsInci,
     256,
   );
+  const authorityActiveIngredients = filterActiveIngredientsWithSourceEvidence(
+    [
+      seedData.active_ingredients,
+      seedData.activeIngredients,
+      snapshot.active_ingredients,
+      snapshot.activeIngredients,
+    ],
+    [
+      runtimeSeedData.pdp_ingredients_raw,
+      runtimeSnapshot.pdp_ingredients_raw,
+      runtimeSeedData.raw_ingredient_text_clean,
+      runtimeSnapshot.raw_ingredient_text_clean,
+      seedData.pdp_ingredients_raw,
+      snapshot.pdp_ingredients_raw,
+      seedData.raw_ingredient_text_clean,
+      snapshot.raw_ingredient_text_clean,
+    ].join(' '),
+  );
+  const authoritySeedData = authorityActiveIngredients.length
+    ? {
+        ...runtimeSeedData,
+        active_ingredients: authorityActiveIngredients,
+        pdp_active_ingredients_raw:
+          runtimeSeedData.pdp_active_ingredients_raw ||
+          runtimeSnapshot.pdp_active_ingredients_raw ||
+          authorityActiveIngredients.join('\n'),
+        snapshot: {
+          ...runtimeSnapshot,
+          active_ingredients: authorityActiveIngredients,
+          pdp_active_ingredients_raw:
+            runtimeSnapshot.pdp_active_ingredients_raw ||
+            runtimeSeedData.pdp_active_ingredients_raw ||
+            authorityActiveIngredients.join('\n'),
+        },
+      }
+    : runtimeSeedData;
   const activeIngredients = [];
   const keyIngredients = normalizeStringList(
     runtimeSnapshot.key_ingredients ||
@@ -3756,7 +3813,7 @@ function buildExternalSeedProduct(row, options = {}) {
     product_type: normalizedCategory || explicitCategory || '',
     canonical_url: canonicalUrl,
     destination_url: destinationUrl,
-    seed_data: runtimeSeedData,
+    seed_data: authoritySeedData,
     raw_ingredient_text_clean:
       runtimeSeedData.raw_ingredient_text_clean ||
       runtimeSnapshot.raw_ingredient_text_clean ||

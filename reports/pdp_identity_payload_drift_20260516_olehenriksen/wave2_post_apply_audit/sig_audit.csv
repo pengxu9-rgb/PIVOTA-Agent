@@ -1,0 +1,11 @@
+sellable_item_group_id,product_line_id,row_count,live_read_count,stale_payload_count,seed_active_count,seed_active_expectation_count,identity_active_count,sig_mixed_active_expectation,canonical_selection_gap,canonical_content_ref,fresh_best_content_ref,sync_candidate_count,sample_titles
+sig_da685f11e464e560af5da957,pl_6a6aeff86b8d3dbf9d1e8821,1,1,0,0,1,0,false,false,external_seed:ext_d711519e2337ab545c05a005,external_seed:ext_d711519e2337ab545c05a005,0,Pout Preserve Peptide Lip Treatment Grape Fizz
+sig_40104d3f0b42a80bc96c9894,pl_56c668580e787e0098db955d,1,1,0,0,0,0,false,false,external_seed:ext_6c540ac96c2c1ab33f1af31d,external_seed:ext_6c540ac96c2c1ab33f1af31d,0,Banana Bright+ Vitamin CC Stick
+sig_919e963e7d7a740f5f496e87,pl_3b67ac1b4bd02a703483ea72,1,1,0,0,1,0,false,false,external_seed:ext_918981bcc6d552cc2af0b535,external_seed:ext_918981bcc6d552cc2af0b535,0,Banana Bright+ Eye Crème
+sig_11309e1c9f18c101be103b78,pl_6674b9bb44033983d148a940,1,1,0,1,1,1,false,false,external_seed:ext_cdf12a2412e34e43b3ab9232,external_seed:ext_cdf12a2412e34e43b3ab9232,0,Dewtopia 5% Acid Firming Night Crème
+sig_f5cc58de1c738a2a17dab564,pl_5fbdca35edb424617f9dcf52,1,1,0,0,1,0,false,false,external_seed:ext_2d5176c8edd52a0c49a1ab55,external_seed:ext_2d5176c8edd52a0c49a1ab55,0,Truth Juice Daily Cleanser
+sig_20487d5b07261ec3bfb2cc66,pl_c26053cd3d06ef33c8363916,1,1,0,0,0,0,false,false,external_seed:ext_3221a074fcd0a5b3d9a32f2d,external_seed:ext_3221a074fcd0a5b3d9a32f2d,0,Peach Glaze Glow Mist
+sig_d2080945d690048e2750e642,pl_76e20783c6ef46d3950ee9bd,1,1,0,0,1,0,false,false,external_seed:ext_0910c5ee09219dc2a59ccb1d,external_seed:ext_0910c5ee09219dc2a59ccb1d,0,Lemonade Smoothing Scrub
+sig_d0025f46b17807a8b55f5224,pl_df36aece0272dee66cf928b3,1,1,0,1,1,1,false,false,external_seed:ext_62a2014411830d70f71baac3,external_seed:ext_62a2014411830d70f71baac3,0,Banana Bright 15% Vitamin C Dark Spot Serum
+sig_934be7b33d4ab774c669b294,pl_a96df4560903806638820e43,1,1,0,1,1,1,false,false,external_seed:ext_123d26f91740b0e100715451,external_seed:ext_123d26f91740b0e100715451,0,Pout Preserve Peptide Lip Treatment Glimmers
+sig_e1d3cf060d0c37ec75787eef,pl_89878ee25b70ce74f8695310,1,1,0,1,1,1,false,false,external_seed:ext_301201d04c48df948c0eacdc,external_seed:ext_301201d04c48df948c0eacdc,0,Barrier Booster Orange Ferment Vitamin C Essence
