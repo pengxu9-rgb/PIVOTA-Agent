@@ -1,0 +1,64 @@
+{
+  "options": {
+    "market": "US",
+    "seedId": null,
+    "externalProductId": null,
+    "domain": null,
+    "brand": "Olehenriksen",
+    "limit": 200,
+    "offset": 0,
+    "includeInactive": false,
+    "format": "json",
+    "out": "reports/pdp_quality_inventory_20260516/olehenriksen_seed_content_audit.json",
+    "onlyFlagged": true,
+    "persistRun": false,
+    "stage": "initial"
+  },
+  "summary": {
+    "scanned": 74,
+    "flagged_rows": 2,
+    "findings_total": 2,
+    "by_severity": {
+      "blocker": 0,
+      "review": 2,
+      "info": 0
+    },
+    "by_anomaly_type": {
+      "seed_description_marketing_banner_prefix": 2
+    },
+    "by_domain": {
+      "olehenriksen.com": 2
+    }
+  },
+  "audit_run_id": null,
+  "findings": [
+    {
+      "seed_id": "eps_3f7afa82b7ea4ef3bde3ae44",
+      "domain": "olehenriksen.com",
+      "market": "US",
+      "canonical_url": "https://olehenriksen.com/products/daily-d-clog-pore-clearing-cleanser",
+      "anomaly_type": "seed_description_marketing_banner_prefix",
+      "severity": "review",
+      "evidence": {
+        "description_excerpt": "D-CLOGGED PORES ARE HAPPY PORES \nThis gentle daily cleanser clarifies pores and calms skin with a blend of salicylic acid (BHA), betaine salicylate and Danish purple willow ferment balanced with cucumber and juniper berry extract. Get smoother skin in 1 week* with a clinical dail"
+      },
+      "recommended_action": "Strip marketing banner prefixes and uppercase promo preambles from seed narrative text before PDP shaping and downstream recall.",
+      "auto_fixable": false,
+      "last_extracted_at": "2026-03-25T05:18:47.289Z"
+    },
+    {
+      "seed_id": "eps_b8da2462ca364a91a220b7ce",
+      "domain": "olehenriksen.com",
+      "market": "US",
+      "canonical_url": "https://olehenriksen.com/products/best-brightest-mini-skincare-starter-set",
+      "anomaly_type": "seed_description_marketing_banner_prefix",
+      "severity": "review",
+      "evidence": {
+        "description_excerpt": "ALL OUR BEST FOR YOUR BRIGHTEST \nUnlock your best skin with this 5-piece skincare set. Truth Juice Daily Cleanser deeply cleanses. Glow2OH Dark Spot Toner diminishes the look of dark spots. Banana Bright Vitamin C Serum instantly brightens and firms over time. Banana Bright+ Eye "
+      },
+      "recommended_action": "Strip marketing banner prefixes and uppercase promo preambles from seed narrative text before PDP shaping and downstream recall.",
+      "auto_fixable": false,
+      "last_extracted_at": "2026-04-16T15:52:36.267Z"
+    }
+  ]
+}

@@ -1,0 +1,58 @@
+{
+  "generated_at": "2026-05-16T10:59:35.761Z",
+  "brand": "Olehenriksen",
+  "scanned": 74,
+  "failed_raw": 67,
+  "failed_adjusted": 67,
+  "pass_adjusted": 7,
+  "priority_counts": {
+    "P0": 36,
+    "P1": 31,
+    "pass": 7
+  },
+  "adjusted_failure_reason_counts": {
+    "product_intel_module_empty_or_blocked": 42,
+    "active_ingredients_expected_but_hidden": 30,
+    "extractor_failure": 15,
+    "price_mismatch": 12,
+    "content_media_leaked_into_gallery": 8,
+    "missing_pdp_identity": 2,
+    "broken_gallery_image": 1,
+    "live_pdp_probe_failed": 1
+  },
+  "root_cause_counts": {
+    "product_intel_gap": 42,
+    "pdp_shaping_issue": 31,
+    "extractor_issue": 15,
+    "image_asset_issue": 8,
+    "identity_graph_gap": 2
+  },
+  "recommended_action_counts": {
+    "build_reviewed_product_intel_and_alias_ext_sig_keys": 42,
+    "pdp_shaping_backfill_active_ingredients_from_seed_snapshot": 30,
+    "post_deploy_price_retest_then_targeted_offer_price_backfill_if_needed": 12,
+    "catalog_extractor_truth_check_no_product_urls": 8,
+    "rewrite_gallery_payload_to_exclude_content_media": 8,
+    "catalog_extractor_truth_check_extractor_probe_timeout": 7,
+    "no_action": 7,
+    "identity_merge_review_and_sync": 2,
+    "fresh_no_cache_probe_and_pdp_runtime_triage": 1,
+    "replace_or_drop_broken_gallery_asset_after_source_check": 1
+  },
+  "audit_adjustments": {
+    "lip_treatment_wrong_axis_false_positive_count": 3,
+    "note": "Pout Preserve peptide lip treatment products legitimately use shade axes; audit rule fixed in commit 333525bb."
+  },
+  "report_files": {
+    "seed_content_audit": "reports/pdp_quality_inventory_20260516/olehenriksen_seed_content_audit.json",
+    "seed_inventory": "reports/pdp_quality_inventory_20260516/olehenriksen_seed_inventory.json",
+    "pdp_quality_batches": [
+      "reports/pdp_quality_inventory_20260516/olehenriksen_pdp_quality_audit_offset0.json",
+      "reports/pdp_quality_inventory_20260516/olehenriksen_pdp_quality_audit_offset20.json",
+      "reports/pdp_quality_inventory_20260516/olehenriksen_pdp_quality_audit_offset40.json",
+      "reports/pdp_quality_inventory_20260516/olehenriksen_pdp_quality_audit_offset60.json"
+    ],
+    "rollup_csv": "reports/pdp_quality_inventory_20260516/olehenriksen_pdp_quality_rollup.csv",
+    "backfill_queue_csv": "reports/pdp_quality_inventory_20260516/olehenriksen_pdp_quality_backfill_queue.csv"
+  }
+}

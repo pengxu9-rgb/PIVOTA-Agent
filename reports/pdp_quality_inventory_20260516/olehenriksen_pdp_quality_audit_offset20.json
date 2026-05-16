@@ -1,0 +1,2582 @@
+{
+  "scanned": 20,
+  "failed": 17,
+  "failed_by_domain": [
+    {
+      "key": "olehenriksen.com",
+      "count": 17
+    }
+  ],
+  "failure_reason_counts": {
+    "price_mismatch": 3,
+    "active_ingredients_expected_but_hidden": 8,
+    "product_intel_module_empty_or_blocked": 9,
+    "content_media_leaked_into_gallery": 3,
+    "extractor_failure": 1,
+    "wrong_axis_for_category": 1,
+    "missing_pdp_identity": 1,
+    "live_pdp_probe_failed": 1
+  },
+  "failure_reason_domain_counts": [
+    {
+      "key": "olehenriksen.com::product_intel_module_empty_or_blocked",
+      "count": 9
+    },
+    {
+      "key": "olehenriksen.com::active_ingredients_expected_but_hidden",
+      "count": 8
+    },
+    {
+      "key": "olehenriksen.com::content_media_leaked_into_gallery",
+      "count": 3
+    },
+    {
+      "key": "olehenriksen.com::price_mismatch",
+      "count": 3
+    },
+    {
+      "key": "olehenriksen.com::extractor_failure",
+      "count": 1
+    },
+    {
+      "key": "olehenriksen.com::live_pdp_probe_failed",
+      "count": 1
+    },
+    {
+      "key": "olehenriksen.com::missing_pdp_identity",
+      "count": 1
+    },
+    {
+      "key": "olehenriksen.com::wrong_axis_for_category",
+      "count": 1
+    }
+  ],
+  "root_cause_domain_counts": [
+    {
+      "key": "olehenriksen.com::pdp_shaping_issue",
+      "count": 9
+    },
+    {
+      "key": "olehenriksen.com::product_intel_gap",
+      "count": 9
+    },
+    {
+      "key": "olehenriksen.com::image_asset_issue",
+      "count": 3
+    },
+    {
+      "key": "olehenriksen.com::extractor_issue",
+      "count": 1
+    },
+    {
+      "key": "olehenriksen.com::identity_graph_gap",
+      "count": 1
+    },
+    {
+      "key": "olehenriksen.com::variant_contract_issue",
+      "count": 1
+    }
+  ],
+  "results": [
+    {
+      "seed_id": "eps_9839cebc648c454d9a36290a",
+      "external_product_id": "ext_04a252d80129bd81d5df3bb3",
+      "market": "US",
+      "domain": "olehenriksen.com",
+      "canonical_url": "https://olehenriksen.com/products/gfh-glow-from-home-vitamin-c-duo",
+      "seed_gate": {
+        "status": "passed",
+        "findings_count": 0,
+        "blockers_count": 0
+      },
+      "extractor_gate": {
+        "status": "passed",
+        "failure_category": null,
+        "description_present": true,
+        "price_amount": 70,
+        "failure_reasons": []
+      },
+      "identity_gate": {
+        "status": "passed",
+        "product_group_id": "sig_ba9113bc48106fe04c58f05b",
+        "product_line_id": "pl_01bb79ccf5673ea8ccfadbce",
+        "sellable_item_group_id": "sig_ba9113bc48106fe04c58f05b",
+        "failure_reasons": []
+      },
+      "product_intel_gate": {
+        "status": "passed",
+        "has_product_intel": true,
+        "product_intel_status": "ready",
+        "failure_reasons": []
+      },
+      "live_pdp_gate": {
+        "status": "failed",
+        "price_amount": 62,
+        "has_overview": true,
+        "live_modules": [
+          "canonical",
+          "variant_selector",
+          "offers",
+          "product_intel",
+          "reviews_preview",
+          "similar",
+          "active_ingredients",
+          "ingredients_inci",
+          "how_to_use",
+          "product_overview",
+          "product_facts",
+          "supplemental_details",
+          "product_details",
+          "media_gallery",
+          "price_promo"
+        ],
+        "details_status": {
+          "section_count": 1,
+          "section_soup_count": 0,
+          "has_product_facts": false,
+          "seed_section_count": 3,
+          "compressed_structured_sections": false
+        },
+        "questions_status": {
+          "seed_faq_count": 0,
+          "live_question_count": 0
+        },
+        "active_ingredients_status": {
+          "expected": true,
+          "live_item_count": 2
+        },
+        "image_health": {
+          "scanned_count": 1,
+          "total_url_count": 1,
+          "broken_count": 0,
+          "broken_urls": [],
+          "skipped": false,
+          "truncated": false
+        },
+        "gallery_status": {
+          "image_count": 1,
+          "duplicate_count": 0,
+          "content_leak_count": 0,
+          "seed_content_image_count": 0
+        },
+        "snapshot_contract": {
+          "authoritative": true,
+          "legacy_fields_quarantined": true,
+          "replace_strategy": "replace_not_merge"
+        },
+        "image_url_identity_stripped_count": 0,
+        "image_url_identity_stripped_examples": [],
+        "failure_reasons": [
+          "price_mismatch"
+        ]
+      },
+      "similar_gate": {
+        "status": "skipped",
+        "similar_count": 0,
+        "card_highlight_missing_count": 0,
+        "exempt": false,
+        "skipped_reason": "similar_probe_disabled",
+        "failure_reasons": []
+      },
+      "variant_gate": {
+        "status": "passed",
+        "visible_variant_row_count": 1,
+        "identity_option_visible_count": 0,
+        "wrong_axis_for_category_count": 0,
+        "makeup_shade_missing_visual_count": 0,
+        "size_value_generic_axis_count": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "missing_variant_selector_from_size_evidence": [],
+          "identity_default_title_axis": [],
+          "size_siblings_split_product_line": []
+        },
+        "failure_reasons": []
+      },
+      "root_cause_classification": [],
+      "failure_reasons": [
+        "price_mismatch"
+      ]
+    },
+    {
+      "seed_id": "eps_4f982b5a8fb143ca8a9fea21",
+      "external_product_id": "ext_15dc879fbef3a9aa6d5dbd99",
+      "market": "US",
+      "domain": "olehenriksen.com",
+      "canonical_url": "https://olehenriksen.com/products/truth-serum-duo",
+      "seed_gate": {
+        "status": "passed",
+        "findings_count": 0,
+        "blockers_count": 0
+      },
+      "extractor_gate": {
+        "status": "passed",
+        "failure_category": null,
+        "description_present": true,
+        "price_amount": 94,
+        "failure_reasons": []
+      },
+      "identity_gate": {
+        "status": "passed",
+        "product_group_id": "sig_f02cf4b19da7692052273afc",
+        "product_line_id": "pl_48b30a57bf997c257324e05f",
+        "sellable_item_group_id": "sig_f02cf4b19da7692052273afc",
+        "failure_reasons": []
+      },
+      "product_intel_gate": {
+        "status": "passed",
+        "has_product_intel": true,
+        "product_intel_status": "ready",
+        "failure_reasons": []
+      },
+      "live_pdp_gate": {
+        "status": "failed",
+        "price_amount": 94,
+        "has_overview": true,
+        "live_modules": [
+          "canonical",
+          "variant_selector",
+          "offers",
+          "product_intel",
+          "reviews_preview",
+          "similar",
+          "active_ingredients",
+          "ingredients_inci",
+          "how_to_use",
+          "product_overview",
+          "product_facts",
+          "supplemental_details",
+          "product_details",
+          "media_gallery",
+          "price_promo"
+        ],
+        "details_status": {
+          "section_count": 1,
+          "section_soup_count": 0,
+          "has_product_facts": false,
+          "seed_section_count": 3,
+          "compressed_structured_sections": false
+        },
+        "questions_status": {
+          "seed_faq_count": 0,
+          "live_question_count": 0
+        },
+        "active_ingredients_status": {
+          "expected": true,
+          "live_item_count": 0
+        },
+        "image_health": {
+          "scanned_count": 1,
+          "total_url_count": 1,
+          "broken_count": 0,
+          "broken_urls": [],
+          "skipped": false,
+          "truncated": false
+        },
+        "gallery_status": {
+          "image_count": 1,
+          "duplicate_count": 0,
+          "content_leak_count": 0,
+          "seed_content_image_count": 0
+        },
+        "snapshot_contract": {
+          "authoritative": true,
+          "legacy_fields_quarantined": true,
+          "replace_strategy": "replace_not_merge"
+        },
+        "image_url_identity_stripped_count": 0,
+        "image_url_identity_stripped_examples": [],
+        "failure_reasons": [
+          "active_ingredients_expected_but_hidden"
+        ]
+      },
+      "similar_gate": {
+        "status": "skipped",
+        "similar_count": 0,
+        "card_highlight_missing_count": 0,
+        "exempt": false,
+        "skipped_reason": "similar_probe_disabled",
+        "failure_reasons": []
+      },
+      "variant_gate": {
+        "status": "passed",
+        "visible_variant_row_count": 1,
+        "identity_option_visible_count": 0,
+        "wrong_axis_for_category_count": 0,
+        "makeup_shade_missing_visual_count": 0,
+        "size_value_generic_axis_count": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "missing_variant_selector_from_size_evidence": [],
+          "identity_default_title_axis": [],
+          "size_siblings_split_product_line": []
+        },
+        "failure_reasons": []
+      },
+      "root_cause_classification": [
+        "pdp_shaping_issue"
+      ],
+      "failure_reasons": [
+        "active_ingredients_expected_but_hidden"
+      ]
+    },
+    {
+      "seed_id": "eps_7ae030010af54b199e11b8b2",
+      "external_product_id": "ext_bf290abedc8c5bd49e080100",
+      "market": "US",
+      "domain": "olehenriksen.com",
+      "canonical_url": "https://olehenriksen.com/products/glow2oh-dark-spot-toner-duo",
+      "seed_gate": {
+        "status": "passed",
+        "findings_count": 0,
+        "blockers_count": 0
+      },
+      "extractor_gate": {
+        "status": "passed",
+        "failure_category": null,
+        "description_present": true,
+        "price_amount": 59,
+        "failure_reasons": []
+      },
+      "identity_gate": {
+        "status": "passed",
+        "product_group_id": "sig_02b6a9d5079d90715a19db48",
+        "product_line_id": "pl_8b2fa2a14ff7ef05e8cb5a93",
+        "sellable_item_group_id": "sig_02b6a9d5079d90715a19db48",
+        "failure_reasons": []
+      },
+      "product_intel_gate": {
+        "status": "failed",
+        "has_product_intel": false,
+        "product_intel_status": "missing_blocked",
+        "failure_reasons": [
+          "product_intel_module_empty_or_blocked"
+        ]
+      },
+      "live_pdp_gate": {
+        "status": "failed",
+        "price_amount": 59,
+        "has_overview": true,
+        "live_modules": [
+          "canonical",
+          "variant_selector",
+          "offers",
+          "product_intel",
+          "reviews_preview",
+          "similar",
+          "active_ingredients",
+          "ingredients_inci",
+          "how_to_use",
+          "product_overview",
+          "product_facts",
+          "supplemental_details",
+          "product_details",
+          "media_gallery",
+          "price_promo"
+        ],
+        "details_status": {
+          "section_count": 1,
+          "section_soup_count": 0,
+          "has_product_facts": false,
+          "seed_section_count": 3,
+          "compressed_structured_sections": false
+        },
+        "questions_status": {
+          "seed_faq_count": 0,
+          "live_question_count": 0
+        },
+        "active_ingredients_status": {
+          "expected": true,
+          "live_item_count": 0
+        },
+        "image_health": {
+          "scanned_count": 2,
+          "total_url_count": 2,
+          "broken_count": 0,
+          "broken_urls": [],
+          "skipped": false,
+          "truncated": false
+        },
+        "gallery_status": {
+          "image_count": 2,
+          "duplicate_count": 0,
+          "content_leak_count": 0,
+          "seed_content_image_count": 0
+        },
+        "snapshot_contract": {
+          "authoritative": true,
+          "legacy_fields_quarantined": true,
+          "replace_strategy": "replace_not_merge"
+        },
+        "image_url_identity_stripped_count": 0,
+        "image_url_identity_stripped_examples": [],
+        "failure_reasons": [
+          "active_ingredients_expected_but_hidden"
+        ]
+      },
+      "similar_gate": {
+        "status": "skipped",
+        "similar_count": 0,
+        "card_highlight_missing_count": 0,
+        "exempt": false,
+        "skipped_reason": "similar_probe_disabled",
+        "failure_reasons": []
+      },
+      "variant_gate": {
+        "status": "passed",
+        "visible_variant_row_count": 1,
+        "identity_option_visible_count": 0,
+        "wrong_axis_for_category_count": 0,
+        "makeup_shade_missing_visual_count": 0,
+        "size_value_generic_axis_count": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "missing_variant_selector_from_size_evidence": [],
+          "identity_default_title_axis": [],
+          "size_siblings_split_product_line": []
+        },
+        "failure_reasons": []
+      },
+      "root_cause_classification": [
+        "pdp_shaping_issue",
+        "product_intel_gap"
+      ],
+      "failure_reasons": [
+        "product_intel_module_empty_or_blocked",
+        "active_ingredients_expected_but_hidden"
+      ]
+    },
+    {
+      "seed_id": "eps_c8958d88cc804b989ecc63ad",
+      "external_product_id": "ext_c4e42a45eeec3a28c4c1ebb8",
+      "market": "US",
+      "domain": "olehenriksen.com",
+      "canonical_url": "https://olehenriksen.com/products/deep-clean-scrub-duo",
+      "seed_gate": {
+        "status": "passed",
+        "findings_count": 0,
+        "blockers_count": 0
+      },
+      "extractor_gate": {
+        "status": "passed",
+        "failure_category": null,
+        "description_present": true,
+        "price_amount": 57,
+        "failure_reasons": []
+      },
+      "identity_gate": {
+        "status": "passed",
+        "product_group_id": "sig_b3476d366fff4e20762bcb22",
+        "product_line_id": "pl_19bb3b8a8d5309f152688013",
+        "sellable_item_group_id": "sig_b3476d366fff4e20762bcb22",
+        "failure_reasons": []
+      },
+      "product_intel_gate": {
+        "status": "failed",
+        "has_product_intel": false,
+        "product_intel_status": "missing_blocked",
+        "failure_reasons": [
+          "product_intel_module_empty_or_blocked"
+        ]
+      },
+      "live_pdp_gate": {
+        "status": "failed",
+        "price_amount": 57,
+        "has_overview": true,
+        "live_modules": [
+          "canonical",
+          "variant_selector",
+          "offers",
+          "product_intel",
+          "reviews_preview",
+          "similar",
+          "active_ingredients",
+          "ingredients_inci",
+          "how_to_use",
+          "product_overview",
+          "product_facts",
+          "supplemental_details",
+          "product_details",
+          "media_gallery",
+          "price_promo"
+        ],
+        "details_status": {
+          "section_count": 1,
+          "section_soup_count": 0,
+          "has_product_facts": false,
+          "seed_section_count": 3,
+          "compressed_structured_sections": false
+        },
+        "questions_status": {
+          "seed_faq_count": 0,
+          "live_question_count": 0
+        },
+        "active_ingredients_status": {
+          "expected": true,
+          "live_item_count": 0
+        },
+        "image_health": {
+          "scanned_count": 2,
+          "total_url_count": 2,
+          "broken_count": 0,
+          "broken_urls": [],
+          "skipped": false,
+          "truncated": false
+        },
+        "gallery_status": {
+          "image_count": 2,
+          "duplicate_count": 0,
+          "content_leak_count": 1,
+          "seed_content_image_count": 0
+        },
+        "snapshot_contract": {
+          "authoritative": true,
+          "legacy_fields_quarantined": true,
+          "replace_strategy": "replace_not_merge"
+        },
+        "image_url_identity_stripped_count": 0,
+        "image_url_identity_stripped_examples": [],
+        "failure_reasons": [
+          "active_ingredients_expected_but_hidden",
+          "content_media_leaked_into_gallery"
+        ]
+      },
+      "similar_gate": {
+        "status": "skipped",
+        "similar_count": 0,
+        "card_highlight_missing_count": 0,
+        "exempt": false,
+        "skipped_reason": "similar_probe_disabled",
+        "failure_reasons": []
+      },
+      "variant_gate": {
+        "status": "passed",
+        "visible_variant_row_count": 1,
+        "identity_option_visible_count": 0,
+        "wrong_axis_for_category_count": 0,
+        "makeup_shade_missing_visual_count": 0,
+        "size_value_generic_axis_count": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "missing_variant_selector_from_size_evidence": [],
+          "identity_default_title_axis": [],
+          "size_siblings_split_product_line": []
+        },
+        "failure_reasons": []
+      },
+      "root_cause_classification": [
+        "image_asset_issue",
+        "pdp_shaping_issue",
+        "product_intel_gap"
+      ],
+      "failure_reasons": [
+        "product_intel_module_empty_or_blocked",
+        "active_ingredients_expected_but_hidden",
+        "content_media_leaked_into_gallery"
+      ]
+    },
+    {
+      "seed_id": "eps_e0e515e7431240a2a9dd40d1",
+      "external_product_id": "ext_f7c6ceb555d34426941a97e5",
+      "market": "US",
+      "domain": "olehenriksen.com",
+      "canonical_url": "https://olehenriksen.com/products/strength-trainer-peptide-boost-moisturizer-duo",
+      "seed_gate": {
+        "status": "passed",
+        "findings_count": 0,
+        "blockers_count": 0
+      },
+      "extractor_gate": {
+        "status": "passed",
+        "failure_category": null,
+        "description_present": true,
+        "price_amount": 91,
+        "failure_reasons": []
+      },
+      "identity_gate": {
+        "status": "passed",
+        "product_group_id": "sig_8de9a0ed4075cac4075c6008",
+        "product_line_id": "pl_66217cfdd2ed9da1de4d5ef8",
+        "sellable_item_group_id": "sig_8de9a0ed4075cac4075c6008",
+        "failure_reasons": []
+      },
+      "product_intel_gate": {
+        "status": "failed",
+        "has_product_intel": false,
+        "product_intel_status": "missing_blocked",
+        "failure_reasons": [
+          "product_intel_module_empty_or_blocked"
+        ]
+      },
+      "live_pdp_gate": {
+        "status": "passed",
+        "price_amount": 91,
+        "has_overview": true,
+        "live_modules": [
+          "canonical",
+          "variant_selector",
+          "offers",
+          "product_intel",
+          "reviews_preview",
+          "similar",
+          "active_ingredients",
+          "ingredients_inci",
+          "how_to_use",
+          "product_overview",
+          "product_facts",
+          "supplemental_details",
+          "product_details",
+          "media_gallery",
+          "price_promo"
+        ],
+        "details_status": {
+          "section_count": 1,
+          "section_soup_count": 0,
+          "has_product_facts": false,
+          "seed_section_count": 3,
+          "compressed_structured_sections": false
+        },
+        "questions_status": {
+          "seed_faq_count": 0,
+          "live_question_count": 0
+        },
+        "active_ingredients_status": {
+          "expected": true,
+          "live_item_count": 5
+        },
+        "image_health": {
+          "scanned_count": 2,
+          "total_url_count": 2,
+          "broken_count": 0,
+          "broken_urls": [],
+          "skipped": false,
+          "truncated": false
+        },
+        "gallery_status": {
+          "image_count": 2,
+          "duplicate_count": 0,
+          "content_leak_count": 0,
+          "seed_content_image_count": 0
+        },
+        "snapshot_contract": {
+          "authoritative": true,
+          "legacy_fields_quarantined": true,
+          "replace_strategy": "replace_not_merge"
+        },
+        "image_url_identity_stripped_count": 0,
+        "image_url_identity_stripped_examples": [],
+        "failure_reasons": []
+      },
+      "similar_gate": {
+        "status": "skipped",
+        "similar_count": 0,
+        "card_highlight_missing_count": 0,
+        "exempt": false,
+        "skipped_reason": "similar_probe_disabled",
+        "failure_reasons": []
+      },
+      "variant_gate": {
+        "status": "passed",
+        "visible_variant_row_count": 1,
+        "identity_option_visible_count": 0,
+        "wrong_axis_for_category_count": 0,
+        "makeup_shade_missing_visual_count": 0,
+        "size_value_generic_axis_count": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "missing_variant_selector_from_size_evidence": [],
+          "identity_default_title_axis": [],
+          "size_siblings_split_product_line": []
+        },
+        "failure_reasons": []
+      },
+      "root_cause_classification": [
+        "product_intel_gap"
+      ],
+      "failure_reasons": [
+        "product_intel_module_empty_or_blocked"
+      ]
+    },
+    {
+      "seed_id": "eps_d54514e5e46e4fe9916c9c09",
+      "external_product_id": "ext_5e6dc9677d020497590eff4a",
+      "market": "US",
+      "domain": "olehenriksen.com",
+      "canonical_url": "https://olehenriksen.com/products/moisture-barrier-duo-strength-trainer-moisturizer-hydrabarrier-face-oil",
+      "seed_gate": {
+        "status": "passed",
+        "findings_count": 0,
+        "blockers_count": 0
+      },
+      "extractor_gate": {
+        "status": "passed",
+        "failure_category": null,
+        "description_present": true,
+        "price_amount": 90,
+        "failure_reasons": []
+      },
+      "identity_gate": {
+        "status": "passed",
+        "product_group_id": "sig_7ddfe1fe7a08dde4207d8897",
+        "product_line_id": "pl_eb3c328c837398d784eeb6af",
+        "sellable_item_group_id": "sig_7ddfe1fe7a08dde4207d8897",
+        "failure_reasons": []
+      },
+      "product_intel_gate": {
+        "status": "failed",
+        "has_product_intel": false,
+        "product_intel_status": "missing_blocked",
+        "failure_reasons": [
+          "product_intel_module_empty_or_blocked"
+        ]
+      },
+      "live_pdp_gate": {
+        "status": "passed",
+        "price_amount": 90,
+        "has_overview": true,
+        "live_modules": [
+          "canonical",
+          "variant_selector",
+          "offers",
+          "product_intel",
+          "reviews_preview",
+          "similar",
+          "active_ingredients",
+          "ingredients_inci",
+          "how_to_use",
+          "product_overview",
+          "product_facts",
+          "supplemental_details",
+          "product_details",
+          "media_gallery",
+          "price_promo"
+        ],
+        "details_status": {
+          "section_count": 1,
+          "section_soup_count": 0,
+          "has_product_facts": false,
+          "seed_section_count": 3,
+          "compressed_structured_sections": false
+        },
+        "questions_status": {
+          "seed_faq_count": 0,
+          "live_question_count": 0
+        },
+        "active_ingredients_status": {
+          "expected": true,
+          "live_item_count": 6
+        },
+        "image_health": {
+          "scanned_count": 2,
+          "total_url_count": 2,
+          "broken_count": 0,
+          "broken_urls": [],
+          "skipped": false,
+          "truncated": false
+        },
+        "gallery_status": {
+          "image_count": 2,
+          "duplicate_count": 0,
+          "content_leak_count": 0,
+          "seed_content_image_count": 0
+        },
+        "snapshot_contract": {
+          "authoritative": true,
+          "legacy_fields_quarantined": true,
+          "replace_strategy": "replace_not_merge"
+        },
+        "image_url_identity_stripped_count": 0,
+        "image_url_identity_stripped_examples": [],
+        "failure_reasons": []
+      },
+      "similar_gate": {
+        "status": "skipped",
+        "similar_count": 0,
+        "card_highlight_missing_count": 0,
+        "exempt": false,
+        "skipped_reason": "similar_probe_disabled",
+        "failure_reasons": []
+      },
+      "variant_gate": {
+        "status": "passed",
+        "visible_variant_row_count": 1,
+        "identity_option_visible_count": 0,
+        "wrong_axis_for_category_count": 0,
+        "makeup_shade_missing_visual_count": 0,
+        "size_value_generic_axis_count": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "missing_variant_selector_from_size_evidence": [],
+          "identity_default_title_axis": [],
+          "size_siblings_split_product_line": []
+        },
+        "failure_reasons": []
+      },
+      "root_cause_classification": [
+        "product_intel_gap"
+      ],
+      "failure_reasons": [
+        "product_intel_module_empty_or_blocked"
+      ]
+    },
+    {
+      "seed_id": "eps_2c0c47bd14af496184d7b178",
+      "external_product_id": "ext_50024e49227406f6c14b1f95",
+      "market": "US",
+      "domain": "olehenriksen.com",
+      "canonical_url": "https://olehenriksen.com/products/banana-bright-illuminating-eye-duo",
+      "seed_gate": {
+        "status": "passed",
+        "findings_count": 0,
+        "blockers_count": 0
+      },
+      "extractor_gate": {
+        "status": "passed",
+        "failure_category": null,
+        "description_present": true,
+        "price_amount": 57,
+        "failure_reasons": []
+      },
+      "identity_gate": {
+        "status": "passed",
+        "product_group_id": "sig_8d1fb994855dea398dc07f66",
+        "product_line_id": "pl_9cad176352cd91714a95c035",
+        "sellable_item_group_id": "sig_8d1fb994855dea398dc07f66",
+        "failure_reasons": []
+      },
+      "product_intel_gate": {
+        "status": "passed",
+        "has_product_intel": true,
+        "product_intel_status": "ready",
+        "failure_reasons": []
+      },
+      "live_pdp_gate": {
+        "status": "failed",
+        "price_amount": 57,
+        "has_overview": true,
+        "live_modules": [
+          "canonical",
+          "variant_selector",
+          "offers",
+          "product_intel",
+          "reviews_preview",
+          "similar",
+          "how_to_use",
+          "product_overview",
+          "product_facts",
+          "supplemental_details",
+          "product_details",
+          "media_gallery",
+          "price_promo",
+          "usage_safety"
+        ],
+        "details_status": {
+          "section_count": 1,
+          "section_soup_count": 0,
+          "has_product_facts": false,
+          "seed_section_count": 3,
+          "compressed_structured_sections": false
+        },
+        "questions_status": {
+          "seed_faq_count": 0,
+          "live_question_count": 0
+        },
+        "active_ingredients_status": {
+          "expected": true,
+          "live_item_count": 0
+        },
+        "image_health": {
+          "scanned_count": 2,
+          "total_url_count": 2,
+          "broken_count": 0,
+          "broken_urls": [],
+          "skipped": false,
+          "truncated": false
+        },
+        "gallery_status": {
+          "image_count": 2,
+          "duplicate_count": 0,
+          "content_leak_count": 0,
+          "seed_content_image_count": 0
+        },
+        "snapshot_contract": {
+          "authoritative": true,
+          "legacy_fields_quarantined": true,
+          "replace_strategy": "replace_not_merge"
+        },
+        "image_url_identity_stripped_count": 0,
+        "image_url_identity_stripped_examples": [],
+        "failure_reasons": [
+          "active_ingredients_expected_but_hidden"
+        ]
+      },
+      "similar_gate": {
+        "status": "skipped",
+        "similar_count": 0,
+        "card_highlight_missing_count": 0,
+        "exempt": false,
+        "skipped_reason": "similar_probe_disabled",
+        "failure_reasons": []
+      },
+      "variant_gate": {
+        "status": "passed",
+        "visible_variant_row_count": 1,
+        "identity_option_visible_count": 0,
+        "wrong_axis_for_category_count": 0,
+        "makeup_shade_missing_visual_count": 0,
+        "size_value_generic_axis_count": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "missing_variant_selector_from_size_evidence": [],
+          "identity_default_title_axis": [],
+          "size_siblings_split_product_line": []
+        },
+        "failure_reasons": []
+      },
+      "root_cause_classification": [
+        "pdp_shaping_issue"
+      ],
+      "failure_reasons": [
+        "active_ingredients_expected_but_hidden"
+      ]
+    },
+    {
+      "seed_id": "eps_8054209f436c4007a559072e",
+      "external_product_id": "ext_0b0480947c4257b036c48d02",
+      "market": "US",
+      "domain": "olehenriksen.com",
+      "canonical_url": "https://olehenriksen.com/products/glow-cycle-bundle-full-size-daily-routine",
+      "seed_gate": {
+        "status": "passed",
+        "findings_count": 0,
+        "blockers_count": 0
+      },
+      "extractor_gate": {
+        "status": "passed",
+        "failure_category": null,
+        "description_present": true,
+        "price_amount": 149,
+        "failure_reasons": []
+      },
+      "identity_gate": {
+        "status": "passed",
+        "product_group_id": "sig_eed60c7bea182899d20799f5",
+        "product_line_id": "pl_9dcd04b1190459b14261f628",
+        "sellable_item_group_id": "sig_eed60c7bea182899d20799f5",
+        "failure_reasons": []
+      },
+      "product_intel_gate": {
+        "status": "passed",
+        "has_product_intel": true,
+        "product_intel_status": "ready",
+        "failure_reasons": []
+      },
+      "live_pdp_gate": {
+        "status": "failed",
+        "price_amount": 149,
+        "has_overview": true,
+        "live_modules": [
+          "canonical",
+          "variant_selector",
+          "offers",
+          "product_intel",
+          "reviews_preview",
+          "similar",
+          "how_to_use",
+          "product_overview",
+          "product_facts",
+          "supplemental_details",
+          "product_details",
+          "media_gallery",
+          "price_promo"
+        ],
+        "details_status": {
+          "section_count": 1,
+          "section_soup_count": 0,
+          "has_product_facts": false,
+          "seed_section_count": 3,
+          "compressed_structured_sections": false
+        },
+        "questions_status": {
+          "seed_faq_count": 0,
+          "live_question_count": 0
+        },
+        "active_ingredients_status": {
+          "expected": true,
+          "live_item_count": 0
+        },
+        "image_health": {
+          "scanned_count": 5,
+          "total_url_count": 6,
+          "broken_count": 0,
+          "broken_urls": [],
+          "skipped": false,
+          "truncated": true
+        },
+        "gallery_status": {
+          "image_count": 6,
+          "duplicate_count": 0,
+          "content_leak_count": 0,
+          "seed_content_image_count": 0
+        },
+        "snapshot_contract": {
+          "authoritative": true,
+          "legacy_fields_quarantined": true,
+          "replace_strategy": "replace_not_merge"
+        },
+        "image_url_identity_stripped_count": 0,
+        "image_url_identity_stripped_examples": [],
+        "failure_reasons": [
+          "active_ingredients_expected_but_hidden"
+        ]
+      },
+      "similar_gate": {
+        "status": "skipped",
+        "similar_count": 0,
+        "card_highlight_missing_count": 0,
+        "exempt": false,
+        "skipped_reason": "similar_probe_disabled",
+        "failure_reasons": []
+      },
+      "variant_gate": {
+        "status": "passed",
+        "visible_variant_row_count": 1,
+        "identity_option_visible_count": 0,
+        "wrong_axis_for_category_count": 0,
+        "makeup_shade_missing_visual_count": 0,
+        "size_value_generic_axis_count": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "missing_variant_selector_from_size_evidence": [],
+          "identity_default_title_axis": [],
+          "size_siblings_split_product_line": []
+        },
+        "failure_reasons": []
+      },
+      "root_cause_classification": [
+        "pdp_shaping_issue"
+      ],
+      "failure_reasons": [
+        "active_ingredients_expected_but_hidden"
+      ]
+    },
+    {
+      "seed_id": "eps_f664dbfe8a4942a6af9600c1",
+      "external_product_id": "ext_4e155bb184ec35f3cd7827e3",
+      "market": "US",
+      "domain": "olehenriksen.com",
+      "canonical_url": "https://olehenriksen.com/products/banana-bright-glow-moisturizer",
+      "seed_gate": {
+        "status": "passed",
+        "findings_count": 0,
+        "blockers_count": 0
+      },
+      "extractor_gate": {
+        "status": "passed",
+        "failure_category": null,
+        "description_present": true,
+        "price_amount": 54,
+        "failure_reasons": []
+      },
+      "identity_gate": {
+        "status": "passed",
+        "product_group_id": "sig_dd132423fa070a128d637ab5",
+        "product_line_id": "pl_d7413c9baa7cc942abce7975",
+        "sellable_item_group_id": "sig_dd132423fa070a128d637ab5",
+        "failure_reasons": []
+      },
+      "product_intel_gate": {
+        "status": "failed",
+        "has_product_intel": false,
+        "product_intel_status": "missing_blocked",
+        "failure_reasons": [
+          "product_intel_module_empty_or_blocked"
+        ]
+      },
+      "live_pdp_gate": {
+        "status": "passed",
+        "price_amount": 54,
+        "has_overview": true,
+        "live_modules": [
+          "canonical",
+          "variant_selector",
+          "offers",
+          "product_intel",
+          "reviews_preview",
+          "similar",
+          "active_ingredients",
+          "ingredients_inci",
+          "how_to_use",
+          "product_overview",
+          "product_facts",
+          "supplemental_details",
+          "product_details",
+          "media_gallery",
+          "price_promo"
+        ],
+        "details_status": {
+          "section_count": 4,
+          "section_soup_count": 0,
+          "has_product_facts": false,
+          "seed_section_count": 4,
+          "compressed_structured_sections": false
+        },
+        "questions_status": {
+          "seed_faq_count": 0,
+          "live_question_count": 0
+        },
+        "active_ingredients_status": {
+          "expected": false,
+          "live_item_count": 0
+        },
+        "image_health": {
+          "scanned_count": 3,
+          "total_url_count": 3,
+          "broken_count": 0,
+          "broken_urls": [],
+          "skipped": false,
+          "truncated": false
+        },
+        "gallery_status": {
+          "image_count": 3,
+          "duplicate_count": 0,
+          "content_leak_count": 0,
+          "seed_content_image_count": 0
+        },
+        "snapshot_contract": {
+          "authoritative": true,
+          "legacy_fields_quarantined": true,
+          "replace_strategy": "replace_not_merge"
+        },
+        "image_url_identity_stripped_count": 0,
+        "image_url_identity_stripped_examples": [],
+        "failure_reasons": []
+      },
+      "similar_gate": {
+        "status": "skipped",
+        "similar_count": 0,
+        "card_highlight_missing_count": 0,
+        "exempt": false,
+        "skipped_reason": "similar_probe_disabled",
+        "failure_reasons": []
+      },
+      "variant_gate": {
+        "status": "passed",
+        "visible_variant_row_count": 1,
+        "identity_option_visible_count": 0,
+        "wrong_axis_for_category_count": 0,
+        "makeup_shade_missing_visual_count": 0,
+        "size_value_generic_axis_count": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "missing_variant_selector_from_size_evidence": [],
+          "identity_default_title_axis": [],
+          "size_siblings_split_product_line": []
+        },
+        "failure_reasons": []
+      },
+      "root_cause_classification": [
+        "product_intel_gap"
+      ],
+      "failure_reasons": [
+        "product_intel_module_empty_or_blocked"
+      ]
+    },
+    {
+      "seed_id": "eps_703358b9a58f46389c84c89d",
+      "external_product_id": "ext_5e536ca3758e4c3549cf518f",
+      "market": "US",
+      "domain": "olehenriksen.com",
+      "canonical_url": "https://olehenriksen.com/products/banana_bright_bundle",
+      "seed_gate": {
+        "status": "passed",
+        "findings_count": 0,
+        "blockers_count": 0
+      },
+      "extractor_gate": {
+        "status": "passed",
+        "failure_category": null,
+        "description_present": true,
+        "price_amount": 77,
+        "failure_reasons": []
+      },
+      "identity_gate": {
+        "status": "passed",
+        "product_group_id": "sig_fc8c25eff27900b1fb3c170b",
+        "product_line_id": "pl_5516e2bd3d783f231d47430d",
+        "sellable_item_group_id": "sig_fc8c25eff27900b1fb3c170b",
+        "failure_reasons": []
+      },
+      "product_intel_gate": {
+        "status": "passed",
+        "has_product_intel": true,
+        "product_intel_status": "ready",
+        "failure_reasons": []
+      },
+      "live_pdp_gate": {
+        "status": "passed",
+        "price_amount": 77,
+        "has_overview": true,
+        "live_modules": [
+          "canonical",
+          "variant_selector",
+          "offers",
+          "product_intel",
+          "reviews_preview",
+          "similar",
+          "active_ingredients",
+          "ingredients_inci",
+          "how_to_use",
+          "product_overview",
+          "product_facts",
+          "supplemental_details",
+          "product_details",
+          "media_gallery",
+          "price_promo"
+        ],
+        "details_status": {
+          "section_count": 1,
+          "section_soup_count": 0,
+          "has_product_facts": false,
+          "seed_section_count": 3,
+          "compressed_structured_sections": false
+        },
+        "questions_status": {
+          "seed_faq_count": 0,
+          "live_question_count": 0
+        },
+        "active_ingredients_status": {
+          "expected": true,
+          "live_item_count": 1
+        },
+        "image_health": {
+          "scanned_count": 2,
+          "total_url_count": 2,
+          "broken_count": 0,
+          "broken_urls": [],
+          "skipped": false,
+          "truncated": false
+        },
+        "gallery_status": {
+          "image_count": 2,
+          "duplicate_count": 0,
+          "content_leak_count": 0,
+          "seed_content_image_count": 0
+        },
+        "snapshot_contract": {
+          "authoritative": true,
+          "legacy_fields_quarantined": true,
+          "replace_strategy": "replace_not_merge"
+        },
+        "image_url_identity_stripped_count": 0,
+        "image_url_identity_stripped_examples": [],
+        "failure_reasons": []
+      },
+      "similar_gate": {
+        "status": "skipped",
+        "similar_count": 0,
+        "card_highlight_missing_count": 0,
+        "exempt": false,
+        "skipped_reason": "similar_probe_disabled",
+        "failure_reasons": []
+      },
+      "variant_gate": {
+        "status": "passed",
+        "visible_variant_row_count": 1,
+        "identity_option_visible_count": 0,
+        "wrong_axis_for_category_count": 0,
+        "makeup_shade_missing_visual_count": 0,
+        "size_value_generic_axis_count": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "missing_variant_selector_from_size_evidence": [],
+          "identity_default_title_axis": [],
+          "size_siblings_split_product_line": []
+        },
+        "failure_reasons": []
+      },
+      "root_cause_classification": [],
+      "failure_reasons": []
+    },
+    {
+      "seed_id": "eps_347bbb6e801847a79e337fd5",
+      "external_product_id": "ext_5676831fca6caee579fa9095",
+      "market": "US",
+      "domain": "olehenriksen.com",
+      "canonical_url": "https://olehenriksen.com/products/hangover-hack",
+      "seed_gate": {
+        "status": "passed",
+        "findings_count": 0,
+        "blockers_count": 0
+      },
+      "extractor_gate": {
+        "status": "passed",
+        "failure_category": null,
+        "description_present": true,
+        "price_amount": 95,
+        "failure_reasons": []
+      },
+      "identity_gate": {
+        "status": "passed",
+        "product_group_id": "sig_c7aebe604173b5a6561968d3",
+        "product_line_id": "pl_26fc5649cc1ca9681f48e87f",
+        "sellable_item_group_id": "sig_c7aebe604173b5a6561968d3",
+        "failure_reasons": []
+      },
+      "product_intel_gate": {
+        "status": "failed",
+        "has_product_intel": false,
+        "product_intel_status": "missing_blocked",
+        "failure_reasons": [
+          "product_intel_module_empty_or_blocked"
+        ]
+      },
+      "live_pdp_gate": {
+        "status": "failed",
+        "price_amount": 86,
+        "has_overview": true,
+        "live_modules": [
+          "canonical",
+          "variant_selector",
+          "offers",
+          "product_intel",
+          "reviews_preview",
+          "similar",
+          "how_to_use",
+          "product_overview",
+          "product_facts",
+          "supplemental_details",
+          "product_details",
+          "media_gallery",
+          "price_promo",
+          "usage_safety"
+        ],
+        "details_status": {
+          "section_count": 1,
+          "section_soup_count": 0,
+          "has_product_facts": false,
+          "seed_section_count": 3,
+          "compressed_structured_sections": false
+        },
+        "questions_status": {
+          "seed_faq_count": 0,
+          "live_question_count": 0
+        },
+        "active_ingredients_status": {
+          "expected": true,
+          "live_item_count": 0
+        },
+        "image_health": {
+          "scanned_count": 4,
+          "total_url_count": 4,
+          "broken_count": 0,
+          "broken_urls": [],
+          "skipped": false,
+          "truncated": false
+        },
+        "gallery_status": {
+          "image_count": 4,
+          "duplicate_count": 0,
+          "content_leak_count": 0,
+          "seed_content_image_count": 0
+        },
+        "snapshot_contract": {
+          "authoritative": true,
+          "legacy_fields_quarantined": true,
+          "replace_strategy": "replace_not_merge"
+        },
+        "image_url_identity_stripped_count": 0,
+        "image_url_identity_stripped_examples": [],
+        "failure_reasons": [
+          "price_mismatch",
+          "active_ingredients_expected_but_hidden"
+        ]
+      },
+      "similar_gate": {
+        "status": "skipped",
+        "similar_count": 0,
+        "card_highlight_missing_count": 0,
+        "exempt": false,
+        "skipped_reason": "similar_probe_disabled",
+        "failure_reasons": []
+      },
+      "variant_gate": {
+        "status": "passed",
+        "visible_variant_row_count": 1,
+        "identity_option_visible_count": 0,
+        "wrong_axis_for_category_count": 0,
+        "makeup_shade_missing_visual_count": 0,
+        "size_value_generic_axis_count": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "missing_variant_selector_from_size_evidence": [],
+          "identity_default_title_axis": [],
+          "size_siblings_split_product_line": []
+        },
+        "failure_reasons": []
+      },
+      "root_cause_classification": [
+        "pdp_shaping_issue",
+        "product_intel_gap"
+      ],
+      "failure_reasons": [
+        "product_intel_module_empty_or_blocked",
+        "price_mismatch",
+        "active_ingredients_expected_but_hidden"
+      ]
+    },
+    {
+      "seed_id": "eps_f626c5beec2540ae95f67857",
+      "external_product_id": "ext_0d5bf002df9e9a55b20a418f",
+      "market": "US",
+      "domain": "olehenriksen.com",
+      "canonical_url": "https://olehenriksen.com/products/partners-in-peptides-hydrating-duo",
+      "seed_gate": {
+        "status": "passed",
+        "findings_count": 0,
+        "blockers_count": 0
+      },
+      "extractor_gate": {
+        "status": "passed",
+        "failure_category": null,
+        "description_present": true,
+        "price_amount": 70,
+        "failure_reasons": []
+      },
+      "identity_gate": {
+        "status": "passed",
+        "product_group_id": "sig_af6544a052cd982ae61d8087",
+        "product_line_id": "pl_f24dd5855df0f9a09f609f6a",
+        "sellable_item_group_id": "sig_af6544a052cd982ae61d8087",
+        "failure_reasons": []
+      },
+      "product_intel_gate": {
+        "status": "passed",
+        "has_product_intel": true,
+        "product_intel_status": "ready",
+        "failure_reasons": []
+      },
+      "live_pdp_gate": {
+        "status": "failed",
+        "price_amount": 70,
+        "has_overview": true,
+        "live_modules": [
+          "canonical",
+          "variant_selector",
+          "offers",
+          "product_intel",
+          "reviews_preview",
+          "similar",
+          "how_to_use",
+          "product_overview",
+          "product_facts",
+          "supplemental_details",
+          "product_details",
+          "media_gallery",
+          "price_promo"
+        ],
+        "details_status": {
+          "section_count": 1,
+          "section_soup_count": 0,
+          "has_product_facts": false,
+          "seed_section_count": 3,
+          "compressed_structured_sections": false
+        },
+        "questions_status": {
+          "seed_faq_count": 0,
+          "live_question_count": 0
+        },
+        "active_ingredients_status": {
+          "expected": true,
+          "live_item_count": 0
+        },
+        "image_health": {
+          "scanned_count": 2,
+          "total_url_count": 2,
+          "broken_count": 0,
+          "broken_urls": [],
+          "skipped": false,
+          "truncated": false
+        },
+        "gallery_status": {
+          "image_count": 2,
+          "duplicate_count": 0,
+          "content_leak_count": 0,
+          "seed_content_image_count": 0
+        },
+        "snapshot_contract": {
+          "authoritative": true,
+          "legacy_fields_quarantined": true,
+          "replace_strategy": "replace_not_merge"
+        },
+        "image_url_identity_stripped_count": 0,
+        "image_url_identity_stripped_examples": [],
+        "failure_reasons": [
+          "active_ingredients_expected_but_hidden"
+        ]
+      },
+      "similar_gate": {
+        "status": "skipped",
+        "similar_count": 0,
+        "card_highlight_missing_count": 0,
+        "exempt": false,
+        "skipped_reason": "similar_probe_disabled",
+        "failure_reasons": []
+      },
+      "variant_gate": {
+        "status": "passed",
+        "visible_variant_row_count": 1,
+        "identity_option_visible_count": 0,
+        "wrong_axis_for_category_count": 0,
+        "makeup_shade_missing_visual_count": 0,
+        "size_value_generic_axis_count": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "missing_variant_selector_from_size_evidence": [],
+          "identity_default_title_axis": [],
+          "size_siblings_split_product_line": []
+        },
+        "failure_reasons": []
+      },
+      "root_cause_classification": [
+        "pdp_shaping_issue"
+      ],
+      "failure_reasons": [
+        "active_ingredients_expected_but_hidden"
+      ]
+    },
+    {
+      "seed_id": "eps_cb202ff476974c2e9e678a85",
+      "external_product_id": "ext_4729e70c78478cb6a57aa177",
+      "market": "US",
+      "domain": "olehenriksen.com",
+      "canonical_url": "https://olehenriksen.com/products/apres-skin-multi-use-rich-rescue-cream",
+      "seed_gate": {
+        "status": "passed",
+        "findings_count": 0,
+        "blockers_count": 0
+      },
+      "extractor_gate": {
+        "status": "passed",
+        "failure_category": null,
+        "description_present": true,
+        "price_amount": 48,
+        "failure_reasons": []
+      },
+      "identity_gate": {
+        "status": "passed",
+        "product_group_id": "sig_04d85d3527be3ca040cb2590",
+        "product_line_id": "pl_25167432a9c8340ee798a871",
+        "sellable_item_group_id": "sig_04d85d3527be3ca040cb2590",
+        "failure_reasons": []
+      },
+      "product_intel_gate": {
+        "status": "passed",
+        "has_product_intel": true,
+        "product_intel_status": "ready",
+        "failure_reasons": []
+      },
+      "live_pdp_gate": {
+        "status": "passed",
+        "price_amount": 48,
+        "has_overview": true,
+        "live_modules": [
+          "canonical",
+          "variant_selector",
+          "offers",
+          "product_intel",
+          "reviews_preview",
+          "similar",
+          "active_ingredients",
+          "ingredients_inci",
+          "how_to_use",
+          "product_overview",
+          "product_facts",
+          "supplemental_details",
+          "product_details",
+          "media_gallery",
+          "price_promo"
+        ],
+        "details_status": {
+          "section_count": 3,
+          "section_soup_count": 0,
+          "has_product_facts": false,
+          "seed_section_count": 3,
+          "compressed_structured_sections": false
+        },
+        "questions_status": {
+          "seed_faq_count": 0,
+          "live_question_count": 0
+        },
+        "active_ingredients_status": {
+          "expected": true,
+          "live_item_count": 4
+        },
+        "image_health": {
+          "scanned_count": 3,
+          "total_url_count": 3,
+          "broken_count": 0,
+          "broken_urls": [],
+          "skipped": false,
+          "truncated": false
+        },
+        "gallery_status": {
+          "image_count": 3,
+          "duplicate_count": 0,
+          "content_leak_count": 0,
+          "seed_content_image_count": 0
+        },
+        "snapshot_contract": {
+          "authoritative": true,
+          "legacy_fields_quarantined": true,
+          "replace_strategy": "replace_not_merge"
+        },
+        "image_url_identity_stripped_count": 0,
+        "image_url_identity_stripped_examples": [],
+        "failure_reasons": []
+      },
+      "similar_gate": {
+        "status": "skipped",
+        "similar_count": 0,
+        "card_highlight_missing_count": 0,
+        "exempt": false,
+        "skipped_reason": "similar_probe_disabled",
+        "failure_reasons": []
+      },
+      "variant_gate": {
+        "status": "passed",
+        "visible_variant_row_count": 1,
+        "identity_option_visible_count": 0,
+        "wrong_axis_for_category_count": 0,
+        "makeup_shade_missing_visual_count": 0,
+        "size_value_generic_axis_count": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "missing_variant_selector_from_size_evidence": [],
+          "identity_default_title_axis": [],
+          "size_siblings_split_product_line": []
+        },
+        "failure_reasons": []
+      },
+      "root_cause_classification": [],
+      "failure_reasons": []
+    },
+    {
+      "seed_id": "eps_39a38662cae941dea88793de",
+      "external_product_id": "ext_252dc09e43cca906ab852701",
+      "market": "US",
+      "domain": "olehenriksen.com",
+      "canonical_url": "https://olehenriksen.com/products/renew-rescue-bundle",
+      "seed_gate": {
+        "status": "passed",
+        "findings_count": 0,
+        "blockers_count": 0
+      },
+      "extractor_gate": {
+        "status": "passed",
+        "failure_category": null,
+        "description_present": true,
+        "price_amount": 134,
+        "failure_reasons": []
+      },
+      "identity_gate": {
+        "status": "passed",
+        "product_group_id": "sig_8c32e3cced1a5f581e3808a9",
+        "product_line_id": "pl_0689a3cf381f9a195ddba58e",
+        "sellable_item_group_id": "sig_8c32e3cced1a5f581e3808a9",
+        "failure_reasons": []
+      },
+      "product_intel_gate": {
+        "status": "passed",
+        "has_product_intel": true,
+        "product_intel_status": "ready",
+        "failure_reasons": []
+      },
+      "live_pdp_gate": {
+        "status": "passed",
+        "price_amount": 134,
+        "has_overview": true,
+        "live_modules": [
+          "canonical",
+          "variant_selector",
+          "offers",
+          "product_intel",
+          "reviews_preview",
+          "similar",
+          "active_ingredients",
+          "ingredients_inci",
+          "how_to_use",
+          "product_overview",
+          "product_facts",
+          "supplemental_details",
+          "product_details",
+          "price_promo"
+        ],
+        "details_status": {
+          "section_count": 1,
+          "section_soup_count": 0,
+          "has_product_facts": false,
+          "seed_section_count": 0,
+          "compressed_structured_sections": false
+        },
+        "questions_status": {
+          "seed_faq_count": 0,
+          "live_question_count": 0
+        },
+        "active_ingredients_status": {
+          "expected": false,
+          "live_item_count": 0
+        },
+        "image_health": {
+          "scanned_count": 1,
+          "total_url_count": 1,
+          "broken_count": 0,
+          "broken_urls": [],
+          "skipped": false,
+          "truncated": false
+        },
+        "gallery_status": {
+          "image_count": 1,
+          "duplicate_count": 0,
+          "content_leak_count": 0,
+          "seed_content_image_count": 0
+        },
+        "snapshot_contract": {
+          "authoritative": true,
+          "legacy_fields_quarantined": true,
+          "replace_strategy": "replace_not_merge"
+        },
+        "image_url_identity_stripped_count": 0,
+        "image_url_identity_stripped_examples": [],
+        "failure_reasons": []
+      },
+      "similar_gate": {
+        "status": "skipped",
+        "similar_count": 0,
+        "card_highlight_missing_count": 0,
+        "exempt": false,
+        "skipped_reason": "similar_probe_disabled",
+        "failure_reasons": []
+      },
+      "variant_gate": {
+        "status": "passed",
+        "visible_variant_row_count": 1,
+        "identity_option_visible_count": 0,
+        "wrong_axis_for_category_count": 0,
+        "makeup_shade_missing_visual_count": 0,
+        "size_value_generic_axis_count": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "missing_variant_selector_from_size_evidence": [],
+          "identity_default_title_axis": [],
+          "size_siblings_split_product_line": []
+        },
+        "failure_reasons": []
+      },
+      "root_cause_classification": [],
+      "failure_reasons": []
+    },
+    {
+      "seed_id": "eps_6248500188a4422784493e8c",
+      "external_product_id": "ext_99fa171e954291717eaee641",
+      "market": "US",
+      "domain": "olehenriksen.com",
+      "canonical_url": "https://olehenriksen.com/products/renew-strengthen-nighttime-skincare-routine",
+      "seed_gate": {
+        "status": "passed",
+        "findings_count": 0,
+        "blockers_count": 0
+      },
+      "extractor_gate": {
+        "status": "passed",
+        "failure_category": null,
+        "description_present": true,
+        "price_amount": 154,
+        "failure_reasons": []
+      },
+      "identity_gate": {
+        "status": "passed",
+        "product_group_id": "sig_87603722f7f71efe42911ebd",
+        "product_line_id": "pl_d36858a0d201678b95869e0c",
+        "sellable_item_group_id": "sig_87603722f7f71efe42911ebd",
+        "failure_reasons": []
+      },
+      "product_intel_gate": {
+        "status": "failed",
+        "has_product_intel": false,
+        "product_intel_status": "missing_blocked",
+        "failure_reasons": [
+          "product_intel_module_empty_or_blocked"
+        ]
+      },
+      "live_pdp_gate": {
+        "status": "passed",
+        "price_amount": 154,
+        "has_overview": true,
+        "live_modules": [
+          "canonical",
+          "variant_selector",
+          "offers",
+          "product_intel",
+          "reviews_preview",
+          "similar",
+          "how_to_use",
+          "product_overview",
+          "product_facts",
+          "supplemental_details",
+          "product_details",
+          "media_gallery",
+          "price_promo"
+        ],
+        "details_status": {
+          "section_count": 1,
+          "section_soup_count": 0,
+          "has_product_facts": false,
+          "seed_section_count": 0,
+          "compressed_structured_sections": false
+        },
+        "questions_status": {
+          "seed_faq_count": 0,
+          "live_question_count": 0
+        },
+        "active_ingredients_status": {
+          "expected": false,
+          "live_item_count": 0
+        },
+        "image_health": {
+          "scanned_count": 1,
+          "total_url_count": 1,
+          "broken_count": 0,
+          "broken_urls": [],
+          "skipped": false,
+          "truncated": false
+        },
+        "gallery_status": {
+          "image_count": 1,
+          "duplicate_count": 0,
+          "content_leak_count": 0,
+          "seed_content_image_count": 0
+        },
+        "snapshot_contract": {
+          "authoritative": true,
+          "legacy_fields_quarantined": true,
+          "replace_strategy": "replace_not_merge"
+        },
+        "image_url_identity_stripped_count": 0,
+        "image_url_identity_stripped_examples": [],
+        "failure_reasons": []
+      },
+      "similar_gate": {
+        "status": "skipped",
+        "similar_count": 0,
+        "card_highlight_missing_count": 0,
+        "exempt": false,
+        "skipped_reason": "similar_probe_disabled",
+        "failure_reasons": []
+      },
+      "variant_gate": {
+        "status": "passed",
+        "visible_variant_row_count": 1,
+        "identity_option_visible_count": 0,
+        "wrong_axis_for_category_count": 0,
+        "makeup_shade_missing_visual_count": 0,
+        "size_value_generic_axis_count": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "missing_variant_selector_from_size_evidence": [],
+          "identity_default_title_axis": [],
+          "size_siblings_split_product_line": []
+        },
+        "failure_reasons": []
+      },
+      "root_cause_classification": [
+        "product_intel_gap"
+      ],
+      "failure_reasons": [
+        "product_intel_module_empty_or_blocked"
+      ]
+    },
+    {
+      "seed_id": "eps_595d782da44b4896a5ce964b",
+      "external_product_id": "ext_0fc6190f5695d261fa3e1883",
+      "market": "US",
+      "domain": "olehenriksen.com",
+      "canonical_url": "https://olehenriksen.com/products/party-of-4-pout-preserve-lip-set-1",
+      "seed_gate": {
+        "status": "passed",
+        "findings_count": 0,
+        "blockers_count": 0
+      },
+      "extractor_gate": {
+        "status": "failed",
+        "failure_category": "extractor_probe_timeout",
+        "description_present": false,
+        "price_amount": null,
+        "failure_reasons": [
+          "extractor_failure"
+        ]
+      },
+      "identity_gate": {
+        "status": "passed",
+        "product_group_id": "sig_85a08cb434b9709447b00c57",
+        "product_line_id": "pl_fe1f99166b0b182f6413d882",
+        "sellable_item_group_id": "sig_85a08cb434b9709447b00c57",
+        "failure_reasons": []
+      },
+      "product_intel_gate": {
+        "status": "passed",
+        "has_product_intel": true,
+        "product_intel_status": "ready",
+        "failure_reasons": []
+      },
+      "live_pdp_gate": {
+        "status": "failed",
+        "price_amount": 86,
+        "has_overview": true,
+        "live_modules": [
+          "canonical",
+          "variant_selector",
+          "offers",
+          "product_intel",
+          "reviews_preview",
+          "similar",
+          "how_to_use",
+          "product_overview",
+          "product_facts",
+          "supplemental_details",
+          "product_details",
+          "media_gallery",
+          "price_promo"
+        ],
+        "details_status": {
+          "section_count": 1,
+          "section_soup_count": 0,
+          "has_product_facts": false,
+          "seed_section_count": 3,
+          "compressed_structured_sections": false
+        },
+        "questions_status": {
+          "seed_faq_count": 0,
+          "live_question_count": 0
+        },
+        "active_ingredients_status": {
+          "expected": true,
+          "live_item_count": 0
+        },
+        "image_health": {
+          "scanned_count": 5,
+          "total_url_count": 12,
+          "broken_count": 0,
+          "broken_urls": [],
+          "skipped": false,
+          "truncated": true
+        },
+        "gallery_status": {
+          "image_count": 12,
+          "duplicate_count": 0,
+          "content_leak_count": 0,
+          "seed_content_image_count": 0
+        },
+        "snapshot_contract": {
+          "authoritative": true,
+          "legacy_fields_quarantined": true,
+          "replace_strategy": "replace_not_merge"
+        },
+        "image_url_identity_stripped_count": 0,
+        "image_url_identity_stripped_examples": [],
+        "failure_reasons": [
+          "active_ingredients_expected_but_hidden"
+        ]
+      },
+      "similar_gate": {
+        "status": "skipped",
+        "similar_count": 0,
+        "card_highlight_missing_count": 0,
+        "exempt": false,
+        "skipped_reason": "similar_probe_disabled",
+        "failure_reasons": []
+      },
+      "variant_gate": {
+        "status": "passed",
+        "visible_variant_row_count": 1,
+        "identity_option_visible_count": 0,
+        "wrong_axis_for_category_count": 0,
+        "makeup_shade_missing_visual_count": 0,
+        "size_value_generic_axis_count": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "missing_variant_selector_from_size_evidence": [],
+          "identity_default_title_axis": [],
+          "size_siblings_split_product_line": []
+        },
+        "failure_reasons": []
+      },
+      "root_cause_classification": [
+        "extractor_issue",
+        "pdp_shaping_issue"
+      ],
+      "failure_reasons": [
+        "extractor_failure",
+        "active_ingredients_expected_but_hidden"
+      ]
+    },
+    {
+      "seed_id": "eps_14c86984d71d44129acf5915",
+      "external_product_id": "ext_123d26f91740b0e100715451",
+      "market": "US",
+      "domain": "olehenriksen.com",
+      "canonical_url": "https://olehenriksen.com/products/glimmer-pout-preserve-peptide-lip-treatment",
+      "seed_gate": {
+        "status": "passed",
+        "findings_count": 0,
+        "blockers_count": 0
+      },
+      "extractor_gate": {
+        "status": "passed",
+        "failure_category": null,
+        "description_present": true,
+        "price_amount": 12,
+        "failure_reasons": []
+      },
+      "identity_gate": {
+        "status": "passed",
+        "product_group_id": "sig_934be7b33d4ab774c669b294",
+        "product_line_id": "pl_a96df4560903806638820e43",
+        "sellable_item_group_id": "sig_934be7b33d4ab774c669b294",
+        "failure_reasons": []
+      },
+      "product_intel_gate": {
+        "status": "passed",
+        "has_product_intel": true,
+        "product_intel_status": "ready",
+        "failure_reasons": []
+      },
+      "live_pdp_gate": {
+        "status": "failed",
+        "price_amount": 23,
+        "has_overview": true,
+        "live_modules": [
+          "canonical",
+          "variant_selector",
+          "offers",
+          "product_intel",
+          "reviews_preview",
+          "similar",
+          "active_ingredients",
+          "ingredients_inci",
+          "how_to_use",
+          "product_overview",
+          "product_facts",
+          "supplemental_details",
+          "product_details",
+          "media_gallery",
+          "price_promo"
+        ],
+        "details_status": {
+          "section_count": 1,
+          "section_soup_count": 0,
+          "has_product_facts": false,
+          "seed_section_count": 3,
+          "compressed_structured_sections": false
+        },
+        "questions_status": {
+          "seed_faq_count": 0,
+          "live_question_count": 0
+        },
+        "active_ingredients_status": {
+          "expected": true,
+          "live_item_count": 1
+        },
+        "image_health": {
+          "scanned_count": 1,
+          "total_url_count": 1,
+          "broken_count": 0,
+          "broken_urls": [],
+          "skipped": false,
+          "truncated": false
+        },
+        "gallery_status": {
+          "image_count": 1,
+          "duplicate_count": 0,
+          "content_leak_count": 0,
+          "seed_content_image_count": 0
+        },
+        "snapshot_contract": {
+          "authoritative": true,
+          "legacy_fields_quarantined": true,
+          "replace_strategy": "replace_not_merge"
+        },
+        "image_url_identity_stripped_count": 0,
+        "image_url_identity_stripped_examples": [],
+        "failure_reasons": [
+          "price_mismatch"
+        ]
+      },
+      "similar_gate": {
+        "status": "skipped",
+        "similar_count": 0,
+        "card_highlight_missing_count": 0,
+        "exempt": false,
+        "skipped_reason": "similar_probe_disabled",
+        "failure_reasons": []
+      },
+      "variant_gate": {
+        "status": "failed",
+        "visible_variant_row_count": 5,
+        "identity_option_visible_count": 0,
+        "wrong_axis_for_category_count": 5,
+        "makeup_shade_missing_visual_count": 0,
+        "size_value_generic_axis_count": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [
+            {
+              "source": "variant_option",
+              "axis_name": "Shade",
+              "axis_kind": "shade",
+              "value": "Cocoa Crème Glimmer",
+              "visual": true
+            },
+            {
+              "source": "variant_option",
+              "axis_name": "Shade",
+              "axis_kind": "shade",
+              "value": "Strawberry Sorbet Glimmer",
+              "visual": true
+            },
+            {
+              "source": "variant_option",
+              "axis_name": "Shade",
+              "axis_kind": "shade",
+              "value": "Citrus Sunshine Glimmer",
+              "visual": true
+            },
+            {
+              "source": "variant_option",
+              "axis_name": "Shade",
+              "axis_kind": "shade",
+              "value": "Crème Brûlée Glimmer",
+              "visual": true
+            },
+            {
+              "source": "variant_option",
+              "axis_name": "Shade",
+              "axis_kind": "shade",
+              "value": "Lingonberry Jam Glimmer",
+              "visual": true
+            }
+          ],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "missing_variant_selector_from_size_evidence": [],
+          "identity_default_title_axis": [],
+          "size_siblings_split_product_line": []
+        },
+        "failure_reasons": [
+          "wrong_axis_for_category"
+        ]
+      },
+      "root_cause_classification": [
+        "variant_contract_issue"
+      ],
+      "failure_reasons": [
+        "price_mismatch",
+        "wrong_axis_for_category"
+      ]
+    },
+    {
+      "seed_id": "eps_38ec5fb1b9e44ca892e9791a",
+      "external_product_id": "ext_0910c5ee09219dc2a59ccb1d",
+      "market": "US",
+      "domain": "olehenriksen.com",
+      "canonical_url": "https://olehenriksen.com/products/lemonade-smoothing-scrub",
+      "seed_gate": {
+        "status": "passed",
+        "findings_count": 0,
+        "blockers_count": 0
+      },
+      "extractor_gate": {
+        "status": "passed",
+        "failure_category": null,
+        "description_present": true,
+        "price_amount": 36,
+        "failure_reasons": []
+      },
+      "identity_gate": {
+        "status": "passed",
+        "product_group_id": "sig_d2080945d690048e2750e642",
+        "product_line_id": "pl_76e20783c6ef46d3950ee9bd",
+        "sellable_item_group_id": "sig_d2080945d690048e2750e642",
+        "failure_reasons": []
+      },
+      "product_intel_gate": {
+        "status": "passed",
+        "has_product_intel": true,
+        "product_intel_status": "ready",
+        "failure_reasons": []
+      },
+      "live_pdp_gate": {
+        "status": "failed",
+        "price_amount": 36,
+        "has_overview": true,
+        "live_modules": [
+          "canonical",
+          "variant_selector",
+          "offers",
+          "product_intel",
+          "reviews_preview",
+          "similar",
+          "active_ingredients",
+          "ingredients_inci",
+          "how_to_use",
+          "product_overview",
+          "product_facts",
+          "supplemental_details",
+          "product_details",
+          "media_gallery",
+          "price_promo"
+        ],
+        "details_status": {
+          "section_count": 4,
+          "section_soup_count": 0,
+          "has_product_facts": false,
+          "seed_section_count": 5,
+          "compressed_structured_sections": false
+        },
+        "questions_status": {
+          "seed_faq_count": 0,
+          "live_question_count": 0
+        },
+        "active_ingredients_status": {
+          "expected": false,
+          "live_item_count": 0
+        },
+        "image_health": {
+          "scanned_count": 2,
+          "total_url_count": 2,
+          "broken_count": 0,
+          "broken_urls": [],
+          "skipped": false,
+          "truncated": false
+        },
+        "gallery_status": {
+          "image_count": 2,
+          "duplicate_count": 0,
+          "content_leak_count": 1,
+          "seed_content_image_count": 0
+        },
+        "snapshot_contract": {
+          "authoritative": true,
+          "legacy_fields_quarantined": true,
+          "replace_strategy": "replace_not_merge"
+        },
+        "image_url_identity_stripped_count": 0,
+        "image_url_identity_stripped_examples": [],
+        "failure_reasons": [
+          "content_media_leaked_into_gallery"
+        ]
+      },
+      "similar_gate": {
+        "status": "skipped",
+        "similar_count": 0,
+        "card_highlight_missing_count": 0,
+        "exempt": false,
+        "skipped_reason": "similar_probe_disabled",
+        "failure_reasons": []
+      },
+      "variant_gate": {
+        "status": "passed",
+        "visible_variant_row_count": 6,
+        "identity_option_visible_count": 0,
+        "wrong_axis_for_category_count": 0,
+        "makeup_shade_missing_visual_count": 0,
+        "size_value_generic_axis_count": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "missing_variant_selector_from_size_evidence": [],
+          "identity_default_title_axis": [],
+          "size_siblings_split_product_line": []
+        },
+        "failure_reasons": []
+      },
+      "root_cause_classification": [
+        "image_asset_issue"
+      ],
+      "failure_reasons": [
+        "content_media_leaked_into_gallery"
+      ]
+    },
+    {
+      "seed_id": "eps_ff456a5ff1ec405c8c9d111f",
+      "external_product_id": "ext_fffd8a0b6f800708dbf69758",
+      "market": "US",
+      "domain": "olehenriksen.com",
+      "canonical_url": "https://olehenriksen.com/products/hunt-for-hydration-full-size-moisturizer-eye-creme-duo",
+      "seed_gate": {
+        "status": "passed",
+        "findings_count": 0,
+        "blockers_count": 0
+      },
+      "extractor_gate": {
+        "status": "passed",
+        "failure_category": null,
+        "description_present": true,
+        "price_amount": 83,
+        "failure_reasons": []
+      },
+      "identity_gate": {
+        "status": "passed",
+        "product_group_id": "sig_986d8562f273cd7f25571b75",
+        "product_line_id": "pl_6b05309cdc32ddf282e4024d",
+        "sellable_item_group_id": "sig_986d8562f273cd7f25571b75",
+        "failure_reasons": []
+      },
+      "product_intel_gate": {
+        "status": "failed",
+        "has_product_intel": false,
+        "product_intel_status": "missing_blocked",
+        "failure_reasons": [
+          "product_intel_module_empty_or_blocked"
+        ]
+      },
+      "live_pdp_gate": {
+        "status": "failed",
+        "price_amount": 83,
+        "has_overview": true,
+        "live_modules": [
+          "canonical",
+          "variant_selector",
+          "offers",
+          "product_intel",
+          "reviews_preview",
+          "similar",
+          "active_ingredients",
+          "ingredients_inci",
+          "how_to_use",
+          "product_overview",
+          "product_facts",
+          "supplemental_details",
+          "product_details",
+          "media_gallery",
+          "price_promo"
+        ],
+        "details_status": {
+          "section_count": 1,
+          "section_soup_count": 0,
+          "has_product_facts": false,
+          "seed_section_count": 3,
+          "compressed_structured_sections": false
+        },
+        "questions_status": {
+          "seed_faq_count": 0,
+          "live_question_count": 0
+        },
+        "active_ingredients_status": {
+          "expected": true,
+          "live_item_count": 5
+        },
+        "image_health": {
+          "scanned_count": 2,
+          "total_url_count": 2,
+          "broken_count": 0,
+          "broken_urls": [],
+          "skipped": false,
+          "truncated": false
+        },
+        "gallery_status": {
+          "image_count": 2,
+          "duplicate_count": 0,
+          "content_leak_count": 1,
+          "seed_content_image_count": 0
+        },
+        "snapshot_contract": {
+          "authoritative": true,
+          "legacy_fields_quarantined": true,
+          "replace_strategy": "replace_not_merge"
+        },
+        "image_url_identity_stripped_count": 0,
+        "image_url_identity_stripped_examples": [],
+        "failure_reasons": [
+          "content_media_leaked_into_gallery"
+        ]
+      },
+      "similar_gate": {
+        "status": "skipped",
+        "similar_count": 0,
+        "card_highlight_missing_count": 0,
+        "exempt": false,
+        "skipped_reason": "similar_probe_disabled",
+        "failure_reasons": []
+      },
+      "variant_gate": {
+        "status": "passed",
+        "visible_variant_row_count": 1,
+        "identity_option_visible_count": 0,
+        "wrong_axis_for_category_count": 0,
+        "makeup_shade_missing_visual_count": 0,
+        "size_value_generic_axis_count": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "missing_variant_selector_from_size_evidence": [],
+          "identity_default_title_axis": [],
+          "size_siblings_split_product_line": []
+        },
+        "failure_reasons": []
+      },
+      "root_cause_classification": [
+        "image_asset_issue",
+        "product_intel_gap"
+      ],
+      "failure_reasons": [
+        "product_intel_module_empty_or_blocked",
+        "content_media_leaked_into_gallery"
+      ]
+    },
+    {
+      "seed_id": "eps_eee3df64176949a38c150308",
+      "external_product_id": "ext_31f5bbbe614c7d20bb5c7172",
+      "market": "US",
+      "domain": "olehenriksen.com",
+      "canonical_url": "https://olehenriksen.com/products/glow-even-brighter-banana-bright-makeup-prep-set-global",
+      "seed_gate": {
+        "status": "passed",
+        "findings_count": 0,
+        "blockers_count": 0
+      },
+      "extractor_gate": {
+        "status": "passed",
+        "failure_category": null,
+        "description_present": true,
+        "price_amount": 45,
+        "failure_reasons": []
+      },
+      "identity_gate": {
+        "status": "failed",
+        "product_group_id": null,
+        "product_line_id": null,
+        "sellable_item_group_id": null,
+        "failure_reasons": [
+          "missing_pdp_identity"
+        ]
+      },
+      "product_intel_gate": {
+        "status": "failed",
+        "has_product_intel": false,
+        "product_intel_status": null,
+        "failure_reasons": [
+          "product_intel_module_empty_or_blocked"
+        ]
+      },
+      "live_pdp_gate": {
+        "status": "failed",
+        "price_amount": null,
+        "has_overview": false,
+        "live_modules": [
+          "canonical",
+          "how_to_use",
+          "product_overview",
+          "product_facts",
+          "supplemental_details",
+          "product_details",
+          "media_gallery",
+          "variant_selector",
+          "price_promo"
+        ],
+        "probe_error": "timeout of 20000ms exceeded",
+        "failure_reasons": [
+          "live_pdp_probe_failed"
+        ]
+      },
+      "similar_gate": {
+        "status": "skipped",
+        "similar_count": 0,
+        "card_highlight_missing_count": 0,
+        "exempt": false,
+        "skipped_reason": "similar_probe_disabled",
+        "failure_reasons": []
+      },
+      "variant_gate": {
+        "status": "passed",
+        "visible_variant_row_count": 0,
+        "identity_option_visible_count": 0,
+        "wrong_axis_for_category_count": 0,
+        "makeup_shade_missing_visual_count": 0,
+        "size_value_generic_axis_count": 0,
+        "examples": {
+          "identity_option_visible": [],
+          "wrong_axis_for_category": [],
+          "makeup_shade_missing_visual": [],
+          "size_value_generic_axis": [],
+          "missing_variant_selector_from_size_evidence": [],
+          "identity_default_title_axis": [],
+          "size_siblings_split_product_line": []
+        },
+        "failure_reasons": []
+      },
+      "root_cause_classification": [
+        "pdp_shaping_issue",
+        "identity_graph_gap",
+        "product_intel_gap"
+      ],
+      "failure_reasons": [
+        "missing_pdp_identity",
+        "product_intel_module_empty_or_blocked",
+        "live_pdp_probe_failed"
+      ]
+    }
+  ]
+}
