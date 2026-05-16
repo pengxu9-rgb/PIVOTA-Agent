@@ -5386,6 +5386,95 @@ describe('discovery feed service', () => {
     );
   });
 
+  test('cold start home_hot_deals runs internal_catalog in parallel with external_seed fastpath when DISCOVERY_INCLUDE_INTERNAL_ON_NO_SIGNAL=true', async () => {
+    process.env.DISCOVERY_PRODUCTS_SEARCH_BASE_URL = 'http://discovery-catalog.test';
+    process.env.PIVOTA_BACKEND_BASE_URL = 'http://wrong-backend.test';
+    delete process.env.PIVOTA_API_BASE;
+    delete process.env.PIVOTA_API_KEY;
+    process.env.PIVOTA_BACKEND_AGENT_API_KEY = 'bridge-key';
+    process.env.DISCOVERY_INCLUDE_INTERNAL_ON_NO_SIGNAL = 'true';
+
+    try {
+      const internalSpy = jest.fn(async () => [
+        makeProduct({
+          merchant_id: 'merch_internal',
+          product_id: 'internal_chydan_1',
+          title: 'Chydan Lingerie Set',
+          brand: 'Chydan',
+          category: 'Apparel',
+          product_type: 'Lingerie',
+        }),
+      ]);
+      const externalSpy = jest.fn(async ({ limit }) =>
+        Array.from({ length: limit }, (_, idx) =>
+          makeProduct({
+            merchant_id: 'external_seed',
+            product_id: `external_fast_${idx + 1}`,
+            title: `External Fastpath Item ${idx + 1}`,
+            brand: `Seeded ${idx + 1}`,
+            category: 'Skincare',
+            product_type: 'Serum',
+          }),
+        ),
+      );
+
+      const response = await getDiscoveryFeed(
+        {
+          surface: 'home_hot_deals',
+          limit: 6,
+          debug: true,
+          context: {
+            auth_state: 'anonymous',
+            locale: 'en-US',
+            recent_views: [],
+            recent_queries: [],
+          },
+        },
+        {
+          providerOverrides: {
+            internal_catalog: internalSpy,
+            external_seeds: externalSpy,
+          },
+        },
+      );
+
+      // The internal_catalog provider must have run when the flag is on.
+      // (Whether the single internal product survives ranking + page-1
+      // pagination depends on scoring that's out of scope for this gate fix —
+      // the wiring contract is that internal_catalog runs and contributes to
+      // the merge pool, not that any particular product surfaces on page 1.)
+      expect(internalSpy).toHaveBeenCalledTimes(1);
+      expect(externalSpy).toHaveBeenCalledTimes(1);
+      expect(response.metadata.candidate_source).toBe(
+        'external_seed_fastpath+internal_catalog',
+      );
+      expect(response.metadata.primary_path_used).toBe('external_seed_fastpath');
+      expect(response.metadata.provider_breakdown).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ provider: 'internal_catalog', successful: true, returned: 1 }),
+          expect.objectContaining({ provider: 'external_seeds', successful: true }),
+          expect.objectContaining({
+            provider: 'products_search',
+            skipped: true,
+            skip_reason: 'anonymous_cold_start_fastpath_sufficient',
+          }),
+        ]),
+      );
+      // internal_catalog must NOT appear as skipped when the flag opted it in.
+      expect(response.metadata.provider_breakdown).not.toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            provider: 'internal_catalog',
+            skipped: true,
+            skip_reason: 'anonymous_cold_start_internal_disabled',
+          }),
+        ]),
+      );
+    } finally {
+      delete process.env.DISCOVERY_INCLUDE_INTERNAL_ON_NO_SIGNAL;
+    }
+  });
+
   test('cold start browse_products defers beauty tools when non-tool beauty candidates exist across providers', async () => {
     const response = await getDiscoveryFeed(
       {

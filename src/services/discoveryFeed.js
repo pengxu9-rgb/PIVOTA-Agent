@@ -1152,6 +1152,23 @@ function getDiscoveryCandidateFetchCap(request) {
   );
 }
 
+// Anonymous cold-start browse traffic skips the internal_catalog provider by
+// default so we don't pay a `products_cache JOIN merchant_onboarding` hit on
+// every Browse page view (skip reason: anonymous_cold_start_internal_disabled).
+// The side-effect is real-merchant products (status=approved, psp_connected,
+// fresh products_cache) never reach surfaces like editorial Browse.
+//
+// This flag lets us opt back in — runs internal_catalog in parallel with the
+// external_seed fastpath so the merge sees both. Default off so prod behavior
+// is unchanged until staging load-tested (cf. PR #278 lesson on perf
+// regressions from "small" defaults).
+function shouldIncludeInternalOnNoSignalFastpath() {
+  const raw = String(process.env.DISCOVERY_INCLUDE_INTERNAL_ON_NO_SIGNAL || '')
+    .trim()
+    .toLowerCase();
+  return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
+}
+
 function uniqStrings(values, limit) {
   const out = [];
   const seen = new Set();
@@ -6934,30 +6951,70 @@ async function loadCatalogCandidates({
 
   const shouldUseNoSignalExternalSeedFastpath = isGenericNoSignalDiscoveryRequest(request, profile);
   if (shouldUseNoSignalExternalSeedFastpath) {
-    try {
-      const externalResult = await fetchBeautyInterestExternalSeedFastpathCandidates({
-        request,
-        profile,
-        queries: externalProviderQueries,
-        limit: externalProviderLimit,
-        fetchFn: providerOverrides?.external_seeds || null,
-        providerName: 'external_seeds',
-        productProvider: 'external_seeds',
-        stepName: 'external_seed_pool_fastpath',
-        label: 'external_seed_pool_fastpath',
-      });
+    // Opt-in: run internal_catalog in parallel with the external_seed fastpath so
+    // real-merchant products (status=approved, psp_connected, fresh products_cache)
+    // surface on anonymous Browse. Default off — flip per-env after staging
+    // load-test confirms the extra DB hit is acceptable.
+    const includeInternal = shouldIncludeInternalOnNoSignalFastpath();
+
+    const externalFetchPromise = fetchBeautyInterestExternalSeedFastpathCandidates({
+      request,
+      profile,
+      queries: externalProviderQueries,
+      limit: externalProviderLimit,
+      fetchFn: providerOverrides?.external_seeds || null,
+      providerName: 'external_seeds',
+      productProvider: 'external_seeds',
+      stepName: 'external_seed_pool_fastpath',
+      label: 'external_seed_pool_fastpath',
+    }).then(
+      (res) => ({ kind: 'ok', res }),
+      (err) => ({ kind: 'err', err }),
+    );
+
+    const internalFetchPromise = includeInternal
+      ? fetchInternalCatalogCandidates({
+          request,
+          profile,
+          queries: providerQueries,
+          limit: internalProviderLimit,
+          fetchFn: providerOverrides?.internal_catalog || null,
+        }).then(
+          (res) => ({ kind: 'ok', res }),
+          (err) => ({ kind: 'err', err }),
+        )
+      : null;
+
+    const externalOutcome = await externalFetchPromise;
+    if (externalOutcome.kind === 'ok') {
       providerResults.push({
         provider: 'external_seeds',
-        products: externalResult.products,
-        recallSummary: externalResult.recallSummary,
+        products: externalOutcome.res.products,
+        recallSummary: externalOutcome.res.recallSummary,
       });
-      mergeProducts(externalResult.products);
-    } catch (err) {
-      providerResults.push(buildProviderErrorResult('external_seeds', err));
+      mergeProducts(externalOutcome.res.products);
+    } else {
+      providerResults.push(buildProviderErrorResult('external_seeds', externalOutcome.err));
+    }
+
+    if (internalFetchPromise) {
+      const internalOutcome = await internalFetchPromise;
+      if (internalOutcome.kind === 'ok') {
+        providerResults.push({
+          provider: 'internal_catalog',
+          products: internalOutcome.res.products,
+          recallSummary: internalOutcome.res.recallSummary,
+        });
+        mergeProducts(internalOutcome.res.products);
+      } else {
+        providerResults.push(buildProviderErrorResult('internal_catalog', internalOutcome.err));
+      }
     }
 
     if (shouldSkipNoSignalProviderExpansion(mergedProducts, { request, profile })) {
-      candidateSource = 'external_seed_fastpath';
+      candidateSource = includeInternal
+        ? 'external_seed_fastpath+internal_catalog'
+        : 'external_seed_fastpath';
       primaryPathUsed = 'external_seed_fastpath';
       providerResults.push(
         buildSkippedProviderResult('products_search', {
@@ -6967,18 +7024,22 @@ async function loadCatalogCandidates({
           skipReason: 'anonymous_cold_start_fastpath_sufficient',
         }),
       );
-      providerResults.push(
-        buildSkippedProviderResult('internal_catalog', {
-          label: getProviderLabel('internal_catalog'),
-          query: providerQueries.join(' | '),
-          limit: internalProviderLimit,
-          skipReason: 'anonymous_cold_start_internal_disabled',
-        }),
-      );
+      if (!includeInternal) {
+        providerResults.push(
+          buildSkippedProviderResult('internal_catalog', {
+            label: getProviderLabel('internal_catalog'),
+            query: providerQueries.join(' | '),
+            limit: internalProviderLimit,
+            skipReason: 'anonymous_cold_start_internal_disabled',
+          }),
+        );
+      }
       return finalizeProviderResult();
     }
 
-    candidateSource = 'external_seed_fastpath+products_search';
+    candidateSource = includeInternal
+      ? 'external_seed_fastpath+internal_catalog+products_search'
+      : 'external_seed_fastpath+products_search';
     primaryPathUsed = 'external_seed_fastpath';
     fallbackTriggered = true;
     fallbackReason =
@@ -7005,14 +7066,16 @@ async function loadCatalogCandidates({
       providerResults.push(buildProviderErrorResult('products_search', err));
     }
 
-    providerResults.push(
-      buildSkippedProviderResult('internal_catalog', {
-        label: getProviderLabel('internal_catalog'),
-        query: providerQueries.join(' | '),
-        limit: internalProviderLimit,
-        skipReason: 'anonymous_cold_start_internal_disabled',
-      }),
-    );
+    if (!includeInternal) {
+      providerResults.push(
+        buildSkippedProviderResult('internal_catalog', {
+          label: getProviderLabel('internal_catalog'),
+          query: providerQueries.join(' | '),
+          limit: internalProviderLimit,
+          skipReason: 'anonymous_cold_start_internal_disabled',
+        }),
+      );
+    }
 
     return finalizeProviderResult();
   }
