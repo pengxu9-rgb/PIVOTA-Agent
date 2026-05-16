@@ -2,6 +2,7 @@ const {
   resolveGatewayUrl,
   buildAuthoritativePayload,
   buildPublicGatewayPayload,
+  buildExtractorProbeFailure,
   buildProbeFailureResponse,
   mergePdpProbeResponses,
   unwrapLivePdpPayload,
@@ -123,6 +124,27 @@ describe('audit-external-product-pdp-quality helpers', () => {
           probe: 'similar_slow',
         },
       },
+    });
+  });
+
+  test('wraps catalog extractor DNS failures as row-level extractor failures', () => {
+    const response = buildExtractorProbeFailure(
+      Object.assign(new Error('getaddrinfo ENOTFOUND pivota-catalog-intelligence-production.up.railway.app'), {
+        code: 'ENOTFOUND',
+      }),
+      'https://example.com/products/a',
+    );
+
+    expect(response).toMatchObject({
+      target_url: 'https://example.com/products/a',
+      response: {
+        diagnostics: {
+          failure_category: 'extractor_probe_dns_failure',
+          probe: 'catalog_intelligence_extract',
+          error_code: 'ENOTFOUND',
+        },
+      },
+      product: null,
     });
   });
 

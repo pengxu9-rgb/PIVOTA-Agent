@@ -298,19 +298,51 @@ async function fetchExtractorTruth(row, baseUrl) {
       product: null,
     };
   }
-  const response = await axios.post(
-    `${baseUrl.replace(/\/$/, '')}/api/extract`,
-    buildExtractRequestBody(targetUrl, row),
-    {
-      timeout: Number(process.env.CATALOG_INTELLIGENCE_TIMEOUT_MS || 90000),
-      headers: { 'Content-Type': 'application/json' },
-    },
-  );
-  const data = response.data || {};
+  try {
+    const response = await axios.post(
+      `${baseUrl.replace(/\/$/, '')}/api/extract`,
+      buildExtractRequestBody(targetUrl, row),
+      {
+        timeout: Number(process.env.CATALOG_INTELLIGENCE_TIMEOUT_MS || 90000),
+        headers: { 'Content-Type': 'application/json' },
+      },
+    );
+    const data = response.data || {};
+    return {
+      target_url: targetUrl,
+      response: data,
+      product: Array.isArray(data.products) && data.products.length > 0 ? data.products[0] : null,
+    };
+  } catch (error) {
+    return buildExtractorProbeFailure(error, targetUrl);
+  }
+}
+
+function buildExtractorProbeFailure(error, targetUrl = '') {
+  const code = normalizeNonEmptyString(error?.code);
+  const message = normalizeNonEmptyString(error?.message || error);
+  const status = Number(error?.response?.status || 0) || null;
+  const timedOut = code === 'ECONNABORTED' || /timeout/i.test(message);
+  const dnsFailed = code === 'ENOTFOUND' || /getaddrinfo\s+ENOTFOUND/i.test(message);
+  const failureCategory = timedOut
+    ? 'extractor_probe_timeout'
+    : dnsFailed
+      ? 'extractor_probe_dns_failure'
+      : status
+        ? `extractor_probe_http_${status}`
+        : 'extractor_probe_failed';
   return {
-    target_url: targetUrl,
-    response: data,
-    product: Array.isArray(data.products) && data.products.length > 0 ? data.products[0] : null,
+    target_url: normalizeUrlLike(targetUrl),
+    response: {
+      diagnostics: {
+        failure_category: failureCategory,
+        probe: 'catalog_intelligence_extract',
+        error_code: code || null,
+        error_message: message || null,
+        http_status: status,
+      },
+    },
+    product: null,
   };
 }
 
@@ -630,6 +662,7 @@ async function main() {
   const detailsPdpTimeoutMs = argValue('details-pdp-timeout-ms');
   const similarTimeoutMs = argValue('similar-timeout-ms');
   const out = argValue('out');
+  const progressEvery = parsePositiveInt(argValue('progress-every'), 10, 1, 1000);
   const rows = await fetchRows({
     market,
     seedId: argValue('seed-id'),
@@ -641,19 +674,52 @@ async function main() {
   });
 
   const results = [];
-  for (const row of rows) {
-    results.push(
-      await auditRow(row, {
-        catalogBaseUrl: DEFAULT_CATALOG_BASE_URL,
-        gatewayUrl,
-        imageHealthEnabled,
-        imageHealthLimit,
-        similarEnabled,
-        pdpTimeoutMs,
-        detailsPdpTimeoutMs,
-        similarTimeoutMs,
-      }),
-    );
+  for (let idx = 0; idx < rows.length; idx += 1) {
+    const row = rows[idx];
+    try {
+      results.push(
+        await auditRow(row, {
+          catalogBaseUrl: DEFAULT_CATALOG_BASE_URL,
+          gatewayUrl,
+          imageHealthEnabled,
+          imageHealthLimit,
+          similarEnabled,
+          pdpTimeoutMs,
+          detailsPdpTimeoutMs,
+          similarTimeoutMs,
+        }),
+      );
+    } catch (error) {
+      const seedData = ensureJsonObject(row.seed_data);
+      const snapshot = ensureJsonObject(seedData.snapshot);
+      results.push({
+        seed_id: normalizeNonEmptyString(row.id),
+        external_product_id: normalizeNonEmptyString(row.external_product_id),
+        market: normalizeNonEmptyString(row.market),
+        domain: normalizeNonEmptyString(row.domain),
+        canonical_url: normalizeUrlLike(row.canonical_url || snapshot.canonical_url || row.destination_url),
+        seed_gate: { status: 'unknown', findings_count: null, blockers_count: null },
+        extractor_gate: { status: 'unknown', failure_reasons: [] },
+        identity_gate: { status: 'unknown', failure_reasons: [] },
+        product_intel_gate: { status: 'unknown', failure_reasons: [] },
+        live_pdp_gate: {
+          status: 'failed',
+          probe_error: {
+            code: normalizeNonEmptyString(error?.code) || 'AUDIT_ROW_FAILED',
+            message: normalizeNonEmptyString(error?.message || error),
+          },
+          failure_reasons: ['audit_row_failed'],
+        },
+        similar_gate: { status: 'unknown', failure_reasons: [] },
+        variant_gate: { status: 'unknown', failure_reasons: [] },
+        root_cause_classification: ['audit_infra_issue'],
+        failure_reasons: ['audit_row_failed'],
+      });
+    } finally {
+      if ((idx + 1) % progressEvery === 0 || idx + 1 === rows.length) {
+        process.stderr.write(`external seed PDP quality audit: ${idx + 1}/${rows.length} rows checked\n`);
+      }
+    }
   }
 
   if (format === 'json') {
@@ -709,6 +775,7 @@ if (require.main === module) {
 module.exports = {
   fetchRows,
   fetchExtractorTruth,
+  buildExtractorProbeFailure,
   invokeGateway,
   resolveGatewayUrl,
   getHeaders,
