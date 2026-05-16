@@ -136,6 +136,19 @@ function uniqueStrings(values) {
   return out;
 }
 
+function uniqueShadeNames(values) {
+  const seen = new Set();
+  const out = [];
+  for (const value of values || []) {
+    const text = asString(value);
+    const key = normalizeShadeToken(text);
+    if (!text || !key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(text);
+  }
+  return out;
+}
+
 function collectImageUrls(seedData) {
   const seed = asObject(seedData);
   const snapshot = asObject(seed.snapshot);
@@ -244,6 +257,20 @@ function findSourceBackedShadeHex(seedData, shadeNames) {
   return '';
 }
 
+function findSourceBackedVisualsByShade(seedData, shadeNames, reportHexesByShade = new Map()) {
+  const visualsByShade = new Map();
+  for (const shadeName of uniqueShadeNames(shadeNames)) {
+    const shadeKey = normalizeShadeToken(shadeName);
+    const reportHexes = reportHexesByShade.get(shadeKey) || new Set();
+    const reportHex = reportHexes.size === 1 ? Array.from(reportHexes)[0] : '';
+    const swatchUrl = findSourceBackedSwatchUrl(seedData, [shadeName]);
+    const shadeHex = reportHex || findSourceBackedShadeHex(seedData, [shadeName]);
+    if (!swatchUrl && !shadeHex) continue;
+    visualsByShade.set(shadeKey, { shade_name: shadeName, swatch_image_url: swatchUrl, shade_hex: shadeHex });
+  }
+  return visualsByShade;
+}
+
 function readSeedBrand(seedData) {
   const seed = asObject(seedData);
   const snapshot = asObject(seed.snapshot);
@@ -282,12 +309,8 @@ function readSeedUrl(seedData, key) {
   return firstNonEmptyString(seed[key], snapshot[key]);
 }
 
-function patchVariant(variant, swatchUrl, shadeHex, targetShades, forceSingleVariant = false) {
-  const shade = extractVariantShade(variant);
-  const matches = forceSingleVariant || targetShades.some((target) => normalizeShadeToken(target) === normalizeShadeToken(shade));
-  if (!matches) return variant;
+function visualPatchFields(variant, swatchUrl, shadeHex) {
   return {
-    ...variant,
     ...(swatchUrl ? { swatch_image_url: swatchUrl, label_image_url: swatchUrl } : {}),
     ...(shadeHex
       ? {
@@ -298,6 +321,16 @@ function patchVariant(variant, swatchUrl, shadeHex, targetShades, forceSingleVar
         }
       : {}),
     source_quality_status: 'captured',
+  };
+}
+
+function patchVariant(variant, swatchUrl, shadeHex, targetShades, forceSingleVariant = false) {
+  const shade = extractVariantShade(variant);
+  const matches = forceSingleVariant || targetShades.some((target) => normalizeShadeToken(target) === normalizeShadeToken(shade));
+  if (!matches) return variant;
+  return {
+    ...variant,
+    ...visualPatchFields(variant, swatchUrl, shadeHex),
   };
 }
 
@@ -343,6 +376,57 @@ function applyVisualPatch(seedData, { swatchUrl = '', shadeHex = '' } = {}, targ
         swatch_image_url: swatchUrl,
         shade_hex: shadeHex,
         shade_names: targetShades,
+        applied_at: generatedAt,
+      },
+    },
+  };
+  return seed;
+}
+
+function applyVisualPatchByShade(seedData, visualsByShade, targetShades, generatedAt = new Date().toISOString()) {
+  const seed = JSON.parse(JSON.stringify(asObject(seedData)));
+  const snapshot = asObject(seed.snapshot);
+  const seedVariants = asArray(seed.variants);
+  const snapshotVariants = asArray(snapshot.variants);
+  const uniqueTargets = uniqueShadeNames(targetShades);
+  const visualEntries = uniqueTargets
+    .map((shadeName) => {
+      const shadeKey = normalizeShadeToken(shadeName);
+      const visual = visualsByShade.get(shadeKey);
+      return visual ? { shade_key: shadeKey, ...visual } : null;
+    })
+    .filter(Boolean);
+  const soleVisual = visualEntries.length === 1 ? visualEntries[0] : null;
+
+  const patchVariants = (variants) => {
+    const forceSingleVariant = variants.length === 1 && soleVisual;
+    return variants.map((variant) => {
+      const source = asObject(variant);
+      const shadeKey = normalizeShadeToken(extractVariantShade(source));
+      const visual = forceSingleVariant ? soleVisual : visualsByShade.get(shadeKey);
+      if (!visual) return source;
+      return {
+        ...source,
+        ...visualPatchFields(source, visual.swatch_image_url, visual.shade_hex),
+      };
+    });
+  };
+
+  if (soleVisual) Object.assign(seed, visualPatchFields(seed, soleVisual.swatch_image_url, soleVisual.shade_hex));
+  if (seedVariants.length) seed.variants = patchVariants(seedVariants);
+  seed.snapshot = {
+    ...snapshot,
+    ...(soleVisual ? visualPatchFields(snapshot, soleVisual.swatch_image_url, soleVisual.shade_hex) : {}),
+    ...(snapshotVariants.length ? { variants: patchVariants(snapshotVariants) } : {}),
+    diagnostics: {
+      ...asObject(snapshot.diagnostics),
+      shade_swatch_backfill: {
+        applied: true,
+        source: 'source_backed_seed_visual_fields',
+        evidence_kind: 'source_backed_visuals_by_shade',
+        target_shade_count: uniqueTargets.length,
+        patched_shade_count: visualEntries.length,
+        visuals_by_shade: visualEntries,
         applied_at: generatedAt,
       },
     },
@@ -419,10 +503,24 @@ function collectTargetsFromReports(inputFiles) {
   const sigTargets = new Map();
   const register = (map, id, row) => {
     if (!id) return;
-    const existing = map.get(id) || { id, shade_names: new Set(), source_hexes: new Set(), source_rows: 0 };
+    const existing = map.get(id) || {
+      id,
+      shade_names: new Set(),
+      source_hexes: new Set(),
+      source_hexes_by_shade: new Map(),
+      source_rows: 0,
+    };
     if (row.shade_name) existing.shade_names.add(row.shade_name);
     const sourceHex = normalizeHexColor(row.source_shade_hex);
-    if (sourceHex) existing.source_hexes.add(sourceHex);
+    if (sourceHex) {
+      existing.source_hexes.add(sourceHex);
+      const shadeKey = normalizeShadeToken(row.shade_name);
+      if (shadeKey) {
+        const hexes = existing.source_hexes_by_shade.get(shadeKey) || new Set();
+        hexes.add(sourceHex);
+        existing.source_hexes_by_shade.set(shadeKey, hexes);
+      }
+    }
     existing.source_rows += 1;
     map.set(id, existing);
   };
@@ -474,10 +572,16 @@ async function resolveSigTargets(sigTargets, targetsByExternalId) {
       id: externalProductId,
       shade_names: new Set(),
       source_hexes: new Set(),
+      source_hexes_by_shade: new Map(),
       source_rows: 0,
     };
     for (const shade of sigTarget.shade_names) existing.shade_names.add(shade);
     for (const hex of sigTarget.source_hexes) existing.source_hexes.add(hex);
+    for (const [shadeKey, hexes] of sigTarget.source_hexes_by_shade || []) {
+      const existingHexes = existing.source_hexes_by_shade.get(shadeKey) || new Set();
+      for (const hex of hexes) existingHexes.add(hex);
+      existing.source_hexes_by_shade.set(shadeKey, existingHexes);
+    }
     existing.source_rows += sigTarget.source_rows;
     targetsByExternalId.set(externalProductId, existing);
   }
@@ -534,9 +638,18 @@ async function main() {
   for (const row of rows) {
     const target = targetsByExternalId.get(asString(row.external_product_id));
     const targetShades = Array.from(target?.shade_names || []).filter(Boolean);
-    const swatchUrl = findSourceBackedSwatchUrl(row.seed_data, targetShades);
-    const sourceHexes = Array.from(target?.source_hexes || []).filter(Boolean);
-    const shadeHex = sourceHexes.length === 1 ? sourceHexes[0] : findSourceBackedShadeHex(row.seed_data, targetShades);
+    const uniqueTargetShades = uniqueShadeNames(targetShades);
+    const visualsByShade = findSourceBackedVisualsByShade(row.seed_data, targetShades, target?.source_hexes_by_shade);
+    const visualEntries = uniqueTargetShades
+      .map((shadeName) => {
+        const shadeKey = normalizeShadeToken(shadeName);
+        const visual = visualsByShade.get(shadeKey);
+        return visual ? { shade_key: shadeKey, ...visual } : null;
+      })
+      .filter(Boolean);
+    const soleVisual = visualEntries.length === 1 ? visualEntries[0] : null;
+    const swatchUrl = soleVisual?.swatch_image_url || '';
+    const shadeHex = soleVisual?.shade_hex || '';
     const base = {
       seed_id: row.id,
       external_product_id: row.external_product_id,
@@ -546,21 +659,29 @@ async function main() {
       canonical_url: firstNonEmptyString(row.canonical_url, readSeedUrl(row.seed_data, 'canonical_url')),
       destination_url: firstNonEmptyString(row.destination_url, readSeedUrl(row.seed_data, 'destination_url')),
       shade_names: targetShades.join('|'),
+      target_shade_count: uniqueTargetShades.length,
+      patched_shade_count: visualEntries.length,
       source_report_rows: target?.source_rows || 0,
     };
-    if (!swatchUrl && !shadeHex) {
+    if (!visualEntries.length) {
       blockers.push({
         ...base,
         blocker_reason: 'no_per_shade_source_backed_swatch_texture_or_hex_asset',
       });
       continue;
     }
-    const nextSeedData = applyVisualPatch(row.seed_data, { swatchUrl, shadeHex }, targetShades, generatedAt);
+    const nextSeedData = applyVisualPatchByShade(row.seed_data, visualsByShade, targetShades, generatedAt);
     candidates.push({
       ...base,
       swatch_image_url: swatchUrl,
       shade_hex: shadeHex,
-      visual_evidence_kind: swatchUrl ? 'source_backed_texture_swatch' : 'source_backed_explicit_hex',
+      visual_evidence_kind:
+        visualEntries.length > 1
+          ? 'source_backed_visuals_by_shade'
+          : swatchUrl
+            ? 'source_backed_texture_swatch'
+            : 'source_backed_explicit_hex',
+      visuals_by_shade: JSON.stringify(visualEntries),
       action: apply ? 'updated' : 'dry_run',
     });
     if (apply) {
@@ -582,6 +703,9 @@ async function main() {
     'swatch_image_url',
     'shade_hex',
     'visual_evidence_kind',
+    'visuals_by_shade',
+    'target_shade_count',
+    'patched_shade_count',
     'source_report_rows',
     'action',
     'canonical_url',
@@ -594,6 +718,8 @@ async function main() {
     'brand',
     'title',
     'shade_names',
+    'target_shade_count',
+    'patched_shade_count',
     'source_report_rows',
     'blocker_reason',
     'canonical_url',
@@ -632,7 +758,9 @@ if (require.main === module) {
 module.exports = {
   applySwatchPatch,
   applyVisualPatch,
+  applyVisualPatchByShade,
   collectImageUrls,
+  findSourceBackedVisualsByShade,
   findSourceBackedSwatchUrl,
   findSourceBackedShadeHex,
   isTrustedSourceBackedShadeTextureUrl,

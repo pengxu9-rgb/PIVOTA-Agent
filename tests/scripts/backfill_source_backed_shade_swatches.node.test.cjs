@@ -4,6 +4,8 @@ const test = require('node:test');
 const {
   applySwatchPatch,
   applyVisualPatch,
+  applyVisualPatchByShade,
+  findSourceBackedVisualsByShade,
   findSourceBackedSwatchUrl,
   findSourceBackedShadeHex,
   isTrustedSourceBackedShadeTextureUrl,
@@ -153,4 +155,46 @@ test('accepts only explicit source-backed hex values and patches matching varian
   assert.equal(patched.variants[0].swatch.hex, '#d9c4ad');
   assert.equal(patched.variants[1].swatch_color, undefined);
   assert.equal(patched.snapshot.diagnostics.shade_swatch_backfill.evidence_kind, 'source_backed_explicit_hex');
+});
+
+test('patches multi-shade seeds with per-shade visuals only', () => {
+  const seedData = {
+    image_urls: [
+      'https://cdn.shopify.com/files/OH_CC_STICKS_Smear_Banana_1500x1500.jpg',
+      'https://cdn.shopify.com/files/OH_CC_STICKS_Smear_Apricot_1500x1500.jpg',
+      'https://cdn.shopify.com/files/OH_CC_STICKS_Smear_Pumpkin_1500x1500.jpg',
+      'https://cdn.shopify.com/files/OH_CC_STICKS_Smear_Guava_1500x1500.jpg',
+    ],
+    variants: [
+      { variant_id: 'banana', title: 'Banana', options: [{ name: 'Shade', value: 'Banana' }] },
+      { variant_id: 'apricot', title: 'Apricot', options: [{ name: 'Shade', value: 'Apricot' }] },
+      { variant_id: 'pumpkin', title: 'Pumpkin', options: [{ name: 'Shade', value: 'Pumpkin' }] },
+      { variant_id: 'guava', title: 'Guava', options: [{ name: 'Shade', value: 'Guava' }] },
+    ],
+    snapshot: {
+      variants: [
+        { variant_id: 'banana', title: 'Banana', options: [{ name: 'Shade', value: 'Banana' }] },
+        { variant_id: 'apricot', title: 'Apricot', options: [{ name: 'Shade', value: 'Apricot' }] },
+      ],
+    },
+  };
+
+  const visualsByShade = findSourceBackedVisualsByShade(seedData, ['Banana', 'Apricot', 'Pumpkin', 'Guava']);
+  const patched = applyVisualPatchByShade(
+    seedData,
+    visualsByShade,
+    ['Banana', 'Apricot', 'Pumpkin', 'Guava'],
+    '2026-05-16T00:00:00.000Z',
+  );
+
+  assert.equal(patched.swatch_image_url, undefined);
+  assert.equal(patched.variants[0].swatch_image_url.includes('Banana'), true);
+  assert.equal(patched.variants[1].swatch_image_url.includes('Apricot'), true);
+  assert.equal(patched.variants[2].swatch_image_url.includes('Pumpkin'), true);
+  assert.equal(patched.variants[3].swatch_image_url.includes('Guava'), true);
+  assert.equal(patched.snapshot.diagnostics.shade_swatch_backfill.patched_shade_count, 4);
+  assert.equal(
+    patched.snapshot.diagnostics.shade_swatch_backfill.evidence_kind,
+    'source_backed_visuals_by_shade',
+  );
 });
