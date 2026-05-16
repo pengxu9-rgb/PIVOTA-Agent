@@ -1,0 +1,31 @@
+{
+  "generated_at": "2026-05-16T18:22:38.838Z",
+  "filters": {
+    "market": "US",
+    "domain": null,
+    "brand": null,
+    "updated_since": null,
+    "cursor": null,
+    "limit": 2
+  },
+  "scanned_seed_rows": 2,
+  "payloads_built": 2,
+  "identity_rows_found": 2,
+  "sig_groups": 2,
+  "seed_active_expected_rows": 2,
+  "seed_active_evidence_rows": 2,
+  "identity_payload_active_rows": 2,
+  "identity_payload_stale_rows": 0,
+  "live_read_stale_rows": 0,
+  "sig_mixed_active_expectation_groups": 0,
+  "canonical_selection_gap_groups": 0,
+  "sync_candidate_rows": 0,
+  "next_cursor": "2026-05-14T14:52:37.319Z|eps_06ca4bb831504b6bbec530f6",
+  "report_files": {
+    "summary": "reports/pdp_identity_payload_drift_20260516_olehenriksen/wave3_active_repair_raw_projection_post_apply_audit/summary.json",
+    "row_audit": "reports/pdp_identity_payload_drift_20260516_olehenriksen/wave3_active_repair_raw_projection_post_apply_audit/row_audit.csv",
+    "sig_audit": "reports/pdp_identity_payload_drift_20260516_olehenriksen/wave3_active_repair_raw_projection_post_apply_audit/sig_audit.csv",
+    "sync_dry_run_candidates": "reports/pdp_identity_payload_drift_20260516_olehenriksen/wave3_active_repair_raw_projection_post_apply_audit/sync_dry_run_candidates.csv",
+    "no_cache_pdp_probe_samples": "reports/pdp_identity_payload_drift_20260516_olehenriksen/wave3_active_repair_raw_projection_post_apply_audit/no_cache_pdp_probe_samples.json"
+  }
+}

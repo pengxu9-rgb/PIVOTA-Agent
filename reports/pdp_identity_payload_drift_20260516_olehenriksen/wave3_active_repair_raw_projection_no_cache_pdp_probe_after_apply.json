@@ -1,0 +1,53 @@
+{
+  "generated_at": "2026-05-16T18:23:18.710Z",
+  "rows": [
+    {
+      "id": "ext_75ae815b6acb82c8e3d8f4f3",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "1e5340dc6c1b",
+      "title": "Violet Ice Cold Plunge Pore Mask",
+      "active_present": true,
+      "active_items": [
+        "Salicylic acid"
+      ],
+      "active_text_count": 4,
+      "active_source_origin": "active_block",
+      "active_source_quality_status": "captured",
+      "ingredients_text_count": 0,
+      "how_to_present": true,
+      "details_text_count": 4,
+      "overview_present": true,
+      "offers_count": 1
+    },
+    {
+      "id": "ext_26606a47bf430f9b16d15735",
+      "http_status": 200,
+      "pdp_status": "success",
+      "build_id": "1e5340dc6c1b",
+      "title": "BeamCream Smoothing Body Moisturizer",
+      "active_present": true,
+      "active_items": [
+        "Glycolic acid",
+        "Lactic acid"
+      ],
+      "active_text_count": 5,
+      "active_source_origin": "pdp_section",
+      "active_source_quality_status": "authoritative",
+      "ingredients_text_count": 50,
+      "how_to_present": true,
+      "details_text_count": 4,
+      "overview_present": true,
+      "offers_count": 1
+    }
+  ],
+  "summary": {
+    "success": 2,
+    "total": 2,
+    "active_items_count": 3,
+    "how_to_present": 2,
+    "overview_present": 2,
+    "details_present": 2,
+    "offers_present": 2
+  }
+}
