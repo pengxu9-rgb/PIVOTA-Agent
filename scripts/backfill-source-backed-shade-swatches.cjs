@@ -189,7 +189,10 @@ function isTrustedSourceBackedShadeTextureUrl(url, shadeName) {
     /(?:^|[^a-z0-9])(smear|texture|single[-_\s]?swatch|shade[-_\s]?swatch|color[-_\s]?swatch|colour[-_\s]?swatch)(?:[^a-z0-9]|$)/i.test(text);
   if (!hasPositiveTextureSignal) return false;
   if (!urlMatchesShade(text, shadeName)) return false;
-  if (/(?:^|[^a-z0-9])(model|arm[-_\s]?swatch|armswatch|shade[-_\s]?names?|infographic|chart|routine|pairing|before|after)(?:[^a-z0-9]|$)/i.test(text)) {
+  if (
+    /model|infographics?|product[-_\s]?w(?:ith)?[-_\s]?smear/i.test(text) ||
+    /(?:^|[^a-z0-9])(arm[-_\s]?swatch|armswatch|shade[-_\s]?names?|chart|routine|pairing|before|after)(?:[^a-z0-9]|$)/i.test(text)
+  ) {
     return false;
   }
   if (/(?:^|[^a-z0-9])(concrete|ecomm|ecommerce|pack[-_\s]?shot|packaging|package|box|bottle|tube|compact|silo|hero|primary)(?:[^a-z0-9]|$)/i.test(text)) {

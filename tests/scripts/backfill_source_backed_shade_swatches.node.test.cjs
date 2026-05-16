@@ -41,6 +41,20 @@ test('rejects product, model, and group swatch assets as shade chip backfill', (
     ),
     false,
   );
+  assert.equal(
+    isTrustedSourceBackedShadeTextureUrl(
+      'https://cdn.shopify.com/files/FB816865GLOBAL_GLOSSBOMBOIL_INFOGRAPHICS_1200x1500_2Model_Smear_FENTYGLOW_2.jpg',
+      'fenty glow',
+    ),
+    false,
+  );
+  assert.equal(
+    isTrustedSourceBackedShadeTextureUrl(
+      'https://cdn.shopify.com/files/FS689758_GLOBAL_FALL_24_INFOGRAPHICS_2000x2000_FENTY_TREATZ_Product_w_Smear_BLACK_CHERRY.jpg',
+      'black cherry',
+    ),
+    false,
+  );
 });
 
 test('finds a source-backed swatch only from matching seed image URLs', () => {
