@@ -149,6 +149,7 @@
     "external-seeds:audit:shade-visual-quality": "node scripts/audit-shade-visual-quality.cjs",
     "external-seeds:backfill:image-cache": "node scripts/backfill-external-seed-image-cache.cjs",
     "external-seeds:backfill:shade-swatches": "node scripts/backfill-source-backed-shade-swatches.cjs",
+    "external-seeds:sync:identity-shade-swatches": "node scripts/sync-source-backed-shade-swatches-to-identity.cjs",
     "pdp-entity:audit": "node scripts/audit-pdp-entity-resolution.js",
     "pdp-entity:merge": "node scripts/map-and-merge-pdp-entity-resolution.js",
     "beauty-alternatives:authority:audit": "node scripts/audit_beauty_alternatives_authority.js",
