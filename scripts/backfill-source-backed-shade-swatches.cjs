@@ -153,6 +153,27 @@ function collectImageUrls(seedData) {
   return uniqueStrings(values).filter(isHttpUrl);
 }
 
+function normalizeHexColor(value) {
+  const text = asString(value).trim();
+  const match = text.match(/^#?([0-9a-f]{6})$/i);
+  return match ? `#${match[1].toLowerCase()}` : '';
+}
+
+function readHexFromObject(value) {
+  const obj = asObject(value);
+  return normalizeHexColor(
+    obj.swatch_color ||
+      obj.swatchColor ||
+      obj.color_hex ||
+      obj.colorHex ||
+      obj.shade_hex ||
+      obj.shadeHex ||
+      obj.swatch?.hex ||
+      obj.beauty_meta?.shade_hex ||
+      obj.beautyMeta?.shade_hex,
+  );
+}
+
 function isTrustedSourceBackedShadeTextureUrl(url, shadeName) {
   const text = normalizeUrlSearchText(url);
   if (!isHttpUrl(url) || !text) return false;
@@ -188,48 +209,100 @@ function extractVariantShade(variant) {
   return asString(variant?.shade_name || variant?.shade || variant?.title);
 }
 
-function patchVariant(variant, swatchUrl, targetShades, forceSingleVariant = false) {
+function findSourceBackedShadeHex(seedData, shadeNames) {
+  const shades = uniqueStrings(shadeNames);
+  if (!shades.length) return '';
+  const seed = asObject(seedData);
+  const snapshot = asObject(seed.snapshot);
+  const variants = [...asArray(seed.variants), ...asArray(snapshot.variants)];
+  for (const variant of variants) {
+    const shade = extractVariantShade(variant);
+    if (!shades.some((target) => normalizeShadeToken(target) === normalizeShadeToken(shade))) continue;
+    const hex = readHexFromObject(variant);
+    if (hex) return hex;
+  }
+
+  const topLevelHex = readHexFromObject(seed) || readHexFromObject(snapshot);
+  const singleSourceShade = variants.length === 1 ? extractVariantShade(variants[0]) : '';
+  if (
+    topLevelHex &&
+    (!variants.length || shades.some((target) => normalizeShadeToken(target) === normalizeShadeToken(singleSourceShade)))
+  ) {
+    return topLevelHex;
+  }
+  return '';
+}
+
+function patchVariant(variant, swatchUrl, shadeHex, targetShades, forceSingleVariant = false) {
   const shade = extractVariantShade(variant);
   const matches = forceSingleVariant || targetShades.some((target) => normalizeShadeToken(target) === normalizeShadeToken(shade));
   if (!matches) return variant;
   return {
     ...variant,
-    swatch_image_url: swatchUrl,
-    label_image_url: swatchUrl,
+    ...(swatchUrl ? { swatch_image_url: swatchUrl, label_image_url: swatchUrl } : {}),
+    ...(shadeHex
+      ? {
+          swatch_color: shadeHex,
+          color_hex: shadeHex,
+          shade_hex: shadeHex,
+          swatch: { ...asObject(variant.swatch), hex: shadeHex },
+        }
+      : {}),
     source_quality_status: 'captured',
   };
 }
 
-function applySwatchPatch(seedData, swatchUrl, targetShades, generatedAt = new Date().toISOString()) {
+function applyVisualPatch(seedData, { swatchUrl = '', shadeHex = '' } = {}, targetShades, generatedAt = new Date().toISOString()) {
   const seed = JSON.parse(JSON.stringify(asObject(seedData)));
   const snapshot = asObject(seed.snapshot);
   const seedVariants = asArray(seed.variants);
   const snapshotVariants = asArray(snapshot.variants);
   const patchVariants = (variants) => {
     const forceSingleVariant = variants.length === 1;
-    return variants.map((variant) => patchVariant(asObject(variant), swatchUrl, targetShades, forceSingleVariant));
+    return variants.map((variant) => patchVariant(asObject(variant), swatchUrl, shadeHex, targetShades, forceSingleVariant));
   };
 
-  seed.swatch_image_url = swatchUrl;
-  seed.label_image_url = swatchUrl;
+  if (swatchUrl) {
+    seed.swatch_image_url = swatchUrl;
+    seed.label_image_url = swatchUrl;
+  }
+  if (shadeHex) {
+    seed.swatch_color = shadeHex;
+    seed.color_hex = shadeHex;
+    seed.shade_hex = shadeHex;
+    seed.swatch = { ...asObject(seed.swatch), hex: shadeHex };
+  }
   if (seedVariants.length) seed.variants = patchVariants(seedVariants);
   seed.snapshot = {
     ...snapshot,
-    swatch_image_url: swatchUrl,
-    label_image_url: swatchUrl,
+    ...(swatchUrl ? { swatch_image_url: swatchUrl, label_image_url: swatchUrl } : {}),
+    ...(shadeHex
+      ? {
+          swatch_color: shadeHex,
+          color_hex: shadeHex,
+          shade_hex: shadeHex,
+          swatch: { ...asObject(snapshot.swatch), hex: shadeHex },
+        }
+      : {}),
     ...(snapshotVariants.length ? { variants: patchVariants(snapshotVariants) } : {}),
     diagnostics: {
       ...asObject(snapshot.diagnostics),
       shade_swatch_backfill: {
         applied: true,
-        source: 'source_backed_seed_image_urls',
+        source: 'source_backed_seed_visual_fields',
+        evidence_kind: swatchUrl ? 'source_backed_texture_swatch' : 'source_backed_explicit_hex',
         swatch_image_url: swatchUrl,
+        shade_hex: shadeHex,
         shade_names: targetShades,
         applied_at: generatedAt,
       },
     },
   };
   return seed;
+}
+
+function applySwatchPatch(seedData, swatchUrl, targetShades, generatedAt = new Date().toISOString()) {
+  return applyVisualPatch(seedData, { swatchUrl }, targetShades, generatedAt);
 }
 
 function parseCsv(text) {
@@ -297,8 +370,10 @@ function collectTargetsFromReports(inputFiles) {
   const sigTargets = new Map();
   const register = (map, id, row) => {
     if (!id) return;
-    const existing = map.get(id) || { id, shade_names: new Set(), source_rows: 0 };
+    const existing = map.get(id) || { id, shade_names: new Set(), source_hexes: new Set(), source_rows: 0 };
     if (row.shade_name) existing.shade_names.add(row.shade_name);
+    const sourceHex = normalizeHexColor(row.source_shade_hex);
+    if (sourceHex) existing.source_hexes.add(sourceHex);
     existing.source_rows += 1;
     map.set(id, existing);
   };
@@ -320,17 +395,28 @@ function collectTargetsFromReports(inputFiles) {
 async function resolveSigTargets(sigTargets, targetsByExternalId) {
   const sigIds = Array.from(sigTargets.keys());
   if (!sigIds.length) return;
-  const res = await query(
-    `
-      SELECT pivota_signature_id, source_product_id AS external_product_id
-      FROM catalog_products
-      WHERE merchant_id = 'external_seed'
-        AND platform = 'external_seed'
-        AND pivota_signature_id = ANY($1::text[])
-        AND source_product_id LIKE 'ext\\_%' ESCAPE '\\'
-    `,
-    [sigIds],
-  );
+  let res;
+  try {
+    res = await query(
+      `
+        SELECT pivota_signature_id, source_product_id AS external_product_id
+        FROM catalog_products
+        WHERE merchant_id = 'external_seed'
+          AND platform = 'external_seed'
+          AND pivota_signature_id = ANY($1::text[])
+          AND source_product_id LIKE 'ext\\_%' ESCAPE '\\'
+      `,
+      [sigIds],
+    );
+  } catch (error) {
+    if (/catalog_products/i.test(String(error?.message || error))) {
+      process.stderr.write(
+        'source-backed shade swatch backfill: catalog_products unavailable; continuing with ext_* report targets only\n',
+      );
+      return;
+    }
+    throw error;
+  }
   for (const row of res.rows || []) {
     const sigTarget = sigTargets.get(asString(row.pivota_signature_id));
     const externalProductId = asString(row.external_product_id);
@@ -338,9 +424,11 @@ async function resolveSigTargets(sigTargets, targetsByExternalId) {
     const existing = targetsByExternalId.get(externalProductId) || {
       id: externalProductId,
       shade_names: new Set(),
+      source_hexes: new Set(),
       source_rows: 0,
     };
     for (const shade of sigTarget.shade_names) existing.shade_names.add(shade);
+    for (const hex of sigTarget.source_hexes) existing.source_hexes.add(hex);
     existing.source_rows += sigTarget.source_rows;
     targetsByExternalId.set(externalProductId, existing);
   }
@@ -398,6 +486,8 @@ async function main() {
     const target = targetsByExternalId.get(asString(row.external_product_id));
     const targetShades = Array.from(target?.shade_names || []).filter(Boolean);
     const swatchUrl = findSourceBackedSwatchUrl(row.seed_data, targetShades);
+    const sourceHexes = Array.from(target?.source_hexes || []).filter(Boolean);
+    const shadeHex = sourceHexes.length === 1 ? sourceHexes[0] : findSourceBackedShadeHex(row.seed_data, targetShades);
     const base = {
       seed_id: row.id,
       external_product_id: row.external_product_id,
@@ -409,17 +499,19 @@ async function main() {
       shade_names: targetShades.join('|'),
       source_report_rows: target?.source_rows || 0,
     };
-    if (!swatchUrl) {
+    if (!swatchUrl && !shadeHex) {
       blockers.push({
         ...base,
-        blocker_reason: 'no_per_shade_source_backed_swatch_or_texture_asset',
+        blocker_reason: 'no_per_shade_source_backed_swatch_texture_or_hex_asset',
       });
       continue;
     }
-    const nextSeedData = applySwatchPatch(row.seed_data, swatchUrl, targetShades, generatedAt);
+    const nextSeedData = applyVisualPatch(row.seed_data, { swatchUrl, shadeHex }, targetShades, generatedAt);
     candidates.push({
       ...base,
       swatch_image_url: swatchUrl,
+      shade_hex: shadeHex,
+      visual_evidence_kind: swatchUrl ? 'source_backed_texture_swatch' : 'source_backed_explicit_hex',
       action: apply ? 'updated' : 'dry_run',
     });
     if (apply) {
@@ -439,6 +531,8 @@ async function main() {
     'title',
     'shade_names',
     'swatch_image_url',
+    'shade_hex',
+    'visual_evidence_kind',
     'source_report_rows',
     'action',
     'canonical_url',
@@ -488,9 +582,12 @@ if (require.main === module) {
 
 module.exports = {
   applySwatchPatch,
+  applyVisualPatch,
   collectImageUrls,
   findSourceBackedSwatchUrl,
+  findSourceBackedShadeHex,
   isTrustedSourceBackedShadeTextureUrl,
+  normalizeHexColor,
   parseCsv,
   urlMatchesShade,
 };

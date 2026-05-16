@@ -3,8 +3,11 @@ const test = require('node:test');
 
 const {
   applySwatchPatch,
+  applyVisualPatch,
   findSourceBackedSwatchUrl,
+  findSourceBackedShadeHex,
   isTrustedSourceBackedShadeTextureUrl,
+  normalizeHexColor,
   urlMatchesShade,
 } = require('../../scripts/backfill-source-backed-shade-swatches.cjs');
 
@@ -96,4 +99,44 @@ test('patches top-level and matching single-variant swatch fields without replac
   assert.equal(patched.variants[0].swatch_image_url, swatchUrl);
   assert.equal(patched.snapshot.variants[0].label_image_url, swatchUrl);
   assert.equal(patched.snapshot.diagnostics.shade_swatch_backfill.applied, true);
+});
+
+test('accepts only explicit source-backed hex values and patches matching variants', () => {
+  assert.equal(normalizeHexColor('#D9C4AD'), '#d9c4ad');
+  assert.equal(normalizeHexColor('warm nude'), '');
+
+  const seedData = {
+    variants: [
+      {
+        variant_id: 'v1',
+        title: 'DN350',
+        options: [{ name: 'Shade', value: 'DN350' }],
+        swatch: { hex: '#D9C4AD' },
+      },
+      {
+        variant_id: 'v2',
+        title: 'DN360',
+        options: [{ name: 'Shade', value: 'DN360' }],
+      },
+    ],
+    snapshot: {
+      variants: [
+        {
+          variant_id: 'v1',
+          title: 'DN350',
+          options: [{ name: 'Shade', value: 'DN350' }],
+          shade_hex: '#D9C4AD',
+        },
+      ],
+    },
+  };
+
+  const shadeHex = findSourceBackedShadeHex(seedData, ['DN350']);
+  const patched = applyVisualPatch(seedData, { shadeHex }, ['DN350'], '2026-05-16T00:00:00.000Z');
+
+  assert.equal(shadeHex, '#d9c4ad');
+  assert.equal(patched.swatch_color, '#d9c4ad');
+  assert.equal(patched.variants[0].swatch.hex, '#d9c4ad');
+  assert.equal(patched.variants[1].swatch_color, undefined);
+  assert.equal(patched.snapshot.diagnostics.shade_swatch_backfill.evidence_kind, 'source_backed_explicit_hex');
 });
