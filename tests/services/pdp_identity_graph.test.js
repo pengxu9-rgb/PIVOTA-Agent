@@ -1227,6 +1227,68 @@ describe('pdpIdentityGraph', () => {
     ]);
   });
 
+  test('composeSyntheticCanonicalProduct prefers richer source-backed content within the same sig group', () => {
+    const { composeSyntheticCanonicalProduct } = require('../../src/services/pdpIdentityGraph');
+
+    const staleListing = {
+      merchant_id: 'external_seed',
+      product_id: 'ext_ole_bundle_old',
+      source_kind: 'external_seed',
+      source_tier: 'brand',
+      sellable_item_group_id: 'sig_ole_bundle',
+      product_line_id: 'pl_ole_bundle',
+      review_family_id: 'rf_ole_bundle',
+      identity_confidence: 0.92,
+      source_payload: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_ole_bundle_old',
+        title: 'Balance+ Bundle',
+        images: ['https://cdn.example.com/ole-balance.jpg'],
+      },
+    };
+    const richListing = {
+      ...staleListing,
+      product_id: 'ext_ole_bundle_rich',
+      source_payload: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_ole_bundle_rich',
+        title: 'Balance+ Bundle',
+        pdp_active_ingredients_raw: 'Salicylic Acid (BHA) targets blemishes.',
+        active_ingredients: ['Salicylic acid'],
+        pdp_how_to_use_raw: 'Use the routine as directed on each component.',
+        pdp_details_sections: [{ heading: 'Details', content: 'A clarifying skincare routine.' }],
+        seed_data: {
+          external_seed_snapshot_contract: {
+            authoritative: true,
+            legacy_fields_quarantined: true,
+          },
+          pdp_field_quality_summary: {
+            active_ingredients_raw: { source_quality_status: 'high' },
+            how_to_use_raw: { source_quality_status: 'high' },
+            details_sections: { source_quality_status: 'high' },
+          },
+        },
+      },
+    };
+
+    const composed = composeSyntheticCanonicalProduct({
+      requestedListing: staleListing,
+      exactListings: [staleListing, richListing],
+      lineListings: [staleListing, richListing],
+    });
+
+    expect(composed.canonical_product_ref).toEqual({
+      merchant_id: 'external_seed',
+      product_id: 'ext_ole_bundle_rich',
+    });
+    expect(composed.selected_commerce_ref).toEqual({
+      merchant_id: 'external_seed',
+      product_id: 'ext_ole_bundle_old',
+    });
+    expect(composed.product.pdp_active_ingredients_raw).toContain('Salicylic Acid');
+    expect(composed.product.pdp_content_source).toBe('canonical_inherited');
+  });
+
   test('buildIdentityListingFromProduct does not infer long numeric option identifiers as shade', () => {
     const { buildIdentityListingFromProduct } = require('../../src/services/pdpIdentityGraph');
 
@@ -1670,6 +1732,102 @@ describe('pdpIdentityGraph', () => {
     expect(result?.canonical_scope).toBe('synthetic');
     expect(result?.sellable_item_group_id).toBe('sig_ordinary_serum');
     expect(result?.product_line_id).toBe('pl_ordinary_serum');
+  });
+
+  test('maybeBuildLiveSyntheticPdp hydrates stale external identity payloads from current active seed rows', async () => {
+    jest.resetModules();
+    process.env = {
+      ...ORIGINAL_ENV,
+      NODE_ENV: 'test',
+      DATABASE_URL: 'postgres://test',
+      PDP_IDENTITY_GRAPH_ENABLED: 'true',
+      PDP_IDENTITY_GRAPH_BRAND_ALLOWLIST: 'Olehenriksen',
+    };
+    const { maybeBuildLiveSyntheticPdp } = require('../../src/services/pdpIdentityGraph');
+    const staleIdentityRow = {
+      source_listing_ref: 'external_seed:ext_ole_balance_bundle',
+      merchant_id: 'external_seed',
+      product_id: 'ext_ole_balance_bundle',
+      source_kind: 'external_seed',
+      source_tier: 'brand',
+      live_read_enabled: true,
+      sellable_item_group_id: 'sig_ole_balance_bundle',
+      product_line_id: 'pl_ole_balance_bundle',
+      review_family_id: 'rf_ole_balance_bundle',
+      identity_status: 'approved',
+      identity_confidence: 0.92,
+      review_required: false,
+      brand_norm: 'olehenriksen',
+      match_basis: ['official_url:https://olehenriksen.com/products/balance-bundle'],
+      source_payload: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_ole_balance_bundle',
+        title: 'Balance+ Bundle',
+        brand: 'Olehenriksen',
+        images: ['https://cdn.example.com/stale-balance.jpg'],
+      },
+    };
+    const currentSeedRow = {
+      id: 'eps_ole_balance_bundle',
+      external_product_id: 'ext_ole_balance_bundle',
+      market: 'US',
+      domain: 'olehenriksen.com',
+      status: 'active',
+      canonical_url: 'https://olehenriksen.com/products/balance-bundle',
+      destination_url: 'https://olehenriksen.com/products/balance-bundle',
+      title: 'Balance+ Bundle',
+      price_amount: 93,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      seed_data: {
+        title: 'Balance+ Bundle',
+        brand: 'Olehenriksen',
+        pdp_active_ingredients_raw: 'Salicylic Acid (BHA) targets blemishes.',
+        active_ingredients: ['Salicylic acid'],
+        pdp_how_to_use_raw: 'Use each product in the routine as directed.',
+        pdp_details_sections: [{ heading: 'Details', content: 'A clarifying skincare routine.' }],
+        pdp_field_quality_summary: {
+          active_ingredients_raw: { source_quality_status: 'high' },
+          how_to_use_raw: { source_quality_status: 'high' },
+          details_sections: { source_quality_status: 'high' },
+        },
+        external_seed_snapshot_contract: {
+          authoritative: true,
+          legacy_fields_quarantined: true,
+        },
+        snapshot: {
+          title: 'Balance+ Bundle',
+          brand: 'Olehenriksen',
+          pdp_active_ingredients_raw: 'Salicylic Acid (BHA) targets blemishes.',
+          active_ingredients: ['Salicylic acid'],
+        },
+      },
+    };
+    const queryFn = jest.fn(async (sql) => {
+      const normalizedSql = String(sql || '').replace(/\s+/g, ' ').trim();
+      if (normalizedSql.includes('merchant_id = $1')) return { rows: [staleIdentityRow] };
+      if (normalizedSql.includes('sellable_item_group_id = $1')) return { rows: [staleIdentityRow] };
+      if (normalizedSql.includes('product_line_id = $1')) return { rows: [staleIdentityRow] };
+      if (normalizedSql.includes('FROM external_product_seeds')) return { rows: [currentSeedRow] };
+      return { rows: [] };
+    });
+
+    const result = await maybeBuildLiveSyntheticPdp({
+      merchantId: 'external_seed',
+      productId: 'ext_ole_balance_bundle',
+      canonicalProduct: {
+        product_id: 'ext_ole_balance_bundle',
+        merchant_id: 'external_seed',
+        title: 'Balance+ Bundle',
+        brand: 'Olehenriksen',
+      },
+      queryFn,
+    });
+
+    expect(result?.canonical_scope).toBe('synthetic');
+    expect(result?.synthetic_product.pdp_active_ingredients_raw).toContain('Salicylic Acid');
+    expect(result?.synthetic_product.pdp_how_to_use_raw).toBe('Use each product in the routine as directed.');
+    expect(result?.group_members[0].source_payload.pdp_active_ingredients_raw).toContain('Salicylic Acid');
   });
 
   test('resolveLivePdpIdentityGroupForPdp maps a public sellable group id to its live canonical ref', async () => {

@@ -17,6 +17,9 @@ const {
 const {
   resolveCanonicalCatalogEntityGroup,
 } = require('./catalogEntityResolution');
+const {
+  summarizePdpPayloadContract,
+} = require('./pdpIdentityPayloadDrift');
 
 const normalizeResolverText =
   typeof productGroundingResolverInternals.normalizeTextForResolver === 'function'
@@ -2132,6 +2135,7 @@ function buildProductLineOptions({ lineListings, baseListing } = {}) {
 
 function scoreListingCompleteness(listing) {
   const payload = asPlainObject(listing?.source_payload) || {};
+  const summary = summarizePdpPayloadContract(payload, payload.title || listing?.title);
   let score = listing?.source_tier === 'brand' ? 8 : 4;
   if (firstNonEmptyString(payload.title, payload.name)) score += 2;
   if (firstNonEmptyString(payload.description, payload.pdp_description_raw)) score += 2;
@@ -2145,6 +2149,13 @@ function scoreListingCompleteness(listing) {
   if (Number(payload.review_summary?.review_count || payload.reviews_summary?.review_count || 0) > 0) {
     score += 1;
   }
+  if (summary.active_evidence) score += 3;
+  if (summary.ingredients_raw_len > 0 || summary.ingredients_inci_count > 0) score += 2;
+  if (summary.how_to_len > 0) score += 2;
+  if (summary.details_count > 0) score += Math.min(3, summary.details_count);
+  if (summary.content_image_count > 0) score += 1;
+  if (summary.has_contract) score += 2;
+  score += Math.min(3, Number(summary.high_quality_field_count || 0));
   score += Number(listing?.identity_confidence || 0);
   return score;
 }
@@ -2855,6 +2866,68 @@ function normalizeIdentityRows(rows) {
   return out;
 }
 
+function isExternalSeedIdentityRow(row) {
+  return (
+    asString(row?.merchant_id) === EXTERNAL_SEED_MERCHANT_ID ||
+    asString(row?.source_kind).toLowerCase() === 'external_seed'
+  );
+}
+
+function hydrateIdentityRowSourcePayloadFromSeed(row, seedRow) {
+  if (!row || !seedRow) return row;
+  const freshProduct = buildExternalSeedProduct(seedRow);
+  if (!freshProduct || !asString(freshProduct.product_id || freshProduct.id)) return row;
+  return {
+    ...row,
+    source_payload: freshProduct,
+    runtime_source_payload_hydrated: true,
+    runtime_source_payload_hydrated_at: new Date().toISOString(),
+  };
+}
+
+async function hydrateIdentityRowsFromCurrentExternalSeeds(rows, queryFn = query) {
+  const normalizedRows = normalizeIdentityRows(rows);
+  const productIds = uniqueStrings(
+    normalizedRows
+      .filter(isExternalSeedIdentityRow)
+      .map((row) => asString(row.product_id)),
+    500,
+  );
+  if (!productIds.length || !process.env.DATABASE_URL || typeof queryFn !== 'function') {
+    return normalizedRows;
+  }
+
+  try {
+    const result = await queryFn(
+      `
+        SELECT *
+        FROM external_product_seeds
+        WHERE external_product_id = ANY($1::text[])
+          AND status = 'active'
+      `,
+      [productIds],
+    );
+    const seedByExternalProductId = new Map(
+      (result?.rows || []).map((row) => [asString(row.external_product_id), row]),
+    );
+    return normalizedRows.map((row) => {
+      const seedRow = seedByExternalProductId.get(asString(row.product_id));
+      if (!seedRow) return row;
+      return parseIdentityRow(hydrateIdentityRowSourcePayloadFromSeed(row, seedRow)) || row;
+    });
+  } catch (err) {
+    if (looksLikeRelationMissing(err)) return normalizedRows;
+    logger.warn(
+      {
+        err: err?.message || String(err),
+        product_count: productIds.length,
+      },
+      'pdp identity runtime source payload hydration failed',
+    );
+    return normalizedRows;
+  }
+}
+
 function normalizeListingMoney(value, fallbackCurrency = 'USD', context = {}) {
   const currency = firstNonEmptyString(
     value?.currency,
@@ -3432,7 +3505,7 @@ async function maybeBuildLiveSyntheticPdp({
       [merchantId, productId],
     );
     const exactSourceRow = parseIdentityRow(sourceRowRes?.rows?.[0]);
-    const sourceRow =
+    let sourceRow =
       exactSourceRow ||
       (await findApprovedIdentityMatchForLiveProduct({
         merchantId,
@@ -3481,6 +3554,7 @@ async function maybeBuildLiveSyntheticPdp({
       }
       return writeLiveSyntheticPdpCache(cacheKey, null);
     }
+    [sourceRow] = await hydrateIdentityRowsFromCurrentExternalSeeds([sourceRow], queryFn);
     if (!isTrustedExactLiveIdentityRow(exactSourceRow) && !isBrandAllowedForLive(canonicalProduct, sourceRow)) {
       return writeLiveSyntheticPdpCache(cacheKey, null);
     }
@@ -3523,8 +3597,14 @@ async function maybeBuildLiveSyntheticPdp({
         [sourceRow.product_line_id, allowApprovedWithoutLiveRead],
       ),
     ]);
-    const exactListings = dedupeIdentityRows([sourceRow, ...(exactRowsRes?.rows || [])]);
-    const lineListings = normalizeIdentityRows(lineRowsRes?.rows);
+    const exactListings = await hydrateIdentityRowsFromCurrentExternalSeeds(
+      dedupeIdentityRows([sourceRow, ...(exactRowsRes?.rows || [])]),
+      queryFn,
+    );
+    const lineListings = await hydrateIdentityRowsFromCurrentExternalSeeds(
+      normalizeIdentityRows(lineRowsRes?.rows),
+      queryFn,
+    );
     const composed = composeSyntheticCanonicalProduct({
       requestedListing: sourceRow,
       exactListings,
@@ -4934,6 +5014,8 @@ module.exports = {
     readReviewedMultiOfferMergeCandidate,
     buildIdentitySearchOffer,
     buildIdentitySearchProduct,
+    scoreListingCompleteness,
+    hydrateIdentityRowsFromCurrentExternalSeeds,
     pickDefaultCommerceListing,
     clusterIdentityListings,
     fetchBackfillProducts,

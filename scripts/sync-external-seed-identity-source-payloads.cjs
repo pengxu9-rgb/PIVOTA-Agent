@@ -9,6 +9,10 @@ const {
   stringifyPostgresJsonb,
   sanitizeTextForPostgres,
 } = require('./backfill-external-product-seeds-catalog');
+const {
+  buildPayloadDiff,
+  classifyIdentityPayloadDrift,
+} = require('../src/services/pdpIdentityPayloadDrift');
 
 function argValue(name) {
   const idx = process.argv.indexOf(`--${name}`);
@@ -50,84 +54,29 @@ function uniqueStrings(values, limit = 5000) {
   return out;
 }
 
+function parseCursor(value) {
+  const normalized = normalizeString(value);
+  if (!normalized) return null;
+  const [updatedAt, id] = normalized.split('|');
+  if (!normalizeString(updatedAt) || !normalizeString(id)) return null;
+  return { updatedAt: normalizeString(updatedAt), id: normalizeString(id) };
+}
+
+function buildCursor(row) {
+  if (!row?.updated_at || !row?.id) return '';
+  const updatedAt =
+    row.updated_at instanceof Date
+      ? row.updated_at.toISOString()
+      : normalizeString(row.updated_at);
+  return updatedAt && row.id ? `${updatedAt}|${row.id}` : '';
+}
+
 function ensureJsonObject(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
   return value;
 }
 
-function textLength(value) {
-  return typeof value === 'string' ? value.trim().length : 0;
-}
-
-function arrayLength(value) {
-  return Array.isArray(value) ? value.length : 0;
-}
-
-function pickReviewCount(value) {
-  const payload = ensureJsonObject(value);
-  const seedData = ensureJsonObject(payload.seed_data);
-  const snapshot = ensureJsonObject(seedData.snapshot);
-  const candidates = [
-    payload.review_summary,
-    payload.reviewSummary,
-    seedData.review_summary,
-    seedData.reviewSummary,
-    snapshot.review_summary,
-    snapshot.reviewSummary,
-  ];
-  for (const candidate of candidates) {
-    const review = ensureJsonObject(candidate);
-    const count = Number(review.count ?? review.review_count ?? review.reviews_count);
-    if (Number.isFinite(count) && count > 0) return count;
-  }
-  return 0;
-}
-
-function summarizePayload(payload) {
-  const safe = ensureJsonObject(payload);
-  const seedData = ensureJsonObject(safe.seed_data);
-  const snapshot = ensureJsonObject(seedData.snapshot);
-  return {
-    title: normalizeString(safe.title || seedData.title || snapshot.title),
-    ingredients_top_len: textLength(safe.pdp_ingredients_raw),
-    ingredients_seed_len: textLength(seedData.pdp_ingredients_raw),
-    ingredients_snapshot_len: textLength(snapshot.pdp_ingredients_raw),
-    how_to_top_len: textLength(safe.pdp_how_to_use_raw),
-    how_to_seed_len: textLength(seedData.pdp_how_to_use_raw),
-    how_to_snapshot_len: textLength(snapshot.pdp_how_to_use_raw),
-    review_count: pickReviewCount(safe),
-    variants_count: arrayLength(safe.variants) || arrayLength(seedData.variants) || arrayLength(snapshot.variants),
-    details_count:
-      arrayLength(safe.pdp_details_sections) ||
-      arrayLength(seedData.pdp_details_sections) ||
-      arrayLength(snapshot.pdp_details_sections),
-    has_contract: Boolean(
-      ensureJsonObject(seedData.external_seed_snapshot_contract).authoritative ||
-        ensureJsonObject(snapshot.external_seed_snapshot_contract).authoritative,
-    ),
-  };
-}
-
-function buildDiff(beforePayload, afterPayload) {
-  const before = summarizePayload(beforePayload);
-  const after = summarizePayload(afterPayload);
-  return {
-    before,
-    after,
-    changed: JSON.stringify(beforePayload || {}) !== JSON.stringify(afterPayload || {}),
-    gained_ingredients:
-      before.ingredients_top_len + before.ingredients_seed_len + before.ingredients_snapshot_len === 0 &&
-      after.ingredients_top_len + after.ingredients_seed_len + after.ingredients_snapshot_len > 0,
-    gained_how_to:
-      before.how_to_top_len + before.how_to_seed_len + before.how_to_snapshot_len === 0 &&
-      after.how_to_top_len + after.how_to_seed_len + after.how_to_snapshot_len > 0,
-    gained_reviews: before.review_count === 0 && after.review_count > 0,
-    variant_count_changed: before.variants_count !== after.variants_count,
-    contract_changed: before.has_contract !== after.has_contract,
-  };
-}
-
-async function loadRows({ ids, market, limit }) {
+async function loadRows({ ids, market, limit, domain, brand, updatedSince, cursor }) {
   const params = [];
   const where = [`status = 'active'`];
   if (ids.length) {
@@ -137,6 +86,34 @@ async function loadRows({ ids, market, limit }) {
   if (market) {
     params.push(market);
     where.push(`upper(market) = upper($${params.length})`);
+  }
+  if (domain) {
+    params.push(domain);
+    where.push(`lower(domain) = lower($${params.length})`);
+  }
+  if (brand) {
+    params.push(`%${brand}%`);
+    where.push(`(
+      seed_data->>'brand' ILIKE $${params.length}
+      OR seed_data->>'vendor' ILIKE $${params.length}
+      OR seed_data->>'brand_name' ILIKE $${params.length}
+      OR seed_data->'snapshot'->>'brand' ILIKE $${params.length}
+      OR seed_data->'snapshot'->>'vendor' ILIKE $${params.length}
+      OR title ILIKE $${params.length}
+    )`);
+  }
+  if (updatedSince) {
+    params.push(updatedSince);
+    where.push(`updated_at >= $${params.length}::timestamptz`);
+  }
+  const parsedCursor = parseCursor(cursor);
+  if (parsedCursor) {
+    params.push(parsedCursor.updatedAt);
+    params.push(parsedCursor.id);
+    where.push(`(
+      updated_at < $${params.length - 1}::timestamptz
+      OR (updated_at = $${params.length - 1}::timestamptz AND id < $${params.length})
+    )`);
   }
   params.push(limit);
   const res = await query(
@@ -156,7 +133,7 @@ async function loadIdentityRows(sourceRefs) {
   if (!sourceRefs.length) return new Map();
   const res = await query(
     `
-      SELECT source_listing_ref, source_payload, live_read_enabled, identity_status, review_required
+      SELECT source_listing_ref, source_payload, live_read_enabled, identity_status, review_required, updated_at
       FROM pdp_identity_listing
       WHERE source_listing_ref = ANY($1::text[])
     `,
@@ -218,13 +195,21 @@ async function main() {
       .filter(Boolean),
   ]);
   const market = normalizeString(argValue('market')).toUpperCase();
-  const limit = Math.max(1, Math.min(5000, Number(argValue('limit') || ids.length || 500) || 500));
+  const domain = normalizeString(argValue('domain'));
+  const brand = normalizeString(argValue('brand'));
+  const updatedSince = normalizeString(argValue('updated-since') || argValue('updatedSince'));
+  const rawBatchSize = Number(argValue('batch-size') || argValue('batchSize') || 0);
+  const batchSize = Number.isFinite(rawBatchSize) && rawBatchSize > 0
+    ? Math.max(1, Math.min(5000, Math.floor(rawBatchSize)))
+    : 0;
+  const limit = batchSize || Math.max(1, Math.min(5000, Number(argValue('limit') || ids.length || 500) || 500));
+  const cursor = normalizeString(argValue('cursor'));
   const dryRun = !hasFlag('write');
   const out = normalizeString(argValue('out'));
   const outDir = normalizeString(argValue('out-dir'));
   const createdBy = normalizeString(argValue('created-by')) || 'sync_external_seed_identity_source_payloads';
 
-  const rows = await loadRows({ ids, market, limit });
+  const rows = await loadRows({ ids, market, limit, domain, brand, updatedSince, cursor });
   const payloads = rows
     .map((row) => ({ row, payload: buildIdentityListingSourcePayload(row, row) }))
     .filter((item) => item.payload?.source_listing_ref && item.payload?.product);
@@ -242,7 +227,14 @@ async function main() {
       });
       continue;
     }
-    const diff = buildDiff(identityRow.source_payload, item.payload.product);
+    const diff = buildPayloadDiff(identityRow.source_payload, item.payload.product, item.row.title);
+    const drift = classifyIdentityPayloadDrift({
+      seedPayload: item.payload.product,
+      identityPayload: identityRow.source_payload,
+      title: item.row.title,
+      seedUpdatedAt: item.row.updated_at,
+      identityUpdatedAt: identityRow.updated_at,
+    });
     const result = {
       external_product_id: item.row.external_product_id,
       domain: item.row.domain,
@@ -253,6 +245,7 @@ async function main() {
       review_required: identityRow.review_required === true,
       status: diff.changed ? (dryRun ? 'dry_run' : 'pending_apply') : 'unchanged',
       diff,
+      drift,
     };
     results.push(result);
     if (diff.changed) {
@@ -274,17 +267,35 @@ async function main() {
 
   const summary = {
     dry_run: dryRun,
+    filters: {
+      market: market || null,
+      domain: domain || null,
+      brand: brand || null,
+      updated_since: updatedSince || null,
+      cursor: cursor || null,
+      limit,
+    },
     scanned_rows: rows.length,
     payloads_built: payloads.length,
     changed_rows: updates.length,
     updated_rows: applyResult.updated_rows,
     failed_rows: applyResult.failed_rows || 0,
     skipped_missing_identity_listing: results.filter((item) => item.status === 'skipped_missing_identity_listing').length,
+    gained_active_evidence: results.filter((item) => item.diff?.gained_active_evidence).length,
     gained_ingredients: results.filter((item) => item.diff?.gained_ingredients).length,
     gained_how_to: results.filter((item) => item.diff?.gained_how_to).length,
+    gained_details: results.filter((item) => item.diff?.gained_details).length,
+    gained_content_images: results.filter((item) => item.diff?.gained_content_images).length,
     gained_reviews: results.filter((item) => item.diff?.gained_reviews).length,
     variant_count_changed: results.filter((item) => item.diff?.variant_count_changed).length,
     contract_changed: results.filter((item) => item.diff?.contract_changed).length,
+    field_quality_changed: results.filter((item) => item.diff?.field_quality_changed).length,
+    seed_active_expected: results.filter((item) => item.drift?.seed_expects_active_ingredients).length,
+    identity_payload_stale: results.filter((item) => item.drift?.identity_payload_stale).length,
+    seed_active_identity_inactive: results.filter(
+      (item) => item.drift?.seed_has_active_evidence && !item.drift?.identity_payload_has_active_evidence,
+    ).length,
+    next_cursor: rows.length >= limit ? buildCursor(rows[rows.length - 1]) || null : null,
   };
   const report = {
     generated_at: new Date().toISOString(),
@@ -304,21 +315,32 @@ async function main() {
   process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
 }
 
-main()
-  .catch((err) => {
-    process.stderr.write(
-      `${JSON.stringify(
-        {
-          ok: false,
-          error: 'SYNC_EXTERNAL_SEED_IDENTITY_SOURCE_PAYLOADS_FAILED',
-          message: err?.message || String(err),
-        },
-        null,
-        2,
-      )}\n`,
-    );
-    process.exitCode = 1;
-  })
-  .finally(async () => {
-    await closePool().catch(() => {});
-  });
+if (require.main === module) {
+  main()
+    .catch((err) => {
+      process.stderr.write(
+        `${JSON.stringify(
+          {
+            ok: false,
+            error: 'SYNC_EXTERNAL_SEED_IDENTITY_SOURCE_PAYLOADS_FAILED',
+            message: err?.message || String(err),
+          },
+          null,
+          2,
+        )}\n`,
+      );
+      process.exitCode = 1;
+    })
+    .finally(async () => {
+      await closePool().catch(() => {});
+    });
+}
+
+module.exports = {
+  parseCursor,
+  buildCursor,
+  loadRows,
+  loadIdentityRows,
+  applyUpdates,
+  main,
+};
