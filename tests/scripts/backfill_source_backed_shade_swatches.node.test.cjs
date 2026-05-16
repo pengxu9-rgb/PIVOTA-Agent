@@ -5,11 +5,14 @@ const {
   applySwatchPatch,
   applyVisualPatch,
   applyVisualPatchByShade,
+  buildShopifyProductJsonUrl,
   findSourceBackedVisualsByShade,
   findSourceBackedSwatchUrl,
   findSourceBackedShadeHex,
   isTrustedSourceBackedShadeTextureUrl,
+  mergeSeedDataForVisualDiscovery,
   normalizeHexColor,
+  shopifyProductToSeedLike,
   urlMatchesShade,
 } = require('../../scripts/backfill-source-backed-shade-swatches.cjs');
 
@@ -19,6 +22,44 @@ test('accepts source-backed per-shade texture smears', () => {
 
   assert.equal(urlMatchesShade(url, '1'), true);
   assert.equal(isTrustedSourceBackedShadeTextureUrl(url, '1'), true);
+});
+
+test('matches source-backed shade token aliases from official asset names', () => {
+  assert.equal(
+    urlMatchesShade(
+      'https://cdn.shopify.com/files/FB23_SPRING_T2_SMEAR_ICON_LIQUID-EXT_BREADWINNER_0143_1.png',
+      'Bread Winnr',
+    ),
+    true,
+  );
+  assert.equal(
+    urlMatchesShade(
+      'https://cdn.shopify.com/files/FB23_SPRING_T2_SMEAR_ICON_LIQUID-EXT_NOODZ_DUDEZ_0139_1.png',
+      'Noodz & Dudez',
+    ),
+    true,
+  );
+  assert.equal(
+    urlMatchesShade(
+      'https://cdn.shopify.com/files/FB_FALL25_T2PRODUCT_SMEAR_LE-DIAMOND-COLLECTION_BODY-LAVA_HMC_1200X1500_72DPI.jpg',
+      'How Many Carats?!',
+    ),
+    true,
+  );
+  assert.equal(
+    urlMatchesShade(
+      'https://cdn.shopify.com/files/FB_SUM25_T2PRODUCT_SMEAR_BODYLAVA_WHONEEDCLOTHES_1200X1500_72DPI.jpg',
+      'Who Needs Clothes?!',
+    ),
+    true,
+  );
+  assert.equal(
+    isTrustedSourceBackedShadeTextureUrl(
+      'https://cdn.shopify.com/files/FB_FALL25_T2PRODUCT_SMEAR_BODY-LAVA_ALLSHADES_1200X1500_72DPI.jpg',
+      'How Many Carats?!',
+    ),
+    false,
+  );
 });
 
 test('rejects product, model, and group swatch assets as shade chip backfill', () => {
@@ -56,6 +97,30 @@ test('rejects product, model, and group swatch assets as shade chip backfill', (
       'black cherry',
     ),
     false,
+  );
+});
+
+test('builds and merges public Shopify product endpoint visual evidence', () => {
+  assert.equal(
+    buildShopifyProductJsonUrl('https://fentybeauty.com/products/fenty-icon-velvet-liquid-lipstick-the-mvp?utm=x'),
+    'https://fentybeauty.com/products/fenty-icon-velvet-liquid-lipstick-the-mvp.js',
+  );
+
+  const shopifySeed = shopifyProductToSeedLike({
+    title: 'Fenty Icon Velvet Liquid Lipstick — The MVP',
+    vendor: 'Fenty Beauty',
+    options: [{ name: 'Color', values: ['The MVP'] }],
+    variants: [{ title: 'The MVP', option1: 'The MVP', public_title: 'The MVP' }],
+    images: [
+      '//cdn.shopify.com/s/files/1/0341/3458/9485/products/FB_POSTHOL22_T2PRODUCT_CONCRETE_FENTY_ICON_VELVET_LIQUID_LIP_OPEN_MVP.jpg',
+      '//cdn.shopify.com/s/files/1/0341/3458/9485/products/FB23_SPRING_T2_SMEAR_ICON_LIQUID-EXT_MVP_0137_1.png',
+    ],
+  });
+
+  const merged = mergeSeedDataForVisualDiscovery({ snapshot: {} }, shopifySeed);
+  assert.equal(
+    findSourceBackedSwatchUrl(merged, ['The MVP']),
+    'https://cdn.shopify.com/s/files/1/0341/3458/9485/products/FB23_SPRING_T2_SMEAR_ICON_LIQUID-EXT_MVP_0137_1.png',
   );
 });
 

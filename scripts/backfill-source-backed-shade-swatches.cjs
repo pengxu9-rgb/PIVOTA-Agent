@@ -87,6 +87,39 @@ function shadeTokenAliases(value) {
   const normalized = normalizeShadeToken(value);
   if (!normalized) return [];
   const out = new Set([normalized, normalized.replace(/\s+/g, '-') , normalized.replace(/\s+/g, '_'), normalized.replace(/\s+/g, '')]);
+  const words = normalized.split(/\s+/).filter(Boolean);
+  const withoutJoiners = words.filter((word) => !['and'].includes(word)).join(' ');
+  if (withoutJoiners && withoutJoiners !== normalized) {
+    out.add(withoutJoiners);
+    out.add(withoutJoiners.replace(/\s+/g, '-'));
+    out.add(withoutJoiners.replace(/\s+/g, '_'));
+    out.add(withoutJoiners.replace(/\s+/g, ''));
+  }
+  const withoutArticles = words.filter((word) => !['a', 'an', 'the'].includes(word)).join(' ');
+  if (withoutArticles && withoutArticles !== normalized) {
+    out.add(withoutArticles);
+    out.add(withoutArticles.replace(/\s+/g, '-'));
+    out.add(withoutArticles.replace(/\s+/g, '_'));
+    out.add(withoutArticles.replace(/\s+/g, ''));
+  }
+  const initialismWords = words.filter((word) => !['and', 'a', 'an', 'the'].includes(word));
+  if (initialismWords.length > 1 && initialismWords.length <= 5) {
+    out.add(initialismWords.map((word) => word[0]).join(''));
+  }
+  const singularized = words.map((word) => (word.length > 3 && word.endsWith('s') ? word.slice(0, -1) : word)).join(' ');
+  if (singularized && singularized !== normalized) {
+    out.add(singularized);
+    out.add(singularized.replace(/\s+/g, '-'));
+    out.add(singularized.replace(/\s+/g, '_'));
+    out.add(singularized.replace(/\s+/g, ''));
+  }
+  if (/\bwinnr\b/.test(normalized)) {
+    const winner = normalized.replace(/\bwinnr\b/g, 'winner');
+    out.add(winner);
+    out.add(winner.replace(/\s+/g, '-'));
+    out.add(winner.replace(/\s+/g, '_'));
+    out.add(winner.replace(/\s+/g, ''));
+  }
   if (/^\d+$/.test(normalized)) {
     const numeric = Number(normalized);
     if (Number.isFinite(numeric)) {
@@ -122,6 +155,13 @@ function urlMatchesShade(value, shadeName) {
 
 function isHttpUrl(value) {
   return /^https?:\/\//i.test(asString(value));
+}
+
+function normalizeHttpUrl(value) {
+  const text = asString(value);
+  if (!text) return '';
+  if (text.startsWith('//')) return `https:${text}`;
+  return isHttpUrl(text) ? text : '';
 }
 
 function uniqueStrings(values) {
@@ -171,7 +211,7 @@ function collectImageUrls(seedData) {
       ...asArray(variant?.images),
     );
   }
-  return uniqueStrings(values).filter(isHttpUrl);
+  return uniqueStrings(values.map(normalizeHttpUrl)).filter(isHttpUrl);
 }
 
 function normalizeHexColor(value) {
@@ -204,7 +244,7 @@ function isTrustedSourceBackedShadeTextureUrl(url, shadeName) {
   if (!urlMatchesShade(text, shadeName)) return false;
   if (
     /model|infographics?|product[-_\s]?w(?:ith)?[-_\s]?smear/i.test(text) ||
-    /(?:^|[^a-z0-9])(arm[-_\s]?swatch|armswatch|shade[-_\s]?names?|chart|routine|pairing|before|after)(?:[^a-z0-9]|$)/i.test(text)
+    /(?:^|[^a-z0-9])(all[-_\s]?shades?|arm[-_\s]?swatch|armswatch|shade[-_\s]?names?|chart|routine|pairing|before|after)(?:[^a-z0-9]|$)/i.test(text)
   ) {
     return false;
   }
@@ -212,6 +252,140 @@ function isTrustedSourceBackedShadeTextureUrl(url, shadeName) {
     return false;
   }
   return true;
+}
+
+function buildShopifyProductJsonUrl(productUrl) {
+  const text = asString(productUrl);
+  if (!isHttpUrl(text)) return '';
+  let url;
+  try {
+    url = new URL(text);
+  } catch {
+    return '';
+  }
+  const match = url.pathname.match(/^(.*\/products\/[^/.?#/]+)(?:\/)?$/i);
+  if (!match) return '';
+  url.pathname = `${match[1]}.js`;
+  url.search = '';
+  url.hash = '';
+  return url.toString();
+}
+
+function collectShopifyProductImageUrls(product) {
+  const values = [
+    product?.featured_image,
+    ...asArray(product?.images),
+    ...asArray(product?.media).flatMap((item) => [
+      item?.src,
+      item?.preview_image?.src,
+    ]),
+    ...asArray(product?.variants).flatMap((variant) => [
+      variant?.featured_image?.src,
+      variant?.featured_image,
+      variant?.image,
+    ]),
+  ];
+  return uniqueStrings(values.map(normalizeHttpUrl)).filter(isHttpUrl);
+}
+
+function shopifyProductToSeedLike(product) {
+  const optionName = asString(asArray(product?.options)[0]?.name) || 'Color';
+  const variants = asArray(product?.variants).map((variant) => ({
+    title: firstNonEmptyString(variant?.public_title, variant?.title, variant?.option1),
+    options: [{ name: optionName, value: firstNonEmptyString(variant?.option1, variant?.public_title, variant?.title) }],
+    swatch_image_url: normalizeHttpUrl(variant?.featured_image?.src || variant?.featured_image || variant?.image),
+  }));
+  const imageUrls = collectShopifyProductImageUrls(product);
+  return {
+    title: asString(product?.title),
+    product_title: asString(product?.title),
+    vendor: asString(product?.vendor),
+    image_urls: imageUrls,
+    images: imageUrls,
+    variants,
+    snapshot: {
+      title: asString(product?.title),
+      product_title: asString(product?.title),
+      vendor: asString(product?.vendor),
+      image_urls: imageUrls,
+      images: imageUrls,
+      variants,
+    },
+  };
+}
+
+function mergeSeedDataForVisualDiscovery(seedData, supplementalSeedData) {
+  const seed = asObject(seedData);
+  const snapshot = asObject(seed.snapshot);
+  const supplemental = asObject(supplementalSeedData);
+  const supplementalSnapshot = asObject(supplemental.snapshot);
+  return {
+    ...seed,
+    image_urls: uniqueStrings([
+      ...asArray(seed.image_urls),
+      ...asArray(seed.images),
+      ...asArray(supplemental.image_urls),
+      ...asArray(supplemental.images),
+    ]),
+    images: uniqueStrings([
+      ...asArray(seed.images),
+      ...asArray(seed.image_urls),
+      ...asArray(supplemental.images),
+      ...asArray(supplemental.image_urls),
+    ]),
+    variants: [...asArray(seed.variants), ...asArray(supplemental.variants)],
+    snapshot: {
+      ...snapshot,
+      image_urls: uniqueStrings([
+        ...asArray(snapshot.image_urls),
+        ...asArray(snapshot.images),
+        ...asArray(supplementalSnapshot.image_urls),
+        ...asArray(supplementalSnapshot.images),
+      ]),
+      images: uniqueStrings([
+        ...asArray(snapshot.images),
+        ...asArray(snapshot.image_urls),
+        ...asArray(supplementalSnapshot.images),
+        ...asArray(supplementalSnapshot.image_urls),
+      ]),
+      variants: [...asArray(snapshot.variants), ...asArray(supplementalSnapshot.variants)],
+    },
+  };
+}
+
+async function fetchShopifyProductJson(productUrl, { timeoutMs = 15000 } = {}) {
+  const url = buildShopifyProductJsonUrl(productUrl);
+  if (!url) return { ok: false, source_url: '', blocker_reason: 'not_shopify_product_url' };
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, {
+      headers: {
+        accept: 'application/json,text/javascript,*/*;q=0.8',
+        'user-agent': 'PivotaShadeSwatchBackfill/1.0 (+https://pivota.cc)',
+      },
+      signal: controller.signal,
+    });
+    const text = await response.text();
+    const lower = text.toLowerCase();
+    if (/(captcha|access denied|bot protection|cloudflare|login required|sign in required|paywall)/i.test(lower)) {
+      return { ok: false, source_url: url, http_status: response.status, blocker_reason: 'shopify_product_endpoint_blocked' };
+    }
+    if (!response.ok) {
+      return { ok: false, source_url: url, http_status: response.status, blocker_reason: `shopify_product_endpoint_http_${response.status}` };
+    }
+    const product = JSON.parse(text);
+    return { ok: true, source_url: url, http_status: response.status, product, seed_data: shopifyProductToSeedLike(product) };
+  } catch (error) {
+    return {
+      ok: false,
+      source_url: url,
+      blocker_reason: error?.name === 'AbortError' ? 'shopify_product_endpoint_timeout' : 'shopify_product_endpoint_parse_or_fetch_failed',
+      error: asString(error?.message || error),
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function findSourceBackedSwatchUrl(seedData, shadeNames) {
@@ -334,7 +508,12 @@ function patchVariant(variant, swatchUrl, shadeHex, targetShades, forceSingleVar
   };
 }
 
-function applyVisualPatch(seedData, { swatchUrl = '', shadeHex = '' } = {}, targetShades, generatedAt = new Date().toISOString()) {
+function applyVisualPatch(
+  seedData,
+  { swatchUrl = '', shadeHex = '', source = 'source_backed_seed_visual_fields' } = {},
+  targetShades,
+  generatedAt = new Date().toISOString(),
+) {
   const seed = JSON.parse(JSON.stringify(asObject(seedData)));
   const snapshot = asObject(seed.snapshot);
   const seedVariants = asArray(seed.variants);
@@ -371,7 +550,7 @@ function applyVisualPatch(seedData, { swatchUrl = '', shadeHex = '' } = {}, targ
       ...asObject(snapshot.diagnostics),
       shade_swatch_backfill: {
         applied: true,
-        source: 'source_backed_seed_visual_fields',
+        source,
         evidence_kind: swatchUrl ? 'source_backed_texture_swatch' : 'source_backed_explicit_hex',
         swatch_image_url: swatchUrl,
         shade_hex: shadeHex,
@@ -383,7 +562,13 @@ function applyVisualPatch(seedData, { swatchUrl = '', shadeHex = '' } = {}, targ
   return seed;
 }
 
-function applyVisualPatchByShade(seedData, visualsByShade, targetShades, generatedAt = new Date().toISOString()) {
+function applyVisualPatchByShade(
+  seedData,
+  visualsByShade,
+  targetShades,
+  generatedAt = new Date().toISOString(),
+  source = 'source_backed_seed_visual_fields',
+) {
   const seed = JSON.parse(JSON.stringify(asObject(seedData)));
   const snapshot = asObject(seed.snapshot);
   const seedVariants = asArray(seed.variants);
@@ -422,7 +607,7 @@ function applyVisualPatchByShade(seedData, visualsByShade, targetShades, generat
       ...asObject(snapshot.diagnostics),
       shade_swatch_backfill: {
         applied: true,
-        source: 'source_backed_seed_visual_fields',
+        source,
         evidence_kind: 'source_backed_visuals_by_shade',
         target_shade_count: uniqueTargets.length,
         patched_shade_count: visualEntries.length,
@@ -623,6 +808,7 @@ async function main() {
   const market = asString(argValue('market', 'US')).toUpperCase();
   const apply = hasFlag('apply');
   const limit = Number(argValue('limit', '0')) || 0;
+  const includeLiveShopifyProductJson = hasFlag('include-live-shopify-product-json') || hasFlag('live-shopify-product-json');
   const generatedAt = new Date().toISOString();
 
   fs.mkdirSync(outDir, { recursive: true });
@@ -633,20 +819,67 @@ async function main() {
   const rows = await loadSeedRows(targetIds, { market, limit });
   const candidates = [];
   const blockers = [];
+  const liveShopifyCache = new Map();
+  let liveShopifyFetchCount = 0;
+  let liveShopifySuccessCount = 0;
   let updated = 0;
 
   for (const row of rows) {
     const target = targetsByExternalId.get(asString(row.external_product_id));
     const targetShades = Array.from(target?.shade_names || []).filter(Boolean);
     const uniqueTargetShades = uniqueShadeNames(targetShades);
-    const visualsByShade = findSourceBackedVisualsByShade(row.seed_data, targetShades, target?.source_hexes_by_shade);
-    const visualEntries = uniqueTargetShades
+    let visualSource = 'source_backed_seed_visual_fields';
+    let liveShopifyResult = null;
+    let liveShopifySourceUrl = '';
+    let visualsByShade = findSourceBackedVisualsByShade(row.seed_data, targetShades, target?.source_hexes_by_shade);
+    let visualEntries = uniqueTargetShades
       .map((shadeName) => {
         const shadeKey = normalizeShadeToken(shadeName);
         const visual = visualsByShade.get(shadeKey);
         return visual ? { shade_key: shadeKey, ...visual } : null;
       })
       .filter(Boolean);
+
+    if (includeLiveShopifyProductJson && visualEntries.length < uniqueTargetShades.length) {
+      const productUrl = firstNonEmptyString(
+        row.canonical_url,
+        row.destination_url,
+        readSeedUrl(row.seed_data, 'canonical_url'),
+        readSeedUrl(row.seed_data, 'destination_url'),
+        readSeedUrl(row.seed_data, 'product_url'),
+      );
+      const shopifyProductJsonUrl = buildShopifyProductJsonUrl(productUrl);
+      liveShopifySourceUrl = shopifyProductJsonUrl;
+      if (shopifyProductJsonUrl) {
+        if (!liveShopifyCache.has(shopifyProductJsonUrl)) {
+          liveShopifyFetchCount += 1;
+          liveShopifyCache.set(shopifyProductJsonUrl, await fetchShopifyProductJson(productUrl));
+        }
+        liveShopifyResult = liveShopifyCache.get(shopifyProductJsonUrl);
+        if (liveShopifyResult?.ok) {
+          liveShopifySuccessCount += 1;
+          const mergedSeedData = mergeSeedDataForVisualDiscovery(row.seed_data, liveShopifyResult.seed_data);
+          const liveVisualsByShade = findSourceBackedVisualsByShade(
+            mergedSeedData,
+            targetShades,
+            target?.source_hexes_by_shade,
+          );
+          const liveVisualEntries = uniqueTargetShades
+            .map((shadeName) => {
+              const shadeKey = normalizeShadeToken(shadeName);
+              const visual = liveVisualsByShade.get(shadeKey);
+              return visual ? { shade_key: shadeKey, ...visual } : null;
+            })
+            .filter(Boolean);
+          if (liveVisualEntries.length > visualEntries.length) {
+            visualsByShade = liveVisualsByShade;
+            visualEntries = liveVisualEntries;
+            visualSource = 'source_backed_public_shopify_product_endpoint';
+          }
+        }
+      }
+    }
+
     const soleVisual = visualEntries.length === 1 ? visualEntries[0] : null;
     const swatchUrl = soleVisual?.swatch_image_url || '';
     const shadeHex = soleVisual?.shade_hex || '';
@@ -662,15 +895,21 @@ async function main() {
       target_shade_count: uniqueTargetShades.length,
       patched_shade_count: visualEntries.length,
       source_report_rows: target?.source_rows || 0,
+      visual_source: visualSource,
+      source_shopify_product_url: liveShopifySourceUrl,
     };
     if (!visualEntries.length) {
       blockers.push({
         ...base,
-        blocker_reason: 'no_per_shade_source_backed_swatch_texture_or_hex_asset',
+        blocker_reason: liveShopifyResult && !liveShopifyResult.ok
+          ? liveShopifyResult.blocker_reason
+          : 'no_per_shade_source_backed_swatch_texture_or_hex_asset',
+        live_shopify_http_status: liveShopifyResult?.http_status || '',
+        live_shopify_error: liveShopifyResult?.error || '',
       });
       continue;
     }
-    const nextSeedData = applyVisualPatchByShade(row.seed_data, visualsByShade, targetShades, generatedAt);
+    const nextSeedData = applyVisualPatchByShade(row.seed_data, visualsByShade, targetShades, generatedAt, visualSource);
     candidates.push({
       ...base,
       swatch_image_url: swatchUrl,
@@ -707,6 +946,8 @@ async function main() {
     'target_shade_count',
     'patched_shade_count',
     'source_report_rows',
+    'visual_source',
+    'source_shopify_product_url',
     'action',
     'canonical_url',
     'destination_url',
@@ -721,7 +962,11 @@ async function main() {
     'target_shade_count',
     'patched_shade_count',
     'source_report_rows',
+    'visual_source',
+    'source_shopify_product_url',
     'blocker_reason',
+    'live_shopify_http_status',
+    'live_shopify_error',
     'canonical_url',
     'destination_url',
   ];
@@ -731,9 +976,12 @@ async function main() {
     generated_at: generatedAt,
     mode: apply ? 'apply' : 'dry_run',
     market,
+    include_live_shopify_product_json: includeLiveShopifyProductJson,
     input_files: inputFiles,
     report_target_count: targetIds.length,
     loaded_seed_count: rows.length,
+    live_shopify_fetch_count: liveShopifyFetchCount,
+    live_shopify_success_count: liveShopifySuccessCount,
     candidate_count: candidates.length,
     blocker_count: blockers.length,
     updated_count: updated,
@@ -759,12 +1007,18 @@ module.exports = {
   applySwatchPatch,
   applyVisualPatch,
   applyVisualPatchByShade,
+  buildShopifyProductJsonUrl,
   collectImageUrls,
+  collectShopifyProductImageUrls,
+  fetchShopifyProductJson,
   findSourceBackedVisualsByShade,
   findSourceBackedSwatchUrl,
   findSourceBackedShadeHex,
   isTrustedSourceBackedShadeTextureUrl,
+  mergeSeedDataForVisualDiscovery,
   normalizeHexColor,
   parseCsv,
+  shadeTokenAliases,
+  shopifyProductToSeedLike,
   urlMatchesShade,
 };
