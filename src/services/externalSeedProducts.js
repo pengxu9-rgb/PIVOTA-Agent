@@ -1230,6 +1230,36 @@ function rewriteSeedImageUrlsThroughCache(urls, cacheUrlMap) {
   return out;
 }
 
+function isCatalogImageCacheUrl(url) {
+  try {
+    return new URL(String(url || '')).pathname.startsWith('/catalog-image-cache/');
+  } catch {
+    return false;
+  }
+}
+
+function hasCatalogImageCacheUrl(urls) {
+  return (Array.isArray(urls) ? urls : []).some((url) => isCatalogImageCacheUrl(url));
+}
+
+function shouldUseCachedSeedGalleryForVariant({
+  rawImageUrls = [],
+  rewrittenImageUrls = [],
+  productImageUrls = [],
+  cacheUrlMap = null,
+} = {}) {
+  return (
+    Array.isArray(rawImageUrls) &&
+    rawImageUrls.length > 0 &&
+    cacheUrlMap instanceof Map &&
+    cacheUrlMap.size > 0 &&
+    Array.isArray(productImageUrls) &&
+    productImageUrls.length > 0 &&
+    hasCatalogImageCacheUrl(productImageUrls) &&
+    !hasCatalogImageCacheUrl(rewrittenImageUrls)
+  );
+}
+
 function classifySeedGalleryAsset(url) {
   const normalized = normalizePdpImageUrl(url);
   if (!normalized) return '';
@@ -1765,6 +1795,7 @@ function extractImageFamilyKey(url) {
 function narrowVariantImageUrls(imageUrls, rawVariant) {
   const normalized = Array.isArray(imageUrls) ? imageUrls.filter(Boolean) : [];
   if (normalized.length <= 1) return normalized;
+  if (normalized.every((url) => isCatalogImageCacheUrl(url))) return normalized;
 
   const primaryImageUrl = normalizePdpImageUrl(rawVariant?.image_url || rawVariant?.image || '');
   const primaryFamilyKey = extractImageFamilyKey(primaryImageUrl);
@@ -2454,9 +2485,22 @@ function inferVariantAxisKind(option, context = {}) {
   return { axis_kind: 'non_displayable', display_label: '', normalized_value: '' };
 }
 
-function rewriteSeedImageUrlThroughCache(url, cacheUrlMap) {
+function rewriteSeedImageUrlThroughCache(url, cacheUrlMap, fallbackImageUrl = '') {
   const rewritten = rewriteSeedImageUrlsThroughCache([url], cacheUrlMap);
-  return rewritten[0] || normalizePdpImageUrl(url) || '';
+  const normalized = normalizePdpImageUrl(url);
+  const candidate = rewritten[0] || normalized || '';
+  const fallback = normalizePdpImageUrl(fallbackImageUrl);
+  if (
+    normalized &&
+    cacheUrlMap instanceof Map &&
+    cacheUrlMap.size > 0 &&
+    fallback &&
+    isCatalogImageCacheUrl(fallback) &&
+    !isCatalogImageCacheUrl(candidate)
+  ) {
+    return fallback;
+  }
+  return candidate;
 }
 
 function normalizeVariantVisualFields(rawVariant, fallbackImageUrl, cacheUrlMap) {
@@ -2470,8 +2514,8 @@ function normalizeVariantVisualFields(rawVariant, fallbackImageUrl, cacheUrlMap)
       rawVariant?.swatch?.url,
   );
   const rawImageUrl = normalizeHttpUrl(rawVariant?.image_url || rawVariant?.image) || fallbackImageUrl || '';
-  const swatchImageUrl = rewriteSeedImageUrlThroughCache(rawSwatchImageUrl, cacheUrlMap);
-  const imageUrl = rewriteSeedImageUrlThroughCache(rawImageUrl, cacheUrlMap);
+  const swatchImageUrl = rewriteSeedImageUrlThroughCache(rawSwatchImageUrl, cacheUrlMap, fallbackImageUrl);
+  const imageUrl = rewriteSeedImageUrlThroughCache(rawImageUrl, cacheUrlMap, fallbackImageUrl);
   const swatchHex = firstNonEmptyString(
     rawVariant?.color_hex,
     rawVariant?.swatch?.hex,
@@ -3074,6 +3118,7 @@ function normalizeSeedVariants(seedData, row) {
   if (!rawVariants.length) return [];
 
   const productImageUrls = normalizeSeedImageUrls(parsedSeedData, row);
+  const variantCachedFallbackImageUrls = collectCachedSeedImageUrls(parsedSeedData);
   const imageCacheUrlMap = buildSeedImageCacheUrlMap(parsedSeedData);
   const fallbackCurrency = normalizeCurrency(
     row?.price_currency || parsedSeedData.price_currency || parsedSeedData.snapshot?.price_currency,
@@ -3142,7 +3187,17 @@ function normalizeSeedVariants(seedData, row) {
         null,
       );
       const cachedImageUrls = rewriteSeedImageUrlsThroughCache(imageUrls, imageCacheUrlMap);
-      const narrowedImageUrls = narrowVariantImageUrls(cachedImageUrls, rawVariant);
+      const cacheFallbackImageUrls =
+        variantCachedFallbackImageUrls.length > 0 ? variantCachedFallbackImageUrls : productImageUrls;
+      const cacheSafeImageUrls = shouldUseCachedSeedGalleryForVariant({
+        rawImageUrls: imageUrls,
+        rewrittenImageUrls: cachedImageUrls,
+        productImageUrls: cacheFallbackImageUrls,
+        cacheUrlMap: imageCacheUrlMap,
+      })
+        ? cacheFallbackImageUrls
+        : cachedImageUrls;
+      const narrowedImageUrls = narrowVariantImageUrls(cacheSafeImageUrls, rawVariant);
       const normalizedImageUrls = narrowedImageUrls.length > 0 ? narrowedImageUrls : productImageUrls;
       const imageUrl = normalizedImageUrls[0];
       const displayFields = sanitizeSeedVariantDisplayFields(rawVariant, productOptionNames, productLevelOptions);

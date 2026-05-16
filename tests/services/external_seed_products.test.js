@@ -96,6 +96,71 @@ describe('externalSeedProducts helper', () => {
     expect(searchProduct.image_url).toBe(cachedUrl);
   });
 
+  test('falls back to cached seed gallery when variant original was quarantined from cache', () => {
+    const cachedGalleryUrl = 'https://agent.pivota.cc/catalog-image-cache/14/lost-cherry-gallery.jpg';
+    const cachedMappedUrl = 'https://agent.pivota.cc/catalog-image-cache/cc/lost-cherry-size.webp';
+    const quarantinedVariantUrl =
+      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T81201_2000x2000_0_broken.png?v=1777211432';
+    const mappedVariantUrl =
+      'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T8MK01_2000x2000_0.png?v=1777211432';
+    const row = {
+      id: 'eps_tom_ford_lost_cherry',
+      external_product_id: 'ext_tom_ford_lost_cherry',
+      canonical_url: 'https://www.tomfordbeauty.com/products/lost-cherry-eau-de-parfum',
+      destination_url: 'https://www.tomfordbeauty.com/products/lost-cherry-eau-de-parfum',
+      domain: 'www.tomfordbeauty.com',
+      title: 'Lost Cherry Eau de Parfum',
+      seed_data: {
+        brand: 'Tom Ford Beauty',
+        image_asset_cache_v1: {
+          visible_image_urls: [cachedGalleryUrl, cachedMappedUrl],
+          assets: [
+            {
+              original_url: mappedVariantUrl,
+              cached_url: cachedMappedUrl,
+              visible_url: cachedMappedUrl,
+            },
+          ],
+        },
+        snapshot: {
+          image_urls: [cachedGalleryUrl, cachedMappedUrl],
+          images: [cachedGalleryUrl, cachedMappedUrl],
+          variants: [
+            {
+              sku: 'T81201',
+              variant_id: '53031546618069',
+              option_name: 'Size',
+              option_value: '100.0 ml',
+              price: '615.00',
+              currency: 'USD',
+              stock: 'In Stock',
+              image_url: quarantinedVariantUrl,
+            },
+            {
+              sku: 'T8MK01',
+              variant_id: '53394850218197',
+              option_name: 'Size',
+              option_value: '30.0 ml',
+              price: '255.00',
+              currency: 'USD',
+              stock: 'In Stock',
+              image_url: mappedVariantUrl,
+            },
+          ],
+        },
+      },
+    };
+
+    const product = buildExternalSeedProduct(row);
+    expect(product.image_url).toBe(cachedGalleryUrl);
+    expect(product.images).toEqual([cachedGalleryUrl, cachedMappedUrl]);
+    expect(product.variants[0].image_url).toBe(cachedGalleryUrl);
+    expect(product.variants[0].image_urls).toEqual([cachedGalleryUrl, cachedMappedUrl]);
+    expect(product.variants[0].image_urls).not.toContain(quarantinedVariantUrl);
+    expect(product.variants[1].image_url).toBe(cachedMappedUrl);
+    expect(product.variants[1].image_urls).toEqual([cachedMappedUrl]);
+  });
+
   test('normalizes snapshot variants and carries multi-image fields forward', () => {
     const row = {
       id: 'eps_1',
