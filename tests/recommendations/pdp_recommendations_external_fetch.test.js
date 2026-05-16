@@ -1202,6 +1202,70 @@ describe('RecommendationEngine external candidate fetch', () => {
     );
   });
 
+  test('deep-domain non-foundation intent uses same-domain expansion before slow global category scans', async () => {
+    process.env.DATABASE_URL = 'postgres://example.test/pivota';
+
+    const queryMock = jest.fn(async (sql, params) => {
+      const sqlText = String(sql);
+      if (sqlText.includes('domain = ANY($4)') && sqlText.includes('LIKE ANY($5')) {
+        return { rows: [] };
+      }
+      if (sqlText.includes('domain = ANY($4)') && Array.isArray(params?.[4])) {
+        return {
+          rows: Array.from({ length: 4 }).map((_, index) =>
+            makeExternalRow({
+              id: `eps_medicube_domain_category_${index}`,
+              external_product_id: `ext_medicube_domain_category_${index}`,
+              title: `Medicube Serum Domain Category ${index}`,
+              brand: 'Medicube',
+              category: 'Serum',
+              domain: 'medicube.us',
+            }),
+          ),
+        };
+      }
+      if (sqlText.includes('domain = ANY($4)') && Array.isArray(params?.[3])) {
+        return {
+          rows: Array.from({ length: 12 }).map((_, index) =>
+            makeExternalRow({
+              id: `eps_medicube_domain_${index}`,
+              external_product_id: `ext_medicube_domain_${index}`,
+              title: `Medicube Booster Serum ${index}`,
+              brand: 'Medicube',
+              category: 'Serum',
+              domain: 'medicube.us',
+            }),
+          ),
+        };
+      }
+      if (sqlText.includes("seed_data->'derived'->'recall'->>'category")) {
+        throw new Error('global category query should not run once same-domain intent rows are ready');
+      }
+      return { rows: [] };
+    });
+
+    jest.doMock('../../src/db', () => ({ query: queryMock }));
+    jest.doMock('../../src/logger', () => ({ warn: jest.fn(), info: jest.fn() }));
+
+    const { _internals } = require('../../src/services/RecommendationEngine');
+    const products = await _internals.fetchExternalCandidates({
+      brandHint: 'Medicube',
+      categoryHint: 'Serum',
+      verticalHint: 'skincare',
+      intentFamilyHint: 'serum',
+      domainHints: ['https://medicube.us/products/age-r-booster-gel-serum'],
+      limit: 36,
+      minFocusedCandidates: 36,
+      deepDomainRecall: true,
+    });
+
+    expect(products).toHaveLength(16);
+    expect(products.every((product) => product.domain === 'medicube.us')).toBe(true);
+    expect(products.__externalFetchStats?.stages.map((stage) => stage.name)).toContain(
+      'external_domain_pre_category',
+    );
+  });
+
   test('deep-domain strict intent returns exact same-domain category rows before slow global scans', async () => {
     process.env.DATABASE_URL = 'postgres://example.test/pivota';
 

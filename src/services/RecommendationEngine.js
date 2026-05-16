@@ -2928,6 +2928,23 @@ ${EXTERNAL_SEED_FAST_RECOMMENDATION_SELECT}
   }
 
   if (deepDomainRecall && category && !preloadedCategoryMatches) {
+    if (!identityCollapseProtection && normalizedDomainHints.length && !preloadedDomainMatches) {
+      const domainBeforeCategoryCap = boundedRecallCap(2, 48);
+      preloadedDomainMatches = await runTimedExternalQuery(
+        'external_domain_pre_category',
+        () => runDomainQuery(domainBeforeCategoryCap),
+        PDP_RECS_EXTERNAL_RECALL_QUERY_TIMEOUT_MS,
+      );
+      out.push(...preloadedDomainMatches);
+      const domainExpandedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
+      const domainIntentCandidates = intentFamily
+        ? domainExpandedCandidates.filter((product) => getSimilarIntentFamilyFromProduct(product) === intentFamily)
+        : domainExpandedCandidates;
+      const sameDomainCoverageCandidates = intentFamilyPattern ? domainIntentCandidates : domainExpandedCandidates;
+      if (hasDisplayCoverage(sameDomainCoverageCandidates, focusedRecallTarget)) {
+        return attachExternalFetchStats(sameDomainCoverageCandidates.slice(0, returnCap));
+      }
+    }
     if (intentFamily === 'foundation' && !preloadedDomainMatches) {
       const foundationDomainCap = boundedRecallCap(2, 48);
       const shouldPreloadIntentWithDomain =
