@@ -289,7 +289,7 @@ async function fetchRows({ market, seedId, externalProductId, domain, brand, lim
   return res.rows || [];
 }
 
-async function fetchExtractorTruth(row, baseUrl) {
+async function fetchExtractorTruth(row, baseUrl, options = {}) {
   const targetUrl = pickSeedTargetUrl(row);
   if (!targetUrl) {
     return {
@@ -303,7 +303,12 @@ async function fetchExtractorTruth(row, baseUrl) {
       `${baseUrl.replace(/\/$/, '')}/api/extract`,
       buildExtractRequestBody(targetUrl, row),
       {
-        timeout: Number(process.env.CATALOG_INTELLIGENCE_TIMEOUT_MS || 90000),
+        timeout: parsePositiveInt(
+          options.timeoutMs,
+          Number(process.env.CATALOG_INTELLIGENCE_TIMEOUT_MS || 90000),
+          1000,
+          300000,
+        ),
         headers: { 'Content-Type': 'application/json' },
       },
     );
@@ -529,6 +534,7 @@ async function auditRow(row, {
   imageHealthEnabled = true,
   imageHealthLimit = null,
   similarEnabled = true,
+  catalogTimeoutMs = null,
   pdpTimeoutMs = null,
   detailsPdpTimeoutMs = null,
   similarTimeoutMs = null,
@@ -539,7 +545,7 @@ async function auditRow(row, {
     normalizeNonEmptyString(seedData.source_listing_scope).toLowerCase() === 'variant' ||
     Boolean(normalizeNonEmptyString(seedData.parent_external_product_id || seedData.parent_seed_id));
   const recall = resolveExternalSeedRecallDoc({ row, seedData, snapshot });
-  const extractor = await fetchExtractorTruth(row, catalogBaseUrl);
+  const extractor = await fetchExtractorTruth(row, catalogBaseUrl, { timeoutMs: catalogTimeoutMs });
   const productId =
     normalizeNonEmptyString(row.external_product_id) ||
     normalizeNonEmptyString(seedData.external_product_id) ||
@@ -661,6 +667,7 @@ async function main() {
   const pdpTimeoutMs = argValue('pdp-timeout-ms');
   const detailsPdpTimeoutMs = argValue('details-pdp-timeout-ms');
   const similarTimeoutMs = argValue('similar-timeout-ms');
+  const catalogTimeoutMs = argValue('catalog-timeout-ms');
   const out = argValue('out');
   const progressEvery = parsePositiveInt(argValue('progress-every'), 10, 1, 1000);
   const rows = await fetchRows({
@@ -684,6 +691,7 @@ async function main() {
           imageHealthEnabled,
           imageHealthLimit,
           similarEnabled,
+          catalogTimeoutMs,
           pdpTimeoutMs,
           detailsPdpTimeoutMs,
           similarTimeoutMs,
