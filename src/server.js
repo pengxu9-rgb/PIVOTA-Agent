@@ -29900,10 +29900,19 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       const structuredIngredientModules = allowsBeautyFormulaModules
         ? buildStructuredPdpIngredientModules(canonicalProductForPdp)
         : {};
+      const structuredIngredientSuppressedReason = String(
+        structuredIngredientModules?.authority?.suppressed_reason || '',
+      ).trim();
+      const suppressActiveIngredientFallback =
+        /^product_family_(?:set_or_collection|non_merch|accessory)$/.test(
+          structuredIngredientSuppressedReason,
+        );
       const activeIngredientsData =
         allowsBeautyFormulaModules
           ? structuredIngredientModules.activeIngredientsData ||
-            findPdpPayloadModuleData(pdpPayload, 'active_ingredients') ||
+            (!suppressActiveIngredientFallback
+              ? findPdpPayloadModuleData(pdpPayload, 'active_ingredients')
+              : null) ||
             null
           : null;
       const ingredientsInciData =
@@ -30251,9 +30260,16 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           type: 'active_ingredients',
           required: false,
           data: activeIngredientsData,
-          ...(activeIngredientsData ? {} : { reason: 'unavailable' }),
+          ...(activeIngredientsData
+            ? {}
+            : { reason: structuredIngredientSuppressedReason || 'unavailable' }),
         });
-        if (!activeIngredientsData) missing.push({ type: 'active_ingredients', reason: 'unavailable' });
+        if (!activeIngredientsData) {
+          missing.push({
+            type: 'active_ingredients',
+            reason: structuredIngredientSuppressedReason || 'unavailable',
+          });
+        }
       }
 
       if (wantsIngredientsInci && allowsBeautyFormulaModules) {

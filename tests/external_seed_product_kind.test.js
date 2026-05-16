@@ -29,4 +29,22 @@ describe('external seed product kind classification', () => {
       }),
     );
   });
+
+  test('classifies skincare duo or set as collection even with formula category path', () => {
+    expect(
+      classifyExternalSeedProductKind({
+        title: 'Hunt for Hydration Full-Size Moisturizer & Eye Crème Duo',
+        category_path: ['beauty', 'skincare', 'moisturizers'],
+        seed_data: {
+          category_path: 'beauty/skincare/moisturizers',
+          product_type: 'Moisturizer',
+        },
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        family: 'set_or_collection',
+        reasons: expect.arrayContaining(['bundle_set_signal']),
+      }),
+    );
+  });
 });

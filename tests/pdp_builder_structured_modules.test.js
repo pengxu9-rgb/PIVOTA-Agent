@@ -1259,6 +1259,30 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     expect(payload.modules.find((module) => module.type === 'materials')).toBeFalsy();
   });
 
+  test('suppresses active ingredient module for external seed skincare sets with formula category path', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_ole_duo',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'Hunt for Hydration Full-Size Moisturizer & Eye Crème Duo',
+        category_path: ['beauty', 'skincare', 'moisturizers'],
+        product_type: 'Moisturizer',
+        image_url: 'https://example.com/hydration-duo.png',
+        price: { amount: 83, currency: 'USD' },
+        pdp_ingredients_raw: 'Water, Glycerin, Ceramide NP, Panthenol, Niacinamide',
+        pdp_active_ingredients_raw: 'Active Ingredients: Ceramide NP, Panthenol, Niacinamide',
+        active_ingredients: ['Ceramide NP', 'Panthenol', 'Niacinamide'],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    expect(payload.pdp_schema_profile).toBe('beauty_formula');
+    expect(payload.modules.find((module) => module.type === 'active_ingredients')).toBeFalsy();
+    expect(payload.modules.find((module) => module.type === 'ingredients_inci')).toBeFalsy();
+  });
+
   test('classifies beauty tools separately and emits usage safety without INCI', () => {
     const payload = buildPdpPayload({
       product: {

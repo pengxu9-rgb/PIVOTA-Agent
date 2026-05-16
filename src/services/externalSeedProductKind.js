@@ -111,10 +111,6 @@ function classifyExternalSeedProductKind(input = {}) {
     reasons.push('non_merch_signal');
     return { family: 'non_merch', reasons };
   }
-  if (hasFormulaCategoryPath(input)) {
-    reasons.push('formula_category_path_signal');
-    return { family: 'single_formula', reasons };
-  }
   if (hasToolCategoryPath(input)) {
     reasons.push('tool_category_path_signal');
     return { family: 'accessory', reasons };
@@ -127,10 +123,6 @@ function classifyExternalSeedProductKind(input = {}) {
     reasons.push('formula_refill_packaging_signal');
     return { family: 'single_formula', reasons };
   }
-  if (ACCESSORY_RE.test(text)) {
-    reasons.push('accessory_signal');
-    return { family: 'accessory', reasons };
-  }
   if (SET_PHRASE_FORMULA_RE.test(text) && FORMULA_PRODUCT_RE.test(text)) {
     reasons.push('set_phrase_formula_signal');
     return { family: 'single_formula', reasons };
@@ -142,6 +134,14 @@ function classifyExternalSeedProductKind(input = {}) {
   if (COLLECTION_BUNDLE_RE.test(text) && !COLLECTION_MEMBER_RE.test(text)) {
     reasons.push('collection_bundle_signal');
     return { family: 'set_or_collection', reasons };
+  }
+  if (hasFormulaCategoryPath(input)) {
+    reasons.push('formula_category_path_signal');
+    return { family: 'single_formula', reasons };
+  }
+  if (ACCESSORY_RE.test(text)) {
+    reasons.push('accessory_signal');
+    return { family: 'accessory', reasons };
   }
   if (FORMULA_PRODUCT_RE.test(text)) {
     reasons.push('formula_signal');
