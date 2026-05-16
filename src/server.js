@@ -59,6 +59,10 @@ const {
   resolveProductExternalRedirectUrl,
 } = require('./pdpBuilder');
 const {
+  buildPdpImageDedupeKey,
+  normalizePdpImageUrl,
+} = require('./utils/pdpImageUrls');
+const {
   buildAgentSafeCommerceFacts,
 } = require('./commerce/commerceFacts');
 const {
@@ -6282,6 +6286,137 @@ function pickOfferForCanonicalPdpPrice(offersData) {
   );
 }
 
+function isDecorativeOfferMediaUrl(url) {
+  const normalized = String(url || '').trim().toLowerCase();
+  if (!normalized) return false;
+  if (/\.(?:svg)(?:$|\?)/i.test(normalized)) return true;
+  return ['menu', 'icon', 'logo', 'plpbanner', 'banner', 'navigation', 'cart'].some((token) =>
+    normalized.includes(token),
+  );
+}
+
+function collectNormalizedImageUrlsFromValue(value, out) {
+  if (value === null || value === undefined) return;
+  if (typeof value === 'string') {
+    const url = normalizePdpImageUrl(value);
+    if (url && !isDecorativeOfferMediaUrl(url)) out.push(url);
+    return;
+  }
+  if (Array.isArray(value)) {
+    value.forEach((item) => collectNormalizedImageUrlsFromValue(item, out));
+    return;
+  }
+  if (value && typeof value === 'object') {
+    collectNormalizedImageUrlsFromValue(value.url, out);
+    collectNormalizedImageUrlsFromValue(value.src, out);
+    collectNormalizedImageUrlsFromValue(value.image_url, out);
+    collectNormalizedImageUrlsFromValue(value.imageUrl, out);
+    collectNormalizedImageUrlsFromValue(value.thumbnail_url, out);
+    collectNormalizedImageUrlsFromValue(value.thumbnailUrl, out);
+  }
+}
+
+function dedupePdpImageUrls(urls) {
+  const seen = new Set();
+  const out = [];
+  for (const value of Array.isArray(urls) ? urls : []) {
+    const url = normalizePdpImageUrl(value);
+    const key = buildPdpImageDedupeKey(url) || url;
+    if (!url || !key || seen.has(key) || isDecorativeOfferMediaUrl(url)) continue;
+    seen.add(key);
+    out.push(url);
+  }
+  return out;
+}
+
+function collectOfferImageUrls(offer) {
+  if (!offer || typeof offer !== 'object') return [];
+  const rawUrls = [];
+  collectNormalizedImageUrlsFromValue(offer.image_url, rawUrls);
+  collectNormalizedImageUrlsFromValue(offer.imageUrl, rawUrls);
+  collectNormalizedImageUrlsFromValue(offer.images, rawUrls);
+  collectNormalizedImageUrlsFromValue(offer.image_urls, rawUrls);
+  collectNormalizedImageUrlsFromValue(offer.media, rawUrls);
+  if (Array.isArray(offer.variants)) {
+    offer.variants.forEach((variant) => {
+      collectNormalizedImageUrlsFromValue(variant?.image_url, rawUrls);
+      collectNormalizedImageUrlsFromValue(variant?.imageUrl, rawUrls);
+      collectNormalizedImageUrlsFromValue(variant?.images, rawUrls);
+      collectNormalizedImageUrlsFromValue(variant?.image_urls, rawUrls);
+      collectNormalizedImageUrlsFromValue(variant?.media, rawUrls);
+    });
+  }
+  return dedupePdpImageUrls(rawUrls).slice(0, 8);
+}
+
+function pdpPayloadHasMediaGallery(pdpPayload) {
+  const modules = Array.isArray(pdpPayload?.modules) ? pdpPayload.modules : [];
+  return modules.some((module) => {
+    if (String(module?.type || '').trim() !== 'media_gallery') return false;
+    return (
+      Array.isArray(module?.data?.items) &&
+      module.data.items.some((item) =>
+        normalizePdpImageUrl(item?.url || item?.image_url || item?.src),
+      )
+    );
+  });
+}
+
+function productHasUsableImage(product) {
+  const urls = [];
+  collectNormalizedImageUrlsFromValue(product?.image_url, urls);
+  collectNormalizedImageUrlsFromValue(product?.imageUrl, urls);
+  collectNormalizedImageUrlsFromValue(product?.images, urls);
+  collectNormalizedImageUrlsFromValue(product?.image_urls, urls);
+  return dedupePdpImageUrls(urls).length > 0;
+}
+
+function hydrateCanonicalPdpMediaFromOfferImages(pdpPayload, product, offerImageUrls) {
+  if (!offerImageUrls.length) return pdpPayload;
+  const shouldHydrateProductImage = !productHasUsableImage(product);
+  const shouldHydrateMediaGallery = !pdpPayloadHasMediaGallery(pdpPayload);
+  if (!shouldHydrateProductImage && !shouldHydrateMediaGallery) return pdpPayload;
+
+  const nextProduct = { ...product };
+  if (shouldHydrateProductImage) {
+    nextProduct.image_url = offerImageUrls[0];
+    nextProduct.images = offerImageUrls;
+    nextProduct.image_urls = offerImageUrls;
+    nextProduct.image_source = 'default_offer';
+  }
+
+  const nextPayload = {
+    ...pdpPayload,
+    product: nextProduct,
+  };
+
+  if (shouldHydrateMediaGallery) {
+    const offerMediaItems = offerImageUrls.map((url) => ({
+      type: 'image',
+      url,
+      alt_text: nextProduct.title || undefined,
+      source: 'default_offer',
+      source_scope: 'offer',
+      source_kind: 'canonical_offer',
+    }));
+    const existingModules = Array.isArray(pdpPayload.modules) ? pdpPayload.modules : [];
+    nextPayload.modules = [
+      {
+        module_id: 'm_media',
+        type: 'media_gallery',
+        priority: 100,
+        data: {
+          items: offerMediaItems,
+          gallery_scope: 'selected_offer',
+        },
+      },
+      ...existingModules.filter((module) => String(module?.type || '').trim() !== 'media_gallery'),
+    ];
+  }
+
+  return nextPayload;
+}
+
 function hydrateCanonicalPdpPayloadFromOffers(pdpPayload, offersData) {
   if (!pdpPayload || typeof pdpPayload !== 'object') return pdpPayload;
   const product = pdpPayload.product && typeof pdpPayload.product === 'object'
@@ -6289,9 +6424,17 @@ function hydrateCanonicalPdpPayloadFromOffers(pdpPayload, offersData) {
     : null;
   if (!product) return pdpPayload;
 
-  const selectedOffer = pickOfferForCanonicalPdpPrice(offersData);
+  const offers = Array.isArray(offersData?.offers) ? offersData.offers : [];
+  let selectedOffer = pickOfferForCanonicalPdpPrice(offersData);
+  let selectedOfferImageUrls = collectOfferImageUrls(selectedOffer);
+  if (!selectedOfferImageUrls.length) {
+    const imageBearingOffer = offers.find((offer) => collectOfferImageUrls(offer).length > 0);
+    if (imageBearingOffer) {
+      selectedOffer = imageBearingOffer;
+      selectedOfferImageUrls = collectOfferImageUrls(imageBearingOffer);
+    }
+  }
   const selectedOfferMoney = readPositiveOfferMoney(selectedOffer);
-  if (!selectedOfferMoney) return pdpPayload;
 
   const currentProductAmount = readPriceAmountForNormalization(
     product.price ?? product.price_amount ?? product.priceAmount,
@@ -6301,7 +6444,7 @@ function hydrateCanonicalPdpPayloadFromOffers(pdpPayload, offersData) {
   if (offersData?.default_offer_id) product.default_offer_id = offersData.default_offer_id;
   if (offersData?.best_price_offer_id) product.best_price_offer_id = offersData.best_price_offer_id;
 
-  if (shouldHydratePrice) {
+  if (selectedOfferMoney && shouldHydratePrice) {
     const existingPrice =
       product.price && typeof product.price === 'object' && !Array.isArray(product.price)
         ? product.price
@@ -6323,10 +6466,10 @@ function hydrateCanonicalPdpPayloadFromOffers(pdpPayload, offersData) {
     product.price_source = 'default_offer';
   }
 
-  return {
+  return hydrateCanonicalPdpMediaFromOfferImages({
     ...pdpPayload,
     product,
-  };
+  }, product, selectedOfferImageUrls);
 }
 
 function buildOfferPurchaseMetadataFromProduct(product) {

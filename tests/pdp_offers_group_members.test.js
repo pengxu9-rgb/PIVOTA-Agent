@@ -1064,6 +1064,112 @@ describe('PDP grouped offers', () => {
     expect(payload.product.price_source).toBeUndefined();
   });
 
+  test('hydrates empty canonical PDP media from the default offer variant images', () => {
+    const app = require('../src/server');
+
+    const payload = app._debug.hydrateCanonicalPdpPayloadFromOffers(
+      {
+        product: {
+          product_id: 'sig_tf_lost_cherry',
+          title: 'Lost Cherry Eau de Parfum',
+          price: { current: { amount: 0, currency: 'USD' } },
+          availability: { in_stock: false },
+          variants: [
+            {
+              variant_id: 'canonical_empty',
+              price: { current: { amount: 0, currency: 'USD' } },
+              availability: { in_stock: false },
+            },
+          ],
+        },
+        modules: [],
+      },
+      {
+        default_offer_id: 'offer_tom_ford',
+        best_price_offer_id: 'offer_tom_ford',
+        offers: [
+          {
+            offer_id: 'offer_tom_ford',
+            merchant_name: 'Tom Ford Beauty',
+            price: { amount: 90, currency: 'USD' },
+            inventory: { in_stock: true },
+            variants: [
+              {
+                variant_id: 'T81201',
+                image_url:
+                  'https://cdn.shopify.com/s/files/1/0761/9690/5173/files/tf_sku_T81201_2000x2000_0_8359c3e5-56ed-4121-b16b-14768c0c2c64.png?v=1777211432',
+              },
+              {
+                variant_id: 'T8ML01',
+                image_url:
+                  'https://pivota-agent-production.up.railway.app/catalog-image-cache/cc/cc717e19f368e4114ca16966224f788e2566f5416ac913c1405898d86039e915.webp',
+              },
+            ],
+          },
+        ],
+      },
+    );
+
+    expect(payload.product.image_url).toContain('tf_sku_T81201_2000x2000_0');
+    expect(payload.product.images).toHaveLength(2);
+    expect(payload.product.image_source).toBe('default_offer');
+    const mediaGallery = payload.modules.find((module) => module.type === 'media_gallery');
+    expect(mediaGallery?.data?.items).toEqual([
+      expect.objectContaining({
+        type: 'image',
+        url: expect.stringContaining('tf_sku_T81201_2000x2000_0'),
+        source: 'default_offer',
+      }),
+      expect.objectContaining({
+        type: 'image',
+        url: expect.stringContaining('/catalog-image-cache/cc/'),
+        source: 'default_offer',
+      }),
+    ]);
+  });
+
+  test('preserves existing canonical PDP media gallery when present', () => {
+    const app = require('../src/server');
+
+    const payload = app._debug.hydrateCanonicalPdpPayloadFromOffers(
+      {
+        product: {
+          product_id: 'sig_has_media',
+          title: 'Has Media',
+          image_url: 'https://example.com/existing.jpg',
+          images: ['https://example.com/existing.jpg'],
+          price: { current: { amount: 10, currency: 'USD' } },
+        },
+        modules: [
+          {
+            module_id: 'm_media',
+            type: 'media_gallery',
+            priority: 100,
+            data: {
+              items: [{ type: 'image', url: 'https://example.com/existing.jpg' }],
+            },
+          },
+        ],
+      },
+      {
+        default_offer_id: 'offer_with_media',
+        offers: [
+          {
+            offer_id: 'offer_with_media',
+            price: { amount: 9, currency: 'USD' },
+            images: ['https://example.com/offer.jpg'],
+          },
+        ],
+      },
+    );
+
+    expect(payload.product.image_url).toBe('https://example.com/existing.jpg');
+    expect(payload.product.image_source).toBeUndefined();
+    expect(payload.modules.find((module) => module.type === 'media_gallery')?.data?.items).toEqual([
+      { type: 'image', url: 'https://example.com/existing.jpg' },
+    ]);
+  });
+
   test('builds external-seed offers from serialized mirror source payloads', async () => {
     const app = require('../src/server');
 
