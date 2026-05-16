@@ -1,0 +1,31 @@
+{
+  "generated_at": "2026-05-16T18:26:13.872Z",
+  "filters": {
+    "market": "US",
+    "domain": "olehenriksen.com",
+    "brand": null,
+    "updated_since": null,
+    "cursor": null,
+    "limit": 200
+  },
+  "scanned_seed_rows": 74,
+  "payloads_built": 74,
+  "identity_rows_found": 74,
+  "sig_groups": 71,
+  "seed_active_expected_rows": 67,
+  "seed_active_evidence_rows": 56,
+  "identity_payload_active_rows": 18,
+  "identity_payload_stale_rows": 51,
+  "live_read_stale_rows": 50,
+  "sig_mixed_active_expectation_groups": 1,
+  "canonical_selection_gap_groups": 39,
+  "sync_candidate_rows": 51,
+  "next_cursor": null,
+  "report_files": {
+    "summary": "reports/pdp_identity_payload_drift_20260516_olehenriksen/domain_post_active_repair_audit/summary.json",
+    "row_audit": "reports/pdp_identity_payload_drift_20260516_olehenriksen/domain_post_active_repair_audit/row_audit.csv",
+    "sig_audit": "reports/pdp_identity_payload_drift_20260516_olehenriksen/domain_post_active_repair_audit/sig_audit.csv",
+    "sync_dry_run_candidates": "reports/pdp_identity_payload_drift_20260516_olehenriksen/domain_post_active_repair_audit/sync_dry_run_candidates.csv",
+    "no_cache_pdp_probe_samples": "reports/pdp_identity_payload_drift_20260516_olehenriksen/domain_post_active_repair_audit/no_cache_pdp_probe_samples.json"
+  }
+}

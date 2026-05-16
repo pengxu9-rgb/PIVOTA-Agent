@@ -1,0 +1,389 @@
+[
+  {
+    "external_product_id": "ext_fffd8a0b6f800708dbf69758",
+    "title": "Hunt for Hydration Full-Size Moisturizer & Eye Crème Duo",
+    "pdp_url": "https://agent.pivota.cc/products/sig_986d8562f273cd7f25571b75",
+    "product_id_for_pdp": "sig_986d8562f273cd7f25571b75",
+    "source_listing_ref": "external_seed:ext_fffd8a0b6f800708dbf69758",
+    "reasons": [
+      "identity_payload_stale",
+      "canonical_selection_gap",
+      "audit_scope_mismatch"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_0d5bf002df9e9a55b20a418f",
+    "title": "Partners in Peptides Hydrating Duo",
+    "pdp_url": "https://agent.pivota.cc/products/sig_af6544a052cd982ae61d8087",
+    "product_id_for_pdp": "sig_af6544a052cd982ae61d8087",
+    "source_listing_ref": "external_seed:ext_0d5bf002df9e9a55b20a418f",
+    "reasons": [
+      "identity_payload_stale",
+      "canonical_selection_gap",
+      "audit_scope_mismatch"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_31f5bbbe614c7d20bb5c7172",
+    "title": "Glow Even Brighter Banana Bright Makeup Prep Set",
+    "pdp_url": "https://agent.pivota.cc/products/sig_6a06c4994e6b3515b0c398b1",
+    "product_id_for_pdp": "sig_6a06c4994e6b3515b0c398b1",
+    "source_listing_ref": "external_seed:ext_31f5bbbe614c7d20bb5c7172",
+    "reasons": [
+      "identity_payload_stale",
+      "canonical_selection_gap",
+      "audit_scope_mismatch"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_f7c6ceb555d34426941a97e5",
+    "title": "Strength Trainer Peptide Boost Moisturizer Duo",
+    "pdp_url": "https://agent.pivota.cc/products/sig_8de9a0ed4075cac4075c6008",
+    "product_id_for_pdp": "sig_8de9a0ed4075cac4075c6008",
+    "source_listing_ref": "external_seed:ext_f7c6ceb555d34426941a97e5",
+    "reasons": [
+      "identity_payload_stale",
+      "canonical_selection_gap",
+      "audit_scope_mismatch"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_5e6dc9677d020497590eff4a",
+    "title": "Moisture Barrier Duo Strength Trainer Moisturizer & Hydrabarrier Face Oil",
+    "pdp_url": "https://agent.pivota.cc/products/sig_7ddfe1fe7a08dde4207d8897",
+    "product_id_for_pdp": "sig_7ddfe1fe7a08dde4207d8897",
+    "source_listing_ref": "external_seed:ext_5e6dc9677d020497590eff4a",
+    "reasons": [
+      "identity_payload_stale",
+      "canonical_selection_gap",
+      "audit_scope_mismatch"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_9f28937c48a11dc9ba42ae20",
+    "title": "Morning Glow Bundle Daily Skincare Routine",
+    "pdp_url": "https://agent.pivota.cc/products/sig_8bd45ea856d378bf2d18dd97",
+    "product_id_for_pdp": "sig_8bd45ea856d378bf2d18dd97",
+    "source_listing_ref": "external_seed:ext_9f28937c48a11dc9ba42ae20",
+    "reasons": [
+      "identity_payload_stale",
+      "canonical_selection_gap",
+      "audit_scope_mismatch"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_151e0b759efb00378fa68116",
+    "title": "Plumping Peptide Pair Mini Skincare Duo",
+    "pdp_url": "https://agent.pivota.cc/products/sig_b845b4d578c28d6c500cbb0e",
+    "product_id_for_pdp": "sig_b845b4d578c28d6c500cbb0e",
+    "source_listing_ref": "external_seed:ext_151e0b759efb00378fa68116",
+    "reasons": [
+      "identity_payload_stale",
+      "canonical_selection_gap",
+      "audit_scope_mismatch"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_12a9d5449837fc03d2ebc5cb",
+    "title": "Morning Glow Bundle Daily Skincare Routine-EU",
+    "pdp_url": "https://agent.pivota.cc/products/sig_efd2d2bfa2a7fd90bf1c7e99",
+    "product_id_for_pdp": "sig_efd2d2bfa2a7fd90bf1c7e99",
+    "source_listing_ref": "external_seed:ext_12a9d5449837fc03d2ebc5cb",
+    "reasons": [
+      "identity_payload_stale",
+      "audit_scope_mismatch"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_842d06e9f8039ddcc784fccb",
+    "title": "Detox Drops 2% Salicylic Acid Toner",
+    "pdp_url": "https://agent.pivota.cc/products/sig_e082e10438e89dbe8f94b89a",
+    "product_id_for_pdp": "sig_e082e10438e89dbe8f94b89a",
+    "source_listing_ref": "external_seed:ext_842d06e9f8039ddcc784fccb",
+    "reasons": [
+      "identity_payload_stale",
+      "canonical_selection_gap"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_c4e42a45eeec3a28c4c1ebb8",
+    "title": "Deep Clean + Scrub Duo",
+    "pdp_url": "https://agent.pivota.cc/products/sig_b3476d366fff4e20762bcb22",
+    "product_id_for_pdp": "sig_b3476d366fff4e20762bcb22",
+    "source_listing_ref": "external_seed:ext_c4e42a45eeec3a28c4c1ebb8",
+    "reasons": [
+      "identity_payload_stale",
+      "canonical_selection_gap",
+      "audit_scope_mismatch"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_e7c55a62fa5f3084a7d4f100",
+    "title": "Balance+ Bundle",
+    "pdp_url": "https://agent.pivota.cc/products/sig_768aa59b1fc4fe010ed4cc94",
+    "product_id_for_pdp": "sig_768aa59b1fc4fe010ed4cc94",
+    "source_listing_ref": "external_seed:ext_e7c55a62fa5f3084a7d4f100",
+    "reasons": [
+      "identity_payload_stale"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_4f75797a53c1df2ee5cf47d7",
+    "title": "Banana Bright Vitamin C Trio",
+    "pdp_url": "https://agent.pivota.cc/products/sig_6b1d544bb5b8021e12ab8ef5",
+    "product_id_for_pdp": "sig_6b1d544bb5b8021e12ab8ef5",
+    "source_listing_ref": "external_seed:ext_4f75797a53c1df2ee5cf47d7",
+    "reasons": [
+      "identity_payload_stale",
+      "canonical_selection_gap",
+      "audit_scope_mismatch"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_8cd1f52b2ac0a4fa9a239494",
+    "title": "Best In Class Skincare Bestseller Set",
+    "pdp_url": "https://agent.pivota.cc/products/sig_49ab71917ca18c3f54a0298e",
+    "product_id_for_pdp": "sig_49ab71917ca18c3f54a0298e",
+    "source_listing_ref": "external_seed:ext_8cd1f52b2ac0a4fa9a239494",
+    "reasons": [
+      "identity_payload_stale",
+      "canonical_selection_gap",
+      "audit_scope_mismatch"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_591dec1f099cc36e11b9dbe7",
+    "title": "MUFE Artist Color Pencil Extreme Smudge-Proof Lip Liner",
+    "pdp_url": "https://agent.pivota.cc/products/sig_9c5e263baf594842602e07c0",
+    "product_id_for_pdp": "sig_9c5e263baf594842602e07c0",
+    "source_listing_ref": "external_seed:ext_591dec1f099cc36e11b9dbe7",
+    "reasons": [
+      "identity_payload_stale"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_918981bcc6d552cc2af0b535",
+    "title": "Banana Bright+ Eye Crème",
+    "pdp_url": "https://agent.pivota.cc/products/sig_919e963e7d7a740f5f496e87",
+    "product_id_for_pdp": "sig_919e963e7d7a740f5f496e87",
+    "source_listing_ref": "external_seed:ext_918981bcc6d552cc2af0b535",
+    "reasons": [
+      "identity_payload_stale",
+      "canonical_selection_gap"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_52418e4d45b2feff5a179e7c",
+    "title": "Best + Brightest Mini Skincare Starter Set",
+    "pdp_url": "https://agent.pivota.cc/products/sig_c8f8c2a170a1ae93e3671508",
+    "product_id_for_pdp": "sig_c8f8c2a170a1ae93e3671508",
+    "source_listing_ref": "external_seed:ext_52418e4d45b2feff5a179e7c",
+    "reasons": [
+      "identity_payload_stale",
+      "canonical_selection_gap",
+      "audit_scope_mismatch"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_b852fb71297a0c4bd723c049",
+    "title": "Best of Ole Skincare Essential Set",
+    "pdp_url": "https://agent.pivota.cc/products/sig_998b75b430695e1547174608",
+    "product_id_for_pdp": "sig_998b75b430695e1547174608",
+    "source_listing_ref": "external_seed:ext_b852fb71297a0c4bd723c049",
+    "reasons": [
+      "identity_payload_stale",
+      "canonical_selection_gap",
+      "audit_scope_mismatch"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_fc8169ca5d14312c187498d7",
+    "title": "Big + Plump Peach Collection Bundle",
+    "pdp_url": "https://agent.pivota.cc/products/sig_432896bad0c8b5ad285b5b21",
+    "product_id_for_pdp": "sig_432896bad0c8b5ad285b5b21",
+    "source_listing_ref": "external_seed:ext_fc8169ca5d14312c187498d7",
+    "reasons": [
+      "identity_payload_stale",
+      "canonical_selection_gap"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_99c2d94131f26d563e2093bc",
+    "title": "Dewtopia 20% Acid Night Treatment",
+    "pdp_url": "https://agent.pivota.cc/products/sig_654db3eb15313f864eeee78a",
+    "product_id_for_pdp": "sig_654db3eb15313f864eeee78a",
+    "source_listing_ref": "external_seed:ext_99c2d94131f26d563e2093bc",
+    "reasons": [
+      "identity_payload_stale",
+      "canonical_selection_gap"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_4ea95b9803d90ab1e5cb8393",
+    "title": "Double Rewind 0.3% Pro-Grade Retinol Serum",
+    "pdp_url": "https://agent.pivota.cc/products/sig_c27482fb0e195e3e62a57393",
+    "product_id_for_pdp": "sig_c27482fb0e195e3e62a57393",
+    "source_listing_ref": "external_seed:ext_4ea95b9803d90ab1e5cb8393",
+    "reasons": [
+      "identity_payload_stale",
+      "canonical_selection_gap"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_0cfa56c35dd9a64ef9b6fe0a",
+    "title": "After-Party Peptides Skin Strengthening Set",
+    "pdp_url": "https://agent.pivota.cc/products/sig_cb536bad58a0fbbae94b568e",
+    "product_id_for_pdp": "sig_cb536bad58a0fbbae94b568e",
+    "source_listing_ref": "external_seed:ext_0cfa56c35dd9a64ef9b6fe0a",
+    "reasons": [
+      "identity_payload_stale",
+      "canonical_selection_gap",
+      "audit_scope_mismatch"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_229f0543d01c417c79b0ddc5",
+    "title": "Glow Strong Mini Moisturizer + Eye Cream Duo",
+    "pdp_url": "https://agent.pivota.cc/products/sig_36e38f4abb2f7eb1c3e41056",
+    "product_id_for_pdp": "sig_36e38f4abb2f7eb1c3e41056",
+    "source_listing_ref": "external_seed:ext_229f0543d01c417c79b0ddc5",
+    "reasons": [
+      "identity_payload_stale",
+      "audit_scope_mismatch"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_962f8e170a6637cd7909958d",
+    "title": "Big + Plump Peach Collection Bundle",
+    "pdp_url": "https://agent.pivota.cc/products/sig_432896bad0c8b5ad285b5b21",
+    "product_id_for_pdp": "sig_432896bad0c8b5ad285b5b21",
+    "source_listing_ref": "external_seed:ext_962f8e170a6637cd7909958d",
+    "reasons": [
+      "identity_payload_stale",
+      "canonical_selection_gap"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_04a252d80129bd81d5df3bb3",
+    "title": "GFH (Glow from Home) Vitamin C Duo",
+    "pdp_url": "https://agent.pivota.cc/products/sig_ba9113bc48106fe04c58f05b",
+    "product_id_for_pdp": "sig_ba9113bc48106fe04c58f05b",
+    "source_listing_ref": "external_seed:ext_04a252d80129bd81d5df3bb3",
+    "reasons": [
+      "identity_payload_stale",
+      "canonical_selection_gap",
+      "audit_scope_mismatch"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_6e74607b60d4a55b8d47623b",
+    "title": "Party of 4 Glimmers Edition",
+    "pdp_url": "https://agent.pivota.cc/products/sig_38e3751c4da838f80ef56345",
+    "product_id_for_pdp": "sig_38e3751c4da838f80ef56345",
+    "source_listing_ref": "external_seed:ext_6e74607b60d4a55b8d47623b",
+    "reasons": [
+      "identity_payload_stale",
+      "canonical_selection_gap"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  }
+]
