@@ -52,6 +52,14 @@ function asObject(value) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
 }
 
+function firstNonEmptyString(...values) {
+  for (const value of values) {
+    const text = asString(value);
+    if (text) return text;
+  }
+  return '';
+}
+
 function normalizeLower(value) {
   return asString(value).toLowerCase();
 }
@@ -231,6 +239,44 @@ function findSourceBackedShadeHex(seedData, shadeNames) {
     return topLevelHex;
   }
   return '';
+}
+
+function readSeedBrand(seedData) {
+  const seed = asObject(seedData);
+  const snapshot = asObject(seed.snapshot);
+  return firstNonEmptyString(
+    seed.brand,
+    seed.brand_name,
+    seed.brandName,
+    seed.vendor,
+    seed.retailer_brand,
+    snapshot.brand,
+    snapshot.brand_name,
+    snapshot.brandName,
+    snapshot.vendor,
+    snapshot.retailer_brand,
+  );
+}
+
+function readSeedTitle(seedData) {
+  const seed = asObject(seedData);
+  const snapshot = asObject(seed.snapshot);
+  return firstNonEmptyString(
+    seed.title,
+    seed.product_title,
+    seed.product_name,
+    seed.name,
+    snapshot.title,
+    snapshot.product_title,
+    snapshot.product_name,
+    snapshot.name,
+  );
+}
+
+function readSeedUrl(seedData, key) {
+  const seed = asObject(seedData);
+  const snapshot = asObject(seed.snapshot);
+  return firstNonEmptyString(seed[key], snapshot[key]);
 }
 
 function patchVariant(variant, swatchUrl, shadeHex, targetShades, forceSingleVariant = false) {
@@ -449,7 +495,7 @@ async function loadSeedRows(externalProductIds, { market = '', limit = 0 } = {})
   }
   const res = await query(
     `
-      SELECT id, external_product_id, market, brand, title, canonical_url, destination_url, status, seed_data
+      SELECT id, external_product_id, market, title, canonical_url, destination_url, status, seed_data
       FROM external_product_seeds
       WHERE external_product_id = ANY($1::text[])
         ${marketClause}
@@ -492,10 +538,10 @@ async function main() {
       seed_id: row.id,
       external_product_id: row.external_product_id,
       market: row.market,
-      brand: row.brand,
-      title: row.title,
-      canonical_url: row.canonical_url,
-      destination_url: row.destination_url,
+      brand: readSeedBrand(row.seed_data),
+      title: firstNonEmptyString(row.title, readSeedTitle(row.seed_data)),
+      canonical_url: firstNonEmptyString(row.canonical_url, readSeedUrl(row.seed_data, 'canonical_url')),
+      destination_url: firstNonEmptyString(row.destination_url, readSeedUrl(row.seed_data, 'destination_url')),
       shade_names: targetShades.join('|'),
       source_report_rows: target?.source_rows || 0,
     };
