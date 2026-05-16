@@ -985,6 +985,85 @@ describe('PDP grouped offers', () => {
     );
   });
 
+  test('hydrates zero canonical PDP product price from the default positive offer', () => {
+    const app = require('../src/server');
+
+    const defaultOfferId = 'of:v1:external_seed:sig_tf_lost_cherry:merchant:default__ext_official';
+    const payload = app._debug.hydrateCanonicalPdpPayloadFromOffers(
+      {
+        product: {
+          product_id: 'sig_tf_lost_cherry',
+          title: 'Lost Cherry Eau de Parfum',
+          price: { current: { amount: 0, currency: 'USD' } },
+          price_amount: 0,
+          currency: 'USD',
+        },
+      },
+      {
+        default_offer_id: defaultOfferId,
+        best_price_offer_id: defaultOfferId,
+        offers: [
+          {
+            offer_id: 'of:v1:external_seed:sig_tf_lost_cherry:merchant:default__sephora',
+            merchant_name: 'Sephora',
+            price: { amount: 0, currency: 'USD' },
+            inventory: { in_stock: false },
+          },
+          {
+            offer_id: defaultOfferId,
+            merchant_name: 'Tom Ford Beauty',
+            price: { amount: 90, currency: 'USD' },
+            inventory: { in_stock: true },
+          },
+        ],
+      },
+    );
+
+    expect(payload.product).toEqual(
+      expect.objectContaining({
+        default_offer_id: defaultOfferId,
+        best_price_offer_id: defaultOfferId,
+        price_amount: 90,
+        currency: 'USD',
+        price_source: 'default_offer',
+      }),
+    );
+    expect(payload.product.price.current).toEqual({ amount: 90, currency: 'USD' });
+  });
+
+  test('does not overwrite an existing positive canonical PDP product price', () => {
+    const app = require('../src/server');
+
+    const payload = app._debug.hydrateCanonicalPdpPayloadFromOffers(
+      {
+        product: {
+          product_id: 'sig_positive_price',
+          title: 'Existing Price Product',
+          price: { current: { amount: 120, currency: 'USD' } },
+          price_amount: 120,
+          currency: 'USD',
+        },
+      },
+      {
+        default_offer_id: 'offer_discount',
+        best_price_offer_id: 'offer_discount',
+        offers: [
+          {
+            offer_id: 'offer_discount',
+            merchant_name: 'Discount Seller',
+            price: { amount: 90, currency: 'USD' },
+            inventory: { in_stock: true },
+          },
+        ],
+      },
+    );
+
+    expect(payload.product.price.current).toEqual({ amount: 120, currency: 'USD' });
+    expect(payload.product.price_amount).toBe(120);
+    expect(payload.product.default_offer_id).toBe('offer_discount');
+    expect(payload.product.price_source).toBeUndefined();
+  });
+
   test('builds external-seed offers from serialized mirror source payloads', async () => {
     const app = require('../src/server');
 

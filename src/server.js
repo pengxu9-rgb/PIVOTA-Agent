@@ -6205,6 +6205,16 @@ function computeOfferTotal(offer) {
   return amount + shipping;
 }
 
+function readPositiveOfferMoney(offer) {
+  if (!offer || typeof offer !== 'object') return null;
+  const amount = readPriceAmountForNormalization(offer.price);
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+  return {
+    amount,
+    currency: readOfferCurrency(offer) || 'USD',
+  };
+}
+
 function readOfferCurrency(offer) {
   return String(
     offer?.price?.currency ||
@@ -6244,6 +6254,79 @@ function compareOffersForDefaultSelection(a, b) {
   }
 
   return 0;
+}
+
+function findPositiveOfferById(offers, offerId) {
+  const id = String(offerId || '').trim();
+  if (!id) return null;
+  return offers.find((offer) => String(offer?.offer_id || offer?.id || '').trim() === id && readPositiveOfferMoney(offer));
+}
+
+function pickOfferForCanonicalPdpPrice(offersData) {
+  const offers = Array.isArray(offersData?.offers) ? offersData.offers : [];
+  if (!offers.length) return null;
+
+  const defaultOffer = findPositiveOfferById(offers, offersData?.default_offer_id);
+  if (defaultOffer && offerHasAvailableInventory(defaultOffer)) return defaultOffer;
+
+  const bestPriceOffer = findPositiveOfferById(offers, offersData?.best_price_offer_id);
+  if (bestPriceOffer && offerHasAvailableInventory(bestPriceOffer)) return bestPriceOffer;
+
+  if (defaultOffer) return defaultOffer;
+  if (bestPriceOffer) return bestPriceOffer;
+
+  return (
+    offers.find((offer) => offerHasAvailableInventory(offer) && readPositiveOfferMoney(offer)) ||
+    offers.find((offer) => readPositiveOfferMoney(offer)) ||
+    null
+  );
+}
+
+function hydrateCanonicalPdpPayloadFromOffers(pdpPayload, offersData) {
+  if (!pdpPayload || typeof pdpPayload !== 'object') return pdpPayload;
+  const product = pdpPayload.product && typeof pdpPayload.product === 'object'
+    ? { ...pdpPayload.product }
+    : null;
+  if (!product) return pdpPayload;
+
+  const selectedOffer = pickOfferForCanonicalPdpPrice(offersData);
+  const selectedOfferMoney = readPositiveOfferMoney(selectedOffer);
+  if (!selectedOfferMoney) return pdpPayload;
+
+  const currentProductAmount = readPriceAmountForNormalization(
+    product.price ?? product.price_amount ?? product.priceAmount,
+  );
+  const shouldHydratePrice = !Number.isFinite(currentProductAmount) || currentProductAmount <= 0;
+
+  if (offersData?.default_offer_id) product.default_offer_id = offersData.default_offer_id;
+  if (offersData?.best_price_offer_id) product.best_price_offer_id = offersData.best_price_offer_id;
+
+  if (shouldHydratePrice) {
+    const existingPrice =
+      product.price && typeof product.price === 'object' && !Array.isArray(product.price)
+        ? product.price
+        : {};
+    product.price = {
+      ...existingPrice,
+      amount: selectedOfferMoney.amount,
+      currency: selectedOfferMoney.currency,
+      current: {
+        ...(existingPrice.current && typeof existingPrice.current === 'object'
+          ? existingPrice.current
+          : {}),
+        amount: selectedOfferMoney.amount,
+        currency: selectedOfferMoney.currency,
+      },
+    };
+    product.price_amount = selectedOfferMoney.amount;
+    product.currency = selectedOfferMoney.currency;
+    product.price_source = 'default_offer';
+  }
+
+  return {
+    ...pdpPayload,
+    product,
+  };
 }
 
 function buildOfferPurchaseMetadataFromProduct(product) {
@@ -29897,6 +29980,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             if (!offersData.default_offer_id) offersData.default_offer_id = fallbackOfferId;
             if (!offersData.best_price_offer_id) offersData.best_price_offer_id = fallbackOfferId;
           }
+          canonicalPayload = hydrateCanonicalPdpPayloadFromOffers(canonicalPayload, offersData);
+          modules[0].data.pdp_payload = canonicalPayload;
           if (wantsOffers) {
             modules.push({
               type: 'offers',
@@ -37397,6 +37482,7 @@ module.exports = app;
 module.exports._debug = {
   buildOffersFromGroupMembers,
   decoratePdpPayloadWithIdentity,
+  hydrateCanonicalPdpPayloadFromOffers,
   loadCreatorSellableFromCache,
   searchCreatorSellableFromCache,
   searchCrossMerchantFromCache,
