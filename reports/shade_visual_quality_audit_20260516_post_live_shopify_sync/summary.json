@@ -1,0 +1,36 @@
+{
+  "generated_at": "2026-05-16T01:17:09.935Z",
+  "discovery_mode": "explicit_product_ids",
+  "candidate_count": 37,
+  "pdp_error_count": 0,
+  "shade_option_count": 775,
+  "shade_pdp_count": 37,
+  "status_counts": {
+    "real_swatch_or_hex": 764,
+    "blocked_product_image_source": 11
+  },
+  "product_counts": {
+    "all_real_swatch_or_hex": 26,
+    "has_text_fallback_missing_swatch": 0,
+    "has_blocked_product_image_source": 11
+  },
+  "top_brands_by_shade_options": [
+    {
+      "key": "fenty beauty",
+      "count": 771
+    },
+    {
+      "key": "olehenriksen",
+      "count": 4
+    }
+  ],
+  "discovery_errors": [],
+  "report_files": {
+    "summary_json": "reports/shade_visual_quality_audit_20260516_post_live_shopify_sync/summary.json",
+    "shade_visual_quality_audit_csv": "reports/shade_visual_quality_audit_20260516_post_live_shopify_sync/shade_visual_quality_audit.csv",
+    "product_rollup_csv": "reports/shade_visual_quality_audit_20260516_post_live_shopify_sync/shade_visual_product_rollup.csv",
+    "missing_swatch_backfill_candidates_csv": "reports/shade_visual_quality_audit_20260516_post_live_shopify_sync/missing_swatch_backfill_candidates.csv",
+    "blocked_product_image_sources_csv": "reports/shade_visual_quality_audit_20260516_post_live_shopify_sync/blocked_product_image_sources.csv",
+    "pdp_errors_csv": "reports/shade_visual_quality_audit_20260516_post_live_shopify_sync/pdp_errors.csv"
+  }
+}

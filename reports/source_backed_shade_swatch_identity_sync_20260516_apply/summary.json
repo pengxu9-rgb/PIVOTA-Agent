@@ -1,0 +1,15 @@
+{
+  "generated_at": "2026-05-16T01:02:08.780Z",
+  "mode": "apply",
+  "market": "US",
+  "input_file": "reports/source_backed_shade_swatch_backfill_20260516_apply/source_backed_shade_swatch_backfill_candidates.csv",
+  "reviewed_candidate_count": 37,
+  "loaded_identity_count": 37,
+  "candidate_count": 37,
+  "blocker_count": 0,
+  "updated_count": 37,
+  "report_files": {
+    "candidates_csv": "reports/source_backed_shade_swatch_identity_sync_20260516_apply/identity_swatch_sync_candidates.csv",
+    "blockers_csv": "reports/source_backed_shade_swatch_identity_sync_20260516_apply/identity_swatch_sync_blockers.csv"
+  }
+}

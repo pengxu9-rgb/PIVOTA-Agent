@@ -1,0 +1,20 @@
+{
+  "generated_at": "2026-05-16T01:13:29.969Z",
+  "mode": "dry_run",
+  "market": "US",
+  "include_live_shopify_product_json": true,
+  "input_files": [
+    "reports/shade_visual_quality_audit_20260516_post_identity_sync/blocked_product_image_sources.csv"
+  ],
+  "report_target_count": 6,
+  "loaded_seed_count": 6,
+  "live_shopify_fetch_count": 2,
+  "live_shopify_success_count": 2,
+  "candidate_count": 4,
+  "blocker_count": 2,
+  "updated_count": 0,
+  "report_files": {
+    "candidates_csv": "reports/source_backed_shade_swatch_backfill_20260516_live_shopify_dryrun2/source_backed_shade_swatch_backfill_candidates.csv",
+    "blockers_csv": "reports/source_backed_shade_swatch_backfill_20260516_live_shopify_dryrun2/source_backed_shade_swatch_backfill_blockers.csv"
+  }
+}

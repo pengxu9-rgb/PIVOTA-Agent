@@ -1,0 +1,18 @@
+{
+  "generated_at": "2026-05-16T00:51:27.839Z",
+  "mode": "apply",
+  "market": "US",
+  "input_files": [
+    "reports/shade_visual_quality_audit_20260516/blocked_product_image_sources.csv",
+    "reports/shade_visual_quality_audit_20260516/missing_swatch_backfill_candidates.csv"
+  ],
+  "report_target_count": 132,
+  "loaded_seed_count": 132,
+  "candidate_count": 37,
+  "blocker_count": 95,
+  "updated_count": 37,
+  "report_files": {
+    "candidates_csv": "reports/source_backed_shade_swatch_backfill_20260516_apply/source_backed_shade_swatch_backfill_candidates.csv",
+    "blockers_csv": "reports/source_backed_shade_swatch_backfill_20260516_apply/source_backed_shade_swatch_backfill_blockers.csv"
+  }
+}
