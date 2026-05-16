@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+const fs = require('node:fs');
+const path = require('node:path');
 const axios = require('axios');
 
 const { closePool, query } = require('../src/db');
@@ -70,6 +72,21 @@ function normalizeNonEmptyString(value) {
 function normalizeUrlLike(value) {
   const normalized = normalizeNonEmptyString(value);
   return /^https?:\/\//i.test(normalized) ? normalized : '';
+}
+
+function ensureParentDir(filePath) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+}
+
+function writeOutput(output, filePath) {
+  const target = normalizeNonEmptyString(filePath);
+  if (!target) {
+    process.stdout.write(output);
+    return;
+  }
+  ensureParentDir(target);
+  fs.writeFileSync(target, output, 'utf8');
+  process.stdout.write(output);
 }
 
 function increment(map, key, amount = 1) {
@@ -612,6 +629,7 @@ async function main() {
   const pdpTimeoutMs = argValue('pdp-timeout-ms');
   const detailsPdpTimeoutMs = argValue('details-pdp-timeout-ms');
   const similarTimeoutMs = argValue('similar-timeout-ms');
+  const out = argValue('out');
   const rows = await fetchRows({
     market,
     seedId: argValue('seed-id'),
@@ -639,7 +657,7 @@ async function main() {
   }
 
   if (format === 'json') {
-    process.stdout.write(`${JSON.stringify(results, null, 2)}\n`);
+    writeOutput(`${JSON.stringify(results, null, 2)}\n`, out);
     return;
   }
 
@@ -672,7 +690,7 @@ async function main() {
   summary.failed_by_domain = topEntries(summary.failed_by_domain, 25);
   summary.failure_reason_domain_counts = topEntries(summary.failure_reason_domain_counts, 50);
   summary.root_cause_domain_counts = topEntries(summary.root_cause_domain_counts, 50);
-  process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
+  writeOutput(`${JSON.stringify(summary, null, 2)}\n`, out);
 }
 
 if (require.main === module) {
@@ -697,6 +715,7 @@ module.exports = {
   buildAuthoritativePayload,
   buildPublicGatewayPayload,
   buildProbeFailureResponse,
+  writeOutput,
   invokeGatewayProbe,
   isAuthoritativeInvokeUrl,
   unwrapLivePdpPayload,

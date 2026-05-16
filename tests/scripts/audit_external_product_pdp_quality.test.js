@@ -5,6 +5,7 @@ const {
   buildProbeFailureResponse,
   mergePdpProbeResponses,
   unwrapLivePdpPayload,
+  writeOutput,
 } = require('../../scripts/audit-external-product-pdp-quality');
 const {
   buildIdentityGate,
@@ -17,6 +18,10 @@ const {
 describe('audit-external-product-pdp-quality helpers', () => {
   test('defaults to the public PDP gateway instead of production backend env', () => {
     expect(resolveGatewayUrl('')).toBe('https://agent.pivota.cc/api/gateway');
+  });
+
+  test('exports report output writer for CLI artifact mode', () => {
+    expect(typeof writeOutput).toBe('function');
   });
 
   test('normalizes gateway bases to the public api gateway endpoint', () => {
