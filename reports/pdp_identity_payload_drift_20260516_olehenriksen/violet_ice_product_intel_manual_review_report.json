@@ -1,0 +1,157 @@
+{
+  "generated_at": "2026-05-16T18:29:01.562Z",
+  "source": "manual_product_intel_backfill",
+  "rows": [
+    {
+      "case_id": "olehenriksen_violet_ice_product_intel_20260516",
+      "review_status": "completed",
+      "review_decision": "seller_only_fallback",
+      "reviewer": "Codex",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-16T18:29:01.562Z",
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_75ae815b6acb82c8e3d8f4f3"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_seller_grounded",
+        "selected_field_count": 8,
+        "field_sources": {
+          "what_it_is": "seller_pdp",
+          "best_for": "seller_pdp",
+          "why_it_stands_out": "seller_pdp",
+          "routine_fit": "seller_pdp",
+          "watchouts": "seller_pdp",
+          "shopping_card": "seller_pdp",
+          "search_card": "seller_pdp"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_75ae815b6acb82c8e3d8f4f3"
+          },
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "product_intel_core": {
+            "what_it_is": {
+              "headline": "Clarifying clay mask",
+              "body": "A rinse-off clay mask for clarifying congested-looking pores, with purple kaolin clay, salicylic acid (BHA), betaine salicylate, and Danish purple willow ferment called out on the source PDP."
+            },
+            "best_for": [
+              {
+                "tag": "congested_pores",
+                "label": "Congested-looking pores",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "blackheads",
+                "label": "Blackheads and excess oil",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "rinse_off_mask",
+                "label": "Rinse-off mask routines",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Clay + BHA format",
+                "body": "The seller PDP positions purple clay for oil and impurity absorption alongside salicylic acid (BHA) for blemishes and pore refinement.",
+                "evidence_strength": "seller_grounded"
+              },
+              {
+                "headline": "Short-contact routine step",
+                "body": "The source directions call for a 15-minute rinse-off application, 2-3 times per week.",
+                "evidence_strength": "seller_grounded"
+              }
+            ],
+            "routine_fit": {
+              "step": "rinse-off mask",
+              "am_pm": [
+                "pm"
+              ],
+              "pairing_notes": [
+                "Apply an even layer to clean, dry skin and rinse after 15 minutes.",
+                "Use 2-3 times per week; keep away from the eye area."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "usage",
+                "label": "Avoid eye area",
+                "body": "The source directions say to avoid the eye area and rinse immediately if contact occurs."
+              }
+            ],
+            "confidence": {
+              "overall": "moderate"
+            },
+            "freshness": {
+              "generated_at": "2026-05-16T18:29:01.562Z",
+              "source_version": "manual_seller_grounded:olehenriksen_seed"
+            },
+            "quality_state": "limited",
+            "evidence_profile": "seller_only",
+            "source_coverage": {
+              "seller": {
+                "available": true
+              },
+              "formula": {
+                "available": true
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "unavailable_reason": "insufficient_feedback",
+            "confidence": "low",
+            "evidence_profile": "seller_only"
+          },
+          "external_highlight_signals": [],
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Violet Ice Cold Plunge Pore Mask",
+            "subtitle": "Clarifying clay mask",
+            "highlight": "Clay + BHA pore mask"
+          },
+          "search_card": {
+            "contract_version": "pivota.search_card.v1",
+            "title": "Violet Ice Cold Plunge Pore Mask",
+            "subtitle_candidate": "Clarifying clay mask",
+            "highlight_candidate": "Clay + BHA pore mask",
+            "compact_candidate": "Clarifying clay mask"
+          },
+          "freshness": {
+            "generated_at": "2026-05-16T18:29:01.562Z",
+            "source_version": "manual_seller_grounded:olehenriksen_seed"
+          },
+          "provenance": {
+            "source": "manual_product_intel_backfill",
+            "generator": "codex_manual_review",
+            "review_status": "completed",
+            "review_decision": "seller_only_fallback",
+            "reviewer": "Codex",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-16T18:29:01.562Z"
+          }
+        }
+      }
+    }
+  ]
+}
