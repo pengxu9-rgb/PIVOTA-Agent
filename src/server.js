@@ -1251,30 +1251,144 @@ function normalizeOfferSellerNameCandidate(value, merchantId = '') {
   return text;
 }
 
+const OFFER_SELLER_HOST_LABELS = new Map([
+  ['sephora.com', 'Sephora'],
+  ['ulta.com', 'Ulta Beauty'],
+  ['tomfordbeauty.com', 'Tom Ford Beauty'],
+  ['beautyofjoseon.com', 'Beauty of Joseon'],
+  ['ohlolly.com', 'Ohlolly'],
+  ['fentybeauty.com', 'Fenty Beauty'],
+  ['kyliecosmetics.com', 'Kylie Cosmetics'],
+]);
+
+function normalizeOfferSellerComparable(value) {
+  return String(firstNonEmptyString(value) || '')
+    .toLowerCase()
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9]+/g, '')
+    .trim();
+}
+
+function readOfferSellerHost(value) {
+  const raw = firstNonEmptyString(value);
+  if (!raw) return '';
+  const candidate = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+  try {
+    return String(new URL(candidate).hostname || '').toLowerCase().replace(/^www\./, '');
+  } catch (_err) {
+    return '';
+  }
+}
+
+function formatOfferSellerHostLabel(host) {
+  const normalizedHost = readOfferSellerHost(host);
+  if (!normalizedHost) return '';
+  const mapped = OFFER_SELLER_HOST_LABELS.get(normalizedHost);
+  if (mapped) return mapped;
+  const base = normalizedHost.split('.').filter(Boolean)[0] || '';
+  return base
+    .split(/[-_]+/)
+    .filter(Boolean)
+    .map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
+    .join(' ');
+}
+
+function resolveExternalSeedOfferSellerHostLabel(product, member) {
+  const payload = member?.source_payload && typeof member.source_payload === 'object'
+    ? member.source_payload
+    : member?.sourcePayload && typeof member.sourcePayload === 'object'
+      ? member.sourcePayload
+      : {};
+  const candidates = [
+    product?.merchant_checkout_url,
+    product?.external_redirect_url,
+    product?.source_url,
+    product?.destination_url,
+    product?.canonical_url,
+    product?.url,
+    payload.merchant_checkout_url,
+    payload.external_redirect_url,
+    payload.source_url,
+    payload.destination_url,
+    payload.canonical_url,
+    payload.url,
+  ];
+  for (const candidate of candidates) {
+    const label = formatOfferSellerHostLabel(candidate);
+    if (label) return label;
+  }
+  return '';
+}
+
+function offerSellerNameLooksHostLike(value) {
+  return /(^|\s)(www\.)?[a-z0-9-]+\.[a-z]{2,}(\s|$)/i.test(firstNonEmptyString(value));
+}
+
+function offerSellerNameLooksLikeProductBrand(value, product, member) {
+  const seller = normalizeOfferSellerComparable(value);
+  if (!seller) return false;
+  const payload = member?.source_payload && typeof member.source_payload === 'object'
+    ? member.source_payload
+    : member?.sourcePayload && typeof member.sourcePayload === 'object'
+      ? member.sourcePayload
+      : {};
+  return [
+    product?.brand,
+    product?.vendor,
+    payload.brand,
+    payload.vendor,
+  ].some((candidate) => {
+    const brand = normalizeOfferSellerComparable(candidate);
+    return brand && seller === brand;
+  });
+}
+
 function resolveOfferSellerDisplayName({ product, member, merchantId }) {
   const mid = String(merchantId || product?.merchant_id || member?.merchant_id || '').trim();
-  const candidates = [
+  const externalSeedHostLabel =
+    mid === EXTERNAL_SEED_MERCHANT_ID
+      ? resolveExternalSeedOfferSellerHostLabel(product, member)
+      : '';
+  const explicitCandidates = [
     product?.seller_of_record,
     product?.sellerOfRecord,
     product?.seller_name,
     product?.sellerName,
     product?.store_name,
     product?.storeName,
-    product?.merchant_name,
-    product?.merchantName,
     member?.seller_of_record,
     member?.sellerOfRecord,
     member?.seller_name,
     member?.sellerName,
     member?.store_name,
     member?.storeName,
+  ];
+  for (const candidate of explicitCandidates) {
+    const sellerName = normalizeOfferSellerNameCandidate(candidate, mid);
+    if (sellerName) return offerSellerNameLooksHostLike(sellerName) && externalSeedHostLabel
+      ? externalSeedHostLabel
+      : sellerName;
+  }
+
+  const merchantCandidates = [
+    product?.merchant_name,
+    product?.merchantName,
     member?.merchant_name,
     member?.merchantName,
   ];
-  for (const candidate of candidates) {
+  for (const candidate of merchantCandidates) {
     const sellerName = normalizeOfferSellerNameCandidate(candidate, mid);
-    if (sellerName) return sellerName;
+    if (!sellerName) continue;
+    if (
+      externalSeedHostLabel &&
+      (offerSellerNameLooksHostLike(sellerName) ||
+        offerSellerNameLooksLikeProductBrand(sellerName, product, member))
+    ) {
+      continue;
+    }
+    return sellerName;
   }
+  if (externalSeedHostLabel) return externalSeedHostLabel;
   return undefined;
 }
 
@@ -6085,7 +6199,10 @@ function normalizeOfferMoneyForProduct(amount, currency, product = {}, variant =
 }
 
 function computeOfferTotal(offer) {
-  return Number(offer?.price?.amount || 0) + Number(offer?.shipping?.cost?.amount || 0);
+  const amount = Number(offer?.price?.amount ?? offer?.price?.current?.amount);
+  if (!Number.isFinite(amount) || amount <= 0) return Number.POSITIVE_INFINITY;
+  const shipping = Number(offer?.shipping?.cost?.amount ?? 0) || 0;
+  return amount + shipping;
 }
 
 function readOfferCurrency(offer) {
@@ -6121,8 +6238,9 @@ function compareOffersForDefaultSelection(a, b) {
   const aCurrency = readOfferCurrency(a);
   const bCurrency = readOfferCurrency(b);
   if (aCurrency && bCurrency && aCurrency === bCurrency) {
-    const totalDelta = computeOfferTotal(a) - computeOfferTotal(b);
-    if (totalDelta !== 0) return totalDelta;
+    const aTotal = computeOfferTotal(a);
+    const bTotal = computeOfferTotal(b);
+    if (aTotal !== bTotal) return aTotal < bTotal ? -1 : 1;
   }
 
   return 0;
@@ -6780,7 +6898,12 @@ async function buildOffersFromGroupMembers(args) {
   const sortStartedAt = Date.now();
   const annotatedOffers = annotateOffersWithCommerceMetadata(dedupedOffers);
   const prioritizedOffers = prioritizeOffers(annotatedOffers);
-  const sortedByTotal = [...annotatedOffers].sort((a, b) => computeOfferTotal(a) - computeOfferTotal(b));
+  const sortedByTotal = [...annotatedOffers].sort((a, b) => {
+    const aTotal = computeOfferTotal(a);
+    const bTotal = computeOfferTotal(b);
+    if (aTotal === bTotal) return 0;
+    return aTotal < bTotal ? -1 : 1;
+  });
   const bestPriceOfferId = sortedByTotal[0]?.offer_id || null;
   const defaultOfferId = pickDefaultOfferId(prioritizedOffers) || bestPriceOfferId;
   timings.sort = Date.now() - sortStartedAt;

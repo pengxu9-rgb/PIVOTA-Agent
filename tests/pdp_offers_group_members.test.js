@@ -699,6 +699,109 @@ describe('PDP grouped offers', () => {
     );
   });
 
+  test('labels external-seed marketplace offers from the source host when merchant name is just product brand', async () => {
+    const app = require('../src/server');
+
+    const offersData = await app._debug.buildOffersFromGroupMembers({
+      productGroupId: 'sig_tf_lost_cherry',
+      members: [
+        {
+          merchant_id: 'external_seed',
+          product_id: 'tom-ford:lch-sephora',
+          source_kind: 'canonical_catalog',
+        },
+        {
+          merchant_id: 'external_seed',
+          product_id: 'ext_tf_lch_official',
+          source_kind: 'external_seed',
+        },
+      ],
+      prefetchedProducts: [
+        {
+          merchant_id: 'external_seed',
+          product_id: 'tom-ford:lch-sephora',
+          title: 'Lost Cherry Eau de Parfum',
+          brand: 'Tom Ford',
+          merchant_name: 'Tom Ford',
+          price: 255,
+          currency: 'USD',
+          in_stock: true,
+          source_url: 'https://sephora.com/products/tom-ford-lost-cherry-eau-de-parfum',
+        },
+        {
+          merchant_id: 'external_seed',
+          product_id: 'ext_tf_lch_official',
+          title: 'Lost Cherry Eau de Parfum',
+          brand: 'Tom Ford Beauty',
+          merchant_name: 'www.tomfordbeauty.com',
+          price: 90,
+          currency: 'USD',
+          in_stock: true,
+          source_url: 'https://www.tomfordbeauty.com/products/lost-cherry-eau-de-parfum',
+        },
+      ],
+    });
+
+    expect(offersData.offers.map((offer) => offer.merchant_name)).toEqual(
+      expect.arrayContaining(['Sephora', 'Tom Ford Beauty']),
+    );
+    expect(offersData.offers.map((offer) => offer.merchant_name)).not.toContain('Tom Ford');
+    expect(offersData.offers.map((offer) => offer.merchant_name)).not.toContain('www.tomfordbeauty.com');
+  });
+
+  test('does not select zero-price unavailable link-out rows as best price', async () => {
+    const app = require('../src/server');
+
+    const offersData = await app._debug.buildOffersFromGroupMembers({
+      productGroupId: 'sig_tf_lost_cherry',
+      members: [
+        {
+          merchant_id: 'external_seed',
+          product_id: 'tom-ford:lch-sephora-oos',
+          source_kind: 'canonical_catalog',
+        },
+        {
+          merchant_id: 'external_seed',
+          product_id: 'ext_tf_lch_official',
+          source_kind: 'external_seed',
+        },
+      ],
+      prefetchedProducts: [
+        {
+          merchant_id: 'external_seed',
+          product_id: 'tom-ford:lch-sephora-oos',
+          title: 'Lost Cherry Eau de Parfum',
+          brand: 'Tom Ford',
+          merchant_name: 'Tom Ford',
+          price: 0,
+          currency: 'USD',
+          in_stock: false,
+          source_url: 'https://sephora.com/products/tom-ford-lost-cherry-eau-de-parfum',
+        },
+        {
+          merchant_id: 'external_seed',
+          product_id: 'ext_tf_lch_official',
+          title: 'Lost Cherry Eau de Parfum',
+          brand: 'Tom Ford Beauty',
+          merchant_name: 'www.tomfordbeauty.com',
+          price: 90,
+          currency: 'USD',
+          in_stock: true,
+          source_url: 'https://www.tomfordbeauty.com/products/lost-cherry-eau-de-parfum',
+        },
+      ],
+    });
+
+    const bestOffer = offersData.offers.find((offer) => offer.offer_id === offersData.best_price_offer_id);
+    expect(bestOffer).toEqual(
+      expect.objectContaining({
+        product_id: 'ext_tf_lch_official',
+        merchant_name: 'Tom Ford Beauty',
+        price: { amount: 90, currency: 'USD' },
+      }),
+    );
+  });
+
   test('collapses duplicate offers that are the same merchant listing', async () => {
     const app = require('../src/server');
 

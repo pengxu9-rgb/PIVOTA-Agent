@@ -154,7 +154,8 @@ function offerHasAvailableInventory(offer) {
 function computeOfferTotal(offer) {
   const o = offer && typeof offer === 'object' && !Array.isArray(offer) ? offer : null;
   if (!o) return Number.POSITIVE_INFINITY;
-  const price = Number(o?.price?.amount ?? o?.price?.current?.amount ?? 0) || 0;
+  const price = Number(o?.price?.amount ?? o?.price?.current?.amount);
+  if (!Number.isFinite(price) || price <= 0) return Number.POSITIVE_INFINITY;
   const shipping = Number(o?.shipping?.cost?.amount ?? 0) || 0;
   return price + shipping;
 }
@@ -210,8 +211,9 @@ function compareOffersForPresentation(a, b) {
   const bCurrencyMatch = offerMatchesExpectedCurrency(b) ? 1 : 0;
   if (aCurrencyMatch !== bCurrencyMatch) return bCurrencyMatch - aCurrencyMatch;
 
-  const totalDelta = computeOfferTotal(a) - computeOfferTotal(b);
-  if (totalDelta !== 0) return totalDelta;
+  const aTotal = computeOfferTotal(a);
+  const bTotal = computeOfferTotal(b);
+  if (aTotal !== bTotal) return aTotal < bTotal ? -1 : 1;
 
   const completenessDelta = scoreCommerceFactsCompleteness(b) - scoreCommerceFactsCompleteness(a);
   if (completenessDelta !== 0) return completenessDelta;
