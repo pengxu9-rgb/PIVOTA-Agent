@@ -26,6 +26,12 @@ test('classifies explicit shade visual fields without accepting product photos',
     ),
     true,
   );
+  assert.equal(
+    likelyProductOnlyImageUrl(
+      'https://cdn.shopify.com/files/FB816865GLOBAL_GLOSSBOMBOIL_INFOGRAPHICS_1200x1500_2Model_Smear_FENTYGLOW_2.jpg',
+    ),
+    true,
+  );
 
   assert.equal(
     classifyVisualEvidence({ shade_hex: '#bb785f' }, {}, 'W023').visual_status,
@@ -69,6 +75,17 @@ test('classifies explicit shade visual fields without accepting product photos',
       '1',
     ).visual_status,
     'real_swatch_or_hex',
+  );
+  assert.equal(
+    classifyVisualEvidence(
+      {
+        swatch_image_url:
+          'https://cdn.shopify.com/files/FB816865GLOBAL_GLOSSBOMBOIL_INFOGRAPHICS_1200x1500_2Model_Smear_FENTYGLOW_2.jpg',
+      },
+      {},
+      'Fenty Glow',
+    ).visual_status,
+    'blocked_product_image_source',
   );
 });
 

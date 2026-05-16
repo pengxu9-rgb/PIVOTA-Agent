@@ -92,7 +92,11 @@ function hasValidHex(value) {
 
 function likelyProductOnlyImageUrl(value) {
   const text = normalizeUrlSearchText(value);
-  return Boolean(text && PRODUCT_IMAGE_PATTERN.test(text));
+  return Boolean(
+    text &&
+      (/model|infographics?|product[-_\s]?w(?:ith)?[-_\s]?smear/i.test(text) ||
+        PRODUCT_IMAGE_PATTERN.test(text)),
+  );
 }
 
 function likelyShadeSwatchImageUrl(value) {
