@@ -569,7 +569,13 @@ function resolveActiveItemWithIngredientEvidence(product, item, normalizedItemsT
 
   if (
     VITAMIN_C_ACTIVE_RE.test(text) &&
-    TRUE_VITAMIN_C_INGREDIENT_RE.test([rawText, collectProductRoleContext(product)].join(' '))
+    (
+      TRUE_VITAMIN_C_INGREDIENT_RE.test([rawText, collectProductRoleContext(product)].join(' ')) ||
+      (
+        TRUE_VITAMIN_C_INGREDIENT_RE.test(text) &&
+        VITAMIN_C_ACTIVE_RE.test([rawText, collectProductRoleContext(product)].join(' '))
+      )
+    )
   ) {
     return text;
   }
@@ -945,6 +951,23 @@ function readActiveCandidates(product, inputs) {
   return activeCandidate([], 'none') || { items: [], source_origin: 'none', validateAgainstIngredients: false };
 }
 
+function readSourceActiveArrayCandidates(product, inputs) {
+  const arrays = [
+    { value: product?.active_ingredients, source: 'product_active_array', validateAgainstIngredients: true },
+    { value: product?.activeIngredients, source: 'product_active_array', validateAgainstIngredients: true },
+    { value: inputs.ingredientIntel?.active_ingredients, source: 'ingredient_intel_array', validateAgainstIngredients: true },
+    { value: inputs.seedData?.active_ingredients, source: 'seed_active_array', validateAgainstIngredients: true },
+    { value: inputs.snapshot?.active_ingredients, source: 'snapshot_active_array', validateAgainstIngredients: true },
+  ];
+  for (const candidate of arrays) {
+    const result = activeCandidate(candidate.value, candidate.source, {
+      validateAgainstIngredients: candidate.validateAgainstIngredients,
+    });
+    if (result) return result;
+  }
+  return null;
+}
+
 function buildAuthoritativeIngredientView(product, options = {}) {
   const inputs = readIngredientInputs(product);
   const generatedAt = options.generatedAt || new Date().toISOString();
@@ -965,13 +988,17 @@ function buildAuthoritativeIngredientView(product, options = {}) {
     });
     if (normalizedExisting.items.length || normalizedExisting.active_items.length) {
       const explicitActiveCandidate = readExplicitActiveCandidates(product, inputs);
+      const sourceActiveCandidate = explicitActiveCandidate?.items?.length
+        ? explicitActiveCandidate
+        : readSourceActiveArrayCandidates(product, inputs);
       const titleDeclaredActiveItems = inferTitleDeclaredActiveItems(
         product,
         normalizedExisting.items,
         normalizedExisting.raw_text,
       );
       const candidateActiveItems = uniqueStrings([
-        ...(explicitActiveCandidate?.items?.length ? explicitActiveCandidate.items : normalizedExisting.active_items),
+        ...normalizedExisting.active_items,
+        ...(sourceActiveCandidate?.items?.length ? sourceActiveCandidate.items : []),
         ...titleDeclaredActiveItems,
       ]);
       return {
@@ -982,10 +1009,10 @@ function buildAuthoritativeIngredientView(product, options = {}) {
           normalizedExisting.items,
           normalizedExisting.raw_text,
           {
-            validateAgainstIngredients: explicitActiveCandidate?.items?.length
-              ? explicitActiveCandidate.validateAgainstIngredients
+            validateAgainstIngredients: sourceActiveCandidate?.items?.length
+              ? sourceActiveCandidate.validateAgainstIngredients
               : !isReviewedIngredientAuthoritySource(existingSourceOrigin) || titleDeclaredActiveItems.length > 0,
-            inferSunscreenActives: !explicitActiveCandidate?.items?.length,
+            inferSunscreenActives: !sourceActiveCandidate?.items?.length,
           },
         ),
       };

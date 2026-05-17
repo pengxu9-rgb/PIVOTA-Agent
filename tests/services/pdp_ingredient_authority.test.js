@@ -254,6 +254,27 @@ describe('pdpIngredientAuthority', () => {
     expect(authority.active_items).not.toContain('Glycerin');
   });
 
+  test('merges source-backed active arrays when reviewed ingredient authority has no active items', () => {
+    const authority = buildAuthoritativeIngredientView({
+      title: 'Banana Bright+ Eye Crème',
+      description:
+        'Powered by a potent triple vitamin C complex with real gold, which improves delivery of vitamin C to the skin.',
+      active_ingredients: ['Vitamin C (Ascorbic acid)', 'Glycerin'],
+      ingredient_intel: {
+        authoritative: {
+          raw_text: 'Water, Caprylic/Capric Triglyceride, Butylene Glycol, Phenoxyethanol.',
+          items: ['Water', 'Caprylic/Capric Triglyceride', 'Butylene Glycol', 'Phenoxyethanol'],
+          active_items: [],
+          source_origin: 'kb_reviewed',
+          purity_status: 'authoritative',
+        },
+      },
+    });
+
+    expect(authority.active_items).toEqual(['Vitamin C (Ascorbic acid)']);
+    expect(authority.active_items).not.toContain('Glycerin');
+  });
+
   test('suppresses low-signal active items while keeping authoritative INCI', () => {
     const authority = buildAuthoritativeIngredientView({
       title: 'Multi-Peptide Lash and Brow Serum',
