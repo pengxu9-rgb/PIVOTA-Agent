@@ -159,4 +159,54 @@ describe('find_products catalog identity hydration', () => {
       }),
     );
   });
+
+  test('hydrates direct external seed PDP products from approved identity listing when catalog row is missing', async () => {
+    const { db, debug } = loadServerWithDb();
+    db.query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            merchant_id: 'external_seed',
+            platform: 'external_seed',
+            source_product_id: 'ext_catkin_c06',
+            pivota_signature_id: 'sig_catkinc06',
+            sellable_item_group_id: 'sig_catkinc06',
+            product_line_id: 'pl_catkin_glossy_lip_balm',
+            review_family_id: 'pl_catkin_glossy_lip_balm',
+            identity_confidence: 0.98,
+            match_basis: ['official_dtc_variant'],
+            identity_status: 'approved',
+            live_read_enabled: true,
+            review_required: false,
+          },
+        ],
+      });
+
+    const identity = await debug.resolveCatalogIdentityForProductRef({
+      merchantId: 'external_seed',
+      productId: 'ext_catkin_c06',
+    });
+
+    expect(db.query).toHaveBeenCalledTimes(2);
+    expect(String(db.query.mock.calls[1][0])).toContain('FROM pdp_identity_listing pil');
+    expect(identity).toEqual(
+      expect.objectContaining({
+        merchant_id: 'external_seed',
+        platform: 'external_seed',
+        source_product_id: 'ext_catkin_c06',
+        pivota_signature_id: 'sig_catkinc06',
+        signature_id: 'sig_catkinc06',
+        sellable_item_group_id: 'sig_catkinc06',
+        product_group_id: 'sig_catkinc06',
+        product_line_id: 'pl_catkin_glossy_lip_balm',
+        review_family_id: 'pl_catkin_glossy_lip_balm',
+        identity_confidence: 0.98,
+        match_basis: ['official_dtc_variant'],
+        identity_status: 'approved',
+        live_read_enabled: true,
+        review_required: false,
+      }),
+    );
+  });
 });

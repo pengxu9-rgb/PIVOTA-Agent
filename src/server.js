@@ -4351,6 +4351,42 @@ async function resolveCatalogIdentityForProductRef({ merchantId, productId, prod
   const normalizedProductKey = String(productKey || '').trim();
   if (!normalizedMerchantId || (!normalizedProductId && !normalizedProductKey)) return null;
 
+  const buildIdentityResult = (row, fallback = {}) => {
+    const sigId = firstNonEmptyString(
+      row?.pivota_signature_id,
+      row?.signature_id,
+      row?.sellable_item_group_id,
+      fallback.pivota_signature_id,
+    );
+    if (!sigId || !isPivotaSignatureProductId(sigId)) return null;
+    return {
+      merchant_id: firstNonEmptyString(row?.merchant_id, fallback.merchant_id),
+      platform: firstNonEmptyString(row?.platform, fallback.platform),
+      source_product_id: firstNonEmptyString(row?.source_product_id, fallback.source_product_id),
+      product_key: firstNonEmptyString(row?.product_key, fallback.product_key),
+      pivota_signature_id: sigId,
+      signature_id: sigId,
+      category: firstNonEmptyString(row?.category),
+      product_type: firstNonEmptyString(row?.product_type),
+      category_path: firstNonEmptyString(row?.category_path),
+      category_label_source: firstNonEmptyString(row?.category_label_source),
+      category_confidence: Number.isFinite(Number(row?.category_confidence))
+        ? Number(row.category_confidence)
+        : undefined,
+      sellable_item_group_id: firstNonEmptyString(row?.sellable_item_group_id, sigId),
+      product_group_id: firstNonEmptyString(row?.sellable_item_group_id, sigId),
+      product_line_id: firstNonEmptyString(row?.product_line_id),
+      review_family_id: firstNonEmptyString(row?.review_family_id),
+      identity_confidence: Number.isFinite(Number(row?.identity_confidence))
+        ? Number(row.identity_confidence)
+        : undefined,
+      match_basis: Array.isArray(row?.match_basis) ? row.match_basis : [],
+      identity_status: firstNonEmptyString(row?.identity_status),
+      live_read_enabled: row?.live_read_enabled === true,
+      review_required: row?.review_required === true,
+    };
+  };
+
   try {
     const result = await query(
       `
@@ -4387,39 +4423,56 @@ async function resolveCatalogIdentityForProductRef({ merchantId, productId, prod
       [normalizedMerchantId, normalizedProductId, normalizedProductKey],
     );
     const row = Array.isArray(result?.rows) ? result.rows[0] : null;
-    const sigId = firstNonEmptyString(row?.pivota_signature_id);
-    if (!sigId || !isPivotaSignatureProductId(sigId)) return null;
-    return {
-      merchant_id: firstNonEmptyString(row?.merchant_id),
-      platform: firstNonEmptyString(row?.platform),
-      source_product_id: firstNonEmptyString(row?.source_product_id),
-      product_key: firstNonEmptyString(row?.product_key),
-      pivota_signature_id: sigId,
-      signature_id: sigId,
-      category: firstNonEmptyString(row?.category),
-      product_type: firstNonEmptyString(row?.product_type),
-      category_path: firstNonEmptyString(row?.category_path),
-      category_label_source: firstNonEmptyString(row?.category_label_source),
-      category_confidence: Number.isFinite(Number(row?.category_confidence))
-        ? Number(row.category_confidence)
-        : undefined,
-      sellable_item_group_id: firstNonEmptyString(row?.sellable_item_group_id),
-      product_group_id: firstNonEmptyString(row?.sellable_item_group_id),
-      product_line_id: firstNonEmptyString(row?.product_line_id),
-      review_family_id: firstNonEmptyString(row?.review_family_id),
-      identity_confidence: Number.isFinite(Number(row?.identity_confidence))
-        ? Number(row.identity_confidence)
-        : undefined,
-      match_basis: Array.isArray(row?.match_basis) ? row.match_basis : [],
-      identity_status: firstNonEmptyString(row?.identity_status),
-      live_read_enabled: row?.live_read_enabled === true,
-      review_required: row?.review_required === true,
-    };
+    const catalogIdentity = buildIdentityResult(row);
+    if (catalogIdentity) return catalogIdentity;
+
+    if (
+      normalizedMerchantId === EXTERNAL_SEED_MERCHANT_ID &&
+      isExternalSeedProductId(normalizedProductId)
+    ) {
+      const identityResult = await query(
+        `
+          SELECT
+            $1::text AS merchant_id,
+            'external_seed'::text AS platform,
+            $2::text AS source_product_id,
+            pil.sellable_item_group_id AS pivota_signature_id,
+            pil.sellable_item_group_id,
+            pil.product_line_id,
+            pil.review_family_id,
+            pil.identity_confidence,
+            pil.match_basis,
+            pil.identity_status,
+            pil.live_read_enabled,
+            pil.review_required
+          FROM pdp_identity_listing pil
+          WHERE pil.source_listing_ref = $3
+            AND NULLIF(pil.sellable_item_group_id, '') IS NOT NULL
+            AND pil.identity_status = 'approved'
+            AND pil.live_read_enabled IS TRUE
+            AND COALESCE(pil.review_required, false) IS NOT TRUE
+          LIMIT 1
+        `,
+        [
+          EXTERNAL_SEED_MERCHANT_ID,
+          normalizedProductId,
+          `external_seed:${normalizedProductId}`,
+        ],
+      );
+      return buildIdentityResult(Array.isArray(identityResult?.rows) ? identityResult.rows[0] : null, {
+        merchant_id: EXTERNAL_SEED_MERCHANT_ID,
+        platform: 'external_seed',
+        source_product_id: normalizedProductId,
+      });
+    }
+
+    return null;
   } catch (err) {
     const message = String(err?.message || err || '');
     if (
       err?.code === 'NO_DATABASE' ||
-      (message.includes('catalog_products') && message.includes('does not exist'))
+      ((message.includes('catalog_products') || message.includes('pdp_identity_listing')) &&
+        message.includes('does not exist'))
     ) {
       return null;
     }
