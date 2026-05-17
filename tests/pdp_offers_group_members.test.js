@@ -154,6 +154,54 @@ describe('PDP grouped offers', () => {
     });
   });
 
+  test('does not turn missing external seed offer prices into zero-dollar offers', async () => {
+    const app = require('../src/server');
+
+    const offersData = await app._debug.buildOffersFromGroupMembers({
+      productGroupId: 'pg_unknown_retailer_price',
+      members: [
+        {
+          merchant_id: 'external_seed',
+          product_id: 'ext_tom_ford_unknown_price',
+          source_kind: 'external_seed',
+        },
+      ],
+      prefetchedProducts: [
+        {
+          merchant_id: 'external_seed',
+          product_id: 'ext_tom_ford_unknown_price',
+          title: 'Tom Ford Beauty Shade And Illuminate Soft Radiance Foundation',
+          brand: 'Tom Ford Beauty',
+          merchant_name: 'Sephora',
+          destination_url: 'https://www.sephora.com/product/example',
+          price: { current: { amount: 0, currency: 'USD' } },
+          source_payload: {
+            origin: 'catalog_group_prefetch',
+          },
+          variants: [
+            {
+              variant_id: 'shade-1',
+              title: 'Shade 1',
+              price: { current: { amount: 0, currency: 'USD' } },
+              currency: 'USD',
+            },
+            {
+              variant_id: 'shade-2',
+              title: 'Shade 2',
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(offersData.offers).toHaveLength(1);
+    expect(offersData.offers[0].price).toBeUndefined();
+    expect(offersData.offers[0].variants).toEqual([
+      expect.not.objectContaining({ price: expect.anything() }),
+      expect.not.objectContaining({ price: expect.anything() }),
+    ]);
+  });
+
   test('builds display-safe Shopify store discount evidence from promotion metadata', () => {
     const app = require('../src/server');
 

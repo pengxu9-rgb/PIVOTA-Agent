@@ -6184,6 +6184,7 @@ function normalizeOfferMoneyForProduct(amount, currency, product = {}, variant =
     description: firstNonEmptyString(variant?.description, productContext.description),
   };
   const rawAmount = readPriceAmountForNormalization(amount);
+  if (!Number.isFinite(rawAmount) || rawAmount <= 0) return null;
   let normalizedAmount = normalizeExternalSeedPrice(amount, context);
   const productAmount = readPriceAmountForNormalization(
     product?.price ?? product?.price_amount ?? product?.priceAmount,
@@ -6199,6 +6200,7 @@ function normalizeOfferMoneyForProduct(amount, currency, product = {}, variant =
   ) {
     normalizedAmount = productAmount;
   }
+  if (!Number.isFinite(Number(normalizedAmount)) || Number(normalizedAmount) <= 0) return null;
   return normalizeOfferMoney(normalizedAmount, context.currency);
 }
 
@@ -6692,7 +6694,8 @@ function buildOfferVariantsForPayload(product, fallbackCurrency) {
         variant?.pricing?.current?.amount ??
         variant?.pricing?.amount ??
         variant?.price ??
-        0;
+        null;
+      const variantPrice = normalizeOfferMoneyForProduct(rawVariantPrice, currency, product, variant);
       const availableQuantityRaw =
         variant?.availability?.available_quantity ??
         variant?.available_quantity ??
@@ -6723,9 +6726,7 @@ function buildOfferVariantsForPayload(product, fallbackCurrency) {
         ...(sku ? { sku_id: sku, sku } : {}),
         ...(title ? { title } : {}),
         ...(options.length ? { options } : {}),
-        price: {
-          current: normalizeOfferMoneyForProduct(rawVariantPrice, currency, product, variant),
-        },
+        ...(variantPrice ? { price: { current: variantPrice } } : {}),
         availability: {
           ...(typeof inStock === 'boolean' ? { in_stock: inStock } : {}),
           ...(availableQuantity != null ? { available_quantity: availableQuantity } : {}),
@@ -7081,6 +7082,12 @@ async function buildOffersFromGroupMembers(args) {
     const agentSafeCommerceFacts =
       p.agent_safe_commerce_facts ||
       (commerceFacts ? buildAgentSafeCommerceFacts(commerceFacts) : null);
+    const offerPrice = normalizeOfferMoneyForProduct(
+      selectedVariantPrice ?? p.price,
+      currency,
+      p,
+      selectedVariant,
+    );
 
     return {
       offer_id:
@@ -7109,7 +7116,7 @@ async function buildOffersFromGroupMembers(args) {
           },
           merchantId: mid,
         }) || undefined,
-      price: normalizeOfferMoneyForProduct(selectedVariantPrice ?? p.price, currency, p, selectedVariant),
+      ...(offerPrice ? { price: offerPrice } : {}),
       shipping:
         p.shipping || etaRange || shipCostAmount != null
           ? {
@@ -25841,6 +25848,11 @@ async function buildProductIntelOffersDataForContext({
         tier: 'default',
       }) ||
       `of:v1:${context.canonicalProductRef.merchant_id}:${productGroupId}:${context.product.fulfillment_type || 'merchant'}:default`;
+    const fallbackOfferPrice = normalizeOfferMoneyForProduct(
+      context.product.price,
+      context.product.currency || 'USD',
+      context.product,
+    );
 
     offersData = {
       status: 'success',
@@ -25854,11 +25866,7 @@ async function buildProductIntelOffersDataForContext({
           product_id: context.canonicalProductRef.product_id,
           merchant_id: context.canonicalProductRef.merchant_id,
           merchant_name: context.product.merchant_name || context.product.store_name || undefined,
-          price: normalizeOfferMoneyForProduct(
-            context.product.price,
-            context.product.currency || 'USD',
-            context.product,
-          ),
+          ...(fallbackOfferPrice ? { price: fallbackOfferPrice } : {}),
           shipping: context.product.shipping || undefined,
           returns: context.product.returns || undefined,
           inventory: {
@@ -30097,11 +30105,14 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
                       product: canonicalProductForPdp,
                       merchantId: canonicalProductRef.merchant_id,
                     }) || undefined,
-                  price: normalizeOfferMoneyForProduct(
-                    canonicalProductForPdp.price,
-                    canonicalProductForPdp.currency || 'USD',
-                    canonicalProductForPdp,
-                  ),
+                  ...(() => {
+                    const fallbackOfferPrice = normalizeOfferMoneyForProduct(
+                      canonicalProductForPdp.price,
+                      canonicalProductForPdp.currency || 'USD',
+                      canonicalProductForPdp,
+                    );
+                    return fallbackOfferPrice ? { price: fallbackOfferPrice } : {};
+                  })(),
                   shipping: canonicalProductForPdp.shipping || undefined,
                   returns: canonicalProductForPdp.returns || undefined,
                   inventory: {
