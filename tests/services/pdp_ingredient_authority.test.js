@@ -93,6 +93,28 @@ describe('pdpIngredientAuthority', () => {
     expect(modules.ingredientsInciData).toBeNull();
   });
 
+  test('suppresses force-filled ingredient note when INCI is not applicable', () => {
+    const modules = buildStructuredPdpIngredientModules({
+      ingredient_remediation_v1: {
+        action: 'mark_inci_not_applicable',
+      },
+      ingredient_intel: {
+        inci_applicability: {
+          status: 'not_applicable',
+        },
+        force_fill_contract: {
+          contract_version: 'pivota.pdp.force_fill.v1',
+          source_origin: 'pivota_force_fill',
+          source_quality_status: 'force_filled_pending_source',
+          display_note:
+            'Full INCI has not been captured from an approved source yet. Check the merchant page before purchase.',
+        },
+      },
+    });
+
+    expect(modules.ingredientsInciData).toBeNull();
+  });
+
   test('does not label source-reviewed patch composition as force-filled fallback', () => {
     const modules = buildStructuredPdpIngredientModules({
       ingredient_intel: {

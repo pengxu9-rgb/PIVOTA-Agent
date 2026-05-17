@@ -377,6 +377,14 @@ function buildPlan(row, options = {}) {
     existingRemediation?.action === 'mark_inci_not_applicable'
     && existingIntelStatus.applicabilityStatus === 'not_applicable'
   ) {
+    if (staleForceFillContract) {
+      clearForceFillContract(seedData);
+      mergeSnapshotContract(seedData, generatedAt);
+      result.status = options.apply ? 'pending_apply' : 'dry_run';
+      result.action = existingRemediation.action;
+      result.reason_codes = asArray(existingRemediation.reason_codes);
+      return { result, nextSeedData: seedData, changed: before !== JSON.stringify(seedData) };
+    }
     result.status = 'already_remediated';
     result.action = existingRemediation.action;
     result.reason_codes = asArray(existingRemediation.reason_codes);
@@ -404,6 +412,7 @@ function buildPlan(row, options = {}) {
 
   if (family === 'accessory' || family === 'non_merch') {
     const applicability = buildApplicability(row, family, generatedAt);
+    clearForceFillContract(seedData);
     patchBothIngredientIntel(seedData, { inci_applicability: applicability });
     patchBothRemediation(
       seedData,
@@ -598,6 +607,7 @@ async function main() {
         'manual_source_review_required',
         'component_refs_linked',
         'component_ref_review_required',
+        'mark_inci_not_applicable',
         'clear_stale_force_fill_contract',
       ].includes(plan.result.action)) {
         try {
