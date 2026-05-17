@@ -298,21 +298,25 @@ function classifyIdentityPayloadDrift({ seedPayload, identityPayload, title, see
   const seedSummary = summarizePdpPayloadContract(seedPayload, title);
   const identitySummary = summarizePdpPayloadContract(identityPayload, title);
   const seedUpdatedAfterIdentity = isSeedUpdatedAfterIdentity(seedUpdatedAt, identityUpdatedAt);
-  const staleContent =
-    (seedSummary.active_evidence && !identitySummary.active_evidence) ||
-    seedSummary.how_to_len > identitySummary.how_to_len ||
+  const auditScopeMismatch = seedSummary.bundle_like && seedSummary.active_expectation;
+  const formulaContentStale =
+    !auditScopeMismatch &&
+    ((seedSummary.active_evidence && !identitySummary.active_evidence) ||
+      seedSummary.how_to_len > identitySummary.how_to_len ||
+      seedSummary.ingredients_raw_len > identitySummary.ingredients_raw_len);
+  const contractStale = !auditScopeMismatch && seedSummary.has_contract && !identitySummary.has_contract;
+  const structuralContentStale =
     seedSummary.details_count > identitySummary.details_count ||
-    seedSummary.ingredients_raw_len > identitySummary.ingredients_raw_len ||
-    seedSummary.content_image_count > identitySummary.content_image_count ||
-    (seedSummary.has_contract && !identitySummary.has_contract);
+    seedSummary.content_image_count > identitySummary.content_image_count;
+  const staleContent = formulaContentStale || structuralContentStale || contractStale;
   return {
     seed_has_active_evidence: seedSummary.active_evidence,
     identity_payload_has_active_evidence: identitySummary.active_evidence,
     seed_expects_active_ingredients: seedSummary.active_expectation,
     identity_expects_active_ingredients: identitySummary.active_expectation,
     seed_updated_after_identity: seedUpdatedAfterIdentity,
-    identity_payload_stale: staleContent || (seedUpdatedAfterIdentity && seedSummary.has_contract && !identitySummary.has_contract),
-    audit_scope_mismatch: seedSummary.bundle_like && seedSummary.active_expectation,
+    identity_payload_stale: staleContent || (seedUpdatedAfterIdentity && contractStale),
+    audit_scope_mismatch: auditScopeMismatch,
     seed_summary: seedSummary,
     identity_summary: identitySummary,
   };

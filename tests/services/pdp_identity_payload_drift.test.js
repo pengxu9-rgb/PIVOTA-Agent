@@ -71,4 +71,37 @@ describe('pdpIdentityPayloadDrift', () => {
     expect(drift.seed_updated_after_identity).toBe(true);
     expect(drift.audit_scope_mismatch).toBe(true);
   });
+
+  test('classifies bundle formula-only drift as audit scope mismatch instead of stale sync work', () => {
+    const identityPayload = {
+      title: 'Power Plush Foundation & Brush Duo',
+      pdp_active_ingredients_raw: 'See Power Plush Longwear Foundation for list of ingredients.',
+      pdp_ingredients_raw: 'See Power Plush Longwear Foundation for list of ingredients.',
+      images: ['https://cdn.example.com/duo.jpg'],
+    };
+    const seedPayload = {
+      title: 'Power Plush Foundation & Brush Duo',
+      pdp_active_ingredients_raw: 'See Power Plush Longwear Foundation for list of ingredients.',
+      pdp_ingredients_raw: 'See Power Plush Longwear Foundation for list of ingredients.',
+      pdp_how_to_use_raw: 'Apply to the target area and build as needed.',
+      seed_data: {
+        external_seed_snapshot_contract: {
+          authoritative: true,
+          legacy_fields_quarantined: true,
+        },
+      },
+    };
+
+    const drift = classifyIdentityPayloadDrift({
+      seedPayload,
+      identityPayload,
+      title: 'Power Plush Foundation & Brush Duo',
+      seedUpdatedAt: '2026-05-16T00:00:00.000Z',
+      identityUpdatedAt: '2026-05-15T00:00:00.000Z',
+    });
+
+    expect(drift.audit_scope_mismatch).toBe(true);
+    expect(drift.seed_has_active_evidence).toBe(true);
+    expect(drift.identity_payload_stale).toBe(false);
+  });
 });

@@ -33,8 +33,8 @@ describe('pdp identity source payload drift scripts', () => {
       external_product_id: 'ext_stale',
       domain: 'olehenriksen.com',
       market: 'US',
-      title: 'Balance+ Bundle',
-      canonical_url: 'https://olehenriksen.com/products/balance-bundle',
+      title: 'Balance+ Clarifying Serum',
+      canonical_url: 'https://olehenriksen.com/products/balance-clarifying-serum',
       updated_at: '2026-05-14T00:00:00.000Z',
     };
     const richSeedRow = {
@@ -52,7 +52,7 @@ describe('pdp identity source payload drift scripts', () => {
       product_line_id: 'pl_balance',
       updated_at: '2026-04-12T00:00:00.000Z',
       source_payload: {
-        title: 'Balance+ Bundle',
+        title: 'Balance+ Clarifying Serum',
         images: ['https://cdn.example.com/stale.jpg'],
       },
     };
@@ -66,11 +66,11 @@ describe('pdp identity source payload drift scripts', () => {
       },
     };
     const staleFreshPayload = {
-      title: 'Balance+ Bundle',
+      title: 'Balance+ Clarifying Serum',
       images: ['https://cdn.example.com/stale.jpg'],
     };
     const richFreshPayload = {
-      title: 'Balance+ Bundle',
+      title: 'Balance+ Clarifying Serum',
       pdp_active_ingredients_raw: 'Salicylic Acid (BHA) targets blemishes.',
       active_ingredients: ['Salicylic acid'],
       pdp_how_to_use_raw: 'Use each component as directed.',
@@ -94,6 +94,52 @@ describe('pdp identity source payload drift scripts', () => {
     expect(sigRows[0].fresh_best_content_ref).toBe('external_seed:ext_rich');
     expect(rows[0].canonical_selection_gap).toBe(true);
     expect(rows[1].sync_candidate).toBe(true);
+  });
+
+  test('bundle formula-only mismatches stay out of automatic sync candidates', () => {
+    const seedRow = {
+      external_product_id: 'ext_duo',
+      domain: 'kyliecosmetics.com',
+      market: 'US',
+      title: 'Power Plush Foundation & Brush Duo',
+      canonical_url: 'https://kyliecosmetics.com/products/power-plush-foundation-brush-duo',
+      updated_at: '2026-05-16T00:00:00.000Z',
+    };
+    const identity = {
+      source_listing_ref: 'external_seed:ext_duo',
+      source_tier: 'brand',
+      live_read_enabled: true,
+      identity_status: 'approved',
+      review_required: false,
+      identity_confidence: 0.94,
+      sellable_item_group_id: 'sig_duo',
+      product_line_id: 'pl_duo',
+      updated_at: '2026-05-15T00:00:00.000Z',
+      source_payload: {
+        title: 'Power Plush Foundation & Brush Duo',
+        pdp_active_ingredients_raw: 'See Power Plush Longwear Foundation for list of ingredients.',
+        pdp_ingredients_raw: 'See Power Plush Longwear Foundation for list of ingredients.',
+      },
+    };
+    const freshPayload = {
+      title: 'Power Plush Foundation & Brush Duo',
+      pdp_active_ingredients_raw: 'See Power Plush Longwear Foundation for list of ingredients.',
+      pdp_ingredients_raw: 'See Power Plush Longwear Foundation for list of ingredients.',
+      pdp_how_to_use_raw: 'Apply to the target area and build as needed.',
+      seed_data: {
+        external_seed_snapshot_contract: {
+          authoritative: true,
+          legacy_fields_quarantined: true,
+        },
+      },
+    };
+
+    const row = buildRowAudit(seedRow, identity, freshPayload);
+
+    expect(row.audit_scope_mismatch).toBe(true);
+    expect(row.identity_payload_stale).toBe(false);
+    expect(row.sync_candidate).toBe(false);
+    expect(row.pdp_shaping_gap).toBe(false);
   });
 
   test('hydrocolloid spot patches do not expect active ingredients without explicit active evidence', () => {

@@ -191,10 +191,19 @@ function buildRowAudit(seedRow, identityRow, freshPayload) {
     seed_updated_after_identity: drift.seed_updated_after_identity,
     identity_payload_stale: drift.identity_payload_stale,
     canonical_selection_gap: false,
-    pdp_shaping_gap: Boolean(drift.seed_has_active_evidence && !drift.identity_payload_has_active_evidence),
+    pdp_shaping_gap: Boolean(
+      !drift.audit_scope_mismatch &&
+        drift.seed_has_active_evidence &&
+        !drift.identity_payload_has_active_evidence,
+    ),
     audit_scope_mismatch: drift.audit_scope_mismatch,
     sig_mixed_active_expectation: false,
-    sync_candidate: Boolean(identityRow && drift.identity_payload_stale && !drift.identity_summary.strict_blocker),
+    sync_candidate: Boolean(
+      identityRow &&
+        drift.identity_payload_stale &&
+        !drift.audit_scope_mismatch &&
+        !drift.identity_summary.strict_blocker,
+    ),
     changed: diff.changed,
     gained_active_evidence: diff.gained_active_evidence,
     gained_ingredients: diff.gained_ingredients,

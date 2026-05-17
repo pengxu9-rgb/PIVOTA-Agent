@@ -235,6 +235,19 @@ async function main() {
       seedUpdatedAt: item.row.updated_at,
       identityUpdatedAt: identityRow.updated_at,
     });
+    const skipReason = drift.identity_summary.strict_blocker
+      ? 'strict_source_blocker'
+      : drift.audit_scope_mismatch
+        ? 'audit_scope_mismatch'
+        : '';
+    let status = 'unchanged';
+    if (diff.changed) {
+      if (skipReason) {
+        status = `skipped_${skipReason}`;
+      } else {
+        status = dryRun ? 'dry_run' : 'pending_apply';
+      }
+    }
     const result = {
       external_product_id: item.row.external_product_id,
       domain: item.row.domain,
@@ -243,12 +256,13 @@ async function main() {
       live_read_enabled: identityRow.live_read_enabled === true,
       identity_status: identityRow.identity_status,
       review_required: identityRow.review_required === true,
-      status: diff.changed ? (dryRun ? 'dry_run' : 'pending_apply') : 'unchanged',
+      status,
+      skip_reason: skipReason,
       diff,
       drift,
     };
     results.push(result);
-    if (diff.changed) {
+    if (diff.changed && !skipReason) {
       updates.push({
         source_listing_ref: item.payload.source_listing_ref,
         payload: item.payload.product,
@@ -277,10 +291,13 @@ async function main() {
     },
     scanned_rows: rows.length,
     payloads_built: payloads.length,
+    diff_changed_rows: results.filter((item) => item.diff?.changed).length,
     changed_rows: updates.length,
     updated_rows: applyResult.updated_rows,
     failed_rows: applyResult.failed_rows || 0,
     skipped_missing_identity_listing: results.filter((item) => item.status === 'skipped_missing_identity_listing').length,
+    skipped_audit_scope_mismatch: results.filter((item) => item.skip_reason === 'audit_scope_mismatch').length,
+    skipped_strict_source_blocker: results.filter((item) => item.skip_reason === 'strict_source_blocker').length,
     gained_active_evidence: results.filter((item) => item.diff?.gained_active_evidence).length,
     gained_ingredients: results.filter((item) => item.diff?.gained_ingredients).length,
     gained_how_to: results.filter((item) => item.diff?.gained_how_to).length,
