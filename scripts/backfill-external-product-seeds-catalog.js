@@ -4164,12 +4164,14 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     });
   }
   const nextPdpHowToUseRaw = supportsHowToUsePdpField
-    ? pickPdpHowToUseRaw(
-        howToDecision.preserve ? '' : candidatePdpHowToUseRaw,
-        nextPdpDetailsSections,
-        howToDecision.existingApproved ? existingPdpHowToUseRaw : '',
-        pdpHowToUseContext,
-      )
+    ? howToDecision.preserve
+      ? cleanPdpHowToUseRaw(existingPdpHowToUseRaw)
+      : pickPdpHowToUseRaw(
+          candidatePdpHowToUseRaw,
+          nextPdpDetailsSections,
+          howToDecision.existingApproved ? existingPdpHowToUseRaw : '',
+          pdpHowToUseContext,
+        )
     : '';
   nextPdpDetailsSections = filterDuplicateHowToSections(nextPdpDetailsSections, nextPdpHowToUseRaw);
   const existingPdpFaqItems = identityRepairBackfill
