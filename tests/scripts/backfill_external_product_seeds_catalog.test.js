@@ -332,7 +332,25 @@ Contains four types of peptides`;
       price_amount: 18,
       price_currency: 'USD',
       availability: 'in_stock',
-      seed_data: { snapshot: {} },
+      seed_data: {
+        pdp_how_to_use_raw: '2. After opening the mask, adjust to fit on face\n3. Leave it on for 10-20 minutes and remove',
+        pdp_field_quality_summary: {
+          how_to_use_raw: {
+            source_quality_status: 'high',
+            source_origin: 'shopify_json',
+            source_kinds: ['shopify_body_html_labeled_how_to_use'],
+          },
+        },
+        pdp_content_asset_v1: {
+          contract_version: 'external_seed.pdp_content_asset.v1',
+          fields: {
+            how_to_use_raw: {
+              review_state: 'assistant_reviewed',
+            },
+          },
+        },
+        snapshot: {},
+      },
     };
 
     const payload = buildSeedUpdatePayload(
@@ -376,6 +394,7 @@ Contains four types of peptides`,
       '1. Prep skin with toner after cleansing',
     );
     expect(payload.nextRow.seed_data.pdp_how_to_use_raw).not.toContain("What's in it");
+    expect(payload.nextRow.seed_data.snapshot_quarantine?.preserved_candidates?.how_to_use_raw).toBeUndefined();
   });
 
   test('extracts full ingredients from mixed PDP detail section bodies', () => {

@@ -2094,6 +2094,15 @@ function shouldPreserveExistingPdpContent({
     return { preserve: false, reason: 'same_content', existingApproved };
   }
   if (
+    summaryKey === 'how_to_use_raw' &&
+    incomingSurfaceable &&
+    !MANUAL_ONLY_PDP_CONTENT_POLICIES.has(overwritePolicy) &&
+    startsAtFirstNumberedStep(incomingValue) &&
+    startsAtLaterNumberedStep(existingValue)
+  ) {
+    return { preserve: false, reason: 'replace_incomplete_numbered_how_to', existingApproved };
+  }
+  if (
     PROTECTED_PDP_CONTENT_REVIEW_STATES.has(reviewState) ||
     MANUAL_ONLY_PDP_CONTENT_POLICIES.has(overwritePolicy)
   ) {
