@@ -208,6 +208,81 @@ describe('find_similar_products mainline wrapper', () => {
     );
   });
 
+  it('adds conservative source-backed similar card highlights from rich product titles', async () => {
+    const app = require('../src/server');
+
+    const items = await app._debug.enrichSimilarProductsForPdpCards({
+      items: [
+        {
+          product_id: 'sim_title_backed',
+          merchant_id: 'ulta',
+          title: 'Hydrating Dewy Gel Cream Moisturizer with Hyaluronic Acid + Ceramides',
+          image_url: 'https://cdn.example.test/dewy-gel-cream.jpg',
+          shopping_card: {
+            title: 'Hydrating Dewy Gel Cream Moisturizer with Hyaluronic Acid + Ceramides',
+            subtitle: 'Moisturizer',
+          },
+          search_card: {
+            title_candidate: 'Hydrating Dewy Gel Cream Moisturizer with Hyaluronic Acid + Ceramides',
+            compact_candidate: 'Moisturizer',
+          },
+        },
+      ],
+      maxItems: 1,
+      budgetMs: 100,
+      detailBudgetMs: 50,
+    });
+    const metadata = app._debug.getSimilarCardEnrichmentMetadata(items);
+
+    expect(app._debug.shouldEnrichSimilarCard(items[0])).toBe(false);
+    expect(items[0]).toEqual(
+      expect.objectContaining({
+        card_highlight_status: 'ready',
+        card_image_status: 'ready',
+        card_highlight: 'Hydrating Dewy Gel Cream Moisturizer with Hyaluronic Acid + Ceramides',
+        card_highlight_source: 'source_backed_title_or_intro',
+        shopping_card: expect.objectContaining({
+          highlight: 'Hydrating Dewy Gel Cream Moisturizer with Hyaluronic Acid + Ceramides',
+        }),
+        search_card: expect.objectContaining({
+          highlight_candidate: 'Hydrating Dewy Gel Cream Moisturizer with Hyaluronic Acid + Ceramides',
+        }),
+      }),
+    );
+    expect(metadata).toEqual(
+      expect.objectContaining({
+        card_enrichment_attempted_count: 0,
+      }),
+    );
+  });
+
+  it('does not treat category-only similar cards as source-backed highlights', async () => {
+    const app = require('../src/server');
+
+    const items = await app._debug.enrichSimilarProductsForPdpCards({
+      items: [
+        {
+          product_id: 'sim_category_only',
+          merchant_id: 'external_seed',
+          title: 'Category only',
+          category: 'Toner',
+          image_url: 'https://cdn.example.test/category-only.jpg',
+        },
+      ],
+      maxItems: 1,
+      budgetMs: 100,
+      detailBudgetMs: 50,
+    });
+
+    expect(items[0]).toEqual(
+      expect.objectContaining({
+        card_highlight_status: 'highlight_missing',
+        card_image_status: 'ready',
+      }),
+    );
+    expect(items[0].card_highlight).toBeUndefined();
+  });
+
   it('keeps public similar card detail hydration isolated even when the env flag is enabled', async () => {
     process.env.PDP_SIMILAR_CARD_DETAIL_ENRICH_ENABLED = 'true';
     const app = require('../src/server');

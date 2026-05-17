@@ -19640,12 +19640,112 @@ function hasSimilarCardImage(product = {}) {
   return candidates.some((value) => String(value || '').trim().length > 0);
 }
 
+const SIMILAR_CARD_TITLE_FALLBACK_PRODUCT_RE =
+  /\b(?:ampoule|balm|blush|bronzer|cleanser|cleansing|conditioner|concealer|cream|deodorant|essence|exfoliant|foundation|gel|gloss|lotion|mask|mist|moisturizer|oil|pad|patch|peel|primer|serum|shampoo|spf|sunscreen|toner|treatment)\b/i;
+
+const SIMILAR_CARD_TITLE_FALLBACK_GENERIC_RE =
+  /\b(?:category\s+only|missing\s+highlight|similar\s+product|related\s+product|product\s+\d*|item\s+\d*)\b/i;
+
+function normalizeSimilarCardFallbackText(value, { maxChars = 74 } = {}) {
+  const text = String(value || '')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/[.;,:|-]+$/g, '')
+    .trim();
+  if (!text) return '';
+  if (text.length <= maxChars) return text;
+  return text.slice(0, maxChars).replace(/\s+\S*$/g, '').replace(/[.;,:|-]+$/g, '').trim();
+}
+
+function deriveSourceBackedSimilarCardHighlight(item = {}) {
+  if (!item || typeof item !== 'object') return '';
+
+  const intro = normalizeSimilarCardFallbackText(
+    readSimilarCardText(
+      item.card_intro,
+      item.cardIntro,
+      item.shopping_card?.intro,
+      item.shoppingCard?.intro,
+      item.search_card?.intro_candidate,
+      item.searchCard?.intro_candidate,
+      item.searchCard?.introCandidate,
+      item.summary,
+    ),
+  );
+  if (intro) return intro;
+
+  const title = normalizeSimilarCardFallbackText(
+    readSimilarCardText(
+      item.title,
+      item.name,
+      item.card_title,
+      item.cardTitle,
+      item.shopping_card?.title,
+      item.shoppingCard?.title,
+      item.search_card?.title_candidate,
+      item.searchCard?.title_candidate,
+      item.searchCard?.titleCandidate,
+    ),
+  );
+  if (!title || title.length < 8) return '';
+  if (SIMILAR_CARD_TITLE_FALLBACK_GENERIC_RE.test(title)) return '';
+  if (!SIMILAR_CARD_TITLE_FALLBACK_PRODUCT_RE.test(title)) return '';
+
+  const normalizedTitle = normalizeSearchTextForMatch(title);
+  const normalizedCategory = normalizeSearchTextForMatch(
+    readSimilarCardText(
+      item.category,
+      item.product_type,
+      item.productType,
+      item.card_subtitle,
+      item.cardSubtitle,
+      item.shopping_card?.subtitle,
+      item.shoppingCard?.subtitle,
+      item.search_card?.compact_candidate,
+      item.searchCard?.compact_candidate,
+      item.searchCard?.compactCandidate,
+    ),
+  );
+  if (!normalizedTitle || normalizedTitle === normalizedCategory) return '';
+
+  return title;
+}
+
+function applySourceBackedSimilarCardHighlightFallback(item = {}) {
+  if (!item || typeof item !== 'object') return item;
+  if (hasSimilarCardPresentation(item)) return item;
+
+  const cardHighlight = deriveSourceBackedSimilarCardHighlight(item);
+  if (!cardHighlight) return item;
+
+  const next = {
+    ...item,
+    card_highlight: cardHighlight,
+    card_highlight_source: item.card_highlight_source || 'source_backed_title_or_intro',
+  };
+  if (!next.shopping_card || typeof next.shopping_card !== 'object' || Array.isArray(next.shopping_card)) {
+    next.shopping_card = {};
+  }
+  if (!readSimilarCardText(next.shopping_card.highlight)) {
+    next.shopping_card = { ...next.shopping_card, highlight: cardHighlight };
+  }
+  if (!next.search_card || typeof next.search_card !== 'object' || Array.isArray(next.search_card)) {
+    next.search_card = {};
+  }
+  if (!readSimilarCardText(next.search_card.highlight_candidate)) {
+    next.search_card = { ...next.search_card, highlight_candidate: cardHighlight };
+  }
+  return next;
+}
+
 function annotateSimilarCardStatus(item = {}) {
   if (!item || typeof item !== 'object') return item;
+  const next = applySourceBackedSimilarCardHighlightFallback(item);
   return {
-    ...item,
-    card_highlight_status: hasSimilarCardPresentation(item) ? 'ready' : 'highlight_missing',
-    card_image_status: hasSimilarCardImage(item) ? 'ready' : 'image_missing',
+    ...next,
+    card_highlight_status: hasSimilarCardPresentation(next) ? 'ready' : 'highlight_missing',
+    card_image_status: hasSimilarCardImage(next) ? 'ready' : 'image_missing',
   };
 }
 
@@ -19691,9 +19791,7 @@ function mergeSimilarCardEnrichment(candidate = {}, detail = {}) {
   if (!Array.isArray(next.external_highlight_signals) && Array.isArray(detail.external_highlight_signals)) {
     next.external_highlight_signals = detail.external_highlight_signals;
   }
-  next.card_highlight_status = hasSimilarCardPresentation(next) ? 'ready' : 'highlight_missing';
-  next.card_image_status = hasSimilarCardImage(next) ? 'ready' : 'image_missing';
-  return next;
+  return annotateSimilarCardStatus(next);
 }
 
 function normalizeSimilarCategoryForDisplay(value) {
