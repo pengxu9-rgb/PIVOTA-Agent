@@ -481,6 +481,41 @@ describe('externalSeedProducts helper', () => {
     });
   });
 
+  test('positive official review summary overrides older approved absence marker', () => {
+    const product = buildExternalSeedProduct({
+      id: 'eps_reviewed_seed_after_absence',
+      external_product_id: 'ext_reviewed_seed_after_absence',
+      canonical_url: 'https://tirtir.global/products/my-glow-cream-cushion-refill',
+      destination_url: 'https://tirtir.global/products/my-glow-cream-cushion-refill',
+      title: 'My Glow Cream Cushion Refill',
+      seed_data: {
+        brand: 'TIRTIR Global',
+        snapshot: {
+          pdp_review_summary: {
+            status: 'unavailable',
+            unavailable_reason: 'no_approved_merchant_review_source_captured',
+            source: 'pivota_review_source_gate_v1',
+            content_review_state: 'approved_absence',
+            force_filled: true,
+          },
+          review_summary: {
+            rating: 5,
+            review_count: 1,
+            scale: 5,
+            source_origin: 'official_html',
+          },
+        },
+      },
+    });
+
+    expect(product.review_summary).toEqual({
+      rating: 5,
+      review_count: 1,
+      scale: 5,
+      source: 'official_html',
+    });
+  });
+
   test('carries force-filled PDP review absence without consuming seed audit summaries', () => {
     const product = buildExternalSeedProduct({
       id: 'eps_review_absence_seed',
