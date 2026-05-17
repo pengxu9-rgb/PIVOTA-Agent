@@ -1774,4 +1774,124 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     expect(payload.product.electronics_meta.protection_plans).toBeUndefined();
     expect(payload.product.electronics_meta.configurator_groups).toBeUndefined();
   });
+
+  // --------- Phase O-5b: confidence-gated fashion_meta passthrough ----------
+
+  test('passes through a legacy string material (no provenance)', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'p_legacy_string',
+        merchant_id: 'm',
+        title: 'Item',
+        fashion_meta: { material: 'pure cashmere' },
+        variants: [{ id: 'v', title: 'one', price: { amount: 1, currency: 'USD' } }],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+    expect(payload.product.fashion_meta.material).toBe('pure cashmere');
+  });
+
+  test('passes through high-confidence regex-extracted material', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'p_high_conf',
+        merchant_id: 'm',
+        title: 'Item',
+        fashion_meta: {
+          material: {
+            value: '100% organic cotton',
+            source: 'regex_extraction_v1',
+            confidence: 0.75,
+          },
+        },
+        variants: [{ id: 'v', title: 'one', price: { amount: 1, currency: 'USD' } }],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+    expect(payload.product.fashion_meta.material).toBe('100% organic cotton');
+  });
+
+  test('drops low-confidence regex-extracted material', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'p_low_conf',
+        merchant_id: 'm',
+        title: 'Item',
+        fashion_meta: {
+          material: {
+            value: '4ply',
+            source: 'regex_extraction_v1',
+            confidence: 0.4, // below default 0.6 threshold
+          },
+        },
+        variants: [{ id: 'v', title: 'one', price: { amount: 1, currency: 'USD' } }],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+    // material is dropped → entire fashion_meta object becomes empty → null
+    expect(payload.product.fashion_meta).toBeUndefined();
+  });
+
+  test('drops llm-extracted field when confidence missing (fail closed)', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'p_llm_no_conf',
+        merchant_id: 'm',
+        title: 'Item',
+        fashion_meta: {
+          material: {
+            value: '100% silk',
+            source: 'llm_extraction_v1',
+            // confidence intentionally omitted
+          },
+        },
+        variants: [{ id: 'v', title: 'one', price: { amount: 1, currency: 'USD' } }],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+    expect(payload.product.fashion_meta).toBeUndefined();
+  });
+
+  test('merchant_payload provenance always passes regardless of confidence', () => {
+    // merchant-published values are authoritative — gate should not apply.
+    // (Even though confidence is set low here, source != derived set → passes.)
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'p_merchant',
+        merchant_id: 'm',
+        title: 'Item',
+        fashion_meta: {
+          material: { value: 'denim', source: 'merchant_payload', confidence: 0.1 },
+        },
+        variants: [{ id: 'v', title: 'one', price: { amount: 1, currency: 'USD' } }],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+    expect(payload.product.fashion_meta.material).toBe('denim');
+  });
+
+  test('size_fit_chart object passes through unchanged (no scalar gating)', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'p_size_chart',
+        merchant_id: 'm',
+        title: 'Item',
+        fashion_meta: {
+          size_fit_chart: {
+            columns: ['Size', 'Bust'],
+            rows: [{ label: 'M', values: ['90 cm'] }],
+          },
+        },
+        variants: [{ id: 'v', title: 'one', price: { amount: 1, currency: 'USD' } }],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+    expect(payload.product.fashion_meta.size_fit_chart.rows).toHaveLength(1);
+  });
 });

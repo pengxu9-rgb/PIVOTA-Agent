@@ -508,21 +508,97 @@ function inferCategoryKind(product) {
 }
 
 /**
+ * Confidence threshold below which derived/extracted fashion meta fields are
+ * dropped from the merchant-facing payload. Per the team's
+ * `feedback_mock_data_never_to_merchant` rule — extracted values (e.g. from
+ * regex_extraction_v1 or future llm_extraction_v1) should not surface as
+ * authoritative copy unless they pass the gate.
+ *
+ * Default 0.6 matches the backend convention in
+ * pivota-backend-quality-gate/db/migrations/094_catalog_fashion_fields.sql.
+ */
+const FASHION_META_DEFAULT_MIN_CONFIDENCE = 0.6;
+
+/**
+ * Sources considered "derived" (subject to confidence gating).
+ * Merchant-published values bypass the gate because they're authoritative.
+ */
+const FASHION_META_DERIVED_SOURCES = new Set([
+  'regex_extraction_v1',
+  'llm_extraction_v1',
+  'variant_aggregate',
+]);
+
+/**
+ * Read a field from a fashion_meta blob that may carry one of two shapes:
+ *   - legacy flat:  { material: "100% cotton" }                (no provenance)
+ *   - provenance:   { material: { value: "100% cotton",
+ *                                  source: "regex_extraction_v1",
+ *                                  confidence: 0.75 } }
+ * Returns { value, source, confidence } or null. Strings pass through
+ * with source=null, confidence=null so the gate treats them as authoritative.
+ */
+function _readFashionField(rawField) {
+  if (rawField == null) return null;
+  if (typeof rawField === 'string') {
+    const trimmed = rawField.trim();
+    return trimmed ? { value: trimmed, source: null, confidence: null } : null;
+  }
+  if (typeof rawField === 'object' && !Array.isArray(rawField)) {
+    const value = rawField.value;
+    if (typeof value === 'string' && value.trim()) {
+      return {
+        value: value.trim(),
+        source: typeof rawField.source === 'string' ? rawField.source : null,
+        confidence:
+          typeof rawField.confidence === 'number' && Number.isFinite(rawField.confidence)
+            ? rawField.confidence
+            : null,
+      };
+    }
+  }
+  return null;
+}
+
+function _shouldPassConfidenceGate(field, threshold) {
+  if (!field) return false;
+  if (!field.source) return true; // legacy flat string / merchant_payload not tagged
+  if (!FASHION_META_DERIVED_SOURCES.has(field.source)) return true;
+  if (field.confidence == null) return false; // derived but no score → fail closed
+  return field.confidence >= threshold;
+}
+
+/**
  * Whitelist + light shape check for `fashion_meta`. Pass-through is fine —
  * we don't transform — but we guard against arbitrary upstream blobs by
  * only keeping the documented fields. Matches the FashionMeta type in
  * pivota-agent-ui/src/features/pdp/types.ts.
+ *
+ * Confidence gating (Phase O-5b): when a scalar field is supplied with a
+ * `source` of "regex_extraction_v1" / "llm_extraction_v1" / "variant_aggregate"
+ * AND `confidence` is below `minConfidence` (default 0.6), the field is
+ * dropped. Merchant-published or legacy string-shaped values are unaffected.
+ * Pass `{ minConfidence: 0 }` to disable the gate for an agent-side caller
+ * that wants raw signal.
  */
-function pickFashionMeta(meta) {
+function pickFashionMeta(meta, opts) {
   if (!meta || typeof meta !== 'object') return null;
+  const threshold =
+    opts && typeof opts.minConfidence === 'number'
+      ? opts.minConfidence
+      : FASHION_META_DEFAULT_MIN_CONFIDENCE;
   const out = {};
   if (meta.size_fit_chart && typeof meta.size_fit_chart === 'object') {
     out.size_fit_chart = meta.size_fit_chart;
   }
   if (meta.model && typeof meta.model === 'object') out.model = meta.model;
-  if (typeof meta.material === 'string') out.material = meta.material;
-  if (typeof meta.origin === 'string') out.origin = meta.origin;
-  if (typeof meta.care === 'string') out.care = meta.care;
+  // Scalar fields go through the provenance reader + confidence gate.
+  for (const fieldName of ['material', 'origin', 'care']) {
+    const parsed = _readFashionField(meta[fieldName]);
+    if (parsed && _shouldPassConfidenceGate(parsed, threshold)) {
+      out[fieldName] = parsed.value;
+    }
+  }
   if (Array.isArray(meta.styling_pairings)) out.styling_pairings = meta.styling_pairings;
   return Object.keys(out).length ? out : null;
 }
