@@ -1112,6 +1112,38 @@ describe('PDP grouped offers', () => {
     expect(payload.product.price_source).toBeUndefined();
   });
 
+  test('removes zero canonical PDP product price when no positive offer price exists', () => {
+    const app = require('../src/server');
+
+    const payload = app._debug.hydrateCanonicalPdpPayloadFromOffers(
+      {
+        product: {
+          product_id: 'sig_unknown_price',
+          title: 'Unknown Price Product',
+          price: { current: { amount: 0, currency: 'USD' } },
+          price_amount: 0,
+          priceAmount: 0,
+          currency: 'USD',
+        },
+      },
+      {
+        default_offer_id: 'offer_unknown',
+        best_price_offer_id: 'offer_unknown',
+        offers: [
+          {
+            offer_id: 'offer_unknown',
+            merchant_name: 'Retailer',
+            inventory: { in_stock: true },
+          },
+        ],
+      },
+    );
+
+    expect(payload.product.price).toBeUndefined();
+    expect(payload.product.price_amount).toBeUndefined();
+    expect(payload.product.priceAmount).toBeUndefined();
+  });
+
   test('hydrates empty canonical PDP media from the default offer variant images', () => {
     const app = require('../src/server');
 

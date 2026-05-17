@@ -6501,6 +6501,11 @@ function hydrateCanonicalPdpPayloadFromOffers(pdpPayload, offersData) {
     product.price_amount = selectedOfferMoney.amount;
     product.currency = selectedOfferMoney.currency;
     product.price_source = 'default_offer';
+  } else if (shouldHydratePrice) {
+    delete product.price;
+    delete product.price_amount;
+    delete product.priceAmount;
+    if (product.price_source === 'default_offer') delete product.price_source;
   }
 
   return hydrateCanonicalPdpMediaFromOfferImages({
