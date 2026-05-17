@@ -1380,6 +1380,186 @@ function buildExternalSeedRecommendationCandidate(row, options = {}) {
   };
 }
 
+function normalizeCatalogCategoryPath(value) {
+  const raw = Array.isArray(value) ? value.join('/') : String(value || '');
+  return raw
+    .trim()
+    .toLowerCase()
+    .replace(/^\/+|\/+$/g, '')
+    .replace(/\s*\/\s*/g, '/')
+    .replace(/\/{2,}/g, '/');
+}
+
+function getCatalogCategoryPathHint(product = {}) {
+  const seedData = ensureJsonObject(product?.seed_data);
+  const snapshot = ensureJsonObject(seedData?.snapshot);
+  return normalizeCatalogCategoryPath(
+    firstNonEmptyText(
+      product?.catalog_category_path,
+      product?.catalogCategoryPath,
+      product?.category_path,
+      product?.categoryPath,
+      seedData.catalog_category_path,
+      seedData.category_path,
+      snapshot.catalog_category_path,
+      snapshot.category_path,
+    ),
+  );
+}
+
+function categoryLeafFromCatalogPath(path) {
+  const normalized = normalizeCatalogCategoryPath(path);
+  if (!normalized) return '';
+  const parts = normalized.split('/').map((part) => part.trim()).filter(Boolean);
+  return parts.length ? parts[parts.length - 1] : '';
+}
+
+function semanticVerticalFromCatalogCategoryPath(path) {
+  const normalized = normalizeCatalogCategoryPath(path);
+  if (normalized.startsWith('beauty/makeup/')) return 'makeup';
+  if (normalized.startsWith('beauty/skincare/')) return 'skincare';
+  if (normalized.startsWith('beauty/fragrance/')) return 'fragrance';
+  if (normalized.startsWith('beauty/hair') || normalized.startsWith('beauty/haircare/')) return 'haircare';
+  return '';
+}
+
+function buildCatalogProductRecommendationCandidate(row, options = {}) {
+  if (!row || typeof row !== 'object') return null;
+  const productPayload = ensureJsonObject(row.product_payload);
+  const seedData = ensureJsonObject(productPayload.seed_data || productPayload.external_seed?.seed_data);
+  const snapshot = ensureJsonObject(seedData.snapshot);
+  const catalogCategoryPath = normalizeCatalogCategoryPath(
+    firstNonEmptyText(row.category_path, productPayload.category_path, seedData.category_path, snapshot.category_path),
+  );
+  const sourceProductId = firstNonEmptyText(
+    row.source_product_id,
+    seedData.external_product_id,
+    seedData.product_id,
+    snapshot.product_id,
+  );
+  const isExternalSeedCatalogRow =
+    String(row.merchant_id || '').trim() === EXTERNAL_SEED_MERCHANT_ID ||
+    String(row.platform || '').trim() === EXTERNAL_SEED_MERCHANT_ID ||
+    sourceProductId.startsWith('ext_') ||
+    sourceProductId.includes(':');
+  const productId = isExternalSeedCatalogRow
+    ? sourceProductId
+    : firstNonEmptyText(row.source_product_id, row.product_key, row.pivota_signature_id);
+  if (!productId) return null;
+
+  const leafCategory = categoryLeafFromCatalogPath(catalogCategoryPath);
+  const recall = ensureJsonObject(seedData?.derived?.recall);
+  const title = firstNonEmptyText(
+    row.product_title,
+    row.title,
+    seedData.title,
+    snapshot.title,
+    row.canonical_url,
+    row.product_key,
+  );
+  const brand = firstNonEmptyText(
+    row.brand,
+    recall.brand_name,
+    recall.brand,
+    seedData.brand,
+    seedData.brand_name,
+    seedData.vendor,
+    snapshot.brand,
+    snapshot.vendor,
+    options.fallbackBrand,
+  );
+  const category = firstNonEmptyText(
+    recall.category,
+    row.category,
+    row.product_type,
+    seedData.category,
+    seedData.product_type,
+    snapshot.category,
+    snapshot.product_type,
+    leafCategory,
+    options.fallbackCategory,
+  );
+  const semanticVertical = normalizeStoredSemanticVertical(
+    firstNonEmptyText(recall.vertical, semanticVerticalFromCatalogCategoryPath(catalogCategoryPath)),
+  );
+  const imageUrl = firstImageUrl(
+    row.product_image_url,
+    row.image_url,
+    productPayload.image_url,
+    seedData.image_url,
+    snapshot.image_url,
+    snapshot.image,
+    Array.isArray(seedData.images) ? seedData.images[0] : null,
+    Array.isArray(snapshot.images) ? snapshot.images[0] : null,
+  );
+  const rawPriceAmount =
+    productPayload.price_amount ??
+    productPayload.price ??
+    seedData.price_amount ??
+    seedData.price ??
+    snapshot.price_amount ??
+    snapshot.price ??
+    null;
+  const priceAmount =
+    rawPriceAmount == null || rawPriceAmount === '' ? null : normalizeAmount(rawPriceAmount);
+  const priceCurrency = firstNonEmptyText(
+    productPayload.price_currency,
+    seedData.price_currency,
+    snapshot.price_currency,
+    'USD',
+  ).toUpperCase();
+  const availability = firstNonEmptyText(
+    productPayload.availability,
+    seedData.availability,
+    snapshot.availability,
+  );
+  const normalizedAvailability = availability.toLowerCase();
+  const inStock = normalizedAvailability
+    ? !['out_of_stock', 'sold_out', 'unavailable', 'discontinued', 'out of stock'].includes(normalizedAvailability)
+    : true;
+  const pivotaSignatureId = firstNonEmptyText(row.pivota_signature_id, productPayload.pivota_signature_id);
+  const pivotaCanonicalUrl = firstNonEmptyText(
+    row.pivota_canonical_url,
+    productPayload.pivota_canonical_url,
+    pivotaSignatureId ? `https://agent.pivota.cc/products/${pivotaSignatureId}` : '',
+  );
+  const canonicalUrl = firstNonEmptyText(
+    pivotaCanonicalUrl,
+    row.canonical_url,
+    seedData.canonical_url,
+    snapshot.canonical_url,
+    seedData.destination_url,
+    snapshot.destination_url,
+  );
+
+  return {
+    merchant_id: isExternalSeedCatalogRow ? EXTERNAL_SEED_MERCHANT_ID : firstNonEmptyText(row.merchant_id),
+    product_id: productId,
+    id: productId,
+    ...(isExternalSeedCatalogRow ? { external_product_id: productId, source_product_id: productId } : {}),
+    ...(pivotaSignatureId ? { pivota_signature_id: pivotaSignatureId, signature_id: pivotaSignatureId } : {}),
+    ...(firstNonEmptyText(row.product_key) ? { product_key: firstNonEmptyText(row.product_key), catalog_product_key: firstNonEmptyText(row.product_key) } : {}),
+    title,
+    name: title,
+    ...(brand ? { brand, vendor: brand } : {}),
+    ...(category ? { category, product_type: firstNonEmptyText(row.product_type, category) } : {}),
+    ...(catalogCategoryPath ? { category_path: catalogCategoryPath, catalog_category_path: catalogCategoryPath } : {}),
+    ...(imageUrl ? { image_url: imageUrl, image: imageUrl } : {}),
+    ...(priceAmount != null ? { price: priceAmount, price_amount: priceAmount } : {}),
+    ...(priceCurrency ? { currency: priceCurrency, price_currency: priceCurrency } : {}),
+    ...(canonicalUrl ? { canonical_url: canonicalUrl, url: canonicalUrl } : {}),
+    ...(firstNonEmptyText(seedData.destination_url, snapshot.destination_url) ? { destination_url: firstNonEmptyText(seedData.destination_url, snapshot.destination_url) } : {}),
+    ...(firstNonEmptyText(seedData.domain, snapshot.domain) ? { domain: firstNonEmptyText(seedData.domain, snapshot.domain) } : {}),
+    ...(availability ? { availability } : {}),
+    in_stock: inStock,
+    status: 'active',
+    platform: isExternalSeedCatalogRow ? 'external' : firstNonEmptyText(row.platform, 'catalog'),
+    source: isExternalSeedCatalogRow ? 'external_seed' : 'catalog_products',
+    retrieval_source: 'catalog_category_path',
+    ...(semanticVertical ? { semantic_vertical: semanticVertical, recall_vertical: semanticVertical } : {}),
+  };
+}
+
 const EXTERNAL_SEED_RECOMMENDATION_SELECT = `
             id,
             external_product_id,
@@ -1463,6 +1643,36 @@ const EXTERNAL_SEED_FAST_RECOMMENDATION_SELECT = `
             created_at
 `;
 
+const EXTERNAL_SEED_LIGHT_RECOMMENDATION_SELECT = `
+            id,
+            external_product_id,
+            destination_url,
+            canonical_url,
+            domain,
+            title,
+            image_url,
+            price_amount,
+            price_currency,
+            availability,
+            updated_at,
+            created_at,
+            coalesce(seed_data->>'brand', seed_data->'derived'->'recall'->>'brand') AS seed_brand,
+            seed_data->>'brand_name' AS seed_brand_name,
+            seed_data->>'vendor' AS seed_vendor,
+            seed_data->>'vendor_name' AS seed_vendor_name,
+            coalesce(seed_data->>'category', seed_data->'derived'->'recall'->>'category') AS seed_category,
+            coalesce(seed_data->>'product_type', seed_data->'derived'->'recall'->>'category') AS seed_product_type,
+            seed_data->'derived'->'recall'->>'category' AS recall_category,
+            seed_data->'derived'->'recall'->>'vertical' AS recall_vertical,
+            seed_data->>'image_url' AS seed_image_url,
+            seed_data->>'price_amount' AS seed_price_amount,
+            seed_data->>'price' AS seed_price,
+            seed_data->>'price_currency' AS seed_price_currency,
+            seed_data->>'availability' AS seed_availability,
+            seed_data->>'canonical_url' AS seed_canonical_url,
+            seed_data->>'destination_url' AS seed_destination_url
+`;
+
 const EXTERNAL_SEED_SEMANTIC_SELECT = `
         id,
         external_product_id,
@@ -1474,6 +1684,12 @@ const EXTERNAL_SEED_SEMANTIC_SELECT = `
         price_amount,
         price_currency,
         availability,
+        (SELECT cp.category_path
+           FROM catalog_products cp
+          WHERE cp.merchant_id = 'external_seed'
+            AND cp.platform = 'external_seed'
+            AND cp.source_product_id = external_product_seeds.external_product_id
+          LIMIT 1) AS catalog_category_path,
         jsonb_strip_nulls(jsonb_build_object(
           'title', seed_data->>'title',
           'brand', coalesce(seed_data->>'brand', seed_data->'derived'->'recall'->>'brand'),
@@ -1483,6 +1699,13 @@ const EXTERNAL_SEED_SEMANTIC_SELECT = `
           'category', coalesce(seed_data->>'category', seed_data->'derived'->'recall'->>'category'),
           'product_type', coalesce(seed_data->>'product_type', seed_data->'derived'->'recall'->>'category'),
           'productType', seed_data->>'productType',
+          'catalog_category_path', (SELECT cp.category_path
+             FROM catalog_products cp
+            WHERE cp.merchant_id = 'external_seed'
+              AND cp.platform = 'external_seed'
+              AND cp.source_product_id = external_product_seeds.external_product_id
+            LIMIT 1),
+          'category_path', coalesce(seed_data->>'category_path', seed_data->>'catalog_category_path'),
           'recall_category', seed_data->'derived'->'recall'->>'category',
           'recall_vertical', seed_data->'derived'->'recall'->>'vertical',
           'description', seed_data->>'description',
@@ -2471,6 +2694,7 @@ async function fetchInternalCandidates({ merchantId, limit, excludeMerchantId, c
 async function fetchExternalCandidates({
   brandHint,
   categoryHint,
+  categoryPathHint = '',
   verticalHint = '',
   intentFamilyHint = '',
   domainHints = [],
@@ -2491,6 +2715,7 @@ async function fetchExternalCandidates({
 
   const brand = normalizeText(brandHint);
   const category = normalizeText(categoryHint);
+  const catalogCategoryPath = normalizeCatalogCategoryPath(categoryPathHint);
   const vertical = normalizeStoredSemanticVertical(verticalHint);
   const allowVisibleFallbacks = visibleFallbacksEnabled();
   const normalizedDomainHints = uniqueByKey(
@@ -2567,6 +2792,7 @@ async function fetchExternalCandidates({
     return_cap: returnCap,
     brand_hint: brand || null,
     category_hint: category || null,
+    category_path_hint: catalogCategoryPath || null,
     vertical_hint: vertical || null,
     intent_family_hint: intentFamily || null,
     domain_hint_count: normalizedDomainHints.length,
@@ -2629,7 +2855,7 @@ async function fetchExternalCandidates({
             LIMIT $3
           )
           SELECT
-${EXTERNAL_SEED_RECOMMENDATION_SELECT}
+${EXTERNAL_SEED_LIGHT_RECOMMENDATION_SELECT}
           FROM external_product_seeds
           WHERE id IN (SELECT id FROM recall_ids)
           ORDER BY updated_at DESC, created_at DESC
@@ -2699,7 +2925,7 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
       const res = await query(
         `
           SELECT
-${EXTERNAL_SEED_RECOMMENDATION_SELECT}
+${EXTERNAL_SEED_LIGHT_RECOMMENDATION_SELECT}
           FROM external_product_seeds
           WHERE status = 'active'
             AND market = $1
@@ -2764,6 +2990,93 @@ ${EXTERNAL_SEED_FAST_RECOMMENDATION_SELECT}
       logger.warn(
         { err: err?.message || String(err), query: 'external_domain_title_category' },
         'recommendations external query failed',
+      );
+      return [];
+    }
+  }
+
+  async function runTitleCategoryQuery(cap) {
+    if (!categoryTitleLikePatterns.length) return [];
+    try {
+      const res = await query(
+        `
+          SELECT
+${EXTERNAL_SEED_RECOMMENDATION_SELECT}
+          FROM external_product_seeds
+          WHERE status = 'active'
+            AND market = $1
+            AND (tool = '*' OR tool = $2)
+            AND attached_product_key IS NULL
+            ${sellableExternalSeedSql}
+            AND lower(coalesce(title, '')) LIKE ANY($4::text[])
+          ORDER BY updated_at DESC, created_at DESC
+          LIMIT $3
+        `,
+        [market, tool, cap, categoryTitleLikePatterns],
+      );
+      const products = [];
+      for (const row of res.rows || []) {
+        const p = buildExternalSeedRecommendationCandidate(row, {
+          fallbackCategory: categoryHint,
+        });
+        if (p) products.push(p);
+      }
+      return products;
+    } catch (err) {
+      logger.warn(
+        { err: err?.message || String(err), query: 'external_title_category' },
+        'recommendations external query failed',
+      );
+      return [];
+    }
+  }
+
+  async function runCatalogCategoryPathQuery(cap) {
+    if (!catalogCategoryPath) return [];
+    try {
+      const res = await query(
+        `
+          SELECT
+            cp.product_key,
+            cp.merchant_id,
+            cp.platform,
+            cp.source_product_id,
+            cp.title AS product_title,
+            cp.description AS product_description,
+            cp.brand,
+            cp.product_type,
+            cp.category,
+            cp.category_path,
+            cp.canonical_url,
+            cp.image_url AS product_image_url,
+            cp.product_payload,
+            cp.pivota_signature_id,
+            cp.pivota_canonical_url,
+            cp.updated_at
+          FROM catalog_products cp
+          WHERE cp.sync_status = 'live'
+            AND cp.category_path = $1
+          ORDER BY
+            CASE WHEN lower(coalesce(cp.brand, '')) = ANY($2::text[]) THEN 0 ELSE 1 END,
+            cp.updated_at DESC NULLS LAST
+          LIMIT $3
+        `,
+        [catalogCategoryPath, brandAliases.length ? brandAliases : [''], cap],
+      );
+      const rows = Array.isArray(res.rows) ? res.rows : [];
+      const products = [];
+      for (const row of rows) {
+        const p = buildCatalogProductRecommendationCandidate(row, {
+          fallbackBrand: brandHint,
+          fallbackCategory: categoryHint,
+        });
+        if (p) products.push(p);
+      }
+      return products;
+    } catch (err) {
+      logger.warn(
+        { err: err?.message || String(err), query: 'catalog_category_path', category_path: catalogCategoryPath },
+        'recommendations catalog category path query failed',
       );
       return [];
     }
@@ -2860,6 +3173,24 @@ ${EXTERNAL_SEED_FAST_RECOMMENDATION_SELECT}
         )
       : Promise.resolve([]);
 
+  const loadTitleCategoryMatches = () =>
+    categoryTitleLikePatterns.length
+      ? runTimedExternalQuery(
+          'external_title_category',
+          () => runTitleCategoryQuery(boundedRecallCap(3, 48)),
+          Math.min(PDP_RECS_EXTERNAL_RECALL_QUERY_TIMEOUT_MS, 2000),
+        )
+      : Promise.resolve([]);
+
+  const loadCatalogCategoryPathMatches = () =>
+    catalogCategoryPath
+      ? runTimedExternalQuery(
+          'catalog_category_path',
+          () => runCatalogCategoryPathQuery(boundedRecallCap(3, 48)),
+          Math.min(PDP_RECS_EXTERNAL_RECALL_QUERY_TIMEOUT_MS, 1200),
+        )
+      : Promise.resolve([]);
+
   const out = [];
   let preloadedCategoryMatches = null;
   let preloadedDomainMatches = null;
@@ -2868,6 +3199,39 @@ ${EXTERNAL_SEED_FAST_RECOMMENDATION_SELECT}
   let exactDomainCategoryCandidateCount = 0;
   const exactDomainCategoryGoodEnoughCount = Math.min(focusedRecallTarget, 9);
   if (deepDomainRecall && normalizedDomainHints.length && category) {
+    if (catalogCategoryPath && !intentFamilyPattern) {
+      const deepRecallDomainCategoryCap = boundedRecallCap(3, 48);
+      const preloadedTitleCategoryMatches = await loadTitleCategoryMatches();
+      out.push(...preloadedTitleCategoryMatches);
+      const titleCategoryFocusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
+      if (hasDisplayCoverage(titleCategoryFocusedCandidates, safeMinFocusedCandidates)) {
+        return attachExternalFetchStats(titleCategoryFocusedCandidates.slice(0, returnCap));
+      }
+      const preloadedCatalogCategoryPathMatches = await loadCatalogCategoryPathMatches();
+      out.push(...preloadedCatalogCategoryPathMatches);
+      const catalogPathFocusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
+      if (hasDisplayCoverage(catalogPathFocusedCandidates, safeMinFocusedCandidates)) {
+        return attachExternalFetchStats(catalogPathFocusedCandidates.slice(0, returnCap));
+      }
+      const preloadedDomainTitleCategoryMatches = await runTimedExternalQuery(
+        'external_domain_title_category',
+        () => runDomainTitleCategoryQuery(deepRecallDomainCategoryCap),
+        PDP_RECS_EXTERNAL_RECALL_QUERY_TIMEOUT_MS,
+      );
+      out.push(...preloadedDomainTitleCategoryMatches);
+      exactDomainCategoryCandidateCount = displayUniqueCandidateCount(out);
+      const catalogFocusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
+      exactDomainCategoryFocusedEnough = exactDomainCategoryCandidateCount >= safeMinFocusedCandidates;
+      if (hasDisplayCoverage(catalogFocusedCandidates, safeMinFocusedCandidates)) {
+        return attachExternalFetchStats(catalogFocusedCandidates.slice(0, returnCap));
+      }
+      if (
+        catalogFocusedCandidates.length === 0 &&
+        timedOutStageCount(['external_domain_title_category', 'catalog_category_path']) >= 2
+      ) {
+        return attachExternalFetchStats([]);
+      }
+    } else {
     const deepRecallDomainCategoryCap = boundedRecallCap(3, 48);
     const [
       preloadedDomainTitleCategoryMatches,
@@ -2911,6 +3275,7 @@ ${EXTERNAL_SEED_FAST_RECOMMENDATION_SELECT}
       timedOutStageCount(['external_domain_title_category', 'external_domain_category']) >= 2
     ) {
       return attachExternalFetchStats([]);
+    }
     }
   }
   if (deepDomainRecall && normalizedDomainHints.length && !category) {
@@ -3334,6 +3699,21 @@ async function enrichExternalBaseProduct(baseProduct) {
     rescueFields.push('category');
   }
 
+  const seedCategoryPath = normalizeCatalogCategoryPath(
+    firstNonEmptyText(
+      seedRecord?.catalog_category_path,
+      seedData?.catalog_category_path,
+      seedData?.category_path,
+      snapshot?.catalog_category_path,
+      snapshot?.category_path,
+    ),
+  );
+  if (seedCategoryPath && !getCatalogCategoryPathHint(enriched)) {
+    enriched.category_path = seedCategoryPath;
+    enriched.catalog_category_path = seedCategoryPath;
+    rescueFields.push('category_path');
+  }
+
   const seedTitle = String(seedData?.title || seedRecord?.title || '').trim();
   if (!String(enriched.title || '').trim() && seedTitle) {
     enriched.title = seedTitle;
@@ -3540,6 +3920,7 @@ async function recommend({
   );
   const baseBrand = getBrandName(baseProduct);
   const baseLeaf = getLeafCategory(baseProduct);
+  const baseCategoryPath = getCatalogCategoryPathHint(baseProduct);
   const baseDomains = extractProductDomains(baseProduct);
   const baseIntentFamily = getSimilarIntentFamilyFromProduct(baseProduct);
   const baseSemanticStrong = Number(baseSemantic?.signal_strength || 0) >= 2;
@@ -3586,11 +3967,12 @@ async function recommend({
       : fetchExternalCandidates({
           brandHint: baseBrand,
           categoryHint: baseLeaf,
+          categoryPathHint: baseCategoryPath,
           verticalHint: baseSemantic?.vertical || '',
           intentFamilyHint: baseIntentFamily,
           domainHints: baseDomains,
           limit: externalFetchLimit,
-          minFocusedCandidates: candidateK,
+          minFocusedCandidates: safeK,
           deepDomainRecall: baseProductIsExternal,
         }),
     effectiveExternalFetchTimeoutMs,
@@ -3725,8 +4107,23 @@ async function recommend({
     }
   }
 
-  const productIntelCardHydration = await hydrateRecommendationItemsWithReviewedProductIntel(finalItems);
-  finalItems = productIntelCardHydration.items;
+  let productIntelCardHydration = {
+    items: finalItems,
+    stats: {
+      attempted_count: 0,
+      hydrated_count: 0,
+      skipped_unreviewed_count: 0,
+      failed: false,
+      db_fallback_attempted_count: 0,
+      db_fallback_hit_count: 0,
+      skipped: true,
+      reason: 'disabled_by_caller',
+    },
+  };
+  if (options?.hydrate_product_intel_cards !== false) {
+    productIntelCardHydration = await hydrateRecommendationItemsWithReviewedProductIntel(finalItems);
+    finalItems = productIntelCardHydration.items;
+  }
 
   const elapsedMs = Date.now() - start;
   const finalSourceCounts = countRecommendationSources(finalItems);

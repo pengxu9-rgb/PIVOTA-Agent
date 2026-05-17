@@ -3717,6 +3717,7 @@ function buildPdpSimilarFetchArgs({
         no_cache: bypassCache,
         cache_bypass: bypassCache,
         bypass_cache: bypassCache,
+        hydrate_product_intel_cards: false,
       },
     },
   };
