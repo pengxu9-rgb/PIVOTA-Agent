@@ -249,6 +249,35 @@ function collectSeedContextText(seedData = {}) {
     .join(' ');
 }
 
+function collectSeedIdentityText(seedData = {}) {
+  const snapshot = ensureJsonObject(seedData?.snapshot);
+  return [
+    seedData?.title,
+    snapshot?.title,
+    seedData?.product_title,
+    snapshot?.product_title,
+    seedData?.category,
+    snapshot?.category,
+    seedData?.product_type,
+    snapshot?.product_type,
+  ]
+    .map(normalizeNonEmptyString)
+    .filter(Boolean)
+    .join(' ');
+}
+
+function hasSunscreenIdentityContext(contextText = '') {
+  return /\b(?:spf|sunscreen|sun screen|sun protection|broad spectrum|uv|uva|uvb|pa\+{2,}|protective fluid)\b/i.test(
+    contextText,
+  );
+}
+
+function isMakeupComplexionIdentityContext(contextText = '') {
+  return /\b(?:foundation|concealer|skin tint|tinted moisturizer|bb cream|cc cream|powder foundation|makeup)\b/i.test(
+    contextText,
+  );
+}
+
 function seedExpectsActiveIngredients(seedData = {}) {
   const snapshot = ensureJsonObject(seedData?.snapshot);
   const rawActive = normalizeNonEmptyString(
@@ -265,11 +294,11 @@ function seedExpectsActiveIngredients(seedData = {}) {
       snapshot?.raw_ingredient_text_clean,
   );
   if (/\bactive ingredients?\b/i.test(ingredients)) return true;
+  const identityContext = collectSeedIdentityText(seedData);
+  const hasSunscreenIdentity = hasSunscreenIdentityContext(identityContext);
+  if (!hasSunscreenIdentity && isMakeupComplexionIdentityContext(identityContext)) return false;
   const context = collectSeedContextText(seedData);
-  const hasSunscreenContext =
-    /\b(?:spf|sunscreen|sun screen|sun protection|broad spectrum|uv|uva|uvb|pa\+{2,}|protective fluid)\b/i.test(
-      context,
-    );
+  const hasSunscreenContext = hasSunscreenIdentity || hasSunscreenIdentityContext(context);
   if (!hasSunscreenContext) return false;
   return /\b(?:zinc oxide|titanium dioxide|avobenzone|octocrylene|octisalate|homosalate|octinoxate|ensulizole|oxybenzone)\b/i.test(
     ingredients,

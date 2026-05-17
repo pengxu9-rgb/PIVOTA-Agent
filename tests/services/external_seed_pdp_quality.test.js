@@ -241,6 +241,32 @@ describe('externalSeedPdpQuality', () => {
     expect(livePdpGate.failure_reasons).not.toContain('active_ingredients_expected_but_hidden');
   });
 
+  test('does not infer active sunscreen ingredients for foundation just because how-to mentions SPF prep', () => {
+    const livePdpGate = buildLivePdpGate({
+      seedData: {
+        title: "Pro Filt'r Soft Matte Longwear Foundation - #210",
+        category: 'Foundation',
+        pdp_ingredients_raw:
+          'AQUA/WATER/EAU, DIMETHICONE, TALC, TITANIUM DIOXIDE (CI 77891), IRON OXIDES (CI 77492).',
+        pdp_how_to_use_raw:
+          'Prep skin with SPF moisturizer before applying foundation. Shake before use, then blend outward.',
+      },
+      livePayload: {
+        modules: [
+          {
+            type: 'product_details',
+            data: {
+              sections: [{ heading: 'Overview', content: 'A soft matte longwear foundation.' }],
+            },
+          },
+        ],
+      },
+    });
+
+    expect(livePdpGate.active_ingredients_status.expected).toBe(false);
+    expect(livePdpGate.failure_reasons).not.toContain('active_ingredients_expected_but_hidden');
+  });
+
   test('expects active sunscreen ingredients when UV filter INCI has SPF context', () => {
     const livePdpGate = buildLivePdpGate({
       seedData: {
