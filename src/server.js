@@ -63,6 +63,11 @@ const {
   normalizePdpImageUrl,
 } = require('./utils/pdpImageUrls');
 const {
+  gidCandidateSet,
+  gidCandidatesMatchList,
+  gidMatchesList,
+} = require('./utils/shopifyGid');
+const {
   buildAgentSafeCommerceFacts,
 } = require('./commerce/commerceFacts');
 const {
@@ -4805,27 +4810,10 @@ function listTextValues(value) {
     .filter(Boolean);
 }
 
-function idCandidateSet(...values) {
-  const out = new Set();
-  for (const value of values) {
-    const text = textValue(value);
-    if (!text) continue;
-    out.add(text);
-    const trimmed = text.replace(/^gid:\/\/shopify\/[^/]+\//i, '').trim();
-    if (trimmed && trimmed !== text) out.add(trimmed);
-    const numericTail = text.match(/(\d+)(?:\D*)$/);
-    if (numericTail && numericTail[1]) out.add(numericTail[1]);
-  }
-  return out;
-}
-
-function candidateSetMatchesList(candidateSet, values) {
-  const expanded = idCandidateSet(...listTextValues(values));
-  for (const value of expanded) {
-    if (candidateSet.has(value)) return true;
-  }
-  return false;
-}
+// GID-tolerant id-set helpers extracted to src/utils/shopifyGid.js.
+// Kept aliases for the existing call sites in this file (lines ~4885, 4915, 5254).
+const idCandidateSet = gidCandidateSet;
+const candidateSetMatchesList = gidCandidatesMatchList;
 
 function getNestedValue(obj, ...path) {
   let current = obj;
@@ -20934,14 +20922,74 @@ function isPromoActive(promo, nowTs) {
 
 function matchesScope(promo, product) {
   const scope = promo.scope || {};
-  if (scope.global) return true;
+  if (scope.global === true) return true;
+
+  // Shopify-imported discounts mirror the Shopify GraphQL discount shape verbatim:
+  //   scope.shopifyItems.__typename ∈ { AllDiscountItems, DiscountProducts, DiscountCollections, ... }
+  // The legacy `scope.productIds` / `scope.categoryIds` / `scope.brandIds` paths only fire for promos
+  // authored via /api/merchant/promotions. Treat both shapes uniformly here.
+  const shopifyItems =
+    scope.shopifyItems && typeof scope.shopifyItems === 'object' && !Array.isArray(scope.shopifyItems)
+      ? scope.shopifyItems
+      : null;
+  if (shopifyItems) {
+    const typename = String(shopifyItems.__typename || '').trim();
+    if (typename === 'AllDiscountItems' || shopifyItems.allItems === true) return true;
+  }
 
   const pid = String(product.product_id || product.id || '');
-  if (scope.productIds && scope.productIds.includes(pid)) return true;
+
+  // Legacy productIds path (now GID-tolerant — `gid://shopify/Product/X` matches numeric `X`).
+  if (Array.isArray(scope.productIds) && scope.productIds.length > 0 && pid) {
+    if (gidMatchesList(pid, scope.productIds)) return true;
+  }
+
+  if (shopifyItems && pid) {
+    const shopifyProductIdSources = [
+      shopifyItems.productIds,
+      shopifyItems.product_ids,
+      shopifyItems.productGids,
+      shopifyItems.product_gids,
+      shopifyItems.products && Array.isArray(shopifyItems.products.nodes)
+        ? shopifyItems.products.nodes
+        : null,
+    ];
+    for (const src of shopifyProductIdSources) {
+      if (Array.isArray(src) && src.length > 0 && gidMatchesList(pid, src)) return true;
+    }
+
+    const productVariantIds = [];
+    if (Array.isArray(product.variants)) {
+      for (const v of product.variants) {
+        if (!v || typeof v !== 'object') continue;
+        if (v.id) productVariantIds.push(v.id);
+        if (v.variant_id) productVariantIds.push(v.variant_id);
+        if (v.sku_id) productVariantIds.push(v.sku_id);
+      }
+    }
+    if (product.variant_id) productVariantIds.push(product.variant_id);
+    if (productVariantIds.length > 0) {
+      const shopifyVariantIdSources = [
+        shopifyItems.variantIds,
+        shopifyItems.variant_ids,
+        shopifyItems.variantGids,
+        shopifyItems.variant_gids,
+        shopifyItems.variants && Array.isArray(shopifyItems.variants.nodes)
+          ? shopifyItems.variants.nodes
+          : null,
+      ];
+      for (const src of shopifyVariantIdSources) {
+        if (!Array.isArray(src) || src.length === 0) continue;
+        for (const variantId of productVariantIds) {
+          if (gidMatchesList(variantId, src)) return true;
+        }
+      }
+    }
+  }
 
   const category = (product.category || product.product_type || '').toLowerCase();
   if (
-    scope.categoryIds &&
+    Array.isArray(scope.categoryIds) &&
     scope.categoryIds.some((c) => category && category.includes(String(c).toLowerCase()))
   ) {
     return true;
@@ -20949,7 +20997,7 @@ function matchesScope(promo, product) {
 
   const brand = (product.vendor || product.brand || '').toLowerCase();
   if (
-    scope.brandIds &&
+    Array.isArray(scope.brandIds) &&
     scope.brandIds.some((b) => brand && brand.includes(String(b).toLowerCase()))
   ) {
     return true;
@@ -38013,6 +38061,11 @@ async function runPdpCorePrewarmPass() {
 
 module.exports = app;
 module.exports._debug = {
+  matchesScope,
+  isPromoActive,
+  allowedForCreator,
+  findApplicablePromotionsForProduct,
+  enrichProductsWithDeals,
   buildOffersFromGroupMembers,
   decoratePdpPayloadWithIdentity,
   hydrateCanonicalPdpPayloadFromOffers,
