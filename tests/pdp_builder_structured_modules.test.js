@@ -1207,6 +1207,45 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     ]);
   });
 
+  test('selects the variant matching the reviewed product price as the default variant', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_biologique_pigm400',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'Sérum PIGM 400',
+        category: 'Serum',
+        image_url: 'https://example.com/pigm400.png',
+        price_amount: 115,
+        currency: 'USD',
+        variants: [
+          {
+            id: 'v_30ml',
+            title: '30 ml',
+            options: [{ name: 'Size', value: '30 ml', axis_kind: 'volume' }],
+            price_amount: 300,
+            price_currency: 'USD',
+          },
+          {
+            id: 'v_8ml',
+            title: '8 ml',
+            options: [{ name: 'Size', value: '8 ml', axis_kind: 'volume' }],
+            price_amount: 115,
+            price_currency: 'USD',
+          },
+        ],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    const variantSelector = payload.modules.find((module) => module.type === 'variant_selector');
+    const priceModule = payload.modules.find((module) => module.type === 'price_promo');
+    expect(payload.product.default_variant_id).toBe('v_8ml');
+    expect(variantSelector?.data?.selected_variant_id).toBe('v_8ml');
+    expect(priceModule?.data?.price).toEqual({ amount: 115, currency: 'USD' });
+  });
+
   test('hides captured single external-seed Format: Single item selector labels', () => {
     const payload = buildPdpPayload({
       product: {

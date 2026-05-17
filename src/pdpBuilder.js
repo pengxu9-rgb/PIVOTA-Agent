@@ -1654,7 +1654,14 @@ function buildVariants(product) {
       title: String(title),
       options: filteredOptions,
       swatch: swatchHex ? { hex: swatchHex } : undefined,
-      price: toVariantPrice(v.price || v.pricing, currency),
+      price: toVariantPrice(
+        v.price ||
+          v.pricing || {
+            amount: v.price_amount ?? v.priceAmount,
+            currency: v.price_currency || v.priceCurrency || v.currency,
+          },
+        currency,
+      ),
       availability,
       image_url: variantImages[0],
       label_image_url: normalizePdpImageUrl(
@@ -1678,6 +1685,48 @@ function buildVariants(product) {
       ...pickSavingsPresentationFields(v),
     };
   });
+}
+
+function readProductReferencePriceAmount(product = {}) {
+  return normalizeAmount(
+    product.price_amount ??
+      product.priceAmount ??
+      product.current_price ??
+      product.currentPrice ??
+      product.price?.current?.amount ??
+      product.price?.amount ??
+      product.price,
+  );
+}
+
+function readVariantPriceAmount(variant = {}) {
+  return normalizeAmount(
+    variant.price?.current?.amount ??
+      variant.price?.amount ??
+      variant.price_amount ??
+      variant.priceAmount ??
+      variant.price,
+  );
+}
+
+function pickDefaultVariant(product = {}, variants = []) {
+  if (!Array.isArray(variants) || variants.length === 0) return null;
+  const explicitId = asNonEmptyString(product.default_variant_id || product.defaultVariantId);
+  if (explicitId) {
+    const explicit = variants.find((variant) => {
+      const variantId = asNonEmptyString(variant?.variant_id || variant?.id);
+      return variantId && variantId === explicitId;
+    });
+    if (explicit) return explicit;
+  }
+  const selected = variants.find((variant) => variant?.selected === true);
+  if (selected) return selected;
+  const referencePrice = readProductReferencePriceAmount(product);
+  if (referencePrice > 0) {
+    const matchingPrice = variants.find((variant) => Math.abs(readVariantPriceAmount(variant) - referencePrice) < 0.01);
+    if (matchingPrice) return matchingPrice;
+  }
+  return variants[0];
 }
 
 function isDecorativePdpMediaUrl(url) {
@@ -3930,7 +3979,7 @@ function buildPdpPayload(args) {
   const brandLabel = resolveProductBrandLabel(product);
   const currency = product.currency || 'USD';
   const variants = buildVariants(product);
-  const defaultVariant = variants[0];
+  const defaultVariant = pickDefaultVariant(product, variants);
   const productLineOptions = normalizeProductLineOptions(product);
   const visibleVariants = shouldExposeProductVariants(product, variants, productLineOptions)
     ? variants
