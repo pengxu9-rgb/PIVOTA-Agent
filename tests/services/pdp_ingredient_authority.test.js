@@ -74,6 +74,50 @@ describe('pdpIngredientAuthority', () => {
     expect(modules.authority.purity_status).toBe('suppressed');
   });
 
+  test('suppresses force-filled ingredient note after remediation blocker', () => {
+    const modules = buildStructuredPdpIngredientModules({
+      ingredient_remediation_v1: {
+        action: 'manual_source_review_required',
+      },
+      ingredient_intel: {
+        force_fill_contract: {
+          contract_version: 'pivota.pdp.force_fill.v1',
+          source_origin: 'pivota_force_fill',
+          source_quality_status: 'force_filled_pending_source',
+          display_note:
+            'Full INCI has not been captured from an approved source yet. Check the merchant page before purchase.',
+        },
+      },
+    });
+
+    expect(modules.ingredientsInciData).toBeNull();
+  });
+
+  test('does not label source-reviewed patch composition as force-filled fallback', () => {
+    const modules = buildStructuredPdpIngredientModules({
+      ingredient_intel: {
+        force_fill_contract: {
+          contract_version: 'pivota.pdp.force_fill.v1',
+          source_origin: 'retail_pdp',
+          source_quality_status: 'medium',
+          content_review_state: 'assistant_reviewed',
+          display_note:
+            'Petroleum Resin, Cellulose Gum, Styrene Isoprene Styrene Block Copolymer, Polyurethane Film',
+        },
+      },
+    });
+
+    expect(modules.ingredientsInciData).toEqual(
+      expect.objectContaining({
+        raw_text: expect.stringContaining('Petroleum Resin'),
+        source_origin: 'retail_pdp',
+        source_quality_status: 'medium',
+        source_reviewed_note: true,
+      }),
+    );
+    expect(modules.ingredientsInciData.force_filled).toBeUndefined();
+  });
+
   test('suppresses single-formula ingredient modules for external seed sets', () => {
     const modules = buildStructuredPdpIngredientModules({
       merchant_id: 'external_seed',

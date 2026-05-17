@@ -1189,6 +1189,17 @@ function buildStructuredPdpIngredientModules(product, options = {}) {
     asPlainObject(product?.ingredient_intel?.force_fill_contract) ||
     asPlainObject(product?.ingredient_intel?.forceFillContract) ||
     null;
+  const forceFillSourceOrigin = asString(forceFillContract?.source_origin || forceFillContract?.sourceOrigin);
+  const forceFillSourceQuality = asString(
+    forceFillContract?.source_quality_status || forceFillContract?.sourceQualityStatus,
+  );
+  const sourceReviewedForceFillContract =
+    forceFillContract?.contract_version === 'pivota.pdp.force_fill.v1' &&
+    /^(high|medium)$/i.test(forceFillSourceQuality) &&
+    !/pivota_force_fill|force_filled|force_fill_pending/i.test(forceFillSourceOrigin) &&
+    /^(assistant_reviewed|human_reviewed|reviewed)$/i.test(
+      asString(forceFillContract?.content_review_state || forceFillContract?.contentReviewState),
+    );
   const forceFillNote = asString(
     forceFillContract?.display_note ||
       forceFillContract?.displayNote ||
@@ -1211,11 +1222,15 @@ function buildStructuredPdpIngredientModules(product, options = {}) {
             title: 'Ingredients',
             items: [],
             raw_text: forceFillNote,
-            source_origin: forceFillContract.source_origin || 'pivota_force_fill',
-            source_quality_status: forceFillContract.source_quality_status || 'force_filled_pending_source',
+            source_origin: forceFillSourceOrigin || 'pivota_force_fill',
+            source_quality_status: forceFillSourceQuality || 'force_filled_pending_source',
             content_review_state: forceFillContract.content_review_state || 'assistant_reviewed',
-            force_filled: true,
-            force_fill_reason: forceFillContract.reason || 'approved_source_not_captured',
+            ...(sourceReviewedForceFillContract
+              ? { source_reviewed_note: true }
+              : {
+                  force_filled: true,
+                  force_fill_reason: forceFillContract.reason || 'approved_source_not_captured',
+                }),
           }
       : null;
   const activeIngredientsData =
