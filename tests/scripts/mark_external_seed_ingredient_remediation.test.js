@@ -1,4 +1,5 @@
 const {
+  buildServingBlockPatch,
   buildPlan,
   hasForceFilledInci,
 } = require('../../scripts/mark-external-seed-ingredient-remediation.cjs');
@@ -143,5 +144,28 @@ describe('mark-external-seed-ingredient-remediation', () => {
     expect(plan.nextSeedData.ingredient_remediation_v1.action).toBe('mark_inci_not_applicable');
     expect(plan.nextSeedData.ingredient_intel.inci_applicability.status).toBe('not_applicable');
     expect(plan.nextSeedData.ingredient_intel.force_fill_contract).toBeUndefined();
+  });
+
+  test('serving mirror patch preserves trusted INCI only for stale-contract cleanup', () => {
+    const seedData = {
+      ingredients_inci: ['Calophyllum Inophyllum Seed Oil'],
+      ingredient_intel: {
+        inci_list: ['Calophyllum Inophyllum Seed Oil'],
+        source_origin: 'official_pdp',
+        source_quality_status: 'high',
+      },
+      pdp_field_quality_summary: {
+        ingredients_inci: {
+          source_origin: 'official_pdp',
+          source_quality_status: 'high',
+        },
+      },
+      snapshot: {},
+    };
+
+    expect(buildServingBlockPatch(seedData).ingredients_inci).toBeUndefined();
+    expect(
+      buildServingBlockPatch(seedData, { preserveTrustedIngredients: true }).ingredients_inci,
+    ).toEqual(['Calophyllum Inophyllum Seed Oil']);
   });
 });
