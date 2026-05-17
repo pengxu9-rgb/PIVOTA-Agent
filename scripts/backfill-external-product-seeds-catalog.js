@@ -3674,7 +3674,14 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
       ingredientsFromRepresentativeHowTo ||
       normalizedRepresentativeIngredientsSectionBody,
   );
-  const activeIngredientsFromIngredientsRaw = extractLabeledActiveIngredientsFromIngredientsRaw(pdpIngredientsRaw);
+  const existingIngredientsRawForActiveDerivation = normalizeNonEmptyString(
+    seedData.pdp_ingredients_raw || snapshot.pdp_ingredients_raw,
+  );
+  const activeIngredientsFromIncomingIngredientsRaw = extractLabeledActiveIngredientsFromIngredientsRaw(pdpIngredientsRaw);
+  const activeIngredientsFromExistingIngredientsRaw =
+    activeIngredientsFromIncomingIngredientsRaw ? '' : extractLabeledActiveIngredientsFromIngredientsRaw(existingIngredientsRawForActiveDerivation);
+  const activeIngredientsFromIngredientsRaw =
+    activeIngredientsFromIncomingIngredientsRaw || activeIngredientsFromExistingIngredientsRaw;
   const derivedPdpActiveIngredientsRaw = normalizeNonEmptyString(
     extractActiveIngredientsRawFromDetailsSections(
     rawRepresentativePdpDetailsSections.length > 0 ? rawRepresentativePdpDetailsSections : pdpDetailsSections,
@@ -3710,7 +3717,8 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
   if (
     pdpIngredientsRaw &&
     /\b(?:Active|Inactive|Full)\s+(?:Ingredients?|INCI)\b/i.test(pdpIngredientsRaw) &&
-    !isSurfaceablePdpField(incomingPdpFieldQualitySummary, 'ingredients_raw')
+    (!incomingPdpFieldQualitySummary?.ingredients_raw ||
+      !isSurfaceablePdpField(incomingPdpFieldQualitySummary, 'ingredients_raw'))
   ) {
     const inferredQuality = inferPdpFieldQualityFromSourceContext(
       incomingPdpFieldQualitySummary,
@@ -3727,13 +3735,15 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
   if (
     derivedPdpActiveIngredientsRaw &&
     activeIngredientsFromIngredientsRaw &&
-    isSurfaceablePdpField(incomingPdpFieldQualitySummary, 'ingredients_raw') &&
-    !isSurfaceablePdpField(incomingPdpFieldQualitySummary, 'active_ingredients_raw')
+    (!incomingPdpFieldQualitySummary?.active_ingredients_raw ||
+      !isSurfaceablePdpField(incomingPdpFieldQualitySummary, 'active_ingredients_raw'))
   ) {
     const inferredQuality = inferPdpFieldQualityFromSourceContext(
       incomingPdpFieldQualitySummary,
-      'derived_labeled_active_ingredients_from_inci',
-      'ingredients_raw',
+      activeIngredientsFromIncomingIngredientsRaw
+        ? 'derived_labeled_active_ingredients_from_inci'
+        : 'derived_labeled_active_ingredients_from_existing_inci',
+      activeIngredientsFromIncomingIngredientsRaw ? 'ingredients_raw' : 'details_sections',
     );
     if (inferredQuality) {
       incomingPdpFieldQualitySummary = {
