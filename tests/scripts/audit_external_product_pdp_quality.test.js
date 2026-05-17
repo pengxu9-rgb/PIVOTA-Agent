@@ -350,6 +350,62 @@ describe('audit-external-product-pdp-quality helpers', () => {
     expect(livePdpGate.failure_reasons).not.toContain('polluted_product_facts');
   });
 
+  test('does not require single-formula active ingredients on set PDPs', () => {
+    const seedData = {
+      active_ingredients: ['Hyaluronic Acid'],
+      snapshot: { active_ingredients: ['Hyaluronic Acid'] },
+    };
+    const livePayload = {
+      product: {
+        product_id: 'ext_power_plush_duo',
+        merchant_id: 'external_seed',
+        title: 'Power Plush Foundation & Concealer Duo',
+      },
+      modules: [
+        {
+          type: 'product_overview',
+          data: { sections: [{ heading: 'Overview', content: 'A complexion duo with foundation and concealer.' }] },
+        },
+      ],
+    };
+
+    const gate = buildLivePdpGate({
+      livePayload,
+      liveResponse: { modules: [{ type: 'canonical', data: { pdp_payload: livePayload } }] },
+      seedData,
+      productFamily: 'set_or_collection',
+    });
+
+    expect(gate.active_ingredients_status.expected).toBe(false);
+    expect(gate.active_ingredients_status.suppressed_for_product_family).toBe('set_or_collection');
+    expect(gate.failure_reasons).not.toContain('active_ingredients_expected_but_hidden');
+  });
+
+  test('flags set PDPs that render component actives as a single formula', () => {
+    const seedData = {
+      active_ingredients: ['Hyaluronic Acid'],
+      snapshot: { active_ingredients: ['Hyaluronic Acid'] },
+    };
+    const livePayload = {
+      product: { product_id: 'ext_power_plush_duo', merchant_id: 'external_seed' },
+      modules: [
+        {
+          type: 'active_ingredients',
+          data: { items: [{ name: 'Hyaluronic Acid' }] },
+        },
+      ],
+    };
+
+    const gate = buildLivePdpGate({
+      livePayload,
+      liveResponse: { modules: [{ type: 'canonical', data: { pdp_payload: livePayload } }] },
+      seedData,
+      productFamily: 'set_or_collection',
+    });
+
+    expect(gate.failure_reasons).toContain('set_active_ingredients_rendered_as_single_formula');
+  });
+
   test('flags variant drift for skincare color locale and generic size axis leaks', () => {
     const livePayload = {
       product: {

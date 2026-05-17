@@ -618,6 +618,7 @@ async function auditRow(row, {
     livePayload,
     liveResponse: ensureJsonObject(livePdp),
     seedData,
+    productFamily: productKind.family,
     expectedPrice: variantScopedSeed ? row.price_amount : null,
     imageHealth,
   });

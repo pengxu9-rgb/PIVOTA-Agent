@@ -657,6 +657,7 @@ function buildLivePdpGate({
   livePayload = {},
   liveResponse = {},
   seedData = {},
+  productFamily = '',
   expectedPrice = null,
   imageHealth = null,
 } = {}) {
@@ -682,6 +683,10 @@ function buildLivePdpGate({
   const liveQuestions = collectLiveQuestions(livePayload, liveResponse);
   const liveActiveItems = collectLiveActiveIngredients(livePayload, liveResponse);
   const snapshotContract = readExternalSeedSnapshotContract(seedData);
+  const normalizedProductFamily = normalizeNonEmptyString(productFamily).toLowerCase();
+  const suppressSingleFormulaActive =
+    ['set_or_collection', 'non_merch', 'accessory'].includes(normalizedProductFamily);
+  const activeIngredientsExpected = seedExpectsActiveIngredients(seedData) && !suppressSingleFormulaActive;
   const extractorHasDescription = Boolean(
     normalizeNonEmptyString(extractorProduct?.description_raw || extractorProduct?.description),
   );
@@ -740,18 +745,18 @@ function buildLivePdpGate({
       seedDetailSections.some((section) => /ingredients?|inci/i.test(normalizeNonEmptyString(section?.heading))) &&
       liveModuleList.includes('ingredients_inci')
     ) &&
-    !(
-      seedExpectsActiveIngredients(seedData) &&
-      liveModuleList.includes('active_ingredients')
-    );
+    !(activeIngredientsExpected && liveModuleList.includes('active_ingredients'));
   if (compressedStructuredDetails) {
     failureReasons.push('structured_sections_compressed_to_description_category');
   }
   if (seedFaqItems.length > 0 && liveQuestions.length === 0) {
     failureReasons.push('merchant_faq_dropped');
   }
-  if (seedExpectsActiveIngredients(seedData) && liveActiveItems.length === 0) {
+  if (activeIngredientsExpected && liveActiveItems.length === 0) {
     failureReasons.push('active_ingredients_expected_but_hidden');
+  }
+  if (suppressSingleFormulaActive && liveActiveItems.length > 0) {
+    failureReasons.push('set_active_ingredients_rendered_as_single_formula');
   }
   if (duplicateGalleryImageCount > 0) {
     failureReasons.push('duplicate_gallery_images');
@@ -799,8 +804,9 @@ function buildLivePdpGate({
       live_question_count: liveQuestions.length,
     },
     active_ingredients_status: {
-      expected: seedExpectsActiveIngredients(seedData),
+      expected: activeIngredientsExpected,
       live_item_count: liveActiveItems.length,
+      suppressed_for_product_family: suppressSingleFormulaActive ? normalizedProductFamily : null,
     },
     image_health: imageHealth || {
       scanned_count: 0,
@@ -1000,6 +1006,7 @@ function buildExternalSeedQualityResult({
     failureReasons.includes('structured_sections_compressed_to_description_category') ||
     failureReasons.includes('merchant_faq_dropped') ||
     failureReasons.includes('active_ingredients_expected_but_hidden') ||
+    failureReasons.includes('set_active_ingredients_rendered_as_single_formula') ||
     failureReasons.includes('live_pdp_probe_failed')
   ) {
     rootCauseClassification.push('pdp_shaping_issue');
