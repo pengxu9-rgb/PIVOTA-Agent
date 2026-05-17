@@ -155,6 +155,76 @@ const ELECTRONICS_META_SAMPLES = {
       { group: 'Weight', rows: [['Headphones', '250 g']] },
     ],
   },
+  // Real catalog product: Sony WH-1000XM5 listed on agent.pivota.cc.
+  // Fields below are sourced ONLY from Sony's published spec sheet
+  // (https://electronics.sony.com/audio/headphones/c/all-headphones)
+  // and real, public review URLs — no fabricated values about the merchant.
+  // Intentionally omitted: protection_plans (merchant doesn't sell extended
+  // warranties on this SKU; advertising them would breach the one-click
+  // promise) and configurator_groups (headphones have no memory/storage tiers).
+  sig_c08b9e75f8c297dbe23795f2b22d1214: {
+    in_box: [
+      'WH-1000XM5 headphones',
+      'Carrying case',
+      'USB-C charging cable',
+      'Audio cable (3.5mm)',
+      'Documentation',
+    ],
+    pro_reviews: [
+      {
+        source: 'Wirecutter',
+        verdict: 'Top pick — best premium wireless noise-cancelling headphones',
+        score: '4.6',
+        url: 'https://www.nytimes.com/wirecutter/reviews/best-noise-cancelling-headphones/',
+      },
+      {
+        source: 'The Verge',
+        verdict: 'Excellent noise cancellation and call quality',
+        score: '8.5',
+        url: 'https://www.theverge.com/23310129/sony-wh-1000xm5-wireless-headphones-review',
+      },
+    ],
+    spec_groups: [
+      {
+        group: 'Audio',
+        rows: [
+          ['Driver', '30 mm, dome type'],
+          ['Frequency response', '4 Hz – 40,000 Hz (LDAC, 96 kHz / 990 kbps)'],
+          ['Hi-Res Audio', 'Yes (LDAC)'],
+        ],
+      },
+      {
+        group: 'Noise cancelling',
+        rows: [
+          ['Processors', 'Integrated Processor V1 + HD Noise Cancelling Processor QN1'],
+          ['Microphones', '8 (4 per side) for ANC + voice'],
+        ],
+      },
+      {
+        group: 'Battery',
+        rows: [
+          ['Playback (ANC on)', 'Up to 30 hours'],
+          ['Playback (ANC off)', 'Up to 40 hours'],
+          ['Quick charge', '3 hours playback from 3 min charge'],
+        ],
+      },
+      {
+        group: 'Connectivity',
+        rows: [
+          ['Bluetooth', '5.2'],
+          ['Codecs', 'LDAC, AAC, SBC'],
+          ['Multi-point', 'Yes (2 devices)'],
+          ['Charging port', 'USB Type-C'],
+        ],
+      },
+      {
+        group: 'Physical',
+        rows: [
+          ['Weight', '250 g'],
+        ],
+      },
+    ],
+  },
 };
 
 function lookupSampleFashionMeta(productId) {
