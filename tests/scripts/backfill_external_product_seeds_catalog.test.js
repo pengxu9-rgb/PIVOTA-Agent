@@ -3339,6 +3339,104 @@ describe('backfill-external-product-seeds-catalog', () => {
     expect(payload.nextRow.seed_data.ingredient_intel.authoritative).toBeUndefined();
   });
 
+  test('derives regulatory active ingredients from labeled active inactive INCI blocks', () => {
+    const row = {
+      id: 'eps_skin1004_sun_serum',
+      title: 'Hyalu-Cica Water-Fit Sun Serum UV',
+      canonical_url: 'https://www.skin1004.com/products/hyalu-cica-water-fit-sun-serum-uv',
+      destination_url: 'https://www.skin1004.com/products/hyalu-cica-water-fit-sun-serum-uv',
+      image_url: '',
+      price_amount: 24,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      seed_data: { snapshot: {} },
+    };
+
+    const payload = buildSeedUpdatePayload(
+      row,
+      {
+        products: [
+          {
+            title: row.title,
+            url: row.canonical_url,
+            product_kind: 'single_formula',
+            description_raw: '<!--td {border: 1px solid #cccccc;}--> What it is: A lightweight serum sunscreen.',
+            ingredients_raw:
+              'Active ingredients : Avobenzone* 2.7%, Homosalate 13.6%, Octisalate* 4.5%, Octocrylene 9%\n\nInactive ingredients : Water, Panthenol, Centella Asiatica Extract',
+            how_to_use_raw:
+              'Hyalu-Cica Water-Fit Sun Serum UV\nAt the last step of basic skincare, evenly apply on areas exposed to UV rays such as face, neck, arms, and legs.',
+            details_sections: [
+              {
+                heading: 'Benefits',
+                body: 'Lightweight, UV Protection, Hydrating',
+                source_kind: 'shopify_body_html_labeled_section',
+              },
+            ],
+            variants: [],
+            field_quality_summary: {
+              description_raw: {
+                source_origin: 'shopify_json',
+                source_quality_status: 'high',
+                source_kinds: ['shopify_description'],
+                reason_codes: [],
+              },
+              details_sections: {
+                source_origin: 'shopify_json',
+                source_quality_status: 'high',
+                source_kinds: ['shopify_body_html_labeled_section'],
+                reason_codes: [],
+              },
+              ingredients_raw: {
+                source_origin: 'unknown',
+                source_quality_status: 'low',
+                source_kinds: [],
+                reason_codes: ['missing_source_kind'],
+              },
+              active_ingredients_raw: {
+                source_origin: 'unknown',
+                source_quality_status: 'low',
+                source_kinds: [],
+                reason_codes: ['missing_source_kind'],
+              },
+            },
+          },
+        ],
+        variants: [],
+        diagnostics: { failure_category: null },
+      },
+      row.canonical_url,
+    );
+
+    expect(payload.nextRow.seed_data.pdp_description_raw).not.toMatch(/td \{border/i);
+    expect(payload.nextRow.seed_data.pdp_how_to_use_raw).toBe(
+      'At the last step of basic skincare, evenly apply on areas exposed to UV rays such as face, neck, arms, and legs.',
+    );
+    expect(payload.nextRow.seed_data.pdp_active_ingredients_raw).toBe(
+      'Avobenzone 2.7%\nHomosalate 13.6%\nOctisalate 4.5%\nOctocrylene 9%',
+    );
+    expect(payload.nextRow.seed_data.active_ingredients).toEqual([
+      'Avobenzone 2.7%',
+      'Homosalate 13.6%',
+      'Octisalate 4.5%',
+      'Octocrylene 9%',
+    ]);
+    expect(payload.nextRow.seed_data.pdp_field_quality_summary.ingredients_raw).toEqual(
+      expect.objectContaining({
+        source_origin: 'shopify_json',
+        source_quality_status: 'high',
+        source_kinds: expect.arrayContaining(['derived_labeled_ingredients_from_source_context']),
+      }),
+    );
+    expect(payload.nextRow.seed_data.pdp_field_quality_summary.active_ingredients_raw).toEqual(
+      expect.objectContaining({
+        source_origin: 'shopify_json',
+        source_quality_status: 'high',
+        source_kinds: expect.arrayContaining(['derived_labeled_active_ingredients_from_inci']),
+        reason_codes: [],
+      }),
+    );
+  });
+
   test('reapplies approved PDP ingredient fields after legacy enrichment changes structured arrays', () => {
     const row = reapplyApprovedPdpIngredientFieldsToRow({
       seed_data: {

@@ -154,6 +154,7 @@ function decodeBasicHtmlEntities(value) {
 
 function normalizePdpCopy(value) {
   return decodeBasicHtmlEntities(value)
+    .replace(/<!--[\s\S]*?-->/g, ' ')
     .replace(/[\u2018\u2019]/g, "'")
     .replace(/[\u201c\u201d]/g, '"')
     .replace(/[\u2013\u2014]/g, ' - ')
@@ -2384,6 +2385,70 @@ function extractActiveIngredientsRawFromDetailsSections(detailsSections) {
   return out.join('\n');
 }
 
+function extractLabeledActiveIngredientsFromIngredientsRaw(value) {
+  const normalized = normalizePdpCopy(value)
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ')
+    .trim();
+  if (!normalized) return '';
+  const marker = normalized.match(/\bActive\s+ingredients?\s*:?\s*/i);
+  if (!marker) return '';
+  const tail = normalized.slice(marker.index + marker[0].length);
+  const stop = tail.search(
+    /\b(?:Inactive|Other|Additional|Full)\s+ingredients?\s*:|\b(?:Directions?|Uses?|Warnings?)\s*:/i,
+  );
+  let activeBlock = (stop === -1 ? tail : tail.slice(0, stop))
+    .replace(/\*+\s*(?:skin1004|the most recent|regularly updates)[\s\S]*$/i, '')
+    .replace(/\([^)]*inactive[^)]*\)/gi, '')
+    .trim();
+  if (!activeBlock) return '';
+  activeBlock = activeBlock.replace(/\s*\*\s*(?=\d|\s|,|$)/g, ' ');
+  const rawItems = activeBlock
+    .split(/\n+|,\s*(?=[A-Z][A-Za-z0-9()[\]\- ]+(?:\s+\d|\s*$))/)
+    .map((item) =>
+      normalizeNonEmptyString(item)
+        .replace(/^[-*•]\s*/, '')
+        .replace(/\*/g, '')
+        .replace(/[:;,.]+$/g, '')
+        .replace(/\s{2,}/g, ' ')
+        .trim(),
+    )
+    .filter(Boolean);
+  const out = [];
+  const seen = new Set();
+  for (const item of rawItems) {
+    if (!/[A-Za-z]/.test(item)) continue;
+    if (item.length < 3 || item.length > 90) continue;
+    if (/\b(?:inactive|ingredients?|provided|packaging|updates?)\b/i.test(item)) continue;
+    const key = item.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(item);
+    if (out.length >= 12) break;
+  }
+  return out.join('\n');
+}
+
+function inferPdpFieldQualityFromSourceContext(summary, sourceKind, preferredKey = '') {
+  const normalized = normalizeFieldQualitySummary(summary);
+  const candidates = uniqueStrings([preferredKey, 'ingredients_raw', 'details_sections', 'description_raw'])
+    .map((key) => normalized?.[key])
+    .filter((item) => item && isSurfaceablePdpField({ field: item }, 'field'));
+  const base = candidates.find((item) => item.source_origin) || candidates[0];
+  if (!base) return null;
+  return {
+    source_origin: normalizeNonEmptyString(base.source_origin) || 'catalog_intelligence',
+    source_quality_status:
+      normalizeNonEmptyString(base.source_quality_status).toLowerCase() === 'high' ? 'high' : 'medium',
+    source_kinds: uniqueStrings([
+      ...(Array.isArray(base.source_kinds) ? base.source_kinds : []),
+      sourceKind,
+    ]),
+    reason_codes: [],
+  };
+}
+
 function normalizePdpActiveIngredientItems(value) {
   const out = [];
   const seen = new Set();
@@ -2543,6 +2608,21 @@ function looksLikeSunscreenContext(value) {
   );
 }
 
+function stripLeadingHowToTitlePrefix(value, contextText = '') {
+  const raw = normalizePdpCopy(value);
+  if (!raw) return '';
+  const lines = raw.split(/\n+/).map((line) => normalizeNonEmptyString(line)).filter(Boolean);
+  if (lines.length < 2) return raw;
+  const firstLine = lines[0];
+  if (firstLine.length < 6 || firstLine.length > 90) return raw;
+  if (!normalizeTitleKey(contextText).includes(normalizeTitleKey(firstLine))) return raw;
+  const rest = lines.slice(1).join('\n').trim();
+  if (!/\b(?:apply|use|spread|massage|dispense|smooth|layer|reapply|rinse|leave|avoid|shake)\b/i.test(rest)) {
+    return raw;
+  }
+  return rest;
+}
+
 function scoreHowToUseCandidate(body, contextText) {
   const normalized = normalizeNonEmptyString(body).toLowerCase();
   if (!normalized) return Number.NEGATIVE_INFINITY;
@@ -2611,7 +2691,7 @@ function pickPdpHowToUseRaw(rawValue, detailsSections, fallbackValue = '', conte
   const sectionBody = cleanPdpHowToUseRaw(pickBestHowToUseSection(detailsSections, raw, fallbackValue, contextText));
   const fallback = cleanPdpHowToUseRaw(fallbackValue);
   if (looksLikeSunscreenContext(contextText) && sectionBody && sectionBody !== raw) {
-    return sectionBody;
+    return stripLeadingHowToTitlePrefix(sectionBody, contextText);
   }
   if (
     sectionBody &&
@@ -2620,9 +2700,9 @@ function pickPdpHowToUseRaw(rawValue, detailsSections, fallbackValue = '', conte
       (raw.length < 120 && sectionBody.toLowerCase().startsWith(raw.toLowerCase())) ||
       (raw && !/[.!?)]$/.test(raw)))
   ) {
-    return sectionBody;
+    return stripLeadingHowToTitlePrefix(sectionBody, contextText);
   }
-  return raw || sectionBody || fallback;
+  return stripLeadingHowToTitlePrefix(raw || sectionBody || fallback, contextText);
 }
 
 function pickPdpIngredientsRaw(rawValue, detailsSections, fallbackValue = '') {
@@ -3594,8 +3674,11 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
       ingredientsFromRepresentativeHowTo ||
       normalizedRepresentativeIngredientsSectionBody,
   );
-  const derivedPdpActiveIngredientsRaw = extractActiveIngredientsRawFromDetailsSections(
+  const activeIngredientsFromIngredientsRaw = extractLabeledActiveIngredientsFromIngredientsRaw(pdpIngredientsRaw);
+  const derivedPdpActiveIngredientsRaw = normalizeNonEmptyString(
+    extractActiveIngredientsRawFromDetailsSections(
     rawRepresentativePdpDetailsSections.length > 0 ? rawRepresentativePdpDetailsSections : pdpDetailsSections,
+    ) || activeIngredientsFromIngredientsRaw,
   );
   const pdpActiveIngredientsRaw = normalizeNonEmptyString(
     representativeProduct?.active_ingredients_raw ||
@@ -3625,6 +3708,40 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
       representativeProduct?.pdp_field_quality_summary,
   );
   if (
+    pdpIngredientsRaw &&
+    /\b(?:Active|Inactive|Full)\s+(?:Ingredients?|INCI)\b/i.test(pdpIngredientsRaw) &&
+    !isSurfaceablePdpField(incomingPdpFieldQualitySummary, 'ingredients_raw')
+  ) {
+    const inferredQuality = inferPdpFieldQualityFromSourceContext(
+      incomingPdpFieldQualitySummary,
+      'derived_labeled_ingredients_from_source_context',
+      'description_raw',
+    );
+    if (inferredQuality) {
+      incomingPdpFieldQualitySummary = {
+        ...(incomingPdpFieldQualitySummary || {}),
+        ingredients_raw: inferredQuality,
+      };
+    }
+  }
+  if (
+    derivedPdpActiveIngredientsRaw &&
+    activeIngredientsFromIngredientsRaw &&
+    isSurfaceablePdpField(incomingPdpFieldQualitySummary, 'ingredients_raw') &&
+    !isSurfaceablePdpField(incomingPdpFieldQualitySummary, 'active_ingredients_raw')
+  ) {
+    const inferredQuality = inferPdpFieldQualityFromSourceContext(
+      incomingPdpFieldQualitySummary,
+      'derived_labeled_active_ingredients_from_inci',
+      'ingredients_raw',
+    );
+    if (inferredQuality) {
+      incomingPdpFieldQualitySummary = {
+        ...(incomingPdpFieldQualitySummary || {}),
+        active_ingredients_raw: inferredQuality,
+      };
+    }
+  } else if (
     derivedPdpActiveIngredientsRaw &&
     isSurfaceablePdpField(incomingPdpFieldQualitySummary, 'details_sections')
   ) {
