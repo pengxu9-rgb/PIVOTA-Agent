@@ -3246,9 +3246,9 @@ function normalizeSeedVariants(seedData, row) {
       const displayFields = sanitizeSeedVariantDisplayFields(rawVariant, productOptionNames, productLevelOptions);
       const url = normalizeHttpUrl(rawVariant.deep_link || rawVariant.url || rawVariant.product_url);
       const availability = normalizeSeedAvailability(rawAvailability);
-      const description = String(
-        rawVariant.description || rawVariant.description_html || rawVariant.summary || rawVariant.body_html || '',
-      ).trim();
+      const description = sanitizeSeedVariantDescription(
+        rawVariant.description || rawVariant.description_html || rawVariant.summary || rawVariant.body_html,
+      );
       const swatchHex = firstNonEmptyString(
         rawVariant.color_hex,
         rawVariant.swatch?.hex,
@@ -3311,6 +3311,25 @@ function normalizeSeedVariants(seedData, row) {
       };
     })
     .filter(Boolean);
+}
+
+function sanitizeSeedVariantDescription(value) {
+  const raw = firstNonEmptyString(value);
+  if (!raw) return '';
+  const normalized = raw.replace(/\s+/g, ' ').trim();
+  if (!normalized) return '';
+  const source = String(raw || '');
+  const sectionMarkerCount = (
+    source.match(/\b(?:OVERVIEW|HOW TO USE|FAQ|STUDY RESULTS|FORMULATED WITHOUT|INGREDIENTS|BENEFITS)\b/g) || []
+  ).length;
+  const looksLikePageSoup =
+    /<!--\s*split\s*-->|<\s*style\b|<\s*script\b|\.section-[a-z0-9_-]+|display\s*:\s*none|{\s*display\s*:/i.test(
+      source,
+    ) ||
+    sectionMarkerCount >= 2;
+  if (looksLikePageSoup) return '';
+  if (normalized.length > 320) return '';
+  return normalized;
 }
 
 function canonicalizeExternalSeedSnapshot(seedData, row, options = {}) {

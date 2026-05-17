@@ -1966,6 +1966,46 @@ describe('externalSeedProducts helper', () => {
     ]);
   });
 
+  test('drops page-body soup from variant descriptions while preserving commerce fields', () => {
+    const row = {
+      id: 'eps_medicube_variant_soup',
+      title: 'Deep Vita C Pads',
+      price_amount: 28,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      canonical_url: 'https://medicube.us/products/deep-vita-c-pad',
+      seed_data: {
+        brand: 'Medicube',
+        variants: [
+          {
+            sku: 'PMEUS10009A00',
+            variant_id: '40708793172016',
+            option_name: 'Option',
+            option_value: 'SINGLE',
+            price: '28.00',
+            currency: 'USD',
+            stock: 'In Stock',
+            image_url: 'https://cdn.shopify.com/s/files/1/0156/3905/2336/files/deep-vita-c-pad.png',
+            description:
+              '.section-product-feature, .section-product-detail { display: none; }\n<!-- split -->\nOVERVIEW\nA brightening toner pad.\nHOW TO USE\nSwipe across clean skin.',
+          },
+        ],
+      },
+    };
+
+    const [variant] = normalizeSeedVariants(row.seed_data, row);
+    expect(variant).toEqual(
+      expect.objectContaining({
+        sku: 'PMEUS10009A00',
+        variant_id: '40708793172016',
+        price: 28,
+        currency: 'USD',
+        option_value: 'SINGLE',
+      }),
+    );
+    expect(variant.description).toBeUndefined();
+  });
+
   test('canonicalizes legacy variant containers into snapshot variants and strips legacy copies', () => {
     const seedData = {
       variants: [
