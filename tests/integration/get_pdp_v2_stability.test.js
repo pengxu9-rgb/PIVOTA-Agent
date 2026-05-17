@@ -510,6 +510,7 @@ describe('get_pdp_v2 stability semantics', () => {
     expect(res.body.metadata.route_health.product_group_resolve_mode).toBe('skipped_external_seed_upstream_disabled');
     expect(res.body.metadata.route_health.product_group_resolve_budget_exceeded).toBe(false);
     expect(res.body.metadata.route_health.product_group_resolve_budget_ms).toBe(100);
+    expect(res.body.metadata.route_health.identity_graph_live_mode).toBe('skipped_direct_external_seed_no_group');
   });
 
   it('also skips upstream group resolution for active ext_* PDPs when merchant_id is omitted', async () => {
@@ -549,6 +550,7 @@ describe('get_pdp_v2 stability semantics', () => {
     );
     expect(res.body.metadata.route_health.product_group_resolve_mode).toBe('skipped_external_seed_upstream_disabled');
     expect(res.body.metadata.route_health.product_group_resolve_budget_exceeded).toBe(false);
+    expect(res.body.metadata.route_health.identity_graph_live_mode).toBe('skipped_direct_external_seed_no_group');
   });
 
   it('returns 504 UPSTREAM_TIMEOUT when canonical detail fetch times out', async () => {
