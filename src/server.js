@@ -12671,6 +12671,25 @@ function buildCanonicalChainMainlineProduct(row) {
     snapshot.overview,
     snapshot.summary,
   );
+  const ingredientIntel =
+    [payload.ingredient_intel, seedData.ingredient_intel, snapshot.ingredient_intel, externalSeed.ingredient_intel, externalSnapshot.ingredient_intel]
+      .find((value) => isPlainObject(value)) || {};
+  const ingredientRemediation =
+    [
+      payload.ingredient_remediation_v1,
+      seedData.ingredient_remediation_v1,
+      snapshot.ingredient_remediation_v1,
+      externalSeed.ingredient_remediation_v1,
+      externalSnapshot.ingredient_remediation_v1,
+    ].find((value) => isPlainObject(value)) || null;
+  const pdpFieldQualitySummary =
+    [
+      payload.pdp_field_quality_summary,
+      seedData.pdp_field_quality_summary,
+      snapshot.pdp_field_quality_summary,
+      externalSeed.pdp_field_quality_summary,
+      externalSnapshot.pdp_field_quality_summary,
+    ].find((value) => isPlainObject(value)) || null;
 
   return {
     id: productId,
@@ -12701,6 +12720,24 @@ function buildCanonicalChainMainlineProduct(row) {
     url: pivotaCanonicalUrl || merchantCanonicalUrl || undefined,
     ...(pivotaCanonicalUrl || merchantCanonicalUrl ? { canonical_url: pivotaCanonicalUrl || merchantCanonicalUrl } : {}),
     ...(merchantCanonicalUrl ? { destination_url: merchantCanonicalUrl, merchant_canonical_url: merchantCanonicalUrl } : {}),
+    raw_ingredient_text_clean: firstNonEmptyString(
+      payload.raw_ingredient_text_clean,
+      seedData.raw_ingredient_text_clean,
+      snapshot.raw_ingredient_text_clean,
+      externalSeed.raw_ingredient_text_clean,
+      externalSnapshot.raw_ingredient_text_clean,
+      ingredientIntel.raw_ingredient_text_clean,
+    ),
+    pdp_ingredients_raw: firstNonEmptyString(
+      payload.pdp_ingredients_raw,
+      seedData.pdp_ingredients_raw,
+      snapshot.pdp_ingredients_raw,
+      externalSeed.pdp_ingredients_raw,
+      externalSnapshot.pdp_ingredients_raw,
+    ),
+    ...(Object.keys(ingredientIntel).length ? { ingredient_intel: ingredientIntel } : {}),
+    ...(ingredientRemediation ? { ingredient_remediation_v1: ingredientRemediation } : {}),
+    ...(pdpFieldQualitySummary ? { pdp_field_quality_summary: pdpFieldQualitySummary } : {}),
     catalog_track: firstNonEmptyString(row.catalog_track),
     truth_tier: firstNonEmptyString(row.truth_tier),
     readiness_tier: firstNonEmptyString(row.readiness_tier),
