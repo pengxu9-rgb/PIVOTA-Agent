@@ -1171,13 +1171,26 @@ function mergeIngredientIntelWithAuthority(existingValue, authority) {
 function isForceFillIngredientDisplayBlocked(product) {
   const ingredientIntel = asPlainObject(product?.ingredient_intel) || {};
   const reviewQueue = asPlainObject(ingredientIntel.source_review_queue) || {};
+  const applicability = asPlainObject(ingredientIntel.inci_applicability) || {};
   const remediation = asPlainObject(product?.ingredient_remediation_v1) || {};
   const quality = asPlainObject(product?.pdp_field_quality_summary) || {};
   const ingredientQuality = asPlainObject(quality.ingredients_raw) || asPlainObject(quality.ingredients_inci) || {};
-  const status = asString(reviewQueue.status || remediation.action || ingredientQuality.source_quality_status).toLowerCase();
+  const status = asString(
+    reviewQueue.status ||
+      remediation.action ||
+      applicability.status ||
+      ingredientQuality.source_quality_status,
+  ).toLowerCase();
   const origin = asString(ingredientQuality.source_origin).toLowerCase();
   return (
-    ['manual_source_review_required', 'component_ref_review_required', 'component_refs_linked', 'blocked'].includes(status) ||
+    [
+      'manual_source_review_required',
+      'component_ref_review_required',
+      'component_refs_linked',
+      'mark_inci_not_applicable',
+      'not_applicable',
+      'blocked',
+    ].includes(status) ||
     origin === 'manual_source_review_required'
   );
 }
