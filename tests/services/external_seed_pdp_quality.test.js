@@ -154,6 +154,52 @@ describe('externalSeedPdpQuality', () => {
     expect(similarGate.failure_reasons).toEqual([]);
   });
 
+  test('prefers non-empty direct similar probe products over empty live PDP similar module', () => {
+    const similarGate = buildSimilarGate({
+      liveResponse: {
+        modules: [
+          {
+            type: 'similar',
+            data: { items: [] },
+          },
+        ],
+      },
+      similarResponse: {
+        products: [
+          {
+            product_id: 'sig_lip_balm_1',
+            title: 'Moonlight Lip Balm',
+            card_highlight_status: 'ready',
+            card_highlight: 'Glossy color lip balm.',
+          },
+          {
+            product_id: 'sig_lip_balm_2',
+            title: 'Glazed Lip Gloss',
+            card_highlight_status: 'ready',
+            card_highlight: 'High-shine lip color.',
+          },
+          {
+            product_id: 'sig_lip_balm_3',
+            title: 'Tinted Repair Lip Serum',
+            card_highlight_status: 'ready',
+            card_highlight: 'Tinted lip serum.',
+          },
+          {
+            product_id: 'sig_lip_balm_4',
+            title: 'Water Gloss',
+            card_highlight_status: 'ready',
+            card_highlight: 'Hydrating gloss.',
+          },
+        ],
+      },
+      exclusionFlags: { gift_card: false, donation_bundle: false, non_merchandise: false },
+    });
+
+    expect(similarGate.status).toBe('passed');
+    expect(similarGate.similar_count).toBe(4);
+    expect(similarGate.failure_reasons).toEqual([]);
+  });
+
   test('fails product intel gate when the module is present but blocked or empty', () => {
     const gate = buildProductIntelGate({
       liveResponse: {

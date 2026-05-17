@@ -879,11 +879,15 @@ function buildSimilarGate({
     findModuleData('similar', liveResponse, livePayload) ||
     findModuleData('recommendations', liveResponse, livePayload) ||
     ensureJsonObject(similarResponse?.similar || liveResponse?.similar || livePayload?.recommendations);
-  const products = Array.isArray(similarModuleData?.items)
-    ? similarModuleData.items
-    : Array.isArray(similarResponse?.products)
-      ? similarResponse.products
-      : [];
+  const productSources = [
+    similarModuleData?.items,
+    similarModuleData?.products,
+    similarResponse?.products,
+    similarResponse?.items,
+    similarResponse?.response?.products,
+    similarResponse?.response?.items,
+  ];
+  const products = productSources.find((items) => Array.isArray(items) && items.length > 0) || [];
   const exempt =
     Boolean(exclusionFlags?.gift_card) ||
     Boolean(exclusionFlags?.donation_bundle) ||
