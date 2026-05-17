@@ -3420,12 +3420,12 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
         ? loadIntentFamilyMatches()
         : null;
       preloadedDomainMatches = await domainMatchesTask;
-      out.push(...preloadedDomainMatches);
-      const domainIntentCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`)
-        .filter((product) => {
-          if (BEAUTY_ACCESSORY_TITLE_RE.test(normalizeText(product?.title || product?.name || ''))) return false;
-          return getSimilarIntentFamilyFromProduct(product) === intentFamily;
+      const filteredDomainMatches = preloadedDomainMatches.filter((product) => {
+        if (BEAUTY_ACCESSORY_TITLE_RE.test(normalizeText(product?.title || product?.name || ''))) return false;
+        return getSimilarIntentFamilyFromProduct(product) === intentFamily;
       });
+      out.push(...filteredDomainMatches);
+      const domainIntentCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
       if (intentMatchesTask && !preloadedIntentFamilyMatches) {
         preloadedIntentFamilyMatches = await intentMatchesTask;
       }
