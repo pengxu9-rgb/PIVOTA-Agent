@@ -237,6 +237,23 @@ describe('pdpIngredientAuthority', () => {
     expect(authority.active_items).toEqual(['Vitamin C (Ascorbic acid)']);
   });
 
+  test('keeps source-backed vitamin c alias when PDP role text names vitamin c without full INCI', () => {
+    const authority = buildAuthoritativeIngredientView({
+      title: 'Banana Bright+ Eye Crème',
+      description:
+        'Powered by a potent triple vitamin C complex with real gold, which improves delivery of vitamin C to the skin.',
+      active_ingredients: ['Vitamin C (Ascorbic acid)', 'Glycerin'],
+      seed_data: {
+        snapshot: {
+          active_ingredients: ['Vitamin C (Ascorbic acid)', 'Glycerin'],
+        },
+      },
+    });
+
+    expect(authority.active_items).toEqual(['Vitamin C (Ascorbic acid)']);
+    expect(authority.active_items).not.toContain('Glycerin');
+  });
+
   test('suppresses low-signal active items while keeping authoritative INCI', () => {
     const authority = buildAuthoritativeIngredientView({
       title: 'Multi-Peptide Lash and Brow Serum',

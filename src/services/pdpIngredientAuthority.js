@@ -409,7 +409,8 @@ function hasExplicitActiveRoleContext(product, value) {
   if (VITAMIN_C_ACTIVE_RE.test(text)) {
     const titleContext = collectProductTitleContext(product);
     const roleContext = collectProductRoleContext(product);
-    return VITAMIN_C_ACTIVE_RE.test(titleContext) || TRUE_VITAMIN_C_INGREDIENT_RE.test(roleContext);
+    if (VITAMIN_C_ACTIVE_RE.test(titleContext) || TRUE_VITAMIN_C_INGREDIENT_RE.test(roleContext)) return true;
+    return TRUE_VITAMIN_C_INGREDIENT_RE.test(text) && VITAMIN_C_ACTIVE_RE.test(roleContext);
   }
   if (!CONTEXT_SENSITIVE_HERO_ACTIVE_RE.test(text)) return true;
   const context = collectProductRoleContext(product);
