@@ -3750,10 +3750,15 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
       representativeProduct?.pdp_how_to_use_raw ||
       normalizedRepresentativeHowToSectionBody,
   );
+  const rollbackSnapshotDescription = normalizeNonEmptyString(
+    seedData?.snapshot_quarantine?.pivota_description_rollback_v1?.previous?.snapshot_description ||
+      snapshot?.snapshot_quarantine?.pivota_description_rollback_v1?.previous?.snapshot_description,
+  );
   const extractedHowToUseFromDescription =
     extractHowToUseFromPdpText(productDescriptionRaw) ||
     extractHowToUseFromPdpText(representativeProduct?.pdp_description_raw || rawLiveExtractedDescription) ||
-    extractHowToUseFromPdpText(representativeProduct?.description_raw);
+    extractHowToUseFromPdpText(representativeProduct?.description_raw) ||
+    extractHowToUseFromPdpText(rollbackSnapshotDescription);
   const ingredientsFromRepresentativeHowTo = extractFullIngredientsFromText(representativeHowToUseSourceRaw);
   const pdpIngredientsRaw = normalizeNonEmptyString(
     representativeProduct?.ingredients_raw ||

@@ -349,6 +349,24 @@ Contains four types of peptides`;
             },
           },
         },
+        snapshot_quarantine: {
+          pivota_description_rollback_v1: {
+            previous: {
+              snapshot_description: `High-functioning peptide cream essence.
+
+How to use
+
+1. Prep skin with toner after cleansing
+2. After opening the mask, adjust to fit on face
+3. Leave it on for 10-20 minutes and remove
+4. Gently pat to enhance absorption
+
+What's in it?
+
+Contains four types of peptides`,
+            },
+          },
+        },
         snapshot: {},
       },
     };
@@ -361,18 +379,7 @@ Contains four types of peptides`;
             title: row.title,
             url: row.canonical_url,
             description_raw: 'High-functioning peptide cream essence.',
-            pdp_description_raw: `High-functioning peptide cream essence.
-
-How to use
-
-1. Prep skin with toner after cleansing
-2. After opening the mask, adjust to fit on face
-3. Leave it on for 10-20 minutes and remove
-4. Gently pat to enhance absorption
-
-What's in it?
-
-Contains four types of peptides`,
+            pdp_description_raw: 'High-functioning peptide cream essence.',
             how_to_use_raw: '2. After opening the mask, adjust to fit on face\n3. Leave it on for 10-20 minutes and remove',
             field_quality_summary: {
               description_raw: { source_quality_status: 'high', source_kinds: ['shopify_description'] },
