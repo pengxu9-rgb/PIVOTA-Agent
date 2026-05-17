@@ -284,6 +284,111 @@ function isSurfaceablePdpField(summary, key) {
   return false;
 }
 
+function readPdpFieldCaptureStatus(seedData, snapshot, key) {
+  const capture =
+    (snapshot?.pdp_field_capture_status && typeof snapshot.pdp_field_capture_status === 'object'
+      ? snapshot.pdp_field_capture_status
+      : null) ||
+    (seedData?.pdp_field_capture_status && typeof seedData.pdp_field_capture_status === 'object'
+      ? seedData.pdp_field_capture_status
+      : null);
+  return normalizeNonEmptyString(capture?.[key]).toLowerCase();
+}
+
+function hasIngredientQuarantineReason(seedData, snapshot) {
+  const contracts = [
+    seedData?.official_html_pdp_fields_v1,
+    snapshot?.official_html_pdp_fields_v1,
+    seedData?.snapshot_quarantine?.official_html_pdp_fields_v1,
+    seedData?.snapshot_quarantine?.fenty_ingredient_surface_sanitize_v1,
+  ];
+  return contracts.some((contract) => {
+    if (!contract || typeof contract !== 'object' || Array.isArray(contract)) return false;
+    return Boolean(normalizeNonEmptyString(
+      contract.ingredients_quarantine_reason ||
+        contract.quarantine_reason ||
+        contract.reason,
+    ));
+  });
+}
+
+function hasExplicitlyBlockedPdpIngredientText(seedData, snapshot, pdpFieldQualitySummary) {
+  if (
+    !isSurfaceablePdpField(pdpFieldQualitySummary, 'ingredients_raw') ||
+    !isSurfaceablePdpField(pdpFieldQualitySummary, 'ingredients_inci') ||
+    hasIngredientQuarantineReason(seedData, snapshot)
+  ) {
+    return true;
+  }
+  const captureStatus = readPdpFieldCaptureStatus(seedData, snapshot, 'ingredients_raw');
+  return ['missing', 'blocked', 'quarantined', 'polluted', 'low'].includes(captureStatus);
+}
+
+function hasExplicitlyBlockedPdpActiveText(seedData, snapshot, pdpFieldQualitySummary) {
+  if (!isSurfaceablePdpField(pdpFieldQualitySummary, 'active_ingredients_raw')) return true;
+  const captureStatus = readPdpFieldCaptureStatus(seedData, snapshot, 'active_ingredients_raw');
+  return ['blocked', 'quarantined', 'polluted', 'low'].includes(captureStatus);
+}
+
+function pruneRuntimeIngredientEvidence(target, { clearIngredientText = false, clearActiveIngredients = false } = {}) {
+  if (!target || typeof target !== 'object' || Array.isArray(target)) return;
+  if (clearIngredientText) {
+    delete target.raw_ingredient_text_clean;
+    delete target.inci_list;
+    delete target.inci_raw;
+    delete target.inci_normalized;
+    delete target.ingredients_inci;
+    delete target.ingredientsInci;
+    delete target.inci_ingredients;
+    delete target.inciIngredients;
+    delete target.inci;
+    delete target.ingredient_tokens;
+  }
+  if (clearActiveIngredients) {
+    delete target.active_ingredients;
+    delete target.activeIngredients;
+    delete target.pdp_active_ingredients_raw;
+    delete target.active_ingredients_raw;
+  }
+  const ingredientIntel = target.ingredient_intel;
+  if (!ingredientIntel || typeof ingredientIntel !== 'object' || Array.isArray(ingredientIntel)) return;
+  const nextIntel = { ...ingredientIntel };
+  const authoritative = nextIntel.authoritative && typeof nextIntel.authoritative === 'object' && !Array.isArray(nextIntel.authoritative)
+    ? { ...nextIntel.authoritative }
+    : null;
+  if (clearIngredientText) {
+    delete nextIntel.raw_ingredient_text_clean;
+    delete nextIntel.inci_list;
+    delete nextIntel.inci_raw;
+    delete nextIntel.inci_normalized;
+    delete nextIntel.ingredient_tokens;
+    delete nextIntel.ingredients_inci;
+    if (authoritative) {
+      delete authoritative.raw_text;
+      delete authoritative.items;
+      delete authoritative.source_origin;
+    }
+  }
+  if (clearActiveIngredients) {
+    delete nextIntel.active_ingredients;
+    delete nextIntel.activeIngredients;
+    if (authoritative) {
+      delete authoritative.active_items;
+      delete authoritative.active_source_origin;
+    }
+  }
+  if (authoritative && Object.keys(authoritative).length > 0) {
+    nextIntel.authoritative = authoritative;
+  } else {
+    delete nextIntel.authoritative;
+  }
+  if (Object.keys(nextIntel).length > 0) {
+    target.ingredient_intel = nextIntel;
+  } else {
+    delete target.ingredient_intel;
+  }
+}
+
 function buildApprovedRuntimeSeedData(seedData, pdpFieldQualitySummary) {
   const nextSeedData = cloneJsonValue(ensureJsonObject(seedData));
   const snapshot = ensureJsonObject(nextSeedData.snapshot);
@@ -312,6 +417,13 @@ function buildApprovedRuntimeSeedData(seedData, pdpFieldQualitySummary) {
   if (!isSurfaceablePdpField(pdpFieldQualitySummary, 'details_sections')) {
     delete nextSeedData.pdp_details_sections;
     delete snapshot.pdp_details_sections;
+  }
+
+  const clearIngredientText = hasExplicitlyBlockedPdpIngredientText(nextSeedData, snapshot, pdpFieldQualitySummary);
+  const clearActiveIngredients = hasExplicitlyBlockedPdpActiveText(nextSeedData, snapshot, pdpFieldQualitySummary);
+  if (clearIngredientText || clearActiveIngredients) {
+    pruneRuntimeIngredientEvidence(nextSeedData, { clearIngredientText, clearActiveIngredients });
+    pruneRuntimeIngredientEvidence(snapshot, { clearIngredientText, clearActiveIngredients });
   }
 
   if (authoritativeSnapshotContract) {
@@ -3375,8 +3487,6 @@ function buildExternalSeedProduct(row, options = {}) {
   const agentSafeCommerceFacts = commerceFacts ? buildAgentSafeCommerceFacts(commerceFacts) : null;
   const localityFacts = resolveExternalSeedLocalityFacts({ row, seedData, snapshot });
   const shouldExposeLocalityFacts = hasLocalityFactsValue(localityFacts);
-  const ingredientIntel = ensureJsonObject(seedData.ingredient_intel);
-  const snapshotIngredientIntel = ensureJsonObject(snapshot.ingredient_intel);
   const science = ensureJsonObject(seedData.science);
   const snapshotScience = ensureJsonObject(snapshot.science);
   const destinationUrl = String(
@@ -3402,6 +3512,8 @@ function buildExternalSeedProduct(row, options = {}) {
   );
   const runtimeSeedData = buildApprovedRuntimeSeedData(seedData, pdpFieldQualitySummary);
   const runtimeSnapshot = ensureJsonObject(runtimeSeedData.snapshot);
+  const runtimeIngredientIntel = ensureJsonObject(runtimeSeedData.ingredient_intel);
+  const runtimeSnapshotIngredientIntel = ensureJsonObject(runtimeSnapshot.ingredient_intel);
   const galleryRelevanceContext = buildSeedGalleryRelevanceContext(runtimeSeedData, row);
 
   const title =
@@ -3442,32 +3554,24 @@ function buildExternalSeedProduct(row, options = {}) {
       : runtimeSeedData.pdp_faq_items,
   );
   const rawIngredientTextClean = firstNonEmptyString(
-    ingredientIntel.raw_ingredient_text_clean,
-    snapshotIngredientIntel.raw_ingredient_text_clean,
+    runtimeIngredientIntel.raw_ingredient_text_clean,
+    runtimeSnapshotIngredientIntel.raw_ingredient_text_clean,
     runtimeSeedData.raw_ingredient_text_clean,
     runtimeSnapshot.raw_ingredient_text_clean,
-    seedData.raw_ingredient_text_clean,
-    snapshot.raw_ingredient_text_clean,
   );
   const inciList = normalizeStringList(
-    ingredientIntel.inci_list ||
-      snapshotIngredientIntel.inci_list ||
-      ingredientIntel.inci_normalized ||
-      snapshotIngredientIntel.inci_normalized ||
+    runtimeIngredientIntel.inci_list ||
+      runtimeSnapshotIngredientIntel.inci_list ||
+      runtimeIngredientIntel.inci_normalized ||
+      runtimeSnapshotIngredientIntel.inci_normalized ||
       runtimeSeedData.inci_list ||
-      runtimeSnapshot.inci_list ||
-      seedData.inci_list ||
-      snapshot.inci_list,
+      runtimeSnapshot.inci_list,
   );
   const fallbackIngredientsInci = normalizeStringList(
     runtimeSeedData.ingredients_inci ||
       runtimeSnapshot.ingredients_inci ||
-      seedData.ingredients_inci ||
-      snapshot.ingredients_inci ||
       runtimeSeedData.ingredientsInci ||
-      runtimeSnapshot.ingredientsInci ||
-      seedData.ingredientsInci ||
-      snapshot.ingredientsInci,
+      runtimeSnapshot.ingredientsInci,
     256,
   );
   const authorityActiveIngredients = filterActiveIngredientsWithSourceEvidence(
@@ -3482,10 +3586,6 @@ function buildExternalSeedProduct(row, options = {}) {
       runtimeSnapshot.pdp_ingredients_raw,
       runtimeSeedData.raw_ingredient_text_clean,
       runtimeSnapshot.raw_ingredient_text_clean,
-      seedData.pdp_ingredients_raw,
-      snapshot.pdp_ingredients_raw,
-      seedData.raw_ingredient_text_clean,
-      snapshot.raw_ingredient_text_clean,
     ].join(' '),
   );
   const reviewedActiveIngredientsContract = [
@@ -3503,8 +3603,8 @@ function buildExternalSeedProduct(row, options = {}) {
           seedData.activeIngredients ||
           snapshot.active_ingredients ||
           snapshot.activeIngredients ||
-          ingredientIntel.active_ingredients ||
-          snapshotIngredientIntel.active_ingredients,
+          runtimeIngredientIntel.active_ingredients ||
+          runtimeSnapshotIngredientIntel.active_ingredients,
         24,
       )
     : [];
@@ -3688,8 +3788,8 @@ function buildExternalSeedProduct(row, options = {}) {
       : productFamily === 'accessory'
         ? explicitCategory || 'Accessory'
         : '';
-  const ingredientTokens = collectSeedIngredientSignalTokens(seedData, row);
-  const ingredientIds = collectStructuredIngredientIds(row, seedData, snapshot);
+  const ingredientTokens = collectSeedIngredientSignalTokens(runtimeSeedData, row);
+  const ingredientIds = collectStructuredIngredientIds(row, runtimeSeedData, runtimeSnapshot);
   const inferredCategory = inferExternalSeedBeautyCategory({
     explicitCategory,
     title,
@@ -3893,25 +3993,19 @@ function buildExternalSeedProduct(row, options = {}) {
     raw_ingredient_text_clean:
       runtimeSeedData.raw_ingredient_text_clean ||
       runtimeSnapshot.raw_ingredient_text_clean ||
-      ingredientIntel.raw_ingredient_text_clean ||
-      snapshotIngredientIntel.raw_ingredient_text_clean,
+      runtimeIngredientIntel.raw_ingredient_text_clean ||
+      runtimeSnapshotIngredientIntel.raw_ingredient_text_clean,
     inci_list:
       runtimeSeedData.inci_list ||
       runtimeSnapshot.inci_list ||
-      seedData.inci_list ||
-      snapshot.inci_list ||
-      ingredientIntel.inci_list ||
-      snapshotIngredientIntel.inci_list,
+      runtimeIngredientIntel.inci_list ||
+      runtimeSnapshotIngredientIntel.inci_list,
     ingredients_inci:
       Array.isArray(runtimeSeedData.ingredients_inci) && runtimeSeedData.ingredients_inci.length > 0
         ? runtimeSeedData.ingredients_inci
         : Array.isArray(runtimeSnapshot.ingredients_inci) && runtimeSnapshot.ingredients_inci.length > 0
           ? runtimeSnapshot.ingredients_inci
-          : Array.isArray(seedData.ingredients_inci) && seedData.ingredients_inci.length > 0
-            ? seedData.ingredients_inci
-            : Array.isArray(snapshot.ingredients_inci) && snapshot.ingredients_inci.length > 0
-              ? snapshot.ingredients_inci
-              : undefined,
+          : undefined,
     pdp_ingredients_raw: isSurfaceablePdpField(pdpFieldQualitySummary, 'ingredients_raw')
       ? runtimeSeedData.pdp_ingredients_raw || runtimeSnapshot.pdp_ingredients_raw
       : undefined,
@@ -3919,7 +4013,7 @@ function buildExternalSeedProduct(row, options = {}) {
       ? runtimeSeedData.pdp_active_ingredients_raw || runtimeSnapshot.pdp_active_ingredients_raw
       : undefined,
     details_sections: pdpDetailsSections.length > 0 ? pdpDetailsSections : undefined,
-    ingredient_intel: ingredientIntel,
+    ingredient_intel: runtimeIngredientIntel,
     ...(ingredientRemediation ? { ingredient_remediation_v1: ingredientRemediation } : {}),
   };
   const authority = isIngredientAuthorityEligibleExternalSeed(authorityInput)
@@ -3937,7 +4031,7 @@ function buildExternalSeedProduct(row, options = {}) {
     : shouldExposeAuthorityActiveItems(authority)
       ? authority.active_items
       : [];
-  const mergedIngredientIntel = mergeIngredientIntelWithAuthority(ingredientIntel, authority);
+  const mergedIngredientIntel = mergeIngredientIntelWithAuthority(runtimeIngredientIntel, authority);
   const bundleComponentRefs =
     normalizeBundleComponentRefsForRuntime(runtimeSeedData.bundle_component_refs).length > 0
       ? normalizeBundleComponentRefsForRuntime(runtimeSeedData.bundle_component_refs)
@@ -4047,7 +4141,6 @@ function buildExternalSeedProduct(row, options = {}) {
     ...(pdpFieldCaptureStatus ? { pdp_field_capture_status: pdpFieldCaptureStatus } : {}),
     ...(pdpFieldQualitySummary ? { pdp_field_quality_summary: pdpFieldQualitySummary } : {}),
     ...(ingredientRemediation ? { ingredient_remediation_v1: ingredientRemediation } : {}),
-    ...(Object.keys(ingredientIntel).length ? { ingredient_intel: ingredientIntel } : {}),
     ...(ingredientTokens.length ? { ingredient_tokens: ingredientTokens } : {}),
     ...(authority.items.length
       ? { ingredients_inci: authority.items }

@@ -3244,6 +3244,11 @@ describe('externalSeedProducts helper', () => {
       title: 'Glow Pad',
       seed_data: {
         active_ingredients: ['Niacinamide', 'Panthenol benefits'],
+        raw_ingredient_text_clean: 'Niacinamide, Panthenol, fallback browser ingredient soup.',
+        ingredient_intel: {
+          raw_ingredient_text_clean: 'Niacinamide, Panthenol, fallback browser ingredient soup.',
+          inci_list: 'Niacinamide, Panthenol',
+        },
         pdp_description_raw: 'Fallback description from browser scrape.',
         pdp_how_to_use_raw: 'Apply after cleansing.',
         pdp_faq_items: [
@@ -3266,9 +3271,22 @@ describe('externalSeedProducts helper', () => {
             source_origin: 'shopify_json',
             source_quality_status: 'high',
           },
+          ingredients_raw: {
+            source_origin: 'browser_fallback',
+            source_quality_status: 'quarantined',
+          },
+          ingredients_inci: {
+            source_origin: 'browser_fallback',
+            source_quality_status: 'quarantined',
+          },
         },
         snapshot: {
           title: 'Glow Pad',
+          raw_ingredient_text_clean: 'Niacinamide, Panthenol, fallback browser ingredient soup.',
+          ingredient_intel: {
+            raw_ingredient_text_clean: 'Niacinamide, Panthenol, fallback browser ingredient soup.',
+            inci_list: 'Niacinamide, Panthenol',
+          },
           pdp_description_raw: 'Fallback description from browser scrape.',
           pdp_how_to_use_raw: 'Apply after cleansing.',
           pdp_faq_items: [{ question: 'Can I use this daily?', answer: 'Yes.' }],
@@ -3284,6 +3302,10 @@ describe('externalSeedProducts helper', () => {
     expect(product.pdp_details_sections).toEqual([{ heading: 'Product Type', body: 'Pad' }]);
     expect(product.content_image_urls).toEqual(['https://cdn.example.com/glow-pad-overview.jpg']);
     expect(product.active_ingredients).toBeUndefined();
+    expect(product.raw_ingredient_text_clean).toBeUndefined();
+    expect(product.ingredients_inci).toBeUndefined();
+    expect(product.ingredient_tokens).toBeUndefined();
+    expect(product.ingredient_intel?.raw_ingredient_text_clean).toBeUndefined();
     expect(product.pdp_field_quality_summary.description_raw.source_quality_status).toBe('quarantined');
   });
 
