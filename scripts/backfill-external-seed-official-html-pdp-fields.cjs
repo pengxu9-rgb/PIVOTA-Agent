@@ -412,6 +412,45 @@ function decodeJsonStringFragment(value) {
   }
 }
 
+function extractBalancedJsonObject(source, marker) {
+  const raw = String(source || '');
+  const markerIndex = raw.indexOf(marker);
+  if (markerIndex < 0) return null;
+  const start = raw.indexOf('{', markerIndex);
+  if (start < 0) return null;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let index = start; index < raw.length; index += 1) {
+    const char = raw[index];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === '\\') {
+        escaped = true;
+      } else if (char === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (char === '"') {
+      inString = true;
+    } else if (char === '{') {
+      depth += 1;
+    } else if (char === '}') {
+      depth -= 1;
+      if (depth === 0) {
+        try {
+          return JSON.parse(raw.slice(start, index + 1));
+        } catch {
+          return null;
+        }
+      }
+    }
+  }
+  return null;
+}
+
 function extractShopifyProductDescriptionHtml(html) {
   const matches = String(html || '').matchAll(/"description"\s*:\s*"((?:\\.|[^"\\])*)"/g);
   for (const match of matches) {
@@ -645,6 +684,144 @@ function extractMedicubeFields(html) {
     }
   }
   if (details.length > 0) fields.pdp_details_sections = details;
+  return fields;
+}
+
+function extractCosrxAccordionBlock(html, label) {
+  const labelPattern = escapeRegExp(label).replace(/\s+/g, '\\s+');
+  const match = String(html || '').match(
+    new RegExp(
+      `<button\\b[^>]*class="[^"]*\\baccbtn\\b[^"]*"[^>]*>\\s*${labelPattern}[\\s\\S]*?<\\/button>\\s*<div\\b[^>]*class="[^"]*\\bacc_content_area\\b[^"]*"[^>]*>([\\s\\S]*?)<\\/div>`,
+      'i',
+    ),
+  );
+  return match ? match[1] : '';
+}
+
+function extractCosrxModalIngredients(html) {
+  const candidates = Array.from(
+    String(html || '').matchAll(/<div\b[^>]*class="[^"]*\bmodal-body\b[^"]*"[^>]*>([\s\S]*?)<\/div>/gi),
+  )
+    .map((match) => cleanSectionText(match[1]).replace(/^Full Ingredients\s*/i, '').trim())
+    .filter(Boolean);
+  return candidates.find((candidate) => looksLikeFullInci(candidate) || looksLikeShortOfficialInci(candidate)) || '';
+}
+
+function extractCosrxFields(html) {
+  const fields = {};
+
+  const fullIngredients = extractCosrxModalIngredients(html);
+  if (looksLikeFullInci(fullIngredients) || looksLikeShortOfficialInci(fullIngredients)) {
+    fields.pdp_ingredients_raw = fullIngredients;
+  }
+
+  const keyIngredientBlock = extractCosrxAccordionBlock(html, 'INGREDIENTS')
+    .replace(/<div\b[^>]*class="[^"]*\bfull-ingredients-container\b[\s\S]*$/i, '');
+  const keyIngredientText = cleanSectionText(keyIngredientBlock)
+    .replace(/^KEY INGREDIENTS\s*/i, '')
+    .replace(/\bFull Ingredients\b[\s\S]*$/i, '')
+    .trim();
+  const activeItems = Array.from(
+    new Set(
+      [
+        ...extractKnownHeroIngredients(keyIngredientText),
+        ...keyIngredientText
+          .split(/\n|•|\u2022|&bull;|;/)
+          .map((item) => normalizeText(item).split(/\s*:\s*/)[0])
+          .filter((item) => looksLikeActiveIngredientList(item)),
+      ].filter(Boolean),
+    ),
+  );
+  if (activeItems.length) fields.pdp_active_ingredients_raw = activeItems.join(', ');
+
+  const howTo = normalizeHowToUseCandidate(cleanSectionText(extractCosrxAccordionBlock(html, 'HOW TO USE')));
+  if (looksLikeHowToUse(howTo)) fields.pdp_how_to_use_raw = howTo;
+
+  return fields;
+}
+
+function extractTorridenFullIngredientList(html) {
+  const match = String(html || '').match(
+    /Full Ingredient List:\s*([\s\S]{0,4500}?)(?=<link\b|<script\b|<div\b[^>]*class="[^"]*(?:product-block-share|product__description|shopify-section)|<\/section>|<\/body>)/i,
+  );
+  return match ? cleanSectionText(match[1]) : '';
+}
+
+function extractTorridenHowToUse(html) {
+  const text = stripHtml(html);
+  const match = text.match(
+    /\bHOW TO USE\s+How to use:\s*([\s\S]{0,1700}?)(?=\s+Share this\b|\bFull Ingredient List:\b|\bYou may also like\b|\bCustomer\b|\bREVIEWS?\b|\bRELATED PRODUCTS?\b|$)/i,
+  );
+  return match
+    ? normalizeHowToUseCandidate(match[1].replace(/\s*Tips\s*:\s*$/i, '').trim())
+    : '';
+}
+
+function extractTorridenFields(html) {
+  const fields = {};
+  const fullIngredients = extractTorridenFullIngredientList(html);
+  if (looksLikeFullInci(fullIngredients) || looksLikeShortOfficialInci(fullIngredients)) {
+    fields.pdp_ingredients_raw = fullIngredients;
+  }
+
+  const howTo = extractTorridenHowToUse(html);
+  if (looksLikeHowToUse(howTo)) fields.pdp_how_to_use_raw = howTo;
+
+  const activeSource = cleanSectionText(
+    String(html || '').slice(
+      Math.max(0, String(html || '').search(/Full Ingredient List:/i) - 1800),
+      Math.max(0, String(html || '').search(/Full Ingredient List:/i)),
+    ),
+  );
+  const activeItems = Array.from(new Set(extractKnownHeroIngredients(activeSource)));
+  if (activeItems.length) fields.pdp_active_ingredients_raw = activeItems.join(', ');
+
+  return fields;
+}
+
+function extractHaruharuProductDescriptionHtml(html) {
+  const product = extractBalancedJsonObject(html, '"ipBlockerCheckoutProduct"');
+  return normalizeText(product?.description) || extractShopifyProductDescriptionHtml(html);
+}
+
+function looksLikeBrokenHaruharuInci(value) {
+  const text = normalizeText(value);
+  return /\b(?:Chlori de|cell ulose|DibuyiAdipate|Propanedial|Ethylhexy\/Trazone|Hydroxybenzovi|Ceteary Alcohol|Polyglycer y|Polvsilicone|Methyloropanedid|Acryloyldimethyta|Ethyhexviglycerin)\b/i.test(text);
+}
+
+function extractHaruharuFields(html) {
+  const fields = {};
+  const descriptionHtml = extractHaruharuProductDescriptionHtml(html);
+  const descriptionText = cleanSectionText(descriptionHtml);
+  if (!descriptionText) return fields;
+
+  const ingredientCandidates = Array.from(
+    descriptionText.matchAll(/\b(?:FULL INGREDIENTS|Ingredients)\b/gi),
+  )
+    .map((match) => normalizeText(descriptionText.slice(match.index + match[0].length)))
+    .filter(Boolean)
+    .reverse();
+  const fullIngredients =
+    ingredientCandidates.find((candidate) => looksLikeFullInci(candidate)) ||
+    ingredientCandidates.find((candidate) => looksLikeShortOfficialInci(candidate)) ||
+    '';
+  if (
+    !looksLikeBrokenHaruharuInci(fullIngredients) &&
+    (looksLikeFullInci(fullIngredients) || looksLikeShortOfficialInci(fullIngredients))
+  ) {
+    fields.pdp_ingredients_raw = fullIngredients;
+  }
+
+  const howMatch = descriptionText.match(
+    /\bHow to use\b\s*([\s\S]{0,1200}?)(?=\bIngredients\b|\bKey Ingredients\b|\bFULL INGREDIENTS\b|$)/i,
+  );
+  const howTo = howMatch ? normalizeHowToUseCandidate(howMatch[1]) : '';
+  if (looksLikeHowToUse(howTo)) fields.pdp_how_to_use_raw = howTo;
+
+  const keyMatch = descriptionText.match(/\bKey Ingredients\b\s*([\s\S]{0,900}?)(?=\bFULL INGREDIENTS\b|\bIngredients\b|$)/i);
+  const activeItems = Array.from(new Set(extractKnownHeroIngredients(keyMatch?.[1] || '')));
+  if (activeItems.length) fields.pdp_active_ingredients_raw = activeItems.join(', ');
+
   return fields;
 }
 
@@ -1490,6 +1667,9 @@ async function extractOfficialHtmlFields(host, html, options = {}) {
   let fields = {};
   if (host === 'skin1004.com') fields = extractSkin1004Fields(html);
   else if (host === 'medicube.us') fields = extractMedicubeFields(html);
+  else if (host === 'cosrx.com') fields = extractCosrxFields(html);
+  else if (host === 'torriden.us') fields = extractTorridenFields(html);
+  else if (host === 'haruharuwonder.com') fields = extractHaruharuFields(html);
   else if (host === 'tirtir.global') fields = await extractTirtirFields(html, options);
   else if (host === 'theordinary.com') fields = {};
   else if (host === 'fentybeauty.com') fields = extractFentyFields(html, options);
