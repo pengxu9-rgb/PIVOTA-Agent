@@ -1960,7 +1960,12 @@ function mergeFieldQualitySummaries(existing, incoming) {
   const existingSummary = normalizeFieldQualitySummary(existing);
   const incomingSummary = normalizeFieldQualitySummary(incoming);
   for (const key of PDP_FIELD_QUALITY_KEYS) {
-    const row = incomingSummary?.[key] || existingSummary?.[key];
+    const incomingRow = incomingSummary?.[key];
+    const existingRow = existingSummary?.[key];
+    const row =
+      incomingRow && (!existingRow || isSurfaceablePdpField(incomingSummary, key) || !isSurfaceablePdpField(existingSummary, key))
+        ? incomingRow
+        : existingRow || incomingRow;
     if (!row || typeof row !== 'object' || Array.isArray(row)) continue;
     next[key] = {
       ...row,

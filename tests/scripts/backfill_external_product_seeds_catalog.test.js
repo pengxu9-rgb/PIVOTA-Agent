@@ -472,6 +472,70 @@ Contains four types of peptides`,
     );
   });
 
+  test('does not let quarantined incoming PDP quality downgrade existing high-quality fields', () => {
+    const row = {
+      id: 'eps_medicube_active',
+      title: 'Deep Peptide Radiance Mask',
+      canonical_url: 'https://medicube.us/products/deep-peptide-radiance-mask',
+      destination_url: 'https://medicube.us/products/deep-peptide-radiance-mask',
+      image_url: '',
+      price_amount: 18,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      seed_data: {
+        pdp_active_ingredients_raw: 'Niacinamide, Hyaluronic Acid, Peptide',
+        pdp_field_quality_summary: {
+          active_ingredients_raw: {
+            source_quality_status: 'high',
+            source_origin: 'shopify_json',
+            source_kinds: ['reviewed_pdp_source'],
+          },
+        },
+        external_seed_snapshot_contract: {
+          authoritative: true,
+          legacy_fields_quarantined: true,
+        },
+        snapshot: {},
+      },
+    };
+
+    const payload = buildSeedUpdatePayload(
+      row,
+      {
+        products: [
+          {
+            title: row.title,
+            url: row.canonical_url,
+            description_raw: 'High-functioning peptide cream essence.',
+            active_ingredients_raw: 'Peptide Complex',
+            field_quality_summary: {
+              active_ingredients_raw: {
+                source_origin: 'image_vision',
+                source_quality_status: 'quarantined',
+                source_kinds: ['product_image_vision'],
+                reason_codes: ['quarantined_source_kind'],
+              },
+            },
+            variants: [],
+          },
+        ],
+        variants: [],
+        diagnostics: { failure_category: null },
+      },
+      row.canonical_url,
+    );
+
+    expect(payload.nextRow.seed_data.pdp_active_ingredients_raw).toBe(
+      'Niacinamide, Hyaluronic Acid, Peptide',
+    );
+    expect(
+      payload.nextRow.seed_data.pdp_field_quality_summary.active_ingredients_raw.source_quality_status,
+    ).toBe('high');
+    expect(payload.nextRow.seed_data.snapshot_quarantine.reason_codes_by_field.active_ingredients_raw).toEqual([
+      'quarantined_source_kind',
+    ]);
+  });
+
   test('extracts full ingredients from mixed PDP detail section bodies', () => {
     const raw = pickPdpIngredientsRaw('', [
       {
