@@ -1049,6 +1049,8 @@ describe('PDP grouped offers', () => {
       },
       {
         productGroupId: 'pg_ext_contract_lipstick',
+        productLineId: 'pl_ext_contract_lipstick',
+        reviewFamilyId: 'pl_ext_contract_lipstick',
         canonicalScope: 'multi_merchant_canonical',
         offersCount: 2,
       },
@@ -1058,6 +1060,8 @@ describe('PDP grouped offers', () => {
       expect.objectContaining({
         product_group_id: 'pg_ext_contract_lipstick',
         sellable_item_group_id: 'pg_ext_contract_lipstick',
+        product_line_id: 'pl_ext_contract_lipstick',
+        review_family_id: 'pl_ext_contract_lipstick',
         canonical_scope: 'multi_merchant_canonical',
         offers_count: 2,
         has_multiple_offers: true,
@@ -1067,6 +1071,8 @@ describe('PDP grouped offers', () => {
       expect.objectContaining({
         product_group_id: 'pg_ext_contract_lipstick',
         sellable_item_group_id: 'pg_ext_contract_lipstick',
+        product_line_id: 'pl_ext_contract_lipstick',
+        review_family_id: 'pl_ext_contract_lipstick',
         canonical_scope: 'multi_merchant_canonical',
         offers_count: 2,
         has_multiple_offers: true,

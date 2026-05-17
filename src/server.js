@@ -4354,21 +4354,32 @@ async function resolveCatalogIdentityForProductRef({ merchantId, productId, prod
     const result = await query(
       `
         SELECT
-          merchant_id,
-          platform,
-          source_product_id,
-          product_key,
-          pivota_signature_id,
-          category,
-          product_type,
-          category_path,
-          category_label_source,
-          category_confidence
-        FROM catalog_products
-        WHERE merchant_id = $1
+          cp.merchant_id,
+          cp.platform,
+          cp.source_product_id,
+          cp.product_key,
+          cp.pivota_signature_id,
+          cp.category,
+          cp.product_type,
+          cp.category_path,
+          cp.category_label_source,
+          cp.category_confidence,
+          pil.sellable_item_group_id,
+          pil.product_line_id,
+          pil.review_family_id,
+          pil.identity_confidence,
+          pil.match_basis,
+          pil.identity_status,
+          pil.live_read_enabled,
+          pil.review_required
+        FROM catalog_products cp
+        LEFT JOIN pdp_identity_listing pil
+          ON pil.merchant_id = cp.merchant_id
+         AND pil.product_id = cp.source_product_id
+        WHERE cp.merchant_id = $1
           AND (
-            ($2::text <> '' AND source_product_id = $2)
-            OR ($3::text <> '' AND product_key = $3)
+            ($2::text <> '' AND cp.source_product_id = $2)
+            OR ($3::text <> '' AND cp.product_key = $3)
           )
         LIMIT 1
       `,
@@ -4391,6 +4402,17 @@ async function resolveCatalogIdentityForProductRef({ merchantId, productId, prod
       category_confidence: Number.isFinite(Number(row?.category_confidence))
         ? Number(row.category_confidence)
         : undefined,
+      sellable_item_group_id: firstNonEmptyString(row?.sellable_item_group_id),
+      product_group_id: firstNonEmptyString(row?.sellable_item_group_id),
+      product_line_id: firstNonEmptyString(row?.product_line_id),
+      review_family_id: firstNonEmptyString(row?.review_family_id),
+      identity_confidence: Number.isFinite(Number(row?.identity_confidence))
+        ? Number(row.identity_confidence)
+        : undefined,
+      match_basis: Array.isArray(row?.match_basis) ? row.match_basis : [],
+      identity_status: firstNonEmptyString(row?.identity_status),
+      live_read_enabled: row?.live_read_enabled === true,
+      review_required: row?.review_required === true,
     };
   } catch (err) {
     const message = String(err?.message || err || '');
@@ -4446,6 +4468,14 @@ function applyCatalogIdentityToPdpProduct(product, identity = {}) {
     ...(catalogCategoryPathLooksFormula ? { pdp_schema_profile: 'beauty_formula' } : {}),
     ...(identity.category_label_source ? { category_label_source: identity.category_label_source } : {}),
     ...(identity.category_confidence !== undefined ? { category_confidence: identity.category_confidence } : {}),
+    ...(identity.product_line_id ? { product_line_id: identity.product_line_id } : {}),
+    ...(identity.review_family_id ? { review_family_id: identity.review_family_id } : {}),
+    ...(identity.sellable_item_group_id
+      ? {
+          sellable_item_group_id: identity.sellable_item_group_id,
+          product_group_id: product.product_group_id || identity.product_group_id || identity.sellable_item_group_id,
+        }
+      : {}),
     pivota_signature_id: product.pivota_signature_id || sigId,
     signature_id: product.signature_id || sigId,
     pivota_canonical_url:
@@ -6746,12 +6776,16 @@ function buildOfferVariantsForPayload(product, fallbackCurrency) {
 function decoratePdpPayloadWithIdentity(pdpPayload, {
   productGroupId = null,
   sellableItemGroupId = null,
+  productLineId = null,
+  reviewFamilyId = null,
   canonicalScope = null,
   offersCount = null,
 } = {}) {
   if (!pdpPayload || typeof pdpPayload !== 'object') return pdpPayload;
   const groupId = String(productGroupId || '').trim();
   const sellableId = String(sellableItemGroupId || groupId || '').trim();
+  const lineId = String(productLineId || '').trim();
+  const reviewId = String(reviewFamilyId || '').trim();
   const scope = String(canonicalScope || '').trim();
   const count = Number(offersCount);
   const hasOfferCount = Number.isFinite(count) && count >= 0;
@@ -6763,6 +6797,9 @@ function decoratePdpPayloadWithIdentity(pdpPayload, {
     product.product_group_id = groupId;
     if (!product.sellable_item_group_id) product.sellable_item_group_id = sellableId || groupId;
   }
+  if (sellableId && !product.sellable_item_group_id) product.sellable_item_group_id = sellableId;
+  if (lineId) product.product_line_id = lineId;
+  if (reviewId) product.review_family_id = reviewId;
   if (scope) product.canonical_scope = scope;
   if (hasOfferCount) {
     product.offers_count = count;
@@ -6774,6 +6811,8 @@ function decoratePdpPayloadWithIdentity(pdpPayload, {
     ...pdpPayload,
     ...(groupId ? { product_group_id: groupId } : {}),
     ...(sellableId ? { sellable_item_group_id: sellableId } : {}),
+    ...(lineId ? { product_line_id: lineId } : {}),
+    ...(reviewId ? { review_family_id: reviewId } : {}),
     ...(scope ? { canonical_scope: scope } : {}),
     ...(hasOfferCount
       ? {
@@ -30020,10 +30059,41 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       const effectiveCanonicalScope =
         identityGraphLive?.canonical_scope ||
         (productGroupId && groupMembers.length > 1 ? 'multi_merchant_canonical' : null);
+      const effectiveSellableItemGroupId =
+        identityGraphLive?.sellable_item_group_id ||
+        catalogIdentity?.sellable_item_group_id ||
+        productGroupId ||
+        null;
+      const effectiveProductGroupId =
+        productGroupId ||
+        catalogIdentity?.product_group_id ||
+        effectiveSellableItemGroupId ||
+        null;
+      const effectiveProductLineId =
+        identityGraphLive?.product_line_id ||
+        catalogIdentity?.product_line_id ||
+        null;
+      const effectiveReviewFamilyId =
+        identityGraphLive?.review_family_id ||
+        catalogIdentity?.review_family_id ||
+        effectiveProductLineId ||
+        null;
+      const effectiveIdentityConfidence = Number.isFinite(Number(identityGraphLive?.identity_confidence))
+        ? Number(identityGraphLive.identity_confidence)
+        : Number.isFinite(Number(catalogIdentity?.identity_confidence))
+          ? Number(catalogIdentity.identity_confidence)
+          : null;
+      const effectiveMatchBasis = Array.isArray(identityGraphLive?.match_basis)
+        ? identityGraphLive.match_basis
+        : Array.isArray(catalogIdentity?.match_basis)
+          ? catalogIdentity.match_basis
+          : [];
 
       canonicalPayload = decoratePdpPayloadWithIdentity(canonicalPayload, {
-        productGroupId,
-        sellableItemGroupId: identityGraphLive?.sellable_item_group_id || productGroupId,
+        productGroupId: effectiveProductGroupId,
+        sellableItemGroupId: effectiveSellableItemGroupId,
+        productLineId: effectiveProductLineId,
+        reviewFamilyId: effectiveReviewFamilyId,
         canonicalScope: effectiveCanonicalScope,
       });
 
@@ -30032,15 +30102,12 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           type: 'canonical',
           required: true,
           data: {
-            product_group_id: productGroupId,
-            sellable_item_group_id: identityGraphLive?.sellable_item_group_id || null,
-            product_line_id: identityGraphLive?.product_line_id || null,
-            review_family_id: identityGraphLive?.review_family_id || null,
-            identity_confidence:
-              Number.isFinite(Number(identityGraphLive?.identity_confidence))
-                ? Number(identityGraphLive.identity_confidence)
-                : null,
-            match_basis: Array.isArray(identityGraphLive?.match_basis) ? identityGraphLive.match_basis : [],
+            product_group_id: effectiveProductGroupId,
+            sellable_item_group_id: effectiveSellableItemGroupId,
+            product_line_id: effectiveProductLineId,
+            review_family_id: effectiveReviewFamilyId,
+            identity_confidence: effectiveIdentityConfidence,
+            match_basis: effectiveMatchBasis,
             canonical_scope: effectiveCanonicalScope || null,
             pdp_schema_profile: pdpSchemaProfile,
             pdp_content_source: pdpContentSource,
@@ -30193,7 +30260,9 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           canonicalPayload = decoratePdpPayloadWithIdentity(canonicalPayload, {
             productGroupId: offersProductGroupId,
             sellableItemGroupId:
-              identityGraphLive?.sellable_item_group_id || offersProductGroupId,
+              effectiveSellableItemGroupId || offersProductGroupId,
+            productLineId: effectiveProductLineId,
+            reviewFamilyId: effectiveReviewFamilyId,
             canonicalScope: offersCanonicalScope,
             offersCount: Number.isFinite(offersCount) ? offersCount : null,
           });
@@ -30496,18 +30565,13 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               resolutionSource: identityResolutionSource,
             }),
             identity_graph:
-              identityGraphLive && typeof identityGraphLive === 'object'
+              (identityGraphLive && typeof identityGraphLive === 'object') || catalogIdentity?.product_line_id
                 ? {
-                    sellable_item_group_id: identityGraphLive.sellable_item_group_id || null,
-                    product_line_id: identityGraphLive.product_line_id || null,
-                    review_family_id: identityGraphLive.review_family_id || null,
-                    identity_confidence:
-                      Number.isFinite(Number(identityGraphLive.identity_confidence))
-                        ? Number(identityGraphLive.identity_confidence)
-                        : null,
-                    match_basis: Array.isArray(identityGraphLive.match_basis)
-                      ? identityGraphLive.match_basis
-                      : [],
+                    sellable_item_group_id: effectiveSellableItemGroupId || null,
+                    product_line_id: effectiveProductLineId || null,
+                    review_family_id: effectiveReviewFamilyId || null,
+                    identity_confidence: effectiveIdentityConfidence,
+                    match_basis: effectiveMatchBasis,
                     canonical_scope: effectiveCanonicalScope || null,
                     pdp_content_source: pdpContentSource,
                     offer_source: offerSource,
@@ -30523,13 +30587,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               content_base_ref: contentBaseRef,
               selected_commerce_ref: selectedCommerceRef,
               canonical_payload_product_ref: canonicalPayloadProductRef,
-              identity_confidence:
-                Number.isFinite(Number(identityGraphLive?.identity_confidence))
-                  ? Number(identityGraphLive.identity_confidence)
-                  : null,
-              match_basis: Array.isArray(identityGraphLive?.match_basis)
-                ? identityGraphLive.match_basis
-                : [],
+              identity_confidence: effectiveIdentityConfidence,
+              match_basis: effectiveMatchBasis,
             },
             route_health: buildPdpV2RouteHealth({
               requestedProductId: requestedProductIdForDiagnostics || entryProductId || productId || null,

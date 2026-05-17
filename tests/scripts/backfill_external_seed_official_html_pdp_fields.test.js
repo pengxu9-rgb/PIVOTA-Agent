@@ -340,7 +340,27 @@ describe('backfill-external-seed-official-html-pdp-fields TIRTIR sheet matching'
     expect(hasUsefulReviewText('I love the way it makes my skin feel.')).toBe(false);
     expect(
       hasUsefulReviewText(
+        "Lancome Gift at MYER: Spend $99 on Lancome products in-store at MYER or online. Plus get 20% off Mother's Day Sets. Shop in-store or online now: https://bit.ly/example T&Cs Apply.",
+      ),
+    ).toBe(false);
+    expect(
+      hasUsefulReviewText(
+        'So I thought this was the aura product I used. Wrong one but still loved the product, it was just a little too much coverage for me.',
+      ),
+    ).toBe(false);
+    expect(
+      hasUsefulReviewText(
         'This centella ampoule is really soothing on my acne-prone combination skin and absorbs quickly without feeling sticky.',
+      ),
+    ).toBe(true);
+    expect(
+      hasUsefulReviewText(
+        'Brighten and depuff. Well worth the purchase and will be a repeat order for me.',
+      ),
+    ).toBe(true);
+    expect(
+      hasUsefulReviewText(
+        'I like the idea of buying a sample first rather than buying and returning bottle after bottle.',
       ),
     ).toBe(true);
   });

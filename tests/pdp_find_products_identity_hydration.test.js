@@ -117,6 +117,11 @@ describe('find_products catalog identity hydration', () => {
           category_path: 'beauty/makeup/face/foundation',
           category_label_source: 'regex_backfill',
           category_confidence: 0.85,
+          sellable_item_group_id: 'sig_eazedrop10',
+          product_line_id: 'pl_eaze_drop',
+          review_family_id: 'pl_eaze_drop',
+          identity_confidence: 0.96,
+          match_basis: ['official_dtc_exact_url'],
         },
       ],
     });
@@ -147,6 +152,10 @@ describe('find_products catalog identity hydration', () => {
         pdp_schema_profile: 'beauty_formula',
         category_label_source: 'regex_backfill',
         category_confidence: 0.85,
+        sellable_item_group_id: 'sig_eazedrop10',
+        product_group_id: 'sig_eazedrop10',
+        product_line_id: 'pl_eaze_drop',
+        review_family_id: 'pl_eaze_drop',
       }),
     );
   });
