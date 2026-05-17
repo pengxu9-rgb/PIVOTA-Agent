@@ -1286,6 +1286,9 @@ function isNonDisplayableVariantDisplayLabel(value) {
   if (/^(?:default|default title|title|variant)\s*:\s*(?:default|default title|title|variant|single item?)$/i.test(normalized)) {
     return true;
   }
+  if (/^[a-z0-9 _-]+\s*:\s*(?:default|default title|title|variant|single|single item|one size|n\/a)$/i.test(normalized)) {
+    return true;
+  }
   return false;
 }
 

@@ -1207,7 +1207,7 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     ]);
   });
 
-  test('renders captured single external-seed Format: Single item selector labels', () => {
+  test('hides captured single external-seed Format: Single item selector labels', () => {
     const payload = buildPdpPayload({
       product: {
         product_id: 'ext_roundlab_ampoule',
@@ -1233,25 +1233,9 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
       entryPoint: 'agent',
     });
 
-    const variantSelector = payload.modules.find((module) => module.type === 'variant_selector');
-    expect(variantSelector).toBeTruthy();
-    expect(variantSelector?.data?.variants).toEqual([
-      expect.objectContaining({
-        variant_id: 'v_single',
-        display_label: 'Format: Single item',
-        options: [],
-        source_quality_status: 'captured',
-      }),
-    ]);
-    expect(payload.product.variants).toEqual([
-      expect.objectContaining({
-        variant_id: 'v_single',
-        title: 'Single item',
-        options: [],
-        display_label: 'Format: Single item',
-        source_quality_status: 'captured',
-      }),
-    ]);
+    expect(payload.modules.find((module) => module.type === 'variant_selector')).toBeFalsy();
+    expect(payload.product.default_variant_id).toBeUndefined();
+    expect(payload.product.variants).toEqual([]);
   });
 
   test('preserves structured ingredient items without re-splitting numeric INCI commas', () => {

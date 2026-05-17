@@ -257,6 +257,51 @@ describe('Celestial commerce core source contracts', () => {
     ]);
   });
 
+  test('PDP similar card filter drops missing-highlight cards when enough ready cards exist', () => {
+    const app = require('../src/server');
+    const { filterSimilarProductsWithCardHighlights } = app._debug;
+
+    const out = filterSimilarProductsWithCardHighlights([
+      {
+        product_id: 'ext_ready_1',
+        title: 'Ready 1',
+        description: 'Ready card 1.',
+        image_url: 'https://cdn.example.test/ready-1.jpg',
+      },
+      {
+        product_id: 'ext_missing',
+        title: 'Missing highlight',
+        card_highlight_status: 'highlight_missing',
+        image_url: 'https://cdn.example.test/missing-highlight.jpg',
+      },
+      {
+        product_id: 'ext_ready_2',
+        title: 'Ready 2',
+        card_highlight: 'Ready card 2.',
+        image_url: 'https://cdn.example.test/ready-2.jpg',
+      },
+      {
+        product_id: 'ext_ready_3',
+        title: 'Ready 3',
+        shopping_card: { highlight: 'Ready card 3.' },
+        image_url: 'https://cdn.example.test/ready-3.jpg',
+      },
+      {
+        product_id: 'ext_ready_4',
+        title: 'Ready 4',
+        search_card: { highlight_candidate: 'Ready card 4.' },
+        image_url: 'https://cdn.example.test/ready-4.jpg',
+      },
+    ]);
+
+    expect(out.map((item) => item.product_id)).toEqual([
+      'ext_ready_1',
+      'ext_ready_2',
+      'ext_ready_3',
+      'ext_ready_4',
+    ]);
+  });
+
   test('shopping agent loop-break builds a scenario-aware retry query from short user selection', () => {
     const app = require('../src/server');
     const { uiChatBuildLoopBreakRetryArgs } = app._debug;

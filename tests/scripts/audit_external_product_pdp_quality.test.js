@@ -591,6 +591,47 @@ describe('audit-external-product-pdp-quality helpers', () => {
     expect(gate.gallery_status.content_leak_count).toBeGreaterThan(0);
   });
 
+  test('does not treat Shopify files carousel product images as content leakage by path alone', () => {
+    const livePayload = {
+      product: {
+        product_id: 'ext_glossier_super_pure',
+        merchant_id: 'external_seed',
+      },
+      modules: [
+        {
+          type: 'media_gallery',
+          data: {
+            items: [
+              {
+                type: 'image',
+                url: 'https://cdn.shopify.com/s/files/1/0627/9164/7477/products/glossier-super-pure-carousel-02.png?v=1718028644',
+              },
+              {
+                type: 'image',
+                url: 'https://cdn.shopify.com/s/files/1/0627/9164/7477/files/glossier-skincare-super-pure-carousel-01.png?v=1762200217',
+              },
+            ],
+          },
+        },
+      ],
+    };
+
+    const gate = buildLivePdpGate({
+      livePayload,
+      liveResponse: { status: 'success', modules: [{ type: 'canonical', data: { pdp_payload: livePayload } }] },
+      seedData: {
+        external_seed_snapshot_contract: {
+          authoritative: true,
+          legacy_fields_quarantined: true,
+          replace_strategy: 'replace_not_merge',
+        },
+      },
+    });
+
+    expect(gate.failure_reasons).not.toContain('content_media_leaked_into_gallery');
+    expect(gate.gallery_status.content_leak_count).toBe(0);
+  });
+
   test('flags missing variant selector when named size evidence is trapped behind default-title identity pollution', () => {
     const livePayload = {
       product: {

@@ -19920,9 +19920,12 @@ function getSimilarItemDisplayCategory(item = {}) {
 }
 
 function filterSimilarProductsWithCardHighlights(items = [], { baseProduct = null, minItems = 4 } = {}) {
+  const targetCount = Math.max(1, Number(minItems || 4) || 4);
   const displayable = (Array.isArray(items) ? items : []).filter(
     (item) => item && typeof item === 'object' && hasSimilarCardImage(item),
   );
+  const highlightReady = displayable.filter((item) => hasSimilarCardPresentation(item));
+  const candidatePool = highlightReady.length >= targetCount ? highlightReady : displayable;
   const baseCategory = normalizeSimilarCategoryForDisplay(
     baseProduct?.category ||
       baseProduct?.product_type ||
@@ -19930,14 +19933,14 @@ function filterSimilarProductsWithCardHighlights(items = [], { baseProduct = nul
       baseProduct?.leaf_category ||
       baseProduct?.parent_category,
   );
-  if (!baseCategory) return displayable;
+  if (!baseCategory) return candidatePool;
 
-  const strict = displayable.filter((item) => {
+  const strict = candidatePool.filter((item) => {
     if (!isLooseTokenOverlapSimilarFallback(item)) return true;
     const itemCategory = getSimilarItemDisplayCategory(item);
     return !itemCategory || itemCategory === baseCategory;
   });
-  return strict.length >= Math.max(1, Number(minItems || 4) || 4) ? strict : displayable;
+  return strict.length >= targetCount ? strict : candidatePool;
 }
 
 function attachSimilarCardEnrichmentMetadata(items, metadata = {}) {

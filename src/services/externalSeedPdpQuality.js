@@ -406,6 +406,16 @@ function classifyGalleryAsset(url) {
   }
 }
 
+function looksLikeContentGalleryAssetUrl(url) {
+  const normalized = normalizePdpImageUrl(url).toLowerCase();
+  if (!normalized) return false;
+  let filename = normalized;
+  try {
+    filename = decodeURIComponent(new URL(normalized).pathname.split('/').pop() || normalized).toLowerCase();
+  } catch {}
+  return /(?:ingredient|ingredients|how[-_ ]?to|directions|routine|benefit|benefits|before[-_ ]?after|before|after|clinical|results|study|chart|diagram|infographic|claims?|ugc|review|reviews?)/i.test(filename);
+}
+
 function countDuplicateGalleryImages(urls = []) {
   const seen = new Set();
   let duplicateCount = 0;
@@ -435,7 +445,7 @@ function countContentGalleryLeaks({ galleryImages = [], seedContentImageUrls = [
     const dedupeKey = buildPdpImageDedupeKey(url) || normalizePdpImageUrl(url);
     const assetKind = classifyGalleryAsset(url);
     if (assetKind === 'product') hasProductAssets = true;
-    if (assetKind === 'content') hasContentAssets = true;
+    if (assetKind === 'content' && looksLikeContentGalleryAssetUrl(url)) hasContentAssets = true;
     if (dedupeKey && contentKeys.has(dedupeKey)) {
       leakCount += 1;
     }
