@@ -2385,6 +2385,11 @@ const BLOCKED_VARIANT_SOURCE_QUALITY_STATUSES = new Set([
 const NON_DISPLAYABLE_VARIANT_VALUES = new Set([
   'default',
   'default title',
+  'one piece',
+  'single piece',
+  '1 piece',
+  '1 pc',
+  '1pcs',
   'title',
   'variant',
 ]);

@@ -1103,6 +1103,35 @@ describe('pdpIdentityGraph', () => {
     ]);
   });
 
+  test('buildIdentityListingFromProduct ignores One Piece as a variant axis for accessories', () => {
+    const { buildIdentityListingFromProduct } = require('../../src/services/pdpIdentityGraph');
+
+    const listing = buildIdentityListingFromProduct({
+      merchantId: 'external_seed',
+      productId: 'ext_kylie_makeup_sponge',
+      sourceKind: 'external_seed',
+      product: {
+        title: 'Makeup Sponge',
+        brand: 'Kylie Cosmetics',
+        category: 'Accessory',
+        product_family: 'accessory',
+        source_url: 'https://kyliecosmetics.com/products/makeup-sponge',
+        variants: [
+          {
+            variant_id: '43927621566706',
+            title: 'One Piece',
+            options: [{ name: 'Shade', value: 'One Piece', axis_kind: 'shade' }],
+          },
+        ],
+      },
+    });
+
+    expect(listing.variant_axes).toEqual({ multi_variant: false });
+    expect(listing.match_basis).toEqual([
+      'official_url:https://kyliecosmetics.com/products/makeup-sponge',
+    ]);
+  });
+
   test('buildIdentityListingFromProduct groups size siblings into one product line without default-title shade pollution', () => {
     const { buildIdentityListingFromProduct } = require('../../src/services/pdpIdentityGraph');
 
@@ -1929,9 +1958,15 @@ describe('pdpIdentityGraph', () => {
     });
 
     expect(result?.canonical_scope).toBe('synthetic');
-    expect(result?.synthetic_product.pdp_active_ingredients_raw).toContain('Salicylic Acid');
+    expect(result?.synthetic_product.pdp_active_ingredients_raw).toBeUndefined();
     expect(result?.synthetic_product.pdp_how_to_use_raw).toBe('Use each product in the routine as directed.');
-    expect(result?.group_members[0].source_payload.pdp_active_ingredients_raw).toContain('Salicylic Acid');
+    expect(result?.synthetic_product.pdp_details_sections).toEqual([
+      { heading: 'Details', content: 'A clarifying skincare routine.' },
+    ]);
+    expect(result?.group_members[0].source_payload.pdp_active_ingredients_raw).toBeUndefined();
+    expect(result?.group_members[0].source_payload.pdp_how_to_use_raw).toBe(
+      'Use each product in the routine as directed.',
+    );
   });
 
   test('resolveLivePdpIdentityGroupForPdp maps a public sellable group id to its live canonical ref', async () => {

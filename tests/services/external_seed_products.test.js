@@ -1144,6 +1144,33 @@ describe('externalSeedProducts helper', () => {
     expect(variant.option_value).toBeUndefined();
   });
 
+  test('suppresses one-piece accessory options from customer-facing options', () => {
+    const [variant] = normalizeSeedVariants(
+      {
+        variants: [
+          {
+            variant_id: '43927621566706',
+            title: 'One Piece',
+            option_name: 'Shade',
+            option_value: 'One Piece',
+            price: '15.00',
+            currency: 'USD',
+          },
+        ],
+      },
+      {
+        title: 'Makeup Sponge',
+        category: 'Accessory',
+        canonical_url: 'https://kyliecosmetics.com/products/makeup-sponge',
+      },
+    );
+
+    expect(variant.title).toBe('Default');
+    expect(variant.options).toEqual([]);
+    expect(variant.option_name).toBeUndefined();
+    expect(variant.option_value).toBeUndefined();
+  });
+
   test('uses product-level size when a single Offer SKU variant is otherwise non-displayable', () => {
     const [variant] = normalizeSeedVariants(
       {
