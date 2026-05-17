@@ -30273,12 +30273,20 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       const effectiveCanonicalScope =
         identityGraphLive?.canonical_scope ||
         (productGroupId && groupMembers.length > 1 ? 'multi_merchant_canonical' : null);
+      const identityBackedExternalSeedGroupId =
+        canonicalProductRef?.merchant_id === EXTERNAL_SEED_MERCHANT_ID &&
+        isExternalSeedProductId(canonicalProductRef?.product_id)
+          ? catalogIdentity?.sellable_item_group_id || catalogIdentity?.product_group_id || null
+          : null;
       const effectiveSellableItemGroupId =
         identityGraphLive?.sellable_item_group_id ||
+        identityBackedExternalSeedGroupId ||
         catalogIdentity?.sellable_item_group_id ||
         productGroupId ||
         null;
       const effectiveProductGroupId =
+        identityGraphLive?.sellable_item_group_id ||
+        identityBackedExternalSeedGroupId ||
         productGroupId ||
         catalogIdentity?.product_group_id ||
         effectiveSellableItemGroupId ||
@@ -30389,6 +30397,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
             });
           } else if (PDP_SELF_OFFER_FALLBACK_ENABLED) {
             const fallbackProductGroupId =
+              effectiveSellableItemGroupId ||
+              effectiveProductGroupId ||
               productGroupId ||
               (canonicalProductForPdp.platform && canonicalProductForPdp.platform_product_id
                 ? buildProductGroupId({
@@ -30465,7 +30475,8 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         if (offersData) {
           const offersCount = Number(offersData.offers_count);
           const offersProductGroupId =
-            String(offersData.product_group_id || productGroupId || '').trim() || null;
+            String(effectiveSellableItemGroupId || offersData.product_group_id || productGroupId || '').trim() ||
+            null;
           const offersCanonicalScope =
             effectiveCanonicalScope ||
             (offersProductGroupId && Number.isFinite(offersCount) && offersCount > 1
@@ -30485,6 +30496,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
           modules[0].data.product_group_id = offersProductGroupId || modules[0].data.product_group_id || null;
           offersData = {
             ...offersData,
+            product_group_id: offersProductGroupId || offersData.product_group_id || null,
             offer_source: Array.isArray(groupMembers) && groupMembers.length > 0 ? 'group_fused' : 'self',
             commerce_source: 'selected_seller_store',
             content_review_state: contentReviewState,
@@ -30492,6 +30504,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
               Array.isArray(offersData.offers) ? offersData.offers : [],
             ).map((offer) => ({
               ...offer,
+              product_group_id: offersProductGroupId || offer.product_group_id,
               offer_source:
                 Array.isArray(groupMembers) && groupMembers.length > 0 ? 'group_fused' : 'self',
               commerce_source: 'selected_seller_store',
