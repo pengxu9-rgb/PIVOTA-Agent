@@ -680,6 +680,90 @@ function isReviewedIngredientAuthoritySource(sourceOrigin) {
   return normalized === 'kb_reviewed' || normalized === 'kb_reviewed_read_through';
 }
 
+function normalizeIngredientKey(value) {
+  return asString(value).toLowerCase().replace(/[^a-z0-9]+/g, '');
+}
+
+function isTrustedIngredientIntel(value) {
+  const intel = asPlainObject(value);
+  if (!intel) return false;
+  const sourceOrigin = asString(intel.source_origin || intel.sourceOrigin).toLowerCase();
+  const sourceQuality = asString(
+    intel.source_quality_status || intel.sourceQualityStatus || intel.quality_status,
+  ).toLowerCase();
+  const reviewState = asString(
+    intel.review_state ||
+      intel.reviewState ||
+      intel.content_review_state ||
+      intel.contentReviewState ||
+      intel.review_decision ||
+      intel.reviewDecision,
+  ).toLowerCase();
+  const hasTrustedSource =
+    ['official_pdp', 'kb_reviewed', 'kb_reviewed_read_through'].includes(sourceOrigin) ||
+    (sourceOrigin === 'retail_pdp' && ['high', 'medium'].includes(sourceQuality));
+  const hasReviewedState =
+    /reviewed|manual_reviewed|assistant_reviewed|human_reviewed|approved|completed/.test(reviewState) ||
+    Boolean(asString(intel.reviewed_at || intel.reviewedAt));
+  return hasTrustedSource && ['high', 'medium', 'reviewed', 'authoritative'].includes(sourceQuality) && hasReviewedState;
+}
+
+function collectIngredientIntelCandidates(product, inputs = readIngredientInputs(product)) {
+  return [
+    product?.ingredient_intel,
+    product?.ingredientIntel,
+    inputs.ingredientIntel,
+    inputs.snapshotIngredientIntel,
+    inputs.seedData?.ingredient_intel,
+    inputs.seedData?.ingredientIntel,
+    inputs.snapshot?.ingredient_intel,
+    inputs.snapshot?.ingredientIntel,
+    product?.external_seed?.ingredient_intel,
+    product?.externalSeed?.ingredient_intel,
+    product?.external_seed?.snapshot?.ingredient_intel,
+    product?.source_payload?.ingredient_intel,
+    product?.source_payload?.seed_data?.ingredient_intel,
+    product?.source_payload?.seed_data?.snapshot?.ingredient_intel,
+  ].filter(Boolean);
+}
+
+function hasTrustedSingleIngredientAuthority(product, items, inputs = readIngredientInputs(product)) {
+  const normalizedItems = normalizeIngredientItems(items, { max: 4 });
+  if (normalizedItems.length !== 1) return false;
+  const targetKey = normalizeIngredientKey(normalizedItems[0]);
+  if (!targetKey || !isLikelyInciStructuredItem(normalizedItems[0])) return false;
+  for (const candidate of collectIngredientIntelCandidates(product, inputs)) {
+    if (!isTrustedIngredientIntel(candidate)) continue;
+    const intel = asPlainObject(candidate) || {};
+    const list = normalizeIngredientItems(
+      Array.isArray(intel.inci_list)
+        ? intel.inci_list
+        : Array.isArray(intel.items)
+          ? intel.items
+          : [],
+      { max: 8 },
+    );
+    if (list.length && list.length !== 1) continue;
+    if (list.length === 1 && normalizeIngredientKey(list[0]) === targetKey) return true;
+    const raw = asString(
+      intel.raw_ingredient_text_clean ||
+        intel.rawIngredientTextClean ||
+        intel.raw_text ||
+        intel.rawText ||
+        intel.pdp_ingredients_raw,
+    );
+    if (raw && normalizeIngredientKey(raw) === targetKey) return true;
+  }
+  return false;
+}
+
+function resolveSingleIngredientAuthoritySourceOrigin(product, inputs = readIngredientInputs(product)) {
+  const trusted = collectIngredientIntelCandidates(product, inputs).find((candidate) =>
+    isTrustedIngredientIntel(candidate),
+  );
+  return asString(trusted?.source_origin || trusted?.sourceOrigin) || 'structured_array';
+}
+
 function buildAuthorityRecord({
   rawText = '',
   items = [],
@@ -729,7 +813,7 @@ function buildExternalSeedProductFamilySuppression(product, generatedAt) {
   });
 }
 
-function readStructuredArrayAuthority(product) {
+function readStructuredArrayAuthority(product, inputs = readIngredientInputs(product)) {
   const readItems = (...values) => {
     for (const value of values) {
       const list = Array.isArray(value)
@@ -776,9 +860,16 @@ function readStructuredArrayAuthority(product) {
         ? directItems
         : parsedStructuredItems.length >= 3
           ? parsedStructuredItems
-          : parsedRawItems;
-  if (!isLikelyAuthoritativeIngredientSet(finalItems)) return null;
-  if (finalItems.length < 3) return null;
+          : parsedRawItems.length
+            ? parsedRawItems
+            : directStructuredItems.length
+              ? directStructuredItems
+              : directItems;
+  const trustedSingleIngredient = hasTrustedSingleIngredientAuthority(product, finalItems, inputs);
+  if (!trustedSingleIngredient) {
+    if (!isLikelyAuthoritativeIngredientSet(finalItems)) return null;
+    if (finalItems.length < 3) return null;
+  }
   const activeItems = normalizeIngredientItems(
     readItems(product?.active_ingredients, product?.activeIngredients),
   );
@@ -786,7 +877,9 @@ function readStructuredArrayAuthority(product) {
     rawText: rawText || finalItems.join(', '),
     items: finalItems,
     activeItems,
-    sourceOrigin: 'structured_array',
+    sourceOrigin: trustedSingleIngredient
+      ? resolveSingleIngredientAuthoritySourceOrigin(product, inputs)
+      : 'structured_array',
     purityStatus: 'authoritative',
   });
 }
@@ -1064,7 +1157,7 @@ function buildAuthoritativeIngredientView(product, options = {}) {
     }
   }
 
-  const fromStructuredArray = readStructuredArrayAuthority(product);
+  const fromStructuredArray = readStructuredArrayAuthority(product, inputs);
   const fromSections = buildAuthorityFromSections(product, inputs.sections);
   const fromLegacy = buildAuthorityFromLegacyRaw(product, inputs);
   const picked =

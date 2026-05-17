@@ -174,6 +174,45 @@ describe('pdpIngredientAuthority', () => {
     expect(authority.active_items).toEqual(['Niacinamide']);
   });
 
+  test('allows reviewed official single-ingredient INCI formulas', () => {
+    const modules = buildStructuredPdpIngredientModules({
+      merchant_id: 'external_seed',
+      source: 'external_seed',
+      title: '100% Cold-Pressed Tamanu Oil',
+      ingredients_inci: ['Calophyllum Inophyllum Seed Oil'],
+      raw_ingredient_text_clean: 'Calophyllum Inophyllum Seed Oil.',
+      ingredient_intel: {
+        inci_list: ['Calophyllum Inophyllum Seed Oil'],
+        source_origin: 'official_pdp',
+        source_quality_status: 'high',
+        review_state: 'manual_reviewed_by_codex',
+        reviewed_at: '2026-05-13T22:26:47.690Z',
+        raw_ingredient_text_clean: 'Calophyllum Inophyllum Seed Oil.',
+      },
+    });
+
+    expect(modules.ingredientsInciData).toEqual(
+      expect.objectContaining({
+        items: ['Calophyllum Inophyllum Seed Oil'],
+        raw_text: 'Calophyllum Inophyllum Seed Oil',
+        source_origin: 'official_pdp',
+        source_quality_status: 'authoritative',
+      }),
+    );
+  });
+
+  test('rejects unreviewed single-ingredient arrays', () => {
+    const modules = buildStructuredPdpIngredientModules({
+      merchant_id: 'external_seed',
+      source: 'external_seed',
+      title: 'Single Oil',
+      ingredients_inci: ['Calophyllum Inophyllum Seed Oil'],
+    });
+
+    expect(modules.ingredientsInciData).toBeNull();
+    expect(modules.authority.purity_status).toBe('suppressed');
+  });
+
   test('filters stale non-reviewed existing authority active items against INCI', () => {
     const authority = buildAuthoritativeIngredientView({
       ingredient_intel: {
