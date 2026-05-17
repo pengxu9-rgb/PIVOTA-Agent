@@ -241,12 +241,18 @@ function buildPublicGatewayPayload(operation, payload = {}) {
 }
 
 async function fetchRows({ market, seedId, externalProductId, domain, brand, limit, offset }) {
-  const where = [
-    `status = 'active'`,
-    `attached_product_key IS NULL`,
-    `market = $1`,
-    `(tool = '*' OR tool = 'creator_agents')`,
-  ];
+  const focusedLookup = Boolean(seedId || externalProductId);
+  const where = focusedLookup
+    ? [
+        `status = 'active'`,
+        `market = $1`,
+      ]
+    : [
+        `status = 'active'`,
+        `attached_product_key IS NULL`,
+        `market = $1`,
+        `(tool = '*' OR tool = 'creator_agents')`,
+      ];
   const params = [market];
   const bind = (value) => {
     params.push(value);
@@ -255,14 +261,17 @@ async function fetchRows({ market, seedId, externalProductId, domain, brand, lim
 
   if (seedId) where.push(`id::text = ${bind(seedId)}`);
   if (externalProductId) where.push(`external_product_id = ${bind(externalProductId)}`);
-  if (domain) where.push(`domain = ${bind(domain)}`);
-  if (brand) where.push(`lower(coalesce(seed_data->>'brand', seed_data->'snapshot'->>'brand', '')) = lower(${bind(brand)})`);
+  if (!focusedLookup && domain) where.push(`domain = ${bind(domain)}`);
+  if (!focusedLookup && brand) where.push(`lower(coalesce(seed_data->>'brand', seed_data->'snapshot'->>'brand', '')) = lower(${bind(brand)})`);
 
   params.push(limit);
   const limitBind = `$${params.length}`;
   params.push(offset);
   const offsetBind = `$${params.length}`;
 
+  const orderSql = seedId || externalProductId
+    ? ''
+    : 'ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST';
   const res = await query(
     `
       SELECT
@@ -270,6 +279,8 @@ async function fetchRows({ market, seedId, externalProductId, domain, brand, lim
         external_product_id,
         market,
         domain,
+        tool,
+        attached_product_key,
         canonical_url,
         destination_url,
         title,
@@ -281,13 +292,28 @@ async function fetchRows({ market, seedId, externalProductId, domain, brand, lim
         created_at
       FROM external_product_seeds
       WHERE ${where.join('\n        AND ')}
-      ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST
+      ${orderSql}
       LIMIT ${limitBind}
       OFFSET ${offsetBind}
     `,
     params,
   );
-  return res.rows || [];
+  const rows = res.rows || [];
+  if (!focusedLookup) return rows;
+  const expectedDomain = normalizeNonEmptyString(domain);
+  const expectedBrand = normalizeNonEmptyString(brand).toLowerCase();
+  return rows.filter((row) => {
+    if (row.attached_product_key != null) return false;
+    if (!['*', 'creator_agents'].includes(normalizeNonEmptyString(row.tool))) return false;
+    if (expectedDomain && normalizeNonEmptyString(row.domain) !== expectedDomain) return false;
+    if (expectedBrand) {
+      const seedData = ensureJsonObject(row.seed_data);
+      const snapshot = ensureJsonObject(seedData.snapshot);
+      const rowBrand = normalizeNonEmptyString(seedData.brand || snapshot.brand).toLowerCase();
+      if (rowBrand !== expectedBrand) return false;
+    }
+    return true;
+  });
 }
 
 async function fetchExtractorTruth(row, baseUrl, options = {}) {

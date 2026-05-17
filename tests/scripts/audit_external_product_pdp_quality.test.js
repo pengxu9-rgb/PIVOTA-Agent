@@ -1,4 +1,11 @@
+jest.mock('../../src/db', () => ({
+  query: jest.fn(),
+  closePool: jest.fn(),
+}));
+
+const { query } = require('../../src/db');
 const {
+  fetchRows,
   resolveGatewayUrl,
   buildAuthoritativePayload,
   buildPublicGatewayPayload,
@@ -19,8 +26,41 @@ const {
 } = require('../../src/services/externalSeedPdpQuality');
 
 describe('audit-external-product-pdp-quality helpers', () => {
+  beforeEach(() => {
+    query.mockReset();
+    query.mockResolvedValue({ rows: [] });
+  });
+
   test('defaults to the public PDP gateway instead of production backend env', () => {
     expect(resolveGatewayUrl('')).toBe('https://agent.pivota.cc/api/gateway');
+  });
+
+  test('uses focused row lookup without updated_at ordering for external product QA', async () => {
+    await fetchRows({
+      market: 'US',
+      externalProductId: 'ext_123',
+      limit: 1,
+      offset: 0,
+    });
+
+    const [sql, params] = query.mock.calls[0];
+    expect(sql).toContain('external_product_id = $2');
+    expect(sql).not.toContain('ORDER BY updated_at');
+    expect(params).toEqual(['US', 'ext_123', 1, 0]);
+  });
+
+  test('keeps deterministic ordering for broad PDP QA scans', async () => {
+    await fetchRows({
+      market: 'US',
+      domain: 'kravebeauty.com',
+      limit: 20,
+      offset: 5,
+    });
+
+    const [sql, params] = query.mock.calls[0];
+    expect(sql).toContain('domain = $2');
+    expect(sql).toContain('ORDER BY updated_at DESC NULLS LAST, created_at DESC NULLS LAST');
+    expect(params).toEqual(['US', 'kravebeauty.com', 20, 5]);
   });
 
   test('exports report output writer for CLI artifact mode', () => {
