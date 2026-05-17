@@ -1618,6 +1618,108 @@ describe('externalSeedProducts helper', () => {
     );
   });
 
+  test('normalizes compact ea count variants as displayable pack options', () => {
+    const variants = normalizeSeedVariants(
+      {
+        variants: [
+          {
+            variant_id: '52228525621614',
+            sku: 'S_8809784602330',
+            title: '1ea',
+            option_name: 'Option',
+            option_value: '1ea',
+            price: 6,
+            currency: 'USD',
+          },
+          {
+            variant_id: '52228525654382',
+            sku: 'S_8809784603528',
+            title: '5ea',
+            option_name: 'Option',
+            option_value: '5ea',
+            price: 18.7,
+            currency: 'USD',
+          },
+        ],
+      },
+      {
+        title: 'BALANCEFUL Modeling Pack',
+        canonical_url: 'https://torriden.us/products/balanceful-modeling-pack',
+      },
+    );
+
+    expect(variants).toHaveLength(2);
+    expect(variants[0]).toEqual(
+      expect.objectContaining({
+        title: '1ea',
+        axis_kind: 'pack',
+        display_label: 'Pack: 1ea',
+        options: [expect.objectContaining({ name: 'Pack', value: '1ea', axis_kind: 'pack' })],
+        source_quality_status: 'captured',
+      }),
+    );
+    expect(variants[1]).toEqual(
+      expect.objectContaining({
+        title: '5ea',
+        axis_kind: 'pack',
+        display_label: 'Pack: 5ea',
+        options: [expect.objectContaining({ name: 'Pack', value: '5ea', axis_kind: 'pack' })],
+        source_quality_status: 'captured',
+      }),
+    );
+  });
+
+  test('normalizes generic jar and tube variants as displayable format options', () => {
+    const variants = normalizeSeedVariants(
+      {
+        variants: [
+          {
+            variant_id: '52228524802414',
+            sku: 'S_8809784600183',
+            title: 'Jar Type',
+            option_name: 'Option',
+            option_value: 'Jar Type',
+            price: 22.95,
+            currency: 'USD',
+          },
+          {
+            variant_id: '52228524835182',
+            sku: 'S_8809784601661',
+            title: 'Tube Type',
+            option_name: 'Option',
+            option_value: 'Tube Type',
+            price: 22.95,
+            currency: 'USD',
+          },
+        ],
+      },
+      {
+        title: 'DIVE IN Soothing Cream',
+        canonical_url: 'https://torriden.us/products/dive-in-soothing-cream',
+      },
+    );
+
+    expect(variants).toHaveLength(2);
+    expect(variants[0]).toEqual(
+      expect.objectContaining({
+        title: 'Jar Type',
+        axis_kind: 'format',
+        display_label: 'Format: Jar Type',
+        options: [expect.objectContaining({ name: 'Format', value: 'Jar Type', axis_kind: 'format' })],
+        source_quality_status: 'captured',
+      }),
+    );
+    expect(variants[1]).toEqual(
+      expect.objectContaining({
+        title: 'Tube Type',
+        axis_kind: 'format',
+        display_label: 'Format: Tube Type',
+        options: [expect.objectContaining({ name: 'Format', value: 'Tube Type', axis_kind: 'format' })],
+        source_quality_status: 'captured',
+      }),
+    );
+  });
+
   test('splits merchant shade-size axes and suppresses non-tinted skincare shade noise', () => {
     const [variant] = normalizeSeedVariants(
       {

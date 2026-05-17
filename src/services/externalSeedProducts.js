@@ -2417,7 +2417,9 @@ function parseVariantPackValue(value) {
   if (additive) return `${(Number(additive[1]) || 0) + (Number(additive[2]) || 0)}pack`;
   const explicit = normalized.match(/\b(pack of|set of)\s*(\d+)\b/i);
   if (explicit) return `${Number(explicit[2]) || 0}pack`;
-  const short = normalized.match(/\b(\d+)\s*-?\s*(pack|ct|count|pcs|pieces|masks?|pads?|sheets?|sachets?|units?)\b/i);
+  const short = normalized.match(
+    /\b(\d+)\s*-?\s*(pack|ct|count|pcs|pieces|ea|each|masks?|pads?|sheets?|sachets?|units?)\b/i,
+  );
   if (short) return `${Number(short[1]) || 0}pack`;
   if (/\bduo\b/i.test(normalized)) return '2pack';
   if (/\btrio\b/i.test(normalized)) return '3pack';
@@ -2433,6 +2435,8 @@ function parseVariantFormatValue(value) {
   if (/\bmini\b/i.test(normalized)) return 'Mini';
   if (/\bjumbo\b/i.test(normalized)) return 'Jumbo';
   if (/\bregular\b/i.test(normalized)) return 'Regular';
+  if (/\bjar\s*type\b|\bjar\b/i.test(normalized)) return 'Jar Type';
+  if (/\btube\s*type\b|\btube\b/i.test(normalized)) return 'Tube Type';
   return '';
 }
 
