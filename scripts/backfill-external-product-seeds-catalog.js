@@ -2283,12 +2283,33 @@ function findPdpDetailsSections(sections, headingPattern) {
   return normalizedSections.filter((section) => headingPattern.test(section.heading));
 }
 
+function truncatePdpIngredientsCommerceTail(value) {
+  let next = normalizePdpCopy(value);
+  if (!next) return '';
+  const commerceTailPatterns = [
+    /(?:^|\n)\s*\[\s*\{\s*\\?"variant_id\\?"/i,
+    /(?:^|\n)\s*\{\s*\\?"variant_id\\?"/i,
+    /<\s*(?:source|picture|img|video|template|script|style)\b/i,
+    /\b(?:srcset|sizes)\s*=/i,
+    /(?:^|\n)\s*\$\s*\d+(?:\.\d{2})?\b/i,
+    /(?:^|\n)\s*(?:Regular price|Sale price|Compare at price|Configure|Sold Out|Notify Me|Add to (?:Cart|Bag)|Buy Now|Quantity)\b/i,
+  ];
+  for (const pattern of commerceTailPatterns) {
+    const match = next.match(pattern);
+    if (match && match.index > 20) {
+      next = next.slice(0, match.index).trim();
+    }
+  }
+  return next.trim();
+}
+
 function cleanPdpIngredientsRaw(value) {
   let next = normalizePdpCopy(value)
     .replace(/<br\s*\/?>/gi, '\n')
     .replace(/<\/p>/gi, '\n')
-    .replace(/<[^>]+>/g, ' ')
     .replace(/\r/g, '');
+  next = truncatePdpIngredientsCommerceTail(next).replace(/<[^>]+>/g, ' ');
+  next = truncatePdpIngredientsCommerceTail(next);
   if (!next) return '';
 
   const explicitIngredientHeadings = Array.from(
@@ -2342,6 +2363,9 @@ function cleanPdpIngredientsRaw(value) {
   if (/\b(?:meaning it is not greasy|instead it absorbs|exfoliates dead skin cells|Details The)\b/i.test(next)) {
     return '';
   }
+  if (/\b(?:variant_id|metafield_value|regular price|sold out|notify me|srcset|<source|configure)\b/i.test(next)) {
+    return '';
+  }
   if (/\b(?:Dibuyi|Ethylhexy\/|benzovi|Polvsilicone|Vitis-idata|Salicylâte|Propylheptyi|Polyglycery1|Dimethyisiloxyethy|Houttuvnia|Onza Sativo|Giycerin)\b/i.test(next)) {
     return '';
   }
@@ -2352,6 +2376,12 @@ function cleanPdpIngredientsRaw(value) {
   if (sentenceCount > 0 && commaCount < 4) return '';
   if (next.length < 20 || commaCount < 1) return '';
   return next;
+}
+
+function looksLikeFaqAnswerHowTo(value) {
+  const normalized = normalizeNonEmptyString(value);
+  if (!normalized) return false;
+  return /^(?:yes|no|yep|nope)[.!?,\s]/i.test(normalized);
 }
 
 function cleanPdpHowToUseRaw(value) {
@@ -2384,6 +2414,7 @@ function cleanPdpHowToUseRaw(value) {
     .replace(/[ \t]{2,}/g, ' ')
     .trim();
   if (!next || /^(?:how to|how to use|directions?|usage)$/i.test(next)) return '';
+  if (looksLikeFaqAnswerHowTo(next)) return '';
   return next;
 }
 

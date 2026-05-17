@@ -28,6 +28,7 @@ const {
   collectBackfilledExternalProductIds,
   isDisplayableProductIntelKbRow,
   cleanPdpIngredientsRaw,
+  cleanPdpHowToUseRaw,
   choosePdpHowToUseRaw,
   extractHowToUseFromPdpText,
   isReviewPollutedPdpDetailsSection,
@@ -4001,6 +4002,31 @@ Contains four types of peptides`,
       'Urea - Moisturizes\n\nMandelic Acid (AHA) - Exfoliates',
     );
     expect(payload.nextRow.seed_data.pdp_active_ingredients_raw).not.toMatch(/Free From|Full Ingredients/i);
+  });
+
+  test('strips Shopify commerce and media tails from PDP ingredients', () => {
+    const cleaned = cleanPdpIngredientsRaw(
+      'Water, Dipropylene Glycol, Methyl Methacrylate Crosspolymer, Glyceryl Polymethacrylate, Propylene Glycol, Acrylates Copolymer, Butyloctyl Salicylate, Ethylhexyl Methoxycrylene, Ceteareth-20, Polysorbate 60, Sorbitan Stearate, Caprylyl Glycol, Cetearyl Olivate, Panthenol, Sodium Hyaluronate\n\n' +
+        '[{"variant_id":"48280016093403","metafield_value":""}]\n\n' +
+        'Hydro UV Shield Sunscreen\n\n$12.60\n\nRegular price\n\n$18.00\n\nConfigure\n\n' +
+        '<source media="(max-width: 749px)" srcset="//tirtir.global/cdn/shop/files/page.jpg?v=1&width=180 180w">',
+    );
+
+    expect(cleaned).toBe(
+      'Water, Dipropylene Glycol, Methyl Methacrylate Crosspolymer, Glyceryl Polymethacrylate, Propylene Glycol, Acrylates Copolymer, Butyloctyl Salicylate, Ethylhexyl Methoxycrylene, Ceteareth-20, Polysorbate 60, Sorbitan Stearate, Caprylyl Glycol, Cetearyl Olivate, Panthenol, Sodium Hyaluronate',
+    );
+    expect(cleaned).not.toMatch(/variant_id|Regular price|Configure|source|srcset/i);
+  });
+
+  test('rejects FAQ answers misclassified as PDP how-to copy', () => {
+    expect(
+      cleanPdpHowToUseRaw(
+        'Yes! This gentle, hydrating sunscreen is perfect for daily use as part of your skincare routine.',
+      ),
+    ).toBe('');
+    expect(cleanPdpHowToUseRaw('Apply generously as the final step of your routine. Reapply every 2 hours.')).toBe(
+      'Apply generously as the final step of your routine. Reapply every 2 hours.',
+    );
   });
 
   test('removes stale narrative ingredient fallback when catalog has no INCI', () => {
