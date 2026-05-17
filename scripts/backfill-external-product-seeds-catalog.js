@@ -3803,7 +3803,7 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
       normalizedRepresentativeIngredientsSectionBody,
   );
   const existingIngredientsRawForActiveDerivation = normalizeNonEmptyString(
-    seedData.pdp_ingredients_raw || snapshot.pdp_ingredients_raw,
+    cleanPdpIngredientsRaw(seedData.pdp_ingredients_raw || snapshot.pdp_ingredients_raw),
   );
   const activeIngredientsFromIncomingIngredientsRaw = extractLabeledActiveIngredientsFromIngredientsRaw(pdpIngredientsRaw);
   const activeIngredientsFromExistingIngredientsRaw =
@@ -4080,7 +4080,7 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
   const existingPdpIngredientsRaw = identityRepairBackfill ||
     (!hasApprovedSnapshotContract && !isSurfaceablePdpField(existingPdpFieldQualitySummary, 'ingredients_raw'))
     ? ''
-    : normalizeNonEmptyString(seedData.pdp_ingredients_raw || snapshot.pdp_ingredients_raw);
+    : cleanPdpIngredientsRaw(seedData.pdp_ingredients_raw || snapshot.pdp_ingredients_raw);
   const candidatePdpIngredientsRaw = supportsFormulaPdpFields
     ? pickPdpIngredientsRaw(
         surfaceablePdpIngredientsRaw || normalizedRepresentativeIngredientsSectionBody,

@@ -4018,6 +4018,80 @@ Contains four types of peptides`,
     expect(cleaned).not.toMatch(/variant_id|Regular price|Configure|source|srcset/i);
   });
 
+  test('does not preserve polluted existing PDP ingredients over cleaned incoming copy', () => {
+    const pollutedIngredients =
+      'Water, Dipropylene Glycol, Methyl Methacrylate Crosspolymer, Glyceryl Polymethacrylate, Propylene Glycol, Acrylates Copolymer, Butyloctyl Salicylate, Ethylhexyl Methoxycrylene, Ceteareth-20, Polysorbate 60, Sorbitan Stearate, Caprylyl Glycol, Cetearyl Olivate, Panthenol, Sodium Hyaluronate\n\n' +
+      '[{"variant_id":"48280016093403","metafield_value":""}]\n\n' +
+      'Hydro UV Shield Sunscreen\n\n$12.60\n\nRegular price\n\n$18.00\n\nConfigure\n\n' +
+      '<source media="(max-width: 749px)" srcset="//tirtir.global/cdn/shop/files/page.jpg?v=1&width=180 180w">';
+    const row = {
+      id: 'eps_tirtir_hydro_uv',
+      title: 'Hydro UV Shield Sunscreen',
+      canonical_url: 'https://tirtir.global/products/hydro-uv-shield-sunscreen',
+      destination_url: 'https://tirtir.global/products/hydro-uv-shield-sunscreen',
+      image_url: '',
+      price_amount: 12.6,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      seed_data: {
+        pdp_ingredients_raw: pollutedIngredients,
+        snapshot: {
+          pdp_ingredients_raw: pollutedIngredients,
+        },
+        external_seed_snapshot_contract: {
+          authoritative: true,
+          legacy_fields_quarantined: true,
+        },
+        pdp_field_quality_summary: {
+          ingredients_raw: {
+            source_origin: 'official_html',
+            source_quality_status: 'high',
+            source_kinds: ['official_pdp_full_ingredients'],
+            reason_codes: [],
+          },
+        },
+      },
+    };
+
+    const payload = buildSeedUpdatePayload(
+      row,
+      {
+        products: [
+          {
+            title: row.title,
+            url: row.canonical_url,
+            description_raw: 'A lightweight SPF50+ sunscreen.',
+            ingredients_raw: pollutedIngredients,
+            field_quality_summary: {
+              description_raw: {
+                source_origin: 'shopify_json',
+                source_quality_status: 'high',
+                source_kinds: ['shopify_description'],
+                reason_codes: [],
+              },
+              ingredients_raw: {
+                source_origin: 'official_html',
+                source_quality_status: 'high',
+                source_kinds: ['official_pdp_full_ingredients'],
+                reason_codes: [],
+              },
+            },
+            variants: [],
+          },
+        ],
+        variants: [],
+        diagnostics: { failure_category: null },
+      },
+      row.canonical_url,
+    );
+
+    expect(payload.nextRow.seed_data.pdp_ingredients_raw).toBe(
+      'Water, Dipropylene Glycol, Methyl Methacrylate Crosspolymer, Glyceryl Polymethacrylate, Propylene Glycol, Acrylates Copolymer, Butyloctyl Salicylate, Ethylhexyl Methoxycrylene, Ceteareth-20, Polysorbate 60, Sorbitan Stearate, Caprylyl Glycol, Cetearyl Olivate, Panthenol, Sodium Hyaluronate',
+    );
+    expect(payload.nextRow.seed_data.raw_ingredient_text_clean).not.toMatch(/variant_id|Regular price|source/i);
+    expect(payload.nextRow.seed_data.snapshot.pdp_ingredients_raw).not.toMatch(/variant_id|Regular price|source/i);
+  });
+
   test('rejects FAQ answers misclassified as PDP how-to copy', () => {
     expect(
       cleanPdpHowToUseRaw(
