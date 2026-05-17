@@ -2237,13 +2237,13 @@ function cleanPdpIngredientsRaw(value) {
   if (!next) return '';
 
   const explicitIngredientHeadings = Array.from(
-    next.matchAll(/(?:^|[\n\r])(?:Full\s+)?Ingredients\b\s*:?\s*/gi),
+    next.matchAll(/(?:^|[\n\r])(?:Full\s+)?(?:Ingredients|INCI)\b\s*:?\s*/gi),
   );
   if (explicitIngredientHeadings.length > 0) {
     const lastHeading = explicitIngredientHeadings[explicitIngredientHeadings.length - 1];
     next = next.slice(lastHeading.index + lastHeading[0].length).trim();
   } else {
-    const inlineFullIngredients = next.match(/\bFull Ingredients\b\s*:?\s*/i);
+    const inlineFullIngredients = next.match(/\bFull\s+(?:Ingredients|INCI)\b\s*:?\s*/i);
     if (inlineFullIngredients) {
       next = next.slice(inlineFullIngredients.index + inlineFullIngredients[0].length).trim();
     }
@@ -2299,6 +2299,38 @@ function cleanPdpIngredientsRaw(value) {
   return next;
 }
 
+function cleanPdpHowToUseRaw(value) {
+  let next = normalizePdpCopy(value)
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\r/g, '')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\s*\n\s*/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+  if (!next) return '';
+
+  const stopPatterns = [
+    /\b(?:Good\s+For|Skin\s+Type|Benefits?|Key\s+Ingredients?|(?:Full\s+)?Ingredients|Full\s+INCI|INCI)\b/i,
+    /\bFull\s+(?:Ingredients|INCI)\b/i,
+  ];
+  for (const pattern of stopPatterns) {
+    const match = next.match(pattern);
+    if (match && match.index > 12) {
+      next = next.slice(0, match.index).trim();
+    }
+  }
+
+  next = next
+    .replace(/^(?:How\s+to\s+Use|Directions?|Usage)\s*:?\s*/i, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim();
+  if (!next || /^(?:how to|how to use|directions?|usage)$/i.test(next)) return '';
+  return next;
+}
+
 function extractFullIngredientsFromText(value) {
   const normalized = normalizePdpCopy(value)
     .replace(/<br\s*\/?>/gi, '\n')
@@ -2306,7 +2338,7 @@ function extractFullIngredientsFromText(value) {
     .replace(/<[^>]+>/g, ' ')
     .trim();
   if (!normalized) return '';
-  const match = normalized.match(/\bFull Ingredients\b\s*:?\s*([\s\S]+)$/i);
+  const match = normalized.match(/\bFull\s+(?:Ingredients|INCI)\b\s*:?\s*([\s\S]+)$/i);
   if (!match) return '';
   return cleanPdpIngredientsRaw(match[1]);
 }
@@ -2533,14 +2565,14 @@ function scoreHowToUseCandidate(body, contextText) {
 }
 
 function pickBestHowToUseSection(detailsSections, rawValue, fallbackValue, contextText) {
-  const raw = normalizeNonEmptyString(rawValue);
-  const fallback = normalizeNonEmptyString(fallbackValue);
+  const raw = cleanPdpHowToUseRaw(rawValue);
+  const fallback = cleanPdpHowToUseRaw(fallbackValue);
   const candidatesWithPlaceholders = [
     ...findPdpDetailsSections(detailsSections, /^How to Use$/i).map((section) => section.body),
     raw,
     fallback,
   ]
-    .map(normalizeNonEmptyString)
+    .map(cleanPdpHowToUseRaw)
     .filter(Boolean);
   const candidates = candidatesWithPlaceholders.filter(
     (candidate) => !/^(?:how to|how to use|directions?|usage)$/i.test(candidate),
@@ -2575,9 +2607,9 @@ function filterDuplicateHowToSections(detailsSections, selectedHowTo) {
 }
 
 function pickPdpHowToUseRaw(rawValue, detailsSections, fallbackValue = '', contextText = '') {
-  const raw = normalizeNonEmptyString(rawValue);
-  const sectionBody = normalizeNonEmptyString(pickBestHowToUseSection(detailsSections, raw, fallbackValue, contextText));
-  const fallback = normalizeNonEmptyString(fallbackValue);
+  const raw = cleanPdpHowToUseRaw(rawValue);
+  const sectionBody = cleanPdpHowToUseRaw(pickBestHowToUseSection(detailsSections, raw, fallbackValue, contextText));
+  const fallback = cleanPdpHowToUseRaw(fallbackValue);
   if (looksLikeSunscreenContext(contextText) && sectionBody && sectionBody !== raw) {
     return sectionBody;
   }
@@ -3550,9 +3582,16 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     pdpDetailsSections,
   );
   const liveExtractedDescription = cleanPdpDescriptionCandidate(rawLiveExtractedDescription, pdpDetailsSections);
+  const representativeHowToUseSourceRaw = normalizeNonEmptyString(
+    representativeProduct?.how_to_use_raw ||
+      representativeProduct?.pdp_how_to_use_raw ||
+      normalizedRepresentativeHowToSectionBody,
+  );
+  const ingredientsFromRepresentativeHowTo = extractFullIngredientsFromText(representativeHowToUseSourceRaw);
   const pdpIngredientsRaw = normalizeNonEmptyString(
     representativeProduct?.ingredients_raw ||
       representativeProduct?.pdp_ingredients_raw ||
+      ingredientsFromRepresentativeHowTo ||
       normalizedRepresentativeIngredientsSectionBody,
   );
   const derivedPdpActiveIngredientsRaw = extractActiveIngredientsRawFromDetailsSections(
@@ -3564,9 +3603,7 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
       derivedPdpActiveIngredientsRaw,
   );
   const pdpHowToUseRaw = normalizeNonEmptyString(
-    representativeProduct?.how_to_use_raw ||
-      representativeProduct?.pdp_how_to_use_raw ||
-      normalizedRepresentativeHowToSectionBody,
+    cleanPdpHowToUseRaw(representativeHowToUseSourceRaw),
   );
   const pdpFaqItems = normalizeFaqItems(
     representativeProduct?.faq_items ||
@@ -3605,6 +3642,31 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
           'derived_details_section_ingredients',
         ]),
         reason_codes: [],
+      },
+    };
+  }
+  if (
+    ingredientsFromRepresentativeHowTo &&
+    isSurfaceablePdpField(incomingPdpFieldQualitySummary, 'how_to_use_raw') &&
+    !incomingPdpFieldQualitySummary?.ingredients_raw
+  ) {
+    const howToQuality = incomingPdpFieldQualitySummary?.how_to_use_raw || {};
+    incomingPdpFieldQualitySummary = {
+      ...(incomingPdpFieldQualitySummary || {}),
+      ingredients_raw: {
+        source_origin: normalizeNonEmptyString(howToQuality.source_origin) || 'retail_pdp',
+        source_quality_status:
+          normalizeNonEmptyString(howToQuality.source_quality_status).toLowerCase() === 'high'
+            ? 'high'
+            : 'medium',
+        source_kinds: uniqueStrings([
+          ...(Array.isArray(howToQuality.source_kinds) ? howToQuality.source_kinds : []),
+          'derived_labeled_full_inci_from_how_to',
+        ]),
+        reason_codes: uniqueStrings([
+          ...(Array.isArray(howToQuality.reason_codes) ? howToQuality.reason_codes : []),
+          'derived_from_labeled_full_inci',
+        ]),
       },
     };
   }
@@ -5170,8 +5232,13 @@ function mapShopifyProductsJsonProduct(product, targetUrl) {
   const descriptionRaw =
     findShopifySectionBody(detailsSections, /^(?:what\s+it\s+is|what\s+is\s+it|description|about)$/i) ||
     normalizeNonEmptyString(detailsSections[0]?.body);
-  const ingredientsRaw = findShopifySectionBody(detailsSections, /^(?:full\s+ingredients|ingredients|ingredient\s+list)$/i);
-  const howToUseRaw = findShopifySectionBody(detailsSections, /^(?:how\s+to\s+use|directions|usage)$/i);
+  const rawHowToUseRaw = findShopifySectionBody(detailsSections, /^(?:how\s+to\s+use|directions|usage)$/i);
+  const ingredientsRaw =
+    findShopifySectionBody(detailsSections, /^(?:full\s+(?:ingredients|inci)|ingredients|ingredient\s+list|inci)$/i) ||
+    extractFullIngredientsFromText(rawHowToUseRaw) ||
+    extractFullIngredientsFromText(descriptionRaw) ||
+    extractFullIngredientsFromText(detailsSections.map((section) => section?.body).join('\n\n'));
+  const howToUseRaw = cleanPdpHowToUseRaw(rawHowToUseRaw);
   const images = (Array.isArray(product.images) ? product.images : [])
     .map((image) => normalizeUrlLike(image?.src || image))
     .filter(Boolean);

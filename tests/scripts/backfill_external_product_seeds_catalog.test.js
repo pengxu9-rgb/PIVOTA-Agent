@@ -1998,6 +1998,87 @@ describe('backfill-external-product-seeds-catalog', () => {
     ]);
   });
 
+  test('splits Shopify Full INCI copy out of how-to during handle fallback', async () => {
+    const targetUrl = 'https://roundlab.com/products/birch-moisturizing-hand-cream';
+    const imageUrl = 'https://cdn.shopify.com/s/files/1/0651/7656/8022/files/birch_hand_cream_3.webp?v=1776117448';
+    const row = {
+      id: 'eps_roundlab_hand_cream',
+      external_product_id: 'ext_roundlab_hand_cream',
+      title: 'Birch Moisturizing Hand Cream',
+      canonical_url: targetUrl,
+      destination_url: targetUrl,
+      price_amount: null,
+      price_currency: 'USD',
+      availability: 'unknown',
+      seed_data: { snapshot: {} },
+    };
+
+    jest
+      .spyOn(axios, 'post')
+      .mockResolvedValueOnce({
+        data: {
+          products: [],
+          variants: [],
+          diagnostics: {
+            discovery_strategy: 'shopify_json',
+            failure_category: 'no_product_urls',
+          },
+        },
+      });
+    jest
+      .spyOn(axios, 'get')
+      .mockResolvedValueOnce({
+        status: 200,
+        data: {
+          products: [
+            {
+              id: 9569001000001,
+              title: 'Birch Moisturizing Hand Cream',
+              handle: 'birch-moisturizing-hand-cream',
+              vendor: 'Round Lab',
+              product_type: 'Hand Cream',
+              tags: [],
+              body_html:
+                '<p><strong>How to Use</strong><br>Apply an appropriate amount to clean, dry hands.<br>Gently massage until fully absorbed.<br>Reapply as needed throughout the day.<br><br>Good For<br>Dry or rough hands<br><br>Full INCI<br>Water, Betula Platyphylla Japonica Juice, Glycerin, Butylene Glycol, Caprylic/Capric Triglyceride, Cetearyl Alcohol, Glyceryl Stearate, Panthenol, 1,2-Hexanediol, Carbomer, Tromethamine, Ethylhexylglycerin, Sodium Hyaluronate, Disodium EDTA</p>',
+              variants: [
+                {
+                  id: 50610000000001,
+                  title: 'Default Title',
+                  option1: 'Default Title',
+                  sku: 'RL-HAND-CREAM',
+                  available: true,
+                  price: '8.50',
+                  compare_at_price: null,
+                },
+              ],
+              images: [{ src: imageUrl }],
+              options: [{ name: 'Title', values: ['Default Title'] }],
+            },
+          ],
+        },
+      });
+
+    const result = await processRow(row, {
+      dryRun: true,
+      baseUrl: 'https://catalog.test',
+      validateImageHealth: false,
+      expandVariants: false,
+    });
+
+    expect(result.status).toBe('dry_run');
+    expect(result.payload.nextRow.seed_data.pdp_how_to_use_raw).toBe(
+      'Apply an appropriate amount to clean, dry hands. Gently massage until fully absorbed. Reapply as needed throughout the day.',
+    );
+    expect(result.payload.nextRow.seed_data.pdp_how_to_use_raw).not.toMatch(/Good For|Full INCI|Betula/i);
+    expect(result.payload.nextRow.seed_data.pdp_ingredients_raw).toBe(
+      'Water, Betula Platyphylla Japonica Juice, Glycerin, Butylene Glycol, Caprylic/Capric Triglyceride, Cetearyl Alcohol, Glyceryl Stearate, Panthenol, 1,2-Hexanediol, Carbomer, Tromethamine, Ethylhexylglycerin, Sodium Hyaluronate, Disodium EDTA',
+    );
+    expect(result.payload.nextRow.seed_data.pdp_field_quality_summary.ingredients_raw).toMatchObject({
+      source_origin: 'shopify_products_json',
+      source_quality_status: 'medium',
+    });
+  });
+
   test('recovers the original PDP target from diagnostics when the stored URL drifted to contact-us', () => {
     const row = {
       canonical_url: 'https://theordinary.com/en-us/contact-us.html',
