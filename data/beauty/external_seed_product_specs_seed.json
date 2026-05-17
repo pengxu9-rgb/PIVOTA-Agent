@@ -384,6 +384,55 @@
           "evidence": "Medicube Official marketplace listing exposes Net Weight as 30ml."
         }
       ]
+    },
+    {
+      "external_product_id": "ext_eeaa60fdc9e5d58f427289cc",
+      "brand": "Anua",
+      "title": "Peach 77 Niacin Essence Toner",
+      "canonical_url": "https://anua.com/products/peach-77-niacin-essence-toner-1",
+      "size_detail_label": "250 mL",
+      "net_content": "250 mL",
+      "review_state": "assistant_reviewed",
+      "sources": [
+        {
+          "source_kind": "official_pdp_product_spec",
+          "source_url": "https://anua.com/products/peach-77-niacin-essence-toner-1",
+          "evidence": "Official Anua PDP image alt and product page listing identify the toner size as 250ml."
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_a3ff031ecfa88381b40ace3a",
+      "brand": "Anua",
+      "title": "Heartleaf 77 Clear Pad",
+      "canonical_url": "https://anua.com/products/heartleaf-77-toner-pad-160ml",
+      "size_detail_label": "160 mL / 70 pads",
+      "net_content": "70 pads",
+      "net_size": "160 mL",
+      "review_state": "assistant_reviewed",
+      "sources": [
+        {
+          "source_kind": "official_pdp_product_spec",
+          "source_url": "https://anua.com/products/heartleaf-77-toner-pad-160ml",
+          "evidence": "Official Anua PDP image alt and product page listing identify the toner pad size as 160 ml / 70ea."
+        }
+      ]
+    },
+    {
+      "external_product_id": "ext_4853855767b9353fe7743a14",
+      "brand": "Anua",
+      "title": "Niacinamide 10 TXA 4 Serum for Brightening and Dark Spots",
+      "canonical_url": "https://anua.com/products/niacinamide-10-txa-4-serum-2",
+      "size_detail_label": "30 mL",
+      "net_content": "30 mL",
+      "review_state": "assistant_reviewed",
+      "sources": [
+        {
+          "source_kind": "official_pdp_product_spec",
+          "source_url": "https://anua.com/products/niacinamide-10-txa-4-serum-2",
+          "evidence": "Official Anua PDP image alt and product page listing identify the serum size as 30ml."
+        }
+      ]
     }
   ]
 }
