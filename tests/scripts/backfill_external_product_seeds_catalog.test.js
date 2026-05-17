@@ -29,6 +29,7 @@ const {
   isDisplayableProductIntelKbRow,
   cleanPdpIngredientsRaw,
   pickPdpIngredientsRaw,
+  applyReviewedActiveIngredientContract,
   reapplyApprovedPdpIngredientFieldsToRow,
   serializeBackfillResult,
   writeBackfillReport,
@@ -3199,6 +3200,87 @@ describe('backfill-external-product-seeds-catalog', () => {
     expect(row.seed_data.ingredient_intel.active_ingredients).toEqual(['Salicylic acid']);
     expect(row.seed_data.active_ingredients).not.toContain('OTC-LEVEL, EXFOLIATES SKIN, TARGETS + TREATS ACNE');
     expect(row.seed_data.snapshot.active_ingredients).toEqual(['Salicylic acid']);
+  });
+
+  test('reviewed active contract wins over newly extracted active array during backfill', () => {
+    const seedData = applyReviewedActiveIngredientContract({
+      active_ingredients: ['Peptides', 'Lactic acid'],
+      ingredient_intel: {
+        active_ingredients: ['Peptides', 'Lactic acid'],
+      },
+      reviewed_active_ingredients_v1: {
+        contract_version: 'external_seed.reviewed_active_ingredients.v1',
+        status: 'approved',
+        active_ingredients: ['Peptides'],
+      },
+      snapshot: {
+        active_ingredients: ['Peptides', 'Lactic acid'],
+        ingredient_intel: {
+          active_ingredients: ['Peptides', 'Lactic acid'],
+        },
+      },
+    });
+
+    expect(seedData.active_ingredients).toEqual(['Peptides']);
+    expect(seedData.ingredient_intel.active_ingredients).toEqual(['Peptides']);
+    expect(seedData.snapshot.active_ingredients).toEqual(['Peptides']);
+    expect(seedData.snapshot.ingredient_intel.active_ingredients).toEqual(['Peptides']);
+  });
+
+  test('post-enrichment ingredient reapply preserves reviewed active contract', () => {
+    const row = reapplyApprovedPdpIngredientFieldsToRow({
+      seed_data: {
+        pdp_active_ingredients_raw: 'Peptides\nLactic acid',
+        active_ingredients: ['Peptides', 'Lactic acid'],
+        ingredient_intel: {
+          active_ingredients: ['Peptides', 'Lactic acid'],
+        },
+        reviewed_active_ingredients_v1: {
+          contract_version: 'external_seed.reviewed_active_ingredients.v1',
+          status: 'approved',
+          active_ingredients: ['Peptides'],
+        },
+        snapshot: {
+          pdp_active_ingredients_raw: 'Peptides\nLactic acid',
+          active_ingredients: ['Peptides', 'Lactic acid'],
+          ingredient_intel: {
+            active_ingredients: ['Peptides', 'Lactic acid'],
+          },
+        },
+      },
+    });
+
+    expect(row.seed_data.active_ingredients).toEqual(['Peptides']);
+    expect(row.seed_data.ingredient_intel.active_ingredients).toEqual(['Peptides']);
+    expect(row.seed_data.snapshot.active_ingredients).toEqual(['Peptides']);
+    expect(row.seed_data.snapshot.ingredient_intel.active_ingredients).toEqual(['Peptides']);
+  });
+
+  test('post-enrichment ingredient reapply enforces reviewed contract even without raw PDP active text', () => {
+    const row = reapplyApprovedPdpIngredientFieldsToRow({
+      seed_data: {
+        active_ingredients: ['Peptides', 'Lactic acid'],
+        ingredient_intel: {
+          active_ingredients: ['Peptides', 'Lactic acid'],
+        },
+        snapshot: {
+          active_ingredients: ['Peptides', 'Lactic acid'],
+          ingredient_intel: {
+            active_ingredients: ['Peptides', 'Lactic acid'],
+          },
+          reviewed_active_ingredients_v1: {
+            contract_version: 'external_seed.reviewed_active_ingredients.v1',
+            status: 'approved',
+            active_ingredients: ['Peptides'],
+          },
+        },
+      },
+    });
+
+    expect(row.seed_data.active_ingredients).toEqual(['Peptides']);
+    expect(row.seed_data.ingredient_intel.active_ingredients).toEqual(['Peptides']);
+    expect(row.seed_data.snapshot.active_ingredients).toEqual(['Peptides']);
+    expect(row.seed_data.snapshot.ingredient_intel.active_ingredients).toEqual(['Peptides']);
   });
 
   test('cleans polluted PDP ingredients and active ingredient tails before seed writes', () => {

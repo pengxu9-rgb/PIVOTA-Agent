@@ -1,0 +1,980 @@
+{
+  "meta": {
+    "generated_at": "2026-05-17T03:02:28.029Z",
+    "contract_version": "pivota.product_intel.v1",
+    "gemini_model": "gemini-3-flash-preview",
+    "gemini_model_used": [
+      "deterministic-human-standard-rewrite"
+    ],
+    "gemini_completed": 1,
+    "gemini_skipped": 0,
+    "hybrid_selected": 0,
+    "human_standard_rewrites": 1,
+    "baseline_only": 0
+  },
+  "rows": [
+    {
+      "case_id": "live_ext_3fe128d1441a94c26364da2b",
+      "notes": "Live pilot case sampled from external product seeds (Olehenriksen).",
+      "manual_override_applied": false,
+      "baseline": {
+        "contract_version": "pivota.product_intel.v1",
+        "display_name": "Pivota Insights",
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_3fe128d1441a94c26364da2b",
+          "platform": "external_seed",
+          "product_key": "prod::external_seed::external_seed::ext_3fe128d1441a94c26364da2b",
+          "pivota_signature_id": "sig_2b8e6ed5d7f5894131288a35f40f660a"
+        },
+        "product_group_id": null,
+        "product_intel_core": {
+          "display_name": "Pivota Insights",
+          "what_it_is": {
+            "headline": "Daily moisturizer",
+            "body": "This lip treatment goes beyond hydration. Over time, our lips lose their naturally full, soft look. This ultra-nourishing lip treatment visibly counteracts this volume loss, restores bounce and smoothes fine lip lines. The active formula is clinically tested to give you softer, bouncier, fuller-looking lips in just one week*."
+          },
+          "best_for": [
+            {
+              "tag": "dryness",
+              "label": "Dry or dehydrated skin",
+              "confidence": "moderate"
+            },
+            {
+              "tag": "oil_control",
+              "label": "Oily or combination skin",
+              "confidence": "moderate"
+            }
+          ],
+          "why_it_stands_out": [
+            {
+              "headline": "Formula angle",
+              "body": "This lip treatment goes beyond hydration.",
+              "evidence_strength": "seller_grounded"
+            }
+          ],
+          "routine_fit": {
+            "step": "moisturizer",
+            "am_pm": [
+              "am",
+              "pm"
+            ],
+            "pairing_notes": [
+              "Layer after watery treatments and before SPF in the daytime."
+            ]
+          },
+          "watchouts": [
+            {
+              "type": "fragrance",
+              "label": "Contains fragrance or fragrance-like positioning.",
+              "severity": "medium"
+            },
+            {
+              "type": "acid",
+              "label": "May be too active for very sensitive or over-exfoliated skin.",
+              "severity": "high"
+            }
+          ],
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-17T03:01:43.260Z",
+            "source_version": "pivota.product_intel.v1"
+          },
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true
+            },
+            "formula": {
+              "available": true
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          }
+        },
+        "texture_finish": {
+          "texture": "balm",
+          "finish": "natural",
+          "sensory_notes": [
+            "Richer feel"
+          ],
+          "layering_notes": [
+            "Usually layers after serums and before daytime SPF."
+          ],
+          "confidence": "moderate",
+          "evidence_profile": "seller_plus_formula"
+        },
+        "community_signals": {
+          "status": "unavailable",
+          "unavailable_reason": "insufficient_feedback",
+          "confidence": "low",
+          "evidence_profile": "seller_plus_formula"
+        },
+        "recommendation_intents": {
+          "similar": [],
+          "complementary": [],
+          "routine_pairing": [],
+          "underfill_reason": null,
+          "confidence": "low"
+        },
+        "review_summary": {
+          "review_count": 0
+        },
+        "market_signal_badges": [],
+        "external_highlight_signals": [],
+        "quality_state": "eligible",
+        "evidence_profile": "seller_plus_formula",
+        "source_coverage": {
+          "seller": {
+            "available": true
+          },
+          "formula": {
+            "available": true
+          },
+          "reviews": {
+            "available": false,
+            "count": 0
+          },
+          "creator": {
+            "available": false,
+            "count": 0
+          },
+          "editorial": {
+            "available": false,
+            "count": 0
+          }
+        },
+        "confidence": {
+          "overall": "moderate",
+          "fields": {
+            "what_it_is": "high",
+            "best_for": "moderate",
+            "why_it_stands_out": "moderate",
+            "routine_fit": "moderate",
+            "watchouts": "moderate"
+          }
+        },
+        "freshness": {
+          "generated_at": "2026-05-17T03:01:43.260Z",
+          "source_version": "pivota.product_intel.v1"
+        },
+        "offer_pointers": {
+          "offers_count": 0,
+          "default_offer_id": null,
+          "best_price_offer_id": null,
+          "commerce_modes": []
+        },
+        "provenance": null,
+        "shopping_card": {
+          "contract_version": "pivota.shopping_card.v1",
+          "title": "Olehenriksen Pout Preserve Peptide Lip Treatment",
+          "subtitle": "Lip Balm",
+          "intro": "This lip treatment goes beyond hydration.",
+          "evidence_profile": "seller_plus_formula"
+        },
+        "search_card": {
+          "title_candidate": "Olehenriksen Pout Preserve Peptide Lip Treatment",
+          "compact_candidate": "Lip Balm",
+          "intro_candidate": "This lip treatment goes beyond hydration."
+        }
+      },
+      "gemini": {
+        "skipped": false,
+        "raw": {
+          "product_intel_core": {
+            "what_it_is": {
+              "headline": "Lip balm",
+              "body": "A lip balm built around soft-focus powders for soft-feeling lips, moisture comfort, and reapplication through the day."
+            },
+            "best_for": [
+              {
+                "tag": "lip_moisture",
+                "label": "Lip moisture comfort",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "lip_reapplication",
+                "label": "On-the-go lip reapplication",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Lip moisture reset",
+                "body": "Balm texture supports lip moisture comfort, softness, and easy reapplication.",
+                "evidence_strength": "seller_grounded"
+              }
+            ],
+            "routine_fit": {
+              "step": "lip balm",
+              "am_pm": [],
+              "pairing_notes": [
+                "Use as a lip balm step and reapply when lips feel dry."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "fragrance",
+                "label": "Contains fragrance or fragrance-like positioning.",
+                "severity": "medium"
+              }
+            ]
+          },
+          "texture_finish": {
+            "texture": "balm",
+            "finish": "natural",
+            "sensory_notes": [
+              "Richer feel"
+            ],
+            "layering_notes": [
+              "Use as a lip balm step and reapply when lips feel dry."
+            ],
+            "confidence": "moderate",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "unavailable_reason": "insufficient_feedback"
+          },
+          "external_evidence_summary": {
+            "official_pages": [],
+            "retailer_pages": [],
+            "editorial_media_reviews": [],
+            "consumer_review_patterns": [],
+            "caveats": []
+          },
+          "human_standard_rewrite": true,
+          "reviewer_model": "deterministic-human-standard-rewrite",
+          "case_id": "live_ext_3fe128d1441a94c26364da2b"
+        },
+        "candidate": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_3fe128d1441a94c26364da2b",
+            "platform": "external_seed",
+            "product_key": "prod::external_seed::external_seed::ext_3fe128d1441a94c26364da2b",
+            "pivota_signature_id": "sig_2b8e6ed5d7f5894131288a35f40f660a"
+          },
+          "product_group_id": null,
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Lip balm",
+              "body": "A lip balm built around soft-focus powders for soft-feeling lips, moisture comfort, and reapplication through the day."
+            },
+            "best_for": [
+              {
+                "tag": "lip_moisture",
+                "label": "Lip moisture comfort",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "lip_reapplication",
+                "label": "On-the-go lip reapplication",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Lip moisture reset",
+                "body": "Balm texture supports lip moisture comfort, softness, and easy reapplication.",
+                "evidence_strength": "seller_grounded"
+              }
+            ],
+            "routine_fit": {
+              "step": "lip balm",
+              "am_pm": [],
+              "pairing_notes": [
+                "Use as a lip balm step and reapply when lips feel dry."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "fragrance",
+                "label": "Contains fragrance or fragrance-like positioning.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-17T03:02:28.018Z",
+              "source_version": "pilot_gemini_candidate:deterministic-human-standard-rewrite"
+            },
+            "quality_state": "eligible",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true
+              },
+              "formula": {
+                "available": true
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "texture": "balm",
+            "finish": "natural",
+            "sensory_notes": [
+              "Richer feel"
+            ],
+            "layering_notes": [
+              "Use as a lip balm step and reapply when lips feel dry."
+            ],
+            "confidence": "moderate",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "unavailable_reason": "insufficient_feedback",
+            "confidence": "low",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "review_summary": {
+            "review_count": 0
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true
+            },
+            "formula": {
+              "available": true
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-17T03:02:28.018Z",
+            "source_version": "pilot_gemini_candidate:deterministic-human-standard-rewrite"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "product_intel_pilot_compare",
+            "generator": "gemini_candidate",
+            "model": "deterministic-human-standard-rewrite",
+            "case_id": "live_ext_3fe128d1441a94c26364da2b",
+            "product_context": {
+              "brand": "Olehenriksen",
+              "title": "Pout Preserve Peptide Lip Treatment",
+              "category": "beauty/makeup/lip/balm",
+              "description": "This lip treatment goes beyond hydration. Over time, our lips lose their naturally full, soft look. This ultra-nourishing lip treatment visibly counteracts this volume loss, restores bounce and smoothes fine lip lines. The active formula is clinically tested to give you softer, bouncier, fuller-looking lips in just one week*. Highly-targeted, lip-specific peptides support lip's natural shape and encourage a fuller appearance, while kokum butter, mango seed butter and cloudberry oil help plump lips with hydration. The result? Softer, bouncier younger-looking lips. *In an 8-week clinical study on 39 people",
+              "ingredients": [
+                "Polybutene",
+                "Hydrogenated Polydecene",
+                "Bis-Diglyceryl Polyacyladipate-2",
+                "Hydrogenated Styrene/Isoprene Copolymer",
+                "Cera Microcristallina/Microcrystalline Wax/Cire Microcristalline",
+                "Silica",
+                "Rubus Chamaemorus Seed Oil",
+                "Garcinia Indica Seed Butter",
+                "Euterpe Oleracea Sterols",
+                "Palmitoyl Hexapeptide-12",
+                "Palmitoyl Tripeptide-1",
+                "Tocopheryl Acetate",
+                "Tocopherol",
+                "Irvingia Gabonensis Kernel Butter",
+                "Citrus Aurantium Dulcis (Orange) Peel Wax",
+                "Linoleic Acid",
+                "Linolenic Acid",
+                "Oleic Acid",
+                "Lactic Acid",
+                "Helianthus Annuus (Sunflower) Seed Oil",
+                "Caprylic/Capric Triglyceride",
+                "Cera Carnauba/Copernicia Cerifera (Carnauba) Wax/Cire De Carnauba",
+                "Hydrogenated Coco-Glycerides",
+                "Sorbitan Isostearate",
+                "Pentaerythrityl Tetraisostearate",
+                "Pentaerythrityl Tetra-Di-T-Butyl Hydroxyhydrocinnamate",
+                "Octyldodecanol",
+                "Ethylhexyl Palmitate",
+                "Dicalcium Phosphate",
+                "Tribehenin",
+                "Propylene Carbonate",
+                "Stearalkonium Hectorite",
+                "Sodium Saccharin",
+                "Parfum/Fragrance",
+                "Benzaldehyde",
+                "Citrus Aurantium Peel Oil",
+                "Geranyl Acetate",
+                "Limonene",
+                "Pinene",
+                "Terpineol",
+                "Iron Oxides (Ci 77491, Ci 77492)",
+                "Titanium Dioxide (Ci 77891)",
+                "Lip-Specific Peptides",
+                "Kokum and Mango Seed Butter",
+                "Natural moisturizers that are rich in saturated fats",
+                "soothe",
+                "nourish and condition lips",
+                "Cloudberry Oil",
+                "Rich in antioxidants",
+                "vitamins and omega fatty acids",
+                "Acai Sterols",
+                "Bis-Diglyceryl Polyacycladipate-2",
+                "Cera Microcristallina/Microcrsytalline Wax/Cire Microcristalline",
+                "Garcina Indica Seed Butter",
+                "Invingia Gabonensiskernel Butter",
+                "Citrus Aurantium Dulic (Orange) Fruit Extract",
+                "Cera Carnuaba/Copernica Cerifera (Carnauba) Wax/Cire De Carnauba",
+                "Hyrogenated Coco-Glycerides",
+                "Pentaerythrityl Tetra-Di-T-Butyl Hydroxyhycrocinnamate",
+                "Ocytyldodecanol",
+                "Dicalcum Phosphate",
+                "Citral",
+                "Linalool",
+                "Iron Oxides (CI 77491",
+                "CI 77492)",
+                "Red 7 Lake (Ci 15850)"
+              ],
+              "tags": [
+                "Peptides",
+                "Lactic acid",
+                "peptides",
+                "lactic",
+                "acid",
+                "Lip-Specific Peptides",
+                "- Help makes lips look more defined and fuller",
+                "Kokum and Mango Seed Butter",
+                "- Natural moisturizers that are rich in saturated fats",
+                "soothe",
+                "nourish and condition lips",
+                "Cloudberry Oil",
+                "- Rich in antioxidants",
+                "vitamins and omega fatty acids",
+                "provides intense moisture and helps soften lips",
+                "Acai Sterols",
+                "help strengthen the skin barrier and boost hydration",
+                "Citrus Sunshine Full Ingredients: Polybutene",
+                "Hydrogenated Polydecene",
+                "Bis-Diglyceryl Polyacycladipate-2",
+                "Hydrogenated Styrene",
+                "Isoprene Copolymer",
+                "Cera Microcristallina",
+                "Microcrsytalline Wax",
+                "Cire Microcristalline",
+                "SIlica",
+                "Rubus Chamaemorus Seed Oil",
+                "Garcina Indica Seed Butter",
+                "Euterpe Oleracea Sterols",
+                "Palmitoyl Hexapeptide-12",
+                "Palmitoyl Tripeptide-1",
+                "Tocopheryl Acetate",
+                "Tocopherol",
+                "Invingia Gabonensiskernel Butter",
+                "Citrus Aurantium Dulic (Orange) Fruit Extract",
+                "Linoleic Acid",
+                "Linolenic Acid",
+                "Oleic Acid",
+                "Lactic Acid",
+                "Helianthus Annuus (Sunflower) Seed Oil",
+                "Caprylic",
+                "Capric Triglyceride",
+                "Cera Carnuaba",
+                "Copernica Cerifera (Carnauba) Wax",
+                "Cire De Carnauba",
+                "Hyrogenated Coco-Glycerides",
+                "Sorbitan Isostearate",
+                "Pentaerythrityl Tetraisostearate",
+                "Pentaerythrityl Tetra-Di-T-Butyl Hydroxyhycrocinnamate",
+                "Ocytyldodecanol",
+                "Ethylhexyl Palmitate",
+                "Dicalcum Phosphate",
+                "Tribehenin",
+                "Propylene Carbonate",
+                "Stearalkonium Hectorite",
+                "Parfum",
+                "Fragrance",
+                "Citral",
+                "Limonene",
+                "Linalool",
+                "Iron Oxides (CI 77491",
+                "CI 77492)",
+                "Titanium Dioxide (CI 77891).",
+                "Cocoa Crème Full Ingredients: Polybutene",
+                "Bis-Diglyceryl Polyacyladipate-2",
+                "Microcrystalline Wax",
+                "Silica",
+                "Garcinia Indica Seed Butter",
+                "Irvingia Gabonensis Kernel Butter",
+                "Citrus Aurantium Dulcis (Orange) Peel Wax",
+                "Cera Carnauba",
+                "Copernicia Cerifera (Carnauba) Wax",
+                "Hydrogenated Coco-Glycerides",
+                "Pentaerythrityl Tetra-Di-T-Butyl Hydroxyhydrocinnamate",
+                "Octyldodecanol",
+                "Dicalcium Phosphate",
+                "Sodium Saccharin",
+                "Red 7 Lake (Ci 15850)",
+                "Iron Oxides (Ci 77492",
+                "Ci 77499).",
+                "Strawberry Sorbet Full Ingredients: Polybutene",
+                "Titanium Dioxide (Ci 77891)",
+                "Red 28 Lake (Ci 45410)",
+                "Iron Oxides (Ci 77491",
+                "Ci 77492",
+                "Ci 77499)",
+                "Titanium Dioxide (Ci 77891).",
+                "Crème Brûlée Full Ingredients: Polybutene",
+                "Mica",
+                "Tin Oxide",
+                "Vanilla Bonbon Full Ingredients: Polybutene",
+                "Sweet Macaron Full Ingredients: Polybutene",
+                "Benzaldehyde",
+                "Citrus Aurantium Peel Oil",
+                "Geranyl Acetate",
+                "Pinene",
+                "Terpineol",
+                "Ci 77492)",
+                "beauty",
+                "makeup",
+                "lip",
+                "balm"
+              ],
+              "texture": "",
+              "finish": "",
+              "how_to_use": "Swipe onto lips for an instant boost of hydration that lasts. Glow Tip: Use after lip color for added shine!",
+              "source_url": "https://olehenriksen.com/products/pout-preserve-peptide-lip-treatment",
+              "review_summary": {
+                "rating": null,
+                "review_count": 0
+              }
+            },
+            "external_evidence_summary": {
+              "official_pages": [],
+              "retailer_pages": [],
+              "editorial_media_reviews": [],
+              "consumer_review_patterns": [],
+              "caveats": []
+            }
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Olehenriksen Pout Preserve Peptide Lip Treatment",
+            "subtitle": "Lip Balm",
+            "intro": "This lip treatment goes beyond hydration.",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "Olehenriksen Pout Preserve Peptide Lip Treatment",
+            "compact_candidate": "Lip Balm",
+            "intro_candidate": "This lip treatment goes beyond hydration."
+          },
+          "external_evidence_summary": {
+            "official_pages": [],
+            "retailer_pages": [],
+            "editorial_media_reviews": [],
+            "consumer_review_patterns": [],
+            "caveats": []
+          }
+        },
+        "model": "deterministic-human-standard-rewrite",
+        "model_candidates": [
+          "gemini-3-flash-preview",
+          "gemini-3.1-pro-preview"
+        ],
+        "attempted_models": [
+          "gemini-3-flash-preview",
+          "gemini-3.1-pro-preview"
+        ],
+        "quality_gate": {
+          "candidate_available": true,
+          "overall_pass": true,
+          "quality_score": 6,
+          "fail_reasons": [],
+          "seller_only_violation": false,
+          "problematic_generated_text": false,
+          "external_evidence_language": false,
+          "grounded_external_evidence": false,
+          "incompatible_best_for": false,
+          "incomplete_highlights": false,
+          "best_for_overlap": 0,
+          "watchout_overlap": 0.5,
+          "field_decisions": {
+            "what_it_is": true,
+            "best_for": true,
+            "why_it_stands_out": true,
+            "routine_fit": true,
+            "watchouts": true,
+            "texture_finish": true,
+            "community_signals": false
+          },
+          "human_standard_rewrite": true,
+          "human_standard_reviewer_model": "deterministic-human-standard-rewrite"
+        },
+        "selection_strategy": "deterministic_human_standard_rewrite"
+      },
+      "manual_override": null,
+      "quality_gate": {
+        "candidate_available": true,
+        "overall_pass": true,
+        "quality_score": 6,
+        "fail_reasons": [],
+        "seller_only_violation": false,
+        "problematic_generated_text": false,
+        "external_evidence_language": false,
+        "grounded_external_evidence": false,
+        "incompatible_best_for": false,
+        "incomplete_highlights": false,
+        "best_for_overlap": 0,
+        "watchout_overlap": 0.5,
+        "field_decisions": {
+          "what_it_is": true,
+          "best_for": true,
+          "why_it_stands_out": true,
+          "routine_fit": true,
+          "watchouts": true,
+          "texture_finish": true,
+          "community_signals": false
+        },
+        "human_standard_rewrite": true,
+        "human_standard_reviewer_model": "deterministic-human-standard-rewrite"
+      },
+      "selected": {
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_3fe128d1441a94c26364da2b",
+            "platform": "external_seed",
+            "product_key": "prod::external_seed::external_seed::ext_3fe128d1441a94c26364da2b",
+            "pivota_signature_id": "sig_2b8e6ed5d7f5894131288a35f40f660a"
+          },
+          "product_group_id": null,
+          "product_intel_core": {
+            "display_name": "Pivota Insights",
+            "what_it_is": {
+              "headline": "Lip balm",
+              "body": "A lip balm built around soft-focus powders for soft-feeling lips, moisture comfort, and reapplication through the day."
+            },
+            "best_for": [
+              {
+                "tag": "lip_moisture",
+                "label": "Lip moisture comfort",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "lip_reapplication",
+                "label": "On-the-go lip reapplication",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Lip moisture reset",
+                "body": "Balm texture supports lip moisture comfort, softness, and easy reapplication.",
+                "evidence_strength": "seller_grounded"
+              }
+            ],
+            "routine_fit": {
+              "step": "lip balm",
+              "am_pm": [],
+              "pairing_notes": [
+                "Use as a lip balm step and reapply when lips feel dry."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "fragrance",
+                "label": "Contains fragrance or fragrance-like positioning.",
+                "severity": "medium"
+              }
+            ],
+            "confidence": {
+              "overall": "moderate",
+              "fields": {
+                "what_it_is": "high",
+                "best_for": "moderate",
+                "why_it_stands_out": "moderate",
+                "routine_fit": "moderate",
+                "watchouts": "moderate"
+              }
+            },
+            "freshness": {
+              "generated_at": "2026-05-17T03:02:28.027Z",
+              "source_version": "pilot_selected:deterministic-human-standard-rewrite"
+            },
+            "quality_state": "eligible",
+            "evidence_profile": "seller_plus_formula",
+            "source_coverage": {
+              "seller": {
+                "available": true
+              },
+              "formula": {
+                "available": true
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "texture_finish": {
+            "texture": "balm",
+            "finish": "natural",
+            "sensory_notes": [
+              "Richer feel"
+            ],
+            "layering_notes": [
+              "Use as a lip balm step and reapply when lips feel dry."
+            ],
+            "confidence": "moderate",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "unavailable_reason": "insufficient_feedback",
+            "confidence": "low",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "recommendation_intents": {
+            "similar": [],
+            "complementary": [],
+            "routine_pairing": [],
+            "underfill_reason": null,
+            "confidence": "low"
+          },
+          "review_summary": {
+            "review_count": 0
+          },
+          "market_signal_badges": [],
+          "external_highlight_signals": [],
+          "quality_state": "eligible",
+          "evidence_profile": "seller_plus_formula",
+          "source_coverage": {
+            "seller": {
+              "available": true
+            },
+            "formula": {
+              "available": true
+            },
+            "reviews": {
+              "available": false,
+              "count": 0
+            },
+            "creator": {
+              "available": false,
+              "count": 0
+            },
+            "editorial": {
+              "available": false,
+              "count": 0
+            }
+          },
+          "confidence": {
+            "overall": "moderate",
+            "fields": {
+              "what_it_is": "high",
+              "best_for": "moderate",
+              "why_it_stands_out": "moderate",
+              "routine_fit": "moderate",
+              "watchouts": "moderate"
+            }
+          },
+          "freshness": {
+            "generated_at": "2026-05-17T03:02:28.027Z",
+            "source_version": "pilot_selected:deterministic-human-standard-rewrite"
+          },
+          "offer_pointers": {
+            "offers_count": 0,
+            "default_offer_id": null,
+            "best_price_offer_id": null,
+            "commerce_modes": []
+          },
+          "provenance": {
+            "source": "product_intel_pilot_compare",
+            "generator": "deterministic_human_standard_rewrite",
+            "selection_strategy": "baseline_first_gemini_guarded",
+            "gemini_model": "deterministic-human-standard-rewrite",
+            "field_sources": {
+              "what_it_is": "human_standard",
+              "best_for": "human_standard",
+              "why_it_stands_out": "human_standard",
+              "routine_fit": "human_standard",
+              "watchouts": "human_standard",
+              "texture_finish": "human_standard",
+              "community_signals": "baseline"
+            },
+            "gemini_quality_gate": {
+              "candidate_available": true,
+              "overall_pass": true,
+              "quality_score": 6,
+              "fail_reasons": [],
+              "seller_only_violation": false,
+              "problematic_generated_text": false,
+              "external_evidence_language": false,
+              "grounded_external_evidence": false,
+              "incompatible_best_for": false,
+              "incomplete_highlights": false,
+              "best_for_overlap": 0,
+              "watchout_overlap": 0.5,
+              "field_decisions": {
+                "what_it_is": true,
+                "best_for": true,
+                "why_it_stands_out": true,
+                "routine_fit": true,
+                "watchouts": true,
+                "texture_finish": true,
+                "community_signals": false
+              },
+              "human_standard_rewrite": true,
+              "human_standard_reviewer_model": "deterministic-human-standard-rewrite"
+            }
+          },
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Olehenriksen Pout Preserve Peptide Lip Treatment",
+            "subtitle": "Lip Balm",
+            "highlight": "Lip moisture reset",
+            "evidence_profile": "seller_plus_formula"
+          },
+          "search_card": {
+            "title_candidate": "Olehenriksen Pout Preserve Peptide Lip Treatment",
+            "compact_candidate": "Lip Balm",
+            "highlight_candidate": "Lip moisture reset"
+          }
+        },
+        "field_sources": {
+          "what_it_is": "human_standard",
+          "best_for": "human_standard",
+          "why_it_stands_out": "human_standard",
+          "routine_fit": "human_standard",
+          "watchouts": "human_standard",
+          "texture_finish": "human_standard",
+          "community_signals": "baseline"
+        },
+        "selected_field_count": 6,
+        "selected_mode": "human_standard_rewrite"
+      },
+      "comparison": {
+        "compared": true,
+        "best_for_overlap": 0,
+        "watchout_overlap": 0.5,
+        "baseline_highlight_count": 1,
+        "gemini_highlight_count": 1,
+        "gemini_quality": {
+          "candidate_available": true,
+          "overall_pass": true,
+          "quality_score": 6,
+          "fail_reasons": [],
+          "seller_only_violation": false,
+          "problematic_generated_text": false,
+          "external_evidence_language": false,
+          "grounded_external_evidence": false,
+          "incompatible_best_for": false,
+          "incomplete_highlights": false,
+          "best_for_overlap": 0,
+          "watchout_overlap": 0.5,
+          "field_decisions": {
+            "what_it_is": true,
+            "best_for": true,
+            "why_it_stands_out": true,
+            "routine_fit": true,
+            "watchouts": true,
+            "texture_finish": true,
+            "community_signals": false
+          },
+          "human_standard_rewrite": true,
+          "human_standard_reviewer_model": "deterministic-human-standard-rewrite"
+        },
+        "selected_mode": "human_standard_rewrite",
+        "selected_field_count": 6,
+        "selected_field_sources": {
+          "what_it_is": "human_standard",
+          "best_for": "human_standard",
+          "why_it_stands_out": "human_standard",
+          "routine_fit": "human_standard",
+          "watchouts": "human_standard",
+          "texture_finish": "human_standard",
+          "community_signals": "baseline"
+        }
+      }
+    }
+  ]
+}

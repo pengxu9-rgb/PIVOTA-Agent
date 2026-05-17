@@ -1,0 +1,59 @@
+{
+  "generated_at": "2026-05-17T02:53:12.772Z",
+  "dry_run": false,
+  "market": "US",
+  "marker": {
+    "contract_version": "external_seed.source_unavailable.v1",
+    "updated_at": "2026-05-17T02:53:12.772Z",
+    "status": "source_unavailable",
+    "reason": "canonical_404_destination_cross_product_mismatch",
+    "reason_codes": [
+      "canonical_404_destination_cross_product_mismatch"
+    ],
+    "source_url": "https://olehenriksen.com/products/nourishing-body-lotion",
+    "evidence": "Official canonical Shopify product JSON returned 404; current destination URL resolves to The Peachy Pair, not Touch Nourishing Body Lotion.",
+    "transaction_ready": false,
+    "availability": "out_of_stock",
+    "price_current": false,
+    "review_state": "reviewed"
+  },
+  "summary": {
+    "requested_ids": 1,
+    "scanned": 1,
+    "missing_ids": 0,
+    "catalog_counts": {
+      "products": 1,
+      "skus": 2,
+      "offers": 1
+    },
+    "updated": {
+      "external_product_seeds": 1,
+      "catalog_products": 1,
+      "catalog_skus": 2,
+      "catalog_offers": 1
+    }
+  },
+  "missing_ids": [],
+  "rows": [
+    {
+      "id": "eps_0a870acc52174a9ca06c4aca",
+      "external_product_id": "ext_4e4902ad12294f63294bebb0",
+      "title": "Touch Nourishing Body Lotion",
+      "domain": "olehenriksen.com",
+      "canonical_url": "https://olehenriksen.com/products/nourishing-body-lotion",
+      "destination_url": "https://olehenriksen.com/products/the-peachy-pair?variant=45716229816492",
+      "before": {
+        "status": "active",
+        "availability": "in_stock",
+        "price_amount": 18,
+        "price_currency": "USD"
+      },
+      "after": {
+        "status": "active",
+        "availability": "out_of_stock",
+        "price_amount": null,
+        "price_currency": null
+      }
+    }
+  ]
+}

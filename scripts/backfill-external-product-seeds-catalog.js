@@ -2359,6 +2359,53 @@ function applyApprovedPdpIngredientFields(seedDataValue, {
   return seedData;
 }
 
+function applyReviewedActiveIngredientContract(seedDataValue) {
+  const seedData = ensureJsonObject(seedDataValue);
+  const snapshot = ensureJsonObject(seedData.snapshot);
+  const contract = [
+    ensureJsonObject(seedData.reviewed_active_ingredients_v1),
+    ensureJsonObject(snapshot.reviewed_active_ingredients_v1),
+  ].find(
+    (candidate) =>
+      candidate.contract_version === 'external_seed.reviewed_active_ingredients.v1' &&
+      normalizeNonEmptyString(candidate.status).toLowerCase() !== 'rejected',
+  );
+  if (!contract) {
+    seedData.snapshot = snapshot;
+    return seedData;
+  }
+  const reviewedActiveItems = uniqueStrings(
+    Array.isArray(contract.active_ingredients)
+      ? contract.active_ingredients
+      : [
+          ...(Array.isArray(seedData.active_ingredients) ? seedData.active_ingredients : []),
+          ...(Array.isArray(snapshot.active_ingredients) ? snapshot.active_ingredients : []),
+        ],
+  );
+  const patchTarget = (target) => {
+    if (!target || typeof target !== 'object') return;
+    target.active_ingredients = reviewedActiveItems;
+    delete target.activeIngredients;
+    const ingredientIntel = ensureJsonObject(target.ingredient_intel);
+    if (reviewedActiveItems.length > 0) {
+      ingredientIntel.active_ingredients = reviewedActiveItems;
+    } else {
+      delete ingredientIntel.active_ingredients;
+      delete target.pdp_active_ingredients_raw;
+      delete target.active_ingredients_raw;
+    }
+    target.ingredient_intel = ingredientIntel;
+    target.reviewed_active_ingredients_v1 = {
+      ...contract,
+      active_ingredients: reviewedActiveItems,
+    };
+  };
+  patchTarget(seedData);
+  patchTarget(snapshot);
+  seedData.snapshot = snapshot;
+  return seedData;
+}
+
 function reapplyApprovedPdpIngredientFieldsToRow(row) {
   if (!row || typeof row !== 'object') return row;
   const seedData = ensureJsonObject(row.seed_data);
@@ -2367,13 +2414,21 @@ function reapplyApprovedPdpIngredientFieldsToRow(row) {
   const pdpActiveIngredientsRaw = normalizeNonEmptyString(
     seedData.pdp_active_ingredients_raw || snapshot.pdp_active_ingredients_raw,
   );
-  if (!pdpIngredientsRaw && !pdpActiveIngredientsRaw) return row;
+  const applyReviewedContract = (nextSeedData) => applyReviewedActiveIngredientContract(nextSeedData);
+  if (!pdpIngredientsRaw && !pdpActiveIngredientsRaw) {
+    return {
+      ...row,
+      seed_data: applyReviewedContract(seedData),
+    };
+  }
   return {
     ...row,
-    seed_data: applyApprovedPdpIngredientFields(seedData, {
-      pdpIngredientsRaw,
-      pdpActiveIngredientsRaw,
-    }),
+    seed_data: applyReviewedContract(
+      applyApprovedPdpIngredientFields(seedData, {
+        pdpIngredientsRaw,
+        pdpActiveIngredientsRaw,
+      }),
+    ),
   };
 }
 
@@ -4150,6 +4205,7 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
       snapshot: ensureJsonObject(nextSeedData.snapshot),
     }),
   );
+  nextSeedData = applyReviewedActiveIngredientContract(nextSeedData);
   const nextDerived = ensureJsonObject(nextSeedData.derived);
   nextSeedData.derived = {
     ...nextDerived,
@@ -4159,6 +4215,7 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
       snapshot: ensureJsonObject(nextSeedData.snapshot),
     }),
   };
+  nextSeedData = applyReviewedActiveIngredientContract(nextSeedData);
   if (!description && suppressStaleDescriptionFallback) {
     delete nextSeedData.description;
   }
@@ -5800,6 +5857,7 @@ module.exports = {
   isDisplayableProductIntelKbRow,
   cleanPdpIngredientsRaw,
   pickPdpIngredientsRaw,
+  applyReviewedActiveIngredientContract,
   reapplyApprovedPdpIngredientFieldsToRow,
   preparePivotaInsightsForBackfill,
   runPivotaInsightsCoverageForProductIds,

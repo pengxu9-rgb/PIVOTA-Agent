@@ -223,6 +223,47 @@ function patchSeedData(seedData, activeIngredients, metadata) {
   return next;
 }
 
+function clearActiveIngredientFields(seedData, metadata) {
+  const next = JSON.parse(JSON.stringify(asObject(seedData)));
+  next.snapshot = asObject(next.snapshot);
+
+  const reviewedAt = metadata.reviewed_at || new Date().toISOString();
+  const contract = {
+    contract_version: CONTRACT_VERSION,
+    status: 'approved_no_source_backed_active_ingredients',
+    active_ingredients: [],
+    source_url: metadata.source_url || null,
+    evidence: metadata.evidence || null,
+    reason: metadata.reason || 'reviewed_no_source_backed_active_ingredients',
+    reviewed_by: metadata.reviewed_by || 'codex',
+    reviewed_at: reviewedAt,
+    updated_at: reviewedAt,
+  };
+
+  const clearTarget = (target) => {
+    if (!target || typeof target !== 'object') return;
+    target.active_ingredients = [];
+    delete target.activeIngredients;
+    delete target.pdp_active_ingredients_raw;
+    delete target.active_ingredients_raw;
+    const intel = asObject(target.ingredient_intel);
+    delete intel.active_ingredients;
+    target.ingredient_intel = intel;
+    target.reviewed_active_ingredients_v1 = contract;
+  };
+
+  clearTarget(next);
+  clearTarget(next.snapshot);
+  mergeQuality(next, 'active_ingredients_raw', {
+    source_origin: 'pivota_reviewed_source_backed_patch',
+    source_quality_status: 'reviewed_not_applicable',
+    review_state: 'assistant_reviewed',
+    source_url: metadata.source_url || null,
+    updated_at: reviewedAt,
+  });
+  return next;
+}
+
 async function fetchRows(externalProductIds, market) {
   const res = await query(
     `
@@ -277,8 +318,11 @@ async function run(options) {
       .filter(Boolean),
   );
   const activeIngredients = parseActiveIngredients(options.activeIngredients);
+  const clearActiveIngredients = options.clearActiveIngredients === true;
   if (!externalProductIds.length) throw new Error('--external-product-id or --external-product-ids is required');
-  if (!activeIngredients.length) throw new Error('--active-ingredients is required');
+  if (!activeIngredients.length && !clearActiveIngredients) {
+    throw new Error('--active-ingredients or --clear-active-ingredients is required');
+  }
 
   const rows = await fetchRows(externalProductIds, options.market || '');
   const rowById = new Map(rows.map((row) => [row.external_product_id, row]));
@@ -293,16 +337,21 @@ async function run(options) {
       continue;
     }
     const beforeSeedData = asObject(row.seed_data);
-    const evidence = activeEvidenceStatus(beforeSeedData, activeIngredients, options.evidence || '');
+    const evidence = clearActiveIngredients
+      ? { backed: true, missing: [], evidence_chars: asString(options.evidence || '').length }
+      : activeEvidenceStatus(beforeSeedData, activeIngredients, options.evidence || '');
     const before = summarizeSeedData(beforeSeedData);
-    const afterSeedData = patchSeedData(beforeSeedData, activeIngredients, {
+    const metadata = {
       source_url: options.sourceUrl || row.canonical_url || row.destination_url,
       evidence: options.evidence || '',
       reason: options.reason || '',
       reviewed_by: options.reviewedBy || 'codex',
       reviewed_at: reviewedAt,
       clear_stale_structured_ingredients: options.clearStaleStructuredIngredients === true,
-    });
+    };
+    const afterSeedData = clearActiveIngredients
+      ? clearActiveIngredientFields(beforeSeedData, metadata)
+      : patchSeedData(beforeSeedData, activeIngredients, metadata);
     const after = summarizeSeedData(afterSeedData);
     const changed = JSON.stringify(beforeSeedData) !== JSON.stringify(afterSeedData);
     const blocked = !evidence.backed && !options.allowMissingEvidence;
@@ -344,6 +393,7 @@ async function run(options) {
       market: options.market || null,
     },
     requested_active_ingredients: activeIngredients,
+    clear_active_ingredients: clearActiveIngredients,
     summary: {
       scanned_rows: rows.length,
       missing_rows: results.filter((item) => item.status === 'missing_seed').length,
@@ -375,6 +425,7 @@ async function main() {
     reason: argValue('reason'),
     reviewedBy: argValue('reviewed-by') || 'codex',
     allowMissingEvidence: hasFlag('allow-missing-evidence'),
+    clearActiveIngredients: hasFlag('clear-active-ingredients') || hasFlag('clearActiveIngredients'),
     clearStaleStructuredIngredients:
       hasFlag('clear-stale-structured-ingredients') || hasFlag('clearStaleStructuredIngredients'),
     write: hasFlag('write'),
@@ -397,6 +448,7 @@ module.exports = {
   CONTRACT_VERSION,
   activeEvidenceStatus,
   clearStaleStructuredIngredientFields,
+  clearActiveIngredientFields,
   parseActiveIngredients,
   patchSeedData,
   run,

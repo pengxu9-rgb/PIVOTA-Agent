@@ -1,0 +1,84 @@
+{
+  "generated_at": "2026-05-17T02:52:58.413Z",
+  "dry_run": false,
+  "market": "US",
+  "summary": {
+    "scanned": 1,
+    "missing_ids": 0,
+    "dry_run": 0,
+    "updated": 1,
+    "unchanged": 0,
+    "unsafe_source": 1,
+    "fields_deleted_total": 10,
+    "fields_quarantined_total": 10,
+    "quality_updates_total": 6,
+    "by_reason": {
+      "identity_group_canonical_content_base_for_unsafe_row": 1
+    }
+  },
+  "missing_ids": [],
+  "results": [
+    {
+      "external_product_id": "ext_4e4902ad12294f63294bebb0",
+      "brand": "Olehenriksen",
+      "title": "Touch Nourishing Body Lotion",
+      "domain": "olehenriksen.com",
+      "canonical_url": "https://olehenriksen.com/products/nourishing-body-lotion",
+      "status": "updated",
+      "unsafe_source": true,
+      "reason_codes": [
+        "identity_group_canonical_content_base_for_unsafe_row"
+      ],
+      "fields_quarantined": [
+        "description",
+        "derived",
+        "raw_ingredient_text_clean",
+        "active_ingredients",
+        "pdp_how_to_use_raw",
+        "ingredient_intel",
+        "inci_list",
+        "key_ingredients",
+        "ingredient_tokens",
+        "review_summary"
+      ],
+      "fields_deleted": [
+        "description",
+        "derived",
+        "raw_ingredient_text_clean",
+        "active_ingredients",
+        "pdp_how_to_use_raw",
+        "ingredient_intel",
+        "inci_list",
+        "key_ingredients",
+        "ingredient_tokens",
+        "review_summary"
+      ],
+      "quality_keys_updated": [
+        "description_raw",
+        "ingredients_raw",
+        "active_ingredients_raw",
+        "how_to_use_raw",
+        "details_sections",
+        "faq_items"
+      ],
+      "before": {
+        "description_len": 0,
+        "ingredients_len": 706,
+        "active_len": 7,
+        "how_to_len": 87,
+        "details_count": 0,
+        "faq_count": 0,
+        "review_count": 0
+      },
+      "after": {
+        "description_len": 0,
+        "ingredients_len": 0,
+        "active_len": 0,
+        "how_to_len": 0,
+        "details_count": 0,
+        "faq_count": 0,
+        "review_count": 0
+      }
+    }
+  ]
+}

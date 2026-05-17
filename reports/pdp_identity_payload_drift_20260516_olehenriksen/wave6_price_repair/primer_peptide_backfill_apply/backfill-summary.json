@@ -1,0 +1,53 @@
+{
+  "generated_at": "2026-05-17T03:02:28.062Z",
+  "options": {
+    "market": "US",
+    "dry_run": false,
+    "include_commerce_facts": false,
+    "skip_insights": false,
+    "expand_variants": false,
+    "limit": 2,
+    "offset": 0,
+    "concurrency": 3,
+    "external_product_ids": [
+      "ext_47fe725499e880c01ccfc134",
+      "ext_3fe128d1441a94c26364da2b"
+    ],
+    "external_product_id": "",
+    "seed_id": "",
+    "domain": "",
+    "brand": ""
+  },
+  "rows_fetched": 2,
+  "summary": {
+    "scanned": 2,
+    "updated": 2,
+    "dry_run": 0,
+    "skipped": 0,
+    "failed": 0,
+    "variant_seed_rows": 0,
+    "commerce_facts_hold": 0
+  },
+  "pivota_insights": {
+    "status": "ok",
+    "product_ids": [
+      "ext_3fe128d1441a94c26364da2b"
+    ],
+    "out_dir": "/private/tmp/pivota-agent-shade-visual-audit/reports/pivota-insights-backfill/2026-05-17T03-01-34-798Z",
+    "result": {
+      "status": "ok",
+      "out_dir": "/private/tmp/pivota-agent-shade-visual-audit/reports/pivota-insights-backfill/2026-05-17T03-01-34-798Z",
+      "cases": "/private/tmp/pivota-agent-shade-visual-audit/reports/pivota-insights-backfill/2026-05-17T03-01-34-798Z/cases.json",
+      "compare_json": "/private/tmp/pivota-agent-shade-visual-audit/reports/pivota-insights-backfill/2026-05-17T03-01-34-798Z/compare.json",
+      "compare_markdown": "/private/tmp/pivota-agent-shade-visual-audit/reports/pivota-insights-backfill/2026-05-17T03-01-34-798Z/compare.md",
+      "review": "/private/tmp/pivota-agent-shade-visual-audit/reports/pivota-insights-backfill/2026-05-17T03-01-34-798Z/review.json",
+      "count": 1,
+      "covered_review_mode": "strict_human"
+    },
+    "checked_product_ids": [
+      "ext_47fe725499e880c01ccfc134",
+      "ext_3fe128d1441a94c26364da2b"
+    ],
+    "check_error": null
+  }
+}

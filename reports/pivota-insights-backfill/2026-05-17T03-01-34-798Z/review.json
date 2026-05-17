@@ -1,0 +1,60 @@
+{
+  "meta": {
+    "generated_at": "2026-05-17T03:02:28.039Z",
+    "report_cases": 1,
+    "pending": 1,
+    "strict_review": true
+  },
+  "rows": [
+    {
+      "case_id": "live_ext_3fe128d1441a94c26364da2b",
+      "product_ref": {
+        "merchant_id": "external_seed",
+        "product_id": "ext_3fe128d1441a94c26364da2b"
+      },
+      "review_status": "pending",
+      "reviewer": "",
+      "reviewer_kind": "",
+      "reviewed_at": "",
+      "decision": "pending",
+      "review_decision": "pending",
+      "rejection_reason": "",
+      "notes": "",
+      "selected_mode": "human_standard_rewrite",
+      "field_sources": {
+        "what_it_is": "human_standard",
+        "best_for": "human_standard",
+        "why_it_stands_out": "human_standard",
+        "routine_fit": "human_standard",
+        "watchouts": "human_standard",
+        "texture_finish": "human_standard",
+        "community_signals": "baseline"
+      },
+      "evidence_profile": "seller_plus_formula",
+      "quality_state": "eligible",
+      "shopping_card": {
+        "title": "Olehenriksen Pout Preserve Peptide Lip Treatment",
+        "subtitle": "Lip Balm",
+        "highlight": "Lip moisture reset",
+        "proof_badge": ""
+      },
+      "search_card": {
+        "compact_candidate": "Lip Balm",
+        "highlight_candidate": "Lip moisture reset",
+        "proof_badge_candidate": "",
+        "intro_candidate": ""
+      },
+      "external_highlight_preview": [],
+      "highlight_sources_summary": [],
+      "pivota_insights": {
+        "what_it_is": "A lip balm built around soft-focus powders for soft-feeling lips, moisture comfort, and reapplication through the day.",
+        "why_it_stands_out": [
+          {
+            "headline": "Lip moisture reset",
+            "body": "Balm texture supports lip moisture comfort, softness, and easy reapplication."
+          }
+        ]
+      }
+    }
+  ]
+}

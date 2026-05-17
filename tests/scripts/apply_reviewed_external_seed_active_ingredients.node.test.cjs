@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 
 const {
   activeEvidenceStatus,
+  clearActiveIngredientFields,
   parseActiveIngredients,
   patchSeedData,
 } = require('../../scripts/apply-reviewed-external-seed-active-ingredients.cjs');
@@ -96,5 +97,45 @@ test('patchSeedData can clear stale non-source-backed structured ingredient fiel
   assert.equal(
     patched.structured_ingredient_remediation_v1.contract_version,
     'external_seed.structured_ingredient_remediation.v1',
+  );
+});
+
+test('clearActiveIngredientFields records reviewed no-active decision and removes active raw', () => {
+  const patched = clearActiveIngredientFields(
+    {
+      active_ingredients: ['Sugar'],
+      pdp_active_ingredients_raw: 'Fine granulated sugar gently exfoliates lips.',
+      ingredient_intel: {
+        active_ingredients: ['Sugar'],
+        inci_list: 'Sucrose, Kokum Butter',
+      },
+      snapshot: {
+        active_ingredients: ['Sugar'],
+        pdp_active_ingredients_raw: 'Fine granulated sugar gently exfoliates lips.',
+        ingredient_intel: {
+          active_ingredients: ['Sugar'],
+        },
+      },
+    },
+    {
+      source_url: 'https://olehenriksen.com/products/pout-preserve-sugar-melt-lip-scrub',
+      evidence: 'Official PDP describes a sugar lip scrub, not a source-backed active-ingredient formula.',
+      reviewed_at: '2026-05-17T00:00:00.000Z',
+    },
+  );
+
+  assert.deepEqual(patched.active_ingredients, []);
+  assert.deepEqual(patched.snapshot.active_ingredients, []);
+  assert.equal(patched.pdp_active_ingredients_raw, undefined);
+  assert.equal(patched.snapshot.pdp_active_ingredients_raw, undefined);
+  assert.equal(patched.ingredient_intel.active_ingredients, undefined);
+  assert.equal(patched.ingredient_intel.inci_list, 'Sucrose, Kokum Butter');
+  assert.equal(
+    patched.reviewed_active_ingredients_v1.status,
+    'approved_no_source_backed_active_ingredients',
+  );
+  assert.equal(
+    patched.pdp_field_quality_summary.active_ingredients_raw.source_quality_status,
+    'reviewed_not_applicable',
   );
 });

@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-17T02:47:37Z",
+  "generated_at": "2026-05-17T03:28:00Z",
   "scope": {
     "market": "US",
     "domain": "olehenriksen.com",
@@ -7,92 +7,108 @@
   },
   "production_data_actions": {
     "reviewed_active_contracts_written": 5,
-    "identity_source_payloads_synced": 5,
-    "source_unavailable_or_blocker_rows_written": 0
+    "reviewed_no_active_contracts_written": 1,
+    "identity_source_payloads_synced": 7,
+    "price_repairs_written": 2,
+    "source_unavailable_or_blocker_rows_written": 1
   },
   "accepted_rows": [
     {
-      "external_product_id": "ext_3221a074fcd0a5b3d9a32f2d",
-      "title": "Peach Glaze Glow Mist",
-      "review_decision": "accepted_after_reviewed_active_sync",
-      "reviewed_active_ingredients": ["Vitamin C"],
-      "post_apply_live_pdp_gate": "passed",
-      "remaining_gaps": ["identity_graph_gap"]
-    }
-  ],
-  "accepted_pending_runtime_patch_deploy": [
-    {
       "external_product_id": "ext_918981bcc6d552cc2af0b535",
+      "sig_pdp_url": "https://agent.pivota.cc/products/sig_919e963e7d7a740f5f496e87",
       "title": "Banana Bright+ Eye Creme",
-      "review_decision": "accepted_data_sync_runtime_patch_required",
+      "review_decision": "accepted_after_reviewed_active_sync_and_runtime_deploy",
       "reviewed_active_ingredients": ["Vitamin C"],
-      "post_apply_live_pdp_gate": "failed_before_runtime_patch",
-      "failure_reasons": ["active_ingredients_expected_but_hidden", "missing_pdp_identity"],
-      "root_cause": "pdp_shaping_revalidated_reviewed_active_against_inci_literal_match"
+      "post_deploy_live_pdp_gate": "passed",
+      "remaining_gaps": []
     },
     {
       "external_product_id": "ext_5f1eaf3898146877fe9171b3",
       "title": "Truth Serum",
       "review_decision": "accepted_with_product_intel_followup",
       "reviewed_active_ingredients": ["Vitamin C"],
-      "post_apply_live_pdp_gate": "passed",
-      "remaining_gaps": ["identity_graph_gap", "product_intel_gap"]
+      "post_deploy_live_pdp_gate": "passed",
+      "remaining_gaps": ["product_intel_gap"]
+    },
+    {
+      "external_product_id": "ext_3221a074fcd0a5b3d9a32f2d",
+      "sig_pdp_url": "https://agent.pivota.cc/products/sig_20487d5b07261ec3bfb2cc66",
+      "title": "Peach Glaze Glow Mist",
+      "review_decision": "accepted_after_reviewed_active_sync",
+      "reviewed_active_ingredients": ["Vitamin C"],
+      "post_deploy_live_pdp_gate": "passed",
+      "remaining_gaps": []
     },
     {
       "external_product_id": "ext_47fe725499e880c01ccfc134",
+      "sig_pdp_url": "https://agent.pivota.cc/products/sig_a490ed5bdf736d26b6c69cb2",
       "title": "Banana Bright Face Primer",
-      "review_decision": "accepted_with_offer_price_followup",
+      "review_decision": "accepted_after_reviewed_active_sync_and_price_repair",
       "reviewed_active_ingredients": ["Vitamin C"],
-      "post_apply_live_pdp_gate": "failed_price_mismatch_only",
-      "remaining_gaps": ["identity_graph_gap", "price_mismatch"]
+      "post_price_repair_live_pdp_gate": "passed",
+      "remaining_gaps": []
     },
     {
       "external_product_id": "ext_3fe128d1441a94c26364da2b",
+      "sig_pdp_url": "https://agent.pivota.cc/products/sig_37b0256e9641fbae7e91420c",
       "title": "Pout Preserve Peptide Lip Treatment",
-      "review_decision": "accepted_with_offer_price_and_product_intel_followup",
+      "review_decision": "accepted_after_reviewed_active_sync_and_price_repair",
       "reviewed_active_ingredients": ["Peptides"],
-      "post_apply_live_pdp_gate": "failed_price_mismatch_only",
-      "remaining_gaps": ["identity_graph_gap", "product_intel_gap", "price_mismatch"]
-    }
-  ],
-  "held_rows": [
-    {
-      "external_product_id": "ext_df461e9f2856b689eb1914a8",
-      "title": "Pout Preserve Sugar Melt Lip Scrub",
-      "review_decision": "held_pending_no_active_contract_or_active_raw_quarantine",
-      "reason": "Seed has no active item, but pdp_active_ingredients_raw contains key-ingredient/exfoliation copy; syncing now may make PDP shaping expect an active-ingredient module."
+      "post_price_repair_live_pdp_gate": "passed",
+      "remaining_gaps": ["product_intel_gap"],
+      "backfill_regression_guard": "dry_run_verified_active_contract_preserved_after_enrichment"
     },
     {
+      "external_product_id": "ext_df461e9f2856b689eb1914a8",
+      "sig_pdp_url": "https://agent.pivota.cc/products/sig_28a7af30de8846969663a045",
+      "title": "Pout Preserve Sugar Melt Lip Scrub",
+      "review_decision": "accepted_no_source_backed_active_ingredients",
+      "reviewed_active_ingredients": [],
+      "post_apply_live_pdp_gate": "passed",
+      "remaining_gaps": ["product_intel_gap"]
+    }
+  ],
+  "blocked_rows": [
+    {
       "external_product_id": "ext_4e4902ad12294f63294bebb0",
+      "sig_pdp_url": "https://agent.pivota.cc/products/sig_f258d00e487ce69c6366fea1",
       "title": "Touch Nourishing Body Lotion",
-      "review_decision": "held_source_mismatch_blocker",
-      "reason": "Canonical product URL returns 404 while destination URL resolves to The Peachy Pair, a different product; seed also shows cross-product active contamination."
+      "review_decision": "source_unavailable_and_cross_product_mismatch_blocked",
+      "reason": "Official product URL returns 404 and the stored destination resolves to The Peachy Pair, a different product; stale cross-product active evidence was quarantined.",
+      "transaction_ready": false,
+      "post_blocker_live_pdp_gate": "passed_as_source_unavailable_referral_style"
     }
   ],
   "code_actions": {
+    "runtime_patch_deployed_commit": "b5326ade95df230c7f0e2d8f698e5efb7184090b6",
+    "backfill_guard_pending_commit": true,
     "runtime_patch": [
       "Project reviewed_active_ingredients_v1 into external-seed identity source_payload products.",
       "Treat reviewed_active_ingredients_v1 as a high-quality source in PDP builder and structured ingredient authority.",
       "Prevent reviewed active arrays such as Vitamin C from being hidden solely because the INCI uses synonym labels such as ascorbic acid derivatives."
     ],
+    "backfill_guard": [
+      "Allow strict reviewed no-active contracts for non-formula PDPs such as Sugar Melt.",
+      "Reapply reviewed active ingredient contracts after ingredient enrichment and legacy ingredient reapply steps.",
+      "Verify Peptide Lip dry-run remains Peptides-only after catalog backfill enrichment."
+    ],
     "tests": [
-      "tests/pdp_builder_structured_modules.test.js",
-      "tests/services/external_seed_products.test.js",
-      "tests/services/pdp_ingredient_authority.test.js",
-      "tests/services/external_seed_pdp_quality.test.js",
-      "tests/pdp_structured_modules.test.js",
-      "tests/services/external_seed_products_reviewed_active.node.test.cjs",
-      "tests/scripts/apply_reviewed_external_seed_active_ingredients.node.test.cjs",
-      "tests/scripts/pdp_identity_source_payload_drift.test.js"
+      "npx jest tests/scripts/backfill_external_product_seeds_catalog.test.js --runInBand",
+      "node --test tests/scripts/apply_reviewed_external_seed_active_ingredients.node.test.cjs"
     ]
+  },
+  "evidence_reports": {
+    "post_deploy_pdp_quality_dir": "reports/pdp_identity_payload_drift_20260516_olehenriksen/wave6_post_deploy_pdp_quality",
+    "price_repair_dir": "reports/pdp_identity_payload_drift_20260516_olehenriksen/wave6_price_repair",
+    "sugar_melt_no_active_dir": "reports/pdp_identity_payload_drift_20260516_olehenriksen/wave6_sugar_melt_no_active",
+    "touch_source_mismatch_dir": "reports/pdp_identity_payload_drift_20260516_olehenriksen/wave6_touch_source_mismatch"
   },
   "next_batch_policy": {
     "continue_without_user_confirmation": true,
     "next_actions": [
-      "Deploy runtime patch via git push and rerun no-cache PDP QA for the five synced rows.",
-      "Add explicit no-active/quarantine handling for Sugar Melt before identity sync.",
-      "Apply strict blocker/source mismatch handling to Touch Nourishing Body Lotion.",
-      "Expand drift audit to next high-risk beauty domains after wave6 closeout."
+      "Commit and push the backfill guard via git push.",
+      "After deploy, re-run focused Peptide Lip no-cache PDP QA.",
+      "Expand drift audit to the next high-risk beauty domains and only write reviewed, source-backed repairs."
     ]
   }
 }
