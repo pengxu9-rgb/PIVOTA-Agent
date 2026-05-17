@@ -7048,6 +7048,14 @@ async function buildOffersFromGroupMembers(args) {
       selectedVariant?.pricing?.current?.amount ??
       selectedVariant?.pricing?.amount ??
       null;
+    const selectedVariantPriceAmount = readPriceAmountForNormalization(selectedVariantPrice);
+    const productPrice =
+      p.price ??
+      p.price_amount ??
+      p.priceAmount ??
+      p.pricing?.current?.amount ??
+      p.pricing?.amount ??
+      null;
     const currency =
       firstNonEmptyString(
         selectedVariant?.currency,
@@ -7088,7 +7096,9 @@ async function buildOffersFromGroupMembers(args) {
       p.agent_safe_commerce_facts ||
       (commerceFacts ? buildAgentSafeCommerceFacts(commerceFacts) : null);
     const offerPrice = normalizeOfferMoneyForProduct(
-      selectedVariantPrice ?? p.price,
+      Number.isFinite(selectedVariantPriceAmount) && selectedVariantPriceAmount > 0
+        ? selectedVariantPrice
+        : productPrice,
       currency,
       p,
       selectedVariant,

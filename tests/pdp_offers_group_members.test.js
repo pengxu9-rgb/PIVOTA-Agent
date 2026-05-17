@@ -202,6 +202,47 @@ describe('PDP grouped offers', () => {
     ]);
   });
 
+  test('falls back to product-level offer price when selected external seed variant has zero price', async () => {
+    const app = require('../src/server');
+
+    const offersData = await app._debug.buildOffersFromGroupMembers({
+      productGroupId: 'pg_reviewed_retailer_offer_price',
+      members: [
+        {
+          merchant_id: 'external_seed',
+          product_id: 'ulta-beauty:a3d445cc5b1e21b1',
+          source_kind: 'external_seed',
+        },
+      ],
+      prefetchedProducts: [
+        {
+          merchant_id: 'external_seed',
+          product_id: 'ulta-beauty:a3d445cc5b1e21b1',
+          title: 'Roller Lash Curling Mascara',
+          merchant_name: 'Ulta Beauty',
+          destination_url: 'https://www.ulta.com/p/roller-lash-curling-lifting-mascara-xlsImpprod11951085?sku=2285068',
+          price: 29,
+          currency: 'USD',
+          variants: [
+            {
+              variant_id: 'ulta-beauty:a3d445cc5b1e21b1::canonical',
+              sku: 'ulta-beauty:a3d445cc5b1e21b1',
+              title: 'Mascara',
+              price: 0,
+              currency: 'USD',
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(offersData.offers).toHaveLength(1);
+    expect(offersData.offers[0].price).toEqual({ amount: 29, currency: 'USD' });
+    expect(offersData.offers[0].variants[0]).toEqual(
+      expect.not.objectContaining({ price: expect.anything() }),
+    );
+  });
+
   test('builds display-safe Shopify store discount evidence from promotion metadata', () => {
     const app = require('../src/server');
 
