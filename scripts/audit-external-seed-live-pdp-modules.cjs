@@ -236,15 +236,30 @@ function analyzeInsights(pdp) {
   const core = asObject(data.product_intel_core);
   const qualityState = asString(data.quality_state || core.quality_state);
   const evidenceProfile = asString(data.evidence_profile || core.evidence_profile);
+  const provenance = asObject(data.provenance || core.provenance);
+  const reviewStatus = asString(provenance.review_status || data.review_status).toLowerCase();
+  const reviewDecision = asString(provenance.review_decision || data.review_decision).toLowerCase();
+  const reviewer = asString(provenance.reviewer || provenance.reviewer_kind || data.reviewer);
+  const reviewTier = asString(provenance.review_tier || data.review_tier);
   const headline = asString(core.what_it_is?.headline || data.what_it_is?.headline);
   const whyCount = asArray(core.why_it_stands_out || data.why_it_stands_out).length;
   const verified = /^(verified|reviewed|published)$/i.test(qualityState);
   const genericHeadline = /^(product insight|beauty product|skin care|skincare product)$/i.test(headline);
+  const sellerGroundedReviewed =
+    evidenceProfile === 'seller_only' &&
+    verified &&
+    Boolean(
+      reviewer ||
+        reviewTier ||
+        reviewStatus === 'completed' ||
+        ['pass', 'rewrite'].includes(reviewDecision),
+    );
   return {
     module_present: Boolean(moduleByType(pdp, 'product_intel')),
     quality_state: qualityState || null,
     evidence_profile: evidenceProfile || null,
-    seller_only_evidence: evidenceProfile === 'seller_only',
+    seller_only_evidence: evidenceProfile === 'seller_only' && !sellerGroundedReviewed,
+    seller_grounded_reviewed: sellerGroundedReviewed,
     headline: headline || null,
     why_count: whyCount,
     ok: Boolean(moduleByType(pdp, 'product_intel')) && verified && headline && !genericHeadline && whyCount > 0,

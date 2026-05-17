@@ -544,6 +544,7 @@ function normalizePublishedProductIntelBundle(bundle, {
         const sellerOnly =
           coreEvidenceProfile === 'seller_only' || coreEvidenceProfile === 'seller_plus_formula';
         if (!sellerOnly) return true;
+        if (reviewedForPublicDisplay) return true;
         return !shouldSuppressSellerHighlightText(`${row.headline || ''} ${row.body || ''}`);
       })
       .map((item) => {
