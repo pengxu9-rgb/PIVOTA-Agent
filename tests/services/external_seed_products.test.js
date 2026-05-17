@@ -3364,6 +3364,56 @@ describe('externalSeedProducts helper', () => {
     expect(product.pdp_active_ingredients_raw).toBe('Vitamin C (Ascorbic acid)');
   });
 
+  test('suppresses unreviewed active ingredient modules for color cosmetics and tools', () => {
+    const foundation = buildExternalSeedProduct({
+      id: 'eps_foundation_active_noise',
+      external_product_id: 'ext_foundation_active_noise',
+      canonical_url: 'https://example.com/products/longwear-foundation',
+      destination_url: 'https://example.com/products/longwear-foundation',
+      title: 'Longwear Foundation',
+      seed_data: {
+        active_ingredients: ['Niacinamide'],
+        pdp_ingredients_raw: 'Water, Niacinamide, Dimethicone, Iron Oxides.',
+        pdp_field_quality_summary: {
+          ingredients_raw: {
+            source_origin: 'official_pdp',
+            source_quality_status: 'high',
+          },
+        },
+        snapshot: {
+          title: 'Longwear Foundation',
+          active_ingredients: ['Niacinamide'],
+          pdp_ingredients_raw: 'Water, Niacinamide, Dimethicone, Iron Oxides.',
+        },
+      },
+    });
+
+    expect(foundation.pdp_ingredients_raw).toContain('Niacinamide');
+    expect(foundation.active_ingredients).toBeUndefined();
+    expect(foundation.pdp_active_ingredients_raw).toBeUndefined();
+    expect(foundation.ingredient_intel?.authoritative?.active_items || []).toEqual([]);
+
+    const sponge = buildExternalSeedProduct({
+      id: 'eps_makeup_sponge_active_noise',
+      external_product_id: 'ext_makeup_sponge_active_noise',
+      canonical_url: 'https://example.com/products/makeup-sponge',
+      destination_url: 'https://example.com/products/makeup-sponge',
+      title: 'Makeup Sponge',
+      seed_data: {
+        pdp_active_ingredients_raw: '100% hydrophilic polyurethane',
+        pdp_ingredients_raw: '100% hydrophilic polyurethane',
+        snapshot: {
+          title: 'Makeup Sponge',
+          pdp_active_ingredients_raw: '100% hydrophilic polyurethane',
+          pdp_ingredients_raw: '100% hydrophilic polyurethane',
+        },
+      },
+    });
+
+    expect(sponge.pdp_active_ingredients_raw).toBeUndefined();
+    expect(sponge.active_ingredients).toBeUndefined();
+  });
+
   test('projects reviewed active ingredient contract into identity source payload products', () => {
     const reviewedContract = {
       contract_version: 'external_seed.reviewed_active_ingredients.v1',

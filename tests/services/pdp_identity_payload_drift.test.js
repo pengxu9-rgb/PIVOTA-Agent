@@ -29,10 +29,20 @@ describe('pdpIdentityPayloadDrift', () => {
       title: 'Banana Bright+ Vitamin CC Stick',
       pdp_ingredients_raw: 'Dimethicone, mica, iron oxides.',
     };
+    const skinTintPayload = {
+      title: 'Skin Tint Blurring Elixir',
+      pdp_ingredients_raw: 'Water, dimethicone, niacinamide, iron oxides.',
+    };
+    const glossPayload = {
+      title: 'Plumping Gloss',
+      pdp_ingredients_raw: 'Hydrogenated polyisobutene, mica, caprylyl glycol.',
+    };
 
     expect(hasActiveIngredientEvidence(skincarePayload, skincarePayload.title)).toBe(false);
     expect(hasActiveIngredientExpectation(skincarePayload, skincarePayload.title)).toBe(true);
     expect(hasActiveIngredientExpectation(makeupPayload, makeupPayload.title)).toBe(false);
+    expect(hasActiveIngredientExpectation(skinTintPayload, skinTintPayload.title)).toBe(false);
+    expect(hasActiveIngredientExpectation(glossPayload, glossPayload.title)).toBe(false);
   });
 
   test('classifies stale identity payload when seed has source-backed PDP fields', () => {

@@ -389,6 +389,32 @@ function pruneRuntimeIngredientEvidence(target, { clearIngredientText = false, c
   }
 }
 
+const EXTERNAL_SEED_ACTIVE_ALLOWED_HINT_RE =
+  /\b(?:spf|sunscreen|sun\s*(?:screen|protection|defense)|uv|pa\+|acne|blemish|treatment|serum|essence|ampoule|retinol|retinal|salicylic|benzoyl\s+peroxide|azelaic|vitamin\s+c)\b/i;
+const EXTERNAL_SEED_COLOR_COSMETIC_OR_TOOL_RE =
+  /\b(?:foundation|concealer|skin\s+tint|powder|blush|bronzer|contour|highlighter|luminizer|gloss|lip(?:stick| liner| oil| gloss| butter| balm| kit)?|mascara|eyeliner|kyliner|brow|palette|eyeshadow|makeup\s+sponge|sponge|brush|sharpener|bundle|duo|trio|collection|kit|look)\b/i;
+
+function shouldSuppressExternalSeedActiveEvidence({ title = '', seedData = {}, snapshot = {}, row = {} } = {}) {
+  const reviewedContract =
+    ensureJsonObject(seedData.reviewed_active_ingredients_v1).contract_version ===
+      'external_seed.reviewed_active_ingredients.v1' ||
+    ensureJsonObject(snapshot.reviewed_active_ingredients_v1).contract_version ===
+      'external_seed.reviewed_active_ingredients.v1';
+  if (reviewedContract) return false;
+  const categoryText = [
+    seedData.category,
+    seedData.product_type,
+    snapshot.category,
+    snapshot.product_type,
+    row.category,
+    row.product_type,
+  ].filter(Boolean).join(' ');
+  const combined = [title, categoryText].filter(Boolean).join(' ');
+  if (!combined) return false;
+  if (EXTERNAL_SEED_ACTIVE_ALLOWED_HINT_RE.test(combined)) return false;
+  return EXTERNAL_SEED_COLOR_COSMETIC_OR_TOOL_RE.test(combined);
+}
+
 function buildApprovedRuntimeSeedData(seedData, pdpFieldQualitySummary) {
   const nextSeedData = cloneJsonValue(ensureJsonObject(seedData));
   const snapshot = ensureJsonObject(nextSeedData.snapshot);
@@ -3512,8 +3538,6 @@ function buildExternalSeedProduct(row, options = {}) {
   );
   const runtimeSeedData = buildApprovedRuntimeSeedData(seedData, pdpFieldQualitySummary);
   const runtimeSnapshot = ensureJsonObject(runtimeSeedData.snapshot);
-  const runtimeIngredientIntel = ensureJsonObject(runtimeSeedData.ingredient_intel);
-  const runtimeSnapshotIngredientIntel = ensureJsonObject(runtimeSnapshot.ingredient_intel);
   const galleryRelevanceContext = buildSeedGalleryRelevanceContext(runtimeSeedData, row);
 
   const title =
@@ -3521,6 +3545,18 @@ function buildExternalSeedProduct(row, options = {}) {
       recall.retrieval_title || snapshot.title || row.title || seedData.title || canonicalUrl || destinationUrl || externalProductId,
     ).trim() ||
     externalProductId;
+  const suppressActiveEvidence = shouldSuppressExternalSeedActiveEvidence({
+    title,
+    seedData,
+    snapshot,
+    row,
+  });
+  if (suppressActiveEvidence) {
+    pruneRuntimeIngredientEvidence(runtimeSeedData, { clearActiveIngredients: true });
+    pruneRuntimeIngredientEvidence(runtimeSnapshot, { clearActiveIngredients: true });
+  }
+  const runtimeIngredientIntel = ensureJsonObject(runtimeSeedData.ingredient_intel);
+  const runtimeSnapshotIngredientIntel = ensureJsonObject(runtimeSnapshot.ingredient_intel);
   const description = firstNonEmptyString(
     prefersStoredRecallSummary ? recall.retrieval_summary : '',
     runtimeSnapshot.description,
@@ -3574,20 +3610,22 @@ function buildExternalSeedProduct(row, options = {}) {
       runtimeSnapshot.ingredientsInci,
     256,
   );
-  const authorityActiveIngredients = filterActiveIngredientsWithSourceEvidence(
-    [
-      seedData.active_ingredients,
-      seedData.activeIngredients,
-      snapshot.active_ingredients,
-      snapshot.activeIngredients,
-    ],
-    [
-      runtimeSeedData.pdp_ingredients_raw,
-      runtimeSnapshot.pdp_ingredients_raw,
-      runtimeSeedData.raw_ingredient_text_clean,
-      runtimeSnapshot.raw_ingredient_text_clean,
-    ].join(' '),
-  );
+  const authorityActiveIngredients = suppressActiveEvidence
+    ? []
+    : filterActiveIngredientsWithSourceEvidence(
+        [
+          seedData.active_ingredients,
+          seedData.activeIngredients,
+          snapshot.active_ingredients,
+          snapshot.activeIngredients,
+        ],
+        [
+          runtimeSeedData.pdp_ingredients_raw,
+          runtimeSnapshot.pdp_ingredients_raw,
+          runtimeSeedData.raw_ingredient_text_clean,
+          runtimeSnapshot.raw_ingredient_text_clean,
+        ].join(' '),
+      );
   const reviewedActiveIngredientsContract = [
     ensureJsonObject(seedData.reviewed_active_ingredients_v1),
     ensureJsonObject(snapshot.reviewed_active_ingredients_v1),
@@ -4028,7 +4066,7 @@ function buildExternalSeedProduct(row, options = {}) {
       };
   const displayActiveIngredients = reviewedActiveIngredients.length > 0
     ? reviewedActiveIngredients
-    : shouldExposeAuthorityActiveItems(authority)
+    : !suppressActiveEvidence && shouldExposeAuthorityActiveItems(authority)
       ? authority.active_items
       : [];
   const mergedIngredientIntel = mergeIngredientIntelWithAuthority(runtimeIngredientIntel, authority);
@@ -4122,9 +4160,9 @@ function buildExternalSeedProduct(row, options = {}) {
     ...(isSurfaceablePdpField(pdpFieldQualitySummary, 'ingredients_raw') && pdpIngredientsRaw
       ? { pdp_ingredients_raw: pdpIngredientsRaw }
       : {}),
-    ...(isSurfaceablePdpField(pdpFieldQualitySummary, 'active_ingredients_raw') && pdpActiveIngredientsRaw
+    ...(!suppressActiveEvidence && isSurfaceablePdpField(pdpFieldQualitySummary, 'active_ingredients_raw') && pdpActiveIngredientsRaw
       ? { pdp_active_ingredients_raw: pdpActiveIngredientsRaw }
-      : sourceBackedActiveIngredientsRaw
+      : !suppressActiveEvidence && sourceBackedActiveIngredientsRaw
         ? { pdp_active_ingredients_raw: sourceBackedActiveIngredientsRaw }
       : {}),
     ...(isSurfaceablePdpField(pdpFieldQualitySummary, 'how_to_use_raw') && pdpHowToUseRaw

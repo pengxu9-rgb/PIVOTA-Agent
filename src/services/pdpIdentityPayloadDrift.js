@@ -192,10 +192,10 @@ function hasActiveIngredientExpectation(payload, title = '') {
   if (!ingredientishSource) return false;
 
   const likelyMakeupOnly =
-    /\b(?:foundation|concealer|lip liner|eyeliner|mascara|brow|eyeshadow|blush|bronzer|highlighter|cc stick|color pencil)\b/i.test(
+    /\b(?:foundation|concealer|skin\s+tint|lip(?:stick| liner| oil| gloss| butter| balm| kit)?|gloss|eyeliner|mascara|brow|eyeshadow|blush|bronzer|highlighter|luminizer|powder|palette|cc stick|color pencil|makeup\s+sponge|sponge|brush|sharpener|bundle|duo|trio|collection|kit|look)\b/i.test(
       context,
     );
-  if (likelyMakeupOnly && !/\b(?:spf|sunscreen|skin|skincare|treatment|peptide|retinol|acid|niacinamide)\b/i.test(context)) {
+  if (likelyMakeupOnly && !/\b(?:spf|sunscreen|uv|skincare|treatment|acne|blemish)\b/i.test(context)) {
     return false;
   }
   const likelyHydrocolloidPatch =
