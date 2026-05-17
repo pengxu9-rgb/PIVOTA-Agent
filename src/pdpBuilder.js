@@ -2132,9 +2132,19 @@ const CONTENT_IMAGE_FACT_RE =
 const CONTENT_IMAGE_OVERVIEW_RE = /\b(texture|finish|feel|lifestyle|hero)\b/i;
 
 function collectStructuredContentImageUrls(product) {
+  const seedData = product?.seed_data && typeof product.seed_data === 'object' ? product.seed_data : {};
+  const snapshot = seedData?.snapshot && typeof seedData.snapshot === 'object'
+    ? seedData.snapshot
+    : product?.snapshot && typeof product.snapshot === 'object'
+      ? product.snapshot
+      : {};
   return uniqueNonEmptyStrings([
     ...(Array.isArray(product?.content_image_urls) ? product.content_image_urls : []),
     ...(Array.isArray(product?.contentImageUrls) ? product.contentImageUrls : []),
+    ...(Array.isArray(seedData.content_image_urls) ? seedData.content_image_urls : []),
+    ...(Array.isArray(seedData.contentImageUrls) ? seedData.contentImageUrls : []),
+    ...(Array.isArray(snapshot.content_image_urls) ? snapshot.content_image_urls : []),
+    ...(Array.isArray(snapshot.contentImageUrls) ? snapshot.contentImageUrls : []),
   ])
     .map((value) => normalizePdpImageUrl(value))
     .filter(Boolean);
