@@ -1616,12 +1616,52 @@ function cleanPdpDescriptionCandidate(value, detailsSections = []) {
   return next;
 }
 
-function cleanPdpDetailsSectionBody(heading, value) {
+function isReviewPollutedPdpDetailsSection(heading, body, sourceKind = '') {
+  const normalizedHeading = normalizePdpCopy(heading)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+  const normalizedBody = normalizePdpCopy(body)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+  const normalizedSourceKind = normalizeNonEmptyString(sourceKind).toLowerCase();
+  if (!normalizedHeading || !normalizedBody) return false;
+  if (/\bopens in a new window\b/.test(normalizedBody)) return true;
+  if (/\b(?:verified buyer|write a review|customer reviews?|review this product)\b/.test(normalizedBody)) {
+    return true;
+  }
+  const lines = normalizePdpCopy(body)
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const lastLine = lines[lines.length - 1] || '';
+  const previousLine = lines[lines.length - 2] || '';
+  if (
+    normalizedSourceKind === 'heading_sibling' &&
+    lastLine &&
+    previousLine &&
+    lastLine.length >= 12 &&
+    lastLine.toLowerCase() === previousLine.toLowerCase()
+  ) {
+    return true;
+  }
+  return (
+    normalizedSourceKind === 'heading_sibling' &&
+    normalizedBody.length < 360 &&
+    /\b(?:love|loved|great|amazing|favorite|perfect|cooling|hydration|moisturizing|recommend|flight|flights)\b/.test(
+      normalizedHeading,
+    )
+  );
+}
+
+function cleanPdpDetailsSectionBody(heading, value, { sourceKind = '' } = {}) {
   let next = normalizePdpCopy(value);
   if (!next) return '';
   if (isStorefrontBoilerplateDescription(next)) return '';
   if (isPromotionalPdpDetailsSection(heading, next)) return '';
   if (isReviewFormPdpDetailsSection(heading, next)) return '';
+  if (isReviewPollutedPdpDetailsSection(heading, next, sourceKind)) return '';
   if (heading === 'Ingredients') return cleanPdpIngredientsRaw(next);
   if (heading === 'How to Use' || heading === 'FAQ') return next;
   return stripTrailingPdpSectionNoise(next, { removeFreeFrom: true });
@@ -1670,7 +1710,7 @@ function normalizeDetailsSections(value, maxItems = 24) {
         heading = 'Benefits';
         body = body.replace(/^Benefits?\s*:\s*/i, '').trim();
       }
-      body = cleanPdpDetailsSectionBody(heading, body);
+      body = cleanPdpDetailsSectionBody(heading, body, { sourceKind });
       if (!body) continue;
       const key = `${sectionContentSignature(heading, body)}|${sourceKind.toLowerCase()}`;
       if (seen.has(key)) continue;
@@ -2315,6 +2355,7 @@ function cleanPdpHowToUseRaw(value) {
   const stopPatterns = [
     /\b(?:Good\s+For|Skin\s+Type|Benefits?|Key\s+Ingredients?|(?:Full\s+)?Ingredients|Full\s+INCI|INCI)\b/i,
     /\bFull\s+(?:Ingredients|INCI)\b/i,
+    /\b(?:What's\s+in\s+it|What\s+is\s+it|Better\s+with|Pairs?\s+with|You\s+may\s+also\s+like)\b/i,
   ];
   for (const pattern of stopPatterns) {
     const match = next.match(pattern);
@@ -2330,6 +2371,39 @@ function cleanPdpHowToUseRaw(value) {
     .trim();
   if (!next || /^(?:how to|how to use|directions?|usage)$/i.test(next)) return '';
   return next;
+}
+
+function extractHowToUseFromPdpText(value) {
+  const text = normalizePdpCopy(value)
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\r/g, '')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\s*\n\s*/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+  if (!text) return '';
+  const match = text.match(/(?:^|\n)\s*(?:How\s+to\s+Use|Directions?|Usage)\s*:?\s*/i);
+  if (!match) return '';
+  return cleanPdpHowToUseRaw(text.slice(match.index + match[0].length));
+}
+
+function startsAtLaterNumberedStep(value) {
+  return /^(?:step\s*)?[2-9][.)]\s+/i.test(normalizePdpCopy(value));
+}
+
+function startsAtFirstNumberedStep(value) {
+  return /^(?:step\s*)?1[.)]\s+/i.test(normalizePdpCopy(value));
+}
+
+function choosePdpHowToUseRaw(primaryValue, fallbackValue) {
+  const primary = cleanPdpHowToUseRaw(primaryValue);
+  const fallback = cleanPdpHowToUseRaw(fallbackValue);
+  if (fallback && startsAtFirstNumberedStep(fallback) && (!primary || startsAtLaterNumberedStep(primary))) {
+    return fallback;
+  }
+  return primary || fallback;
 }
 
 function extractFullIngredientsFromText(value) {
@@ -3667,6 +3741,11 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
       representativeProduct?.pdp_how_to_use_raw ||
       normalizedRepresentativeHowToSectionBody,
   );
+  const extractedHowToUseFromDescription = extractHowToUseFromPdpText(
+    representativeProduct?.description_raw ||
+      representativeProduct?.pdp_description_raw ||
+      rawLiveExtractedDescription,
+  );
   const ingredientsFromRepresentativeHowTo = extractFullIngredientsFromText(representativeHowToUseSourceRaw);
   const pdpIngredientsRaw = normalizeNonEmptyString(
     representativeProduct?.ingredients_raw ||
@@ -3693,7 +3772,7 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
       derivedPdpActiveIngredientsRaw,
   );
   const pdpHowToUseRaw = normalizeNonEmptyString(
-    cleanPdpHowToUseRaw(representativeHowToUseSourceRaw),
+    choosePdpHowToUseRaw(representativeHowToUseSourceRaw, extractedHowToUseFromDescription),
   );
   const pdpFaqItems = normalizeFaqItems(
     representativeProduct?.faq_items ||
@@ -6540,6 +6619,11 @@ module.exports = {
   filterProductIdsMissingPivotaInsights,
   isDisplayableProductIntelKbRow,
   cleanPdpIngredientsRaw,
+  cleanPdpHowToUseRaw,
+  choosePdpHowToUseRaw,
+  extractHowToUseFromPdpText,
+  isReviewPollutedPdpDetailsSection,
+  normalizeDetailsSections,
   pickPdpIngredientsRaw,
   applyReviewedActiveIngredientContract,
   reapplyApprovedPdpIngredientFieldsToRow,

@@ -28,6 +28,10 @@ const {
   collectBackfilledExternalProductIds,
   isDisplayableProductIntelKbRow,
   cleanPdpIngredientsRaw,
+  choosePdpHowToUseRaw,
+  extractHowToUseFromPdpText,
+  isReviewPollutedPdpDetailsSection,
+  normalizeDetailsSections,
   pickPdpIngredientsRaw,
   applyReviewedActiveIngredientContract,
   reapplyApprovedPdpIngredientFieldsToRow,
@@ -261,6 +265,61 @@ describe('backfill-external-product-seeds-catalog', () => {
         },
       }),
     ).toBe(true);
+  });
+
+  test('drops review-card heading siblings from PDP details sections', () => {
+    const sections = normalizeDetailsSections([
+      {
+        heading: 'Benefits',
+        body: 'Plumping\n\nElasticity\n\nHydrating',
+        source_kind: 'shopify_body_html_labeled_section',
+      },
+      {
+        heading: 'Deep Moisture',
+        body: 'Tried this mask last night after a peel and it was very cooling and moisturizing.\n\n(opens in a new window)\n\nDeep Peptide Radiance Mask',
+        source_kind: 'heading_sibling',
+      },
+      {
+        heading: 'Love the hydration',
+        body: 'They are perfect for long flights\n\nDeep Peptide Radiance Mask\n\nDeep Peptide Radiance Mask',
+        source_kind: 'heading_sibling',
+      },
+    ]);
+
+    expect(isReviewPollutedPdpDetailsSection('Deep Moisture', sections[0]?.body, 'heading_sibling')).toBe(false);
+    expect(sections).toEqual([
+      {
+        heading: 'Benefits',
+        body: 'Plumping\n\nElasticity\n\nHydrating',
+        source_kind: 'shopify_body_html_labeled_section',
+      },
+    ]);
+  });
+
+  test('recovers complete numbered how-to steps from PDP description when extracted how-to starts at step 2', () => {
+    const description = `Strengthening elasticity with just one sheet
+
+How to use
+
+1. Prep skin with toner after cleansing
+2. After opening the mask, adjust to fit on face
+3. Leave it on for 10-20 minutes and remove
+4. Gently pat to enhance absorption
+
+*Recommended to use along with Age-R Device
+If used along with Age-R, the Peptide Mask acts as an energy conductor allowing effective elasticity care.
+
+What's in it?
+
+Contains four types of peptides`;
+    const primary = `2. After opening the mask, adjust to fit on face
+3. Leave it on for 10-20 minutes and remove
+4. Gently pat to enhance absorption`;
+
+    const fallback = extractHowToUseFromPdpText(description);
+    expect(fallback).toContain('1. Prep skin with toner after cleansing');
+    expect(fallback).not.toContain("What's in it");
+    expect(choosePdpHowToUseRaw(primary, fallback)).toBe(fallback);
   });
 
   test('extracts full ingredients from mixed PDP detail section bodies', () => {
