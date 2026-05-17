@@ -2725,9 +2725,8 @@ function resolveSeedImageOverride(seedData, row) {
 
 function normalizeSeedImageUrls(seedData, row) {
   const relevanceContext = buildSeedGalleryRelevanceContext(seedData, row);
-  const out = filterSeedGalleryByRelevance(
-    filterMixedShopifyContentFromGallery(collectSeedImageUrls(seedData, row)),
-    relevanceContext,
+  const out = filterMixedShopifyContentFromGallery(
+    filterSeedGalleryByRelevance(collectSeedImageUrls(seedData, row), relevanceContext),
   );
   if (out.length > 0) return out;
 
@@ -2736,7 +2735,7 @@ function normalizeSeedImageUrls(seedData, row) {
 
   appendImageUrls(out, override.image_urls);
   appendImageUrls(out, override.image_url);
-  return filterSeedGalleryByRelevance(filterMixedShopifyContentFromGallery(out), relevanceContext);
+  return filterSeedGalleryByRelevance(out, relevanceContext);
 }
 
 function collectPrimaryVariantImageUrls(variants) {
