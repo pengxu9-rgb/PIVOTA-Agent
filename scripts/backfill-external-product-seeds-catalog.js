@@ -671,6 +671,15 @@ function sanitizeStoredSeedVariantDescriptions(seedData) {
   };
 }
 
+function clearStrictPdpSourceBlockerMarkers(seedData) {
+  const nextSeedData = ensureJsonObject(seedData);
+  const snapshot = ensureJsonObject(nextSeedData.snapshot);
+  delete nextSeedData.strict_pdp_source_blocker_v1;
+  delete snapshot.strict_pdp_source_blocker_v1;
+  nextSeedData.snapshot = snapshot;
+  return nextSeedData;
+}
+
 function collectProductImageUrls(product, options = {}) {
   return sanitizeSeedImageUrls(
     [
@@ -2074,6 +2083,15 @@ function shouldPreserveExistingPdpContent({
     return { preserve: true, reason: 'preserve_richer_existing_content_asset', existingApproved };
   }
   return { preserve: false, reason: '', existingApproved };
+}
+
+function approvedSnapshotAssetFallback(existingSummary, fieldKey, hasApprovedSnapshotContract) {
+  if (!hasApprovedSnapshotContract) return undefined;
+  const status = readFieldQualityStatus(existingSummary, fieldKey);
+  if (status === 'blocked' || status === 'quarantined' || status.startsWith('force_filled')) {
+    return undefined;
+  }
+  return { review_state: 'assistant_reviewed' };
 }
 
 function appendPreservedContentCandidateToSnapshotQuarantine(snapshotQuarantine, {
@@ -3575,7 +3593,7 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     existingSummary: existingPdpFieldQualitySummary,
     assetField:
       existingPdpContentAsset?.fields?.description_raw ||
-      (hasApprovedSnapshotContract ? { review_state: 'assistant_reviewed' } : undefined),
+      approvedSnapshotAssetFallback(existingPdpFieldQualitySummary, 'description_raw', hasApprovedSnapshotContract),
   });
   if (descriptionRawDecision.preserve && hasPdpContentAssetValue('description_raw', surfaceableProductDescriptionRaw)) {
     snapshotQuarantine = appendPreservedContentCandidateToSnapshotQuarantine(snapshotQuarantine, {
@@ -3607,7 +3625,7 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     existingSummary: existingPdpFieldQualitySummary,
     assetField:
       existingPdpContentAsset?.fields?.details_sections ||
-      (hasApprovedSnapshotContract ? { review_state: 'assistant_reviewed' } : undefined),
+      approvedSnapshotAssetFallback(existingPdpFieldQualitySummary, 'details_sections', hasApprovedSnapshotContract),
   });
   if (detailsDecision.preserve && hasPdpContentAssetValue('details_sections', surfaceablePdpDetailsSections)) {
     snapshotQuarantine = appendPreservedContentCandidateToSnapshotQuarantine(snapshotQuarantine, {
@@ -3664,7 +3682,7 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     existingSummary: existingPdpFieldQualitySummary,
     assetField:
       existingPdpContentAsset?.fields?.ingredients_raw ||
-      (hasApprovedSnapshotContract ? { review_state: 'assistant_reviewed' } : undefined),
+      approvedSnapshotAssetFallback(existingPdpFieldQualitySummary, 'ingredients_raw', hasApprovedSnapshotContract),
   });
   if (ingredientsDecision.preserve && hasPdpContentAssetValue('ingredients_raw', candidatePdpIngredientsRaw)) {
     snapshotQuarantine = appendPreservedContentCandidateToSnapshotQuarantine(snapshotQuarantine, {
@@ -3703,7 +3721,7 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     existingSummary: existingPdpFieldQualitySummary,
     assetField:
       existingPdpContentAsset?.fields?.active_ingredients_raw ||
-      (hasApprovedSnapshotContract ? { review_state: 'assistant_reviewed' } : undefined),
+      approvedSnapshotAssetFallback(existingPdpFieldQualitySummary, 'active_ingredients_raw', hasApprovedSnapshotContract),
   });
   if (activeIngredientsDecision.preserve && hasPdpContentAssetValue('active_ingredients_raw', candidatePdpActiveIngredientsRaw)) {
     snapshotQuarantine = appendPreservedContentCandidateToSnapshotQuarantine(snapshotQuarantine, {
@@ -3752,7 +3770,7 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     existingSummary: existingPdpFieldQualitySummary,
     assetField:
       existingPdpContentAsset?.fields?.how_to_use_raw ||
-      (hasApprovedSnapshotContract ? { review_state: 'assistant_reviewed' } : undefined),
+      approvedSnapshotAssetFallback(existingPdpFieldQualitySummary, 'how_to_use_raw', hasApprovedSnapshotContract),
   });
   if (howToDecision.preserve && hasPdpContentAssetValue('how_to_use_raw', candidatePdpHowToUseRaw)) {
     snapshotQuarantine = appendPreservedContentCandidateToSnapshotQuarantine(snapshotQuarantine, {
@@ -3789,7 +3807,7 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     existingSummary: existingPdpFieldQualitySummary,
     assetField:
       existingPdpContentAsset?.fields?.faq_items ||
-      (hasApprovedSnapshotContract ? { review_state: 'assistant_reviewed' } : undefined),
+      approvedSnapshotAssetFallback(existingPdpFieldQualitySummary, 'faq_items', hasApprovedSnapshotContract),
   });
   if (faqDecision.preserve && hasPdpContentAssetValue('faq_items', surfaceablePdpFaqItems)) {
     snapshotQuarantine = appendPreservedContentCandidateToSnapshotQuarantine(snapshotQuarantine, {
@@ -4273,6 +4291,16 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
   nextSeedData = applyReviewedActiveIngredientContract(nextSeedData);
   if (!description && suppressStaleDescriptionFallback) {
     delete nextSeedData.description;
+  }
+  const hasSourceBackedIncomingPdpContent =
+    Boolean(surfaceableProductDescriptionRaw) ||
+    surfaceablePdpDetailsSections.length > 0 ||
+    Boolean(surfaceablePdpIngredientsRaw) ||
+    Boolean(surfaceablePdpActiveIngredientsRaw) ||
+    Boolean(surfaceablePdpHowToUseRaw) ||
+    surfaceablePdpFaqItems.length > 0;
+  if (authoritativeSnapshot && hasSourceBackedIncomingPdpContent) {
+    nextSeedData = clearStrictPdpSourceBlockerMarkers(nextSeedData);
   }
   nextSeedData = sanitizeStoredSeedVariantDescriptions(nextSeedData);
 
@@ -4931,6 +4959,293 @@ async function extractSeed(targetUrl, row, baseUrl) {
   return response.data || {};
 }
 
+function stripHtmlToText(value) {
+  return decodeBasicHtmlEntities(
+    String(value || '')
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/(?:p|div|li|h[1-6]|section|article)>/gi, '\n')
+      .replace(/<[^>]+>/g, ' '),
+  )
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\s*\n\s*/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function normalizeShopifyBodyHeading(value) {
+  return normalizeNonEmptyString(value)
+    .replace(/[:：]+$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function parseShopifyBodyHtmlSections(bodyHtml) {
+  const raw = normalizeNonEmptyString(bodyHtml);
+  if (!raw) return [];
+  const marked = raw
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(?:p|div|li|h[1-6]|section|article)>/gi, '\n')
+    .replace(/<strong[^>]*>([\s\S]*?)<\/strong>/gi, '\n[[PIVOTA_HEADING]]$1[[/PIVOTA_HEADING]]\n')
+    .replace(/<b[^>]*>([\s\S]*?)<\/b>/gi, '\n[[PIVOTA_HEADING]]$1[[/PIVOTA_HEADING]]\n');
+  const flattened = decodeBasicHtmlEntities(marked.replace(/<[^>]+>/g, ' '))
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\s*\n\s*/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+  if (!flattened) return [];
+
+  const sections = [];
+  const headingRe = /\[\[PIVOTA_HEADING\]\]([\s\S]*?)\[\[\/PIVOTA_HEADING\]\]/g;
+  const matches = Array.from(flattened.matchAll(headingRe));
+  for (let idx = 0; idx < matches.length; idx += 1) {
+    const heading = normalizeShopifyBodyHeading(matches[idx][1]);
+    if (!heading) continue;
+    const start = matches[idx].index + matches[idx][0].length;
+    const end = idx + 1 < matches.length ? matches[idx + 1].index : flattened.length;
+    const body = normalizeNonEmptyString(
+      flattened
+        .slice(start, end)
+        .replace(/\[\[PIVOTA_HEADING\]\][\s\S]*?\[\[\/PIVOTA_HEADING\]\]/g, '')
+        .replace(/\s+/g, ' '),
+    );
+    if (!body) continue;
+    sections.push({
+      heading,
+      body,
+      source_kind: 'shopify_products_json_body_html',
+    });
+  }
+  if (sections.length > 0) return normalizeDetailsSections(sections);
+  const text = stripHtmlToText(raw);
+  return text ? [{ heading: 'Description', body: text, source_kind: 'shopify_products_json_body_html' }] : [];
+}
+
+function findShopifySectionBody(sections, pattern) {
+  const match = (sections || []).find((section) => pattern.test(normalizeNonEmptyString(section?.heading)));
+  return normalizeNonEmptyString(match?.body);
+}
+
+function buildShopifyProductsJsonFieldQualitySummary({ descriptionRaw, detailsSections, ingredientsRaw, howToUseRaw }) {
+  const source = {
+    source_origin: 'shopify_products_json',
+    source_quality_status: 'medium',
+    source_kinds: ['shopify_products_json_body_html'],
+    reason_codes: ['direct_pdp_empty_recovered_from_public_shopify_products_json'],
+  };
+  const summary = {};
+  if (descriptionRaw) summary.description_raw = { ...source };
+  if (Array.isArray(detailsSections) && detailsSections.length > 0) summary.details_sections = { ...source };
+  if (ingredientsRaw) summary.ingredients_raw = { ...source };
+  if (howToUseRaw) summary.how_to_use_raw = { ...source };
+  return Object.keys(summary).length > 0 ? summary : null;
+}
+
+function normalizeShopifyProductJsonUrl(targetUrl) {
+  try {
+    const parsed = new URL(normalizeUrlLike(targetUrl));
+    return `${parsed.origin}/products.json?limit=250`;
+  } catch {
+    return '';
+  }
+}
+
+function mapShopifyProductsJsonProduct(product, targetUrl) {
+  if (!product || typeof product !== 'object') return null;
+  const handle = normalizeNonEmptyString(product.handle);
+  const title = normalizeNonEmptyString(product.title);
+  if (!handle || !title) return null;
+  let origin = '';
+  try {
+    origin = new URL(normalizeUrlLike(targetUrl)).origin;
+  } catch {
+    return null;
+  }
+  const productUrl = `${origin}/products/${handle}`;
+  const detailsSections = parseShopifyBodyHtmlSections(product.body_html);
+  const descriptionRaw =
+    findShopifySectionBody(detailsSections, /^(?:what\s+it\s+is|what\s+is\s+it|description|about)$/i) ||
+    normalizeNonEmptyString(detailsSections[0]?.body);
+  const ingredientsRaw = findShopifySectionBody(detailsSections, /^(?:full\s+ingredients|ingredients|ingredient\s+list)$/i);
+  const howToUseRaw = findShopifySectionBody(detailsSections, /^(?:how\s+to\s+use|directions|usage)$/i);
+  const images = (Array.isArray(product.images) ? product.images : [])
+    .map((image) => normalizeUrlLike(image?.src || image))
+    .filter(Boolean);
+  const options = Array.isArray(product.options) ? product.options : [];
+  const variants = (Array.isArray(product.variants) ? product.variants : [])
+    .map((variant, idx) => {
+      if (!variant || typeof variant !== 'object') return null;
+      const variantId = normalizeNonEmptyString(variant.id);
+      const optionName = normalizeNonEmptyString(options[0]?.name || variant.option_name || 'Title');
+      const optionValue = normalizeNonEmptyString(
+        variant.option1 || variant.option_value || variant.title || (idx === 0 ? 'Default Title' : ''),
+      );
+      const variantImage =
+        normalizeUrlLike(variant.featured_image?.src) ||
+        normalizeUrlLike(
+          (Array.isArray(product.images)
+            ? product.images.find((image) => Array.isArray(image?.variant_ids) && image.variant_ids.includes(variant.id))
+            : null)?.src,
+        ) ||
+        images[0] ||
+        '';
+      const variantUrl = variantId ? `${productUrl}?variant=${encodeURIComponent(variantId)}` : productUrl;
+      return {
+        id: variantId || normalizeNonEmptyString(variant.sku) || `variant-${idx + 1}`,
+        variant_id: variantId || normalizeNonEmptyString(variant.sku) || `variant-${idx + 1}`,
+        sku: normalizeNonEmptyString(variant.sku || variantId || `variant-${idx + 1}`),
+        title: optionValue,
+        option_name: optionName,
+        option_value: optionValue,
+        price: normalizeNonEmptyString(variant.price),
+        compare_at_price: normalizeNonEmptyString(variant.compare_at_price),
+        currency: 'USD',
+        stock: variant.available === false ? 'Out of Stock' : 'In Stock',
+        url: variantUrl,
+        deep_link: variantUrl,
+        product_url: productUrl,
+        image_url: variantImage,
+        image_urls: variantImage ? [variantImage] : [],
+      };
+    })
+    .filter(Boolean);
+  const tags = Array.isArray(product.tags)
+    ? product.tags.map((tag) => normalizeNonEmptyString(tag).toLowerCase()).filter(Boolean)
+    : [];
+  const productKind =
+    tags.includes('set') || /\b(?:set|kit|bundle|duo|trio|routine)\b/i.test(title)
+      ? 'bundle'
+      : 'single_formula';
+  const fieldQualitySummary = buildShopifyProductsJsonFieldQualitySummary({
+    descriptionRaw,
+    detailsSections,
+    ingredientsRaw,
+    howToUseRaw,
+  });
+  return {
+    title,
+    url: productUrl,
+    description: descriptionRaw,
+    description_raw: descriptionRaw,
+    pdp_description_raw: descriptionRaw,
+    details_sections: detailsSections,
+    pdp_details_sections: detailsSections,
+    ...(ingredientsRaw ? { ingredients_raw: ingredientsRaw, pdp_ingredients_raw: ingredientsRaw } : {}),
+    ...(howToUseRaw ? { how_to_use_raw: howToUseRaw, pdp_how_to_use_raw: howToUseRaw } : {}),
+    ...(fieldQualitySummary ? { field_quality_summary: fieldQualitySummary, pdp_field_quality_summary: fieldQualitySummary } : {}),
+    field_capture_status: fieldQualitySummary ? 'source_backed_partial' : 'product_json_only',
+    product_kind: productKind,
+    vendor: normalizeNonEmptyString(product.vendor),
+    product_type: normalizeNonEmptyString(product.product_type),
+    image_url: images[0] || '',
+    image_urls: images,
+    images,
+    variants,
+    shopify_id: normalizeNonEmptyString(product.id),
+    source_kind: 'shopify_products_json_handle_fallback',
+  };
+}
+
+function shouldAttemptShopifyProductsJsonHandleFallback(response, targetUrl) {
+  if (!looksLikeDirectProductTargetUrl(targetUrl)) return false;
+  const diagnostics = ensureJsonObject(response?.diagnostics);
+  const strategy = normalizeNonEmptyString(diagnostics.discovery_strategy).toLowerCase();
+  const failureCategory = normalizeNonEmptyString(diagnostics.failure_category).toLowerCase();
+  return strategy === 'shopify_json' && failureCategory === 'no_product_urls';
+}
+
+async function maybeRecoverDirectPdpFromShopifyProductsJson(response, targetUrl, row) {
+  if (!shouldAttemptShopifyProductsJsonHandleFallback(response, targetUrl)) return null;
+  const targetHandle = extractShopifyHandleFromUrl(targetUrl);
+  if (!targetHandle) return null;
+  const productsJsonUrl = normalizeShopifyProductJsonUrl(targetUrl);
+  if (!productsJsonUrl) return null;
+  let productsResponse;
+  try {
+    productsResponse = await axios.get(productsJsonUrl, {
+      timeout: Number(process.env.EXTERNAL_SEED_BACKFILL_SHOPIFY_PRODUCTS_JSON_TIMEOUT_MS || 20000),
+      headers: {
+        Accept: 'application/json',
+        'User-Agent': 'Pivota external seed backfill/1.0',
+      },
+      validateStatus: () => true,
+      maxContentLength: 1024 * 1024 * 8,
+    });
+  } catch (error) {
+    return {
+      products: [],
+      variants: [],
+      diagnostics: {
+        ...ensureJsonObject(response?.diagnostics),
+        shopify_products_json_fallback: {
+          attempted: true,
+          url: productsJsonUrl,
+          error: String(error?.message || error),
+        },
+      },
+    };
+  }
+  const status = Number(productsResponse?.status || 0);
+  const rawProducts = Array.isArray(productsResponse?.data?.products) ? productsResponse.data.products : [];
+  if (!(status >= 200 && status < 300) || rawProducts.length === 0) {
+    return {
+      products: [],
+      variants: [],
+      diagnostics: {
+        ...ensureJsonObject(response?.diagnostics),
+        shopify_products_json_fallback: {
+          attempted: true,
+          url: productsJsonUrl,
+          status,
+          product_count: rawProducts.length,
+        },
+      },
+    };
+  }
+  const normalizedTargetHandle = normalizeNonEmptyString(targetHandle).toLowerCase();
+  const matched = rawProducts.find(
+    (product) => normalizeNonEmptyString(product?.handle).toLowerCase() === normalizedTargetHandle,
+  );
+  const mappedProduct = matched ? mapShopifyProductsJsonProduct(matched, targetUrl) : null;
+  if (!mappedProduct) {
+    return {
+      products: [],
+      variants: [],
+      diagnostics: {
+        ...ensureJsonObject(response?.diagnostics),
+        shopify_products_json_fallback: {
+          attempted: true,
+          url: productsJsonUrl,
+          status,
+          product_count: rawProducts.length,
+          target_handle: targetHandle,
+          matched: false,
+        },
+      },
+    };
+  }
+  return {
+    mode: 'shopify_products_json_handle_fallback',
+    products: [mappedProduct],
+    variants: Array.isArray(mappedProduct.variants) ? mappedProduct.variants : [],
+    diagnostics: {
+      ...ensureJsonObject(response?.diagnostics),
+      original_failure_category: normalizeNonEmptyString(response?.diagnostics?.failure_category),
+      failure_category: null,
+      recovery_strategy: 'shopify_products_json_handle_fallback',
+      shopify_products_json_fallback: {
+        attempted: true,
+        url: productsJsonUrl,
+        status,
+        product_count: rawProducts.length,
+        target_handle: targetHandle,
+        matched: true,
+        matched_title: mappedProduct.title,
+        source_url: productsJsonUrl,
+      },
+    },
+  };
+}
+
 async function extractSeedCommerceFacts(targetUrl, row, baseUrl) {
   const requestBody = {
     ...buildExtractRequestBody(targetUrl, row),
@@ -5238,11 +5553,19 @@ async function processRow(row, options) {
   }
 
   try {
-    const response = await extractSeed(targetUrl, row, options.baseUrl);
+    let response = await extractSeed(targetUrl, row, options.baseUrl);
     const responseV2 = options.includeCommerceFacts
       ? await extractSeedCommerceFacts(targetUrl, row, options.baseUrl)
       : null;
-    const products = Array.isArray(response?.products) ? response.products : [];
+    let products = Array.isArray(response?.products) ? response.products : [];
+    if (looksLikeDirectProductTargetUrl(targetUrl) && products.length === 0) {
+      const recoveredResponse = await maybeRecoverDirectPdpFromShopifyProductsJson(response, targetUrl, row);
+      const recoveredProducts = Array.isArray(recoveredResponse?.products) ? recoveredResponse.products : [];
+      if (recoveredProducts.length > 0) {
+        response = recoveredResponse;
+        products = recoveredProducts;
+      }
+    }
     let representativeProduct = chooseRepresentativeProduct(response, targetUrl, row);
     if (looksLikeDirectProductTargetUrl(targetUrl) && products.length === 0) {
       const preservedImageHealth = await maybePersistPreservedImageHealth(

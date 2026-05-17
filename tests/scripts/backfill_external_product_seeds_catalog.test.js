@@ -1853,6 +1853,145 @@ describe('backfill-external-product-seeds-catalog', () => {
     expect(result.payload.diagnostics).toEqual({ extraction_status: 'empty' });
   });
 
+  test('recovers direct Shopify PDP 404 from public products.json by exact handle', async () => {
+    const targetUrl = 'https://www.skin1004.com/products/poremizing-glow-wrapping-mask';
+    const imageUrl =
+      'https://cdn.shopify.com/s/files/1/0590/4538/0253/files/poremizing-glow-wrapping-mask.png?v=1';
+    const row = {
+      id: 'eps_skin1004_geo_hidden',
+      external_product_id: 'ext_skin1004_geo_hidden',
+      title: 'Poremizing Glow Wrapping Mask',
+      market: 'US',
+      canonical_url: targetUrl,
+      destination_url: targetUrl,
+      price_currency: 'USD',
+      seed_data: {
+        title: 'Poremizing Glow Wrapping Mask',
+        pdp_how_to_use_raw: 'Use according to the merchant directions for this product.',
+        strict_pdp_source_blocker_v1: {
+          reason_codes: ['official_pdp_http_404'],
+          unsafe_source: true,
+        },
+        pdp_field_quality_summary: {
+          how_to_use_raw: {
+            source_origin: 'pivota_force_fill',
+            source_quality_status: 'force_filled_reviewed_pattern',
+          },
+        },
+        snapshot: {
+          title: 'Poremizing Glow Wrapping Mask',
+          canonical_url: targetUrl,
+          pdp_how_to_use_raw: 'Use according to the merchant directions for this product.',
+          strict_pdp_source_blocker_v1: {
+            reason_codes: ['official_pdp_http_404'],
+            unsafe_source: true,
+          },
+          external_seed_snapshot_contract: {
+            authoritative: true,
+            legacy_fields_quarantined: true,
+          },
+          pdp_field_quality_summary: {
+            how_to_use_raw: {
+              source_origin: 'pivota_force_fill',
+              source_quality_status: 'force_filled_reviewed_pattern',
+            },
+          },
+        },
+      },
+    };
+
+    jest
+      .spyOn(axios, 'post')
+      .mockResolvedValueOnce({
+        data: {
+          products: [],
+          variants: [],
+          diagnostics: {
+            discovery_strategy: 'shopify_json',
+            failure_category: 'no_product_urls',
+            http_trace: [
+              { url: `${targetUrl}.js`, status: 404 },
+              { url: targetUrl, status: 404 },
+            ],
+          },
+        },
+      });
+    jest
+      .spyOn(axios, 'get')
+      .mockResolvedValueOnce({
+        status: 200,
+        data: {
+          products: [
+            {
+              id: 9355674386678,
+              title: 'Poremizing Glow Wrapping Mask',
+              handle: 'poremizing-glow-wrapping-mask',
+              vendor: 'SKIN1004',
+              product_type: 'Mask',
+              tags: [],
+              body_html:
+                '<p><strong>What It Is:</strong><br>A bouncy gel type wrapping mask that peels off to reveal visibly refined pores.</p><p><strong>Product Benefits:</strong><br>Pore Refining, Firming, Radiance</p><p><strong>Key Ingredients:</strong><br>Centella Asiatica Extract, Mineral Salts</p>',
+              variants: [
+                {
+                  id: 50574080000123,
+                  title: '75ml',
+                  option1: '75ml',
+                  sku: 'USSKM001',
+                  available: true,
+                  price: '18.00',
+                  compare_at_price: '20.00',
+                },
+              ],
+              images: [
+                {
+                  src: imageUrl,
+                  variant_ids: [50574080000123],
+                },
+              ],
+              options: [{ name: 'Size', values: ['75ml'] }],
+            },
+          ],
+        },
+      });
+
+    const result = await processRow(row, {
+      dryRun: true,
+      baseUrl: 'https://catalog.test',
+      validateImageHealth: false,
+      expandVariants: false,
+    });
+
+    expect(result.status).toBe('dry_run');
+    expect(result.payload.nextRow.seed_data.snapshot.diagnostics.recovery_strategy).toBe(
+      'shopify_products_json_handle_fallback',
+    );
+    expect(result.payload.nextRow.price_amount).toBe(18);
+    expect(result.payload.nextRow.availability).toBe('in_stock');
+    expect(result.payload.nextRow.seed_data.pdp_description_raw).toContain('bouncy gel type wrapping mask');
+    expect(result.payload.nextRow.seed_data.pdp_details_sections).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ heading: 'Product Benefits', body: 'Pore Refining, Firming, Radiance' }),
+        expect.objectContaining({ heading: 'Key Ingredients', body: 'Centella Asiatica Extract, Mineral Salts' }),
+      ]),
+    );
+    expect(result.payload.nextRow.seed_data.pdp_how_to_use_raw).toBeUndefined();
+    expect(result.payload.nextRow.seed_data.strict_pdp_source_blocker_v1).toBeUndefined();
+    expect(result.payload.nextRow.seed_data.snapshot.strict_pdp_source_blocker_v1).toBeUndefined();
+    expect(result.payload.nextRow.seed_data.pdp_field_quality_summary.description_raw).toMatchObject({
+      source_origin: 'shopify_products_json',
+      source_quality_status: 'medium',
+    });
+    expect(result.payload.nextRow.seed_data.variants).toEqual([
+      expect.objectContaining({
+        sku: 'USSKM001',
+        option_name: 'Size',
+        option_value: '75ml',
+        price: '18.00',
+        stock: 'In Stock',
+      }),
+    ]);
+  });
+
   test('recovers the original PDP target from diagnostics when the stored URL drifted to contact-us', () => {
     const row = {
       canonical_url: 'https://theordinary.com/en-us/contact-us.html',
