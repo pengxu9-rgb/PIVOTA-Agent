@@ -3648,7 +3648,7 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
   if (
     ingredientsFromRepresentativeHowTo &&
     isSurfaceablePdpField(incomingPdpFieldQualitySummary, 'how_to_use_raw') &&
-    !incomingPdpFieldQualitySummary?.ingredients_raw
+    (!incomingPdpFieldQualitySummary?.ingredients_raw || !isSurfaceablePdpField(incomingPdpFieldQualitySummary, 'ingredients_raw'))
   ) {
     const howToQuality = incomingPdpFieldQualitySummary?.how_to_use_raw || {};
     incomingPdpFieldQualitySummary = {
