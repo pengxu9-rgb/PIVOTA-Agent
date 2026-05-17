@@ -116,11 +116,51 @@ function qualityStatus(seedData, key) {
   };
 }
 
+function readForceFillContract(seedData) {
+  const snapshot = asObject(seedData.snapshot);
+  const rootIntel = asObject(seedData.ingredient_intel);
+  const snapshotIntel = asObject(snapshot.ingredient_intel);
+  return {
+    ...asObject(snapshotIntel.force_fill_contract),
+    ...asObject(rootIntel.force_fill_contract),
+  };
+}
+
+function hasForceFillContract(seedData) {
+  const contract = readForceFillContract(seedData);
+  return (
+    asString(contract.contract_version) === 'pivota.pdp.force_fill.v1' ||
+    /pivota_force_fill|force_filled|force_fill_pending/i.test(
+      `${asString(contract.source_origin)} ${asString(contract.source_quality_status)}`,
+    )
+  );
+}
+
 function hasForceFilledInci(seedData) {
-  return ['ingredients_raw', 'ingredients_inci'].some((key) => {
+  return hasForceFillContract(seedData) || ['ingredients_raw', 'ingredients_inci'].some((key) => {
     const quality = qualityStatus(seedData, key);
     return quality.status.startsWith('force_filled') || quality.origin === 'pivota_force_fill';
   });
+}
+
+function hasTrustedCurrentInci(seedData) {
+  return ['ingredients_raw', 'ingredients_inci'].some((key) => {
+    const quality = qualityStatus(seedData, key);
+    return (
+      ['high', 'medium', 'authoritative', 'regulatory_active'].includes(quality.status) &&
+      quality.origin !== 'pivota_force_fill'
+    );
+  });
+}
+
+function clearForceFillContract(seedData) {
+  const snapshot = asObject(seedData.snapshot);
+  const rootIntel = { ...asObject(seedData.ingredient_intel) };
+  const snapshotIntel = { ...asObject(snapshot.ingredient_intel) };
+  delete rootIntel.force_fill_contract;
+  delete snapshotIntel.force_fill_contract;
+  seedData.ingredient_intel = rootIntel;
+  snapshot.ingredient_intel = snapshotIntel;
 }
 
 function shouldIncludeReadinessRow(row) {
@@ -304,6 +344,8 @@ function buildPlan(row, options = {}) {
   const currentInci = readInciText(seedData);
   const currentStructuredInci = hasStructuredInci(seedData);
   const forceFilledInci = hasForceFilledInci(seedData);
+  const staleForceFillContract = hasForceFillContract(seedData);
+  const trustedCurrentInci = hasTrustedCurrentInci(seedData);
   const result = {
     external_product_id: row.external_product_id,
     title: row.title,
@@ -316,6 +358,16 @@ function buildPlan(row, options = {}) {
   if ((currentInci || currentStructuredInci) && !forceFilledInci) {
     result.status = 'skipped_current_has_inci';
     return { result, nextSeedData: seedData, changed: false };
+  }
+
+  if ((currentInci || currentStructuredInci) && staleForceFillContract && trustedCurrentInci) {
+    clearForceFillContract(seedData);
+    mergeSnapshotContract(seedData, generatedAt);
+    result.action = 'clear_stale_force_fill_contract';
+    result.reason_codes = ['trusted_inci_available', 'stale_force_fill_contract_removed'];
+    const changed = before !== JSON.stringify(seedData);
+    result.status = changed ? (options.apply ? 'pending_apply' : 'dry_run') : 'unchanged';
+    return { result, nextSeedData: seedData, changed };
   }
 
   const existingRemediation = existingManualRemediation(seedData);
@@ -542,7 +594,12 @@ async function main() {
         updatedRows += Number(res.rowCount || 0);
         if (res.rowCount > 0) plan.result.status = 'updated';
       }
-      if (['manual_source_review_required', 'component_refs_linked', 'component_ref_review_required'].includes(plan.result.action)) {
+      if ([
+        'manual_source_review_required',
+        'component_refs_linked',
+        'component_ref_review_required',
+        'clear_stale_force_fill_contract',
+      ].includes(plan.result.action)) {
         try {
           const sync = await syncIngredientBlockerServingMirrors(plan.result.external_product_id, plan.nextSeedData);
           plan.result.serving_mirror_sync = sync;
@@ -601,11 +658,21 @@ async function main() {
   process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
 }
 
-main()
-  .catch((error) => {
-    process.stderr.write(`${error?.stack || error}\n`);
-    process.exitCode = 1;
-  })
-  .finally(async () => {
-    await closePool().catch(() => {});
-  });
+if (require.main === module) {
+  main()
+    .catch((error) => {
+      process.stderr.write(`${error?.stack || error}\n`);
+      process.exitCode = 1;
+    })
+    .finally(async () => {
+      await closePool().catch(() => {});
+    });
+}
+
+module.exports = {
+  buildPlan,
+  clearForceFillContract,
+  hasForceFillContract,
+  hasForceFilledInci,
+  hasTrustedCurrentInci,
+};
