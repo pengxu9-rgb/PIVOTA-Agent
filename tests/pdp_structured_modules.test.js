@@ -575,7 +575,7 @@ describe('pdpBuilder structured PDP modules', () => {
         source: 'external_seed',
         title: 'Barrier Relief Serum',
         category: 'Serum',
-        image_url: 'https://cdn.example.com/barrier-hero.jpg',
+        image_url: 'https://cdn.example.com/barrier-ingredients.jpg',
         images: [
           'https://cdn.example.com/barrier-hero.jpg',
           'https://cdn.example.com/barrier-ingredients.jpg',
@@ -604,6 +604,7 @@ describe('pdpBuilder structured PDP modules', () => {
     expect(findModule(payload, 'media_gallery')?.data?.items).toEqual([
       expect.objectContaining({ url: 'https://cdn.example.com/barrier-hero.jpg' }),
     ]);
+    expect(payload.product.image_url).toBe('https://cdn.example.com/barrier-hero.jpg');
     expect(findModule(payload, 'product_facts')?.data?.sections).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -624,7 +625,7 @@ describe('pdpBuilder structured PDP modules', () => {
         source: 'external_seed',
         title: 'Barrier Relief Serum',
         category: 'Serum',
-        image_url: 'https://cdn.example.com/barrier-hero.jpg',
+        image_url: 'https://cdn.example.com/barrier-how-to.jpg',
         images: [
           'https://cdn.example.com/barrier-hero.jpg',
           'https://cdn.example.com/barrier-ingredients.jpg',
@@ -659,6 +660,7 @@ describe('pdpBuilder structured PDP modules', () => {
     expect(findModule(payload, 'media_gallery')?.data?.items).toEqual([
       expect.objectContaining({ url: 'https://cdn.example.com/barrier-hero.jpg' }),
     ]);
+    expect(payload.product.image_url).toBe('https://cdn.example.com/barrier-hero.jpg');
   });
 
   test('renders a clean captured external seed PDP description as overview details', () => {

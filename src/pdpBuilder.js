@@ -4016,6 +4016,17 @@ function buildPdpPayload(args) {
       .filter((item) => String(item?.type || 'image').trim().toLowerCase() === 'image')
       .map((item) => item?.url),
   );
+  const rawProductImageUrl = normalizePdpImageUrl(product.image_url || product.image);
+  const structuredContentImageKeys = new Set(
+    collectStructuredContentImageUrls(product)
+      .map((url) => buildPdpImageDedupeKey(url) || normalizePdpImageUrl(url))
+      .filter(Boolean),
+  );
+  const rawProductImageKey = buildPdpImageDedupeKey(rawProductImageUrl) || rawProductImageUrl;
+  const productImageUrl =
+    rawProductImageKey && structuredContentImageKeys.has(rawProductImageKey) && mediaImageUrls.length
+      ? mediaImageUrls[0]
+      : rawProductImageUrl || mediaImageUrls[0] || undefined;
   const previewItems = Array.isArray(product.line_preview_images)
     ? product.line_preview_images
         .map((item) => {
@@ -4292,7 +4303,7 @@ function buildPdpPayload(args) {
         const sample = pickElectronicsMeta(lookupSampleElectronicsMeta(product.product_id || product.id));
         return sample ? { electronics_meta: sample } : {};
       })(),
-      image_url: normalizePdpImageUrl(product.image_url || product.image) || undefined,
+      image_url: productImageUrl,
       image_urls: mediaImageUrls.length ? mediaImageUrls : undefined,
       images: mediaImageUrls.length ? mediaImageUrls : undefined,
       tags: Array.isArray(product.tags) ? product.tags : undefined,
