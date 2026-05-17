@@ -28702,6 +28702,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	    let pdpV2SavingsPresentationHydrationMode = 'not_started';
 	    let pdpV2ProductGroupResolveMode = 'not_started';
 	    let pdpV2ProductGroupResolveBudgetExceeded = false;
+      let pdpV2IdentityGraphLiveMode = 'not_started';
 	    const markPdpV2Phase = (name, startedAt) => {
 	      pdpV2PhaseTimings[name] = Date.now() - startedAt;
 	    };
@@ -28743,6 +28744,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
         product_group_resolve_mode: pdpV2ProductGroupResolveMode,
         product_group_resolve_budget_exceeded: Boolean(pdpV2ProductGroupResolveBudgetExceeded),
         product_group_resolve_budget_ms: PDP_EXTERNAL_SEED_UNSCOPED_GROUP_BUDGET_MS,
+        identity_graph_live_mode: pdpV2IdentityGraphLiveMode,
         requested_product_id: requestedProductId || null,
         requested_merchant_id: requestedMerchantId || null,
         resolved_product_id: resolvedProductId || null,
@@ -29592,7 +29594,22 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	          isExternalSeedProductId(canonicalProductRef?.product_id) &&
 	          (!requestedMerchantId || requestedMerchantId === EXTERNAL_SEED_MERCHANT_ID)
 	        );
-		      if (!identityGraphLive) {
+        const shouldSkipDirectExternalSeedIdentityGraph =
+          entryProductIsExternalSeed &&
+          canonicalProductRef?.merchant_id === EXTERNAL_SEED_MERCHANT_ID &&
+          isExternalSeedProductId(canonicalProductRef?.product_id) &&
+          (!requestedMerchantId || requestedMerchantId === EXTERNAL_SEED_MERCHANT_ID) &&
+          !variantId &&
+          !offerId &&
+          !hasExplicitProductGroup &&
+          !offerProductGroupId &&
+          !productGroupAliasId &&
+          !canonicalizationApplied &&
+          !(Array.isArray(groupMembers) && groupMembers.length > 1);
+		      if (!identityGraphLive && !shouldSkipDirectExternalSeedIdentityGraph) {
+            pdpV2IdentityGraphLiveMode = shouldHydrateIdentityLineMemberPayloads
+              ? 'executed_full_hydration'
+              : 'executed_without_line_member_hydration';
 		        identityGraphLive = await maybeBuildLiveSyntheticPdp({
 	            merchantId: requestedMerchantId || canonicalProductRef?.merchant_id,
 	            productId: identityGraphLookupProductId,
@@ -29600,7 +29617,11 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	            bypassCache,
 	            hydrateLineMemberPayloads: shouldHydrateIdentityLineMemberPayloads,
 	          }).catch(() => null);
-		      }
+		      } else if (identityGraphLive) {
+            pdpV2IdentityGraphLiveMode = 'preloaded';
+          } else {
+            pdpV2IdentityGraphLiveMode = 'skipped_direct_external_seed_no_group';
+          }
 	      markPdpV2Phase('identity_graph_live', identityGraphLiveStartedAt);
 	      if (identityGraphLive?.synthetic_product && wantsProductIntel) {
 	        const identityGraphIntelGateStartedAt = Date.now();
