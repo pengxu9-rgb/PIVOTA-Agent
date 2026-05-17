@@ -3288,6 +3288,45 @@ describe('externalSeedProducts helper', () => {
     expect(product.pdp_field_quality_summary.ingredients_inci.source_quality_status).toBe('force_filled_pending_source');
   });
 
+  test('projects ingredient remediation blockers from seed snapshot into runtime products', () => {
+    const forceFillContract = {
+      contract_version: 'pivota.pdp.force_fill.v1',
+      display_note: 'Ingredient details are pending approved source capture.',
+      source_origin: 'pivota_force_fill',
+      source_quality_status: 'force_filled_pending_source',
+      content_review_state: 'assistant_reviewed',
+    };
+    const remediation = {
+      contract_version: 'external_seed.ingredient_remediation.v1',
+      field: 'ingredients_inci',
+      action: 'manual_source_review_required',
+      source_origin: 'pivota_manual_component_repair',
+      reason_codes: ['manual_ingredient_source_review_required'],
+    };
+    const product = buildExternalSeedProduct({
+      id: 'eps_force_fill_blocked',
+      external_product_id: 'ext_force_fill_blocked',
+      canonical_url: 'https://example.com/products/tone-up-sunscreen',
+      destination_url: 'https://example.com/products/tone-up-sunscreen',
+      title: 'Tone-Up Sunscreen',
+      seed_data: {
+        ingredient_intel: {
+          force_fill_contract: forceFillContract,
+        },
+        ingredient_remediation_v1: remediation,
+        snapshot: {
+          title: 'Tone-Up Sunscreen',
+          ingredient_intel: {
+            force_fill_contract: forceFillContract,
+          },
+          ingredient_remediation_v1: remediation,
+        },
+      },
+    });
+
+    expect(product.ingredient_remediation_v1).toEqual(remediation);
+  });
+
   test('preserves stored ingredient candidates for single-formula external seeds when authority view is unavailable', () => {
     const product = buildExternalSeedProduct({
       id: 'eps_oil_lala_like',

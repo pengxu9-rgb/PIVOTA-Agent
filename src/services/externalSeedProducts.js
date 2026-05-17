@@ -3847,6 +3847,14 @@ function buildExternalSeedProduct(row, options = {}) {
     stored: recall,
     exclusionFlags: recall.exclusion_flags,
   });
+  const ingredientRemediation = [
+    runtimeSeedData.ingredient_remediation_v1,
+    runtimeSnapshot.ingredient_remediation_v1,
+    seedData.ingredient_remediation_v1,
+    snapshot.ingredient_remediation_v1,
+  ]
+    .map(ensureJsonObject)
+    .find((contract) => Object.keys(contract).length > 0);
 
   const authorityInput = {
     product_id: externalProductId,
@@ -3889,6 +3897,7 @@ function buildExternalSeedProduct(row, options = {}) {
       : undefined,
     details_sections: pdpDetailsSections.length > 0 ? pdpDetailsSections : undefined,
     ingredient_intel: ingredientIntel,
+    ...(ingredientRemediation ? { ingredient_remediation_v1: ingredientRemediation } : {}),
   };
   const authority = isIngredientAuthorityEligibleExternalSeed(authorityInput)
     ? buildAuthoritativeIngredientView(authorityInput)
@@ -4014,6 +4023,7 @@ function buildExternalSeedProduct(row, options = {}) {
     ...(reviewSummary ? { review_summary: reviewSummary } : {}),
     ...(pdpFieldCaptureStatus ? { pdp_field_capture_status: pdpFieldCaptureStatus } : {}),
     ...(pdpFieldQualitySummary ? { pdp_field_quality_summary: pdpFieldQualitySummary } : {}),
+    ...(ingredientRemediation ? { ingredient_remediation_v1: ingredientRemediation } : {}),
     ...(Object.keys(ingredientIntel).length ? { ingredient_intel: ingredientIntel } : {}),
     ...(ingredientTokens.length ? { ingredient_tokens: ingredientTokens } : {}),
     ...(authority.items.length
