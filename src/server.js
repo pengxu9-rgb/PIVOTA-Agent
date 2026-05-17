@@ -12502,6 +12502,13 @@ function firstCatalogPayloadString(...values) {
   return null;
 }
 
+function firstNonEmptyArray(...values) {
+  for (const value of values) {
+    if (Array.isArray(value) && value.length > 0) return value;
+  }
+  return null;
+}
+
 function normalizeCatalogCategoryPathArray(value) {
   const text = String(value || '').trim();
   if (!text) return [];
@@ -12690,6 +12697,22 @@ function buildCanonicalChainMainlineProduct(row) {
       externalSeed.pdp_field_quality_summary,
       externalSnapshot.pdp_field_quality_summary,
     ].find((value) => isPlainObject(value)) || null;
+  const ingredientsInci = firstNonEmptyArray(
+    payload.ingredients_inci,
+    seedData.ingredients_inci,
+    snapshot.ingredients_inci,
+    externalSeed.ingredients_inci,
+    externalSnapshot.ingredients_inci,
+    ingredientIntel.inci_list,
+  );
+  const activeIngredients = firstNonEmptyArray(
+    payload.active_ingredients,
+    seedData.active_ingredients,
+    snapshot.active_ingredients,
+    externalSeed.active_ingredients,
+    externalSnapshot.active_ingredients,
+    ingredientIntel.active_ingredients,
+  );
 
   return {
     id: productId,
@@ -12735,6 +12758,8 @@ function buildCanonicalChainMainlineProduct(row) {
       externalSeed.pdp_ingredients_raw,
       externalSnapshot.pdp_ingredients_raw,
     ),
+    ...(ingredientsInci ? { ingredients_inci: ingredientsInci } : {}),
+    ...(activeIngredients ? { active_ingredients: activeIngredients } : {}),
     ...(Object.keys(ingredientIntel).length ? { ingredient_intel: ingredientIntel } : {}),
     ...(ingredientRemediation ? { ingredient_remediation_v1: ingredientRemediation } : {}),
     ...(pdpFieldQualitySummary ? { pdp_field_quality_summary: pdpFieldQualitySummary } : {}),

@@ -472,7 +472,7 @@ function buildPlan(row, options = {}) {
   return { result, nextSeedData: seedData, changed };
 }
 
-function buildServingBlockPatch(seedData) {
+function buildServingBlockPatch(seedData, options = {}) {
   const snapshot = asObject(seedData.snapshot);
   const patch = {};
   for (const key of [
@@ -485,11 +485,22 @@ function buildServingBlockPatch(seedData) {
     if (seedData[key] !== undefined) patch[key] = seedData[key];
     else if (snapshot[key] !== undefined) patch[key] = snapshot[key];
   }
+  if (options.preserveTrustedIngredients) {
+    for (const key of [
+      'ingredients_inci',
+      'pdp_ingredients_raw',
+      'raw_ingredient_text_clean',
+    ]) {
+      if (seedData[key] !== undefined) patch[key] = seedData[key];
+      else if (snapshot[key] !== undefined) patch[key] = snapshot[key];
+    }
+  }
   return patch;
 }
 
-async function syncIngredientBlockerServingMirrors(externalProductId, seedData) {
-  const payloadPatch = buildServingBlockPatch(seedData);
+async function syncIngredientBlockerServingMirrors(externalProductId, seedData, action = '') {
+  const preserveTrustedIngredients = action === 'clear_stale_force_fill_contract';
+  const payloadPatch = buildServingBlockPatch(seedData, { preserveTrustedIngredients });
   if (!Object.keys(payloadPatch).length) return { catalog_products: 0, pdp_identity_listing: 0 };
   const payloadJson = JSON.stringify(payloadPatch).replace(/\u0000/g, '').replace(/\\+u0000/gi, '');
   const removeKeys = [
@@ -503,10 +514,9 @@ async function syncIngredientBlockerServingMirrors(externalProductId, seedData) 
     'key_ingredients',
     'keyIngredients',
   ];
-  const catalogRes = await query(
-    `
-      UPDATE catalog_products
-      SET product_payload = (
+  const catalogPayloadExpression = preserveTrustedIngredients
+    ? `COALESCE(product_payload, '{}'::jsonb) || $2::jsonb`
+    : `(
             COALESCE(product_payload, '{}'::jsonb)
             - 'pdp_ingredients_raw'
             - 'raw_ingredient_text_clean'
@@ -517,18 +527,10 @@ async function syncIngredientBlockerServingMirrors(externalProductId, seedData) 
             - 'ingredientNames'
             - 'key_ingredients'
             - 'keyIngredients'
-          ) || $2::jsonb,
-          updated_at = NOW()
-      WHERE merchant_id = 'external_seed'
-        AND platform = 'external_seed'
-        AND source_product_id = $1
-    `,
-    [externalProductId, payloadJson],
-  );
-  const identityRes = await query(
-    `
-      UPDATE pdp_identity_listing
-      SET source_payload = (
+          ) || $2::jsonb`;
+  const identityPayloadExpression = preserveTrustedIngredients
+    ? `COALESCE(source_payload, '{}'::jsonb) || $1::jsonb`
+    : `(
             COALESCE(source_payload, '{}'::jsonb)
             - 'pdp_ingredients_raw'
             - 'raw_ingredient_text_clean'
@@ -539,7 +541,22 @@ async function syncIngredientBlockerServingMirrors(externalProductId, seedData) 
             - 'ingredientNames'
             - 'key_ingredients'
             - 'keyIngredients'
-          ) || $1::jsonb,
+          ) || $1::jsonb`;
+  const catalogRes = await query(
+    `
+      UPDATE catalog_products
+      SET product_payload = ${catalogPayloadExpression},
+          updated_at = NOW()
+      WHERE merchant_id = 'external_seed'
+        AND platform = 'external_seed'
+        AND source_product_id = $1
+    `,
+    [externalProductId, payloadJson],
+  );
+  const identityRes = await query(
+    `
+      UPDATE pdp_identity_listing
+      SET source_payload = ${identityPayloadExpression},
           updated_at = NOW()
       WHERE source_listing_ref = $2
     `,
@@ -611,7 +628,11 @@ async function main() {
         'clear_stale_force_fill_contract',
       ].includes(plan.result.action)) {
         try {
-          const sync = await syncIngredientBlockerServingMirrors(plan.result.external_product_id, plan.nextSeedData);
+          const sync = await syncIngredientBlockerServingMirrors(
+            plan.result.external_product_id,
+            plan.nextSeedData,
+            plan.result.action,
+          );
           plan.result.serving_mirror_sync = sync;
           mirrorSync.push({ external_product_id: plan.result.external_product_id, ...sync });
         } catch (error) {
@@ -680,6 +701,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  buildServingBlockPatch,
   buildPlan,
   clearForceFillContract,
   hasForceFillContract,
