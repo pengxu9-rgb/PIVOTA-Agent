@@ -904,6 +904,48 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     expect(activeIngredients?.data?.items).not.toContain('Vitamin C (Ascorbic acid)');
   });
 
+  test('keeps reviewed external seed active ingredients when label differs from INCI synonym', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_ole_banana_eye',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'Banana Bright+ Eye Crème',
+        category: 'Eye Cream',
+        description: 'A vitamin C eye cream that brightens the look of dark circles.',
+        image_url: 'https://example.com/banana-eye.png',
+        price: { amount: 46, currency: 'USD' },
+        active_ingredients: ['Vitamin C'],
+        reviewed_active_ingredients_v1: {
+          contract_version: 'external_seed.reviewed_active_ingredients.v1',
+          status: 'approved',
+          active_ingredients: ['Vitamin C'],
+          source_url: 'https://olehenriksen.com/products/banana-bright-eye-creme',
+          reviewed_by: 'codex',
+          reviewed_at: '2026-05-17T00:00:00.000Z',
+        },
+        ingredients_inci: {
+          items: [
+            'Aqua/Water/Eau',
+            'Simmondsia Chinensis (Jojoba) Seed Oil',
+            '3-O-Ethyl Ascorbic Acid',
+            'Tetrahexyldecyl Ascorbate',
+            'Ascorbic Acid',
+            'Glycerin',
+          ],
+        },
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    const activeIngredients = payload.modules.find((module) => module.type === 'active_ingredients');
+
+    expect(activeIngredients?.data?.items).toEqual(['Vitamin C']);
+    expect(activeIngredients?.data?.source_origin).toBe('reviewed_active_ingredients');
+    expect(activeIngredients?.data?.source_quality_status).toBe('high');
+  });
+
   test('emits cross-url product line options in variant selector data', () => {
     const payload = buildPdpPayload({
       product: {

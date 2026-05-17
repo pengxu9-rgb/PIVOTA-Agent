@@ -1,0 +1,94 @@
+{
+  "generated_at": "2026-05-17T02:37:12.491Z",
+  "dry_run": false,
+  "filters": {
+    "external_product_ids": [
+      "ext_3fe128d1441a94c26364da2b"
+    ],
+    "market": "US"
+  },
+  "requested_active_ingredients": [
+    "Peptides"
+  ],
+  "summary": {
+    "scanned_rows": 1,
+    "missing_rows": 0,
+    "blocked_missing_source_evidence": 0,
+    "change_candidates": 1,
+    "updated_rows": 1
+  },
+  "results": [
+    {
+      "seed_id": "eps_08bfd4cd86b74cfa9c2c34b9",
+      "external_product_id": "ext_3fe128d1441a94c26364da2b",
+      "market": "US",
+      "domain": "olehenriksen.com",
+      "title": "Pout Preserve Peptide Lip Treatment",
+      "canonical_url": "https://olehenriksen.com/products/pout-preserve-peptide-lip-treatment",
+      "dry_run": false,
+      "status": "applied",
+      "source_evidence": {
+        "backed": true,
+        "missing": [],
+        "evidence_chars": 17830
+      },
+      "before": {
+        "active_ingredients": [
+          "Peptides",
+          "Lactic acid"
+        ],
+        "snapshot_active_ingredients": [
+          "Peptides",
+          "Lactic acid"
+        ],
+        "ingredient_intel_active_ingredients": [
+          "Peptides",
+          "Lactic acid"
+        ],
+        "ingredient_tokens": [
+          "Peptides",
+          "Lactic acid"
+        ],
+        "key_ingredients": [
+          "Peptides",
+          "Lactic acid"
+        ],
+        "ingredient_intel_key_ingredients": [
+          "Peptides",
+          "Lactic acid"
+        ],
+        "ingredient_intel_has_inci": true,
+        "active_raw_len": 0,
+        "review_contract": null,
+        "structured_ingredient_remediation": null
+      },
+      "after": {
+        "active_ingredients": [
+          "Peptides"
+        ],
+        "snapshot_active_ingredients": [
+          "Peptides"
+        ],
+        "ingredient_intel_active_ingredients": [
+          "Peptides"
+        ],
+        "ingredient_tokens": [
+          "Peptides",
+          "Lactic acid"
+        ],
+        "key_ingredients": [
+          "Peptides",
+          "Lactic acid"
+        ],
+        "ingredient_intel_key_ingredients": [
+          "Peptides",
+          "Lactic acid"
+        ],
+        "ingredient_intel_has_inci": true,
+        "active_raw_len": 0,
+        "review_contract": "external_seed.reviewed_active_ingredients.v1",
+        "structured_ingredient_remediation": null
+      }
+    }
+  ]
+}

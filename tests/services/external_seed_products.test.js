@@ -3165,6 +3165,41 @@ describe('externalSeedProducts helper', () => {
     expect(product.pdp_active_ingredients_raw).toBe('Vitamin C (Ascorbic acid)');
   });
 
+  test('projects reviewed active ingredient contract into identity source payload products', () => {
+    const reviewedContract = {
+      contract_version: 'external_seed.reviewed_active_ingredients.v1',
+      status: 'approved',
+      active_ingredients: ['Vitamin C'],
+      source_url: 'https://olehenriksen.com/products/banana-bright-eye-creme',
+      reviewed_by: 'codex',
+      reviewed_at: '2026-05-17T00:00:00.000Z',
+    };
+    const product = buildExternalSeedProduct({
+      id: 'eps_ole_banana_eye_reviewed',
+      external_product_id: 'ext_ole_banana_eye_reviewed',
+      canonical_url: 'https://olehenriksen.com/products/banana-bright-eye-creme',
+      destination_url: 'https://olehenriksen.com/products/banana-bright-eye-creme',
+      title: 'Banana Bright+ Eye Crème',
+      seed_data: {
+        brand: 'Olehenriksen',
+        active_ingredients: ['Vitamin C'],
+        reviewed_active_ingredients_v1: reviewedContract,
+        ingredient_intel: {
+          inci_list:
+            'Aqua/Water/Eau, 3-O-Ethyl Ascorbic Acid, Tetrahexyldecyl Ascorbate, Ascorbic Acid, Glycerin',
+          active_ingredients: ['Vitamin C'],
+        },
+        snapshot: {
+          active_ingredients: ['Vitamin C'],
+          reviewed_active_ingredients_v1: reviewedContract,
+        },
+      },
+    });
+
+    expect(product.active_ingredients).toEqual(['Vitamin C']);
+    expect(product.reviewed_active_ingredients_v1).toEqual(reviewedContract);
+  });
+
   test('preserves reviewed force-filled PDP content while keeping quarantined fields blocked', () => {
     const forceFillContract = {
       contract_version: 'pivota.pdp.force_fill.v1',

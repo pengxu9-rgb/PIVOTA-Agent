@@ -3456,11 +3456,15 @@ function buildExternalSeedProduct(row, options = {}) {
       snapshot.raw_ingredient_text_clean,
     ].join(' '),
   );
-  const hasReviewedActiveIngredients =
-    ensureJsonObject(seedData.reviewed_active_ingredients_v1).contract_version ===
-      'external_seed.reviewed_active_ingredients.v1' ||
-    ensureJsonObject(snapshot.reviewed_active_ingredients_v1).contract_version ===
-      'external_seed.reviewed_active_ingredients.v1';
+  const reviewedActiveIngredientsContract = [
+    ensureJsonObject(seedData.reviewed_active_ingredients_v1),
+    ensureJsonObject(snapshot.reviewed_active_ingredients_v1),
+  ].find(
+    (contract) =>
+      contract.contract_version === 'external_seed.reviewed_active_ingredients.v1' &&
+      String(contract.status || '').toLowerCase() !== 'rejected',
+  );
+  const hasReviewedActiveIngredients = Boolean(reviewedActiveIngredientsContract);
   const reviewedActiveIngredients = hasReviewedActiveIngredients
     ? normalizeStringList(
         seedData.active_ingredients ||
@@ -3932,6 +3936,9 @@ function buildExternalSeedProduct(row, options = {}) {
     destination_url: destinationUrl || undefined,
     external_seed_id: row.id ? String(row.id) : undefined,
     seed_data: runtimeSeedData,
+    ...(reviewedActiveIngredientsContract
+      ? { reviewed_active_ingredients_v1: reviewedActiveIngredientsContract }
+      : {}),
     external_seed_recall: recall,
     external_seed_quality_state: protection.quality_state,
     external_seed_suppression_flags: protection.suppression_flags,

@@ -1056,10 +1056,41 @@ function isRegulatoryActiveIngredientSource(candidate) {
   );
 }
 
+function getReviewedActiveIngredientContract(product) {
+  const candidates = [
+    product?.reviewed_active_ingredients_v1,
+    product?.reviewedActiveIngredientsV1,
+    product?.seed_data?.reviewed_active_ingredients_v1,
+    product?.seed_data?.snapshot?.reviewed_active_ingredients_v1,
+    product?.source_payload?.reviewed_active_ingredients_v1,
+    product?.source_payload?.seed_data?.reviewed_active_ingredients_v1,
+    product?.source_payload?.seed_data?.snapshot?.reviewed_active_ingredients_v1,
+  ];
+  return candidates.find((candidate) =>
+    candidate &&
+    typeof candidate === 'object' &&
+    !Array.isArray(candidate) &&
+    candidate.contract_version === 'external_seed.reviewed_active_ingredients.v1' &&
+    String(candidate.status || '').toLowerCase() !== 'rejected',
+  ) || null;
+}
+
+function isReviewedActiveIngredientCandidate(product, candidate) {
+  const contract = getReviewedActiveIngredientContract(product);
+  if (!contract) return false;
+  return (
+    candidate === product?.active_ingredients ||
+    candidate === product?.activeIngredients ||
+    candidate === product?.seed_data?.active_ingredients ||
+    candidate === product?.seed_data?.snapshot?.active_ingredients
+  );
+}
+
 function shouldSuppressLowConfidenceActiveIngredients(product, candidate, data, ingredientsInci) {
   if (String(product?.source || '').trim().toLowerCase() !== 'external_seed') return false;
   if (detectTemplateHint(product) !== 'beauty') return false;
   if (isRegulatoryActiveIngredientSource(candidate)) return false;
+  if (isReviewedActiveIngredientCandidate(product, candidate)) return false;
   if (String(data?.source_quality_status || '').trim().toLowerCase() === 'high') return false;
   const items = Array.isArray(data?.items) ? data.items : [];
   const itemCount = items.length;
@@ -2632,10 +2663,23 @@ function buildActiveIngredients(product, ingredientsInci) {
       candidate === product.pdp_active_ingredients_raw ||
       candidate === product.pdpActiveIngredientsRaw ||
       isRegulatoryActiveIngredientSource(candidate);
+    const reviewedActiveContract = isReviewedActiveIngredientCandidate(product, candidate)
+      ? getReviewedActiveIngredientContract(product)
+      : null;
     const data = reconcileActiveIngredientsWithInci(product, candidate, {
       title: pickStructuredTitle(candidate, 'Active ingredients'),
       ...(rawText ? { raw_text: rawText } : {}),
       items,
+      ...(reviewedActiveContract
+        ? {
+            source_origin: 'reviewed_active_ingredients',
+            source_quality_status: 'high',
+            contract_version: reviewedActiveContract.contract_version,
+            reviewed_at: reviewedActiveContract.reviewed_at,
+            reviewed_by: reviewedActiveContract.reviewed_by,
+            source_url: reviewedActiveContract.source_url,
+          }
+        : {}),
       ...extractStructuredSourceMeta(candidate),
     }, ingredientsInci, {
       inferSunscreenActives: !isExplicitPdpActiveBlock,

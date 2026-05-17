@@ -202,6 +202,39 @@ function readIngredientInputs(product) {
   };
 }
 
+function readReviewedActiveIngredientContract(product, inputs = readIngredientInputs(product)) {
+  const candidates = [
+    product?.reviewed_active_ingredients_v1,
+    product?.reviewedActiveIngredientsV1,
+    inputs.seedData?.reviewed_active_ingredients_v1,
+    inputs.snapshot?.reviewed_active_ingredients_v1,
+    product?.source_payload?.reviewed_active_ingredients_v1,
+    product?.source_payload?.seed_data?.reviewed_active_ingredients_v1,
+    product?.source_payload?.seed_data?.snapshot?.reviewed_active_ingredients_v1,
+  ];
+  return candidates.find((candidate) =>
+    candidate &&
+    typeof candidate === 'object' &&
+    !Array.isArray(candidate) &&
+    candidate.contract_version === 'external_seed.reviewed_active_ingredients.v1' &&
+    asString(candidate.status).toLowerCase() !== 'rejected',
+  ) || null;
+}
+
+function readReviewedActiveCandidates(product, inputs) {
+  const contract = readReviewedActiveIngredientContract(product, inputs);
+  if (!contract) return null;
+  return activeCandidate([
+    ...(Array.isArray(contract.active_ingredients) ? contract.active_ingredients : []),
+    ...(Array.isArray(product?.active_ingredients) ? product.active_ingredients : []),
+    ...(Array.isArray(product?.activeIngredients) ? product.activeIngredients : []),
+    ...(Array.isArray(inputs.seedData?.active_ingredients) ? inputs.seedData.active_ingredients : []),
+    ...(Array.isArray(inputs.snapshot?.active_ingredients) ? inputs.snapshot.active_ingredients : []),
+  ], 'reviewed_active_ingredients', {
+    validateAgainstIngredients: false,
+  });
+}
+
 function findLastSectionMatch(text, re) {
   let match = null;
   let next = re.exec(text);
@@ -652,6 +685,7 @@ function buildAuthorityRecord({
   items = [],
   activeItems = [],
   sourceOrigin = '',
+  activeSourceOrigin = '',
   purityStatus = '',
   suppressedReason = null,
   generatedAt = null,
@@ -664,6 +698,7 @@ function buildAuthorityRecord({
     items: normalizedItems,
     active_items: normalizedActives,
     source_origin: asString(sourceOrigin) || undefined,
+    active_source_origin: asString(activeSourceOrigin) || undefined,
     purity_status: asString(purityStatus) || undefined,
     suppressed_reason: asString(suppressedReason) || undefined,
     generated_at: asString(generatedAt) || new Date().toISOString(),
@@ -930,6 +965,9 @@ function readExplicitActiveCandidates(product, inputs) {
 }
 
 function readActiveCandidates(product, inputs) {
+  const reviewed = readReviewedActiveCandidates(product, inputs);
+  if (reviewed) return reviewed;
+
   const explicit = readExplicitActiveCandidates(product, inputs);
   if (explicit) return explicit;
 
@@ -952,6 +990,9 @@ function readActiveCandidates(product, inputs) {
 }
 
 function readSourceActiveArrayCandidates(product, inputs) {
+  const reviewed = readReviewedActiveCandidates(product, inputs);
+  if (reviewed) return reviewed;
+
   const arrays = [
     { value: product?.active_ingredients, source: 'product_active_array', validateAgainstIngredients: true },
     { value: product?.activeIngredients, source: 'product_active_array', validateAgainstIngredients: true },
@@ -987,8 +1028,11 @@ function buildAuthoritativeIngredientView(product, options = {}) {
       generatedAt: existingAuthority.generated_at || generatedAt,
     });
     if (normalizedExisting.items.length || normalizedExisting.active_items.length) {
+      const reviewedActiveCandidate = readReviewedActiveCandidates(product, inputs);
       const explicitActiveCandidate = readExplicitActiveCandidates(product, inputs);
-      const sourceActiveCandidate = explicitActiveCandidate?.items?.length
+      const sourceActiveCandidate = reviewedActiveCandidate?.items?.length
+        ? reviewedActiveCandidate
+        : explicitActiveCandidate?.items?.length
         ? explicitActiveCandidate
         : readSourceActiveArrayCandidates(product, inputs);
       const titleDeclaredActiveItems = inferTitleDeclaredActiveItems(
@@ -1003,6 +1047,7 @@ function buildAuthoritativeIngredientView(product, options = {}) {
       ]);
       return {
         ...normalizedExisting,
+        active_source_origin: sourceActiveCandidate?.source_origin || normalizedExisting.active_source_origin,
         active_items: reconcileActiveItemsWithIngredients(
           product,
           candidateActiveItems,
@@ -1060,6 +1105,7 @@ function buildAuthoritativeIngredientView(product, options = {}) {
       items: picked.items,
       activeItems: reconciledActiveItems,
       sourceOrigin: picked.source_origin,
+      activeSourceOrigin: activeCandidateResult.source_origin,
       purityStatus: 'authoritative',
       suppressedReason:
         candidateActiveItems.length && !reconciledActiveItems.length
@@ -1089,6 +1135,7 @@ function buildAuthoritativeIngredientView(product, options = {}) {
       items: [],
       activeItems: displayableActiveItems,
       sourceOrigin: 'active_block',
+      activeSourceOrigin: activeCandidateResult.source_origin,
       purityStatus: 'suppressed',
       suppressedReason: 'full_inci_low_purity',
       generatedAt,
@@ -1176,8 +1223,10 @@ function buildStructuredPdpIngredientModules(product, options = {}) {
       ? {
           title: 'Active Ingredients',
           items: filterDisplayableActiveItems(product, authority.active_items),
-          source_origin: authority.source_origin || 'active_block',
-          source_quality_status: filterDisplayableActiveItems(product, authority.active_items).some((item) => REGULATORY_ACTIVE_RE.test(item))
+          source_origin: authority.active_source_origin || authority.source_origin || 'active_block',
+          source_quality_status: authority.active_source_origin === 'reviewed_active_ingredients'
+            ? 'high'
+            : filterDisplayableActiveItems(product, authority.active_items).some((item) => REGULATORY_ACTIVE_RE.test(item))
             ? 'regulatory_active'
             : authority.purity_status === 'suppressed'
               ? 'captured'

@@ -1,0 +1,314 @@
+{
+  "generated_at": "2026-05-17T02:36:23.014Z",
+  "dry_run": true,
+  "filters": {
+    "external_product_ids": [
+      "ext_918981bcc6d552cc2af0b535",
+      "ext_5f1eaf3898146877fe9171b3",
+      "ext_3221a074fcd0a5b3d9a32f2d",
+      "ext_47fe725499e880c01ccfc134"
+    ],
+    "market": "US"
+  },
+  "requested_active_ingredients": [
+    "Vitamin C"
+  ],
+  "summary": {
+    "scanned_rows": 4,
+    "missing_rows": 0,
+    "blocked_missing_source_evidence": 0,
+    "change_candidates": 4,
+    "updated_rows": 0
+  },
+  "results": [
+    {
+      "seed_id": "eps_bde436f20eee4cba8bdf95ef",
+      "external_product_id": "ext_918981bcc6d552cc2af0b535",
+      "market": "US",
+      "domain": "olehenriksen.com",
+      "title": "Banana Bright+ Eye Crème",
+      "canonical_url": "https://olehenriksen.com/products/banana-bright-eye-creme",
+      "dry_run": true,
+      "status": "dry_run",
+      "source_evidence": {
+        "backed": true,
+        "missing": [],
+        "evidence_chars": 2771
+      },
+      "before": {
+        "active_ingredients": [
+          "Vitamin C (Ascorbic acid)",
+          "Glycerin"
+        ],
+        "snapshot_active_ingredients": [
+          "Vitamin C (Ascorbic acid)",
+          "Glycerin"
+        ],
+        "ingredient_intel_active_ingredients": [
+          "Vitamin C (Ascorbic acid)",
+          "Glycerin"
+        ],
+        "ingredient_tokens": [
+          "Vitamin C (Ascorbic acid)",
+          "Glycerin"
+        ],
+        "key_ingredients": [
+          "Vitamin C (Ascorbic acid)",
+          "Glycerin"
+        ],
+        "ingredient_intel_key_ingredients": [
+          "Vitamin C (Ascorbic acid)",
+          "Glycerin"
+        ],
+        "ingredient_intel_has_inci": true,
+        "active_raw_len": 0,
+        "review_contract": null,
+        "structured_ingredient_remediation": null
+      },
+      "after": {
+        "active_ingredients": [
+          "Vitamin C"
+        ],
+        "snapshot_active_ingredients": [
+          "Vitamin C"
+        ],
+        "ingredient_intel_active_ingredients": [
+          "Vitamin C"
+        ],
+        "ingredient_tokens": [
+          "Vitamin C (Ascorbic acid)",
+          "Glycerin"
+        ],
+        "key_ingredients": [
+          "Vitamin C (Ascorbic acid)",
+          "Glycerin"
+        ],
+        "ingredient_intel_key_ingredients": [
+          "Vitamin C (Ascorbic acid)",
+          "Glycerin"
+        ],
+        "ingredient_intel_has_inci": true,
+        "active_raw_len": 0,
+        "review_contract": "external_seed.reviewed_active_ingredients.v1",
+        "structured_ingredient_remediation": null
+      }
+    },
+    {
+      "seed_id": "eps_a09220275f214553be37cfed",
+      "external_product_id": "ext_5f1eaf3898146877fe9171b3",
+      "market": "US",
+      "domain": "olehenriksen.com",
+      "title": "Truth Serum",
+      "canonical_url": "https://olehenriksen.com/products/truth-serum",
+      "dry_run": true,
+      "status": "dry_run",
+      "source_evidence": {
+        "backed": true,
+        "missing": [],
+        "evidence_chars": 3744
+      },
+      "before": {
+        "active_ingredients": [],
+        "snapshot_active_ingredients": [],
+        "ingredient_intel_active_ingredients": [
+          "Vitamin C (Ascorbic acid)",
+          "Glycerin",
+          "Hyaluronic acid"
+        ],
+        "ingredient_tokens": [
+          "Vitamin C (Ascorbic acid)",
+          "Glycerin",
+          "Hyaluronic acid"
+        ],
+        "key_ingredients": [
+          "Vitamin C (Ascorbic acid)",
+          "Glycerin",
+          "Hyaluronic acid"
+        ],
+        "ingredient_intel_key_ingredients": [
+          "Vitamin C (Ascorbic acid)",
+          "Glycerin",
+          "Hyaluronic acid"
+        ],
+        "ingredient_intel_has_inci": true,
+        "active_raw_len": 0,
+        "review_contract": null,
+        "structured_ingredient_remediation": null
+      },
+      "after": {
+        "active_ingredients": [
+          "Vitamin C"
+        ],
+        "snapshot_active_ingredients": [
+          "Vitamin C"
+        ],
+        "ingredient_intel_active_ingredients": [
+          "Vitamin C"
+        ],
+        "ingredient_tokens": [
+          "Vitamin C (Ascorbic acid)",
+          "Glycerin",
+          "Hyaluronic acid"
+        ],
+        "key_ingredients": [
+          "Vitamin C (Ascorbic acid)",
+          "Glycerin",
+          "Hyaluronic acid"
+        ],
+        "ingredient_intel_key_ingredients": [
+          "Vitamin C (Ascorbic acid)",
+          "Glycerin",
+          "Hyaluronic acid"
+        ],
+        "ingredient_intel_has_inci": true,
+        "active_raw_len": 0,
+        "review_contract": "external_seed.reviewed_active_ingredients.v1",
+        "structured_ingredient_remediation": null
+      }
+    },
+    {
+      "seed_id": "eps_64616b49b9d24a66b3c6891b",
+      "external_product_id": "ext_3221a074fcd0a5b3d9a32f2d",
+      "market": "US",
+      "domain": "olehenriksen.com",
+      "title": "Peach Glaze Glow Mist",
+      "canonical_url": "https://olehenriksen.com/products/peach-glaze-glow-mist",
+      "dry_run": true,
+      "status": "dry_run",
+      "source_evidence": {
+        "backed": true,
+        "missing": [],
+        "evidence_chars": 1353
+      },
+      "before": {
+        "active_ingredients": [
+          "Vitamin C (Ascorbic acid)"
+        ],
+        "snapshot_active_ingredients": [
+          "Vitamin C (Ascorbic acid)"
+        ],
+        "ingredient_intel_active_ingredients": [
+          "Vitamin C (Ascorbic acid)"
+        ],
+        "ingredient_tokens": [
+          "Vitamin C (Ascorbic acid)"
+        ],
+        "key_ingredients": [
+          "Vitamin C (Ascorbic acid)"
+        ],
+        "ingredient_intel_key_ingredients": [
+          "Vitamin C (Ascorbic acid)"
+        ],
+        "ingredient_intel_has_inci": true,
+        "active_raw_len": 0,
+        "review_contract": null,
+        "structured_ingredient_remediation": null
+      },
+      "after": {
+        "active_ingredients": [
+          "Vitamin C"
+        ],
+        "snapshot_active_ingredients": [
+          "Vitamin C"
+        ],
+        "ingredient_intel_active_ingredients": [
+          "Vitamin C"
+        ],
+        "ingredient_tokens": [
+          "Vitamin C (Ascorbic acid)"
+        ],
+        "key_ingredients": [
+          "Vitamin C (Ascorbic acid)"
+        ],
+        "ingredient_intel_key_ingredients": [
+          "Vitamin C (Ascorbic acid)"
+        ],
+        "ingredient_intel_has_inci": true,
+        "active_raw_len": 0,
+        "review_contract": "external_seed.reviewed_active_ingredients.v1",
+        "structured_ingredient_remediation": null
+      }
+    },
+    {
+      "seed_id": "eps_1e03ba7d93b94e2db27cd811",
+      "external_product_id": "ext_47fe725499e880c01ccfc134",
+      "market": "US",
+      "domain": "olehenriksen.com",
+      "title": "Banana Bright Face Primer",
+      "canonical_url": "https://olehenriksen.com/products/banana-bright-face-primer",
+      "dry_run": true,
+      "status": "dry_run",
+      "source_evidence": {
+        "backed": true,
+        "missing": [],
+        "evidence_chars": 5637
+      },
+      "before": {
+        "active_ingredients": [
+          "Vitamin C (Ascorbic acid)",
+          "Glycerin",
+          "Squalane"
+        ],
+        "snapshot_active_ingredients": [
+          "Vitamin C (Ascorbic acid)",
+          "Glycerin",
+          "Squalane"
+        ],
+        "ingredient_intel_active_ingredients": [
+          "Vitamin C (Ascorbic acid)",
+          "Glycerin",
+          "Squalane"
+        ],
+        "ingredient_tokens": [
+          "Vitamin C (Ascorbic acid)",
+          "Glycerin",
+          "Squalane"
+        ],
+        "key_ingredients": [
+          "Vitamin C (Ascorbic acid)",
+          "Glycerin",
+          "Squalane"
+        ],
+        "ingredient_intel_key_ingredients": [
+          "Vitamin C (Ascorbic acid)",
+          "Glycerin",
+          "Squalane"
+        ],
+        "ingredient_intel_has_inci": true,
+        "active_raw_len": 0,
+        "review_contract": null,
+        "structured_ingredient_remediation": null
+      },
+      "after": {
+        "active_ingredients": [
+          "Vitamin C"
+        ],
+        "snapshot_active_ingredients": [
+          "Vitamin C"
+        ],
+        "ingredient_intel_active_ingredients": [
+          "Vitamin C"
+        ],
+        "ingredient_tokens": [
+          "Vitamin C (Ascorbic acid)",
+          "Glycerin",
+          "Squalane"
+        ],
+        "key_ingredients": [
+          "Vitamin C (Ascorbic acid)",
+          "Glycerin",
+          "Squalane"
+        ],
+        "ingredient_intel_key_ingredients": [
+          "Vitamin C (Ascorbic acid)",
+          "Glycerin",
+          "Squalane"
+        ],
+        "ingredient_intel_has_inci": true,
+        "active_raw_len": 0,
+        "review_contract": "external_seed.reviewed_active_ingredients.v1",
+        "structured_ingredient_remediation": null
+      }
+    }
+  ]
+}
