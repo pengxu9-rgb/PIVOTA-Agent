@@ -386,6 +386,31 @@ describe('external seed PDP readiness audit helpers', () => {
     expect(result.issues).not.toContain('wrong_axis_for_category');
   });
 
+  test('does not flag dewy balm stick shade variants as skincare axis drift', () => {
+    const result = classifyVariantReadiness(
+      seedRow({
+        title: 'Dewy Balm Stick',
+        canonical_url: 'https://kyliecosmetics.com/products/dewy-balm-stick',
+        seed_data: {
+          snapshot: {
+            category: 'Skincare',
+            product_type: 'Balm',
+            variants: [
+              {
+                variant_id: 'solar-glow',
+                options: [{ name: 'Shade', value: 'Solar Glow', axis_kind: 'shade' }],
+                image_url: 'https://cdn.shopify.com/dewy-balm-solar-glow.jpg',
+              },
+            ],
+          },
+        },
+      }),
+    );
+
+    expect(result.status).toBe('ready');
+    expect(result.issues).not.toContain('wrong_axis_for_category');
+  });
+
   test('does not flag lip cream or lip mask shade rows as wrong axis for category', () => {
     const glossBomb = classifyVariantReadiness(
       seedRow({

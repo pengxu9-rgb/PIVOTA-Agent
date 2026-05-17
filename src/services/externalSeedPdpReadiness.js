@@ -585,7 +585,7 @@ function collectDescriptiveText(row) {
 }
 
 function allowsShadeAxis(text) {
-  return /\b(tinted?|skin tint|shade|color[-\s]?correct|colour[-\s]?correct|tone[-\s]?up|tone[-\s]?correct|lip tint|tint balm|honey tint|lipstick|lip gloss|lip oil|lip balm|lip cream|lip mask|lip color|lip paint|foundation|concealer|bronzer|blush|highlighter|powder|eyeshadow|eyeliner|brow|mascara|makeup|cosmetic)\b/i.test(
+  return /\b(tinted?|skin tint|shade|color[-\s]?correct|colour[-\s]?correct|tone[-\s]?up|tone[-\s]?correct|lip tint|tint balm|honey tint|lipstick|lip gloss|lip oil|lip balm|lip cream|lip mask|lip color|lip paint|balm stick|dewy balm|glow balm|foundation|concealer|bronzer|blush|highlighter|powder|eyeshadow|eyeliner|brow|mascara|makeup|cosmetic)\b/i.test(
     text,
   );
 }

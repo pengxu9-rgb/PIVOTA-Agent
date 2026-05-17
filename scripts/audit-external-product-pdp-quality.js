@@ -7,6 +7,7 @@ const axios = require('axios');
 const { closePool, query } = require('../src/db');
 const { auditExternalSeedRow } = require('../src/services/externalSeedContentAudit');
 const { ensureJsonObject } = require('../src/services/externalSeedProducts');
+const { classifyExternalSeedProductKind } = require('../src/services/externalSeedProductKind');
 const { resolveExternalSeedRecallDoc } = require('../src/services/externalSeedRecall');
 const {
   buildSeedGate,
@@ -606,6 +607,7 @@ async function auditRow(row, {
     limit: imageHealthLimit,
   });
   const audit = auditExternalSeedRow(row);
+  const productKind = classifyExternalSeedProductKind(row);
   const seedGate = buildSeedGate(audit);
   const extractorGate = buildExtractorGate({
     extractorResponse: extractor.response,
@@ -632,6 +634,7 @@ async function auditRow(row, {
     livePayload: similarEnabled ? livePayload : {},
     liveResponse: similarEnabled ? ensureJsonObject(livePdp) : {},
     exclusionFlags: recall.exclusion_flags || {},
+    productFamily: productKind.family,
     skippedReason: similarEnabled ? '' : 'similar_probe_disabled',
   });
   const variantGate = buildVariantGate({

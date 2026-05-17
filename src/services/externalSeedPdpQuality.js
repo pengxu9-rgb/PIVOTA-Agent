@@ -157,7 +157,7 @@ function collectVariantAuditContext(seedData = {}, livePayload = {}) {
 }
 
 function allowsShadeAxis(contextText = '') {
-  return /\b(tinted?|skin tint|shade|color[-\s]?correct|colour[-\s]?correct|tone[-\s]?up|tone[-\s]?correct|lip tint|lipstick|lip gloss|lip oil|lip balm|lip treatment|lip scrub|pout preserve|foundation|concealer|bronzer|blush|highlighter|powder|eyeshadow|eyeliner|brow|mascara|makeup|cosmetic)\b/i.test(
+  return /\b(tinted?|skin tint|shade|color[-\s]?correct|colour[-\s]?correct|tone[-\s]?up|tone[-\s]?correct|lip tint|lipstick|lip gloss|lip oil|lip balm|lip treatment|lip scrub|pout preserve|balm stick|dewy balm|glow balm|foundation|concealer|bronzer|blush|highlighter|powder|eyeshadow|eyeliner|brow|mascara|makeup|cosmetic)\b/i.test(
     contextText,
   );
 }
@@ -826,6 +826,7 @@ function buildSimilarGate({
   livePayload = {},
   liveResponse = {},
   exclusionFlags = {},
+  productFamily = '',
   skippedReason = '',
 } = {}) {
   const normalizedSkippedReason = normalizeNonEmptyString(skippedReason || similarResponse?.reason);
@@ -851,7 +852,8 @@ function buildSimilarGate({
   const exempt =
     Boolean(exclusionFlags?.gift_card) ||
     Boolean(exclusionFlags?.donation_bundle) ||
-    Boolean(exclusionFlags?.non_merchandise);
+    Boolean(exclusionFlags?.non_merchandise) ||
+    ['set_or_collection', 'non_merch', 'accessory'].includes(normalizeNonEmptyString(productFamily).toLowerCase());
   const probeError = extractProbeError(similarResponse);
   const failureReasons = [];
   if (probeError) {

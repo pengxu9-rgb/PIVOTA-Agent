@@ -12,6 +12,7 @@ const {
   buildIdentityGate,
   buildProductIntelGate,
   buildLivePdpGate,
+  buildSimilarGate,
   buildVariantGate,
   buildExternalSeedQualityResult,
 } = require('../../src/services/externalSeedPdpQuality');
@@ -424,6 +425,50 @@ describe('audit-external-product-pdp-quality helpers', () => {
     });
 
     expect(gate.failure_reasons).not.toContain('wrong_axis_for_category');
+  });
+
+  test('allows shade axis for dewy balm stick color cosmetics', () => {
+    const livePayload = {
+      product: {
+        product_id: 'ext_dewy_balm_stick',
+        merchant_id: 'external_seed',
+        title: 'Dewy Balm Stick',
+        category: 'Skincare',
+        product_type: 'Balm',
+        variants: [
+          {
+            variant_id: 'solar-glow',
+            title: 'Solar Glow',
+            swatch_image_url: 'https://example.com/solar-glow-swatch.png',
+            options: [{ name: 'Shade', value: 'Solar Glow', axis_kind: 'shade' }],
+          },
+        ],
+      },
+      modules: [{ type: 'variant_selector', data: { selected_variant_id: 'solar-glow' } }],
+    };
+
+    const gate = buildVariantGate({
+      seedData: {
+        category: 'Skincare',
+        product_type: 'Balm',
+        snapshot: { title: 'Dewy Balm Stick' },
+      },
+      livePayload,
+      liveResponse: { modules: [{ type: 'canonical', data: { pdp_payload: livePayload } }] },
+    });
+
+    expect(gate.failure_reasons).not.toContain('wrong_axis_for_category');
+    expect(gate.failure_reasons).not.toContain('makeup_shade_missing_visual');
+  });
+
+  test('exempts set and collection PDPs from single-product similar underfill', () => {
+    const gate = buildSimilarGate({
+      similarResponse: { products: [] },
+      productFamily: 'set_or_collection',
+    });
+
+    expect(gate.status).toBe('exempt');
+    expect(gate.failure_reasons).not.toContain('similar_underfill');
   });
 
   test('flags duplicate gallery images, mixed content media, and non-quarantined snapshots', () => {
