@@ -29095,7 +29095,22 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
   if (operation === 'get_discovery_feed') {
     try {
       const discoveryResponse = await getDiscoveryFeed(effectivePayload);
-      return res.status(200).json(discoveryResponse);
+      // Apply deal enrichment so consumer-facing surfaces (brand landing page,
+      // anonymous browse) include `best_deal` / `all_deals` on each product. Every
+      // other product-returning operation in this invoke router already does this;
+      // get_discovery_feed was the holdout, which silently dropped active promos
+      // from any UI calling through `getBrandDiscoveryFeed` / discovery feed.
+      let enriched = discoveryResponse;
+      try {
+        const promotions = await getActivePromotions(now, creatorId);
+        enriched = applyDealsToResponse(discoveryResponse, promotions, now, creatorId);
+      } catch (enrichErr) {
+        logger.warn(
+          { err: enrichErr?.message || String(enrichErr), operation },
+          'get_discovery_feed deal enrichment failed; returning raw response',
+        );
+      }
+      return res.status(200).json(enriched);
     } catch (err) {
       if (err instanceof DiscoveryCatalogUnavailableError) {
         return res.status(200).json(buildDiscoveryUnavailableInvokeResponse(effectivePayload, err));
