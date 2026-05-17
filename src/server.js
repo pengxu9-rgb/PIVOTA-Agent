@@ -19641,7 +19641,7 @@ function hasSimilarCardImage(product = {}) {
 }
 
 const SIMILAR_CARD_TITLE_FALLBACK_PRODUCT_RE =
-  /\b(?:ampoule|balm|blush|bronzer|cleanser|cleansing|conditioner|concealer|cream|deodorant|essence|exfoliant|foundation|gel|gloss|lotion|mask|mist|moisturizer|oil|pad|patch|peel|primer|serum|shampoo|spf|sunscreen|toner|treatment)\b/i;
+  /\b(?:ampoule|balm|blush|bronzer|brow|cleanser|cleansing|conditioner|concealer|cream|deodorant|essence|exfoliant|eyeshadow|foundation|fragrance|gel|gloss|liner|lipstick|lotion|mascara|mask|mist|moisturizer|oil|pad|palette|patch|peel|powder|primer|serum|shampoo|spf|sunscreen|tint|toner|treatment)\b/i;
 
 const SIMILAR_CARD_TITLE_FALLBACK_GENERIC_RE =
   /\b(?:category\s+only|missing\s+highlight|similar\s+product|related\s+product|product\s+\d*|item\s+\d*)\b/i;

@@ -256,6 +256,38 @@ describe('find_similar_products mainline wrapper', () => {
     );
   });
 
+  it('adds source-backed similar card highlights for makeup title terms', async () => {
+    const app = require('../src/server');
+
+    const items = await app._debug.enrichSimilarProductsForPdpCards({
+      items: [
+        {
+          product_id: 'ulta_lipstick_title',
+          merchant_id: 'ulta',
+          title: 'Almost Lipstick - Nude Honey',
+          category: 'lipstick',
+          image_url: 'https://cdn.example.test/almost-lipstick.jpg',
+        },
+      ],
+      maxItems: 1,
+      budgetMs: 100,
+      detailBudgetMs: 50,
+    });
+
+    expect(items[0]).toEqual(
+      expect.objectContaining({
+        card_highlight_status: 'ready',
+        card_image_status: 'ready',
+        card_highlight: 'Almost Lipstick - Nude Honey',
+        card_highlight_source: 'source_backed_title_or_intro',
+      }),
+    );
+    expect(items[0].shopping_card).toEqual(expect.objectContaining({ highlight: 'Almost Lipstick - Nude Honey' }));
+    expect(items[0].search_card).toEqual(
+      expect.objectContaining({ highlight_candidate: 'Almost Lipstick - Nude Honey' }),
+    );
+  });
+
   it('does not treat category-only similar cards as source-backed highlights', async () => {
     const app = require('../src/server');
 
