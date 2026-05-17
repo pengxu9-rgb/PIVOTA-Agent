@@ -1751,4 +1751,27 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     // Upstream-only field set; overlay-only fields (e.g. size_fit_chart) are NOT merged.
     expect(payload.product.fashion_meta.size_fit_chart).toBeUndefined();
   });
+
+  test('overlays Sony WH-1000XM5 manufacturer-spec electronics_meta on the real sig', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'sig_c08b9e75f8c297dbe23795f2b22d1214',
+        merchant_id: 'external_seed',
+        title: 'WH-1000XM5',
+        variants: [{ id: 'v_black', title: 'Black', price: { amount: 399, currency: 'USD' } }],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+    expect(payload.product.category_kind).toBe('electronics');
+    expect(payload.product.electronics_meta).toBeDefined();
+    // Manufacturer spec + real review URLs are present:
+    expect(payload.product.electronics_meta.in_box).toContain('WH-1000XM5 headphones');
+    expect(payload.product.electronics_meta.spec_groups.find((g) => g.group === 'Battery')).toBeDefined();
+    expect(payload.product.electronics_meta.pro_reviews[0].url).toMatch(/^https?:\/\//);
+    // Intentionally NOT included on this real product to avoid promising
+    // merchant capabilities that don't exist:
+    expect(payload.product.electronics_meta.protection_plans).toBeUndefined();
+    expect(payload.product.electronics_meta.configurator_groups).toBeUndefined();
+  });
 });
