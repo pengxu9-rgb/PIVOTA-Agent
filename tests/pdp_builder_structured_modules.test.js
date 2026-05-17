@@ -618,6 +618,36 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     ]);
   });
 
+  test('keeps numeric duration ranges together in how-to steps', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_duration_range',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'Calming Pad',
+        category: 'Pad',
+        description: 'A calming pad.',
+        image_url: 'https://example.com/pad.png',
+        pdp_how_to_use_raw:
+          'After cleansing, apply the pad to areas of concern and leave it on for 10 - 20 minutes like a mask. Then gently wipe across the face.',
+        pdp_field_quality_summary: {
+          how_to_use_raw: {
+            source_origin: 'official_html',
+            source_quality_status: 'high',
+          },
+        },
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    const howToUse = payload.modules.find((module) => module.type === 'how_to_use');
+    expect(howToUse?.data?.steps).toEqual([
+      'After cleansing, apply the pad to areas of concern and leave it on for 10 - 20 minutes like a mask.',
+      'Then gently wipe across the face.',
+    ]);
+  });
+
   test('preserves rich official details and cleaned pairing guidance for external-seed PDPs', () => {
     const payload = buildPdpPayload({
       product: {
