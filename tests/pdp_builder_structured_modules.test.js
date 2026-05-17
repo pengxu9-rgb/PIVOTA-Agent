@@ -1010,6 +1010,39 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     expect(activeIngredients?.data?.source_quality_status).toBe('high');
   });
 
+  test('keeps source-backed PDRN as a displayable skincare active', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_inkey_pdrn',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'PDRN Serum',
+        category: 'Serum',
+        description: 'A serum with PDRN to support renewed-looking skin.',
+        image_url: 'https://example.com/pdrn.png',
+        price: { amount: 22, currency: 'USD' },
+        active_ingredients: ['PDRN'],
+        reviewed_active_ingredients_v1: {
+          contract_version: 'external_seed.reviewed_active_ingredients.v1',
+          status: 'approved',
+          active_ingredients: ['PDRN'],
+          source_url: 'https://www.theinkeylist.com/products/pdrn-serum',
+          reviewed_by: 'codex',
+          reviewed_at: '2026-05-18T00:00:00.000Z',
+        },
+        ingredients_inci: {
+          items: ['Water (Aqua)', 'Glycerin', 'Hydrolyzed DNA', 'Phenoxyethanol'],
+        },
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    const activeIngredients = payload.modules.find((module) => module.type === 'active_ingredients');
+
+    expect(activeIngredients?.data?.items).toEqual(['PDRN']);
+  });
+
   test('emits cross-url product line options in variant selector data', () => {
     const payload = buildPdpPayload({
       product: {

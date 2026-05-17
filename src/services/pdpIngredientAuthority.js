@@ -71,7 +71,7 @@ const SOURCE_PRIORITY = {
 };
 const SUNSCREEN_CONTEXT_RE = /\b(spf\s*\d*|sunscreen|sun screen|sunblock|sun care|uv protection|broad spectrum|pa\+|mineral sunscreen|chemical sunscreen)\b/i;
 const HERO_ACTIVE_RE =
-  /\b(niacinamide|hyaluronic acid|ceramide|peptides?|retinol|retinal|retinaldehyde|bakuchiol|vitamin c|ascorbic acid|ethyl ascorbic acid|tetrahexyldecyl ascorbate|glycolic acid|lactic acid|mandelic acid|salicylic acid|azelaic acid|tranexamic acid|pha|gluconolactone|panthenol|centella|madecassoside|snail mucin|rice|rice lipids?|propolis|alpha arbutin|caffeine|squalane|urea|colloidal oatmeal|ectoin|zinc pca|tamanu oil|aloe|n-?acetyl glucosamine|acetyl glucosamine|beta-?glucan|inulin|glycolipids?|behentrimonium chloride|palmitoyl isoleucine|volufiline|phyto ?ceramides?)\b/i;
+  /\b(niacinamide|hyaluronic acid|ceramide|peptides?|retinol|retinal|retinaldehyde|bakuchiol|vitamin c|ascorbic acid|ethyl ascorbic acid|tetrahexyldecyl ascorbate|glycolic acid|lactic acid|mandelic acid|salicylic acid|azelaic acid|tranexamic acid|pdrn|polydeoxyribonucleotide|pha|gluconolactone|panthenol|centella|madecassoside|snail mucin|rice|rice lipids?|propolis|alpha arbutin|caffeine|squalane|urea|colloidal oatmeal|ectoin|zinc pca|tamanu oil|aloe|n-?acetyl glucosamine|acetyl glucosamine|beta-?glucan|inulin|glycolipids?|behentrimonium chloride|palmitoyl isoleucine|volufiline|phyto ?ceramides?)\b/i;
 const REGULATORY_ACTIVE_RE =
   /\b(zinc oxide|titanium dioxide|avobenzone|octocrylene|octisalate|homosalate|octinoxate|ethylhexyl methoxycinnamate|ethylhexyl salicylate|ethylhexyl triazone|diethylamino hydroxybenzoyl hexyl benzoate|bis-ethylhexyloxyphenol methoxyphenyl triazine|ensulizole|meradimate|oxybenzone|tinosorb s|tinosorb m|uvinul a plus|uvinul t 150|mexoryl sx|mexoryl xl|benzoyl peroxide|adapalene|sulfur)\b/i;
 const CONTEXT_SENSITIVE_HERO_ACTIVE_RE =
@@ -123,6 +123,7 @@ const TITLE_DECLARED_ACTIVE_DEFS = [
   { display: 'Retinal', titleRe: /\bretinal\b/i, evidenceKeys: ['retinal'] },
   { display: 'Retinol', titleRe: /\bretinol\b/i, evidenceKeys: ['retinol'] },
   { display: 'Ectoin', titleRe: /\bectoin\b/i, evidenceKeys: ['ectoin'] },
+  { display: 'PDRN', titleRe: /\bpdrn\b|\bpolydeoxyribonucleotide\b/i, evidenceRe: /\b(?:pdrn|polydeoxyribonucleotide|hydrolyzed dna)\b/i },
   {
     display: 'Rice Lipids',
     titleRe: /\brace lipids?\b|\brice lipid/i,
