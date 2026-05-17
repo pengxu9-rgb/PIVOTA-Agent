@@ -13,7 +13,7 @@ This MVP adds a **merchant-agnostic** resolver endpoint so upstream recommenders
   "query": "The Ordinary Niacinamide 10% + Zinc 1%",
   "lang": "en",
   "options": {
-    "prefer_merchants": ["merch_efbc46b4619cfbdf"],
+    "prefer_merchants": ["<merchant_id_from_config>"],
     "search_all_merchants": true,
     "allow_external_seed": false,
     "timeout_ms": 1500
@@ -156,12 +156,12 @@ For each of the three products below:
 ```bash
 curl -sS "$BASE/agent/v1/products/resolve" \
   -H 'Content-Type: application/json' \
-  -d '{"query":"The Ordinary Niacinamide 10% + Zinc 1%","lang":"en","options":{"prefer_merchants":["merch_efbc46b4619cfbdf"],"timeout_ms":1500}}'
+  -d '{"query":"The Ordinary Niacinamide 10% + Zinc 1%","lang":"en","options":{"prefer_merchants":["<merchant_id_from_config>"],"timeout_ms":1500}}'
 ```
 
 Expected:
 - `resolved=true`
-- `product_ref.merchant_id=merch_efbc46b4619cfbdf`
+- `product_ref.merchant_id` matches the configured merchant or a canonical cross-merchant result.
 
 2) PDP:
 

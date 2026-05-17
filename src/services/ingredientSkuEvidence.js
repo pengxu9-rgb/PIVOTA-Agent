@@ -15,6 +15,7 @@ const {
   normalizeRecoTargetStep,
   resolveRecoTargetStepIntent,
 } = require('../auroraBff/recoTargetStep');
+const { activeProductsCacheSourceWhere } = require('./activeCatalogSourceSql');
 
 const DEFAULT_MARKET = String(process.env.CREATOR_CATEGORIES_EXTERNAL_SEED_MARKET || 'US')
   .trim()
@@ -2038,6 +2039,7 @@ async function fetchProductsCacheRowsByPatterns({ patterns = [], limit = 24 } = 
       JOIN merchant_onboarding mo
         ON mo.merchant_id = pc.merchant_id
       WHERE (pc.expires_at IS NULL OR pc.expires_at > now())
+        AND ${activeProductsCacheSourceWhere('pc')}
         AND COALESCE(lower(pc.product_data->>'status'), 'active') = 'active'
         AND COALESCE(lower(pc.product_data->>'orderable'), 'true') <> 'false'
         AND mo.status NOT IN ('deleted', 'rejected')

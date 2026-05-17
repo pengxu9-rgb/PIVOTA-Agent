@@ -309,10 +309,8 @@ Use this block to reduce first-screen/backfill jitter on hot PDPs (for example W
 - `AURORA_BFF_PDP_HOTSET_PREWARM_LIST` (compact list, e.g. `merch_x:pid_a,merch_x:pid_b`)
 - `AURORA_BFF_PDP_HOTSET_PREWARM_ADMIN_KEY` (enables prewarm ops endpoints)
 
-Default hotset includes:
-
-- `merch_efbc46b4619cfbdf:9886500749640` (Winona)
-- `merch_efbc46b4619cfbdf:9886500127048` (IPSA)
+Default hotset is empty. Configure `AURORA_BFF_PDP_HOTSET_PREWARM_JSON` or
+`AURORA_BFF_PDP_HOTSET_PREWARM_LIST` explicitly for the target environment.
 
 ### Manual trigger and state check
 

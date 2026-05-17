@@ -35,22 +35,6 @@ const CASES = Object.freeze([
     min_similar: 6,
     allow_missing_similar: false,
   },
-  {
-    key: 'winona_serum',
-    merchant_id: 'merch_efbc46b4619cfbdf',
-    product_id: '9886500749640',
-    title: 'Winona Soothing Repair Serum',
-    min_similar: 1,
-    allow_missing_similar: false,
-  },
-  {
-    key: 'ipsa_reset_aqua',
-    merchant_id: 'merch_efbc46b4619cfbdf',
-    product_id: '9886500127048',
-    title: 'IPSA Time Reset Aqua',
-    min_similar: 0,
-    allow_missing_similar: true,
-  },
 ]);
 
 const GALLERY_CASES = Object.freeze([

@@ -11,7 +11,7 @@ const STORE_PATH = path.join(__dirname, '..', 'data', 'promotions.json');
 const DEFAULT_MERCHANT_ID = String(
   process.env.PIVOTA_DEFAULT_MERCHANT_ID ||
     process.env.DEFAULT_MERCHANT_ID ||
-    'merch_efbc46b4619cfbdf',
+    '',
 ).trim();
 
 // Remote backend configuration (pivota-backend internal API)
@@ -239,7 +239,7 @@ function loadPromotionsLocal() {
   if (!fs.existsSync(STORE_PATH)) {
     // Only seed demo data when explicitly running in local mode; production
     // should not silently create demo promotions.
-    if (PROMO_MODE === 'local') {
+    if (PROMO_MODE === 'local' && DEFAULT_MERCHANT_ID) {
       fs.writeFileSync(STORE_PATH, JSON.stringify(DEFAULT_PROMOTIONS, null, 2), 'utf-8');
       return [...DEFAULT_PROMOTIONS];
     }
@@ -523,14 +523,14 @@ function normalizePromotionRecord(promo) {
 
   if (!scopedMerchant) {
     console.warn(
-      '[promotionStore] promotion missing merchantId; assigning default_merchant',
+      '[promotionStore] promotion missing merchantId; leaving unscoped promotion inert',
       promo.id
     );
   }
 
   return {
     ...promo,
-    merchantId: scopedMerchant || DEFAULT_MERCHANT_ID,
+    merchantId: scopedMerchant || '',
     scope: normalizedScope,
   };
 }

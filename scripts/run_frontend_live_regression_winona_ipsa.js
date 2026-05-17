@@ -14,6 +14,10 @@ const formalRounds = parseNonNegativeInt(
   process.env.FORMAL_ROUNDS,
   legacyRounds > 0 ? legacyRounds : 100,
 );
+const requiredMerchantId = String(process.env.MERCHANT_ID || '').trim();
+if (!requiredMerchantId) {
+  throw new Error('MERCHANT_ID is required; production regression scripts must not carry a hardcoded merchant default');
+}
 
 function defaultOutDir() {
   return path.basename(process.cwd()) === 'pivota-agent-backend'
@@ -24,7 +28,7 @@ function defaultOutDir() {
 const config = {
   baseGateway: process.env.BASE_GATEWAY || 'https://agent.pivota.cc/api/gateway',
   baseAccountsRoot: process.env.BASE_ACCOUNTS_ROOT || 'https://agent.pivota.cc/api/accounts-root',
-  merchantId: process.env.MERCHANT_ID || 'merch_efbc46b4619cfbdf',
+  merchantId: requiredMerchantId,
   warmupRounds,
   formalRounds,
   questionDelayMs: parseNonNegativeInt(process.env.QUESTION_DELAY_MS, 220),

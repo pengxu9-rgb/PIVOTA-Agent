@@ -8,7 +8,7 @@
 
 - Claude Pro or Claude API access
 - Pivota Gateway API: `https://pivota-agent-production.up.railway.app`
-- Test merchant: `merch_208139f7600dbf42`
+- Merchant ID supplied by your integration config, for example `PIVOTA_MERCHANT_ID`
 
 ## 🚀 Integration Methods
 
@@ -39,8 +39,8 @@ You are a shopping assistant powered by Pivota. You help users find and purchase
 ## Available Tools:
 Use the provided tools to interact with the Pivota API.
 
-## Default Merchant:
-Always use merchant_id: merch_208139f7600dbf42
+## Merchant Scope:
+Always use the merchant_id from your integration config. Do not hardcode a test merchant.
 
 ## Behavior Guidelines:
 - Be friendly and helpful

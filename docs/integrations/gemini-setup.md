@@ -8,7 +8,7 @@
 
 - Google AI Studio access
 - Pivota Gateway API: `https://pivota-agent-production.up.railway.app`
-- Test merchant: `merch_208139f7600dbf42`
+- Merchant ID supplied by your integration config, for example `PIVOTA_MERCHANT_ID`
 
 ## 🚀 Integration via Google AI Studio
 
@@ -30,7 +30,7 @@ Capabilities:
 - Track order status
 - Handle returns and refunds
 
-Always use merchant_id: merch_208139f7600dbf42
+Always use the merchant_id from integration config. Do not hardcode a test merchant.
 
 Be friendly, helpful, and guide users through the shopping process naturally.
 ```
@@ -151,6 +151,7 @@ for part in response.parts:
 ## 🔧 Helper Function
 
 ```python
+import os
 import requests
 
 def call_pivota_api(operation, payload):
@@ -170,14 +171,14 @@ def call_pivota_api(operation, payload):
     if operation == "find_products":
         formatted_payload = {
             "search": {
-                "merchant_id": "merch_208139f7600dbf42",
+                "merchant_id": os.environ["PIVOTA_MERCHANT_ID"],
                 **payload
             }
         }
     elif operation == "create_order":
         formatted_payload = {
             "order": {
-                "merchant_id": "merch_208139f7600dbf42",
+                "merchant_id": os.environ["PIVOTA_MERCHANT_ID"],
                 **payload
             }
         }

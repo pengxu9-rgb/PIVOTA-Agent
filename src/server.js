@@ -405,7 +405,7 @@ const SERVICE_BUILD_ID = SERVICE_GIT_SHA_SHORT || `started-${SERVICE_STARTED_AT}
 const DEFAULT_MERCHANT_ID = String(
   process.env.PIVOTA_DEFAULT_MERCHANT_ID ||
     process.env.DEFAULT_MERCHANT_ID ||
-    'merch_efbc46b4619cfbdf',
+    '',
 ).trim();
 const PIVOTA_API_BASE = (process.env.PIVOTA_API_BASE || 'http://localhost:8080').replace(/\/$/, '');
 const PROXY_SEARCH_AURORA_API_BASE = String(
@@ -7485,7 +7485,10 @@ async function probeCreatorCacheDbStats(merchantIds, intentTarget = 'unknown', o
 
   try {
     const [allRes, sellableRes, petRes, embRes] = await Promise.all([
-      query(`SELECT COUNT(*)::int AS c FROM products_cache WHERE merchant_id = ANY($1)`, [merchantIds]),
+      query(
+        `SELECT COUNT(*)::int AS c FROM products_cache WHERE merchant_id = ANY($1) AND ${activeProductsCacheSourceWhere('products_cache')}`,
+        [merchantIds],
+      ),
       query(`SELECT COUNT(*)::int AS c FROM products_cache WHERE ${baseWhere}`, [merchantIds]),
       intentTarget === 'pet'
         ? query(
@@ -7621,6 +7624,7 @@ async function discoverCatalogSyncMerchantIdsFromDb(limit = 5000) {
         FROM products_cache
         WHERE COALESCE(NULLIF(trim(merchant_id), ''), '') <> ''
           AND merchant_id <> 'external_seed'
+          AND ${activeProductsCacheSourceWhere('products_cache')}
         ORDER BY merchant_id ASC
         LIMIT $1
       `,
@@ -21302,7 +21306,9 @@ async function findDeadScopeProductIds(merchantId, productIds) {
   try {
     const r = await query(
       `SELECT platform_product_id FROM products_cache
-        WHERE merchant_id = $1 AND platform_product_id = ANY($2::text[])`,
+        WHERE merchant_id = $1
+          AND ${activeProductsCacheSourceWhere('products_cache')}
+          AND platform_product_id = ANY($2::text[])`,
       [merchantId, Array.from(candidateValues)]
     );
     const found = new Set((r?.rows || []).map((row) => String(row.platform_product_id)));
@@ -23201,6 +23207,7 @@ async function searchCrossMerchantFromCache(queryText, page = 1, limit = 20, opt
     const relaxedFilter = buildQueryFilter('');
     const relaxedBaseWhere = `
       (expires_at IS NULL OR expires_at > now())
+      AND ${activeProductsCacheSourceWhere('products_cache')}
       AND ${buildSellableStatusPredicate("product_data->>'status'")}
       AND COALESCE(lower(product_data->>'orderable'), 'true') <> 'false'
     `;
@@ -23356,6 +23363,7 @@ async function loadCrossMerchantBrowseFromCache(page = 1, limit = 20, options = 
         SELECT id, expires_at, merchant_id, product_data
         FROM products_cache
         WHERE expires_at > now()
+          AND ${activeProductsCacheSourceWhere('products_cache')}
           AND ${buildSellableStatusPredicate("product_data->>'status'")}
         ORDER BY expires_at DESC, id DESC
         LIMIT $1
@@ -23429,6 +23437,7 @@ async function loadMerchantBrowseFromCache(merchantId, page = 1, limit = 20, opt
       JOIN merchant_onboarding mo
         ON mo.merchant_id = pc.merchant_id
       WHERE pc.merchant_id = $1
+        AND ${activeProductsCacheSourceWhere('pc')}
         AND (pc.expires_at IS NULL OR pc.expires_at > now())
         AND ${buildSellableStatusPredicate("pc.product_data->>'status'")}
         AND mo.status NOT IN ('deleted', 'rejected')
@@ -23505,6 +23514,7 @@ async function loadCreatorProductFromCache(creatorId, productId) {
       SELECT product_data
       FROM products_cache
       WHERE merchant_id = ANY($1)
+        AND ${activeProductsCacheSourceWhere('products_cache')}
         AND (expires_at IS NULL OR expires_at > now())
         AND (
           product_data->>'id' = $2
@@ -27398,6 +27408,7 @@ app.get('/api/admin/catalog-cache-diagnostics', requireAdmin, async (req, res) =
           MAX(cached_at) AS latest_cached_at,
           MAX(expires_at) AS latest_expires_at
         FROM products_cache
+        WHERE ${activeProductsCacheSourceWhere('products_cache')}
       `,
       [],
     );
@@ -27417,6 +27428,7 @@ app.get('/api/admin/catalog-cache-diagnostics', requireAdmin, async (req, res) =
           MAX(cached_at) AS latest_cached_at,
           MAX(expires_at) AS latest_expires_at
         FROM products_cache
+        WHERE ${activeProductsCacheSourceWhere('products_cache')}
         GROUP BY merchant_id
         ORDER BY sellable_rows DESC, total_rows DESC, merchant_id ASC
         LIMIT $1
@@ -27439,6 +27451,7 @@ app.get('/api/admin/catalog-cache-diagnostics', requireAdmin, async (req, res) =
               MAX(cached_at) AS latest_cached_at
             FROM products_cache
             WHERE merchant_id = ANY($1)
+              AND ${activeProductsCacheSourceWhere('products_cache')}
             GROUP BY merchant_id
             ORDER BY merchant_id ASC
           `,
@@ -27458,7 +27471,7 @@ app.get('/api/admin/catalog-cache-diagnostics', requireAdmin, async (req, res) =
         )
       : { rows: [] };
 
-    const scopedWhereParts = [];
+    const scopedWhereParts = [activeProductsCacheSourceWhere('products_cache')];
     const scopedParams = [];
     let scopedIdx = 1;
     if (merchantId) {
@@ -29996,11 +30009,18 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 
 	      if (!canonicalProductRef) {
 	        const shouldFallbackToExternalSeedProductRef = externalSeedRouteProductId;
+	        const fallbackMerchantId = requestedMerchantId || DEFAULT_MERCHANT_ID;
+	        if (!shouldFallbackToExternalSeedProductRef && !fallbackMerchantId) {
+	          return res.status(400).json({
+	            error: 'MISSING_MERCHANT_CONTEXT',
+	            message: 'merchant_id is required when canonical product identity cannot be resolved',
+	          });
+	        }
 	        canonicalProductRef = {
 	          merchant_id:
 	              shouldFallbackToExternalSeedProductRef
 	              ? EXTERNAL_SEED_MERCHANT_ID
-	              : requestedMerchantId || DEFAULT_MERCHANT_ID,
+	              : fallbackMerchantId,
 	          product_id: productId,
 	          ...(platform ? { platform } : {}),
 	        };
@@ -31382,8 +31402,7 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
       const merchantId =
         payload.product?.merchant_id ||
         payload.merchant_id ||
-        payload.search?.merchant_id ||
-        DEFAULT_MERCHANT_ID;
+        payload.search?.merchant_id;
 
       if (!productId || !merchantId) {
         return res.status(400).json({

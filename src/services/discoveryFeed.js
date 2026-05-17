@@ -58,6 +58,7 @@ const {
 const {
   _internals: productGroundingResolverInternals = {},
 } = require('./productGroundingResolver');
+const { activeProductsCacheSourceWhere } = require('./activeCatalogSourceSql');
 let productIntelKbStore = null;
 
 const SCORING_VERSION = 'discovery_v2';
@@ -2086,6 +2087,7 @@ function buildStableBrowseCatalogCountQuery(request, { includeIdentityJoin = tru
         JOIN merchant_onboarding mo
           ON mo.merchant_id = pc.merchant_id
         WHERE (pc.expires_at IS NULL OR pc.expires_at > now())
+          AND ${activeProductsCacheSourceWhere('pc')}
           AND ${buildSellableStatusPredicate("pc.product_data->>'status'")}
           AND COALESCE(lower(pc.product_data->>'orderable'), 'true') <> 'false'
           AND mo.status NOT IN ('deleted', 'rejected')
@@ -4362,6 +4364,7 @@ async function fetchInternalCatalogCandidates({
             ) AS search_text
           FROM products_cache
           WHERE (expires_at IS NULL OR expires_at > now())
+            AND ${activeProductsCacheSourceWhere('products_cache')}
             AND COALESCE(lower(product_data->>'status'), 'active') = 'active'
             AND merchant_id <> $1
         )
@@ -8181,6 +8184,7 @@ async function fetchBrandScopedInternalCatalogCandidates({ brandAliases = [], li
         SELECT merchant_id, product_data
         FROM products_cache
         WHERE (expires_at IS NULL OR expires_at > now())
+          AND ${activeProductsCacheSourceWhere('products_cache')}
           AND COALESCE(lower(product_data->>'status'), 'active') = 'active'
           AND merchant_id <> $1
           AND (

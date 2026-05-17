@@ -76,66 +76,7 @@ const CJK_GENERIC_QUERY_TOKENS_RE =
 const HAS_HAN_RE = /[\u4E00-\u9FFF]/;
 const CJK_QUERY_PREFIX_RE = /^(?:有没有|有无|有沒|有没|有什么|有什麼|有啥|是否有|请问|能不能|可以|想买|想要|哪里买|怎么买)/;
 const CJK_QUERY_SUFFIX_RE = /(?:吗|呢|呀|吧|嘛)$/;
-const BUILTIN_STABLE_PRODUCT_REFS = [
-  {
-    id: 'the_ordinary_niacinamide_10_zinc_1',
-    product_ref: {
-      product_id: '9886499864904',
-      merchant_id: 'merch_efbc46b4619cfbdf',
-    },
-    brand: 'The Ordinary',
-    name: 'Niacinamide 10% + Zinc 1%',
-    display_name: 'The Ordinary Niacinamide 10% + Zinc 1%',
-    category: 'serum',
-    title: 'The Ordinary Niacinamide 10% + Zinc 1%',
-    aliases: [
-      'The Ordinary Niacinamide 10% + Zinc 1%',
-      'Niacinamide 10% + Zinc 1%',
-      'the ordinary niacinamide 10 zinc 1',
-      'niacinamide 10 zinc 1',
-      'c231aaaa-8b00-4145-a704-684931049303',
-      'c231aaaa8b004145a704684931049303',
-    ],
-  },
-  {
-    id: 'winona_soothing_repair_serum',
-    product_ref: {
-      product_id: '9886500749640',
-      merchant_id: 'merch_efbc46b4619cfbdf',
-    },
-    title: 'Winona Soothing Repair Serum',
-    aliases: [
-      'Winona Soothing Repair Serum',
-      'winona soothing repair serum',
-      'Winona',
-      'winona',
-      '薇诺娜',
-      '薇诺娜 舒缓 修护 精华',
-      '薇诺娜修护精华',
-      'a39dd7a3-5d80-4cb3-82e1-3bf2707f65fc',
-      'a39dd7a35d804cb382e13bf2707f65fc',
-    ],
-  },
-  {
-    id: 'ipsa_time_reset_aqua',
-    product_ref: {
-      product_id: '9886500127048',
-      merchant_id: 'merch_efbc46b4619cfbdf',
-    },
-    title: 'IPSA Time Reset Aqua',
-    aliases: [
-      'IPSA Time Reset Aqua',
-      'ipsa time reset aqua',
-      'Time Reset Aqua',
-      'IPSA',
-      'ipsa',
-      '茵芙莎',
-      'ipsa reset aqua',
-      'e7c90e06-8673-4c97-835d-074a26ab2162',
-      'e7c90e0686734c97835d074a26ab2162',
-    ],
-  },
-];
+const BUILTIN_STABLE_PRODUCT_REFS = [];
 
 function loadStableProductRegistry() {
   const overridePath = String(process.env.AURORA_PRODUCT_GROUNDING_STABLE_ALIAS_PATH || '').trim();
@@ -147,7 +88,7 @@ function loadStableProductRegistry() {
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed) && parsed.length > 0) return parsed;
   } catch (_) {
-    // Fall through to builtin registry.
+    // Fall through to empty registry. Production aliases must be configured explicitly.
   }
   return BUILTIN_STABLE_PRODUCT_REFS;
 }

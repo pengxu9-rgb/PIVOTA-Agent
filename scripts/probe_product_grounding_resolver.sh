@@ -60,7 +60,7 @@ resolved_count=0
 for query in "${QUERIES[@]}"; do
   total=$((total + 1))
   payload="$(python3 - "$query" "$LANG_CODE" "$TIMEOUT_MS" "$UPSTREAM_RETRIES" "$PROBE_INCLUDE_STABLE_HINTS" <<'PY'
-import json, sys
+import json, os, sys
 q = sys.argv[1]
 lang = sys.argv[2]
 timeout_ms = int(sys.argv[3])
@@ -68,28 +68,10 @@ upstream_retries = int(sys.argv[4])
 include_hints_raw = str(sys.argv[5]).strip().lower()
 include_hints = include_hints_raw not in ("0", "false", "no", "off")
 
-# Probe-only stable hints for known internal products.
-# These are deterministic keys intended to verify "known internal item should not fallback" behavior.
-stable_hints = {
-    "the ordinary niacinamide 10% + zinc 1%": {
-        "product_ref": {
-            "product_id": "9886499864904",
-            "merchant_id": "merch_efbc46b4619cfbdf",
-        },
-        "aliases": ["The Ordinary Niacinamide 10% + Zinc 1%"],
-        "brand": "The Ordinary",
-        "title": "The Ordinary Niacinamide 10% + Zinc 1%",
-    },
-    "winona soothing repair serum": {
-        "product_ref": {
-            "product_id": "9886500749640",
-            "merchant_id": "merch_efbc46b4619cfbdf",
-        },
-        "aliases": ["Winona Soothing Repair Serum"],
-        "brand": "Winona",
-        "title": "Winona Soothing Repair Serum",
-    },
-}
+try:
+    stable_hints = json.loads(os.environ.get("PRODUCT_GROUNDING_STABLE_HINTS_JSON", "{}") or "{}")
+except Exception:
+    stable_hints = {}
 
 obj = {
     "query": q,

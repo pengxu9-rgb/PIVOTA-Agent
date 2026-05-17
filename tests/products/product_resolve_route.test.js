@@ -1,5 +1,13 @@
 const nock = require('nock');
+const path = require('path');
 const request = require('supertest');
+
+const STABLE_ALIAS_FIXTURE_PATH = path.join(
+  __dirname,
+  '..',
+  'fixtures',
+  'product_grounding_stable_aliases.test.json',
+);
 
 describe('POST /agent/v1/products/resolve', () => {
   let prevEnv;
@@ -24,6 +32,8 @@ describe('POST /agent/v1/products/resolve', () => {
         process.env.PROXY_SEARCH_AURORA_VIEW_DETAILS_EXTERNAL_SEED_STRATEGY,
       PROXY_SEARCH_AURORA_VIEW_DETAILS_MIN_TIMEOUT_MS:
         process.env.PROXY_SEARCH_AURORA_VIEW_DETAILS_MIN_TIMEOUT_MS,
+      AURORA_PRODUCT_GROUNDING_STABLE_ALIAS_PATH:
+        process.env.AURORA_PRODUCT_GROUNDING_STABLE_ALIAS_PATH,
     };
 
     process.env.PIVOTA_API_BASE = 'http://pivota.test';
@@ -32,6 +42,7 @@ describe('POST /agent/v1/products/resolve', () => {
     process.env.PROXY_SEARCH_AURORA_VIEW_DETAILS_EXTERNAL_SEED_ENABLED = 'true';
     process.env.PROXY_SEARCH_AURORA_VIEW_DETAILS_EXTERNAL_SEED_STRATEGY = 'supplement_internal_first';
     process.env.PROXY_SEARCH_AURORA_VIEW_DETAILS_MIN_TIMEOUT_MS = '1800';
+    process.env.AURORA_PRODUCT_GROUNDING_STABLE_ALIAS_PATH = STABLE_ALIAS_FIXTURE_PATH;
     delete process.env.DATABASE_URL;
   });
 
@@ -65,6 +76,12 @@ describe('POST /agent/v1/products/resolve', () => {
     } else {
       process.env.PROXY_SEARCH_AURORA_VIEW_DETAILS_MIN_TIMEOUT_MS =
         prevEnv.PROXY_SEARCH_AURORA_VIEW_DETAILS_MIN_TIMEOUT_MS;
+    }
+    if (prevEnv.AURORA_PRODUCT_GROUNDING_STABLE_ALIAS_PATH === undefined) {
+      delete process.env.AURORA_PRODUCT_GROUNDING_STABLE_ALIAS_PATH;
+    } else {
+      process.env.AURORA_PRODUCT_GROUNDING_STABLE_ALIAS_PATH =
+        prevEnv.AURORA_PRODUCT_GROUNDING_STABLE_ALIAS_PATH;
     }
   });
 
