@@ -120,6 +120,10 @@ const {
   heuristicCategoryForProduct,
 } = require('./services/categories');
 const {
+  activeCatalogProductSourceWhere,
+  activeProductsCacheSourceWhere,
+} = require('./services/activeCatalogSourceSql');
+const {
   DiscoveryCatalogUnavailableError,
   DiscoveryValidationError,
   getDiscoveryHealthSnapshot,
@@ -398,7 +402,11 @@ const SERVICE_GIT_SHA_SHORT = SERVICE_GIT_SHA ? SERVICE_GIT_SHA.slice(0, 12) : n
 const SERVICE_GIT_BRANCH = String(process.env.RAILWAY_GIT_BRANCH || process.env.GIT_BRANCH || '').trim();
 const SERVICE_NAME = String(process.env.RAILWAY_SERVICE_NAME || process.env.SERVICE_NAME || 'pivota-agent-gateway').trim();
 const SERVICE_BUILD_ID = SERVICE_GIT_SHA_SHORT || `started-${SERVICE_STARTED_AT}`;
-const DEFAULT_MERCHANT_ID = 'merch_208139f7600dbf42';
+const DEFAULT_MERCHANT_ID = String(
+  process.env.PIVOTA_DEFAULT_MERCHANT_ID ||
+    process.env.DEFAULT_MERCHANT_ID ||
+    'merch_efbc46b4619cfbdf',
+).trim();
 const PIVOTA_API_BASE = (process.env.PIVOTA_API_BASE || 'http://localhost:8080').replace(/\/$/, '');
 const PROXY_SEARCH_AURORA_API_BASE = String(
   process.env.PROXY_SEARCH_AURORA_API_BASE ||
@@ -3954,6 +3962,7 @@ async function fetchProductDetailFromProductsCache(args) {
           FROM products_cache
           WHERE merchant_id = $1
             AND (expires_at IS NULL OR expires_at > now())
+            AND ${activeProductsCacheSourceWhere('products_cache')}
             AND (
               platform_product_id = $2
               OR product_data->>'id' = $2
@@ -3976,6 +3985,7 @@ async function fetchProductDetailFromProductsCache(args) {
           FROM products_cache
           WHERE merchant_id = $1
             AND (cached_at IS NULL OR cached_at >= now() - ($3 * interval '1 hour'))
+            AND ${activeProductsCacheSourceWhere('products_cache')}
             AND (
               platform_product_id = $2
               OR product_data->>'id' = $2
@@ -17388,6 +17398,7 @@ async function findLiveIdentitySearchProductForRecall({
         SELECT merchant_id, platform_product_id, product_data, cached_at
         FROM products_cache
         WHERE merchant_id <> $1
+          AND ${activeProductsCacheSourceWhere('products_cache')}
           AND length(${titleCompactExpr}) >= 5
           AND (
             ${titleCompactExpr} = $2
@@ -21785,6 +21796,7 @@ async function loadCreatorSellableFromCache(creatorId, page = 1, limit = 20, opt
   // still surface products where inventory is not tracked.
   const baseWhere = `
     merchant_id = ANY($1)
+    AND ${activeProductsCacheSourceWhere('products_cache')}
     AND (expires_at IS NULL OR expires_at > now())
     AND ${buildSellableStatusPredicate("product_data->>'status'")}
   `;
@@ -21812,6 +21824,7 @@ async function loadCreatorSellableFromCache(creatorId, page = 1, limit = 20, opt
           SELECT product_data
           FROM products_cache
           WHERE merchant_id = ANY($1)
+            AND ${activeProductsCacheSourceWhere('products_cache')}
           ORDER BY cached_at DESC NULLS LAST, id DESC
           LIMIT $2
         `,
@@ -22054,6 +22067,7 @@ async function tryCrossMerchantBeautyCategoryBrowseFastpath(
   const browseLimit = Math.min(Math.max(offset + safeLimit * 8, 80), 160);
   const baseWhere = `
     (pc.expires_at IS NULL OR pc.expires_at > now())
+    AND ${activeProductsCacheSourceWhere('pc')}
     AND ${buildSellableStatusPredicate("pc.product_data->>'status'")}
     AND mo.status NOT IN ('deleted', 'rejected')
     AND mo.psp_connected = true
@@ -22352,6 +22366,7 @@ async function searchCreatorSellableFromCache(creatorId, queryText, page = 1, li
   // is not tracked.
   const baseWhere = `
     merchant_id = ANY($1)
+    AND ${activeProductsCacheSourceWhere('products_cache')}
     AND (expires_at IS NULL OR expires_at > now())
     AND ${buildSellableStatusPredicate("product_data->>'status'")}
   `;
@@ -22543,6 +22558,7 @@ async function searchCreatorSellableFromCache(creatorId, queryText, page = 1, li
     try {
       const relaxedWhere = [
         'merchant_id = ANY($1)',
+        activeProductsCacheSourceWhere('products_cache'),
         queryWhere,
         ...(underwearClause ? [underwearClause] : []),
         ...(petClause ? [petClause] : []),

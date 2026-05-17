@@ -11,6 +11,10 @@ const {
   EXTERNAL_SEED_MERCHANT_ID,
   ensureJsonObject,
 } = require('./externalSeedProducts');
+const {
+  activeCatalogProductSourceWhere,
+  activeProductsCacheSourceWhere,
+} = require('./activeCatalogSourceSql');
 
 function parseTimeoutMs(raw, fallbackMs) {
   const s = String(raw ?? '').trim();
@@ -2685,6 +2689,7 @@ async function fetchInternalCandidates({ merchantId, limit, excludeMerchantId, c
     throw buildDatabaseNotConfiguredError('pdp_recommendations_internal_candidates');
   }
   const out = [];
+  const activeCacheWhere = activeProductsCacheSourceWhere('products_cache');
 
   try {
     if (mid && mid !== EXTERNAL_SEED_MERCHANT_ID && categoryAliases.length) {
@@ -2695,6 +2700,7 @@ async function fetchInternalCandidates({ merchantId, limit, excludeMerchantId, c
           WHERE merchant_id = $1
             AND (expires_at IS NULL OR expires_at > now())
             AND COALESCE(lower(product_data->>'status'), 'active') = 'active'
+            AND ${activeCacheWhere}
             AND (
               lower(coalesce(product_data->>'category', '')) = ANY($3)
               OR lower(coalesce(product_data->>'product_type', '')) = ANY($3)
@@ -2728,6 +2734,7 @@ async function fetchInternalCandidates({ merchantId, limit, excludeMerchantId, c
           WHERE merchant_id = $1
             AND (expires_at IS NULL OR expires_at > now())
             AND COALESCE(lower(product_data->>'status'), 'active') = 'active'
+            AND ${activeCacheWhere}
           ORDER BY cached_at DESC NULLS LAST, id DESC
           LIMIT $2
         `,
@@ -2750,6 +2757,7 @@ async function fetchInternalCandidates({ merchantId, limit, excludeMerchantId, c
           FROM products_cache
           WHERE (expires_at IS NULL OR expires_at > now())
             AND COALESCE(lower(product_data->>'status'), 'active') = 'active'
+            AND ${activeCacheWhere}
             AND merchant_id <> $1
             ${excludeMerchantId ? 'AND merchant_id <> $2' : ''}
           ORDER BY cached_at DESC NULLS LAST, id DESC
@@ -3137,7 +3145,9 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
             cp.pivota_canonical_url,
             cp.updated_at
           FROM catalog_products cp
+          LEFT JOIN catalog_merchants cm ON cm.merchant_id = cp.merchant_id
           WHERE cp.sync_status = 'live'
+            AND ${activeCatalogProductSourceWhere('cp', 'cm')}
             AND cp.category_path = $1
           ORDER BY
             CASE WHEN lower(coalesce(cp.brand, '')) = ANY($2::text[]) THEN 0 ELSE 1 END,

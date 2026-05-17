@@ -6,6 +6,7 @@ const {
   EXTERNAL_SEED_RECALL_SQL_FIELDS,
   resolveExternalSeedRecallDoc,
 } = require('./externalSeedRecall');
+const { activeProductsCacheSourceWhere } = require('./activeCatalogSourceSql');
 
 const EXTERNAL_SEED_MERCHANT_ID = 'external_seed';
 const PRODUCT_GROUNDING_BASE_URL_ENVS = ['PIVOTA_BACKEND_BASE_URL', 'PIVOTA_API_BASE'];
@@ -952,6 +953,7 @@ async function fetchCandidatesViaProductsCache({
         WHERE ${merchantScopeWhere}
           AND (expires_at IS NULL OR expires_at > now())
           AND COALESCE(lower(product_data->>'status'), 'active') = 'active'
+          AND ${activeProductsCacheSourceWhere('products_cache')}
           AND COALESCE(lower(product_data->>'orderable'), 'true') <> 'false'
           AND ${tokenWhere}
       ) t

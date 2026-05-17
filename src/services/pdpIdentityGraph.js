@@ -17,6 +17,7 @@ const {
 const {
   resolveCanonicalCatalogEntityGroup,
 } = require('./catalogEntityResolution');
+const { activeProductsCacheSourceWhere } = require('./activeCatalogSourceSql');
 const {
   summarizePdpPayloadContract,
 } = require('./pdpIdentityPayloadDrift');
@@ -4128,6 +4129,7 @@ async function summarizePdpIdentityCoverageByBrand({
             count(*)::int AS internal_rows
           FROM products_cache
           WHERE merchant_id <> $1
+            AND ${activeProductsCacheSourceWhere('products_cache')}
           GROUP BY 1
         )
         SELECT
@@ -4411,6 +4413,7 @@ async function fetchBackfillProducts({ limit = 500, brandFilter = null, queryFn 
       SELECT merchant_id, platform_product_id, product_data, cached_at
       FROM products_cache
       WHERE ${internalWhere.join(' AND ')}
+        AND ${activeProductsCacheSourceWhere('products_cache')}
       ORDER BY cached_at DESC NULLS LAST
       LIMIT ${internalLimitParam}
     `,

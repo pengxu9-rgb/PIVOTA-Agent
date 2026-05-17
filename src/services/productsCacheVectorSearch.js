@@ -1,4 +1,5 @@
 const { query } = require('../db');
+const { activeProductsCacheSourceWhere } = require('./activeCatalogSourceSql');
 
 function vectorLiteral(vec) {
   if (!Array.isArray(vec) || vec.length === 0) throw new Error('Query embedding is empty');
@@ -106,6 +107,7 @@ function buildPetSignalSql(startIndex) {
 function buildBaseSellableWhere() {
   return `
     merchant_id = ANY($1)
+    AND ${activeProductsCacheSourceWhere('products_cache')}
     AND (expires_at IS NULL OR expires_at > now())
     AND COALESCE(lower(product_data->>'status'), 'active') = 'active'
     AND COALESCE((product_data->>'inventory_quantity')::int, 0) > 0

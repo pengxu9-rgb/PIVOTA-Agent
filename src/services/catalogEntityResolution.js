@@ -1,6 +1,7 @@
 'use strict';
 
 const { query: defaultQuery } = require('../db');
+const { activeCatalogProductSourceWhere } = require('./activeCatalogSourceSql');
 
 function asString(value) {
   if (typeof value === 'string') return value.trim();
@@ -250,11 +251,13 @@ async function resolveCanonicalCatalogEntityGroup(args = {}) {
         cp.pivota_signature_id,
         pgm.product_group_id
       FROM catalog_products cp
+      LEFT JOIN catalog_merchants cm ON cm.merchant_id = cp.merchant_id
       LEFT JOIN product_group_members pgm
         ON pgm.merchant_id = cp.merchant_id
        AND pgm.platform = cp.platform
        AND pgm.platform_product_id = cp.source_product_id
       WHERE (${targetClauses.join(' OR ')})
+        AND ${activeCatalogProductSourceWhere('cp', 'cm')}
       ORDER BY
         ${targetOrder.length ? `${targetOrder.join(',')},` : ''}
         CASE WHEN pgm.is_primary = true THEN 0 ELSE 1 END,
@@ -306,6 +309,7 @@ async function resolveCanonicalCatalogEntityGroup(args = {}) {
       OR cp.product_key IN (SELECT product_key FROM target WHERE product_key IS NOT NULL)
     )
       AND cp.pivota_signature_id IS NOT NULL
+      AND ${activeCatalogProductSourceWhere('cp', 'cm')}
     ORDER BY
       CASE WHEN pgm.is_primary = true THEN 0 ELSE 1 END,
       CASE cp.pdp_lifecycle_stage

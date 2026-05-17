@@ -8,7 +8,11 @@ const { expandProductIdScope } = require('./utils/shopifyGid');
 const STORE_PATH = path.join(__dirname, '..', 'data', 'promotions.json');
 
 // Default demo merchant id for local promotion fixtures.
-const DEFAULT_MERCHANT_ID = 'merch_208139f7600dbf42';
+const DEFAULT_MERCHANT_ID = String(
+  process.env.PIVOTA_DEFAULT_MERCHANT_ID ||
+    process.env.DEFAULT_MERCHANT_ID ||
+    'merch_efbc46b4619cfbdf',
+).trim();
 
 // Remote backend configuration (pivota-backend internal API)
 const PROMO_BACKEND_BASE =

@@ -3,6 +3,7 @@ const {
   buildExternalSeedProduct,
   EXTERNAL_SEED_MERCHANT_ID,
 } = require('./externalSeedProducts');
+const { activeCatalogProductSourceWhere } = require('./activeCatalogSourceSql');
 
 function clampInt(value, fallback, min, max) {
   const n = Number(value);
@@ -210,6 +211,7 @@ async function getProductEntityIndexFeed(payload = {}, deps = {}) {
         LEFT JOIN offer_stats ON offer_stats.product_key = cp.product_key
         WHERE cp.content_key IS NOT NULL
           AND cp.pivota_signature_id LIKE 'sig\\_%' ESCAPE '\\'
+          AND ${activeCatalogProductSourceWhere('cp', 'cm')}
       ),
       ranked AS (
         SELECT

@@ -8,6 +8,7 @@ const {
   buildExternalSeedProduct,
   EXTERNAL_SEED_MERCHANT_ID,
 } = require('./externalSeedProducts');
+const { activeProductsCacheSourceWhere } = require('./activeCatalogSourceSql');
 
 const PIVOTA_API_BASE = (process.env.PIVOTA_API_BASE || 'http://localhost:8080').replace(/\/$/, '');
 
@@ -1075,6 +1076,7 @@ async function loadCreatorProducts(creatorId) {
           SELECT product_data
           FROM products_cache
           WHERE merchant_id = ANY($1)
+            AND ${activeProductsCacheSourceWhere('products_cache')}
             AND expires_at > now()
           ORDER BY cached_at DESC
           LIMIT $2
