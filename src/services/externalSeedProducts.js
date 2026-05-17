@@ -580,6 +580,7 @@ function normalizeReviewBrandCard(value) {
 
 function normalizeSeedReviewSummary(...values) {
   const out = {};
+  const absenceStatuses = new Set(['none', 'no_reviews', 'unavailable', 'no_review_source_captured']);
   for (const value of values) {
     const source = ensureJsonObject(value);
     const status = normalizeNonEmptyString(source.status || source.review_status);
@@ -588,7 +589,7 @@ function normalizeSeedReviewSummary(...values) {
     );
     if (
       status &&
-      ['none', 'no_reviews', 'unavailable', 'no_review_source_captured'].includes(status.toLowerCase()) &&
+      absenceStatuses.has(status.toLowerCase()) &&
       out.status == null
     ) {
       out.status = status.toLowerCase();
@@ -603,7 +604,7 @@ function normalizeSeedReviewSummary(...values) {
     }
     if (status && out.status == null) out.status = status.toLowerCase();
     if (unavailableReason && out.unavailable_reason == null) out.unavailable_reason = unavailableReason;
-    const sourceLabel = normalizeNonEmptyString(source.source || source.source_type);
+    const sourceLabel = normalizeNonEmptyString(source.source || source.source_type || source.source_origin);
     if (sourceLabel && out.source == null) out.source = sourceLabel;
     const contentReviewState = normalizeNonEmptyString(source.content_review_state);
     if (contentReviewState && out.content_review_state == null) out.content_review_state = contentReviewState;
@@ -632,7 +633,15 @@ function normalizeSeedReviewSummary(...values) {
     );
 
     if (rating > 0 && out.rating == null) out.rating = rating;
-    if (reviewCount > 0 && out.review_count == null) out.review_count = reviewCount;
+    if (reviewCount > 0) {
+      const existingReviewCount = normalizeAmount(out.review_count);
+      if (!existingReviewCount || existingReviewCount <= 0) out.review_count = reviewCount;
+      if (out.status && absenceStatuses.has(String(out.status).toLowerCase())) delete out.status;
+      if (out.unavailable_reason) delete out.unavailable_reason;
+      if (out.content_review_state === 'approved_absence') delete out.content_review_state;
+      if (out.force_filled === true && source.force_filled !== true) delete out.force_filled;
+      if (sourceLabel) out.source = sourceLabel;
+    }
     if (scale > 0 && out.scale == null) out.scale = scale;
     if (previewItems.length > 0 && !Array.isArray(out.preview_items)) out.preview_items = previewItems;
     if (questions.length > 0 && !Array.isArray(out.questions)) out.questions = questions;
