@@ -180,6 +180,13 @@ function hasActiveIngredientExpectation(payload, title = '') {
   if (likelyMakeupOnly && !/\b(?:spf|sunscreen|skin|skincare|treatment|peptide|retinol|acid|niacinamide)\b/i.test(context)) {
     return false;
   }
+  const likelyHydrocolloidPatch =
+    /\b(?:hydrocolloid|pimple\s+patch|pimple\s+patches|blemish\s+patch|blemish\s+patches|spot\s+cover\s+patch|acne\s+patch|acne\s+patches)\b/i.test(
+      context,
+    );
+  if (likelyHydrocolloidPatch && !/\b(?:salicylic|benzoyl peroxide|tea tree|sulfur|azelaic|mandelic|glycolic|lactic|bha|aha)\b/i.test(context)) {
+    return false;
+  }
   return /\b(?:serum|moisturi[sz]er|cream|cr[eè]me|toner|cleanser|mask|scrub|essence|face oil|sunscreen|spf|acid|retinol|peptide|ceramide|niacinamide|salicylic|glycolic|lactic|vitamin c|barrier|hydrating|hydration|firming|skin|skincare|treatment|eye cream|eye cr[eè]me|body moisturizer)\b/i.test(
     context,
   );

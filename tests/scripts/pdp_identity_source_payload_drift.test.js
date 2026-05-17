@@ -8,6 +8,9 @@ const {
   buildCursor: buildSyncCursor,
   parseCursor: parseSyncCursor,
 } = require('../../scripts/sync-external-seed-identity-source-payloads.cjs');
+const {
+  hasActiveIngredientExpectation,
+} = require('../../src/services/pdpIdentityPayloadDrift');
 
 describe('pdp identity source payload drift scripts', () => {
   test('cursor helpers support timestamp and id paging', () => {
@@ -91,5 +94,26 @@ describe('pdp identity source payload drift scripts', () => {
     expect(sigRows[0].fresh_best_content_ref).toBe('external_seed:ext_rich');
     expect(rows[0].canonical_selection_gap).toBe(true);
     expect(rows[1].sync_candidate).toBe(true);
+  });
+
+  test('hydrocolloid spot patches do not expect active ingredients without explicit active evidence', () => {
+    expect(
+      hasActiveIngredientExpectation({
+        title: 'Tea-Trica Spot Cover Patch',
+        product_kind: 'single_formula',
+        pdp_description_raw:
+          'Amazingly thin and skin-like pimple patches absorb excess sebum and impurities from acne.',
+        pdp_ingredients_raw:
+          'Polyisobutene, Cellulose gum, Hydrogenated Styrene/Methylstyrene/Indene copolymer, Pectin',
+      }),
+    ).toBe(false);
+
+    expect(
+      hasActiveIngredientExpectation({
+        title: 'Acne Patch with Salicylic Acid',
+        pdp_active_ingredients_raw: 'Salicylic Acid',
+        active_ingredients: ['Salicylic Acid'],
+      }),
+    ).toBe(true);
   });
 });
