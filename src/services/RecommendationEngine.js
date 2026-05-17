@@ -3341,6 +3341,7 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
     exactDomainCategoryCandidateCount = displayUniqueCandidateCount(domainCategoryFocusedCandidates);
     if (
       intentFamilyPattern &&
+      !identityCollapseProtection &&
       Math.max(exactDomainCategoryCandidateCount, exactDomainCategorySellableCount) >= exactDomainCategoryGoodEnoughCount
     ) {
       return attachExternalFetchStats(domainCategoryFocusedCandidates.slice(0, returnCap));
@@ -3418,12 +3419,15 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
       if (intentMatchesTask && !preloadedIntentFamilyMatches) {
         preloadedIntentFamilyMatches = await intentMatchesTask;
       }
-      if (hasDisplayCoverage(domainIntentCandidates, focusedRecallTarget)) {
+      if (!identityCollapseProtection && hasDisplayCoverage(domainIntentCandidates, focusedRecallTarget)) {
         return attachExternalFetchStats(domainIntentCandidates.slice(0, returnCap));
       }
       if (preloadedIntentFamilyMatches) {
         out.push(...preloadedIntentFamilyMatches);
-        const intentFocusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
+        const intentFocusedCandidates = uniqueByKey(
+          [...preloadedIntentFamilyMatches, ...out],
+          (p) => `${getMerchantId(p)}::${getProductId(p)}`,
+        );
         if (hasDisplayCoverage(intentFocusedCandidates, focusedRecallTarget)) {
           return attachExternalFetchStats(intentFocusedCandidates.slice(0, returnCap));
         }
@@ -3432,7 +3436,10 @@ ${EXTERNAL_SEED_RECOMMENDATION_SELECT}
     if (intentFamilyPattern && !preloadedIntentFamilyMatches) {
       preloadedIntentFamilyMatches = await loadIntentFamilyMatches();
       out.push(...preloadedIntentFamilyMatches);
-      const intentFocusedCandidates = uniqueByKey(out, (p) => `${getMerchantId(p)}::${getProductId(p)}`);
+      const intentFocusedCandidates = uniqueByKey(
+        [...preloadedIntentFamilyMatches, ...out],
+        (p) => `${getMerchantId(p)}::${getProductId(p)}`,
+      );
       if (hasDisplayCoverage(intentFocusedCandidates, focusedRecallTarget)) {
         return attachExternalFetchStats(intentFocusedCandidates.slice(0, returnCap));
       }
