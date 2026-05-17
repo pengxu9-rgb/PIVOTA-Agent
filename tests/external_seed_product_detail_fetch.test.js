@@ -901,6 +901,10 @@ describe('external seed product detail hydration', () => {
       }),
     });
 
+    // Phase O-5b sanity: a row WITHOUT new fashion columns produces no
+    // fashion_meta key on the product (additive change must not break
+    // existing behavior).
+    expect(product.fashion_meta).toBeUndefined();
     expect(product).toEqual(
       expect.objectContaining({
         product_id: 'sig_mac_russian_red_ulta',
@@ -923,6 +927,58 @@ describe('external seed product detail hydration', () => {
         }),
       }),
     );
+  });
+
+  test('Phase O-5b: catalog_products.material/care columns flow into product.fashion_meta with provenance', () => {
+    const { debug } = loadServerWithDb();
+    const product = debug.buildCanonicalChainMainlineProduct({
+      merchant_id: 'merch_apparel',
+      platform: 'shopify',
+      source_product_id: '12345',
+      product_key: 'prod::merch_apparel::shopify::12345',
+      pivota_signature_id: 'sig_apparel_demo',
+      product_title: 'Linen Summer Dress',
+      product_description: 'A breezy linen dress for warm days.',
+      brand: 'Atlas',
+      // Phase O-5b columns surfaced by canonicalCatalogSearch + entity resolution.
+      material: '100% organic cotton',
+      material_source: 'regex_extraction_v1',
+      material_confidence: 0.75,
+      care: 'Machine wash cold; hang dry.',
+      care_source: 'regex_extraction_v1',
+      care_confidence: 0.7,
+      // size_guide intentionally null — UI mapping ships in a follow-up.
+    });
+    expect(product).not.toBeNull();
+    expect(product.fashion_meta).toBeDefined();
+    expect(product.fashion_meta.material).toEqual({
+      value: '100% organic cotton',
+      source: 'regex_extraction_v1',
+      confidence: 0.75,
+    });
+    expect(product.fashion_meta.care).toEqual({
+      value: 'Machine wash cold; hang dry.',
+      source: 'regex_extraction_v1',
+      confidence: 0.7,
+    });
+    // size_guide is intentionally not assembled yet.
+    expect(product.fashion_meta.size_guide).toBeUndefined();
+  });
+
+  test('Phase O-5b: empty string columns produce no fashion_meta key', () => {
+    const { debug } = loadServerWithDb();
+    const product = debug.buildCanonicalChainMainlineProduct({
+      merchant_id: 'm',
+      platform: 'shopify',
+      source_product_id: 'x',
+      product_key: 'prod::m::shopify::x',
+      pivota_signature_id: 'sig_x',
+      product_title: 'Plain item',
+      material: '   ', // whitespace-only
+      care: null,
+    });
+    expect(product).not.toBeNull();
+    expect(product.fashion_meta).toBeUndefined();
   });
 
   test('get_pdp_v2 fails fast for inactive external seed routes before legacy detail fallback', async () => {

@@ -321,6 +321,20 @@ async function fetchCanonicalChainRows(args = {}) {
         p.content_key,
         p.pivota_signature_id,
         p.pivota_canonical_url,
+        -- Phase O-5b: structured fashion fields with per-field provenance.
+        -- Surfaced into product.fashion_meta downstream; the confidence
+        -- gate in pdpBuilder.pickFashionMeta drops low-trust derived
+        -- values from merchant-facing prose. Columns added in
+        -- pivota-backend mig 094.
+        p.material,
+        p.material_source,
+        p.material_confidence,
+        p.care,
+        p.care_source,
+        p.care_confidence,
+        p.size_guide,
+        p.size_guide_source,
+        p.size_guide_confidence,
         p.updated_at            AS product_updated_at,
         (
           ${skuIdentityScore}
@@ -365,6 +379,15 @@ async function fetchCanonicalChainRows(args = {}) {
       c.content_key,
       c.pivota_signature_id,
       c.pivota_canonical_url,
+      c.material,
+      c.material_source,
+      c.material_confidence,
+      c.care,
+      c.care_source,
+      c.care_confidence,
+      c.size_guide,
+      c.size_guide_source,
+      c.size_guide_confidence,
       c.product_updated_at,
       ${skuOfferColumns}
     FROM candidate_products c

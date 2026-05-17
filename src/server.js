@@ -12813,7 +12813,37 @@ function buildCanonicalChainMainlineProduct(row) {
     ...(Object.keys(seedData).length ? { seed_data: seedData } : {}),
     ...(Object.keys(externalSeed).length ? { external_seed: externalSeed } : {}),
     ...(brand ? { brand, vendor: brand } : {}),
+    ...buildFashionMetaFromCanonicalRow(row),
   };
+}
+
+// Phase O-5b: assemble product.fashion_meta from the new catalog_products
+// columns (material / care + per-field provenance siblings). pdpBuilder's
+// pickFashionMeta consumes the provenance-tagged shape and applies its
+// 0.6 confidence threshold to drop low-trust derived values from
+// merchant-facing prose. Only emits the key when at least one field has
+// a value — keeps the payload clean for products with no fashion data.
+//
+// size_guide is intentionally NOT emitted here yet. The current jsonb
+// shape from the regex extractor is {raw: string}; the UI consumer
+// (FashionSizeFitGuide) expects {columns, rows, ...} structured data.
+// That mapping ships in a follow-up alongside the LLM extractor that
+// can produce the structured shape.
+function buildFashionMetaFromCanonicalRow(row) {
+  const fields = {};
+  const addField = (key, value, source, confidence) => {
+    if (typeof value !== 'string' || !value.trim()) return;
+    const entry = { value: value.trim() };
+    if (typeof source === 'string' && source.trim()) entry.source = source.trim();
+    if (typeof confidence === 'number' && Number.isFinite(confidence)) {
+      entry.confidence = confidence;
+    }
+    fields[key] = entry;
+  };
+  addField('material', row.material, row.material_source, row.material_confidence);
+  addField('care', row.care, row.care_source, row.care_confidence);
+  if (Object.keys(fields).length === 0) return {};
+  return { fashion_meta: fields };
 }
 
 function mergeCanonicalChainProductsWithSeedProducts(seedProducts = [], canonicalProducts = []) {
