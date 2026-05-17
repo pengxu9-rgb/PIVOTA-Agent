@@ -32,6 +32,11 @@ const QUALITY_FIELD_TO_SEED_FIELDS = {
 };
 
 const UNSAFE_CONTENT_FIELDS = [
+  'description',
+  'description_text',
+  'overview',
+  'summary',
+  'derived',
   'pdp_description_raw',
   'pdp_ingredients_raw',
   'raw_ingredient_text_clean',

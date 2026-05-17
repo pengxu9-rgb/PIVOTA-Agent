@@ -1,0 +1,362 @@
+{
+  "generated_at": "2026-05-17T02:02:08.969Z",
+  "ids": [
+    "ext_19bf66093385858dcb0d6956",
+    "ext_35b321dde624f955996315cb",
+    "ext_842d06e9f8039ddcc784fccb"
+  ],
+  "seeds": [
+    {
+      "id": "eps_5864dd3a91694ea49c491c81",
+      "external_product_id": "ext_19bf66093385858dcb0d6956",
+      "title": "Detox Drops 2% Salicylic Acid Toner",
+      "domain": "olehenriksen.com",
+      "market": "US",
+      "canonical_url": "https://olehenriksen.com/products/detox-drops-2-salicylic-acid-toner-4oz",
+      "destination_url": "https://olehenriksen.com/products/detox-drops-2-salicylic-acid-toner-4oz",
+      "price_amount": 34,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "updated_at": "2026-05-14T14:52:37.319Z",
+      "seed_summary": {
+        "active_ingredients": [
+          "Salicylic acid"
+        ],
+        "active_raw": "SALICYLIC ACID (BHA) \nOTC-LEVEL, EXFOLIATES SKIN, TARGETS + TREATS ACNE\n\nDANISH PURPLE WILLOW FERMENT \nCLARIFIES + CONTROLS SURFACE OIL\n\nJUNIPER BERRY \nANTIOXIDANT-RICH HYDRATION TO SOFTEN + CALM SKIN\n\nCUCUMBER EXTRACT \nNOURISHES SKIN",
+        "ingredients_raw_len": 0,
+        "how_to_len": 0,
+        "details_count": 0,
+        "image_count": 10,
+        "blocker": null,
+        "authority": null
+      }
+    },
+    {
+      "id": "eps_d700ff23d2f644dd907d28e8",
+      "external_product_id": "ext_35b321dde624f955996315cb",
+      "title": "Detox Drops 2% Salicylic Acid Toner",
+      "domain": "olehenriksen.com",
+      "market": "US",
+      "canonical_url": "https://olehenriksen.com/products/detox-drops-2-salicylic-acid-toner-4oz",
+      "destination_url": "https://olehenriksen.com/products/detox-drops-2-salicylic-acid-toner-4oz",
+      "price_amount": 34,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "updated_at": "2026-05-14T14:52:37.319Z",
+      "seed_summary": {
+        "active_ingredients": [
+          "Salicylic acid"
+        ],
+        "active_raw": "",
+        "ingredients_raw_len": 234,
+        "how_to_len": 0,
+        "details_count": 0,
+        "image_count": 10,
+        "blocker": null,
+        "authority": null
+      }
+    },
+    {
+      "id": "eps_c8aa92582d1c4398a9523d6f",
+      "external_product_id": "ext_842d06e9f8039ddcc784fccb",
+      "title": "Detox Drops 2% Salicylic Acid Toner",
+      "domain": "olehenriksen.com",
+      "market": "US",
+      "canonical_url": "https://olehenriksen.com/products/detox-drops-2-salicylic-acid-toner-4oz",
+      "destination_url": "https://olehenriksen.com/products/detox-drops-2-salicylic-acid-toner-4oz",
+      "price_amount": 34,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "updated_at": "2026-05-14T14:52:37.319Z",
+      "seed_summary": {
+        "active_ingredients": [
+          "Panthenol (B5)",
+          "Niacinamide",
+          "Zinc PCA",
+          "Vitamin C (Ascorbic acid)",
+          "Glycerin",
+          "Squalane",
+          "Peptides"
+        ],
+        "active_raw": "SALICYLIC ACID (BHA) \nOTC-LEVEL, EXFOLIATES SKIN, TARGETS + TREATS ACNE\n\nDANISH PURPLE WILLOW FERMENT \nCLARIFIES + CONTROLS SURFACE OIL\n\nJUNIPER BERRY \nANTIOXIDANT-RICH HYDRATION TO SOFTEN + CALM SKIN\n\nCUCUMBER EXTRACT \nNOURISHES SKIN",
+        "ingredients_raw_len": 0,
+        "how_to_len": 0,
+        "details_count": 0,
+        "image_count": 10,
+        "blocker": null,
+        "authority": null
+      }
+    }
+  ],
+  "identity": [
+    {
+      "source_listing_ref": "external_seed:ext_19bf66093385858dcb0d6956",
+      "merchant_id": "external_seed",
+      "product_id": "ext_19bf66093385858dcb0d6956",
+      "source_tier": "brand",
+      "sellable_item_group_id": "sig_c22649a970fcc8bc7b9b907d",
+      "product_line_id": "pl_2d1a0890a5f29a75e2ae0695",
+      "identity_status": "approved",
+      "live_read_enabled": true,
+      "review_required": false,
+      "review_reason_codes": [],
+      "matched_by_rule": "official_url_axes",
+      "match_basis": [
+        "official_url:https://olehenriksen.com/products/detox-drops-2-salicylic-acid-toner-eu",
+        "variant_axes:size:4 oz|volume:4oz"
+      ],
+      "strong_identity": {
+        "official_url": "https://olehenriksen.com/products/detox-drops-2-salicylic-acid-toner-eu",
+        "official_domain": "olehenriksen.com",
+        "official_handle": "detox drops 2 salicylic acid toner eu",
+        "stable_variant_id": "44412794765484",
+        "variant_axes_signature": "size:4 oz|volume:4oz"
+      },
+      "variant_axes": {
+        "size": "4 oz",
+        "volume": "4oz",
+        "multi_variant": false
+      },
+      "official_url": "https://olehenriksen.com/products/detox-drops-2-salicylic-acid-toner-eu",
+      "updated_at": "2026-04-12T14:31:28.102Z",
+      "source_payload_summary": {
+        "title": "Detox Drops 2% Salicylic Acid Toner-Europe",
+        "canonical_url": "https://olehenriksen.com/products/detox-drops-2-salicylic-acid-toner-eu",
+        "active_ingredients": [],
+        "active_raw": "",
+        "ingredients_raw_len": 0,
+        "how_to_len": 0,
+        "details_count": 0,
+        "image_count": 9
+      }
+    },
+    {
+      "source_listing_ref": "external_seed:ext_35b321dde624f955996315cb",
+      "merchant_id": "external_seed",
+      "product_id": "ext_35b321dde624f955996315cb",
+      "source_tier": "brand",
+      "sellable_item_group_id": "sig_321dbf4dec06e85f71be9b36",
+      "product_line_id": "pl_3c0accdad4d1125793420fbf",
+      "identity_status": "approved",
+      "live_read_enabled": true,
+      "review_required": false,
+      "review_reason_codes": [],
+      "matched_by_rule": "official_url_axes",
+      "match_basis": [
+        "official_url:https://olehenriksen.com/products/detox-drops-2-salicylic-acid-toner-4oz",
+        "variant_axes:size:4 oz|volume:4oz"
+      ],
+      "strong_identity": {
+        "official_url": "https://olehenriksen.com/products/detox-drops-2-salicylic-acid-toner-4oz",
+        "official_domain": "olehenriksen.com",
+        "official_handle": "detox drops 2 salicylic acid toner 4oz",
+        "stable_variant_id": "44412095725740",
+        "variant_axes_signature": "size:4 oz|volume:4oz"
+      },
+      "variant_axes": {
+        "size": "4 oz",
+        "volume": "4oz",
+        "multi_variant": false
+      },
+      "official_url": "https://olehenriksen.com/products/detox-drops-2-salicylic-acid-toner-4oz",
+      "updated_at": "2026-05-16T17:39:39.195Z",
+      "source_payload_summary": {
+        "title": "Detox Drops 2% Salicylic Acid Toner",
+        "canonical_url": "https://olehenriksen.com/products/detox-drops-2-salicylic-acid-toner-4oz",
+        "active_ingredients": [
+          "Salicylic acid"
+        ],
+        "active_raw": "",
+        "ingredients_raw_len": 234,
+        "how_to_len": 0,
+        "details_count": 0,
+        "image_count": 7
+      }
+    },
+    {
+      "source_listing_ref": "external_seed:ext_842d06e9f8039ddcc784fccb",
+      "merchant_id": "external_seed",
+      "product_id": "ext_842d06e9f8039ddcc784fccb",
+      "source_tier": "brand",
+      "sellable_item_group_id": "sig_e082e10438e89dbe8f94b89a",
+      "product_line_id": "pl_637414f2cbfc920b2e1ef76b",
+      "identity_status": "approved",
+      "live_read_enabled": true,
+      "review_required": false,
+      "review_reason_codes": [],
+      "matched_by_rule": "official_url_axes",
+      "match_basis": [
+        "official_url:https://olehenriksen.com/products/detox-drops-2-salicylic-acid-toner-ca",
+        "variant_axes:size:4 oz|volume:4oz"
+      ],
+      "strong_identity": {
+        "official_url": "https://olehenriksen.com/products/detox-drops-2-salicylic-acid-toner-ca",
+        "official_domain": "olehenriksen.com",
+        "official_handle": "detox drops 2 salicylic acid toner ca",
+        "stable_variant_id": "44412789555372",
+        "variant_axes_signature": "size:4 oz|volume:4oz"
+      },
+      "variant_axes": {
+        "size": "4 oz",
+        "volume": "4oz",
+        "multi_variant": false
+      },
+      "official_url": "https://olehenriksen.com/products/detox-drops-2-salicylic-acid-toner-ca",
+      "updated_at": "2026-04-12T14:31:28.102Z",
+      "source_payload_summary": {
+        "title": "Detox Drops 2% Salicylic Acid Toner-Canada",
+        "canonical_url": "https://olehenriksen.com/products/detox-drops-2-salicylic-acid-toner-ca",
+        "active_ingredients": [],
+        "active_raw": "",
+        "ingredients_raw_len": 0,
+        "how_to_len": 0,
+        "details_count": 0,
+        "image_count": 9
+      }
+    }
+  ],
+  "catalog": [
+    {
+      "product_key": "prod::external_seed::external_seed::ext_19bf66093385858dcb0d6956",
+      "source_product_id": "ext_19bf66093385858dcb0d6956",
+      "merchant_id": "external_seed",
+      "title": "Detox Drops 2% Salicylic Acid Toner",
+      "brand": "Olehenriksen",
+      "canonical_url": "https://olehenriksen.com/products/detox-drops-2-salicylic-acid-toner-4oz",
+      "pivota_signature_id": "sig_86dba1aed190edeb86ec65701f01772b",
+      "content_key": "ck_716846fac37dcca289242c89800b53a9",
+      "readiness_tier": "referral_only",
+      "sync_status": "live",
+      "updated_at": "2026-05-12T11:02:54.706Z"
+    },
+    {
+      "product_key": "prod::external_seed::external_seed::ext_35b321dde624f955996315cb",
+      "source_product_id": "ext_35b321dde624f955996315cb",
+      "merchant_id": "external_seed",
+      "title": "Detox Drops 2% Salicylic Acid Toner",
+      "brand": "Olehenriksen",
+      "canonical_url": "https://olehenriksen.com/products/detox-drops-2-salicylic-acid-toner-4oz",
+      "pivota_signature_id": "sig_463570ca0bb87b95151b9f51307dcaff",
+      "content_key": "ck_716846fac37dcca289242c89800b53a9",
+      "readiness_tier": "referral_only",
+      "sync_status": "live",
+      "updated_at": "2026-05-12T11:03:15.828Z"
+    },
+    {
+      "product_key": "prod::external_seed::external_seed::ext_842d06e9f8039ddcc784fccb",
+      "source_product_id": "ext_842d06e9f8039ddcc784fccb",
+      "merchant_id": "external_seed",
+      "title": "Detox Drops 2% Salicylic Acid Toner",
+      "brand": "Olehenriksen",
+      "canonical_url": "https://olehenriksen.com/products/detox-drops-2-salicylic-acid-toner-4oz",
+      "pivota_signature_id": "sig_5aacec0a1e94460550b0f2eef4664d97",
+      "content_key": "ck_716846fac37dcca289242c89800b53a9",
+      "readiness_tier": "referral_only",
+      "sync_status": "live",
+      "updated_at": "2026-05-12T11:04:06.577Z"
+    }
+  ],
+  "sku": [
+    {
+      "product_key": "prod::external_seed::external_seed::ext_19bf66093385858dcb0d6956",
+      "sku_key": "prod::external_seed::external_seed::ext_19bf66093385858dcb0d6956::canonical",
+      "source_product_id": "ext_19bf66093385858dcb0d6956",
+      "source_variant_id": "prod::external_seed::external_seed::ext_19bf66093385858dcb0d6956",
+      "sku": "ext_19bf66093385858dcb0d6956",
+      "barcode": null,
+      "title": "Detox Drops 2% Salicylic Acid Toner",
+      "currency": "USD",
+      "visible_attributes": {},
+      "visible_option_labels": [],
+      "readiness_tier": "referral_only",
+      "updated_at": "2026-05-08T21:44:55.327Z"
+    },
+    {
+      "product_key": "prod::external_seed::external_seed::ext_19bf66093385858dcb0d6956",
+      "sku_key": "prod::external_seed::external_seed::ext_19bf66093385858dcb0d6956::v::44412095725740",
+      "source_product_id": "ext_19bf66093385858dcb0d6956",
+      "source_variant_id": "44412095725740",
+      "sku": "70876",
+      "barcode": null,
+      "title": "4 oz",
+      "currency": "USD",
+      "visible_attributes": {
+        "size": "4 oz"
+      },
+      "visible_option_labels": [
+        "4 oz"
+      ],
+      "readiness_tier": "commerce_ready",
+      "updated_at": "2026-05-12T14:30:22.347Z"
+    },
+    {
+      "product_key": "prod::external_seed::external_seed::ext_35b321dde624f955996315cb",
+      "sku_key": "prod::external_seed::external_seed::ext_35b321dde624f955996315cb::canonical",
+      "source_product_id": "ext_35b321dde624f955996315cb",
+      "source_variant_id": "prod::external_seed::external_seed::ext_35b321dde624f955996315cb",
+      "sku": "ext_35b321dde624f955996315cb",
+      "barcode": null,
+      "title": "Detox Drops 2% Salicylic Acid Toner",
+      "currency": "USD",
+      "visible_attributes": {},
+      "visible_option_labels": [],
+      "readiness_tier": "referral_only",
+      "updated_at": "2026-05-08T21:45:15.362Z"
+    },
+    {
+      "product_key": "prod::external_seed::external_seed::ext_842d06e9f8039ddcc784fccb",
+      "sku_key": "prod::external_seed::external_seed::ext_842d06e9f8039ddcc784fccb::canonical",
+      "source_product_id": "ext_842d06e9f8039ddcc784fccb",
+      "source_variant_id": "prod::external_seed::external_seed::ext_842d06e9f8039ddcc784fccb",
+      "sku": "ext_842d06e9f8039ddcc784fccb",
+      "barcode": null,
+      "title": "Detox Drops 2% Salicylic Acid Toner",
+      "currency": "USD",
+      "visible_attributes": {},
+      "visible_option_labels": [],
+      "readiness_tier": "referral_only",
+      "updated_at": "2026-05-08T21:45:54.515Z"
+    }
+  ],
+  "offers": [
+    {
+      "offer_id": "offer:external_seed:cb7d8a5ce341c219139ad6fcb1cfcbf2",
+      "sku_key": "prod::external_seed::external_seed::ext_19bf66093385858dcb0d6956::canonical",
+      "product_key": "prod::external_seed::external_seed::ext_19bf66093385858dcb0d6956",
+      "merchant_id": "external_seed",
+      "source_ref": "eps_5864dd3a91694ea49c491c81",
+      "availability": "in_stock",
+      "list_price": "34.00",
+      "merchant_effective_price": "34.00",
+      "estimated_best_price": "34.00",
+      "currency": "USD",
+      "updated_at": "2026-05-08T21:44:55.338Z"
+    },
+    {
+      "offer_id": "offer:external_seed:33ee59e72410a08ce52513ae94f719e2",
+      "sku_key": "prod::external_seed::external_seed::ext_35b321dde624f955996315cb::canonical",
+      "product_key": "prod::external_seed::external_seed::ext_35b321dde624f955996315cb",
+      "merchant_id": "external_seed",
+      "source_ref": "eps_d700ff23d2f644dd907d28e8",
+      "availability": "in_stock",
+      "list_price": "34.00",
+      "merchant_effective_price": "34.00",
+      "estimated_best_price": "34.00",
+      "currency": "USD",
+      "updated_at": "2026-05-08T21:45:15.404Z"
+    },
+    {
+      "offer_id": "offer:external_seed:fb12629ef1cf1beb7a948315dd1075d0",
+      "sku_key": "prod::external_seed::external_seed::ext_842d06e9f8039ddcc784fccb::canonical",
+      "product_key": "prod::external_seed::external_seed::ext_842d06e9f8039ddcc784fccb",
+      "merchant_id": "external_seed",
+      "source_ref": "eps_c8aa92582d1c4398a9523d6f",
+      "availability": "in_stock",
+      "list_price": "34.00",
+      "merchant_effective_price": "34.00",
+      "estimated_best_price": "34.00",
+      "currency": "USD",
+      "updated_at": "2026-05-08T21:45:54.522Z"
+    }
+  ]
+}

@@ -1,0 +1,49 @@
+{
+  "generated_at": "2026-05-17T02:25:18.471Z",
+  "checks": [
+    {
+      "url": "https://olehenriksen.com/products/detox-drops-2-salicylic-acid-toner-4oz",
+      "method": "HEAD",
+      "status": 200,
+      "page_type": "product",
+      "market_cookie": "US",
+      "checkout_signals": [
+        "Shopify product page",
+        "available=true in public .js",
+        "price=3400 USD in public .js"
+      ]
+    },
+    {
+      "url": "https://olehenriksen.com/products/detox-drops-2-salicylic-acid-toner-eu",
+      "method": "HEAD",
+      "status": 404,
+      "page_type": "404",
+      "action": "replaced_by_us_canonical"
+    },
+    {
+      "url": "https://olehenriksen.com/products/detox-drops-2-salicylic-acid-toner-ca",
+      "method": "HEAD",
+      "status": 404,
+      "page_type": "404",
+      "action": "replaced_by_us_canonical"
+    }
+  ],
+  "public_shopify_json": {
+    "url": "https://olehenriksen.com/products/detox-drops-2-salicylic-acid-toner-4oz.js",
+    "status": 200,
+    "product_id": 8213725708460,
+    "title": "Detox Drops 2% Salicylic Acid Toner",
+    "variant_id": 44412095725740,
+    "sku": "70876",
+    "barcode": "840026670876",
+    "price_cents": 3400,
+    "available": true,
+    "option_name": "Size",
+    "option_values": [
+      "4 oz"
+    ],
+    "image_count": 9,
+    "active_evidence": "Description and seed active raw support Salicylic acid; non-ingredient explanatory lines are not structured active ingredients."
+  },
+  "anti_abuse": "No CAPTCHA/login/paywall/bot-protection bypass attempted."
+}

@@ -1,0 +1,97 @@
+{
+  "generated_at": "2026-05-17T02:15:49.793Z",
+  "dry_run": true,
+  "filters": {
+    "external_product_ids": [
+      "ext_842d06e9f8039ddcc784fccb"
+    ],
+    "market": "US"
+  },
+  "requested_active_ingredients": [
+    "Salicylic acid"
+  ],
+  "summary": {
+    "scanned_rows": 1,
+    "missing_rows": 0,
+    "blocked_missing_source_evidence": 0,
+    "change_candidates": 1,
+    "updated_rows": 0
+  },
+  "results": [
+    {
+      "seed_id": "eps_c8aa92582d1c4398a9523d6f",
+      "external_product_id": "ext_842d06e9f8039ddcc784fccb",
+      "market": "US",
+      "domain": "olehenriksen.com",
+      "title": "Detox Drops 2% Salicylic Acid Toner",
+      "canonical_url": "https://olehenriksen.com/products/detox-drops-2-salicylic-acid-toner-4oz",
+      "dry_run": true,
+      "status": "dry_run",
+      "source_evidence": {
+        "backed": true,
+        "missing": [],
+        "evidence_chars": 1057
+      },
+      "before": {
+        "active_ingredients": [
+          "Salicylic acid"
+        ],
+        "snapshot_active_ingredients": [
+          "Salicylic acid"
+        ],
+        "ingredient_intel_active_ingredients": [
+          "Salicylic acid"
+        ],
+        "ingredient_tokens": [
+          "Panthenol (B5)",
+          "Niacinamide",
+          "Zinc PCA",
+          "Vitamin C (Ascorbic acid)",
+          "Glycerin",
+          "Squalane",
+          "Peptides"
+        ],
+        "key_ingredients": [
+          "Panthenol (B5)",
+          "Niacinamide",
+          "Zinc PCA",
+          "Vitamin C (Ascorbic acid)",
+          "Glycerin",
+          "Squalane",
+          "Peptides"
+        ],
+        "ingredient_intel_key_ingredients": [
+          "Panthenol (B5)",
+          "Niacinamide",
+          "Zinc PCA",
+          "Vitamin C (Ascorbic acid)",
+          "Glycerin",
+          "Squalane",
+          "Peptides"
+        ],
+        "ingredient_intel_has_inci": true,
+        "active_raw_len": 234,
+        "review_contract": "external_seed.reviewed_active_ingredients.v1",
+        "structured_ingredient_remediation": null
+      },
+      "after": {
+        "active_ingredients": [
+          "Salicylic acid"
+        ],
+        "snapshot_active_ingredients": [
+          "Salicylic acid"
+        ],
+        "ingredient_intel_active_ingredients": [
+          "Salicylic acid"
+        ],
+        "ingredient_tokens": [],
+        "key_ingredients": [],
+        "ingredient_intel_key_ingredients": [],
+        "ingredient_intel_has_inci": false,
+        "active_raw_len": 234,
+        "review_contract": "external_seed.reviewed_active_ingredients.v1",
+        "structured_ingredient_remediation": "external_seed.structured_ingredient_remediation.v1"
+      }
+    }
+  ]
+}

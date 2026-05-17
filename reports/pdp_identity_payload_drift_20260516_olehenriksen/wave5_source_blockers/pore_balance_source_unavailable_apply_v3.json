@@ -1,0 +1,59 @@
+{
+  "generated_at": "2026-05-17T01:51:34.862Z",
+  "dry_run": false,
+  "market": "US",
+  "marker": {
+    "contract_version": "external_seed.source_unavailable.v1",
+    "updated_at": "2026-05-17T01:51:34.862Z",
+    "status": "source_unavailable",
+    "reason": "official_pdp_http_404",
+    "reason_codes": [
+      "official_pdp_http_404"
+    ],
+    "source_url": "https://olehenriksen.com/products/pore-balance-facial-sauna-scrub",
+    "evidence": "Public PDP and Shopify product JSON returned HTTP 404 on 2026-05-17; no anti-abuse bypass attempted.",
+    "transaction_ready": false,
+    "availability": "out_of_stock",
+    "price_current": false,
+    "review_state": "reviewed"
+  },
+  "summary": {
+    "requested_ids": 1,
+    "scanned": 1,
+    "missing_ids": 0,
+    "catalog_counts": {
+      "products": 1,
+      "skus": 2,
+      "offers": 1
+    },
+    "updated": {
+      "external_product_seeds": 1,
+      "catalog_products": 1,
+      "catalog_skus": 2,
+      "catalog_offers": 1
+    }
+  },
+  "missing_ids": [],
+  "rows": [
+    {
+      "id": "eps_4ec07d203a2447c989d30a20",
+      "external_product_id": "ext_27ecddfd70b28613b9cdd8a7",
+      "title": "Pore-Balance Facial Sauna Scrub",
+      "domain": "olehenriksen.com",
+      "canonical_url": "https://olehenriksen.com/products/pore-balance-facial-sauna-scrub",
+      "destination_url": "https://olehenriksen.com/products/pore-balance-facial-sauna-scrub",
+      "before": {
+        "status": "active",
+        "availability": "in_stock",
+        "price_amount": 18,
+        "price_currency": "USD"
+      },
+      "after": {
+        "status": "active",
+        "availability": "out_of_stock",
+        "price_amount": null,
+        "price_currency": null
+      }
+    }
+  ]
+}

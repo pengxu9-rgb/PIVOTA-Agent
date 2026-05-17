@@ -3167,6 +3167,40 @@ describe('backfill-external-product-seeds-catalog', () => {
     expect(row.seed_data.snapshot.ingredient_intel.authoritative).toBeUndefined();
   });
 
+  test('preserves reviewed source-backed active arrays when active raw contains explanatory copy', () => {
+    const row = reapplyApprovedPdpIngredientFieldsToRow({
+      seed_data: {
+        pdp_active_ingredients_raw:
+          'SALICYLIC ACID (BHA)\nOTC-LEVEL, EXFOLIATES SKIN, TARGETS + TREATS ACNE',
+        active_ingredients: ['Salicylic acid'],
+        reviewed_active_ingredients_v1: {
+          contract_version: 'external_seed.reviewed_active_ingredients.v1',
+          status: 'approved',
+        },
+        ingredient_intel: {
+          active_ingredients: ['Salicylic acid'],
+        },
+        snapshot: {
+          pdp_active_ingredients_raw:
+            'SALICYLIC ACID (BHA)\nOTC-LEVEL, EXFOLIATES SKIN, TARGETS + TREATS ACNE',
+          active_ingredients: ['Salicylic acid'],
+          reviewed_active_ingredients_v1: {
+            contract_version: 'external_seed.reviewed_active_ingredients.v1',
+            status: 'approved',
+          },
+          ingredient_intel: {
+            active_ingredients: ['Salicylic acid'],
+          },
+        },
+      },
+    });
+
+    expect(row.seed_data.active_ingredients).toEqual(['Salicylic acid']);
+    expect(row.seed_data.ingredient_intel.active_ingredients).toEqual(['Salicylic acid']);
+    expect(row.seed_data.active_ingredients).not.toContain('OTC-LEVEL, EXFOLIATES SKIN, TARGETS + TREATS ACNE');
+    expect(row.seed_data.snapshot.active_ingredients).toEqual(['Salicylic acid']);
+  });
+
   test('cleans polluted PDP ingredients and active ingredient tails before seed writes', () => {
     const row = {
       id: 'eps_body_oil',

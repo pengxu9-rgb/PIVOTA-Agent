@@ -1,0 +1,54 @@
+{
+  "generated_at": "2026-05-17T02:10:16.904Z",
+  "rows": [
+    {
+      "source_listing_ref": "external_seed:ext_19bf66093385858dcb0d6956",
+      "product_id": "ext_19bf66093385858dcb0d6956",
+      "sellable_item_group_id": "sig_c22649a970fcc8bc7b9b907d",
+      "product_line_id": "pl_2d1a0890a5f29a75e2ae0695",
+      "official_url": "https://olehenriksen.com/products/detox-drops-2-salicylic-acid-toner-4oz",
+      "title": "Detox Drops 2% Salicylic Acid Toner",
+      "canonical_url": "https://olehenriksen.com/products/detox-drops-2-salicylic-acid-toner-4oz",
+      "active_ingredients": [
+        "SALICYLIC ACID (BHA) OTC-LEVEL"
+      ],
+      "active_raw_len": 234,
+      "ingredients_raw_len": 0,
+      "how_to_len": 0,
+      "updated_at": "2026-05-17T02:09:57.905Z"
+    },
+    {
+      "source_listing_ref": "external_seed:ext_35b321dde624f955996315cb",
+      "product_id": "ext_35b321dde624f955996315cb",
+      "sellable_item_group_id": "sig_321dbf4dec06e85f71be9b36",
+      "product_line_id": "pl_3c0accdad4d1125793420fbf",
+      "official_url": "https://olehenriksen.com/products/detox-drops-2-salicylic-acid-toner-4oz",
+      "title": "Detox Drops 2% Salicylic Acid Toner",
+      "canonical_url": "https://olehenriksen.com/products/detox-drops-2-salicylic-acid-toner-4oz",
+      "active_ingredients": [
+        "Salicylic acid"
+      ],
+      "active_raw_len": 14,
+      "ingredients_raw_len": 234,
+      "how_to_len": 0,
+      "updated_at": "2026-05-17T02:09:57.643Z"
+    },
+    {
+      "source_listing_ref": "external_seed:ext_842d06e9f8039ddcc784fccb",
+      "product_id": "ext_842d06e9f8039ddcc784fccb",
+      "sellable_item_group_id": "sig_e082e10438e89dbe8f94b89a",
+      "product_line_id": "pl_637414f2cbfc920b2e1ef76b",
+      "official_url": "https://olehenriksen.com/products/detox-drops-2-salicylic-acid-toner-4oz",
+      "title": "Detox Drops 2% Salicylic Acid Toner",
+      "canonical_url": "https://olehenriksen.com/products/detox-drops-2-salicylic-acid-toner-4oz",
+      "active_ingredients": [
+        "SALICYLIC ACID (BHA) OTC-LEVEL",
+        "EXFOLIATES SKIN"
+      ],
+      "active_raw_len": 234,
+      "ingredients_raw_len": 0,
+      "how_to_len": 0,
+      "updated_at": "2026-05-17T02:09:57.073Z"
+    }
+  ]
+}

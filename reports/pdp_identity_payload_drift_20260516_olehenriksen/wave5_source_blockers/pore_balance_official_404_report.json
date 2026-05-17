@@ -1,0 +1,19 @@
+{
+  "generated_at": "2026-05-17T01:44:34.000Z",
+  "source": "manual_public_http_validation",
+  "write_policy": "dry_run_first_then_reviewed_operator_write",
+  "results": [
+    {
+      "external_product_id": "ext_27ecddfd70b28613b9cdd8a7",
+      "status": "skipped",
+      "reason": "official_pdp_http_404",
+      "http_status": 404,
+      "final_url": "https://olehenriksen.com/products/pore-balance-facial-sauna-scrub",
+      "canonical_url": "https://olehenriksen.com/404",
+      "source_url": "https://olehenriksen.com/products/pore-balance-facial-sauna-scrub",
+      "source_endpoint": "public_html_head_and_shopify_product_json",
+      "evidence": "Public PDP returned HTTP 404 and Shopify product JSON endpoint returned HTTP 404; no CAPTCHA, login wall, paywall, or bot bypass attempted.",
+      "recommended_action": "quarantine polluted PDP/ingredient content fields, mark strict source blocker, and remove transaction-ready in-stock handoff."
+    }
+  ]
+}

@@ -1,0 +1,66 @@
+{
+  "generated_at": "2026-05-17T01:52:52.935Z",
+  "dry_run": false,
+  "market": "US",
+  "summary": {
+    "scanned": 1,
+    "missing_ids": 0,
+    "dry_run": 0,
+    "updated": 1,
+    "unchanged": 0,
+    "unsafe_source": 1,
+    "fields_deleted_total": 1,
+    "fields_quarantined_total": 1,
+    "quality_updates_total": 6,
+    "by_reason": {
+      "official_pdp_http_404": 1
+    }
+  },
+  "missing_ids": [],
+  "results": [
+    {
+      "external_product_id": "ext_27ecddfd70b28613b9cdd8a7",
+      "brand": "Olehenriksen",
+      "title": "Pore-Balance Facial Sauna Scrub",
+      "domain": "olehenriksen.com",
+      "canonical_url": "https://olehenriksen.com/products/pore-balance-facial-sauna-scrub",
+      "status": "updated",
+      "unsafe_source": true,
+      "reason_codes": [
+        "official_pdp_http_404"
+      ],
+      "fields_quarantined": [
+        "description"
+      ],
+      "fields_deleted": [
+        "description"
+      ],
+      "quality_keys_updated": [
+        "description_raw",
+        "ingredients_raw",
+        "active_ingredients_raw",
+        "how_to_use_raw",
+        "details_sections",
+        "faq_items"
+      ],
+      "before": {
+        "description_len": 0,
+        "ingredients_len": 0,
+        "active_len": 0,
+        "how_to_len": 0,
+        "details_count": 0,
+        "faq_count": 0,
+        "review_count": 0
+      },
+      "after": {
+        "description_len": 0,
+        "ingredients_len": 0,
+        "active_len": 0,
+        "how_to_len": 0,
+        "details_count": 0,
+        "faq_count": 0,
+        "review_count": 0
+      }
+    }
+  ]
+}

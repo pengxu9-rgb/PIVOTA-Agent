@@ -1,0 +1,147 @@
+{
+  "generated_at": "2026-05-17T02:13:24.516Z",
+  "dry_run": true,
+  "filters": {
+    "external_product_ids": [
+      "ext_19bf66093385858dcb0d6956",
+      "ext_35b321dde624f955996315cb",
+      "ext_842d06e9f8039ddcc784fccb"
+    ],
+    "market": "US"
+  },
+  "requested_active_ingredients": [
+    "Salicylic acid"
+  ],
+  "summary": {
+    "scanned_rows": 3,
+    "missing_rows": 0,
+    "blocked_missing_source_evidence": 0,
+    "change_candidates": 3,
+    "updated_rows": 0
+  },
+  "results": [
+    {
+      "seed_id": "eps_5864dd3a91694ea49c491c81",
+      "external_product_id": "ext_19bf66093385858dcb0d6956",
+      "market": "US",
+      "domain": "olehenriksen.com",
+      "title": "Detox Drops 2% Salicylic Acid Toner",
+      "canonical_url": "https://olehenriksen.com/products/detox-drops-2-salicylic-acid-toner-4oz",
+      "dry_run": true,
+      "status": "dry_run",
+      "source_evidence": {
+        "backed": true,
+        "missing": [],
+        "evidence_chars": 1060
+      },
+      "before": {
+        "active_ingredients": [
+          "Salicylic acid"
+        ],
+        "snapshot_active_ingredients": [
+          "Salicylic acid"
+        ],
+        "ingredient_intel_active_ingredients": [
+          "Salicylic acid"
+        ],
+        "active_raw_len": 234,
+        "review_contract": null
+      },
+      "after": {
+        "active_ingredients": [
+          "Salicylic acid"
+        ],
+        "snapshot_active_ingredients": [
+          "Salicylic acid"
+        ],
+        "ingredient_intel_active_ingredients": [
+          "Salicylic acid"
+        ],
+        "active_raw_len": 234,
+        "review_contract": "external_seed.reviewed_active_ingredients.v1"
+      }
+    },
+    {
+      "seed_id": "eps_d700ff23d2f644dd907d28e8",
+      "external_product_id": "ext_35b321dde624f955996315cb",
+      "market": "US",
+      "domain": "olehenriksen.com",
+      "title": "Detox Drops 2% Salicylic Acid Toner",
+      "canonical_url": "https://olehenriksen.com/products/detox-drops-2-salicylic-acid-toner-4oz",
+      "dry_run": true,
+      "status": "dry_run",
+      "source_evidence": {
+        "backed": true,
+        "missing": [],
+        "evidence_chars": 1247
+      },
+      "before": {
+        "active_ingredients": [
+          "Salicylic acid"
+        ],
+        "snapshot_active_ingredients": [
+          "Salicylic acid"
+        ],
+        "ingredient_intel_active_ingredients": [
+          "Salicylic acid"
+        ],
+        "active_raw_len": 0,
+        "review_contract": null
+      },
+      "after": {
+        "active_ingredients": [
+          "Salicylic acid"
+        ],
+        "snapshot_active_ingredients": [
+          "Salicylic acid"
+        ],
+        "ingredient_intel_active_ingredients": [
+          "Salicylic acid"
+        ],
+        "active_raw_len": 0,
+        "review_contract": "external_seed.reviewed_active_ingredients.v1"
+      }
+    },
+    {
+      "seed_id": "eps_c8aa92582d1c4398a9523d6f",
+      "external_product_id": "ext_842d06e9f8039ddcc784fccb",
+      "market": "US",
+      "domain": "olehenriksen.com",
+      "title": "Detox Drops 2% Salicylic Acid Toner",
+      "canonical_url": "https://olehenriksen.com/products/detox-drops-2-salicylic-acid-toner-4oz",
+      "dry_run": true,
+      "status": "dry_run",
+      "source_evidence": {
+        "backed": true,
+        "missing": [],
+        "evidence_chars": 1060
+      },
+      "before": {
+        "active_ingredients": [
+          "Salicylic acid"
+        ],
+        "snapshot_active_ingredients": [
+          "Salicylic acid"
+        ],
+        "ingredient_intel_active_ingredients": [
+          "Salicylic acid"
+        ],
+        "active_raw_len": 234,
+        "review_contract": "external_seed.reviewed_active_ingredients.v1"
+      },
+      "after": {
+        "active_ingredients": [
+          "Salicylic acid"
+        ],
+        "snapshot_active_ingredients": [
+          "Salicylic acid"
+        ],
+        "ingredient_intel_active_ingredients": [
+          "Salicylic acid"
+        ],
+        "active_raw_len": 234,
+        "review_contract": "external_seed.reviewed_active_ingredients.v1"
+      }
+    }
+  ]
+}

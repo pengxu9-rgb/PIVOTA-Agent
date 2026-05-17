@@ -1,0 +1,81 @@
+{
+  "generated_at": "2026-05-17T02:09:06.353Z",
+  "dry_run": false,
+  "filters": {
+    "external_product_ids": [
+      "ext_842d06e9f8039ddcc784fccb"
+    ],
+    "market": "US"
+  },
+  "requested_active_ingredients": [
+    "Salicylic acid"
+  ],
+  "summary": {
+    "scanned_rows": 1,
+    "missing_rows": 0,
+    "blocked_missing_source_evidence": 0,
+    "change_candidates": 1,
+    "updated_rows": 1
+  },
+  "results": [
+    {
+      "seed_id": "eps_c8aa92582d1c4398a9523d6f",
+      "external_product_id": "ext_842d06e9f8039ddcc784fccb",
+      "market": "US",
+      "domain": "olehenriksen.com",
+      "title": "Detox Drops 2% Salicylic Acid Toner",
+      "canonical_url": "https://olehenriksen.com/products/detox-drops-2-salicylic-acid-toner-4oz",
+      "dry_run": false,
+      "status": "applied",
+      "source_evidence": {
+        "backed": true,
+        "missing": [],
+        "evidence_chars": 1023
+      },
+      "before": {
+        "active_ingredients": [
+          "Panthenol (B5)",
+          "Niacinamide",
+          "Zinc PCA",
+          "Vitamin C (Ascorbic acid)",
+          "Glycerin",
+          "Squalane",
+          "Peptides"
+        ],
+        "snapshot_active_ingredients": [
+          "Panthenol (B5)",
+          "Niacinamide",
+          "Zinc PCA",
+          "Vitamin C (Ascorbic acid)",
+          "Glycerin",
+          "Squalane",
+          "Peptides"
+        ],
+        "ingredient_intel_active_ingredients": [
+          "Panthenol (B5)",
+          "Niacinamide",
+          "Zinc PCA",
+          "Vitamin C (Ascorbic acid)",
+          "Glycerin",
+          "Squalane",
+          "Peptides"
+        ],
+        "active_raw_len": 234,
+        "review_contract": null
+      },
+      "after": {
+        "active_ingredients": [
+          "Salicylic acid"
+        ],
+        "snapshot_active_ingredients": [
+          "Salicylic acid"
+        ],
+        "ingredient_intel_active_ingredients": [
+          "Salicylic acid"
+        ],
+        "active_raw_len": 234,
+        "review_contract": "external_seed.reviewed_active_ingredients.v1"
+      }
+    }
+  ]
+}

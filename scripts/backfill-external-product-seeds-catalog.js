@@ -2304,6 +2304,23 @@ function applyApprovedPdpIngredientFields(seedDataValue, {
   const snapshot = ensureJsonObject(seedData.snapshot);
   const ingredientsRaw = normalizeNonEmptyString(pdpIngredientsRaw);
   const activeItems = normalizePdpActiveIngredientItems(pdpActiveIngredientsRaw);
+  const hasReviewedActiveIngredients =
+    ensureJsonObject(seedData.reviewed_active_ingredients_v1).contract_version ===
+      'external_seed.reviewed_active_ingredients.v1' ||
+    ensureJsonObject(snapshot.reviewed_active_ingredients_v1).contract_version ===
+      'external_seed.reviewed_active_ingredients.v1';
+  const existingActiveItems = uniqueStrings([
+    ...(Array.isArray(seedData.active_ingredients) ? seedData.active_ingredients : []),
+    ...(Array.isArray(seedData.activeIngredients) ? seedData.activeIngredients : []),
+    ...(Array.isArray(snapshot.active_ingredients) ? snapshot.active_ingredients : []),
+    ...(Array.isArray(snapshot.activeIngredients) ? snapshot.activeIngredients : []),
+    ...(Array.isArray(ensureJsonObject(seedData.ingredient_intel).active_ingredients)
+      ? ensureJsonObject(seedData.ingredient_intel).active_ingredients
+      : []),
+    ...(Array.isArray(ensureJsonObject(snapshot.ingredient_intel).active_ingredients)
+      ? ensureJsonObject(snapshot.ingredient_intel).active_ingredients
+      : []),
+  ]);
 
   if (!ingredientsRaw && activeItems.length === 0) {
     seedData.snapshot = snapshot;
@@ -2321,11 +2338,15 @@ function applyApprovedPdpIngredientFields(seedDataValue, {
       ingredientIntel.inci_raw = ingredientsRaw;
     }
     if (activeItems.length > 0) {
-      target.ingredient_tokens = activeItems;
-      target.active_ingredients = activeItems;
-      target.key_ingredients = activeItems;
-      ingredientIntel.active_ingredients = activeItems;
-      ingredientIntel.key_ingredients = activeItems;
+      const structuredActiveItems =
+        hasReviewedActiveIngredients && existingActiveItems.length > 0 ? existingActiveItems : activeItems;
+      target.ingredient_tokens = structuredActiveItems;
+      target.active_ingredients = structuredActiveItems;
+      ingredientIntel.active_ingredients = structuredActiveItems;
+      if (!hasReviewedActiveIngredients || !existingActiveItems.length) {
+        target.key_ingredients = activeItems;
+        ingredientIntel.key_ingredients = activeItems;
+      }
     }
     delete ingredientIntel.inci_normalized;
     delete ingredientIntel.authoritative;

@@ -1,0 +1,69 @@
+{
+  "generated_at": "2026-05-17T02:19:50.134Z",
+  "dry_run": true,
+  "write_requested": false,
+  "write_confirmed": false,
+  "filters": {
+    "external_product_ids": [
+      "ext_19bf66093385858dcb0d6956",
+      "ext_35b321dde624f955996315cb",
+      "ext_842d06e9f8039ddcc784fccb"
+    ],
+    "target_external_product_id": "ext_35b321dde624f955996315cb",
+    "market": "US"
+  },
+  "summary": {
+    "seeds_seen": 3,
+    "identities_seen": 3,
+    "action": "merge_ready",
+    "blocker_count": 0,
+    "warning_count": 0,
+    "candidates_to_update": 2,
+    "identity_rows_updated": 0,
+    "overrides_written": 0
+  },
+  "review": {
+    "action": "merge_ready",
+    "blockers": [],
+    "warnings": [],
+    "reviewed_by": "codex",
+    "target_external_product_id": "ext_35b321dde624f955996315cb",
+    "target_source_listing_ref": "external_seed:ext_35b321dde624f955996315cb",
+    "canonical_url": "https://olehenriksen.com/products/detox-drops-2-salicylic-acid-toner-4oz",
+    "normalized_canonical_url": "https://olehenriksen.com/products/detox-drops-2-salicylic-acid-toner-4oz",
+    "brand_key": "olehenriksen",
+    "title_key": "detox drops 2 salicylic acid toner",
+    "axis_signature": "{\"size\":\"4 oz\",\"volume\":\"4oz\"}",
+    "sig_ids": [
+      "sig_c22649a970fcc8bc7b9b907d",
+      "sig_321dbf4dec06e85f71be9b36",
+      "sig_e082e10438e89dbe8f94b89a"
+    ],
+    "target_sellable_item_group_id": "sig_321dbf4dec06e85f71be9b36",
+    "target_product_line_id": "pl_3c0accdad4d1125793420fbf",
+    "candidates": [
+      {
+        "source_listing_ref": "external_seed:ext_19bf66093385858dcb0d6956",
+        "external_product_id": "ext_19bf66093385858dcb0d6956",
+        "source_sellable_item_group_id": "sig_c22649a970fcc8bc7b9b907d",
+        "target_sellable_item_group_id": "sig_321dbf4dec06e85f71be9b36",
+        "source_product_line_id": "pl_2d1a0890a5f29a75e2ae0695",
+        "target_product_line_id": "pl_3c0accdad4d1125793420fbf",
+        "official_url_before": "https://olehenriksen.com/products/detox-drops-2-salicylic-acid-toner-4oz",
+        "official_url_after": "https://olehenriksen.com/products/detox-drops-2-salicylic-acid-toner-4oz",
+        "needs_update": true
+      },
+      {
+        "source_listing_ref": "external_seed:ext_842d06e9f8039ddcc784fccb",
+        "external_product_id": "ext_842d06e9f8039ddcc784fccb",
+        "source_sellable_item_group_id": "sig_e082e10438e89dbe8f94b89a",
+        "target_sellable_item_group_id": "sig_321dbf4dec06e85f71be9b36",
+        "source_product_line_id": "pl_637414f2cbfc920b2e1ef76b",
+        "target_product_line_id": "pl_3c0accdad4d1125793420fbf",
+        "official_url_before": "https://olehenriksen.com/products/detox-drops-2-salicylic-acid-toner-4oz",
+        "official_url_after": "https://olehenriksen.com/products/detox-drops-2-salicylic-acid-toner-4oz",
+        "needs_update": true
+      }
+    ]
+  }
+}

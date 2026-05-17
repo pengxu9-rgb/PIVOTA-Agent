@@ -1,0 +1,146 @@
+{
+  "generated_at": "2026-05-17T02:25:38.924Z",
+  "batch": "olehenriksen_wave5_source_blocker_and_same_canonical_identity_merge",
+  "source_validation": {
+    "detox": {
+      "generated_at": "2026-05-17T02:25:18.471Z",
+      "checks": [
+        {
+          "url": "https://olehenriksen.com/products/detox-drops-2-salicylic-acid-toner-4oz",
+          "method": "HEAD",
+          "status": 200,
+          "page_type": "product",
+          "market_cookie": "US",
+          "checkout_signals": [
+            "Shopify product page",
+            "available=true in public .js",
+            "price=3400 USD in public .js"
+          ]
+        },
+        {
+          "url": "https://olehenriksen.com/products/detox-drops-2-salicylic-acid-toner-eu",
+          "method": "HEAD",
+          "status": 404,
+          "page_type": "404",
+          "action": "replaced_by_us_canonical"
+        },
+        {
+          "url": "https://olehenriksen.com/products/detox-drops-2-salicylic-acid-toner-ca",
+          "method": "HEAD",
+          "status": 404,
+          "page_type": "404",
+          "action": "replaced_by_us_canonical"
+        }
+      ],
+      "public_shopify_json": {
+        "url": "https://olehenriksen.com/products/detox-drops-2-salicylic-acid-toner-4oz.js",
+        "status": 200,
+        "product_id": 8213725708460,
+        "title": "Detox Drops 2% Salicylic Acid Toner",
+        "variant_id": 44412095725740,
+        "sku": "70876",
+        "barcode": "840026670876",
+        "price_cents": 3400,
+        "available": true,
+        "option_name": "Size",
+        "option_values": [
+          "4 oz"
+        ],
+        "image_count": 9,
+        "active_evidence": "Description and seed active raw support Salicylic acid; non-ingredient explanatory lines are not structured active ingredients."
+      },
+      "anti_abuse": "No CAPTCHA/login/paywall/bot-protection bypass attempted."
+    },
+    "anti_abuse": "No CAPTCHA/login/paywall/bot-protection bypass attempted."
+  },
+  "pore_balance": {
+    "external_product_id": "ext_27ecddfd70b28613b9cdd8a7",
+    "outcome": "held_source_unavailable",
+    "live_pdp_gate": "passed",
+    "price_amount": null,
+    "active_expected": false,
+    "active_live_item_count": 0,
+    "intentional_failures": [
+      "extractor_failure",
+      "missing_pdp_identity",
+      "product_intel_module_empty_or_blocked",
+      "similar_underfill"
+    ]
+  },
+  "detox": {
+    "canonical_pdp_url": "https://agent.pivota.cc/products/sig_321dbf4dec06e85f71be9b36",
+    "merged_external_product_ids": [
+      "ext_19bf66093385858dcb0d6956",
+      "ext_35b321dde624f955996315cb",
+      "ext_842d06e9f8039ddcc784fccb"
+    ],
+    "sellable_item_group_ids": [
+      "sig_321dbf4dec06e85f71be9b36"
+    ],
+    "product_line_ids": [
+      "pl_3c0accdad4d1125793420fbf"
+    ],
+    "identity_rules": [
+      {
+        "product_id": "ext_19bf66093385858dcb0d6956",
+        "matched_by_rule": "reviewed_same_canonical_url_merge"
+      },
+      {
+        "product_id": "ext_35b321dde624f955996315cb",
+        "matched_by_rule": "official_url_axes"
+      },
+      {
+        "product_id": "ext_842d06e9f8039ddcc784fccb",
+        "matched_by_rule": "reviewed_same_canonical_url_merge"
+      }
+    ],
+    "quality": [
+      {
+        "external_product_id": "ext_19bf66093385858dcb0d6956",
+        "seed_gate": "passed",
+        "extractor_gate": "passed",
+        "identity_gate": "passed",
+        "product_intel_gate": "passed",
+        "live_pdp_gate": "passed",
+        "similar_gate": "passed",
+        "variant_gate": "passed",
+        "price_amount": 34,
+        "active_live_item_count": 1,
+        "image_count": 7,
+        "failure_reasons": []
+      },
+      {
+        "external_product_id": "ext_35b321dde624f955996315cb",
+        "seed_gate": "passed",
+        "extractor_gate": "passed",
+        "identity_gate": "passed",
+        "product_intel_gate": "passed",
+        "live_pdp_gate": "passed",
+        "similar_gate": "passed",
+        "variant_gate": "passed",
+        "price_amount": 34,
+        "active_live_item_count": 1,
+        "image_count": 7,
+        "failure_reasons": []
+      },
+      {
+        "external_product_id": "ext_842d06e9f8039ddcc784fccb",
+        "seed_gate": "passed",
+        "extractor_gate": "passed",
+        "identity_gate": "passed",
+        "product_intel_gate": "passed",
+        "live_pdp_gate": "passed",
+        "similar_gate": "passed",
+        "variant_gate": "passed",
+        "price_amount": 34,
+        "active_live_item_count": 1,
+        "image_count": 7,
+        "failure_reasons": []
+      }
+    ]
+  },
+  "tests": [
+    "node --test tests/scripts/apply_reviewed_external_seed_active_ingredients.node.test.cjs tests/scripts/review_and_merge_same_canonical_external_seed_identities.node.test.cjs tests/scripts/mark_external_seed_source_unavailable.node.test.cjs tests/services/external_seed_products_reviewed_active.node.test.cjs",
+    "npx jest tests/scripts/backfill_external_product_seeds_catalog.test.js --runInBand"
+  ]
+}

@@ -3456,6 +3456,22 @@ function buildExternalSeedProduct(row, options = {}) {
       snapshot.raw_ingredient_text_clean,
     ].join(' '),
   );
+  const hasReviewedActiveIngredients =
+    ensureJsonObject(seedData.reviewed_active_ingredients_v1).contract_version ===
+      'external_seed.reviewed_active_ingredients.v1' ||
+    ensureJsonObject(snapshot.reviewed_active_ingredients_v1).contract_version ===
+      'external_seed.reviewed_active_ingredients.v1';
+  const reviewedActiveIngredients = hasReviewedActiveIngredients
+    ? normalizeStringList(
+        seedData.active_ingredients ||
+          seedData.activeIngredients ||
+          snapshot.active_ingredients ||
+          snapshot.activeIngredients ||
+          ingredientIntel.active_ingredients ||
+          snapshotIngredientIntel.active_ingredients,
+        24,
+      )
+    : [];
   const sourceBackedActiveIngredientsRaw = authorityActiveIngredients.length
     ? authorityActiveIngredients.join(', ')
     : '';
@@ -3871,6 +3887,11 @@ function buildExternalSeedProduct(row, options = {}) {
         suppressed_reason: `product_family_${productFamily}`,
         generated_at: new Date().toISOString(),
       };
+  const displayActiveIngredients = reviewedActiveIngredients.length > 0
+    ? reviewedActiveIngredients
+    : shouldExposeAuthorityActiveItems(authority)
+      ? authority.active_items
+      : [];
   const mergedIngredientIntel = mergeIngredientIntelWithAuthority(ingredientIntel, authority);
   const bundleComponentRefs =
     normalizeBundleComponentRefsForRuntime(runtimeSeedData.bundle_component_refs).length > 0
@@ -3984,7 +4005,7 @@ function buildExternalSeedProduct(row, options = {}) {
       : fallbackIngredientsInci.length && productFamily !== 'set_or_collection'
         ? { ingredients_inci: fallbackIngredientsInci }
         : {}),
-    ...(shouldExposeAuthorityActiveItems(authority) ? { active_ingredients: authority.active_items } : {}),
+    ...(displayActiveIngredients.length ? { active_ingredients: displayActiveIngredients } : {}),
     ...(Object.keys(mergedIngredientIntel).length ? { ingredient_intel: mergedIngredientIntel } : {}),
     ...(brand ? { vendor: brand, brand } : {}),
     ...(normalizedCategory ? { category: normalizedCategory } : {}),
