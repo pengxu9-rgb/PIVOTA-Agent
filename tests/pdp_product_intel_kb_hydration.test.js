@@ -236,6 +236,103 @@ describe('pdpProductIntel KB hydration', () => {
     expect(bundle.search_card.highlight_candidate).toBe('Creators often point to the lightweight');
   });
 
+  test('preserves manually reviewed seller-only standout points during KB hydration', async () => {
+    jest.doMock('../src/auroraBff/productIntelKbStore', () => ({
+      getProductIntelKbEntry: jest.fn(async (kbKey) => {
+        if (kbKey !== 'product:ext_reviewed_seller_only') return null;
+        return {
+          kb_key: kbKey,
+          source: 'pivota_product_intel_pilot_selected',
+          last_success_at: '2026-05-17T05:06:20.000Z',
+          analysis: {
+            product_intel_v1: {
+              contract_version: 'pivota.product_intel.v1',
+              display_name: 'Pivota Insights',
+              canonical_product_ref: {
+                merchant_id: 'external_seed',
+                product_id: 'ext_reviewed_seller_only',
+              },
+              product_intel_core: {
+                what_it_is: {
+                  headline: 'Firming gel mask',
+                  body: 'A gel mask format for focused masking routines.',
+                },
+                best_for: [{ tag: 'mask_routine', label: 'Focused masking routines', confidence: 'moderate' }],
+                why_it_stands_out: [
+                  {
+                    headline: 'Gel-mask format',
+                    body: 'The value is mainly in the treatment-mask format and cooling wear time.',
+                    evidence_strength: 'seller_grounded',
+                  },
+                ],
+                routine_fit: {
+                  step: 'mask',
+                  am_pm: ['pm'],
+                  pairing_notes: ['Use as a separate masking step.'],
+                },
+                watchouts: [],
+                confidence: { overall: 'moderate' },
+                freshness: {
+                  generated_at: '2026-05-17T05:06:20.000Z',
+                  source_version: 'pilot_selected:manual',
+                },
+                quality_state: 'reviewed',
+                evidence_profile: 'seller_only',
+              },
+              quality_state: 'reviewed',
+              evidence_profile: 'seller_only',
+              provenance: {
+                source: 'product_intel_pilot_compare',
+                generator: 'curated_override',
+                reviewer: 'codex_manual_review',
+                reviewer_kind: 'assistant',
+                review_status: 'completed',
+                review_decision: 'pass',
+                selection_strategy: 'curated_override',
+              },
+            },
+          },
+        };
+      }),
+      upsertProductIntelKbEntry: jest.fn(async () => null),
+    }));
+
+    jest.doMock('../src/auroraBff/normalize', () => ({
+      normalizeProductAnalysis: jest.fn((raw) => ({
+        payload: raw,
+      })),
+    }));
+
+    const { hydrateProductWithPublishedIntel, buildProductIntelBundle } = require('../src/pdpProductIntel');
+
+    const hydrated = await hydrateProductWithPublishedIntel({
+      product: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_reviewed_seller_only',
+        title: 'Collagen Firming Gel Mask',
+      },
+      canonicalProductRef: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_reviewed_seller_only',
+      },
+    });
+
+    const bundle = buildProductIntelBundle({
+      product: hydrated,
+      canonicalProductRef: {
+        merchant_id: 'external_seed',
+        product_id: 'ext_reviewed_seller_only',
+      },
+    });
+
+    expect(bundle.product_intel_core.why_it_stands_out).toEqual([
+      expect.objectContaining({
+        headline: 'Gel-mask format',
+        body: expect.stringMatching(/cooling wear time/i),
+      }),
+    ]);
+  });
+
   test('hydrates synthetic product-line products from sibling product intel KB keys', async () => {
     const getProductIntelKbEntry = jest.fn(async (kbKey) => {
       if (kbKey !== 'product:ext_line_reviewed') return null;
