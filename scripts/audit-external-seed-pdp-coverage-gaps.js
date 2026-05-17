@@ -488,7 +488,10 @@ async function fetchRows(options = {}) {
           SELECT 1
           FROM pdp_identity_listing pil
           WHERE pil.merchant_id = 'external_seed'
-            AND pil.product_id = eps.external_product_id
+            AND (
+              pil.source_listing_ref = 'external_seed:' || eps.external_product_id
+              OR pil.product_id = eps.external_product_id
+            )
             AND coalesce(pil.live_read_enabled, true) = true
         ) AS has_identity
         ,
@@ -496,19 +499,28 @@ async function fetchRows(options = {}) {
           SELECT 1
           FROM pdp_identity_listing pil
           WHERE pil.merchant_id = 'external_seed'
-            AND pil.product_id = eps.external_product_id
+            AND (
+              pil.source_listing_ref = 'external_seed:' || eps.external_product_id
+              OR pil.product_id = eps.external_product_id
+            )
         ) AS has_any_identity,
         coalesce((
           SELECT bool_or(pil.review_required = true OR coalesce(pil.live_read_enabled, false) = false)
           FROM pdp_identity_listing pil
           WHERE pil.merchant_id = 'external_seed'
-            AND pil.product_id = eps.external_product_id
+            AND (
+              pil.source_listing_ref = 'external_seed:' || eps.external_product_id
+              OR pil.product_id = eps.external_product_id
+            )
         ), false) AS identity_review_or_live_blocked,
         (
           SELECT pil.product_line_id
           FROM pdp_identity_listing pil
           WHERE pil.merchant_id = 'external_seed'
-            AND pil.product_id = eps.external_product_id
+            AND (
+              pil.source_listing_ref = 'external_seed:' || eps.external_product_id
+              OR pil.product_id = eps.external_product_id
+            )
             AND coalesce(pil.live_read_enabled, true) = true
           ORDER BY pil.updated_at DESC NULLS LAST
           LIMIT 1
@@ -517,7 +529,10 @@ async function fetchRows(options = {}) {
           SELECT pil.sellable_item_group_id
           FROM pdp_identity_listing pil
           WHERE pil.merchant_id = 'external_seed'
-            AND pil.product_id = eps.external_product_id
+            AND (
+              pil.source_listing_ref = 'external_seed:' || eps.external_product_id
+              OR pil.product_id = eps.external_product_id
+            )
             AND coalesce(pil.live_read_enabled, true) = true
           ORDER BY pil.updated_at DESC NULLS LAST
           LIMIT 1
