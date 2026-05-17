@@ -29572,19 +29572,25 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
 	        productRef: canonicalProductRef,
 	        fallbackProduct: canonicalProduct,
 	      });
-	      const identityGraphLiveStartedAt = Date.now();
-        const identityGraphLookupProductId =
-          productGroupAliasId && canonicalProductRef?.product_id
-            ? canonicalProductRef.product_id
-            : entryProductId || productId || canonicalProductRef?.product_id;
-	      if (!identityGraphLive) {
-	        identityGraphLive = await maybeBuildLiveSyntheticPdp({
-            merchantId: requestedMerchantId || canonicalProductRef?.merchant_id,
-            productId: identityGraphLookupProductId,
-            canonicalProduct,
-            bypassCache,
-          }).catch(() => null);
-	      }
+		      const identityGraphLiveStartedAt = Date.now();
+	        const identityGraphLookupProductId =
+	          productGroupAliasId && canonicalProductRef?.product_id
+	            ? canonicalProductRef.product_id
+	            : entryProductId || productId || canonicalProductRef?.product_id;
+	        const shouldHydrateIdentityLineMemberPayloads = !(
+	          canonicalProductRef?.merchant_id === EXTERNAL_SEED_MERCHANT_ID &&
+	          isExternalSeedProductId(canonicalProductRef?.product_id) &&
+	          (!requestedMerchantId || requestedMerchantId === EXTERNAL_SEED_MERCHANT_ID)
+	        );
+		      if (!identityGraphLive) {
+		        identityGraphLive = await maybeBuildLiveSyntheticPdp({
+	            merchantId: requestedMerchantId || canonicalProductRef?.merchant_id,
+	            productId: identityGraphLookupProductId,
+	            canonicalProduct,
+	            bypassCache,
+	            hydrateLineMemberPayloads: shouldHydrateIdentityLineMemberPayloads,
+	          }).catch(() => null);
+		      }
 	      markPdpV2Phase('identity_graph_live', identityGraphLiveStartedAt);
 	      if (identityGraphLive?.synthetic_product && wantsProductIntel) {
 	        const identityGraphIntelGateStartedAt = Date.now();

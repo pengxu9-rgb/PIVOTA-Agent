@@ -3480,6 +3480,7 @@ async function maybeBuildLiveSyntheticPdp({
   canonicalProduct = null,
   queryFn = query,
   bypassCache = false,
+  hydrateLineMemberPayloads = true,
 } = {}) {
   if (!PDP_IDENTITY_GRAPH_ENABLED || !process.env.DATABASE_URL || typeof queryFn !== 'function') {
     return null;
@@ -3601,10 +3602,10 @@ async function maybeBuildLiveSyntheticPdp({
       dedupeIdentityRows([sourceRow, ...(exactRowsRes?.rows || [])]),
       queryFn,
     );
-    const lineListings = await hydrateIdentityRowsFromCurrentExternalSeeds(
-      normalizeIdentityRows(lineRowsRes?.rows),
-      queryFn,
-    );
+    const rawLineListings = normalizeIdentityRows(lineRowsRes?.rows);
+    const lineListings = hydrateLineMemberPayloads
+      ? await hydrateIdentityRowsFromCurrentExternalSeeds(rawLineListings, queryFn)
+      : rawLineListings;
     const composed = composeSyntheticCanonicalProduct({
       requestedListing: sourceRow,
       exactListings,
