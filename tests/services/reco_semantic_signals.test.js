@@ -11,4 +11,14 @@ describe('recoSemanticSignals', () => {
 
     expect(signal.vertical).toBe('makeup');
   });
+
+  test('classifies string catalog category paths as makeup signals', () => {
+    const signal = inferVerticalFromProduct({
+      title: 'Skin Tint Blurring Elixir',
+      brand: 'Kylie Cosmetics',
+      category_path: 'beauty/makeup/face/foundation',
+    });
+
+    expect(signal.vertical).toBe('makeup');
+  });
 });

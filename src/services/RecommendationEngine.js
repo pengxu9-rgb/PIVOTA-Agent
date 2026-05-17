@@ -330,6 +330,9 @@ const STOPWORDS = new Set([
 
 const BEAUTY_ACCESSORY_TITLE_RE =
   /\b(pouch|bag|holder|keychain|keyring|sticker|stickers|soap saver|gua sha|gwalsa|brush|tool|applicator|spatula|mirror|sharpener|headband|puff|sponge|sachet|trial\s*kit|sample)\b/i;
+const BEAUTY_SET_OR_BUNDLE_TITLE_RE =
+  /\b(?:bundle|set|kit|duo|trio|collection|routine|campaign\s+look|look\s+bundle)\b/i;
+const REFILL_TITLE_RE = /\brefill\b/i;
 const STRICT_EXTERNAL_SAME_BRAND_LEAF_CATEGORIES = new Set([
   'brow pencil',
   'brow gel',
@@ -405,6 +408,36 @@ function getBeautyAccessoryKindFromFeatures(features) {
       features?.leafCategory,
       features?.parentCategory,
     ].filter(Boolean).join(' '),
+  );
+}
+
+function isSetOrBundleLikeFromText(text) {
+  return BEAUTY_SET_OR_BUNDLE_TITLE_RE.test(normalizeText(text));
+}
+
+function isSetOrBundleLikeFromFeatures(features) {
+  return isSetOrBundleLikeFromText(
+    [
+      features?.normalizedTitle,
+      features?.leafCategory,
+      features?.parentCategory,
+      features?.productFamily,
+      features?.sourceListingScope,
+    ].filter(Boolean).join(' '),
+  );
+}
+
+function isRefillLikeFromFeatures(features) {
+  return REFILL_TITLE_RE.test(
+    normalizeText(
+      [
+        features?.normalizedTitle,
+        features?.leafCategory,
+        features?.parentCategory,
+        features?.productFamily,
+        features?.sourceListingScope,
+      ].filter(Boolean).join(' '),
+    ),
   );
 }
 
@@ -509,6 +542,12 @@ function getBrandName(product) {
 function getCategoryPath(product) {
   const raw = product?.category_path || product?.categoryPath;
   if (Array.isArray(raw)) return raw.map((v) => String(v || '').trim()).filter(Boolean);
+  if (typeof raw === 'string') {
+    return raw
+      .split('/')
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
   const category = String(product?.category || product?.product_type || product?.productType || '').trim();
   if (!category) return [];
   return category.split('/').map((s) => s.trim()).filter(Boolean);
@@ -1816,6 +1855,8 @@ function buildBaseFeatures(baseProduct, semantic = null) {
   const tokens = tokenize([baseProduct.title, baseProduct.name, brand, leafCategory, parentCategory].filter(Boolean).join(' '));
   const normalizedTitle = normalizeText(baseProduct.title || baseProduct.name);
   const accessoryKind = getBeautyAccessoryKindFromFeatures({ normalizedTitle, leafCategory, parentCategory });
+  const productFamily = normalizeText(baseProduct.product_family || baseProduct.external_seed_product_family);
+  const sourceListingScope = normalizeText(baseProduct.source_listing_scope || baseProduct.listing_scope);
   return {
     productId: getProductId(baseProduct),
     merchantId: getMerchantId(baseProduct),
@@ -1831,6 +1872,22 @@ function buildBaseFeatures(baseProduct, semantic = null) {
     verticalInferred: Boolean(verticalSignal.inferred),
     verticalKeywords: verticalSignal.matched_keywords || [],
     accessoryKind,
+    productFamily,
+    sourceListingScope,
+    bundleLike: isSetOrBundleLikeFromFeatures({
+      normalizedTitle,
+      leafCategory,
+      parentCategory,
+      productFamily,
+      sourceListingScope,
+    }),
+    refillLike: isRefillLikeFromFeatures({
+      normalizedTitle,
+      leafCategory,
+      parentCategory,
+      productFamily,
+      sourceListingScope,
+    }),
   };
 }
 
@@ -1847,6 +1904,8 @@ function buildCandidateFeatures(candidateProduct, baseCurrency) {
   const tokens = tokenize([candidateProduct.title, candidateProduct.name, brand, leafCategory, parentCategory].filter(Boolean).join(' '));
   const normalizedTitle = normalizeText(candidateProduct.title || candidateProduct.name);
   const accessoryKind = getBeautyAccessoryKindFromFeatures({ normalizedTitle, leafCategory, parentCategory });
+  const productFamily = normalizeText(candidateProduct.product_family || candidateProduct.external_seed_product_family);
+  const sourceListingScope = normalizeText(candidateProduct.source_listing_scope || candidateProduct.listing_scope);
   return {
     productId: getProductId(candidateProduct),
     merchantId: getMerchantId(candidateProduct),
@@ -1861,6 +1920,22 @@ function buildCandidateFeatures(candidateProduct, baseCurrency) {
     vertical: verticalSignal.vertical || UNKNOWN_VERTICAL,
     verticalInferred: Boolean(verticalSignal.inferred),
     accessoryKind,
+    productFamily,
+    sourceListingScope,
+    bundleLike: isSetOrBundleLikeFromFeatures({
+      normalizedTitle,
+      leafCategory,
+      parentCategory,
+      productFamily,
+      sourceListingScope,
+    }),
+    refillLike: isRefillLikeFromFeatures({
+      normalizedTitle,
+      leafCategory,
+      parentCategory,
+      productFamily,
+      sourceListingScope,
+    }),
   };
 }
 
@@ -2342,6 +2417,14 @@ function pickLayeredRecommendations({
         base.accessoryKind &&
         !accessoryKindsAreCompatible(base.accessoryKind, features.accessoryKind)
       ) {
+        filteredByConfidence += 1;
+        return null;
+      }
+      if (base.isExternal && !base.bundleLike && features.bundleLike) {
+        filteredByConfidence += 1;
+        return null;
+      }
+      if (base.isExternal && !base.refillLike && features.refillLike) {
         filteredByConfidence += 1;
         return null;
       }

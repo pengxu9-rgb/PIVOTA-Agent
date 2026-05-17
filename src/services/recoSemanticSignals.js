@@ -167,6 +167,13 @@ function containsKeyword(haystack, keyword) {
 function getCategoryPathText(product) {
   const raw = product?.category_path || product?.categoryPath;
   if (Array.isArray(raw)) return raw.map((v) => String(v || '').trim()).filter(Boolean).join(' ');
+  if (typeof raw === 'string') {
+    return raw
+      .split('/')
+      .map((v) => String(v || '').trim())
+      .filter(Boolean)
+      .join(' ');
+  }
   return '';
 }
 
