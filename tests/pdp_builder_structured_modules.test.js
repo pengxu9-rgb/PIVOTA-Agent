@@ -849,6 +849,40 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     );
   });
 
+  test('suppresses external seed ingredient provenance notes from user-visible PDP details', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_tirtir_lip_balm',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: 'Water Mellow Lip Balm',
+        category: 'Lip Balm',
+        pdp_description_raw: 'A glossy lip balm with a soft tint and non-sticky finish.',
+        pdp_details_sections: [
+          {
+            heading: 'Variant ingredient source',
+            body:
+              'Official TIRTIR ingredient sheet is variant-level. This PDP stores the listed default variant ingredient row; shade-specific pigments may vary by variant. Stored variant: WATER MELLOW LIP BALM 01 ICY BLUE.',
+          },
+          {
+            heading: 'Texture',
+            body: 'Glossy, non-sticky finish with a soft, buttery texture.',
+          },
+        ],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    const supplementalText = JSON.stringify(
+      payload.modules.find((module) => module.type === 'supplemental_details')?.data || {},
+    );
+    expect(supplementalText).not.toMatch(/Variant ingredient source|This PDP stores|Stored variant/i);
+    expect(JSON.stringify(payload.modules.find((module) => module.type === 'product_facts')?.data || {})).toMatch(
+      /Glossy, non-sticky finish/,
+    );
+  });
+
   test('dedupes repeated overview summary text for refreshed external-seed PDPs', () => {
     const payload = buildPdpPayload({
       product: {

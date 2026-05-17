@@ -1074,19 +1074,34 @@ function hasUsefulReviewText(value) {
   if (/^(?:great|good|love it|perfect|nice|bien)$/i.test(text)) return false;
   if (!looksLikeEnglishReviewText(text)) return false;
   if (looksLikeOperationalOrPriceReviewText(text)) return false;
+  if (looksLikePromotionalOrCrossBrandReviewText(text)) return false;
   return true;
 }
 
 function looksLikeOperationalOrPriceReviewText(value) {
   const text = normalizeText(value).toLowerCase();
   if (!text) return true;
-  if (/\b(?:order|refund|return(?:ed|ing)?|customer service|ship(?:ped|ping)?|delivery|delivered|arrived|package|packaging|tracking)\b/i.test(text)) {
+  if (
+    /\b(?:refund|customer service|ship(?:ped|ping)?|delivery|delivered|arrived|tracking)\b/i.test(text) ||
+    /\b(?:my|the|this|that)\s+order\b/i.test(text) ||
+    /\border\s*(?:#|number|status|has|had|was|is|placed|delayed|cancel(?:led|ed)?|not\s+ship)/i.test(text)
+  ) {
     return true;
   }
-  if (/\b(?:price|pricing|pricey|expensive|cost|markup|discount|sale)\b/i.test(text)) {
+  if (/\b(?:price|pricing|pricey|cost|markup|discount|sale)\b/i.test(text)) {
     return true;
   }
   if (/^\s*i have a question\b/i.test(text)) return true;
+  return false;
+}
+
+function looksLikePromotionalOrCrossBrandReviewText(value) {
+  const text = normalizeText(value).toLowerCase();
+  if (!text) return true;
+  if (/\bhttps?:\/\/|\bbit\.ly\b|\bwww\./i.test(text)) return true;
+  if (/\bt&cs?\s+apply\b|\bshop\s+(?:in-store|online)\b|\bspend\s*\$?\d+\b|\bbonus\b/i.test(text)) return true;
+  if (/\b(?:lancome|myer|mother'?s day sets?)\b/i.test(text)) return true;
+  if (/\bwrong\s+(?:one|product|shade|item)\b/i.test(text)) return true;
   return false;
 }
 

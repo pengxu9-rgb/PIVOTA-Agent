@@ -911,6 +911,14 @@ function isIgnorableExternalSeedDetailSection(product, section) {
   const content = asNonEmptyString(section?.content);
   const titleKey = normalizeTextKey(product?.title);
   const headingKey = normalizeTextKey(heading);
+  if (/^(?:variant\s+)?ingredient source|source note|provenance|field source$/i.test(heading)) return true;
+  if (
+    /\bthis pdp stores\b/i.test(content) ||
+    /\bofficial .* ingredient sheet is variant-level\b/i.test(content) ||
+    /\bstored variant\b/i.test(content)
+  ) {
+    return true;
+  }
   if (looksLikeTransactionalNoiseText(`${heading} ${content}`)) return true;
   if (titleKey && headingKey && titleKey === headingKey && looksLikeTransactionalNoiseText(content)) return true;
   if (looksLikeCrossSellCardDetailSection(section)) return true;
