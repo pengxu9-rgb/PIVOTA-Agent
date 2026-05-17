@@ -29096,19 +29096,59 @@ async function handleInvokeRequest(req, res, routeContext = {}) {
     try {
       const discoveryResponse = await getDiscoveryFeed(effectivePayload);
       // Apply deal enrichment so consumer-facing surfaces (brand landing page,
-      // anonymous browse) include `best_deal` / `all_deals` on each product. Every
-      // other product-returning operation in this invoke router already does this;
-      // get_discovery_feed was the holdout, which silently dropped active promos
-      // from any UI calling through `getBrandDiscoveryFeed` / discovery feed.
+      // anonymous browse) include `best_deal` / `all_deals` on each product.
       let enriched = discoveryResponse;
+      // TEMP DIAGNOSTIC: trace why enrichment seems to silently no-op in prod
+      // despite working in isolation. Attached to response only when caller passes
+      // `?_enrich_debug=1` (or X-Enrich-Debug: 1 header, or _enrich_debug:1 in
+      // payload). Will be removed after the next debug pass.
+      const _enrichDebug = {
+        stage: 'init',
+        ran: false,
+        promo_count: 0,
+        first_product_id: null,
+        first_product_merchant: null,
+        first_product_has_all_deals_before: false,
+        first_product_has_best_deal_before: false,
+        first_product_has_all_deals_after: false,
+        first_product_has_best_deal_after: false,
+        creator_id: creatorId || null,
+        now_iso: now && typeof now.toISOString === 'function' ? now.toISOString() : null,
+        err: null,
+      };
       try {
+        if (discoveryResponse && Array.isArray(discoveryResponse.products) && discoveryResponse.products[0]) {
+          const p0 = discoveryResponse.products[0];
+          _enrichDebug.first_product_has_all_deals_before = 'all_deals' in p0;
+          _enrichDebug.first_product_has_best_deal_before = 'best_deal' in p0;
+          _enrichDebug.first_product_id = p0.product_id || p0.id || null;
+          _enrichDebug.first_product_merchant = p0.merchant_id || p0.merchantId || null;
+        }
+        _enrichDebug.stage = 'about_to_load_promos';
         const promotions = await getActivePromotions(now, creatorId);
+        _enrichDebug.promo_count = Array.isArray(promotions) ? promotions.length : -1;
+        _enrichDebug.stage = 'about_to_enrich';
         enriched = applyDealsToResponse(discoveryResponse, promotions, now, creatorId);
+        _enrichDebug.ran = true;
+        _enrichDebug.stage = 'enriched';
+        if (enriched && Array.isArray(enriched.products) && enriched.products[0]) {
+          const p0a = enriched.products[0];
+          _enrichDebug.first_product_has_all_deals_after = 'all_deals' in p0a;
+          _enrichDebug.first_product_has_best_deal_after = 'best_deal' in p0a;
+        }
       } catch (enrichErr) {
+        _enrichDebug.err = String(enrichErr?.message || enrichErr);
         logger.warn(
-          { err: enrichErr?.message || String(enrichErr), operation },
+          { err: enrichErr?.message || String(enrichErr), operation, debug: _enrichDebug },
           'get_discovery_feed deal enrichment failed; returning raw response',
         );
+      }
+      const wantDebug =
+        String(req.query?._enrich_debug || '').trim() === '1' ||
+        String((req.header && req.header('x-enrich-debug')) || '').trim() === '1' ||
+        String(effectivePayload?._enrich_debug || '').trim() === '1';
+      if (wantDebug && enriched && typeof enriched === 'object' && !Array.isArray(enriched)) {
+        enriched = { ...enriched, _enrich_debug: _enrichDebug };
       }
       return res.status(200).json(enriched);
     } catch (err) {
