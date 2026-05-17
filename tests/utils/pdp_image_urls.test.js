@@ -119,5 +119,10 @@ describe('pdp image URL normalization', () => {
         new URL('https://cdn.shopify.com/s/files/1/0314/1143/7703/files/PDP-details-image-1268x1268-pore-primer_1024x.jpg?v=1617041406'),
       ),
     ).toBe('content');
+    expect(
+      classifyShopifyLikeAsset(
+        new URL('https://cdn.shopify.com/s/files/1/0615/7785/5148/files/DewtopiaNightTreatment_Silo.jpg?v=1747067534'),
+      ),
+    ).toBe('product');
   });
 });

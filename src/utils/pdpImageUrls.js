@@ -59,6 +59,7 @@ function classifyShopifyLikeAsset(parsed) {
   const pathname = String(parsed?.pathname || '').trim();
   if (!pathname) return '';
   const isShopifyHost = isKnownHost(parsed?.hostname, ['cdn.shopify.com', 'shopifycdn.com', 'sdcdn.io']);
+  const filename = String(pathname.split('/').pop() || '').trim();
   if (SHOPIFY_PRODUCT_PATH_RE.test(pathname) || (isShopifyHost && pathnameHasSegment(pathname, 'products'))) {
     return 'product';
   }
@@ -66,6 +67,9 @@ function classifyShopifyLikeAsset(parsed) {
     (isShopifyHost && pathnameHasSegment(pathname, 'files')) ||
     SHOPIFY_CONTENT_PATH_RE.test(pathname)
   ) {
+    if (/(?:^|[_-])(?:silo|packshot|pack-shot|pack_shot)(?:[_-]|\.|$)/i.test(filename)) {
+      return 'product';
+    }
     return 'content';
   }
   return '';

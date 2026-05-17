@@ -1,0 +1,98 @@
+[
+  {
+    "seed_id": "eps_347bbb6e801847a79e337fd5",
+    "external_product_id": "ext_5676831fca6caee579fa9095",
+    "market": "US",
+    "domain": "olehenriksen.com",
+    "canonical_url": "https://olehenriksen.com/products/hangover-hack",
+    "seed_gate": {
+      "status": "passed",
+      "findings_count": 0,
+      "blockers_count": 0
+    },
+    "extractor_gate": {
+      "status": "passed",
+      "failure_category": null,
+      "description_present": true,
+      "price_amount": 95,
+      "failure_reasons": []
+    },
+    "identity_gate": {
+      "status": "failed",
+      "product_group_id": null,
+      "product_line_id": null,
+      "sellable_item_group_id": null,
+      "failure_reasons": [
+        "missing_pdp_identity"
+      ]
+    },
+    "product_intel_gate": {
+      "status": "failed",
+      "has_product_intel": false,
+      "product_intel_status": null,
+      "failure_reasons": [
+        "product_intel_module_empty_or_blocked"
+      ]
+    },
+    "live_pdp_gate": {
+      "status": "failed",
+      "price_amount": null,
+      "has_overview": false,
+      "live_modules": [
+        "canonical",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "media_gallery",
+        "variant_selector",
+        "price_promo",
+        "usage_safety"
+      ],
+      "probe_error": "timeout of 10000ms exceeded",
+      "failure_reasons": [
+        "live_pdp_probe_failed"
+      ]
+    },
+    "similar_gate": {
+      "status": "failed",
+      "similar_count": 6,
+      "card_highlight_missing_count": 3,
+      "exempt": false,
+      "failure_reasons": [
+        "similar_card_missing_highlight"
+      ]
+    },
+    "variant_gate": {
+      "status": "passed",
+      "visible_variant_row_count": 0,
+      "identity_option_visible_count": 0,
+      "wrong_axis_for_category_count": 0,
+      "makeup_shade_missing_visual_count": 0,
+      "size_value_generic_axis_count": 0,
+      "examples": {
+        "identity_option_visible": [],
+        "wrong_axis_for_category": [],
+        "makeup_shade_missing_visual": [],
+        "size_value_generic_axis": [],
+        "missing_variant_selector_from_size_evidence": [],
+        "identity_default_title_axis": [],
+        "size_siblings_split_product_line": []
+      },
+      "failure_reasons": []
+    },
+    "root_cause_classification": [
+      "pdp_shaping_issue",
+      "identity_graph_gap",
+      "product_intel_gap",
+      "similar_issue"
+    ],
+    "failure_reasons": [
+      "missing_pdp_identity",
+      "product_intel_module_empty_or_blocked",
+      "live_pdp_probe_failed",
+      "similar_card_missing_highlight"
+    ]
+  }
+]

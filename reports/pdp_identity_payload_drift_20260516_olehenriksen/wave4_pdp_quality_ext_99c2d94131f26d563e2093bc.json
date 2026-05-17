@@ -1,0 +1,130 @@
+[
+  {
+    "seed_id": "eps_abc59974216949188eefd5a1",
+    "external_product_id": "ext_99c2d94131f26d563e2093bc",
+    "market": "US",
+    "domain": "olehenriksen.com",
+    "canonical_url": "https://olehenriksen.com/products/dewtopia-20-acid-night-treatment",
+    "seed_gate": {
+      "status": "passed",
+      "findings_count": 0,
+      "blockers_count": 0
+    },
+    "extractor_gate": {
+      "status": "passed",
+      "failure_category": null,
+      "description_present": true,
+      "price_amount": 60,
+      "failure_reasons": []
+    },
+    "identity_gate": {
+      "status": "passed",
+      "product_group_id": "sig_654db3eb15313f864eeee78a",
+      "product_line_id": "pl_db9ebbfce49ef03a7bc71c3d",
+      "sellable_item_group_id": "sig_654db3eb15313f864eeee78a",
+      "failure_reasons": []
+    },
+    "product_intel_gate": {
+      "status": "failed",
+      "has_product_intel": false,
+      "product_intel_status": "missing_blocked",
+      "failure_reasons": [
+        "product_intel_module_empty_or_blocked"
+      ]
+    },
+    "live_pdp_gate": {
+      "status": "failed",
+      "price_amount": 60,
+      "has_overview": true,
+      "live_modules": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "reviews_preview",
+        "similar",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "media_gallery",
+        "price_promo"
+      ],
+      "details_status": {
+        "section_count": 1,
+        "section_soup_count": 0,
+        "has_product_facts": false,
+        "seed_section_count": 2,
+        "compressed_structured_sections": false
+      },
+      "questions_status": {
+        "seed_faq_count": 0,
+        "live_question_count": 0
+      },
+      "active_ingredients_status": {
+        "expected": true,
+        "live_item_count": 2
+      },
+      "image_health": {
+        "scanned_count": 2,
+        "total_url_count": 2,
+        "broken_count": 0,
+        "broken_urls": [],
+        "skipped": false,
+        "truncated": false
+      },
+      "gallery_status": {
+        "image_count": 2,
+        "duplicate_count": 0,
+        "content_leak_count": 1,
+        "seed_content_image_count": 0
+      },
+      "snapshot_contract": {
+        "authoritative": true,
+        "legacy_fields_quarantined": true,
+        "replace_strategy": "replace_not_merge"
+      },
+      "image_url_identity_stripped_count": 0,
+      "image_url_identity_stripped_examples": [],
+      "failure_reasons": [
+        "content_media_leaked_into_gallery"
+      ]
+    },
+    "similar_gate": {
+      "status": "passed",
+      "similar_count": 12,
+      "card_highlight_missing_count": 0,
+      "exempt": false,
+      "failure_reasons": []
+    },
+    "variant_gate": {
+      "status": "passed",
+      "visible_variant_row_count": 1,
+      "identity_option_visible_count": 0,
+      "wrong_axis_for_category_count": 0,
+      "makeup_shade_missing_visual_count": 0,
+      "size_value_generic_axis_count": 0,
+      "examples": {
+        "identity_option_visible": [],
+        "wrong_axis_for_category": [],
+        "makeup_shade_missing_visual": [],
+        "size_value_generic_axis": [],
+        "missing_variant_selector_from_size_evidence": [],
+        "identity_default_title_axis": [],
+        "size_siblings_split_product_line": []
+      },
+      "failure_reasons": []
+    },
+    "root_cause_classification": [
+      "image_asset_issue",
+      "product_intel_gap"
+    ],
+    "failure_reasons": [
+      "product_intel_module_empty_or_blocked",
+      "content_media_leaked_into_gallery"
+    ]
+  }
+]

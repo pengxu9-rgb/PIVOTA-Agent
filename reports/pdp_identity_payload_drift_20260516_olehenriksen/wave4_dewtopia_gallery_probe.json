@@ -1,0 +1,234 @@
+{
+  "generated_at": "2026-05-17T00:52:24.197Z",
+  "http_status": 200,
+  "status": "success",
+  "build_id": "0e9439f0a84a",
+  "product": {
+    "title": "Dewtopia 20% Acid Night Treatment",
+    "image_url": "https://cdn.shopify.com/s/files/1/0615/7785/5148/products/DEWTOPIA_ACID_NIGHT_TREATMENT_JUMBO_SILO_1500x1500_72DPI_1.jpg?v=1725654970",
+    "image_urls": [
+      "https://cdn.shopify.com/s/files/1/0615/7785/5148/products/DEWTOPIA_ACID_NIGHT_TREATMENT_JUMBO_SILO_1500x1500_72DPI_1.jpg?v=1725654970",
+      "https://cdn.shopify.com/s/files/1/0615/7785/5148/files/DewtopiaNightTreatment_Silo.jpg?v=1747067534"
+    ],
+    "images": [
+      "https://cdn.shopify.com/s/files/1/0615/7785/5148/products/DEWTOPIA_ACID_NIGHT_TREATMENT_JUMBO_SILO_1500x1500_72DPI_1.jpg?v=1725654970",
+      "https://cdn.shopify.com/s/files/1/0615/7785/5148/files/DewtopiaNightTreatment_Silo.jpg?v=1747067534"
+    ],
+    "content_image_urls": [],
+    "price": {
+      "current": {
+        "amount": 60,
+        "currency": "USD"
+      }
+    },
+    "availability": {
+      "in_stock": true,
+      "available_quantity": 999
+    }
+  },
+  "media_gallery_items": [],
+  "active_items": [
+    "Glycolic acid",
+    "Lactic acid"
+  ],
+  "active_source_origin": "pdp_section",
+  "product_overview_sections": [
+    {
+      "heading": "Description",
+      "content_type": "text",
+      "content": "Put uneven texture, dark spots, fine lines and wrinkles to bed. This 20% acid smoothing serum does the work while you sleep. Packed with a powerful 20% acid blend (10% AHAs and 10% PHAs), this nightly retexturizing serum overhauls skin texture to reveal a significantly smoother, renewed, brighter complexion. And, it helps replenish skin with aloe juice, birch sap and cotton water.",
+      "collapsed_by_default": false,
+      "media_urls": [
+        "https://cdn.shopify.com/s/files/1/0615/7785/5148/files/OH394101_PPage_Refresh_Infographics_DEWTOPIASERUM_TEXTURE_2000x2000_300DPI_7bfa5cb2-f408-4d17-8af2-fc008f3cdfe5.jpg?v=1747067534"
+      ]
+    }
+  ],
+  "product_intel": {
+    "contract_version": "pivota.product_intel.v1",
+    "display_name": "Pivota Insights",
+    "canonical_product_ref": {
+      "merchant_id": "external_seed",
+      "product_id": "ext_99c2d94131f26d563e2093bc"
+    },
+    "product_group_id": "sig_654db3eb15313f864eeee78a",
+    "product_intel_core": {
+      "best_for": [
+        {
+          "tag": "uneven_texture",
+          "label": "Uneven texture",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "dark_spots",
+          "label": "Dark spots and dullness",
+          "confidence": "moderate"
+        },
+        {
+          "tag": "pm_exfoliation",
+          "label": "Night exfoliation routines",
+          "confidence": "moderate"
+        }
+      ],
+      "freshness": {
+        "generated_at": "2026-05-17T00:55:00.000Z",
+        "source_version": "manual_seller_grounded:olehenriksen_seed"
+      },
+      "watchouts": [
+        {
+          "body": "The seller PDP identifies this as a 20% acid smoothing treatment, so the PDP should frame it as an exfoliating night product.",
+          "type": "usage",
+          "label": "Acid treatment"
+        }
+      ],
+      "confidence": {
+        "overall": "moderate"
+      },
+      "what_it_is": {
+        "body": "An overnight retexturizing serum positioned by the seller PDP for uneven texture, dark spots, fine lines, and wrinkles, with a 20% acid blend made up of 10% AHAs and 10% PHAs plus aloe juice, birch sap, and cotton water.",
+        "headline": "20% acid night serum"
+      },
+      "routine_fit": {
+        "step": "night treatment",
+        "am_pm": [
+          "pm"
+        ],
+        "pairing_notes": [
+          "Use as a nighttime resurfacing step according to the source directions.",
+          "Because the PDP positions it as an acid treatment, avoid presenting it as a daily hydrating serum."
+        ]
+      },
+      "quality_state": "reviewed",
+      "source_coverage": {
+        "seller": {
+          "available": true
+        },
+        "creator": {
+          "count": 0,
+          "available": false
+        },
+        "formula": {
+          "available": true
+        },
+        "reviews": {
+          "count": 0,
+          "available": false
+        },
+        "editorial": {
+          "count": 0,
+          "available": false
+        }
+      },
+      "evidence_profile": "seller_only",
+      "why_it_stands_out": [
+        {
+          "body": "The source PDP calls out a 20% acid blend, split between 10% AHAs and 10% PHAs, for smoothing and renewing the look of skin texture.",
+          "headline": "AHA + PHA blend",
+          "evidence_strength": "seller_grounded"
+        }
+      ],
+      "display_name": "Pivota Insights"
+    },
+    "texture_finish": null,
+    "community_signals": {
+      "status": "unavailable",
+      "confidence": "low",
+      "evidence_profile": "seller_only",
+      "unavailable_reason": "insufficient_feedback"
+    },
+    "recommendation_intents": {
+      "similar": [],
+      "complementary": [],
+      "routine_pairing": [],
+      "underfill_reason": null,
+      "confidence": "low"
+    },
+    "external_highlight_signals": [],
+    "shopping_card": {
+      "contract_version": "pivota.shopping_card.v1",
+      "title": "Dewtopia 20% Acid Night Treatment",
+      "subtitle": "20% acid night serum",
+      "highlight": "AHA + PHA night treatment"
+    },
+    "search_card": {
+      "compact_candidate": "20% acid night serum",
+      "highlight_candidate": "AHA + PHA night treatment"
+    },
+    "quality_state": "reviewed",
+    "evidence_profile": "seller_only",
+    "source_coverage": {
+      "seller": {
+        "available": true
+      },
+      "creator": {
+        "count": 0,
+        "available": false
+      },
+      "formula": {
+        "available": true
+      },
+      "reviews": {
+        "count": 0,
+        "available": false
+      },
+      "editorial": {
+        "count": 0,
+        "available": false
+      }
+    },
+    "confidence": {
+      "overall": "moderate"
+    },
+    "freshness": {
+      "generated_at": "2026-05-17T00:55:00.000Z",
+      "source_version": "manual_seller_grounded:olehenriksen_seed"
+    },
+    "offer_pointers": {
+      "offers_count": 0,
+      "default_offer_id": null,
+      "best_price_offer_id": null,
+      "commerce_modes": []
+    },
+    "provenance": {
+      "source": "pivota_product_intel_pilot_selected",
+      "reviewer": "Codex",
+      "generator": "codex_manual_review",
+      "review_tier": "assistant_reviewed",
+      "reviewed_at": "2026-05-17T00:55:00.000Z",
+      "review_status": "completed",
+      "reviewer_kind": "assistant",
+      "review_decision": "seller_only_fallback",
+      "pre_review_quality_state": "limited",
+      "case_id": "olehenriksen_dewtopia_20_acid_night_treatment_product_intel_20260517",
+      "field_sources": {
+        "best_for": "seller_pdp",
+        "watchouts": "seller_pdp",
+        "what_it_is": "seller_pdp",
+        "routine_fit": "seller_pdp",
+        "search_card": "seller_pdp",
+        "shopping_card": "seller_pdp",
+        "why_it_stands_out": "seller_pdp"
+      },
+      "quality_state": "reviewed",
+      "selected_mode": "manual_seller_grounded",
+      "evidence_profile": "seller_only",
+      "selected_field_count": 8,
+      "external_review_batch": "",
+      "external_evidence_model": "",
+      "review_contract_version": "pivota.product_intel.review.v1",
+      "external_evidence_generated_at": "",
+      "external_highlight_review_status": "seller_only_fallback",
+      "kb_key": "product:ext_99c2d94131f26d563e2093bc",
+      "generated_at": "2026-05-17T00:50:11.697Z"
+    }
+  },
+  "missing": [
+    {
+      "type": "product_facts",
+      "reason": "unavailable"
+    },
+    {
+      "type": "supplemental_details",
+      "reason": "unavailable"
+    }
+  ]
+}

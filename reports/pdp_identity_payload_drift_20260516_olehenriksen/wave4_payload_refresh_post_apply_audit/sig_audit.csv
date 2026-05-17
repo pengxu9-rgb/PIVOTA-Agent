@@ -1,0 +1,5 @@
+sellable_item_group_id,product_line_id,row_count,live_read_count,stale_payload_count,seed_active_count,seed_active_expectation_count,identity_active_count,sig_mixed_active_expectation,canonical_selection_gap,canonical_content_ref,fresh_best_content_ref,sync_candidate_count,sample_titles
+sig_919e963e7d7a740f5f496e87,pl_3b67ac1b4bd02a703483ea72,1,1,0,1,1,1,false,false,external_seed:ext_918981bcc6d552cc2af0b535,external_seed:ext_918981bcc6d552cc2af0b535,0,Banana Bright+ Eye Crème
+sig_654db3eb15313f864eeee78a,pl_db9ebbfce49ef03a7bc71c3d,1,1,0,1,1,1,false,false,external_seed:ext_99c2d94131f26d563e2093bc,external_seed:ext_99c2d94131f26d563e2093bc,0,Dewtopia 20% Acid Night Treatment
+sig_c27482fb0e195e3e62a57393,pl_2b3c38cd26dab9a72a66cacc,1,1,0,1,1,1,false,false,external_seed:ext_4ea95b9803d90ab1e5cb8393,external_seed:ext_4ea95b9803d90ab1e5cb8393,0,Double Rewind 0.3% Pro-Grade Retinol Serum
+sig_b7e5ca80dcc491bbbb2f19ea,pl_4247c52f7c05b46aecb17bd3,1,1,0,1,1,1,false,false,external_seed:ext_27ecddfd70b28613b9cdd8a7,external_seed:ext_27ecddfd70b28613b9cdd8a7,0,Pore-Balance Facial Sauna Scrub

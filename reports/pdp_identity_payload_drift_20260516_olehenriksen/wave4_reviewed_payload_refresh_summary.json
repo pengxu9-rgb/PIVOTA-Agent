@@ -1,0 +1,56 @@
+{
+  "generated_at": "2026-05-16T23:54:28.787Z",
+  "source_dry_run": "/private/tmp/pivota-agent-shade-visual-audit/reports/pdp_identity_payload_drift_20260516_olehenriksen/wave4_canonical_gap_sync_dry_run.json",
+  "accepted_count": 4,
+  "held_count": 5,
+  "accepted": [
+    {
+      "external_product_id": "ext_918981bcc6d552cc2af0b535",
+      "title": "Banana Bright+ Eye Crème",
+      "pdp_url": "https://agent.pivota.cc/products/sig_919e963e7d7a740f5f496e87"
+    },
+    {
+      "external_product_id": "ext_99c2d94131f26d563e2093bc",
+      "title": "Dewtopia 20% Acid Night Treatment",
+      "pdp_url": "https://agent.pivota.cc/products/sig_654db3eb15313f864eeee78a"
+    },
+    {
+      "external_product_id": "ext_4ea95b9803d90ab1e5cb8393",
+      "title": "Double Rewind 0.3% Pro-Grade Retinol Serum",
+      "pdp_url": "https://agent.pivota.cc/products/sig_c27482fb0e195e3e62a57393"
+    },
+    {
+      "external_product_id": "ext_27ecddfd70b28613b9cdd8a7",
+      "title": "Pore-Balance Facial Sauna Scrub",
+      "pdp_url": "https://agent.pivota.cc/products/sig_b7e5ca80dcc491bbbb2f19ea"
+    }
+  ],
+  "held": [
+    {
+      "external_product_id": "ext_842d06e9f8039ddcc784fccb",
+      "title": "Detox Drops 2% Salicylic Acid Toner",
+      "reason": "same canonical URL fragmented across 3 sig PDPs; run identity merge review first"
+    },
+    {
+      "external_product_id": "ext_19bf66093385858dcb0d6956",
+      "title": "Detox Drops 2% Salicylic Acid Toner",
+      "reason": "same canonical URL fragmented across 3 sig PDPs; run identity merge review first"
+    },
+    {
+      "external_product_id": "ext_df461e9f2856b689eb1914a8",
+      "title": "Pout Preserve Sugar Melt Lip Scrub",
+      "reason": "active evidence is key-ingredient style lip scrub copy; verify PDP shaping label before active module sync"
+    },
+    {
+      "external_product_id": "ext_47fe725499e880c01ccfc134",
+      "title": "Banana Bright Face Primer",
+      "reason": "fresh payload reduces gallery image count from 3 to 1 without content-image replacement; needs extractor/image review first"
+    },
+    {
+      "external_product_id": "ext_3fe128d1441a94c26364da2b",
+      "title": "Pout Preserve Peptide Lip Treatment",
+      "reason": "shade/variant product with image count changing 56 to 19; needs variant/swatch/gallery review first"
+    }
+  ],
+  "write_policy": "only accepted ids may be applied; all held rows require separate identity/image/shaping review"
+}

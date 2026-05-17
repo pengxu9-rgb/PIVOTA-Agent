@@ -1,0 +1,84 @@
+{
+  "generated_at": "2026-05-16T23:47:24.604Z",
+  "source_audit": "/private/tmp/pivota-agent-shade-visual-audit/reports/pdp_identity_payload_drift_20260516_olehenriksen/domain_post_active_repair_audit/row_audit.csv",
+  "total_rows": 74,
+  "sync_candidate_rows": 51,
+  "decision_counts": {
+    "hold_component_aware_review": 39,
+    "review_canonical_selection_gap": 9,
+    "hold_source_pollution": 1,
+    "dry_run_direct_sync_candidate": 1,
+    "hold_identity_review": 1
+  },
+  "direct_sync_candidates": [
+    {
+      "external_product_id": "ext_5676831fca6caee579fa9095",
+      "title": "The Hangover Hack",
+      "pdp_url": "https://agent.pivota.cc/products/sig_c7aebe604173b5a6561968d3"
+    }
+  ],
+  "canonical_gap_review_candidates": [
+    {
+      "external_product_id": "ext_842d06e9f8039ddcc784fccb",
+      "title": "Detox Drops 2% Salicylic Acid Toner",
+      "pdp_url": "https://agent.pivota.cc/products/sig_e082e10438e89dbe8f94b89a",
+      "canonical_url": "https://olehenriksen.com/products/detox-drops-2-salicylic-acid-toner-4oz"
+    },
+    {
+      "external_product_id": "ext_918981bcc6d552cc2af0b535",
+      "title": "Banana Bright+ Eye Crème",
+      "pdp_url": "https://agent.pivota.cc/products/sig_919e963e7d7a740f5f496e87",
+      "canonical_url": "https://olehenriksen.com/products/banana-bright-eye-creme"
+    },
+    {
+      "external_product_id": "ext_99c2d94131f26d563e2093bc",
+      "title": "Dewtopia 20% Acid Night Treatment",
+      "pdp_url": "https://agent.pivota.cc/products/sig_654db3eb15313f864eeee78a",
+      "canonical_url": "https://olehenriksen.com/products/dewtopia-20-acid-night-treatment"
+    },
+    {
+      "external_product_id": "ext_4ea95b9803d90ab1e5cb8393",
+      "title": "Double Rewind 0.3% Pro-Grade Retinol Serum",
+      "pdp_url": "https://agent.pivota.cc/products/sig_c27482fb0e195e3e62a57393",
+      "canonical_url": "https://olehenriksen.com/products/double-rewind-pro-grade-retinol-serum"
+    },
+    {
+      "external_product_id": "ext_19bf66093385858dcb0d6956",
+      "title": "Detox Drops 2% Salicylic Acid Toner",
+      "pdp_url": "https://agent.pivota.cc/products/sig_c22649a970fcc8bc7b9b907d",
+      "canonical_url": "https://olehenriksen.com/products/detox-drops-2-salicylic-acid-toner-4oz"
+    },
+    {
+      "external_product_id": "ext_df461e9f2856b689eb1914a8",
+      "title": "Pout Preserve Sugar Melt Lip Scrub",
+      "pdp_url": "https://agent.pivota.cc/products/sig_28a7af30de8846969663a045",
+      "canonical_url": "https://olehenriksen.com/products/pout-preserve-sugar-melt-lip-scrub"
+    },
+    {
+      "external_product_id": "ext_27ecddfd70b28613b9cdd8a7",
+      "title": "Pore-Balance Facial Sauna Scrub",
+      "pdp_url": "https://agent.pivota.cc/products/sig_b7e5ca80dcc491bbbb2f19ea",
+      "canonical_url": "https://olehenriksen.com/products/pore-balance-facial-sauna-scrub"
+    },
+    {
+      "external_product_id": "ext_47fe725499e880c01ccfc134",
+      "title": "Banana Bright Face Primer",
+      "pdp_url": "https://agent.pivota.cc/products/sig_a490ed5bdf736d26b6c69cb2",
+      "canonical_url": "https://olehenriksen.com/products/banana-bright-face-primer"
+    },
+    {
+      "external_product_id": "ext_3fe128d1441a94c26364da2b",
+      "title": "Pout Preserve Peptide Lip Treatment",
+      "pdp_url": "https://agent.pivota.cc/products/sig_37b0256e9641fbae7e91420c",
+      "canonical_url": "https://olehenriksen.com/products/pout-preserve-peptide-lip-treatment"
+    }
+  ],
+  "held_bundle_or_set_rows": 39,
+  "held_source_pollution_rows": 1,
+  "policy": {
+    "writes_allowed_from_this_report": false,
+    "direct_sync_requires_dry_run_and_pdp_quality": true,
+    "bundle_or_set_active_sync": "blocked_until_component_aware_review",
+    "canonical_selection_gap_sync": "blocked_until_identity_group_review"
+  }
+}

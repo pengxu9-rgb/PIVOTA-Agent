@@ -1,0 +1,308 @@
+{
+  "generated_at": "2026-05-17T00:55:00.000Z",
+  "source": "manual_product_intel_backfill",
+  "rows": [
+    {
+      "case_id": "olehenriksen_dewtopia_20_acid_night_treatment_product_intel_20260517",
+      "review_status": "completed",
+      "review_decision": "seller_only_fallback",
+      "reviewer": "Codex",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-17T00:55:00.000Z",
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_99c2d94131f26d563e2093bc"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_seller_grounded",
+        "selected_field_count": 8,
+        "field_sources": {
+          "what_it_is": "seller_pdp",
+          "best_for": "seller_pdp",
+          "why_it_stands_out": "seller_pdp",
+          "routine_fit": "seller_pdp",
+          "watchouts": "seller_pdp",
+          "shopping_card": "seller_pdp",
+          "search_card": "seller_pdp"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_99c2d94131f26d563e2093bc"
+          },
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "product_intel_core": {
+            "what_it_is": {
+              "headline": "20% acid night serum",
+              "body": "An overnight retexturizing serum positioned by the seller PDP for uneven texture, dark spots, fine lines, and wrinkles, with a 20% acid blend made up of 10% AHAs and 10% PHAs plus aloe juice, birch sap, and cotton water."
+            },
+            "best_for": [
+              {
+                "tag": "uneven_texture",
+                "label": "Uneven texture",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "dark_spots",
+                "label": "Dark spots and dullness",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "pm_exfoliation",
+                "label": "Night exfoliation routines",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "AHA + PHA blend",
+                "body": "The source PDP calls out a 20% acid blend, split between 10% AHAs and 10% PHAs, for smoothing and renewing the look of skin texture.",
+                "evidence_strength": "seller_grounded"
+              },
+              {
+                "headline": "Night treatment format",
+                "body": "The product is presented as a nightly treatment that works while you sleep rather than as a rinse-off exfoliant.",
+                "evidence_strength": "seller_grounded"
+              }
+            ],
+            "routine_fit": {
+              "step": "night treatment",
+              "am_pm": [
+                "pm"
+              ],
+              "pairing_notes": [
+                "Use as a nighttime resurfacing step according to the source directions.",
+                "Because the PDP positions it as an acid treatment, avoid presenting it as a daily hydrating serum."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "usage",
+                "label": "Acid treatment",
+                "body": "The seller PDP identifies this as a 20% acid smoothing treatment, so the PDP should frame it as an exfoliating night product."
+              }
+            ],
+            "confidence": {
+              "overall": "moderate"
+            },
+            "freshness": {
+              "generated_at": "2026-05-17T00:55:00.000Z",
+              "source_version": "manual_seller_grounded:olehenriksen_seed"
+            },
+            "quality_state": "limited",
+            "evidence_profile": "seller_only",
+            "source_coverage": {
+              "seller": {
+                "available": true
+              },
+              "formula": {
+                "available": true
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "unavailable_reason": "insufficient_feedback",
+            "confidence": "low",
+            "evidence_profile": "seller_only"
+          },
+          "external_highlight_signals": [],
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Dewtopia 20% Acid Night Treatment",
+            "subtitle": "20% acid night serum",
+            "highlight": "AHA + PHA night treatment"
+          },
+          "search_card": {
+            "contract_version": "pivota.search_card.v1",
+            "title": "Dewtopia 20% Acid Night Treatment",
+            "subtitle_candidate": "20% acid night serum",
+            "highlight_candidate": "AHA + PHA night treatment",
+            "compact_candidate": "20% acid night serum"
+          },
+          "freshness": {
+            "generated_at": "2026-05-17T00:55:00.000Z",
+            "source_version": "manual_seller_grounded:olehenriksen_seed"
+          },
+          "provenance": {
+            "source": "manual_product_intel_backfill",
+            "generator": "codex_manual_review",
+            "review_status": "completed",
+            "review_decision": "seller_only_fallback",
+            "reviewer": "Codex",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-17T00:55:00.000Z"
+          }
+        }
+      }
+    },
+    {
+      "case_id": "olehenriksen_double_rewind_retinol_serum_product_intel_20260517",
+      "review_status": "completed",
+      "review_decision": "seller_only_fallback",
+      "reviewer": "Codex",
+      "reviewer_kind": "assistant",
+      "reviewed_at": "2026-05-17T00:55:00.000Z",
+      "baseline": {
+        "canonical_product_ref": {
+          "merchant_id": "external_seed",
+          "product_id": "ext_4ea95b9803d90ab1e5cb8393"
+        }
+      },
+      "selected": {
+        "selected_mode": "manual_seller_grounded",
+        "selected_field_count": 8,
+        "field_sources": {
+          "what_it_is": "seller_pdp",
+          "best_for": "seller_pdp",
+          "why_it_stands_out": "seller_pdp",
+          "routine_fit": "seller_pdp",
+          "watchouts": "seller_pdp",
+          "shopping_card": "seller_pdp",
+          "search_card": "seller_pdp"
+        },
+        "bundle": {
+          "contract_version": "pivota.product_intel.v1",
+          "display_name": "Pivota Insights",
+          "canonical_product_ref": {
+            "merchant_id": "external_seed",
+            "product_id": "ext_4ea95b9803d90ab1e5cb8393"
+          },
+          "quality_state": "limited",
+          "evidence_profile": "seller_only",
+          "product_intel_core": {
+            "what_it_is": {
+              "headline": "0.3% retinol serum",
+              "body": "A professional-grade retinol serum described by the seller PDP as balancing pure encapsulated vitamin A and provitamin A with aloe vera and a Scandinavian botanical complex for smoother-looking texture, tone, fine lines, wrinkles, and dark spots."
+            },
+            "best_for": [
+              {
+                "tag": "fine_lines_wrinkles",
+                "label": "Fine lines and wrinkles",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "uneven_tone_texture",
+                "label": "Uneven tone and texture",
+                "confidence": "moderate"
+              },
+              {
+                "tag": "retinol_routine",
+                "label": "Retinol serum routines",
+                "confidence": "moderate"
+              }
+            ],
+            "why_it_stands_out": [
+              {
+                "headline": "Two retinoid forms",
+                "body": "The source PDP calls out pure encapsulated vitamin A and provitamin A as the two retinoid components in the formula.",
+                "evidence_strength": "seller_grounded"
+              },
+              {
+                "headline": "Buffered with hydrators",
+                "body": "The seller PDP pairs the retinoid story with aloe vera and Scandinavian botanical components positioned for hydration and comfort.",
+                "evidence_strength": "seller_grounded"
+              }
+            ],
+            "routine_fit": {
+              "step": "retinol serum",
+              "am_pm": [
+                "pm"
+              ],
+              "pairing_notes": [
+                "Present as a retinol treatment step, not as a basic moisturizer.",
+                "The source PDP says it is created for new and experienced retinol users."
+              ]
+            },
+            "watchouts": [
+              {
+                "type": "usage",
+                "label": "Retinol treatment",
+                "body": "Because the seller PDP identifies retinol and provitamin A, the PDP should keep the product framed as an active retinoid treatment."
+              }
+            ],
+            "confidence": {
+              "overall": "moderate"
+            },
+            "freshness": {
+              "generated_at": "2026-05-17T00:55:00.000Z",
+              "source_version": "manual_seller_grounded:olehenriksen_seed"
+            },
+            "quality_state": "limited",
+            "evidence_profile": "seller_only",
+            "source_coverage": {
+              "seller": {
+                "available": true
+              },
+              "formula": {
+                "available": true
+              },
+              "reviews": {
+                "available": false,
+                "count": 0
+              },
+              "creator": {
+                "available": false,
+                "count": 0
+              },
+              "editorial": {
+                "available": false,
+                "count": 0
+              }
+            }
+          },
+          "community_signals": {
+            "status": "unavailable",
+            "unavailable_reason": "insufficient_feedback",
+            "confidence": "low",
+            "evidence_profile": "seller_only"
+          },
+          "external_highlight_signals": [],
+          "shopping_card": {
+            "contract_version": "pivota.shopping_card.v1",
+            "title": "Double Rewind 0.3% Pro-Grade Retinol Serum",
+            "subtitle": "0.3% retinol serum",
+            "highlight": "Two-form retinoid serum"
+          },
+          "search_card": {
+            "contract_version": "pivota.search_card.v1",
+            "title": "Double Rewind 0.3% Pro-Grade Retinol Serum",
+            "subtitle_candidate": "0.3% retinol serum",
+            "highlight_candidate": "Two-form retinoid serum",
+            "compact_candidate": "0.3% retinol serum"
+          },
+          "freshness": {
+            "generated_at": "2026-05-17T00:55:00.000Z",
+            "source_version": "manual_seller_grounded:olehenriksen_seed"
+          },
+          "provenance": {
+            "source": "manual_product_intel_backfill",
+            "generator": "codex_manual_review",
+            "review_status": "completed",
+            "review_decision": "seller_only_fallback",
+            "reviewer": "Codex",
+            "reviewer_kind": "assistant",
+            "reviewed_at": "2026-05-17T00:55:00.000Z"
+          }
+        }
+      }
+    }
+  ]
+}

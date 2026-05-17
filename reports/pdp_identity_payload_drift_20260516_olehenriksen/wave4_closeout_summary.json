@@ -1,0 +1,100 @@
+{
+  "generated_at": "2026-05-17T00:59:00.000Z",
+  "scope": "Olehenriksen wave4 PDP identity source_payload drift remediation",
+  "source_audit": "reports/pdp_identity_payload_drift_20260516_olehenriksen/domain_post_active_repair_audit",
+  "actions": {
+    "candidate_classification": {
+      "sync_candidate_rows": 51,
+      "apply_payload_refresh_rows": 4,
+      "review_canonical_selection_gap_rows": 9,
+      "hold_component_aware_review_rows": 39,
+      "hold_source_pollution_rows": 1,
+      "hold_identity_review_rows": 1
+    },
+    "identity_payload_refresh": {
+      "applied_external_product_ids": [
+        "ext_918981bcc6d552cc2af0b535",
+        "ext_99c2d94131f26d563e2093bc",
+        "ext_4ea95b9803d90ab1e5cb8393",
+        "ext_27ecddfd70b28613b9cdd8a7"
+      ],
+      "post_apply_identity_payload_stale_rows": 0,
+      "post_apply_canonical_selection_gap_groups": 0,
+      "post_apply_sync_candidate_rows": 0
+    },
+    "product_intel_backfill": {
+      "published_external_product_ids": [
+        "ext_99c2d94131f26d563e2093bc",
+        "ext_4ea95b9803d90ab1e5cb8393"
+      ],
+      "review_decision": "seller_only_fallback",
+      "publish_mode": "reviewed_write"
+    },
+    "runtime_code_fix": {
+      "area": "Shopify image classification",
+      "change": "Classify explicit Shopify /files/*silo* or packshot filenames as product assets, while keeping generic /files/ usage/detail assets classified as content.",
+      "reason": "Dewtopia product silo image was being treated as content media and falsely triggering content_media_leaked_into_gallery."
+    }
+  },
+  "quality_results_before_runtime_deploy": {
+    "banana_bright_eye_creme": {
+      "external_product_id": "ext_918981bcc6d552cc2af0b535",
+      "identity_gate": "passed",
+      "product_intel_gate": "passed",
+      "live_pdp_gate": "failed",
+      "remaining_failure_reasons": [
+        "price_mismatch"
+      ]
+    },
+    "dewtopia_20_acid_night_treatment": {
+      "external_product_id": "ext_99c2d94131f26d563e2093bc",
+      "identity_gate": "passed",
+      "product_intel_gate": "passed_after_backfill",
+      "live_pdp_gate": "failed",
+      "remaining_failure_reasons": [
+        "content_media_leaked_into_gallery"
+      ],
+      "expected_resolution": "runtime image classifier deployment"
+    },
+    "double_rewind_retinol_serum": {
+      "external_product_id": "ext_4ea95b9803d90ab1e5cb8393",
+      "identity_gate": "passed",
+      "product_intel_gate": "passed_after_backfill",
+      "live_pdp_gate": "passed",
+      "remaining_failure_reasons": []
+    },
+    "pore_balance_facial_sauna_scrub": {
+      "external_product_id": "ext_27ecddfd70b28613b9cdd8a7",
+      "identity_gate": "passed",
+      "live_pdp_gate": "passed",
+      "remaining_failure_reasons": [
+        "extractor_failure",
+        "product_intel_module_empty_or_blocked",
+        "seed_context_cross_product_pollution_review_required"
+      ],
+      "decision": "hold from Product Intel publish until source truth and extractor recovery are reviewed"
+    }
+  },
+  "held_followups": [
+    {
+      "topic": "Detox Drops identity fragmentation",
+      "evidence": "Same canonical URL appears under 3 sig PDPs: sig_c22649a970fcc8bc7b9b907d, sig_321dbf4dec06e85f71be9b36, sig_e082e10438e89dbe8f94b89a.",
+      "required_action": "Run entity-resolution/identity merge review before payload sync."
+    },
+    {
+      "topic": "Bundle/set active ingredients",
+      "evidence": "39 rows are bundle/set/component active-risk candidates.",
+      "required_action": "Hold from single-formula active module sync until component-aware PDP facts are reviewed."
+    },
+    {
+      "topic": "Pore-Balance source truth",
+      "evidence": "Seed context export showed cross-product Peach duo description against Pore-Balance title/canonical URL.",
+      "required_action": "Treat as blocker; verify source extraction and seed_data before Product Intel or further canonical content promotion."
+    },
+    {
+      "topic": "Banana Bright+ Eye Creme offer price",
+      "evidence": "Extractor price was 46 while live PDP offer price was 37.",
+      "required_action": "Run offer/price refresh audit before marking commerce quality fully passed."
+    }
+  ]
+}
