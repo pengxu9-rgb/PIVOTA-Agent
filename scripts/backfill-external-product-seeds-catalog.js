@@ -6315,7 +6315,7 @@ async function main() {
     outDir: argValue('out-dir') || argValue('outDir') || '',
     targetUrlOverrides,
     validateImageHealth:
-      !(hasFlag('dry-run') || hasFlag('dryRun')) &&
+      (hasFlag('validate-image-health') || hasFlag('validateImageHealth') || !(hasFlag('dry-run') || hasFlag('dryRun'))) &&
       !hasFlag('skip-image-health-validation') &&
       !hasFlag('skipImageHealthValidation'),
     baseUrl: DEFAULT_CATALOG_BASE_URL,
