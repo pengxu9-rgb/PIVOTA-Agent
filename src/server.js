@@ -66,6 +66,7 @@ const {
   gidCandidateSet,
   gidCandidatesMatchList,
   gidMatchesList,
+  expandProductIdScope,
 } = require('./utils/shopifyGid');
 const {
   buildAgentSafeCommerceFacts,
@@ -21273,6 +21274,42 @@ function computeHumanReadableRule(promo) {
   return promo.name || 'Deal';
 }
 
+// Look up which of the given productIds are NOT present in products_cache for this
+// merchant — so admins authoring a promo get a warning when they reference dead
+// Shopify product GIDs (e.g. left over from a previous store integration). Matches
+// GID-tolerantly: `gid://shopify/Product/X` is alive if either form is in the cache.
+async function findDeadScopeProductIds(merchantId, productIds) {
+  if (!merchantId || !Array.isArray(productIds) || productIds.length === 0) return [];
+  const candidateValues = new Set();
+  for (const id of productIds) {
+    for (const v of gidCandidateSet(id)) candidateValues.add(v);
+  }
+  if (candidateValues.size === 0) return [];
+  try {
+    const r = await query(
+      `SELECT platform_product_id FROM products_cache
+        WHERE merchant_id = $1 AND platform_product_id = ANY($2::text[])`,
+      [merchantId, Array.from(candidateValues)]
+    );
+    const found = new Set((r?.rows || []).map((row) => String(row.platform_product_id)));
+    const dead = [];
+    for (const id of productIds) {
+      let alive = false;
+      for (const v of gidCandidateSet(id)) {
+        if (found.has(v)) { alive = true; break; }
+      }
+      if (!alive) dead.push(id);
+    }
+    return dead;
+  } catch (err) {
+    logger.warn(
+      { err: err?.message || String(err), merchantId },
+      'findDeadScopeProductIds: products_cache lookup failed; skipping warning'
+    );
+    return [];
+  }
+}
+
 function sanitizePromotionForResponse(promo) {
   if (!promo) return promo;
   const scope = promo.scope || {};
@@ -21341,8 +21378,10 @@ function validateAndNormalizePromotion(payload, existing = {}, { requireAll = fa
   }
 
   const scope = merged.scope || {};
+  // Expand productIds with their numeric tails when the input is a Shopify GID so
+  // that any verbatim-comparison consumer matches both forms. See utils/shopifyGid.js.
   const normalizedScope = {
-    productIds: scope.productIds || [],
+    productIds: expandProductIdScope(scope.productIds || []),
     categoryIds: scope.categoryIds || [],
     brandIds: scope.brandIds || [],
     global: scope.global === true,
@@ -24677,6 +24716,81 @@ app.get('/debug/promotions', requireAdmin, async (req, res) => {
   }
 });
 
+// Health check for a single promotion's scope.productIds — for each ID, says
+// whether it exists in products_cache for the promo's merchant (in_cache),
+// is missing (dead), or is unparseable (invalid). Covers both the legacy
+// `scope.productIds` path and Shopify-imported `scope.shopifyItems.*` paths.
+app.get('/debug/promotions/:id/scope-health', requireAdmin, async (req, res) => {
+  try {
+    const promo = await getPromotionById(req.params.id);
+    if (!promo || promo.deletedAt) {
+      return res.status(404).json({ error: 'NOT_FOUND' });
+    }
+    const scope = promo.scope || {};
+
+    // Collect every productId reference across both scope shapes.
+    const inputIds = [];
+    if (Array.isArray(scope.productIds)) inputIds.push(...scope.productIds);
+    const si = scope.shopifyItems && typeof scope.shopifyItems === 'object' ? scope.shopifyItems : null;
+    if (si) {
+      if (Array.isArray(si.productIds)) inputIds.push(...si.productIds);
+      if (Array.isArray(si.product_ids)) inputIds.push(...si.product_ids);
+      if (Array.isArray(si.productGids)) inputIds.push(...si.productGids);
+      if (Array.isArray(si.product_gids)) inputIds.push(...si.product_gids);
+      if (si.products && Array.isArray(si.products.nodes)) {
+        for (const n of si.products.nodes) {
+          if (n && (n.id || n.gid)) inputIds.push(n.id || n.gid);
+        }
+      }
+    }
+
+    const uniqueInputIds = Array.from(new Set(inputIds.filter((x) => x != null && x !== '')));
+
+    let scopeKind = 'other';
+    if (scope.global === true) scopeKind = 'global';
+    else if (si && (si.allItems === true || String(si.__typename || '') === 'AllDiscountItems')) {
+      scopeKind = 'shopify_all_items';
+    } else if (uniqueInputIds.length > 0) {
+      scopeKind = si ? `shopify_${String(si.__typename || 'DiscountProducts')}` : 'productIds';
+    }
+
+    const merchantId = promo.merchantId || promo.merchant_id || null;
+    let perIdStatus = [];
+    let deadCount = 0;
+    if (uniqueInputIds.length > 0 && merchantId) {
+      const dead = await findDeadScopeProductIds(merchantId, uniqueInputIds);
+      const deadSet = new Set(dead);
+      deadCount = dead.length;
+      perIdStatus = uniqueInputIds.map((id) => ({
+        id: typeof id === 'string' ? id : JSON.stringify(id),
+        status: typeof id !== 'string' ? 'invalid' : (deadSet.has(id) ? 'dead' : 'in_cache'),
+      }));
+    } else if (uniqueInputIds.length > 0) {
+      perIdStatus = uniqueInputIds.map((id) => ({
+        id: typeof id === 'string' ? id : JSON.stringify(id),
+        status: 'unknown_no_merchant',
+      }));
+    }
+
+    return res.json({
+      promotion_id: promo.id,
+      promotion_name: promo.name || null,
+      merchant_id: merchantId,
+      scope_kind: scopeKind,
+      total_product_ids: uniqueInputIds.length,
+      in_cache_count: uniqueInputIds.length - deadCount,
+      dead_count: deadCount,
+      product_ids: perIdStatus,
+    });
+  } catch (err) {
+    logger.error(
+      { err: err?.message || String(err), promoId: req.params.id },
+      'scope-health check failed'
+    );
+    return res.status(500).json({ error: 'INTERNAL_ERROR' });
+  }
+});
+
 // ---------------- Merchant promotions admin API (v0, admin-key protected) ----------------
 
 app.get('/api/merchant/promotions', requireAdmin, async (req, res) => {
@@ -24753,11 +24867,18 @@ app.post('/api/merchant/promotions', requireAdmin, async (req, res) => {
     }
     const nowTs = Date.now();
     await upsertPromotion(promotion);
+    const deadProductIds = await findDeadScopeProductIds(
+      promotion.merchantId,
+      promotion.scope?.productIds || []
+    );
     return res.status(201).json({
       promotion: {
         ...sanitizePromotionForResponse(promotion),
         status: computePromotionStatus(promotion, nowTs),
       },
+      ...(deadProductIds.length
+        ? { validation_warnings: { dead_product_ids: deadProductIds } }
+        : {}),
     });
   } catch (err) {
     const { code, message } = extractUpstreamErrorCode(err);
@@ -24786,11 +24907,18 @@ app.patch('/api/merchant/promotions/:id', requireAdmin, async (req, res) => {
     }
     const nowTs = Date.now();
     await upsertPromotion(promotion);
+    const deadProductIds = await findDeadScopeProductIds(
+      promotion.merchantId,
+      promotion.scope?.productIds || []
+    );
     return res.json({
       promotion: {
         ...sanitizePromotionForResponse(promotion),
         status: computePromotionStatus(promotion, nowTs),
       },
+      ...(deadProductIds.length
+        ? { validation_warnings: { dead_product_ids: deadProductIds } }
+        : {}),
     });
   } catch (err) {
     const { code, message } = extractUpstreamErrorCode(err);

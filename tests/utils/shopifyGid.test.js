@@ -4,6 +4,8 @@ const {
   gidCandidateSet,
   gidCandidatesMatchList,
   gidMatchesList,
+  canonicalShopifyNumericId,
+  expandProductIdScope,
 } = require('../../src/utils/shopifyGid');
 
 describe('shopifyGid helpers', () => {
@@ -101,6 +103,64 @@ describe('shopifyGid helpers', () => {
       expect(
         listShopifyIdTextValues(['gid://shopify/Product/1', { id: 'gid://shopify/Product/2' }, null, ''])
       ).toEqual(['gid://shopify/Product/1', 'gid://shopify/Product/2']);
+    });
+  });
+
+  describe('canonicalShopifyNumericId', () => {
+    test('extracts numeric tail from valid Shopify GID', () => {
+      expect(canonicalShopifyNumericId('gid://shopify/Product/10064567370025')).toBe('10064567370025');
+      expect(canonicalShopifyNumericId('gid://shopify/ProductVariant/4242')).toBe('4242');
+    });
+    test('returns null for non-GID values (does NOT extract trailing digits)', () => {
+      // Critical: must not canonicalize custom IDs that happen to end in digits.
+      expect(canonicalShopifyNumericId('internal_chydan_1')).toBeNull();
+      expect(canonicalShopifyNumericId('plain_string')).toBeNull();
+      expect(canonicalShopifyNumericId('12345')).toBeNull();
+      expect(canonicalShopifyNumericId(null)).toBeNull();
+    });
+    test('handles object input via toShopifyIdText', () => {
+      expect(canonicalShopifyNumericId({ id: 'gid://shopify/Product/99' })).toBe('99');
+    });
+  });
+
+  describe('expandProductIdScope', () => {
+    test('expands GIDs to include numeric tails alongside originals', () => {
+      expect(
+        expandProductIdScope([
+          'gid://shopify/Product/10064567370025',
+          'gid://shopify/Product/10064558096681',
+        ])
+      ).toEqual([
+        'gid://shopify/Product/10064567370025',
+        '10064567370025',
+        'gid://shopify/Product/10064558096681',
+        '10064558096681',
+      ]);
+    });
+    test('leaves non-GID values untouched (single entry)', () => {
+      expect(expandProductIdScope(['p_custom_123', 'internal_x'])).toEqual([
+        'p_custom_123',
+        'internal_x',
+      ]);
+    });
+    test('dedupes when numeric tail already present in input', () => {
+      expect(
+        expandProductIdScope(['gid://shopify/Product/42', '42'])
+      ).toEqual(['gid://shopify/Product/42', '42']);
+      expect(
+        expandProductIdScope(['42', 'gid://shopify/Product/42'])
+      ).toEqual(['42', 'gid://shopify/Product/42']);
+    });
+    test('returns empty array for non-array / empty input', () => {
+      expect(expandProductIdScope(null)).toEqual([]);
+      expect(expandProductIdScope(undefined)).toEqual([]);
+      expect(expandProductIdScope([])).toEqual([]);
+      expect(expandProductIdScope('not-an-array')).toEqual([]);
+    });
+    test('filters out empty / nullish entries', () => {
+      expect(
+        expandProductIdScope(['gid://shopify/Product/1', null, '', { id: null }])
+      ).toEqual(['gid://shopify/Product/1', '1']);
     });
   });
 });

@@ -75,10 +75,45 @@ function gidMatchesList(candidate, values) {
   return gidCandidatesMatchList(candidateSet, values);
 }
 
+// Given a Shopify-style GID like `gid://shopify/Product/123`, returns the trailing
+// numeric ID `123`. Returns null for anything that doesn't fit the pattern (custom
+// IDs with numeric suffixes like `internal_chydan_1` are NOT canonicalized — only
+// values that look like a Shopify GID are transformed).
+function canonicalShopifyNumericId(value) {
+  const text = toShopifyIdText(value);
+  if (!text) return null;
+  const m = text.match(/^gid:\/\/shopify\/[^/]+\/(\d+)$/i);
+  return m ? m[1] : null;
+}
+
+// Expand a `scope.productIds`-style array so both the raw GIDs AND their numeric
+// tails are present. Storing both forms keeps the admin UI's view stable (it sees
+// what it sent) while ensuring any matcher that hasn't been GID-normalized still
+// hits. De-duped; preserves first-seen order.
+function expandProductIdScope(values) {
+  if (!Array.isArray(values)) return [];
+  const seen = new Set();
+  const out = [];
+  for (const raw of values) {
+    const text = toShopifyIdText(raw);
+    if (!text || seen.has(text)) continue;
+    seen.add(text);
+    out.push(text);
+    const numeric = canonicalShopifyNumericId(text);
+    if (numeric && !seen.has(numeric)) {
+      seen.add(numeric);
+      out.push(numeric);
+    }
+  }
+  return out;
+}
+
 module.exports = {
   toShopifyIdText,
   listShopifyIdTextValues,
   gidCandidateSet,
   gidCandidatesMatchList,
   gidMatchesList,
+  canonicalShopifyNumericId,
+  expandProductIdScope,
 };

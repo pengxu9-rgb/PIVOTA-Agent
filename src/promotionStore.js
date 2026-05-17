@@ -3,6 +3,7 @@ const path = require('path');
 const axios = require('axios');
 const { randomUUID } = require('crypto');
 const { query } = require('./db');
+const { expandProductIdScope } = require('./utils/shopifyGid');
 
 const STORE_PATH = path.join(__dirname, '..', 'data', 'promotions.json');
 
@@ -501,9 +502,14 @@ function normalizePromotionRecord(promo) {
     null;
 
   const rawScope = promo.scope && typeof promo.scope === 'object' ? promo.scope : {};
+  // Expand productIds so both `gid://shopify/Product/X` and bare `X` forms are present.
+  // Covers all existing DB rows on read without a backfill migration; matchesScope
+  // already handles GID/numeric equivalence too, but expansion future-proofs any caller
+  // that does verbatim .includes() against this field.
+  const rawProductIds = rawScope.productIds || rawScope.product_ids || [];
   const normalizedScope = {
     ...rawScope,
-    productIds: rawScope.productIds || rawScope.product_ids || [],
+    productIds: expandProductIdScope(rawProductIds),
     categoryIds: rawScope.categoryIds || rawScope.category_ids || [],
     brandIds: rawScope.brandIds || rawScope.brand_ids || [],
     global: rawScope.global === true,
