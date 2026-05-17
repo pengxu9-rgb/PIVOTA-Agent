@@ -49,6 +49,8 @@
 
 'use strict';
 
+const { activeCatalogProductSourceWhere } = require('./activeCatalogSourceSql');
+
 const DEFAULT_LIMIT = 12;
 const CANDIDATE_LIMIT_MIN = 25;
 const CANDIDATE_LIMIT_MAX = 200;
@@ -335,6 +337,7 @@ async function fetchCanonicalChainRows(args = {}) {
       FROM catalog_products p
       LEFT JOIN catalog_merchants m ON m.merchant_id = p.merchant_id
       WHERE ${whereClause}
+        AND ${activeCatalogProductSourceWhere('p', 'm')}
       ${merchantClause}
       ${marketWhere}
       ORDER BY rank_score DESC, p.updated_at DESC
