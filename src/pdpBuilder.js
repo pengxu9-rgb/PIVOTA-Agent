@@ -1182,6 +1182,44 @@ function filterBuilderDisplayableVariantOptions(options) {
   return (Array.isArray(options) ? options : []).filter((option) => isDisplayableBuilderVariantOption(option));
 }
 
+function normalizeBuilderVariantSourceQualityStatus(variant) {
+  return asNonEmptyString(variant?.source_quality_status || variant?.sourceQualityStatus).toLowerCase();
+}
+
+function isBlockedBuilderVariantSourceQualityStatus(status) {
+  return ['blocked', 'quarantined', 'low'].includes(String(status || '').trim().toLowerCase());
+}
+
+function isNonDisplayableVariantDisplayLabel(value) {
+  const normalized = asNonEmptyString(value).toLowerCase();
+  if (!normalized) return true;
+  if (/^(default|default title|title|variant|single)$/i.test(normalized)) return true;
+  if (/^(?:default|default title|title|variant)\s*:\s*(?:default|default title|title|variant|single item?)$/i.test(normalized)) {
+    return true;
+  }
+  return false;
+}
+
+function inferVariantDisplayAxis(variant) {
+  const axis = normalizeBuilderOptionName(variant?.axis_kind || variant?.axisKind);
+  if (axis) return axis;
+  const label = asNonEmptyString(variant?.display_label || variant?.displayLabel);
+  const prefix = label.includes(':') ? label.split(':')[0] : '';
+  return normalizeBuilderOptionName(prefix);
+}
+
+function variantHasExplicitDisplayableLabel(variant) {
+  const sourceQualityStatus = normalizeBuilderVariantSourceQualityStatus(variant);
+  if (isBlockedBuilderVariantSourceQualityStatus(sourceQualityStatus)) return false;
+  const label = asNonEmptyString(variant?.display_label || variant?.displayLabel);
+  if (isNonDisplayableVariantDisplayLabel(label)) return false;
+  const axis = inferVariantDisplayAxis(variant);
+  if (['shade', 'color', 'colour', 'tone', 'hue'].includes(axis) && !variantHasVisualEvidence(variant)) {
+    return false;
+  }
+  return true;
+}
+
 function variantHasVisualEvidence(variant) {
   return Boolean(
     normalizePdpImageUrl(
@@ -1201,7 +1239,7 @@ function variantHasVisualEvidence(variant) {
 
 function variantHasDisplayableChoice(variant) {
   const options = filterBuilderDisplayableVariantOptions(variant?.options);
-  if (options.length === 0) return false;
+  if (options.length === 0) return variantHasExplicitDisplayableLabel(variant);
   const hasShadeAxis = options.some((option) => ['shade', 'color', 'colour', 'tone', 'hue'].includes(normalizeBuilderOptionName(option?.name)));
   if (hasShadeAxis && !variantHasVisualEvidence(variant)) return false;
   return true;
@@ -1222,10 +1260,12 @@ function shouldExposeProductVariants(product, variants, productLineOptions) {
   if (hasDisplayableChoice) return true;
   return variants.some((variant) => {
     const title = asNonEmptyString(variant?.title).toLowerCase();
-    const sourceQualityStatus = asNonEmptyString(
-      variant?.source_quality_status || variant?.sourceQualityStatus,
-    ).toLowerCase();
-    return title && !/^(default|default title|variant \d+|single item)$/i.test(title) && sourceQualityStatus !== 'blocked';
+    const sourceQualityStatus = normalizeBuilderVariantSourceQualityStatus(variant);
+    return (
+      title &&
+      !/^(default|default title|variant \d+|single item)$/i.test(title) &&
+      !isBlockedBuilderVariantSourceQualityStatus(sourceQualityStatus)
+    );
   });
 }
 
@@ -1245,7 +1285,7 @@ function shouldPreserveImplicitSingleVariant(product, variants, productLineOptio
 
 function buildVariantSelectorDisplayLabel(variant) {
   const explicit = asNonEmptyString(variant?.display_label || variant?.displayLabel);
-  if (explicit) return explicit;
+  if (explicit && !isNonDisplayableVariantDisplayLabel(explicit)) return explicit;
   const options = filterBuilderDisplayableVariantOptions(variant?.options);
   if (options.length === 1) {
     return `${asNonEmptyString(options[0]?.name) || 'Option'}: ${asNonEmptyString(options[0]?.value)}`;

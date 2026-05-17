@@ -1177,7 +1177,7 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     ]);
   });
 
-  test('suppresses single external-seed Format: Single item selector choices', () => {
+  test('renders captured single external-seed Format: Single item selector labels', () => {
     const payload = buildPdpPayload({
       product: {
         product_id: 'ext_roundlab_ampoule',
@@ -1194,6 +1194,7 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
             options: [{ name: 'Format', value: 'Single item', axis_kind: 'format' }],
             display_label: 'Format: Single item',
             axis_kind: 'format',
+            source_quality_status: 'captured',
             price: { amount: 31, currency: 'USD' },
           },
         ],
@@ -1202,14 +1203,23 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
       entryPoint: 'agent',
     });
 
-    expect(payload.modules.find((module) => module.type === 'variant_selector')).toBeFalsy();
+    const variantSelector = payload.modules.find((module) => module.type === 'variant_selector');
+    expect(variantSelector).toBeTruthy();
+    expect(variantSelector?.data?.variants).toEqual([
+      expect.objectContaining({
+        variant_id: 'v_single',
+        display_label: 'Format: Single item',
+        options: [],
+        source_quality_status: 'captured',
+      }),
+    ]);
     expect(payload.product.variants).toEqual([
       expect.objectContaining({
         variant_id: 'v_single',
-        title: '',
+        title: 'Single item',
         options: [],
-        hidden_from_selector: true,
-        source_quality_status: 'blocked',
+        display_label: 'Format: Single item',
+        source_quality_status: 'captured',
       }),
     ]);
   });
