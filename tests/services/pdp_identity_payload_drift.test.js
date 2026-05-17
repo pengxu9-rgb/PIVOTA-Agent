@@ -45,6 +45,17 @@ describe('pdpIdentityPayloadDrift', () => {
     expect(hasActiveIngredientExpectation(glossPayload, glossPayload.title)).toBe(false);
   });
 
+  test('does not treat heading-only hero ingredients text as active evidence', () => {
+    const payload = {
+      title: 'Niacinamide Brightening Daily Mask',
+      pdp_active_ingredients_raw: 'HERO INGREDIENTS',
+      pdp_ingredients_raw: 'Water, Niacinamide, Tranexamic Acid.',
+    };
+
+    expect(hasActiveIngredientEvidence(payload, payload.title)).toBe(false);
+    expect(hasActiveIngredientExpectation(payload, payload.title)).toBe(true);
+  });
+
   test('classifies stale identity payload when seed has source-backed PDP fields', () => {
     const identityPayload = {
       title: 'Balance+ Bundle',

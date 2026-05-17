@@ -73,7 +73,7 @@ const SUNSCREEN_CONTEXT_RE = /\b(spf\s*\d*|sunscreen|sun screen|sunblock|sun car
 const HERO_ACTIVE_RE =
   /\b(niacinamide|hyaluronic acid|ceramide|peptides?|retinol|retinal|retinaldehyde|bakuchiol|vitamin c|ascorbic acid|ethyl ascorbic acid|tetrahexyldecyl ascorbate|glycolic acid|lactic acid|mandelic acid|salicylic acid|azelaic acid|tranexamic acid|pha|gluconolactone|panthenol|centella|madecassoside|snail mucin|rice|rice lipids?|propolis|alpha arbutin|caffeine|squalane|urea|colloidal oatmeal|ectoin|zinc pca|tamanu oil|aloe|n-?acetyl glucosamine|acetyl glucosamine|beta-?glucan|inulin|glycolipids?|behentrimonium chloride|palmitoyl isoleucine|volufiline|phyto ?ceramides?)\b/i;
 const REGULATORY_ACTIVE_RE =
-  /\b(zinc oxide|titanium dioxide|avobenzone|octocrylene|octisalate|homosalate|octinoxate|ensulizole|meradimate|oxybenzone|tinosorb s|tinosorb m|uvinul a plus|uvinul t 150|mexoryl sx|mexoryl xl|benzoyl peroxide|adapalene|sulfur)\b/i;
+  /\b(zinc oxide|titanium dioxide|avobenzone|octocrylene|octisalate|homosalate|octinoxate|ethylhexyl methoxycinnamate|ethylhexyl salicylate|ethylhexyl triazone|diethylamino hydroxybenzoyl hexyl benzoate|bis-ethylhexyloxyphenol methoxyphenyl triazine|ensulizole|meradimate|oxybenzone|tinosorb s|tinosorb m|uvinul a plus|uvinul t 150|mexoryl sx|mexoryl xl|benzoyl peroxide|adapalene|sulfur)\b/i;
 const CONTEXT_SENSITIVE_HERO_ACTIVE_RE =
   /\b(glycolic acid|lactic acid|mandelic acid|salicylic acid)\b/i;
 const VITAMIN_C_ACTIVE_RE =
@@ -115,6 +115,9 @@ const INCI_MARKETING_ONLY_RE =
 const ACTIVE_TRAILING_MARKETING_RE =
   /^\s*(?:[-–—:]\s*)?(?:clarifies?|brightens?|helps?|supports?|soothes?|hydrates?|nourishes?|renews?|refines?|conditions?|is\b|for\b|good\b|best\b|full ingredient(?:s| list)?)\b/i;
 const TITLE_DECLARED_ACTIVE_DEFS = [
+  { display: 'Niacinamide', titleRe: /\bniacinamide\b/i, evidenceKeys: ['niacinamide'] },
+  { display: 'Vitamin C (Ascorbic acid)', titleRe: /\bvitamin c\b/i, evidenceRe: TRUE_VITAMIN_C_INGREDIENT_RE },
+  { display: 'Tranexamic Acid', titleRe: /\b(?:txa|tranexamic acid)\b/i, evidenceKeys: ['tranexamicacid'] },
   { display: 'Beta-Glucan', titleRe: /\bbeta[-\s]?glucan\b/i, evidenceKeys: ['betaglucan'] },
   { display: 'Inulin', titleRe: /\binulin\b/i, evidenceKeys: ['inulin'] },
   { display: 'Retinal', titleRe: /\bretinal\b/i, evidenceKeys: ['retinal'] },
@@ -383,6 +386,11 @@ const SUNSCREEN_ACTIVE_ITEMS = [
   'Octisalate',
   'Homosalate',
   'Octinoxate',
+  'Ethylhexyl Methoxycinnamate',
+  'Ethylhexyl Salicylate',
+  'Ethylhexyl Triazone',
+  'Diethylamino Hydroxybenzoyl Hexyl Benzoate',
+  'Bis-Ethylhexyloxyphenol Methoxyphenyl Triazine',
   'Ensulizole',
   'Meradimate',
   'Oxybenzone',
@@ -556,7 +564,7 @@ function inferTitleDeclaredActiveItems(product, items, rawText) {
     const titleMatch = def.titleRe.exec(titleContext);
     if (!titleMatch) continue;
     def.titleRe.lastIndex = 0;
-    if (!formulaTitleSignal && !/\b(glycolipids?|retinal|retinol|behentrimonium chloride)\b/i.test(def.display)) continue;
+    if (!formulaTitleSignal && !/\b(niacinamide|vitamin c|tranexamic acid|glycolipids?|retinal|retinol|behentrimonium chloride)\b/i.test(def.display)) continue;
     if (!hasTitleDeclaredActiveEvidence(def, normalizedItemsText, evidenceText)) continue;
     activeItems.push({ item: def.display, index: titleMatch.index });
   }

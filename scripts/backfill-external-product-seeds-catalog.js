@@ -2469,6 +2469,11 @@ function cleanPdpActiveIngredientsRaw(value) {
     .replace(/\bFree\s+From\s*:?\s*[\s\S]*$/i, '')
     .trim();
   if (!next || !/[A-Za-z0-9]/.test(next)) return '';
+  const headingOnly = next
+    .replace(/^[\s:;,.|•*-]+|[\s:;,.|•*-]+$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (/^(?:active|key|hero|featured|highlight(?:ed)?)\s+ingredients?$/i.test(headingOnly)) return '';
   if (next.length < 3) return '';
   return next;
 }
@@ -2490,7 +2495,7 @@ function extractActiveIngredientsRawFromDetailsSections(detailsSections) {
     if (line.length > 80) continue;
     if (/[.!?]$/.test(line)) continue;
     if (/\b(?:instantly|your|skin|rays|barrier|helps?|creates|supports?|brightens?|evens?|corrects?|hydrates?|smooths?)\b/i.test(line)) continue;
-    if (/^(?:ingredients?|key ingredients?)$/i.test(line)) continue;
+    if (/^(?:ingredients?|key ingredients?|hero ingredients?|featured ingredients?|highlight(?:ed)? ingredients?|shop by ingredients)$/i.test(line)) continue;
     let candidate = line.replace(/\s+/g, ' ').trim();
     const percentPrefix = candidate.match(/^(\d+(?:\.\d+)?)\s+(.+)$/);
     if (percentPrefix) candidate = `${percentPrefix[2].trim()} ${percentPrefix[1]}%`;

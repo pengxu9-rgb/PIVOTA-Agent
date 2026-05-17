@@ -115,6 +115,15 @@ function hasStrictSourceBlocker(payload) {
   });
 }
 
+function isLowSignalActiveIngredientText(value) {
+  const text = normalizeString(value)
+    .replace(/^[\s:;,.|•*-]+|[\s:;,.|•*-]+$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!text) return true;
+  return /^(?:active|key|hero|featured|highlight(?:ed)?)\s+ingredients?$/i.test(text);
+}
+
 function hasActiveIngredientEvidence(payload, title = '') {
   const sources = collectPayloadSources(payload);
   const activeText = firstTextFromSources(sources, [
@@ -122,7 +131,7 @@ function hasActiveIngredientEvidence(payload, title = '') {
     'active_ingredients',
     'activeIngredients',
   ]);
-  if (activeText) return true;
+  if (activeText && !isLowSignalActiveIngredientText(activeText)) return true;
 
   const ingredientsText = firstTextFromSources(sources, [
     'pdp_ingredients_raw',

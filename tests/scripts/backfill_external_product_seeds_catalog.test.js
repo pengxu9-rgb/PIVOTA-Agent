@@ -4202,6 +4202,69 @@ Contains four types of peptides`,
     expect(payload.nextRow.seed_data.pdp_field_capture_status.active_ingredients_raw).toBe('missing');
   });
 
+  test('does not persist heading-only hero ingredients as active ingredient evidence', () => {
+    const row = {
+      id: 'eps_skintific_mask',
+      title: 'Niacinamide Brightening Daily Mask',
+      canonical_url: 'https://skintific.com/products/niacinamide-brightening-daily-mask',
+      destination_url: 'https://skintific.com/products/niacinamide-brightening-daily-mask',
+      image_url: '',
+      price_amount: 15,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      seed_data: { snapshot: {} },
+    };
+
+    const payload = buildSeedUpdatePayload(
+      row,
+      {
+        products: [
+          {
+            title: row.title,
+            url: row.canonical_url,
+            description_raw: 'A daily brightening sheet mask.',
+            ingredients_raw: 'Water, Niacinamide, Tranexamic Acid, Allantoin.',
+            details_sections: [
+              {
+                heading: 'Ingredients',
+                body: 'HERO INGREDIENTS\n\nFull Ingredients\nWater, Niacinamide, Tranexamic Acid, Allantoin.',
+                source_kind: 'accordion_ingredients',
+              },
+            ],
+            variants: [],
+            field_quality_summary: {
+              description_raw: {
+                source_origin: 'shopify_json',
+                source_quality_status: 'high',
+                source_kinds: ['structured_overview'],
+                reason_codes: [],
+              },
+              details_sections: {
+                source_origin: 'retail_pdp',
+                source_quality_status: 'medium',
+                source_kinds: ['accordion_ingredients'],
+                reason_codes: [],
+              },
+              ingredients_raw: {
+                source_origin: 'retail_pdp',
+                source_quality_status: 'medium',
+                source_kinds: ['details_section_ingredients'],
+                reason_codes: [],
+              },
+            },
+          },
+        ],
+        variants: [],
+        diagnostics: { failure_category: null },
+      },
+      row.canonical_url,
+    );
+
+    expect(payload.nextRow.seed_data.pdp_active_ingredients_raw).toBeUndefined();
+    expect(payload.nextRow.seed_data.snapshot.pdp_active_ingredients_raw).toBeUndefined();
+    expect(payload.nextRow.seed_data.pdp_field_capture_status?.active_ingredients_raw).not.toBe('present');
+  });
+
   test('cleans PDP detail section tails before seed writes', () => {
     const row = {
       id: 'eps_sun_stick',

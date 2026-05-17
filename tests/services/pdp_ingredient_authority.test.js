@@ -342,6 +342,22 @@ describe('pdpIngredientAuthority', () => {
     expect(authority.active_items).toEqual(['Vitamin C (Ascorbic acid)']);
   });
 
+  test('infers title-declared vitamin c and niacinamide from source INCI without percent claims', () => {
+    const vitaminC = buildAuthoritativeIngredientView({
+      title: 'Vitamin C Brightening Boost Moisturizer',
+      pdp_ingredients_raw:
+        'Aqua, Butylene Glycol, Ascorbyl Tetraisopalmitate, Collagen, Tocopherol.',
+    });
+    const niacinamide = buildAuthoritativeIngredientView({
+      title: 'Niacinamide Brightening Daily Mask',
+      pdp_ingredients_raw:
+        'Aqua, Propylene Glycol, Niacinamide, Tranexamic Acid, Allantoin.',
+    });
+
+    expect(vitaminC.active_items).toEqual(['Vitamin C (Ascorbic acid)']);
+    expect(niacinamide.active_items).toEqual(['Niacinamide']);
+  });
+
   test('keeps source-backed vitamin c alias when PDP role text names vitamin c without full INCI', () => {
     const authority = buildAuthoritativeIngredientView({
       title: 'Banana Bright+ Eye Crème',
@@ -472,6 +488,22 @@ describe('pdpIngredientAuthority', () => {
     });
 
     expect(authority.active_items).toEqual(['Avobenzone', 'Homosalate', 'Octisalate', 'Octocrylene']);
+  });
+
+  test('infers modern sunscreen INCI filter names from source ingredients', () => {
+    const authority = buildAuthoritativeIngredientView({
+      title: 'Matte Fit Serum Sunscreen SPF 50+ PA++++',
+      category: 'Sunscreen',
+      pdp_ingredients_raw:
+        'Aqua, Ethylhexyl Methoxycinnamate, Diethylamino Hydroxybenzoyl Hexyl Benzoate, Ethylhexyl Triazone, Bis-Ethylhexyloxyphenol Methoxyphenyl Triazine, Glycerin.',
+    });
+
+    expect(authority.active_items).toEqual([
+      'Ethylhexyl Methoxycinnamate',
+      'Ethylhexyl Triazone',
+      'Diethylamino Hydroxybenzoyl Hexyl Benzoate',
+      'Bis-Ethylhexyloxyphenol Methoxyphenyl Triazine',
+    ]);
   });
 
   test('does not augment explicit sunscreen active blocks with incidental INCI colorants', () => {
