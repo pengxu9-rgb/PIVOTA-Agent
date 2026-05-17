@@ -6,6 +6,7 @@ const {
   buildProbeFailureResponse,
   mergePdpProbeResponses,
   unwrapLivePdpPayload,
+  resolveExpectedLivePdpPrice,
   writeOutput,
 } = require('../../scripts/audit-external-product-pdp-quality');
 const {
@@ -24,6 +25,13 @@ describe('audit-external-product-pdp-quality helpers', () => {
 
   test('exports report output writer for CLI artifact mode', () => {
     expect(typeof writeOutput).toBe('function');
+  });
+
+  test('uses reviewed seed row price as live PDP audit reference for parent rows', () => {
+    expect(resolveExpectedLivePdpPrice({ price_amount: '25.95', seed_data: { snapshot: {} } })).toBe('25.95');
+    expect(resolveExpectedLivePdpPrice({ price_amount: 19.9 })).toBe(19.9);
+    expect(resolveExpectedLivePdpPrice({ price_amount: null })).toBeNull();
+    expect(resolveExpectedLivePdpPrice({ price_amount: '0' })).toBeNull();
   });
 
   test('normalizes gateway bases to the public api gateway endpoint', () => {

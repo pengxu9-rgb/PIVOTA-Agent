@@ -529,6 +529,11 @@ function mergePdpProbeResponses(coreResponse = {}, detailsResponse = {}) {
   };
 }
 
+function resolveExpectedLivePdpPrice(row = {}) {
+  const amount = Number(row?.price_amount);
+  return Number.isFinite(amount) && amount > 0 ? row.price_amount : null;
+}
+
 async function auditRow(row, {
   catalogBaseUrl,
   gatewayUrl,
@@ -542,9 +547,6 @@ async function auditRow(row, {
 }) {
   const seedData = ensureJsonObject(row.seed_data);
   const snapshot = ensureJsonObject(seedData.snapshot);
-  const variantScopedSeed =
-    normalizeNonEmptyString(seedData.source_listing_scope).toLowerCase() === 'variant' ||
-    Boolean(normalizeNonEmptyString(seedData.parent_external_product_id || seedData.parent_seed_id));
   const recall = resolveExternalSeedRecallDoc({ row, seedData, snapshot });
   const extractor = await fetchExtractorTruth(row, catalogBaseUrl, { timeoutMs: catalogTimeoutMs });
   const productId =
@@ -619,7 +621,7 @@ async function auditRow(row, {
     liveResponse: ensureJsonObject(livePdp),
     seedData,
     productFamily: productKind.family,
-    expectedPrice: variantScopedSeed ? row.price_amount : null,
+    expectedPrice: resolveExpectedLivePdpPrice(row),
     imageHealth,
   });
   const identityGate = buildIdentityGate({
@@ -799,6 +801,7 @@ module.exports = {
   isAuthoritativeInvokeUrl,
   unwrapLivePdpPayload,
   mergePdpProbeResponses,
+  resolveExpectedLivePdpPrice,
   probeImageUrl,
   probeImageHealth,
   auditRow,
