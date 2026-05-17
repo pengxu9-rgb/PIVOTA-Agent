@@ -4677,9 +4677,27 @@ async function writeIdentityRows({ listings, reviewQueueEntries, dryRun = false,
               source_kind = EXCLUDED.source_kind,
               source_tier = EXCLUDED.source_tier,
               live_read_enabled = EXCLUDED.live_read_enabled,
-              sellable_item_group_id = EXCLUDED.sellable_item_group_id,
-              product_line_id = EXCLUDED.product_line_id,
-              review_family_id = EXCLUDED.review_family_id,
+              sellable_item_group_id = CASE
+                WHEN EXCLUDED.matched_by_rule = 'reviewed_multi_offer_merge'
+                  THEN EXCLUDED.sellable_item_group_id
+                WHEN NULLIF(pdp_identity_listing.sellable_item_group_id, '') IS NOT NULL
+                  THEN pdp_identity_listing.sellable_item_group_id
+                ELSE EXCLUDED.sellable_item_group_id
+              END,
+              product_line_id = CASE
+                WHEN EXCLUDED.matched_by_rule = 'reviewed_multi_offer_merge'
+                  THEN EXCLUDED.product_line_id
+                WHEN NULLIF(pdp_identity_listing.product_line_id, '') IS NOT NULL
+                  THEN pdp_identity_listing.product_line_id
+                ELSE EXCLUDED.product_line_id
+              END,
+              review_family_id = CASE
+                WHEN EXCLUDED.matched_by_rule = 'reviewed_multi_offer_merge'
+                  THEN EXCLUDED.review_family_id
+                WHEN NULLIF(pdp_identity_listing.review_family_id, '') IS NOT NULL
+                  THEN pdp_identity_listing.review_family_id
+                ELSE EXCLUDED.review_family_id
+              END,
               identity_status = EXCLUDED.identity_status,
               identity_confidence = EXCLUDED.identity_confidence,
               matched_by_rule = EXCLUDED.matched_by_rule,
