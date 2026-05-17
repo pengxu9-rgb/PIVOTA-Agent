@@ -622,7 +622,7 @@ function normalizeStructuredItems(input, options = {}) {
     const parts =
       mode === 'steps'
         ? normalized
-            .split(/\n+|(?:^|\s)[-•]\s+|(?<=[.!?])\s+(?=[A-Z0-9])/)
+            .split(/\n+|(?:^[-•]\s+|(?<!\d)\s[-•]\s+)|(?<=[.!?])\s+(?=[A-Z0-9])/)
             .map((part) => part.trim())
             .filter(Boolean)
         : normalized
@@ -817,8 +817,8 @@ function splitHowToUseStepsFromText(text) {
   if (!normalized) return [];
   const withBreaks = normalized
     .replace(/(?:^|\s)(?:step\s*)?\d+[\).:\-]\s*/gi, '\n')
-    .replace(/(?:^|\s)[•*-]\s+/g, '\n')
-    .replace(/\s+-\s+/g, '\n');
+    .replace(/(?:^[•*\-]\s+|(?<!\d)\s[•*\-]\s+)/g, '\n')
+    .replace(/(?<!\d)\s+-\s+(?!\d)/g, '\n');
   return uniqueNonEmptyStrings(
     withBreaks
       .split(/\n+/)
