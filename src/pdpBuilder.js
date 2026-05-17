@@ -7,6 +7,10 @@ const {
   isBeautyFormulaPdpProfile,
   isBeautyToolPdpProfile,
 } = require('./pdpSchemaProfile');
+const {
+  lookupSampleFashionMeta,
+  lookupSampleElectronicsMeta,
+} = require('./fashionMetaSamples');
 
 const BEAUTY_KEYWORDS = [
   'beauty',
@@ -452,6 +456,91 @@ function inferCategoryPath(product) {
   const category = String(product.category || product.product_type || '').trim();
   if (!category) return [];
   return category.split('/').map((s) => s.trim()).filter(Boolean);
+}
+
+const FASHION_CATEGORY_RE =
+  /\b(fashion|apparel|clothing|shoe|sneaker|boot|accessor|jewel|bag|outerwear|denim|lingerie|underwear|swim|dress|skirt|coat|jacket|sweater|hoodie|jean|pant|trouser|bra|panty|sock|hat|scarf|glove|belt|wear|women|men|kids)\b/i;
+const ELECTRONICS_CATEGORY_RE =
+  /\b(electronic|phone|audio|computer|laptop|headphone|camera|gaming|smartwatch|console|tablet|tv|earbud|speaker|monitor|router)\b/i;
+
+/**
+ * Resolve the high-level category kind that the UI uses to pick a PDP
+ * container (BeautyPDPContainer / FashionPDPContainer / ElectronicsPDPContainer
+ * / GenericPDPContainer). Mirrors the dispatch heuristic in ProductDetailClient.tsx
+ * so server-side payloads carry a stable hint instead of relying on every
+ * caller re-deriving it.
+ *
+ * Order matters: an explicit `product.category_kind` wins; otherwise we
+ * check beauty (via the existing schema-profile resolver) first, then
+ * electronics, then fashion, then fall back to generic.
+ */
+function inferCategoryKind(product) {
+  const explicit = String(product.category_kind || '').toLowerCase();
+  if (
+    explicit === 'beauty' ||
+    explicit === 'fashion' ||
+    explicit === 'electronics' ||
+    explicit === 'generic'
+  ) {
+    return explicit;
+  }
+  const productId = product.product_id || product.id || null;
+  if (lookupSampleElectronicsMeta(productId)) return 'electronics';
+  if (lookupSampleFashionMeta(productId)) return 'fashion';
+  try {
+    const profile = resolvePdpSchemaProfile(product);
+    if (isBeautyFormulaPdpProfile(profile) || isBeautyToolPdpProfile(profile)) return 'beauty';
+  } catch {
+    // resolver may throw on incomplete product shapes — fall through.
+  }
+  const taxonomy = [
+    Array.isArray(product.category_path) ? product.category_path.join(' ') : '',
+    String(product.category || product.product_type || ''),
+    String(product.title || product.name || ''),
+    String(product.subtitle || ''),
+    Array.isArray(product.tags) ? product.tags.join(' ') : '',
+  ]
+    .join(' ')
+    .toLowerCase();
+  if (ELECTRONICS_CATEGORY_RE.test(taxonomy)) return 'electronics';
+  if (FASHION_CATEGORY_RE.test(taxonomy)) return 'fashion';
+  return 'generic';
+}
+
+/**
+ * Whitelist + light shape check for `fashion_meta`. Pass-through is fine —
+ * we don't transform — but we guard against arbitrary upstream blobs by
+ * only keeping the documented fields. Matches the FashionMeta type in
+ * pivota-agent-ui/src/features/pdp/types.ts.
+ */
+function pickFashionMeta(meta) {
+  if (!meta || typeof meta !== 'object') return null;
+  const out = {};
+  if (meta.size_fit_chart && typeof meta.size_fit_chart === 'object') {
+    out.size_fit_chart = meta.size_fit_chart;
+  }
+  if (meta.model && typeof meta.model === 'object') out.model = meta.model;
+  if (typeof meta.material === 'string') out.material = meta.material;
+  if (typeof meta.origin === 'string') out.origin = meta.origin;
+  if (typeof meta.care === 'string') out.care = meta.care;
+  if (Array.isArray(meta.styling_pairings)) out.styling_pairings = meta.styling_pairings;
+  return Object.keys(out).length ? out : null;
+}
+
+/**
+ * Whitelist + light shape check for `electronics_meta`. Mirrors
+ * ElectronicsMeta in pivota-agent-ui/src/features/pdp/types.ts.
+ */
+function pickElectronicsMeta(meta) {
+  if (!meta || typeof meta !== 'object') return null;
+  const out = {};
+  if (Array.isArray(meta.configurator_groups)) out.configurator_groups = meta.configurator_groups;
+  if (Array.isArray(meta.protection_plans)) out.protection_plans = meta.protection_plans;
+  if (Array.isArray(meta.pro_reviews)) out.pro_reviews = meta.pro_reviews;
+  if (Array.isArray(meta.in_box)) out.in_box = meta.in_box;
+  if (meta.compare_with && typeof meta.compare_with === 'object') out.compare_with = meta.compare_with;
+  if (Array.isArray(meta.spec_groups)) out.spec_groups = meta.spec_groups;
+  return Object.keys(out).length ? out : null;
 }
 
 function asNonEmptyString(value) {
@@ -4123,6 +4212,19 @@ function buildPdpPayload(args) {
       subtitle: product.subtitle || '',
       brand: brandLabel ? { name: brandLabel } : undefined,
       category_path: inferCategoryPath(product),
+      category_kind: inferCategoryKind(product),
+      ...(() => {
+        const upstream = pickFashionMeta(product.fashion_meta);
+        if (upstream) return { fashion_meta: upstream };
+        const sample = pickFashionMeta(lookupSampleFashionMeta(product.product_id || product.id));
+        return sample ? { fashion_meta: sample } : {};
+      })(),
+      ...(() => {
+        const upstream = pickElectronicsMeta(product.electronics_meta);
+        if (upstream) return { electronics_meta: upstream };
+        const sample = pickElectronicsMeta(lookupSampleElectronicsMeta(product.product_id || product.id));
+        return sample ? { electronics_meta: sample } : {};
+      })(),
       image_url: normalizePdpImageUrl(product.image_url || product.image) || undefined,
       image_urls: mediaImageUrls.length ? mediaImageUrls : undefined,
       images: mediaImageUrls.length ? mediaImageUrls : undefined,

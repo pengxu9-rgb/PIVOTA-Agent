@@ -1560,4 +1560,172 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
       expect.not.arrayContaining([expect.objectContaining({ heading: 'Details' })]),
     );
   });
+
+  test('emits category_kind + passes fashion_meta through for apparel products', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'sig_apparel_1',
+        merchant_id: 'm1',
+        title: 'Push-Up Lingerie Set',
+        category: 'Apparel/Lingerie',
+        fashion_meta: {
+          size_fit_chart: {
+            columns: ['Size', 'Bust', 'Underbust'],
+            rows: [
+              { label: 'S', values: ['32A-32B', '70-74cm'] },
+              { label: 'M', values: ['34B-34C', '74-78cm'] },
+            ],
+            note: 'Measurements in cm; bust range matches US sizing.',
+            tip: 'Between sizes? Size up for fuller bust.',
+          },
+          model: { info: "Model is 5'8\" wearing M", avatar_url: null },
+          material: '90% nylon, 10% spandex',
+          origin: 'Made in Vietnam',
+          care: 'Hand wash cold; lay flat to dry',
+          styling_pairings: [
+            { name: 'Silk Robe', brand: 'GR', price: 38, img: 'https://example.com/robe.jpg' },
+          ],
+        },
+        variants: [
+          { id: 'v_s', title: 'S', price: { amount: 23, currency: 'USD' } },
+          { id: 'v_m', title: 'M', price: { amount: 23, currency: 'USD' } },
+        ],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+    expect(payload.product.category_kind).toBe('fashion');
+    expect(payload.product.fashion_meta).toBeDefined();
+    expect(payload.product.fashion_meta.material).toBe('90% nylon, 10% spandex');
+    expect(payload.product.fashion_meta.size_fit_chart.rows).toHaveLength(2);
+    expect(payload.product.electronics_meta).toBeUndefined();
+  });
+
+  test('emits category_kind = electronics + passes electronics_meta through', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'sig_electronics_1',
+        merchant_id: 'm1',
+        title: 'WH-1000XM5 Wireless Headphones',
+        category: 'Electronics/Audio/Headphones',
+        electronics_meta: {
+          spec_groups: [
+            { group: 'Battery', icon: 'battery', rows: [['Playback', '30 hours']] },
+          ],
+          in_box: ['Headphones', 'Carrying case', 'USB-C cable'],
+          pro_reviews: [
+            { source: 'Wirecutter', verdict: 'Top pick', score: '4.6', url: 'https://wirecutter.example/sony' },
+          ],
+        },
+        variants: [{ id: 'v_black', title: 'Black', price: { amount: 399, currency: 'USD' } }],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+    expect(payload.product.category_kind).toBe('electronics');
+    expect(payload.product.electronics_meta.in_box).toContain('Headphones');
+    expect(payload.product.electronics_meta.pro_reviews).toHaveLength(1);
+    expect(payload.product.fashion_meta).toBeUndefined();
+  });
+
+  test('omits fashion_meta / electronics_meta blocks when source product lacks them', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'sig_no_meta',
+        merchant_id: 'm1',
+        title: 'Plain T-Shirt',
+        category: 'Apparel/Tops',
+        variants: [{ id: 'v_one', title: 'One Size', price: { amount: 12, currency: 'USD' } }],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+    expect(payload.product.category_kind).toBe('fashion');
+    expect(payload.product.fashion_meta).toBeUndefined();
+    expect(payload.product.electronics_meta).toBeUndefined();
+  });
+
+  test('falls back to category_kind = generic when no signal matches', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'sig_generic',
+        merchant_id: 'm1',
+        title: 'Random Object',
+        variants: [{ id: 'v_one', title: 'Default', price: { amount: 5, currency: 'USD' } }],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+    expect(payload.product.category_kind).toBe('generic');
+  });
+
+  test('respects an explicit product.category_kind override', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'sig_explicit',
+        merchant_id: 'm1',
+        title: 'Mystery Item',
+        category: 'Apparel/Lingerie', // would normally infer fashion
+        category_kind: 'generic', // explicit override wins
+        variants: [{ id: 'v_one', title: 'Default', price: { amount: 5, currency: 'USD' } }],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+    expect(payload.product.category_kind).toBe('generic');
+  });
+
+  test('overlays sample fashion_meta for a known sample product_id', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'sample_fashion_lingerie_001',
+        merchant_id: 'm_sample',
+        title: 'Sample Push-Up Lingerie Set',
+        variants: [{ id: 'v_m', title: 'M', price: { amount: 28, currency: 'USD' } }],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+    expect(payload.product.category_kind).toBe('fashion');
+    expect(payload.product.fashion_meta).toBeDefined();
+    expect(payload.product.fashion_meta.material).toMatch(/nylon/i);
+    expect(payload.product.fashion_meta.size_fit_chart.rows.length).toBeGreaterThan(0);
+    expect(payload.product.fashion_meta.styling_pairings.length).toBeGreaterThan(0);
+  });
+
+  test('overlays sample electronics_meta for a known sample product_id', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'sample_electronics_macbook_air_m3',
+        merchant_id: 'm_sample',
+        title: 'Sample MacBook Air M3',
+        variants: [{ id: 'v_base', title: '13"', price: { amount: 1099, currency: 'USD' } }],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+    expect(payload.product.category_kind).toBe('electronics');
+    expect(payload.product.electronics_meta).toBeDefined();
+    expect(payload.product.electronics_meta.configurator_groups.length).toBeGreaterThan(0);
+    expect(payload.product.electronics_meta.in_box).toContain('MacBook Air');
+  });
+
+  test('upstream fashion_meta wins over the sample overlay', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'sample_fashion_lingerie_001', // matches an overlay key
+        merchant_id: 'm_sample',
+        title: 'Sample',
+        fashion_meta: {
+          material: 'CUSTOM upstream material', // upstream override
+        },
+        variants: [{ id: 'v_m', title: 'M', price: { amount: 28, currency: 'USD' } }],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+    expect(payload.product.fashion_meta.material).toBe('CUSTOM upstream material');
+    // Upstream-only field set; overlay-only fields (e.g. size_fit_chart) are NOT merged.
+    expect(payload.product.fashion_meta.size_fit_chart).toBeUndefined();
+  });
 });
