@@ -144,8 +144,10 @@ const HARD_WRITEBACK_QUARANTINE_BUCKETS = new Set([
   SEED_QUARANTINE_BUCKET.rowIngredientNameOnly,
   SEED_QUARANTINE_BUCKET.nonBeautyDomain,
 ]);
-const INGREDIENT_SECTION_HEADING_PATTERNS = [/\b(ingredients?|inci)\b/i];
-const ACTIVE_INGREDIENT_SECTION_HEADING_PATTERNS = [/\bactive ingredients?\b/i];
+const INGREDIENT_SECTION_HEADING_PATTERNS = [
+  /^\s*(?:ingredients?|full ingredients?|ingredients? list|inci|full inci)\s*:?\s*$/i,
+];
+const ACTIVE_INGREDIENT_SECTION_HEADING_PATTERNS = [/^\s*active ingredients?\s*:?\s*$/i];
 const HOW_TO_USE_SECTION_HEADING_PATTERNS = [/\bhow to use\b/i];
 const SYNTHETIC_SUMMARY_RE = /\bOFFICIAL:\b[\s\S]*\/\/\/\s*SOCIAL HIGHLIGHTS:/i;
 

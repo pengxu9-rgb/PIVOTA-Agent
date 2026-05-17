@@ -3012,8 +3012,109 @@ function shouldClearStaleSeedActiveIngredients(seedData, nextPdpActiveIngredient
     ...((Array.isArray(seedData?.activeIngredients) ? seedData.activeIngredients : [])),
     ...((Array.isArray(seedData?.snapshot?.active_ingredients) ? seedData.snapshot.active_ingredients : [])),
     ...((Array.isArray(seedData?.snapshot?.activeIngredients) ? seedData.snapshot.activeIngredients : [])),
+    ...((Array.isArray(seedData?.ingredient_intel?.active_ingredients) ? seedData.ingredient_intel.active_ingredients : [])),
+    ...((Array.isArray(seedData?.snapshot?.ingredient_intel?.active_ingredients)
+      ? seedData.snapshot.ingredient_intel.active_ingredients
+      : [])),
   ]);
   return currentActiveIngredients.length > 0;
+}
+
+function hasReviewedActiveIngredientContract(seedData) {
+  const snapshot = ensureJsonObject(seedData?.snapshot);
+  return (
+    ensureJsonObject(seedData?.reviewed_active_ingredients_v1).contract_version ===
+      'external_seed.reviewed_active_ingredients.v1' ||
+    ensureJsonObject(snapshot.reviewed_active_ingredients_v1).contract_version ===
+      'external_seed.reviewed_active_ingredients.v1'
+  );
+}
+
+function pruneStaleIngredientIntel(intelValue, {
+  clearIngredientText = false,
+  clearActiveIngredients = false,
+  clearIngredientTokens = false,
+} = {}) {
+  if (!intelValue || typeof intelValue !== 'object' || Array.isArray(intelValue)) return intelValue;
+  const intel = { ...intelValue };
+  const authoritative = ensureJsonObject(intel.authoritative);
+
+  if (clearIngredientText) {
+    delete intel.raw_ingredient_text_clean;
+    delete intel.inci_list;
+    delete intel.inci_raw;
+    delete intel.inci_normalized;
+    if (clearIngredientTokens) delete intel.ingredient_tokens;
+    delete authoritative.raw_text;
+    delete authoritative.items;
+    if (authoritative.source_origin && !authoritative.active_items?.length) delete authoritative.source_origin;
+  }
+
+  if (clearActiveIngredients) {
+    delete intel.active_ingredients;
+    delete intel.activeIngredients;
+    delete authoritative.active_items;
+    delete authoritative.active_source_origin;
+  }
+
+  if (Object.keys(authoritative).length > 0) {
+    intel.authoritative = authoritative;
+  } else {
+    delete intel.authoritative;
+  }
+
+  return Object.keys(intel).length > 0 ? intel : undefined;
+}
+
+function clearStaleStructuredIngredientEvidence(seedData, {
+  nextPdpIngredientsRaw = '',
+  nextPdpActiveIngredientsRaw = '',
+} = {}) {
+  if (!seedData || typeof seedData !== 'object') return seedData;
+  const snapshot = ensureJsonObject(seedData.snapshot);
+  const clearIngredientText = !normalizeNonEmptyString(nextPdpIngredientsRaw);
+  const clearActiveIngredients =
+    !normalizeNonEmptyString(nextPdpActiveIngredientsRaw) &&
+    !hasReviewedActiveIngredientContract(seedData);
+  const clearIngredientTokens = clearIngredientText && clearActiveIngredients;
+
+  if (!clearIngredientText && !clearActiveIngredients) {
+    seedData.snapshot = snapshot;
+    return seedData;
+  }
+
+  for (const target of [seedData, snapshot]) {
+    if (!target || typeof target !== 'object') continue;
+    if (clearIngredientText) {
+      delete target.raw_ingredient_text_clean;
+      delete target.inci_list;
+      if (clearIngredientTokens) delete target.ingredient_tokens;
+      delete target.ingredients_inci;
+      delete target.ingredientsInci;
+      delete target.inci_ingredients;
+      delete target.inciIngredients;
+      delete target.inci;
+    }
+    if (clearActiveIngredients) {
+      delete target.active_ingredients;
+      delete target.activeIngredients;
+      delete target.pdp_active_ingredients_raw;
+      delete target.active_ingredients_raw;
+    }
+    const prunedIntel = pruneStaleIngredientIntel(target.ingredient_intel, {
+      clearIngredientText,
+      clearActiveIngredients,
+      clearIngredientTokens,
+    });
+    if (prunedIntel) {
+      target.ingredient_intel = prunedIntel;
+    } else {
+      delete target.ingredient_intel;
+    }
+  }
+
+  seedData.snapshot = snapshot;
+  return seedData;
 }
 
 function clearStructuredIngredientFieldsForIdentityRepair(seedData) {
@@ -4251,6 +4352,10 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
     delete nextSeedData.snapshot.active_ingredients;
     delete nextSeedData.snapshot.activeIngredients;
   }
+  clearStaleStructuredIngredientEvidence(nextSeedData, {
+    nextPdpIngredientsRaw,
+    nextPdpActiveIngredientsRaw,
+  });
   const authoritativeSnapshot =
     Boolean(nextPdpDescriptionRaw) ||
     nextPdpDetailsSections.length > 0 ||
@@ -5648,6 +5753,12 @@ async function processRow(row, options) {
           }
         : payload.nextRow;
     enrichedNextRow = reapplyApprovedPdpIngredientFieldsToRow(enrichedNextRow);
+    clearStaleStructuredIngredientEvidence(enrichedNextRow.seed_data, {
+      nextPdpIngredientsRaw: enrichedNextRow.seed_data?.pdp_ingredients_raw ||
+        enrichedNextRow.seed_data?.snapshot?.pdp_ingredients_raw,
+      nextPdpActiveIngredientsRaw: enrichedNextRow.seed_data?.pdp_active_ingredients_raw ||
+        enrichedNextRow.seed_data?.snapshot?.pdp_active_ingredients_raw,
+    });
     let imageHealthValidation = null;
     if (options.validateImageHealth) {
       const validationResult = await validateNextRowImageHealth(enrichedNextRow);

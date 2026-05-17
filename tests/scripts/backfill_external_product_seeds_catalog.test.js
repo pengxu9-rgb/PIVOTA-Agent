@@ -1975,6 +1975,12 @@ describe('backfill-external-product-seeds-catalog', () => {
       ]),
     );
     expect(result.payload.nextRow.seed_data.pdp_how_to_use_raw).toBeUndefined();
+    expect(result.payload.nextRow.seed_data.raw_ingredient_text_clean).toBeUndefined();
+    expect(result.payload.nextRow.seed_data.inci_list).toBeUndefined();
+    expect(result.payload.nextRow.seed_data.active_ingredients).toBeUndefined();
+    expect(result.payload.nextRow.seed_data.snapshot.active_ingredients).toBeUndefined();
+    expect(result.payload.nextRow.seed_data.ingredient_intel?.active_ingredients).toBeUndefined();
+    expect(result.payload.nextRow.seed_data.snapshot.ingredient_intel?.active_ingredients).toBeUndefined();
     expect(result.payload.nextRow.seed_data.strict_pdp_source_blocker_v1).toBeUndefined();
     expect(result.payload.nextRow.seed_data.snapshot.strict_pdp_source_blocker_v1).toBeUndefined();
     expect(result.payload.nextRow.seed_data.pdp_field_quality_summary.description_raw).toMatchObject({
