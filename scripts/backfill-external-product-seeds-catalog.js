@@ -3741,11 +3741,10 @@ function buildSeedUpdatePayload(row, response, targetUrl) {
       representativeProduct?.pdp_how_to_use_raw ||
       normalizedRepresentativeHowToSectionBody,
   );
-  const extractedHowToUseFromDescription = extractHowToUseFromPdpText(
-    representativeProduct?.description_raw ||
-      representativeProduct?.pdp_description_raw ||
-      rawLiveExtractedDescription,
-  );
+  const extractedHowToUseFromDescription =
+    extractHowToUseFromPdpText(productDescriptionRaw) ||
+    extractHowToUseFromPdpText(representativeProduct?.pdp_description_raw || rawLiveExtractedDescription) ||
+    extractHowToUseFromPdpText(representativeProduct?.description_raw);
   const ingredientsFromRepresentativeHowTo = extractFullIngredientsFromText(representativeHowToUseSourceRaw);
   const pdpIngredientsRaw = normalizeNonEmptyString(
     representativeProduct?.ingredients_raw ||

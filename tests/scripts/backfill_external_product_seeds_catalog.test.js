@@ -322,6 +322,62 @@ Contains four types of peptides`;
     expect(choosePdpHowToUseRaw(primary, fallback)).toBe(fallback);
   });
 
+  test('uses full PDP description how-to when short extractor usage starts at step 2', () => {
+    const row = {
+      id: 'eps_medicube_mask',
+      title: 'Deep Peptide Radiance Mask',
+      canonical_url: 'https://medicube.us/products/deep-peptide-radiance-mask',
+      destination_url: 'https://medicube.us/products/deep-peptide-radiance-mask',
+      image_url: '',
+      price_amount: 18,
+      price_currency: 'USD',
+      availability: 'in_stock',
+      seed_data: { snapshot: {} },
+    };
+
+    const payload = buildSeedUpdatePayload(
+      row,
+      {
+        products: [
+          {
+            title: row.title,
+            url: row.canonical_url,
+            description_raw: 'High-functioning peptide cream essence.',
+            pdp_description_raw: `High-functioning peptide cream essence.
+
+How to use
+
+1. Prep skin with toner after cleansing
+2. After opening the mask, adjust to fit on face
+3. Leave it on for 10-20 minutes and remove
+4. Gently pat to enhance absorption
+
+What's in it?
+
+Contains four types of peptides`,
+            how_to_use_raw: '2. After opening the mask, adjust to fit on face\n3. Leave it on for 10-20 minutes and remove',
+            field_quality_summary: {
+              description_raw: { source_quality_status: 'high', source_kinds: ['shopify_description'] },
+              how_to_use_raw: {
+                source_quality_status: 'high',
+                source_kinds: ['shopify_body_html_labeled_how_to_use'],
+              },
+            },
+            variants: [],
+          },
+        ],
+        variants: [],
+        diagnostics: { failure_category: null },
+      },
+      row.canonical_url,
+    );
+
+    expect(payload.nextRow.seed_data.pdp_how_to_use_raw).toContain(
+      '1. Prep skin with toner after cleansing',
+    );
+    expect(payload.nextRow.seed_data.pdp_how_to_use_raw).not.toContain("What's in it");
+  });
+
   test('extracts full ingredients from mixed PDP detail section bodies', () => {
     const raw = pickPdpIngredientsRaw('', [
       {
