@@ -24,6 +24,18 @@ const SHADE_AXIS_RE = /^(shade|color|colour|tone|hue)$/i;
 const LOCALE_LIKE_VARIANT_VALUE_RE = /^(us|usa|uk|eu|fr|de|es|it|ca|au|jp|kr|cn)$/i;
 const NAMED_SIZE_EVIDENCE_RE = /\b(full size|travel size|jumbo|mini|refill|regular|standard|one size)\b/i;
 const DEFAULT_TITLE_AXIS_RE = /\b(?:default title|default)\b/i;
+const ACTIVE_ALLOWED_HINT_RE =
+  /\b(?:spf|sunscreen|sun\s*(?:screen|protection|defense)|uv|pa\+|acne|blemish|treatment|serum|essence|ampoule|retinol|retinal|salicylic|benzoyl\s+peroxide|azelaic|vitamin\s+c)\b/i;
+const COLOR_COSMETIC_OR_TOOL_RE =
+  /\b(?:foundation|concealer|skin\s+tint|powder|blush|bronzer|contour|highlighter|luminizer|gloss|lip(?:stick| liner| oil| gloss| butter| balm| kit)?|mascara|eyeliner|kyliner|brow|palette|eyeshadow|makeup\s+sponge|sponge|brush|sharpener|bundle|duo|trio|collection|kit|look)\b/i;
+const NON_SURFACEABLE_ACTIVE_STATUS = new Set([
+  'low',
+  'blocked',
+  'quarantined',
+  'not_applicable',
+  'reviewed_not_applicable',
+  'cleared_stale_non_source_backed',
+]);
 
 function normalizeAmount(value) {
   if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
@@ -266,6 +278,42 @@ function collectSeedIdentityText(seedData = {}) {
     .join(' ');
 }
 
+function hasReviewedActiveIngredientsContract(seedData = {}) {
+  const snapshot = ensureJsonObject(seedData?.snapshot);
+  return [seedData?.reviewed_active_ingredients_v1, snapshot?.reviewed_active_ingredients_v1]
+    .map(ensureJsonObject)
+    .some((contract) => contract.contract_version === 'external_seed.reviewed_active_ingredients.v1');
+}
+
+function getSeedPdpFieldQualityStatus(seedData = {}, key = '') {
+  const snapshot = ensureJsonObject(seedData?.snapshot);
+  for (const source of [seedData, snapshot]) {
+    const row = ensureJsonObject(ensureJsonObject(source?.pdp_field_quality_summary)[key]);
+    const status = normalizeNonEmptyString(row.source_quality_status || row.sourceQualityStatus).toLowerCase();
+    if (status) return status;
+  }
+  return '';
+}
+
+function hasNonSurfaceableActiveQuality(seedData = {}) {
+  const status =
+    getSeedPdpFieldQualityStatus(seedData, 'active_ingredients_raw') ||
+    getSeedPdpFieldQualityStatus(seedData, 'active_ingredients');
+  return (
+    Boolean(status) &&
+    (NON_SURFACEABLE_ACTIVE_STATUS.has(status) || status.startsWith('force_filled'))
+  );
+}
+
+function shouldSuppressSeedActiveExpectation(seedData = {}) {
+  if (hasReviewedActiveIngredientsContract(seedData)) return false;
+  if (hasNonSurfaceableActiveQuality(seedData)) return true;
+  const context = collectSeedIdentityText(seedData);
+  if (!context) return false;
+  if (ACTIVE_ALLOWED_HINT_RE.test(context)) return false;
+  return COLOR_COSMETIC_OR_TOOL_RE.test(context);
+}
+
 function hasSunscreenIdentityContext(contextText = '') {
   return /\b(?:spf|sunscreen|sun screen|sun protection|broad spectrum|uv|uva|uvb|pa\+{2,}|protective fluid)\b/i.test(
     contextText,
@@ -279,6 +327,7 @@ function isMakeupComplexionIdentityContext(contextText = '') {
 }
 
 function seedExpectsActiveIngredients(seedData = {}) {
+  if (shouldSuppressSeedActiveExpectation(seedData)) return false;
   const snapshot = ensureJsonObject(seedData?.snapshot);
   const rawActive = normalizeNonEmptyString(
     seedData?.pdp_active_ingredients_raw ||

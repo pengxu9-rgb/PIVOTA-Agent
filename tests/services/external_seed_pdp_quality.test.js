@@ -313,6 +313,57 @@ describe('externalSeedPdpQuality', () => {
     expect(livePdpGate.failure_reasons).not.toContain('active_ingredients_expected_but_hidden');
   });
 
+  test('does not expect active ingredients for makeup when stale active fields remain quarantined', () => {
+    const livePdpGate = buildLivePdpGate({
+      seedData: {
+        title: 'Skin Tint Blurring Elixir',
+        category: 'Foundation',
+        pdp_active_ingredients_raw: 'Hyaluronic Acid, Niacinamide',
+        pdp_field_quality_summary: {
+          active_ingredients_raw: {
+            source_quality_status: 'quarantined',
+          },
+        },
+      },
+      livePayload: {
+        modules: [
+          {
+            type: 'product_details',
+            data: {
+              sections: [{ heading: 'Overview', content: 'A blurring complexion tint.' }],
+            },
+          },
+        ],
+      },
+    });
+
+    expect(livePdpGate.active_ingredients_status.expected).toBe(false);
+    expect(livePdpGate.failure_reasons).not.toContain('active_ingredients_expected_but_hidden');
+  });
+
+  test('does not expect active ingredients for makeup from stale active fields without reviewed contract', () => {
+    const livePdpGate = buildLivePdpGate({
+      seedData: {
+        title: 'Power Plush Longwear Foundation',
+        category: 'Foundation',
+        pdp_active_ingredients_raw: 'Vitamin E',
+      },
+      livePayload: {
+        modules: [
+          {
+            type: 'product_details',
+            data: {
+              sections: [{ heading: 'Overview', content: 'A medium coverage longwear foundation.' }],
+            },
+          },
+        ],
+      },
+    });
+
+    expect(livePdpGate.active_ingredients_status.expected).toBe(false);
+    expect(livePdpGate.failure_reasons).not.toContain('active_ingredients_expected_but_hidden');
+  });
+
   test('expects active sunscreen ingredients when UV filter INCI has SPF context', () => {
     const livePdpGate = buildLivePdpGate({
       seedData: {
