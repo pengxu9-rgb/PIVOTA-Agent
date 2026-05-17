@@ -27638,15 +27638,34 @@ app.post('/api/admin/catalog-sync/run', requireAdmin, async (req, res) => {
 
     const targetMerchantIds = Array.isArray(target?.merchantIds) ? target.merchantIds : [];
     const nowMs = Date.now();
-    const eligibleMerchantIds = ignoreSuppression
-      ? targetMerchantIds.slice()
-      : targetMerchantIds.filter((merchantId) => !getCatalogSyncSuppressionStatus(merchantId, nowMs).suppressed);
+    const eligibleMerchantIds = [];
+    const suppressedMerchants = [];
+    for (const merchantId of targetMerchantIds) {
+      const suppression = getCatalogSyncSuppressionStatus(merchantId, nowMs);
+      if (ignoreSuppression || !suppression.suppressed) {
+        eligibleMerchantIds.push(merchantId);
+      } else {
+        suppressedMerchants.push({
+          merchant_id: merchantId,
+          reason: suppression.reason,
+          blocked_until: suppression.blocked_until,
+          invalid_merchant: suppression.invalid_merchant,
+        });
+      }
+    }
 
     const requested = {
       merchant_id: requestedMerchantId || null,
       limit_override: Number.isFinite(requestedLimit) ? limitEffective : null,
       ignore_suppression: ignoreSuppression,
     };
+
+    catalogSyncState.target_source = target?.source || null;
+    catalogSyncState.target_count = targetMerchantIds.length;
+    catalogSyncState.target_eligible_count = eligibleMerchantIds.length;
+    catalogSyncState.target_suppressed_count = suppressedMerchants.length;
+    catalogSyncState.target_sample = targetMerchantIds.slice(0, 20);
+    catalogSyncState.target_suppressed_sample = suppressedMerchants.slice(0, 20);
 
     if (!eligibleMerchantIds.length) {
       return res.json({
@@ -27658,6 +27677,7 @@ app.post('/api/admin/catalog-sync/run', requireAdmin, async (req, res) => {
           target_source: target?.source || null,
           target_count: targetMerchantIds.length,
           target_eligible_count: 0,
+          target_suppressed_count: suppressedMerchants.length,
           limit_effective: limitEffective,
           ttl_seconds: ttlSeconds,
           timing_ms: Math.max(0, Date.now() - startedAt),
@@ -27689,17 +27709,49 @@ app.post('/api/admin/catalog-sync/run', requireAdmin, async (req, res) => {
           data: upstream?.data || null,
         });
       } catch (err) {
+        const invalidMerchant = isCatalogSyncInvalidMerchantError(err);
         perMerchant.push({
           merchant_id: merchantId,
           ok: false,
           status: Number.isFinite(Number(err?.response?.status)) ? Number(err.response.status) : null,
           duration_ms: Math.max(0, Date.now() - runStartedAt),
           error: err?.message || String(err),
+          invalid_merchant: invalidMerchant,
         });
       }
     }
 
     const allOk = perMerchant.every((item) => item && item.ok === true);
+    const completedAt = new Date().toISOString();
+    catalogSyncState.last_run_at = new Date(startedAt).toISOString();
+    for (const item of perMerchant) {
+      if (!item?.merchant_id) continue;
+      catalogSyncState.per_merchant[item.merchant_id] = {
+        ok: item.ok === true,
+        skipped: false,
+        last_run_at: completedAt,
+        attempts: 1,
+        duration_ms: Number.isFinite(Number(item.duration_ms)) ? Number(item.duration_ms) : 0,
+        summary: item.ok ? item.data?.summary || item.data || null : null,
+        status: Number.isFinite(Number(item.status)) ? Number(item.status) : null,
+        timeout_ms: CREATOR_CATALOG_AUTO_SYNC_TIMEOUT_MS,
+        timeout_streak: 0,
+        invalid_merchant: item.invalid_merchant === true,
+        error: item.ok ? null : item.error || 'Manual catalog sync failed',
+        blocked_until_ms: null,
+        blocked_until: null,
+      };
+    }
+    if (allOk) {
+      catalogSyncState.last_success_at = completedAt;
+      catalogSyncState.last_error = null;
+    } else {
+      const firstError = perMerchant.find((item) => item && item.ok !== true);
+      catalogSyncState.last_error = firstError
+        ? `${firstError.merchant_id}: ${firstError.error || 'Manual catalog sync failed'}`
+        : 'Manual catalog sync failed';
+    }
+
     const statusCode = allOk ? 200 : 502;
     return res.status(statusCode).json({
       ok: allOk,
@@ -27710,6 +27762,7 @@ app.post('/api/admin/catalog-sync/run', requireAdmin, async (req, res) => {
         target_source: target?.source || null,
         target_count: targetMerchantIds.length,
         target_eligible_count: eligibleMerchantIds.length,
+        target_suppressed_count: suppressedMerchants.length,
         limit_effective: limitEffective,
         ttl_seconds: ttlSeconds,
         timing_ms: Math.max(0, Date.now() - startedAt),
