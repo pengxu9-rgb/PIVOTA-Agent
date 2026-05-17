@@ -1137,6 +1137,105 @@ describe('RecommendationEngine external candidate fetch', () => {
     expect(products.every((product) => product.domain === 'tirtir.global')).toBe(true);
   });
 
+  test('deep-domain recall uses catalog category path before slow JSON category/domain scans', async () => {
+    process.env.DATABASE_URL = 'postgres://example.test/pivota';
+
+    const queryMock = jest.fn(async (sql, params) => {
+      const sqlText = String(sql);
+      if (sqlText.includes('FROM catalog_products cp')) {
+        expect(params?.[0]).toBe('beauty/makeup/face/primer');
+        return {
+          rows: Array.from({ length: 12 }).map((_, index) => ({
+            product_key: `cp_primer_${index}`,
+            merchant_id: 'external_seed',
+            platform: 'external_seed',
+            source_product_id: `ext_catalog_primer_${index}`,
+            product_title: `Catalog Primer ${index}`,
+            brand: index === 0 ? 'TIRTIR Global' : `Primer Brand ${index}`,
+            product_type: 'Primer',
+            category: 'Primer',
+            category_path: 'beauty/makeup/face/primer',
+            canonical_url: `https://brand-${index}.example/products/primer`,
+            product_image_url: `https://brand-${index}.example/primer.jpg`,
+            pivota_signature_id: `sig_catalog_primer_${index}`,
+            pivota_canonical_url: `https://agent.pivota.cc/products/sig_catalog_primer_${index}`,
+            product_payload: {
+              seed_data: {
+                brand: index === 0 ? 'TIRTIR Global' : `Primer Brand ${index}`,
+                title: `Catalog Primer ${index}`,
+                category: 'Primer',
+                product_type: 'Primer',
+                price_amount: 24 + index,
+                price_currency: 'USD',
+                availability: 'in_stock',
+                image_url: `https://brand-${index}.example/primer.jpg`,
+                derived: { recall: { category: 'Primer', vertical: 'makeup' } },
+              },
+            },
+          })),
+        };
+      }
+      if (sqlText.includes('domain = ANY($4)') && sqlText.includes('LIKE ANY($5')) {
+        throw new Error('domain title query should not run when catalog category path fills recall');
+      }
+      if (sqlText.includes('FROM external_product_seeds') && sqlText.includes('LIKE ANY($4::text[])')) {
+        return {
+          rows: Array.from({ length: 6 }).map((_, index) =>
+            makeExternalRow({
+              id: `eps_title_primer_${index}`,
+              external_product_id: `ext_title_primer_${index}`,
+              title: `Cross Brand Primer ${index}`,
+              brand: `Primer Brand ${index}`,
+              category: 'Primer',
+              domain: `primer-brand-${index}.example`,
+            }),
+          ),
+        };
+      }
+      if (sqlText.includes('external_product_id = ANY($1::text[])')) {
+        return {
+          rows: Array.from({ length: 12 }).map((_, index) => ({
+            external_product_id: `ext_catalog_primer_${index}`,
+          })),
+        };
+      }
+      if (
+        sqlText.includes("seed_data->'derived'->'recall'->>'category") ||
+        (sqlText.includes('domain = ANY($4)') && !sqlText.includes('LIKE ANY($5)'))
+      ) {
+        throw new Error('slow JSON category/domain scans should not run after catalog category path fills recall');
+      }
+      return { rows: [] };
+    });
+
+    jest.doMock('../../src/db', () => ({ query: queryMock }));
+    jest.doMock('../../src/logger', () => ({ warn: jest.fn(), info: jest.fn() }));
+
+    const { _internals } = require('../../src/services/RecommendationEngine');
+    const products = await _internals.fetchExternalCandidates({
+      brandHint: 'TIRTIR Global',
+      categoryHint: 'Primer',
+      categoryPathHint: 'beauty/makeup/face/primer',
+      verticalHint: 'makeup',
+      domainHints: ['https://tirtir.global/products/reflect-glow-prep-primer'],
+      limit: 36,
+      minFocusedCandidates: 12,
+      deepDomainRecall: true,
+    });
+
+    expect(products).toHaveLength(18);
+    expect(products.map((product) => product.product_id)).toContain('ext_catalog_primer_0');
+    expect(products.filter((product) => product.retrieval_source === 'catalog_category_path')).toHaveLength(12);
+    expect(
+      products
+        .filter((product) => product.retrieval_source === 'catalog_category_path')
+        .every((product) => product.category_path === 'beauty/makeup/face/primer'),
+    ).toBe(true);
+    expect(products.__externalFetchStats?.stages.map((stage) => stage.name)).toEqual(
+      ['external_title_category', 'catalog_category_path'],
+    );
+  });
+
   test('deep-domain recall expands through same-brand rows before cross-brand category recall when same-domain underfills', async () => {
     process.env.DATABASE_URL = 'postgres://example.test/pivota';
 
