@@ -1,0 +1,396 @@
+{
+  "generated_at": "2026-05-17T03:36:17.971Z",
+  "summary": {
+    "dry_run": false,
+    "filters": {
+      "market": null,
+      "domain": null,
+      "external_product_id_count": 10,
+      "limit": 10
+    },
+    "scanned_rows": 8,
+    "candidate_rows": 8,
+    "skipped_rows": 0,
+    "updated_rows": 8,
+    "failed_rows": 0
+  },
+  "apply_errors": [],
+  "results": [
+    {
+      "source_listing_ref": "external_seed:ext_430d2c9748b87d038314f374",
+      "product_id": "ext_430d2c9748b87d038314f374",
+      "title": "Birch Juice Cleansing Pad",
+      "official_url": "https://roundlab.com/products/birch-juice-cleansing-pad",
+      "official_domain": "roundlab.com",
+      "status": "updated",
+      "preserve_group_ids": {
+        "sellable_item_group_id": "sig_8035b1716fe764fba33d3eb9",
+        "product_line_id": "pl_9963505187f0c2cc641828ad",
+        "review_family_id": "rf_9963505187f0c2cc641828ad"
+      },
+      "before": {
+        "variant_axes": {
+          "shade": "default title",
+          "multi_variant": false
+        },
+        "match_basis": [
+          "official_url:https://roundlab.com/products/birch-juice-cleansing-pad",
+          "variant_axes:shade:default title"
+        ],
+        "matched_by_rule": "official_url_axes",
+        "identity_confidence": "0.9800"
+      },
+      "after": {
+        "variant_axes": {
+          "multi_variant": false
+        },
+        "match_basis": [
+          "official_url:https://roundlab.com/products/birch-juice-cleansing-pad"
+        ],
+        "matched_by_rule": "official_url_route",
+        "identity_confidence": 0.92,
+        "strong_identity": {
+          "official_url": "https://roundlab.com/products/birch-juice-cleansing-pad",
+          "official_domain": "roundlab.com",
+          "official_handle": "birch juice cleansing pad",
+          "stable_variant_id": "44960334348502"
+        },
+        "soft_identity": {
+          "brand_norm": "round lab",
+          "title_norm": "birch juice cleansing pad",
+          "title_core_norm": "birch juice cleansing pad",
+          "official_domain": "roundlab.com"
+        }
+      }
+    },
+    {
+      "source_listing_ref": "external_seed:ext_39ee239fdd7cae5736d9d3e7",
+      "product_id": "ext_39ee239fdd7cae5736d9d3e7",
+      "title": "1025 Dokdo Sleeping Pack",
+      "official_url": "https://roundlab.com/products/1025-dokdo-sleeping-pack",
+      "official_domain": "roundlab.com",
+      "status": "updated",
+      "preserve_group_ids": {
+        "sellable_item_group_id": "sig_9e60c4c44eaeefb21f9e1d29",
+        "product_line_id": "pl_20b99b0aad7b3f6fc56fa069",
+        "review_family_id": "rf_20b99b0aad7b3f6fc56fa069"
+      },
+      "before": {
+        "variant_axes": {
+          "shade": "default title",
+          "multi_variant": false
+        },
+        "match_basis": [
+          "official_url:https://roundlab.com/products/1025-dokdo-sleeping-pack",
+          "variant_axes:shade:default title"
+        ],
+        "matched_by_rule": "official_url_axes",
+        "identity_confidence": "0.9800"
+      },
+      "after": {
+        "variant_axes": {
+          "multi_variant": false
+        },
+        "match_basis": [
+          "official_url:https://roundlab.com/products/1025-dokdo-sleeping-pack"
+        ],
+        "matched_by_rule": "official_url_route",
+        "identity_confidence": 0.92,
+        "strong_identity": {
+          "official_url": "https://roundlab.com/products/1025-dokdo-sleeping-pack",
+          "official_domain": "roundlab.com",
+          "official_handle": "1025 dokdo sleeping pack",
+          "stable_variant_id": "43023572533462"
+        },
+        "soft_identity": {
+          "brand_norm": "round lab",
+          "title_norm": "1025 dokdo sleeping pack",
+          "title_core_norm": "1025 dokdo sleeping pack",
+          "official_domain": "roundlab.com"
+        }
+      }
+    },
+    {
+      "source_listing_ref": "external_seed:ext_94efe3f4b07d340ca39eb3c0",
+      "product_id": "ext_94efe3f4b07d340ca39eb3c0",
+      "title": "1025 Dokdo Mud Pack",
+      "official_url": "https://roundlab.com/products/1025-dokdo-mud-pack",
+      "official_domain": "roundlab.com",
+      "status": "updated",
+      "preserve_group_ids": {
+        "sellable_item_group_id": "sig_7462e3a7a2880efe37517314",
+        "product_line_id": "pl_49c714e3263d479e03d86747",
+        "review_family_id": "rf_49c714e3263d479e03d86747"
+      },
+      "before": {
+        "variant_axes": {
+          "shade": "default title",
+          "multi_variant": false
+        },
+        "match_basis": [
+          "official_url:https://roundlab.com/products/1025-dokdo-mud-pack",
+          "variant_axes:shade:default title"
+        ],
+        "matched_by_rule": "official_url_axes",
+        "identity_confidence": "0.9800"
+      },
+      "after": {
+        "variant_axes": {
+          "multi_variant": false
+        },
+        "match_basis": [
+          "official_url:https://roundlab.com/products/1025-dokdo-mud-pack"
+        ],
+        "matched_by_rule": "official_url_route",
+        "identity_confidence": 0.92,
+        "strong_identity": {
+          "official_url": "https://roundlab.com/products/1025-dokdo-mud-pack",
+          "official_domain": "roundlab.com",
+          "official_handle": "1025 dokdo mud pack",
+          "stable_variant_id": "43303210713302"
+        },
+        "soft_identity": {
+          "brand_norm": "round lab",
+          "title_norm": "1025 dokdo mud pack",
+          "title_core_norm": "1025 dokdo mud pack",
+          "official_domain": "roundlab.com"
+        }
+      }
+    },
+    {
+      "source_listing_ref": "external_seed:ext_52db83881b3497c1f1165248",
+      "product_id": "ext_52db83881b3497c1f1165248",
+      "title": "1025 Dokdo Lotion",
+      "official_url": "https://roundlab.com/products/1025-dokdo-lotion",
+      "official_domain": "roundlab.com",
+      "status": "updated",
+      "preserve_group_ids": {
+        "sellable_item_group_id": "sig_0e8531ace326a9795c68b4b2",
+        "product_line_id": "pl_10ad963db53ab7bf749c6231",
+        "review_family_id": "rf_10ad963db53ab7bf749c6231"
+      },
+      "before": {
+        "variant_axes": {
+          "shade": "default title",
+          "multi_variant": false
+        },
+        "match_basis": [
+          "official_url:https://roundlab.com/products/1025-dokdo-lotion",
+          "variant_axes:shade:default title"
+        ],
+        "matched_by_rule": "official_url_axes",
+        "identity_confidence": "0.9800"
+      },
+      "after": {
+        "variant_axes": {
+          "multi_variant": false
+        },
+        "match_basis": [
+          "official_url:https://roundlab.com/products/1025-dokdo-lotion"
+        ],
+        "matched_by_rule": "official_url_route",
+        "identity_confidence": 0.92,
+        "strong_identity": {
+          "official_url": "https://roundlab.com/products/1025-dokdo-lotion",
+          "official_domain": "roundlab.com",
+          "official_handle": "1025 dokdo lotion",
+          "stable_variant_id": "43023568404694"
+        },
+        "soft_identity": {
+          "brand_norm": "round lab",
+          "title_norm": "1025 dokdo lotion",
+          "title_core_norm": "1025 dokdo lotion",
+          "official_domain": "roundlab.com"
+        }
+      }
+    },
+    {
+      "source_listing_ref": "external_seed:ext_624a12ac9aec83ba278950e0",
+      "product_id": "ext_624a12ac9aec83ba278950e0",
+      "title": "1025 Dokdo Cream",
+      "official_url": "https://roundlab.com/products/1025-dokdo-cream",
+      "official_domain": "roundlab.com",
+      "status": "updated",
+      "preserve_group_ids": {
+        "sellable_item_group_id": "sig_75b1213dd259bdacaa19f48a",
+        "product_line_id": "pl_c8eb98e36982e99c5550e61e",
+        "review_family_id": "rf_c8eb98e36982e99c5550e61e"
+      },
+      "before": {
+        "variant_axes": {
+          "shade": "default title",
+          "multi_variant": false
+        },
+        "match_basis": [
+          "official_url:https://roundlab.com/products/1025-dokdo-cream",
+          "variant_axes:shade:default title"
+        ],
+        "matched_by_rule": "official_url_axes",
+        "identity_confidence": "0.9800"
+      },
+      "after": {
+        "variant_axes": {
+          "multi_variant": false
+        },
+        "match_basis": [
+          "official_url:https://roundlab.com/products/1025-dokdo-cream"
+        ],
+        "matched_by_rule": "official_url_route",
+        "identity_confidence": 0.92,
+        "strong_identity": {
+          "official_url": "https://roundlab.com/products/1025-dokdo-cream",
+          "official_domain": "roundlab.com",
+          "official_handle": "1025 dokdo cream",
+          "stable_variant_id": "43023569486038"
+        },
+        "soft_identity": {
+          "brand_norm": "round lab",
+          "title_norm": "1025 dokdo cream",
+          "title_core_norm": "1025 dokdo cream",
+          "official_domain": "roundlab.com"
+        }
+      }
+    },
+    {
+      "source_listing_ref": "external_seed:ext_d356903af461a19a1396067e",
+      "product_id": "ext_d356903af461a19a1396067e",
+      "title": "1025 Dokdo Cleansing Oil",
+      "official_url": "https://roundlab.com/products/1025-dokdo-cleansing-oil",
+      "official_domain": "roundlab.com",
+      "status": "updated",
+      "preserve_group_ids": {
+        "sellable_item_group_id": "sig_c8e5f67fb370f0bf29068187",
+        "product_line_id": "pl_3b46eb071be929219c2b8aa8",
+        "review_family_id": "rf_3b46eb071be929219c2b8aa8"
+      },
+      "before": {
+        "variant_axes": {
+          "shade": "default title",
+          "multi_variant": false
+        },
+        "match_basis": [
+          "official_url:https://roundlab.com/products/1025-dokdo-cleansing-oil",
+          "variant_axes:shade:default title"
+        ],
+        "matched_by_rule": "official_url_axes",
+        "identity_confidence": "0.9800"
+      },
+      "after": {
+        "variant_axes": {
+          "multi_variant": false
+        },
+        "match_basis": [
+          "official_url:https://roundlab.com/products/1025-dokdo-cleansing-oil"
+        ],
+        "matched_by_rule": "official_url_route",
+        "identity_confidence": 0.92,
+        "strong_identity": {
+          "official_url": "https://roundlab.com/products/1025-dokdo-cleansing-oil",
+          "official_domain": "roundlab.com",
+          "official_handle": "1025 dokdo cleansing oil",
+          "stable_variant_id": "43023571615958"
+        },
+        "soft_identity": {
+          "brand_norm": "round lab",
+          "title_norm": "1025 dokdo cleansing oil",
+          "title_core_norm": "1025 dokdo cleansing oil",
+          "official_domain": "roundlab.com"
+        }
+      }
+    },
+    {
+      "source_listing_ref": "external_seed:ext_1ee358db8a0a348d940541ea",
+      "product_id": "ext_1ee358db8a0a348d940541ea",
+      "title": "1025 Dokdo Cleanser",
+      "official_url": "https://roundlab.com/products/1025-dokdo-cleanser",
+      "official_domain": "roundlab.com",
+      "status": "updated",
+      "preserve_group_ids": {
+        "sellable_item_group_id": "sig_6c69e843f4af13d70076c743",
+        "product_line_id": "pl_0b2f360541a71b1b0320235a",
+        "review_family_id": "rf_0b2f360541a71b1b0320235a"
+      },
+      "before": {
+        "variant_axes": {
+          "shade": "default title",
+          "multi_variant": false
+        },
+        "match_basis": [
+          "official_url:https://roundlab.com/products/1025-dokdo-cleanser",
+          "variant_axes:shade:default title"
+        ],
+        "matched_by_rule": "official_url_axes",
+        "identity_confidence": "0.9800"
+      },
+      "after": {
+        "variant_axes": {
+          "multi_variant": false
+        },
+        "match_basis": [
+          "official_url:https://roundlab.com/products/1025-dokdo-cleanser"
+        ],
+        "matched_by_rule": "official_url_route",
+        "identity_confidence": 0.92,
+        "strong_identity": {
+          "official_url": "https://roundlab.com/products/1025-dokdo-cleanser",
+          "official_domain": "roundlab.com",
+          "official_handle": "1025 dokdo cleanser",
+          "stable_variant_id": "43023571058902"
+        },
+        "soft_identity": {
+          "brand_norm": "round lab",
+          "title_norm": "1025 dokdo cleanser",
+          "title_core_norm": "1025 dokdo cleanser",
+          "official_domain": "roundlab.com"
+        }
+      }
+    },
+    {
+      "source_listing_ref": "external_seed:ext_0593d410360b6e8cebbed23e",
+      "product_id": "ext_0593d410360b6e8cebbed23e",
+      "title": "1025 Dokdo Ampoule",
+      "official_url": "https://roundlab.com/products/1025-dokdo-ampoule",
+      "official_domain": "roundlab.com",
+      "status": "updated",
+      "preserve_group_ids": {
+        "sellable_item_group_id": "sig_f9ef73632356ecb1702fa2ab",
+        "product_line_id": "pl_0751066961415d9af99b1740",
+        "review_family_id": "rf_0751066961415d9af99b1740"
+      },
+      "before": {
+        "variant_axes": {
+          "shade": "default title",
+          "multi_variant": false
+        },
+        "match_basis": [
+          "official_url:https://roundlab.com/products/1025-dokdo-ampoule",
+          "variant_axes:shade:default title"
+        ],
+        "matched_by_rule": "official_url_axes",
+        "identity_confidence": "0.9800"
+      },
+      "after": {
+        "variant_axes": {
+          "multi_variant": false
+        },
+        "match_basis": [
+          "official_url:https://roundlab.com/products/1025-dokdo-ampoule"
+        ],
+        "matched_by_rule": "official_url_route",
+        "identity_confidence": 0.92,
+        "strong_identity": {
+          "official_url": "https://roundlab.com/products/1025-dokdo-ampoule",
+          "official_domain": "roundlab.com",
+          "official_handle": "1025 dokdo ampoule",
+          "stable_variant_id": "43023573909718"
+        },
+        "soft_identity": {
+          "brand_norm": "round lab",
+          "title_norm": "1025 dokdo ampoule",
+          "title_core_norm": "1025 dokdo ampoule",
+          "official_domain": "roundlab.com"
+        }
+      }
+    }
+  ]
+}

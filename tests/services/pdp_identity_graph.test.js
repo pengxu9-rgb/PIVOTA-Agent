@@ -1076,6 +1076,33 @@ describe('pdpIdentityGraph', () => {
     ]);
   });
 
+  test('buildIdentityListingFromProduct ignores Single item as a variant axis', () => {
+    const { buildIdentityListingFromProduct } = require('../../src/services/pdpIdentityGraph');
+
+    const listing = buildIdentityListingFromProduct({
+      merchantId: 'external_seed',
+      productId: 'ext_roundlab_cleanser',
+      sourceKind: 'external_seed',
+      product: {
+        title: '1025 Dokdo Cleanser',
+        brand: 'ROUND LAB',
+        source_url: 'https://roundlab.com/products/1025-dokdo-cleanser',
+        variants: [
+          {
+            variant_id: 'v_single',
+            title: 'Single item',
+            options: [{ name: 'Format', value: 'Single item', axis_kind: 'format' }],
+          },
+        ],
+      },
+    });
+
+    expect(listing.variant_axes).toEqual({ multi_variant: false });
+    expect(listing.match_basis).toEqual([
+      'official_url:https://roundlab.com/products/1025-dokdo-cleanser',
+    ]);
+  });
+
   test('buildIdentityListingFromProduct groups size siblings into one product line without default-title shade pollution', () => {
     const { buildIdentityListingFromProduct } = require('../../src/services/pdpIdentityGraph');
 

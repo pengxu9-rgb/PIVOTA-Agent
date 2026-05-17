@@ -1,0 +1,19 @@
+{
+  "generated_at": "2026-05-17T03:33:51.976Z",
+  "summary": {
+    "dry_run": true,
+    "filters": {
+      "market": "US",
+      "domain": null,
+      "external_product_id_count": 10,
+      "limit": 10
+    },
+    "scanned_rows": 0,
+    "candidate_rows": 0,
+    "skipped_rows": 0,
+    "updated_rows": 0,
+    "failed_rows": 0
+  },
+  "apply_errors": [],
+  "results": []
+}

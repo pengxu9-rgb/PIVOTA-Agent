@@ -706,7 +706,7 @@ function shouldSuppressColorAxisValue(product, value) {
   const normalized = normalizeAxisValue(value).toLowerCase();
   if (!normalized) return true;
   if (!allowsColorAxisForProduct(product)) return true;
-  if (/^(?:default|default title|title|option|standard default)$/i.test(normalized)) return true;
+  if (/^(?:default|default title|title|option|standard default|single item)$/i.test(normalized)) return true;
   if (isLikelyVariantIdentityToken(normalized)) return true;
   if (LOCALE_LIKE_AXIS_VALUES.has(normalized)) return true;
   return false;
@@ -876,7 +876,7 @@ function isLikelyVariantIdentityToken(value) {
 function inferAxisFromGenericOptionValue(value) {
   const normalized = normalizeAxisValue(value);
   if (!normalized) return null;
-  if (/^(?:default|default title|title|option|standard default)$/i.test(normalized)) return null;
+  if (/^(?:default|default title|title|option|standard default|single item)$/i.test(normalized)) return null;
   if (isLikelyVariantIdentityToken(normalized)) return null;
   const volume = parseQuantityToken(normalized, ['ml', 'm l', 'g', 'kg', 'oz', 'fl oz']);
   if (volume) return { volume };
@@ -946,7 +946,7 @@ function parseNamedAxisFromOptions(product, names) {
     const value =
       parseCompoundNamedAxisValue(option?.name, option?.value, names) ||
       normalizeAxisValue(option?.value);
-    if (/^(?:default|default title|title|option|standard default)$/i.test(value)) continue;
+    if (/^(?:default|default title|title|option|standard default|single item)$/i.test(value)) continue;
     if (isLikelyVariantIdentityToken(value)) continue;
     if (value) return value;
   }
@@ -964,7 +964,7 @@ function parseNamedAxisFromOptions(product, names) {
   for (const candidate of flatCandidates) {
     const value = normalizeAxisValue(candidate);
     if (!value) continue;
-    if (/^(?:default|default title|title|option|standard default)$/i.test(value)) continue;
+    if (/^(?:default|default title|title|option|standard default|single item)$/i.test(value)) continue;
     if (isLikelyVariantIdentityToken(value)) continue;
     return value;
   }

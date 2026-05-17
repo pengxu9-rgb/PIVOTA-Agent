@@ -1,0 +1,54 @@
+{
+  "generated_at": "2026-05-17T03:55:00Z",
+  "scope": {
+    "market": "US",
+    "domain": "roundlab.com",
+    "batch": "roundlab_wave1_top_10_identity_payload_stale"
+  },
+  "read_only_inventory": {
+    "domain_seed_rows": 79,
+    "identity_rows_found": 76,
+    "identity_payload_stale_rows": 77,
+    "live_read_stale_rows": 74,
+    "sync_candidate_rows": 74,
+    "canonical_selection_gap_groups": 67
+  },
+  "production_data_actions": {
+    "identity_source_payloads_synced": 10,
+    "default_title_axis_repairs_written": 8,
+    "failed_axis_apply_attempt_rows_before_script_fix": 8,
+    "failed_axis_apply_rows_after_script_fix": 0,
+    "sig_ids_preserved": true
+  },
+  "wave1_quality": {
+    "post_identity_sync_pdp_quality_checked": 10,
+    "core_live_pdp_passed": 10,
+    "product_intel_passed": 10,
+    "similar_passed": 10,
+    "gallery_health_passed": 10,
+    "remaining_before_runtime_deploy": [
+      "single Format: Single item selector suppressed by pending runtime patch"
+    ]
+  },
+  "code_actions": {
+    "runtime_patch_pending_commit": true,
+    "changes": [
+      "Suppress single external-seed Format: Single item selector choices while preserving hidden single-SKU contracts.",
+      "Treat Single item like Default Title in identity graph variant-axis extraction.",
+      "Add dry-run-first repair script for legacy pdp_identity_listing default-title variant_axes/match_basis pollution."
+    ],
+    "tests": [
+      "npx jest tests/pdp_builder_structured_modules.test.js tests/services/pdp_identity_graph.test.js tests/scripts/backfill_external_product_seeds_catalog.test.js --runInBand",
+      "node --test tests/scripts/repair_pdp_identity_default_title_axes.node.test.cjs tests/scripts/apply_reviewed_external_seed_active_ingredients.node.test.cjs"
+    ]
+  },
+  "next_batch_policy": {
+    "continue_without_user_confirmation": true,
+    "next_actions": [
+      "Push runtime patch through git push only.",
+      "After deploy, rerun Round Lab wave1 no-cache PDP QA.",
+      "If wave1 is clean, process remaining Round Lab sync candidates in reviewed waves.",
+      "Then continue to Kylie, TIRTIR, Pixi, and Medicube from the full-sample risk ranking."
+    ]
+  }
+}

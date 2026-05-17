@@ -1,0 +1,377 @@
+[
+  {
+    "external_product_id": "ext_0593d410360b6e8cebbed23e",
+    "title": "1025 Dokdo Ampoule",
+    "pdp_url": "https://agent.pivota.cc/products/sig_f9ef73632356ecb1702fa2ab",
+    "product_id_for_pdp": "sig_f9ef73632356ecb1702fa2ab",
+    "source_listing_ref": "external_seed:ext_0593d410360b6e8cebbed23e",
+    "reasons": [
+      "identity_payload_stale",
+      "canonical_selection_gap"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_1ee358db8a0a348d940541ea",
+    "title": "1025 Dokdo Cleanser",
+    "pdp_url": "https://agent.pivota.cc/products/sig_6c69e843f4af13d70076c743",
+    "product_id_for_pdp": "sig_6c69e843f4af13d70076c743",
+    "source_listing_ref": "external_seed:ext_1ee358db8a0a348d940541ea",
+    "reasons": [
+      "identity_payload_stale",
+      "canonical_selection_gap"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_d356903af461a19a1396067e",
+    "title": "1025 Dokdo Cleansing Oil",
+    "pdp_url": "https://agent.pivota.cc/products/sig_c8e5f67fb370f0bf29068187",
+    "product_id_for_pdp": "sig_c8e5f67fb370f0bf29068187",
+    "source_listing_ref": "external_seed:ext_d356903af461a19a1396067e",
+    "reasons": [
+      "identity_payload_stale",
+      "canonical_selection_gap"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_624a12ac9aec83ba278950e0",
+    "title": "1025 Dokdo Cream",
+    "pdp_url": "https://agent.pivota.cc/products/sig_75b1213dd259bdacaa19f48a",
+    "product_id_for_pdp": "sig_75b1213dd259bdacaa19f48a",
+    "source_listing_ref": "external_seed:ext_624a12ac9aec83ba278950e0",
+    "reasons": [
+      "identity_payload_stale",
+      "canonical_selection_gap"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_52db83881b3497c1f1165248",
+    "title": "1025 Dokdo Lotion",
+    "pdp_url": "https://agent.pivota.cc/products/sig_0e8531ace326a9795c68b4b2",
+    "product_id_for_pdp": "sig_0e8531ace326a9795c68b4b2",
+    "source_listing_ref": "external_seed:ext_52db83881b3497c1f1165248",
+    "reasons": [
+      "identity_payload_stale",
+      "canonical_selection_gap"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_94efe3f4b07d340ca39eb3c0",
+    "title": "1025 Dokdo Mud Pack",
+    "pdp_url": "https://agent.pivota.cc/products/sig_7462e3a7a2880efe37517314",
+    "product_id_for_pdp": "sig_7462e3a7a2880efe37517314",
+    "source_listing_ref": "external_seed:ext_94efe3f4b07d340ca39eb3c0",
+    "reasons": [
+      "identity_payload_stale",
+      "canonical_selection_gap"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_39ee239fdd7cae5736d9d3e7",
+    "title": "1025 Dokdo Sleeping Pack",
+    "pdp_url": "https://agent.pivota.cc/products/sig_9e60c4c44eaeefb21f9e1d29",
+    "product_id_for_pdp": "sig_9e60c4c44eaeefb21f9e1d29",
+    "source_listing_ref": "external_seed:ext_39ee239fdd7cae5736d9d3e7",
+    "reasons": [
+      "identity_payload_stale",
+      "canonical_selection_gap"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_8f57ee8b842f3dcd53f8a13b",
+    "title": "1025 Dokdo Toner",
+    "pdp_url": "https://agent.pivota.cc/products/sig_1b4d781283f82291599c4843",
+    "product_id_for_pdp": "sig_1b4d781283f82291599c4843",
+    "source_listing_ref": "external_seed:ext_8f57ee8b842f3dcd53f8a13b",
+    "reasons": [
+      "identity_payload_stale",
+      "canonical_selection_gap"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_165050d194f3c456a7b9c32c",
+    "title": "1025 Dokdo Water Gel Mask Sheet",
+    "pdp_url": "https://agent.pivota.cc/products/sig_1c6c3850764e4a8629602b92",
+    "product_id_for_pdp": "sig_1c6c3850764e4a8629602b92",
+    "source_listing_ref": "external_seed:ext_165050d194f3c456a7b9c32c",
+    "reasons": [
+      "identity_payload_stale",
+      "canonical_selection_gap"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_430d2c9748b87d038314f374",
+    "title": "Birch Juice Cleansing Pad",
+    "pdp_url": "https://agent.pivota.cc/products/sig_8035b1716fe764fba33d3eb9",
+    "product_id_for_pdp": "sig_8035b1716fe764fba33d3eb9",
+    "source_listing_ref": "external_seed:ext_430d2c9748b87d038314f374",
+    "reasons": [
+      "identity_payload_stale",
+      "canonical_selection_gap"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_d9ba295c3cd40caa60aa856e",
+    "title": "Birch Juice Moisturizing Ampoule",
+    "pdp_url": "https://agent.pivota.cc/products/sig_665f8b8dbfb110b56df32315",
+    "product_id_for_pdp": "sig_665f8b8dbfb110b56df32315",
+    "source_listing_ref": "external_seed:ext_d9ba295c3cd40caa60aa856e",
+    "reasons": [
+      "identity_payload_stale",
+      "canonical_selection_gap"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_ebbcb7f9ccbf20c656808ac4",
+    "title": "Birch Mild-Up Sunscreen UVLock SPF 50+ Broad Spectrum",
+    "pdp_url": "https://agent.pivota.cc/products/sig_2c007c2ba76d63995059aa50",
+    "product_id_for_pdp": "sig_2c007c2ba76d63995059aa50",
+    "source_listing_ref": "external_seed:ext_ebbcb7f9ccbf20c656808ac4",
+    "reasons": [
+      "identity_payload_stale",
+      "canonical_selection_gap"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_94e79b8163564b4df1764a92",
+    "title": "Birch Moisturizing Cream",
+    "pdp_url": "https://agent.pivota.cc/products/sig_e6417f0e5991a1ca305a0b92",
+    "product_id_for_pdp": "sig_e6417f0e5991a1ca305a0b92",
+    "source_listing_ref": "external_seed:ext_94e79b8163564b4df1764a92",
+    "reasons": [
+      "identity_payload_stale",
+      "canonical_selection_gap"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_189fe972ab697d890927ee68",
+    "title": "Birch Moisturizing Double Gel Mask",
+    "pdp_url": "https://agent.pivota.cc/products/sig_d8fb2fd88ae138c0139afe9d",
+    "product_id_for_pdp": "sig_d8fb2fd88ae138c0139afe9d",
+    "source_listing_ref": "external_seed:ext_189fe972ab697d890927ee68",
+    "reasons": [
+      "identity_payload_stale",
+      "canonical_selection_gap"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_4b5349ed18ef549b67076e55",
+    "title": "Birch Moisturizing Intensive Cream",
+    "pdp_url": "https://agent.pivota.cc/products/sig_308bc02699c64415d5e24625",
+    "product_id_for_pdp": "sig_308bc02699c64415d5e24625",
+    "source_listing_ref": "external_seed:ext_4b5349ed18ef549b67076e55",
+    "reasons": [
+      "identity_payload_stale",
+      "canonical_selection_gap"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_5c41aae887538067c0e3fff5",
+    "title": "Birch Moisturizing Lip Balm",
+    "pdp_url": "https://agent.pivota.cc/products/sig_8b7a7c6795ff58f373c03f1f",
+    "product_id_for_pdp": "sig_8b7a7c6795ff58f373c03f1f",
+    "source_listing_ref": "external_seed:ext_5c41aae887538067c0e3fff5",
+    "reasons": [
+      "identity_payload_stale",
+      "canonical_selection_gap"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_203dc23d76d112e309035d38",
+    "title": "Birch Moisturizing Mild-Up Sunscreen SPF 50+, PA++++",
+    "pdp_url": "https://agent.pivota.cc/products/sig_6aeefe99fe5f9ca3f8a09641",
+    "product_id_for_pdp": "sig_6aeefe99fe5f9ca3f8a09641",
+    "source_listing_ref": "external_seed:ext_203dc23d76d112e309035d38",
+    "reasons": [
+      "identity_payload_stale",
+      "canonical_selection_gap"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_b8b101bf12d600cfb7df256b",
+    "title": "Birch Moisturizing Serum",
+    "pdp_url": "https://agent.pivota.cc/products/sig_7283596ab481e770f809f550",
+    "product_id_for_pdp": "sig_7283596ab481e770f809f550",
+    "source_listing_ref": "external_seed:ext_b8b101bf12d600cfb7df256b",
+    "reasons": [
+      "identity_payload_stale",
+      "canonical_selection_gap"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_9165bb79ae5cf649654fc68d",
+    "title": "Birch Moisturizing Sheet Mask",
+    "pdp_url": "https://agent.pivota.cc/products/sig_68b7ac10c31c0c59fdb6f41b",
+    "product_id_for_pdp": "sig_68b7ac10c31c0c59fdb6f41b",
+    "source_listing_ref": "external_seed:ext_9165bb79ae5cf649654fc68d",
+    "reasons": [
+      "identity_payload_stale",
+      "canonical_selection_gap"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_ff6fed4e89cf27cc919e00af",
+    "title": "Birch Moisturizing Soothing Gel",
+    "pdp_url": "https://agent.pivota.cc/products/sig_ee1f43edde13df2e652756dd",
+    "product_id_for_pdp": "sig_ee1f43edde13df2e652756dd",
+    "source_listing_ref": "external_seed:ext_ff6fed4e89cf27cc919e00af",
+    "reasons": [
+      "identity_payload_stale",
+      "canonical_selection_gap"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_cc8b7d1b7b03c51487bb1608",
+    "title": "Birch Moisturizing Sunscreen UVLock SPF 45+ Broad Spectrum",
+    "pdp_url": "https://agent.pivota.cc/products/sig_1003dcf98c54d9f58afff6ae",
+    "product_id_for_pdp": "sig_1003dcf98c54d9f58afff6ae",
+    "source_listing_ref": "external_seed:ext_cc8b7d1b7b03c51487bb1608",
+    "reasons": [
+      "identity_payload_stale",
+      "canonical_selection_gap"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_30b150bf80240151c93739a8",
+    "title": "Birch Moisturizing Sunscreen UVLock SPF 45+ Broad Spectrum [Subscription]",
+    "pdp_url": "https://agent.pivota.cc/products/sig_9359804e732a9de392a144cc",
+    "product_id_for_pdp": "sig_9359804e732a9de392a144cc",
+    "source_listing_ref": "external_seed:ext_30b150bf80240151c93739a8",
+    "reasons": [
+      "identity_payload_stale",
+      "canonical_selection_gap"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_24442b806ade8ddd21b30ee4",
+    "title": "Birch Moisturizing Wash Off Mask",
+    "pdp_url": "https://agent.pivota.cc/products/sig_4a4fa543594d09468be91f18",
+    "product_id_for_pdp": "sig_4a4fa543594d09468be91f18",
+    "source_listing_ref": "external_seed:ext_24442b806ade8ddd21b30ee4",
+    "reasons": [
+      "identity_payload_stale",
+      "canonical_selection_gap"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_c05d7a10c5aef37549d50e8b",
+    "title": "Camellia Deep Collagen Firming Gel Mask",
+    "pdp_url": "https://agent.pivota.cc/products/sig_48e2cfe123dbe616aee9c77a",
+    "product_id_for_pdp": "sig_48e2cfe123dbe616aee9c77a",
+    "source_listing_ref": "external_seed:ext_c05d7a10c5aef37549d50e8b",
+    "reasons": [
+      "identity_payload_stale",
+      "canonical_selection_gap"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_60573d10fee5489ecd90bbf1",
+    "title": "Camellia Deep Collagen V Lifting Gel Mask",
+    "pdp_url": "https://agent.pivota.cc/products/sig_45794a3dc5e4d82caeb9dc23",
+    "product_id_for_pdp": "sig_45794a3dc5e4d82caeb9dc23",
+    "source_listing_ref": "external_seed:ext_60573d10fee5489ecd90bbf1",
+    "reasons": [
+      "identity_payload_stale",
+      "canonical_selection_gap"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  }
+]

@@ -1,0 +1,1286 @@
+[
+  {
+    "seed_id": "eps_9ab3619f050de3cf4ff0bdee",
+    "external_product_id": "ext_0593d410360b6e8cebbed23e",
+    "market": "US",
+    "domain": "roundlab.com",
+    "canonical_url": "https://roundlab.com/products/1025-dokdo-ampoule",
+    "seed_gate": {
+      "status": "passed",
+      "findings_count": 0,
+      "blockers_count": 0
+    },
+    "extractor_gate": {
+      "status": "passed",
+      "failure_category": null,
+      "description_present": true,
+      "price_amount": 31,
+      "failure_reasons": []
+    },
+    "identity_gate": {
+      "status": "passed",
+      "product_group_id": "sig_c61dbb1f22d4d36e7781994a807613f4",
+      "product_line_id": "pl_0751066961415d9af99b1740",
+      "sellable_item_group_id": "sig_f9ef73632356ecb1702fa2ab",
+      "failure_reasons": []
+    },
+    "product_intel_gate": {
+      "status": "passed",
+      "has_product_intel": true,
+      "product_intel_status": "ready",
+      "failure_reasons": []
+    },
+    "live_pdp_gate": {
+      "status": "passed",
+      "price_amount": 31,
+      "has_overview": true,
+      "live_modules": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "reviews_preview",
+        "similar",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "media_gallery",
+        "price_promo"
+      ],
+      "details_status": {
+        "section_count": 1,
+        "section_soup_count": 0,
+        "has_product_facts": true,
+        "seed_section_count": 6,
+        "compressed_structured_sections": false
+      },
+      "questions_status": {
+        "seed_faq_count": 0,
+        "live_question_count": 0
+      },
+      "active_ingredients_status": {
+        "expected": true,
+        "live_item_count": 1
+      },
+      "image_health": {
+        "scanned_count": 8,
+        "total_url_count": 8,
+        "broken_count": 0,
+        "broken_urls": [],
+        "skipped": false,
+        "truncated": false
+      },
+      "gallery_status": {
+        "image_count": 8,
+        "duplicate_count": 0,
+        "content_leak_count": 0,
+        "seed_content_image_count": 0
+      },
+      "snapshot_contract": {
+        "authoritative": true,
+        "legacy_fields_quarantined": true,
+        "replace_strategy": "replace_not_merge"
+      },
+      "image_url_identity_stripped_count": 0,
+      "image_url_identity_stripped_examples": [],
+      "failure_reasons": []
+    },
+    "similar_gate": {
+      "status": "passed",
+      "similar_count": 12,
+      "card_highlight_missing_count": 0,
+      "exempt": false,
+      "failure_reasons": []
+    },
+    "variant_gate": {
+      "status": "failed",
+      "visible_variant_row_count": 1,
+      "identity_option_visible_count": 0,
+      "wrong_axis_for_category_count": 0,
+      "makeup_shade_missing_visual_count": 0,
+      "size_value_generic_axis_count": 0,
+      "examples": {
+        "identity_option_visible": [],
+        "wrong_axis_for_category": [],
+        "makeup_shade_missing_visual": [],
+        "size_value_generic_axis": [],
+        "missing_variant_selector_from_size_evidence": [],
+        "identity_default_title_axis": [
+          {
+            "axis_name": "shade",
+            "axis_kind": "shade",
+            "value": "default title",
+            "visual": false
+          }
+        ],
+        "size_siblings_split_product_line": []
+      },
+      "failure_reasons": [
+        "identity_default_title_axis"
+      ]
+    },
+    "root_cause_classification": [
+      "variant_contract_issue"
+    ],
+    "failure_reasons": [
+      "identity_default_title_axis"
+    ]
+  },
+  {
+    "seed_id": "eps_70086a22407bef168e3483e4",
+    "external_product_id": "ext_1ee358db8a0a348d940541ea",
+    "market": "US",
+    "domain": "roundlab.com",
+    "canonical_url": "https://roundlab.com/products/1025-dokdo-cleanser",
+    "seed_gate": {
+      "status": "passed",
+      "findings_count": 0,
+      "blockers_count": 0
+    },
+    "extractor_gate": {
+      "status": "passed",
+      "failure_category": null,
+      "description_present": true,
+      "price_amount": 15,
+      "failure_reasons": []
+    },
+    "identity_gate": {
+      "status": "passed",
+      "product_group_id": "sig_fdd8db9c47243ff08c9c221256923e51",
+      "product_line_id": "pl_0b2f360541a71b1b0320235a",
+      "sellable_item_group_id": "sig_6c69e843f4af13d70076c743",
+      "failure_reasons": []
+    },
+    "product_intel_gate": {
+      "status": "passed",
+      "has_product_intel": true,
+      "product_intel_status": "ready",
+      "failure_reasons": []
+    },
+    "live_pdp_gate": {
+      "status": "passed",
+      "price_amount": 15,
+      "has_overview": true,
+      "live_modules": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "reviews_preview",
+        "similar",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "media_gallery",
+        "price_promo"
+      ],
+      "details_status": {
+        "section_count": 1,
+        "section_soup_count": 0,
+        "has_product_facts": true,
+        "seed_section_count": 6,
+        "compressed_structured_sections": false
+      },
+      "questions_status": {
+        "seed_faq_count": 0,
+        "live_question_count": 0
+      },
+      "active_ingredients_status": {
+        "expected": true,
+        "live_item_count": 1
+      },
+      "image_health": {
+        "scanned_count": 6,
+        "total_url_count": 6,
+        "broken_count": 0,
+        "broken_urls": [],
+        "skipped": false,
+        "truncated": false
+      },
+      "gallery_status": {
+        "image_count": 6,
+        "duplicate_count": 0,
+        "content_leak_count": 0,
+        "seed_content_image_count": 0
+      },
+      "snapshot_contract": {
+        "authoritative": true,
+        "legacy_fields_quarantined": true,
+        "replace_strategy": "replace_not_merge"
+      },
+      "image_url_identity_stripped_count": 0,
+      "image_url_identity_stripped_examples": [],
+      "failure_reasons": []
+    },
+    "similar_gate": {
+      "status": "passed",
+      "similar_count": 12,
+      "card_highlight_missing_count": 0,
+      "exempt": false,
+      "failure_reasons": []
+    },
+    "variant_gate": {
+      "status": "failed",
+      "visible_variant_row_count": 1,
+      "identity_option_visible_count": 0,
+      "wrong_axis_for_category_count": 0,
+      "makeup_shade_missing_visual_count": 0,
+      "size_value_generic_axis_count": 0,
+      "examples": {
+        "identity_option_visible": [],
+        "wrong_axis_for_category": [],
+        "makeup_shade_missing_visual": [],
+        "size_value_generic_axis": [],
+        "missing_variant_selector_from_size_evidence": [],
+        "identity_default_title_axis": [
+          {
+            "axis_name": "shade",
+            "axis_kind": "shade",
+            "value": "default title",
+            "visual": false
+          }
+        ],
+        "size_siblings_split_product_line": []
+      },
+      "failure_reasons": [
+        "identity_default_title_axis"
+      ]
+    },
+    "root_cause_classification": [
+      "variant_contract_issue"
+    ],
+    "failure_reasons": [
+      "identity_default_title_axis"
+    ]
+  },
+  {
+    "seed_id": "eps_ffd1da481c08bd92558ae090",
+    "external_product_id": "ext_d356903af461a19a1396067e",
+    "market": "US",
+    "domain": "roundlab.com",
+    "canonical_url": "https://roundlab.com/products/1025-dokdo-cleansing-oil",
+    "seed_gate": {
+      "status": "passed",
+      "findings_count": 0,
+      "blockers_count": 0
+    },
+    "extractor_gate": {
+      "status": "passed",
+      "failure_category": null,
+      "description_present": true,
+      "price_amount": 26,
+      "failure_reasons": []
+    },
+    "identity_gate": {
+      "status": "passed",
+      "product_group_id": "sig_87b71d59d4427383fce97fb3e36ddca5",
+      "product_line_id": "pl_3b46eb071be929219c2b8aa8",
+      "sellable_item_group_id": "sig_c8e5f67fb370f0bf29068187",
+      "failure_reasons": []
+    },
+    "product_intel_gate": {
+      "status": "passed",
+      "has_product_intel": true,
+      "product_intel_status": "ready",
+      "failure_reasons": []
+    },
+    "live_pdp_gate": {
+      "status": "passed",
+      "price_amount": 26,
+      "has_overview": true,
+      "live_modules": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "reviews_preview",
+        "similar",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "media_gallery",
+        "price_promo"
+      ],
+      "details_status": {
+        "section_count": 1,
+        "section_soup_count": 0,
+        "has_product_facts": true,
+        "seed_section_count": 2,
+        "compressed_structured_sections": false
+      },
+      "questions_status": {
+        "seed_faq_count": 0,
+        "live_question_count": 0
+      },
+      "active_ingredients_status": {
+        "expected": true,
+        "live_item_count": 2
+      },
+      "image_health": {
+        "scanned_count": 7,
+        "total_url_count": 7,
+        "broken_count": 0,
+        "broken_urls": [],
+        "skipped": false,
+        "truncated": false
+      },
+      "gallery_status": {
+        "image_count": 7,
+        "duplicate_count": 0,
+        "content_leak_count": 0,
+        "seed_content_image_count": 0
+      },
+      "snapshot_contract": {
+        "authoritative": true,
+        "legacy_fields_quarantined": true,
+        "replace_strategy": "replace_not_merge"
+      },
+      "image_url_identity_stripped_count": 0,
+      "image_url_identity_stripped_examples": [],
+      "failure_reasons": []
+    },
+    "similar_gate": {
+      "status": "passed",
+      "similar_count": 12,
+      "card_highlight_missing_count": 0,
+      "exempt": false,
+      "failure_reasons": []
+    },
+    "variant_gate": {
+      "status": "failed",
+      "visible_variant_row_count": 1,
+      "identity_option_visible_count": 0,
+      "wrong_axis_for_category_count": 0,
+      "makeup_shade_missing_visual_count": 0,
+      "size_value_generic_axis_count": 0,
+      "examples": {
+        "identity_option_visible": [],
+        "wrong_axis_for_category": [],
+        "makeup_shade_missing_visual": [],
+        "size_value_generic_axis": [],
+        "missing_variant_selector_from_size_evidence": [],
+        "identity_default_title_axis": [
+          {
+            "axis_name": "shade",
+            "axis_kind": "shade",
+            "value": "default title",
+            "visual": false
+          }
+        ],
+        "size_siblings_split_product_line": []
+      },
+      "failure_reasons": [
+        "identity_default_title_axis"
+      ]
+    },
+    "root_cause_classification": [
+      "variant_contract_issue"
+    ],
+    "failure_reasons": [
+      "identity_default_title_axis"
+    ]
+  },
+  {
+    "seed_id": "eps_df057c11c52bbc75fcc561f1",
+    "external_product_id": "ext_624a12ac9aec83ba278950e0",
+    "market": "US",
+    "domain": "roundlab.com",
+    "canonical_url": "https://roundlab.com/products/1025-dokdo-cream",
+    "seed_gate": {
+      "status": "passed",
+      "findings_count": 0,
+      "blockers_count": 0
+    },
+    "extractor_gate": {
+      "status": "passed",
+      "failure_category": null,
+      "description_present": true,
+      "price_amount": 36,
+      "failure_reasons": []
+    },
+    "identity_gate": {
+      "status": "passed",
+      "product_group_id": "sig_602e86e12eb9ca5fac5783f5bc90afb9",
+      "product_line_id": "pl_c8eb98e36982e99c5550e61e",
+      "sellable_item_group_id": "sig_75b1213dd259bdacaa19f48a",
+      "failure_reasons": []
+    },
+    "product_intel_gate": {
+      "status": "passed",
+      "has_product_intel": true,
+      "product_intel_status": "ready",
+      "failure_reasons": []
+    },
+    "live_pdp_gate": {
+      "status": "passed",
+      "price_amount": 36,
+      "has_overview": true,
+      "live_modules": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "reviews_preview",
+        "similar",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "media_gallery",
+        "price_promo"
+      ],
+      "details_status": {
+        "section_count": 1,
+        "section_soup_count": 0,
+        "has_product_facts": true,
+        "seed_section_count": 6,
+        "compressed_structured_sections": false
+      },
+      "questions_status": {
+        "seed_faq_count": 0,
+        "live_question_count": 0
+      },
+      "active_ingredients_status": {
+        "expected": true,
+        "live_item_count": 1
+      },
+      "image_health": {
+        "scanned_count": 9,
+        "total_url_count": 9,
+        "broken_count": 0,
+        "broken_urls": [],
+        "skipped": false,
+        "truncated": false
+      },
+      "gallery_status": {
+        "image_count": 9,
+        "duplicate_count": 0,
+        "content_leak_count": 0,
+        "seed_content_image_count": 0
+      },
+      "snapshot_contract": {
+        "authoritative": true,
+        "legacy_fields_quarantined": true,
+        "replace_strategy": "replace_not_merge"
+      },
+      "image_url_identity_stripped_count": 0,
+      "image_url_identity_stripped_examples": [],
+      "failure_reasons": []
+    },
+    "similar_gate": {
+      "status": "passed",
+      "similar_count": 12,
+      "card_highlight_missing_count": 0,
+      "exempt": false,
+      "failure_reasons": []
+    },
+    "variant_gate": {
+      "status": "failed",
+      "visible_variant_row_count": 1,
+      "identity_option_visible_count": 0,
+      "wrong_axis_for_category_count": 0,
+      "makeup_shade_missing_visual_count": 0,
+      "size_value_generic_axis_count": 0,
+      "examples": {
+        "identity_option_visible": [],
+        "wrong_axis_for_category": [],
+        "makeup_shade_missing_visual": [],
+        "size_value_generic_axis": [],
+        "missing_variant_selector_from_size_evidence": [],
+        "identity_default_title_axis": [
+          {
+            "axis_name": "shade",
+            "axis_kind": "shade",
+            "value": "default title",
+            "visual": false
+          }
+        ],
+        "size_siblings_split_product_line": []
+      },
+      "failure_reasons": [
+        "identity_default_title_axis"
+      ]
+    },
+    "root_cause_classification": [
+      "variant_contract_issue"
+    ],
+    "failure_reasons": [
+      "identity_default_title_axis"
+    ]
+  },
+  {
+    "seed_id": "eps_bb4e9f98e639786707b45c07",
+    "external_product_id": "ext_52db83881b3497c1f1165248",
+    "market": "US",
+    "domain": "roundlab.com",
+    "canonical_url": "https://roundlab.com/products/1025-dokdo-lotion",
+    "seed_gate": {
+      "status": "passed",
+      "findings_count": 0,
+      "blockers_count": 0
+    },
+    "extractor_gate": {
+      "status": "passed",
+      "failure_category": null,
+      "description_present": true,
+      "price_amount": 22,
+      "failure_reasons": []
+    },
+    "identity_gate": {
+      "status": "passed",
+      "product_group_id": "sig_8b28442b2b1001751d24860067d3120d",
+      "product_line_id": "pl_10ad963db53ab7bf749c6231",
+      "sellable_item_group_id": "sig_0e8531ace326a9795c68b4b2",
+      "failure_reasons": []
+    },
+    "product_intel_gate": {
+      "status": "passed",
+      "has_product_intel": true,
+      "product_intel_status": "ready",
+      "failure_reasons": []
+    },
+    "live_pdp_gate": {
+      "status": "passed",
+      "price_amount": 22,
+      "has_overview": true,
+      "live_modules": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "reviews_preview",
+        "similar",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "media_gallery",
+        "price_promo"
+      ],
+      "details_status": {
+        "section_count": 1,
+        "section_soup_count": 0,
+        "has_product_facts": true,
+        "seed_section_count": 6,
+        "compressed_structured_sections": false
+      },
+      "questions_status": {
+        "seed_faq_count": 0,
+        "live_question_count": 0
+      },
+      "active_ingredients_status": {
+        "expected": true,
+        "live_item_count": 3
+      },
+      "image_health": {
+        "scanned_count": 7,
+        "total_url_count": 7,
+        "broken_count": 0,
+        "broken_urls": [],
+        "skipped": false,
+        "truncated": false
+      },
+      "gallery_status": {
+        "image_count": 7,
+        "duplicate_count": 0,
+        "content_leak_count": 0,
+        "seed_content_image_count": 0
+      },
+      "snapshot_contract": {
+        "authoritative": true,
+        "legacy_fields_quarantined": true,
+        "replace_strategy": "replace_not_merge"
+      },
+      "image_url_identity_stripped_count": 0,
+      "image_url_identity_stripped_examples": [],
+      "failure_reasons": []
+    },
+    "similar_gate": {
+      "status": "passed",
+      "similar_count": 12,
+      "card_highlight_missing_count": 0,
+      "exempt": false,
+      "failure_reasons": []
+    },
+    "variant_gate": {
+      "status": "failed",
+      "visible_variant_row_count": 1,
+      "identity_option_visible_count": 0,
+      "wrong_axis_for_category_count": 0,
+      "makeup_shade_missing_visual_count": 0,
+      "size_value_generic_axis_count": 0,
+      "examples": {
+        "identity_option_visible": [],
+        "wrong_axis_for_category": [],
+        "makeup_shade_missing_visual": [],
+        "size_value_generic_axis": [],
+        "missing_variant_selector_from_size_evidence": [],
+        "identity_default_title_axis": [
+          {
+            "axis_name": "shade",
+            "axis_kind": "shade",
+            "value": "default title",
+            "visual": false
+          }
+        ],
+        "size_siblings_split_product_line": []
+      },
+      "failure_reasons": [
+        "identity_default_title_axis"
+      ]
+    },
+    "root_cause_classification": [
+      "variant_contract_issue"
+    ],
+    "failure_reasons": [
+      "identity_default_title_axis"
+    ]
+  },
+  {
+    "seed_id": "eps_c72d25029e47be98c6318843",
+    "external_product_id": "ext_94efe3f4b07d340ca39eb3c0",
+    "market": "US",
+    "domain": "roundlab.com",
+    "canonical_url": "https://roundlab.com/products/1025-dokdo-mud-pack",
+    "seed_gate": {
+      "status": "passed",
+      "findings_count": 0,
+      "blockers_count": 0
+    },
+    "extractor_gate": {
+      "status": "passed",
+      "failure_category": null,
+      "description_present": true,
+      "price_amount": 19,
+      "failure_reasons": []
+    },
+    "identity_gate": {
+      "status": "passed",
+      "product_group_id": "sig_56b63e5a59aaf121a2bf2515021490ec",
+      "product_line_id": "pl_49c714e3263d479e03d86747",
+      "sellable_item_group_id": "sig_7462e3a7a2880efe37517314",
+      "failure_reasons": []
+    },
+    "product_intel_gate": {
+      "status": "passed",
+      "has_product_intel": true,
+      "product_intel_status": "ready",
+      "failure_reasons": []
+    },
+    "live_pdp_gate": {
+      "status": "passed",
+      "price_amount": 19,
+      "has_overview": true,
+      "live_modules": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "reviews_preview",
+        "similar",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "media_gallery",
+        "price_promo"
+      ],
+      "details_status": {
+        "section_count": 1,
+        "section_soup_count": 0,
+        "has_product_facts": true,
+        "seed_section_count": 6,
+        "compressed_structured_sections": false
+      },
+      "questions_status": {
+        "seed_faq_count": 0,
+        "live_question_count": 0
+      },
+      "active_ingredients_status": {
+        "expected": true,
+        "live_item_count": 1
+      },
+      "image_health": {
+        "scanned_count": 8,
+        "total_url_count": 8,
+        "broken_count": 0,
+        "broken_urls": [],
+        "skipped": false,
+        "truncated": false
+      },
+      "gallery_status": {
+        "image_count": 8,
+        "duplicate_count": 0,
+        "content_leak_count": 0,
+        "seed_content_image_count": 0
+      },
+      "snapshot_contract": {
+        "authoritative": true,
+        "legacy_fields_quarantined": true,
+        "replace_strategy": "replace_not_merge"
+      },
+      "image_url_identity_stripped_count": 0,
+      "image_url_identity_stripped_examples": [],
+      "failure_reasons": []
+    },
+    "similar_gate": {
+      "status": "passed",
+      "similar_count": 12,
+      "card_highlight_missing_count": 0,
+      "exempt": false,
+      "failure_reasons": []
+    },
+    "variant_gate": {
+      "status": "failed",
+      "visible_variant_row_count": 1,
+      "identity_option_visible_count": 0,
+      "wrong_axis_for_category_count": 0,
+      "makeup_shade_missing_visual_count": 0,
+      "size_value_generic_axis_count": 0,
+      "examples": {
+        "identity_option_visible": [],
+        "wrong_axis_for_category": [],
+        "makeup_shade_missing_visual": [],
+        "size_value_generic_axis": [],
+        "missing_variant_selector_from_size_evidence": [],
+        "identity_default_title_axis": [
+          {
+            "axis_name": "shade",
+            "axis_kind": "shade",
+            "value": "default title",
+            "visual": false
+          }
+        ],
+        "size_siblings_split_product_line": []
+      },
+      "failure_reasons": [
+        "identity_default_title_axis"
+      ]
+    },
+    "root_cause_classification": [
+      "variant_contract_issue"
+    ],
+    "failure_reasons": [
+      "identity_default_title_axis"
+    ]
+  },
+  {
+    "seed_id": "eps_f9693276b7b9ad0d184848bb",
+    "external_product_id": "ext_39ee239fdd7cae5736d9d3e7",
+    "market": "US",
+    "domain": "roundlab.com",
+    "canonical_url": "https://roundlab.com/products/1025-dokdo-sleeping-pack",
+    "seed_gate": {
+      "status": "passed",
+      "findings_count": 0,
+      "blockers_count": 0
+    },
+    "extractor_gate": {
+      "status": "passed",
+      "failure_category": null,
+      "description_present": true,
+      "price_amount": 24,
+      "failure_reasons": []
+    },
+    "identity_gate": {
+      "status": "passed",
+      "product_group_id": "sig_b297bff454fe05a3d1c735585cc9073f",
+      "product_line_id": "pl_20b99b0aad7b3f6fc56fa069",
+      "sellable_item_group_id": "sig_9e60c4c44eaeefb21f9e1d29",
+      "failure_reasons": []
+    },
+    "product_intel_gate": {
+      "status": "passed",
+      "has_product_intel": true,
+      "product_intel_status": "ready",
+      "failure_reasons": []
+    },
+    "live_pdp_gate": {
+      "status": "passed",
+      "price_amount": 24,
+      "has_overview": true,
+      "live_modules": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "reviews_preview",
+        "similar",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "media_gallery",
+        "price_promo"
+      ],
+      "details_status": {
+        "section_count": 3,
+        "section_soup_count": 0,
+        "has_product_facts": true,
+        "seed_section_count": 7,
+        "compressed_structured_sections": false
+      },
+      "questions_status": {
+        "seed_faq_count": 0,
+        "live_question_count": 0
+      },
+      "active_ingredients_status": {
+        "expected": true,
+        "live_item_count": 1
+      },
+      "image_health": {
+        "scanned_count": 7,
+        "total_url_count": 7,
+        "broken_count": 0,
+        "broken_urls": [],
+        "skipped": false,
+        "truncated": false
+      },
+      "gallery_status": {
+        "image_count": 7,
+        "duplicate_count": 0,
+        "content_leak_count": 0,
+        "seed_content_image_count": 0
+      },
+      "snapshot_contract": {
+        "authoritative": true,
+        "legacy_fields_quarantined": true,
+        "replace_strategy": "replace_not_merge"
+      },
+      "image_url_identity_stripped_count": 0,
+      "image_url_identity_stripped_examples": [],
+      "failure_reasons": []
+    },
+    "similar_gate": {
+      "status": "passed",
+      "similar_count": 12,
+      "card_highlight_missing_count": 0,
+      "exempt": false,
+      "failure_reasons": []
+    },
+    "variant_gate": {
+      "status": "failed",
+      "visible_variant_row_count": 1,
+      "identity_option_visible_count": 0,
+      "wrong_axis_for_category_count": 0,
+      "makeup_shade_missing_visual_count": 0,
+      "size_value_generic_axis_count": 0,
+      "examples": {
+        "identity_option_visible": [],
+        "wrong_axis_for_category": [],
+        "makeup_shade_missing_visual": [],
+        "size_value_generic_axis": [],
+        "missing_variant_selector_from_size_evidence": [],
+        "identity_default_title_axis": [
+          {
+            "axis_name": "shade",
+            "axis_kind": "shade",
+            "value": "default title",
+            "visual": false
+          }
+        ],
+        "size_siblings_split_product_line": []
+      },
+      "failure_reasons": [
+        "identity_default_title_axis"
+      ]
+    },
+    "root_cause_classification": [
+      "variant_contract_issue"
+    ],
+    "failure_reasons": [
+      "identity_default_title_axis"
+    ]
+  },
+  {
+    "seed_id": "eps_bc2dbcd73e4749ae81a2c563",
+    "external_product_id": "ext_8f57ee8b842f3dcd53f8a13b",
+    "market": "US",
+    "domain": "roundlab.com",
+    "canonical_url": "https://roundlab.com/products/1025-dokdo-toner",
+    "seed_gate": {
+      "status": "passed",
+      "findings_count": 0,
+      "blockers_count": 0
+    },
+    "extractor_gate": {
+      "status": "passed",
+      "failure_category": null,
+      "description_present": true,
+      "price_amount": 6,
+      "failure_reasons": []
+    },
+    "identity_gate": {
+      "status": "passed",
+      "product_group_id": "sig_032244cef2017fed5f080ce6beffab28",
+      "product_line_id": "pl_c04b25f40cfdff20980b805b",
+      "sellable_item_group_id": "sig_1b4d781283f82291599c4843",
+      "failure_reasons": []
+    },
+    "product_intel_gate": {
+      "status": "passed",
+      "has_product_intel": true,
+      "product_intel_status": "ready",
+      "failure_reasons": []
+    },
+    "live_pdp_gate": {
+      "status": "passed",
+      "price_amount": 6,
+      "has_overview": true,
+      "live_modules": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "reviews_preview",
+        "similar",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "media_gallery",
+        "price_promo"
+      ],
+      "details_status": {
+        "section_count": 1,
+        "section_soup_count": 0,
+        "has_product_facts": true,
+        "seed_section_count": 6,
+        "compressed_structured_sections": false
+      },
+      "questions_status": {
+        "seed_faq_count": 0,
+        "live_question_count": 0
+      },
+      "active_ingredients_status": {
+        "expected": true,
+        "live_item_count": 1
+      },
+      "image_health": {
+        "scanned_count": 7,
+        "total_url_count": 7,
+        "broken_count": 0,
+        "broken_urls": [],
+        "skipped": false,
+        "truncated": false
+      },
+      "gallery_status": {
+        "image_count": 7,
+        "duplicate_count": 0,
+        "content_leak_count": 0,
+        "seed_content_image_count": 0
+      },
+      "snapshot_contract": {
+        "authoritative": true,
+        "legacy_fields_quarantined": true,
+        "replace_strategy": "replace_not_merge"
+      },
+      "image_url_identity_stripped_count": 0,
+      "image_url_identity_stripped_examples": [],
+      "failure_reasons": []
+    },
+    "similar_gate": {
+      "status": "passed",
+      "similar_count": 12,
+      "card_highlight_missing_count": 0,
+      "exempt": false,
+      "failure_reasons": []
+    },
+    "variant_gate": {
+      "status": "passed",
+      "visible_variant_row_count": 4,
+      "identity_option_visible_count": 0,
+      "wrong_axis_for_category_count": 0,
+      "makeup_shade_missing_visual_count": 0,
+      "size_value_generic_axis_count": 0,
+      "examples": {
+        "identity_option_visible": [],
+        "wrong_axis_for_category": [],
+        "makeup_shade_missing_visual": [],
+        "size_value_generic_axis": [],
+        "missing_variant_selector_from_size_evidence": [],
+        "identity_default_title_axis": [],
+        "size_siblings_split_product_line": []
+      },
+      "failure_reasons": []
+    },
+    "root_cause_classification": [],
+    "failure_reasons": []
+  },
+  {
+    "seed_id": "eps_ebae29da539d857f9c7f4501",
+    "external_product_id": "ext_04dab6a642edac20a33ccae6",
+    "market": "US",
+    "domain": "roundlab.com",
+    "canonical_url": "https://roundlab.com/products/1025-dokdo-pad",
+    "seed_gate": {
+      "status": "passed",
+      "findings_count": 0,
+      "blockers_count": 0
+    },
+    "extractor_gate": {
+      "status": "passed",
+      "failure_category": null,
+      "description_present": true,
+      "price_amount": 27,
+      "failure_reasons": []
+    },
+    "identity_gate": {
+      "status": "passed",
+      "product_group_id": "sig_82fe1fb0171f39d4131ceab58541f1d4",
+      "product_line_id": "pl_d5655e64ba42fc5736a61067",
+      "sellable_item_group_id": "sig_c9559f0421d12271ee02d805",
+      "failure_reasons": []
+    },
+    "product_intel_gate": {
+      "status": "passed",
+      "has_product_intel": true,
+      "product_intel_status": "ready",
+      "failure_reasons": []
+    },
+    "live_pdp_gate": {
+      "status": "passed",
+      "price_amount": 27,
+      "has_overview": true,
+      "live_modules": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "reviews_preview",
+        "similar",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "media_gallery",
+        "price_promo"
+      ],
+      "details_status": {
+        "section_count": 3,
+        "section_soup_count": 0,
+        "has_product_facts": true,
+        "seed_section_count": 5,
+        "compressed_structured_sections": false
+      },
+      "questions_status": {
+        "seed_faq_count": 0,
+        "live_question_count": 0
+      },
+      "active_ingredients_status": {
+        "expected": true,
+        "live_item_count": 1
+      },
+      "image_health": {
+        "scanned_count": 3,
+        "total_url_count": 3,
+        "broken_count": 0,
+        "broken_urls": [],
+        "skipped": false,
+        "truncated": false
+      },
+      "gallery_status": {
+        "image_count": 3,
+        "duplicate_count": 0,
+        "content_leak_count": 0,
+        "seed_content_image_count": 0
+      },
+      "snapshot_contract": {
+        "authoritative": true,
+        "legacy_fields_quarantined": true,
+        "replace_strategy": "replace_not_merge"
+      },
+      "image_url_identity_stripped_count": 0,
+      "image_url_identity_stripped_examples": [],
+      "failure_reasons": []
+    },
+    "similar_gate": {
+      "status": "passed",
+      "similar_count": 12,
+      "card_highlight_missing_count": 0,
+      "exempt": false,
+      "failure_reasons": []
+    },
+    "variant_gate": {
+      "status": "failed",
+      "visible_variant_row_count": 1,
+      "identity_option_visible_count": 0,
+      "wrong_axis_for_category_count": 0,
+      "makeup_shade_missing_visual_count": 0,
+      "size_value_generic_axis_count": 0,
+      "examples": {
+        "identity_option_visible": [],
+        "wrong_axis_for_category": [],
+        "makeup_shade_missing_visual": [],
+        "size_value_generic_axis": [],
+        "missing_variant_selector_from_size_evidence": [],
+        "identity_default_title_axis": [
+          {
+            "axis_name": "shade",
+            "axis_kind": "shade",
+            "value": "default title",
+            "visual": false
+          }
+        ],
+        "size_siblings_split_product_line": []
+      },
+      "failure_reasons": [
+        "identity_default_title_axis"
+      ]
+    },
+    "root_cause_classification": [
+      "variant_contract_issue"
+    ],
+    "failure_reasons": [
+      "identity_default_title_axis"
+    ]
+  },
+  {
+    "seed_id": "eps_d9803be3bb0407fa2a6de21c",
+    "external_product_id": "ext_165050d194f3c456a7b9c32c",
+    "market": "US",
+    "domain": "roundlab.com",
+    "canonical_url": "https://roundlab.com/products/1025-dokdo-mask-sheet",
+    "seed_gate": {
+      "status": "passed",
+      "findings_count": 0,
+      "blockers_count": 0
+    },
+    "extractor_gate": {
+      "status": "passed",
+      "failure_category": null,
+      "description_present": true,
+      "price_amount": 4,
+      "failure_reasons": []
+    },
+    "identity_gate": {
+      "status": "passed",
+      "product_group_id": "sig_73b1a87e1403d5f93395e99365893a78",
+      "product_line_id": "pl_2a5080af89f5e553329b5ff3",
+      "sellable_item_group_id": "sig_1c6c3850764e4a8629602b92",
+      "failure_reasons": []
+    },
+    "product_intel_gate": {
+      "status": "passed",
+      "has_product_intel": true,
+      "product_intel_status": "ready",
+      "failure_reasons": []
+    },
+    "live_pdp_gate": {
+      "status": "passed",
+      "price_amount": 4,
+      "has_overview": true,
+      "live_modules": [
+        "canonical",
+        "variant_selector",
+        "offers",
+        "product_intel",
+        "reviews_preview",
+        "similar",
+        "active_ingredients",
+        "ingredients_inci",
+        "how_to_use",
+        "product_overview",
+        "product_facts",
+        "supplemental_details",
+        "product_details",
+        "media_gallery",
+        "price_promo"
+      ],
+      "details_status": {
+        "section_count": 1,
+        "section_soup_count": 0,
+        "has_product_facts": true,
+        "seed_section_count": 7,
+        "compressed_structured_sections": false
+      },
+      "questions_status": {
+        "seed_faq_count": 0,
+        "live_question_count": 0
+      },
+      "active_ingredients_status": {
+        "expected": true,
+        "live_item_count": 1
+      },
+      "image_health": {
+        "scanned_count": 6,
+        "total_url_count": 6,
+        "broken_count": 0,
+        "broken_urls": [],
+        "skipped": false,
+        "truncated": false
+      },
+      "gallery_status": {
+        "image_count": 6,
+        "duplicate_count": 0,
+        "content_leak_count": 0,
+        "seed_content_image_count": 0
+      },
+      "snapshot_contract": {
+        "authoritative": true,
+        "legacy_fields_quarantined": true,
+        "replace_strategy": "replace_not_merge"
+      },
+      "image_url_identity_stripped_count": 0,
+      "image_url_identity_stripped_examples": [],
+      "failure_reasons": []
+    },
+    "similar_gate": {
+      "status": "passed",
+      "similar_count": 12,
+      "card_highlight_missing_count": 0,
+      "exempt": false,
+      "failure_reasons": []
+    },
+    "variant_gate": {
+      "status": "passed",
+      "visible_variant_row_count": 3,
+      "identity_option_visible_count": 0,
+      "wrong_axis_for_category_count": 0,
+      "makeup_shade_missing_visual_count": 0,
+      "size_value_generic_axis_count": 0,
+      "examples": {
+        "identity_option_visible": [],
+        "wrong_axis_for_category": [],
+        "makeup_shade_missing_visual": [],
+        "size_value_generic_axis": [],
+        "missing_variant_selector_from_size_evidence": [],
+        "identity_default_title_axis": [],
+        "size_siblings_split_product_line": []
+      },
+      "failure_reasons": []
+    },
+    "root_cause_classification": [],
+    "failure_reasons": []
+  }
+]

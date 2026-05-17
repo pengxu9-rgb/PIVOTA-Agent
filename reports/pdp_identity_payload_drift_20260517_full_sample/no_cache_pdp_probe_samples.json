@@ -1,0 +1,366 @@
+[
+  {
+    "external_product_id": "ext_62f7f0e601b4a7076878dcc2",
+    "title": "Reflect Glow Prep Primer",
+    "pdp_url": "https://agent.pivota.cc/products/sig_dd09ef39eac7d31e8c6b3baa",
+    "product_id_for_pdp": "sig_dd09ef39eac7d31e8c6b3baa",
+    "source_listing_ref": "external_seed:ext_62f7f0e601b4a7076878dcc2",
+    "reasons": [
+      "identity_payload_stale"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_5ab776a181b3d1dbd1b7ee0a",
+    "title": "My Glow Shimmer Highlighter",
+    "pdp_url": "https://agent.pivota.cc/products/sig_0ef901d17a661cbc02c813b1",
+    "product_id_for_pdp": "sig_0ef901d17a661cbc02c813b1",
+    "source_listing_ref": "external_seed:ext_5ab776a181b3d1dbd1b7ee0a",
+    "reasons": [
+      "identity_payload_stale"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_daab8cbcc38d218fdb6d7d22",
+    "title": "My Glow Ampoule Highlighter",
+    "pdp_url": "https://agent.pivota.cc/products/sig_13c64924cebb756fa2f2bdcd",
+    "product_id_for_pdp": "sig_13c64924cebb756fa2f2bdcd",
+    "source_listing_ref": "external_seed:ext_daab8cbcc38d218fdb6d7d22",
+    "reasons": [
+      "identity_payload_stale"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_4e8c76f135dacc76b2653045",
+    "title": "Flawless Pore Prep Primer",
+    "pdp_url": "https://agent.pivota.cc/products/sig_9bbdc2c3f3af2eed9f2c14bc",
+    "product_id_for_pdp": "sig_9bbdc2c3f3af2eed9f2c14bc",
+    "source_listing_ref": "external_seed:ext_4e8c76f135dacc76b2653045",
+    "reasons": [
+      "identity_payload_stale"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_e99eaa64c53b8ba6b16db8b0",
+    "title": "3 Ceramide Panthenol Moisture Barrier Cream",
+    "pdp_url": "https://agent.pivota.cc/products/ext_e99eaa64c53b8ba6b16db8b0",
+    "product_id_for_pdp": "ext_e99eaa64c53b8ba6b16db8b0",
+    "source_listing_ref": "external_seed:ext_e99eaa64c53b8ba6b16db8b0",
+    "reasons": [
+      "identity_payload_stale",
+      "canonical_selection_gap"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_b16fd69f9a86ba825c0706ba",
+    "title": "8 Hyaluronic Acid Catechin Calming Pad",
+    "pdp_url": "https://agent.pivota.cc/products/ext_b16fd69f9a86ba825c0706ba",
+    "product_id_for_pdp": "ext_b16fd69f9a86ba825c0706ba",
+    "source_listing_ref": "external_seed:ext_b16fd69f9a86ba825c0706ba",
+    "reasons": [
+      "identity_payload_stale",
+      "canonical_selection_gap"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_33939578156b0fcad15d25d8",
+    "title": "8 Hyaluronic Acid Hydrating Gentle Foaming Cleanser",
+    "pdp_url": "https://agent.pivota.cc/products/ext_33939578156b0fcad15d25d8",
+    "product_id_for_pdp": "ext_33939578156b0fcad15d25d8",
+    "source_listing_ref": "external_seed:ext_33939578156b0fcad15d25d8",
+    "reasons": [
+      "identity_payload_stale",
+      "canonical_selection_gap"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_26b54c008d2308d09cf2d100",
+    "title": "8 Hyaluronic Acid Moisturizing Gentle Gel Cleanser",
+    "pdp_url": "https://agent.pivota.cc/products/ext_26b54c008d2308d09cf2d100",
+    "product_id_for_pdp": "ext_26b54c008d2308d09cf2d100",
+    "source_listing_ref": "external_seed:ext_26b54c008d2308d09cf2d100",
+    "reasons": [
+      "identity_payload_stale",
+      "canonical_selection_gap"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_c0f9f6ed3aaf31bc4f938c77",
+    "title": "Azelaic 10 Hyaluron Redness Soothing Pad",
+    "pdp_url": "https://agent.pivota.cc/products/ext_c0f9f6ed3aaf31bc4f938c77",
+    "product_id_for_pdp": "ext_c0f9f6ed3aaf31bc4f938c77",
+    "source_listing_ref": "external_seed:ext_c0f9f6ed3aaf31bc4f938c77",
+    "reasons": [
+      "identity_payload_stale",
+      "canonical_selection_gap"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_3c937cc0c4e26a198df810dc",
+    "title": "Heartleaf 70 Soothing Collagen Mask",
+    "pdp_url": "https://agent.pivota.cc/products/ext_3c937cc0c4e26a198df810dc",
+    "product_id_for_pdp": "ext_3c937cc0c4e26a198df810dc",
+    "source_listing_ref": "external_seed:ext_3c937cc0c4e26a198df810dc",
+    "reasons": [
+      "identity_payload_stale",
+      "canonical_selection_gap"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_f20e51d2e8b7a6b8879bf4b7",
+    "title": "Heartleaf Centella Red Spot Cream",
+    "pdp_url": "https://agent.pivota.cc/products/sig_a297a2c1a1725a25e590670d",
+    "product_id_for_pdp": "sig_a297a2c1a1725a25e590670d",
+    "source_listing_ref": "external_seed:ext_f20e51d2e8b7a6b8879bf4b7",
+    "reasons": [
+      "identity_payload_stale"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_9b69ff3a05127e9e55ab3517",
+    "title": "Heartleaf Pore Cleansing Oil Mild",
+    "pdp_url": "https://agent.pivota.cc/products/ext_9b69ff3a05127e9e55ab3517",
+    "product_id_for_pdp": "ext_9b69ff3a05127e9e55ab3517",
+    "source_listing_ref": "external_seed:ext_9b69ff3a05127e9e55ab3517",
+    "reasons": [
+      "identity_payload_stale"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_334b307f86ce27f32b0974f3",
+    "title": "Nano Retinol™ 0.3% + Niacin Renewing Serum",
+    "pdp_url": "https://agent.pivota.cc/products/ext_334b307f86ce27f32b0974f3",
+    "product_id_for_pdp": "ext_334b307f86ce27f32b0974f3",
+    "source_listing_ref": "external_seed:ext_334b307f86ce27f32b0974f3",
+    "reasons": [
+      "identity_payload_stale",
+      "canonical_selection_gap"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_bef0de79c945f6b223b1ae3d",
+    "title": "Nano Retinol™ 0.3% + Niacin Renewing Serum",
+    "pdp_url": "https://agent.pivota.cc/products/ext_bef0de79c945f6b223b1ae3d",
+    "product_id_for_pdp": "ext_bef0de79c945f6b223b1ae3d",
+    "source_listing_ref": "external_seed:ext_bef0de79c945f6b223b1ae3d",
+    "reasons": [
+      "identity_payload_stale",
+      "canonical_selection_gap"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_7066212be143dc14967cf757",
+    "title": "PDRN 100 Hyaluronic Acid Glow Pad",
+    "pdp_url": "https://agent.pivota.cc/products/ext_7066212be143dc14967cf757",
+    "product_id_for_pdp": "ext_7066212be143dc14967cf757",
+    "source_listing_ref": "external_seed:ext_7066212be143dc14967cf757",
+    "reasons": [
+      "identity_payload_stale",
+      "canonical_selection_gap"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_b6f494fde207dc3437d53b36",
+    "title": "PDRN Collagen Glow Facial Serum Spray",
+    "pdp_url": "https://agent.pivota.cc/products/ext_b6f494fde207dc3437d53b36",
+    "product_id_for_pdp": "ext_b6f494fde207dc3437d53b36",
+    "source_listing_ref": "external_seed:ext_b6f494fde207dc3437d53b36",
+    "reasons": [
+      "identity_payload_stale",
+      "canonical_selection_gap"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_7a5d69bfafd20e86b2559140",
+    "title": "PDRN Collagen Melting Patch For Glass Skin 4ea",
+    "pdp_url": "https://agent.pivota.cc/products/ext_7a5d69bfafd20e86b2559140",
+    "product_id_for_pdp": "ext_7a5d69bfafd20e86b2559140",
+    "source_listing_ref": "external_seed:ext_7a5d69bfafd20e86b2559140",
+    "reasons": [
+      "identity_payload_stale"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_1c600e33a3349e3d26a5d3da",
+    "title": "PDRN Collagen Melting Patch For Neck 4ea",
+    "pdp_url": "https://agent.pivota.cc/products/ext_1c600e33a3349e3d26a5d3da",
+    "product_id_for_pdp": "ext_1c600e33a3349e3d26a5d3da",
+    "source_listing_ref": "external_seed:ext_1c600e33a3349e3d26a5d3da",
+    "reasons": [
+      "identity_payload_stale"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_db88dbed2befc1ea2a92f811",
+    "title": "Peach 70 Niacin Brightening Collagen Mask",
+    "pdp_url": "https://agent.pivota.cc/products/ext_db88dbed2befc1ea2a92f811",
+    "product_id_for_pdp": "ext_db88dbed2befc1ea2a92f811",
+    "source_listing_ref": "external_seed:ext_db88dbed2befc1ea2a92f811",
+    "reasons": [
+      "identity_payload_stale",
+      "canonical_selection_gap"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_f11409f7ce9eea409f42ddef",
+    "title": "Peach 77 Niacin Enriched Cream",
+    "pdp_url": "https://agent.pivota.cc/products/ext_f11409f7ce9eea409f42ddef",
+    "product_id_for_pdp": "ext_f11409f7ce9eea409f42ddef",
+    "source_listing_ref": "external_seed:ext_f11409f7ce9eea409f42ddef",
+    "reasons": [
+      "identity_payload_stale",
+      "canonical_selection_gap"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_0e5e8e565796b0c3c048ca99",
+    "title": "Rice 70 Glow Collagen Mask",
+    "pdp_url": "https://agent.pivota.cc/products/ext_0e5e8e565796b0c3c048ca99",
+    "product_id_for_pdp": "ext_0e5e8e565796b0c3c048ca99",
+    "source_listing_ref": "external_seed:ext_0e5e8e565796b0c3c048ca99",
+    "reasons": [
+      "identity_payload_stale",
+      "canonical_selection_gap"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_a406636157366f31879c4cbe",
+    "title": "Rumi Ultra-thin Spot Cover Patch (55ea)",
+    "pdp_url": "https://agent.pivota.cc/products/ext_a406636157366f31879c4cbe",
+    "product_id_for_pdp": "ext_a406636157366f31879c4cbe",
+    "source_listing_ref": "external_seed:ext_a406636157366f31879c4cbe",
+    "reasons": [
+      "identity_payload_stale"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_6f2f4dd50fe52e8768e8c831",
+    "title": "Triple Acid Spot Care Microdart Patch",
+    "pdp_url": "https://agent.pivota.cc/products/ext_6f2f4dd50fe52e8768e8c831",
+    "product_id_for_pdp": "ext_6f2f4dd50fe52e8768e8c831",
+    "source_listing_ref": "external_seed:ext_6f2f4dd50fe52e8768e8c831",
+    "reasons": [
+      "identity_payload_stale"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_0af78f23fe7ec6cb8fc71b19",
+    "title": "Ultra-Thin Spot Cover Patch",
+    "pdp_url": "https://agent.pivota.cc/products/ext_0af78f23fe7ec6cb8fc71b19",
+    "product_id_for_pdp": "ext_0af78f23fe7ec6cb8fc71b19",
+    "source_listing_ref": "external_seed:ext_0af78f23fe7ec6cb8fc71b19",
+    "reasons": [
+      "identity_payload_stale"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  },
+  {
+    "external_product_id": "ext_5c304195f3b4d622943869ed",
+    "title": "Zero-cast Moisturizing Finish Sunscreen",
+    "pdp_url": "https://agent.pivota.cc/products/ext_5c304195f3b4d622943869ed",
+    "product_id_for_pdp": "ext_5c304195f3b4d622943869ed",
+    "source_listing_ref": "external_seed:ext_5c304195f3b4d622943869ed",
+    "reasons": [
+      "identity_payload_stale",
+      "canonical_selection_gap"
+    ],
+    "options": {
+      "no_cache": true,
+      "cache_bypass": true
+    }
+  }
+]

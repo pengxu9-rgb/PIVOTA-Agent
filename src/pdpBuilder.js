@@ -1172,7 +1172,7 @@ function isDisplayableBuilderVariantOption(option) {
   const name = normalizeBuilderOptionName(option?.name);
   const value = asNonEmptyString(option?.value);
   if (!name || !value) return false;
-  if (/^(default|default title|title|variant)$/i.test(value)) return false;
+  if (/^(default|default title|title|variant|single item)$/i.test(value)) return false;
   if (NON_DISPLAYABLE_VARIANT_OPTION_NAMES.has(name)) return false;
   if (GENERIC_VARIANT_OPTION_NAMES.has(name) && isLikelyIdentityOptionValue(value)) return false;
   return true;
@@ -1225,7 +1225,7 @@ function shouldExposeProductVariants(product, variants, productLineOptions) {
     const sourceQualityStatus = asNonEmptyString(
       variant?.source_quality_status || variant?.sourceQualityStatus,
     ).toLowerCase();
-    return title && !/^(default|default title|variant \d+)$/i.test(title) && sourceQualityStatus !== 'blocked';
+    return title && !/^(default|default title|variant \d+|single item)$/i.test(title) && sourceQualityStatus !== 'blocked';
   });
 }
 
@@ -1236,7 +1236,7 @@ function shouldPreserveImplicitSingleVariant(product, variants, productLineOptio
   const variant = variants[0];
   if (variantHasDisplayableChoice(variant)) return false;
   const title = asNonEmptyString(variant?.title);
-  if (!/^(default|default title|variant \d+)$/i.test(title)) return false;
+  if (!/^(default|default title|variant \d+|single item)$/i.test(title)) return false;
   const sourceQualityStatus = asNonEmptyString(
     variant?.source_quality_status || variant?.sourceQualityStatus,
   ).toLowerCase();
@@ -1261,7 +1261,7 @@ function buildVariantSelectorDisplayLabel(variant) {
       .join(' / ');
   }
   const title = asNonEmptyString(variant?.title);
-  return /^(default|default title|variant \d+)$/i.test(title) ? '' : title;
+  return /^(default|default title|variant \d+|single item)$/i.test(title) ? '' : title;
 }
 
 function buildVariantSelectorVariants(variants) {

@@ -1177,6 +1177,43 @@ describe('pdpBuilder structured modules for external-seed style products', () =>
     ]);
   });
 
+  test('suppresses single external-seed Format: Single item selector choices', () => {
+    const payload = buildPdpPayload({
+      product: {
+        product_id: 'ext_roundlab_ampoule',
+        merchant_id: 'external_seed',
+        source: 'external_seed',
+        title: '1025 Dokdo Ampoule',
+        category: 'Ampoule',
+        image_url: 'https://example.com/dokdo-ampoule.png',
+        price: { amount: 31, currency: 'USD' },
+        variants: [
+          {
+            id: 'v_single',
+            title: 'Single item',
+            options: [{ name: 'Format', value: 'Single item', axis_kind: 'format' }],
+            display_label: 'Format: Single item',
+            axis_kind: 'format',
+            price: { amount: 31, currency: 'USD' },
+          },
+        ],
+      },
+      relatedProducts: [],
+      entryPoint: 'agent',
+    });
+
+    expect(payload.modules.find((module) => module.type === 'variant_selector')).toBeFalsy();
+    expect(payload.product.variants).toEqual([
+      expect.objectContaining({
+        variant_id: 'v_single',
+        title: '',
+        options: [],
+        hidden_from_selector: true,
+        source_quality_status: 'blocked',
+      }),
+    ]);
+  });
+
   test('preserves structured ingredient items without re-splitting numeric INCI commas', () => {
     const payload = buildPdpPayload({
       product: {

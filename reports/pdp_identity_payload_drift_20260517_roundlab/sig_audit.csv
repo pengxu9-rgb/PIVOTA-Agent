@@ -1,0 +1,80 @@
+sellable_item_group_id,product_line_id,row_count,live_read_count,stale_payload_count,seed_active_count,seed_active_expectation_count,identity_active_count,sig_mixed_active_expectation,canonical_selection_gap,canonical_content_ref,fresh_best_content_ref,sync_candidate_count,sample_titles
+sig_f9ef73632356ecb1702fa2ab,pl_0751066961415d9af99b1740,1,1,1,1,1,0,false,true,external_seed:ext_0593d410360b6e8cebbed23e,external_seed:ext_0593d410360b6e8cebbed23e,1,1025 Dokdo Ampoule
+sig_6c69e843f4af13d70076c743,pl_0b2f360541a71b1b0320235a,1,1,1,1,1,0,false,true,external_seed:ext_1ee358db8a0a348d940541ea,external_seed:ext_1ee358db8a0a348d940541ea,1,1025 Dokdo Cleanser
+sig_c8e5f67fb370f0bf29068187,pl_3b46eb071be929219c2b8aa8,1,1,1,1,1,0,false,true,external_seed:ext_d356903af461a19a1396067e,external_seed:ext_d356903af461a19a1396067e,1,1025 Dokdo Cleansing Oil
+sig_75b1213dd259bdacaa19f48a,pl_c8eb98e36982e99c5550e61e,1,1,1,1,1,0,false,true,external_seed:ext_624a12ac9aec83ba278950e0,external_seed:ext_624a12ac9aec83ba278950e0,1,1025 Dokdo Cream
+sig_0e8531ace326a9795c68b4b2,pl_10ad963db53ab7bf749c6231,1,1,1,1,1,0,false,true,external_seed:ext_52db83881b3497c1f1165248,external_seed:ext_52db83881b3497c1f1165248,1,1025 Dokdo Lotion
+sig_7462e3a7a2880efe37517314,pl_49c714e3263d479e03d86747,1,1,1,1,1,0,false,true,external_seed:ext_94efe3f4b07d340ca39eb3c0,external_seed:ext_94efe3f4b07d340ca39eb3c0,1,1025 Dokdo Mud Pack
+sig_9e60c4c44eaeefb21f9e1d29,pl_20b99b0aad7b3f6fc56fa069,1,1,1,1,1,0,false,true,external_seed:ext_39ee239fdd7cae5736d9d3e7,external_seed:ext_39ee239fdd7cae5736d9d3e7,1,1025 Dokdo Sleeping Pack
+sig_1b4d781283f82291599c4843,pl_c04b25f40cfdff20980b805b,1,1,1,1,1,0,false,true,external_seed:ext_8f57ee8b842f3dcd53f8a13b,external_seed:ext_8f57ee8b842f3dcd53f8a13b,1,1025 Dokdo Toner
+sig_1c6c3850764e4a8629602b92,pl_2a5080af89f5e553329b5ff3,1,1,1,1,1,0,false,true,external_seed:ext_165050d194f3c456a7b9c32c,external_seed:ext_165050d194f3c456a7b9c32c,1,1025 Dokdo Water Gel Mask Sheet
+sig_8035b1716fe764fba33d3eb9,pl_9963505187f0c2cc641828ad,1,1,1,1,1,0,false,true,external_seed:ext_430d2c9748b87d038314f374,external_seed:ext_430d2c9748b87d038314f374,1,Birch Juice Cleansing Pad
+sig_665f8b8dbfb110b56df32315,pl_21ea0316432614550dc99b1b,1,1,1,1,1,0,false,true,external_seed:ext_d9ba295c3cd40caa60aa856e,external_seed:ext_d9ba295c3cd40caa60aa856e,1,Birch Juice Moisturizing Ampoule
+sig_2c007c2ba76d63995059aa50,pl_00ab7591690914f7de84d89a,1,1,1,1,1,0,false,true,external_seed:ext_ebbcb7f9ccbf20c656808ac4,external_seed:ext_ebbcb7f9ccbf20c656808ac4,1,Birch Mild-Up Sunscreen UVLock SPF 50+ Broad Spectrum
+sig_e6417f0e5991a1ca305a0b92,pl_d3923f539399bed0255b7af4,1,1,1,1,1,0,false,true,external_seed:ext_94e79b8163564b4df1764a92,external_seed:ext_94e79b8163564b4df1764a92,1,Birch Moisturizing Cream
+sig_d8fb2fd88ae138c0139afe9d,pl_e7b13628e9cff1869685f75d,1,1,1,1,1,0,false,true,external_seed:ext_189fe972ab697d890927ee68,external_seed:ext_189fe972ab697d890927ee68,1,Birch Moisturizing Double Gel Mask
+sig_308bc02699c64415d5e24625,pl_65484dbfa7a044d78ab2b3c5,1,1,1,1,1,0,false,true,external_seed:ext_4b5349ed18ef549b67076e55,external_seed:ext_4b5349ed18ef549b67076e55,1,Birch Moisturizing Intensive Cream
+sig_8b7a7c6795ff58f373c03f1f,pl_3075600e6d134079f294cd8d,1,1,1,1,1,0,false,true,external_seed:ext_5c41aae887538067c0e3fff5,external_seed:ext_5c41aae887538067c0e3fff5,1,Birch Moisturizing Lip Balm
+sig_6aeefe99fe5f9ca3f8a09641,pl_ec2b37a2cde048f240557c00,1,1,1,1,1,0,false,true,external_seed:ext_203dc23d76d112e309035d38,external_seed:ext_203dc23d76d112e309035d38,1,"Birch Moisturizing Mild-Up Sunscreen SPF 50+, PA++++"
+sig_7283596ab481e770f809f550,pl_cf88d0a05c6dfa7c911573fb,1,1,1,1,1,0,false,true,external_seed:ext_b8b101bf12d600cfb7df256b,external_seed:ext_b8b101bf12d600cfb7df256b,1,Birch Moisturizing Serum
+sig_68b7ac10c31c0c59fdb6f41b,pl_f59b31cb30a0ee85463bb955,1,1,1,1,1,0,false,true,external_seed:ext_9165bb79ae5cf649654fc68d,external_seed:ext_9165bb79ae5cf649654fc68d,1,Birch Moisturizing Sheet Mask
+sig_ee1f43edde13df2e652756dd,pl_efa84ca1c96a9bbcea01d8b1,1,1,1,1,1,0,false,true,external_seed:ext_ff6fed4e89cf27cc919e00af,external_seed:ext_ff6fed4e89cf27cc919e00af,1,Birch Moisturizing Soothing Gel
+sig_1003dcf98c54d9f58afff6ae,pl_a37cb35ce4ea129b676c6079,1,1,1,1,1,0,false,true,external_seed:ext_cc8b7d1b7b03c51487bb1608,external_seed:ext_cc8b7d1b7b03c51487bb1608,1,Birch Moisturizing Sunscreen UVLock SPF 45+ Broad Spectrum
+sig_9359804e732a9de392a144cc,pl_d552587dbadb5c978d8bcd59,1,1,1,1,1,0,false,true,external_seed:ext_30b150bf80240151c93739a8,external_seed:ext_30b150bf80240151c93739a8,1,Birch Moisturizing Sunscreen UVLock SPF 45+ Broad Spectrum [Subscription]
+sig_4a4fa543594d09468be91f18,pl_8608e561bf9a94ff5aba664f,1,1,1,1,1,0,false,true,external_seed:ext_24442b806ade8ddd21b30ee4,external_seed:ext_24442b806ade8ddd21b30ee4,1,Birch Moisturizing Wash Off Mask
+sig_48e2cfe123dbe616aee9c77a,pl_a2c4fe1bba215a8f853a34db,1,1,1,1,1,0,false,true,external_seed:ext_c05d7a10c5aef37549d50e8b,external_seed:ext_c05d7a10c5aef37549d50e8b,1,Camellia Deep Collagen Firming Gel Mask
+sig_45794a3dc5e4d82caeb9dc23,pl_dcb2131657084d041d4cb3cf,1,1,1,1,1,0,false,true,external_seed:ext_60573d10fee5489ecd90bbf1,external_seed:ext_60573d10fee5489ecd90bbf1,1,Camellia Deep Collagen V Lifting Gel Mask
+sig_80378355efa246f5dff2de35,pl_6d4373b998b0900f095fd182,1,1,1,1,1,0,false,true,external_seed:ext_5b7f4336c4933248e3e96153,external_seed:ext_5b7f4336c4933248e3e96153,1,Dokdo Cleansing Water
+sig_4badc5f29b0f6f5dae69da52,pl_b239d92b581f67428d8884e5,1,1,1,1,1,0,false,true,external_seed:ext_39a74534dd72fafbbc646125,external_seed:ext_39a74534dd72fafbbc646125,1,Mugwort Calming Cleanser
+sig_45bfa6ba7684708d79dcd6ae,pl_1f0ec030cc67a977b9b7c701,1,1,1,1,1,0,false,true,external_seed:ext_31c00cba2745b9748e8df81d,external_seed:ext_31c00cba2745b9748e8df81d,1,Mugwort Calming Serum
+sig_fc0c6cc7818b49f95d858d32,pl_93dea5757dd1b1974a16eb2f,1,1,1,1,1,0,false,true,external_seed:ext_792e1933d4f08d1e1131533b,external_seed:ext_792e1933d4f08d1e1131533b,1,Mugwort Calming Sheet Mask
+sig_208684568f253481267f94e2,pl_40366b9911e4e2384de60ce1,1,1,1,1,1,0,false,true,external_seed:ext_4be7b0a729d4cbfef94683dc,external_seed:ext_4be7b0a729d4cbfef94683dc,1,Mugwort Calming Toner
+sig_55fb5459e807f66c574fc8e3,pl_ebd1859681f4063c23e761d7,1,1,1,1,1,0,false,true,external_seed:ext_931a75ba9167ab45f218e552,external_seed:ext_931a75ba9167ab45f218e552,1,Pine Calming Cica Ampoule
+sig_c17ed91d59bb0b3307f5ce76,pl_32bdefae46440b5c65e04ae9,1,1,1,1,1,0,false,true,external_seed:ext_5d82f54375f34090612782b0,external_seed:ext_5d82f54375f34090612782b0,1,Pine Calming Cica Body Wash
+sig_c915f78dca578c8e2e4e9550,pl_4b33c4704f3d04356436e4de,1,1,1,1,1,0,false,true,external_seed:ext_8d5c578c4ddcf431b19c2115,external_seed:ext_8d5c578c4ddcf431b19c2115,1,Pine Calming Cica Cleanser
+sig_c16ea42f7debbe8e2ba798be,pl_cce9b3b4d4147e265ae98ece,1,1,1,1,1,0,false,true,external_seed:ext_587bcf0136adcf85bd13126a,external_seed:ext_587bcf0136adcf85bd13126a,1,Pine Calming Cica Cream
+sig_b137e8531cdd1f25b107988e,pl_92bd838e6928ca88aaa9f92f,1,1,1,1,1,0,false,true,external_seed:ext_640db7fbdfee3422d5503117,external_seed:ext_640db7fbdfee3422d5503117,1,Pine Calming Cica Sheet Mask
+sig_19fbaaad939925d41608dd6b,pl_0559965310de589c8c8a8fee,1,1,1,1,1,0,false,true,external_seed:ext_2db43c8dcb27c9469c9b827e,external_seed:ext_2db43c8dcb27c9469c9b827e,1,Pine Calming Cica Toner
+sig_89b12ba19f93571b700f0eb2,pl_f86b1dd7a8ae76ab0330aca9,1,1,1,1,1,0,false,true,external_seed:ext_356317cf3d4fdc55a8656b5e,external_seed:ext_356317cf3d4fdc55a8656b5e,1,Pine Calming Cica Toner Pad
+sig_fccf3ca6aac8da7b3f1fb865,pl_47c33523607166761f825a3b,1,1,1,1,1,0,false,true,external_seed:ext_1181cf248cb9f9b5f1ad7a70,external_seed:ext_1181cf248cb9f9b5f1ad7a70,1,Soybean Nourishing Cleansing Oil
+sig_1d306ee95dadc9fc9cf58425,pl_769ef558e5a3532fa34947d1,1,1,1,1,1,0,false,true,external_seed:ext_b9fa1a34657d90a71648f81d,external_seed:ext_b9fa1a34657d90a71648f81d,1,Soybean Nourishing Cream
+sig_c2e6c546d2eb61035e73900b,pl_d445fe627e0a504ce566ff85,1,1,1,1,1,0,false,true,external_seed:ext_ed0afba5c04f639c15d820fd,external_seed:ext_ed0afba5c04f639c15d820fd,1,Soybean Nourishing Serum
+sig_fd467d169ea692b0c033f89c,pl_874c034bfd723260c019f154,1,1,1,1,1,0,false,true,external_seed:ext_12276e4930f337912a5fd639,external_seed:ext_12276e4930f337912a5fd639,1,Soybean Nourishing Sheet Mask
+sig_7d2cc62621a278421c25c3e1,pl_55f66f6e9f8efe7bcdfeb81f,1,1,1,1,1,0,false,true,external_seed:ext_a22f02d99b3ce8b53f1a6be5,external_seed:ext_a22f02d99b3ce8b53f1a6be5,1,Soybean Nourishing Toner
+sig_6ac3ebf1bac3b7ca02018c2b,pl_d7ed2d184d4efeba3c0aa595,1,1,1,1,1,0,false,true,external_seed:ext_a6accd5d1dd6ce20e45290bc,external_seed:ext_a6accd5d1dd6ce20e45290bc,1,Soybean Panthenol Ampoule
+sig_7c5a900ed71de1bf5018a3fa,pl_0362ed7d485cdd69076c28e2,1,1,1,1,1,0,false,true,external_seed:ext_3b2b16783249d409c1195cf6,external_seed:ext_3b2b16783249d409c1195cf6,1,Soybean Panthenol Cleansing Oil
+sig_ae4e23a5b0f1426688340c9b,pl_f48d44221be18c93982700f3,1,1,1,1,1,0,false,true,external_seed:ext_8b28e1f7603e3a0bcaa153d5,external_seed:ext_8b28e1f7603e3a0bcaa153d5,1,Soybean Panthenol Cream
+sig_b89fa7831ed108c53b8382f9,pl_e55d18ec775394795c3f2486,1,1,1,1,1,0,false,true,external_seed:ext_c7149f3a1741e4a8eb2d5701,external_seed:ext_c7149f3a1741e4a8eb2d5701,1,Soybean Panthenol Sheet Mask
+sig_00ec344b9c1c00264d936d64,pl_7373cbca118840b37cee29cd,1,1,1,1,1,0,false,true,external_seed:ext_d02c475630a8ac959414164a,external_seed:ext_d02c475630a8ac959414164a,1,Vita Niacinamide Dark Spot Serum
+sig_82e1a1e6fe998a3649f2c003,pl_8f16ee66a511750d0cdf96c4,1,1,1,1,1,0,false,true,external_seed:ext_daaf898179ef2c982fec210b,external_seed:ext_daaf898179ef2c982fec210b,1,Vita Niacinamide Dark Spot Serum Mask
+sig_ce4ab4de8b1a85d5e6f96f6b,pl_d833f42aaf0d0cb16459fe74,1,1,1,1,1,0,false,true,external_seed:ext_267205e8964dd5ccf73f7232,external_seed:ext_267205e8964dd5ccf73f7232,1,Soybean Panthenol Toner
+sig_0fb332a1243180d7a91b9ffa,pl_acfe788b8e2cfa4038dd9d0b,1,1,1,1,1,0,false,true,external_seed:ext_332e0949ace181c1749e16e6,external_seed:ext_332e0949ace181c1749e16e6,1,Birch Moisturizing Cleanser
+missing:external_seed:ext_846a302275a13e3af35b9734,,1,0,1,0,0,0,false,false,external_seed:ext_846a302275a13e3af35b9734,external_seed:ext_846a302275a13e3af35b9734,0,Birch Juice Moisturizing Peeling Cleansing Oil
+sig_1e64b76933bdc19f0463ef7b,pl_64dc69a9d4db2bc0da5ccd9b,1,1,1,1,1,0,false,true,external_seed:ext_7dde43f585bdccdbb85c9987,external_seed:ext_7dde43f585bdccdbb85c9987,1,Vita Niacinamide Dark Spot Cream
+sig_52d9d07067312daf016c43a2,pl_11f9b8db452dda870085f2bf,1,1,1,1,1,0,false,true,external_seed:ext_5d05aace12f13c757f2efcc8,external_seed:ext_5d05aace12f13c757f2efcc8,1,1025 Dokdo Peeling Gel
+missing:external_seed:ext_7ea35b3ed2953110b253ce9c,,1,0,1,0,0,0,false,false,external_seed:ext_7ea35b3ed2953110b253ce9c,external_seed:ext_7ea35b3ed2953110b253ce9c,0,Camellia Deep Collagen Eye Cream 30ml
+sig_8394e33aa1f47ac5b6f9daca,pl_18be5a46f41377091ba0a9b4,1,1,1,1,1,0,false,true,external_seed:ext_6150cfa3467b2947462803af,external_seed:ext_6150cfa3467b2947462803af,1,Pine Calming Cica Lotion
+sig_a863ff97cc7309c131f20b9a,pl_a3a57e18c401fe87b7efab4f,1,1,1,1,1,1,false,false,external_seed:ext_1ef210a945a4a6beb1da9306,external_seed:ext_1ef210a945a4a6beb1da9306,1,Birch Moisturizing Toner
+sig_8f925b1082b861c4fffd2b41,pl_f8fbc42ef31ba00d8de3206b,1,1,1,1,1,1,false,false,external_seed:ext_4db5bc081173014edf761523,external_seed:ext_4db5bc081173014edf761523,1,1025 Dokdo Cleansing Balm 50ml
+sig_3c80bf75f3f3785225591960,pl_1024cd421be231a43f7468c4,1,1,1,1,1,1,false,false,external_seed:ext_46fff1a0ea1bace6f4520722,external_seed:ext_46fff1a0ea1bace6f4520722,1,Birch Moisturizing Sun Cushion SPF 50+
+sig_be373037359f851acc7c2e9b,pl_3bde01a2b48226b6a88fcd2a,1,1,1,1,1,0,false,true,external_seed:ext_dfd64cd6092756c6eb846e0f,external_seed:ext_dfd64cd6092756c6eb846e0f,1,Camellia Deep Collagen Firming Cream
+sig_020c92a05ec378cb3fc18e60,pl_c29da923a5c310d731fd65c1,1,1,1,1,1,0,false,true,external_seed:ext_e62abcf523eb8eb1072f19c5,external_seed:ext_e62abcf523eb8eb1072f19c5,1,Birch Moisturizing Toner Pad
+sig_62c649a4cf1314ef4e53f6e1,pl_5c920ea8268774ff77146f8f,1,1,1,1,1,1,false,false,external_seed:ext_c4f616d3d67c75a6b0d4ae27,external_seed:ext_c4f616d3d67c75a6b0d4ae27,1,Camellia Deep Collagen Milky PDRN Toner 150ml
+sig_78530282d18eb1df7423d717,pl_691a3cae14793f39eea87940,1,1,1,1,1,0,false,true,external_seed:ext_4a406d4e7ec97f067cab97dc,external_seed:ext_4a406d4e7ec97f067cab97dc,1,Pine Cica Calming Scalp Tonic
+sig_0a59e06751a7129dce9185c4,pl_44f16dba81299caac82d5e2a,1,1,1,1,1,0,false,true,external_seed:ext_58265709fba82ce79184a8a4,external_seed:ext_58265709fba82ce79184a8a4,1,Soybean Nourishing Cleanser
+sig_f10615a5670deb5134071154,pl_f8a40bce9dcbffab66a42489,1,1,1,1,1,0,false,true,external_seed:ext_ba76596547c059c7f397636d,external_seed:ext_ba76596547c059c7f397636d,1,[DEAL] Birch Mild-Up Sunscreen UVLock SPF 50+ Broad Spectrum
+sig_c31fb566f379ba7aa0692c9e,pl_f430be0d46c00927befb8e6c,1,1,1,1,1,0,false,true,external_seed:ext_fa2fb0fd3ed79a5e89d0dc03,external_seed:ext_fa2fb0fd3ed79a5e89d0dc03,1,Mugwort Calming Cream
+sig_0ddfc868887ef03d213f9075,pl_d1bf9219c8246a27d9020330,1,1,1,1,1,0,false,true,external_seed:ext_ab4cf87fe2c42c42ed793e72,external_seed:ext_ab4cf87fe2c42c42ed793e72,1,Camellia Deep Collagen Firming Ampoule
+sig_3b8dd512a2cbff280610cbab,pl_afa90eb6b0d264f3b96438d0,1,1,1,1,1,0,false,true,external_seed:ext_e7ef913b73f94eb5921023fe,external_seed:ext_e7ef913b73f94eb5921023fe,1,Camellia Deep Collagen Jelly Mask Cleanser
+sig_c3b7abd7646a014b0d057a53,pl_78a3e258a8b112515cc8bc32,1,1,1,1,1,0,false,true,external_seed:ext_107d3cbadd4af1917e5184a8,external_seed:ext_107d3cbadd4af1917e5184a8,1,[DEAL] 1025 Dokdo Toner
+sig_dfef1ebd37e72e1d96071a97,pl_a5a3fe2d203339bd32630912,1,1,1,1,1,1,false,false,external_seed:ext_519a68c572f7e46df3b01153,external_seed:ext_519a68c572f7e46df3b01153,1,Birch Moisturizing Eye Balm
+sig_89b074d0502bed3a10e7e5d3,pl_152df825dd25f3d02243613b,1,1,1,1,1,0,false,true,external_seed:ext_eb5bf9f4fd200d3ec85615e1,external_seed:ext_eb5bf9f4fd200d3ec85615e1,1,[DEAL] 1025 Dokdo Cleanser
+sig_04b7bf2c895fe80133919e41,pl_46998d504903726c39584843,1,1,1,1,1,0,false,true,external_seed:ext_86c3bafe3e47472c02dad61f,external_seed:ext_86c3bafe3e47472c02dad61f,1,Birch Moisturizing Cream Double Pack
+sig_80bd35ceb0ebeb05cc263747,pl_fe5d65a61a1bd877cd325ac6,1,1,1,1,1,0,false,true,external_seed:ext_c8c0d7cb065cd3975dd89645,external_seed:ext_c8c0d7cb065cd3975dd89645,1,[DEAL] Birch Moisturizing Sunscreen UVLock SPF 45+ Broad Spectrum
+missing:external_seed:ext_dd957030ab8e36a7dc29ddc2,,1,0,1,0,0,0,false,false,external_seed:ext_dd957030ab8e36a7dc29ddc2,external_seed:ext_dd957030ab8e36a7dc29ddc2,0,Birch Moisturizing Hand Cream
+sig_cd6209c863af3ec4d3fee5d0,pl_d799de11ed1939ff5e2376c9,1,1,1,1,1,0,false,true,external_seed:ext_a0f7c9d52ef357fa5a7a0b6d,external_seed:ext_a0f7c9d52ef357fa5a7a0b6d,1,[DEAL] Birch Moisturizing Cleanser
+sig_9fe0ab10c2537aa9b1dd018b,pl_780901491882b485e95961a3,1,1,1,1,1,0,false,true,external_seed:ext_64bbf9948349bcef6a4360a7,external_seed:ext_64bbf9948349bcef6a4360a7,1,Soybean Panthenol Cleanser
+sig_e6fa2d33922c51efbb0d678c,pl_994bef2507962a34d3938a24,1,1,1,0,1,0,false,false,external_seed:ext_3d00bbe2a5c93d256b25784d,external_seed:ext_3d00bbe2a5c93d256b25784d,1,1025 Dokdo Cleanser + Dokdo Toner 200ml
+sig_5968ca4e3202e03beac9a595,pl_e6420caa2107ff487fb66faa,1,1,1,1,1,1,false,false,external_seed:ext_aee1418f38e982235e39bca9,external_seed:ext_aee1418f38e982235e39bca9,1,1025 Dokdo Cleansing Gel
+sig_c9559f0421d12271ee02d805,pl_d5655e64ba42fc5736a61067,1,1,0,1,1,1,false,false,external_seed:ext_04dab6a642edac20a33ccae6,external_seed:ext_04dab6a642edac20a33ccae6,0,1025 Dokdo Toner Pad
+sig_5a982221b096c8fc43ec5d81,pl_79982cabc4c654bef30c145d,1,1,0,1,1,1,false,false,external_seed:ext_9c32a1c5ada398419521f2c6,external_seed:ext_9c32a1c5ada398419521f2c6,0,Birch Moisturizing Sun Stick SPF 50+
