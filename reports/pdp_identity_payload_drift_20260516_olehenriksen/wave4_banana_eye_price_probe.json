@@ -1,0 +1,29 @@
+{
+  "generated_at": "2026-05-17T00:59:52.425Z",
+  "external_product_id": "ext_918981bcc6d552cc2af0b535",
+  "seed": {
+    "id": "eps_bde436f20eee4cba8bdf95ef",
+    "title": "Banana Bright+ Eye Crème",
+    "canonical_url": "https://olehenriksen.com/products/banana-bright-eye-creme",
+    "updated_at": "2026-05-14T14:52:37.319Z",
+    "row_price_amount": 37,
+    "row_price_currency": "USD",
+    "row_availability": "in_stock",
+    "seed_price": null,
+    "seed_compare_at_price": null,
+    "seed_currency": null,
+    "seed_availability": "in_stock",
+    "seed_offer": null
+  },
+  "identity": {
+    "sellable_item_group_id": "sig_919e963e7d7a740f5f496e87",
+    "identity_status": "approved",
+    "live_read_enabled": true,
+    "updated_at": "2026-05-16T23:54:54.434Z",
+    "payload_price": 37,
+    "payload_compare_at_price": null,
+    "payload_currency": "USD"
+  },
+  "catalog_offers_error": "column \"external_product_id\" does not exist",
+  "catalog_offers": []
+}

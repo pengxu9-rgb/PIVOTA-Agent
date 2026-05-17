@@ -3141,6 +3141,30 @@ describe('externalSeedProducts helper', () => {
     expect(product.ingredient_intel?.authoritative?.active_items).toEqual(['Salicylic acid']);
   });
 
+  test('matches parenthetical active aliases against source ingredient evidence', () => {
+    const product = buildExternalSeedProduct({
+      id: 'eps_ole_banana_eye',
+      external_product_id: 'ext_ole_banana_eye',
+      canonical_url: 'https://olehenriksen.com/products/banana-bright-eye-creme',
+      destination_url: 'https://olehenriksen.com/products/banana-bright-eye-creme',
+      title: 'Banana Bright+ Eye Crème',
+      seed_data: {
+        brand: 'Olehenriksen',
+        pdp_ingredients_raw:
+          'Triple Vitamin C Complex With Gold Delivery System brightens. Gold Complexed Vitamin C ascorbic acid (pure vitamin C) improves delivery of vitamin C to skin.',
+        active_ingredients: ['Vitamin C (Ascorbic acid)'],
+        snapshot: {
+          pdp_ingredients_raw:
+            'Triple Vitamin C Complex With Gold Delivery System brightens. Gold Complexed Vitamin C ascorbic acid (pure vitamin C) improves delivery of vitamin C to skin.',
+          active_ingredients: ['Vitamin C (Ascorbic acid)'],
+        },
+      },
+    });
+
+    expect(product.active_ingredients).toEqual(['Vitamin C (Ascorbic acid)']);
+    expect(product.pdp_active_ingredients_raw).toBe('Vitamin C (Ascorbic acid)');
+  });
+
   test('preserves reviewed force-filled PDP content while keeping quarantined fields blocked', () => {
     const forceFillContract = {
       contract_version: 'pivota.pdp.force_fill.v1',

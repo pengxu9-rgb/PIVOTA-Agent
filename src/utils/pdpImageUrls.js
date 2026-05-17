@@ -67,7 +67,10 @@ function classifyShopifyLikeAsset(parsed) {
     (isShopifyHost && pathnameHasSegment(pathname, 'files')) ||
     SHOPIFY_CONTENT_PATH_RE.test(pathname)
   ) {
-    if (/(?:^|[_-])(?:silo|packshot|pack-shot|pack_shot)(?:[_-]|\.|$)/i.test(filename)) {
+    if (
+      /(?:^|[_-])silo(?:[_-]|\.|$)/i.test(filename) &&
+      !/(?:^|[_-])(?:mini|refill|travel|jumbo|trial|sample)(?:[_-]|\.|$)/i.test(filename)
+    ) {
       return 'product';
     }
     return 'content';

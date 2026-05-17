@@ -124,5 +124,10 @@ describe('pdp image URL normalization', () => {
         new URL('https://cdn.shopify.com/s/files/1/0615/7785/5148/files/DewtopiaNightTreatment_Silo.jpg?v=1747067534'),
       ),
     ).toBe('product');
+    expect(
+      classifyShopifyLikeAsset(
+        new URL('https://cdn.shopify.com/s/files/1/0341/3458/9485/files/FS_S23_T2PRODUCT_SILO_HYDRAVIZOR_REFILL_MINERAL_1200x1500_FENTYVERSEI.jpg?v=1762272036'),
+      ),
+    ).toBe('content');
   });
 });

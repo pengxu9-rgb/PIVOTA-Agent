@@ -1,0 +1,1204 @@
+{
+  "status": "dry_run",
+  "reason": "",
+  "target_url": "https://olehenriksen.com/products/banana-bright-eye-creme",
+  "row": {
+    "id": "eps_bde436f20eee4cba8bdf95ef",
+    "external_product_id": "ext_918981bcc6d552cc2af0b535",
+    "title": "Banana Bright+ Eye Crème",
+    "brand": "",
+    "domain": "olehenriksen.com",
+    "canonical_url": "https://olehenriksen.com/products/banana-bright-eye-creme",
+    "destination_url": "https://olehenriksen.com/products/banana-bright-eye-creme",
+    "seed_snapshot_contract": {
+      "updated_at": "2026-05-11T17:50:47.020Z",
+      "authoritative": true,
+      "contract_version": "external_seed.snapshot_contract.v1",
+      "replace_strategy": "replace_not_merge",
+      "legacy_fields_quarantined": true,
+      "structured_fields_authoritative": true
+    }
+  },
+  "payload": {
+    "changed": true,
+    "next_row": {
+      "title": "Banana Bright+ Eye Crème",
+      "canonical_url": "https://olehenriksen.com/products/banana-bright-eye-creme",
+      "destination_url": "https://olehenriksen.com/products/banana-bright-eye-creme",
+      "image_url": "https://cdn.shopify.com/s/files/1/0615/7785/5148/files/GC_ICONS_BBEYE_UPDATE.jpg?v=1745854899",
+      "price_amount": 46,
+      "price_currency": "USD",
+      "availability": "in_stock",
+      "seed_data": {
+        "brand": "Olehenriksen",
+        "title": "Banana Bright+ Eye Crème",
+        "images": [
+          "https://cdn.shopify.com/s/files/1/0615/7785/5148/files/GC_ICONS_BBEYE_UPDATE.jpg?v=1745854899",
+          "https://cdn.shopify.com/s/files/1/0615/7785/5148/files/BBEYE_USP_93ed751c-535b-4267-ba5e-2a85491eebd5.jpg?v=1768251009",
+          "https://cdn.shopify.com/s/files/1/0615/7785/5148/files/BBEYE_BEFOREAFTER_2000x2000_300DPI_1.jpg?v=1768251009",
+          "https://cdn.shopify.com/s/files/1/0615/7785/5148/files/BBEYE_BEFOREAFTER_1_2000x2000_300DPI.jpg?v=1768251009",
+          "https://cdn.shopify.com/s/files/1/0615/7785/5148/files/BBEYE_BEFOREAFTER_2_2000x2000_300DPI.jpg?v=1768251009",
+          "https://cdn.shopify.com/s/files/1/0615/7785/5148/files/BBEYE_BEFOREAFTER_2000x2000_300DPI_2-1.jpg?v=1768251009",
+          "https://cdn.shopify.com/s/files/1/0615/7785/5148/files/BBEYE_CLAIMS_447fb744-4a2a-4fa9-97a8-913538cb7c6d.jpg?v=1768251009",
+          "https://cdn.shopify.com/s/files/1/0615/7785/5148/files/BBEYE_INGREDIENTS_4721c526-70b2-4b60-b2a2-d4274a0e8f65.jpg?v=1768251009",
+          "https://cdn.shopify.com/s/files/1/0615/7785/5148/files/BBEYE_INGREDIENTSPOTLIGHT_58be3b3d-4eea-4e19-aef3-41cdea5d9e70.jpg?v=1768251009",
+          "https://cdn.shopify.com/s/files/1/0615/7785/5148/files/BBEYE_FORMULA_31ccf0a9-934c-410f-b1f8-656270182e1c.jpg?v=1768251009",
+          "https://cdn.shopify.com/s/files/1/0615/7785/5148/files/BBEYE_BESTSELLERGRAPHIC_1db27810-45ce-436b-9bf6-d48130819630.jpg?v=1768251009"
+        ],
+        "source": "employee_seed_csv_catalog",
+        "derived": {
+          "recall": {
+            "retrieval_title": "Banana Bright+ Eye Crème",
+            "retrieval_summary": "Our #1 eye cream got better AND brighter. Powered by a potent triple vitamin C complex with REAL gold, which improves delivery of vitamin C to the skin, Banana Bright+ Eye Crème is clinically formulated to instantly brighten, smooth and hydrate undereyes, while also visibly reducing fine lines and wrinkles and defendi…",
+            "retrieval_body": "Our #1 eye cream got better AND brighter. Powered by a potent triple vitamin C complex with REAL gold, which improves delivery of vitamin C to the skin, Banana Bright+ Eye Crème is clinically formulated to instantly brighten, smooth and hydrate undereyes, while also visibly reducing fine lines and wrinkles and defending skin against harmful free radicals and pollution. The vegan, fragrance-free formula also features our iconic universally-flattering light-reflecting mineral pigments - inspired by makeup artist must-have, banana powder - to instantly-color-correct and revive tired undereyes. But that's not all: It's also crease-resistant and improves concealer wear.The skin under your eyes is up to 10x thinner than the rest of your face - and far more delicate. This potent vitamin C eye cream is highly effective, but might not be ideal for those with sensitive skin. Note: The skin under your eyes is up to 10x thinner than the rest of your face - and far more delicate. This potent vitamin C eye cream is highly effective, but might not be ideal for those with sensitive skin.\n\nAdd Banana Bright+ Eye Crème to your routine for the ultimate OLE GLOW® Treatment. Our bestselling vitamin C eye cream, with a new and upgraded fragrance-free formula, now featuring real gold, that brightens, visibly diminishes dark circles and crow's feet and improves concealer application and wear. Award winner for 2023 Allure's Reader's Choice.\n\nIS KIND OF OUR THING C THE INNOVATION\n\nC THE INNOVATION",
+            "brand": "Olehenriksen",
+            "category": "Moisturizer",
+            "vertical": "skincare",
+            "ingredient_tokens": [
+              "vitamin",
+              "ascorbic",
+              "acid",
+              "glycerin"
+            ],
+            "locality_tokens": [
+              "available market US",
+              "local purchase US"
+            ],
+            "alias_tokens": [
+              "Banana Bright+ Eye Crème",
+              "banana bright plus eye creme",
+              "bananabrightpluseyecreme",
+              "bright plus eye creme",
+              "plus eye creme",
+              "eye creme",
+              "banana bright",
+              "bright plus",
+              "plus eye",
+              "Moisturizer",
+              "available market US",
+              "availablemarketus",
+              "market us",
+              "available market",
+              "local purchase US",
+              "localpurchaseus",
+              "purchase us",
+              "local purchase",
+              "banana",
+              "bright",
+              "plus",
+              "eye",
+              "creme",
+              "available",
+              "market",
+              "us",
+              "local",
+              "purchase"
+            ],
+            "locality_facts_v1": {
+              "contract_version": "external_seed.locality_facts.v1",
+              "brand": "Olehenriksen",
+              "brand_origin": {
+                "country": null,
+                "home_market": null,
+                "source": null
+              },
+              "brand_origin_country": null,
+              "brand_home_market": null,
+              "market_availability": {
+                "available_markets": [
+                  "US"
+                ],
+                "local_purchase_markets": [
+                  "US"
+                ],
+                "source_market": "US",
+                "retail_channel_markets": [],
+                "availability_status": "in_stock"
+              },
+              "available_markets": [
+                "US"
+              ],
+              "local_purchase_markets": [
+                "US"
+              ],
+              "local_retail_channels": [],
+              "travel_size": null,
+              "travel_size_evidence": null,
+              "creator_local_reason": null,
+              "local_authority_level": "product_market",
+              "sources": [
+                "existing_seed_data",
+                "seed_row_market"
+              ]
+            },
+            "exclusion_flags": {
+              "gift_card": false,
+              "donation_bundle": false,
+              "non_merchandise": false
+            },
+            "quality_signals": {
+              "template_polluted": false,
+              "synthetic_summary": false,
+              "extractor_description_present": true
+            },
+            "quality_state": "eligible",
+            "suppression_flags": {
+              "exclude_from_recall": false,
+              "exclude_from_similar": false,
+              "suppress_ingredients": false,
+              "suppress_active_ingredients": false,
+              "suppress_facts": false
+            },
+            "version": "v1"
+          }
+        },
+        "net_size": "0.5 oz",
+        "snapshot": {
+          "title": "Banana Bright+ Eye Crème",
+          "images": [],
+          "source": "catalog_intelligence",
+          "net_size": "0.5 oz",
+          "variants": [
+            {
+              "sku": "57693",
+              "variant_id": "41904134946988",
+              "url": "https://olehenriksen.com/products/banana-bright-eye-creme?variant=41904134946988&utm_source=pivota&utm_medium=affiliate",
+              "deep_link": "https://olehenriksen.com/products/banana-bright-eye-creme?variant=41904134946988&utm_source=pivota&utm_medium=affiliate",
+              "product_url": "https://olehenriksen.com/products/banana-bright-eye-creme",
+              "option_name": "Size",
+              "option_value": "0.5 oz",
+              "price": "46.00",
+              "currency": "USD",
+              "stock": "In Stock",
+              "image_url": "",
+              "image_urls": [],
+              "description": "Add Banana Bright+ Eye Crème to your routine for the ultimate OLE GLOW® Treatment. Our bestselling vitamin C eye cream, with a new and upgraded fragrance-free formula, now featuring real gold, that brightens, visibly diminishes dark circles and crow's feet and improves concealer application and wear. Award winner for 2023 Allure's Reader's Choice.",
+              "title": "0.5 oz",
+              "options": [
+                {
+                  "name": "Size",
+                  "value": "0.5 oz"
+                }
+              ]
+            }
+          ],
+          "image_url": "https://cdn.shopify.com/s/files/1/0615/7785/5148/files/GC_ICONS_BBEYE_UPDATE.jpg?v=1745854899",
+          "inci_list": "Aqua/Water/Eau, Simmondsia Chinensis (Jojoba) Seed Oil, Butyrospermum Parkii (Shea) Butter, Isododecane, Coconut Alkanes, 3-O-Ethyl Ascorbic Acid, Cetearyl Alcohol, Glycerin, C18-38 Alkyl Hydroxystearoyl Stearate, Dilinoleic Acid/Propanediol Copolymer, Polymethylsilsesquioxane, Cocoyl Proline, Dimethicone Crosspolymer, Pentaerythrityl Tetraisostearate, Tetrahexyldecyl Ascorbate, Ascorbic Acid, Gold, Glutathione, Citrus Nobilis (Mandarin Orange) Fruit Extract, Citrus Paradisi (Grapefruit) Peel Extract, Glucosyl Hesperidin, Tocopherol, Tamarindus Indica Seed Polysaccharide, Poncirus Trifoliata Fruit Extract, Morus Alba Root Extract, Linoleic Acid, Linolenic Acid, Jojoba Esters, Caprylyl Glycol, Coco-Caprylate/Caprate, Propanediol, Polyglyceryl-3 Cocoate, Polyglyceryl-4 Caprate, Polyglyceryl-6 Caprylate, Polyglyceryl-6 Ricinoleate, Hdi/Trimethylol Hexyllactone Crosspolymer, Polyacrylate-13, Butylene Glycol, Polyglyceryl-3 Stearate, Polysorbate 20, Sodium Citrate, Polyisobutene, Beheneth-5, Acrylates/C10-30 Alkyl Acrylate Crosspolymer, Behenyl Alcohol, Sodium Hydroxide, Sorbic Acid, Sorbitan Isostearate, Citric Acid, Hydrolyzed Vegetable Protein, Stearic Acid, Palmitic Acid, Oleic Acid, Sorbitol, Silica, Sodium Benzoate, 1,2-Hexanediol, Xanthan Gum, Phenoxyethanol, Leuconostoc/Radish Root Ferment Filtrate, Mica, Iron Titanium Dioxide, Titanium Dioxide (Ci 77891), Iron Oxides (Ci 77491), Aqua; Simmondsia Chinensis (Jojoba) Seed Oil; Butyrospermum Parkii (Shea) Butter; Isododecane; Coconut Alkanes; 3-O-Ethyl Ascorbic Acid; Cetearyl Alcohol; Glycerin; C18-38 Alkyl Hydroxystearoyl Stearate; Dilinoleic Acid/Propanediol Copolymer; Polymethylsilsesquioxane; Cocoyl Proline; Dimethicone Crosspolymer; Pentaerythrityl Tetraisostearate; Tetrahexyldecyl Ascorbate; Ascorbic Acid; Gold; Glutathione; Citrus Nobilis (Mandarin Orange) Fruit Extract; Citrus Paradisi (Grapefruit) Peel Extract; Glucosyl Hesperidin; Tocopherol; Tamarindus Indica Seed Polysaccharide; Poncirus Trifoliata Fruit Extract; Morus Alba Root Extract; Linoleic Acid; Linolenic Acid; Jojoba Esters; Caprylyl Glycol; Coco-Caprylate/Caprate; Propanediol; Polyglyceryl-3 Cocoate; Polyglyceryl-4 Caprate; Polyglyceryl-6 Caprylate; Polyglyceryl-6 Ricinoleate; Hdi/Trimethylol Hexyllactone Crosspolymer; Polyacrylate-13; Butylene Glycol; Polyglyceryl-3 Stearate; Polysorbate 20; Sodium Citrate; Polyisobutene; Beheneth-5; Acrylates/C10-30 Alkyl Acrylate Crosspolymer; Behenyl Alcohol; Sodium Hydroxide; Sorbic Acid; Sorbitan Isostearate; Citric Acid; Hydrolyzed Vegetable Protein; Stearic Acid; Palmitic Acid; Oleic Acid; Sorbitol; Silica; Sodium Benzoate; 1; 2-Hexanediol; Xanthan Gum; Phenoxyethanol; Leuconostoc/Radish Root Ferment Filtrate; Mica; Iron Titanium Dioxide; Titanium Dioxide (Ci 77891); Iron Oxides (Ci 77491)",
+          "image_urls": [],
+          "description": "Add Banana Bright+ Eye Crème to your routine for the ultimate OLE GLOW® Treatment. Our bestselling vitamin C eye cream, with a new and upgraded fragrance-free formula, now featuring real gold, that brightens, visibly diminishes dark circles and crow's feet and improves concealer application and wear. Award winner for 2023 Allure's Reader's Choice.",
+          "diagnostics": {
+            "requested_domain": "olehenriksen.com",
+            "resolved_base_url": "https://olehenriksen.com",
+            "discovery_strategy": "shopify_json",
+            "failure_category": null,
+            "block_provider": null,
+            "http_trace": [
+              {
+                "url": "https://olehenriksen.com/products/banana-bright-eye-creme.js",
+                "status": 200
+              },
+              {
+                "url": "https://olehenriksen.com/products/banana-bright-eye-creme",
+                "status": 200
+              },
+              {
+                "url": "https://olehenriksen.com/products/banana-bright-eye-creme",
+                "status": 200
+              },
+              {
+                "url": "https://olehenriksen.com/products/banana-bright-eye-creme",
+                "status": 200
+              }
+            ]
+          },
+          "extracted_at": "2026-05-17T01:02:24.780Z",
+          "variant_skus": [
+            "57693"
+          ],
+          "canonical_url": "https://olehenriksen.com/products/banana-bright-eye-creme",
+          "description_raw": "Our #1 eye cream got better AND brighter. \nPowered by a potent triple vitamin C complex with REAL gold, which improves delivery of vitamin C to the skin, Banana Bright+ Eye Crème is clinically formulated to instantly brighten, smooth and hydrate undereyes, while also visibly reducing fine lines and wrinkles and defending skin against harmful free radicals and pollution.\n\nThe vegan, fragrance-free formula also features our iconic universally-flattering light-reflecting mineral pigments—inspired by makeup artist must-have, banana powder—to instantly-color-correct and revive tired undereyes. But that’s not all: It’s also crease-resistant and improves concealer wear.The skin under your eyes is up to 10x thinner than the rest of your face—and far more delicate. This potent vitamin C eye cream is highly effective, but might not be ideal for those with sensitive skin.\n\nNote: The skin under your eyes is up to 10x thinner than the rest of your face—and far more delicate. This potent vitamin C eye cream is highly effective, but might not be ideal for those with sensitive skin.",
+          "ingredients_raw": "This product does not contain parabens, sulfates or phthalates\n\nTriple Vitamin C Complex With Gold Delivery System \n\n- A powerhouse vitamin C trio for enhanced brightening & elasticity\n\n- Gold Complexed Vitamin C ascorbic acid (pure vitamin C) + super-antioxidant glutathione combined with real gold to create a highly stable, water-soluble complex that improves delivery of vitamin C to surface layer of your skin\n\n- 3-O-Ethyl Ascorbic Acid is a potent, water-soluble vitamin c derivative with superior stability & antioxidant capacity\n\n- Tetrahexyldecyl (THD) Ascorbate is an extremely stable, oil-soluble form of vitamin C that pairs well with other types of vitamin C\n\nBioflavonoids \n\n- Citrus, plant-based antioxidant compounds that neutralize free radicals & other environmental aggressors\n\nHardy Orange Extract \n\n- An antioxidant-rich plant that thrives in harsh environments\n\n- Pairs well with vitamin C, which helps brighten skin & reduce the look of dark spots\n\nBanana Powder-Inspired Pigments \n\n- Naturally derived light-reflecting minerals\n\n- Instantly illuminate your complexion\n\nFull Ingredient List: \nAqua/Water/Eau, Simmondsia Chinensis (Jojoba) Seed Oil, Butyrospermum Parkii (Shea) Butter, Isododecane, Coconut Alkanes, 3-O-Ethyl Ascorbic Acid, Cetearyl Alcohol, Glycerin, C18-38 Alkyl Hydroxystearoyl Stearate, Dilinoleic Acid/Propanediol Copolymer, Polymethylsilsesquioxane, Cocoyl Proline, Dimethicone Crosspolymer, Pentaerythrityl Tetraisostearate, Tetrahexyldecyl Ascorbate, Ascorbic Acid, Gold, Glutathione, Citrus Nobilis (Mandarin Orange) Fruit Extract, Citrus Paradisi (Grapefruit) Peel Extract, Glucosyl Hesperidin, Tocopherol, Tamarindus Indica Seed Polysaccharide, Poncirus Trifoliata Fruit Extract, Morus Alba Root Extract, Linoleic Acid, Linolenic Acid, Jojoba Esters, Caprylyl Glycol, Coco-Caprylate/Caprate, Propanediol, Polyglyceryl-3 Cocoate, Polyglyceryl-4 Caprate, Polyglyceryl-6 Caprylate, Polyglyceryl-6 Ricinoleate, Hdi/Trimethylol Hexyllactone Crosspolymer, Polyacrylate-13, Butylene Glycol, Polyglyceryl-3 Stearate, Polysorbate 20, Sodium Citrate, Polyisobutene, Beheneth-5, Acrylates/C10-30 Alkyl Acrylate Crosspolymer, Behenyl Alcohol, Sodium Hydroxide, Sorbic Acid, Sorbitan Isostearate, Citric Acid, Hydrolyzed Vegetable Protein, Stearic Acid, Palmitic Acid, Oleic Acid, Sorbitol, Silica, Sodium Benzoate, 1,2-Hexanediol, Xanthan Gum, Phenoxyethanol, Leuconostoc/Radish Root Ferment Filtrate, Mica, Iron Titanium Dioxide, Titanium Dioxide (Ci 77891), Iron Oxides (Ci 77491).",
+          "key_ingredients": [
+            "Vitamin C (Ascorbic acid)",
+            "Glycerin"
+          ],
+          "ingredient_intel": {
+            "inci_raw": "Aqua/Water/Eau, Simmondsia Chinensis (Jojoba) Seed Oil, Butyrospermum Parkii (Shea) Butter, Isododecane, Coconut Alkanes, 3-O-Ethyl Ascorbic Acid, Cetearyl Alcohol, Glycerin, C18-38 Alkyl Hydroxystearoyl Stearate, Dilinoleic Acid/Propanediol Copolymer, Polymethylsilsesquioxane, Cocoyl Proline, Dimethicone Crosspolymer, Pentaerythrityl Tetraisostearate, Tetrahexyldecyl Ascorbate, Ascorbic Acid, Gold, Glutathione, Citrus Nobilis (Mandarin Orange) Fruit Extract, Citrus Paradisi (Grapefruit) Peel Extract, Glucosyl Hesperidin, Tocopherol, Tamarindus Indica Seed Polysaccharide, Poncirus Trifoliata Fruit Extract, Morus Alba Root Extract, Linoleic Acid, Linolenic Acid, Jojoba Esters, Caprylyl Glycol, Coco-Caprylate/Caprate, Propanediol, Polyglyceryl-3 Cocoate, Polyglyceryl-4 Caprate, Polyglyceryl-6 Caprylate, Polyglyceryl-6 Ricinoleate, Hdi/Trimethylol Hexyllactone Crosspolymer, Polyacrylate-13, Butylene Glycol, Polyglyceryl-3 Stearate, Polysorbate 20, Sodium Citrate, Polyisobutene, Beheneth-5, Acrylates/C10-30 Alkyl Acrylate Crosspolymer, Behenyl Alcohol, Sodium Hydroxide, Sorbic Acid, Sorbitan Isostearate, Citric Acid, Hydrolyzed Vegetable Protein, Stearic Acid, Palmitic Acid, Oleic Acid, Sorbitol, Silica, Sodium Benzoate, 1,2-Hexanediol, Xanthan Gum, Phenoxyethanol, Leuconostoc/Radish Root Ferment Filtrate, Mica, Iron Titanium Dioxide, Titanium Dioxide (Ci 77891), Iron Oxides (Ci 77491)",
+            "inci_list": "Aqua/Water/Eau, Simmondsia Chinensis (Jojoba) Seed Oil, Butyrospermum Parkii (Shea) Butter, Isododecane, Coconut Alkanes, 3-O-Ethyl Ascorbic Acid, Cetearyl Alcohol, Glycerin, C18-38 Alkyl Hydroxystearoyl Stearate, Dilinoleic Acid/Propanediol Copolymer, Polymethylsilsesquioxane, Cocoyl Proline, Dimethicone Crosspolymer, Pentaerythrityl Tetraisostearate, Tetrahexyldecyl Ascorbate, Ascorbic Acid, Gold, Glutathione, Citrus Nobilis (Mandarin Orange) Fruit Extract, Citrus Paradisi (Grapefruit) Peel Extract, Glucosyl Hesperidin, Tocopherol, Tamarindus Indica Seed Polysaccharide, Poncirus Trifoliata Fruit Extract, Morus Alba Root Extract, Linoleic Acid, Linolenic Acid, Jojoba Esters, Caprylyl Glycol, Coco-Caprylate/Caprate, Propanediol, Polyglyceryl-3 Cocoate, Polyglyceryl-4 Caprate, Polyglyceryl-6 Caprylate, Polyglyceryl-6 Ricinoleate, Hdi/Trimethylol Hexyllactone Crosspolymer, Polyacrylate-13, Butylene Glycol, Polyglyceryl-3 Stearate, Polysorbate 20, Sodium Citrate, Polyisobutene, Beheneth-5, Acrylates/C10-30 Alkyl Acrylate Crosspolymer, Behenyl Alcohol, Sodium Hydroxide, Sorbic Acid, Sorbitan Isostearate, Citric Acid, Hydrolyzed Vegetable Protein, Stearic Acid, Palmitic Acid, Oleic Acid, Sorbitol, Silica, Sodium Benzoate, 1,2-Hexanediol, Xanthan Gum, Phenoxyethanol, Leuconostoc/Radish Root Ferment Filtrate, Mica, Iron Titanium Dioxide, Titanium Dioxide (Ci 77891), Iron Oxides (Ci 77491), Aqua; Simmondsia Chinensis (Jojoba) Seed Oil; Butyrospermum Parkii (Shea) Butter; Isododecane; Coconut Alkanes; 3-O-Ethyl Ascorbic Acid; Cetearyl Alcohol; Glycerin; C18-38 Alkyl Hydroxystearoyl Stearate; Dilinoleic Acid/Propanediol Copolymer; Polymethylsilsesquioxane; Cocoyl Proline; Dimethicone Crosspolymer; Pentaerythrityl Tetraisostearate; Tetrahexyldecyl Ascorbate; Ascorbic Acid; Gold; Glutathione; Citrus Nobilis (Mandarin Orange) Fruit Extract; Citrus Paradisi (Grapefruit) Peel Extract; Glucosyl Hesperidin; Tocopherol; Tamarindus Indica Seed Polysaccharide; Poncirus Trifoliata Fruit Extract; Morus Alba Root Extract; Linoleic Acid; Linolenic Acid; Jojoba Esters; Caprylyl Glycol; Coco-Caprylate/Caprate; Propanediol; Polyglyceryl-3 Cocoate; Polyglyceryl-4 Caprate; Polyglyceryl-6 Caprylate; Polyglyceryl-6 Ricinoleate; Hdi/Trimethylol Hexyllactone Crosspolymer; Polyacrylate-13; Butylene Glycol; Polyglyceryl-3 Stearate; Polysorbate 20; Sodium Citrate; Polyisobutene; Beheneth-5; Acrylates/C10-30 Alkyl Acrylate Crosspolymer; Behenyl Alcohol; Sodium Hydroxide; Sorbic Acid; Sorbitan Isostearate; Citric Acid; Hydrolyzed Vegetable Protein; Stearic Acid; Palmitic Acid; Oleic Acid; Sorbitol; Silica; Sodium Benzoate; 1; 2-Hexanediol; Xanthan Gum; Phenoxyethanol; Leuconostoc/Radish Root Ferment Filtrate; Mica; Iron Titanium Dioxide; Titanium Dioxide (Ci 77891); Iron Oxides (Ci 77491)",
+            "inci_normalized": [
+              "Vitamin C (Ascorbic acid)",
+              "Glycerin"
+            ],
+            "key_ingredients": [
+              "Vitamin C (Ascorbic acid)",
+              "Glycerin"
+            ],
+            "active_ingredients": [
+              "Vitamin C (Ascorbic acid)",
+              "Glycerin"
+            ],
+            "external_seed_enrichment": {
+              "source": "kb_reviewed",
+              "version": "external_seed_ingredient_writeback_v1",
+              "synced_at": "2026-05-17T01:02:26.489Z",
+              "quarantine_reason": null,
+              "url_anchor_conflict": false,
+              "parsed_from_pdp_fields": true,
+              "quarantined_from_wave1": true,
+              "seed_quarantine_bucket": "manual_upstream_required",
+              "seed_anchor_source_kind": "kb_reviewed",
+              "contamination_signal_source": "row_scope_off_surface_signal",
+              "seed_anchor_conflict_status": "none",
+              "kb_candidate_ids": [
+                "extseed:eps_bde436f20eee4cba8bdf95ef:41904134946988"
+              ],
+              "kb_row_count": 1
+            },
+            "raw_ingredient_text_clean": "Aqua/Water/Eau, Simmondsia Chinensis (Jojoba) Seed Oil, Butyrospermum Parkii (Shea) Butter, Isododecane, Coconut Alkanes, 3-O-Ethyl Ascorbic Acid, Cetearyl Alcohol, Glycerin, C18-38 Alkyl Hydroxystearoyl Stearate, Dilinoleic Acid/Propanediol Copolymer, Polymethylsilsesquioxane, Cocoyl Proline, Dimethicone Crosspolymer, Pentaerythrityl Tetraisostearate, Tetrahexyldecyl Ascorbate, Ascorbic Acid, Gold, Glutathione, Citrus Nobilis (Mandarin Orange) Fruit Extract, Citrus Paradisi (Grapefruit) Peel Extract, Glucosyl Hesperidin, Tocopherol, Tamarindus Indica Seed Polysaccharide, Poncirus Trifoliata Fruit Extract, Morus Alba Root Extract, Linoleic Acid, Linolenic Acid, Jojoba Esters, Caprylyl Glycol, Coco-Caprylate/Caprate, Propanediol, Polyglyceryl-3 Cocoate, Polyglyceryl-4 Caprate, Polyglyceryl-6 Caprylate, Polyglyceryl-6 Ricinoleate, Hdi/Trimethylol Hexyllactone Crosspolymer, Polyacrylate-13, Butylene Glycol, Polyglyceryl-3 Stearate, Polysorbate 20, Sodium Citrate, Polyisobutene, Beheneth-5, Acrylates/C10-30 Alkyl Acrylate Crosspolymer, Behenyl Alcohol, Sodium Hydroxide, Sorbic Acid, Sorbitan Isostearate, Citric Acid, Hydrolyzed Vegetable Protein, Stearic Acid, Palmitic Acid, Oleic Acid, Sorbitol, Silica, Sodium Benzoate, 1,2-Hexanediol, Xanthan Gum, Phenoxyethanol, Leuconostoc/Radish Root Ferment Filtrate, Mica, Iron Titanium Dioxide, Titanium Dioxide (Ci 77891), Iron Oxides (Ci 77491)",
+            "authoritative": {
+              "raw_text": "Aqua/Water/Eau, Simmondsia Chinensis (Jojoba) Seed Oil, Butyrospermum Parkii (Shea) Butter, Isododecane, Coconut Alkanes, 3-O-Ethyl Ascorbic Acid, Cetearyl Alcohol, Glycerin, C18-38 Alkyl Hydroxystearoyl Stearate, Dilinoleic Acid/Propanediol Copolymer, Polymethylsilsesquioxane, Cocoyl Proline, Dimethicone Crosspolymer, Pentaerythrityl Tetraisostearate, Tetrahexyldecyl Ascorbate, Ascorbic Acid, Gold, Glutathione, Citrus Nobilis (Mandarin Orange) Fruit Extract, Citrus Paradisi (Grapefruit) Peel Extract, Glucosyl Hesperidin, Tocopherol, Tamarindus Indica Seed Polysaccharide, Poncirus Trifoliata Fruit Extract, Morus Alba Root Extract, Linoleic Acid, Linolenic Acid, Jojoba Esters, Caprylyl Glycol, Coco-Caprylate/Caprate, Propanediol, Polyglyceryl-3 Cocoate, Polyglyceryl-4 Caprate, Polyglyceryl-6 Caprylate, Polyglyceryl-6 Ricinoleate, Hdi/Trimethylol Hexyllactone Crosspolymer, Polyacrylate-13, Butylene Glycol, Polyglyceryl-3 Stearate, Polysorbate 20, Sodium Citrate, Polyisobutene, Beheneth-5, Acrylates/C10-30 Alkyl Acrylate Crosspolymer, Behenyl Alcohol, Sodium Hydroxide, Sorbic Acid, Sorbitan Isostearate, Citric Acid, Hydrolyzed Vegetable Protein, Stearic Acid, Palmitic Acid, Oleic Acid, Sorbitol, Silica, Sodium Benzoate, 1,2-Hexanediol, Xanthan Gum, Phenoxyethanol, Leuconostoc/Radish Root Ferment Filtrate, Mica, Iron Titanium Dioxide, Titanium Dioxide (Ci 77891), Iron Oxides (Ci 77491), Aqua; Simmondsia Chinensis (Jojoba) Seed Oil; Butyrospermum Parkii (Shea) Butter; Isododecane; Coconut Alkanes; 3-O-Ethyl Ascorbic Acid; Cetearyl Alcohol; Glycerin; C18-38 Alkyl Hydroxystearoyl Stearate; Dilinoleic Acid/Propanediol Copolymer; Polymethylsilsesquioxane; Cocoyl Proline; Dimethicone Crosspolymer; Pentaerythrityl Tetraisostearate; Tetrahexyldecyl Ascorbate; Ascorbic Acid; Gold; Glutathione; Citrus Nobilis (Mandarin Orange) Fruit Extract; Citrus Paradisi (Grapefruit) Peel Extract; Glucosyl Hesperidin; Tocopherol; Tamarindus Indica Seed Polysaccharide; Poncirus Trifoliata Fruit Extract; Morus Alba Root Extract; Linoleic Acid; Linolenic Acid; Jojoba Esters; Caprylyl Glycol; Coco-Caprylate/Caprate; Propanediol; Polyglyceryl-3 Cocoate; Polyglyceryl-4 Caprate; Polyglyceryl-6 Caprylate; Polyglyceryl-6 Ricinoleate; Hdi/Trimethylol Hexyllactone Crosspolymer; Polyacrylate-13; Butylene Glycol; Polyglyceryl-3 Stearate; Polysorbate 20; Sodium Citrate; Polyisobutene; Beheneth-5; Acrylates/C10-30 Alkyl Acrylate Crosspolymer; Behenyl Alcohol; Sodium Hydroxide; Sorbic Acid; Sorbitan Isostearate; Citric Acid; Hydrolyzed Vegetable Protein; Stearic Acid; Palmitic Acid; Oleic Acid; Sorbitol; Silica; Sodium Benzoate; 1; 2-Hexanediol; Xanthan Gum; Phenoxyethanol; Leuconostoc/Radish Root Ferment Filtrate; Mica; Iron Titanium Dioxide; Titanium Dioxide (Ci 77891); Iron Oxides (Ci 77491)",
+              "items": [
+                "Aqua/Water/Eau",
+                "Simmondsia Chinensis (Jojoba) Seed Oil",
+                "Butyrospermum Parkii (Shea) Butter",
+                "Isododecane",
+                "Coconut Alkanes",
+                "3-O-Ethyl Ascorbic Acid",
+                "Cetearyl Alcohol",
+                "Glycerin",
+                "C18-38 Alkyl Hydroxystearoyl Stearate",
+                "Dilinoleic Acid/Propanediol Copolymer",
+                "Polymethylsilsesquioxane",
+                "Cocoyl Proline",
+                "Dimethicone Crosspolymer",
+                "Pentaerythrityl Tetraisostearate",
+                "Tetrahexyldecyl Ascorbate",
+                "Ascorbic Acid",
+                "Gold",
+                "Glutathione",
+                "Citrus Nobilis (Mandarin Orange) Fruit Extract",
+                "Citrus Paradisi (Grapefruit) Peel Extract",
+                "Glucosyl Hesperidin",
+                "Tocopherol",
+                "Tamarindus Indica Seed Polysaccharide",
+                "Poncirus Trifoliata Fruit Extract",
+                "Morus Alba Root Extract",
+                "Linoleic Acid",
+                "Linolenic Acid",
+                "Jojoba Esters",
+                "Caprylyl Glycol",
+                "Coco-Caprylate/Caprate",
+                "Propanediol",
+                "Polyglyceryl-3 Cocoate",
+                "Polyglyceryl-4 Caprate",
+                "Polyglyceryl-6 Caprylate",
+                "Polyglyceryl-6 Ricinoleate",
+                "Hdi/Trimethylol Hexyllactone Crosspolymer",
+                "Polyacrylate-13",
+                "Butylene Glycol",
+                "Polyglyceryl-3 Stearate",
+                "Polysorbate 20",
+                "Sodium Citrate",
+                "Polyisobutene",
+                "Beheneth-5",
+                "Acrylates/C10-30 Alkyl Acrylate Crosspolymer",
+                "Behenyl Alcohol",
+                "Sodium Hydroxide",
+                "Sorbic Acid",
+                "Sorbitan Isostearate",
+                "Citric Acid",
+                "Hydrolyzed Vegetable Protein",
+                "Stearic Acid",
+                "Palmitic Acid",
+                "Oleic Acid",
+                "Sorbitol",
+                "Silica",
+                "Sodium Benzoate",
+                "1,2-Hexanediol",
+                "Xanthan Gum",
+                "Phenoxyethanol",
+                "Leuconostoc/Radish Root Ferment Filtrate",
+                "Mica",
+                "Iron Titanium Dioxide",
+                "Titanium Dioxide (Ci 77891)",
+                "Iron Oxides (Ci 77491)",
+                "Aqua",
+                "2-Hexanediol"
+              ],
+              "active_items": [],
+              "source_origin": "pdp_section",
+              "purity_status": "authoritative",
+              "suppressed_reason": "active_items_low_signal",
+              "generated_at": "2026-05-17T01:02:26.473Z"
+            }
+          },
+          "ingredient_tokens": [
+            "Vitamin C (Ascorbic acid)",
+            "Glycerin"
+          ],
+          "pdp_force_fill_v1": {
+            "fields": {
+              "variant_size": {
+                "value": "0.5 oz",
+                "source": "stored_seed_evidence",
+                "evidence": "0.5 oz",
+                "content_review_state": "assistant_reviewed"
+              }
+            },
+            "updated_at": "2026-05-11T17:50:47.020Z",
+            "contract_version": "pivota.pdp.force_fill.v1"
+          },
+          "size_detail_label": "0.5 oz",
+          "pdp_how_to_use_raw": "Gently apply to undereye area, use your ring finger. Wear alone or under concealer to improve and extend wear. For external use only. Use as directed. For the best experience and results, close jar tightly and store in a cool, dark, dry place (below 25° C or 77° F). Precautions: Do not use if allergic to vitamin C or any other ingredient in this formula. If irritation occurs, discontinue use.",
+          "pdp_review_summary": {
+            "scale": 5,
+            "source": "pivota_review_source_gate_v1",
+            "status": "unavailable",
+            "review_count": 0,
+            "unavailable_reason": "no_approved_merchant_review_source_captured",
+            "content_review_state": "approved_absence"
+          },
+          "pdp_description_raw": "Our #1 eye cream got better AND brighter.\nPowered by a potent triple vitamin C complex with REAL gold, which improves delivery of vitamin C to the skin, Banana Bright+ Eye Crème is clinically formulated to instantly brighten, smooth and hydrate undereyes, while also visibly reducing fine lines and wrinkles and defending skin against harmful free radicals and pollution.\n\nThe vegan, fragrance-free formula also features our iconic universally-flattering light-reflecting mineral pigments - inspired by makeup artist must-have, banana powder - to instantly-color-correct and revive tired undereyes. But that's not all: It's also crease-resistant and improves concealer wear.The skin under your eyes is up to 10x thinner than the rest of your face - and far more delicate. This potent vitamin C eye cream is highly effective, but might not be ideal for those with sensitive skin.\n\nNote: The skin under your eyes is up to 10x thinner than the rest of your face - and far more delicate. This potent vitamin C eye cream is highly effective, but might not be ideal for those with sensitive skin.",
+          "field_capture_status": {
+            "how_to_use_raw": "missing",
+            "description_raw": "present",
+            "ingredients_raw": "present",
+            "details_sections": "present",
+            "active_ingredients_raw": "missing"
+          },
+          "pdp_details_sections": [
+            {
+              "heading": "Details",
+              "body": "Our #1 eye cream got better AND brighter.\nPowered by a potent triple vitamin C complex with REAL gold, which improves delivery of vitamin C to the skin, Banana Bright+ Eye Crème is clinically formulated to instantly brighten, smooth and hydrate undereyes, while also visibly reducing fine lines and wrinkles and defending skin against harmful free radicals and pollution.\n\nThe vegan, fragrance-free formula also features our iconic universally-flattering light-reflecting mineral pigments - inspired by makeup artist must-have, banana powder - to instantly-color-correct and revive tired undereyes. But that's not all: It's also crease-resistant and improves concealer wear.The skin under your eyes is up to 10x thinner than the rest of your face - and far more delicate. This potent vitamin C eye cream is highly effective, but might not be ideal for those with sensitive skin.\n\nNote: The skin under your eyes is up to 10x thinner than the rest of your face - and far more delicate. This potent vitamin C eye cream is highly effective, but might not be ideal for those with sensitive skin.",
+              "source_kind": "accordion_button_html"
+            },
+            {
+              "heading": "How to Use",
+              "body": "Gently apply to undereye area, use your ring finger. Wear alone or under concealer to improve and extend wear. For external use only. Use as directed. For the best experience and results, close jar tightly and store in a cool, dark, dry place (below 25° C or 77° F). Precautions: Do not use if allergic to vitamin C or any other ingredient in this formula. If irritation occurs, discontinue use.",
+              "source_kind": "accordion_button_html"
+            }
+          ],
+          "seed_description_origin": "pdp_variant_description",
+          "pdp_field_capture_status": {
+            "description_raw": "present",
+            "details_sections": "present",
+            "ingredients_raw": "missing",
+            "active_ingredients_raw": "missing",
+            "how_to_use_raw": "present",
+            "faq_items": "present"
+          },
+          "pdp_field_quality_summary": {
+            "description_raw": {
+              "source_origin": "shopify_json",
+              "source_quality_status": "high",
+              "source_kinds": [
+                "shopify_description"
+              ],
+              "reason_codes": []
+            },
+            "details_sections": {
+              "source_origin": "shopify_json",
+              "source_quality_status": "high",
+              "source_kinds": [
+                "embedded_product_json_tags",
+                "accordion_how_to_use",
+                "accordion_ingredients",
+                "heading_sibling"
+              ],
+              "reason_codes": []
+            },
+            "ingredients_raw": {
+              "source_origin": "retail_pdp",
+              "source_quality_status": "medium",
+              "source_kinds": [
+                "details_section_ingredients"
+              ],
+              "reason_codes": []
+            },
+            "active_ingredients_raw": {
+              "source_origin": "unknown",
+              "source_quality_status": "low",
+              "source_kinds": [],
+              "reason_codes": [
+                "missing_source_kind"
+              ]
+            },
+            "how_to_use_raw": {
+              "source_origin": "retail_pdp",
+              "source_quality_status": "medium",
+              "source_kinds": [
+                "page_how_to_use_section"
+              ],
+              "reason_codes": []
+            },
+            "faq_items": {
+              "source_origin": "retail_pdp",
+              "source_quality_status": "medium",
+              "source_kinds": [
+                "accordion_question_answer"
+              ],
+              "reason_codes": []
+            }
+          },
+          "raw_ingredient_text_clean": "Aqua/Water/Eau, Simmondsia Chinensis (Jojoba) Seed Oil, Butyrospermum Parkii (Shea) Butter, Isododecane, Coconut Alkanes, 3-O-Ethyl Ascorbic Acid, Cetearyl Alcohol, Glycerin, C18-38 Alkyl Hydroxystearoyl Stearate, Dilinoleic Acid/Propanediol Copolymer, Polymethylsilsesquioxane, Cocoyl Proline, Dimethicone Crosspolymer, Pentaerythrityl Tetraisostearate, Tetrahexyldecyl Ascorbate, Ascorbic Acid, Gold, Glutathione, Citrus Nobilis (Mandarin Orange) Fruit Extract, Citrus Paradisi (Grapefruit) Peel Extract, Glucosyl Hesperidin, Tocopherol, Tamarindus Indica Seed Polysaccharide, Poncirus Trifoliata Fruit Extract, Morus Alba Root Extract, Linoleic Acid, Linolenic Acid, Jojoba Esters, Caprylyl Glycol, Coco-Caprylate/Caprate, Propanediol, Polyglyceryl-3 Cocoate, Polyglyceryl-4 Caprate, Polyglyceryl-6 Caprylate, Polyglyceryl-6 Ricinoleate, Hdi/Trimethylol Hexyllactone Crosspolymer, Polyacrylate-13, Butylene Glycol, Polyglyceryl-3 Stearate, Polysorbate 20, Sodium Citrate, Polyisobutene, Beheneth-5, Acrylates/C10-30 Alkyl Acrylate Crosspolymer, Behenyl Alcohol, Sodium Hydroxide, Sorbic Acid, Sorbitan Isostearate, Citric Acid, Hydrolyzed Vegetable Protein, Stearic Acid, Palmitic Acid, Oleic Acid, Sorbitol, Silica, Sodium Benzoate, 1,2-Hexanediol, Xanthan Gum, Phenoxyethanol, Leuconostoc/Radish Root Ferment Filtrate, Mica, Iron Titanium Dioxide, Titanium Dioxide (Ci 77891), Iron Oxides (Ci 77491)",
+          "external_seed_snapshot_contract": {
+            "contract_version": "external_seed.snapshot_contract.v1",
+            "source": "catalog_intelligence",
+            "authoritative": true,
+            "structured_fields_authoritative": true,
+            "legacy_fields_quarantined": true,
+            "replace_strategy": "replace_not_merge",
+            "updated_at": "2026-05-17T01:02:24.781Z"
+          },
+          "force_filled_review_questions_cleanup_v1": {
+            "guardrail": "removed_only_synthetic_force_filled_question_items",
+            "applied_at": "2026-05-14T14:23:08.732Z",
+            "contract_version": "pivota.review_questions.synthetic_cleanup.v1",
+            "removed_root_questions": 3,
+            "preserved_real_questions": 0,
+            "removed_snapshot_questions": 3
+          },
+          "force_filled_review_estimate_downgrade_v1": {
+            "reason": "force_filled_review_estimate_without_approved_preview_source",
+            "guardrail": "preserve_real_merchant_preview_items_and_only_downgrade_pivota_force_fill_estimates",
+            "applied_at": "2026-05-14T14:52:36.247Z",
+            "contract_version": "pivota.review_summary.force_estimate_downgrade.v1",
+            "previous_estimate_quarantined": true
+          },
+          "pdp_faq_items": [
+            {
+              "question": "IS KIND OF OUR THING",
+              "answer": "C THE INNOVATION",
+              "source_kind": "accordion_question_answer",
+              "source_title": "FAQ"
+            }
+          ],
+          "product_kind": "bundle",
+          "bundle_components": [
+            {
+              "name": "with a new",
+              "source_kind": "bundle_component_description_candidate",
+              "raw_text": "with a new"
+            },
+            {
+              "name": "upgraded fragrance-free formula",
+              "source_kind": "bundle_component_description_candidate",
+              "raw_text": "upgraded fragrance-free formula"
+            },
+            {
+              "name": "now featuring real gold",
+              "source_kind": "bundle_component_description_candidate",
+              "raw_text": "now featuring real gold"
+            },
+            {
+              "name": "that brightens",
+              "source_kind": "bundle_component_description_candidate",
+              "raw_text": "that brightens"
+            },
+            {
+              "name": "visibly diminishes dark circles",
+              "source_kind": "bundle_component_description_candidate",
+              "raw_text": "visibly diminishes dark circles"
+            },
+            {
+              "name": "crow’s feet",
+              "source_kind": "bundle_component_description_candidate",
+              "raw_text": "crow’s feet"
+            },
+            {
+              "name": "improves concealer application",
+              "source_kind": "bundle_component_description_candidate",
+              "raw_text": "improves concealer application"
+            },
+            {
+              "name": "wear. Award winner for 2023 Allure's Reader's Choice",
+              "source_kind": "bundle_component_description_candidate",
+              "raw_text": "wear. Award winner for 2023 Allure's Reader's Choice."
+            }
+          ],
+          "review_summary": {
+            "status": "no_issues_found"
+          },
+          "pdp_content_asset_v1": {
+            "contract_version": "pivota.pdp_content_asset.v1",
+            "owner": "pivota",
+            "fields": {
+              "description": {
+                "review_state": "unreviewed",
+                "overwrite_policy": "preserve_best_available",
+                "source_quality_status": "high",
+                "source_origin": "shopify_json",
+                "content_hash": "54735cc9547442b7",
+                "updated_at": "2026-05-17T01:02:24.779Z"
+              },
+              "description_raw": {
+                "review_state": "unreviewed",
+                "overwrite_policy": "preserve_best_available",
+                "source_quality_status": "high",
+                "source_origin": "shopify_json",
+                "content_hash": "e08042d01d09e2bc",
+                "updated_at": "2026-05-17T01:02:24.779Z"
+              },
+              "details_sections": {
+                "review_state": "unreviewed",
+                "overwrite_policy": "preserve_best_available",
+                "source_quality_status": "high",
+                "source_origin": "shopify_json",
+                "content_hash": "9e913dfd7025489f",
+                "updated_at": "2026-05-17T01:02:24.780Z"
+              },
+              "how_to_use_raw": {
+                "review_state": "unreviewed",
+                "overwrite_policy": "preserve_best_available",
+                "source_quality_status": "medium",
+                "source_origin": "retail_pdp",
+                "content_hash": "f2a120c83a6e3da8",
+                "updated_at": "2026-05-17T01:02:24.780Z"
+              },
+              "faq_items": {
+                "review_state": "unreviewed",
+                "overwrite_policy": "preserve_best_available",
+                "source_quality_status": "medium",
+                "source_origin": "retail_pdp",
+                "content_hash": "7ac089e262c51d9d",
+                "updated_at": "2026-05-17T01:02:24.780Z"
+              }
+            }
+          },
+          "brand_origin": {
+            "country": null,
+            "home_market": null,
+            "source": null
+          },
+          "market_availability": {
+            "available_markets": [
+              "US"
+            ],
+            "local_purchase_markets": [
+              "US"
+            ],
+            "source_market": "US",
+            "retail_channel_markets": [],
+            "availability_status": "in_stock"
+          },
+          "available_markets": [
+            "US"
+          ],
+          "local_purchase_markets": [
+            "US"
+          ],
+          "locality_facts_v1": {
+            "contract_version": "external_seed.locality_facts.v1",
+            "brand": "Olehenriksen",
+            "brand_origin": {
+              "country": null,
+              "home_market": null,
+              "source": null
+            },
+            "brand_origin_country": null,
+            "brand_home_market": null,
+            "market_availability": {
+              "available_markets": [
+                "US"
+              ],
+              "local_purchase_markets": [
+                "US"
+              ],
+              "source_market": "US",
+              "retail_channel_markets": [],
+              "availability_status": "in_stock"
+            },
+            "available_markets": [
+              "US"
+            ],
+            "local_purchase_markets": [
+              "US"
+            ],
+            "local_retail_channels": [],
+            "travel_size": null,
+            "travel_size_evidence": null,
+            "creator_local_reason": null,
+            "local_authority_level": "product_market",
+            "sources": [
+              "seed_row_market"
+            ]
+          },
+          "active_ingredients": [
+            "Vitamin C (Ascorbic acid)",
+            "Glycerin"
+          ]
+        },
+        "variants": [
+          {
+            "sku": "57693",
+            "variant_id": "41904134946988",
+            "url": "https://olehenriksen.com/products/banana-bright-eye-creme?variant=41904134946988&utm_source=pivota&utm_medium=affiliate",
+            "deep_link": "https://olehenriksen.com/products/banana-bright-eye-creme?variant=41904134946988&utm_source=pivota&utm_medium=affiliate",
+            "product_url": "https://olehenriksen.com/products/banana-bright-eye-creme",
+            "option_name": "Size",
+            "option_value": "0.5 oz",
+            "price": "46.00",
+            "currency": "USD",
+            "stock": "In Stock",
+            "image_url": "",
+            "image_urls": [],
+            "description": "Add Banana Bright+ Eye Crème to your routine for the ultimate OLE GLOW® Treatment. Our bestselling vitamin C eye cream, with a new and upgraded fragrance-free formula, now featuring real gold, that brightens, visibly diminishes dark circles and crow's feet and improves concealer application and wear. Award winner for 2023 Allure's Reader's Choice.",
+            "title": "0.5 oz",
+            "options": [
+              {
+                "name": "Size",
+                "value": "0.5 oz"
+              }
+            ]
+          }
+        ],
+        "image_url": "https://cdn.shopify.com/s/files/1/0615/7785/5148/files/GC_ICONS_BBEYE_UPDATE.jpg?v=1745854899",
+        "inci_list": "Aqua/Water/Eau, Simmondsia Chinensis (Jojoba) Seed Oil, Butyrospermum Parkii (Shea) Butter, Isododecane, Coconut Alkanes, 3-O-Ethyl Ascorbic Acid, Cetearyl Alcohol, Glycerin, C18-38 Alkyl Hydroxystearoyl Stearate, Dilinoleic Acid/Propanediol Copolymer, Polymethylsilsesquioxane, Cocoyl Proline, Dimethicone Crosspolymer, Pentaerythrityl Tetraisostearate, Tetrahexyldecyl Ascorbate, Ascorbic Acid, Gold, Glutathione, Citrus Nobilis (Mandarin Orange) Fruit Extract, Citrus Paradisi (Grapefruit) Peel Extract, Glucosyl Hesperidin, Tocopherol, Tamarindus Indica Seed Polysaccharide, Poncirus Trifoliata Fruit Extract, Morus Alba Root Extract, Linoleic Acid, Linolenic Acid, Jojoba Esters, Caprylyl Glycol, Coco-Caprylate/Caprate, Propanediol, Polyglyceryl-3 Cocoate, Polyglyceryl-4 Caprate, Polyglyceryl-6 Caprylate, Polyglyceryl-6 Ricinoleate, Hdi/Trimethylol Hexyllactone Crosspolymer, Polyacrylate-13, Butylene Glycol, Polyglyceryl-3 Stearate, Polysorbate 20, Sodium Citrate, Polyisobutene, Beheneth-5, Acrylates/C10-30 Alkyl Acrylate Crosspolymer, Behenyl Alcohol, Sodium Hydroxide, Sorbic Acid, Sorbitan Isostearate, Citric Acid, Hydrolyzed Vegetable Protein, Stearic Acid, Palmitic Acid, Oleic Acid, Sorbitol, Silica, Sodium Benzoate, 1,2-Hexanediol, Xanthan Gum, Phenoxyethanol, Leuconostoc/Radish Root Ferment Filtrate, Mica, Iron Titanium Dioxide, Titanium Dioxide (Ci 77891), Iron Oxides (Ci 77491), Aqua; Simmondsia Chinensis (Jojoba) Seed Oil; Butyrospermum Parkii (Shea) Butter; Isododecane; Coconut Alkanes; 3-O-Ethyl Ascorbic Acid; Cetearyl Alcohol; Glycerin; C18-38 Alkyl Hydroxystearoyl Stearate; Dilinoleic Acid/Propanediol Copolymer; Polymethylsilsesquioxane; Cocoyl Proline; Dimethicone Crosspolymer; Pentaerythrityl Tetraisostearate; Tetrahexyldecyl Ascorbate; Ascorbic Acid; Gold; Glutathione; Citrus Nobilis (Mandarin Orange) Fruit Extract; Citrus Paradisi (Grapefruit) Peel Extract; Glucosyl Hesperidin; Tocopherol; Tamarindus Indica Seed Polysaccharide; Poncirus Trifoliata Fruit Extract; Morus Alba Root Extract; Linoleic Acid; Linolenic Acid; Jojoba Esters; Caprylyl Glycol; Coco-Caprylate/Caprate; Propanediol; Polyglyceryl-3 Cocoate; Polyglyceryl-4 Caprate; Polyglyceryl-6 Caprylate; Polyglyceryl-6 Ricinoleate; Hdi/Trimethylol Hexyllactone Crosspolymer; Polyacrylate-13; Butylene Glycol; Polyglyceryl-3 Stearate; Polysorbate 20; Sodium Citrate; Polyisobutene; Beheneth-5; Acrylates/C10-30 Alkyl Acrylate Crosspolymer; Behenyl Alcohol; Sodium Hydroxide; Sorbic Acid; Sorbitan Isostearate; Citric Acid; Hydrolyzed Vegetable Protein; Stearic Acid; Palmitic Acid; Oleic Acid; Sorbitol; Silica; Sodium Benzoate; 1; 2-Hexanediol; Xanthan Gum; Phenoxyethanol; Leuconostoc/Radish Root Ferment Filtrate; Mica; Iron Titanium Dioxide; Titanium Dioxide (Ci 77891); Iron Oxides (Ci 77491)",
+        "image_urls": [
+          "https://cdn.shopify.com/s/files/1/0615/7785/5148/files/GC_ICONS_BBEYE_UPDATE.jpg?v=1745854899",
+          "https://cdn.shopify.com/s/files/1/0615/7785/5148/files/BBEYE_USP_93ed751c-535b-4267-ba5e-2a85491eebd5.jpg?v=1768251009",
+          "https://cdn.shopify.com/s/files/1/0615/7785/5148/files/BBEYE_BEFOREAFTER_2000x2000_300DPI_1.jpg?v=1768251009",
+          "https://cdn.shopify.com/s/files/1/0615/7785/5148/files/BBEYE_BEFOREAFTER_1_2000x2000_300DPI.jpg?v=1768251009",
+          "https://cdn.shopify.com/s/files/1/0615/7785/5148/files/BBEYE_BEFOREAFTER_2_2000x2000_300DPI.jpg?v=1768251009",
+          "https://cdn.shopify.com/s/files/1/0615/7785/5148/files/BBEYE_BEFOREAFTER_2000x2000_300DPI_2-1.jpg?v=1768251009",
+          "https://cdn.shopify.com/s/files/1/0615/7785/5148/files/BBEYE_CLAIMS_447fb744-4a2a-4fa9-97a8-913538cb7c6d.jpg?v=1768251009",
+          "https://cdn.shopify.com/s/files/1/0615/7785/5148/files/BBEYE_INGREDIENTS_4721c526-70b2-4b60-b2a2-d4274a0e8f65.jpg?v=1768251009",
+          "https://cdn.shopify.com/s/files/1/0615/7785/5148/files/BBEYE_INGREDIENTSPOTLIGHT_58be3b3d-4eea-4e19-aef3-41cdea5d9e70.jpg?v=1768251009",
+          "https://cdn.shopify.com/s/files/1/0615/7785/5148/files/BBEYE_FORMULA_31ccf0a9-934c-410f-b1f8-656270182e1c.jpg?v=1768251009",
+          "https://cdn.shopify.com/s/files/1/0615/7785/5148/files/BBEYE_BESTSELLERGRAPHIC_1db27810-45ce-436b-9bf6-d48130819630.jpg?v=1768251009"
+        ],
+        "description": "Add Banana Bright+ Eye Crème to your routine for the ultimate OLE GLOW® Treatment. Our bestselling vitamin C eye cream, with a new and upgraded fragrance-free formula, now featuring real gold, that brightens, visibly diminishes dark circles and crow's feet and improves concealer application and wear. Award winner for 2023 Allure's Reader's Choice.",
+        "availability": "in_stock",
+        "review_summary": {
+          "status": "no_issues_found"
+        },
+        "disclosure_text": "Prices may change. We may earn a commission from qualifying purchases.",
+        "key_ingredients": [
+          "Vitamin C (Ascorbic acid)",
+          "Glycerin"
+        ],
+        "ingredient_intel": {
+          "inci_raw": "Aqua/Water/Eau, Simmondsia Chinensis (Jojoba) Seed Oil, Butyrospermum Parkii (Shea) Butter, Isododecane, Coconut Alkanes, 3-O-Ethyl Ascorbic Acid, Cetearyl Alcohol, Glycerin, C18-38 Alkyl Hydroxystearoyl Stearate, Dilinoleic Acid/Propanediol Copolymer, Polymethylsilsesquioxane, Cocoyl Proline, Dimethicone Crosspolymer, Pentaerythrityl Tetraisostearate, Tetrahexyldecyl Ascorbate, Ascorbic Acid, Gold, Glutathione, Citrus Nobilis (Mandarin Orange) Fruit Extract, Citrus Paradisi (Grapefruit) Peel Extract, Glucosyl Hesperidin, Tocopherol, Tamarindus Indica Seed Polysaccharide, Poncirus Trifoliata Fruit Extract, Morus Alba Root Extract, Linoleic Acid, Linolenic Acid, Jojoba Esters, Caprylyl Glycol, Coco-Caprylate/Caprate, Propanediol, Polyglyceryl-3 Cocoate, Polyglyceryl-4 Caprate, Polyglyceryl-6 Caprylate, Polyglyceryl-6 Ricinoleate, Hdi/Trimethylol Hexyllactone Crosspolymer, Polyacrylate-13, Butylene Glycol, Polyglyceryl-3 Stearate, Polysorbate 20, Sodium Citrate, Polyisobutene, Beheneth-5, Acrylates/C10-30 Alkyl Acrylate Crosspolymer, Behenyl Alcohol, Sodium Hydroxide, Sorbic Acid, Sorbitan Isostearate, Citric Acid, Hydrolyzed Vegetable Protein, Stearic Acid, Palmitic Acid, Oleic Acid, Sorbitol, Silica, Sodium Benzoate, 1,2-Hexanediol, Xanthan Gum, Phenoxyethanol, Leuconostoc/Radish Root Ferment Filtrate, Mica, Iron Titanium Dioxide, Titanium Dioxide (Ci 77891), Iron Oxides (Ci 77491)",
+          "inci_list": "Aqua/Water/Eau, Simmondsia Chinensis (Jojoba) Seed Oil, Butyrospermum Parkii (Shea) Butter, Isododecane, Coconut Alkanes, 3-O-Ethyl Ascorbic Acid, Cetearyl Alcohol, Glycerin, C18-38 Alkyl Hydroxystearoyl Stearate, Dilinoleic Acid/Propanediol Copolymer, Polymethylsilsesquioxane, Cocoyl Proline, Dimethicone Crosspolymer, Pentaerythrityl Tetraisostearate, Tetrahexyldecyl Ascorbate, Ascorbic Acid, Gold, Glutathione, Citrus Nobilis (Mandarin Orange) Fruit Extract, Citrus Paradisi (Grapefruit) Peel Extract, Glucosyl Hesperidin, Tocopherol, Tamarindus Indica Seed Polysaccharide, Poncirus Trifoliata Fruit Extract, Morus Alba Root Extract, Linoleic Acid, Linolenic Acid, Jojoba Esters, Caprylyl Glycol, Coco-Caprylate/Caprate, Propanediol, Polyglyceryl-3 Cocoate, Polyglyceryl-4 Caprate, Polyglyceryl-6 Caprylate, Polyglyceryl-6 Ricinoleate, Hdi/Trimethylol Hexyllactone Crosspolymer, Polyacrylate-13, Butylene Glycol, Polyglyceryl-3 Stearate, Polysorbate 20, Sodium Citrate, Polyisobutene, Beheneth-5, Acrylates/C10-30 Alkyl Acrylate Crosspolymer, Behenyl Alcohol, Sodium Hydroxide, Sorbic Acid, Sorbitan Isostearate, Citric Acid, Hydrolyzed Vegetable Protein, Stearic Acid, Palmitic Acid, Oleic Acid, Sorbitol, Silica, Sodium Benzoate, 1,2-Hexanediol, Xanthan Gum, Phenoxyethanol, Leuconostoc/Radish Root Ferment Filtrate, Mica, Iron Titanium Dioxide, Titanium Dioxide (Ci 77891), Iron Oxides (Ci 77491), Aqua; Simmondsia Chinensis (Jojoba) Seed Oil; Butyrospermum Parkii (Shea) Butter; Isododecane; Coconut Alkanes; 3-O-Ethyl Ascorbic Acid; Cetearyl Alcohol; Glycerin; C18-38 Alkyl Hydroxystearoyl Stearate; Dilinoleic Acid/Propanediol Copolymer; Polymethylsilsesquioxane; Cocoyl Proline; Dimethicone Crosspolymer; Pentaerythrityl Tetraisostearate; Tetrahexyldecyl Ascorbate; Ascorbic Acid; Gold; Glutathione; Citrus Nobilis (Mandarin Orange) Fruit Extract; Citrus Paradisi (Grapefruit) Peel Extract; Glucosyl Hesperidin; Tocopherol; Tamarindus Indica Seed Polysaccharide; Poncirus Trifoliata Fruit Extract; Morus Alba Root Extract; Linoleic Acid; Linolenic Acid; Jojoba Esters; Caprylyl Glycol; Coco-Caprylate/Caprate; Propanediol; Polyglyceryl-3 Cocoate; Polyglyceryl-4 Caprate; Polyglyceryl-6 Caprylate; Polyglyceryl-6 Ricinoleate; Hdi/Trimethylol Hexyllactone Crosspolymer; Polyacrylate-13; Butylene Glycol; Polyglyceryl-3 Stearate; Polysorbate 20; Sodium Citrate; Polyisobutene; Beheneth-5; Acrylates/C10-30 Alkyl Acrylate Crosspolymer; Behenyl Alcohol; Sodium Hydroxide; Sorbic Acid; Sorbitan Isostearate; Citric Acid; Hydrolyzed Vegetable Protein; Stearic Acid; Palmitic Acid; Oleic Acid; Sorbitol; Silica; Sodium Benzoate; 1; 2-Hexanediol; Xanthan Gum; Phenoxyethanol; Leuconostoc/Radish Root Ferment Filtrate; Mica; Iron Titanium Dioxide; Titanium Dioxide (Ci 77891); Iron Oxides (Ci 77491)",
+          "inci_normalized": [
+            "Vitamin C (Ascorbic acid)",
+            "Glycerin"
+          ],
+          "key_ingredients": [
+            "Vitamin C (Ascorbic acid)",
+            "Glycerin"
+          ],
+          "active_ingredients": [
+            "Vitamin C (Ascorbic acid)",
+            "Glycerin"
+          ],
+          "external_seed_enrichment": {
+            "source": "kb_reviewed",
+            "version": "external_seed_ingredient_writeback_v1",
+            "synced_at": "2026-05-17T01:02:26.489Z",
+            "quarantine_reason": null,
+            "url_anchor_conflict": false,
+            "parsed_from_pdp_fields": true,
+            "quarantined_from_wave1": true,
+            "seed_quarantine_bucket": "manual_upstream_required",
+            "seed_anchor_source_kind": "kb_reviewed",
+            "contamination_signal_source": "row_scope_off_surface_signal",
+            "seed_anchor_conflict_status": "none",
+            "kb_candidate_ids": [
+              "extseed:eps_bde436f20eee4cba8bdf95ef:41904134946988"
+            ],
+            "kb_row_count": 1
+          },
+          "raw_ingredient_text_clean": "Aqua/Water/Eau, Simmondsia Chinensis (Jojoba) Seed Oil, Butyrospermum Parkii (Shea) Butter, Isododecane, Coconut Alkanes, 3-O-Ethyl Ascorbic Acid, Cetearyl Alcohol, Glycerin, C18-38 Alkyl Hydroxystearoyl Stearate, Dilinoleic Acid/Propanediol Copolymer, Polymethylsilsesquioxane, Cocoyl Proline, Dimethicone Crosspolymer, Pentaerythrityl Tetraisostearate, Tetrahexyldecyl Ascorbate, Ascorbic Acid, Gold, Glutathione, Citrus Nobilis (Mandarin Orange) Fruit Extract, Citrus Paradisi (Grapefruit) Peel Extract, Glucosyl Hesperidin, Tocopherol, Tamarindus Indica Seed Polysaccharide, Poncirus Trifoliata Fruit Extract, Morus Alba Root Extract, Linoleic Acid, Linolenic Acid, Jojoba Esters, Caprylyl Glycol, Coco-Caprylate/Caprate, Propanediol, Polyglyceryl-3 Cocoate, Polyglyceryl-4 Caprate, Polyglyceryl-6 Caprylate, Polyglyceryl-6 Ricinoleate, Hdi/Trimethylol Hexyllactone Crosspolymer, Polyacrylate-13, Butylene Glycol, Polyglyceryl-3 Stearate, Polysorbate 20, Sodium Citrate, Polyisobutene, Beheneth-5, Acrylates/C10-30 Alkyl Acrylate Crosspolymer, Behenyl Alcohol, Sodium Hydroxide, Sorbic Acid, Sorbitan Isostearate, Citric Acid, Hydrolyzed Vegetable Protein, Stearic Acid, Palmitic Acid, Oleic Acid, Sorbitol, Silica, Sodium Benzoate, 1,2-Hexanediol, Xanthan Gum, Phenoxyethanol, Leuconostoc/Radish Root Ferment Filtrate, Mica, Iron Titanium Dioxide, Titanium Dioxide (Ci 77891), Iron Oxides (Ci 77491)",
+          "authoritative": {
+            "raw_text": "Aqua/Water/Eau, Simmondsia Chinensis (Jojoba) Seed Oil, Butyrospermum Parkii (Shea) Butter, Isododecane, Coconut Alkanes, 3-O-Ethyl Ascorbic Acid, Cetearyl Alcohol, Glycerin, C18-38 Alkyl Hydroxystearoyl Stearate, Dilinoleic Acid/Propanediol Copolymer, Polymethylsilsesquioxane, Cocoyl Proline, Dimethicone Crosspolymer, Pentaerythrityl Tetraisostearate, Tetrahexyldecyl Ascorbate, Ascorbic Acid, Gold, Glutathione, Citrus Nobilis (Mandarin Orange) Fruit Extract, Citrus Paradisi (Grapefruit) Peel Extract, Glucosyl Hesperidin, Tocopherol, Tamarindus Indica Seed Polysaccharide, Poncirus Trifoliata Fruit Extract, Morus Alba Root Extract, Linoleic Acid, Linolenic Acid, Jojoba Esters, Caprylyl Glycol, Coco-Caprylate/Caprate, Propanediol, Polyglyceryl-3 Cocoate, Polyglyceryl-4 Caprate, Polyglyceryl-6 Caprylate, Polyglyceryl-6 Ricinoleate, Hdi/Trimethylol Hexyllactone Crosspolymer, Polyacrylate-13, Butylene Glycol, Polyglyceryl-3 Stearate, Polysorbate 20, Sodium Citrate, Polyisobutene, Beheneth-5, Acrylates/C10-30 Alkyl Acrylate Crosspolymer, Behenyl Alcohol, Sodium Hydroxide, Sorbic Acid, Sorbitan Isostearate, Citric Acid, Hydrolyzed Vegetable Protein, Stearic Acid, Palmitic Acid, Oleic Acid, Sorbitol, Silica, Sodium Benzoate, 1,2-Hexanediol, Xanthan Gum, Phenoxyethanol, Leuconostoc/Radish Root Ferment Filtrate, Mica, Iron Titanium Dioxide, Titanium Dioxide (Ci 77891), Iron Oxides (Ci 77491), Aqua; Simmondsia Chinensis (Jojoba) Seed Oil; Butyrospermum Parkii (Shea) Butter; Isododecane; Coconut Alkanes; 3-O-Ethyl Ascorbic Acid; Cetearyl Alcohol; Glycerin; C18-38 Alkyl Hydroxystearoyl Stearate; Dilinoleic Acid/Propanediol Copolymer; Polymethylsilsesquioxane; Cocoyl Proline; Dimethicone Crosspolymer; Pentaerythrityl Tetraisostearate; Tetrahexyldecyl Ascorbate; Ascorbic Acid; Gold; Glutathione; Citrus Nobilis (Mandarin Orange) Fruit Extract; Citrus Paradisi (Grapefruit) Peel Extract; Glucosyl Hesperidin; Tocopherol; Tamarindus Indica Seed Polysaccharide; Poncirus Trifoliata Fruit Extract; Morus Alba Root Extract; Linoleic Acid; Linolenic Acid; Jojoba Esters; Caprylyl Glycol; Coco-Caprylate/Caprate; Propanediol; Polyglyceryl-3 Cocoate; Polyglyceryl-4 Caprate; Polyglyceryl-6 Caprylate; Polyglyceryl-6 Ricinoleate; Hdi/Trimethylol Hexyllactone Crosspolymer; Polyacrylate-13; Butylene Glycol; Polyglyceryl-3 Stearate; Polysorbate 20; Sodium Citrate; Polyisobutene; Beheneth-5; Acrylates/C10-30 Alkyl Acrylate Crosspolymer; Behenyl Alcohol; Sodium Hydroxide; Sorbic Acid; Sorbitan Isostearate; Citric Acid; Hydrolyzed Vegetable Protein; Stearic Acid; Palmitic Acid; Oleic Acid; Sorbitol; Silica; Sodium Benzoate; 1; 2-Hexanediol; Xanthan Gum; Phenoxyethanol; Leuconostoc/Radish Root Ferment Filtrate; Mica; Iron Titanium Dioxide; Titanium Dioxide (Ci 77891); Iron Oxides (Ci 77491)",
+            "items": [
+              "Aqua/Water/Eau",
+              "Simmondsia Chinensis (Jojoba) Seed Oil",
+              "Butyrospermum Parkii (Shea) Butter",
+              "Isododecane",
+              "Coconut Alkanes",
+              "3-O-Ethyl Ascorbic Acid",
+              "Cetearyl Alcohol",
+              "Glycerin",
+              "C18-38 Alkyl Hydroxystearoyl Stearate",
+              "Dilinoleic Acid/Propanediol Copolymer",
+              "Polymethylsilsesquioxane",
+              "Cocoyl Proline",
+              "Dimethicone Crosspolymer",
+              "Pentaerythrityl Tetraisostearate",
+              "Tetrahexyldecyl Ascorbate",
+              "Ascorbic Acid",
+              "Gold",
+              "Glutathione",
+              "Citrus Nobilis (Mandarin Orange) Fruit Extract",
+              "Citrus Paradisi (Grapefruit) Peel Extract",
+              "Glucosyl Hesperidin",
+              "Tocopherol",
+              "Tamarindus Indica Seed Polysaccharide",
+              "Poncirus Trifoliata Fruit Extract",
+              "Morus Alba Root Extract",
+              "Linoleic Acid",
+              "Linolenic Acid",
+              "Jojoba Esters",
+              "Caprylyl Glycol",
+              "Coco-Caprylate/Caprate",
+              "Propanediol",
+              "Polyglyceryl-3 Cocoate",
+              "Polyglyceryl-4 Caprate",
+              "Polyglyceryl-6 Caprylate",
+              "Polyglyceryl-6 Ricinoleate",
+              "Hdi/Trimethylol Hexyllactone Crosspolymer",
+              "Polyacrylate-13",
+              "Butylene Glycol",
+              "Polyglyceryl-3 Stearate",
+              "Polysorbate 20",
+              "Sodium Citrate",
+              "Polyisobutene",
+              "Beheneth-5",
+              "Acrylates/C10-30 Alkyl Acrylate Crosspolymer",
+              "Behenyl Alcohol",
+              "Sodium Hydroxide",
+              "Sorbic Acid",
+              "Sorbitan Isostearate",
+              "Citric Acid",
+              "Hydrolyzed Vegetable Protein",
+              "Stearic Acid",
+              "Palmitic Acid",
+              "Oleic Acid",
+              "Sorbitol",
+              "Silica",
+              "Sodium Benzoate",
+              "1,2-Hexanediol",
+              "Xanthan Gum",
+              "Phenoxyethanol",
+              "Leuconostoc/Radish Root Ferment Filtrate",
+              "Mica",
+              "Iron Titanium Dioxide",
+              "Titanium Dioxide (Ci 77891)",
+              "Iron Oxides (Ci 77491)",
+              "Aqua",
+              "2-Hexanediol"
+            ],
+            "active_items": [],
+            "source_origin": "pdp_section",
+            "purity_status": "authoritative",
+            "suppressed_reason": "active_items_low_signal",
+            "generated_at": "2026-05-17T01:02:26.473Z"
+          }
+        },
+        "ingredient_tokens": [
+          "Vitamin C (Ascorbic acid)",
+          "Glycerin"
+        ],
+        "pdp_force_fill_v1": {
+          "fields": {
+            "variant_size": {
+              "value": "0.5 oz",
+              "source": "stored_seed_evidence",
+              "evidence": "0.5 oz",
+              "content_review_state": "assistant_reviewed"
+            }
+          },
+          "updated_at": "2026-05-11T17:50:47.020Z",
+          "contract_version": "pivota.pdp.force_fill.v1"
+        },
+        "size_detail_label": "0.5 oz",
+        "pdp_how_to_use_raw": "Gently apply to undereye area, use your ring finger. Wear alone or under concealer to improve and extend wear. For external use only. Use as directed. For the best experience and results, close jar tightly and store in a cool, dark, dry place (below 25° C or 77° F). Precautions: Do not use if allergic to vitamin C or any other ingredient in this formula. If irritation occurs, discontinue use.",
+        "pdp_review_summary": {
+          "scale": 5,
+          "source": "pivota_review_source_gate_v1",
+          "status": "unavailable",
+          "review_count": 0,
+          "unavailable_reason": "no_approved_merchant_review_source_captured",
+          "content_review_state": "approved_absence"
+        },
+        "external_product_id": "ext_918981bcc6d552cc2af0b535",
+        "pdp_description_raw": "Our #1 eye cream got better AND brighter.\nPowered by a potent triple vitamin C complex with REAL gold, which improves delivery of vitamin C to the skin, Banana Bright+ Eye Crème is clinically formulated to instantly brighten, smooth and hydrate undereyes, while also visibly reducing fine lines and wrinkles and defending skin against harmful free radicals and pollution.\n\nThe vegan, fragrance-free formula also features our iconic universally-flattering light-reflecting mineral pigments - inspired by makeup artist must-have, banana powder - to instantly-color-correct and revive tired undereyes. But that's not all: It's also crease-resistant and improves concealer wear.The skin under your eyes is up to 10x thinner than the rest of your face - and far more delicate. This potent vitamin C eye cream is highly effective, but might not be ideal for those with sensitive skin.\n\nNote: The skin under your eyes is up to 10x thinner than the rest of your face - and far more delicate. This potent vitamin C eye cream is highly effective, but might not be ideal for those with sensitive skin.",
+        "snapshot_quarantine": {
+          "pdp_review_summary": {
+            "reason_codes": [
+              "force_filled_review_estimate_without_approved_preview_source"
+            ],
+            "quarantined_at": "2026-05-14T14:52:36.247Z",
+            "previous_force_filled_estimate": {
+              "scale": 5,
+              "rating": 4.3,
+              "source": "pivota_force_fill_v1",
+              "status": "estimated",
+              "brand_card": {
+                "name": "Olehenriksen"
+              },
+              "updated_at": "2026-05-11T17:18:33.904Z",
+              "force_filled": true,
+              "review_count": 53,
+              "aggregation_scope": "pivota_estimated_baseline",
+              "force_fill_contract": "pdp_reviews_questions_force_fill_v1",
+              "content_review_state": "approved_estimate",
+              "distribution_estimated": true,
+              "distribution_estimation_method": "deterministic_product_baseline_v1"
+            }
+          },
+          "pivota_description_rollback_v1": {
+            "kb_key": "product:ext_918981bcc6d552cc2af0b535",
+            "reason": "rollback_catalog_backfill_low_quality_description_to_reviewed_pivota_intel",
+            "source": "pivota_product_intel_pilot_selected",
+            "previous": {
+              "description": "Our #1 eye cream got better AND brighter. \nPowered by a potent triple vitamin C complex with REAL gold, which improves delivery of vitamin C to the skin, Banana Bright+ Eye Crème is clinically formulated to instantly brighten, smooth and hydrate undereyes, while also visibly reducing fine lines and wrinkles and defending skin against harmful free radicals and pollution.\n\nThe vegan, fragrance-free formula also features our iconic universally-flattering light-reflecting mineral pigments—inspired by makeup artist must-have, banana powder—to instantly-color-correct and revive tired undereyes. But that’s not all: It’s also crease-resistant and improves concealer wear.The skin under your eyes is up to 10x thinner than the rest of your face—and far more delicate. This potent vitamin C eye cream is highly effective, but might not be ideal for those with sensitive skin.\n\nNote: The skin under your eyes is up to 10x thinner than the rest of your face—and far more delicate. This potent vitamin C eye cream is highly effective, but might not be ideal for those with sensitive skin.",
+              "retrieval_body": "Our #1 eye cream got better AND brighter. Powered by a potent triple vitamin C complex with REAL gold, which improves delivery of vitamin C to the skin, Banana Bright+ Eye Crème is clinically formulated to instantly brighten, smooth and hydrate undereyes, while also visibly reducing fine lines and wrinkles and defending skin against harmful free radicals and pollution. The vegan, fragrance-free formula also features our iconic universally-flattering light-reflecting mineral pigments—inspired by makeup artist must-have, banana powder—to instantly-color-correct and revive tired undereyes. But that’s not all: It’s also crease-resistant and improves concealer wear.The skin under your eyes is up to 10x thinner than the rest of your face—and far more delicate. This potent vitamin C eye cream is highly effective, but might not be ideal for those with sensitive skin. Note: The skin under your eyes is up to 10x thinner than the rest of your face—and far more delicate. This potent vitamin C eye cream is highly effective, but might not be ideal for those with sensitive skin.",
+              "retrieval_summary": "Our #1 eye cream got better AND brighter. Powered by a potent triple vitamin C complex with REAL gold, which improves delivery of vitamin C to the skin, Banana Bright+ Eye Crème is clinically formulated to instantly brighten, smooth and hydrate undereyes, while also visibly reducing fine lines and wrinkles and defendi…",
+              "snapshot_description": "Our #1 eye cream got better AND brighter. \nPowered by a potent triple vitamin C complex with REAL gold, which improves delivery of vitamin C to the skin, Banana Bright+ Eye Crème is clinically formulated to instantly brighten, smooth and hydrate undereyes, while also visibly reducing fine lines and wrinkles and defending skin against harmful free radicals and pollution.\n\nThe vegan, fragrance-free formula also features our iconic universally-flattering light-reflecting mineral pigments—inspired by makeup artist must-have, banana powder—to instantly-color-correct and revive tired undereyes. But that’s not all: It’s also crease-resistant and improves concealer wear.The skin under your eyes is up to 10x thinner than the rest of your face—and far more delicate. This potent vitamin C eye cream is highly effective, but might not be ideal for those with sensitive skin.\n\nNote: The skin under your eyes is up to 10x thinner than the rest of your face—and far more delicate. This potent vitamin C eye cream is highly effective, but might not be ideal for those with sensitive skin."
+            },
+            "applied_at": "2026-05-10T01:09:29.180Z",
+            "product_key": "prod::external_seed::external_seed::ext_918981bcc6d552cc2af0b535",
+            "contract_version": "pivota.description.rollback.v1",
+            "pivota_signature_id": "sig_3d382c0e4c48f6be21d048e0f9b96bcb",
+            "restored_description": "An eye cream centered on vitamin C, real-gold positioning, and under-eye brightness, with a fragrance-free updated formula."
+          },
+          "extractor_mode": "puppeteer",
+          "updated_at": "2026-05-17T01:02:24.775Z",
+          "preserved_candidates": {
+            "description_raw": {
+              "value": "Add Banana Bright+ Eye Crème to your routine for the ultimate OLE GLOW® Treatment. Our bestselling vitamin C eye cream, with a new and upgraded fragrance-free formula, now featuring real gold, that brightens, visibly diminishes dark circles and crow's feet and improves concealer application and wear. Award winner for 2023 Allure's Reader's Choice.",
+              "reason_code": "preserve_reviewed_pivota_asset",
+              "reason_codes": [
+                "preserve_reviewed_pivota_asset"
+              ],
+              "source_quality_status": "high",
+              "source_origin": "shopify_json"
+            },
+            "details_sections": {
+              "value": [
+                {
+                  "heading": "Concerns",
+                  "body": "finelines",
+                  "source_kind": "embedded_product_json_tags"
+                },
+                {
+                  "heading": "How to Use",
+                  "body": "HOW TO",
+                  "source_kind": "accordion_how_to_use"
+                },
+                {
+                  "heading": "Key Ingredients",
+                  "body": "INGREDIENTS",
+                  "source_kind": "accordion_ingredients"
+                },
+                {
+                  "heading": "Details",
+                  "body": "Our #1 eye cream got better AND brighter.\n\nPowered by a potent triple vitamin C complex with REAL gold, which improves delivery of vitamin C to the skin, Banana Bright+ Eye Crème is clinically formulated to instantly brighten, smooth and hydrate undereyes, while also visibly reducing fine lines and wrinkles and defending skin against harmful free radicals and pollution.\n\nThe vegan, fragrance-free formula also features our iconic universally-flattering light-reflecting mineral pigments - inspired by makeup artist must-have, banana powder - to instantly-color-correct and revive tired undereyes. But that's not all: It's also crease-resistant and improves concealer wear.The skin under your eyes is up to 10x thinner than the rest of your face - and far more delicate. This potent vitamin C eye cream is highly effective, but might not be ideal for those with sensitive skin.\n\nNote: The skin under your eyes is up to 10x thinner than the rest of your face - and far more delicate. This potent vitamin C eye cream is highly effective, but might not be ideal for those with sensitive skin.\n\nWhy did Banana Bright Eye Crème change?\n\nWondering how and why the formula changed? Banana Bright+ Eye Crème is an upgraded formulation of our #1 bestselling eye cream. It now includes a triple vitamin C complex with real gold for enhanced brightening and elasticity. It's still an efficacious eye cream for dark circles, fine lines and wrinkles.\n\nWe heard your feedback for the original formula and wanted to ensure that everyone feels like they experience the magic of our best vitamin C eye cream. Based off popular request, the new formula is fragrance-free.\n\nOn top of the new gold complexed vitamin C, this updated brightening eye cream is jam packed with antioxidants from citrus bioflavonoids and hardy orange extract. Banana Bright+ Eye Crème is clean, vegan and cruelty-free.\n\nBenefits & Clinicals*\n29% brighter undereyes\n40% reduction in crows feet\n70% more hydrated instantly\nImproves & extends concealer wear\nFragrance free\nClean, vegan & cruelty-free\n95% agree it brightens dull, tired looking skin\n97% agree it improves skin quality & creates healthier-looking skin\n89% agree it blurs the look of dark circles, lines & wrinkles\n\n*In an 8-week clinical study of 38 people",
+                  "source_kind": "heading_sibling"
+                },
+                {
+                  "heading": "How to Use",
+                  "body": "Gently apply to undereye area, use your ring finger. Wear alone or under concealer to improve and extend wear. For external use only. Use as directed. For the best experience and results, close jar tightly and store in a cool, dark, dry place (below 25° C or 77° F). Precautions: Do not use if allergic to vitamin C or any other ingredient in this formula. If irritation occurs, discontinue use.",
+                  "source_kind": "heading_sibling"
+                },
+                {
+                  "heading": "Ingredients",
+                  "body": "This product does not contain parabens, sulfates or phthalates Triple Vitamin C Complex With Gold Delivery System A powerhouse vitamin C trio for enhanced brightening & elasticity\nGold Complexed Vitamin C ascorbic acid (pure vitamin C) + super-antioxidant glutathione combined with real gold to create a highly stable, water-soluble complex that improves delivery of vitamin C to surface layer of your skin\n3-O-Ethyl Ascorbic Acid is a potent, water-soluble vitamin c derivative with superior stability & antioxidant capacity\nTetrahexyldecyl (THD) Ascorbate is an extremely stable, oil-soluble form of vitamin C that pairs well with other types of vitamin C Bioflavonoids Citrus, plant-based antioxidant compounds that neutralize free radicals & other environmental aggressors Hardy Orange Extract An antioxidant-rich plant that thrives in harsh environments\nPairs well with vitamin C, which helps brighten skin & reduce the look of dark spots Banana Powder-Inspired Pigments Naturally derived light-reflecting minerals\nInstantly illuminate your complexion Full Ingredient List: Aqua/Water/Eau, Simmondsia Chinensis (Jojoba) Seed Oil, Butyrospermum Parkii (Shea) Butter, Isododecane, Coconut Alkanes, 3-O-Ethyl Ascorbic Acid, Cetearyl Alcohol, Glycerin, C18-38 Alkyl Hydroxystearoyl Stearate, Dilinoleic Acid/Propanediol Copolymer, Polymethylsilsesquioxane, Cocoyl Proline, Dimethicone Crosspolymer, Pentaerythrityl Tetraisostearate, Tetrahexyldecyl Ascorbate, Ascorbic Acid, Gold, Glutathione, Citrus Nobilis (Mandarin Orange) Fruit Extract, Citrus Paradisi (Grapefruit) Peel Extract, Glucosyl Hesperidin, Tocopherol, Tamarindus Indica Seed Polysaccharide, Poncirus Trifoliata Fruit Extract, Morus Alba Root Extract, Linoleic Acid, Linolenic Acid, Jojoba Esters, Caprylyl Glycol, Coco-Caprylate/Caprate, Propanediol, Polyglyceryl-3 Cocoate, Polyglyceryl-4 Caprate, Polyglyceryl-6 Caprylate, Polyglyceryl-6 Ricinoleate, Hdi/Trimethylol Hexyllactone Crosspolymer, Polyacrylate-13, Butylene Glycol, Polyglyceryl-3 Stearate, Polysorbate 20, Sodium Citrate, Polyisobutene, Beheneth-5, Acrylates/C10-30 Alkyl Acrylate Crosspolymer, Behenyl Alcohol, Sodium Hydroxide, Sorbic Acid, Sorbitan Isostearate, Citric Acid, Hydrolyzed Vegetable Protein, Stearic Acid, Palmitic Acid, Oleic Acid, Sorbitol, Silica, Sodium Benzoate, 1,2-Hexanediol, Xanthan Gum, Phenoxyethanol, Leuconostoc/Radish Root Ferment Filtrate, Mica, Iron Titanium Dioxide, Titanium Dioxide (Ci 77891), Iron Oxides (Ci 77491).",
+                  "source_kind": "heading_sibling"
+                }
+              ],
+              "reason_code": "preserve_reviewed_pivota_asset",
+              "reason_codes": [
+                "preserve_reviewed_pivota_asset"
+              ],
+              "source_quality_status": "high",
+              "source_origin": "shopify_json"
+            }
+          }
+        },
+        "pdp_details_sections": [
+          {
+            "heading": "Details",
+            "body": "Our #1 eye cream got better AND brighter.\nPowered by a potent triple vitamin C complex with REAL gold, which improves delivery of vitamin C to the skin, Banana Bright+ Eye Crème is clinically formulated to instantly brighten, smooth and hydrate undereyes, while also visibly reducing fine lines and wrinkles and defending skin against harmful free radicals and pollution.\n\nThe vegan, fragrance-free formula also features our iconic universally-flattering light-reflecting mineral pigments - inspired by makeup artist must-have, banana powder - to instantly-color-correct and revive tired undereyes. But that's not all: It's also crease-resistant and improves concealer wear.The skin under your eyes is up to 10x thinner than the rest of your face - and far more delicate. This potent vitamin C eye cream is highly effective, but might not be ideal for those with sensitive skin.\n\nNote: The skin under your eyes is up to 10x thinner than the rest of your face - and far more delicate. This potent vitamin C eye cream is highly effective, but might not be ideal for those with sensitive skin.",
+            "source_kind": "accordion_button_html"
+          },
+          {
+            "heading": "How to Use",
+            "body": "Gently apply to undereye area, use your ring finger. Wear alone or under concealer to improve and extend wear. For external use only. Use as directed. For the best experience and results, close jar tightly and store in a cool, dark, dry place (below 25° C or 77° F). Precautions: Do not use if allergic to vitamin C or any other ingredient in this formula. If irritation occurs, discontinue use.",
+            "source_kind": "accordion_button_html"
+          }
+        ],
+        "seed_description_origin": "pdp_variant_description",
+        "pdp_field_capture_status": {
+          "description_raw": "present",
+          "details_sections": "present",
+          "ingredients_raw": "missing",
+          "active_ingredients_raw": "missing",
+          "how_to_use_raw": "present",
+          "faq_items": "present"
+        },
+        "pdp_field_quality_summary": {
+          "description_raw": {
+            "source_origin": "shopify_json",
+            "source_quality_status": "high",
+            "source_kinds": [
+              "shopify_description"
+            ],
+            "reason_codes": []
+          },
+          "details_sections": {
+            "source_origin": "shopify_json",
+            "source_quality_status": "high",
+            "source_kinds": [
+              "embedded_product_json_tags",
+              "accordion_how_to_use",
+              "accordion_ingredients",
+              "heading_sibling"
+            ],
+            "reason_codes": []
+          },
+          "ingredients_raw": {
+            "source_origin": "retail_pdp",
+            "source_quality_status": "medium",
+            "source_kinds": [
+              "details_section_ingredients"
+            ],
+            "reason_codes": []
+          },
+          "active_ingredients_raw": {
+            "source_origin": "unknown",
+            "source_quality_status": "low",
+            "source_kinds": [],
+            "reason_codes": [
+              "missing_source_kind"
+            ]
+          },
+          "how_to_use_raw": {
+            "source_origin": "retail_pdp",
+            "source_quality_status": "medium",
+            "source_kinds": [
+              "page_how_to_use_section"
+            ],
+            "reason_codes": []
+          },
+          "faq_items": {
+            "source_origin": "retail_pdp",
+            "source_quality_status": "medium",
+            "source_kinds": [
+              "accordion_question_answer"
+            ],
+            "reason_codes": []
+          }
+        },
+        "raw_ingredient_text_clean": "Aqua/Water/Eau, Simmondsia Chinensis (Jojoba) Seed Oil, Butyrospermum Parkii (Shea) Butter, Isododecane, Coconut Alkanes, 3-O-Ethyl Ascorbic Acid, Cetearyl Alcohol, Glycerin, C18-38 Alkyl Hydroxystearoyl Stearate, Dilinoleic Acid/Propanediol Copolymer, Polymethylsilsesquioxane, Cocoyl Proline, Dimethicone Crosspolymer, Pentaerythrityl Tetraisostearate, Tetrahexyldecyl Ascorbate, Ascorbic Acid, Gold, Glutathione, Citrus Nobilis (Mandarin Orange) Fruit Extract, Citrus Paradisi (Grapefruit) Peel Extract, Glucosyl Hesperidin, Tocopherol, Tamarindus Indica Seed Polysaccharide, Poncirus Trifoliata Fruit Extract, Morus Alba Root Extract, Linoleic Acid, Linolenic Acid, Jojoba Esters, Caprylyl Glycol, Coco-Caprylate/Caprate, Propanediol, Polyglyceryl-3 Cocoate, Polyglyceryl-4 Caprate, Polyglyceryl-6 Caprylate, Polyglyceryl-6 Ricinoleate, Hdi/Trimethylol Hexyllactone Crosspolymer, Polyacrylate-13, Butylene Glycol, Polyglyceryl-3 Stearate, Polysorbate 20, Sodium Citrate, Polyisobutene, Beheneth-5, Acrylates/C10-30 Alkyl Acrylate Crosspolymer, Behenyl Alcohol, Sodium Hydroxide, Sorbic Acid, Sorbitan Isostearate, Citric Acid, Hydrolyzed Vegetable Protein, Stearic Acid, Palmitic Acid, Oleic Acid, Sorbitol, Silica, Sodium Benzoate, 1,2-Hexanediol, Xanthan Gum, Phenoxyethanol, Leuconostoc/Radish Root Ferment Filtrate, Mica, Iron Titanium Dioxide, Titanium Dioxide (Ci 77891), Iron Oxides (Ci 77491)",
+        "external_seed_snapshot_contract": {
+          "contract_version": "external_seed.snapshot_contract.v1",
+          "source": "catalog_intelligence",
+          "authoritative": true,
+          "structured_fields_authoritative": true,
+          "legacy_fields_quarantined": true,
+          "replace_strategy": "replace_not_merge",
+          "updated_at": "2026-05-17T01:02:24.781Z"
+        },
+        "force_filled_review_questions_cleanup_v1": {
+          "guardrail": "removed_only_synthetic_force_filled_question_items",
+          "applied_at": "2026-05-14T14:23:08.732Z",
+          "contract_version": "pivota.review_questions.synthetic_cleanup.v1",
+          "removed_root_questions": 3,
+          "preserved_real_questions": 0,
+          "removed_snapshot_questions": 3
+        },
+        "force_filled_review_estimate_downgrade_v1": {
+          "reason": "force_filled_review_estimate_without_approved_preview_source",
+          "guardrail": "preserve_real_merchant_preview_items_and_only_downgrade_pivota_force_fill_estimates",
+          "applied_at": "2026-05-14T14:52:36.247Z",
+          "contract_version": "pivota.review_summary.force_estimate_downgrade.v1",
+          "previous_estimate_quarantined": true
+        },
+        "pdp_faq_items": [
+          {
+            "question": "IS KIND OF OUR THING",
+            "answer": "C THE INNOVATION",
+            "source_kind": "accordion_question_answer",
+            "source_title": "FAQ"
+          }
+        ],
+        "product_kind": "bundle",
+        "bundle_components": [
+          {
+            "name": "with a new",
+            "source_kind": "bundle_component_description_candidate",
+            "raw_text": "with a new"
+          },
+          {
+            "name": "upgraded fragrance-free formula",
+            "source_kind": "bundle_component_description_candidate",
+            "raw_text": "upgraded fragrance-free formula"
+          },
+          {
+            "name": "now featuring real gold",
+            "source_kind": "bundle_component_description_candidate",
+            "raw_text": "now featuring real gold"
+          },
+          {
+            "name": "that brightens",
+            "source_kind": "bundle_component_description_candidate",
+            "raw_text": "that brightens"
+          },
+          {
+            "name": "visibly diminishes dark circles",
+            "source_kind": "bundle_component_description_candidate",
+            "raw_text": "visibly diminishes dark circles"
+          },
+          {
+            "name": "crow’s feet",
+            "source_kind": "bundle_component_description_candidate",
+            "raw_text": "crow’s feet"
+          },
+          {
+            "name": "improves concealer application",
+            "source_kind": "bundle_component_description_candidate",
+            "raw_text": "improves concealer application"
+          },
+          {
+            "name": "wear. Award winner for 2023 Allure's Reader's Choice",
+            "source_kind": "bundle_component_description_candidate",
+            "raw_text": "wear. Award winner for 2023 Allure's Reader's Choice."
+          }
+        ],
+        "pdp_content_asset_v1": {
+          "contract_version": "pivota.pdp_content_asset.v1",
+          "owner": "pivota",
+          "fields": {
+            "description": {
+              "review_state": "unreviewed",
+              "overwrite_policy": "preserve_best_available",
+              "source_quality_status": "high",
+              "source_origin": "shopify_json",
+              "content_hash": "54735cc9547442b7",
+              "updated_at": "2026-05-17T01:02:24.779Z"
+            },
+            "description_raw": {
+              "review_state": "unreviewed",
+              "overwrite_policy": "preserve_best_available",
+              "source_quality_status": "high",
+              "source_origin": "shopify_json",
+              "content_hash": "e08042d01d09e2bc",
+              "updated_at": "2026-05-17T01:02:24.779Z"
+            },
+            "details_sections": {
+              "review_state": "unreviewed",
+              "overwrite_policy": "preserve_best_available",
+              "source_quality_status": "high",
+              "source_origin": "shopify_json",
+              "content_hash": "9e913dfd7025489f",
+              "updated_at": "2026-05-17T01:02:24.780Z"
+            },
+            "how_to_use_raw": {
+              "review_state": "unreviewed",
+              "overwrite_policy": "preserve_best_available",
+              "source_quality_status": "medium",
+              "source_origin": "retail_pdp",
+              "content_hash": "f2a120c83a6e3da8",
+              "updated_at": "2026-05-17T01:02:24.780Z"
+            },
+            "faq_items": {
+              "review_state": "unreviewed",
+              "overwrite_policy": "preserve_best_available",
+              "source_quality_status": "medium",
+              "source_origin": "retail_pdp",
+              "content_hash": "7ac089e262c51d9d",
+              "updated_at": "2026-05-17T01:02:24.780Z"
+            }
+          }
+        },
+        "brand_origin": {
+          "country": null,
+          "home_market": null,
+          "source": null
+        },
+        "market_availability": {
+          "available_markets": [
+            "US"
+          ],
+          "local_purchase_markets": [
+            "US"
+          ],
+          "source_market": "US",
+          "retail_channel_markets": [],
+          "availability_status": "in_stock"
+        },
+        "available_markets": [
+          "US"
+        ],
+        "local_purchase_markets": [
+          "US"
+        ],
+        "locality_facts_v1": {
+          "contract_version": "external_seed.locality_facts.v1",
+          "brand": "Olehenriksen",
+          "brand_origin": {
+            "country": null,
+            "home_market": null,
+            "source": null
+          },
+          "brand_origin_country": null,
+          "brand_home_market": null,
+          "market_availability": {
+            "available_markets": [
+              "US"
+            ],
+            "local_purchase_markets": [
+              "US"
+            ],
+            "source_market": "US",
+            "retail_channel_markets": [],
+            "availability_status": "in_stock"
+          },
+          "available_markets": [
+            "US"
+          ],
+          "local_purchase_markets": [
+            "US"
+          ],
+          "local_retail_channels": [],
+          "travel_size": null,
+          "travel_size_evidence": null,
+          "creator_local_reason": null,
+          "local_authority_level": "product_market",
+          "sources": [
+            "seed_row_market"
+          ]
+        },
+        "active_ingredients": [
+          "Vitamin C (Ascorbic acid)",
+          "Glycerin"
+        ]
+      }
+    },
+    "next_row_summary": {
+      "external_product_id": "",
+      "title": "Banana Bright+ Eye Crème",
+      "canonical_url": "https://olehenriksen.com/products/banana-bright-eye-creme",
+      "destination_url": "https://olehenriksen.com/products/banana-bright-eye-creme",
+      "image_url": "https://cdn.shopify.com/s/files/1/0615/7785/5148/files/GC_ICONS_BBEYE_UPDATE.jpg?v=1745854899",
+      "image_count": 11,
+      "variant_count": 0,
+      "details_section_count": 2,
+      "faq_count": 1,
+      "how_to_use_present": true,
+      "ingredients_present": false,
+      "active_ingredients_present": false,
+      "seed_snapshot_contract": {
+        "contract_version": "external_seed.snapshot_contract.v1",
+        "source": "catalog_intelligence",
+        "authoritative": true,
+        "structured_fields_authoritative": true,
+        "legacy_fields_quarantined": true,
+        "replace_strategy": "replace_not_merge",
+        "updated_at": "2026-05-17T01:02:24.781Z"
+      },
+      "content_image_count": 0,
+      "section_media_count": 0
+    },
+    "variant_seed_rows": [],
+    "identity_listing_refresh": null,
+    "image_health_validation": null,
+    "diagnostics": null,
+    "commerce_facts_v2": null
+  },
+  "error": null
+}

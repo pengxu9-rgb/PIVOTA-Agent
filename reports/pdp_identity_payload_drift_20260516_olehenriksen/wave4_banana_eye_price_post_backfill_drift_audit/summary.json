@@ -1,0 +1,31 @@
+{
+  "generated_at": "2026-05-17T01:04:17.902Z",
+  "filters": {
+    "market": "US",
+    "domain": null,
+    "brand": null,
+    "updated_since": null,
+    "cursor": null,
+    "limit": 1
+  },
+  "scanned_seed_rows": 1,
+  "payloads_built": 1,
+  "identity_rows_found": 1,
+  "sig_groups": 1,
+  "seed_active_expected_rows": 1,
+  "seed_active_evidence_rows": 0,
+  "identity_payload_active_rows": 0,
+  "identity_payload_stale_rows": 0,
+  "live_read_stale_rows": 0,
+  "sig_mixed_active_expectation_groups": 0,
+  "canonical_selection_gap_groups": 0,
+  "sync_candidate_rows": 0,
+  "next_cursor": "2026-05-17T01:03:31.106Z|eps_bde436f20eee4cba8bdf95ef",
+  "report_files": {
+    "summary": "/private/tmp/pivota-agent-shade-visual-audit/reports/pdp_identity_payload_drift_20260516_olehenriksen/wave4_banana_eye_price_post_backfill_drift_audit/summary.json",
+    "row_audit": "/private/tmp/pivota-agent-shade-visual-audit/reports/pdp_identity_payload_drift_20260516_olehenriksen/wave4_banana_eye_price_post_backfill_drift_audit/row_audit.csv",
+    "sig_audit": "/private/tmp/pivota-agent-shade-visual-audit/reports/pdp_identity_payload_drift_20260516_olehenriksen/wave4_banana_eye_price_post_backfill_drift_audit/sig_audit.csv",
+    "sync_dry_run_candidates": "/private/tmp/pivota-agent-shade-visual-audit/reports/pdp_identity_payload_drift_20260516_olehenriksen/wave4_banana_eye_price_post_backfill_drift_audit/sync_dry_run_candidates.csv",
+    "no_cache_pdp_probe_samples": "/private/tmp/pivota-agent-shade-visual-audit/reports/pdp_identity_payload_drift_20260516_olehenriksen/wave4_banana_eye_price_post_backfill_drift_audit/no_cache_pdp_probe_samples.json"
+  }
+}

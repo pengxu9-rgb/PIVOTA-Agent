@@ -1014,6 +1014,20 @@ function normalizeIngredientEvidenceKey(value) {
   return normalizeIngredientSignalToken(value).toLowerCase().replace(/[^a-z0-9]+/g, '');
 }
 
+function buildIngredientEvidenceKeys(value) {
+  const normalized = normalizeIngredientSignalToken(value);
+  const keys = new Set([normalizeIngredientEvidenceKey(normalized)].filter(Boolean));
+  const withoutParenthetical = normalized.replace(/\([^)]*\)/g, ' ').trim();
+  const parentheticals = Array.from(normalized.matchAll(/\(([^)]*)\)/g))
+    .map((match) => normalizeNonEmptyString(match[1]))
+    .filter(Boolean);
+  if (withoutParenthetical && withoutParenthetical !== normalized) {
+    keys.add(normalizeIngredientEvidenceKey(withoutParenthetical));
+  }
+  parentheticals.forEach((item) => keys.add(normalizeIngredientEvidenceKey(item)));
+  return Array.from(keys).filter((key) => key.length >= 4);
+}
+
 function filterActiveIngredientsWithSourceEvidence(items, evidenceText) {
   const evidence = normalizeNonEmptyString(evidenceText);
   const evidenceKey = normalizeIngredientEvidenceKey(evidenceText);
@@ -1026,8 +1040,8 @@ function filterActiveIngredientsWithSourceEvidence(items, evidenceText) {
     return [];
   }
   return normalizeStringList(items, 32).filter((item) => {
-    const itemKey = normalizeIngredientEvidenceKey(item);
-    return itemKey && evidenceKey.includes(itemKey);
+    const itemKeys = buildIngredientEvidenceKeys(item);
+    return itemKeys.some((itemKey) => evidenceKey.includes(itemKey));
   });
 }
 
