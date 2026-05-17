@@ -150,7 +150,25 @@ function hasActiveIngredientExpectation(payload, title = '') {
   if (hasActiveIngredientEvidence(payload, title)) return true;
   const sources = collectPayloadSources(payload);
   const fieldQualityKeys = getFieldQualityKeys(payload).join(' ');
-  if (/\bactive_ingredients?_raw\b|\bactiveIngredients?\b/i.test(fieldQualityKeys)) return true;
+  if (/\bactive_ingredients?_raw\b|\bactiveIngredients?\b/i.test(fieldQualityKeys)) {
+    const activeQualityStatus =
+      getFieldQualityStatus(payload, 'active_ingredients_raw') ||
+      getFieldQualityStatus(payload, 'active_ingredients');
+    if (
+      activeQualityStatus &&
+      ![
+        'low',
+        'blocked',
+        'quarantined',
+        'not_applicable',
+        'reviewed_not_applicable',
+        'cleared_stale_non_source_backed',
+      ].includes(activeQualityStatus) &&
+      !activeQualityStatus.startsWith('force_filled')
+    ) {
+      return true;
+    }
+  }
 
   const context = [
     title,

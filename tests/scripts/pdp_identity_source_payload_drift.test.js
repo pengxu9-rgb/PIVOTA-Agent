@@ -105,6 +105,13 @@ describe('pdp identity source payload drift scripts', () => {
           'Amazingly thin and skin-like pimple patches absorb excess sebum and impurities from acne.',
         pdp_ingredients_raw:
           'Polyisobutene, Cellulose gum, Hydrogenated Styrene/Methylstyrene/Indene copolymer, Pectin',
+        pdp_field_quality_summary: {
+          active_ingredients_raw: {
+            source_origin: 'unknown',
+            source_quality_status: 'low',
+            reason_codes: ['missing_source_kind'],
+          },
+        },
       }),
     ).toBe(false);
 
